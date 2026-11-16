@@ -23,11 +23,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import net from 'node:net';
+import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawn as nodeSpawn } from 'node:child_process';
 import { parseCacheLog } from '../src/hot-experts.js';
 
-export const SMI_FIELDS = ['timestamp', 'temperature.gpu', 'power.draw', 'power.limit', 'clocks.sm', 'clocks.mem', 'clocks_throttle_reasons.active', 'memory.used'];
+export const SMI_FIELDS = ['timestamp', 'temperature.gpu', 'power.draw', 'power.limit', 'clocks.sm', 'clocks.mem', 'clocks_throttle_reasons.active', 'memory.used', 'utilization.gpu', 'fan.speed', 'temperature.memory', 'pcie.link.gen.current', 'pcie.link.width.current'];
 // nvidia-smi's throttle reasons that mean the card slowed itself (power cap, heat): anything but idle (0x1) or none
 const THROTTLE_MASK = 0x2 | 0x4 | 0x8 | 0x20 | 0x40 | 0x80;
 
@@ -44,16 +45,46 @@ const r1 = (x) => (x === null || x === undefined || !Number.isFinite(x) ? null :
 // One nvidia-smi line -> a sample. Unknown values ("[N/A]") become null.
 export function parseSmiLine(line) {
   const p = String(line || '').split(',').map((s) => s.trim());
-  if (p.length < SMI_FIELDS.length) return null;
+  if (p.length < 8) return null; // the first 8 fields; the later ones are null if this card or driver lacks them
   const n = (s) => { const v = Number(s); return Number.isFinite(v) ? v : null; };
   const reasons = /^0x[0-9a-f]+$/i.test(p[6]) ? parseInt(p[6], 16) : null;
-  return { at: p[0], tempC: n(p[1]), powerW: n(p[2]), powerLimitW: n(p[3]), smMHz: n(p[4]), memMHz: n(p[5]), reasons, throttled: reasons !== null && (reasons & THROTTLE_MASK) !== 0, memMB: n(p[7]) };
+  return { at: p[0], tempC: n(p[1]), powerW: n(p[2]), powerLimitW: n(p[3]), smMHz: n(p[4]), memMHz: n(p[5]), reasons, throttled: reasons !== null && (reasons & THROTTLE_MASK) !== 0, memMB: n(p[7]), utilPct: n(p[8]), fanPct: n(p[9]), memTempC: n(p[10]), pcieGen: n(p[11]), pcieWidth: n(p[12]) };
 }
 export function cardSummary(samples) {
   const s = samples.filter(Boolean);
   if (!s.length) return { samples: 0 };
   const max = (k) => s.reduce((m, x) => (x[k] !== null && x[k] > m ? x[k] : m), -Infinity);
-  return { samples: s.length, maxTempC: max('tempC'), maxPowerW: max('powerW'), peakMemMB: max('memMB'), minSmMHz: s.reduce((m, x) => (x.smMHz !== null && x.smMHz < m ? x.smMHz : m), Infinity), throttledSamples: s.filter((x) => x.throttled).length };
+  const fin = (v) => (Number.isFinite(v) ? v : null);
+  return { samples: s.length, maxTempC: max('tempC'), maxMemTempC: fin(max('memTempC')), maxUtilPct: fin(max('utilPct')), maxFanPct: fin(max('fanPct')), minPcieGen: fin(s.reduce((m, x) => (x.pcieGen !== null && x.pcieGen !== undefined && x.pcieGen < m ? x.pcieGen : m), Infinity)), maxPowerW: max('powerW'), peakMemMB: max('memMB'), minSmMHz: s.reduce((m, x) => (x.smMHz !== null && x.smMHz < m ? x.smMHz : m), Infinity), throttledSamples: s.filter((x) => x.throttled).length };
+}
+
+// Processor busy share between two os.cpus() readings, over all cores (0 to 100).
+export function cpuBusy(a, b) {
+  let busy = 0, all = 0;
+  (b || []).forEach((c, i) => {
+    const t0 = a?.[i]?.times, t1 = c?.times;
+    if (!t0 || !t1) return;
+    const d = (k) => Math.max(0, (t1[k] || 0) - (t0[k] || 0));
+    const tot = d('user') + d('nice') + d('sys') + d('idle') + d('irq');
+    busy += tot - d('idle'); all += tot;
+  });
+  return all > 0 ? r1((100 * busy) / all) : null;
+}
+// The PowerShell that reads the system once (Windows only), outside the timed parts: the top 5 processes by
+// processor use over one second, the top 5 by graphics use (Windows' own GPU Engine counters), and the processor temperature if the firmware reports one (often it doesn't,
+// or only to an administrator; then it says so instead of guessing).
+export const SYSTEM_PS = [
+  "$ErrorActionPreference='SilentlyContinue'",
+  "$p = (Get-Counter '\\Process(*)\\% Processor Time' -SampleInterval 1 -MaxSamples 1).CounterSamples | Where-Object { $_.InstanceName -notin @('_total','idle') } | Sort-Object CookedValue -Descending | Select-Object -First 5 | ForEach-Object { @{ name = $_.InstanceName; pct = [math]::Round($_.CookedValue / [Environment]::ProcessorCount, 1) } }",
+  "$t = Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature | ForEach-Object { [math]::Round($_.CurrentTemperature / 10 - 273.15, 1) }",
+  "$plan = (powercfg /getactivescheme) -join ' '",
+  "$g = (Get-Counter '\\GPU Engine(*)\\Utilization Percentage' -MaxSamples 1).CounterSamples | Where-Object { $_.InstanceName -match 'pid_(\\d+)_' } | ForEach-Object { [pscustomobject]@{ id = [int]($_.InstanceName -replace '^pid_(\\d+)_.*$','$1'); v = $_.CookedValue } } | Group-Object id | ForEach-Object { @{ name = (Get-Process -Id ([int]$_.Name)).ProcessName; pct = [math]::Round(($_.Group | Measure-Object v -Sum).Sum, 1) } } | Sort-Object { $_.pct } -Descending | Select-Object -First 5",
+  "@{ top = @($p); gpuTop = @($g); cpuTempC = @($t); powerPlan = $plan } | ConvertTo-Json -Compress -Depth 4"
+].join('; ');
+export function parseSystem(json, { freeMB, totalMB }) {
+  let j = {}; try { j = JSON.parse(String(json || '').trim() || '{}'); } catch {}
+  const temps = (Array.isArray(j.cpuTempC) ? j.cpuTempC : []).filter(Number.isFinite);
+  return { freeRamMB: freeMB, totalRamMB: totalMB, top: Array.isArray(j.top) ? j.top.slice(0, 5) : [], gpuTop: Array.isArray(j.gpuTop) ? j.gpuTop.slice(0, 5) : [], cpuTempC: temps.length ? Math.max(...temps) : null, cpuTempNote: temps.length ? 'ACPI thermal zone (firmware; may lag the cores)' : 'not reported by Windows on this PC', powerPlan: typeof j.powerPlan === 'string' ? j.powerPlan.slice(0, 200) : '' };
 }
 
 // One streamed /completion: the time to the first word, every gap between words, and the engine's own timings.
@@ -137,6 +168,7 @@ export async function runRow({ plan, prompts, row, round, fx }) {
   if (!args.some((a) => ['-lv', '--verbosity', '--log-verbosity', '-v', '--verbose', '--log-verbose'].includes(a))) args.push('-lv', '4');
   const env = { ...(eng.env || {}), ...(row.env || {}) };
   const out = { round, row: row.id, engine: row.engine, cmd: [eng.exe, ...args].join(' '), env: Object.keys(env), runs: [] };
+  out.sysBefore = await fx.system?.(); // processor and RAM, CPU temperature if Windows gives it, top processes; before the load
   const srv = await fx.start(eng.exe, args, env);
   try {
     const up = await srv.ready();
@@ -167,13 +199,16 @@ export async function runRow({ plan, prompts, row, round, fx }) {
     for (const p of row.prompts || []) {
       if (fx.shouldStop()) { out.stopped = fx.shouldStop(); break; }
       const card = fx.sampleCard();
+      const cpu = fx.cpuMark?.();
       let r;
       try { r = await fx.stream(srv.url, body(textOf(p))); } catch (e) { r = { failed: String(e.message || e) }; }
       const samples = card.stop();
-      out.runs.push({ prompt: p, ...r, card: cardSummary(samples), throttled: samples.some((x) => x?.throttled), cardSamples: samples });
+      const proc = cpu?.stop();
+      out.runs.push({ prompt: p, ...r, ...(proc ? { cpu: proc } : {}), card: cardSummary(samples), throttled: samples.some((x) => x?.throttled), cardSamples: samples });
     }
     out.cache = parseCacheLog(srv.log()); // with LLAMA_MOE_CACHE_LOG_EVERY set, the latest totals
   } finally { await srv.stop(); }
+  out.sysAfter = await fx.system?.();
   return out;
 }
 
@@ -201,6 +236,13 @@ export function summarise(results, { prompts = {}, plan = {} } = {}) {
     const ok = g.runs.filter((x) => !x.failed);
     lines.push(`| ${g.row} | ${g.prompt} | ${ok.length}${g.runs.length > ok.length ? ` (+${g.runs.length - ok.length} failed)` : ''} | ${mm(ok.map((x) => x.firstWordMs))} | ${mm(ok.map((x) => x.readTps))} | ${mm(ok.map((x) => x.writeTps))} | ${r1(median(ok.map((x) => x.gaps?.median)))} / ${r1(median(ok.map((x) => x.gaps?.p99)))} / ${r1(Math.max(...ok.map((x) => x.gaps?.max ?? -Infinity)))} | ${ok.some((x) => x.keptPct !== undefined) ? mm(ok.map((x) => x.keptPct)) + '%' : '-'} | ${mm(ok.map((x) => x.card?.peakMemMB))} | ${ok.filter((x) => x.throttled).length} |`);
   }
+  const cond = [...by.values()].filter((g) => !g.notRun && g.runs.some((x) => x.card?.samples || x.cpu));
+  if (cond.length) {
+    lines.push('', 'Conditions during the timed runs (median, with min and max):', '', '| Row | Prompt | Card max °C | Card memory max °C | Card busy max % | Fan max % | Lowest core MHz | Processor busy % | Free RAM MB |', '|---|---|---|---|---|---|---|---|---|');
+    for (const g of cond) { const ok = g.runs.filter((x) => !x.failed); lines.push(`| ${g.row} | ${g.prompt} | ${mm(ok.map((x) => x.card?.maxTempC))} | ${mm(ok.map((x) => x.card?.maxMemTempC))} | ${mm(ok.map((x) => x.card?.maxUtilPct))} | ${mm(ok.map((x) => x.card?.maxFanPct))} | ${mm(ok.map((x) => x.card?.minSmMHz))} | ${mm(ok.map((x) => x.cpu?.busyPct))} | ${mm(ok.map((x) => x.cpu?.freeRamMB))} |`); }
+  }
+  const temps = results.map((x) => x.sysBefore?.cpuTempC).filter(Number.isFinite);
+  if (results.some((x) => x.sysBefore)) lines.push('', temps.length ? `Processor temperature before each load (ACPI thermal zone): ${r1(median(temps))} °C median (${r1(Math.min(...temps))} to ${r1(Math.max(...temps))}).` : 'Processor temperature: not reported by Windows on this PC (no extra tool is installed for it).');
   const twice = [...by.values()].filter((g) => g.runs.filter((x) => x.throttled).length > 1).map((g) => `${g.row}/${g.prompt}`);
   if (twice.length) lines.push('', `More than one throttled run (to be run again, both sets published, per the method): ${twice.join(', ')}.`);
   const cache = results.filter((x) => x.cache?.small || x.load?.refused);
@@ -253,10 +295,33 @@ function realFx(plan, outDir) {
       try { smi = nodeSpawn('nvidia-smi', [`--query-gpu=${SMI_FIELDS.join(',')}`, '--format=csv,noheader,nounits', '-lms', '250'], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }); smi.on('error', () => {}); smi.stdout.on('data', (d) => { for (const l of String(d).split('\n')) { const s = parseSmiLine(l); if (s) samples.push(s); } }); } catch {}
       return { stop: () => { try { smi?.kill(); } catch {} return samples; } };
     },
+    cpuMark() { const a = os.cpus(); return { stop: () => ({ busyPct: cpuBusy(a, os.cpus()), freeRamMB: Math.round(os.freemem() / 1048576) }) }; },
+    async system() {
+      const base = { freeMB: Math.round(os.freemem() / 1048576), totalMB: Math.round(os.totalmem() / 1048576) };
+      if (process.platform !== 'win32') return parseSystem('', base);
+      const json = await new Promise((r) => { let o = ''; try { const c = nodeSpawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', SYSTEM_PS], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }); c.on('error', () => r('')); c.stdout.on('data', (d) => { o += d; }); c.on('exit', () => r(o)); setTimeout(() => { try { c.kill(); } catch {} r(o); }, 20e3); } catch { r(''); } });
+      return parseSystem(json, base);
+    },
     shouldStop() {
       if (plan.stopFile && fs.existsSync(plan.stopFile)) return 'the stop file appeared (Gaming mode or the owner)';
       return '';
     }
+  };
+}
+
+// Once per test: the card and its driver, Windows, the processor, RAM, node, each engine's sha256 and the brain's size.
+async function environment(plan) {
+  const run = (exe, args) => new Promise((r) => { let o = ''; try { const c = nodeSpawn(exe, args, { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }); c.on('error', () => r('')); c.stdout.on('data', (d) => { o += d; }); c.on('exit', () => r(o.trim())); } catch { r(''); } });
+  const fileSha = (f) => new Promise((r) => { try { const h = crypto.createHash('sha256'); fs.createReadStream(f).on('data', (d) => h.update(d)).on('end', () => r(h.digest('hex'))).on('error', () => r('')); } catch { r(''); } });
+  const engines = {};
+  for (const [k, e] of Object.entries(plan.engines || {})) engines[k] = { exe: path.basename(e.exe || ''), sha256: await fileSha(e.exe) };
+  let brainBytes = null; try { brainBytes = fs.statSync(plan.brain).size; } catch {}
+  return {
+    at: new Date().toISOString(),
+    card: await run('nvidia-smi', ['--query-gpu=name,driver_version,vbios_version,memory.total,power.limit,pcie.link.gen.max,pcie.link.width.max', '--format=csv,noheader']),
+    os: `${os.type()} ${os.release()} ${typeof os.version === 'function' ? os.version() : ''}`.trim(),
+    cpu: os.cpus()?.[0]?.model || '', cores: os.cpus()?.length || 0, ramMB: Math.round(os.totalmem() / 1048576), node: process.version,
+    engines, brain: { file: path.basename(plan.brain || ''), bytes: brainBytes }
   };
 }
 
@@ -282,6 +347,7 @@ async function main() {
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, 'plan-fingerprint.json'), JSON.stringify({ plan: sha256(JSON.stringify(plan)), prompts: Object.fromEntries(Object.entries(prompts).map(([k, v]) => [k, v.sha])), rounds, loads: order.length }, null, 2));
   if (a.includes('--dry')) { console.log(`${order.length} loads (${plan.rows.length} rows x ${rounds} rounds). Prompts: ${Object.entries(prompts).map(([k, v]) => `${k} ${v.sha.slice(0, 12)}`).join(', ')}. Nothing started.`); return; }
+  fs.writeFileSync(path.join(outDir, 'environment.json'), JSON.stringify(await environment(plan), null, 2));
   const lock = takeLock(plan.lock, 'speed-test');
   if (!lock.ok) { console.error(lock.why); process.exit(3); }
   const fx = realFx(plan, outDir);

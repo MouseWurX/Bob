@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { quantile, median, parseSmiLine, cardSummary, streamOnce, loadPlan, schedule, runRow, summarise, takeLock, sha256 } from '../model-lab/speed-test.mjs';
+import { quantile, median, parseSmiLine, cardSummary, streamOnce, loadPlan, schedule, runRow, summarise, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS } from '../model-lab/speed-test.mjs';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -113,6 +113,26 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
 { const lock = path.join(tmp, 'lock.txt');
   const a = takeLock(lock, 'speed-test'); const b = takeLock(lock, 'other');
   check('the PC test lock: taken once, refused while held, freed after', a.ok && !b.ok && /speed-test/.test(b.why) && (a.release(), takeLock(lock, 'other').ok)); }
+
+// ---------- System conditions (all fakes: no real processor, card or Windows is read) ----------
+{ const full = parseSmiLine('t, 61, 250, 300, 2800, 14001, 0x0, 15000, 97, 45, [N/A], 4, 16');
+  check('card samples also carry busy %, fan, memory temperature (null when the card has none) and the PCIe link', full.utilPct === 97 && full.fanPct === 45 && full.memTempC === null && full.pcieGen === 4 && full.pcieWidth === 16);
+  const old = parseSmiLine('t, 61, 250, 300, 2800, 14001, 0x0, 15000');
+  check('an 8-field line (older driver) still reads, the new fields null', old && old.memMB === 15000 && old.utilPct === null);
+  const sum = cardSummary([full, parseSmiLine('t, 66, 260, 300, 2700, 14001, 0x0, 15100, 99, 50, [N/A], 3, 16')]);
+  check('the run summary keeps the hottest card, busiest card, fastest fan and lowest PCIe gen', sum.maxTempC === 66 && sum.maxUtilPct === 99 && sum.maxFanPct === 50 && sum.maxMemTempC === null && sum.minPcieGen === 3); }
+{ const t = (u, i) => ({ times: { user: u, nice: 0, sys: 0, idle: i, irq: 0 } });
+  check('processor busy share over all cores between two readings', cpuBusy([t(100, 900), t(100, 900)], [t(150, 950), t(200, 900)]) === 75 && cpuBusy([], []) === null); }
+{ const s = parseSystem('{"top":[{"name":"llama-server","pct":40.2}],"cpuTempC":[51.3,48],"powerPlan":"Power Scheme GUID: x (Balanced)"}', { freeMB: 9000, totalMB: 32000 });
+  check('the system reading: top processes, the hottest thermal zone, the power plan and RAM', s.top[0].name === 'llama-server' && s.cpuTempC === 51.3 && /Balanced/.test(s.powerPlan) && s.freeRamMB === 9000);
+  const none = parseSystem('', { freeMB: 1, totalMB: 2 });
+  check('no processor temperature from Windows is said plainly, never guessed', none.cpuTempC === null && /not reported/.test(none.cpuTempNote));
+  check('the system reading uses only Windows\' own tools (Get-Counter, CIM, powercfg), nothing installed', /Get-Counter/.test(SYSTEM_PS) && /MSAcpi_ThermalZoneTemperature/.test(SYSTEM_PS) && /powercfg/.test(SYSTEM_PS)); }
+{ const { prompts } = loadPlan(planFile); const f = { ...fx(), system: async () => ({ freeRamMB: 5, cpuTempC: 50, top: [] }), cpuMark: () => ({ stop: () => ({ busyPct: 12, freeRamMB: 4 }) }) };
+  const res = await runRow({ plan, prompts, row: plan.rows[1], round: 0, fx: f });
+  check('each load records the system before and after, and each timed run its processor use', res.sysBefore?.cpuTempC === 50 && res.sysAfter?.freeRamMB === 5 && res.runs[0].cpu?.busyPct === 12);
+  const md = summarise([res], { prompts: {}, plan });
+  check('the summary has a conditions table and the processor temperature line', /Conditions during the timed runs/.test(md) && /Processor temperature before each load/.test(md)); }
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

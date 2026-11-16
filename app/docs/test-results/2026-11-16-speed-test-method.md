@@ -217,3 +217,17 @@ Turbo needs a copy of the brain that keeps its MTP layers: unsloth's `Qwen3.6-35
 - **T0S and T3S:** the same, with Bob's everyday sampling (addendum 8).
 
 Each Turbo row reports the share of drafts kept. The download happens before any timed run, never during one. Hot experts with Turbo would need a ranking made on this file, because its fingerprint differs. That is left for later.
+
+## Addendum 12 (Nov 16, before any timed run): every condition the method promises is now recorded
+
+A check against the "Conditions recorded" list found that the runner sampled only the card. Now:
+- **Once per test** (`environment.json`): the card name, driver, VBIOS, memory, power limit and top PCIe link; Windows version; the processor model and cores; RAM; node; each engine's sha256; and the brain file's size.
+- **Every 250 ms during a timed run** (nvidia-smi): card temperature, power draw and limit, core and memory clocks, throttle reasons and memory, as before. Added: card busy %, fan %, memory temperature (blank when the card doesn't report one) and the PCIe link.
+- **Each timed run:** processor busy share over all cores, and free RAM.
+- **Before and after each load**, using only Windows' own tools, nothing installed:
+  - the top 5 processes by processor use, and the top 5 by graphics use;
+  - the power plan;
+  - the processor temperature, if the firmware reports one. Many PCs report none, or only to an administrator, and then the page says so instead of guessing.
+- `summary.md` gets a conditions table, and the processor temperature line.
+
+Still worked out at write-up time from the saved data: same words with and without Turbo (every run's text sha256), and the layers whose experts sit in RAM (engine logs). Not built: perplexity on the 32K text for N0 and N4. It is listed as skipped on the results page unless it is added before the run.
