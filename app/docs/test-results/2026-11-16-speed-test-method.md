@@ -154,4 +154,4 @@ If step 1 fails, the hot-expert rows are reported as "not fixed" and the patch g
 
 ## Addendum 3: which effort levels (added 16 November 2026, before any timed run)
 
-The effort test on rentals has reported (100 jobs per setting, graded blind). It recommends one-brain effort for Low, Medium and High and holding Max (46% of jobs failed at Max). Question 4 runs the effort levels that ship: Low, Medium and High if the owner takes that recommendation, otherwise the levels Bob has on the day of the run. Max is run only if it ships. The decision and the Bob version are recorded with the results.
+The effort test on rentals has reported (100 jobs per setting, graded blind). It recommends one-brain effort for Low, Medium and High and holding Max (54 of 100 jobs failed at Max, on the regrade of the answer Bob's window shows; the first grade said 46). Question 4 runs the effort levels that ship: Low, Medium and High if the owner takes that recommendation, otherwise the levels Bob has on the day of the run. Max is run only if it ships. The decision and the Bob version are recorded with the results.
