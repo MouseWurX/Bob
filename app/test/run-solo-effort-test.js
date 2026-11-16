@@ -1,7 +1,7 @@
 // 16 Nov 2026: Effort on one brain (src/solo-effort.js). Bob's loop enforces each level's steps; these checks run the
 // loop with fake brains (plain functions in, plain arrays out). Nothing here reads the real computer.
 import fs from 'node:fs';
-import { soloEffortOn, soloJob, soloLevel, soloThink, soloVerdict, notHappy, planSteps, soloMinutes, soloRun, soloBrain, soloPrompt, SOLO_ROUNDS, MAX_JOBS } from '../src/solo-effort.js';
+import { soloEffortOn, soloJob, soloLevel, soloThink, soloVerdict, notHappy, planSteps, soloMinutes, soloRun, soloBrain, soloPrompt, SOLO_ROUNDS, MAX_JOBS, planGateTask, PLAN_NOTE } from '../src/solo-effort.js';
 import { stepThink } from '../src/step-thinking.js';
 import { careful, draftBrain, reviewBrain } from '../src/moot.js';
 import { HELP } from '../public/help-content.js';
@@ -42,21 +42,23 @@ check('plan steps come from numbered lines, at most 6', planSteps('Plan:\n1. Rea
 check('the result line says plainly when something is still open', /nothing open/.test(soloMinutes('high', [{ kind: 'check', n: 1, verdict: 'ok' }])) && /not checked again\. Not happy with: x/.test(soloMinutes('high', [{ kind: 'check', n: 1, verdict: 'improve' }, { kind: 'improve', unhappy: 'x' }])));
 
 // ---- the loop, with a fake brain ----
-async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Write it down', repeatAt = false } = {}) {
+async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Write it down', plan2 = null, repeatAt = false, cards = null, answer = 'Final answer: the list is written down and checked, both steps done.' } = {}) {
   const msgs = [{ role: 'user', content: 'do the thing' }];
   const calls = [], said = [];
   const signal = { aborted: false };
   const run = async (note, o = {}) => {
     calls.push({ note: note || '', ...o });
-    const content = /planning|Improve the plan/.test(note || '') ? plan : /Improve it\./.test(note || '') ? 'Better answer.\nNot happy with: one link is old.' : /the answer\./.test(note || '') ? 'Final answer: the list is written down and checked, both steps done.' : 'Did the step. Worked.';
+    const content = /That isn't a plan yet/.test(note || '') ? (plan2 ?? plan) : /planning|Improve the plan|wants a change/.test(note || '') ? plan : /Improve it\./.test(note || '') ? 'Better answer.\nNot happy with: one link is old.' : /the answer\./.test(note || '') ? answer : 'Did the step. It worked, and reading the output back showed it.';
     msgs.push({ role: 'assistant', content });
     if (stop) signal.aborted = true;
     return { repeatStop: Boolean(repeatAt && /step 1 of/.test(note || '')) };
   };
   const review = async (task, o = {}) => { calls.push({ review: task, ...o }); return reviews.shift() || 'Looks right.'; };
   const brain = { cfg: { userName: 'Sam' }, log: () => {} };
-  const res = await soloRun(brain, level, { run, review, emit: (e) => said.push(e), signal, msgs, turnText: 'do the thing' });
-  return { res, calls, msgs, said };
+  let shownPlan = false;
+  const card = cards ? async (steps) => { calls.push({ card: steps }); return cards.shift() || { no: true }; } : null;
+  const res = await soloRun(brain, level, { run, review, emit: (e) => said.push(e), signal, msgs, turnText: 'do the thing', card, planShown: () => { shownPlan = true; } });
+  return { res, calls, msgs, said, shownPlan };
 }
 {
   const { calls, res } = await fake('high', ['Looks right.']);
@@ -71,11 +73,11 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
 {
   const { calls, res } = await fake('max', ['Looks right.', 'Looks right.']);
   const kinds = calls.map((c) => (c.review ? (/Review your plan/.test(c.review) ? 'gate' : 'review') : c.phase));
-  check('Max: plan (with tools to look, changing nothing), plan gate, each step as its own job, whole review, then the answer', JSON.stringify(kinds) === JSON.stringify(['plan', 'gate', 'do', 'do', 'review', 'answer']) && !calls[0].noTools && /don't change anything yet/.test(calls[0].note) && calls.at(-1).noTools === true);
-  check('the 16 Nov distill results: steps with no tools say so in words, and the answer is the only reply shown', /no tool calls written out/.test(calls[1].review) && /no tool calls written out/.test(calls.at(-1).note) && /the only reply the user sees/.test(calls.at(-1).note) && /Don't repeat the plan/.test(calls.at(-1).note));
+  check('Max: plan (with tools to look, changing nothing), plan gate, each step as its own job, whole review, then the answer', JSON.stringify(kinds) === JSON.stringify(['plan', 'gate', 'do', 'do', 'answer', 'review']) && !calls[0].noTools && /don't change anything yet/.test(calls[0].note) && calls[4].noTools === true);
+  check('the 16 Nov distill results: steps with no tools say so in words, and the answer is the only reply shown', /no tool calls written out/.test(calls[1].review) && /no tool calls written out/.test(calls[4].note) && /the only reply the user sees/.test(calls[4].note) && /Don't repeat the plan/.test(calls[4].note));
   check('Max: each job gets its own step and the whole plan', /step 1 of 2: Look it up/.test(calls[2].note) && /step 2 of 2: Write it down/.test(calls[3].note) && /The whole plan/.test(calls[3].note));
   check('Max: the result line counts the jobs', /2 jobs done/.test(res.minutes) && /nothing open/.test(res.minutes) && /^🛰 \*\*Maximus:\*\*/.test(res.minutes));
-  check('Max: the plan check runs with no tools; the final review keeps its read-only tools', calls[1].noTools === true && !calls[4].noTools);
+  check('Max: the plan check runs with no tools; the final review keeps its read-only tools', calls[1].noTools === true && !calls[5].noTools);
 }
 {
   const { calls, res } = await fake('max', [], { repeatAt: true });
@@ -98,6 +100,50 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
   const { calls } = await fake('max', ['Looks right.', 'Looks right.'], { plan: 'I will just do it.' });
   check('Max: a plan with no numbered steps runs the ask as one job', calls.filter((c) => c.phase === 'do').length === 1);
 }
+// 16 Nov saved runs: 85 of 100 Max "plans" were the answer itself.
+{
+  const { calls, res, msgs } = await fake('max', ['Looks right.'], { plan: 'The fix is to add set -e to the hook. That is the whole answer, really.' });
+  const plans = calls.filter((c) => c.phase === 'plan');
+  check('Max: an answer posing as a plan gets one more go, with an example plan', plans.length === 2 && /That isn't a plan yet/.test(plans[1].note) && /1\. Read the settings file/.test(plans[1].note));
+  check('Max: still no plan: no plan gate, the tries leave the chat, one job, then the answer and its review', !calls.some((c) => c.review && /Review your plan/.test(c.review)) && !msgs.some((m) => /The fix is to add/.test(m.content)) && /whole ask now/.test(calls.find((c) => c.phase === 'do').note) && calls.some((c) => c.review && /Review your own work/.test(c.review)) && /no step-by-step plan came, so one job/.test(res.minutes));
+}
+{
+  const { calls } = await fake('max', ['Looks right.', 'Looks right.'], { plan: 'Sure, here you go.', plan2: '1. Read the hook\n2. Write the answer' });
+  check('Max: the second go makes a real plan, and it is checked and split', calls.filter((c) => c.review && /Review your plan/.test(c.review)).length === 1 && calls.filter((c) => /step \d of 2/.test(c.note || '')).length === 2);
+}
+check('the plan gate asks whether each step is Bob\'s own, not advice for the user', /something you do yourself/.test(planGateTask('1. a\n2. b')) && /advice for the user goes in the answer/.test(PLAN_NOTE));
+// The owner (16 Nov): robust, well reviewed answers. The reviews read the answer itself, and the improved one is shown.
+{
+  const { calls, msgs } = await fake('max', ['Looks right.', 'Improve it: the second row is wrong', 'Looks right.']);
+  const kinds = calls.map((c) => (c.review ? (/Review your plan/.test(c.review) ? 'gate' : 'review') : c.phase));
+  const last = [...msgs].reverse().find((m) => m.role === 'assistant' && !m.moot);
+  check('Max: answer, review, improve the answer, review again; the shown reply is the improved answer', JSON.stringify(kinds.slice(4)) === JSON.stringify(['answer', 'review', 'do', 'review']) && /answer .* will see on its own/.test(calls[5].review) && /^Better answer\./.test(last.content));
+  check('an improve round is told its reply is the one shown, in full', /the only reply the user sees/.test(calls[6].note) && /never point to "above"/.test(calls[6].note));
+}
+{
+  const { calls, msgs, res } = await fake('high', ['Improve it: add the date'], { });
+  const last = [...msgs].reverse().find((m) => m.role === 'assistant' && !m.moot);
+  check('High: the review reads the answer, and the improved answer is the one shown', /will see on its own/.test(calls[1].review) && /^Better answer\./.test(last.content) && /not checked again/.test(res.minutes));
+}
+// "Plan before big jobs" on: Max's checked plan goes on the plan card.
+{
+  const { calls, shownPlan, res } = await fake('max', [], { cards: [{ go: true }] });
+  const at = calls.findIndex((c) => c.card);
+  check('Max + plan card: the checked plan goes on the card before any job, then the jobs run without another card', at === 2 && JSON.stringify(calls[at].card) === JSON.stringify(['Look it up', 'Write it down']) && calls.slice(at + 1).filter((c) => c.phase === 'do').length >= 2 && shownPlan && /you said go ahead/.test(res.minutes));
+}
+{
+  const { calls } = await fake('max', [], { cards: [{ change: 'skip the lookup' }, { go: true }] });
+  check('Max + plan card: a change on the card makes a new plan with their words, shown again', calls.filter((c) => c.card).length === 2 && calls.some((c) => c.phase === 'plan' && /wants a change: "skip the lookup"/.test(c.note)));
+}
+{
+  const { calls, msgs, shownPlan, res } = await fake('max', [], { cards: [{ no: true }] });
+  check('Max + plan card: Not now means no job runs, and he says so', !calls.some((c) => c.phase === 'do') && /haven't started any of it/.test(msgs.at(-1).content) && !shownPlan && !res.minutes);
+}
+{
+  const { calls } = await fake('max', []);
+  check('Plan card setting off: no card', !calls.some((c) => c.card));
+}
+check('the plan card is wired to Max: shown by the loop, and no second card for the jobs', /solo === 'max' && planOn\(this\.cfg\)/.test(read('src/brain-turns.js')) && /job\?\.soloPlanShown \? \{ planShown: true \}/.test(read('src/brain-run-on.js')) && /ctx\.planChange = note/.test(read('src/plan.js')) && /soloPhase === 'plan'\) return 'Not now: just write the plan/.test(read('src/plan.js')));
 
 // ---- a whole Max job through Bob's real loop, with a scripted brain ----
 {
@@ -117,9 +163,9 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
     return { shown, final: evs.find((e) => e.type === 'final')?.text || '' };
   };
   const table = 'Here is the table:\n| a | b |\n|---|---|\n| 1 | 2 |';
-  const good = await job(['1. Write the table\n2. Check it', 'Looks right.', table, 'Checked it.', 'Looks right.', `The table you asked for:\n| a | b |\n|---|---|\n| 1 | 2 |\nNothing is left open.`]);
+  const good = await job(['1. Write the table\n2. Check it', 'Looks right.', table, 'Checked it.', `The table you asked for:\n| a | b |\n|---|---|\n| 1 | 2 |\nNothing is left open.`, 'Looks right.']);
   check('Max in the real loop: exactly one shown answer, the written one, and it holds the result', good.shown.length === 1 && /\| 1 \| 2 \|/.test(good.shown[0].content) && good.final === good.shown[0].content);
-  const filler = await job(['1. Write the table\n2. Check it', 'Looks right.', table, 'Checked it.', 'Looks right.', "I'm here whenever you're ready.", 'See the table above.']);
+  const filler = await job(['1. Write the table\n2. Check it', 'Looks right.', table, 'Checked it.', "I'm here whenever you're ready.", 'See the table above.', 'Looks right.', 'Done.']);
   check('Max: a filler answer gets one more go, then the job reports are the answer; never a review note', filler.shown.length === 1 && /\| 1 \| 2 \|/.test(filler.shown[0].content) && !/My own review|Looks right/.test(filler.shown[0].content));
   check('weak answers are spotted', ['', "I'm here whenever you're ready.", 'My own review: Looks right.', 'The table is shown above, all done.', '<tool_call>{"name":"write_file"}</tool_call> Done.'].every(weakAnswer) && !weakAnswer(table + '\nAll four cells are filled in from your numbers.'));
 }
