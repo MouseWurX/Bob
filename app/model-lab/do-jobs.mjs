@@ -104,24 +104,36 @@ async function runJob(j) {
   brain.cfg.loopHelpOff = false; brain.cfg.toolHelp = true;
   const steps = []; const missing = new Set(); let real = 0, asks = 0;
   const planted = plant(kit, j.setup);
+  // 15 Nov (Opus read of the first trial): the runner used to replace Bob's runTool, so his own step record, checks,
+  // retries and "already open" rules never ran and his closing check nudged "only 0 tool steps ran" after real steps.
+  // Now Bob's own runTool runs every call; only the paths are moved into this job's throwaway home first, and every
+  // card is answered OK (as a person tapping it), every ask_user gets its first choice.
+  const bobRunTool = brain.runTool.bind(brain);
+  const who = () => brain.cfg.userName || 'the user';
+  brain.approve = async () => true;
+  brain.askUser = async ({ question, choices } = {}) => {
+    const list = [...new Set([].concat(choices || []).map((c) => String(c ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean))];
+    if (!String(question || '').trim() || list.length < 2) throw new Error('ask_user needs a question and at least 2 choices.');
+    return `${who()} picked: ${list[0]}`;
+  };
   brain.runTool = async (name, args, ctx) => {
+    if (typeof args === 'string') { try { args = JSON.parse(args); } catch { args = {}; } }
+    args = args || {};
     const tool = brain.tools[name];
     const params = tool?.schema?.function?.parameters;
-    const call = { name, args: deepNeutral(kit, args ?? {}), complete: params ? !checkArgs(params, args).problems.length : true };
+    const call = { name, args: deepNeutral(kit, args), complete: params ? !checkArgs(params, args).problems.length : true };
+    call.kind = !tool ? 'none' : OWN.has(name) ? 'bob' : name === 'ask_user' ? 'pick' : 'real';
+    if (!tool) missing.add(name); else if (call.kind === 'real') real++;
     (steps.at(-1)?.calls || steps).push(call);
-    if (OWN.has(name)) { const r = await tool.run(args, ctx); const t = typeof r === 'string' ? r : typeof r?.text === 'string' ? r.text : JSON.stringify(r ?? ''); call.result = kit.neutral(t).slice(0, 4000); call.kind = 'bob'; return { ...(r && typeof r === 'object' ? r : {}), text: t || '(no result)' }; } // 15 Nov: a bare string came back as an empty tool message and the server refused the next step
-    if (name === 'ask_user') { // nobody is here to tap the card: the first choice is picked, in Bob's own words for a pick
-      const list = [].concat(args?.choices || []).map((c) => String(c ?? '').trim()).filter(Boolean);
-      call.kind = 'pick'; call.result = list.length >= 2 ? `${brain.cfg.userName || 'the user'} picked: ${list[0]}` : 'Error: ask_user needs a question and at least 2 choices.';
-      return { text: call.result };
-    }
-    if (!tool || NOT_HERE.has(name)) { call.kind = 'none'; missing.add(name); call.result = `Error: there's no tool called ${name}. Use one of the tools you were given.`; return { text: call.result }; }
-    call.kind = 'real'; real++;
+    const { args: a, bad } = kit.sandboxArgs(args);
+    let res;
     try {
-      const r = await Promise.race([kit.runReal(name, args, { ...ctx, cfg: brain.cfg }), wait(90000).then(() => { throw new Error('the tool took too long'); })]);
-      const t = typeof r === 'string' ? r : typeof r?.text === 'string' ? r.text : JSON.stringify(r ?? '');
-      call.result = kit.neutral(t).slice(0, 6000); return { ...(r && typeof r === 'object' ? r : {}), text: kit.neutral(t) || '(no result)' };
-    } catch (e) { call.result = `Error: ${kit.neutral(String(e.message || e)).slice(0, 600)}`; return { text: call.result }; }
+      res = bad ? { text: `Error: ${kit.neutral(bad)} is outside the folders Bob may use here` }
+        : await Promise.race([bobRunTool(name, a, ctx), wait(120000).then(() => ({ text: `Error: ${name} took too long` }))]);
+    } catch (e) { if (ctx?.signal?.aborted) throw e; res = { text: `Error: ${String(e?.message || e)}` }; }
+    const t = typeof res === 'string' ? res : typeof res?.text === 'string' ? res.text : JSON.stringify(res ?? '');
+    call.result = kit.neutral(t).slice(0, 6000);
+    return { ...(res && typeof res === 'object' ? res : {}), text: kit.neutral(t) || '(no result)' };
   };
   brain.ensureModel = async () => {}; brain.fitCtx = async () => ctxSize; brain.recall = async () => '';
   brain.engine = {

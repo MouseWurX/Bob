@@ -25,7 +25,14 @@ const srv = http.createServer((req, res) => {
     let out;
     if (msgs.some((m) => m.role !== 'assistant' && (m.content === undefined || m.content === null || m.content === ''))) { busy--; res.statusCode = 400; res.end(JSON.stringify({ error: { code: 400, message: "All non-assistant messages must contain 'content'" } })); return; }
     if (/say hi/.test(ask) && last.role === 'user' && names.includes('bob_help')) out = call('bob_help', { topic: 'plan card' }, 'Check my own help first.');
-    else if (/shop/.test(ask)) {
+    else if (/todo\.txt/.test(ask)) {
+      const tm = msgs.map((m, i) => [m, i]).filter(([m]) => m.role === 'tool');
+      const readAt = tm.find(([m]) => /water the plants/.test(String(m.content)))?.[1] ?? -1;
+      if (!names.includes('read_file') || !names.includes('notice_board')) out = call('use_tools', { group: 'files' }, 'I need my tools.');
+      else if (readAt < 0) out = call('read_file', { path: 'C:\\Users\\you\\Documents\\todo.txt' }, 'Read it first.');
+      else if (!tm.some(([, i]) => i > readAt)) out = call('notice_board', { action: 'add', content: 'water the plants' }, 'Now put it on the board.');
+      else out = say('Done: "water the plants" is on your notice board.', 'Both steps ran.');
+    } else if (/shop/.test(ask)) {
       if (last.role === 'tool' && /plums/.test(String(last.content))) out = say('Your list says plums.', 'The file says plums, so I tell them.');
       else out = names.includes('read_file') ? call('read_file', { path: 'C:\\Users\\you\\Documents\\shop.txt' }, 'I should read the list first.') : call('use_tools', { group: 'files' }, 'I need the file tools.');
     } else if (/picture/.test(ask)) {
@@ -42,7 +49,8 @@ fs.writeFileSync(jobs, [
   { id: 'a1', job: 'files', text: 'what is on my shopping list in Documents\\shop.txt?', setup: [{ path: 'Documents\\shop.txt', content: 'plums\n' }], note: 'an old answer that must never be used' },
   { id: 'a2', job: 'pictures', text: 'make me a picture of a fox' },
   { id: 'a3', job: 'chat', text: 'This exact request is a test item' },
-  { id: 'a4', job: 'chat', text: 'say hi' }
+  { id: 'a4', job: 'chat', text: 'say hi' },
+  { id: 'a5', job: 'plans', text: 'Read Documents\\todo.txt, and then add what it says to my notice board.', setup: [{ path: 'Documents\\todo.txt', content: 'water the plants\n' }] }
 ].map((x) => JSON.stringify(x)).join('\n') + '\n');
 fs.writeFileSync(held, JSON.stringify({ id: 'h1', question: 'this exact request is a test item' }) + '\n');
 const run = (extra) => new Promise((ok) => {
@@ -53,7 +61,7 @@ const run = (extra) => new Promise((ok) => {
 const pf = await run(['--preflight', '--want-shapes', 'x']);
 check('pre-flight: a tool shape other than the one asked for stops it', pf.code === 1 && /PRE-FLIGHT FAIL: Bob's tools are shape/.test(pf.log), pf.log.slice(-300));
 const pf2 = await run(['--preflight']);
-check('pre-flight: says how many jobs, how many held-out ones are left out, and passes', pf2.code === 0 && /4 rows/.test(pf2.log) && /1 held-out request\(s\) left out \(--never: 1 file/.test(pf2.log) && /pre-flight OK/.test(pf2.log), pf2.log.slice(-400));
+check('pre-flight: says how many jobs, how many held-out ones are left out, and passes', pf2.code === 0 && /5 rows/.test(pf2.log) && /1 held-out request\(s\) left out \(--never: 1 file/.test(pf2.log) && /pre-flight OK/.test(pf2.log), pf2.log.slice(-400));
 const nd = path.join(tmp, 'never-dir'); fs.mkdirSync(path.join(nd, 'sub'), { recursive: true }); fs.copyFileSync(held, path.join(nd, 'sub', 'h.jsonl')); fs.writeFileSync(path.join(nd, 'skip.txt'), 'this exact request is a test item\n');
 const pf3 = await run(['--preflight', '--never', nd]);
 check('pre-flight: a --never folder counts every .jsonl file in it and below, nothing else', pf3.code === 0 && /1 held-out request\(s\) left out \(--never: 1 file/.test(pf3.log), pf3.log.slice(-400));
@@ -64,8 +72,10 @@ const r = await run([]);
 srv.close();
 const rows = fs.readFileSync(path.join(tmp, 'trial', 'runs.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 const by = Object.fromEntries(rows.map((x) => [x.id, x]));
-check('every job but the held-out one ran', rows.length === 3 && !by.a3 && by.a1 && by.a2 && by.a4, r.log.slice(-400));
+check('every job but the held-out one ran', rows.length === 4 && !by.a3 && by.a1 && by.a2 && by.a4, r.log.slice(-400));
 check('Bob\'s own tools give a real tool message, so the next step isn\'t refused', !by.a4?.error && (by.a4?.steps || []).flatMap((s) => s.calls).some((c) => c.name === 'bob_help' && c.kind === 'bob' && c.result) && /Hello/.test(by.a4?.said || ''), JSON.stringify(by.a4?.error || by.a4?.steps?.map((s) => s.calls.map((c) => c.name))));
+const a5calls = (by.a5?.steps || []).flatMap((st) => st.calls).map((c) => c.name);
+check('Bob\'s own step record sees the real steps: no false "nothing did it" nudge, so the answer is given once', a5calls.includes('read_file') && a5calls.includes('notice_board') && (by.a5?.messages || []).filter((m) => m.role === 'assistant' && String(m.content || '').trim()).length === 1 && !(by.a5?.messages || []).some((m) => m.role === 'system' && /nothing did it|tool steps? ran/.test(String(m.content))), JSON.stringify(a5calls) + ' ' + String(by.a5?.error || '').slice(0, 200));
 const rf = (by.a1?.steps || []).flatMap((s) => s.calls).find((c) => c.name === 'read_file');
 check('the planted file was read for real in the job\'s own throwaway folder', rf?.kind === 'real' && /plums/.test(rf.result) && /plums/.test(by.a1.said), JSON.stringify(by.a1?.steps || []).slice(0, 300));
 check('the brain\'s thinking is kept for every step', (by.a1?.steps || []).length >= 2 && by.a1.steps.every((s) => typeof s.thinking === 'string') && by.a1.steps.some((s) => /read the list first/.test(s.thinking)));
