@@ -7,6 +7,12 @@ import math, types
 import torch, torch.nn as nn, torch.nn.functional as F
 import family as FAM
 
+# 16 Nov 2026: the heal's routing record (heal.py --route-report). While on, every router call appends the experts it
+# picked, layer by layer in call order, so a forward pass with no gradient leaves one [tokens, k] tensor per MoE layer.
+ROUTES = {"on": False, "picks": []}
+def _record(top_i):
+    if ROUTES["on"]: ROUTES["picks"].append(top_i.detach().to("cpu", torch.int16))
+
 class LinearLoRA(nn.Module):
     def __init__(self, base: nn.Linear, r, alpha, dropout=0.0):
         super().__init__()
@@ -195,6 +201,7 @@ def gpt_oss_mlp_forward(self, hidden_states):
     r = self.router
     logits = F.linear(x.float(), r.weight.float(), r.bias.float())
     top_v, top_i = torch.topk(logits, r.top_k, dim=-1)
+    _record(top_i)
     w = torch.softmax(top_v, dim=-1).to(x.dtype)
     y = self.experts.lora(self.experts, x, top_i, w).reshape(shape)
     return (y, w) if self._bob_tuple else y
@@ -205,10 +212,14 @@ def router_forward(self, hidden_states):
     router_probs = torch.softmax(router_logits, dtype=torch.float, dim=-1)
     top_v, top_i = torch.topk(router_probs, self.top_k, dim=-1)
     top_v = top_v / top_v.sum(dim=-1, keepdim=True)
+    _record(top_i)
     return router_logits, top_v.to(hidden_states.dtype), top_i
 
 def attach(model, r=32, alpha=64, experts="lora", router=True, linear=True, r_experts=8):
-    """Freeze everything, then add trainable parts. Returns the list of trainable parameters."""
+    """Freeze everything, then add trainable parts. Returns the list of trainable parameters.
+    router=False (16 Nov 2026, heal.py/grpo.py --router frozen) keeps the router exactly as it came in, so the keep list
+    and the experts it was chosen for stay valid. Either way the router runs in float32: a BF16 router can tie close
+    scores and quietly pick different experts (Tazi, von Werra and Wolf, 2026, section 3.1)."""
     for p in model.parameters(): p.requires_grad_(False)
     lm = FAM.base(model)
     use_gmm = _gmm_ok(next(model.parameters()).device.type)
@@ -227,8 +238,8 @@ def attach(model, r=32, alpha=64, experts="lora", router=True, linear=True, r_ex
             ex.lora = GptOssExpertsLoRA(ex, r_experts, alpha * r_experts // r if r else alpha, experts if experts == "lora" else "none", use_gmm)
             mlp._bob_tuple = _returns_tuple(mlp)
             mlp.forward = types.MethodType(gpt_oss_mlp_forward, mlp)
-            if router:
-                for p_ in (mlp.router.weight, mlp.router.bias): p_.data = p_.data.float(); p_.requires_grad_(True)
+            for p_ in (mlp.router.weight, mlp.router.bias):
+                p_.data = p_.data.float(); p_.requires_grad_(bool(router))
         elif hasattr(layer.mlp, "experts"):
             ex = layer.mlp.experts
             if experts in ("lora", "full"):
@@ -236,10 +247,9 @@ def attach(model, r=32, alpha=64, experts="lora", router=True, linear=True, r_ex
                 ex.forward = types.MethodType(lambda self, h, i, w: self.lora(self, h, i, w), ex)
                 if experts == "full":
                     ex.gate_up_proj.requires_grad_(True); ex.down_proj.requires_grad_(True)
-            if router:
-                g = layer.mlp.gate
-                g.weight.data = g.weight.data.float(); g.weight.requires_grad_(True)
-                g.forward = types.MethodType(router_forward, g)
+            g = layer.mlp.gate
+            g.weight.data = g.weight.data.float(); g.weight.requires_grad_(bool(router))
+            g.forward = types.MethodType(router_forward, g)
     params = [p for p in model.parameters() if p.requires_grad]
     dev = next(iter(lm.embed_tokens.parameters())).device
     for p in params:

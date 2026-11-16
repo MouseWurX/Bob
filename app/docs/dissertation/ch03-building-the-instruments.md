@@ -60,7 +60,7 @@ Figure 3.1 is the same flow as a simple diagram. Brain Engine is used in steps 3
 
 *Figure 3.1. A lesson from idea to scored model.*
 
-Two rules run through all three layers: nothing is rented without the owner's typed yes, under an hours cap and a dollars cap, and every new function is off unless the plan asks (model-lab/forge/README.md).
+Two rules run through all three layers: nothing is rented without typed approval, under an hours cap and a dollars cap, and every new function is off unless the plan asks (model-lab/forge/README.md).
 
 ## 3.4 Brain Engine: a patched llama.cpp
 
@@ -106,6 +106,8 @@ The checks differ in strength, and the list is ordered from strongest to weakest
 
 No patch is tested automatically against a real engine build. Placement errors are the dangerous kind: a mask after the top-k pick, or a dial on the wrong head slice, still builds and gives wrong answers without an error, and would show up only in the PC test (ENGINE-MAP.md). The map proposes a short engine test on a tiny mixture-of-experts file (mask, trace rows, dials against mask, card handshake, SCUT off). It is proposed and not built.
 
+Brain Engine has no choice of how the kept experts are weighed when fewer are used. llama.cpp's Qwen3 mixture-of-experts graph scales the chosen experts' weights to add up to 1 (src/models/qwen3moe.cpp, read on 16 November), so patch 0013 at 4 experts uses the weighting that Chen and Yao (2026) found cost 4.65 MMLU points on the same base model, against 0.35 when the four keep their share of the top 16. The project's own test at 4 experts held tools, facts and code level (section 3.4.5), but on far fewer questions and different tasks. The other weighting is not built; it is future work (section 13.6.9).
+
 There are no clean overhead numbers per patch. Only a few patches have any timing, and none was taken in the full study configuration. The dissertation therefore makes no claim about what the patches cost in speed: not measured.
 
 A weekly workflow replays the patches on the newest llama.cpp tag and opens an issue when they apply and build (engine/README.md). It checks that the patches go on, not that they are correct.
@@ -116,11 +118,11 @@ A weekly workflow replays the patches on the newest llama.cpp tag and opens an i
 
 A 35-billion-parameter model cannot be cut and healed on a home 16 GB card. Renting by the hour is affordable only if a failed run cannot keep billing, so the Forge is built around cost controls and the training code is the smaller part.
 
-It has a PC side and a pod side. The PC side, `forge.mjs`, shows the caps, asks the owner to type yes, rents one card, sends the scripts and lessons, watches the pod every minute, downloads each finished model, and deletes the card. The pod side starts a tiny upload and download door (`pod/bootstrap.py`), then runs `pod/run.sh`, driven by a plan file. The pod also deletes itself 8 minutes before the hours cap, in case the PC side has died (model-lab/forge/README.md).
+It has a PC side and a pod side. The PC side, `forge.mjs`, shows the caps, asks for a typed yes, rents one card, sends the scripts and lessons, watches the pod every minute, downloads each finished model, and deletes the card. The pod side starts a tiny upload and download door (`pod/bootstrap.py`), then runs `pod/run.sh`, driven by a plan file. The pod also deletes itself 8 minutes before the hours cap, in case the PC side has died (model-lab/forge/README.md).
 
 ### 3.5.2 Pod scripts
 
-The pod scripts do these jobs. `teacher.py` records the full model's top-32 next-word log-probabilities at every answer position. `data.py` renders lessons and holds out 5% by id hash. `prune.py`, `keep.py`, `count.py` and `countskills.py` count which experts each skill uses, build a keep list that covers every skill, and cut the model by slicing weight bytes. `reap.py` scores experts by router weight times output size. `heal.py` and `lora.py` train a LoRA on every linear layer, the experts and the router. `pref.py`, `grpo.py` and `onpolicy.py` add preference pairs (ORPO, DPO, KTO), a reward pass and on-policy teaching, each off unless the plan asks. `merge.py`, `fold.py` and `surgery.py` blend, fold or bake in a tested change. `export.py` and `rebuild.py` write GGUF files and brain cards and rebuild a model from its keep list and adapter. `family.py` separates Qwen from GPT-OSS, and two self-test scripts dry-run everything on tiny models.
+The pod scripts do these jobs. `teacher.py` records the full model's top-32 next-word log-probabilities at every answer position. `data.py` renders lessons and holds out 5% by id hash. `prune.py`, `keep.py`, `count.py` and `countskills.py` count which experts each skill uses, build a keep list that covers every skill, and cut the model by slicing weight bytes. `reap.py` scores experts by router weight times output size. `heal.py` and `lora.py` train a LoRA on every linear layer and the experts, and train the router itself in float32 at a fifth of the main rate, or leave it frozen. From Build 25 a heal can also record expert picks on held-out lessons before and after (section 4.12.1). `pref.py`, `grpo.py` and `onpolicy.py` add preference pairs (ORPO, DPO, KTO), a reward pass and on-policy teaching, each off unless the plan asks. `merge.py`, `fold.py` and `surgery.py` blend, fold or bake in a tested change. `export.py` and `rebuild.py` write GGUF files and brain cards and rebuild a model from its keep list and adapter. `family.py` separates Qwen from GPT-OSS, and two self-test scripts dry-run everything on tiny models.
 
 ### 3.5.3 Data flow
 
@@ -158,7 +160,7 @@ One failure deserves a longer note, because it is the same kind of fault the dis
 
 ### 3.5.7 GPT-OSS as a second family
 
-Build 23 extended the Forge to GPT-OSS for the studies of the 120B and its 38B cut (model-lab/forge/README.md). `family.py` reads `config.json` and picks the model class, router module and stop tokens. The teacher keeps its MXFP4 weights when the card allows, and a student is always unpacked to BF16, since MXFP4 cannot be trained. Lessons use the harmony template, and LoRA is applied per expert in GPT-OSS's own layout. GRPO, fold, surgery and merge are skipped for GPT-OSS. The 38B heal plan exists but is not approved; it needs the owner's typed go.
+Build 23 extended the Forge to GPT-OSS for the studies of the 120B and its 38B cut (model-lab/forge/README.md). `family.py` reads `config.json` and picks the model class, router module and stop tokens. The teacher keeps its MXFP4 weights when the card allows, and a student is always unpacked to BF16, since MXFP4 cannot be trained. Lessons use the harmony template, and LoRA is applied per expert in GPT-OSS's own layout. GRPO, fold, surgery and merge are skipped for GPT-OSS. The 38B heal plan exists and is waiting on approval. A read of the heal code on 16 November, prompted by the router rules of section 4.12.1, found that the GPT-OSS router (its weight and bias) was not in the heal's low-rate group and would have learned at the main rate, five times faster than the Qwen router. It was fixed before any GPT-OSS heal ran (Build 25), and the GPT-OSS self-test now checks all eight router tensors of its tiny model.
 
 ### 3.5.8 How the Forge was verified
 
@@ -233,22 +235,23 @@ Three layers of instruments were built. Brain Engine adds live masks, dials, exp
 
 ## References
 
+- Chen, X., and Yao, H. (2026). Training-Free Halving of Activated Experts in Fine-Grained Mixture-of-Experts Models. arXiv:2609.04575. https://arxiv.org/abs/2609.04575
+- Ethayarajh, K., Xu, W., Muennighoff, N., Jurafsky, D., and Kiela, D. (2024). KTO: Model Alignment as Prospect Theoretic Optimization. arXiv:2402.01306. https://arxiv.org/abs/2402.01306
 - Hinton, G., Vinyals, O., and Dean, J. (2015). Distilling the Knowledge in a Neural Network. arXiv:1503.02531. https://arxiv.org/abs/1503.02531
 - Hong, J., Lee, N., and Thorne, J. (2024). ORPO: Monolithic Preference Optimization without Reference Model. arXiv:2403.07691. https://arxiv.org/abs/2403.07691
 - Hu, E. J., Shen, Y., Wallis, P., Allen-Zhu, Z., Li, Y., Wang, S., Wang, L., and Chen, W. (2021). LoRA: Low-Rank Adaptation of Large Language Models. arXiv:2106.09685. https://arxiv.org/abs/2106.09685
-- Ethayarajh, K., Xu, W., Muennighoff, N., Jurafsky, D., and Kiela, D. (2024). KTO: Model Alignment as Prospect Theoretic Optimization. arXiv:2402.01306. https://arxiv.org/abs/2402.01306
 - Jiang, A. Q., Sablayrolles, A., Roux, A., et al. (2024). Mixtral of Experts. arXiv:2401.04088. https://arxiv.org/abs/2401.04088
 - Kwon, W., Li, Z., Zhuang, S., Sheng, Y., Zheng, L., Yu, C. H., Gonzalez, J. E., Zhang, H., and Stoica, I. (2023). Efficient Memory Management for Large Language Model Serving with PagedAttention. arXiv:2309.06180. https://arxiv.org/abs/2309.06180
 - Lasby, M., Lazarevich, I., Sinnadurai, N., Lie, S., Ioannou, Y., and Thangarasa, V. (2025). REAP the Experts: Why Pruning Prevails for One-Shot MoE Compression. arXiv:2510.13999. https://arxiv.org/abs/2510.13999
+- llama.cpp project page (ggml-org), MIT licence. https://github.com/ggml-org/llama.cpp
 - Muralidharan, S., Sreenivas, S. T., Joshi, R., Chochowski, M., Patwary, M., Shoeybi, M., Catanzaro, B., Kautz, J., and Molchanov, P. (2024). Compact Language Models via Pruning and Knowledge Distillation. arXiv:2407.14679. https://arxiv.org/abs/2407.14679
 - OpenAI (2025). gpt-oss-120b and gpt-oss-20b Model Card. arXiv:2508.10925. https://arxiv.org/abs/2508.10925
+- PEFT: Parameter-Efficient Fine-Tuning library (Hugging Face). https://github.com/huggingface/peft
 - Rafailov, R., Sharma, A., Mitchell, E., Ermon, S., Manning, C. D., and Finn, C. (2023). Direct Preference Optimization: Your Language Model is Secretly a Reward Model. arXiv:2305.18290. https://arxiv.org/abs/2305.18290
 - Shao, Z., et al. (2024). DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models (introduces GRPO). arXiv:2402.03300. https://arxiv.org/abs/2402.03300
 - Shazeer, N., Mirhoseini, A., Maziarz, K., Davis, A., Le, Q., Hinton, G., and Dean, J. (2017). Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer. arXiv:1701.06538. https://arxiv.org/abs/1701.06538
+- TRL: Transformers Reinforcement Learning library (Hugging Face). https://github.com/huggingface/trl
 - Yadav, P., Tam, D., Choshen, L., Raffel, C., and Bansal, M. (2023). TIES-Merging: Resolving Interference When Merging Models. arXiv:2306.01708. https://arxiv.org/abs/2306.01708
 - Yang, A., et al. (2025). Qwen3 Technical Report. arXiv:2505.09388. https://arxiv.org/abs/2505.09388
 - Yu, L., Yu, B., Yu, H., Huang, F., and Li, Y. (2023). Language Models are Super Mario: Absorbing Abilities from Homologous Models as a Free Lunch (DARE). arXiv:2311.03099. https://arxiv.org/abs/2311.03099
 - Zou, A., Phan, L., Chen, S., et al. (2023). Representation Engineering: A Top-Down Approach to AI Transparency. arXiv:2310.01405. https://arxiv.org/abs/2310.01405
-- llama.cpp project page (ggml-org), MIT licence. https://github.com/ggml-org/llama.cpp
-- PEFT: Parameter-Efficient Fine-Tuning library (Hugging Face). https://github.com/huggingface/peft
-- TRL: Transformers Reinforcement Learning library (Hugging Face). https://github.com/huggingface/trl

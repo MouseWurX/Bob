@@ -70,7 +70,7 @@ The thesis is a case study of one project, and its claims are limited to it. Sev
 
 **Not a training-data release.** The thesis does not publish lesson text, model answers or prompts meant for training. Where a model's words are quoted, they are a few words of evidence, not material for others to train on.
 
-**Privacy.** The thesis names no person, computer, folder on anyone's machine or account. It refers to "the project" and "the owner". Model names and paths inside the public repository are used freely.
+**Privacy.** The thesis names no person, computer or folder on anyone's machine. It refers to "the project", and the project's owner appears only as MouseWurX, the GitHub account the project is published under. Model names and paths inside the public repository are used freely.
 
 ## 1.6 Summary of the findings
 
@@ -108,7 +108,7 @@ The decisive experiment has not been run. It would train a model on the full set
 Several other limits should be stated at the start.
 
 - The status of the code matters. Pull requests #254 and #257 shipped in release 1.5.238, together with #251, #263 and #232. That release passed 276 of 276 tests on Windows in its lab-PC check on 15 November. Pull request #251 (a Qwen tool shape v2 and a GPT-OSS shape) has shipped but has not been re-tested on models, so we do not know whether it raises scores. Pull request #232, which covers patching and autoencoders, ran on 15 November.
-- The 534 held-out test items were sorted by Haiku, with a 5% spot-check by Opus. On 15 November the owner chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs. The tests may therefore still hold faults and leaks, and Chapter 7 treats them as such.
+- The 534 held-out test items were sorted by Haiku, with a 5% spot-check by Opus. On 15 November MouseWurX chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs. The tests may therefore still hold faults and leaks, and Chapter 7 treats them as such.
 - The reviewers are models. One reader model made each pass, and no person has checked a sample yet. The effect of the rewritten lessons on a trained model has not been measured.
 - The clean-lesson pipeline is slow and strict, and its keep rates are low so far (Chapter 11). A recent round kept 17 of 215 lessons as they stood, but that figure was reported in the project notes and not yet checked against a file, so we do not rely on it.
 - The harshness tests are small and the judge is a model, not people. An earlier claim that a steering push "drives hostility" was withdrawn, because the model was looping a single word and the first judge rated loops as harsh. The judge now counts loops and wrong-language text as broken.

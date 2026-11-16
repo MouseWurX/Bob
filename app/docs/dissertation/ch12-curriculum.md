@@ -11,7 +11,7 @@ The research question for this chapter is a design question, not a result questi
 Three facts about status must be stated at the start.
 
 1. The Learn tab exists in the code. In the checkout read for this chapter it holds three guided experiments: what a token is, how a model picks the next word, and what temperature does (app/src/lab-learn.js, app/public/lab-learn.js).
-2. The course shipped in release 1.5.239 (PR #265, 15 November) as 42 lessons in app/src/lab-lessons.js and app/public/lab-lessons.js, under Lab, Learn, Lessons. It is off until the learner turns on the setting Lab: Lessons (labLessons). The levels, units and lessons in this chapter are read from that file on main.
+2. The course shipped in release 1.5.239 (PR #265, 15 November) as 42 lessons in app/src/lab-lessons.js (43 from 16 November, when Watching the router was added) and app/public/lab-lessons.js, under Lab, Learn, Lessons. It is off until the learner turns on the setting Lab: Lessons (labLessons). The levels, units and lessons in this chapter are read from that file on main.
 3. The learner study of section 12.10 has not been run. Nothing here is evidence that learners learn.
 
 This chapter describes design. It does not reproduce lesson texts. The lessons are written in Bob's own voice as part of the course work, and section 12.8 explains why lesson text is kept apart from training and research data.
@@ -52,7 +52,7 @@ None of these sources studies local language models, mixture-of-experts layouts,
 
 ### 12.3.1 The lesson shape
 
-Every lesson in the course has the same three parts, in the same order: Read, Try it and Check. Twelve of the 42 lessons also show a Real result inside the Read part (app/src/lab-lessons.js). The fixed order is deliberate. A learner who has seen one lesson knows where to look in the next, which reduces the effort of navigating and leaves more for the content.
+Every lesson in the course has the same three parts, in the same order: Read, Try it and Check. Eleven of the 43 lessons also show a Real result inside the Read part, and five show a From the research panel (app/src/lab-lessons.js). The fixed order is deliberate. A learner who has seen one lesson knows where to look in the next, which reduces the effort of navigating and leaves more for the content.
 
 | Part | What the learner does | Mode in ICAP terms |
 |---|---|---|
@@ -79,6 +79,8 @@ Each shipped panel names its source file in the repository's docs, so a learner 
 
 This rule is an honesty rule as well as a teaching rule. A course that teaches "judge a brain" while quoting numbers it cannot back would teach the opposite of its lesson.
 
+From 16 November a second kind of panel, From the research, shows a finding from someone else's published work, with the authors, the year and a link. It is labelled "not my own" and styled apart from the Real result, so a learner can always tell the project's measurements from other people's. Five lessons carry one: Routers and Watching the router (the Hugging Face MoE training handbook, Tazi, von Werra and Wolf, 2026, with MaxVio from Wang et al., 2024), Experts per word and Scoring experts (Chen and Yao, 2026, the second as a caution against cutting), and Learning from rewards (Ma et al., 2025, on routing replay). The course test requires each to name a year and an https link.
+
 ### 12.3.4 Voice and plain words
 
 All lesson text is in Bob's voice: first person, plain words, no jargon without a gloss. This follows the existing Learn tab, whose one-line summaries speak as Bob ("Every word I write is a roll of weighted dice"). The wording rule matches the project's contributing rules: every new feature gets a Help page, a glossary entry and an FAQ, written in Bob's voice (CLAUDE.md).
@@ -91,12 +93,12 @@ The Lab design already carries honesty lines that the course inherits. The tempe
 
 ## 12.4 The curriculum
 
-The course has 42 lessons in 17 units across three levels (app/src/lab-lessons.js). The levels differ in what they ask of the learner and in how much they assume. In the code, Foundations is what each idea is, tried on your own brain; Advanced is the maths behind each idea; Engineering builds the tools that change brains from Bob's own code, and five of its lessons show a short code sketch.
+The course has 43 lessons in 17 units across three levels (app/src/lab-lessons.js). The levels differ in what they ask of the learner and in how much they assume. In the code, Foundations is what each idea is, tried on your own brain; Advanced is the maths behind each idea; Engineering builds the tools that change brains from Bob's own code, and five of its lessons show a short code sketch.
 
 | Level | Units |
 |---|---|
 | Foundations (5 units, 17 lessons) | Words; Inside a brain; Talking to a brain; Changing a brain; Judging a brain |
-| Advanced (7 units, 14 lessons) | How brains learn; Transformers; Mixture of experts; Making brains smaller; Data decides habits; Agents and tools; Training beyond copying |
+| Advanced (7 units, 15 lessons) | How brains learn; Transformers; Mixture of experts; Making brains smaller; Data decides habits; Agents and tools; Training beyond copying |
 | Engineering (5 units, 11 lessons) | Build the tools; Inference engines; Training at scale; Testing that tells the truth; Looking inside |
 
 ### 12.4.1 Foundations
@@ -126,6 +128,8 @@ Learning objectives for Advanced. After this level a learner should be able to:
 4. Distinguish what a tool's wording changes from what a lesson's content changes.
 5. Say, in plain words, what methods that train beyond copying (preference training and reward-based training) try to do differently. This objective rests on background reading, not on a measured result in this thesis.
 
+The Mixture of experts unit gained a third lesson on 16 November, Watching the router: how to read MaxVio, the router's certainty and expert output sizes, and why a heal is checked for routing drift as well as for scores.
+
 Training beyond copying has no Real result panel, because the project has not run any such training. Several other units also have none in the shipped course (section 12.5). The unit says so, and it teaches the idea from the literature in Chapter 2 and no more.
 
 ### 12.4.3 Engineering
@@ -144,11 +148,10 @@ The Engineering level asks for more reading of evidence and less guided clicking
 
 ## 12.5 How units draw on the thesis chapters
 
-Twelve of the 42 lessons carry a Real result panel. The table lists each one as shipped in app/src/lab-lessons.js, with the thesis chapter it draws on and the source file the lesson names. Units not listed have no panel.
+Eleven of the 43 lessons carry a Real result panel. An earlier draft of this chapter counted twelve: the Experts panel (the 72 to 76% overlap figure) was removed in the 15 November fact-check, because that figure is not on the checked list. The table lists each one as shipped in app/src/lab-lessons.js, with the thesis chapter it draws on and the source file the lesson names. Units not listed have no panel.
 
 | Lesson (unit) | Thesis chapter | Real result the panel shows | Source the lesson names |
 |---|---|---|---|
-| Experts (Inside a brain) | 9 | Experts follow word patterns, not topics: any job's top 96 of 256 experts cover another job's routing 72 to 76%, about as well as its own top 96. | MAKING-SMALLER-MODELS.md |
 | Lessons and fine-tuning (Changing a brain) | 5 | 37% of the first coding lessons handed code off; coding did not move after a full heal; clean coding lessons took Riker from 6 to 9 of 13. | MAKING-SMALLER-MODELS.md |
 | Cutting experts (Changing a brain) | 9 | At 208 of 256 experts, skills keep 97 to 98% of routing and general knowledge 90%; at 144, 87 to 90% and 66%. Layer 2 is the worst layer for every skill. | counts ladder (ladder.md) |
 | Healing (Changing a brain) | 9 | A heal cannot grow back a removed expert, so deep cuts are planned as a gentle cut plus a heal. A design statement, no number. | MAKING-SMALLER-MODELS.md |
@@ -203,7 +206,7 @@ The design requires that a learner who cannot see, hear or use a pointer can com
 
 These rules map onto the Web Content Accessibility Guidelines 2.1 (W3C, 2025). The criterion on use of colour (1.4.1) is the reason for the shade-and-border rule, and the criterion on animation from interactions (2.3.3) is the reason for the reduced-motion rule. The thesis has not run an accessibility audit. These are design rules and code features, and a screen-reader test with real users is not done. Section 12.11 lists it among the limits.
 
-Platform coverage is a related access concern. The project rule is that everything new works on Windows, Mac, Linux and Android, or says where it does not (CLAUDE.md). The Learn tab needs only a running model and ordinary chat endpoints, so it could work on a phone. A decision on whether the phone gets Learn alone was put to the owner in the design (cs-lab-learn-and-tinker.md, section 9). Engineering-level units that need the Lab's machinery, such as rented training, are desktop-only and say so.
+Platform coverage is a related access concern. The project rule is that everything new works on Windows, Mac, Linux and Android, or says where it does not (CLAUDE.md). The Learn tab needs only a running model and ordinary chat endpoints, so it could work on a phone. A decision on whether the phone gets Learn alone was put to MouseWurX in the design (cs-lab-learn-and-tinker.md, section 9). Engineering-level units that need the Lab's machinery, such as rented training, are desktop-only and say so.
 
 ## 12.8 Lessons are never training data
 
@@ -277,7 +280,7 @@ A pre/post quiz says whether learners gained, not why. The study would also reco
 This section covers the design claims of the chapter, since there are no learner results to threaten.
 
 1. **No learner evidence.** The strongest limit. Everything in sections 12.3 to 12.9 is design. The benefits drawn from the literature come from other subjects and other settings.
-2. **Course read from code, not from use.** The 17 units and 42 lessons were read from app/src/lab-lessons.js on main (release 1.5.239). Reading the file confirms the structure, not that each lesson works as written on every model.
+2. **Course read from code, not from use.** The 17 units and 43 lessons were read from app/src/lab-lessons.js on main (release 1.5.239). Reading the file confirms the structure, not that each lesson works as written on every model.
 3. **Literature gap.** The cited work studies university classes and general visualisation tools, not local language models. Transfer is assumed.
 4. **Worked-example source.** The Sweller and Cooper paper's own page could not be opened. Its finding is reported through a teaching-centre summary that cites it. A reader who needs the primary result should read the paper.
 5. **Single-learner mode.** There is no interactive mode in the ICAP sense, because a learner works alone. A classroom version with discussion is not designed.
@@ -287,7 +290,7 @@ This section covers the design claims of the chapter, since there are no learner
 
 ## 12.12 Summary
 
-The course gives a learner with no background a route to the thesis's ideas in 42 lessons, 17 units and three levels. Each lesson has a Read, a Try it and a Check, and 12 lessons add a Real result panel of measured data. The design draws on worked examples, active learning, interactive notebooks and explorable explanations. It aims at the thesis's own honesty rules: panels name their source and never quote excluded figures, though one panel number is not on the checked list and two coding panels lack the cut caveat.
+The course gives a learner with no background a route to the thesis's ideas in 43 lessons, 17 units and three levels. Each lesson has a Read, a Try it and a Check, 11 lessons add a Real result panel of measured data, and 5 add a From the research panel citing other people's published work. The design draws on worked examples, active learning, interactive notebooks and explorable explanations. It aims at the thesis's own honesty rules: panels name their source and never quote excluded figures, though one panel number is not on the checked list and two coding panels lack the cut caveat.
 
 Two rules protect the research. Lessons for people are never training data, and learner runs never mix into research data. Accessibility rules are built into the Learn tab, but have not been audited.
 
@@ -295,10 +298,14 @@ The chapter answers its design question only as a design. No learner has used th
 
 ## References
 
+- Chen, X., & Yao, H. (2026). Training-Free Halving of Activated Experts in Fine-Grained Mixture-of-Experts Models. arXiv:2609.04575. https://arxiv.org/abs/2609.04575
 - Chi, M. T. H., & Wylie, R. (2014). The ICAP Framework: Linking Cognitive Engagement to Active Learning Outcomes. Educational Psychologist, 49(4), 219-243. https://csi.asu.edu/wp-content/uploads/2018/01/ChiWylie2014ICAP.pdf
 - Freeman, S., Eddy, S. L., McDonough, M., Smith, M. K., Okoroafor, N., Jordt, H., & Wenderoth, M. P. (2014). Active learning increases student performance in science, engineering, and mathematics. Proceedings of the National Academy of Sciences, 111(23), 8410-8415. https://experts.umn.edu/en/publications/active-learning-increases-student-performance-in-science-engineer/
 - Kluyver, T., Ragan-Kelley, B., Perez, F., Granger, B., et al. (2016). Jupyter Notebooks: a publishing format for reproducible computational workflows. In Positioning and Power in Academic Publishing: Players, Agents and Agendas, pp. 87-90. IOS Press (20th International Conference on Electronic Publishing). https://eprints.soton.ac.uk/403913
+- Ma, W., Zhang, H., Zhao, L., Song, Y., Wang, Y., Sui, Z., & Luo, F. (2025). Stabilizing MoE Reinforcement Learning by Aligning Training and Inference Routers. arXiv:2510.11370. https://arxiv.org/abs/2510.11370
 - MIT Teaching and Learning Lab (n.d.). Worked Examples. A teaching guide that reports Sweller and Cooper (1985); the primary paper's page could not be opened, so the guide is cited instead. https://tll.mit.edu/teaching-resources/how-people-learn/worked-examples/
 - Smilkov, D., Carter, S., Sculley, D., Viegas, F. B., & Wattenberg, M. (2017). Direct-Manipulation Visualization of Deep Networks. arXiv:1708.03788. https://arxiv.org/abs/1708.03788
+- Tazi, N., von Werra, L., & Wolf, T. (2026). The Ultimate MoE Training Handbook. Hugging Face. https://huggingface.co/spaces/huggingface/moe-blogpost
 - Victor, B. (2011). Explorable Explanations. https://worrydream.com/ExplorableExplanations/
 - W3C (2025). Web Content Accessibility Guidelines (WCAG) 2.1. W3C Recommendation. https://www.w3.org/TR/WCAG21/
+- Wang, L., Gao, H., Zhao, C., Sun, X., & Dai, D. (2024). Auxiliary-Loss-Free Load Balancing Strategy for Mixture-of-Experts. arXiv:2408.15664. https://arxiv.org/abs/2408.15664

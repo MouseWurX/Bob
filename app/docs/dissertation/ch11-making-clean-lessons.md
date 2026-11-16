@@ -13,7 +13,7 @@ Status matters here, so we state it up front.
 - PRs #254 (the lesson kit), #257 (the never-taught gate) and #263 (the lesson pre-flight) shipped in release 1.5.238 on 15 November 2026, whose pre-release check passed 276 of 276 test suites (1.5.238-PC-CHECKS.md).
 - PR #251 (Qwen tool shape v2 and the GPT-OSS shape) shipped in the same release but has not been re-tested.
 - The pre-flight values of section 11.5 (PR #263) are taken from the lab PC's console log of the lkt-fix3 run.
-- The 534 held-out test items were sorted by Haiku with a 5% Opus spot-check. On 15 November the owner chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs.
+- The 534 held-out test items were sorted by Haiku with a 5% Opus spot-check. On 15 November MouseWurX chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs.
 - The decisive retraining on reviewed lessons has **not** been run.
 
 Sources are docs/TOOL-LESSONS-PLAN.md, docs/ROADMAP-ONE-MODEL.md, the "Clean-lesson pipeline" section of checked-numbers.md, the rentals hand-off of 15 November 2026 (HANDOFF-rentals-2026-11-15.md) and the lab PC's run files as copied into those documents.
@@ -117,7 +117,7 @@ Each old set receives one of three marks: clean, mend (only flagged rows are rew
 
 ### 11.4.4 Tool shapes are locked first
 
-Chapter 8 found that the misses are about tool shape. So the shape is chosen before the lessons are written. The plan says the final lessons are written once the owner has picked each brain family's tool shape (TOOL-LESSONS-PLAN.md).
+Chapter 8 found that the misses are about tool shape. So the shape is chosen before the lessons are written. The plan says the final lessons are written once MouseWurX has picked each brain family's tool shape (TOOL-LESSONS-PLAN.md).
 
 A shape has a version. The Qwen tree used in the rewrite runs carries `TOOL_SHAPES = 2` in src/tool-sets.js. Reviewers must use the shape-2 tool file, because the main-branch tool file lacks the `save_to` input (hand-off).
 
@@ -218,7 +218,7 @@ Four rules shape how the reviewer is used.
 
 Scripts alone are not trusted to judge a lesson. A figure that scripts agreed with readers only 41% of the time was suggested for this chapter, but it is in no file we found. We do not use it.
 
-What the files show is a full read. Opus read all 5,788 non-held-out tool lessons (Table 11.1). The test items were read differently. Haiku sorted the 534 held-out items, and Opus spot-checked 5% of them (hand-off). The result was 148 keep, 381 fix and 5 discard (checked-numbers.md). So the test items have not had a full Opus read, and the owner chose on 15 November to keep them as they are while the full Opus re-sort of the lessons runs.
+What the files show is a full read. Opus read all 5,788 non-held-out tool lessons (Table 11.1). The test items were read differently. Haiku sorted the 534 held-out items, and Opus spot-checked 5% of them (hand-off). The result was 148 keep, 381 fix and 5 discard (checked-numbers.md). So the test items have not had a full Opus read, and MouseWurX chose on 15 November to keep them as they are while the full Opus re-sort of the lessons runs.
 
 ## 11.7 First results, with honest keep rates
 
@@ -313,7 +313,7 @@ The question that the dissertation asks cannot be answered without a trained mod
 
 **Cost.** The roadmap's rough estimate for the first full training run is about 18 to 24 hours on an H200 and about $95 to $130 (ROADMAP-ONE-MODEL.md, stage 5). The cost of three arms is **not measured**.
 
-**Preconditions.** The full Opus re-sort of the lessons must finish. The never-taught gate (PR #257, shipped in 1.5.238) must run on the plan. The test items must be replaced or re-sorted. Every step also waits for the owner's typed go, because nothing trains or rents without one.
+**Preconditions.** The full Opus re-sort of the lessons must finish. The never-taught gate (PR #257, shipped in 1.5.238) must run on the plan. The test items must be replaced or re-sorted. Every step also waits on approval, because nothing trains or rents without it.
 
 ## 11.11 Future work
 

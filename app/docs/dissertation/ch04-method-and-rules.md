@@ -6,7 +6,7 @@ This chapter sets out how the studies were run and the rules the project adopted
 
 The chapter serves all five research questions (chapter 1) but is closest to the third: how much do leaked test items distort the scores used to make decisions? A leak is a method fault. It cannot be seen in a result table. It can only be found by checking how the test and the lessons were made. For that reason the method is reported in full, including the parts that went wrong.
 
-The chapter has four aims. First, to state the models, settings and benchmarks. Second, to describe the judges and their known faults. Third, to list the gates, caps and data rules. Fourth, to say plainly what the statistics can and cannot support. Section 4.12 collects the threats to validity.
+The chapter has four aims. First, to state the models, settings and benchmarks. Second, to describe the judges and their known faults. Third, to list the gates, caps and data rules. Fourth, to say plainly what the statistics can and cannot support. Section 4.12 sets out the protocol every new model follows, and section 4.13 collects the threats to validity.
 
 ## 4.2 Related work on evaluation method
 
@@ -47,7 +47,7 @@ The Qwen family is described in Yang et al. (2025). The cut models were made by 
 
 ### 4.3.2 Serving settings
 
-Home benchmarks run on the owner's 16 GB card with Q4 files and 8 experts per word, with the same settings for every model in a comparison (docs/FORGE-JOURNAL.md, 8 November entry). Rented-card benchmarks serve the same Q4 files through Brain Engine with the same test scripts, so that home and rented numbers come from identical tests (model-lab/forge/README.md, Build 18). Where a study changed a setting, such as experts per word, a mask, or a dial, the saved answers carry the condition (section 4.9).
+Home benchmarks run on MouseWurX's 16 GB card with Q4 files and 8 experts per word, with the same settings for every model in a comparison (docs/FORGE-JOURNAL.md, 8 November entry). Rented-card benchmarks serve the same Q4 files through Brain Engine with the same test scripts, so that home and rented numbers come from identical tests (model-lab/forge/README.md, Build 18). Where a study changed a setting, such as experts per word, a mask, or a dial, the saved answers carry the condition (section 4.9).
 
 The Bobert wording study ran on a rented 48 GB A40 with 8 slots of 8,192 tokens each. The planned switch to 4 slots of 16k never happened, so 11 to 13 long turns per round overflowed their slot, and 11 to 31 answers per round were cut off at the length limit. Both kinds were scored as wrong, and the same turns were affected in every condition, so comparisons between conditions stay fair, but absolute scores are lower than they would otherwise be (bobert-35bob-tool-study.md).
 
@@ -121,7 +121,7 @@ Its status needs to be stated clearly. The gate is tested on fakes (18 checks) i
 
 ### 4.6.4 What was decided about the held-out tests
 
-The 534 held-out tool items were sorted by Haiku, with a spot-check of 27 items (5%) by Opus. Opus agreed on 25 (93%) and changed 2 keeps to fix. An automatic check moved 3 more keeps to fix because they held the owner's user folder (heldout-534 TALLY.md). The sort gave 148 keep, 381 fix and 5 discard. On 15 November the owner chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs. Section 4.12 states the consequence: scores on these tests were made on items that mostly carry a fault, and they are not corrected.
+The 534 held-out tool items were sorted by Haiku, with a spot-check of 27 items (5%) by Opus. Opus agreed on 25 (93%) and changed 2 keeps to fix. An automatic check moved 3 more keeps to fix because they held MouseWurX's user folder (heldout-534 TALLY.md). The sort gave 148 keep, 381 fix and 5 discard. On 15 November MouseWurX chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs. Section 4.13 states the consequence: scores on these tests were made on items that mostly carry a fault, and they are not corrected.
 
 ## 4.7 Reviewing the lessons
 
@@ -146,8 +146,8 @@ Before any model review, a cleaning script removed lessons by rule. The first cl
 - **Pre-flight and sample gate.** Before a big paid write, the plan is checked in code and the first 10 ideas must save at least 60%, or the run stops with exit code 86 and the card is deleted. On lkt-fix3, 1 of 10 saved and the run stopped after about $0.31 (checked-numbers.md, forge-lkt-fix3-console.log).
 - **Smoke gate.** A few lessons are made and checked: do the odds cover the thinking words, do the tool calls parse, does the trace work? A failure exits with code 86 (model-lab/smoke-gate.mjs).
 - **First minutes.** Every rental must prove each step in its first minutes (docs/ROADMAP-ONE-MODEL.md). The first paid run of new code is its test, so it is kept short.
-- **Caps and consent.** Every rental has an hours and a dollars cap, and nothing is rented without the owner's typed yes (model-lab/forge/README.md).
-- **Home-side dry runs.** Home-side commands run against a stand-in server before any rental. Three benchmark failures in a row came from home-side bugs, including a benchmark that quietly tested the full model on the owner's own card instead of the rented one (docs/FORGE-JOURNAL.md, 10 to 11 November).
+- **Caps and consent.** Every rental has an hours and a dollars cap, and nothing is rented without typed approval (model-lab/forge/README.md).
+- **Home-side dry runs.** Home-side commands run against a stand-in server before any rental. Three benchmark failures in a row came from home-side bugs, including a benchmark that quietly tested the full model on MouseWurX's own card instead of the rented one (docs/FORGE-JOURNAL.md, 10 to 11 November).
 
 ### 4.8.2 Full passes only
 
@@ -208,9 +208,40 @@ The coached steps are 83 per mode and the judged turns 264 per condition, each r
 
 Public benchmarks for tool use measure model skill on a shared library, and public leaderboards compare models with each other (Patil et al., 2023; Qin et al., 2023). The numbers here are for comparing Bobs with each other on Bob's own tools, on one 16 GB card or a rented card (docs/MAKING-SMALLER-MODELS.md, section 7). They are not comparable with public leaderboards, and the dissertation does not claim they are.
 
-## 4.12 Threats to validity and limits
+## 4.12 The model-making protocol
 
-**Leaked tests.** 519 of 534 held-out items appear word for word in training-side files. Scores on these tests may be inflated for any model that trained on those files. The size of the inflation is the subject of chapter 7, and it was not measured in a way that corrects past scores. The owner chose on 15 November to keep the held-out tests as they are while the full Opus re-sort of the lessons runs.
+The rules above say what may and may not happen. This section sets out the order in which a new model is made: training, cutting and healing. Each step is scored on the same report card before the next starts, every step can be skipped, and nothing is cut, trained, rented or published while it is waiting on approval (docs/ROADMAP-ONE-MODEL.md, stage 4; Help, "What is the training protocol?"). The order is the one the project settled on by 14 November: clean first, train the full model, cut later, so that a cut keeps what training taught.
+
+| Step | What happens | Kept only if |
+|---|---|---|
+| 1. Baseline | The fresh stock model is scored on the fixed sample set, and its next-word odds are recorded. Earlier Bobs are measured for comparison only; nothing of theirs is used. | (the bar every later step is judged against) |
+| 2. Clean-first surgery | A bias or refusal habit is tried live with dials, masks or the control vector, and recorded. It never trains (section 4.9.1). | it helps and hurts no line, and only once approved |
+| 3. Analysis | REAP scores, per-skill expert counts and the expert trace, layer by layer. All of it is kept. | (data, not a model) |
+| 4. Train the full model | Distillation from the teacher's top-32 odds (weight 0.7) and the real next word (0.3), on answer tokens only, over the audited lessons and about a third general text, one full pass (section 4.8.2). Preference pairs (ORPO in the pass, or DPO or KTO after it) when the plan asks. | it beats the baseline on held-out lessons |
+| 5. Stepwise cut | A keep list (coverage rule or REAP) is first tried live with the expert mask, which can be undone exactly, then sliced from the file byte for byte. | each skill keeps its coverage target |
+| 6. Heal | The cut model is taught back from the uncut one with the same loss as step 4, as a LoRA on every linear layer (rank 32) and on the experts (rank 8), under the router rules below. | held-out loss falls and no target gets worse |
+| 7. Several targets | Each target (tools, restraint, look-it-up and others) is weighted in the mix and measured on its own held-out lessons. | no target is worse than before, within 0.01 of loss |
+| 8. On-policy finish and reward pass | The student writes and the teacher scores every word it wrote; then GRPO on tool calls with a checker, 6 tries a chat, a KL guard of 0.02. | the held-out reward is no lower than the heal's |
+| 9. Blend | If training forgot something, the trained model is blended back toward its parent (linear, TIES, DARE). | it wins back the lost line without losing another |
+| 10. Live dials and final surgery | Experts, neurons or heads turned up or down live, then baked in only after testing. | it helps and hurts nothing, and only once approved |
+| 11. Publish | Quantized files, a model card that names the teacher, lessons, costs and protocol, and the benchmark data. | only once approved |
+
+Every training and heal plan also passes the never-taught gate (section 4.6.3) and the gates of section 4.8 before a card is rented.
+
+### 4.12.1 Router rules (added 16 November)
+
+The protocol was read against the Hugging Face MoE training handbook (Tazi, von Werra and Wolf, 2026). The handbook is about pre-training a mixture-of-experts model from scratch on many cards, not about cutting a finished one, so most of it does not apply. Four of its points do, and they became rules for steps 4, 6 and 8 (model-lab/forge/README.md, Build 25):
+
+1. **The router runs in float32, trained or not.** The handbook reports that a BF16 router can tie close scores and change which experts win (section 3.1). The heal already trained the router in float32; a router left untrained now does the same.
+2. **The router learns at its own low rate (2e-5 against 1e-4), or is frozen.** A keep list was chosen for the router as it was, so a heal that moves the router can drift from it. Reading the code for this rule found that the GPT-OSS router had fallen outside the low-rate group and would have learned five times faster than intended. No GPT-OSS heal had run, so no reported result changes. Freezing (`router: "frozen"`) is an option, not the default, until a run compares the two.
+3. **No load-balance loss in a heal.** The handbook's balancing methods exist so that many cards are kept equally busy (section 3.3). On one card, and on a cut model, a balance loss would push words onto experts the keep list did not choose. The heal's loss has never had one; the rule writes that down.
+4. **The routing is recorded before and after.** With `route_report` on, the heal saves, for 40 held-out lessons, the per-layer MaxVio (the busiest expert's load over the mean, minus 1; Wang et al., 2024), the experts never picked, and the share of word-and-layer picks the heal changed. These are the handbook's appendix A.1 measures, used here as a check on drift rather than on speed.
+
+For step 8, the handbook (section 4) reports that the engine writing answers and the trainer can route the same word to different experts. Ma et al. (2025) found this for about 10% of routers on Qwen3-30B-A3B and proposed replaying the recorded picks. In Bob's reward pass the same model writes and learns in one process, so the gap is smaller; the rule is that a reward pass whose answers come from another engine must replay the picks or freeze the router first. Whether any of these rules improves a heal has not been measured. The checks so far are tiny-model self-tests on a CPU (model-lab/forge/pod/selftest_training.py, selftest_gptoss.py), which show the code runs, not that it helps.
+
+## 4.13 Threats to validity and limits
+
+**Leaked tests.** 519 of 534 held-out items appear word for word in training-side files. Scores on these tests may be inflated for any model that trained on those files. The size of the inflation is the subject of chapter 7, and it was not measured in a way that corrects past scores. MouseWurX chose on 15 November to keep the held-out tests as they are while the full Opus re-sort of the lessons runs.
 
 **Faulty tests.** Of the 534 items, 381 were sorted fix and 5 discard, so only 148 were sorted keep. The sort was by Haiku, with 5% checked by Opus, and a model sort carries its own errors. The tests were not repaired.
 
@@ -228,13 +259,13 @@ Public benchmarks for tool use measure model skill on a shared library, and publ
 
 **Changed rules.** Some rules, such as the test-item gate, were adopted after a first run showed the problem, so earlier results were produced under weaker rules.
 
-**One project.** The rules were written and followed by one project with one owner. No one outside has audited them.
+**One project.** The rules were written and followed by one project, run by MouseWurX. No one outside has audited them.
 
 **Status of the decisive test.** The decisive retrain on reviewed lessons has not been run. The Opus re-sort of the lessons is running, PR #254 and PR #257 shipped in release 1.5.238, PR #251 (Qwen tool shape v2 and the GPT-OSS shape) shipped but is not re-tested on models, and PR #232 (patching and autoencoders) ran on 15 November.
 
 **Still to do.** Run an outside check of the held-out split. Repair the held-out tests after the Opus re-sort, and re-score the models that were chosen on the old tests.
 
-## 4.13 Summary
+## 4.14 Summary
 
 The studies use a small set of benchmarks: a 314-turn tool score, a quiz, a 13-task coding race, a needle test, a routing race, a 264-turn wording A/B and 83 coached steps. They are graded by a rule that measures agreement with the teacher, and by a self-rating judge whose first version scored loops as harsh. The method relies on rules that came from failures: a split by id that a leak defeated, gates that stop paid runs early, full passes only, a cost log that includes every failed attempt, a surgery rule that keeps changed-model answers out of training, and a scrub that was rebuilt after a name got through. The statistics are paired gaps with 95% ranges, and the chapter says plainly where samples are too small to support more. The main open problem is that the held-out tests carry the faults described in chapter 7 and were kept as they are on 15 November while the full Opus re-sort runs. Chapters 5 to 10 should be read with that in mind.
 
@@ -245,6 +276,7 @@ The studies use a small set of benchmarks: a 314-turn tool score, a quiz, a 13-t
 - Golchin, S., and Surdeanu, M. (2023). Time Travel in LLMs: Tracing Data Contamination in Large Language Models. arXiv:2308.08493. https://arxiv.org/abs/2308.08493
 - Jacovi, A., Caciularu, A., Goldman, O., and Goldberg, Y. (2023). Stop Uploading Test Data in Plain Text: Practical Strategies for Mitigating Data Contamination by Evaluation Benchmarks. arXiv:2305.10160. https://arxiv.org/abs/2305.10160
 - Lee, K., Ippolito, D., Nystrom, A., Zhang, C., Eck, D., Callison-Burch, C., and Carlini, N. (2021). Deduplicating Training Data Makes Language Models Better. arXiv:2107.06499 (ACL 2022). https://arxiv.org/abs/2107.06499
+- Ma, W., Zhang, H., Zhao, L., Song, Y., Wang, Y., Sui, Z., and Luo, F. (2025). Stabilizing MoE Reinforcement Learning by Aligning Training and Inference Routers. arXiv:2510.11370. https://arxiv.org/abs/2510.11370
 - Magar, I., and Schwartz, R. (2022). Data Contamination: From Memorization to Exploitation. arXiv:2203.08242. https://arxiv.org/abs/2203.08242
 - Miller, E. (2024). Adding Error Bars to Evals: A Statistical Approach to Language Model Evaluations. arXiv:2411.00640. https://arxiv.org/abs/2411.00640
 - Northcutt, C. G., Athalye, A., and Mueller, J. (2021). Pervasive Label Errors in Test Sets Destabilize Machine Learning Benchmarks. arXiv:2103.14749 (NeurIPS 2021). https://arxiv.org/abs/2103.14749
@@ -254,5 +286,7 @@ The studies use a small set of benchmarks: a 314-turn tool score, a quiz, a 13-t
 - Qin, Y., Liang, S., Ye, Y., et al. (2023). ToolLLM: Facilitating Large Language Models to Master 16000+ Real-world APIs. arXiv:2307.16789. https://arxiv.org/abs/2307.16789
 - Sainz, O., Campos, J. A., Garcia-Ferrero, I., Etxaniz, J., Lopez de Lacalle, O., and Agirre, E. (2023). NLP Evaluation in Trouble: On the Need to Measure LLM Data Contamination for Each Benchmark. arXiv:2310.18018. https://arxiv.org/abs/2310.18018
 - Schick, T., Dwivedi-Yu, J., Dessi, R., Raileanu, R., Lomeli, M., Zettlemoyer, L., Cancedda, N., and Scialom, T. (2023). Toolformer: Language Models Can Teach Themselves to Use Tools. arXiv:2302.04761. https://arxiv.org/abs/2302.04761
+- Tazi, N., von Werra, L., and Wolf, T. (2026). The Ultimate MoE Training Handbook. Hugging Face, published 5 November 2026. https://huggingface.co/spaces/huggingface/moe-blogpost
+- Wang, L., Gao, H., Zhao, C., Sun, X., and Dai, D. (2024). Auxiliary-Loss-Free Load Balancing Strategy for Mixture-of-Experts. arXiv:2408.15664. https://arxiv.org/abs/2408.15664
 - Yang, A., et al. (2025). Qwen3 Technical Report. arXiv:2505.09388. https://arxiv.org/abs/2505.09388
 - Zheng, L., Chiang, W.-L., Sheng, Y., et al. (2023). Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena. arXiv:2306.05685. https://arxiv.org/abs/2306.05685

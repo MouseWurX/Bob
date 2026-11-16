@@ -329,3 +329,29 @@ rebuilds and lesson-writing-only runs aren't checked, since they teach nothing.
 - `write-lessons.mjs --examples <jsonl>`: shows the teacher up to 3 Opus-approved lessons as a guide. They are never saved or trained on.
 - `--real-tools` pre-flight: every real lab tool (board, memory, files, folder list, diagram, and office when ideas need it) runs once in a throwaway home before anything is rented.
 - `--office <soffice.exe>` hands the lab Bob a LibreOffice. `--no-office` instead leaves office tools out and skips office ideas, for a PC without LibreOffice.
+
+## Build 25 (16 November 2026, CPU self-tests only, untested on a card): router settings from the MoE handbook
+
+Read against the Hugging Face MoE training handbook (Tazi, von Werra and Wolf, 2026) and the papers it cites. The changes:
+
+- **The router always runs in float32** (`pod/lora.py`), trained or not. The handbook found that BF16 routers can tie
+  close scores and pick different experts (section 3.1). Before, a router left untrained used the stock BF16 forward.
+- **Fix: GPT-OSS's router learns at the router's own rate.** `heal.py` put only Qwen's `mlp.gate.weight` in the
+  `--router-lr` group (2e-5), so GPT-OSS's `mlp.router.weight` and bias learned at the main `--lr` (1e-4), five times
+  faster. No GPT-OSS heal has run yet, so no past result changes. `selftest_gptoss.py` now checks all 8 router tensors.
+- **`heal.router: "frozen"`** (plan key, also `train_teacher.router` and `grpo.router`): the router stays exactly as
+  it came in, so the keep list's routing stays valid. Off by default: the router still learns at its low rate.
+- **`heal.route_report: true`**: the heal records which experts 40 held-out lessons pick (`heal.route_lessons`), before
+  and after, into `heal-report.json` `routing`. It reports per-layer MaxVio (busiest expert's load over the mean,
+  minus 1; Wang et al., 2024), never-picked experts, and the share of word-and-layer picks the heal changed. It is a
+  measure only: an error there is printed and the heal goes on. `heal-gptoss-38b.json` turns it on.
+- **No load-balance loss is ever added in a heal.** This is unchanged and now written down: the loss is the teacher
+  KL plus next-word cross-entropy. Balance losses exist for speed across many cards, and on a cut brain they would pull
+  words away from the experts the keep list kept on purpose.
+- **Reward pass (`grpo.py`):** answers are written by the same model in the same process, so the engine/trainer routing
+  gap that routing replay closes (Ma et al., 2025) is small here. If answers are ever written by llama-server or vLLM
+  for GRPO, add replay or freeze the router first.
+
+Tests: `pod/selftest_training.py` 70 of 70 checks (new: the router mode and dtype in the report, a frozen-router heal
+with the routing record, no router weights in a frozen adapter, `grpo.py --router frozen`), `pod/selftest_gptoss.py`
+all pass. Both on a CPU with tiny made-up models: the code runs; whether a frozen router heals better is for a real run.

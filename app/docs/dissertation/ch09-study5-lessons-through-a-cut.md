@@ -8,7 +8,7 @@ The question is: if a model is cut smaller, what happens to what its lessons tau
 
 The chapter reports five measurements. They are expert counts and the coverage rule that decides which experts a cut keeps; the count ladder that says what each size keeps; trims with no heal, which show how much slack a model has; five heal reports; and a three-model comparison. It adds a long-context check. It then sets out the argument for cleaning first, and says plainly which parts of that argument are measured and which rest on how the heal is built.
 
-Two facts about status frame everything below. The decisive test, a retrain on reviewed lessons with the same cut, has not been run. And the held-out test items that other chapters use were sorted by Haiku with a 5% Opus spot-check; on 15 November the owner chose to keep them as they are while the full Opus re-sort of the lessons runs (chapter 7).
+Two facts about status frame everything below. The decisive test, a retrain on reviewed lessons with the same cut, has not been run. And the held-out test items that other chapters use were sorted by Haiku with a 5% Opus spot-check; on 15 November MouseWurX chose to keep them as they are while the full Opus re-sort of the lessons runs (chapter 7).
 
 ## 9.2 Related work
 
@@ -235,7 +235,7 @@ So the thesis that clean lessons beat more lessons stands on the lesson-side evi
 - **The REAP table is a trim with no heal,** not a heal result.
 - **The cuts are not a controlled comparison.** Riker and Bill were cut and healed by different keep rules at different times. Riker's list used 95% for all skills by mistake. Line A and line B differ in lessons and in how far the heal ran.
 - **Cross-entropy on held-out lessons measures closeness to the teacher,** not truth. A copied fault scores well. Reports differ in held-out token counts between rounds, so raw `ce` should not be compared across rounds.
-- **Held-out leaks.** Chapter 7 reports that 519 of 534 held-out tool items appear in training-side files. The sorting of those items used Haiku with a 5% Opus spot-check, and the owner chose on 15 November to keep them as they are while the full Opus re-sort of the lessons runs. The held-out sets used here (the 314 held-out chat turns and the held-out lessons in the heal reports) are separate sets from the 534 tool items, and we did not check them for leaks. Scores from them may be too high.
+- **Held-out leaks.** Chapter 7 reports that 519 of 534 held-out tool items appear in training-side files. The sorting of those items used Haiku with a 5% Opus spot-check, and MouseWurX chose on 15 November to keep them as they are while the full Opus re-sort of the lessons runs. The held-out sets used here (the 314 held-out chat turns and the held-out lessons in the heal reports) are separate sets from the 534 tool items, and we did not check them for leaks. Scores from them may be too high.
 - **The claim "faults are copied" is not directly tested.** It rests on how the heal is built and on the coding example.
 - **Naming.** The ladder file's longtext column and the docs' general knowledge column are matched by value.
 - **Long context** was a 12-trial simple needle test on one model.

@@ -194,6 +194,7 @@ def main():
     if r.returncode == 0:
         rep = json.load(open(os.path.join(healed, "heal-report.json")))
         check("heal report has before and after, trained steps", rep.get("steps", 0) > 0 and "lessons" in rep.get("before", {}) and "lessons" in rep.get("after", {}))
+        check("the GPT-OSS router (weight and bias) learns at the router's own low rate, in float32", rep.get("router", {}).get("tensors") == 8 and rep["router"].get("dtype") == "float32", json.dumps(rep.get("router")))
         cfg = json.load(open(os.path.join(healed, "config.json")))
         check("healed GPT-OSS is saved as plain BF16 with 4 experts", "quantization_config" not in cfg and cfg["num_local_experts"] == 4 and os.path.exists(os.path.join(healed, "adapter.pt")))
         run("count.py counts the healed GPT-OSS's experts", ["count.py", "--model", healed, "--lessons", les, "--out", os.path.join(root, "counts.json"), "--cache", cache, "--device", "cpu", "--lessons-max", "10"], HERE)

@@ -36,7 +36,10 @@
   "heal": {
     "experts": "lora",
     "epochs": 1,
-    "hours": 6.0
+    "hours": 6.0,
+    "router": "trainable",
+    "route_report": true,
+    "router_note": "16 Nov 2026, MoE handbook update: the router now learns at its own low rate (2e-5; before this fix GPT-OSS's router learned at the main 1e-4) in float32, and the heal records expert picks on 40 held-out lessons before and after (heal-report.json 'routing'). If routing.change.same_set falls far (under about 0.8, a starting guess, not measured) or MaxVio climbs, try router 'frozen' next."
   },
   "rungs": [
     {
