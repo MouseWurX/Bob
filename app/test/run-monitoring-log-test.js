@@ -5,6 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { cleanTraceLog, traceOn, SIZES_MB, DEFAULT_MB, safeName, errorKind, toolStatus, cleanAttrs, TurnTrace, startTurnTrace, traced, finishTurnTrace, renderTurn, writeBlock, trimOld, rolledFiles, fileCap, logFiles, logTail, deleteLog, recentView, engineAttrs, LIVE_FILE, traceDir, MAX_SPANS } from '../src/trace-log.js';
 import { traceLogRoute } from '../src/trace-log-routes.js';
+import { detailsOn, hideKeyed, clipDetail, DETAIL_MAX, keepTurn, keepLiveFile, keptFiles, deleteKept, keptDir, openTurns, replyText, lastAsked } from '../src/trace-log.js';
+import { notMonitoringLog } from '../model-lab/common.mjs';
+import { NOT_BACKED_UP, skipped } from '../src/backup.js';
 import { inTurn } from '../src/turn-log.js';
 import { mergeSettings, SETTING_KEYS } from '../src/config.js';
 import { GROUPS, CARDS } from '../public/settings-map.js';
@@ -72,8 +75,8 @@ const T0 = Date.UTC(2026, 10, 16, 18, 42, 7, 120);
   t.finish({ why: 'done', ms: 12400 });
   const text = renderTurn(t, { timeZone: 'UTC' });
   const lines = text.trimEnd().split('\n');
-  check('one header line for the turn', lines[0].startsWith('=== Turn 3f2a9c1b · 2026-11-16 18:42:07 · talk · answered · 12.4 s · 1 engine, 3 tool · 1 error · trace ') && lines[0].endsWith(t.traceId), lines[0]);
-  check('then one indented line per step, in order', lines.length === 5 && lines.slice(1).every((l) => l.startsWith('  18:42:')), text);
+  check('a header line when the turn starts, an end line with how it went', lines[0].startsWith('=== Turn 3f2a9c1b · 2026-11-16 18:42:07 · talk · trace ') && lines[0].endsWith(t.traceId) && lines.at(-1) === '--- Turn 3f2a9c1b ended · answered · 12.4 s · 1 engine, 3 tool · 1 error', text);
+  check('then one indented line per step, in order', lines.length === 6 && lines.slice(1, 5).every((l) => l.startsWith('  18:42:')), text);
   check('a step line: time, offset, kind, name, how long, status, sizes', /^ {2}18:42:07\.120 {2}\+ {3}0\.0 s {2}engine {2}qwen3\.6-35b {22}3\.1 s {2}ok {8}5,210 of 32,768 tokens · 41\.2 tok\/s · 40 chars$/.test(lines[1]), lines[1]);
   check('…a tool with its answer\'s size, and an error with its kind', /web_search .* 1\.2 s {2}ok .*3,400 chars$/.test(lines[2]) && /fetch_page .* 0\.8 s {2}error .*error kind: ECONNRESET$/.test(lines[3]), lines[2] + '\n' + lines[3]);
   check('no error words, addresses or folders in the text', !/private\.example|could not|C:\\|\\m\\/.test(text));
@@ -167,11 +170,11 @@ const T0 = Date.UTC(2026, 10, 16, 18, 42, 7, 120);
 // ---------- where it hooks in ----------
 {
   const turns = read('src/brain-turns.js'), tools = read('src/brain-tool-runs.js'), asking = read('src/brain-asking.js'), runOn = read('src/brain-run-on.js'), server = read('src/server.js');
-  check('a trace starts with each turn and is written when it ends', /trace: startTurnTrace\(this\.cfg, \{ id: turnId, lane, guest: Boolean\(job\?\.guest\) \}\)/.test(turns) && /finishTurnTrace\(this\.cfg, tstore\.trace, \{ why, ms: sum\.ms, error: tstore\.error \}\)/.test(turns));
+  check('a trace starts with each turn (with its ask) and ends with its answer', /trace: startTurnTrace\(this\.cfg, \{ id: turnId, lane, guest: Boolean\(job\?\.guest\), ask: text \}\)/.test(turns) && /finishTurnTrace\(this\.cfg, tstore\.trace, \{ why, ms: sum\.ms, error: tstore\.error, answer: fin\?\.content \|\| '' \}\)/.test(turns));
   check('each tool call is a span with its status and size', /await traced\('tool'/.test(tools) && /status: toolStatus\(r\?\.text\)/.test(tools));
   check('each engine request is a span (every engine.chat in the retry goes through it)', /traced\('engine', o\.model, \(\) => this\.engine\.chat\(o\)/.test(asking) && (asking.match(/this\.engine\.chat\(/g) || []).length === 1);
   check('rented brains and other Bobs are spans without names', /traced\('rented', 'rented brain'/.test(runOn) && /traced\('lent', 'other Bob'/.test(runOn));
-  check('a call that couldn\'t run as it was is a refused span', /traceNow\(\)\?\.start\('tool', name\)\.end\('refused'\)/.test(runOn));
+  check('a call that couldn\'t run as it was is a refused span, with its inputs as details', /traceNow\(\)\?\.start\('tool', name\)\.end\('refused', \{\}, \{ in: call\.function\?\.arguments, out: call\.bounce \}\)/.test(runOn));
   check('the route is wired in', /traceLogRoute\(\{ req, res, p, isLocal, cfg, body, send/.test(server));
 }
 
@@ -181,10 +184,102 @@ const T0 = Date.UTC(2026, 10, 16, 18, 42, 7, 120);
   check('the panel is in This replicant matrix, in both views', GROUPS.find(([g]) => g === 'This replicant matrix')[1].includes('adv-tracelog') && CARDS.find((c) => c.id === 'pc').topics.includes('adv-tracelog'));
   check('the panel is drawn and mounted', /\['tracelog', '📈 Monitoring log'/.test(cellar) && /mountTraceLog\(dlg\.querySelector\('\.trace-log-box'\)\)/.test(cellar));
   check('Help has the settings entry, in Bob\'s voice, with the platforms', /id: 'settings-tracelog'/.test(help) && /When it's on, I write down every turn's steps/.test(help) && /Works on Windows, Mac and Linux/.test(help) && /Android app/.test(help.slice(help.indexOf("id: 'settings-tracelog'"), help.indexOf("id: 'faq-slow-step'"))));
-  check('FAQ entries', ['faq-slow-step', 'faq-monitoring-private', 'faq-jaeger'].every((id) => help.includes(`id: '${id}', group: 'FAQ'`)));
+  check('FAQ entries', ['faq-slow-step', 'faq-monitoring-private', 'faq-jaeger', 'faq-monitoring-old'].every((id) => help.includes(`id: '${id}', group: 'FAQ'`)));
   check('glossary entries', ['<dt>Monitoring log</dt>', '<dt>OpenTelemetry</dt>', '<dt>Span</dt>', '<dt>Trace</dt>'].every((d) => help.includes(d)));
   check('the settings inventory lists it', /📈 Monitoring log/.test(inv) && /traceLog\.maxMB/.test(inv));
   check('the timeline uses theme colours only', !/#[0-9a-f]{3,6}\b/i.test(css.slice(css.indexOf('Monitoring log (public/trace-log.js)'))));
+}
+
+// ---------- written as it happens, not held in memory ----------
+{
+  const cfg = cfgOf({ on: true });
+  const live = path.join(traceDir(cfg), LIVE_FILE);
+  const now = clockAt(T0);
+  const t = startTurnTrace(cfg, { id: 'disk0001', now, env: {} });
+  check('the turn\'s header is on disk as soon as it starts', fs.readFileSync(live, 'utf8').includes('=== Turn disk0001'));
+  const s1 = t.start('tool', 'web_search'); now.add(500);
+  check('…a step still running isn\'t written yet', !fs.readFileSync(live, 'utf8').includes('web_search'));
+  s1.end('ok', { chars: 12 });
+  check('…and each step is on disk the moment it ends (a crash loses at most the step running then)', fs.readFileSync(live, 'utf8').includes('web_search') && !fs.readFileSync(live, 'utf8').includes('--- Turn disk0001'));
+  const t2 = startTurnTrace(cfg, { id: 'disk0002', now, env: {} });
+  t2.start('tool', 'calc').end('ok');
+  check('two turns at once: their step lines carry the turn so they can be told apart', /calc .*\[turn disk0002\]$/m.test(fs.readFileSync(live, 'utf8')));
+  finishTurnTrace(cfg, t2, { why: 'done' }, { keep: [] });
+  finishTurnTrace(cfg, t, { why: 'done' }, { keep: [] });
+  check('the end line goes on when the turn ends, and the open list empties', fs.readFileSync(live, 'utf8').includes('--- Turn disk0001 ended · answered') && openTurns.size === 0);
+  const off = startTurnTrace(cfg, { id: 'off00001', now, env: {} });
+  cfg.traceLog = { on: false };
+  off.start('tool', 'late').end('ok'); finishTurnTrace(cfg, off, { why: 'done' }, { keep: [] });
+  check('turned off mid-turn: nothing more is written', !fs.readFileSync(live, 'utf8').includes('late') && openTurns.size === 0);
+}
+
+// ---------- Include details ----------
+{
+  check('details are off to start, and only work with the log on', cleanTraceLog({ on: true }).details === false && !detailsOn({ traceLog: { on: false, details: true } }) && detailsOn({ traceLog: { on: true, details: true } }));
+  check('no details for other Bobs\' or chat apps\' jobs, or in Gaming mode', !detailsOn({ traceLog: { on: true, details: true } }, 'guest') && !detailsOn({ traceLog: { on: true, details: true }, session: 'light' }));
+  check('a setting Bob saves', mergeSettings({}, { traceLog: { on: true, details: true } }).traceLog.details === true);
+  const cfg = cfgOf({ on: true, details: true });
+  cfg.remote = { passcode: 'tulip-7731' };
+  const live = path.join(traceDir(cfg), LIVE_FILE);
+  const now = clockAt(T0);
+  const t = startTurnTrace(cfg, { id: 'det00001', ask: 'find my notes, passcode tulip-7731', now, env: { OPENAI_API_KEY: 'sk-live-abcdefghijklmnop1234' } });
+  await traced('tool', 'read_file', async () => { now.add(200); return { text: 'line one\nline two with sk-live-abcdefghijklmnop1234' }; }, (r) => ({ status: toolStatus(r.text), detail: { in: { path: 'C:/notes/a.md', password: 'hunter2' }, out: r.text } }), { trace: t });
+  await traced('engine', 'qwen', async () => { now.add(300); return { content: 'Here you go.', tool_calls: [{ function: { name: 'read_file', arguments: '{"path":"C:/notes/b.md"}' } }] }; }, (r) => ({ detail: { asked: lastAsked([{ role: 'user', content: 'find my notes' }]), reply: replyText(r) } }), { trace: t });
+  await traced('tool', 'fetch_page', async () => { throw new Error('could not open https://ex.example/x'); }, () => ({}), { trace: t, before: { in: { url: 'https://ex.example/x' } } }).catch(() => {});
+  await traced('tool', 'read_email', async () => ({ text: 'Dear friend, private mail' }), (r) => ({ detail: { in: {}, out: r.text } }), { trace: t });
+  finishTurnTrace(cfg, t, { why: 'done', answer: 'Your notes are in a.md.' }, { keep: [] });
+  const text = fs.readFileSync(live, 'utf8');
+  check('the ask is under the header and the answer above the end line', /=== Turn det00001.*\n {4}ask {4}\| find my notes, passcode \[hidden\]/.test(text) && /answer {1}\| Your notes are in a\.md\.\n--- Turn det00001 ended/.test(text), text);
+  check('a tool\'s inputs and result are under its line, every line of a result indented', /read_file .*\n {6}in {5}\| \{"path":"C:\/notes\/a\.md","password":"\[hidden\]"\}\n {6}out {4}\| line one\n {6} {7}\| line two with \[hidden\]/.test(text), text);
+  check('the brain\'s reply, with its tool calls, and the message it answered', /asked {2}\| user: find my notes/.test(text) && /reply {2}\| Here you go\.\n {6} {7}\| -> read_file \{"path":"C:\/notes\/b\.md"\}/.test(text));
+  check('an error\'s words and the inputs it failed on', /fetch_page .*error.*\n {6}in {5}\| \{"url":"https:\/\/ex\.example\/x"\}\n {6}error {2}\| could not open https:\/\/ex\.example\/x/.test(text));
+  check('keys, tokens and passcodes stay hidden', !text.includes('tulip-7731') && !text.includes('sk-live-') && !text.includes('hunter2'));
+  check('e-mail tools keep their data out', /read_email/.test(text) && !text.includes('Dear friend'));
+  check('a long detail is cut and says how much was left out', clipDetail('x'.repeat(DETAIL_MAX + 5)).endsWith('… (5 more characters)'));
+  check('inputs named like a secret are hidden at any depth', JSON.stringify(hideKeyed({ a: { apiKey: 'k', list: [{ token: 't' }] }, b: 1 })) === '{"a":{"apiKey":"[hidden]","list":[{"token":"[hidden]"}]},"b":1}');
+  const g = cfgOf({ on: true, details: true });
+  const tg = startTurnTrace(g, { id: 'game0001', ask: 'secret plan', now: clockAt(T0), env: {} });
+  tg.start('tool', 'a').end('ok', {}, { in: 'before gaming' });
+  g.session = 'light';
+  tg.start('tool', 'b').end('ok', {}, { in: 'during gaming' });
+  finishTurnTrace(g, tg, { why: 'done', answer: 'gaming answer' }, { keep: [] });
+  const gt = fs.readFileSync(path.join(traceDir(g), LIVE_FILE), 'utf8');
+  check('Gaming mode pauses details from the moment it starts', gt.includes('before gaming') && !gt.includes('during gaming') && !gt.includes('gaming answer') && /tool {4}b /.test(gt));
+  const off = cfgOf({ on: true });
+  const to = startTurnTrace(off, { id: 'nodet001', ask: 'my words', now: clockAt(T0), env: {} });
+  to.start('tool', 'x').end('ok', {}, { in: 'inputs', out: 'result' }); finishTurnTrace(off, to, { why: 'done', answer: 'answer words' }, { keep: [] });
+  const ot = fs.readFileSync(path.join(traceDir(off), LIVE_FILE), 'utf8');
+  check('with details off nothing of the data is written', !/my words|inputs|result|answer words/.test(ot));
+}
+
+// ---------- Keep: never rolled, trimmed or deleted with the log ----------
+{
+  const cfg = cfgOf({ on: true, maxMB: 100 });
+  const keep = [];
+  const t = startTurnTrace(cfg, { id: 'keep0001', now: clockAt(T0), env: {} });
+  t.start('tool', 'web_search').end('ok');
+  finishTurnTrace(cfg, t, { why: 'done' }, { keep });
+  check('Keep this turn copies its block (already on disk) to kept-turns.txt', keepTurn(cfg, 'keep0001', { keep }) && fs.readFileSync(path.join(keptDir(cfg), 'kept-turns.txt'), 'utf8').includes('=== Turn keep0001') && recentView(keep)[0].kept === true);
+  check('…a turn no longer in the list can\'t be kept', keepTurn(cfg, 'gone0000', { keep }) === false);
+  check('Keep the current file moves it to kept/ as it is', /^bob-monitoring-kept-\d{8}-\d{6}\.txt$/.test(keepLiveFile(cfg)) && !fs.existsSync(path.join(traceDir(cfg), LIVE_FILE)) && keptFiles(cfg).length === 2);
+  fs.writeFileSync(path.join(traceDir(cfg), 'bob-monitoring-20200101-000000.txt'), 'y'.repeat(150 * 1024 * 1024));
+  trimOld(cfg);
+  check('the size limit removes old rolled files but never kept ones', !fs.existsSync(path.join(traceDir(cfg), 'bob-monitoring-20200101-000000.txt')) && keptFiles(cfg).length === 2);
+  writeBlock(cfg, '=== Turn z\n\n');
+  check('Delete the log files leaves kept ones', deleteLog(cfg) === 1 && keptFiles(cfg).length === 2);
+  check('Delete kept removes them', deleteKept(cfg, { keep }) === 2 && keptFiles(cfg).length === 0 && recentView(keep)[0].kept === false);
+  check('nothing goes by age: no date or age test anywhere in the log code', !/mtime|ageMs|KEEP_DAYS|Date\.now\(\) - /.test(read('src/trace-log.js')) && !/monitoring/.test(read('src/housekeeping.js')));
+}
+
+// ---------- kept away from the Lab, lessons, uploads and backups ----------
+{
+  check('lesson tools skip the monitoring log folder and its files', !notMonitoringLog('C:\\Bob\\inn\\bob\\monitoring-log\\bob-monitoring.txt') && !notMonitoringLog('/x/monitoring-log/kept/kept-turns.txt') && !notMonitoringLog('/x/bob-monitoring-20261116-010101.txt') && notMonitoringLog('/x/lessons/a.jsonl'));
+  const common = read('model-lab/common.mjs'), imp = read('model-lab/import-lessons.mjs'), mk = read('model-lab/make-datasets.mjs');
+  check('…in the file finder, readJsonl, import-lessons and make-datasets', /findFile\(root, test, depth = 5\) \{\n {2}if \(!notMonitoringLog\(root\)\) return null;/.test(common) && /readJsonl\(file\) \{ if \(!notMonitoringLog\(file\)/.test(common) && /if \(!notMonitoringLog\(fp\)\) continue;/.test(imp) && /filter\(\(e\) => notMonitoringLog\(path\.join\(d, e\.name\)\)\)/.test(mk));
+  const lab = fs.readdirSync(new URL('../model-lab/', import.meta.url)).filter((f) => f.endsWith('.mjs')).map((f) => read(`model-lab/${f}`)).join('\n') + fs.readdirSync(new URL('../src/', import.meta.url)).filter((f) => /^lab|lesson/.test(f)).map((f) => read(`src/${f}`)).join('\n');
+  check('no Lab or lesson code reads the log', !/trace-log\.js|bob-monitoring\.txt|monitoring-log['"/\\]/.test(lab.replace(/export const notMonitoringLog[^\n]*\n/, '').replace(/^\s*\/\/.*$/gm, '')));
+  check('the log is .txt, which lesson imports never take', LIVE_FILE.endsWith('.txt') && /\\\.\(jsonl\|ndjson\|json\|csv\|tsv\|parquet\)\$/.test(imp));
+  check('backups leave the whole folder out, kept files too', NOT_BACKED_UP.includes('bob/monitoring-log/') && skipped('bob/monitoring-log/kept/kept-turns.txt'));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

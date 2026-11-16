@@ -17,7 +17,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { opts, locate } from './common.mjs';
+import { opts, locate, notMonitoringLog } from './common.mjs';
 
 const sani = (s) => String(s).replace(/[^\w.@-]+/g, '_').slice(0, 120);
 const sha12 = (s) => crypto.createHash('sha1').update(s).digest('hex').slice(0, 12);
@@ -109,7 +109,7 @@ export function* records(file) {
 function dataFiles(dir, only) {
   if (only) { const p = path.join(dir, only); return fs.existsSync(p) ? [p] : []; }
   const out = [];
-  (function walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const fp = path.join(d, e.name); if (e.isDirectory()) walk(fp); else if (/\.(jsonl|ndjson|json|csv|tsv|parquet)$/i.test(e.name)) out.push(fp); } })(dir);
+  (function walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const fp = path.join(d, e.name); if (!notMonitoringLog(fp)) continue; if (e.isDirectory()) walk(fp); else if (/\.(jsonl|ndjson|json|csv|tsv|parquet)$/i.test(e.name)) out.push(fp); } })(dir);
   return out.sort();
 }
 function hfDownload(repo, file, revision, dir) {

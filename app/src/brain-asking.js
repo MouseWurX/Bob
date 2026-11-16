@@ -3,7 +3,7 @@
 import crypto from 'node:crypto';
 import { bigSession, chatBrain, sameModel } from './brain-mode.js';
 import { turnNow } from './turn-log.js';
-import { traced, engineAttrs } from './trace-log.js'; // Nov 16 Monitoring log
+import { traced, engineAttrs, lastAsked } from './trace-log.js'; // Nov 16 Monitoring log
 import { carryOnTokens, engineFailKind, backoffMs, causeLine, pause } from './retry.js';
 import { memoryFailure } from './engine-care.js';
 import { todayOn } from './hands-settings.js';
@@ -110,7 +110,7 @@ export const askingParts = {
       return { o: { ...o, onToken: c.onToken }, fin: () => c.finish() };
     };
     // Monitoring log (trace-log.js): each engine request is one span: the brain's name, time, tokens and speed.
-    const chat = (o) => traced('engine', o.model, () => this.engine.chat(o), (r, span) => engineAttrs(this.engine.lastStats, span, r), { signal: opts.signal });
+    const chat = (o) => traced('engine', o.model, () => this.engine.chat(o), (r, span) => engineAttrs(this.engine.lastStats, span, r, o.messages), { signal: opts.signal, before: { asked: lastAsked(o.messages) } });
     const call = async (o) => { const r = again(o); try { return await chat(r.o); } finally { r.fin(); } };
     let model = opts.model;
     let lastErr = null;

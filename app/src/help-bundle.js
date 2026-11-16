@@ -23,6 +23,7 @@ import { sessionDir, readChat, said } from './chats.js';
 import { currentSession } from './sessions.js';
 import { chatBrain } from './brain-mode.js';
 import { SETTING_KEYS, VERSION } from './config.js';
+import { SECRET_KEY, SECRET_VALUE, SECRET_ENV } from './secret-patterns.js'; // shared with the monitoring log's details
 
 export const REPO = 'https://github.com/MouseWurX/Bob';
 export const LOG_LINES = 3000;
@@ -30,19 +31,7 @@ export const CHATS = 3;
 export const CHAT_MESSAGES = 40;
 export const BRAIN_SECONDS = 45;
 
-// Keys whose values are never written out, wherever they sit in a settings object.
-const SECRET_KEY = /pass(code|word)?|token|secret|api[-_]?key|\bkey$|credential|cookie|auth/i;
-// Values that look like a key or token, wherever they appear in text.
-const SECRET_VALUE = [
-  /\b\d{8,10}:[A-Za-z0-9_-]{30,}\b/g, // Telegram bot token
-  /\b[A-Za-z0-9_-]{24,28}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,40}\b/g, // Discord bot token
-  /\bsk-[A-Za-z0-9_-]{16,}\b/g, // OpenAI / Anthropic style keys
-  /\bhf_[A-Za-z0-9]{16,}\b/g, // Hugging Face
-  /\bAIza[0-9A-Za-z_-]{30,}\b/g, // Google
-  /\bgh[pousr]_[A-Za-z0-9]{30,}\b/g, // GitHub
-  /\btskey-[A-Za-z0-9_-]{10,}\b/g, // Tailscale
-  /\b(?:Bearer|Basic)\s+[A-Za-z0-9+/=_.-]{16,}/g
-];
+// Keys whose values are never written out, and values that look like a key or token: src/secret-patterns.js.
 const TAILSCALE_IP = /\b100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b/g;
 const TAILSCALE_HOST = /\b[a-z0-9-]+\.[a-z0-9-]+\.ts\.net\b/gi;
 const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -51,7 +40,7 @@ const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export function scrubber(cfg = {}, { env = process.env, home = os.homedir(), host = os.hostname(), user = (() => { try { return os.userInfo().username; } catch { return ''; } })() } = {}) {
   const names = [...new Set([cfg.callMe, cfg.userName, cfg.windowsName, user].map((x) => String(x || '').trim()).filter((x) => x.length >= 2))];
   const secrets = [cfg.remote?.passcode, ...(cfg.share?.borrow?.bobs || []).map((b) => b?.passcode), ...(cfg.telegram?.token ? [cfg.telegram.token] : [])]
-    .concat(['BOB_TELEGRAM_TOKEN', 'BOB_DISCORD_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'HF_TOKEN'].map((k) => env[k]))
+    .concat(SECRET_ENV.map((k) => env[k]))
     .map((x) => String(x || '').trim()).filter((x) => x.length >= 4);
   const homes = [home, home.split(path.sep).join('/'), home.split('/').join('\\')].filter((h) => h && h.length > 3);
   return (text) => {

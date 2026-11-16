@@ -2895,3 +2895,8 @@ body.still .phone-menu { animation: none; }
 @media (max-width: 600px) {
   .trace-log-box .tl-row { grid-template-columns: 1fr; gap: 2px; }
 }
+.trace-log-box .tl-detail { grid-column: 1 / -1; font-size: 12px; }
+.trace-log-box .tl-detail summary { cursor: pointer; color: var(--muted); }
+.trace-log-box .tl-dlabel { margin: 4px 0 0; color: var(--muted); }
+.trace-log-box .tl-detail pre { margin: 2px 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16em; overflow: auto; font-family: var(--mono); border: 1px solid var(--line); border-radius: var(--r); padding: 4px 6px; }
+.trace-log-box .tl-keep { margin: 4px 0; }
