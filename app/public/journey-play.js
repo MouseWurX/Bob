@@ -72,6 +72,7 @@ export function mountJourney(root, deps) {
     <div class="jy-top"><span class="jy-where" aria-live="polite"></span><span class="jy-gold"></span><span class="jy-spacer"></span>
       <button type="button" class="mini" data-jy="menu" title="Menu (Esc)">☰ Menu</button><button type="button" class="mini" data-jy="save" title="Save the journey">💾 Save</button><button type="button" class="icon" data-jy="full" title="Full screen or a window" aria-label="Play full screen" aria-pressed="false">⛶</button><button type="button" class="icon" data-jy="sound" title="Music and sound (M)" aria-pressed="true" aria-label="Music and sound are on. Turn them off (M)">🔊</button><button type="button" class="icon" data-jy="close" aria-label="Close Journey">✕</button></div>
     <div class="jy-stage"><div class="jy-screen"><canvas class="jy-canvas" width="${W}" height="${H}" role="img" aria-label="The Journey screen"></canvas><div class="jy-box" role="status" aria-live="polite" hidden></div>
+      <div class="jy-talk" aria-hidden="true" hidden><p class="jy-talk-words"></p><span class="jy-talk-more">▼</span></div>
       <div class="jy-panel" data-skin="window"></div>
       <p class="jy-msg" role="status"></p>
       <button type="button" class="jy-corner" data-jy="menu" title="Menu (Esc, or Start on a controller)" aria-label="Open the menu">☰</button></div></div>
@@ -83,6 +84,7 @@ export function mountJourney(root, deps) {
   ctx.imageSmoothingEnabled = false;
   const panel = root.querySelector('.jy-panel');
   const stage = root.querySelector('.jy-stage');
+  const talkWin = root.querySelector('.jy-talk'), talkWords = root.querySelector('.jy-talk-words');
   const box = root.querySelector('.jy-box');
   const still = () => { try { return Boolean(deps.still?.()); } catch { return false; } };
   const base = (k) => R.kitBase(k);
@@ -133,9 +135,11 @@ export function mountJourney(root, deps) {
     const map = base0.map.map((r) => [...r]);
     const edge = (row) => { const r = map[row] || []; const a = r.findIndex((c) => c !== '.'); let b = -1; for (let i = r.length - 1; i >= 0; i--) if (r[i] !== '.') { b = i; break; } return [a, b]; };
     const put = (x, y, c) => { if (map[y] && x >= 0 && x < map[y].length && map[y][x] === '.') map[y][x] = c; };
-    if (race === 'elf' || race === 'pixie') { // long pointed ears, out and up from the widest row of the face
+    // Long pointed ears, out and up from the widest row of the face. Wide heads (Bob's headset) get shorter ears:
+    // put() skips what's off the edge.
+    if (race === 'elf' || race === 'pixie') {
       const [a, b] = edge(6);
-      if (a > 2 && b > 0 && b < 13) { put(a - 1, 6, 'S'); put(a - 1, 5, 'S'); put(a - 2, 5, 'S'); put(a - 2, 4, 'L'); put(a - 3, 3, 'L'); put(b + 1, 6, 'S'); put(b + 1, 5, 'S'); put(b + 2, 5, 'S'); put(b + 2, 4, 'L'); put(b + 3, 3, 'L'); }
+      if (a >= 1 && b > a && b <= 14) { put(a - 1, 6, 'S'); put(a - 1, 5, 'S'); put(a - 2, 5, 'S'); put(a - 2, 4, 'L'); put(a - 3, 3, 'L'); put(b + 1, 6, 'S'); put(b + 1, 5, 'S'); put(b + 2, 5, 'S'); put(b + 2, 4, 'L'); put(b + 3, 3, 'L'); }
     }
     if (race === 'halfling') { // rosy cheeks
       const [a, b] = edge(7); if (a >= 0 && map[7][a + 1] === 'S') map[7][a + 1] = 'R'; if (b > 0 && map[7][b - 1] === 'S') map[7][b - 1] = 'R';
@@ -1262,7 +1266,7 @@ export function mountJourney(root, deps) {
     // Walking through a door: a quick fade in from black.
     if (!still() && t - portalAt < 900) { const q = (t - portalAt) / 900, cols = styleSparks(); ctx.fillStyle = `rgba(255,255,255,${0.6 * (1 - q)})`; ctx.fillRect(0, 0, W, H); for (let k = 0; k < 24; k++) { const a = k * 0.26 + q * 8, r = 40 * (1 - q) + 6; ctx.fillStyle = cols[k % cols.length]; ctx.fillRect(Math.round(W / 2 + Math.cos(a) * r), Math.round(H / 2 + Math.sin(a) * r * 0.7), 2, 2); } }
     if (!still() && t - doorAt < 280) { ctx.fillStyle = `rgba(0,0,0,${1 - (t - doorAt) / 280})`; ctx.fillRect(0, 0, W, H); }
-    if (talk) drawTalk(t);
+    if (talk) drawTalk(t); else hideTalk();
     root.querySelector('.jy-gold').textContent = lobby ? '' : `🪙 ${R.fmtCoin(j.coin, true)}`;
   }
   function puff(x, y, k) { ctx.fillStyle = `rgba(230,220,200,${0.7 * (1 - k)})`; for (let i = 0; i < 5; i++) { const a = i * 1.26, r = 3 + k * 8; ctx.beginPath(); ctx.arc(x + Math.cos(a) * r, y + Math.sin(a) * r * 0.4, 2 + k * 2, 0, Math.PI * 2); ctx.fill(); } }
@@ -1309,28 +1313,18 @@ export function mountJourney(root, deps) {
     ctx.fillStyle = 'rgba(20,28,74,0.85)'; ctx.fillRect(6, y - 3, Math.min(W - 12, 14 + lastLoot.length * 22), 14);
     for (const g of lastLoot.slice(0, 9)) x += drawIcon(x, y, g) + 4;
   }
-  function drawTalk(t) {
+  // Journey v1.5.1: the words are a real window over the bottom of the game screen (sharp at any size), not
+  // letters drawn on the little picture and blown up. The choices are the blue window just above it (drawPanel).
+  function drawTalk() {
     const line = talk.lines[talk.i] || '';
     if (talk.shown < line.length) talk.shown += 1.4;
     const text = line.slice(0, Math.floor(talk.shown));
-    const bx = 4, by = H - 52, bw = W - 8, bh = 48;
-    const g = ctx.createLinearGradient(0, by, 0, by + bh); g.addColorStop(0, '#2a3a8a'); g.addColorStop(1, '#141c4a');
-    ctx.fillStyle = g; ctx.fillRect(bx, by, bw, bh);
-    ctx.strokeStyle = '#e8e8f0'; ctx.lineWidth = 2; ctx.strokeRect(bx + 1, by + 1, bw - 2, bh - 2);
-    ctx.fillStyle = '#ffffff'; ctx.font = '8px monospace';
-    const lines = wrap(text, bw - 14);
-    lines.slice(Math.max(0, lines.length - 4)).forEach((l, i) => ctx.fillText(l, bx + 7, by + 12 + i * 10));
-    if (talk.shown >= line.length && Math.floor(t / 400) % 2 && !choosing()) { ctx.fillStyle = '#ffd166'; ctx.fillRect(bx + bw - 10, by + bh - 8, 4, 3); }
-    if (choosing()) {
-      const labels = talk.choices.map((c) => T(c.label)), cw = Math.min(bw - 20, Math.max(...labels.map((l) => ctx.measureText(l).width)) + 22), ch = labels.length * 11 + 6;
-      const cx = bx + bw - cw, cy = by - ch - 2;
-      const g2 = ctx.createLinearGradient(0, cy, 0, cy + ch); g2.addColorStop(0, '#2a3a8a'); g2.addColorStop(1, '#141c4a');
-      ctx.fillStyle = g2; ctx.fillRect(cx, cy, cw, ch); ctx.strokeStyle = '#e8e8f0'; ctx.strokeRect(cx + 1, cy + 1, cw - 2, ch - 2);
-      if (!talk.offered) { talk.offered = true; setTimeout(drawPanel, 0); }
-      labels.forEach((l, i) => { ctx.fillStyle = i === talk.sel ? '#ffd166' : '#ffffff'; ctx.fillText(`${i === talk.sel ? '▶' : ' '} ${l}`, cx + 6, cy + 12 + i * 11); });
-      talk.rects = labels.map((_, i) => ({ x: cx, y: cy + 3 + i * 11, w: cw, h: 11 }));
-    }
+    if (talkWin.hidden) talkWin.hidden = false;
+    if (talkWords.textContent !== text) { talkWords.textContent = text; talkWords.scrollTop = talkWords.scrollHeight; }
+    talkWin.classList.toggle('done', talk.shown >= line.length && !choosing());
+    if (choosing() && !talk.offered) { talk.offered = true; setTimeout(drawPanel, 0); }
   }
+  function hideTalk() { if (!talk && !talkWin.hidden) { talkWin.hidden = true; talkWords.textContent = ''; } }
   function wrap(text, width) {
     const words = String(text).split(' '), out = []; let line = '';
     for (const w of words) { const next = line ? `${line} ${w}` : w; if (ctx.measureText(next).width > width && line) { out.push(line); line = w; } else line = next; }
@@ -1494,7 +1488,7 @@ export function mountJourney(root, deps) {
     }
     ctx.restore();
     if (win && lastLoot) drawLoot(t);
-    if (talk) drawTalk(t);
+    if (talk) drawTalk(t); else hideTalk();
   }
 
   // ---------- The panel under the screen (real buttons, so keys and screen readers work) ----------
@@ -1613,8 +1607,8 @@ export function mountJourney(root, deps) {
       <p class="jy-keys"><strong>Touch</strong>: the pad walks (it sits over the game in full screen) · tap the words to read on · tap a choice to pick it · ☰ in the corner opens the menu.</p>`;
   }
   function menuHtml() {
-    const tabs = [['party', '👥 Party'], ['skills', '✨ Skills'], ['kit', '🧍 Kit'], ['bag', '🎒 Bag'], ['story', '📜 Quests'], ['craft', '🛠 Craft'], ['pets', '🐾 Pets'], ['land', '🧭 The land'], ['guide', '📖 Guide'], ['save', '⚙ System']];
-    const head = `<div class="jy-tabs" role="tablist">${tabs.map(([id, n]) => `<button type="button" role="tab" aria-selected="${menu.tab === id}" data-tab="${id}">${n}</button>`).join('')}<button type="button" data-jy="resume">▶ Back to the map</button></div>`;
+    const tabs = [['party', '👥 Party'], ['skills', '✨ Skills'], ['kit', '🧍 Kit'], ['bag', '🎒 Bag'], ['story', '📜 Quests'], ['craft', '🛠 Craft'], ['pets', '🐶 Pets'], ['land', '🧭 The land'], ['guide', '📖 Guide'], ['save', '⚙ System']];
+    const head = `<div class="jy-tabs" role="tablist">${tabs.map(([id, n]) => { const [ico, ...rest] = n.split(' '); return `<button type="button" role="tab" aria-selected="${menu.tab === id}" data-tab="${id}"><span class="jy-ico" aria-hidden="true">${ico}</span> ${rest.join(' ')}</button>`; }).join('')}<button type="button" data-jy="resume">▶ Back to the map</button></div>`;
     const who = `<div class="jy-who-row" role="radiogroup" aria-label="Who">${j.party.map((x, i) => `<button type="button" role="radio" aria-checked="${i === (menu.who || 0)}" data-who="${i}">${esc(x.name)}</button>`).join('')}</div>`;
     const m = j.party[menu.who || 0] || j.party[0];
     if (menu.tab === 'party') return `${head}<ul class="jy-party jy-sheets">${j.party.map((x) => `${sheet(x)}<li class="jy-stats muted">Might ${R.statOf(x, 'might')} · Wits ${R.statOf(x, 'wits')} · Charm ${R.statOf(x, 'charm')} · Luck ${R.statOf(x, 'luck')} · Attack ${R.attackOf(x)} · Guard ${R.guardOf(x)} · Magic ${R.magicOf(x)} · Accuracy ${R.accuracyOf(x)} · Evasion ${R.evasionOf(x)} · Next level in ${R.xpFor(x.level) - x.xp}</li>`).join('')}</ul><p>${R.LANTERN_KEEPERS.filter((g) => j.beaten.includes(g)).length} of 3 lantern stones · ${j.beaten.length} bosses beaten · ${esc(R.fmtCoin(j.coin))}</p>`;
@@ -1708,7 +1702,7 @@ export function mountJourney(root, deps) {
     ['bag', '🎒 Bag', ['Bob: Bag holds potions, scrolls and food. Some work on the road (press a name to use it on them); the rest only in a fight. Pets and mounts carry extra.', 'Bob: A Scroll of return opens a door back to the last town you were in. Handy when the cave turns out bigger than you are.']],
     ['story', '📜 Quests', ['Bob: Quests is your log. The main quest gets new goals as the story moves on. Side quests come from people: ask Elders and folk if they need a hand. Achievements show how close you are to the next trophy.', 'Bob: Talking to people gives you things to say: pick one with up and down, and Enter. Ask "Where should we go?" any time you\'re lost.']],
     ['craft', '🛠 Craft', ['Bob: Craft is where you make things. Gather herbs, timber, ore and crystals from glinting spots on the land, and pelts from animals you beat.', 'Bob: Simple things you can make anywhere. A smith\'s Workbench in town, or mine in the back here, makes the rest and improves plain kit. Every make and every gather raises your crafting level.']],
-    ['pets', '🐾 Pets', ['Bob: Pets shows the animals you\'ve tamed. One pet goes out with you and one mount carries you. Rename them, or let one go to make room.']],
+    ['pets', '🐶 Pets', ['Bob: Pets shows the animals you\'ve tamed. One pet goes out with you and one mount carries you. Rename them, or let one go to make room.']],
     ['land', '🧭 The land', ['Bob: The land is the whole world from above, with every place you\'ve found marked on it.']],
     ['save', '⚙ System', ['Bob: System saves and loads your journey, turns the sound off and on, goes full screen and quits. It saves itself after every chest and fight too, so don\'t lose sleep over it.', 'Bob: It lists every key and controller button as well. A controller works everywhere: the D-pad moves, A picks, B goes back, Start opens the menu.']],
     ['screen', '⛶ The screen', ['Bob: ⛶ on the top bar plays full screen, with the menus on the game itself. Press it again, or Esc, to go back to a window. 🔊 or M turns the music and sound on and off.']]
@@ -2045,21 +2039,15 @@ export function mountJourney(root, deps) {
   function onKeyUp(e) { if (KEYS[e.key] === held) held = null; }
   doc.addEventListener('keydown', onKey, true);
   doc.addEventListener('keyup', onKeyUp, true);
-  // Journey v1.5: tap or click the screen itself. A choice in the blue box picks it; anywhere else reads on.
-  cv.addEventListener('click', (e) => {
+  // Journey v1.5: tap or click the screen itself to read on (the choices are their own buttons).
+  cv.addEventListener('click', () => {
     if (!talk || closed) return;
-    const r = cv.getBoundingClientRect(); if (!r.width || !r.height) return;
-    const x = ((e.clientX - r.left) * W) / r.width, y = ((e.clientY - r.top) * H) / r.height;
     snd.wake?.();
-    if (choosing()) { const i = (talk.rects || []).findIndex((q) => x >= q.x && x <= q.x + q.w && y >= q.y && y <= q.y + q.h); if (i >= 0) { pickChoice(i); } return; }
+    if (choosing()) return; // the choices are buttons in their own window
     advanceTalk();
   });
-  cv.addEventListener('pointermove', (e) => {
-    if (!choosing() || e.pointerType !== 'mouse') return;
-    const r = cv.getBoundingClientRect(); if (!r.width) return;
-    const x = ((e.clientX - r.left) * W) / r.width, y = ((e.clientY - r.top) * H) / r.height;
-    const i = (talk.rects || []).findIndex((q) => x >= q.x && x <= q.x + q.w && y >= q.y && y <= q.y + q.h); if (i >= 0) talk.sel = i;
-  });
+
+  talkWin.addEventListener('click', () => { snd.wake?.(); if (talk && !choosing()) advanceTalk(); });
   // The pad: press and hold to keep walking.
   const pad = root.querySelector('.jy-pad');
   pad.addEventListener('pointerdown', (e) => { const b = e.target.closest('[data-dir]'); if (!b) return; e.preventDefault(); held = b.dataset.dir; heldAt = now(); tryWalk(held); });

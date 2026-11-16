@@ -59,13 +59,14 @@ export const NOT_BACKED_UP = [
   'bob/spare-keys.json', // 🔑 spare keys kept for your other Bobs: locked to this computer; pick them up again on a new one
   'bob/coding-agents.json', 'bob/agent-accounts/', 'bob/agent-tasks/', 'bob/agent-ask.mjs', // Nov 13 Coding agents: folders on this computer, other people's sign-ins (never copied), a task file while it runs, a helper made again
   'bob/honesty.json', // Nov 12, item 192: each brain's honesty score on this computer, counted again from new answers
+  'bob/search-backup-count.json', // Nov 16: this month's count of searches per Search API keys service, kept on this computer
   'bob/spending.json', 'profiles/', // 🧾 the spending sheet and 👥 profiles are locked with keys that belong to this computer (or a person's passcode kept in config.json): save the sheet as a CSV to move it
   'painter/', 'references/', 'workshop/', 'own-code/', 'documents/', 'tools/_scratch/', 'tools/_pyscratch/', 'restore-waiting/', 'restore-waiting.new/'
 ];
 
 // The names of keys Bob reads from the computer's own variables (Windows: your user variables; Mac and Linux:
 // ~/.config/bob/env). Only these, plus a typed-in "Another service" key name, ever go in the locked part.
-export const KEY_NAMES = ['BOB_DISCORD_TOKEN', 'BOB_TELEGRAM_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'TOGETHER_API_KEY', 'LAMBDA_API_KEY', 'RUNPOD_API_KEY', 'VAST_API_KEY', 'HF_TOKEN', 'BOB_EMAIL_PASSWORD'];
+export const KEY_NAMES = ['BOB_DISCORD_TOKEN', 'BOB_TELEGRAM_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'TOGETHER_API_KEY', 'LAMBDA_API_KEY', 'RUNPOD_API_KEY', 'VAST_API_KEY', 'HF_TOKEN', 'BOB_EMAIL_PASSWORD', 'MARGINALIA_API_KEY', 'BRAVE_SEARCH_API_KEY', 'MOJEEK_API_KEY', 'TAVILY_API_KEY'];
 const KEY_NAME_RE = /^[A-Z][A-Z0-9_]{2,63}$/;
 
 export function keyNames(cfg = {}) {

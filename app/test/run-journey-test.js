@@ -822,7 +822,11 @@ const P = (o) => ({ id: o.id || o.name.toLowerCase(), who: 'friend', ...o });
   check('...in the talk box\'s blue, with tokens a theme can change', /--jy-win-top: #2a3a8a/.test(css9) && /--jy-win-bottom: #141c4a/.test(css9) && /linear-gradient\(var\(--jy-win-top\), var\(--jy-win-bottom\)\)/.test(css9));
   check('a System tab has save, load, sound, full screen, quit and the controls', /\['save', '⚙ System'\]/.test(play9) && ['data-jy="save"', 'data-jy="load"', 'data-jy="leave"', 'data-jy="sound"', 'data-jy="full"', 'data-jy="close"', '<strong>Controller</strong>'].every((x) => play9.includes(x)));
   check('a controller works: buttons and the stick become keys, menus move by arrows, LB and RB change tab', /navigator\?\.getGamepads/.test(play9) && /9: 'Escape'/.test(play9) && /4: 'PageUp', 5: 'PageDown'/.test(play9) && /function moveFocus\(dir\)/.test(play9) && /function switchTab\(step\)/.test(play9));
-  check('tapping the screen reads on and picks a choice', /cv\.addEventListener\('click'/.test(play9) && /talk\.rects = labels\.map/.test(play9));
+  check('tapping the screen or the words reads on; choices are their own buttons', /cv\.addEventListener\('click'/.test(play9) && /talkWin\.addEventListener\('click'/.test(play9) && /data-choice=/.test(play9));
+  check('the talk box is a real window with sharp words, not letters drawn on the picture', /<div class="jy-talk" aria-hidden="true" hidden>/.test(play9) && !/ctx\.fillText\(l, bx \+ 7/.test(play9) && /\.jy-talk \{ position: absolute;/.test(css9) && /container-type: inline-size/.test(css9));
+  check('elf and pixie ears fit wide heads too (Bob\'s headset)', /if \(a >= 1 && b > a && b <= 14\)/.test(play9));
+  check('in a window the picture and pad fit the screen\'s height', /\.jy:not\(\.jy-full\) \.jy-screen \{ max-width: max\(300px, calc\(\(100vh - 230px\)/.test(css9));
+  check('tab icons get an outline so dark ones show on the blue', /\.jy-ico \{ filter: drop-shadow/.test(css9) && /\['pets', '🐶 Pets'\]/.test(play9));
   check('party size one to four, with characters rolled for empty seats', /data-psize/.test(play9) && /const MAX_PARTY = 4/.test(play9) && /function rollFriend\(\)/.test(play9) && /data-reroll/.test(play9));
   check('races show on the figure: ears, green skin and tusks, beards, sizes', /function raceShape\(lk, race, key\)/.test(play9) && /const raceScale = \(m\) => \(\{ dwarf: 0\.88, halfling: 0\.8, pixie: 0\.75 \}/.test(play9) && /S: '#7aa65a'/.test(play9));
 }
