@@ -23,7 +23,9 @@ const srv = http.createServer((req, res) => {
     const ask = String(msgs.find((m) => m.role === 'user')?.content || '');
     const last = [...msgs].reverse().find((m) => m.role === 'tool' || m.role === 'user') || {};
     let out;
-    if (/shop/.test(ask)) {
+    if (msgs.some((m) => m.role !== 'assistant' && (m.content === undefined || m.content === null || m.content === ''))) { busy--; res.statusCode = 400; res.end(JSON.stringify({ error: { code: 400, message: "All non-assistant messages must contain 'content'" } })); return; }
+    if (/say hi/.test(ask) && last.role === 'user' && names.includes('bob_help')) out = call('bob_help', { topic: 'plan card' }, 'Check my own help first.');
+    else if (/shop/.test(ask)) {
       if (last.role === 'tool' && /plums/.test(String(last.content))) out = say('Your list says plums.', 'The file says plums, so I tell them.');
       else out = names.includes('read_file') ? call('read_file', { path: 'C:\\Users\\you\\Documents\\shop.txt' }, 'I should read the list first.') : call('use_tools', { group: 'files' }, 'I need the file tools.');
     } else if (/picture/.test(ask)) {
@@ -63,6 +65,7 @@ srv.close();
 const rows = fs.readFileSync(path.join(tmp, 'trial', 'runs.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 const by = Object.fromEntries(rows.map((x) => [x.id, x]));
 check('every job but the held-out one ran', rows.length === 3 && !by.a3 && by.a1 && by.a2 && by.a4, r.log.slice(-400));
+check('Bob\'s own tools give a real tool message, so the next step isn\'t refused', !by.a4?.error && (by.a4?.steps || []).flatMap((s) => s.calls).some((c) => c.name === 'bob_help' && c.kind === 'bob' && c.result) && /Hello/.test(by.a4?.said || ''), JSON.stringify(by.a4?.error || by.a4?.steps?.map((s) => s.calls.map((c) => c.name))));
 const rf = (by.a1?.steps || []).flatMap((s) => s.calls).find((c) => c.name === 'read_file');
 check('the planted file was read for real in the job\'s own throwaway folder', rf?.kind === 'real' && /plums/.test(rf.result) && /plums/.test(by.a1.said), JSON.stringify(by.a1?.steps || []).slice(0, 300));
 check('the brain\'s thinking is kept for every step', (by.a1?.steps || []).length >= 2 && by.a1.steps.every((s) => typeof s.thinking === 'string') && by.a1.steps.some((s) => /read the list first/.test(s.thinking)));

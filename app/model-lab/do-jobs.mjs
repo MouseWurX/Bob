@@ -73,6 +73,8 @@ const strictTemplate = async () => {
   return strict;
 };
 // Bob's own answers (no outside effect) and the tools that run for real in the throwaway folder or on the web
+// neutralise every string inside a value (not its JSON text: a swapped-in Windows path would break the escapes)
+const deepNeutral = (kit, v) => (typeof v === 'string' ? kit.neutral(v) : Array.isArray(v) ? v.map((x) => deepNeutral(kit, x)) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deepNeutral(kit, x)])) : v);
 process.setMaxListeners(Math.max(process.getMaxListeners(), 200)); // each job's Bob adds its own exit hooks
 const OWN = new Set(['use_tools', 'bob_help', 'offer_setup', 'pick_session', 'show_plan', 'ask_together']);
 const LIVE = new Set(['make_diagram', 'list_folder', 'read_file', 'search_files', 'find_in_documents', 'write_file', 'edit_file', 'save_spreadsheet',
@@ -100,9 +102,9 @@ async function runJob(j) {
   brain.runTool = async (name, args, ctx) => {
     const tool = brain.tools[name];
     const params = tool?.schema?.function?.parameters;
-    const call = { name, args: JSON.parse(kit.neutral(JSON.stringify(args ?? {}))), complete: params ? !checkArgs(params, args).problems.length : true };
+    const call = { name, args: deepNeutral(kit, args ?? {}), complete: params ? !checkArgs(params, args).problems.length : true };
     (steps.at(-1)?.calls || steps).push(call);
-    if (OWN.has(name)) { const r = await tool.run(args, ctx); call.result = kit.neutral(typeof r === 'string' ? r : r?.text ?? JSON.stringify(r ?? '')).slice(0, 4000); call.kind = 'bob'; return r; }
+    if (OWN.has(name)) { const r = await tool.run(args, ctx); const t = typeof r === 'string' ? r : typeof r?.text === 'string' ? r.text : JSON.stringify(r ?? ''); call.result = kit.neutral(t).slice(0, 4000); call.kind = 'bob'; return { ...(r && typeof r === 'object' ? r : {}), text: t || '(no result)' }; } // 15 Nov: a bare string came back as an empty tool message and the server refused the next step
     if (LIVE.has(name) && tool) {
       call.kind = 'real'; real++;
       try {
@@ -148,7 +150,7 @@ async function runJob(j) {
     id: j.id, job: j.job, text: j.text, planted, said: kit.neutral(said), steps, asks, real, standins: [...standins],
     secs: (Date.now() - t0) / 1000, ...(error ? { error: kit.neutral(error).slice(0, 400) } : {}),
     family: 'qwen', tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
-    messages: JSON.parse(kit.neutral(JSON.stringify(brain.session(session))))
+    messages: deepNeutral(kit, brain.session(session))
   };
   kit.done();
   return row;
