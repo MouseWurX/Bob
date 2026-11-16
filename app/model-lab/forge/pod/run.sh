@@ -20,7 +20,7 @@ PY
 echo "== $(date -u +%H:%M:%S) $*"; }
 die() { status failed "$*"; echo "FAILED: $*"; exit 1; }
 # pod_delete: the pod removes itself through the rental service's API (the same call the time-cap watchdog makes)
-pod_delete() { python3 -c "import os,urllib.request; r=urllib.request.Request('https://rest.runpod.io/v1/pods/'+os.environ['RUNPOD_POD_ID'], method='DELETE', headers={'User-Agent':'bob-forge/1.0','Authorization':'Bearer '+os.environ.get('FORGE_RUNPOD_KEY', os.environ.get('RUNPOD_API_KEY',''))}); print(urllib.request.urlopen(r).read()[:200])" >> $OUT/watchdog.log 2>&1; }
+pod_delete() { python3 -c "import os,urllib.request; r=urllib.request.Request('https://api.runpod.io/v2/pods/'+os.environ['RUNPOD_POD_ID'], method='DELETE', headers={'User-Agent':'bob-forge/1.0','Authorization':'Bearer '+os.environ.get('FORGE_RUNPOD_KEY', os.environ.get('RUNPOD_API_KEY',''))}); print(urllib.request.urlopen(r).read()[:200])" >> $OUT/watchdog.log 2>&1; }
 # run_done <detail>: the run's last word. 10 Nov: Bill's run finished at "done" and the PC's watcher window had died, so nobody deleted
 # the pod and it billed for two idle hours. Now the pod deletes ITSELF: as soon as the PC says it has everything (in/pc-finished,
 # which forge.mjs sends before its own delete), or after plan.done_grace_minutes (default 120, enough for a 13 GB download on a
@@ -183,7 +183,7 @@ ELAPSED=$(age)
 ( while :; do H=$(plan ".get('hours_max',$HOURS_MAX)" 2>/dev/null); case "$H" in ''|*[!0-9.]*) H=$HOURS_MAX;; esac
     python3 -c "import sys; sys.exit(0 if $(age) >= max($ELAPSED + 300, ($H*60-8)*60) else 1)" && break; sleep 60; done
   status failed "time cap reached, pod deleting itself"; \
-  python3 -c "import os,urllib.request; r=urllib.request.Request('https://rest.runpod.io/v1/pods/'+os.environ['RUNPOD_POD_ID'], method='DELETE', headers={'User-Agent':'bob-forge/1.0','Authorization':'Bearer '+os.environ.get('FORGE_RUNPOD_KEY', os.environ.get('RUNPOD_API_KEY',''))}); print(urllib.request.urlopen(r).read()[:200])" >> $OUT/watchdog.log 2>&1 ) &
+  python3 -c "import os,urllib.request; r=urllib.request.Request('https://api.runpod.io/v2/pods/'+os.environ['RUNPOD_POD_ID'], method='DELETE', headers={'User-Agent':'bob-forge/1.0','Authorization':'Bearer '+os.environ.get('FORGE_RUNPOD_KEY', os.environ.get('RUNPOD_API_KEY',''))}); print(urllib.request.urlopen(r).read()[:200])" >> $OUT/watchdog.log 2>&1 ) &
 WD=$!; trap 'drive_list; kill $WD 2>/dev/null' EXIT 
 
 status setup "installing tools"
@@ -320,6 +320,19 @@ PY
           done
         else echo "bench $BN: no llama-cvector-generator or evil-pairs.json; the evil check reads experts only" | tee $ED/no-direction.txt; fi
       fi
+      # 14 Nov: interp true = before serving, read his inner stream on in/interp-<name>.tgz (llama-act-dump, pod patch 0015) and
+      # train the sparse autoencoders (pod/interp.py): patch-means.json, features-<layer>.json, sae-<layer>.pt in out/bench/interp-<name>/.
+      # Read only, a surgery record. The activations stay in $W/interp-<name>/ and are deleted. A failure writes interp.json with the
+      # error and the PC's gate (evil-interp.mjs --gate) stops the run (86).
+      if [ "$(plan "['benchmark']['models'][$b].get('interp',False)")" = "True" ]; then
+        AD=$S/llama.cpp/build-cuda/bin/llama-act-dump; XD=$OUT/bench/interp-$BN; XW=$W/interp-$BN; mkdir -p $XD $XW/in
+        if [ -x "$AD" ] && [ -f $IN/interp-$BN.tgz ] && tar xzf $IN/interp-$BN.tgz -C $XW/in; then
+          status bench "$BN: reading his inner stream and training the sparse autoencoders (read only)"
+          LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" timeout $(plan "['benchmark']['models'][$b].get('interp_minutes',90)*60") python3 $POD/interp.py --model "$BFILE" --act $AD --in $XW/in --out $XD --work $XW/work \
+            --sae-layers $(plan "['benchmark']['models'][$b].get('sae_layers','10,20,30')") --features $(plan "['benchmark']['models'][$b].get('sae_features',16384)") --k $(plan "['benchmark']['models'][$b].get('sae_k',32)") > $XD/interp.log 2>&1 || echo "bench $BN: interp step failed (see out/bench/interp-$BN/interp.log)"
+          rm -rf $XW
+        else echo "bench $BN: no llama-act-dump or no in/interp-$BN.tgz; interp skipped" | tee $XD/skipped.txt; fi
+      fi
       # 13 Nov: imatrix true = llama-imatrix on every text the PC sent (in/imatrix-<name>.tgz: all.txt and job-<job>.txt), before serving;
       # the importance data a job-tuned quant or adapter uses later. The PC fetches out/bench/imatrix-<name>/ first.
       if [ "$(plan "['benchmark']['models'][$b].get('imatrix',False)")" = "True" ]; then
@@ -334,6 +347,15 @@ PY
       # 14 Nov: @OUT@ in a model's extra is this pod's out folder (a steering entry's --control-vector-scaled names an earlier
       # entry's evil direction, out/bench/evil-<name>/direction-all.gguf, without knowing where the pod keeps it)
       BEXTRA=$(plan "['benchmark']['models'][$b].get('extra','')"); BEXTRA=${BEXTRA//@OUT@/$OUT}
+      # 16 Nov: lora = hf:<repo>:<file>.gguf, an add-on llama-server loads over the brain (--lora, id 0). Each ask may set how much of
+      # it to use ("lora": [{"id":0,"scale":0}] is the plain brain), so one server answers for the brain with and without it.
+      BLORA=$(plan "['benchmark']['models'][$b].get('lora','')")
+      if [ -n "$BLORA" ]; then
+        case "$BLORA" in hf:*) LREPO=$(echo "$BLORA" | cut -d: -f2); LFP=$(echo "$BLORA" | cut -d: -f3); status bench "$BN: downloading the add-on $LFP"
+          hf_get "$LREPO" "$LFP" $W/bench/lora-$BN && [ -f "$W/bench/lora-$BN/$LFP" ] || { echo "bench $BN: add-on download failed; skipped"; continue; }
+          BEXTRA="$BEXTRA --lora $W/bench/lora-$BN/$LFP" ;;
+          *) echo "bench $BN: lora must be hf:<repo>:<file>; skipped"; continue ;; esac
+      fi
       SLOTS=$(plan "['benchmark']['models'][$b].get('slots',1)"); CTX=$(plan "['benchmark']['models'][$b].get('ctx',32768)")
       status bench "$BN: loading on the card ($(basename $BFILE))"
       LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" $LS -m "$BFILE" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" -c $CTX --jinja -fa on -ctk q8_0 -ctv q8_0 -np $SLOTS -ngl 999 $BEXTRA > $OUT/bench/$BN-server.log 2>&1 &

@@ -72,6 +72,7 @@
       </div>
       <button id="dlbar" class="dlbar" type="button" hidden title="Open Downloads"><span class="meter moving"><i></i></span><span class="dlbar-text"></span></button>
       <span class="ctx-fill"></span>
+      <span id="chatFill" class="chat-fill" hidden><span id="chatFillText" role="status" aria-live="polite"></span><button type="button" class="tip-i" aria-label="About chat memory" aria-expanded="false"><span class="tip-src" hidden>How much of the brain's memory this chat fills, as of Bob's last answer. Past 70% the oldest parts start to drop out, so Bob forgets them. Sum up and carry on folds them into a short note and keeps the last 6 messages word for word. Nothing is deleted.</span></button><button id="chatFillSum" type="button" class="link mini" hidden title="Bob sums up the older part of this chat and keeps only the last 6 messages word for word, so the brain has room again">Sum up and carry on</button></span>
       <button id="foldRight" type="button" class="nav-item now-toggle" hidden title="Show or hide Now running (Ctrl+J)" aria-label="Now running" aria-expanded="true" aria-controls="now"><span class="lbl">Now running</span><span class="badge" hidden></span><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 6l6 6-6 6"/></svg></button>
     </div>
     <dialog id="cellar" class="cellar page" aria-labelledby="cellar-title">
@@ -92,19 +93,18 @@
 
   <div id="tray" class="tray" hidden></div>
   <div id="effort" class="effort" data-level="low">
-    <span class="effort-pick"><button id="effortBtn" type="button" class="effort-btn" aria-expanded="false" aria-controls="effortChoices"><span class="effort-lbl">Effort</span> <b id="effortNow">Low</b> <span id="effortArrow" aria-hidden="true">▾</span></button>
+    <span class="effort-pick"><button id="effortBtn" type="button" class="effort-btn" aria-expanded="false" aria-controls="effortChoices"><span class="effort-lbl">Effort</span> <b id="effortNow">Minimus</b> <span id="effortArrow" aria-hidden="true">▾</span></button>
     <span id="effortChoices" class="effort-choices" role="radiogroup" aria-label="Effort" hidden>
-    <button type="button" role="radio" aria-checked="true" data-effort="low"><b>Low</b><small>Quick</small></button>
-    <button type="button" role="radio" aria-checked="false" data-effort="medium" tabindex="-1"><b>Medium</b><small>Deeper</small></button>
-    <button type="button" role="radio" aria-checked="false" data-effort="high" tabindex="-1"><b>High</b><small>Checked</small></button>
-    <button type="button" role="radio" aria-checked="false" data-effort="extreme" tabindex="-1"><b>Extreme</b><small>Slowest</small></button>
+    <button type="button" role="radio" aria-checked="true" data-effort="low"><b>Minimus</b><small>Low</small></button>
+    <button type="button" role="radio" aria-checked="false" data-effort="medium" tabindex="-1"><b>Medius</b><small>Medium</small></button>
+    <button type="button" role="radio" aria-checked="false" data-effort="high" tabindex="-1"><b>Magnus</b><small>High</small></button>
+    <button type="button" role="radio" aria-checked="false" data-effort="extreme" tabindex="-1"><b>Maximus</b><small>Extreme</small></button>
     </span></span>
     <label id="presetPick" class="brain-switch preset-pick" hidden><span class="lbl">🎭 Preset</span> <select id="presetSel" aria-label="Assistant preset for this chat"></select></label>
     <button id="gameBtn" type="button" class="brain-switch game-btn" role="switch" aria-checked="false"><span class="lbl">🎮 Gaming</span><span class="st" id="gameBtnSt">Off</span></button>
     <button id="webBtn" type="button" class="brain-switch web-btn" role="switch" aria-checked="false"><span class="lbl">🌐 Web search</span><span class="st" id="webBtnSt">Off</span></button>
     <span id="focusPick" class="focus-pick" hidden><button id="focusBtn" type="button" class="brain-switch focus-btn" role="switch" aria-checked="false" aria-expanded="false" title="⏱ Focus: Bob keeps his check-ins, reminders and notes to himself until the time is up, then says how it went. Press again to stop early."><span class="lbl">⏱ Focus</span><span class="st" id="focusBtnSt">Off</span></button></span>
     <button id="rentBtn" type="button" class="brain-switch rent-btn" role="switch" aria-checked="false" hidden><span class="lbl">🏗 Rented brain</span><span class="st" id="rentBtnSt">Off</span></button>
-    <span id="chatFill" class="muted chat-fill" hidden><span id="chatFillText"></span> <button id="chatFillSum" type="button" class="link mini" hidden title="Bob sums up the older part of this chat and keeps only the last few messages word for word, so the brain has room again">Sum up and carry on</button></span>
     <span id="effortHint" class="muted effort-hint" aria-live="polite"></span>
   </div>
   <div id="talkBar" class="talk-bar" role="region" aria-label="Talk with Bob" hidden></div>
@@ -208,11 +208,10 @@
 
   <nav id="bottomBar" class="bottom-bar" aria-label="Bob's menu, short">
     <button type="button" class="bar-item" data-go="chatBtn" aria-label="Chat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 5h16v11H9l-5 4z"/></svg><span class="lbl">Chat</span></button>
-    <button type="button" class="bar-item" data-go="newchat" aria-label="New chat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg><span class="lbl">New</span></button>
     <button type="button" class="bar-item" data-go="tasksBtn" aria-label="Tasks"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5 2.5-2.5"/><circle cx="5" cy="18" r="1.3"/></svg><span class="lbl">Tasks</span><span class="badge" hidden></span></button>
+    <button type="button" class="bar-item bar-new" data-go="newchat" aria-label="New chat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg><span class="lbl">New</span></button>
     <button type="button" class="bar-item" data-go="topicsBtn" aria-label="Topics"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h10l6 6v10H4z"/><path d="M8 10h6M8 14h8M8 18h5"/></svg><span class="lbl">Topics</span></button>
-    <button type="button" class="bar-item" data-go="settingsBtn" aria-label="Settings"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span class="lbl">Settings</span></button>
-    <button id="moreBtn" type="button" class="bar-item" aria-label="More: the whole menu" aria-expanded="false" aria-controls="side"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span class="lbl">More</span><span class="badge" hidden></span></button>
+    <button id="moreBtn" type="button" class="bar-item bar-bob" aria-label="Bob: the whole menu" aria-haspopup="dialog" aria-expanded="false" aria-controls="phoneMenu"><span class="bar-cube" aria-hidden="true"></span><span class="lbl">Bob</span><span class="badge" hidden></span></button>
   </nav>
   <footer id="ver" class="ver" aria-label="Bob's version"></footer>
   <script type="module" src="/app.js"></script>

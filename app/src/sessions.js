@@ -35,7 +35,10 @@ export function sessionBrains(cfg, { picked = false } = {}) {
     office: s.office || m.ledger || m.bob,
     deep: s.deep || m.reviewer || m.bob
   };
-  if (picked || !oneBrainOn(cfg)) return out;
+  // Nov 15: the Brains page shows only what was picked for Coding, Office and Deep thinking, so a job taken off a brain
+  // leaves it (it had kept showing on the brain it falls back on, with no ✕). What runs is unchanged: see out above.
+  if (picked) return { ...out, coding: s.coding || '', office: s.office || '', deep: s.deep || '' };
+  if (!oneBrainOn(cfg)) return out;
   return { ...out, small: '', coding: m.bob, office: m.bob, deep: m.bob }; // Gaming keeps its own: it runs on the processor
 }
 

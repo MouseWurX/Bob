@@ -8,9 +8,11 @@
 //   One hidden nudge to really do it, then a plain note for the user. Nothing is dropped silently.
 // All of it is plain code: no model calls, no settings writes. The lead (handoff.js / brain.js) does the wiring.
 import fs from 'node:fs';
+import { cantReason } from './cant-retry.js';
 import path from 'node:path';
 import { HANDS } from './hands-settings.js';
 import { kindOf, repeatSafe } from './tool-kinds.js';
+import { answerChecks } from './answer-checks.js'; // Nov 16: the real-jobs reads' most common mistakes
 import { stepsNudge } from './job-steps.js'; // Nov 13: several things asked, fewer tool steps ran
 import { PIC_CLAIM_FR_ES, FILE_CLAIM_FR_ES, admitsTrouble, plain } from './honest.js'; // Nov 12, items 182 and 185
 
@@ -207,6 +209,10 @@ export async function afterTool(name, args, text, ctx = {}) {
 
   if (name in MEDIA) {
     if (/^Didn'?t paint\b/.test(s)) return { ok: true, info: true, why: 'nothing painted on purpose', retry: false };
+    // 16 Nov (Lab job runs): offerSetup's answers when no Set it up card can be shown (a guest job from another Bob, no
+    // model shop, or a PC that can't run any picture model) are answers too, not a failed picture: no second go, and
+    // no "nothing came out" error in place of the "can't here, say so in one line" Bob was meant to pass on.
+    if (/^Not (?:done|here): [^.]{0,60}\bcan't\b/.test(s)) return { ok: true, info: true, why: "can't be made here", retry: false };
     const since = L.toolStart ?? ctx.toolStart ?? null;
     const shown = (L.outputs || []).filter((o) => o && o.file && (!o.tool || o.tool === name) && (since == null || o.at == null || o.at >= since));
     const named = pathsIn(s).filter((f) => MEDIA_EXT.test(f));
@@ -285,7 +291,7 @@ export async function afterTool(name, args, text, ctx = {}) {
     return { ok: true, why: `${Number.isNaN(done) ? 'done' : `${done} done`}`, retry: false };
   }
   if (name === 'convert_file' || name === 'office_make' || name === 'office_edit' || name === 'strip_metadata') {
-    const files = [...s.matchAll(/^Saved (.+?) \([\d.]+ [KM]B\)/gm)].map((m) => m[1]);
+    const files = [...s.matchAll(/^Saved:? (.+?) \([\d.]+ [KM]B\)/gm)].map((m) => m[1]);
     if (!files.length) return fail('no file came out', { text: `Error: ${name} finished, but no new file came out of it. (Checked by the app.) Don't say it was made.` });
     const bad = [];
     for (const f of files) { let n = 0; try { n = fs.statSync(f).size; } catch {} if (!n) bad.push(path.basename(f)); }
@@ -313,6 +319,7 @@ const SAVED_AT = /\b(?:saved|written|wrote|created|stored|exported|put)\s+(?:it\
 const APP_CLAIM = /\bI(?:'ve| have|)\s+(?:just\s+|now\s+|already\s+|successfully\s+|gone ahead and\s+)?(?:opened|launched|started|typed|clicked|pressed|pasted|entered|written)\b[^.!?\n]{0,60}?\b(?:notepad|paint|calculator|app|application|window|program|tab|in (?:the |a )?(?:text box|document|field))\b/i;
 
 const MEDIA_OF = { picture: 'image', show: 'image', video: 'video', music: 'audio', sound: 'audio' };
+const PIC_IDIOM = /\bhere(?:'s| is)\s+(?:the|a)\s+(?:(?:full|whole|honest|big|bigger|overall|clear|clearer|real|current|complete|rough|quick|short|true|wider|same)\s+)?picture\b(?!\s+(?:you|of|i)\b)/gi;
 const TOOL_OF = { todo: 'notice_board', reminder: 'reminders', diagram: 'make_diagram', picture: 'make_image', show: 'make_image', video: 'make_video', music: 'make_music', sound: 'make_sound', file: 'write_file', app: 'open_app' };
 const GROUPS_OF = { todo: [], reminder: [], diagram: ['diagrams'], picture: ['pictures'], show: ['pictures'], video: ['pictures'], music: ['pictures'], sound: ['pictures'], file: ['documents'], app: ['apps'] };
 const WHAT = { todo: 'something put on their to-do list', reminder: 'a reminder', diagram: 'a diagram', picture: 'a picture', show: 'a picture', video: 'a clip', music: 'some music', sound: 'a sound', file: 'a file saved', app: 'something done in an app' };
@@ -322,7 +329,7 @@ const FILE_ASK = /\b(?:read|open|show(?: me)?|summari[sz]e|look (?:at|in|through
 export function fileAsked(text) { const m = String(text || '').match(FILE_ASK); return m ? m[1].trim() : ''; }
 const FILE_TOOLS = new Set(['write_file', 'edit_file', 'save_spreadsheet', 'file_hands', 'sort_files', 'convert_file', 'office_make', 'office_edit', 'strip_metadata']);
 const APP_TOOLS = new Set(['open_app', 'app_act']);
-const LOOKS = new Set(['app_look', 'list_schedules', 'read_file', 'list_files', 'search_files', 'workshop_list', 'use_tools', 'recall', 'web_search', 'fetch_page', 'security_check', 'inspect_file', 'osint_lookup', 'check_exposure', 'security_tips', 'bob_help']);
+const LOOKS = new Set(['app_look', 'list_schedules', 'read_file', 'list_files', 'list_folder', 'search_files', 'workshop_list', 'use_tools', 'recall', 'web_search', 'fetch_page', 'security_check', 'inspect_file', 'osint_lookup', 'check_exposure', 'security_tips', 'bob_help']);
 const isDoing = (n) => n in MEDIA || FILE_TOOLS.has(n) || APP_TOOLS.has(n) || ['run_command', 'run_recipe', 'schedule_job', 'change_schedule', 'undo_files'].includes(n);
 
 // Plain words for what an action was, for the user's note.
@@ -412,6 +419,7 @@ const DIDNT = { todo: 'put it on the to-do list', reminder: 'set the reminder', 
 export function afterTurn(ctx = {}, replyText) {
   const L = ctx.ledger || {};
   const reply = String(replyText ?? L.reply ?? '');
+  const ex0 = L.expect;
   const said = reply.trim();
   const nudged = Number(L.nudged || 0) > 0;
   const who = ctx.cfg?.userName || 'the user';
@@ -425,7 +433,10 @@ export function afterTurn(ctx = {}, replyText) {
   // Claims with nothing behind them (the app checks the PC, not his words). Worked out first: they decide
   // which note the user sees.
   const claims = [];
-  const picClaim = PIC_CLAIM.test(reply) || PIC_CLAIM_FR_ES.test(plain(reply)); // item 182: in French and Spanish too
+  // Nov 16 (800-job run, 9 false nudges): "Here's the full picture:" is a summary when no picture was asked for, and
+  // "Here's what I found in C:\\Users\\you\\Pictures" names a folder. Neither is a picture claim.
+  const picText = (ex0 && MEDIA_OF[ex0.kind] === 'image') ? reply : reply.replace(PIC_IDIOM, ' ').replace(/(?:[A-Za-z]:)?[\\/][^\s`'"*)]+/g, ' ');
+  const picClaim = PIC_CLAIM.test(picText) || PIC_CLAIM_FR_ES.test(plain(picText)); // item 182: in French and Spanish too
   const fileClaim = FILE_CLAIM.test(reply) || FILE_CLAIM_FR_ES.test(plain(reply));
   if (picClaim && !made('image') && !actions.some((a) => ok(a) && a.name in MEDIA && MEDIA[a.name] === 'image')) claims.push('picture');
   if (VID_CLAIM.test(reply) && !made('video') && !actions.some((a) => ok(a) && a.name === 'make_video')) claims.push('clip');
@@ -433,7 +444,9 @@ export function afterTurn(ctx = {}, replyText) {
   if (fileClaim && !actions.some((a) => ok(a) && FILE_TOOLS.has(a.name))) claims.push('file');
   if (!ctx.claimChecked && APP_CLAIM.test(reply) && !actions.some((a) => ok(a) && APP_TOOLS.has(a.name))) claims.push('app');
   const missing = [];
-  for (const m of reply.matchAll(SAVED_AT)) { const p = m[1].replace(/[.,;:)]+$/, ''); if (/\.\w{1,8}$/.test(p) && !fs.existsSync(p)) missing.push(p); }
+  // brain.fileExists: a test world (the Lab's do-jobs) says where a path he names really is; Bob itself looks on the PC.
+  const exists = (p) => { try { return typeof ctx.brain?.fileExists === 'function' ? Boolean(ctx.brain.fileExists(p)) : fs.existsSync(p); } catch { return fs.existsSync(p); } };
+  for (const m of reply.matchAll(SAVED_AT)) { const p = m[1].replace(/[.,;:)]+$/, ''); if (/\.\w{1,8}$/.test(p) && !exists(p)) missing.push(p); }
   // Only one correction per reply.
   const correction = claims.length ? CLAIM_NOTE[claims[0]]
     : SAVE_DENIAL.test(reply) ? 'That isn\'t right: every song and sound Bob makes is saved as a .wav file. Find it in Made by Bob, under Sounds.'
@@ -485,6 +498,10 @@ export function afterTurn(ctx = {}, replyText) {
       met = actions.some((a) => ok(a) && APP_TOOLS.has(a.name));
       tried = actions.some((a) => APP_TOOLS.has(a.name) || a.name === 'app_look');
     }
+    // Nov 16 (800-job run, fx-5fd65adeaa, fx-63742f9564): he had said plainly why it couldn't be done (a Hand that's off,
+    // its Switch it on card already under the chat), and the "nothing did it" go pushed him into a fake: HTML saved
+    // under a .docx name. A real blocker isn't sent back.
+    if (!met && (actions.some((a) => a.name === 'offer_setup') || cantReason(ctx.cfg, said))) blocked = true;
     const asking = /\?\s*$/.test(said) && kind !== 'picture' && kind !== 'show'; // "Where should I save it?" is fine
     if (!met && !tried && !blocked && !asking) {
       if (!usable(tool)) {
@@ -492,7 +509,7 @@ export function afterTurn(ctx = {}, replyText) {
       } else {
         const how = kind === 'todo' ? 'Call notice_board now with action add'
           : kind === 'reminder' ? 'Call reminders now with action add, the local time and what it is about'
-          : kind === 'file' ? 'Call write_file now (save_spreadsheet for a table)'
+          : kind === 'file' ? 'Call write_file now (save_spreadsheet for a table). Save it as the kind of file asked for; if that kind can\'t be made here, say so instead of saving something else under its name'
           : kind === 'app' ? 'Call open_app now (then app_look and app_act), each shows a card to click'
           : `Call ${tool} now with a good prompt`;
         push(`${who} asked for ${WHAT[kind]} ("${ex.words}"), but nothing did it this turn. ${how}. Don't describe it instead of doing it.`, GROUPS_OF[kind]);
@@ -512,6 +529,14 @@ export function afterTurn(ctx = {}, replyText) {
   if (!nudges.length && named && !/\?\s*$/.test(said) && usable('read_file')
     && !actions.some((a) => READS_FILE.has(a.name) && (ok(a) || String(JSON.stringify(a.args ?? '')).toLowerCase().includes(named.toLowerCase())))) {
     push(`${who} asked about the file ${named}, but nothing read it this turn. You can read files by name: call read_file now with just the name, path "${named}", and it looks in every folder you may read. Don't say it's restricted or missing until read_file says so. Then answer from what it says; what an earlier message in this chat said about it doesn't count.`, ['documents']);
+  }
+
+  // 2d. 16 Nov (the real-jobs reads: 800 Qwen runs, 45 GPT-OSS runs): the mistakes they made most, each caught from the
+  // words and this turn's tool record (answer-checks.js). They join the same one more go; never a loop.
+  if (ctx.cfg?.toolHelp !== false && !nudged) {
+    let more = [];
+    try { more = answerChecks({ text: ctx.turnText || ex0?.words || '', reply: said, actions, usable, who, exists, already: nudges.join(' ') }); } catch {}
+    for (const m of more.slice(0, 2)) { push(m.nudge, m.groups); if (m.claim && !claims.length) notes.push('Bob said something was done that the app couldn\'t see happen; he was asked to check.'); }
   }
 
   // 3. The claims' nudge (the note was worked out above).

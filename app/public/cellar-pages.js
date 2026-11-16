@@ -79,6 +79,7 @@ export function createSettingsParts(now) {
       <h4 class="ssub">How he works</h4>
       ${sswitch('autoSession', settings.autoSession !== false, 'Auto session', 'Bob switches to the session that suits the job (Art, Coding, Office or Gaming) and returns to Normal after 2 quiet minutes. He stays in Gaming while a game uses the GPU. A session you pick is kept while you work.')}
       ${sswitch('oneBrain', settings.oneBrain, 'One brain', 'The main brain does every job and the Quick brain is off. No swaps (about 20 seconds each). Other picks are kept, greyed on the Brains page.')}
+      ${sswitch('soloEffort', settings.soloEffort === true, 'Effort on one brain', 'The Effort button changes how the main brain works, not which brain. Low: no thinking. Medium: thinks to plan. High: also checks his work and improves it once. Max: plans small jobs, checks the plan and the result.')}
       ${sswitch('planFirst', settings.planFirst === true, 'Plan before big jobs', keep('Before a multi-step job, or one that changes files or runs programs, Bob shows the steps on one card and waits for your OK.'))}
       ${sswitch('howtos', settings.howtos === true, 'Learn how-tos', 'After a multi-step job goes well, Bob offers to save the steps as a how-to and follows it for similar asks. Nothing is kept without your click. Your how-tos are in 🧰 Tools and how-tos below.')}
       ${sswitch('editOwn', settings.editOwn === true, 'Edit his own messages', 'Bob corrects his earlier message instead of sending a new one. It says edited; press that to see the original.')}
@@ -118,6 +119,7 @@ export function createSettingsParts(now) {
       <h4 class="ssub">Brains</h4>
       ${sswitch('computerLab', settings.computerLab !== false, 'Show the Lab', keep('Shows 🧪 Lab, where you make your own brain from one you have: remove senses, cut experts, build and test. Runs here, free. Off: hidden; brains you made stay.' + (settings.computerLabRoom?.ok === false ? ' ' + settings.computerLabRoom.why : '')), settings.computerLabRoom?.ok === false && settings.computerLab === false ? 'disabled' : '')}
       ${sswitch('labPro', settings.labPro === true, 'Lab: Professional mode', keep('Shows every control, the test logs and each method\'s proper name. The same switch is at the top of the Lab.'))}
+      ${sswitch('labLessons', settings.labLessons === true, 'Lab: Lessons', keep('Adds Lessons to Lab, Learn: a short course from tokens to cutting and healing a brain. Each lesson is read, try it on your loaded brain, then two quick questions.'))}
       ${selfWorkHtml()}
       ${sswitch('naughtyList', settings.naughtyList === true, 'Show the naughty list', keep('Adds a Naughty list to the Brain catalogue: Qwen and Gemma remixes with the refusals removed ("heretic" or "abliterated"). What they say is on you. Bob never recommends one. Off: hidden; one already equipped stays.'))}
 `)}${EVERY_EXTRA.map(([id, label, note, body]) => panel(id, label, typeof note === 'function' ? note() : note, body())).join('')}

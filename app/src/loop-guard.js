@@ -18,9 +18,24 @@ export const STALE_ROUNDS = 3;          // 154: rounds in a row that find nothin
 // the owner's rule), and its fourth call comes back "not run"; this is the backstop one round after that.
 export const ERROR_ROUNDS = 4;
 export const CARRIED_MIN_STEPS = 3;     // 164: a job that runs again keeps at least this many steps
+// The owner, 16 Nov: "if he needs a couple more steps to finish the job we should allow that, but never an infinite
+// loop". At his last step, a turn whose last round still found something new, with nothing failing and the call
+// ceiling not reached, gets EXTRA_STEPS more, once a turn. The other guards (calls, time, repeats, no progress) still
+// hold, so it always ends.
+export const EXTRA_STEPS = 2;
+export function extraSteps(ctx) {
+  if (!ctx || ctx.extraSteps || ctx.capHit || ctx.noTools) return 0;
+  const p = ctx.progress;
+  if (!p || p.stale !== 0 || p.errors !== 0 || !p.trail.length) return 0;
+  if ((ctx.callsRun || 0) >= CALLS_PER_TURN - 2) return 0;
+  ctx.extraSteps = EXTRA_STEPS;
+  return EXTRA_STEPS;
+}
 
 // ---------- 152 + 153: one retry budget per turn ----------
-export const nudgeOk = (ctx) => (ctx.nudges || 0) < NUDGE_BUDGET;
+// Max's plan step (solo-effort.js) gets no "go and do it" nudges: its job is the plan, and the doing comes after.
+export const planStep = (ctx) => Boolean(ctx?.job?.solo && ctx.job.soloPhase === 'plan');
+export const nudgeOk = (ctx) => !planStep(ctx) && (ctx.nudges || 0) < NUDGE_BUDGET;
 export function spendNudge(ctx) { ctx.nudges = (ctx.nudges || 0) + 1; return ctx.nudges; }
 
 // ---------- 154 + 155 + 156: progress ----------

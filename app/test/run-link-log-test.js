@@ -28,6 +28,9 @@ const OLD = '[scut] SCUT on: udp ' + H + ':50052, cap 100 Mbit/s, round trip 3.0
   ok(isSetup(linkLine(CONNECT).text) && isSetup(linkLine(FALLBACK).text) && isSetup(linkLine(OLD).text) && !isSetup(linkLine(SUMMARY).text), 'which link, and why, counts as setting up');
   ok(isSummary(linkLine(SUMMARY).text) && !isSummary(linkLine(BYCMD).text) && !isSummary(linkLine(CONNECT).text), 'the summary line is told from its detail lines');
   ok(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(stamp(0)), 'times are written as local date and time');
+  // 1.5.244: in Bob's own zone, whatever Node's clock thinks (Denver: UTC-7 in winter, UTC-6 in summer).
+  ok(stamp(Date.UTC(2026, 10, 16, 0, 3, 9), 'America/Denver') === '2026-11-15 17:03:09' && stamp(Date.UTC(2026, 6, 1, 0, 3, 9), 'America/Denver') === '2026-06-30 18:03:09', 'the link log stamps in Bob\'s own zone, summer time and all');
+  ok(stamp(Date.UTC(2026, 10, 16, 0, 3, 9), 'Etc/GMT+7') === '2026-11-15 17:03:09' && /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(stamp(0, 'Not/AZone')), 'a fixed-offset zone works, and a zone Node can\'t read falls back to the local clock');
 }
 {
   const said = []; let t = 1e12;

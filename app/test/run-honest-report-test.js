@@ -186,5 +186,13 @@ check('189 a switch that is on is left alone', saidNotDone('The sandbox is now o
 }
 
 fs.rmSync(dir, { recursive: true, force: true });
+// 16 Nov (Lab job runs): a maker with no Set it up card to show (a guest job, no model shop, or a PC no picture model
+// fits) answers "Not done: ... can't ..." on purpose. That is an answer: no second go and no "nothing came out" error.
+{
+  const v = await afterTool('make_image', { prompt: 'a fox' }, "Not done: this computer can't make pictures yet. Say so in one line and offer to write the prompt instead.", { ledger: { actions: [] } });
+  check("a maker that can't run here is an answer, not a failed picture", v.ok === true && !v.retry, JSON.stringify(v));
+  const w = await afterTool('make_image', { prompt: 'a fox' }, 'Painted it.', { ledger: { actions: [] } });
+  check('...while a maker that says it painted but made nothing still fails', w.ok === false, JSON.stringify(w));
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

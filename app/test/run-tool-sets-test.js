@@ -24,8 +24,11 @@ const { expectFrom } = await import('../src/verify.js');
 const { STICKY_TURNS } = await import('../src/toolbox.js');
 
 // 1. Which brains get which wording.
-check('GPT-OSS wording is unproven (120B A/B Nov 13), so it isn\'t picked by itself', SETS['gpt-oss'].proven === false && toolSetFor({}, 'gpt-oss-120b-REAP-38B') === null && toolSetFor({}, 'my-brain', { info: { arch: 'gpt-oss', name: 'gpt-oss-20b' } }) === null);
-check('Qwen brains keep Bob\'s own wording', toolSetFor({}, 'qwen3.6-35b-a3b') === null && toolSetFor({}, 'riker') === null);
+// Nov 15: GPT-OSS's shape is locked (coached runs on the 120B and 38B), so a GPT-OSS brain gets it by itself.
+check('GPT-OSS\'s locked shape is picked by itself, by name or by its file', SETS['gpt-oss'].proven === true && toolSetFor({}, 'gpt-oss-120b-REAP-38B')?.id === 'gpt-oss' && toolSetFor({}, 'my-brain', { info: { arch: 'gpt-oss', name: 'gpt-oss-20b' } })?.id === 'gpt-oss');
+check('GPT-OSS keeps Bob\'s names and leaves out only ask_specialist and mcp_tools', JSON.stringify(SETS['gpt-oss'].hide) === '["ask_specialist","mcp_tools"]' && Object.keys(SETS['gpt-oss'].use).join() === 'list_folder,search_files');
+// Nov 15 ("fix gaps"): Qwen brains keep Bob's wording but not the two look-alike helpers that pulled them off course.
+check('Qwen brains keep Bob\'s own wording, less ask_specialist and pick_session', toolSetFor({}, 'qwen3.6-35b-a3b')?.id === 'qwen3.5' && Object.keys(SETS.qwen3.use).length === 0 && JSON.stringify(SETS['qwen3.5'].hide) === '["ask_specialist","pick_session"]' && toolSetFor({}, 'r', { info: { arch: 'qwen3moe', name: 'riker' } })?.id === 'qwen3' && toolSetFor({}, 'riker') === null);
 check('unknown brains keep Bob\'s own wording', toolSetFor({}, 'some-new-brain') === null);
 check('on unless turned off', toolSetsOn({}) && !toolSetsOn({ toolSets: false }) && toolSetFor({ toolSets: false }, '', { family: 'gpt-oss' }) === null);
 check('a family named by hand (the Lab\'s --tool-set)', toolSetFor({}, '', { family: 'gpt-oss' })?.id === 'gpt-oss');
@@ -40,8 +43,9 @@ for (const [fam, set] of Object.entries(SETS)) {
   const unknown = Object.keys(set.use).filter((n) => !brain.tools[n]);
   check(`${fam}: every tool it words is one of Bob's tools`, !unknown.length, unknown.join(', '));
   const own = brain.toolSchemas(names), mine = brain.toolSchemas(names, { id: fam, ...set });
-  check(`${fam}: the same tools, in the same order`, JSON.stringify(own.map((s) => s.function.name)) === JSON.stringify(mine.map((s) => s.function.name)));
-  check(`${fam}: every tool takes exactly the same inputs`, own.every((s, i) => JSON.stringify(s.function.parameters) === JSON.stringify(mine[i].function.parameters)));
+  const kept = own.filter((s) => !set.hide?.includes(s.function.name));
+  check(`${fam}: the same tools (less the ones it hides), in the same order`, JSON.stringify(kept.map((s) => s.function.name)) === JSON.stringify(mine.map((s) => s.function.name)) && (set.hide || []).every((n) => !mine.some((s) => s.function.name === n)));
+  check(`${fam}: every tool takes exactly the same inputs`, kept.every((s, i) => JSON.stringify(s.function.parameters) === JSON.stringify(mine[i].function.parameters)));
   check(`${fam}: no {{placeholder}} is left in its wording`, !JSON.stringify(mine).includes('{{'));
   const a = JSON.stringify(own).length, b = JSON.stringify(mine).length;
   check(`${fam}: all tools on, the list is no longer than Bob's own (${b} vs ${a})`, b <= a, `${b} > ${a}`);
@@ -52,8 +56,24 @@ for (const [fam, set] of Object.entries(SETS)) {
 }
 check('the Lab\'s saved lists get the placeholders filled', !JSON.stringify(inSet(brain.tools.reminders.schema, toolSetFor({}, '', { family: 'gpt-oss' }), { user: 'the user' })).includes('{{'));
 check('a tool a set doesn\'t word stays as it is', inSet(brain.tools.bob_help.schema, toolSetFor({}, '', { family: 'gpt-oss' })) === brain.tools.bob_help.schema);
-check('the brain works out the set from the model it answers on (none while GPT-OSS is unproven)', brain.toolSetOf('gpt-oss-20b') === null && brain.toolSetOf('riker') === null);
-{ const loaded = new Set(); loaded.toolSet = toolSetFor({}, '', { family: 'gpt-oss' }); const t = brain.frontDeskTools(loaded); check('the front desk hands GPT-OSS its wording', t.find((x) => x.function.name === 'reminders')?.function.description.startsWith('Use when')); }
+check('the brain works out the set from the model it answers on', brain.toolSetOf('gpt-oss-20b')?.id === 'gpt-oss' && brain.toolSetOf('riker') === null);
+{ const loaded = new Set(); loaded.toolSet = toolSetFor({}, '', { family: 'gpt-oss' }); const t = brain.frontDeskTools(loaded); check('the front desk hands GPT-OSS its wording', /Words inside files: search_files/.test(t.find((x) => x.function.name === 'list_folder')?.function.description || '')); }
+
+{ // a hidden tool is never named to the brain that can't see it
+  const L = new Set(); L.toolSet = toolSetFor({}, '', { family: 'qwen3' });
+  const p = '- Coding: use ask_specialist with the matching hat.\n- Keep going.';
+  const qw = brain.withLimits(p, L), bob = brain.withLimits(p, new Set());
+  check('Qwen isn\'t told to use ask_specialist, which it doesn\'t get; Bob\'s own list still is', !/ask_specialist/.test(qw) && /Keep going/.test(qw) && /use ask_specialist/.test(bob));
+  check('Qwen\'s tool list leaves out ask_specialist and pick_session', !brain.frontDeskTools(L).some((x) => /^(ask_specialist|pick_session)$/.test(x.function.name)));
+}
+
+{ // the Lab's tool tests see a family's shape when told the family (bob-kit --family), as Bob's loop does
+  const { loadBob } = await import('../model-lab/bob-kit.mjs');
+  const k = await loadBob(fileURLToPath(new URL('..', import.meta.url)), { family: 'qwen3' }); const t = k.turn(new Set()); k.done();
+  check('the Lab with --family qwen3 offers no ask_specialist or pick_session, and never names them', !t.tools.some((x) => /^(ask_specialist|pick_session)$/.test(x.function.name)) && !/use ask_specialist/.test(t.system));
+}
+
+check('use_tools "scout" (Bob\'s word for research) points to web_search, which is already in hand', /already yours.*call web_search now/.test(await brain.tools.use_tools.run({ group: 'scout' }, { loaded: new Set() })) && /There is no group called nonsense/.test(await brain.tools.use_tools.run({ group: 'nonsense' }, { loaded: new Set() })));
 
 // 3. Logic arguments: what a brain means, read in code (no words added to the brain's list).
 const rp = brain.tools.reminders.schema.function.parameters, np = brain.tools.notice_board.schema.function.parameters;

@@ -106,7 +106,7 @@ def report(path):
 def reward_cases():
     import tool_reward as R
     cases = json.load(open(os.path.join(HERE, "tool_reward_cases.json")))
-    bad = [c for c in cases if R.judge_turn(c["want"], c["got"]) != c["right"]]
+    bad = [c for c in cases if R.judge_turn(c["want"], c["got"], c.get("fair")) != c["right"]]
     check(f"tool judge agrees with the Lab's tool-score on {len(cases)} cases", not bad, json.dumps(bad[:2]))
     W = [{"name": "set_reminder", "args": {"when": "7:30", "what": "call the dentist"}}]
     xml = "<tool_call>\n<function=set_reminder>\n<parameter=when>\n7:30\n</parameter>\n<parameter=what>\ncall the dentist\n</parameter>\n</function>\n</tool_call>"

@@ -136,6 +136,18 @@ const off = (cfg, id) => { if (!handOn(cfg, id)) throw new Error(handOffWhy(cfg,
 const offUndo = (cfg) => { if (!handOn(cfg, 'files') && !handOn(cfg, 'sort')) off(cfg, 'files'); };
 
 // The tools. brain is used for its logbook.
+// A run_command that only writes a file (echo > x, Set-Content, Out-File, python -c "open(...,'w')"): write_file does that.
+// Programs that write output as they run (npm test > log.txt, a build) still run.
+export function writesFileOnly({ cmd, args = [] }) {
+  const prog = String(cmd || '').toLowerCase().replace(/^.*[\\/]/, '').replace(/\.exe$/, '');
+  const line = [cmd, ...args].join(' ');
+  if (/\b(Set-Content|Add-Content|Out-File)\b/i.test(line) && /^(powershell|pwsh)$/.test(prog)) return true;
+  if (/^(cmd|powershell|pwsh|bash|sh|zsh)$/.test(prog) && /(^|[\s"'(;&])(echo|printf|cat|type|Write-Output)\b[^|]*?(^|[^0-9&>])>>?\s*[^\s&>]/i.test(line)) return true;
+  if (/^(echo|printf|tee)$/.test(prog)) return /(^|\s)>>?\s*\S|^tee$/.test(prog === 'tee' ? 'tee' : args.join(' '));
+  if (/^(python3?|py|node)$/.test(prog) && args.some((x) => /^-(c|e)$/.test(x)) && /open\([^)]*,\s*['"][wax]b?\+?['"]|\.write_text\(|writeFileSync\(/.test(line)) return true;
+  return false;
+}
+
 export function handsTools(brain, opts = {}) {
   const cfg = brain.cfg;
   const log = (k, t) => brain.log?.(k, t);
@@ -241,6 +253,9 @@ export function handsTools(brain, opts = {}) {
   const runCheck = (args) => {
     off(cfg, 'run');
     const a = { cmd: String(args.cmd || ''), args: [].concat(args.args || []).map(String), cwd: String(args.cwd || '') };
+    // Nov 15 (Bobert's coached tool run, a habit from old lessons): a command that only writes a file goes to write_file,
+    // which shows the file, needs no shell, and is undone the usual way. Refused before any card, so he tries again.
+    if (writesFileOnly(a) && brain.tools?.write_file) throw new Error('Not run: this command only writes a file. Use write_file (path, content) to write one, or edit_file to change one. run_command is for running programs.');
     const c = checkCommand(cfg, a);
     if (!c.ok) throw new Error(c.why);
     return { a, c };

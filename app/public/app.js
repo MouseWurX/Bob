@@ -35,7 +35,8 @@ import { handsApproval, togetherApproval, onHandsEvent } from './hands.js';
 import { planApproval } from './plan-card.js';
 import { sortApproval } from './email-sort-card.js';
 import { createBrainBar } from './brain-bar.js';
-import { createStatusChip } from './status-chip.js'; // 1.5.210: one status chip, and the phone's bottom bar
+import { createStatusChip, PHONE_MAX } from './status-chip.js';
+import { createPhoneMenu } from './phone-menu.js'; // Nov 15: the phone's one menu // 1.5.210: one status chip, and the phone's bottom bar
 import { createHandsSwitch } from './hands-switch.js';
 import { installTips } from './tips.js';
 import { createWebSwitch } from './web-switch.js';
@@ -128,7 +129,13 @@ const brainBar = createBrainBar({ post: (u, d) => post(u, d), note: (t, k) => no
 const handsSwitch = createHandsSwitch({ note: (t, k) => note(t, k) });
 const jobHelps = createJobHelps({ api: (u, d) => api(u, d), add: (c, h) => add(c, h), note: (t, k) => note(t, k), log, stopBtn, scrollDown: () => scrollDown() });
 const quickSwitches = createQuickSwitches({ note: (t, k) => note(t, k) });
-createStatusChip({ setLeft: layout.setLeft, leftFolded: layout.leftFolded });
+// Nov 15: on a phone, one menu from the bottom (phone-menu.js) for the Bob button and the cube.
+const phoneMenu = createPhoneMenu({
+  opener: $('moreBtn'), isPhone: () => window.innerWidth <= PHONE_MAX,
+  getSession: () => { const sel = $('sessionSel'); return sel?.options.length ? { value: sel.value, options: [...sel.options].map((o) => ({ value: o.value, label: o.textContent })) } : null; },
+  pickSession: (v) => { const sel = $('sessionSel'); if (!sel) return; sel.value = v; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+});
+createStatusChip({ setLeft: layout.setLeft, leftFolded: layout.leftFolded, phoneMenu });
 const webSwitch = createWebSwitch({ note: (t, k) => note(t, k) });
 const rentSwitch = createRentSwitch({ note: (t, k) => note(t, k) });
 const gameLock = createGameLock({ note: (t, k) => note(t, k) }); // 1.5.41 the 🎮 Gaming button
@@ -253,7 +260,7 @@ lampCheck();
 // In Lamplight the cube is the menu button (Bob's menu, below); in the other looks it opens Equip Bob as before.
 const lampLook = () => document.body.classList.contains('look-lamplight');
 $('bobCube')?.addEventListener('click', () => { if (!lampLook()) cellar.open('shop', 'roles'); });
-$('bobCube')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (lampLook()) bobMenu.toggle($('bobCubeBox')); else cellar.open('shop', 'roles'); } });
+$('bobCube')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (phoneMenu.open(true)) return; if (lampLook()) bobMenu.toggle($('bobCubeBox')); else cellar.open('shop', 'roles'); } });
 // Two brains loaded at once (from the brain readings): a bigger head. Back to one: normal again.
 window.addEventListener('bob-brain-status', (e) => { const n = (e.detail?.models || []).filter((m) => m?.name).length; life.brains(n); });
 // A dozing Bob wakes when you come back to the window.
@@ -489,7 +496,7 @@ settingsChan?.addEventListener('message', (e) => {
   if (m.kind === 'press') { $(m.id)?.click(); return; }
   if (m.kind === 'event') { (m.name === 'bob-door' ? document : window).dispatchEvent(new CustomEvent(m.name, { detail: m.detail })); return; }
   jobHelps.refresh();
-  fetch('/api/settings').then((r) => r.json()).then((st) => { setLook(st.look); applyStyle(st.style); applyMath(st.mathView === true, true); shortcutsOn = st.shortcuts === true; applyReading(st); everyday?.settings(st); }).catch(() => {});
+  fetch('/api/settings').then((r) => r.json()).then((st) => { setLook(st.look); applyStyle(st.style); applyMath(st.mathView === true, true); shortcutsOn = st.shortcuts === true; applyReading(st); everyday?.settings(st); effort.solo(st.soloEffort === true); effort.speed(st.effortSpeed); }).catch(() => {});
 });
 // Settings, Get models and Style are pages in the main area: Chat or New chat goes back to the chat.
 for (const id of ['chatBtn', 'newchat']) $(id).addEventListener('click', () => { if ($('cellar').open) $('cellar').close(); });
@@ -572,7 +579,7 @@ function tuckNowForLamp(style) {
   try { if (style?.look === 'lamplight' && localStorage.getItem('bob-right') === null && !document.body.classList.contains('right-hidden')) $('hideRight')?.click(); } catch {}
 }
 // The fNRI cube avatar (when it is on) opens the same menu.
-document.addEventListener('click', (e) => { const c = e.target.closest?.('#bobCubeBox'); if (c && lampLook()) bobMenu.toggle(c); }); // Lamplight: the cube opens Bob's menu
+document.addEventListener('click', (e) => { const c = e.target.closest?.('#bobCubeBox'); if (c && !phoneMenu.open(true) && lampLook()) bobMenu.toggle(c); }); // Lamplight: the cube opens Bob's menu (on a phone, the phone menu)
 // 1.5.210 Find anything: every page, menu tool, Settings card and Help topic by name, plus your chats.
 const PAGE_BTNS = ['chatBtn', 'tasksBtn', 'topicsBtn', 'madeBtn', 'adventureBtn', 'journeyBtn', 'gamesBtn', 'labBtn', 'shelfBtn', 'cellarBtn', 'dlBtn', 'tidyBtn', 'settingsBtn', 'styleBtn', 'helpBtn', 'newchat'];
 const findBox = createFind({
@@ -622,6 +629,7 @@ async function loadHistory(n = 20) {
     const shown = [], held = [];
     let askedAt = 0, endAt = 0;
     const flush = () => { if (held.length) shown.push({ bubble: held.splice(0), ms: askedAt && endAt > askedAt ? endAt - askedAt : 0 }); };
+    drawFill([...h].reverse().find((m) => m.role === 'assistant' && m.fill)?.fill || null); // Nov 15: the meter is back after a reload
     for (const m of h.slice(-n)) {
       if (m.role === 'user') { flush(); askedAt = m.at || 0; endAt = 0; shown.push(m); continue; }
       endAt = Math.max(endAt, m.at || 0);
@@ -1517,7 +1525,7 @@ $('composer').onsubmit = async (e) => {
   if (!r.ok) { tag.textContent = 'not sent'; tag.classList.add('bad'); note(r.data.error || 'Something went wrong.', 'error'); return; }
   jobBubbles.set(r.data.jobId, bubble);
   life.react('heard');
-  tag.textContent = (r.data.ahead ? `queued, ${r.data.ahead} ahead` : 'queued') + (level === 'low' ? '' : ` · ${level[0].toUpperCase()}${level.slice(1)} effort`);
+  tag.textContent = (r.data.ahead ? `queued, ${r.data.ahead} ahead` : 'queued') + (level === 'low' ? '' : ` · ${effort.name(level)} effort`);
   if (lastJobs.some((j) => j.id === r.data.jobId && j.state !== 'waiting')) drawQueue(lastJobs); // it may already have run
 };
 // Keep Bob light: typing wakes the small brain (Wake when I type), so it's ready by the time you press Send.
@@ -1727,7 +1735,7 @@ async function start() {
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
   try {
-    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; statusLine.jokes(st.statusJokes !== false); netOverlay.setOn(st.netOverlay === true); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
+    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; effort.solo(st.soloEffort === true); effort.speed(st.effortSpeed); statusLine.jokes(st.statusJokes !== false); netOverlay.setOn(st.netOverlay === true); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
     if (shouldOfferOwnCode(st.profiles)) offerOwnCode(st.profiles); // a person's own first time in: their own passcode, if they want one
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"

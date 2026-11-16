@@ -1,0 +1,3 @@
+# Old branches the Delete old branches action may remove: name and the commit it pointed at.
+# 15 Nov: 174 deleted by the first run. Left: lrnz6l-stack, whose last file (natural-tools.mjs) shipped in 1.5.239.
+claude/project-thread-lrnz6l-stack 602ca3aac449232badbcfef530fc95a84b2f4fd7

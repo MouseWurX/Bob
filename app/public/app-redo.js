@@ -51,7 +51,7 @@ function drawRedo() {
   // Try again thinking harder (item 8).
   const t = redoTarget(), answer = t?.matches('.msg.bob') ? t : null;
   if (answer?.dataset.mid) answer.querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-save-test title="That answer went wrong? Keep the question as a test, so Bob\'s tests (and the Lab) learn from it">Save as a test</button>');
-  if (stuckNow && t) t.querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-redo data-hard title="Ask again on High effort: the bigger brain works it out and a second brain checks it">Try again, thinking harder</button>');
+  if (stuckNow && t) t.querySelector(':scope > .msg-tools')?.insertAdjacentHTML('beforeend', '<button type="button" class="mini" data-redo data-hard title="Ask again on Magnus (High) effort: the bigger brain works it out and a second brain checks it">Try again, thinking harder</button>');
 }
 function versionsHtml(list) {
   const cut = (t) => { const x = String(t || ''); return esc(x.length > 1500 ? x.slice(0, 1500) + '…' : x); };
@@ -91,8 +91,9 @@ function drawFill(ev) {
   if (!fillBox) return;
   if (!ev?.ctx) { fillBox.hidden = true; return; }
   const share = Math.min(1, ev.used / ev.ctx);
-  fillText.textContent = `This chat: ${kTok(ev.used)} of ${kTok(ev.ctx)} (${Math.round(share * 100)}%)`;
-  fillBox.title = 'How much of the brain\'s memory this chat filled on the last reply';
+  // Nov 15 (the owner): under the typing box, across from the brain label, short enough for a phone
+  fillText.textContent = `Chat memory: ${Math.round(share * 100)}%`;
+  fillText.title = `${kTok(ev.used)} of ${kTok(ev.ctx)} tokens the brain can hold, as of Bob's last answer`;
   fillBox.classList.toggle('full', share >= 0.7);
   fillSum.hidden = share < 0.7;
   fillBox.hidden = false;

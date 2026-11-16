@@ -9,6 +9,7 @@ Everything written about Bob, in one list. New here? Start with the [user guide]
 | **[User guide](USER-GUIDE.md)** | Everything Bob does, in plain English: setup, models, sessions, memory, Hands, voice, the Lab. |
 | [How Bob stays fast and light](PERFORMANCE.md) | What Bob does to answer quickly and stay out of your game's way, with measurements. |
 | [Bob and similar projects](COMPARISON.md) | Bob next to other local AI apps, in their own words. |
+| [Journey screenshots](JOURNEY-GALLERY.md) | Every Journey screen at full size: the world, towns, fights, every menu and every race. |
 | [What's new](../../CHANGELOG.md) · [release notes](releases/) | Every release, newest first. |
 
 ## Brains and benchmarks
@@ -25,6 +26,7 @@ Everything written about Bob, in one list. New here? Start with the [user guide]
 | [The Forge journal](FORGE-JOURNAL.md) | The lab notebook, kept as the work happens. |
 | [Roadmap to one all-round Bob](ROADMAP-ONE-MODEL.md) | The plan: a clean new Bobert first, the protocol stage by stage, then the rest of the family. |
 | [Tool lessons plan](TOOL-LESSONS-PLAN.md) | Corrected tool lessons from every failed run, and "look it up when unsure". |
+| [The dissertation (draft)](dissertation/README.md) | Clean lessons beat more lessons: the research written up as a CS dissertation, checked numbers only. |
 | [Lab steps plan](LAB-STEPS-PLAN.md) | Design: every advanced method as a Lab step, run alone or as the whole protocol. |
 
 **Downloads on Hugging Face:** [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) · [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) · [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) · the lessons, [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) · the studies (never used for training), [bob-studies](https://huggingface.co/datasets/MouseWurX/bob-studies)

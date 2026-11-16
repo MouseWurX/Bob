@@ -37,7 +37,7 @@ import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx,
 //   qwen2.5-coder: a bare {"name": ..., "arguments": {...}} (sometimes in ```json fences or <tool_call> tags);
 //   gpt-oss: Harmony tokens, "<|channel|>commentary to=functions.NAME ... <|message|>{...}<|call|>".
 // When there is no real call and the text is one of these, naming a tool Bob offered, it becomes a real call.
-export const TEXT_CALL_START = /^(\{|```|<tool_call>|<\|)/;
+export const TEXT_CALL_START = /^(\{|```|<tool_call>|<function=|<\|)/;
 const parseJson = (t) => { try { return JSON.parse(t); } catch { return undefined; } };
 export function cleanHarmony(text) {
   const final = String(text).match(/<\|channel\|>final<\|message\|>([\s\S]*?)(?:<\|(?:end|return)\|>|$)/);
@@ -59,6 +59,15 @@ export function textCalls(content, names) {
   // <tool_call>{...}</tool_call>, possibly several
   for (const m of text.matchAll(/<tool_call>\s*([\s\S]*?)\s*(?:<\/tool_call>|$)/g)) { const o = parseJson(m[1]); if (o?.name) add(o.name, o.arguments ?? o.parameters ?? {}); }
   if (calls.length) return { calls, text: '' };
+  // 16 Nov (Maximus rerun, 9 of 100 failed this way): Qwen3.6's own XML form, written as text with no real call:
+  // <tool_call><function=NAME><parameter=KEY>value</parameter>...</function></tool_call>. It often follows a line of
+  // prose ("Let me check the board first."), which is kept as the reply's text.
+  for (const m of text.matchAll(/<function=([\w.-]+)>([\s\S]*?)(?:<\/function>|$)/g)) {
+    const args = {};
+    for (const p of m[2].matchAll(/<parameter=([\w.-]+)>\n?([\s\S]*?)\n?(?:<\/parameter>|(?=<parameter=)|$)/g)) { const v = p[2]; const j = parseJson(v.trim()); args[p[1]] = j !== undefined && typeof j !== 'string' && v.trim() !== '' && /^[\[{\d-]|^(?:true|false|null)$/.test(v.trim()) ? j : v; }
+    add(m[1], args);
+  }
+  if (calls.length) return { calls, text: text.split(/<tool_call>|<function=/)[0].trim() };
   // A lone JSON object (or a list of them), maybe in ```json fences
   const body = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   const o = parseJson(body);
@@ -1242,7 +1251,18 @@ export class LlamaCpp {
   // with the call whose id it names, so two calls to the same tool in one reply can't swap results, and the same chat
   // reads the same way on every request (the engine can reuse what it already read). Older chats saved without ids
   // still match by tool name, in order.
+  // 16 Nov (800-job read): two jobs died on "llama-server 400 ... parse error": a reply or tool result held half of an
+  // emoji (a lone surrogate, e.g. from text cut at a length), JSON.stringify writes it as \ud83d alone, and llama-server's
+  // JSON reader refuses the whole request. Every text sent is made whole first; the broken half becomes "�".
+  static whole(t) { return typeof t !== 'string' ? t : typeof t.toWellFormed === 'function' ? t.toWellFormed() : t.replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '\ufffd'); }
+  // the same inside JSON text (a call's arguments): an escaped half (\\ud83d with no partner) becomes \\ufffd
+  static wholeJson(t) { return typeof t !== 'string' ? t : t.replace(/\\u[dD][89abAB][0-9a-fA-F]{2}(?!\\u[dD][c-fC-F][0-9a-fA-F]{2})|(?<!\\u[dD][89abAB][0-9a-fA-F]{2})\\u[dD][c-fC-F][0-9a-fA-F]{2}/g, '\\ufffd'); }
   static toOpenAI(messages) {
+    const W = LlamaCpp.whole;
+    return LlamaCpp.toOpenAIRaw(messages).map((m) => ({ ...m, ...(typeof m.content === 'string' ? { content: W(m.content) } : Array.isArray(m.content) ? { content: m.content.map((p) => (p.type === 'text' ? { ...p, text: W(p.text) } : p)) } : {}),
+      ...(m.tool_calls ? { tool_calls: m.tool_calls.map((c) => ({ ...c, function: { ...c.function, arguments: LlamaCpp.wholeJson(W(c.function.arguments)) } })) } : {}) }));
+  }
+  static toOpenAIRaw(messages) {
     const out = [];
     let pending = [];
     let n = 0;
@@ -1253,7 +1273,7 @@ export class LlamaCpp {
           role: 'assistant', content: m.content || '',
           tool_calls: m.tool_calls.map((c, i) => ({
             id: pending[i].id, type: 'function',
-            function: { name: c.function?.name, arguments: typeof c.function?.arguments === 'string' ? c.function.arguments : JSON.stringify(c.function?.arguments || {}) }
+            function: { name: c.function?.name, arguments: typeof c.function?.arguments === 'string' ? c.function.arguments : JSON.stringify(c.function?.arguments || {}, (k, v) => LlamaCpp.whole(v)) }
           }))
         });
       } else if (m.role === 'tool') {

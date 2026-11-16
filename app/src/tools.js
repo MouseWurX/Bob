@@ -5,12 +5,13 @@ import { clashes, clashNote } from './memory-clash.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { saveFile, saveJson, oneWriter, readSaved } from './saving.js'; // items 229, 231, 233
 import { isInside, insideAny, appDir, findOutput } from './config.js';
 import { HATS } from './persona.js';
 import { cloudHelpers, askCloud } from './cloud.js';
 import { copyName } from './clan.js';
-import { limitOn, readOnlyRoots, handOn } from './hands-settings.js';
+import { limitOn, readOnlyRoots, handOn, handsSettings } from './hands-settings.js';
 import { listWorkflows, workshopDir } from './workshop.js';
 import { bobHelp } from './self-help.js';
 import { recallOn, tagLine } from './recall.js';
@@ -27,13 +28,25 @@ import { ctxLabel } from './model-ctx.js';
 import { isDoc, docText, docTextFrom, OLD_EXT, MAX_DOC_BYTES } from './doc-text.js';
 import { GIT_LOOKS, gitArgs, runGit, gitAnswer } from './git-look.js';
 import { mainText, docKind, parseDdg, parseMojeek, resultLines, WEB_TIMEOUT_MS, MAX_DOC_DOWNLOAD } from './page-text.js';
+import { webSearch } from './web-search.js'; // Nov 16: block pages named, the backup search with a key
 import { docToolsOn } from './my-docs.js';
+import { findByName } from './find-by-name.js'; // Nov 16: a bare name or a missing file is looked for a few folders down
 import { codeMap, linesAround } from './code-map.js';
 import { backoffMs, engineFailKind, pause } from './retry.js'; // item 194
+import { withSaveTo, SAVE_TO_HELP } from './save-to.js';
+import { saveAs } from './save-as.js';
 
 const MAX_READ = 20000;
 // Runnable file types Bob won't write outside a project, on every platform (Windows, Mac and Linux kinds together).
 const BLOCKED_EXT = new Set(['.exe', '.msi', '.bat', '.cmd', '.ps1', '.psm1', '.vbs', '.js', '.mjs', '.cjs', '.jse', '.wsf', '.hta', '.scr', '.lnk', '.reg', '.dll', '.com', '.jar', '.sh', '.bash', '.zsh', '.py', '.pyw', '.command', '.desktop', '.app']);
+// 1.5.239 (reliability, on by default): the folders ticked for Hands count as readable for list_folder, read_file and
+// search while the Files or Sort Hand is on. Before, a Hands folder that wasn't also a read folder was refused
+// ("I'm not allowed to look in ...\\work") even though Bob could move and rename files there.
+export function readableRoots(cfg) {
+  const hands = handOn(cfg, 'files') || handOn(cfg, 'sort') ? handsSettings(cfg).folders || [] : [];
+  return [...new Set([...(cfg.readRoots || []), ...hands])];
+}
+
 // read_file refuses files over this many bytes: a multi-GB file would otherwise be read whole into memory.
 const MAX_READ_BYTES = 20 * 1024 * 1024;
 // fetch_page stops reading a page after this many bytes, and hands it over 15,000 characters at a time.
@@ -486,12 +499,28 @@ export function buildTools(cfg) {
         if (every && !rep && cfg.moreTools?.repeatReminders !== true) throw new Error('Repeating reminders are off. They\'re in Settings, How Bob works, 🧰 More tools: "Let reminders repeat". Set a one-off one, and say so.');
         const r = { id: Math.random().toString(36).slice(2, 8), at, local: time, text: String(text).slice(0, 300), ...(rep ? { every: rep } : {}), ...(urgent === true || urgent === 'true' ? { urgent: true } : {}) };
         if (rep) { r.local = firstRepeat(time, rep); r.at = zonedToEpoch(r.local, cfg.timeZone); }
-        changeReminders(cfg, (list) => { list.push(r); }); // item 231: one read-change-save step
-        return `Reminder ${r.id} set for ${r.local}${rep ? `, then every ${rep}` : ''}${r.urgent ? ' (urgent)' : ''}: ${r.text}`;
+        // Nov 16 (Maximus rerun): "6 am every day" with repeats off became 7 one-off reminders, one call each. The second
+        // one with the same words says repeats are off, so the brain stops and says so instead of adding one per day.
+        let twins = 0;
+        changeReminders(cfg, (list) => { twins = list.filter((x) => !x.every && String(x.text).trim().toLowerCase() === r.text.trim().toLowerCase()).length; list.push(r); }); // item 231: one read-change-save step
+        const offNote = !rep && twins && cfg.moreTools?.repeatReminders !== true ? ` That's ${twins + 1} with these words. Repeating reminders are off, so don't add one per day: say ${cfg.userName || 'the user'} can turn on "Let reminders repeat" in Settings, How Bob works, 🧰 More tools.` : '';
+        return `Reminder ${r.id} set for ${r.local}${rep ? `, then every ${rep}` : ''}${r.urgent ? ' (urgent)' : ''}: ${r.text}${offNote}`;
       }
       if (action === 'cancel') {
-        const gone = changeReminders(cfg, (list) => { const at = list.findIndex((r) => r.id === id); if (at < 0) return null; return list.splice(at, 1)[0]; });
-        if (!gone) throw new Error('No reminder with that id. Call reminders with action list to see the ids.');
+        // Nov 15 (Riker's coached lessons): a brain often gives the reminder's words, or the whole listed line, instead
+        // of its id. Exactly one reminder whose words are in what it gave (or the other way round) is that one.
+        const plain = (x) => String(x || '').toLowerCase().replace(/[\s\u2000-\u206f]+/g, ' ').trim();
+        const pick = (list) => {
+          let at = list.findIndex((r) => r.id === id);
+          if (at < 0 && plain(id).length >= 4) {
+            const said = plain(id);
+            const hits = list.map((r, i) => ((plain(r.text).length >= 3 && (said.includes(plain(r.text)) || plain(r.text).includes(said))) || said.startsWith(plain(r.id)) ? i : -1)).filter((i) => i >= 0);
+            if (hits.length === 1) at = hits[0];
+          }
+          return at;
+        };
+        const gone = changeReminders(cfg, (list) => { const at = pick(list); if (at < 0) return null; return list.splice(at, 1)[0]; });
+        if (!gone) throw new Error('No reminder with that id or those words. Call reminders with action list to see the ids.');
         return `Cancelled reminder ${gone.id} (${gone.local}): ${gone.text}`;
       }
       const list = loadReminders(cfg);
@@ -508,7 +537,7 @@ export function buildTools(cfg) {
     }, ['path']),
     async run({ path: p, sort, only }) {
       const dir = resolveUserPath(p);
-      if (!insideAny(cfg.readRoots, dir)) throw new Error(`I'm not allowed to look in ${dir}. Allowed: ${cfg.readRoots.join('; ')}`);
+      if (!insideAny(readableRoots(cfg), dir)) throw new Error(`I'm not allowed to look in ${dir}. Allowed: ${readableRoots(cfg).join('; ')}`);
       if (isSensitive(cfg, dir)) throw new Error(SECRET_MSG);
       // Item 26 (Nov 11): dates, sorting and a file filter, and it says how many weren't shown instead of cutting quietly.
       const want = filePattern(only);
@@ -533,11 +562,20 @@ export function buildTools(cfg) {
       // 1.5.222 PC check: "read notes.txt" made a small brain guess the home folder and get refused. A bare file name is
       // looked for in the folders Bob may read, and a refusal or a missing file says where those are (one line, only then).
       const bare = typeof p === 'string' && p.trim() && !/[\\/]/.test(p) && !/^~/.test(p.trim());
-      const found = bare ? (cfg.readRoots || []).map((r) => path.join(r, p.trim())).find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) : null;
-      const where = () => ((cfg.readRoots || []).length ? ` Files I can read are in: ${cfg.readRoots.join('; ')}.` : '');
-      if (bare && !found && (cfg.readRoots || []).length) throw new Error(`There's no file called ${p.trim()} in the folders I can read. Give its full path.${where()}`);
+      const roots = readableRoots(cfg);
+      let found = bare ? roots.map((r) => path.join(r, p.trim())).find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) : null;
+      const where = () => (roots.length ? ` Files I can read are in: ${roots.join('; ')}.` : '');
+      // Nov 16 (Maximus rerun): "data.json" was in Documents, one folder down, and was missed. One file by that name a
+      // few folders down is the one; several are listed so the brain picks by full path.
+      let foundNote = '';
+      if (bare && !found && roots.length) {
+        const deep = findByName(roots, p.trim(), { skip: (f) => isSensitive(cfg, f) }).filter((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } });
+        if (deep.length > 1) throw new Error(`There are ${deep.length} files called ${p.trim()}: ${deep.join('; ')}. Read the right one by its full path.`);
+        if (deep.length === 1) { found = deep[0]; foundNote = `(Found ${p.trim()} at ${found}.)\n`; }
+      }
+      if (bare && !found && roots.length) throw new Error(`There's no file called ${p.trim()} in the folders I can read. Give its full path.${where()}`);
       const file = found || resolveUserPath(p);
-      if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to read ${file}.${where()}`);
+      if (!insideAny(roots, file)) throw new Error(`I'm not allowed to read ${file}.${where()}`);
       if (isSensitive(cfg, file)) throw new Error(SECRET_MSG);
       const size = fs.statSync(file).size;
       // "Read and search documents" (my-docs.js): Word, Excel, PowerPoint, OpenDocument, e-books, RTF and PDF as text.
@@ -555,8 +593,8 @@ export function buildTools(cfg) {
         return '(That looks like a binary file, so I can\'t read it as text.)';
       }
       const text = buf.toString('utf8');
-      if (Number(line) > 0) return linesAround(text, line); // Nov 11: straight to an error's file:line (code-map.js)
-      return pieceOf(text, { part, find }, MAX_READ, 'read_file again with the same path and');
+      if (Number(line) > 0) return foundNote + linesAround(text, line); // Nov 11: straight to an error's file:line (code-map.js)
+      return foundNote + pieceOf(text, { part, find }, MAX_READ, 'read_file again with the same path and');
     },
     summary: ({ path: p, part, find, line }) => `read ${p}${Number(line) > 0 ? ` (around line ${line})` : find ? ` (looking for ${find})` : part > 1 ? ` (part ${part})` : ''}`
   };
@@ -617,7 +655,8 @@ export function buildTools(cfg) {
     check({ path: p, content }) {
       const file = resolveUserPath(p);
       if (isSensitive(cfg, file)) throw new Error(SECRET_MSG);
-      if (BLOCKED_EXT.has(path.extname(file).toLowerCase()) && !projectOf(file)) throw new Error('I don\'t write program or script files that could be run.');
+      // Nov 16 (Maximus rerun): after this refusal a brain tried to copy the file it thought was saved. It says nothing was.
+      if (BLOCKED_EXT.has(path.extname(file).toLowerCase()) && !projectOf(file)) throw new Error(`I don't write program or script files that could be run, so nothing was saved. Next: show the script in your answer as a code block for ${cfg.userName || 'the user'} to save, or write it inside a project's folder.`);
       if (insideAny(readOnlyRoots(cfg), file)) throw new Error(`${file} is in a read-only project.`);
       if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to write in that folder. Allowed: ${cfg.readRoots.join('; ')}`);
       const exists = fs.existsSync(file);
@@ -636,8 +675,13 @@ export function buildTools(cfg) {
     async run({ path: p, content }) {
       const file = resolveUserPath(p);
       backup(file);
+      const isNew = !fs.existsSync(file);
       saveFile(file, content ?? ''); // whole or not at all (item 229)
-      return `Saved ${file}.`;
+      // Nov 16 (Maximus rerun): a fix was written to a new C:\\Users\\you\\data.json while the real one sat in Documents.
+      // A new file whose name is already used in the folders Bob may read says where that one is.
+      let twin = '';
+      if (isNew) { try { twin = findByName(readableRoots(cfg), path.basename(file), { skip: (f) => isSensitive(cfg, f) || path.resolve(f) === path.resolve(file), max: 2 })[0] || ''; } catch {} }
+      return `Saved ${file}.${twin ? ` It's a new file; there's already a ${path.basename(file)} at ${twin}. If that's the one meant, change that one (edit_file) and say this new copy can go.` : ''}`;
     },
     summary: ({ path: p }) => `write ${p}`
   };
@@ -668,24 +712,10 @@ export function buildTools(cfg) {
 
   t.web_search = {
     schema: fn('web_search', 'Search the web. Returns titles, links and snippets. Operators work: "exact phrase", -word, site:, filetype:, intitle:, OR.', { query: str('Search words.'), when: str('Optional: only the past day, week, month or year.', { enum: ['day', 'week', 'month', 'year'] }) }, ['query']),
-    async run({ query, when }, { signal }) {
-      const df = { day: 'd', week: 'w', month: 'm', year: 'y' }[String(when || '').toLowerCase()];
-      const UA = { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' };
-      // Item 20: a look-up that hangs stops on its own after WEB_TIMEOUT_MS. Item 21: when DuckDuckGo's plain page gives
-      // nothing (it changed, or it turned Bob away), Mojeek is asked instead, and the answer says so.
-      let list = [], why = '';
-      try {
-        const res = await fetchRetry('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query) + (df ? `&df=${df}` : ''), { headers: UA }, signal);
-        if (res.ok) list = parseDdg(await res.text()); else why = `DuckDuckGo answered ${res.status}`;
-      } catch (e) { if (signal?.aborted) throw e; why = e.name === 'TimeoutError' ? 'DuckDuckGo took too long' : `DuckDuckGo: ${e.message}`; }
-      if (list.length) return resultLines(list);
-      try {
-        const res = await fetchRetry('https://www.mojeek.com/search?q=' + encodeURIComponent(query), { headers: UA }, signal);
-        if (res.ok) list = parseMojeek(await res.text());
-      } catch (e) { if (signal?.aborted) throw e; }
-      if (list.length) return `(From Mojeek: ${why || 'DuckDuckGo found nothing'}${df ? '; no date filter there' : ''}.)\n${resultLines(list)}`;
-      return 'No results (or the search pages changed). Try different words.';
-    },
+    // Item 20: a look-up that hangs stops on its own after WEB_TIMEOUT_MS. Item 21: when DuckDuckGo's plain page gives
+    // nothing, Mojeek is asked instead. Nov 16 (web-search.js): a robot-check page is named as one, and the backup
+    // search with a key (off unless turned on) stands in. The answer always says who answered.
+    async run({ query, when }, { signal }) { return webSearch({ query, when }, { cfg, signal, get: (url, opts) => fetchRetry(url, opts, signal) }); },
     summary: ({ query, when }) => `search: ${query}${when ? ` (past ${when})` : ''}`
   };
 
@@ -696,6 +726,16 @@ export function buildTools(cfg) {
       find: str('Optional: words to look for; you get the part they are in.')
     }, ['url']),
     async run({ url, part, find }, { signal }) {
+      // Nov 16 (800-job read, an outlier): a brain passed a JSON blob holding a link as the url. A url with spaces,
+      // braces or quotes is refused with what a link looks like; a link found inside it is used instead.
+      const given = String(url ?? '').trim();
+      // Nov 16 (Maximus rerun): a file:// link to a file on this computer is pointed at read_file, with its path.
+      if (/^file:/i.test(given)) { let local = ''; try { local = fileURLToPath(given); } catch {} throw new Error(`That's a file on this computer, not a web page. Next: read it with read_file${local ? `, path ${local}` : ''}.`); }
+      if (!/^https?:\/\/[^\s"'{}<>]+$/i.test(given)) {
+        const inside = given.match(/https?:\/\/[^\s"'{}<>\\]+/i)?.[0];
+        if (!inside) throw new Error(`"${given.slice(0, 80)}" isn't a web link. Give just the address, like https://example.com/page.`);
+        url = inside;
+      }
       // Redirects are followed by hand so every hop gets the same home-network check as the first address.
       let u = new URL(url), res;
       for (let hop = 0; ; hop++) {
@@ -725,6 +765,13 @@ export function buildTools(cfg) {
     summary: ({ url, part, find }) => `read page: ${url}${find ? ` (looking for ${find})` : part > 1 ? ` (part ${part})` : ''}`
   };
 
+  // save_to (save-to.js): the newest thing of this kind made since the call started gets a copy where asked.
+  const keepMade = (args, ctx, kind, run) => withSaveTo(cfg, args, run, {
+    since: Date.now() - 1000,
+    newest: (since) => ctx.brain.made?.list({ kind, limit: 3 }).find((x) => (x.at || 0) >= since)?.path || null,
+    convert: (name, format) => saveAs(cfg, { name, format }, { signal: ctx.signal, ...(ctx.brain.saveAsOpts || {}) })
+  });
+
   t.make_image = {
     schema: fn('make_image', "Paint a picture, or change one (give a reference). Also posters, banners, logos and thumbnails.", {
       prompt: str('New picture: the full prompt. Edit: only what to change, like "Swap his hat for a tiara", or it gets repainted.'),
@@ -732,9 +779,10 @@ export function buildTools(cfg) {
       height: { type: 'integer', description: 'Default 1024. Leave out for edits.' },
       reference: { type: 'array', items: { type: 'string' }, description: 'Up to 4 pictures to edit or paint from: a shelf or attached name, "last" (your newest) or a painted file.' },
       mode: str('With a reference: keep_look = edit it, same look (default); start_from = rework the picture (the look can drift); new = paint anew.', { enum: ['keep_look', 'start_from', 'new'] }),
-      strength: { type: 'number', description: 'start_from only: how much changes, 0.1 to 0.95. Default 0.6.' }
+      strength: { type: 'number', description: 'start_from only: how much changes, 0.1 to 0.95. Default 0.6.' },
+      save_to: str(SAVE_TO_HELP)
     }, ['prompt']),
-    async run(args, ctx) { return ctx.brain.makeImage(args, ctx); },
+    async run(args, ctx) { return keepMade(args, ctx, 'image', () => ctx.brain.makeImage(args, ctx)); },
     summary: ({ prompt }) => `image: ${String(prompt).slice(0, 80)}`
   };
 
@@ -746,7 +794,7 @@ export function buildTools(cfg) {
       height: { type: 'integer', description: 'Default 480.' },
       reference: { type: 'array', items: { type: 'string' }, description: 'Optional: a picture name to start from.' }
     }, ['prompt']),
-    async run(args, ctx) { return ctx.brain.makeVideo(args, ctx); },
+    async run(args, ctx) { return keepMade(args, ctx, 'video', () => ctx.brain.makeVideo(args, ctx)); },
     summary: ({ prompt }) => `video: ${String(prompt).slice(0, 80)}`
   };
 
@@ -757,16 +805,17 @@ export function buildTools(cfg) {
       seconds: { type: 'integer', description: '10 to 240, default 30.' },
       title: str('Optional: 2 to 5 words. Make one up if none given.')
     }, ['prompt']),
-    async run(args, ctx) { return ctx.brain.makeSound('music', args, ctx); },
+    async run(args, ctx) { return keepMade(args, ctx, 'audio', () => ctx.brain.makeSound('music', args, ctx)); },
     summary: ({ prompt }) => `music: ${String(prompt).slice(0, 80)}`
   };
 
   t.make_sound = {
     schema: fn('make_sound', 'Make a short sound effect.', {
       prompt: str('What it sounds like: "heavy wooden door creaking open in a stone hall".'),
-      seconds: { type: 'integer', description: '1 to 20, default 5.' }
+      seconds: { type: 'integer', description: '1 to 20, default 5.' },
+      save_to: str(SAVE_TO_HELP)
     }, ['prompt']),
-    async run(args, ctx) { return ctx.brain.makeSound('sfx', args, ctx); },
+    async run(args, ctx) { return keepMade(args, ctx, 'audio', () => ctx.brain.makeSound('sfx', args, ctx)); },
     summary: ({ prompt }) => `sound: ${String(prompt).slice(0, 80)}`
   };
 
@@ -900,14 +949,18 @@ export function buildTools(cfg) {
       // Item 23 (Nov 11): any folder Bob may read, a file pattern, and /patterns/ as well as plain words.
       if (folder) {
         const dir = resolveUserPath(folder);
-        if (!insideAny(cfg.readRoots, dir)) throw new Error(`I'm not allowed to look in ${dir}. Allowed: ${cfg.readRoots.join('; ')}`);
+        if (!insideAny(readableRoots(cfg), dir)) throw new Error(`I'm not allowed to look in ${dir}. Allowed: ${readableRoots(cfg).join('; ')}`);
         if (isSensitive(cfg, dir)) throw new Error(SECRET_MSG);
       }
       // 1.5.34: the main project (Settings > Projects) is searched first.
-      const roots = folder ? [resolveUserPath(folder)] : project ? [all[project]] : [...new Set([all[cfg.defaultProject], ...Object.values(all)].filter(Boolean))];
+      let roots = folder ? [resolveUserPath(folder)] : project ? [all[project]] : [...new Set([all[cfg.defaultProject], ...Object.values(all)].filter(Boolean))];
+      // Nov 16 (800-job run): with no project set up, almost every file search was a wasted call. It searches the
+      // user's own folders he may read (Documents, Desktop, Downloads by default) instead.
+      let inUserFolders = false;
+      if (!roots.length) { roots = (cfg.readRoots || []).filter((d) => { try { return fs.statSync(d).isDirectory() && !isSensitive(cfg, d); } catch { return false; } }); inUserFolders = roots.length > 0; }
       const match = searchMatcher(text);
       const want = filePattern(files);
-      if (!roots.length) throw new Error('No projects are set up yet, so there\'s nothing to search. I\'ll look in a folder instead: tell me which one, or I\'ll start with Documents. (For you, Bob: use list_folder and read_file. Projects live under "projects" in config.json; there is no switch for them in the app yet.)');
+      if (!roots.length) throw new Error('No projects are set up and no folder was given, so there\'s nothing to search. Give a folder (folder: the full path), or use list_folder and read_file.');
       const hits = [];
       let scanned = 0;
       const walk = (dir) => {
@@ -929,7 +982,8 @@ export function buildTools(cfg) {
         }
       };
       for (const root of roots) walk(root);
-      return hits.length ? hits.join('\n') : `No matches in ${scanned} files.`;
+      const where = inUserFolders ? ` (no project is set up, so this searched ${roots.join('; ')})` : '';
+      return hits.length ? `${hits.join('\n')}${where ? `\n${where.trim()}` : ''}` : `No matches in ${scanned} files${where}.`;
     },
     summary: ({ project, folder, text, files }) => `search ${folder || project || 'all projects'}${files ? ` (${files})` : ''} for "${text}"`
   };

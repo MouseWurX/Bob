@@ -32,6 +32,7 @@ import { adventureSettingsHtml, mountAdventureSettings } from './adventure.js';
 import { gamesSettingsHtml, mountGamesSettings } from './games.js';
 import { shareBrainsHtml, mountShareBrains } from './share-brains.js';
 import { mountNetFiles } from './net-files.js'; // Nov 14 Bob-Net: Files and brains
+import { mountSearchBackup, searchBackupHtml } from './search-backup.js'; // Nov 16 Settings, Connections: Search API keys
 import { findTheme, DEFAULT_THEME } from './themes.js';
 import { tip, noteOrTip, stripTags, keep } from './tips.js';
 import { HOUSE, houseStyleHtml } from './house-style.js';
@@ -435,6 +436,7 @@ export function createCellar({ popOut = null } = {}) {
     ['opencode', 'OpenCode', 'opencode sst coding agent chat head cube sign in account', () => agentSectionHtml('opencode')],
     ['discord', 'Discord', 'discord bot token server channel group chat moderate moderator keep order kick ban spam chat head cube', () => chatAppHtml('discord')],
     ['telegram', 'Telegram', 'telegram bot botfather token pairing wake phrase chat head cube', () => chatAppHtml('telegram')],
+    ['search', '🔎 Search API keys', 'search api keys key backup search blocked robot check captcha web search tavily brave marginalia mojeek monthly cap test', () => searchBackupHtml()],
     ['email', '📧 Email account', 'email mail account imap smtp app password gmail outlook hotmail icloud yahoo reading sending server reset code', () => emailAccountHtml()],
     ['apps', '🔌 Other apps', 'other apps comfyui workflows port unreal blender mcp openai compatible api vs code continue opencode command line terminal cli key claude claude code desktop connect hands key', () => otherAppsHtml()],
     ['hands', '✋ Hands', 'files run commands schedules apps permission quarantine reviewer', () => handsSettingsHtml() + quarantineSettingsHtml()],
@@ -464,6 +466,21 @@ export function createCellar({ popOut = null } = {}) {
     if (id === 'pc') return `Bob ${settings.version?.label || ''}`;
     return '';
   };
+  // Nov 15: line icons (the menu's own style) for the phone's Settings list, by card id.
+  const CARD_LINES = {
+    bob: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/>',
+    how: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+    brains: '<rect x="6" y="6" width="12" height="12" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+    net: '<circle cx="5" cy="12" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="19" cy="18" r="2.5"/><path d="M7.3 11 16.7 7M7.3 13l9.4 4"/>',
+    online: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/>',
+    agents: '<rect x="3" y="5" width="18" height="12" rx="3"/><path d="M8 21l4-4 4 4M9 11h.01M15 11h.01"/>',
+    may: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>',
+    fun: '<rect x="2" y="7" width="20" height="10" rx="4"/><path d="M7 10v4M5 12h4M15.5 11h.01M18 13h.01"/>',
+    pc: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/>',
+    models: '<path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>',
+    tune: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+    style: '<path d="M12 3a9 9 0 1 0 0 18c1.5 0 2-1 2-2s-1-1.5-1-2.5 1-1.5 2-1.5h2a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/>'
+  };
   const EV_NAMES = { 'ev-pc': '💻 This replicant matrix and updates', 'ev-bob': '🙂 Bob himself', 'ev-how': '⚡ How Bob works' };
   const topicName = (id) => EV_NAMES[id] || EVERY_EXTRA.find(([k]) => k === id)?.[1] || ADV.find(([k]) => 'adv-' + k === id)?.[1] || id;
   const TOP_PANELS = '.set-page > .everyday > .spanel, .set-page > .advanced > .adv-sec';
@@ -473,7 +490,12 @@ export function createCellar({ popOut = null } = {}) {
     const top = `<div class="set-top"><span class="ttabs set-view" role="radiogroup" aria-label="How Settings is laid out">${seg('simple', 'Simple')}${seg('advanced', 'Advanced')}</span>${tip('Simple shows eight cards. Advanced lists every section down the side. Both hold the same settings.', 'Simple or Advanced')}
       <input type="search" data-ssearch placeholder="Search settings" aria-label="Search settings" value="${esc(settingsQuery)}">${helpLink('settings-everyday', 'Settings', '? Help with these settings')}</div>`;
     const nav = view === 'advanced' ? `<nav class="set-nav" aria-label="Settings sections">${SET_GROUPS.map(([g, ids]) => `<h4>${esc(g)}</h4>${ids.map((id) => `<button type="button" data-topic="${id}">${esc(topicName(id))}</button>`).join('')}`).join('')}</nav>` : '';
-    const cards = view === 'simple' ? `<div class="set-cards">${SET_CARDS.map((c) => `<button type="button" class="set-card" data-card="${c.id}"><span class="set-card-icon" aria-hidden="true">${c.icon}</span><strong>${esc(c.name)}</strong><span class="muted">${esc(c.about)}</span><span class="set-card-now">${esc(cardNow(c.id))}</span></button>`).join('')}</div>
+    // Nov 15 (the owner, phone): at phone width the cards read as a list with the app's line icons, under a short
+    // Models and looks list that stands in for the two rows of tabs. Wide windows keep the cards as they were.
+    const line = (d) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${d}</svg>`;
+    const row = (attrs, icon, name, about) => `<button type="button" class="set-door" ${attrs}>${line(icon)}<span class="set-door-t"><strong>${esc(name)}</strong><span class="muted">${esc(about)}</span></span><span class="set-go" aria-hidden="true">›</span></button>`;
+    const doors = view === 'simple' ? `<div class="set-doors" role="group" aria-label="Models and looks"><h4>Models and looks</h4><div class="set-list">${row('data-tab="catalogue"', CARD_LINES.models, 'Get models', 'Catalogue, voice, coding, pictures, music')}${row('data-tab="roles"', CARD_LINES.tune, 'Brains', 'Which brain does what, Set up and Calibrate')}${row('data-tab="style"', CARD_LINES.style, 'Style', 'Look, colours and animations')}</div><h4>Settings</h4></div>` : '';
+    const cards = view === 'simple' ? `${doors}<div class="set-cards">${SET_CARDS.map((c) => `<button type="button" class="set-card" data-card="${c.id}"><span class="set-card-icon" aria-hidden="true">${c.icon}</span>${CARD_LINES[c.id] ? `<span class="set-card-line">${line(CARD_LINES[c.id])}</span>` : ''}<strong>${esc(c.name)}</strong><span class="muted">${esc(c.about)}</span><span class="set-card-now">${esc(cardNow(c.id))}</span><span class="set-go" aria-hidden="true">›</span></button>`).join('')}</div>
       <div class="set-back" hidden><button type="button" data-card="">← All settings</button><h3 tabindex="-1"></h3></div>` : '';
     return `<section class="settings set-${view}">${top}<div class="set-body">${nav}<div class="set-main">${cards}<div class="set-page">${everydayHtml()}
       <div class="advanced">${ADV.map(([id, label, words, body]) => `<details class="subsection adv-sec spanel" data-panel="adv-${id}" id="sub-adv-${id}" data-words="${esc(words)}" ${openPanels.has('adv-' + id) ? 'open' : ''}><summary><h3>${esc(label)}</h3>${helpLink('settings-' + id, label)}</summary>${body()}</details>`).join('')}</div>
@@ -496,7 +518,7 @@ export function createCellar({ popOut = null } = {}) {
       const mine = card ? card.topics.filter((t) => ids.includes(t)) : [];
       for (const p of panels) { const on = mine.includes(p.dataset.panel); p.hidden = !on; if (on) p.open = mine.length === 1 || openPanels.has(p.dataset.panel); }
       const grid = sec.querySelector('.set-cards'), back = sec.querySelector('.set-back');
-      if (grid) grid.hidden = Boolean(card);
+      if (grid) grid.hidden = Boolean(card); const doorsEl = sec.querySelector('.set-doors'); if (doorsEl) doorsEl.hidden = Boolean(card);
       if (back) { back.hidden = !card; back.querySelector('h3').textContent = card ? `${card.icon} ${card.name}` : ''; }
     }
     const none = sec.querySelector('.adv-none'); if (none) none.hidden = true;
@@ -659,6 +681,7 @@ export function createCellar({ popOut = null } = {}) {
     mountGamesSettings(dlg.querySelector('.games-box'), { api, settings }); // 1.5.121 🧩 Games
     mountShareBrains(dlg.querySelector('.share-box')); // Bob-Net: My other Bobs and What they share
     mountNetFiles(dlg.querySelector('.net-files-box')); // Nov 14 Bob-Net: Files and brains
+    mountSearchBackup(dlg.querySelector('.search-backup-box')); // Nov 16 Settings, Connections: Search API keys
     readyLine(); // 1.5.117: "Bob 1.5.117 is ready · Restart Bob now" on the updates line when a new Bob waits
     const page = mode === 'welcome' ? 'Welcome' : tab === 'settings' ? 'Settings' : tab === 'style' ? 'Style' : 'Get models';
     $('cellar-title').textContent = page;
@@ -1411,6 +1434,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.selfwork) { const k = el.dataset.selfwork; const r = await api('/api/settings', { selfWork: { [k]: k === 'helpers' ? el.checked : k === 'ctx' ? Number(el.value) : el.value } }); settings.selfWork = r.selfWork; flash(el, 'Saved. Used on his next repository job.'); return; }
       if (el.dataset.set === 'howtos') { const r = await api('/api/settings', { howtos: el.checked }); settings.howtos = r.howtos; el.checked = r.howtos; flash(el, r.howtos ? 'On. After a job with a few steps goes well, Bob offers to keep them as a how-to.' : 'Off. Bob won\'t offer or use how-tos. Saved ones stay in 🧰 Tools and how-tos.'); return; }
       if (el.dataset.set === 'computerLab') { const r = await api('/api/settings', { computerLab: el.checked }); settings.computerLab = r.computerLab === true; el.checked = settings.computerLab; window.dispatchEvent(new CustomEvent('bob-lab-switch', { detail: { on: settings.computerLab } })); flash(el, r.computerLabWhy || (settings.computerLab ? 'On. 🧪 Lab is in the left pane.' : 'Off. The Lab button is hidden; brains you made stay in Bob.')); return; } // 1.5.141
+      if (el.dataset.set === 'labPro' || el.dataset.set === 'labLessons') { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k] === true; el.checked = settings[k]; flash(el, settings[k] ? 'On.' : 'Off.'); return; } // 15 Nov: Lab switches (labPro had no handler here)
       if (el.dataset.set === 'naughtyList') { const r = await api('/api/settings', { naughtyList: el.checked }); settings.naughtyList = r.naughtyList === true; el.checked = settings.naughtyList; if (!settings.naughtyList && catView === 'naughty') setCatView('well'); flash(el, settings.naughtyList ? 'On. The Naughty list side (the red devil) is at the top of the Brain catalogue.' : 'Off. The naughty list is out of every list again.'); return; }
       if (el.dataset.set === 'catalogUpdates') { const r = await api('/api/settings', { catalogUpdates: el.checked }); settings.catalogUpdates = r.catalogUpdates === true; el.checked = settings.catalogUpdates; flash(el, settings.catalogUpdates ? (r.listCheck?.why ? `On. ${r.listCheck.why}` : 'On. Bob looks for a newer brain list once a day.') : 'Off. Bob uses the brain list that came with this version.'); await load().catch(() => {}); return; } // 1.5.137
       if (el.dataset.set === 'webSearch') { const r = await api('/api/settings', { webSearch: el.checked }); settings.webSearch = r.webSearch; el.checked = r.webSearch; window.dispatchEvent(new CustomEvent('bob-web', { detail: { webSearch: r.webSearch } })); flash(el, r.webSearch ? 'On. Bob can search the web when a question needs it.' : 'Off. Bob won\'t go online to look things up.'); return; }
@@ -1432,6 +1456,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.set === 'smartNotes') { const r = await api('/api/settings', { smartNotes: el.checked }); settings.smartNotes = r.smartNotes; el.checked = r.smartNotes; flash(el, r.smartNotes ? 'On. Bob notes what\'s worth keeping and says 📝 Noted.' : 'Off. Bob only notes what you ask him to.'); return; }
       if (el.dataset.set === 'toolRecord') { const r = await api('/api/settings', { toolRecord: el.checked }); settings.toolRecord = r.toolRecord; el.checked = r.toolRecord; return; }
       if (el.dataset.set === 'toolSets') { const r = await api('/api/settings', { toolSets: el.checked }); settings.toolSets = r.toolSets; el.checked = r.toolSets; return; }
+      if (el.dataset.set === 'soloEffort') { const r = await api('/api/settings', { soloEffort: el.checked }); settings.soloEffort = r.soloEffort; el.checked = r.soloEffort; window.dispatchEvent(new CustomEvent('bob-solo-effort', { detail: r.soloEffort })); return; }
       if (el.dataset.set === 'stepThinking') { const r = await api('/api/settings', { stepThinking: el.checked }); settings.stepThinking = r.stepThinking; el.checked = r.stepThinking; return; }
       if (el.dataset.set === 'toolHelp') { const r = await api('/api/settings', { toolHelp: el.checked }); settings.toolHelp = r.toolHelp; el.checked = r.toolHelp; return; }
       if (el.dataset.set === 'toolLearning') { const r = await api('/api/settings', { toolLearning: el.checked }); settings.toolLearning = r.toolLearning; el.checked = r.toolLearning; draw(); flash(dlg.querySelector('[data-set="toolLearning"]') || dlg, r.toolLearning ? 'On. Bob learns from what works and what fails.' : 'Off. Bob keeps what he learned but stops using it.'); return; }

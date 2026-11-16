@@ -6,7 +6,7 @@
 import { placeFor } from './place.js';
 import { gb } from './util.js';
 
-export const SLOT_NAMES = { bob: 'Brain', small: 'Quick brain', gaming: 'Gaming', deep: 'Deep thinking', tinker: 'Coding', reviewer: 'Review', eyes: 'Seeing pictures', embed: 'Memory (finding past chats)', voice: 'Hearing you', speech: 'Voice', image: 'Painter', edit: 'Picture editor', video: 'Video', music: 'Music', sfx: 'Sound effects', ledger: 'Spreadsheets', scout: 'Research', painter: 'Prompt writer', office: 'Office', phone: 'Phone' };
+export const SLOT_NAMES = { bob: 'Brain', small: 'Quick brain', gaming: 'Gaming', deep: 'Deep thinking', tinker: 'Coding', reviewer: 'Review', eyes: 'Seeing pictures', embed: 'Memory (finding past chats)', voice: 'Hearing you', speech: 'Voice', image: 'Painter', edit: 'Picture editor', video: 'Video', music: 'Music', sfx: 'Sound effects', ledger: 'Spreadsheets', scout: 'Research', painter: 'Prompt writer', office: 'Office', housekeeping: 'Housekeeping', phone: 'Phone' };
 export const BRAIN_SLOTS = ['bob', 'small', 'gaming', 'deep', 'tinker', 'reviewer', 'office', 'eyes', 'ledger', 'scout', 'painter'];
 // 1.5.56: the owner's rule: the Gaming brain is only ever Qwen3 4B Instruct 2507 (catalog id qwen3-4b), timed on a
 // busy processor. Gemma 4 E4B never runs during a game. Only catalog entries with the "gaming" job go in that slot.
@@ -32,6 +32,8 @@ export function paramsB(name) {
 // Can this model do this job? Models in Bob's list say so themselves (catalog "jobs"). Others are judged by what
 // their engine reports (Ollama: completion, vision, tools, thinking, embedding), then by their name.
 export function canDo(slotId, { entry, name, caps } = {}) {
+  // Nov 15: Housekeeping only sums up and sorts: any brain that can chat for Bob can do it (catalogue entries don't list it).
+  if (slotId === 'housekeeping') return ['bob', 'small', 'deep', 'reviewer', 'office'].some((id) => canDo(id, { entry, name, caps }));
   if (slotId === 'gaming') return Boolean(entry?.jobs?.includes('gaming')) && !isE4b(name, entry?.id, entry?.ollama);
   if (entry?.jobs) return entry.jobs.includes(slotId);
   if (entry && !['chat', 'coding', 'vision'].includes(entry.category)) return false;

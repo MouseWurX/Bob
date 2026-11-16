@@ -110,6 +110,21 @@ check('12: one exact command in one folder, until midnight', todayKey('npm test'
 // ---------- 13. Sum up and carry on ----------
 check('13: the meter and the button are on the chat page', /id="chatFill"/.test(fs.readFileSync(path.join(here, '..', 'public', 'index.html'), 'utf8')) && /\/api\/chat\/compact/.test(publicText('app.js')) && COMPACT_KEEP === 6);
 
+{
+  // Nov 15 (the owner): Chat memory sits in the status row (under the typing box in Lamplight), across from the brain label,
+  // with a plain-words (i); the reading is kept on the answer so it's back after a reload, and Sum up clears it.
+  const html = fs.readFileSync(path.join(here, '..', 'public', 'index.html'), 'utf8').replace(/\r\n/g, '\n');
+  const row = html.slice(html.indexOf('<div class="ctx">'), html.indexOf('id="foldRight"'));
+  check('13: Chat memory is in the brain label row, after the gap', row.includes('id="brainBar"') && row.indexOf('class="ctx-fill"') < row.indexOf('id="chatFill"') && /id="chatFill"[\s\S]*class="tip-i"[\s\S]*id="chatFillSum"/.test(row));
+  check('13: not by Effort any more', !/id="effort"[\s\S]*id="chatFill"[\s\S]*id="composer"/.test(html));
+  check('13: short words that fit a phone', /`Chat memory: \$\{Math\.round\(share \* 100\)\}%`/.test(publicText('app-redo.js')));
+  check('13: the reading is kept on the answer and read back', /last\.fill = \{ used: st\.used, ctx: st\.ctx \}/.test(src('brain-turns.js')) && /m\.fill\?\.ctx \? \{ fill: m\.fill \}/.test(src('brain-chats.js')) && /drawFill\(\[\.\.\.h\]\.reverse\(\)/.test(publicText('app.js')));
+  check('13: Sum up clears the old reading', /delete m\.fill/.test(src('brain-chats.js')));
+  // Nov 15 menu check at phone width: two older menu faults found and fixed with this change
+  check('13: phone Effort choices float out of the sideways-scrolling row', /document\.body\.appendChild\(choices\)/.test(publicText('effort.js')) && /home\.appendChild\(choices\)/.test(publicText('effort.js')) && /:is\(\.effort, \.effort-choices\) \[data-effort\]/.test(fs.readFileSync(path.join(here, '..', 'public', 'style.css'), 'utf8')));
+  check('13: the phone menu sheet has a solid back in Lamplight', /@media \(max-width: 640px\) \{ body\.look-lamplight:not\(\.left-folded\) \.side \{ background: var\(--panel\); \} \}/.test(fs.readFileSync(path.join(here, '..', 'public', 'looks.css'), 'utf8')));
+}
+
 // ---------- 14. A reply that stops sending words ----------
 {
   const l = src('llamacpp.js');
@@ -218,8 +233,8 @@ const job = (extra = {}) => ({ brain, emit: (e) => events.push(e), signal: new A
   check('21: DuckDuckGo results read', JSON.stringify(parseDdg(ddg)) === JSON.stringify([{ title: 'Example A', url: 'https://example.org/a', snippet: 'About & more' }]));
   const mj = '<li><h2><a class="title" href="https://example.org/b">Example B</a></h2><p class="s">Some <strong>words</strong></p></li>';
   check('21: Mojeek results read', JSON.stringify(parseMojeek(mj)) === JSON.stringify([{ title: 'Example B', url: 'https://example.org/b', snippet: 'Some words' }]));
-  // Item 194: the look-ups go through fetchRetry, which puts the same webSignal time limit on every try.
-  check('20: every look-up has a time limit', /signal: webSignal\(signal\)/.test(src('tools.js')) && (src('tools.js').match(/webSignal\(signal\)|fetchRetry\([^\n]*\bsignal\);/g) || []).length >= 3);
+  // Item 194: the look-ups go through fetchRetry, which puts the same webSignal time limit on every try (Nov 16: web_search hands fetchRetry to web-search.js).
+  check('20: every look-up has a time limit', /signal: webSignal\(signal\)/.test(src('tools.js')) && (src('tools.js').match(/webSignal\(signal\)|fetchRetry\([^\n]*\bsignal\)[;,) ]/g) || []).length >= 3);
 }
 { // 17 how big the front desk's start is
   const { messages, tools } = brain.startPrompt();

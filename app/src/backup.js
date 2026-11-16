@@ -50,7 +50,7 @@ export const NOT_BACKED_UP = [
   'bob/update-status.json', 'bob/update-launch-log.txt', 'bob/github-update/', 'bob/catalog-latest.json', 'bob/model-scan.json',
   'bob/tidy-backups/', 'bob/tool-results/', 'bob/backups/', 'bob/trash/', 'bob/thumbs/', 'bob/voice-samples/', 'bob/speed-tests.json', 'bob/speed-log.json', 'bob/card-seen.json', 'bob/load-times.json',
   'bob/selftools.json', 'bob/quarantine.json', 'bob/lab/', 'bob/hands-runs.json', 'bob/hands-journal.json', 'bob/downloads.json',
-  'bob/queue.json', 'bob/electron/', 'bob/doc-index.json', 'bob/digest.json', 'bob/tool-group-vectors.json', 'bob/receipts/', 'bob/claude-door.json', 'bob/tool-packs.json', 'tool-packs/', 'bob/sd-server-args.txt', 'bob/backup-state.json', 'bob/restore-result.json',
+  'bob/queue.json', 'bob/housekeeping-runs.json', 'bob/electron/', 'bob/doc-index.json', 'bob/digest.json', 'bob/tool-group-vectors.json', 'bob/receipts/', 'bob/claude-door.json', 'bob/tool-packs.json', 'tool-packs/', 'bob/sd-server-args.txt', 'bob/backup-state.json', 'bob/restore-result.json',
   'bob/seeded-brains.json', 'bob/keys.json', 'bob/bob-net-link-keys.json', // brains seeded on a lent card (worked out again); locked secrets and Bob-Net link keys are locked to this computer (keys travel in the locked part; Bobs pair again)
   'bob/saved-formats.json', 'bob/turn-changes/', // items 232 and 238: worked out again; a turn's Undo is about this computer's files
   'bob/running.json', 'bob/crash-reports/', 'bob/before-safe-start.json', 'bob/settings-undo.json', 'bob/weekly.json', 'bob/chat-places/', 'bob/tool-errors.json', 'bob/amnesia/', // items 62 to 72 (and reliability item 206's error counts; Amnesia mode's copy from before it went on): worked out again on this computer, or about this computer only
@@ -59,13 +59,14 @@ export const NOT_BACKED_UP = [
   'bob/spare-keys.json', // 🔑 spare keys kept for your other Bobs: locked to this computer; pick them up again on a new one
   'bob/coding-agents.json', 'bob/agent-accounts/', 'bob/agent-tasks/', 'bob/agent-ask.mjs', // Nov 13 Coding agents: folders on this computer, other people's sign-ins (never copied), a task file while it runs, a helper made again
   'bob/honesty.json', // Nov 12, item 192: each brain's honesty score on this computer, counted again from new answers
+  'bob/search-backup-count.json', // Nov 16: this month's count of searches per Search API keys service, kept on this computer
   'bob/spending.json', 'profiles/', // 🧾 the spending sheet and 👥 profiles are locked with keys that belong to this computer (or a person's passcode kept in config.json): save the sheet as a CSV to move it
   'painter/', 'references/', 'workshop/', 'own-code/', 'documents/', 'tools/_scratch/', 'tools/_pyscratch/', 'restore-waiting/', 'restore-waiting.new/'
 ];
 
 // The names of keys Bob reads from the computer's own variables (Windows: your user variables; Mac and Linux:
 // ~/.config/bob/env). Only these, plus a typed-in "Another service" key name, ever go in the locked part.
-export const KEY_NAMES = ['BOB_DISCORD_TOKEN', 'BOB_TELEGRAM_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'TOGETHER_API_KEY', 'LAMBDA_API_KEY', 'RUNPOD_API_KEY', 'VAST_API_KEY', 'HF_TOKEN', 'BOB_EMAIL_PASSWORD'];
+export const KEY_NAMES = ['BOB_DISCORD_TOKEN', 'BOB_TELEGRAM_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'TOGETHER_API_KEY', 'LAMBDA_API_KEY', 'RUNPOD_API_KEY', 'VAST_API_KEY', 'HF_TOKEN', 'BOB_EMAIL_PASSWORD', 'MARGINALIA_API_KEY', 'BRAVE_SEARCH_API_KEY', 'MOJEEK_API_KEY', 'TAVILY_API_KEY'];
 const KEY_NAME_RE = /^[A-Z][A-Z0-9_]{2,63}$/;
 
 export function keyNames(cfg = {}) {
@@ -336,6 +337,7 @@ export function safeSettings(s = {}) {
   if (out.rentals && typeof out.rentals === 'object') out.rentals = { ...out.rentals, enabled: {}, current: '' };
   if (out.cloudHelpers && typeof out.cloudHelpers === 'object') out.cloudHelpers = Object.fromEntries(Object.entries(out.cloudHelpers).map(([k, v]) => [k, { ...(v || {}), enabled: false }]));
   if (out.labForgeStart) out.labForgeStart = false;
+  if (out.labConsole) out.labConsole = false; // the Forge console's commands: switched on again on this computer
   if (out.backup && typeof out.backup === 'object') out.backup = { ...out.backup, auto: false }; // the automatic backup: switched on again on this computer
   return out;
 }

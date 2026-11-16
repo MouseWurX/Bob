@@ -98,27 +98,28 @@ clearInterval(brain.reminderTimer);
   check('--allow-old-bob goes ahead, loudly', ok.version === '1.5.108' && /WARNING/.test(warned[0] || ''));
   check('a current Bob is stamped and goes ahead', checkBobSource(fresh, lab).commit === 'b6ab48d00000');
   const wl = fs.readFileSync(path.join(here, '..', 'model-lab', 'write-lessons.mjs'), 'utf8'), ts = fs.readFileSync(path.join(here, '..', 'model-lab', 'tool-score.mjs'), 'utf8'), kit = fs.readFileSync(path.join(here, '..', 'model-lab', 'bob-kit.mjs'), 'utf8');
-  check('lessons and their tool lists carry bob_src', /bob_src: kit\.bobSrc,[^\n]*messages: saved/.test(wl) && /\{ system, tools, bob_src: kit\.bobSrc \}/.test(wl) && /checkBobSource\(bobDir/.test(kit));
+  check('lessons and their tool lists carry bob_src', /bob_src: kit\.bobSrc,[^\n]*messages: (?:clean\(saved\)|saved)/.test(wl) && /\{ system, tools, bob_src: kit\.bobSrc \}/.test(wl) && /checkBobSource\(bobDir/.test(kit));
   check('tool-score says which Bob its tool lists came from, and can score with the live tools', /--tools live/.test(ts) && /bob_src: liveKit \? liveKit\.bobSrc : recordedSrc/.test(ts) && /liveSwap\(h\.tools\)/.test(ts));
 }
 
 // Nov 14 (the owner): new tool shapes start a fresh history; the old one goes to an archive folder, not the bin.
 {
   const { newShapeCheck, shapeFile, archiveDir } = await import('../src/tool-record.js');
-  const { shapeStamp, SETS } = await import('../src/tool-sets.js');
+  const { shapeStamp, SETS, TOOL_SHAPES } = await import('../src/tool-sets.js');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-shape-'));
   const c = { dataDir: dir };
-  check('today the live tool shapes are Bob\'s own (GPT-OSS wording is unproven)', shapeStamp(c) === '1-bob' && shapeStamp({ toolSets: false }) === '1-bob');
+  const QW = 'qwen2.5+qwen3+qwen3-coder+qwen3.5', LIVE = `${TOOL_SHAPES}-gpt-oss+${QW}`, BOB = `${TOOL_SHAPES}-${QW}`;
+  check('today the live tool shapes are the locked GPT-OSS and Qwen ones; with the switch off, Bob\'s own', shapeStamp(c) === LIVE && shapeStamp({ toolSets: false }) === `${TOOL_SHAPES}-bob`);
   fs.writeFileSync(recordFile(c), JSON.stringify({ tool: 'old' }) + '\n');
-  check('a record with no stamp yet is stamped, not moved', newShapeCheck(c) === null && fs.existsSync(recordFile(c)) && fs.readFileSync(shapeFile(c), 'utf8').trim() === '1-bob');
+  check('a record with no stamp yet is stamped, not moved', newShapeCheck(c) === null && fs.existsSync(recordFile(c)) && fs.readFileSync(shapeFile(c), 'utf8').trim() === LIVE);
   check('same shapes: nothing moves', newShapeCheck(c) === null && readRecord(c).length === 1);
-  SETS['gpt-oss'].proven = true;
-  const stamp = shapeStamp(c);
   SETS['gpt-oss'].proven = false;
-  check('a family proven by tool-score changes the stamp', stamp === '1-gpt-oss');
+  const stamp = shapeStamp(c);
+  SETS['gpt-oss'].proven = true;
+  check('a family proven (or not) changes the stamp', stamp === BOB);
   const moved = newShapeCheck(c, stamp, new Date(2026, 10, 14));
-  check('new shapes: the old history moves to the archive, named by date and shape, and the record starts fresh', moved && path.dirname(moved) === archiveDir(c) && path.basename(moved) === 'tool-record-2026-11-14-shape-1-bob.jsonl' && !fs.existsSync(recordFile(c)) && fs.readFileSync(moved, 'utf8').includes('"old"'), moved);
-  check('the new stamp is kept', fs.readFileSync(shapeFile(c), 'utf8').trim() === '1-gpt-oss');
+  check('new shapes: the old history moves to the archive, named by date and shape, and the record starts fresh', moved && path.dirname(moved) === archiveDir(c) && path.basename(moved) === `tool-record-2026-11-14-shape-${LIVE}.jsonl` && !fs.existsSync(recordFile(c)) && fs.readFileSync(moved, 'utf8').includes('"old"'), moved);
+  check('the new stamp is kept', fs.readFileSync(shapeFile(c), 'utf8').trim() === BOB);
   fs.writeFileSync(recordFile(c), JSON.stringify({ tool: 'mid' }) + '\n');
   const again = newShapeCheck(c, '1-bob', new Date(2026, 10, 14));
   check('a second change the same day never overwrites an archive', again && again !== moved && fs.existsSync(moved) && fs.existsSync(again), again);

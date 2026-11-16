@@ -66,7 +66,7 @@ async function main() {
   if ((!url && !dry) || !a.questions || !a.bob) { console.error('--url <server> --questions <folder> --bob <Bob source> are needed (--dry: no server)'); process.exit(1); }
   const out = path.resolve(String(a.out || process.env.LAB_OUT || 'tool-coach')); fs.mkdirSync(out, { recursive: true });
   let bobDir = path.resolve(String(a.bob)); if (!fs.existsSync(path.join(bobDir, 'src')) && fs.existsSync(path.join(bobDir, 'app', 'src'))) bobDir = path.join(bobDir, 'app');
-  const { loadBob } = await import('./bob-kit.mjs'); const kit = await loadBob(bobDir);
+  const { loadBob } = await import('./bob-kit.mjs'); const kit = await loadBob(bobDir, { family: a.family ? String(a.family) : '' });
   let bobVer = '?'; try { bobVer = JSON.parse(fs.readFileSync(path.join(bobDir, 'package.json'), 'utf8')).version; } catch {}
   const jobs = a.jobs ? new Set(String(a.jobs).split(',').map((x) => x.trim()).filter(Boolean)) : null;
   const all = buildQuestions(readJsonl(path.join(path.resolve(String(a.questions)), 'lessons.jsonl')), kit, { turns: Number(a.steps) || 4, jobs });

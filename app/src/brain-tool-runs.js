@@ -1,5 +1,6 @@
 // Running a tool call: limits, saving what it made, checking the result, offering a fix, and handing results back.
 // Methods of the Brain class. Split out of brain.js.
+import { planStep } from './loop-guard.js';
 import { SAVING_TOOLS, saysNoSave, noSaveLine } from './no-save.js';
 import { gate as qGate, after as qAfter, noteStrike } from './quarantine.js';
 import { WATCH_TOOLS } from './meanwhile.js';
@@ -24,12 +25,16 @@ import { limitMs, cleanResult, riskOf, NOTHING_FOUND, capFor, capResult } from '
 import { raceTimeout } from './hang-guard.js';
 import { lockOn } from './lock.js';
 import fs from 'node:fs';
+import { whereItIs as whereFound } from './find-by-name.js'; // Nov 16: a missing path's error says where it is
+import { readableRoots, isSensitive } from './tools.js';
 import { afterTool, afterTurn, verifyOutput } from './verify.js';
 import { groupsFor } from './toolbox.js';
 import { linkKey, APPROVAL_TIMEOUT_MS, NO_ANSWER_NOTE, fileBefore, traceStep } from './brain-words.js';
 import { houseGroupOfTool } from './brain.js';
 
 // Methods of the Brain class, put on it in its main file with the same rules as the methods written inside it.
+
+
 export const toolRunParts = {
   // Every tool call goes through here. Quarantine (quarantine.js, opt-in) watches before and after; it's a few counters.
   async runTool(name, args, ctx) {
@@ -238,7 +243,8 @@ export const toolRunParts = {
       this.log('error', `${name}: ${causeLine(e).slice(0, 400)}`); // item 207
       this.noteToolError(name);
       const te = toolErrorText(e);
-      return { text: te.text, ok: false, ...(te.hinted ? { hinted: true } : {}) };
+      const where = this.cfg ? whereFound(readableRoots(this.cfg), (f) => isSensitive(this.cfg, f), args, te.text) : '';
+      return { text: where || te.text, ok: false, ...(te.hinted || where ? { hinted: true } : {}) };
     }
   },
   // One run of a tool, the same for every tool (Nov 12, items 168, 169, 175, 178):
@@ -264,7 +270,10 @@ export const toolRunParts = {
         return `Error: ${name} didn't finish within ${mins} minute${mins === 1 ? '' : 's'}, so Bob stopped waiting for it. It may still finish, or may have done part of the job.`;
       }
       // Item 198: plain words, from the error's own code (retry.js); the logbook keeps the real cause.
-      const te = toolErrorText(e); te.cause = causeLine(e); ctx.toolError = te;
+      const te = toolErrorText(e); te.cause = causeLine(e);
+      const where = this.cfg ? whereFound(readableRoots(this.cfg), (f) => isSensitive(this.cfg, f), args, te.text) : '';
+      if (where) { te.text = where; te.hinted = true; }
+      ctx.toolError = te;
       return te.text;
     }
     const clean = cleanResult(raw);
@@ -321,6 +330,7 @@ export const toolRunParts = {
   // Bob gets one more go (again = true) with the tools it needs; if it still didn't, the user is told plainly.
   // Returns true when the turn should go round once more.
   checkTurn(ctx, reply, again) {
+    if (planStep(ctx)) return false; // Max's plan step: the file or the action comes in the jobs after it (loop-guard.js)
     let v = null;
     try { v = afterTurn(ctx, reply?.content || ''); } catch (e) { this.brokenCheck(ctx, 'end-of-turn check', e); }
     if (!v) return false;

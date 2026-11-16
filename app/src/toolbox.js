@@ -177,6 +177,9 @@ export function useToolsTool(brain) {
       const handId = Object.keys(HANDS).find((h) => h === id);
       if (!groups[id]) {
         if (handId && !handOn(brain.cfg, handId)) return handOffWhy(brain.cfg, handId);
+        // Nov 15: Bob's own word for research is "scouting", so a brain asks for a "scout" group. The web tools are
+        // already in hand (core), so it's told to call them instead of hunting for a group.
+        if (/^(scout|scouting|research|web|search)$/.test(id) && brain.usable?.('web_search')) return 'web_search and fetch_page are already yours, no group needed: call web_search now.';
         return `There is no group called ${group || '(none)'}. Groups you can add: ${Object.keys(groups).join(', ') || 'none'}.`;
       }
       ctx.loaded?.add(id);

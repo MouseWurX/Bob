@@ -5,6 +5,7 @@
 // folders, his own settings, or secret files.
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import crypto from 'node:crypto';
 import { insideAny, isInside, appDir } from './config.js';
 import { isSensitive } from './tools.js';
@@ -38,14 +39,30 @@ export function handsRoots(cfg) {
 
 const say = (p) => p; // paths are shown as they are; kept as a hook for shortening later
 
+// Nov 15 (Riker and Bobert, coached lessons): both Qwen brains give short paths ("backup_2022.zip", "~/scripts").
+// ~ is the home folder. A short path to something that exists is looked for in the folders ticked for Hands, and
+// used when exactly one of them has it. Anything else is left as given, and the full-path rule below says why.
+export function shortPath(cfg, p, { mustExist = true, home = os.homedir() } = {}) {
+  const s = String(p).trim();
+  if (/^~(?:[\\/]|$)/.test(s)) return path.join(home, s.slice(1));
+  if (path.isAbsolute(s) || /^[a-zA-Z]:[\\/]/.test(s) || !mustExist) return s;
+  const hits = handsRoots(cfg).map((r) => path.join(r, s)).filter((f) => fs.existsSync(f));
+  return hits.length === 1 ? hits[0] : s;
+}
+
 // Throws a plain-English reason if Bob may not touch this path with the Files Hand.
 export function guardPath(cfg, p, { mustExist = true, what = 'that' } = {}) {
   if (!p || typeof p !== 'string') throw new Error('A full path is needed.');
+  p = shortPath(cfg, p, { mustExist });
   if (!path.isAbsolute(p) && !/^[a-zA-Z]:[\\/]/.test(p)) throw new Error(`Please give a full path, like C:\\Users\\you\\Downloads\\file.zip (got "${p}").`);
   const full = path.resolve(p);
   if (isSensitive(cfg, full)) throw new Error('That holds keys or passwords, so it stays off-limits to me.');
   if (cfg.settingsFile && path.resolve(cfg.settingsFile) === full) throw new Error("That's my own settings file, which I can't change.");
   if (insideAny([...readOnlyRoots(cfg), appDir, cfg.dataDir].filter(Boolean), full)) throw new Error(`${full} is read-only for me.`);
+  // Nov 16 (800-job read, an outlier): with no make-folder action he moved his own working folder (the inn) to fake one,
+  // and the undo failed. Bob's own working folder, and any folder holding it, is never moved, renamed or recycled.
+  const own = [cfg.agentDir, cfg.dataDir].filter(Boolean).map((d) => path.resolve(d));
+  if (own.some((d) => d.toLowerCase() === full.toLowerCase() || d.toLowerCase().startsWith(full.toLowerCase().replace(/[\\/]+$/, '') + path.sep))) throw new Error(`${full} is my own working folder (or holds it), so I don't move, rename or recycle it. To make a new folder, give its full path as the "to" of a move or copy.`);
   const roots = handsRoots(cfg);
   if (!insideAny(roots, full)) throw new Error(roots.length ? `I can only work with files in: ${roots.join('; ')}. You can tick more folders in Settings, Hands.` : 'No folders are ticked for the Files Hand yet. Tick some in Settings, Hands.');
   if (mustExist && !fs.existsSync(full)) throw new Error(`${what === 'that' ? full : what} doesn't exist.`);

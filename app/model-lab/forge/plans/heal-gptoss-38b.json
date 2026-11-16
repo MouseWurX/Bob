@@ -16,7 +16,7 @@
       "../../hf-stage-1113/lessons-gptoss/clean-heldout.jsonl"
     ],
     "ledger": "out/lesson-ledger.jsonl",
-    "note": "Every held-out and calib item: the 534 held-out items as Opus fixed them (heldout-fixed), the 87 originals that sit inside training files (heldout-originals: lines picked out of out/lessons and lessons-coding-2), and the held-out and calib files themselves (the 308 Riker calib questions the gptoss-tools check used, the folded held-out sets). The hf-stage-1113 GPT-OSS held-out files (beside Agent 00, in C:\\Unreal Projects) are in too. The quiz items are always in. The pod gets out/lessons-gptoss-heal-checked."
+    "note": "Every held-out and calib item: the 534 held-out items as Opus fixed them (heldout-fixed), the 87 originals that sit inside training files (heldout-originals: lines picked out of out/lessons and lessons-coding-2), and the held-out and calib files themselves (the 308 Riker calib questions the gptoss-tools check used, the folded held-out sets). The hf-stage-1113 GPT-OSS held-out files (beside the lab folder) are in too. The quiz items are always in. The pod gets out/lessons-gptoss-heal-checked."
   },
   "gpus": [
     "NVIDIA H200",
