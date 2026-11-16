@@ -171,7 +171,7 @@ export const soloBrain = (cfg, { noTools = false } = {}) => (cfg?.models?.bob ? 
 // { go }, { no } or { change: 'their words' }. null when that setting is off.
 // What the user sees at the end is always the last reply Bob wrote (pickAnswer marks the rest as steps), so every
 // review here improves that reply, and the improved one is what's shown (the owner, 16 Nov: "robust, well reviewed").
-export async function soloRun(brain, level, { run, review, emit, signal, msgs, turnText, card = null, planShown = () => {} }) {
+export async function soloRun(brain, level, { run, review, emit, signal, msgs, turnText, card = null, planShown = () => {}, forget = () => {} }) {
   const rounds = [];
   const jobReports = []; // what each Max job said at its end, in case the answer doesn't hold the result
   const start = msgs.length;
@@ -236,6 +236,7 @@ export async function soloRun(brain, level, { run, review, emit, signal, msgs, t
     if (list.length < 1) {
       // No plan came: the tries leave the chat (they were the answer in disguise), and the ask runs as one job.
       msgs.splice(msgs.map((m) => m.role).lastIndexOf('user') + 1);
+      forget();
       say('\n\n_No step-by-step plan came out, so I\'m doing this as one job and checking it twice._\n\n');
       rounds.push({ kind: 'noplan' });
       await run(DIRECT_NOTE, { phase: 'do' });
