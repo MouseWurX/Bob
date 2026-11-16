@@ -65,7 +65,7 @@ export async function fetchRetry(url, opts = {}, signal, { fetchImpl = (...a) =>
     let r;
     try { r = await fetchImpl(url, { ...opts, signal: webSignal(signal) }); }
     catch (e) { if (signal?.aborted || i > 0 || e?.name === 'TimeoutError' || engineFailKind(e) !== 'dropped') throw e; await pause(waitMs(), signal); continue; }
-    if (i === 0 && [429, 502, 503, 504].includes(r.status)) {
+    if (i === 0 && !opts.once && [429, 502, 503, 504].includes(r.status)) { // once: a service that says "too many" is never asked again (web-search.js Firecrawl)
       const after = Number(r.headers?.get?.('retry-after'));
       try { await r.body?.cancel?.(); } catch {}
       await pause(Number.isFinite(after) && after > 0 ? Math.min(5000, after * 1000) : waitMs(), signal);

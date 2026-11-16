@@ -436,7 +436,7 @@ export function createCellar({ popOut = null } = {}) {
     ['opencode', 'OpenCode', 'opencode sst coding agent chat head cube sign in account', () => agentSectionHtml('opencode')],
     ['discord', 'Discord', 'discord bot token server channel group chat moderate moderator keep order kick ban spam chat head cube', () => chatAppHtml('discord')],
     ['telegram', 'Telegram', 'telegram bot botfather token pairing wake phrase chat head cube', () => chatAppHtml('telegram')],
-    ['search', '🔎 Search API keys', 'search api keys key backup search blocked robot check captcha web search tavily brave marginalia mojeek monthly cap test', () => searchBackupHtml()],
+    ['search', '🔎 Search API keys', 'search api keys key backup search blocked robot check captcha web search tavily brave marginalia mojeek firecrawl no key monthly cap test', () => searchBackupHtml()],
     ['email', '📧 Email account', 'email mail account imap smtp app password gmail outlook hotmail icloud yahoo reading sending server reset code', () => emailAccountHtml()],
     ['apps', '🔌 Other apps', 'other apps comfyui workflows port unreal blender mcp openai compatible api vs code continue opencode command line terminal cli key claude claude code desktop connect hands key', () => otherAppsHtml()],
     ['hands', '✋ Hands', 'files run commands schedules apps permission quarantine reviewer', () => handsSettingsHtml() + quarantineSettingsHtml()],

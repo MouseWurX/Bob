@@ -19,6 +19,7 @@ export async function searchBackupRoute({ req, res, p, isLocal, cfg, body, send,
   if (b?.cap && SERVICES[b.cap.id] && Number.isFinite(Number(b.cap.value))) next.caps[b.cap.id] = Number(b.cap.value);
   saveSettings(cfg, { searchBackup: cleanSearchBackup(next) });
   const id = String(b?.service || '');
+  if (SERVICES[id]?.keyless && (typeof b?.key === 'string' || b?.forget === true)) return send(res, 400, { error: `${SERVICES[id].name} needs no key.` });
   if (SERVICES[id] && (typeof b?.key === 'string' || b?.forget === true)) {
     const v = b.forget === true ? '' : String(b.key).trim();
     if (!b.forget && !v) return send(res, 400, { error: 'Paste the key first.' });
