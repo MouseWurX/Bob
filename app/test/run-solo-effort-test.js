@@ -35,6 +35,10 @@ check('the main brain drafts and reviews; no Deep thinking or Review brain', dra
 check('switched off: the moot keeps its brains', draftBrain({ ...on, soloEffort: false }, 'high').model === 'deep-brain' && reviewBrain({ ...on, soloEffort: false }).model === 'review-brain');
 check('the old moot doesn\'t also run', !careful(job('high', { solo: true })) && careful(job('high')));
 
+// ---- a helper's turn (his own reviews run as one) has the same per-reply cap as his main turns ----
+{ const src = read('src/brain-hats.js');
+  check("a helper's reply runs each identical call once and at most MAX_CALLS_PER_REPLY, and says which were left out (A3B Max run: 132 calls in one reply)", /import \{[^}]*MAX_CALLS_PER_REPLY[^}]*\} from '\.\/brain\.js'/.test(src) && /unique\.slice\(0, MAX_CALLS_PER_REPLY\)/.test(src) && /seen\.has\(k\) \? false : seen\.add\(k\)/.test(src) && /droppedNote\(dropped, MAX_CALLS_PER_REPLY\)/.test(src)); }
+
 // ---- words ----
 check('a review is "Looks right." or "Improve it:"', soloVerdict('Looks right. All good.') === 'ok' && soloVerdict('Improve it: 1. the sum is wrong') === 'improve' && soloVerdict('hmm') === 'improve');
 check('"Not happy with:" is read out of the improved answer', notHappy('Done.\nNot happy with: the test never ran.') === 'the test never ran.' && notHappy('All done.') === '');

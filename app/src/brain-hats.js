@@ -11,13 +11,13 @@ import { sameModel } from './brain-mode.js';
 import { isGuestId } from './guest-chat.js';
 import { personalityPrompt } from '../public/personality.js';
 import { LAST_ROUND_NOTE, onTrackNote, errorHint } from './loop-help.js';
-import { waitedFor, pastCeiling, ceilingMs } from './loop-guard.js';
+import { waitedFor, pastCeiling, ceilingMs, droppedNote } from './loop-guard.js';
 import { giveIds, toolMessage } from './tool-kinds.js';
 import { askTogether } from './together.js';
 import { compactMessages, charsFor } from './self-work-plan.js';
 import { sidePick, mootBesideOk, ggufGB } from './brain-lanes.js';
 import { PLAIN_HATS, CODING_HATS } from './brain-words.js';
-import { MAX_STEPS } from './brain.js';
+import { MAX_STEPS, MAX_CALLS_PER_REPLY } from './brain.js';
 
 // Methods of the Brain class, put on it in its main file with the same rules as the methods written inside it.
 export const hatParts = {
@@ -234,6 +234,13 @@ export const hatParts = {
       this.cutNote(reply, ctx.emit); // item 210
       final += reply.content;
       if (!reply.tool_calls || late) break;
+      // 16 Nov (the distilled A3B jobs run, Max effort): a helper's reply asked for 132 calls, 3 of them different, and
+      // every one ran, because only the main loop had the cap. The same call twice in one reply runs once, and at most
+      // MAX_CALLS_PER_REPLY run, like Bob's own turns (item 158); he's told which were left out.
+      const seen = new Set();
+      const unique = reply.tool_calls.filter((c) => { const k = `${c.function?.name}\u0000${typeof c.function?.arguments === 'string' ? c.function.arguments : JSON.stringify(c.function?.arguments ?? {})}`; return seen.has(k) ? false : seen.add(k); });
+      const dropped = unique.slice(MAX_CALLS_PER_REPLY);
+      if (unique.length !== reply.tool_calls.length || dropped.length) { this.log?.('tool', `a helper's reply asked for ${reply.tool_calls.length} tool calls (${unique.length} different); ran ${Math.min(unique.length, MAX_CALLS_PER_REPLY)}`); reply.tool_calls = unique.slice(0, MAX_CALLS_PER_REPLY); }
       giveIds(reply.tool_calls); // item 165
       this.mendCalls(reply.tool_calls, ctx); // Nov 11 (loop-help.js)
       this.notOffered(reply.tool_calls, stepTools, ctx, { hat: true }); // item 173
@@ -249,6 +256,7 @@ export const hatParts = {
         did.push(`${call.function?.name}${where ? ` ${String(where).slice(0, 160)}` : ''}: ${String(res.text).replace(/\s+/g, ' ').slice(0, 240)}`);
       }
 
+      if (dropped.length) messages.push({ role: 'system', content: droppedNote(dropped, MAX_CALLS_PER_REPLY), hidden: true });
       // A repository job (self-work.js) on a long memory: older tool results are cut down before it overflows.
       if (compact) compactMessages(messages, charsFor(brainCtx));
       ctx.emit({ type: 'token', text: '\n\n' });
