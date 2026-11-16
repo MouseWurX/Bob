@@ -71,7 +71,8 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
 {
   const { calls, res } = await fake('max', ['Looks right.', 'Looks right.']);
   const kinds = calls.map((c) => (c.review ? (/Review your plan/.test(c.review) ? 'gate' : 'review') : c.phase));
-  check('Max: plan (no tools), plan gate, each step as its own job, whole review, then the answer', JSON.stringify(kinds) === JSON.stringify(['plan', 'gate', 'do', 'do', 'review', 'answer']) && calls[0].noTools === true && calls.at(-1).noTools === true);
+  check('Max: plan (with tools to look, changing nothing), plan gate, each step as its own job, whole review, then the answer', JSON.stringify(kinds) === JSON.stringify(['plan', 'gate', 'do', 'do', 'review', 'answer']) && !calls[0].noTools && /don't change anything yet/.test(calls[0].note) && calls.at(-1).noTools === true);
+  check('the 16 Nov distill results: steps with no tools say so in words, and the answer is the only reply shown', /no tool calls written out/.test(calls[1].review) && /no tool calls written out/.test(calls.at(-1).note) && /the only reply the user sees/.test(calls.at(-1).note) && /Don't repeat the plan/.test(calls.at(-1).note));
   check('Max: each job gets its own step and the whole plan', /step 1 of 2: Look it up/.test(calls[2].note) && /step 2 of 2: Write it down/.test(calls[3].note) && /The whole plan/.test(calls[3].note));
   check('Max: the result line counts the jobs', /2 jobs done/.test(res.minutes) && /nothing open/.test(res.minutes) && /^🛰 \*\*Maximus:\*\*/.test(res.minutes));
   check('Max: the plan check runs with no tools; the final review keeps its read-only tools', calls[1].noTools === true && !calls[4].noTools);
