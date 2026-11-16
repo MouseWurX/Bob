@@ -2226,6 +2226,7 @@ html.readable-font code, html.readable-font pre, html.readable-font kbd { font-f
 .cat-filter select { min-height: 36px; max-width: 100%; }
 .tag.official-tag { border-color: var(--accent); }
 .tag.reap-tag { border-style: dashed; }
+.tag.turbo-tag { border-style: double; border-width: 3px; }
 
 /* 1.5.210 The porthole: the fNRI cube seen through a round window into a foggy room (public/fog.js draws the fog on its own
    canvas behind the cube's). The rim is the theme's colours, so it fits every look. */
@@ -2900,3 +2901,9 @@ body.still .phone-menu { animation: none; }
 .trace-log-box .tl-dlabel { margin: 4px 0 0; color: var(--muted); }
 .trace-log-box .tl-detail pre { margin: 2px 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16em; overflow: auto; font-family: var(--mono); border: 1px solid var(--line); border-radius: var(--r); padding: 4px 6px; }
 .trace-log-box .tl-keep { margin: 4px 0; }
+/* The brain catalogue's i: one card layout for every brain (label column, value column). */
+.info-card { display: block; }
+.info-card .ic-what { display: block; margin-bottom: 6px; }
+.info-card .ic-row { display: grid; grid-template-columns: 5.2em 1fr; gap: 8px; padding: 2px 0; border-top: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); }
+.info-card .ic-k { color: var(--accent); font-weight: 600; }
+.info-card .ic-v { overflow-wrap: anywhere; }
