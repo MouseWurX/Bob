@@ -125,7 +125,7 @@ Learning objectives for Advanced. After this level a learner should be able to:
 1. Explain that a model learns by reducing its error on examples, and that a teacher's faults are copied along with its skills.
 2. Explain that a mixture-of-experts model sends each word to a few of many experts, and that cutting experts is a trade between size and ability.
 3. Explain that a fault in training lessons, such as handing code off to a tool, can become a habit in the trained model.
-4. Distinguish what a tool's wording changes from what a lesson's content changes.
+4. Distinguish what a tool's wording changes from what its shape changes, and both from what a lesson's content changes. In the project's results rewording moved nothing, and each brain family was given one working shape (Qwen shape 4, GPT-OSS shape 3; section 8.10).
 5. Say, in plain words, what methods that train beyond copying (preference training and reward-based training) try to do differently. This objective rests on background reading, not on a measured result in this thesis.
 
 The Mixture of experts unit gained a third lesson on 16 November, Watching the router: how to read MaxVio, the router's certainty and expert output sizes, and why a heal is checked for routing drift as well as for scores.
@@ -164,7 +164,7 @@ Eleven of the 43 lessons carry a Real result panel. An earlier draft of this cha
 | Counting experts (Build the tools) | 9 | The coverage rule: keep enough experts in every layer for 95% of each job's routing (99% for tools, coding and exact formats), and keep the union. A rule, no number. | MAKING-SMALLER-MODELS.md |
 | Building an eval harness (Testing that tells the truth) | 4 | A 97-question quiz moves 3 to 5 between runs. | MAKING-SMALLER-MODELS.md |
 
-No shipped panel shows the full read of the tool lessons, the test leak, tool wording, coaching, the Brain Engine checks or the Riker brake and patching. The two coding panels give 6 to 9 of 13 without the caveat of chapter 5: the re-cut Riker also kept 208 experts against 176 for Riker v1 and v2 (FORGE-JOURNAL.md).
+No shipped panel shows the full read of the tool lessons, the test leak, tool wording, the per-family tool shapes, coaching, the Brain Engine checks or the Riker brake and patching. The two coding panels give 6 to 9 of 13 without the caveat of chapter 5: the re-cut Riker also kept 208 experts against 176 for Riker v1 and v2 (FORGE-JOURNAL.md).
 
 ### 12.5.1 A note on the pipeline panels
 
