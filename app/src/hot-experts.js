@@ -101,6 +101,8 @@ export function loadProfile(cfg, model, kind, { read = fs.readFileSync } = {}) {
 }
 export const profilesFor = (cfg, model, opts) => HOT_KINDS.filter((k) => loadProfile(cfg, model, k, opts));
 
+export const VERBOSITY_FLAGS = ['-lv', '--verbosity', '--log-verbosity', '-v', '--verbose', '--log-verbose'];
+
 // The engine flags and environment for one brain load. Only with the switch on, a brain on the card with part of its
 // experts in RAM, an engine new enough for --moe-cache-cpu-share (llama.cpp b12359), and room for the cache.
 // Without a usable profile, the cache still runs (it fills as words come), and `stale` says why the profile wasn't
@@ -113,7 +115,9 @@ export function hotArgs(cfg, model, { args = [], cpu = false, build = 0, gguf = 
   if (!args.some((a) => ['--fit', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-ot', '--override-tensor'].includes(a))) return none;
   const mb = hotCacheMB(cfg);
   if (!mb) return none;
-  const cache = ['--moe-cache-mib', String(mb), '--moe-cache-cpu-share', '1'];
+  // llama-server hides the engine's own info lines below -lv 4 (they sit one level under its default of 3), and the
+  // fingerprint and "ranked fill" lines are info lines. Found on the PC Nov 16. Warnings (a refused ranking) show anyway.
+  const cache = ['--moe-cache-mib', String(mb), '--moe-cache-cpu-share', '1', ...(args.some((a) => VERBOSITY_FLAGS.includes(a)) ? [] : ['-lv', '4'])];
   let kind = kindFor(cfg, model);
   if (!exists(rankingFile(cfg, model, kind))) kind = 'mixed';
   if (!exists(rankingFile(cfg, model, kind))) return { ...none, args: cache };

@@ -175,7 +175,7 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
       if (p.hot) {
         hot = { profiles: [], tps: null };
         const mb = hotCacheMB(lab.cfg) || 4096;
-        const cacheArgs = ['--moe-cache-mib', String(mb), '--moe-cache-cpu-share', '1'];
+        const cacheArgs = ['--moe-cache-mib', String(mb), '--moe-cache-cpu-share', '1', '-lv', '4']; // -lv 4: the fingerprint is an info line
         let fingerprint = '';
         const stamp = (kind) => profileStamp({ kind, gguf: p.gguf, fingerprint, engine: `b${lab.brain.engine.buildNo?.() || 0}${BRAIN_ENGINE_PIN?.tag ? ` (Bob pins ${BRAIN_ENGINE_PIN.tag})` : ''}`, patches: enginePatches() });
         set(`${i}:hot-count`, 'running');

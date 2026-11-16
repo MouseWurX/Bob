@@ -64,6 +64,7 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
 { const { prompts } = loadPlan(planFile); const f = fx({ log: 'llama_moe_cache: ranked fill: 10 experts (40.00 MiB) from x (10 lines, s)\n' });
   const res = await runRow({ plan, prompts, row: plan.rows[1], round: 0, fx: f });
   check('a row starts its own engine with the base and row flags and environment', f.seen.starts[0].exe === 'plain-server' && f.seen.starts[0].args.join(' ').includes('--jinja -ub 4096') && f.seen.starts[0].env.X === '1');
+  check('every engine starts at -lv 4 so its info lines (cache totals, prefetch count) are printed', f.seen.starts[0].args.join(' ').endsWith('-lv 4'));
   check('a warm-up first (untimed), then the timed run', f.seen.streams.length === 2 && f.seen.streams[0].n_predict === 16 && res.runs.length === 1 && res.runs[0].writeTps === 41);
   check('speed runs: temperature 0, seed 42, 300 words, no prompt cache', f.seen.streams[1].temperature === 0 && f.seen.streams[1].seed === 42 && f.seen.streams[1].n_predict === 300 && f.seen.streams[1].ignore_eos === true && f.seen.streams[1].cache_prompt === false);
   check('the card and the engine\'s cache lines go with it, and the engine stops', res.runs[0].card.peakMemMB === 14000 && res.load.filled === 10 && f.seen.stops === 1); }

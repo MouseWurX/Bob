@@ -17,7 +17,7 @@ if (!exe || !gguf || !out) { console.log('node model-lab/hot-rank.mjs --server <
 fs.mkdirSync(out, { recursive: true });
 const url = `http://127.0.0.1:${port}`;
 // the cache is on only so the engine prints the brain's fingerprint; it doesn't change which experts are picked
-const child = spawn(exe, ['-m', gguf, '--host', '127.0.0.1', '--port', String(port), '--jinja', '-fa', 'on', '--fit', 'on', '-c', '8192', '-np', '1', '--no-webui', '--moe-cache-mib', '1024', '--moe-cache-cpu-share', '1'], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+const child = spawn(exe, ['-m', gguf, '--host', '127.0.0.1', '--port', String(port), '--jinja', '-fa', 'on', '--fit', 'on', '-c', '8192', '-np', '1', '--no-webui', '--moe-cache-mib', '1024', '--moe-cache-cpu-share', '1', '-lv', '4'], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
 let said = '';
 child.stderr.on('data', (d) => { said += String(d).split('\n').filter((l) => /MoE cache/.test(l)).join('\n') + '\n'; });
 try {

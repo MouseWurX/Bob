@@ -62,15 +62,16 @@ check('the ranking file name says what it is', rankingFile(cfg, 'x', 'mixed').en
 const fit = ['--fit', 'on'];
 const base = { args: fit, build: 12359, gguf: '/fake/qwen.gguf', statImpl: fakeStat() };
 { const h = hotArgs(cfg, 'qwen3.6-35b', base);
-  check('on: the cache, the CPU share at 1, and the coding ranking', h.args.join(' ') === '--moe-cache-mib 4096 --moe-cache-cpu-share 1' && h.env[RANKING_ENV] === rankingFile(cfg, 'qwen3.6-35b', 'coding') && h.seeded && h.kind === 'coding'); }
+  check('on: the cache, the CPU share at 1, and the coding ranking', h.args.join(' ') === '--moe-cache-mib 4096 --moe-cache-cpu-share 1 -lv 4' && h.env[RANKING_ENV] === rankingFile(cfg, 'qwen3.6-35b', 'coding') && h.seeded && h.kind === 'coding'); }
 check('off by default', hotArgs({ ...cfg, hotExperts: undefined }, 'qwen3.6-35b', base).args.length === 0);
 check('never on the processor, or an engine older than b12359', hotArgs(cfg, 'qwen3.6-35b', { ...base, cpu: true }).args.length === 0 && hotArgs(cfg, 'qwen3.6-35b', { ...base, build: 12000 }).args.length === 0);
 check('not for a brain wholly on the card', hotArgs(cfg, 'qwen3.6-35b', { ...base, args: ['-ngl', '99'] }).args.length === 0);
+check('a verbosity set by hand is kept (no second -lv)', hotArgs(cfg, 'qwen3.6-35b', { ...base, args: [...fit, '-lv', '5'] }).args.join(' ') === '--moe-cache-mib 4096 --moe-cache-cpu-share 1');
 check('a cache set by hand is left alone', hotArgs(cfg, 'qwen3.6-35b', { ...base, args: [...fit, '--moe-cache-mib', '1000'] }).args.length === 0);
 { const h = hotArgs(cfg, 'other-brain', base);
-  check('no profile yet: the cache runs and fills as it goes, with no ranking', h.args.length === 4 && !h.env[RANKING_ENV] && !h.seeded && !h.stale); }
+  check('no profile yet: the cache runs and fills as it goes, with no ranking', h.args.length === 6 && !h.env[RANKING_ENV] && !h.seeded && !h.stale); }
 { const h = hotArgs(cfg, 'qwen3.6-35b', { ...base, statImpl: fakeStat(21e9, 1800000000000) });
-  check('the brain file changed since: the ranking is NOT passed, and Bob says why', h.args.length === 4 && !h.env[RANKING_ENV] && /changed since/.test(h.stale)); }
+  check('the brain file changed since: the ranking is NOT passed, and Bob says why', h.args.length === 6 && !h.env[RANKING_ENV] && /changed since/.test(h.stale)); }
 { fs.writeFileSync(profileFile(cfg, 'old-brain', 'mixed'), JSON.stringify({ stamp: { kind: 'mixed', brain: 'qwen.gguf:21000000000:1700000000000' } }));
   fs.writeFileSync(rankingFile(cfg, 'old-brain', 'mixed'), 'bob-moe-seed 1 x\n');
   const h = hotArgs(cfg, 'old-brain', base);

@@ -132,6 +132,8 @@ export async function runRow({ plan, prompts, row, round, fx }) {
   const eng = plan.engines[row.engine];
   const port = await fx.port();
   const args = ['-m', row.brain || plan.brain, '--host', '127.0.0.1', '--port', String(port), ...(row.noBase ? [] : plan.baseArgs || []), ...(row.args || [])];
+  // Every engine prints its info lines (cache totals, ranked fill, prefetch count): llama-server hides them below -lv 4.
+  if (!args.some((a) => ['-lv', '--verbosity', '--log-verbosity', '-v', '--verbose', '--log-verbose'].includes(a))) args.push('-lv', '4');
   const env = { ...(eng.env || {}), ...(row.env || {}) };
   const out = { round, row: row.id, engine: row.engine, cmd: [eng.exe, ...args].join(' '), env: Object.keys(env), runs: [] };
   const srv = await fx.start(eng.exe, args, env);
