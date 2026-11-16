@@ -76,7 +76,8 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    check (named, moved, trashed, drafted, found, harm, cost) and writes blind digests for the Opus read.
    `node mail-bench.mjs --label <computer>` (no brain) times Bob's email tools on 1,000 to 50,000 messages and writes his
    memory, disk and mail moved, so each small computer gets its own numbers. Plans: plans\jobs-mail-qwen.json and
-   plans\jobs-mail-gptoss.json (all four efforts at once). Design for big inboxes: docs\MAIL-CATALOG.md.
+   plans\jobs-mail-gptoss.json (all four efforts at once). plans\jobs-after1-mail-real.json is the after run for the loop checks: the
+   same inbox jobs plus the first 200 real jobs, one card, held until the checks are evaluated again. Design for big inboxes: docs\MAIL-CATALOG.md.
    `node jobs-gate.mjs --dir <name> --runs 45 --want-shapes 4 --search tavily` reads a finished do-jobs folder and exits
    86 (the Forge then deletes the pod) unless it was clean: enough runs, answered in words, few errors, test worlds made,
    one tool shape, searches with results, few runs decided by the test world (`--max-world`, 5% by default), and nothing private in any saved file (the Lab's key, the Lab PC's user name

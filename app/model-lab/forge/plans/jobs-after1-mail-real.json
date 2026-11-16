@@ -1,0 +1,59 @@
+{
+ "run": "jobs-after1-mail-real",
+ "note": "16 Nov, the owner: \"we should do the mail and the real jobs on a parallel rental\"; \"be sure to have another evaluation of our amendments after the mail run finishes here, before we do more rentals\". HELD: not rented until the loop checks (src/answer-checks.js, et6g5x 3cc61a5, merged here) have been evaluated again on the first mail run's results and the owner gives the go by card. The after run for the loop checks: one served brain, stock Qwen3.6-35B-A3B (tool shape 4), two kinds of work at once. (1) The same 30 inbox jobs (mail-jobs.mjs) at all four efforts, as jobs-mail-qwen, for a before/after on the mail jobs. (2) The first 200 of the 800 real jobs (jobs-fix/jobs.jsonl, read only from lab-kit-shape4) with the 800 run's flags and its saved scenes (jobs-fix1/scenes.jsonl), so the same 200 compare before/after. Each is a jobs-matrix variant with its own folder (after1-<name>). do-jobs runs the harness self-test (10 checks) before any job. Scored by code (mail-score.mjs, jobs-gate.mjs), then every run read by Opus 5.5. L40S or RTX 6000 Ada, 18 slots. Caps 3 h / $4.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA L40S",
+  "NVIDIA RTX 6000 Ada Generation"
+ ],
+ "step_up": [],
+ "disk_gb": 60,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 3,
+ "dollars_max": 4,
+ "rent_minutes": 30,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one server: stock Qwen3.6-35B-A3B; inbox jobs at four efforts plus 200 real jobs, all at once.",
+  "hours_each": 2.8,
+  "models": [
+   {
+    "name": "after1-qwen",
+    "nickname": "Qwen3.6-35B-A3B, inbox and real jobs after the loop checks",
+    "file": "hf:unsloth/Qwen3.6-35B-A3B-MTP-GGUF:Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 18,
+    "ctx": 589824,
+    "extra": "",
+    "hours": 2.8,
+    "commands": [
+     "node mail-jobs.mjs --out ../../bob-model-lab/out/mail-jobs/jobs.jsonl",
+     "node jobs-matrix.mjs --prefix after1 --no-scenes --variants \"minimus=--effort low --solo-effort;medius=--effort medium --solo-effort;magnus=--effort high --solo-effort;maximus=--effort extreme --solo-effort --job-minutes 20 --parallel 4;real=--parallel 4 --job-minutes 8 --never ../../../lab-kit-shape4/bob-model-lab/out/jobs-trial/never --scene make --scenes ../../../lab-kit-shape4/bob-model-lab/out/jobs-fix1/scenes.jsonl --search tavily --search-month 1500 --search-cap 150 --search-group after-checks --jobs ../../../lab-kit-shape4/bob-model-lab/out/jobs-fix/jobs.jsonl --count 200\" --url {{url}} --bob .. --jobs ../../bob-model-lab/out/mail-jobs/jobs.jsonl --parallel 3 --want-shapes 4 --max 4096 --hours 2.4 --job-minutes 10",
+     "node mail-score.mjs --runs ../../bob-model-lab/out/after1-minimus/runs.jsonl,../../bob-model-lab/out/after1-medius/runs.jsonl,../../bob-model-lab/out/after1-magnus/runs.jsonl,../../bob-model-lab/out/after1-maximus/runs.jsonl --out ../../bob-model-lab/out/after1-mail-score --digests",
+     "node jobs-gate.mjs --dir after1-real --runs 200 --want-shapes 4 --search tavily --leaks warn"
+    ]
+   }
+  ]
+ },
+ "prep": [
+  "Inbox jobs: nothing to copy in; mail-jobs.mjs writes them and every inbox is made from its seed.",
+  "Real jobs, read only from lab-kit-shape4: out/jobs-fix/jobs.jsonl (the first 200), out/jobs-fix1/scenes.jsonl (the 800 run's saved scenes), out/jobs-trial/never/ (held-out test files). Nothing is written there but the Tavily ledger.",
+  "--search tavily needs the Lab's key (saved with 'Save Tavily key for the Lab.cmd'); the 150-search cap is for the real jobs only (the inbox jobs use no Tavily).",
+  "--want-shapes 4 stops the run before renting if this copy's tools are any other shape."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20
+}
