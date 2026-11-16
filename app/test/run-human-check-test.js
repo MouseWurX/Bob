@@ -1,6 +1,7 @@
 // "Let me finish robot checks" (Nov 18, src/human-check.js): a check a person can finish goes to the person at this
 // computer on a card, opens in Bob's window for them, and Bob carries on once it's gone. He never does it himself.
 // Every fetch, card and browser window here is a fake: nothing goes online, nothing opens.
+import { resetPacing } from '../src/web-search.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -136,7 +137,7 @@ function net() {
   return seen;
 }
 {
-  forgetJobs();
+  forgetJobs(); resetPacing({ wait: async () => {} }); // Facts first's pacing (web-search.js) starts clean in each case
   net();
   const w = fakeWindow({ solveAfter: 1 });
   globalThis.bobBrowser = w.driver;
@@ -150,7 +151,7 @@ function net() {
   check('…the same site later in the job: read through the same window, no second card', brain.cards.length === looked && /Read through my browser window/.test(again));
 }
 {
-  forgetJobs();
+  forgetJobs(); resetPacing({ wait: async () => {} }); // Facts first's pacing (web-search.js) starts clean in each case
   net();
   const w = fakeWindow();
   globalThis.bobBrowser = w.driver;
@@ -159,7 +160,7 @@ function net() {
   check('fetch_page with the switch off: no card, no window, skipped as before', brain.cards.length === 0 && w.opened.length === 0 && /turned me away/.test(out));
 }
 {
-  forgetJobs();
+  forgetJobs(); resetPacing({ wait: async () => {} }); // Facts first's pacing (web-search.js) starts clean in each case
   net();
   const w = fakeWindow();
   globalThis.bobBrowser = w.driver;
@@ -168,7 +169,7 @@ function net() {
   check('fetch_page for Discord: never handed over, skipped', brain.cards.length === 0 && w.opened.length === 0 && /turned me away/.test(out));
 }
 {
-  forgetJobs();
+  forgetJobs(); resetPacing({ wait: async () => {} }); // Facts first's pacing (web-search.js) starts clean in each case
   net();
   const ddg = '<html><body><a rel="nofollow" class="result__a" href="https://river.example/a">River news</a> <a class="result__snippet">The river rose.</a></body></html>';
   const w = fakeWindow({ solveAfter: 1, page: ddg });
@@ -183,7 +184,7 @@ function net() {
   check('…a second search in the job reads through the same window, no second card', brain.cards.length === 1 && again.includes('https://river.example/a'));
 }
 {
-  forgetJobs();
+  forgetJobs(); resetPacing({ wait: async () => {} }); // Facts first's pacing (web-search.js) starts clean in each case
   net();
   const w = fakeWindow();
   globalThis.bobBrowser = w.driver;

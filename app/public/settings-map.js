@@ -17,7 +17,7 @@ export const GROUPS = [
 // Simple: the cards. `about` says what's inside, in a few plain words.
 export const CARDS = [
   { id: 'bob', icon: '🙂', name: 'Bob himself', about: 'Voice, look, personality, house style and presets.', topics: ['ev-bob', 'adv-voice', 'adv-look', 'adv-personality', 'adv-house', 'adv-presets'] },
-  { id: 'how', icon: '⚡', name: 'How Bob works', about: 'Sessions, plans, notes, jobs, saved prompts, start-up, check-ins.', topics: ['ev-how', 'adv-jobs', 'adv-prompts', 'adv-chatx', 'adv-quiet', 'adv-daily', 'adv-checkins', 'adv-tools'] },
+  { id: 'how', icon: '⚡', name: 'How Bob works', about: 'Sessions, plans, notes, jobs, saved prompts, start-up, check-ins.', words: 'facts first fact check sources look it up read what you were given read first', topics: ['ev-how', 'adv-jobs', 'adv-prompts', 'adv-chatx', 'adv-quiet', 'adv-daily', 'adv-checkins', 'adv-tools'] },
   { id: 'brains', icon: '🧠', name: 'Brains and speed', about: 'Which brain does what, memory and engines.', words: 'calibrate calibration set up gpu card layers experts speed', topics: ['adv-brains', 'adv-speed', 'adv-engines'] },
   { id: 'net', icon: '🌐', name: 'My other Bobs', about: 'Bob-Net, your phone and sharing brains.', topics: ['adv-bobnet'] },
   { id: 'online', icon: '☁', name: 'Online and other apps', about: 'Cloud helpers, email, rentals, other apps.', words: 'comfyui openrouter rented brains search api keys tavily brave firecrawl private web privacy proxy tor vpn captcha robot check', topics: ['adv-online', 'adv-search', 'adv-privweb', 'adv-email', 'adv-apps'] },

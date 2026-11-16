@@ -103,6 +103,101 @@ export function blockedPage(status, html = '') {
   return /anomaly-modal|bots use DuckDuckGo too|<title>[^<]*captcha[^<]*<\/title>/i.test(h);
 }
 
+// ---------- polite pacing on the free search pages (Facts first, 16 Nov) ----------
+// The free pages are someone else's website, not a service made for Bob, so he keeps to their manners:
+//  - about one search every 5 to 10 seconds to each page (a random gap, so two Bobs don't knock in step),
+//  - at most FREE_PER_ANSWER free-page searches for one answer,
+//  - their robots.txt is read once a day and kept to (RFC 9309: a page it disallows isn't asked),
+//  - a "slow down" (429 or 503, with its Retry-After if it gives one) rests that page, longer each time,
+//  - a robot check (captcha) or block rests it too, and Bob tries another source. He never solves or gets round one:
+//    no proxies he picks himself, no fake browser, no captcha solving (the owner's rule).
+export const FREE_PER_ANSWER = 6;
+export const GAP_MS = [5000, 10000];
+const REST_MS = [2 * 60_000, 30 * 60_000]; // first rest after a "slow down", and the longest
+const BLOCK_REST_MS = 15 * 60_000;
+const ROBOTS_OK_MS = 24 * 3600_000, ROBOTS_DOWN_MS = 10 * 60_000;
+// checked: hosts resting because they showed a robot check (not a "slow down"): with "Let me finish robot checks" on,
+// a search there still goes to the person path (human-check.js), so a check you finished keeps working for the job.
+export const pacing = { next: new Map(), rest: new Map(), backoff: new Map(), robots: new Map(), checked: new Set(), wait: null, rand: Math.random };
+// Tests (and only tests) set the wait and the randomness, and start clean.
+export function resetPacing({ wait = null, rand = Math.random } = {}) { for (const k of ['next', 'rest', 'backoff', 'robots', 'checked']) pacing[k].clear(); pacing.wait = wait; pacing.rand = rand; }
+const sleep = (ms, signal) => new Promise((ok, no) => {
+  if (signal?.aborted) return no(Object.assign(new Error('Stopped.'), { name: 'AbortError' }));
+  const t = setTimeout(() => { signal?.removeEventListener?.('abort', stop); ok(); }, ms);
+  const stop = () => { clearTimeout(t); no(Object.assign(new Error('Stopped.'), { name: 'AbortError' })); };
+  signal?.addEventListener?.('abort', stop, { once: true });
+});
+
+// robots.txt, read the plain way: the group for "bob" if there is one, else "*"; the longest matching rule wins, and
+// Allow wins a tie. * matches anything, $ ends the path.
+export function robotsAllows(txt, pathAndQuery, agent = 'bob') {
+  const groups = []; let cur = null, lastWasAgent = false;
+  for (const raw of String(txt || '').split(/\r?\n/)) {
+    const line = raw.replace(/#.*$/, '').trim();
+    const m = /^([a-z-]+)\s*:\s*(.*)$/i.exec(line);
+    if (!m) continue;
+    const k = m[1].toLowerCase(), v = m[2].trim();
+    if (k === 'user-agent') { if (!lastWasAgent) { cur = { agents: [], rules: [] }; groups.push(cur); } cur.agents.push(v.toLowerCase()); lastWasAgent = true; continue; }
+    lastWasAgent = false;
+    if (cur && (k === 'allow' || k === 'disallow')) cur.rules.push({ allow: k === 'allow', path: v });
+  }
+  const mine = groups.filter((g) => g.agents.some((a) => a !== '*' && agent.toLowerCase().includes(a)));
+  const use = mine.length ? mine : groups.filter((g) => g.agents.includes('*'));
+  let best = null;
+  for (const r of use.flatMap((g) => g.rules)) {
+    if (!r.path) continue; // "Disallow:" with nothing allows all
+    const end = r.path.endsWith('$');
+    const re = new RegExp('^' + (end ? r.path.slice(0, -1) : r.path).replace(/[.+?^${}()|[\]\\*]/g, '\\$&').replace(/\\\*/g, '.*') + (end ? '$' : ''));
+    if (!re.test(pathAndQuery)) continue;
+    if (!best || r.path.length > best.path.length || (r.path.length === best.path.length && r.allow)) best = r;
+  }
+  return best ? best.allow : true;
+}
+async function robotsOk(get, url, now) {
+  const u = new URL(url);
+  const had = pacing.robots.get(u.origin);
+  let txt = had && had.until > now ? had.txt : undefined;
+  if (txt === undefined) {
+    try {
+      const r = await get(`${u.origin}/robots.txt`, { headers: UA });
+      if (r.ok) txt = await r.text().catch(() => '');
+      else if (r.status >= 400 && r.status < 500) txt = ''; // no robots.txt: every page is open
+      else txt = null; // the server is having trouble: keep away for now
+    } catch (e) { if (e?.name === 'AbortError' || e?.route) throw e; txt = null; }
+    pacing.robots.set(u.origin, { txt, until: now + (txt === null ? ROBOTS_DOWN_MS : ROBOTS_OK_MS) });
+  }
+  if (txt === null) return false;
+  return robotsAllows(txt, u.pathname + u.search);
+}
+const restFor = (host, ms, now) => pacing.rest.set(host, now + ms);
+function slowDown(host, res, now) {
+  const after = Number(res?.headers?.get?.('retry-after'));
+  const next = Math.min(REST_MS[1], (pacing.backoff.get(host) || REST_MS[0] / 2) * 2);
+  pacing.backoff.set(host, next);
+  restFor(host, Math.max(Number.isFinite(after) && after > 0 ? Math.min(after * 1000, 3600_000) : 0, next), now);
+}
+const minsLeft = (ms) => { const m = Math.ceil(ms / 60_000); return `${m} more minute${m === 1 ? '' : 's'}`; };
+// One free-page search, politely: { res, html } or { skip: why } (why goes in what Bob says back).
+async function freePage(name, url, { get, signal, now, turn }) {
+  const host = new URL(url).host;
+  if (turn && (turn.freeSearches || 0) >= FREE_PER_ANSWER) return { skip: `I've used my ${FREE_PER_ANSWER} free-page searches for this answer` };
+  const resting = (pacing.rest.get(host) || 0) - now();
+  if (resting > 0 && pacing.checked.has(host)) return { checked: true, skip: `${name} showed a robot check, so I'm leaving it alone for ${minsLeft(resting)}` };
+  if (resting > 0) return { skip: `${name} asked me to slow down, so I'm leaving it alone for ${minsLeft(resting)}` };
+  if (!(await robotsOk(get, url, now()))) return { skip: `${name}'s robots.txt asks bots not to use that page, so I don't` };
+  const t = now();
+  const slot = Math.max(t, pacing.next.get(host) || 0);
+  pacing.next.set(host, slot + GAP_MS[0] + Math.round(pacing.rand() * (GAP_MS[1] - GAP_MS[0])));
+  if (slot > t) await (pacing.wait || sleep)(slot - t, signal);
+  if (turn) turn.freeSearches = (turn.freeSearches || 0) + 1;
+  const res = await get(url, { headers: UA });
+  const html = [200, 202, 403, 429].includes(res.status) ? await res.text().catch(() => '') : '';
+  if (res.status === 429 || res.status === 503) { pacing.checked.delete(host); slowDown(host, res, now()); }
+  else if (blockedPage(res.status, html)) { pacing.checked.add(host); restFor(host, BLOCK_REST_MS, now()); }
+  else { pacing.checked.delete(host); pacing.backoff.delete(host); }
+  return { res, html };
+}
+
 // ---------- the services ----------
 // get(url, opts): a fetch (tools.js fetchRetry, or the tests' fake). Each returns [{ title, url, snippet }].
 const short = (s, n = 400) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -153,62 +248,79 @@ const plainErr = (e, key) => short(String(e?.message || e).split(key || '\u0000'
 // ---------- web_search ----------
 // The services you turned on, in your order: the first that answers with results, as { id, list }, else null (and
 // what happened goes in tried).
+// Side by side (Facts first): searches running at once each take a different service, so no one service gets them
+// all; a service already busy goes last, and each keeps to its own caps.
+export const busy = new Set();
 async function askBackups(q, w, { cfg, get, signal, now, key, tried }) {
   const s = cleanSearchBackup(cfg.searchBackup);
-  for (const id of s.order) {
+  const order = [...s.order.filter((id) => !busy.has(id)), ...s.order.filter((id) => busy.has(id))];
+  for (const id of order) {
     if (!s.use[id]) continue;
     const k = keyFor(cfg, id, key ? { key } : {});
     if (!k) continue;
     const held = heldBack(cfg, s, id, now());
     if (held) { tried.push(held); continue; }
     countOne(cfg, id, now()); // counted when asked, whatever comes back: that's how the services count too
+    busy.add(id);
     try {
       const got = await ASK[id](get, { query: q, when: w, key: k, max: 8 });
       if (got.length) return { id, list: got };
       tried.push(`${SERVICES[id].name} found nothing`);
     } catch (e) { if (signal?.aborted || e?.route) throw e; if (e?.limit) restToday(cfg, id, now()); tried.push(`${SERVICES[id].name} ${plainErr(e, k)}`); }
+    finally { busy.delete(id); }
   }
   return null;
 }
 
-// get(url, opts) does the fetching. Returns the text web_search gives the brain.
+// get(url, opts) does the fetching. Returns the text web_search gives the brain. turn: the job's own record (its
+// free-page count for FREE_PER_ANSWER); none in the Lab's own pre-flight.
 // person(url): "Let me finish robot checks" (human-check.js, from tools.js; off by default). When every search page
 // showed a robot check and no backup answered, the first one goes to you on a card; resolves { html } when you finished
 // it, { skipped } or null. Bob never does the check himself.
-export async function webSearch({ query, when }, { cfg = {}, get, signal, now = Date.now, key, person = null } = {}) {
+let running = 0;
+export async function webSearch(args, opts = {}) {
+  running++;
+  try { return await searchOnce(args, { ...opts, sideBySide: running > 1 }); } finally { running--; }
+}
+async function searchOnce({ query, when }, { cfg = {}, get, signal, now = Date.now, key, person = null, turn = null, sideBySide = false } = {}) {
   const w = String(when || '').toLowerCase();
   const df = DDG_DATE[w];
   const q = String(query || '').trim();
   if (!q) return 'Give me some words to search for.';
   const tried = [];
   // Private web (private-web.js): the services you turned on go first, since they only get the search words; the
-  // free pages come last.
-  if (cfg?.privateWeb?.on === true && backupOn(cfg)) {
+  // free pages come last. Side by side with another search, the same: each takes a service of its own, and the free
+  // pages (one search every few seconds) are the last resort.
+  const backupFirst = backupOn(cfg) && (cfg?.privateWeb?.on === true || sideBySide);
+  if (backupFirst) {
     const got = await askBackups(q, w, { cfg, get, signal, now, key, tried });
-    if (got) return `(From ${SERVICES[got.id].name}, first because Private web is on.)\n${resultLines(got.list)}`;
+    if (got) return `(From ${SERVICES[got.id].name}, ${cfg?.privateWeb?.on === true ? 'first because Private web is on' : 'side by side with your other searches'}.)\n${resultLines(got.list)}`;
   }
   let list = [], why = '', blocked = [];
   const pages = []; // the search pages that showed a robot check: { name, url, parse }
   const ddgUrl = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q) + (df ? `&df=${df}` : '');
   const mojeekUrl = 'https://www.mojeek.com/search?q=' + encodeURIComponent(q);
+  const skipped = [];
   try {
-    const res = await get('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q) + (df ? `&df=${df}` : ''), { headers: UA }); // the same address as ddgUrl
-    const html = res.status === 200 || res.status === 202 || res.status === 403 || res.status === 429 ? await res.text().catch(() => '') : '';
-    if (blockedPage(res.status, html)) { blocked.push('DuckDuckGo'); pages.push({ name: 'DuckDuckGo', url: ddgUrl, parse: parseDdg }); why = 'DuckDuckGo showed its robot check'; }
-    else if (res.ok) list = parseDdg(html); else why = `DuckDuckGo answered ${res.status}`;
-  } catch (e) { if (signal?.aborted || e?.route) throw e; why = e.name === 'TimeoutError' ? 'DuckDuckGo took too long' : `DuckDuckGo: ${e.message}`; }
+    const r = await freePage('DuckDuckGo', ddgUrl, { get, signal, now, turn });
+    if (r.checked && typeof person === 'function') { blocked.push('DuckDuckGo'); pages.push({ name: 'DuckDuckGo', url: ddgUrl, parse: parseDdg }); why = 'DuckDuckGo showed its robot check'; }
+    else if (r.skip) { skipped.push(r.skip); why = r.skip; }
+    else if (blockedPage(r.res.status, r.html)) { blocked.push('DuckDuckGo'); pages.push({ name: 'DuckDuckGo', url: ddgUrl, parse: parseDdg }); why = 'DuckDuckGo showed its robot check'; }
+    else if (r.res.ok) list = parseDdg(r.html); else why = `DuckDuckGo answered ${r.res.status}`;
+  } catch (e) { if (signal?.aborted || e?.route || e?.name === 'AbortError') throw e; why = e.name === 'TimeoutError' ? 'DuckDuckGo took too long' : `DuckDuckGo: ${e.message}`; }
   if (list.length) return resultLines(list);
   try {
-    const res = await get(mojeekUrl, { headers: UA });
-    const html = await res.text().catch(() => '');
-    if (blockedPage(res.status, html)) { blocked.push('Mojeek'); pages.push({ name: 'Mojeek', url: mojeekUrl, parse: parseMojeek }); }
-    else if (res.ok) list = parseMojeek(html);
-  } catch (e) { if (signal?.aborted || e?.route) throw e; }
+    const r = await freePage('Mojeek', mojeekUrl, { get, signal, now, turn });
+    if (r.checked && typeof person === 'function') { blocked.push('Mojeek'); pages.push({ name: 'Mojeek', url: mojeekUrl, parse: parseMojeek }); }
+    else if (r.skip) skipped.push(r.skip);
+    else if (blockedPage(r.res.status, r.html)) { blocked.push('Mojeek'); pages.push({ name: 'Mojeek', url: mojeekUrl, parse: parseMojeek }); }
+    else if (r.res.ok) list = parseMojeek(r.html);
+  } catch (e) { if (signal?.aborted || e?.route || e?.name === 'AbortError') throw e; }
   if (list.length) return `(From Mojeek: ${why || 'DuckDuckGo found nothing'}${df ? '; no date filter there' : ''}.)\n${resultLines(list)}`;
 
   // The backup, only when it's on: the services in your order that are ready (a key, or keyless) and under their cap.
-  // (With Private web on they were already asked above.)
-  if (backupOn(cfg) && cfg?.privateWeb?.on !== true) {
+  // (With Private web on, or side by side, they were already asked above.)
+  if (backupOn(cfg) && !backupFirst) {
     const got = await askBackups(q, w, { cfg, get, signal, now, key, tried });
     if (got) {
       const id = got.id;
@@ -226,13 +338,15 @@ export async function webSearch({ query, when }, { cfg = {}, get, signal, now = 
       personSaid = ` You finished ${p.name}'s check, but its page had no results I could read.`;
     } else if (got?.skipped) personSaid = ` I didn't hand you the check: ${got.skipped}.`;
   }
+  const politely = skipped.length ? ` ${[...new Set(skipped)].join('; ')}.` : '';
   if (blocked.length) {
     const backup = backupOn(cfg)
       ? (tried.length ? ` The backup search didn't help: ${tried.join('; ')}.` : ' The search service you turned on has no key yet: Settings, Connections, Search API keys.')
       : ' A search service with your own key can stand in: Settings, Connections, Search API keys (each off unless you turn it on).';
-    return `The search pages are blocking this computer right now (${blocked.join(' and ')} showed a robot check). I don't get round those.${personSaid}${backup} fetch_page still works for a link you already have.`;
+    return `The search pages are blocking this computer right now (${blocked.join(' and ')} showed a robot check). I don't get round those.${politely}${personSaid}${backup} fetch_page still works for a link you already have.`;
   }
-  return `No results (or the search pages changed). Try different words.${tried.length ? ` The backup search: ${tried.join('; ')}.` : ''}`;
+  if (skipped.length && !backupOn(cfg)) return `No results: I keep to the free search pages' manners.${politely} A search service with your own key can stand in: Settings, Connections, Search API keys.`;
+  return `No results (or the search pages changed). Try different words.${politely}${tried.length ? ` The backup search: ${tried.join('; ')}.` : ''}`;
 }
 
 // What Settings shows: never a key, only whether one is there, the count and the cap.
