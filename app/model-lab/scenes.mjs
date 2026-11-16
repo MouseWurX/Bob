@@ -84,8 +84,10 @@ export function fullPath(p) {
   const rel = s.replace(/\//g, '\\');
   return HOME_DIRS.test(rel) ? `C:\\Users\\you\\${rel}` : `C:\\Users\\you\\Documents\\${rel}`;
 }
+// The kinds of file Bob only edits inside a project (tools.js BLOCKED_EXT): a scene that plants one is a coding job.
+const CODE = /\.(?:bat|cmd|ps1|psm1|vbs|js|mjs|cjs|jse|wsf|hta|sh|bash|zsh|py|pyw|command)$/i;
 export function plantScene(kit, scene, { day = new Date().toISOString().slice(0, 10) } = {}) {
-  const out = { files: [], folders: [], board: 0, memory: 0, skipped: [] };
+  const out = { files: [], folders: [], board: 0, memory: 0, skipped: [], codeDirs: [] };
   if (!scene) return out;
   const own = path.resolve(kit.cfg.agentDir).toLowerCase();
   const ownFolder = (r) => r.toLowerCase() === own || r.toLowerCase().startsWith(own + path.sep);
@@ -103,6 +105,7 @@ export function plantScene(kit, scene, { day = new Date().toISOString().slice(0,
     if (!bytes) { out.skipped.push({ path: f.path, why: `this test home can't make ${path.extname(r) || 'that kind of'} files` }); continue; }
     open(path.dirname(r));
     fs.writeFileSync(r, bytes); out.files.push(kit.neutral(r));
+    if (CODE.test(r) && !out.codeDirs.includes(path.dirname(r))) out.codeDirs.push(path.dirname(r));
   }
   if (scene.board?.length) {
     const lists = [...scene.board].sort((a, b) => (/^side quests$/i.test(b.list) ? 1 : 0) - (/^side quests$/i.test(a.list) ? 1 : 0));

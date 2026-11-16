@@ -256,18 +256,26 @@ async function runJob(j) {
   try { sc = await sceneFor(j); } catch (e) { sc.problems = [`scene not made: ${String(e.message || e).slice(0, 200)}`]; }
   const put = plantScene(kit, sc.scene, { day: today });
   const planted = [...new Set([...start.files, ...put.files])];
-  const scene = { made: sc.made, files: put.files, folders: put.folders, board: put.board, memory: put.memory, skipped: [...start.skipped, ...put.skipped], problems: sc.problems };
+  // 16 Nov (Opus read of run 3): a coding job's planted script sat outside any project, so Bob's guard (tools.js) refused
+  // every edit and the job couldn't be done. Its folder is a project of this test home, as a person who codes with Bob has.
+  const codeDirs = [...new Set([...start.codeDirs, ...put.codeDirs])];
+  if (codeDirs.length) kit.cfg.projects = { ...(kit.cfg.projects || {}), ...Object.fromEntries(codeDirs.map((d, i) => [path.basename(d) || `project${i + 1}`, d])) };
+  const scene = { made: sc.made, ...(codeDirs.length ? { projects: codeDirs.map((d) => kit.neutral(d)) } : {}), files: put.files, folders: put.folders, board: put.board, memory: put.memory, skipped: [...start.skipped, ...put.skipped], problems: sc.problems };
   // 15 Nov (Opus read of the first trial): the runner used to replace Bob's runTool, so his own step record, checks,
   // retries and "already open" rules never ran and his closing check nudged "only 0 tool steps ran" after real steps.
   // Now Bob's own runTool runs every call; only the paths are moved into this job's throwaway home first, and every
   // card is answered OK (as a person tapping it), every ask_user gets its first choice.
   const bobRunTool = brain.runTool.bind(brain);
   const who = () => brain.cfg.userName || 'the user';
-  brain.approve = async () => true;
+  // 16 Nov (Opus read of run 3): the card with all of a job's OKs on it (together.js) reads { allow: true }; a bare true
+  // came back as "the user said no" to every step on it
+  brain.approve = async (need) => (need && typeof need === 'object' && Array.isArray(need.together) ? { allow: true } : true);
   brain.askUser = async ({ question, choices } = {}) => {
     const list = [...new Set([].concat(choices || []).map((c) => String(c ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean))];
     if (!String(question || '').trim() || list.length < 2) throw new Error('ask_user needs a question and at least 2 choices.');
-    return `${who()} picked: ${list[0]}`;
+    // 16 Nov: the first real choice; "I'll type it" or "something else" picked first gave the brain nothing to go on
+    const typed = /^(?:i'?ll|let me|i will|i want to)\s+(?:type|tell|enter|write|give|say)|^(?:other|something else|none of (?:these|the above))\b/i;
+    return `${who()} picked: ${list.find((c) => !typed.test(c)) || list[0]}`;
   };
   brain.runTool = async (name, args, ctx) => {
     if (typeof args === 'string') { try { args = JSON.parse(args); } catch { args = {}; } }

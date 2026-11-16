@@ -80,6 +80,16 @@ const srv = http.createServer((req, res) => {
     } else if (/fox facts/.test(ask)) {
       const n = msgs.filter((m) => m.role === 'tool').length;
       out = n < 2 && names.includes('web_search') ? call('web_search', { query: `fox facts ${n + 1}` }, 'Look it up.') : say('Foxes are small wild dogs.', 'Enough looking.');
+    } else if (/calc\.py/.test(ask)) {
+      const tm = msgs.filter((m) => m.role === 'tool').map((m) => String(m.content));
+      const edit = { path: 'C:\\Users\\you\\Documents\\calc.py', find: '1+1', replace: '2+2' };
+      if (!names.includes('edit_file')) out = call('use_tools', { group: 'files' }, 'I need the file tools.');
+      else if (!tm.some((x) => /Allowed|said no/.test(x))) out = call('ask_together', { steps: [{ tool: 'edit_file', args: edit, say: 'fix the sum' }] }, 'Ask for the OK first.');
+      else if (tm.filter((x) => /Allowed|said no/.test(x)).length && tm.length < 4 && !tm.some((x) => /calc\.py|outside a project|2\+2/.test(x) && !/Allowed/.test(x))) out = call('edit_file', edit, 'Now the edit.');
+      else out = say('Fixed calc.py.', 'Done.');
+    } else if (/which city/.test(ask)) {
+      if (last.role === 'tool') out = say(`You picked ${/Paris/.test(String(last.content)) ? 'Paris' : 'nothing'}.`, 'Got it.');
+      else out = names.includes('ask_user') ? call('ask_user', { question: 'Which city?', choices: ["I'll type the name", 'Paris', 'Rome'] }, 'Ask.') : say('Which city?', 'Ask in words.');
     } else out = say('Hello.', 'Say hi.');
     busy--; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(out));
   });
@@ -158,6 +168,16 @@ const groupAfter = JSON.parse(fs.readFileSync(groupFile, 'utf8')).used;
   check("--family gpt-oss: Bob's loop uses the GPT-OSS tool set (its list_folder wording, its two helpers left out)", ro.code === 0 && ossAsks.length >= 2 && ossAsks.some((a) => /Words inside files: search_files/.test(a.listFolder)) && !ossAsks.some((a) => a.names.includes('ask_specialist') || a.names.includes('mcp_tools')), ro.log.slice(-300) + JSON.stringify(ossAsks.map((a) => a.listFolder.slice(0, 60))));
   check("--family gpt-oss: thinking is asked the GPT-OSS way (Bob's no-thinking step is reasoning low; never enable_thinking), with its own sampling", ossAsks.some((a) => a.kw.reasoning_effort === 'low') && ossAsks.every((a) => a.kw.enable_thinking === undefined && a.top_p === 1 && [undefined, 'low', 'high'].includes(a.kw.reasoning_effort)), JSON.stringify(ossAsks.map((a) => [a.afterTool, a.kw, a.temp, a.top_p])));
   check('--family gpt-oss: the run is stamped family gpt-oss, each step keeps its reasoning level, and the job was done', orow.family === 'gpt-oss' && (orow.steps || []).length >= 2 && orow.steps.every((st) => ['low', 'medium', 'high'].includes(st.effort)) && orow.steps.some((st) => st.effort === 'low') && /plums/.test(orow.said || ''), JSON.stringify({ f: orow.family, e: (orow.steps || []).map((st) => st.effort), said: orow.said })); }
+{ const fixJobs = path.join(tmp, 'ideas-fix.jsonl');
+  fs.writeFileSync(fixJobs, [{ id: 'c1', job: 'code', text: 'My Documents\\calc.py prints the wrong sum, fix it.', setup: [{ path: 'Documents\\calc.py', content: 'print(1+1)\n' }] }, { id: 'c2', job: 'chat', text: 'which city should we go to? ask me' }].map((x) => JSON.stringify(x)).join('\n') + '\n');
+  const rf2 = await run(['--parallel', '1'], { jobsFile: fixJobs, dir: 'fix1' });
+  const fr = fs.existsSync(path.join(tmp, 'fix1', 'runs.jsonl')) ? Object.fromEntries(fs.readFileSync(path.join(tmp, 'fix1', 'runs.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).map((x) => [x.id, x])) : {};
+  const fc = (fr.c1?.steps || []).flatMap((st) => st.calls || []);
+  const tog = fc.find((c) => c.name === 'ask_together'), ed = fc.find((c) => c.name === 'edit_file');
+  check("the card with all of a job's OKs on it is answered yes, as a person tapping Allow (not \"the user said no\")", /Allowed 1 of 1/.test(tog?.result || ''), rf2.log.slice(-300) + JSON.stringify(tog || null).slice(0, 300));
+  check("a coding job's planted script is in a project of the test home, so Bob's guard lets him edit it", ed && !/outside a project/.test(ed.result || '') && (fr.c1?.scene?.projects || []).length === 1 && !/outside a project/.test(JSON.stringify(fc)), JSON.stringify({ ed, p: fr.c1?.scene?.projects }).slice(0, 400));
+  const au = (fr.c2?.steps || []).flatMap((st) => st.calls || []).find((c) => c.name === 'ask_user');
+  check('ask_user gets the first real choice, not "I\'ll type the name"', /picked: Paris/.test(au?.result || ''), JSON.stringify(au || fr.c2?.error || null).slice(0, 300)); }
 srv.close();
 const rows = fs.readFileSync(path.join(tmp, 'trial', 'runs.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 const by = Object.fromEntries(rows.map((x) => [x.id, x]));
