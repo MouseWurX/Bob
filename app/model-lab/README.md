@@ -50,6 +50,11 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    job runs on one rented brain (plans\jobs-flashnext-run3-long.json: run 3, the gate, then 800 fix-list jobs).
    `--leaks warn` reports the user name, PC name and private words without stopping (they are scrubbed before anything
    is kept or published); the key always stops it.
+   `node jobs-to-lessons.mjs --runs <runs.jsonl>[,<label>=<runs.jsonl>] --grades <opus grades.jsonl> --to <dir> [--key <variant-key.json>]`
+   turns the do-jobs runs Opus marked keep into lessons as they ran (lessons.jsonl + toolsets.json, the shape training
+   reads): Bob's hidden notes left out, each step's thinking kept, Bob's own prompt and tools for the run's family, one
+   family per folder. Everything goes through the privacy scrub (private-words.txt and its "keep:" words) and nothing is
+   written if anything is left. `--key` maps a grade's shuffled run letter to its runs file's label.
    `node fix-to-jobs.mjs --fix <to-fix.jsonl> --root <folder> --to <jobs.jsonl> [--skip <jobs.jsonl>] [--private <words file>]`
    turns a review's fix list into jobs for do-jobs: each lesson's first request only (never its old answer or the review's
    note), the Lab PC's home made neutral, e-mail and home-network addresses given stand-ins, and requests with a picture,
