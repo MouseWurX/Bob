@@ -30,7 +30,7 @@ check('without a letter, an id in two runs files is not guessed', pickRuns([{ id
 
 const W = (f, rows) => { const p2 = path.join(tmp, f); fs.mkdirSync(path.dirname(p2), { recursive: true }); fs.writeFileSync(p2, rows.map((r) => JSON.stringify(r)).join('\n') + '\n'); return p2; };
 const runsA = W('a/runs.jsonl', [row('k1'), row('k2', { said: 'x' })]), grades = W('grades.jsonl', [{ id: 'k1', verdict: 'keep', note: 'good' }, { id: 'k2', verdict: 'discard' }]);
-const cli = (extra) => spawnSync(process.execPath, ['jobs-to-lessons.mjs', '--bob', app, '--user', ME.user, '--host', ME.host, '--words', ME.words, ...extra], { cwd: path.join(app, 'model-lab'), encoding: 'utf8' });
+const cli = (extra) => spawnSync(process.execPath, ['jobs-to-lessons.mjs', '--bob', app, '--user', ME.user, '--host', ME.host, '--words', ME.words, ...extra], { cwd: path.join(app, 'model-lab'), encoding: 'utf8', env: { ...process.env, BOB_AGENT_DIR: tmp } }); // never the repository's own folder
 const out = path.join(tmp, 'lessons');
 const ok = cli(['--runs', runsA, '--grades', grades, '--to', out]);
 const ls = fs.existsSync(path.join(out, 'lessons.jsonl')) ? fs.readFileSync(path.join(out, 'lessons.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
