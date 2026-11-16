@@ -2,7 +2,7 @@
 
 This is the guide to what Brain Engine changes in llama.cpp, where each change hooks in, and what to re-check when moving to a newer llama.cpp. [README.md](README.md) says what each patch is for and how to build and move it. This page is the "where and how" for whoever does the rebase.
 
-Brain Engine 8 (named 8b12359) is llama.cpp **b12359** (llama.cpp 1.0) plus patches 0001 to 0014 below; 0015 (prompt odds), 0016 (expert cache ranking) and 0018 (live trace every N words) are for the next Brain Engine (Brain Engine 4 had the first six, Brain Engine 5 the first eight, Brain Engine 6 the first twelve, Brain Engine 7 the first thirteen on b12282; 0007 is live expert picks, 0008 the link log and SCUT that retunes itself, 0009 the expert mass, 0010 the expert trace read once per word, 0011 one trip a word over a lent card, 0012 load progress, 0013 experts per word, live, 0014 card sharing across builds). Only 0004, 0005, 0006, 0008, 0011 and 0014 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
+Brain Engine 8 (named 8b12359) is llama.cpp **b12359** (llama.cpp 1.0) plus patches 0001 to 0014 below; 0015 (prompt odds), 0016 (expert cache ranking), 0018 (live trace every N words) and 0019 (expert prefetch) are for the next Brain Engine (Brain Engine 4 had the first six, Brain Engine 5 the first eight, Brain Engine 6 the first twelve, Brain Engine 7 the first thirteen on b12282; 0007 is live expert picks, 0008 the link log and SCUT that retunes itself, 0009 the expert mass, 0010 the expert trace read once per word, 0011 one trip a word over a lent card, 0012 load progress, 0013 experts per word, live, 0014 card sharing across builds). Only 0004, 0005, 0006, 0008, 0011 and 0014 touch ggml, and only its card-sharing backend (`ggml/src/ggml-rpc`). No CUDA, Vulkan, Metal or CPU code is changed, so a llama.cpp update that only changes the card backends needs nothing from us.
 
 Bob's own code map lists these patches too: one line each, with the files they change, the lines they add and take out, and the main names they add.
 
@@ -183,6 +183,15 @@ Then run `engine/try-newer.sh <tag>`. Every patch must go on, and the Linux buil
 - **Why:** each piece waits for the card (`llama_synchronize`) once a word. The 12 November test showed the trace's cost was in waiting, not sending.
 - **Re-check on rebase:** `expert_trace_part`, `part_max_rows`, `slot.stats.n_gen`.
 - **Tests:** `engine/tests/trace-every.py <checkout>`: pieces at N = 1 and N = 4, same rows, same full trace.
+
+### 0019-expert-prefetch: the next layer's experts copied ahead
+- **Environment key (off unless set):** `LLAMA_PREFETCH_EXPERTS=1`.
+- **Upstream files:** `src/llama-context.cpp` and `src/llama-context.h` only.
+- **Hooks:** `llama_context::sched_copy_experts`, the copy callback llama gives the scheduler for weights in RAM. After the MoE cache's own check: on first call, `llama_expert_prefetch::init()` maps each RAM expert tensor to the same kind (gate, up, down, gate_up) in the next layer in RAM, opens a second backend on the same device (`ggml_backend_dev_init`) and allocates one staging buffer per kind plus two events. `serve()`: if `src` was copied ahead, the card's stream waits for the `ready` event, copies staging to `dst` on its own stream (`ggml_backend_tensor_copy_async(backend, backend, ...)`), and records `consumed`. At the end of the callback, `ahead()`: when at least half of `src`'s experts were used, the second stream waits for the slot's last `consumed`, then `ggml_backend_tensor_set_async` copies the next tensor whole into staging and records `ready`.
+- **Why:** prompt reading with experts in RAM is bound by those copies, which the card's stream does in line with the work. The stock scheduler's prefetch only moves results the other way.
+- **Safety:** the staging buffers are ours, not the scheduler's, so no allocator lifetimes change. A staging buffer is never written before the card has moved its last contents out. Any failure to set up (no second stream, no events, no room) logs `!!! expert prefetch NOT USED` and leaves the stock path.
+- **Re-check on rebase:** `sched_copy_experts` and `copy_experts_info`, the MoE cache check at its top, `ggml_backend_dev_init`, `ggml_backend_tensor_copy_async`, event support on CUDA and Vulkan.
+- **Tests:** none can run without a graphics card. With it on, a CPU build and the trace test still pass (nothing in RAM is offloaded there). The PC test compares reading speed with it on and off and reads its closing line.
 
 ## What's not covered yet
 
