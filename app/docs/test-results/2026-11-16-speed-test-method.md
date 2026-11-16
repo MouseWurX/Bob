@@ -231,3 +231,11 @@ A check against the "Conditions recorded" list found that the runner sampled onl
 - `summary.md` gets a conditions table, and the processor temperature line.
 
 Still worked out at write-up time from the saved data: same words with and without Turbo (every run's text sha256), and the layers whose experts sit in RAM (engine logs). Not built: perplexity on the 32K text for N0 and N4. It is listed as skipped on the results page unless it is added before the run.
+
+## Addendum 13 (Nov 16, before any timed run): processor temperature from HWiNFO
+
+Windows reports no processor temperature on the PC (checked: the ACPI thermal zone is empty). The owner chose to add HWiNFO, which they install and start themselves. HWiNFO's sensor log is a CSV file it adds a line to each second. The runner gets the log's path with `--hwinfo <csv>`. For each timed run it reads only the lines written during that run, and reports:
+- the hottest processor temperature (Tctl/Tdie), and the median;
+- the peak CPU Package Power.
+
+Columns are found by name, and a comma decimal is read too. If the log is missing or has no new lines, the results say so for that run.

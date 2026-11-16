@@ -87,6 +87,24 @@ export function parseSystem(json, { freeMB, totalMB }) {
   return { freeRamMB: freeMB, totalRamMB: totalMB, top: Array.isArray(j.top) ? j.top.slice(0, 5) : [], gpuTop: Array.isArray(j.gpuTop) ? j.gpuTop.slice(0, 5) : [], cpuTempC: temps.length ? Math.max(...temps) : null, cpuTempNote: temps.length ? 'ACPI thermal zone (firmware; may lag the cores)' : 'not reported by Windows on this PC', powerPlan: typeof j.powerPlan === 'string' ? j.powerPlan.slice(0, 200) : '' };
 }
 
+// HWiNFO's sensor log (a CSV it appends to once a second, started by the owner): the processor's temperature and
+// power over one timed run. Only the lines written during the run are read, so no clock or date format is parsed.
+// The columns are found by name: Tctl/Tdie or CPU Package for the temperature, CPU Package Power for the power.
+export function splitCsv(line) { const out = []; let cur = '', q = false; for (const ch of String(line)) { if (ch === '"') q = !q; else if (ch === ',' && !q) { out.push(cur); cur = ''; } else cur += ch; } out.push(cur); return out.map((x) => x.trim()); }
+export function hwinfoColumns(header) {
+  const h = splitCsv(header);
+  const find = (re) => h.findIndex((x) => re.test(x));
+  return { temp: find(/(Tctl\/Tdie|CPU \(Tctl|CPU Package|CPU \(Tdie\)|CPU Die).*(°C|\[C\]|C\])/i), power: find(/CPU Package Power/i) };
+}
+export function parseHwinfo(header, lines) {
+  const c = hwinfoColumns(header);
+  if (c.temp < 0) return { cpuMaxC: null, cpuNote: 'HWiNFO log has no processor temperature column' };
+  const num = (s) => { const v = Number(String(s || '').replace(',', '.')); return Number.isFinite(v) ? v : null; };
+  const t = [], w = [];
+  for (const l of lines) { if (!l.trim() || /Date|Time/.test(l.slice(0, 12))) continue; const p = splitCsv(l); const a = num(p[c.temp]); if (a !== null) t.push(a); if (c.power >= 0) { const b = num(p[c.power]); if (b !== null) w.push(b); } }
+  return { cpuMaxC: t.length ? Math.max(...t) : null, cpuMedianC: t.length ? r1(median(t)) : null, cpuMaxW: w.length ? Math.max(...w) : null, cpuSamples: t.length, ...(t.length ? {} : { cpuNote: 'HWiNFO wrote no lines during this run (is its logging on?)' }) };
+}
+
 // One streamed /completion: the time to the first word, every gap between words, and the engine's own timings.
 // fetchImpl and now are passed in so the tests run without an engine.
 export async function streamOnce(url, body, { fetchImpl = fetch, now = () => performance.now(), timeoutMs = 20 * 60e3 } = {}) {
@@ -238,11 +256,13 @@ export function summarise(results, { prompts = {}, plan = {} } = {}) {
   }
   const cond = [...by.values()].filter((g) => !g.notRun && g.runs.some((x) => x.card?.samples || x.cpu));
   if (cond.length) {
-    lines.push('', 'Conditions during the timed runs (median, with min and max):', '', '| Row | Prompt | Card max °C | Card memory max °C | Card busy max % | Fan max % | Lowest core MHz | Processor busy % | Free RAM MB |', '|---|---|---|---|---|---|---|---|---|');
-    for (const g of cond) { const ok = g.runs.filter((x) => !x.failed); lines.push(`| ${g.row} | ${g.prompt} | ${mm(ok.map((x) => x.card?.maxTempC))} | ${mm(ok.map((x) => x.card?.maxMemTempC))} | ${mm(ok.map((x) => x.card?.maxUtilPct))} | ${mm(ok.map((x) => x.card?.maxFanPct))} | ${mm(ok.map((x) => x.card?.minSmMHz))} | ${mm(ok.map((x) => x.cpu?.busyPct))} | ${mm(ok.map((x) => x.cpu?.freeRamMB))} |`); }
+    lines.push('', 'Conditions during the timed runs (median, with min and max):', '', '| Row | Prompt | Card max °C | Card memory max °C | Card busy max % | Fan max % | Lowest core MHz | Processor busy % | Processor max °C (HWiNFO) | Free RAM MB |', '|---|---|---|---|---|---|---|---|---|---|');
+    for (const g of cond) { const ok = g.runs.filter((x) => !x.failed); lines.push(`| ${g.row} | ${g.prompt} | ${mm(ok.map((x) => x.card?.maxTempC))} | ${mm(ok.map((x) => x.card?.maxMemTempC))} | ${mm(ok.map((x) => x.card?.maxUtilPct))} | ${mm(ok.map((x) => x.card?.maxFanPct))} | ${mm(ok.map((x) => x.card?.minSmMHz))} | ${mm(ok.map((x) => x.cpu?.busyPct))} | ${mm(ok.map((x) => x.cpu?.cpuMaxC))} | ${mm(ok.map((x) => x.cpu?.freeRamMB))} |`); }
   }
+  const hwNotes = [...new Set(results.flatMap((x) => (x.runs || []).map((r) => r.cpu?.cpuNote)).filter(Boolean))];
+  if (hwNotes.length) lines.push('', `Processor temperature notes: ${hwNotes.join('; ')}.`);
   const temps = results.map((x) => x.sysBefore?.cpuTempC).filter(Number.isFinite);
-  if (results.some((x) => x.sysBefore)) lines.push('', temps.length ? `Processor temperature before each load (ACPI thermal zone): ${r1(median(temps))} °C median (${r1(Math.min(...temps))} to ${r1(Math.max(...temps))}).` : 'Processor temperature: not reported by Windows on this PC (no extra tool is installed for it).');
+  if (results.some((x) => x.sysBefore)) lines.push('', temps.length ? `Processor temperature before each load (ACPI thermal zone): ${r1(median(temps))} °C median (${r1(Math.min(...temps))} to ${r1(Math.max(...temps))}).` : (results.some((x) => (x.runs || []).some((r) => Number.isFinite(r.cpu?.cpuMaxC))) ? 'Before each load, Windows itself reports no processor temperature here; the per-run figures above come from HWiNFO.' : 'Processor temperature: not reported by Windows on this PC, and no HWiNFO log was given.'));
   const twice = [...by.values()].filter((g) => g.runs.filter((x) => x.throttled).length > 1).map((g) => `${g.row}/${g.prompt}`);
   if (twice.length) lines.push('', `More than one throttled run (to be run again, both sets published, per the method): ${twice.join(', ')}.`);
   const cache = results.filter((x) => x.cache?.small || x.load?.refused);
@@ -295,7 +315,22 @@ function realFx(plan, outDir) {
       try { smi = nodeSpawn('nvidia-smi', [`--query-gpu=${SMI_FIELDS.join(',')}`, '--format=csv,noheader,nounits', '-lms', '250'], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }); smi.on('error', () => {}); smi.stdout.on('data', (d) => { for (const l of String(d).split('\n')) { const s = parseSmiLine(l); if (s) samples.push(s); } }); } catch {}
       return { stop: () => { try { smi?.kill(); } catch {} return samples; } };
     },
-    cpuMark() { const a = os.cpus(); return { stop: () => ({ busyPct: cpuBusy(a, os.cpus()), freeRamMB: Math.round(os.freemem() / 1048576) }) }; },
+    cpuMark() {
+      const a = os.cpus();
+      const hw = plan.hwinfoCsv; let from = 0;
+      if (hw) { try { from = fs.statSync(hw).size; } catch { from = -1; } }
+      return { stop: () => {
+        const out = { busyPct: cpuBusy(a, os.cpus()), freeRamMB: Math.round(os.freemem() / 1048576) };
+        if (!hw) return out;
+        try {
+          if (from < 0) return { ...out, cpuNote: 'HWiNFO log not found' };
+          const all = fs.readFileSync(hw, 'latin1');
+          const header = all.slice(0, all.indexOf('\n')).replace(/\r$/, '');
+          const fresh = all.slice(from).split('\n').map((l) => l.replace(/\r$/, ''));
+          return { ...out, ...parseHwinfo(header, fresh) };
+        } catch (e) { return { ...out, cpuNote: `HWiNFO log unreadable: ${e.message}` }; }
+      } };
+    },
     async system() {
       const base = { freeMB: Math.round(os.freemem() / 1048576), totalMB: Math.round(os.totalmem() / 1048576) };
       if (process.platform !== 'win32') return parseSystem('', base);
@@ -341,6 +376,7 @@ async function main() {
   const vars = {};
   a.forEach((x, i) => { if (x === '--var' && a[i + 1]) { const [k, ...v] = a[i + 1].split('='); vars[k] = v.join('='); } });
   const { plan, prompts, problems } = loadPlan(planFile, { vars });
+  if (opt('--hwinfo')) plan.hwinfoCsv = opt('--hwinfo'); // HWiNFO's sensor log, for the processor temperature
   if (problems.length) { console.error('The plan has problems:\n- ' + problems.join('\n- ')); process.exit(1); }
   const rounds = Number(opt('--rounds', plan.rounds || 5));
   const order = schedule(plan.rows, rounds);

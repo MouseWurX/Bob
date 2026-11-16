@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { quantile, median, parseSmiLine, cardSummary, streamOnce, loadPlan, schedule, runRow, summarise, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS } from '../model-lab/speed-test.mjs';
+import { quantile, median, parseSmiLine, cardSummary, streamOnce, loadPlan, schedule, runRow, summarise, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns } from '../model-lab/speed-test.mjs';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -133,6 +133,14 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   check('each load records the system before and after, and each timed run its processor use', res.sysBefore?.cpuTempC === 50 && res.sysAfter?.freeRamMB === 5 && res.runs[0].cpu?.busyPct === 12);
   const md = summarise([res], { prompts: {}, plan });
   check('the summary has a conditions table and the processor temperature line', /Conditions during the timed runs/.test(md) && /Processor temperature before each load/.test(md)); }
+
+{ const header = '"Date","Time","Core VIDs (avg) [V]","CPU (Tctl/Tdie) [°C]","CPU Die (average) [°C]","CPU Package Power [W]"';
+  check('HWiNFO columns are found by name', hwinfoColumns(header).temp === 3 && hwinfoColumns(header).power === 5);
+  const r = parseHwinfo(header, ['"16.11.2026","23:10:01.1","1.1","71.5","66","88.2"', '"16.11.2026","23:10:02.1","1.1","74.0","68","91.0"', '', header]);
+  check('HWiNFO lines during a run give the hottest and median processor temperature and peak power', r.cpuMaxC === 74 && r.cpuMedianC === 72.8 && r.cpuMaxW === 91 && r.cpuSamples === 2);
+  check('a comma decimal (European HWiNFO) still reads', parseHwinfo(header, ['"16.11.2026","23:10:01","1,1","70,5","66","80"']).cpuMaxC === 70.5);
+  check('no lines written during a run is said plainly', parseHwinfo(header, []).cpuMaxC === null && /no lines/.test(parseHwinfo(header, []).cpuNote));
+  check('a log without a processor temperature column is said plainly', /no processor temperature/.test(parseHwinfo('"Date","Time","GPU [°C]"', ['x']).cpuNote)); }
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
