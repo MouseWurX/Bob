@@ -599,6 +599,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p !== '/api/quit') brain.lastActivity = Date.now();
     if (req.method === 'POST' && p === '/api/activity') return send(res, 200, { ok: true });
     // 1.5.228 Window buttons on Bob's bar: the page says its top-bar colours so the buttons match (main.cjs checks them).
+    // Nov 16 Open brings it to the front: an already open Settings, Lab, fNRI viewer or thinking window comes forward (main.cjs).
+    if (req.method === 'POST' && p === '/api/window-front') { const b = await body(req); let shown = false; if (isLocal) try { shown = Boolean(globalThis.bobWindow?.front?.(String(b?.which || ''))); } catch {} return send(res, 200, { ok: true, shown }); }
     if (req.method === 'POST' && p === '/api/window-bar') { const b = await body(req); if (isLocal) try { globalThis.bobWindow?.bar?.(b); } catch {} return send(res, 200, { ok: true }); }
 
     if (req.method === 'GET' && p === '/api/events') {
