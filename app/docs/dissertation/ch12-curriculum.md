@@ -11,7 +11,7 @@ The research question for this chapter is a design question, not a result questi
 Three facts about status must be stated at the start.
 
 1. The Learn tab exists in the code. In the checkout read for this chapter it holds three guided experiments: what a token is, how a model picks the next word, and what temperature does (app/src/lab-learn.js, app/public/lab-learn.js).
-2. The course shipped in release 1.5.239 (PR #265, 15 November) as 42 lessons in app/src/lab-lessons.js and app/public/lab-lessons.js, under Lab, Learn, Lessons. It is off until the learner turns on the setting Lab: Lessons (labLessons). The levels, units and lessons in this chapter are read from that file on main.
+2. The course shipped in release 1.5.239 (PR #265, 15 November) as 42 lessons in app/src/lab-lessons.js (43 from 16 November, when Watching the router was added, and 45 later that day, when an outside review of this chapter added two Engineering lessons; section 12.5.3) and app/public/lab-lessons.js, under Lab, Learn, Lessons. It is off until the learner turns on the setting Lab: Lessons (labLessons). The levels, units and lessons in this chapter are read from that file on main.
 3. The learner study of section 12.10 has not been run. Nothing here is evidence that learners learn.
 
 This chapter describes design. It does not reproduce lesson texts. The lessons are written in Bob's own voice as part of the course work, and section 12.8 explains why lesson text is kept apart from training and research data.
@@ -52,14 +52,14 @@ None of these sources studies local language models, mixture-of-experts layouts,
 
 ### 12.3.1 The lesson shape
 
-Every lesson in the course has the same three parts, in the same order: Read, Try it and Check. Twelve of the 42 lessons also show a Real result inside the Read part (app/src/lab-lessons.js). The fixed order is deliberate. A learner who has seen one lesson knows where to look in the next, which reduces the effort of navigating and leaves more for the content.
+Every lesson in the course has the same three parts, in the same order: Read, Try it and Check. Thirteen of the 45 lessons also show a Real result inside the Read part, and six show a From the research panel (app/src/lab-lessons.js). The fixed order is deliberate. A learner who has seen one lesson knows where to look in the next, which reduces the effort of navigating and leaves more for the content.
 
 | Part | What the learner does | Mode in ICAP terms |
 |---|---|---|
 | Read | Reads a short plain-words explanation in Bob's voice. | Passive, with a worked case |
 | Try it on your own model | Changes one control on the loaded model and watches the result. | Active |
 | Check | Answers two multiple-choice questions; each answer says why. | Constructive |
-| Real result | In 12 lessons, reads a measured finding from the project's docs. | Passive reading of evidence |
+| Real result | In 13 lessons, reads a measured finding from the project's docs, with a line on how strong it is. | Passive reading of evidence |
 
 The Read part is short on purpose. The Learn tab's existing cards already follow the same rule at card level: one question, one control, one result, and one sentence from Bob that says what the learner just saw (cs-lab-learn-and-tinker.md, section 1). The lessons extend that pattern. The Read part adds background before the control, and the Check and Real result add a test and a piece of evidence after it.
 
@@ -79,6 +79,8 @@ Each shipped panel names its source file in the repository's docs, so a learner 
 
 This rule is an honesty rule as well as a teaching rule. A course that teaches "judge a brain" while quoting numbers it cannot back would teach the opposite of its lesson.
 
+From 16 November a second kind of panel, From the research, shows a finding from someone else's published work, with the authors, the year and a link. It is labelled "not my own" and styled apart from the Real result, so a learner can always tell the project's measurements from other people's. Five lessons carry one: Routers and Watching the router (the Hugging Face MoE training handbook, Tazi, von Werra and Wolf, 2026, with MaxVio from Wang et al., 2024), Experts per word and Scoring experts (Chen and Yao, 2026, the second as a caution against cutting), and Learning from rewards (Ma et al., 2025, on routing replay). The course test requires each to name a year and an https link.
+
 ### 12.3.4 Voice and plain words
 
 All lesson text is in Bob's voice: first person, plain words, no jargon without a gloss. This follows the existing Learn tab, whose one-line summaries speak as Bob ("Every word I write is a roll of weighted dice"). The wording rule matches the project's contributing rules: every new feature gets a Help page, a glossary entry and an FAQ, written in Bob's voice (CLAUDE.md).
@@ -91,13 +93,13 @@ The Lab design already carries honesty lines that the course inherits. The tempe
 
 ## 12.4 The curriculum
 
-The course has 42 lessons in 17 units across three levels (app/src/lab-lessons.js). The levels differ in what they ask of the learner and in how much they assume. In the code, Foundations is what each idea is, tried on your own brain; Advanced is the maths behind each idea; Engineering builds the tools that change brains from Bob's own code, and five of its lessons show a short code sketch.
+The course has 45 lessons in 17 units across three levels (app/src/lab-lessons.js). The levels differ in what they ask of the learner and in how much they assume. In the code, Foundations is what each idea is, tried on your own brain; Advanced is the maths behind each idea; Engineering builds the tools that change brains from Bob's own code, and five of its lessons show a short code sketch.
 
 | Level | Units |
 |---|---|
 | Foundations (5 units, 17 lessons) | Words; Inside a brain; Talking to a brain; Changing a brain; Judging a brain |
-| Advanced (7 units, 14 lessons) | How brains learn; Transformers; Mixture of experts; Making brains smaller; Data decides habits; Agents and tools; Training beyond copying |
-| Engineering (5 units, 11 lessons) | Build the tools; Inference engines; Training at scale; Testing that tells the truth; Looking inside |
+| Advanced (7 units, 15 lessons) | How brains learn; Transformers; Mixture of experts; Making brains smaller; Data decides habits; Agents and tools; Training beyond copying |
+| Engineering (5 units, 13 lessons) | Build the tools; Inference engines; Training at scale; Testing that tells the truth; Looking inside |
 
 ### 12.4.1 Foundations
 
@@ -123,8 +125,10 @@ Learning objectives for Advanced. After this level a learner should be able to:
 1. Explain that a model learns by reducing its error on examples, and that a teacher's faults are copied along with its skills.
 2. Explain that a mixture-of-experts model sends each word to a few of many experts, and that cutting experts is a trade between size and ability.
 3. Explain that a fault in training lessons, such as handing code off to a tool, can become a habit in the trained model.
-4. Distinguish what a tool's wording changes from what a lesson's content changes.
+4. Distinguish what a tool's wording changes from what its shape changes, and both from what a lesson's content changes. In the project's results rewording moved nothing, and each brain family was given one working shape (Qwen shape 4, GPT-OSS shape 3; section 8.10).
 5. Say, in plain words, what methods that train beyond copying (preference training and reward-based training) try to do differently. This objective rests on background reading, not on a measured result in this thesis.
+
+The Mixture of experts unit gained a third lesson on 16 November, Watching the router: how to read MaxVio, the router's certainty and expert output sizes, and why a heal is checked for routing drift as well as for scores.
 
 Training beyond copying has no Real result panel, because the project has not run any such training. Several other units also have none in the shipped course (section 12.5). The unit says so, and it teaches the idea from the literature in Chapter 2 and no more.
 
@@ -136,32 +140,34 @@ Learning objectives for Engineering. After this level a learner should be able t
 
 1. Describe what a custom inference engine adds and what must be checked after modifying one, including that a switched-off expert path should leave output unchanged when nothing is switched off.
 2. Describe the steps of a training run on rented hardware, and why a pre-flight check in code should run before money is spent.
-3. Design a test whose held-out items are checked against the training files, and explain why this check comes first.
+3. Design a test whose held-out items are checked against the training files, and explain why this check comes first, even when the split itself is correct.
 4. Read a patching result, say which parts of it are noise, and say what the test does not prove.
 5. State the difference between a part of a model that causes a habit and a part that holds it back.
+6. Audit a model reviewer: compare it with a second reviewer, read the direction of their disagreement, and check a sample by hand before trusting either.
 
 The Engineering level asks for more reading of evidence and less guided clicking. This follows the point from the worked-example literature that novices and experts need different support, and that the scaffolding should fade as skill grows (MIT Teaching and Learning Lab, n.d.).
 
 ## 12.5 How units draw on the thesis chapters
 
-Twelve of the 42 lessons carry a Real result panel. The table lists each one as shipped in app/src/lab-lessons.js, with the thesis chapter it draws on and the source file the lesson names. Units not listed have no panel.
+Thirteen of the 45 lessons carry a Real result panel. An earlier draft of this chapter counted twelve: the Experts panel (the 72 to 76% overlap figure) was removed in the 15 November fact-check, because that figure is not on the checked list. The table lists each one as shipped in app/src/lab-lessons.js, with the thesis chapter it draws on and the source file the lesson names. Units not listed have no panel. Each panel also carries a How strong line (section 12.5.2), and the course shows learners this same mapping as an index (section 12.5.4).
 
 | Lesson (unit) | Thesis chapter | Real result the panel shows | Source the lesson names |
 |---|---|---|---|
-| Experts (Inside a brain) | 9 | Experts follow word patterns, not topics: any job's top 96 of 256 experts cover another job's routing 72 to 76%, about as well as its own top 96. | MAKING-SMALLER-MODELS.md |
-| Lessons and fine-tuning (Changing a brain) | 5 | 37% of the first coding lessons handed code off; coding did not move after a full heal; clean coding lessons took Riker from 6 to 9 of 13. | MAKING-SMALLER-MODELS.md |
-| Cutting experts (Changing a brain) | 9 | At 208 of 256 experts, skills keep 97 to 98% of routing and general knowledge 90%; at 144, 87 to 90% and 66%. Layer 2 is the worst layer for every skill. | counts ladder (ladder.md) |
+| Lessons and fine-tuning (Changing a brain) | 5 | 37% of the first coding lessons handed code off. Coding race, 13 tasks, thinking on: Riker v1 8, v2 6, the re-cut Riker 9, full Qwen 12. The re-cut kept 208 experts against 176 for v1 and v2, so its gain is not from the clean lessons alone. | FORGE-JOURNAL.md |
+| Cutting experts (Changing a brain) | 9 | At 208 of 256 experts, Bob's own skills keep 97 to 98% of routing and general knowledge (the ladder's longtext column) 90%; at 144, 87 to 90% and 66%. Layer 2 is the worst layer for every skill. | counts ladder (ladder.md) |
 | Healing (Changing a brain) | 9 | A heal cannot grow back a removed expert, so deep cuts are planned as a gentle cut plus a heal. A design statement, no number. | MAKING-SMALLER-MODELS.md |
 | Loss (How brains learn) | 9 | Healing Riker took held-out lesson loss from 0.401 to 0.362; the teacher scored 0.324. | FORGE-JOURNAL.md |
 | Attention heads and memory (Transformers) | 9 | Needle test: Riker found 12 of 12 at 8K, 32K, 64K and 128K, the same as full Qwen. | FORGE-JOURNAL.md |
 | Experts per word (Mixture of experts) | 9 | Full Qwen at 8, 6 and 4 experts per word: 45/97 tools, 20/20 facts, 6/6 code, at 82.7, 92.1 and 102.5 tokens a second; 3 drops to 26/97 and 4/6; 2 collapses to 1/97 and 0/6. | experts-per-word benchmark |
 | Scoring experts (Making brains smaller) | 9 | REAP trims with no heal on 314 held-out turns at 100, 75, 50 and 35% kept: Bobert 204, 204, 198, 145; Riker 210, 204, 163, 72. | MAKING-SMALLER-MODELS.md |
-| Lessons teach habits (Data decides habits) | 5 | 37% of the first coding lessons handed code off; clean coding lessons took Riker from 6 to 9 of 13 (full Qwen 12). | MAKING-SMALLER-MODELS.md |
+| Lessons teach habits (Data decides habits) | 5 | The same coding figures and the same cut caveat as Lessons and fine-tuning. | FORGE-JOURNAL.md |
 | Cleaning a lesson set (Data decides habits) | 6 | First cleaning: 9,059 to 8,828 lessons (73 duplicates, 123 with no final answer, 28 unknown tools, 6 loops, 1 empty). | MAKING-SMALLER-MODELS.md |
 | Counting experts (Build the tools) | 9 | The coverage rule: keep enough experts in every layer for 95% of each job's routing (99% for tools, coding and exact formats), and keep the union. A rule, no number. | MAKING-SMALLER-MODELS.md |
 | Building an eval harness (Testing that tells the truth) | 4 | A 97-question quiz moves 3 to 5 between runs. | MAKING-SMALLER-MODELS.md |
+| The split was right, and still leaked (Testing that tells the truth) | 7 | 519 of 534 held-out tool items appear word for word in training-side files, and 7 more share their first 60 characters; only 8 have no match. | Chapter 7 (ch07-study3-test-leaks.md) |
+| Auditing your reviewer (Testing that tells the truth) | 6 | Opus changed 1,922 of Haiku's 5,788 verdicts (33%); 71% of the changes were between fix and repair; Opus moved 533 Haiku keeps to worse and 23 lessons to better. | Chapter 6 (ch06-study2-full-read.md) |
 
-No shipped panel shows the full read of the tool lessons, the test leak, tool wording, coaching, the Brain Engine checks or the Riker brake and patching. The two coding panels give 6 to 9 of 13 without the caveat of chapter 5: the re-cut Riker also kept 208 experts against 176 for Riker v1 and v2 (FORGE-JOURNAL.md).
+No shipped panel shows tool wording, the per-family tool shapes, coaching, the Brain Engine checks or the Riker brake and patching. Both coding panels now carry the caveat of chapter 5: the re-cut Riker also kept 208 experts against 176 for Riker v1 and v2 (FORGE-JOURNAL.md). The two newest panels cite thesis chapters rather than a doc under docs/, because the held-out leak and the reviewer comparison are published only in those chapters.
 
 ### 12.5.1 A note on the pipeline panels
 
@@ -171,15 +177,25 @@ The Training at scale unit could show a real failure that cost little; its shipp
 
 Three rules govern which results appear in a panel.
 
-1. Only measured results from the project's docs. The design asked for the checked list only; one shipped panel (the 72 to 76% overlap) is from the docs but not on that list.
+1. Only measured results from the project's docs. The one panel that was from the docs but not on the checked list (the 72 to 76% overlap) was removed on 15 November. On 16 November every panel figure was checked again against the file the panel names. One wording was corrected: the Cutting experts panel called a column "general knowledge" that the ladder file labels longtext; the panel now names both, because docs/BOBS-OWN-MODELS.md defines that column as general knowledge.
 2. Binding exclusions stay excluded. Two figures from older runs are marked "do not use" in the checked list because they were not confirmed. No panel quotes them.
-3. Status should be part of the panel: a panel should say when a result is not re-tested or rests on a small test. The shipped panels do not yet carry such lines, and two coding panels give 6 to 9 of 13 without the cut caveat of chapter 5.
+3. Status is part of the panel. Each panel carries a How strong line that says when a result is one run, a small test, or a rule rather than a measurement. For example, the needle test is marked as 12 trials of the simple kind, and the reviewer comparison is marked as one read by each reviewer with no person checking a sample. The course's tests fail if a panel has no such line or names no chapter (app/test/run-lab-lessons-test.js).
 
 These rules mean some interesting results never reach learners. That is the cost of a course that can be trusted.
 
+### 12.5.3 Two lessons from the project's own failures
+
+An outside review of this chapter, on 16 November, made two suggestions that the course now follows. The first was that the project's largest failure in testing is its best teaching case. Chapter 4 describes a held-out split by id hash that was correct, and chapter 7 found that 519 of 534 held-out items still turned up word for word in training-side files, because the same requests had been saved under new ids. The lesson The split was right, and still leaked, in Testing that tells the truth, teaches this before the lesson on writing a leak check, so that the learner meets the reason before the method. Its Check asks what to do when a leak is found after scores were shared, and the answer it rewards is to say which scores used the leaked test.
+
+The second suggestion was that the reviewer-bias disclosure of section 4.5.4 should reach learners who use the Lab's own reviewers. The lesson Auditing your reviewer teaches a learner to check a model reviewer with the two checks the thesis ran on its own (a second reviewer on the same items, and the direction of their disagreement) and the ones chapter 6 lists as missing or partial (a sample read by a person, swapped answer order, and a rule written down before the read). Its panel gives the measured disagreement of chapter 6, and its From the research panel gives the judge biases reported by Zheng et al. (2023). Whether either lesson changes how learners test is unproven in our lab, as we have yet to test.
+
+### 12.5.4 The index learners see
+
+The mapping table above is also shown to learners. The Lessons page opens a view titled Where every Real result comes from, which lists every panel with its lesson, thesis chapter, result, How strong line and source file, and lists the From the research panels in a separate table with authors and links (app/public/lab-lessons.js). The index makes the course's first honesty rule checkable by the learner: each number is one click from the lesson that uses it and one file name from where it was measured. On a phone each row becomes a card, so no column is cut off.
+
 ## 12.6 The unit on judging a brain: a worked design example
 
-This section describes one unit's design in more detail, because it shows how the parts fit together. The shipped unit is simpler: two lessons, Held-out tests and Honest results, whose Try opens the Lab's Test page, with no Real result panel; the quiz-noise panel sits in the Engineering lesson Building an eval harness. Judging a brain is the first unit where the course connects to the thesis's main claim.
+This section describes one unit's design in more detail, because it shows how the parts fit together. The shipped unit is simpler: two lessons, Held-out tests and Honest results, whose Try opens the Lab's Test page, with no Real result panel; the quiz-noise panel sits in the Engineering lesson Building an eval harness, and the leak has its own Engineering lesson, The split was right, and still leaked (section 12.5.3). Judging a brain is the first unit where the course connects to the thesis's main claim.
 
 The Read part explains in plain words that a score is a measurement and every measurement has noise. It introduces held-out items: questions a model was never trained on. The Try part has the learner run the same quiz twice on their own model and compare the scores, so they see for themselves that the number moves. The Check asks the learner to predict whether a one-point difference between two models is meaningful, and then shows them how much their own two runs differed.
 
@@ -203,7 +219,7 @@ The design requires that a learner who cannot see, hear or use a pointer can com
 
 These rules map onto the Web Content Accessibility Guidelines 2.1 (W3C, 2025). The criterion on use of colour (1.4.1) is the reason for the shade-and-border rule, and the criterion on animation from interactions (2.3.3) is the reason for the reduced-motion rule. The thesis has not run an accessibility audit. These are design rules and code features, and a screen-reader test with real users is not done. Section 12.11 lists it among the limits.
 
-Platform coverage is a related access concern. The project rule is that everything new works on Windows, Mac, Linux and Android, or says where it does not (CLAUDE.md). The Learn tab needs only a running model and ordinary chat endpoints, so it could work on a phone. A decision on whether the phone gets Learn alone was put to the owner in the design (cs-lab-learn-and-tinker.md, section 9). Engineering-level units that need the Lab's machinery, such as rented training, are desktop-only and say so.
+Platform coverage is a related access concern. The project rule is that everything new works on Windows, Mac, Linux and Android, or says where it does not (CLAUDE.md). The Learn tab needs only a running model and ordinary chat endpoints, so it could work on a phone. A decision on whether the phone gets Learn alone was put to MouseWurX in the design (cs-lab-learn-and-tinker.md, section 9). Engineering-level units that need the Lab's machinery, such as rented training, are desktop-only and say so.
 
 ## 12.8 Lessons are never training data
 
@@ -277,17 +293,17 @@ A pre/post quiz says whether learners gained, not why. The study would also reco
 This section covers the design claims of the chapter, since there are no learner results to threaten.
 
 1. **No learner evidence.** The strongest limit. Everything in sections 12.3 to 12.9 is design. The benefits drawn from the literature come from other subjects and other settings.
-2. **Course read from code, not from use.** The 17 units and 42 lessons were read from app/src/lab-lessons.js on main (release 1.5.239). Reading the file confirms the structure, not that each lesson works as written on every model.
+2. **Course read from code, not from use.** The 17 units and 45 lessons were read from app/src/lab-lessons.js on the working branch of 16 November. Reading the file confirms the structure, not that each lesson works as written on every model.
 3. **Literature gap.** The cited work studies university classes and general visualisation tools, not local language models. Transfer is assumed.
 4. **Worked-example source.** The Sweller and Cooper paper's own page could not be opened. Its finding is reported through a teaching-centre summary that cites it. A reader who needs the primary result should read the paper.
 5. **Single-learner mode.** There is no interactive mode in the ICAP sense, because a learner works alone. A classroom version with discussion is not designed.
-6. **Evidence panels inherit the thesis's limits.** A panel is only as strong as its source result. Several sources rest on small tests with noise, such as the 6-ask patching runs. Each panel states this.
+6. **Evidence panels inherit the thesis's limits.** A panel is only as strong as its source result. Several sources rest on small tests with noise. Each panel states this in its How strong line.
 7. **Accessibility not audited.** The rules follow accepted guidance, but no audit or user test with assistive technology has been done.
 8. **Staleness.** The panels quote results as checked on 15 November 2026. Later runs, such as the decisive retrain, would change what the course should say. The course needs a rule to refresh panels, and that rule is not yet built.
 
 ## 12.12 Summary
 
-The course gives a learner with no background a route to the thesis's ideas in 42 lessons, 17 units and three levels. Each lesson has a Read, a Try it and a Check, and 12 lessons add a Real result panel of measured data. The design draws on worked examples, active learning, interactive notebooks and explorable explanations. It aims at the thesis's own honesty rules: panels name their source and never quote excluded figures, though one panel number is not on the checked list and two coding panels lack the cut caveat.
+The course gives a learner with no background a route to the thesis's ideas in 45 lessons, 17 units and three levels. Each lesson has a Read, a Try it and a Check, 13 lessons add a Real result panel of measured data with a line on how strong it is, and 6 add a From the research panel citing other people's published work. The design draws on worked examples, active learning, interactive notebooks and explorable explanations. It keeps the thesis's own honesty rules: panels name their chapter and source, say how strong they are and never quote excluded figures, and learners can see the whole mapping as an index. Two lessons turn the project's own failures, a leaked test and a biased reviewer, into teaching.
 
 Two rules protect the research. Lessons for people are never training data, and learner runs never mix into research data. Accessibility rules are built into the Learn tab, but have not been audited.
 
@@ -295,10 +311,15 @@ The chapter answers its design question only as a design. No learner has used th
 
 ## References
 
+- Chen, X., & Yao, H. (2026). Training-Free Halving of Activated Experts in Fine-Grained Mixture-of-Experts Models. arXiv:2609.04575. https://arxiv.org/abs/2609.04575
 - Chi, M. T. H., & Wylie, R. (2014). The ICAP Framework: Linking Cognitive Engagement to Active Learning Outcomes. Educational Psychologist, 49(4), 219-243. https://csi.asu.edu/wp-content/uploads/2018/01/ChiWylie2014ICAP.pdf
 - Freeman, S., Eddy, S. L., McDonough, M., Smith, M. K., Okoroafor, N., Jordt, H., & Wenderoth, M. P. (2014). Active learning increases student performance in science, engineering, and mathematics. Proceedings of the National Academy of Sciences, 111(23), 8410-8415. https://experts.umn.edu/en/publications/active-learning-increases-student-performance-in-science-engineer/
 - Kluyver, T., Ragan-Kelley, B., Perez, F., Granger, B., et al. (2016). Jupyter Notebooks: a publishing format for reproducible computational workflows. In Positioning and Power in Academic Publishing: Players, Agents and Agendas, pp. 87-90. IOS Press (20th International Conference on Electronic Publishing). https://eprints.soton.ac.uk/403913
+- Ma, W., Zhang, H., Zhao, L., Song, Y., Wang, Y., Sui, Z., & Luo, F. (2025). Stabilizing MoE Reinforcement Learning by Aligning Training and Inference Routers. arXiv:2510.11370. https://arxiv.org/abs/2510.11370
 - MIT Teaching and Learning Lab (n.d.). Worked Examples. A teaching guide that reports Sweller and Cooper (1985); the primary paper's page could not be opened, so the guide is cited instead. https://tll.mit.edu/teaching-resources/how-people-learn/worked-examples/
 - Smilkov, D., Carter, S., Sculley, D., Viegas, F. B., & Wattenberg, M. (2017). Direct-Manipulation Visualization of Deep Networks. arXiv:1708.03788. https://arxiv.org/abs/1708.03788
+- Tazi, N., von Werra, L., & Wolf, T. (2026). The Ultimate MoE Training Handbook. Hugging Face. https://huggingface.co/spaces/huggingface/moe-blogpost
 - Victor, B. (2011). Explorable Explanations. https://worrydream.com/ExplorableExplanations/
 - W3C (2025). Web Content Accessibility Guidelines (WCAG) 2.1. W3C Recommendation. https://www.w3.org/TR/WCAG21/
+- Wang, L., Gao, H., Zhao, C., Sun, X., & Dai, D. (2024). Auxiliary-Loss-Free Load Balancing Strategy for Mixture-of-Experts. arXiv:2408.15664. https://arxiv.org/abs/2408.15664
+- Zheng, L., Chiang, W.-L., Sheng, Y., Zhuang, S., Wu, Z., Zhuang, Y., Lin, Z., Li, Z., Li, D., Xing, E. P., Zhang, H., Gonzalez, J. E., Stoica, I. (2023). Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena. NeurIPS 2023, Datasets and Benchmarks Track; arXiv:2306.05685. https://arxiv.org/abs/2306.05685
