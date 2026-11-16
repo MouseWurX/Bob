@@ -205,7 +205,9 @@ export async function soloRun(brain, level, { run, review, emit, signal, msgs, t
     if (stopped() || (end && !weakAnswer(end.content))) return;
     const good = msgs.slice(from).filter((m) => shown(m) && !weakAnswer(m.content)).at(-1)?.content;
     const reports = jobReports.filter((t) => !weakAnswer(t));
-    const text = good || (reports.length ? `Here is what the jobs did:\n\n${reports.join('\n\n')}` : '');
+    // 16 Nov Maximus rerun: a "Here is what the jobs did:" heading reached the user in 4 of 63 runs. The reports are
+    // shown as they are, in Bob's own words, with no heading about jobs.
+    const text = good || reports.join('\n\n');
     if (!text) return;
     if (end) end.content = text; else keep(text, undefined);
     say(`\n\n${text}`);

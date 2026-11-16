@@ -5,6 +5,15 @@ lab run, read why runs failed or were thrown out (harness errors, graders, test 
 fix what is the harness's fault before the next run, and add a check that would catch it again. Newest first. Each entry
 says what ran, what it taught, what changed, and which check now guards it. "Open" means found but not fixed yet.
 
+## 16 Nov 2026: the Maximus rerun, first 63 of 100 (a quick read, before the blind grading)
+- Taught (Bob's loop): with the planning fixes, raw tool-call blobs and "already done" / "Standing by" answers went
+  from 5 to 0. But "I already searched / gave you that above" answers rose from 3 to 6, and the Maximus fallback
+  showed its own "Here is what the jobs did:" heading in 4 runs. The checks from the morning caught 1 of these 11.
+- Changed: new check `points_back` in answer-checks.js; solo-effort.js shows the step reports with no heading about
+  jobs; mail_route leaves "e-mail logs / files / lists" requests alone (a false alarm in this rerun).
+- Check: 6 more in run-answer-checks-test.js (49 now); run-solo-effort-test checks for no heading. Replay: points_back
+  fires on 8 of 63 rerun answers, and on the 800 Qwen runs 4 fix and 1 keep.
+
 ## 16 Nov 2026: the agent loop, from the 800 Qwen runs, the 45 GPT-OSS runs and the live inbox run
 - Taught (Bob's loop, not the harness): the most common mistakes were asking where a file was without looking, saying
   something was done or noted when no tool did it, pointing at tool output the user never sees, answers cut off

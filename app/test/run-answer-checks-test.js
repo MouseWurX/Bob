@@ -73,6 +73,14 @@ check('a connected Gmail tool counts as a mail tool', !has({ text: trash, reply:
 check('no mail tools set up -> quiet', !has({ text: trash, reply: 'I can\'t reach your mail.', usable: (n) => !/email/.test(n) }, 'mail_route'));
 check('a plain chat about e-mail etiquette with no action word -> quiet', !has({ text: 'Is e-mail etiquette different in Japan?', reply: 'A little, yes.' }, 'mail_route'));
 
+// ---------- points_back (Maximus rerun, 16 Nov) ----------
+check('"I already searched for python" -> points_back', has({ text: 'search python', reply: 'I already searched for "python". What do you need next?' }, 'points_back'));
+check('"in my last reply" -> points_back', has({ text: 'tech news?', reply: 'I already pulled that for you in my last reply. Want more?' }, 'points_back'));
+check('"I\'ve given you the answer" -> points_back', has({ text: 'and?', reply: 'I\'ve given you the answer. If you need something else, tell me.' }, 'points_back'));
+check('"the table above" with the table in this answer -> quiet', !has({ text: 'chart it', reply: '| a | b |\n|---|---|\n| 1 | 2 |\n\nThe chart uses the percentages in the table above.' }, 'points_back'));
+check('a plain answer -> quiet', !has({ text: 'how does GPS work?', reply: 'Your phone times signals from four satellites and solves for where it is.' }, 'points_back'));
+check('"email logs" is about files, not mail -> quiet', !has({ text: 'Find the email logs from the newsletter service and summarise the bounce messages', reply: 'Found them in bounces.csv: 8 bounces.' }, 'mail_route'));
+
 // ---------- stripMarkers ----------
 check('citation markers taken out', stripMarkers('It rose 3%【1†L1-L3】. Then fell【12】.') === 'It rose 3%. Then fell.');
 check('ordinary brackets kept', stripMarkers('see [1] and (2)') === 'see [1] and (2)');

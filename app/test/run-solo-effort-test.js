@@ -192,7 +192,7 @@ check('the plan card is wired to Max: shown by the loop, and no second card for 
   const good = await job(['1. Write the table\n2. Check it', 'Looks right.', table, 'Checked it.', `The table you asked for:\n| a | b |\n|---|---|\n| 1 | 2 |\nNothing is left open.`, 'Looks right.']);
   check('Max in the real loop: exactly one shown answer, the written one, and it holds the result', good.shown.length === 1 && /\| 1 \| 2 \|/.test(good.shown[0].content) && good.final === good.shown[0].content);
   const filler = await job(['1. Write the table\n2. Check it', 'Looks right.', table, 'Checked it.', "I'm here whenever you're ready.", 'See the table above.', 'Looks right.', 'Done.']);
-  check('Max: a filler answer gets one more go, then the job reports are the answer; never a review note', filler.shown.length === 1 && /\| 1 \| 2 \|/.test(filler.shown[0].content) && !/My own review|Looks right/.test(filler.shown[0].content));
+  check('Max: a filler answer gets one more go, then the job reports are the answer; never a review note', filler.shown.length === 1 && /\| 1 \| 2 \|/.test(filler.shown[0].content) && !/My own review|Looks right/.test(filler.shown[0].content) && !/what the jobs did/i.test(filler.shown[0].content));
   check('weak answers are spotted', ['', "I'm here whenever you're ready.", 'My own review: Looks right.', 'The table is shown above, all done.', '<tool_call>{"name":"write_file"}</tool_call> Done.'].every(weakAnswer) && !weakAnswer(table + '\nAll four cells are filled in from your numbers.'));
 }
 
