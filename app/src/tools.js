@@ -28,6 +28,7 @@ import { isDoc, docText, docTextFrom, OLD_EXT, MAX_DOC_BYTES } from './doc-text.
 import { GIT_LOOKS, gitArgs, runGit, gitAnswer } from './git-look.js';
 import { mainText, docKind, parseDdg, parseMojeek, resultLines, WEB_TIMEOUT_MS, MAX_DOC_DOWNLOAD } from './page-text.js';
 import { webSearch } from './web-search.js'; // Nov 16: block pages named, the backup search with a key
+import { cleanPrivateWeb, cleanLink, webGet, pageBlock, siteOf, noteBlocked, blockedWhy, sameFactsQuery, ARCHIVE_ASK, MAX_OTHER_SOURCES } from './private-web.js'; // Nov 16: Private web
 import { docToolsOn } from './my-docs.js';
 import { codeMap, linesAround } from './code-map.js';
 import { backoffMs, engineFailKind, pause } from './retry.js'; // item 194
@@ -695,7 +696,8 @@ export function buildTools(cfg) {
     // Item 20: a look-up that hangs stops on its own after WEB_TIMEOUT_MS. Item 21: when DuckDuckGo's plain page gives
     // nothing, Mojeek is asked instead. Nov 16 (web-search.js): a robot-check page is named as one, and the backup
     // search with a key (off unless turned on) stands in. The answer always says who answered.
-    async run({ query, when }, { signal }) { return webSearch({ query, when }, { cfg, signal, get: (url, opts) => fetchRetry(url, opts, signal) }); },
+    // Private web (private-web.js): its headers and your route, if set, on every request (webGet).
+    async run({ query, when }, { signal }) { return webSearch({ query, when }, { cfg, signal, get: (url, opts) => webGet(cfg, url, opts, (u, o, fetchImpl) => fetchRetry(u, o, signal, fetchImpl ? { fetchImpl } : undefined)) }); },
     summary: ({ query, when }) => `search: ${query}${when ? ` (past ${when})` : ''}`
   };
 
@@ -705,32 +707,87 @@ export function buildTools(cfg) {
       part: { type: 'integer', description: 'Optional: which part, 1, 2, 3... Default 1.' },
       find: str('Optional: words to look for; you get the part they are in.')
     }, ['url']),
-    async run({ url, part, find }, { signal }) {
-      // Redirects are followed by hand so every hop gets the same home-network check as the first address.
-      let u = new URL(url), res;
-      for (let hop = 0; ; hop++) {
-        if (!/^https?:$/.test(u.protocol)) throw new Error('Only http and https links.');
-        if (isPrivateHost(u.hostname)) throw new Error('I don\'t open addresses on the home network.');
-        res = await fetchRetry(u, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' }, redirect: 'manual' }, signal);
-        const next = res.status >= 300 && res.status < 400 && res.headers.get('location');
-        if (!next) break;
-        if (hop >= 5) throw new Error('That link redirects too many times.');
-        u = new URL(next, u);
+    async run({ url, part, find }, ctx = {}) {
+      const { signal } = ctx;
+      const pw = cleanPrivateWeb(cfg.privateWeb);
+      const job = ctx.job?.id || ctx.askId || ctx.sessionId || '';
+      const link = pw.on ? cleanLink(url) : String(url); // Private web: tracking bits off the link
+      const get = (u, o) => webGet(cfg, u, o, (uu, oo, fetchImpl) => fetchRetry(uu, oo, signal, fetchImpl ? { fetchImpl } : undefined));
+      const piece = (text) => pieceOf(text, { part, find }, MAX_PAGE, 'fetch_page again with the same url and');
+      // One page as text: { text } or { blocked } (a page that turned Bob away) or { says } (not a page Bob reads).
+      async function readPage(address) {
+        // Redirects are followed by hand so every hop gets the same home-network check as the first address.
+        let u = new URL(address), res;
+        for (let hop = 0; ; hop++) {
+          if (!/^https?:$/.test(u.protocol)) throw new Error('Only http and https links.');
+          if (isPrivateHost(u.hostname)) throw new Error('I don\'t open addresses on the home network.');
+          res = await get(u, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' }, redirect: 'manual' });
+          const next = res.status >= 300 && res.status < 400 && res.headers.get('location');
+          if (!next) break;
+          if (hop >= 5) throw new Error('That link redirects too many times.');
+          u = new URL(next, u);
+        }
+        const type = res.headers.get('content-type') || '';
+        if ([401, 403, 429].includes(res.status)) return { blocked: pageBlock(res.status, await readCapped(res, 30000).catch(() => '')) };
+        // Item 18: a PDF or Office document is read like one on the drive (doc-text.js), up to MAX_DOC_DOWNLOAD.
+        const doc = docKind(type, u);
+        if (doc) {
+          const buf = Buffer.from(await readBytes(res, MAX_DOC_DOWNLOAD));
+          let words = '';
+          try { words = docTextFrom(buf, doc); } catch (e) { return { says: `That link is a .${doc} file I couldn't read: ${e.message}` }; }
+          if (!words.trim()) return { says: `That link is a .${doc} file with no text in it (perhaps only pictures of pages).` };
+          return { text: words };
+        }
+        if (!/text|html|json|xml/.test(type)) return { says: `That link is a ${type || 'file'}, not a page or a document I read. I won't download it.` };
+        const raw = await readCapped(res, MAX_PAGE_BYTES);
+        const blocked = /html/.test(type) ? pageBlock(res.status, raw) : '';
+        if (blocked) return { blocked };
+        return { text: isPlain(type, u) ? raw : mainText(raw) }; // item 19: the page's own words, not its menus
       }
-      const type = res.headers.get('content-type') || '';
-      // Item 18: a PDF or Office document is read like one on the drive (doc-text.js), up to MAX_DOC_DOWNLOAD.
-      const doc = docKind(type, u);
-      if (doc) {
-        const buf = Buffer.from(await readBytes(res, MAX_DOC_DOWNLOAD));
-        let words = '';
-        try { words = docTextFrom(buf, doc); } catch (e) { return `That link is a .${doc} file I couldn't read: ${e.message}`; }
-        if (!words.trim()) return `That link is a .${doc} file with no text in it (perhaps only pictures of pages).`;
-        return pieceOf(words, { part, find }, MAX_PAGE, 'fetch_page again with the same url and');
+      // A page that turned Bob away: he never tries to get past it. With "Try other sources" on (Private web), he reads
+      // the same facts from up to MAX_OTHER_SOURCES others: search results from other sites, and a copy the Internet
+      // Archive already holds. The blocked site is skipped for the rest of the job.
+      async function elsewhere(why) {
+        const site = siteOf(link);
+        const lead = `${site} turned me away (${why}), and I don't get past those.`;
+        if (!pw.otherSources) return `${lead} Try web_search for the same facts on another site.`;
+        const tried = [];
+        const candidates = [];
+        const q = sameFactsQuery(link);
+        if (q) {
+          try {
+            const found = await webSearch({ query: q }, { cfg, signal, get });
+            for (const m of found.matchAll(/^ {3}(https?:\/\/\S+)$/gm)) if (siteOf(m[1]) !== site && !blockedWhy(job, m[1])) candidates.push(m[1]);
+          } catch (e) { if (signal?.aborted || e?.route) throw e; }
+        }
+        const order = [candidates[0], 'archive', candidates[1], candidates[2]].filter(Boolean);
+        for (const c of order) {
+          if (tried.length >= MAX_OTHER_SOURCES) break;
+          let address = c;
+          if (c === 'archive') {
+            try {
+              const r = await get(ARCHIVE_ASK(link), { headers: { accept: 'application/json' } });
+              const j = r.ok ? await r.json().catch(() => null) : null;
+              const snap = j?.archived_snapshots?.closest;
+              if (!(snap?.available && /^https?:\/\/web\.archive\.org\//.test(String(snap.url || '')))) { tried.push('the Internet Archive (no copy there)'); continue; }
+              address = String(snap.url).replace(/^http:/, 'https:');
+            } catch (e) { if (signal?.aborted || e?.route) throw e; tried.push('the Internet Archive (no answer)'); continue; }
+          }
+          const name = c === 'archive' ? 'the Internet Archive\'s copy' : siteOf(address);
+          try {
+            const got = await readPage(address);
+            if (got.blocked) { noteBlocked(job, address, got.blocked); tried.push(`${name} (also turned me away)`); continue; }
+            if (!got.text || got.text.trim().length < 200) { tried.push(`${name} (nothing to read)`); continue; }
+            return `(${lead} So I read the same facts from ${name} instead: ${address}${tried.length ? `. Skipped: ${tried.join('; ')}` : ''}.)\n${piece(got.text)}`;
+          } catch (e) { if (signal?.aborted || e?.route) throw e; tried.push(`${name} (${String(e?.message || e).slice(0, 60)})`); }
+        }
+        return `${lead} I tried ${tried.length ? tried.join('; ') : 'to find another source, and found none'}. Try web_search with other words.`;
       }
-      if (!/text|html|json|xml/.test(type)) return `That link is a ${type || 'file'}, not a page or a document I read. I won't download it.`;
-      const raw = await readCapped(res, MAX_PAGE_BYTES);
-      const text = isPlain(type, u) ? raw : mainText(raw); // item 19: the page's own words, not its menus
-      return pieceOf(text, { part, find }, MAX_PAGE, 'fetch_page again with the same url and');
+      const before = blockedWhy(job, link);
+      if (before) return elsewhere(before);
+      const got = await readPage(link);
+      if (got.blocked) { noteBlocked(job, link, got.blocked); return elsewhere(got.blocked); }
+      return got.says || piece(got.text);
     },
     summary: ({ url, part, find }) => `read page: ${url}${find ? ` (looking for ${find})` : part > 1 ? ` (part ${part})` : ''}`
   };

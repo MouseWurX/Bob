@@ -66,8 +66,9 @@ Each step maps to a v5 failure: didn't check the result (62), gave up or asked s
 result in chat instead of saving it (26), extra calls (19), skipped a step (14).
 
 **Per brain family.** Lessons are saved in Bob's real tool names and inputs, which are the same for every family. Only
-the wording a brain reads changes (`src/tool-sets.js`). So one lesson set serves every family: at training time it is
-shown with that family's wording and its chosen shape (one tool per step or not, thinking on or off, head start or not).
+the wording a brain reads and the tools left out of its list change (`src/tool-sets.js`). Each family gets its own
+lesson set, written on its locked shape (Qwen shape 4, GPT-OSS shape 3) and never used for the other family (section
+3f; the owner, 15 Nov). Tool steps think off for Qwen and low for GPT-OSS; planning and review think.
 
 **Working shapes stay.** A tool call that already works reliably keeps its shape. A tool is "working" for a family
 when that family's held-out score on it is high in both thinking modes (about 9 in 10 right, tool and inputs). New

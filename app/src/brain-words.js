@@ -176,7 +176,7 @@ export function quickHandBack(cfg, ctx, reply) {
 }
 export const callKey = (name, args) => { let a = args; if (typeof a === 'string') { try { a = JSON.parse(a); } catch {} } return `${name}|${JSON.stringify(a ?? {})}`; };
 export const LINK_NUDGE = 'Web search is on, and the page from the link is just above (the fetch_page result). Answer from it now; never say you have no web access.';
-export const CANT_NUDGE = 'You now have every tool you can use on this PC. If one of them does what was asked, call it now. If none does, say so in one line; don\'t repeat yourself.';
+export const CANT_NUDGE = 'You now have every tool you can use on this PC. If one of them does what was asked, call it now, then give your whole answer again: it replaces your last one. If none does, say so in one line.';
 export const EMPTY_NUDGE = 'Your last reply was empty. You now have every tool you can use on this PC. Do what was asked: call the right tool now (for a picture, make_image), or answer in words.';
 export const EMPTY_NOTE = 'Bob didn\'t answer that one. Send it again, or put it another way.';
 export const MAX_HISTORY = 40;

@@ -504,6 +504,8 @@ async function start() {
   if (!home) { app.quit(); return; } // 1.5.201: an unreadable home.json, already said
   // An older Bob (from before Bob.exe) may already be running on the port: use it rather than fight it.
   if (!(await up(home.port))) {
+    // Private web's route (src/private-web.js reads globalThis.bobRoute): only web_search and fetch_page use it.
+    try { globalThis.bobRoute = require('./web-route.cjs').makeWebRoute(); } catch (e) { console.error(`Bob's web route didn't load: ${e.message}`); }
     // Bob's own browser window for the Browser hand (src/hands-browser.js reads globalThis.bobBrowser).
     try { globalThis.bobBrowser = require('./browser-window.cjs').makeBobBrowser({ base: `http://127.0.0.1:${home.port}`, icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png') }); } catch (e) { console.error(`Bob's browser window isn't available: ${e.message}`); }
     try { await import(pathToFileURL(path.join(root, 'src', 'server.js')).href); }

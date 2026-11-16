@@ -234,7 +234,7 @@ const job = (extra = {}) => ({ brain, emit: (e) => events.push(e), signal: new A
   const mj = '<li><h2><a class="title" href="https://example.org/b">Example B</a></h2><p class="s">Some <strong>words</strong></p></li>';
   check('21: Mojeek results read', JSON.stringify(parseMojeek(mj)) === JSON.stringify([{ title: 'Example B', url: 'https://example.org/b', snippet: 'Some words' }]));
   // Item 194: the look-ups go through fetchRetry, which puts the same webSignal time limit on every try (Nov 16: web_search hands fetchRetry to web-search.js).
-  check('20: every look-up has a time limit', /signal: webSignal\(signal\)/.test(src('tools.js')) && (src('tools.js').match(/webSignal\(signal\)|fetchRetry\([^\n]*\bsignal\)[;,) ]/g) || []).length >= 3);
+  check('20: every look-up has a time limit', /signal: webSignal\(signal\)/.test(src('tools.js')) && (src('tools.js').match(/webSignal\(signal\)|fetchRetry\([^\n]*\bsignal(\)[;,) ]|, fetchImpl)/g) || []).length >= 3);
 }
 { // 17 how big the front desk's start is
   const { messages, tools } = brain.startPrompt();

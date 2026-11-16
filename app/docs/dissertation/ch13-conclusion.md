@@ -6,7 +6,7 @@ This thesis asked whether, for a small local agent model, what is in the trainin
 
 This chapter does four things. It answers each research question with the checked evidence and says how strong that evidence is. It lists what was not shown. It states the contributions and the threats to validity that cut across the thesis. It then sets out the future work, led by the one experiment that would settle the main claim.
 
-Status first, because it limits every answer below. The decisive retrain on reviewed lessons has not been run. The 534 held-out test items were sorted by a cheaper reviewer (Haiku), with a 5% spot-check by a stronger one (Opus). On 15 November MouseWurX chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs. Pull requests #254 and #257 shipped in release 1.5.238, with #251, #263 and #232; the release passed 276 of 276 checks on Windows in its lab-PC check on 15 November. Pull request #251, the Qwen tool shape version 2 and the GPT-OSS shape, has shipped but has not been re-tested on models. Pull request #232, on patching and autoencoders, ran on 15 November.
+Status first, because it limits every answer below. The decisive retrain on reviewed lessons has not been run. The 534 held-out test items were sorted by a cheaper reviewer (Haiku), with a 5% spot-check by a stronger one (Opus). On 15 November MouseWurX chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs. Pull requests #254 and #257 shipped in release 1.5.238, with #251, #263 and #232; the release passed 276 of 276 checks on Windows in its lab-PC check on 15 November. Pull request #251, Qwen tool shape 2, has shipped but has not been re-tested on models. Pull request #271 then locked one working shape per family, shape 4 for Qwen brains and shape 3 for GPT-OSS brains, in release 1.5.240; neither has been re-scored. Pull request #232, on patching and autoencoders, ran on 15 November.
 
 All numbers in this chapter come from the checked list of 15 November 2026 or from the chapters that cite their run files. This chapter introduces no new measurement.
 
@@ -63,7 +63,9 @@ Each answer gives the finding, the evidence, a strength rating, and the main rea
 
 (WORDING.md and COACH.md run reports; the Bobert and Riker interview write-ups.)
 
-**Strength: moderate for wording, weak for shape against content.** The wording result is a measured null on 264 turns, with a stated range. The coaching result shows that a last hint with the exact call lifts completion, which is evidence about what the model needs at the step. It does not compare shape with content directly. The shape built to act on that evidence (PR #251) has not been re-tested, so the thesis cannot say whether a better shape beats better lessons. The honest answer is that wording is not the lever, and that shape against content is open.
+**Strength: moderate for wording, weak for shape against content.** The wording result is a measured null on 264 turns, with a stated range. The coaching result shows that a last hint with the exact call lifts completion, which is evidence about what the model needs at the step. It does not compare shape with content directly. The shapes built to act on that evidence, shape 2 (PR #251) and the locked per-family shapes (PR #271), have not been re-scored, so the thesis cannot say whether a better shape beats better lessons. The honest answer is that wording is not the lever, and that shape against content is open.
+
+**What the project now holds to.** From these results MouseWurX locked one working tool shape per brain family: shape 4 for Qwen brains and shape 3 for GPT-OSS brains. Every family keeps Bob's tool names and inputs; a family's set differs only in the tools left out and one-line notes on a pair it confuses. Lessons are written per family on that family's shape and never cross families, tools are tested only on the newest shape, tool steps think off (low for GPT-OSS), and any stricter call format may only hold a brain to its working shape (section 8.10). These are design rules grounded in the coaching evidence. That they raise scores is unproven in our lab, as we have yet to test.
 
 ### 13.2.5 RQ5: Does an unwanted habit sit in a part that causes it, or in a part that holds it back?
 
@@ -92,7 +94,7 @@ This list is deliberately plain. Each item is a claim a reader might assume the 
 3. **Fault kinds are not shown to be causes.** The full read says a lesson has a fault. It does not show that each fault kind becomes a habit. Only the hand-off fault has a trained-model result.
 4. **Repeatability is not shown.** The key benchmarks have not been run again for error bars. The project's own quiz moves 3 to 5 between runs on 97 questions, so small differences on small tests should be read with care.
 5. **A second reader's agreement is not shown.** Opus's verdicts were not compared with a second independent reader on a sample. A 5% Opus spot-check of the held-out items agreed with Haiku on 25 of 27 (heldout-534 TALLY.md), too small a sample to give an agreement rate for the lessons.
-6. **Tool shape version 2 is not shown to help.** It was built (PR #251) and not re-tested.
+6. **The locked tool shapes are not shown to help.** Shape 2 (PR #251) and the locked shapes, Qwen shape 4 and GPT-OSS shape 3 (PR #271), were built from coaching evidence and not re-scored. The planned shape-4 rerun stopped when its rented card froze at start-up.
 7. **A second model family is only partly in.** Almost every result is on Qwen3.6-35B-A3B. GPT-OSS 120B and the 38B cut are partial. The thesis does not show the same lesson-cleaning effect on the second family.
 8. **The evil-neuron question is not settled.** The brake and the direction are reported at small sample sizes. A model trained on clean lessons has not been checked the same way.
 9. **Human judgement is not shown.** Persona harshness was scored on a 10-point scale, and no human ratings were collected.
@@ -156,9 +158,9 @@ Train on the fully reviewed lessons, on the old lessons, and use stock Qwen as a
 
 Build a leak-free item set, then re-score the models that were scored on the leaked set. The gap between old and new scores is the answer to RQ3 that the thesis lacks. The project's own rule, to check the test set against the leaked items before any held-out score is cited, applies from the start.
 
-### 13.6.3 Re-testing tool shape version 2
+### 13.6.3 Re-testing the locked tool shapes
 
-Re-test Bobert and Riker on the Qwen tool shape version 2 and the GPT-OSS shape (PR #251). This would show whether the coaching-led changes helped, and would let RQ4's shape-versus-content question be answered directly.
+Re-test Riker and Bobert on Qwen shape 4, and GPT-OSS on shape 3, with the same wording and coaching turns (model-lab/forge/plans/shape4-retest.json). This would show whether the coaching-led changes helped, and would let RQ4's shape-versus-content question be answered directly.
 
 ### 13.6.4 More asks per patching test
 

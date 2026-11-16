@@ -9,6 +9,7 @@ import { goBtn } from './lab-go.js';
 const pct = (x) => `${Math.round(x * 1000) / 10}%`;
 const shown = (t) => String(t).replace(/^ /, '␣').replace(/\n/g, '⏎') || '∅';
 const firstSentence = (t) => String(t).split(/(?<=\.)\s/)[0];
+const INDEX = '#index'; // the course's own index of where every Real result comes from (16 Nov)
 const PAGE_LABEL = { teach: 'Teach', steps: 'Steps', make: 'Make a brain', test: 'Test', inside: 'Look inside', forge: 'Forge' };
 
 export function createLessons({ api, go = () => {} }) {
@@ -38,6 +39,7 @@ export function createLessons({ api, go = () => {} }) {
       <div class="row lesson-progress"><label for="lesson-prog">${n} of ${all.length} done</label> <progress id="lesson-prog" max="${all.length}" value="${n}"></progress>
         ${nx ? `<button type="button" class="get" data-lesson="${esc(nx.id)}">${n ? 'Carry on' : 'Start'}: ${esc(nx.title)}</button>` : '<strong>All done. Well done!</strong>'}
         ${n ? '<button type="button" class="link" data-lessonsreset>Start over</button>' : ''}</div>
+      <p><button type="button" class="link" data-lessonsindex>Where every Real result comes from</button> <span class="muted">One table: lesson, chapter, result, how strong it is, and its file.</span></p>
       <div class="lesson-units">${units}</div>`;
   }
 
@@ -87,17 +89,35 @@ export function createLessons({ api, go = () => {} }) {
     return `<div class="row"><button type="button" class="link" data-lessonsback>← All lessons</button><span class="muted">Lesson ${i + 1} of ${all.length} · ${esc(levelOf(l))}${esc(unitOf(l).title)}${isDone(l.id) ? ' · done ✓' : ''}</span></div>
       <article class="learn-card lesson" aria-labelledby="lesson-h"><h3 id="lesson-h" tabindex="-1">${esc(l.title)}</h3>
         <p class="muted">Proper name: <button type="button" class="link" data-lessongloss aria-label="${esc(`${l.pro}: open the glossary`)}">${esc(l.pro)}</button> ${tip(esc(firstSentence(l.read[0])), l.pro)}</p>
-        <section class="lesson-step" aria-labelledby="ls-read"><h4 id="ls-read">1. Read</h4>${l.read.map((t) => `<p>${esc(t)}</p>`).join('')}${l.real ? `<aside class="lesson-real" aria-label="Real result"><strong>Real result from my own research.</strong> ${esc(l.real.text)} <span class="muted">From ${esc(l.real.from)}.</span></aside>` : ''}${l.cite ? `<aside class="lesson-real lesson-cite" aria-label="From the research"><strong>From the research (not my own).</strong> ${esc(l.cite.text)} <span class="muted">${esc(l.cite.who)}. <a href="${esc(l.cite.url)}" target="_blank" rel="noopener noreferrer">Source</a></span></aside>` : ''}${l.code ? `<figure class="lesson-code"><figcaption class="muted">${esc(l.code.from)}</figcaption><pre><code>${esc(l.code.text)}</code></pre></figure>` : ''}</section>
+        <section class="lesson-step" aria-labelledby="ls-read"><h4 id="ls-read">1. Read</h4>${l.read.map((t) => `<p>${esc(t)}</p>`).join('')}${l.real ? `<aside class="lesson-real" aria-label="Real result"><strong>Real result from my own research.</strong> ${esc(l.real.text)} <span class="muted">From ${esc(l.real.from)}.</span>${l.real.status ? ` <span class="lesson-status"><strong>How strong:</strong> ${esc(l.real.status)}</span>` : ''}</aside>` : ''}${l.cite ? `<aside class="lesson-real lesson-cite" aria-label="From the research"><strong>From the research (not my own).</strong> ${esc(l.cite.text)} <span class="muted">${esc(l.cite.who)}. <a href="${esc(l.cite.url)}" target="_blank" rel="noopener noreferrer">Source</a></span></aside>` : ''}${l.code ? `<figure class="lesson-code"><figcaption class="muted">${esc(l.code.from)}</figcaption><pre><code>${esc(l.code.text)}</code></pre></figure>` : ''}</section>
         <section class="lesson-step" aria-labelledby="ls-try"><h4 id="ls-try">2. Try it</h4>${tryHtml(l)}</section>
         <section class="lesson-step" aria-labelledby="ls-check"><h4 id="ls-check">3. Check</h4>${checkHtml(l)}</section>
       </article>${nav}`;
+  }
+
+  // The index: every Real result in one table, then other people's findings apart, so a learner can see that each
+  // number traces to a chapter and a named file (dissertation 12.5).
+  function indexHtml() {
+    const all = lessons(), mine = all.filter((l) => l.real), theirs = all.filter((l) => l.cite), ch = view.chapters || {};
+    const pick = (l) => `<button type="button" class="link" data-lesson="${esc(l.id)}">${esc(l.title)}</button><br><span class="muted">${esc(levelOf(l))}${esc(unitOf(l).title)}</span>`;
+    const chap = (n) => ch[n] ? `${n}. ${esc(ch[n].title)}` : n ? String(n) : '';
+    return `<div class="row"><button type="button" class="link" data-lessonsback>← All lessons</button></div>
+      <h3 id="lesson-h" tabindex="-1">Where every Real result comes from</h3>
+      <p>Every <strong>Real result</strong> in this course is something I measured myself and checked against its file. Here they all are: the lesson that shows it, the chapter of my write-up it comes from, how strong it is, and the file. Findings from other people's papers are listed apart, below, so the two never mix.</p>
+      <div class="lesson-table lesson-index"><table><caption>My own Real results (${mine.length})</caption>
+        <tr class="lesson-index-head"><th scope="col">Lesson</th><th scope="col">Chapter</th><th scope="col">What was measured</th><th scope="col">How strong</th><th scope="col">Source</th></tr>
+        ${mine.map((l) => `<tr><th scope="row">${pick(l)}</th><td data-label="Chapter">${chap(l.real.ch)}</td><td data-label="What was measured">${esc(l.real.text)}</td><td data-label="How strong">${esc(l.real.status || '')}</td><td data-label="Source"><code>${esc(l.real.from)}</code></td></tr>`).join('')}</table></div>
+      <div class="lesson-table lesson-index"><table><caption>From the research, not my own (${theirs.length})</caption>
+        <tr class="lesson-index-head"><th scope="col">Lesson</th><th scope="col">Finding</th><th scope="col">Who</th><th scope="col">Link</th></tr>
+        ${theirs.map((l) => `<tr><th scope="row">${pick(l)}</th><td data-label="Finding">${esc(l.cite.text)}</td><td data-label="Who">${esc(l.cite.who)}</td><td data-label="Link"><a href="${esc(l.cite.url)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(`Source for ${l.title}`)}">Source</a></td></tr>`).join('')}</table></div>
+      <p class="muted">The chapters are in my write-up, docs/dissertation in my folder. A result that hasn't been re-run says so under How strong.</p>`;
   }
 
   function html() {
     if (!view) return `<p class="muted">${esc(msg || 'Loading...')}</p>`;
     if (!view.on) return '<p class="learn-why">Lessons are off. Turn on <strong>Lab: Lessons</strong> in Settings, How Bob works, Brains.</p>';
     const l = open && lessons().find((x) => x.id === open);
-    return `<div class="lessons">${view.ready ? `<p class="muted">Try it uses the brain I have loaded: <strong>${esc(view.brain)}</strong>.</p>` : ''}${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}${l ? lessonHtml(l) : listHtml()}</div>`;
+    return `<div class="lessons">${view.ready ? `<p class="muted">Try it uses the brain I have loaded: <strong>${esc(view.brain)}</strong>.</p>` : ''}${msg ? `<p class="error" role="alert">${esc(msg)}</p>` : ''}${l ? lessonHtml(l) : open === INDEX ? indexHtml() : listHtml()}</div>`;
   }
 
   function draw(focus = '') { if (!el) return; el.innerHTML = html(); if (focus) el.querySelector(focus)?.focus(); }
@@ -106,7 +126,8 @@ export function createLessons({ api, go = () => {} }) {
   async function onClick(e) {
     const b = e.target.closest('button'); if (!b || !el?.contains(b)) return;
     if (b.dataset.lesson) { open = b.dataset.lesson; draw('#lesson-h'); el.scrollIntoView?.({ block: 'start' }); return; }
-    if ('lessonsback' in b.dataset) { const was = open; open = null; draw(`[data-lesson="${was}"].lesson-pick`); return; }
+    if ('lessonsindex' in b.dataset) { open = INDEX; draw('#lesson-h'); el.scrollIntoView?.({ block: 'start' }); return; }
+    if ('lessonsback' in b.dataset) { const was = open; open = null; draw(was === INDEX ? '[data-lessonsindex]' : `[data-lesson="${was}"].lesson-pick`); return; }
     if (b.dataset.lessonpage) { go(b.dataset.lessonpage); return; }
     if ('lessongloss' in b.dataset) { const ev = () => new CustomEvent('bob-help', { detail: 'glossary' }); window.dispatchEvent(ev()); try { window.opener?.dispatchEvent(ev()); } catch {} return; }
     if ('lessonsreset' in b.dataset) { try { view.done = (await api('/api/lab/lessons/reset', {})).done; for (const k of Object.keys(checked)) delete checked[k]; for (const k of Object.keys(picks)) delete picks[k]; } catch (err) { msg = err.message; } draw(); return; }

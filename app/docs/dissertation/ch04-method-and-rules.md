@@ -97,7 +97,7 @@ The tool interview shows a model its own misses and asks why. The explanation is
 
 ### 4.5.4 Lesson reviewers
 
-Lessons were reviewed by language models at two points. The lesson writer's own reviewer rejected lessons at write time, and a separate sort by Haiku, then Opus, labelled each lesson keep, fix, repair or discard (section 4.7). Both reviewers are models, so both carry the biases noted above. The sort was checked by sampling. Chapters 6 and 7 report what the reviews found, and this chapter states only how they were run.
+Lessons were reviewed by language models at two points. The lesson writer's own reviewer rejected lessons at write time, and a separate sort by Haiku, then Opus, labelled each lesson keep, fix, repair or discard (section 4.7). Both reviewers are models, so both carry the biases noted above. The sort was checked by sampling. Chapters 6 and 7 report what the reviews found, and this chapter states only how they were run. Chapter 12 turns this disclosure into an Engineering lesson, Auditing your reviewer, for learners who use the Lab's own reviewers (section 12.5.3).
 
 ## 4.6 Held-out splits and the never-taught gate
 
@@ -186,6 +186,17 @@ This dissertation follows the same rule. It names no person, computer or folder 
 
 A name belongs to one model. Model names (Bob, Bobert, Riker, Bill) and job names (coding, recover, clarify) stay separate in plans, keep lists, logs and cards, so that a log never leaves it ambiguous which thing is meant (model-lab/forge/README.md). This is a small rule, but it removes a class of misreading from the records the studies rest on.
 
+### 4.9.4 Tool shapes
+
+Every lesson and every tool test is held to its brain family's working tool shape: shape 4 for Qwen brains and shape 3 for GPT-OSS brains (section 8.10). The rule has four parts.
+
+1. **Same names and inputs for every family.** Only the wording a family reads and the tools left out of its list differ (src/tool-sets.js).
+2. **One lesson set per family.** Qwen brains learn only Qwen-shaped lessons and GPT-OSS brains only GPT-OSS-shaped ones. Each lesson carries `family` and `tool_shapes` stamps (model-lab/write-lessons.mjs), the pre-flight refuses a Bob tree of the wrong shape (`--want-shapes`), and the heal skips a lesson stamped for another family (model-lab/forge/pod/data.py).
+3. **Newest shape only.** Lessons are written and tools tested on the newest locked shape. A result measured on an older tool list says so and is not compared with a shape-4 result as if it were the same test. The studies of chapter 8 used Bob 1.5.223's tool list, before the shapes were locked.
+4. **The call format follows the shape.** A stricter call format may only hold a brain to the exact names, inputs and order in the tool list Bob sends. It may not change the shape, and it stays off until it passes a check against the working shapes.
+
+When a tool's name, inputs or wording change, `TOOL_SHAPES` is raised, the tool record starts a fresh history, and lessons written before the change are converted or dropped, never mixed in unmarked.
+
 ## 4.10 Statistics and noise
 
 ### 4.10.1 Paired gaps and 95% ranges
@@ -261,7 +272,7 @@ For step 8, the handbook (section 4) reports that the engine writing answers and
 
 **One project.** The rules were written and followed by one project, run by MouseWurX. No one outside has audited them.
 
-**Status of the decisive test.** The decisive retrain on reviewed lessons has not been run. The Opus re-sort of the lessons is running, PR #254 and PR #257 shipped in release 1.5.238, PR #251 (Qwen tool shape v2 and the GPT-OSS shape) shipped but is not re-tested on models, and PR #232 (patching and autoencoders) ran on 15 November.
+**Status of the decisive test.** The decisive retrain on reviewed lessons has not been run. The Opus re-sort of the lessons is running, PR #254 and PR #257 shipped in release 1.5.238, PR #251 (Qwen tool shape 2) and PR #271 (the locked shapes: Qwen shape 4, GPT-OSS shape 3) shipped but are not re-tested on models, and PR #232 (patching and autoencoders) ran on 15 November.
 
 **Still to do.** Run an outside check of the held-out split. Repair the held-out tests after the Opus re-sort, and re-score the models that were chosen on the old tests.
 

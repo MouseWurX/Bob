@@ -11,7 +11,7 @@ The chapter is a method in progress. Most of its effect on a trained model is **
 Status matters here, so we state it up front.
 
 - PRs #254 (the lesson kit), #257 (the never-taught gate) and #263 (the lesson pre-flight) shipped in release 1.5.238 on 15 November 2026, whose pre-release check passed 276 of 276 test suites (1.5.238-PC-CHECKS.md).
-- PR #251 (Qwen tool shape v2 and the GPT-OSS shape) shipped in the same release but has not been re-tested.
+- PR #251 (Qwen tool shape 2) shipped in the same release but has not been re-tested. The locked shapes, Qwen shape 4 and GPT-OSS shape 3, shipped later in PR #271 (release 1.5.240) and have not been re-scored either (section 8.10).
 - The pre-flight values of section 11.5 (PR #263) are taken from the lab PC's console log of the lkt-fix3 run.
 - The 534 held-out test items were sorted by Haiku with a 5% Opus spot-check. On 15 November MouseWurX chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs.
 - The decisive retraining on reviewed lessons has **not** been run.
@@ -119,9 +119,9 @@ Each old set receives one of three marks: clean, mend (only flagged rows are rew
 
 Chapter 8 found that the misses are about tool shape. So the shape is chosen before the lessons are written. The plan says the final lessons are written once MouseWurX has picked each brain family's tool shape (TOOL-LESSONS-PLAN.md).
 
-A shape has a version. The Qwen tree used in the rewrite runs carries `TOOL_SHAPES = 2` in src/tool-sets.js. Reviewers must use the shape-2 tool file, because the main-branch tool file lacks the `save_to` input (hand-off).
+A shape has a version, `TOOL_SHAPES` in src/tool-sets.js. MouseWurX locked the shapes on 15 November: shape 4 for Qwen brains and shape 3 for GPT-OSS brains (section 8.10). The early rewrite runs reported in this chapter, lkt-fix1 to lkt-fix3, were made on a shape-2 Qwen tree, before the lock, and their lessons say so in their `tool_shapes` stamp. Later lesson runs use the shape-4 tree and pass `--want-shapes 4` in the pre-flight, and the real-jobs runs of draft PR #275 run Bob's real loop with the shape-4 tools. Lessons for GPT-OSS brains are written on shape 3 and stamped `family: gpt-oss`. Lessons from a shape-2 tree are converted to shape 4 or dropped before any Qwen training, and are never mixed in unmarked (section 4.9.4).
 
-A tool that already works for a family keeps its shape. "Working" means about 9 in 10 right, tool and inputs, in both thinking modes. Only failing tools get new shapes (TOOL-LESSONS-PLAN.md, section 2). Lessons are stored once, in Bob's tool names, and each family's wording is added at training time. PR #254 is titled "Lab: lesson kit on main, one lesson set per brain family", and we take that newer title as current. The two statements do not fully agree, and we did not find a file that resolves it.
+A tool that already works for a family keeps its shape. "Working" means about 9 in 10 right, tool and inputs, in both thinking modes. Only failing tools get new shapes (TOOL-LESSONS-PLAN.md, section 2). An older line of the plan said that lessons are stored once, in Bob's tool names, with each family's wording added at training time. That line is superseded. MouseWurX's rule of 15 November is one lesson set per brain family, never cross-trained, and the code enforces it: every lesson carries a `family` stamp (model-lab/write-lessons.mjs, `--family qwen|gpt-oss`) and the heal skips a lesson stamped for another family (model-lab/forge/pod/data.py). The tool names and inputs are still the same for every family, so a lesson's calls need no renaming, but each family's lessons are written by a teacher of that family on that family's shape.
 
 ### 11.4.5 Every tool result is real, or labelled
 
@@ -167,7 +167,7 @@ Before a lesson rental, code checks the plan and stops if it is wrong. On the lo
 |---|---|
 | Ideas file rows counted | 211 |
 | Already written (skipped) | 94 done, 117 to go |
-| Tool shape | 2, checked |
+| Tool shape | 2, checked (before the shapes were locked; later runs check 4) |
 | Room per slot | 32,768 tokens (longest first request about 10,838, plus 16,384 to grow) |
 | Sample gate | on: the first 10 ideas must save at least 60% |
 
