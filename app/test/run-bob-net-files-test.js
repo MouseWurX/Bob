@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import crypto from 'node:crypto';
-import { Outbox, Inbox, netFilesOn, cleanName, onWifi, capOf, freeName, brainFiles, catalogHome, SPARE, OFF, OWN_DIR } from '../src/bob-net-files.js';
+import { Outbox, Inbox, netFilesOn, cleanName, cleanRel, folderFiles, onWifi, capOf, freeName, brainFiles, catalogHome, SPARE, OFF, OWN_DIR, MAX_FOLDER_FILES } from '../src/bob-net-files.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { if (ok) { pass++; console.log(`PASS ${name}`); } else { fail++; console.log(`FAIL ${name}${extra ? `: ${extra}` : ''}`); } };
@@ -39,10 +39,11 @@ function pair({ cfgA = {}, cfgB = {}, inboxOpts = {}, outboxOpts = {}, throwAfte
   const B = { netFiles: true, dataDir: dirB, agentDir: dirB, bobModelsDir: path.join(dirB, 'models', 'bob'), ...cfgB };
   const events = [];
   let outbox, inbox, server, port, calls = 0;
+  const wire = { loseOfferReply: false, offers: 0 }; // 1.5.243: an offer he takes whose answer never gets back
   const toB = { name: 'laptop', address: 'b:7777' }, toA = { name: 'desk', address: 'a:7777' };
   const resp = (code, j) => new Response(JSON.stringify(j), { status: code, headers: { 'content-type': 'application/json' } });
   // A's calls to B: straight into B's inbox. B's calls to A: over a real local socket to A's little door.
-  const lendersA = { bobs: () => [toB], call: async (bob, p, o) => { const b = o.body; if (p === '/api/bob-net/files/offer') { const { code, ...r } = inbox.receive(b, '172.16.0.9'); return resp(code, r); } if (p === '/api/bob-net/files/stop') { const { code, ...r } = inbox.senderStopped(b); return resp(code, r); } return resp(404, {}); } };
+  const lendersA = { bobs: () => [toB], call: async (bob, p, o) => { const b = o.body; if (p === '/api/bob-net/files/offer' || p === '/api/bob-net/files/offer-folder') { wire.offers++; const { code, ...r } = inbox.receive(b, '172.16.0.9', { folder: p.endsWith('-folder') }); if (wire.loseOfferReply) throw new Error('timed out'); return resp(code, r); } if (p === '/api/bob-net/files/stop') { const { code, ...r } = inbox.senderStopped(b); return resp(code, r); } return resp(404, {}); } };
   const lendersB = { bobs: () => [toA], nearMine: new Map(), call: async (bob, p, o = {}) => {
     if (++calls > throwAfter) throw new Error('fetch failed');
     if (p === '/api/bob-net/files/said') { const { code, ...r } = outbox.said(o.body); return resp(code, r); }
@@ -56,7 +57,7 @@ function pair({ cfgA = {}, cfgB = {}, inboxOpts = {}, outboxOpts = {}, throwAfte
     if (u.pathname === '/api/bob-net/files/hash') { const { code, ...r } = await outbox.hashAnswer(q); res.writeHead(code, { 'content-type': 'application/json' }); return res.end(JSON.stringify(r)); }
     res.writeHead(404); res.end();
   });
-  return new Promise((r) => server.listen(0, '127.0.0.1', () => { port = server.address().port; r({ A, B, dirA, dirB, outbox, inbox, events, close: () => server.close(), toB, setThrow: (n) => { calls = 0; throwAfter = n; } }); }));
+  return new Promise((r) => server.listen(0, '127.0.0.1', () => { port = server.address().port; r({ A, B, dirA, dirB, outbox, inbox, events, wire, close: () => server.close(), toB, setThrow: (n) => { calls = 0; throwAfter = n; } }); }));
 }
 const bytes = (n) => crypto.randomBytes(n);
 
@@ -216,10 +217,60 @@ const bytes = (n) => crypto.randomBytes(n);
   t.close();
 }
 
+// ---------- 1.5.243: a whole folder, and one card per offer ----------
+check('a path inside a folder keeps its folders, and can\'t climb out', cleanRel('photos/2026/a.jpg') === 'photos/2026/a.jpg' && cleanRel('a\\b.txt') === 'a/b.txt'
+  && cleanRel('../x') === '' && cleanRel('/etc/x') === '' && cleanRel('c:/x') === '' && cleanRel('a//b') === '' && cleanRel('con/x') === '' && cleanRel('a/b. ') === '');
+{
+  const t = await pair();
+  const top = path.join(t.dirA, 'Shots'); fs.mkdirSync(path.join(top, 'wide', 'deep'), { recursive: true });
+  fs.writeFileSync(path.join(top, 'a.png'), bytes(3000)); fs.writeFileSync(path.join(top, 'wide', 'b.png'), bytes(5000)); fs.writeFileSync(path.join(top, 'wide', 'deep', 'c.txt'), bytes(700));
+  fs.writeFileSync(path.join(top, 'empty.txt'), '');
+  let linked = false; try { fs.symlinkSync(path.join(t.dirA), path.join(top, 'link')); linked = true; } catch {}
+  const ff = folderFiles(top);
+  check('a folder lists every file inside it, empty files and links left behind', ff.files.map((f) => f.rel).join() === 'a.png,wide/b.png,wide/deep/c.txt' && ff.skipped === (linked ? 2 : 1), JSON.stringify(ff));
+  check('a folder with too many files says so', folderFiles(top, { max: 2 }).tooMany === true);
+  const r = await t.outbox.send({ address: 'b:7777', kind: 'folder', title: 'Shots', files: ff.files });
+  const asks = t.events.filter((e) => e.type === 'net-file-ask');
+  check('a whole folder is one offer with one Yes card', r.ok === true && asks.length === 1 && asks[0].kind === 'folder' && asks[0].count === 3 && asks[0].total === 8700, JSON.stringify(asks));
+  const again = await t.outbox.send({ address: 'b:7777', kind: 'folder', title: 'Shots', files: ff.files });
+  check('sending it again while it waits is the same offer, no second card', again.ok && again.again === true && again.id === r.id && t.events.filter((e) => e.type === 'net-file-ask').length === 1 && t.wire.offers === 1);
+  await t.inbox.answer(r.id, true).run;
+  const home = path.join(t.dirB, 'From my other Bobs', 'Shots');
+  check('after Yes the folder lands whole, its folders kept, every file checked', sha(path.join(home, 'a.png')) === sha(path.join(top, 'a.png')) && sha(path.join(home, 'wide', 'deep', 'c.txt')) === sha(path.join(top, 'wide', 'deep', 'c.txt')) && t.inbox.view().find((x) => x.id === r.id)?.where === home, JSON.stringify(t.inbox.view()));
+  const r2 = await t.outbox.send({ address: 'b:7777', kind: 'folder', title: 'Shots', files: ff.files });
+  await t.inbox.answer(r2.id, true).run;
+  check('the same folder again gets a folder of its own, nothing written over', fs.existsSync(path.join(t.dirB, 'From my other Bobs', 'Shots (2)', 'wide', 'b.png')));
+  check('a folder offer can\'t climb out of its folder', t.inbox.receive({ id: '1'.repeat(16), token: '2'.repeat(48), kind: 'folder', title: 'x', files: [{ name: '../../evil.txt', bytes: 3 }] }, '172.16.0.9', { folder: true }).code === 400);
+  check('a folder only comes through the folder door, so an older Bob refuses it', t.inbox.receive({ id: '3'.repeat(16), token: '4'.repeat(48), kind: 'folder', title: 'x', files: [{ name: 'a/b.txt', bytes: 3 }] }, '172.16.0.9').code === 400
+    && t.inbox.receive({ id: '5'.repeat(16), token: '6'.repeat(48), kind: 'file', files: [{ name: 'b.txt', bytes: 3 }] }, '172.16.0.9', { folder: true }).code === 400);
+  check('a folder over the limit is refused before anything goes', (await t.outbox.send({ address: 'b:7777', kind: 'folder', files: Array.from({ length: MAX_FOLDER_FILES + 1 }, () => ({ path: path.join(top, 'a.png'), rel: 'a.png' })) })).error?.includes('Zip it first'));
+  t.close();
+}
+{
+  const t = await pair();
+  const src = path.join(t.dirA, 'once.zip'); fs.writeFileSync(src, bytes(2000));
+  t.wire.loseOfferReply = true;
+  const lost = await t.outbox.send({ address: 'b:7777', files: [{ path: src }] });
+  const waiting = () => t.inbox.waiting().length;
+  check('no answer to an offer takes it back, so no card is left with nothing behind it', lost.error?.includes('Couldn\'t reach') && waiting() === 0 && t.outbox.view().length === 0);
+  t.wire.loseOfferReply = false;
+  const ok = await t.outbox.send({ address: 'b:7777', files: [{ path: src }] });
+  check('…and the send asked again shows one card', ok.ok && waiting() === 1, JSON.stringify(t.inbox.waiting()));
+  // The other way round: he still has a card from an offer this side forgot (an older Bob, or a restart). Asked again: one card.
+  t.outbox.offers.clear();
+  const twice = await t.outbox.send({ address: 'b:7777', files: [{ path: src }] });
+  check('a card still waiting is swapped for the new one, never two', twice.ok && waiting() === 1 && t.inbox.waiting()[0].id === twice.id && t.events.some((e) => e.type === 'net-file-gone' && e.id === ok.id));
+  await t.inbox.answer(twice.id, true).run;
+  check('…and the copy goes once', fs.existsSync(path.join(t.dirB, 'From my other Bobs', 'once.zip')) && !fs.existsSync(path.join(t.dirB, 'From my other Bobs', 'once (2).zip')));
+  t.close();
+}
+
 // ---------- the window, Help and wiring ----------
 const help = read('public/help-content.js');
 check('Help has a page for it, in Bob\'s voice, with the platforms', /id: 'net-files'/.test(help) && /Works on Windows, Mac and Linux\. The Android app can't send or take files yet\./.test(help));
 check('…an FAQ', /id: 'faq-net-files'/.test(help));
+check('…and it explains a folder send (1.5.243)', /<strong>Pick a folder<\/strong>/.test(help) && /one Yes card for all of it \(up to 2000 files/.test(help));
+check('Settings has Pick a folder beside Pick a file', /data-netfile-pick-folder/.test(read('public/net-files.js')) && /api\('\/api\/net-files\/pick', \{ folder: true \}\)/.test(read('public/net-files.js')));
 check('…glossary entries for Brain Copying and Files and brains', /<dt>Brain Copying<\/dt>/.test(help) && /<dt>Files and brains<\/dt>/.test(help));
 check('…and the Bob-Net settings list', /set\('Files and brains', 'Off'/.test(help));
 check('the switch is in Settings, Bob-Net, off unless on', /sswitch\('netFiles', settings\.netFiles === true, 'Files and brains'/.test(read('public/cellar-pages.js')));
@@ -228,6 +279,7 @@ check('the Brains page points to Brain Copying', /Brain Copying<\/strong> sends 
 const srv = read('src/server.js');
 check('the server routes it and replays a waiting card', /netFilesRoute\(/.test(srv) && /brain\.netInbox\.waiting\(\)/.test(srv));
 const routes = read('src/net-files-routes.js');
+check('the folder door is routed beside the file door', /p === '\/api\/bob-net\/files\/offer-folder'/.test(routes) && /folder: p\.endsWith\('-folder'\)/.test(routes));
 check('the door side is for other Bobs only, the rest for this window only', /if \(!isRemote\) return send\(res, 403/.test(routes) && /if \(!isLocal\) return send\(res, 403/.test(routes));
 
 fs.rmSync(tmp, { recursive: true, force: true });

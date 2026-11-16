@@ -1,9 +1,10 @@
 // Bob-Net file sharing and Brain Copying in Bob's API (src/bob-net-files.js). Returns false when the request is not
 // one of these, so server.js keeps looking.
-// From another of your Bobs (through the signed-in door): /api/bob-net/files/offer, get, hash, said, stop.
+// From another of your Bobs (through the signed-in door): /api/bob-net/files/offer, offer-folder, get, hash, said, stop.
 // From this replicant matrix's own window only: /api/net-files (the list), send, pick, answer, stop, resume, forget.
 import path from 'node:path';
-import { netFilesOn, brainFiles, copyableBrains, catalogHome } from './bob-net-files.js';
+import { netFilesOn, brainFiles, copyableBrains, catalogHome, folderFiles } from './bob-net-files.js';
+import { pickFolder } from './pick-folder.js';
 import { pickFile, ownModels } from './own-models.js';
 import { saveNameOf } from './models.js';
 
@@ -19,7 +20,7 @@ export async function netFilesRoute({ req, res, p, url, isLocal, isRemote, cfg, 
     if (req.method === 'GET' && p === '/api/bob-net/files/hash') { const { code, ...r } = await outbox.hashAnswer(q); return send(res, code, r); }
     if (req.method !== 'POST') return send(res, 404, { error: 'not found' });
     const b = await body(req).catch(() => ({}));
-    if (p === '/api/bob-net/files/offer') { const { code, ...r } = inbox.receive(b, req.socket.remoteAddress); return send(res, code, r); }
+    if (p === '/api/bob-net/files/offer' || p === '/api/bob-net/files/offer-folder') { const { code, ...r } = inbox.receive(b, req.socket.remoteAddress, { folder: p.endsWith('-folder') }); return send(res, code, r); }
     if (p === '/api/bob-net/files/said') { const { code, ...r } = outbox.said({ id: plain(b?.id, 40), token: plain(b?.token, 80), what: plain(b?.what, 20) }); return send(res, code, r); }
     if (p === '/api/bob-net/files/stop') { const { code, ...r } = inbox.senderStopped(b); return send(res, code, r); }
     return send(res, 404, { error: 'not found' });
@@ -33,7 +34,10 @@ export async function netFilesRoute({ req, res, p, url, isLocal, isRemote, cfg, 
   if (req.method !== 'POST') return send(res, 404, { error: 'not found' });
   const b = await body(req).catch(() => ({}));
   if (p === '/api/net-files/pick') {
-    try { const file = await pickFile({ kind: 'any' }); return send(res, 200, { file }); } catch (e) { return send(res, 200, { error: e.message }); }
+    try {
+      if (b?.folder === true) return send(res, 200, { folder: await pickFolder({ purpose: 'send' }) }); // 1.5.243: a whole folder
+      const file = await pickFile({ kind: 'any' }); return send(res, 200, { file });
+    } catch (e) { return send(res, 200, { error: e.message }); }
   }
   if (p === '/api/net-files/send') {
     const address = plain(b?.address, 300);
@@ -47,6 +51,13 @@ export async function netFilesRoute({ req, res, p, url, isLocal, isRemote, cfg, 
       // A catalogue file Bob checked when it downloaded: its sha256 is known, so nobody waits for it to be worked out.
       for (const f of files) { const h = catalogHome(shop.catalog?.models, f.name, f.bytes, saveNameOf); if (h?.sha256) f.sha256 = h.sha256; }
       r = await outbox.send({ address, kind: 'brain', title: m.name || m.id, files });
+    } else if (b?.folder) { // 1.5.243: a whole folder, one offer and one Yes card, its inside kept as it is
+      const dir = plain(b.folder, 2000);
+      if (!dir || !path.isAbsolute(dir)) return send(res, 400, { error: 'Pick a folder first.' });
+      const { files, tooMany } = folderFiles(dir);
+      if (tooMany) return send(res, 400, { error: 'That folder has more than 2000 files. Zip it first and send the zip.' });
+      if (!files.length) return send(res, 400, { error: 'That folder has no files in it to send.' });
+      r = await outbox.send({ address, kind: 'folder', title: path.basename(dir), files });
     } else {
       const file = plain(b?.file, 2000);
       if (!file || !path.isAbsolute(file)) return send(res, 400, { error: 'Pick a file first.' });

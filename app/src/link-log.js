@@ -13,8 +13,19 @@ export const LINK_LOG_MAX = 1e6;
 const SAY_MS = 60000;
 const TAG = /\[(link|scut)\]\s*(.*)$/;
 const pad = (n) => String(n).padStart(2, '0');
-// Local time, the way the logbook writes it.
-export const stamp = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+// Local time, the way the logbook writes it: in Bob's own zone (cfg.timeZone, local-zone.js) when there is one.
+// 1.5.244 (npc, Nov 14 and 16: the link log read an hour behind the logbook): Node's own clock can be an hour off on
+// Windows when its zone library doesn't match the Windows zone, so the zone Bob worked out wins, like the logbook.
+export const stamp = (ms, timeZone) => {
+  const d = new Date(ms);
+  if (timeZone) {
+    try {
+      const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(d).map((x) => [x.type, x.value]));
+      return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
+    } catch {}
+  }
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
 
 // One line of engine output: { kind: 'link' | 'scut', text } or null.
 export function linkLine(line) {
@@ -38,7 +49,7 @@ export function tailLinkLog(cfg, lines = 120) {
 export class LinkLog {
   // who: 'borrowed card' (this Bob's engine, talking to a lent card) or 'lent card' (this Bob's card server).
   constructor(cfg, { who = 'borrowed card', log = () => {}, now = Date.now, max = LINK_LOG_MAX } = {}) {
-    Object.assign(this, { who, log, now, max });
+    Object.assign(this, { cfg, who, log, now, max });
     this.file = cfg?.dataDir ? path.join(cfg.dataDir, LINK_LOG) : '';
     this.rest = ''; this.said = 0; this.setups = new Map(); this.lines = 0;
   }
@@ -56,7 +67,7 @@ export class LinkLog {
     if (this.file) {
       try {
         try { if (fs.statSync(this.file).size > this.max) fs.renameSync(this.file, `${this.file}.1`); } catch {}
-        fs.appendFileSync(this.file, `${stamp(t)} ${this.who} [${kind}] ${text}\n`);
+        fs.appendFileSync(this.file, `${stamp(t, this.cfg?.timeZone)} ${this.who} [${kind}] ${text}\n`);
       } catch {}
     }
     let say = false;

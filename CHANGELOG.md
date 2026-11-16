@@ -4,6 +4,61 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.244
+
+The link log tells the same time as the logbook.
+
+### Fixed
+
+- **The link log no longer reads an hour behind.** The Link log (the notes kept while a brain runs over another Bob's card) stamped its lines with the computer's own clock, which on some Windows PCs is an hour off from the real zone. It now uses the same time zone as the logbook, so the two always agree.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.243
+
+Send a whole folder to your other Bob with one Yes, and Journey gets its laptop-test fixes.
+
+### New
+
+- **Send a whole folder over Bob-Net.** Settings, Bob-Net, Files and brains: **Pick a folder**, pick the Bob, **Send it**. He gets one Yes card for all of it (up to 2000 files) instead of one card per file, and it lands in a folder of its own with its folders inside kept as they are. Every file is checked at the end, like always. Links and empty files stay behind.
+- **Journey screenshots.** The README shows six new Journey pictures in a gallery, and every screen is on its own page: the world, towns, fights, every menu and every race.
+
+### Fixed
+
+- **One card per offer.** A send that got no answer and was asked again could leave a second, empty Yes card on the other Bob. Now a send with no answer is taken back, the same send asked again is the same offer, and a card still waiting is swapped for the new one, never two.
+- **Journey on a laptop.** A 720p window fits without scrolling, menus too. The talk box and choices are real windows with sharp words. Elf and pixie ears show with Bob's wide headset look, and the tab icons have an outline so they stand out (Pets is now 🐶).
+
+**Where it works:** Windows, Mac, Linux and Bob for Android. Folder sending works on Windows, Mac and Linux; both Bobs need 1.5.243.
+
+## 1.5.242
+
+Journey plays like a proper game now: every menu lives inside the game screen.
+
+### New
+
+- **Every Journey menu opens inside the game.** The menu, shops, crafting, the bag, the paper doll, quests, fights, choices and New adventure all show in the blue talk box, right on the game screen.
+- **A ⚙ System tab.** Save, load, sound, full screen, quit and the controls, all in one place.
+- **Play with a controller.** Plug in a gamepad and Journey answers it. You can also tap the game screen to read on or to pick a choice.
+- **Party size, one to four.** Pick how many travel together; rolled characters fill any empty seats.
+- **You can see each race.** Races now show on the sprite and the paper doll.
+- **A stat every level.** Each level up raises a stat.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.241
+
+The Lab Lessons tell the true story, and the CS Lab gets its write-up.
+
+### New
+
+- **The CS Lab on the front page.** The README has a CS Lab section, a picture of how SCUT compares with plain TCP, and the full write-up of the Lab's work in 13 chapters (docs/dissertation).
+
+### Fixed
+
+- **Lab Lessons: the Real result panels are fact-checked.** The coding race now reads v1 8, v2 6, re-cut 9 and full Qwen 12, with a note that the cut brains kept 208 experts and the re-cut 176. A panel with an unchecked overlap figure is gone.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.240
 
 Tool shapes are locked for GPT-OSS and Qwen, the Lab console is complete, and a security update underneath.
@@ -101,52 +156,6 @@ Bob's chat memory meter moves to where you can see it, you can take any job back
 - **Brains page: take any job back.** Every job chip has a ✕ now, except the main Brain and Gaming. Quick brain, Office and Deep thinking can be taken off and show under Unassigned jobs, and Bob keeps chatting on his main brain.
 - On a phone in Lamplight, the **Effort** choices float above the button, so you can see and pick them all.
 - On a phone in Lamplight, the **More** menu has a solid back, so it isn't see-through.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.234
-
-Journey gets a real quest log, and your saved land is easy to get back to.
-
-### New
-
-- **📜 Quests is a real quest log.** Main quest goals that update as you go, side quests from the Elders and the folk you meet, and achievements.
-- **📂 Load last save** on the Save tab.
-
-### Fixed
-
-- **Resume shows in the guest house**, where Journey now opens, so you can get straight back to your saved land.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.233
-
-My engine moves up to llama.cpp 1.0.
-
-### New
-
-- **Brain Engine 8b12359, on llama.cpp 1.0.** All my own changes to the engine came along with it, so everything I did before still works the same way, on the newest llama.cpp underneath. The plain llama.cpp I carry and the Lab's converters move to the same version.
-- **Brain Engine 7 and 8 still share graphics cards.** A Bob that hasn't updated yet can still lend his card to one that has, and the other way round. Bobs on Brain Engine 6 or older can't share with them; update those first.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.232
-
-SCUT's new speed reaches every Bob.
-
-### Fixed
-
-- **SCUT Auto really is 400 Mbit/s on Bobs that were already set up.** Older Bobs had saved 100, which used to be Auto's own number, and since 1.5.230 I read it as a cap you'd picked. An unpicked 100 is Auto again (400), and the one-time reset to Auto now also reaches Bob-Net's own settings, where the cap is kept. A cap you picked yourself after this update stays.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.231
-
-A small Lab fix.
-
-### Fixed
-
-- **A stopped steering sweep can't spoil a brain's answers any more.** In the Lab, resetting a live brain now also clears a steering dial a stopped sweep had left turned on, which had been bending every answer after it.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 
