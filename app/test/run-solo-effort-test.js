@@ -42,13 +42,14 @@ check('plan steps come from numbered lines, at most 6', planSteps('Plan:\n1. Rea
 check('the result line says plainly when something is still open', /nothing open/.test(soloMinutes('high', [{ kind: 'check', n: 1, verdict: 'ok' }])) && /not checked again\. Not happy with: x/.test(soloMinutes('high', [{ kind: 'check', n: 1, verdict: 'improve' }, { kind: 'improve', unhappy: 'x' }])));
 
 // ---- the loop, with a fake brain ----
-async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Write it down', plan2 = null, repeatAt = false, cards = null, answer = 'Final answer: the list is written down and checked, both steps done.' } = {}) {
+async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Write it down', plan2 = null, repeatAt = false, cards = null, tools = false, answer = 'Final answer: the list is written down and checked, both steps done.' } = {}) {
   const msgs = [{ role: 'user', content: 'do the thing' }];
   const calls = [], said = [];
   const signal = { aborted: false };
   const run = async (note, o = {}) => {
     calls.push({ note: note || '', ...o });
     const content = /That isn't a plan yet/.test(note || '') ? (plan2 ?? plan) : /planning|Improve the plan|wants a change/.test(note || '') ? plan : /Improve it\./.test(note || '') ? 'Better answer.\nNot happy with: one link is old.' : /the answer\./.test(note || '') ? answer : 'Did the step. It worked, and reading the output back showed it.';
+    if (tools && o.phase === 'do' && /step 1 of|whole ask now/.test(note || '')) { msgs.push({ role: 'assistant', content: '', tool_calls: [{ id: 't1', function: { name: 'board_post', arguments: '{"text":"car registration due"}' } }] }); msgs.push({ role: 'tool', tool_call_id: 't1', content: 'Posted to the comm board.' }); }
     msgs.push({ role: 'assistant', content });
     if (stop) signal.aborted = true;
     return { repeatStop: Boolean(repeatAt && /step 1 of/.test(note || '')) };
@@ -110,6 +111,13 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
 {
   const { calls } = await fake('max', ['Looks right.', 'Looks right.'], { plan: 'Sure, here you go.', plan2: '1. Read the hook\n2. Write the answer' });
   check('Max: the second go makes a real plan, and it is checked and split', calls.filter((c) => c.review && /Review your plan/.test(c.review)).length === 1 && calls.filter((c) => /step \d of 2/.test(c.note || '')).length === 2);
+}
+{
+  const { calls } = await fake('max', ['Looks right.', 'Improve it: say when it is due'], { tools: true });
+  const answer = calls.find((c) => c.phase === 'answer'), rev = calls.filter((c) => c.review && /Review your own work/.test(c.review)), imp = calls.find((c) => /^Improve it\./.test(c.note || ''));
+  // 16 Nov rental: "The note's already on the comm board... Nothing added." about the note Bob had just posted.
+  check('Max: the answer, its reviews and the improve round get the record of what Bob did this turn', [answer.note, rev[0].review, imp.note].every((t) => /What YOU did this turn/.test(t) && /board_post \{"text":"car registration due"\} → Posted to the comm board\./.test(t) && /never as "already done"/.test(t)));
+  check('no tools ran: no record is added', !/What YOU did/.test((await fake('max', ['Looks right.', 'Looks right.'])).calls.find((c) => c.phase === 'answer').note));
 }
 check('the plan gate asks whether each step is Bob\'s own, not advice for the user', /something you do yourself/.test(planGateTask('1. a\n2. b')) && /advice for the user goes in the answer/.test(PLAN_NOTE));
 // The owner (16 Nov): robust, well reviewed answers. The reviews read the answer itself, and the improved one is shown.
