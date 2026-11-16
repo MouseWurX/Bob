@@ -32,6 +32,7 @@ import { adventureSettingsHtml, mountAdventureSettings } from './adventure.js';
 import { gamesSettingsHtml, mountGamesSettings } from './games.js';
 import { shareBrainsHtml, mountShareBrains } from './share-brains.js';
 import { mountNetFiles } from './net-files.js'; // Nov 14 Bob-Net: Files and brains
+import { mountPrivateWeb, privateWebHtml } from './private-web.js'; // Nov 16 Settings, Connections: Private web
 import { mountSearchBackup, searchBackupHtml } from './search-backup.js'; // Nov 16 Settings, Connections: Search API keys
 import { findTheme, DEFAULT_THEME } from './themes.js';
 import { tip, noteOrTip, stripTags, keep } from './tips.js';
@@ -436,7 +437,8 @@ export function createCellar({ popOut = null } = {}) {
     ['opencode', 'OpenCode', 'opencode sst coding agent chat head cube sign in account', () => agentSectionHtml('opencode')],
     ['discord', 'Discord', 'discord bot token server channel group chat moderate moderator keep order kick ban spam chat head cube', () => chatAppHtml('discord')],
     ['telegram', 'Telegram', 'telegram bot botfather token pairing wake phrase chat head cube', () => chatAppHtml('telegram')],
-    ['search', '🔎 Search API keys', 'search api keys key backup search blocked robot check captcha web search tavily brave marginalia mojeek monthly cap test', () => searchBackupHtml()],
+    ['search', '🔎 Search API keys', 'search api keys key backup search blocked robot check captcha web search tavily brave marginalia mojeek firecrawl no key monthly cap test', () => searchBackupHtml()],
+    ['privweb', '🕶 Private web', 'private web privacy private mode tracking trackers cookies do not sell proxy tor vpn socks route through fingerprint blocked other sources internet archive throwaway', () => privateWebHtml()],
     ['email', '📧 Email account', 'email mail account imap smtp app password gmail outlook hotmail icloud yahoo reading sending server reset code', () => emailAccountHtml()],
     ['apps', '🔌 Other apps', 'other apps comfyui workflows port unreal blender mcp openai compatible api vs code continue opencode command line terminal cli key claude claude code desktop connect hands key', () => otherAppsHtml()],
     ['hands', '✋ Hands', 'files run commands schedules apps permission quarantine reviewer', () => handsSettingsHtml() + quarantineSettingsHtml()],
@@ -681,6 +683,7 @@ export function createCellar({ popOut = null } = {}) {
     mountGamesSettings(dlg.querySelector('.games-box'), { api, settings }); // 1.5.121 🧩 Games
     mountShareBrains(dlg.querySelector('.share-box')); // Bob-Net: My other Bobs and What they share
     mountNetFiles(dlg.querySelector('.net-files-box')); // Nov 14 Bob-Net: Files and brains
+    mountPrivateWeb(dlg.querySelector('.private-web-box')); // Nov 16 Settings, Connections: Private web
     mountSearchBackup(dlg.querySelector('.search-backup-box')); // Nov 16 Settings, Connections: Search API keys
     readyLine(); // 1.5.117: "Bob 1.5.117 is ready · Restart Bob now" on the updates line when a new Bob waits
     const page = mode === 'welcome' ? 'Welcome' : tab === 'settings' ? 'Settings' : tab === 'style' ? 'Style' : 'Get models';

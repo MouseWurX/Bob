@@ -39,6 +39,17 @@ the full model (5). Done when the new Bobert beats today's Bobert on the report 
   (`model-lab/never-gate.mjs`, built on `lesson-ledger.mjs`). One match, a missing test file, or a set it can't see
   (one already on the rented drive) stops the plan before anything is rented or sent. Lessons written on the pod
   during a training run go through the same check and any that hold a test item are dropped before they go up.
+- **Router rules in every training, heal and reward plan (16 Nov, from the Hugging Face MoE training handbook,
+  Tazi, von Werra and Wolf, 2026).** The router (the part that picks experts) runs in float32 and learns at its own
+  low rate, or not at all with `router: "frozen"`. No load-balance loss is added: balance is for training speed on many
+  cards, and on a cut brain it would pull words away from the experts the keep list kept. Every heal sets
+  `route_report: true`, so the report shows per-layer MaxVio, never-picked experts and how many picks the heal changed,
+  next to the held-out scores. A reward pass whose answers are written by another engine (llama-server, vLLM) needs
+  routing replay (Ma et al., 2025) or a frozen router first (Forge README, Build 25).
+- **Experts per word keep their trained share.** Fewer experts per word must be judged on labelled tasks, not word
+  odds alone. Chen and Yao (2026) found that on Qwen3.6-35B-A3B, 4 experts re-weighted to add up to 1 lost 4.65 MMLU
+  points, but kept at their share of the top 16 lost 0.35. Bob's engine re-weights to 1 today (llama.cpp's Qwen3 MoE
+  graph normalises the chosen experts' weights), so any fewer-experts setting is measured before it's used.
 - **Honest results.** Every report says what really ran, what was skipped and why.
 - **Scrub first.** The owner's name, file names and paths, email addresses, IP addresses, device names and keys come
   out before anything is kept or shared.

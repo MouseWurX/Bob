@@ -14,6 +14,7 @@ const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const { readHomeFrom, badHomeLine, stripBom } = require('./home-json.cjs');
 const windowBar = require('./window-bar.cjs'); // 1.5.228 Window buttons on Bob's bar
+const { raise, cleanName } = require('./bring-front.cjs'); // Nov 16: an open Settings, Lab, viewer or thinking window comes forward
 
 // Before anything else: the name decides Bob's user-data folder (and so the single-instance lock), and the
 // id matches the Start menu shortcut, so the taskbar shows Bob's icon rather than Electron's.
@@ -425,7 +426,9 @@ globalThis.bobWindow = {
     if (!c || !win || win.isDestroyed() || !barNow) return;
     try { if (MAC) win.setWindowButtonPosition?.(windowBar.trafficLights(c.height)); else win.setTitleBarOverlay(c); } catch {}
   },
-  barNow: () => barNow
+  barNow: () => barNow,
+  // Nov 16: pressing Settings (or the Lab, the fNRI viewer, Bob's thinking) again brings its open window forward.
+  front: (which) => raise({ settings: settingsWin, lab: labWin, watch: watchWin, mind: mindWin }[cleanName(which)] || null)
 };
 let barNow = false; // this window was made with Bob's own bar (the setting at the time it opened)
 
@@ -501,6 +504,8 @@ async function start() {
   if (!home) { app.quit(); return; } // 1.5.201: an unreadable home.json, already said
   // An older Bob (from before Bob.exe) may already be running on the port: use it rather than fight it.
   if (!(await up(home.port))) {
+    // Private web's route (src/private-web.js reads globalThis.bobRoute): only web_search and fetch_page use it.
+    try { globalThis.bobRoute = require('./web-route.cjs').makeWebRoute(); } catch (e) { console.error(`Bob's web route didn't load: ${e.message}`); }
     // Bob's own browser window for the Browser hand (src/hands-browser.js reads globalThis.bobBrowser).
     try { globalThis.bobBrowser = require('./browser-window.cjs').makeBobBrowser({ base: `http://127.0.0.1:${home.port}`, icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png') }); } catch (e) { console.error(`Bob's browser window isn't available: ${e.message}`); }
     try { await import(pathToFileURL(path.join(root, 'src', 'server.js')).href); }
@@ -521,22 +526,22 @@ async function start() {
   // 1.5.53: the one exception is "Bob's thinking", his own small window that stays on top (one at a time).
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url === base + '/mind.html') {
-      if (mindWin) { mindWin.show(); mindWin.focus(); return { action: 'deny' }; }
+      if (mindWin) { raise(mindWin); return { action: 'deny' }; }
       return { action: 'allow', overrideBrowserWindowOptions: mindOptions(win) };
     }
     // The Lab's fNRI viewer: its own ordinary window (not on top), so it can sit beside the Lab or a chat.
     if (url === base + '/watch.html' || url.startsWith(base + '/watch.html?')) {
-      if (watchWin) { watchWin.loadURL(url); watchWin.show(); watchWin.focus(); return { action: 'deny' }; }
+      if (watchWin) { watchWin.loadURL(url); raise(watchWin); return { action: 'deny' }; }
       return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 820, minWidth: 360, minHeight: 480, title: 'fNRI', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
     }
     // Settings is its own ordinary window too (minimise, maximise, close), one at a time.
-    if (url === base + '/settings.html' || url.startsWith(base + '/settings.html#')) {
-      if (settingsWin) { if (settingsWin.webContents.getURL() !== url) settingsWin.loadURL(url); if (settingsWin.isMinimized()) settingsWin.restore(); settingsWin.show(); settingsWin.focus(); return { action: 'deny' }; }
+    if (url === base + '/settings.html' || url.startsWith(base + '/settings.html#') || url.startsWith(base + '/settings.html?')) {
+      if (settingsWin) { if (settingsWin.webContents.getURL() !== url) settingsWin.loadURL(url); raise(settingsWin); return { action: 'deny' }; }
       return { action: 'allow', overrideBrowserWindowOptions: { frame: true, titleBarStyle: 'default', width: 1040, height: 780, minWidth: 360, minHeight: 480, title: 'Bob · Settings', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
     }
     // The Computer Science Lab is its own ordinary window as well, one at a time.
     if (url === base + '/lab.html') {
-      if (labWin) { if (labWin.isMinimized()) labWin.restore(); labWin.show(); labWin.focus(); return { action: 'deny' }; }
+      if (labWin) { raise(labWin); return { action: 'deny' }; }
       return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 860, minWidth: 360, minHeight: 480, title: 'Bob · Computer Science Lab', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
     }
     if (/^https?:/.test(url)) shell.openExternal(url);
@@ -558,7 +563,7 @@ async function start() {
       // The Lab opens the fNRI viewer; web links go to the normal browser; nothing else opens from it.
       child.webContents.setWindowOpenHandler(({ url }) => {
         if (url === base + '/watch.html' || url.startsWith(base + '/watch.html?')) {
-          if (watchWin) { watchWin.loadURL(url); watchWin.show(); watchWin.focus(); return { action: 'deny' }; }
+          if (watchWin) { watchWin.loadURL(url); raise(watchWin); return { action: 'deny' }; }
           return { action: 'allow', overrideBrowserWindowOptions: { width: 1180, height: 820, minWidth: 360, minHeight: 480, title: 'fNRI', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#1d1510', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
         }
         if (/^https?:/.test(url)) shell.openExternal(url);

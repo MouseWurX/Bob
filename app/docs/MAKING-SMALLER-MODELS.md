@@ -27,6 +27,7 @@ Nearly every lesson below came from the owner asking "why are we doing it this w
 | Why cut at all, if we can just tune? | REAP calibration on the uncut models | An uncut model loses almost nothing down to half its experts. An already-cut one collapses. |
 | Why fix facts after the cut? | Fix the full brain first, then cut | The heal copies the teacher's odds, wrong facts included. |
 | Why refuse to load from an estimate? | Try the load, step down only on a real out-of-memory | The estimates were often wrong. |
+| Does the Hugging Face MoE handbook differ from how we do it? | Router in float32 at its own rate, an optional frozen router, a routing record in every heal | The GPT-OSS router may have been set to learn five times faster than intended (unproven in our lab, as we have yet to test; a gate now checks it before any heal). Fewer experts per word should keep their trained share (Chen and Yao, 2026). |
 
 So keep asking. A pivot that costs a day usually saves a rental.
 
@@ -78,6 +79,8 @@ REAP trims on 12 November, with experts switched off and no retraining, scored o
 - **Do a full pass or nothing.** The first heals were stopped by the clock partway through and came out half-healed. Every heal since is one full pass.
 - **Mix in general text.** About a third of the heal is public web and chat text, so the brain keeps general knowledge. Watch it: Riker's general-text score held level, and Bill's improved slightly.
 - **Know what a heal can't do.** Bill (144 of 256) is the best of the three at tool decisions (68%) but dropped to 12 of 20 facts and 1 of 6 code tasks. A heal on the same lessons can't bring those back. The fix is a gentler cut or lessons that teach facts and code.
+- **Keep the router steady (16 Nov 2026).** The router picks the experts, and the keep list was chosen for the router as it is. So the heal runs it in float32 (a BF16 router can tie close scores and pick differently), at its own low rate (2e-5 against 1e-4), or frozen with `router: "frozen"`. No load-balance loss is added: it exists for training speed on many cards, and here it would push words onto the experts we didn't choose (Tazi, von Werra and Wolf, 2026). Reading the code on 16 Nov suggested the GPT-OSS router fell outside the low-rate group. That is unproven in our lab, as we have yet to test on a real brain (a tiny-model test agrees). Every heal now stops before training unless all its router tensors are in that group, so the first GPT-OSS heal proves or disproves it in its first minutes. No GPT-OSS heal had run, so nothing changes in past results.
+- **Record the routing before and after.** `route_report: true` saves per-layer MaxVio (the busiest expert's load over the mean, minus 1), experts never picked, and the share of picks the heal changed. A heal that improves the held-out score while reshuffling most picks has drifted from its keep list. That's worth knowing before the next cut.
 - **Get the fast kernels working.** Qwen3.6's linear-attention layers ran the slow fallback for several runs without saying so. With the real kernels built against the image's own PyTorch, Bobert's pass took 10.3 hours instead of about 16.
 
 ## 4. Lessons: what the brain learns from
@@ -132,4 +135,4 @@ These sets (four styles, 400 lessons each) are being written now. Their results 
 
 ## Credits
 
-Expert pruning follows Cerebras' REAP work; depth-and-width pruning plans follow NVIDIA's Minitron. The Bobs are made from Qwen3.6-35B-A3B by Alibaba Cloud's Qwen team (Apache 2.0).
+Expert pruning follows Cerebras' REAP work; depth-and-width pruning plans follow NVIDIA's Minitron. The router rules follow the Hugging Face MoE training handbook (Tazi, von Werra and Wolf, 2026, https://huggingface.co/spaces/huggingface/moe-blogpost) and the papers it cites: Chen and Yao (2026, arXiv:2609.04575) on fewer experts per word, Ma et al. (2025, arXiv:2510.11370) on routing replay, and Wang et al. (2024, arXiv:2408.15664) for MaxVio. The Bobs are made from Qwen3.6-35B-A3B by Alibaba Cloud's Qwen team (Apache 2.0).

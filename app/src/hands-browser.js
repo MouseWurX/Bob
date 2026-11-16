@@ -16,6 +16,7 @@ import fs from 'node:fs';
 import { handOn, handOffWhy, limitOn } from './hands-settings.js';
 import { pieceOf } from './tools.js';
 import { eyesCheck, eyesOn } from './eyes.js';
+import { cleanPrivateWeb, cleanLink } from './private-web.js'; // Nov 16: Private web's throwaway profile and route
 
 const fn = (name, description, properties, required = Object.keys(properties)) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
@@ -120,9 +121,11 @@ export function browserTools(brain, { driver = null, track = () => () => {} } = 
     },
     async run(args, ctx) {
       off();
-      const url = String(args.url || '').trim();
+      const pw = cleanPrivateWeb(cfg.privateWeb);
+      const url = pw.on ? cleanLink(String(args.url || '').trim()) : String(args.url || '').trim(); // tracking bits off
       const p = urlProblem(cfg, url); if (p) throw new Error(p);
       ensure();
+      drv().setPrivacy?.({ on: pw.on, route: pw.route }); // the window picks its profile and route from these
       let r;
       try { r = await drv().open(url); }
       catch (e) { log('hands', `browser: open ${url} failed: ${e.message}`); throw new Error(`The page didn't open: ${e.message} (That is the real reason. Tell ${cfg.userName || 'the user'} plainly; don't say it opened.)`); }

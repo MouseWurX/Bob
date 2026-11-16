@@ -7,6 +7,10 @@ above their group's average and away from the ones below.
   Options: --group 6 (answers per chat)  --chats 4 (chats per step)  --steps 200  --hours 1.5  --lr 5e-6  --kl 0.02
            --max-new 384  --temp 1.0  --think (let it think first; off by default, answers stay short)
            --experts frozen|lora (LoRA on the experts too; default frozen, only attention + router + shared expert learn)
+           --router trainable|frozen (16 Nov 2026; default trainable as before). Frozen keeps every expert pick as the
+           heal left it, as MiMo does in its reward training (Tazi, von Werra and Wolf, 2026, 3.3). Answers here are
+           written by this same model in this same process, so the engine/trainer routing gap that "routing replay"
+           closes (Ma et al., 2025, arXiv:2510.11370) is small; it matters if answers are ever written by another engine.
 Chats: the first turn of every lesson (the full Qwen's recorded tool calls, or rightly none, are the answer key).
 Held-out ideas (data.is_holdout) are never trained on; they are graded greedily before and after.
 Writes <save>/grpo-report.json, adapter.pt and the merged model (same shape as heal.py's output).
@@ -123,6 +127,7 @@ def main():
     ap.add_argument("--hours", type=float, default=1.5); ap.add_argument("--lr", type=float, default=5e-6); ap.add_argument("--kl", type=float, default=0.02)
     ap.add_argument("--max-new", type=int, default=384); ap.add_argument("--temp", type=float, default=1.0); ap.add_argument("--think", action="store_true")
     ap.add_argument("--max-len", type=int, default=8192); ap.add_argument("--r", type=int, default=16); ap.add_argument("--experts", default="frozen", choices=["frozen", "lora"])
+    ap.add_argument("--router", default="trainable", choices=["trainable", "frozen"])
     ap.add_argument("--eval-chats", type=int, default=150); ap.add_argument("--report", default=None); ap.add_argument("--seed", type=int, default=1); ap.add_argument("--device", default="cuda")
     ap.add_argument("--targets", default=None, help="several targets (targets.py): chats sampled by weight, graded per target")
     ap.add_argument("--checks", default=None, help="written-answer checks (make-checks.mjs) learned from too, job 'checks'")
@@ -144,7 +149,7 @@ def main():
     stops = {i for i in (tok.convert_tokens_to_ids("<|im_end|>"), tok.eos_token_id) if isinstance(i, int) and i >= 0}
     report = {"model": a.model, "args": vars(a), "before": evaluate(model, tok, test, a, dev, stops, a.eval_chats)}
     print("held-out before:", report["before"], flush=True)
-    params = L.attach(model, r=a.r, experts=a.experts, r_experts=8)
+    params = L.attach(model, r=a.r, experts=a.experts, r_experts=8, router=a.router == "trainable")
     ref_state = L.trainable_state(model)  # the reference = Bob as he came in (LoRA at zero, router as it was)
     opt = torch.optim.AdamW(params, lr=a.lr, weight_decay=0.0, betas=(0.9, 0.99))
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False}); model.enable_input_require_grads()

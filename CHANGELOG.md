@@ -4,6 +4,48 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.246
+
+Private web, one answer instead of two, and more Lab lessons.
+
+### New
+
+- **Private web.** In Settings, Connections, 🕶 Private web. It's off until you turn it on. Then I send only the search words, keep no cookies, take tracking bits off links, and my browser window uses a throwaway profile that blocks trackers. You can also send my web search and pages through your own proxy or Tor; if it's down, I stop instead of going direct. Gaming mode, the Lab, Bob-Net and downloads aren't touched.
+- **Try other sources when one blocks me.** When a site turns me away with a block or a robot check, I never try to get past it. I skip that site for the rest of the job and read the same facts from up to 3 others, like another search result or a copy the Internet Archive already has, and I say what I skipped.
+- **Lab Lessons.** Two new Engineering lessons (a held-out leak, and auditing your reviewer), a How strong line on every Real result, and a page showing where every Real result comes from.
+
+### Fixed
+
+- **One answer, not two.** After I said "I can't" and had one more go, or after the check that only some tool steps ran, my second answer was stacked under the first. Now only one stays: the new one if it used a tool, otherwise the first.
+
+### Also
+
+- The README has a privacy note under the title, a Quick start, and a table of where everything is.
+- The dissertation now follows the locked tool shapes (Qwen shape 4, GPT-OSS shape 3), with new findings in chapter 8 and the rule in chapter 4.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android. Routing and the private browser window are for the desktop app.
+
+## 1.5.245
+
+A new default brain, a backup search with or without a key, and Settings that comes to the front.
+
+### New
+
+- **Bob's default brain is now stock Qwen3.6 35B-A3B; Riker and Bobert are out of the Brain catalogue (files already on a PC still run from Your own brains).** On a 16 GB card it does Brain, Coding and Deep thinking; on an 8 GB card its smaller file does the coding. On the first start after this update, a job set to Riker or Bobert moves to Qwen once, but only if Qwen's file is already on your computer.
+- **Search API keys.** When the free search pages block your computer, I can ask a backup search instead: Brave Search, Marginalia, Mojeek or Tavily with your own key, or Firecrawl with no key at all. No key comes with me, and each one is off until you switch it on. Each has a monthly cap and a Test button, and a saved key is never shown again. Firecrawl gets a small free allowance a day, so I keep to 50 a day and leave it alone for the day if it says that's enough. Find it all in Settings, Connections, Search API keys.
+- **Watching the router.** A new Lab lesson, and a From the research panel that cites other people's papers apart from my own results.
+
+### Fixed
+
+- **Pressing Settings again brings it to the front.** If Settings, the Lab, the fNRI viewer or my thinking window was already open behind other windows or minimised, pressing its button now raises it.
+
+### In the Lab
+
+- The heal keeps the router learning slowly, always in full precision, and can freeze it or record which experts it picks before and after.
+- **Unproven in our lab, as we have yet to test:** reading the code suggests the GPT-OSS router may have been learning at the fast rate. No GPT-OSS heal has run, so no past result changes. A gate now checks the router count before any training, and the first real heal will prove it either way.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android. Bringing windows to the front is for the desktop app.
+
 ## 1.5.244
 
 The link log tells the same time as the logbook.
@@ -126,36 +168,6 @@ Housekeeping gets its own brain job, you can pick how jobs are shared out betwee
 - **Each housekeeping round shows in Tasks and Now running**, so you can see when I'm tidying up a long chat while you're away, and when I'm done.
 - **Pick how jobs are shared out.** In Settings, Bob-Net, under Send jobs, switch on and order the rules for picking one of your Bobs: least busy, fastest, biggest graphics card, closest, or computers before phones. You can also keep jobs on your home network or off the phone, cap how many jobs one Bob gets, and give each kind of job a first-choice Bob. A Bob you're gaming on never gets one. Left as it is, I pick just like before.
 - **One menu on a phone.** At phone width the bottom bar is Chat, Tasks, + New, Topics and Bob. The Bob button or the cube opens one menu that slides up from the bottom, and Settings on a phone is two tidy lists. Wide windows are the same as before.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.236
-
-The Lab gets a Forge console: one window for everything the Forge and the Lab run.
-
-### New
-
-- **Forge console in the Lab.** It sits at the top of the Forge tab, and everything the Lab runs shows up there live, never in a window you can't see.
-  - **Four big buttons:** **Load model locally**, **Open rental** (you pick the brain, the cards and the caps, and only the purchase card rents), **STOP** (stops everything running here, never a rental) and **END RENTAL** (ends only that run's card).
-  - **Three panels:** **Server** is the terminal, with the server log, every request and reply, and scripts. **Chat** shows the brain's replies as bubbles, with thinking folded and tool calls as cards. **Set up** has sliders and tick boxes for temperature, top-p, max tokens, thinking and more, which tools to offer, a system prompt, and forms for the Lab's jobs. Put any panel on either side, side by side or one at a time. On a phone they stack.
-  - **Relay:** every request a tool sends goes through it and goes on the record. **Hold each request** lets you read it, fix it, then send or drop it.
-  - Running anything needs **Let the Lab run commands here**, which stays off until you switch it on. Keys never reach the console.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.235
-
-Bob's chat memory meter moves to where you can see it, you can take any job back from a brain, and two phone menus in Lamplight are fixed.
-
-### New
-
-- **Chat memory: NN%** now sits under the typing box, across from the brain label, with an (i) that says what it means. **Sum up and carry on** shows from 70%, and the reading comes back after a reload.
-
-### Fixed
-
-- **Brains page: take any job back.** Every job chip has a ✕ now, except the main Brain and Gaming. Quick brain, Office and Deep thinking can be taken off and show under Unassigned jobs, and Bob keeps chatting on his main brain.
-- On a phone in Lamplight, the **Effort** choices float above the button, so you can see and pick them all.
-- On a phone in Lamplight, the **More** menu has a solid back, so it isn't see-through.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 

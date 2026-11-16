@@ -41,25 +41,24 @@ const fakeHF = ({ private: priv = [], missing = [] } = {}) => async (u) => {
   check(by('riker-28b').sizeGB === 17.5 && by('riker-28b-q3').sizeGB === 13.9, 'the size comes from the real file');
   check(!by('riker-28b-q3').squeezedOf && !by('riker-28b-q3').maxCardGB && by('riker-28b-q3').bench && by('riker-28b-q3').vramGB <= 16, 'Riker\'s Q3 is a full 16 GB option (benchmarked within a point of the Q4), not a squeezed copy');
   check(by('bobert-35b-q3').squeezedOf === 'bobert-35b' && by('bobert-35b-q3').maxCardGB === 8, 'Bobert\'s Q3 stays the 8 GB card version until his numbers are in');
-  check(!by('riker-28b').bobPick.length, 'Riker\'s Q4 is listed but no longer anyone\'s default');
-  check(!by('qwen3.6-35b-a3b').dated && by('qwen3.6-35b-a3b'), 'Qwen3.6 35B-A3B stays in the list as it was');
+  check(all.every((m) => Array.isArray(m.bobPick) && !m.bobPick.length && m.pick === 'optional'), '1.5.245: Riker and Bobert are listed, but no longer anyone\'s default');
+  check(!by('qwen3.6-35b-a3b').dated && by('qwen3.6-35b-a3b').bobPick.join() === 'bob,tinker,deep', 'stock Qwen3.6 35B-A3B is the default for Brain, Coding and Deep thinking');
 
-  // Defaults on a 16 GB card (the ★ pick for each job)
+  // Defaults on a 16 GB card (the ★ pick for each job): stock Qwen until a Bob beats it on a held-out test
   const hw = { vramGB: 16, ramGB: 32, packs: cat.packs };
-  check(pickFor('bob', cat.models, hw)?.id === 'riker-28b-q3', `16 GB card: Riker (quick) is the everyday pick (${pickFor('bob', cat.models, hw)?.id})`);
-  check(pickFor('tinker', cat.models, hw)?.id === 'bobert-35b', `16 GB card: Bobert is the Coding pick (${pickFor('tinker', cat.models, hw)?.id})`);
-  check(pickFor('deep', cat.models, hw)?.id === 'bobert-35b', `16 GB card: Bobert is the Deep thinking pick (${pickFor('deep', cat.models, hw)?.id})`);
-  check(/Bob's own brain/.test(pickFor('bob', cat.models, hw)?.why || ''), 'the reason says it\'s Bob\'s own brain');
-  const small = { vramGB: 6, ramGB: 16, packs: cat.packs };
-  check(!['riker-28b', 'bobert-35b', 'riker-28b-q3', 'bobert-35b-q3'].includes(pickFor('bob', cat.models, small)?.id), 'a 6 GB laptop card keeps a brain that fits it');
+  for (const job of ['bob', 'tinker', 'deep']) check(pickFor(job, cat.models, hw)?.id === 'qwen3.6-35b-a3b', `16 GB card: stock Qwen is the ${job} pick (${pickFor(job, cat.models, hw)?.id})`);
+  check(/until one of his own brains beats it/.test(pickFor('bob', cat.models, hw)?.why || ''), 'the reason says why stock Qwen is the default');
+  check(pickFor('office', cat.models, hw)?.id === 'gemma4-26b', 'Gemma 4 26B keeps Office');
+  const bobs = ['riker-28b', 'bobert-35b', 'riker-28b-q3', 'bobert-35b-q3'];
+  for (const card of [24, 16, 8, 6, 0]) check(!['bob', 'tinker', 'deep', 'reviewer', 'office'].some((j) => bobs.includes(pickFor(j, cat.models, { vramGB: card, ramGB: 32, packs: cat.packs })?.id)), `${card} GB card: no Bob is a ★ pick`);
 
   // Starter sets
   const big = packFor(cat.packs, 16), mid = packFor(cat.packs, 8);
-  check(big.slots['riker-28b-q3']?.join() === 'bob' && !big.models.includes('riker-28b') && big.slots['bobert-35b']?.join() === 'tinker,deep', 'Get Bob ready, 16 GB: Riker (quick) for Bob, Bobert for Coding and Deep thinking');
-  check(!big.models.includes('qwen3.6-35b-a3b') && big.slots['gemma4-26b']?.join() === 'office', '...the full Qwen leaves the set; Gemma 4 26B keeps Office');
-  check(mid.slots['bobert-35b-q3']?.join() === 'tinker' && mid.tick.includes('bobert-35b-q3') && !mid.models.includes('qwen3-coder-30b'), 'Get Bob ready, 8 GB: Bobert\'s 8 GB version codes, ticked');
-  check(!mid.models.some((id) => /riker/.test(id)), '...and no Riker on 8 GB cards: smaller Bobs will fit those better');
-  check(Object.keys(big.slots).every((id) => big.models.includes(id)) && Object.keys(mid.slots).every((id) => mid.models.includes(id)), 'every starter slot names a model in its set');
+  check(big.slots['qwen3.6-35b-a3b']?.join() === 'bob,tinker,deep' && big.models.includes('qwen3.6-35b-a3b'), 'Get Bob ready, 16 GB: stock Qwen for Bob, Coding and Deep thinking');
+  check(big.slots['gemma4-26b']?.join() === 'office', '...Gemma 4 26B keeps Office');
+  check(mid.slots['qwen3.6-35b-a3b-q3']?.join() === 'tinker' && mid.tick.includes('qwen3.6-35b-a3b-q3'), 'Get Bob ready, 8 GB: stock Qwen\'s 8 GB version codes, ticked (still New until tried on a real 8 GB card)');
+  check(!cat.packs.some((p) => p.models.some((id) => bobs.includes(id))), '...and no Riker or Bobert in any starter set');
+  check(cat.packs.every((p) => Object.keys(p.slots).every((id) => p.models.includes(id))), 'every starter slot names a model in its set');
 
   // The file: only the Bobs' entries, the starter sets and the day change; it stays valid JSON.
   const out = writeCatalogText(text, cat, r.added, '2026-11-10');

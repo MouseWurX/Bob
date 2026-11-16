@@ -2862,3 +2862,18 @@ body.still .phone-menu { animation: none; }
 .lesson-nav { justify-content: space-between; }
 @media (max-width: 600px) { .lesson-facts { grid-template-columns: 1fr; } .lesson-facts dd { margin-bottom: 4px; } }
 .lesson-real { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: var(--r); padding: 4px 10px; margin: 8px 0; }
+/* 16 Nov Lessons: How strong a Real result is, and the index of every Real result (a card per row on a phone) */
+.lesson-status { display: block; margin-top: 2px; }
+.lesson-index { margin: 10px 0; }
+.lesson-index table { width: 100%; }
+.lesson-index caption { text-align: left; font-weight: bold; padding: 4px 0; }
+.lesson-index th, .lesson-index td { vertical-align: top; overflow-wrap: anywhere; }
+.lesson-index th .link { text-align: left; }
+@media (max-width: 600px) {
+  .lesson-index table, .lesson-index tbody, .lesson-index tr, .lesson-index th, .lesson-index td { display: block; width: auto; }
+  .lesson-index caption { display: block; }
+  .lesson-index .lesson-index-head { display: none; }
+  .lesson-index tr { border: 1px solid var(--line); border-radius: var(--r); margin-bottom: 8px; }
+  .lesson-index th, .lesson-index td { border: 0; padding: 2px 8px; }
+  .lesson-index td[data-label]::before { content: attr(data-label) ": "; font-weight: bold; }
+}

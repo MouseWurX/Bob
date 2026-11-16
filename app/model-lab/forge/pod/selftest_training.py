@@ -152,9 +152,27 @@ def main():
     run("heal.py + on-policy (student writes, teacher scores)", heal("healed-onpolicy", "--onpolicy-frac", "0.5", "--onpolicy-teacher", T, "--onpolicy-new", "12", "--onpolicy-top", "8"), root)
     rep = report(os.path.join(root, "healed-onpolicy", "heal-report.json"))
     check("on-policy steps ran and were counted", rep.get("onpolicy", {}).get("steps", 0) > 0, json.dumps(rep.get("onpolicy")))
+    rep = report(os.path.join(root, "healed", "heal-report.json"))
+    check("today's heal: router trainable, in float32, at its own rate", rep.get("router", {}).get("mode") == "trainable" and rep["router"].get("tensors", 0) > 0 and rep["router"].get("dtype") == "float32" and "routing" not in rep, json.dumps(rep.get("router")))
+    run("heal.py --router frozen --route-report", heal("healed-frozen", "--router", "frozen", "--route-report", "--route-lessons", "5"), root)
+    rep = report(os.path.join(root, "healed-frozen", "heal-report.json")); rt = rep.get("routing", {})
+    check("frozen router: nothing of the router trains", rep.get("router", {}).get("mode") == "frozen" and rep["router"].get("tensors") == 0, json.dumps(rep.get("router")))
+    check("routing record: MaxVio per layer before and after, and how much the heal changed", all(rt.get(k) for k in ("before", "after", "change")) and len(rt["before"]["maxvio_by_layer"]) == 4 and 0 <= rt["change"]["same_set"] <= 1 and rt["change"]["picks"] > 0,
+          json.dumps({k: rt.get(k) for k in ("change",)}))
+    st = torch.load(os.path.join(root, "healed-frozen", "adapter.pt"))["params"]
+    check("frozen router: no router weights in the adapter", not any(k.endswith(("mlp.gate.weight", "mlp.router.weight", "mlp.router.bias")) for k in st), str([k for k in st if "gate.weight" in k][:2]))
     grpo = lambda save, *extra: [os.path.join(HERE, "grpo.py"), "--model", os.path.join(root, "healed"), "--lessons", L, "--save", os.path.join(root, save),
                                  "--device", "cpu", "--steps", "3", "--group", "3", "--chats", "2", "--max-new", "16", "--eval-chats", "4", "--hours", "0.05", *extra]
     run("grpo.py: reward pass on tool calls", grpo("grpo"), root)
+    run("grpo.py --router frozen", grpo("grpo-frozen", "--router", "frozen"), root)
+    import lora as LL, family as FF
+    from transformers import AutoModelForCausalLM
+    tm = AutoModelForCausalLM.from_pretrained(S, dtype=torch.float32); LL.attach(tm, r=4, r_experts=2)
+    check("Qwen: the old and new router rules find the same tensors (one gate per MoE layer)", [n for n, _ in LL.router_params(tm)] == [n for n, p in tm.named_parameters() if p.requires_grad and n.endswith("mlp.gate.weight")] and len(LL.router_params(tm)) == LL.router_count_expected(tm) == 4)
+    tm2 = AutoModelForCausalLM.from_pretrained(S, dtype=torch.float32); LL.attach(tm2, r=4, r_experts=2)
+    for n, p in tm2.named_parameters():
+        if n.endswith("mlp.gate.weight"): p.requires_grad_(False); break
+    check("router gate: a router tensor missing from the low-rate group is spotted (3 found, 4 expected)", len(LL.router_params(tm2)) == 3 and LL.router_count_expected(tm2) == 4)
     rep = report(os.path.join(root, "grpo", "grpo-report.json"))
     check("grpo graded held-out chats before and after", bool(rep) and rep["before"]["chats"] > 0 and rep["after"]["chats"] > 0 and rep["steps"] > 0, json.dumps({k: rep.get(k) for k in ("before", "after", "steps", "learned_steps")})[:300])
     # a tiny random model writes the same kind of answer every time, so nothing differs to learn from: grade at random once to drive the learning path

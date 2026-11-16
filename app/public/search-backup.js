@@ -12,7 +12,7 @@ async function api(data) {
 }
 
 export function searchBackupHtml() {
-  return `<p class="muted">When the free search pages (DuckDuckGo, Mojeek) turn this replicant matrix away with a robot check, I ask a search service you've set up here instead, top to bottom, and say which one answered. Each is off until you turn it on, and needs your own key. Only the search words go. Each stops at its monthly cap, so nothing is charged unless you raise it.</p><div class="search-backup-box"><p class="muted">Loading…</p></div>`;
+  return `<p class="muted">When the free search pages (DuckDuckGo, Mojeek) turn this replicant matrix away with a robot check, I ask a search service you've set up here instead, top to bottom, and say which one answered. Each is off until you turn it on, and most need your own key (Firecrawl needs none). Only the search words go. Each stops at its monthly cap, so nothing is charged unless you raise it.</p><div class="search-backup-box"><p class="muted">Loading…</p></div>`;
 }
 
 export async function mountSearchBackup(box) {
@@ -22,16 +22,16 @@ export async function mountSearchBackup(box) {
   const row = (s, i) => {
     const m = said[s.id];
     return `<li class="sb-service" data-sb-id="${esc(s.id)}">
-      <label class="switch srow-switch"><input type="checkbox" data-sb-use ${s.on ? 'checked' : ''}><span><strong>${esc(s.name)}</strong><br><span class="muted">${esc(s.note)} <a href="${esc(s.signup)}" target="_blank" rel="noopener noreferrer">Get a key</a></span></span></label>
-      <div class="row sb-key">
+      <label class="switch srow-switch"><input type="checkbox" data-sb-use ${s.on ? 'checked' : ''}><span><strong>${esc(s.name)}</strong><br><span class="muted">${esc(s.note)}${s.keyless ? '' : ` <a href="${esc(s.signup)}" target="_blank" rel="noopener noreferrer">Get a key</a>`}</span></span></label>
+      ${s.keyless ? `<div class="row sb-key"><span class="muted">No key needed.</span> <button type="button" class="mini" data-sb-test>Test</button></div>` : `<div class="row sb-key">
         <label class="sb-keylabel">Key <input type="password" autocomplete="off" spellcheck="false" data-sb-keybox aria-label="${esc(s.name)} key" placeholder="${s.hasKey ? '•••••••• saved' : 'Paste your key'}"></label>
         <button type="button" class="mini" data-sb-save>Save key</button>
         ${s.hasKey ? '<button type="button" class="mini link" data-sb-forget>Forget key</button>' : ''}
         <button type="button" class="mini" data-sb-test ${s.hasKey ? '' : 'disabled'}>Test</button>
-      </div>
+      </div>`}
       <div class="row muted">
         <label>Monthly cap <input type="number" min="0" max="100000" step="1" value="${s.cap}" data-sb-cap aria-label="${esc(s.name)} monthly cap" style="width:7em"></label>
-        <span>${s.used} used this month</span>
+        <span>${s.used} used this month${s.perDay ? `, ${s.today} of ${s.perDay} today${s.resting ? ' (resting until tomorrow)' : ''}` : ''}</span>
         ${i > 0 ? `<button type="button" class="mini" data-sb-up aria-label="Ask ${esc(s.name)} sooner">↑ Sooner</button>` : ''}
       </div>
       ${m ? `<p role="status" class="${m.bad ? 'refused' : ''}">${esc(m.text)}</p>` : ''}

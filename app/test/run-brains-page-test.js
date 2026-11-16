@@ -15,6 +15,7 @@ const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${o
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\r\n/g, '\n');
 const catalog = JSON.parse(read('catalog.json'));
+catalog.models.push(...JSON.parse(read('test/fixtures/bob-brains-removed.json')).models); // 1.5.245: Riker and Bobert left the catalogue; kept here as test brains
 const have = ['gemma4-e4b', 'bobert-35b', 'riker-28b-q3', 'qwen3-4b'];
 const models = catalog.models.map((m) => ({ ...m, status: { state: have.includes(m.id) ? 'installed' : 'missing' } }));
 const roles = {

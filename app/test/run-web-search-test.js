@@ -26,6 +26,7 @@ function net({ ddg = [200, DDG_OK], moj = [200, ''], svc = {} } = {}) {
     if (url.startsWith('https://api2.marginalia-search.com/')) return svc.marginalia ? resp(...svc.marginalia) : resp(200, { results: [{ url: 'https://m.example/a', title: 'Marg', description: 'from marginalia' }] }, true);
     if (url.startsWith('https://api.search.brave.com/')) return svc.brave ? resp(...svc.brave) : resp(200, { web: { results: [{ url: 'https://b.example/a', title: 'Brave <b>hit</b>', description: 'from <strong>brave</strong>' }] } }, true);
     if (/api_key=/.test(url)) return svc.mojeek ? resp(...svc.mojeek) : resp(200, { response: { status: 'OK', results: [{ url: 'https://mj.example/a', title: 'Moj', desc: 'from mojeek api' }] } }, true);
+    if (url === 'https://api.firecrawl.dev/v2/search') return svc.firecrawl ? resp(...svc.firecrawl) : resp(200, { success: true, data: { web: [{ url: 'https://f.example/a', title: 'Fire', description: 'from firecrawl' }] } }, true);
     if (url === 'https://api.tavily.com/search') return svc.tavily ? resp(...svc.tavily) : resp(200, { results: [{ url: 'https://t.example/a', title: 'Tav', content: 'from tavily' }] }, true);
     return resp(404, '');
   };
@@ -134,6 +135,48 @@ check('a robot check is seen for what it is', blockedPage(202, DDG_BLOCK) && blo
   check('…a wrong key says check it', !bad.ok && /answered 401\. Check the key\./.test(bad.says));
 }
 
+// ---------- Firecrawl: no key, 50 a day, a "too many" rests it for the day ----------
+{
+  const w = net({ ddg: [202, DDG_BLOCK], moj: [200, MOJ_BLOCK] });
+  const cfg = cfgWith({ use: { firecrawl: true }, order: ['firecrawl'] });
+  const out = await webSearch({ query: 'tall tower', when: 'week' }, { cfg, get: w.get, key: noSaved });
+  const f = w.sent.find((x) => x.url === 'https://api.firecrawl.dev/v2/search');
+  const body = f ? JSON.parse(f.opts.body) : {};
+  check('Firecrawl answers with no key at all', /From Firecrawl, the backup search \(no key\)/.test(out) && /f\.example/.test(out), out);
+  check('…only the words and the date filter go out', f && Object.keys(body).sort().join() === 'limit,query,tbs' && body.query === 'tall tower' && body.tbs === 'qdr:w' && !f.opts.headers.authorization && !f.opts.headers.cookie && f.opts.referrerPolicy === 'no-referrer', JSON.stringify(f?.opts));
+  check('…asked once, never retried', f?.opts.once === true && /!opts\.once && \[429/.test(read('src/tools.js')));
+  check('…counted for the day and the month', counts(cfg).used.firecrawl === 1 && counts(cfg).today.firecrawl === 1);
+  check('…and needs no key box', keyFor({}, 'firecrawl', { key: noSaved }) === 'keyless' && SERVICES.firecrawl.free === 1500 && SERVICES.firecrawl.perDay === 50);
+}
+{
+  const w = net({ ddg: [202, DDG_BLOCK], moj: [200, MOJ_BLOCK], svc: { firecrawl: [429, { success: false, error: 'Rate limit exceeded' }, true] } });
+  const cfg = cfgWith({ use: { firecrawl: true, tavily: true }, order: ['firecrawl', 'tavily'] }, { tavily: 't-test' });
+  const out = await webSearch({ query: 'x' }, { cfg, get: w.get, key: noSaved });
+  check('a 429 from Firecrawl: the next service answers', /From Tavily/.test(out) && counts(cfg).resting.firecrawl === true, out);
+  const w2 = net({ ddg: [202, DDG_BLOCK], moj: [200, MOJ_BLOCK] });
+  const out2 = await webSearch({ query: 'x' }, { cfg, get: w2.get, key: noSaved });
+  check('…and Firecrawl rests for the rest of the day, never asked another way', !w2.sent.some((x) => /firecrawl/.test(x.url)) && /From Tavily/.test(out2));
+  const tomorrow = Date.now() + 86400000 * 1.01;
+  check('…until tomorrow', counts(cfg, tomorrow).resting.firecrawl === undefined);
+}
+{
+  const w = net({ ddg: [202, DDG_BLOCK], moj: [200, MOJ_BLOCK] });
+  const cfg = cfgWith({ use: { firecrawl: true } });
+  const now = () => Date.UTC(2099, 4, 5, 12);
+  for (let i = 0; i < 51; i++) await webSearch({ query: 'x' + i }, { cfg, get: w.get, key: noSaved, now });
+  const out = await webSearch({ query: 'last' }, { cfg, get: w.get, key: noSaved, now });
+  check('Firecrawl stops at 50 a day and says so', w.sent.filter((x) => /firecrawl/.test(x.url)).length === 50 && /Firecrawl is at its 50 a day/.test(out), out.slice(0, 300));
+  const t = await testService(cfg, 'firecrawl', { get: w.get, key: noSaved, now });
+  check('…and Test says try tomorrow', t.ok === false && /Try again tomorrow/.test(t.says));
+  const v = searchBackupView(cfg, now(), { key: noSaved }).services.find((s) => s.id === 'firecrawl');
+  check('Settings sees no key needed, and today\'s count', v.keyless === true && v.today === 50 && v.perDay === 50 && v.hasKey === true);
+}
+{
+  const ui = read('public/search-backup.js'), routes = read('src/search-backup-routes.js');
+  check('Firecrawl shows "No key needed" and a Test, with no key box or sign-up link', /s\.keyless \? `<div class="row sb-key"><span class="muted">No key needed\.<\/span>/.test(ui) && /\$\{s\.keyless \? '' : ` <a href/.test(ui));
+  check('…and a key for it is refused', /SERVICES\[id\]\?\.keyless && \(typeof b\?\.key === 'string'/.test(routes));
+}
+
 // ---------- settings ----------
 {
   const c = cleanSearchBackup({ use: { tavily: 'yes', brave: true, nope: true }, order: ['tavily', 'nope', 'tavily'], caps: { brave: -3, mojeek: 5e9, tavily: '50' }, keys: { tavily: 'x' } });
@@ -146,7 +189,7 @@ check('a robot check is seen for what it is', blockedPage(202, DDG_BLOCK) && blo
   check('it is a setting Bob saves', SETTING_KEYS.includes('searchBackup') && SETTING_KEYS.at(-1) === 'apuHoldbackGB');
   const v = searchBackupView(cfgWith({ use: { tavily: true } }, { tavily: 't-test' }), Date.now(), { key: noSaved });
   check('Settings sees "key saved" and the switch, never the key', v.services.find((s) => s.id === 'tavily').hasKey === true && v.services.find((s) => s.id === 'tavily').on === true && v.services.find((s) => s.id === 'brave').hasKey === false && !JSON.stringify(v).includes('t-test'));
-  check('no key ships with Bob', ORDER.every((id) => !keyFor({}, id, { key: noSaved })) && !/tvly-[A-Za-z0-9]{8}|BSA[A-Za-z0-9]{20}/.test(read('src/web-search.js')));
+  check('no key ships with Bob', ORDER.every((id) => SERVICES[id].keyless || !keyFor({}, id, { key: noSaved })) && !/tvly-[A-Za-z0-9]{8}|BSA[A-Za-z0-9]{20}/.test(read('src/web-search.js')));
   check('a key handed in for a run (the Lab kit) wins, else the saved one', keyFor({ searchBackup: { keys: { tavily: 'run' } } }, 'tavily', { key: () => 'saved' }) === 'run' && keyFor({}, 'tavily', { key: () => 'saved' }) === 'saved');
 }
 {
