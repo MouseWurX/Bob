@@ -14,6 +14,7 @@ Your numbers will differ on other hardware. Small samples are noted in each file
 
 | Date | Result |
 |---|---|
+| 2026-11-16 | [Speed test method: reading steps, Brain Engine cost, job finish times (pre-registered, not run yet)](2026-11-16-speed-test-method.md) |
 | 2026-11-12 | [What the cube's Real experts costs (Brain Engine 5)](2026-11-12-cube-real-experts-cost.md) |
 | 2026-11-12 | [One brain over two Bobs on a cable: first try (didn't finish)](2026-11-12-bob-net-card-share-over-cable.md) |
 | 2026-11-12 | [SCUT against plain TCP: one brain over two Bobs on weak Wi-Fi](2026-11-12-scut-vs-tcp-over-wifi.md) |
