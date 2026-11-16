@@ -322,7 +322,12 @@ export function serverCommand(model, { minutes, after = '', cards = 1 } = {}) {
   return `timeout ${secs} ${run}; ${after || 'true'}`;
 }
 
-const RUNPOD = 'https://rest.runpod.io/v1';
+// 16 Nov 2026: RunPod retired rest.runpod.io/v1 ("deprecated and no longer available"); v2 is the same key at a new address.
+// v2 places one card type per pod request, nests the body (image, gpu {id, count}, entrypoint + cmd), wraps lists
+// ({pods: [...]}) and calls the hourly price `cost`. Serverless endpoints are made at /serverless from GPU pools.
+const RUNPOD = 'https://api.runpod.io/v2';
+const listOf = (j, key) => Array.isArray(j) ? j : Array.isArray(j?.[key]) ? j[key] : [];
+const hourly = (p) => typeof p?.cost === 'number' ? p.cost : (p?.costPerHr ?? null);
 const VAST = 'https://console.vast.ai/api/v0';
 const LAMBDA = 'https://cloud.lambda.ai/api/v1';
 
@@ -349,7 +354,11 @@ export class Machines {
       if (!id) {
         onNote('Making a RunPod serverless endpoint for this model (once; it costs nothing while idle)…');
         const spec = modelSpec(rental.model);
-        const j = await this.api(`${RUNPOD}/endpoints`, { key, method: 'POST', body: { name, workersMin: 0, workersMax: 1, idleTimeout: 5, gpuTypeIds: card.runpod, templateId: undefined, imageName: 'runpod/worker-v1-vllm:stable-cuda12.1.0', env: { MODEL_NAME: spec.repo, MAX_MODEL_LEN: '32768', ENABLE_AUTO_TOOL_CHOICE: 'true', TOOL_CALL_PARSER: 'hermes' } } });
+        // v2 wants the serverless GPU pools the card types belong to (RunPod's catalog names them)
+        const cat = listOf(await this.api(`${RUNPOD}/catalog/gpus?product=SERVERLESS`, { key }), 'gpus');
+        const pools = [...new Set(cat.filter((g) => card.runpod.includes(g.id) && g.pool).map((g) => g.pool))];
+        if (!pools.length) throw new Error(`RunPod's serverless list has no pool for the ${card.name}. Try another card size, or a machine by the minute.`);
+        const j = await this.api(`${RUNPOD}/serverless`, { key, method: 'POST', body: { name, type: 'QUEUE', image: 'runpod/worker-v1-vllm:stable-cuda12.1.0', gpu: { pools, count: 1 }, workers: { min: 0, max: 1, idleTimeout: 5 }, scaling: { type: 'QUEUE_DELAY', queueDelay: 4 }, env: { MODEL_NAME: spec.repo, MAX_MODEL_LEN: '32768', ENABLE_AUTO_TOOL_CHOICE: 'true', TOOL_CALL_PARSER: 'hermes' } } });
         id = j?.id;
         if (!id) throw new Error('RunPod didn\'t give the endpoint an id.');
       }
@@ -359,9 +368,16 @@ export class Machines {
       const spec = modelSpec(rental.model);
       const cmd = serverCommand(rental.model, { minutes, after: 'runpodctl remove pod $RUNPOD_POD_ID', cards: cardsOf(rental) });
       onNote(`Starting ${cardsText(rental)} on RunPod…`);
-      const j = await this.api(`${RUNPOD}/pods`, { key, method: 'POST', body: { name, imageName: spec.image, gpuTypeIds: card.runpod, gpuCount: cardsOf(rental), containerDiskInGb: 60, volumeInGb: 0, ports: [`${spec.port}/http`], dockerEntrypoint: ['/bin/sh', '-c'], dockerStartCmd: [cmd], env: { RUNPOD_API_KEY: key } } });
+      // one card type a request in v2: each fitting card is asked for in turn; a refused key, balance or body stops at once
+      let j = null, last = null;
+      for (const gpu of card.runpod) {
+        try { j = await this.api(`${RUNPOD}/pods`, { key, method: 'POST', body: { name, image: spec.image, gpu: { id: gpu, count: cardsOf(rental) }, disk: 60, ports: [`${spec.port}/http`], entrypoint: ['/bin/sh', '-c'], cmd: [cmd], env: { RUNPOD_API_KEY: key } } }); break; }
+        catch (e) { last = e; if (/answered (?:401|402|403|413|422)\b/.test(e.message)) break; }
+      }
+      if (!j && last) throw last;
       if (!j?.id) throw new Error('RunPod didn\'t give the machine an id.');
-      return { id: j.id, url: `https://${j.id}-${spec.port}.proxy.runpod.net/v1`, kind: 'machine', startedAt: this.now(), name, ...(j.costPerHr ? { perHour: j.costPerHr } : {}) };
+      const perHour = hourly(j);
+      return { id: j.id, url: `https://${j.id}-${spec.port}.proxy.runpod.net/v1`, kind: 'machine', startedAt: this.now(), name, ...(perHour ? { perHour } : {}) };
     }
     if (s.id === 'vast') {
       const spec = modelSpec(rental.model);
@@ -447,7 +463,7 @@ export class Machines {
     const out = [];
     if (service === 'runpod') {
       const j = await this.api(`${RUNPOD}/pods`, { key });
-      for (const p of [].concat(j || [])) if (String(p.name || '').startsWith(RENT_PREFIX)) out.push({ service, id: p.id, name: p.name, since: p.createdAt || null, perHour: p.costPerHr ?? null });
+      for (const p of listOf(j, 'pods')) if (String(p.name || '').startsWith(RENT_PREFIX)) out.push({ service, id: p.id, name: p.name, since: p.createdAt || null, perHour: hourly(p) });
     } else if (service === 'vast') {
       const j = await this.api(`${VAST}/instances/`, { key });
       for (const p of j?.instances || []) if (String(p.label || '').startsWith(RENT_PREFIX)) out.push({ service, id: String(p.id), name: p.label, since: p.start_date ? p.start_date * 1000 : null, perHour: p.dph_total ?? null });
