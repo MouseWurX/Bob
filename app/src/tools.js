@@ -5,6 +5,7 @@ import { clashes, clashNote } from './memory-clash.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { saveFile, saveJson, oneWriter, readSaved } from './saving.js'; // items 229, 231, 233
 import { isInside, insideAny, appDir, findOutput } from './config.js';
 import { HATS } from './persona.js';
@@ -29,6 +30,7 @@ import { GIT_LOOKS, gitArgs, runGit, gitAnswer } from './git-look.js';
 import { mainText, docKind, parseDdg, parseMojeek, resultLines, WEB_TIMEOUT_MS, MAX_DOC_DOWNLOAD } from './page-text.js';
 import { webSearch } from './web-search.js'; // Nov 16: block pages named, the backup search with a key
 import { docToolsOn } from './my-docs.js';
+import { findByName } from './find-by-name.js'; // Nov 16: a bare name or a missing file is looked for a few folders down
 import { codeMap, linesAround } from './code-map.js';
 import { backoffMs, engineFailKind, pause } from './retry.js'; // item 194
 import { withSaveTo, SAVE_TO_HELP } from './save-to.js';
@@ -497,8 +499,12 @@ export function buildTools(cfg) {
         if (every && !rep && cfg.moreTools?.repeatReminders !== true) throw new Error('Repeating reminders are off. They\'re in Settings, How Bob works, 🧰 More tools: "Let reminders repeat". Set a one-off one, and say so.');
         const r = { id: Math.random().toString(36).slice(2, 8), at, local: time, text: String(text).slice(0, 300), ...(rep ? { every: rep } : {}), ...(urgent === true || urgent === 'true' ? { urgent: true } : {}) };
         if (rep) { r.local = firstRepeat(time, rep); r.at = zonedToEpoch(r.local, cfg.timeZone); }
-        changeReminders(cfg, (list) => { list.push(r); }); // item 231: one read-change-save step
-        return `Reminder ${r.id} set for ${r.local}${rep ? `, then every ${rep}` : ''}${r.urgent ? ' (urgent)' : ''}: ${r.text}`;
+        // Nov 16 (Maximus rerun): "6 am every day" with repeats off became 7 one-off reminders, one call each. The second
+        // one with the same words says repeats are off, so the brain stops and says so instead of adding one per day.
+        let twins = 0;
+        changeReminders(cfg, (list) => { twins = list.filter((x) => !x.every && String(x.text).trim().toLowerCase() === r.text.trim().toLowerCase()).length; list.push(r); }); // item 231: one read-change-save step
+        const offNote = !rep && twins && cfg.moreTools?.repeatReminders !== true ? ` That's ${twins + 1} with these words. Repeating reminders are off, so don't add one per day: say ${cfg.userName || 'the user'} can turn on "Let reminders repeat" in Settings, How Bob works, 🧰 More tools.` : '';
+        return `Reminder ${r.id} set for ${r.local}${rep ? `, then every ${rep}` : ''}${r.urgent ? ' (urgent)' : ''}: ${r.text}${offNote}`;
       }
       if (action === 'cancel') {
         // Nov 15 (Riker's coached lessons): a brain often gives the reminder's words, or the whole listed line, instead
@@ -557,8 +563,16 @@ export function buildTools(cfg) {
       // looked for in the folders Bob may read, and a refusal or a missing file says where those are (one line, only then).
       const bare = typeof p === 'string' && p.trim() && !/[\\/]/.test(p) && !/^~/.test(p.trim());
       const roots = readableRoots(cfg);
-      const found = bare ? roots.map((r) => path.join(r, p.trim())).find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) : null;
+      let found = bare ? roots.map((r) => path.join(r, p.trim())).find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) : null;
       const where = () => (roots.length ? ` Files I can read are in: ${roots.join('; ')}.` : '');
+      // Nov 16 (Maximus rerun): "data.json" was in Documents, one folder down, and was missed. One file by that name a
+      // few folders down is the one; several are listed so the brain picks by full path.
+      let foundNote = '';
+      if (bare && !found && roots.length) {
+        const deep = findByName(roots, p.trim(), { skip: (f) => isSensitive(cfg, f) }).filter((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } });
+        if (deep.length > 1) throw new Error(`There are ${deep.length} files called ${p.trim()}: ${deep.join('; ')}. Read the right one by its full path.`);
+        if (deep.length === 1) { found = deep[0]; foundNote = `(Found ${p.trim()} at ${found}.)\n`; }
+      }
       if (bare && !found && roots.length) throw new Error(`There's no file called ${p.trim()} in the folders I can read. Give its full path.${where()}`);
       const file = found || resolveUserPath(p);
       if (!insideAny(roots, file)) throw new Error(`I'm not allowed to read ${file}.${where()}`);
@@ -579,8 +593,8 @@ export function buildTools(cfg) {
         return '(That looks like a binary file, so I can\'t read it as text.)';
       }
       const text = buf.toString('utf8');
-      if (Number(line) > 0) return linesAround(text, line); // Nov 11: straight to an error's file:line (code-map.js)
-      return pieceOf(text, { part, find }, MAX_READ, 'read_file again with the same path and');
+      if (Number(line) > 0) return foundNote + linesAround(text, line); // Nov 11: straight to an error's file:line (code-map.js)
+      return foundNote + pieceOf(text, { part, find }, MAX_READ, 'read_file again with the same path and');
     },
     summary: ({ path: p, part, find, line }) => `read ${p}${Number(line) > 0 ? ` (around line ${line})` : find ? ` (looking for ${find})` : part > 1 ? ` (part ${part})` : ''}`
   };
@@ -641,7 +655,8 @@ export function buildTools(cfg) {
     check({ path: p, content }) {
       const file = resolveUserPath(p);
       if (isSensitive(cfg, file)) throw new Error(SECRET_MSG);
-      if (BLOCKED_EXT.has(path.extname(file).toLowerCase()) && !projectOf(file)) throw new Error('I don\'t write program or script files that could be run.');
+      // Nov 16 (Maximus rerun): after this refusal a brain tried to copy the file it thought was saved. It says nothing was.
+      if (BLOCKED_EXT.has(path.extname(file).toLowerCase()) && !projectOf(file)) throw new Error(`I don't write program or script files that could be run, so nothing was saved. Next: show the script in your answer as a code block for ${cfg.userName || 'the user'} to save, or write it inside a project's folder.`);
       if (insideAny(readOnlyRoots(cfg), file)) throw new Error(`${file} is in a read-only project.`);
       if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to write in that folder. Allowed: ${cfg.readRoots.join('; ')}`);
       const exists = fs.existsSync(file);
@@ -660,8 +675,13 @@ export function buildTools(cfg) {
     async run({ path: p, content }) {
       const file = resolveUserPath(p);
       backup(file);
+      const isNew = !fs.existsSync(file);
       saveFile(file, content ?? ''); // whole or not at all (item 229)
-      return `Saved ${file}.`;
+      // Nov 16 (Maximus rerun): a fix was written to a new C:\\Users\\you\\data.json while the real one sat in Documents.
+      // A new file whose name is already used in the folders Bob may read says where that one is.
+      let twin = '';
+      if (isNew) { try { twin = findByName(readableRoots(cfg), path.basename(file), { skip: (f) => isSensitive(cfg, f) || path.resolve(f) === path.resolve(file), max: 2 })[0] || ''; } catch {} }
+      return `Saved ${file}.${twin ? ` It's a new file; there's already a ${path.basename(file)} at ${twin}. If that's the one meant, change that one (edit_file) and say this new copy can go.` : ''}`;
     },
     summary: ({ path: p }) => `write ${p}`
   };
@@ -709,6 +729,8 @@ export function buildTools(cfg) {
       // Nov 16 (800-job read, an outlier): a brain passed a JSON blob holding a link as the url. A url with spaces,
       // braces or quotes is refused with what a link looks like; a link found inside it is used instead.
       const given = String(url ?? '').trim();
+      // Nov 16 (Maximus rerun): a file:// link to a file on this computer is pointed at read_file, with its path.
+      if (/^file:/i.test(given)) { let local = ''; try { local = fileURLToPath(given); } catch {} throw new Error(`That's a file on this computer, not a web page. Next: read it with read_file${local ? `, path ${local}` : ''}.`); }
       if (!/^https?:\/\/[^\s"'{}<>]+$/i.test(given)) {
         const inside = given.match(/https?:\/\/[^\s"'{}<>\\]+/i)?.[0];
         if (!inside) throw new Error(`"${given.slice(0, 80)}" isn't a web link. Give just the address, like https://example.com/page.`);
