@@ -1,6 +1,6 @@
 // fNRI in small: a cube of Bob's brain in "Bob's thinking" (Now running). It builds itself when a brain loads and
 // comes apart when it's let go. By default it glows for show while Bob thinks: made-up picks in the theme's colour,
-// drawn about 14 times a second, and the engine is never asked for anything, so replies are as fast as without it.
+// drawn about 28 times a second (Nov 16: was 14), and the engine is never asked for anything, so replies are as fast as without it.
 // With Real experts on it listens to /api/events?cube=1&live=1, and only then does Bob ask Brain Engine for the trace
 // (public/lab-watch-math.js liveTrace has the shape), which slows his replies. On Brain Engine 5 and later the picks
 // come word by word while he writes ('trace-part'); older engines send them when the reply is finished, and the cube
@@ -10,9 +10,9 @@ import { createFog } from './fog.js';
 import { specialise, liveRecording, partOf, PART_LABEL, say, NAME, mapLook, litSkills, lookOf, LOAD_STYLES, loadStyle, UNLOAD_STYLES, unloadStyle } from './lab-watch-math.js';
 
 const SPECIAL = /<\|[^|>]*\|>|<\/?think>/gi;
-export const CUBE_SPEED = 14; // words a second
-export const SHOW_MS = 70; // the made-up glow: one new word about every 70 ms (14 a second), and nothing drawn while Bob is idle
-export const SHOW_TRAIL = 6;
+export const CUBE_SPEED = 28; // words a second (Nov 16 2026, the owner: at least broadcast rate; was 14)
+export const SHOW_MS = 35; // the made-up glow and the live picks: a new frame about every 35 ms (28 a second; was 70), and nothing drawn while Bob is idle
+export const SHOW_TRAIL = 12; // words of fading trail: twice as many at twice the rate, so it fades over the same time
 export const SPARK_MS = [2500, 6000]; // resting: now and then a few neurons fire, somewhere between these many ms apart
 // A resting spark: 1 to 3 experts, each on a random floor. Returns [[ids] per floor], mostly empty.
 export function sparkWord(layers, experts, rnd = Math.random) {
