@@ -93,6 +93,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const { labKey } = await import('./lab-keys.mjs');
   const o = opts({});
   const stop = (why) => { console.log(`GATE STOP: ${why}`); process.exit(STOP); };
+  // any other failure is a stop too: an exit 1 would let the Forge go on to the longer run
+  process.on('uncaughtException', (e) => stop(`the gate itself failed (${String(e?.message || e).slice(0, 200)})`));
+  process.on('unhandledRejection', (e) => stop(`the gate itself failed (${String(e?.message || e).slice(0, 200)})`));
   if (!o.dir) stop('--dir <do-jobs folder> is needed');
   const out = o.out || path.join(AGENT, 'bob-model-lab', 'out');
   const dir = path.join(String(out), String(o.dir));

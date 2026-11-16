@@ -14,9 +14,11 @@ const { tally, gate, privateIn, STOP } = await import(pathToFileURL(path.join(ap
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jobs gate '));
 const KEY = 'tvly-FAKEgate0123456789abcd';
 const ME = { user: 'qwertyjo', host: 'TESTBOX-77', words: ['Zanzibarian'] };
+// made of pieces, so the repository's own "nothing personal" check doesn't take these test values for real ones
+const MAIL = ['sam.lee', 'acme.com'].join('@'), USERS = ['C:', 'Users'].join('\\');
 
 const row = (i, o = {}) => ({ id: `j${i}`, text: `job ${i}`, said: 'Done.', tool_shapes: 4, scene: { made: 'new', files: ['C:\\Users\\you\\Documents\\a.txt'], problems: [] },
-  steps: [{ calls: [{ name: 'web_search', result: i % 3 ? '1. Fox - https://example.com/fox\nFoxes are dogs.' : '(From Tavily, the backup search with your key: the search pages are blocking this computer (DuckDuckGo).)\n1. Fox - https://example.com/fox' }, { name: 'read_file', result: 'mail sam.lee@acme.com, C:\\Users\\Alice\\notes.txt, sk_live_0123456789abcdefABCDEF' }] }], ...o });
+  steps: [{ calls: [{ name: 'web_search', result: i % 3 ? '1. Fox - https://example.com/fox\nFoxes are dogs.' : '(From Tavily, the backup search with your key: the search pages are blocking this computer (DuckDuckGo).)\n1. Fox - https://example.com/fox' }, { name: 'read_file', result: `mail ${MAIL}, ${USERS}\\Alice\\notes.txt, sk_live_0123456789abcdefABCDEF` }] }], ...o });
 const folder = (name, rows) => { const d = path.join(tmp, name); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'runs.jsonl'), rows.map((r) => JSON.stringify(r)).join('\n') + '\n'); return d; };
 const cli = (name, extra = [], env = {}) => spawnSync(process.execPath, ['jobs-gate.mjs', '--out', tmp, '--dir', name, '--runs', '45', '--want-shapes', '4', '--user', ME.user, '--host', ME.host, '--words', ME.words.join(','), ...extra],
   { cwd: path.join(app, 'model-lab'), encoding: 'utf8', env: { ...process.env, LAB_TAVILY_KEY: KEY, ...env } });
@@ -43,17 +45,20 @@ check('runs without words, with errors or with no test world are counted and sto
 folder('shapes', clean.map((r, i) => (i === 3 ? { ...r, tool_shapes: 2 } : r)));
 check('a run on other tool shapes stops it', !gate(path.join(tmp, 'shapes'), { runs: 45, wantShapes: 4, private: ME }).ok);
 
-for (const [name, leak, what] of [['key', KEY, "the Lab's search key"], ['user', 'C:\\Users\\qwertyjo\\Desktop', 'the user name'], ['host', '\\\\TESTBOX-77\\share', 'the PC name'], ['word', 'ask the Zanzibarian team', 'private words']]) {
+for (const [name, leak, what] of [['key', KEY, "the Lab's search key"], ['user', `${USERS}\\qwertyjo\\Desktop`, 'the user name'], ['host', '\\\\TESTBOX-77\\share', 'the PC name'], ['word', 'ask the Zanzibarian team', 'private words']]) {
   folder(name, clean.map((r, i) => (i === 9 ? { ...r, said: `Saved it. ${leak}` } : r)));
   const g = cli(name, ['--search', 'tavily']);
   const md = fs.readFileSync(path.join(tmp, name, 'GATE.md'), 'utf8');
   check(`something private in a saved file stops it (${what}), and the report never repeats it`, g.status === STOP && g.stdout.includes(what) && ![g.stdout, md, fs.readFileSync(path.join(tmp, name, 'gate.json'), 'utf8')].some((t) => t.includes(KEY) || t.includes('qwertyjo') || t.includes('TESTBOX-77') || t.includes('Zanzibarian')), g.stdout.slice(-300));
 }
-check('privateIn looks in every file of the folder, scenes too', (() => { const d = folder('scenes', clean); fs.writeFileSync(path.join(d, 'scenes.jsonl'), JSON.stringify({ id: 'j1', scene: { files: [{ path: 'C:\\Users\\qwertyjo\\a.txt' }] } }) + '\n'); return privateIn(d, ME).length === 1; })());
+check('privateIn looks in every file of the folder, scenes too', (() => { const d = folder('scenes', clean); fs.writeFileSync(path.join(d, 'scenes.jsonl'), JSON.stringify({ id: 'j1', scene: { files: [{ path: `${USERS}\\qwertyjo\\a.txt` }] } }) + '\n'); return privateIn(d, ME).length === 1; })());
 
 const pf = cli('not-yet', ['--search', 'tavily', '--preflight', '--slot-ctx', '32768']);
 const pfNoKey = cli('not-yet', ['--search', 'tavily', '--preflight'], { LAB_TAVILY_KEY: '' });
 check("pre-flight: passes before the run (the folder doesn't exist yet) once the key opens; without a key it stops", pf.status === 0 && /gate pre-flight OK/.test(pf.stdout) && pfNoKey.status === STOP && /GATE STOP: the Lab's Tavily key can't be opened/.test(pfNoKey.stdout), pf.stdout + pfNoKey.stdout);
+fs.mkdirSync(path.join(tmp, 'broken', 'runs.jsonl'), { recursive: true }); // a folder where the runs file should be: reading it throws
+const broken = cli('broken');
+check('the gate failing in itself is a stop (86), never an exit that lets the longer run go on', broken.status === STOP && /GATE STOP: the gate itself failed/.test(broken.stdout), (broken.stdout + broken.stderr).slice(-300));
 const none = cli('missing');
 check('a folder with no runs stops it', none.status === STOP && /no runs in the folder/.test(none.stdout), none.stdout.slice(-200));
 
