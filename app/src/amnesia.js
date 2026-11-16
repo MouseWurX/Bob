@@ -102,11 +102,15 @@ export function madeSince(cfg, made, since) {
   })());
 }
 
+export const amnesiaBusy = (brain) => Boolean(brain && (brain.turns?.size || (brain.queue || []).some((j) => j.state === 'working')));
+
 // Turn it off: put the copies back. busy: Bob is working (a job or a turn), so it waits.
 export function endAmnesia(cfg, { brain = null, made = null, deleteMade = amnesiaDeleteMade(cfg) } = {}) {
   const s = amnesiaState(cfg);
   if (!s.on) return { ok: true, on: false };
-  if (brain && (brain.turns?.size || (brain.queue || []).some((j) => j.state !== 'done'))) return { error: 'Bob is still working. Let him finish, or press Stop, then turn Amnesia mode off.' };
+  // Nov 16: only a job that is running now counts. Finished jobs (cancelled, failed, stopped) stay in the Tasks list
+  // for a week, and checking for "not done" let one of them block turning it off for days.
+  if (amnesiaBusy(brain)) return { error: 'Bob is still working. Let him finish, or press Stop, then turn Amnesia mode off.' };
   const dir = beforeDir(cfg);
   const count = amnesiaCount(cfg, made);
   // Notes: back as they were; a file that wasn't there goes.
