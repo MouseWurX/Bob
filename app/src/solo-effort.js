@@ -46,8 +46,8 @@ export function soloPrompt(effort, user = 'the user') {
 // The line the chat shows when the job starts.
 export function soloOpening(level) {
   return level === 'max'
-    ? '🛰 Max effort: thinking on throughout. I plan in small jobs, check the plan, do each job on its own, then check the whole thing. Slowest.'
-    : '🛰 High effort: I plan, do the steps, then check my own work and improve it once.';
+    ? '🛰 Maximus: thinking on throughout. I plan in small jobs, check the plan, do each job on its own, then check the whole thing. Slowest.'
+    : '🛰 Magnus: I plan, do the steps, then check my own work and improve it once.';
 }
 
 // The verdict at the top of a review.
@@ -75,7 +75,7 @@ Start with exactly "Looks right." or "Improve it:".`;
 }
 export const PLAN_NOTE = `Max effort, planning. Don't start the work and don't use tools yet. Write a numbered plan for this ask: 2 to ${MAX_JOBS} steps, each a small job you can finish and check on its own. One line each: what you'll do, and how you'll know it worked. Write only the plan.`;
 export const replanNote = (review) => `Improve the plan. Your review said:\n${points(review)}\n\nWrite the whole improved plan, numbered, ${MAX_JOBS} steps at most. Only the plan; don't use tools yet.`;
-export const stepNote = (i, n, step, plan) => `Max effort, step ${i} of ${n}: ${step}\n\nThe whole plan, for context:\n${String(plan).slice(-3000)}\n\nDo only this step, completely, with your tools, and check that it worked. End with a short report: what you did and the real result (worked, failed, or not checked).`;
+export const stepNote = (i, n, step, plan) => `Max effort, step ${i} of ${n}: ${step}\n\nThe whole plan, for context:\n${String(plan).slice(-3000)}\n\nSteps already done are above; don't redo them. Do only this step, completely, with your tools, and check that it worked. If a tool says no, or fails the same way twice, stop and report it; don't try it again in a later step. End with a short report: what you did and the real result (worked, failed, or not checked).`;
 export const improveNote = (review, last = true) => `Improve it. Your review of your own work found:\n${points(review)}\n\nMake the real improvements (use your tools if files need changing). Then give the whole improved answer.${last ? ' If something can\'t be improved, or you disagree with a point, end with "Not happy with:" and say what, plainly.' : ''}`;
 export const ANSWER_NOTE = 'Max effort, the answer. Write the final answer: what was done, the results, and anything still not right, said plainly. Never claim something a tool result doesn\'t show. Don\'t use tools.';
 
@@ -96,6 +96,8 @@ export function soloMinutes(level, rounds) {
   if (gates.length) words.push(`plan checked ${gates.length === 1 ? 'once' : `${gates.length} times`}${gates.at(-1).verdict === 'ok' ? '' : ', points still open'}`);
   const jobs = rounds.filter((r) => r.kind === 'step').length;
   if (jobs) words.push(`${jobs} ${jobs === 1 ? 'job' : 'jobs'} done`);
+  const halted = rounds.find((r) => r.kind === 'stopped');
+  if (halted) words.push(`stopped before job ${halted.at}: the same call kept coming back`);
   for (const r of rounds) {
     if (r.kind === 'check') words.push(`review ${r.n}: ${r.verdict === 'ok' ? 'looks right' : 'improve it'}`);
     if (r.kind === 'improve') words.push('improved it');
@@ -106,11 +108,13 @@ export function soloMinutes(level, rounds) {
   let end = '';
   if (lastCheck && !endsOnImprove) end = 'Result: checked, nothing open.';
   else if (lastCheck) end = `Result: improved after ${level === 'high' ? 'one review' : `${SOLO_ROUNDS} reviews`}; not checked again.${unhappy ? ` Not happy with: ${unhappy}` : ''}`;
-  return `🛰 **${level === 'max' ? 'Max' : 'High'} effort:** ${words.join(' · ') || 'nothing to check'}. ${end}`.trim();
+  return `🛰 **${level === 'max' ? 'Maximus' : 'Magnus'}:** ${words.join(' · ') || 'nothing to check'}. ${end}`.trim();
 }
 
 // The brain that does every part: the main Brain slot, with this level's thinking for reviews.
-export const soloBrain = (cfg) => (cfg?.models?.bob ? { model: cfg.models.bob, cpu: false, think: 'high', ctx: null, solo: true } : null);
+// 16 Nov distill test: a Max review that thought without limit asked for 132 searches. Reviews think on a budget
+// ('medium': about 1,500 tokens of thinking on Bob's engine), and the plan check gets no tools (noTools).
+export const soloBrain = (cfg, { noTools = false } = {}) => (cfg?.models?.bob ? { model: cfg.models.bob, cpu: false, think: 'medium', ctx: null, solo: true, ...(noTools ? { noTools: true, maxSteps: 1 } : {}) } : null);
 
 // High and Max: Bob's loop around runOn. brain: the Brain; run(note, { phase, noTools }) runs one full job on the same
 // conversation (runOn with a hidden note); review(task) runs his own review turn (thinking on, read-only tools).
@@ -150,7 +154,7 @@ export async function soloRun(brain, level, { run, review, emit, signal, msgs, t
     let plan = lastSaid(from);
     for (let n = 1; n <= SOLO_ROUNDS && !stopped(); n++) {
       say(`\n\n---\n**Checking the plan${n > 1 ? ' (again)' : ''}:**\n\n`);
-      const text = await review(planGateTask(plan));
+      const text = await review(planGateTask(plan), { noTools: true });
       keep(`My own plan check: ${text}`, 'check');
       const v = soloVerdict(text);
       rounds.push({ kind: 'gate', n, verdict: v, ...(v !== 'ok' && n === SOLO_ROUNDS ? { planOpen: true } : {}) });
@@ -166,8 +170,10 @@ export async function soloRun(brain, level, { run, review, emit, signal, msgs, t
     const list = steps.length ? steps : [String(turnText || 'the ask').slice(0, 400)];
     for (let i = 0; i < list.length && !stopped(); i++) {
       say(`\n\n---\n**Job ${i + 1} of ${list.length}:** ${list[i]}\n\n`);
-      await run(stepNote(i + 1, list.length, list[i], plan), { phase: 'do' });
+      const r = await run(stepNote(i + 1, list.length, list[i], plan), { phase: 'do' });
       rounds.push({ kind: 'step', n: i + 1 });
+      // The repeat guard counts across all the small jobs (Bob's loop shares it). Once it stops one, the rest wait.
+      if (r?.repeatStop && i < list.length - 1) { say(`\n\n_The same call kept coming back, so I stopped before job ${i + 2}._`); rounds.push({ kind: 'stopped', at: i + 2 }); break; }
     }
     // 3. The gate on the whole: review, and improve when needed, at most SOLO_ROUNDS reviews.
     for (let n = 1; n <= SOLO_ROUNDS && !stopped(); n++) {
