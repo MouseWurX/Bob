@@ -9,7 +9,7 @@
 // node do-jobs.mjs --url <server> --bob <Bob app folder> --jobs <ideas.jsonl>[,<more.jsonl>] --dir <name>
 //      [--never <file>[,<file>]] [--parallel 2] [--count N] [--hours H] [--max 4096] [--job-minutes 10] [--want-shapes 4]
 //      [--preflight] [--slot-ctx N] [--scene make|reuse] [--scenes <scenes.jsonl>[,...]] [--office <soffice>]
-//      [--search-probe] [--search-gap 2] [--search tavily] [--search-month N]
+//      [--search-probe] [--search-gap 2] [--search tavily] [--search-month N] [--search-cap N [--search-group <name>]]
 // Jobs: one per line, {id, text, setup?: [{path, content}]} (the lesson writer's ideas files work as they are; only the
 // request and its starting files are used, never an old answer). --never: held-out / test files; a job whose request
 // matches one of theirs is never run. Runs go to <out>/<dir>/runs.jsonl (one row per job, picked up again after a stop).
@@ -31,7 +31,11 @@
 // the Lab makes (its key checks, and each one a job's Bob makes, read back from his own count) is counted in
 // <out>/tavily-searches-<year-month>.json. Each job's Bob starts from that count with his cap at N - 10, so he says so
 // himself at the cap; and no new job starts once fewer than 10 are left (by that count or Tavily's own usage page). The
-// jobs not started stay in the queue for the next run (runs.jsonl picks up where it stopped).
+// jobs not started stay in the queue for the next run (runs.jsonl picks up where it stopped). --search-cap N (the owner,
+// 16 Nov: "big brain search cap to 800"): this start of the run makes at most N Tavily searches of its own, its key
+// check included, whatever the month has left; each job's Bob gets his cap from what's left of it too. --search-group
+// <name>: the cap is shared by every run given that name this month (run 3 and the 800 jobs on one rental), counted in
+// <out>/tavily-searches-<year-month>-<name>.json.
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -49,8 +53,9 @@ const F = { runs: path.join(dir, 'runs.jsonl'), summary: path.join(dir, 'summary
 let scrub = (t) => t; // set once a key is opened: nothing printed or saved can hold it
 const say = (...a) => console.log(...a.map((x) => scrub(String(x))));
 const save = (file, row) => appendJsonl(file, JSON.parse(scrub(JSON.stringify(row))));
-// a search that found nothing, or Bob's line for search pages showing a robot check (web-search.js, 16 Nov)
-const BLOCKED = /^(?:No results \(or the search pages changed\)|The search pages are blocking this computer)/;
+// a search that found nothing, or Bob's line for search pages showing a robot check (web-search.js, 16 Nov); inside a job
+// Bob hands the result on wrapped as outside text, so that wrapper may come first (16 Nov, found by the A3B test thread)
+const BLOCKED = /^(?:\[Outside text starts[^\]\n]*\]\s*)?(?:No results \(or the search pages changed\)|The search pages are blocking this computer)/;
 const fail = (why) => { console.log(scrub(`PRE-FLIGHT FAIL: ${why}`)); process.exit(1); };
 
 // ---- the jobs: requests only, held-out ones left out ----
@@ -96,12 +101,24 @@ let searchKey = '';
 const SEARCH_SPARE = 10; // left over in the month for the next pre-flight
 const monthly = Number(o['search-month']) > 0 ? Number(o['search-month']) : Infinity;
 if (o['search-month'] !== undefined && !(Number(o['search-month']) > 0)) fail(`--search-month ${o['search-month']}: give the searches a month allows`);
+const runCap = Number(o['search-cap']) > 0 ? Number(o['search-cap']) : Infinity;
+const group = o['search-group'] ? String(o['search-group']).replace(/[^\w.-]/g, '_') : '';
+if (group && !Number.isFinite(runCap)) fail('--search-group needs --search-cap');
+const groupFile = group ? path.join(L.out, `tavily-searches-${new Date().toISOString().slice(0, 7)}-${group}.json`) : '';
+if (o['search-cap'] !== undefined && !(Number(o['search-cap']) > 0)) fail(`--search-cap ${o['search-cap']}: give the most Tavily searches this run may make`);
 const ledger = path.join(L.out, `tavily-searches-${new Date().toISOString().slice(0, 7)}.json`);
 const ledgerUsed = () => { try { return Number(JSON.parse(fs.readFileSync(ledger, 'utf8')).used) || 0; } catch { return 0; } };
 let searchLeft = Infinity, searches = 0, budgetStop = false;
 let webSearches = 0;
-const counted = (n = 1) => { if (!(n > 0)) return; searches += n; if (searchWith) { try { fs.writeFileSync(ledger, JSON.stringify({ used: ledgerUsed() + n, at: new Date().toISOString() })); } catch {} } };
-const searchesLeft = () => Math.min(searchLeft - searches, monthly - SEARCH_SPARE - ledgerUsed());
+const readUsed = (f) => { try { return Number(JSON.parse(fs.readFileSync(f, 'utf8')).used) || 0; } catch { return 0; } };
+const capUsed = () => (group ? readUsed(groupFile) : searches); // what counts against --search-cap
+const counted = (n = 1) => {
+  if (!(n > 0)) return; searches += n; if (!searchWith) return;
+  const at = new Date().toISOString();
+  try { fs.writeFileSync(ledger, JSON.stringify({ used: ledgerUsed() + n, at })); } catch {}
+  if (group) { try { fs.writeFileSync(groupFile, JSON.stringify({ used: readUsed(groupFile) + n, at })); } catch {} }
+};
+const searchesLeft = () => Math.min(searchLeft - searches, monthly - SEARCH_SPARE - ledgerUsed(), runCap - capUsed());
 if (searchWith) {
   if (searchWith !== 'tavily') fail(`--search ${o.search}: only tavily is known`);
   const got = labKey('tavily');
@@ -114,9 +131,10 @@ if (searchWith) {
   if (u.ok) { searchLeft = Math.max(0, u.limit - u.used - SEARCH_SPARE); say(`pre-flight: Tavily's usage page: ${u.used} of ${u.limit} searches used this month`); }
   else say(`pre-flight: Tavily's usage page didn't say (${u.why}); the Lab's own count is used`);
   if (Number.isFinite(monthly)) say(`pre-flight: the Lab has made ${ledgerUsed()} of its ${monthly} searches this month (--search-month)`);
+  if (Number.isFinite(runCap)) say(`pre-flight: ${group ? `the runs in group ${group} make` : 'this run makes'} at most ${runCap} Tavily searches of their own (--search-cap), ${capUsed()} so far`);
   const left = searchesLeft();
-  if (Number.isFinite(left)) { say(`pre-flight: this run may make about ${Math.max(0, left)} more web searches`); if (left <= 0) fail('no web searches are left this month: a search job could not finish'); }
-  else say('pre-flight: no search budget (--search-month): only 5 failed searches in a row stop the run');
+  if (Number.isFinite(left)) { say(`pre-flight: this run may make about ${Math.max(0, left)} more web searches`); if (left <= 0) fail(runCap - capUsed() <= 0 ? `no web searches are left under --search-cap ${runCap}${group ? ` (group ${group})` : ''}: a search job could not finish` : 'no web searches are left this month: a search job could not finish'); }
+  else say('pre-flight: no search budget (--search-month, --search-cap): only 5 failed searches in a row stop the run');
 }
 // The backup search as Bob's settings hold it (off on every Bob unless its owner turns it on), the key handed in for
 // this run only. His count file in this job's home starts at the Lab's count for the month, so his own cap counts the
@@ -124,9 +142,10 @@ if (searchWith) {
 const month = () => new Date().toISOString().slice(0, 7);
 function keyedSearch(kit) {
   if (!searchKey) return () => 0;
-  kit.cfg.searchBackup = { use: { tavily: true }, order: ['tavily'], ...(Number.isFinite(monthly) ? { caps: { tavily: Math.max(0, monthly - SEARCH_SPARE) } } : {}), keys: { tavily: searchKey } };
   const f = path.join(kit.cfg.dataDir, 'search-backup-count.json');
   let seen = ledgerUsed();
+  const cap = Math.min(monthly - SEARCH_SPARE, seen + runCap - capUsed()); // his month count starts at the Lab's, so this is the Lab's month and this run's cap
+  kit.cfg.searchBackup = { use: { tavily: true }, order: ['tavily'], ...(Number.isFinite(cap) ? { caps: { tavily: Math.max(0, cap) } } : {}), keys: { tavily: searchKey } };
   try { fs.writeFileSync(f, JSON.stringify({ month: month(), used: { tavily: seen } })); } catch {}
   return () => { let now = seen; try { const c = JSON.parse(fs.readFileSync(f, 'utf8')); if (c.month === month()) now = Number(c.used?.tavily) || 0; } catch {} const d = Math.max(0, now - seen); seen = now; return d; };
 }
@@ -304,13 +323,13 @@ async function worker() {
     say(`${String(ran).padStart(3)} ${row.error ? 'ERR ' : row.said ? 'done' : 'no words'} ${row.id} ${String(row.text).slice(0, 60)} -> ${(row.steps || []).flatMap((s) => s.calls || []).map((c) => c.name).join(',') || 'no tool'} (${row.asks || 0} steps, ${(row.secs || 0).toFixed(0)} s${row.standins?.length ? `, stand-ins: ${row.standins.join(',')}` : ''})`);
     if (/ECONNREFUSED|fetch failed/.test(row.error || '')) { say('the brain is gone (connection refused): stopping'); next = queue.length; }
     if (searchStop && next < queue.length) { say('5 web searches in a row found nothing (the search pages may be blocking this PC): stopping, so no more of the rental goes on jobs whose searches fail'); next = queue.length; }
-    if (!budgetStop && searchesLeft() <= 0 && next < queue.length) { budgetStop = true; say(`${searches} Tavily searches made: this month's search budget is used, so no new job starts; ${queue.length - next} wait for the next run`); next = queue.length; }
+    if (!budgetStop && searchesLeft() <= 0 && next < queue.length) { budgetStop = true; say(`${searches} Tavily searches made: the search budget is used (${runCap - capUsed() <= 0 ? `this run's cap of ${runCap}` : "this month's"}), so no new job starts; ${queue.length - next} wait for the next run`); next = queue.length; }
   }
 }
 await Promise.all(Array.from({ length: Math.max(1, Number(o.parallel)) }, worker));
 const all = readJsonl(F.runs);
 const n = all.length, by = (f) => all.filter(f).length;
-const lines = [`# Do jobs: ${path.basename(dir)}`, '', `${n} runs. Answered in words: ${by((r) => r.said)}. Errors: ${by((r) => r.error)}. Called a tool this test Bob hasn't got: ${by((r) => r.missing?.length)}. With a scene: ${by((r) => r.scene?.files?.length || r.scene?.folders?.length || r.scene?.board || r.scene?.memory)}. Every run is read by Opus before any is kept.${searchStop ? ' Stopped early: web search found nothing 5 times in a row.' : ''}${budgetStop ? " Stopped early: this month's search budget was used." : ''}`, '', `Web searches this run: ${webSearches}; Tavily searches (the backup, and key checks): ${searches}${Number.isFinite(searchesLeft()) ? ` (about ${Math.max(0, searchesLeft())} left this month)` : ''}. Jobs not started: ${Math.max(0, queue.length - ran)}.`];
+const lines = [`# Do jobs: ${path.basename(dir)}`, '', `${n} runs. Answered in words: ${by((r) => r.said)}. Errors: ${by((r) => r.error)}. Called a tool this test Bob hasn't got: ${by((r) => r.missing?.length)}. With a scene: ${by((r) => r.scene?.files?.length || r.scene?.folders?.length || r.scene?.board || r.scene?.memory)}. Every run is read by Opus before any is kept.${searchStop ? ' Stopped early: web search found nothing 5 times in a row.' : ''}${budgetStop ? ` Stopped early: ${runCap - capUsed() <= 0 ? `this run's search cap (${runCap})` : "this month's search budget"} was used.` : ''}`, '', `Web searches this run: ${webSearches}; Tavily searches (the backup, and key checks): ${searches}${Number.isFinite(searchesLeft()) ? ` (about ${Math.max(0, searchesLeft())} more allowed)` : ''}. Jobs not started: ${Math.max(0, queue.length - ran)}.`];
 fs.writeFileSync(F.summary, scrub(lines.join('\n') + '\n'));
 say(`\n${lines.slice(2).join('\n')}\nRuns: ${F.runs}`);
 process.exit(0);

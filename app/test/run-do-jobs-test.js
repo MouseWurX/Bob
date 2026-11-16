@@ -72,6 +72,9 @@ const srv = http.createServer((req, res) => {
     } else if (/picture/.test(ask)) {
       if (last.role === 'tool') out = say('Here is your fox picture.', 'It is made.');
       else out = names.includes('make_image') ? call('make_image', { prompt: 'a fox' }, 'Draw it.') : call('use_tools', { group: 'pictures' }, 'I need the picture tools.');
+    } else if (/owl facts/.test(ask)) {
+      const n = msgs.filter((m) => m.role === 'tool').length;
+      out = n < 3 && names.includes('web_search') ? call('web_search', { query: `owl facts ${n + 1} ${ask.length}` }, 'Look it up again.') : say('Owls hunt at night.', 'Enough looking.');
     } else if (/fox facts/.test(ask)) {
       const n = msgs.filter((m) => m.role === 'tool').length;
       out = n < 2 && names.includes('web_search') ? call('web_search', { query: `fox facts ${n + 1}` }, 'Look it up.') : say('Foxes are small wild dogs.', 'Enough looking.');
@@ -100,6 +103,8 @@ fs.writeFileSync(offline, "const real = globalThis.fetch;\nglobalThis.fetch = as
 const jobs3 = path.join(tmp, 'ideas3.jsonl');
 fs.writeFileSync(jobs3, [{ id: 'w1', job: 'web', text: 'find me some fox facts' }, { id: 'w2', job: 'chat', text: 'tell me a joke' }, { id: 'w3', job: 'chat', text: 'tell me a story' }].map((x) => JSON.stringify(x)).join('\n') + '\n');
 const ledger = path.join(tmp, `tavily-searches-${new Date().toISOString().slice(0, 7)}.json`);
+const jobs4 = path.join(tmp, 'ideas4.jsonl');
+fs.writeFileSync(jobs4, [{ id: 'o1', job: 'web', text: 'find me some owl facts' }, { id: 'o2', job: 'web', text: 'find me a few more owl facts' }, { id: 'o3', job: 'chat', text: 'tell me a story' }].map((x) => JSON.stringify(x)).join('\n') + '\n');
 const run = (extra, { jobsFile = jobs, dir = 'trial', env = {} } = {}) => new Promise((ok) => {
   const ch = spawn(process.execPath, ['--import', pathToFileURL(offline).href, 'do-jobs.mjs', '--url', url, '--bob', app, '--out', tmp, '--dir', dir, '--jobs', jobsFile, '--never', held, '--parallel', '2', ...extra], { cwd: path.join(app, 'model-lab'), env: { ...process.env, LAB_API_KEY: 'k', LAB_URL: '', LAB_TAVILY_KEY: '', LAB_TAVILY_URL: `${url}/tavily`, ...env } });
   let log = ''; ch.stdout.on('data', (d) => (log += d)); ch.stderr.on('data', (d) => (log += d));
@@ -132,6 +137,15 @@ const mU = await run(['--preflight', '--search', 'tavily', '--search-month', '10
 usage = null; fs.writeFileSync(ledger, JSON.stringify({ used: 987 }));
 const mL = await run(['--search', 'tavily', '--search-month', '1000', '--search-gap', '0', '--parallel', '1'], { jobsFile: jobs3, dir: 'budget1', env: { LAB_TAVILY_KEY: KEY } });
 const ledgerAfter = JSON.parse(fs.readFileSync(ledger, 'utf8')).used;
+const five = await run(['--search-gap', '0', '--parallel', '1'], { jobsFile: jobs4, dir: 'five1' });
+fs.writeFileSync(ledger, JSON.stringify({ used: 100 }));
+const capRun = await run(['--search', 'tavily', '--search-month', '1000', '--search-cap', '2', '--search-gap', '0', '--parallel', '1'], { jobsFile: jobs3, dir: 'cap1', env: { LAB_TAVILY_KEY: KEY } });
+const ledgerCap = JSON.parse(fs.readFileSync(ledger, 'utf8')).used;
+const groupFile = path.join(tmp, `tavily-searches-${new Date().toISOString().slice(0, 7)}-g1.json`);
+fs.writeFileSync(groupFile, JSON.stringify({ used: 4 }));
+const grp = await run(['--preflight', '--search', 'tavily', '--search-cap', '6', '--search-group', 'g1'], { env: { LAB_TAVILY_KEY: KEY } });
+const grpFull = await run(['--preflight', '--search', 'tavily', '--search-cap', '6', '--search-group', 'g1'], { env: { LAB_TAVILY_KEY: KEY } });
+const groupAfter = JSON.parse(fs.readFileSync(groupFile, 'utf8')).used;
 srv.close();
 const rows = fs.readFileSync(path.join(tmp, 'trial', 'runs.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 const by = Object.fromEntries(rows.map((x) => [x.id, x]));
@@ -176,6 +190,12 @@ check('a key Tavily refuses stops pre-flight; no key at all says how to add one'
   check("pre-flight: Tavily's usage page says the month is nearly used, so nothing runs", mU.code === 1 && /995 of 1000 searches used/.test(mU.log) && /no web searches are left this month/.test(mU.log), mU.log.slice(-300));
   check("the Lab's own count: once this month's searches are used, no new job starts and the rest wait", mL.code === 0 && rows3.length === 1 && rows3[0].id === 'w1' && searched === 2 && /no new job starts; 2 wait for the next run/.test(mL.log) && /Stopped early: this month's search budget was used/.test(fs.readFileSync(path.join(tmp, 'budget1', 'summary.md'), 'utf8')), mL.log.slice(-500));
   check("every Tavily search is counted on the Lab PC: the key check, and each one Bob's own backup search made (987 + 1 + 2)", ledgerAfter === 990 && rows3[0].steps.flatMap((st) => st.calls).filter((c) => c.name === 'web_search').every((c) => /The backup search: Tavily/.test(c.result)), String(ledgerAfter) + ' ' + JSON.stringify(rows3[0]?.steps.flatMap((st) => st.calls).map((c) => c.result)).slice(0, 300)); }
+{ const r5 = fs.existsSync(path.join(tmp, 'five1', 'runs.jsonl')) ? fs.readFileSync(path.join(tmp, 'five1', 'runs.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
+  check("5 searches in a row with nothing (Bob's result as he hands it on, wrapped as outside text) stop the run", five.code === 0 && r5.length === 2 && !r5.some((x) => x.id === 'o3') && /5 web searches in a row found nothing/.test(five.log), five.log.slice(-400));
+  const rc = fs.existsSync(path.join(tmp, 'cap1', 'runs.jsonl')) ? fs.readFileSync(path.join(tmp, 'cap1', 'runs.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
+  const res = rc[0] ? rc[0].steps.flatMap((st) => st.calls).filter((c) => c.name === 'web_search').map((c) => c.result) : [];
+  check("--search-cap: the run's own Tavily searches stop at the cap (key check + 1), Bob himself says he's at it, and no new job starts", capRun.code === 0 && ledgerCap === 102 && rc.length === 1 && res.length === 2 && /Tavily is at its monthly cap/.test(res[1]) && /this run's cap of 2/.test(capRun.log), `${ledgerCap} ${capRun.log.slice(-400)} ${JSON.stringify(res).slice(0, 300)}`); }
+check('--search-group: runs of one group share the cap (4 + 1 key check leaves 1; the next start finds none and stops)', grp.code === 0 && /group g1 make at most 6 Tavily searches of their own \(--search-cap\), 5 so far/.test(grp.log) && grpFull.code === 1 && /no web searches are left under --search-cap 6 \(group g1\)/.test(grpFull.log) && groupAfter === 6, `${groupAfter} ${grp.log.slice(-300)} ${grpFull.log.slice(-200)}`);
 const again = await run([]);
 check('a second start picks up where it stopped (nothing run twice)', /nothing to run/.test(again.log) || /0 to go/.test(again.log), again.log.slice(-200));
 fs.rmSync(tmp, { recursive: true, force: true });

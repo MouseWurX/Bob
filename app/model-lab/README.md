@@ -37,7 +37,8 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    with one search, never printed or saved, and every saved row is scrubbed for it. `--search-month <n>` keeps the Lab's
    count of this month's Tavily searches in out\tavily-searches-<month>.json (Tavily's free plan: 1,000 or more a month; its usage page says), gives
    each job's Bob that count with his cap 10 below it, and starts no new job once about 10 are left. Tavily's own usage
-   page is checked too when it answers. `--search-probe` stops pre-flight when web search answers nothing; 5 failed
+   page is checked too when it answers. `--search-cap <n>` caps the run's own Tavily searches, and with `--search-group
+   <name>` the cap is shared by every run of that name this month (run 3 and the 800 jobs share 800). `--search-probe` stops pre-flight when web search answers nothing; 5 failed
    searches in a row stop a run.
    `node jobs-gate.mjs --dir <name> --runs 45 --want-shapes 4 --search tavily` reads a finished do-jobs folder and exits
    86 (the Forge then deletes the pod) unless it was clean: enough runs, answered in words, few errors, test worlds made,
