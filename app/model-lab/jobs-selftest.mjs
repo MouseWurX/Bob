@@ -15,6 +15,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { harnessFaults } from './harness-faults.mjs';
 import { makeInbox } from './mail-world.mjs';
+import { FILES as OFFICE_FILES } from './office-jobs.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const say = (t) => ({ choices: [{ message: { role: 'assistant', content: t } }], usage: { completion_tokens: 5, prompt_tokens: 900 } });
@@ -27,7 +28,7 @@ const MAILBOX = { size: 120, seed: 5, flavour: 'gmail', kind: 'graded' };
 const TRAP_ID = makeInbox(MAILBOX).needles['staff-trap'];
 
 // one job per old fault: its request, the scene the stand-in brain writes, the calls it makes, and what must be true after
-export const JOBS = [
+export const ALL_JOBS = [
   { id: 'st-files', kind: 'file_not_made', text: 'Tell me what each of these is: C:\\Users\\you\\Music\\beat_01.mp3, C:\\Users\\you\\Downloads\\setup_installer.exe, C:\\Users\\you\\Desktop\\Q3_Strategy.pptx, C:\\Users\\you\\Documents\\Icons_final.psd, C:\\Audio\\interview.wav, C:\\Users\\you\\Videos\\promo.mp4 and C:\\Users\\you\\Documents\\temp.doc.',
     scene: { files: ['C:\\Users\\you\\Music\\beat_01.mp3', 'C:\\Users\\you\\Downloads\\setup_installer.exe', 'C:\\Users\\you\\Documents\\Icons_final.psd', 'C:\\Audio\\interview.wav', 'C:\\Users\\you\\Videos\\promo.mp4'].map((p) => ({ path: p, content: '', meta: { Title: 'Demo' } }))
       .concat([{ path: 'C:\\Users\\you\\Desktop\\Q3_Strategy.pptx', content: 'Slide 1: Q3 Strategy\n- grow sales\n\nSlide 2: Risks\n- supply' }, { path: 'C:\\Users\\you\\Documents\\temp.doc', content: 'Temp notes\nCall the plumber.' }]) },
@@ -75,11 +76,31 @@ export const JOBS = [
     plan: [['read_email', { action: 'groups', by: 'org' }], ['manage_email', { action: 'bulk', do: 'trash', org: 'Kettle & Crumb' }], ['read_email', { action: 'needs_reply', days: 14 }]],
     end: 'Trashed the Kettle & Crumb newsletters (Wren\'s own mail is kept) and listed who to answer.',
     check: (row, res) => /Catalog: 120 of 120/.test(res[0]) && /Done: moved to/.test(res[1]) && /Undo id/.test(res[1]) && new RegExp(`id ${TRAP_ID} `).test(res[2])
-      && Object.values(row.mail?.changed || {}).some((c) => c.folders.some((f) => /trash/i.test(f))) && !row.mail.changed[TRAP_ID] && !row.mail.stats.refused.length && !row.mail.stats.expunges }
+      && Object.values(row.mail?.changed || {}).some((c) => c.folders.some((f) => /trash/i.test(f))) && !row.mail.changed[TRAP_ID] && !row.mail.stats.refused.length && !row.mail.stats.expunges },
+  // 16 Nov (MouseWurX: "starting with office files"): an office job's own made-up files are planted and read back as words,
+  // and compare_files is on and gets both paths moved into the test home (they never were: it failed every time)
+  { id: 'st-office-plain', kind: 'office_world', text: 'What is different between my March and April shop price lists, and what does my budget say about travel?',
+    office: officeSpec(['march', 'april', 'budget']),
+    plan: [['compare_files', { first: OFFICE_FILES.march.path, second: OFFICE_FILES.april.path }], ['read_file', { path: OFFICE_FILES.budget.path }]],
+    end: 'Oat milk went up to 2.65, plum jam is gone and rye bread is new. Travel peaked at 640 in March.',
+    check: (row, res) => /2\.65/.test(res[0]) && /Plum jam/.test(res[0]) && /640/.test(res[1]) && row.office?.files?.length === 3 && !row.office.missing.length
+      && ['Shop_Prices_March.xlsx', 'Shop_Prices_April.xlsx', 'Budget_2026.xlsx'].every((n) => row.office.after.some((f) => f.path.endsWith(n) && f.text.length > 20)) },
+  // with LibreOffice (--office): Bob's office_read, office_edit and convert_file really run, and the files they leave are read back
+  { id: 'st-office', kind: 'office_tools', needsOffice: true, text: 'Read my lease summary, add The Salt Road to my reading log and make a PDF of the garden club deck.',
+    office: officeSpec(['lease', 'reading', 'pitch'], true),
+    plan: [['office_read', { path: OFFICE_FILES.lease.path }], ['office_edit', { path: OFFICE_FILES.reading.path, changes: [{ op: 'add_rows', rows: [['The Salt Road', 'M. Okafor', 312]] }] }], ['convert_file', { paths: [OFFICE_FILES.pitch.path], to: 'pdf' }]],
+    end: 'Notice is 60 days. The Salt Road is in your reading log, and the deck is a PDF now.',
+    check: (row, res) => /60 days/.test(res[0]) && /added 1 row/.test(res[1]) && /Saved: .*Garden_Club_Pitch\.pdf/.test(res[2])
+      && row.office?.after?.some((f) => /Reading_Log\.xlsx$/.test(f.path) && /Salt Road/.test(f.text) && /Night Ferry/.test(f.text))
+      && row.office.after.some((f) => /Garden_Club_Pitch\.pdf$/.test(f.path) && /Membership 45/.test(f.text)) }
 ];
 
+// the jobs a self-test without LibreOffice runs (all of them but the office tools' check)
+export const JOBS = ALL_JOBS.filter((j) => !j.needsOffice);
+function officeSpec(keys, lo = false) { return { lo, files: keys.map((k) => ({ key: k, ...OFFICE_FILES[k] })) }; }
+
 // The stand-in llama-server: scenes as the job says, then the job's calls one per step, then its last words.
-function brainServer(jobs) {
+export function brainServer(jobs) {
   const seen = { cutAsks: 0, halfSent: false, halfBack: false };
   const pickJob = (text) => jobs.find((j) => text.includes(j.text.slice(0, 40)));
   const srv = http.createServer((req, res) => {
@@ -116,12 +137,14 @@ function brainServer(jobs) {
 }
 
 export async function selfTest({ bob = path.resolve(here, '..'), office = '', log = console.log, keep = false } = {}) {
+  // the office tools' check needs LibreOffice: without --office the run has no Office Hand, so that check is not run
+  const JOBS = ALL_JOBS.filter((j) => !j.needsOffice || office);
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jobs-selftest-'));
   const { srv, seen } = brainServer(JOBS);
   await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));
   const url = `http://127.0.0.1:${srv.address().port}`;
   const jobsFile = path.join(tmp, 'selftest-jobs.jsonl');
-  fs.writeFileSync(jobsFile, JOBS.map((j) => JSON.stringify({ id: j.id, job: 'selftest', text: j.text, ...(j.mail ? { mail: j.mail } : {}) })).join('\n') + '\n');
+  fs.writeFileSync(jobsFile, JOBS.map((j) => JSON.stringify({ id: j.id, job: 'selftest', text: j.text, ...(j.mail ? { mail: j.mail } : {}), ...(j.office ? { office: j.office } : {}) })).join('\n') + '\n');
   // no page outside this computer is reached: web addresses answer empty, the stand-in brain answers for real
   const offline = path.join(tmp, 'offline.mjs');
   fs.writeFileSync(offline, "const real = globalThis.fetch;\nglobalThis.fetch = async (u, o) => { const s = String(u?.url ?? u); if (/^https?:\\/\\/(127\\.0\\.0\\.1|localhost)[:/]/.test(s)) return real(u, o); return new Response('', { status: 200, headers: { 'content-type': 'text/html' } }); };\n");

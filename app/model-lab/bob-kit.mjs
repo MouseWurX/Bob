@@ -114,7 +114,9 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false, home = fa
   // 15 Nov (the loop test saved a file in the Lab PC's real Documents): a tool run for real may only touch the throwaway
   // folder. A path under the PC's real home is moved into the throwaway home; any other path outside the throwaway folder
   // is refused before the tool runs, and the tool's own check (the one Bob runs before the OK card) runs first, as live.
-  const PATH_KEY = /path|file|folder|dir|dest|src|root|target|save_to|^to$|^from$|^out/i;
+  // 16 Nov (office coverage): compare_files' two paths are "first" and "second", and office_edit's new copy is "save_as";
+  // none matched, so they stayed C:\\Users\\you\\... and compare_files failed every time ("Give the full path")
+  const PATH_KEY = /path|file|folder|dir|dest|src|root|target|save_to|save_as|^to$|^from$|^out|^first$|^second$/i;
   const homeIn = (v) => {
     if (typeof v !== 'string' || !homeDir || !realHome || inTmp(v)) return v;
     const rh = path.resolve(realHome), r = path.resolve(v);

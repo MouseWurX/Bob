@@ -19,6 +19,23 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
   named by subject can score 0 (7f46cc); a count was off (84144a). Open (Bob): raw tool-call text left as the answer
   (8 runs), review text shown to the user (6 runs).
 
+## 16 Nov 2026: office tools never called in ~900 Qwen runs (lab read; nothing rented)
+- Taught: across the 800 + 100 runs, office_read, office_edit, office_make, convert_file and compare_files were never
+  called. Not the brain: the test Bob had the Office Hand off (do-jobs turns it on only with `--office`, and no plan
+  passed it; the Lab PC has no LibreOffice), compare_files was hidden (its More tools switch was off), and even when on,
+  compare_files' two paths (`first`, `second`) and office_edit's `save_as` were never moved into the test home, so
+  compare_files would have failed every time ("Give the full path to both files"). `read_spreadsheet` is not a Bob
+  tool at all (only a name in two check lists).
+- Changed: bob-kit PATH_KEY moves `first`, `second` and `save_as`. New office jobs (office-jobs.mjs, 16 jobs: Word,
+  Excel, PowerPoint read / convert / edit, make, compare, one missing file) bring their own made-up files, switch
+  compare_files on, and keep the files Bob leaves as words (row.office.after). Jobs needing LibreOffice are left out,
+  with a pre-flight line, when there is no `--office`. office-score.mjs scores by code.
+- Check: harness-faults names office_missing, tool_switched_off, path_not_moved and office_file_missing; the self-test
+  gains st-office-plain (always) and st-office (with `--office`); the old PATH_KEY fails st-office-plain with
+  path_not_moved. office-oracle.mjs: a scripted brain doing every job the plain way passes 16/16 (8/8 without
+  LibreOffice), and a do-nothing brain that says "Done" fails 16/16. test/run-office-jobs-test.js (32 checks).
+- Open: LibreOffice on the Lab PC (needed for 8 of the 16 jobs); then the office jobs join a rental.
+
 ## 16 Nov 2026: inbox jobs, Qwen four efforts (launched; nothing rented)
 - Taught: the inbox branch was cut before the RunPod v2 move, so its launcher asked the retired `rest.runpod.io/v1`
   ("fetch failed" every minute) and could never rent. A branch's pre-flight passed because that copy predates the v2
