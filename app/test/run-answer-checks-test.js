@@ -99,6 +99,12 @@ check('moving a .docx is file_hands\' job -> quiet', !has({ text: 'move file.doc
 check('the Office Hand is off and he says so -> quiet', !has({ text: 'Convert report.docx to PDF', reply: 'The Office Hand is off. Switch it on in Settings.', actions: [act('offer_setup', { what: 'office' })] }, 'office_route'));
 check('a chart from a sheet -> quiet', !has({ text: 'read Q3.xlsx and create a pie chart', reply: 'Here it is.', actions: [act('read_file', {}), act('make_chart', {})] }, 'office_route'));
 
+// ---------- partial_look (inbox run: gave_up_paging, 16 Nov) ----------
+const page = act('read_email', { action: 'list' }, '271 messages, newest 15 shown:\nid 1 · ...');
+check('"all clear" after seeing 15 of 271 -> partial_look', has({ text: 'Any scams in my inbox?', reply: 'None of your mail looks like a scam. Your inbox is clean.', actions: [page] }, 'partial_look'));
+check('says it saw only the newest 15 -> quiet', !has({ text: 'Any scams in my inbox?', reply: 'None of the newest 15 of 271 look like scams.', actions: [page] }, 'partial_look'));
+check('everything was shown -> quiet', !has({ text: 'Any scams?', reply: 'None of them look like scams.', actions: [act('read_email', {}, '12 messages:\nid 1')] }, 'partial_look'));
+
 // ---------- stripMarkers ----------
 check('citation markers taken out', stripMarkers('It rose 3%【1†L1-L3】. Then fell【12】.') === 'It rose 3%. Then fell.');
 check('ordinary brackets kept', stripMarkers('see [1] and (2)') === 'see [1] and (2)');
