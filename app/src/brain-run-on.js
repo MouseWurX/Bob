@@ -37,7 +37,7 @@ import { HANDS } from './hands-settings.js';
 import { noteStrike, maybeAsk as qAsk } from './quarantine.js';
 import { planGate } from './plan.js';
 import { stepThink, toolRanThisTurn } from './step-thinking.js';
-import { soloPrompt } from './solo-effort.js';
+import { soloPrompt, lookOnly } from './solo-effort.js';
 import { cantReason, markCant, settleCant } from './cant-retry.js';
 import { askTogether } from './together.js';
 import { callKey, realState, linkKey, NOW_IN_NOTE, staleHandErrors, meanwhileNear, claimsPcAction, CLAIM_CORRECTION, CLAIM_NUDGE, claimsObservation, OBSERVE_CORRECTION, OBSERVE_NUDGE, LINK_NUDGE, EMPTY_NUDGE, CANT_NUDGE, EMPTY_NOTE, DOING_TOOLS, isLook, ALT_ROUTE_DONE, ALT_ROUTE_NUDGE, quickHandBack } from './brain-words.js';
@@ -296,7 +296,9 @@ export const runOnParts = {
       if (step === maxSteps - 1 && !this.helpOff('last') && !ctx.noTools && !job?.guest && msgs.slice(turnStart).some((m) => m.role === 'tool')) { const more = extraSteps(ctx); if (more) { maxSteps += more; this.log('loop', `the last step, but the last round still found something new: ${more} more steps to finish (once a turn)`); } }
       if (step === maxSteps - 1 && !this.helpOff('last') && !ctx.noTools && msgs.slice(turnStart).some((m) => m.role === 'tool')) { ctx.noTools = true; ctx.lastRound = true; ctx.endWhy ||= 'steps'; this.log('tool', 'the last step: no more tools, so he answers with what he has'); }
       if (ctx.loaded) used.toolSet = ctx.loaded.toolSet = this.toolSetOf(model); // tool-sets.js: the family's wording
-      const tools = ctx.noTools ? [] : guestTools(job, this.withWatchTools(this.frontDeskTools(ctx.loaded), job)); // #57 stopgap: after repeats, answer
+      let tools = ctx.noTools ? [] : guestTools(job, this.withWatchTools(this.frontDeskTools(ctx.loaded), job)); // #57 stopgap: after repeats, answer
+      // Max's plan step (solo-effort.js) only looks: the tools that change things wait for the jobs (lookOnly).
+      if (job?.solo && job.soloPhase === 'plan') tools = tools.filter((t) => lookOnly(t?.function?.name, this.tools));
       // The big brain reads notes passed along to it at the start of each step, and its chat says so.
       if (!job?.side) this.readNotes(ctx, msgs);
       // 1.5.66: Bob's own one-more-go after a reply that missed. On Qwen3.6 (everyday chat answers without thinking)
