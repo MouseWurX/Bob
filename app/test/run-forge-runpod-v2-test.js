@@ -20,6 +20,13 @@ const fm = read(path.join(lab, 'forge', 'forge.mjs')), sh = read(path.join(lab, 
 
 // ---- the addresses ----
 check('v2 lives at api.runpod.io/v2', V2 === 'https://api.runpod.io/v2');
+// 16 Nov: every pod run keeps a hardware log (GPU temp, power, clocks, VRAM, load, slowdown reasons, processor load, memory)
+const hw = (sh.match(/hw_log\(\) \{[\s\S]*?\n\}/) || [''])[0];
+check('the pod logs GPU temp, power, limit, clocks, VRAM, load and slowdown reasons', ['temperature.gpu', 'power.draw', 'power.limit', 'clocks.sm', 'clocks.mem', 'memory.used', 'utilization.gpu', 'temperature.memory', 'fan.speed', 'pcie.link.gen.current', 'clocks_throttle_reasons.active'].every((k) => hw.includes(k)));
+check('the hardware log also has processor load and memory, every 5 s, into out/ (the PC keeps out/*.log)', /\/proc\/loadavg/.test(hw) && /free -m/.test(hw) && /sleep 5/.test(hw) && /\$OUT\/hw-telemetry\.log/.test(hw));
+check('an older driver without slowdown reasons still logs the rest', /\|\| Q=timestamp[^\n]*utilization\.gpu\n/.test(hw));
+check('once per run it writes the card, driver, VBIOS, OS, processor and RAM', /driver_version,vbios_version/.test(hw) && /\/proc\/cpuinfo/.test(hw) && /hw-environment\.log/.test(hw));
+check('the hardware logger stops when the run ends', /hw_log & HWL=\$!; trap '[^']*kill \$WD \$HWL/.test(sh));
 check('the Forge and the pod no longer use rest.runpod.io', !/['"`]https:\/\/rest\.runpod\.io/.test(fm) && !/rest\.runpod\.io/.test(sh));
 check('the pod deletes itself through v2 (normal end and the time cap)', (sh.match(/'https:\/\/api\.runpod\.io\/v2\/pods\/'\+os\.environ\['RUNPOD_POD_ID'\], method='DELETE'/g) || []).length === 2);
 check('v2 network-volume paths', /rp\('PATCH', `\/network-volumes\/\$\{have\.id\}`/.test(fm) && /rp\('POST', '\/network-volumes'/.test(fm) && /rp\('DELETE', `\/network-volumes\/\$\{id\}`/.test(fm) && !/\/networkvolumes/.test(fm));
