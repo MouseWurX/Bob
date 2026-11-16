@@ -4,8 +4,8 @@
 // so the pickers stay short. Pure HTML builders; cellar.js handles the clicks.
 import { findHtml } from './cat-find.js'; // 1.5.209 Find more models
 import { officialTag, reapTag, turboTag, isTurbo, makerKind, isReap, fitsHere, applyFilters, sortModels, filterBarHtml, filtersOn, cleanFilters } from './cat-sort.js'; // 1.5.208 sorting, filters, maker tags
-import { placeFor, quantOf, sizeLine } from './place.js';
-import { canDo, suit, pickFor, deviceFit, sourceOf, SLOT_NAMES, roomOn, tooBigEverywhere } from './fit.js';
+import { placeFor, quantOf, sizeLine, needGB, hasExperts } from './place.js';
+import { canDo, suit, pickFor, deviceFit, DEVICES, sourceOf, SLOT_NAMES, roomOn, tooBigEverywhere } from './fit.js';
 import { allSlots, isActive, tipHtml, slotValue, equipped } from './equip.js';
 import { keep, tip as tipButton } from './tips.js';
 import { fitOf, byFit } from './fit-sort.js';
@@ -108,9 +108,12 @@ function rowHtml(m, job, ctx) {
     ['Made by', madeByLine(m) || 'not stated'],
     ['Released', [dayWords(m.published) || 'not stated', isNew ? 'New' : ''].filter(Boolean).join(' · ')],
     ['Size', [m.params ? `${m.params}B` : '', m.sizeGB != null ? `${m.sizeGB} GB download` : '', quant].filter(Boolean).join(' · ')],
-    ['Needs', m.vramGB ? `${gb(m.vramGB)} of graphics memory` : 'the processor (no graphics card needed)'],
-    ['Runs', fits],
-    ['Here', [fitWhy, roomy ? `Fits ${roomy} on your Bob-Net.` : ''].filter(Boolean).join(' ')],
+    ['Room', roomLine(m)],
+    // Nov 16 2026 (the owner: "it would be dependent on the user's own configuration, what's connected to their own
+    // bob-net"): a brain's card says how it splits on YOUR setup, this replicant matrix plus the Bobs on your Bob-Net.
+    // Example machines only while this one hasn't been read yet.
+    ['Here', isBrain(m) && (ctx.vramGB || ctx.ramGB) ? yourSplit(m, ctx) : [fitWhy, roomy ? `Fits ${roomy} on your Bob-Net.` : ''].filter(Boolean).join(' ')],
+    ['Elsewhere', ctx.vramGB || ctx.ramGB ? '' : isBrain(m) ? splitLines(m) : fits],
     ['Notes', noteLines(m, dated)],
     ['Licence', `${m.license || 'not stated'}${m.commercial === false ? ' (personal use only)' : ''}`],
   ]);
@@ -254,6 +257,45 @@ export function infoCard(m, rows) {
   const line = (v) => esc(v).replace(/\n/g, '<br>');
   const body = rows.filter(([, v]) => v).map(([k, v]) => `<span class="ic-row"><span class="ic-k">${esc(k)}</span><span class="ic-v">${line(v)}</span></span>`).join('');
   return `<span class="info-card">${m.what ? `<span class="ic-what">${line(m.what)}</span>` : ''}${body}</span>`;
+}
+// Nov 16 2026 (the owner: "the needs is misleading. We can divide models over vram, ram, ssd, multiple computers"):
+// a brain's card says how much room it takes in all and where that room can come from, and "Runs" says how it splits
+// on the example machines (the same placeFor split Auto starts from), not just whether it fits the card.
+export function roomLine(m) {
+  if (!isBrain(m)) return m.vramGB ? `${gb(m.vramGB)} of graphics memory` : 'the processor (no graphics card needed)';
+  // Nov 16 2026 (the owner: "some are able to be broken up over more parts better than others"): say how well this
+  // one splits. Made of experts: only the busy parts need the card, the rest can wait in memory or on the drive.
+  // Every part working on every word: what isn't on the card slows it a lot, and the drive can't hold any of it.
+  const all = `${gb(Math.round(needGB(m) * 10) / 10)} in all, chat included.`;
+  return hasExperts(m)
+    ? `${all} Splits well: made of experts, so only the busy parts need the card; the rest can wait in memory, on the drive (SSD) or on another Bob.`
+    : `${all} Splits less well: every part works on every word, so what isn't on the card slows it a lot, and none of it can sit on the drive. Card, memory (RAM) or another Bob.`;
+}
+const SPLIT_WORD = { card: 'All on the card', memory: 'Card + memory', storage: 'Card + memory + drive', help: 'With another Bob', rent: 'Too big alone' };
+const SPLIT_DEVICE = { big: '16 GB card + 32 GB', mid: '8 GB card + 16 GB', small: '6 GB laptop + 16 GB', cpu: 'no card, 16 GB' };
+export function splitLines(m) {
+  const by = new Map();
+  for (const d of DEVICES) {
+    const p = placeFor(m, { vramGB: d.vramGB, ramGB: d.ramGB });
+    const w = !d.vramGB && p.where === 'memory' ? 'Memory only (processor)' : !d.vramGB && p.where === 'storage' ? 'Memory + drive (processor)' : (p.runsWell ? 'Card + memory, runs well' : SPLIT_WORD[p.where] || p.word);
+    by.set(w, [...(by.get(w) || []), SPLIT_DEVICE[d.id] || d.label]);
+  }
+  const phone = deviceFit(m).find((r) => r.id === 'phone');
+  return [...[...by].map(([w, ds]) => `${w}: ${ds.join(', ')}`), phone ? `${phone.label}: ${phone.word}` : ''].filter(Boolean).join('\n');
+}
+// How the brain splits on your own setup (the split Auto starts from), in GB per place.
+export function yourSplit(m, ctx) {
+  const p = placeFor(m, ctx, ctx.bobNet || []);
+  const card = ctx.unified ? 'memory' : 'card';
+  if (p.where === 'card') return `All on your ${card}${p.cardGB ? ` (${gb(p.cardGB)})` : p.memGB ? ` (${gb(p.memGB)})` : ''}.`;
+  if (p.where === 'memory') return ctx.vramGB ? `${gb(p.cardGB)} on your card, ${gb(p.memGB)} in memory${p.runsWell ? '; runs well' : '; slower than all on the card'}.` : `In memory (${gb(p.memGB)}), on the processor.`;
+  if (p.where === 'storage') {
+    // A Bob on your Bob-Net may hold the rest instead of the drive (his card in full, his memory by half, as placeFor).
+    const r = (ctx.bobNet || []).find((x) => ['card', 'memory'].includes(placeFor(m, { vramGB: (ctx.vramGB || 0) + (x.vramGB || 0), ramGB: (ctx.ramGB || 0) + (x.ramGB || 0) * 0.5 }).where));
+    return `${p.cardGB ? `${gb(p.cardGB)} on your card, ` : ''}${gb(p.memGB)} in memory, ${gb(p.storageGB)} read from the drive. Wants a fast drive.${r ? ` Or ${r.name || 'another Bob'} on your Bob-Net holds the rest instead (experimental).` : ''}`;
+  }
+  if (p.where === 'help') return `Needs ${p.helper || 'another Bob'} on your Bob-Net to lend a hand. Experimental.`;
+  return (ctx.bobNet || []).length ? `${p.why} Your Bob-Net together isn't enough either.` : `${p.why} Another computer on your Bob-Net could help.`;
 }
 export const THINKS_LINE = 'Writes out its thinking before it answers; you can read it under Bob\'s thinking.';
 export const TRIAL_LINE = 'Not tried on a real replicant matrix yet, so I don\'t recommend it yet.';
