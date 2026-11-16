@@ -84,3 +84,32 @@ P1 against E0 gives the cost of carrying the patches. E1 to E4 against E0 give e
 - The results page goes beside this one with the median, min and max tables, and a raw CSV with every run, every sample and every command line.
 - Anything skipped or changed from this page is listed at the top of the results page, with the reason.
 - Dissertation chapter 3 is updated from the results. It will also cite the 12 November trace cost ([cube Real experts](2026-11-12-cube-real-experts-cost.md)), which was measured on Brain Engine 5.
+
+## Addendum 1: the new speed features (added 16 November 2026, before any timed run)
+
+The same rules as above apply: warm-up, 5 runs in turn, median with min and max, and conditions logged with every run.
+
+**Question 5, each new feature alone, then one combination,** all on Brain Engine with every expert feature off, at Reading speed Normal unless the row says otherwise:
+
+| Run | What is on |
+|---|---|
+| N0 | Nothing new (same as E0) |
+| N1 | Reading speed Fastest (4096) |
+| N2 | Turbo for everyday brains, with the brain's own guesser if its file has one; otherwise marked not run |
+| N3 | Lock brain memory |
+| N4 | Hot experts on the card (fixed split from the mixed calibration reorder) |
+| N5 | Prefetch for prompt reading |
+| N6 | Turbo + hot experts together, the everyday combination |
+| N7 | Everything new on together |
+
+**Extra metrics for these rows:**
+
+- **Kept guesses** (`draft_n_accepted` / `draft_n` from the engine's timings) for every Turbo row, reported beside writing speed. Writing speed with Turbo isn't comparable with plain writing speed without it.
+- **Expert moves** between card and RAM during the run, for N4, N6 and N7. The placement is fixed at load, so this should be 0. Anything else is a bug and is reported as one.
+- **All-hot share:** for hot-expert rows, the share of written tokens whose picks all fell on the card. Writing speed is reported for those tokens and for the rest separately, so the best case and the typical case aren't mixed.
+- **Lock brain memory:** first word on the 4K prompt after a 10-minute idle with a 6 GB memory-filler app running, with and without the lock. A quick run can't show what locking is for.
+
+**Known differences, stated in advance:**
+
+- With hot experts, the card half and the RAM half are added after two separate multiplies, so sums happen in a different order than in one multiply. The last digits of the odds can differ from stock, and answers may differ by a word on rare ties. Perplexity on a fixed 32K text is reported for N0 and N4 so the size of that difference is visible.
+- Temperature 0 with Turbo gives the same words as without it. That is checked word for word on the 300-token run and reported.
