@@ -59,6 +59,7 @@
     "test/run-loop-test-real-test.js",
     "test/run-do-jobs-test.js",
     "test/run-jobs-matrix-test.js",
+    "test/run-jobs-extra-test.js",
     "test/run-scenes-test.js",
     "test/run-jobs-gate-test.js",
     "test/run-jobs-to-lessons-test.js",
