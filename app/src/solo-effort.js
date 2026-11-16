@@ -81,7 +81,19 @@ export const PLAN_NOTE = `Max effort, planning. Look things up with your tools i
 export const replanNote = (review) => `Improve the plan. Your review said:\n${points(review)}\n\nWrite the whole improved plan, numbered, ${MAX_JOBS} steps at most. You may look things up, but don't change anything yet. End with only the plan.`;
 export const stepNote = (i, n, step, plan) => `Max effort, step ${i} of ${n}: ${step}\n\nThe whole plan, for context:\n${String(plan).slice(-3000)}\n\nSteps already done are above; don't redo them. Do only this step, completely, with your tools, and check that it worked. If a tool says no, or fails the same way twice, stop and report it; don't try it again in a later step. End with a short report: what you did and the real result (worked, failed, or not checked).`;
 export const improveNote = (review, last = true) => `Improve it. Your review of your own work found:\n${points(review)}\n\nMake the real improvements (use your tools if files need changing). Then give the whole improved answer.${last ? ' If something can\'t be improved, or you disagree with a point, end with "Not happy with:" and say what, plainly.' : ''}`;
-export const ANSWER_NOTE = `Max effort, the answer. This is the only reply the user sees: the plan, the step reports and the reviews above are folded away. Write the final answer once: what was done, the results, and anything still not right, said plainly. Don't repeat the plan or the reports. Never claim something a tool result doesn't show. ${WORDS_ONLY}`;
+export const ANSWER_NOTE = `Max effort, the answer. This is the only reply the user sees: the plan, the step reports and the reviews above are folded away, so never point to them ("above", "as shown"). Write the final answer once, complete: the result itself (the table, code, text, numbers or files made), then anything still not right, said plainly. Don't repeat the plan or the reports. Never claim something a tool result doesn't show. ${WORDS_ONLY}`;
+
+export const ANSWER_AGAIN = `That reply doesn't give the user the result. Write the whole final answer now, with the result itself in it (the user can't see the steps). ${WORDS_ONLY}`;
+// An answer that doesn't hold a result: empty, a filler line, a review verdict, a pointer to folded text, or a tool call
+// written out as text.
+export function weakAnswer(text) {
+  const t = String(text || '').trim();
+  if (t.length < 40) return true;
+  if (/^(?:my own (?:review|plan check):|looks right\.?|improve it:)/i.test(t)) return true;
+  if (/<tool_call>|<\/?function|^\s*\{\s*"name"\s*:|\b[a-z]+_[a-z_]+\s*\(\s*\{/i.test(t) && t.length < 400) return true;
+  if (t.length < 200 && /(?:here whenever you|let me know (?:if|when)|ready when you are|(?:see|shown|is|are) above\b|as shown)/i.test(t)) return true;
+  return false;
+}
 
 // The numbered steps of a plan (at most MAX_JOBS). None found: the whole ask is one job.
 export function planSteps(plan) {
@@ -106,6 +118,7 @@ export function soloMinutes(level, rounds) {
     if (r.kind === 'check') words.push(`review ${r.n}: ${r.verdict === 'ok' ? 'looks right' : 'improve it'}`);
     if (r.kind === 'improve') words.push('improved it');
   }
+  if (rounds.some((r) => r.kind === 'fallback')) words.push('the answer is the jobs\' own reports (the written answer left the result out)');
   const lastCheck = [...rounds].reverse().find((r) => r.kind === 'check');
   const unhappy = [...rounds].reverse().find((r) => r.unhappy)?.unhappy || '';
   const endsOnImprove = rounds.at(-1)?.kind === 'improve';
@@ -124,6 +137,7 @@ export const soloBrain = (cfg, { noTools = false } = {}) => (cfg?.models?.bob ? 
 // conversation (runOn with a hidden note); review(task) runs his own review turn (thinking on, read-only tools).
 export async function soloRun(brain, level, { run, review, emit, signal, msgs, turnText }) {
   const rounds = [];
+  const jobReports = []; // what each Max job said at its end, in case the answer doesn't hold the result
   const start = msgs.length;
   const user = brain.cfg.userName || 'the user';
   const lastSaid = (from) => [...msgs.slice(from)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length && !m.moot && String(m.content || '').trim())?.content || '';
@@ -174,7 +188,9 @@ export async function soloRun(brain, level, { run, review, emit, signal, msgs, t
     const list = steps.length ? steps : [String(turnText || 'the ask').slice(0, 400)];
     for (let i = 0; i < list.length && !stopped(); i++) {
       say(`\n\n---\n**Job ${i + 1} of ${list.length}:** ${list[i]}\n\n`);
+      const before = msgs.length;
       const r = await run(stepNote(i + 1, list.length, list[i], plan), { phase: 'do' });
+      { const said = lastSaid(before); if (said) jobReports.push(said); }
       rounds.push({ kind: 'step', n: i + 1 });
       // The repeat guard counts across all the small jobs (Bob's loop shares it). Once it stops one, the rest wait.
       if (r?.repeatStop && i < list.length - 1) { say(`\n\n_The same call kept coming back, so I stopped before job ${i + 2}._`); rounds.push({ kind: 'stopped', at: i + 2 }); break; }
@@ -185,8 +201,28 @@ export async function soloRun(brain, level, { run, review, emit, signal, msgs, t
       if (res.v === 'ok') break;
       if (!stopped()) await improve(res.text, n === SOLO_ROUNDS);
     }
-    // 4. The answer, written for the user.
-    if (!stopped()) { say('\n\n---\n'); await run(ANSWER_NOTE, { phase: 'answer', noTools: true }); }
+    // 4. The answer, written for the user. Distill regrade (16 Nov): the shown answer was often a filler line, a
+    // review note, a tool call written as text, or "the table is above" while the real result sat in folded step text.
+    // So the answer must hold the result itself: one more go if it doesn't, then the job reports themselves.
+    if (!stopped()) {
+      say('\n\n---\n');
+      let from = msgs.length;
+      await run(ANSWER_NOTE, { phase: 'answer', noTools: true });
+      if (!stopped() && weakAnswer(lastSaid(from))) {
+        from = msgs.length;
+        await run(ANSWER_AGAIN, { phase: 'answer', noTools: true });
+      }
+      const last = [...msgs.slice(start)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length && !m.moot);
+      if (!stopped() && (!last || weakAnswer(last.content))) {
+        const reports = jobReports.filter((t) => !weakAnswer(t));
+        if (reports.length) {
+          const text = `Here is what the jobs did:\n\n${reports.join('\n\n')}`;
+          if (last && last.role === 'assistant') { last.content = text; } else keep(text, undefined);
+          say(`\n\n${text}`);
+          rounds.push({ kind: 'fallback' });
+        }
+      }
+    }
   }
   const minutes = stopped() ? '' : soloMinutes(level, rounds);
   if (minutes) { say(`\n\n${minutes}`); keep(minutes, 'minutes'); }

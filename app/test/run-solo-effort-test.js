@@ -48,7 +48,7 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
   const signal = { aborted: false };
   const run = async (note, o = {}) => {
     calls.push({ note: note || '', ...o });
-    const content = /planning|Improve the plan/.test(note || '') ? plan : /Improve it\./.test(note || '') ? 'Better answer.\nNot happy with: one link is old.' : /the answer\./.test(note || '') ? 'Final answer.' : 'Did the step. Worked.';
+    const content = /planning|Improve the plan/.test(note || '') ? plan : /Improve it\./.test(note || '') ? 'Better answer.\nNot happy with: one link is old.' : /the answer\./.test(note || '') ? 'Final answer: the list is written down and checked, both steps done.' : 'Did the step. Worked.';
     msgs.push({ role: 'assistant', content });
     if (stop) signal.aborted = true;
     return { repeatStop: Boolean(repeatAt && /step 1 of/.test(note || '')) };
@@ -97,6 +97,31 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
 {
   const { calls } = await fake('max', ['Looks right.', 'Looks right.'], { plan: 'I will just do it.' });
   check('Max: a plan with no numbered steps runs the ask as one job', calls.filter((c) => c.phase === 'do').length === 1);
+}
+
+// ---- a whole Max job through Bob's real loop, with a scripted brain ----
+{
+  const os = await import('node:os'); const path = await import('node:path');
+  const { Brain } = await import('../src/brain.js');
+  const { weakAnswer } = await import('../src/solo-effort.js');
+  const job = async (script) => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob solo '));
+    const inn = path.join(tmp, 'inn'), dataDir = path.join(inn, 'bob'); fs.mkdirSync(dataDir, { recursive: true });
+    const brain = new Brain({ agentDir: tmp, innDir: inn, dataDir, settingsFile: path.join(dataDir, 'settings.json'), readRoots: [inn], readOnlyRoots: [], recycleBin: false, userName: 'Sam', models: { bob: 'qwen3.6-35b-a3b' }, engine: 'ollama', ollamaUrl: 'http://127.0.0.1:1', soloEffort: true }, () => {});
+    clearInterval(brain.reminderTimer);
+    brain.ensureModel = async () => {}; brain.fitCtx = async (m, c) => c; brain.recall = async () => '';
+    brain.engine = { chat: async () => ({ role: 'assistant', content: script.shift() || 'ok' }), isLoaded: async () => true, loaded: async () => [] };
+    const evs = [];
+    await brain.run('s1', 'make me a small table', (e) => evs.push(e), new AbortController().signal, [], { id: 'j1', effort: 'extreme', state: 'running' });
+    const shown = brain.session('s1').filter((m) => m.role === 'assistant' && !m.tool_calls?.length && !m.step && !m.moot);
+    return { shown, final: evs.find((e) => e.type === 'final')?.text || '' };
+  };
+  const table = 'Here is the table:\n| a | b |\n|---|---|\n| 1 | 2 |';
+  const good = await job(['1. Write the table\n2. Check it', 'Looks right.', table, 'Checked it.', 'Looks right.', `The table you asked for:\n| a | b |\n|---|---|\n| 1 | 2 |\nNothing is left open.`]);
+  check('Max in the real loop: exactly one shown answer, the written one, and it holds the result', good.shown.length === 1 && /\| 1 \| 2 \|/.test(good.shown[0].content) && good.final === good.shown[0].content);
+  const filler = await job(['1. Write the table\n2. Check it', 'Looks right.', table, 'Checked it.', 'Looks right.', "I'm here whenever you're ready.", 'See the table above.']);
+  check('Max: a filler answer gets one more go, then the job reports are the answer; never a review note', filler.shown.length === 1 && /\| 1 \| 2 \|/.test(filler.shown[0].content) && !/My own review|Looks right/.test(filler.shown[0].content));
+  check('weak answers are spotted', ['', "I'm here whenever you're ready.", 'My own review: Looks right.', 'The table is shown above, all done.', '<tool_call>{"name":"write_file"}</tool_call> Done.'].every(weakAnswer) && !weakAnswer(table + '\nAll four cells are filled in from your numbers.'));
 }
 
 // ---- wired in ----
