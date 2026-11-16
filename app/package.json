@@ -275,6 +275,7 @@
     "test/run-job-helps-test.js",
     "test/run-engine-extras-test.js",
     "test/run-hot-experts-test.js",
+    "test/run-speed-test-runner-test.js",
     "test/run-think-bubble-test.js",
     "test/run-task-pop-test.js",
     "test/run-phone-menu-test.js",
