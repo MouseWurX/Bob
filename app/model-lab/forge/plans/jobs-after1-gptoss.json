@@ -1,6 +1,6 @@
 {
  "run": "jobs-after1-gptoss",
- "note": "16 Nov, the owner (4:00 PM MT, heal thread): \"the tests were built using broken tool systems, qwen is testing much better now\"; \"coordinate with the tools/jobs coordinator\". jobs-plan.md step 4b: the second card beside after1. The stock GPT-OSS 120B (the 38B heal's teacher) does the SAME first 200 real jobs as after1's \"real\" variant, from the same saved scenes (jobs-fix1/scenes.jsonl), on the same et6g5x commit (8b82ad3 or later) with the same job flags (--parallel 4 --job-minutes 8 --scene make --never jobs-trial/never --want-shapes 4 --max 4096), so the two brains compare job by job under one blind Opus read and one rubric. do-jobs --family gpt-oss: Bob's GPT-OSS tool set and the GPT-OSS way of asking for thinking (a tool step is Reasoning: low). Tool shape: TOOL_SHAPES is one counter for both families (3 = the GPT-OSS lock, 4 = the Qwen change after it), so this Bob copy is shape 4 with the GPT-OSS set as locked at 3. Its own Tavily group after-gptoss, cap 150, inside the month's 1,500. Then jobs-gate.mjs writes GATE.md (names warn, the key stops). The pod is deleted when the commands finish. Nothing is trained or uploaded; Opus reads every run, and scrubbed keeps go to the heal thread as 38B heal lessons. One 80 GB card, 4 jobs at a time (4 slots x 65536, as the GPT-OSS tool check ran). The owner's go is by card, together with after1. Caps 3 h / $6.",
+ "note": "16 Nov, the owner (4:00 PM MT, heal thread): \"the tests were built using broken tool systems, qwen is testing much better now\"; \"coordinate with the tools/jobs coordinator\". jobs-plan.md step 4b: the second card beside after1. The stock GPT-OSS 120B (the 38B heal's teacher) does the SAME first 200 real jobs as after1's \"real\" variant, from the same saved scenes (jobs-fix1/scenes.jsonl), on the same et6g5x commit (8b82ad3 or later) with the same job flags (--parallel 4 --job-minutes 8 --scene make --never jobs-trial/never --want-shapes 4 --max 4096), so the two brains compare job by job under one blind Opus read and one rubric. do-jobs --family gpt-oss: Bob's GPT-OSS tool set and the GPT-OSS way of asking for thinking (a tool step is Reasoning: low). Tool shape: TOOL_SHAPES is one counter for both families (3 = the GPT-OSS lock, 4 = the Qwen change after it), so this Bob copy is shape 4 with the GPT-OSS set as locked at 3. Its own Tavily group after-gptoss, cap 150, inside the month's 1,500. Then jobs-gate.mjs writes GATE.md (names warn, the key stops). The pod is deleted when the commands finish. Nothing is trained or uploaded; Opus reads every run, and scrubbed keeps go to the heal thread as 38B heal lessons. One 80 GB card, 4 jobs at a time (ctx 131072 = 4 slots x 32768, the trial's room per job; about 63 GB of weights plus under 10 GB of cache on 80 GB). The owner's go is by card, together with after1. Caps 3 h / $6.",
  "benchmark_only": true,
  "teacher": "Qwen/Qwen3.8-Flash-Next",
  "counts": "expert-counts-2026-11-04T23-23-19.json",
@@ -32,7 +32,7 @@
     "file": "hf:ggml-org/gpt-oss-120b-GGUF:gpt-oss-120b-MXFP4.gguf",
     "quant": "MXFP4",
     "slots": 4,
-    "ctx": 65536,
+    "ctx": 131072,
     "extra": "",
     "hours": 2.5,
     "commands": [
