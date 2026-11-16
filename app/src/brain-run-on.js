@@ -92,7 +92,7 @@ export const runOnParts = {
       if (['image', 'video', 'audio'].includes(ev?.type) && ev.file && ctx?.wantType) this.autoSaveAs(ev, ctx); // 1.5.95 "a song as an mp3"
       return sent;
     };
-    const ctx = { noTools: Boolean(job?.soloNoTools), ...(job?.soloSeen ? { callsSeen: job.soloSeen } : {}), emit: emitMade, signal, brain: this, cfg: this.cfg, allowAll: new Set(), pics, picNote, msgs, turnText: text, job, sessionId, wantsEdit, editFrom: wantsEdit ? recent : null, wantType: namedType(text), saves: [], savedAs: [], trace: [], askId: (again ? lastUser?.id : user.id) || null }; // askId: item 238
+    const ctx = { noTools: Boolean(job?.soloNoTools), ...(job?.soloPlanShown ? { planShown: true } : {}), ...(job?.soloSeen ? { callsSeen: job.soloSeen } : {}), emit: emitMade, signal, brain: this, cfg: this.cfg, allowAll: new Set(), pics, picNote, msgs, turnText: text, job, sessionId, wantsEdit, editFrom: wantsEdit ? recent : null, wantType: namedType(text), saves: [], savedAs: [], trace: [], askId: (again ? lastUser?.id : user.id) || null }; // askId: item 238
     // Item 171 (Nov 12): an action key for each action. After a restart, the last action that already finished is
     // remembered, so the same write or command asked for again first thing hands back its result instead of running twice.
     const lastDone = lastFinished(job?.before, this.tools);

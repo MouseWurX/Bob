@@ -12,6 +12,7 @@ import { cleanPersonality } from '../public/personality.js';
 import path from 'node:path';
 import { careful, mootOpening, runMoot } from './moot.js';
 import { soloJob, soloLevel, soloOpening, soloRun, soloBrain } from './solo-effort.js';
+import { planOn, showPlan } from './plan.js';
 import { pickAnswer } from './clean-answer.js';
 import { markReplaced, correctionStep } from './honesty-score.js';
 import { howtosOn, worthOffering } from './howtos.js';
@@ -203,7 +204,17 @@ export const turnParts = {
           finally { ran = true; Object.assign(job, { soloStep: '', soloAgain: false, soloPhase: null, soloNoTools: false }); }
         };
         const review = (task, o = {}) => this.runHat('reviewer', task, out.ctx, soloBrain(this.cfg, o));
-        mooted = await soloRun(this, solo, { run, review, emit: keep, signal, msgs, turnText: text });
+        // "Plan before big jobs" on (plan.js): Max's checked plan goes on the same plan card, and the jobs after Go ahead
+        // don't ask for another one.
+        const card = solo === 'max' && planOn(this.cfg) ? async (steps) => {
+          const c = out.ctx;
+          if (!c) return { go: true };
+          Object.assign(c, { planShown: false, planDeclined: false, planChange: '' });
+          await showPlan(this, { steps: steps.map((say) => ({ say })) }, c);
+          return c.planShown ? { go: true } : c.planChange ? { change: c.planChange } : { no: true };
+        } : null;
+        const planShown = () => Object.defineProperty(job, 'soloPlanShown', { value: true, configurable: true, enumerable: false, writable: true });
+        mooted = await soloRun(this, solo, { run, review, emit: keep, signal, msgs, turnText: text, card, planShown });
       }
       else await this.runOn(msgs, text, keep, signal, pics, job, sessionId, out);
       if (careful(job) && out.ctx && !signal?.aborted) mooted = await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx });

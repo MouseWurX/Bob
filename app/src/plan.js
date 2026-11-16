@@ -48,6 +48,7 @@ export async function showPlan(brain, { goal = '', time = '', steps = [] }, ctx,
   if (note) {
     brain.log('plan', `${who(brain)} asked for a change (${note.length} characters)`); // item 248
     ctx.planNudged = true;
+    ctx.planChange = note;
     return `${who(brain)} wants a change before you start: "${note}". Nothing has been done. Make a new plan with that change and call show_plan again (or ask one short question if the change isn't clear).`;
   }
   if (!answer?.allow) {
@@ -100,6 +101,8 @@ export function showPlanTool(brain) {
     },
     async run({ goal, time, steps }, ctx) {
       if (!planOn(brain.cfg)) return 'Plans are off, so just do the job.';
+      // Max effort on one brain (solo-effort.js): Bob's loop checks the plan first, then puts it on this card itself.
+      if (ctx?.job?.solo && ctx.job.soloPhase === 'plan') return 'Not now: just write the plan as a numbered list. It goes on the plan card once you have checked it.';
       const list = (Array.isArray(steps) ? steps : []).map((s) => (typeof s === 'string' ? { say: s } : s)).filter((s) => s && (s.say || s.tool));
       return showPlan(brain, { goal, time, steps: list }, ctx);
     },
