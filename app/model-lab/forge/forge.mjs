@@ -18,6 +18,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { STARTUP_LOG, readStartups, recordStartup, freezingCards, orderCards, startupSummary } from './card-health.mjs';
 import { gate as neverGate, trains as planTrains, loadNever, neverFilesFor, findLeaks } from '../never-gate.mjs';
 import { V2, createPod, podV1, listOf, volumeV1, volumeBodyV2 } from './runpod-v2.mjs';
+import { slotsUsed } from './slots.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -375,7 +376,7 @@ function lessonPreflight() {
     const slots = Math.max(1, Number(m.slots) || 1), slotCtx = Math.floor((Number(m.ctx) || 32768) / slots);
     // 16 Nov: a jobs matrix runs every variant at once, each with its own --parallel
     const nVar = /jobs-matrix\.mjs/.test(c) ? Math.max(1, ((c.match(/--variants\s+("[^"]*"|\S+)/) || [])[1] || '').split(';').filter((x) => x.replace(/"/g, '').trim()).length) : 1;
-    const par = nVar * Number((c.match(/--parallel\s+(\d+)/) || [])[1] || 1), hrs = Number((c.match(/--hours\s+([\d.]+)/) || [])[1] || 0);
+    const par = slotsUsed(c), hrs = Number((c.match(/--hours\s+([\d.]+)/) || [])[1] || 0);
     hoursSum += hrs;
     if (!(hrs > 0) && !/jobs-gate\.mjs/.test(c)) bad.push(`${m.name} command ${i + 1} has no --hours`);
     if (par > slots) bad.push(`${m.name} command ${i + 1}: --parallel ${par}${nVar > 1 ? ` (${nVar} variants at once)` : ''} but the card serves ${slots} slot(s)`);

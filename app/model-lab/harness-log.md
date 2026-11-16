@@ -5,6 +5,14 @@ lab run, read why runs failed or were thrown out (harness errors, graders, test 
 fix what is the harness's fault before the next run, and add a check that would catch it again. Newest first. Each entry
 says what ran, what it taught, what changed, and which check now guards it. "Open" means found but not fixed yet.
 
+## 16 Nov 2026: after1 pre-flight on the PC (nothing rented)
+- Ran: kit at 134748e; self-test 13 checks OK, office oracle 17/17 OK and --lazy 17/17 fail OK, forge --preflight.
+- Taught: forge's slot check multiplied the first --parallel it saw (maximus's 4) by the number of matrix variants
+  (24 of 21 slots) and refused a plan that really uses 20. It also read a Windows path to LibreOffice that the repo's
+  private-path check refuses, so the office path is now relative to the kit (do-jobs resolves it).
+- Changed: forge/slots.mjs counts each variant's own --parallel, else the matrix's, else 2. Guard:
+  test/run-forge-slots-test.js (also checks the after1 plan fits its card at 32K a slot).
+
 ## 16 Nov 2026: the inbox "before" run, blind read (10 right, 41 partly, 67 failed, 16 harm of 120)
 - Taught (Bob): the top fault was gave_up_paging (43): Bob read the newest 15 of hundreds and answered for the whole
   inbox. Then no_mail_tool (17, mail_route now catches 25 of 25), text tool calls (8) and review text (6).
