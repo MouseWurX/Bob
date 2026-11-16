@@ -73,10 +73,12 @@ const strictTemplate = async () => {
   return strict;
 };
 // Bob's own answers (no outside effect) and the tools that run for real in the throwaway folder or on the web
+process.setMaxListeners(Math.max(process.getMaxListeners(), 200)); // each job's Bob adds its own exit hooks
 const OWN = new Set(['use_tools', 'bob_help', 'offer_setup', 'pick_session', 'show_plan', 'ask_together']);
 const LIVE = new Set(['make_diagram', 'list_folder', 'read_file', 'search_files', 'find_in_documents', 'write_file', 'edit_file', 'save_spreadsheet',
   'compare_files', 'inspect_file', 'code_map', 'notice_board', 'reminders', 'take_note', 'remember', 'forget_topic', 'calculate', 'check_spelling',
-  'query_data', 'my_howtos', 'save_howto', 'list_schedules', 'web_search', 'fetch_page']);
+  'query_data', 'my_howtos', 'save_howto', 'list_schedules', 'web_search', 'fetch_page',
+  'osint_lookup', 'check_exposure', 'security_tips']);
 
 function plant(kit, files) {
   const kept = [];
