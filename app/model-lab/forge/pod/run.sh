@@ -189,6 +189,26 @@ WD=$!; trap 'drive_list; kill $WD 2>/dev/null' EXIT
 status setup "installing tools"
 pip install -q aiohttp gguf sentencepiece huggingface_hub pyarrow accelerate 2>&1 | tail -1
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || echo "no nvidia-smi"
+# 16 Nov: hardware log for every run (the speed-test list: GPU temp, power, limit, clocks, VRAM, load, slowdown reasons, plus processor
+# load and memory). One line every 5 s to out/hw-telemetry.log; the PC keeps out/*.log when the pod goes. Pods usually hide processor temps.
+hw_log() {
+  Q=timestamp,index,temperature.gpu,temperature.memory,power.draw,power.limit,clocks.sm,clocks.mem,memory.used,memory.total,utilization.gpu,fan.speed,pcie.link.gen.current,pcie.link.width.current,clocks_throttle_reasons.active
+  nvidia-smi --query-gpu=$Q --format=csv,noheader >/dev/null 2>&1 || Q=timestamp,index,temperature.gpu,power.draw,power.limit,clocks.sm,clocks.mem,memory.used,memory.total,utilization.gpu
+  # once per run, like the speed test's environment.json: card, driver, VBIOS, power limit, PCIe; OS; processor; RAM (a shared host)
+  { echo "# card: $(nvidia-smi --query-gpu=name,driver_version,vbios_version,power.limit,pcie.link.gen.max,pcie.link.width.max --format=csv,noheader 2>/dev/null | tr '\n' ';')"
+    echo "# os: $(. /etc/os-release 2>/dev/null; echo "$PRETTY_NAME") $(uname -r) | cpu: $(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2-) x$(nproc 2>/dev/null) | ram_mb: $(free -m 2>/dev/null | awk '/^Mem:/{print $2}') | shared host"
+  } > $OUT/hw-environment.log
+  echo "# gpu: $Q | cpu: load1,load5,load15 | ram: used_mb,total_mb | cpu_temp_c (blank when hidden)" > $OUT/hw-telemetry.log
+  while true; do
+    G=$(nvidia-smi --query-gpu=$Q --format=csv,noheader 2>/dev/null | tr '\n' ';')
+    L=$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null | tr ' ' ',')
+    M=$(free -m 2>/dev/null | awk '/^Mem:/{print $3","$2}')
+    T=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf "%.1f", $1/1000}')
+    echo "$G | $L | $M | $T" >> $OUT/hw-telemetry.log
+    sleep 5
+  done
+}
+mkdir -p $OUT; hw_log & HWL=$!; trap 'drive_list; kill $WD $HWL 2>/dev/null' EXIT
 df -h $W | tail -1; [ "$S" != "$W" ] && { echo "shared volume: $S"; ls $S; }
 drive_list   # the PC learns right away which Forge-made brains the drive really holds
 # fast kernels for the linear-attention layers (flash-linear-attention + causal-conv1d). Built in the background while the teacher
