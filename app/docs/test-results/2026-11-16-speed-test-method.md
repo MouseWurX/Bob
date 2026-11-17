@@ -500,7 +500,7 @@ engine. Round 1 is the slowest for both.
 
 Brain Engine 14 (pre-release brain-engine-14b12359, patch 0023) refills the lent cache on a second stream while the
 brain writes, and uses it again from written token K on (`LLAMA_MOE_CACHE_LEND_BEHIND=K`, together with
-`LLAMA_MOE_CACHE_LEND=4096`). Plan `lend-behind.json`, 3 rounds, start and 32K, answers saved. Rows: L1 (lending with
+`LLAMA_MOE_CACHE_LEND=4096`). Plan `lend-behind.json`, 3 rounds, start and 32K, answers saved. Rows: S6k0 (step 6144, no cache: confirms Addendum 24), L1 (lending with
 no refill behind), B8, B24 and B64 (K = 8, 24, 64), and S6k3584 as the reference. The engine logs are searched for
 "uploaded again behind the writing in", "waited ... ms for the refill", "no second stream", take-back failures and
 decode -2.

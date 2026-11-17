@@ -1,5 +1,5 @@
 {
- "name": "Refill the lent cache behind the writing (Brain Engine 14, patch 0023): step 6144 + 4 GB lending, refill after 8, 24 or 64 written tokens, against lending alone and step 6144 + 3.5 GB, 3 rounds",
+ "name": "Refill the lent cache behind the writing (Brain Engine 14, patch 0023): step 6144 + 4 GB lending, refill after 8, 24 or 64 written tokens, against lending alone, no cache and step 6144 + 3.5 GB, 3 rounds",
  "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 27)",
  "brain": "${BRAIN}",
  "engines": {
@@ -160,6 +160,21 @@
    "env": {
     "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
    }
+  },
+  {
+   "id": "S6k0",
+   "engine": "be14",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "6144",
+    "-ub",
+    "6144"
+   ]
   }
  ],
  "saveText": true
