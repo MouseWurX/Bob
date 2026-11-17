@@ -85,3 +85,36 @@ path and the expert cache don't fit together yet. Only Y0, U0, T1 and F4c finish
 
 T1 wrote 2.3% (start) and 2.1% (32K) slower than Y0, against a rule of within 2%, on one run each. Words weren't compared.
 Nothing is decided until the fix is rebuilt and the run is complete.
+
+## Cache sweep (Addendum 22): 1 round, 15 setups, 11:39 to 11:52 AM Mountain
+
+All 15 ran; none failed or was cut. Single runs, so a shortlist, not a decision. Read / write, tokens a second.
+Rows marked * ran while the Claude app was open on the test PC (0.6 to 1.6 GB of RAM free; the rest had 2.3 to 2.9 GB).
+Card max 58.5 to 64 °C; throttled share 0 to 17% (mostly on 32K).
+
+| Step | Cache MB | Start | 16K | 32K | Hit rate |
+|---|---|---|---|---|---|
+| 4096 * | 4096 | 3189 / 78.5 | 2733 / 84.2 | 3141 / 91.4 | 92.5% |
+| 4096 * | 3968 | 3277 / 83.3 | 3413 / 80.6 | 3316 / 88.3 | 87.6% |
+| 4096 * | 3840 | 3359 / 88.0 | 3456 / 83.5 | 3356 / 91.6 | 87.8% |
+| 4096 * | 3712 | 3392 / 87.0 | 3348 / 72.7 | 3208 / 76.1 | 86.7% |
+| 4096 * | 3584 | 2714 / 85.5 | 3365 / 80.5 | 3306 / 77.1 | 86.1% |
+| 5120 | 4096 | 2541 / 73.7 | 3327 / 82.2 | 3501 / 80.8 | 87.4% |
+| 5120 | 3584 | 3308 / 81.3 | 3515 / 75.7 | 3580 / 80.4 | 84.8% |
+| 5120 | 3072 | 3399 / 95.7 | 3528 / 74.2 | 3605 / 83.7 | 85.5% |
+| 5120 | 2560 | 3468 / 92.9 | 3610 / 72.2 | 3628 / 83.4 | 84.3% |
+| 5120 | 2048 | 3535 / 86.3 | 3522 / 74.0 | 3631 / 73.7 | 83.0% |
+| 6144 | 4096 | 2460 / 89.9 | 3776 / 78.5 | 3732 / 75.8 | 88.6% |
+| 6144 | 3584 | 3281 / 101.0 | 3999 / 76.1 | 3816 / 86.4 | 88.4% |
+| 6144 | 3072 | 3404 / 82.3 | 4045 / 73.8 | 3895 / 78.8 | 83.0% |
+| 6144 | 2560 | 3379 / 75.6 | 4103 / 69.6 | 3938 / 74.1 | 79.4% |
+| 6144 | 2048 | 3545 / 88.7 | 4237 / 66.1 | 4035 / 72.7 | 79.6% |
+
+**Predictions (Addendum 22):** hit rate falls less than 1.5 points from 4096 to 3584 at step 4096: **missed** (6.4
+points, on rows run with Claude open). Step 5120 with 4 GB reads 32K 5 to 15% faster than X4096 and writes within 5%:
+read +11.5% **held**, write 32K -11.6% **missed** (step-4096 rows not comparable). Steps 5120 and 6144 write fastest
+with the biggest cache: **missed** (no clear order). No row judged a spill: **held**.
+
+**Seen:** bigger steps read faster (6144 best on 16K and 32K); smaller caches write slower on 32K, 2 GB the worst.
+The first setup of each step read the start prompt slowly (2460 to 2714), most likely the first load warming up.
+Writing was lower everywhere than this morning's 5-run medians. Next: the shortlist (Addendum 23).

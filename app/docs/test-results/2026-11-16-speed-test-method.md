@@ -421,3 +421,17 @@ within 5% of it. Steps 5120 and 6144 write faster with a bigger cache (2048 MB s
 **What it decides:** nothing is changed by itself. If a smaller size stays within 2% of X4096 on writing at every
 prompt, it is noted as freeing card room at no cost (Calibrate's coding pick stays at 4 GB unless the owner says
 otherwise).
+
+## Addendum 23 (Nov 17, after the 1-round sweep, before this run): the shortlist
+
+The 1-round sweep (Addendum 22) ran all 15 setups with none failed, but the five step-4096 rows ran while the
+Claude app was open on the test PC (0.6 to 1.6 GB of RAM free, against 2.3 to 2.9 GB for the rest), so they aren't
+compared with the others. `speed-plans/calibrate-shortlist.json`: the same settings and prompts, 6 setups: step 4096
+at 4096 and 3840 MB, step 5120 at 3072 and 3584 MB, step 6144 at 3584 and 4096 MB. **3 rounds** (18 loads),
+interleaved, with the Claude app closed on the test PC.
+
+**Predictions, written before any run:** step 6144 reads 32K at least 10% faster than step 4096 at 4096 MB. Step 4096
+at 4096 MB writes 32K at least 5% faster than every step-5120 and step-6144 setup. No setup is judged a spill.
+
+**What it decides:** nothing by itself. Calibrate's coding pick moves off step 4096 with 4 GB only if a setup reads
+32K faster and writes within 10% of the fastest writer on every prompt, the same rule Calibrate uses.
