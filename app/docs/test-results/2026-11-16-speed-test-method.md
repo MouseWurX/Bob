@@ -329,3 +329,24 @@ The calibration showed that CUDA graphs alone don't change the words (G0) and th
 `speed-plans/cube-check.json`: Y0, G4 and G2 on the start prompt and 32K, 5 rounds (15 loads), same engine, brain and settings as the calibration.
 
 **Decided in advance:** if G2 writes the same words as Y0 on both prompts in all its runs, the fusion break from `ggml_set_output` is the cause and the planned fix is enough. If G2's words differ from Y0, the callback split changes the words too, and the fix must also drop the callback (the planned fix already does). Speed isn't judged here, since G2 stops at every layer.
+
+## Addendum 19 (Nov 17, after the cube check, before this run): bigger caches and bigger reading steps
+
+The calibration tried the copy cache at 1, 2 and 4 GB, and 4 GB was the only size that helped at every prompt, so where it peaks is unknown. The owner asked for more than 4 GB, and for reading steps of 5K and 6K. `speed-plans/calibrate-bigger.json`: same brain, engine (Brain Engine 9), base settings and prompts as the calibration, 11 rows, **5 rounds** (55 loads), interleaved.
+
+| Row | Reading step | Copy cache | Why |
+|---|---|---|---|
+| Y0 | Normal (512) | none | Same-night yardstick |
+| F4c, X4c | 2048, 4096 | 4 GB | The calibration's chat and coding picks, as same-night anchors |
+| F5c, F6c | 2048 | 5, 6 GB | Does the chat pick keep gaining past 4 GB? |
+| X5c, X6c | 4096 | 5, 6 GB | The same for the coding pick |
+| S5k2c, S5k4c | 5120 | 2, 4 GB | A bigger step, with a small and the usual cache |
+| S6k2c, S6k4c | 6144 | 2, 4 GB | The same at 6144 |
+
+All caches are the copy kind (`--moe-cache-cpu-share 0`).
+
+**Safety and failures:** each load is skipped if the card has under 14,000 MB free before it starts (something else is using it), written down as not run. On Windows the driver can put card memory in RAM when the card is full. So the runner reads shared GPU memory before each load and after each timed run, and a rise of more than 512 MB marks that run failed as a spill. A load that doesn't start, a run that runs out of memory and a spill are all failures. They are reported as failures and never counted as slow runs. Gaming, the stop file and the test lock work as before.
+
+**Predictions, written before any run:** F5c and F6c write within 3% of F4c, because the busiest experts already fit in 4 GB and a bigger cache only takes room from layers. X5c and X6c read the 32K prompt slower than X4c. S5k and S6k read 32K at most 15% faster than X4c and write slower than X4c. S6k4c fails at 32K or spills.
+
+**What decides:** the same two rules as Bob's Calibrate, over rows with no failed run on any prompt. Chat pick: the fastest writer on the short prompt, and among rows within 3% of it, the fastest reader at 32K. Coding pick: among rows writing within 10% of the fastest writer, the fastest reader at 32K. A new row replaces F4c or X4c only if it wins over that night's F4c or X4c. Calibrate then tries that size or step on cards with room for it.

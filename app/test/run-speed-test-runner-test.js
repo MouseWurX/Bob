@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { quantile, median, parseSmiLine, cardSummary, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, lineSplitter, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns, parseDiskstats, parseDiskRaw, diskUse } from '../model-lab/speed-test.mjs';
+import { quantile, median, parseSmiLine, cardSummary, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, lineSplitter, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns, parseDiskstats, parseDiskRaw, diskUse, parseSharedMB } from '../model-lab/speed-test.mjs';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -182,6 +182,23 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   check('each timed run records what was read from the disk', res.runs.length > 0 && res.runs.every((r) => r.disk?.readMB === 50));
   const md = summarise([res], { prompts: {}, plan });
   check('the summary has a disk table when there are disk readings, and none without', /Read from the disk during the timed runs/.test(md) && /\| 50 \(50 to 50\) \|/.test(md) && !/Read from the disk/.test(summarise([{ ...res, runs: res.runs.map(({ disk, ...r }) => r) }], { prompts: {}, plan }))); }
+
+// ---------- Big rows: free card memory first, spills into RAM (Nov 17) ----------
+{ const { prompts } = loadPlan(planFile);
+  const f = { ...fx(), cardFreeMB: async () => 9000 };
+  const skip = await runRow({ plan, prompts, row: { ...plan.rows[1], needFreeMB: 14000 }, round: 0, fx: f });
+  check('a row wanting more free card memory than there is: skipped before loading, said as not run', /^skipped: 9000 MB free on the card before loading, 14000 MB wanted$/.test(skip.notRun) && !f.seen.starts.length && !skip.runs.length);
+  const g = { ...fx(), cardFreeMB: async () => 15000 };
+  const go = await runRow({ plan, prompts, row: { ...plan.rows[1], needFreeMB: 14000 }, round: 0, fx: g });
+  check('with enough free it loads, and the free memory is written down', !go.notRun && go.cardFreeMB === 15000 && go.runs.length === 1);
+  let k = 0; const h = { ...fx(), sharedGpuMB: async () => [300, 1400][Math.min(k++, 1)] };
+  const sp = await runRow({ plan: { ...plan, spillCheck: true }, prompts, row: plan.rows[1], round: 0, fx: h });
+  check('shared GPU memory rising over 512 MB during a load marks the run failed as a spill, not slow', /^spilled: shared GPU memory rose 1100 MB/.test(sp.runs[0].failed) && sp.runs[0].sharedRiseMB === 1100);
+  let j = 0; const q = { ...fx(), sharedGpuMB: async () => [300, 500][Math.min(j++, 1)] };
+  const fine = await runRow({ plan: { ...plan, spillCheck: true }, prompts, row: plan.rows[1], round: 0, fx: q });
+  const offSp = await runRow({ plan, prompts, row: plan.rows[1], round: 0, fx: h });
+  check('a small rise is fine, and the check is off unless the plan asks', !fine.runs[0].failed && fine.runs[0].sharedRiseMB === 200 && offSp.runs[0].sharedRiseMB === undefined);
+  check('shared memory: bytes to MB; nothing or an error is no number', parseSharedMB('2147483648\r\n') === 2048 && parseSharedMB('') === null && parseSharedMB('Get-Counter : error') === null); }
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

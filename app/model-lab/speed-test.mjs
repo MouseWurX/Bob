@@ -46,6 +46,8 @@ export function quantile(xs, q) {
 export const median = (xs) => quantile(xs, 0.5);
 const r1 = (x) => (x === null || x === undefined || !Number.isFinite(x) ? null : Math.round(x * 10) / 10);
 
+// PowerShell's sum of shared GPU memory in bytes (a number, maybe with a decimal comma) -> whole MB, or null.
+export function parseSharedMB(text) { const n = Number(String(text || '').trim().replace(',', '.')); return String(text || '').trim() && Number.isFinite(n) ? Math.round(n / 1048576) : null; }
 // One nvidia-smi line -> a sample. Unknown values ("[N/A]") become null.
 // Text arrives in chunks that can end mid-line: keep the piece until its line ends.
 export function lineSplitter(onLine) {
@@ -229,6 +231,17 @@ export async function runRow({ plan, prompts, row, round, fx }) {
     while (Number.isFinite(t) && t > want && waited < most && !fx.shouldStop()) { await fx.sleep(step * 1000); waited += step; t = await fx.cardTempC(); }
     out.coolDown = { startC, endC: t, waitedS: waited, hitLimit: Number.isFinite(t) && t > want };
   }
+  // Nov 17 (the owner: "if 6 doesn't fit my computer won't crash, will it?"): row.needFreeMB skips a load when the card
+  // has less free than that before it starts (something else is on it), written down as not run, never as slow.
+  if (row.needFreeMB && fx.cardFreeMB) {
+    const free = await fx.cardFreeMB();
+    out.cardFreeMB = free;
+    if (Number.isFinite(free) && free < row.needFreeMB) { out.notRun = `skipped: ${free} MB free on the card before loading, ${row.needFreeMB} MB wanted`; return out; }
+  }
+  // plan.spillCheck: on Windows the driver can quietly put card memory in RAM when the card is full ("sysmem
+  // fallback"). Shared GPU memory is read before the load and after each timed run; a rise over plan.spillMB (512)
+  // marks that run failed, so a spilled run never counts as a slow speed.
+  const spill0 = plan.spillCheck && fx.sharedGpuMB ? await fx.sharedGpuMB() : null;
   out.sysBefore = await fx.system?.(); // processor and RAM, CPU temperature if Windows gives it, top processes; before the load
   const srv = await fx.start(eng.exe, args, env);
   try {
@@ -267,6 +280,12 @@ export async function runRow({ plan, prompts, row, round, fx }) {
       const samples = card.stop();
       const proc = cpu?.stop();
       const disk = plan.diskReads ? diskUse(disk0, await fx.diskReadBytes?.(), r?.writtenN ?? r?.words ?? 0) : null;
+      if (Number.isFinite(spill0)) {
+        const now = await fx.sharedGpuMB();
+        const rise = Number.isFinite(now) ? now - spill0 : null;
+        r = { ...r, sharedRiseMB: rise };
+        if (rise > (plan.spillMB ?? 512) && !r.failed) r.failed = `spilled: shared GPU memory rose ${rise} MB during the load (card memory put in RAM)`;
+      }
       out.runs.push({ prompt: p, ...r, ...(proc ? { cpu: proc } : {}), ...(disk ? { disk } : {}), card: cardSummary(samples), throttled: samples.some((x) => x?.throttled), cardSamples: samples });
     }
     out.cache = parseCacheLog(srv.log()); // with LLAMA_MOE_CACHE_LOG_EVERY set, the latest totals
@@ -378,6 +397,12 @@ function realFx(plan, outDir) {
     async detokenize(url, tokens) { const r = await fetch(url + '/detokenize', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tokens }) }); return (await r.json()).content || ''; },
     async cardTempC() { return new Promise((r) => { let o = ''; try { const c = nodeSpawn('nvidia-smi', ['--query-gpu=temperature.gpu', '--format=csv,noheader,nounits'], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }); c.on('error', () => r(null)); c.stdout.on('data', (d) => { o += d; }); c.on('exit', () => { const n = parseFloat(o); r(Number.isFinite(n) ? n : null); }); } catch { r(null); } }); },
     sleep(ms) { return new Promise((r) => setTimeout(r, ms)); },
+    async cardFreeMB() { return new Promise((r) => { let o = ''; try { const c = nodeSpawn('nvidia-smi', ['--query-gpu=memory.free', '--format=csv,noheader,nounits'], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }); c.on('error', () => r(null)); c.stdout.on('data', (d) => { o += d; }); c.on('exit', () => { const n = parseFloat(o); r(Number.isFinite(n) ? n : null); }); } catch { r(null); } }); },
+    // Windows only: the sum of every graphics adapter's shared memory in use, in MB (null elsewhere or on error).
+    async sharedGpuMB() {
+      if (process.platform !== 'win32') return null;
+      return new Promise((r) => { let o = ''; try { const c = nodeSpawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', "((Get-Counter '\\GPU Adapter Memory(*)\\Shared Usage').CounterSamples | Measure-Object CookedValue -Sum).Sum"], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }); c.on('error', () => r(null)); c.stdout.on('data', (d) => { o += d; }); c.on('exit', () => r(parseSharedMB(o))); setTimeout(() => { try { c.kill(); } catch {} r(parseSharedMB(o)); }, 20e3); } catch { r(null); } });
+    },
     async diskReadBytes() {
       if (process.platform === 'linux' || process.platform === 'android') { try { return parseDiskstats(fs.readFileSync('/proc/diskstats', 'utf8')); } catch { return null; } }
       if (process.platform !== 'win32') return null;
