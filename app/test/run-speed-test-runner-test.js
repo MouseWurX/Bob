@@ -51,6 +51,8 @@ fs.writeFileSync(planFile, JSON.stringify(plan));
   fs.writeFileSync(planFile, JSON.stringify({ ...plan, rows: [...plan.rows, { id: 'A', engine: 'none', prompts: ['long'] }] }));
   const bad = loadPlan(planFile).problems.join(' | ');
   check('a bad plan says what\'s wrong', /no engine "none"/.test(bad) && /no prompt "long"/.test(bad) && /share an id/.test(bad));
+  fs.writeFileSync(planFile, JSON.stringify({ ...plan, promptRepeat: { short: 3 } }));
+  check('promptRepeat lays a prompt file end to end N times', loadPlan(planFile).prompts.short.text === 'Say hi.\n\n\nSay hi.\n\n\nSay hi.\n');
   fs.writeFileSync(planFile, JSON.stringify(plan)); }
 check('rows taken in turn, round after round', schedule([{ id: 1 }, { id: 2 }], 3).map((x) => `${x.round}${x.row.id}`).join() === '01,02,11,12,21,22');
 

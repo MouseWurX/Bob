@@ -205,7 +205,10 @@ export function loadPlan(file, { read = (f) => fs.readFileSync(f, 'utf8').replac
   const prompts = {};
   for (const [id, f] of Object.entries(plan.prompts || {})) {
     try {
-      const text = read(path.resolve(base, f));
+      // plan.promptRepeat.<id> = N: the file N times over, so one text can fill a 128K or 256K context
+      const once = read(path.resolve(base, f));
+      const times = Math.max(1, Math.floor(Number(plan.promptRepeat?.[id]) || 1));
+      const text = times > 1 ? Array(times).fill(once).join('\n\n') : once;
       let chat = null;
       if (/\.json$/i.test(f)) { try { const j = JSON.parse(text); if (Array.isArray(j.messages)) chat = j; } catch {} if (!chat) problems.push(`prompt ${id}: a .json prompt needs "messages"`); }
       prompts[id] = { text, sha: sha256(text), ...(chat ? { chat } : {}) };

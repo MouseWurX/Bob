@@ -540,3 +540,22 @@ length. On the laptop, a brain over 6 GB with the cache writes faster than the s
 
 **What it decides:** which claims go in the README and Help. Each claim names the card, the brain, the setting and the
 rounds.
+
+## Addendum 29 (Nov 17, before any run): context sizes
+
+The owner asked for runs at different context sizes. Plan `context-sizes.json`, Brain Engine 14, 1 round (preliminary).
+Three setups at step 6144: S6k0 (no cache), L1 (4 GB cache, lending on) and S6k3584. Each runs at four context
+sizes, `-c` 49152, 73728, 139264 and 262144, on the start prompt plus a prompt that nearly fills that context: 32K,
+60K, 120K and 248K tokens. That is 12 loads. Qwen3.6 is native 256K, so YaRN is not used.
+
+The long text is only about 37K tokens, so the runner gains `promptRepeat`, which lays a prompt file end to end N
+times (2, 4 and 8 here) before the cut. A repeated text reads at the same speed as a fresh one, because the prompt cache
+is off and every token is attended to. The answers are less meaningful, so this plan judges speed, not words. The load
+timeout is raised to 15 minutes.
+
+**Predictions, written before any run:** all 12 load. Reading speed falls as the prompt grows, by at least a third
+from 32K to 248K. S6k0 stays the fastest reader at every size. At 256K, --fit moves layers to RAM for the cached
+rows, and S6k3584 writes no faster than S6k0 there. Free RAM stays above 1 GB.
+
+**What it decides:** how Calibrate sizes the cache by context at load, and whether a cached setup is worth it at 128K
+and 256K.
