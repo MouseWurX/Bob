@@ -14,6 +14,8 @@
 // Written out, never summarised away: runs.jsonl (every run, every word gap, every card sample, the command line and
 // the engine's cache lines), then summary.md (median, min and max per row and prompt; word gap median, p95, p99 and
 // longest; throttled runs counted and flagged, not dropped). A row that can't start is recorded as not run, with why.
+// While it runs, summary-so-far.md holds the same table from the loads done so far (rewritten between loads, never
+// during a timed run), so the columns fill in as it goes. Open it in Notepad and reopen it to see new rows.
 //
 // Stop rules: the test stops between runs, frees the card and keeps what finished, when the stop file appears (Bob's
 // Gaming mode or the owner can write it) or a process on the plan's `games` list starts. It takes the PC test lock
@@ -231,6 +233,13 @@ export async function runRow({ plan, prompts, row, round, fx }) {
 }
 
 // The tables: per row and prompt, median with min and max, never a mean alone.
+// The same table as summary.md, from the loads done so far, with how far along the run is on top.
+export function liveSummary(results, { prompts = {}, plan = {}, total = 0, now = new Date() } = {}) {
+  const done = results.filter((r) => !r.notRun).length;
+  const head = `> In progress: ${done} of ${total} loads done (updated ${now.toLocaleTimeString()}). Medians firm up as rounds finish; summary.md is written at the end.\n\n`;
+  return head + summarise(results, { prompts, plan });
+}
+
 export function summarise(results, { prompts = {}, plan = {} } = {}) {
   const by = new Map();
   for (const res of results) {
@@ -397,6 +406,8 @@ async function main() {
       const res = await runRow({ plan, prompts, row, round, fx });
       results.push(res);
       fs.appendFileSync(jsonl, JSON.stringify(res) + '\n');
+      // Between loads, never during a timed run: the table so far, for anyone watching (open it in Notepad).
+      fs.writeFileSync(path.join(outDir, 'summary-so-far.md'), liveSummary(results, { prompts, plan, total: order.length }));
       if (res.stopped) break;
     }
   } finally { lock.release(); }

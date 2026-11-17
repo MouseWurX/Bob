@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { quantile, median, parseSmiLine, cardSummary, streamOnce, loadPlan, schedule, runRow, summarise, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns } from '../model-lab/speed-test.mjs';
+import { quantile, median, parseSmiLine, cardSummary, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns } from '../model-lab/speed-test.mjs';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -107,7 +107,10 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   const md = summarise([mk('A', 40), mk('A', 44, true), mk('A', 42, true), { row: 'C', round: 0, notRun: 'no room', runs: [] }], { prompts: { short: { sha: sha256('x') } }, plan });
   check('median with min and max, never a mean alone', /\| A \| short \| 3 \| 50 \(50 to 50\) \| 1000 \(1000 to 1000\) \| 42 \(40 to 44\) \|/.test(md));
   check('throttled runs kept and counted, and two of them flag a re-run', /\| 2 \|$/m.test(md) && /More than one throttled run/.test(md));
-  check('a row not run says why', /\| C \| - \| 0 \| not run: no room/.test(md)); }
+  check('a row not run says why', /\| C \| - \| 0 \| not run: no room/.test(md));
+  const live = liveSummary([mk('A', 40), mk('A', 44)], { prompts: {}, plan, total: 6, now: new Date(2026, 10, 16, 19, 10) });
+  check('the table so far says how far along the run is, then the same table', /In progress: 2 of 6 loads done/.test(live) && /\| A \| short \| 2 \| 50 \(50 to 50\) \| 1000 \(1000 to 1000\) \| 42 \(40 to 44\) \|/.test(live));
+  check('the table so far is written between loads, never during a timed run', /appendFileSync\(jsonl[\s\S]{0,200}summary-so-far\.md/.test(fs.readFileSync(new URL('../model-lab/speed-test.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n'))); }
 
 // the lock
 { const lock = path.join(tmp, 'lock.txt');
