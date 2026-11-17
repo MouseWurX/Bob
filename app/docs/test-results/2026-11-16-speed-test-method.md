@@ -253,3 +253,27 @@ Every row reads the short prompt, 16K and 32K (context 36,864), except SOAK. Two
 - **Time spent throttled**: for every run, the share of the 250 ms card samples in which the card slowed itself (heat or power cap), with the writing speed of the least and most throttled run of each row. Throttled runs are kept, as before.
 
 The cool-down makes the rows fair to each other. SOAK shows the throttling anyone would see in real use. If the laptop runs on battery, the results say so; the owner is asked to plug it in. The summary-so-far.md table fills in between loads, as on the PC.
+
+## Addendum 15 (Nov 16, 7:35 PM Mountain, during night 1, before any result was read): predictions
+
+The owner asked what to expect. These predictions are written down while night 1 runs, before anyone has read a number from it. They are graded against the results page as they stand, right or wrong. Ranges are against the row named, on the same prompt.
+
+| Rows | Prediction | Why |
+|---|---|---|
+| R2048, R4096 vs R512 | Reading 16K and 32K: 1.5x to 2.5x faster at 4096, less at 2048. First word at 32K falls by about the same share. Writing within 3%. Peak card memory up 1 to 2 GB. | Bigger batches copy each expert to the card fewer times; a 3060 report showed 2.5x to 2.9x on a dense brain. |
+| E0 vs P1 | Within 2% on every number. | Brain Engine with everything off runs upstream's code paths. |
+| E1, E2, E3 vs E0 | Each within 2%. | They change a few numbers per word, not the work. |
+| E4 vs E0 | Writing 5% to 18% slower. Reading within 3%. | Brain Engine 5 cost 18% writing short; 6 and later copy the picks once per word, not once per layer. |
+| E5 vs E4 | Within 3% of E4. | The trace is the only costly one. |
+| N0 vs E0 | Within 2%. | Brain Engine 9's new parts are all off. |
+| N3 | Medians within 2%, but fewer long word gaps (lower max gap). It may be refused if Windows won't lock that much RAM. | Locking stops paging, which shows in the worst gaps, not the median. |
+| N4 (hot experts 4 GB, ranked) | Writing 0% to 15% faster. Reading and first word unchanged. | Stated limit: prompt reading skips the cache. The cache takes room that --fit would give to layers. |
+| H4, H5, H6 vs H1, H2, H3 | Ranked at least as fast as stock at the same size, most gain at 2 GB. 6 GB may be slower than 4 GB. | The stock cache learns its experts during the first answers; a short run leaves it half learned. Too big a cache squeezes layers off the card. |
+| H7 vs H2 | Writing 10% to 40% slower. | Share 0 copies a missed expert over the cable every time instead of working it out on the processor. |
+| N5, N5F | Reading 0% to 10% faster at Normal; no change at Fastest. | Prefetch hides copying, which Fastest already makes rare. |
+| C2-1, C2-4, C2-14 vs N0 | C2-1 costs about what E4 costs; C2-14 within 2%. | The cost is per word sent. |
+| T2, T3 vs T0 (temperature 0) | Writing 20% to 60% faster, T3 a little ahead of T2. Same words as T0. | Qwen3.6's MTP layer guesses most next words right at temperature 0. |
+| T3S vs T0S (Bob's sampling) | Writing 10% to 35% faster, with fewer guesses kept than T3. | Sampling at 0.7 rejects more guesses. |
+| Laptop SOAK | The card throttles within the first 2 minutes. Writing settles 10% to 30% below the first minute. | Laptop cards run near their heat and power limit. |
+
+**What would change Bob's defaults.** Fastest reading becomes the default on 16 GB cards if it is at least 1.5x faster at 32K with writing within 3%. Hot experts is offered as a setting only if N4 or H5 is at least 5% faster writing with no copying. Turbo is offered on brains with an MTP layer if T3S is at least 10% faster with the same quality. A patch costing more than 2% with its feature off is reported as a bug.
