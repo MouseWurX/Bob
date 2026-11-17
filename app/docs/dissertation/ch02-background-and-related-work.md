@@ -310,12 +310,19 @@ The speed tests of 16 and 17 November turn the deployment target above into meas
 | Paste long documents, work on a repository, run agent jobs | Reading step 4096 + 4 GB hot-experts cache, copied | Reading 2.7x to 2.8x, first word on 32K in 10.0 s; writing 14% to 19% faster | The same |
 | Want the default's exact words | Bob's defaults (step 512, no cache) | Bob's settings are already 6% faster at writing and 9% faster at reading than llama.cpp's own defaults | Slow first word on long prompts (26.6 s at 32K) |
 
+**Two coding picks, head to head (17 November).** A bigger step with a slightly smaller cache was tried against the coding pick above: step 6144 with a 3.5 GB cache, against step 4096 with 4 GB.
+
+- **Step 6144** finished long prompts about 1 s sooner.
+- **Step 4096** wrote 4% to 24% faster and left about 0.3 GB more RAM free, which matters when only 1 to 3 GB is free.
+
+So step 4096 with 4 GB stays the coding pick.
+
 What not to turn on, on this machine:
 
 - **Turbo (MTP).** It slowed prompt reading by 13% to 16%, and writing ranged from 17% slower to 3% faster with Bob's sampling.
 - **Prefetch.** It read 5.6% to 12.7% slower and used more of the card.
 - **Smaller hot-experts caches (1 GB and 2 GB).** They often lost to no cache on long prompts.
-- **The fNRI live trace.** Leave it off unless you are looking inside the brain. It costs about 9% of writing speed, and until its fix is tested it changes the words.
+- **The fNRI live trace, on older engines.** Before Brain Engine 11 it cost 9% to 11% of writing and changed the words. From Brain Engine 11 the words match, and it costs about 1% to 2% with the 4 GB cache and about 4% without (section 3.4.3).
 
 Two practical notes. First, 32 GB of RAM leaves only 1 to 3 GB free with this brain loaded, so other large programs can slow it. Second, the brain's own size matters more than any setting. The dense 27B Qwen wrote about 10 words a second on the same card, against 70 to 90 for the 35B mixture-of-experts brain, because the mixture-of-experts brain uses only a few experts for each word (section 2.1.3).
 

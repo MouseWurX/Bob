@@ -117,9 +117,19 @@ Together these patches feed Bob's **fNRI system**. It has two parts: brain scans
 
 A likely common cause, which we have not confirmed: the card fuses the router's softmax, sort, top-k and weighting into one kernel only inside one graph piece, and both the output mark and a callback split that piece.
 
-**The fix.** The picks are written out by the fused kernel itself into a fixed buffer on the card, with no callback and no `ggml_set_output`. The trace is then read once per step, as patch 0010 already does. The fix is being built for the next Brain Engine.
+**The fix.** Patch 0021 in Brain Engine 11 reads the picks from kept copies, with no eval callback and no `ggml_set_output`, so the router's fused kernel stays whole. An earlier build of the fix (Brain Engine 10) crashed when the trace and the hot-experts cache were on together, and Brain Engine 11 fixed that. Before the fix, the same pairing crashed in round 1.
 
-**Results after the fix.** Unproven in our lab, as we have yet to test. The test is the same three-way run: the fixed trace against no trace, on the same prompts. It passes only if the words match word for word at temperature 0, and the speed cost is reported beside it. Until then, the expert maps in this thesis carry this limit (section 3.8).
+**Results after the fix (17 November).** Brain Engine 11 (llama.cpp b12359 with patches 0001 to 0021) ran on the same card and brain, 5 rounds, 25 loads, and all 25 ran clean. The settings were Normal and the step 2048 + 4 GB copy cache from section 4.3.3.
+
+- **Same words.** With the trace on, the brain wrote exactly the same words as with it off, on the start prompt and at 32K, in every run and at both settings.
+- **The fused kernel is no longer broken.** As a control, the fused kernel was switched off by hand (`GGML_CUDA_DISABLE_FUSION`), and that run wrote different words. So it was the broken fusion that changed the words, and the trace no longer breaks it.
+
+| Setting | Writing cost with the trace on, start / 32K | Before the fix | Rule set beforehand (2% or less) |
+|---|---|---|---|
+| Step 2048 + 4 GB copy cache | −1.8% / −1.0% | crashed | passes |
+| Normal (step 512, no cache) | −4.0% / −3.9% | −9% to −11% | misses |
+
+Reading speed stayed within about 1%. The fNRI trace now watches without changing what the brain writes. On the plain engine it still costs about 4% of writing. A further fix for that cost is in progress and is unproven in our lab, as we have yet to test.
 
 ### 3.4.4 Card sharing and the small helper
 
@@ -262,7 +272,7 @@ The instruments were made because the questions demanded them: the mask, dials, 
 - **No automatic engine test.** A patch in the wrong place would be found only by the PC test.
 - **Dry runs prove running, not helping.** The self-tests say so themselves, and most Forge builds after build 14 had no card test when the README was written.
 - **Overhead measured on one machine only.** The with-and-without timings in section 3.4.5 (added 17 November) come from one consumer PC, one brain and one quant. Other cards and brains are unproven in our lab, as we have yet to test.
-- **The fNRI trace changes the words.** Until the fix in section 3.4.3 is tested, a traced answer can differ from an untraced one at temperature 0. Expert maps from traced runs describe the traced brain.
+- **Traces taken before Brain Engine 11 changed the words.** Before the fix in section 3.4.3, a traced answer could differ from an untraced one at temperature 0, so expert maps from those runs describe the traced brain. From Brain Engine 11 the words match.
 - **One builder.** The code was written and checked inside one project, with an AI assistant as a contributor (docs/COSTS.md). No outsider has reviewed it.
 - **Judge limits.** The tool judge measures agreement with the teacher, and is blind to a call that is right in a way the teacher did not record.
 - **Status.** The never-taught gate shipped in release 1.5.238. The decisive retrain on reviewed lessons has not been run, so no instrument here has yet been used on the lessons the dissertation finally recommends.
