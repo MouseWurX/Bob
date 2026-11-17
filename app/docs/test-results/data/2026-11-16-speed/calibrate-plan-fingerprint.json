@@ -1,0 +1,10 @@
+{
+  "plan": "7dda7448528729ac8c47b24b7d6fe27fd98257d3396e9f0d4a2a4a3909ae6694",
+  "prompts": {
+    "start": "9f5e47b673e7464110d359370569c750a413cf2d670a0da2bae6025f738aab37",
+    "k16": "f943a92d0eb192b39f32a64a25be0c1a3f80c554b63e4d1bfd31d725cb2dfed6",
+    "k32": "f943a92d0eb192b39f32a64a25be0c1a3f80c554b63e4d1bfd31d725cb2dfed6"
+  },
+  "rounds": 5,
+  "loads": 85
+}
