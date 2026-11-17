@@ -30,3 +30,4 @@ starts.
 - `public-h2h-qwen35.json`: public head to head on the 16 GB card: plain llama.cpp (its defaults, steps 4096 and 6144) against Brain Engine 14 (step 4096 no cache, chat pick, work pick, step 6144 + 3.5 GB), start, 16K and 32K, 5 rounds, answers saved (Addendum 28).
 - `context-sizes.json`: no cache, lending and step 6144 + 3.5 GB at 32K, 64K, 128K and 256K context (Brain Engine 14), start plus a prompt that nearly fills each, 1 round (Addendum 29). The long text is laid end to end (`promptRepeat`) to reach 256K.
 - `read-layout.json`: Brain Engine 15 puts whole layers in the cache during big reads (LLAMA_MOE_CACHE_READ_LAYERS=4096, -b 8192 -ub 4096) against the same without it, step 4096 + 4 GB and step 6144 with no cache, start and 32K, 3 rounds, answers saved (Addendum 30).
+- `read-layout-contexts.json`: Brain Engine 15 read layout on step 4096 + 4 GB (X4096, R0 at -b 8192, R1 with READ_LAYERS=4096) at 32K, 64K, 128K and 256K, 1 round (Addendum 31).

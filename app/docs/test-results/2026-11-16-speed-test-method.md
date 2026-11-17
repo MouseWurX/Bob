@@ -577,3 +577,15 @@ sooner. R1 writes within 2% of R0. On start, R1 does not switch and gives R0's w
 warns the gain may be small: it uploads about the same bytes as reading through the cache.
 
 **What it decides:** whether the read layout goes into Calibrate's tries for long prompts. It stays off by default.
+
+## Addendum 31 (Nov 17, before any run): the read layout through the context sizes
+
+The owner asked to try the read layout (Addendum 30) on their favourite setup, step 4096 + 4 GB, at every context
+size. Plan `read-layout-contexts.json`, Brain Engine 15, 1 round, 12 loads. X4096, R0 (`-b 8192 -ub 4096`, 4 GB) and R1
+(R0 with `LLAMA_MOE_CACHE_READ_LAYERS=4096`) each run at `-c` 49152, 73728, 139264 and 262144, on the start prompt
+plus the 32K, 60K, 120K and 248K prompts of Addendum 29. Answers are compared only within one context size.
+
+**Predictions, written before any run:** R1 reads faster than R0 at every size, by at least 10% at 32K and 64K. R1 writes
+within 2% of R0. The 128K and 256K rows spill less than step 6144 did (a smaller reading step), but may still spill.
+
+**What it decides:** whether the read layout is worth a place in Calibrate's tries, and at which context sizes.

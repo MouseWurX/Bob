@@ -1,0 +1,353 @@
+{
+ "name": "Read layout through the context sizes (Brain Engine 15, patch 0024): step 4096 + 4 GB, with and without the read layout, at 32K, 64K, 128K and 256K, 1 round",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 31)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be15": {
+   "exe": "${BE15_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "k32": "long-text.md",
+  "k60": "long-text.md",
+  "k120": "long-text.md",
+  "k250": "long-text.md"
+ },
+ "promptTokens": {
+  "k32": 32768,
+  "k60": 61440,
+  "k120": 122880,
+  "k250": 253952
+ },
+ "question": {
+  "k32": "\n\nIn two sentences, what is this text about?",
+  "k60": "\n\nIn two sentences, what is this text about?",
+  "k120": "\n\nIn two sentences, what is this text about?",
+  "k250": "\n\nIn two sentences, what is this text about?"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "-ctk",
+  "q8_0",
+  "-ctv",
+  "q8_0",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 1,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "rows": [
+  {
+   "id": "X4096-32K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "R0-32K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "8192",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "R1-32K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "8192",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_READ_LAYERS": "4096"
+   }
+  },
+  {
+   "id": "X4096-64K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k60"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-c",
+    "73728",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "R0-64K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k60"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-c",
+    "73728",
+    "-b",
+    "8192",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "R1-64K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k60"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-c",
+    "73728",
+    "-b",
+    "8192",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_READ_LAYERS": "4096"
+   }
+  },
+  {
+   "id": "X4096-128K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k120"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "R0-128K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k120"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "8192",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "R1-128K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k120"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "8192",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_READ_LAYERS": "4096"
+   }
+  },
+  {
+   "id": "X4096-256K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k250"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "R0-256K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k250"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "8192",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "R1-256K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k250"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "8192",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_READ_LAYERS": "4096"
+   }
+  }
+ ],
+ "saveText": true,
+ "promptRepeat": {
+  "k60": 2,
+  "k120": 4,
+  "k250": 8
+ }
+}
