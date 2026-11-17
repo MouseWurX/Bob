@@ -277,3 +277,25 @@ The owner asked what to expect. These predictions are written down while night 1
 | Laptop SOAK | The card throttles within the first 2 minutes. Writing settles 10% to 30% below the first minute. | Laptop cards run near their heat and power limit. |
 
 **What would change Bob's defaults.** Fastest reading becomes the default on 16 GB cards if it is at least 1.5x faster at 32K with writing within 3%. Hot experts is offered as a setting only if N4 or H5 is at least 5% faster writing with no copying. Turbo is offered on brains with an MTP layer if T3S is at least 10% faster with the same quality. A patch costing more than 2% with its feature off is reported as a bug.
+
+## Addendum 16 (Nov 17, after night 1's results, before this run): the calibration run
+
+Night 1 measured reading steps and hot experts apart. They compete for the card: the cache takes room that `--fit` would give to layers, and bigger reading steps need bigger work buffers. `speed-plans/calibrate.json` measures them together to find the best pair, on the same brain and engine (Brain Engine 9), 17 rows, **3 rounds** (51 loads). The owner chose 3 rounds to pick a winner; the winner and the yardstick then get 5 rounds before any number goes on a results page as final.
+
+- **Y0:** Normal reading, no cache, as the same-night yardstick.
+- **F0, X0:** Faster (2048) and Fastest (4096), no cache.
+- **F1p, F2p, F4p / X1p, X2p, X4p:** each step with the stock cache at 1, 2 and 4 GB, missed experts worked out on the processor (`--moe-cache-cpu-share 1`).
+- **F1c, F2c, F4c / X1c, X2c, X4c:** the same, missed experts copied to the card (`--moe-cache-cpu-share 0`, night 1's fastest writer).
+- **G0:** no trace, CUDA graphs turned off (`GGML_CUDA_DISABLE_GRAPHS=1`).
+- **G4:** the live trace on, as E4.
+
+Every row reads the short prompt, 16K and 32K, except G0 and G4 (short and 32K). The cache is filled the stock way: night 1 found the ranking no faster. 6 GB is left out: it read slowest and wrote no faster than 4 GB.
+
+**What decides "best":**
+- First, writing on the short prompt within 3% of the best row.
+- Among those, the fastest reading at 32K.
+- A row that writes more than 3% slower than Y0 on any prompt can't win.
+
+**What G0 decides:** if G0 writes within 3% of G4, the live trace's cost is CUDA graphs being turned off. If G0 writes within 3% of Y0, it isn't. If G0 writes the same words as Y0, the word change under the trace comes from somewhere other than the replay.
+
+The runner now joins split nvidia-smi lines, so the card conditions are read from whole lines.
