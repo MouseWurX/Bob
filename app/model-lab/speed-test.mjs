@@ -169,7 +169,8 @@ export async function streamOnce(url, body, { fetchImpl = fetch, now = () => per
     readTps: r1(Number(timings?.prompt_per_second)), writeTps: r1(Number(timings?.predicted_per_second)),
     promptN: timings?.prompt_n ?? null, writtenN: timings?.predicted_n ?? null,
     ...(timings?.draft_n ? { draftN: timings.draft_n, draftKept: timings.draft_n_accepted, keptPct: r1((100 * timings.draft_n_accepted) / timings.draft_n) } : {}),
-    textSha: sha256(text)
+    textSha: sha256(text),
+    text // kept in the record only when the plan asks (saveText)
   };
 }
 
@@ -267,7 +268,8 @@ export async function runRow({ plan, prompts, row, round, fx }) {
       const samples = card.stop();
       const proc = cpu?.stop();
       const disk = plan.diskReads ? diskUse(disk0, await fx.diskReadBytes?.(), r?.writtenN ?? r?.words ?? 0) : null;
-      out.runs.push({ prompt: p, ...r, ...(proc ? { cpu: proc } : {}), ...(disk ? { disk } : {}), card: cardSummary(samples), throttled: samples.some((x) => x?.throttled), cardSamples: samples });
+      const { text: said, ...rest } = r || {};
+      out.runs.push({ prompt: p, ...rest, ...(plan.saveText && typeof said === 'string' ? { text: said } : {}), ...(proc ? { cpu: proc } : {}), ...(disk ? { disk } : {}), card: cardSummary(samples), throttled: samples.some((x) => x?.throttled), cardSamples: samples });
     }
     out.cache = parseCacheLog(srv.log()); // with LLAMA_MOE_CACHE_LOG_EVERY set, the latest totals
   } finally { await srv.stop(); }

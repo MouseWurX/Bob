@@ -118,5 +118,6 @@
     "expert_trace_stream": true
    }
   }
- ]
+ ],
+ "saveText": true
 }

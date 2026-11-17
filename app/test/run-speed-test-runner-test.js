@@ -34,7 +34,7 @@ function fakeStream(times, timings) {
   check('every gap kept, and the tail shows the one stall', r.gapsMs.join() === '10,10,10,200' && r.gaps.median === 10 && r.gaps.max === 200 && r.gaps.p99 > 190);
   check('the engine\'s own reading and writing speed', r.readTps === 1500 && r.writeTps === 40 && r.writtenN === 5);
   check('Turbo\'s kept guesses', r.draftN === 10 && r.keptPct === 70);
-  check('the answer is fingerprinted, not kept', r.textSha === sha256('w w w w w ') && !('text' in r)); }
+  check('the answer is fingerprinted, and handed on for a plan that keeps it (saveText)', r.textSha === sha256('w w w w w ') && r.text === 'w w w w w '); }
 
 // plans
 fs.writeFileSync(path.join(tmp, 'short.txt'), 'Say hi.\r\n');
@@ -182,6 +182,14 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   check('each timed run records what was read from the disk', res.runs.length > 0 && res.runs.every((r) => r.disk?.readMB === 50));
   const md = summarise([res], { prompts: {}, plan });
   check('the summary has a disk table when there are disk readings, and none without', /Read from the disk during the timed runs/.test(md) && /\| 50 \(50 to 50\) \|/.test(md) && !/Read from the disk/.test(summarise([{ ...res, runs: res.runs.map(({ disk, ...r }) => r) }], { prompts: {}, plan }))); }
+
+// ---------- The written answers, kept when a plan asks (Nov 17) ----------
+{ const { prompts } = loadPlan(planFile);
+  const f = { ...fx(), stream: async () => ({ writeTps: 40, gaps: { median: 25 }, gapsMs: [], textSha: 'abc', text: 'Hello there.' }) };
+  const off = await runRow({ plan, prompts, row: plan.rows[1], round: 0, fx: f });
+  const on = await runRow({ plan: { ...plan, saveText: true }, prompts, row: plan.rows[1], round: 0, fx: f });
+  check('answers are left out unless the plan asks, the fingerprint always kept', off.runs.length > 0 && off.runs.every((r) => r.text === undefined && r.textSha === 'abc'));
+  check('with saveText each run keeps what was written', on.runs.length > 0 && on.runs.every((r) => r.text === 'Hello there.')); }
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
