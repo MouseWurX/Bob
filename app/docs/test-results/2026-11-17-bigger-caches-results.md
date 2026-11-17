@@ -169,3 +169,51 @@ writes 32K at least 5% faster: **held** (+6.8%). No spill: **held**.
 **Decision:** Calibrate's rule (fastest reader within 10% of the top writer on every prompt) keeps step 4096 + 4 GB:
 step 6144 + 3.5 GB writes 19.5% slower at 16K. Step 6144 + 3.5 GB answers 32K about 1.1 s sooner. The owner called
 it a trade-off; the coding pick stays step 4096 + 4 GB.
+
+## Cube fix v3 on Brain Engine 12 (Addendum 19 amendment): 3 rounds, 2:50 to 3:02 PM Mountain
+
+brain-engine-12b12359 (0021 v3, one pinned copy per reading step). The owner stopped the run after 3 full rounds
+(16 loads, with U0 still in; folder `cube-fix-be12-partial`) and chose to judge on those 3 rounds. No crashes. Medians of 3,
+read / write:
+
+| Row | Start | 32K |
+|---|---|---|
+| Y0 (plain) | 1167 / 92.2 | 1263 / 81.2 |
+| U0 (fusion off) | 1162 / 83.2 | 1239 / 74.5 |
+| T1 (trace) | 1201 / 90.4 | 1266 / 81.2 |
+| F4c (4 GB cache) | 1737 / 110.6 | 2307 / 95.7 |
+| FT (cache + trace) | 1736 / 111.6 | 2316 / 96.7 |
+
+**Verdict: passed.** T1 wrote exactly Y0's words and FT exactly F4c's, on both prompts. T1 is -1.95% (start) and 0%
+(32K) against Y0, inside 2%. FT is +0.9% / +1.0% against F4c.
+
+**Checked against earlier runs:** Y0, U0, F4c at 32K and F4c's writing match Brain Engine 11 within 1%. One mismatch:
+F4c's start-prompt reading went from 2180 to 2209 on Brain Engine 10, to 1878 on 11 and 1737 on 12. The engine logs show
+identical placement on all three engines: 41/41 layers, the same cache slots, the same compute buffers, the same experts
+copied, and n_prompt 3886. Brain Engine 12 takes about 0.2 s and 0.4 s longer on the two chunks of the first read after a
+load. That is a fixed cost, not slower reading. It has been sent to the engine thread; the cause is not yet known.
+
+## Lending the cache to reading on Brain Engine 13 (Addendum 25): 12 loads, 3:10 to 3:18 PM Mountain
+
+brain-engine-13b12359 (0022). Every load ran, L0 included. Medians of 3, first word s / read / write:
+
+| Row | Start | 32K |
+|---|---|---|
+| L1 (6144 + 4 GB, lending on) | 1.46 / 2672 / 99.3 | 9.02 / 3657 / 92.8 |
+| L0 (6144 + 4 GB, lending off) | 1.51 / 2587 / 91.9 | 8.81 / 3738 / 76.2 |
+| X4096 (4096 + 4 GB) | 1.45 / 2682 / 100.6 | 9.87 / 3337 / 98.4 |
+| S6k3584 (6144 + 3.5 GB) | 1.41 / 2766 / 97.1 | 8.62 / 3822 / 88.4 |
+
+Lending fired once per L1 load, on the 32K read only: the cache was lent in 78 to 99 ms and uploaded again in 274 to
+286 ms (2239 experts, 4091 MiB). There were no take-back failures and no decode -2. L1 wrote exactly S6k3584's words at
+32K, and the same words as X4096 and S6k3584 on start.
+
+Predictions: refill 0.2 to 0.4 s **held**; same words as a step-6144 run **held**; no failures **held**. Reading 32K
+within 3% of S6k3584 **missed** (-4.3%). Writing within 3% of X4096 **missed** (-5.7%, and on different words). Against
+S6k3584 on the same words, L1 writes 5% faster, but it finishes a 300-word answer about 0.3 s later.
+
+**Decision:** lending stays off. Neither pick changes. The next engine step is to overlap the refill with the first
+written words.
+
+**Checked against the head to head:** X4096 and S6k3584 match the Brain Engine 11 head to head within 1 to 4%. For
+example, X4096's 32K first word is 9.9 s against 9.7 s, and S6k3584's 32K writing is 88.4 against 88.5.
