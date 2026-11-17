@@ -329,3 +329,18 @@ The calibration showed that CUDA graphs alone don't change the words (G0) and th
 `speed-plans/cube-check.json`: Y0, G4 and G2 on the start prompt and 32K, 5 rounds (15 loads), same engine, brain and settings as the calibration.
 
 **Decided in advance:** if G2 writes the same words as Y0 on both prompts in all its runs, the fusion break from `ggml_set_output` is the cause and the planned fix is enough. If G2's words differ from Y0, the callback split changes the words too, and the fix must also drop the callback (the planned fix already does). Speed isn't judged here, since G2 stops at every layer.
+
+## Addendum 19 (Nov 17, after the cube check, before the fix is built or run): the cube fix
+
+The cube check found that the callback alone changes the words (G2 differed from Y0 and from G4), so the fix drops
+both: patch 0021 copies each layer's picks into a small kept tensor after the router's fused kernel and reads them
+after each micro-batch, with no eval callback and no `ggml_set_output`. It passes on the processor with the tiny
+made-up brain (`engine/tests/trace-kept.py`). The card is the open question.
+
+`speed-plans/cube-fix.json`, on Brain Engine 10: Y0 (no trace) and T1 (trace) at Normal, F4c and FT (trace) at F4c's
+settings, on the start prompt and 32K, 5 rounds (20 loads), same brain and base settings as the calibration.
+
+**Decided in advance:** the fix works when T1 writes the same words as Y0 and FT the same as F4c, on both prompts
+in all their runs, and each traced row's median writing speed is within 2% of its untraced pair. If the words match
+but the speed is more than 2% behind, the words are fixed and the speed isn't. If the words differ, the fix failed,
+whatever the speed.

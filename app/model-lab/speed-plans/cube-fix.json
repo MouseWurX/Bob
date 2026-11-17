@@ -1,0 +1,111 @@
+{
+ "name": "Cube fix: does the trace read from kept copies (0021) keep the words and the speed? Y0 vs T1 at Normal, F4c vs FT at F4c (stock Qwen3.6 35B A3B, 16 GB card, Brain Engine 10)",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 19)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be10": {
+   "exe": "${BE10_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "k32": "long-text.md"
+ },
+ "promptTokens": {
+  "k32": 32768
+ },
+ "question": {
+  "k32": "\n\nIn two sentences, what is this text about?"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "-ctk",
+  "q8_0",
+  "-ctv",
+  "q8_0",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "-c",
+  "49152",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 5,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 600000,
+ "rows": [
+  {
+   "id": "Y0",
+   "engine": "be10",
+   "prompts": [
+    "start",
+    "k32"
+   ]
+  },
+  {
+   "id": "T1",
+   "engine": "be10",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "body": {
+    "expert_trace": true,
+    "expert_trace_stream": true
+   }
+  },
+  {
+   "id": "F4c",
+   "engine": "be10",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "FT",
+   "engine": "be10",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   },
+   "body": {
+    "expert_trace": true,
+    "expert_trace_stream": true
+   }
+  }
+ ]
+}
