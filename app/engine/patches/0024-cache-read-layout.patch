@@ -1,0 +1,244 @@
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 3d4968f..6cd2836 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -619,6 +619,18 @@ llama_context::llama_context(
+             // cache, reads in steps of -ub, and the cache comes back (the same experts, uploaded again) when writing starts.
+             // Off unless set; -ub must be bigger than it, and -b at least -ub, or nothing is ever lent. It is read in the
+             // measuring pass too (no_alloc, used by --fit), so the fit sees the smaller step with the cache, not both at once.
++            // Brain Engine 0024: LLAMA_MOE_CACHE_READ_LAYERS=<tokens>: a longer decode reads with the cache holding whole
++            // layers (they read on the card, nothing uploaded for them), back to the hot experts for writing. Off unless
++            // set; not together with LLAMA_MOE_CACHE_LEND (that one frees the cache instead).
++            if (const char * rl = getenv("LLAMA_MOE_CACHE_READ_LAYERS"); rl != nullptr && *rl != '\0' && getenv("LLAMA_MOE_CACHE_LEND") == nullptr) {
++                const long v = strtol(rl, nullptr, 10);
++                if (v > 32) {
++                    cparams.moe_cache_read_ub = (uint32_t) v;
++                    LLAMA_LOG_INFO("%s: MoE cache holds whole layers for reads of more than %u tokens\n", __func__, cparams.moe_cache_read_ub);
++                } else if (v != 0) {
++                    LLAMA_LOG_WARN("%s: LLAMA_MOE_CACHE_READ_LAYERS=%s NOT USED: it must be over 32 tokens\n", __func__, rl);
++                }
++            }
+             if (const char * lend = getenv("LLAMA_MOE_CACHE_LEND"); lend != nullptr && *lend != '\0') {
+                 const long v = strtol(lend, nullptr, 10);
+                 if (v > 32 && (uint32_t) v < cparams.n_ubatch) {
+@@ -2727,6 +2739,24 @@ int llama_context::decode(const llama_batch_ext & batch_inp) {
+         ids_keep_room(n_tokens_all);
+     }
+ 
++    // Brain Engine 0024: whole layers in the cache for a long read, the hot experts back for writing
++    if (cparams.moe_cache_read_ub > 0 && moe_cache) {
++        const bool big   = (uint32_t) n_tokens_all > cparams.moe_cache_read_ub;
++        const bool small = n_tokens_all <= 32;
++        if ((big && !moe_cache->is_reading()) || (small && moe_cache->is_reading())) {
++            synchronize();
++            gf_res_prev_active = nullptr;
++            for (auto & r : gf_res_prev) {
++                r->reset();
++            }
++            if (big) {
++                moe_cache->begin_read_layout();
++            } else {
++                moe_cache->end_read_layout();
++            }
++        }
++    }
++
+     // Brain Engine 0023: a refill running behind the writing; at the fixed token count, wait for it and use the cache
+     // again (the graphs made without it are dropped, so the next one gets its slots)
+     if (moe_cache && moe_cache->is_filling()) {
+diff --git a/src/llama-cparams.h b/src/llama-cparams.h
+index 08523db..5c2fca6 100644
+--- a/src/llama-cparams.h
++++ b/src/llama-cparams.h
+@@ -78,6 +78,9 @@ struct llama_cparams {
+     // this many written tokens on (a fixed count, so the words don't depend on how fast the upload was); 0 = wait for it
+     uint32_t moe_cache_lend_behind = 0;
+     uint32_t moe_cache_fill_seen   = 0; // tokens decoded since the refill started
++    // Brain Engine 0024 (LLAMA_MOE_CACHE_READ_LAYERS): a decode of more tokens than this switches the cache to whole
++    // layers for the read, and the first write of 32 tokens or fewer switches it back; 0 = off
++    uint32_t moe_cache_read_ub = 0;
+ 
+     std::vector<bool> embeddings_layer_inp; // [n_layer()] extract input embeddings for layer
+     bool embeddings_layer_inp_dev; // write enabled layer inputs to a device buffer instead of host
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index f518e60..9c1e30c 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -405,6 +405,14 @@ struct llama_moe_cache::impl {
+     std::atomic<bool> fill_done{false};
+     std::vector<ggml_backend_t> fill_backends; // per device, made on first use
+ 
++    // Brain Engine 0024: in the read layout the banks hold whole layers (expert e of a resident layer in slot base + e),
++    // so big batches of those layers read their experts on the card and upload nothing; the hot-expert placement
++    // (key_of and the slot maps) is kept aside and goes back, uploaded again, when writing starts
++    bool reading = false;
++    std::vector<std::vector<int32_t>> saved_key_of;    // per group
++    std::vector<std::vector<int32_t>> saved_slot_map;  // per layer, empty if not cached
++    std::vector<bool> resident;                        // per layer, in the read layout
++
+     // slot maps in host memory
+     ggml_context_ptr ctx_host;
+     ggml_backend_buffer_ptr buf_host;
+@@ -850,6 +858,10 @@ struct llama_moe_cache::impl {
+             return nullptr;
+         }
+         const layer & l = layers[il];
++        if (reading) {
++            // only the resident layers, and never with a CPU part (the read layout has no zero slots for it)
++            return n_tokens > 0 && !cpu_part && resident[il] ? l.slot_map : nullptr;
++        }
+ 
+         // large batches use most experts of a layer, so they gain little from the cache and would evict the experts used in generation
+         if (n_tokens == 0 || n_tokens > max_batch || std::min(n_tokens*n_expert_used, l.slot_map->ne[1]) > groups[l.ig].n_slots) {
+@@ -885,7 +897,7 @@ struct llama_moe_cache::impl {
+     }
+ 
+     int64_t copy_experts(ggml_backend_t backend, const ggml_tensor * w, ggml_tensor * dst, int64_t e, int64_t last) {
+-        const auto it = lent || filling ? bindings.end() : bindings.find(w);
++        const auto it = lent || filling || reading ? bindings.end() : bindings.find(w);
+         if (it == bindings.end()) {
+             return 0;
+         }
+@@ -957,6 +969,18 @@ struct llama_moe_cache::impl {
+ 
+         const int32_t n_used = (int32_t) sel->src[0]->ne[0];
+ 
++        if (reading) {
++            // the read layout's slot map is fixed: nothing to plan or upload, only the map itself
++            if (ids_sink != nullptr && !has_cpu) {
++                ids.resize(ggml_nelements(sel));
++                ggml_backend_tensor_get_async(backend, sel, ids.data(), 0, ggml_nbytes(sel));
++                ggml_backend_synchronize(backend);
++                ids_sink(ids_sink_ud, il, ids.data(), ids.size(), n_used);
++            }
++            ggml_backend_tensor_set_async(backend, dst, l.slot_map->data, 0, ggml_nbytes(l.slot_map));
++            return true;
++        }
++
+         ids.resize(ggml_nelements(sel));
+         ggml_backend_tensor_get_async(backend, sel, ids.data(), 0, ggml_nbytes(sel));
+         ggml_backend_synchronize(backend);
+@@ -1164,6 +1188,86 @@ struct llama_moe_cache::impl {
+         return waited;
+     }
+ 
++    // Brain Engine 0024: switch the banks to whole layers for a long read; returns the number of resident layers
++    int32_t begin_read_layout() {
++        if (reading || lent || filling) {
++            return 0;
++        }
++        const int64_t t0 = ggml_time_us();
++        for (device & d : devices) {
++            if (d.buf) {
++                ggml_backend_synchronize(d.backend);
++            }
++        }
++        saved_key_of.assign(groups.size(), {});
++        saved_slot_map.assign(layers.size(), {});
++        resident.assign(layers.size(), false);
++        int32_t n_res = 0;
++        size_t bytes = 0;
++        for (size_t ig = 0; ig < groups.size(); ++ig) {
++            group & g = groups[ig];
++            saved_key_of[ig] = g.lru.key_of;
++            const int32_t n_exp = (int32_t) g.ref[0]->ne[2];
++            int32_t base = 0;
++            for (int32_t il : g.layers) {
++                layer & l = layers[il];
++                if (l.slot_map == nullptr) {
++                    continue;
++                }
++                int32_t * map = (int32_t *) l.slot_map->data;
++                saved_slot_map[il].assign(map, map + l.slot_map->ne[1]);
++                if (base + n_exp > g.n_slots) {
++                    continue; // no room: this layer reads the stock way (host experts uploaded per batch)
++                }
++                for (int32_t e = 0; e < n_exp; ++e) {
++                    map[e] = base + e;
++                }
++                for (size_t ip = 0; ip < l.experts.size(); ++ip) {
++                    const ggml_tensor * w = l.experts[ip];
++                    ggml_backend_tensor_set_async(devices[g.id].backend, g.banks[ip], w->data, (size_t) base*w->nb[2], (size_t) n_exp*w->nb[2]);
++                    bytes += (size_t) n_exp*w->nb[2];
++                }
++                resident[il] = true;
++                base += n_exp;
++                n_res++;
++            }
++        }
++        for (device & d : devices) {
++            if (d.buf) {
++                ggml_backend_synchronize(d.backend);
++            }
++        }
++        reading = true;
++        LLAMA_LOG_INFO("llama_moe_cache: read layout: %d whole layers on the card (%.2f MiB) in %.1f ms\n",
++            n_res, bytes/1024.0/1024.0, (ggml_time_us() - t0)/1000.0);
++        return n_res;
++    }
++
++    // back to the hot experts: the saved placement, uploaded again
++    void end_read_layout() {
++        if (!reading) {
++            return;
++        }
++        const int64_t t0 = ggml_time_us();
++        for (device & d : devices) {
++            if (d.buf) {
++                ggml_backend_synchronize(d.backend);
++            }
++        }
++        for (size_t ig = 0; ig < groups.size(); ++ig) {
++            groups[ig].lru.key_of = saved_key_of[ig];
++        }
++        for (size_t il = 0; il < layers.size(); ++il) {
++            if (!saved_slot_map[il].empty()) {
++                std::copy(saved_slot_map[il].begin(), saved_slot_map[il].end(), (int32_t *) layers[il].slot_map->data);
++            }
++        }
++        reading = false;
++        const auto [bytes, n] = upload_slots([&](int32_t id) { return devices[id].backend; });
++        LLAMA_LOG_INFO("llama_moe_cache: hot experts back after the read layout: %zu experts (%.2f MiB) in %.1f ms\n",
++            n, bytes/1024.0/1024.0, (ggml_time_us() - t0)/1000.0);
++    }
++
+     void log_stats() const {
+         auto log = [](const char * name, const stats & st) {
+             const size_t n = st.hits + st.misses;
+@@ -1227,6 +1331,18 @@ int64_t llama_moe_cache::finish_fill() {
+     return pimpl->finish_fill();
+ }
+ 
++int32_t llama_moe_cache::begin_read_layout() {
++    return pimpl->begin_read_layout();
++}
++
++void llama_moe_cache::end_read_layout() {
++    pimpl->end_read_layout();
++}
++
++bool llama_moe_cache::is_reading() const {
++    return pimpl->reading;
++}
++
+ void llama_moe_cache::set_ids_sink(ids_sink_t sink, void * user_data) {
+     pimpl->ids_sink    = sink;
+     pimpl->ids_sink_ud = user_data;
+diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
+index 1add75e..1076095 100644
+--- a/src/llama-moe-cache.h
++++ b/src/llama-moe-cache.h
+@@ -59,6 +59,13 @@ public:
+     bool    is_filling() const;
+     int64_t finish_fill();
+ 
++    // Brain Engine 0024: the read layout. begin_read_layout() fills the banks with as many whole layers as fit (expert e
++    // in slot base + e) and gives big batches of those layers a fixed slot map, so they read on the card; the other
++    // layers read the stock way. end_read_layout() puts the hot experts back as they were (uploaded again).
++    int32_t begin_read_layout();
++    void    end_read_layout();
++    bool    is_reading() const;
++
+ private:
+     struct impl;
+     std::unique_ptr<impl> pimpl;
