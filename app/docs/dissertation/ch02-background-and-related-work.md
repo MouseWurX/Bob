@@ -322,7 +322,7 @@ What not to turn on, on this machine:
 - **Turbo (MTP).** It slowed prompt reading by 13% to 16%, and writing ranged from 17% slower to 3% faster with Bob's sampling.
 - **Prefetch.** It read 5.6% to 12.7% slower and used more of the card.
 - **Smaller hot-experts caches (1 GB and 2 GB).** They often lost to no cache on long prompts.
-- **The fNRI live trace, on older engines.** Before Brain Engine 11 it cost 9% to 11% of writing and changed the words. From Brain Engine 11 the words match, and it costs about 1% to 2% with the 4 GB cache and about 4% without (section 3.4.3).
+- **The fNRI live trace, on engines before 12.** Before Brain Engine 11 it cost 9% to 11% of writing and changed the words. From Brain Engine 11 the words match. On Brain Engine 12 it costs 2% or less, with or without the cache, so it is fine to leave on (section 3.4.3, over 3 rounds).
 
 Two practical notes. First, 32 GB of RAM leaves only 1 to 3 GB free with this brain loaded, so other large programs can slow it. Second, the brain's own size matters more than any setting. The dense 27B Qwen wrote about 10 words a second on the same card, against 70 to 90 for the 35B mixture-of-experts brain, because the mixture-of-experts brain uses only a few experts for each word (section 2.1.3).
 

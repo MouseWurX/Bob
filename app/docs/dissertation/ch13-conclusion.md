@@ -202,7 +202,7 @@ The fixes made after the round have checks and pass the suite. Whether they rais
 
 ### 13.6.11 The fNRI trace fix, and quality checks for the faster settings (added 17 November)
 
-Before Brain Engine 11, tracing for the fNRI system changed the words the brain writes (Chapter 3, section 3.4.3). The fix keeps the router's fused kernel whole, and on 17 November traced and untraced words matched in every run. Two items remain. The trace still costs about 4% of writing speed on the plain engine, and that fix is unproven in our lab, as we have yet to test. The expert readings in Chapter 10 can now be rerun with the fixed trace.
+Before Brain Engine 11, tracing for the fNRI system changed the words the brain writes (Chapter 3, section 3.4.3). The fix keeps the router's fused kernel whole, and on 17 November traced and untraced words matched in every run. Brain Engine 12 brought the cost to 2% or less on the 35B, over 3 rounds rather than the planned 5. A full 5-round run, and the same test on GPT-OSS 120B and other cards, are unproven in our lab, as we have yet to test. The expert readings in Chapter 10 can now be rerun with the fixed trace.
 
 The faster serving settings in Chapter 4 (section 4.3.3), a bigger reading step with a 4 GB hot-experts cache, also write different words from the default. They need a quality check on Bob's jobs, and timing on other cards, other brains and a bigger cache.
 

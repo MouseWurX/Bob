@@ -129,7 +129,21 @@ A likely common cause, which we have not confirmed: the card fuses the router's 
 | Step 2048 + 4 GB copy cache | −1.8% / −1.0% | crashed | passes |
 | Normal (step 512, no cache) | −4.0% / −3.9% | −9% to −11% | misses |
 
-Reading speed stayed within about 1%. The fNRI trace now watches without changing what the brain writes. On the plain engine it still costs about 4% of writing. A further fix for that cost is in progress and is unproven in our lab, as we have yet to test.
+Reading speed stayed within about 1%. The fNRI trace now watched without changing what the brain writes, but on the plain engine it still cost about 4% of writing.
+
+**Second fix and its results (17 November).** In Brain Engine 12, patch 0021 (version 3) keeps one pinned copy per reading step. It was tested on the same card and brain.
+
+| Setting | Writing, trace off, start / 32K | Writing, trace on, start / 32K | Cost |
+|---|---|---|---|
+| Normal (step 512, no cache) | 92.2 / 81.2 | 90.4 / 81.2 | −1.95% / 0% |
+| Step 2048 + 4 GB copy cache | 110.6 / 95.7 | 111.6 / 96.7 | none measured (slightly faster) |
+
+- **The words were byte-identical** with the trace on and off, on the start prompt and at 32K, at both settings.
+- **Reading speed was equal**, and nothing crashed.
+- **It passes the 2% rule set beforehand.** The start-prompt row on the plain engine sits right at the line, at −1.95%.
+- **Over the three engines**, the trace went from about −11% with different words (Brain Engine 10's old trace), to −4% with the same words (Brain Engine 11), to −2% or less with the same words (Brain Engine 12).
+
+**Limits.** This run stopped after 3 rounds (16 loads) by MouseWurX's choice, not the 5 rounds set beforehand, so its medians rest on fewer runs. It was run only on the 35B brain. The trace on GPT-OSS 120B and on other cards is unproven in our lab, as we have yet to test.
 
 ### 3.4.4 Card sharing and the small helper
 
@@ -272,7 +286,7 @@ The instruments were made because the questions demanded them: the mask, dials, 
 - **No automatic engine test.** A patch in the wrong place would be found only by the PC test.
 - **Dry runs prove running, not helping.** The self-tests say so themselves, and most Forge builds after build 14 had no card test when the README was written.
 - **Overhead measured on one machine only.** The with-and-without timings in section 3.4.5 (added 17 November) come from one consumer PC, one brain and one quant. Other cards and brains are unproven in our lab, as we have yet to test.
-- **Traces taken before Brain Engine 11 changed the words.** Before the fix in section 3.4.3, a traced answer could differ from an untraced one at temperature 0, so expert maps from those runs describe the traced brain. From Brain Engine 11 the words match.
+- **Traces taken before Brain Engine 11 changed the words.** Before the fix in section 3.4.3, a traced answer could differ from an untraced one at temperature 0, so expert maps from those runs describe the traced brain. From Brain Engine 11 the words match, and from Brain Engine 12 the cost is 2% or less on the 35B.
 - **One builder.** The code was written and checked inside one project, with an AI assistant as a contributor (docs/COSTS.md). No outsider has reviewed it.
 - **Judge limits.** The tool judge measures agreement with the teacher, and is blind to a call that is right in a way the teacher did not record.
 - **Status.** The never-taught gate shipped in release 1.5.238. The decisive retrain on reviewed lessons has not been run, so no instrument here has yet been used on the lessons the dissertation finally recommends.
