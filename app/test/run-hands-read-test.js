@@ -40,6 +40,16 @@ check('read_file finds a bare name in a Hands folder', rfBare.ok && /work folder
 const rfOther = await tries(() => tOn.read_file.run({ path: path.join(other, 'secret-ish.txt') }));
 check('read_file still refuses a folder that was never ticked', !rfOther.ok && /not allowed/.test(rfOther.err));
 
+// 17 Nov after1: a name search found the ask itself in Bob's own queue (queue.json) and read it as the user's file
+{
+  const data = path.join(root, 'data'); fs.writeFileSync(path.join(data, 'queue.json'), '{"text": "Read Minutes_September.docx"}\n');
+  fs.writeFileSync(path.join(docs, 'notes.txt'), 'Minutes_September is not here\n');
+  const own = { ...base, dataDir: path.join(docs, 'Bob'), readRoots: [inn, docs] }; fs.mkdirSync(own.dataDir, { recursive: true }); fs.writeFileSync(path.join(own.dataDir, 'queue.json'), '{"text": "Read Minutes_September.docx"}\n');
+  const sf = await tries(() => buildTools(own).search_files.run({ text: 'Minutes_September' }));
+  check('search_files leaves Bob\'s own data folder out', sf.ok && /notes\.txt/.test(String(sf.out)) && !/queue\.json/.test(String(sf.out)), sf.err || String(sf.out));
+  const sfAsked = await tries(() => buildTools(own).search_files.run({ text: 'Minutes_September', folder: own.dataDir }));
+  check('...unless that folder is the one asked for', sfAsked.ok && /queue\.json/.test(String(sfAsked.out)), sfAsked.err || String(sfAsked.out));
+}
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

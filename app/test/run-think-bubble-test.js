@@ -3,7 +3,7 @@
 // the brain is sent.
 import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
-import { pickAnswer } from '../src/clean-answer.js';
+import { pickAnswer, bareTextCall } from '../src/clean-answer.js';
 import { PUNS, took, doneLine, punAt } from '../public/think-bubble.js';
 
 let pass = 0, fail = 0;
@@ -91,5 +91,14 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   check('the settings inventory lists it', /Thinking bubble/.test(read('docs/SETTINGS-INVENTORY.md')));
 }
 
+// 17 Nov after1: an answer that was only a text tool call (after the last step) was shown as the reply
+{
+  const raw = '<tool_call>\n<function=list_folder>\n<parameter=path>\nC:\\Users\\you\\Videos\n</parameter>\n</function>\n</tool_call>';
+  const turn = [{ role: 'user', content: 'Trash everything from Kettle & Crumb.' }, { role: 'assistant', content: raw }];
+  const r = pickAnswer(turn);
+  check('a reply that is only a text tool call is replaced with an honest line', /didn't finish this/.test(r.text) && /list_folder/.test(r.text) && !/<tool_call>/.test(turn[1].content), r.text);
+  check('a real answer that shows a code sample is left alone', !bareTextCall('Here is how to call it from Python:\n```json\n{"name": "x", "arguments": {}}\n```\nThat makes the request, then you read the reply and print it.'));
+  check('a plain answer is left alone', !bareTextCall('Done: 19 messages from Kettle & Crumb moved to Trash.'));
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

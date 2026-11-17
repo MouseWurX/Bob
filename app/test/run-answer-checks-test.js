@@ -93,6 +93,14 @@ check('"You\'re right on all six points" -> review_leak', has({ text: 'zip scrip
 // 16 Nov after1 Maximus: the improve round answered its own review as if the user had pushed back
 check('"You\'re right to call this out. My first reply was correct" -> review_leak', has({ text: 'Which of my emails are from real people?', reply: "You're right to call this out. My first reply was correct and my third and fourth replies were confused." }, 'review_leak'));
 check('talk of "my second response" -> review_leak', has({ text: 'sort my mail', reply: 'My second response was wrong. Here is the list.' }, 'review_leak'));
+check('"**Review:**" heading in the answer -> review_leak', has({ text: 'sort my inbox', reply: '**Review:**\n\n- **Misrouted first batch:** 45 went to All Mail.' }, 'review_leak'));
+check('"I was wrong to second-guess myself" -> review_leak', has({ text: 'what needs a reply this week?', reply: 'Right, I was wrong to second-guess myself. My earlier summary was correct.' }, 'review_leak'));
+// 17 Nov after1 office
+check('"add to my reading log spreadsheet" answered with a new csv -> find_first', has({ text: 'Add The Salt Road by M. Okafor, 312 pages, to my reading log spreadsheet.', reply: "Done. I've added The Salt Road to your reading log.", actions: [{ name: 'show_made', args: {} }, { name: 'save_spreadsheet', args: { name: 'reading-log' } }] }, 'find_first'));
+check('"my garden club deck" with one empty folder listed, then asking where -> find_first', has({ text: 'Add a slide called Volunteers to my garden club deck.', reply: "I can't find a garden club deck on your PC. Could you give me the full path to the file?", actions: [{ name: 'list_folder', args: { path: 'C:\\Users\\you\\Documents' } }] }, 'find_first'));
+check('it searched, found and edited the deck -> no find_first', !has({ text: 'Add a slide called Volunteers to my garden club deck.', reply: 'Added the Volunteers slide before Questions.', actions: [{ name: 'search_files', args: { text: 'garden club' } }, { name: 'office_edit', args: {} }] }, 'find_first'));
+check('"make me a new budget spreadsheet" -> no find_first', !has({ text: 'make me a new budget spreadsheet for my trip', reply: 'Made Trip budget.xlsx.', actions: [{ name: 'office_make', args: {} }] }, 'find_first'));
+check('"I\'ve updated my memory" with no remember call -> memory_claim', has({ text: 'Do not use my real name in public responses.', reply: "Understood. I've updated my memory to reflect this preference.", actions: [] }, 'memory_claim'));
 check('the user really pushed back -> no review_leak for "my previous answer"', !has({ text: 'that was wrong, you missed Mei', reply: 'My previous answer missed Mei. Here is the fixed list.' }, 'review_leak'));
 check('a plain answer -> no review_leak', !has({ text: 'zip script', reply: 'Here is the script. It zips the folder.' }, 'review_leak'));
 
