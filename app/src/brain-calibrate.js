@@ -24,6 +24,7 @@ import { draftNumArgs, TURBO_EVERYDAY_MAX, READING_STEPS } from './engine-extras
 import { BRAIN_ENGINE_PIN } from './engines.js';
 import { HOT_KINDS, mixFor, addMass, saveProfile, profileStamp, rankingFile, hotCacheMB, parseCacheLog, RANKING_ENV } from './hot-experts.js';
 import { saveSettings } from './config.js';
+import { sharedGpuMB, SPILL_MB } from './card-busy.js';
 import { gaming } from './sessions.js';
 import { readJson, writeJson, makeRoom, runJob, pageLog, chatOnce } from './lab-jobs.js';
 
@@ -172,7 +173,7 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
   const ask = await makeRoom(lab, unload); if (ask) return ask;
   const log = pageLog(lab.cfg, 'calibrate');
   const exe = lab.tools().server.path;
-  const fx = { serve: (o) => startServer({ exe, log, ...o }), chat: chatOnce, trace: traceOnce, ...lab.stepFns };
+  const fx = { serve: (o) => startServer({ exe, log, ...o }), chat: chatOnce, trace: traceOnce, sharedMB: () => sharedGpuMB(), ...lab.stepFns };
   const plans = list.map((b) => { const r = lab.brain.engine.resolve(b.model); const info = ggufInfo(r.gguf); const layers = info?.shape?.layers || lab.brain.engine.placeInfo(b.model).layers; return { ...b, name: b.name || b.model, gguf: r.gguf, layers, tries: calTries(layers), speedTries: calSpeedTries({ mtp: info?.mtp || 0, cacheMB: (lab.brain.engine.buildNo?.() || 0) >= 12359 ? hotCacheMB(lab.cfg) : 0 }), hot: (lab.brain.engine.buildNo?.() || 0) >= 12359 }; });
   const steps = plans.flatMap((p, i) => [...p.tries, ...p.speedTries, ...(p.hot ? HOT_STEPS : [])].map((t) => [`${i}:${t.id}`, plans.length > 1 ? `${p.name}: ${t.label}` : t.label]));
   const total = steps.length;
@@ -221,6 +222,9 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
         for (const mb of sizes) {
           row = { ...head, ...(mb ? { cacheMB: mb } : {}) };
           srv = null;
+          // Nov 17: shared GPU memory before and after (Windows); a pair that spills card memory into RAM fails, never wins
+          const readShared = () => (fx.sharedMB ? Promise.resolve().then(fx.sharedMB).catch(() => null) : null);
+          const shared0 = await readShared();
           try {
             srv = await fx.serve({ gguf: p.gguf, ctx: CAL_CTX, signal, cpuOk: false, extra: mb ? [...t.base, ...hotCopyArgs(mb)] : t.extra, ...(place ? { place } : {}) });
             const long = await fx.chat(srv.url, [{ role: 'user', content: CAL_LONG }], { maxTokens: 24, signal });
@@ -228,6 +232,8 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
             const dn = Number(short.timings?.draft_n) || 0, da = Number(short.timings?.draft_n_accepted) || 0;
             row = { ...row, readTps: round1(Number(long.timings?.prompt_per_second) || 0), firstWordS: long.timings?.prompt_ms ? round1(long.timings.prompt_ms / 1000) : null, tps: round1(Number(short.timings?.predicted_per_second) || 0), ...(t.turbo && dn ? { accepted: Math.round((100 * da) / dn) } : {}) };
             if (!(row.tps > 0)) row.failed = 'It answered, but gave no speed.';
+            const shared1 = Number.isFinite(shared0) ? await readShared() : null;
+            if (Number.isFinite(shared1) && shared1 - shared0 > SPILL_MB && !row.failed) { row.spillMB = shared1 - shared0; row.failed = `Spilled: about ${Math.round(row.spillMB / 102.4) / 10} GB of card memory went to RAM, which can slow everything else down.`; }
           } catch (e) {
             if (signal.aborted) throw e;
             row.failed = 'Didn\'t start: too much for the card this way.';

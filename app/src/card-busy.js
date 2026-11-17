@@ -91,3 +91,17 @@ export function cardBusyLine(card) {
   const who = top.length ? `another program (${top.join('; ')})` : 'another program';
   return `⚠ The graphics card is busy with ${who}, so I can't load a brain or make pictures on it right now. Close that program, or send it again once it's done. I'll look again before the next job.`;
 }
+
+// Nov 17 (the npc bigger-caches run): on Windows the driver can quietly put card memory in RAM when the card is full
+// ("sysmem fallback"). Shared GPU memory in use, summed over every graphics adapter, in whole MB; null off Windows or
+// on any error. A rise of more than SPILL_MB across a trial load means the load spilled.
+export const SPILL_MB = 512;
+const SHARED_PS = "$ErrorActionPreference='SilentlyContinue'; ((Get-Counter '\\GPU Adapter Memory(*)\\Shared Usage').CounterSamples | Measure-Object CookedValue -Sum).Sum";
+export const parseSharedMB = (out) => { const t = String(out || '').trim(); const n = Number(t.replace(',', '.')); return t && Number.isFinite(n) ? Math.round(n / 1048576) : null; };
+export function sharedGpuMB({ platform = process.platform, run = execFile } = {}) {
+  if (platform !== 'win32') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try { run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', SHARED_PS], { timeout: 8000, windowsHide: true }, (err, out) => resolve(err ? null : parseSharedMB(out))); }
+    catch { resolve(null); }
+  });
+}

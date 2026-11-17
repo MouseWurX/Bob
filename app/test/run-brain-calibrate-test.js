@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { calibrateDir, calTries, calBest, calLock, calResult, calibrated, startCalibrate, useCalibrated, CAL_CTX, calSpeedTries, calSpeedBest, CAL_LONG, calSpeedWork, speedJob } from '../src/brain-calibrate.js';
+import { sharedGpuMB } from '../src/card-busy.js';
 import { brainsHtml, calLock as pageLock, canCalibrate, brainsInUse } from '../public/brains.js';
 
 let pass = 0, fail = 0;
@@ -57,6 +58,7 @@ const mkLab = (speeds, over = {}) => {
     brain: { engine: { placeInfo: (m) => (m === 'big' ? { layers: 40 } : m === 'plain' ? { layers: 30 } : null), resolve: (m) => ({ gguf: path.join(tmp, `${m}.gguf`) }), loaded: async () => over.loaded || [], unloadAll: async () => { lab.unloaded = true; } } },
     stepFns: {
       serve: async (o) => { served.push(o); const key = o.place ? Number(o.place[1]) : 'auto'; if (speeds[key] === undefined) throw new Error('out of memory'); return { url: `fake:${key}`, stop() { served.stopped = (served.stopped || 0) + 1; }, where: 'card' }; },
+      sharedMB: async () => null, // tests never read the real card
       chat: async (url) => ({ text: 'ok', timings: { predicted_per_second: speeds[url.slice(5) === 'auto' ? 'auto' : Number(url.slice(5))], prompt_ms: 1200 } })
     },
     ...over.lab
@@ -113,6 +115,23 @@ const wait = async (lab) => { for (let i = 0; i < 300 && lab.job; i++) await new
   fs.writeFileSync(path.join(calibrateDir(lab.cfg), 'big.json'), JSON.stringify([{ ...rec, speed: { reading: 'faster', cache: true, cacheMB: 3072, turbo: false, why: 'x' }, speedWork: undefined }]));
   const u = useCalibrated(lab, 'big', { job: 'chat' });
   check('Use recommended sets Room for hot experts to a smaller size the pick ran with', lab.cfg.hotExpertsGB === 3 && u.hotExperts === true);
+}
+{
+  // Nov 17 (npc: step 4096 + 4 GB spilled about 0.6 GB into RAM): a pair that spills fails, and a cache steps down
+  const lab = mkLab({ auto: 60.04, 8: 71.26, 16: 66, 24: 50, 32: 41, 40: 30 });
+  lab.cfg.gpuVramGB = 16; lab.brain.engine.buildNo = () => 12359;
+  let cur = 300, spill = false;
+  const serve0 = lab.stepFns.serve;
+  lab.stepFns.serve = async (o) => { const x = o.extra || []; spill = x[1] === '4096' && Number(x[x.indexOf('--moe-cache-mib') + 1]) >= 3072 || (x[1] === '4096' && !x.includes('--moe-cache-mib')); return serve0(o); };
+  lab.stepFns.sharedMB = async () => { cur = spill ? cur + 600 : cur; const v = cur; return v; };
+  lab.stepFns.trace = async () => { throw new Error('no trace here'); };
+  await startCalibrate(lab, [{ model: 'big', name: 'Big', experts: true }]); await wait(lab);
+  const rec = calResult(lab.cfg, 'big');
+  const f = rec.speedRows.find((r) => r.id === 'read-fastest'), fh = rec.speedRows.find((r) => r.id === 'read-fastest-hot'), ok = rec.speedRows.find((r) => r.id === 'read-faster-hot');
+  check('a reading step that spills card memory into RAM is a failure, with how much', /^Spilled: about 0\.6 GB of card memory went to RAM/.test(f.failed || '') && f.spillMB === 600);
+  check('a cache that spills steps down until one doesn\'t (4 and 3 GB spilled, 2 GB ran)', fh.cacheMB === 2048 && fh.steppedDown?.join() === '4096,3072' && !fh.failed);
+  check('a pair that doesn\'t spill is untouched', !ok.failed && ok.cacheMB === 4096 && ok.spillMB === undefined);
+  check('the real reader is Windows only, and reads bytes as whole MB', await sharedGpuMB({ platform: 'linux' }) === null && await sharedGpuMB({ platform: 'win32', run: (exe, a, o, cb) => cb(null, '1073741824\r\n') }) === 1024 && await sharedGpuMB({ platform: 'win32', run: (exe, a, o, cb) => cb(new Error('x')) }) === null);
 }
 {
   const lab = mkLab({ auto: 60, 0: 61, 8: 55, 16: 50, 24: 45, 32: 40, 40: 30 });
