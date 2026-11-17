@@ -300,3 +300,21 @@ Every row reads the short prompt, 16K and 32K, except G0 and G4 (short and 32K).
 **What G0 decides:** if G0 writes within 3% of G4, the live trace's cost is CUDA graphs being turned off. If G0 writes within 3% of Y0, it isn't. If G0 writes the same words as Y0, the word change under the trace comes from somewhere other than the replay. If G2 writes the same words as Y0 while G4 doesn't, marking the picks as graph outputs (0010) is what changes the words. If G2's words differ too, the test can't separate the causes, because the mass reads more of each layer.
 
 The runner now joins split nvidia-smi lines, so the card conditions are read from whole lines.
+
+## Addendum 17 (Nov 17, during the calibration run, before any 120B result): a brain bigger than the RAM
+
+The owner asked for hot, warm and cold experts to be built and tested. Hot is the card (the expert cache). Warm pins the busiest RAM experts so the operating system can't drop them to the disk. Cold asks for a whole expert at once from the disk when one that hasn't been used lately is picked. That is patch 0020 (`app/engine/README.md`), off unless asked. Neither tier changes a number, and the words are checked identical on a tiny brain. They can only matter when the brain doesn't fit in RAM. So the test brain is GPT-OSS 120B (63 GB) on the same PC (16 GB card, 32 GB RAM), with about 15 GB that can't fit.
+
+`speed-plans/big-brain-tiers.json`: Brain Engine 10 (with 0020), the Nov 10 best placement (`--n-cpu-moe 28`, reading step 2048), a 2,048-token prompt, 300 words out, 5 rows × **5 rounds** (25 loads), interleaved, with a warm-up per load as before. New: each timed run also records how many MB the disks read (`"diskReads": true`), and MB per written word.
+
+| Row | What | Why |
+|---|---|---|
+| B0 | Baseline | The number to beat (Nov 10: about 17 words a second, measured by another method) |
+| K3 | 3 experts per word instead of 4 (`--override-kv`) | Estimated 20 to 30% faster, never measured. **Changes the words**, so a quality check is needed before it's offered |
+| C1 | Cold tier | Whole-expert reads |
+| W8 | Warm tier, 8 GB | Busiest RAM experts pinned. Needs a 120B ranking file (`RANK120`); if none exists by run time, W8 and CW are dropped and reported as not run |
+| CW | Both | |
+
+**Predictions, written before any run:** B0 reads a lot from the disk per word (several MB). C1 lowers the time per word only if B0's disk reads are large; otherwise it's within 3%. W8 lowers disk reads per word, and writing gets faster by a similar share. K3 is 15 to 25% faster at writing.
+
+**Rule:** a tier is worth offering only if it writes at least 5% faster than B0 on the median, with no run slower than B0's slowest. Gaming, the stop file and the test lock work as before. It needs the owner's card, and Brain Engine 10 built.

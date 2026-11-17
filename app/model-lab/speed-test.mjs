@@ -14,6 +14,8 @@
 // Written out, never summarised away: runs.jsonl (every run, every word gap, every card sample, the command line and
 // the engine's cache lines), then summary.md (median, min and max per row and prompt; word gap median, p95, p99 and
 // longest; throttled runs counted and flagged, not dropped). A row that can't start is recorded as not run, with why.
+// With "diskReads": true in the plan, each timed run also records what the disks read (for brains bigger than the
+// RAM; /proc/diskstats on Linux, the PhysicalDisk counter on Windows), and the summary gets a disk table.
 // While it runs, summary-so-far.md holds the same table from the loads done so far (rewritten between loads, never
 // during a timed run), so the columns fill in as it goes. Open it in Notepad and reopen it to see new rows.
 //
@@ -101,6 +103,28 @@ export function parseSystem(json, { freeMB, totalMB }) {
 // power over one timed run. Only the lines written during the run are read, so no clock or date format is parsed.
 // The columns are found by name: Tctl/Tdie or CPU Package for the temperature, CPU Package Power for the power.
 export function splitCsv(line) { const out = []; let cur = '', q = false; for (const ch of String(line)) { if (ch === '"') q = !q; else if (ch === ',' && !q) { out.push(cur); cur = ''; } else cur += ch; } out.push(cur); return out.map((x) => x.trim()); }
+// Disk reads, for brains bigger than the RAM: bytes read from the disks so far, read before and after each timed run.
+// Linux and Android: /proc/diskstats, whole disks only (sectors read x 512). Windows: the raw "Disk Read Bytes/sec"
+// counter of PhysicalDisk _Total, which is a running total of bytes. Anything else: not measured (null).
+export function parseDiskstats(text) {
+  let sectors = 0, seen = 0;
+  for (const l of String(text || '').split(/\r?\n/)) {
+    const f = l.trim().split(/\s+/);
+    if (f.length < 6 || !/^(sd[a-z]+|vd[a-z]+|xvd[a-z]+|hd[a-z]+|nvme\d+n\d+|mmcblk\d+)$/.test(f[2])) continue;
+    const n = Number(f[5]); if (Number.isFinite(n)) { sectors += n; seen++; }
+  }
+  return seen ? sectors * 512 : null;
+}
+export function parseDiskRaw(text) {
+  const n = Number(String(text || '').trim().split(/\r?\n/).pop());
+  return Number.isFinite(n) && n >= 0 && String(text || '').trim() !== '' ? n : null;
+}
+export function diskUse(before, after, written) {
+  if (!Number.isFinite(before) || !Number.isFinite(after) || after < before) return null;
+  const readMB = r1((after - before) / 1048576);
+  return { readMB, mbPerWord: written > 0 ? Math.round(((after - before) / 1048576 / written) * 1000) / 1000 : null };
+}
+
 export function hwinfoColumns(header) {
   const h = splitCsv(header);
   const find = (re) => h.findIndex((x) => re.test(x));
@@ -235,13 +259,15 @@ export async function runRow({ plan, prompts, row, round, fx }) {
     await fx.stream(srv.url, { ...body(row.prompts?.[0] ? textOf(row.prompts[0]) : 'Hello.'), n_predict: 16 }); // warm-up, untimed
     for (const p of row.prompts || []) {
       if (fx.shouldStop()) { out.stopped = fx.shouldStop(); break; }
+      const disk0 = plan.diskReads ? await fx.diskReadBytes?.() : null; // off unless the plan asks (a PowerShell call each side on Windows)
       const card = fx.sampleCard();
       const cpu = fx.cpuMark?.();
       let r;
       try { r = await fx.stream(srv.url, body(textOf(p))); } catch (e) { r = { failed: String(e.message || e) }; }
       const samples = card.stop();
       const proc = cpu?.stop();
-      out.runs.push({ prompt: p, ...r, ...(proc ? { cpu: proc } : {}), card: cardSummary(samples), throttled: samples.some((x) => x?.throttled), cardSamples: samples });
+      const disk = plan.diskReads ? diskUse(disk0, await fx.diskReadBytes?.(), r?.writtenN ?? r?.words ?? 0) : null;
+      out.runs.push({ prompt: p, ...r, ...(proc ? { cpu: proc } : {}), ...(disk ? { disk } : {}), card: cardSummary(samples), throttled: samples.some((x) => x?.throttled), cardSamples: samples });
     }
     out.cache = parseCacheLog(srv.log()); // with LLAMA_MOE_CACHE_LOG_EVERY set, the latest totals
   } finally { await srv.stop(); }
@@ -284,6 +310,11 @@ export function summarise(results, { prompts = {}, plan = {} } = {}) {
   if (cond.length) {
     lines.push('', 'Conditions during the timed runs (median, with min and max):', '', '| Row | Prompt | Card max °C | Card memory max °C | Card busy max % | Fan max % | Lowest core MHz | Processor busy % | Processor max °C (HWiNFO) | Free RAM MB |', '|---|---|---|---|---|---|---|---|---|---|');
     for (const g of cond) { const ok = g.runs.filter((x) => !x.failed); lines.push(`| ${g.row} | ${g.prompt} | ${mm(ok.map((x) => x.card?.maxTempC))} | ${mm(ok.map((x) => x.card?.maxMemTempC))} | ${mm(ok.map((x) => x.card?.maxUtilPct))} | ${mm(ok.map((x) => x.card?.maxFanPct))} | ${mm(ok.map((x) => x.card?.minSmMHz))} | ${mm(ok.map((x) => x.cpu?.busyPct))} | ${mm(ok.map((x) => x.cpu?.cpuMaxC))} | ${mm(ok.map((x) => x.cpu?.freeRamMB))} |`); }
+  }
+  const diskRows = [...by.values()].filter((g) => !g.notRun && g.runs.some((x) => x.disk));
+  if (diskRows.length) {
+    lines.push('', 'Read from the disk during the timed runs (median, with min and max; all programs, so near zero means the brain stayed in RAM):', '', '| Row | Prompt | Read MB | MB per written word |', '|---|---|---|---|');
+    for (const g of diskRows) { const ok = g.runs.filter((x) => !x.failed); lines.push(`| ${g.row} | ${g.prompt} | ${mm(ok.map((x) => x.disk?.readMB))} | ${mm(ok.map((x) => x.disk?.mbPerWord))} |`); }
   }
   const hwNotes = [...new Set(results.flatMap((x) => (x.runs || []).map((r) => r.cpu?.cpuNote)).filter(Boolean))];
   if (hwNotes.length) lines.push('', `Processor temperature notes: ${hwNotes.join('; ')}.`);
@@ -347,6 +378,11 @@ function realFx(plan, outDir) {
     async detokenize(url, tokens) { const r = await fetch(url + '/detokenize', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tokens }) }); return (await r.json()).content || ''; },
     async cardTempC() { return new Promise((r) => { let o = ''; try { const c = nodeSpawn('nvidia-smi', ['--query-gpu=temperature.gpu', '--format=csv,noheader,nounits'], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }); c.on('error', () => r(null)); c.stdout.on('data', (d) => { o += d; }); c.on('exit', () => { const n = parseFloat(o); r(Number.isFinite(n) ? n : null); }); } catch { r(null); } }); },
     sleep(ms) { return new Promise((r) => setTimeout(r, ms)); },
+    async diskReadBytes() {
+      if (process.platform === 'linux' || process.platform === 'android') { try { return parseDiskstats(fs.readFileSync('/proc/diskstats', 'utf8')); } catch { return null; } }
+      if (process.platform !== 'win32') return null;
+      return new Promise((r) => { let o = ''; try { const c = nodeSpawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', "(Get-CimInstance Win32_PerfRawData_PerfDisk_PhysicalDisk -Filter \"Name='_Total'\").DiskReadBytesPersec"], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }); c.on('error', () => r(null)); c.stdout.on('data', (d) => { o += d; }); c.on('exit', () => r(parseDiskRaw(o))); setTimeout(() => { try { c.kill(); } catch {} r(parseDiskRaw(o)); }, 20e3); } catch { r(null); } });
+    },
     sampleCard() {
       const samples = [];
       let smi = null;

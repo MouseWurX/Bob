@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { quantile, median, parseSmiLine, cardSummary, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, lineSplitter, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns } from '../model-lab/speed-test.mjs';
+import { quantile, median, parseSmiLine, cardSummary, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, lineSplitter, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns, parseDiskstats, parseDiskRaw, diskUse } from '../model-lab/speed-test.mjs';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -166,6 +166,22 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   check('a comma decimal (European HWiNFO) still reads', parseHwinfo(header, ['"16.11.2026","23:10:01","1,1","70,5","66","80"']).cpuMaxC === 70.5);
   check('no lines written during a run is said plainly', parseHwinfo(header, []).cpuMaxC === null && /no lines/.test(parseHwinfo(header, []).cpuNote));
   check('a log without a processor temperature column is said plainly', /no processor temperature/.test(parseHwinfo('"Date","Time","GPU [°C]"', ['x']).cpuNote)); }
+
+
+// ---------- Disk reads (brains bigger than the RAM, Nov 17) ----------
+{ const ds = '   8       0 sda 100 0 2000 0 0 0 0 0 0 0 0\n   8       1 sda1 90 0 1800 0 0 0 0 0 0 0 0\n 259       0 nvme0n1 10 0 1000 0 0 0 0 0 0 0 0\n 259       1 nvme0n1p1 9 0 900 0 0 0 0 0 0 0 0\n   7       0 loop0 5 0 500 0';
+  check('disk reads: whole disks only, partitions and loop devices left out', parseDiskstats(ds) === 3000 * 512 && parseDiskstats('') === null);
+  check('disk reads: Windows\' raw counter is a running total of bytes', parseDiskRaw('123456789\r\n') === 123456789 && parseDiskRaw('') === null && parseDiskRaw('Get-CimInstance : error') === null);
+  const u = diskUse(0, 300 * 1048576, 300);
+  check('disk use per run: MB read and MB per written word; no reading, no number', u.readMB === 300 && u.mbPerWord === 1 && diskUse(null, 5, 1) === null && diskUse(10, 5, 1) === null);
+  const { prompts } = loadPlan(planFile); let n = 0;
+  const f = { ...fx(), diskReadBytes: async () => (n++ % 2 ? 50 * 1048576 : 0) };
+  const res = await runRow({ plan: { ...plan, diskReads: true }, prompts, row: plan.rows[1], round: 0, fx: f });
+  const off = await runRow({ plan, prompts, row: plan.rows[1], round: 0, fx: f });
+  check('disk reads are off unless the plan asks', off.runs.every((r) => r.disk === undefined));
+  check('each timed run records what was read from the disk', res.runs.length > 0 && res.runs.every((r) => r.disk?.readMB === 50));
+  const md = summarise([res], { prompts: {}, plan });
+  check('the summary has a disk table when there are disk readings, and none without', /Read from the disk during the timed runs/.test(md) && /\| 50 \(50 to 50\) \|/.test(md) && !/Read from the disk/.test(summarise([{ ...res, runs: res.runs.map(({ disk, ...r }) => r) }], { prompts: {}, plan }))); }
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
