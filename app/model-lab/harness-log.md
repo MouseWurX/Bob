@@ -248,3 +248,7 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
 
 - **Seen** (office thread, round 3, 3,000-row sheet): the note said "showed the first 20000 of 20723 characters". The reader stops once it passes the limit, so the count it gave was only what it had read. A brain would take that as nearly all of it, though only a few hundred of the 3,000 rows were shown. Later sheets also kept being read past the limit.
 - **Fix:** read_calc counts the rows it shows on each sheet, cuts on a whole row, and stops once the limit is reached. The note now says "Orders showed rows 1 to N of 3001", names any sheet that wasn't shown, and says not to add up from part of it (convert to CSV and use query_data instead). Documents and decks say only that there is more. Tests: run-office-test, 4 (one with real LibreOffice).
+
+## 17 Nov: the after2 rerun plan
+
+- jobs-after2.json (was jobs-mail-after2) puts both reruns on one card, as the owner asked: "and we will only test on minimus and medius". The 30 inbox jobs run at Minimus and Medius (catalog on), and the 36 office jobs run at Minimus, so each change made for an office prediction gets a job of its own. 12 slots x 32K, caps 1.5 h / $3. Held until the owner taps go. run-forge-slots-test checks that it fits the card, has no Magnus or Maximus, and scores office.
