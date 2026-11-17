@@ -117,21 +117,22 @@ const wait = async (lab) => { for (let i = 0; i < 300 && lab.job; i++) await new
   check('Use recommended sets Room for hot experts to a smaller size the pick ran with', lab.cfg.hotExpertsGB === 3 && u.hotExperts === true);
 }
 {
-  // Nov 17 (npc: step 4096 + 4 GB spilled about 0.6 GB into RAM): a pair that spills fails, and a cache steps down
+  // Nov 17 (npc): shared GPU memory rises with the reading step (0.14 GB Normal, 0.34 at 2048, 0.59 at 4096), the same
+  // with any cache; only a rise past a try's own baseline is a spill
   const lab = mkLab({ auto: 60.04, 8: 71.26, 16: 66, 24: 50, 32: 41, 40: 30 });
   lab.cfg.gpuVramGB = 16; lab.brain.engine.buildNo = () => 12359;
-  let cur = 300, spill = false;
+  let cur = 1000, next = 0;
   const serve0 = lab.stepFns.serve;
-  lab.stepFns.serve = async (o) => { const x = o.extra || []; spill = x[1] === '4096' && Number(x[x.indexOf('--moe-cache-mib') + 1]) >= 3072 || (x[1] === '4096' && !x.includes('--moe-cache-mib')); return serve0(o); };
-  lab.stepFns.sharedMB = async () => { cur = spill ? cur + 600 : cur; const v = cur; return v; };
+  const STEP_RISE = { '': 144, 2048: 336, 4096: 592 };
+  lab.stepFns.serve = async (o) => { const x = o.extra || []; const step = x[0] === '-b' ? x[1] : ''; const mib = x.includes('--moe-cache-mib') ? Number(x[x.indexOf('--moe-cache-mib') + 1]) : 0; next = STEP_RISE[step] + (step === '2048' && mib >= 3072 ? 900 : 0); return serve0(o); };
+  let reads = 0; lab.stepFns.sharedMB = async () => (reads++ % 2 ? cur + next : cur);
   lab.stepFns.trace = async () => { throw new Error('no trace here'); };
   await startCalibrate(lab, [{ model: 'big', name: 'Big', experts: true }]); await wait(lab);
   const rec = calResult(lab.cfg, 'big');
-  const f = rec.speedRows.find((r) => r.id === 'read-fastest'), fh = rec.speedRows.find((r) => r.id === 'read-fastest-hot'), ok = rec.speedRows.find((r) => r.id === 'read-faster-hot');
-  check('a reading step that spills card memory into RAM is a failure, with how much', /^Spilled: about 0\.6 GB of card memory went to RAM/.test(f.failed || '') && f.spillMB === 600);
-  check('a cache that spills steps down until one doesn\'t (4 and 3 GB spilled, 2 GB ran)', fh.cacheMB === 2048 && fh.steppedDown?.join() === '4096,3072' && !fh.failed);
-  check('a pair that doesn\'t spill is untouched', !ok.failed && ok.cacheMB === 4096 && ok.spillMB === undefined);
-  check('the real reader is Windows only, and reads bytes as whole MB', await sharedGpuMB({ platform: 'linux' }) === null && await sharedGpuMB({ platform: 'win32', run: (exe, a, o, cb) => cb(null, '1073741824\r\n') }) === 1024 && await sharedGpuMB({ platform: 'win32', run: (exe, a, o, cb) => cb(new Error('x')) }) === null);
+  const row = (id) => rec.speedRows.find((r) => r.id === id);
+  check('the rise a reading step always brings is not a spill (step 4096: 0.59 GB, with or without the cache)', !row('read-fastest').failed && row('read-fastest').sharedRiseMB === 592 && !row('read-fastest-hot').failed && row('read-fastest-hot').cacheMB === 4096);
+  check('a cache that adds a real spill past its step\'s own rise fails and steps down (4 and 3 GB spilled, 2 GB ran)', row('read-faster-hot').cacheMB === 2048 && row('read-faster-hot').steppedDown?.join() === '4096,3072' && !row('read-faster-hot').failed);
+  check('the reader is Windows only, and reads bytes as whole MB', await sharedGpuMB({ platform: 'linux' }) === null && await sharedGpuMB({ platform: 'win32', run: (exe, a, o, cb) => cb(null, '1073741824\r\n') }) === 1024 && await sharedGpuMB({ platform: 'win32', run: (exe, a, o, cb) => cb(new Error('x')) }) === null);
 }
 {
   const lab = mkLab({ auto: 60, 0: 61, 8: 55, 16: 50, 24: 45, 32: 40, 40: 30 });

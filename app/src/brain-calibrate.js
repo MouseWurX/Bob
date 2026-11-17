@@ -233,7 +233,17 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
             row = { ...row, readTps: round1(Number(long.timings?.prompt_per_second) || 0), firstWordS: long.timings?.prompt_ms ? round1(long.timings.prompt_ms / 1000) : null, tps: round1(Number(short.timings?.predicted_per_second) || 0), ...(t.turbo && dn ? { accepted: Math.round((100 * da) / dn) } : {}) };
             if (!(row.tps > 0)) row.failed = 'It answered, but gave no speed.';
             const shared1 = Number.isFinite(shared0) ? await readShared() : null;
-            if (Number.isFinite(shared1) && shared1 - shared0 > SPILL_MB && !row.failed) { row.spillMB = shared1 - shared0; row.failed = `Spilled: about ${Math.round(row.spillMB / 102.4) / 10} GB of card memory went to RAM, which can slow everything else down.`; }
+            if (Number.isFinite(shared1)) {
+              // Nov 17 (npc): shared GPU memory rises with the reading step itself (about 0.14 GB at Normal, 0.34 at
+              // 2048, 0.59 at 4096, the same with any cache size): working memory the step always uses, not a spill.
+              // So a try is judged against its own baseline: a cache try against the same step without the cache, any
+              // other try against Normal with room for its bigger step. A rise past that is the card overflowing.
+              row.sharedRiseMB = shared1 - shared0;
+              const twin = speedRows.find((x) => x.id === (t.cache ? t.id.replace(/-hot$/, '') : 'read-normal') && Number.isFinite(x.sharedRiseMB));
+              const allow = t.cache ? SPILL_MB : 2 * SPILL_MB;
+              const extra = twin && t.id !== 'read-normal' ? row.sharedRiseMB - twin.sharedRiseMB : 0;
+              if (extra > allow && !row.failed) { row.spillMB = extra; row.failed = `Spilled: about ${Math.round(extra / 102.4) / 10} GB more card memory went to RAM than ${t.cache ? 'this reading speed uses without hot experts' : 'Normal reading uses'}, which can slow everything else down.`; }
+            }
           } catch (e) {
             if (signal.aborted) throw e;
             row.failed = 'Didn\'t start: too much for the card this way.';
