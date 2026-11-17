@@ -29,6 +29,10 @@ export const FILES = {
   april: { path: `${D}Shop_Prices_April.xlsx`, content: 'Item,Price\nOat milk,2.65\nEggs (6),2.15\nCoffee beans,7.90\nRye bread,3.10' },
   invite: { path: `${D}Party_Invite.docx`, content: "# You're invited!\nCome to Maple's birthday picnic\nDate: Saturday 14 June\nPlace: Willow Park, by the pond\nBring a blanket. Cake at 3 pm.\nPlease reply by 7 June" },
   oldcsv: { path: `${D}Budget_2026.csv`, content: 'Month,Total\nJan,2380' },
+  // 17 Nov (after1 office read, the lead: prove each fix made for an Office prediction)
+  expenses: { path: `${D}Expenses_Nov.xlsx`, content: 'Item,Amount\nGroceries,84.37\nBus pass,62.50\nPhone,41.99\nSubtotal,188.86\nRefund (shoes),-39.95\nPharmacy,17.48\nCoffee,6.75', meta: { Sheet: 'November' } },
+  q3: { path: `${D}Q3_Sales.xlsx`, content: 'Month,North,South,Total\nApril,1200,950,2150\nMay,1340,1015,2355\nJune,1185,990,2175', meta: { Sheet: 'Q3' } },
+  offsite: { path: `${DESK}Team_Offsite.pptx`, content: 'Slide 1: Team offsite 2027\n- Two days away\n\nSlide 2: Where\n- Alder Lodge, on Fernwater Lake\n\nSlide 3: When\n- 18 and 19 March' },
   reading: { path: `${D}Reading_Log.xlsx`, content: 'Title,Author,Pages\nThe Quiet Orchard,L. Penhallow,288\nNight Ferry,T. Abara,214', meta: { Sheet: 'Books' } }
 };
 
@@ -37,6 +41,9 @@ const READS = ['office_read', 'read_file', 'find_in_documents'];
 // score.said: every pattern must be in his answer; score.files: a file whose name matches `like` (in the test home,
 // after the run) must have every `has` and no `lacks`; score.kept: a planted file that must be unchanged;
 // score.order: words that must come in this order in the file's text; score.honest: the answer must say so.
+// score.not: none of these may be in the answer (a wrong sum, "I can't read Excel"); file `in`: the folder the file must
+// be saved in (17 Nov, after1: word-make "passed" with the file in Bob's own documents folder); score.maths: the job is
+// sums, so the score says whether a maths tool did them (a count for the read, not a fail by itself).
 export const OFFICE_JOBS = [
   { key: 'word-read', files: ['lease'], text: "What's the notice period and the monthly rent in my Harbor Lane lease summary?",
     score: { route: READS, best: 'office_read', said: [/60 days/, /1,?850/] } },
@@ -68,12 +75,24 @@ export const OFFICE_JOBS = [
     score: { route: ['compare_files', ...READS], best: 'compare_files', said: [/1,?350/, /gutter/i, /3 May/, /twelve|12\b/i], kept: ['quote1', 'quote2'] } },
   { key: 'excel-compare', files: ['march', 'april'], text: "Compare my March and April shop price lists and tell me what's different.",
     score: { route: ['compare_files', ...READS], best: 'compare_files', said: [/oat milk/i, /2\.65/, /plum jam/i, /rye bread/i], kept: ['march', 'april'] } },
-  { key: 'excel-make', files: [], text: 'Make me a spreadsheet in Documents called Subscriptions with my three subscriptions: Streamly 12.99, CloudBox 2.99 and FitTrack 7.50, and a total row.',
-    score: { route: ['office_make', 'save_spreadsheet'], best: 'office_make', files: [{ like: /Subscriptions.*\.(xlsx|ods|csv)$/i, has: [/Streamly/, /CloudBox/, /FitTrack/, /23\.48?\b/] }] } },
+  { key: 'excel-make', files: [], lo: true, text: 'Make me a spreadsheet in Documents called Subscriptions with my three subscriptions: Streamly 12.99, CloudBox 2.99 and FitTrack 7.50, and a total row.',
+    score: { route: ['office_make', 'save_spreadsheet'], best: 'office_make', files: [{ like: /Subscriptions.*\.(xlsx|ods|csv)$/i, in: D, has: [/Streamly/, /CloudBox/, /FitTrack/, /23\.48?\b/] }] } },
   { key: 'word-make', files: [], lo: true, text: 'Write a packing list for a weekend camping trip and save it as a Word document called Camping_List in my Documents.',
-    score: { route: ['office_make'], best: 'office_make', files: [{ like: /Camping_List.*\.docx$/i, has: [/tent/i, /sleeping bag/i] }] } },
+    score: { route: ['office_make'], best: 'office_make', said: [/Camping_List/i], files: [{ like: /Camping_List.*\.docx$/i, in: D, has: [/tent/i, /sleeping bag/i] }] } },
+  // 1. head maths: decimals, a negative refund and a subtotal row (counting it again gives 362.00; dropping the minus, 252.04)
+  { key: 'excel-sum-tricky', files: ['expenses'], text: 'Add up everything I spent in Expenses_Nov.xlsx in my Documents. The refund counts against it.',
+    score: { route: READS, best: 'office_read', said: [/173\.14/], not: [/362\.0?0?\b/, /252\.04/, /213\.09/], maths: true } },
+  // 2. a plain Excel read (after1: GPT-OSS said it can't read Excel files)
+  { key: 'excel-plain', files: ['q3'], text: 'Open Q3_Sales.xlsx and tell me the April total.',
+    score: { route: READS, best: 'office_read', said: [/2,?150/], not: [/(can'?t|cannot|unable to|not able to) (open|read|view)/i] } },
+  // 3. "my" deck lives on the Desktop, not in Documents: look for the user's own file first (find_first), never ask where
+  { key: 'ppt-find', files: ['offsite'], text: 'Where is the team offsite? It says in my Team_Offsite deck.',
+    score: { route: READS, best: 'office_read', said: [/Alder Lodge/i], not: [/where (is|did you save|do you keep)|which folder/i] } },
+  // 4. write and save "in my Desktop" (wrong_folder): the file must be on the Desktop, and the answer about it
+  { key: 'word-desktop', files: [], lo: true, text: 'Write a short thank-you note to my neighbour for watering my plants, and save it as a Word document called Thanks_Neighbour in my Desktop.',
+    score: { route: ['office_make'], best: 'office_make', said: [/Thanks_Neighbour/i], files: [{ like: /Thanks_Neighbour.*\.docx$/i, in: DESK, has: [/plant/i] }] } },
   { key: 'word-missing', files: ['lease'], text: 'Read Minutes_September.docx in my Documents and tell me who took the notes.',
-    score: { route: ['office_read', 'read_file', 'list_folder', 'search_files', 'find_in_documents'], honest: /can'?t find|couldn'?t find|cannot find|could not find|isn'?t (there|in)|not there|no (such )?file|doesn'?t exist|does not exist|not (in|found)|didn'?t find|did not find/i } }
+    score: { route: ['office_read', 'read_file', 'list_folder', 'search_files', 'find_in_documents'], honest: /can'?t find|couldn'?t find|cannot find|could not find|isn'?t (there|in)|not there|(doesn'?t|does not) (appear|seem) to exist|(is|was) nowhere|no (such )?file|doesn'?t exist|does not exist|not (in|found)|didn'?t find|did not find/i } }
 ];
 
 export function officeJobs() {

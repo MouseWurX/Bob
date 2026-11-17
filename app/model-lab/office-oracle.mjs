@@ -36,18 +36,20 @@ export const PLAIN = {
   'excel-compare': [[['compare_files', { first: F('march'), second: F('april') }]], 'Oat milk went up from 2.40 to 2.65, plum jam is gone and rye bread (3.10) is new.'],
   'excel-make': [[['office_make', { kind: 'calc', path: `${D}Subscriptions.xlsx`, sheets: [{ name: 'Subscriptions', rows: [['Name', 'Cost'], ['Streamly', 12.99], ['CloudBox', 2.99], ['FitTrack', 7.5], ['Total', '=SUM(B2:B4)']] }] }]], 'Saved Subscriptions.xlsx: the total is 23.48.'],
   'word-make': [[['office_make', { kind: 'writer', path: `${D}Camping_List.docx`, text: '# Camping list\n- Tent\n- Sleeping bag\n- Torch\n- Water' }]], 'Saved Camping_List.docx in Documents.'],
+  'excel-sum-tricky': [[['office_read', { path: F('expenses') }], ['calculate', { expression: '84.37+62.50+41.99-39.95+17.48+6.75' }]], 'You spent 173.14 in November, after the shoe refund (the subtotal row is not counted again).'],
+  'excel-plain': [[['office_read', { path: F('q3') }]], 'April came to 2,150 (North 1,200, South 950).'],
+  'ppt-find': [[['list_folder', { path: 'C:\\Users\\you\\Desktop' }], ['office_read', { path: F('offsite') }]], 'At Alder Lodge, on Fernwater Lake, on 18 and 19 March.'],
+  'word-desktop': [[['office_make', { kind: 'writer', path: 'C:\\Users\\you\\Desktop\\Thanks_Neighbour.docx', text: '# Thank you\nThank you so much for watering my plants while I was away.' }]], 'Saved Thanks_Neighbour.docx on your Desktop.'],
   'word-missing': [[['list_folder', { path: 'C:\\Users\\you\\Documents' }]], "I can't find Minutes_September.docx in your Documents."]
 };
 
-const NO_OFFICE_MAKE = [['save_spreadsheet', { name: 'Subscriptions', csv: 'Name,Cost\nStreamly,12.99\nCloudBox,2.99\nFitTrack,7.50\nTotal,23.48' }]];
 // lazy: the brain calls no tool and says "Done, all sorted." to every job: every job must FAIL, so a claim alone never passes
 export async function oracle({ bob = path.resolve(here, '..'), office = '', keep = false, lazy = false, log = console.log } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'office-oracle-'));
   const rowsIn = officeJobs().filter((j) => office || !j.office.lo);
-  // without LibreOffice the test Bob has no Office Hand: the plain way is then read_file and save_spreadsheet
-  const plainOf = (key) => (office ? PLAIN[key][0] : key === 'excel-make' ? NO_OFFICE_MAKE : PLAIN[key][0].map(([t, a]) => [t === 'office_read' ? 'read_file' : t, a]));
-  // save_spreadsheet names its own file (with the day), so that answer names no file
-  const endOf = (key) => (!office && key === 'excel-make' ? 'Saved your subscriptions spreadsheet: the total is 23.48.' : PLAIN[key][1]);
+  // without LibreOffice the test Bob has no Office Hand: the plain way is then read_file
+  const plainOf = (key) => (office ? PLAIN[key][0] : PLAIN[key][0].map(([t, a]) => [t === 'office_read' ? 'read_file' : t, a]));
+    const endOf = (key) => PLAIN[key][1];
   const jobs = rowsIn.map((j) => ({ ...j, plan: lazy ? [] : plainOf(j.key), end: lazy ? 'Done, all sorted.' : endOf(j.key) }));
   const { srv } = brainServer(jobs);
   await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));

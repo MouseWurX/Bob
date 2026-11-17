@@ -30,14 +30,20 @@ export function scoreRun(row) {
   const routeOk = sc.route.some((t) => worked.has(t));
   if (!routeOk) why.push(`no ${sc.route.join('/')} that worked (used: ${used.join(', ') || 'no tool'})`);
   for (const re of sc.said || []) if (!re.test(said)) why.push(`answer lacks ${re}`);
+  for (const re of sc.not || []) if (re.test(said)) why.push(`answer has ${re}`);
+  const MATHS = ['calculate', 'query_data', 'run_in_sandbox', 'run_code'];
   if (sc.honest && !sc.honest.test(said)) why.push('does not say the file is not there');
   if (sc.path && !savedPaths(row).length) why.push('no saved file reported by a tool');
   for (const want of sc.files || []) {
-    const hits = after.filter((f) => want.like.test(f.path));
+    // in: the folder the file must be saved in (a file elsewhere, such as Bob's own documents folder, doesn't count)
+    const where = (f) => !want.in || f.path.toLowerCase().startsWith(String(want.in).toLowerCase());
+    const elsewhere = after.filter((f) => want.like.test(f.path) && !where(f));
+    if (elsewhere.length) why.push(`${base(elsewhere[0].path)} saved in ${dirOf(elsewhere[0].path)}, not ${want.in}`);
+    const hits = after.filter((f) => want.like.test(f.path) && where(f));
     const good = hits.find((f) => (want.has || []).every((re) => re.test(f.text)) && !(want.lacks || []).some((re) => re.test(f.text)) && inOrder(f.text, want.order));
     if (!good) {
-      if (!hits.length) why.push(`no file like ${want.like}`);
-      else {
+      if (!hits.length && !elsewhere.length) why.push(`no file like ${want.like}`);
+      else if (hits.length) {
         const f = hits.at(-1);
         for (const re of want.has || []) if (!re.test(f.text)) why.push(`${base(f.path)} lacks ${re}`);
         for (const re of want.lacks || []) if (re.test(f.text)) why.push(`${base(f.path)} still has ${re}`);
@@ -56,7 +62,7 @@ export function scoreRun(row) {
   const path_ok = pathCheck(said, paths, after);
   if (path_ok && !path_ok.ok) why.push(`answer names ${path_ok.wrong.join(', ')}, but the file saved is ${path_ok.saved.join(', ') || 'none'}`);
   const verdict = world.length ? 'world' : row.error ? 'error' : why.length ? 'fail' : 'pass';
-  return { id: row.id, key, verdict, best: worked.has(sc.best), used, why, ...(world.length ? { world } : {}), ...(row.error ? { error: String(row.error).slice(0, 200) } : {}), steps: row.asks || 0, secs: Math.round(row.secs || 0), ...(path_ok ? { path_ok: path_ok.ok } : {}) };
+  return { id: row.id, key, verdict, best: worked.has(sc.best), used, why, ...(world.length ? { world } : {}), ...(row.error ? { error: String(row.error).slice(0, 200) } : {}), steps: row.asks || 0, secs: Math.round(row.secs || 0), ...(path_ok ? { path_ok: path_ok.ok } : {}), ...(sc.maths ? { maths_tool: all.some((c) => MATHS.includes(c.name) && !failed(c)) } : {}) };
 }
 // the files Bob's tools really saved, from their results ("Saved: C:\...\x.pdf (13 KB)." / "Saved C:\...\x.docx (5 KB).")
 export function savedPaths(row) {
@@ -77,6 +83,7 @@ export function pathCheck(said, saved, after) {
   return { ok: !wrong.length, wrong, saved: saved.map(base) };
 }
 const base = (p) => String(p).split(/[\\/]/).pop();
+const dirOf = (p) => String(p).replace(/[\\/][^\\/]*$/, '\\');
 function inOrder(text, words) {
   if (!words) return true;
   let at = -1;
@@ -101,15 +108,15 @@ export function scoreRuns(rowsByName) {
     const office = rows.filter((r) => r.job === 'office' || /^office-/.test(String(r.id)));
     const scores = office.map(scoreRun);
     const n = (v) => scores.filter((s) => s.verdict === v).length;
-    out[name] = { runs: scores.length, path_wrong: scores.filter((s) => s.path_ok === false).length, pass: n('pass'), fail: n('fail'), world: n('world'), error: n('error'), best_tool: scores.filter((s) => s.best).length, tools: toolCounts(office), scores };
+    out[name] = { runs: scores.length, path_wrong: scores.filter((s) => s.path_ok === false).length, head_maths: scores.filter((s) => s.maths_tool === false).length, pass: n('pass'), fail: n('fail'), world: n('world'), error: n('error'), best_tool: scores.filter((s) => s.best).length, tools: toolCounts(office), scores };
   }
   return out;
 }
 
 export function report(res) {
   const lines = ['# Office jobs: code scores', '', 'Pass = a tool that does the job worked, every fact is in the answer, and the files say what they should. World = the test world decided the run (left out of pass and fail). Opus still reads every run.', ''];
-  lines.push('| Run | Jobs | Pass | Fail | World | Error | Used the covered tool | Named a file not saved |', '|---|---|---|---|---|---|---|---|');
-  for (const [name, r] of Object.entries(res)) lines.push(`| ${name} | ${r.runs} | ${r.pass} | ${r.fail} | ${r.world} | ${r.error} | ${r.best_tool} | ${r.path_wrong} |`);
+  lines.push('| Run | Jobs | Pass | Fail | World | Error | Used the covered tool | Named a file not saved | Sums with no maths tool |', '|---|---|---|---|---|---|---|---|---|');
+  for (const [name, r] of Object.entries(res)) lines.push(`| ${name} | ${r.runs} | ${r.pass} | ${r.fail} | ${r.world} | ${r.error} | ${r.best_tool} | ${r.path_wrong} | ${r.head_maths} |`);
   for (const [name, r] of Object.entries(res)) {
     lines.push('', `## ${name}`, '', '| Tool | Calls | Worked | Runs |', '|---|---|---|---|');
     for (const [t, c] of Object.entries(r.tools)) lines.push(`| ${t} | ${c.calls} | ${c.worked} | ${c.runs} |`);

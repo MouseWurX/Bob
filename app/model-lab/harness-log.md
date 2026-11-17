@@ -27,6 +27,18 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
   named by subject can score 0 (7f46cc); a count was off (84144a). Open (Bob): raw tool-call text left as the answer
   (8 runs), review text shown to the user (6 runs).
 
+## 17 Nov 2026: after1 office jobs (14 of 17 passed by code)
+- Taught: word-make "passed" with the file in Bob's own documents folder and an answer about a hacked account (the
+  score never looked at the folder or the answer); word-missing was failed for "doesn't appear to exist anywhere".
+- Changed (office-score.mjs): a file check can name its folder (`in`), and a file saved elsewhere fails, saying where;
+  word-make's answer must name the file; `not` patterns fail an answer (a wrong sum, "I can't open Excel");
+  a maths job reports whether a maths tool did the sum; the missing-file words are wider. A crash on a file found
+  only in the wrong folder is fixed. Office jobs also have the calculator on (do-jobs).
+- Check: four new jobs prove the fixes made for Office predictions: excel-sum-tricky (decimals, a refund, a subtotal
+  row; 362.00 / 252.04 fail), excel-plain (a plain "open Q3_Sales.xlsx"), ppt-find (the deck is on the Desktop;
+  asking where fails), word-desktop (saved "in my Desktop"). 21 jobs; the oracle passes 21/21 and the do-nothing
+  brain fails 21/21; test/run-office-jobs-test.js 44 checks, each new rule with a pass and a fail case.
+
 ## 16 Nov 2026: office tools never called in ~900 Qwen runs (lab read; nothing rented)
 - Taught: across the 800 + 100 runs, office_read, office_edit, office_make, convert_file and compare_files were never
   called. Not the brain: the test Bob had the Office Hand off (do-jobs turns it on only with `--office`, and no plan

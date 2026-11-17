@@ -348,10 +348,11 @@ async function runJob(j) {
   // manage_email, his account set up on a made-up mailbox (mail-world.mjs) that answers nothing else, so nothing can be sent
   const mw = j.mail ? await fitMail(kit, j.mail) : null;
   // 16 Nov (MouseWurX: test Bob's features "one category at a time. starting with office files"): an office job plants its
-  // own made-up files (office-jobs.mjs) and has "Let Bob compare files" on, as a person who asked for it would
+  // own made-up files (office-jobs.mjs) and has "Let Bob compare files" on, as a person who asked for it would; 17 Nov: and the calculator, so the
+  // head-maths job (excel-sum-tricky) can show whether the maths check sends sums to calculate
   let ow = null;
   if (j.office) {
-    kit.cfg.moreTools = { ...(kit.cfg.moreTools || {}), compareFiles: true };
+    kit.cfg.moreTools = { ...(kit.cfg.moreTools || {}), compareFiles: true, calculator: true };
     const want = (j.office.files || []).filter((f) => f && typeof f.path === 'string');
     const put = plantScene(kit, { files: want.map((f) => ({ path: f.path, content: String(f.content ?? ''), ...(f.meta ? { meta: f.meta } : {}) })) }, { day: today });
     ow = { files: put.files, missing: [...put.skipped.map((x) => `${x.path}: ${x.why}`), ...want.filter((f) => !put.files.some((p) => p.toLowerCase().endsWith(f.path.split('\\').pop().toLowerCase()))).map((f) => f.path)].filter((x, i, a) => a.indexOf(x) === i) };

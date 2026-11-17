@@ -21,11 +21,11 @@ const { oracle } = await imp('model-lab/office-oracle.mjs');
 
 // ---- the jobs ----
 const rows = officeJobs();
-check('17 office jobs, each id once', rows.length === 17 && new Set(rows.map((r) => r.id)).size === 17);
+check('21 office jobs, each id once', rows.length === 21 && new Set(rows.map((r) => r.id)).size === 21);
 check('Word, Excel and PowerPoint each get read, convert and edit jobs', ['word', 'excel', 'ppt'].every((k) => ['read', 'to-', 'edit|add|delete'].every((w) => OFFICE_JOBS.some((j) => j.key.startsWith(k) && new RegExp(w).test(j.key)))));
 check('compare and make jobs are there', ['word-compare', 'excel-compare', 'excel-make', 'word-make'].every((k) => OFFICE_JOBS.some((j) => j.key === k)));
 check('every job file is known and sits in the test home', rows.every((r) => r.office.files.every((f) => FILES[f.key] && /^C:\\Users\\you\\(Documents|Desktop)\\/.test(f.path))));
-check('jobs that change or make a file say they need LibreOffice', OFFICE_JOBS.filter((j) => /to-|edit|add|delete|word-make/.test(j.key)).every((j) => j.lo) && OFFICE_JOBS.filter((j) => /read|sum|compare|missing/.test(j.key)).every((j) => !j.lo));
+check('jobs that change or make a file say they need LibreOffice', OFFICE_JOBS.filter((j) => /to-|edit|add|delete|make|desktop/.test(j.key)).every((j) => j.lo) && OFFICE_JOBS.filter((j) => /read|sum|compare|missing|plain|find/.test(j.key)).every((j) => !j.lo));
 check('every job scores by a tool route and by facts or files', OFFICE_JOBS.every((j) => j.score.route?.length && (j.score.said?.length || j.score.files?.length || j.score.honest)));
 
 // ---- planting and reading back, through a real test home ----
@@ -70,6 +70,19 @@ try {
   check('convert_file\'s "-2" name: the asked-for name fails, the real one passes', !pathCheck('Saved as Budget_2026.csv.', saved2, after).ok && pathCheck('Saved as Budget_2026-2.csv.', saved2, after).ok);
   check('a made-up file name fails', !pathCheck('Saved as Budget_final.csv.', saved, after).ok);
   check('no saved file: nothing to check', pathCheck('Budget_2026.csv', [], after) === null);
+  // 17 Nov (after1 office read): each fix made for an Office prediction has a job that proves it
+  const ok1 = (key, said, calls = [['office_read', 'ok']], after = []) => scoreRun(run(key, { said, steps: [{ calls: calls.map(([n, r]) => call(n, {}, r)) }], office: { after } }));
+  check('head maths: the right sum passes, counting the subtotal again fails, a dropped minus fails',
+    ok1('excel-sum-tricky', 'You spent 173.14.').verdict === 'pass' && ok1('excel-sum-tricky', 'You spent 362.00.').verdict === 'fail' && ok1('excel-sum-tricky', '252.04 in all, or 173.14').verdict === 'fail');
+  check('head maths: the score says whether a maths tool did the sum', ok1('excel-sum-tricky', '173.14').maths_tool === false && ok1('excel-sum-tricky', '173.14', [['office_read', 'ok'], ['calculate', '173.14']]).maths_tool === true);
+  check('a plain Excel read: "I can\'t open Excel files" fails even with the number', ok1('excel-plain', 'April: 2,150').verdict === 'pass' && ok1('excel-plain', "I can't open Excel files, but April may be 2,150.").verdict === 'fail');
+  check('my deck on the Desktop: asking where it is fails', ok1('ppt-find', 'At Alder Lodge.').verdict === 'pass' && ok1('ppt-find', 'Which folder is it in? Maybe Alder Lodge.').verdict === 'fail');
+  const desk = { path: 'C:\\Users\\you\\Desktop\\Thanks_Neighbour.docx', text: 'Thank you for watering my plants.' };
+  const inn = { path: 'C:\\Users\\you\\AppData\\Local\\Bob\\Agent\\inn\\documents\\Thanks_Neighbour.docx', text: desk.text };
+  check('saved "in my Desktop": on the Desktop passes, in Bob\'s own folder fails', ok1('word-desktop', 'Saved Thanks_Neighbour.docx.', [['office_make', 'Saved: x']], [desk]).verdict === 'pass'
+    && ok1('word-desktop', 'Saved Thanks_Neighbour.docx.', [['office_make', 'Saved: x']], [inn]).why.some((w) => /saved in .*inn/.test(w)));
+  check('word-make: an answer about something else fails even with the file right', ok1('word-make', 'Your account may have been hacked: change your password.', [['office_make', 'Saved: x']], [{ path: 'C:\\Users\\you\\Documents\\Camping_List.docx', text: 'Tent\nSleeping bag' }]).verdict === 'fail');
+  check('word-missing: "doesn\'t appear to exist anywhere" says it is missing', ok1('word-missing', "Minutes_September.docx doesn't appear to exist anywhere.", [['list_folder', 'x']]).verdict === 'pass');
   const res = scoreRuns({ a: [run('word-read', { said: '60 days 1,850', steps: [{ calls: [call('office_read', {}, 'ok'), call('compare_files', {}, 'Error: x')] }] })] });
   check('tool counts say calls and what worked', res.a.tools.office_read.worked === 1 && res.a.tools.compare_files.calls === 1 && res.a.tools.compare_files.worked === 0);
   check('the report names every job', /\| word-read \| pass/.test(report(res)));
@@ -89,7 +102,7 @@ try {
 {
   const quiet = () => {};
   const good = await oracle({ bob: app, log: quiet });
-  check(`the oracle passes every job LibreOffice isn't needed for (${good.scores.length})`, good.ok && good.scores.length === 8, JSON.stringify(good.scores.filter((s) => s.verdict !== 'pass')).slice(0, 600));
+  check(`the oracle passes every job LibreOffice isn't needed for (${good.scores.length})`, good.ok && good.scores.length === 10, JSON.stringify(good.scores.filter((s) => s.verdict !== 'pass')).slice(0, 600));
   const lazy = await oracle({ bob: app, lazy: true, log: quiet });
   check('a do-nothing brain that says "Done" fails every one', lazy.ok, JSON.stringify(lazy.scores.filter((s) => s.verdict !== 'fail')).slice(0, 600));
 }
