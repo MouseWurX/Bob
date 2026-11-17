@@ -406,15 +406,17 @@ less a fixed 80 MB, at every cache size. The runner now takes that buffer off be
 `spillMinusStep`, and Bob's Calibrate judges each try against the same step without a cache.
 
 The owner asked how speed changes as the cache shrinks from 4 GB to 3 GB at step 4096. `speed-plans/calibrate-sweep.json`:
-the same brain, engine, settings and prompts as Addendum 20. 9 rows, X4096 down to X3072 in 128 MB steps,
-plus step 5120 at 4096 and 3584 MB (S5k4096, S5k3584: Addendum 20 never kept a 5120 run with more than 2 GB), **3 rounds**
-(33 loads), interleaved. This run is a sweep to find a shape: with 3 rounds it is reported as
-exploratory, not final. A finer pass, or 5 rounds around the knee, follows if the shape calls for it.
+the same brain, engine, settings and prompts as Addendum 20. As the owner set it before the run: 15 rows. Step 4096 at
+4096 down to 3584 MB in 128 MB steps (X4096 to X3584, 5 rows); steps 5120 and 6144 at 4096, 3584, 3072, 2560 and 2048 MB
+(S5k4096 to S5k2048 and S6k4096 to S6k2048, 10 rows: Addendum 20 never kept a 5120 or 6144 run with more than 2 GB), **1 round**
+(15 loads; the owner: "1 round for preliminary analysis, and we cut anything if it breaks"). A setup that fails to
+load or fails its run is cut, not stepped down. With 1 round this is reported as preliminary, not final. A finer pass, or 5 rounds around the knee, follows if the shape calls for it.
 
-**Predictions, written before any run:** the cache hit rate falls slowly (less than 1.5 points from 4096 to 3072).
-Writing at 32K falls less than 4% across the sweep, and reading doesn't change by more than 3%. No row is judged a
+**Predictions, written before any run:** the cache hit rate falls slowly (less than 1.5 points from 4096 to 3584 at step 4096).
+Writing at 32K falls less than 2% from X4096 to X3584, and reading doesn't change by more than 3%. No row is judged a
 spill once the staging buffer is taken off. Step 5120 with 4 GB reads 32K 5 to 15% faster than X4096 and writes
-within 5% of it.
+within 5% of it. Steps 5120 and 6144 write faster with a bigger cache (2048 MB slowest), and at 4 GB each writes at least
+10% faster at 32K than the same step did at 2 GB in Addendum 20.
 
 **What it decides:** nothing is changed by itself. If a smaller size stays within 2% of X4096 on writing at every
 prompt, it is noted as freeing card room at no cost (Calibrate's coding pick stays at 4 GB unless the owner says
