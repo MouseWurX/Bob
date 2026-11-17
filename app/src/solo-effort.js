@@ -10,6 +10,7 @@
 // A gate holds until his review says "Looks right." or SOLO_ROUNDS reviews have run; then he goes on and says plainly
 // what still isn't right. Reviews say "Improve it:", not "fix it" (the owner's word).
 import { cleanEffort } from './moot.js';
+import { GROUP_WORDS } from './more-tools.js';
 
 export const SOLO_ROUNDS = 2; // reviews per gate at Max
 // The owner, 16 Nov: Maximus "doesnt need to be 4x longer or more, but it really probably should have the most checks,
@@ -357,3 +358,23 @@ const CHANGES = /(?:^|_)(?:write|edit|save|post|add|delete|remove|move|copy|rena
 // Tools that both read and change (an action argument picks which) wait too.
 const BOTH = new Set(['notice_board', 'reminders', 'pass_note', 'watch_page', 'pack_job', 'meeting_notes', 'workshop_run']);
 export const lookOnly = (name, tools = {}) => Boolean(name) && !tools[name]?.check && !BOTH.has(String(name)) && !CHANGES.test(String(name));
+
+// Mail (17 Nov after1 mail run, 30 jobs at each level: Minimus passed 9, Medius 12, Magnus 7 in 3x the time, Maximus 0
+// of 4 in 14x; the rechecks leaked into answers). The owner: "Minimus and Medius for mail only"; "sorting mail is mostly
+// planning then doing, the rechecks are harmful". So with Effort on one brain, a mail ask runs at most Medius, and the
+// chat says so in one line. A bulk act (sort, archive, trash, label, move, clean up) gets the short path as a hidden
+// note: see the groups, one bulk rule, the card, done. Judgement mail (drafts, "what matters") runs at Medius as usual.
+const LEVEL_NAME = { low: 'Minimus', medium: 'Medius', high: 'Magnus', extreme: 'Maximus' };
+const BULK_MAIL = /\b(?:sort(?:ing)?|archive|trash|bin|delete|label|move|clean (?:up|out)|tidy(?: up)?|file (?:away|them)|mark (?:all|them|everything|every)|get rid of|clear out)\b/i;
+export const mailAsk = (text) => GROUP_WORDS.mail.test(String(text || ''));
+export const bulkMail = (text) => mailAsk(text) && BULK_MAIL.test(String(text || '')) && !/\bunsubscrib/i.test(String(text || ''));
+// { effort, line, bulk } for this turn, or null when nothing changes.
+export function mailEffort(cfg, job, text) {
+  if (!soloJob(cfg, job) || !mailAsk(text)) return null;
+  const was = cleanEffort(job.effort);
+  const capped = was === 'high' || was === 'extreme';
+  const bulk = bulkMail(text);
+  if (!capped && !bulk) return null;
+  return { effort: capped ? 'medium' : was, bulk, line: capped ? `📬 A mail job, so ${LEVEL_NAME[was]} works as Medius here: plan, then do. Extra checks don't help with mail.` : '' };
+}
+export const MAIL_BULK_NOTE = `A bulk mail job: keep it short. 1. See the whole picture once: manage_email with action "sort" groups the inbox and shows ${'{{USER}}'} one card with the plan; for one sender or one kind of mail, read_email (list, with from or words) to get the ids. 2. One bulk change for all of them (manage_email with every id, up to 50 a call), never one message at a time. 3. The card shows what will change; nothing happens before it is answered. 4. Then say in a line or two what changed and how to undo it. No rechecking, and don't read each message.`;

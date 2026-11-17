@@ -163,6 +163,19 @@ async function fake(level, reviews, { stop = false, plan = '1. Look it up\n2. Wr
   check('after the repeat guard stops a part, improve rounds get no tools, so the loop can\'t start again', imp.length >= 1 && imp.every((c) => c.noTools === true));
 }
 check('each part is capped by what is left of the budget', /if \(job\?\.soloLeft != null\) maxSteps = Math\.max\(2, Math\.min\(maxSteps, job\.soloLeft\)\)/.test(read('src/brain-run-on.js')) && /soloLeft: left/.test(read('src/brain-turns.js')));
+// ---- mail (17 Nov after1: "Minimus and Medius for mail only"; "the rechecks are harmful") ----
+{
+  const { mailEffort, bulkMail, mailAsk, MAIL_BULK_NOTE } = await import('../src/solo-effort.js');
+  const j = (effort) => ({ id: 'm', effort });
+  const max = mailEffort(on, j('extreme'), 'Trash everything from Kettle & Crumb');
+  check('a mail ask at Maximus or Magnus runs as Medius, and the chat says so in one line', max.effort === 'medium' && /Maximus works as Medius here/.test(max.line) && mailEffort(on, j('high'), 'Draft a reply to Wren about Friday').effort === 'medium' && /Magnus works as Medius/.test(mailEffort(on, j('high'), 'Draft a reply to Wren about Friday').line));
+  check('Minimus and Medius keep their level on mail; judgement mail gets no short path', mailEffort(on, j('low'), 'Draft a reply to Wren about Friday') === null && mailEffort(on, j('medium'), 'what matters in my inbox today?') === null);
+  check('bulk acts take the short path at every level; unsubscribe does not (it asks first)', max.bulk && mailEffort(on, j('low'), 'Archive everything from Larkspur').bulk === true && mailEffort(on, j('low'), 'Archive everything from Larkspur').line === '' && bulkMail('sort my inbox') && !bulkMail('Unsubscribe me from the Larkspur emails'));
+  check('not mail, or the switch off: nothing changes', mailEffort(on, j('extreme'), 'Sort these files in Downloads by date') === null && mailEffort({ ...on, soloEffort: false }, j('extreme'), 'Trash everything from Kettle & Crumb') === null && !mailAsk('make me a table of planets'));
+  check('the short path: the groups once, one bulk change, the card, done, no rechecks', /action "sort"/.test(MAIL_BULK_NOTE) && /One bulk change/.test(MAIL_BULK_NOTE) && /No rechecking/.test(MAIL_BULK_NOTE));
+  const bt = read('src/brain-turns.js');
+  check('wired in before the level is picked, with the short path as a hidden first-run note', bt.indexOf('const mail = mailEffort(this.cfg, job, text);') > -1 && bt.indexOf('const mail = mailEffort(') < bt.indexOf('const solo = ') && /job\.effort = mail\.effort/.test(bt) && /if \(bulkNote\) job\.soloStep = bulkNote;/.test(bt));
+}
 check('the plan gate asks whether each step is Bob\'s own, not advice for the user', /something you do yourself/.test(planGateTask('1. a\n2. b')) && /advice for the user goes in the answer/.test(PLAN_NOTE));
 // The owner (16 Nov): robust, well reviewed answers. The reviews read the answer itself, and the improved one is shown.
 {

@@ -11,7 +11,7 @@ import { SLEEPY_SESSION, sleepyAfterReply } from '../public/sleepy.js';
 import { cleanPersonality } from '../public/personality.js';
 import path from 'node:path';
 import { careful, mootOpening, runMoot } from './moot.js';
-import { soloJob, soloLevel, soloOpening, soloRun, soloBrain } from './solo-effort.js';
+import { soloJob, soloLevel, soloOpening, soloRun, soloBrain, mailEffort, MAIL_BULK_NOTE } from './solo-effort.js';
 import { planOn, showPlan } from './plan.js';
 import { pickAnswer } from './clean-answer.js';
 import { markReplaced, correctionStep } from './honesty-score.js';
@@ -191,6 +191,9 @@ export const turnParts = {
       // Bob's loop runs the parts itself: the job, his own review, one round to improve it; at Max a plan, its check,
       // each step as its own job, and a check of the whole.
       if (job) job.solo = soloJob(this.cfg, job);
+      // Mail asks run at most Medius, and bulk acts take the short path (solo-effort.js mailEffort).
+      const mail = mailEffort(this.cfg, job, text);
+      if (mail) { if (mail.line) emit({ type: 'announce', text: mail.line }); job.effort = mail.effort; this.log('effort', `mail job: ${mail.effort}${mail.bulk ? ', bulk short path' : ''}`); }
       const solo = ['picture', 'video'].includes(job?.kind) ? null : soloLevel(this.cfg, job); // nothing to read over in a picture
       if (careful(job)) emit({ type: 'announce', text: mootOpening(this.cfg, job.effort, base) });
       if (solo) {
@@ -220,7 +223,11 @@ export const turnParts = {
         const forget = () => { job.soloSeen?.clear?.(); if ('soloLedger' in job) job.soloLedger = null; };
         mooted = await soloRun(this, solo, { run, review, emit: keep, signal, msgs, turnText: text, card, planShown, forget });
       }
-      else await this.runOn(msgs, text, keep, signal, pics, job, sessionId, out);
+      else {
+        const bulkNote = mail?.bulk ? MAIL_BULK_NOTE.replace('{{USER}}', this.cfg.userName || 'the user') : '';
+        if (bulkNote) job.soloStep = bulkNote; // a first run puts it in last, as a hidden note (brain-run-on.js)
+        try { await this.runOn(msgs, text, keep, signal, pics, job, sessionId, out); } finally { if (bulkNote) job.soloStep = ''; }
+      }
       if (careful(job) && out.ctx && !signal?.aborted) mooted = await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx });
       // #30: Low and Medium, opt-in: a quick second look from a paired Bob when one is free. None free: no check, no swap.
       else if (!job?.solo && out.ctx && !signal?.aborted && this.cfg.netReview === true) mooted = await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx, quick: () => this.quickReviewer(job, pics) });
