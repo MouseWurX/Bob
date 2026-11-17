@@ -1,7 +1,7 @@
 // 16 Nov 2026: Effort on one brain (src/solo-effort.js). Bob's loop enforces each level's steps; these checks run the
 // loop with fake brains (plain functions in, plain arrays out). Nothing here reads the real computer.
 import fs from 'node:fs';
-import { soloEffortOn, soloJob, soloLevel, soloThink, soloVerdict, notHappy, planSteps, soloMinutes, soloRun, soloBrain, soloPrompt, SOLO_ROUNDS, MAX_JOBS, planGateTask, PLAN_NOTE, ANSWER_NOTE } from '../src/solo-effort.js';
+import { soloEffortOn, soloJob, soloLevel, soloThink, soloVerdict, notHappy, planSteps, soloMinutes, soloRun, soloBrain, soloPrompt, soloLedger, SOLO_ROUNDS, MAX_JOBS, planGateTask, PLAN_NOTE, ANSWER_NOTE } from '../src/solo-effort.js';
 import { stepThink } from '../src/step-thinking.js';
 import { careful, draftBrain, reviewBrain } from '../src/moot.js';
 import { HELP } from '../public/help-content.js';
@@ -241,5 +241,13 @@ check('the repeat guard is shared by every part of a job', /Object\.defineProper
 const help = HELP.find((e) => e.id === 'effort'), faq = HELP.find((e) => e.id === 'faq-solo-effort'), gl = HELP.find((e) => e.id === 'glossary');
 check('Help, an FAQ in Bob\'s voice and the glossary', /Effort on one brain/.test(help.html) && /Windows, Mac, Linux and a phone/.test(help.html) && faq && /My loop enforces each step/.test(faq.html) && /<dt>Effort on one brain<\/dt>/.test(gl.html) && ["Minimus", "Medius", "Magnus", "Maximus"].every((n) => gl.html.includes(`<dt>${n}</dt>`)));
 
+// 16 Nov after1 Maximus: a clipped tool result in the record read as "the tool result is truncated", so both reviews called a right answer wrong
+{
+  const long = '55 messages, newest 15 shown: ' + Array.from({ length: 15 }, (_, i) => `id ${300 - i} · sender ${i} · subject ${i}`).join(' | ');
+  const led = soloLedger([{ role: 'assistant', content: '', tool_calls: [{ id: 'c1', function: { name: 'read_email', arguments: '{}' } }] }, { role: 'tool', tool_call_id: 'c1', content: long }]);
+  check('a long tool result in the record says it is only shortened here', /shortened in this list only; the whole result is in the tool reply above/.test(led) && !led.includes('id 286'), led);
+  const short = soloLedger([{ role: 'assistant', content: '', tool_calls: [{ id: 'c2', function: { name: 'read_file', arguments: '{}' } }] }, { role: 'tool', tool_call_id: 'c2', content: 'hello' }]);
+  check('a short result is shown whole, with no shortened note', /→ hello$/.test(short));
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

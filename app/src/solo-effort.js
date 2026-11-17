@@ -119,7 +119,10 @@ export function soloLedger(msgs, from = 0) {
       const name = String(c.function?.name || '');
       if (!name) continue;
       const args = String(c.function?.arguments || '').replace(/\s+/g, ' ').slice(0, 160);
-      const back = (results.get(c.id) || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+      // 16 Nov after1 Maximus: a 140-character clip of a 15-message list read as "the tool result is truncated after id 297",
+      // so both reviews called the right answer a hallucination. A clipped line now says it is only shortened here.
+      const full = (results.get(c.id) || '').replace(/\s+/g, ' ').trim();
+      const back = full.length > 140 ? `${full.slice(0, 140)}… (shortened in this list only; the whole result is in the tool reply above)` : full;
       lines.push(`- ${name} ${args}${back ? ` → ${back}` : ''}`);
     }
   }

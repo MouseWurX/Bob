@@ -119,3 +119,10 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
 - **Found:** Node's MaxListenersExceededWarning, "201 exit listeners", after 96 jobs. Each LlamaCpp engine (and each embedder) added its own exit, SIGINT and SIGTERM listeners, and the Lab makes an engine per job. It's harmless at 200 jobs but grows on long runs, and Bob does it too when engines are remade.
 - **Fix:** `src/exit-hook.js` has one shared hook that stops every live engine (weak references, so unused engines can still be freed). `llamacpp.js` and `embedder.js` use it.
 - **Check:** `test/run-exit-hook-test.js` (300 engines add one listener; a stop signal stops them and exits).
+
+## 17 Nov: early look at after1 Maximus mail (2 of 30 back)
+
+- **Found:** each Maximus mail job takes about 18.5 minutes. In both "who is a real person" jobs the first answer was right: it sorted all 15 shown messages and flagged the look-alike PayPal sender. Then both BETTER reviews said "the tool result is truncated after id 297" and called the answer a hallucination. The cause was the turn's record (`soloLedger`), which cuts each tool result to 140 characters, so the reviewer read the cut as the tool's. The improve rounds then argued with the review in the shown answer ("You're right to call this out. My first reply was correct... my third and fourth replies were confused"). And neither job paged past the newest 15 of 55, even with no time limit.
+- **Fix:** a clipped result in the record now says "shortened in this list only; the whole result is in the tool reply above". `answer-checks.js` review_leak also catches talk of earlier drafts ("my first/second reply", "You're right to call this out"), unless the user really pushed back this turn.
+- **Check:** `run-solo-effort-test.js` (2: the shortened note; a short result shown whole) and `run-answer-checks-test.js` (3: two leaks, one real pushback that's left alone).
+- **Open:** Maximus doesn't page through the rest of a partly shown list (partial_look). Waiting on the full grade before changing that.

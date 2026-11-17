@@ -58,6 +58,7 @@ const PAGE_SAY = /\b(?:I )?(?:opened|visited|loaded|fetched|browsed|went to|chec
 const UNSEEN = /\b(?:the\s+)?(?:hash|sha-?256|checksum|link|links|url|path|code|results?|list|output|details|figures|numbers|commands?)\s+(?:provided|shown|given|listed|printed)(?:\s+above)?\b|\b(?:see|shown|listed|as noted|mentioned) above\b|\b(?:results|details|answer) (?:are|is) above\b/i;
 const POINTS_BACK = /^(?:\W{0,3})(?:I(?:'ve| have)? already (?:gave|given|searched|pulled|ran|run|scanned|answered|told|shown|showed|listed|checked|did|done|covered|sent|written|wrote)|I(?:'ve| have) given you (?:the|my|an?) (?:answer|list|script|code|steps))\b|\b(?:in|from) my (?:last|previous|earlier|first) (?:reply|answer|message|turn)\b|\b(?:the|my|that|this) (?:script|code|list|table|answer|summary|steps|results?|tree|plan) (?:I gave|I wrote|I showed )?(?:you )?above\b/i;
 const TEXT_CALL = /<tool_call>|<\/?function(?:=|>)|<parameter=|"name"\s*:\s*"[a-z_]+"\s*,\s*"(?:arguments|parameters)"\s*:|\bto=functions\./;
+const DRAFT_TALK = /\bmy (?:first|second|third|fourth|earlier|previous|original|last two|other) (?:reply|replies|response|responses|answer|answers|breakdown|draft)s?\b|\bYou'?re right to (?:call (?:this|that) out|push back|flag)\b/i;
 const REVIEW_LEAK = /\bMy own review\b|\bI(?:'ve| have)? reviewed my (?:own )?(?:work|answer)\b|^\s*\**(?:Review|Improve it|Checking my own work|Plan)\**\s*:|\bYou'?re right (?:on|about) (?:all|both|every) (?:\w+ )?(?:points?|of them)\b|\b(?:the|my) (?:hidden|reviewer'?s?|review) notes?\b|\bHere is what the jobs did\b/im;
 const RESEARCH = /\b(?:research|look up|find out about|compare|comparison|studies|study|reports|sources|cite|citations?|literature|evidence|survey of|overview of the (?:research|literature))\b/i;
 const MAIL_ASK = /\b(?:e-?mails?|inbox|mail(?:box)?|messages? from|newsletters?|spam|unread)\b/i;
@@ -145,7 +146,14 @@ export function answerChecks({ text = '', reply = '', actions = [], usable = () 
     const name = (said.match(/<function=([\w.-]+)>|"name"\s*:\s*"([a-z_]+)"|to=functions\.([\w.-]+)/) || []).slice(1).find(Boolean);
     add('text_call', `Your answer has a tool call written as text${name ? ` (${name})` : ''}. Text never runs: nothing happened. Make the real call now if it's still needed, then answer from what it returns, and don't say it's done until a tool says so. Never show call text to ${who}.`, [], true);
   }
-  // review_leak: his own review or notes in the shown answer
+  // review_leak: his own review or notes in the shown answer. 16 Nov after1 Maximus: the improve round answered the review as if the
+  // user had pushed back ("You're right to call this out. My first reply was correct... my third and fourth replies were
+  // confused"). That counts too, unless the user really did push back this turn.
+  const pushedBack = /\b(?:wrong|mistake|incorrect|not right|you said|you missed|earlier|before|last time|again)\b/i.test(ask);
+  const draftTalk = !pushedBack && (DRAFT_TALK.exec(said) || null);
+  if (draftTalk && !REVIEW_LEAK.test(said)) {
+    add('review_leak', `Your answer talks about your own earlier drafts ("${cap(draftTalk[0], 50)}"). ${who} never saw them, or any review. Write the answer again for ${who} only: the result, in plain words, as if it were your first reply.`);
+  }
   if (REVIEW_LEAK.test(said)) {
     add('review_leak', `Your answer shows your own working ("${cap(said.match(REVIEW_LEAK)[0], 50)}"). ${who} never saw your review, plan or notes. Write the answer again for ${who} only: the result, in plain words, with nothing about reviews, jobs or steps.`);
   }
