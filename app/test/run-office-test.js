@@ -224,6 +224,12 @@ if (officeUsableHere(realCfg)) {
   check('LibreOffice: makes slides, adds one, replaces text, keeps notes', /3 slides/.test(slides) && /The plan/.test(slides) && /Thanks/.test(slides) && /say hi/.test(slides), slides);
   const copy = await run('office_edit', { path: doc, save_as: path.join(work, 'report-filled.odt'), changes: [{ op: 'replace', find: 'Apple', replace: 'Pear' }, { op: 'append', text: '## Added' }] });
   check('save_as leaves the original alone', fs.existsSync(path.join(work, 'report-filled.odt')) && /Apple/.test(await run('office_read', { path: doc })), copy);
+  const bigXl = path.join(work, 'orders.xlsx'); // 17 Nov office round 3: a 3,000-row sheet says how many rows it showed
+  await run('office_make', { kind: 'calc', path: bigXl, sheets: [{ name: 'Orders', rows: [['Order', 'Customer', 'Amount'], ...Array.from({ length: 3000 }, (_, i) => [`ORD-${10000 + i}`, `Customer number ${i}`, (i % 97) + 0.25])] }] });
+  const bigRead = await run('office_read', { path: bigXl });
+  const m = /Orders showed rows 1 to (\d+) of 3001/.exec(bigRead);
+  const lastShown = m ? new RegExp(`\\n${m[1]}: `).test(bigRead) && !new RegExp(`\\n${Number(m[1]) + 1}: `).test(bigRead) : false;
+  check('LibreOffice: a 3,000-row sheet is cut on a whole row and says rows 1 to N of 3001', Boolean(m) && Number(m[1]) < 3001 && lastShown && /Don't add up/.test(bigRead), bigRead.slice(-300));
   let stray = '';
   try { stray = execFileSync('pgrep', ['-f', 'office-profile'], { encoding: 'utf8' }).trim(); } catch {}
   check('LibreOffice closes after each job (Bob stays light)', !stray, stray);
@@ -254,6 +260,15 @@ if (ff && process.platform !== 'win32') {
   const { msiexecArgs } = await import('../src/engines.js');
   const a = msiexecArgs('C:\\Bob Folder\\lo.msi', 'C:\\Bob Folder\\libreoffice');
   check('LibreOffice unpack: a folder with a space is quoted the way msiexec reads it, and passed as written', a.join(' ') === '/a "C:\\Bob Folder\\lo.msi" /qn TARGETDIR="C:\\Bob Folder\\libreoffice"' && /msiexecArgs\(msi, folder\), \{[^}]*windowsVerbatimArguments: true/.test(src), a.join(' '));
+}
+{ // 17 Nov office round 3: a cut sheet says which rows were shown of how many, not a character count that hid the size
+  const { cutNote } = await import('../src/hands-office.js');
+  const big = cutNote({ kind: 'calc', cut: true, chars: 20012, info: { sheets: [{ name: 'Orders', rows: 3001, shown: 412 }, { name: 'Notes', rows: 9, shown: 0 }, { name: 'Done', rows: 5, shown: 5 }] } });
+  check('office_read cut note: a sheet says rows 1 to N of M, an unread sheet says so, a whole one is left out, and no sums from part', /Orders showed rows 1 to 412 of 3001/.test(big) && /Notes \(9 rows\) wasn't shown/.test(big) && !/Done/.test(big) && /Don't add up/.test(big) && !/20012/.test(big), big);
+  const doc = cutNote({ kind: 'writer', cut: true, chars: 20005, info: {} });
+  check('office_read cut note: a document says only that there is more (the reader stops early, so no false total)', /has more/.test(doc) && !/20005/.test(doc), doc);
+  const py = fs.readFileSync(new URL('../src/office-uno.py', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  check('office-uno read_calc counts the rows it showed and flags a sheet cut short', /sheet\['shown'\] = i \+ 1/.test(py) && /cut = any\(x\['shown'\] < x\['rows'\]/.test(py) && /or bool\(info\.get\('cut'\)\)/.test(py));
 }
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

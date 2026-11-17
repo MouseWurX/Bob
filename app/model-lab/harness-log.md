@@ -52,6 +52,18 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
   named by subject can score 0 (7f46cc); a count was off (84144a). Open (Bob): raw tool-call text left as the answer
   (8 runs), review text shown to the user (6 runs).
 
+## 17 Nov 2026: after1 office jobs (14 of 17 passed by code)
+- Taught: word-make "passed" with the file in Bob's own documents folder and an answer about a hacked account (the
+  score never looked at the folder or the answer); word-missing was failed for "doesn't appear to exist anywhere".
+- Changed (office-score.mjs): a file check can name its folder (`in`), and a file saved elsewhere fails, saying where;
+  word-make's answer must name the file; `not` patterns fail an answer (a wrong sum, "I can't open Excel");
+  a maths job reports whether a maths tool did the sum; the missing-file words are wider. A crash on a file found
+  only in the wrong folder is fixed. Office jobs also have the calculator on (do-jobs).
+- Check: four new jobs prove the fixes made for Office predictions: excel-sum-tricky (decimals, a refund, a subtotal
+  row; 362.00 / 252.04 fail), excel-plain (a plain "open Q3_Sales.xlsx"), ppt-find (the deck is on the Desktop;
+  asking where fails), word-desktop (saved "in my Desktop"). 21 jobs; the oracle passes 21/21 and the do-nothing
+  brain fails 21/21; test/run-office-jobs-test.js 44 checks, each new rule with a pass and a fail case.
+
 ## 16 Nov 2026: office tools never called in ~900 Qwen runs (lab read; nothing rented)
 - Taught: across the 800 + 100 runs, office_read, office_edit, office_make, convert_file and compare_files were never
   called. Not the brain: the test Bob had the Office Hand off (do-jobs turns it on only with `--office`, and no plan
@@ -222,3 +234,17 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
 - **Seen:** false "done" yes (excel-edit: "added to your reading log", but it made a new CSV). Ask-where yes (ppt-add). Generic tools yes but harmless (word-read and excel-compare used read_file, both right). Head maths no (excel-sum used office_read, excel-make used =SUM). "-2" no (excel-to-csv-taken said Budget_2026-2.csv).
 - **Did the change made for the prediction work?** office_route fired once, and that was a false alarm: convert_file wasn't counted as an Office tool. It's fixed and tested. The maths check never fired on office jobs because nothing called for it, so it's unproven there. The harness PATH_KEY fix worked: compare_files, office_edit and convert_file all ran on the right paths (word-compare, word-edit, ppt-delete, the exports).
 - **Not predicted:** word-make. "Write a packing list and save it as a Word document ... in my Documents" took one office_make. The steps check said "only 1 tool step ran", Bob went to security_tips, and the answer became advice on a hacked account. The file was also saved in Bob's own folder, not Documents, yet the code score passed it. Fixed: a words-only step (write, draft, list...) counts as done when a tool made the file (job-steps.js; run-tool-sets-test, 2). The new wrong_folder check catches "in my Documents" made with only a name (run-answer-checks-test, 2). The office scorer should check the saved folder (office thread).
+
+## 17 Nov: office set, round 3 ("expand the office set")
+
+- **New made-up files** (model-lab/office-files.mjs, built the same way every run from a JSON spec): a workbook with 2025 and 2026 sheets, an invoice with formulas and their saved values, a Word file with a table, an old .doc, a contract in a read-only folder, a broken .docx (cut off at 300 bytes), two budgets with nearly the same name, and a 3,000-row order sheet.
+- **15 new jobs, 36 in all, 21 need LibreOffice.** Sheets, formula read/show/edit, Word table read/edit, retitle a deck, append to Word, Excel to PDF, two Word files to PDF, old .doc, read-only, broken, ambiguous, big.
+- **Score rules:** `either` (read-only: say so, or save a changed copy where allowed; the original must stay), `tried` (the broken file: the read counts even though it fails), `partial` ("I only saw part" with no answer fails), `not` (last year's rent alone fails).
+- **"Locked" is Bob's read-only folder setting.** A real Windows file lock (a file open in Word) isn't faked: it can't be made the same way on every system. Unproven in our lab, as we have yet to test it.
+- **Checked:** oracle 36/36 pass (15/15 without LibreOffice), a do-nothing brain fails 36/36, run-office-jobs-test 56 checks.
+- **Bob bug, fixed 17 Nov (see "office_read's cut note on big sheets"):** on the 3,000-row sheet office_read says it "showed the first 20000 of 20723" characters. The real sheet text is longer than that; the note understates how much was cut. Worth a look in the office thread before after2.
+
+## 17 Nov: office_read's cut note on big sheets
+
+- **Seen** (office thread, round 3, 3,000-row sheet): the note said "showed the first 20000 of 20723 characters". The reader stops once it passes the limit, so the count it gave was only what it had read. A brain would take that as nearly all of it, though only a few hundred of the 3,000 rows were shown. Later sheets also kept being read past the limit.
+- **Fix:** read_calc counts the rows it shows on each sheet, cuts on a whole row, and stops once the limit is reached. The note now says "Orders showed rows 1 to N of 3001", names any sheet that wasn't shown, and says not to add up from part of it (convert to CSV and use query_data instead). Documents and decks say only that there is more. Tests: run-office-test, 4 (one with real LibreOffice).

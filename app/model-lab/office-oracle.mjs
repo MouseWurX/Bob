@@ -36,18 +36,35 @@ export const PLAIN = {
   'excel-compare': [[['compare_files', { first: F('march'), second: F('april') }]], 'Oat milk went up from 2.40 to 2.65, plum jam is gone and rye bread (3.10) is new.'],
   'excel-make': [[['office_make', { kind: 'calc', path: `${D}Subscriptions.xlsx`, sheets: [{ name: 'Subscriptions', rows: [['Name', 'Cost'], ['Streamly', 12.99], ['CloudBox', 2.99], ['FitTrack', 7.5], ['Total', '=SUM(B2:B4)']] }] }]], 'Saved Subscriptions.xlsx: the total is 23.48.'],
   'word-make': [[['office_make', { kind: 'writer', path: `${D}Camping_List.docx`, text: '# Camping list\n- Tent\n- Sleeping bag\n- Torch\n- Water' }]], 'Saved Camping_List.docx in Documents.'],
+  'excel-sum-tricky': [[['office_read', { path: F('expenses') }], ['calculate', { expression: '84.37+62.50+41.99-39.95+17.48+6.75' }]], 'You spent 173.14 in November, after the shoe refund (the subtotal row is not counted again).'],
+  'excel-plain': [[['office_read', { path: F('q3') }]], 'April came to 2,150 (North 1,200, South 950).'],
+  'ppt-find': [[['list_folder', { path: 'C:\\Users\\you\\Desktop' }], ['office_read', { path: F('offsite') }]], 'At Alder Lodge, on Fernwater Lake, on 18 and 19 March.'],
+  'word-desktop': [[['office_make', { kind: 'writer', path: 'C:\\Users\\you\\Desktop\\Thanks_Neighbour.docx', text: '# Thank you\nThank you so much for watering my plants while I was away.' }]], 'Saved Thanks_Neighbour.docx on your Desktop.'],
+  'excel-sheets': [[['office_read', { path: F('household') }], ['calculate', { expression: '97.45-88.10' }]], 'March 2026 was 97.45 and March 2025 was 88.10, so 9.35 more.'],
+  'excel-formula-read': [[['office_read', { path: F('invoice') }]], 'The total is 50.00.'],
+  'excel-formula-show': [[['office_read', { path: F('invoice'), formulas: true }]], 'The total is =SUM(D2:D4): it adds the three line totals, and each line is quantity times price.'],
+  'excel-formula-edit': [[['office_read', { path: F('invoice') }], ['office_edit', { path: F('invoice'), changes: [{ op: 'set_cells', cells: { B2: 12 } }] }], ['office_read', { path: F('invoice') }]], 'Hinges are 12 now, and the new total is 60.00.'],
+  'word-table': [[['office_read', { path: F('committee') }]], 'The treasurer is Isla Brandt, on 0700 900 222.'],
+  'word-table-edit': [[['office_read', { path: F('committee') }], ['office_edit', { path: F('committee'), changes: [{ op: 'replace', find: '0700 900 111', replace: '0700 900 444' }] }]], "Rowan's number is 0700 900 444 now."],
+  'ppt-retitle': [[['office_read', { path: F('pitch') }], ['office_edit', { path: F('pitch'), changes: [{ op: 'replace', find: 'Why join', replace: 'Why you should join' }] }]], "Slide 2 is called 'Why you should join' now."],
+  'word-append': [[['office_read', { path: F('lease') }], ['office_edit', { path: F('lease'), changes: [{ op: 'append', text: 'Parking: one space, number 7' }] }]], 'Added the parking line at the end.'],
+  'excel-to-pdf': [[['convert_file', { paths: [F('reading')], to: 'pdf' }]], 'Saved Reading_Log.pdf next to the spreadsheet.'],
+  'word-batch-pdf': [[['convert_file', { paths: [F('quote1'), F('quote2')], to: 'pdf' }]], 'Saved Roof_Quote_v1.pdf and Roof_Quote_v2.pdf in Documents.'],
+  'word-old-doc': [[['office_read', { path: F('recipe') }]], 'Smoked paprika, one teaspoon.'],
+  'word-readonly': [[['office_read', { path: F('contract') }], ['office_edit', { path: F('contract'), changes: [{ op: 'replace', find: '31 May 2025', replace: '30 June 2025' }] }]], "The Archive folder is read-only for me, so I didn't change it. I can save a changed copy in Documents if you like."],
+  'word-broken': [[['office_read', { path: F('broken') }]], "Minutes_Oct.docx is damaged, so I can't read who chaired the meeting."],
+  'excel-ambiguous': [[['list_folder', { path: 'C:\\Users\\you\\Documents' }], ['office_read', { path: F('budget') }]], 'Your rent is 1,850 a month, from Budget_2026.xlsx (there is an older 2025 budget too).'],
+  'excel-big': [[['convert_file', { paths: [F('orders')], to: 'csv' }], ['query_data', { file: 'C:\\Users\\you\\Documents\\Orders_2026.csv', action: 'ask', sql: "SELECT count(*), round(sum(Amount), 2) FROM data WHERE City = 'Leeds'" }]], '428 orders came from Leeds, adding up to 195,831.51.'],
   'word-missing': [[['list_folder', { path: 'C:\\Users\\you\\Documents' }]], "I can't find Minutes_September.docx in your Documents."]
 };
 
-const NO_OFFICE_MAKE = [['save_spreadsheet', { name: 'Subscriptions', csv: 'Name,Cost\nStreamly,12.99\nCloudBox,2.99\nFitTrack,7.50\nTotal,23.48' }]];
 // lazy: the brain calls no tool and says "Done, all sorted." to every job: every job must FAIL, so a claim alone never passes
 export async function oracle({ bob = path.resolve(here, '..'), office = '', keep = false, lazy = false, log = console.log } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'office-oracle-'));
   const rowsIn = officeJobs().filter((j) => office || !j.office.lo);
-  // without LibreOffice the test Bob has no Office Hand: the plain way is then read_file and save_spreadsheet
-  const plainOf = (key) => (office ? PLAIN[key][0] : key === 'excel-make' ? NO_OFFICE_MAKE : PLAIN[key][0].map(([t, a]) => [t === 'office_read' ? 'read_file' : t, a]));
-  // save_spreadsheet names its own file (with the day), so that answer names no file
-  const endOf = (key) => (!office && key === 'excel-make' ? 'Saved your subscriptions spreadsheet: the total is 23.48.' : PLAIN[key][1]);
+  // without LibreOffice the test Bob has no Office Hand: the plain way is then read_file
+  const plainOf = (key) => (office ? PLAIN[key][0] : PLAIN[key][0].map(([t, a]) => [t === 'office_read' ? 'read_file' : t, a]));
+    const endOf = (key) => PLAIN[key][1];
   const jobs = rowsIn.map((j) => ({ ...j, plan: lazy ? [] : plainOf(j.key), end: lazy ? 'Done, all sorted.' : endOf(j.key) }));
   const { srv } = brainServer(jobs);
   await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));

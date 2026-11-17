@@ -230,25 +230,39 @@ def used_area(sheet):
 
 
 def read_calc(doc, limit, only, formulas):
+    # Each sheet says how many rows it has and how many were shown ('shown'), so a cut note can say "rows 1 to N of M"
+    # (17 Nov office round 3: the note counted only the characters read before stopping, which understated a
+    # 3,000-row sheet). Once the limit is passed, later sheets are listed with 'shown' 0 and not read.
     sheets = doc.getSheets()
-    out, info = [], []
+    out, info, size, full = [], [], 0, False
     for name in sheets.getElementNames():
         if only and name.lower() != only.lower():
             continue
         sh = sheets.getByName(name)
         ec, er = used_area(sh)
-        info.append({'name': name, 'columns': ec + 1, 'rows': er + 1, 'area': 'A1:%s%d' % (col_name(ec), er + 1)})
-        out.append('## Sheet: %s (A1:%s%d)' % (name, col_name(ec), er + 1))
-        rng = sh.getCellRangeByPosition(0, 0, ec, min(er, 5000))
+        sheet = {'name': name, 'columns': ec + 1, 'rows': er + 1, 'area': 'A1:%s%d' % (col_name(ec), er + 1), 'shown': 0}
+        info.append(sheet)
+        if full:
+            continue
+        head = '## Sheet: %s (A1:%s%d)' % (name, col_name(ec), er + 1)
+        out.append(head)
+        size += len(head) + 1
+        rng = sh.getCellRangeByPosition(0, 0, ec, min(er, 4999))
         data = rng.getFormulaArray() if formulas else rng.getDataArray()
         for i, row in enumerate(data):
-            out.append('%d: ' % (i + 1) + ' | '.join(cell_text(c) for c in row))
-            if sum(len(x) for x in out) > limit:
+            line = '%d: ' % (i + 1) + ' | '.join(cell_text(c) for c in row)
+            if size + len(line) + 1 > limit:
+                full = True
                 break
+            out.append(line)
+            size += len(line) + 1
+            sheet['shown'] = i + 1
         out.append('')
+        size += 1
     if only and not info:
         raise RuntimeError('There is no sheet called %s. Sheets: %s.' % (only, ', '.join(sheets.getElementNames())))
-    return '\n'.join(out), {'sheets': info}
+    cut = any(x['shown'] < x['rows'] for x in info)
+    return '\n'.join(out), {'sheets': info, 'cut': cut}
 
 
 def shape_texts(page):
@@ -296,7 +310,7 @@ def do_read(office, job):
             text, info = read_impress(doc, limit)
         else:
             raise RuntimeError('I can open that file but I don\'t know how to read it.')
-        cut = len(text) > limit
+        cut = len(text) > limit or bool(info.get('cut'))
         return {'kind': kind, 'text': text[:limit], 'cut': cut, 'chars': len(text), 'info': info}
     finally:
         doc.close(True)
