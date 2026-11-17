@@ -138,7 +138,12 @@ there (3.6 to 4.3 GB) was within the other rounds' range (3.0 to 4.6 GB), so no 
   within-2% rule.
 - Trace cost with the cache (FT against F4c): writing -1.8%, -1.0%; reading +1.1%, -0.7%. **Within 2%.**
 - Same words: T1 wrote Y0's answers on both prompts, FT wrote F4c's. **The trace no longer changes the words.** U0
-  (fusion off) wrote different answers, as before.
+  (fusion off) wrote different answers, as before, which shows the fused kernel stays on with the trace.
+
+**Addendum 19 verdict, as pre-registered (brain-engine-11b12359):** words fixed on both pairs (T1 = Y0, FT = F4c).
+Speed fixed at F4c (FT -1.8% / -1.0%). Speed **not** fixed at Normal (T1 -4.0% / -3.9%, over the 2% rule). The
+Speed thread's likely cause: at Normal each layer queues its own small card-to-RAM copy into pageable memory on every
+word, while the cache layers hand their picks over with no copy; one copy per word into pinned memory is next.
 
 ## Head to head (Addendum 23, cut down): step 4096 + 4096 MB against step 6144 + 3584 MB, Brain Engine 11
 
