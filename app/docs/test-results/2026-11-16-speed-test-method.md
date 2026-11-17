@@ -456,3 +456,24 @@ and 2048 MB, the same prompts, **1 round** (4 loads), preliminary.
 four. Writing falls as the cache shrinks, slowest at 0.
 
 **What it decides:** nothing by itself. It sets the starting values Calibrate tries for the amount kept.
+
+## Addendum 25 (Nov 17, before any run): lending the cache to reading
+
+Brain Engine 13 (pre-release brain-engine-13b12359, patch 0022) can lend the hot-experts cache's card memory to the
+reading work area while a big prompt is read, then fill the cache again by ranking when writing starts. It is off
+unless `LLAMA_MOE_CACHE_LEND` is set (over 32 and under `-ub`, with `-b` at least `-ub`).
+
+Plan `lend-cache.json`, 3 rounds, prompts start and 32K, answers saved:
+
+- **L1**: step 6144, 4 GB copy cache, `LLAMA_MOE_CACHE_LEND=4096`.
+- **L0**: the same without lending. If it fails to load, that is recorded as the reason lending exists.
+- **X4096** (step 4096 + 4 GB) and **S6k3584** (step 6144 + 3.5 GB): today's picks, as baselines.
+
+Each L1 engine log is searched for "MoE cache lent in" and "uploaded again in" (the switch times), and for
+"while taking back the MoE cache" or decode -2 (the card's memory pool grew too much for the cache to come back).
+
+**Predictions, written before any run:** L1 reads 32K within 3% of S6k3584 and writes within 3% of X4096. The
+refill costs 0.2 to 0.4 s before the first word. L1's words match a step-6144 run. No take-back failures.
+
+**What it decides:** whether lending becomes a Calibrate row on the Brains page. It stays off by default until it
+beats both picks on the owner's card.
