@@ -520,12 +520,14 @@ same base flags (Bob's: flash attention, q8_0 KV, --fit, 48K context), 5 rounds 
 Claude and Bob closed. A claim compares the best plain row with the best Brain Engine row, and the words must match where
 the settings allow.
 
-**Run 1, the PC (16 GB card), stock Qwen3.6 35B A3B:** plan `public-h2h-qwen35.json`, 25 loads.
+**Run 1, the PC (16 GB card), stock Qwen3.6 35B A3B:** plan `public-h2h-qwen35.json`.
 
 - P0: plain llama.cpp with its default reading step, which is what a llama.cpp user gets.
-- P4: plain llama.cpp at step 4096, the best plain setting we have found.
+- P4 and P6: plain llama.cpp at steps 4096 and 6144, which are Bob's tuned reading steps. llama.cpp's own default is `-b 2048 -ub 512`, which is P0.
 - E4: Brain Engine 14 at step 4096 with nothing new on. It should equal P4, because the patches cost nothing when off.
-- F4c and X4096: Brain Engine 14's chat pick and work pick, with the 4 GB hot-experts cache.
+- F4c, X4096 and S6k3584: Brain Engine 14's chat pick, work pick and step 6144 + 3.5 GB, with the hot-experts cache.
+
+This plan is 7 rows and 35 loads. It supports two different claims. "Bob's settings against llama.cpp's defaults" compares the best row with P0, and credits the setting, not the engine. "Brain Engine against llama.cpp" compares each cache row with the plain row at the same step: X4096 with P4, and S6k3584 with P6.
 
 **Run 2, the PC, a second brain from another model family:** the same rows on a second mixture-of-experts brain. The
 owner picks it. The cache sizes are set from that brain's expert size, and the plan is written once it is chosen.
