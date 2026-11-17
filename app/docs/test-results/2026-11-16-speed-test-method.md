@@ -407,12 +407,14 @@ less a fixed 80 MB, at every cache size. The runner now takes that buffer off be
 
 The owner asked how speed changes as the cache shrinks from 4 GB to 3 GB at step 4096. `speed-plans/calibrate-sweep.json`:
 the same brain, engine, settings and prompts as Addendum 20. 9 rows, X4096 down to X3072 in 128 MB steps,
-**3 rounds** (27 loads), interleaved. This run is a sweep to find a shape: with 3 rounds it is reported as
+plus step 5120 at 4096 and 3584 MB (S5k4096, S5k3584: Addendum 20 never kept a 5120 run with more than 2 GB), **3 rounds**
+(33 loads), interleaved. This run is a sweep to find a shape: with 3 rounds it is reported as
 exploratory, not final. A finer pass, or 5 rounds around the knee, follows if the shape calls for it.
 
 **Predictions, written before any run:** the cache hit rate falls slowly (less than 1.5 points from 4096 to 3072).
 Writing at 32K falls less than 4% across the sweep, and reading doesn't change by more than 3%. No row is judged a
-spill once the staging buffer is taken off.
+spill once the staging buffer is taken off. Step 5120 with 4 GB reads 32K 5 to 15% faster than X4096 and writes
+within 5% of it.
 
 **What it decides:** nothing is changed by itself. If a smaller size stays within 2% of X4096 on writing at every
 prompt, it is noted as freeing card room at no cost (Calibrate's coding pick stays at 4 GB unless the owner says

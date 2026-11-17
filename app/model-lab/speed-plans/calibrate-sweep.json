@@ -1,5 +1,5 @@
 {
- "name": "Cache sweep at step 4096: 4096 down to 3072 MB in 128 MB steps (stock Qwen3.6 35B A3B, 16 GB card)",
+ "name": "Cache sweep at step 4096: 4096 down to 3072 MB in 128 MB steps, plus step 5120 at 4096 and 3584 MB (stock Qwen3.6 35B A3B, 16 GB card)",
  "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 22)",
  "brain": "${BRAIN}",
  "engines": {
@@ -247,6 +247,52 @@
     "4096",
     "--moe-cache-mib",
     "3072",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "S5k4096",
+   "engine": "be10",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "5120",
+    "-ub",
+    "5120",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "S5k3584",
+   "engine": "be10",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "5120",
+    "-ub",
+    "5120",
+    "--moe-cache-mib",
+    "3584",
     "--moe-cache-cpu-share",
     "0"
    ],
