@@ -444,3 +444,15 @@ the others fall away with their rows.
 run, were the power cap alone, at a median 152 W of a 300 W limit, with clocks 0.2% under normal. From this run on, a
 power-cap-only sample counts as throttled only when its clock is more than 3% under the run's busy, unflagged median.
 Any other reason (heat, hardware slowdown, power brake) always counts. Earlier tables keep their old counts.
+
+## Addendum 24 (Nov 17, before any run): how little cache reading needs
+
+For the Speed thread's planned read/write switch (the reading work area borrows the hot-experts cache's card memory
+while reading a prompt), the owner asked whether reading should drop the cache completely or keep a little. No run so
+far has a big reading step with no cache. `speed-plans/read-cache.json`: step 6144 with the copy cache at 0, 512, 1024
+and 2048 MB, the same prompts, **1 round** (4 loads), preliminary.
+
+**Predictions, written before any run:** reading at 16K and 32K is fastest at 0 or 512 MB and within 5% across all
+four. Writing falls as the cache shrinks, slowest at 0.
+
+**What it decides:** nothing by itself. It sets the starting values Calibrate tries for the amount kept.
