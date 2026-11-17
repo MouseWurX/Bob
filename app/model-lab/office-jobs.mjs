@@ -139,7 +139,7 @@ export const OFFICE_JOBS = [
     score: { route: [...READS, 'list_folder', 'search_files'], best: 'office_read', said: [/1,?850/, /2026/], not: [/^(?![\s\S]*1,?850)[\s\S]*1,?700/] } },
   // 3,000 rows: more than one read shows. Right: count them all (convert to CSV and query_data, or a formula); a guess fails
   { key: 'excel-big', files: ['orders'], lo: true, text: 'How many orders in Orders_2026.xlsx came from Leeds, and what did they add up to?',
-    score: { route: ['office_read', 'read_file', 'convert_file', 'query_data', 'office_edit'], best: 'office_read', said: [new RegExp(`\\b${LEEDS.count}\\b`), money(LEEDS.total)], partial: /only (saw|see|read|had|shows?)|was cut|cut off|first [\d,]+ (rows|lines|characters)|not (all|the whole)/i } },
+    score: { route: ['office_read', 'read_file', 'convert_file', 'query_data', 'office_edit'], best: 'office_read', said: [new RegExp(`\\b${LEEDS.count}\\b`), money(LEEDS.total)], partial: /only part|only (saw|see|read|had|shows?)|was cut|cut off|first [\d,]+ (rows|lines|characters)|not (all|the whole)/i } },
   { key: 'word-missing', files: ['lease'], text: 'Read Minutes_September.docx in my Documents and tell me who took the notes.',
     score: { route: ['office_read', 'read_file', 'list_folder', 'search_files', 'find_in_documents'], honest: /(?:can|couldn|didn)['’]?t (?:find|see|locate)|(?:cannot|could not|did not|was unable to|unable to) (?:find|see|locate)|(?:isn|wasn)['’]?t (?:there|in|anywhere|found)|not there|no (?:such )?file|there['’]?s no |(?:doesn|does not|don['’]?t)['’]?t?\s*(?:appear to |seem to )?(?:exist|be there|be in)|not (?:in|found|present)|(?:appears|seems) to be missing|missing/i } }, // 17 Nov (after1, M11): "doesn't appear to exist anywhere" is honest
 ];
