@@ -1,0 +1,301 @@
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 9a4d5a7..3d4968f 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -629,6 +629,17 @@ llama_context::llama_context(
+                     LLAMA_LOG_WARN("%s: LLAMA_MOE_CACHE_LEND=%s NOT USED: it must be over 32 and under the reading step (-ub %u)\n",
+                             __func__, lend, cparams.n_ubatch);
+                 }
++                if (cparams.moe_cache_lend_ub > 0) {
++                    if (const char * behind = getenv("LLAMA_MOE_CACHE_LEND_BEHIND"); behind != nullptr && *behind != '\0') {
++                        const long b = strtol(behind, nullptr, 10);
++                        if (b > 0 && b <= 4096) {
++                            cparams.moe_cache_lend_behind = (uint32_t) b;
++                            LLAMA_LOG_INFO("%s: MoE cache refilled behind the writing, in use again from written token %u\n", __func__, cparams.moe_cache_lend_behind);
++                        } else if (b != 0) {
++                            LLAMA_LOG_WARN("%s: LLAMA_MOE_CACHE_LEND_BEHIND=%s NOT USED: it must be 1 to 4096 tokens\n", __func__, behind);
++                        }
++                    }
++                }
+             }
+         }
+ 
+@@ -2716,6 +2727,22 @@ int llama_context::decode(const llama_batch_ext & batch_inp) {
+         ids_keep_room(n_tokens_all);
+     }
+ 
++    // Brain Engine 0023: a refill running behind the writing; at the fixed token count, wait for it and use the cache
++    // again (the graphs made without it are dropped, so the next one gets its slots)
++    if (moe_cache && moe_cache->is_filling()) {
++        const bool big = cparams.moe_cache_lend_ub > 0 && (uint32_t) n_tokens_all > cparams.moe_cache_lend_ub;
++        if (big || cparams.moe_cache_fill_seen >= cparams.moe_cache_lend_behind) {
++            synchronize();
++            moe_cache->finish_fill();
++            gf_res_prev_active = nullptr;
++            for (auto & r : gf_res_prev) {
++                r->reset();
++            }
++        } else {
++            cparams.moe_cache_fill_seen += (uint32_t) n_tokens_all;
++        }
++    }
++
+     // Brain Engine 0022: lend the MoE cache to a big read, take it back when writing starts (or for a small tail)
+     if (cparams.moe_cache_lend_ub > 0 && moe_cache) {
+         const bool big   = (uint32_t) n_tokens_all > cparams.moe_cache_lend_ub;
+@@ -2734,6 +2761,8 @@ int llama_context::decode(const llama_batch_ext & batch_inp) {
+             try {
+                 if (big) {
+                     moe_cache->lend();
++                } else if (cparams.moe_cache_lend_behind > 0 && moe_cache->restore_behind()) {
++                    cparams.moe_cache_fill_seen = (uint32_t) n_tokens_all; // this decode is the first without it
+                 } else {
+                     moe_cache->restore();
+                 }
+diff --git a/src/llama-cparams.h b/src/llama-cparams.h
+index a7bd9fc..08523db 100644
+--- a/src/llama-cparams.h
++++ b/src/llama-cparams.h
+@@ -74,6 +74,10 @@ struct llama_cparams {
+     // a bigger reading step (n_ubatch); 0 = off. The working memory is laid out for this many tokens while not lent.
+     uint32_t moe_cache_lend_ub = 0;
+     bool     moe_cache_lent    = false;
++    // Brain Engine 0023 (LLAMA_MOE_CACHE_LEND_BEHIND): the cache goes back behind the writing and is used again from
++    // this many written tokens on (a fixed count, so the words don't depend on how fast the upload was); 0 = wait for it
++    uint32_t moe_cache_lend_behind = 0;
++    uint32_t moe_cache_fill_seen   = 0; // tokens decoded since the refill started
+ 
+     std::vector<bool> embeddings_layer_inp; // [n_layer()] extract input embeddings for layer
+     bool embeddings_layer_inp_dev; // write enabled layer inputs to a device buffer instead of host
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index d2dd4f5..f518e60 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -7,11 +7,13 @@
+ #include "ggml-cpp.h"
+ 
+ #include <algorithm>
++#include <atomic>
+ #include <cmath>
+ #include <cstdio>
+ #include <cstdlib>
+ #include <cstring>
+ #include <stdexcept>
++#include <thread>
+ #include <unordered_map>
+ #include <vector>
+ 
+@@ -396,6 +398,13 @@ struct llama_moe_cache::impl {
+     // the LRU keeps what each slot held, and restore() uploads those experts again
+     bool lent = false;
+ 
++    // Brain Engine 0023: the experts go back on a second stream per device, in a thread, while the first words are
++    // written without the cache; finish_fill() waits for it and puts the cache back in use
++    bool filling = false;
++    std::thread filler;
++    std::atomic<bool> fill_done{false};
++    std::vector<ggml_backend_t> fill_backends; // per device, made on first use
++
+     // slot maps in host memory
+     ggml_context_ptr ctx_host;
+     ggml_backend_buffer_ptr buf_host;
+@@ -824,6 +833,12 @@ struct llama_moe_cache::impl {
+     }
+ 
+     ~impl() {
++        if (filler.joinable()) {
++            filler.join();
++        }
++        for (ggml_backend_t f : fill_backends) {
++            ggml_backend_free(f);
++        }
+         log_stats();
+         if (trace != nullptr) {
+             fclose(trace);
+@@ -831,7 +846,7 @@ struct llama_moe_cache::impl {
+     }
+ 
+     ggml_tensor * get_slot_map(int32_t il, int64_t n_tokens, int64_t n_expert_used, bool cpu_part) const {
+-        if (lent || il < 0 || il >= (int32_t) layers.size() || layers[il].ig < 0) {
++        if (lent || filling || il < 0 || il >= (int32_t) layers.size() || layers[il].ig < 0) {
+             return nullptr;
+         }
+         const layer & l = layers[il];
+@@ -870,7 +885,7 @@ struct llama_moe_cache::impl {
+     }
+ 
+     int64_t copy_experts(ggml_backend_t backend, const ggml_tensor * w, ggml_tensor * dst, int64_t e, int64_t last) {
+-        const auto it = lent ? bindings.end() : bindings.find(w);
++        const auto it = lent || filling ? bindings.end() : bindings.find(w);
+         if (it == bindings.end()) {
+             return 0;
+         }
+@@ -915,7 +930,7 @@ struct llama_moe_cache::impl {
+         group & g = groups[l.ig];
+ 
+         GGML_ASSERT(backend == devices[g.id].backend);
+-        GGML_ASSERT(!lent && "a graph read the MoE cache while it was lent");
++        GGML_ASSERT(!lent && !filling && "a graph read the MoE cache while it was lent");
+ 
+         // the get_rows that looks up the slots of the selected experts
+         const int n_nodes = ggml_graph_n_nodes(graph);
+@@ -1013,6 +1028,7 @@ struct llama_moe_cache::impl {
+     }
+ 
+     bool lend() {
++        finish_fill();
+         if (lent) {
+             return false;
+         }
+@@ -1029,11 +1045,8 @@ struct llama_moe_cache::impl {
+         return true;
+     }
+ 
+-    void restore() {
+-        if (!lent) {
+-            return;
+-        }
+-        const int64_t t0 = ggml_time_us();
++    // allocate the banks again (empty); the caller uploads what the slots held
++    void alloc_banks() {
+         for (device & d : devices) {
+             if (!d.ctx) {
+                 continue;
+@@ -1047,12 +1060,16 @@ struct llama_moe_cache::impl {
+             ggml_backend_buffer_set_usage(d.buf.get(), GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
+             d.buf_size = ggml_backend_buffer_get_size(d.buf.get());
+         }
+-        lent = false;
+-        // the same experts go back in the same slots, so the cache is as it was before the read
++    }
++
++    // the same experts go back in the same slots, so the cache is as it was before the read
++    // backend_of(device index) gives the backend whose stream does the uploads; returns the bytes and experts uploaded
++    template <typename F>
++    std::pair<size_t, size_t> upload_slots(F backend_of) {
+         size_t bytes = 0;
+         size_t n = 0;
+         for (group & g : groups) {
+-            ggml_backend_t backend = devices[g.id].backend;
++            ggml_backend_t backend = backend_of(g.id);
+             for (int32_t s = 0; s < g.n_slots;) {
+                 const int32_t key = g.lru.key_of[s];
+                 if (key < 0) {
+@@ -1076,15 +1093,77 @@ struct llama_moe_cache::impl {
+                 s += c;
+             }
+         }
+-        for (device & d : devices) {
+-            if (d.buf) {
+-                ggml_backend_synchronize(d.backend);
++        for (size_t id = 0; id < devices.size(); ++id) {
++            if (devices[id].buf) {
++                ggml_backend_synchronize(backend_of((int32_t) id));
+             }
+         }
++        return { bytes, n };
++    }
++
++    void restore() {
++        if (!lent) {
++            return;
++        }
++        const int64_t t0 = ggml_time_us();
++        alloc_banks();
++        lent = false;
++        const auto [bytes, n] = upload_slots([&](int32_t id) { return devices[id].backend; });
+         LLAMA_LOG_INFO("llama_moe_cache: cache back from prompt reading: %zu experts (%.2f MiB) uploaded again in %.1f ms\n",
+             n, bytes/1024.0/1024.0, (ggml_time_us() - t0)/1000.0);
+     }
+ 
++    // Brain Engine 0023: allocate the banks now, upload behind the writing; the cache stays out of use until finish_fill()
++    // returns false (and does what restore() does) if a second stream can't be made
++    bool restore_behind() {
++        if (!lent) {
++            return true;
++        }
++        if (fill_backends.empty()) {
++            for (device & d : devices) {
++                ggml_backend_t b = ggml_backend_dev_init(ggml_backend_get_device(d.backend), nullptr);
++                if (b == nullptr) {
++                    for (ggml_backend_t f : fill_backends) {
++                        ggml_backend_free(f);
++                    }
++                    fill_backends.clear();
++                    LLAMA_LOG_WARN("llama_moe_cache: no second stream for the refill, the cache goes back before writing\n");
++                    restore();
++                    return false;
++                }
++                fill_backends.push_back(b);
++            }
++        }
++        const int64_t t0 = ggml_time_us();
++        alloc_banks();
++        lent      = false;
++        filling   = true;
++        fill_done = false;
++        filler = std::thread([this, t0]() {
++            const auto [bytes, n] = upload_slots([&](int32_t id) { return fill_backends[id]; });
++            LLAMA_LOG_INFO("llama_moe_cache: cache back from prompt reading: %zu experts (%.2f MiB) uploaded again behind the writing in %.1f ms\n",
++                n, bytes/1024.0/1024.0, (ggml_time_us() - t0)/1000.0);
++            fill_done = true;
++        });
++        return true;
++    }
++
++    // waits for the refill, if one is running, and puts the cache back in use; returns how long it waited, in us
++    int64_t finish_fill() {
++        if (!filling) {
++            return 0;
++        }
++        const int64_t t0 = ggml_time_us();
++        const bool was_done = fill_done;
++        if (filler.joinable()) {
++            filler.join();
++        }
++        filling = false;
++        const int64_t waited = was_done ? 0 : ggml_time_us() - t0;
++        LLAMA_LOG_INFO("llama_moe_cache: cache in use again (waited %.1f ms for the refill)\n", waited/1000.0);
++        return waited;
++    }
++
+     void log_stats() const {
+         auto log = [](const char * name, const stats & st) {
+             const size_t n = st.hits + st.misses;
+@@ -1136,6 +1215,18 @@ bool llama_moe_cache::is_lent() const {
+     return pimpl->lent;
+ }
+ 
++bool llama_moe_cache::restore_behind() {
++    return pimpl->restore_behind();
++}
++
++bool llama_moe_cache::is_filling() const {
++    return pimpl->filling;
++}
++
++int64_t llama_moe_cache::finish_fill() {
++    return pimpl->finish_fill();
++}
++
+ void llama_moe_cache::set_ids_sink(ids_sink_t sink, void * user_data) {
+     pimpl->ids_sink    = sink;
+     pimpl->ids_sink_ud = user_data;
+diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
+index f4a5402..1add75e 100644
+--- a/src/llama-moe-cache.h
++++ b/src/llama-moe-cache.h
+@@ -52,6 +52,13 @@ public:
+     void restore();
+     bool is_lent() const;
+ 
++    // Brain Engine 0023: like restore(), but the experts go up on a second stream in a thread while the caller goes on
++    // without the cache (no slots, nothing copied from it) until finish_fill(), which waits for the upload and puts the
++    // cache back in use, returning how long it waited (us). restore_behind() returns false if it had to restore() instead.
++    bool    restore_behind();
++    bool    is_filling() const;
++    int64_t finish_fill();
++
+ private:
+     struct impl;
+     std::unique_ptr<impl> pimpl;
