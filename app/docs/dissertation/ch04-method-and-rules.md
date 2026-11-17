@@ -51,6 +51,47 @@ Home benchmarks run on MouseWurX's 16 GB card with Q4 files and 8 experts per wo
 
 The Bobert wording study ran on a rented 48 GB A40 with 8 slots of 8,192 tokens each. The planned switch to 4 slots of 16k never happened, so 11 to 13 long turns per round overflowed their slot, and 11 to 31 answers per round were cut off at the length limit. Both kinds were scored as wrong, and the same turns were affected in every condition, so comparisons between conditions stay fair, but absolute scores are lower than they would otherwise be (bobert-35bob-tool-study.md).
 
+### 4.3.3 Speed settings measured on the home PC (added 17 November)
+
+Before any setting that changes how the brain is served becomes a default, it is timed on the owner's consumer PC against the default. That PC has a 16 GB card, 32 GB of RAM and an 8-core processor. Three sessions ran on 16 and 17 November: night 1 (140 loads), Turbo (25 loads) and a calibration of reading step against hot experts (85 loads). The method, the rule for "best" and every prediction were written down before any timed run.
+
+**How each row ran:**
+
+- Every row was loaded 5 times, with rows taking turns and an untimed warm-up after each load.
+- Each prompt was timed once per load, at temperature 0, writing 300 words.
+- "Start" is Bob's real start prompt, about 3,900 tokens. "16K" and "32K" are long texts cut to exactly that length.
+- Figures are medians of 5. The brain was stock Qwen3.6 35B A3B at Q4 throughout.
+
+The full tables and raw runs are in `docs/test-results/` (2026-11-17 speed and calibration results). The runner misread about 6% of the card's temperature and power samples, which were pieces of lines. Speeds and words come from the engine's own stream and were not touched. The card conditions were worked out again from whole lines, and the runner was fixed and tested.
+
+**Reading step is the biggest single win.** Reading a prompt in steps of 2048 or 4096 tokens, against 512, read a 32K prompt 2.5 and 3.4 times as fast. The first word came after 10.6 s and 7.9 s, against 26.5 s. Writing was 2.6% to 8.8% slower. The rule set beforehand allowed at most 3% slower writing, so a bigger step alone does not become the default.
+
+**Hot experts with a bigger step give the best pair.** A cache of busy experts was kept on the card, with an expert the cache misses copied to the card.
+
+| Setting | Writing start / 16K / 32K | Reading 32K | First word 32K |
+|---|---|---|---|
+| Default (step 512, no cache) | 87.7 / 82.0 / 77.3 | 1,232 | 26.6 s |
+| Step 2048 + 4 GB copy cache | +25% / +14% / +28% | 1.86x | 14.3 s |
+| Step 4096 + 4 GB copy cache | +16% / +14% / +19% | 2.66x | 10.0 s |
+
+- **Step 2048 won** by the rule set beforehand, which looked at start-prompt writing first. It suits chat.
+- **Step 4096 reads faster** and suits long documents and repository or agent work, where reading dominates.
+- **Copying a missed expert beat working it out on the processor** at 4 GB on every prompt.
+- **Smaller caches** often lost to no cache on long prompts.
+- **Our own expert ranking** was no faster than letting the cache learn.
+- **Different words.** Both winning rows write different words from the default, because a different batch shape adds the numbers in a different order. A quality check on Bob's jobs is due before either becomes a default. Until then they stay opt-in, and their quality is unproven in our lab, as we have yet to test.
+
+**Turbo did not help on this brain and card.** Turbo (MTP, guessing words ahead and checking them) slowed prompt reading by 13% to 16%. With Bob's own sampling, three words ahead wrote 17% slower on the start prompt and 3% faster at 32K. The rule required at least 10% faster, so Turbo is not offered here. It also changed the words at temperature 0.
+
+**Predictions.** Of 16 predictions graded as written, 6 were right, 1 mostly right, 8 wrong and 1 not run. Most of the wrong ones expected a speed feature to help (Turbo, prefetch, sending the trace less often) or reading to cost nothing.
+
+**Limits:**
+
+- These results come from one machine, one brain and one quant, with one timed run per load.
+- Free RAM was 1 to 3 GB, and the slowest single runs fell where it was lowest. The medians were not affected.
+- Locking the brain in memory did not run, because the engine refused the option.
+- A 6 GB cache and other cards are unproven in our lab, as we have yet to test.
+
 ## 4.4 Benchmarks
 
 Each benchmark answers a different question. The table gives each one's size and what it measures. Chapters 5 to 9 report the results.

@@ -200,6 +200,12 @@ The gaps still open are:
 
 The fixes made after the round have checks and pass the suite. Whether they raise the pass rate is unproven in our lab, as we have yet to test. The same jobs will be run again to find out.
 
+### 13.6.11 The fNRI trace fix, and quality checks for the faster settings (added 17 November)
+
+Tracing for the fNRI system changes the words the brain writes (Chapter 3, section 3.4.3). The fix writes the picks out of the fused router kernel with no callback, and it is being built. Whether it keeps the words identical is unproven in our lab, as we have yet to test. When it is tested, the expert readings in Chapter 10 can be rerun with it.
+
+The faster serving settings in Chapter 4 (section 4.3.3), a bigger reading step with a 4 GB hot-experts cache, also write different words from the default. They need a quality check on Bob's jobs, and timing on other cards, other brains and a bigger cache.
+
 ## 13.7 Closing
 
 The thesis began with a small model that handed work off to a tool when it should have done the work itself. Looking for the cause led to the lessons, and then to the test. The lessons held far more faults than scripts had found. The test held items that were also in the training files. The tools built along the way were needed to see either of these.

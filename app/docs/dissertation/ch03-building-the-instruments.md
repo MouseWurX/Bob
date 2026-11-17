@@ -88,6 +88,39 @@ The patches fall into four groups: change a model live (0001, 0003, 0013), watch
 
 **0010, trace once.** With 0002 alone, a traced request stopped after every layer to copy the picks out, 40 to 48 stops a word. On a consumer card this cost about a fifth of word speed: 122.7 words a second fell to 99.2 (engine/README.md). The patch keeps each layer's picks on the card and fetches them together with one wait. The trace returned is the same, row for row.
 
+Together these patches feed Bob's **fNRI system**. It has two parts: brain scans, which map the experts each skill leans on, and a live view that lights up the experts Bob picks while he writes. Every expert map in this thesis that comes from a home scan rests on this trace.
+
+**0018, trace every N words.** This patch sends the live trace only every N words, to cut its cost. Measured on 16 November, it made no difference: tracing every word, every 4th word and every 14th word all wrote within 1% of each other (79.6, 78.9 and 79.2 words a second, against 88.4 with the trace off). The cost is in recording the picks, not in sending them, so 0018 is to be dropped.
+
+#### Does the fNRI trace change what the brain writes? (16 to 17 November)
+
+**Why we ran it.** The fNRI system is meant to watch the brain, not steer it. If tracing changes the words, a scan describes a slightly different brain from the one users talk to. The live view would then also change Bob's answers whenever it is switched on. Night 1 of the speed tests (section 4.3.3) found exactly that. With the live trace on, stock Qwen3.6 35B A3B wrote different words at temperature 0 than with it off, although every row wrote the same words in all 5 of its own runs. So we tested whether the trace itself alters the words, and which part of it does.
+
+**What we tested.** The trace path changes two things in the engine's graph. It marks the router's sort as an output (`ggml_set_output`), and it adds an eval callback that reads the picks. Three settings were run, 5 times each, on the start prompt and a 32K prompt, in the same engine, brain and settings:
+
+- the trace with the sort marked as an output
+- the trace with its mass (patch 0009), which takes a path without `ggml_set_output` but keeps the callback
+- the brain with CUDA graphs switched off, to rule the graphs in or out
+
+**What we found:**
+
+| Setting | Writing, start prompt | Writing, 32K | Words against no trace |
+|---|---|---|---|
+| No trace | 85.3 | 77.1 | (baseline) |
+| CUDA graphs off, no trace | 42% slower | 38% slower | the same |
+| Trace, sort marked as output | 8% slower | 9% slower | different |
+| Trace with mass, no `ggml_set_output`, callback kept | 27% slower | 24% slower | different, and different again from the row above |
+
+- **Graphs are not the cause.** Turning graphs off cost far more speed than the trace but kept the same words.
+- **The output mark is not the only cause.** Taking `ggml_set_output` away still changed the words, so the callback changes them too.
+- **One limit:** the mass trace also asks the callback for a second node per layer, so this run cannot say whether the pick callback alone changes the words. That doesn't change the decision.
+
+A likely common cause, which we have not confirmed: the card fuses the router's softmax, sort, top-k and weighting into one kernel only inside one graph piece, and both the output mark and a callback split that piece.
+
+**The fix.** The picks are written out by the fused kernel itself into a fixed buffer on the card, with no callback and no `ggml_set_output`. The trace is then read once per step, as patch 0010 already does. The fix is being built for the next Brain Engine.
+
+**Results after the fix.** Unproven in our lab, as we have yet to test. The test is the same three-way run: the fixed trace against no trace, on the same prompts. It passes only if the words match word for word at temperature 0, and the speed cost is reported beside it. Until then, the expert maps in this thesis carry this limit (section 3.8).
+
 ### 3.4.4 Card sharing and the small helper
 
 Patches 0004, 0005, 0006, 0008, 0011 and 0014 let one model spread over the cards of several computers. Patch 0004 offers a hash for every weight over 1 MiB, so a lent card that already has a weight skips the copy. Patch 0005 is SCUT, an experimental UDP link. Over a simulated Wi-Fi of 3 ms delay and 1% loss it raised speed from about 9 to about 15 words a second, with byte-identical output (engine/README.md). Patches 0006, 0008, 0011 and 0014 add signed packets, a link log, one trip a word and a frozen wire numbering. None is used in the studies. A numbering clash should be noted: the Forge's pod patch `0014-live-control-vector` adds a live steering vector, and only the neuron sweep uses it (section 3.6.6).
@@ -100,6 +133,8 @@ The checks differ in strength, and the list is ordered from strongest to weakest
 - **Live steering equals loading.** Steering at x8 live matches loading the same vector at x8. Sending an empty setting restores the same words as before (PR #227; checked-numbers.md).
 - **Per-layer test for 0013.** `engine/tests/experts-per-word.py` builds a tiny model and compares the live setting with the engine's own override flag, layer by layer through the trace, and checks the refusals (ENGINE-MAP.md).
 - **Cross-build card sharing for 0014.** `engine/tests/rpc-any-version.sh` runs a model with every layer on a lent card in all four old and new pairings. All four matched a local run word for word, on a tiny llama model with CPU builds on Linux, 15 November 2026 (ENGINE-MAP.md).
+- **With-and-without timing (16 November).** On the home PC's 16 GB card with stock Qwen3.6 35B A3B at Q4, Brain Engine 8 and 9 with every feature off ran within 1% of plain llama.cpp with Bob's settings, and wrote the same words, word for word. Experts per word, the expert mask and the dials each cost under 1.5% more. The live trace cost about 9% of writing speed and nothing on reading. Each row was loaded 5 times at temperature 0 (docs/test-results, 2026-11-17 speed results).
+- **Prefetch (0019) measured, and dropped.** Prefetch was meant to load the next experts early. Instead it read prompts 5.6% to 12.7% slower and used half a gigabyte more of the card, so it is to be dropped from the next Brain Engine.
 - **Timing.** On the full Qwen, 8, 6 and 4 experts per word ran at 82.7, 92.1 and 102.5 tokens a second (docs/forge-runs/benchmarks/experts-per-word-full-qwen-2026-11-04.md). This describes the model, not the cost of the patch.
 
 ### 3.4.6 What Brain Engine does not have
@@ -109,6 +144,8 @@ No patch is tested automatically against a real engine build. Placement errors a
 Brain Engine has no choice of how the kept experts are weighed when fewer are used. llama.cpp's Qwen3 mixture-of-experts graph scales the chosen experts' weights to add up to 1 (src/models/qwen3moe.cpp, read on 16 November), so patch 0013 at 4 experts uses the weighting that Chen and Yao (2026) found cost 4.65 MMLU points on the same base model, against 0.35 when the four keep their share of the top 16. The project's own test at 4 experts held tools, facts and code level (section 3.4.5), but on far fewer questions and different tasks. The other weighting is not built; it is future work (section 13.6.9).
 
 There are no clean overhead numbers per patch. Only a few patches have any timing, and none was taken in the full study configuration. The dissertation therefore makes no claim about what the patches cost in speed: not measured.
+
+*Amended 17 November:* the overhead has now been measured on the home PC. With their features off, the patches cost nothing measurable, and the live trace costs about 9% of writing speed (section 3.4.5).
 
 A weekly workflow replays the patches on the newest llama.cpp tag and opens an issue when they apply and build (engine/README.md). It checks that the patches go on, not that they are correct.
 
@@ -224,7 +261,8 @@ The instruments were made because the questions demanded them: the mask, dials, 
 - **Small stand-ins.** The strongest Brain Engine checks used tiny models, CPU builds or one trial on a 35B model. They show the code does what it claims, not that the instruments are unbiased on a real large model.
 - **No automatic engine test.** A patch in the wrong place would be found only by the PC test.
 - **Dry runs prove running, not helping.** The self-tests say so themselves, and most Forge builds after build 14 had no card test when the README was written.
-- **Overhead not measured.** No clean with-and-without timing exists for the patches the studies use.
+- **Overhead measured on one machine only.** The with-and-without timings in section 3.4.5 (added 17 November) come from one consumer PC, one brain and one quant. Other cards and brains are unproven in our lab, as we have yet to test.
+- **The fNRI trace changes the words.** Until the fix in section 3.4.3 is tested, a traced answer can differ from an untraced one at temperature 0. Expert maps from traced runs describe the traced brain.
 - **One builder.** The code was written and checked inside one project, with an AI assistant as a contributor (docs/COSTS.md). No outsider has reviewed it.
 - **Judge limits.** The tool judge measures agreement with the teacher, and is blind to a call that is right in a way the teacher did not record.
 - **Status.** The never-taught gate shipped in release 1.5.238. The decisive retrain on reviewed lessons has not been run, so no instrument here has yet been used on the lessons the dissertation finally recommends.
