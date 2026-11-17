@@ -238,7 +238,11 @@
    ],
    "env": {
     "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
-   }
+   },
+   "cacheDown": [
+    3072,
+    2048
+   ]
   },
   {
    "id": "S6k2c",
@@ -284,7 +288,11 @@
    ],
    "env": {
     "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
-   }
+   },
+   "cacheDown": [
+    3072,
+    2048
+   ]
   }
  ]
 }

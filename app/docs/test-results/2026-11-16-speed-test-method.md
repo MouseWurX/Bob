@@ -343,7 +343,7 @@ The calibration tried the copy cache at 1, 2 and 4 GB, and 4 GB was the only siz
 | S5k2c, S5k4c | 5120 | 2, 4 GB | A bigger step, with a small and the usual cache |
 | S6k2c, S6k4c | 6144 | 2, 4 GB | The same at 6144 |
 
-All caches are the copy kind (`--moe-cache-cpu-share 0`).
+All caches are the copy kind (`--moe-cache-cpu-share 0`). At the owner's ask ("if 4 doesn't load and 2 does, maybe 3 would be a sweet spot?"), S5k4c and S6k4c step down to 3 GB, then 2 GB, when the load doesn't start or a run fails (out of memory or a spill). Each load records the size it ran with and the sizes that failed, and the results page lists them. A stepped-down load is reported under its own row with its size, never mixed silently with 4 GB loads.
 
 **Safety and failures:** each load is skipped if the card has under 14,000 MB free before it starts (something else is using it), written down as not run. On Windows the driver can put card memory in RAM when the card is full. So the runner reads shared GPU memory before each load and after each timed run, and a rise of more than 512 MB marks that run failed as a spill. A load that doesn't start, a run that runs out of memory and a spill are all failures. They are reported as failures and never counted as slow runs. Gaming, the stop file and the test lock work as before.
 

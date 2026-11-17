@@ -254,7 +254,7 @@ function speedRowsHtml(cal, job = 'chat') {
   const sp = work || cal?.speed || null;
   const rows = (cal?.speedRows || []).map((r) => {
     const star = sp && (r.turbo ? sp.turbo : r.reading === sp.reading && (r.cache === true) === (sp.cache === true));
-    const name = r.turbo ? 'Turbo (own guesser)' : `Reading speed ${READ_NAMES[r.reading] || r.reading}${r.cache ? ', hot experts' : ''}`;
+    const name = r.turbo ? 'Turbo (own guesser)' : `Reading speed ${READ_NAMES[r.reading] || r.reading}${r.cache ? `, hot experts${r.cacheMB ? ` ${Math.round(r.cacheMB / 102.4) / 10} GB` : ''}${r.steppedDown?.length ? ` (${r.steppedDown.map((m) => Math.round(m / 102.4) / 10).join(' and ')} GB didn't fit)` : ''}` : ''}`;
     return `<tr${star ? ' class="best"' : ''}><td>${name}</td><td>${r.failed ? `<span class="muted">${esc(r.failed)}</span>` : `reads ${r.readTps} tokens a second, writes ${r.tps}${r.accepted != null ? `, ${r.accepted}% of guesses kept` : ''}`}</td><td>${r.failed || r.firstWordS == null ? '' : `first word ${r.firstWordS} s on a long prompt`}</td><td>${star ? '★ recommended' : ''}</td></tr>`;
   }).join('');
   if (!rows) return '';

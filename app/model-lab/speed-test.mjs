@@ -214,7 +214,28 @@ export function loadPlan(file, { read = (f) => fs.readFileSync(f, 'utf8').replac
 export const schedule = (rows, rounds) => Array.from({ length: rounds }, (_, round) => rows.map((row) => ({ round, row }))).flat();
 
 // One load of one row: start, warm up, one timed run per prompt, stop. Everything is injected for the tests.
+// Nov 17 (the owner: "if 4 doesn't load and 2 does, maybe 3 would be a sweet spot?"): row.cacheDown [3072, 2048]
+// steps a hot-experts cache that doesn't fit down to the next size: when the load doesn't start, or a run fails (out
+// of memory, or a spill). The load ends at the biggest size that ran cleanly, and says so (cacheMiB, steppedDown).
+// A stop (game, stop file) or a skip for a busy card is never stepped down.
 export async function runRow({ plan, prompts, row, round, fx }) {
+  const at = (row.args || []).indexOf('--moe-cache-mib');
+  if (!(at >= 0 && Array.isArray(row.cacheDown) && row.cacheDown.length)) return runRowOnce({ plan, prompts, row, round, fx });
+  const sizes = [Number(row.args[at + 1]), ...row.cacheDown.map(Number)].filter((n) => n > 0);
+  const steppedDown = [];
+  let res = null;
+  for (const mib of sizes) {
+    const args = row.args.slice(); args[at + 1] = String(mib);
+    res = await runRowOnce({ plan, prompts, row: { ...row, args }, round, fx });
+    res.cacheMiB = mib;
+    const bad = res.notRun || res.runs.find((x) => x.failed)?.failed;
+    if (res.stopped || !bad || /^skipped:/.test(res.notRun || '')) break;
+    if (mib !== sizes[sizes.length - 1]) steppedDown.push({ mib, why: bad });
+  }
+  if (steppedDown.length) res.steppedDown = steppedDown;
+  return res;
+}
+async function runRowOnce({ plan, prompts, row, round, fx }) {
   const eng = plan.engines[row.engine];
   const port = await fx.port();
   const args = ['-m', row.brain || plan.brain, '--host', '127.0.0.1', '--port', String(port), ...(row.noBase ? [] : plan.baseArgs || []), ...(row.args || [])];
@@ -354,6 +375,11 @@ export function summarise(results, { prompts = {}, plan = {} } = {}) {
   if (cache.length) {
     lines.push('', '| Row | Round | Ranked fill | Refused | Small batches: hits / misses (on the CPU) | CPU share | MB copied |', '|---|---|---|---|---|---|---|');
     for (const x of cache) lines.push(`| ${x.row} | ${x.round + 1} | ${x.load?.filled ?? '-'} | ${x.load?.refused || '-'} | ${x.cache?.small ? `${x.cache.small.hits} / ${x.cache.small.misses} (${x.cache.small.cpu})` : '-'} | ${x.cache?.small ? x.cache.small.cpuShare + '%' : '-'} | ${x.cache?.small?.uploadedMiB ?? '-'} |`);
+  }
+  const sized = results.filter((x) => x.cacheMiB);
+  if (sized.some((x) => x.steppedDown)) {
+    lines.push('', 'Hot-experts cache each load ran with (a size that didn\'t load or failed a run was stepped down):', '', '| Row | Round | Ran with | Stepped down from |', '|---|---|---|---|');
+    for (const x of sized) lines.push(`| ${x.row} | ${x.round + 1} | ${x.notRun ? 'none (not run)' : `${x.cacheMiB} MiB`} | ${(x.steppedDown || []).map((d) => `${d.mib} MiB (${d.why})`).join('; ') || '-'} |`);
   }
   const stopped = results.find((x) => x.stopped);
   if (stopped) lines.push('', `Stopped early: ${stopped.stopped}. Rows after that are not run.`);

@@ -97,6 +97,24 @@ const wait = async (lab) => { for (let i = 0; i < 300 && lab.job; i++) await new
   check('the run saves both picks', rec.speed && 'speedWork' in rec);
 }
 {
+  // Nov 17: a cache that doesn't fit beside a reading step steps down 1 GB at a time (to 2 GB at least)
+  check('cache sizes: biggest first, 1 GB smaller each time, down to 2 GB', calSpeedTries({ cacheMB: 4096 })[3].sizes.join() === '4096,3072,2048' && calSpeedTries({ cacheMB: 2048 })[3].sizes.join() === '2048');
+  const lab = mkLab({ auto: 60.04, 8: 71.26, 16: 66, 24: 50, 32: 41, 40: 30 });
+  lab.cfg.gpuVramGB = 16; lab.brain.engine.buildNo = () => 12359;
+  const serve0 = lab.stepFns.serve;
+  lab.stepFns.serve = async (o) => { const x = o.extra || []; const mib = Number(x[x.indexOf('--moe-cache-mib') + 1]); if (x.includes('--moe-cache-mib') && x[1] === '4096' && mib >= 4096) { lab.served.push(o); throw new Error('out of memory'); } return serve0(o); };
+  lab.stepFns.trace = async () => { throw new Error('no trace here'); };
+  await startCalibrate(lab, [{ model: 'big', name: 'Big', experts: true }]); await wait(lab);
+  const rec = calResult(lab.cfg, 'big');
+  const fh = rec.speedRows.find((r) => r.id === 'read-fastest-hot'), ff = rec.speedRows.find((r) => r.id === 'read-faster-hot');
+  check('a 4 GB cache that doesn\'t fit beside step 4096 steps down to 3 GB, and the row says so', fh.cacheMB === 3072 && fh.steppedDown?.join() === '4096' && !fh.failed && fh.tps > 0);
+  check('one that fits runs once at its own size', ff.cacheMB === 4096 && !ff.steppedDown);
+  check('a pick with a cache carries the size it ran with', calSpeedWork([{ id: 'read-normal', reading: 'normal', tps: 50, readTps: 100 }, { id: 'read-fastest-hot', reading: 'fastest', cache: true, cacheMB: 3072, tps: 55, readTps: 300 }]).cacheMB === 3072);
+  fs.writeFileSync(path.join(calibrateDir(lab.cfg), 'big.json'), JSON.stringify([{ ...rec, speed: { reading: 'faster', cache: true, cacheMB: 3072, turbo: false, why: 'x' }, speedWork: undefined }]));
+  const u = useCalibrated(lab, 'big', { job: 'chat' });
+  check('Use recommended sets Room for hot experts to a smaller size the pick ran with', lab.cfg.hotExpertsGB === 3 && u.hotExperts === true);
+}
+{
   const lab = mkLab({ auto: 60, 0: 61, 8: 55, 16: 50, 24: 45, 32: 40, 40: 30 });
   lab.cfg.brainPlace = { big: { mode: 'hand', cpuMoe: 12 } };
   await startCalibrate(lab, [{ model: 'big', name: 'Big', experts: true }]); await wait(lab);
@@ -140,9 +158,9 @@ const wait = async (lab) => { for (let i = 0; i < 300 && lab.job; i++) await new
   const run = brainsHtml({ ...ctx, place: { ...place, job: { state: 'running', stepLabel: 'By hand: 8 of 40 layers\' experts in memory', progress: 43 } } });
   check('while it runs: what it is doing, how far, a Stop button, and no second start', /role="status"><strong>Calibrating\.<\/strong> By hand: 8 of 40 layers&#39; experts in memory <span class="muted">43%/.test(run) && /data-calstop/.test(run) && /data-calibrate="bobert-35b" disabled/.test(run) && /data-calibrate="\*" disabled/.test(run));
   const one = brainsHtml({ ...ctx, setUp: 'bobert-35b' });
-  const two = { ...cal, speedRows: [{ id: 'read-normal', reading: 'normal', tps: 87.7, readTps: 1232, firstWordS: 26.6 }, { id: 'read-faster-hot', reading: 'faster', cache: true, tps: 109.2, readTps: 2290, firstWordS: 14.3 }, { id: 'read-fastest-hot', reading: 'fastest', cache: true, tps: 102, readTps: 3276, firstWordS: 10 }], speed: { reading: 'faster', cache: true, why: 'Chat line.' }, speedWork: { reading: 'fastest', cache: true, why: 'Work line.', job: 'work' } };
+  const two = { ...cal, speedRows: [{ id: 'read-normal', reading: 'normal', tps: 87.7, readTps: 1232, firstWordS: 26.6 }, { id: 'read-faster-hot', reading: 'faster', cache: true, tps: 109.2, readTps: 2290, firstWordS: 14.3 }, { id: 'read-fastest-hot', reading: 'fastest', cache: true, cacheMB: 3072, steppedDown: [4096], tps: 102, readTps: 3276, firstWordS: 10 }], speed: { reading: 'faster', cache: true, why: 'Chat line.' }, speedWork: { reading: 'fastest', cache: true, why: 'Work line.', job: 'work' } };
   const pick = (job) => brainsHtml({ ...ctx, setUp: 'bobert-35b', place: { ...place, brains: { ...place.brains, 'bobert-35b': { ...place.brains['bobert-35b'], cal: two, job } } } });
-  check('Set up shows both picks, says which this brain gets, and stars that one', /Chat line\.<\/p><p class="muted">Work line\.<\/p><p class="muted">This brain does coding and agent work, so Use recommended sets the second one/.test(pick('work')) && /<tr class="best"><td>Reading speed Fastest, hot experts/.test(pick('work')) && /This brain does chat, so Use recommended sets the first one/.test(pick('chat')) && /<tr class="best"><td>Reading speed Faster, hot experts/.test(pick('chat')));
+  check('Set up shows both picks, says which this brain gets, and stars that one', /Chat line\.<\/p><p class="muted">Work line\.<\/p><p class="muted">This brain does coding and agent work, so Use recommended sets the second one/.test(pick('work')) && /<tr class="best"><td>Reading speed Fastest, hot experts 3 GB \(4 GB didn(?:'|&#39;)t fit\)/.test(pick('work')) && /This brain does chat, so Use recommended sets the first one/.test(pick('chat')) && /<tr class="best"><td>Reading speed Faster, hot experts/.test(pick('chat')));
   check('the Set up page shows what each try measured and stars the recommended one', /<tr class="best"><td>By hand, 8 in memory<\/td><td>71\.3 words a second<\/td><td>first word 1\.1 s<\/td><td>★ recommended<\/td>/.test(one) && /<td>By hand, 0 in memory<\/td><td><span class="muted">Didn&#39;t start/.test(one) && /Last calibrated 2026-11-11\. By hand with 8 was fastest/.test(one));
   check('the recommendation sits beside the slider, and Use recommended is offered until it is in use', /★ Recommended by the last calibration: <strong>8<\/strong> by hand/.test(one) && /data-caluse="bobert-35b" >Use recommended/.test(one) && /data-caluse="bobert-35b" disabled/.test(brainsHtml({ ...ctx, setUp: 'bobert-35b', place: { ...place, brains: { ...place.brains, 'bobert-35b': { ...place.brains['bobert-35b'], set: { mode: 'hand', cpuMoe: 8 } } } } })) && /\(in use\)/.test(brainsHtml({ ...ctx, setUp: 'bobert-35b', place: { ...place, brains: { ...place.brains, 'bobert-35b': { ...place.brains['bobert-35b'], set: { mode: 'hand', cpuMoe: 8 } } } } })));
   check('not calibrated yet says so; Use recommended is there but locked', /Not calibrated yet/.test(brainsHtml({ ...ctx, setUp: 'riker-28b-q3' })) && /data-caluse="riker-28b-q3" disabled/.test(brainsHtml({ ...ctx, setUp: 'riker-28b-q3' })));

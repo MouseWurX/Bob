@@ -200,6 +200,27 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   check('a small rise is fine, and the check is off unless the plan asks', !fine.runs[0].failed && fine.runs[0].sharedRiseMB === 200 && offSp.runs[0].sharedRiseMB === undefined);
   check('shared memory: bytes to MB; nothing or an error is no number', parseSharedMB('2147483648\r\n') === 2048 && parseSharedMB('') === null && parseSharedMB('Get-Counter : error') === null); }
 
+// ---------- Stepping a cache down that doesn't fit (Nov 17) ----------
+{ const { prompts } = loadPlan(planFile);
+  const big = { id: 'S', engine: 'be', prompts: ['short'], args: ['-ub', '6144', '--moe-cache-mib', '4096'], cacheDown: [3072, 2048] };
+  const mk = (failAt) => { const f = fx(); const start = f.start; f.start = (exe, args, env) => { const s0 = start(exe, args, env); const mib = Number(args[args.indexOf('--moe-cache-mib') + 1]); return { ...s0, ready: async () => (mib >= failAt ? { ok: false, why: 'out of memory' } : { ok: true }) }; }; return f; };
+  const f = mk(4096);
+  const r3 = await runRow({ plan, prompts, row: big, round: 0, fx: f });
+  check('a 4 GB cache that doesn\'t load steps down to 3 GB, and says so', r3.cacheMiB === 3072 && r3.runs.length === 1 && r3.steppedDown?.length === 1 && r3.steppedDown[0].mib === 4096 && f.seen.starts.map((x) => x.args[x.args.indexOf('--moe-cache-mib') + 1]).join() === '4096,3072');
+  const r2 = await runRow({ plan, prompts, row: big, round: 0, fx: mk(3072) });
+  check('and to 2 GB when 3 doesn\'t either', r2.cacheMiB === 2048 && r2.steppedDown.map((d) => d.mib).join() === '4096,3072');
+  const none = await runRow({ plan, prompts, row: big, round: 0, fx: mk(1) });
+  check('when nothing loads, the last try is the result, not run', none.notRun === 'out of memory' && none.cacheMiB === 2048);
+  const ok = await runRow({ plan, prompts, row: big, round: 0, fx: mk(99999) });
+  check('a cache that fits runs once at its own size', ok.cacheMiB === 4096 && !ok.steppedDown);
+  let k = 0; const sp = { ...fx(), sharedGpuMB: async () => (k++ < 2 ? [0, 2000][k - 1] : 0) };
+  const spilled = await runRow({ plan: { ...plan, spillCheck: true }, prompts, row: big, round: 0, fx: sp });
+  check('a spill steps down too', spilled.cacheMiB === 3072 && /spilled/.test(spilled.steppedDown[0].why));
+  const busy = await runRow({ plan, prompts, row: { ...big, needFreeMB: 14000 }, round: 0, fx: { ...fx(), cardFreeMB: async () => 5000 } });
+  check('a busy card is skipped, not stepped down', /^skipped/.test(busy.notRun) && busy.cacheMiB === 4096 && !busy.steppedDown);
+  const md = summarise([r3, ok], { prompts: {}, plan });
+  check('the summary says which size each load ran with', /\| S \| 1 \| 3072 MiB \| 4096 MiB \(out of memory\) \|/.test(md) && /\| S \| 1 \| 4096 MiB \| - \|/.test(md)); }
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
