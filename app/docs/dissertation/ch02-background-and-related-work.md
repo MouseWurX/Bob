@@ -300,6 +300,27 @@ These two pieces matter for the thesis in two ways. First, they set the deployme
 
 We did not find a peer-reviewed paper for llama.cpp or GGUF among the sources we opened. The two cited pages are project documentation, and we treat them as such. They describe the software as it is, and not as a result that has been independently evaluated.
 
+### 2.10.1 Choosing a brain and its settings at home (added 17 November)
+
+The speed tests of 16 and 17 November turn the deployment target above into measured advice for one kind of home machine. That machine has a 16 GB card, 32 GB of RAM and an 8-core processor, and runs stock Qwen3.6 35B A3B at Q4 through Brain Engine 9. The full method and tables are in Chapter 4 (section 4.3.3). The cost of watching the brain is in Chapter 3 (section 3.4.3).
+
+| If you mostly... | Measured choice on this machine | What you get | What it costs |
+|---|---|---|---|
+| Chat, short asks | Reading step 2048 + 4 GB hot-experts cache, missed experts copied to the card | Writing 14% to 28% faster, reading 1.9x, first word on 32K in 14.3 s against 26.6 s | Different words from the default; quality not yet checked |
+| Paste long documents, work on a repository, run agent jobs | Reading step 4096 + 4 GB hot-experts cache, copied | Reading 2.7x to 2.8x, first word on 32K in 10.0 s; writing 14% to 19% faster | The same |
+| Want the default's exact words | Bob's defaults (step 512, no cache) | Bob's settings are already 6% faster at writing and 9% faster at reading than llama.cpp's own defaults | Slow first word on long prompts (26.6 s at 32K) |
+
+What not to turn on, on this machine:
+
+- **Turbo (MTP).** It slowed prompt reading by 13% to 16%, and writing ranged from 17% slower to 3% faster with Bob's sampling.
+- **Prefetch.** It read 5.6% to 12.7% slower and used more of the card.
+- **Smaller hot-experts caches (1 GB and 2 GB).** They often lost to no cache on long prompts.
+- **The fNRI live trace.** Leave it off unless you are looking inside the brain. It costs about 9% of writing speed, and until its fix is tested it changes the words.
+
+Two practical notes. First, 32 GB of RAM leaves only 1 to 3 GB free with this brain loaded, so other large programs can slow it. Second, the brain's own size matters more than any setting. The dense 27B Qwen wrote about 10 words a second on the same card, against 70 to 90 for the 35B mixture-of-experts brain, because the mixture-of-experts brain uses only a few experts for each word (section 2.1.3).
+
+Other cards, laptops, handhelds and other brains are unproven in our lab, as we have yet to test. The laptop plan is written but has not run. So is the quality check that must pass before either faster pair becomes a default.
+
 ## 2.11 Gaps this thesis addresses
 
 The review gives a good deal of ground to stand on. It also leaves gaps. We list six. For each we say what the thesis does and what it does not do.
