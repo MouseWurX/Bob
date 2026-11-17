@@ -99,6 +99,15 @@ export function planConvert(cfg, args, env = process.env) {
 const KIND_WORDS = { writer: 'text document', calc: 'spreadsheet', impress: 'presentation' };
 const DEFAULT_EXT = { writer: 'docx', calc: 'xlsx', impress: 'pptx' };
 const OPS = { writer: ['replace', 'append'], calc: ['replace', 'set_cells', 'add_rows', 'add_sheet'], impress: ['replace', 'add_slide', 'delete_slide'] };
+// The note under a cut office_read. A sheet says which rows were shown out of how many (17 Nov office round 3: "the
+// first 20000 of 20012 characters" hid that a 3,000-row sheet showed only its first few hundred rows), so a total is
+// never worked out from part of a sheet. Other files say only that there is more, since the reader stops early.
+export function cutNote(r) {
+  const short = r?.kind === 'calc' ? [].concat(r.info?.sheets || []).filter((s) => Number(s.shown) < Number(s.rows)) : [];
+  if (short.length) return `[cut: ${short.map((s) => (s.shown ? `${s.name} showed rows 1 to ${s.shown} of ${s.rows}` : `${s.name} (${s.rows} rows) wasn't shown`)).join('; ')}. Don't add up or count from this part. For the whole sheet, convert_file it to csv and use query_data (or calculate on the rows you have and say which).]`;
+  return '[cut: showed only the first 20000 characters; the file has more. Say so, or read the rest another way.]';
+}
+
 const clip = (s, n = 60) => { s = String(s ?? ''); return s.length > n ? `${s.slice(0, n - 1)}…` : s; };
 
 function cleanSheets(sheets) {
@@ -253,7 +262,7 @@ export function officeTools(brain, { env = process.env } = {}) {
       if (!docKindOf(ext) && ext !== 'pdf') throw new Error(`I read documents, spreadsheets and presentations with this; a ${kindName(ext)} isn't one. Try read_file.`);
       const r = await officeJob(cfg, { op: 'read', src, max: 20000, sheet: args.sheet || '', formulas: args.formulas === true }, { signal: ctx?.signal, office: findOffice(cfg, env) });
       const about = r.kind === 'calc' ? r.info.sheets.map((s) => `${s.name} (${s.area})`).join(', ') : r.kind === 'writer' ? `${r.info.pages ? `${r.info.pages} pages, ` : ''}${r.info.paragraphs} paragraphs` : `${r.info.slides} slides`;
-      return `${path.basename(src)}: ${about}.\n\n${r.text}${r.cut ? `\n\n[cut: showed the first 20000 of ${r.chars} characters]` : ''}`;
+      return `${path.basename(src)}: ${about}.\n\n${r.text}${r.cut ? `\n\n${cutNote(r)}` : ''}`;
     },
     summary: ({ path: p }) => `read ${path.basename(String(p || ''))}`
   };

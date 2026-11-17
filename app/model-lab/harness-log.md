@@ -242,4 +242,9 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
 - **Score rules:** `either` (read-only: say so, or save a changed copy where allowed; the original must stay), `tried` (the broken file: the read counts even though it fails), `partial` ("I only saw part" with no answer fails), `not` (last year's rent alone fails).
 - **"Locked" is Bob's read-only folder setting.** A real Windows file lock (a file open in Word) isn't faked: it can't be made the same way on every system. Unproven in our lab, as we have yet to test it.
 - **Checked:** oracle 36/36 pass (15/15 without LibreOffice), a do-nothing brain fails 36/36, run-office-jobs-test 56 checks.
-- **Maybe a Bob bug, not fixed:** on the 3,000-row sheet office_read says it "showed the first 20000 of 20723" characters. The real sheet text is longer than that; the note understates how much was cut. Worth a look in the office thread before after2.
+- **Bob bug, fixed 17 Nov (see "office_read's cut note on big sheets"):** on the 3,000-row sheet office_read says it "showed the first 20000 of 20723" characters. The real sheet text is longer than that; the note understates how much was cut. Worth a look in the office thread before after2.
+
+## 17 Nov: office_read's cut note on big sheets
+
+- **Seen** (office thread, round 3, 3,000-row sheet): the note said "showed the first 20000 of 20723 characters". The reader stops once it passes the limit, so the count it gave was only what it had read. A brain would take that as nearly all of it, though only a few hundred of the 3,000 rows were shown. Later sheets also kept being read past the limit.
+- **Fix:** read_calc counts the rows it shows on each sheet, cuts on a whole row, and stops once the limit is reached. The note now says "Orders showed rows 1 to N of 3001", names any sheet that wasn't shown, and says not to add up from part of it (convert to CSV and use query_data instead). Documents and decks say only that there is more. Tests: run-office-test, 4 (one with real LibreOffice).
