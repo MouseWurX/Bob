@@ -372,3 +372,25 @@ It runs right after the cube-fix run (Addendum 19, with U0: 25 loads), from the 
 **Predictions, written before any run:** F5c and F6c write within 3% of F4c, because the busiest experts already fit in 4 GB and a bigger cache only takes room from layers. X5c and X6c read the 32K prompt slower than X4c. S5kc and S6kc read 32K at most 15% faster than X4c and write slower than X4c. S6kc can't run at 5 GB and steps down.
 
 **What decides:** the same two rules as Bob's Calibrate, over rows with no failed run on any prompt. Chat pick: the fastest writer on the short prompt, and among rows within 3% of it, the fastest reader at 32K. Coding pick: among rows writing within 10% of the fastest writer, the fastest reader at 32K. A new row replaces F4c or X4c only if it wins over that night's F4c or X4c. Calibrate then tries that size or step on cards with room for it.
+
+## Addendum 21 (Nov 17, after the bigger-caches results, before this run): in between, without a spill
+
+X4c (step 4096 + 4 GB) read 43% faster at 32K than F4c but pushed about 0.6 GB of card memory into RAM. The owner
+asked to "open a bit more room up on ram, but keep it towards the higher end". `speed-plans/calibrate-between.json`:
+same brain, engine (Brain Engine 10 as installed for Addendum 20), settings, prompts and spill rule, 6 rows,
+**5 rounds** (30 loads), interleaved.
+
+| Row | Reading step | Copy cache |
+|---|---|---|
+| F4c | 2048 | 4 GB (anchor) |
+| X4c | 4096 | 4 GB (anchor; expected to spill again) |
+| X35c, X3c | 4096 | 3.5, 3 GB |
+| M4c, M35c | 3072 | 4, 3.5 GB |
+
+**Predictions, written before any run:** X4c spills again. X3c doesn't spill, reads 32K at least 30% faster than F4c,
+and writes within 10% of it. M4c doesn't spill and reads 32K 15 to 30% faster than F4c.
+
+**What decides:** Addendum 20's two rules, over rows with no failed run on any prompt. A row that spills on any run
+can't win. If two rows are within 3% on what decides, the one with the lower shared-memory rise wins, so more RAM
+stays free. The winning step and size become Calibrate's coding pick on 16 GB cards. Calibrate's own step-down stays
+1 GB until this run says whether 0.5 GB steps matter.
