@@ -2,7 +2,7 @@
 
 **How hidden faults in synthetic training data shape small local agent models**
 
-*Bob's computer science dissertation, written in the open. Draft of 15 November 2026: all 13 chapters, fact-checked against their run files.*
+*Bob's computer science dissertation, written in the open. Draft of 17 November 2026: all 13 chapters, fact-checked against their run files, with the after1 round added to chapters 4, 11 and 13.*
 
 > **Status.** The decisive test, training a fresh model on reviewed lessons and scoring it on a leak-free test, **has not been run yet**. Until it runs, the title is a claim the evidence points to, not a proven result. Each chapter ends with its limits and what is still to do.
 >

@@ -99,6 +99,10 @@ The tool interview shows a model its own misses and asks why. The explanation is
 
 Lessons were reviewed by language models at two points. The lesson writer's own reviewer rejected lessons at write time, and a separate sort by Haiku, then Opus, labelled each lesson keep, fix, repair or discard (section 4.7). Both reviewers are models, so both carry the biases noted above. The sort was checked by sampling. Chapters 6 and 7 report what the reviews found, and this chapter states only how they were run. Chapter 12 turns this disclosure into an Engineering lesson, Auditing your reviewer, for learners who use the Lab's own reviewers (section 12.5.3).
 
+### 4.5.5 The blind A/B read of real jobs (added 17 November)
+
+From the after1 round (16 to 17 November), two brains were compared on the same 200 real jobs with a paired, blind read. Four Opus graders each took a share of the jobs. A grader saw a job's two runs as A and B in shuffled order, without knowing which brain made which. Each run got a verdict (right, partly, failed), a harm flag, a reply-quality score from 1 to 5, and the grader's pick of the better run. The labels were joined back only after every verdict was in. The limits are one run per job per brain and one grader per job. The results are in Chapter 11, section 11.7.5.
+
 ## 4.6 Held-out splits and the never-taught gate
 
 ### 4.6.1 The split
@@ -158,6 +162,12 @@ The first heals were stopped by the clock partway through. Riker v1 completed 19
 docs/COSTS.md lists every rental, failures included. At the time of writing it lists eleven failed paid attempts, costing $22.40, inside $484.39 of card time over about 105 hours. Two of the eleven are marked "estimated, not yet billed". The reasons include a machine image with no git, a prebuilt tool that would not run, a lesson-writer weight bug that produced empty jobs, and an export that crashed after good training. The total comes from the rental service's statement, and the lines are rounded.
 
 A project that reports only successes cannot say what its method costs. The cost log is also evidence about method: a pipeline that needs eleven failed attempts is a pipeline whose early results deserve caution.
+
+### 4.8.4 End-of-turn checks and the hardware log (added 17 November)
+
+From the after1 round on, every run of real jobs goes through Bob's end-of-turn loop checks. These are code checks for mistakes that kept coming back in graded runs, such as saying something was done when no tool did it, or a mail ask answered without the mail tools. When one fires, the brain gets one more go, never a loop. The run also used the Qwen text-call rescue, which runs tool calls that Qwen writes as text. Each check is built from a graded run, has a test in the suite and an entry in the harness log, and is replayed over earlier runs to count misses and false alarms before the next rental.
+
+Every rental now also keeps a hardware log. It records GPU temperature, power, clocks, memory, fan, PCIe link, slowdowns, processor load and RAM every 5 seconds, and the card and machine once. Hardware data stays with the lab results and never goes to Hugging Face. Names, serial numbers and IDs are scrubbed.
 
 ## 4.9 Data rules
 

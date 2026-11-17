@@ -274,6 +274,59 @@ Part of the low yield is the result of set-up faults and not of the method. lkt-
 
 Spending so far, from the hand-off and the console log, is about $0.41 (two hung cards), $0.55 (lkt-fix1), $0.82 (lkt-fix2) and $0.31 (lkt-fix3). Added together, that is about $2.09. The figures come from different files, and the sum is our arithmetic. The rewrite of the whole 5,565-idea file has not been costed from these rounds, and we do not extrapolate from them.
 
+### 11.7.5 The after1 round: the newest measured results (16 to 17 November)
+
+after1 was two rentals at the same time on the same code: the end-of-turn loop checks, the Qwen text-call rescue and the hardware log (Chapter 4, section 4.8.4).
+
+- **Stock Qwen3.6 35B, on an RTX 6000 Ada:** 200 real jobs at Minimus, and 30 mail jobs at each of Minimus, Medius and Magnus. Maximus did 4 of the 30 mail jobs before MouseWurX stopped it early. It also did 17 Office jobs. About $1.06.
+- **GPT-OSS 120B, on an A100 80GB:** the same 200 real jobs at Minimus. About $1.04.
+
+Every real job ran in the fake test home with real web search. Nothing was trained.
+
+**Real jobs, blind A/B read** (method in section 4.5.5):
+
+| Brain | Right | Partly | Failed | Harm | Reply quality (1-5) |
+|---|---|---|---|---|---|
+| Qwen3.6 35B | 133 | 47 | 20 | 0 | 3.87 |
+| GPT-OSS 120B | 107 | 56 | 37 | 0 | 3.52 |
+
+The graders picked Qwen's run as better on 84 jobs and GPT-OSS's on 51, with 65 ties.
+
+- **Qwen's most common faults:** made-up details (12), incomplete answers (12), wrong answers (11), a tool call shown as text (6) and claiming something not done (6).
+- **GPT-OSS's most common faults:** incomplete answers (21), asking the user instead of looking (17), wrong answers (13), made-up details (12) and giving up early (10).
+
+GPT-OSS was faster (a median of 13 s against 24 s). It also made half as many tool calls (0.87 a job against 1.73), which matches its habit of asking instead of looking.
+
+The limits are one run per job per brain and one grader per job. GPT-OSS ran only at Minimus with low reasoning. Its other reasoning levels are unproven in our lab, as we have yet to test.
+
+**Mail, by effort level.** The same 30 mail jobs, each on two made-up inboxes of up to 50,000 messages. These are code scores only, with a rough pass mark:
+
+| Level | Pass | Mean time | Mean steps |
+|---|---|---|---|
+| Minimus | 9 / 30 | 37 s | 4.2 |
+| Medius | 12 / 30 | 81 s | 6.0 |
+| Magnus | 7 / 30 | 260 s | 12.0 |
+| Maximus | 0 / 4 | 1,160 s | 13.8 |
+
+Higher effort did not help mail. Two of Maximus's finished jobs asked which senders are real people. In both, the first answer was right. Then the review read a shortened copy of the tool result as the tool's own cut-off and called the right answer a hallucination, and the final answer argued with itself. Magnus showed the same leak in 3 answers. At every level the biggest single mail fault was routing. 14 runs never added the mail tools for asks like "Trash everything from Kettle & Crumb", and searched the computer's folders instead.
+
+**Office.** 17 Word, Excel and PowerPoint jobs ran with LibreOffice in the test home, and 14 passed by code. Two misses made a new file instead of finding the user's own. One wrote a CSV in Bob's folder in place of the reading-log spreadsheet. The other asked for a deck's path after listing one empty folder. The third miss was a scorer slip.
+
+**What changed because of it.** Each fix has a check in the test suite and an entry in the harness log:
+
+- Mail asks that never say "email" now add the mail tools.
+- An answer that is only a text tool call is shown as an honest "I didn't finish" line.
+- Leaks from the recheck, and talk about earlier drafts, are caught.
+- "Find it first" applies to the user's own files.
+- "I've updated my memory" with no save behind it is caught.
+- File searches leave Bob's own logs out.
+- The review's record says when a tool result was only shortened for the review.
+- Every engine shares one exit hook.
+
+A replay of the new checks over all 511 after1 runs found that each new check fired only on real misses in the runs that were read, with no false alarms seen. Whether the fixes raise the pass rate is unproven in our lab, as we have yet to test. The next run of the same jobs is that test.
+
+**Decisions taken from it.** Stock Qwen3.6 35B stays the default brain, and GPT-OSS 120B stays a tested alternative. Mail is to run at Medius at most, with a short path for bulk acts. That was MouseWurX's call, backed by the mail table above. The short path is being built and is unproven in our lab, as we have yet to test.
+
 ## 11.8 Discussion
 
 ### 11.8.1 What the method buys
