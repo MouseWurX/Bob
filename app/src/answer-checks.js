@@ -16,6 +16,7 @@
 //                  rerun, 16 Nov: 6 of 63 answers; the user sees only this answer, not steps, plans or tool results)
 //   text_call      a tool call written as text that never ran, often then "Done" (Maximus rerun: 9 of 100 failed;
 //                  the engine now turns Qwen's XML form into real calls, this catches what's left)
+//   wrong_folder   "save it in my Documents" but made with only a name, so it landed in Bob's folder
 //   find_first     "my reading log spreadsheet": search for the user's own file before making a new one or asking where
 //   review_leak    his own review or the hidden notes in the shown answer ("My own review", "You're right on all six
 //                  points" to a review the user never saw; Maximus rerun: 8 of 100)
@@ -75,7 +76,7 @@ const OFFICE_FILE = /\.(?:docx?|xlsx?|pptx?|odt|ods|odp)\b|\b(?:Word (?:doc|docu
 // only making or changing one: read_file reads Office files, and moves, zips and deletes are file_hands' job
 const OFFICE_DO = /\b(?:make|create|write|draft|build|edit|change|update|add|insert|convert|turn [^.\n]{0,30} into|export|compare|format|fill in)\b/i;
 const OFFICE_NOT = /\b(?:chart|graph|plot|diagram|move|zip|unzip|delete|recycle|rename|copy|search for|find|remind|reminder|attach)\b/i;
-const OFFICE_TOOLS = /^(?:office_[a-z_]+|compare_files|read_spreadsheet|save_spreadsheet|query_data|offer_setup)$/;
+const OFFICE_TOOLS = /^(?:office_[a-z_]+|convert_file|compare_files|read_spreadsheet|save_spreadsheet|query_data|offer_setup)$/; // 17 Nov after1: convert_file is the Office route for exports (excel-to-csv-taken got a false office_route)
 const PARTIAL = /(\d[\d,]*) messages?, newest (\d+) shown|(\d[\d,]*) (?:files|items|entries|results)[^\n]{0,20}(?:first|newest) (\d+) shown/i;
 const WHOLE_SAY = /\b(?:all|every|none|nothing else|no (?:other|more)|the whole|your (?:whole |entire )?inbox|everything|inbox is (?:clean|clear|empty)|that's all)\b/i;
 const OWNS_PART = /\b(?:newest|latest|most recent|first|only (?:looked|saw|checked|read)|of (?:the )?\d[\d,]*|(?:\d+) (?:out )?of|didn'?t (?:look|check|see)|haven'?t (?:looked|checked)|so far)\b/i;
@@ -158,6 +159,17 @@ export function answerChecks({ text = '', reply = '', actions = [], usable = () 
     const madeNew = acts.some((a) => ['save_spreadsheet', 'office_make', 'write_file', 'make_document'].includes(a.name));
     const words = `${mf[1]}${mf[2]}`.trim();
     if (!searched && !changed && (madeNew || ASK_WHERE.test(said))) add('find_first', `${who} means a file they already have ("my ${words}"), and nothing searched for it this turn. Find it first: search_files or find_in_documents with words from its name ("${words}"), and list Documents, Desktop and Downloads. Then change that file itself. Don't make a new file in its place, and never say you added to theirs unless a tool changed it.`, ['documents']);
+  }
+
+  // wrong_folder (17 Nov after1 office, word-make): "save it as a Word document called Camping_List in my Documents" was
+  // made with only a name, so it landed in Bob's own documents folder. A file asked for in one of the user's folders is
+  // made there.
+  const IN_FOLDER = /\b(?:in|to|into|on) (?:my|the) (Documents|Desktop|Downloads|Pictures|Music|Videos)\b/i.exec(ask);
+  const MAKERS = /^(?:office_make|write_file|save_spreadsheet|make_document|convert_file|make_diagram|make_image)$/;
+  if (IN_FOLDER) {
+    const makes = acts.filter((a) => MAKERS.test(a.name));
+    const there = (a) => JSON.stringify(a.args ?? '').toLowerCase().includes(IN_FOLDER[1].toLowerCase());
+    if (makes.length && !makes.some(there)) add('wrong_folder', `${who} asked for it in their ${IN_FOLDER[1]} folder, but it was saved somewhere else (no path in ${IN_FOLDER[1]} was given). Save it there now: give the full path, inside their ${IN_FOLDER[1]} folder (find it with list_folder if unsure), then say where it is.`);
   }
 
   // review_leak: his own review or notes in the shown answer. 16 Nov after1 Maximus: the improve round answered the review as if the

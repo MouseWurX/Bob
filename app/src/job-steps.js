@@ -29,10 +29,17 @@ export function stepsDone(actions = []) {
   return actions.filter((a) => a && a.ok !== false && !a.declined && !NOT_A_STEP.has(a.name)).length;
 }
 
+const MAKES = /^(?:office_make|office_edit|write_file|save_spreadsheet|make_document|make_diagram|edit_file|notice_board|remember|schedule_job)$/;
+const WORDS_STEP = /^(?:please\s+|can you\s+|could you\s+)*(?:write|draft|compose|come up with|make up|list|plan|outline|summari[sz]e|think up)\b(?![^.]*\b(?:file|folder|document|doc|spreadsheet|deck|in my|to my|on my)\b)/i;
 // The closing check: the nudge when fewer tool steps ran than things were asked, or ''.
 export function stepsNudge(steps, actions, who = 'the user') {
   if (!Array.isArray(steps) || steps.length < 2) return '';
-  const done = stepsDone(actions);
+  // 17 Nov after1 office (word-make): "Write a packing list ... and save it as a Word document" is ONE tool call (office_make
+  // writes and saves). The "only 1 tool step ran" nudge sent Bob off to security_tips, and the answer became advice on a
+  // hacked account. A step that only makes words (write, draft, list, plan...) is done when a tool saved or made something.
+  const made = actions.some((a) => a && a.ok !== false && MAKES.test(String(a.name || '')));
+  const wordsOnly = made ? steps.filter((st) => WORDS_STEP.test(st)).length : 0;
+  const done = stepsDone(actions) + wordsOnly;
   if (done >= steps.length) return '';
   return `${who} asked for ${steps.length} things (${steps.map((s, i) => `${i + 1}) ${s}`).join('; ')}), but only ${done} tool step${done === 1 ? '' : 's'} ran. Do the rest now with the right tools, or say plainly which one wasn't done and why. If one tool already did more than one of them, say so. Then give your whole answer again: it replaces your last one.`;
 }
