@@ -318,3 +318,11 @@ The owner asked for hot, warm and cold experts to be built and tested. Hot is th
 **Predictions, written before any run:** B0 reads a lot from the disk per word (several MB). C1 lowers the time per word only if B0's disk reads are large; otherwise it's within 3%. W8 lowers disk reads per word, and writing gets faster by a similar share. K3 is 15 to 25% faster at writing.
 
 **Rule:** a tier is worth offering only if it writes at least 5% faster than B0 on the median, with no run slower than B0's slowest. Gaming, the stop file and the test lock work as before. It needs the owner's card, and Brain Engine 10 built.
+
+## Addendum 18 (Nov 17, after the calibration results, before this run): the cube check
+
+The calibration showed that CUDA graphs alone don't change the words (G0) and that the live trace does (G4). The trace path does two things: it marks the router's sort as an output (`ggml_set_output`, when `keep_expert_ids` is on) and it adds the eval callback. The owner's programmer friend pointed out that the run can't tell those apart. In Brain Engine 9 the trace with its mass (`expert_trace_mass`) runs with `keep_expert_ids` off: no `ggml_set_output`, callback still on (and it stops at every layer, so it's slower).
+
+`speed-plans/cube-check.json`: Y0, G4 and G2 on the start prompt and 32K, 5 rounds (15 loads), same engine, brain and settings as the calibration.
+
+**Decided in advance:** if G2 writes the same words as Y0 on both prompts in all its runs, the fusion break from `ggml_set_output` is the cause and the planned fix is enough. If G2's words differ from Y0, the callback split changes the words too, and the fix must also drop the callback (the planned fix already does). Speed isn't judged here, since G2 stops at every layer.
