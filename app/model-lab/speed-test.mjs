@@ -181,7 +181,8 @@ export async function streamOnce(url, body, { fetchImpl = fetch, now = () => per
     readTps: r1(Number(timings?.prompt_per_second)), writeTps: r1(Number(timings?.predicted_per_second)),
     promptN: timings?.prompt_n ?? null, writtenN: timings?.predicted_n ?? null,
     ...(timings?.draft_n ? { draftN: timings.draft_n, draftKept: timings.draft_n_accepted, keptPct: r1((100 * timings.draft_n_accepted) / timings.draft_n) } : {}),
-    textSha: sha256(text)
+    textSha: sha256(text),
+    text // kept in the record only when the plan asks (saveText)
   };
 }
 
@@ -322,7 +323,8 @@ async function runRowOnce({ plan, prompts, row, round, fx }) {
         r = { ...r, sharedRiseMB: rise, ...(own ? { stagingMB: own } : {}) };
         if (rise - own > (plan.spillMB ?? 512) && !r.failed) r.failed = `spilled: shared GPU memory rose ${rise} MB during the load${own ? ` (${own} MB of it the engine's own staging buffer)` : ''} (card memory put in RAM)`;
       }
-      out.runs.push({ prompt: p, ...r, ...(proc ? { cpu: proc } : {}), ...(disk ? { disk } : {}), card: cardSummary(samples), throttled: realThrottled(samples).length > 0, cardSamples: samples });
+      const { text: said, ...rest } = r || {};
+      out.runs.push({ prompt: p, ...rest, ...(plan.saveText && typeof said === 'string' ? { text: said } : {}), ...(proc ? { cpu: proc } : {}), ...(disk ? { disk } : {}), card: cardSummary(samples), throttled: realThrottled(samples).length > 0, cardSamples: samples });
     }
     out.cache = parseCacheLog(srv.log()); // with LLAMA_MOE_CACHE_LOG_EVERY set, the latest totals
   } finally { await srv.stop(); }
@@ -395,6 +397,23 @@ export function summarise(results, { prompts = {}, plan = {} } = {}) {
   if (sized.some((x) => x.steppedDown)) {
     lines.push('', 'Hot-experts cache each load ran with (a size that didn\'t load or failed a run was stepped down):', '', '| Row | Round | Ran with | Stepped down from |', '|---|---|---|---|');
     for (const x of sized) lines.push(`| ${x.row} | ${x.round + 1} | ${x.notRun ? 'none (not run)' : `${x.cacheMiB} MiB`} | ${(x.steppedDown || []).map((d) => `${d.mib} MiB (${d.why})`).join('; ') || '-'} |`);
+  }
+  // Nov 17 (the owner asked why one row wrote 101 t/s): rows don't all write the same answer, and an answer with fewer,
+  // longer words writes faster. Writing speed is compared fairly only between runs that wrote the same text.
+  const same = new Map();
+  for (const x of results) for (const r of x.runs || []) if (!r.failed && r.textSha && Number.isFinite(r.writeTps)) {
+    const k = `${r.prompt}|${r.textSha}`;
+    if (!same.has(k)) same.set(k, { prompt: r.prompt, sha: r.textSha, runs: [] });
+    same.get(k).runs.push({ row: x.row, w: r.writeTps });
+  }
+  const shared = [...same.values()].filter((g) => new Set(g.runs.map((r) => r.row)).size > 1);
+  if (shared.length) {
+    lines.push('', 'Writing speed between runs that wrote the same answer (the fair comparison; different answers write at different speeds):', '', '| Prompt | Answer | Rows (writing t/s) |', '|---|---|---|');
+    for (const g of shared) {
+      const per = new Map();
+      for (const r of g.runs) per.set(r.row, [...(per.get(r.row) || []), r.w]);
+      lines.push(`| ${g.prompt} | ${String(g.sha).slice(0, 8)} | ${[...per].map(([row, ws]) => `${row} ${r1(median(ws))}${ws.length > 1 ? ` (${ws.length} runs)` : ''}`).join(', ')} |`);
+    }
   }
   const stopped = results.find((x) => x.stopped);
   if (stopped) lines.push('', `Stopped early: ${stopped.stopped}. Rows after that are not run.`);

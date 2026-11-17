@@ -39,7 +39,7 @@ function fakeStream(times, timings) {
   check('every gap kept, and the tail shows the one stall', r.gapsMs.join() === '10,10,10,200' && r.gaps.median === 10 && r.gaps.max === 200 && r.gaps.p99 > 190);
   check('the engine\'s own reading and writing speed', r.readTps === 1500 && r.writeTps === 40 && r.writtenN === 5);
   check('Turbo\'s kept guesses', r.draftN === 10 && r.keptPct === 70);
-  check('the answer is fingerprinted, not kept', r.textSha === sha256('w w w w w ') && !('text' in r)); }
+  check('the answer is fingerprinted, and handed on for a plan that keeps it (saveText)', r.textSha === sha256('w w w w w ') && r.text === 'w w w w w '); }
 
 // plans
 fs.writeFileSync(path.join(tmp, 'short.txt'), 'Say hi.\r\n');
@@ -234,6 +234,19 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   let j = 0; const g = { ...fx(), sharedGpuMB: async () => [1000, 2200][Math.min(j++, 1)] };
   const y = await runRow({ plan: { ...plan, spillCheck: true, spillMinusStep: true }, prompts, row: { ...plan.rows[1], args: ['-b', '4096', '-ub', '4096'] }, round: 0, fx: g });
   check('a rise well past the staging buffer still fails, and says how much was the buffer', /rose 1200 MB during the load \(512 MB of it the engine's own staging buffer\)/.test(y.runs[0].failed || '')); }
+
+// ---------- Same answer, fair writing comparison (Nov 17) ----------
+{ const run = (prompt, sha, w) => ({ prompt, textSha: sha, writeTps: w, readTps: 1, firstWordMs: 1, gaps: {}, card: {} });
+  const md = summarise([{ row: 'A', round: 0, runs: [run('short', 'aaaa1111bbbb', 90), run('long', 'cc', 80)] }, { row: 'B', round: 0, runs: [run('short', 'aaaa1111bbbb', 95), run('long', 'dd', 70)] }], { prompts: {}, plan: {} });
+  check('writing compared only between runs that wrote the same answer', /\| short \| aaaa1111 \| A 90, B 95 \|/.test(md) && !/\| long \| cc/.test(md)); }
+
+// ---------- The written answers, kept when a plan asks (Nov 17) ----------
+{ const { prompts } = loadPlan(planFile);
+  const f = { ...fx(), stream: async () => ({ writeTps: 40, gaps: { median: 25 }, gapsMs: [], textSha: 'abc', text: 'Hello there.' }) };
+  const off = await runRow({ plan, prompts, row: plan.rows[1], round: 0, fx: f });
+  const on = await runRow({ plan: { ...plan, saveText: true }, prompts, row: plan.rows[1], round: 0, fx: f });
+  check('answers are left out unless the plan asks, the fingerprint always kept', off.runs.length > 0 && off.runs.every((r) => r.text === undefined && r.textSha === 'abc'));
+  check('with saveText each run keeps what was written', on.runs.length > 0 && on.runs.every((r) => r.text === 'Hello there.')); }
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
