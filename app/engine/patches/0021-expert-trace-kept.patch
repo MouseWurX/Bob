@@ -26,10 +26,10 @@ index b362ec4..45c22b8 100644
      // together and waited for once. sizes[i] bytes from the start of ts[i] go to dsts[i].
      LLAMA_API void llama_get_tensors(struct llama_context * ctx, struct ggml_tensor * const * ts, void * const * dsts, const size_t * sizes, int32_t n);
 diff --git a/src/llama-context.cpp b/src/llama-context.cpp
-index ce76170..4f93f5f 100644
+index ce76170..f5ed59a 100644
 --- a/src/llama-context.cpp
 +++ b/src/llama-context.cpp
-@@ -1407,12 +1407,184 @@ void llama_context::set_eval_callback(ggml_backend_sched_eval_callback cb_eval,
+@@ -1407,12 +1407,205 @@ void llama_context::set_eval_callback(ggml_backend_sched_eval_callback cb_eval,
  void llama_context::set_keep_expert_ids(bool keep) {
      synchronize();
  
@@ -44,6 +44,8 @@ index ce76170..4f93f5f 100644
 +    clear_kept_expert_ids();
 +    if (keep) {
 +        ids_keep_ensure();
++    } else if (moe_cache) {
++        moe_cache->set_ids_sink(nullptr, nullptr);
 +    }
 +}
 +
@@ -136,6 +138,9 @@ index ce76170..4f93f5f 100644
 +    cparams.expert_ids_keep   = st.t.data();
 +    cparams.expert_ids_keep_n = n_layer;
 +    cparams.expert_ids_keep_gen++;
++    if (moe_cache) {
++        moe_cache->set_ids_sink(ids_keep_sink, this);
++    }
 +    return true;
 +}
 +
@@ -157,6 +162,22 @@ index ce76170..4f93f5f 100644
 +            st.host[il].reserve(std::max(2*st.host[il].capacity(), st.host[il].size() + (size_t) n_tokens*st.k_alloc[il]));
 +        }
 +    }
++}
++
++void llama_context::ids_keep_sink(void * user_data, int32_t il, const int32_t * ids, size_t n, int32_t n_used) {
++    // called by the MoE cache while the graph computes, with the ids it has just read (and waited for) on the host
++    auto * lctx = (llama_context *) user_data;
++    auto & st = lctx->ids_keep;
++    if (!lctx->cparams.keep_expert_ids || il < 0 || (size_t) il >= st.t.size() || !st.t[il] || st.bad[il] || n_used <= 0) {
++        return;
++    }
++    auto & h = st.host[il];
++    if ((st.k[il] != 0 && st.k[il] != n_used) || h.size() + n > h.capacity()) {
++        st.bad[il] = 1;
++        return;
++    }
++    st.k[il] = n_used;
++    h.insert(h.end(), ids, ids + n);
 +}
 +
 +void llama_context::ids_keep_read(const llm_graph_result * res) {
@@ -216,7 +237,7 @@ index ce76170..4f93f5f 100644
  }
  
  void llama_context::get_tensors(ggml_tensor * const * ts, void * const * dsts, const size_t * sizes, int32_t n) {
-@@ -2419,6 +2591,13 @@ int llama_context::decode(const llama_batch_ext & batch_inp) {
+@@ -2419,6 +2612,13 @@ int llama_context::decode(const llama_batch_ext & batch_inp) {
      output_swaps.clear();
      embd_batch_idxs.clear();
  
@@ -230,7 +251,7 @@ index ce76170..4f93f5f 100644
      sched_reserve();
  
      bool did_optimize = false;
-@@ -2542,6 +2721,10 @@ int llama_context::decode(const llama_batch_ext & batch_inp) {
+@@ -2542,6 +2742,10 @@ int llama_context::decode(const llama_batch_ext & batch_inp) {
  
          const auto * res = process_ubatch(ubatch, ctx_type_to_graph_type(cparams.ctx_type), mctx.get(), status);
  
@@ -241,7 +262,7 @@ index ce76170..4f93f5f 100644
          if (!res) {
              // the last ubatch failed or was aborted -> remove all positions of that ubatch from the memory module
              llama_pos pos_min[LLAMA_MAX_SEQ];
-@@ -5032,6 +5215,14 @@ void llama_set_keep_expert_ids(llama_context * ctx, bool keep) {
+@@ -5032,6 +5236,14 @@ void llama_set_keep_expert_ids(llama_context * ctx, bool keep) {
      ctx->set_keep_expert_ids(keep);
  }
  
@@ -257,7 +278,7 @@ index ce76170..4f93f5f 100644
      ctx->get_tensors(ts, dsts, sizes, n);
  }
 diff --git a/src/llama-context.h b/src/llama-context.h
-index d25c6c9..0a46e64 100644
+index d25c6c9..87f9fa4 100644
 --- a/src/llama-context.h
 +++ b/src/llama-context.h
 @@ -122,6 +122,8 @@ struct llama_context {
@@ -269,7 +290,7 @@ index d25c6c9..0a46e64 100644
      void get_tensors(ggml_tensor * const * ts, void * const * dsts, const size_t * sizes, int32_t n);
  
      void set_embeddings (bool value);
-@@ -456,6 +458,22 @@ private:
+@@ -456,6 +458,23 @@ private:
      ggml_backend_t backend_cpu = nullptr;
      std::vector<ggml_backend_ptr> backends;
  
@@ -288,6 +309,7 @@ index d25c6c9..0a46e64 100644
 +    bool ids_keep_ensure();                    // (re)make the kept tensors when missing or too small
 +    void ids_keep_reserve(uint32_t n_tokens);  // room in host for n_tokens more, so queued copies never move
 +    void ids_keep_read(const llm_graph_result * res);
++    static void ids_keep_sink(void * user_data, int32_t il, const int32_t * ids, size_t n, int32_t n_used);
 +
      // training
      ggml_opt_context_t opt_ctx = nullptr;
@@ -309,7 +331,7 @@ index ea91936..1add3a0 100644
      // Brain Engine: experts per word set live (llama_set_expert_used), one count per layer, 0 = the model's own.
      // Points into the context's own list; expert_used_gen changes with every change, so a graph is never reused across one.
 diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
-index 2ca858b..f400f19 100644
+index 2ca858b..eb8b678 100644
 --- a/src/llama-graph.cpp
 +++ b/src/llama-graph.cpp
 @@ -1438,6 +1438,7 @@ void llm_graph_result::reset() {
@@ -334,14 +356,16 @@ index 2ca858b..f400f19 100644
  
      if (arch == LLM_ARCH_GROVEMOE && n_expert != hparams.n_expert) {
          // TODO: Use scalar div instead when/if implemented
-@@ -2462,6 +2460,22 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
-     //call early so that topk-moe can be used
-     ggml_build_forward_expand(gf, weights);
+@@ -2472,6 +2470,25 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+         std::none_of(exps.begin(), exps.end(), [&](ggml_tensor * w) { return w != nullptr && hdmd != nullptr && hdmd->rot.count(w) > 0; });
+     const llm_graph_moe_cache_slots cache = build_moe_cache_slots(selected_experts, up_exps, gate_exps, down_exps, gate_up_exps, can_cpu_share, il);
  
 +    // Brain Engine: copy the picks into this layer's kept tensor. The copy comes after the router's last node, so the
 +    // fused top-k kernel and CUDA graphs stay on, nothing in the graph is marked as an output, and no eval callback
 +    // is needed: the context reads the kept tensors after each micro-batch
-+    if (cparams.keep_expert_ids && cparams.expert_ids_keep && il >= 0 && (uint32_t) il < cparams.expert_ids_keep_n) {
++    // A layer read through the MoE cache slots gets no copy: the cache reads the same ids to the host for its lookup and
++    // hands them over (llama_moe_cache::set_ids_sink), and a copy there would move the graph's splits around the lookup
++    if (cache.slots == nullptr && cparams.keep_expert_ids && cparams.expert_ids_keep && il >= 0 && (uint32_t) il < cparams.expert_ids_keep_n) {
 +        ggml_tensor * keep = cparams.expert_ids_keep[il];
 +        if (keep && picks_made->type == GGML_TYPE_I32 && picks_made->ne[2] == 1 && picks_made->ne[3] == 1 &&
 +                picks_made->ne[0] <= keep->ne[0] && picks_made->ne[1] <= keep->ne[1] && picks_made->ne[1] > 0) {
@@ -354,9 +378,10 @@ index 2ca858b..f400f19 100644
 +        }
 +    }
 +
-     // compute the expert input before the slot lookup, so that the scheduler prefetches it for the CPU part (the router can read a different tensor)
-     ggml_build_forward_expand(gf, cur);
++
+     cur = ggml_reshape_3d(ctx0, cur, n_embd, 1, n_tokens);
  
+     if (weight_before_ffn) {
 diff --git a/src/llama-graph.h b/src/llama-graph.h
 index 94e0832..c33c7ad 100644
 --- a/src/llama-graph.h
@@ -387,6 +412,57 @@ index 94e0832..c33c7ad 100644
      void set_params(const llm_graph_params & params);
  
      // important graph nodes
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 5ac49f9..faf9a78 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -389,6 +389,8 @@ struct llama_moe_cache::impl {
+ 
+     // LLAMA_MOE_CACHE_TRACE: the selected experts of each slot lookup, for a simulator of the cache
+     FILE * trace = nullptr;
++    llama_moe_cache::ids_sink_t ids_sink = nullptr;
++    void * ids_sink_ud = nullptr;
+ 
+     // slot maps in host memory
+     ggml_context_ptr ctx_host;
+@@ -942,6 +944,9 @@ struct llama_moe_cache::impl {
+         if (trace != nullptr) {
+             write_trace(il, n_used);
+         }
++        if (ids_sink != nullptr && !has_cpu) {
++            ids_sink(ids_sink_ud, il, ids.data(), ids.size(), n_used);
++        }
+ 
+         // part of the misses is computed on the CPU once the cache is full, the carry keeps the share right on average
+         const uint32_t share_q = has_cpu && g.lru.n_filled == g.lru.n_slots ? cpu_share_q : 0;
+@@ -1041,6 +1046,11 @@ ggml_tensor * llama_moe_cache::get_cpu_map(int32_t il, int64_t n_tokens) const {
+     return pimpl->get_cpu_map(il, n_tokens);
+ }
+ 
++void llama_moe_cache::set_ids_sink(ids_sink_t sink, void * user_data) {
++    pimpl->ids_sink    = sink;
++    pimpl->ids_sink_ud = user_data;
++}
++
+ bool llama_moe_cache::copy(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_cgraph * graph) {
+     return pimpl->copy(backend, src, dst, graph);
+ }
+diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
+index 636bc45..0aed417 100644
+--- a/src/llama-moe-cache.h
++++ b/src/llama-moe-cache.h
+@@ -40,6 +40,11 @@ public:
+ 
+     std::map<ggml_backend_buffer_type_t, size_t> memory_breakdown() const;
+ 
++    // Brain Engine: called with every layer's selected experts as the cache reads them (n ids, n_used per token), so
++    // a kept expert trace can take them from here instead of copying them out of the graph; nullptr turns it off
++    using ids_sink_t = void (*)(void * user_data, int32_t il, const int32_t * ids, size_t n, int32_t n_used);
++    void set_ids_sink(ids_sink_t sink, void * user_data);
++
+ private:
+     struct impl;
+     std::unique_ptr<impl> pimpl;
 diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
 index 3e666c9..57fe6b5 100644
 --- a/tools/server/server-context.cpp
