@@ -269,3 +269,25 @@ round **held**. Some start runs (L1, B8, S6k3584) were throttled more than once 
 about 37 tokens/s. L1's own refill already comes after the first word. **Decision:** 0023 stays off. No cache (S6k0) is
 confirmed over 3 rounds: it is the quickest to the first word and finishes a 300-token answer in about 11.0 s, against
 about 11.8 s for L1 and S6k3584. The next engine step (0024) fills the lent cache with whole layers while reading.
+
+## Context sizes (Addendum 29): 12 loads, 4:57 to 5:14 PM Mountain, Brain Engine 14, 1 round
+
+Long prompt, first word s / read / write:
+
+| Context | S6k0 (no cache) | L1 (lending) | S6k3584 |
+|---|---|---|---|
+| 32K | 7.4 / 4437 / 74.5 | 9.3 / 3548 / 92.3 | 8.8 / 3731 / 87.3 |
+| 64K (60K prompt) | 15.0 / 4114 / 67.5 | 17.6 / 3503 / 86.7 | 17.6 / 3498 / 81.0 |
+| 128K (120K prompt), spilled | 37.9 / 3248 / 53.1 | 41.7 / 2954 / 57.1 | 42.9 / 2868 / 61.8 |
+| 256K (248K prompt), spilled | 118.5 / 2147 / 37.7 | 131.1 / 1940 / 42.5 | 135.1 / 1882 / 40.9 |
+
+Every load ran. At 128K and 256K every row spilled card memory into shared system memory: 1.9 and 3.3 GB for S6k0 and
+S6k3584, and 1.3 and 2.25 GB for L1. So those rows are recorded but not clean. The short prompt's answer changes with
+`-c` alone, so answers are compared only within one context size.
+
+Predictions: all 12 load **held**. Reading falls by at least a third from 32K to 248K **held** (S6k0 -52%). S6k0 fastest
+reader at every size **held**. S6k3584 writes no faster than S6k0 at 256K **missed** (40.9 against 37.7; spilled).
+Free RAM above 1 GB: not reported.
+
+**Decided:** at step 6144, contexts of 128K and up spill. The engine's work area grows with the context, so Calibrate
+must use a smaller reading step and cache there. A clean 128K/256K rerun with a smaller step comes next.
