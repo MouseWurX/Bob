@@ -427,11 +427,11 @@ otherwise).
 The 1-round sweep (Addendum 22) ran all 15 setups with none failed, but the five step-4096 rows ran while the
 Claude app was open on the test PC (0.6 to 1.6 GB of RAM free, against 2.3 to 2.9 GB for the rest), so they aren't
 compared with the others. `speed-plans/calibrate-shortlist.json`: the same settings and prompts, 6 setups: step 4096
-at 4096 and 3840 MB, step 5120 at 3072 and 3584 MB, step 6144 at 3584 and 4096 MB. **3 rounds** (18 loads),
+at 4096 and 3840 MB, step 5120 at 3072 and 3584 MB, step 6144 at 3584, 4096, 5120 and 6144 MB (the owner asked for caches over 4 GB at step 6144). **3 rounds** (24 loads),
 interleaved, with the Claude app closed on the test PC.
 
 **Predictions, written before any run:** step 6144 reads 32K at least 10% faster than step 4096 at 4096 MB. Step 4096
-at 4096 MB writes 32K at least 5% faster than every step-5120 and step-6144 setup. No setup is judged a spill.
+at 4096 MB writes 32K at least 5% faster than every step-5120 and step-6144 setup. No setup is judged a spill. Step 6144 at 5120 and 6144 MB writes no faster than at 4096 MB (as at steps 2048 and 4096 this morning).
 
 **What it decides:** nothing by itself. Calibrate's coding pick moves off step 4096 with 4 GB only if a setup reads
 32K faster and writes within 10% of the fastest writer on every prompt, the same rule Calibrate uses.
