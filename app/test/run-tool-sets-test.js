@@ -187,5 +187,12 @@ const { cleanSpec } = await import('../src/selftools.js');
 
 clearInterval(brain.reminderTimer);
 fs.rmSync(tmp, { recursive: true, force: true });
+// 17 Nov after1 office (word-make): write-then-save is one office_make; the steps nudge sent Bob off to security tips
+{
+  const st = askedSteps('Write a packing list for a weekend camping trip and save it as a Word document called Camping_List in my Documents.');
+  check('write a list and save it as a Word file: one office_make does both, no nudge', st.length === 2 && stepsNudge(st, [{ name: 'office_make', ok: true }]) === '');
+  const st2 = askedSteps('read notes.txt and put the to-dos on my board');
+  check('read a file and put to-dos on the board: one read still gets the nudge', st2.length === 2 && /only 1 tool step/.test(stepsNudge(st2, [{ name: 'read_file', ok: true }])));
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
