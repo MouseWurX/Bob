@@ -352,7 +352,7 @@ and the speed decides: T1 must be within 2% of Y0 and U0 measurably slower. Eith
 
 ## Addendum 20 (Nov 17, after the cube fix, before this run): bigger caches and bigger reading steps
 
-The calibration tried the copy cache at 1, 2 and 4 GB, and 4 GB was the only size that helped at every prompt, so where it peaks is unknown. The owner asked for more than 4 GB, and for reading steps of 5K and 6K. `speed-plans/calibrate-bigger.json`: same brain, prompts and base settings as the calibration, on Brain Engine 10 (Brain Engine 9 with the expert tiers, 0020, and the cube fix, 0021, both off unless asked; the cube-fix run, Addendum 19, checks that 0021 changes no speed or words), 11 rows, **5 rounds** (55 loads), interleaved.
+The calibration tried the copy cache at 1, 2 and 4 GB, and 4 GB was the only size that helped at every prompt, so where it peaks is unknown. The owner asked for more than 4 GB, and for reading steps of 5K and 6K. `speed-plans/calibrate-bigger.json`: same brain, prompts and base settings as the calibration, on Brain Engine 10 (Brain Engine 9 with the expert tiers, 0020, and the cube fix, 0021, both off unless asked; the cube-fix run, Addendum 19, checks that 0021 changes no speed or words), 9 rows, **5 rounds** (45 loads), interleaved.
 
 | Row | Reading step | Copy cache | Why |
 |---|---|---|---|
@@ -360,15 +360,15 @@ The calibration tried the copy cache at 1, 2 and 4 GB, and 4 GB was the only siz
 | F4c, X4c | 2048, 4096 | 4 GB | The calibration's chat and coding picks, as same-night anchors |
 | F5c, F6c | 2048 | 5, 6 GB | Does the chat pick keep gaining past 4 GB? |
 | X5c, X6c | 4096 | 5, 6 GB | The same for the coding pick |
-| S5k2c, S5k4c | 5120 | 2, 4 GB | A bigger step, with a small and the usual cache |
-| S6k2c, S6k4c | 6144 | 2, 4 GB | The same at 6144 |
+| S5kc | 5120 | 5 GB, stepping down | A bigger step with the biggest cache that runs beside it |
+| S6kc | 6144 | 5 GB, stepping down | The same at 6144 |
 
-All caches are the copy kind (`--moe-cache-cpu-share 0`). At the owner's ask ("if 4 doesn't load and 2 does, maybe 3 would be a sweet spot?"), S5k4c and S6k4c step down to 3 GB, then 2 GB, when the load doesn't start or a run fails (out of memory or a spill). Each load records the size it ran with and the sizes that failed, and the results page lists them. A stepped-down load is reported under its own row with its size, never mixed silently with 4 GB loads.
+All caches are the copy kind (`--moe-cache-cpu-share 0`). At the owner's ask ("it'll try 5gb, 4gb, 3gb, whatever works gets its test"), S5kc and S6kc start at 5 GB and step down to 4, 3, then 2 GB when the load doesn't start or a run fails (out of memory or a spill). Each load records the size it ran with and the sizes that failed, and the results page lists them. A stepped-down load is reported under its row with its size, never mixed silently with loads at another size.
 
 It runs right after the cube-fix run (Addendum 19, with U0: 25 loads), from the same double-click, on the same engine file. It writes to its own results folder and has its own rules. Neither run's results decide anything in the other.
 
 **Safety and failures:** each load is skipped if the card has under 14,000 MB free before it starts (something else is using it), written down as not run. On Windows the driver can put card memory in RAM when the card is full. So the runner reads shared GPU memory before each load and after each timed run, and a rise of more than 512 MB marks that run failed as a spill. A load that doesn't start, a run that runs out of memory and a spill are all failures. They are reported as failures and never counted as slow runs. Gaming, the stop file and the test lock work as before.
 
-**Predictions, written before any run:** F5c and F6c write within 3% of F4c, because the busiest experts already fit in 4 GB and a bigger cache only takes room from layers. X5c and X6c read the 32K prompt slower than X4c. S5k and S6k read 32K at most 15% faster than X4c and write slower than X4c. S6k4c fails at 32K or spills.
+**Predictions, written before any run:** F5c and F6c write within 3% of F4c, because the busiest experts already fit in 4 GB and a bigger cache only takes room from layers. X5c and X6c read the 32K prompt slower than X4c. S5kc and S6kc read 32K at most 15% faster than X4c and write slower than X4c. S6kc can't run at 5 GB and steps down.
 
 **What decides:** the same two rules as Bob's Calibrate, over rows with no failed run on any prompt. Chat pick: the fastest writer on the short prompt, and among rows within 3% of it, the fastest reader at 32K. Coding pick: among rows writing within 10% of the fastest writer, the fastest reader at 32K. A new row replaces F4c or X4c only if it wins over that night's F4c or X4c. Calibrate then tries that size or step on cards with room for it.
