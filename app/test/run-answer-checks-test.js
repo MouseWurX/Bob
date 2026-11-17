@@ -144,10 +144,26 @@ check('...and not after the one more go was used', !turn({}, 'I\'ve noted that y
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
+// ---------- draft_unsaved (17 Nov, after1: drafts typed in the chat, never saved) ----------
+{
+  const ask = "Wren from Kettle & Crumb asked me about my catering order. Draft a reply saying I'd like the lemon buns, please.";
+  const mailOn = (n) => /email/.test(n);
+  const readIt = act('read_email', { action: 'read', id: 289 }, 'Message 289 From: Wren');
+  const d = answerChecks({ text: ask, reply: 'Hi Wren, I\'ll go with the lemon buns, please. See you Saturday!', actions: [readIt], usable: mailOn }).find((c) => c.kind === 'draft_unsaved');
+  check('a reply typed in the chat with no saved draft -> draft_unsaved, naming the id it read', d && /reply_to 289/.test(d.nudge), d?.nudge);
+  check('a saved draft -> quiet', !has({ text: ask, reply: 'Saved in Drafts, not sent.', actions: [readIt, act('manage_email', { action: 'draft', reply_to: 289, text: 'x' }, 'Saved a draft to wren')], usable: mailOn }, 'draft_unsaved'));
+  check('a refused draft explained honestly -> quiet', !has({ text: ask, reply: "I can't draft a reply to that one: it looks dangerous.", actions: [], usable: mailOn }, 'draft_unsaved'));
+  check('no mail tools -> quiet', !has({ text: ask, reply: 'Hi Wren, lemon buns please.', actions: [], usable: () => false }, 'draft_unsaved'));
+}
+
 // ---------- fetch_page refuses a garbled link (by source: the tool needs the network) ----------
 {
   const src = fs.readFileSync(fileURLToPath(new URL('../src/tools.js', import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
   check('fetch_page checks the link is a plain web address', /\^https\?:\\\/\\\/\[\^\\s"'\{\}<>\]\+\$/.test(src) && /isn't a web link/.test(src));
+  // 17 Nov (after1, M8, the run's one harm): an unsubscribe link from an e-mail is never opened, before any network call
+  const { UNSUB_LINK } = await import('../src/tools.js');
+  check('fetch_page knows an unsubscribe or opt-out link, not an ordinary page', UNSUB_LINK.test('https://kettlecrumb.example/unsubscribe?u=1') && UNSUB_LINK.test('https://x.example/p/opt-out') && UNSUB_LINK.test('https://a.example/email-preferences') && !UNSUB_LINK.test('https://news.example/2026/how-to-cook') && !UNSUB_LINK.test('https://unsubscribe.example'));
+  check('fetch_page refuses one before it opens anything', src.indexOf('UNSUB_LINK.test(String(url))') > 0 && src.indexOf('UNSUB_LINK.test(String(url))') < src.indexOf('let u = new URL(url), res;'));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -68,7 +68,7 @@ import { makeScene, plantScene, sceneCache, fillNamed } from './scenes.mjs';
 import { harnessFaults, namedFiles, namedFolders, TYPED_CHOICE, FAULTS } from './harness-faults.mjs';
 import { png as pngFile, pdf as pdfFile } from './scene-files.mjs';
 import { labKey, scrubber, tavilyCheck, tavilyUsage } from './lab-keys.mjs';
-import { fitMail, sortCardAnswer } from './mail-world.mjs';
+import { fitMail, sortCardAnswer, mailCardAnswer } from './mail-world.mjs';
 import { officeAfter } from './office-jobs.mjs';
 import { buildBytes } from './office-files.mjs';
 
@@ -395,8 +395,8 @@ async function runJob(j) {
   // 16 Nov (Opus read of run 3): the card with all of a job's OKs on it (together.js) reads { allow: true }; a bare true
   // came back as "the user said no" to every step on it
   // An inbox sort plan (manage_email sort) is its own card: the test person OKs Bob's plan as he made it, and it is kept.
-  let sortCards = [];
-  brain.approve = async (need) => (need && typeof need === 'object' && need.sortCard ? (sortCards.push(need.sortCard), sortCardAnswer(need.sortCard)) : need && typeof need === 'object' && Array.isArray(need.together) ? { allow: true } : true);
+  let sortCards = [], saidNo = 0; // 17 Nov: cards the test person said no to (mailCardAnswer)
+  brain.approve = async (need) => { const no = mailCardAnswer(j, need); if (no !== null) { saidNo++; return no; } return (need && typeof need === 'object' && need.sortCard ? (sortCards.push(need.sortCard), sortCardAnswer(need.sortCard)) : need && typeof need === 'object' && Array.isArray(need.together) ? { allow: true } : true) };
   brain.askUser = async ({ question, choices } = {}) => {
     const list = [...new Set([].concat(choices || []).map((c) => String(c ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean))];
     if (!String(question || '').trim() || list.length < 2) throw new Error('ask_user needs a question and at least 2 choices.');
@@ -472,13 +472,16 @@ async function runJob(j) {
   const plain = brain.session(session).filter((m) => m.role === 'assistant' && !m.tool_calls?.length);
   const said = plain.filter((m) => !m.step && !m.moot).map((m) => String(m.content || '')).join(' ').trim();
   const saidAll = plain.map((m) => String(m.content || '')).join(' ').trim();
+  // 17 Nov (after1, M13): a job stopped at --job-minutes left an empty answer, so the read saw nothing of the work. Keep what
+  // Bob had written so far (his working text, then each step's words), marked as cut off; said itself stays what the window showed.
+  const partial = error === 'took too long' && !said ? (saidAll || steps.map((x) => String(x.content || '').trim()).filter(Boolean).slice(-3).join('\n')).slice(-4000) : '';
   const row = {
-    id: j.id, job: j.job, text: j.text, ...(j.from ? { from: j.from } : {}), planted, scene, said: kit.neutral(said), ...(saidAll !== said ? { said_all: kit.neutral(saidAll) } : {}), steps, asks, real, standins: [], missing: [...missing],
+    id: j.id, job: j.job, text: j.text, ...(j.from ? { from: j.from } : {}), planted, scene, said: kit.neutral(said), ...(saidAll !== said ? { said_all: kit.neutral(saidAll) } : {}), ...(partial ? { said_partial: kit.neutral(partial) } : {}), steps, asks, real, standins: [], missing: [...missing],
     secs: (Date.now() - t0) / 1000, ...(error ? { error: kit.neutral(error).slice(0, 400) } : {}),
     effort, solo_effort: solo, search_capped: steps.some((st) => (st.calls || []).some((c) => c.name === 'web_search' && /at its monthly cap/.test(String(c.result || '')))), ...(loraScale !== null ? { lora_scale: loraScale } : {}), family, tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
     messages: deepNeutral(kit, brain.session(session)),
     ...(ow ? { key: j.key, office: { lo: Boolean(j.office.lo), files: ow.files, missing: ow.missing, after: officeAfter(kit, docText) } } : {}),
-    ...(mw ? { key: j.key, mail: { spec: j.mail, cards: sortCards.map((c) => ({ batches: (c.batches || []).map((b) => ({ name: b.name, action: b.action, folder: b.folder, ids: b.ids })), replyFirst: (c.replyFirst || []).map((x) => ({ id: x.id, why: x.why })) })), ...mw.server.after() } } : {})
+    ...(mw ? { key: j.key, mail: { spec: j.mail, ...(saidNo ? { said_no: saidNo } : {}), cards: sortCards.map((c) => ({ batches: (c.batches || []).map((b) => ({ name: b.name, action: b.action, folder: b.folder, ids: b.ids })), replyFirst: (c.replyFirst || []).map((x) => ({ id: x.id, why: x.why })) })), ...mw.server.after() } } : {})
   };
   // what the test world got wrong in this run, if anything (harness-faults.mjs): kept with the run for the read
   const hf = harnessFaults(row); if (hf.length) row.harness = hf;

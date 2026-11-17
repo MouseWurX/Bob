@@ -26,6 +26,7 @@
 //   partial_look   he answered for the whole inbox (or folder) after seeing only the newest few ("271 messages, newest 15
 //                  shown") and didn't say so (inbox run: gave_up_paging, 43 of 120)
 //   maths          totals worked out in his head (Qwen invented_result: several wrong sums)
+//   draft_unsaved  asked to draft a reply and no manage_email draft was saved (17 Nov)
 //   mail_route     a mail job (trash, archive, reply to a sender's mail) answered without the mail tools: the live inbox
 //                  run (16 Nov) saw bulk trash/archive jobs wander into list_folder, search_files, web_search or
 //                  file_hands, and draft-reply jobs answered with no tool at all
@@ -63,6 +64,7 @@ const TEXT_CALL = /<tool_call>|<\/?function(?:=|>)|<parameter=|"name"\s*:\s*"[a-
 const DRAFT_TALK = /\bmy (?:first|second|third|fourth|earlier|previous|original|last two|other) (?:reply|replies|response|responses|answer|answers|breakdown|draft)s?\b|\bYou'?re right to (?:call (?:this|that) out|push back|flag)\b|\bsecond-guess(?:ed|ing)? myself\b|\bI (?:just )?confused myself\b|\b(?:my apologies for|sorry for) the false alarm\b|\bmy earlier (?:summary|list|breakdown|reply|answer)\b/i;
 const REVIEW_LEAK = /\bMy own review\b|\bI(?:'ve| have)? reviewed my (?:own )?(?:work|answer)\b|^\s*\**(?:Review|Improve it|Checking my own work|Plan)(?::\**|\**\s*:)|\bYou'?re right (?:on|about) (?:all|both|every) (?:\w+ )?(?:points?|of them)\b|\b(?:the|my) (?:hidden|reviewer'?s?|review) notes?\b|\bHere is what the jobs did\b/im;
 const RESEARCH = /\b(?:research|look up|find out about|compare|comparison|studies|study|reports|sources|cite|citations?|literature|evidence|survey of|overview of the (?:research|literature))\b/i;
+const DRAFT_ASK = /\b(?:draft|write) (?:a |an |my )?(?:reply|answer|response|e-?mail back)\b|\breply to (?:her|him|them|wren|\w+'s (?:e-?mail|mail|message))\b|\bdraft (?:a )?(?:reply|response)\b/i;
 const MAIL_ASK = /\b(?:e-?mails?|inbox|mail(?:box)?|messages? from|newsletters?|spam|unread)\b/i;
 const MAIL_DO = /\b(?:trash|archive|delete|bin|move|label|mark|unsubscribe|clean (?:up|out)|tidy|sort|file away|reply|answer|respond|draft|write back|summari[sz]e|go through)\b/i;
 // not a mail job: is this sender or link safe, was this address in a breach, or e-mail a file somewhere (Bob sends no mail)
@@ -214,6 +216,14 @@ export function answerChecks({ text = '', reply = '', actions = [], usable = () 
   if ((MAIL_ASK.test(ask) && MAIL_DO.test(ask) || MAIL_PLAIN.test(ask)) && !MAIL_NOT.test(ask) && !filesNamed(ask).length && (usable('read_email') || usable('manage_email')) && !acts.some((a) => MAIL_TOOLS.test(a.name))) {
     const wander = acts.filter((a) => /^(?:list_folder|search_files|find_in_documents|web_search|fetch_page|file_hands)$/.test(a.name)).map((a) => a.name);
     add('mail_route', `This is a mail job, but no mail tool ran${wander.length ? ` (${[...new Set(wander)].join(', ')} look at files or the web, not the mail)` : ''}. Use read_email to find the messages (by sender, subject or words), then manage_email to trash, archive or move only the ones the request covers (look at each: a real person who wrote to the user isn't bulk mail; say so instead), or read_email first and then write the reply from what the message says. Don't look in folders or on the web for mail.`, ['mail']);
+  }
+  // draft_unsaved (17 Nov, after1: 6 of 6 Medius and Minimus drafts were typed in the chat, never saved): asked to draft a
+  // reply, with manage_email there, and no draft was saved this turn. The draft goes in Drafts, where the user sends it.
+  const argsOf = (a) => { if (a.args && typeof a.args === 'object') return a.args; try { return JSON.parse(a.args); } catch { return {}; } };
+  const saved = acts.some((a) => a.name === 'manage_email' && String(argsOf(a).action || '') === 'draft' && a.ok !== false && !/^Error|^Not run|said no/i.test(String(a.text ?? a.result ?? '')));
+  if (DRAFT_ASK.test(ask) && usable('manage_email') && !saved && !/\b(?:can'?t|won'?t|couldn'?t|didn'?t)\b[^.\n]{0,60}\bdraft\b|\bdraft\b[^.\n]{0,40}\b(?:refused|isn'?t saved|wasn'?t saved)\b/i.test(said)) {
+    const read = acts.filter((a) => a.name === 'read_email' && String(argsOf(a).action || '') === 'read').map((a) => argsOf(a).id).filter(Boolean).at(-1);
+    add('draft_unsaved', `You were asked to draft a reply, but no draft was saved. Save it now with manage_email action draft, ${read ? `reply_to ${read}` : 'reply_to the id of the message being answered (find it with read_email)'} and text = the words of the reply; who it goes to and the subject are filled in. Then say it's in Drafts and not sent.`, ['mail']);
   }
   return out;
 }

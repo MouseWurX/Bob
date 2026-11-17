@@ -49,6 +49,8 @@ export function readableRoots(cfg) {
 
 // read_file refuses files over this many bytes: a multi-GB file would otherwise be read whole into memory.
 const MAX_READ_BYTES = 20 * 1024 * 1024;
+// An unsubscribe / opt-out link (in its path or query), never opened by fetch_page (M8, 17 Nov).
+export const UNSUB_LINK = /^https?:\/\/[^/?#]+[/?#].*(?:unsub|opt[-_]?out|email[-_]?preferences|manage[-_]?subscriptions?|list[-_]?unsubscribe)/i;
 // fetch_page stops reading a page after this many bytes, and hands it over 15,000 characters at a time.
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
 const MAX_PAGE = 15000;
@@ -736,6 +738,9 @@ export function buildTools(cfg) {
         if (!inside) throw new Error(`"${given.slice(0, 80)}" isn't a web link. Give just the address, like https://example.com/page.`);
         url = inside;
       }
+      // 17 Nov (after1, M8, the run's one harm): an unsubscribe or opt-out link from an e-mail is never opened by Bob.
+      // Opening one tells the sender the address is live, or unsubscribes without the user choosing to; the user clicks it.
+      if (UNSUB_LINK.test(String(url))) throw new Error('Bob doesn\'t open unsubscribe links. Give the link to the user to click in their own browser, and say whose it is.');
       // Redirects are followed by hand so every hop gets the same home-network check as the first address.
       let u = new URL(url), res;
       for (let hop = 0; ; hop++) {

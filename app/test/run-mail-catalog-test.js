@@ -93,6 +93,7 @@ const g = setup('owner', { size: 300, seed: 11, flavour: 'gmail', kind: 'graded'
   const a = g.world.after();
   check('the bulk act moved exactly the card\'s messages to Trash', Object.values(a.changed).filter((c) => c.folders.some((f) => /trash/i.test(f))).length === nOld && /Undo id \w+/.test(done), done.slice(0, 300));
   check('Wren\'s catering mail was not touched', !a.changed[wren]);
+  check('the done line says Wren was held back and is still there (Medius said she went too)', /Held back, still where it was: .*1 from a person/.test(done), done.slice(0, 400));
   check('nothing was deleted for good (no EXPUNGE)', a.stats.expunges === 0);
   check('the trashed mail left the catalog at once', !cat.loadCatalog(g.cfg).rows.some((x) => kcNews.some(([uid]) => Number(uid) === x.uid && g.inbox.mail.INBOX.find((m) => m.uid === x.uid).at < NOW - 2 * 86400000)));
   const undone = await tool.run({ action: 'undo' }, {});
@@ -127,7 +128,21 @@ const g = setup('owner', { size: 300, seed: 11, flavour: 'gmail', kind: 'graded'
   const raw = g.world.boxes[Object.keys(g.world.boxes).find((k) => /draft/i.test(k))]?.at(-1)?.raw || '';
   check('the saved draft is to Wren, a reply to her mail, and not sent', /wren\.ashvale@kettlecrumb\.example/.test(d.to || '') && /^Re: Your catering order/.test(d.subject || '') && /In-Reply-To: </.test(raw) && !g.world.after().stats.refused.length, JSON.stringify(d));
   const l800 = await t.run({ action: 'list', days: 800 });
-  check('a list over 365 days says the search stops at a year, and how many were not shown', /365 days at most/.test(l800) && /Only the newest 15 of \d+ are shown/.test(l800), l800.slice(-400));
+  check('a list over 365 days now reaches back that far (no year cap), and says how many were not shown', !/at most/.test(l800) && /Only the newest 15 of \d+ are shown/.test(l800), l800.slice(-400));
+  check('with the catalog on, a cut-short list points to action groups for the whole folder (M5)', /action groups: it counts every message/.test(l800));
+  const wk = await t.run({ action: 'list', days: 14 });
+  const scamIds = Object.entries(g.inbox.key).filter(([, k]) => k.kind === 'phish' && k.code_catches && k.age_days <= 14).map(([id]) => id);
+  check('a cut-short list also sorts ALL its matches by code: senders with kinds and counts', /All \d+ of them, sorted by Bob's code/.test(wk) && /\(person\) \d+/.test(wk) && /\(newsletter\) \d+/.test(wk), wk.slice(-900));
+  check('...and names every one that looks dangerous, not just those in the newest 15', scamIds.length > 0 && scamIds.every((id) => new RegExp(`id ${id} `).test(wk.split('Across all')[1] || '')), scamIds.join(',') + ' | ' + (wk.split('Across all')[1] || '').slice(0, 400));
+  const noDays = await t.run({ action: 'list', words: 'zzqq-nothing' });
+  check('a search by words with no days reaches back as far as Bob can, not just today', /in the last 3650 day\(s\)/.test(noDays), noDays);
+  check('a words search that finds nothing points to groups by kind or company (Medius guessed 7 more phrases)', /call read_email with action groups instead of guessing/.test(noDays), noDays);
+  const plain = await t.run({ action: 'list' });
+  check('a plain list with no words is still today', /messages?|No messages in the last 1 day/.test(plain) && !/3650/.test(plain));
+  const lOff = await emailTool(g.cfg, () => true, { ...g.opts, catalogOn: () => false }).run({ action: 'list', days: 800 });
+  check('with the catalog off, the list never points to an action it does not have', !/action groups/.test(lOff) && /Only the newest 15/.test(lOff));
+  const l9k = await t.run({ action: 'list', days: 9000 });
+  check('a list past ten years says where the search stops', /10 years at most/.test(l9k), l9k.slice(-300));
   const ids = [...(await t.run({ action: 'list', days: 30, from: 'Tallgrass' })).matchAll(/id (\d+)/g)].map((m) => Number(m[1])).slice(0, 3);
   const mv = await tool.check({ action: 'move', ids, folder: 'Newsletters' });
   await tool.run({ action: 'move', ids, folder: 'Newsletters' }, {});
@@ -136,6 +151,14 @@ const g = setup('owner', { size: 300, seed: 11, flavour: 'gmail', kind: 'graded'
   let no = '';
   try { await tool.check({ action: 'draft', reply_to: Number(phish), text: 'ok' }); } catch (e) { no = e.message; }
   check('Bob won\'t draft a reply to a message that looks dangerous', /looks dangerous/.test(no), no);
+  check('the refusal says which message that id is, and how to name the person instead (M7)', /is ".+" from /.test(no) && /reply_to_from/.test(no), no);
+  const nb = g.world.after().drafts.length;
+  await tool.run({ action: 'draft', reply_to_from: 'Wren', text: 'Lemon buns, please.' }, {});
+  const d2 = g.world.after().drafts.slice(nb)[0] || {};
+  check('a draft by name (reply_to_from) answers that person\'s newest mail, filled in by code (M7)', /wren\.ashvale@kettlecrumb\.example/.test(d2.to || '') && /^Re: /.test(d2.subject || ''), JSON.stringify(d2));
+  let none = '';
+  try { await tool.check({ action: 'draft', reply_to_from: 'Nobody Atall', text: 'hi' }); } catch (e) { none = e.message; }
+  check('a draft to a name with no mail says so plainly', /no mail from "Nobody Atall"/.test(none), none);
 }
 
 // ---- with the switch off, the tools are exactly as before
@@ -186,6 +209,12 @@ const g = setup('owner', { size: 300, seed: 11, flavour: 'gmail', kind: 'graded'
   const lark = await planBulk(big.cfg, { do: 'archive', org: 'Larkspur Outfitters' }, big.opts);
   check('a bulk plan on 50,000 messages takes under 5 s here', Date.now() - t1 < 5000, `${Date.now() - t1} ms`);
   check('archiving a whole company at once sees all of its mail, not 15 at a time', lark.rows.length > 1000 && lark.rows.length <= BULK_MAX, String(lark.rows.length));
+  const huge = await planBulk(big.cfg, { do: 'archive', kind: ['newsletter', 'notice'] }, big.opts);
+  const src = fs.readFileSync(path.join(app, 'src', 'email-manage.js'), 'utf8').replace(/\r\n/g, '\n');
+  check('past 10,000 the plan keeps the rest, and the done line says they are NOT done yet (Medius stopped at 28%)', huge.over > 0 && huge.rows.length === BULK_MAX && /more match and are NOT done yet: call the same bulk act again/.test(src), String(huge.over));
+  // 17 Nov (after1, M6): "well over a year ago" is found, not blamed on a one-year cap
+  const old = await emailTool(big.cfg, () => true, big.opts).run({ action: 'list', days: 1000, from: 'Theo', words: 'code' });
+  check('a mail from 500 days ago is found by sender with a long reach', new RegExp(`id ${big.inbox.needles['old-code']} `).test(old), old.slice(0, 900) + ' want ' + big.inbox.needles['old-code']);
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

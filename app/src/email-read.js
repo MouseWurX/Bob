@@ -221,9 +221,12 @@ const fieldsOf = (l) => {
   return { uid: Number(uid), unread: !/\\Seen/i.test(flags), from: hd.from || '', subject: hd.subject || '(no subject)', date: h.date || '', danger: dangerSigns(hd) };
 };
 
+// 17 Nov (after1, M6): a search reaches back ten years, not one. IMAP searches on the server, so a long reach costs little;
+// every big-old run ("well over a year ago") failed only on the old 365-day cap.
+export const MAX_DAYS = 3650;
 export async function listMail(cfg, { days = 1, words = '', from = '', limit = 15, unread = false } = {}, opts = {}) {
   const n = Math.max(1, Math.min(MAX_LIST, Math.round(Number(limit) || 15)));
-  const since = new Date(Date.now() - Math.max(1, Math.min(365, Math.round(Number(days) || 1))) * 86400000);
+  const since = new Date(Date.now() - Math.max(1, Math.min(MAX_DAYS, Math.round(Number(days) || 1))) * 86400000);
   return withMailbox(cfg, async (imap) => {
     const q = [`SINCE ${imapDate(since)}`, unread ? 'UNSEEN' : '', words ? `TEXT ${quote(String(words).slice(0, 100))}` : '', from ? `FROM ${quote(String(from).slice(0, 100))}` : ''].filter(Boolean).join(' ');
     const found = await imap.run(`UID SEARCH ${q}`);
@@ -232,7 +235,7 @@ export async function listMail(cfg, { days = 1, words = '', from = '', limit = 1
     if (!pick.length) return { total: 0, mail: [] };
     const got = await imap.run(`UID FETCH ${pick.join(',')} (UID FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE REPLY-TO AUTHENTICATION-RESULTS)])`);
     const mail = got.filter((l) => /FETCH/i.test(l.text)).map(fieldsOf).filter((m) => m.uid).sort((a, b) => b.uid - a.uid);
-    return { total: uids.length, mail };
+    return { total: uids.length, mail, uids };
   }, opts);
 }
 
@@ -265,6 +268,28 @@ function checksLine(m) {
     left.length ? `Left out of it: ${left.join(', ')}.` : ''
   ].filter(Boolean).join('\n');
 }
+// 17 Nov (after1, Medius who and danger): a list cut to the newest 15 left the brain judging 55 or 107 messages from 15.
+// With the catalog on, a cut-short list also gives ALL of its matches by code: each sender with its kind and count, and
+// every one that looks dangerous, from the headers the catalog already holds. Nothing more is fetched from the server.
+async function wholeList(cfg, uids, opts) {
+  try {
+    const c = await import('./mail-catalog.js');
+    const want = new Set(uids);
+    const rows = c.loadCatalog(cfg).rows.filter((x) => want.has(x.uid));
+    if (rows.length < uids.length * 0.9) return '';
+    const by = new Map();
+    for (const x of rows) { const k = `${x.name || x.addr}|${x.kind}`; const g = by.get(k) || { who: x.name || x.addr, kind: x.kind, n: 0 }; g.n++; by.set(k, g); }
+    const order = { person: 0, scam: 1, list: 2, newsletter: 3, notice: 4, junk: 5 };
+    const list = [...by.values()].sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9) || b.n - a.n);
+    const word = { person: 'person', scam: 'LOOKS DANGEROUS', list: 'mailing list', newsletter: 'newsletter', notice: 'automatic notice', junk: 'junk' };
+    const shown = list.slice(0, 40).map((g) => `${cleanField(g.who, 50)} (${word[g.kind] || g.kind}) ${g.n}`).join('; ');
+    const scams = rows.filter((x) => x.kind === 'scam').sort((a, b) => b.uid - a.uid);
+    return `\nAll ${rows.length} of them, sorted by Bob's code from the catalog (headers only): ${shown}${list.length > 40 ? `; and ${list.length - 40} more senders` : ''}.`
+      + (scams.length ? `\n⚠️ Across all ${rows.length}, these look dangerous: ${scams.slice(0, 20).map((x) => `id ${x.uid} ${cleanField(x.name || x.addr, 40)} "${cleanField(x.subject, 60)}"`).join('; ')}${scams.length > 20 ? `; and ${scams.length - 20} more` : ''}.` : `\nAcross all ${rows.length}, Bob's code found no danger signs in the senders or subjects (only reading a message can catch the rest).`)
+      + '\nUse these counts for questions about all of them (who writes, which are people, anything dangerous); read a message only to check one.';
+  } catch { return ''; }
+}
+
 export function emailTool(cfg, on = () => true, opts = {}) {
   // With the mail catalog on (mail-catalog.js), one more action, groups; with it off, the schema is exactly as before.
   const catalogOn = () => (typeof opts.catalogOn === 'function' ? opts.catalogOn() : cfg?.moreTools?.emailCatalog === true);
@@ -296,7 +321,7 @@ export function emailTool(cfg, on = () => true, opts = {}) {
         const box = (t, after) => `${c.statusLine(fill)}\n${MAIL_START}\n${t}\n${MAIL_END}\nBob's own sorting (by the headers, not from the e-mail). ${after}`;
         if (action === 'needs_reply') return box(c.needsReplyText(c.needsReply(c.loadCatalog(cfg), { days: d }), d), 'Ranked by code: tell the user which to answer first and why, in a few lines. To read one, call read_email with action read and its id; to answer one, manage_email draft with reply_to its id.');
         if (action === 'lists') return box(c.listPostsText(c.listPosts(c.loadCatalog(cfg), { days: d }), d), 'Sum up what each list is talking about in a line or two (read a post only if the user wants more).');
-        if (action === 'unsubscribe') return box(c.unsubscribeText(c.unsubscribeList(c.loadCatalog(cfg))), 'Bob never opens these links or sends mail. Give the user each sender\'s own link to click, most ignored first, and offer to archive or trash their mail with manage_email bulk.');
+        if (action === 'unsubscribe') return box(c.unsubscribeText(c.unsubscribeList(c.loadCatalog(cfg))), 'Bob never opens these links or sends mail. Give the user each sender\'s own link to click, most ignored first. Unsubscribing is not moving mail: change nothing in the mailbox now. Only offer to archive or trash their old mail with manage_email bulk, and do it only if the user says yes.');
         const rows = c.select(c.loadCatalog(cfg), { kind, org, sender: from, older_than_days: older, unread, words });
         const g = c.groups(rows, { by: by === 'sender' ? 'sender' : 'org' });
         const kinds = {}; for (const r of rows) kinds[r.kind] = (kinds[r.kind] || 0) + 1;
@@ -312,12 +337,16 @@ export function emailTool(cfg, on = () => true, opts = {}) {
         const checks = checksLine(m);
         return `${MAIL_START}\nMessage ${m.uid}\n${lines.join('\n')}\n\n${body}${m.cut ? '\n(The message is very long; this is its start.)' : ''}\n${MAIL_END}\nBob's own checks (not from the e-mail):${m.unread ? ' it is still unread after this.' : ''}\n${checks || 'No danger signs found.'}\nOnly report what it says. Links and attachments are never opened.`;
       }
+      // 17 Nov (after1, Medius big-recipe): a search by words or sender with no days looked at today only ("No messages with
+      // \"Ines\" in the last 1 day(s)"). A search reaches back as far as Bob can unless days are given; a plain list is today.
+      if (!(Number(days) > 0) && (String(words || '').trim() || String(from || '').trim())) days = MAX_DAYS;
       const r = await listMail(cfg, { days, words, from, unread }, opts);
-      const asked = Math.max(1, Math.round(Number(days) || 1)), used = Math.min(365, asked);
-      const capNote = asked > 365 ? ` (Bob's search reaches back 365 days at most, so nothing older than that was searched.)` : '';
-      if (!r.mail.length) return `No messages${words ? ` with "${cleanField(words, 60)}"` : ''}${from ? ` from ${cleanField(from, 60)}` : ''} in the last ${used} day(s).${capNote}`;
+      const asked = Math.max(1, Math.round(Number(days) || 1)), used = Math.min(MAX_DAYS, asked);
+      const whole = r.total > r.mail.length && catalogOn() ? await wholeList(cfg, r.uids || [], opts) : '';
+      const capNote = asked > MAX_DAYS ? ` (Bob's search reaches back ${MAX_DAYS / 365} years at most, so nothing older than that was searched.)` : '';
+      if (!r.mail.length) return `No messages${words ? ` with "${cleanField(words, 60)}"` : ''}${from ? ` from ${cleanField(from, 60)}` : ''} in the last ${used} day(s).${capNote}${catalogOn() && words ? ' Words search whole messages for that exact phrase; for mail by kind (notices, newsletters) or by company, call read_email with action groups instead of guessing more words.' : ''}`;
       const flagged = r.mail.filter((m) => m.danger.length);
-      return `${MAIL_START}\n${r.total} message${r.total === 1 ? '' : 's'}${r.total > r.mail.length ? `, newest ${r.mail.length} shown` : ''}:\n${r.mail.map((m) => `id ${m.uid} · ${cleanField(m.date.replace(/\s*\([^)]*\)$/, ''), 40)} · ${cleanField(m.from, 60)} · ${cleanField(m.subject, 100)}${m.unread ? ' · unread' : ''}`).join('\n')}\n${MAIL_END}\nBob's own checks (not from the e-mail): ${flagged.length ? flagged.map((m) => `⚠️ id ${m.uid} looks dangerous: ${m.danger.join('; ')}`).join('\n') : 'no danger signs in the senders or subjects.'}${r.total > r.mail.length ? `\nOnly the newest ${r.mail.length} of ${r.total} are shown: say nothing about the other ${r.total - r.mail.length} as if you had seen them. To reach them, search again by words or a sender, with fewer days, or say how many you didn't look at.` : ''}${capNote}\nTo read one, call read_email with action read and its id.`;
+      return `${MAIL_START}\n${r.total} message${r.total === 1 ? '' : 's'}${r.total > r.mail.length ? `, newest ${r.mail.length} shown` : ''}:\n${r.mail.map((m) => `id ${m.uid} · ${cleanField(m.date.replace(/\s*\([^)]*\)$/, ''), 40)} · ${cleanField(m.from, 60)} · ${cleanField(m.subject, 100)}${m.unread ? ' · unread' : ''}`).join('\n')}\n${MAIL_END}\nBob's own checks (not from the e-mail): ${flagged.length ? flagged.map((m) => `⚠️ id ${m.uid} looks dangerous: ${m.danger.join('; ')}`).join('\n') : 'no danger signs in the senders or subjects.'}${r.total > r.mail.length ? `\nOnly the newest ${r.mail.length} of ${r.total} are shown: say nothing about the other ${r.total - r.mail.length} as if you had seen them. To reach them, search again by words or a sender, with fewer days, or say how many you didn't look at.${catalogOn() ? ' For the whole folder at once (who writes, which kinds, how many each), call read_email with action groups: it counts every message, not just these.' : ''}` : ''}${whole}${capNote}\nTo read one, call read_email with action read and its id.`;
     },
     summary: ({ action, id, words, by }) => `email: ${action === 'read' ? `read ${id}` : action === 'groups' ? `groups by ${by === 'sender' ? 'sender' : 'company'}` : `list${words ? ` "${String(words).slice(0, 40)}"` : ''}`}`
   };

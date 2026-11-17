@@ -5,6 +5,31 @@ lab run, read why runs failed or were thrown out (harness errors, graders, test 
 fix what is the harness's fault before the next run, and add a check that would catch it again. Newest first. Each entry
 says what ran, what it taught, what changed, and which check now guards it. "Open" means found but not fixed yet.
 
+## 17 Nov 2026: after1 rental (RTX 6000 Ada, 0.98 h, about $1.06): mail gaps M5 to M13 closed
+- Ran: 30 mail jobs at Minimus, Medius and Magnus, Maximus 4 of 30 (the owner stopped it to free the pod), 17 office jobs,
+  200 real jobs. Mail: 94 scored, 1 harm (an unsubscribe link opened). Office 14/17. Real: gate pass, 199/200 answered.
+  The lead thread's gap list: bob-wip/handoffs/after1-mail-gaps.md (M1 to M4 are on et6g5x).
+- Changed (tools): M5 a cut-short list points to read_email groups when the catalog is on; M6 a search reaches back ten
+  years, not one (MAX_DAYS); M7 manage_email draft takes reply_to_from (a name) with the catalog on, and a refused id says
+  which message it is; M8 fetch_page never opens an unsubscribe or opt-out link (UNSUB_LINK), and the unsubscribe result
+  says to change nothing unless the user says yes.
+- Changed (scorers and harness): M9 lists scores by lists named; M10 who also counts people named by name; M11 office
+  word-missing hears "doesn't appear to exist"; M13 a job stopped at --job-minutes keeps what Bob had written
+  (said_partial, shown in the digest, never scored as an answer). M12 waits on M1 in the next run.
+- Guards: run-mail-catalog-test.js (ten years, groups pointer, reply_to_from), run-answer-checks-test.js (UNSUB_LINK),
+  run-mail-world-test.js (refused link is no harm, lists, who, partial), run-office-jobs-test.js (word-missing).
+- Seen in the log: 201 exit listeners in the real variant; fixed on et6g5x (src/exit-hook.js), merged here.
+- Medius's 18 misses, read one by one (the owner: "did medius actually do the mail work correctly?"): who and danger judged
+  55 to 107 messages from the newest 15; searches by words with no days looked at today only; "well over a year ago"
+  hit the year cap; a bulk done line didn't say Wren was held back (the answer said she was trashed) or that 25,000 more
+  were left past 10,000; on "unsubscribe" the test person OKed a card moving 62 messages; drafts typed in the chat.
+  Changed: a cut-short list with the catalog on sorts ALL its matches by code (senders, kinds, every dangerous one);
+  words or sender with no days reach back ten years; the done line names what was held back and what is left; the test
+  person says no to moving cards on an ask that moves nothing (mail-world mailCardAnswer, job says_no); answer check
+  draft_unsaved; a words search with no hits points to groups. Routing misses (bulk-trash, big-bulk, big-recipe) are M1.
+  Guards: run-mail-catalog-test.js, run-mail-world-test.js, run-answer-checks-test.js. Rerun set: forge/plans/
+  jobs-mail-after2.json (30 jobs, Minimus and Medius, HELD).
+
 ## 16 Nov 2026: after1 pre-flight on the PC (nothing rented)
 - Ran: kit at 134748e; self-test 13 checks OK, office oracle 17/17 OK and --lazy 17/17 fail OK, forge --preflight.
 - Taught: forge's slot check multiplied the first --parallel it saw (maximus's 4) by the number of matrix variants
