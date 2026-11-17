@@ -511,3 +511,32 @@ round.
 
 **What it decides:** whether a B row replaces S6k3584 as the long-document setup in Calibrate's tries. It stays off
 by default.
+
+## Addendum 28 (Nov 17, before any run): a head to head we can stand behind publicly
+
+The owner wants speed claims for Brain Engine that hold up in public: plain llama.cpp against Brain Engine, two
+brains, two computers. Every run uses the same llama.cpp build (b12359) for both engines, the same brain file, the
+same base flags (Bob's: flash attention, q8_0 KV, --fit, 48K context), 5 rounds in shuffled order, answers saved, and
+Claude and Bob closed. A claim compares the best plain row with the best Brain Engine row, and the words must match where
+the settings allow.
+
+**Run 1, the PC (16 GB card), stock Qwen3.6 35B A3B:** plan `public-h2h-qwen35.json`, 25 loads.
+
+- P0: plain llama.cpp with its default reading step, which is what a llama.cpp user gets.
+- P4: plain llama.cpp at step 4096, the best plain setting we have found.
+- E4: Brain Engine 14 at step 4096 with nothing new on. It should equal P4, because the patches cost nothing when off.
+- F4c and X4096: Brain Engine 14's chat pick and work pick, with the 4 GB hot-experts cache.
+
+**Run 2, the PC, a second brain from another model family:** the same rows on a second mixture-of-experts brain. The
+owner picks it. The cache sizes are set from that brain's expert size, and the plan is written once it is chosen.
+
+**Run 3, the laptop (6 GB card):** first P0 against Brain Engine on Qwen3 4B, which fits the card whole, as the
+cost-of-patches check. Then a ladder of bigger mixture-of-experts brains with the cache at 1 and 2 GB, as far as the
+laptop's RAM allows, to find the biggest brain over 6 GB that writes at a usable speed (at least 10 tokens/s). This is
+unproven in our lab, as we have yet to test it.
+
+**Predictions, written before any run:** E4 is within 1% of P4. X4096 writes at least 15% faster than P4 at every
+length. On the laptop, a brain over 6 GB with the cache writes faster than the same brain on plain llama.cpp.
+
+**What it decides:** which claims go in the README and Help. Each claim names the card, the brain, the setting and the
+rounds.
