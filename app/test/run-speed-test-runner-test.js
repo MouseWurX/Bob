@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { quantile, median, parseSmiLine, cardSummary, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns } from '../model-lab/speed-test.mjs';
+import { quantile, median, parseSmiLine, cardSummary, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, lineSplitter, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns } from '../model-lab/speed-test.mjs';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -136,6 +136,13 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   check('each load records the system before and after, and each timed run its processor use', res.sysBefore?.cpuTempC === 50 && res.sysAfter?.freeRamMB === 5 && res.runs[0].cpu?.busyPct === 12);
   const md = summarise([res], { prompts: {}, plan });
   check('the summary has a conditions table and the processor temperature line', /Conditions during the timed runs/.test(md) && /Processor temperature before each load/.test(md)); }
+
+// ---------- Card lines split across chunks (night 1, Nov 16: 13801 °C read from a piece of a line) ----------
+{ const got = []; const feed = lineSplitter((l) => { const s = parseSmiLine(l); if (s) got.push(s); });
+  const line = '2026/11/16 18:48:55.672, 46.36, 132.11, 300.00, 2887, 13801, 0x0000000000000400, 15019, 76, 30, [N/A], 4, 16';
+  feed(line.slice(0, 40)); feed(line.slice(40) + '\r\n' + line.slice(0, 70)); feed(line.slice(70) + '\n');
+  check('nvidia-smi lines split across chunks are joined before reading', got.length === 2 && got.every((x) => x.tempC === 46.36 && x.memMHz === 13801 && x.memMB === 15019));
+  check('a piece of a line is never read as a sample', parseSmiLine(line.slice(30)) === null && parseSmiLine('1024, 15019, 48, 30') === null); }
 
 // ---------- Laptops: cool-down before each load, time spent throttled (fakes: no real card is read) ----------
 { const { prompts } = loadPlan(planFile); const temps = [78, 71, 64, 58]; const slept = [];

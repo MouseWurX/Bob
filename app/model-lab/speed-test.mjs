@@ -45,9 +45,17 @@ export const median = (xs) => quantile(xs, 0.5);
 const r1 = (x) => (x === null || x === undefined || !Number.isFinite(x) ? null : Math.round(x * 10) / 10);
 
 // One nvidia-smi line -> a sample. Unknown values ("[N/A]") become null.
+// Text arrives in chunks that can end mid-line: keep the piece until its line ends.
+export function lineSplitter(onLine) {
+  let rest = '';
+  return (chunk) => { const parts = (rest + String(chunk)).split(/\r?\n/); rest = parts.pop(); for (const l of parts) onLine(l); };
+}
+
 export function parseSmiLine(line) {
   const p = String(line || '').split(',').map((s) => s.trim());
-  if (p.length < 8) return null; // the first 8 fields; the later ones are null if this card or driver lacks them
+  // A whole line has every field we ask for (or the first 8, on an older driver). Anything else is a piece of a line
+  // (night 1, Nov 16: pieces were read as whole lines, so card temperatures of 13801 °C appeared).
+  if (p.length !== SMI_FIELDS.length && p.length !== 8) return null;
   const n = (s) => { const v = Number(s); return Number.isFinite(v) ? v : null; };
   const reasons = /^0x[0-9a-f]+$/i.test(p[6]) ? parseInt(p[6], 16) : null;
   return { at: p[0], tempC: n(p[1]), powerW: n(p[2]), powerLimitW: n(p[3]), smMHz: n(p[4]), memMHz: n(p[5]), reasons, throttled: reasons !== null && (reasons & THROTTLE_MASK) !== 0, memMB: n(p[7]), utilPct: n(p[8]), fanPct: n(p[9]), memTempC: n(p[10]), pcieGen: n(p[11]), pcieWidth: n(p[12]) };
@@ -314,7 +322,8 @@ function realFx(plan, outDir) {
       const child = nodeSpawn(exe, args, { env: { ...process.env, ...env }, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
       let said = '';
       const log = fs.createWriteStream(file);
-      child.stderr.on('data', (d) => { log.write(d); for (const line of String(d).split('\n')) if (/MoE cache|ranked fill|llama_moe_cache:/.test(line)) said += line + '\n'; });
+      const keep = lineSplitter((line) => { if (/MoE cache|ranked fill|llama_moe_cache:/.test(line)) said += line + '\n'; });
+      child.stderr.on('data', (d) => { log.write(d); keep(d); });
       const url = `http://127.0.0.1:${args[args.indexOf('--port') + 1]}`;
       return {
         url, log: () => said,
@@ -341,7 +350,7 @@ function realFx(plan, outDir) {
     sampleCard() {
       const samples = [];
       let smi = null;
-      try { smi = nodeSpawn('nvidia-smi', [`--query-gpu=${SMI_FIELDS.join(',')}`, '--format=csv,noheader,nounits', '-lms', '250'], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }); smi.on('error', () => {}); smi.stdout.on('data', (d) => { for (const l of String(d).split('\n')) { const s = parseSmiLine(l); if (s) samples.push(s); } }); } catch {}
+      try { smi = nodeSpawn('nvidia-smi', [`--query-gpu=${SMI_FIELDS.join(',')}`, '--format=csv,noheader,nounits', '-lms', '250'], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }); smi.on('error', () => {}); smi.stdout.on('data', lineSplitter((l) => { const s = parseSmiLine(l); if (s) samples.push(s); })); } catch {}
       return { stop: () => { try { smi?.kill(); } catch {} return samples; } };
     },
     cpuMark() {
