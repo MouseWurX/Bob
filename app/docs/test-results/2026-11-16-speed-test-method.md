@@ -479,3 +479,19 @@ refill costs 0.2 to 0.4 s before the first word. L1's words match a step-6144 ru
 
 **What it decides:** whether lending becomes a Calibrate row on the Brains page. It stays off by default until it
 beats both picks on the owner's card.
+
+## Addendum 26 (Nov 17, before any run): the slower first short read, and reading with little cache
+
+Brain Engine 12 read the start prompt with the 4 GB cache in 1737 t/s, against 2180 to 2209 on Brain Engine 10. Its
+placement, cache and copies were identical, and 32K reading did not change. The engine thread finds no code path that
+differs with the trace off, and suspects Windows' file cache: the first read after a load is the first time every
+expert kept in RAM is touched.
+
+Plan `first-read.json`: F4c on Brain Engine 10 and on Brain Engine 12, start prompt only, 3 rounds, run back to back
+in shuffled order, so both engines see the same PC. It is followed in the same launch by `read-cache.json`
+(Addendum 24), with its engine pointed at Brain Engine 13 with lending off.
+
+**Predictions, written before any run:** the two engines read within 3% of each other, so the gap is the PC, not the
+engine. Round 1 is the slowest for both.
+
+**What it decides:** whether the engine thread looks for a cause in 0021, or the gap is put down to the PC.
