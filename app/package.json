@@ -149,6 +149,7 @@
     "test/run-voice-phone-test.js",
     "test/run-textcalls-test.js",
     "test/run-exit-hook-test.js",
+    "test/run-mail-words-test.js",
     "test/run-songs-test.js",
     "test/run-auto-session-test.js",
     "test/run-bar-colours-test.js",
