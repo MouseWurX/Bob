@@ -168,6 +168,14 @@ Then run `engine/try-newer.sh <tag>`. Every patch must go on, and the Linux buil
 - **Re-check on rebase:** if the build stops at the `static_assert`, llama.cpp added a step: add it at the END of `bob_wire_ops`. A dropped step becomes -1 in place. If `rpc_tensor` or any message struct changes, or an op's `op_params` layout changes, the wire is really different: then raise `BOB_WIRE_MAJOR` and say so in the release note.
 - **Tests:** `engine/tests/rpc-any-version.sh <old bin> <new bin> <gguf>` runs a brain with every layer on a lent card in all four pairings (old/new lender, old/new borrower) and checks the text matches a local run word for word. Nov 15 2026: all four matched on a tiny llama brain (CPU builds, Linux).
 
+### 0015-prompt-odds: a request scores its own prompt
+- **Flag (off unless set):** `--prompt-odds-max N` (env `LLAMA_ARG_PROMPT_ODDS_MAX`), the places one batch may score; 0 (the default) refuses `prompt_odds`. It keeps room for N more outputs, N x vocabulary x 4 bytes on the card and in memory.
+- **Upstream files:** `common/arg.cpp`, `common/common.h`, `tools/server/server-context.cpp`, `server-schema.cpp`, `server-task.cpp`, `server-task.h`.
+- **Hooks:** the server adds `prompt_odds_max` to `n_outputs_max` (capped at `n_batch`), turns backend sampling off for a request with `prompt_odds`, marks the prompt places it scores as outputs while the prompt is read (`podds_in_batch`), and returns the rows (`prompt_odds_rows`, row r = prompt token from + r) in the final result. It refuses with a reason when the flag is off, for a brain that doesn't read left to right, and for a prompt with an image or sound.
+- **Why:** scoring a prompt's own words (how likely the brain found each one) without a second engine or a reload.
+- **Re-check on rebase:** `n_outputs_max`, the backend-sampling switch, how prompt batches mark outputs, and the final-result struct in `server-task.h`.
+- **Tests:** none in `engine/tests` yet. This section was written from the patch for the engine map. The patch's own thread owns its tests.
+
 ### 0016-moe-cache-ranking: the expert cache filled at load
 - **Environment keys (both off unless set):** `LLAMA_MOE_CACHE_RANKING=<path of a ranking file>` (a FILE PATH, not a number or a random seed) and `LLAMA_MOE_CACHE_LOG_EVERY=<N cache updates>`.
 - **Upstream files:** `src/llama-moe-cache.cpp` only.
