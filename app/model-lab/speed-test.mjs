@@ -35,6 +35,16 @@ import { parseCacheLog } from '../src/hot-experts.js';
 export const SMI_FIELDS = ['timestamp', 'temperature.gpu', 'power.draw', 'power.limit', 'clocks.sm', 'clocks.mem', 'clocks_throttle_reasons.active', 'memory.used', 'utilization.gpu', 'fan.speed', 'temperature.memory', 'pcie.link.gen.current', 'pcie.link.width.current'];
 // nvidia-smi's throttle reasons that mean the card slowed itself (power cap, heat): anything but idle (0x1) or none
 const THROTTLE_MASK = 0x2 | 0x4 | 0x8 | 0x20 | 0x40 | 0x80;
+// Nov 17: on the test PC every flagged sample was the power cap alone (0x4) at 152 W of 300 W, clocks 0.2% below
+// normal: the boost trimming a spike shorter than one sample. A power-cap-only sample counts as throttled only when
+// its clock is more than 3% under the run's busy, unflagged median; any other reason always counts.
+const POWER_CAP = 0x4;
+export function realThrottled(samples) {
+  const s = samples.filter(Boolean);
+  const free = s.filter((x) => !x.throttled && x.smMHz !== null && !((x.reasons ?? 0) & 0x1) && (x.utilPct ?? 100) >= 50).map((x) => x.smMHz).sort((a, b) => a - b);
+  const med = free.length ? free[Math.floor(free.length / 2)] : null;
+  return s.filter((x) => x.throttled && (x.reasons !== POWER_CAP || med === null || x.smMHz === null || x.smMHz < 0.97 * med));
+}
 
 export const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 export function quantile(xs, q) {
@@ -69,7 +79,7 @@ export function cardSummary(samples) {
   if (!s.length) return { samples: 0 };
   const max = (k) => s.reduce((m, x) => (x[k] !== null && x[k] > m ? x[k] : m), -Infinity);
   const fin = (v) => (Number.isFinite(v) ? v : null);
-  return { samples: s.length, maxTempC: max('tempC'), maxMemTempC: fin(max('memTempC')), maxUtilPct: fin(max('utilPct')), maxFanPct: fin(max('fanPct')), minPcieGen: fin(s.reduce((m, x) => (x.pcieGen !== null && x.pcieGen !== undefined && x.pcieGen < m ? x.pcieGen : m), Infinity)), maxPowerW: max('powerW'), peakMemMB: max('memMB'), minSmMHz: s.reduce((m, x) => (x.smMHz !== null && x.smMHz < m ? x.smMHz : m), Infinity), throttledSamples: s.filter((x) => x.throttled).length };
+  return { samples: s.length, maxTempC: max('tempC'), maxMemTempC: fin(max('memTempC')), maxUtilPct: fin(max('utilPct')), maxFanPct: fin(max('fanPct')), minPcieGen: fin(s.reduce((m, x) => (x.pcieGen !== null && x.pcieGen !== undefined && x.pcieGen < m ? x.pcieGen : m), Infinity)), maxPowerW: max('powerW'), peakMemMB: max('memMB'), minSmMHz: s.reduce((m, x) => (x.smMHz !== null && x.smMHz < m ? x.smMHz : m), Infinity), throttledSamples: realThrottled(s).length, powerCapBlips: s.filter((x) => x.throttled).length - realThrottled(s).length };
 }
 
 // Processor busy share between two os.cpus() readings, over all cores (0 to 100).
@@ -312,7 +322,7 @@ async function runRowOnce({ plan, prompts, row, round, fx }) {
         r = { ...r, sharedRiseMB: rise, ...(own ? { stagingMB: own } : {}) };
         if (rise - own > (plan.spillMB ?? 512) && !r.failed) r.failed = `spilled: shared GPU memory rose ${rise} MB during the load${own ? ` (${own} MB of it the engine's own staging buffer)` : ''} (card memory put in RAM)`;
       }
-      out.runs.push({ prompt: p, ...r, ...(proc ? { cpu: proc } : {}), ...(disk ? { disk } : {}), card: cardSummary(samples), throttled: samples.some((x) => x?.throttled), cardSamples: samples });
+      out.runs.push({ prompt: p, ...r, ...(proc ? { cpu: proc } : {}), ...(disk ? { disk } : {}), card: cardSummary(samples), throttled: realThrottled(samples).length > 0, cardSamples: samples });
     }
     out.cache = parseCacheLog(srv.log()); // with LLAMA_MOE_CACHE_LOG_EVERY set, the latest totals
   } finally { await srv.stop(); }

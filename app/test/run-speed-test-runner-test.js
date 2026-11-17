@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { quantile, median, parseSmiLine, cardSummary, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, lineSplitter, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns, parseDiskstats, parseDiskRaw, diskUse, parseSharedMB } from '../model-lab/speed-test.mjs';
+import { quantile, median, parseSmiLine, cardSummary, realThrottled, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, lineSplitter, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns, parseDiskstats, parseDiskRaw, diskUse, parseSharedMB } from '../model-lab/speed-test.mjs';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -19,6 +19,11 @@ check('quantiles: median and p99 by interpolation, junk skipped', median([3, 1, 
   check('a short line is no sample', parseSmiLine('1, 2') === null);
   const c = cardSummary([s, idle]);
   check('the card summary: peaks, lowest clock, throttled samples', c.maxTempC === 71 && c.peakMemMB === 15123 && c.minSmMHz === 210 && c.throttledSamples === 1); }
+{ const line = (mhz, r) => parseSmiLine(`t, 60, 150, 300, ${mhz}, 14001, ${r}, 15000, 95, 40, 60, 4, 16`);
+  const busy = [line(2887, '0x0'), line(2887, '0x0'), line(2880, '0x4')];
+  check('a power-cap-only blip at full clocks is not throttling (Nov 17)', realThrottled(busy).length === 0 && cardSummary(busy).powerCapBlips === 1);
+  check('a power cap that drops clocks more than 3% is throttling', realThrottled([...busy, line(2700, '0x4')]).length === 1);
+  check('heat always counts', realThrottled([...busy, line(2887, '0x20')]).length === 1); }
 
 // a fake streamed answer: words arrive at the clock's times
 function fakeStream(times, timings) {

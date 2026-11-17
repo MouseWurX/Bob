@@ -435,3 +435,8 @@ at 4096 MB writes 32K at least 5% faster than every step-5120 and step-6144 setu
 
 **What it decides:** nothing by itself. Calibrate's coding pick moves off step 4096 with 4 GB only if a setup reads
 32K faster and writes within 10% of the fastest writer on every prompt, the same rule Calibrate uses.
+
+**Throttle count (changed before this run).** In the sweep, all 128 flagged card samples, and all 438 from the bigger
+run, were the power cap alone, at a median 152 W of a 300 W limit, with clocks 0.2% under normal. From this run on, a
+power-cap-only sample counts as throttled only when its clock is more than 3% under the run's busy, unflagged median.
+Any other reason (heat, hardware slowdown, power brake) always counts. Earlier tables keep their old counts.
