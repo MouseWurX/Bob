@@ -98,6 +98,41 @@ export function calSpeedBest(rows) {
   return { reading: top.reading, cache, turbo, why: readWhy + turboWhy };
 }
 
+// Nov 17 (the owner agreed): a second recommendation for brains that do coding and agent work. Those jobs read far more
+// than they write (a repo, tool results, a long plan each step), so reading speed and the first word count for more.
+// Same pairs, same pool (writing within 10% of Normal's); then any pair writing within 10% of the fastest writer, and
+// the fastest reader among them. A bigger step still needs a real reading gain (over 10% faster than Normal). On the
+// 16 GB card this picks step 4096 with the same 4 GB cache (X4c): about 7% slower writing at 32K than step 2048 with
+// it, but about 43% faster reading and the first word 4.3 s sooner. calSpeedBest above stays the rule recorded for
+// chat brains and on the results page. -> { reading, cache, turbo, why, job: 'work' } or null when Normal didn't run.
+export function calSpeedWork(rows) {
+  const ok = rows.filter((r) => !r.failed && r.tps > 0);
+  const base = ok.find((r) => r.id === 'read-normal');
+  if (!base) return null;
+  const pool = ok.filter((r) => r.reading && !r.turbo && r.tps >= base.tps * 0.9);
+  const maxTps = Math.max(...pool.map((r) => r.tps));
+  const fast = pool.filter((r) => r.tps >= maxTps * 0.9 && r.readTps > 0).sort((a, b) => b.readTps - a.readTps || b.tps - a.tps)[0];
+  const top = fast && fast !== base && fast.readTps > (base.readTps || 0) * 1.1 ? fast : base;
+  const name = { normal: 'Normal', faster: 'Faster', fastest: 'Fastest' }[top.reading];
+  const cache = top.cache === true;
+  const what = `Reading speed ${name}${cache ? ' with hot experts' : ''}`;
+  const why = top === base ? `For coding and agent work, Reading speed Normal: nothing read the long prompt more than 10% faster while writing within 10% of the fastest (${base.readTps} tokens a second).` : `For coding and agent work, ${what}: read the long prompt at ${top.readTps} tokens a second against ${base.readTps} on Normal (first word ${top.firstWordS} s against ${base.firstWordS} s), writing ${top.tps} words a second against ${base.tps}.`;
+  const t = ok.find((r) => r.id === 'turbo');
+  return { reading: top.reading, cache, turbo: Boolean(t && t.tps > base.tps * 1.05), why, job: 'work' };
+}
+// Which recommendation a brain gets: 'work' when it holds a coding, research or review job, is the Coding session's
+// brain, or is the main brain with no separate coding brain (One brain, or the workbench slot empty: then the main
+// brain does the coding and the tool loops itself); else 'chat'.
+const WORK_JOBS = new Set(['tinker', 'scout', 'reviewer', 'coder', 'coding']);
+export function speedJob(cfg, model) {
+  if (!model) return 'chat';
+  const jobs = Object.entries(cfg?.models || {}).filter(([, m]) => m === model).map(([k]) => k);
+  if (jobs.some((j) => WORK_JOBS.has(j)) || cfg?.sessionBrains?.coding === model) return 'work';
+  if (jobs.includes('bob') && (cfg?.oneBrain === true || !cfg?.models?.tinker)) return 'work';
+  return 'chat';
+}
+export const SPEED_JOB_NAMES = { chat: 'chat', work: 'coding and agent work' };
+
 // The Brain Engine patches this Bob carries (engine/patches), for the profile stamp.
 export const enginePatches = (dir = new URL('../engine/patches/', import.meta.url)) => { try { return fs.readdirSync(dir).filter((f) => /^\d{4}-.*\.patch$/.test(f)).map((f) => f.replace(/\.patch$/, '')).sort(); } catch { return []; } };
 export const HOT_STEPS = [{ id: 'hot-count', label: 'Hot experts: count the picks on each kind of work' }, { id: 'hot-time', label: 'Hot experts: time the card cache filled from them' }];
@@ -254,7 +289,7 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
         hot.on = Boolean(base && hot.tps > base.tps * 1.05);
         hot.why = !hot.tps ? (hot.failed || hot.timeFailed || 'Hot experts weren\'t timed.') : hot.on ? `Hot experts on: ${hot.tps} words a second with ${Math.round(hot.mb / 1024 * 10) / 10} GB of the card for them, against ${base.tps} without.` : `Hot experts off: ${hot.tps} words a second against ${base?.tps ?? '?'} without, not enough to be worth it.`;
       }
-      const rec = { at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), model: p.model, name: p.name, layers: p.layers, ctx: CAL_CTX, rows, best, speedRows, speed: calSpeedBest(speedRows), ...(hot ? { hot } : {}) };
+      const rec = { at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), model: p.model, name: p.name, layers: p.layers, ctx: CAL_CTX, rows, best, speedRows, speed: calSpeedBest(speedRows), speedWork: calSpeedWork(speedRows), ...(hot ? { hot } : {}) };
       const file = path.join(calibrateDir(lab.cfg), `${slugOf(p.model)}.json`);
       writeJson(file, [rec, ...readJson(file, [])].slice(0, 10));
       out.push(rec);
@@ -263,9 +298,13 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
   });
 }
 
-// "Use recommended": save the newest result's recommendation as this brain's placement.
-export function useCalibrated(lab, model) {
-  const rec = calResult(lab.cfg, model);
+// "Use recommended": save the newest result's recommendation as this brain's placement. The speed options come from
+// the recommendation for this brain's job (speedJob), or the one asked for ({ job: 'chat' | 'work' }).
+export function useCalibrated(lab, model, { job } = {}) {
+  const found = calResult(lab.cfg, model);
+  const use = job === 'chat' || job === 'work' ? job : speedJob(lab.cfg, model);
+  const work = use === 'work' && Boolean(found?.speedWork); // a result from before Nov 17 has only the chat one
+  const rec = work ? { ...found, speed: found.speedWork } : found;
   if (!rec?.best) throw new Error('This brain has no calibration result yet.');
   const cur = lab.cfg.brainPlace?.[model] || {};
   const set = rec.best.mode === 'hand' ? { mode: 'hand', cpuMoe: rec.best.cpuMoe } : { ...cur, mode: 'auto' };
@@ -278,5 +317,5 @@ export function useCalibrated(lab, model) {
     saveSettings(lab.cfg, { readingFor: { ...(lab.cfg.readingFor || {}), [model]: rec.speed.reading } });
     if (rec.speed.turbo && !lab.cfg.llamacpp?.turbo?.[model]?.on) saveSettings(lab.cfg, { llamacpp: { turbo: { ...(lab.cfg.llamacpp?.turbo || {}), [model]: { on: true, mtp: true, max: TURBO_EVERYDAY_MAX } } } });
   }
-  return { ok: true, set: lab.cfg.brainPlace[model], reading: lab.cfg.readingFor?.[model] || null, turbo: lab.cfg.llamacpp?.turbo?.[model]?.on === true, hotExperts: lab.cfg.hotExperts === true, hotCopy: lab.cfg.hotExpertsCopy?.[model] === true };
+  return { ok: true, set: lab.cfg.brainPlace[model], reading: lab.cfg.readingFor?.[model] || null, turbo: lab.cfg.llamacpp?.turbo?.[model]?.on === true, hotExperts: lab.cfg.hotExperts === true, hotCopy: lab.cfg.hotExpertsCopy?.[model] === true, job: work ? 'work' : 'chat' };
 }

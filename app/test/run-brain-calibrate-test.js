@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { calibrateDir, calTries, calBest, calLock, calResult, calibrated, startCalibrate, useCalibrated, CAL_CTX, calSpeedTries, calSpeedBest, CAL_LONG } from '../src/brain-calibrate.js';
+import { calibrateDir, calTries, calBest, calLock, calResult, calibrated, startCalibrate, useCalibrated, CAL_CTX, calSpeedTries, calSpeedBest, CAL_LONG, calSpeedWork, speedJob } from '../src/brain-calibrate.js';
 import { brainsHtml, calLock as pageLock, canCalibrate, brainsInUse } from '../public/brains.js';
 
 let pass = 0, fail = 0;
@@ -36,6 +36,14 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
   const near = calSpeedBest(card16.map((r) => (r.id === 'read-fastest-hot' ? { ...r, tps: 107 } : r)));
   check('pairs: within 3% of the fastest writer, the faster reader wins', near.reading === 'fastest' && near.cache === true);
   const noHelp = calSpeedBest(card16.map((r) => (r.cache ? { ...r, tps: 70 } : r)));
+  // Nov 17: the second pick, for coding and agent brains (reading weighs more): step 4096 with the cache on that card
+  const wk = calSpeedWork(card16);
+  check('work pick: within 10% of the fastest writer, the fastest reader (16 GB card: step 4096 with the cache), and says so', wk.reading === 'fastest' && wk.cache === true && wk.job === 'work' && /^For coding and agent work, Reading speed Fastest with hot experts: read the long prompt at 3276/.test(wk.why));
+  check('work pick: a reader that writes over 10% slower than the fastest loses', calSpeedWork(card16.filter((r) => r.id !== 'read-fastest-hot')).reading === 'faster' && calSpeedWork(card16.filter((r) => r.id !== 'read-fastest-hot')).cache === true);
+  check('work pick: Normal stays when nothing reads over 10% faster, and none without Normal', calSpeedWork([base, { id: 'read-fastest', reading: 'fastest', readTps: 420, tps: 60 }]).reading === 'normal' && calSpeedWork([{ id: 'read-faster', reading: 'faster', tps: 9, readTps: 9 }]) === null);
+  check('work pick: chat keeps the recorded rule (step 2048 with the cache)', calSpeedBest(card16).reading === 'faster');
+  check('job: coding, research, review or Coding-session brains do work; a chat-only brain does chat', speedJob({ models: { tinker: 'q' } }, 'q') === 'work' && speedJob({ models: { scout: 'q', bob: 'b', tinker: 't' } }, 'q') === 'work' && speedJob({ models: { bob: 'b', tinker: 't' }, sessionBrains: { coding: 'b' } }, 'b') === 'work' && speedJob({ models: { bob: 'b', tinker: 't' } }, 'b') === 'chat' && speedJob({ models: { bob: 'b', tinker: 't' } }, 'nobody') === 'chat');
+  check('job: the main brain with no coding brain of its own, or with One brain, does the work itself', speedJob({ models: { bob: 'b' } }, 'b') === 'work' && speedJob({ oneBrain: true, models: { bob: 'b', tinker: 't' } }, 'b') === 'work');
   check('pairs: a cache that doesn\'t write faster loses, and the reading rule from before decides', noHelp.cache === false && noHelp.reading === 'fastest' && /hot experts didn't write faster|Fastest: read/.test(noHelp.why));
 }
 
@@ -77,6 +85,16 @@ const wait = async (lab) => { for (let i = 0; i < 300 && lab.job; i++) await new
   lab.cfg.hotExpertsCopy = {}; fs.writeFileSync(path.join(calibrateDir(lab.cfg), 'big.json'), JSON.stringify([{ ...rec, speed: { reading: 'faster', cache: true, turbo: false, why: 'x' } }]));
   const u2 = useCalibrated(lab, 'big');
   check('a pair with the cache turns Hot experts on, the copy kind for that brain, and its reading speed', u2.hotExperts === true && u2.hotCopy === true && u2.reading === 'faster');
+  fs.writeFileSync(path.join(calibrateDir(lab.cfg), 'big.json'), JSON.stringify([{ ...rec, speed: { reading: 'faster', cache: true, turbo: false, why: 'x' }, speedWork: { reading: 'fastest', cache: true, turbo: false, why: 'y', job: 'work' } }]));
+  lab.cfg.models = { bob: 'big' };
+  const u3 = useCalibrated(lab, 'big');
+  check('Use recommended on a brain that does the coding sets the work pick (step 4096)', u3.reading === 'fastest' && u3.job === 'work' && u3.hotCopy === true);
+  lab.cfg.models = { bob: 'big', tinker: 'other' };
+  const u4 = useCalibrated(lab, 'big');
+  check('a chat brain gets the chat pick; asked for, either one', u4.reading === 'faster' && u4.job === 'chat' && useCalibrated(lab, 'big', { job: 'work' }).reading === 'fastest');
+  check('a result from before the work pick falls back to the chat one', (fs.writeFileSync(path.join(calibrateDir(lab.cfg), 'big.json'), JSON.stringify([{ ...rec, speedWork: undefined, speed: { reading: 'faster', cache: false, turbo: false, why: 'x' } }])), useCalibrated(lab, 'big', { job: 'work' }).job === 'chat'));
+  check('the Brains page gets both picks and the brain\'s job', /speedWork: cal\.speedWork \|\| null/.test(read('src/server.js')) && /job: speedJob\(cfg, model\)/.test(read('src/server.js')) && /useCalibrated\(lab, String\(b\.model \|\| ''\), \{ job: b\.job \}\)/.test(read('src/server.js')));
+  check('the run saves both picks', rec.speed && 'speedWork' in rec);
 }
 {
   const lab = mkLab({ auto: 60, 0: 61, 8: 55, 16: 50, 24: 45, 32: 40, 40: 30 });
@@ -122,6 +140,9 @@ const wait = async (lab) => { for (let i = 0; i < 300 && lab.job; i++) await new
   const run = brainsHtml({ ...ctx, place: { ...place, job: { state: 'running', stepLabel: 'By hand: 8 of 40 layers\' experts in memory', progress: 43 } } });
   check('while it runs: what it is doing, how far, a Stop button, and no second start', /role="status"><strong>Calibrating\.<\/strong> By hand: 8 of 40 layers&#39; experts in memory <span class="muted">43%/.test(run) && /data-calstop/.test(run) && /data-calibrate="bobert-35b" disabled/.test(run) && /data-calibrate="\*" disabled/.test(run));
   const one = brainsHtml({ ...ctx, setUp: 'bobert-35b' });
+  const two = { ...cal, speedRows: [{ id: 'read-normal', reading: 'normal', tps: 87.7, readTps: 1232, firstWordS: 26.6 }, { id: 'read-faster-hot', reading: 'faster', cache: true, tps: 109.2, readTps: 2290, firstWordS: 14.3 }, { id: 'read-fastest-hot', reading: 'fastest', cache: true, tps: 102, readTps: 3276, firstWordS: 10 }], speed: { reading: 'faster', cache: true, why: 'Chat line.' }, speedWork: { reading: 'fastest', cache: true, why: 'Work line.', job: 'work' } };
+  const pick = (job) => brainsHtml({ ...ctx, setUp: 'bobert-35b', place: { ...place, brains: { ...place.brains, 'bobert-35b': { ...place.brains['bobert-35b'], cal: two, job } } } });
+  check('Set up shows both picks, says which this brain gets, and stars that one', /Chat line\.<\/p><p class="muted">Work line\.<\/p><p class="muted">This brain does coding and agent work, so Use recommended sets the second one/.test(pick('work')) && /<tr class="best"><td>Reading speed Fastest, hot experts/.test(pick('work')) && /This brain does chat, so Use recommended sets the first one/.test(pick('chat')) && /<tr class="best"><td>Reading speed Faster, hot experts/.test(pick('chat')));
   check('the Set up page shows what each try measured and stars the recommended one', /<tr class="best"><td>By hand, 8 in memory<\/td><td>71\.3 words a second<\/td><td>first word 1\.1 s<\/td><td>★ recommended<\/td>/.test(one) && /<td>By hand, 0 in memory<\/td><td><span class="muted">Didn&#39;t start/.test(one) && /Last calibrated 2026-11-11\. By hand with 8 was fastest/.test(one));
   check('the recommendation sits beside the slider, and Use recommended is offered until it is in use', /★ Recommended by the last calibration: <strong>8<\/strong> by hand/.test(one) && /data-caluse="bobert-35b" >Use recommended/.test(one) && /data-caluse="bobert-35b" disabled/.test(brainsHtml({ ...ctx, setUp: 'bobert-35b', place: { ...place, brains: { ...place.brains, 'bobert-35b': { ...place.brains['bobert-35b'], set: { mode: 'hand', cpuMoe: 8 } } } } })) && /\(in use\)/.test(brainsHtml({ ...ctx, setUp: 'bobert-35b', place: { ...place, brains: { ...place.brains, 'bobert-35b': { ...place.brains['bobert-35b'], set: { mode: 'hand', cpuMoe: 8 } } } } })));
   check('not calibrated yet says so; Use recommended is there but locked', /Not calibrated yet/.test(brainsHtml({ ...ctx, setUp: 'riker-28b-q3' })) && /data-caluse="riker-28b-q3" disabled/.test(brainsHtml({ ...ctx, setUp: 'riker-28b-q3' })));

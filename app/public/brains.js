@@ -242,19 +242,24 @@ function calibrateHtml(b, ctx) {
       ${calStatusHtml(ctx)}
       <p class="muted">${lock ? `🔒 ${esc(lock)}` : cal ? `Last calibrated ${esc(cal.when || '')}. ${esc(best?.why || 'No try ran.')}` : 'Not calibrated yet. Auto is in charge until you say otherwise.'}</p>
       ${rows ? `<table class="cal-rows"><caption class="sr-only">What each try measured</caption>${rows}</table>` : ''}
-      ${speedRowsHtml(cal)}</section>`;
+      ${speedRowsHtml(cal, p?.job)}</section>`;
 }
 // Nov 16: the speed options Calibrate timed on the best placement (Reading speed, and Turbo for a brain with its own guesser).
 const READ_NAMES = { normal: 'Normal', faster: 'Faster', fastest: 'Fastest' };
-function speedRowsHtml(cal) {
-  const sp = cal?.speed || null;
+// Nov 17: two picks, one for chat and one for coding and agent work (reading counts for more); the brain's job picks
+// which one Use recommended sets, and that one gets the star.
+const JOB_NAMES = { chat: 'chat', work: 'coding and agent work' };
+function speedRowsHtml(cal, job = 'chat') {
+  const work = job === 'work' && cal?.speedWork ? cal.speedWork : null;
+  const sp = work || cal?.speed || null;
   const rows = (cal?.speedRows || []).map((r) => {
-    const star = sp && (r.turbo ? sp.turbo : r.reading === sp.reading);
-    const name = r.turbo ? 'Turbo (own guesser)' : `Reading speed ${READ_NAMES[r.reading] || r.reading}`;
+    const star = sp && (r.turbo ? sp.turbo : r.reading === sp.reading && (r.cache === true) === (sp.cache === true));
+    const name = r.turbo ? 'Turbo (own guesser)' : `Reading speed ${READ_NAMES[r.reading] || r.reading}${r.cache ? ', hot experts' : ''}`;
     return `<tr${star ? ' class="best"' : ''}><td>${name}</td><td>${r.failed ? `<span class="muted">${esc(r.failed)}</span>` : `reads ${r.readTps} tokens a second, writes ${r.tps}${r.accepted != null ? `, ${r.accepted}% of guesses kept` : ''}`}</td><td>${r.failed || r.firstWordS == null ? '' : `first word ${r.firstWordS} s on a long prompt`}</td><td>${star ? '★ recommended' : ''}</td></tr>`;
   }).join('');
   if (!rows) return '';
-  return `<p class="muted">${esc(sp?.why || '')} Use recommended sets these for this brain too.</p><table class="cal-rows"><caption class="sr-only">What each speed option measured</caption>${rows}</table>`;
+  const both = cal?.speed && cal?.speedWork ? `<p class="muted">${esc(cal.speed.why)}</p><p class="muted">${esc(cal.speedWork.why)}</p><p class="muted">This brain does ${JOB_NAMES[work ? 'work' : 'chat']}, so Use recommended sets the ${work ? 'second' : 'first'} one for it.</p>` : `<p class="muted">${esc(sp?.why || '')} Use recommended sets these for this brain too.</p>`;
+  return `${both}<table class="cal-rows"><caption class="sr-only">What each speed option measured</caption>${rows}</table>`;
 }
 
 export function setUpHtml(b, ctx) {
