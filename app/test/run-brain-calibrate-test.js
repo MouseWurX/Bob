@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { calTries, calBest, calLock, calResult, calibrated, startCalibrate, useCalibrated, CAL_CTX, calSpeedTries, calSpeedBest, CAL_LONG } from '../src/brain-calibrate.js';
+import { calibrateDir, calTries, calBest, calLock, calResult, calibrated, startCalibrate, useCalibrated, CAL_CTX, calSpeedTries, calSpeedBest, CAL_LONG } from '../src/brain-calibrate.js';
 import { brainsHtml, calLock as pageLock, canCalibrate, brainsInUse } from '../public/brains.js';
 
 let pass = 0, fail = 0;
@@ -27,6 +27,16 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
   check('speed: the fastest reader wins unless writing drops over 10%, and says why', b.reading === 'faster' && /Faster: read the long prompt at 900/.test(b.why));
   check('speed: Turbo only when it writes over 5% faster, with the kept-guess rate', b.turbo === true && /70% of its guesses kept/.test(b.why) && calSpeedBest([base, { id: 'turbo', turbo: true, tps: 62 }]).turbo === false);
   check('speed: Normal stays when nothing beats it by over 10%', calSpeedBest([base, { id: 'read-fastest', reading: 'fastest', readTps: 420, tps: 60 }]).reading === 'normal' && calSpeedBest([{ id: 'read-faster', reading: 'faster', tps: 9, readTps: 9 }]) === null);
+  // Nov 17: pairs of reading step and hot-experts cache (the copy kind), from the 16 GB card calibration's numbers
+  const pairs = calSpeedTries({ cacheMB: 4096 });
+  check('pairs: each reading step also with the cache, the copy kind (share 0); none without a cache size', pairs.map((t) => t.id).join() === 'read-normal,read-faster,read-fastest,read-normal-hot,read-faster-hot,read-fastest-hot' && pairs[4].extra.join(' ') === '-b 2048 -ub 2048 --moe-cache-mib 4096 --moe-cache-cpu-share 0 -lv 4' && pairs[4].cache === true && calSpeedTries().length === 3);
+  const card16 = [{ id: 'read-normal', reading: 'normal', tps: 87.7, readTps: 1232, firstWordS: 26.6 }, { id: 'read-faster', reading: 'faster', tps: 83.9, readTps: 3074, firstWordS: 10.7 }, { id: 'read-fastest', reading: 'fastest', tps: 80.1, readTps: 4173, firstWordS: 7.9 }, { id: 'read-normal-hot', reading: 'normal', cache: true, tps: 95, readTps: 1100 }, { id: 'read-faster-hot', reading: 'faster', cache: true, tps: 109.2, readTps: 2290, firstWordS: 14.3 }, { id: 'read-fastest-hot', reading: 'fastest', cache: true, tps: 102, readTps: 3276, firstWordS: 10 }];
+  const nb = calSpeedBest(card16);
+  check('pairs: the fastest writer wins (16 GB card: step 2048 with the cache), and says so', nb.reading === 'faster' && nb.cache === true && /Faster with hot experts: wrote 109.2/.test(nb.why));
+  const near = calSpeedBest(card16.map((r) => (r.id === 'read-fastest-hot' ? { ...r, tps: 107 } : r)));
+  check('pairs: within 3% of the fastest writer, the faster reader wins', near.reading === 'fastest' && near.cache === true);
+  const noHelp = calSpeedBest(card16.map((r) => (r.cache ? { ...r, tps: 70 } : r)));
+  check('pairs: a cache that doesn\'t write faster loses, and the reading rule from before decides', noHelp.cache === false && noHelp.reading === 'fastest' && /hot experts didn't write faster|Fastest: read/.test(noHelp.why));
 }
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob cal '));
@@ -63,6 +73,10 @@ const wait = async (lab) => { for (let i = 0; i < 300 && lab.job; i++) await new
   check('the job ends done, with a line saying what it saw', lab.runs[0].state === 'done' && /Big Brain: By hand with 8 was fastest/.test(lab.runs[0].report.saw));
   const u = useCalibrated(lab, 'big');
   check('Use recommended saves it for that brain only', u.ok && JSON.stringify(lab.cfg.brainPlace) === JSON.stringify({ big: { mode: 'hand', cpuMoe: 8 } }) && JSON.parse(fs.readFileSync(lab.cfg.settingsFile, 'utf8')).brainPlace.big.cpuMoe === 8);
+  check('Use recommended remembers per brain whether the copy kind won (no cache here: false)', JSON.parse(fs.readFileSync(lab.cfg.settingsFile, 'utf8')).hotExpertsCopy?.big === false && u.hotCopy === false);
+  lab.cfg.hotExpertsCopy = {}; fs.writeFileSync(path.join(calibrateDir(lab.cfg), 'big.json'), JSON.stringify([{ ...rec, speed: { reading: 'faster', cache: true, turbo: false, why: 'x' } }]));
+  const u2 = useCalibrated(lab, 'big');
+  check('a pair with the cache turns Hot experts on, the copy kind for that brain, and its reading speed', u2.hotExperts === true && u2.hotCopy === true && u2.reading === 'faster');
 }
 {
   const lab = mkLab({ auto: 60, 0: 61, 8: 55, 16: 50, 24: 45, 32: 40, 40: 30 });

@@ -57,27 +57,45 @@ export function calBest(rows) {
 // One fixed long prompt: the same paragraph many times over (about 8,000 tokens with Qwen's words), then a short ask.
 const CAL_PARA = 'A bicycle gear system moves the chain between sprockets of different sizes. A small front ring with a large rear sprocket makes pedalling light for climbing hills, while a large front ring with a small rear sprocket makes each turn of the pedals carry the bike further on flat roads. The derailleurs push the chain sideways when the rider shifts, and the chain climbs onto the next sprocket as the pedals turn. ';
 export const CAL_LONG = CAL_PARA.repeat(90) + '\n\nIn one sentence, what does the text above explain?';
-export function calSpeedTries({ mtp = 0 } = {}) {
+// Nov 17 (the owner: "now we know what works best on npc, configure a calibration around that"): the reading step and
+// the hot-experts cache are tried as PAIRS, because they share the card (docs/test-results/2026-11-17-calibration-
+// results.md: step 2048 with a 4 GB cache that copies missed experts to the card wrote 14 to 28% faster than Normal and
+// read 1.9 times as fast; either one alone did much less). cacheMB > 0 adds each step with the cache, the copy kind
+// (--moe-cache-cpu-share 0), which beat working missed experts out on the processor at every size tried.
+export function calSpeedTries({ mtp = 0, cacheMB = 0 } = {}) {
   const r = (pick, n, label) => ({ id: `read-${pick}`, reading: pick, extra: n ? ['-b', String(n), '-ub', String(n)] : [], label });
   const out = [r('normal', 0, 'Reading speed Normal (512 at a time)'), r('faster', READING_STEPS.faster, 'Reading speed Faster (2,048 at a time)'), r('fastest', READING_STEPS.fastest, 'Reading speed Fastest (4,096 at a time)')];
+  if (cacheMB > 0) {
+    const gb = Math.round((cacheMB / 1024) * 10) / 10;
+    for (const t of out.slice(0, 3)) out.push({ ...t, id: `${t.id}-hot`, cache: true, extra: [...t.extra, ...hotCopyArgs(cacheMB)], label: `${t.label}, with ${gb} GB of hot experts on the card` });
+  }
   if (mtp > 0) out.push({ id: 'turbo', turbo: true, extra: ['--spec-type', 'draft-mtp', ...draftNumArgs(0, TURBO_EVERYDAY_MAX)], label: 'Turbo: the brain\'s own guesser' });
   return out;
 }
-// The recommendation: the reading speed that reads the long prompt fastest, if it beats Normal by more than 10% and
-// keeps writing within 10% of Normal's; Turbo when it writes more than 5% faster than Normal.
-// -> { reading, turbo, why } or null when Normal didn't run.
+const hotCopyArgs = (mb) => ['--moe-cache-mib', String(mb), '--moe-cache-cpu-share', '0', '-lv', '4'];
+// The recommendation, over every pair that ran (writing within 10% of Normal's): the fastest writer, and among those
+// writing within 3% of it, the fastest reader (the rule set before the Nov 17 calibration run). When that isn't a
+// pair with the cache, the old reading rule decides: the fastest reader if it reads over 10% faster. Turbo when it writes
+// more than 5% faster than Normal. -> { reading, cache, turbo, why } or null when Normal didn't run.
 export function calSpeedBest(rows) {
   const ok = rows.filter((r) => !r.failed && r.tps > 0);
   const base = ok.find((r) => r.id === 'read-normal');
   if (!base) return null;
-  const reads = ok.filter((r) => r.reading && r.readTps > 0 && r.tps >= base.tps * 0.9).sort((a, b) => b.readTps - a.readTps);
-  const top = reads[0] && reads[0].reading !== 'normal' && reads[0].readTps > (base.readTps || 0) * 1.1 ? reads[0] : base;
+  const pool = ok.filter((r) => r.reading && !r.turbo && r.tps >= base.tps * 0.9);
+  const maxTps = Math.max(...pool.map((r) => r.tps));
+  let top = pool.filter((r) => r.tps >= maxTps * 0.97).sort((a, b) => (b.readTps || 0) - (a.readTps || 0) || b.tps - a.tps)[0] || base;
+  if (!top.cache) { // no cache won: the reading rule from before decides (bigger pieces only for a real reading gain)
+    const reads = pool.filter((r) => !r.cache && r.readTps > 0).sort((a, b) => b.readTps - a.readTps);
+    top = reads[0] && reads[0].reading !== 'normal' && reads[0].readTps > (base.readTps || 0) * 1.1 ? reads[0] : base;
+  }
   const t = ok.find((r) => r.id === 'turbo');
   const turbo = Boolean(t && t.tps > base.tps * 1.05);
   const name = { normal: 'Normal', faster: 'Faster', fastest: 'Fastest' }[top.reading];
-  const readWhy = top === base ? `Reading speed Normal: bigger pieces didn't read the long prompt more than 10% faster without slowing writing (${base.readTps} tokens a second).` : `Reading speed ${name}: read the long prompt at ${top.readTps} tokens a second against ${base.readTps} on Normal (first word ${top.firstWordS} s against ${base.firstWordS} s), writing ${top.tps} against ${base.tps}.`;
+  const cache = top.cache === true;
+  const what = `Reading speed ${name}${cache ? ' with hot experts' : ''}`;
+  const readWhy = top === base ? `Reading speed Normal: bigger pieces didn't read the long prompt more than 10% faster without slowing writing (${base.readTps} tokens a second)${pool.some((r) => r.cache) ? ', and hot experts didn\'t write faster' : ''}.` : cache ? `${what}: wrote ${top.tps} words a second against ${base.tps} on Normal, and read the long prompt at ${top.readTps} tokens a second against ${base.readTps} (first word ${top.firstWordS} s against ${base.firstWordS} s).` : `Reading speed ${name}: read the long prompt at ${top.readTps} tokens a second against ${base.readTps} on Normal (first word ${top.firstWordS} s against ${base.firstWordS} s), writing ${top.tps} against ${base.tps}.`;
   const turboWhy = !t ? '' : turbo ? ` Turbo on: ${t.tps} words a second against ${base.tps}${t.accepted != null ? `, ${t.accepted}% of its guesses kept` : ''}.` : ` Turbo off: ${t.tps} words a second against ${base.tps}, not enough to be worth it.`;
-  return { reading: top.reading, turbo, why: readWhy + turboWhy };
+  return { reading: top.reading, cache, turbo, why: readWhy + turboWhy };
 }
 
 // The Brain Engine patches this Bob carries (engine/patches), for the profile stamp.
@@ -117,7 +135,7 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
   const log = pageLog(lab.cfg, 'calibrate');
   const exe = lab.tools().server.path;
   const fx = { serve: (o) => startServer({ exe, log, ...o }), chat: chatOnce, trace: traceOnce, ...lab.stepFns };
-  const plans = list.map((b) => { const r = lab.brain.engine.resolve(b.model); const info = ggufInfo(r.gguf); const layers = info?.shape?.layers || lab.brain.engine.placeInfo(b.model).layers; return { ...b, name: b.name || b.model, gguf: r.gguf, layers, tries: calTries(layers), speedTries: calSpeedTries({ mtp: info?.mtp || 0 }), hot: (lab.brain.engine.buildNo?.() || 0) >= 12359 }; });
+  const plans = list.map((b) => { const r = lab.brain.engine.resolve(b.model); const info = ggufInfo(r.gguf); const layers = info?.shape?.layers || lab.brain.engine.placeInfo(b.model).layers; return { ...b, name: b.name || b.model, gguf: r.gguf, layers, tries: calTries(layers), speedTries: calSpeedTries({ mtp: info?.mtp || 0, cacheMB: (lab.brain.engine.buildNo?.() || 0) >= 12359 ? hotCacheMB(lab.cfg) : 0 }), hot: (lab.brain.engine.buildNo?.() || 0) >= 12359 }; });
   const steps = plans.flatMap((p, i) => [...p.tries, ...p.speedTries, ...(p.hot ? HOT_STEPS : [])].map((t) => [`${i}:${t.id}`, plans.length > 1 ? `${p.name}: ${t.label}` : t.label]));
   const total = steps.length;
   return runJob(lab, { kind: 'calibrate', name: plans.length === 1 ? `Calibrate ${plans[0].name}` : `Calibrate ${plans.length} brains`, from: plans[0].model, fromName: plans[0].name, steps }, async (r, { set, signal, progress }) => {
@@ -153,8 +171,13 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
       for (const t of p.speedTries) {
         const id = `${i}:${t.id}`;
         set(id, 'running');
-        let row = { id: t.id, reading: t.reading || null, turbo: t.turbo === true };
+        let row = { id: t.id, reading: t.reading || null, turbo: t.turbo === true, ...(t.cache ? { cache: true } : {}) };
         let srv = null;
+        if (t.cache && best?.mode === 'hand' && best.cpuMoe === 0) {
+          // every expert sits on the card: there is nothing for a cache to hold
+          row.failed = 'Skipped: every expert already sits on the card.';
+          speedRows.push(row); set(id, 'failed'); progress((100 * ++done) / total); continue;
+        }
         try {
           srv = await fx.serve({ gguf: p.gguf, ctx: CAL_CTX, signal, cpuOk: false, extra: t.extra, ...(place ? { place } : {}) });
           const long = await fx.chat(srv.url, [{ role: 'user', content: CAL_LONG }], { maxTokens: 24, signal });
@@ -175,7 +198,9 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
       if (p.hot) {
         hot = { profiles: [], tps: null };
         const mb = hotCacheMB(lab.cfg) || 4096;
-        const cacheArgs = ['--moe-cache-mib', String(mb), '--moe-cache-cpu-share', '1', '-lv', '4']; // -lv 4: the fingerprint is an info line
+        const pick = calSpeedBest(speedRows);
+        const copy = pick?.cache === true; // the pair grid found the copy kind faster: time the ranked fill the same way
+        const cacheArgs = ['--moe-cache-mib', String(mb), '--moe-cache-cpu-share', copy ? '0' : '1', '-lv', '4']; // -lv 4: the fingerprint is an info line
         let fingerprint = '';
         const stamp = (kind) => profileStamp({ kind, gguf: p.gguf, fingerprint, engine: `b${lab.brain.engine.buildNo?.() || 0}${BRAIN_ENGINE_PIN?.tag ? ` (Bob pins ${BRAIN_ENGINE_PIN.tag})` : ''}`, patches: enginePatches() });
         set(`${i}:hot-count`, 'running');
@@ -246,10 +271,12 @@ export function useCalibrated(lab, model) {
   const set = rec.best.mode === 'hand' ? { mode: 'hand', cpuMoe: rec.best.cpuMoe } : { ...cur, mode: 'auto' };
   saveSettings(lab.cfg, { brainPlace: { ...(lab.cfg.brainPlace || {}), [model]: set } });
   // Nov 16: the speed options too, for this brain only. Turbo only goes on (a Turbo set by hand is never switched off).
-  if (rec.hot?.on && lab.cfg.hotExperts !== true) saveSettings(lab.cfg, { hotExperts: true });
+  if ((rec.hot?.on || rec.speed?.cache) && lab.cfg.hotExperts !== true) saveSettings(lab.cfg, { hotExperts: true });
+  // Nov 17: the pair grid's cache is the copy kind; remembered per brain (a big brain may still do better without copying)
+  if (rec.speed) saveSettings(lab.cfg, { hotExpertsCopy: { ...(lab.cfg.hotExpertsCopy || {}), [model]: rec.speed.cache === true } });
   if (rec.speed) {
     saveSettings(lab.cfg, { readingFor: { ...(lab.cfg.readingFor || {}), [model]: rec.speed.reading } });
     if (rec.speed.turbo && !lab.cfg.llamacpp?.turbo?.[model]?.on) saveSettings(lab.cfg, { llamacpp: { turbo: { ...(lab.cfg.llamacpp?.turbo || {}), [model]: { on: true, mtp: true, max: TURBO_EVERYDAY_MAX } } } });
   }
-  return { ok: true, set: lab.cfg.brainPlace[model], reading: lab.cfg.readingFor?.[model] || null, turbo: lab.cfg.llamacpp?.turbo?.[model]?.on === true, hotExperts: lab.cfg.hotExperts === true };
+  return { ok: true, set: lab.cfg.brainPlace[model], reading: lab.cfg.readingFor?.[model] || null, turbo: lab.cfg.llamacpp?.turbo?.[model]?.on === true, hotExperts: lab.cfg.hotExperts === true, hotCopy: lab.cfg.hotExpertsCopy?.[model] === true };
 }

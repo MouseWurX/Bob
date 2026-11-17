@@ -50,6 +50,7 @@ export function hotCacheMB(cfg) {
   const card = Number(cfg?.gpuVramGB || cfg?.cardGB) || 0;
   return card ? Math.round(Math.min(4, card / 4) * 1024) : 0;
 }
+export const hotCopyFor = (cfg, model) => cfg?.hotExpertsCopy?.[model] === true;
 export const cleanHotGB = (v) => { const n = Number(v); return Number.isFinite(n) && n >= 1 && n <= 12 ? Math.round(n * 2) / 2 : null; };
 
 // Which profile a brain loads: the kind of its job (from the jobs it holds), else mixed.
@@ -117,7 +118,9 @@ export function hotArgs(cfg, model, { args = [], cpu = false, build = 0, gguf = 
   if (!mb) return none;
   // llama-server hides the engine's own info lines below -lv 4 (they sit one level under its default of 3), and the
   // fingerprint and "ranked fill" lines are info lines. Found on the PC Nov 16. Warnings (a refused ranking) show anyway.
-  const cache = ['--moe-cache-mib', String(mb), '--moe-cache-cpu-share', '1', ...(args.some((a) => VERBOSITY_FLAGS.includes(a)) ? [] : ['-lv', '4'])];
+  // Nov 17: the copy kind (share 0) for a brain Calibrate found faster that way (hotExpertsCopy[model], set by "Use
+  // recommended"); otherwise the processor kind (share 1), which never churns.
+  const cache = ['--moe-cache-mib', String(mb), '--moe-cache-cpu-share', hotCopyFor(cfg, model) ? '0' : '1', ...(args.some((a) => VERBOSITY_FLAGS.includes(a)) ? [] : ['-lv', '4'])];
   let kind = kindFor(cfg, model);
   if (!exists(rankingFile(cfg, model, kind))) kind = 'mixed';
   if (!exists(rankingFile(cfg, model, kind))) return { ...none, args: cache };

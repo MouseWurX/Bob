@@ -64,6 +64,7 @@ const base = { args: fit, build: 12359, gguf: '/fake/qwen.gguf', statImpl: fakeS
 { const h = hotArgs(cfg, 'qwen3.6-35b', base);
   check('on: the cache, the CPU share at 1, and the coding ranking', h.args.join(' ') === '--moe-cache-mib 4096 --moe-cache-cpu-share 1 -lv 4' && h.env[RANKING_ENV] === rankingFile(cfg, 'qwen3.6-35b', 'coding') && h.seeded && h.kind === 'coding'); }
 check('off by default', hotArgs({ ...cfg, hotExperts: undefined }, 'qwen3.6-35b', base).args.length === 0);
+check('a brain Calibrate found faster with the copy kind gets share 0; other brains keep share 1', hotArgs({ ...cfg, hotExpertsCopy: { 'qwen3.6-35b': true } }, 'qwen3.6-35b', base).args.join(' ') === '--moe-cache-mib 4096 --moe-cache-cpu-share 0 -lv 4' && hotArgs({ ...cfg, hotExpertsCopy: { other: true } }, 'qwen3.6-35b', base).args.includes('1'));
 check('never on the processor, or an engine older than b12359', hotArgs(cfg, 'qwen3.6-35b', { ...base, cpu: true }).args.length === 0 && hotArgs(cfg, 'qwen3.6-35b', { ...base, build: 12000 }).args.length === 0);
 check('not for a brain wholly on the card', hotArgs(cfg, 'qwen3.6-35b', { ...base, args: ['-ngl', '99'] }).args.length === 0);
 check('a verbosity set by hand is kept (no second -lv)', hotArgs(cfg, 'qwen3.6-35b', { ...base, args: [...fit, '-lv', '5'] }).args.join(' ') === '--moe-cache-mib 4096 --moe-cache-cpu-share 1');
