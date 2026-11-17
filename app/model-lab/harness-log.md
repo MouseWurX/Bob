@@ -126,3 +126,18 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
 - **Fix:** a clipped result in the record now says "shortened in this list only; the whole result is in the tool reply above". `answer-checks.js` review_leak also catches talk of earlier drafts ("my first/second reply", "You're right to call this out"), unless the user really pushed back this turn.
 - **Check:** `run-solo-effort-test.js` (2: the shortened note; a short result shown whole) and `run-answer-checks-test.js` (3: two leaks, one real pushback that's left alone).
 - **Open:** Maximus doesn't page through the rest of a partly shown list (partial_look). Waiting on the full grade before changing that.
+
+## 17 Nov: after1 graded (Qwen and GPT-OSS on the same 200 real jobs, 94 mail runs, 17 office jobs)
+
+- **Real jobs, blind Opus read (4 graders, A/B shuffled):** Qwen 133 right / 47 partly / 20 failed / 0 harm, reply quality 3.87 of 5, 14 overreach. GPT-OSS 120B (Minimus, same code) 107 / 56 / 37 / 0, quality 3.52, 0 overreach. Better per job: Qwen 84, GPT-OSS 51, tie 65. Qwen's top faults: made_up 12, incomplete 12, wrong_answer 11, text_tool_call_shown 6, claimed_not_done 6. GPT-OSS: incomplete 21, asked_instead_of_looking 17, wrong_answer 13, made_up 12, gave_up_early 10.
+- **Mail (code scores, rough pass):** Minimus 9/30 (37 s), Medius 12/30 (81 s), Magnus 7/30 (260 s), Maximus 0/4 (1,160 s, stopped by the owner). Gap list: bob-wip/handoffs/after1-mail-gaps.md.
+- **Office:** 14/17 by code. Two misses made a new file instead of finding the user's (excel-edit, ppt-add); one was a scorer slip (word-missing).
+- **Fixes, each with a check:**
+  - mail asks that never say "email" now add the mail tools (more-tools.js mail words; run-mail-words-test, 13).
+  - an answer that is only a text tool call is replaced with an honest "I didn't finish" line (clean-answer.js; run-think-bubble-test, 3).
+  - review leaks in Magnus and Maximus ("**Review:**", "second-guess myself", "You're right to call this out"): answer-checks review_leak (run-answer-checks-test, 5).
+  - find_first: "my reading log spreadsheet" or "my garden club deck" is searched for by name before Bob makes a new file or asks where it is (run-answer-checks-test, 4).
+  - memory_claim catches "I've updated my memory" with no remember call (run-answer-checks-test, 1).
+  - search_files leaves Bob's own data folder out when it sits inside the searched folder; it had "found" the ask in queue.json (run-hands-read-test, 2).
+- **Replay of the new checks on all 511 after1 runs:** find_first 2, both real misses; review_leak 5, all real; bare text call 8, all real; no false alarms in the samples read.
+- **Open (inbox thread, M5 to M13):** list paging, the 365-day search cap, drafts by sender, unsubscribe moving mail, the lists/who/word-missing scorers, keeping partial answers on a timeout.

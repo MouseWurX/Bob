@@ -963,7 +963,15 @@ export function buildTools(cfg) {
       if (!roots.length) throw new Error('No projects are set up and no folder was given, so there\'s nothing to search. Give a folder (folder: the full path), or use list_folder and read_file.');
       const hits = [];
       let scanned = 0;
+      // 17 Nov after1: every name search also "found" the ask itself in Bob's own queue and logs (queue.json), so Bob read
+      // his own record as the user's file. His own data folder is left out unless it's the folder asked for.
+      const own = [cfg.dataDir, cfg.agentDir].filter(Boolean).map((d) => path.resolve(d));
+      // Only when his folder sits INSIDE the folder being searched (a search that starts in his folder, or in a project
+      // that holds it, still searches it).
+      let ownHere = [];
+      const isOwn = (d) => ownHere.some((o) => d === o || d.startsWith(o + path.sep));
       const walk = (dir) => {
+        if (isOwn(path.resolve(dir))) return;
         if (hits.length >= 60 || scanned > 20000) return;
         let entries = [];
         try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
@@ -981,7 +989,7 @@ export function buildTools(cfg) {
           });
         }
       };
-      for (const root of roots) walk(root);
+      for (const root of roots) { const r = path.resolve(root); ownHere = own.filter((o) => o !== r && o.startsWith(r + path.sep)); walk(root); }
       const where = inUserFolders ? ` (no project is set up, so this searched ${roots.join('; ')})` : '';
       return hits.length ? `${hits.join('\n')}${where ? `\n${where.trim()}` : ''}` : `No matches in ${scanned} files${where}.`;
     },

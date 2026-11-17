@@ -16,6 +16,7 @@
 //                  rerun, 16 Nov: 6 of 63 answers; the user sees only this answer, not steps, plans or tool results)
 //   text_call      a tool call written as text that never ran, often then "Done" (Maximus rerun: 9 of 100 failed;
 //                  the engine now turns Qwen's XML form into real calls, this catches what's left)
+//   find_first     "my reading log spreadsheet": search for the user's own file before making a new one or asking where
 //   review_leak    his own review or the hidden notes in the shown answer ("My own review", "You're right on all six
 //                  points" to a review the user never saw; Maximus rerun: 8 of 100)
 //   office_route   an Office file job (docx, xlsx, pptx) done without the Office tools: predicted from the mail run
@@ -53,13 +54,13 @@ const NOT_DONE = /^(?:Error\b|There(?:'s| is) no\b|No such\b|Nothing (?:to|was|m
 const DONE_SAY = /\b(?:is|are|was|were|has been|have been|now|all)\s+(?:already\s+)?(?:gone|forgotten|wiped|removed|deleted|erased|cleared)\b|(?:^|\n)\s*(?:Done|All set|Got it)\b[^.!?\n]{0,30}(?:forgotten|removed|deleted|cleared|wiped|done)?|\bI(?:'ve| have) (?:forgotten|removed|deleted|cleared|wiped|erased)\b/i;
 const SAY_THE_WORD = /\b(?:say the word|just say|if you want|want me to|shall i|should i)\b[^.!?\n]{0,60}\b(?:done|gone|deleted|removed)\b/i;
 const UNDO_TOOLS = /^(?:forget_topic|remember|file_hands|notice_board|reminders|undo_files|forget|memory)$/;
-const MEMORY_SAY = /\bI(?:'ve| have)?(?: also)? (?:noted|remembered|made a note|stored|saved|recorded|logged|written down)\b[^.!?\n]{0,50}\b(?:that|you|your|preference|timezone|time zone|name|birthday|diet|allerg)|\bI'?ll remember (?:that|this|you)|\b(?:noted|saved) (?:to|in) (?:my )?memory\b/i;
+const MEMORY_SAY = /\bI(?:'ve| have)?(?: also)? (?:noted|remembered|made a note|stored|saved|recorded|logged|written down)\b[^.!?\n]{0,50}\b(?:that|you|your|preference|timezone|time zone|name|birthday|diet|allerg)|\bI'?ll remember (?:that|this|you)|\b(?:noted|saved) (?:to|in) (?:my )?memory\b|\bI(?:'ve| have) (?:updated|changed|added to) my (?:memory|notes)\b|\b(?:my )?memory (?:is|has been) updated\b/i; // 17 Nov after1: "I've updated my memory to reflect this preference" (2 runs, no call)
 const PAGE_SAY = /\b(?:I )?(?:opened|visited|loaded|fetched|browsed|went to|checked) (?:it|the (?:site|page|link|website|url)|(?:https?:\/\/)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})\b[^.!?\n]{0,40}\b(?:loads?|works?|fine|up|down|shows?|says?|safe)\b|\bread (?:them|it|all three|each|both) in full\b/i;
 const UNSEEN = /\b(?:the\s+)?(?:hash|sha-?256|checksum|link|links|url|path|code|results?|list|output|details|figures|numbers|commands?)\s+(?:provided|shown|given|listed|printed)(?:\s+above)?\b|\b(?:see|shown|listed|as noted|mentioned) above\b|\b(?:results|details|answer) (?:are|is) above\b/i;
 const POINTS_BACK = /^(?:\W{0,3})(?:I(?:'ve| have)? already (?:gave|given|searched|pulled|ran|run|scanned|answered|told|shown|showed|listed|checked|did|done|covered|sent|written|wrote)|I(?:'ve| have) given you (?:the|my|an?) (?:answer|list|script|code|steps))\b|\b(?:in|from) my (?:last|previous|earlier|first) (?:reply|answer|message|turn)\b|\b(?:the|my|that|this) (?:script|code|list|table|answer|summary|steps|results?|tree|plan) (?:I gave|I wrote|I showed )?(?:you )?above\b/i;
 const TEXT_CALL = /<tool_call>|<\/?function(?:=|>)|<parameter=|"name"\s*:\s*"[a-z_]+"\s*,\s*"(?:arguments|parameters)"\s*:|\bto=functions\./;
-const DRAFT_TALK = /\bmy (?:first|second|third|fourth|earlier|previous|original|last two|other) (?:reply|replies|response|responses|answer|answers|breakdown|draft)s?\b|\bYou'?re right to (?:call (?:this|that) out|push back|flag)\b/i;
-const REVIEW_LEAK = /\bMy own review\b|\bI(?:'ve| have)? reviewed my (?:own )?(?:work|answer)\b|^\s*\**(?:Review|Improve it|Checking my own work|Plan)\**\s*:|\bYou'?re right (?:on|about) (?:all|both|every) (?:\w+ )?(?:points?|of them)\b|\b(?:the|my) (?:hidden|reviewer'?s?|review) notes?\b|\bHere is what the jobs did\b/im;
+const DRAFT_TALK = /\bmy (?:first|second|third|fourth|earlier|previous|original|last two|other) (?:reply|replies|response|responses|answer|answers|breakdown|draft)s?\b|\bYou'?re right to (?:call (?:this|that) out|push back|flag)\b|\bsecond-guess(?:ed|ing)? myself\b|\bI (?:just )?confused myself\b|\b(?:my apologies for|sorry for) the false alarm\b|\bmy earlier (?:summary|list|breakdown|reply|answer)\b/i;
+const REVIEW_LEAK = /\bMy own review\b|\bI(?:'ve| have)? reviewed my (?:own )?(?:work|answer)\b|^\s*\**(?:Review|Improve it|Checking my own work|Plan)(?::\**|\**\s*:)|\bYou'?re right (?:on|about) (?:all|both|every) (?:\w+ )?(?:points?|of them)\b|\b(?:the|my) (?:hidden|reviewer'?s?|review) notes?\b|\bHere is what the jobs did\b/im;
 const RESEARCH = /\b(?:research|look up|find out about|compare|comparison|studies|study|reports|sources|cite|citations?|literature|evidence|survey of|overview of the (?:research|literature))\b/i;
 const MAIL_ASK = /\b(?:e-?mails?|inbox|mail(?:box)?|messages? from|newsletters?|spam|unread)\b/i;
 const MAIL_DO = /\b(?:trash|archive|delete|bin|move|label|mark|unsubscribe|clean (?:up|out)|tidy|sort|file away|reply|answer|respond|draft|write back|summari[sz]e|go through)\b/i;
@@ -146,6 +147,19 @@ export function answerChecks({ text = '', reply = '', actions = [], usable = () 
     const name = (said.match(/<function=([\w.-]+)>|"name"\s*:\s*"([a-z_]+)"|to=functions\.([\w.-]+)/) || []).slice(1).find(Boolean);
     add('text_call', `Your answer has a tool call written as text${name ? ` (${name})` : ''}. Text never runs: nothing happened. Make the real call now if it's still needed, then answer from what it returns, and don't say it's done until a tool says so. Never show call text to ${who}.`, [], true);
   }
+  // find_first (17 Nov after1 office): "add X to my reading log spreadsheet" made a NEW csv and said "added to your reading
+  // log"; "add a slide to my garden club deck" listed one empty folder and asked for the path. The user's own file is
+  // searched for by name before Bob makes a new one in its place or asks where it is.
+  const MY_FILE = /\bmy\s+((?:[\w'-]+\s+){0,3}?)(spreadsheet|workbook|deck|slides|presentation|document|doc|report|log|letter|minutes|budget)\b/i;
+  const mf = MY_FILE.exec(ask);
+  if (mf && canLook && !blocked && !/\b(?:new|make|create|start)\b/i.test(ask)) {
+    const searched = acts.some((a) => ['search_files', 'find_in_documents', 'doc_index', 'read_file', 'office_read'].includes(a.name));
+    const changed = acts.some((a) => ['office_edit', 'edit_file'].includes(a.name));
+    const madeNew = acts.some((a) => ['save_spreadsheet', 'office_make', 'write_file', 'make_document'].includes(a.name));
+    const words = `${mf[1]}${mf[2]}`.trim();
+    if (!searched && !changed && (madeNew || ASK_WHERE.test(said))) add('find_first', `${who} means a file they already have ("my ${words}"), and nothing searched for it this turn. Find it first: search_files or find_in_documents with words from its name ("${words}"), and list Documents, Desktop and Downloads. Then change that file itself. Don't make a new file in its place, and never say you added to theirs unless a tool changed it.`, ['documents']);
+  }
+
   // review_leak: his own review or notes in the shown answer. 16 Nov after1 Maximus: the improve round answered the review as if the
   // user had pushed back ("You're right to call this out. My first reply was correct... my third and fourth replies were
   // confused"). That counts too, unless the user really did push back this turn.
