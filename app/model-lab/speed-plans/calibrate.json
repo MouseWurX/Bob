@@ -369,6 +369,19 @@
     "expert_trace": true,
     "expert_trace_stream": true
    }
+  },
+  {
+   "id": "G2",
+   "engine": "be9",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "body": {
+    "expert_trace": true,
+    "expert_trace_stream": true,
+    "expert_trace_mass": true
+   }
   }
  ]
 }

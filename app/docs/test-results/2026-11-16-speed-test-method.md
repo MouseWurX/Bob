@@ -280,7 +280,7 @@ The owner asked what to expect. These predictions are written down while night 1
 
 ## Addendum 16 (Nov 17, after night 1's results, before this run): the calibration run
 
-Night 1 measured reading steps and hot experts apart. They compete for the card: the cache takes room that `--fit` would give to layers, and bigger reading steps need bigger work buffers. `speed-plans/calibrate.json` measures them together to find the best pair, on the same brain and engine (Brain Engine 9), 17 rows, **5 rounds** (85 loads), as the method asks, so its numbers can be reported as final.
+Night 1 measured reading steps and hot experts apart. They compete for the card: the cache takes room that `--fit` would give to layers, and bigger reading steps need bigger work buffers. `speed-plans/calibrate.json` measures them together to find the best pair, on the same brain and engine (Brain Engine 9), 18 rows, **5 rounds** (90 loads), as the method asks, so its numbers can be reported as final.
 
 - **Y0:** Normal reading, no cache, as the same-night yardstick.
 - **F0, X0:** Faster (2048) and Fastest (4096), no cache.
@@ -288,6 +288,7 @@ Night 1 measured reading steps and hot experts apart. They compete for the card:
 - **F1c, F2c, F4c / X1c, X2c, X4c:** the same, missed experts copied to the card (`--moe-cache-cpu-share 0`, night 1's fastest writer).
 - **G0:** no trace, CUDA graphs turned off (`GGML_CUDA_DISABLE_GRAPHS=1`).
 - **G4:** the live trace on, as E4.
+- **G2:** the live trace with `expert_trace_mass` on. Brain Engine 9 then takes 0002's old path: it stops at every layer and never marks the expert picks as graph outputs (0010's `keep_expert_ids` is off with mass). It is slower by design. It is here only for its words.
 
 Every row reads the short prompt, 16K and 32K, except G0 and G4 (short and 32K). The cache is filled the stock way: night 1 found the ranking no faster. 6 GB is left out: it read slowest and wrote no faster than 4 GB.
 
@@ -296,6 +297,6 @@ Every row reads the short prompt, 16K and 32K, except G0 and G4 (short and 32K).
 - Among those, the fastest reading at 32K.
 - A row that writes more than 3% slower than Y0 on any prompt can't win.
 
-**What G0 decides:** if G0 writes within 3% of G4, the live trace's cost is CUDA graphs being turned off. If G0 writes within 3% of Y0, it isn't. If G0 writes the same words as Y0, the word change under the trace comes from somewhere other than the replay.
+**What G0 decides:** if G0 writes within 3% of G4, the live trace's cost is CUDA graphs being turned off. If G0 writes within 3% of Y0, it isn't. If G0 writes the same words as Y0, the word change under the trace comes from somewhere other than the replay. If G2 writes the same words as Y0 while G4 doesn't, marking the picks as graph outputs (0010) is what changes the words. If G2's words differ too, the test can't separate the causes, because the mass reads more of each layer.
 
 The runner now joins split nvidia-smi lines, so the card conditions are read from whole lines.
