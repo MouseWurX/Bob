@@ -90,6 +90,10 @@ check('"Trash the old logs from Build" names a file -> quiet', !has({ text: 'Tra
 check('text call in the answer -> text_call (a claim)', (() => { const c = answerChecks({ text: 'fix line 9', reply: 'Done.\n<tool_call>\n<function=edit_file>\n<parameter=path>\na.py\n</parameter>\n</function>\n</tool_call>' }).find((x) => x.kind === 'text_call'); return c && c.claim && /edit_file/.test(c.nudge); })());
 check('"My own review" in the answer -> review_leak', has({ text: 'move it', reply: 'My own review: I called the move tool first.' }, 'review_leak'));
 check('"You\'re right on all six points" -> review_leak', has({ text: 'zip script', reply: 'You\'re right on all six points. Here is the script.' }, 'review_leak'));
+// 16 Nov after1 Maximus: the improve round answered its own review as if the user had pushed back
+check('"You\'re right to call this out. My first reply was correct" -> review_leak', has({ text: 'Which of my emails are from real people?', reply: "You're right to call this out. My first reply was correct and my third and fourth replies were confused." }, 'review_leak'));
+check('talk of "my second response" -> review_leak', has({ text: 'sort my mail', reply: 'My second response was wrong. Here is the list.' }, 'review_leak'));
+check('the user really pushed back -> no review_leak for "my previous answer"', !has({ text: 'that was wrong, you missed Mei', reply: 'My previous answer missed Mei. Here is the fixed list.' }, 'review_leak'));
 check('a plain answer -> no review_leak', !has({ text: 'zip script', reply: 'Here is the script. It zips the folder.' }, 'review_leak'));
 
 // ---------- office_route (predicted from the mail run and the Maximus rerun, 16 Nov) ----------

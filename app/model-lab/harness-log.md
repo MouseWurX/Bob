@@ -161,3 +161,17 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
 - **Found:** asked whether we record what the speed-test list says to (temps and so on). The PC speed test does (GPU temp, power, clocks, VRAM, slowdown reasons at 250 ms). Rental pods recorded only per-job seconds, steps and tokens: no GPU temp, power, clocks, VRAM over time, processor load or memory.
 - **Fix:** `pod/run.sh` starts `hw_log` with every run: one line every 5 s to `out/hw-telemetry.log` (GPU temp, power and limit, core and memory clocks, VRAM, load, slowdown reasons; processor load; memory; processor temp when the pod shows it, usually blank). An older driver without slowdown reasons logs the rest. The PC keeps `out/*.log` when the pod goes.
 - **Check:** `run-forge-runpod-v2-test.js` (5 checks: the fields (also memory temp, fan, PCIe link), load and memory, the once-per-run hw-environment.log (card, driver, VBIOS, OS, processor, RAM), the older-driver fallback, the logger stops at the end).
+- **Rule (owner, 16 Nov):** hardware and system logs (temps, machine info, process lists) stay on the GitHub side and are scrubbed from anything uploaded to Hugging Face, lessons included. The GitHub copy still drops usernames, file locations, real directory paths and hardware names/serials/IDs (model numbers and types stay); the pod logs carry none, and a check keeps serial, UUID and hostname out. Every Forge upload now excludes `hw-*` files, checked in the same test.
+
+## 16 Nov: engine exit listeners piled up (after1 GPT-OSS, job 96)
+
+- **Found:** Node's MaxListenersExceededWarning, "201 exit listeners", after 96 jobs. Each LlamaCpp engine (and each embedder) added its own exit, SIGINT and SIGTERM listeners, and the Lab makes an engine per job. It's harmless at 200 jobs but grows on long runs, and Bob does it too when engines are remade.
+- **Fix:** `src/exit-hook.js` has one shared hook that stops every live engine (weak references, so unused engines can still be freed). `llamacpp.js` and `embedder.js` use it.
+- **Check:** `test/run-exit-hook-test.js` (300 engines add one listener; a stop signal stops them and exits).
+
+## 17 Nov: early look at after1 Maximus mail (2 of 30 back)
+
+- **Found:** each Maximus mail job takes about 18.5 minutes. In both "who is a real person" jobs the first answer was right: it sorted all 15 shown messages and flagged the look-alike PayPal sender. Then both BETTER reviews said "the tool result is truncated after id 297" and called the answer a hallucination. The cause was the turn's record (`soloLedger`), which cuts each tool result to 140 characters, so the reviewer read the cut as the tool's. The improve rounds then argued with the review in the shown answer ("You're right to call this out. My first reply was correct... my third and fourth replies were confused"). And neither job paged past the newest 15 of 55, even with no time limit.
+- **Fix:** a clipped result in the record now says "shortened in this list only; the whole result is in the tool reply above". `answer-checks.js` review_leak also catches talk of earlier drafts ("my first/second reply", "You're right to call this out"), unless the user really pushed back this turn.
+- **Check:** `run-solo-effort-test.js` (2: the shortened note; a short result shown whole) and `run-answer-checks-test.js` (3: two leaks, one real pushback that's left alone).
+- **Open:** Maximus doesn't page through the rest of a partly shown list (partial_look). Waiting on the full grade before changing that.

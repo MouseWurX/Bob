@@ -58,6 +58,7 @@ publish_dir() {   # <local dir> <repo> <what> <model|dataset> <path in repo> [in
   # Hugging Face takes files up to 50 GB. A bigger GGUF goes up in parts (llama-gguf-split, 45 GB each, name-00001-of-0000N.gguf,
   # which llama.cpp and Bob's Lab read as one brain); the whole file stays on the volume and the parts are deleted after the upload.
   local EXC=() SPLITS=() SPLIT=$S/llama.cpp/build/bin/llama-gguf-split f
+  EXC+=(--exclude "hw-*" --exclude "*/hw-*")   # 16 Nov rule: the hardware and machine logs never go to Hugging Face; they stay with the lab results on GitHub
   for f in "$D"/*.gguf; do
     [ -f "$f" ] || continue; [[ "$(basename "$f")" =~ -[0-9]{5}-of-[0-9]{5}\.gguf$ ]] && continue
     [ "$(stat -c %s "$f")" -gt 49000000000 ] || continue
