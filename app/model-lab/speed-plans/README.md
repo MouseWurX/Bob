@@ -21,4 +21,4 @@ starts.
   to find the biggest pair that doesn't spill into RAM (Addendum 21).
 - `calibrate-sweep.json`: the copy cache at step 4096 from 4096 down to 3584 MB by 128 MB, and at steps 5120 and 6144
   from 4096 down to 2048 MB by 512 MB: 15 setups, 1 round (Addendum 22). Takes the engine's own staging buffer off before judging a spill.
-- `calibrate-shortlist.json`: eight setups (six from the sweep, plus step 6144 at 5 and 6 GB), 3 rounds, with the Claude app closed (Addendum 23).
+- `calibrate-shortlist.json`: head to head: step 4096 + 4 GB against step 6144 + 3.5 GB, 5 rounds, with the Claude app closed (Addendum 23).

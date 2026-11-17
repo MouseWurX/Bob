@@ -433,6 +433,10 @@ interleaved, with the Claude app closed on the test PC.
 **Predictions, written before any run:** step 6144 reads 32K at least 10% faster than step 4096 at 4096 MB. Step 4096
 at 4096 MB writes 32K at least 5% faster than every step-5120 and step-6144 setup. No setup is judged a spill. Step 6144 at 5120 and 6144 MB writes no faster than at 4096 MB (as at steps 2048 and 4096 this morning).
 
+**Cut down before any run (the owner's two favourites):** only step 4096 at 4096 MB and step 6144 at 3584 MB, **5 rounds**
+(10 loads), interleaved, with the Claude app and Bob closed. The predictions above that name these two still stand;
+the others fall away with their rows.
+
 **What it decides:** nothing by itself. Calibrate's coding pick moves off step 4096 with 4 GB only if a setup reads
 32K faster and writes within 10% of the fastest writer on every prompt, the same rule Calibrate uses.
 
