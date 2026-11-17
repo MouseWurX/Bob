@@ -118,3 +118,49 @@ with the biggest cache: **missed** (no clear order). No row judged a spill: **he
 **Seen:** bigger steps read faster (6144 best on 16K and 32K); smaller caches write slower on 32K, 2 GB the worst.
 The first setup of each step read the start prompt slowly (2460 to 2714), most likely the first load warming up.
 Writing was lower everywhere than this morning's 5-run medians. Next: the shortlist (Addendum 23).
+
+## Cube fix on Brain Engine 11 (Addendum 19 rerun): complete, 25 loads, 1 to 1:23 PM Mountain
+
+brain-engine-11b12359 (0021 fixed), installed as Brain Engine 9's files with the zip laid over them, in the speed-test
+folder only. Every load ran; FT (trace + cache), which stopped Brain Engine 10 in round 1, ran clean every time.
+Medians of 5, first word s / read / write. The Claude app was opened for a moment in round 3 (Y0 or U0); free RAM
+there (3.6 to 4.3 GB) was within the other rounds' range (3.0 to 4.6 GB), so no run is dropped.
+
+| Row | Start | 32K |
+|---|---|---|
+| Y0 (plain) | 3.37 / 1157 / 91.6 | 26.4 / 1245 / 81.1 |
+| U0 (fusion off) | 3.35 / 1162 / 82.9 | 26.7 / 1231 / 74.1 |
+| T1 (trace) | 3.31 / 1178 / 87.9 | 26.2 / 1255 / 77.9 |
+| F4c (4 GB cache) | 2.07 / 1878 / 110.1 | 14.1 / 2330 / 96.7 |
+| FT (cache + trace) | 2.05 / 1898 / 108.1 | 14.2 / 2313 / 95.7 |
+
+- Trace cost without the cache (T1 against Y0): writing -4.0% start, -3.9% 32K; reading +1.9%, +0.8%. **Misses** the
+  within-2% rule.
+- Trace cost with the cache (FT against F4c): writing -1.8%, -1.0%; reading +1.1%, -0.7%. **Within 2%.**
+- Same words: T1 wrote Y0's answers on both prompts, FT wrote F4c's. **The trace no longer changes the words.** U0
+  (fusion off) wrote different answers, as before.
+
+## Head to head (Addendum 23, cut down): step 4096 + 4096 MB against step 6144 + 3584 MB, Brain Engine 11
+
+5 rounds each, 10 loads, the Claude app and Bob closed, none failed; every row within about 3% min to max.
+Median (min to max).
+
+| | Step 4096 + 4096 MB | Step 6144 + 3584 MB |
+|---|---|---|
+| Start: first word / done s | 1.5 / 4.5 | 1.5 / 4.6 |
+| Start: read / write | 2666 (2586-2729) / 99.3 (98.7-100.8) | 2671 (2567-2696) / 95.2 (95.1-96.0) |
+| 16K: first word / done s | 4.9 / 8.0 | 4.2 / 8.2 |
+| 16K: read / write | 3401 (3374-3426) / 95.2 (94.4-96.1) | 3933 (3823-3952) / 76.6 (74.1-77.0) |
+| 32K: first word / done s | 9.7 / 12.9 | 8.4 / 11.8 |
+| 32K: read / write | 3377 (3340-3383) / 94.5 (94.3-95.4) | 3902 (3821-3914) / 88.5 (88.0-88.7) |
+| Free RAM | 3.5-4.0 GB | 3.2-3.7 GB |
+
+On the start prompt both wrote the same answer in all 10 runs, so that writing comparison is like for like: step
+4096 wrote 4.3% faster. On 16K and 32K the answers differed.
+
+**Predictions (Addendum 23):** step 6144 reads 32K at least 10% faster than step 4096: **held** (+15.5%). Step 4096
+writes 32K at least 5% faster: **held** (+6.8%). No spill: **held**.
+
+**Decision:** Calibrate's rule (fastest reader within 10% of the top writer on every prompt) keeps step 4096 + 4 GB:
+step 6144 + 3.5 GB writes 19.5% slower at 16K. Step 6144 + 3.5 GB answers 32K about 1.1 s sooner. The owner called
+it a trade-off; the coding pick stays step 4096 + 4 GB.
