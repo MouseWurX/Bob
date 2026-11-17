@@ -168,6 +168,12 @@ Then run `engine/try-newer.sh <tag>`. Every patch must go on, and the Linux buil
 - **Re-check on rebase:** if the build stops at the `static_assert`, llama.cpp added a step: add it at the END of `bob_wire_ops`. A dropped step becomes -1 in place. If `rpc_tensor` or any message struct changes, or an op's `op_params` layout changes, the wire is really different: then raise `BOB_WIRE_MAJOR` and say so in the release note.
 - **Tests:** `engine/tests/rpc-any-version.sh <old bin> <new bin> <gguf>` runs a brain with every layer on a lent card in all four pairings (old/new lender, old/new borrower) and checks the text matches a local run word for word. Nov 15 2026: all four matched on a tiny llama brain (CPU builds, Linux).
 
+### 0015-prompt-odds: score the prompt itself
+- **Turned on by:** `--prompt-odds-max N` on the server (default 0: requests asking for it are refused), then `"prompt_odds": K` (top K, 0 to 128) and optionally `"prompt_odds_from": i` on a request.
+- **Upstream files:** `common/arg.cpp`, `common/common.h`; `tools/server/server-context.cpp`, `server-schema.cpp`, `server-task.{h,cpp}`.
+- **What it does:** for every prompt token from `prompt_odds_from` on, the final result carries the log-probability the brain gave that token after reading the ones before it, and the K tokens it would have picked there (`prompt_odds`: from, n, k, ids, own, top_ids, top). Teacher-forced scoring for distillation and perplexity. It keeps room for N more outputs (N x vocabulary x 4 bytes on the card and in memory), so it costs memory only when the server is started with it.
+- **Note:** it was in Brain Engine 9's build but missing from this folder until Nov 17; the copy here is byte-identical to the one Brain Engine 9 and 10 were built with.
+
 ### 0016-moe-cache-ranking: the expert cache filled at load
 - **Environment keys (both off unless set):** `LLAMA_MOE_CACHE_RANKING=<path of a ranking file>` (a FILE PATH, not a number or a random seed) and `LLAMA_MOE_CACHE_LOG_EVERY=<N cache updates>`.
 - **Upstream files:** `src/llama-moe-cache.cpp` only.
