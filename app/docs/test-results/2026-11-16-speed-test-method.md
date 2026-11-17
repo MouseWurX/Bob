@@ -344,6 +344,12 @@ settings, on the start prompt and 32K, 5 rounds (20 loads), same brain and base 
 in all their runs, and each traced row's median writing speed is within 2% of its untraced pair. If the words match
 but the speed is more than 2% behind, the words are fixed and the speed isn't. If the words differ, the fix failed,
 whatever the speed.
+
+**Amendment to addendum 19 (Nov 17, before the run):** the builder can't check on a card that the fused top-k kernel
+still runs with the trace on, so the run checks it. Row **U0** is Y0 with `GGML_CUDA_DISABLE_FUSION=1` (25 loads now).
+If U0's words differ from Y0's and T1's match Y0's, T1 kept the fusion. If U0's words match Y0's, the words can't tell,
+and the speed decides: T1 must be within 2% of Y0 and U0 measurably slower. Either way, U0 is reported, not judged.
+
 ## Addendum 20 (Nov 17, after the cube fix, before this run): bigger caches and bigger reading steps
 
 The calibration tried the copy cache at 1, 2 and 4 GB, and 4 GB was the only size that helped at every prompt, so where it peaks is unknown. The owner asked for more than 4 GB, and for reading steps of 5K and 6K. `speed-plans/calibrate-bigger.json`: same brain, prompts and base settings as the calibration, on Brain Engine 10 (Brain Engine 9 with the expert tiers, 0020, and the cube fix, 0021, both off unless asked; the cube-fix run, Addendum 19, checks that 0021 changes no speed or words), 11 rows, **5 rounds** (55 loads), interleaved.
@@ -359,7 +365,7 @@ The calibration tried the copy cache at 1, 2 and 4 GB, and 4 GB was the only siz
 
 All caches are the copy kind (`--moe-cache-cpu-share 0`). At the owner's ask ("if 4 doesn't load and 2 does, maybe 3 would be a sweet spot?"), S5k4c and S6k4c step down to 3 GB, then 2 GB, when the load doesn't start or a run fails (out of memory or a spill). Each load records the size it ran with and the sizes that failed, and the results page lists them. A stepped-down load is reported under its own row with its size, never mixed silently with 4 GB loads.
 
-It runs right after the cube-fix run (Addendum 19), from the same double-click, on the same engine file. It writes to its own results folder and has its own rules. Neither run's results decide anything in the other.
+It runs right after the cube-fix run (Addendum 19, with U0: 25 loads), from the same double-click, on the same engine file. It writes to its own results folder and has its own rules. Neither run's results decide anything in the other.
 
 **Safety and failures:** each load is skipped if the card has under 14,000 MB free before it starts (something else is using it), written down as not run. On Windows the driver can put card memory in RAM when the card is full. So the runner reads shared GPU memory before each load and after each timed run, and a rise of more than 512 MB marks that run failed as a spill. A load that doesn't start, a run that runs out of memory and a spill are all failures. They are reported as failures and never counted as slow runs. Gaming, the stop file and the test lock work as before.
 
