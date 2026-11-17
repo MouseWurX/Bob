@@ -561,3 +561,19 @@ rows, and S6k3584 writes no faster than S6k0 there. Free RAM stays above 1 GB.
 
 **What it decides:** how Calibrate sizes the cache by context at load, and whether a cached setup is worth it at 128K
 and 256K.
+
+## Addendum 30 (Nov 17, before any run): whole layers in the cache while reading
+
+Brain Engine 15 (pre-release brain-engine-15b12359, patch 0024). During a read chunk bigger than N tokens
+(`LLAMA_MOE_CACHE_READ_LAYERS=N`), it fills the cache's banks with about 7 whole layers' experts, so those layers read
+from the card. It puts the hot experts back before writing. The switch is per chunk, so `-b` is set above N. Plan
+`read-layout.json`, 3 rounds, start and 32K, answers saved. Rows: X4096 (baseline), R1 (`-b 8192 -ub 4096`, 4 GB,
+N = 4096), R0 (the same with N unset, to separate `-b 8192` from the layout), and S6k0 (no cache) as the reference. The
+engine logs are searched for "read layout:" (about 7 layers, and the time it took), "hot experts back after the read
+layout", and any abort with "selected in the same split as their MoE cache lookup".
+
+**Predictions, written before any run:** R1 reads 32K at least 10% faster than R0, and its first word is at least 0.5 s
+sooner. R1 writes within 2% of R0. On start, R1 does not switch and gives R0's words. No aborts. The engine thread
+warns the gain may be small: it uploads about the same bytes as reading through the cache.
+
+**What it decides:** whether the read layout goes into Calibrate's tries for long prompts. It stays off by default.
