@@ -244,3 +244,28 @@ F4c, start prompt, read t/s by round: Brain Engine 10 1639 / 2290 / 1903, Brain 
 was 109 to 112 on both, and all 6 runs wrote the same answer. Predictions: within 3% of each other **missed**, but in the
 opposite direction (Brain Engine 12's median is higher). Round 1 slowest for both **missed**. **Decided:** the first read
 after a load swings by up to about 0.7 s on either engine. The earlier drop was this swing, not 0021.
+
+## Refilling the lent cache behind the writing on Brain Engine 14 (Addendum 27): 18 loads, 4:07 to 4:19 PM Mountain
+
+Medians of 3, first word s / read / write:
+
+| Row | Start | 32K |
+|---|---|---|
+| S6k0 (no cache) | 0.89 / 4408 / 82.1 | 7.00 / 4715 / 74.4 |
+| L1 (lending) | 1.17 / 3325 / 109.0 | 8.54 / 3859 / 92.8 |
+| B8 | 1.46 / 2682 / 97.7 | 8.66 / 3805 / 87.6 |
+| B24 | 1.16 / 3376 / 108.9 | 8.60 / 3830 / 74.4 |
+| B64 | 1.14 / 3414 / 109.1 | 8.52 / 3868 / 70.4 |
+| S6k3584 | 1.15 / 3394 / 104.6 | 8.42 / 3913 / 88.2 |
+
+Every load ran. Waited for the refill: 0.0 ms everywhere. Behind uploads took 272 to 366 ms. Each row wrote the same
+words in all 3 rounds. At 32K, L1 matches S6k3584's words and each B row has its own.
+
+Predictions: B24's and B64's first word within 2% of S6k3584's: B64 **held** (+1.2%), B24 **missed** (+2.1%).
+B8 waits for part of the refill **missed** (0 ms). Writing at or above L1's **missed** for every B row. Same words every
+round **held**. Some start runs (L1, B8, S6k3584) were throttled more than once and should be rerun by the method.
+
+**Why it lost:** while the cache is out, the layers are still laid out for a 4 GB cache, so the first K words run at
+about 37 tokens/s. L1's own refill already comes after the first word. **Decision:** 0023 stays off. No cache (S6k0) is
+confirmed over 3 rounds: it is the quickest to the first word and finishes a 300-token answer in about 11.0 s, against
+about 11.8 s for L1 and S6k3584. The next engine step (0024) fills the lent cache with whole layers while reading.
