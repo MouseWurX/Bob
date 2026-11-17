@@ -153,6 +153,7 @@ check('...and not after the one more go was used', !turn({}, 'I\'ve noted that y
   check('a reply typed in the chat with no saved draft -> draft_unsaved, naming the id it read', d && /reply_to 289/.test(d.nudge), d?.nudge);
   check('a saved draft -> quiet', !has({ text: ask, reply: 'Saved in Drafts, not sent.', actions: [readIt, act('manage_email', { action: 'draft', reply_to: 289, text: 'x' }, 'Saved a draft to wren')], usable: mailOn }, 'draft_unsaved'));
   check('a refused draft explained honestly -> quiet', !has({ text: ask, reply: "I can't draft a reply to that one: it looks dangerous.", actions: [], usable: mailOn }, 'draft_unsaved'));
+  check('"reply to Wren\'s email" fires through the possessive, with no name built in', has({ text: "Reply to Wren's email and say yes to Saturday.", reply: 'Hi Wren, yes to Saturday!', actions: [], usable: mailOn }, 'draft_unsaved') && !/wren/i.test(fs.readFileSync(fileURLToPath(new URL('../src/answer-checks.js', import.meta.url)), 'utf8').match(/const DRAFT_ASK = .*/)[0]));
   check('no mail tools -> quiet', !has({ text: ask, reply: 'Hi Wren, lemon buns please.', actions: [], usable: () => false }, 'draft_unsaved'));
 }
 
