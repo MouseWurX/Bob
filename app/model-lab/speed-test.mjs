@@ -188,6 +188,15 @@ export async function runRow({ plan, prompts, row, round, fx }) {
   if (!args.some((a) => ['-lv', '--verbosity', '--log-verbosity', '-v', '--verbose', '--log-verbose'].includes(a))) args.push('-lv', '4');
   const env = { ...(eng.env || {}), ...(row.env || {}) };
   const out = { round, row: row.id, engine: row.engine, cmd: [eng.exe, ...args].join(' '), env: Object.keys(env), runs: [] };
+  // plan.coolDown {cardC, maxWaitS}: before each load, wait for the card to cool to cardC (laptops), so a hot row
+  // never hands its heat to the next one. The wait and the start temperature are recorded, never hidden.
+  if (plan.coolDown && fx.cardTempC) {
+    const want = plan.coolDown.cardC ?? 60, most = plan.coolDown.maxWaitS ?? 300, step = plan.coolDown.everyS ?? 5;
+    let t = await fx.cardTempC(), waited = 0;
+    const startC = t;
+    while (Number.isFinite(t) && t > want && waited < most && !fx.shouldStop()) { await fx.sleep(step * 1000); waited += step; t = await fx.cardTempC(); }
+    out.coolDown = { startC, endC: t, waitedS: waited, hitLimit: Number.isFinite(t) && t > want };
+  }
   out.sysBefore = await fx.system?.(); // processor and RAM, CPU temperature if Windows gives it, top processes; before the load
   const srv = await fx.start(eng.exe, args, env);
   try {
@@ -272,6 +281,15 @@ export function summarise(results, { prompts = {}, plan = {} } = {}) {
   if (hwNotes.length) lines.push('', `Processor temperature notes: ${hwNotes.join('; ')}.`);
   const temps = results.map((x) => x.sysBefore?.cpuTempC).filter(Number.isFinite);
   if (results.some((x) => x.sysBefore)) lines.push('', temps.length ? `Processor temperature before each load (ACPI thermal zone): ${r1(median(temps))} °C median (${r1(Math.min(...temps))} to ${r1(Math.max(...temps))}).` : (results.some((x) => (x.runs || []).some((r) => Number.isFinite(r.cpu?.cpuMaxC))) ? 'Before each load, Windows itself reports no processor temperature here; the per-run figures above come from HWiNFO.' : 'Processor temperature: not reported by Windows on this PC, and no HWiNFO log was given.'));
+  // How much of each run the card spent slowed by heat or its power cap (laptops): share of the 250 ms samples.
+  const share = (x) => (x.card?.samples ? (100 * (x.card.throttledSamples || 0)) / x.card.samples : null);
+  const slowed = [...by.values()].filter((g) => g.runs.some((x) => share(x) > 0));
+  if (slowed.length) {
+    lines.push('', 'Time the card spent throttled (share of samples, median with min and max; then the writing speed of the least and most throttled run):', '', '| Row | Prompt | Throttled % | Writing t/s, least throttled | Writing t/s, most throttled |', '|---|---|---|---|---|');
+    for (const g of slowed) { const ok = g.runs.filter((x) => !x.failed && share(x) !== null).sort((a, b) => share(a) - share(b)); lines.push(`| ${g.row} | ${g.prompt} | ${mm(ok.map(share))} | ${r1(ok[0]?.writeTps)} | ${r1(ok[ok.length - 1]?.writeTps)} |`); }
+  }
+  const cools = results.map((x) => x.coolDown).filter(Boolean);
+  if (cools.length) { const w = cools.map((c) => c.waitedS); lines.push('', `Cool-down before each load (to ${plan.coolDown?.cardC ?? 60} °C): waited ${r1(median(w))} s median (${r1(Math.min(...w))} to ${r1(Math.max(...w))}); card ${r1(median(cools.map((c) => c.startC).filter(Number.isFinite)))} °C median at the start; ${cools.filter((c) => c.hitLimit).length} of ${cools.length} loads started above the target after the longest wait.`); }
   const twice = [...by.values()].filter((g) => g.runs.filter((x) => x.throttled).length > 1).map((g) => `${g.row}/${g.prompt}`);
   if (twice.length) lines.push('', `More than one throttled run (to be run again, both sets published, per the method): ${twice.join(', ')}.`);
   const cache = results.filter((x) => x.cache?.small || x.load?.refused);
@@ -318,6 +336,8 @@ function realFx(plan, outDir) {
     async template(url, chat) { const r = await fetch(url + '/apply-template', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: chat.messages, tools: chat.tools, chat_template_kwargs: { enable_thinking: false } }) }); if (!r.ok) throw new Error(`apply-template ${r.status}`); return (await r.json()).prompt; },
     async tokenize(url, content) { const r = await fetch(url + '/tokenize', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content }) }); return (await r.json()).tokens || []; },
     async detokenize(url, tokens) { const r = await fetch(url + '/detokenize', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tokens }) }); return (await r.json()).content || ''; },
+    async cardTempC() { return new Promise((r) => { let o = ''; try { const c = nodeSpawn('nvidia-smi', ['--query-gpu=temperature.gpu', '--format=csv,noheader,nounits'], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }); c.on('error', () => r(null)); c.stdout.on('data', (d) => { o += d; }); c.on('exit', () => { const n = parseFloat(o); r(Number.isFinite(n) ? n : null); }); } catch { r(null); } }); },
+    sleep(ms) { return new Promise((r) => setTimeout(r, ms)); },
     sampleCard() {
       const samples = [];
       let smi = null;

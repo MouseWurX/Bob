@@ -137,6 +137,21 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   const md = summarise([res], { prompts: {}, plan });
   check('the summary has a conditions table and the processor temperature line', /Conditions during the timed runs/.test(md) && /Processor temperature before each load/.test(md)); }
 
+// ---------- Laptops: cool-down before each load, time spent throttled (fakes: no real card is read) ----------
+{ const { prompts } = loadPlan(planFile); const temps = [78, 71, 64, 58]; const slept = [];
+  const f = { ...fx(), cardTempC: async () => temps.shift() ?? 58, sleep: async (ms) => { slept.push(ms); } };
+  const res = await runRow({ plan: { ...plan, coolDown: { cardC: 60, maxWaitS: 60, everyS: 5 } }, prompts, row: plan.rows[1], round: 0, fx: f });
+  check('a hot card is waited on before the load, and the wait is recorded', res.coolDown?.startC === 78 && res.coolDown.endC === 58 && res.coolDown.waitedS === 15 && !res.coolDown.hitLimit && slept.length === 3);
+  const g = { ...fx(), cardTempC: async () => 90, sleep: async () => {} };
+  const hot = await runRow({ plan: { ...plan, coolDown: { cardC: 60, maxWaitS: 10, everyS: 5 } }, prompts, row: plan.rows[1], round: 0, fx: g });
+  check('a card that never cools still runs after the longest wait, and says so', hot.coolDown.waitedS === 10 && hot.coolDown.hitLimit && hot.runs.length > 0);
+  const none = await runRow({ plan, prompts, row: plan.rows[1], round: 0, fx: f });
+  check('no cool-down unless the plan asks for one', none.coolDown === undefined);
+  const mk = (w, thr) => ({ prompt: 'short', writeTps: w, firstWordMs: 1, readTps: 1, gaps: {}, card: { samples: 100, throttledSamples: thr }, throttled: thr > 0 });
+  const md = summarise([{ row: 'L', round: 0, runs: [mk(30, 0)], coolDown: res.coolDown }, { row: 'L', round: 1, runs: [mk(22, 40)], coolDown: hot.coolDown }], { prompts: {}, plan: { coolDown: { cardC: 60 } } });
+  check('the summary shows the time spent throttled and the writing speed least and most throttled', /\| L \| short \| 20 \(0 to 40\) \| 30 \| 22 \|/.test(md));
+  check('the summary shows the cool-down waits and loads that started hot', /Cool-down before each load \(to 60 °C\)/.test(md) && /1 of 2 loads started above the target/.test(md)); }
+
 { const header = '"Date","Time","Core VIDs (avg) [V]","CPU (Tctl/Tdie) [°C]","CPU Die (average) [°C]","CPU Package Power [W]"';
   check('HWiNFO columns are found by name', hwinfoColumns(header).temp === 3 && hwinfoColumns(header).power === 5);
   const r = parseHwinfo(header, ['"16.11.2026","23:10:01.1","1.1","71.5","66","88.2"', '"16.11.2026","23:10:02.1","1.1","74.0","68","91.0"', '', header]);

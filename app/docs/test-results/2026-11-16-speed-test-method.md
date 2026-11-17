@@ -239,3 +239,17 @@ Windows reports no processor temperature on the PC (checked: the ACPI thermal zo
 - the peak CPU Package Power.
 
 Columns are found by name, and a comma decimal is read too. If the log is missing or has no new lines, the results say so for that run.
+
+## Addendum 14 (Nov 16, before any laptop run): the laptop plan, heat and throttling
+
+The owner expects the laptop (6 GB card) to throttle from heat. `speed-plans/laptop.json` has 6 rows, 30 loads, on the brain Bob picks for a 6 GB card (Qwen3 4B, which fits on the card whole, so the card works hardest):
+- P1 (plain llama.cpp, Bob's settings) and N0 (Brain Engine 9, nothing new).
+- R2048 and R4096: Reading speed Faster and Fastest.
+- N3: brain locked in memory.
+- SOAK: Brain Engine 9 writing 6,000 words in one go on the short prompt, to show what sustained heat does to writing speed.
+
+Every row reads the short prompt, 16K and 32K (context 36,864), except SOAK. Two things are added to the runner for this, and work on any machine:
+- **Cool-down before each load** (`coolDown` in the plan): the runner waits until the card is at or below 60 °C, checking every 5 seconds, for at most 5 minutes. Without it, a hot row hands its heat to the next one and the rows aren't compared fairly. The wait, the start temperature and any load that started above 60 °C after the longest wait are recorded and shown in the summary.
+- **Time spent throttled**: for every run, the share of the 250 ms card samples in which the card slowed itself (heat or power cap), with the writing speed of the least and most throttled run of each row. Throttled runs are kept, as before.
+
+The cool-down makes the rows fair to each other. SOAK shows the throttling anyone would see in real use. If the laptop runs on battery, the results say so; the owner is asked to plug it in. The summary-so-far.md table fills in between loads, as on the PC.
