@@ -304,8 +304,13 @@ async function runRowOnce({ plan, prompts, row, round, fx }) {
       if (Number.isFinite(spill0)) {
         const now = await fx.sharedGpuMB();
         const rise = Number.isFinite(now) ? now - spill0 : null;
-        r = { ...r, sharedRiseMB: rise };
-        if (rise > (plan.spillMB ?? 512) && !r.failed) r.failed = `spilled: shared GPU memory rose ${rise} MB during the load (card memory put in RAM)`;
+        // Nov 17 (npc engine logs): the engine pins a RAM staging buffer for the card sized to the reading step
+        // ("CUDA_Host compute buffer", -ub / 8 MiB: 512 MiB at 4096), and Windows counts it as shared GPU memory.
+        // It is not a spill, so with plan.spillMinusStep the rise past that buffer is what's judged.
+        const ub = Number(args[args.lastIndexOf('-ub') + 1]) || 512;
+        const own = plan.spillMinusStep ? Math.round(ub / 8) : 0;
+        r = { ...r, sharedRiseMB: rise, ...(own ? { stagingMB: own } : {}) };
+        if (rise - own > (plan.spillMB ?? 512) && !r.failed) r.failed = `spilled: shared GPU memory rose ${rise} MB during the load${own ? ` (${own} MB of it the engine's own staging buffer)` : ''} (card memory put in RAM)`;
       }
       out.runs.push({ prompt: p, ...r, ...(proc ? { cpu: proc } : {}), ...(disk ? { disk } : {}), card: cardSummary(samples), throttled: samples.some((x) => x?.throttled), cardSamples: samples });
     }

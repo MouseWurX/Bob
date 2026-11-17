@@ -17,5 +17,7 @@ starts.
 - `calibrate-bigger.json`: the copy cache at 5 and 6 GB, and reading steps 5120 and 6144 with the biggest cache that runs (5, 4, 3, then 2 GB), beside
   Y0, F4c and X4c (Addendum 20). Skips a load when the card isn't nearly free, and fails a run that spills card
   memory into RAM.
-- `calibrate-between.json`: step 4096 with 3 and 3.5 GB caches, and step 3072 with 3.5 and 4 GB, beside F4c and X4c,
+- `calibrate-between.json` (withdrawn, never run): step 4096 with 3 and 3.5 GB caches, and step 3072 with 3.5 and 4 GB, beside F4c and X4c,
   to find the biggest pair that doesn't spill into RAM (Addendum 21).
+- `calibrate-sweep.json`: the copy cache at step 4096, from 4096 MB down to 3072 MB in 128 MB steps, 3 rounds
+  (Addendum 22). Takes the engine's own staging buffer off before judging a spill.

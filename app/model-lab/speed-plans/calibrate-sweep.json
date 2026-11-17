@@ -1,0 +1,258 @@
+{
+ "name": "Cache sweep at step 4096: 4096 down to 3072 MB in 128 MB steps (stock Qwen3.6 35B A3B, 16 GB card)",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 22)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be10": {
+   "exe": "${BE10_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "k16": "long-text.md",
+  "k32": "long-text.md"
+ },
+ "promptTokens": {
+  "k16": 16384,
+  "k32": 32768
+ },
+ "question": {
+  "k16": "\n\nIn two sentences, what is this text about?",
+  "k32": "\n\nIn two sentences, what is this text about?"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "-ctk",
+  "q8_0",
+  "-ctv",
+  "q8_0",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "-c",
+  "49152",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 3,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 600000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "rows": [
+  {
+   "id": "X4096",
+   "engine": "be10",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "X3968",
+   "engine": "be10",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "3968",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "X3840",
+   "engine": "be10",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "3840",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "X3712",
+   "engine": "be10",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "3712",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "X3584",
+   "engine": "be10",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "X3456",
+   "engine": "be10",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "3456",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "X3328",
+   "engine": "be10",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "3328",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "X3200",
+   "engine": "be10",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "3200",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "X3072",
+   "engine": "be10",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "3072",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  }
+ ]
+}

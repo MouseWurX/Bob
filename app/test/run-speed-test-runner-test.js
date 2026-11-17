@@ -221,6 +221,15 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   const md = summarise([r3, ok], { prompts: {}, plan });
   check('the summary says which size each load ran with', /\| S \| 1 \| 3072 MiB \| 4096 MiB \(out of memory\) \|/.test(md) && /\| S \| 1 \| 4096 MiB \| - \|/.test(md)); }
 
+// ---------- The engine's own staging buffer isn't a spill (Nov 17) ----------
+{ const { prompts } = loadPlan(planFile);
+  let k = 0; const h = { ...fx(), sharedGpuMB: async () => [1000, 1592][Math.min(k++, 1)] };
+  const x = await runRow({ plan: { ...plan, spillCheck: true, spillMinusStep: true }, prompts, row: { ...plan.rows[1], args: ['-b', '4096', '-ub', '4096'] }, round: 0, fx: h });
+  check('with spillMinusStep, the -ub / 8 MB staging buffer is taken off before judging (step 4096: 592 MB rise passes)', !x.runs[0].failed && x.runs[0].sharedRiseMB === 592 && x.runs[0].stagingMB === 512);
+  let j = 0; const g = { ...fx(), sharedGpuMB: async () => [1000, 2200][Math.min(j++, 1)] };
+  const y = await runRow({ plan: { ...plan, spillCheck: true, spillMinusStep: true }, prompts, row: { ...plan.rows[1], args: ['-b', '4096', '-ub', '4096'] }, round: 0, fx: g });
+  check('a rise well past the staging buffer still fails, and says how much was the buffer', /rose 1200 MB during the load \(512 MB of it the engine's own staging buffer\)/.test(y.runs[0].failed || '')); }
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

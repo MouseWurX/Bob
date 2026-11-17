@@ -394,3 +394,26 @@ and writes within 10% of it. M4c doesn't spill and reads 32K 15 to 30% faster th
 can't win. If two rows are within 3% on what decides, the one with the lower shared-memory rise wins, so more RAM
 stays free. The winning step and size become Calibrate's coding pick on 16 GB cards. Calibrate's own step-down stays
 1 GB until this run says whether 0.5 GB steps matter.
+
+**Addendum 21 withdrawn (Nov 17, before any run):** its premise was a spill, and the "spill" turned out to be the
+engine's own staging buffer (below). It was never run.
+
+## Addendum 22 (Nov 17, after the bigger-caches results, before this run): the cache sweep at step 4096
+
+The engine logs show that what Addendum 20's rule called a spill is the engine's own pinned staging buffer in RAM
+("CUDA_Host compute buffer"), -ub / 8 MiB: 64 at Normal, 256 at 2048, 512 at 4096. That matches the measured rises
+less a fixed 80 MB, at every cache size. The runner now takes that buffer off before judging when the plan sets
+`spillMinusStep`, and Bob's Calibrate judges each try against the same step without a cache.
+
+The owner asked how speed changes as the cache shrinks from 4 GB to 3 GB at step 4096. `speed-plans/calibrate-sweep.json`:
+the same brain, engine, settings and prompts as Addendum 20. 9 rows, X4096 down to X3072 in 128 MB steps,
+**3 rounds** (27 loads), interleaved. This run is a sweep to find a shape: with 3 rounds it is reported as
+exploratory, not final. A finer pass, or 5 rounds around the knee, follows if the shape calls for it.
+
+**Predictions, written before any run:** the cache hit rate falls slowly (less than 1.5 points from 4096 to 3072).
+Writing at 32K falls less than 4% across the sweep, and reading doesn't change by more than 3%. No row is judged a
+spill once the staging buffer is taken off.
+
+**What it decides:** nothing is changed by itself. If a smaller size stays within 2% of X4096 on writing at every
+prompt, it is noted as freeing card room at no cost (Calibrate's coding pick stays at 4 GB unless the owner says
+otherwise).
