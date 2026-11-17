@@ -217,3 +217,30 @@ written words.
 
 **Checked against the head to head:** X4096 and S6k3584 match the Brain Engine 11 head to head within 1 to 4%. For
 example, X4096's 32K first word is 9.9 s against 9.7 s, and S6k3584's 32K writing is 88.4 against 88.5.
+
+## Reading with little or no cache (Addendum 24): 4 loads, 3:40 PM Mountain, Brain Engine 10
+
+Step 6144, 1 round, first word s / read / write:
+
+| Cache | Start | 16K | 32K |
+|---|---|---|---|
+| none | 1.3 / 3039 / 81.3 | 3.5 / 4740 / 74.7 | 7.1 / 4626 / 74.7 |
+| 512 MB | 1.4 / 2879 / 56.5 | 3.8 / 4300 / 52.5 | 7.2 / 4572 / 53.7 |
+| 1 GB | 1.4 / 2849 / 68.9 | 3.8 / 4375 / 60.0 | 7.7 / 4290 / 62.5 |
+| 2 GB | 1.4 / 2798 / 85.1 | 4.0 / 4107 / 68.7 | 8.0 / 4102 / 75.3 |
+
+Predictions: fastest reading at 0 or 512 MB **held** (0 is fastest). Within 5% across all four **missed** (2 GB reads
+32K 11% slower). Writing slowest at 0 **missed**: 512 MB and 1 GB write slower than no cache, and writing only
+recovers at about 2 GB.
+
+With no cache, a 300-token answer to the 32K prompt finishes in about 11.1 s, against about 12.0 s on S6k3584. The
+break-even is about 700 written tokens. Lending (L1, Brain Engine 13) read 32K at 3657, well below no-cache's 4626:
+--fit places layers as if the cache were there, so the memory it lends doesn't bring layers onto the card. One round
+only; to be confirmed.
+
+## First read after a load (Addendum 26): 6 loads, 3:47 PM Mountain
+
+F4c, start prompt, read t/s by round: Brain Engine 10 1639 / 2290 / 1903, Brain Engine 12 2272 / 2212 / 1565. Writing
+was 109 to 112 on both, and all 6 runs wrote the same answer. Predictions: within 3% of each other **missed**, but in the
+opposite direction (Brain Engine 12's median is higher). Round 1 slowest for both **missed**. **Decided:** the first read
+after a load swings by up to about 0.7 s on either engine. The earlier drop was this swing, not 0021.
