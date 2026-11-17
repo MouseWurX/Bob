@@ -113,3 +113,9 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
 - **Fix:** `pod/run.sh` starts `hw_log` with every run: one line every 5 s to `out/hw-telemetry.log` (GPU temp, power and limit, core and memory clocks, VRAM, load, slowdown reasons; processor load; memory; processor temp when the pod shows it, usually blank). An older driver without slowdown reasons logs the rest. The PC keeps `out/*.log` when the pod goes.
 - **Check:** `run-forge-runpod-v2-test.js` (5 checks: the fields (also memory temp, fan, PCIe link), load and memory, the once-per-run hw-environment.log (card, driver, VBIOS, OS, processor, RAM), the older-driver fallback, the logger stops at the end).
 - **Rule (owner, 16 Nov):** hardware and system logs (temps, machine info, process lists) stay on the GitHub side and are scrubbed from anything uploaded to Hugging Face, lessons included. The GitHub copy still drops usernames, file locations, real directory paths and hardware names/serials/IDs (model numbers and types stay); the pod logs carry none, and a check keeps serial, UUID and hostname out. Every Forge upload now excludes `hw-*` files, checked in the same test.
+
+## 16 Nov: engine exit listeners piled up (after1 GPT-OSS, job 96)
+
+- **Found:** Node's MaxListenersExceededWarning, "201 exit listeners", after 96 jobs. Each LlamaCpp engine (and each embedder) added its own exit, SIGINT and SIGTERM listeners, and the Lab makes an engine per job. It's harmless at 200 jobs but grows on long runs, and Bob does it too when engines are remade.
+- **Fix:** `src/exit-hook.js` has one shared hook that stops every live engine (weak references, so unused engines can still be freed). `llamacpp.js` and `embedder.js` use it.
+- **Check:** `test/run-exit-hook-test.js` (300 engines add one listener; a stop signal stops them and exits).

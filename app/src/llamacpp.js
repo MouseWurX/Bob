@@ -19,6 +19,7 @@ import { chatPlacesOn, placesDir, placeFile, tidyPlaces } from './chat-places.js
 import { exeName } from './platform.js';
 import { buildMatches, brainEngineName, brainEngineBuild } from '../public/engine-name.js';
 import { Embedder } from './embedder.js';
+import { stopOnExit } from './exit-hook.js';
 import { ggufInfo } from './gguf.js';
 import { placeArgs } from './brain-place.js';
 import { selfWorkOn } from './self-work.js';
@@ -237,9 +238,7 @@ export class LlamaCpp {
     this.careNotes = [];   // one-line notes for the chat (the brain shows them as announcements)
     this.reloadWanted = new Set(); // 225/228: brains to load fresh before their next job
     this.basePort = this.port;
-    const stop = () => { try { this.child && this.child.kill(); } catch {} };
-    process.on('exit', stop);
-    for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { stop(); process.exit(0); });
+    stopOnExit(this); // 16 Nov: one shared exit hook for every engine (a listener each piled up: 201 after 96 Lab jobs)
   }
 
   // The second server, made the first time something asks for it. Only the main engine has one.

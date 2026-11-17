@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 import { safeSpawn } from './engine-blocked.js'; // 1.5.203: a blocked program comes back as 'error', not a throw
 import { exeName } from './platform.js';
 import { gaming } from './sessions.js';
+import { stopOnExit } from './exit-hook.js'; // 16 Nov: one shared exit hook
 
 export const EMBED_IDLE_MS = 120_000;
 export const EMBED_CTX = 2048; // nomic-embed-text reads up to 2048 tokens in one go
@@ -32,7 +33,7 @@ export class Embedder {
     this.now = () => Date.now();
     this.timer = setInterval(() => { if (this.child && this.now() - this.lastUse > EMBED_IDLE_MS) this.stop(); }, 30_000);
     this.timer.unref?.();
-    process.on('exit', () => { try { this.child?.kill(); } catch {} });
+    stopOnExit(this); // 16 Nov: the shared exit hook (llamacpp.js), not one more listener per embedder
   }
 
   exe() { return this.cfg.llamacpp?.exe || path.join(this.cfg.agentDir, 'llama.cpp', exeName('llama-server')); }
