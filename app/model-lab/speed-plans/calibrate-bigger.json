@@ -1,10 +1,10 @@
 {
  "name": "Bigger: hot-experts copy cache at 5 and 6 GB, reading steps 5120 and 6144 (stock Qwen3.6 35B A3B, 16 GB card)",
- "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 19)",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 20)",
  "brain": "${BRAIN}",
  "engines": {
-  "be9": {
-   "exe": "${BE9_SERVER}"
+  "be10": {
+   "exe": "${BE10_SERVER}"
   }
  },
  "prompts": {
@@ -48,7 +48,7 @@
  "rows": [
   {
    "id": "Y0",
-   "engine": "be9",
+   "engine": "be10",
    "prompts": [
     "start",
     "k16",
@@ -58,7 +58,7 @@
   },
   {
    "id": "F4c",
-   "engine": "be9",
+   "engine": "be10",
    "prompts": [
     "start",
     "k16",
@@ -81,7 +81,7 @@
   },
   {
    "id": "X4c",
-   "engine": "be9",
+   "engine": "be10",
    "prompts": [
     "start",
     "k16",
@@ -104,7 +104,7 @@
   },
   {
    "id": "F5c",
-   "engine": "be9",
+   "engine": "be10",
    "prompts": [
     "start",
     "k16",
@@ -127,7 +127,7 @@
   },
   {
    "id": "F6c",
-   "engine": "be9",
+   "engine": "be10",
    "prompts": [
     "start",
     "k16",
@@ -150,7 +150,7 @@
   },
   {
    "id": "X5c",
-   "engine": "be9",
+   "engine": "be10",
    "prompts": [
     "start",
     "k16",
@@ -173,7 +173,7 @@
   },
   {
    "id": "X6c",
-   "engine": "be9",
+   "engine": "be10",
    "prompts": [
     "start",
     "k16",
@@ -196,7 +196,7 @@
   },
   {
    "id": "S5k2c",
-   "engine": "be9",
+   "engine": "be10",
    "prompts": [
     "start",
     "k16",
@@ -219,7 +219,7 @@
   },
   {
    "id": "S5k4c",
-   "engine": "be9",
+   "engine": "be10",
    "prompts": [
     "start",
     "k16",
@@ -246,7 +246,7 @@
   },
   {
    "id": "S6k2c",
-   "engine": "be9",
+   "engine": "be10",
    "prompts": [
     "start",
     "k16",
@@ -269,7 +269,7 @@
   },
   {
    "id": "S6k4c",
-   "engine": "be9",
+   "engine": "be10",
    "prompts": [
     "start",
     "k16",

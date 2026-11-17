@@ -15,5 +15,5 @@ starts.
   the cloud machine, see the method's Addendum 6). The runner cuts it to exactly 16,384 and 32,768 of the brain's own
   tokens and adds one fixed question.
 - `calibrate-bigger.json`: the copy cache at 5 and 6 GB, and reading steps 5120 and 6144 with 2 and 4 GB caches, beside
-  Y0, F4c and X4c (Addendum 19). Skips a load when the card isn't nearly free, and fails a run that spills card
+  Y0, F4c and X4c (Addendum 20). Skips a load when the card isn't nearly free, and fails a run that spills card
   memory into RAM.

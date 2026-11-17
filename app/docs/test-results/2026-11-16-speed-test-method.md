@@ -330,9 +330,23 @@ The calibration showed that CUDA graphs alone don't change the words (G0) and th
 
 **Decided in advance:** if G2 writes the same words as Y0 on both prompts in all its runs, the fusion break from `ggml_set_output` is the cause and the planned fix is enough. If G2's words differ from Y0, the callback split changes the words too, and the fix must also drop the callback (the planned fix already does). Speed isn't judged here, since G2 stops at every layer.
 
-## Addendum 19 (Nov 17, after the cube check, before this run): bigger caches and bigger reading steps
+## Addendum 19 (Nov 17, after the cube check, before the fix is built or run): the cube fix
 
-The calibration tried the copy cache at 1, 2 and 4 GB, and 4 GB was the only size that helped at every prompt, so where it peaks is unknown. The owner asked for more than 4 GB, and for reading steps of 5K and 6K. `speed-plans/calibrate-bigger.json`: same brain, engine (Brain Engine 9), base settings and prompts as the calibration, 11 rows, **5 rounds** (55 loads), interleaved.
+The cube check found that the callback alone changes the words (G2 differed from Y0 and from G4), so the fix drops
+both: patch 0021 copies each layer's picks into a small kept tensor after the router's fused kernel and reads them
+after each micro-batch, with no eval callback and no `ggml_set_output`. It passes on the processor with the tiny
+made-up brain (`engine/tests/trace-kept.py`). The card is the open question.
+
+`speed-plans/cube-fix.json`, on Brain Engine 10: Y0 (no trace) and T1 (trace) at Normal, F4c and FT (trace) at F4c's
+settings, on the start prompt and 32K, 5 rounds (20 loads), same brain and base settings as the calibration.
+
+**Decided in advance:** the fix works when T1 writes the same words as Y0 and FT the same as F4c, on both prompts
+in all their runs, and each traced row's median writing speed is within 2% of its untraced pair. If the words match
+but the speed is more than 2% behind, the words are fixed and the speed isn't. If the words differ, the fix failed,
+whatever the speed.
+## Addendum 20 (Nov 17, after the cube fix, before this run): bigger caches and bigger reading steps
+
+The calibration tried the copy cache at 1, 2 and 4 GB, and 4 GB was the only size that helped at every prompt, so where it peaks is unknown. The owner asked for more than 4 GB, and for reading steps of 5K and 6K. `speed-plans/calibrate-bigger.json`: same brain, prompts and base settings as the calibration, on Brain Engine 10 (Brain Engine 9 with the expert tiers, 0020, and the cube fix, 0021, both off unless asked; the cube-fix run, Addendum 19, checks that 0021 changes no speed or words), 11 rows, **5 rounds** (55 loads), interleaved.
 
 | Row | Reading step | Copy cache | Why |
 |---|---|---|---|
@@ -344,6 +358,8 @@ The calibration tried the copy cache at 1, 2 and 4 GB, and 4 GB was the only siz
 | S6k2c, S6k4c | 6144 | 2, 4 GB | The same at 6144 |
 
 All caches are the copy kind (`--moe-cache-cpu-share 0`). At the owner's ask ("if 4 doesn't load and 2 does, maybe 3 would be a sweet spot?"), S5k4c and S6k4c step down to 3 GB, then 2 GB, when the load doesn't start or a run fails (out of memory or a spill). Each load records the size it ran with and the sizes that failed, and the results page lists them. A stepped-down load is reported under its own row with its size, never mixed silently with 4 GB loads.
+
+It runs right after the cube-fix run (Addendum 19), from the same double-click, on the same engine file. It writes to its own results folder and has its own rules. Neither run's results decide anything in the other.
 
 **Safety and failures:** each load is skipped if the card has under 14,000 MB free before it starts (something else is using it), written down as not run. On Windows the driver can put card memory in RAM when the card is full. So the runner reads shared GPU memory before each load and after each timed run, and a rise of more than 512 MB marks that run failed as a spill. A load that doesn't start, a run that runs out of memory and a spill are all failures. They are reported as failures and never counted as slow runs. Gaming, the stop file and the test lock work as before.
 
