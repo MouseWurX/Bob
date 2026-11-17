@@ -40,6 +40,21 @@ export const PLAIN = {
   'excel-plain': [[['office_read', { path: F('q3') }]], 'April came to 2,150 (North 1,200, South 950).'],
   'ppt-find': [[['list_folder', { path: 'C:\\Users\\you\\Desktop' }], ['office_read', { path: F('offsite') }]], 'At Alder Lodge, on Fernwater Lake, on 18 and 19 March.'],
   'word-desktop': [[['office_make', { kind: 'writer', path: 'C:\\Users\\you\\Desktop\\Thanks_Neighbour.docx', text: '# Thank you\nThank you so much for watering my plants while I was away.' }]], 'Saved Thanks_Neighbour.docx on your Desktop.'],
+  'excel-sheets': [[['office_read', { path: F('household') }], ['calculate', { expression: '97.45-88.10' }]], 'March 2026 was 97.45 and March 2025 was 88.10, so 9.35 more.'],
+  'excel-formula-read': [[['office_read', { path: F('invoice') }]], 'The total is 50.00.'],
+  'excel-formula-show': [[['office_read', { path: F('invoice'), formulas: true }]], 'The total is =SUM(D2:D4): it adds the three line totals, and each line is quantity times price.'],
+  'excel-formula-edit': [[['office_read', { path: F('invoice') }], ['office_edit', { path: F('invoice'), changes: [{ op: 'set_cells', cells: { B2: 12 } }] }], ['office_read', { path: F('invoice') }]], 'Hinges are 12 now, and the new total is 60.00.'],
+  'word-table': [[['office_read', { path: F('committee') }]], 'The treasurer is Isla Brandt, on 0700 900 222.'],
+  'word-table-edit': [[['office_read', { path: F('committee') }], ['office_edit', { path: F('committee'), changes: [{ op: 'replace', find: '0700 900 111', replace: '0700 900 444' }] }]], "Rowan's number is 0700 900 444 now."],
+  'ppt-retitle': [[['office_read', { path: F('pitch') }], ['office_edit', { path: F('pitch'), changes: [{ op: 'replace', find: 'Why join', replace: 'Why you should join' }] }]], "Slide 2 is called 'Why you should join' now."],
+  'word-append': [[['office_read', { path: F('lease') }], ['office_edit', { path: F('lease'), changes: [{ op: 'append', text: 'Parking: one space, number 7' }] }]], 'Added the parking line at the end.'],
+  'excel-to-pdf': [[['convert_file', { paths: [F('reading')], to: 'pdf' }]], 'Saved Reading_Log.pdf next to the spreadsheet.'],
+  'word-batch-pdf': [[['convert_file', { paths: [F('quote1'), F('quote2')], to: 'pdf' }]], 'Saved Roof_Quote_v1.pdf and Roof_Quote_v2.pdf in Documents.'],
+  'word-old-doc': [[['office_read', { path: F('recipe') }]], 'Smoked paprika, one teaspoon.'],
+  'word-readonly': [[['office_read', { path: F('contract') }], ['office_edit', { path: F('contract'), changes: [{ op: 'replace', find: '31 May 2025', replace: '30 June 2025' }] }]], "The Archive folder is read-only for me, so I didn't change it. I can save a changed copy in Documents if you like."],
+  'word-broken': [[['office_read', { path: F('broken') }]], "Minutes_Oct.docx is damaged, so I can't read who chaired the meeting."],
+  'excel-ambiguous': [[['list_folder', { path: 'C:\\Users\\you\\Documents' }], ['office_read', { path: F('budget') }]], 'Your rent is 1,850 a month, from Budget_2026.xlsx (there is an older 2025 budget too).'],
+  'excel-big': [[['convert_file', { paths: [F('orders')], to: 'csv' }], ['query_data', { file: 'C:\\Users\\you\\Documents\\Orders_2026.csv', action: 'ask', sql: "SELECT count(*), round(sum(Amount), 2) FROM data WHERE City = 'Leeds'" }]], '428 orders came from Leeds, adding up to 195,831.51.'],
   'word-missing': [[['list_folder', { path: 'C:\\Users\\you\\Documents' }]], "I can't find Minutes_September.docx in your Documents."]
 };
 

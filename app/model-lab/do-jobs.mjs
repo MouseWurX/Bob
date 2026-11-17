@@ -70,6 +70,7 @@ import { png as pngFile, pdf as pdfFile } from './scene-files.mjs';
 import { labKey, scrubber, tavilyCheck, tavilyUsage } from './lab-keys.mjs';
 import { fitMail, sortCardAnswer } from './mail-world.mjs';
 import { officeAfter } from './office-jobs.mjs';
+import { buildBytes } from './office-files.mjs';
 
 const o = opts({ parallel: 2, max: 4096, 'job-minutes': 10, hours: 0, 'search-gap': 2 });
 const L = locate(o);
@@ -349,12 +350,16 @@ async function runJob(j) {
   const mw = j.mail ? await fitMail(kit, j.mail) : null;
   // 16 Nov (MouseWurX: test Bob's features "one category at a time. starting with office files"): an office job plants its
   // own made-up files (office-jobs.mjs) and has "Let Bob compare files" on, as a person who asked for it would; 17 Nov: and the calculator, so the
-  // head-maths job (excel-sum-tricky) can show whether the maths check sends sums to calculate
+  // head-maths job (excel-sum-tricky) can show whether the maths check sends sums to calculate, and query_data for the big sheet
   let ow = null;
   if (j.office) {
-    kit.cfg.moreTools = { ...(kit.cfg.moreTools || {}), compareFiles: true, calculator: true };
+    kit.cfg.moreTools = { ...(kit.cfg.moreTools || {}), compareFiles: true, calculator: true, dataQuery: true };
     const want = (j.office.files || []).filter((f) => f && typeof f.path === 'string');
     const put = plantScene(kit, { files: want.map((f) => ({ path: f.path, content: String(f.content ?? ''), ...(f.meta ? { meta: f.meta } : {}) })) }, { day: today });
+    // 17 Nov ("expand the office set"): a file with a build (several sheets, formulas, a table, a big sheet, a broken file)
+    // is made by office-files.mjs over what plantScene wrote; a readOnly folder is one Bob may only read (Settings, Hands)
+    for (const f of want.filter((x) => x.build)) { const r = kit.place(f.path); if (r && fs.existsSync(r)) try { fs.writeFileSync(r, buildBytes(f.build)); } catch (e) { put.skipped.push({ path: f.path, why: `not built: ${String(e.message || e).slice(0, 120)}` }); } }
+    for (const d of [].concat(j.office.readOnly || [])) { const r = kit.allow(d); if (r) kit.cfg.readOnlyRoots = [...(kit.cfg.readOnlyRoots || []), r]; }
     ow = { files: put.files, missing: [...put.skipped.map((x) => `${x.path}: ${x.why}`), ...want.filter((f) => !put.files.some((p) => p.toLowerCase().endsWith(f.path.split('\\').pop().toLowerCase()))).map((f) => f.path)].filter((x, i, a) => a.indexOf(x) === i) };
   }
   brain.cfg.loopHelpOff = false; brain.cfg.toolHelp = true;

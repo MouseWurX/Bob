@@ -27,30 +27,20 @@ export function scoreRun(row) {
   const world = (row.harness || []).map((f) => f.kind);
   const said = String(row.said || '');
   const after = row.office?.after || [];
-  const routeOk = sc.route.some((t) => worked.has(t));
+  const routeOk = sc.route.some((t) => (sc.tried ? used.includes(t) : worked.has(t)));
   if (!routeOk) why.push(`no ${sc.route.join('/')} that worked (used: ${used.join(', ') || 'no tool'})`);
   for (const re of sc.said || []) if (!re.test(said)) why.push(`answer lacks ${re}`);
   for (const re of sc.not || []) if (re.test(said)) why.push(`answer has ${re}`);
   const MATHS = ['calculate', 'query_data', 'run_in_sandbox', 'run_code'];
-  if (sc.honest && !sc.honest.test(said)) why.push('does not say the file is not there');
+  if (sc.honest && !sc.honest.test(said)) why.push(`does not say ${sc.say || 'the file is not there'}`);
   if (sc.path && !savedPaths(row).length) why.push('no saved file reported by a tool');
-  for (const want of sc.files || []) {
-    // in: the folder the file must be saved in (a file elsewhere, such as Bob's own documents folder, doesn't count)
-    const where = (f) => !want.in || f.path.toLowerCase().startsWith(String(want.in).toLowerCase());
-    const elsewhere = after.filter((f) => want.like.test(f.path) && !where(f));
-    if (elsewhere.length) why.push(`${base(elsewhere[0].path)} saved in ${dirOf(elsewhere[0].path)}, not ${want.in}`);
-    const hits = after.filter((f) => want.like.test(f.path) && where(f));
-    const good = hits.find((f) => (want.has || []).every((re) => re.test(f.text)) && !(want.lacks || []).some((re) => re.test(f.text)) && inOrder(f.text, want.order));
-    if (!good) {
-      if (!hits.length && !elsewhere.length) why.push(`no file like ${want.like}`);
-      else if (hits.length) {
-        const f = hits.at(-1);
-        for (const re of want.has || []) if (!re.test(f.text)) why.push(`${base(f.path)} lacks ${re}`);
-        for (const re of want.lacks || []) if (re.test(f.text)) why.push(`${base(f.path)} still has ${re}`);
-        if (want.order && !inOrder(f.text, want.order)) why.push(`${base(f.path)}: not in the order ${want.order.join(' > ')}`);
-      }
-    }
+  why.push(...fileWhy(sc.files, after));
+  // either: the job passes on any one of these (a read-only folder: say so, or save a changed copy where it may)
+  if (sc.either) {
+    const tries = sc.either.map((e) => [...(e.honest && !e.honest.test(said) ? [`does not say: ${e.say || e.honest}`] : []), ...fileWhy(e.files, after)]);
+    if (!tries.some((t) => !t.length)) why.push(`none of: ${tries.map((t) => t.join(', ')).join(' | ')}`);
   }
+  if (sc.partial && sc.partial.test(said) && why.length) why.push('says it saw only part of the file, with no answer');
   for (const k of sc.kept || []) {
     const f = after.find((x) => base(x.path).toLowerCase() === base(FILES[k].path).toLowerCase());
     if (!f) why.push(`${base(FILES[k].path)} is gone`);
@@ -81,6 +71,28 @@ export function pathCheck(said, saved, after) {
   const stale = saved.map(base).flatMap((b) => { const m = b.match(/^(.*?)(?: \(\d+\)|-\d{1,3})(\.\w+)$/); return m && !said_.includes(b.toLowerCase()) && said_.includes((m[1] + m[2]).toLowerCase()) ? [m[1] + m[2]] : []; });
   const wrong = [...new Set([...names.filter((x) => !have.has(x.toLowerCase())), ...stale])];
   return { ok: !wrong.length, wrong, saved: saved.map(base) };
+}
+// what is wrong with the files left, for each wanted file ({ like, in, has, lacks, order })
+function fileWhy(wants, after) {
+  const why = [];
+  for (const want of wants || []) {
+    // in: the folder the file must be saved in (a file elsewhere, such as Bob's own documents folder, doesn't count)
+    const where = (f) => !want.in || f.path.toLowerCase().startsWith(String(want.in).toLowerCase());
+    const elsewhere = after.filter((f) => want.like.test(f.path) && !where(f));
+    if (elsewhere.length) why.push(`${base(elsewhere[0].path)} saved in ${dirOf(elsewhere[0].path)}, not ${want.in}`);
+    const hits = after.filter((f) => want.like.test(f.path) && where(f));
+    const good = hits.find((f) => (want.has || []).every((re) => re.test(f.text)) && !(want.lacks || []).some((re) => re.test(f.text)) && inOrder(f.text, want.order));
+    if (!good) {
+      if (!hits.length && !elsewhere.length) why.push(`no file like ${want.like}`);
+      else if (hits.length) {
+        const f = hits.at(-1);
+        for (const re of want.has || []) if (!re.test(f.text)) why.push(`${base(f.path)} lacks ${re}`);
+        for (const re of want.lacks || []) if (re.test(f.text)) why.push(`${base(f.path)} still has ${re}`);
+        if (want.order && !inOrder(f.text, want.order)) why.push(`${base(f.path)}: not in the order ${want.order.join(' > ')}`);
+      }
+    }
+  }
+  return why;
 }
 const base = (p) => String(p).split(/[\\/]/).pop();
 const dirOf = (p) => String(p).replace(/[\\/][^\\/]*$/, '\\');

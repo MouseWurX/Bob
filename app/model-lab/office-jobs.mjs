@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { opts, locate } from './common.mjs';
+import { orderAnswer } from './office-files.mjs';
 
 const D = 'C:\\Users\\you\\Documents\\', DESK = 'C:\\Users\\you\\Desktop\\';
 
@@ -33,15 +34,27 @@ export const FILES = {
   expenses: { path: `${D}Expenses_Nov.xlsx`, content: 'Item,Amount\nGroceries,84.37\nBus pass,62.50\nPhone,41.99\nSubtotal,188.86\nRefund (shoes),-39.95\nPharmacy,17.48\nCoffee,6.75', meta: { Sheet: 'November' } },
   q3: { path: `${D}Q3_Sales.xlsx`, content: 'Month,North,South,Total\nApril,1200,950,2150\nMay,1340,1015,2355\nJune,1185,990,2175', meta: { Sheet: 'Q3' } },
   offsite: { path: `${DESK}Team_Offsite.pptx`, content: 'Slide 1: Team offsite 2027\n- Two days away\n\nSlide 2: Where\n- Alder Lodge, on Fernwater Lake\n\nSlide 3: When\n- 18 and 19 March' },
+  // 17 Nov (MouseWurX: "expand the office set"): several sheets, formulas, a Word table, an old .doc, a read-only folder,
+  // a broken file, two files that could be "my budget", and a big sheet. `build` files are made by office-files.mjs.
+  household: { path: `${D}Household.xlsx`, build: { type: 'book', sheets: [{ name: '2025', rows: [['Month', 'Electric', 'Water'], ['Jan', 96.4, 31.2], ['Feb', 91.15, 30.8], ['Mar', 88.1, 31.2]] }, { name: '2026', rows: [['Month', 'Electric', 'Water'], ['Jan', 102.3, 33.5], ['Feb', 99.8, 33.1], ['Mar', 97.45, 33.5]] }] } },
+  invoice: { path: `${D}Invoice_042.xlsx`, build: { type: 'book', sheets: [{ name: 'Invoice', rows: [['Item', 'Qty', 'Price', 'Line'], ['Hinges', 8, 2.5, { f: 'B2*C2', v: 20 }], ['Screws', 100, 0.05, { f: 'B3*C3', v: 5 }], ['Handles', 4, 6.25, { f: 'B4*C4', v: 25 }], ['Total', '', '', { f: 'SUM(D2:D4)', v: 50 }]] }] } },
+  committee: { path: `${D}Committee.docx`, build: { type: 'table', before: '# Garden club committee\nUpdated in October.', table: [['Name', 'Role', 'Phone'], ['Rowan Teague', 'Chair', '0700 900 111'], ['Isla Brandt', 'Treasurer', '0700 900 222'], ['Ode Marsh', 'Secretary', '0700 900 333']], after: 'Meetings are on the first Monday of the month.' } },
+  recipe: { path: `${D}Old_Recipe.doc`, content: "# Grandma's lentil soup\nRed lentils, 200 g\nOne onion and two carrots\nSmoked paprika, one teaspoon\nSimmer for 25 minutes" },
+  contract: { path: `${D}Archive\\Contract_2024.docx`, content: '# Cleaning contract\nClient: Hollin Street Studio\nStart date: 1 June 2024\nEnd date: 31 May 2025\nMonthly fee: 240' },
+  broken: { path: `${D}Minutes_Oct.docx`, build: { type: 'broken' } },
+  oldbudget: { path: `${D}Old\\Budget_2025.xlsx`, content: 'Month,Rent,Food,Travel,Total\nJan,1700,380,90,2170\nFeb,1700,372,60,2132' },
+  orders: { path: `${D}Orders_2026.xlsx`, build: { type: 'orders', rows: 3000 } },
   reading: { path: `${D}Reading_Log.xlsx`, content: 'Title,Author,Pages\nThe Quiet Orchard,L. Penhallow,288\nNight Ferry,T. Abara,214', meta: { Sheet: 'Books' } }
 };
 
 const READS = ['office_read', 'read_file', 'find_in_documents'];
+const LEEDS = orderAnswer(3000, 'Leeds'); // 428 orders, 195,831.51
+const money = (n) => new RegExp(String(n.toFixed(2)).replace(/\B(?=(\d{3})+\.)/g, ',?').replace('.', '\\.'));
 // score.route: Bob used at least one of these (with no error); score.best: the tool the job is there to cover.
 // score.said: every pattern must be in his answer; score.files: a file whose name matches `like` (in the test home,
 // after the run) must have every `has` and no `lacks`; score.kept: a planted file that must be unchanged;
 // score.order: words that must come in this order in the file's text; score.honest: the answer must say so.
-// score.not: none of these may be in the answer (a wrong sum, "I can't read Excel"); file `in`: the folder the file must
+// score.tried: the route counts a call that errored (a broken file can only be tried); score.not: none of these may be in the answer (a wrong sum, "I can't read Excel"); file `in`: the folder the file must
 // be saved in (17 Nov, after1: word-make "passed" with the file in Bob's own documents folder); score.maths: the job is
 // sums, so the score says whether a maths tool did them (a count for the read, not a fail by itself).
 export const OFFICE_JOBS = [
@@ -91,12 +104,48 @@ export const OFFICE_JOBS = [
   // 4. write and save "in my Desktop" (wrong_folder): the file must be on the Desktop, and the answer about it
   { key: 'word-desktop', files: [], lo: true, text: 'Write a short thank-you note to my neighbour for watering my plants, and save it as a Word document called Thanks_Neighbour in my Desktop.',
     score: { route: ['office_make'], best: 'office_make', said: [/Thanks_Neighbour/i], files: [{ like: /Thanks_Neighbour.*\.docx$/i, in: DESK, has: [/plant/i] }] } },
+  // ---- 17 Nov (MouseWurX: "expand the office set") ----
+  { key: 'excel-sheets', files: ['household'], text: 'In my Household workbook, how much more was the electric bill in March 2026 than in March 2025?',
+    score: { route: READS, best: 'office_read', said: [/9\.35/], not: [/0\.(00|20)\b/], maths: true } },
+  { key: 'excel-formula-read', files: ['invoice'], text: "What's the total on Invoice_042.xlsx?",
+    score: { route: READS, best: 'office_read', said: [/\b50(\.00)?\b/] } },
+  { key: 'excel-formula-show', files: ['invoice'], lo: true, text: 'How is the total worked out in Invoice_042.xlsx? Show me the formula.',
+    score: { route: ['office_read'], best: 'office_read', said: [/SUM\(D2:D4\)/i] } },
+  { key: 'excel-formula-edit', files: ['invoice'], lo: true, text: 'Change the hinges on Invoice_042.xlsx to 12, and tell me the new total.',
+    score: { route: ['office_edit'], best: 'office_edit', said: [/\b60(\.00)?\b/], files: [{ like: /Invoice_042.*\.xlsx$/i, in: D, has: [/Hinges\t12\t2\.5\t30/, /Total\t+60\b/] }] } },
+  { key: 'word-table', files: ['committee'], text: "Who's the treasurer in Committee.docx, and what's their phone number?",
+    score: { route: READS, best: 'office_read', said: [/Isla Brandt/, /0700 900 222/] } },
+  { key: 'word-table-edit', files: ['committee'], lo: true, text: "Rowan's phone number changed to 0700 900 444. Update it in Committee.docx.",
+    score: { route: ['office_edit'], best: 'office_edit', files: [{ like: /Committee.*\.docx$/i, in: D, has: [/0700 900 444/, /Isla Brandt/, /0700 900 222/, /0700 900 333/], lacks: [/0700 900 111/] }] } },
+  { key: 'ppt-retitle', files: ['pitch'], lo: true, text: "In the garden club deck on my Desktop, rename the 'Why join' slide to 'Why you should join'.",
+    score: { route: ['office_edit'], best: 'office_edit', files: [{ like: /Garden_Club_Pitch.*\.pptx$/i, in: DESK, has: [/Why you should join/, /Shared tools/, /Membership 45/, /Questions/], lacks: [/Why join/] }] } },
+  { key: 'word-append', files: ['lease'], lo: true, text: 'Add a line at the end of my Harbor Lane lease summary: Parking: one space, number 7.',
+    score: { route: ['office_edit'], best: 'office_edit', files: [{ like: /Lease_Summary_Harbor_Lane.*\.docx$/i, in: D, has: [/Parking: one space, number 7/, /Bins go out on Tuesday nights/, /Monthly rent: 1,850/], order: ['Bins go out', 'Parking'] }] } },
+  { key: 'excel-to-pdf', files: ['reading'], lo: true, text: 'Make a PDF of my reading log spreadsheet.',
+    score: { route: ['convert_file', 'office_edit'], best: 'convert_file', files: [{ like: /Reading_Log.*\.pdf$/i, in: D, has: [/Night Ferry/, /Penhall/, /288/] }], kept: ['reading'] } },
+  { key: 'word-batch-pdf', files: ['quote1', 'quote2'], lo: true, text: 'Turn both of my roof quotes in Documents into PDFs.',
+    score: { route: ['convert_file', 'office_edit'], best: 'convert_file', files: [{ like: /Roof_Quote_v1.*\.pdf$/i, in: D, has: [/1,200/] }, { like: /Roof_Quote_v2.*\.pdf$/i, in: D, has: [/1,350/] }], kept: ['quote1', 'quote2'] } },
+  { key: 'word-old-doc', files: ['recipe'], lo: true, text: 'What spice goes in the soup in my Old_Recipe.doc?',
+    score: { route: READS, best: 'office_read', said: [/smoked paprika/i] } },
+  // a folder Bob may only read (Settings, Hands: read-only folders): he says so, or saves a changed copy where he may
+  { key: 'word-readonly', files: ['contract'], lo: true, readOnly: [`${D}Archive`], text: 'In Documents\\Archive\\Contract_2024.docx, change the end date from 31 May 2025 to 30 June 2025.',
+    score: { route: ['office_read', 'office_edit', 'read_file', 'list_folder'], best: 'office_read', kept: ['contract'],
+      either: [{ honest: /read-only|read only|only (read|look)|can'?t (change|edit|save|write)|cannot (change|edit|save|write)|not allowed to (change|edit|save|write)/i, say: 'the folder is read-only' }, { files: [{ like: /Contract_2024.*\.docx$/i, in: D, has: [/30 June 2025/, /Hollin Street Studio/] }] }],
+      files: [{ like: /Archive.Contract_2024\.docx$/i, has: [/31 May 2025/] }] } },
+  { key: 'word-broken', files: ['broken'], text: 'Who chaired the October meeting? It should be in Minutes_Oct.docx in my Documents.',
+    score: { route: ['office_read', 'read_file', 'inspect_file', 'list_folder'], tried: true, honest: /damaged|corrupt|broken|incomplete|can'?t (be )?(open|read)|couldn'?t (be )?(open|read)|cannot (be )?(open|read)|could not (be )?(open|read)|won'?t open|unreadable/i, say: 'the file is damaged' } },
+  // two files could be "my budget": the one in Documents is this year's; the answer must say which it used
+  { key: 'excel-ambiguous', files: ['budget', 'oldbudget'], text: "What's my monthly rent in my budget spreadsheet?",
+    score: { route: [...READS, 'list_folder', 'search_files'], best: 'office_read', said: [/1,?850/, /2026/], not: [/^(?![\s\S]*1,?850)[\s\S]*1,?700/] } },
+  // 3,000 rows: more than one read shows. Right: count them all (convert to CSV and query_data, or a formula); a guess fails
+  { key: 'excel-big', files: ['orders'], lo: true, text: 'How many orders in Orders_2026.xlsx came from Leeds, and what did they add up to?',
+    score: { route: ['office_read', 'read_file', 'convert_file', 'query_data', 'office_edit'], best: 'office_read', said: [new RegExp(`\\b${LEEDS.count}\\b`), money(LEEDS.total)], partial: /only (saw|see|read|had|shows?)|was cut|cut off|first [\d,]+ (rows|lines|characters)|not (all|the whole)/i } },
   { key: 'word-missing', files: ['lease'], text: 'Read Minutes_September.docx in my Documents and tell me who took the notes.',
     score: { route: ['office_read', 'read_file', 'list_folder', 'search_files', 'find_in_documents'], honest: /can'?t find|couldn'?t find|cannot find|could not find|isn'?t (there|in)|not there|(doesn'?t|does not) (appear|seem) to exist|(is|was) nowhere|no (such )?file|doesn'?t exist|does not exist|not (in|found)|didn'?t find|did not find/i } }
 ];
 
 export function officeJobs() {
-  return OFFICE_JOBS.map((j) => ({ id: `office-${j.key}`, job: 'office', key: j.key, text: j.text, office: { lo: Boolean(j.lo), files: j.files.map((k) => ({ key: k, ...FILES[k] })) } }));
+  return OFFICE_JOBS.map((j) => ({ id: `office-${j.key}`, job: 'office', key: j.key, text: j.text, office: { lo: Boolean(j.lo), files: j.files.map((k) => ({ key: k, ...FILES[k] })), ...(j.readOnly ? { readOnly: j.readOnly } : {}) } }));
 }
 export const jobByKey = (key) => OFFICE_JOBS.find((j) => j.key === key);
 
