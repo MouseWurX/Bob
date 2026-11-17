@@ -141,6 +141,18 @@ check('...and not after the one more go was used', !turn({}, 'I\'ve noted that y
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
+// ---------- draft_unsaved (17 Nov, after1: drafts typed in the chat, never saved) ----------
+{
+  const ask = "Wren from Kettle & Crumb asked me about my catering order. Draft a reply saying I'd like the lemon buns, please.";
+  const mailOn = (n) => /email/.test(n);
+  const readIt = act('read_email', { action: 'read', id: 289 }, 'Message 289 From: Wren');
+  const d = answerChecks({ text: ask, reply: 'Hi Wren, I\'ll go with the lemon buns, please. See you Saturday!', actions: [readIt], usable: mailOn }).find((c) => c.kind === 'draft_unsaved');
+  check('a reply typed in the chat with no saved draft -> draft_unsaved, naming the id it read', d && /reply_to 289/.test(d.nudge), d?.nudge);
+  check('a saved draft -> quiet', !has({ text: ask, reply: 'Saved in Drafts, not sent.', actions: [readIt, act('manage_email', { action: 'draft', reply_to: 289, text: 'x' }, 'Saved a draft to wren')], usable: mailOn }, 'draft_unsaved'));
+  check('a refused draft explained honestly -> quiet', !has({ text: ask, reply: "I can't draft a reply to that one: it looks dangerous.", actions: [], usable: mailOn }, 'draft_unsaved'));
+  check('no mail tools -> quiet', !has({ text: ask, reply: 'Hi Wren, lemon buns please.', actions: [], usable: () => false }, 'draft_unsaved'));
+}
+
 // ---------- fetch_page refuses a garbled link (by source: the tool needs the network) ----------
 {
   const src = fs.readFileSync(fileURLToPath(new URL('../src/tools.js', import.meta.url)), 'utf8').replace(/\r\n/g, '\n');

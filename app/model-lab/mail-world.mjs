@@ -370,3 +370,14 @@ export async function fitMail(kit, spec = {}, { bobDir = kit.bobDir } = {}) {
 // The sort plan card (manage_email sort): the test person taps OK on Bob's plan as he made it, and the card is kept for
 // the scorer (its batches and its "reply first" list).
 export function sortCardAnswer(card) { return { allow: true, items: [], card }; }
+// 17 Nov (after1, Medius unsubscribe): the test person answers a mail card as a person would. On an ask that moves no mail
+// ("Unsubscribe me...", job.says_no: 'moves'), a card that would move, archive or trash mail gets "no": a person who asked
+// for links would not tap OK on "Move 45 messages". Everything else is OK, as before.
+export const MOVES_CARD = /\b(?:Move|Moved|Archive|Trash|move|archive|trash)\b|plan for \d+ message/;
+export function mailCardAnswer(job, need) {
+  if (job?.says_no !== 'moves') return null;
+  const text = typeof need === 'string' ? need : String(need?.text || '');
+  const items = Array.isArray(need?.together) ? need.together.map((x) => String(x?.text || x?.say || '')) : [];
+  if (need?.sortCard || MOVES_CARD.test(text) || items.some((t) => MOVES_CARD.test(t))) return Array.isArray(need?.together) || need?.sortCard ? { allow: false } : false;
+  return null;
+}

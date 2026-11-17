@@ -19,6 +19,16 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
 - Guards: run-mail-catalog-test.js (ten years, groups pointer, reply_to_from), run-answer-checks-test.js (UNSUB_LINK),
   run-mail-world-test.js (refused link is no harm, lists, who, partial), run-office-jobs-test.js (word-missing).
 - Seen in the log: 201 exit listeners in the real variant; fixed on et6g5x (src/exit-hook.js), merged here.
+- Medius's 18 misses, read one by one (the owner: "did medius actually do the mail work correctly?"): who and danger judged
+  55 to 107 messages from the newest 15; searches by words with no days looked at today only; "well over a year ago"
+  hit the year cap; a bulk done line didn't say Wren was held back (the answer said she was trashed) or that 25,000 more
+  were left past 10,000; on "unsubscribe" the test person OKed a card moving 62 messages; drafts typed in the chat.
+  Changed: a cut-short list with the catalog on sorts ALL its matches by code (senders, kinds, every dangerous one);
+  words or sender with no days reach back ten years; the done line names what was held back and what is left; the test
+  person says no to moving cards on an ask that moves nothing (mail-world mailCardAnswer, job says_no); answer check
+  draft_unsaved; a words search with no hits points to groups. Routing misses (bulk-trash, big-bulk, big-recipe) are M1.
+  Guards: run-mail-catalog-test.js, run-mail-world-test.js, run-answer-checks-test.js. Rerun set: forge/plans/
+  jobs-mail-after2.json (30 jobs, Minimus and Medius, HELD).
 
 ## 16 Nov 2026: after1 pre-flight on the PC (nothing rented)
 - Ran: kit at 134748e; self-test 13 checks OK, office oracle 17/17 OK and --lazy 17/17 fail OK, forge --preflight.

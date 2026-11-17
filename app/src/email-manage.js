@@ -454,7 +454,7 @@ export async function planBulk(cfg, args, opts = {}, { now = Date.now() } = {}) 
       + `${scams.length ? ` ${scams.length} of them look dangerous.` : ''}${heldText.length ? ` Held back: ${heldText.join('; ')}.` : ''}${over ? ` ${over} more match: the next bulk act does them.` : ''}`
       + `${fill.left ? ` ${statusLine(fill)}` : ''}${what === 'trash' ? ' Nothing is deleted for good; it stays in Trash until it is emptied.' : ''} One undo id undoes it all.`
     : `Nothing to ${BULK_WORD[what].toLowerCase()} ${desc}.${heldText.length ? ` Held back: ${heldText.join('; ')}.` : ''}${fill.left ? ` ${statusLine(fill)}` : ''}`;
-  const plan = { action: BULK, what, args: { ...args }, rows: take, text, empty: !take.length, at: now, key: JSON.stringify(args) };
+  const plan = { action: BULK, what, args: { ...args }, rows: take, text, empty: !take.length, at: now, key: JSON.stringify(args), heldText, over };
   lastBulk = plan;
   return plan;
 }
@@ -488,7 +488,11 @@ export async function doBulk(cfg, plan, opts = {}, ctx = {}) {
     await addUndo(cfg, { id, at: Date.now(), action: BULK, said, back: [plan.what === 'mark_read' ? { folder, mids, flag: 'mark_unread' } : { folder: to.name, mids, moveTo: folder }] });
     if (plan.what === 'mark_read') markRows(cfg, done.map((r) => r.uid), { unread: false }); else dropRows(cfg, done.map((r) => r.uid));
     const left = plan.rows.length - done.length;
-    return `Done: ${said}.${left ? ` Stopped with ${left} not done (they're where they were).` : ''}${plan.what === 'trash' ? ' Nothing was deleted for good.' : ''} Undo id ${id}.`;
+    // 17 Nov (after1): the done line says what stayed and what is left, so the answer can't claim a held-back mail went too
+    // (Medius said Wren's order was trashed; it was held back) or that 10,000 of 35,000 was the lot.
+    const heldNow = plan.heldText?.length ? ` Held back, still where it was: ${plan.heldText.join('; ')}.` : '';
+    const more = plan.over ? ` ${plan.over} more match and are NOT done yet: call the same bulk act again for the next ${Math.min(plan.over, BULK_MAX)}.` : '';
+    return `Done: ${said}.${left ? ` Stopped with ${left} not done (they're where they were).` : ''}${heldNow}${more}${plan.what === 'trash' ? ' Nothing was deleted for good.' : ''} Undo id ${id}.`;
   }, { ...opts, write: true }));
 }
 const freshBulk = (args) => (lastBulk && lastBulk.key === JSON.stringify(args) && Date.now() - lastBulk.at < 120000 ? lastBulk : null);
