@@ -344,3 +344,8 @@ settings, on the start prompt and 32K, 5 rounds (20 loads), same brain and base 
 in all their runs, and each traced row's median writing speed is within 2% of its untraced pair. If the words match
 but the speed is more than 2% behind, the words are fixed and the speed isn't. If the words differ, the fix failed,
 whatever the speed.
+
+**Amendment to addendum 19 (Nov 17, before the run):** the builder can't check on a card that the fused top-k kernel
+still runs with the trace on, so the run checks it. Row **U0** is Y0 with `GGML_CUDA_DISABLE_FUSION=1` (25 loads now).
+If U0's words differ from Y0's and T1's match Y0's, T1 kept the fusion. If U0's words match Y0's, the words can't tell,
+and the speed decides: T1 must be within 2% of Y0 and U0 measurably slower. Either way, U0 is reported, not judged.
