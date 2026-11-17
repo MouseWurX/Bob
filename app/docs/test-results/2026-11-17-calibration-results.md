@@ -51,6 +51,24 @@ The rule (addendum 16): writing on the short prompt within 3% of the best row, t
 - **What it means:** the trace's cost is far smaller than turning graphs off, so the trace doesn't simply switch graphs off, and graphs alone don't change the words. The word change comes from the trace path itself. That path changes two things, and this run can't tell them apart: it marks the router's sort as an output (`ggml_set_output`, which likely stops the fused top-k kernel), and it adds the eval callback, which splits each step's graph. (Review note from the owner's programmer friend, Nov 17.)
 - **The deciding test:** trace on with `keep_expert_ids` off, so there's no `ggml_set_output` but the callback stays. In Brain Engine 9 the trace with its mass (`expert_trace_mass`) takes exactly that path, which is what row G2 was for. If G2 writes the same words as Y0, the fusion break is the cause and the planned fix is enough. If not, the callback split changes the words too, and the fix must also drop the callback (which the planned fix already does). G2 is short to run: G2 and G4 with Y0, 5 rounds, 15 loads.
 
+## The cube check (6:30 to 6:48 AM, addendum 18)
+
+`speed-plans/cube-check.json`: Y0, G4 and G2, start prompt and 32K, 5 rounds (15 loads), same engine, brain and settings. The owner's browser was open for rounds 1 and 2. Y0's speeds in those rounds (86.4 and 85.3 short) sit inside rounds 3 to 5 (83.4 to 86.0), so it made no visible difference. HWiNFO was logging this time.
+
+| Row | Writing short | Writing 32K | Reading short | Words |
+|---|---|---|---|---|
+| Y0 | 85.3 | 77.1 | 1,116 | the same as the calibration's Y0, in all 5 runs |
+| G4 (trace, `ggml_set_output` on) | 78.8 (−8%) | 70.2 (−9%) | 1,126 | different from Y0, the same as the calibration's G4 |
+| G2 (trace + mass, `ggml_set_output` off) | 62.6 (−27%) | 58.8 (−24%) | 767 (−31%) | **different from Y0, and different from G4** |
+
+Each row again wrote the same words in all 5 runs.
+
+**What it decides, by the rule written beforehand:** G2's words differ from Y0, so taking `ggml_set_output` away is not enough. The callback changes the words too, and the fix must drop the callback as well. The planned fix already does that (the picks come out of the fused kernel into a fixed buffer, with no callback and no `ggml_set_output`), so the plan stands as written.
+
+**One limit, said plainly:** G2 also asks the callback for a second node per layer (`ffn_moe_weighted`, for the mass), so this run can't say whether the topk callback alone changes the words. It doesn't change the decision: any callback in the expert path has to go. A likely common cause for all three (unconfirmed): the CUDA backend fuses the router's softmax, sort, top-k and weighting into one kernel only inside one graph piece, and both `ggml_set_output` and a callback stop at a node in the middle of it.
+
+**Speed:** G2 stops at every layer, as 0002 did before 0010, and costs about a quarter of writing and reading. G4's cost (−8 to −9%) matches night 1 and the calibration.
+
 ## Conditions
 
 - **Card:** max 64 °C. The power-cap flag showed on 0 to 16% of samples (most on long prompts with big reading steps), and in 42 of 49 row-and-prompt pairs the *most* throttled run wrote faster than the least throttled one, so throttling didn't slow the results. (The cap shows up when the card is working hardest, which is also when it's fastest.)
