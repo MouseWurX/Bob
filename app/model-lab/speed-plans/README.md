@@ -22,5 +22,6 @@ starts.
 - `calibrate-sweep.json`: the copy cache at step 4096 from 4096 down to 3584 MB by 128 MB, and at steps 5120 and 6144
   from 4096 down to 2048 MB by 512 MB: 15 setups, 1 round (Addendum 22). Takes the engine's own staging buffer off before judging a spill.
 - `calibrate-shortlist.json`: head to head: step 4096 + 4 GB against step 6144 + 3.5 GB, 5 rounds, with the Claude app closed (Addendum 23).
+- `cube-fix-be12.json`: `cube-fix.json` without U0, for Brain Engine 12: 4 rows, 5 rounds, 20 loads (Addendum 19 amendment).
 - `read-cache.json`: step 6144 with the cache at 0, 512, 1024 and 2048 MB, 1 round (Addendum 24): how little cache reading needs.
 - `lend-cache.json`: Brain Engine 13 lends the cache to reading (LLAMA_MOE_CACHE_LEND=4096) at step 6144 + 4 GB, against the same without lending and the two picks, start and 32K, 3 rounds, answers saved (Addendum 25).

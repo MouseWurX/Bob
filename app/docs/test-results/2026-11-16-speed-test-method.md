@@ -350,6 +350,8 @@ still runs with the trace on, so the run checks it. Row **U0** is Y0 with `GGML_
 If U0's words differ from Y0's and T1's match Y0's, T1 kept the fusion. If U0's words match Y0's, the words can't tell,
 and the speed decides: T1 must be within 2% of Y0 and U0 measurably slower. Either way, U0 is reported, not judged.
 
+**Amendment (Nov 17, before the Brain Engine 12 run):** U0 is dropped for Brain Engine 12 (plan `cube-fix-be12.json`, 20 loads). Fusion was already shown kept on Brain Engine 11, and T1 giving the same words as Y0 still proves it. Nothing else changes: Y0, T1, F4c and FT, 5 rounds, start and 32K. T1 passes if it stays within 2% of Y0 on both prompts with Y0's words, and FT must give the same words as F4c.
+
 ## Addendum 20 (Nov 17, after the cube fix, before this run): bigger caches and bigger reading steps
 
 The calibration tried the copy cache at 1, 2 and 4 GB, and 4 GB was the only size that helped at every prompt, so where it peaks is unknown. The owner asked for more than 4 GB, and for reading steps of 5K and 6K. `speed-plans/calibrate-bigger.json`: same brain, prompts and base settings as the calibration, on Brain Engine 10 (Brain Engine 9 with the expert tiers, 0020, and the cube fix, 0021, both off unless asked; the cube-fix run, Addendum 19, checks that 0021 changes no speed or words), 9 rows, **5 rounds** (45 loads), interleaved.
