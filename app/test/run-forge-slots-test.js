@@ -12,8 +12,8 @@ check('a plain do-jobs command uses its own --parallel', slotsUsed('node do-jobs
 const plan = JSON.parse(fs.readFileSync(path.join(root, 'model-lab/forge/plans/jobs-after1-mail-real.json'), 'utf8').replace(/\r\n/g, '\n'));
 const m = plan.benchmark.models[0], c = m.commands.find((x) => /jobs-matrix/.test(x));
 check(`the after1 plan fits its card (${slotsUsed(c)} of ${m.slots} slots, 32K each)`, slotsUsed(c) <= m.slots && Math.floor(m.ctx / m.slots) === 32768);
-{ const p2 = JSON.parse(fs.readFileSync(path.join(root, 'model-lab/forge/plans/jobs-mail-after2.json'), 'utf8').replace(/\r\n/g, '\n'));
+{ const p2 = JSON.parse(fs.readFileSync(path.join(root, 'model-lab/forge/plans/jobs-after2.json'), 'utf8').replace(/\r\n/g, '\n'));
   const m2 = p2.benchmark.models[0], c2 = m2.commands.find((x) => /jobs-matrix/.test(x));
-  check(`the after2 mail rerun fits its card (${slotsUsed(c2)} of ${m2.slots} slots, 32K each), Minimus and Medius only`, slotsUsed(c2) <= m2.slots && Math.floor(m2.ctx / m2.slots) === 32768 && !/magnus|maximus/.test(c2)); }
+  check(`the after2 rerun (mail + office) fits its card (${slotsUsed(c2)} of ${m2.slots} slots, 32K each), mail at Minimus and Medius only, office scored`, slotsUsed(c2) <= m2.slots && Math.floor(m2.ctx / m2.slots) === 32768 && !/magnus|maximus/.test(c2) && /office=--jobs [^;"]*office-jobs/.test(c2) && m2.commands.some((x) => /office-score\.mjs --runs [^ ]*after2-office/.test(x))); }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

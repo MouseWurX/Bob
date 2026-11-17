@@ -1,0 +1,60 @@
+{
+ "run": "jobs-after2",
+ "note": "17 Nov, the owner: \"did medius actually do the mail work correctly?\"; \"we need to close the gaps\"; earlier: \"Minimus and Medius for mail only\". HELD (now mail + office, 17 Nov; the owner: \"and we will only test on minimus and medius\"; \"we made a prediction, we should test to see if changes we made due to those predictions were correct, and did their job\"): not rented until the lead thread clears it and the owner gives the go by card, and never while the owner's speed test runs on the PC. The rerun for the after1 mail gaps (bob-wip/handoffs/after1-mail-gaps.md M1 to M13, plus the Medius misses: whole-list sorting by code on a cut-short list, searches by words or sender reaching back ten years by default, bulk done lines that say what was held back and what is still left past 10,000, the test person saying no to moving mail on an unsubscribe ask, and the draft_unsaved check). The same 30 inbox jobs (mail-jobs.mjs --catalog), Minimus and Medius only, on stock Qwen3.6-35B-A3B (tool shape 4). No web search, no Tavily. Scored by code (mail-score.mjs), then every run read by Opus 5.5 from the blind digests. before = after1-minimus / after1-medius (bob-wip/after1-results/qwen). L40S or RTX 6000 Ada, 8 slots x 32K. Caps 1 h / $1.50. Office: the 36 office jobs (office-jobs.mjs, round 3, with the targeted jobs for each office prediction: tricky sum, plain Excel read, deck on the Desktop, save to the Desktop, a 3,000-row sheet) at Minimus, scored by office-score.mjs; before = after1-office (17 jobs). 12 slots x 32K. Caps 1.5 h / $3.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA L40S",
+  "NVIDIA RTX 6000 Ada Generation"
+ ],
+ "step_up": [],
+ "disk_gb": 60,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 1.5,
+ "dollars_max": 3,
+ "rent_minutes": 30,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one server: stock Qwen3.6-35B-A3B; inbox jobs at Minimus and Medius (catalog on) plus 36 office jobs, all at once.",
+  "hours_each": 1.2,
+  "models": [
+   {
+    "name": "after2-qwen",
+    "nickname": "Qwen3.6-35B-A3B, inbox and office jobs after the after1 fixes",
+    "file": "hf:unsloth/Qwen3.6-35B-A3B-MTP-GGUF:Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 12,
+    "ctx": 393216,
+    "extra": "",
+    "hours": 1.2,
+    "commands": [
+     "node mail-jobs.mjs --catalog --out ../../bob-model-lab/out/mail-jobs-catalog/jobs.jsonl",
+     "node office-jobs.mjs --out ../../bob-model-lab/out/office-jobs/jobs.jsonl",
+     "node jobs-matrix.mjs --prefix after2 --no-scenes --variants \"minimus=--effort low --solo-effort;medius=--effort medium --solo-effort;office=--jobs ../../bob-model-lab/out/office-jobs/jobs.jsonl --parallel 4 --job-minutes 8 --office ../../../lab-office/libreoffice/program/soffice.exe\" --url {{url}} --bob .. --jobs ../../bob-model-lab/out/mail-jobs-catalog/jobs.jsonl --parallel 4 --want-shapes 4 --max 4096 --hours 1.0 --job-minutes 10",
+     "node mail-score.mjs --runs ../../bob-model-lab/out/after2-minimus/runs.jsonl,../../bob-model-lab/out/after2-medius/runs.jsonl --out ../../bob-model-lab/out/after2-mail-score --digests",
+     "node office-score.mjs --runs ../../bob-model-lab/out/after2-office/runs.jsonl --out ../../bob-model-lab/out/after2-office-score"
+    ]
+   }
+  ]
+ },
+ "prep": [
+  "Nothing to copy in: mail-jobs.mjs writes the jobs and every inbox is made from its seed.",
+  "--want-shapes 4 stops the run before renting if this copy's tools are any other shape.",
+  "Office: on the PC, node office-oracle.mjs --office ../../../lab-office/libreoffice/program/soffice.exe (lab-office next to the kit folder) must print OK (and with --lazy) before renting.",
+  "Compare with after1: bob-wip/after1-results/qwen/mail-score.md (Minimus and Medius rows) and the after1 office score (14 of 17)."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20
+}

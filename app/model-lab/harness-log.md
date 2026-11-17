@@ -28,7 +28,7 @@ says what ran, what it taught, what changed, and which check now guards it. "Ope
   person says no to moving cards on an ask that moves nothing (mail-world mailCardAnswer, job says_no); answer check
   draft_unsaved; a words search with no hits points to groups. Routing misses (bulk-trash, big-bulk, big-recipe) are M1.
   Guards: run-mail-catalog-test.js, run-mail-world-test.js, run-answer-checks-test.js. Rerun set: forge/plans/
-  jobs-mail-after2.json (30 jobs, Minimus and Medius, HELD).
+  jobs-after2.json (30 jobs, Minimus and Medius, HELD).
 
 ## 16 Nov 2026: after1 pre-flight on the PC (nothing rented)
 - Ran: kit at 134748e; self-test 13 checks OK, office oracle 17/17 OK and --lazy 17/17 fail OK, forge --preflight.
