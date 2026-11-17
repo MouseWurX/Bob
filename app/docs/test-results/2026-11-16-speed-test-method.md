@@ -280,7 +280,7 @@ The owner asked what to expect. These predictions are written down while night 1
 
 ## Addendum 16 (Nov 17, after night 1's results, before this run): the calibration run
 
-Night 1 measured reading steps and hot experts apart. They compete for the card: the cache takes room that `--fit` would give to layers, and bigger reading steps need bigger work buffers. `speed-plans/calibrate.json` measures them together to find the best pair, on the same brain and engine (Brain Engine 9), 17 rows, **3 rounds** (51 loads). The owner chose 3 rounds to pick a winner; the winner and the yardstick then get 5 rounds before any number goes on a results page as final.
+Night 1 measured reading steps and hot experts apart. They compete for the card: the cache takes room that `--fit` would give to layers, and bigger reading steps need bigger work buffers. `speed-plans/calibrate.json` measures them together to find the best pair, on the same brain and engine (Brain Engine 9), 17 rows, **5 rounds** (85 loads), as the method asks, so its numbers can be reported as final.
 
 - **Y0:** Normal reading, no cache, as the same-night yardstick.
 - **F0, X0:** Faster (2048) and Fastest (4096), no cache.

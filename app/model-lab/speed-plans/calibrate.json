@@ -39,7 +39,7 @@
   "--no-webui"
  ],
  "maxTokens": 300,
- "rounds": 3,
+ "rounds": 5,
  "lock": "${LOCK}",
  "stopFile": "${STOP_FILE}",
  "loadTimeoutMs": 600000,
