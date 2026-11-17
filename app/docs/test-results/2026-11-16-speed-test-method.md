@@ -495,3 +495,19 @@ in shuffled order, so both engines see the same PC. It is followed in the same l
 engine. Round 1 is the slowest for both.
 
 **What it decides:** whether the engine thread looks for a cause in 0021, or the gap is put down to the PC.
+
+## Addendum 27 (Nov 17, before any run): refilling the lent cache behind the writing
+
+Brain Engine 14 (pre-release brain-engine-14b12359, patch 0023) refills the lent cache on a second stream while the
+brain writes, and uses it again from written token K on (`LLAMA_MOE_CACHE_LEND_BEHIND=K`, together with
+`LLAMA_MOE_CACHE_LEND=4096`). Plan `lend-behind.json`, 3 rounds, start and 32K, answers saved. Rows: L1 (lending with
+no refill behind), B8, B24 and B64 (K = 8, 24, 64), and S6k3584 as the reference. The engine logs are searched for
+"uploaded again behind the writing in", "waited ... ms for the refill", "no second stream", take-back failures and
+decode -2.
+
+**Predictions, written before any run:** B24's and B64's 32K first word is within 2% of S6k3584's, with 0 ms waited.
+B8 waits for part of the refill. Writing at 32K is at or above L1's for every B row. Each K writes the same words every
+round.
+
+**What it decides:** whether a B row replaces S6k3584 as the long-document setup in Calibrate's tries. It stays off
+by default.

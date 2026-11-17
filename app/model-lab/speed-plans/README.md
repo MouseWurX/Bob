@@ -26,3 +26,4 @@ starts.
 - `read-cache.json`: step 6144 with the cache at 0, 512, 1024 and 2048 MB, 1 round (Addendum 24): how little cache reading needs.
 - `lend-cache.json`: Brain Engine 13 lends the cache to reading (LLAMA_MOE_CACHE_LEND=4096) at step 6144 + 4 GB, against the same without lending and the two picks, start and 32K, 3 rounds, answers saved (Addendum 25).
 - `first-read.json`: step 2048 + 4 GB on Brain Engine 10 against 12, start prompt only, 3 rounds (Addendum 26): is the slower first short read the engine or the PC?
+- `lend-behind.json`: Brain Engine 14 refills the lent cache behind the writing (LLAMA_MOE_CACHE_LEND_BEHIND 8, 24, 64) against lending alone and step 6144 + 3.5 GB, start and 32K, 3 rounds, answers saved (Addendum 27).
