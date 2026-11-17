@@ -16,7 +16,7 @@
 // Gmail (labels) and Outlook.com / Hotmail (folders) are both plain IMAP here. Pure Node; tests pass a fake `connect`.
 import fs from 'node:fs';
 import path from 'node:path';
-import { withMailbox, quote, decodeWords, parseHeaders, emailSettings, toMutf7 } from './email-read.js';
+import { withMailbox, quote, decodeWords, parseHeaders, emailSettings, toMutf7, imapDate } from './email-read.js';
 import { saveJson, oneWriter } from './saving.js';
 import { cleanField, dangerSigns, MAIL_START, MAIL_END } from './email-safe.js';
 import { readText, writeText } from './vault.js';
@@ -151,11 +151,31 @@ export async function replyTarget(cfg, id, opts = {}) {
     const raw = parseHeaders(l.literals.join('\n'));
     const hd = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, decodeWords(v)]));
     const danger = dangerSigns(hd);
-    if (danger.length) throw new Error(`Message ${uid} looks dangerous (${danger.join('; ')}), so Bob won't draft a reply to it. Report it as spam in your mail app.`);
+    if (danger.length) throw new Error(`Message ${uid} is "${cleanField(hd.subject || '(no subject)', 80)}" from ${cleanField(hd.from || 'nobody', 60)}, and it looks dangerous (${danger.join('; ')}), so Bob won't draft a reply to it. Report it as spam in your mail app. If you meant someone else's mail, give reply_to_from with their name instead of an id.`);
     const who = String(hd.from || '').match(/<([^>]+)>/)?.[1] || String(hd.from || '').trim();
     if (!/^[^\s@<>]+@[^\s@<>]+$/.test(who)) throw new Error(`Message ${uid} has no sender address to reply to.`);
     const subj = cleanField(hd.subject || '', 180);
     return { to: who, subject: /^re:/i.test(subj) ? subj : `Re: ${subj}`, in_reply_to: String(raw['message-id'] || '').trim() };
+  }, opts);
+}
+
+// 17 Nov (after1, M7): a reply by who it's to ("reply_to_from": "Wren"), so the brain needn't guess an id it never read.
+// The newest message from that sender (with these words in the subject, if given) that doesn't look dangerous.
+export async function replyIdFrom(cfg, from, words = '', opts = {}) {
+  const who = String(from || '').replace(/[\r\n]/g, ' ').trim().slice(0, 100);
+  if (!who) throw new Error('reply_to_from needs a name or address.');
+  return withMailbox(cfg, async (imap) => {
+    const since = new Date(Date.now() - 3650 * 86400000);
+    const q = [`SINCE ${imapDate(since)}`, `FROM ${quote(who)}`, words ? `SUBJECT ${quote(String(words).slice(0, 100))}` : ''].filter(Boolean).join(' ');
+    const found = await imap.run(`UID SEARCH ${q}`);
+    const uids = found.flatMap((l) => (l.text.match(/^\* SEARCH\s*(.*)$/i)?.[1] || '').split(/\s+/)).filter((x) => /^\d+$/.test(x)).map(Number).sort((a, b) => b - a).slice(0, 20);
+    if (!uids.length) throw new Error(`There's no mail from "${who}"${words ? ` about "${words}"` : ''} to reply to. Check the name with read_email list and from.`);
+    const got = await imap.run(`UID FETCH ${uids.join(',')} (UID BODY.PEEK[HEADER.FIELDS (FROM REPLY-TO SUBJECT AUTHENTICATION-RESULTS)])`);
+    for (const l of got.filter((x) => /FETCH/i.test(x.text) && x.literals.length).sort((a, b) => Number(b.text.match(/UID (\d+)/)?.[1]) - Number(a.text.match(/UID (\d+)/)?.[1]))) {
+      const hd = Object.fromEntries(Object.entries(parseHeaders(l.literals.join('\n'))).map(([k, v]) => [k, decodeWords(v)]));
+      if (!dangerSigns(hd).length) return Number(l.text.match(/UID (\d+)/)?.[1]);
+    }
+    throw new Error(`Every recent mail from "${who}" looks dangerous, so Bob won't draft a reply to it.`);
   }, opts);
 }
 
@@ -169,6 +189,7 @@ export async function planChange(cfg, args, opts = {}) {
   if (!ACTIONS.includes(action)) throw new Error(`action must be one of ${ACTIONS.join(', ')}.`);
   if (action === 'draft') {
     if (!String(args.text || '').trim()) throw new Error('A draft needs text: what the message says.');
+    if ((args.reply_to == null || args.reply_to === '') && String(args.reply_to_from || '').trim()) args.reply_to = await replyIdFrom(cfg, args.reply_to_from, '', opts);
     if (args.reply_to != null && args.reply_to !== '') Object.assign(args, await replyTarget(cfg, args.reply_to, opts));
     return { action, text: `Save a draft${args.to ? ` to ${String(args.to).slice(0, 80)}` : ''}: "${String(args.subject || '(no subject)').slice(0, 80)}". It goes in Drafts and is NOT sent: you send it from your mail app.` };
   }
@@ -291,7 +312,7 @@ export function suggestBatches(mail, { now = Date.now() } = {}) {
 
 async function scanMail(cfg, { days = 30, limit = MAX_SORT } = {}, opts = {}) {
   const n = Math.max(1, Math.min(MAX_SORT, Math.round(Number(limit) || MAX_SORT)));
-  const since = new Date(Date.now() - Math.max(1, Math.min(365, Math.round(Number(days) || 30))) * DAY);
+  const since = new Date(Date.now() - Math.max(1, Math.min(3650, Math.round(Number(days) || 30))) * DAY);
   return withMailbox(cfg, async (imap) => {
     const folders = readFolders(await imap.run('LIST "" "*"'));
     const mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][since.getUTCMonth()];
@@ -500,7 +521,8 @@ export function manageEmailTool(cfg, on = () => true, opts = {}, brain = null) {
     kind: { type: 'array', items: { type: 'string', enum: KINDS }, description: 'bulk: only these kinds.' },
     older_than_days: { type: 'integer', description: 'bulk: only mail older than this.' },
     words: { type: 'string', description: 'bulk: only subjects with these words.' },
-    reply_to: { type: 'integer', description: 'draft: the id being answered; who it goes to and the subject are filled in.' }
+    reply_to: { type: 'integer', description: 'draft: the id being answered; who it goes to and the subject are filled in.' },
+    reply_to_from: { type: 'string', description: 'draft: or, instead of an id, the name of the person being answered (their newest mail).' }
   }, ['action']);
   return {
     get schema() { return catalogOn() ? bulkSchema : plainSchema; },

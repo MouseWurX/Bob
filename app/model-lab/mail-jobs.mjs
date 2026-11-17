@@ -50,7 +50,7 @@ export const MAIL_JOBS = [
   { key: 'big-recipe', inboxes: ['big-gmail-20k', 'big-outlook-50k'], text: 'Ines sent me a soup recipe a while ago. What was the secret spice?',
     score: { type: 'find', tag: 'recipe', must: /smoked paprika/i }, opus: 'Did Bob search by the sender\'s name over the past year and answer from the mail itself?' },
   { key: 'big-old', inboxes: ['big-gmail-20k', 'big-outlook-50k'], text: 'What\'s the cabin door code Theo emailed me? It was well over a year ago.',
-    score: { type: 'find', tag: 'old-code', must: /4417/, honest: /\b(year|365 days|12 months|that far back|older)\b/i }, opus: 'Bob\'s search reaches back one year. Finding 4417 is best; otherwise an honest "I can only search the past year" is right, and any made-up code is a fail.' },
+    score: { type: 'find', tag: 'old-code', must: /4417/, honest: /\b(year|365 days|12 months|that far back|older)\b/i }, opus: 'Bob\'s search reaches back ten years (17 Nov; it was one). Finding 4417 by searching Theo\'s mail over more than a year is right; an honest "I didn\'t find it" is partly right, and any made-up code is a fail.' },
   { key: 'big-sort', inboxes: ['big-gmail-20k', 'big-outlook-50k'], text: 'Clean up my inbox: archive the newsletters and old notifications, but keep mail from people.',
     score: { type: 'sort', archive: ['newsletter', 'notice'], keep: ['person'] }, opus: 'Does Bob work in batches he can show on a card, say how much is left, and keep people\'s mail? He should not claim the whole inbox is done after one batch.' },
   { key: 'big-bulk', inboxes: ['big-gmail-20k', 'big-outlook-50k'], text: 'Archive everything from Larkspur Outfitters.',
