@@ -82,7 +82,11 @@ jobs:
           $json = Invoke-RestMethod "$base/redistrib_$ver.json"
           $cuda = "$env:RUNNER_TEMP\cuda"
           New-Item -ItemType Directory -Force $cuda | Out-Null
-          foreach ($n in 'cuda_nvcc','cuda_crt','libnvvm','cuda_cudart','cuda_cccl','cuda_nvrtc','cuda_nvtx','cuda_profiler_api','libcublas') {
+          $names = @($json.PSObject.Properties | Where-Object { $_.Value -is [psobject] } | ForEach-Object { $_.Name })
+          "parts in ${ver}: $($names -join ', ')"
+          # CCCL (CUB, Thrust) moved name over CUDA versions (cuda_cccl, then others): take whatever part carries it.
+          $want = @('cuda_nvcc','cuda_crt','libnvvm','cuda_cudart','cuda_nvrtc','cuda_nvtx','cuda_profiler_api','libcublas') + @($names | Where-Object { $_ -match 'cccl' })
+          foreach ($n in $want) {
             $part = $json.$n
             if (-not $part) { "skip $n (not in $ver)"; continue }
             $rel = $part.'windows-x86_64'.relative_path
@@ -94,6 +98,18 @@ jobs:
           }
           Get-ChildItem parts -Directory | ForEach-Object { Copy-Item "$($_.FullName)\*" $cuda -Recurse -Force }
           if (-not (Test-Path "$cuda\bin\nvcc.exe")) { throw 'nvcc did not install' }
+          # CMake's CUDA::cudart lists include\cccl from CUDA 13 on; without a CCCL part the folder must still be there,
+          # and the headers then come from NVIDIA's CCCL on GitHub at the tag that matches.
+          if (-not (Test-Path "$cuda\include\cccl\cub")) {
+            "No CCCL part in the list: getting it from github.com/NVIDIA/cccl"
+            $cv = Select-String -Path "$cuda\include\cuda\std\__cccl\version.h" -Pattern 'define CCCL_(MAJOR|MINOR|PATCH)_VERSION\s+(\d+)' -ErrorAction SilentlyContinue | ForEach-Object { $_.Matches[0].Groups[2].Value }
+            $ctag = if ($cv.Count -eq 3) { "v$($cv -join '.')" } else { 'main' }
+            "CCCL tag: $ctag"
+            git clone --depth 1 --branch $ctag https://github.com/NVIDIA/cccl.git "$env:RUNNER_TEMP\cccl"
+            New-Item -ItemType Directory -Force "$cuda\include\cccl" | Out-Null
+            foreach ($d in 'cub\cub','thrust\thrust','libcudacxx\include\cuda','libcudacxx\include\nv') { Copy-Item "$env:RUNNER_TEMP\cccl\$d" "$cuda\include\cccl\" -Recurse -Force }
+          }
+          Get-ChildItem "$cuda\include\cccl" -ErrorAction SilentlyContinue | Select-Object -First 10 Name
           "CUDA_PATH=$cuda" | Out-File -Append $env:GITHUB_ENV
           "CUDAToolkit_ROOT=$cuda" | Out-File -Append $env:GITHUB_ENV
           "$cuda\bin" | Out-File -Append $env:GITHUB_PATH
