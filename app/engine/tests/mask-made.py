@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-# Brain Engine 0025 test: the attention mask made from positions (LLAMA_KQ_MASK_BUILD=1) gives the same odds, bit for
-# bit, as the stock table filled on the processor.
+# Brain Engine 0025/0026 test: the attention mask made from positions (LLAMA_KQ_MASK_BUILD=1, 0025) and the mask read
+# as positions by flash attention with no table (LLAMA_KQ_MASK_POS=1, 0026, flash attention only) give the same odds,
+# bit for bit, as the stock table filled on the processor.
 #   python3 engine/tests/mask-made.py <llama.cpp checkout with the patches, built> [work folder]
 # It needs libllama built in <checkout>/build/bin, a C++ compiler, numpy and the checkout's gguf-py. Two tiny made-up
 # brains with random weights: a mixture-of-experts one (every layer sees the whole chat) and a Gemma 2 shaped one
@@ -61,12 +62,13 @@ subprocess.check_call(['c++', '-std=c++17', '-O1', os.path.join(HERE, 'mask-made
                        '-I', os.path.join(SRC, 'include'), '-I', os.path.join(SRC, 'ggml', 'include'),
                        '-L', lib, '-lllama', '-lggml', '-lggml-base', f'-Wl,-rpath,{lib}'])
 fails = 0
-for name, path in brains.items():
-    for fa in (1, 0):
+for mode in ('build', 'pos'):
+  for name, path in brains.items():
+    for fa in ((1, 0) if mode == 'build' else (1,)):
         for kvu in (1, 0):
             for chats in (1, 3):
                 for step in (512, 7):
-                    r = subprocess.run([exe, path, str(fa), str(kvu), str(chats), str(step), '20'], capture_output=True, text=True)
+                    r = subprocess.run([exe, path, str(fa), str(kvu), str(chats), str(step), '20', mode], capture_output=True, text=True, env={**os.environ, 'LLAMA_ARG_LOG_VERBOSITY': '5'})
                     line = (r.stdout.strip().splitlines() or ['FAIL no output: ' + r.stderr[-300:]])[-1]
                     print(f'{name:8} {line}')
                     fails += r.returncode != 0

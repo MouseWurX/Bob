@@ -1,6 +1,7 @@
-// Brain Engine 0025 test driver: the attention mask made from positions (LLAMA_KQ_MASK_BUILD=1) must give the same
-// odds, bit for bit, as the stock table filled on the processor. Built and run by mask-made.py.
-//   mask-made <brain.gguf> <flash 0|1> <unified 0|1> <chats> <step (n_ubatch)> <prompt words>
+// Brain Engine 0025/0026 test driver: the attention mask made from positions (LLAMA_KQ_MASK_BUILD=1) or read as
+// positions by flash attention with no table (LLAMA_KQ_MASK_POS=1) must give the same odds, bit for bit, as the stock
+// table filled on the processor. Built and run by mask-made.py.
+//   mask-made <brain.gguf> <flash 0|1> <unified 0|1> <chats> <step (n_ubatch)> <prompt words> [build|pos]
 // One run does, for each setting: every chat reads a prompt (all chats in one batch), the chats write 24 words side
 // by side, chat 0 forgets its middle (a hole in the cache, like prompt-cache reuse) and reads 9 words again, every
 // chat shifts back 5 positions (context shift), chat 1 is copied into a new chat that writes 8 more words, then
@@ -16,14 +17,18 @@ static int g_made = 0, g_graphs = 0;
 static void log_cb(ggml_log_level, const char * text, void *) {
     if (strstr(text, "attention mask made from positions")) g_made++;
     if (strstr(text, "attention mask made in the graph"))   g_graphs++;
+    if (strstr(text, "attention mask as positions:"))      g_graphs++;
+    if (strstr(text, "attention mask as positions (no table)")) g_made++;
     if (getenv("MASK_MADE_VERBOSE")) fputs(text, stderr);
 }
 
+static const char * g_knob = "LLAMA_KQ_MASK_BUILD";
+
 static bool run(llama_model * model, bool build, bool fa, bool kvu, int n_chats, int ub, int n_prompt, std::vector<float> & out) {
 #ifdef _WIN32
-    _putenv_s("LLAMA_KQ_MASK_BUILD", build ? "1" : "0");
+    _putenv_s(g_knob, build ? "1" : "0");
 #else
-    setenv("LLAMA_KQ_MASK_BUILD", build ? "1" : "0", 1);
+    setenv(g_knob, build ? "1" : "0", 1);
 #endif
     llama_context_params cp = llama_context_default_params();
     cp.n_ctx      = 512;
@@ -127,6 +132,7 @@ int main(int argc, char ** argv) {
     if (!model) { printf("FAIL no brain\n"); return 1; }
     const bool fa = atoi(argv[2]) != 0, kvu = atoi(argv[3]) != 0;
     const int chats = atoi(argv[4]), ub = atoi(argv[5]), np = atoi(argv[6]);
+    if (argc > 7 && strcmp(argv[7], "pos") == 0) g_knob = "LLAMA_KQ_MASK_POS";
 
     std::vector<float> a, m;
     if (!run(model, false, fa, kvu, chats, ub, np, a)) return 1;
@@ -137,8 +143,8 @@ int main(int argc, char ** argv) {
     size_t diff = 0;
     if (a.size() != m.size()) { printf("FAIL %zu vs %zu odds\n", a.size(), m.size()); return 1; }
     for (size_t i = 0; i < a.size(); i++) if (memcmp(&a[i], &m[i], sizeof(float)) != 0) diff++;
-    printf("%s %zu odds compared, %zu differ, %d masks made in the graph (flash %d, unified %d, chats %d, step %d)\n",
-           diff == 0 ? "PASS" : "FAIL", a.size(), diff, g_graphs, fa, kvu, chats, ub);
+    printf("%s %zu odds compared, %zu differ, %d masks made from positions (%s, flash %d, unified %d, chats %d, step %d)\n",
+           diff == 0 ? "PASS" : "FAIL", a.size(), diff, g_graphs, g_knob, fa, kvu, chats, ub);
     llama_model_free(model);
     return diff == 0 ? 0 : 1;
 }
