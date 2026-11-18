@@ -74,6 +74,8 @@ import { applyReading, startEveryday, shouldOfferOwnCode } from './everyday.js';
 import { createReplyParts } from './app-replies.js';
 import { createRedoParts } from './app-redo.js';
 import { createCopyParts } from './app-copy.js';
+import { installPathCleaning } from './clean-path.js'; // Nov 18: pasted paths lose their quotes and invisible marks
+installPathCleaning();
 // Pieces of the chat that live in their own files (app-*.js). Their functions read app.js's values fresh on every call.
 // app-replies.js
 const {
@@ -864,6 +866,7 @@ function onEvent(ev) {
           if (!r.ok) note(r.why || 'That card is too old now. Ask me again.', 'error');
           else if (r.done === 'download') note(`Getting ${r.names.join(' and ')} (about ${r.size}). Progress is in Downloads.${ev.carryOn ? ' Your request waits in Tasks, and I carry on by myself as soon as it\'s in.' : ''}`);
           else if (r.done === 'equip') note(ev.carryOn ? 'Done, it\'s in its slot. Carrying on with your request.' : 'Done, it\'s in its slot.');
+          else if (r.done === 'folder') note(ev.carryOn ? `Added ${r.folder}. Carrying on with your request.` : `Added ${r.folder}. You can take it off again in ${ev.where}.`);
           else if (r.done === 'switch') note(ev.carryOn ? `Switched on "${ev.name}". Carrying on with your request.` : `Switched on "${ev.name}". You can switch it off again in ${ev.where}.`);
         } catch (e) { yes.disabled = no.disabled = false; note(e.message, 'error'); }
       };

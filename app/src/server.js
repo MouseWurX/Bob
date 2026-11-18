@@ -635,7 +635,7 @@ const server = http.createServer(async (req, res) => {
       if (brain.cardBusyNow) st.cardBusy = brain.cardBusyNow.short; // Nov 13: another program holds the card (card-guard.js)
       // Nov 14 (the owner): the brain line says when this Bob's card is lent out, or his brain runs on other Bobs' cards too.
       try { const v = brain.cardLender?.view?.() || {}; if (v.lending) st.lendingTo = String(v.to || 'another Bob').slice(0, 40); } catch {}
-      try { const u = brain.engine?.spread?.using || []; if (u.length) st.borrowingFrom = u.map((x) => String(x?.bob?.name || 'another Bob').slice(0, 40)).slice(0, 16); } catch {}
+      try { const u = brain.engine?.spreadNow ? (brain.engine.spread?.inUse?.() || []) : []; if (u.length) st.borrowingFrom = u.map((x) => String(x?.bob?.name || 'another Bob').slice(0, 40)).slice(0, 16); } catch {}
       return send(res, 200, st);
     }
     if ((await howtosRoute({ req, res, p, isLocal, cfg, brain, body, send })) !== false) return;

@@ -865,11 +865,13 @@
         if (!yes) return card.remove();
         if (!out.ok) return done(out.why || 'That card is too old now. Ask me again.');
         if (out.done === 'download') done(`Getting ${(out.names || []).join(' and ')} (about ${out.size}) on "${bobName(base)}". ${ev.carryOn ? "Your request waits there, and I carry on as soon as it's in." : 'Ask me again when it is in.'}`);
+        else if (out.done === 'folder') done(`Added ${out.folder}.${ev.carryOn ? ' Carrying on with your request.' : ''}`);
         else if (out.done === 'switch') done(`Switched on "${ev.name}".${ev.carryOn ? ' Carrying on with your request.' : ''}`);
         else done(ev.carryOn ? "Done, it's in its slot. Carrying on with your request." : "Done, it's in its slot.");
       }).catch(() => toast("Couldn't reach your other replicant matrix"));
     let head, body, button, extra = null;
-    if (ev.kind === 'switch') { head = `"${ev.name}" is off`; body = `It lets me ${String(ev.what || '')}.${ev.privacy ? ' ' + ev.privacy : ''}${ev.folders ? ' Then tick the folders I may use in Settings, Hands, on that replicant matrix.' : ''}${after} You can switch it off again in ${ev.where}.`; button = 'Switch it on'; }
+    if (ev.kind === 'folder') { head = "That folder isn't on my list"; body = `${ev.folder} isn't one of the folders I may work in on "${bobName(base)}". Add it?${after} You can take it off again in ${ev.where}.`; button = 'Add it'; }
+    else if (ev.kind === 'switch') { head = `"${ev.name}" is off`; body = `It lets me ${String(ev.what || '')}.${ev.privacy ? ' ' + ev.privacy : ''}${ev.folders ? ' Then tick the folders I may use in Settings, Hands, on that replicant matrix.' : ''}${after} You can switch it off again in ${ev.where}.`; button = 'Switch it on'; }
     else if (ev.kind === 'equip') { head = `I can't ${ev.say} yet`; body = `${ev.model?.name || ''} is already on "${bobName(base)}", it just isn't in its slot.${after}`; button = 'Use it'; }
     else {
       head = `I can't ${ev.say} yet`; body = `I need ${ev.what} on "${bobName(base)}" first. ${ev.need === 'ffmpeg' ? 'One press gets it and sets it up.' : 'One press gets it, sets it up and puts it in its slot.'}${after}`; button = `Set it up (about ${ev.size})`;

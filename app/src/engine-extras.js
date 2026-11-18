@@ -166,7 +166,8 @@ export function warmFile(file, { open = fs.createReadStream, done = () => {} } =
 export const BRAIN_ENGINE_NOTES = {
   3: 'Built on a newer llama.cpp (b12282), with CUDA 13.5 on NVIDIA cards. Adds SCUT, a faster Wi-Fi link for sharing a card between Bobs, and the SUDDAR scan.',
   4: 'Every SCUT packet between your Bobs is sealed, so nobody else on the network can read or change it.',
-  8: 'Built on llama.cpp 1.0 (b12359). Faster NVIDIA cards on small batches and a tidier engine underneath; all of Bob\'s own changes carried over, and it still shares cards with Bobs on Brain Engine 7.'
+  8: 'Built on llama.cpp 1.0 (b12359). Faster NVIDIA cards on small batches and a tidier engine underneath; all of Bob\'s own changes carried over, and it still shares cards with Bobs on Brain Engine 7.',
+  14: 'The fNRI cube\'s expert trace no longer slows Bob or changes his words (it costs 0 to 2% now). Also carries new speed switches for the hot-experts cache, all off.'
 };
 // Brain Engine's own build number from its release name (brain-engine-5b12282 or the older brain-engine-v4; public/engine-name.js).
 export const brainEngineNumber = (tag) => brainEngineBuild(tag)?.n || 0;

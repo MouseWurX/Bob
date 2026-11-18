@@ -44,11 +44,12 @@ export function createJobHelps({ api, add, note, log, stopBtn, scrollDown = () =
   let clock = null, tick = 0;
   const endClock = () => { clearInterval(tick); clock?.remove(); clock = null; };
   const drawClock = (startedAt, endsAt) => {
-    if (!clock) { clock = document.createElement('div'); clock.className = 'job-clock'; clock.setAttribute('role', 'progressbar'); clock.innerHTML = '<span class="job-clock-bar"><span></span></span><span class="job-clock-text"></span>'; (stopBtn?.closest('form') || log).before(clock); }
+    if (!clock) { clock = document.createElement('div'); clock.className = 'job-clock'; clock.setAttribute('role', 'progressbar'); clock.innerHTML = '<span class="job-clock-bar"><span></span></span><span class="job-clock-text"></span>'; clock.setAttribute('aria-label', 'Time for this job'); document.body.append(clock); } // Nov 17 (the owner): a thin bar along the very bottom of the window, not in the chat
     const paint = () => {
       const all = Math.max(1, endsAt - startedAt), used = Math.min(1, Math.max(0, (Date.now() - startedAt) / all));
       clock.querySelector('.job-clock-bar > span').style.width = `${Math.round(used * 100)}%`;
       clock.querySelector('.job-clock-text').textContent = clockText(endsAt);
+      clock.title = clockText(endsAt); clock.setAttribute('aria-valuetext', clockText(endsAt));
       clock.setAttribute('aria-valuenow', String(Math.round(used * 100)));
     };
     clearInterval(tick); paint(); tick = setInterval(paint, 5000);

@@ -1,6 +1,7 @@
 // Hands in the window: the approval cards with rows to tick or the exact command, live output with Stop,
 // and the Hands section in Settings. Big buttons on purpose (remote desktop).
 import { esc } from './rich.js';
+import { cleanPath, looksLikePath } from './clean-path.js'; // Nov 18: pasted paths with quotes or invisible marks
 import { tip } from './tips.js';
 import { bannerHidden, setBannerHidden } from './hands-switch.js'; // the banner's Hide, undone here
 
@@ -141,6 +142,8 @@ function newToolCard(ev, { add, answer }) {
 
 // Settings, Hands: the tools Bob made. Each can be turned off, its code shown, or removed. 1.5.144: Remove puts it on
 // the Recently deleted shelf (Settings, 🧰 Tools and how-tos) for 30 days, same as Delete there.
+// Nov 18: a folder that wasn't added says why, instead of going quietly.
+const refusedWhy = (f) => (looksLikePath(f) ? `That folder doesn't exist on this replicant matrix: ${f}. Check the spelling, or press Browse… to pick it.` : 'That isn\'t a full folder path. Start it with the drive, like C:\\Users\\you\\Pictures, or press Browse… to pick it.');
 const TOOL_STATE = { on: '', off: 'turned off', changed: 'off: its files changed since you OK\'d it', missing: 'its folder is gone' };
 // Sort and rename (src/sort-library.js): the naming rule for each kind of file. Always drawn, saved while
 // the Hand is off (settings rule 14). "/" in a pattern makes folders; a rule can send its files to its own folder.
@@ -393,7 +396,7 @@ export async function mountHandsSettings(box) {
         <p class="muted">Always on, whatever you pick: Bob can't change his own code, settings or this page, never runs as administrator, stays out of terminals, admin tools, password managers and sign-in prompts, and the ✋ Hands button always stops him.</p></div>
       <div class="hands-folders"><strong>Allowed folders</strong>
         ${folders.length ? folders.map((f) => `<label class="switch small"><input type="checkbox" data-hfolder="${esc(f)}" ${s.folders.includes(f) ? 'checked' : ''}><span>${esc(f)}</span></label>`).join('') : '<p class="muted">No folders yet.</p>'}
-        <div class="row"><input type="text" data-hnewfolder placeholder="Add a folder: C:\\Users\\you\\Pictures" aria-label="Add a folder" style="flex:1"><button type="button" data-haddfolder>Add</button></div>
+        <div class="row"><input type="text" data-hnewfolder placeholder="Add a folder: C:\\Users\\you\\Pictures" aria-label="Add a folder" style="flex:1"><button type="button" class="mini" data-hfolderbrowse>Browse…</button><button type="button" data-haddfolder>Add</button></div>
         <p class="muted">Sort and rename works only in these folders too. The Office documents and converting Hand saves in these folders too (and in Bob's own Documents folder). Bob's own folders stay off-limits even inside these, and so do read-only projects and files with keys or passwords while those hard limits are on.</p></div>
       <label class="pick"><strong>Command timeout</strong><select data-htimeout>${[1, 5, 15, 30, 60, 120].map((m) => `<option value="${m}" ${m === s.timeoutMin ? 'selected' : ''}>${m < 60 ? `${m} minute${m === 1 ? '' : 's'}` : `${m / 60} hour${m === 60 ? '' : 's'}`}</option>`).join('')}</select></label>
       <div class="hands-recipes"><strong>Recipes</strong> <span class="muted">Saved commands you can run in one click, or ask Bob for by name ("run my build recipe"). He still asks before each run, unless he's working without asking.</span>
@@ -470,20 +473,20 @@ export async function mountHandsSettings(box) {
       if ('hstopall' in b.dataset) { const r = await post('/api/hands/stop-all'); v = r; draw(); say(`Stopped ${r.stopped} thing${r.stopped === 1 ? '' : 's'}. All Hands are off.`); showStopAll(false); return; }
       if ('hrobrowse' in b.dataset) { const r = await post('/api/pick-folder', {}); const inp = box.querySelector('[data-hnewro]'); if (r.folder && inp) inp.value = r.folder; return; }
       if ('hroadd' in b.dataset) {
-        const f = box.querySelector('[data-hnewro]').value.trim();
+        const f = cleanPath(box.querySelector('[data-hnewro]').value);
         if (!f) return;
-        const before = (v.settings.readOnlyFolders || []).length;
         await set({ readOnlyFolders: [...(v.settings.readOnlyFolders || []), f] });
-        say((v.settings.readOnlyFolders || []).length > before ? 'Added. Bob can read it but never change it.' : 'That isn\'t a folder that exists (like C:\\Users\\you\\Projects\\app).');
+        say((v.settings.readOnlyFolders || []).includes(f) ? 'Added. Bob can read it but never change it.' : refusedWhy(f));
         return;
       }
       if (b.dataset.hrodel) { await set({ readOnlyFolders: (v.settings.readOnlyFolders || []).filter((f) => f !== b.dataset.hrodel) }, 'Removed. The usual Hands rules apply to it again.'); return; }
+      if ('hfolderbrowse' in b.dataset) { const r = await post('/api/pick-folder', {}); const inp = box.querySelector('[data-hnewfolder]'); if (r.folder && inp) inp.value = r.folder; else if (r.error) say(r.error); return; }
       if ('haddfolder' in b.dataset) {
-        const f = box.querySelector('[data-hnewfolder]').value.trim();
+        const f = cleanPath(box.querySelector('[data-hnewfolder]').value);
         if (!f) return;
-        const before = v.settings.folders.length;
+        if (v.settings.folders.includes(f)) { say('That folder is already on the list.'); return; }
         await set({ folders: [...v.settings.folders, f] });
-        say(v.settings.folders.length > before ? 'Added.' : 'That isn\'t a full folder path (like C:\\Users\\you\\Pictures).');
+        say(v.settings.folders.includes(f) ? 'Added.' : refusedWhy(f));
         return;
       }
       if ('hsortsave' in b.dataset) return await set({ sortRules: readRules(box) }, 'Naming rules saved.');

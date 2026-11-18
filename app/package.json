@@ -306,6 +306,9 @@
     "test/run-looks-test.js",
     "test/run-panels-test.js",
     "test/run-apu-fit-test.js",
+    "test/run-borrow-status-test.js",
+    "test/run-hand-off-test.js",
+    "test/run-rent-form-test.js",
     "test/run-bob-net-home-test.js",
     "test/run-experts-per-word-test.js",
     "test/run-mind-only-test.js",
@@ -320,9 +323,9 @@
     "bundledLlamaTag": "b12359",
     "brainEngineVersion": 8,
     "brainEngine": {
-      "tag": "brain-engine-8b12359",
-      "win-x64": "sha256:712f87908fb8b3fa01cb5051d992c9e4e02901a1cbd973be76f6150e75f042ac",
-      "linux-x64": "sha256:fccf9181f1b3e7c981819150b333821627d00ede406d8af32bfe7ec89d928cbd"
+      "tag": "brain-engine-14b12359",
+      "win-x64": "sha256:ea03b2e9c076bfb837447df0724b0f58bdaac2a9e52c475be87e20c34580ec77",
+      "linux-x64": "sha256:9a2485d614a72fb609b619d7eed537bb383676a33b570e70a969ecb4260b96bb"
     },
     "electronSha256": "5099bdc11c6a78edff35851491c1f8228a1c2e844e1b376eee219402c42c6011",
     "layout": "From 0.9.32 Bob app\\Bob.exe is Electron's official electron.exe (devDependencies.electron), only renamed, and Bob's files sit in Bob app\\resources\\app. Updates never build an exe. electronSha256 (optional) pins the official zip's checksum; otherwise it is checked against Electron's SHASUMS256.txt. electron-builder (dist scripts) is only for making a portable exe by hand.",

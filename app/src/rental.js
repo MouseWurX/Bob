@@ -306,6 +306,15 @@ export async function findModel(service, { hf, name, address = '' }, key, fetchI
 // The server a hired machine runs: vLLM for a Hugging Face model at full size, llama.cpp for a GGUF file
 // ("hf:Owner/Repo/file.gguf"). Both answer the OpenAI-style API on port 8000. The command is wrapped in a timer (the
 // longest run the owner set) so the machine stops itself even if this computer never tells it to.
+// Nov 17: a machine rental needs a model the machine can fetch. A bare file name ("gpt-oss-20b-mxfp4.gguf") was
+// taken for a Hugging Face repo, so the pod started, was paid for, and loaded nothing.
+export function machineModelProblem(service, model) {
+  const s = typeof service === 'string' ? serviceOf(service) : service;
+  if (s?.kind !== 'machine') return '';
+  const m = String(model || '');
+  if (/\.gguf$/i.test(m) && modelSpec(m).kind !== 'gguf') return `A machine can't find "${m.split('/').pop()}" on its own. Pick the brain from "Pick a brain from Bob's list", or type where it lives on Hugging Face: owner/repo/${m.split('/').pop()}.`;
+  return '';
+}
 export function modelSpec(model) {
   const m = String(model || '');
   const gg = m.match(/^hf:([^/]+\/[^/]+)\/(.+\.gguf)$/i) || m.match(/^([^/]+\/[^/]+)\/(.+\.gguf)$/i);
@@ -314,6 +323,7 @@ export function modelSpec(model) {
 }
 export function serverCommand(model, { minutes, after = '', cards = 1 } = {}) {
   const spec = modelSpec(model);
+  if (spec.kind === 'vllm' && /\.gguf$/i.test(String(model || ''))) throw new Error(machineModelProblem({ kind: 'machine' }, model)); // never start a paid machine that can't load it
   const secs = Math.max(60, Math.round((minutes || 60) * 60));
   const run = spec.kind === 'gguf'
     ? `/app/llama-server --host 0.0.0.0 --port ${spec.port} -ngl 999 -c 32768 --hf-repo ${spec.repo} --hf-file ${spec.file}`
