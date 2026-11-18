@@ -42,6 +42,8 @@ import { cantReason, markCant, settleCant } from './cant-retry.js';
 import { askTogether } from './together.js';
 import { callKey, realState, linkKey, NOW_IN_NOTE, staleHandErrors, meanwhileNear, claimsPcAction, CLAIM_CORRECTION, CLAIM_NUDGE, claimsObservation, OBSERVE_CORRECTION, OBSERVE_NUDGE, LINK_NUDGE, EMPTY_NUDGE, CANT_NUDGE, EMPTY_NOTE, DOING_TOOLS, isLook, ALT_ROUTE_DONE, ALT_ROUTE_NUDGE, quickHandBack } from './brain-words.js';
 import { sidePick, apuRoom } from './brain-lanes.js';
+import { handOffPromise, HAND_OFF_LINE, HAND_OFF_LOG } from './hand-off-promise.js';
+import { switchFor } from './setup-offer.js';
 import { MAX_STEPS, loopSteps, borrowedLine, MAX_CALLS_PER_REPLY, HAND_TOOLS, repeatCheck, repeatNote, trailOf, REPEAT_STOP_LINE, REPEATS_THEN_ANSWER, ANSWER_NOW_NUDGE } from './brain.js';
 
 // Methods of the Brain class, put on it in its main file with the same rules as the methods written inside it.
@@ -531,6 +533,20 @@ export const runOnParts = {
       } // asked for something that didn't happen: one more go
       // Quick brain sees the job: a note that came while the big brain was writing its answer (no next step)
       // still reaches it, once: it says what changes, or that it saw it (PC test 1.5.203: the note never arrived).
+      // Nov 18 (hand-off-promise.js): the job needs a Hand that's off and he promised it anyway. No nudge (he has no
+      // tool for it): the Switch it on card goes up and the reply says plainly that nothing was done.
+      if (!reply.tool_calls && !empty && !ctx.handOffSaid && !job?.side && !ctx.noTools) {
+        const need = handOffPromise({ ask: text, reply: reply.content, usable: (n) => this.usable(n) });
+        if (need && !ctx.offered?.has(need)) {
+          ctx.handOffSaid = true; ctx.promiseChecked = true; // no "do it now" nudge after: he has no tool for it
+          const r = await this.offerSetup(need, ctx, { quiet: true }).catch(() => '');
+          if (r && ctx.offeredNow) {
+            const name = switchFor(this.cfg, need)?.name || 'That Hand';
+            const line = HAND_OFF_LINE(name); emit({ type: 'token', text: line }); reply.content = String(reply.content || '') + line;
+            this.log('honesty', HAND_OFF_LOG(need));
+          }
+        }
+      }
       // Nov 11 (loop-help.js): "I'll look that up." and nothing ran: one nudge to really do it.
       if (!reply.tool_calls && !empty && !this.helpOff('promise') && !ctx.promiseChecked && !ctx.noTools && nudgeOk(ctx) && promisesAction(reply.content)) {
         ctx.promiseChecked = true;

@@ -26,6 +26,7 @@
 //                              work without asking"); { screen: bool } = Screen use (the Apps and Browser Hands plus
 //                              eyes checks). Switching either OFF works from anywhere (like Stop); ON only on the PC.
 //                              Neither touches a hard limit.
+import { cleanPath } from './clean-path.js';
 import { handsView, stopRun, stopEverything, holdHands, saveRecipe, removeRecipe, loadRecipes, runApproved } from './hands.js';
 import { handsSettings, cleanHands, HANDS, LIMITS, handOn, handHere } from './hands-settings.js';
 import fs from 'node:fs';
@@ -65,8 +66,11 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
         }
       }
       for (const id of Object.keys(HANDS)) if (b[id] && typeof b[id] === 'object' && 'on' in b[id]) next[id] = { on: b[id].on === true };
-      if (Array.isArray(b.folders)) next.folders = b.folders.filter((f) => typeof f === 'string' && isDir(f)); // only folders that exist
-      if (Array.isArray(b.readOnlyFolders)) next.readOnlyFolders = b.readOnlyFolders.filter((f) => typeof f === 'string' && isDir(f)); // 1.5.117
+      // Nov 18: pasted paths are cleaned first (quotes, invisible marks); a path that still isn't a folder is said, not dropped quietly
+      const refused = [];
+      const keep = (xs) => xs.map(cleanPath).filter((f) => { if (typeof f !== 'string' || !f) return false; if (isDir(f)) return true; refused.push(f); return false; });
+      if (Array.isArray(b.folders)) next.folders = keep(b.folders); // only folders that exist
+      if (Array.isArray(b.readOnlyFolders)) next.readOnlyFolders = keep(b.readOnlyFolders); // 1.5.117
       if ('timeoutMin' in b) next.timeoutMin = b.timeoutMin;
       if (Array.isArray(b.sortRules)) next.sortRules = b.sortRules.length ? b.sortRules : null; // Sort and rename rules; [] = back to the defaults
       if ('eyesCheck' in b) next.eyesCheck = b.eyesCheck !== false;
@@ -74,7 +78,7 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
       brain.saveHands(clean);
       const changed = Object.keys(b).filter((k) => k !== 'limits').map((k) => (typeof b[k] === 'object' && !Array.isArray(b[k]) ? `${k} ${b[k].on ? 'on' : 'off'}` : k === 'enabled' ? `Hands ${b.enabled ? 'on' : 'off'}` : k === 'free' ? `work without asking ${b.free ? 'ON (no approval cards)' : 'off (asks again)'}` : k));
       brain.log('hands', `settings: ${[...changed, ...limitNotes].join(', ')}`);
-      send(res, 200, handsView(cfg));
+      send(res, 200, refused.length ? { ...handsView(cfg), refused } : handsView(cfg));
       return true;
     }
     if (p === '/api/hands/quick') { send(res, 200, quickSwitch(brain, cfg, b)); return true; }

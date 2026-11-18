@@ -7,6 +7,9 @@ import { moreSwitchesOff, checkRecord } from './honest.js';
 import { noteStrike } from './quarantine.js';
 import { roughTokens } from './share-brains.js';
 import { estimateText } from './rental.js';
+import { refusedFolder } from './folder-offer.js';
+import { handsRoots } from './hands-files.js';
+import { handsSettings, cleanHands, readOnlyRoots } from './hands-settings.js';
 
 // Methods of the Brain class, put on it in its main file with the same rules as the methods written inside it.
 export const setupParts = {
@@ -90,6 +93,8 @@ export const setupParts = {
       return `Nothing made yet. ${say} Tell ${who} that in one or two short, friendly lines: what's missing, the size, and that one press sets it up and then you ${jobId ? 'carry on with this job by yourself, no need to ask again' : 'can do it'}. It isn't an error, so don't apologise for one, and don't call this tool again now.`;
     }
     const sw = switchFor(this.cfg, what);
+    // Nov 18: offer_setup for a Hand that's already on, after a call failed: say what really stopped that call.
+    if (!sw && SWITCH_KEYS.includes(what) && ctx?.lastFailed?.text && !quiet) return `${what} is already on, so that isn't what stopped you. Your last tool call (${ctx.lastFailed.name}) failed with: "${String(ctx.lastFailed.text).slice(0, 300)}". Tell ${who} that in one plain line${/I can only (?:work with files|save) in:|No folders are ticked/.test(ctx.lastFailed.text) ? ' (the card to add that folder is already under the chat, if one could be made)' : ''}. Don't call offer_setup again.`;
     if (!sw) return quiet ? '' : SWITCH_KEYS.includes(what) ? 'That setting is already on. Go ahead with the job.' : `There's no setting called ${what}. Settings you can offer: ${this.switchesOff().map((x) => x.key).join(', ') || 'none (everything is on)'}.`;
     if (sw.held) return `The ${sw.name} Hand is stopped with ${sw.where}. Tell ${who} in one line: press that switch again to let Hands carry on, then ask again. Don't offer anything else.`;
     const id = (this.offers ||= new SetupOffers()).add({ sw: what, jobId });
@@ -97,6 +102,23 @@ export const setupParts = {
     ctx?.emit?.({ type: 'offer-setup', id, need: what, kind: 'switch', name: sw.name, where: sw.where, what: sw.what, privacy: sw.privacy || '', free: Boolean(sw.free), folders: Boolean(sw.folders), carryOn: Boolean(jobId) });
     this.log('setup', `offered to switch on ${what}`);
     return `Not on yet: "${sw.name}" stays off until ${who} presses Switch it on on the card under this chat${sw.folders ? ' (then they tick folders in Settings, Hands)' : ''}. Say what it does in one line; ${jobId ? 'the job carries on after the press' : 'you can do it after the press'}. Don't say it's on.`;
+  },
+  // Nov 18: a Hand was refused a folder that isn't ticked. A card offers to add it (nothing changes until it's pressed).
+  // Returns words for the tool result ('' when no card could be made: the refusal stands on its own).
+  offerFolder(args, ctx) {
+    if (!ctx?.emit || ctx.job?.guest) return '';
+    const who = this.cfg.userName || 'the user';
+    let folder = '';
+    try { folder = refusedFolder(args, handsRoots(this.cfg), { never: [...readOnlyRoots(this.cfg), this.cfg.dataDir].filter(Boolean) }); } catch { folder = ''; }
+    if (!folder) return '';
+    const key = 'folder:' + folder.toLowerCase();
+    if ((ctx.offered ||= new Set()).has(key)) return ` The card to add ${folder} is already under the chat. Don't try another way round.`;
+    ctx.offered.add(key); ctx.offeredNow = true;
+    const jobId = ctx.job?.id || null;
+    const id = (this.offers ||= new SetupOffers()).add({ folder, jobId });
+    ctx.emit({ type: 'offer-setup', id, need: 'folder', kind: 'folder', folder, where: 'Settings, Hands', carryOn: Boolean(jobId) });
+    this.log('setup', `offered to add a folder to Hands: ${folder}`);
+    return ` A card under the chat now asks ${who} to add ${folder} to your folders. Tell ${who} in one line that this folder isn't on your list yet and one press adds it${jobId ? ', then you carry on' : ''}. Don't call offer_setup, and don't try another way round.`;
   },
   // 1.5.127 Rented brains: the Hire it card for the rented brain in its slot. One card per turn; nothing is spent until it's pressed.
   offerRent(ctx, { why = '', tokens = 0 } = {}) {
@@ -128,6 +150,14 @@ export const setupParts = {
     const o = (this.offers ||= new SetupOffers()).take(id);
     if (!o) return { ok: false, why: 'That card is too old now. Ask me again.' };
     if (!yes) { this.log('setup', 'Not now'); return { ok: true, done: 'none' }; }
+    if (o.folder) {
+      const h = handsSettings(this.cfg);
+      this.saveHands(cleanHands({ ...h, folders: [...(h.folders || []), o.folder] }));
+      this.log('setup', `added ${o.folder} to the Hands folders (your click)`);
+      if (o.jobId) this.carryOnNow(o.jobId, `[Bob note, not from the user: the user added ${o.folder} to your folders for this. Do what they asked.]`);
+      this.broadcast?.({ type: 'settings-changed' });
+      return { ok: true, done: 'folder', folder: o.folder };
+    }
     if (o.sw) {
       const patch = applySwitch(this.cfg, o.sw, { saveHands: (h) => this.saveHands(h) });
       if (!patch) return { ok: false, why: 'That setting couldn\'t be switched on from here. It\'s in Settings.' };
