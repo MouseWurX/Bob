@@ -762,7 +762,15 @@ be pinned RAM by design, not the card running out. It would cost reading time (t
 (`spillMinusStep` off). The engine logs' buffer lines (`CUDA_Host compute buffer`, `CUDA0 compute buffer`, KV buffer)
 are read for every load, including the loads already run in Addenda 33, 35 and 36.
 
-**Predictions, written before any run:** the rise is within 0.3 GB of context × `-ub` × 2 bytes plus the staging
+**The ladder (added before any run, the owner asked whether one of our settings, or several together, cause it):**
+8 more loads run first. From plain settings (`-b 2048 -ub 512`, f16 cache, `--fit` on), one of ours is added at a time:
+q8_0 cache, q4_0 cache, step 4096/4096, the 4 GB copy cache, the read layout. All at 256K, and the plain and step-4096
+rungs at 128K too. 13 loads in all.
+
+**Predictions, written before any run:** on the ladder, the rise stays small (under 0.5 GB) until the step goes to
+`-ub 4096`, jumps there by about 1.8 GB at 256K, and does not grow again with the copy cache or the read layout. The
+cache type changes nothing. So no two settings fight; one setting (the big step) causes it alone. After that, the
+rise is within 0.3 GB of context × `-ub` × 2 bytes plus the staging
 buffer, so it halves each time `-ub` halves. At 256K, `-ub 1024` rises under 1 GB and `-ub 512` under 0.6 GB.
 Writing speed stays the same at every `-ub`. Reading gets slower as `-ub` shrinks.
 

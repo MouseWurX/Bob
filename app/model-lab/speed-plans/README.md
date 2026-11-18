@@ -38,6 +38,6 @@ starts.
 - `mtp-big-steps.json`: MTP off, 2 ahead and 3 ahead at steps 2048/512, 4096/4096 and 8192/4096 on the MTP copy of the brain, q4_0 cache, 128K window, 9 loads (Addendum 37).
 - `needle-q4-vs-q8.json`: needle-in-a-haystack recall, f16 (128K), q8_0 and q4_0 cache at 128K and 256K, five depths each, 5 loads (Addendum 38).
 - `kv-in-ram.json`: 4x4 and 6x3.5 with the context cache kept in RAM (`-nkvo`), q4_0 at 128K and 256K, q8_0 at 256K, 6 loads (Addendum 39).
-- `spill-cause.json`: is the 128K/256K shared-memory rise the attention mask? `-ub` 1024/2048 at 128K and 512/1024/2048 at 256K, 4x4 copy cache, q4_0 cache, 5 loads (Addendum 40).
+- `spill-cause.json`: is the 128K/256K shared-memory rise the attention mask? A ladder from plain settings adding one of ours at a time, then `-ub` 1024/2048 at 128K and 512/1024/2048 at 256K, 4x4 copy cache, q4_0 cache, 13 loads (Addendum 40).
 - `perplexity-grid.json`: for `model-lab/perplexity-grid.mjs`, not the speed runner. What each speed setting and cache type costs in answers: KL divergence and same-top-word rate against plain settings with an f16 cache, with Brain Engine 15's llama-perplexity, 2 groups, 18 runs (Addendum 33).
 - `perplexity-120b-softcut.json`: for `model-lab/perplexity-grid.mjs`: GPT-OSS 120B with the soft cut (41 of 128) against the full brain, in two phases (`--phase base` with the cut off, `--phase rows` after it is switched on) (Addendum 34).
