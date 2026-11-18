@@ -240,9 +240,11 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | Faster reading + 4 GB copy cache [F4c] | 14.1 | 2,323 | 98.3 | - | - | ~0% (q8 cache) | 5 | **chat pick** |
 | Fastest reading + 4 GB copy cache, q8 cache [4x4] | 10.2 | 3,222 | 94.0 | 29 | 0.6 | ~0% (q8 cache) | 4 |  |
 | 4x4, q4 cache, margin 1 GB [4x4 q4 fit1024] | 9.5 | 3,469 | 84.3 | 28 | 0.5 | +0.35% (q4 cache) | 2 |  |
-| 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 9.3 | 3,525 | **100.7** | 27 | 0.5 | +0.35% (q4 cache) | 1 | **new candidate (1 load)** |
+| 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 9.3 | 3,541 | **100.6** | 27 | 0.5 | +0.35% (q4 cache) | 2 | **new candidate** |
 | F4c, pinning off [F4c unpinned] | 13.6 | 2,411 | 97.0 | - | - | ~0% (q8 cache) | 1 | same words as pinned |
 | 4x4, q4 cache, margin 1 GB, pinning off [4x4 q4 unpinned] | 9.7 | 3,404 | 83.5 | 28 | 0.08 | +0.35% (q4 cache) | 1 | same words as pinned |
+| 4x4 q4 fit512, a quarter of misses on the processor [cpu-share 0.25] | 9.3 | 3,539 | 92.8 | 27 | - | +0.35% (q4 cache) | 1 |  |
+| 4x4 q4 fit512, half of misses on the processor [cpu-share 0.5] | 9.2 | 3,566 | 91.3 | 27 | - | +0.35% (q4 cache) | 1 |  |
 | Step 6144 + 3.5 GB copy cache [6x3.5] | 8.6 | 3,842 | 88.1 | - | - | ~0% (q8 cache) | 4 |  |
 | Lending the cache to reading [L1] | 9.0 | 3,688 | 92.6 | - | - | not measured | 3 | shelved |
 | Read layout [R1] | 10.0 | 3,293 | 92.5 | 29 | 0.6 | ~0% (q8 cache) | 1 |  |
@@ -272,10 +274,12 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | 4x4, f16 cache (full size) [4x4 f16] | 52.0 | 2,384 | 54.9 | - | - | 0% (reference) | 1 |  |
 | 4x4, q4 cache, margin 1 GB [4x4 q4] | 48.4 | 2,547 | 58.0 | 31 | 1.3 | +0.35% (q4 cache) | 5 |  |
 | 4x4, q4 cache, pinning off [4x4 q4 unpinned] | 48.4 | 2,543 | 57.8 | 31 | 0.08 | +0.35% (q4 cache) | 1 | same words as pinned |
+| 4x4 q4 fit512, a quarter of misses on the processor [cpu-share 0.25] | 47.2 | 2,608 | 54.7 | 30 | - | +0.35% (q4 cache) | 1 |  |
+| 4x4 q4 fit512, half of misses on the processor [cpu-share 0.5] | 47.3 | 2,605 | 62.6 | 30 | - | +0.35% (q4 cache) | 1 |  |
 | Step 4096, q4 cache, no copy cache [X0 q4] | 40.6 | 3,034 | 55.7 | 22 | 1.2 | +0.35% (q4 cache) | 1 | faster first word, lower writing |
 | Step 4096, q4 cache, context cache in RAM [X0 q4 nkvo] | 43.3 | 2,845 | 15.1 | 20 | 1.3 | +0.35% (q4 cache) | 1 | dropped |
 | 4x4, q4 cache, mask made on card (BE16) [4x4 q4 BE16 mask] | 48.4 | 2,545 | 57.9 | 31 | 1.2 | +0.35% (q4 cache) | 1 | same words; no memory change |
-| 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 48.1 | 2,563 | 68.6 | 30 | 1.3 | +0.35% (q4 cache) | 1 | **best writing (1 load)** |
+| 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 47.8 | 2,582 | 68.3 | 30 | 1.3 | +0.35% (q4 cache) | 2 | **best writing** |
 | 4x4, q4 cache, margin 2 GB [4x4 q4 fit2048] | 50.4 | 2,442 | 57.2 | 32-33 | 1.3 | +0.35% (q4 cache) | 2 |  |
 | Step 5120, q4 cache (margin 2 GB) [ub5120 q4] | 45.5 | 2,706 | 63.2 | 33 | 1.6 | +0.35% (q4 cache) | 1 | **balance pick** |
 | 6x3.5, q4 cache [6x3.5 q4] | 41.8 | 2,947 | 61.8 | 32-34 | 1.9 | +0.35% (q4 cache) | 3 |  |
@@ -370,6 +374,17 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 - **Writing collapses with the context cache in RAM:** 73% slower at 128K and 76% slower at 256K. Every new word reads the whole cache over the PCIe link, and it frees only 2 to 3 layers' experts. Dropped.
 - **A side finding on the copy cache.** With no copy cache, only 22 to 26 layers' experts sit in RAM, against 31 to 35 with the 4 GB copy cache. The first word comes sooner (40.6 s against about 48 at 128K, 133.9 against about 150 at 256K), but writing is slower (55.7 against about 58, and 39.0 against about 45). At long contexts the copy cache trades reading speed for writing speed.
 
+**Sending part of the copy cache's misses to the processor (18 November, 6 loads, 1 load per setting).** 4x4, a q4_0 context cache, a 512 MB fit margin and a 4 GB copy cache, on the long prompt. A share of 0.25 sends a quarter of the missed experts to the processor instead of copying them to the card. Cells are first word s / read / write.
+
+| Processor share | 32K | 128K | Processor busy |
+|---|---|---|---|
+| 0 (copy every miss) | 9.3 / 3,557 / 100.4 | 47.4 / 2,601 / 68.1 | 14% to 22% |
+| 0.25 | 9.3 / 3,539 / 92.8 | 47.2 / 2,608 / 54.7 | 22% |
+| 0.5 | 9.2 / 3,566 / 91.3 | 47.3 / 2,605 / 62.6 | 22% |
+
+- **Reading didn't change, and writing only dropped:** 8% to 9% slower at 32K, and 8% to 20% slower at 128K, which was noisy. The processor got no busier. We had predicted that 0.25 would help, and it didn't. The share stays at 0.
+- **This repeats the 512 MB margin.** Share 0 is the same setting as the 512 MB margin row in section 4.3.3.3, and it matched that first load closely (100.4 against 100.7 at 32K, 68.1 against 68.6 at 128K). That candidate now rests on 2 loads.
+
 #### 4.3.3.3 The fit margin at 128K and 256K (18 November, Brain Engine 15)
 
 `--fit` leaves a margin of the card free, 1 GB by default. A bigger margin was tried to see whether it would stop the shared-memory rise. There were 18 loads on the long prompt, 1 load per setting. Read the table as first word / read / write, then the rise, the free memory after the load and the layers with experts in RAM (of 41).
@@ -415,7 +430,7 @@ The margin was kept, but the rise did not change, and bigger margins only pushed
 
 - **512 MB is the sweet spot at 32K and 128K.** One more layer's experts stays on the card, and writing was 19% faster at 32K and 18% faster at 128K. At 256K it made no gain.
 - **256 MB is too small.** The extra rise nearly doubles, from about 80 to about 145 MB, and reading slows. That is a small real spill starting, and it showed at every context size.
-- These are single loads, so the 18% to 19% gains are a lead to check, not a settled result.
+- The 32K and 128K rows at 512 MB were repeated in a later run (section 4.3.3.2, processor share 0) and matched within 1%. That makes 2 loads, which is better but still short of a settled result.
 
 #### 4.3.3.4 Perplexity: what the settings cost in answers (18 November)
 
