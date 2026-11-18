@@ -209,7 +209,7 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 - **Experts in RAM:** how many of 41 layers keep their experts in system RAM. Fewer is better for writing.
 - **Locked RAM:** the pinned attention-mask buffer that Windows shows as "shared GPU memory" (section 4.3.3.5). It is not a spill.
 - **Perplexity change:** against the full-size f16 context cache. The speed settings themselves change nothing (section 4.3.3.4).
-- **Pick:** what we would choose today. Turbo uses a different file of the brain, so it has its own table below.
+- **Pick:** what we would choose today. Turbo uses a different file of the brain, so its rows compare only with each other, and its full tables are below.
 
 **Short prompt (Bob's start prompt)**
 
@@ -225,6 +225,9 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | Step 6144, no copy cache [S6k0] | 1.1 | **3,724** | 81.7 | - | - | not measured | 2 |  |
 | Lending the cache to reading [L1] | 1.3 | 2,998 | 104.2 | - | - | not measured | 2 | shelved (refill cost) |
 | Read layout [R1] | 1.2 | 3,380 | 82.1 | 29 | - | ~0% (q8 cache) | 1 |  |
+| MTP 2 ahead, 4x4 + 2 GB copy cache [MTP2 4096 c2] | 1.5 | 2,642 | 54.3 | 34 | - | +0.35% (q4 cache) | 1 | MTP rerun |
+| MTP 3 ahead, b8192/ub4096 + 2 GB copy cache [MTP3 8192 c2] | 1.3 | 3,040 | 64.9 | 34 | - | +0.35% (q4 cache) | 1 | MTP rerun |
+| No MTP, b8192/ub4096 + 2 GB copy cache [off 8192 c2] | 1.1 | 3,414 | 66.8 | 29 | - | +0.35% (q4 cache) | 1 | MTP rerun |
 
 **32K**
 
@@ -243,6 +246,9 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | Step 6144 + 3.5 GB copy cache [6x3.5] | 8.6 | 3,842 | 88.1 | - | - | ~0% (q8 cache) | 4 |  |
 | Lending the cache to reading [L1] | 9.0 | 3,688 | 92.6 | - | - | not measured | 3 | shelved |
 | Read layout [R1] | 10.0 | 3,293 | 92.5 | 29 | 0.6 | ~0% (q8 cache) | 1 |  |
+| MTP 2 ahead, 4x4 + 2 GB copy cache [MTP2 4096 c2] | 11.7 | 2,815 | 64.8 | 34 | - | +0.35% (q4 cache) | 1 | MTP rerun |
+| MTP 3 ahead, b8192/ub4096 + 2 GB copy cache [MTP3 8192 c2] | 13.0 | 2,535 | 58.4 | 34 | - | +0.35% (q4 cache) | 1 | MTP rerun |
+| No MTP, 4x4 + 2 GB copy cache [off 4096 c2] | 10.1 | 3,273 | 69.5 | 29 | - | +0.35% (q4 cache) | 1 | MTP rerun |
 
 **64K**
 
@@ -267,7 +273,7 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | 4x4, q4 cache, margin 1 GB [4x4 q4] | 48.4 | 2,547 | 58.0 | 31 | 1.3 | +0.35% (q4 cache) | 5 |  |
 | 4x4, q4 cache, pinning off [4x4 q4 unpinned] | 48.4 | 2,543 | 57.8 | 31 | 0.08 | +0.35% (q4 cache) | 1 | same words as pinned |
 | 4x4, q4 cache, mask made on card (BE16) [4x4 q4 BE16 mask] | 48.4 | 2,545 | 57.9 | 31 | 1.2 | +0.35% (q4 cache) | 1 | same words; no memory change |
-| 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 48.1 | 2,563 | **68.6** | 30 | 1.3 | +0.35% (q4 cache) | 1 | **best writing (1 load)** |
+| 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 48.1 | 2,563 | 68.6 | 30 | 1.3 | +0.35% (q4 cache) | 1 | **best writing (1 load)** |
 | 4x4, q4 cache, margin 2 GB [4x4 q4 fit2048] | 50.4 | 2,442 | 57.2 | 32-33 | 1.3 | +0.35% (q4 cache) | 2 |  |
 | Step 5120, q4 cache (margin 2 GB) [ub5120 q4] | 45.5 | 2,706 | 63.2 | 33 | 1.6 | +0.35% (q4 cache) | 1 | **balance pick** |
 | 6x3.5, q4 cache [6x3.5 q4] | 41.8 | 2,947 | 61.8 | 32-34 | 1.9 | +0.35% (q4 cache) | 3 |  |
@@ -281,6 +287,9 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | Step 6144, no copy cache [S6k0] | **37.9** | **3,248** | 53.1 | - | - | not measured | 1 |  |
 | Lending the cache to reading [L1] | 41.7 | 2,954 | 57.1 | - | - | not measured | 1 | shelved |
 | Read layout [R1] | 44.5 | 2,771 | 55.2 | 33 | 1.3 | ~0% (q8 cache) | 1 |  |
+| MTP 2 ahead, 4x4 + 2 GB copy cache [MTP2 4096 c2] | 55.3 | 2,225 | 54.9 | 34 | - | +0.35% (q4 cache) | 1 | MTP rerun, 120K prompt |
+| MTP 3 ahead, b8192/ub4096 + 2 GB copy cache [MTP3 8192 c2] | 54.7 | 2,252 | **70.6** | 34 | - | +0.35% (q4 cache) | 1 | MTP rerun, 120K prompt |
+| No MTP, b8192/ub4096 + 2 GB copy cache [off 8192 c2] | 46.4 | 2,655 | 51.6 | 29 | - | +0.35% (q4 cache) | 1 | MTP rerun, 120K prompt |
 
 **256K**
 
@@ -309,7 +318,7 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | Lending the cache to reading [L1] | 131.1 | 1,940 | 42.5 | - | - | not measured | 1 | shelved |
 | Read layout [R1] | 143.2 | 1,777 | 38.5 | 38 | 2.3 | ~0% (q8 cache) | 1 |  |
 
-**Turbo (MTP) with bigger steps (18 November, 9 loads, 1 load per setting, provisional).** Turbo uses a different file of the brain, so it is compared only with itself. A q4_0 context cache, a 3.5 GB copy cache, a 2 GB fit margin and a 128K context. Each cell is first word s / read / write, on the start, 32K and 120K prompts.
+**Turbo (MTP) with bigger steps (18 November, 9 loads, 1 load per setting).** Turbo uses a different file of the brain, so it is compared only with itself. A q4_0 context cache, a 3.5 GB copy cache, a 2 GB fit margin and a 128K context. Each cell is first word s / read / write, on the start, 32K and 120K prompts.
 
 | Step (`-b` / `-ub`) | Turbo | Start | 32K | 120K |
 |---|---|---|---|---|
@@ -323,11 +332,27 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | 8192 / 4096 | 2 ahead * | 1.8 / 2,124 / 80.9 | 14.1 / 2,336 / 73.3 | 57.1 / 2,154 / 60.6 |
 | 8192 / 4096 | 3 ahead * | 2.0 / 1,930 / 64.6 | 14.5 / 2,266 / 73.4 | 58.4 / 2,108 / 81.8 |
 
-\* These rows had a real spill: 1,272 MB past the pinned attention-mask buffer, because `--fit` does not count the memory of Turbo's guessing head. They read low and are provisional. A 6-load rerun with a 2 GB copy cache is queued.
+\* These rows showed a rise of 1,272 MB past the main pinned buffer. We first read it as a real spill. The rerun below showed it is not: Turbo's guessing head keeps its own context, with a second pinned buffer of 1,152 MiB, and `--fit` left over 2 GB of the card free.
 
-- **On long prompts, Turbo writes 17% to 26% faster and reads 13% to 15% slower.** It adds 6 to 8 s to the first word at 120K.
+- **On long prompts, Turbo writes 17% to 26% faster and reads 13% to 15% slower** at step 2048/512 with the 3.5 GB copy cache. It adds 6 to 8 s to the first word at 120K.
 - **2 ahead beats 3 ahead** in every row but one. The brain's guesses were accepted 65% to 78% of the time on real text with 2 ahead, and 50% to 65% with 3 ahead.
-- **This differs from 16 November,** when Turbo with Bob's sampling wrote up to 17% slower on a short prompt. Whether Turbo now earns a place in the picks waits on the rerun.
+- **This differs from 16 November,** when Turbo with Bob's sampling wrote up to 17% slower on a short prompt.
+
+**Turbo rerun with room (18 November, 6 loads, 1 load per setting).** A 2 GB copy cache, a q4_0 context cache and a 128K load. Cells are first word s / read / write on the start, 32K and 120K prompts.
+
+| Step | Turbo | Start | 32K | 120K | Layers' experts in RAM | Guesses kept |
+|---|---|---|---|---|---|---|
+| 4096 / 4096 | off | 1.6 / 2,470 / 62.7 | 10.1 / 3,273 / 69.5 | 46.6 / 2,639 / 60.6 | 29 | – |
+| 4096 / 4096 | 2 ahead | 1.5 / 2,642 / 54.3 | 11.7 / 2,815 / 64.8 | 55.3 / 2,225 / 54.9 | 34 | 33% to 81% |
+| 4096 / 4096 | 3 ahead | 1.9 / 2,039 / 51.3 | 13.7 / 2,405 / 63.2 | 54.6 / 2,253 / 50.6 | 34 | 37% to 61% |
+| 8192 / 4096 | off | 1.1 / 3,414 / 66.8 | 9.7 / 3,380 / 66.0 | 46.4 / 2,655 / 51.6 | 29 | – |
+| 8192 / 4096 | 2 ahead | 1.9 / 2,090 / 56.6 | 11.9 / 2,762 / 64.6 | 54.6 / 2,253 / 57.2 | 34 | 33% to 82% |
+| 8192 / 4096 | 3 ahead | 1.3 / 3,040 / 64.9 | 13.0 / 2,535 / 58.4 | 54.7 / 2,252 / 70.6 | 34 | 37% to 75% |
+
+- **The "spill" was Turbo's own pinned buffer,** not card overflow, in this run and the first one.
+- **At big steps, Turbo doesn't pay on this card.** Its guessing head pushes 5 more layers' experts to RAM (34 against 29), which eats its gain. At 32K it wrote 58 to 65 against 66 to 70 with it off, and read about 15% slower.
+- **One row won:** 3 ahead at 120K with step 8192 wrote 70.6 against 51.6. That is one load and may be noise.
+- **So Turbo stays off by default.** It helped only at a small step with a big copy cache, where reading is slow anyway.
 
 #### 4.3.3.3 The fit margin at 128K and 256K (18 November, Brain Engine 15)
 
@@ -492,8 +517,8 @@ These are queued on the home PC in this order, and each has its addendum written
 | Pinning on against off, checked properly | 16 | done, same words, within 2% (section 4.3.3.5) |
 | Brain Engine 16: the attention mask made on the card (patch 0025) | 20 | done: same words, no memory saved (section 4.3.3.5) |
 | Smaller fit margins, 512 and 256 MB | 11 | done, results above (section 4.3.3.3) |
-| Turbo (MTP) with bigger steps | 9 | done, provisional (section 4.3.3.2) |
-| Turbo rerun with room for its guessing head | 6 | queued |
+| Turbo (MTP) with bigger steps | 9 | done (section 4.3.3.2) |
+| Turbo rerun with room for its guessing head | 6 | done: no gain at big steps (section 4.3.3.2) |
 | Needle in a haystack, q8_0 against q4_0 at 128K and 256K | 5 | done, 25 of 25 found (section 4.3.3.4) |
 | Context cache kept in RAM (`-nkvo`) | 6 | queued |
 | GPT-OSS 120B soft cut against the full brain, in perplexity | – | waiting on approval |
