@@ -683,3 +683,11 @@ writing falls as the step grows, because the bigger working memory pushes brain 
 for the time to the first word is 6144 at both sizes.
 
 **What it decides:** the reading step Calibrate sets for long contexts.
+
+**Change before the run (Nov 18, after Addendum 35's results):** no margin stopped the rise. All 18 loads rose
+by the same amount (about 1.3 GB at 128K, 2.3 GB or 3.3 to 3.4 GB at 256K), whatever the margin or cache type, while
+--fit left the free room it was asked to leave. So the rise is not the card overflowing. It is more likely a buffer
+on the computer's side that Windows counts as shared graphics memory. This is unproven in our lab, as we have yet to
+test it. Bigger margins only pushed layers off the card and cut writing. The sweep still runs, because the step
+question stands on its own. It uses `FIT_MARGIN=2048`, which matched the default 1024 in Addendum 35. The rise is
+recorded but does not decide anything. The predictions above stand unchanged.
