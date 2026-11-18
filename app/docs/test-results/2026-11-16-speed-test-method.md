@@ -853,6 +853,11 @@ and first word are within 3% of pinned at every size, including the short start 
 reliability fix (on by default): the RAM stays pageable and no false spill shows. If any size reads more than 3%
 slower, Bob keeps pinning and only the spill checks subtract the buffer.
 
+**Result (Nov 18, 14:52 to 15:16 test-PC time, 16 of 16 loads, 2 rounds):** both predictions held. The answers were
+identical word for word, pinned against unpinned, on every row and both rounds. Every speed was within 2%. Rise,
+pinned to unpinned: F4c 32K 336 to 73 MB; 4x4 q4_0 32K 593 to 75; 128K 1,297 to 76; 256K 2,256 to 75. Bob now starts
+its engine with `GGML_CUDA_NO_PINNED=1` (src/engine-care.js `unpinnedEnv`); `llamacpp.pinnedSteps: true` turns it off.
+
 ## Addendum 43 (Nov 18, before any run): the attention mask made on the card (patch 0025, Brain Engine 16)
 
 Patch 0025 (`LLAMA_KQ_MASK_BUILD=1`, off by default) sends each cache cell's position (about 1 MB at 256K) and the
