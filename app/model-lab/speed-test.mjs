@@ -313,9 +313,11 @@ async function runRowOnce({ plan, prompts, row, round, fx }) {
   // marks that run failed, so a spilled run never counts as a slow speed.
   const spill0 = plan.spillCheck && fx.sharedGpuMB ? await fx.sharedGpuMB() : null;
   out.sysBefore = await fx.system?.(); // processor and RAM, CPU temperature if Windows gives it, top processes; before the load
+  const loadT0 = Date.now();
   const srv = await fx.start(eng.exe, args, env);
   try {
     const up = await srv.ready();
+    out.loadS = Math.round((Date.now() - loadT0) / 100) / 10; // Nov 18: seconds from start to ready (owner asked for load times)
     if (!up.ok) { out.notRun = up.why || 'the engine didn\'t start'; return out; }
     out.load = parseCacheLog(srv.log());
     // live switches a row sets after load (Brain Engine: expert mask, dials, experts per word), each a POST
