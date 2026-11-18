@@ -328,7 +328,7 @@ What not to turn on, on this machine:
 - **Prefetch.** It read 5.6% to 12.7% slower and used more of the card.
 - **Hot-experts caches under 4 GB, or over 4 GB.** Under 4 GB they often lost to no cache on long prompts, and a 512 MB cache wrote 30% slower than none. Over 4 GB they wrote slower at 32K.
 - **The iq4_nl context cache.** It read about 210 tokens a second, and every long prompt timed out.
-- **A bigger fit margin.** It only pushed layers off the card and cut writing, by up to 70% at 256K.
+- **A bigger fit margin.** It only pushed layers off the card and cut writing, by up to 70% at 256K. Going below 512 MB is no good either: at 256 MB a small real spill starts. A 512 MB margin wrote 18% to 19% faster than the default at 32K and 128K in one load each, which is promising but not yet checked.
 - **A reading step of 8192 at 256K.** Its work space pushed 11 layers off the card, and writing fell to about 21.
 - **The fNRI live trace, on engines before 12.** Before Brain Engine 11 it cost 9% to 11% of writing and changed the words. From Brain Engine 11 the words match. On Brain Engine 12 it costs 2% or less, with or without the cache, so it is fine to leave on (section 3.4.3, over 3 rounds).
 

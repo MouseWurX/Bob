@@ -60,7 +60,7 @@ All speeds are tokens a second. "Read" is prompt reading speed and "write" is wr
 #### 4.3.3.1 How the speed tests were run
 
 - **Written down first.** The method was written on 16 November, before any timed run. Each later test got a dated addendum (41 by 18 November), written before that test ran, with its settings, its predictions and the rule for "best". Results are graded against the addendum as written, including the predictions that missed. The method and addenda are in `docs/test-results/2026-11-16-speed-test-method.md`.
-- **Loads and repeats.** Each setting gets an untimed warm-up after the brain loads, then timed runs. The main runs of 16 and 17 November used 5 loads per setting. Many later runs used fewer: the 18 November cache-type, read-layout, margin and step runs used 1 load per setting, and the GPT-OSS 120B run used 3. Each table states its own count, and the Runs column of the big table gives it row by row. Settings take turns (1, 2, 3, 1, 2, 3...), so heat and background load fall evenly across them. We report the median, with the lowest and highest where they matter, never a mean on its own. With 1 load, the number is that single load and not a median. Single-load results swing 5% to 10%, so they pick a shortlist and decide nothing.
+- **Loads and repeats.** Each setting gets an untimed warm-up after the brain loads, then timed runs. The main runs of 16 and 17 November used 5 loads per setting. Many later runs used fewer: the 18 November cache-type, read-layout, margin and step runs used 1 load per setting, and the GPT-OSS 120B run used 3. Each table states its own count, and the Runs column of the big table gives it row by row. Settings take turns (1, 2, 3, 1, 2, 3...), so heat and background load fall evenly across them. We report the median, with the lowest and highest where they matter, never a mean on its own. With 1 load, the number is that single load and not a median. Single-load results swing 5% to 10%, so they pick a shortlist and decide nothing. From 16 to 18 November (to 1:31 PM) the home PC did about 596 loads in all: 165, 299 and 132 a day.
 - **Prompts and context.**
   - "Start" is Bob's real start prompt, his system prompt and tools, about 3,900 to 4,000 tokens, followed by "hi".
   - "16K" and "32K" are public-domain book text cut to exactly 16,384 and 32,768 tokens with the brain's own tokenizer, plus one question.
@@ -229,6 +229,26 @@ On the cut 120B, the bigger steps read 2 to 2.5 times as fast as Normal. F4c wri
 
 The margin was kept, but the rise did not change, and bigger margins only pushed layers off the card and cut writing. With the default 1 GB margin, every load from 32K to 256K kept 1.0 to 1.3 GB of the card free.
 
+**Smaller margins (18 November, 11 loads, 1 load per setting).** A q4_0 context cache. "Extra rise" is the rise minus the pinned attention-mask buffer (section 4.3.3.5), so it shows real overflow only.
+
+| Setting | Context | Margin MB | First word / read / write | Free MiB | Layers' experts in RAM | Extra rise MB |
+|---|---|---|---|---|---|---|
+| 4x4 | 32K | 1024 | 9.5 / 3,473 / 84.9 | 1,034 | 28 | 81 |
+| 4x4 | 32K | 512 | 9.3 / 3,525 / 100.7 | 715 | 27 | 76 |
+| 4x4 | 32K | 256 | 9.5 / 3,472 / 98.1 | 263 | 27 | 144 |
+| 4x4 | 128K | 1024 | 47.9 / 2,572 / 57.9 | 1,067 | 31 | 80 |
+| 4x4 | 128K | 512 | 48.1 / 2,563 / 68.6 | 616 | 30 | 80 |
+| 4x4 | 128K | 256 | 51.0 / 2,414 / 60.6 | 297 | 29 | 145 |
+| 4x4 | 256K | 1024 | 149.7 / 1,698 / 43.9 | 1,062 | 35 | 79 |
+| 4x4 | 256K | 512 | 150.5 / 1,690 / 41.3 | 597 | 34 | 81 |
+| 4x4 | 256K | 256 | 163.7 / 1,553 / 40.9 | 278 | 33 | 144 |
+| 6x3.5 | 256K | 512 | 128.7 / 1,977 / 43.1 | 521 | 35 | 79 |
+| 6x3.5 | 256K | 256 | 128.3 / 1,983 / 41.8 | 403 | 35 | 81 |
+
+- **512 MB is the sweet spot at 32K and 128K.** One more layer's experts stays on the card, and writing was 19% faster at 32K and 18% faster at 128K. At 256K it made no gain.
+- **256 MB is too small.** The extra rise nearly doubles, from about 80 to about 145 MB, and reading slows. That is a small real spill starting, and it showed at every context size.
+- These are single loads, so the 18% to 19% gains are a lead to check, not a settled result.
+
 #### 4.3.3.4 Perplexity: what the settings cost in answers (18 November)
 
 **The speed settings, all with a q8_0 context cache** (1 perplexity run per setting, 8K context, 2 chunks; base PPL 5.296 with plain settings and an f16 cache):
@@ -308,7 +328,7 @@ These are queued on the home PC in this order, and each has its addendum written
 | Spill cost: plain settings, steps 512 to 4096 at 256K, pinning off | 7 | done, results above |
 | Pinning on against off, checked properly | 16 | queued |
 | Brain Engine 16: the attention mask made on the card (patch 0025) | – | waiting on approval |
-| Smaller fit margins, 512 and 256 MB | 11 | queued |
+| Smaller fit margins, 512 and 256 MB | 11 | done, results above (section 4.3.3.3) |
 | Turbo (MTP) with bigger steps | 9 | queued |
 | Needle in a haystack, q8_0 against q4_0 at 128K and 256K | 5 | queued |
 | Context cache kept in RAM (`-nkvo`) | 6 | queued |
