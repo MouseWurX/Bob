@@ -234,10 +234,12 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | Faster reading (step 2048) [F0] | 10.6 | 3,084 | 75.7 | - | - | ~0% (q8 cache) | 2 |  |
 | Fastest reading (step 4096) [X0] | 7.9 | 4,167 | 73.5 | - | - | ~0% (q8 cache) | 2 |  |
 | Step 6144, no copy cache [S6k0] | **7.2** | **4,593** | 74.5 | - | - | not measured | 3 | fastest first word |
-| Faster reading + 4 GB copy cache [F4c] | 14.2 | 2,308 | 98.5 | - | - | ~0% (q8 cache) | 4 | **chat pick** |
+| Faster reading + 4 GB copy cache [F4c] | 14.1 | 2,323 | 98.3 | - | - | ~0% (q8 cache) | 5 | **chat pick** |
 | Fastest reading + 4 GB copy cache, q8 cache [4x4] | 10.2 | 3,222 | 94.0 | 29 | 0.6 | ~0% (q8 cache) | 4 |  |
-| 4x4, q4 cache, margin 1 GB [4x4 q4 fit1024] | 9.5 | 3,473 | 84.9 | 28 | 0.5 | +0.35% (q4 cache) | 1 |  |
+| 4x4, q4 cache, margin 1 GB [4x4 q4 fit1024] | 9.5 | 3,469 | 84.3 | 28 | 0.5 | +0.35% (q4 cache) | 2 |  |
 | 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 9.3 | 3,525 | **100.7** | 27 | 0.5 | +0.35% (q4 cache) | 1 | **new candidate (1 load)** |
+| F4c, pinning off [F4c unpinned] | 13.6 | 2,411 | 97.0 | - | - | ~0% (q8 cache) | 1 | same words as pinned |
+| 4x4, q4 cache, margin 1 GB, pinning off [4x4 q4 unpinned] | 9.7 | 3,404 | 83.5 | 28 | 0.08 | +0.35% (q4 cache) | 1 | same words as pinned |
 | Step 6144 + 3.5 GB copy cache [6x3.5] | 8.6 | 3,842 | 88.1 | - | - | ~0% (q8 cache) | 4 |  |
 | Lending the cache to reading [L1] | 9.0 | 3,688 | 92.6 | - | - | not measured | 3 | shelved |
 | Read layout [R1] | 10.0 | 3,293 | 92.5 | 29 | 0.6 | ~0% (q8 cache) | 1 |  |
@@ -262,7 +264,8 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 |---|---|---|---|---|---|---|---|---|
 | 4x4, q8 cache [4x4] | 50.0 | 2,465 | 62.6 | 33 | 1.3 | ~0% (q8 cache) | 3 |  |
 | 4x4, f16 cache (full size) [4x4 f16] | 52.0 | 2,384 | 54.9 | - | - | 0% (reference) | 1 |  |
-| 4x4, q4 cache, margin 1 GB [4x4 q4] | 48.5 | 2,544 | 58.0 | 31 | 1.3 | +0.35% (q4 cache) | 3 |  |
+| 4x4, q4 cache, margin 1 GB [4x4 q4] | 48.5 | 2,544 | 58.1 | 31 | 1.3 | +0.35% (q4 cache) | 4 |  |
+| 4x4, q4 cache, pinning off [4x4 q4 unpinned] | 48.4 | 2,543 | 57.8 | 31 | 0.08 | +0.35% (q4 cache) | 1 | same words as pinned |
 | 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 48.1 | 2,563 | **68.6** | 30 | 1.3 | +0.35% (q4 cache) | 1 | **best writing (1 load)** |
 | 4x4, q4 cache, margin 2 GB [4x4 q4 fit2048] | 50.4 | 2,442 | 57.2 | 32-33 | 1.3 | +0.35% (q4 cache) | 2 |  |
 | Step 5120, q4 cache (margin 2 GB) [ub5120 q4] | 45.5 | 2,706 | 63.2 | 33 | 1.6 | +0.35% (q4 cache) | 1 | **balance pick** |
@@ -283,8 +286,8 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Test runs averaged | Pick / note |
 |---|---|---|---|---|---|---|---|---|
 | 4x4, q8 cache [4x4] | 156.1 | 1,630 | 35.4 | 38 | 2.3 | ~0% (q8 cache) | 3 |  |
-| 4x4, q4 cache, margin 1 GB [4x4 q4] | 152.3 | 1,674 | 41.2 | 35 | 2.3 | +0.35% (q4 cache) | 4 |  |
-| 4x4, q4 cache, pinning off [4x4 q4 unpinned] | 154.1 | 1,650 | 45.1 | 35 | 0.08 | +0.35% (q4 cache) | 1 | spill fix (1 load) |
+| 4x4, q4 cache, margin 1 GB [4x4 q4] | 152.1 | 1,674 | 42.1 | 35 | 2.3 | +0.35% (q4 cache) | 5 |  |
+| 4x4, q4 cache, pinning off [4x4 q4 unpinned] | 152.6 | 1,666 | 45.3 | 35 | 0.08 | +0.35% (q4 cache) | 2 | spill fix, Bob default on a branch |
 | 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 150.5 | 1,690 | 41.3 | 34 | 2.3 | +0.35% (q4 cache) | 1 |  |
 | Step 5120, q4 cache (margin 2 GB) [ub5120 q4] | 127.9 | 1,989 | 39.5 | 37 | 2.8 | +0.35% (q4 cache) | 1 | **balance pick** |
 | 6x3.5, q4 cache, margin 1 GB [6x3.5 q4] | 128.1 | 1,986 | 42.5 | 36 | 3.3 | +0.35% (q4 cache) | 1 |  |
