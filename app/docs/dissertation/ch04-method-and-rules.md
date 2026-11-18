@@ -202,6 +202,26 @@ On the cut 120B, the bigger steps read 2 to 2.5 times as fast as Normal. F4c wri
 - **The balance point is `-ub 5120` at both sizes:** first word 45.5 s with 63.2 writing at 128K, and 128 s with 39.5 at 256K. For writing first, 4096 is best.
 - **Against the predictions written beforehand,** reading gains and the fall in writing came as predicted. The best first word was not at 6144 as predicted: it came at 8192 at 128K and 7168 at 256K.
 
+**Turbo (MTP) with bigger steps (18 November, 9 loads, 1 load per setting, provisional).** Turbo uses a different file of the brain, so it is compared only with itself. A q4_0 context cache, a 3.5 GB copy cache, a 2 GB fit margin and a 128K context. Each cell is first word s / read / write, on the start, 32K and 120K prompts.
+
+| Step (`-b` / `-ub`) | Turbo | Start | 32K | 120K |
+|---|---|---|---|---|
+| 2048 / 512 | off | 5.3 / 731 / 96.2 | 39.9 / 822 / 75.2 | 171.7 / 716 / 59.2 |
+| 2048 / 512 | 2 ahead | 5.8 / 674 / 95.9 | 45.7 / 719 / 99.0 | 190.9 / 644 / 74.6 |
+| 2048 / 512 | 3 ahead | 5.7 / 686 / 96.0 | 45.3 / 725 / 88.6 | 193.2 / 636 / 71.7 |
+| 4096 / 4096 | off | 1.2 / 3,152 / 87.2 | 11.1 / 2,952 / 64.7 | 49.7 / 2,479 / 58.4 |
+| 4096 / 4096 | 2 ahead * | 1.8 / 2,125 / 83.0 | 13.7 / 2,398 / 76.0 | 57.2 / 2,153 / 61.7 |
+| 4096 / 4096 | 3 ahead * | 3.1 / 1,250 / 73.5 | 14.0 / 2,345 / 75.1 | 57.3 / 2,150 / 63.3 |
+| 8192 / 4096 | off | 1.2 / 3,162 / 93.2 | 10.5 / 3,129 / 67.3 | 49.4 / 2,490 / 62.4 |
+| 8192 / 4096 | 2 ahead * | 1.8 / 2,124 / 80.9 | 14.1 / 2,336 / 73.3 | 57.1 / 2,154 / 60.6 |
+| 8192 / 4096 | 3 ahead * | 2.0 / 1,930 / 64.6 | 14.5 / 2,266 / 73.4 | 58.4 / 2,108 / 81.8 |
+
+\* These rows had a real spill: 1,272 MB past the pinned attention-mask buffer, because `--fit` does not count the memory of Turbo's guessing head. They read low and are provisional. A 6-load rerun with a 2 GB copy cache is queued.
+
+- **On long prompts, Turbo writes 17% to 26% faster and reads 13% to 15% slower.** It adds 6 to 8 s to the first word at 120K.
+- **2 ahead beats 3 ahead** in every row but one. The brain's guesses were accepted 65% to 78% of the time on real text with 2 ahead, and 50% to 65% with 3 ahead.
+- **This differs from 16 November,** when Turbo with Bob's sampling wrote up to 17% slower on a short prompt. Whether Turbo now earns a place in the picks waits on the rerun.
+
 #### 4.3.3.3 The fit margin at 128K and 256K (18 November, Brain Engine 15)
 
 `--fit` leaves a margin of the card free, 1 GB by default. A bigger margin was tried to see whether it would stop the shared-memory rise. There were 18 loads on the long prompt, 1 load per setting. Read the table as first word / read / write, then the rise, the free memory after the load and the layers with experts in RAM (of 41).
@@ -329,7 +349,8 @@ These are queued on the home PC in this order, and each has its addendum written
 | Pinning on against off, checked properly | 16 | queued |
 | Brain Engine 16: the attention mask made on the card (patch 0025) | – | waiting on approval |
 | Smaller fit margins, 512 and 256 MB | 11 | done, results above (section 4.3.3.3) |
-| Turbo (MTP) with bigger steps | 9 | queued |
+| Turbo (MTP) with bigger steps | 9 | done, provisional (section 4.3.3.2) |
+| Turbo rerun with room for its guessing head | 6 | queued |
 | Needle in a haystack, q8_0 against q4_0 at 128K and 256K | 5 | queued |
 | Context cache kept in RAM (`-nkvo`) | 6 | queued |
 | GPT-OSS 120B soft cut against the full brain, in perplexity | – | waiting on approval |
