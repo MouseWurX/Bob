@@ -264,8 +264,9 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 |---|---|---|---|---|---|---|---|---|
 | 4x4, q8 cache [4x4] | 50.0 | 2,465 | 62.6 | 33 | 1.3 | ~0% (q8 cache) | 3 |  |
 | 4x4, f16 cache (full size) [4x4 f16] | 52.0 | 2,384 | 54.9 | - | - | 0% (reference) | 1 |  |
-| 4x4, q4 cache, margin 1 GB [4x4 q4] | 48.5 | 2,544 | 58.1 | 31 | 1.3 | +0.35% (q4 cache) | 4 |  |
+| 4x4, q4 cache, margin 1 GB [4x4 q4] | 48.4 | 2,547 | 58.0 | 31 | 1.3 | +0.35% (q4 cache) | 5 |  |
 | 4x4, q4 cache, pinning off [4x4 q4 unpinned] | 48.4 | 2,543 | 57.8 | 31 | 0.08 | +0.35% (q4 cache) | 1 | same words as pinned |
+| 4x4, q4 cache, mask made on card (BE16) [4x4 q4 BE16 mask] | 48.4 | 2,545 | 57.9 | 31 | 1.2 | +0.35% (q4 cache) | 1 | same words; no memory change |
 | 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 48.1 | 2,563 | **68.6** | 30 | 1.3 | +0.35% (q4 cache) | 1 | **best writing (1 load)** |
 | 4x4, q4 cache, margin 2 GB [4x4 q4 fit2048] | 50.4 | 2,442 | 57.2 | 32-33 | 1.3 | +0.35% (q4 cache) | 2 |  |
 | Step 5120, q4 cache (margin 2 GB) [ub5120 q4] | 45.5 | 2,706 | 63.2 | 33 | 1.6 | +0.35% (q4 cache) | 1 | **balance pick** |
@@ -286,8 +287,9 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Test runs averaged | Pick / note |
 |---|---|---|---|---|---|---|---|---|
 | 4x4, q8 cache [4x4] | 156.1 | 1,630 | 35.4 | 38 | 2.3 | ~0% (q8 cache) | 3 |  |
-| 4x4, q4 cache, margin 1 GB [4x4 q4] | 152.1 | 1,674 | 42.1 | 35 | 2.3 | +0.35% (q4 cache) | 5 |  |
+| 4x4, q4 cache, margin 1 GB [4x4 q4] | 151.7 | 1,678 | 42.7 | 35 | 2.3 | +0.35% (q4 cache) | 6 |  |
 | 4x4, q4 cache, pinning off [4x4 q4 unpinned] | 152.6 | 1,666 | 45.3 | 35 | 0.08 | +0.35% (q4 cache) | 2 | spill fix, Bob default on a branch |
+| 4x4, q4 cache, mask made on card (BE16) [4x4 q4 BE16 mask] | 150.8 | 1,687 | 45.8 | 35 | 2.2 | +0.35% (q4 cache) | 1 | same words; no memory change |
 | 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 150.5 | 1,690 | 41.3 | 34 | 2.3 | +0.35% (q4 cache) | 1 |  |
 | Step 5120, q4 cache (margin 2 GB) [ub5120 q4] | 127.9 | 1,989 | 39.5 | 37 | 2.8 | +0.35% (q4 cache) | 1 | **balance pick** |
 | 6x3.5, q4 cache, margin 1 GB [6x3.5 q4] | 128.1 | 1,986 | 42.5 | 36 | 3.3 | +0.35% (q4 cache) | 1 |  |
@@ -465,6 +467,20 @@ At 128K and 256K, Windows' "shared GPU memory" rose by 1.3 to 3.4 GB during a lo
 - **Both predictions held.** The words were identical on every row in both rounds. Every speed stayed within 2%. The rise was gone at every size.
 - **What changed in Bob.** On a branch not yet released, Bob starts its engine with pinning off on NVIDIA cards by default, as a reliability fix, with a setting to turn it back on.
 
+**A second fix that didn't work: the mask made on the card (Brain Engine 16, 18 November, 20 loads, 2 rounds, median of 2).** Patch 0025 builds the attention mask on the card from the token positions, instead of copying it from pinned RAM. We predicted the pinned buffer would shrink to under 300 MiB. A 4 GB copy cache and a q4_0 context cache; cells are first word s / read / write.
+
+| Context, step | Patch off | Patch on | Rise MB, off / on | Pinned buffer MiB (same both ways) |
+|---|---|---|---|---|
+| 32K, 4096 | 9.4 / 3,486 / 83.6 | 9.6 / 3,442 / 84.5 | 592 / 588 to 593 | 512 |
+| 128K, 4096 | 48.1 / 2,562 / 57.8 | 48.4 / 2,545 / 57.9 | 1,296 / 1,295 to 1,296 | 1,216 |
+| 256K, 4096 | 149.7 / 1,699 / 45.9 | 150.8 / 1,687 / 45.8 | 2,256 / 2,256 to 2,257 | 2,176 |
+| 128K, 6144 | 41.9 / 2,939 / 64.0 | 41.8 / 2,953 / 63.5 | 1,904 / 1,904 | 1,824 |
+| 256K, 6144 | 129.6 / 1,962 / 36.2 | 130.2 / 1,954 / 38.6 | 3,344 / 3,344 | 3,264 |
+
+- **The patch ran and was harmless.** Every load with it on logged that the mask was made on the card. The words were identical in all 5 pairs, in both rounds, and speed stayed within 2%.
+- **The memory prediction failed.** The pinned buffer was the same size with the patch on, so the rise didn't change at any size. Either the engine sets aside that buffer before the patch takes effect, or something else of the same size fills it. We don't know yet which.
+- **Pinning off stays the working fix.** This is a negative result, and we report it as one.
+
 #### 4.3.3.6 Still running or planned (18 November)
 
 These are queued on the home PC in this order, and each has its addendum written before it runs:
@@ -474,7 +490,7 @@ These are queued on the home PC in this order, and each has its addendum written
 | Step sweep at 128K and 256K, q4_0 cache, steps 4096 to 8192 ("goldilocks" step) | 12 | done, results above |
 | Spill cost: plain settings, steps 512 to 4096 at 256K, pinning off | 7 | done, results above |
 | Pinning on against off, checked properly | 16 | done, same words, within 2% (section 4.3.3.5) |
-| Brain Engine 16: the attention mask made on the card (patch 0025) | – | waiting on approval |
+| Brain Engine 16: the attention mask made on the card (patch 0025) | 20 | done: same words, no memory saved (section 4.3.3.5) |
 | Smaller fit margins, 512 and 256 MB | 11 | done, results above (section 4.3.3.3) |
 | Turbo (MTP) with bigger steps | 9 | done, provisional (section 4.3.3.2) |
 | Turbo rerun with room for its guessing head | 6 | queued |
@@ -489,7 +505,7 @@ Each of these is unproven in our lab, as we have yet to test:
 
 - **One shared card budget.** Size the layers, the hot-experts cache and the step's work space together for the chosen context, instead of letting each take its share alone. This includes a smaller step as the context grows.
 - **Context-aware reloads.** Keep a fast 32K to 64K load for chat. Reload with big-context settings when a job would pass about 75% of the context, and switch back afterwards.
-- **Engine patches.** A 3-bit context cache, a paged context cache in RAM, and the attention mask made on the card instead of in pinned RAM (Brain Engine 16, built as a patch, waiting on approval).
+- **Engine patches.** A 3-bit context cache, a paged context cache in RAM, and an attention mask that takes no pinned RAM at all. A first try, Brain Engine 16, made the mask on the card but freed nothing (section 4.3.3.5). A deeper change that drops the mask table inside the attention kernels could free about 2 GB of card memory at 256K.
 - **Expert tiers for brains bigger than RAM,** such as GPT-OSS 120B: a warm tier and a cold tier read from disk.
 - **The same tests on other machines:** the laptop plan (written, not run), other cards and other brains.
 - **Quality on Bob's jobs.** Perplexity shows the speed settings cost almost nothing. A run of Bob's own jobs at the chosen settings would confirm it.
