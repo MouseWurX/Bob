@@ -1,5 +1,5 @@
 {
- "name": "The goldilocks reading step (Brain Engine 15): steps 4096 to 8192 with a q4_0 cache, a 3.5 GB copy cache and the --fit margin that stopped the spill, at 128K and 256K, 1 round",
+ "name": "The goldilocks reading step (Brain Engine 15): steps 4096 to 8192 (plus -b 8192 -ub 4096) with a q4_0 cache, a 3.5 GB copy cache and the --fit margin that stopped the spill, at 128K and 256K, 1 round",
  "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 36)",
  "brain": "${BRAIN}",
  "engines": {
@@ -322,6 +322,64 @@
     "8192",
     "-ub",
     "8192",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "${FIT_MARGIN}"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "b8192-ub4096-q4_0-128K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k120"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "8192",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "${FIT_MARGIN}"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "b8192-ub4096-q4_0-256K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "8192",
+    "-ub",
+    "4096",
     "--moe-cache-mib",
     "3584",
     "--moe-cache-cpu-share",

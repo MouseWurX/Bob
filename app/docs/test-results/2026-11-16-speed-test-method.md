@@ -691,3 +691,22 @@ on the computer's side that Windows counts as shared graphics memory. This is un
 test it. Bigger margins only pushed layers off the card and cut writing. The sweep still runs, because the step
 question stands on its own. It uses `FIT_MARGIN=2048`, which matched the default 1024 in Addendum 35. The rise is
 recorded but does not decide anything. The predictions above stand unchanged.
+
+**Change before the run (Nov 18):** two rows are added, `-b 8192 -ub 4096` at 128K and 256K. Two outside videos the owner
+sent found that pair beat 2048/512 when experts sit in RAM. That makes 12 loads.
+
+## Addendum 37 (Nov 18, before any run): MTP (Turbo) with bigger reading steps
+
+The same videos found that guessing ahead (MTP) sped up writing a lot but slowed reading, and that it paid off only
+with bigger reading steps, best at 3 ahead. Our Turbo test (Nov 17) used Bob's old step of 2048/512, where it came
+out at -17% to +3%. Plan `mtp-big-steps.json`, Brain Engine 15, the MTP copy of the brain (`${BRAIN_MTP}`), 1 round,
+9 loads: MTP off, 2 ahead and 3 ahead, at steps 2048/512, 4096/4096 and 8192/4096. Every load uses a q4_0 cache,
+a 3.5 GB copy cache and `--fit-target 2048`, a 128K window, and the short, 32K and 120K prompts. Rows on this file are
+compared only with each other, because the MTP copy is a different file.
+
+**Predictions, written before any run:** MTP still slows reading at every step, by 10 to 20%. With the bigger steps,
+3 ahead writes at least 10% faster than off on the short prompt. On the 120K prompt it writes no faster, because
+the cache reads take most of the time there. MTP changes the words at temperature 0, as before.
+
+**What it decides:** whether Turbo is offered for this brain on a 16 GB card, and at which step. The rule from the
+Nov 17 test still holds: offer it only if it writes at least 10% faster with Bob's sampling.
