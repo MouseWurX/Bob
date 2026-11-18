@@ -811,3 +811,23 @@ because the work buffers grow during the run. Reading is about the same.
 
 **What it decides:** Calibrate's margin per context size: the smallest one that runs with no real overflow at that
 size, plus a safety step chosen from what the run shows.
+
+**Result (Nov 18, 12:36 to 1:07 PM, 7 loads):** the prediction held. At 256K: plain settings (`-ub 512`) rose 348 MB
+with a 272 MiB buffer; `-ub` 512 / 1024 / 2048 / 4096 rose 353 / 623 / 1,168 / 2,257 MB, each the printed buffer plus
+about 80 MB. First word 401 / 256 / 190 / 153 s, writing 43.5 to 44.6 at every step. With `GGML_CUDA_NO_PINNED=1` at
+`-ub 4096` the rise was 76 MB at the same speed (154.1 s, read 1,650, write 45.1 against 152.7 s, 1,666, 43.7), the same
+placement (35 layers' experts in RAM), and a card peak of 14,952 MB. The runner's check missed the buffer line in this
+run because the engine prints two spaces after `CUDA_Host`; fixed, with a test.
+
+## Addendum 42 (Nov 18, before any run): the step buffer in ordinary RAM, at every size
+
+One load says pinning off costs nothing at 256K. Before Bob turns it on for everyone, plan `unpinned-check.json`,
+Brain Engine 15, 2 rounds, 16 loads: F4c (the chat pick, q8_0 cache) at 32K, and 4x4 with a q4_0 cache at 32K, 128K
+and 256K, each with and without `GGML_CUDA_NO_PINNED=1`.
+
+**Predictions, written before any run:** with pinning off, the rise is under 150 MB at every size. Reading, writing
+and first word are within 3% of pinned at every size, including the short start prompt.
+
+**What it decides:** if both hold, Bob's engine runs with `GGML_CUDA_NO_PINNED=1` on cards that use CUDA, as a
+reliability fix (on by default): the RAM stays pageable and no false spill shows. If any size reads more than 3%
+slower, Bob keeps pinning and only the spill checks subtract the buffer.

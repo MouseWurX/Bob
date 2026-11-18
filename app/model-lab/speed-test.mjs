@@ -232,7 +232,7 @@ export function loadPlan(file, { read = (f) => fs.readFileSync(f, 'utf8').replac
 // The engine's pinned step buffer in MiB (Addendum 40): the biggest "CUDA_Host compute buffer size" the engine printed,
 // else context x -ub x 2 bytes (the attention mask) plus -ub / 32 MiB.
 export function pinnedStepMB(args = [], log = '') {
-  const seen = [...String(log).matchAll(/CUDA_Host compute buffer size\s*=\s*([\d.]+) MiB/g)].map((m) => Number(m[1]));
+  const seen = [...String(log).matchAll(/CUDA_Host\s+compute buffer size\s*=\s*([\d.]+) MiB/g)].map((m) => Number(m[1]));
   if (seen.length) return Math.round(Math.max(...seen));
   const flag = (f, d) => { const i = args.lastIndexOf(f); return i >= 0 ? Number(args[i + 1]) || d : d; };
   const ctx = flag('-c', 4096), ub = flag('-ub', 512);
@@ -483,7 +483,7 @@ function realFx(plan, outDir) {
       const child = nodeSpawn(exe, args, { env: { ...process.env, ...env }, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
       let said = '';
       const log = fs.createWriteStream(file);
-      const keep = lineSplitter((line) => { if (/MoE cache|ranked fill|llama_moe_cache:|CUDA_Host compute buffer/.test(line)) said += line + '\n'; });
+      const keep = lineSplitter((line) => { if (/MoE cache|ranked fill|llama_moe_cache:|CUDA_Host\s+compute buffer/.test(line)) said += line + '\n'; });
       child.stderr.on('data', (d) => { log.write(d); keep(d); });
       const url = `http://127.0.0.1:${args[args.indexOf('--port') + 1]}`;
       return {
