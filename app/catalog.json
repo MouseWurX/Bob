@@ -452,14 +452,15 @@
       "id": "gpt-oss-120b-mxfp4",
       "family": "GPT-OSS",
       "category": "coding",
-      "jobs": ["deep", "reviewer", "tinker", "bob", "office"],
+      "jobs": ["deep", "reviewer", "tinker", "bob", "office", "scout"],
       "name": "gpt-oss 120B",
       "published": "2025-08-05",
-      "what": "gpt-oss 20B's big brother: a careful thinker. Far bigger than a home graphics card, so most of it waits in memory and on the drive. Slow, but it runs.",
+      "what": "gpt-oss 20B's big brother: a careful thinker and reviewer. Only 5B of it works on each word, so on a 16 GB card the busy parts sit on the card and the rest waits in memory and on the drive.",
       "sizeGB": 63.4,
       "vramGB": 66,
       "params": 117,
       "activeParams": 5,
+      "experts": true,
       "license": "Apache 2.0",
       "commercial": true,
       "trial": true,
@@ -4265,38 +4266,6 @@
           "bob": "$model",
           "scout": "$model",
           "painter": "$model"
-        }
-      }
-    },
-    {
-      "id": "gpt-oss-120b-gguf",
-      "family": "GPT-OSS",
-      "category": "chat",
-      "jobs": ["deep", "bob", "reviewer", "tinker", "office", "scout"],
-      "name": "GPT-OSS 120B",
-      "published": "2025-08-05",
-      "what": "GPT-OSS 20B's big brother: a careful thinker and reviewer. Only 5B of it works on each word, so on a 16 GB card the busy parts sit on the card and the rest waits in memory and on the drive.",
-      "sizeGB": 63.4,
-      "vramGB": 66,
-      "params": 117,
-      "activeParams": 5,
-      "experts": true,
-      "license": "Apache 2.0",
-      "commercial": true,
-      "pick": "optional",
-      "trial": true,
-      "files": [
-        {
-          "url": "https://huggingface.co/ggml-org/gpt-oss-120b-GGUF/resolve/f59990363fbbb67f01bce03e5e7bf0929e3e320b/gpt-oss-120b-MXFP4.gguf",
-          "role": "gguf",
-          "verify": true,
-          "bytes": 63387346208,
-          "sha256": "582bd40f6886200101f4c4ed9f25f3fe80cc14c86e9e2b37746cd8904a0c622d"
-        }
-      ],
-      "use": {
-        "models": {
-          "deep": "$model"
         }
       }
     },

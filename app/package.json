@@ -20,6 +20,7 @@
     "dist:linux": "electron-builder --linux AppImage --publish never"
   },
   "testSuites": [
+    "test/run-brain-choices-test.js",
     "test/run-syntax-test.js",
     "test/run-harness-test.js",
     "test/run-fade-chat-test.js",
