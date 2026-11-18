@@ -60,7 +60,7 @@ All speeds are tokens a second. "Read" is prompt reading speed and "write" is wr
 #### 4.3.3.1 How the speed tests were run
 
 - **Written down first.** The method was written on 16 November, before any timed run. Each later test got a dated addendum (41 by 18 November), written before that test ran, with its settings, its predictions and the rule for "best". Results are graded against the addendum as written, including the predictions that missed. The method and addenda are in `docs/test-results/2026-11-16-speed-test-method.md`.
-- **Loads and repeats.** Each setting gets an untimed warm-up after the brain loads, then 5 timed runs. Settings take turns (1, 2, 3, 1, 2, 3...), so heat and background load fall evenly across them. We report the median, with the lowest and highest where they matter, never a mean on its own. Rows marked "1 run" come from one-round sweeps, which swing 5% to 10%. They pick a shortlist and decide nothing.
+- **Loads and repeats.** Each setting gets an untimed warm-up after the brain loads, then timed runs. The main runs of 16 and 17 November used 5 loads per setting. Many later runs used fewer: the 18 November cache-type, read-layout, margin and step runs used 1 load per setting, and the GPT-OSS 120B run used 3. Each table states its own count, and the Runs column of the big table gives it row by row. Settings take turns (1, 2, 3, 1, 2, 3...), so heat and background load fall evenly across them. We report the median, with the lowest and highest where they matter, never a mean on its own. With 1 load, the number is that single load and not a median. Single-load results swing 5% to 10%, so they pick a shortlist and decide nothing.
 - **Prompts and context.**
   - "Start" is Bob's real start prompt, his system prompt and tools, about 3,900 to 4,000 tokens, followed by "hi".
   - "16K" and "32K" are public-domain book text cut to exactly 16,384 and 32,768 tokens with the brain's own tokenizer, plus one question.
@@ -132,7 +132,7 @@ Shorthand used below: **step** is the reading batch (`-b`/`-ub`). **Copy cache**
 
 The 17 November one-round cache sweep (steps 4096, 5120 and 6144, with caches from 2 to 4 GB, 15 setups) and the 17 November context run are in the results pages. Their pattern is that bigger steps read faster and smaller caches write slower at 32K, with 2 GB the worst.
 
-**Longer contexts** (one round, Brain Engine 14; first word / read / write):
+**Longer contexts** (1 load per setting, Brain Engine 14; first word / read / write):
 
 | Context (prompt) | Step 6144, no cache | L1 (lending) | 6x3.5 |
 |---|---|---|---|
@@ -141,7 +141,7 @@ The 17 November one-round cache sweep (steps 4096, 5120 and 6144, with caches fr
 | 128K (120K) | 37.9 / 3,248 / 53.1 | 41.7 / 2,954 / 57.1 | 42.9 / 2,868 / 61.8 |
 | 256K (248K) | 118.5 / 2,147 / 37.7 | 131.1 / 1,940 / 42.5 | 135.1 / 1,882 / 40.9 |
 
-**Context cache types across contexts** (18 November, Brain Engine 15, one round; long prompt of 60K, 120K or 250K tokens; first word / read / write):
+**Context cache types across contexts** (18 November, Brain Engine 15, 1 load per setting, 36 loads in all; long prompt of 60K, 120K or 250K tokens; first word / read / write):
 
 | Cache | 4x4 at 64K | 4x4 at 128K | 4x4 at 256K | 6x3.5 at 64K | 6x3.5 at 128K | 6x3.5 at 256K |
 |---|---|---|---|---|---|---|
@@ -156,7 +156,7 @@ The 17 November one-round cache sweep (steps 4096, 5120 and 6144, with caches fr
 - **iq4_nl read Bob's start prompt at about 210 tokens a second.** Every long prompt timed out.
 - **The mixed q8_0/q4_0 cache wrote slowest at long contexts.**
 
-**Read layout across contexts** (18 November, Brain Engine 15, q8_0, one round; long prompt; first word / read / write). X4096 is 4x4. R0 is the read layout off with `-b 8192 -ub 4096`. R1 is the read layout on, which keeps whole layers in the cache while reading.
+**Read layout across contexts** (18 November, Brain Engine 15, q8_0, 1 load per setting; long prompt; first word / read / write). X4096 is 4x4. R0 is the read layout off with `-b 8192 -ub 4096`. R1 is the read layout on, which keeps whole layers in the cache while reading.
 
 | Context | X4096 | R0 | R1 |
 |---|---|---|---|
@@ -167,7 +167,7 @@ The 17 November one-round cache sweep (steps 4096, 5120 and 6144, with caches fr
 
 R1 reads long prompts 10% to 14% faster and gives the first word 1 to 14 s sooner. Its writing is about level, except at 128K, where it was 15% slower in this single round.
 
-**GPT-OSS 120B with the soft cut** (41 of 128 experts per layer, 8K context, q8_0, 3 rounds; start prompt; read / write per round):
+**GPT-OSS 120B with the soft cut** (41 of 128 experts per layer, 8K context, q8_0, 3 loads per setting, shown one by one; start prompt; read / write per round):
 
 | Setting | Round 1 | Round 2 | Round 3 |
 |---|---|---|---|
@@ -180,17 +180,31 @@ R1 reads long prompts 10% to 14% faster and gives the first word 1 to 14 s soone
 
 On the cut 120B, the bigger steps read 2 to 2.5 times as fast as Normal. F4c writes about 6% faster than Normal, and a 2 GB cache writes 40% slower. Whether the soft cut answers as well as the full brain is unproven in our lab, as we have yet to test, because its perplexity run waits on the owner. In a job test it was fast enough but failed its tool calls, for a reason not yet known.
 
-**The step sweep so far** (18 November, q4_0 cache, 11 of 12 loads; long prompt; first word / read / write):
+**The step sweep** (18 November, Brain Engine 15, q4_0 context cache, 3.5 GB copy cache, a 2 GB fit margin, 1 load per setting, 12 loads; long prompt):
 
-- Step 4096: 50.1 / 2,456 / 59.6 at 128K, and 154.4 / 1,646 / 42.5 at 256K.
-- Step 6144: 42.2 / 2,917 / 60.3 at 128K, and 131.9 / 1,929 / 36.9 at 256K.
-- Step 8192 at 256K: only 30 of 41 layers fit on the card, and writing fell to 20.6. The step's pinned buffer was 4,480 MiB.
+| Context | Step (`-b` / `-ub`) | First word | Read | Write | Rise / pinned buffer MB | Free MiB, layers' experts in RAM |
+|---|---|---|---|---|---|---|
+| 128K | 4096 | 50.1 | 2,456 | 59.6 | 1,292 / 1,216 | 2,057, 32 |
+| 128K | 5120 | 45.5 | 2,706 | 63.2 | 1,600 / 1,520 | 2,184, 33 |
+| 128K | 6144 | 42.2 | 2,917 | 60.3 | 1,903 / 1,824 | 2,054, 34 |
+| 128K | 7168 | 41.6 | 2,961 | 58.3 | 2,210 / 2,128 | 2,056, 35 |
+| 128K | 8192 | 40.8 | 3,019 | 54.1 | 2,512 / 2,432 | 2,186, 36 |
+| 128K | 8192 / 4096 | 49.3 | 2,497 | 61.6 | 1,295 / 1,216 | 2,057, 32 |
+| 256K | 4096 | 154.4 | 1,646 | 42.5 | 2,257 / 2,176 | 2,183, 36 |
+| 256K | 5120 | 127.9 | 1,989 | 39.5 | 2,803 / 2,720 | 2,144, 37 |
+| 256K | 6144 | 131.9 | 1,929 | 36.9 | 3,330 / 3,264 | 2,087, 38 |
+| 256K | 7168 | 123.5 | 2,060 | 33.6 | 3,886 / 3,808 | 2,072, 40 |
+| 256K | 8192 | 137.1 | 1,855 | 20.6 | 4,436 / 4,480 | 2,071, only 30 of 41 layers on the card |
+| 256K | 8192 / 4096 | 153.6 | 1,656 | 40.7 | 2,257 / 2,176 | 2,183, 36 |
 
-So at 256K a bigger step reads faster but writes slower. Past 6144 it costs whole layers. The full table follows when the sweep ends.
+- **Only `-ub` matters.** `-b 8192` with `-ub 4096` behaves like 4096/4096.
+- **A bigger `-ub` reads faster but writes slower,** because the mask's copy on the card pushes expert layers to RAM.
+- **The balance point is `-ub 5120` at both sizes:** first word 45.5 s with 63.2 writing at 128K, and 128 s with 39.5 at 256K. For writing first, 4096 is best.
+- **Against the predictions written beforehand,** reading gains and the fall in writing came as predicted. The best first word was not at 6144 as predicted: it came at 8192 at 128K and 7168 at 256K.
 
 #### 4.3.3.3 The fit margin at 128K and 256K (18 November, Brain Engine 15)
 
-`--fit` leaves a margin of the card free, 1 GB by default. A bigger margin was tried to see whether it would stop the shared-memory rise. There were 18 loads on the long prompt, one each. Read the table as first word / read / write, then the rise, the free memory after the load and the layers with experts in RAM (of 41).
+`--fit` leaves a margin of the card free, 1 GB by default. A bigger margin was tried to see whether it would stop the shared-memory rise. There were 18 loads on the long prompt, 1 load per setting. Read the table as first word / read / write, then the rise, the free memory after the load and the layers with experts in RAM (of 41).
 
 | Setting | Context | Margin MB | First word / read / write | Rise MB | Free GB | Notes |
 |---|---|---|---|---|---|---|
@@ -217,7 +231,7 @@ The margin was kept, but the rise did not change, and bigger margins only pushed
 
 #### 4.3.3.4 Perplexity: what the settings cost in answers (18 November)
 
-**The speed settings, all with a q8_0 context cache** (8K context, 2 chunks; base PPL 5.296 with plain settings and an f16 cache):
+**The speed settings, all with a q8_0 context cache** (1 perplexity run per setting, 8K context, 2 chunks; base PPL 5.296 with plain settings and an f16 cache):
 
 | Setting | PPL | KLD mean | KLD 99% | Same top % |
 |---|---|---|---|---|
@@ -231,7 +245,7 @@ The margin was kept, but the rise did not change, and bigger margins only pushed
 
 The copy cache and the read layout change nothing: they score identically, to the last digit, with the same step and no cache. The step changes the last digits a little, because a different batch shape adds the numbers in a different order. Nearly all the drift from the base is the q8_0 cache itself.
 
-**Context cache types** (4x4, 16K context, 1 chunk; base PPL 4.839 with an f16 cache):
+**Context cache types** (1 perplexity run per setting, 4x4, 16K context, 1 chunk; base PPL 4.839 with an f16 cache):
 
 | Cache | PPL | KLD mean | KLD 99% | Same top % |
 |---|---|---|---|---|
@@ -274,7 +288,7 @@ These are queued on the home PC in this order, and each has its addendum written
 
 | Test | Loads | Status |
 |---|---|---|
-| Step sweep at 128K and 256K, q4_0 cache, steps 4096 to 8192 ("goldilocks" step) | 12 | 11 of 12 done, partial results above |
+| Step sweep at 128K and 256K, q4_0 cache, steps 4096 to 8192 ("goldilocks" step) | 12 | done, results above |
 | Spill cost: plain settings, steps 512 to 4096 at 256K, pinning off | 7 | queued |
 | Smaller fit margins, 512 and 256 MB | 11 | queued |
 | Turbo (MTP) with bigger steps | 9 | queued |
