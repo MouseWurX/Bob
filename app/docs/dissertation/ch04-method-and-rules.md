@@ -155,7 +155,7 @@ The 17 November one-round cache sweep (steps 4096, 5120 and 6144, with caches fr
 - **q4_0 gave the best long-prompt writing at 256K** with both settings (45.2 and 42.5, against 38.1 and 39.5 for q8_0). It was also the fastest or near-fastest reader at every size.
 - **iq4_nl read Bob's start prompt at about 210 tokens a second.** Every long prompt timed out.
 - **The mixed q8_0/q4_0 cache wrote slowest at long contexts.**
-- **Writing speed doesn't follow cache size alone.** At 256K with 4x4, writing ran q4_0 (45.2) > q8_0 (38.1) > f8_e4m3 (31.8) > q5_1 (26.6). f8_e4m3 is the same size as q8_0 yet wrote about 17% slower, and the 5-bit q5_1 wrote slower than the 4-bit q4_0. So the cost of unpacking each cache type while writing seems to matter as much as the card room it frees, and the room q4_0 frees is only part of why it wins. We have not measured the unpacking cost directly, so this is a reading of the pattern, not a finding. These are single loads.
+- **Writing speed doesn't follow cache size alone, though these are single loads.** At 256K with 4x4, writing ran q4_0 (45.2), q8_0 (38.1), f8_e4m3 (31.8), q5_1 (26.6). f8_e4m3 is the same size as q8_0 yet wrote about 17% slower, and the 5-bit q5_1 wrote slower than the 4-bit q4_0, also at 128K (46.0 against 57.8). We don't claim the order: the needle run saw the same 256K setup write anywhere from 23 to 45 tokens a second depending on the needle's depth. One likely cause is that llama.cpp's standard CUDA build has fast attention kernels only for f16, q4_0 and q8_0 caches, and other types take a slower path. That is unproven in our lab, as we have yet to test. If it holds, part of q4_0's lead comes from its kernel and not only from the card room it frees.
 
 **Read layout across contexts** (18 November, Brain Engine 15, q8_0, 1 load per setting; long prompt; first word / read / write). 4x4 b8192 is 4x4 with `-b 8192`. 4x4 R1 is the same with the read layout on, which keeps whole layers in the cache while reading.
 
@@ -197,6 +197,10 @@ On the cut 120B, the bigger steps read 2 to 2.5 times as fast as Normal. 2x4 wri
 | 256K | 7168 | 123.5 | 2,060 | 33.6 | 3,886 / 3,808 | 2,072, 40 |
 | 256K | 8192 | 137.1 | 1,855 | 20.6 | 4,436 / 4,480 | 2,071, only 30 of 41 layers on the card |
 | 256K | 8192 / 4096 | 153.6 | 1,656 | 40.7 | 2,257 / 2,176 | 2,183, 36 |
+
+![Writing speed against the reading step at 128K and 256K](figures/write-speed-vs-reading-step.svg)
+
+*Figure 4.1. Writing speed against the reading step, from the table above. Every point is one load. The firm finding is the cliff at 256K: writing falls steadily with the step and collapses at 8192, where only 30 of 41 layers fit on the card. So don't go past about 6144 at 256K. The 5120 peak at 128K is inside the swing of a single load, and a recheck is queued.*
 
 - **Only `-ub` matters.** `-b 8192` with `-ub 4096` behaves like 4096/4096.
 - **A bigger `-ub` reads faster but writes slower,** because the mask's copy on the card pushes expert layers to RAM.
@@ -289,11 +293,11 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | 4x4, q4 cache, mask made on card (BE16) [4x4 q4 BE16 mask] | 48.4 | 2,545 | 57.9 | 31 | 1.2 | +0.35% (q4 cache) | ~6 | 53.6 | - | 1 | same words; no memory change |
 | 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 47.8 | 2,582 | 68.3 | 30 | 1.3 | +0.35% (q4 cache) | 6.0 | 52.2 | - | 2 | **best writing** |
 | 4x4, q4 cache, margin 2 GB [4x4 q4 fit2048] | 50.4 | 2,442 | 57.2 | 32-33 | 1.3 | +0.35% (q4 cache) | ~6 | 55.6 | - | 2 | one of the 2 runs was 4x3.5 (step sweep) |
-| Step 5120, q4 cache (margin 2 GB) [5x3.5 q4] | 45.5 | 2,706 | 63.2 | 33 | 1.6 | +0.35% (q4 cache) | 6.1 | 50.2 | - | 1 | **balance pick** |
+| Step 5120, q4 cache (margin 2 GB) [5x3.5 q4] | 45.5 | 2,706 | 63.2 | 33 | 1.6 | +0.35% (q4 cache) | 6.1 | 50.2 | - | 1 | **balance pick** (1 load only, recheck queued) |
 | 6x3.5, q4 cache [6x3.5 q4] | 41.8 | 2,947 | 61.8 | 32-34 | 1.9 | +0.35% (q4 cache) | ~6 | 46.7 | - | 3 |  |
 | 6x3.5, q8 cache [6x3.5] | 42.8 | 2,881 | 60.1 | 33 | 1.9 | ~0% (q8 cache) | ~6 | 47.8 | - | 3 |  |
 | Step 7168, q4 cache [7x3.5 q4] | 41.6 | 2,961 | 58.3 | 35 | 2.2 | +0.35% (q4 cache) | ~6 | 46.7 | - | 1 |  |
-| Step 8192, q4 cache [8x3.5 q4] | 40.8 | 3,019 | 54.1 | 36 | 2.5 | +0.35% (q4 cache) | ~6 | 46.3 | - | 1 | **fastest first word** |
+| Step 8192, q4 cache [8x3.5 q4] | 40.8 | 3,019 | 54.1 | 36 | 2.5 | +0.35% (q4 cache) | ~6 | 46.3 | - | 1 | **fastest first word** (1 load only, recheck queued) |
 | Step 2048, q4 cache [2x4 q4] | 67.6 | 1,822 | 67.9 | 29 | 0.7 | +0.35% (q4 cache) | ~6 | 72.0 | - | 1 |  |
 | 4x4, q5_1 cache [4x4 q5_1] | 48.8 | 2,523 | 46.0 | 32 | 1.3 | +0.12% | ~6 | 55.3 | - | 1 |  |
 | 4x4, f8 cache [4x4 f8_e4m3] | 48.6 | 2,534 | 55.8 | 32 | 1.3 | -0.12% | ~6 | 54.0 | - | 1 |  |
@@ -320,12 +324,12 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | Step 4096, q4 cache, context cache in RAM [4x0 q4 nkvo] | 138.3 | 1,839 | 9.5 | 23 | 2.2 | +0.35% (q4 cache) | ~6 | 169.9 | 221 | 1 | dropped |
 | 4x4, q4 cache, mask made on card (BE16) [4x4 q4 BE16 mask] | 150.8 | 1,687 | 45.8 | 35 | 2.2 | +0.35% (q4 cache) | ~6 | 157.4 | 238 | 1 | same words; no memory change |
 | 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 150.5 | 1,690 | 41.3 | 34 | 2.3 | +0.35% (q4 cache) | ~6 | 157.8 | 238 | 1 |  |
-| Step 5120, q4 cache (margin 2 GB) [5x3.5 q4] | 127.9 | 1,989 | 39.5 | 37 | 2.8 | +0.35% (q4 cache) | 5.9 | 135.5 | 277 | 1 | **balance pick** |
+| Step 5120, q4 cache (margin 2 GB) [5x3.5 q4] | 127.9 | 1,989 | 39.5 | 37 | 2.8 | +0.35% (q4 cache) | 5.9 | 135.5 | 277 | 1 | **balance pick** (1 load only, recheck queued) |
 | 6x3.5, q4 cache, margin 1 GB [6x3.5 q4] | 128.1 | 1,986 | 42.5 | 36 | 3.3 | +0.35% (q4 cache) | ~6 | 135.2 | 278 | 1 |  |
-| 6x3.5, q4 cache, margin 512 MB [6x3.5 q4 fit512] | 128.7 | 1,977 | 43.1 | 35 | 3.3 | +0.35% (q4 cache) | 5.6 | 135.7 | 276 | 1 | **best all-round** |
+| 6x3.5, q4 cache, margin 512 MB [6x3.5 q4 fit512] | 128.7 | 1,977 | 43.1 | 35 | 3.3 | +0.35% (q4 cache) | 5.6 | 135.7 | 276 | 1 | **best all-round** (1 load only, recheck queued) |
 | 6x3.5, q4 cache, margin 2 GB [6x3.5 q4 fit2048] | 132.1 | 1,927 | 36.9 | 38 | 3.3 | +0.35% (q4 cache) | ~6 | 140.2 | 268 | 2 |  |
 | 6x3.5, q8 cache [6x3.5] | 134.1 | 1,896 | 40.2 | 39 | 3.3 | ~0% (q8 cache) | ~6 | 141.6 | 265 | 2 |  |
-| Step 7168, q4 cache [7x3.5 q4] | 123.5 | 2,060 | 33.6 | 40 | 3.9 | +0.35% (q4 cache) | ~6 | 132.4 | 283 | 1 | **fastest first word** |
+| Step 7168, q4 cache [7x3.5 q4] | 123.5 | 2,060 | 33.6 | 40 | 3.9 | +0.35% (q4 cache) | ~6 | 132.4 | 283 | 1 | **fastest first word** (1 load only, recheck queued) |
 | Step 8192, q4 cache [8x3.5 q4] | 137.1 | 1,855 | 20.6 | 30 of 41 layers on card | 4.4 | +0.35% (q4 cache) | ~6 | 151.7 | 247 | 1 | too big |
 | Step 2048, q4 cache [2x4 q4] | 189.5 | 1,342 | 43.6 | 32 | 1.2 | +0.35% (q4 cache) | ~6 | 196.4 | 191 | 1 |  |
 | Step 1024, q4 cache [1x4 q4] | 255.7 | 994 | 43.5 | 30 | 0.6 | +0.35% (q4 cache) | ~6 | 262.6 | 143 | 1 |  |
@@ -501,6 +505,10 @@ The copy cache and the read layout change nothing: they score identically, to th
 | iq4_nl | 4.842 | 0.00859 | 0.0636 | 96.23 |
 | q4_0 | 4.856 | 0.00904 | 0.0656 | 95.69 |
 
+![Mean KL divergence by context cache type](figures/cache-type-vs-output-drift.svg)
+
+*Figure 4.2. How far each context cache type drifts from an f16 cache, from the table above. q4_0 drifts most, yet the drift is small in absolute terms (about 0.006 more than q8_0), and its perplexity is only 0.3% worse. In exchange it frees about 0.7 GB of the card at 128K and 1.3 GB at 256K. That is the case for q4_0 at long contexts: cheap insurance on card room, not a speed win, since q8_0 writes as fast or faster at 64K and 128K.*
+
 - **q4_0 drifts two to three times as much as q8_0.** Its mean KLD is 2.8 times q8_0's (0.00904 against 0.00328), its 99th-percentile KLD 2.2 times, and its top word differs from the base 1.8 times as often (4.3% of the time, against 2.3%). But its perplexity is only 0.3% worse. An outside report had put 4-bit caches 8% to 12% worse.
 - **q4_0 at long contexts.** It frees card memory for about 3 more layers at 256K, which makes it the long-context choice.
 - **iq4_nl is impractical.** It took 332 to 379 s against 40 to 117 s for the rest.
@@ -595,6 +603,7 @@ These are queued on the home PC in this order, and each has its addendum written
 | Busy-desktop pass of the picks | 16 | done (section 4.3.3.2) |
 | Brain Engine 17 (patch 0028: the mask from positions, working on M-RoPE), plus a busy-desktop pass on it | – | waiting on approval |
 | Stock llama.cpp defaults, stock at our steps and our picks, at 32K, 128K and 256K, with load times (20 loads) | 20 | waiting on approval |
+| Second and third rounds of the step picks (4x3.5, 5x3.5 and 8x3.5, q4_0, 512 MB margin, 128K and 256K) | 18 | waiting on approval |
 
 #### 4.3.3.7 Improvements we could still try
 
