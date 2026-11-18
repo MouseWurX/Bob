@@ -428,6 +428,7 @@ export const loadingParts = {
       await this.setSession('light', { by: 'lock' });
       await this.engine.unloadAll?.().catch?.(() => {});
       await this.painter?.unload?.('gaming button', { force: true })?.catch?.(() => {});
+      this.broadcast({ type: 'brain' }); // Nov 18: the status line and fNRI's cube hear it went, so the cube takes itself apart like any unload
       this.log('session', 'Gaming locked by the 🎮 button; the graphics card is cleared');
     } else {
       this.unpark();
