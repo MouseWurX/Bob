@@ -34,7 +34,8 @@ const plan = { name: 'T', brain: 'b.gguf', engines: { e: { exe: 'ppl.exe' } }, t
 
 function fakeFx({ logs = {}, stopAt = '', free = 100 } = {}) {
   const calls = [], removed = [], saved = {}; let t = 0;
-  return { calls, removed, saved, now: () => (t += 1000), say: () => {}, append: () => {}, saveLog: (n, s) => { saved[n] = s; }, remove: (f) => removed.push(path.basename(f)), freeDiskGB: () => free,
+  const kept = new Set(['g1-base.kld']);
+  return { calls, removed, saved, exists: (f) => kept.has(path.basename(f)), now: () => (t += 1000), say: () => {}, append: () => {}, saveLog: (n, s) => { saved[n] = s; }, remove: (f) => removed.push(path.basename(f)), freeDiskGB: () => free,
     shouldStop: () => (calls.length && calls.at(-1).row === stopAt ? 'stop file' : ''),
     run: async (exe, args, env) => { const isBase = !args.includes('--kl-divergence'); const id = `${args[args.indexOf('-c') + 1]}:${isBase ? 'base' : calls.length}`; calls.push({ exe, args, env, row: id }); const l = logs[calls.length - 1]; return l || { code: 0, log: isBase ? 'Final estimate: PPL = 6.0' : KLD_LOG }; } };
 }
@@ -58,6 +59,16 @@ function fakeFx({ logs = {}, stopAt = '', free = 100 } = {}) {
 { const fx = fakeFx({ stopAt: '8192:base' });
   const res = await runGrid({ plan, textFile: 't.md', outDir: 'out', fx });
   check('the stop file ends the grid at once', res.at(-1).stopped === true && fx.calls.length === 1); }
+
+{ const fx = fakeFx();
+  const res = await runGrid({ plan, textFile: 't.md', outDir: 'out', fx, phase: 'base' });
+  check('--phase base runs only the bases and keeps their saved odds', fx.calls.length === 2 && res.every((r) => r.base) && fx.removed.length === 0); }
+{ const fx = fakeFx();
+  const res = await runGrid({ plan, textFile: 't.md', outDir: 'out', fx, phase: 'rows' });
+  check('--phase rows runs only the rows, against the kept base, then removes it', fx.calls.length === 2 && fx.calls.every((c) => c.args.includes('--kl-divergence')) && fx.removed.join() === 'g1-base.kld');
+  check('--phase rows with no saved base says so and runs nothing for that group', res.some((r) => r.group === 'g2' && r.notRun?.includes('no saved base'))); }
+{ const { problems } = loadGrid(path.join(here, '..', 'model-lab', 'speed-plans', 'perplexity-120b-softcut.json'), { vars: { BRAIN120: 'b', BE15_PERPLEXITY: 'p', LOCK: 'l', STOP_FILE: 's' } });
+  check('the 120B soft cut plan loads with no problems', problems.length === 0, problems.join('; ')); }
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

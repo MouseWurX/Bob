@@ -1,0 +1,47 @@
+{
+ "name": "GPT-OSS 120B: the soft cut (41 of 128 experts per layer) against the full brain, Brain Engine 15: KL divergence and same top word",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 34)",
+ "brain": "${BRAIN120}",
+ "engines": {
+  "be15": {
+   "exe": "${BE15_PERPLEXITY}"
+  }
+ },
+ "text": "long-text.md",
+ "baseArgs": [
+  "-fa",
+  "on",
+  "--fit",
+  "on",
+  "-b",
+  "4096",
+  "-ub",
+  "4096",
+  "-ctk",
+  "q8_0",
+  "-ctv",
+  "q8_0"
+ ],
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "rowTimeoutMs": 7200000,
+ "groups": [
+  {
+   "id": "softcut",
+   "about": "base = the full file (soft cut off, run with --phase base); row = the same file with the soft cut on (run with --phase rows after the owner switches it on)",
+   "ctx": 8192,
+   "chunks": 2,
+   "needDiskGB": 10,
+   "base": {
+    "id": "full-128",
+    "engine": "be15"
+   },
+   "rows": [
+    {
+     "id": "cut-41",
+     "engine": "be15"
+    }
+   ]
+  }
+ ]
+}

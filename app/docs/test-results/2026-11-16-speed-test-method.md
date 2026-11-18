@@ -635,3 +635,19 @@ order of sums.
 **What it decides:** whether Calibrate offers a smaller cache type for long contexts, which one, and from which size up;
 and a measured answer to "do our speed settings change the answers", in place of the single-prompt word comparisons.
 The 120B full against the soft cut is left out: changing the soft cut needs the owner's double-click on the test PC.
+
+## Addendum 34 (Nov 18, before any run): the 120B soft cut against the full brain, in answers
+
+The owner (Nov 18): "The soft cut absolutely needs perplexity testing." On Nov 17 the soft cut (41 of 128 experts per
+layer switched on in the file, by router bias; the keep list picked for the 38B cut) made GPT-OSS 120B usable on the test
+PC, and its first tool job failed with a garbled call. Plan `perplexity-120b-softcut.json`, Brain Engine 15's
+`llama-perplexity`, `long-text.md`, `-c 8192`, 2 chunks, `--fit on -b 4096 -ub 4096`, q8_0 cache. It runs in two phases,
+because only the owner switches the cut: `--phase base` with the cut off (the full brain's odds are saved), then the
+owner switches the cut on, then `--phase rows` (the cut brain is compared with them).
+
+**Predictions, written before any run:** the cut raises perplexity by 3% to 10% over the full brain, with a mean KL
+divergence between 0.05 and 0.25 and the same top word 80% to 90% of the time. That is more than any speed setting or
+cache type in Addendum 33. (The Nov 12 REAP quiz put this keep list at 192 of 204 of the full brain's score.)
+
+**What it decides:** whether the soft cut is only a speed tool for trying the 120B at home or good enough to use, and
+whether the keep list should be re-picked from GPT-OSS's own tool-job traces before anyone judges its tool use.

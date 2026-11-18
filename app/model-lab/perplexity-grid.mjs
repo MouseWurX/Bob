@@ -5,7 +5,7 @@
 // base and its rows, so a long-context group can judge cache quantization where it matters.
 // Like speed-test.mjs it takes the PC test lock, stops on the plan's stop file, never compiles anything and never touches
 // live Bob. Everything that starts a program or reads the disk is injected, so the tests use fakes.
-//   node model-lab/perplexity-grid.mjs --plan <plan.json> --out <folder> [--var NAME=value ...] [--dry] [--keep-base]
+//   node model-lab/perplexity-grid.mjs --plan <plan.json> --out <folder> [--var NAME=value ...] [--dry] [--keep-base] [--phase all|base|rows]
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn as nodeSpawn } from 'node:child_process';
@@ -70,13 +70,19 @@ export async function runOne({ plan, group, row, isBase, textFile, baseFile, fx 
   return out;
 }
 
-export async function runGrid({ plan, textFile, outDir, fx, keepBase = false }) {
+// phase: 'all' (default), 'base' (only the bases, kept for later) or 'rows' (only the rows, against bases kept by an
+// earlier 'base' run). Two phases let a brain file be changed in between (Nov 18: the 120B with and without its soft
+// cut, which only the owner can switch).
+export async function runGrid({ plan, textFile, outDir, fx, keepBase = false, phase = 'all' }) {
   const results = [];
   for (const group of plan.groups) {
     const baseFile = path.join(outDir, `${group.id}-base.kld`);
     const free = fx.freeDiskGB(outDir);
-    if (group.needDiskGB && Number.isFinite(free) && free < group.needDiskGB) { results.push({ group: group.id, row: '-', notRun: `skipped: ${free} GB free on the disk, ${group.needDiskGB} GB wanted for the saved odds` }); continue; }
-    for (const [i, row] of [group.base, ...group.rows].entries()) {
+    if (phase !== 'rows' && group.needDiskGB && Number.isFinite(free) && free < group.needDiskGB) { results.push({ group: group.id, row: '-', notRun: `skipped: ${free} GB free on the disk, ${group.needDiskGB} GB wanted for the saved odds` }); continue; }
+    if (phase === 'rows' && !fx.exists(baseFile)) { results.push({ group: group.id, row: '-', notRun: `no saved base (${path.basename(baseFile)}): run --phase base first` }); continue; }
+    const list = phase === 'base' ? [group.base] : phase === 'rows' ? group.rows : [group.base, ...group.rows];
+    for (const [j, row] of list.entries()) {
+      const i = phase === 'rows' ? j + 1 : j;
       const why = fx.shouldStop();
       if (why) { results.push({ group: group.id, row: row.id, notRun: why, stopped: true }); return results; }
       fx.say(`${group.id}: ${row.id}${i === 0 ? ' (base)' : ''}`);
@@ -85,7 +91,7 @@ export async function runGrid({ plan, textFile, outDir, fx, keepBase = false }) 
       fx.append(res);
       if (i === 0 && res.failed) { results.push({ group: group.id, row: '(rest)', notRun: 'the base failed, so nothing can be compared' }); break; }
     }
-    if (!keepBase) fx.remove(baseFile);
+    if (!keepBase && phase !== 'base') fx.remove(baseFile);
   }
   return results;
 }
@@ -120,6 +126,7 @@ function realFx(outDir) {
     saveLog: (name, text) => fs.writeFileSync(path.join(outDir, name), text),
     append: (res) => fs.appendFileSync(path.join(outDir, 'results.jsonl'), JSON.stringify(res) + '\n'),
     remove: (file) => { try { fs.rmSync(file, { force: true }); } catch {} },
+    exists: (file) => fs.existsSync(file),
     freeDiskGB: (dir) => { try { const s = fs.statfsSync(dir); return Math.floor((s.bavail * s.bsize) / 1e9); } catch { return NaN; } },
     shouldStop: () => ''
   };
@@ -129,7 +136,7 @@ async function main() {
   const a = process.argv.slice(2);
   const opt = (k, d) => { const i = a.indexOf(k); return i >= 0 ? a[i + 1] : d; };
   const planFile = opt('--plan'), outDir = opt('--out');
-  if (!planFile || !outDir) { console.log('node model-lab/perplexity-grid.mjs --plan <plan.json> --out <folder> [--var NAME=value ...] [--dry] [--keep-base]'); process.exit(2); }
+  if (!planFile || !outDir) { console.log('node model-lab/perplexity-grid.mjs --plan <plan.json> --out <folder> [--var NAME=value ...] [--dry] [--keep-base] [--phase all|base|rows]'); process.exit(2); }
   const vars = {};
   a.forEach((x, i) => { if (x === '--var' && a[i + 1]) { const [k, ...v] = a[i + 1].split('='); vars[k] = v.join('='); } });
   const { plan, textFile, problems } = loadGrid(planFile, { vars });
@@ -144,8 +151,10 @@ async function main() {
   const fx = realFx(outDir);
   fx.shouldStop = () => (plan.stopFile && fs.existsSync(plan.stopFile) ? 'the stop file appeared (Gaming mode or the owner)' : '');
   let results = [];
-  try { results = await runGrid({ plan, textFile, outDir, fx, keepBase: a.includes('--keep-base') }); } finally { lock.release(); }
-  fs.writeFileSync(path.join(outDir, 'summary.md'), summarise(results, plan));
+  const phase = opt('--phase', 'all');
+  if (!['all', 'base', 'rows'].includes(phase)) { lock.release(); console.error('--phase is all, base or rows'); process.exit(2); }
+  try { results = await runGrid({ plan, textFile, outDir, fx, keepBase: a.includes('--keep-base'), phase }); } finally { lock.release(); }
+  fs.writeFileSync(path.join(outDir, phase === 'all' ? 'summary.md' : `summary-${phase}.md`), summarise(results, plan));
   console.log(`Done. ${path.join(outDir, 'summary.md')}`);
 }
 
