@@ -210,138 +210,140 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 - **Locked RAM:** the pinned attention-mask buffer that Windows shows as "shared GPU memory" (section 4.3.3.5). It is not a spill.
 - **Perplexity change:** against the full-size f16 context cache. The speed settings themselves change nothing (section 4.3.3.4).
 - **Load s:** seconds from engine start to ready, from the engine logs. "~6" means not timed for that row, but every 35B load took 5.3 to 7.4 s.
+- **Job time:** the first word plus a 300-token answer at the writing speed, in seconds. It is a rough measure of how long a typical job takes. Lower is better.
+- **Score:** the baseline's job time divided by this row's, × 100. So 100 is the baseline, and 250 is two and a half times as fast. Today the baseline is Normal (0.5x0) for short prompts and 32K, and plain settings (step 512, f16 cache) for 256K. There is none yet for 64K and 128K. Stock llama.cpp becomes the baseline once that comparison has run. A score says nothing about quality, so a setting that fails the quality checks (perplexity drift over 0.5%, a missed needle, or a load that aborts) is not picked whatever its score. Several of the quickest rows, such as 6x0, have no perplexity run yet.
 - **Pick:** what we would choose today. Turbo uses a different file of the brain, so its rows compare only with each other, and its full tables are below.
 
 **Short prompt (Bob's start prompt)**
 
-| Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Load s | Test runs averaged | Pick / note |
-|---|---|---|---|---|---|---|---|---|---|
-| Plain llama.cpp, its own defaults [plain] | - | 1,065 | 82.9 | - | - | 0% (reference build) | ~6 | 1 | Nov 16, Brain Engine 8 |
-| Normal reading, Bob settings [0.5x0] | 3.3 | 1,167 | 90.7 | - | - | ~0% (q8 cache) | ~6 | 4 |  |
-| Faster reading (step 2048) [2x0] | 1.3 | 2,657 | 84.0 | - | - | ~0% (q8 cache) | ~6 | 2 |  |
-| Fastest reading (step 4096) [4x0] | **0.9** | 3,638 | 80.1 | - | - | ~0% (q8 cache) | ~6 | 2 |  |
-| Faster reading + 4 GB copy cache [2x4] | 1.9 | 2,001 | **109.8** | - | - | ~0% (q8 cache) | ~6 | 4 | **chat pick** |
-| Fastest reading + 4 GB copy cache [4x4] | 1.4 | 3,005 | 96.1 | 29 | - | ~0% (q8 cache) | ~6 | 4 |  |
-| Step 6144 + 3.5 GB copy cache [6x3.5] | 1.4 | 2,944 | 99.0 | - | - | ~0% (q8 cache) | ~6 | 3 |  |
-| Step 6144, no copy cache [6x0] | 1.1 | **3,724** | 81.7 | - | - | not measured | ~6 | 2 |  |
-| Lending the cache to reading [6x4 lend] | 1.3 | 2,998 | 104.2 | - | - | not measured | ~6 | 2 | shelved (refill cost) |
-| Read layout [4x4 R1 (b8192)] | 1.2 | 3,380 | 82.1 | 29 | - | ~0% (q8 cache) | ~6 | 1 |  |
-| MTP 2 ahead, step 4096 + 2 GB copy cache [4x2 MTP2] | 1.5 | 2,642 | 54.3 | 34 | - | +0.35% (q4 cache) | ~6 | 1 | MTP rerun |
-| MTP 3 ahead, b8192/ub4096 + 2 GB copy cache [4x2 b8192 MTP3] | 1.3 | 3,040 | 64.9 | 34 | - | +0.35% (q4 cache) | ~6 | 1 | MTP rerun |
-| No MTP, b8192/ub4096 + 2 GB copy cache [4x2 b8192 MTP off] | 1.1 | 3,414 | 66.8 | 29 | - | +0.35% (q4 cache) | ~6 | 1 | MTP rerun |
+| Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Load s | Job time s | Score | Test runs averaged | Pick / note |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Plain llama.cpp, its own defaults [plain] | - | 1,065 | 82.9 | - | - | 0% (reference build) | ~6 | - | - | 1 | Nov 16, Brain Engine 8 |
+| Normal reading, Bob settings [0.5x0] | 3.3 | 1,167 | 90.7 | - | - | ~0% (q8 cache) | ~6 | 6.6 | 100 | 4 |  |
+| Faster reading (step 2048) [2x0] | 1.3 | 2,657 | 84.0 | - | - | ~0% (q8 cache) | ~6 | 4.9 | 135 | 2 |  |
+| Fastest reading (step 4096) [4x0] | **0.9** | 3,638 | 80.1 | - | - | ~0% (q8 cache) | ~6 | 4.6 | 143 | 2 |  |
+| Faster reading + 4 GB copy cache [2x4] | 1.9 | 2,001 | **109.8** | - | - | ~0% (q8 cache) | ~6 | 4.6 | 143 | 4 | **chat pick** |
+| Fastest reading + 4 GB copy cache [4x4] | 1.4 | 3,005 | 96.1 | 29 | - | ~0% (q8 cache) | ~6 | 4.5 | 147 | 4 |  |
+| Step 6144 + 3.5 GB copy cache [6x3.5] | 1.4 | 2,944 | 99.0 | - | - | ~0% (q8 cache) | ~6 | 4.4 | 150 | 3 |  |
+| Step 6144, no copy cache [6x0] | 1.1 | **3,724** | 81.7 | - | - | not measured | ~6 | 4.8 | 138 | 2 |  |
+| Lending the cache to reading [6x4 lend] | 1.3 | 2,998 | 104.2 | - | - | not measured | ~6 | **4.2** | 157 | 2 | shelved (refill cost) |
+| Read layout [4x4 R1 (b8192)] | 1.2 | 3,380 | 82.1 | 29 | - | ~0% (q8 cache) | ~6 | 4.9 | 135 | 1 |  |
+| MTP 2 ahead, step 4096 + 2 GB copy cache [4x2 MTP2] | 1.5 | 2,642 | 54.3 | 34 | - | +0.35% (q4 cache) | ~6 | 7.0 | 94 | 1 | MTP rerun |
+| MTP 3 ahead, b8192/ub4096 + 2 GB copy cache [4x2 b8192 MTP3] | 1.3 | 3,040 | 64.9 | 34 | - | +0.35% (q4 cache) | ~6 | 5.9 | 112 | 1 | MTP rerun |
+| No MTP, b8192/ub4096 + 2 GB copy cache [4x2 b8192 MTP off] | 1.1 | 3,414 | 66.8 | 29 | - | +0.35% (q4 cache) | ~6 | 5.6 | 118 | 1 | MTP rerun |
 
 **32K**
 
-| Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Load s | Test runs averaged | Pick / note |
-|---|---|---|---|---|---|---|---|---|---|
-| Normal reading, Bob settings [0.5x0] | 26.3 | 1,250 | 79.8 | - | - | ~0% (q8 cache) | ~6 | 5 |  |
-| Faster reading (step 2048) [2x0] | 10.6 | 3,084 | 75.7 | - | - | ~0% (q8 cache) | ~6 | 2 |  |
-| Fastest reading (step 4096) [4x0] | 7.9 | 4,167 | 73.5 | - | - | ~0% (q8 cache) | ~6 | 2 |  |
-| Step 6144, no copy cache [6x0] | **7.2** | **4,593** | 74.5 | - | - | not measured | ~6 | 3 | fastest first word |
-| Faster reading + 4 GB copy cache [2x4] | 14.1 | 2,323 | 98.3 | - | - | ~0% (q8 cache) | 6.3 | 5 | **chat pick** |
-| Fastest reading + 4 GB copy cache, q8 cache [4x4] | 10.2 | 3,222 | 94.0 | 29 | 0.6 | ~0% (q8 cache) | ~6 | 4 |  |
-| 4x4, q4 cache, margin 1 GB [4x4 q4 fit1024] | 9.5 | 3,469 | 84.3 | 28 | 0.5 | +0.35% (q4 cache) | ~6 | 2 |  |
-| 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 9.3 | 3,541 | **100.6** | 27 | 0.5 | +0.35% (q4 cache) | 6.2 | 2 | **new candidate** |
-| 2x4, pinning off [2x4 unpinned] | 13.6 | 2,411 | 97.0 | - | - | ~0% (q8 cache) | ~6 | 1 | same words as pinned |
-| 4x4, q4 cache, margin 1 GB, pinning off [4x4 q4 unpinned] | 9.7 | 3,404 | 83.5 | 28 | 0.08 | +0.35% (q4 cache) | ~6 | 1 | same words as pinned |
-| 4x4 q4 fit512, a quarter of misses on the processor [4x4 q4 fit512 share 0.25] | 9.3 | 3,539 | 92.8 | 27 | - | +0.35% (q4 cache) | ~6 | 1 |  |
-| 4x4 q4 fit512, half of misses on the processor [4x4 q4 fit512 share 0.5] | 9.2 | 3,566 | 91.3 | 27 | - | +0.35% (q4 cache) | ~6 | 1 |  |
-| Step 6144 + 3.5 GB copy cache [6x3.5] | 8.6 | 3,842 | 88.1 | - | - | ~0% (q8 cache) | ~6 | 4 |  |
-| Lending the cache to reading [6x4 lend] | 9.0 | 3,688 | 92.6 | - | - | not measured | ~6 | 3 | shelved |
-| Read layout [4x4 R1 (b8192)] | 10.0 | 3,293 | 92.5 | 29 | 0.6 | ~0% (q8 cache) | ~6 | 1 |  |
-| MTP 2 ahead, step 4096 + 2 GB copy cache [4x2 MTP2] | 11.7 | 2,815 | 64.8 | 34 | - | +0.35% (q4 cache) | ~6 | 1 | MTP rerun |
-| MTP 3 ahead, b8192/ub4096 + 2 GB copy cache [4x2 b8192 MTP3] | 13.0 | 2,535 | 58.4 | 34 | - | +0.35% (q4 cache) | ~6 | 1 | MTP rerun |
-| No MTP, step 4096 + 2 GB copy cache [4x2 MTP off] | 10.1 | 3,273 | 69.5 | 29 | - | +0.35% (q4 cache) | ~6 | 1 | MTP rerun |
-| 2x4, margin 512, clean desktop [2x4 fit512 clean] | 13.2 | 2,492 | 88.1 | 26 | - | ~0% (q8 cache) | 6.3 | 1 | real-desktop pass |
-| 2x4, margin 1 GB, clean desktop [2x4 fit1024 clean] | 13.7 | 2,397 | 98.0 | 27 | - | ~0% (q8 cache) | 6.3 | 1 | real-desktop pass |
-| 2x4, margin 512, BUSY desktop [2x4 fit512 busy] | 15.3 | 2,147 | 72.5 | 26 | - | ~0% (q8 cache) | 7.1 | 1 | browser + video open |
-| 2x4, margin 1 GB, BUSY desktop [2x4 fit1024 busy] | 15.9 | 2,071 | 85.4 | 27 | - | ~0% (q8 cache) | 7.1 | 1 | browser + video open |
+| Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Load s | Job time s | Score | Test runs averaged | Pick / note |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Normal reading, Bob settings [0.5x0] | 26.3 | 1,250 | 79.8 | - | - | ~0% (q8 cache) | ~6 | 30.1 | 100 | 5 |  |
+| Faster reading (step 2048) [2x0] | 10.6 | 3,084 | 75.7 | - | - | ~0% (q8 cache) | ~6 | 14.6 | 206 | 2 |  |
+| Fastest reading (step 4096) [4x0] | 7.9 | 4,167 | 73.5 | - | - | ~0% (q8 cache) | ~6 | 12.0 | 251 | 2 |  |
+| Step 6144, no copy cache [6x0] | **7.2** | **4,593** | 74.5 | - | - | not measured | ~6 | **11.2** | 269 | 3 | fastest first word |
+| Faster reading + 4 GB copy cache [2x4] | 14.1 | 2,323 | 98.3 | - | - | ~0% (q8 cache) | 6.3 | 17.2 | 175 | 5 | **chat pick** |
+| Fastest reading + 4 GB copy cache, q8 cache [4x4] | 10.2 | 3,222 | 94.0 | 29 | 0.6 | ~0% (q8 cache) | ~6 | 13.4 | 225 | 4 |  |
+| 4x4, q4 cache, margin 1 GB [4x4 q4 fit1024] | 9.5 | 3,469 | 84.3 | 28 | 0.5 | +0.35% (q4 cache) | ~6 | 13.1 | 230 | 2 |  |
+| 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 9.3 | 3,541 | **100.6** | 27 | 0.5 | +0.35% (q4 cache) | 6.2 | 12.3 | 245 | 2 | **new candidate** |
+| 2x4, pinning off [2x4 unpinned] | 13.6 | 2,411 | 97.0 | - | - | ~0% (q8 cache) | ~6 | 16.7 | 180 | 1 | same words as pinned |
+| 4x4, q4 cache, margin 1 GB, pinning off [4x4 q4 unpinned] | 9.7 | 3,404 | 83.5 | 28 | 0.08 | +0.35% (q4 cache) | ~6 | 13.3 | 226 | 1 | same words as pinned |
+| 4x4 q4 fit512, a quarter of misses on the processor [4x4 q4 fit512 share 0.25] | 9.3 | 3,539 | 92.8 | 27 | - | +0.35% (q4 cache) | ~6 | 12.5 | 241 | 1 |  |
+| 4x4 q4 fit512, half of misses on the processor [4x4 q4 fit512 share 0.5] | 9.2 | 3,566 | 91.3 | 27 | - | +0.35% (q4 cache) | ~6 | 12.5 | 241 | 1 |  |
+| Step 6144 + 3.5 GB copy cache [6x3.5] | 8.6 | 3,842 | 88.1 | - | - | ~0% (q8 cache) | ~6 | 12.0 | 251 | 4 |  |
+| Lending the cache to reading [6x4 lend] | 9.0 | 3,688 | 92.6 | - | - | not measured | ~6 | 12.2 | 247 | 3 | shelved |
+| Read layout [4x4 R1 (b8192)] | 10.0 | 3,293 | 92.5 | 29 | 0.6 | ~0% (q8 cache) | ~6 | 13.2 | 228 | 1 |  |
+| MTP 2 ahead, step 4096 + 2 GB copy cache [4x2 MTP2] | 11.7 | 2,815 | 64.8 | 34 | - | +0.35% (q4 cache) | ~6 | 16.3 | 185 | 1 | MTP rerun |
+| MTP 3 ahead, b8192/ub4096 + 2 GB copy cache [4x2 b8192 MTP3] | 13.0 | 2,535 | 58.4 | 34 | - | +0.35% (q4 cache) | ~6 | 18.1 | 166 | 1 | MTP rerun |
+| No MTP, step 4096 + 2 GB copy cache [4x2 MTP off] | 10.1 | 3,273 | 69.5 | 29 | - | +0.35% (q4 cache) | ~6 | 14.4 | 209 | 1 | MTP rerun |
+| 2x4, margin 512, clean desktop [2x4 fit512 clean] | 13.2 | 2,492 | 88.1 | 26 | - | ~0% (q8 cache) | 6.3 | 16.6 | 181 | 1 | real-desktop pass |
+| 2x4, margin 1 GB, clean desktop [2x4 fit1024 clean] | 13.7 | 2,397 | 98.0 | 27 | - | ~0% (q8 cache) | 6.3 | 16.8 | 179 | 1 | real-desktop pass |
+| 2x4, margin 512, BUSY desktop [2x4 fit512 busy] | 15.3 | 2,147 | 72.5 | 26 | - | ~0% (q8 cache) | 7.1 | 19.4 | 155 | 1 | browser + video open |
+| 2x4, margin 1 GB, BUSY desktop [2x4 fit1024 busy] | 15.9 | 2,071 | 85.4 | 27 | - | ~0% (q8 cache) | 7.1 | 19.4 | 155 | 1 | browser + video open |
 
 **64K**
 
-| Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Load s | Test runs averaged | Pick / note |
-|---|---|---|---|---|---|---|---|---|---|
-| 4x4, q8 cache [4x4] | 20.3 | 3,037 | 74.3 | 30 | 0.8 | ~0% (q8 cache) | ~6 | 2 |  |
-| 4x4, q4 cache [4x4 q4] | 19.7 | 3,126 | 68.5 | 29 | 0.8 | +0.35% (q4 cache) | ~6 | 1 |  |
-| 4x4, q5_1 cache [4x4 q5_1] | 19.6 | 3,145 | 66.0 | 29 | 0.8 | +0.12% | ~6 | 1 |  |
-| 4x4, f8 cache [4x4 f8_e4m3] | 19.8 | 3,116 | 71.1 | 30 | 0.8 | -0.12% | ~6 | 1 |  |
-| 6x3.5, q8 cache [6x3.5] | 17.3 | 3,560 | 81.7 | 30 | 1.1 | ~0% (q8 cache) | ~6 | 2 | **best at 64K** |
-| 6x3.5, q4 cache [6x3.5 q4] | 16.6 | 3,725 | 72.9 | 29 | 1.1 | +0.35% (q4 cache) | ~6 | 1 |  |
-| Step 6144, no copy cache [6x0] | **15.0** | **4,114** | 67.5 | - | - | not measured | ~6 | 1 |  |
-| Lending the cache to reading [6x4 lend] | 17.6 | 3,503 | **86.7** | - | - | not measured | ~6 | 1 | shelved |
-| Read layout [4x4 R1 (b8192)] | 18.0 | 3,422 | 85.6 | 30 | 0.8 | ~0% (q8 cache) | ~6 | 1 |  |
+| Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Load s | Job time s | Score | Test runs averaged | Pick / note |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 4x4, q8 cache [4x4] | 20.3 | 3,037 | 74.3 | 30 | 0.8 | ~0% (q8 cache) | ~6 | 24.3 | - | 2 |  |
+| 4x4, q4 cache [4x4 q4] | 19.7 | 3,126 | 68.5 | 29 | 0.8 | +0.35% (q4 cache) | ~6 | 24.1 | - | 1 |  |
+| 4x4, q5_1 cache [4x4 q5_1] | 19.6 | 3,145 | 66.0 | 29 | 0.8 | +0.12% | ~6 | 24.1 | - | 1 |  |
+| 4x4, f8 cache [4x4 f8_e4m3] | 19.8 | 3,116 | 71.1 | 30 | 0.8 | -0.12% | ~6 | 24.0 | - | 1 |  |
+| 6x3.5, q8 cache [6x3.5] | 17.3 | 3,560 | 81.7 | 30 | 1.1 | ~0% (q8 cache) | ~6 | 21.0 | - | 2 | **best at 64K** |
+| 6x3.5, q4 cache [6x3.5 q4] | 16.6 | 3,725 | 72.9 | 29 | 1.1 | +0.35% (q4 cache) | ~6 | 20.7 | - | 1 |  |
+| Step 6144, no copy cache [6x0] | **15.0** | **4,114** | 67.5 | - | - | not measured | ~6 | **19.4** | - | 1 |  |
+| Lending the cache to reading [6x4 lend] | 17.6 | 3,503 | **86.7** | - | - | not measured | ~6 | 21.1 | - | 1 | shelved |
+| Read layout [4x4 R1 (b8192)] | 18.0 | 3,422 | 85.6 | 30 | 0.8 | ~0% (q8 cache) | ~6 | 21.5 | - | 1 |  |
 
 **128K**
 
-| Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Load s | Test runs averaged | Pick / note |
-|---|---|---|---|---|---|---|---|---|---|
-| 4x4, q8 cache [4x4] | 50.0 | 2,465 | 62.6 | 33 | 1.3 | ~0% (q8 cache) | ~6 | 3 |  |
-| 4x4, f16 cache (full size) [4x4 f16] | 52.0 | 2,384 | 54.9 | - | - | 0% (reference) | ~6 | 1 |  |
-| 4x4, q4 cache, margin 1 GB [4x4 q4] | 48.4 | 2,547 | 58.0 | 31 | 1.3 | +0.35% (q4 cache) | ~6 | 5 |  |
-| 4x4, q4 cache, pinning off [4x4 q4 unpinned] | 48.4 | 2,543 | 57.8 | 31 | 0.08 | +0.35% (q4 cache) | ~6 | 1 | same words as pinned |
-| 4x4 q4 fit512, a quarter of misses on the processor [4x4 q4 fit512 share 0.25] | 47.2 | 2,608 | 54.7 | 30 | - | +0.35% (q4 cache) | ~6 | 1 |  |
-| 4x4 q4 fit512, half of misses on the processor [4x4 q4 fit512 share 0.5] | 47.3 | 2,605 | 62.6 | 30 | - | +0.35% (q4 cache) | ~6 | 1 |  |
-| Step 4096, q4 cache, no copy cache [4x0 q4] | 40.6 | 3,034 | 55.7 | 22 | 1.2 | +0.35% (q4 cache) | ~6 | 1 | faster first word, lower writing |
-| Step 4096, q4 cache, context cache in RAM [4x0 q4 nkvo] | 43.3 | 2,845 | 15.1 | 20 | 1.3 | +0.35% (q4 cache) | ~6 | 1 | dropped |
-| 4x4, q4 cache, mask made on card (BE16) [4x4 q4 BE16 mask] | 48.4 | 2,545 | 57.9 | 31 | 1.2 | +0.35% (q4 cache) | ~6 | 1 | same words; no memory change |
-| 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 47.8 | 2,582 | 68.3 | 30 | 1.3 | +0.35% (q4 cache) | 6.0 | 2 | **best writing** |
-| 4x4, q4 cache, margin 2 GB [4x4 q4 fit2048] | 50.4 | 2,442 | 57.2 | 32-33 | 1.3 | +0.35% (q4 cache) | ~6 | 2 | one of the 2 runs was 4x3.5 (step sweep) |
-| Step 5120, q4 cache (margin 2 GB) [5x3.5 q4] | 45.5 | 2,706 | 63.2 | 33 | 1.6 | +0.35% (q4 cache) | 6.1 | 1 | **balance pick** |
-| 6x3.5, q4 cache [6x3.5 q4] | 41.8 | 2,947 | 61.8 | 32-34 | 1.9 | +0.35% (q4 cache) | ~6 | 3 |  |
-| 6x3.5, q8 cache [6x3.5] | 42.8 | 2,881 | 60.1 | 33 | 1.9 | ~0% (q8 cache) | ~6 | 3 |  |
-| Step 7168, q4 cache [7x3.5 q4] | 41.6 | 2,961 | 58.3 | 35 | 2.2 | +0.35% (q4 cache) | ~6 | 1 |  |
-| Step 8192, q4 cache [8x3.5 q4] | 40.8 | 3,019 | 54.1 | 36 | 2.5 | +0.35% (q4 cache) | ~6 | 1 | **fastest first word** |
-| Step 2048, q4 cache [2x4 q4] | 67.6 | 1,822 | 67.9 | 29 | 0.7 | +0.35% (q4 cache) | ~6 | 1 |  |
-| 4x4, q5_1 cache [4x4 q5_1] | 48.8 | 2,523 | 46.0 | 32 | 1.3 | +0.12% | ~6 | 1 |  |
-| 4x4, f8 cache [4x4 f8_e4m3] | 48.6 | 2,534 | 55.8 | 32 | 1.3 | -0.12% | ~6 | 1 |  |
-| 4x4, K q8 / V q4 cache [4x4 q8/q4] | 49.2 | 2,501 | 49.9 | 32 | 1.3 | 0.0% | ~6 | 1 |  |
-| Step 6144, no copy cache [6x0] | **37.9** | **3,248** | 53.1 | - | - | not measured | ~6 | 1 |  |
-| Lending the cache to reading [6x4 lend] | 41.7 | 2,954 | 57.1 | - | - | not measured | ~6 | 1 | shelved |
-| Read layout [4x4 R1 (b8192)] | 44.5 | 2,771 | 55.2 | 33 | 1.3 | ~0% (q8 cache) | ~6 | 1 |  |
-| MTP 2 ahead, step 4096 + 2 GB copy cache [4x2 MTP2] | 55.3 | 2,225 | 54.9 | 34 | - | +0.35% (q4 cache) | ~6 | 1 | MTP rerun, 120K prompt |
-| MTP 3 ahead, b8192/ub4096 + 2 GB copy cache [4x2 b8192 MTP3] | 54.7 | 2,252 | **70.6** | 34 | - | +0.35% (q4 cache) | ~6 | 1 | MTP rerun, 120K prompt |
-| No MTP, b8192/ub4096 + 2 GB copy cache [4x2 b8192 MTP off] | 46.4 | 2,655 | 51.6 | 29 | - | +0.35% (q4 cache) | ~6 | 1 | MTP rerun, 120K prompt |
-| Step 5120 q4, margin 512, clean desktop [5x3.5 q4 fit512 clean] | 42.1 | 2,929 | 65.9 | 30 | - | +0.35% (q4 cache) | 6.1 | 1 | real-desktop pass |
-| Step 5120 q4, margin 1 GB, clean desktop [5x3.5 q4 fit1024 clean] | 42.7 | 2,882 | 59.8 | 31 | - | +0.35% (q4 cache) | 6.1 | 1 | real-desktop pass |
-| Step 5120 q4, margin 512, BUSY desktop [5x3.5 q4 fit512 busy] | 49.0 | 2,515 | 57.8 | 30 | - | +0.35% (q4 cache) | 7.0 | 1 | browser + video open |
-| Step 5120 q4, margin 1 GB, BUSY desktop [5x3.5 q4 fit1024 busy] | 50.3 | 2,451 | 51.0 | 31 | - | +0.35% (q4 cache) | 7.0 | 1 | browser + video open |
+| Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Load s | Job time s | Score | Test runs averaged | Pick / note |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 4x4, q8 cache [4x4] | 50.0 | 2,465 | 62.6 | 33 | 1.3 | ~0% (q8 cache) | ~6 | 54.8 | - | 3 |  |
+| 4x4, f16 cache (full size) [4x4 f16] | 52.0 | 2,384 | 54.9 | - | - | 0% (reference) | ~6 | 57.5 | - | 1 |  |
+| 4x4, q4 cache, margin 1 GB [4x4 q4] | 48.4 | 2,547 | 58.0 | 31 | 1.3 | +0.35% (q4 cache) | ~6 | 53.6 | - | 5 |  |
+| 4x4, q4 cache, pinning off [4x4 q4 unpinned] | 48.4 | 2,543 | 57.8 | 31 | 0.08 | +0.35% (q4 cache) | ~6 | 53.6 | - | 1 | same words as pinned |
+| 4x4 q4 fit512, a quarter of misses on the processor [4x4 q4 fit512 share 0.25] | 47.2 | 2,608 | 54.7 | 30 | - | +0.35% (q4 cache) | ~6 | 52.7 | - | 1 |  |
+| 4x4 q4 fit512, half of misses on the processor [4x4 q4 fit512 share 0.5] | 47.3 | 2,605 | 62.6 | 30 | - | +0.35% (q4 cache) | ~6 | 52.1 | - | 1 |  |
+| Step 4096, q4 cache, no copy cache [4x0 q4] | 40.6 | 3,034 | 55.7 | 22 | 1.2 | +0.35% (q4 cache) | ~6 | 46.0 | - | 1 | faster first word, lower writing |
+| Step 4096, q4 cache, context cache in RAM [4x0 q4 nkvo] | 43.3 | 2,845 | 15.1 | 20 | 1.3 | +0.35% (q4 cache) | ~6 | 63.2 | - | 1 | dropped |
+| 4x4, q4 cache, mask made on card (BE16) [4x4 q4 BE16 mask] | 48.4 | 2,545 | 57.9 | 31 | 1.2 | +0.35% (q4 cache) | ~6 | 53.6 | - | 1 | same words; no memory change |
+| 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 47.8 | 2,582 | 68.3 | 30 | 1.3 | +0.35% (q4 cache) | 6.0 | 52.2 | - | 2 | **best writing** |
+| 4x4, q4 cache, margin 2 GB [4x4 q4 fit2048] | 50.4 | 2,442 | 57.2 | 32-33 | 1.3 | +0.35% (q4 cache) | ~6 | 55.6 | - | 2 | one of the 2 runs was 4x3.5 (step sweep) |
+| Step 5120, q4 cache (margin 2 GB) [5x3.5 q4] | 45.5 | 2,706 | 63.2 | 33 | 1.6 | +0.35% (q4 cache) | 6.1 | 50.2 | - | 1 | **balance pick** |
+| 6x3.5, q4 cache [6x3.5 q4] | 41.8 | 2,947 | 61.8 | 32-34 | 1.9 | +0.35% (q4 cache) | ~6 | 46.7 | - | 3 |  |
+| 6x3.5, q8 cache [6x3.5] | 42.8 | 2,881 | 60.1 | 33 | 1.9 | ~0% (q8 cache) | ~6 | 47.8 | - | 3 |  |
+| Step 7168, q4 cache [7x3.5 q4] | 41.6 | 2,961 | 58.3 | 35 | 2.2 | +0.35% (q4 cache) | ~6 | 46.7 | - | 1 |  |
+| Step 8192, q4 cache [8x3.5 q4] | 40.8 | 3,019 | 54.1 | 36 | 2.5 | +0.35% (q4 cache) | ~6 | 46.3 | - | 1 | **fastest first word** |
+| Step 2048, q4 cache [2x4 q4] | 67.6 | 1,822 | 67.9 | 29 | 0.7 | +0.35% (q4 cache) | ~6 | 72.0 | - | 1 |  |
+| 4x4, q5_1 cache [4x4 q5_1] | 48.8 | 2,523 | 46.0 | 32 | 1.3 | +0.12% | ~6 | 55.3 | - | 1 |  |
+| 4x4, f8 cache [4x4 f8_e4m3] | 48.6 | 2,534 | 55.8 | 32 | 1.3 | -0.12% | ~6 | 54.0 | - | 1 |  |
+| 4x4, K q8 / V q4 cache [4x4 q8/q4] | 49.2 | 2,501 | 49.9 | 32 | 1.3 | 0.0% | ~6 | 55.2 | - | 1 |  |
+| Step 6144, no copy cache [6x0] | **37.9** | **3,248** | 53.1 | - | - | not measured | ~6 | **43.5** | - | 1 |  |
+| Lending the cache to reading [6x4 lend] | 41.7 | 2,954 | 57.1 | - | - | not measured | ~6 | 47.0 | - | 1 | shelved |
+| Read layout [4x4 R1 (b8192)] | 44.5 | 2,771 | 55.2 | 33 | 1.3 | ~0% (q8 cache) | ~6 | 49.9 | - | 1 |  |
+| MTP 2 ahead, step 4096 + 2 GB copy cache [4x2 MTP2] | 55.3 | 2,225 | 54.9 | 34 | - | +0.35% (q4 cache) | ~6 | 60.8 | - | 1 | MTP rerun, 120K prompt |
+| MTP 3 ahead, b8192/ub4096 + 2 GB copy cache [4x2 b8192 MTP3] | 54.7 | 2,252 | **70.6** | 34 | - | +0.35% (q4 cache) | ~6 | 58.9 | - | 1 | MTP rerun, 120K prompt |
+| No MTP, b8192/ub4096 + 2 GB copy cache [4x2 b8192 MTP off] | 46.4 | 2,655 | 51.6 | 29 | - | +0.35% (q4 cache) | ~6 | 52.2 | - | 1 | MTP rerun, 120K prompt |
+| Step 5120 q4, margin 512, clean desktop [5x3.5 q4 fit512 clean] | 42.1 | 2,929 | 65.9 | 30 | - | +0.35% (q4 cache) | 6.1 | 46.7 | - | 1 | real-desktop pass |
+| Step 5120 q4, margin 1 GB, clean desktop [5x3.5 q4 fit1024 clean] | 42.7 | 2,882 | 59.8 | 31 | - | +0.35% (q4 cache) | 6.1 | 47.7 | - | 1 | real-desktop pass |
+| Step 5120 q4, margin 512, BUSY desktop [5x3.5 q4 fit512 busy] | 49.0 | 2,515 | 57.8 | 30 | - | +0.35% (q4 cache) | 7.0 | 54.2 | - | 1 | browser + video open |
+| Step 5120 q4, margin 1 GB, BUSY desktop [5x3.5 q4 fit1024 busy] | 50.3 | 2,451 | 51.0 | 31 | - | +0.35% (q4 cache) | 7.0 | 56.2 | - | 1 | browser + video open |
 
 **256K**
 
-| Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Load s | Test runs averaged | Pick / note |
-|---|---|---|---|---|---|---|---|---|---|
-| 4x4, q8 cache [4x4] | 156.1 | 1,630 | 35.4 | 38 | 2.3 | ~0% (q8 cache) | 5.5 | 3 |  |
-| 4x4, q4 cache, margin 1 GB [4x4 q4] | 151.7 | 1,678 | 42.7 | 35 | 2.3 | +0.35% (q4 cache) | ~6 | 6 |  |
-| 4x4, q4 cache, pinning off [4x4 q4 unpinned] | 152.6 | 1,666 | 45.3 | 35 | 0.08 | +0.35% (q4 cache) | ~6 | 2 | spill fix, Bob default on a branch |
-| Step 4096, q4 cache, no copy cache [4x0 q4] | 133.9 | 1,899 | 39.0 | 26 | 2.2 | +0.35% (q4 cache) | ~6 | 1 | faster first word, lower writing |
-| Step 4096, q4 cache, context cache in RAM [4x0 q4 nkvo] | 138.3 | 1,839 | 9.5 | 23 | 2.2 | +0.35% (q4 cache) | ~6 | 1 | dropped |
-| 4x4, q4 cache, mask made on card (BE16) [4x4 q4 BE16 mask] | 150.8 | 1,687 | 45.8 | 35 | 2.2 | +0.35% (q4 cache) | ~6 | 1 | same words; no memory change |
-| 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 150.5 | 1,690 | 41.3 | 34 | 2.3 | +0.35% (q4 cache) | ~6 | 1 |  |
-| Step 5120, q4 cache (margin 2 GB) [5x3.5 q4] | 127.9 | 1,989 | 39.5 | 37 | 2.8 | +0.35% (q4 cache) | 5.9 | 1 | **balance pick** |
-| 6x3.5, q4 cache, margin 1 GB [6x3.5 q4] | 128.1 | 1,986 | 42.5 | 36 | 3.3 | +0.35% (q4 cache) | ~6 | 1 |  |
-| 6x3.5, q4 cache, margin 512 MB [6x3.5 q4 fit512] | 128.7 | 1,977 | 43.1 | 35 | 3.3 | +0.35% (q4 cache) | 5.6 | 1 | **best all-round** |
-| 6x3.5, q4 cache, margin 2 GB [6x3.5 q4 fit2048] | 132.1 | 1,927 | 36.9 | 38 | 3.3 | +0.35% (q4 cache) | ~6 | 2 |  |
-| 6x3.5, q8 cache [6x3.5] | 134.1 | 1,896 | 40.2 | 39 | 3.3 | ~0% (q8 cache) | ~6 | 2 |  |
-| Step 7168, q4 cache [7x3.5 q4] | 123.5 | 2,060 | 33.6 | 40 | 3.9 | +0.35% (q4 cache) | ~6 | 1 | **fastest first word** |
-| Step 8192, q4 cache [8x3.5 q4] | 137.1 | 1,855 | 20.6 | 30 of 41 layers on card | 4.4 | +0.35% (q4 cache) | ~6 | 1 | too big |
-| Step 2048, q4 cache [2x4 q4] | 189.5 | 1,342 | 43.6 | 32 | 1.2 | +0.35% (q4 cache) | ~6 | 1 |  |
-| Step 1024, q4 cache [1x4 q4] | 255.7 | 994 | 43.5 | 30 | 0.6 | +0.35% (q4 cache) | ~6 | 1 |  |
-| Step 512, q4 cache [0.5x4 q4] | 401.2 | 633 | 44.6 | 30 | 0.35 | +0.35% (q4 cache) | ~6 | 1 |  |
-| Plain settings (step 512, f16 cache) [plain] | 368.9 | 689 | **47.9** | 28 | 0.35 | 0% (reference) | ~6 | 1 | best writing, slowest reading |
-| 4x4, q5_1 cache [4x4 q5_1] | 153.0 | 1,662 | 26.6 | 36 | 2.3 | +0.12% | ~6 | 1 |  |
-| 4x4, f8 cache [4x4 f8_e4m3] | 155.0 | 1,640 | 31.8 | 38 | 2.3 | -0.12% | ~6 | 1 |  |
-| 4x4, K q8 / V q4 cache [4x4 q8/q4] | 155.1 | 1,639 | 28.0 | 36 | 2.3 | 0.0% | ~6 | 1 |  |
-| Step 6144, no copy cache [6x0] | **118.5** | **2,147** | 37.7 | - | - | not measured | ~6 | 1 |  |
-| Lending the cache to reading [6x4 lend] | 131.1 | 1,940 | 42.5 | - | - | not measured | ~6 | 1 | shelved |
-| Read layout [4x4 R1 (b8192)] | 143.2 | 1,777 | 38.5 | 38 | 2.3 | ~0% (q8 cache) | ~6 | 1 |  |
-| Step 5120 q4, margin 512, clean desktop [5x3.5 q4 fit512 clean] | 123.2 | 2,064 | 41.2 | 34 | - | +0.35% (q4 cache) | 5.9 | 1 | real-desktop pass |
-| Step 5120 q4, margin 1 GB, clean desktop [5x3.5 q4 fit1024 clean] | 123.9 | 2,053 | 42.4 | 35 | - | +0.35% (q4 cache) | 5.9 | 1 | real-desktop pass |
-| 6x3.5 q4, margin 512, clean desktop [6x3.5 q4 fit512 clean] | 127.1 | 2,002 | 43.0 | 35 | - | +0.35% (q4 cache) | 5.6 | 1 | real-desktop pass |
-| 6x3.5 q4, margin 1 GB, clean desktop [6x3.5 q4 fit1024 clean] | 129.3 | 1,967 | 42.4 | 36 | - | +0.35% (q4 cache) | 5.6 | 1 | real-desktop pass |
-| Step 5120 q4, margin 512, BUSY desktop [5x3.5 q4 fit512 busy] | 144.4 | 1,762 | 37.1 | 34 | - | +0.35% (q4 cache) | 7.2 | 1 | browser + video open |
-| Step 5120 q4, margin 1 GB, BUSY desktop [5x3.5 q4 fit1024 busy] | 143.0 | 1,779 | 37.2 | 35 | - | +0.35% (q4 cache) | 7.2 | 1 | browser + video open |
-| 6x3.5 q4, margin 512, BUSY desktop [6x3.5 q4 fit512 busy] | 145.2 | 1,751 | 37.4 | 35 | - | +0.35% (q4 cache) | ~6 | 1 | browser + video open |
-| 6x3.5 q4, margin 1 GB, BUSY desktop [6x3.5 q4 fit1024 busy] | 145.6 | 1,747 | 37.2 | 36 | - | +0.35% (q4 cache) | ~6 | 1 | browser + video open |
+| Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Load s | Job time s | Score | Test runs averaged | Pick / note |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 4x4, q8 cache [4x4] | 156.1 | 1,630 | 35.4 | 38 | 2.3 | ~0% (q8 cache) | 5.5 | 164.6 | 228 | 3 |  |
+| 4x4, q4 cache, margin 1 GB [4x4 q4] | 151.7 | 1,678 | 42.7 | 35 | 2.3 | +0.35% (q4 cache) | ~6 | 158.7 | 236 | 6 |  |
+| 4x4, q4 cache, pinning off [4x4 q4 unpinned] | 152.6 | 1,666 | 45.3 | 35 | 0.08 | +0.35% (q4 cache) | ~6 | 159.2 | 236 | 2 | spill fix, Bob default on a branch |
+| Step 4096, q4 cache, no copy cache [4x0 q4] | 133.9 | 1,899 | 39.0 | 26 | 2.2 | +0.35% (q4 cache) | ~6 | 141.6 | 265 | 1 | faster first word, lower writing |
+| Step 4096, q4 cache, context cache in RAM [4x0 q4 nkvo] | 138.3 | 1,839 | 9.5 | 23 | 2.2 | +0.35% (q4 cache) | ~6 | 169.9 | 221 | 1 | dropped |
+| 4x4, q4 cache, mask made on card (BE16) [4x4 q4 BE16 mask] | 150.8 | 1,687 | 45.8 | 35 | 2.2 | +0.35% (q4 cache) | ~6 | 157.4 | 238 | 1 | same words; no memory change |
+| 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 150.5 | 1,690 | 41.3 | 34 | 2.3 | +0.35% (q4 cache) | ~6 | 157.8 | 238 | 1 |  |
+| Step 5120, q4 cache (margin 2 GB) [5x3.5 q4] | 127.9 | 1,989 | 39.5 | 37 | 2.8 | +0.35% (q4 cache) | 5.9 | 135.5 | 277 | 1 | **balance pick** |
+| 6x3.5, q4 cache, margin 1 GB [6x3.5 q4] | 128.1 | 1,986 | 42.5 | 36 | 3.3 | +0.35% (q4 cache) | ~6 | 135.2 | 278 | 1 |  |
+| 6x3.5, q4 cache, margin 512 MB [6x3.5 q4 fit512] | 128.7 | 1,977 | 43.1 | 35 | 3.3 | +0.35% (q4 cache) | 5.6 | 135.7 | 276 | 1 | **best all-round** |
+| 6x3.5, q4 cache, margin 2 GB [6x3.5 q4 fit2048] | 132.1 | 1,927 | 36.9 | 38 | 3.3 | +0.35% (q4 cache) | ~6 | 140.2 | 268 | 2 |  |
+| 6x3.5, q8 cache [6x3.5] | 134.1 | 1,896 | 40.2 | 39 | 3.3 | ~0% (q8 cache) | ~6 | 141.6 | 265 | 2 |  |
+| Step 7168, q4 cache [7x3.5 q4] | 123.5 | 2,060 | 33.6 | 40 | 3.9 | +0.35% (q4 cache) | ~6 | 132.4 | 283 | 1 | **fastest first word** |
+| Step 8192, q4 cache [8x3.5 q4] | 137.1 | 1,855 | 20.6 | 30 of 41 layers on card | 4.4 | +0.35% (q4 cache) | ~6 | 151.7 | 247 | 1 | too big |
+| Step 2048, q4 cache [2x4 q4] | 189.5 | 1,342 | 43.6 | 32 | 1.2 | +0.35% (q4 cache) | ~6 | 196.4 | 191 | 1 |  |
+| Step 1024, q4 cache [1x4 q4] | 255.7 | 994 | 43.5 | 30 | 0.6 | +0.35% (q4 cache) | ~6 | 262.6 | 143 | 1 |  |
+| Step 512, q4 cache [0.5x4 q4] | 401.2 | 633 | 44.6 | 30 | 0.35 | +0.35% (q4 cache) | ~6 | 407.9 | 92 | 1 |  |
+| Plain settings (step 512, f16 cache) [plain] | 368.9 | 689 | **47.9** | 28 | 0.35 | 0% (reference) | ~6 | 375.2 | 100 | 1 | best writing, slowest reading |
+| 4x4, q5_1 cache [4x4 q5_1] | 153.0 | 1,662 | 26.6 | 36 | 2.3 | +0.12% | ~6 | 164.3 | 228 | 1 |  |
+| 4x4, f8 cache [4x4 f8_e4m3] | 155.0 | 1,640 | 31.8 | 38 | 2.3 | -0.12% | ~6 | 164.4 | 228 | 1 |  |
+| 4x4, K q8 / V q4 cache [4x4 q8/q4] | 155.1 | 1,639 | 28.0 | 36 | 2.3 | 0.0% | ~6 | 165.8 | 226 | 1 |  |
+| Step 6144, no copy cache [6x0] | **118.5** | **2,147** | 37.7 | - | - | not measured | ~6 | **126.5** | 297 | 1 |  |
+| Lending the cache to reading [6x4 lend] | 131.1 | 1,940 | 42.5 | - | - | not measured | ~6 | 138.2 | 271 | 1 | shelved |
+| Read layout [4x4 R1 (b8192)] | 143.2 | 1,777 | 38.5 | 38 | 2.3 | ~0% (q8 cache) | ~6 | 151.0 | 248 | 1 |  |
+| Step 5120 q4, margin 512, clean desktop [5x3.5 q4 fit512 clean] | 123.2 | 2,064 | 41.2 | 34 | - | +0.35% (q4 cache) | 5.9 | 130.5 | 288 | 1 | real-desktop pass |
+| Step 5120 q4, margin 1 GB, clean desktop [5x3.5 q4 fit1024 clean] | 123.9 | 2,053 | 42.4 | 35 | - | +0.35% (q4 cache) | 5.9 | 131.0 | 286 | 1 | real-desktop pass |
+| 6x3.5 q4, margin 512, clean desktop [6x3.5 q4 fit512 clean] | 127.1 | 2,002 | 43.0 | 35 | - | +0.35% (q4 cache) | 5.6 | 134.1 | 280 | 1 | real-desktop pass |
+| 6x3.5 q4, margin 1 GB, clean desktop [6x3.5 q4 fit1024 clean] | 129.3 | 1,967 | 42.4 | 36 | - | +0.35% (q4 cache) | 5.6 | 136.4 | 275 | 1 | real-desktop pass |
+| Step 5120 q4, margin 512, BUSY desktop [5x3.5 q4 fit512 busy] | 144.4 | 1,762 | 37.1 | 34 | - | +0.35% (q4 cache) | 7.2 | 152.5 | 246 | 1 | browser + video open |
+| Step 5120 q4, margin 1 GB, BUSY desktop [5x3.5 q4 fit1024 busy] | 143.0 | 1,779 | 37.2 | 35 | - | +0.35% (q4 cache) | 7.2 | 151.1 | 248 | 1 | browser + video open |
+| 6x3.5 q4, margin 512, BUSY desktop [6x3.5 q4 fit512 busy] | 145.2 | 1,751 | 37.4 | 35 | - | +0.35% (q4 cache) | ~6 | 153.2 | 245 | 1 | browser + video open |
+| 6x3.5 q4, margin 1 GB, BUSY desktop [6x3.5 q4 fit1024 busy] | 145.6 | 1,747 | 37.2 | 36 | - | +0.35% (q4 cache) | ~6 | 153.7 | 244 | 1 | browser + video open |
 
 **Turbo (MTP) with bigger steps (18 November, 9 loads, 1 load per setting).** Turbo uses a different file of the brain, so it is compared only with itself. A q4_0 context cache, a 3.5 GB copy cache, a 2 GB fit margin and a 128K context. Each cell is first word s / read / write, on the start, 32K and 120K prompts.
 
@@ -570,7 +572,7 @@ At 128K and 256K, Windows' "shared GPU memory" rose by 1.3 to 3.4 GB during a lo
 | 256K, 6144 | 129.6 / 1,962 / 36.2 | 130.2 / 1,954 / 38.6 | 3,344 / 3,344 | 3,264 |
 
 - **The patch ran and was harmless.** Every load with it on logged that the mask was made on the card. The words were identical in all 5 pairs, in both rounds, and speed stayed within 2%.
-- **The memory prediction failed.** The pinned buffer was the same size with the patch on, so the rise didn't change at any size. Either the engine sets aside that buffer before the patch takes effect, or something else of the same size fills it. We don't know yet which.
+- **The memory prediction failed.** The pinned buffer was the same size with the patch on, so the rise didn't change at any size. The engine log shows why. Qwen3.6 uses M-RoPE, a kind of position code that gives every batch two-dimensional positions, even plain text. The patch handled only one-dimensional positions, so it fell back to the full mask table on every batch, and the engine's planned work was identical with the patch on. A follow-up, patch 0028 for Brain Engine 17, lets plain text use the mask made from positions. That is exact for text. It gave bit-identical results in 24 of 24 checks on a small brain shaped like Qwen3.6. Whether it frees the predicted 2 GB of pinned RAM at 256K is unproven in our lab, as we have yet to test.
 - **Pinning off stays the working fix.** This is a negative result, and we report it as one.
 
 #### 4.3.3.6 Still running or planned (18 November)
@@ -588,9 +590,10 @@ These are queued on the home PC in this order, and each has its addendum written
 | Turbo rerun with room for its guessing head | 6 | done: no gain at big steps (section 4.3.3.2) |
 | Needle in a haystack, q8_0 against q4_0 at 128K and 256K | 5 | done, 25 of 25 found (section 4.3.3.4) |
 | Context cache kept in RAM (`-nkvo`) | 4 | done: writing 73% to 76% slower, dropped (section 4.3.3.2) |
-| GPT-OSS 120B soft cut against the full brain, in perplexity | – | paused, waiting on approval |
+| GPT-OSS 120B soft cut against the full brain, in perplexity (if 41 experts score badly, more experts are tried) | – | paused, waiting on approval |
 | Busy-desktop pass of the picks | 16 | done (section 4.3.3.2) |
-| Stock llama.cpp defaults against stock at our steps against our picks, at 32K, 128K and 256K, with load times | 20 | planned |
+| Brain Engine 17 (patch 0028: the mask from positions, working on M-RoPE), plus a busy-desktop pass on it | – | waiting on approval |
+| Stock llama.cpp defaults, stock at our steps and our picks, at 32K, 128K and 256K, with load times (20 loads) | 20 | waiting on approval |
 
 #### 4.3.3.7 Improvements we could still try
 
@@ -598,7 +601,7 @@ Each of these is unproven in our lab, as we have yet to test:
 
 - **One shared card budget.** Size the layers, the hot-experts cache and the step's work space together for the chosen context, instead of letting each take its share alone. This includes a smaller step as the context grows.
 - **Context-aware reloads.** Keep a fast 32K to 64K load for chat. Reload with big-context settings when a job would pass about 75% of the context, and switch back afterwards.
-- **Engine patches.** A 3-bit context cache, a paged context cache in RAM (only if it keeps the newest part on the card, since the whole cache in RAM cut writing by three quarters), and an attention mask that takes no pinned RAM at all. A first try, Brain Engine 16, made the mask on the card but freed nothing (section 4.3.3.5). A deeper change that drops the mask table inside the attention kernels could free about 2 GB of card memory at 256K.
+- **Engine patches.** A 3-bit context cache, a paged context cache in RAM (only if it keeps the newest part on the card, since the whole cache in RAM cut writing by three quarters), and an attention mask that takes no pinned RAM at all. A first try, Brain Engine 16, made the mask on the card but freed nothing, because it didn't handle Qwen3.6's position codes. Brain Engine 17 fixes that (section 4.3.3.5). A deeper change that drops the mask table inside the attention kernels could free about 2 GB of card memory at 256K.
 - **Expert tiers for brains bigger than RAM,** such as GPT-OSS 120B: a warm tier and a cold tier read from disk.
 - **The same tests on other machines:** the laptop plan (written, not run), other cards and other brains.
 - **Quality on Bob's jobs.** Perplexity shows the speed settings cost almost nothing. A run of Bob's own jobs at the chosen settings would confirm it.
