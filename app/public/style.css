@@ -2192,9 +2192,10 @@ a.mini.button:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 
 /* Settings, Jobs (public/job-helps.js) */
 .stop-after { background: transparent; color: var(--bad); border: 1px solid var(--bad); font-weight: 600; padding: 7px 12px; margin-right: 6px; }
-.job-clock { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 0.85em; color: var(--muted, inherit); }
-.job-clock-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--line, rgba(127,127,127,.25)); overflow: hidden; }
+.job-clock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: block; height: 4px; margin: 0; pointer-events: auto; } /* Nov 17: a thin bar along the very bottom of the window */
+.job-clock-bar { display: block; height: 100%; background: var(--line, rgba(127,127,127,.25)); overflow: hidden; }
 .job-clock-bar > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .5s; }
+.job-clock-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* read out and shown as the bar's tooltip */
 .note.receipt ul.receipt-list { margin: 4px 0 0; padding-left: 1.2em; }
 .note.receipt li { margin: 2px 0; overflow-wrap: anywhere; }
 .approval .why-not { flex: 1 1 14em; min-width: 0; }
