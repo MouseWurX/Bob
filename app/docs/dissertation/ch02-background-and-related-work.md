@@ -337,7 +337,7 @@ What not to turn on, on this machine:
 Three practical notes:
 
 - **RAM is tight.** 32 GB of RAM leaves only 1 to 4 GB free with this brain loaded, so other large programs can slow it.
-- **Shared GPU memory isn't overflow.** At long contexts, Windows shows "shared GPU memory" rising by 1 to 3.4 GB. That is the attention mask in pinned RAM, not the card overflowing (section 4.3.3.5). It costs no speed. Setting `GGML_CUDA_NO_PINNED=1` makes it vanish at the same speed, in one load so far.
+- **Shared GPU memory isn't overflow.** At long contexts, Windows shows "shared GPU memory" rising by 1 to 3.4 GB. That is the attention mask in pinned RAM, not the card overflowing (section 4.3.3.5). It costs no speed. Setting `GGML_CUDA_NO_PINNED=1` makes it vanish with the same words and every speed within 2%, over 16 loads.
 - **The brain's own size matters more than any setting.** The dense 27B Qwen wrote about 10 words a second on the same card, against 70 to 90 for the 35B mixture-of-experts brain, because the mixture-of-experts brain uses only a few experts for each word (section 2.1.3).
 
 Other cards, laptops, handhelds and other brains are unproven in our lab, as we have yet to test. So is a pass with a normal desktop open (browser tabs, chat apps), which is planned for the final picks.

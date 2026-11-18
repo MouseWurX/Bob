@@ -450,6 +450,18 @@ At 128K and 256K, Windows' "shared GPU memory" rose by 1.3 to 3.4 GB during a lo
 - **A smaller step shrinks the rise but costs a lot of reading.** The first word took 153 s at step 4096 and 401 s at step 512. Writing stayed at 43 to 45 tokens a second.
 - **Turning pinning off removes the rise at the same speed:** 76 MB instead of 2,257 MB, with the first word at 154 s against 153 s. That is one load. A 16-load check is queued.
 
+**The fix, checked (18 November, 16 loads, 2 rounds, median of 2).** Each setting was loaded with pinning on and off on the long prompt. Cells are first word s / read / write.
+
+| Setting | Pinned | Unpinned | Rise MB, pinned → unpinned |
+|---|---|---|---|
+| F4c, q8_0 cache, 32K | 13.8 / 2,386 / 97.5 | 13.6 / 2,411 / 97.0 | 336 → 73 |
+| 4x4, q4_0 cache, 32K | 9.5 / 3,465 / 83.8 | 9.7 / 3,404 / 83.5 | 593 → 75 |
+| 4x4, q4_0 cache, 128K | 48.4 / 2,543 / 58.2 | 48.4 / 2,543 / 57.8 | 1,297 → 76 |
+| 4x4, q4_0 cache, 256K | 151.6 / 1,677 / 45.6 | 151.2 / 1,682 / 45.5 | 2,256 → 75 |
+
+- **Both predictions held.** The words were identical on every row in both rounds. Every speed stayed within 2%. The rise was gone at every size.
+- **What changed in Bob.** On a branch not yet released, Bob starts its engine with pinning off on NVIDIA cards by default, as a reliability fix, with a setting to turn it back on.
+
 #### 4.3.3.6 Still running or planned (18 November)
 
 These are queued on the home PC in this order, and each has its addendum written before it runs:
@@ -458,7 +470,7 @@ These are queued on the home PC in this order, and each has its addendum written
 |---|---|---|
 | Step sweep at 128K and 256K, q4_0 cache, steps 4096 to 8192 ("goldilocks" step) | 12 | done, results above |
 | Spill cost: plain settings, steps 512 to 4096 at 256K, pinning off | 7 | done, results above |
-| Pinning on against off, checked properly | 16 | queued |
+| Pinning on against off, checked properly | 16 | done, same words, within 2% (section 4.3.3.5) |
 | Brain Engine 16: the attention mask made on the card (patch 0025) | – | waiting on approval |
 | Smaller fit margins, 512 and 256 MB | 11 | done, results above (section 4.3.3.3) |
 | Turbo (MTP) with bigger steps | 9 | done, provisional (section 4.3.3.2) |
