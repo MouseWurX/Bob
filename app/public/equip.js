@@ -3,6 +3,7 @@
 // and it uses the slots, kits and tips here. Nothing is ever equipped by itself. Pure HTML builders; cellar.js
 // handles the clicks.
 import { packFor, packsFor, canDo, suit, pickFor } from './fit.js';
+import { takesJob } from './brain-choices.js';
 import { houseGroupOf } from './house-style.js';
 import { tip } from './tips.js';
 import { esc, gb } from './util.js';
@@ -59,7 +60,8 @@ export function equipped(slot, { roles, brains, embed, rent }) {
 // can do the slot's job are listed: a brain that can't see never shows under Seeing pictures, a big brain never under Quick brain.
 export function kitFor(slot, { roles, models }) {
   const able = (entry, o) => slot.kind !== 'llm' || canDo(slot.id, { entry, name: o?.value, caps: o?.caps });
-  const have = (roles?.options?.[slot.kind] || []).map((o) => ({ ...o, entry: entryOf(models, o.value), installed: true })).filter((k) => able(k.entry, k));
+  // Nov 18 2026: a brain you have can take any thinking job (brain-choices.js); downloads stay the ones made for it.
+  const have = (roles?.options?.[slot.kind] || []).map((o) => ({ ...o, entry: entryOf(models, o.value), installed: true })).filter((k) => slot.kind !== 'llm' || takesJob(slot.id, { entry: k.entry, name: k.value, caps: k.caps }).ok);
   const haveIds = new Set(have.map((h) => h.entry?.id).filter(Boolean));
   const shop = models.filter((m) => slot.cats.includes(m.category) && Boolean(m.use?.painter?.sdcpp?.edit) === Boolean(slot.editOnly) && m.status?.state !== 'installed' && !m.gated && !haveIds.has(m.id) && able(m))
     .map((m) => ({ value: m.id, label: m.name, entry: m, installed: false }));
@@ -70,7 +72,7 @@ export function kitFor(slot, { roles, models }) {
 export function slotTakes(slot, value, { roles, models }) {
   if (!slot || slot.kind !== 'llm') return true;
   const o = (roles?.options?.llm || []).find((x) => x.value === value);
-  return canDo(slot.id, { entry: entryOf(models, value), name: value, caps: o?.caps });
+  return takesJob(slot.id, { entry: entryOf(models, value), name: value, caps: o?.caps }).ok; // Nov 18 2026: one rule (brain-choices.js)
 }
 
 // How each kit item stands for this slot on this PC: Bob's pick for the job, fits the card, or doesn't suit (with why).

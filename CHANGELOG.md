@@ -4,6 +4,24 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.251
+
+One way to pick brains, and I find your brain files every time I start.
+
+### New
+
+- **One brain picker.** Every brain menu follows the same rule: any brain you have can take any thinking job. Gaming and Seeing pictures still need a brain made for them. A brain that wasn't made for a job is marked, never hidden.
+- **Brains page.** The Main brain row has its own picker and does every job. "+ Add a brain" makes a row for the jobs you choose. With One brain on, you just see the main row. A line shows your card, processor, memory and free drive space.
+- **Catalogue.** Each brain is listed once in one Brains list, grouped by family, with the jobs it was made for.
+
+### Fixed
+
+- **I find brain files at every start,** and look again when my list is more than ten minutes old, so a brain you just copied in shows up.
+- **gpt-oss 120B is listed once.** It had two entries for the same file.
+- **Add a brain from a file is on the Brains page,** and if the window's picker comes back empty straight away, I open my own.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.250
 
 Amnesia mode lets go again.
@@ -146,20 +164,6 @@ Journey plays like a proper game now: every menu lives inside the game screen.
 - **Party size, one to four.** Pick how many travel together; rolled characters fill any empty seats.
 - **You can see each race.** Races now show on the sprite and the paper doll.
 - **A stat every level.** Each level up raises a stat.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.241
-
-The Lab Lessons tell the true story, and the CS Lab gets its write-up.
-
-### New
-
-- **The CS Lab on the front page.** The README has a CS Lab section, a picture of how SCUT compares with plain TCP, and the full write-up of the Lab's work in 13 chapters (docs/dissertation).
-
-### Fixed
-
-- **Lab Lessons: the Real result panels are fact-checked.** The coding race now reads v1 8, v2 6, re-cut 9 and full Qwen 12, with a note that the cut brains kept 208 experts and the re-cut 176. A panel with an unchecked overlap figure is gone.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 
