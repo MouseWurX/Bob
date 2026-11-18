@@ -236,7 +236,10 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   { const { pinnedStepMB } = await import('../model-lab/speed-test.mjs');
     check('the engine\'s real line, with two spaces after CUDA_Host, is read (Nov 18 run: it was missed)', pinnedStepMB(['-ub', '4096'], 'sched_reserve:  CUDA_Host  compute buffer size =  2176.00 MiB') === 2176);
     check('the buffer is the size the engine printed (the biggest, Windows log lines)', pinnedStepMB(['-ub', '4096'], 'load: CUDA_Host compute buffer size =   512.00 MiB\r\nCUDA_Host compute buffer size =  2176.03 MiB\r\n') === 2176);
-    check('with no such line, the mask formula: 256K x 4096 = 2176 MiB, 128K (139264) x 6144 = 1824 MiB (both as the engine printed on the test PC)', pinnedStepMB(['-c', '262144', '-ub', '4096']) === 2176 && pinnedStepMB(['-c', '139264', '-ub', '6144']) === 1824); }
+    check('with no such line, the mask formula: 256K x 4096 = 2176 MiB, 128K (139264) x 6144 = 1824 MiB (both as the engine printed on the test PC)', pinnedStepMB(['-c', '262144', '-ub', '4096']) === 2176 && pinnedStepMB(['-c', '139264', '-ub', '6144']) === 1824);
+    const mtpLog = 'sched_reserve:  CUDA_Host  compute buffer size =  1216.03 MiB\nsched_reserve:  CUDA_Host  compute buffer size =  1152.14 MiB\nsched_reserve:  CUDA_Host  compute buffer size =  1152.14 MiB\n';
+    check('with an MTP head, its own pinned buffer counts too (Nov 18 rerun: 1216 + 1152, the repeated line once)', pinnedStepMB(['-ub', '4096', '--spec-type', 'draft-mtp'], mtpLog) === 2368);
+    check('without a draft, only the biggest counts', pinnedStepMB(['-ub', '4096'], mtpLog) === 1216); }
   let m = 0; const hl = { ...fx({ log: 'sched_reserve:  CUDA_Host  compute buffer size =  2176.00 MiB\n' }), sharedGpuMB: async () => [1000, 3257][Math.min(m++, 1)] };
   const z = await runRow({ plan: { ...plan, spillCheck: true, spillMinusStep: true }, prompts, row: { ...plan.rows[1], args: ['-c', '262144', '-b', '4096', '-ub', '4096'] }, round: 0, fx: hl });
   check('Nov 18: the 256K rise of 2257 MB, all of it the pinned buffer the engine printed, is not a spill', !z.runs[0].failed && z.runs[0].stagingMB === 2176);

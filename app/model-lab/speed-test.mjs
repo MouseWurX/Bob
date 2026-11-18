@@ -230,10 +230,15 @@ export function loadPlan(file, { read = (f) => fs.readFileSync(f, 'utf8').replac
 }
 
 // The engine's pinned step buffer in MiB (Addendum 40): the biggest "CUDA_Host compute buffer size" the engine printed,
-// else context x -ub x 2 bytes (the attention mask) plus -ub / 32 MiB.
+// else context x -ub x 2 bytes (the attention mask) plus -ub / 32 MiB. With a draft or MTP head, its own context has
+// its own pinned buffer (Nov 18 MTP rerun: 1152 MiB beside the main 1216), so the next-biggest different size is added.
+export const drafting = (args = []) => args.some((a, i) => (a === '--spec-type' && /mtp|draft/i.test(String(args[i + 1] || ''))) || a === '-md' || a === '--model-draft');
 export function pinnedStepMB(args = [], log = '') {
   const seen = [...String(log).matchAll(/CUDA_Host\s+compute buffer size\s*=\s*([\d.]+) MiB/g)].map((m) => Number(m[1]));
-  if (seen.length) return Math.round(Math.max(...seen));
+  if (seen.length) {
+    const sizes = [...new Set(seen.map((v) => Math.round(v)))].sort((a, b) => b - a);
+    return sizes[0] + (drafting(args) && sizes.length > 1 ? sizes[1] : 0);
+  }
   const flag = (f, d) => { const i = args.lastIndexOf(f); return i >= 0 ? Number(args[i + 1]) || d : d; };
   const ctx = flag('-c', 4096), ub = flag('-ub', 512);
   return Math.round((ctx * ub * 2) / 1048576 + ub / 32);

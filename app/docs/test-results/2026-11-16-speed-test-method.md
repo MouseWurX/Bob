@@ -723,6 +723,15 @@ reading slowed as predicted, and writing at 120K did gain (predicted not to).
 2 and 3 ahead. Prediction: no spill; 2 ahead writes at least 15% faster than off at 32K and 120K; reading still
 13 to 15% slower.
 
+**Rerun result (Nov 18, 3:55 to 4:06 PM test-PC time, 6 of 6 loads):** the "spill" was not card overflow either. `--fit`
+left 2.1 to 2.2 GB free on the card, and the engine log shows the MTP head's own context making a second pinned
+buffer (1,152 MiB beside the main 1,216 MiB at 128K step 4096). That accounts for the 1.27 to 1.30 GB rise, so the
+first run's "real spill" was this buffer too (the runner now adds it; `GGML_CUDA_NO_PINNED=1` should clear it). With
+the 2 GB copy cache, MTP rows kept 34 expert layers in RAM against 29 without MTP. Writing at 32K: 64 to 65 with MTP
+against 66 to 70 without; reading 15% slower. The one clear gain was 3 ahead at 120K, step 8192 (70.6 against 51.6),
+where writing swings a lot between runs. Predictions: the no-spill one held (once the second buffer is counted), the
+15% writing gain did not. MTP doesn't pay at big steps on this card.
+
 ## Addendum 38 (Nov 18, before any run): does a 4-bit context cache still find a needle?
 
 The owner (Nov 18): one outside test puts a 4-bit context cache at 8 to 12% worse perplexity, with needle-in-a-haystack
