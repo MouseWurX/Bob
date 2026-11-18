@@ -755,6 +755,15 @@ memory rise does not shrink.
 **What it decides:** whether `-nkvo` is offered in Calibrate for this brain (rule: only if it writes faster than the
 same setting with the cache on the card), and whether the paged version is worth building.
 
+**Result (Nov 18, 2:49 to 2:51 PM):** all 6 loads failed at warm-up. The engine stopped with "the experts of layer 13
+are selected in the same split as their MoE cache lookup" (llama-moe-cache.cpp:964): `-nkvo` adds graph splits
+(300 / 264) and the copy cache's split check trips. So `-nkvo` and the copy cache don't work together on Brain Engine 15
+(sent to the builder). Before the stop, `--fit` had put the freed room into experts (29 layers' experts in RAM at 128K
+against 31 with the cache on the card).
+
+**Rerun before deciding (written before it runs):** plan `kv-in-ram-nocache.json`, 4 loads, no copy cache, step 4096,
+q4_0 cache, the cache on the card vs in RAM, at 128K and 256K. The predictions above stand.
+
 ## Addendum 40 (Nov 18, before any run): what the 128K and 256K "spill" is
 
 The owner (Nov 18): stop the spill, and find its cause first. Addendum 35 showed that the rise in shared graphics
