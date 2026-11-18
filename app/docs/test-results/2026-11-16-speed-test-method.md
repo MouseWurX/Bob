@@ -711,6 +711,18 @@ the cache reads take most of the time there. MTP changes the words at temperatur
 **What it decides:** whether Turbo is offered for this brain on a 16 GB card, and at which step. The rule from the
 Nov 17 test still holds: offer it only if it writes at least 10% faster with Bob's sampling.
 
+**Result (Nov 18, 1:32 to 1:58 PM, 9 loads):** MTP sped up writing by 17 to 26% (32K: 64.7 to 76.0 at 4096/4096; 120K
+at 2048/512: 59.2 to 74.6), slowed reading by 13 to 15% and added 6 to 8 s to the 120K first word. 2 ahead accepted
+0.65 to 0.78 of its guesses on real text, 3 ahead 0.5 to 0.65, and 2 ahead was faster in every row but one. Every MTP
+row at `-ub 4096` had a real spill: the shared rise was 2,488 MB, 1,272 MB past the pinned step buffer. The MTP head's
+own memory isn't counted by `--fit`. So those rows read low. The off rows didn't spill. Against the predictions:
+reading slowed as predicted, and writing at 120K did gain (predicted not to).
+
+**Rerun before deciding (written before it runs):** plan `mtp-big-steps-room.json`, 6 loads: the same rows at
+4096/4096 and 8192/4096 with a 2 GB copy cache instead of 3.5 GB (1.5 GB more room than the spill needed), MTP off,
+2 and 3 ahead. Prediction: no spill; 2 ahead writes at least 15% faster than off at 32K and 120K; reading still
+13 to 15% slower.
+
 ## Addendum 38 (Nov 18, before any run): does a 4-bit context cache still find a needle?
 
 The owner (Nov 18): one outside test puts a 4-bit context cache at 8 to 12% worse perplexity, with needle-in-a-haystack
