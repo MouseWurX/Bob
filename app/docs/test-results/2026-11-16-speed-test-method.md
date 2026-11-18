@@ -848,3 +848,25 @@ faster at 128K and 256K (no copy each step), and writing is within 3%.
 
 **What it decides:** whether patch 0025 becomes Bob's default on CUDA cards, against `GGML_CUDA_NO_PINNED=1`
 (Addendum 42), which removes the rise without an engine change. It needs the owner's go to run.
+
+## Addendum 44 (Nov 18, before any run): no mask table at all (patch 0026, Brain Engine 17)
+
+Patch 0026 (`LLAMA_KQ_MASK_POS=1`, off by default, flash attention only) passes each cache cell's position and chat
+to the attention kernels, which decide what each word may see, so there is no table on the card or in RAM. Brain
+Engine 17 ships its own ggml files, so it is a full engine, not an overlay. Its CUDA kernels have not run on a card
+before this test, so the order is fixed:
+
+1. `mask-pos-check.exe` from the zip, with nothing else on the card. It must print ALL PASS for CUDA0 and CPU. If
+   anything fails, nothing else runs.
+2. Plan `mask-pos-be17.json`, 2 rounds, 30 loads, 4 GB copy cache, q4_0 cache:
+   - Brain Engine 16 (switch off), Brain Engine 17 off, and Brain Engine 17 on, at `-ub 4096` at 32K, 128K and 256K.
+   - Brain Engine 17 off and on at `-ub 6144` at 128K and 256K, and at `-ub 8192` at 256K.
+   - Every answer is kept, and every load with the switch on must log "attention mask as positions (no table) on CUDA0".
+
+**Predictions, written before any run:** the words are identical in all three at every size. With the switch on, the
+card's compute buffer at 256K shrinks by at least 1.8 GB at `-ub 4096` (by at least 3.5 GB at 8192). `--fit` turns
+that into at least 3 more layers' experts on the card at 256K, and writing at 256K gains at least 5%. At 8192 at 256K
+it recovers to within 10% of `-ub 4096` writing (it was 20.6 against 42.5 tok/s). Reading is within 5% at 32K and 128K.
+
+**What it decides:** whether patch 0026 becomes Bob's default on CUDA cards with flash attention, and whether the
+step-per-context table (Addendum 36) moves to bigger steps. It needs the owner's go to run.
