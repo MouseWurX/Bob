@@ -229,6 +229,16 @@ export function loadPlan(file, { read = (f) => fs.readFileSync(f, 'utf8').replac
   return { plan, prompts, problems };
 }
 
+// The engine's pinned step buffer in MiB (Addendum 40): the biggest "CUDA_Host compute buffer size" the engine printed,
+// else context x -ub x 2 bytes (the attention mask) plus -ub / 32 MiB.
+export function pinnedStepMB(args = [], log = '') {
+  const seen = [...String(log).matchAll(/CUDA_Host compute buffer size\s*=\s*([\d.]+) MiB/g)].map((m) => Number(m[1]));
+  if (seen.length) return Math.round(Math.max(...seen));
+  const flag = (f, d) => { const i = args.lastIndexOf(f); return i >= 0 ? Number(args[i + 1]) || d : d; };
+  const ctx = flag('-c', 4096), ub = flag('-ub', 512);
+  return Math.round((ctx * ub * 2) / 1048576 + ub / 32);
+}
+
 // Put one sentence into a long text at a depth (0 = start, 1 = end), just after the nearest sentence end, so no word is split.
 export function placeNeedle(text, at, say) {
   const s = String(text);
@@ -340,13 +350,14 @@ async function runRowOnce({ plan, prompts, row, round, fx }) {
       if (Number.isFinite(spill0)) {
         const now = await fx.sharedGpuMB();
         const rise = Number.isFinite(now) ? now - spill0 : null;
-        // Nov 17 (npc engine logs): the engine pins a RAM staging buffer for the card sized to the reading step
-        // ("CUDA_Host compute buffer", -ub / 8 MiB: 512 MiB at 4096), and Windows counts it as shared GPU memory.
-        // It is not a spill, so with plan.spillMinusStep the rise past that buffer is what's judged.
-        const ub = Number(args[args.lastIndexOf('-ub') + 1]) || 512;
-        const own = plan.spillMinusStep ? Math.round(ub / 8) : 0;
+        // Nov 17 (npc engine logs): the engine pins a RAM buffer for the card ("CUDA_Host compute buffer"), and Windows
+        // counts it as shared GPU memory. Nov 18 (Addendum 40, npc logs from every 32K to 256K load): it is the attention
+        // mask, context x -ub x 2 bytes, plus about -ub / 32 MiB, and the whole 128K/256K "spill" was this buffer. It is
+        // not card memory going to RAM, so with plan.spillMinusStep the rise past it is what's judged: the size the
+        // engine printed, or the formula when the log has no such line.
+        const own = plan.spillMinusStep ? pinnedStepMB(args, srv.log()) : 0;
         r = { ...r, sharedRiseMB: rise, ...(own ? { stagingMB: own } : {}) };
-        if (rise - own > (plan.spillMB ?? 512) && !r.failed) r.failed = `spilled: shared GPU memory rose ${rise} MB during the load${own ? ` (${own} MB of it the engine's own staging buffer)` : ''} (card memory put in RAM)`;
+        if (rise - own > (plan.spillMB ?? 512) && !r.failed) r.failed = `spilled: shared GPU memory rose ${rise} MB during the load${own ? ` (${own} MB of it the engine's own pinned step buffer)` : ''} (card memory put in RAM)`;
       }
       if (needle(p) && r && !r.failed) r = { ...r, needle: { at: needle(p).at, found: typeof r.text === 'string' && new RegExp(needle(p).find, 'i').test(r.text) } };
       const { text: said, ...rest } = r || {};
@@ -466,7 +477,7 @@ function realFx(plan, outDir) {
       const child = nodeSpawn(exe, args, { env: { ...process.env, ...env }, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
       let said = '';
       const log = fs.createWriteStream(file);
-      const keep = lineSplitter((line) => { if (/MoE cache|ranked fill|llama_moe_cache:/.test(line)) said += line + '\n'; });
+      const keep = lineSplitter((line) => { if (/MoE cache|ranked fill|llama_moe_cache:|CUDA_Host compute buffer/.test(line)) said += line + '\n'; });
       child.stderr.on('data', (d) => { log.write(d); keep(d); });
       const url = `http://127.0.0.1:${args[args.indexOf('--port') + 1]}`;
       return {

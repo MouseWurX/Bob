@@ -1,5 +1,5 @@
 {
- "name": "What the 128K/256K spill is (Brain Engine 15): first a ladder from plain settings adding one of ours at a time (q8, q4, step 4096, copy cache, read layout), then -ub 512 to 2048 with the 4x4 copy cache, 1 round",
+ "name": "The 128K/256K pinned step buffer (Brain Engine 15): plain settings, then the 4x4 copy cache with a q4_0 cache at -ub 512 to 4096, and 4096 with pinning off (GGML_CUDA_NO_PINNED), 1 round",
  "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 40)",
  "brain": "${BRAIN}",
  "engines": {
@@ -61,199 +61,6 @@
     "2048",
     "-ub",
     "512"
-   ],
-   "env": {
-    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
-   }
-  },
-  {
-   "id": "L1-q8-256K",
-   "engine": "be15",
-   "prompts": [
-    "start",
-    "k250"
-   ],
-   "args": [
-    "-c",
-    "262144",
-    "-b",
-    "2048",
-    "-ub",
-    "512",
-    "-ctk",
-    "q8_0",
-    "-ctv",
-    "q8_0"
-   ],
-   "env": {
-    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
-   }
-  },
-  {
-   "id": "L2-q4-256K",
-   "engine": "be15",
-   "prompts": [
-    "start",
-    "k250"
-   ],
-   "args": [
-    "-c",
-    "262144",
-    "-b",
-    "2048",
-    "-ub",
-    "512",
-    "-ctk",
-    "q4_0",
-    "-ctv",
-    "q4_0"
-   ],
-   "env": {
-    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
-   }
-  },
-  {
-   "id": "L3-step4096-256K",
-   "engine": "be15",
-   "prompts": [
-    "start",
-    "k250"
-   ],
-   "args": [
-    "-c",
-    "262144",
-    "-b",
-    "4096",
-    "-ub",
-    "4096",
-    "-ctk",
-    "q4_0",
-    "-ctv",
-    "q4_0"
-   ],
-   "env": {
-    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
-   }
-  },
-  {
-   "id": "L4-copycache-256K",
-   "engine": "be15",
-   "prompts": [
-    "start",
-    "k250"
-   ],
-   "args": [
-    "-c",
-    "262144",
-    "-b",
-    "4096",
-    "-ub",
-    "4096",
-    "-ctk",
-    "q4_0",
-    "-ctv",
-    "q4_0",
-    "--moe-cache-mib",
-    "4096",
-    "--moe-cache-cpu-share",
-    "0"
-   ],
-   "env": {
-    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
-   }
-  },
-  {
-   "id": "L5-readlayout-256K",
-   "engine": "be15",
-   "prompts": [
-    "start",
-    "k250"
-   ],
-   "args": [
-    "-c",
-    "262144",
-    "-b",
-    "8192",
-    "-ub",
-    "4096",
-    "-ctk",
-    "q4_0",
-    "-ctv",
-    "q4_0",
-    "--moe-cache-mib",
-    "4096",
-    "--moe-cache-cpu-share",
-    "0"
-   ],
-   "env": {
-    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
-    "LLAMA_MOE_CACHE_READ_LAYERS": "4096"
-   }
-  },
-  {
-   "id": "L0-plain-128K",
-   "engine": "be15",
-   "prompts": [
-    "start",
-    "k120"
-   ],
-   "args": [
-    "-c",
-    "139264",
-    "-b",
-    "2048",
-    "-ub",
-    "512"
-   ],
-   "env": {
-    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
-   }
-  },
-  {
-   "id": "L3-step4096-128K",
-   "engine": "be15",
-   "prompts": [
-    "start",
-    "k120"
-   ],
-   "args": [
-    "-c",
-    "139264",
-    "-b",
-    "4096",
-    "-ub",
-    "4096",
-    "-ctk",
-    "q4_0",
-    "-ctv",
-    "q4_0"
-   ],
-   "env": {
-    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
-   }
-  },
-  {
-   "id": "ub1024-q4_0-128K",
-   "engine": "be15",
-   "prompts": [
-    "start",
-    "k120"
-   ],
-   "args": [
-    "-c",
-    "139264",
-    "-b",
-    "4096",
-    "-ub",
-    "1024",
-    "--moe-cache-mib",
-    "4096",
-    "--moe-cache-cpu-share",
-    "0",
-    "-ctk",
-    "q4_0",
-    "-ctv",
-    "q4_0"
    ],
    "env": {
     "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
@@ -365,6 +172,61 @@
    ],
    "env": {
     "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "ub4096-q4_0-256K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "ub4096-q4_0-256K-unpinned",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "GGML_CUDA_NO_PINNED": "1"
    }
   }
  ],

@@ -778,3 +778,21 @@ Writing speed stays the same at every `-ub`. Reading gets slower as `-ub` shrink
 picks the biggest `-ub` whose mask fits a set amount of pinned RAM), and the spill check stops counting the mask as a
 spill. An engine change that builds the mask on the card would remove it altogether; that is scoped separately. If
 the prediction fails, the logs' buffer lines say where to look next.
+
+**Found before the run (Nov 18, from the engine logs the runner keeps, every load from 32K to 256K):** the engine's
+`CUDA_Host compute buffer` is context × `-ub` × 2 bytes plus about `-ub` / 32 MiB in every load (512 MiB at 32K,
+1,216 at 128K and 2,176 at 256K with `-ub 4096`; 1,824 at 128K and 3,264 to 3,360 at 256K with 6144). The shared
+rise is that buffer plus about 80 MB in every load. Nothing else tracks it: the card's model, cache and work buffers
+move with the margin and the cache type, and the rise does not. So the cause is the attention mask in pinned RAM,
+from one setting (the reading step) times the context. No card memory went to RAM, and the speeds measured in Addenda
+33, 35 and 36 are real speeds. The runner's spill check now takes off the buffer the engine printed
+(`pinnedStepMB`), not `-ub` / 8.
+
+**So the plan narrows** to what the buffer costs and how to avoid it, 7 loads: plain settings at 256K (does plain
+llama.cpp make it too?), then the 4x4 copy cache with a q4_0 cache at `-ub` 512, 1024, 2048 and 4096 at 256K (and 2048
+at 128K), and 4096 at 256K with pinning switched off (`GGML_CUDA_NO_PINNED=1`, a llama.cpp switch: the buffer is then
+ordinary RAM, which Windows does not count as shared).
+
+**Predictions for the narrowed plan, written before it runs:** plain settings rise about 0.3 GB at 256K (`-ub 512`).
+Pinning off removes the rise (under 0.2 GB) and slows reading by under 5%, with writing the same. Each halving of
+`-ub` halves the rise and slows reading by 10 to 25%.

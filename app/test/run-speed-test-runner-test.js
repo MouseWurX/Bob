@@ -232,10 +232,16 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
 { const { prompts } = loadPlan(planFile);
   let k = 0; const h = { ...fx(), sharedGpuMB: async () => [1000, 1592][Math.min(k++, 1)] };
   const x = await runRow({ plan: { ...plan, spillCheck: true, spillMinusStep: true }, prompts, row: { ...plan.rows[1], args: ['-b', '4096', '-ub', '4096'] }, round: 0, fx: h });
-  check('with spillMinusStep, the -ub / 8 MB staging buffer is taken off before judging (step 4096: 592 MB rise passes)', !x.runs[0].failed && x.runs[0].sharedRiseMB === 592 && x.runs[0].stagingMB === 512);
+  check('with spillMinusStep, the pinned step buffer is taken off before judging (no -c: 4096 x 4096 x 2 + 128 = 160 MB; a 592 MB rise passes)', !x.runs[0].failed && x.runs[0].sharedRiseMB === 592 && x.runs[0].stagingMB === 160, JSON.stringify(x.runs[0].stagingMB));
+  { const { pinnedStepMB } = await import('../model-lab/speed-test.mjs');
+    check('the buffer is the size the engine printed (the biggest, Windows log lines)', pinnedStepMB(['-ub', '4096'], 'load: CUDA_Host compute buffer size =   512.00 MiB\r\nCUDA_Host compute buffer size =  2176.03 MiB\r\n') === 2176);
+    check('with no such line, the mask formula: 256K x 4096 = 2176 MiB, 128K (139264) x 6144 = 1824 MiB (both as the engine printed on the test PC)', pinnedStepMB(['-c', '262144', '-ub', '4096']) === 2176 && pinnedStepMB(['-c', '139264', '-ub', '6144']) === 1824); }
+  let m = 0; const hl = { ...fx({ log: 'CUDA_Host compute buffer size = 2176.00 MiB\n' }), sharedGpuMB: async () => [1000, 3257][Math.min(m++, 1)] };
+  const z = await runRow({ plan: { ...plan, spillCheck: true, spillMinusStep: true }, prompts, row: { ...plan.rows[1], args: ['-c', '262144', '-b', '4096', '-ub', '4096'] }, round: 0, fx: hl });
+  check('Nov 18: the 256K rise of 2257 MB, all of it the pinned buffer the engine printed, is not a spill', !z.runs[0].failed && z.runs[0].stagingMB === 2176);
   let j = 0; const g = { ...fx(), sharedGpuMB: async () => [1000, 2200][Math.min(j++, 1)] };
   const y = await runRow({ plan: { ...plan, spillCheck: true, spillMinusStep: true }, prompts, row: { ...plan.rows[1], args: ['-b', '4096', '-ub', '4096'] }, round: 0, fx: g });
-  check('a rise well past the staging buffer still fails, and says how much was the buffer', /rose 1200 MB during the load \(512 MB of it the engine's own staging buffer\)/.test(y.runs[0].failed || '')); }
+  check('a rise well past the staging buffer still fails, and says how much was the buffer', /rose 1200 MB during the load \(160 MB of it the engine's own pinned step buffer\)/.test(y.runs[0].failed || '')); }
 
 // ---------- Same answer, fair writing comparison (Nov 17) ----------
 { const run = (prompt, sha, w) => ({ prompt, textSha: sha, writeTps: w, readTps: 1, firstWordMs: 1, gaps: {}, card: {} });
