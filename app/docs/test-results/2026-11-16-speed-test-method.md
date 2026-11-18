@@ -831,3 +831,20 @@ and first word are within 3% of pinned at every size, including the short start 
 **What it decides:** if both hold, Bob's engine runs with `GGML_CUDA_NO_PINNED=1` on cards that use CUDA, as a
 reliability fix (on by default): the RAM stays pageable and no false spill shows. If any size reads more than 3%
 slower, Bob keeps pinning and only the spill checks subtract the buffer.
+
+## Addendum 43 (Nov 18, before any run): the attention mask made on the card (patch 0025, Brain Engine 16)
+
+Patch 0025 (`LLAMA_KQ_MASK_BUILD=1`, off by default) sends each cache cell's position (about 1 MB at 256K) and the
+card builds the same 0 / minus-infinity table from it with stock operations. On the processor, 32 of 32
+combinations gave bit-identical odds (engine/ENGINE-MAP.md, section 0025). Plan `mask-on-card-be16.json`, Brain
+Engine 16, 4 GB copy cache, q4_0 cache, 2 rounds, 20 loads: the switch off and on at `-ub 4096` at 32K, 128K and 256K,
+and at `-ub 6144` at 128K and 256K. Every answer is kept, so the words can be compared. The engine log must say
+"attention mask made from positions, on CUDA0" on every load with the switch on.
+
+**Predictions, written before any run:** the words are identical with the switch off and on at every size. With it
+on, the pinned `CUDA_Host compute` buffer drops to under 300 MiB at every size, and the shared rise with it (under
+400 MB). The card's compute buffer stays within 250 MiB of the switch-off figure. Reading is the same or up to 5%
+faster at 128K and 256K (no copy each step), and writing is within 3%.
+
+**What it decides:** whether patch 0025 becomes Bob's default on CUDA cards, against `GGML_CUDA_NO_PINNED=1`
+(Addendum 42), which removes the rise without an engine change. It needs the owner's go to run.

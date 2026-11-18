@@ -41,5 +41,6 @@ starts.
 - `spill-cause.json`: the 128K/256K pinned step buffer (the attention mask, Addendum 40): plain settings, then `-ub` 512 to 4096 at 256K with the 4x4 copy cache and a q4_0 cache, and 4096 with pinning off, 7 loads.
 - `fit-small-margin.json`: `--fit-target` 1024/512/256 at 32K, 128K and 256K (4x4, q4_0) and 512/256 at 256K (6x3.5), 11 loads (Addendum 41).
 - `unpinned-check.json`: the step buffer pinned vs in ordinary RAM (`GGML_CUDA_NO_PINNED=1`), F4c at 32K and 4x4 q4_0 at 32K/128K/256K, 2 rounds, 16 loads (Addendum 42).
+- `mask-on-card-be16.json`: patch 0025's mask built on the card, off vs on, -ub 4096 at 32K/128K/256K and 6144 at 128K/256K, 2 rounds, 20 loads; needs Brain Engine 16 (Addendum 43).
 - `perplexity-grid.json`: for `model-lab/perplexity-grid.mjs`, not the speed runner. What each speed setting and cache type costs in answers: KL divergence and same-top-word rate against plain settings with an f16 cache, with Brain Engine 15's llama-perplexity, 2 groups, 18 runs (Addendum 33).
 - `perplexity-120b-softcut.json`: for `model-lab/perplexity-grid.mjs`: GPT-OSS 120B with the soft cut (41 of 128) against the full brain, in two phases (`--phase base` with the cut off, `--phase rows` after it is switched on) (Addendum 34).
