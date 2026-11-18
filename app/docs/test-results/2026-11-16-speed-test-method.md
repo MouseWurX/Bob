@@ -670,3 +670,16 @@ faster than q8_0 at 256K. Reading changes by less than 5% between margins.
 
 **What it decides:** the margin Calibrate sets by context size, and whether a q4 cache earns its place once the margin
 stops the spill.
+
+## Addendum 36 (Nov 18, before any run): the goldilocks reading step, with room on the card
+
+The owner (Nov 18): if the bigger `--fit` margin opens room and helps writing, try bigger reading steps, or find the
+goldilocks zone. Plan `step-sweep-q4.json`, Brain Engine 15, 1 round, 10 loads: steps (`-b` = `-ub`) 4096, 5120, 6144,
+7168 and 8192, each with a q4_0 cache and a 3.5 GB copy cache, at 128K and 256K. The margin is filled in when it runs
+(`--var FIT_MARGIN=...`) with the smallest `--fit-target` that ran with no spill in Addendum 35. It runs only if one did.
+
+**Predictions, written before any run:** reading gets faster with each step up to 6144 and by less than 5% after that;
+writing falls as the step grows, because the bigger working memory pushes brain layers off the card; the best step
+for the time to the first word is 6144 at both sizes.
+
+**What it decides:** the reading step Calibrate sets for long contexts.
