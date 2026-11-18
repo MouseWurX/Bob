@@ -710,3 +710,35 @@ the cache reads take most of the time there. MTP changes the words at temperatur
 
 **What it decides:** whether Turbo is offered for this brain on a 16 GB card, and at which step. The rule from the
 Nov 17 test still holds: offer it only if it writes at least 10% faster with Bob's sampling.
+
+## Addendum 38 (Nov 18, before any run): does a 4-bit context cache still find a needle?
+
+The owner (Nov 18): one outside test puts a 4-bit context cache at 8 to 12% worse perplexity, with needle-in-a-haystack
+recall still passing. Our perplexity grid (Addendum 33) gives the first number for this brain; this plan gives the
+second. Plan `needle-q4-vs-q8.json`, Brain Engine 15, 4x4 settings, 1 round, 5 loads: the f16 cache at 128K (the
+reference), then q8_0 and q4_0 at 128K and at 256K. Each load reads the long text five times, each time with one
+made-up pass code hidden at 10, 30, 50, 70 or 90% of the way in, and asks for that code (40 words at most). The runner
+checks the answer for the code (`placeNeedle` and `needles` in `speed-test.mjs`, tested with fakes). The codes do not
+occur in the text.
+
+**Predictions, written before any run:** f16 and q8_0 find all 5 at 128K. q4_0 finds at least 4 of 5 at 128K and at
+256K. Any miss is at 256K and in the middle depths (30 to 70%).
+
+**What it decides:** with Addendum 33's KL divergence, whether q4_0 can be Calibrate's long-context pick. Rule: it
+can only if it finds as many needles as q8_0 at the same size.
+
+## Addendum 39 (Nov 18, before any run): the context cache kept in RAM
+
+A lever from the same outside video: keep the context cache in system RAM, so the card keeps more brain layers.
+llama.cpp already has the whole-cache form of this (`-nkvo`: the cache and its attention stay on the processor). The
+paged form (only recent pages on the card) would need an engine change and is scoped separately. Plan
+`kv-in-ram.json`, Brain Engine 15, 1 round, 6 loads: 4x4 and 6x3.5, each with a q4_0 cache at 128K and 256K and a
+q8_0 cache at 256K, all with `-nkvo`. Compare with the same settings in Addenda 33 and 35 (cache on the card).
+
+**Predictions, written before any run:** this brain keeps a growing cache in only some of its layers, so its cache
+is small (about 1.4 GB at 128K with q8_0) and moving it frees little. Writing gets slower at every size, by 20% or
+more at 256K, because attention over the whole context runs on the processor. Reading gets slower too. The shared
+memory rise does not shrink.
+
+**What it decides:** whether `-nkvo` is offered in Calibrate for this brain (rule: only if it writes faster than the
+same setting with the cache on the card), and whether the paged version is worth building.

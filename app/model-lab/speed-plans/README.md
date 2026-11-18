@@ -36,5 +36,7 @@ starts.
 - `fit-margin-contexts.json`: a bigger `--fit-target` margin (2048, 3072, 4096 MiB) for 4x4 and 6x3.5 with q8_0 and q4_0 caches at 128K and 256K, Brain Engine 15, 1 round, 18 loads (Addendum 35).
 - `step-sweep-q4.json`: reading steps 4096 to 8192 with a q4_0 cache, 3.5 GB copy cache and `--fit-target ${FIT_MARGIN}` (the margin Addendum 35 found), at 128K and 256K, plus -b 8192 -ub 4096, 12 loads (Addendum 36).
 - `mtp-big-steps.json`: MTP off, 2 ahead and 3 ahead at steps 2048/512, 4096/4096 and 8192/4096 on the MTP copy of the brain, q4_0 cache, 128K window, 9 loads (Addendum 37).
+- `needle-q4-vs-q8.json`: needle-in-a-haystack recall, f16 (128K), q8_0 and q4_0 cache at 128K and 256K, five depths each, 5 loads (Addendum 38).
+- `kv-in-ram.json`: 4x4 and 6x3.5 with the context cache kept in RAM (`-nkvo`), q4_0 at 128K and 256K, q8_0 at 256K, 6 loads (Addendum 39).
 - `perplexity-grid.json`: for `model-lab/perplexity-grid.mjs`, not the speed runner. What each speed setting and cache type costs in answers: KL divergence and same-top-word rate against plain settings with an f16 cache, with Brain Engine 15's llama-perplexity, 2 groups, 18 runs (Addendum 33).
 - `perplexity-120b-softcut.json`: for `model-lab/perplexity-grid.mjs`: GPT-OSS 120B with the soft cut (41 of 128) against the full brain, in two phases (`--phase base` with the cut off, `--phase rows` after it is switched on) (Addendum 34).

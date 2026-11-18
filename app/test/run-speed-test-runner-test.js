@@ -250,6 +250,26 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   check('answers are left out unless the plan asks, the fingerprint always kept', off.runs.length > 0 && off.runs.every((r) => r.text === undefined && r.textSha === 'abc'));
   check('with saveText each run keeps what was written', on.runs.length > 0 && on.runs.every((r) => r.text === 'Hello there.')); }
 
+// ---------- Needle in a haystack (Nov 18) ----------
+{ const { placeNeedle } = await import('../model-lab/speed-test.mjs');
+  const put = placeNeedle('One two. Three four. Five six.', 0.5, 'The code is 42.');
+  check('a needle goes in after the nearest sentence end, no word split', put === 'One two. Three four. The code is 42. Five six.', put);
+  check('depth 0 and 1 put it near the start and at the end', placeNeedle('A b. C d.', 0, 'N.').startsWith('A b. N.') && placeNeedle('A b. C d.', 1, 'N.').endsWith('C d. N.'));
+  const { prompts } = loadPlan(planFile);
+  const p3 = { ...plan, promptTokens: { short: 2 }, needles: { short: { at: 1, say: 'Code 7.', find: '\\b7\\b', ask: ' Code?' } } };
+  const said = ['The code is 7.', 'No idea.'];
+  let k = 0; const f = { ...fx(), stream: async (url, body) => { f.seen.streams.push(body); return { writeTps: 40, gaps: {}, gapsMs: [], text: body.n_predict === 16 ? '' : said[k++] }; } };
+  const a = await runRow({ plan: p3, prompts, row: plan.rows[0], round: 0, fx: f });
+  const b = await runRow({ plan: p3, prompts, row: plan.rows[0], round: 0, fx: f });
+  check('the needle goes into the cut text, with its own question after', f.seen.streams[1].prompt === 'Say hi.\n Code 7. Code?', f.seen.streams[1].prompt);
+  check('each run says whether the fact came back (found and missed)', a.runs[0].needle?.found === true && b.runs[0].needle?.found === false && a.runs[0].text === undefined);
+  const md = summarise([{ row: 'q8', round: 0, runs: a.runs }, { row: 'q4', round: 0, runs: b.runs }], { prompts: {}, plan: {} });
+  check('the summary has a needle table and a count per row', /\| q8 \| short \| 100% \| 1 of 1 \|/.test(md) && /q8 1 of 1, q4 0 of 1/.test(md), md.split('Needle')[1]);
+  fs.writeFileSync(planFile, JSON.stringify({ ...plan, needles: { nope: { at: 2, say: '', find: '(' } } }));
+  const bad = loadPlan(planFile).problems.join(' ');
+  check('a bad needle is named: no such prompt, depth out of range', bad.includes('no such prompt') && bad.includes('at (0 to 1)'));
+  fs.writeFileSync(planFile, JSON.stringify(plan)); }
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

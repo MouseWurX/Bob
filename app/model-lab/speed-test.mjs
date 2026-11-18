@@ -219,9 +219,23 @@ export function loadPlan(file, { read = (f) => fs.readFileSync(f, 'utf8').replac
     if (!plan.engines?.[r.engine]) problems.push(`row ${r.id}: no engine "${r.engine}"`);
     for (const p of r.prompts || []) if (!prompts[p]) problems.push(`row ${r.id}: no prompt "${p}"`);
   }
+  for (const [id, n] of Object.entries(plan.needles || {})) {
+    if (!prompts[id]) problems.push(`needle for "${id}": no such prompt`);
+    if (!(n?.at >= 0 && n.at <= 1) || !n.say || !n.find) problems.push(`needle for "${id}": at (0 to 1), say and find are needed`);
+    else try { new RegExp(n.find, 'i'); } catch { problems.push(`needle for "${id}": find is not a valid pattern`); }
+  }
   const ids = (plan.rows || []).map((r) => r.id);
   if (new Set(ids).size !== ids.length) problems.push('two rows share an id');
   return { plan, prompts, problems };
+}
+
+// Put one sentence into a long text at a depth (0 = start, 1 = end), just after the nearest sentence end, so no word is split.
+export function placeNeedle(text, at, say) {
+  const s = String(text);
+  const want = Math.max(0, Math.min(s.length, Math.floor(s.length * Number(at))));
+  const m = /[.!?]\s/.exec(s.slice(want));
+  const i = m ? want + m.index + 1 : want;
+  return `${s.slice(0, i)} ${say}${s.slice(i)}`;
 }
 
 // The order of loads: every row once per round, rows in turn (1, 2, 3, 1, 2, 3...).
@@ -302,7 +316,15 @@ async function runRowOnce({ plan, prompts, row, round, fx }) {
       if (toks.length < want) { out.notRun = `prompt ${p} has only ${toks.length} tokens, ${want} wanted`; return out; }
       cut[p] = await fx.detokenize(srv.url, toks.slice(0, want));
     }
-    const textOf = (p) => (cut[p] !== undefined ? cut[p] + (plan.question?.[p] || '') : prompts[p].text);
+    // Nov 18 (the owner: a 4-bit context cache still passes a needle in a haystack): plan.needles.<id> = { at, say, find,
+    // ask } puts one made-up fact (say) at a depth (at, 0 to 1) in the cut text, asks for it (ask), and checks the answer
+    // with the pattern find. Each run then records whether the fact came back.
+    const needle = (p) => plan.needles?.[p];
+    const textOf = (p) => {
+      const n = needle(p);
+      if (n) return placeNeedle(cut[p] !== undefined ? cut[p] : prompts[p].text, n.at, n.say) + (n.ask ?? plan.question?.[p] ?? '');
+      return cut[p] !== undefined ? cut[p] + (plan.question?.[p] || '') : prompts[p].text;
+    };
     const body = (text) => ({ prompt: text, n_predict: row.maxTokens ?? plan.maxTokens ?? 300, temperature: 0, seed: 42, ignore_eos: true, cache_prompt: false, ...(row.body || {}) });
     await fx.stream(srv.url, { ...body(row.prompts?.[0] ? textOf(row.prompts[0]) : 'Hello.'), n_predict: 16 }); // warm-up, untimed
     for (const p of row.prompts || []) {
@@ -326,6 +348,7 @@ async function runRowOnce({ plan, prompts, row, round, fx }) {
         r = { ...r, sharedRiseMB: rise, ...(own ? { stagingMB: own } : {}) };
         if (rise - own > (plan.spillMB ?? 512) && !r.failed) r.failed = `spilled: shared GPU memory rose ${rise} MB during the load${own ? ` (${own} MB of it the engine's own staging buffer)` : ''} (card memory put in RAM)`;
       }
+      if (needle(p) && r && !r.failed) r = { ...r, needle: { at: needle(p).at, found: typeof r.text === 'string' && new RegExp(needle(p).find, 'i').test(r.text) } };
       const { text: said, ...rest } = r || {};
       out.runs.push({ prompt: p, ...rest, ...(plan.saveText && typeof said === 'string' ? { text: said } : {}), ...(proc ? { cpu: proc } : {}), ...(disk ? { disk } : {}), card: cardSummary(samples), throttled: realThrottled(samples).length > 0, cardSamples: samples });
     }
@@ -408,6 +431,14 @@ export function summarise(results, { prompts = {}, plan = {} } = {}) {
     const k = `${r.prompt}|${r.textSha}`;
     if (!same.has(k)) same.set(k, { prompt: r.prompt, sha: r.textSha, runs: [] });
     same.get(k).runs.push({ row: x.row, w: r.writeTps });
+  }
+  const hunted = [...by.values()].filter((g) => !g.notRun && g.runs.some((x) => x.needle));
+  if (hunted.length) {
+    lines.push('', 'Needle in a haystack (one made-up fact hidden at a depth of the text; did the answer bring it back?):', '', '| Row | Prompt | Depth | Found |', '|---|---|---|---|');
+    for (const g of hunted) { const n = g.runs.filter((x) => x.needle); lines.push(`| ${g.row} | ${g.prompt} | ${Math.round(n[0].needle.at * 100)}% | ${n.filter((x) => x.needle.found).length} of ${n.length} |`); }
+    const per = new Map();
+    for (const g of hunted) for (const x of g.runs) if (x.needle) { const t = per.get(g.row) || [0, 0]; per.set(g.row, [t[0] + (x.needle.found ? 1 : 0), t[1] + 1]); }
+    lines.push('', `Needles found per row: ${[...per].map(([row, [f, n]]) => `${row} ${f} of ${n}`).join(', ')}.`);
   }
   const shared = [...same.values()].filter((g) => new Set(g.runs.map((r) => r.row)).size > 1);
   if (shared.length) {
