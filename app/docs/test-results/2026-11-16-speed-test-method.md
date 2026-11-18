@@ -607,3 +607,31 @@ N0. X0 spills or loses writing to F0. The copy cache does not help writing here 
 
 **What it decides:** which settings Calibrate tries first for brains bigger than RAM, and whether the copy cache is
 offered for them at all.
+
+## Addendum 33 (Nov 18, before any run): smaller cache types, and what every setting costs in answers
+
+The owner asked two things on Nov 18: try smaller cache types for long contexts, and run perplexity tests against all the
+best settings. Every run so far used a q8_0 cache for keys and values (live Bob too). Brain Engine 15 offers f32, f16,
+bf16, f8_e4m3, q8_0, q5_1, q5_0, q4_1, iq4_nl and q4_0; there is no q3 cache type without new engine code.
+
+**Speed:** plan `cache-types-contexts.json`, Brain Engine 15, 1 round, 36 loads. 4x4 (`-b 4096 -ub 4096`, 4 GB copy cache)
+and 6x3.5 (`-b 6144 -ub 6144`, 3.5 GB) each with q8_0, f8_e4m3, q5_1, iq4_nl, q4_0, and keys q8_0 with values q4_0, at
+`-c` 73728, 139264 and 262144 on the start prompt plus the 60K, 120K and 248K prompts of Addendum 29.
+
+**Answers:** `model-lab/perplexity-grid.mjs` with plan `perplexity-grid.json` and Brain Engine 15's `llama-perplexity`,
+on the same `long-text.md`. Each group scores the text once with its base settings and saves every word's odds, then
+scores it once per row and reports the KL divergence from the base, how often the top word matches, and the perplexity.
+- **settings** (`-c 8192`, 2 chunks): base = plain `-b 2048 -ub 512` with an f16 cache. Rows: Bob normal (q8_0), steps
+  2048 and 4096, F4c, 4x4, 6x3.5 and the read layout (R1), all with q8_0.
+- **cache-types** (`-c 16384`, 1 chunk; the tool needs twice the context in tokens and the text holds about 37K):
+  base = 4x4 with an f16 cache. Rows: 4x4 with each cache type above, plus q4_1 and keys q8_0 with values iq4_nl.
+
+**Predictions, written before any run:** q8_0 and f8_e4m3 caches stay within a KL divergence of 0.005 of f16; q4_0 and
+iq4_nl land between 0.01 and 0.05, with iq4_nl at or below q4_0; keys q8_0 with values q4_0 lands nearer q8_0 than q4_0.
+q4 caches stop or shrink the 128K and 256K spills (Addendum 29) and read faster there than q8_0. The speed settings
+(steps, caches, read layout) all differ from the plain base by less than q8_0's cache does, since they change only the
+order of sums.
+
+**What it decides:** whether Calibrate offers a smaller cache type for long contexts, which one, and from which size up;
+and a measured answer to "do our speed settings change the answers", in place of the single-prompt word comparisons.
+The 120B full against the soft cut is left out: changing the soft cut needs the owner's double-click on the test PC.

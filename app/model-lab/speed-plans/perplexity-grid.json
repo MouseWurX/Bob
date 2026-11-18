@@ -1,0 +1,351 @@
+{
+ "name": "What each speed setting and cache type costs in answers (Qwen3.6 35B, Brain Engine 15): KL divergence from plain settings with an f16 cache",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 33)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be15": {
+   "exe": "${BE15_PERPLEXITY}"
+  }
+ },
+ "text": "long-text.md",
+ "baseArgs": [
+  "-fa",
+  "on",
+  "--fit",
+  "on"
+ ],
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "rowTimeoutMs": 2700000,
+ "groups": [
+  {
+   "id": "settings",
+   "about": "Bob normal, the reading steps, the copy caches and the read layout, all with a q8 cache, against plain settings with an f16 cache",
+   "ctx": 8192,
+   "chunks": 2,
+   "needDiskGB": 12,
+   "base": {
+    "id": "plain-f16",
+    "engine": "be15",
+    "args": [
+     "-b",
+     "2048",
+     "-ub",
+     "512",
+     "-ctk",
+     "f16",
+     "-ctv",
+     "f16"
+    ]
+   },
+   "rows": [
+    {
+     "id": "N0-normal",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "512",
+      "-ctk",
+      "q8_0",
+      "-ctv",
+      "q8_0"
+     ]
+    },
+    {
+     "id": "F0-2048",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "2048",
+      "-ctk",
+      "q8_0",
+      "-ctv",
+      "q8_0"
+     ]
+    },
+    {
+     "id": "X0-4096",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "-ctk",
+      "q8_0",
+      "-ctv",
+      "q8_0"
+     ]
+    },
+    {
+     "id": "F4c",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "2048",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q8_0",
+      "-ctv",
+      "q8_0"
+     ]
+    },
+    {
+     "id": "X4c-4x4",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q8_0",
+      "-ctv",
+      "q8_0"
+     ]
+    },
+    {
+     "id": "S6k3584-6x3.5",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "6144",
+      "-ub",
+      "6144",
+      "--moe-cache-mib",
+      "3584",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q8_0",
+      "-ctv",
+      "q8_0"
+     ]
+    },
+    {
+     "id": "R1-read-layout",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "8192",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q8_0",
+      "-ctv",
+      "q8_0"
+     ],
+     "env": {
+      "LLAMA_MOE_CACHE_READ_LAYERS": "4096"
+     }
+    }
+   ]
+  },
+  {
+   "id": "cache-types",
+   "about": "cache types on 4x4 at a 16K context (the text holds about 37K tokens; the tool needs twice the context), against 4x4 with an f16 cache",
+   "ctx": 16384,
+   "chunks": 1,
+   "needDiskGB": 12,
+   "base": {
+    "id": "4x4-f16",
+    "engine": "be15",
+    "args": [
+     "-b",
+     "4096",
+     "-ub",
+     "4096",
+     "--moe-cache-mib",
+     "4096",
+     "--moe-cache-cpu-share",
+     "0",
+     "-ctk",
+     "f16",
+     "-ctv",
+     "f16"
+    ]
+   },
+   "rows": [
+    {
+     "id": "4x4-q8_0",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q8_0",
+      "-ctv",
+      "q8_0"
+     ]
+    },
+    {
+     "id": "4x4-f8_e4m3",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "f8_e4m3",
+      "-ctv",
+      "f8_e4m3"
+     ]
+    },
+    {
+     "id": "4x4-q5_1",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q5_1",
+      "-ctv",
+      "q5_1"
+     ]
+    },
+    {
+     "id": "4x4-q5_0",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q5_0",
+      "-ctv",
+      "q5_0"
+     ]
+    },
+    {
+     "id": "4x4-q4_1",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_1",
+      "-ctv",
+      "q4_1"
+     ]
+    },
+    {
+     "id": "4x4-iq4_nl",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "iq4_nl",
+      "-ctv",
+      "iq4_nl"
+     ]
+    },
+    {
+     "id": "4x4-q4_0",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ]
+    },
+    {
+     "id": "4x4-q8_0-q4_0",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q8_0",
+      "-ctv",
+      "q4_0"
+     ]
+    },
+    {
+     "id": "4x4-q8_0-iq4_nl",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q8_0",
+      "-ctv",
+      "iq4_nl"
+     ]
+    }
+   ]
+  }
+ ]
+}
