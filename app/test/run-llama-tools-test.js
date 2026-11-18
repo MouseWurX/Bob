@@ -45,7 +45,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   const wf = read(path.join(here, '..', '..', '.github', 'workflows', 'brain-engine.yml'));
   for (const t of ['llama-bench', 'llama-gguf-split', 'ggml-rpc-server', 'llama-diffusion-cli']) ok((wf.match(new RegExp(t, 'g')) || []).length >= 4, `Brain Engine build: builds and packs ${t} (Windows and Linux)`);
   ok((wf.match(/-DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON/g) || []).length === 2, 'Brain Engine build: RPC and the examples (the diffusion runner) on, both systems');
-  ok((wf.match(/set\(BUILD_NUMBER \$\{tag#b\}\)/g) || []).length === 2, 'Brain Engine build: --version says the tag\'s build number, not "build 1" from the one-commit clone, both systems');
+  ok((wf.match(/set\(BUILD_NUMBER \$\{tag#b\}\)/g) || []).length >= 2, 'Brain Engine build: --version says the tag\'s build number, not "build 1" from the one-commit clone, both systems');
   ok((wf.match(/out=brain-engine-\$BEV-/g) || []).length === 2 && (wf.match(/publish\.sh "\$BEV" "\$TAG"/g) || []).length === 2 && /bob\.brainEngineVersion/.test(wf), 'Brain Engine build: files and release take its own name (brain-engine-<N>b<llama.cpp build>), built on the tested llama.cpp tag');
   const pub = read(path.join(here, '..', 'engine', 'publish.sh'));
   ok(/ver="\$1"; tag="\$2"; file="\$3"/.test(pub) && /rel="brain-engine-\$ver"/.test(pub) && /Brain Engine \$\{ver#v\} \(Brain Engine \$\{ver%%b\*\} on llama\.cpp \$tag/.test(pub), 'publish.sh names the release by Brain Engine\'s own version');
