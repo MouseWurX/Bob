@@ -150,6 +150,10 @@ function makeBobBrowser({ base, icon } = {}) {
       await settle();
       return here();
     },
+    // "Let me finish robot checks" (src/human-check.js): the page's own HTML, only to see whether a check is still on
+    // it, and the window brought to the front for you. Bob never acts on a check.
+    async html() { const c = wc(); return String(await c.executeJavaScript('document.documentElement ? document.documentElement.outerHTML.slice(0, 400000) : ""', true) || ''); },
+    focus() { if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } return true; },
     async snapshot({ max = 150 } = {}) {
       const c = wc();
       const s = await c.executeJavaScript(SNAPSHOT_JS(max), true);

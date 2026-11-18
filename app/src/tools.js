@@ -29,6 +29,7 @@ import { GIT_LOOKS, gitArgs, runGit, gitAnswer } from './git-look.js';
 import { mainText, docKind, parseDdg, parseMojeek, resultLines, WEB_TIMEOUT_MS, MAX_DOC_DOWNLOAD } from './page-text.js';
 import { webSearch } from './web-search.js'; // Nov 16: block pages named, the backup search with a key
 import { cleanPrivateWeb, cleanLink, webGet, pageBlock, siteOf, noteBlocked, blockedWhy, sameFactsQuery, ARCHIVE_ASK, MAX_OTHER_SOURCES } from './private-web.js'; // Nov 16: Private web
+import { humanCheckOn, whyNot, handOver, finishedHere, readThroughWindow } from './human-check.js'; // Nov 18: Let me finish robot checks
 import { docToolsOn } from './my-docs.js';
 import { codeMap, linesAround } from './code-map.js';
 import { backoffMs, engineFailKind, pause } from './retry.js'; // item 194
@@ -697,7 +698,17 @@ export function buildTools(cfg) {
     // nothing, Mojeek is asked instead. Nov 16 (web-search.js): a robot-check page is named as one, and the backup
     // search with a key (off unless turned on) stands in. The answer always says who answered.
     // Private web (private-web.js): its headers and your route, if set, on every request (webGet).
-    async run({ query, when }, { signal }) { return webSearch({ query, when }, { cfg, signal, get: (url, opts) => webGet(cfg, url, opts, (u, o, fetchImpl) => fetchRetry(u, o, signal, fetchImpl ? { fetchImpl } : undefined)) }); },
+    // Nov 18 (human-check.js): with "Let me finish robot checks" on, a search page's robot check can go to you.
+    async run({ query, when }, ctx = {}) {
+      const { signal } = ctx;
+      const person = !humanCheckOn(cfg) ? null : async (url) => {
+        if (finishedHere(ctx, url)) { try { const w = await readThroughWindow(cfg, url); if (!w.blocked) return w; } catch (e) { if (signal?.aborted) throw e; } }
+        const not = whyNot(cfg, ctx, 'a robot check', url);
+        if (not) { ctx.brain?.log?.('web', `search robot check not handed over: ${not}`); return null; }
+        return handOver(cfg, ctx, { url, why: 'a robot check' });
+      };
+      return webSearch({ query, when }, { cfg, signal, get: (url, opts) => webGet(cfg, url, opts, (u, o, fetchImpl) => fetchRetry(u, o, signal, fetchImpl ? { fetchImpl } : undefined)), person });
+    },
     summary: ({ query, when }) => `search: ${query}${when ? ` (past ${when})` : ''}`
   };
 
@@ -791,10 +802,28 @@ export function buildTools(cfg) {
         }
         return `${lead} I tried ${tried.length ? tried.join('; ') : 'to find another source, and found none'}. Try web_search with other words.`;
       }
+      // "Let me finish robot checks" (human-check.js, off by default): a check a person can finish goes to you on a
+      // card first; Bob never does it himself. A site you finished one for is read through the same window after.
+      const viaWindow = async () => {
+        if (!finishedHere(ctx, link) || !humanCheckOn(cfg)) return null;
+        try { const w = await readThroughWindow(cfg, link); return w.blocked ? null : w; } catch (e) { if (signal?.aborted) throw e; return null; }
+      };
+      const fromYou = (w, lead) => `(${lead})\n${piece(w.text || mainText(w.html))}`;
+      async function blockedNow(why) {
+        const not = whyNot(cfg, ctx, why, link);
+        if (not) { ctx.brain?.log?.('web', `robot check on ${siteOf(link)} not handed over: ${not}`); noteBlocked(job, link, why); return elsewhere(why); }
+        const w = await handOver(cfg, ctx, { url: link, why });
+        if (w.text || w.html) return fromYou(w, `${siteOf(link)} asked for a person to finish ${why}; you did, so here is the page.`);
+        noteBlocked(job, link, why);
+        const rest = await elsewhere(why);
+        return `(I didn't get the page: ${w.skipped}.) ${rest}`;
+      }
+      const win = await viaWindow();
+      if (win) return fromYou(win, `Read through my browser window, where you finished ${siteOf(link)}'s check earlier.`);
       const before = blockedWhy(job, link);
       if (before) return elsewhere(before);
       const got = await readPage(link);
-      if (got.blocked) { noteBlocked(job, link, got.blocked); return elsewhere(got.blocked); }
+      if (got.blocked) return blockedNow(got.blocked);
       return got.says || piece(got.text);
     },
     summary: ({ url, part, find }) => `read page: ${url}${find ? ` (looking for ${find})` : part > 1 ? ` (part ${part})` : ''}`

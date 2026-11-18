@@ -1,6 +1,6 @@
 // Settings, Connections, "Private web" in Bob's API (src/private-web.js). Off unless turned on.
 // GET /api/private-web: the switch, "try other sources", the route and whether routing works here.
-// POST: { on }, { otherSources }, { route } (an address, or '' to clear), or { test: true } (one request through the
+// POST: { on }, { otherSources }, { humanCheck }, { route } (an address, or '' to clear), or { test: true } (one request through the
 // route; only when you press Test). From this computer only. The route address never goes in the log.
 // Returns false when the request is not this one, so server.js keeps looking.
 import { saveSettings } from './config.js';
@@ -22,6 +22,7 @@ export async function privateWebRoute({ req, res, p, isLocal, cfg, body, send, l
   const next = { ...now };
   if (typeof b?.on === 'boolean') next.on = b.on;
   if (typeof b?.otherSources === 'boolean') next.otherSources = b.otherSources;
+  if (typeof b?.humanCheck === 'boolean') next.humanCheck = b.humanCheck;
   if (typeof b?.route === 'string') {
     const r = b.route.trim();
     if (r && !routeOk(r)) return send(res, 400, { error: 'That isn\'t an address I can use. Like socks5://127.0.0.1:9050 (Tor) or http://127.0.0.1:8080.' });
@@ -29,6 +30,7 @@ export async function privateWebRoute({ req, res, p, isLocal, cfg, body, send, l
   }
   saveSettings(cfg, { privateWeb: cleanPrivateWeb(next) });
   if (typeof b?.on === 'boolean') log('settings', `Private web ${b.on ? 'on' : 'off'}`);
+  if (typeof b?.humanCheck === 'boolean') log('settings', `Let me finish robot checks ${b.humanCheck ? 'on' : 'off'}`);
   const kindSaid = routeName(cleanPrivateWeb(next).route); // its kind only, never the address
   if (typeof b?.route === 'string') log('settings', `Private web route: ${kindSaid}`);
   if (b?.test === true) {

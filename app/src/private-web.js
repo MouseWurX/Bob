@@ -11,18 +11,22 @@
 //                 (fails closed), never quietly going direct.
 //   otherSources  When a page turns Bob away (a block, a robot check), he skips it and reads the same facts from up
 //                 to 3 other sources: another search result, then a copy the Internet Archive already holds.
+//   humanCheck    "Let me finish robot checks" (Nov 18, human-check.js; off until you turn it on). When a page asks for
+//                 a person (a captcha, a Cloudflare check), Bob asks you on a card, opens it in his browser window for
+//                 you to finish, waits without touching it, then reads the page. A person always does the check.
 //
-// Never, whatever the setting: rotating proxies, faked or random fingerprints, solving captchas, or retrying a blocked
-// site another way. A blocked source is skipped and named, never beaten.
+// Never, whatever the setting: rotating proxies, faked or random fingerprints, Bob solving captchas himself (or sending
+// them to anyone but the person at this computer), or retrying a blocked site another way. A blocked source is skipped
+// and named, never beaten.
 
 export const PRIVATE_HEADERS = { 'accept-language': 'en', 'sec-gpc': '1' };
 const ROUTE_RX = /^(socks5h?|socks5|socks4|http|https):\/\/(\[[0-9a-f:]+\]|[a-z0-9.-]+)(:\d{1,5})?\/?$/i;
 
-// Settings, tidied: { on, route, otherSources }. Off and no route to start; other sources on.
+// Settings, tidied: { on, route, otherSources, humanCheck }. Off, no route and no hand-over to start; other sources on.
 export function cleanPrivateWeb(x) {
   const o = x && typeof x === 'object' && !Array.isArray(x) ? x : {};
   const route = typeof o.route === 'string' && ROUTE_RX.test(o.route.trim()) ? o.route.trim().replace(/\/$/, '') : '';
-  return { on: o.on === true, route, otherSources: o.otherSources !== false };
+  return { on: o.on === true, route, otherSources: o.otherSources !== false, humanCheck: o.humanCheck === true };
 }
 export const routeOk = (s) => ROUTE_RX.test(String(s || '').trim());
 export const routeKind = (route) => (/^socks/i.test(route || '') ? 'socks' : route ? 'http' : '');
