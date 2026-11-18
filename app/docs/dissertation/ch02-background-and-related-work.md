@@ -300,15 +300,18 @@ These two pieces matter for the thesis in two ways. First, they set the deployme
 
 We did not find a peer-reviewed paper for llama.cpp or GGUF among the sources we opened. The two cited pages are project documentation, and we treat them as such. They describe the software as it is, and not as a result that has been independently evaluated.
 
-### 2.10.1 Choosing a brain and its settings at home (added 17 November)
+### 2.10.1 Choosing a brain and its settings at home (updated 18 November)
 
-The speed tests of 16 and 17 November turn the deployment target above into measured advice for one kind of home machine. That machine has a 16 GB card, 32 GB of RAM and an 8-core processor, and runs stock Qwen3.6 35B A3B at Q4 through Brain Engine 9. The full method and tables are in Chapter 4 (section 4.3.3). The cost of watching the brain is in Chapter 3 (section 3.4.3).
+The speed tests of 16 to 18 November turn the deployment target above into measured advice for one kind of home machine. That machine has a 16 GB card, 32 GB of RAM and an 8-core processor, and runs stock Qwen3.6 35B A3B at Q4 through Brain Engines 9 to 15. Speeds are tokens a second.
+
+Every setting tried is in Chapter 4, section 4.3.3, with the testing method, the perplexity scores and the tests still running. The cost of the fNRI trace is in Chapter 3, section 3.4.3.
 
 | If you mostly... | Measured choice on this machine | What you get | What it costs |
 |---|---|---|---|
-| Chat, short asks | Reading step 2048 + 4 GB hot-experts cache, missed experts copied to the card | Writing 14% to 28% faster, reading 1.9x, first word on 32K in 14.3 s against 26.6 s | Different words from the default; quality not yet checked |
-| Paste long documents, work on a repository, run agent jobs | Reading step 4096 + 4 GB hot-experts cache, copied | Reading 2.7x to 2.8x, first word on 32K in 10.0 s; writing 14% to 19% faster | The same |
-| Want the default's exact words | Bob's defaults (step 512, no cache) | Bob's settings are already 6% faster at writing and 9% faster at reading than llama.cpp's own defaults | Slow first word on long prompts (26.6 s at 32K) |
+| Chat, short asks | Reading step 2048 + 4 GB hot-experts cache, missed experts copied to the card (F4c) | Writing 14% to 28% faster, reading 1.9x, first word on 32K in 14.3 s against 26.6 s | Answers drift no more than the default (perplexity, section 4.3.3.4) |
+| Paste long documents, work on a repository, run agent jobs, up to about 64K | Reading step 4096 + 4 GB copy cache (X4c, also called 4x4) | Reading 2.7x to 2.8x, first word on 32K in 9.7 to 10.0 s, writing 14% to 19% faster | The same |
+| Work at 128K to 256K | 4x4 or 6x3.5 with a q4_0 context cache and the default 1 GB fit margin | The best long-prompt writing measured at 256K (42 to 45, against 38 to 40 with q8_0) | Perplexity 0.3% worse than q8_0; whether it still finds a fact deep in a long prompt is unproven in our lab, as we have yet to test |
+| Want the default's exact words | Bob's defaults (step 512, no cache, q8_0 cache) | Bob's settings are already 6% faster at writing and 9% faster at reading than llama.cpp's own defaults | Slow first word on long prompts (26.6 s at 32K, about 157 s at 256K) |
 
 **Two coding picks, head to head (17 November).** A bigger step with a slightly smaller cache was tried against the coding pick above: step 6144 with a 3.5 GB cache, against step 4096 with 4 GB.
 
@@ -317,16 +320,27 @@ The speed tests of 16 and 17 November turn the deployment target above into meas
 
 So step 4096 with 4 GB stays the coding pick.
 
+**Speed settings don't change the answers.** On 18 November the copy cache and the read layout scored identically to the last digit in perplexity, and the reading step moved it only in the last digits. Nearly all the drift from full precision comes from the q8_0 context cache that Bob already uses.
+
 What not to turn on, on this machine:
 
-- **Turbo (MTP).** It slowed prompt reading by 13% to 16%, and writing ranged from 17% slower to 3% faster with Bob's sampling.
+- **Turbo (MTP).** It slowed prompt reading by 13% to 16%, and writing ranged from 17% slower to 3% faster with Bob's sampling. A retest with bigger steps is queued.
 - **Prefetch.** It read 5.6% to 12.7% slower and used more of the card.
-- **Smaller hot-experts caches (1 GB and 2 GB).** They often lost to no cache on long prompts.
+- **Hot-experts caches under 4 GB, or over 4 GB.** Under 4 GB they often lost to no cache on long prompts, and a 512 MB cache wrote 30% slower than none. Over 4 GB they wrote slower at 32K.
+- **The iq4_nl context cache.** It read about 210 tokens a second, and every long prompt timed out.
+- **A bigger fit margin.** It only pushed layers off the card and cut writing, by up to 70% at 256K.
+- **A reading step of 8192 at 256K.** Its work space pushed 11 layers off the card, and writing fell to about 21.
 - **The fNRI live trace, on engines before 12.** Before Brain Engine 11 it cost 9% to 11% of writing and changed the words. From Brain Engine 11 the words match. On Brain Engine 12 it costs 2% or less, with or without the cache, so it is fine to leave on (section 3.4.3, over 3 rounds).
 
-Two practical notes. First, 32 GB of RAM leaves only 1 to 3 GB free with this brain loaded, so other large programs can slow it. Second, the brain's own size matters more than any setting. The dense 27B Qwen wrote about 10 words a second on the same card, against 70 to 90 for the 35B mixture-of-experts brain, because the mixture-of-experts brain uses only a few experts for each word (section 2.1.3).
+**Bigger than RAM.** GPT-OSS 120B (a 63 GB file) crawled on this machine with every expert on. With a soft cut to 41 of its 128 experts per layer, it loaded in 29 to 39 s and wrote about 30 tokens a second, or 32 with F4c. Whether the cut answers as well as the full brain is unproven in our lab, as we have yet to test.
 
-Other cards, laptops, handhelds and other brains are unproven in our lab, as we have yet to test. The laptop plan is written but has not run. So is the quality check that must pass before either faster pair becomes a default.
+Three practical notes:
+
+- **RAM is tight.** 32 GB of RAM leaves only 1 to 4 GB free with this brain loaded, so other large programs can slow it.
+- **Shared GPU memory isn't overflow.** At long contexts, Windows shows "shared GPU memory" rising by 1 to 3.4 GB. That is the attention mask in pinned RAM, not the card overflowing (section 4.3.3.5).
+- **The brain's own size matters more than any setting.** The dense 27B Qwen wrote about 10 words a second on the same card, against 70 to 90 for the 35B mixture-of-experts brain, because the mixture-of-experts brain uses only a few experts for each word (section 2.1.3).
+
+Other cards, laptops, handhelds and other brains are unproven in our lab, as we have yet to test. So is a pass with a normal desktop open (browser tabs, chat apps), which is planned for the final picks.
 
 ## 2.11 Gaps this thesis addresses
 

@@ -51,46 +51,250 @@ Home benchmarks run on MouseWurX's 16 GB card with Q4 files and 8 experts per wo
 
 The Bobert wording study ran on a rented 48 GB A40 with 8 slots of 8,192 tokens each. The planned switch to 4 slots of 16k never happened, so 11 to 13 long turns per round overflowed their slot, and 11 to 31 answers per round were cut off at the length limit. Both kinds were scored as wrong, and the same turns were affected in every condition, so comparisons between conditions stay fair, but absolute scores are lower than they would otherwise be (bobert-35bob-tool-study.md).
 
-### 4.3.3 Speed settings measured on the home PC (added 17 November)
+### 4.3.3 Speed settings measured on the home PC (updated 18 November)
 
-Before any setting that changes how the brain is served becomes a default, it is timed on the owner's consumer PC against the default. That PC has a 16 GB card, 32 GB of RAM and an 8-core processor. Three sessions ran on 16 and 17 November: night 1 (140 loads), Turbo (25 loads) and a calibration of reading step against hot experts (85 loads). The method, the rule for "best" and every prediction were written down before any timed run.
+Before any setting that changes how the brain is served becomes a default, it is timed on the owner's consumer PC against the default. This section gathers every speed result from 4 to 18 November in one place, oldest first. Section 2.10.1 turns the results into advice for a home machine. Section 3.4.3 covers the cost of the fNRI trace.
 
-**How each row ran:**
+All speeds are tokens a second. "Read" is prompt reading speed and "write" is writing speed. "First word" is the wait before the first word appears, in seconds. Unless a row says otherwise, the brain is stock Qwen3.6 35B A3B at Q4 (unsloth UD-Q4_K_XL) on a 16 GB card with 32 GB of RAM and an 8-core processor.
 
-- Every row was loaded 5 times, with rows taking turns and an untimed warm-up after each load.
-- Each prompt was timed once per load, at temperature 0, writing 300 words.
-- "Start" is Bob's real start prompt, about 3,900 tokens. "16K" and "32K" are long texts cut to exactly that length.
-- Figures are medians of 5. The brain was stock Qwen3.6 35B A3B at Q4 throughout.
+#### 4.3.3.1 How the speed tests were run
 
-The full tables and raw runs are in `docs/test-results/` (2026-11-17 speed and calibration results). The runner misread about 6% of the card's temperature and power samples, which were pieces of lines. Speeds and words come from the engine's own stream and were not touched. The card conditions were worked out again from whole lines, and the runner was fixed and tested.
+- **Written down first.** The method was written on 16 November, before any timed run. Each later test got a dated addendum (41 by 18 November), written before that test ran, with its settings, its predictions and the rule for "best". Results are graded against the addendum as written, including the predictions that missed. The method and addenda are in `docs/test-results/2026-11-16-speed-test-method.md`.
+- **Loads and repeats.** Each setting gets an untimed warm-up after the brain loads, then 5 timed runs. Settings take turns (1, 2, 3, 1, 2, 3...), so heat and background load fall evenly across them. We report the median, with the lowest and highest where they matter, never a mean on its own. Rows marked "1 run" come from one-round sweeps, which swing 5% to 10%. They pick a shortlist and decide nothing.
+- **Prompts and context.**
+  - "Start" is Bob's real start prompt, his system prompt and tools, about 3,900 to 4,000 tokens, followed by "hi".
+  - "16K" and "32K" are public-domain book text cut to exactly 16,384 and 32,768 tokens with the brain's own tokenizer, plus one question.
+  - From 17 November the context runs also used prompts of about 60K, 120K and 248K tokens at contexts of 64K, 128K and 256K.
+  - Every prompt's sha256 is recorded.
+- **Fixed settings.** Bob's own engine flags were used (`--jinja -fa on -ctk q8_0 -ctv q8_0 --fit on -np 1`) at a context of 49,152 unless a row changes one. Each run used temperature 0, seed 42, `ignore_eos` and exactly 300 written tokens, with no prompt cache between runs. The exact command line of every run is saved. The Turbo rows marked "Bob's sampling" used Bob's own sampling instead.
+- **What is measured.** First word, read and write come from the engine's own timings. Peak card memory was sampled by nvidia-smi every 250 ms. We also record the layers whose experts `--fit` placed in RAM. For hot-expert rows we record cache hits, misses and megabytes copied.
+- **Machine state.** Card temperature, power, clocks and throttle reasons were sampled every 250 ms. Processor temperature came from HWiNFO when it was logging. We recorded free RAM and the top 5 other processes at the start and end of each run. A throttled run is kept and flagged, not dropped.
+- **Clean-machine and lock rules.**
+  - The test takes the PC's test lock, runs on its own port and in its own folder, and keeps its windows minimized.
+  - It never touches the copy of Bob in daily use.
+  - It stops at once and frees the card if a game starts.
+  - No games, browser or launchers are open, and there are no reboots or compiling.
+  - Every run is started by the owner's double-click.
+  - Where this was broken, the row says so. The Claude app was open (about 1 GB of RAM) during the 17 November cache sweep. Bob was open during part of the 2 GB rows. A browser with a paused video tab was open from 11:40 AM to 12:23 PM Mountain on 18 November, during the perplexity grid and the first loads of the step sweep. Perplexity does not depend on speed, and the step-sweep loads from that window were within 3% on reading and 10% on writing of matching loads, so none were rerun.
+  - Clean-machine numbers are not everyday use. A pass with a browser full of tabs, Discord and Bob open is planned for the final picks.
+- **How a spill and free card memory are measured.**
+  - **Free card memory** after a load comes from the engine's own `--fit` lines. The peak comes from nvidia-smi.
+  - **The first spill rule** marked a load failed when Windows' "shared GPU memory" rose by more than 512 MB. On 17 November that rule failed every load with a reading step of 4096 or more, but the rise tracked the step and not the cache, so the rule was measuring something else.
+  - **The corrected rule** judges each try against its own baseline. On 18 November the engine logs showed that the rise is the attention mask held in pinned RAM (section 4.3.3.5), and the speed test now subtracts that buffer.
+- **Perplexity.** llama.cpp's perplexity tool scored each setting against a base with plain settings and a full-precision (f16) context cache, on a fixed text. It reports perplexity (PPL), the mean and 99th-percentile KL divergence from the base (KLD), and how often the top word matches the base ("same top"). The settings group used an 8K context with 2 chunks. The cache-type group used a 16K context with 1 chunk.
+- **One runner fault.** On 16 November the runner read pieces of nvidia-smi lines as whole lines, about 6% of samples. That made the card's temperature and power columns wrong for night 1. Speeds and words were not touched. The runner was fixed and tested, and the conditions were worked out again from whole lines.
 
-**Reading step is the biggest single win.** Reading a prompt in steps of 2048 or 4096 tokens, against 512, read a 32K prompt 2.5 and 3.4 times as fast. The first word came after 10.6 s and 7.9 s, against 26.5 s. Writing was 2.6% to 8.8% slower. The rule set beforehand allowed at most 3% slower writing, so a bigger step alone does not become the default.
+#### 4.3.3.2 Every setting tried, oldest first
 
-**Hot experts with a bigger step give the best pair.** A cache of busy experts was kept on the card, with an expert the cache misses copied to the card.
+Shorthand used below: **step** is the reading batch (`-b`/`-ub`). **Copy cache** is the hot-experts cache on the card, with a missed expert copied to the card (`--moe-cache-cpu-share 0`). **Processor cache** works a missed expert out on the processor instead (share 1). **F4c** is step 2048 with a 4 GB copy cache. **X4c**, also called 4x4, is step 4096 with a 4 GB copy cache. **6x3.5** is step 6144 with a 3.5 GB copy cache.
 
-| Setting | Writing start / 16K / 32K | Reading 32K | First word 32K |
+| Date | Engine | Setting | Runs | Read start / 32K | Write start / 32K | First word 32K | What it showed |
+|---|---|---|---|---|---|---|---|
+| 4 Nov | Bob at the time | First reply after a load, default | 2 | 125 (first) / 2,221 (second) | 49 to 62 (in the app) | | The first reply after a load reads 15x slower: the brain is still paging in |
+| 4 Nov | Bob at the time | `--load-mode none` | 2 | 2,355 on the first reply | | | First reply in 1.4 s instead of 27 s, with load 10 s longer and half the RAM |
+| 16 Nov | plain llama.cpp b12359 | its own defaults (P0) | 5 | 1,065 / – | 82.9 / 77.8 | | Baseline |
+| 16 Nov | plain llama.cpp b12359 | Bob's settings (P1) | 5 | 1,161 / – | 87.7 / 77.7 | | Bob's settings write 6% and read 9% faster |
+| 16 Nov | Brain Engine 8 | everything off (E0) | 5 | 1,168 / – | 87.9 / 78.2 | | The patches cost nothing while off; same words |
+| 16 Nov | Brain Engine 8 | step 512 (Normal) | 5 | 1,162 / 1,238 | 87.8 / 78.1 | 26.5 | Default |
+| 16 Nov | Brain Engine 8 | step 2048 | 5 | 3,027 / 3,094 | 84.1 / 76.1 | 10.6 | Read 2.5x |
+| 16 Nov | Brain Engine 8 | step 4096 | 5 | 4,225 / 4,161 | 80.1 / 73.8 | 7.9 | Read 3.4x, writing 5% to 9% slower |
+| 16 Nov | Brain Engine 9 | 4 GB processor cache, our ranking (N4) | 5 | 807 / – | 103.7 / 87.6 | 37.5 | Writing +17%, reading −30% |
+| 16 Nov | Brain Engine 9 | 4 GB copy cache, learned (H7) | 5 | 782 / – | 109.2 / – | | Fastest writer that night |
+| 16 Nov | Brain Engine 9 | prefetch (N5) | 5 | – / 1,091 | – / – | | Reading 12% slower; dropped |
+| 16 Nov | Brain Engine 9, MTP file | Turbo, 3 ahead, Bob's sampling (T3S) | 5 | – / 1,048 | 70.0 / 77.7 | 31.3 | −17% to +3%; not offered |
+| 17 Nov | Brain Engine 9 | calibration default (Y0) | 5 | 1,154 / 1,232 | 87.7 / 77.3 | 26.6 | Baseline for the pairs |
+| 17 Nov | Brain Engine 9 | F4c | 5 | 2,180 / 2,290 | 109.2 / 99.2 | 14.3 | Won the rule set beforehand: +25% / +28% writing |
+| 17 Nov | Brain Engine 9 | X4c | 5 | 3,212 / 3,276 | 102.0 / 91.9 | 10.0 | Runner-up; reads 2.7x |
+| 17 Nov | Brain Engine 9 | step 2048 + 4 GB processor cache (F4p) | 5 | 1,852 / 2,284 | 102.4 / 73.6 | 14.4 | The copy cache beats the processor cache |
+| 17 Nov | Brain Engine 9 | CUDA graphs off (G0) | 5 | 1,148 / 1,218 | 50.9 / 48.0 | 27.0 | −42%; same words |
+| 17 Nov | Brain Engine 10 | default (Y0) | 5 | 1,190 / 1,271 | 91.1 / 81.3 | 25.8 | |
+| 17 Nov | Brain Engine 10 | F4c | 5 | 2,209 / 2,303 | 109.1 / 102.3 | 14.3 | |
+| 17 Nov | Brain Engine 10 | step 2048 + 5 GB copy | 5 | 2,071 / 2,225 | 112.2 / 95.5 | 14.8 | Bigger cache: faster start, slower 32K |
+| 17 Nov | Brain Engine 10 | step 2048 + 6 GB copy | 5 | 1,962 / 2,158 | 112.4 / 90.9 | 15.2 | |
+| 17 Nov | Brain Engine 10 | X4c | 5 | 3,330 / 3,380 | 107.4 / 95.3 | 9.7 | Coding pick: reads 32K 47% faster than F4c |
+| 17 Nov | Brain Engine 10 | step 4096 + 5 GB copy | 5 | 3,173 / 3,187 | 105.6 / 96.2 | 10.3 | No cache over 4 GB helps |
+| 17 Nov | Brain Engine 10 | step 4096 + 6 GB copy | 5 | 3,026 / 3,114 | 106.9 / 97.4 | 10.5 | |
+| 17 Nov | Brain Engine 10 | step 5120 + 2 GB copy | 5 | 3,660 / 3,904 | 91.2 / 77.7 | 8.4 | Fast reading, slow writing |
+| 17 Nov | Brain Engine 10 | step 6144 + 2 GB copy | 5 | 3,598 / 4,148 | 91.3 / 75.1 | 7.9 | |
+| 17 Nov | Brain Engine 10 | step 6144, no cache | 1 | 3,039 / 4,626 | 81.3 / 74.7 | 7.1 | Reading needs no cache |
+| 17 Nov | Brain Engine 10 | step 6144 + 512 MB / 1 GB / 2 GB | 1 each | 2,879 / 2,849 / 2,798 (start) | 56.5 / 68.9 / 85.1 (start) | 7.2 / 7.7 / 8.0 | A small cache writes slower than none |
+| 17 Nov | Brain Engine 11 | X4c (4x4) | 5 | 2,666 / 3,377 | 99.3 / 94.5 | 9.7 | Head to head |
+| 17 Nov | Brain Engine 11 | 6x3.5 | 5 | 2,671 / 3,902 | 95.2 / 88.5 | 8.4 | Finishes long prompts about 1 s sooner, writes 4% to 24% slower |
+| 17 Nov | Brain Engine 13 | step 6144 + 4 GB, cache lent to reading (L1) | 1 | 2,672 / 3,657 | 99.3 / 92.8 | 9.0 | Lending lifts writing over L0 (91.9 / 76.2) |
+| 17 Nov | Brain Engine 14 | L1 with the cache refilled behind writing | 1 | 3,325 / 3,859 | 109.0 / 92.8 | 8.5 | |
+| 17 Nov | Brain Engine 14 | refill batch 64 (B64) | 1 | 3,414 / 3,868 | 109.1 / 70.4 | 8.5 | Big refill batches hurt 32K writing |
+| 17 Nov | Brain Engine 14 | 6x3.5 (S6k3584) | 1 | 3,394 / 3,913 | 104.6 / 88.2 | 8.4 | |
+| 17 Nov | Brain Engine 14 | step 6144, no cache (S6k0) | 1 | 4,408 / 4,715 | 82.1 / 74.4 | 7.0 | Fastest reader of all |
+| 17 Nov | Brain Engine 8 | GPT-OSS 120B, soft cut to 41 of 128 experts, step 2048, q8_0 cache | 9 replies | – | 24.1 (in Bob) | | The full file crawled (RAM full); the cut loads in 29 to 39 s instead of 240 s |
+| 18 Nov | Brain Engine 15 | 4x4, 120K prompt at 128K | 1 | 3,060 (start) / 2,463 (120K) | 86.9 / 65.0 | 50.0 (120K) | Long contexts: see the tables below |
+| 18 Nov | Brain Engine 15 | read layout (R1), 120K prompt at 128K | 1 | 3,151 / 2,771 | 87.5 / 55.2 | 44.5 | Reads long prompts 10% to 14% faster |
+| 18 Nov | Brain Engine 15 | GPT-OSS 120B soft cut, F4c, 8K context | 3 | 1,137 to 1,223 (start) | 31.8 to 32.4 | | Best 120B writer; Normal writes about 30 |
+
+The 17 November one-round cache sweep (steps 4096, 5120 and 6144, with caches from 2 to 4 GB, 15 setups) and the 17 November context run are in the results pages. Their pattern is that bigger steps read faster and smaller caches write slower at 32K, with 2 GB the worst.
+
+**Longer contexts** (one round, Brain Engine 14; first word / read / write):
+
+| Context (prompt) | Step 6144, no cache | L1 (lending) | 6x3.5 |
 |---|---|---|---|
-| Default (step 512, no cache) | 87.7 / 82.0 / 77.3 | 1,232 | 26.6 s |
-| Step 2048 + 4 GB copy cache | +25% / +14% / +28% | 1.86x | 14.3 s |
-| Step 4096 + 4 GB copy cache | +16% / +14% / +19% | 2.66x | 10.0 s |
+| 32K | 7.4 / 4,437 / 74.5 | 9.3 / 3,548 / 92.3 | 8.8 / 3,731 / 87.3 |
+| 64K (60K) | 15.0 / 4,114 / 67.5 | 17.6 / 3,503 / 86.7 | 17.6 / 3,498 / 81.0 |
+| 128K (120K) | 37.9 / 3,248 / 53.1 | 41.7 / 2,954 / 57.1 | 42.9 / 2,868 / 61.8 |
+| 256K (248K) | 118.5 / 2,147 / 37.7 | 131.1 / 1,940 / 42.5 | 135.1 / 1,882 / 40.9 |
 
-- **Step 2048 won** by the rule set beforehand, which looked at start-prompt writing first. It suits chat.
-- **Step 4096 reads faster** and suits long documents and repository or agent work, where reading dominates.
-- **Copying a missed expert beat working it out on the processor** at 4 GB on every prompt.
-- **Smaller caches** often lost to no cache on long prompts.
-- **Our own expert ranking** was no faster than letting the cache learn.
-- **Different words.** Both winning rows write different words from the default, because a different batch shape adds the numbers in a different order. A quality check on Bob's jobs is due before either becomes a default. Until then they stay opt-in, and their quality is unproven in our lab, as we have yet to test.
+**Context cache types across contexts** (18 November, Brain Engine 15, one round; long prompt of 60K, 120K or 250K tokens; first word / read / write):
 
-**Turbo did not help on this brain and card.** Turbo (MTP, guessing words ahead and checking them) slowed prompt reading by 13% to 16%. With Bob's own sampling, three words ahead wrote 17% slower on the start prompt and 3% faster at 32K. The rule required at least 10% faster, so Turbo is not offered here. It also changed the words at temperature 0.
+| Cache | 4x4 at 64K | 4x4 at 128K | 4x4 at 256K | 6x3.5 at 64K | 6x3.5 at 128K | 6x3.5 at 256K |
+|---|---|---|---|---|---|---|
+| q8_0 | 20.6 / 2,989 / 77.7 | 49.9 / 2,469 / 65.3 | 154.2 / 1,649 / 38.1 | 17.0 / 3,622 / 82.3 | 42.4 / 2,909 / 61.5 | 133.2 / 1,909 / 39.5 |
+| f8_e4m3 | 19.8 / 3,116 / 71.1 | 48.6 / 2,534 / 55.8 | 155.0 / 1,640 / 31.8 | 17.2 / 3,587 / 68.9 | 42.0 / 2,940 / 53.3 | 130.5 / 1,950 / 33.3 |
+| q5_1 | 19.6 / 3,145 / 66.0 | 48.8 / 2,523 / 46.0 | 153.0 / 1,662 / 26.6 | 16.9 / 3,651 / 55.8 | 41.3 / 2,984 / 43.8 | 129.9 / 1,958 / 27.6 |
+| q4_0 | 19.7 / 3,126 / 68.5 | 48.0 / 2,564 / 57.8 | 152.5 / 1,668 / 45.2 | 16.6 / 3,725 / 72.9 | 41.0 / 3,009 / 64.5 | 128.1 / 1,986 / 42.5 |
+| keys q8_0, values q4_0 | 20.0 / 3,086 / 66.3 | 49.2 / 2,501 / 49.9 | 155.1 / 1,639 / 28.0 | 17.1 / 3,610 / 56.7 | 41.3 / 2,983 / 48.0 | 130.0 / 1,956 / 28.4 |
+| iq4_nl | timed out | timed out | timed out | timed out | timed out | timed out |
 
-**Predictions.** Of 16 predictions graded as written, 6 were right, 1 mostly right, 8 wrong and 1 not run. Most of the wrong ones expected a speed feature to help (Turbo, prefetch, sending the trace less often) or reading to cost nothing.
+- **q4_0 gave the best long-prompt writing at 256K** with both settings (45.2 and 42.5, against 38.1 and 39.5 for q8_0). It was also the fastest or near-fastest reader at every size.
+- **iq4_nl read Bob's start prompt at about 210 tokens a second.** Every long prompt timed out.
+- **The mixed q8_0/q4_0 cache wrote slowest at long contexts.**
 
-**Limits:**
+**Read layout across contexts** (18 November, Brain Engine 15, q8_0, one round; long prompt; first word / read / write). X4096 is 4x4. R0 is the read layout off with `-b 8192 -ub 4096`. R1 is the read layout on, which keeps whole layers in the cache while reading.
 
-- These results come from one machine, one brain and one quant, with one timed run per load.
-- Free RAM was 1 to 3 GB, and the slowest single runs fell where it was lowest. The medians were not affected.
-- Locking the brain in memory did not run, because the engine refused the option.
-- A 6 GB cache and other cards are unproven in our lab, as we have yet to test.
+| Context | X4096 | R0 | R1 |
+|---|---|---|---|
+| 32K | 11.4 / 2,898 / 91.3 | 11.1 / 2,969 / 92.9 | 10.0 / 3,293 / 92.5 |
+| 64K | 20.0 / 3,085 / 70.9 | 20.0 / 3,085 / 84.4 | 18.0 / 3,422 / 85.6 |
+| 128K | 50.0 / 2,463 / 65.0 | 49.9 / 2,468 / 62.8 | 44.5 / 2,771 / 55.2 |
+| 256K | 157.0 / 1,620 / 38.8 | 157.4 / 1,615 / 40.1 | 143.2 / 1,777 / 38.5 |
+
+R1 reads long prompts 10% to 14% faster and gives the first word 1 to 14 s sooner. Its writing is about level, except at 128K, where it was 15% slower in this single round.
+
+**GPT-OSS 120B with the soft cut** (41 of 128 experts per layer, 8K context, q8_0, 3 rounds; start prompt; read / write per round):
+
+| Setting | Round 1 | Round 2 | Round 3 |
+|---|---|---|---|
+| Old fixed placement (`--n-cpu-moe 28`) | 382 / 30.8 | 244 / 31.0 | 288 / 31.2 |
+| Normal | 582 / 30.1 | 579 / 30.2 | 532 / 30.1 |
+| Step 2048 | 735 / 29.8 | 1,434 / 29.9 | 1,255 / 29.8 |
+| Step 4096 | 1,447 / 29.5 | 1,510 / 29.5 | 1,354 / 29.4 |
+| Step 2048 + 2 GB copy | 814 / 17.8 | 1,056 / 17.3 | 1,115 / 17.7 |
+| F4c | 1,223 / 32.4 | 1,150 / 31.8 | 1,137 / 31.8 |
+
+On the cut 120B, the bigger steps read 2 to 2.5 times as fast as Normal. F4c writes about 6% faster than Normal, and a 2 GB cache writes 40% slower. Whether the soft cut answers as well as the full brain is unproven in our lab, as we have yet to test, because its perplexity run waits on the owner. In a job test it was fast enough but failed its tool calls, for a reason not yet known.
+
+**The step sweep so far** (18 November, q4_0 cache, 11 of 12 loads; long prompt; first word / read / write):
+
+- Step 4096: 50.1 / 2,456 / 59.6 at 128K, and 154.4 / 1,646 / 42.5 at 256K.
+- Step 6144: 42.2 / 2,917 / 60.3 at 128K, and 131.9 / 1,929 / 36.9 at 256K.
+- Step 8192 at 256K: only 30 of 41 layers fit on the card, and writing fell to 20.6. The step's pinned buffer was 4,480 MiB.
+
+So at 256K a bigger step reads faster but writes slower. Past 6144 it costs whole layers. The full table follows when the sweep ends.
+
+#### 4.3.3.3 The fit margin at 128K and 256K (18 November, Brain Engine 15)
+
+`--fit` leaves a margin of the card free, 1 GB by default. A bigger margin was tried to see whether it would stop the shared-memory rise. There were 18 loads on the long prompt, one each. Read the table as first word / read / write, then the rise, the free memory after the load and the layers with experts in RAM (of 41).
+
+| Setting | Context | Margin MB | First word / read / write | Rise MB | Free GB | Notes |
+|---|---|---|---|---|---|---|
+| 4x4 q8_0 | 128K | 2048 | 51.5 / 2,391 / 63.0 | 1,293 | 2.1 | 35 layers' experts in RAM |
+| 4x4 q4_0 | 128K | 2048 | 50.7 / 2,428 / 54.8 | 1,296 | 2.2 | 33 |
+| 4x4 q8_0 | 128K | 3072 | 53.8 / 2,287 / 61.7 | 1,295 | 3.2 | 37 |
+| 4x4 q4_0 | 128K | 3072 | 52.8 / 2,332 / 61.9 | 1,296 | 3.1 | 35 |
+| 6x3.5 q8_0 | 128K | 2048 | 43.0 / 2,865 / 56.9 | 1,905 | 2.1 | 35 |
+| 6x3.5 q4_0 | 128K | 2048 | 42.3 / 2,916 / 60.6 | 1,903 | 2.1 | |
+| 6x3.5 q8_0 | 128K | 3072 | 44.7 / 2,755 / 55.2 | 1,904 | 3.2 | |
+| 6x3.5 q4_0 | 128K | 3072 | 43.7 / 2,818 / 50.6 | 1,904 | 3.1 | |
+| 4x4 q8_0 | 256K | 2048 | 160.4 / 1,586 / 42.4 | 2,256 | 2.2 | 40 |
+| 4x4 q4_0 | 256K | 2048 | 159.4 / 1,595 / 36.8 | 2,256 | 2.1 | |
+| 4x4 q8_0 | 256K | 3072 | 164.5 / 1,546 / 18.1 | 2,320 | 3.1 | only 33 of 41 layers on the card |
+| 4x4 q4_0 | 256K | 3072 | 159.7 / 1,592 / 38.6 | 2,256 | 3.1 | |
+| 4x4 q4_0 | 256K | 4096 | 161.2 / 1,577 / 21.1 | 2,320 | 4.1 | 33 of 41 on the card |
+| 6x3.5 q8_0 | 256K | 2048 | 137.5 / 1,850 / 23.3 | 3,440 | 2.1 | 34 of 41 on the card |
+| 6x3.5 q4_0 | 256K | 2048 | 132.2 / 1,925 / 36.9 | 3,344 | 2.1 | 38 layers' experts in RAM |
+| 6x3.5 q8_0 | 256K | 3072 | 140.0 / 1,818 / 10.9 | 3,432 | 3.2 | 25 of 41 on the card |
+| 6x3.5 q4_0 | 256K | 3072 | 133.4 / 1,907 / 36.3 | 3,440 | 3.1 | 39 of 41 |
+| 6x3.5 q4_0 | 256K | 4096 | 138.9 / 1,831 / 15.0 | 3,440 | 4.1 | 22 of 41 on the card |
+
+The margin was kept, but the rise did not change, and bigger margins only pushed layers off the card and cut writing. With the default 1 GB margin, every load from 32K to 256K kept 1.0 to 1.3 GB of the card free.
+
+#### 4.3.3.4 Perplexity: what the settings cost in answers (18 November)
+
+**The speed settings, all with a q8_0 context cache** (8K context, 2 chunks; base PPL 5.296 with plain settings and an f16 cache):
+
+| Setting | PPL | KLD mean | KLD 99% | Same top % |
+|---|---|---|---|---|
+| Normal (step 512) | 5.285 | 0.00341 | 0.0283 | 97.41 |
+| Step 2048 | 5.292 | 0.00384 | 0.0355 | 97.28 |
+| Step 4096 | 5.298 | 0.00379 | 0.0306 | 97.12 |
+| F4c | 5.292 | 0.00384 | 0.0355 | 97.28 |
+| X4c / 4x4 | 5.298 | 0.00379 | 0.0306 | 97.12 |
+| 6x3.5 | 5.294 | 0.00385 | 0.0306 | 97.52 |
+| Read layout (R1) | 5.298 | 0.00379 | 0.0306 | 97.12 |
+
+The copy cache and the read layout change nothing: they score identically, to the last digit, with the same step and no cache. The step changes the last digits a little, because a different batch shape adds the numbers in a different order. Nearly all the drift from the base is the q8_0 cache itself.
+
+**Context cache types** (4x4, 16K context, 1 chunk; base PPL 4.839 with an f16 cache):
+
+| Cache | PPL | KLD mean | KLD 99% | Same top % |
+|---|---|---|---|---|
+| q8_0 (Bob's default) | 4.833 | 0.00328 | 0.0297 | 97.66 |
+| f8_e4m3 | 4.833 | 0.00471 | 0.0382 | 96.98 |
+| q5_1 | 4.845 | 0.00464 | 0.0350 | 97.06 |
+| q5_0 | 4.847 | 0.00514 | 0.0415 | 97.12 |
+| keys q8_0, values q4_0 | 4.839 | 0.00622 | 0.0444 | 96.19 |
+| keys q8_0, values iq4_nl | 4.842 | 0.00589 | 0.0451 | 96.85 |
+| q4_1 | 4.846 | 0.00829 | 0.0603 | 95.85 |
+| iq4_nl | 4.842 | 0.00859 | 0.0636 | 96.23 |
+| q4_0 | 4.856 | 0.00904 | 0.0656 | 95.69 |
+
+- **q4_0 drifts about 3 times as much as q8_0.** Its top word differs from the base about 4.3% of the time, against 2.3% for q8_0. But its perplexity is only 0.3% worse. An outside report had put 4-bit caches 8% to 12% worse.
+- **q4_0 at long contexts.** It frees card memory for about 3 more layers at 256K, which makes it the long-context choice.
+- **iq4_nl is impractical.** It took 332 to 379 s against 40 to 117 s for the rest.
+- **Not yet tested:** whether a q4_0 cache still finds a fact buried in a long prompt (a "needle" test). That is unproven in our lab, as we have yet to test.
+
+#### 4.3.3.5 The 128K and 256K "spill" was the attention mask (18 November)
+
+At 128K and 256K, Windows' "shared GPU memory" rose by 1.3 to 3.4 GB during a load, which looked like the card overflowing into RAM. The engine's own logs matched it to the MiB in every load from 32K to 256K. It is the attention mask, a context × step table, kept in pinned RAM. Windows counts pinned RAM as shared GPU memory.
+
+| Context | Step | Pinned compute buffer MiB | Measured rise MB | Context × step × 2 bytes MiB |
+|---|---|---|---|---|
+| 32K (49,152) | 4096 | 512 | 569 to 601 | 384 |
+| 64K (73,728) | 4096 | 704 | 766 to 786 | 576 |
+| 128K (139,264) | 4096 | 1,216 | 1,293 to 1,298 | 1,088 |
+| 128K | 6144 | 1,824 | 1,903 to 1,905 | 1,632 |
+| 256K (262,144) | 4096 | 2,176 (2,240 when layers moved off) | 2,256 to 2,321 | 2,048 |
+| 256K | 6144 | 3,264 to 3,360 | 3,344 to 3,440 | 3,072 |
+
+- **The buffer** is context × step × 2 bytes, plus about step/32 MiB. The rise is that buffer plus about 80 MB, in every load.
+- **No card memory went to RAM,** so the earlier speeds are real. One setting, the step, times the context drives it, and there is no conflict between settings.
+- **The card's compute buffer** grows with the same mask, from 1.3 GB at 32K to 3.3 GB at 256K. At 32K, 4x4 with a q8_0 cache puts 29 of 41 layers' experts in RAM, and at 256K it puts 38.
+- **The brain's file header** explains why the context cache is small for its size. There are 2 key/value heads, and only 10 of the 40 layers keep a growing cache. That comes to about 10.9 KB per token with q8_0.
+
+#### 4.3.3.6 Still running or planned (18 November)
+
+These are queued on the home PC in this order, and each has its addendum written before it runs:
+
+| Test | Loads | Status |
+|---|---|---|
+| Step sweep at 128K and 256K, q4_0 cache, steps 4096 to 8192 ("goldilocks" step) | 12 | 11 of 12 done, partial results above |
+| Spill cost: plain settings, steps 512 to 4096 at 256K, pinning off | 7 | queued |
+| Smaller fit margins, 512 and 256 MB | 11 | queued |
+| Turbo (MTP) with bigger steps | 9 | queued |
+| Needle in a haystack, q8_0 against q4_0 at 128K and 256K | 5 | queued |
+| Context cache kept in RAM (`-nkvo`) | 6 | queued |
+| GPT-OSS 120B soft cut against the full brain, in perplexity | – | waits on the owner |
+| Real-desktop pass of the final picks (browser tabs, Discord, Bob open) | – | planned |
+
+#### 4.3.3.7 Improvements we could still try
+
+Each of these is unproven in our lab, as we have yet to test:
+
+- **One shared card budget.** Size the layers, the hot-experts cache and the step's work space together for the chosen context, instead of letting each take its share alone. This includes a smaller step as the context grows.
+- **Context-aware reloads.** Keep a fast 32K to 64K load for chat. Reload with big-context settings when a job would pass about 75% of the context, and switch back afterwards.
+- **Engine patches.** A 3-bit context cache, a paged context cache in RAM, and the attention mask kept on the card instead of in pinned RAM.
+- **Expert tiers for brains bigger than RAM,** such as GPT-OSS 120B: a warm tier and a cold tier read from disk.
+- **The same tests on other machines:** the laptop plan (written, not run), other cards and other brains.
+- **Quality on Bob's jobs.** Perplexity shows the speed settings cost almost nothing. A run of Bob's own jobs at the chosen settings would confirm it.
+
+**Limits.** These results come from one machine and one main brain, mostly at temperature 0. Free RAM was tight, at 1 to 4 GB, and the slowest single runs fell where it was lowest. One-round rows pick a shortlist and decide nothing.
 
 ## 4.4 Benchmarks
 
