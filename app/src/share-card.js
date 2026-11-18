@@ -502,6 +502,7 @@ export class CardBorrower {
   constructor(cfg, lenders, { now = Date.now, log = () => {}, name = () => os.hostname(), home = homeIps, linkKind = () => '', powers = () => null } = {}) {
     Object.assign(this, { cfg, lenders, now, log, name, home, linkKind, powers });
     this.using = []; this.down = new Map(); this.homeDown = new Map(); this.timer = null;
+    this.gen = 0; // Nov 17: bumped by close(), so an open() still asking when the brain stopped can't bring old lends back
   }
 
   // Sealed SCUT packets: the keys llama-server needs for the lent cards in use (GGML_RPC_SCUT_KEYS), or {}.
@@ -514,6 +515,7 @@ export class CardBorrower {
   // that takes). 2026-11-14: with SCUT off too.
   async open({ sizeGB, file = '' } = {}) {
     this.close();
+    const gen = this.gen;
     let brain = null;
     if (file) { try { brain = cleanBrain({ file, bytes: fs.statSync(file).size, head: headHash(file) }); } catch {} }
     if (!wantsSpread(this.cfg, { sizeGB })) return [];
@@ -541,6 +543,12 @@ export class CardBorrower {
         return null;
       } catch { skipped.push(`${bob.name} (not reachable)`); return null; }
     }));
+    // Nov 17 (a desktop and a laptop): the brain was stopped or loaded again while the Bobs were still answering. Their
+    // cards go straight back, so "borrowing" can't stay on for a brain that runs here alone.
+    if (gen !== this.gen) {
+      for (const u of tries.filter(Boolean)) this.lenders.call(u.bob, '/api/lend/card', { method: 'POST', body: { action: 'close' }, timeout: 5000 }).catch(() => {});
+      return [];
+    }
     this.using = oneKind(tries.filter(Boolean), (u) => {
       // Nov 14 (the owner): cable Bobs and Wi-Fi or Tailscale Bobs never share one brain (the slow link holds it all back).
       // Nov 16: cable always wins. The one left out is let go and named, and still takes jobs.
@@ -581,7 +589,9 @@ export class CardBorrower {
   // spread doesn't wake his card again over the other route right away (1.5.189).
   failed({ route = false } = {}) { for (const u of this.using) (route && u.via === 'home' ? this.homeDown : this.down).set(u.bob.address, this.now() + DOWN_MS); this.close(); }
 
-  view() { return this.using.map((u) => u.bob.name); }
+  view() { return this.inUse().map((u) => u.bob.name); }
+  // Nov 17: the lent cards the running brain really uses. One taken back (lost) isn't, even before the reload.
+  inUse() { return this.using.filter((u) => !u.lost); }
   // 1.5.214: every lent card in use is reached over a network cable or USB4 (SCUT's Auto cap goes to 1000).
   allWired() { return this.using.length > 0 && this.using.every((u) => u.wired); }
   // Nov 12: how much the engine should leave free on each lent card, in the order they're handed to it (--rpc), or
@@ -589,6 +599,7 @@ export class CardBorrower {
   fitTargets() { return this.using.some((u) => u.marginMB > 0) ? this.using.map((u) => u.marginMB || 0) : null; }
 
   close() {
+    this.gen++;
     clearInterval(this.timer); this.timer = null;
     const was = this.using; this.using = [];
     for (const u of was) this.lenders.call(u.bob, '/api/lend/card', { method: 'POST', body: { action: 'close' }, timeout: 5000 }).catch(() => {});
