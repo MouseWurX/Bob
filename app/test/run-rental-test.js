@@ -66,9 +66,9 @@ const KEY = 'rpa_' + 'TESTKEY0123456789abcdefghijklmnop';
 // ---- the self-destruct timer on every hired machine ----
 {
   const cmd = serverCommand('Qwen/Qwen3.6-35B-A3B', { minutes: 45, after: 'runpodctl remove pod $RUNPOD_POD_ID' });
-  check('a full-size model runs on vLLM inside a timeout of the longest run', /^timeout 2700 python3 -m vllm/.test(cmd) && /--model Qwen\/Qwen3.6-35B-A3B/.test(cmd) && /; runpodctl remove pod/.test(cmd));
+  check('a full-size model runs on vLLM inside a timeout of the longest run', /^\(timeout 2700 python3 -m vllm/.test(cmd) && /--model Qwen\/Qwen3.6-35B-A3B/.test(cmd) && /; runpodctl remove pod/.test(cmd));
   const gg = serverCommand('hf:MouseWurX/24Bob-Riker/24Bob-Riker-Q4_K_M.gguf', { minutes: 0.5 });
-  check('a GGUF file runs on llama.cpp, at least a minute', /^timeout 60 \/app\/llama-server/.test(gg) && /--hf-repo MouseWurX\/24Bob-Riker --hf-file 24Bob-Riker-Q4_K_M.gguf/.test(gg) && modelSpec('hf:a/b/c.gguf').kind === 'gguf' && modelSpec('a/b').kind === 'vllm');
+  check('a GGUF file runs on llama.cpp, at least a minute', /^\(timeout 60 \/app\/llama-server/.test(gg) && /--hf-repo MouseWurX\/24Bob-Riker --hf-file 24Bob-Riker-Q4_K_M.gguf/.test(gg) && modelSpec('hf:a/b/c.gguf').kind === 'gguf' && modelSpec('a/b').kind === 'vllm');
 }
 
 // ---- the brain itself: the key goes only in the request to its service, the stream is read like llama-server's ----
@@ -140,7 +140,8 @@ const KEY = 'rpa_' + 'TESTKEY0123456789abcdefghijklmnop';
   rentals.okUntil = { rental: 'mach01', usd: 10 };
   const r2 = await rentals.chat(mach, { messages: [{ role: 'user', content: 'hi' }], tools: [], onToken: () => {}, job: { id: 'job2' }, emit: (ev) => ev2.push(ev) });
   const start = calls.filter((c) => /\/pods$/.test(c.url) && c.method === 'POST').pop(); // v2: the first card had no room, the next was rented
-  check('the machine is started under Bob\'s name with the 80 GB cards and the self-destruct timer', start && start.body.name === `${RENT_PREFIX}mach01` && start.body.gpu.id === 'NVIDIA H100 PCIe' && calls.filter((c) => /\/pods$/.test(c.url) && c.method === 'POST').map((c) => c.body.gpu.id).join() === 'NVIDIA H100 80GB HBM3,NVIDIA H100 PCIe' && start.url === 'https://api.runpod.io/v2/pods' && start.body.image && start.body.entrypoint.join(' ') === '/bin/sh -c' && /^timeout 1800 /.test(start.body.cmd[0]) && start.headers.authorization === `Bearer rpa_${KEY}`);
+  check('the machine is started under Bob\'s name with the 80 GB cards and the self-destruct timer', start && start.body.name === `${RENT_PREFIX}mach01` && start.body.gpu.id === 'NVIDIA H100 PCIe' && calls.filter((c) => /\/pods$/.test(c.url) && c.method === 'POST').map((c) => c.body.gpu.id).join() === 'NVIDIA H100 80GB HBM3,NVIDIA H100 PCIe' && start.url === 'https://api.runpod.io/v2/pods' && start.body.image && start.body.entrypoint.join(' ') === '/bin/sh -c' && /^\(timeout 1800 /.test(start.body.cmd[0]) && start.headers.authorization === `Bearer rpa_${KEY}`);
+  check('Nov 18: the account key is never put on the pod (RunPod gives each pod its own)', !start.body.env?.RUNPOD_API_KEY && !JSON.stringify(start.body).includes(KEY));
   check('the chat goes to the machine\'s own address with no key, and the start is announced', calls.some((c) => c.url === 'https://pod42-8000.proxy.runpod.net/v1/chat/completions' && !c.headers.authorization) && ev2.some((e) => e.type === 'rent' && e.action === 'start' && e.minutes === 30) && r2.content === 'ok');
   check('the machine keeps running while the job does', rentals.running.has('mach01'));
   t += 10 * 60000;
