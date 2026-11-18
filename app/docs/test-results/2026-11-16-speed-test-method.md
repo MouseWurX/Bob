@@ -936,6 +936,10 @@ a real spill shows in at least one 256K row, because the video's memory grows af
 
 **What it decides:** the margin Calibrate sets for a desktop in use: 512 if no busy-desktop row spills there, else 1024.
 
+**Result (Nov 18, 16 loads):** the busy desktop cost first word +16 to 17%, reading -12 to 15% and writing -10 to 18%
+(worst at 32K), with the same placement and no real spill. Margin 512 did as well as or better than 1024 under load,
+so it stays the pick. Free RAM fell to 0.3 GB at 256K, so RAM, not the card, is what a busy desktop squeezes.
+
 ## Addendum 46 (Nov 18, before any run): sharing the expert work with the processor
 
 Planned on Nov 17 and not yet run: with the copy cache, a missed expert can be worked on the card (copied) or on
