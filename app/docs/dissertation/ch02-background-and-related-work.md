@@ -308,8 +308,8 @@ Every setting tried is in Chapter 4, section 4.3.3, with the testing method, the
 
 | If you mostly... | Measured choice on this machine | What you get | What it costs |
 |---|---|---|---|
-| Chat, short asks | Reading step 2048 + 4 GB hot-experts cache, missed experts copied to the card (F4c) | Writing 14% to 28% faster, reading 1.9x, first word on 32K in 14.3 s against 26.6 s | Answers drift no more than the default (perplexity, section 4.3.3.4) |
-| Paste long documents, work on a repository, run agent jobs, up to about 64K | Reading step 4096 + 4 GB copy cache (X4c, also called 4x4) | Reading 2.7x to 2.8x, first word on 32K in 9.7 to 10.0 s, writing 14% to 19% faster | The same |
+| Chat, short asks | Reading step 2048 + 4 GB hot-experts cache, missed experts copied to the card (2x4) | Writing 14% to 28% faster, reading 1.9x, first word on 32K in 14.3 s against 26.6 s | Answers drift no more than the default (perplexity, section 4.3.3.4) |
+| Paste long documents, work on a repository, run agent jobs, up to about 64K | Reading step 4096 + 4 GB copy cache (4x4, also called 4x4) | Reading 2.7x to 2.8x, first word on 32K in 9.7 to 10.0 s, writing 14% to 19% faster | The same |
 | Work at 128K to 256K | 4x4, or `-ub 5120` with a 3.5 GB copy cache, with a q4_0 context cache and the default 1 GB fit margin | The best long-prompt writing measured at 256K (42 to 45, against 38 to 40 with q8_0) | Perplexity 0.3% worse than q8_0. It still found all 5 of 5 facts hidden in long prompts at both 128K and 256K, as q8_0 and f16 did, though that is a small test |
 | Want the default's exact words | Bob's defaults (step 512, no cache, q8_0 cache) | Bob's settings are already 6% faster at writing and 9% faster at reading than llama.cpp's own defaults | Slow first word on long prompts (26.6 s at 32K, about 157 s at 256K) |
 
@@ -334,7 +334,7 @@ What not to turn on, on this machine:
 - **A reading step of 8192 at 256K.** Its work space pushed 11 layers off the card, and writing fell to about 21.
 - **The fNRI live trace, on engines before 12.** Before Brain Engine 11 it cost 9% to 11% of writing and changed the words. From Brain Engine 11 the words match. On Brain Engine 12 it costs 2% or less, with or without the cache, so it is fine to leave on (section 3.4.3, over 3 rounds).
 
-**Bigger than RAM.** GPT-OSS 120B (a 63 GB file) crawled on this machine with every expert on. With a soft cut to 41 of its 128 experts per layer, it loaded in 29 to 39 s and wrote about 30 tokens a second, or 32 with F4c. Whether the cut answers as well as the full brain is unproven in our lab, as we have yet to test.
+**Bigger than RAM.** GPT-OSS 120B (a 63 GB file) crawled on this machine with every expert on. With a soft cut to 41 of its 128 experts per layer, it loaded in 29 to 39 s and wrote about 30 tokens a second, or 32 with 2x4. Whether the cut answers as well as the full brain is unproven in our lab, as we have yet to test.
 
 Five practical notes:
 
