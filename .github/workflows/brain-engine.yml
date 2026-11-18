@@ -165,10 +165,15 @@ jobs:
           cmake -S . -B build -G "Ninja Multi-Config" -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake -DLLAMA_BUILD_BORINGSSL=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_OPENMP=ON -DGGML_OPENMP_FETCH=ON -DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON
           cmake --build build --config Release --target llama-server llama-bench llama-gguf-split ggml-rpc-server llama-diffusion-cli
           rem Nov 18: the engine's card check (0026), against ggml only; it loads every backend beside it.
+          rem Delayed expansion: inside ( ) a plain %VAR% is read before the set runs.
+          setlocal EnableDelayedExpansion
           if exist ..\app\engine\tests\mask-pos-check.cpp (
             for /f "delims=" %%i in ('dir /s /b build\ggml.lib') do set "GGMLLIB=%%i"
             for /f "delims=" %%i in ('dir /s /b build\ggml-base.lib') do set "GGMLBASELIB=%%i"
-            clang-cl /O2 /EHsc /std:c++17 /I ggml\include ..\app\engine\tests\mask-pos-check.cpp "%GGMLLIB%" "%GGMLBASELIB%" /Fe:build\bin\Release\mask-pos-check.exe || exit /b 1
+            echo ggml.lib: !GGMLLIB!  ggml-base.lib: !GGMLBASELIB!
+            if not defined GGMLLIB exit /b 1
+            if not defined GGMLBASELIB exit /b 1
+            clang-cl /O2 /EHsc /std:c++17 /I ggml\include ..\app\engine\tests\mask-pos-check.cpp "!GGMLLIB!" "!GGMLBASELIB!" /Fe:build\bin\Release\mask-pos-check.exe || exit /b 1
           )
       - name: Build llama-cvector-generator and llama-export-lora on their own (CPU, static; upstream skips it when the backends load at run time)
         shell: cmd
