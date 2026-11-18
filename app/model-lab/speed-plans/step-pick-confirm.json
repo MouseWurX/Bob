@@ -1,5 +1,5 @@
 {
- "name": "Confirm the step pick (Brain Engine 15): 4x3.5, 5x3.5 and 8x3.5 with a q4_0 cache and a 512 MB margin at 128K and 256K, 3 rounds, so no pick rests on one load",
+ "name": "Confirm the step pick (Brain Engine 15): steps 4096 to 8192 with a 3.5 GB copy cache, q4_0 cache and a 512 MB margin at 128K and 256K, 3 rounds, so no pick rests on one load",
  "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 49)",
  "brain": "${BRAIN}",
  "engines": {
@@ -114,6 +114,36 @@
    }
   },
   {
+   "id": "6x3.5-q4_0-fit512-128K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k120"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "3584",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--moe-cache-cpu-share",
+    "0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  },
+  {
    "id": "8x3.5-q4_0-fit512-128K",
    "engine": "be15",
    "prompts": [
@@ -187,6 +217,66 @@
     "5120",
     "-ub",
     "5120",
+    "--moe-cache-mib",
+    "3584",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--moe-cache-cpu-share",
+    "0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  },
+  {
+   "id": "6x3.5-q4_0-fit512-256K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "3584",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--moe-cache-cpu-share",
+    "0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  },
+  {
+   "id": "7x3.5-q4_0-fit512-256K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "7168",
+    "-ub",
+    "7168",
     "--moe-cache-mib",
     "3584",
     "-ctk",

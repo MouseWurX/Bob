@@ -1,61 +1,74 @@
-// How speed settings are scored (method doc Addendum 48, Nov 18 2026; asked for by the owner).
-// Pure functions: no files, no card, no clock. The runner's results go in, a table of gates and scores comes out.
+// How speed settings are scored (method doc Addendum 48, revised Nov 18 2026 after the owner's review).
+// Pure functions: no files, no card, no clock.
 //
-// 1. Gates (fail = out, whatever the speed): no real spill, needle found at every depth, small answer drift, no aborts.
-// 2. Measures as ratios against stock llama.cpp on the same brain, context and prompt (above 1 = better).
-// 3. One score per kind of job: a weighted geometric mean of the ratios, so a weak spot can't hide behind one big number.
-//    1.00 = stock llama.cpp; 1.30 = 30% better for that job.
+// Score on job time, gate on robustness. No weights to tune:
+// - Job time = first word + L / writing speed, with L fixed per use (chat 300, agent 600, long-form 2,000 tokens).
+// - A use that spans several context sizes gets ONE blended job time (a weighted sum of the per-size job times),
+//   scored against stock llama.cpp's blended job time once (not an average of per-size ratios).
+// - Gates are hard limits. Each comes back pass, fail or "not measured"; only all-pass settings get a score, and
+//   "not measured" is never shown as failed.
 
-export const GATES = { realSpillMB: 150, kldMax: 0.01, sameTopMin: 0.95 };
-export const WEIGHTS = {
-  chat: { W: 0.45, F: 0.20, R: 0.10, B: 0.15, H: 0.05, L: 0.05 },
-  longDocs: { F: 0.35, R: 0.30, W: 0.15, B: 0.10, H: 0.05, L: 0.05 },
-  codingAgent: { W: 0.30, F: 0.25, R: 0.20, B: 0.15, H: 0.05, L: 0.05 }
+export const ANSWER = { chat: 300, agent: 600, longForm: 2000 };
+// Share of each use's jobs at each context size (the per-use blend). Sizes a use never reaches are left out.
+export const BLEND = {
+  chat: { short: 0.6, '32K': 0.4 },
+  agent: { '32K': 0.6, '128K': 0.4 },
+  longForm: { '128K': 0.5, '256K': 0.5 }
 };
-export const HEADROOM_MIB = 512;
+export const GATES = {
+  realSpillMB: 150, // shared rise minus every pinned CUDA_Host compute buffer
+  meanKld: 0.01, // MEAN KL divergence against an f16 cache (not the 99th percentile: q8_0's is 0.03)
+  sameTop: 0.95, // same top word as the f16 cache
+  busyLoss: 0.25, // a busy desktop may cost at most 25% of job time
+  freeCardMiB: 512, // card memory left after load (a 256 MB margin is where a real spill starts)
+  loadS: 15 // seconds from start to ready, for a 35B brain (5.3 to 7.4 s warm, 12.6 to 14 s cold)
+};
 
-const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-
-// s: { realSpillMB, needles: {found, of}, kld, sameTop, aborts, failedPrompts }. Unknown values don't fail a gate,
-// but are listed so nobody mistakes "not measured" for "passed".
-export function gates(s = {}) {
-  const fails = [], unknown = [];
-  const check = (v, bad, why, name) => { if (num(v) === null) unknown.push(name); else if (bad(v)) fails.push(why); };
-  check(s.realSpillMB, (v) => v >= GATES.realSpillMB, `real spill ${s.realSpillMB} MB`, 'spill');
-  if (s.needles && num(s.needles.of)) { if (s.needles.found < s.needles.of) fails.push(`needle ${s.needles.found} of ${s.needles.of}`); } else unknown.push('needle');
-  check(s.kld, (v) => v > GATES.kldMax, `answer drift ${s.kld}`, 'kld');
-  check(s.sameTop, (v) => v < GATES.sameTopMin, `same top word ${s.sameTop}`, 'sameTop');
-  if ((s.aborts || 0) > 0 || (s.failedPrompts || 0) > 0) fails.push('aborted or failed prompts');
-  return { pass: fails.length === 0, fails, unknown };
+export function jobTime(firstS, writeTps, answer) {
+  return Number.isFinite(firstS) && writeTps > 0 ? firstS + answer / writeTps : null;
 }
 
-// ours / stock: { read, write, firstS, loadS, freeMiB, busyKeep } (busyKeep = busy speed / clean speed, 0..1).
-export function measures(ours = {}, stock = {}) {
-  const ratio = (a, b) => (num(a) && num(b) ? a / b : null);
-  return {
-    R: ratio(ours.read, stock.read),
-    W: ratio(ours.write, stock.write),
-    F: ratio(stock.firstS, ours.firstS),
-    L: ratio(stock.loadS, ours.loadS),
-    H: num(ours.freeMiB) === null ? null : Math.min(1, Math.max(0.01, ours.freeMiB / HEADROOM_MIB)),
-    B: num(ours.busyKeep) === null ? null : ours.busyKeep / (num(stock.busyKeep) || 1)
-  };
-}
-
-// Weighted geometric mean over the measures that exist; the weights of missing ones are spread over the rest, and
-// the result says which were missing.
-export function score(m, weights) {
-  let logSum = 0, wSum = 0; const missing = [];
-  for (const [k, w] of Object.entries(weights)) {
-    if (num(m[k]) === null || m[k] <= 0) { missing.push(k); continue; }
-    logSum += w * Math.log(m[k]); wSum += w;
+// Per-use job time from per-size {firstS, write}. Null if any size in the blend is missing (no silent re-weighting).
+export function blendedJobTime(bySize, use) {
+  let t = 0;
+  for (const [size, w] of Object.entries(BLEND[use])) {
+    const s = bySize?.[size]; const j = s ? jobTime(s.firstS, s.write, ANSWER[use]) : null;
+    if (j === null) return null;
+    t += w * j;
   }
-  return { score: wSum ? Math.round(Math.exp(logSum / wSum) * 100) / 100 : null, missing };
+  return t;
 }
 
-export function scoreAll(ours, stock, gateFacts) {
-  const g = gates(gateFacts), m = measures(ours, stock);
-  const out = { gates: g, measures: m };
-  for (const [job, w] of Object.entries(WEIGHTS)) out[job] = g.pass ? score(m, w) : { score: null, missing: [], out: true };
-  return out;
+// facts: { realSpillMB, needles: {found, of}, meanKld, sameTop, aborts, busyLoss, freeCardMiB, loadS, kldRuns }
+const statusOf = (v, ok) => (typeof v === 'number' && Number.isFinite(v) ? (ok(v) ? 'pass' : 'fail') : 'not measured');
+export function gates(f = {}) {
+  const g = {
+    spill: statusOf(f.realSpillMB, (v) => v < GATES.realSpillMB),
+    needle: f.needles && f.needles.of > 0 ? (f.needles.found === f.needles.of ? 'pass' : 'fail') : 'not measured',
+    meanKld: statusOf(f.meanKld, (v) => v <= GATES.meanKld),
+    sameTop: statusOf(f.sameTop, (v) => v >= GATES.sameTop),
+    noAborts: statusOf(f.aborts, (v) => v === 0),
+    busy: statusOf(f.busyLoss, (v) => v <= GATES.busyLoss),
+    freeCard: statusOf(f.freeCardMiB, (v) => v >= GATES.freeCardMiB),
+    load: statusOf(f.loadS, (v) => v <= GATES.loadS)
+  };
+  const vals = Object.values(g);
+  const status = vals.includes('fail') ? 'fail' : vals.includes('not measured') ? 'not measured' : 'pass';
+  // A quality value from a single perplexity run is marked, so a knife-edge pass isn't read as firm.
+  const singleRun = (f.kldRuns || 0) < 2 && (g.meanKld === 'pass' || g.sameTop === 'pass');
+  return { status, gates: g, singleRun };
+}
+
+// Score = stock's blended job time / ours x 100 (100 = stock; 250 = two and a half times faster). Only for settings
+// whose gates all pass; a gap within `noisePct` of the next one is reported as a tie, not a win.
+export function scoreUse(ours, stock, use, facts) {
+  const g = gates(facts);
+  const mine = blendedJobTime(ours, use), base = blendedJobTime(stock, use);
+  if (g.status !== 'pass' || mine === null || base === null) return { score: null, jobS: mine, gates: g };
+  return { score: Math.round((base / mine) * 100), jobS: Math.round(mine * 10) / 10, gates: g };
+}
+
+export function rank(rows, noisePct = 3) {
+  const r = rows.filter((x) => x.jobS !== null && x.score !== null).sort((a, b) => a.jobS - b.jobS);
+  return r.map((x, i) => ({ ...x, tieWithBest: i > 0 && (x.jobS - r[0].jobS) / r[0].jobS * 100 <= noisePct }));
 }

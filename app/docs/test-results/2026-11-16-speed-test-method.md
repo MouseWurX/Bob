@@ -980,42 +980,45 @@ default step leaves more experts on the card). Stock at Bob's steps reads within
 at least 10% faster than it at 32K, from the copy cache. Load times are within 15% of each other at the same size,
 and grow with the context.
 
-## Addendum 48 (Nov 18): how settings are scored
+## Addendum 48 (Nov 18, revised the same evening after review): how settings are scored
 
-The owner asked for one way to score every setting. Code: `model-lab/score-settings.mjs` (tested in
-`test/run-score-settings-test.js`).
+Code: `model-lab/score-settings.mjs`, tested in `test/run-score-settings-test.js`. **Score on job time, gate on
+robustness**, with no weights to tune. (A first version used a weighted geometric mean of six ratios; the owner's
+review pointed out that its weights were subjective and several measures fed each other, so it was dropped.)
 
-**1. Gates.** A setting that fails any gate is out, whatever its speed: a real spill of 150 MB or more (the shared
-rise minus every pinned `CUDA_Host compute` buffer); a needle missed at any depth; answer drift against an f16 cache
-over 0.01 KLD, or the same top word less than 95% of the time; any abort or failed prompt. A gate with no measurement
-is listed as unknown, never as passed. Already out: iq4_nl (timeouts), the copy cache with the context cache in RAM
-(abort), and a 256 MB margin (a real spill starts).
+**Job time** = seconds to the first word + answer length / writing speed. The answer length is fixed per use, because
+at 256K the winner changes with it (at 100 tokens step 7168 wins, at 300 it's a tie, at 2,000 6x3.5 wins): chat 300
+tokens, agent 600, long-form 2,000. A use that spans sizes gets one blended job time, the weighted sum of its per-size
+job times (chat: short 0.6, 32K 0.4; agent: 32K 0.6, 128K 0.4; long-form: 128K 0.5, 256K 0.5), and the score is stock
+llama.cpp's blended job time / ours x 100, worked out once (not an average of per-size ratios). Gaps under 3% are
+reported as ties. The averaged table shows job time at 300 and 2,000 tokens.
 
-**2. Measures**, each a ratio against stock llama.cpp on the same brain, context and prompt (from Addendum 47), above
-1 = better: R reading, W writing, F first word (stock / ours), L load time (stock / ours), B busy keep (busy speed /
-clean speed), H headroom (free card memory after load / 512 MiB, at most 1).
+**Gates**, hard limits, each pass, fail or "not measured" (never shown as failed). Only an all-pass setting is scored:
+- no real spill: shared rise minus every pinned `CUDA_Host compute` buffer under 150 MB;
+- the needle found at every depth;
+- **mean** KL divergence against an f16 cache 0.01 or less (not the 99th percentile, where even q8_0 is 0.03), and the
+  same top word at least 95% of the time. q4_0 passes both narrowly (0.00904 and 95.69%) on one perplexity run of one
+  16K chunk, so a value from a single run is flagged;
+- no aborts or failed prompts;
+- a busy desktop costs at most 25% of job time (worst seen: 18%);
+- at least 512 MiB of card memory free after load;
+- load in 15 s or less for a 35B brain (5.3 to 7.4 s warm, 12.6 to 14 s cold).
 
-**3. One score per kind of job**, a weighted geometric mean, so one big number can't hide a weak spot. 1.00 = stock.
+Already out: iq4_nl (timeouts), the copy cache with the context cache in RAM (abort), a 256 MB margin (real spill).
+Needle data exists only for f16, q8_0 and q4_0, so the other cache types read "not measured".
 
-| Job | W | F | R | B | H | L |
-|---|---|---|---|---|---|---|
-| Chat | 0.45 | 0.20 | 0.10 | 0.15 | 0.05 | 0.05 |
-| Long documents (128K-256K) | 0.15 | 0.35 | 0.30 | 0.10 | 0.05 | 0.05 |
-| Coding agent | 0.30 | 0.25 | 0.20 | 0.15 | 0.05 | 0.05 |
-
-A missing measure is named, and its weight is spread over the rest. A setting with no busy-desktop run takes B from
-the nearest measured setting at the same size, marked as estimated. The averaged table also shows a simpler **job
-time** (first word + a 300-token answer at the writing speed) and its ratio to a baseline. Until the stock comparison
-has run, the baseline is the closest llama.cpp-default row we have. The scores are unproven in our lab until that
-comparison has run.
+**Caveats.** The stock baseline (Addendum 47) is one build on one night; at 256K, writing swings 23 to 45 tokens/s
+with needle depth alone, so the 2,000-token ranking there is the least certain; and every pick that rests on one load
+is marked in the table until Addendum 49 has run. The scores are unproven in our lab until the stock comparison has run.
 
 ## Addendum 49 (Nov 18, before any run): confirming the step pick
 
 A review of the tables (the owner, Nov 18) points out that the step pick rests on single loads. Step 5120 as the
 balance point and step 8192 as the fastest first word each come from 1 load per size (Addendum 36), and the 128K
 writing gap that favours 5120 (63.2 against 59.6 at step 4096) is inside the 5 to 10% a single load can swing. Plan
-`step-pick-confirm.json`, Brain Engine 15, 3 rounds, 18 loads: 4x3.5, 5x3.5 and 8x3.5, q4_0 cache, 512 MB margin,
-pinning off (as Bob now runs), at 128K and 256K. Every pick cell that rests on 1 load is now marked in the averaged
+`step-pick-confirm.json`, Brain Engine 15, 3 rounds, 27 loads: steps 4096, 5120, 6144 and 8192 at 128K, and 4096
+to 8192 in 1024 steps at 256K, all with a 3.5 GB copy cache, q4_0 cache, 512 MB margin and pinning off (as Bob now
+runs). Every pick cell that rests on 1 load is now marked in the averaged
 table.
 
 **Predictions, written before any run:** first word falls with the step at both sizes (8x3.5 quickest, 4x3.5 slowest)
@@ -1024,4 +1027,14 @@ not real. 8x3.5 at 256K writes at least 30% slower than 5x3.5 (layers pushed off
 
 **What it decides:** the step Calibrate uses for 128K and 256K. If 5x3.5's first-word gain over 4x3.5 is smaller than
 the spread between rounds, Calibrate keeps 4x4.
+
+## Addendum 50 (Nov 18, before any run): firming up the quality gate
+
+Addendum 48's gate leaves two holes. q4_0 passes the drift gate narrowly on one perplexity run of one 16K chunk, and
+q5_1 and f8_e4m3 have no needle data, so their gate reads "not measured". Two plans, both waiting on approval:
+- the perplexity grid again for f16, q8_0 and q4_0 on a longer text (several chunks), with `perplexity-grid.mjs`;
+- `needle-other-types.json`: the needle check for q5_1 and f8_e4m3 at 128K and 256K, 4 loads.
+
+**Predictions, written before any run:** q4_0's mean KLD stays between 0.007 and 0.011, and its same-top rate stays
+between 94% and 97%, so it may land on either side of the gate. q5_1 and f8_e4m3 find all 5 needles at both sizes.
 
