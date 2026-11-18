@@ -796,3 +796,18 @@ ordinary RAM, which Windows does not count as shared).
 **Predictions for the narrowed plan, written before it runs:** plain settings rise about 0.3 GB at 256K (`-ub 512`).
 Pinning off removes the rise (under 0.2 GB) and slows reading by under 5%, with writing the same. Each halving of
 `-ub` halves the rise and slows reading by 10 to 25%.
+
+## Addendum 41 (Nov 18, before any run): smaller --fit margins
+
+With the "spill" known to be the pinned step buffer (Addendum 40), the card always kept the free room `--fit` was
+asked to leave. The owner (Nov 18): can the margin go the other way? Plan `fit-small-margin.json`, Brain Engine 15,
+1 round, 11 loads: 4x4 with a q4_0 cache at 32K, 128K and 256K with `--fit-target` 1024 (the default), 512 and 256,
+and 6x3.5 with a q4_0 cache at 256K with 512 and 256. The spill check takes off the buffer the engine printed, so a
+real overflow (card memory going to RAM) still fails the run.
+
+**Predictions, written before any run:** each 512 MB freed puts about one more layer's experts on the card (about 0.55
+GB each in this brain) and writes 2 to 5% faster. Margin 256 has no real overflow at 32K or 128K. At 256K it may,
+because the work buffers grow during the run. Reading is about the same.
+
+**What it decides:** Calibrate's margin per context size: the smallest one that runs with no real overflow at that
+size, plus a safety step chosen from what the run shows.

@@ -39,5 +39,6 @@ starts.
 - `needle-q4-vs-q8.json`: needle-in-a-haystack recall, f16 (128K), q8_0 and q4_0 cache at 128K and 256K, five depths each, 5 loads (Addendum 38).
 - `kv-in-ram.json`: 4x4 and 6x3.5 with the context cache kept in RAM (`-nkvo`), q4_0 at 128K and 256K, q8_0 at 256K, 6 loads (Addendum 39).
 - `spill-cause.json`: the 128K/256K pinned step buffer (the attention mask, Addendum 40): plain settings, then `-ub` 512 to 4096 at 256K with the 4x4 copy cache and a q4_0 cache, and 4096 with pinning off, 7 loads.
+- `fit-small-margin.json`: `--fit-target` 1024/512/256 at 32K, 128K and 256K (4x4, q4_0) and 512/256 at 256K (6x3.5), 11 loads (Addendum 41).
 - `perplexity-grid.json`: for `model-lab/perplexity-grid.mjs`, not the speed runner. What each speed setting and cache type costs in answers: KL divergence and same-top-word rate against plain settings with an f16 cache, with Brain Engine 15's llama-perplexity, 2 groups, 18 runs (Addendum 33).
 - `perplexity-120b-softcut.json`: for `model-lab/perplexity-grid.mjs`: GPT-OSS 120B with the soft cut (41 of 128) against the full brain, in two phases (`--phase base` with the cut off, `--phase rows` after it is switched on) (Addendum 34).
