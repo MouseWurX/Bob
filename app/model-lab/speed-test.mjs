@@ -248,6 +248,12 @@ export function placeNeedle(text, at, say) {
   return `${s.slice(0, i)} ${say}${s.slice(i)}`;
 }
 
+// --only a,b: run just those rows again (Nov 18: loads made while something else was open on the card), plan order kept.
+export function pickRows(rows, only) {
+  const want = String(only || '').split(',').map((x) => x.trim()).filter(Boolean);
+  return { rows: rows.filter((r) => want.includes(r.id)), missing: want.filter((w) => !rows.some((r) => r.id === w)) };
+}
+
 // The order of loads: every row once per round, rows in turn (1, 2, 3, 1, 2, 3...).
 export const schedule = (rows, rounds) => Array.from({ length: rounds }, (_, round) => rows.map((row) => ({ round, row }))).flat();
 
@@ -576,12 +582,13 @@ async function main() {
   const opt = (k, d) => { const i = a.indexOf(k); return i >= 0 ? a[i + 1] : d; };
   const planFile = opt('--plan');
   const outDir = opt('--out');
-  if (!planFile || !outDir) { console.log('node model-lab/speed-test.mjs --plan <plan.json> --out <folder> [--var NAME=value ...] [--rounds 5] [--dry]'); process.exit(2); }
+  if (!planFile || !outDir) { console.log('node model-lab/speed-test.mjs --plan <plan.json> --out <folder> [--var NAME=value ...] [--rounds 5] [--only id,id] [--dry]'); process.exit(2); }
   const vars = {};
   a.forEach((x, i) => { if (x === '--var' && a[i + 1]) { const [k, ...v] = a[i + 1].split('='); vars[k] = v.join('='); } });
   const { plan, prompts, problems } = loadPlan(planFile, { vars });
   if (opt('--hwinfo')) plan.hwinfoCsv = opt('--hwinfo'); // HWiNFO's sensor log, for the processor temperature
   if (problems.length) { console.error('The plan has problems:\n- ' + problems.join('\n- ')); process.exit(1); }
+  if (opt('--only')) { const picked = pickRows(plan.rows, opt('--only')); if (picked.missing.length) { console.error(`--only: no row ${picked.missing.join(', ')}`); process.exit(1); } plan.rows = picked.rows; }
   const rounds = Number(opt('--rounds', plan.rounds || 5));
   const order = schedule(plan.rows, rounds);
   fs.mkdirSync(outDir, { recursive: true });

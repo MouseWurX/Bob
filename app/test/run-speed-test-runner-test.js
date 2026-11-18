@@ -256,6 +256,11 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   check('answers are left out unless the plan asks, the fingerprint always kept', off.runs.length > 0 && off.runs.every((r) => r.text === undefined && r.textSha === 'abc'));
   check('with saveText each run keeps what was written', on.runs.length > 0 && on.runs.every((r) => r.text === 'Hello there.')); }
 
+// ---------- Running some rows again (Nov 18) ----------
+{ const { pickRows } = await import('../model-lab/speed-test.mjs');
+  const r = pickRows([{ id: 'a' }, { id: 'b' }, { id: 'c' }], 'c, a,x');
+  check('--only keeps the plan order and names rows that do not exist', r.rows.map((x) => x.id).join() === 'a,c' && r.missing.join() === 'x'); }
+
 // ---------- Needle in a haystack (Nov 18) ----------
 { const { placeNeedle } = await import('../model-lab/speed-test.mjs');
   const put = placeNeedle('One two. Three four. Five six.', 0.5, 'The code is 42.');
