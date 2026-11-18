@@ -952,3 +952,26 @@ Reading is the same at all three, because reading doesn't use the share.
 Writing fell with any share: 32K 100.4 (0), 92.8 (0.25, -8%), 91.3 (0.5, -9%); 128K 68.1, 54.7, 62.6 (noisy). The
 0.25 prediction failed (it lost 8%, not under 3%). The processor stayed about 22% busy at every share. Calibrate keeps
 the share at 0 and does not try others.
+
+## Addendum 47 (Nov 18, before any run): stock llama.cpp against Bob's picks, with load times
+
+The owner wants Bob's picks next to stock llama.cpp at every size, with load times. The table so far has only one
+stock row (short prompt, Nov 16) and one plain-settings row at 256K. Plan `stock-vs-picks.json`, 2 rounds, 20 loads,
+answers saved, run after the Brain Engine 17 rows. Each load is one context size, with the short start prompt and
+one long prompt (32K, 120K or 250K tokens):
+
+- **Stock defaults** (plain llama.cpp b12359): only `--jinja`, `-np 1` and the context size. Everything else is
+  llama.cpp's own: `-b 2048 -ub 512`, an f16 cache, flash attention and `--fit` on auto, a 1 GB margin. This is what a
+  llama.cpp user gets.
+- **Stock at Bob's steps:** plain llama.cpp with the pick's step, cache type and 512 MB margin, and pinning off, but
+  no copy cache. This splits the gain into "Bob's settings" and "Brain Engine".
+- **Bob's pick** (Brain Engine 15, pinning off as Bob now runs): 4x4 q4_0 at 32K, step 5120 q4_0 + 3.5 GB at 128K,
+  6x3.5 q4_0 at 256K, and F4c q8_0 at 32K (the chat pick). All have a 512 MB margin.
+
+The runner now keeps each load's time from start to ready (`loadS` in runs.jsonl).
+
+**Predictions, written before any run:** Bob's pick reaches the first word at least 2.5 times sooner than stock
+defaults at every size. Writing is at least 10% faster at 32K and 128K, and within 10% at 256K (where the small
+default step leaves more experts on the card). Stock at Bob's steps reads within 5% of Bob's pick. Bob's pick writes
+at least 10% faster than it at 32K, from the copy cache. Load times are within 15% of each other at the same size,
+and grow with the context.
