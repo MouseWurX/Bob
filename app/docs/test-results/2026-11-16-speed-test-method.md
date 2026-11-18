@@ -979,3 +979,33 @@ defaults at every size. Writing is at least 10% faster at 32K and 128K, and with
 default step leaves more experts on the card). Stock at Bob's steps reads within 5% of Bob's pick. Bob's pick writes
 at least 10% faster than it at 32K, from the copy cache. Load times are within 15% of each other at the same size,
 and grow with the context.
+
+## Addendum 48 (Nov 18): how settings are scored
+
+The owner asked for one way to score every setting. Code: `model-lab/score-settings.mjs` (tested in
+`test/run-score-settings-test.js`).
+
+**1. Gates.** A setting that fails any gate is out, whatever its speed: a real spill of 150 MB or more (the shared
+rise minus every pinned `CUDA_Host compute` buffer); a needle missed at any depth; answer drift against an f16 cache
+over 0.01 KLD, or the same top word less than 95% of the time; any abort or failed prompt. A gate with no measurement
+is listed as unknown, never as passed. Already out: iq4_nl (timeouts), the copy cache with the context cache in RAM
+(abort), and a 256 MB margin (a real spill starts).
+
+**2. Measures**, each a ratio against stock llama.cpp on the same brain, context and prompt (from Addendum 47), above
+1 = better: R reading, W writing, F first word (stock / ours), L load time (stock / ours), B busy keep (busy speed /
+clean speed), H headroom (free card memory after load / 512 MiB, at most 1).
+
+**3. One score per kind of job**, a weighted geometric mean, so one big number can't hide a weak spot. 1.00 = stock.
+
+| Job | W | F | R | B | H | L |
+|---|---|---|---|---|---|---|
+| Chat | 0.45 | 0.20 | 0.10 | 0.15 | 0.05 | 0.05 |
+| Long documents (128K-256K) | 0.15 | 0.35 | 0.30 | 0.10 | 0.05 | 0.05 |
+| Coding agent | 0.30 | 0.25 | 0.20 | 0.15 | 0.05 | 0.05 |
+
+A missing measure is named, and its weight is spread over the rest. A setting with no busy-desktop run takes B from
+the nearest measured setting at the same size, marked as estimated. The averaged table also shows a simpler **job
+time** (first word + a 300-token answer at the writing speed) and its ratio to a baseline. Until the stock comparison
+has run, the baseline is the closest llama.cpp-default row we have. The scores are unproven in our lab until that
+comparison has run.
+
