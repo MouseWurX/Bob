@@ -1009,3 +1009,19 @@ time** (first word + a 300-token answer at the writing speed) and its ratio to a
 has run, the baseline is the closest llama.cpp-default row we have. The scores are unproven in our lab until that
 comparison has run.
 
+## Addendum 49 (Nov 18, before any run): confirming the step pick
+
+A review of the tables (the owner, Nov 18) points out that the step pick rests on single loads. Step 5120 as the
+balance point and step 8192 as the fastest first word each come from 1 load per size (Addendum 36), and the 128K
+writing gap that favours 5120 (63.2 against 59.6 at step 4096) is inside the 5 to 10% a single load can swing. Plan
+`step-pick-confirm.json`, Brain Engine 15, 3 rounds, 18 loads: 4x3.5, 5x3.5 and 8x3.5, q4_0 cache, 512 MB margin,
+pinning off (as Bob now runs), at 128K and 256K. Every pick cell that rests on 1 load is now marked in the averaged
+table.
+
+**Predictions, written before any run:** first word falls with the step at both sizes (8x3.5 quickest, 4x3.5 slowest)
+by more than the spread between rounds. Writing at 128K: 5x3.5 within 5% of 4x3.5, so the writing gap seen before is
+not real. 8x3.5 at 256K writes at least 30% slower than 5x3.5 (layers pushed off the card).
+
+**What it decides:** the step Calibrate uses for 128K and 256K. If 5x3.5's first-word gain over 4x3.5 is smaller than
+the spread between rounds, Calibrate keeps 4x4.
+
