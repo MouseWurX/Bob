@@ -202,6 +202,108 @@ On the cut 120B, the bigger steps read 2 to 2.5 times as fast as Normal. F4c wri
 - **The balance point is `-ub 5120` at both sizes:** first word 45.5 s with 63.2 writing at 128K, and 128 s with 39.5 at 256K. For writing first, 4096 is best.
 - **Against the predictions written beforehand,** reading gains and the fall in writing came as predicted. The best first word was not at 6144 as predicted: it came at 8192 at 128K and 7168 at 256K.
 
+##### Every setting tried, averaged by context size (16 to 18 November)
+
+This puts every setting tried on stock Qwen3.6 35B side by side, one table per context size. Each number is the average of the test runs counted in its row, and each run is the median of its own timed loads (1 to 5). Rows that rest on 1 run are single loads and may swing 5% to 10%. Different engines (Brain Engines 8 to 15) and days are averaged together, so gaps of 1% to 3% are noise. **Bold** marks the best in each column for that context size. Speeds are tokens a second.
+
+- **Experts in RAM:** how many of 41 layers keep their experts in system RAM. Fewer is better for writing.
+- **Locked RAM:** the pinned attention-mask buffer that Windows shows as "shared GPU memory" (section 4.3.3.5). It is not a spill.
+- **Perplexity change:** against the full-size f16 context cache. The speed settings themselves change nothing (section 4.3.3.4).
+- **Pick:** what we would choose today. Turbo uses a different file of the brain, so it has its own table below.
+
+**Short prompt (Bob's start prompt)**
+
+| Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Test runs averaged | Pick / note |
+|---|---|---|---|---|---|---|---|---|
+| Plain llama.cpp, its own defaults [P0] | - | 1,065 | 82.9 | - | - | 0% (reference build) | 1 | Nov 16, Brain Engine 8 |
+| Normal reading, Bob settings [Y0] | 3.3 | 1,167 | 90.7 | - | - | ~0% (q8 cache) | 4 |  |
+| Faster reading (step 2048) [F0] | 1.3 | 2,657 | 84.0 | - | - | ~0% (q8 cache) | 2 |  |
+| Fastest reading (step 4096) [X0] | **0.9** | 3,638 | 80.1 | - | - | ~0% (q8 cache) | 2 |  |
+| Faster reading + 4 GB copy cache [F4c] | 1.9 | 2,001 | **109.8** | - | - | ~0% (q8 cache) | 4 | **chat pick** |
+| Fastest reading + 4 GB copy cache [4x4 / X4c] | 1.4 | 3,005 | 96.1 | 29 | - | ~0% (q8 cache) | 4 |  |
+| Step 6144 + 3.5 GB copy cache [6x3.5 / S6k3584] | 1.4 | 2,944 | 99.0 | - | - | ~0% (q8 cache) | 3 |  |
+| Step 6144, no copy cache [S6k0] | 1.1 | **3,724** | 81.7 | - | - | not measured | 2 |  |
+| Lending the cache to reading [L1] | 1.3 | 2,998 | 104.2 | - | - | not measured | 2 | shelved (refill cost) |
+| Read layout [R1] | 1.2 | 3,380 | 82.1 | 29 | - | ~0% (q8 cache) | 1 |  |
+
+**32K**
+
+| Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Test runs averaged | Pick / note |
+|---|---|---|---|---|---|---|---|---|
+| Normal reading, Bob settings [Y0] | 26.3 | 1,250 | 79.8 | - | - | ~0% (q8 cache) | 5 |  |
+| Faster reading (step 2048) [F0] | 10.6 | 3,084 | 75.7 | - | - | ~0% (q8 cache) | 2 |  |
+| Fastest reading (step 4096) [X0] | 7.9 | 4,167 | 73.5 | - | - | ~0% (q8 cache) | 2 |  |
+| Step 6144, no copy cache [S6k0] | **7.2** | **4,593** | 74.5 | - | - | not measured | 3 | fastest first word |
+| Faster reading + 4 GB copy cache [F4c] | 14.2 | 2,308 | 98.5 | - | - | ~0% (q8 cache) | 4 | **chat pick** |
+| Fastest reading + 4 GB copy cache, q8 cache [4x4] | 10.2 | 3,222 | 94.0 | 29 | 0.6 | ~0% (q8 cache) | 4 |  |
+| 4x4, q4 cache, margin 1 GB [4x4 q4 fit1024] | 9.5 | 3,473 | 84.9 | 28 | 0.5 | +0.35% (q4 cache) | 1 |  |
+| 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 9.3 | 3,525 | **100.7** | 27 | 0.5 | +0.35% (q4 cache) | 1 | **new candidate (1 load)** |
+| Step 6144 + 3.5 GB copy cache [6x3.5] | 8.6 | 3,842 | 88.1 | - | - | ~0% (q8 cache) | 4 |  |
+| Lending the cache to reading [L1] | 9.0 | 3,688 | 92.6 | - | - | not measured | 3 | shelved |
+| Read layout [R1] | 10.0 | 3,293 | 92.5 | 29 | 0.6 | ~0% (q8 cache) | 1 |  |
+
+**64K**
+
+| Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Test runs averaged | Pick / note |
+|---|---|---|---|---|---|---|---|---|
+| 4x4, q8 cache [4x4] | 20.3 | 3,037 | 74.3 | 30 | 0.8 | ~0% (q8 cache) | 2 |  |
+| 4x4, q4 cache [4x4 q4] | 19.7 | 3,126 | 68.5 | 29 | 0.8 | +0.35% (q4 cache) | 1 |  |
+| 4x4, q5_1 cache [4x4 q5_1] | 19.6 | 3,145 | 66.0 | 29 | 0.8 | +0.12% | 1 |  |
+| 4x4, f8 cache [4x4 f8_e4m3] | 19.8 | 3,116 | 71.1 | 30 | 0.8 | -0.12% | 1 |  |
+| 6x3.5, q8 cache [6x3.5] | 17.3 | 3,560 | 81.7 | 30 | 1.1 | ~0% (q8 cache) | 2 | **best at 64K** |
+| 6x3.5, q4 cache [6x3.5 q4] | 16.6 | 3,725 | 72.9 | 29 | 1.1 | +0.35% (q4 cache) | 1 |  |
+| Step 6144, no copy cache [S6k0] | **15.0** | **4,114** | 67.5 | - | - | not measured | 1 |  |
+| Lending the cache to reading [L1] | 17.6 | 3,503 | **86.7** | - | - | not measured | 1 | shelved |
+| Read layout [R1] | 18.0 | 3,422 | 85.6 | 30 | 0.8 | ~0% (q8 cache) | 1 |  |
+
+**128K**
+
+| Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Test runs averaged | Pick / note |
+|---|---|---|---|---|---|---|---|---|
+| 4x4, q8 cache [4x4] | 50.0 | 2,465 | 62.6 | 33 | 1.3 | ~0% (q8 cache) | 3 |  |
+| 4x4, f16 cache (full size) [4x4 f16] | 52.0 | 2,384 | 54.9 | - | - | 0% (reference) | 1 |  |
+| 4x4, q4 cache, margin 1 GB [4x4 q4] | 48.5 | 2,544 | 58.0 | 31 | 1.3 | +0.35% (q4 cache) | 3 |  |
+| 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 48.1 | 2,563 | **68.6** | 30 | 1.3 | +0.35% (q4 cache) | 1 | **best writing (1 load)** |
+| 4x4, q4 cache, margin 2 GB [4x4 q4 fit2048] | 50.4 | 2,442 | 57.2 | 32-33 | 1.3 | +0.35% (q4 cache) | 2 |  |
+| Step 5120, q4 cache (margin 2 GB) [ub5120 q4] | 45.5 | 2,706 | 63.2 | 33 | 1.6 | +0.35% (q4 cache) | 1 | **balance pick** |
+| 6x3.5, q4 cache [6x3.5 q4] | 41.8 | 2,947 | 61.8 | 32-34 | 1.9 | +0.35% (q4 cache) | 3 |  |
+| 6x3.5, q8 cache [6x3.5] | 42.8 | 2,881 | 60.1 | 33 | 1.9 | ~0% (q8 cache) | 3 |  |
+| Step 7168, q4 cache [ub7168 q4] | 41.6 | 2,961 | 58.3 | 35 | 2.2 | +0.35% (q4 cache) | 1 |  |
+| Step 8192, q4 cache [ub8192 q4] | 40.8 | 3,019 | 54.1 | 36 | 2.5 | +0.35% (q4 cache) | 1 | **fastest first word** |
+| Step 2048, q4 cache [ub2048 q4] | 67.6 | 1,822 | 67.9 | 29 | 0.7 | +0.35% (q4 cache) | 1 |  |
+| 4x4, q5_1 cache [4x4 q5_1] | 48.8 | 2,523 | 46.0 | 32 | 1.3 | +0.12% | 1 |  |
+| 4x4, f8 cache [4x4 f8_e4m3] | 48.6 | 2,534 | 55.8 | 32 | 1.3 | -0.12% | 1 |  |
+| 4x4, K q8 / V q4 cache [4x4 q8/q4] | 49.2 | 2,501 | 49.9 | 32 | 1.3 | 0.0% | 1 |  |
+| Step 6144, no copy cache [S6k0] | **37.9** | **3,248** | 53.1 | - | - | not measured | 1 |  |
+| Lending the cache to reading [L1] | 41.7 | 2,954 | 57.1 | - | - | not measured | 1 | shelved |
+| Read layout [R1] | 44.5 | 2,771 | 55.2 | 33 | 1.3 | ~0% (q8 cache) | 1 |  |
+
+**256K**
+
+| Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Test runs averaged | Pick / note |
+|---|---|---|---|---|---|---|---|---|
+| 4x4, q8 cache [4x4] | 156.1 | 1,630 | 35.4 | 38 | 2.3 | ~0% (q8 cache) | 3 |  |
+| 4x4, q4 cache, margin 1 GB [4x4 q4] | 152.3 | 1,674 | 41.2 | 35 | 2.3 | +0.35% (q4 cache) | 4 |  |
+| 4x4, q4 cache, pinning off [4x4 q4 unpinned] | 154.1 | 1,650 | 45.1 | 35 | 0.08 | +0.35% (q4 cache) | 1 | spill fix (1 load) |
+| 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 150.5 | 1,690 | 41.3 | 34 | 2.3 | +0.35% (q4 cache) | 1 |  |
+| Step 5120, q4 cache (margin 2 GB) [ub5120 q4] | 127.9 | 1,989 | 39.5 | 37 | 2.8 | +0.35% (q4 cache) | 1 | **balance pick** |
+| 6x3.5, q4 cache, margin 1 GB [6x3.5 q4] | 128.1 | 1,986 | 42.5 | 36 | 3.3 | +0.35% (q4 cache) | 1 |  |
+| 6x3.5, q4 cache, margin 512 MB [6x3.5 q4 fit512] | 128.7 | 1,977 | 43.1 | 35 | 3.3 | +0.35% (q4 cache) | 1 | **best all-round (1 load)** |
+| 6x3.5, q4 cache, margin 2 GB [6x3.5 q4 fit2048] | 132.1 | 1,927 | 36.9 | 38 | 3.3 | +0.35% (q4 cache) | 2 |  |
+| 6x3.5, q8 cache [6x3.5] | 134.1 | 1,896 | 40.2 | 39 | 3.3 | ~0% (q8 cache) | 2 |  |
+| Step 7168, q4 cache [ub7168 q4] | 123.5 | 2,060 | 33.6 | 40 | 3.9 | +0.35% (q4 cache) | 1 | **fastest first word** |
+| Step 8192, q4 cache [ub8192 q4] | 137.1 | 1,855 | 20.6 | 30 of 41 layers on card | 4.4 | +0.35% (q4 cache) | 1 | too big |
+| Step 2048, q4 cache [ub2048 q4] | 189.5 | 1,342 | 43.6 | 32 | 1.2 | +0.35% (q4 cache) | 1 |  |
+| Step 1024, q4 cache [ub1024 q4] | 255.7 | 994 | 43.5 | 30 | 0.6 | +0.35% (q4 cache) | 1 |  |
+| Step 512, q4 cache [ub512 q4] | 401.2 | 633 | 44.6 | 30 | 0.35 | +0.35% (q4 cache) | 1 |  |
+| Plain settings (step 512, f16 cache) [L0 plain] | 368.9 | 689 | **47.9** | 28 | 0.35 | 0% (reference) | 1 | best writing, slowest reading |
+| 4x4, q5_1 cache [4x4 q5_1] | 153.0 | 1,662 | 26.6 | 36 | 2.3 | +0.12% | 1 |  |
+| 4x4, f8 cache [4x4 f8_e4m3] | 155.0 | 1,640 | 31.8 | 38 | 2.3 | -0.12% | 1 |  |
+| 4x4, K q8 / V q4 cache [4x4 q8/q4] | 155.1 | 1,639 | 28.0 | 36 | 2.3 | 0.0% | 1 |  |
+| Step 6144, no copy cache [S6k0] | **118.5** | **2,147** | 37.7 | - | - | not measured | 1 |  |
+| Lending the cache to reading [L1] | 131.1 | 1,940 | 42.5 | - | - | not measured | 1 | shelved |
+| Read layout [R1] | 143.2 | 1,777 | 38.5 | 38 | 2.3 | ~0% (q8 cache) | 1 |  |
+
 **Turbo (MTP) with bigger steps (18 November, 9 loads, 1 load per setting, provisional).** Turbo uses a different file of the brain, so it is compared only with itself. A q4_0 context cache, a 3.5 GB copy cache, a 2 GB fit margin and a 128K context. Each cell is first word s / read / write, on the start, 32K and 120K prompts.
 
 | Step (`-b` / `-ub`) | Turbo | Start | 32K | 120K |
