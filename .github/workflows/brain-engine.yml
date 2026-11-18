@@ -24,9 +24,120 @@ permissions:
   contents: read
 
 jobs:
-  windows:
-    # draft pull requests run nothing
+  # Nov 18 (Brain Engine 17, patch 0026): a patch can change ggml itself (ggml-base, the CPU backend, the CUDA backend).
+  # Then the zip must carry our own ggml files too, built from the same patched tree: a mix with the official ones
+  # crashes or quietly runs the stock kernels. This job says which parts the patches touch.
+  detect:
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    outputs:
+      ggml: ${{ steps.d.outputs.ggml }}
+      cuda: ${{ steps.d.outputs.cuda }}
+      cudaver: ${{ steps.d.outputs.cudaver }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: d
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # ggml-rpc is ours already (0004 and later); anything else under ggml/ means our own ggml set.
+          files=$(grep -h '^diff --git a/' app/engine/patches/*.patch | awk '{print $3}' | sed 's#^a/##' | sort -u)
+          ggml=false; cuda=false
+          echo "$files" | grep '^ggml/' | grep -qv '^ggml/src/ggml-rpc/' && ggml=true
+          echo "$files" | grep -q '^ggml/src/ggml-cuda/' && cuda=true
+          tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
+          # The CUDA version of the official Windows CUDA zip for this tag (the newest, as Bob picks), so our
+          # ggml-cuda.dll uses the same CUDA runtime as the cudart and cublas DLLs beside it.
+          cudaver=$(gh release view "$tag" -R ggml-org/llama.cpp --json assets --jq '.assets[].name' | sed -n 's/^llama-.*-bin-win-cuda-\([0-9.]*\)-x64\.zip$/\1/p' | sort -V | tail -1)
+          echo "patches touch ggml: $ggml, CUDA: $cuda; official CUDA zip: $cudaver"
+          { echo "ggml=$ggml"; echo "cuda=$cuda"; echo "cudaver=$cudaver"; } >> "$GITHUB_OUTPUT"
+
+  # Our own ggml-cuda.dll, only when a patch changes the CUDA backend. Built like upstream's windows-cuda job:
+  # MSVC (VS 2022, which every CUDA 12 and 13 knows), the CUDA version of the official zip, upstream's default
+  # architectures (75 and 80 as PTX, 86 and 89 as code, 90 as PTX, 120a as code from CUDA 12.8).
+  cuda:
+    needs: detect
+    if: ${{ needs.detect.outputs.cuda == 'true' }}
+    runs-on: windows-2022
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fetch llama.cpp at the tested tag and apply the patches
+        shell: bash
+        run: |
+          tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
+          git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
+          sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
+          for p in app/engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
+      - name: Install CUDA ${{ needs.detect.outputs.cudaver }} (NVIDIA's redistributable parts, compiler and headers only)
+        shell: pwsh
+        run: |
+          $want = '${{ needs.detect.outputs.cudaver }}'
+          if (-not $want) { throw 'No official CUDA zip found for this tag' }
+          $base = 'https://developer.download.nvidia.com/compute/cuda/redist/'
+          $list = (Invoke-WebRequest $base -UseBasicParsing).Content
+          $ver = [regex]::Matches($list, "redistrib_($([regex]::Escape($want))(\.\d+)*)\.json") | ForEach-Object { $_.Groups[1].Value } | Sort-Object { [version]$_ } | Select-Object -Last 1
+          if (-not $ver) { throw "No NVIDIA redistributable list for CUDA $want" }
+          "CUDA $want -> $ver"
+          $json = Invoke-RestMethod "$base/redistrib_$ver.json"
+          $cuda = "$env:RUNNER_TEMP\cuda"
+          New-Item -ItemType Directory -Force $cuda | Out-Null
+          $names = @($json.PSObject.Properties | Where-Object { $_.Value -is [psobject] } | ForEach-Object { $_.Name })
+          "parts in ${ver}: $($names -join ', ')"
+          # CCCL (CUB, Thrust) moved name over CUDA versions (cuda_cccl, then others): take whatever part carries it.
+          $want = @('cuda_nvcc','cuda_crt','libnvvm','cuda_cudart','cuda_nvrtc','cuda_nvtx','cuda_profiler_api','libcublas') + @($names | Where-Object { $_ -match 'cccl' })
+          foreach ($n in $want) {
+            $part = $json.$n
+            if (-not $part) { "skip $n (not in $ver)"; continue }
+            $rel = $part.'windows-x86_64'.relative_path
+            if (-not $rel) { "skip $n (no Windows part)"; continue }
+            "get $n $($part.version)"
+            Invoke-WebRequest "$base/$rel" -OutFile part.zip
+            Expand-Archive part.zip -DestinationPath parts -Force
+            Remove-Item part.zip
+          }
+          Get-ChildItem parts -Directory | ForEach-Object { Copy-Item "$($_.FullName)\*" $cuda -Recurse -Force }
+          if (-not (Test-Path "$cuda\bin\nvcc.exe")) { throw 'nvcc did not install' }
+          # CMake's CUDA::cudart lists include\cccl from CUDA 13 on; without a CCCL part the folder must still be there,
+          # and the headers then come from NVIDIA's CCCL on GitHub at the tag that matches.
+          if (-not (Test-Path "$cuda\include\cccl\cub")) {
+            "No CCCL part in the list: getting it from github.com/NVIDIA/cccl"
+            $cv = Select-String -Path "$cuda\include\cuda\std\__cccl\version.h" -Pattern 'define CCCL_(MAJOR|MINOR|PATCH)_VERSION\s+(\d+)' -ErrorAction SilentlyContinue | ForEach-Object { $_.Matches[0].Groups[2].Value }
+            $ctag = if ($cv.Count -eq 3) { "v$($cv -join '.')" } else { 'main' }
+            "CCCL tag: $ctag"
+            git clone --depth 1 --branch $ctag https://github.com/NVIDIA/cccl.git "$env:RUNNER_TEMP\cccl"
+            New-Item -ItemType Directory -Force "$cuda\include\cccl" | Out-Null
+            foreach ($d in 'cub\cub','thrust\thrust','libcudacxx\include\cuda','libcudacxx\include\nv') { Copy-Item "$env:RUNNER_TEMP\cccl\$d" "$cuda\include\cccl\" -Recurse -Force }
+          }
+          Get-ChildItem "$cuda\include\cccl" -ErrorAction SilentlyContinue | Select-Object -First 10 Name
+          "CUDA_PATH=$cuda" | Out-File -Append $env:GITHUB_ENV
+          "CUDAToolkit_ROOT=$cuda" | Out-File -Append $env:GITHUB_ENV
+          "$cuda\bin" | Out-File -Append $env:GITHUB_PATH
+      - name: Install Ninja
+        run: choco install ninja
+      - name: Build ggml-cuda
+        shell: cmd
+        working-directory: llama.cpp
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          nvcc --version
+          cmake -S . -B build -G "Ninja Multi-Config" -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU=OFF -DGGML_CUDA=ON -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DCMAKE_CUDA_COMPILER="%CUDA_PATH%\bin\nvcc.exe"
+          cmake --build build --config Release -j 4 --target ggml-cuda
+      - name: Keep ggml-cuda.dll
+        shell: bash
+        run: |
+          mkdir out
+          cp llama.cpp/build/bin/Release/ggml-cuda.dll out/
+          ls -la out
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ggml-cuda-win-x64
+          path: out/ggml-cuda.dll
+
+  windows:
+    needs: [detect, cuda]
+    # draft pull requests run nothing; waits for the CUDA job, which runs only when a patch changes the CUDA backend
+    if: ${{ always() && needs.detect.result == 'success' && (needs.cuda.result == 'success' || needs.cuda.result == 'skipped') }}
     runs-on: windows-2025-vs2026
     permissions:
       contents: write # only used by the publish step, which runs only when asked for by hand
@@ -53,6 +164,12 @@ jobs:
           call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
           cmake -S . -B build -G "Ninja Multi-Config" -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake -DLLAMA_BUILD_BORINGSSL=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_OPENMP=ON -DGGML_OPENMP_FETCH=ON -DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON
           cmake --build build --config Release --target llama-server llama-bench llama-gguf-split ggml-rpc-server llama-diffusion-cli
+          rem Nov 18: the engine's card check (0026), against ggml only; it loads every backend beside it.
+          if exist ..\app\engine\tests\mask-pos-check.cpp (
+            for /f "delims=" %%i in ('dir /s /b build\ggml.lib') do set "GGMLLIB=%%i"
+            for /f "delims=" %%i in ('dir /s /b build\ggml-base.lib') do set "GGMLBASELIB=%%i"
+            clang-cl /O2 /EHsc /std:c++17 /I ggml\include ..\app\engine\tests\mask-pos-check.cpp "%GGMLLIB%" "%GGMLBASELIB%" /Fe:build\bin\Release\mask-pos-check.exe || exit /b 1
+          )
       - name: Build llama-cvector-generator and llama-export-lora on their own (CPU, static; upstream skips it when the backends load at run time)
         shell: cmd
         working-directory: llama.cpp
@@ -60,7 +177,13 @@ jobs:
           call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
           cmake -S . -B build-cv -G Ninja -D CMAKE_BUILD_TYPE=Release -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
           cmake --build build-cv --target llama-cvector-generator llama-export-lora
-      - name: Pack (llama and server files, and the card-sharing backend; never the card backends)
+      - name: Get our ggml-cuda.dll (only when a patch changes the CUDA backend)
+        if: ${{ needs.detect.outputs.cuda == 'true' }}
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ggml-cuda-win-x64
+          path: ggml-cuda
+      - name: Pack (llama and server files, and the card-sharing backend; our own ggml set only when a patch changes ggml)
         shell: bash
         run: |
           out=brain-engine-$BEV-win-x64
@@ -74,6 +197,14 @@ jobs:
           cp llama.cpp/build-cv/bin/llama-cvector-generator.exe llama.cpp/build-cv/bin/llama-export-lora.exe "$out/"
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
           cp app/engine/README.md "$out/README-Brain-Engine.md"
+          # Nov 18 (0026): a patch changes ggml, so our own ggml.dll, ggml-base.dll and every ggml-cpu variant go in too
+          # (and ggml-cuda.dll from the CUDA job): never a mix with the official ones.
+          if [ "${{ needs.detect.outputs.ggml }}" = "true" ]; then
+            cp llama.cpp/build/bin/Release/ggml.dll llama.cpp/build/bin/Release/ggml-base.dll llama.cpp/build/bin/Release/ggml-cpu-*.dll "$out/"
+            ls llama.cpp/build/bin/Release/ggml-cpu-*.dll | wc -l
+          fi
+          if [ "${{ needs.detect.outputs.cuda }}" = "true" ]; then cp ggml-cuda/ggml-cuda.dll "$out/"; fi
+          if [ -f llama.cpp/build/bin/Release/mask-pos-check.exe ]; then cp llama.cpp/build/bin/Release/mask-pos-check.exe "$out/"; fi
           ls -la "$out"
       # Smart App Control (app/docs/SIGNING.md): off until the owner's Microsoft Artifact Signing account is set up.
       # Then: variable ARTIFACT_SIGNING_ENABLED = true, ARTIFACT_SIGNING_ENDPOINT, ARTIFACT_SIGNING_ACCOUNT,
@@ -108,9 +239,11 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          BE_GGML: ${{ needs.detect.outputs.ggml }}
         run: bash app/engine/publish.sh "$BEV" "$TAG" brain-engine-*-win-x64.zip
 
   linux:
+    needs: detect
     # draft pull requests run nothing
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
@@ -142,6 +275,7 @@ jobs:
           out=brain-engine-$BEV-linux-x64
           mkdir "$out"
           cp llama.cpp/build/bin/llama-server llama.cpp/build/bin/llama-bench llama.cpp/build/bin/llama-gguf-split llama.cpp/build/bin/ggml-rpc-server llama.cpp/build/bin/llama-diffusion-cli llama.cpp/build-cv/bin/llama-cvector-generator llama.cpp/build-cv/bin/llama-export-lora $(ls llama.cpp/build/bin/*.so* | grep -v '/libggml') llama.cpp/build/bin/libggml-rpc.so* "$out/"
+          if [ "${{ needs.detect.outputs.ggml }}" = "true" ]; then cp -P llama.cpp/build/bin/libggml*.so* "$out/"; fi # Nov 18 (0026): our own ggml set
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
           cp app/engine/README.md "$out/README-Brain-Engine.md"
           tar czf "$out.tar.gz" "$out"
@@ -153,4 +287,5 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
+          BE_GGML: ${{ needs.detect.outputs.ggml }}
         run: bash app/engine/publish.sh "$BEV" "$TAG" brain-engine-*-linux-x64.tar.gz
