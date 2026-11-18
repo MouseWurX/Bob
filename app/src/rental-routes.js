@@ -2,7 +2,7 @@
 // page's 🏗 switch and the Hire it card. Settings change only from this replicant matrix; the card can be answered
 // from the phone too (like the Set it up card). Nothing here ever returns a key.
 import { saveSettings } from './config.js';
-import { rentalsOf, cleanRental, cleanCaps, serviceOf, readPrice, findModel, keyEnvFor, money } from './rental.js';
+import { rentalsOf, cleanRental, machineModelProblem, cleanCaps, serviceOf, readPrice, findModel, keyEnvFor, money } from './rental.js';
 
 export async function rentRoute({ req, res, p, isLocal, brain, cfg, body, send }) {
   const rentals = brain.rentals;
@@ -33,6 +33,7 @@ export async function rentRoute({ req, res, p, isLocal, brain, cfg, body, send }
   if (p === '/api/rent/add') {
     const r = cleanRental({ ...b, id: undefined }); // b.cards (1, 2, 4, 8) is cleaned there; Settings only sends more than 1 after its warning card
     if (!r) return send(res, 400, { error: 'That rental isn\'t complete: pick a service, type the model\'s name as the service lists it' + (b.service === 'other' ? ', and give its web address (https://…)' : '') + '.' }), true;
+    { const why = machineModelProblem(r.service, r.model); if (why) return send(res, 400, { error: why }), true; }
     const s = serviceOf(r.service);
     // Pay per answer: read the service's own price for this model, so the card quotes the real one.
     let priceNote = '';
@@ -81,6 +82,7 @@ export async function rentRoute({ req, res, p, isLocal, brain, cfg, body, send }
     if (i < 0) return send(res, 404, { error: 'No such rental.' }), true;
     const r = cleanRental({ ...st.list[i], ...b, id: st.list[i].id, service: st.list[i].service });
     if (!r) return send(res, 400, { error: 'That change isn\'t allowed.' }), true;
+    { const why = machineModelProblem(r.service, r.model); if (why) return send(res, 400, { error: why }), true; }
     st.list[i] = r;
     save(st);
     return view(), true;

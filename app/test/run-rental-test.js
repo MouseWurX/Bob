@@ -5,7 +5,7 @@ import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { SERVICES, CARDS, cardsOf, cardsText, cleanRentals, rentalsOf, currentRental, rentalReady, estimate, estimateText, priceLine, money, scrubKey, serverCommand, modelSpec, chatOpenAI, readPrice, Ledger, Machines, Rentals, envFileVars, rentKeyEnv, RENT_PREFIX, saveEndpoint } from '../src/rental.js';
+import { SERVICES, CARDS, cardsOf, cardsText, cleanRentals, rentalsOf, currentRental, rentalReady, estimate, estimateText, priceLine, money, scrubKey, serverCommand, modelSpec, machineModelProblem, chatOpenAI, readPrice, Ledger, Machines, Rentals, envFileVars, rentKeyEnv, RENT_PREFIX, saveEndpoint } from '../src/rental.js';
 import { mergeSettings } from '../src/config.js';
 import { SLOTS, equipped, rentKitHtml } from '../public/equip.js';
 import { HELP } from '../public/help-content.js';
@@ -243,6 +243,13 @@ check('the missing-field line by Add this rental is red', /noteEl\.classList\.ad
   const src = fs.readFileSync(new URL('../src/rental.js', import.meta.url), 'utf8');
   check('no rental call uses the retired rest.runpod.io address', !/['"`]https:\/\/rest\.runpod\.io/.test(src) && /const RUNPOD = 'https:\/\/api\.runpod\.io\/v2'/.test(src));
 }
+
+// Nov 17: a bare .gguf name on a machine rental (it would start a paid pod that loads nothing).
+check('a bare .gguf name on RunPod is refused, with what to type', /owner\/repo\/gpt-oss-20b-mxfp4\.gguf/.test(machineModelProblem('runpod', 'gpt-oss-20b-mxfp4.gguf')));
+check('owner/repo/file.gguf and hf:owner/repo/file.gguf are fine', !machineModelProblem('runpod', 'ggml-org/gpt-oss-20b-GGUF/gpt-oss-20b-mxfp4.gguf') && !machineModelProblem('runpod', 'hf:ggml-org/gpt-oss-20b-GGUF/gpt-oss-20b-mxfp4.gguf'));
+check('a Hugging Face repo for vLLM is fine', !machineModelProblem('runpod', 'openai/gpt-oss-20b'));
+check('a pay-per-answer service is not checked', !machineModelProblem('openrouter', 'gpt-oss-20b-mxfp4.gguf'));
+{ let threw = ''; try { serverCommand('gpt-oss-20b-mxfp4.gguf', { minutes: 10 }); } catch (e) { threw = e.message; } check('and no machine command is made for it', /can't find/.test(threw)); }
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
