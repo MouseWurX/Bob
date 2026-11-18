@@ -302,7 +302,17 @@ The copy cache and the read layout change nothing: they score identically, to th
 - **q4_0 drifts about 3 times as much as q8_0.** Its top word differs from the base about 4.3% of the time, against 2.3% for q8_0. But its perplexity is only 0.3% worse. An outside report had put 4-bit caches 8% to 12% worse.
 - **q4_0 at long contexts.** It frees card memory for about 3 more layers at 256K, which makes it the long-context choice.
 - **iq4_nl is impractical.** It took 332 to 379 s against 40 to 117 s for the rest.
-- **Not yet tested:** whether a q4_0 cache still finds a fact buried in a long prompt (a "needle" test). That is unproven in our lab, as we have yet to test.
+- **The needle test (18 November, 5 loads, 25 needles).** Can a q4_0 cache still find a fact buried in a long prompt? With 4x4 settings, one made-up pass code was hidden at 10%, 30%, 50%, 70% and 90% depth of each prompt. Speed is the median over the 5 depths.
+
+| Context cache | Context | Found | First word / read / write | Card peak MB |
+|---|---|---|---|---|
+| f16 | 128K | 5 of 5 | 52.0 / 2,384 / 54.9 | 14,842 |
+| q8_0 | 128K | 5 of 5 | 50.1 / 2,462 / 57.4 | 14,792 |
+| q4_0 | 128K | 5 of 5 | 49.5 / 2,496 / 58.4 | 14,908 |
+| q8_0 | 256K | 5 of 5 | 157.0 / 1,620 / 29.3 | 14,944 (one prompt slowed by heat) |
+| q4_0 | 256K | 5 of 5 | 154.2 / 1,662 / 32.1 | 14,912 |
+
+  There were no misses, 25 of 25. A q4_0 cache found every needle at 128K and 256K, as f16 and q8_0 did, and read 2% to 3% faster. We had predicted at least 4 of 5. Writing at 256K swung with the needle's depth, from 23 to 45 tokens a second. Five needles per setting is a small test: it rules out a large loss, not a small one.
 
 #### 4.3.3.5 The 128K and 256K "spill" was the attention mask (18 November)
 
@@ -351,7 +361,7 @@ These are queued on the home PC in this order, and each has its addendum written
 | Smaller fit margins, 512 and 256 MB | 11 | done, results above (section 4.3.3.3) |
 | Turbo (MTP) with bigger steps | 9 | done, provisional (section 4.3.3.2) |
 | Turbo rerun with room for its guessing head | 6 | queued |
-| Needle in a haystack, q8_0 against q4_0 at 128K and 256K | 5 | queued |
+| Needle in a haystack, q8_0 against q4_0 at 128K and 256K | 5 | done, 25 of 25 found (section 4.3.3.4) |
 | Context cache kept in RAM (`-nkvo`) | 6 | queued |
 | GPT-OSS 120B soft cut against the full brain, in perplexity | – | waiting on approval |
 | Real-desktop pass of the final picks (browser tabs, Discord, Bob open) | – | planned |
