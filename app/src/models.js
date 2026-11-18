@@ -227,6 +227,13 @@ export class ModelShop {
     return [...new Set([this.dir, ...(this.cfg.modelSearchRoots || [])])].filter((r) => fs.existsSync(r));
   }
 
+  // Nov 18 2026: a scan older than ten minutes is run again in the background, so a brain copied into a model
+  // folder while Bob is open shows up on the next look without pressing Look again. Never waits for it.
+  freshen(maxAgeMs = 10 * 60e3) {
+    const at = Date.parse(this.found?.at || '') || 0;
+    if (!this.scanning && Date.now() - at > maxAgeMs) this.scan().catch(() => {});
+  }
+
   // Walk the model folders (Ollama, ComfyUI, Maestro, Pinokio) and remember every big model file.
   scan() {
     if (this.scanning) return this.scanning;
@@ -327,6 +334,7 @@ export class ModelShop {
   }
 
   async list() {
+    this.freshen();
     const ollama = await this.ollamaNames();
     const models = [];
     for (const m of this.catalog.models) models.push({ ...m, files: (m.files || []).map((f) => ({ name: saveNameOf(f), role: f.role })), rentAs: rentAsOf(m), status: await this.statusOf(m, ollama) });

@@ -375,7 +375,8 @@ startSchedules(brain); // ticks once a minute; nothing is ever due while the Sch
 startCheckins(brain); // 1.5.78: ticks once a minute; does nothing while Check-ins are off
 telegram = startTelegram(brain); // does nothing (no request at all) unless Bob on Telegram is on and a bot token is set
 discord = startDiscord(brain); // does nothing (no connection at all) unless Bob on Discord is on and a bot token is set
-if (!shop.found.at) shop.scan().catch(() => {});
+// Nov 18 2026: look for brains at every start, not only the first (a brain copied in by hand later was never seen).
+shop.scan().catch(() => {});
 
 function workshopView() {
   return { enabled: cfg.workshop?.enabled === true, port: Number(cfg.workshop?.port) || 8188, folder: workshopDir(cfg), count: listWorkflows(cfg).filter((w) => w.ok).length };
