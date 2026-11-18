@@ -336,13 +336,15 @@ What not to turn on, on this machine:
 
 **Bigger than RAM.** GPT-OSS 120B (a 63 GB file) crawled on this machine with every expert on. With a soft cut to 41 of its 128 experts per layer, it loaded in 29 to 39 s and wrote about 30 tokens a second, or 32 with F4c. Whether the cut answers as well as the full brain is unproven in our lab, as we have yet to test.
 
-Three practical notes:
+Five practical notes:
 
-- **RAM is tight.** 32 GB of RAM leaves only 1 to 4 GB free with this brain loaded, so other large programs can slow it.
+- **RAM is tight.** 32 GB of RAM leaves only 1 to 4 GB free with this brain loaded, so other large programs can slow it. With a busy browser open at 256K, free RAM fell to 0.3 GB.
+- **A busy desktop costs about a sixth.** With a browser running 8 tabs and three muted videos, the first word came 16% to 17% later, reading was 12% to 15% slower and writing 10% to 18% slower. The brain stayed in the same place on the card and nothing spilled.
+- **Loading is quick.** Every 35B load took 5 to 7 s at every size and setting, or 13 to 14 s when the file had to come from disk again. A busy desktop adds about 1 s. The 120B soft cut takes about 30 s.
 - **Shared GPU memory isn't overflow.** At long contexts, Windows shows "shared GPU memory" rising by 1 to 3.4 GB. That is the attention mask in pinned RAM, not the card overflowing (section 4.3.3.5). It costs no speed. Setting `GGML_CUDA_NO_PINNED=1` makes it vanish with the same words and every speed within 2%, over 16 loads.
 - **The brain's own size matters more than any setting.** The dense 27B Qwen wrote about 10 words a second on the same card, against 70 to 90 for the 35B mixture-of-experts brain, because the mixture-of-experts brain uses only a few experts for each word (section 2.1.3).
 
-Other cards, laptops, handhelds and other brains are unproven in our lab, as we have yet to test. So is a pass with a normal desktop open (browser tabs, chat apps), which is planned for the final picks.
+Other cards, laptops, handhelds and other brains are unproven in our lab, as we have yet to test.
 
 ## 2.11 Gaps this thesis addresses
 
