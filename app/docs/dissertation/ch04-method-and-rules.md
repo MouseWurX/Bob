@@ -155,6 +155,7 @@ The 17 November one-round cache sweep (steps 4096, 5120 and 6144, with caches fr
 - **q4_0 gave the best long-prompt writing at 256K** with both settings (45.2 and 42.5, against 38.1 and 39.5 for q8_0). It was also the fastest or near-fastest reader at every size.
 - **iq4_nl read Bob's start prompt at about 210 tokens a second.** Every long prompt timed out.
 - **The mixed q8_0/q4_0 cache wrote slowest at long contexts.**
+- **Writing speed doesn't follow cache size alone.** At 256K with 4x4, writing ran q4_0 (45.2) > q8_0 (38.1) > f8_e4m3 (31.8) > q5_1 (26.6). f8_e4m3 is the same size as q8_0 yet wrote about 17% slower, and the 5-bit q5_1 wrote slower than the 4-bit q4_0. So the cost of unpacking each cache type while writing seems to matter as much as the card room it frees, and the room q4_0 frees is only part of why it wins. We have not measured the unpacking cost directly, so this is a reading of the pattern, not a finding. These are single loads.
 
 **Read layout across contexts** (18 November, Brain Engine 15, q8_0, 1 load per setting; long prompt; first word / read / write). 4x4 b8192 is 4x4 with `-b 8192`. 4x4 R1 is the same with the read layout on, which keeps whole layers in the cache while reading.
 
@@ -199,7 +200,7 @@ On the cut 120B, the bigger steps read 2 to 2.5 times as fast as Normal. 2x4 wri
 
 - **Only `-ub` matters.** `-b 8192` with `-ub 4096` behaves like 4096/4096.
 - **A bigger `-ub` reads faster but writes slower,** because the mask's copy on the card pushes expert layers to RAM.
-- **The balance point is `-ub 5120` at both sizes:** first word 45.5 s with 63.2 writing at 128K, and 128 s with 39.5 at 256K. For writing first, 4096 is best.
+- **The balance point looks like `-ub 5120` at both sizes:** first word 45.5 s with 63.2 writing at 128K, and 128 s with 39.5 at 256K. For writing first, 4096 is best. This rests on 1 load per setting. At 128K, 5120's writing edge over 4096 (63.2 against 59.6) is inside the 5% to 10% swing of a single load, so a second round of the 5120 pick is queued before it is relied on. The same holds for the fastest first word at 8192 (128K) and 7168 (256K).
 - **Against the predictions written beforehand,** reading gains and the fall in writing came as predicted. The best first word was not at 6144 as predicted: it came at 8192 at 128K and 7168 at 256K.
 
 ##### Every setting tried, averaged by context size (16 to 18 November)
@@ -486,7 +487,7 @@ The margin was kept, but the rise did not change, and bigger margins only pushed
 
 The copy cache and the read layout change nothing: they score identically, to the last digit, with the same step and no cache. The step changes the last digits a little, because a different batch shape adds the numbers in a different order. Nearly all the drift from the base is the q8_0 cache itself.
 
-**Context cache types** (1 perplexity run per setting, 4x4, 16K context, 1 chunk; base PPL 4.839 with an f16 cache):
+**Context cache types** (1 perplexity run per setting, 4x4, 16K context, 1 chunk; base PPL 4.839 with an f16 cache). This table uses a different context, text length and base from the one above, so its KLD and same-top values can't be compared with that table's:
 
 | Cache | PPL | KLD mean | KLD 99% | Same top % |
 |---|---|---|---|---|
@@ -500,7 +501,7 @@ The copy cache and the read layout change nothing: they score identically, to th
 | iq4_nl | 4.842 | 0.00859 | 0.0636 | 96.23 |
 | q4_0 | 4.856 | 0.00904 | 0.0656 | 95.69 |
 
-- **q4_0 drifts about 3 times as much as q8_0.** Its top word differs from the base about 4.3% of the time, against 2.3% for q8_0. But its perplexity is only 0.3% worse. An outside report had put 4-bit caches 8% to 12% worse.
+- **q4_0 drifts two to three times as much as q8_0.** Its mean KLD is 2.8 times q8_0's (0.00904 against 0.00328), its 99th-percentile KLD 2.2 times, and its top word differs from the base 1.8 times as often (4.3% of the time, against 2.3%). But its perplexity is only 0.3% worse. An outside report had put 4-bit caches 8% to 12% worse.
 - **q4_0 at long contexts.** It frees card memory for about 3 more layers at 256K, which makes it the long-context choice.
 - **iq4_nl is impractical.** It took 332 to 379 s against 40 to 117 s for the rest.
 - **The needle test (18 November, 5 loads, 25 needles).** Can a q4_0 cache still find a fact buried in a long prompt? With 4x4 settings, one made-up pass code was hidden at 10%, 30%, 50%, 70% and 90% depth of each prompt. Speed is the median over the 5 depths.
@@ -561,7 +562,7 @@ At 128K and 256K, Windows' "shared GPU memory" rose by 1.3 to 3.4 GB during a lo
 - **Both predictions held.** The words were identical on every row in both rounds. Every speed stayed within 2%. The rise was gone at every size.
 - **What changed in Bob.** On a branch not yet released, Bob starts its engine with pinning off on NVIDIA cards by default, as a reliability fix, with a setting to turn it back on.
 
-**A second fix that didn't work: the mask made on the card (Brain Engine 16, 18 November, 20 loads, 2 rounds, median of 2).** Patch 0025 builds the attention mask on the card from the token positions, instead of copying it from pinned RAM. We predicted the pinned buffer would shrink to under 300 MiB. A 4 GB copy cache and a q4_0 context cache; cells are first word s / read / write.
+**A second fix that didn't work: the mask made on the card (Brain Engine 16, 18 November, 20 loads, 2 rounds, median of 2).** Patch 0025 builds the attention mask on the card from the token positions, instead of copying it from pinned RAM. We predicted the pinned buffer would shrink to under 300 MiB. A 4 GB copy cache, a q4_0 context cache and the default 1 GB fit margin; cells are first word s / read / write. Because of the 1 GB margin, its 32K row (83.6 writing) matches the other 1 GB-margin 4x4 runs (83.8 to 84.9), not the 512 MB-margin runs (100.4 to 100.7).
 
 | Context, step | Patch off | Patch on | Rise MB, off / on | Pinned buffer MiB (same both ways) |
 |---|---|---|---|---|
