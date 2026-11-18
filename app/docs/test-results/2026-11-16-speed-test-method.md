@@ -882,3 +882,18 @@ it recovers to within 10% of `-ub 4096` writing (it was 20.6 against 42.5 tok/s)
 
 **What it decides:** whether patch 0026 becomes Bob's default on CUDA cards with flash attention, and whether the
 step-per-context table (Addendum 36) moves to bigger steps. It needs the owner's go to run.
+
+## Addendum 45 (Nov 18, before any run): the final picks on a busy desktop
+
+The owner keeps many browser tabs open, so clean-desktop numbers are not real use. The owner (Nov 18): use a synthetic
+load. Plan `real-desktop.json`, Brain Engine 15, 8 loads, run twice: once on a clean desktop, then with a browser
+holding several heavy tabs and one muted playing video, opened before the first load and closed after the last. The
+browser's card and RAM use is logged before each pass. The rows are the picks so far, each at margins 512 and 1024:
+F4c with a q8_0 cache at 32K (chat), `-ub 5120` with a q4_0 cache at 128K and 256K (Addendum 36's balance point), and
+6x3.5 with a q4_0 cache at 256K. The spill check takes off the pinned step buffer.
+
+**Predictions, written before any run:** the browser takes 0.3 to 1 GB of card memory. `--fit` sees it at load and
+moves about one more layer's experts to RAM, so writing drops 2 to 6% and nothing spills at margin 1024. At margin 512
+a real spill shows in at least one 256K row, because the video's memory grows after the load.
+
+**What it decides:** the margin Calibrate sets for a desktop in use: 512 if no busy-desktop row spills there, else 1024.
