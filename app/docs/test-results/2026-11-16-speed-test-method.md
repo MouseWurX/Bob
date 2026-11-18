@@ -651,3 +651,22 @@ cache type in Addendum 33. (The Nov 12 REAP quiz put this keep list at 192 of 20
 
 **What it decides:** whether the soft cut is only a speed tool for trying the 120B at home or good enough to use, and
 whether the keep list should be re-picked from GPT-OSS's own tool-job traces before anyone judges its tool use.
+
+## Addendum 35 (Nov 18, during the Addendum 33 run): a bigger --fit margin at big contexts
+
+Addendum 33's speed run, part way: the spill into shared memory is the same whatever the cache type (4x4: about 0.8 GB at
+64K, 1.3 GB at 128K, 2.3 GB at 256K, with q8_0, f8_e4m3, q5_1, q4_0 and q8_0/q4_0 alike). So a smaller cache does not
+stop the spill under `--fit`. The likely reason: `--fit` spends whatever a smaller cache frees on more of the brain, and
+what overflows is working memory that grows with the context, which `--fit`'s margin does not cover. iq4_nl timed out
+on every load (no fast attention path for it on this card, by the look of it) and is dropped.
+
+Plan `fit-margin-contexts.json`, Brain Engine 15, 1 round, 18 loads: 4x4 and 6x3.5 with q8_0 and q4_0 caches and
+`--fit-target` 2048 and 3072 MiB at 128K and 256K, plus 4096 MiB with q4_0 at 256K. Before it runs, the engine's own
+help is checked for the flag's name; if it differs, the plan is corrected before any load.
+
+**Predictions, written before any run:** a margin of 2048 MiB stops the spill at 128K and a margin of 3072 MiB stops it
+at 256K. With no spill, q4_0 leaves more of the brain on the card than q8_0 at the same margin and writes at least 5%
+faster than q8_0 at 256K. Reading changes by less than 5% between margins.
+
+**What it decides:** the margin Calibrate sets by context size, and whether a q4 cache earns its place once the margin
+stops the spill.
