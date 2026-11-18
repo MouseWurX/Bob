@@ -947,3 +947,8 @@ margin (Addendum 41's sweet spot), share 0, 0.25 and 0.5, at 32K and 128K.
 Reading is the same at all three, because reading doesn't use the share.
 
 **What it decides:** whether Calibrate tries a share above 0. It does only if 0.25 or 0.5 writes at least 3% faster.
+
+**Result (Nov 18, 4:18 to 4:25 PM test-PC time, 6 of 6 loads):** reading was the same at all three, as predicted.
+Writing fell with any share: 32K 100.4 (0), 92.8 (0.25, -8%), 91.3 (0.5, -9%); 128K 68.1, 54.7, 62.6 (noisy). The
+0.25 prediction failed (it lost 8%, not under 3%). The processor stayed about 22% busy at every share. Calibrate keeps
+the share at 0 and does not try others.
