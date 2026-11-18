@@ -309,7 +309,7 @@
     "branch": "",
     "build": 296,
     "bundledLlamaTag": "b12359",
-    "brainEngineVersion": 8,
+    "brainEngineVersion": 17,
     "brainEngine": {
       "tag": "brain-engine-8b12359",
       "win-x64": "sha256:712f87908fb8b3fa01cb5051d992c9e4e02901a1cbd973be76f6150e75f042ac",
