@@ -773,6 +773,15 @@ against 31 with the cache on the card).
 **Rerun before deciding (written before it runs):** plan `kv-in-ram-nocache.json`, 4 loads, no copy cache, step 4096,
 q4_0 cache, the cache on the card vs in RAM, at 128K and 256K. The predictions above stand.
 
+**Rerun result (Nov 18, 4:07 to 4:17 PM test-PC time, 4 of 4 loads, no aborts):** the predictions held, and the
+writing loss was far bigger than 20%. 128K, card against RAM: first word 40.6 against 43.3 s, reading 3,034 against
+2,845, writing 55.7 against 15.1 (-73%). 256K: 133.9 against 138.3 s, 1,899 against 1,839, writing 39.0 against 9.5
+(-76%). Moving the cache freed only 2 to 3 expert layers' room, and the rise did not shrink. `-nkvo` is dropped.
+Also seen: without the copy cache, only 22 to 26 expert layers sit in RAM (31 to 35 with the 4 GB cache), and the
+first word is faster (128K 40.6 s against about 48 s; 256K 133.9 against about 150 s), while writing is lower
+(55.7 against about 58 at 128K; 39.0 against about 45 at 256K). So at long contexts the copy cache trades reading for
+writing.
+
 ## Addendum 40 (Nov 18, before any run): what the 128K and 256K "spill" is
 
 The owner (Nov 18): stop the spill, and find its cause first. Addendum 35 showed that the rise in shared graphics
