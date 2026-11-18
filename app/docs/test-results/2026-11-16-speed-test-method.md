@@ -875,6 +875,12 @@ faster at 128K and 256K (no copy each step), and writing is within 3%.
 **What it decides:** whether patch 0025 becomes Bob's default on CUDA cards, against `GGML_CUDA_NO_PINNED=1`
 (Addendum 42), which removes the rise without an engine change. It needs the owner's go to run.
 
+**Result (Nov 18, 3:17 to 3:54 PM test-PC time, 20 of 20 loads, 2 rounds):** the words held (identical on all 5 pairs,
+both rounds) and every switch-on load logged the made-on-card line. The memory prediction failed: the pinned
+`CUDA_Host compute` buffer and the shared rise were the same size with the switch on and off at every size (for example
+2,176 MiB and 2,256 MB at 256K step 4096), and speed was within 2%. Patch 0025 is harmless but frees nothing as built;
+`GGML_CUDA_NO_PINNED=1` (Addendum 42) stays Bob's fix.
+
 ## Addendum 44 (Nov 18, before any run): no mask table at all (patch 0026, Brain Engine 17)
 
 Patch 0026 (`LLAMA_KQ_MASK_POS=1`, off by default, flash attention only) passes each cache cell's position and chat
