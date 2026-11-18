@@ -20,7 +20,7 @@ The first runs on 15 and 16 Nov said as much about the test bench as about the b
 
 Each kind was fixed, and each now has a check that names it. A replay of all 47 in the fixed world came out clear.
 
-**The rule since then (the owner, 16 Nov):** after every run, read why runs failed or were thrown out. Fix whatever is the bench's fault before the next run, add a check that would catch it again, and write it in the [harness log](../model-lab/harness-log.md).
+**The rule since then (MouseWurX, 16 Nov):** after every run, read why runs failed or were thrown out. Fix whatever is the bench's fault before the next run, add a check that would catch it again, and write it in the [harness log](../model-lab/harness-log.md).
 
 ## 3. Self-tests: every job must be fair
 
@@ -45,7 +45,7 @@ Bob can spend more or less work on a job: **Minimus, Medius, Magnus and Maximus*
 
 Maximus failed most, and the blind read showed why. The real answer was often hidden in the folded steps, while the shown answer said "see above", "already done", or showed review notes. It also wrote tool calls as text that never ran, and sometimes looped. Most of those are fixed or have a check now.
 
-**The goal for Maximus (the owner, 16 Nov):** it shouldn't take more than about 4 times Minimus's time, but it should have the most checks and do the best work. It isn't there yet.
+**The goal for Maximus (MouseWurX, 16 Nov):** it shouldn't take more than about 4 times Minimus's time, but it should have the most checks and do the best work. It isn't there yet.
 
 ## 6. The foolproof loop: checks from real mistakes
 

@@ -53,7 +53,7 @@ The Bobert wording study ran on a rented 48 GB A40 with 8 slots of 8,192 tokens 
 
 ### 4.3.3 Speed settings measured on the home PC (updated 18 November)
 
-Before any setting that changes how the brain is served becomes a default, it is timed on the owner's consumer PC against the default. This section gathers every speed result from 4 to 18 November in one place, oldest first. Section 2.10.1 turns the results into advice for a home machine. Section 3.4.3 covers the cost of the fNRI trace.
+Before any setting that changes how the brain is served becomes a default, it is timed on MouseWurX's consumer PC against the default. This section gathers every speed result from 4 to 18 November in one place, oldest first. Section 2.10.1 turns the results into advice for a home machine. Section 3.4.3 covers the cost of the fNRI trace.
 
 All speeds are tokens a second. "Read" is prompt reading speed and "write" is writing speed. "First word" is the wait before the first word appears, in seconds. Unless a row says otherwise, the brain is stock Qwen3.6 35B A3B at Q4 (unsloth UD-Q4_K_XL) on a 16 GB card with 32 GB of RAM and an 8-core processor.
 
@@ -74,7 +74,7 @@ All speeds are tokens a second. "Read" is prompt reading speed and "write" is wr
   - It never touches the copy of Bob in daily use.
   - It stops at once and frees the card if a game starts.
   - No games, browser or launchers are open, and there are no reboots or compiling.
-  - Every run is started by the owner's double-click.
+  - Every run is started by MouseWurX's double-click.
   - Where this was broken, the row says so. The Claude app was open (about 1 GB of RAM) during the 17 November cache sweep. Bob was open during part of the 2 GB rows. A browser with a paused video tab was open from 11:40 AM to 12:23 PM Mountain on 18 November, during the perplexity grid and the first loads of the step sweep. Perplexity does not depend on speed, and the step-sweep loads from that window were within 3% on reading and 10% on writing of matching loads, so none were rerun.
   - Clean-machine numbers are not everyday use. A pass with a browser full of tabs, Discord and Bob open is planned for the final picks.
 - **How a spill and free card memory are measured.**
@@ -178,7 +178,7 @@ R1 reads long prompts 10% to 14% faster and gives the first word 1 to 14 s soone
 | Step 2048 + 2 GB copy | 814 / 17.8 | 1,056 / 17.3 | 1,115 / 17.7 |
 | F4c | 1,223 / 32.4 | 1,150 / 31.8 | 1,137 / 31.8 |
 
-On the cut 120B, the bigger steps read 2 to 2.5 times as fast as Normal. F4c writes about 6% faster than Normal, and a 2 GB cache writes 40% slower. Whether the soft cut answers as well as the full brain is unproven in our lab, as we have yet to test, because its perplexity run waits on the owner. In a job test it was fast enough but failed its tool calls, for a reason not yet known.
+On the cut 120B, the bigger steps read 2 to 2.5 times as fast as Normal. F4c writes about 6% faster than Normal, and a 2 GB cache writes 40% slower. Whether the soft cut answers as well as the full brain is unproven in our lab, as we have yet to test, because its perplexity run is waiting on approval. In a job test it was fast enough but failed its tool calls, for a reason not yet known.
 
 **The step sweep** (18 November, Brain Engine 15, q4_0 context cache, 3.5 GB copy cache, a 2 GB fit margin, 1 load per setting, 12 loads; long prompt):
 
@@ -307,12 +307,12 @@ These are queued on the home PC in this order, and each has its addendum written
 | Step sweep at 128K and 256K, q4_0 cache, steps 4096 to 8192 ("goldilocks" step) | 12 | done, results above |
 | Spill cost: plain settings, steps 512 to 4096 at 256K, pinning off | 7 | done, results above |
 | Pinning on against off, checked properly | 16 | queued |
-| Brain Engine 16: the attention mask made on the card (patch 0025) | – | waits on the owner |
+| Brain Engine 16: the attention mask made on the card (patch 0025) | – | waiting on approval |
 | Smaller fit margins, 512 and 256 MB | 11 | queued |
 | Turbo (MTP) with bigger steps | 9 | queued |
 | Needle in a haystack, q8_0 against q4_0 at 128K and 256K | 5 | queued |
 | Context cache kept in RAM (`-nkvo`) | 6 | queued |
-| GPT-OSS 120B soft cut against the full brain, in perplexity | – | waits on the owner |
+| GPT-OSS 120B soft cut against the full brain, in perplexity | – | waiting on approval |
 | Real-desktop pass of the final picks (browser tabs, Discord, Bob open) | – | planned |
 
 #### 4.3.3.7 Improvements we could still try
@@ -321,7 +321,7 @@ Each of these is unproven in our lab, as we have yet to test:
 
 - **One shared card budget.** Size the layers, the hot-experts cache and the step's work space together for the chosen context, instead of letting each take its share alone. This includes a smaller step as the context grows.
 - **Context-aware reloads.** Keep a fast 32K to 64K load for chat. Reload with big-context settings when a job would pass about 75% of the context, and switch back afterwards.
-- **Engine patches.** A 3-bit context cache, a paged context cache in RAM, and the attention mask made on the card instead of in pinned RAM (Brain Engine 16, built as a patch, waits on the owner's go).
+- **Engine patches.** A 3-bit context cache, a paged context cache in RAM, and the attention mask made on the card instead of in pinned RAM (Brain Engine 16, built as a patch, waiting on approval).
 - **Expert tiers for brains bigger than RAM,** such as GPT-OSS 120B: a warm tier and a cold tier read from disk.
 - **The same tests on other machines:** the laptop plan (written, not run), other cards and other brains.
 - **Quality on Bob's jobs.** Perplexity shows the speed settings cost almost nothing. A run of Bob's own jobs at the chosen settings would confirm it.
