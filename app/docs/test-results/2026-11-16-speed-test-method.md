@@ -589,3 +589,21 @@ plus the 32K, 60K, 120K and 248K prompts of Addendum 29. Answers are compared on
 within 2% of R0. The 128K and 256K rows spill less than step 6144 did (a smaller reading step), but may still spill.
 
 **What it decides:** whether the read layout is worth a place in Calibrate's tries, and at which context sizes.
+
+## Addendum 32 (Nov 17, before any run): our speed settings on GPT-OSS 120B
+
+The owner asked whether the settings that won on Qwen3.6 35B also work on GPT-OSS 120B (MXFP4, 63.4 GB). The brain is
+bigger than npc's 32 GB of RAM, so part of it is read from disk while writing. Plan `gptoss120b-settings.json`, Brain
+Engine 15, the 2K prompt of Addendum 17, 300 words written, 3 rounds, 6 rows, 18 loads. Disk reads are logged.
+
+- **B0:** the Nov 10 best, `-b 2048 -ub 2048 --n-cpu-moe 28` (17.4 writing, about 30 reading then, on plain llama.cpp).
+- **N0:** Bob's normal settings with `--fit on`.
+- **F0 / X0:** `--fit on` with reading steps 2048 and 4096.
+- **F2c / F4c:** F0 with a 2 GB or 4 GB hot-experts copy cache (`--moe-cache-cpu-share 0`).
+
+**Predictions, written before any run:** B0 writes fastest or within 5% of the fastest. F0 reads at least 1.5x faster than
+N0. X0 spills or loses writing to F0. The copy cache does not help writing here (on Nov 10, caches of 2 to 8 GB wrote about
+3x slower with 36 layers' experts on the processor), because the 120B's picks change too much per word for 4 GB to hold.
+
+**What it decides:** which settings Calibrate tries first for brains bigger than RAM, and whether the copy cache is
+offered for them at all.
