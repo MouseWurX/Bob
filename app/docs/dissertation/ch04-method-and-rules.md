@@ -272,6 +272,8 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | 4x4, f16 cache (full size) [4x4 f16] | 52.0 | 2,384 | 54.9 | - | - | 0% (reference) | 1 |  |
 | 4x4, q4 cache, margin 1 GB [4x4 q4] | 48.4 | 2,547 | 58.0 | 31 | 1.3 | +0.35% (q4 cache) | 5 |  |
 | 4x4, q4 cache, pinning off [4x4 q4 unpinned] | 48.4 | 2,543 | 57.8 | 31 | 0.08 | +0.35% (q4 cache) | 1 | same words as pinned |
+| Step 4096, q4 cache, no copy cache [X0 q4] | 40.6 | 3,034 | 55.7 | 22 | 1.2 | +0.35% (q4 cache) | 1 | faster first word, lower writing |
+| Step 4096, q4 cache, context cache in RAM [X0 q4 nkvo] | 43.3 | 2,845 | 15.1 | 20 | 1.3 | +0.35% (q4 cache) | 1 | dropped |
 | 4x4, q4 cache, mask made on card (BE16) [4x4 q4 BE16 mask] | 48.4 | 2,545 | 57.9 | 31 | 1.2 | +0.35% (q4 cache) | 1 | same words; no memory change |
 | 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 48.1 | 2,563 | 68.6 | 30 | 1.3 | +0.35% (q4 cache) | 1 | **best writing (1 load)** |
 | 4x4, q4 cache, margin 2 GB [4x4 q4 fit2048] | 50.4 | 2,442 | 57.2 | 32-33 | 1.3 | +0.35% (q4 cache) | 2 |  |
@@ -298,6 +300,8 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | 4x4, q8 cache [4x4] | 156.1 | 1,630 | 35.4 | 38 | 2.3 | ~0% (q8 cache) | 3 |  |
 | 4x4, q4 cache, margin 1 GB [4x4 q4] | 151.7 | 1,678 | 42.7 | 35 | 2.3 | +0.35% (q4 cache) | 6 |  |
 | 4x4, q4 cache, pinning off [4x4 q4 unpinned] | 152.6 | 1,666 | 45.3 | 35 | 0.08 | +0.35% (q4 cache) | 2 | spill fix, Bob default on a branch |
+| Step 4096, q4 cache, no copy cache [X0 q4] | 133.9 | 1,899 | 39.0 | 26 | 2.2 | +0.35% (q4 cache) | 1 | faster first word, lower writing |
+| Step 4096, q4 cache, context cache in RAM [X0 q4 nkvo] | 138.3 | 1,839 | 9.5 | 23 | 2.2 | +0.35% (q4 cache) | 1 | dropped |
 | 4x4, q4 cache, mask made on card (BE16) [4x4 q4 BE16 mask] | 150.8 | 1,687 | 45.8 | 35 | 2.2 | +0.35% (q4 cache) | 1 | same words; no memory change |
 | 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 150.5 | 1,690 | 41.3 | 34 | 2.3 | +0.35% (q4 cache) | 1 |  |
 | Step 5120, q4 cache (margin 2 GB) [ub5120 q4] | 127.9 | 1,989 | 39.5 | 37 | 2.8 | +0.35% (q4 cache) | 1 | **balance pick** |
@@ -353,6 +357,18 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 - **At big steps, Turbo doesn't pay on this card.** Its guessing head pushes 5 more layers' experts to RAM (34 against 29), which eats its gain. At 32K it wrote 58 to 65 against 66 to 70 with it off, and read about 15% slower.
 - **One row won:** 3 ahead at 120K with step 8192 wrote 70.6 against 51.6. That is one load and may be noise.
 - **So Turbo stays off by default.** It helped only at a small step with a big copy cache, where reading is slow anyway.
+
+**The context cache kept in RAM (`-nkvo`, 18 November, 4 loads, 1 load per setting).** Step 4096, a q4_0 context cache and no copy cache, on the long prompt. Cells are first word s / read / write.
+
+| Context | Context cache | Speed | Layers' experts in RAM | Cache size MiB |
+|---|---|---|---|---|
+| 128K | on the card | 40.6 / 3,034 / 55.7 | 22 | 765 |
+| 128K | in RAM | 43.3 / 2,845 / 15.1 | 20 | 765 |
+| 256K | on the card | 133.9 / 1,899 / 39.0 | 26 | 1,440 |
+| 256K | in RAM | 138.3 / 1,839 / 9.5 | 23 | 1,440 |
+
+- **Writing collapses with the context cache in RAM:** 73% slower at 128K and 76% slower at 256K. Every new word reads the whole cache over the PCIe link, and it frees only 2 to 3 layers' experts. Dropped.
+- **A side finding on the copy cache.** With no copy cache, only 22 to 26 layers' experts sit in RAM, against 31 to 35 with the 4 GB copy cache. The first word comes sooner (40.6 s against about 48 at 128K, 133.9 against about 150 at 256K), but writing is slower (55.7 against about 58, and 39.0 against about 45). At long contexts the copy cache trades reading speed for writing speed.
 
 #### 4.3.3.3 The fit margin at 128K and 256K (18 November, Brain Engine 15)
 
@@ -520,7 +536,7 @@ These are queued on the home PC in this order, and each has its addendum written
 | Turbo (MTP) with bigger steps | 9 | done (section 4.3.3.2) |
 | Turbo rerun with room for its guessing head | 6 | done: no gain at big steps (section 4.3.3.2) |
 | Needle in a haystack, q8_0 against q4_0 at 128K and 256K | 5 | done, 25 of 25 found (section 4.3.3.4) |
-| Context cache kept in RAM (`-nkvo`) | 6 | queued |
+| Context cache kept in RAM (`-nkvo`) | 4 | done: writing 73% to 76% slower, dropped (section 4.3.3.2) |
 | GPT-OSS 120B soft cut against the full brain, in perplexity | – | waiting on approval |
 | Real-desktop pass of the final picks (browser tabs, Discord, Bob open) | – | planned |
 
@@ -530,7 +546,7 @@ Each of these is unproven in our lab, as we have yet to test:
 
 - **One shared card budget.** Size the layers, the hot-experts cache and the step's work space together for the chosen context, instead of letting each take its share alone. This includes a smaller step as the context grows.
 - **Context-aware reloads.** Keep a fast 32K to 64K load for chat. Reload with big-context settings when a job would pass about 75% of the context, and switch back afterwards.
-- **Engine patches.** A 3-bit context cache, a paged context cache in RAM, and an attention mask that takes no pinned RAM at all. A first try, Brain Engine 16, made the mask on the card but freed nothing (section 4.3.3.5). A deeper change that drops the mask table inside the attention kernels could free about 2 GB of card memory at 256K.
+- **Engine patches.** A 3-bit context cache, a paged context cache in RAM (only if it keeps the newest part on the card, since the whole cache in RAM cut writing by three quarters), and an attention mask that takes no pinned RAM at all. A first try, Brain Engine 16, made the mask on the card but freed nothing (section 4.3.3.5). A deeper change that drops the mask table inside the attention kernels could free about 2 GB of card memory at 256K.
 - **Expert tiers for brains bigger than RAM,** such as GPT-OSS 120B: a warm tier and a cold tier read from disk.
 - **The same tests on other machines:** the laptop plan (written, not run), other cards and other brains.
 - **Quality on Bob's jobs.** Perplexity shows the speed settings cost almost nothing. A run of Bob's own jobs at the chosen settings would confirm it.

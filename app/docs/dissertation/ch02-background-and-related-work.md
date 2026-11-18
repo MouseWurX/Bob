@@ -325,6 +325,7 @@ So step 4096 with 4 GB stays the coding pick.
 What not to turn on, on this machine:
 
 - **Turbo (MTP).** On 16 November it slowed prompt reading by 13% to 16%, and writing ranged from 17% slower to 3% faster with Bob's sampling. On 18 November, at a small step with a big copy cache, it wrote 17% to 26% faster on long prompts but still read 13% to 15% slower. At the bigger steps this guide picks, its guessing head pushed 5 more layers' experts to RAM, so it wrote no faster and read about 15% slower. Leave it off.
+- **The context cache in RAM (`-nkvo`).** It freed only 2 to 3 layers' experts and cut writing by about three quarters at 128K and 256K.
 - **Prefetch.** It read 5.6% to 12.7% slower and used more of the card.
 - **Hot-experts caches under 4 GB, or over 4 GB.** Under 4 GB they often lost to no cache on long prompts, and a 512 MB cache wrote 30% slower than none. Over 4 GB they wrote slower at 32K.
 - **The iq4_nl context cache.** It read about 210 tokens a second, and every long prompt timed out.
