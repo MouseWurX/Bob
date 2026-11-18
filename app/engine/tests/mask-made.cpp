@@ -6,6 +6,9 @@
 // by side, chat 0 forgets its middle (a hole in the cache, like prompt-cache reuse) and reads 9 words again, every
 // chat shifts back 5 positions (context shift), chat 1 is copied into a new chat that writes 8 more words, then
 // every chat writes 6 words. Every odds row is kept; the two settings must match exactly.
+// Brain Engine 0028: on an M-RoPE brain (Qwen 3.5 / 3.6, always 2-D positions) chat 0 then reads a 2x2 "picture"
+// (embeddings that share one position and differ in their (y, x) place) and every chat writes 6 more words. Before the
+// picture the made mask must be used for plain text; after it, the stock table must be used (no new made graph).
 #include "llama.h"
 #include <cstdio>
 #include <cstdlib>
@@ -14,6 +17,7 @@
 #include <vector>
 
 static int g_made = 0, g_graphs = 0;
+static int g_graphs_after_picture = -1; // made graphs counted after the picture (must stay 0)
 static void log_cb(ggml_log_level, const char * text, void *) {
     if (strstr(text, "attention mask made from positions")) g_made++;
     if (strstr(text, "attention mask made in the graph"))   g_graphs++;
@@ -117,6 +121,32 @@ static bool run(llama_model * model, bool build, bool fa, bool kvu, int n_chats,
 
     if (!write(all, 6)) return false;
 
+    // Brain Engine 0028: a picture in an M-RoPE brain, then plain text again
+    const llama_rope_type rt = llama_model_rope_type(model);
+    if (rt == LLAMA_ROPE_TYPE_MROPE || rt == LLAMA_ROPE_TYPE_IMROPE) {
+        const int n_embd = llama_model_n_embd(model);
+        llama_batch e = llama_batch_init(4, n_embd, 1);
+        std::vector<llama_pos> epos(4*4, 0);
+        const llama_pos t = pos[0];
+        for (int k = 0; k < 4; k++) {
+            for (int d = 0; d < n_embd; d++) e.embd[k*n_embd + d] = 0.01f*(float) (((k*31 + d*7) % 23) - 11);
+            epos[k]       = t;            // time: one position for the whole picture
+            epos[4 + k]   = t + k/2;      // y
+            epos[2*4 + k] = t + k%2;      // x
+            epos[3*4 + k] = 0;
+            e.n_seq_id[k] = 1; e.seq_id[k][0] = 0; e.logits[k] = 1;
+        }
+        free(e.pos); e.pos = epos.data();
+        e.n_tokens = 4;
+        if (llama_decode(ctx, e) != 0) { printf("FAIL decode picture\n"); return false; }
+        keep(4); last[0] = argmax(3);
+        e.pos = nullptr; llama_batch_free(e);
+        pos[0] = t + 2; // the next words jump past the picture, as with Qwen's vision encoder
+        const int before = g_graphs;
+        if (!write(all, 6)) return false;
+        g_graphs_after_picture = g_graphs - before;
+    }
+
     llama_batch_free(b);
     llama_free(ctx);
     return true;
@@ -140,6 +170,7 @@ int main(int argc, char ** argv) {
     if (!run(model, true,  fa, kvu, chats, ub, np, m)) return 1;
     if (g_made == made_before) { printf("FAIL the made mask was not switched on\n"); return 1; }
     if (g_graphs == 0) { printf("FAIL no graph made the mask (every batch fell back to the table)\n"); return 1; }
+    if (g_graphs_after_picture > 0) { printf("FAIL %d masks made after a picture (must use the table)\n", g_graphs_after_picture); return 1; }
     size_t diff = 0;
     if (a.size() != m.size()) { printf("FAIL %zu vs %zu odds\n", a.size(), m.size()); return 1; }
     for (size_t i = 0; i < a.size(); i++) if (memcmp(&a[i], &m[i], sizeof(float)) != 0) diff++;
