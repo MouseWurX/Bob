@@ -180,7 +180,9 @@ export function useToolsTool(brain) {
         return `There is no group called ${group || '(none)'}. Groups you can add: ${Object.keys(groups).join(', ') || 'none'}.`;
       }
       ctx.loaded?.add(id);
-      return `Added ${id}: ${groups[id].tools.join(', ')}. Call the one you need now.`;
+      // Nov 18 (a 120B test): the Files Hand moves, copies and zips; it doesn't make new things. Say where those are.
+      const makeNew = id === 'files' && groups.documents && !ctx.loaded?.has('documents') ? ' It doesn\'t make new files or folders: write_file (add the documents group) makes a new text file and any folders on the way to it. A script to run goes through the Run Hand (run).' : '';
+      return `Added ${id}: ${groups[id].tools.join(', ')}. Call the one you need now.${makeNew}`;
     },
     summary: ({ group }) => CHIP[String(group || '').toLowerCase().trim()] || 'Using more of his tools'
   };

@@ -11,6 +11,7 @@ import { refusedFolder, FOLDER_REFUSED } from '../src/folder-offer.js';
 import { setupParts } from '../src/brain-setup-offers.js';
 import { cleanPath, looksLikePath } from '../src/clean-path.js';
 import { cleanHands } from '../src/hands-settings.js';
+import { settleOld, STOPPED_NOTE } from '../src/stale-asks.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (f) => fs.readFileSync(path.join(root, f), 'utf8').replace(/\r\n/g, '\n');
@@ -74,6 +75,22 @@ const routes = read('src/hands-routes.js'), hands = read('public/hands.js');
 check('the Hands route cleans first and says which paths it refused', /xs\.map\(cleanPath\)/.test(routes) && /refused\.push\(f\)/.test(routes) && /\{ \.\.\.handsView\(cfg\), refused \}/.test(routes));
 check('Settings, Hands says why a folder wasn\'t added, and has Browse… for allowed folders', /That folder doesn't exist on this replicant matrix/.test(hands) && /data-hfolderbrowse/.test(hands) && /'hfolderbrowse' in b\.dataset/.test(hands));
 check('every page with path boxes cleans pasted paths', ['public/app.js', 'public/settings-window.js', 'public/lab-window.js'].every((f) => /installPathCleaning\(\);/.test(read(f))));
+
+// ---------- the old ask (the saved chat from that test, in short) ----------
+const chat = [
+  { role: 'user', content: 'Make a folder called bob-120b-test on my Desktop...', id: 'a1' },
+  { role: 'system', content: '[Bob note, not from the user: the user hired the rented brain (gpt-oss-20b-mxfp4.gguf on RunPod (a machine by the minute)) for this. Do what they asked.]', hidden: true },
+  { role: 'user', content: 'testiing oss 120b local on 16gb', id: 'a2' },
+  { role: 'assistant', content: 'Hello.' }
+];
+const settled = settleOld(chat);
+check('the old carry-on note goes before a new message', !chat.some((m) => /hired the rented brain/.test(m.content)));
+check('the ask that was stopped with no answer is marked, the answered one isn\'t', chat[1]?.content === STOPPED_NOTE && chat[1].hidden && chat.filter((m) => m.content === STOPPED_NOTE).length === 1 && settled === 2);
+check('settling again changes nothing', settleOld(chat) === 0);
+const fine = [{ role: 'user', content: 'hi' }, { role: 'assistant', content: '', tool_calls: [{ id: 'x' }] }, { role: 'tool', content: 'ok' }, { role: 'assistant', content: 'Done.' }];
+check('an answered chat is left alone', settleOld(fine) === 0 && fine.length === 4);
+check('the reply loop settles the chat before a new message goes in (not on a re-run)', /else \{ if \(settleOld\(msgs\)\)/.test(runOn));
+check('adding the files group says where new files and folders are made', /It doesn\\'t make new files or folders: write_file/.test(read('src/toolbox.js')));
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

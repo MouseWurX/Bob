@@ -44,6 +44,7 @@ import { callKey, realState, linkKey, NOW_IN_NOTE, staleHandErrors, meanwhileNea
 import { sidePick, apuRoom } from './brain-lanes.js';
 import { handOffPromise, HAND_OFF_LINE, HAND_OFF_LOG } from './hand-off-promise.js';
 import { switchFor } from './setup-offer.js';
+import { settleOld } from './stale-asks.js';
 import { MAX_STEPS, loopSteps, borrowedLine, MAX_CALLS_PER_REPLY, HAND_TOOLS, repeatCheck, repeatNote, trailOf, REPEAT_STOP_LINE, REPEATS_THEN_ANSWER, ANSWER_NOW_NUDGE } from './brain.js';
 
 // Methods of the Brain class, put on it in its main file with the same rules as the methods written inside it.
@@ -76,7 +77,7 @@ export const runOnParts = {
     // Try again and Edit (redo.js): the message is already in the chat, changed in place, so the brain gets a hidden note only.
     const again = (Boolean(job?.switchedTo) || Boolean(job?.rentAgain) || Boolean(job?.redo)) && Boolean(lastUser) && String(lastUser.text ?? lastUser.content ?? '').startsWith(text);
     if (again) msgs.push({ role: 'system', content: job.switchedTo ? switchedNote(job.switchedTo) : job.redo && !job.carryOn ? (job.redo === 'edit' ? EDIT_NOTE : REDO_NOTE) : job.carryOn || '', hidden: true });
-    else { msgs.push(user); if (!job?.guest) emit({ type: 'asked', id: user.id }); } // the window marks your bubble, for Edit (redo.js)
+    else { if (settleOld(msgs)) this.log('honesty', 'an old ask with no answer, or an old carry-on note, was set aside before the new message'); msgs.push(user); if (!job?.guest) emit({ type: 'asked', id: user.id }); } // Nov 18: stale-asks.js // the window marks your bubble, for Edit (redo.js)
     if (job) job.rentAgain = false;
     const turnStart = again ? msgs.map((m) => m.role).lastIndexOf('user') : msgs.length - 1;
     // 1.5.207 PC check: after Switch it on (or any carry-on), the same chat line went in the logbook a second time.

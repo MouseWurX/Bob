@@ -145,7 +145,7 @@ export function realPcPrompt(cfg) {
   return `\n\n${base} Driving apps (open, click, type in them) needs the Apps hand, which is off: ${handOffWhy(cfg, 'apps')} If asked to drive, say that and offer to start as soon as it's on.`;
 }
 // After a doing-tool fails: one other route, then stop (asked for 2026-11-02).
-export const ALT_ROUTE_NUDGE = (who) => ` (If another route could still do this, try ONE other way now: for example, if a file or command tool failed, do it in the app with the Apps hand; if the Apps hand failed, use write_file, the Files Hand or the Run Hand. Then tell ${who} which way worked, or say plainly that neither did.)`;
+export const ALT_ROUTE_NUDGE = (who) => ` (If another route could still do this, try ONE other way now: for example, if a file or command tool failed, do it in the app with the Apps hand; if the Apps hand failed, use write_file (documents group), the Files Hand or the Run Hand, whichever you have; call use_tools for its group first. Then tell ${who} which way worked, or say plainly that neither did.)`;
 export const ALT_ROUTE_DONE = (who) => ` (You already tried another way this turn. Stop here and tell ${who} plainly what failed, in the tools' own words.)`;
 export const DOING_TOOLS = new Set(['write_file', 'edit_file', 'save_spreadsheet']);
 export const isLook = (name) => isVolatile(name); // looks whose answer changes between calls (tool-kinds.js, item 172)
