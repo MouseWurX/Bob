@@ -742,3 +742,31 @@ memory rise does not shrink.
 
 **What it decides:** whether `-nkvo` is offered in Calibrate for this brain (rule: only if it writes faster than the
 same setting with the cache on the card), and whether the paged version is worth building.
+
+## Addendum 40 (Nov 18, before any run): what the 128K and 256K "spill" is
+
+The owner (Nov 18): stop the spill, and find its cause first. Addendum 35 showed that the rise in shared graphics
+memory does not depend on the `--fit` margin or the cache type, and the card kept the free room it was asked for.
+The rises measured so far: about 1.3 GB at 128K with `-ub 4096`, 2.26 GB at 256K with `-ub 4096`, and 3.34 to 3.44 GB
+at 256K with `-ub 6144`.
+
+**The suspect:** the attention mask. For each reading step the engine builds a table of which earlier words each new
+word may look at: one f16 number per word in the context per word in the step. That is context × `-ub` × 2 bytes:
+1,088 MiB at 128K with 4096, 2,048 MiB at 256K with 4096, and 3,072 MiB at 256K with 6144. It is made in pinned
+(page-locked) RAM, which Windows counts as shared graphics memory, and copied to the card for every step. Those sizes
+plus the engine's known staging buffer (about 500 MB) match all three rises within about 0.3 GB. So the "spill" would
+be pinned RAM by design, not the card running out. It would cost reading time (the copy), not writing time.
+
+**The test:** plan `spill-cause.json`, Brain Engine 15, 4x4 copy cache, q4_0 cache, `-b 4096`, 1 round, 5 loads:
+`-ub` 1024 and 2048 at 128K, and 512, 1024 and 2048 at 256K. The spill check counts the whole rise here
+(`spillMinusStep` off). The engine logs' buffer lines (`CUDA_Host compute buffer`, `CUDA0 compute buffer`, KV buffer)
+are read for every load, including the loads already run in Addenda 33, 35 and 36.
+
+**Predictions, written before any run:** the rise is within 0.3 GB of context × `-ub` × 2 bytes plus the staging
+buffer, so it halves each time `-ub` halves. At 256K, `-ub 1024` rises under 1 GB and `-ub 512` under 0.6 GB.
+Writing speed stays the same at every `-ub`. Reading gets slower as `-ub` shrinks.
+
+**What it decides:** if the prediction holds, the fix is a reading step that shrinks as the context grows (Calibrate
+picks the biggest `-ub` whose mask fits a set amount of pinned RAM), and the spill check stops counting the mask as a
+spill. An engine change that builds the mask on the card would remove it altogether; that is scoped separately. If
+the prediction fails, the logs' buffer lines say where to look next.
