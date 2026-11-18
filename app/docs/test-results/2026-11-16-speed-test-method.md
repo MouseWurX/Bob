@@ -906,3 +906,15 @@ moves about one more layer's experts to RAM, so writing drops 2 to 6% and nothin
 a real spill shows in at least one 256K row, because the video's memory grows after the load.
 
 **What it decides:** the margin Calibrate sets for a desktop in use: 512 if no busy-desktop row spills there, else 1024.
+
+## Addendum 46 (Nov 18, before any run): sharing the expert work with the processor
+
+Planned on Nov 17 and not yet run: with the copy cache, a missed expert can be worked on the card (copied) or on
+the processor. `--moe-cache-cpu-share` sets the processor's part. Nov 17 measured only 0 (all copied) and 1 (all
+processor); 0 won. Plan `cpu-share.json`, Brain Engine 15, 1 round, 6 loads: 4x4 with a q4_0 cache and a 512 MB
+margin (Addendum 41's sweet spot), share 0, 0.25 and 0.5, at 32K and 128K.
+
+**Predictions, written before any run:** share 0.25 writes within 3% of 0 at both sizes; 0.5 writes 3 to 8% slower.
+Reading is the same at all three, because reading doesn't use the share.
+
+**What it decides:** whether Calibrate tries a share above 0. It does only if 0.25 or 0.5 writes at least 3% faster.
