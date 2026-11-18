@@ -106,7 +106,7 @@ import { OS, features } from './platform.js';
 import { chatFilesOn, CHAT_FILES_OFF, FORMATS, MAX_IMPORT_BYTES, MAX_CHATS, saveChat, lookAtFile, bringIn, shareChat } from './chat-files.js';
 import { revealFile } from './help-bundle.js';
 import { BackupKeeper, backupView, makeBackup, readBackup, stageRestore, cleanBackup, isInsideDir, PART_IDS } from './backup.js';
-import { rentKeyEnv } from './rental.js';
+import { rentKeyEnv, rentalOfChat } from './rental.js';
 import { notesFile, ensureNotesFile } from './notes.js';
 import { scorecard, forgetLearning } from './tool-learn.js';
 import { clearDocCache } from './my-docs.js';
@@ -675,7 +675,9 @@ const server = http.createServer(async (req, res) => {
       if (!text || !String(text).trim()) return send(res, 400, { error: 'empty' });
       const attach = [].concat(refs).map(String).filter((id) => /^[0-9a-f]{8}$/.test(id) && brain.refs.list().some((r) => r.id === id));
       // redo: after /api/chat/redo, the message is already in the chat (Try again and Edit, redo.js): it isn't added twice.
-      const extra = { ...(rent === true ? { rent: true } : {}), ...(redoOn(cfg) && (again === 'again' || again === 'edit') ? { redo: again } : {}) };
+      // Nov 18: a rented brain's own chat (its chat head) always thinks on that rented brain; the tools still run here.
+      const rentChat = rentalOfChat(cfg, String(sessionId));
+      const extra = { ...(rent === true || rentChat ? { rent: true } : {}), ...(rentChat ? { rentId: rentChat.id } : {}), ...(redoOn(cfg) && (again === 'again' || again === 'edit') ? { redo: again } : {}) };
       return send(res, 200, brain.enqueue(String(sessionId), String(text).slice(0, 20000), extra.redo ? [] : attach, String(effort), extra));
     }
     // Try again and Edit (redo.js): takes back the answer (or changes your message), keeps what was there as an earlier
@@ -1004,7 +1006,9 @@ const server = http.createServer(async (req, res) => {
       const rooms = [];
       if (brain.discord?.settings?.().enabled) rooms.push({ id: 'discord', name: 'Discord', waiting: brain.discord.gate?.waiting?.().length || 0 });
       if (brain.telegram?.settings?.().enabled) rooms.push({ id: 'telegram', name: 'Telegram', chat: 'telegram' });
-      return send(res, 200, await overlayView(cfg, { bobs, seen: (b) => brain.lenders.state.get(b.address), mood: (b) => readCube(brain.lenders, b), agents, rooms,
+      let rents = [];
+      try { rents = brain.rentals?.heads?.() || []; } catch {} // Nov 18 a rented brain's chat head, with its countdown
+      return send(res, 200, await overlayView(cfg, { bobs, seen: (b) => brain.lenders.state.get(b.address), mood: (b) => readCube(brain.lenders, b), agents, rooms, rents,
         lentToMe: (b) => (brain.engine?.spread?.using || []).some((u) => u?.bob?.address === b.address),
         busyHere: ['thinking', 'busy'].includes(brain.state?.state) }));
     }

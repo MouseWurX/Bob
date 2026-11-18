@@ -112,12 +112,23 @@ const clean = (s, n = 40) => String(s || '').replace(/[\u0000-\u001f<>]/g, '').t
 // 'telegram') your own Telegram chat.
 // lentToMe(bob): his card holds part of the brain I'm running; busyHere: that brain is working now. Both are known here,
 // so his icon shows it even when he's an older Bob who can't say "lending" himself.
-export async function overlayView(cfg, { bobs = [], seen = () => null, mood = async () => 'ready', agents = null, rooms = [], lentToMe = () => false, busyHere = false } = {}) {
+// rents (Nov 18): the rented brains' chat heads (Rentals.heads(): each with its countdown and cost so far), shown
+// whether or not Bob-Net icons is on, like the other chat heads.
+export function cleanRentHead(h) {
+  if (!h || !/^[a-z0-9]{6,12}$/.test(String(h.id))) return null;
+  const n = (v) => (v == null || v === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+  const STATES = ['off', 'starting', 'working', 'warm', 'answer'];
+  return { id: String(h.id), name: clean(h.name, 60) || 'Rented brain', chat: `rent-${h.id}`, kind: ['answer', 'serverless', 'machine'].includes(h.kind) ? h.kind : 'machine', service: clean(h.service, 60), state: STATES.includes(h.state) ? h.state : 'off', ready: h.ready === true, startedAt: n(h.startedAt), endsAt: n(h.endsAt), warmUntil: n(h.warmUntil), perHour: n(h.perHour), usd: n(h.usd), atLimitUsd: n(h.atLimitUsd), warmUsd: n(h.warmUsd), monthUsd: n(h.monthUsd), monthCap: n(h.monthCap), jobCap: n(h.jobCap), maxMinutes: n(h.maxMinutes), warmMinutes: n(h.warmMinutes), now: n(h.now), askedAt: n(h.askedAt), stoppedAt: n(h.stoppedAt), stopWhy: clean(h.stopWhy, 160),
+    // Nov 18 the start-up steps: asked for, waiting for a machine, getting the server program, loading the brain, ready, stopped
+    stages: [].concat(h.stages || []).slice(-12).map((x) => ({ step: clean(x?.step, 12), label: clean(x?.label, 60), at: n(x?.at), usd: n(x?.usd), detail: clean(x?.detail, 160), pct: n(x?.pct) })).filter((x) => /^[a-z]+$/.test(x.step)) };
+}
+export async function overlayView(cfg, { bobs = [], seen = () => null, mood = async () => 'ready', agents = null, rooms = [], rents = [], lentToMe = () => false, busyHere = false } = {}) {
   // 1.5.228 chat heads: a chat bot you turned on (Discord, Telegram) shows its own head under Bob's cube, whether or
   // not Bob-Net icons is on. The owner, Nov 14: "they would only appear if you have them activated".
   const heads = [].concat(rooms || []).filter((r) => r && /^[a-z]{2,20}$/.test(String(r.id))).map((r) => ({ id: String(r.id), name: clean(r.name) || 'Group chat', waiting: Math.max(0, Number(r.waiting) || 0), ...(r.chat ? { chat: clean(r.chat, 40) } : {}) }));
   const companies = companyHeads(cfg, agents);
-  if (!overlayOn(cfg)) return { on: false, bobs: [], agents: [], rooms: heads, companies };
+  const rented = [].concat(rents || []).map(cleanRentHead).filter(Boolean).slice(0, 12);
+  if (!overlayOn(cfg)) return { on: false, bobs: [], agents: [], rooms: heads, companies, rents: rented };
   const headed = new Set(companies.map((c) => c.kind)); // an agent whose company has its own head shows there, not twice
   const up = bobs.filter((b) => seen(b)?.up === true); // only while he's on Bob-Net right now
   const moods = await Promise.all(up.map((b) => mood(b).catch(() => 'ready')));
@@ -131,6 +142,7 @@ export async function overlayView(cfg, { bobs = [], seen = () => null, mood = as
     }),
     rooms: heads,
     companies,
+    rents: rented,
     agents: agents?.on ? [].concat(agents.agents || []).filter((a) => !headed.has(a.kind)).map((a) => ({ id: String(a.id), name: clean(a.name), kind: String(a.kind || 'custom'), look: agentLook(a.kind), state: String(a.state || 'idle'), last: clean([].concat(a.log || []).filter((l) => !/^[—!]/.test(l)).at(-1) || '', 160) })) : []
   };
 }

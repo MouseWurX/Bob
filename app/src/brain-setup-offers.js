@@ -121,8 +121,8 @@ export const setupParts = {
     return ` A card under the chat now asks ${who} to add ${folder} to your folders. Tell ${who} in one line that this folder isn't on your list yet and one press adds it${jobId ? ', then you carry on' : ''}. Don't call offer_setup, and don't try another way round.`;
   },
   // 1.5.127 Rented brains: the Hire it card for the rented brain in its slot. One card per turn; nothing is spent until it's pressed.
-  offerRent(ctx, { why = '', tokens = 0 } = {}) {
-    const rental = this.rentals.current();
+  offerRent(ctx, { why = '', tokens = 0, rental: picked = null } = {}) {
+    const rental = picked || this.rentals.current();
     if (!rental) return null;
     if (ctx.rentOffered) return { already: true };
     ctx.rentOffered = true;

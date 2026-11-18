@@ -187,7 +187,7 @@ check('only Bobs on Bob-Net right now', v.bobs.length === 1 && v.bobs[0].name ==
   const rc = read('public/room-chat.js');
   check('the talk box is only on a listed channel\'s page', /cur\?\.listed \? `<div class="room-say">/.test(rc) && /data-roomsay/.test(rc));
   const page = read('public/net-overlay.js');
-  check('a head opens its own chat: Discord its group chat, Telegram your Telegram chat', /if \(s\.it\.chat\) open\(s\.it\.chat\); else openRoom\(s\.it\.id\)/.test(page));
+  check('a head opens its own chat: Discord its group chat, Telegram your Telegram chat', /if \(s\.it\.chat\) \{ remember\(\); open\(s\.it\.chat\); \} else openRoom\(s\.it\.id\)/.test(page));
   check('a new request gives a word bubble, never a sound or pop-up', /ev\.type === 'room'/.test(page) && !/new Audio|Notification\(/.test(page));
 }
 

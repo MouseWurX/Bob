@@ -207,10 +207,10 @@ export const runOnParts = {
     // hire_brain) thinks on the hired brain; the tools still run here. Not yet approved: the Hire it card, and nothing else.
     let rented = null;
     if (job?.rent && !job.side && !job.guest) {
-      const rental = this.rentals.current();
-      if (!rental) emit({ type: 'announce', text: 'No rented brain is in its slot (Settings, Brains), so I\'m doing this one here.' });
+      const rental = this.rentals.forJob?.(job) ?? this.rentals.current(); // Nov 18: a rented brain's own chat uses that rental, whatever is in the slot
+      if (!rental) emit({ type: 'announce', text: job.rentId ? 'That rented brain was removed from Settings, so I\'m doing this one here.' : 'No rented brain is in its slot (Settings, Brains), so I\'m doing this one here.' });
       else if (!this.rentals.approved(rental, job)) {
-        const r = this.offerRent(ctx, { why: 'You asked for the rented brain.' });
+        const r = this.offerRent(ctx, { why: job.rentId ? `This is ${rental.name}'s own chat.` : 'You asked for the rented brain.', rental });
         emit({ type: 'announce', text: r?.blocked ? `I can't hire ${rental.name} yet: ${r.blocked}` : `Press Hire it on the card below and I'll run this on ${rental.name}.` });
         this.log('rent', 'waiting for the Hire it card');
         return;

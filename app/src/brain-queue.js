@@ -125,7 +125,7 @@ export const queueParts = {
     if (quickAnswer) return quickAnswer;
     this.housekeeper?.pause(); // anything the housekeeper was asking the brain gives way at once
     this.endMore(null, 'new job'); // a new message answers "Make another picture?"; the job loads what it needs
-    const job = { id: crypto.randomUUID(), sessionId, text, refs: [].concat(attach || []).slice(0, 4), state: 'waiting', at: Date.now(), kind: extra.kind || Brain.guessKind(text, [].concat(attach || []).length > 0), effort: cleanEffort(effort), ...(extra.guest ? { guest: extra.guest } : {}), ...(extra.rent ? { rent: true } : {}), ...(extra.redo === 'again' || extra.redo === 'edit' ? { redo: extra.redo } : {}), home: jobHome(this.cfg, sessionId, { project: this.memProject?.get?.(sessionId) || '' }) }; // 1.5.127 rent: the 🏗 switch on the chat page; item 236 home
+    const job = { id: crypto.randomUUID(), sessionId, text, refs: [].concat(attach || []).slice(0, 4), state: 'waiting', at: Date.now(), kind: extra.kind || Brain.guessKind(text, [].concat(attach || []).length > 0), effort: cleanEffort(effort), ...(extra.guest ? { guest: extra.guest } : {}), ...(extra.rent ? { rent: true } : {}), ...(extra.rentId ? { rentId: extra.rentId } : {}), ...(extra.redo === 'again' || extra.redo === 'edit' ? { redo: extra.redo } : {}), home: jobHome(this.cfg, sessionId, { project: this.memProject?.get?.(sessionId) || '' }) }; // 1.5.127 rent: the 🏗 switch on the chat page; item 236 home
     // Answer messages mid-job (mid-job.js): a message that comes in while a job runs on the loaded brain is taken at
     // the job's next step boundary. A long step: a one-liner at once, so it never looks ignored.
     const main = mainJob(this);

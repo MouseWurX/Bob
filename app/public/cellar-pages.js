@@ -195,35 +195,56 @@ export function createSettingsParts(now) {
     const pickOpt = (p) => `<option value="${esc(p.key)}">${esc(p.name)}${p.by ? ` (${esc(p.by)})` : ''}${p.answerOnly ? ': pay per answer only' : p.cards > 1 ? `: needs ${p.cards} cards` : ''}</option>`;
     const bigs = picks.filter((p) => p.group === 'big'), tooBig = picks.filter((p) => p.group === 'too-big');
     const pickSel = picks.length ? `<label class="pick"><strong>Pick a brain from Bob's list</strong><select data-rentadd="pick" aria-label="Pick a brain from Bob's list"><option value="">None: I'll type the model's name</option>${bigs.length ? `<optgroup label="Really big brains">${bigs.map(pickOpt).join('')}</optgroup>` : ''}${tooBig.length ? `<optgroup label="Too big for your Bobs">${tooBig.map(pickOpt).join('')}</optgroup>` : ''}</select></label>` : '';
-    // Nov 17: the boxes for the service shown at first match it from the start (the Service change handler in
-    // cellar.js does the same when you pick another), so a RunPod rental doesn't show "Another service"'s boxes.
-    const first = (r.services || []).find((x) => x.enabled) || null;
-    const hideCard = !first || first.kind === 'answer' ? ' hidden' : '', hideCards = !first || first.kind !== 'machine' ? ' hidden' : '', hideOther = first?.id !== 'other' ? ' hidden' : '';
+    // Nov 17 / Nov 18: no service is picked at first, so the boxes that depend on one stay hidden until it is (cellar.js rentStep).
     const svcOpts = (r.services || []).map((s) => `<option value="${esc(s.id)}" ${s.enabled ? '' : 'disabled'}>${esc(s.name)}${s.enabled ? '' : ' (switch it on first)'}</option>`).join('');
+    // The limits, shared by every rented brain (Spending limits, and card 4 of Add a rented brain).
+    // Nov 18 Keep warm: how long a hired machine waits for your next message (0: it stops about 30 s after a job).
+    const capInputs = () => `<label class="pick"><strong>Monthly spending cap</strong> $<input data-rentcap="month" inputmode="decimal" value="${esc(String(caps.month ?? 0))}" aria-label="Month cap in dollars" style="width:6em"> <span class="muted">Spent this month: ${esc(r.spentText || '$0.00')}. Resets on the 1st.</span></label>
+      <label class="pick"><strong>Per-job cap</strong> $<input data-rentcap="job" inputmode="decimal" value="${esc(String(caps.job ?? 0))}" aria-label="Per-job cap in dollars" style="width:6em"></label>
+      <label class="pick"><strong>Max rental time</strong> <input data-rentcap="minutes" inputmode="numeric" value="${esc(String(caps.minutes ?? 0))}" aria-label="Longest run in minutes" style="width:5em"> minutes <span class="muted">The session limit. The machine carries this timer and stops itself when it runs out, even if this replicant matrix is off.</span></label>
+      <label class="pick"><strong>Keep warm</strong> <input data-rentcap="warm" inputmode="numeric" value="${esc(String(caps.warm ?? 0))}" aria-label="Keep warm, minutes after each answer" style="width:5em"> minutes after each answer <span class="muted">So a pause doesn't mean paying the 5 to 10 minute start-up again. 0 stops it about 30 seconds after a job. Never past Max rental time. Up to ${esc(String(r.warmMax || 60))}.</span></label>`;
+    // Nov 18 (the owner): "like the new brain page ... you start with nothing, a + button adds a row, you fill in the
+    // details card by card. knowing what to paste in to get the model would be confusing for a human". Cards: 1 the
+    // service, 2 the brain from my own list (the right Hugging Face file is filled in), 3 the card size, 4 the limits,
+    // 5 a name. Each shows once the one before it is done (cellar.js rentStep). Typing a model's name is under Advanced.
+    function draftHtml() {
+      const on = (r.services || []).filter((x) => x.enabled);
+      const missing = [!caps.month && 'Monthly spending cap', !caps.job && 'Per-job cap'].filter(Boolean);
+      return `<div class="rent-add rent-draft" role="group" aria-label="Add a rented brain">
+        <section class="rent-step" data-rentstep="service"><h5>1. Where to rent it</h5>
+          ${on.length ? `<label class="pick"><select data-rentadd="service" aria-label="Service"><option value="">Pick a service</option>${svcOpts}</select></label>` : '<p class="muted">Switch on a service above first (Let Bob hire from …). It needs its key on this replicant matrix.</p>'}</section>
+        <section class="rent-step" data-rentstep="brain" hidden><h5>2. Which brain</h5>
+          ${picks.length ? pickSel.replace(`<option value="">None: I'll type the model's name</option>`, '<option value="">Pick a brain</option>') : '<p class="muted">My list has no brain too big for your Bobs. Use Advanced below.</p>'}
+          <p class="muted rent-pick-note" aria-live="polite"></p>
+          <details class="more rent-advanced"><summary>Advanced: type the model's name myself</summary>
+            <label class="pick"><strong>Model</strong><input data-rentadd="model" placeholder="as the service lists it, e.g. qwen/qwen3.6-35b-a3b, or owner/repo/file.gguf" aria-label="Model name" style="width:24em"> <button type="button" class="mini" data-rentfind hidden>Find it on this service</button></label>
+            <label class="pick rent-other" hidden><strong>Web address</strong><input data-rentadd="address" placeholder="https://…/v1" aria-label="Web address" style="width:20em"></label>
+            <label class="pick rent-other" hidden><strong>Key variable</strong><input data-rentadd="keyEnv" placeholder="MY_SERVICE_API_KEY" aria-label="Key variable name" style="width:16em"></label></details></section>
+        <section class="rent-step" data-rentstep="card" hidden><h5>3. Card size</h5>
+          <label class="pick rent-card-pick"><select data-rentadd="card" aria-label="Card size">${cardOpts}</select></label>
+          <label class="pick rent-cards-pick" hidden><strong>Cards on the machine</strong><select data-rentadd="cards" aria-label="How many cards on the machine">${(r.cardCounts || [1]).map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n === 1 ? '1 card (the usual)' : `${n} cards at once: ${n} times the hourly price`}</option>`).join('')}</select> <span class="muted">Only for a model too big for one card.</span></label>
+          <div class="confirm rent-multi-warn" hidden></div>
+          <p><button type="button" class="mini" data-rentcardok>That's the size</button></p></section>
+        <section class="rent-step" data-rentstep="limits" hidden><h5>4. Limits</h5>
+          <p class="muted">${missing.length ? `Set ${esc(missing.join(' and '))} before I can hire anything. ` : ''}These are for every rented brain. Every limit starts at 0.</p>
+          ${capInputs()}
+          <p><button type="button" class="mini" data-rentlimitsok>Limits are set</button></p></section>
+        <section class="rent-step" data-rentstep="name" hidden><h5>5. Its name</h5>
+          <label class="pick"><input data-rentadd="name" placeholder="e.g. Qwen 35B on RunPod" aria-label="Rental name" style="width:20em"></label>
+          <p class="row"><button type="button" class="get" data-rentaddgo>Add this rented brain</button><button type="button" class="mini" data-rentcancel>Cancel</button><span class="muted rent-add-note"></span></p></section>
+      </div>`;
+    }
     return `<div class="rent-block"><strong>Rented brains</strong> <span class="tag">off unless you turn one on</span>
-      ${more('A rental is a service plus a model (for example Qwen 3.6 35B on OpenRouter, or a full-size 24Bob on a RunPod card). Put one in the Rented brain job in Settings, Brains, then use the 🏗 Rented brain switch under the chat. You press a card before anything is spent. It shows the cost and what leaves this replicant matrix: that job\'s chat, its attached files, Bob\'s instructions and what he remembers about you. Keys are environment variables Bob only reads (on Mac and Linux also ~/.config/bob/env); he never stores or shows one. Costs are estimates; the service\'s billing page is the real bill.')}
+      ${more('A rental is a service plus a model (for example Qwen 3.6 35B on OpenRouter, or a full-size 24Bob on a RunPod card). Each one you add gets its own chat head under my picture: click it and every message in its chat goes to that rented brain. (The 🏗 Rented brain switch under the chat still works with the one in the Rented brain job in Settings, Brains.) You press a card before anything is spent. It shows the cost and what leaves this replicant matrix: that job\'s chat, its attached files, Bob\'s instructions and what he remembers about you. Keys are environment variables Bob only reads (on Mac and Linux also ~/.config/bob/env); he never stores or shows one. Costs are estimates; the service\'s billing page is the real bill.')}
       <h4 class="ssub">Spending limits</h4>
       <p class="muted">Every limit starts at 0. Nothing can be hired until you set the ones a rental needs.</p>
-      <label class="pick"><strong>Monthly spending cap</strong> $<input data-rentcap="month" inputmode="decimal" value="${esc(String(caps.month ?? 0))}" aria-label="Month cap in dollars" style="width:6em"> <span class="muted">Spent this month: ${esc(r.spentText || '$0.00')}. Resets on the 1st.</span></label>
-      <label class="pick"><strong>Per-job cap</strong> $<input data-rentcap="job" inputmode="decimal" value="${esc(String(caps.job ?? 0))}" aria-label="Per-job cap in dollars" style="width:6em"></label>
-      <label class="pick"><strong>Max rental time</strong> <input data-rentcap="minutes" inputmode="numeric" value="${esc(String(caps.minutes ?? 0))}" aria-label="Longest run in minutes" style="width:5em"> minutes <span class="muted">The machine carries this timer and stops itself when it runs out, even if this replicant matrix is off.</span></label>
+      ${capInputs()}
       <h4 class="ssub">Services</h4>
       ${(r.services || []).map(svc).join('')}
-      <h4 class="ssub">Rentals</h4>
-      ${(r.rentals || []).length ? `<ul class="rent-list">${r.rentals.map(rentalRow).join('')}</ul>` : '<p class="muted">None yet.</p>'}
-      <details class="more rent-add"${rentPickOpen ? ' open' : ''}><summary>Add a rental</summary>
-        ${pickSel}
-        <label class="pick"><strong>Service</strong><select data-rentadd="service" aria-label="Service">${svcOpts}</select></label>
-        <label class="pick"><strong>Model</strong><input data-rentadd="model" placeholder="as the service lists it, e.g. qwen/qwen3.6-35b-a3b, or Owner/Repo/file.gguf" aria-label="Model name" style="width:24em"> <button type="button" class="mini" data-rentfind hidden>Find it on this service</button></label>
-        <p class="muted rent-pick-note" aria-live="polite"></p>
-        <label class="pick rent-card-pick"${hideCard}><strong>Card size</strong><select data-rentadd="card" aria-label="Card size">${cardOpts}</select></label>
-        <label class="pick rent-cards-pick"${hideCards}><strong>Cards on the machine</strong><select data-rentadd="cards" aria-label="How many cards on the machine">${(r.cardCounts || [1]).map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n === 1 ? '1 card (the usual)' : `${n} cards at once: ${n} times the hourly price`}</option>`).join('')}</select> <span class="muted">Only for a model too big for one card. The price and the limits apply to the whole machine.</span></label>
-        <div class="confirm rent-multi-warn" hidden></div>
-        <label class="pick rent-other"${hideOther}><strong>Web address</strong><input data-rentadd="address" placeholder="https://…/v1" aria-label="Web address" style="width:20em"></label>
-        <label class="pick rent-other"${hideOther}><strong>Key variable</strong><input data-rentadd="keyEnv" placeholder="MY_SERVICE_API_KEY" aria-label="Key variable name" style="width:16em"></label>
-        <label class="pick"><strong>Name</strong><input data-rentadd="name" placeholder="optional, e.g. Qwen 35B on OpenRouter" aria-label="Rental name" style="width:20em"></label>
-        <p class="row"><button type="button" class="get" data-rentaddgo>Add this rental</button><span class="muted rent-add-note"></span></p>
-      </details>
+      <h4 class="ssub">Rented brains</h4>
+      <p class="muted">Each one you add gets its own chat head under my picture, with a chat of its own. Remove it here and its head goes too.</p>
+      ${(r.rentals || []).length ? `<ul class="rent-list">${r.rentals.map(rentalRow).join('')}</ul>` : rentPickOpen ? '' : '<p class="muted">None yet.</p>'}
+      ${rentPickOpen ? draftHtml() : `<p><button type="button" class="get" data-rentnew>+ Add a rented brain</button></p>`}
       <h4 class="ssub">Machines running</h4>
       ${running || leftover ? `<ul>${running}${leftover}</ul><p class="row"><button type="button" class="danger" data-rentstop>Stop everything now</button><button type="button" class="mini" data-rentcheck>Check the services again</button></p>` : `<p class="muted">None. <button type="button" class="link" data-rentcheck>Check the services again</button></p>`}
       ${(r.recent || []).length ? `<details class="more"><summary>Recent spending</summary><ul>${r.recent.map((x) => `<li>${esc(new Date(x.at).toLocaleString())}: ${esc(x.name)}, ${esc(x.usd)}${x.minutes ? ` (${x.minutes} min)` : x.tokensIn ? ` (${x.tokensIn} words in, ${x.tokensOut} out)` : ''}${x.guessed ? ', estimated' : ''}</li>`).join('')}</ul></details>` : ''}
