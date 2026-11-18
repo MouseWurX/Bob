@@ -326,10 +326,15 @@ export function serverCommand(model, { minutes, after = '', cards = 1 } = {}) {
   if (spec.kind === 'vllm' && /\.gguf$/i.test(String(model || ''))) throw new Error(machineModelProblem({ kind: 'machine' }, model)); // never start a paid machine that can't load it
   const secs = Math.max(60, Math.round((minutes || 60) * 60));
   const run = spec.kind === 'gguf'
-    ? `/app/llama-server --host 0.0.0.0 --port ${spec.port} -ngl 999 -c 32768 --hf-repo ${spec.repo} --hf-file ${spec.file}`
+    ? `/app/llama-server --host 0.0.0.0 --port ${spec.port} -ngl 999 -c 32768 --jinja --hf-repo ${spec.repo} --hf-file ${spec.file}` // Nov 18: --jinja, or GPT-OSS (and other) tool calls don't come back as calls
     : `python3 -m vllm.entrypoints.openai.api_server --host 0.0.0.0 --port ${spec.port} --model ${spec.repo} --max-model-len 32768 --enable-auto-tool-choice --tool-call-parser hermes${cards > 1 ? ` --tensor-parallel-size ${cards}` : ''}`; // llama.cpp splits layers over every card it sees by itself
   // timeout: the self-destruct. When it fires (or the server dies), the "after" line tells the service to remove the machine.
-  return `timeout ${secs} ${run}; ${after || 'true'}`;
+  // Nov 18 (the first live RunPod try): the server died early, the after line removed the pod at once, and its logs went
+  // with it. Now everything it says is kept in a file; if it stops before the timer (timeout says 124 when the timer
+  // fired), its last 50 lines are printed again and the machine waits 2 minutes, so the service's log page still shows
+  // why, and Bob sees the machine stop (Machines.ready) instead of waiting 20 minutes.
+  const log = '/tmp/bob-server.log';
+  return `(timeout ${secs} ${run}; echo "bob-exit $?") 2>&1 | tee ${log}; if ! grep -q '^bob-exit 124$' ${log}; then echo '--- Bob: the brain server stopped early. Its last lines:'; tail -n 50 ${log}; sleep 120; fi; ${after || 'true'}`;
 }
 
 // 16 Nov 2026: RunPod retired rest.runpod.io/v1 ("deprecated and no longer available"); v2 is the same key at a new address.
@@ -381,7 +386,7 @@ export class Machines {
       // one card type a request in v2: each fitting card is asked for in turn; a refused key, balance or body stops at once
       let j = null, last = null;
       for (const gpu of card.runpod) {
-        try { j = await this.api(`${RUNPOD}/pods`, { key, method: 'POST', body: { name, image: spec.image, gpu: { id: gpu, count: cardsOf(rental) }, disk: 60, ports: [`${spec.port}/http`], entrypoint: ['/bin/sh', '-c'], cmd: [cmd], env: { RUNPOD_API_KEY: key } } }); break; }
+        try { j = await this.api(`${RUNPOD}/pods`, { key, method: 'POST', body: { name, image: spec.image, gpu: { id: gpu, count: cardsOf(rental) }, disk: 60, ports: [`${spec.port}/http`], entrypoint: ['/bin/sh', '-c'], cmd: [cmd] } }); break; } // Nov 18: no env RUNPOD_API_KEY: RunPod gives every pod its own key for runpodctl, so the account key never leaves this computer
         catch (e) { last = e; if (/answered (?:401|402|403|413|422)\b/.test(e.message)) break; }
       }
       if (!j && last) throw last;
@@ -440,6 +445,36 @@ export class Machines {
     return m.url;
   }
 
+  // Nov 18 (the first live RunPod try): the pod vanished within minutes and Bob went on saying "starting" for 20. Returns
+  // why a machine that is starting can't come up (it's gone, or it stopped), or '' while it may still. A look that
+  // fails for another reason (the network, a slow answer) is not taken as gone.
+  async gone(rental, m, key) {
+    if (!m?.id || m.kind !== 'machine') return '';
+    const s = serviceOf(rental.service);
+    const said = (t) => String(t || '').replace(/[\u0000-\u001f<>]/g, ' ').trim().slice(0, 200);
+    try {
+      if (s.id === 'runpod') {
+        const p = await this.api(`${RUNPOD}/pods/${m.id}`, { key, timeout: 10000 });
+        if (!p || (Array.isArray(p) && !p.length)) return `RunPod has no machine ${m.id} any more: it was removed before the brain came up. RunPod's log page for it may say why.`;
+        const st = String(p.desiredStatus || p.status || '').toUpperCase();
+        if (['EXITED', 'TERMINATED', 'DEAD', 'FAILED'].includes(st)) return `The RunPod machine stopped before the brain came up (${st.toLowerCase()}${p.lastStatusChange ? `: ${said(p.lastStatusChange)}` : ''}).`;
+      } else if (s.id === 'vast') {
+        const j = await this.api(`${VAST}/instances/${m.id}/`, { key, timeout: 10000 });
+        const inst = j?.instances === null ? null : j?.instances || j;
+        if (!inst || (typeof inst === 'object' && !Object.keys(inst).length)) return `Vast.ai has no machine ${m.id} any more: it was removed before the brain came up.`;
+        const st = String(inst.actual_status || '').toLowerCase();
+        if (['exited', 'stopped', 'offline'].includes(st) && String(inst.intended_status || '').toLowerCase() !== 'running') return `The Vast.ai machine stopped before the brain came up (${st}${inst.status_msg ? `: ${said(inst.status_msg)}` : ''}).`;
+      } else if (s.id === 'lambda-machine') {
+        const j = await this.api(`${LAMBDA}/instances/${m.id}`, { key, timeout: 10000 });
+        const st = String(j?.data?.status || '').toLowerCase();
+        if (['terminated', 'terminating'].includes(st)) return `The Lambda machine stopped before the brain came up (${st}).`;
+      }
+    } catch (e) {
+      if (/answered 404\b/.test(e.message)) return `${s.name} has no machine ${m.id} any more: it was removed before the brain came up. ${s.id === 'runpod' ? 'RunPod\'s log page for it may say why.' : ''}`.trim();
+    }
+    return '';
+  }
+
   // Waits until the model answers (the weights have to download onto the machine first: minutes).
   async ready(rental, m, key, { signal, maxMs = 20 * 60000, everyMs = 10000, onNote = () => {} } = {}) {
     const t0 = this.now();
@@ -453,6 +488,9 @@ export class Machines {
           if (res.ok) return url;
         } catch {}
       }
+      // Nov 18: the machine is looked at on every round; gone or stopped, it fails at once with the service's reason.
+      const why = await this.gone(rental, m, key);
+      if (why) throw new Error(why);
       const mins = Math.round((this.now() - t0) / 60000);
       if (mins >= told + 2) { told = mins; onNote(`Still starting the rented machine (${mins} min so far; the model has to download onto it).`); }
       await new Promise((r) => setTimeout(r, everyMs));
@@ -651,7 +689,7 @@ export class Rentals {
     const mins = Math.round((this.now() - run.startedAt) / 60000);
     let stopped = true;
     if (run.id) {
-      try { await this.machines.stop(rental, run, key); } catch (e) { stopped = false; this.log('rent', `couldn't stop ${s.name} ${run.id}: ${scrubKey(e.message, [key])}`); }
+      try { await this.machines.stop(rental, run, key); } catch (e) { if (/answered 404\b/.test(e.message)) this.log('rent', `${s.name} ${run.id} was already gone (stopped by its own timer or removed)`); else { stopped = false; this.log('rent', `couldn't stop ${s.name} ${run.id}: ${scrubKey(e.message, [key])}`); } } // Nov 18: "not found" means it's already stopped, never a COULD NOT STOP alarm
     }
     const usd = run.kind === 'machine' ? this.machineCost(run) : 0;
     if (usd) this.ledger.add({ rental: rental.id, name: rental.name, service: s.id, model: rental.model, minutes: mins, usd: Math.round(usd * 10000) / 10000, machine: run.id });
@@ -682,7 +720,7 @@ export class Rentals {
   }
   async stopLeftover(m) {
     const key = this.env()[serviceOf(m.service)?.keyEnv || ''];
-    try { await this.machines.stop({ service: m.service }, m, key); this.leftover = this.leftover.filter((x) => x.id !== m.id); this.log('rent', `stopped leftover ${m.service} ${m.id} (your click)`); return true; }
+    try { await this.machines.stop({ service: m.service }, m, key).catch((e) => { if (!/answered 404\b/.test(e.message)) throw e; }); this.leftover = this.leftover.filter((x) => x.id !== m.id); this.log('rent', `stopped leftover ${m.service} ${m.id} (your click)`); return true; }
     catch (e) { this.log('rent', `couldn't stop leftover ${m.id}: ${scrubKey(e.message, [key])}`); return false; }
   }
   // For Settings and Now running: never a key.
