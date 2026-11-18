@@ -282,6 +282,22 @@ At 128K and 256K, Windows' "shared GPU memory" rose by 1.3 to 3.4 GB during a lo
 - **The card's compute buffer** grows with the same mask, from 1.3 GB at 32K to 3.3 GB at 256K. At 32K, 4x4 with a q8_0 cache puts 29 of 41 layers' experts in RAM, and at 256K it puts 38.
 - **The brain's file header** explains why the context cache is small for its size. There are 2 key/value heads, and only 10 of the 40 layers keep a growing cache. That comes to about 10.9 KB per token with q8_0.
 
+**What the spill costs, and the fix (18 November, 7 loads, 1 load per setting).** A q4_0 context cache with the 4 GB copy cache, except the first row, which uses plain llama.cpp settings (step 2048/512, f16 cache, no copy cache).
+
+| Load | First word s | Read | Write | Rise MB | Pinned buffer MB |
+|---|---|---|---|---|---|
+| Plain settings, 256K | 368.9 | 689 | 47.9 | 348 | 272 |
+| 128K, `-ub 2048` | 67.6 | 1,822 | 67.9 | 688 | 608 |
+| 256K, `-ub 512` | 401.2 | 633 | 44.6 | 353 | 272 |
+| 256K, `-ub 1024` | 255.7 | 994 | 43.5 | 623 | 544 |
+| 256K, `-ub 2048` | 189.5 | 1,342 | 43.6 | 1,168 | 1,088 |
+| 256K, `-ub 4096` | 152.7 | 1,666 | 43.7 | 2,257 | 2,176 |
+| 256K, `-ub 4096`, pinning off (`GGML_CUDA_NO_PINNED=1`) | 154.1 | 1,650 | 45.1 | 76 | 2,176 in ordinary RAM |
+
+- **Plain llama.cpp makes the same buffer.** It is small only because its default step is small.
+- **A smaller step shrinks the rise but costs a lot of reading.** The first word took 153 s at step 4096 and 401 s at step 512. Writing stayed at 43 to 45 tokens a second.
+- **Turning pinning off removes the rise at the same speed:** 76 MB instead of 2,257 MB, with the first word at 154 s against 153 s. That is one load. A 16-load check is queued.
+
 #### 4.3.3.6 Still running or planned (18 November)
 
 These are queued on the home PC in this order, and each has its addendum written before it runs:
@@ -289,7 +305,9 @@ These are queued on the home PC in this order, and each has its addendum written
 | Test | Loads | Status |
 |---|---|---|
 | Step sweep at 128K and 256K, q4_0 cache, steps 4096 to 8192 ("goldilocks" step) | 12 | done, results above |
-| Spill cost: plain settings, steps 512 to 4096 at 256K, pinning off | 7 | queued |
+| Spill cost: plain settings, steps 512 to 4096 at 256K, pinning off | 7 | done, results above |
+| Pinning on against off, checked properly | 16 | queued |
+| Brain Engine 16: the attention mask made on the card (patch 0025) | – | waits on the owner |
 | Smaller fit margins, 512 and 256 MB | 11 | queued |
 | Turbo (MTP) with bigger steps | 9 | queued |
 | Needle in a haystack, q8_0 against q4_0 at 128K and 256K | 5 | queued |
@@ -303,7 +321,7 @@ Each of these is unproven in our lab, as we have yet to test:
 
 - **One shared card budget.** Size the layers, the hot-experts cache and the step's work space together for the chosen context, instead of letting each take its share alone. This includes a smaller step as the context grows.
 - **Context-aware reloads.** Keep a fast 32K to 64K load for chat. Reload with big-context settings when a job would pass about 75% of the context, and switch back afterwards.
-- **Engine patches.** A 3-bit context cache, a paged context cache in RAM, and the attention mask kept on the card instead of in pinned RAM.
+- **Engine patches.** A 3-bit context cache, a paged context cache in RAM, and the attention mask made on the card instead of in pinned RAM (Brain Engine 16, built as a patch, waits on the owner's go).
 - **Expert tiers for brains bigger than RAM,** such as GPT-OSS 120B: a warm tier and a cold tier read from disk.
 - **The same tests on other machines:** the laptop plan (written, not run), other cards and other brains.
 - **Quality on Bob's jobs.** Perplexity shows the speed settings cost almost nothing. A run of Bob's own jobs at the chosen settings would confirm it.
