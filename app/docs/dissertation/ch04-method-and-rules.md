@@ -78,7 +78,7 @@ All speeds are tokens a second. "Read" is prompt reading speed and "write" is wr
 - **The 512 MB margin's writing gain.** It rests on 2 loads, and the busy-desktop pass agrees except for 2x4 at 32K.
 - **The chat pick between 2x4 and 4x4.**
 - **The writing order of cache types at 256K.** These are single loads.
-- **q4_0 is a borderline pass.** A second perplexity run passed it on one split of the text and missed the mean-KLD limit by 1.6% on the other (section 4.3.3.4). MouseWurX ruled on 19 November that it counts as a borderline pass, so it may be used, with q8_0 still the safe choice where memory allows. A smaller q3 context cache is queued to test; it is unproven in our lab, as we have yet to test.
+- **q4_0 is a borderline pass.** A second perplexity run passed it on one split of the text and missed the mean-KLD limit by 1.6% on the other (section 4.3.3.4). MouseWurX ruled on 19 November that it counts as a borderline pass, so it may be used, with q8_0 still the safe choice where memory allows. A 3-bit context cache does not exist in llama.cpp; it would need an engine patch and is not planned unless MouseWurX asks.
 - **Turbo's net effect.** It helped at a small step with a big copy cache and hurt at big steps with a small one, in 1 load each.
 - **The copy-cache choices.** By the scoring rules, agent work drops the copy cache and chat keeps it. Long-form work keeps it only on the tie-break, after a 2.1% tie (section 4.3.3.2). Most long-context loads throttled lightly, and a rerun could flip the long-form choice.
 - **The 120B soft cut's answer quality.** Its perplexity run is paused.
@@ -549,7 +549,7 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 - **Agent work drops the copy cache.** On a 600-token job it lost by 3.8% at 32K (the stock comparison) and 9% at 128K.
 - **Long-form work keeps it, narrowly.** Blended over 128K and 256K on a 2,000-token job, no copy cache took 120.6 s against 123.2 s, 2.1% quicker, which is a tie under the 3% rule. The tie-break goes to the copy cache, which left slightly more RAM free at its lowest point at both sizes (1,940 against 1,918 MB, and 420 against 358 MB). That margin is thin, and a rerun could flip it.
 - **Chat keeps it.** Its real strength is short prompts, where it wrote 18% to 26% faster. That backs 2x4 for chat.
-- **Coding keeps it at 32K to 64K.** Code answers often run past 1,000 tokens, and the copy cache pays past about 840 tokens at 32K: on a 2,000-token answer at 32K, 4x4 finished in 29.9 s against 32.7 s for 4x0 (the stock comparison). The scoring rules have no coding use yet, so this pick rests on that one comparison.
+- **Coding keeps it at 32K to 64K.** Code answers often run past 1,000 tokens, and the copy cache pays past about 840 tokens at 32K: on a 2,000-token answer at 32K, 4x4 finished in 29.9 s against 32.7 s for 4x0 (the stock comparison). This pick is provisional: it rests on that one comparison until the coding run (Addendum 63, section 4.3.3.6) is done.
 - **Most of these loads throttled lightly,** the no-copy-cache rows most (11% to 16% of samples, against 1% to 3%), moving writing by at most 2.2 tokens a second. A rerun is queued, and both sets will be published.
 
 #### 4.3.3.3 The fit margin at 128K and 256K (18 November, Brain Engine 15)
@@ -747,7 +747,8 @@ These are queued on the home PC in this order, and each has its addendum written
 | Whether the copy cache comes off the 128K and 256K picks | 18 | done: off for agent work, kept for chat and, narrowly, long-form (section 4.3.3.2) |
 | Rerun of the throttled long-context rows | – | queued |
 | Whether q4_0 counts as passing the quality gate | – | decided 19 November: a borderline pass |
-| A q3 context cache, in perplexity, needles and speed | – | queued |
+| A 3-bit context cache (needs an engine patch) | – | not planned unless MouseWurX asks |
+| Coding use (Addendum 63: 1,500 written tokens, 32K and 64K): stock, 2x4, 4x4 and 4x0 | 24 | queued; prediction: 4x4 wins by 3% or more |
 | q4_0 perplexity run again, and the needle test for q5_1 and f8_e4m3 | 10 | done: q4_0 on the line, needles all found (section 4.3.3.4) |
 
 #### 4.3.3.7 Improvements we could still try
