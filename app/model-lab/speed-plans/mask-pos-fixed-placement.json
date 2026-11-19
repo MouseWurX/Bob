@@ -1,0 +1,181 @@
+{
+ "name": "No-table mask with a fixed placement: table vs POS on Brain Engine 18 at 32K, step 4096, q4_0, --fit off with the same layers and experts, with and without --cache-reuse, 64 words at temp 0, 2 rounds",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 58)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be18": {
+   "exe": "${BE18_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "k32": "long-text.md"
+ },
+ "promptTokens": {
+  "k32": 32768
+ },
+ "question": {
+  "k32": "\n\nIn two sentences, what is this text about?"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "-np",
+  "1",
+  "--no-webui"
+ ],
+ "maxTokens": 64,
+ "rounds": 2,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "rows": [
+  {
+   "id": "fixed-table-reuse",
+   "engine": "be18",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--cache-reuse",
+    "256"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "fixed-pos-reuse",
+   "engine": "be18",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--cache-reuse",
+    "256"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_KQ_MASK_POS": "1"
+   }
+  },
+  {
+   "id": "fixed-table-noreuse",
+   "engine": "be18",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "fixed-pos-noreuse",
+   "engine": "be18",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_KQ_MASK_POS": "1"
+   }
+  }
+ ],
+ "saveText": true
+}

@@ -915,6 +915,18 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 58 (Nov 19, before any run): is the server's word change from the mask or from placement?
+
+Section 27 found the no-table mask bit-identical to the table with the q4_0 cache in llama-perplexity, yet the Brain
+Engine 18 speed rows (also q4_0) wrote different words from the first token. The likeliest cause is `--fit`: POS changes
+the compute buffer sizes, so `--fit` can place a different number of experts on the card, and that changes the
+arithmetic. Plan `mask-pos-fixed-placement.json` (8 loads): table vs POS at 32K, step 4096, q4_0, `--fit off` with the
+same `-ngl 99 --n-cpu-moe ${NCMOE}` (NCMOE read from the table run's log), 4 GB copy cache, 64 words at temp 0, with and
+without `--cache-reuse 256`.
+
+**Predictions, written before any run:** with the placement fixed, table and POS write the same 64 words on both
+prompts, with and without cache reuse. If so, POS is clean and the drift came from placement.
+
 ## Addendum 57 (Nov 19, before any run): a Q3 file of the 35B against our Q4
 
 The owner's rule: brains under 35B stay at Q4; 35B and up may try lower. Asked to try a Q3 of stock Qwen3.6 35B "with
