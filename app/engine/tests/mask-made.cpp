@@ -63,7 +63,8 @@ static bool run(llama_model * model, bool build, bool fa, bool kvu, int n_chats,
         return (llama_token) best;
     };
     unsigned seed = 7;
-    auto rnd = [&]() { seed = seed * 1103515245u + 12345u; return (llama_token) (100 + (seed >> 8) % (unsigned) (n_vocab - 200)); };
+    auto rnd = [&]() { seed = seed * 1103515245u + 12345u;
+        return (llama_token) (n_vocab > 400 ? 100 + (seed >> 8) % (unsigned) (n_vocab - 200) : 1 + (seed >> 8) % (unsigned) (n_vocab - 2)); };
 
     // prompts, all chats in one batch, every row's odds kept
     b.n_tokens = 0;
