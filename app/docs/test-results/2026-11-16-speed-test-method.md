@@ -1032,7 +1032,9 @@ the spread between rounds, Calibrate keeps 4x4.
 
 Addendum 48's gate leaves two holes. q4_0 passes the drift gate narrowly on one perplexity run of one 16K chunk, and
 q5_1 and f8_e4m3 have no needle data, so their gate reads "not measured". Two plans, both waiting on approval:
-- the perplexity grid again for f16, q8_0 and q4_0 on a longer text (several chunks), with `perplexity-grid.mjs`;
+- `perplexity-cache-rerun.json` (with `perplexity-grid.mjs`): f16 against q8_0 and q4_0 on 4x4 at 4K x 4 chunks and 8K x 2
+  chunks of the same text, 6 chunks in all, instead of one 16K chunk (perplexity is exact, so rerunning the same chunk
+  would only repeat the number);
 - `needle-other-types.json`: the needle check for q5_1 and f8_e4m3 at 128K and 256K, 4 loads.
 
 **Predictions, written before any run:** q4_0's mean KLD stays between 0.007 and 0.011, and its same-top rate stays

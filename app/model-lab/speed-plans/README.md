@@ -52,3 +52,4 @@ starts.
 - `stock-vs-picks.json`: stock llama.cpp (its own defaults, and at Bob's steps and cache types) against Bob's picks at 32K/128K/256K, with load times, 2 rounds, 20 loads (Addendum 47).
 - `step-pick-confirm.json`: steps 4096 to 8192 with 3.5 GB, q4_0, margin 512, at 128K (4) and 256K (5), 3 rounds, 27 loads, so the step pick doesn't rest on one load (Addendum 49).
 - `needle-other-types.json`: the needle check for q5_1 and f8_e4m3 at 128K and 256K, 4 loads, so their quality gate isn't "not measured" (Addendum 50).
+- `perplexity-cache-rerun.json`: for `perplexity-grid.mjs`: f16 vs q8_0 vs q4_0 on 4x4 at 4K x 4 and 8K x 2 chunks, so q4_0's quality gate doesn't rest on one 16K chunk (Addendum 50).
