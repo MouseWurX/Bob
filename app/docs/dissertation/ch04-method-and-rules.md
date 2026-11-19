@@ -549,7 +549,7 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 - **Agent work drops the copy cache.** On a 600-token job it lost by 3.8% at 32K (the stock comparison) and 9% at 128K.
 - **Long-form work keeps it, narrowly.** Blended over 128K and 256K on a 2,000-token job, no copy cache took 120.6 s against 123.2 s, 2.1% quicker, which is a tie under the 3% rule. The tie-break goes to the copy cache, which left slightly more RAM free at its lowest point at both sizes (1,940 against 1,918 MB, and 420 against 358 MB). That margin is thin, and a rerun could flip it.
 - **Chat keeps it.** Its real strength is short prompts, where it wrote 18% to 26% faster. That backs 2x4 for chat.
-- **Coding keeps it at 32K to 64K.** Code answers often run past 1,000 tokens, and the copy cache pays past about 840 tokens at 32K: on a 2,000-token answer at 32K, 4x4 finished in 29.9 s against 32.7 s for 4x0 (the stock comparison). This pick is provisional: it rests on that one comparison until the coding run (Addendum 63, section 4.3.3.6) is done.
+- **Coding ties with or without it.** On the coding use (Addendum 63: 1,500 written tokens, blended 0.5 at 32K and 0.5 at 64K, 24 loads), 4x4 took 26.0 / 36.1 s (31.1 s blended), stock llama.cpp at step 4096 took 25.9 / 36.4 s (31.2 s), 4x0 took 26.9 / 38.2 s (32.6 s) and 2x4 took 29.7 / 43.5 s (36.6 s). 4x4 and stock tie (0.3% apart), so the prediction that 4x4 wins by 3% or more failed. The pick stays 4x4, tied with stock at Bob's step, and is provisional: the stock and 4x0 rows at 64K were throttled in all 3 runs and get a rerun.
 - **Most of these loads throttled lightly,** the no-copy-cache rows most (11% to 16% of samples, against 1% to 3%), moving writing by at most 2.2 tokens a second. A rerun is queued, and both sets will be published.
 
 #### 4.3.3.3 The fit margin at 128K and 256K (18 November, Brain Engine 15)
@@ -748,7 +748,11 @@ These are queued on the home PC in this order, and each has its addendum written
 | Rerun of the throttled long-context rows | – | queued |
 | Whether q4_0 counts as passing the quality gate | – | decided 19 November: a borderline pass |
 | A 3-bit context cache (needs an engine patch) | – | not planned unless MouseWurX asks |
-| Coding use (Addendum 63: 1,500 written tokens, 32K and 64K): stock, 2x4, 4x4 and 4x0 | 24 | queued; prediction: 4x4 wins by 3% or more |
+| Coding use (Addendum 63: 1,500 written tokens, 32K and 64K): stock, 2x4, 4x4 and 4x0 | 24 | done: 4x4 ties stock (0.3%); prediction of a 3% win failed |
+| Coding rerun of the throttled 64K rows (stock and 4x0) | – | queued |
+| Q3 brain against Q4 (Addendum 57) | – | done: perplexity +0.9% to 1.5%, but mean KLD 0.034 to 0.043 and same top word 91.5% fail the drift line; whether to keep testing it is waiting on approval |
+| Processor reads of cache misses (patch 0032) | – | done: same top word 97.8% to 98% against the 99% gate, so it fails and stays out of the picks |
+| KV split (patch 0036) | – | shelved: writing collapses past the split |
 | q4_0 perplexity run again, and the needle test for q5_1 and f8_e4m3 | 10 | done: q4_0 on the line, needles all found (section 4.3.3.4) |
 
 #### 4.3.3.7 Improvements we could still try
