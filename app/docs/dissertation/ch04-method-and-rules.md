@@ -74,7 +74,7 @@ All speeds are tokens a second. "Read" is prompt reading speed and "write" is wr
 
 *Provisional:*
 
-- **Step 5120 as the balance point, and the fastest first word at 8192 (128K) and 7168 (256K).** These are single loads, and a recheck is queued.
+- **The 128K and 256K picks.** A 3-round recheck confirmed step 5120 at 128K and found a three-way tie at 256K, but most loads throttled lightly, and whether these picks keep the copy cache waits on an 18-load run.
 - **The 512 MB margin's writing gain.** It rests on 2 loads, and the busy-desktop pass agrees except for 2x4 at 32K.
 - **The chat pick between 2x4 and 4x4.**
 - **The writing order of cache types at 256K.** These are single loads.
@@ -227,11 +227,31 @@ On the cut 120B, the bigger steps read 2 to 2.5 times as fast as Normal. 2x4 wri
 
 ![Writing speed against the reading step at 128K and 256K](figures/write-speed-vs-reading-step.svg)
 
-*Figure 4.1. Writing speed against the reading step, from the table above. Every point is one load. The firm finding is the cliff at 256K: writing falls steadily with the step and collapses at 8192, where only 30 of 41 layers fit on the card. So don't go past about 6144 at 256K. The 5120 peak at 128K is inside the swing of a single load, and a recheck is queued.*
+*Figure 4.1. Writing speed against the reading step, from the table above. Every point is one load. The firm finding is the cliff at 256K: writing falls steadily with the step and collapses at 8192, where only 30 of 41 layers fit on the card. So don't go past about 6144 at 256K. The 5120 peak at 128K was inside the swing of a single load, but a 3-round recheck (below) confirmed it.*
 
 - **Only `-ub` matters.** `-b 8192` with `-ub 4096` behaves like 4096/4096.
 - **A bigger `-ub` reads faster but writes slower,** because the mask's copy on the card pushes expert layers to RAM.
-- **The balance point looks like `-ub 5120` at both sizes:** first word 45.5 s with 63.2 writing at 128K, and 128 s with 39.5 at 256K. For writing first, 4096 is best. This rests on 1 load per setting. At 128K, 5120's writing edge over 4096 (63.2 against 59.6) is inside the 5% to 10% swing of a single load, so a second round of the 5120 pick is queued before it is relied on. The same holds for the fastest first word at 8192 (128K) and 7168 (256K).
+- **The balance point looks like `-ub 5120` at both sizes:** first word 45.5 s with 63.2 writing at 128K, and 128 s with 39.5 at 256K. For writing first, 4096 is best. This rested on 1 load per setting, so it was rechecked over 3 rounds (below). At 128K step 5120 held. At 256K, 5120, 6144 and 7168 tie.
+**The step recheck (18 November, 27 loads, 3 rounds, medians).** Brain Engine 15, a q4_0 context cache, a 3.5 GB copy cache, a 512 MB margin and pinning off. Job time is the first word plus the answer at the writing speed.
+
+| Size | Setting | First word s | Read | Write | Job s, 600 tokens | 2,000 |
+|---|---|---|---|---|---|---|
+| 128K | 4x3.5 * | 47.0 | 2,619 | 60.4 | 56.9 | 80.1 |
+| 128K | 5x3.5 * | 43.5 | 2,832 | 66.6 | 52.5 | 73.5 |
+| 128K | 6x3.5 * | 40.9 | 3,010 | 56.5 | 51.5 | 76.3 |
+| 128K | 8x3.5 * | 39.7 | 3,102 | 49.5 | 51.8 | 80.1 |
+| 256K | 4x3.5 | 148.4 | 1,713 | 41.7 | 162.8 | 196.4 |
+| 256K | 5x3.5 * | 126.3 | 2,014 | 40.3 | 141.2 | 175.9 |
+| 256K | 6x3.5 * | 127.6 | 1,994 | 42.2 | 141.8 | 175.0 |
+| 256K | 7x3.5 * | 119.3 | 2,131 | 35.4 | 136.3 | 175.8 |
+| 256K | 8x3.5 | 133.1 | 1,911 | 37.2 | 149.2 | 186.9 |
+
+\* The card throttled lightly in more than one load (1% to 8% of samples), moving writing by at most 1.8 tokens a second. A rerun is queued.
+
+- **At 128K, step 5120 holds.** It wrote fastest over 3 rounds (66.6 against 60.4 at 4096, a wider gap than in the single load) and won the 2,000-token job. On a 600-token job, 5120, 6144 and 8192 are within 3%, a tie that the tie-break rule will settle.
+- **At 256K, steps 5120, 6144 and 7168 tie** on a 2,000-token job, within 1%. 6x3.5 stays the pick for now. 7168 reads fastest but writes 16% slower.
+- **The copy cache may come off the long-context picks.** Stock llama.cpp at step 6144 with no copy cache did the 256K 2,000-token job in 169.6 s, 3% sooner than any copy-cache row here (section 4.3.3.2). An 18-load run will decide it.
+
 - **Against the predictions written beforehand,** reading gains and the fall in writing came as predicted. The best first word was not at 6144 as predicted: it came at 8192 at 128K and 7168 at 256K.
 
 ##### Every setting tried, averaged by context size (16 to 18 November)
@@ -356,6 +376,10 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | Stock llama.cpp, its own defaults (f16 cache) [stock] | 134.1 | 918 | 63.6 | - | - | 0% (f16 cache) | 7.1 | 138.8 | 165.5 | 100 | 2 | stock-vs-picks, Nov 18 evening, median of 2 loads |
 | Stock llama.cpp with Bob's settings, no copy cache [stock 5x0 q4 fit512] | **36.8** | **3,350** | 55.8 | - | - | +0.35% (q4 cache) | 7.1 | **42.2** | 72.6 | 329 | 2 | stock-vs-picks, Nov 18 evening, median of 2 loads; card throttled lightly, rerun queued |
 | 5x3.5 q4, margin 512 (same run) [5x3.5 q4 fit512 (stock run)] | 43.7 | 2,822 | 63.9 | - | - | +0.35% (q4 cache) | 7.1 | 48.4 | 75.0 | 287 | 2 | stock-vs-picks, Nov 18 evening, median of 2 loads; card throttled lightly, rerun queued |
+| Step 4096 recheck, q4, margin 512 [4x3.5 q4 fit512 (recheck)] | 47.0 | 2,619 | 60.4 | - | - | +0.35% (q4 cache) | 7.1 | 52.0 | 80.1 | 267 | 3 | step recheck (Addendum 49), median of 3 loads; light throttling, rerun queued |
+| Step 5120 recheck, q4, margin 512 [5x3.5 q4 fit512 (recheck)] | 43.5 | 2,832 | 66.6 | - | - | +0.35% (q4 cache) | 6.1 | 48.0 | 73.5 | 289 | 3 | step recheck (Addendum 49), median of 3 loads; light throttling, rerun queued |
+| Step 6144 recheck, q4, margin 512 [6x3.5 q4 fit512 (recheck)] | 40.9 | 3,010 | 56.5 | - | - | +0.35% (q4 cache) | 6.1 | 46.2 | 76.3 | 300 | 3 | step recheck (Addendum 49), median of 3 loads; light throttling, rerun queued |
+| Step 8192 recheck, q4, margin 512 [8x3.5 q4 fit512 (recheck)] | 39.7 | 3,102 | 49.5 | - | - | +0.35% (q4 cache) | 6.1 | 45.8 | 80.1 | 303 | 3 | step recheck (Addendum 49), median of 3 loads; light throttling, rerun queued |
 
 **256K**
 
@@ -396,6 +420,11 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | Stock llama.cpp, its own defaults (f16 cache) [stock] | 375.7 | 677 | **48.1** | - | - | 0% (f16 cache) | 6.0 | 381.9 | 417.3 | 100 | 2 | stock-vs-picks, Nov 18 evening, median of 2 loads |
 | Stock llama.cpp with Bob's settings, no copy cache [stock 6x0 q4 fit512] | **117.7** | **2,162** | 38.5 | - | - | +0.35% (q4 cache) | 7.1 | **125.5** | 169.6 | 304 | 2 | stock-vs-picks, Nov 18 evening, median of 2 loads; card throttled lightly, rerun queued |
 | 6x3.5 q4, margin 512 (same run) [6x3.5 q4 fit512 (stock run)] | 127.8 | 1,991 | 42.3 | - | - | +0.35% (q4 cache) | 7.1 | 134.9 | 175.1 | 283 | 2 | stock-vs-picks, Nov 18 evening, median of 2 loads; card throttled lightly, rerun queued |
+| Step 4096 recheck, q4, margin 512 [4x3.5 q4 fit512 (recheck)] | 148.4 | 1,713 | 41.7 | - | - | +0.35% (q4 cache) | 7.1 | 155.6 | 196.4 | 245 | 3 | step recheck (Addendum 49), Nov 18 evening, median of 3 loads |
+| Step 5120 recheck, q4, margin 512 [5x3.5 q4 fit512 (recheck)] | 126.3 | 2,014 | 40.3 | - | - | +0.35% (q4 cache) | 6.1 | 133.7 | 175.9 | 286 | 3 | step recheck (Addendum 49), median of 3 loads; light throttling, rerun queued |
+| Step 6144 recheck, q4, margin 512 [6x3.5 q4 fit512 (recheck)] | 127.6 | 1,994 | 42.2 | - | - | +0.35% (q4 cache) | 6.1 | 134.7 | 175.0 | 284 | 3 | step recheck (Addendum 49), median of 3 loads; light throttling, rerun queued |
+| Step 7168 recheck, q4, margin 512 [7x3.5 q4 fit512 (recheck)] | 119.3 | 2,131 | 35.4 | - | - | +0.35% (q4 cache) | 6.1 | 127.8 | 175.8 | 299 | 3 | step recheck (Addendum 49), median of 3 loads; light throttling, rerun queued |
+| Step 8192 recheck, q4, margin 512 [8x3.5 q4 fit512 (recheck)] | 133.1 | 1,911 | 37.2 | - | - | +0.35% (q4 cache) | 6.1 | 141.2 | 186.9 | 270 | 3 | step recheck (Addendum 49), Nov 18 evening, median of 3 loads |
 
 **Turbo (MTP) with bigger steps (18 November, 9 loads, 1 load per setting).** Turbo uses a different file of the brain, so it is compared only with itself. A q4_0 context cache, a 3.5 GB copy cache, a 2 GB fit margin and a 128K context. Each cell is first word s / read / write, on the start, 32K and 120K prompts.
 
@@ -675,7 +704,8 @@ These are queued on the home PC in this order, and each has its addendum written
 | Brain Engine 17 (patch 0028: the mask from positions, working on M-RoPE), plus a busy-desktop pass on it | – | waiting on approval |
 | Stock llama.cpp defaults, stock at our steps and our picks, at 32K, 128K and 256K, with load times | 20 | done (section 4.3.3.2) |
 | Rerun of the 128K and 256K stock-comparison rows, which throttled lightly | – | queued |
-| Second and third rounds of the step picks (4x3.5, 5x3.5 and 8x3.5, q4_0, 512 MB margin, 128K and 256K) | 27 | waiting on approval |
+| Second and third rounds of the step picks at 128K and 256K | 27 | done: 5120 holds at 128K, three-way tie at 256K (section 4.3.3.2) |
+| Whether the copy cache comes off the 128K and 256K picks | 18 | queued |
 | q4_0 perplexity run again (f16, q8_0 and q4_0, 4K × 4 chunks and 8K × 2 chunks), and the needle test for q5_1 and f8_e4m3 | – | waiting on approval |
 
 #### 4.3.3.7 Improvements we could still try

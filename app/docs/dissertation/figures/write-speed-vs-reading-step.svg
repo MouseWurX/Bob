@@ -42,6 +42,6 @@
 <text x='592.0' y='330.8' font-size='12' fill='#52514e' text-anchor='end'>20.6: only 30 of 41 layers on the card</text>
 <rect x='70' y='72' width='12' height='3' fill='#2a78d6'/><text x='88' y='78' font-size='12' fill='#52514e'>128K</text>
 <rect x='140' y='72' width='12' height='3' fill='#eb6834'/><text x='158' y='78' font-size='12' fill='#52514e'>256K</text>
-<text x='24' y='470' font-size='12' fill='#52514e'>Every point is one load, and single loads swing 5% to 10%, so the 5120 peak at 128K is not firm. A recheck is queued.</text>
+<text x='24' y='470' font-size='12' fill='#52514e'>Every point is one load (single loads swing 5% to 10%). A 3-round recheck later confirmed the 5120 peak at 128K.</text>
 <text x='24' y='488' font-size='12' fill='#52514e'>The firm finding is the cliff: at 256K, writing falls steadily with the step and collapses at 8192.</text>
 </svg>
