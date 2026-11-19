@@ -790,7 +790,8 @@ export function createCellar({ popOut = null } = {}) {
   let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-brains-view') === 'list' ? 'list' : 'brains'; } catch { return 'brains'; } })(); // 1.5.210 a remembered paper doll view lands on the Brains page
   function eqCtx() {
     return { roles, models: shownModels(), brains: settings?.sessionBrains || {}, oneBrain: settings?.oneBrain === true, embed: roles?.current?.embed || '', selected: eqSelected, vramGB: hw?.vramGB || hw?.gpu?.vramGB || null, unified: Boolean(hw?.gpu?.unified), integrated: Boolean(hw?.gpu?.integrated), arm: hw?.board === 'arm', ramGB: hw?.ramGB || null, freeGB: hw?.freeGB ?? null, platform: settings?.platform, showUnsuited,
-      spec: hw?.spec || '', gpuName: hw?.gpu?.name || '', cpu: hw?.cpu || '', naughtyOn: naughtyOn(), ownForm, // Nov 18 2026: one rule for every brain menu (brain-choices.js)
+      spec: hw?.spec || '', gpuName: hw?.gpu?.name || '', cpu: hw?.cpu || '', naughtyOn: naughtyOn(), ownForm,
+      quantOn: settings?.quantPicker === true, quantUntested: settings?.quantUntested === true, // Nov 19 2026 quant levels (public/quant-steps.js) // Nov 18 2026: one rule for every brain menu (brain-choices.js)
       famOpen, packs: data?.packs || [], packId: starterPack, picks: starterPicks, engines: data?.engines || [], starterOpen,
       houseStyle: settings?.houseStyle || {}, active: settings?.activeModels || {}, saveDir: settings?.saveDir || {},
       rent }; // 1.5.127 the Rented brain slot
@@ -1399,6 +1400,15 @@ export function createCellar({ popOut = null } = {}) {
         for (const id of (el.dataset.rowjobs || '').split(',').filter(Boolean)) { const sl = allSlots().find((s) => s.id === id); if (sl) await equipSlot(sl, el.value).catch(() => {}); }
         await eqReload(); draw(); dlg.scrollTop = y; return;
       }
+      // Nov 19 2026: a big brain's Quant level menu. One you have takes the row's jobs; one you don't asks to download first.
+      if (el.dataset.rowquant !== undefined && el.value && el.value !== el.dataset.rowquant) {
+        const m = (data?.models || []).find((x) => x.id === el.value);
+        const y = dlg.scrollTop;
+        if (m?.status?.state !== 'installed') { el.value = el.dataset.rowquant; if (m) confirmBox(el.closest('.model'), m); dlg.scrollTop = y; return; }
+        el.disabled = true;
+        for (const id of (el.dataset.rowjobs || '').split(',').filter(Boolean)) { const sl = allSlots().find((s) => s.id === id); const v = sl && slotValue(sl, m, roles); if (v) await equipSlot(sl, v).catch(() => {}); }
+        await eqReload(); draw(); dlg.scrollTop = y; return;
+      }
       if (el.dataset.brainjob && el.value) { const y = dlg.scrollTop; await equip(el.value, el.dataset.brainjob, { offer: false }); dlg.scrollTop = y; return; }
       if (el.dataset.jobbrain && el.value) { const y = dlg.scrollTop; await equip(el.dataset.jobbrain, el.value, { offer: false }); dlg.scrollTop = y; return; }
       if (el.dataset.proxy) { const side = $(el.dataset.proxy); if (side && (side.getAttribute('aria-pressed') === 'true') !== el.checked) side.click(); setTimeout(() => { el.checked = side?.getAttribute('aria-pressed') === 'true'; }, 300); return; }
@@ -1485,6 +1495,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.set === 'howtos') { const r = await api('/api/settings', { howtos: el.checked }); settings.howtos = r.howtos; el.checked = r.howtos; flash(el, r.howtos ? 'On. After a job with a few steps goes well, Bob offers to keep them as a how-to.' : 'Off. Bob won\'t offer or use how-tos. Saved ones stay in 🧰 Tools and how-tos.'); return; }
       if (el.dataset.set === 'computerLab') { const r = await api('/api/settings', { computerLab: el.checked }); settings.computerLab = r.computerLab === true; el.checked = settings.computerLab; window.dispatchEvent(new CustomEvent('bob-lab-switch', { detail: { on: settings.computerLab } })); flash(el, r.computerLabWhy || (settings.computerLab ? 'On. 🧪 Lab is in the left pane.' : 'Off. The Lab button is hidden; brains you made stay in Bob.')); return; } // 1.5.141
       if (el.dataset.set === 'labPro' || el.dataset.set === 'labLessons') { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k] === true; el.checked = settings[k]; flash(el, settings[k] ? 'On.' : 'Off.'); return; } // 15 Nov: Lab switches (labPro had no handler here)
+      if (el.dataset.set === 'quantPicker' || el.dataset.set === 'quantUntested') { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k] === true; el.checked = settings[k]; if (k === 'quantPicker') draw(); else flash(el, settings[k] ? 'On. Levels not checked yet show too, marked so. Bob never picks one for you.' : 'Off. Only levels that passed show.'); return; } // Nov 19 2026
       if (el.dataset.set === 'naughtyList') { const r = await api('/api/settings', { naughtyList: el.checked }); settings.naughtyList = r.naughtyList === true; el.checked = settings.naughtyList; if (!settings.naughtyList && catView === 'naughty') setCatView('well'); flash(el, settings.naughtyList ? 'On. The Naughty list side (the red devil) is at the top of the Brain catalogue.' : 'Off. The naughty list is out of every list again.'); return; }
       if (el.dataset.set === 'catalogUpdates') { const r = await api('/api/settings', { catalogUpdates: el.checked }); settings.catalogUpdates = r.catalogUpdates === true; el.checked = settings.catalogUpdates; flash(el, settings.catalogUpdates ? (r.listCheck?.why ? `On. ${r.listCheck.why}` : 'On. Bob looks for a newer brain list once a day.') : 'Off. Bob uses the brain list that came with this version.'); await load().catch(() => {}); return; } // 1.5.137
       if (el.dataset.set === 'webSearch') { const r = await api('/api/settings', { webSearch: el.checked }); settings.webSearch = r.webSearch; el.checked = r.webSearch; window.dispatchEvent(new CustomEvent('bob-web', { detail: { webSearch: r.webSearch } })); flash(el, r.webSearch ? 'On. Bob can search the web when a question needs it.' : 'Off. Bob won\'t go online to look things up.'); return; }

@@ -10,6 +10,7 @@ import { allSlots, isActive, tipHtml, slotValue, equipped } from './equip.js';
 import { keep, tip as tipButton } from './tips.js';
 import { fitOf, byFit } from './fit-sort.js';
 import { esc, gb } from './util.js';
+import { stepChoices, isQuantStep } from './quant-steps.js';
 
 // 1.5.132: the naughty list. Catalogue entries marked `naughty: true` are uncensored community builds (heretic or
 // abliterated: the refusals cut out). They are listed nowhere until the Naughty list switch (setting naughtyList) is on.
@@ -73,10 +74,25 @@ const isRec = (m, job, ctx) => (job.id === 'brains' ? recJobs(m, ctx).length > 0
 
 // The catalog models for a job. Brains say which jobs they do; pictures, voices and the rest go by their category.
 export function modelsFor(job, models) {
+  models = (models || []).filter((m) => !isQuantStep(m)); // Nov 19 2026: a quant level shows under its usual brain only
   if (job.id === 'brains') return models.filter((m) => m.jobs && BRAIN_JOBS.some((id) => canDo(id, { entry: m })));
   if (job.id === 'phone') return models.filter((m) => m.jobs?.includes('phone'));
   if (job.kind === 'llm') return models.filter((m) => m.jobs && canDo(job.id, { entry: m }));
   return models.filter((m) => (job.cats || []).includes(m.category) && Boolean(m.use?.painter?.sdcpp?.edit) === Boolean(job.editOnly));
+}
+
+// Nov 19 2026: a big brain's other quant levels, under its row, once "Pick a quant level for big brains" is on. Each
+// has its own Get (asked first, with the size, like any download). Only levels that passed show, unless "Show quant
+// levels not checked yet" is on too. The usual file is the one on the row itself.
+export function quantStepsHtml(m, ctx = {}) {
+  const list = stepChoices(m, ctx.allModels || ctx.models || [], { on: ctx.quantOn === true, untested: ctx.quantUntested === true });
+  if (!list.length || !list[0].usual || list[0].id !== m.id) return '';
+  const items = list.slice(1).map((s) => {
+    const here = s.entry.status?.state === 'installed';
+    const act = here ? '<span class="tag good">On this replicant matrix</span>' : `<button type="button" class="mini get" data-get="${esc(s.id)}" aria-label="Get ${esc(`${m.name} at ${s.quant}`)}">Get</button>`;
+    return `<li><span>${esc(s.label)}</span> ${tipHtml(s.why, `About ${s.quant}`)} ${act}</li>`;
+  }).join('');
+  return `<div class="quant-steps"><span class="muted">Quant levels: ${esc(list[0].label)}</span><ul>${items}</ul></div>`;
 }
 
 // 1.5.101: how a model does on the example machines, said once per answer: "Runs well: 16 GB card, 8 GB card · Runs, slowly: 6 GB laptop card".
@@ -159,9 +175,10 @@ function rowHtml(m, job, ctx) {
   // 1.5.133: community and naughty rows look different by more than colour: a solid stripe (community) or a dashed
   // one (naughty list) down the left, a light tint, and their tags in words.
   const kind = isNaughty(m) ? ' naughty' : isCommunity(m) ? ' community' : '';
+  const qsteps = job.id === 'phone' ? '' : quantStepsHtml(m, ctx);
   return `<li class="cat-row model${kind}${!here && !rec && s.level !== 'ok' ? ' dim' : ''}" id="cat-${esc(job.id)}-${esc(m.id)}">
     <span class="kit-name">${esc(m.name)}</span><span class="muted">${esc(sizeLine(m))}</span>${tags}${all ? madeForHtml(m, ctx) : ''}${tipButton(card, `About ${m.name}`)}${src ? `<a class="src-link" href="${esc(src.url)}" target="_blank" rel="noopener noreferrer" data-tip="Where it comes from: ${esc(src.label)}" aria-label="Where ${esc(m.name)} comes from">↗</a>` : ''}
-    ${m.benchReport ? `<a class="src-link bench-link" href="${esc(m.benchReport)}" target="_blank" rel="noopener noreferrer" aria-label="Full report: how ${esc(m.name)} did in its benchmark">Full report</a>` : ''}<span class="cat-act">${sw}${act}${removeBtn}</span><div class="confirm" hidden></div></li>`;
+    ${m.benchReport ? `<a class="src-link bench-link" href="${esc(m.benchReport)}" target="_blank" rel="noopener noreferrer" aria-label="Full report: how ${esc(m.name)} did in its benchmark">Full report</a>` : ''}<span class="cat-act">${sw}${act}${removeBtn}</span>${qsteps}<div class="confirm" hidden></div></li>`;
 }
 
 // 1.5.205 Add a model page: paste a model's page, then pick which of its files (one per quantization) to add.
