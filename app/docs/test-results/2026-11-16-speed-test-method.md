@@ -915,6 +915,34 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 54 (Nov 19, before any run): Brain Engine 19's new tricks, one at a time
+
+Brain Engine 19 (pre-release `brain-engine-19b12359`, patches 0001-0036) is laid over the official b12359 CUDA 13.5
+build. Each new key is off unless a row sets it, and a row whose log says NOT USED is void. It runs after Addendum 52
+and before the 120B check, on the owner's go. Plans, all on the stock Qwen3.6 35B with q4_0 cache, margin 512 and
+unpinned steps:
+
+- `be19-baseline.json` (B0, 20 loads): 2x4 and 4x4 at 32K on Brain Engines 18 and 19, nothing new on.
+- `be19-where-time.json` (T, 6 loads): `GGML_SCHED_TIMING=50`, and `GGML_SCHED_OVERLAP_LOG=50` at copy-cache share 1 and
+  0.5. Diagnostic only; its speeds are not compared.
+- `be19-learn.json` (L, 12 loads): share 1 with learning off, `LLAMA_MOE_CACHE_LEARN=64`, and 16 with margin 1.5,
+  against 2x4 at share 0, on the start prompt, 32K and a code edit (`code-edit.md`).
+- `be19-cpu-read.json` (R, 15 loads): `LLAMA_MOE_CACHE_CPU_READ` off, 256, 512, 1024, 2048 on 300-, 900- and
+  2,000-token prompts at `-ub 2048`.
+- `be19-spec-gate.json` (D, 12 loads): n-gram drafts (`--spec-type ngram-mod`) with `LLAMA_SPEC_GATE` off, 0.3, 0.5,
+  and no drafts, on the start prompt and the code edit.
+- `be19-kv-split.json` (K, 18 loads): `LLAMA_KV_SPLIT` off, 32768 and 65536 at 128K (5x3.5) and 256K (6x3.5) on 2K,
+  32K and 100K or 250K prompts.
+
+Not in plans yet: context change without reload (needs Bob or `POST /context`), the tiny Flash-Next brain, and the
+combined winners (written after these results).
+
+**Predictions, written before any run:** B0 matches Brain Engine 18 within 2% with the same words. Learning (L1, L2)
+raises the copy-cache hit rate but does not beat share 0 on writing by 3% or more. `CPU_READ` makes the 300-token first
+word at least 10% sooner and loses past 1024. The spec gate at 0.3 keeps the code-edit gain within 5% of gate-off and
+lifts plain-chat writing by at least 3% over gate-off. The KV split loses writing past cell N and gains no more than 5%
+reading, so it is not a win for the 35B on the test PC.
+
 ## Addendum 53 (Nov 18, after Addenda 47 and 49, before any run): does the copy cache earn its place at 128K and 256K?
 
 Addendum 47 showed stock llama.cpp with Bob's step, q4 cache, margin 512 and unpinned steps, but no copy cache, doing

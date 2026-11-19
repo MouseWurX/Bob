@@ -1,0 +1,162 @@
+{
+ "name": "Brain Engine 19 baseline: nothing new on, 2x4 and 4x4 at 32K, against Brain Engine 18, 5 rounds",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 54 (B0))",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be18": {
+   "exe": "${BE18_SERVER}"
+  },
+  "be19": {
+   "exe": "${BE19_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "k32": "long-text.md"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 5,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "rows": [
+  {
+   "id": "be18-2x4-q4-32K",
+   "engine": "be18",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  },
+  {
+   "id": "be18-4x4-q4-32K",
+   "engine": "be18",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  },
+  {
+   "id": "be19-2x4-q4-32K",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  },
+  {
+   "id": "be19-4x4-q4-32K",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  }
+ ],
+ "saveText": true,
+ "promptTokens": {
+  "k32": 32768
+ },
+ "question": {
+  "k32": "\n\nIn two sentences, what is this text about?"
+ }
+}

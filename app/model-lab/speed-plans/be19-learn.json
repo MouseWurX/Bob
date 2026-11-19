@@ -1,0 +1,167 @@
+{
+ "name": "Brain Engine 19: copy cache that learns while writing (0031), share 1, 3 rounds",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 54 (L))",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be19": {
+   "exe": "${BE19_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "k32": "long-text.md",
+  "code": "code-edit.md"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "--no-webui"
+ ],
+ "maxTokens": 600,
+ "rounds": 3,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "rows": [
+  {
+   "id": "F4c-share0-ref",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "k32",
+    "code"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  },
+  {
+   "id": "L0-share1",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "k32",
+    "code"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "1",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  },
+  {
+   "id": "L1-share1-learn64",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "k32",
+    "code"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "1",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LEARN": "64"
+   }
+  },
+  {
+   "id": "L2-share1-learn16-m1.5",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "k32",
+    "code"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "1",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LEARN": "16",
+    "LLAMA_MOE_CACHE_LEARN_MARGIN": "1.5"
+   }
+  }
+ ],
+ "saveText": true,
+ "promptTokens": {
+  "k32": 32768
+ },
+ "question": {
+  "k32": "\n\nIn two sentences, what is this text about?"
+ }
+}
