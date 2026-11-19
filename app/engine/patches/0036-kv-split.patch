@@ -1,5 +1,5 @@
 diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
-index 7387c60..878b296 100644
+index 329daec..3fddc5e 100644
 --- a/src/llama-graph.cpp
 +++ b/src/llama-graph.cpp
 @@ -822,11 +822,38 @@ void llm_graph_input_attn_no_cache::set_input(const llama_ubatch * ubatch) {
@@ -70,7 +70,7 @@ index 7387c60..878b296 100644
      res &= inp_rs->s_copy->ne[0] == mctx->get_recr()->get_n_rs();
  
      res &= inp_rs->s_copy_main->ne[0] == params.ubatch.n_seqs;
-@@ -3403,6 +3438,9 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+@@ -3412,6 +3447,9 @@ ggml_tensor * llm_graph_context::build_attn_mha(
                                        hparams.attn_soft_cap ? hparams.f_attn_logit_softcapping : 0.0f);
          }
          res->add_fused_node({kv_rows ? LLM_FUSED_OP_FLASH_ATTN_KV_ROWS : LLM_FUSED_OP_FLASH_ATTN, cur, il});
@@ -80,7 +80,7 @@ index 7387c60..878b296 100644
  
          ggml_flash_attn_ext_add_sinks(cur, sinks);
          GGML_ASSERT(n_kv_max >= 0 && n_kv_max <= INT32_MAX);
-@@ -3611,6 +3649,12 @@ static std::unique_ptr<llm_graph_input_attn_kv> build_attn_inp_kv_impl(
+@@ -3620,6 +3658,12 @@ static std::unique_ptr<llm_graph_input_attn_kv> build_attn_inp_kv_impl(
          inp->self_v_idxs = mctx_cur->build_input_v_idxs(ctx0, ubatch);
  
          inp->self_attn_mask = build_attn_inp_attn_mask(ctx0, mctx_cur, ubatch, cparams);
@@ -93,7 +93,7 @@ index 7387c60..878b296 100644
      }
  
      inp->self_k_rot = mctx_cur->get_k_rot();
-@@ -3619,6 +3663,21 @@ static std::unique_ptr<llm_graph_input_attn_kv> build_attn_inp_kv_impl(
+@@ -3628,6 +3672,21 @@ static std::unique_ptr<llm_graph_input_attn_kv> build_attn_inp_kv_impl(
      return inp;
  }
  
@@ -115,7 +115,7 @@ index 7387c60..878b296 100644
  llm_graph_input_attn_kv * llm_graph_context::build_attn_inp_kv() const {
      const auto * mctx_cur = static_cast<const llama_kv_cache_context *>(mctx);
  
-@@ -3706,6 +3765,14 @@ ggml_tensor * llm_graph_context::build_attn(
+@@ -3715,6 +3774,14 @@ ggml_tensor * llm_graph_context::build_attn(
      ggml_tensor * k;
      ggml_tensor * v;
  
@@ -130,7 +130,7 @@ index 7387c60..878b296 100644
      if (cparams.training) {
          GGML_ASSERT(mctx_cur->get_n_kv() == n_tokens);
  
-@@ -3716,18 +3783,84 @@ ggml_tensor * llm_graph_context::build_attn(
+@@ -3725,18 +3792,84 @@ ggml_tensor * llm_graph_context::build_attn(
              const auto & k_idxs = inp->get_k_idxs();
              const auto & v_idxs = inp->get_v_idxs();
  

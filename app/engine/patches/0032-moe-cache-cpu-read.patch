@@ -1,8 +1,8 @@
 diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
-index 632935e..7387c60 100644
+index 632935e..329daec 100644
 --- a/src/llama-graph.cpp
 +++ b/src/llama-graph.cpp
-@@ -2850,7 +2850,28 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+@@ -2850,7 +2850,37 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
          // the cached experts and the misses computed from the host experts, each reads the others as zero
          // the cached experts come first in the graph, so that they are computed while the misses are
          ggml_build_forward_expand(gf, experts);
@@ -10,22 +10,31 @@ index 632935e..7387c60 100644
 +        ggml_tensor * cpu_experts = build_experts(cur, selected_experts, cache.cpu_ids, false);
 +        // Brain Engine 0032: the CPU part's expert products stay on the processor, so a card that offloads big batches
 +        // from host weights doesn't copy the experts over for them (for small batches it never would)
++        // every expert product of the CPU part (gate, up and down), not just the last one: the walk goes on past each
++        // pinned product, or gate and up would be offloaded to the card with ids of -1 for experts not on the processor
 +        {
 +            std::vector<ggml_tensor *> todo = { cpu_experts };
++            int n_pinned = 0;
 +            for (size_t i = 0; i < todo.size() && i < 256; ++i) {
 +                ggml_tensor * t = todo[i];
-+                if (t == nullptr || t == cur) {
++                if (t == nullptr || t == cur || t == selected_experts) {
++                    continue;
++                }
++                if (std::find(todo.begin(), todo.begin() + i, t) != todo.begin() + i) {
 +                    continue;
 +                }
 +                if (t->op == GGML_OP_MUL_MAT_ID) {
 +                    ggml_backend_sched_set_tensor_backend(sched, t, backend_cpu);
-+                    continue;
++                    n_pinned++;
 +                }
 +                for (ggml_tensor * src : t->src) {
 +                    if (src != nullptr && src->op != GGML_OP_NONE) {
 +                        todo.push_back(src);
 +                    }
 +                }
++            }
++            if (getenv("LLAMA_MOE_CACHE_LOG_EVERY") != nullptr) {
++                LLAMA_LOG_INFO("%s: layer %d: %d expert products of the CPU part pinned to the processor\n", __func__, il, n_pinned);
 +            }
 +        }
 +        experts = ggml_add(ctx0, experts, cpu_experts);

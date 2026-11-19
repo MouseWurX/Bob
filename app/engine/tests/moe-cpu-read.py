@@ -44,6 +44,10 @@ try:
         check(f'share {share}: the prompt goes through the cache', rd is not None and rd[1] > 0, f'{rd}')
         check(f'share {share}: every prompt miss on the processor, nothing uploaded', rd is not None and rd[1] == rd[2] and rd[3] == 0.0, f'{rd}')
         check(f'share {share}: the same words', code == 0 and out == base)
+        # every expert product of the CPU part (gate, up, down) is pinned, not only the last: on a real card the others
+        # were offloaded with ids of -1 and the engine stopped (GGML_ASSERT id >= 0 in the expert copy)
+        pins = [int(x) for x in re.findall(r'(\d+) expert products of the CPU part pinned to the processor', err)]
+        check(f'share {share}: gate, up and down all pinned to the processor', pins and min(pins) >= 3, f'{sorted(set(pins))}')
     code, out, err, rd = run({'LLAMA_MOE_CACHE_CPU_READ': '16'})
     check('a value of 32 or less says NOT USED and answers the same', code == 0 and 'CPU_READ=16 NOT USED' in err and rd is None and out == base)
 finally:
