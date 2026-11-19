@@ -7,6 +7,7 @@ const near = (a, b) => Math.abs(a - b) < 0.05;
 check(near(jobTime(9.3, 100.7, 300), 12.3) && near(jobTime(128.7, 43.1, 300), 135.7), 'job time reproduces the table (12.3 s at 32K, 135.7 s at 256K)');
 check(near(jobTime(123.5, 33.6, 100), 126.5) && near(jobTime(128.7, 43.1, 2000), 175.1), 'answer length changes the 256K winner (7x3.5 at 100 tokens, 6x3.5 at 2,000)');
 check(ANSWER.chat === 300 && ANSWER.agent === 600 && ANSWER.longForm === 2000, 'answer length is fixed per use');
+check(ANSWER.coding === 1500 && near(blendedJobTime({ '32K': { firstS: 9, write: 75 }, '64K': { firstS: 20, write: 60 } }, 'coding'), 0.5 * (9 + 1500 / 75) + 0.5 * (20 + 1500 / 60)) && blendedJobTime({ '32K': { firstS: 9, write: 75 } }, 'coding') === null, 'coding: 1,500 tokens, half at 32K and half at 64K (Addendum 63)');
 const sizes = { '128K': { firstS: 48, write: 60 }, '256K': { firstS: 128, write: 40 } };
 check(near(blendedJobTime(sizes, 'longForm'), 0.5 * (48 + 2000 / 60) + 0.5 * (128 + 2000 / 40)), 'one blended job time per use (weighted sum, not an average of ratios)');
 check(blendedJobTime({ '128K': sizes['128K'] }, 'longForm') === null, 'a missing size gives no blend (no silent re-weighting)');

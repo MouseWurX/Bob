@@ -2,17 +2,19 @@
 // Pure functions: no files, no card, no clock.
 //
 // Score on job time, gate on robustness. No weights to tune:
-// - Job time = first word + L / writing speed, with L fixed per use (chat 300, agent 600, long-form 2,000 tokens).
+// - Job time = first word + L / writing speed, with L fixed per use (chat 300, agent 600, coding 1,500, long-form 2,000
+//   tokens). Coding added Nov 19 (Addendum 63) at 32K and 64K, half each, measured with 1,500 written tokens.
 // - A use that spans several context sizes gets ONE blended job time (a weighted sum of the per-size job times),
 //   scored against stock llama.cpp's blended job time once (not an average of per-size ratios).
 // - Gates are hard limits. Each comes back pass, fail or "not measured"; only all-pass settings get a score, and
 //   "not measured" is never shown as failed.
 
-export const ANSWER = { chat: 300, agent: 600, longForm: 2000 };
+export const ANSWER = { chat: 300, agent: 600, coding: 1500, longForm: 2000 };
 // Share of each use's jobs at each context size (the per-use blend). Sizes a use never reaches are left out.
 export const BLEND = {
   chat: { short: 0.6, '32K': 0.4 },
   agent: { '32K': 0.6, '128K': 0.4 },
+  coding: { '32K': 0.5, '64K': 0.5 },
   longForm: { '128K': 0.5, '256K': 0.5 }
 };
 export const GATES = {

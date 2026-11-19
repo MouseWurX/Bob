@@ -915,6 +915,38 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 63 (Nov 19, before any run): a coding use for the scorer
+
+The docs thread asked for a coding use: a code answer is longer than an agent step and shorter than long-form writing.
+The scorer (`score-settings.mjs`) gets `coding`: 1,500 written tokens, blended half at 32K and half at 64K (weights set
+before any data, like Addendum 48's). Until now its pick (4x4) rested on one 2,000-token comparison at 32K (29.9 s
+against 32.7 s). Plan `coding-32k-64k.json` (24 loads, 3 rounds, Brain Engine 18, q4_0 cache, 1,500 written tokens):
+stock llama.cpp at step 4096 and the 2x4, 4x4 and 4x0 (no copy cache) settings at 32K (`-c 49152`) and 64K
+(`-c 73728`, the 61,440-token prompt). The same gates apply.
+
+**Predictions, written before any run:** 4x4 wins coding at 32K and 64K, by 3% or more over 2x4; 4x0 and stock tie
+with each other within 3% and trail 4x4 at 32K (the copy cache pays on long answers), and the gap narrows at 64K.
+
+## Addendum 62 (Nov 19, before any run): the quant ladder for big expert brains, and the bar for each step
+
+The owner: "With larger moe models we can go to q2 or q1.25 ... As long as perplexity doesnt drift, +/-3 or +/-5 should
+be checked for answer quality." For brains of 35B and up, each step down the ladder (Q4, Q3, Q2, and the 1-bit-class
+files such as IQ1_M) is measured against the step above it, and against a Q8 reference where one fits on disk, with
+llama-perplexity on both splits, at f16 and q4_0 cache:
+
+- **Perplexity within 3% of the step above, KLD and same-top within Addendum 57's limits: passes.**
+- **Between 3% and 5%: passes only after an answer-quality check on real jobs** (the held-out job test, graded as the
+  lessons are, with no more than 2 fewer right of 200 than the step above), and it is offered as a "smaller, a bit less
+  sharp" choice, never the default.
+- **Over 5% worse: fails.** It is not offered.
+
+Brains under 35B stay at Q4 (the owner, Nov 19). A step that fails is not tried further down. The pick for each device
+stays the best step that fits; the quant level a person can choose is a Brains page setting (built separately, off
+until tested).
+
+**Predictions, written before any run:** on Qwen3.6 35B, Q3 lands at +2 to +5% (Addendum 57). Q2 lands past 5% for
+the 35B; only the 120B-class brains have a chance of passing Q2 inside 5%.
+
 ## Addendum 61 (Nov 19, before any run): drift of the processor read for short prompts
 
 On Brain Engine 20 the processor read (patch 0032, `LLAMA_MOE_CACHE_CPU_READ`) no longer crashes and gives the
@@ -991,7 +1023,8 @@ same limits. Only if it passes do the speed rows (2x4 and 4x4 at 32K, 128K and 2
 
 **Amended Nov 19, 12:57 PM, before the Q3 run started:** the owner set the bar for one quant level down at a quality
 change of 3% or less ("+/-3% per level is acceptable"). The perplexity limit above is 3% (was 2%), on both splits, with
-the q4_0 cache too; the KLD and same-top limits stay. The same 3% bar applies to any lower cache format.
+the q4_0 cache too; the KLD and same-top limits stay. The same 3% bar applies to any lower cache format. Later the same day the owner added a middle band: between 3% and 5% passes only after an
+answer-quality check on real jobs (Addendum 62); over 5% fails.
 
 **Predictions, written before any run:** against Q4, Q3 lands at mean KLD 0.02-0.05, same top 90-94% and perplexity
 +2 to +5%, so it fails or only just passes. Against Q8, Q4 sits at about 0.01-0.02 and Q3 at 2-3 times that.
