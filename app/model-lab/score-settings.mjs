@@ -68,7 +68,18 @@ export function scoreUse(ours, stock, use, facts) {
   return { score: Math.round((base / mine) * 100), jobS: Math.round(mine * 10) / 10, gates: g };
 }
 
+// Addendum 51 (written before the busy pass and the step recheck): settings whose job times are within noisePct of the
+// quickest are a tie, and a tie is settled, in order, by (1) more free RAM during the load (minFreeRamMB), (2) more
+// free card memory after load (freeCardMiB), (3) the sooner first word (firstS). A missing value loses its round.
+const hi = (v) => (Number.isFinite(v) ? v : -Infinity);
+const lo = (v) => (Number.isFinite(v) ? v : Infinity);
+export function tieBreak(a, b) {
+  return (hi(b.minFreeRamMB) - hi(a.minFreeRamMB)) || (hi(b.freeCardMiB) - hi(a.freeCardMiB)) || (lo(a.firstS) - lo(b.firstS));
+}
 export function rank(rows, noisePct = 3) {
   const r = rows.filter((x) => x.jobS !== null && x.score !== null).sort((a, b) => a.jobS - b.jobS);
-  return r.map((x, i) => ({ ...x, tieWithBest: i > 0 && (x.jobS - r[0].jobS) / r[0].jobS * 100 <= noisePct }));
+  if (!r.length) return [];
+  const tied = (x) => (x.jobS - r[0].jobS) / r[0].jobS * 100 <= noisePct;
+  const top = r.filter(tied).sort(tieBreak), rest = r.filter((x) => !tied(x));
+  return [...top.map((x) => ({ ...x, tie: top.length > 1 })), ...rest.map((x) => ({ ...x, tie: false }))];
 }

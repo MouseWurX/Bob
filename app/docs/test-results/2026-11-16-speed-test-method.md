@@ -1040,3 +1040,22 @@ q5_1 and f8_e4m3 have no needle data, so their gate reads "not measured". Two pl
 **Predictions, written before any run:** q4_0's mean KLD stays between 0.007 and 0.011, and its same-top rate stays
 between 94% and 97%, so it may land on either side of the gate. q5_1 and f8_e4m3 find all 5 needles at both sizes.
 
+## Addendum 51 (Nov 18, before the busy-desktop rerun and the step recheck): how ties are settled
+
+Written before any of the runs it applies to (Addenda 45's 2-round busy rows on Brain Engine 17, 47, 49 and 50), so
+"best" is fixed before the numbers are seen. Under Addendum 48, settings whose job times are within 3% of the quickest
+are tied (job times from medians of at least 2 loads where we have them). A tie is settled by these, in order, and the first that differs decides:
+
+1. **More free RAM during the timed runs** (the higher of each setting's lowest free system RAM). RAM is what a busy desktop squeezes
+   (0.3 GB free at 256K).
+2. **More free card memory after load.**
+3. **The sooner first word.**
+
+A setting missing a value loses that step. Code: `rank` and `tieBreak` in `model-lab/score-settings.mjs`.
+
+The case this was written for: at 32K with 2x4, margins 512 and 1 GB have the same job time clean (16.6 against 16.8 s)
+and busy (19.4 s both), on single loads, and the two criteria point opposite ways (512 keeps one more expert layer on
+the card, so it leaves more RAM free; 1 GB leaves about 460 MiB more card free). If the 2-round busy rows separate them
+by more than 3%, job time decides; if not, this order does. The same margin question also flips by setup on single
+loads (with 4x4 q4_0, 512 wrote faster), which is more reason not to pick it after seeing the numbers.
+

@@ -26,7 +26,13 @@ const s = scoreUse(ours, stock, 'chat', good);
 check(s.score > 100 && s.jobS < blendedJobTime(stock, 'chat'), 'faster than stock scores over 100');
 check(scoreUse(ours, stock, 'chat', { ...good, aborts: 1 }).score === null, 'a setting that fails a gate gets no score');
 const r = rank([{ id: 'a', jobS: 135.5, score: 277 }, { id: 'b', jobS: 135.7, score: 276 }, { id: 'c', jobS: 150, score: 250 }]);
-check(r[0].id === 'a' && r[1].tieWithBest && !r[2].tieWithBest, 'gaps within 3% are ties, not wins');
+check(r[0].tie && r[1].tie && !r[2].tie && r[2].id === 'c', 'gaps within 3% are ties, not wins');
+const t = rank([{ id: 'fit512', jobS: 19.4, score: 200, minFreeRamMB: 900, freeCardMiB: 604, firstS: 15.3 }, { id: 'fit1024', jobS: 19.4, score: 200, minFreeRamMB: 700, freeCardMiB: 1067, firstS: 15.9 }]);
+check(t[0].id === 'fit512', 'a tie goes to more free RAM first (Addendum 51)');
+const t2 = rank([{ id: 'a', jobS: 19.4, score: 1, minFreeRamMB: 800, freeCardMiB: 604, firstS: 15 }, { id: 'b', jobS: 19.5, score: 1, minFreeRamMB: 800, freeCardMiB: 1067, firstS: 16 }]);
+check(t2[0].id === 'b', 'then more free card memory');
+const t3 = rank([{ id: 'a', jobS: 19.4, score: 1, minFreeRamMB: 800, freeCardMiB: 600, firstS: 16 }, { id: 'b', jobS: 19.5, score: 1, minFreeRamMB: 800, freeCardMiB: 600, firstS: 15 }]);
+check(t3[0].id === 'b', 'then the sooner first word');
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);
