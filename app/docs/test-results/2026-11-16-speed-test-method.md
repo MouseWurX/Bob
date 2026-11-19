@@ -915,6 +915,19 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 60 (Nov 19, before any run): the two Brain Engine 19 crashes, rerun on Brain Engine 20
+
+The processor read for short prompts (patch 0032) and the KV split (0036) crashed on Brain Engine 19 (results section
+28). The engine thread fixed both: 0032 now pins the gate, up and down steps; patch 0017-moe-cache-split-guard starts a
+new split at every copy cache lookup (the KV split's processor attention had put layer 15's router and lookup in one
+split; confirmed by a GGML_SCHED_DEBUG dump). Plans `be20-cpu-read.json` (15 loads) and `be20-kv-split.json` (24 loads)
+are Addendum 54's plans unchanged except the engine. Each row whose log lacks its switch line is void; the runner now
+records a crashed load with its exit code and goes on.
+
+**Predictions, written before any run:** both run with no crash. Addendum 54's predictions stand: the 300-token first
+word at least 10% sooner with the processor read, losing past 1024; the KV split loses writing past cell N and gains
+no more than 5% reading, so it is not a win for the 35B on the test PC.
+
 ## Addendum 59 (Nov 19, before any run): the learning copy cache, with counters
 
 In Addendum 54's L rows, learn 16 with margin 1.5 at share 1 wrote the code edit 12.9% faster than the share-0 pick
