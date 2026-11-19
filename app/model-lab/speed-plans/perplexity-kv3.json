@@ -1,0 +1,220 @@
+{
+ "name": "3-bit chat memory (q3_0) on Brain Engine 21: f16 base vs q8_0, q4_0, q4_0/q3_0 (K/V) and q3_0/q3_0, 4K x 4 and 8K x 2",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 64)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be21": {
+   "exe": "${BE21_PERPLEXITY}"
+  }
+ },
+ "text": "long-text.md",
+ "baseArgs": [
+  "-fa",
+  "on",
+  "--fit",
+  "on"
+ ],
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "rowTimeoutMs": 2700000,
+ "groups": [
+  {
+   "id": "kv3-4K",
+   "about": "f16 chat memory (base) vs q8_0, q4_0, q4_0/q3_0, q3_0/q3_0 (Addendum 64)",
+   "ctx": 4096,
+   "chunks": 4,
+   "needDiskGB": 12,
+   "base": {
+    "id": "4x4-f16",
+    "engine": "be21",
+    "args": [
+     "-b",
+     "4096",
+     "-ub",
+     "4096",
+     "--moe-cache-mib",
+     "4096",
+     "--moe-cache-cpu-share",
+     "0",
+     "-ctk",
+     "f16",
+     "-ctv",
+     "f16"
+    ]
+   },
+   "rows": [
+    {
+     "id": "4x4-q8_0",
+     "engine": "be21",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q8_0",
+      "-ctv",
+      "q8_0"
+     ]
+    },
+    {
+     "id": "4x4-q4_0",
+     "engine": "be21",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ]
+    },
+    {
+     "id": "4x4-q4_0-q3_0",
+     "engine": "be21",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q3_0"
+     ]
+    },
+    {
+     "id": "4x4-q3_0",
+     "engine": "be21",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q3_0",
+      "-ctv",
+      "q3_0"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "kv3-8K",
+   "about": "f16 chat memory (base) vs q8_0, q4_0, q4_0/q3_0, q3_0/q3_0 (Addendum 64)",
+   "ctx": 8192,
+   "chunks": 2,
+   "needDiskGB": 12,
+   "base": {
+    "id": "4x4-f16",
+    "engine": "be21",
+    "args": [
+     "-b",
+     "4096",
+     "-ub",
+     "4096",
+     "--moe-cache-mib",
+     "4096",
+     "--moe-cache-cpu-share",
+     "0",
+     "-ctk",
+     "f16",
+     "-ctv",
+     "f16"
+    ]
+   },
+   "rows": [
+    {
+     "id": "4x4-q8_0",
+     "engine": "be21",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q8_0",
+      "-ctv",
+      "q8_0"
+     ]
+    },
+    {
+     "id": "4x4-q4_0",
+     "engine": "be21",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ]
+    },
+    {
+     "id": "4x4-q4_0-q3_0",
+     "engine": "be21",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q3_0"
+     ]
+    },
+    {
+     "id": "4x4-q3_0",
+     "engine": "be21",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q3_0",
+      "-ctv",
+      "q3_0"
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,236 @@
+{
+ "name": "Needle in a haystack for the 3-bit chat memory on Brain Engine 21: q4_0/q3_0 and q3_0/q3_0, 4x4 settings, 128K and 256K, 5 depths x 5 rounds = 25 per type and size",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 64)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be21": {
+   "exe": "${BE21_SERVER}"
+  }
+ },
+ "prompts": {
+  "n120-10": "long-text.md",
+  "n120-30": "long-text.md",
+  "n120-50": "long-text.md",
+  "n120-70": "long-text.md",
+  "n120-90": "long-text.md",
+  "n250-10": "long-text.md",
+  "n250-30": "long-text.md",
+  "n250-50": "long-text.md",
+  "n250-70": "long-text.md",
+  "n250-90": "long-text.md"
+ },
+ "promptTokens": {
+  "n120-10": 122880,
+  "n120-30": 122880,
+  "n120-50": 122880,
+  "n120-70": 122880,
+  "n120-90": 122880,
+  "n250-10": 253952,
+  "n250-30": 253952,
+  "n250-50": 253952,
+  "n250-70": 253952,
+  "n250-90": 253952
+ },
+ "promptRepeat": {
+  "n120-10": 4,
+  "n120-30": 4,
+  "n120-50": 4,
+  "n120-70": 4,
+  "n120-90": 4,
+  "n250-10": 8,
+  "n250-30": 8,
+  "n250-50": 8,
+  "n250-70": 8,
+  "n250-90": 8
+ },
+ "needles": {
+  "n120-10": {
+   "at": 0.1,
+   "say": "The pass code for the north gate is 4817-KESTREL.",
+   "find": "4817[- ]?KESTREL",
+   "ask": "\n\nWhat is the pass code for the north gate? Answer with the code only."
+  },
+  "n120-30": {
+   "at": 0.3,
+   "say": "The pass code for the east tower is 2264-MARLIN.",
+   "find": "2264[- ]?MARLIN",
+   "ask": "\n\nWhat is the pass code for the east tower? Answer with the code only."
+  },
+  "n120-50": {
+   "at": 0.5,
+   "say": "The pass code for the old mill is 9051-HERON.",
+   "find": "9051[- ]?HERON",
+   "ask": "\n\nWhat is the pass code for the old mill? Answer with the code only."
+  },
+  "n120-70": {
+   "at": 0.7,
+   "say": "The pass code for the river lock is 3378-OSPREY.",
+   "find": "3378[- ]?OSPREY",
+   "ask": "\n\nWhat is the pass code for the river lock? Answer with the code only."
+  },
+  "n120-90": {
+   "at": 0.9,
+   "say": "The pass code for the west bridge is 6602-PLOVER.",
+   "find": "6602[- ]?PLOVER",
+   "ask": "\n\nWhat is the pass code for the west bridge? Answer with the code only."
+  },
+  "n250-10": {
+   "at": 0.1,
+   "say": "The pass code for the north gate is 4817-KESTREL.",
+   "find": "4817[- ]?KESTREL",
+   "ask": "\n\nWhat is the pass code for the north gate? Answer with the code only."
+  },
+  "n250-30": {
+   "at": 0.3,
+   "say": "The pass code for the east tower is 2264-MARLIN.",
+   "find": "2264[- ]?MARLIN",
+   "ask": "\n\nWhat is the pass code for the east tower? Answer with the code only."
+  },
+  "n250-50": {
+   "at": 0.5,
+   "say": "The pass code for the old mill is 9051-HERON.",
+   "find": "9051[- ]?HERON",
+   "ask": "\n\nWhat is the pass code for the old mill? Answer with the code only."
+  },
+  "n250-70": {
+   "at": 0.7,
+   "say": "The pass code for the river lock is 3378-OSPREY.",
+   "find": "3378[- ]?OSPREY",
+   "ask": "\n\nWhat is the pass code for the river lock? Answer with the code only."
+  },
+  "n250-90": {
+   "at": 0.9,
+   "say": "The pass code for the west bridge is 6602-PLOVER.",
+   "find": "6602[- ]?PLOVER",
+   "ask": "\n\nWhat is the pass code for the west bridge? Answer with the code only."
+  }
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "--no-webui"
+ ],
+ "maxTokens": 40,
+ "rounds": 5,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "saveText": true,
+ "rows": [
+  {
+   "id": "4x4-q4_0-q3_0-128K",
+   "engine": "be21",
+   "prompts": [
+    "n120-10",
+    "n120-30",
+    "n120-50",
+    "n120-70",
+    "n120-90"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q3_0"
+   ]
+  },
+  {
+   "id": "4x4-q4_0-q3_0-256K",
+   "engine": "be21",
+   "prompts": [
+    "n250-10",
+    "n250-30",
+    "n250-50",
+    "n250-70",
+    "n250-90"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q3_0"
+   ]
+  },
+  {
+   "id": "4x4-q3_0-128K",
+   "engine": "be21",
+   "prompts": [
+    "n120-10",
+    "n120-30",
+    "n120-50",
+    "n120-70",
+    "n120-90"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q3_0",
+    "-ctv",
+    "q3_0"
+   ]
+  },
+  {
+   "id": "4x4-q3_0-256K",
+   "engine": "be21",
+   "prompts": [
+    "n250-10",
+    "n250-30",
+    "n250-50",
+    "n250-70",
+    "n250-90"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q3_0",
+    "-ctv",
+    "q3_0"
+   ]
+  }
+ ]
+}

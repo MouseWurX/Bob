@@ -915,6 +915,28 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 64 (Nov 19, before any run): the 3-bit chat memory (q3_0) on Brain Engine 21
+
+The owner asked for a 3-bit chat memory and approved its test (Speed thread card, 5:22 PM). Brain Engine 21
+(`brain-engine-21b12359`) adds a `q3_0` cache type with card attention kernels. Three plans, run in this order:
+
+1. `perplexity-kv3.json` (10 runs): f16 base against q8_0, q4_0, q4_0 keys with q3_0 values, and q3_0/q3_0, at 4K x 4
+   and 8K x 2, 4x4 settings. Before it, a short chat with `-ctk q3_0 -ctv q3_0` must answer on the card's attention
+   path (writing speed not processor-slow).
+2. `needle-kv3.json` (20 loads): q4_0/q3_0 and q3_0/q3_0 at 128K and 256K, 5 depths x 5 rounds.
+3. `speed-kv3.json` (36 loads, 2 rounds): q4_0, q4_0/q3_0 and q3_0/q3_0 at 32K (4x4), 128K (5x3.5) and 256K (6x3.5),
+   each with `--fit on` and with a fixed placement (`--fit off -ngl 99 --n-cpu-moe ${NCMOE_<size>}`, read from the
+   q4_0 `--fit` row's log at that size). Saved text gives the same-words check against q4_0.
+
+**Bar, set before any run (the owner, Addendum 62):** perplexity within 3% of the q4_0 chat memory on both splits passes;
+3 to 5% needs the real-jobs check; over 5% fails. KLD and same top are reported, not gated. The needle must be 25 of 25
+at each size.
+
+**Predictions, written before any run:** q3_0/q3_0 lands about +1 to 1.5% perplexity over q4_0 and passes; q4_0/q3_0
+sits between. Needles 25/25 for q4_0/q3_0; q3_0/q3_0 may drop one at 256K. Memory saved about 0.17 GB at 128K and 0.34
+GB at 256K; no writing speed gain with a fixed placement; with `--fit` the freed room may place a few more experts
+(at most +3% writing).
+
 ## Addendum 63 (Nov 19, before any run): a coding use for the scorer
 
 The docs thread asked for a coding use: a code answer is longer than an agent step and shorter than long-form writing.
