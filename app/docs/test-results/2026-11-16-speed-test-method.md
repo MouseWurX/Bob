@@ -915,6 +915,21 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 56 (Nov 19, after the Brain Engine 18 mask run, before any drift run): does the no-table mask change the brain's choices?
+
+On Brain Engine 18, `LLAMA_KQ_MASK_POS=1` gave different answers from the table on every prompt, deterministically
+(identical across rounds), often from the first word, while Brain Engines 16 and 18 with the switch off agree exactly.
+mask-pos-check.exe found 0 numbers different on its 13 shapes, so the difference shows only on the real brain. The
+answers read as fluent near-tie choices, but that is not a measurement. Plan `perplexity-mask-pos.json` (8 runs):
+f16 with the table as the base, against f16 POS, q4_0 with the table and q4_0 POS, at 4K x 4 and 8K x 2 chunks.
+
+**Gate (stricter than Addendum 48's, since the switch is meant to change nothing):** POS passes if f16 POS has mean KLD at most 0.002 against f16 with the table (about
+half of q8_0's 0.0037) and same top word at least 99%, and q4_0 POS is within 0.001 KLD of q4_0 with the table. If it
+fails, POS stays off until the engine thread finds the cause.
+
+**Predictions, written before any run:** f16 POS lands at mean KLD 0.0005-0.002 and same top 98.5-99.7%, so it may
+miss the 99% line; q4_0 POS is within 0.001 of q4_0 with the table.
+
 ## Addendum 55 (Nov 19, before any run): refill behind the writing, again (row 7b of the Brain Engine 19 plan)
 
 The owner asked to retest patches 0022 (`LLAMA_MOE_CACHE_LEND`) and 0023 (`LLAMA_MOE_CACHE_LEND_BEHIND`), both already
