@@ -1,0 +1,254 @@
+diff --git a/common/common.cpp b/common/common.cpp
+index 657dcdb..c3c29ab 100644
+--- a/common/common.cpp
++++ b/common/common.cpp
+@@ -1151,8 +1151,53 @@ struct common_init_result::impl {
+ 
+     std::vector<common_sampler_ptr> samplers;
+     std::vector<llama_sampler_seq_config> samplers_seq_config;
++
++    std::string placement; // Brain Engine 0035: what the weights' placement depends on, empty if it can't be kept
+ };
+ 
++// Brain Engine 0035: a brain kept between two contexts, and what its placement depended on
++static llama_model * g_kept_model = nullptr;
++static std::string   g_kept_placement;
++
++static std::string common_model_placement(const common_params & params, const llama_model_params & mp) {
++    if (!params.lora_adapters.empty() || mp.vocab_only || mp.no_alloc || mp.kv_overrides != nullptr) {
++        return "";
++    }
++    std::string s;
++    for (const auto & path : params.model.get_paths()) {
++        s += path + "\n";
++    }
++    s += string_format("ngl %d split %d load %d lazy %d main %d check %d extra %d nohost %d mtp %d\n", mp.n_gpu_layers, (int) mp.split_mode,
++        (int) mp.load_mode, (int) mp.lazy_mode, mp.main_gpu, mp.check_tensors, mp.use_extra_bufts, mp.no_host, mp.load_mtp);
++    if (mp.tensor_split != nullptr) {
++        for (size_t i = 0; i < llama_max_devices(); ++i) {
++            s += string_format("%g ", mp.tensor_split[i]);
++        }
++        s += "\n";
++    }
++    for (const ggml_backend_dev_t * d = mp.devices; d != nullptr && *d != nullptr; ++d) {
++        s += string_format("dev %s\n", ggml_backend_dev_name(*d));
++    }
++    for (const llama_model_tensor_buft_override * o = mp.tensor_buft_overrides; o != nullptr && o->pattern != nullptr; ++o) {
++        s += string_format("ovr %s %s\n", o->pattern, o->buft ? ggml_backend_buft_name(o->buft) : "-");
++    }
++    return s;
++}
++
++bool common_init_result::keep_model_for_next() {
++    if (!pimpl->model || pimpl->placement.empty()) {
++        return false;
++    }
++    if (g_kept_model != nullptr && g_kept_model != pimpl->model.get()) {
++        llama_model_free(g_kept_model);
++    }
++    // the context goes now; the rest is freed with this object, the brain stays
++    pimpl->context.reset();
++    g_kept_model     = pimpl->model.release();
++    g_kept_placement = pimpl->placement;
++    return true;
++}
++
+ static const std::map<common_decision_type, std::string> COMMON_DECISION_TYPE_NAMES = {
+     { COMMON_DECISION_TYPE_OPENJEV,        "openjev"       },
+     { COMMON_DECISION_TYPE_LEV,            "lev"           },
+@@ -1280,7 +1325,23 @@ common_init_result::common_init_result(common_params & params, bool model_only)
+ 
+     common_fit_apply(params, mparams, cparams);
+ 
+-    llama_model * model = common_model_load(params.model.get_paths(), mparams);
++    // Brain Engine 0035: a brain kept from the last context with the same placement is used again, no load
++    pimpl->placement = common_model_placement(params, mparams);
++    llama_model * model = nullptr;
++    if (g_kept_model != nullptr) {
++        if (!pimpl->placement.empty() && pimpl->placement == g_kept_placement) {
++            model = g_kept_model;
++            COM_INF("%s", "brain kept loaded: only the context is made again\n");
++        } else {
++            COM_INF("%s", "brain loaded again: its placement changed (layers, devices or overrides)\n");
++            llama_model_free(g_kept_model);
++        }
++        g_kept_model = nullptr;
++        g_kept_placement.clear();
++    }
++    if (model == nullptr) {
++        model = common_model_load(params.model.get_paths(), mparams);
++    }
+     if (model == NULL) {
+         return;
+     }
+diff --git a/common/common.h b/common/common.h
+index 6043ab3..7f99ed0 100644
+--- a/common/common.h
++++ b/common/common.h
+@@ -1018,6 +1018,11 @@ struct common_init_result {
+ 
+     std::vector<llama_adapter_lora_ptr> & lora();
+ 
++    // Brain Engine 0035: hand the loaded brain over to the next common_init_result made with the same placement
++    // (same files, layers, devices, overrides, load mode), so a new context doesn't load the weights again. The
++    // context and everything else is freed as usual. Returns false (and keeps nothing) when it can't be kept.
++    bool keep_model_for_next();
++
+ private:
+     struct impl;
+     std::unique_ptr<impl> pimpl;
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index d58a518..4239e87 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -3777,6 +3777,59 @@ private:
+                     res->data = expert_mask_json();
+                     queue_results.send(std::move(res));
+                 } break;
++            case SERVER_TASK_TYPE_CONTEXT:
++                {
++                    // Brain Engine 0035: wait until no slot is busy, then make the context again
++                    bool busy = false;
++                    for (auto & slot : slots) {
++                        busy = busy || slot.is_processing();
++                    }
++                    if (busy) {
++                        queue_tasks.defer(std::move(task));
++                        break;
++                    }
++                    const json & c = task.context_change;
++                    common_params next = params_base;
++                    if (c.contains("n_ctx")) {
++                        next.n_ctx = c.at("n_ctx").get<int32_t>();
++                    }
++                    if (c.contains("moe_cache_mib")) {
++                        next.moe_cache_size = (size_t) std::max<int64_t>(0, c.at("moe_cache_mib").get<int64_t>()) << 20;
++                    }
++                    if (next.n_ctx < 0) {
++                        send_error(task, "n_ctx must be 0 (the brain's own) or more", ERROR_TYPE_INVALID_REQUEST);
++                        break;
++                    }
++                    const int32_t n_ctx_old = llama_n_ctx(ctx_tgt);
++                    const int64_t t0 = ggml_time_us();
++                    common_params prev = params_base;
++                    const bool kept = llama_init->keep_model_for_next();
++                    destroy();
++                    bool ok = load_model(next);
++                    std::string note;
++                    if (!ok) {
++                        // back to what worked; the brain may have to load again
++                        note = "the new size failed, the old one is back";
++                        if (!load_model(prev)) {
++                            GGML_ABORT("failed to load the brain again after a context change");
++                        }
++                    }
++                    SRV_INF("context %d -> %d tokens in %.2f s, brain %s\n", n_ctx_old, (int) llama_n_ctx(ctx_tgt),
++                            (ggml_time_us() - t0)/1e6, kept ? "offered to stay loaded" : "loaded again");
++                    if (!ok) {
++                        send_error(task, note, ERROR_TYPE_SERVER);
++                        break;
++                    }
++                    auto res = std::make_unique<server_task_result_expert_mask>();
++                    res->id   = task.id;
++                    res->data = json {
++                        {"n_ctx_old",  n_ctx_old},
++                        {"n_ctx",      llama_n_ctx(ctx_tgt)},
++                        {"n_ctx_slot", n_ctx_slot()},
++                        {"seconds",    (ggml_time_us() - t0)/1e6},
++                    };
++                    queue_results.send(std::move(res));
++                } break;
+             case SERVER_TASK_TYPE_DIALS:
+                 {
+                     if (!task.dials.is_null()) {
+@@ -7723,6 +7776,36 @@ void server_routes::init_routes() {
+         return res;
+     };
+ 
++    // Brain Engine 0035: POST /context {"n_ctx": N, "moe_cache_mib": M} makes the context again with the new size once no
++    // slot is busy; the brain stays loaded when its placement doesn't change. The chats' caches are emptied (save and
++    // restore slots around it to keep them).
++    this->post_context = [this](const server_http_req & req) {
++        auto res = create_response();
++        json body = json::parse(req.body.empty() ? "{}" : req.body);
++        if (!body.is_object() || (!body.contains("n_ctx") && !body.contains("moe_cache_mib"))) {
++            res->error(format_error_response("give n_ctx and/or moe_cache_mib", ERROR_TYPE_INVALID_REQUEST));
++            return res;
++        }
++        auto & rd = res->rd;
++        {
++            server_task task(SERVER_TASK_TYPE_CONTEXT);
++            task.id = rd.get_new_id();
++            task.context_change = std::move(body);
++            rd.post_task(std::move(task));
++        }
++        auto result = rd.next(req.should_stop);
++        if (!result) {
++            GGML_ASSERT(req.should_stop());
++            return res;
++        }
++        if (result->is_error()) {
++            res->error(result->to_json());
++            return res;
++        }
++        res->ok(result->to_json());
++        return res;
++    };
++
+     this->get_dials = [dials_handler](const server_http_req & req) {
+         return dials_handler(req, nullptr);
+     };
+diff --git a/tools/server/server-context.h b/tools/server/server-context.h
+index 943f0df..65c9ca5 100644
+--- a/tools/server/server-context.h
++++ b/tools/server/server-context.h
+@@ -142,6 +142,7 @@ struct server_routes {
+     server_http_context::handler_t post_expert_mask;
+     server_http_context::handler_t get_dials;
+     server_http_context::handler_t post_dials;
++    server_http_context::handler_t post_context; // Brain Engine 0035
+     server_http_context::handler_t get_experts_per_word;
+     server_http_context::handler_t post_experts_per_word;
+ 
+diff --git a/tools/server/server-task.h b/tools/server/server-task.h
+index bfcf03f..a8af874 100644
+--- a/tools/server/server-task.h
++++ b/tools/server/server-task.h
+@@ -35,6 +35,7 @@ enum server_task_type {
+     SERVER_TASK_TYPE_DIALS,
+     SERVER_TASK_TYPE_EXPERT_USED,
+     SERVER_TASK_TYPE_TTS,
++    SERVER_TASK_TYPE_CONTEXT, // Brain Engine 0035: change the context size, keeping the brain loaded when it can
+ };
+ 
+ // TODO: change this to more generic "response_format" to replace the "format_response_*" in server-common
+@@ -259,6 +260,9 @@ struct server_task {
+     // used by SERVER_TASK_TYPE_EXPERT_USED, null = only read the experts per word
+     json expert_used;
+ 
++    // used by SERVER_TASK_TYPE_CONTEXT (Brain Engine 0035): {"n_ctx": N, "moe_cache_mib": M}
++    json context_change;
++
+     // used by SERVER_TASK_TYPE_TTS
+     mtmd_helper::gen_audio::inp tts_inp;
+ 
+diff --git a/tools/server/server.cpp b/tools/server/server.cpp
+index 2b13315..104b360 100644
+--- a/tools/server/server.cpp
++++ b/tools/server/server.cpp
+@@ -218,6 +218,7 @@ static void server_register_routes(server_http_context & ctx_http, server_routes
+     ctx_http.post("/expert-mask",              ex_wrapper(routes.post_expert_mask));
+     ctx_http.get ("/dials",                    ex_wrapper(routes.get_dials));
+     ctx_http.post("/dials",                    ex_wrapper(routes.post_dials));
++    ctx_http.post("/context",                  ex_wrapper(routes.post_context));
+     ctx_http.get ("/experts-per-word",         ex_wrapper(routes.get_experts_per_word));
+     ctx_http.post("/experts-per-word",         ex_wrapper(routes.post_experts_per_word));
+     // Save & load slots
+@@ -555,6 +556,7 @@ static int server_run_router(common_params & params, int argc, char ** argv, con
+     routes.post_expert_mask            = models_routes->proxy_post;
+     routes.get_dials                   = models_routes->proxy_get;
+     routes.post_dials                  = models_routes->proxy_post;
++    routes.post_context                = models_routes->proxy_post;
+     routes.get_experts_per_word        = models_routes->proxy_get;
+     routes.post_experts_per_word       = models_routes->proxy_post;
+     routes.get_slots                   = models_routes->proxy_get;

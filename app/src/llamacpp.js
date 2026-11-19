@@ -191,6 +191,13 @@ export const withFlag = (args, flag, value) => { const a = [...args]; const i = 
 // Item 14: how long a reply may go quiet after its first words before the engine counts as hung (llamacpp.stallSeconds changes it).
 export const STALL_MS = 90_000;
 
+// Brain Engine 0035 ("Resize chat memory without reloading", off unless switched on): two engine starts that differ only
+// in the chat memory (-c) can be one change in place.
+export function sameExceptCtx(a, b) {
+  const drop = (x) => { const out = []; for (let i = 0; i < x.length; i++) { if (x[i] === '-c') { i++; continue; } out.push(x[i]); } return out.join('\u0000'); };
+  return Array.isArray(a) && Array.isArray(b) && drop(a) === drop(b);
+}
+
 export class LlamaCpp {
   // Read fresh each time, so speed settings changed in the app apply to the next brain load.
   get lc() { return this.cfg.llamacpp || {}; }
@@ -902,6 +909,28 @@ export class LlamaCpp {
     }
   }
 
+  // Brain Engine 0035 ("Resize chat memory without reloading", Settings, How Bob works; off unless switched on): asks the
+  // running engine to change its chat memory and keep the brain loaded. Only for the main engine, the same brain, no
+  // reply running, and settings that differ only in -c. Any refusal (an engine without it answers 404) means the usual
+  // restart. The engine empties its reading, so the chat is read again.
+  async resizeInPlace(model, args, prevArgs, cpu) {
+    if (this.cfg?.contextNoReload !== true || this.role === BESIDE || this.spreadNow) return false;
+    if (this.current !== model || !this.loadedOk || !this.child || this.child.exitCode !== null || Boolean(this.currentCpu) !== Boolean(cpu) || this.active > 0) return false;
+    if (!sameExceptCtx(args, prevArgs)) return false;
+    const n = Number(args[args.indexOf('-c') + 1]);
+    if (!(n > 0)) return false;
+    try {
+      const res = await fetch(`${this.url}/context`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ n_ctx: n }), signal: AbortSignal.timeout(300000) });
+      if (!res.ok) { this.log?.('engine', `${model}: the engine can't change its chat memory in place (${res.status}); starting it again instead`); return false; }
+      const r = await res.json();
+      this.log?.('engine', `${model}: chat memory ${r.n_ctx_old} -> ${r.n_ctx} without loading the brain again (${Number(r.seconds || 0).toFixed(1)} s)`);
+      return true;
+    } catch (e) {
+      this.log?.('engine', `${model}: changing the chat memory in place didn't work (${e.message}); starting it again instead`);
+      return false;
+    }
+  }
+
   // 226: the engine's own last words, as the plain reason; the original message stays after it for the logbook.
   plainError(model, e, out) {
     const why = plainEngineError(out);
@@ -1090,7 +1119,16 @@ export class LlamaCpp {
     this.placed = null;
     // 222: settings that worked before come in whole; the chat memory asked for now still goes in.
     const args = fixedArgs ? withFlag(fixedArgs, '-c', String(ctx || this.lc.ctx || DEFAULT_CTX)) : this.buildArgs(model, { ctx, cpu, card });
+    const prevArgs = this.lastArgs;
     this.lastArgs = args;
+    // Brain Engine 0035: the same brain with only a new chat memory: changed in place, the brain stays loaded
+    if (await this.resizeInPlace(model, args, prevArgs, cpu)) {
+      this.currentCtx = ctx || null;
+      this.primedHash = null;
+      this.placeChat = null; // the engine's reading was emptied: nothing of the last chat to save
+      const secs = (Date.now() - t0) / 1000;
+      return secs;
+    }
     await this.stopServer();
     // Bob-Net: a brain too big for this replicant matrix can go over your other Bobs' lent cards (src/share-card.js).
     // Off unless "Spread big brains over my other Bobs' cards" is on; none answering means it loads here like always.

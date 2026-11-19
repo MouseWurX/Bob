@@ -6,6 +6,7 @@
 //   (no switch)   the Health page                         src/health.js        (a page you open; it only looks)
 //   quietHours    "Quiet hours"                           src/quiet-hours.js   (no pop-ups, sounds or check-ins)
 //   chatPlaces    "Per-chat engine cache" src/chat-places.js (engine memory saved per chat)
+//   contextNoReload "Resize chat memory without reloading" src/llamacpp.js resizeInPlace (Brain Engine 0035)
 //   weeklyReport  "Weekly stats"          src/weekly.js        (counts only, never words)
 //   globalAsk     "Global shortcut"              electron/main.cjs + public/ask.html
 //   tryFromHere   "Try from here"                         src/try-from-here.js (a copy of the chat up to a message)
@@ -18,8 +19,8 @@
 import { cleanFade, fadeWords, FADE_PICKS } from './fade-chat.js';
 import { cleanAmnesiaAuto, AMNESIA_AUTO } from './amnesia.js';
 
-export const HARNESS_KEYS = ['crashCatcher', 'safeStart', 'settingsUndo', 'weeklyReport', 'quietHours', 'globalAsk', 'chatPlaces', 'tryFromHere', 'pinMessages', 'guestChat', 'fadeChat', 'amnesiaOffer', 'amnesiaMade', 'amnesiaAutoOff'];
-const SWITCHES = ['crashCatcher', 'safeStart', 'settingsUndo', 'weeklyReport', 'chatPlaces', 'tryFromHere', 'pinMessages', 'guestChat', 'amnesiaOffer'];
+export const HARNESS_KEYS = ['crashCatcher', 'safeStart', 'settingsUndo', 'weeklyReport', 'quietHours', 'globalAsk', 'chatPlaces', 'contextNoReload', 'tryFromHere', 'pinMessages', 'guestChat', 'fadeChat', 'amnesiaOffer', 'amnesiaMade', 'amnesiaAutoOff'];
+const SWITCHES = ['crashCatcher', 'safeStart', 'settingsUndo', 'weeklyReport', 'chatPlaces', 'contextNoReload', 'tryFromHere', 'pinMessages', 'guestChat', 'amnesiaOffer'];
 
 // The keys a person can pick for "Global shortcut", as Electron names them, and as Help shows them.
 export const ASK_KEYS = [
@@ -64,7 +65,7 @@ export function harnessView(cfg = {}) {
 export const HARNESS_LABELS = {
   crashCatcher: 'Catch crashes', safeStart: 'Safe start after two crashes', settingsUndo: 'Settings undo (last 20)',
   weeklyReport: 'Weekly stats', quietHours: 'Quiet hours', globalAsk: 'Global shortcut',
-  chatPlaces: 'Per-chat engine cache', tryFromHere: 'Try from here', pinMessages: 'Pin messages', guestChat: 'Guest chats',
+  chatPlaces: 'Per-chat engine cache', contextNoReload: 'Resize chat memory without reloading', tryFromHere: 'Try from here', pinMessages: 'Pin messages', guestChat: 'Guest chats',
   fadeChat: 'Fade old messages', amnesiaOffer: 'Amnesia mode', amnesiaMade: 'Things he made while Amnesia mode was on', amnesiaAutoOff: 'Turn Amnesia mode off by itself after'
 };
 
@@ -76,7 +77,7 @@ export function harnessNow(cfg = {}) {
     `${HARNESS_LABELS.quietHours}: ${v.quietHours.on ? `${v.quietHours.from} to ${v.quietHours.to}` : 'off'}`,
     `${HARNESS_LABELS.weeklyReport}: ${on(v.weeklyReport)}`,
     `${HARNESS_LABELS.globalAsk}: ${v.globalAsk.on ? (ASK_KEYS.find(([k]) => k === v.globalAsk.key) || ASK_KEYS[0])[1] : 'off'}`,
-    `${HARNESS_LABELS.chatPlaces}: ${on(v.chatPlaces)}`, `${HARNESS_LABELS.tryFromHere}: ${on(v.tryFromHere)}`,
+    `${HARNESS_LABELS.chatPlaces}: ${on(v.chatPlaces)}`, `${HARNESS_LABELS.contextNoReload}: ${on(v.contextNoReload)}`, `${HARNESS_LABELS.tryFromHere}: ${on(v.tryFromHere)}`,
     `${HARNESS_LABELS.pinMessages}: ${on(v.pinMessages)}`, `${HARNESS_LABELS.guestChat}: ${on(v.guestChat)}`,
     `${HARNESS_LABELS.fadeChat}: ${v.fadeChat.on ? `after ${fadeWords(v.fadeChat.minutes)}, ${v.fadeChat.mode === 'delete' ? 'deleted' : 'hidden'}` : 'off'}`,
     `${HARNESS_LABELS.amnesiaOffer}: ${on(v.amnesiaOffer)}`
