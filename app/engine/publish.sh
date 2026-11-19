@@ -15,6 +15,10 @@ This is llama.cpp $tag with the patches in [app/engine/patches](https://github.c
 llama.cpp is MIT licensed: Copyright (c) 2023-2026 The ggml authors. The licence text is in every download as LICENSE-llama.cpp.
 NOTES
 )
+# Nov 18: a build whose patches change ggml carries our own ggml files too (and ggml-cuda on Windows), which replace the official ones.
+if [ "${BE_GGML:-}" = "true" ]; then notes="$notes
+
+**This build changes ggml too.** Its own ggml, ggml-base, every ggml-cpu variant (and on Windows ggml-cuda) are in the download and must replace the official ones; the Vulkan backend is not rebuilt, so use it with NVIDIA's CUDA download only."; fi
 for i in 1 2 3; do
   gh release view "$rel" -R "$repo" > /dev/null 2>&1 && break
   gh release create "$rel" --target "$GITHUB_SHA" --title "Brain Engine ${ver#v} (Brain Engine ${ver%%b*} on llama.cpp $tag, test build)" --notes "$notes" --prerelease --latest=false -R "$repo" && break || sleep 10
