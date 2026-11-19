@@ -46,6 +46,7 @@ starts.
 - `mask-on-card-be16.json`: patch 0025's mask built on the card, off vs on, -ub 4096 at 32K/128K/256K and 6144 at 128K/256K, 2 rounds, 20 loads; needs Brain Engine 16 (Addendum 43).
 - `mask-pos-be17.json`: patch 0026, no mask table: Brain Engine 16 off vs 17 off vs 17 on at -ub 4096 (32K/128K/256K), plus 6144 and 8192, 2 rounds, 30 loads; run mask-pos-check.exe first (Addendum 44).
 - `mask-pos-be18.json`: Addendum 44 on Brain Engine 18 (BE17 is Linux only) plus `LLAMA_KQ_MASK_BUILD=1` rows at -ub 4096 (32K/128K/256K), 2 rounds, 36 loads; mask-pos-check.exe first; needs `BE18_SERVER` (Addendum 52).
+- `copy-cache-long.json`: copy cache on vs off at 128K (step 5120) and 256K (step 6144): stock without, Brain Engine 15 with and without, q4, margin 512, unpinned, 3 rounds, 18 loads; needs `PLAIN_SERVER` and `BE15_SERVER` (Addendum 53).
 - `real-desktop.json`: the picks so far at margins 512/1024, run on a clean desktop and again with a busy browser, 8 loads per pass (Addendum 45).
 - `cpu-share.json`: copy cache with processor share 0 / 0.25 / 0.5, 4x4 q4_0 margin 512, 32K and 128K, 6 loads (Addendum 46).
 - `perplexity-grid.json`: for `model-lab/perplexity-grid.mjs`, not the speed runner. What each speed setting and cache type costs in answers: KL divergence and same-top-word rate against plain settings with an f16 cache, with Brain Engine 15's llama-perplexity, 2 groups, 18 runs (Addendum 33).

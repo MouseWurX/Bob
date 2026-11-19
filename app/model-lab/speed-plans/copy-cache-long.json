@@ -1,0 +1,250 @@
+{
+ "name": "Copy cache on vs off at 128K and 256K (Brain Engine 15 with and without, stock llama.cpp without), q4 cache, margin 512, unpinned, 3 rounds",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 53)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "plain": {
+   "exe": "${PLAIN_SERVER}"
+  },
+  "be15": {
+   "exe": "${BE15_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "k32": "long-text.md",
+  "k60": "long-text.md",
+  "k120": "long-text.md",
+  "k250": "long-text.md"
+ },
+ "promptTokens": {
+  "k32": 32768,
+  "k60": 61440,
+  "k120": 122880,
+  "k250": 253952
+ },
+ "question": {
+  "k32": "\n\nIn two sentences, what is this text about?",
+  "k60": "\n\nIn two sentences, what is this text about?",
+  "k120": "\n\nIn two sentences, what is this text about?",
+  "k250": "\n\nIn two sentences, what is this text about?"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 3,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "saveText": true,
+ "promptRepeat": {
+  "k60": 2,
+  "k120": 4,
+  "k250": 8
+ },
+ "rows": [
+  {
+   "id": "stock-bobsettings-nocache-128K",
+   "engine": "plain",
+   "prompts": [
+    "start",
+    "k120"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "5120",
+    "-ub",
+    "5120",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "-fa",
+    "on",
+    "--fit",
+    "on",
+    "--cache-reuse",
+    "256",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  },
+  {
+   "id": "bob-ub5120-q4_0-128K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k120"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "5120",
+    "-ub",
+    "5120",
+    "--moe-cache-mib",
+    "3584",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "-fa",
+    "on",
+    "--fit",
+    "on",
+    "--cache-reuse",
+    "256",
+    "--moe-cache-cpu-share",
+    "0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "bob-5x0-nocache-q4_0-128K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k120"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "5120",
+    "-ub",
+    "5120",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "-fa",
+    "on",
+    "--fit",
+    "on",
+    "--cache-reuse",
+    "256",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  },
+  {
+   "id": "stock-bobsettings-nocache-256K",
+   "engine": "plain",
+   "prompts": [
+    "start",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "-fa",
+    "on",
+    "--fit",
+    "on",
+    "--cache-reuse",
+    "256",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  },
+  {
+   "id": "bob-6x3.5-q4_0-256K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "3584",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "-fa",
+    "on",
+    "--fit",
+    "on",
+    "--cache-reuse",
+    "256",
+    "--moe-cache-cpu-share",
+    "0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "bob-6x0-nocache-q4_0-256K",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "-fa",
+    "on",
+    "--fit",
+    "on",
+    "--cache-reuse",
+    "256",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  }
+ ]
+}

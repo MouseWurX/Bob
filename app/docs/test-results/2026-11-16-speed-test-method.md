@@ -915,6 +915,21 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 53 (Nov 18, after Addenda 47 and 49, before any run): does the copy cache earn its place at 128K and 256K?
+
+Addendum 47 showed stock llama.cpp with Bob's step, q4 cache, margin 512 and unpinned steps, but no copy cache, doing
+the 256K 2,000-token job 3% sooner than Bob's 6x3.5 pick, and within 4% at 128K. Addendum 49 then had most long rows
+lightly throttled. Plan `copy-cache-long.json` (3 rounds, 18 loads) runs, at 128K (step 5120) and 256K (step 6144):
+stock without the copy cache, Brain Engine 15 with the 3.5 GB copy cache, and Brain Engine 15 without it.
+
+**Predictions, written before any run:** Brain Engine 15 without the copy cache matches stock within 3% on every number
+(same code path). Without the copy cache, first word is at least 10% sooner and writing at least 8% slower than with
+it. By Addendum 48 job time, no-copy-cache wins the 128K agent job (600 tokens) and ties or wins the 256K
+2,000-token job.
+
+**What it decides:** whether the 128K and 256K picks drop the copy cache. If they do, the gain over stock llama.cpp at
+those sizes comes from settings alone, and the dissertation and README must say so.
+
 ## Addendum 44 (Nov 18, before any run): no mask table at all (patch 0026, Brain Engine 17)
 
 Patch 0026 (`LLAMA_KQ_MASK_POS=1`, off by default, flash attention only) passes each cache cell's position and chat
