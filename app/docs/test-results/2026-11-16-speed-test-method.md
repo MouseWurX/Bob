@@ -899,6 +899,22 @@ both rounds) and every switch-on load logged the made-on-card line. The memory p
 2,176 MiB and 2,256 MB at 256K step 4096), and speed was within 2%. Patch 0025 is harmless but frees nothing as built;
 `GGML_CUDA_NO_PINNED=1` (Addendum 42) stays Bob's fix.
 
+## Addendum 52 (Nov 18, before any run): Addendum 44 moves to Brain Engine 18, with the made-mask switch added
+
+Brain Engine 17 shipped for Linux only, so Addendum 44 runs on Brain Engine 18 (pre-release `brain-engine-18b12359`),
+which carries patches 0026 (`LLAMA_KQ_MASK_POS=1`, no table), 0027 (`-nkvo` loads without the copy cache) and 0028
+(the made mask from patch 0025, `LLAMA_KQ_MASK_BUILD=1`, now fires on Qwen 3.6 text instead of falling back to the
+table). It is laid over the official b12359 CUDA 13.5 build. Plan `mask-pos-be18.json` (2 rounds, 36 loads) is
+Addendum 44's plan on Brain Engine 18 plus one row per size at `-ub 4096` with `LLAMA_KQ_MASK_BUILD=1`.
+
+Order: `mask-pos-check.exe` must print ALL PASS first, then the plan, then the busy-desktop pass (Addendum 45) with
+2 rounds on Brain Engine 18.
+
+**Predictions, written before any run:** Addendum 44's predictions hold for the POS rows. With BUILD on, the words are
+identical to off, the reserve line shows more nodes and input tensors than off, and CUDA_Host compute at 256K
+`-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
+table, on the card). Speed with BUILD is within 3% of off at every size.
+
 ## Addendum 44 (Nov 18, before any run): no mask table at all (patch 0026, Brain Engine 17)
 
 Patch 0026 (`LLAMA_KQ_MASK_POS=1`, off by default, flash attention only) passes each cache cell's position and chat
