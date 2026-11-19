@@ -78,7 +78,7 @@ All speeds are tokens a second. "Read" is prompt reading speed and "write" is wr
 - **The 512 MB margin's writing gain.** It rests on 2 loads, and the busy-desktop pass agrees except for 2x4 at 32K.
 - **The chat pick between 2x4 and 4x4.**
 - **The writing order of cache types at 256K.** These are single loads.
-- **q4_0 sits on the quality line.** A second perplexity run passed it on one split of the text and missed the mean-KLD limit by 1.6% on the other (section 4.3.3.4). Whether it counts as a pass is a decision waiting on approval. Until then, q8_0 is the safe choice where it fits. The mixed caches have no needle test yet.
+- **q4_0 is a borderline pass.** A second perplexity run passed it on one split of the text and missed the mean-KLD limit by 1.6% on the other (section 4.3.3.4). MouseWurX ruled on 19 November that it counts as a borderline pass, so it may be used, with q8_0 still the safe choice where memory allows. A smaller q3 context cache is queued to test; it is unproven in our lab, as we have yet to test.
 - **Turbo's net effect.** It helped at a small step with a big copy cache and hurt at big steps with a small one, in 1 load each.
 - **The copy-cache choices.** By the scoring rules, agent work drops the copy cache and chat keeps it. Long-form work keeps it only on the tie-break, after a 2.1% tie (section 4.3.3.2). Most long-context loads throttled lightly, and a rerun could flip the long-form choice.
 - **The 120B soft cut's answer quality.** Its perplexity run is paused.
@@ -645,7 +645,7 @@ The copy cache and the read layout change nothing: they score identically, to th
 | 8K × 2 chunks | q4_0 | 5.308 | 0.00951 | 0.0667 | 95.91 |
 
 - **q8_0 passes the quality gate easily** on both splits.
-- **q4_0 sits on the line.** It passes on the 8K split and misses the 0.01 mean-KLD limit by 0.00016 (1.6%) on the 4K split. Its same-top rate passes both. Averaged over all 6 chunks its mean KLD is 0.0098, a pass, but the rules did not say beforehand how to combine runs, so that average can't decide it. Whether q4_0 counts as a pass is waiting on approval.
+- **q4_0 sits on the line, and counts as a borderline pass** (MouseWurX, 19 November). It passes on the 8K split and misses the 0.01 mean-KLD limit by 0.00016 (1.6%) on the 4K split. Its same-top rate passes both. Averaged over all 6 chunks its mean KLD is 0.0098, a pass, but the rules did not say beforehand how to combine runs, so that average can't decide it. Whether q4_0 counts as a pass is waiting on approval.
 - **q4_0 drifts about 2.7 times as much as q8_0 here,** and costs 0.2% to 0.75% in perplexity, against 0.06% to 0.08% for q8_0.
 
 - **q4_0 drifts two to three times as much as q8_0.** Its mean KLD is 2.8 times q8_0's (0.00904 against 0.00328), its 99th-percentile KLD 2.2 times, and its top word differs from the base 1.8 times as often (4.3% of the time, against 2.3%). But its perplexity is only 0.3% worse. An outside report had put 4-bit caches 8% to 12% worse.
@@ -746,7 +746,8 @@ These are queued on the home PC in this order, and each has its addendum written
 | Second and third rounds of the step picks at 128K and 256K | 27 | done: 5120 holds at 128K, three-way tie at 256K (section 4.3.3.2) |
 | Whether the copy cache comes off the 128K and 256K picks | 18 | done: off for agent work, kept for chat and, narrowly, long-form (section 4.3.3.2) |
 | Rerun of the throttled long-context rows | – | queued |
-| Whether q4_0 counts as passing the quality gate | – | waiting on approval |
+| Whether q4_0 counts as passing the quality gate | – | decided 19 November: a borderline pass |
+| A q3 context cache, in perplexity, needles and speed | – | queued |
 | q4_0 perplexity run again, and the needle test for q5_1 and f8_e4m3 | 10 | done: q4_0 on the line, needles all found (section 4.3.3.4) |
 
 #### 4.3.3.7 Improvements we could still try
