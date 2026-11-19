@@ -52,6 +52,7 @@ starts.
 - `perplexity-mask-pos.json`: drift of `LLAMA_KQ_MASK_POS=1` on Brain Engine 18 (f16 and q4_0, with and without the switch, 4K x 4 and 8K x 2), 8 runs; needs `BE18_PERPLEXITY` (Addendum 56).
 - `perplexity-mask-pos-ub1024.json`: the same at `-ub 1024`, so each chunk is read in pieces (Addendum 56).
 - `mask-pos-fixed-placement.json`: table vs POS with `--fit off` and a fixed `--n-cpu-moe ${NCMOE}`, with and without cache reuse, 64 words, 8 loads (Addendum 58).
+- `be19-learn-followup.json`: the learning copy cache with hit-rate counters on, share 0 ref, learn 16/8 at share 1, learn 16 at share 0.5 and 0, 15 loads (Addendum 59).
 - `perplexity-q3-vs-q4.json`: UD-Q3_K_XL against our UD-Q4_K_XL (f16 and q4_0 cache), 8 runs; needs `BRAIN_Q3`. `perplexity-q8-reference.json`: Q4 and Q3 against Q8_0, 6 runs; needs `BRAIN_Q8` (Addendum 57).
 - `real-desktop.json`: the picks so far at margins 512/1024, run on a clean desktop and again with a busy browser, 8 loads per pass (Addendum 45).
 - `cpu-share.json`: copy cache with processor share 0 / 0.25 / 0.5, 4x4 q4_0 margin 512, 32K and 128K, 6 loads (Addendum 46).

@@ -915,6 +915,25 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 59 (Nov 19, before any run): the learning copy cache, with counters
+
+In Addendum 54's L rows, learn 16 with margin 1.5 at share 1 wrote the code edit 12.9% faster than the share-0 pick
+(102.2 against 90.5 t/s, same answer), but trailed it on start (-14%) and k32 (-2%). Those rows logged no hit-rate
+counters, so the claim that learning raises the hit rate was not checked. Plan `be19-learn-followup.json` (15 loads,
+3 rounds, start, k32 and the code edit) turns `LLAMA_MOE_CACHE_LOG_EVERY=4000` on in every row and runs: the share-0
+reference; learn 16 at share 1; learn 8 at share 1; learn 16 at share 0.5; learn 16 at share 0.
+
+The share-0 + learn row may never learn: as patch 0031 reads, the learning cache only fills when the share is above 0.
+If its log says NOT USED, or shows no swaps, the row is void and dropped, not counted.
+
+Switching between the chat setting (share 0) and the code-edit setting (learn 16) is a full reload on Brain Engine 19;
+its cost is the load time logged in each row. Once a build has patch 0037, the switch will be timed with `POST /context`.
+
+**Predictions, written before any run:** learn 16 at share 1 repeats its code-edit lead over share 0 within 3% of
+Addendum 54's numbers, and its hit rate on the code edit is higher than share 0's. Learn 8 is no better than learn 16
+(within 3%). Share 0.5 + learn 16 sits between share 0 and share 1 + learn on start and on the code edit. Share 0 +
+learn 16 is void (NOT USED or no swaps).
+
 ## Addendum 58 (Nov 19, before any run): is the server's word change from the mask or from placement?
 
 Section 27 found the no-table mask bit-identical to the table with the q4_0 cache in llama-perplexity, yet the Brain
