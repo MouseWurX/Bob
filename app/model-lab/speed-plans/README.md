@@ -50,6 +50,7 @@ starts.
 - `be19-baseline.json`, `be19-where-time.json`, `be19-learn.json`, `be19-cpu-read.json`, `be19-spec-gate.json`, `be19-kv-split.json`: Brain Engine 19's new keys one at a time (89 loads in all; kv-split includes pinned-steps rows); `code-edit.md` is the code-edit prompt; need `BE18_SERVER`/`BE19_SERVER` (Addendum 54).
 - `be19-lend-behind.json`: row 7b, lend vs lend + refill behind (32) with 4/6/8 GB copy caches at 32K, step 6144, plus no-lend references, 3 rounds, 27 loads (Addendum 55).
 - `perplexity-mask-pos.json`: drift of `LLAMA_KQ_MASK_POS=1` on Brain Engine 18 (f16 and q4_0, with and without the switch, 4K x 4 and 8K x 2), 8 runs; needs `BE18_PERPLEXITY` (Addendum 56).
+- `perplexity-q3-vs-q4.json`: UD-Q3_K_XL against our UD-Q4_K_XL (f16 and q4_0 cache), 8 runs; needs `BRAIN_Q3`. `perplexity-q8-reference.json`: Q4 and Q3 against Q8_0, 6 runs; needs `BRAIN_Q8` (Addendum 57).
 - `real-desktop.json`: the picks so far at margins 512/1024, run on a clean desktop and again with a busy browser, 8 loads per pass (Addendum 45).
 - `cpu-share.json`: copy cache with processor share 0 / 0.25 / 0.5, 4x4 q4_0 margin 512, 32K and 128K, 6 loads (Addendum 46).
 - `perplexity-grid.json`: for `model-lab/perplexity-grid.mjs`, not the speed runner. What each speed setting and cache type costs in answers: KL divergence and same-top-word rate against plain settings with an f16 cache, with Brain Engine 15's llama-perplexity, 2 groups, 18 runs (Addendum 33).

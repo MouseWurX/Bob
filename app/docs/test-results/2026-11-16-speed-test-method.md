@@ -915,6 +915,26 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 57 (Nov 19, before any run): a Q3 file of the 35B against our Q4
+
+The owner's rule: brains under 35B stay at Q4; 35B and up may try lower. Asked to try a Q3 of stock Qwen3.6 35B "with
+perplexity scoring". Files, all from unsloth/Qwen3.6-35B-A3B-GGUF at the revision Bob's catalogue pins:
+UD-Q4_K_XL (ours, 22.4 GB), UD-Q3_K_XL (16.8 GB), and optionally Q8_0 (36.9 GB) as a reference.
+
+- `perplexity-q3-vs-q4.json` (8 runs): base = Q4 with f16 cache; rows Q3 f16, Q4 q4_0, Q3 q4_0, at 4K x 4 and 8K x 2.
+  KLD here is distance from our Q4, not from the full model.
+- `perplexity-q8-reference.json` (6 runs, only if the owner downloads the Q8): base = Q8_0 with f16 cache; rows Q4 and
+  Q3 with f16 cache. This is the true measure of what each file loses. The Q8 does not fit in RAM, so it runs partly
+  from the SSD; its timings mean nothing.
+
+**Gate (Q3 replaces Q4 only if all hold):** against Q8 where measured, Q3's mean KLD is at most 2 times Q4's and at
+most 0.03, and its same top word is at least 92%. Without the Q8: Q3's mean KLD against Q4 is at most 0.03, same top at
+least 92%, and its perplexity at most 2% above Q4's on both splits. With the q4_0 cache, Q3 q4_0 must still pass the
+same limits. Only if it passes do the speed rows (2x4 and 4x4 at 32K, 128K and 256K) and job tests run.
+
+**Predictions, written before any run:** against Q4, Q3 lands at mean KLD 0.02-0.05, same top 90-94% and perplexity
++2 to +5%, so it fails or only just passes. Against Q8, Q4 sits at about 0.01-0.02 and Q3 at 2-3 times that.
+
 ## Addendum 56 (Nov 19, after the Brain Engine 18 mask run, before any drift run): does the no-table mask change the brain's choices?
 
 On Brain Engine 18, `LLAMA_KQ_MASK_POS=1` gave different answers from the table on every prompt, deterministically
