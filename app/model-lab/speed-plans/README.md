@@ -54,6 +54,7 @@ starts.
 - `mask-pos-fixed-placement.json`: table vs POS with `--fit off` and a fixed `--n-cpu-moe ${NCMOE}`, with and without cache reuse, 64 words, 8 loads (Addendum 58).
 - `be19-learn-followup.json`: the learning copy cache with hit-rate counters on, share 0 ref, learn 16/8 at share 1, learn 16 at share 0.5 and 0, 15 loads (Addendum 59).
 - `be20-cpu-read.json`, `be20-kv-split.json`: the two Brain Engine 19 crashes rerun on Brain Engine 20, 15 and 24 loads (Addendum 60).
+- `perplexity-cpu-read.json`: answer drift of the processor read at 1024 on Brain Engine 20, share 0 and 1 each against its own base, 8 runs (Addendum 61).
 - `perplexity-q3-vs-q4.json`: UD-Q3_K_XL against our UD-Q4_K_XL (f16 and q4_0 cache), 8 runs; needs `BRAIN_Q3`. `perplexity-q8-reference.json`: Q4 and Q3 against Q8_0, 6 runs; needs `BRAIN_Q8` (Addendum 57).
 - `real-desktop.json`: the picks so far at margins 512/1024, run on a clean desktop and again with a busy browser, 8 loads per pass (Addendum 45).
 - `cpu-share.json`: copy cache with processor share 0 / 0.25 / 0.5, 4x4 q4_0 margin 512, 32K and 128K, 6 loads (Addendum 46).

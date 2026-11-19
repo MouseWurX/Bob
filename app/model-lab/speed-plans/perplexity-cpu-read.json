@@ -1,0 +1,214 @@
+{
+ "name": "Answer drift of the processor read for short prompts (LLAMA_MOE_CACHE_CPU_READ=1024, patch 0032) on Brain Engine 20, at share 0 and share 1, each against its own base without the read; f16 cache; 4K x 4 and 8K x 2 at step 1024 so every piece takes the read",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 61)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be20": {
+   "exe": "${BE20_PERPLEXITY}"
+  }
+ },
+ "text": "long-text.md",
+ "baseArgs": [
+  "-fa",
+  "on",
+  "--fit",
+  "on"
+ ],
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "rowTimeoutMs": 2700000,
+ "groups": [
+  {
+   "id": "cpu-read-s0-4K",
+   "about": "share 0 without (base) vs with the processor read at 1024, f16 cache (Addendum 61)",
+   "ctx": 4096,
+   "chunks": 4,
+   "needDiskGB": 12,
+   "base": {
+    "id": "s0-off",
+    "engine": "be20",
+    "args": [
+     "-b",
+     "4096",
+     "-ub",
+     "1024",
+     "--moe-cache-mib",
+     "4096",
+     "--moe-cache-cpu-share",
+     "0",
+     "-ctk",
+     "f16",
+     "-ctv",
+     "f16"
+    ]
+   },
+   "rows": [
+    {
+     "id": "s0-read1024",
+     "engine": "be20",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "1024",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "f16",
+      "-ctv",
+      "f16"
+     ],
+     "env": {
+      "LLAMA_MOE_CACHE_CPU_READ": "1024"
+     }
+    }
+   ]
+  },
+  {
+   "id": "cpu-read-s0-8K",
+   "about": "share 0 without (base) vs with the processor read at 1024, f16 cache (Addendum 61)",
+   "ctx": 8192,
+   "chunks": 2,
+   "needDiskGB": 12,
+   "base": {
+    "id": "s0-off",
+    "engine": "be20",
+    "args": [
+     "-b",
+     "4096",
+     "-ub",
+     "1024",
+     "--moe-cache-mib",
+     "4096",
+     "--moe-cache-cpu-share",
+     "0",
+     "-ctk",
+     "f16",
+     "-ctv",
+     "f16"
+    ]
+   },
+   "rows": [
+    {
+     "id": "s0-read1024",
+     "engine": "be20",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "1024",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "f16",
+      "-ctv",
+      "f16"
+     ],
+     "env": {
+      "LLAMA_MOE_CACHE_CPU_READ": "1024"
+     }
+    }
+   ]
+  },
+  {
+   "id": "cpu-read-s1-4K",
+   "about": "share 1 without (base) vs with the processor read at 1024, f16 cache (Addendum 61)",
+   "ctx": 4096,
+   "chunks": 4,
+   "needDiskGB": 12,
+   "base": {
+    "id": "s1-off",
+    "engine": "be20",
+    "args": [
+     "-b",
+     "4096",
+     "-ub",
+     "1024",
+     "--moe-cache-mib",
+     "4096",
+     "--moe-cache-cpu-share",
+     "1",
+     "-ctk",
+     "f16",
+     "-ctv",
+     "f16"
+    ]
+   },
+   "rows": [
+    {
+     "id": "s1-read1024",
+     "engine": "be20",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "1024",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "1",
+      "-ctk",
+      "f16",
+      "-ctv",
+      "f16"
+     ],
+     "env": {
+      "LLAMA_MOE_CACHE_CPU_READ": "1024"
+     }
+    }
+   ]
+  },
+  {
+   "id": "cpu-read-s1-8K",
+   "about": "share 1 without (base) vs with the processor read at 1024, f16 cache (Addendum 61)",
+   "ctx": 8192,
+   "chunks": 2,
+   "needDiskGB": 12,
+   "base": {
+    "id": "s1-off",
+    "engine": "be20",
+    "args": [
+     "-b",
+     "4096",
+     "-ub",
+     "1024",
+     "--moe-cache-mib",
+     "4096",
+     "--moe-cache-cpu-share",
+     "1",
+     "-ctk",
+     "f16",
+     "-ctv",
+     "f16"
+    ]
+   },
+   "rows": [
+    {
+     "id": "s1-read1024",
+     "engine": "be20",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "1024",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "1",
+      "-ctk",
+      "f16",
+      "-ctv",
+      "f16"
+     ],
+     "env": {
+      "LLAMA_MOE_CACHE_CPU_READ": "1024"
+     }
+    }
+   ]
+  }
+ ]
+}

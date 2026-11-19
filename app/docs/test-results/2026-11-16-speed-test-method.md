@@ -915,6 +915,19 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 61 (Nov 19, before any run): drift of the processor read for short prompts
+
+On Brain Engine 20 the processor read (patch 0032, `LLAMA_MOE_CACHE_CPU_READ`) no longer crashes and gives the
+300-token prompt its first word 28-33% sooner, with the best spread at N = 1024 (31% sooner at 300 tokens, 11% at 900).
+It changes the answer whenever it engages (the misses are worked out by the processor's kernels). Before it can go near a
+pick, plan `perplexity-cpu-read.json` measures the drift with llama-perplexity on Brain Engine 20: at share 0 and at
+share 1, each against its own base without the read, f16 cache, 4K x 4 and 8K x 2 chunks, `-ub 1024` so every piece
+takes the read, verbose log on (as in Addendum 56's rerun). 8 runs.
+
+**Gate (the same as the no-table mask's, Addendum 56):** KLD 0.002 or less and the same top word 99% or more, at both
+shares and both lengths. **Prediction, written before any run:** it passes at share 0 and at share 1 (processor and card
+kernels both work in at least f32 for the expert sums, so the drift should be rounding-sized).
+
 ## Addendum 60 (Nov 19, before any run): the two Brain Engine 19 crashes, rerun on Brain Engine 20
 
 The processor read for short prompts (patch 0032) and the KV split (0036) crashed on Brain Engine 19 (results section
