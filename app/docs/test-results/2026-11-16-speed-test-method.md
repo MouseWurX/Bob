@@ -915,6 +915,18 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 55 (Nov 19, before any run): refill behind the writing, again (row 7b of the Brain Engine 19 plan)
+
+The owner asked to retest patches 0022 (`LLAMA_MOE_CACHE_LEND`) and 0023 (`LLAMA_MOE_CACHE_LEND_BEHIND`), both already
+in Brain Engine 19, now that cache and context sizes can change on the fly. Plan `be19-lend-behind.json` (27 loads):
+at 32K, step 6144, q4 cache, margin 512, with 4, 6 and 8 GB copy caches: no lend, lend only (N 4096), and lend + refill
+behind from written word 32. A 32K prompt, then 300 words, 3 rounds. Brain Engine 19 has no fixed refill row of its
+own, so the no-lend row is the reference at each size. Where `--fit` cannot place a cache size at 32K, the row is
+reported as not placed, not as a loss.
+
+**Predictions, written before any run:** the refill takes under 0.5 s at 4 GB and under 1 s at 8 GB. Lend-behind does
+not cut the time to 300 words by 3% or more against lend only at any size (as on Brain Engine 14), so it stays off.
+
 ## Addendum 54 (Nov 19, before any run): Brain Engine 19's new tricks, one at a time
 
 Brain Engine 19 (pre-release `brain-engine-19b12359`, patches 0001-0036) is laid over the official b12359 CUDA 13.5

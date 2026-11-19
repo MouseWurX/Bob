@@ -1,0 +1,322 @@
+{
+ "name": "Brain Engine 19: copy cache lent to the -ub step during reads (0022) vs lend + refill behind the writing (0023, LEND_BEHIND=32), 4/6/8 GB caches at 32K, step 6144, q4 cache, plus a no-lend reference per size, 3 rounds",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 55)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be19": {
+   "exe": "${BE19_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "k32": "long-text.md"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 3,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "rows": [
+  {
+   "id": "ref-6x4",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "RB0-lend-6x4",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_LEND": "4096"
+   }
+  },
+  {
+   "id": "RB1-lend-behind32-6x4",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_LEND": "4096",
+    "LLAMA_MOE_CACHE_LEND_BEHIND": "32"
+   }
+  },
+  {
+   "id": "ref-6x6",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "6144",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "RB0-lend-6x6",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "6144",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_LEND": "4096"
+   }
+  },
+  {
+   "id": "RB1-lend-behind32-6x6",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "6144",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_LEND": "4096",
+    "LLAMA_MOE_CACHE_LEND_BEHIND": "32"
+   }
+  },
+  {
+   "id": "ref-6x8",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "8192",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "RB0-lend-6x8",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "8192",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_LEND": "4096"
+   }
+  },
+  {
+   "id": "RB1-lend-behind32-6x8",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "8192",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_LEND": "4096",
+    "LLAMA_MOE_CACHE_LEND_BEHIND": "32"
+   }
+  }
+ ],
+ "saveText": true,
+ "promptTokens": {
+  "k32": 32768
+ },
+ "question": {
+  "k32": "\n\nIn two sentences, what is this text about?"
+ }
+}
