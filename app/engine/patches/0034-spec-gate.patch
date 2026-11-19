@@ -1,0 +1,105 @@
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 57fe6b5..d58a518 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -604,6 +604,14 @@ struct server_slot {
+     std::vector<int32_t> spec_i_batch;
+     common_prompt_checkpoint spec_ckpt;
+     bool spec_is_replay = false;
++
++    // Brain Engine 0034 (LLAMA_SPEC_GATE=rate): drafting pauses while too few drafted words are kept. The share kept is
++    // averaged over the last drafts; below the rate, the slot writes without drafts for a while (8 words, doubling up
++    // to 256 each time it is still low), then tries one draft again. 0 = off.
++    float   spec_gate_avg     = -1.0f; // the averaged share of drafted words kept, -1 before the first draft
++    int32_t spec_gate_skip    = 0;     // words left to write without drafts
++    int32_t spec_gate_backoff = 8;
++    int32_t spec_gate_steps   = 0;     // drafts checked since the last pause
+     std::mt19937 spec_synth_rng;
+ 
+     // TODO: move members that belong to the task (such as `generated`, `has_new_line`) to task_results_state
+@@ -730,6 +738,10 @@ struct server_slot {
+         SLT_DBG(*this, "%s", "\n");
+ 
+         spec_is_replay = false;
++        spec_gate_avg     = -1.0f; // Brain Engine 0034: each reply starts drafting fresh
++        spec_gate_skip    = 0;
++        spec_gate_backoff = 8;
++        spec_gate_steps   = 0;
+ 
+         last_nl_pos    = 0;
+         generated      = {};
+@@ -890,6 +902,11 @@ struct server_slot {
+             return 0;
+         }
+ 
++        // Brain Engine 0034
++        if (spec_gate_skip > 0) {
++            return 0;
++        }
++
+         // determine the max draft that fits the current slot state
+         // note: slot.prompt is not yet expanded with the `id` token sampled above
+         //       also, need to leave space for 1 extra token to allow context shifts
+@@ -1329,6 +1346,10 @@ public:
+     //  - and, with thread-safe APIs (e.g., tokenizer calls)
+     llama_model * model_tgt = nullptr;
+ 
++    // Brain Engine 0034: LLAMA_SPEC_GATE, the share of drafted words that must be kept for drafting to go on (0 = off)
++    float  spec_gate_rate   = 0.0f;
++    size_t spec_gate_pauses = 0;
++
+     mtmd_context * mctx = nullptr;
+     mtmd_helper_cap mtmd_cap = {};
+     // note: video_params.ffmpeg_bin_dir points into params_base, which outlives this struct
+@@ -1512,6 +1533,15 @@ private:
+     // load the model and initialize llama_context
+     // this may also be called to resume from sleeping state
+     bool load_model(common_params & params) {
++        if (const char * g = getenv("LLAMA_SPEC_GATE"); g != nullptr && *g != '\0') {
++            const float v = (float) atof(g);
++            if (v > 0.0f && v < 1.0f) {
++                spec_gate_rate = v;
++                SRV_INF("drafts pause while fewer than %.0f%% of drafted words are kept (LLAMA_SPEC_GATE)\n", 100.0f*v);
++            } else {
++                SRV_WRN("!!! LLAMA_SPEC_GATE=%s NOT USED: it must be between 0 and 1\n", g);
++            }
++        }
+         load_progress_data load_progress_text  (this, "text_model");
+         load_progress_data load_progress_mmproj(this, "mmproj_model");
+         load_progress_data load_progress_spec  (this, "spec_model");
+@@ -4487,6 +4517,9 @@ private:
+                 const bool use_ckpt_dft = ctx_dft_seq_rm_type == COMMON_CONTEXT_SEQ_RM_TYPE_FULL;
+ 
+                 const int n_draft_max = slot.get_n_draft_max();
++                if (slot.spec_gate_skip > 0) {
++                    slot.spec_gate_skip--; // Brain Engine 0034: one word written without a draft
++                }
+ 
+                 if (n_draft_max > 0) {
+                     GGML_ASSERT(slot.can_speculate());
+@@ -5910,6 +5943,25 @@ private:
+ 
+                 GGML_ASSERT(accepted.size() >= 1);
+ 
++                // Brain Engine 0034: a new draft (not the replay of a kept part) counts toward the gate
++                if (spec_gate_rate > 0.0f && !slot.spec_is_replay) {
++                    const float kept = (float) (accepted.size() - 1) / (float) n_draft;
++                    slot.spec_gate_avg = slot.spec_gate_avg < 0.0f ? kept : 0.75f*slot.spec_gate_avg + 0.25f*kept;
++                    slot.spec_gate_steps++;
++                    // the first draft after a pause decides alone, otherwise wait for 4 drafts
++                    if (slot.spec_gate_avg < spec_gate_rate && (slot.spec_gate_steps >= 4 || slot.spec_gate_backoff > 8)) {
++                        SLT_INF(slot, "drafts paused for %d words: %.0f%% of drafted words kept, under %.0f%% (pause %zu)\n",
++                                slot.spec_gate_backoff, 100.0f*slot.spec_gate_avg, 100.0f*spec_gate_rate, spec_gate_pauses + 1);
++                        slot.spec_gate_skip    = slot.spec_gate_backoff;
++                        slot.spec_gate_backoff = std::min(256, slot.spec_gate_backoff*2);
++                        slot.spec_gate_steps   = 0;
++                        slot.spec_gate_avg     = -1.0f;
++                        spec_gate_pauses++;
++                    } else if (slot.spec_gate_avg >= spec_gate_rate && slot.spec_gate_steps >= 4) {
++                        slot.spec_gate_backoff = 8;
++                    }
++                }
++
+                 const uint32_t n_rollback = slot.spec_draft.size() + 1 - accepted.size();
+ 
+                 // the recurrent snapshots are only guaranteed for batches of up to n_rs_seq + 1 tokens, so a longer draft uses its checkpoint
