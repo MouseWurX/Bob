@@ -135,16 +135,27 @@ export function cleanMemType(v) {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return out;
   for (const [k, t] of Object.entries(v).slice(0, 64)) {
     if (typeof k !== 'string' || !k || k.length > 200 || /[\u0000-\u001f]/.test(k)) continue;
-    if (t === 'standard' || t === 'sharp' || t === 'small') out[k] = t; // standard is kept, so a saved change back to it wins
+    if (t === 'standard' || t === 'sharp' || t === 'small' || t === 'smallest') out[k] = t; // standard is kept, so a saved change back to it wins
   }
   return out;
 }
-export const memTypeOf = (cfg, model) => (cfg?.brainMemType?.[model] === 'sharp' || cfg?.brainMemType?.[model] === 'small' ? cfg.brainMemType[model] : 'standard');
+// Does an engine's --help list q3_0 among its cache types ("allowed values: ..., q3_0, ...", which may wrap)?
+// 0038's 3-bit chat memory has kernels for CUDA cards and the processor only. A Mac (Metal) or an engine folder whose
+// card file is Vulkan without CUDA would run that attention on the processor, so Bob doesn't offer it there.
+export const q3CardOk = (files, platform) => platform !== 'darwin' && !((files || []).some((f) => /ggml-(vulkan|metal)/i.test(f)) && !(files || []).some((f) => /ggml-cuda/i.test(f)));
+// The engine lists its chat memory types under -ctv in --help (wrapped over lines); 3-bit is there only on a Brain Engine with 0038.
+export const helpHasQ3 = (text) => { const t = String(text ?? ''), at = t.indexOf('--cache-type-v'); const m = at < 0 ? null : t.slice(at).match(/allowed values:[^\n]*(?:\r?\n[ \t]+[^-\s][^\n]*)*/); return Boolean(m) && /\bq3_0\b/.test(m[0]); };
+// Smallest (3-bit, Brain Engine patch 0038) needs an engine that has q3_0; without one it falls back to Smaller.
+export function memTypeOf(cfg, model, { q3 = false } = {}) {
+  const t = cfg?.brainMemType?.[model];
+  if (t === 'smallest') return q3 ? 'smallest' : 'small';
+  return t === 'sharp' || t === 'small' ? t : 'standard';
+}
 // The engine's own flags for this brain. Flags set by hand (llamacpp.args in config.json) are kept, but a memory
 // type picked for this brain on the Brains page sets -ctk and -ctv (1.5.207 PC check: config.example.json ships
 // "-fa on -ctk q8_0 -ctv q8_0", so every new home had args "set by hand" and Sharper and Smaller did nothing).
-export function memArgs(cfg, model, handArgs) {
-  const type = memTypeOf(cfg, model);
+export function memArgs(cfg, model, handArgs, { q3 = false } = {}) {
+  const type = memTypeOf(cfg, model, { q3 });
   const t = MEM_TYPES[type];
   if (!Array.isArray(handArgs)) return ['-fa', 'on', '-ctk', t.k, '-ctv', t.v];
   if (type === 'standard') return handArgs;

@@ -45,7 +45,7 @@ export function yarnArgs(ctx, native) {
 
 // What the chat memory (KV cache) costs for a context, in bytes, from the brain's shape (gguf.js) and the memory's
 // number format (-ctk/-ctv; Bob uses q8_0). null when the shape isn't known.
-const KV_BYTES = { f32: 4, f16: 2, bf16: 2, q8_0: 34 / 32, q5_1: 24 / 32, q5_0: 22 / 32, q4_1: 20 / 32, q4_0: 18 / 32, iq4_nl: 18 / 32 };
+const KV_BYTES = { f32: 4, f16: 2, bf16: 2, q8_0: 34 / 32, q5_1: 24 / 32, q5_0: 22 / 32, q4_1: 20 / 32, q4_0: 18 / 32, iq4_nl: 18 / 32, q3_0: 14 / 32 };
 export function kvBytes(shape, ctx, args = []) {
   if (!shape?.perToken || !(ctx > 0)) return null;
   const type = (flags) => { const i = args.findIndex((a) => flags.includes(a)); return KV_BYTES[String(args[i + 1] || '').toLowerCase()] || 2; };

@@ -11,7 +11,7 @@ import { mergeSettings } from '../src/config.js';
 import { LlamaCpp } from '../src/llamacpp.js';
 import { modelFor } from '../src/sessions.js';
 import {
-  EXTRA_SWITCHES, extraOn, newSpecFlags, draftNumArgs, copyGuessArgs, COPY_GUESS_ARGS, cleanMemType, memTypeOf, memArgs, MEM_TYPES,
+  EXTRA_SWITCHES, extraOn, newSpecFlags, draftNumArgs, copyGuessArgs, COPY_GUESS_ARGS, cleanMemType, memTypeOf, memArgs, MEM_TYPES, helpHasQ3, q3CardOk,
   parseWinBattery, parseMacBattery, linuxBattery, onBattery, setOnBattery, batteryNow, laptopSaving, laptopThreads,
   cardKey, cardChange, placesToAuto, handoffHat, warmRoom, warmFile, WARM_SPARE, plainEngineNotes, engineNoteLine, brainEngineNumber,
   READING_PICKS, readingPick, readingSteps, readingChoice, readingArgs, dropReading, lockRoom, lockFloor, everydayTurboArgs, TURBO_EVERYDAY_MAX, lockMemoryArgs
@@ -19,6 +19,7 @@ import {
 import { startEngineExtras, engineLabel } from '../src/engine-extras-run.js';
 import { addReply, speedSeries, logReply, readSpeedLog, KEEP_DAYS } from '../src/speed-log.js';
 import { memTypeTrade } from '../public/mem-types.js';
+import { kvBytes } from '../src/model-ctx.js';
 import { memTypeHtml } from '../public/brains.js';
 import { HELP } from '../public/help-content.js';
 import { WANTS } from '../public/wants.js';
@@ -104,6 +105,19 @@ check('Standard keeps flags set by hand as they are', memArgs({}, 'big', ['-ctk'
   const oll = memTypeHtml(b, { place: { brains: { big: { memType: 'standard', kv32: null, memEngine: false } } } });
   check('the Brains page shows the three types, the pick pressed, and GB for a 32K chat', /data-memtype="small"[^>]*aria-pressed="true"/.test(on) && /about 1 GB for a 32K chat/.test(on) && /Sharper/.test(on));
   check('with Ollama the choice is locked and says why', /disabled/.test(oll) && /Only with Brain Engine or llama\.cpp/.test(oll)); }
+
+// ---------- 100b Smallest (3-bit, q3_0) memory type ----------
+check('Smallest is 3-bit both ways, off unless picked', MEM_TYPES.smallest.k === 'q3_0' && MEM_TYPES.smallest.v === 'q3_0' && memTypeOf({}, 'big', { q3: true }) === 'standard');
+check('Smallest is kept when saved', JSON.stringify(cleanMemType({ a: 'smallest' })) === '{"a":"smallest"}');
+check('Smallest needs an engine with the 3-bit type, else Smaller', memTypeOf({ brainMemType: { big: 'smallest' } }, 'big', { q3: true }) === 'smallest' && memTypeOf({ brainMemType: { big: 'smallest' } }, 'big') === 'small');
+check('Smallest sets q3_0 flags only when the engine has it', memArgs({ brainMemType: { big: 'smallest' } }, 'big', [], { q3: true }).join(' ') === '-fa on -ctk q3_0 -ctv q3_0' && memArgs({ brainMemType: { big: 'smallest' } }, 'big', []).join(' ') === `-fa on -ctk ${MEM_TYPES.small.k} -ctv ${MEM_TYPES.small.v}`);
+{ const help = '-ctv, --cache-type-v TYPE  Cache type for V.\n   allowed values: f32, f16, bf16, q8_0, q4_0, iq4_nl, q5_0, q5_1\n   q3_0\n(default: f16)\n';
+  check('the engine\'s help is read for q3_0 (on a wrapped line, with Windows line ends)', helpHasQ3(help) && helpHasQ3(help.replace(/\n/g, '\r\n')) && !helpHasQ3('-ctv, --cache-type-v TYPE\n  allowed values: f32, f16, q4_0\n  -ctkd q3_0 is not listed here') && !helpHasQ3('allowed values: q3_0') && !helpHasQ3(null)); }
+check('3-bit only where it has kernels: CUDA or the processor, never Vulkan alone or a Mac', q3CardOk(['llama-server.exe', 'ggml-cuda.dll', 'ggml-vulkan.dll'], 'win32') && q3CardOk(['llama-server', 'libggml-cpu.so'], 'linux') && !q3CardOk(['llama-server', 'libggml-vulkan.so'], 'linux') && !q3CardOk(['llama-server'], 'darwin') && q3CardOk(null, 'android'));
+{ const plain = memTypeTrade(2), with3 = memTypeTrade(2, { q3: true });
+  check('the page only offers Smallest when the engine has it', !plain.some((x) => x.id === 'smallest') && Math.abs(with3.find((x) => x.id === 'smallest').gb - 2 * 14 / 34) < 0.05); }
+{ const k4 = kvBytes({ perToken: 20480 }, 32768, ['-ctk', 'q4_0', '-ctv', 'q4_0']), k3 = kvBytes({ perToken: 20480 }, 32768, ['-ctk', 'q3_0', '-ctv', 'q3_0']);
+  check('room math counts 3-bit memory as 14 of q4_0\'s 18', k4 > 0 && Math.abs(k3 / k4 - 14 / 18) < 0.001, `${k3} ${k4}`); }
 
 // ---------- 98 Laptop mode ----------
 check('Windows battery: 1 is on battery, 2 plugged in, nothing is no battery', parseWinBattery('1\r\n') === true && parseWinBattery('2') === false && parseWinBattery('') === null);

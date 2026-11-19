@@ -28,7 +28,7 @@ import { scutEnv, linkEnv, linkLive } from './share-card.js'; // SCUT, the fast 
 import { LinkLog } from './link-log.js'; // what the link to a lent card carried, kept in a file and the logbook
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
-import { memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
+import { helpHasQ3, q3CardOk, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
 
@@ -323,7 +323,7 @@ export class LlamaCpp {
     const gb = (b) => Math.round((b / 1024 ** 3) * 10) / 10;
     try {
       const f = this.resolve(model).gguf;
-      const need = needBytes(fs.statSync(f).size, ggufInfo(f)?.shape, ctx, memArgs(this.cfg, model, this.lc.args)); // 100: the brain's memory type
+      const need = needBytes(fs.statSync(f).size, ggufInfo(f)?.shape, ctx, memArgs(this.cfg, model, this.lc.args, { q3: this.kvQ3() })); // 100: the brain's memory type
       if (!need) return { fits: null };
       const room = roomBytes(ramBytes, cardBytes);
       return { fits: need <= room, needGB: gb(need), roomGB: gb(room) };
@@ -508,6 +508,7 @@ export class LlamaCpp {
     let flag = null;
     if (/llama-server/i.test(path.basename(exe)) && fs.existsSync(exe)) {
       try {
+        if (!q3CardOk(fs.readdirSync(path.dirname(exe)), process.platform)) throw new Error('no 3-bit kernels for this card');
         const r = spawnSync(exe, ['--help'], { timeout: 5000, encoding: 'utf8', windowsHide: true });
         const text = `${r.stdout || ''}${r.stderr || ''}`;
         flag = /--load-mode\b/.test(text) ? 'load-mode' : /--no-mmap\b/.test(text) ? 'no-mmap' : null;
@@ -515,6 +516,23 @@ export class LlamaCpp {
     }
     this._loadFlag = { exe, flag };
     return flag;
+  }
+
+  // Nov 19 (Brain Engine patch 0038): does this engine have the 3-bit chat memory type (q3_0)? Asked once per exe from
+  // its --help, whose cache type list names it. Anything else, or no answer within 5 s, counts as no, so the
+  // Smallest memory type falls back to Smaller and is not offered on the Brains page.
+  kvQ3() {
+    const exe = this.exePath();
+    if (this._kvQ3 && this._kvQ3.exe === exe) return this._kvQ3.has;
+    let has = false;
+    if (/llama-server/i.test(path.basename(exe)) && fs.existsSync(exe)) {
+      try {
+        const r = spawnSync(exe, ['--help'], { timeout: 5000, encoding: 'utf8', windowsHide: true });
+        has = helpHasQ3(`${r.stdout || ''}${r.stderr || ''}`);
+      } catch {}
+    }
+    this._kvQ3 = { exe, has };
+    return has;
   }
 
   // 1.5.90: no memory-mapping when some of the brain is placed in RAM on the card route (see buildArgs).
@@ -573,7 +591,7 @@ export class LlamaCpp {
       ...this.stretchArgs(gguf, ctx || lc.ctx || DEFAULT_CTX),
       ...(mmproj && lc.vision !== false && !(lc.noEyes || []).includes(model) ? ['--mmproj', mmproj] : []), // Lab: "Load without eyes and ears" for one brain
       // 100 (opt-in, the Brains page): the brain's chat memory type, Standard (8-bit) unless picked. Flags set by hand win.
-      ...memArgs(this.cfg, model, lc.args),
+      ...memArgs(this.cfg, model, lc.args, { q3: this.kvQ3() }),
       // 98 Laptop mode (opt-in): on battery, half the cores. Games-first and threads set by hand win.
       ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : laptopThreads(this.cfg) ? ['-t', String(laptopThreads(this.cfg))] : num(lc.threads, '-t')),
       ...num(lc.batch, '-b'), ...num(lc.ubatch, '-ub'),
@@ -951,7 +969,7 @@ export class LlamaCpp {
     if (!card || !Number.isFinite(card.freeMB)) return null;
     let shape = null;
     try { shape = ggufInfo(gguf)?.shape; } catch {}
-    const kvFor = (c) => kvBytes(shape, c, memArgs(this.cfg, model, this.lc.args)) || 0;
+    const kvFor = (c) => kvBytes(shape, c, memArgs(this.cfg, model, this.lc.args, { q3: this.kvQ3() })) || 0;
     return { ...memCheck({ fileBytes: size, kvFor, ctx, cardFreeMB: card.freeMB, ramFreeBytes: this.freeRam ? this.freeRam() : os.freemem(), cardOnly }), cardFreeMB: card.freeMB };
   }
 
@@ -963,7 +981,7 @@ export class LlamaCpp {
     let shape = null;
     try { shape = ggufInfo(gguf)?.shape; } catch {}
     const c = ctx || this.lc.ctx || DEFAULT_CTX;
-    const kv = kvBytes(shape, c, memArgs(this.cfg, model, this.lc.args)) ?? Math.min(c, 131072) * 60 * 1024;
+    const kv = kvBytes(shape, c, memArgs(this.cfg, model, this.lc.args, { q3: this.kvQ3() })) ?? Math.min(c, 131072) * 60 * 1024;
     return apuNeed({ fileBytes: size, kvBytes: kv, ubatch: this.lc.ubatch || 512 });
   }
   apuMaxCtx(model) { return this.cfg.sharedGraphics === true ? Number(this.careData.apuFit?.[model]?.maxCtx) || 0 : 0; }

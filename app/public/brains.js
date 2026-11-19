@@ -289,9 +289,9 @@ export function memTypeHtml(b, ctx) {
   const p = placeOf(b.value, ctx);
   const cur = p?.memType || 'standard';
   const off = p ? p.memEngine === false : true;
-  const rows = memTypeTrade(p?.kv32);
+  const rows = memTypeTrade(p?.kv32, { q3: p?.memQ3 === true || cur === 'smallest' });
   const seg = (r) => `<button type="button" class="seg-btn${r.id === cur ? ' on' : ''}" data-memtype="${r.id}" data-model="${esc(b.value)}" aria-pressed="${r.id === cur}" ${off ? 'disabled' : ''}>${esc(r.name)}</button>`;
-  return `<section class="brains-panel"><h3>Chat memory type ${tipHtml('The chat memory (KV cache) sits beside the brain on the card and grows as a chat gets longer. Standard is what I use unless you pick. Sharper keeps it at full detail: twice the room, a touch more exact on long code. Smaller packs it tighter: about half the room, so a longer chat fits, a little less exact. A change takes effect the next time this brain loads.', 'About the chat memory type')}</h3>
+  return `<section class="brains-panel"><h3>Chat memory type ${tipHtml('The chat memory (KV cache) sits beside the brain on the card and grows as a chat gets longer. Standard is what I use unless you pick. Sharper keeps it at full detail: twice the room, a touch more exact on long code. Smaller packs it tighter: about half the room, so a longer chat fits, a little less exact. Smallest (only with a Brain Engine that has it) packs it tighter still: about two fifths, for the longest chats, less exact again. A change takes effect the next time this brain loads.', 'About the chat memory type')}</h3>
       <div class="seg" role="group" aria-label="Chat memory type for ${esc(b.name)}">${rows.map(seg).join('')}</div>
       <ul class="mem-trade">${rows.map((r) => `<li${r.id === cur ? ' class="on"' : ''}><strong>${esc(r.name)}</strong>${r.gb != null ? ` · about ${r.gb} GB for a 32K chat` : ''} <span class="muted">${esc(r.about)}</span></li>`).join('')}</ul>
       <p class="muted">${off ? '🔒 Only with Brain Engine or llama.cpp. Ollama sets its chat memory for every brain at once.' : cur === 'standard' ? 'Standard. Takes effect the next time this brain loads.' : 'In use. Takes effect the next time this brain loads.'}</p></section>`;

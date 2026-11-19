@@ -1651,7 +1651,7 @@ function brainPlaceView() {
   for (const model of models) {
     const info = cfg.engine === 'llamacpp' ? brain.engine?.placeInfo?.(model) || null : null;
     const cal = calResult(cfg, model);
-    brains[model] = { layers: info?.layers || null, set: cfg.brainPlace?.[model] || { mode: 'auto' }, memType: cfg.brainMemType?.[model] || 'standard', kv32: cfg.engine === 'llamacpp' ? brain.engine?.kvGB?.(model, 32768) ?? null : null, memEngine: cfg.engine === 'llamacpp', pinned: Number.isInteger(cfg.llamacpp?.nCpuMoe?.[model]), cal: cal ? { when: cal.when, best: cal.best, rows: cal.rows, speed: cal.speed || null, speedRows: cal.speedRows || [] } : null };
+    brains[model] = { layers: info?.layers || null, set: cfg.brainPlace?.[model] || { mode: 'auto' }, memType: cfg.brainMemType?.[model] || 'standard', memQ3: cfg.engine === 'llamacpp' ? Boolean(brain.engine?.kvQ3?.()) : false, kv32: cfg.engine === 'llamacpp' ? brain.engine?.kvGB?.(model, 32768) ?? null : null, memEngine: cfg.engine === 'llamacpp', pinned: Number.isInteger(cfg.llamacpp?.nCpuMoe?.[model]), cal: cal ? { when: cal.when, best: cal.best, rows: cal.rows, speed: cal.speed || null, speedRows: cal.speedRows || [] } : null };
   }
   const run = lab.job?.run?.kind === 'calibrate' ? lab.runView(lab.job.run) : null;
   return { engine: cfg.engine || '', brains, job: run, busy: Boolean(lab.job) && !run, engineHere: cfg.engine === 'llamacpp' && lab.tools().server.found };
