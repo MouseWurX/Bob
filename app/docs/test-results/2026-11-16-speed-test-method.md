@@ -943,8 +943,10 @@ unpinned steps:
   2,000-token prompts at `-ub 2048`.
 - `be19-spec-gate.json` (D, 12 loads): n-gram drafts (`--spec-type ngram-mod`) with `LLAMA_SPEC_GATE` off, 0.3, 0.5,
   and no drafts, on the start prompt and the code edit.
-- `be19-kv-split.json` (K, 18 loads): `LLAMA_KV_SPLIT` off, 32768 and 65536 at 128K (5x3.5) and 256K (6x3.5) on 2K,
-  32K and 100K or 250K prompts.
+- `be19-kv-split.json` (K, 24 loads): `LLAMA_KV_SPLIT` off, 32768 and 65536 at 128K (5x3.5) and 256K (6x3.5) on 2K,
+  32K and 100K or 250K prompts, and split 32768 again with pinned steps (`GGML_CUDA_NO_PINNED` unset), because 0036
+  keeps the full K/V in the CUDA host buffer type, which falls back to plain RAM when unpinned. Record the CUDA_Host and
+  shared-memory rise for both. (Added before any run.)
 
 Not in plans yet: context change without reload (needs Bob or `POST /context`), the tiny Flash-Next brain, and the
 combined winners (written after these results).
