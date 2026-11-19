@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { quantile, median, parseSmiLine, cardSummary, realThrottled, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, lineSplitter, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns, parseDiskstats, parseDiskRaw, diskUse, parseSharedMB } from '../model-lab/speed-test.mjs';
+import { quantile, median, parseSmiLine, cardSummary, realThrottled, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, lineSplitter, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns, parseDiskstats, parseDiskRaw, diskUse, parseSharedMB, exitText } from '../model-lab/speed-test.mjs';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -80,6 +80,16 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
 { const { prompts } = loadPlan(planFile); const f = fx({ up: false });
   const res = await runRow({ plan, prompts, row: plan.rows[0], round: 0, fx: f });
   check('a row that can\'t start is not run, with why, and nothing is timed', res.notRun === 'out of memory' && !res.runs.length && f.seen.stops === 1); }
+{ const { prompts } = loadPlan(planFile); const f = fx(); let dead = '';
+  f.start = (exe, args, env) => ({ url: 'http://fake', log: () => '', ready: async () => ({ ok: true }), stop: async () => { f.seen.stops++; }, exitCode: () => dead });
+  f.stream = async () => { dead = 'exit code 0xC0000005'; throw new Error('read ECONNRESET'); };
+  const res = await runRow({ plan, prompts, row: plan.rows[0], round: 0, fx: f });
+  check('an engine that dies in the warm-up is written down as crashed with its exit code, and the runner goes on', /warm-up: read ECONNRESET \(engine ended, exit code 0xC0000005\)/.test(res.notRun || '') && !res.runs.length && f.seen.stops === 1, res.notRun);
+  let k = 0; dead = '';
+  f.stream = async (url, body) => { if (k++ === 0) return { writeTps: 40, gaps: {}, gapsMs: [] }; dead = 'exit code 0xC0000409'; throw new Error('fetch failed'); };
+  const two = await runRow({ plan, prompts, row: { ...plan.rows[0], prompts: [plan.rows[0].prompts[0], plan.rows[0].prompts[0]] }, round: 0, fx: f });
+  check('a timed run whose engine died keeps the exit code and stops the row (no more prompts to a dead engine)', two.runs.length === 1 && /0xC0000409/.test(two.runs[0].failed) && /0xC0000409/.test(two.crashed || '') && k === 2, two); }
+check('exit codes: Windows crash codes in hex, small codes plain, a signal by name, nothing while running', exitText(3221225477) === 'exit code 0xC0000005' && exitText(-1073740791) === 'exit code 0xC0000409' && exitText(1) === 'exit code 1' && exitText(null, 'SIGKILL') === 'signal SIGKILL' && exitText(null, null) === '');
 { const { prompts } = loadPlan(planFile); const f = fx({ stopAfter: 0 });
   const res = await runRow({ plan, prompts, row: plan.rows[0], round: 0, fx: f });
   check('a game starting stops the row and frees the card', res.stopped === 'game started' && !res.runs.length && f.seen.stops === 1); }

@@ -349,14 +349,17 @@ async function runRowOnce({ plan, prompts, row, round, fx }) {
       return cut[p] !== undefined ? cut[p] + (plan.question?.[p] || '') : prompts[p].text;
     };
     const body = (text) => ({ prompt: text, n_predict: row.maxTokens ?? plan.maxTokens ?? 300, temperature: 0, seed: 42, ignore_eos: true, cache_prompt: false, ...(row.body || {}) });
-    await fx.stream(srv.url, { ...body(row.prompts?.[0] ? textOf(row.prompts[0]) : 'Hello.'), n_predict: 16 }); // warm-up, untimed
+    // Nov 19 (BE19 kv-split): an engine that dies on its first word used to take the whole runner down here, ending the
+    // plan; now the load is written down as crashed, with the engine's exit code, and the plan goes on to the next load.
+    try { await fx.stream(srv.url, { ...body(row.prompts?.[0] ? textOf(row.prompts[0]) : 'Hello.'), n_predict: 16 }); } // warm-up, untimed
+    catch (e) { out.notRun = crashText('the engine failed the warm-up', e, srv); return out; }
     for (const p of row.prompts || []) {
       if (fx.shouldStop()) { out.stopped = fx.shouldStop(); break; }
       const disk0 = plan.diskReads ? await fx.diskReadBytes?.() : null; // off unless the plan asks (a PowerShell call each side on Windows)
       const card = fx.sampleCard();
       const cpu = fx.cpuMark?.();
       let r;
-      try { r = await fx.stream(srv.url, body(textOf(p))); } catch (e) { r = { failed: String(e.message || e) }; }
+      try { r = await fx.stream(srv.url, body(textOf(p))); } catch (e) { r = { failed: crashText('the run failed', e, srv) }; }
       const samples = card.stop();
       const proc = cpu?.stop();
       const disk = plan.diskReads ? diskUse(disk0, await fx.diskReadBytes?.(), r?.writtenN ?? r?.words ?? 0) : null;
@@ -375,6 +378,7 @@ async function runRowOnce({ plan, prompts, row, round, fx }) {
       if (needle(p) && r && !r.failed) r = { ...r, needle: { at: needle(p).at, found: typeof r.text === 'string' && new RegExp(needle(p).find, 'i').test(r.text) } };
       const { text: said, ...rest } = r || {};
       out.runs.push({ prompt: p, ...rest, ...(plan.saveText && typeof said === 'string' ? { text: said } : {}), ...(proc ? { cpu: proc } : {}), ...(disk ? { disk } : {}), card: cardSummary(samples), throttled: realThrottled(samples).length > 0, cardSamples: samples });
+      if (r?.failed && srv.exitCode?.()) { out.crashed = r.failed; break; } // a dead engine answers nothing more
     }
     out.cache = parseCacheLog(srv.log()); // with LLAMA_MOE_CACHE_LOG_EVERY set, the latest totals
   } finally { await srv.stop(); }
@@ -478,6 +482,19 @@ export function summarise(results, { prompts = {}, plan = {} } = {}) {
   return lines.join('\n') + '\n';
 }
 
+// How an engine process ended: Windows crash codes in hex (0xC0000005 is a memory fault, 0xC0000409 a failed check
+// or stack fault), small codes as they are, a signal by name; '' while it still runs.
+export function exitText(code, signal) {
+  if (code === null || code === undefined) return signal ? `signal ${signal}` : '';
+  const u = code < 0 ? code >>> 0 : code;
+  return u > 0xffff ? `exit code 0x${u.toString(16).toUpperCase()}` : `exit code ${u}`;
+}
+
+function crashText(what, e, srv) {
+  const how = srv.exitCode?.() || '';
+  return `${what}: ${String(e?.message || e)}${how ? ` (engine ended, ${how})` : ''}`;
+}
+
 // The real world: spawn the engine, sample the card, the stop rules, the lock.
 function realFx(plan, outDir) {
   const logDir = path.join(outDir, 'engine-logs');
@@ -504,7 +521,9 @@ function realFx(plan, outDir) {
           }
           return { ok: false, why: 'took too long to load' };
         },
-        async stop() { try { child.kill(); } catch {} await new Promise((r) => { if (child.exitCode !== null) r(); else { child.once('exit', r); setTimeout(r, 10e3); } }); log.end(); }
+        async stop() { try { child.kill(); } catch {} await new Promise((r) => { if (child.exitCode !== null) r(); else { child.once('exit', r); setTimeout(r, 10e3); } }); log.end(); },
+        // Nov 19 (the BE19 kv-split crash left no line in the log): how the engine ended, if it has, for the crash record
+        exitCode: () => exitText(child.exitCode, child.signalCode)
       };
     },
     stream: (url, body) => streamOnce(url, body),
