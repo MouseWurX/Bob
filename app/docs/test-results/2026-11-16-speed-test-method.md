@@ -989,6 +989,10 @@ most 0.03, and its same top word is at least 92%. Without the Q8: Q3's mean KLD 
 least 92%, and its perplexity at most 2% above Q4's on both splits. With the q4_0 cache, Q3 q4_0 must still pass the
 same limits. Only if it passes do the speed rows (2x4 and 4x4 at 32K, 128K and 256K) and job tests run.
 
+**Amended Nov 19, 12:57 PM, before the Q3 run started:** the owner set the bar for one quant level down at a quality
+change of 3% or less ("+/-3% per level is acceptable"). The perplexity limit above is 3% (was 2%), on both splits, with
+the q4_0 cache too; the KLD and same-top limits stay. The same 3% bar applies to any lower cache format.
+
 **Predictions, written before any run:** against Q4, Q3 lands at mean KLD 0.02-0.05, same top 90-94% and perplexity
 +2 to +5%, so it fails or only just passes. Against Q8, Q4 sits at about 0.01-0.02 and Q3 at 2-3 times that.
 
