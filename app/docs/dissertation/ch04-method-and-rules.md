@@ -251,7 +251,7 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
   - at least 512 MiB of the card left free
   - a load of 15 s or less for the 35B
 
-  A setting that fails a gate, or that hasn't been measured on one, is not picked whatever its score. Several of the quickest rows, such as 6x0, have no perplexity run yet.
+  A setting that fails a gate, or that hasn't been measured on one, is not picked whatever its score. When two eligible settings tie (job times within 3%, using medians of at least 2 loads where there are any), the tie goes first to the one that left more RAM free at its lowest point during the timed runs, then to the one with more of the card free after loading, then to the sooner first word. This rule was fixed before the new runs, for the 32K tie between 2x4 with a 512 MB and a 1 GB margin (16.6 against 16.8 s clean, 19.4 against 19.4 s busy). Several of the quickest rows, such as 6x0, have no perplexity run yet.
 - **Pick:** what we would choose today. Turbo uses a different file of the brain, so its rows compare only with each other, and its full tables are below.
 
 **Short prompt (Bob's start prompt)**
@@ -639,7 +639,7 @@ These are queued on the home PC in this order, and each has its addendum written
 | Brain Engine 17 (patch 0028: the mask from positions, working on M-RoPE), plus a busy-desktop pass on it | – | waiting on approval |
 | Stock llama.cpp defaults, stock at our steps and our picks, at 32K, 128K and 256K, with load times (20 loads) | 20 | waiting on approval |
 | Second and third rounds of the step picks (4x3.5, 5x3.5 and 8x3.5, q4_0, 512 MB margin, 128K and 256K) | 27 | waiting on approval |
-| q4_0 perplexity run again, and the needle test for q5_1 and f8_e4m3 | – | waiting on approval |
+| q4_0 perplexity run again (f16, q8_0 and q4_0, 4K × 4 chunks and 8K × 2 chunks), and the needle test for q5_1 and f8_e4m3 | – | waiting on approval |
 
 #### 4.3.3.7 Improvements we could still try
 
