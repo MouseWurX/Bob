@@ -300,7 +300,7 @@ These two pieces matter for the thesis in two ways. First, they set the deployme
 
 We did not find a peer-reviewed paper for llama.cpp or GGUF among the sources we opened. The two cited pages are project documentation, and we treat them as such. They describe the software as it is, and not as a result that has been independently evaluated.
 
-### 2.10.1 Choosing a brain and its settings at home (updated 18 November)
+### 2.10.1 Choosing a brain and its settings at home (updated 19 November)
 
 The speed tests of 16 to 18 November turn the deployment target above into measured advice for one kind of home machine. That machine has a 16 GB card, 32 GB of RAM and an 8-core processor, and runs stock Qwen3.6 35B A3B at Q4 through Brain Engines 9 to 15. Speeds are tokens a second.
 
@@ -309,18 +309,18 @@ Every setting tried is in Chapter 4, section 4.3.3, with the testing method, the
 | If you mostly... | Measured choice on this machine | What you get | What it costs |
 |---|---|---|---|
 | Chat, short asks | Reading step 2048 + 4 GB hot-experts cache, missed experts copied to the card (2x4) | Writing 14% to 28% faster, reading 1.9x, first word on 32K in 14.3 s against 26.6 s | Answers drift no more than the default (perplexity, section 4.3.3.4) |
-| Paste long documents, work on a repository, run agent jobs, up to about 64K | Reading step 4096 + 4 GB copy cache (4x4) | Reading 2.7x to 2.8x, first word on 32K in 9.7 to 10.0 s, writing 14% to 19% faster | The same |
-| Work at 128K to 256K | 4x4, or `-ub 5120` with a 3.5 GB copy cache, with a q4_0 context cache and the default 1 GB fit margin | q4_0 frees about 1.3 GB of the card at 256K. It also wrote fastest at 256K (42 to 45, against 38 to 40 with q8_0), but in single loads | Perplexity 0.3% worse than q8_0. It found all 5 of 5 hidden facts at both 128K and 256K, as q8_0 and f16 did. With 5 facts of one kind per setting, that rules out a large loss in recall but not a small one. Over 3 rounds, step 5120 held at 128K, and 5120, 6144 and 7168 tied at 256K. Whether these picks keep the copy cache is still being tested |
+| Run agent jobs, work on a repository, paste long documents, up to about 128K | Reading step 4096 at 32K or 5120 at 128K, no copy cache, q4_0 context cache, 512 MB fit margin, pinning off (4x0 or 5x0). Stock llama.cpp accepts all of these | On a 600-token job, 3.8% faster than 4x4 at 32K and 9% faster than 5x3.5 at 128K. First word on 32K in about 7.6 s | q4_0 sits on the quality line (section 4.3.3.4). Use q8_0 if you want the safe side |
+| Write long answers (about 2,000 tokens) at 128K to 256K | 5x3.5 at 128K and 6x3.5 at 256K, with a q4_0 context cache, a 512 MB fit margin and pinning off | Ties no copy cache (2.1% apart) and keeps it only on the tie-break; it writes faster but reads slower | A thin margin that a rerun could flip. q4_0 found all 5 of 5 hidden facts at both sizes, which rules out a large loss in recall but not a small one, and sits on the quality line |
 | Want the default's exact words | Bob's defaults (step 512, no cache, q8_0 cache) | Bob's settings are already 6% faster at writing and 9% faster at reading than llama.cpp's own defaults | Slow first word on long prompts (26.6 s at 32K, about 157 s at 256K) |
 
-**Most of the gain is in llama.cpp already (18 November).** Against stock llama.cpp with its own defaults, these picks finish a 300-token job 2.4 to 2.9 times sooner. But stock llama.cpp given the same step, a q4_0 context cache, a 512 MB fit margin and pinning off, with no copy cache, was as fast or faster for chat and agent jobs. The copy cache, which only Brain Engine has, writes faster and reads slower, so it pays only on long answers: past about 840 tokens at 32K, 3,000 at 128K and 4,300 at 256K. If you run plain llama.cpp, those four settings are where most of the speed is (section 4.3.3.2). Whether the long-context picks keep the copy cache waits on a rerun.
+**Most of the gain is in llama.cpp already (18 November).** Against stock llama.cpp with its own defaults, these picks finish a 300-token job 2.4 to 2.9 times sooner. But stock llama.cpp given the same step, a q4_0 context cache, a 512 MB fit margin and pinning off was as fast or faster for chat and agent jobs, and Brain Engine without its copy cache matched stock within 1%. The copy cache, which only Brain Engine has, writes faster and reads slower. It pays on short prompts, where it writes 18% to 26% faster, which is why chat keeps it, and on long answers. If you run plain llama.cpp, those four settings are where most of the speed is (section 4.3.3.2).
 
 **Two coding picks, head to head (17 November).** A bigger step with a slightly smaller cache was tried against the coding pick above: step 6144 with a 3.5 GB cache, against step 4096 with 4 GB.
 
 - **Step 6144** finished long prompts about 1 s sooner.
 - **Step 4096** wrote 4% to 24% faster and left about 0.3 GB more RAM free, which matters when only 1 to 3 GB is free.
 
-So step 4096 with 4 GB stays the coding pick.
+So step 4096 with 4 GB was the coding pick on 17 November. On 18 November, the same step with no copy cache beat it on agent-length jobs, and replaced it (table above).
 
 **Speed settings don't change the answers.** On 18 November the copy cache and the read layout scored identically to the last digit in perplexity, and the reading step moved it only in the last digits. Nearly all the drift from full precision comes from the q8_0 context cache that Bob already uses.
 
