@@ -1,0 +1,543 @@
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 7387c60..878b296 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -822,11 +822,38 @@ void llm_graph_input_attn_no_cache::set_input(const llama_ubatch * ubatch) {
+     }
+ }
+ 
++// Brain Engine 0036: how attention reads a split KV cache for this batch
++static int kv_split_mode(const llama_kv_cache_context * mctx, uint32_t n_tokens, bool training) {
++    const uint32_t r = mctx->get_split_hot();
++    if (r == 0 || training) {
++        return 0;
++    }
++    if (mctx->get_n_kv() <= r) {
++        return 1;
++    }
++    return n_tokens == 1 && mctx->split_hot_used() ? 2 : 3;
++}
++
++// says once per cache, when a batch first runs a way of reading the split
++static void kv_split_tell(const llama_kv_cache_context * mctx, int used) {
++    if (used >= 2 && mctx->split_first(used)) {
++        if (used == 2) {
++            LLAMA_LOG_INFO("%s: KV split: writing past cell %u: the card attends to its copy and the processor to the rest, merged\n", __func__, mctx->get_split_hot());
++        } else {
++            LLAMA_LOG_INFO("%s: KV split: a batch past cell %u reads the RAM copy on the card\n", __func__, mctx->get_split_hot());
++        }
++    }
++}
++
+ void llm_graph_input_attn_kv::set_input(const llama_ubatch * ubatch) {
+     // the idxs are left unallocated when the KV cache is bypassed during training
+     if (self_k_idxs && self_k_idxs->buffer) {
+         mctx->set_input_k_idxs(self_k_idxs, ubatch);
+     }
++    if (self_kv_idxs_hot && self_kv_idxs_hot->buffer) {
++        mctx->set_input_idxs_hot(self_kv_idxs_hot, ubatch);
++        kv_split_tell(mctx, split_used);
++    }
+     if (self_v_idxs && self_v_idxs->buffer) {
+         mctx->set_input_v_idxs(self_v_idxs, ubatch);
+     }
+@@ -850,6 +877,8 @@ bool llm_graph_input_attn_kv::can_reuse(const llm_graph_params & params) {
+ 
+     res &= can_reuse_attn_mask(self_attn_mask, mctx, params.ubatch, params.cparams);
+ 
++    res &= split_mode == kv_split_mode(mctx, params.ubatch.n_tokens, params.cparams.training); // Brain Engine 0036
++
+     return res;
+ }
+ 
+@@ -1391,6 +1420,10 @@ void llm_graph_input_attn_cross::set_input(const llama_ubatch * ubatch) {
+ void llm_graph_input_mem_hybrid::set_input(const llama_ubatch * ubatch) {
+     mctx->get_attn()->set_input_k_idxs(inp_attn->self_k_idxs, ubatch);
+     mctx->get_attn()->set_input_v_idxs(inp_attn->self_v_idxs, ubatch);
++    if (inp_attn->self_kv_idxs_hot && inp_attn->self_kv_idxs_hot->buffer) {
++        mctx->get_attn()->set_input_idxs_hot(inp_attn->self_kv_idxs_hot, ubatch); // Brain Engine 0036
++        kv_split_tell(mctx->get_attn(), inp_attn->split_used);
++    }
+ 
+     // kv_rows and the mask stay unallocated if all attention layers have their own (e.g. qwen4exp QSA)
+     mctx->get_attn()->set_input_attn_mask(inp_attn->self_attn_mask, ubatch, cparams.causal_attn);
+@@ -1420,6 +1453,8 @@ bool llm_graph_input_mem_hybrid::can_reuse(const llm_graph_params & params) {
+ 
+     res &= can_reuse_attn_mask(inp_attn->self_attn_mask, mctx->get_attn(), params.ubatch, params.cparams);
+ 
++    res &= inp_attn->split_mode == kv_split_mode(mctx->get_attn(), params.ubatch.n_tokens, params.cparams.training); // Brain Engine 0036
++
+     res &= inp_rs->s_copy->ne[0] == mctx->get_recr()->get_n_rs();
+ 
+     res &= inp_rs->s_copy_main->ne[0] == params.ubatch.n_seqs;
+@@ -3403,6 +3438,9 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+                                       hparams.attn_soft_cap ? hparams.f_attn_logit_softcapping : 0.0f);
+         }
+         res->add_fused_node({kv_rows ? LLM_FUSED_OP_FLASH_ATTN_KV_ROWS : LLM_FUSED_OP_FLASH_ATTN, cur, il});
++        if (fa_backend != nullptr) {
++            ggml_backend_sched_set_tensor_backend(sched, cur, fa_backend); // Brain Engine 0036
++        }
+ 
+         ggml_flash_attn_ext_add_sinks(cur, sinks);
+         GGML_ASSERT(n_kv_max >= 0 && n_kv_max <= INT32_MAX);
+@@ -3611,6 +3649,12 @@ static std::unique_ptr<llm_graph_input_attn_kv> build_attn_inp_kv_impl(
+         inp->self_v_idxs = mctx_cur->build_input_v_idxs(ctx0, ubatch);
+ 
+         inp->self_attn_mask = build_attn_inp_attn_mask(ctx0, mctx_cur, ubatch, cparams);
++
++        // Brain Engine 0036: a split cache also writes the card's copy, and reads it one of three ways
++        inp->split_mode = kv_split_mode(mctx_cur, ubatch.n_tokens, cparams.training);
++        if (inp->split_mode > 0) {
++            inp->self_kv_idxs_hot = mctx_cur->build_input_idxs_hot(ctx0, ubatch);
++        }
+     }
+ 
+     inp->self_k_rot = mctx_cur->get_k_rot();
+@@ -3619,6 +3663,21 @@ static std::unique_ptr<llm_graph_input_attn_kv> build_attn_inp_kv_impl(
+     return inp;
+ }
+ 
++// Brain Engine 0036: the backend whose device holds a tensor
++static ggml_backend_t kv_split_backend_of(ggml_backend_sched_t sched, const ggml_tensor * t) {
++    if (t == nullptr || t->buffer == nullptr) {
++        return nullptr;
++    }
++    ggml_backend_dev_t dev = ggml_backend_buft_get_device(ggml_backend_buffer_get_type(t->buffer));
++    for (int i = 0; i < ggml_backend_sched_get_n_backends(sched); ++i) {
++        ggml_backend_t b = ggml_backend_sched_get_backend(sched, i);
++        if (ggml_backend_get_device(b) == dev) {
++            return b;
++        }
++    }
++    return nullptr;
++}
++
+ llm_graph_input_attn_kv * llm_graph_context::build_attn_inp_kv() const {
+     const auto * mctx_cur = static_cast<const llama_kv_cache_context *>(mctx);
+ 
+@@ -3706,6 +3765,14 @@ ggml_tensor * llm_graph_context::build_attn(
+     ggml_tensor * k;
+     ggml_tensor * v;
+ 
++    const auto & kq_mask = inp->self_attn_mask.raw;
++    const auto & kv_rows = inp->self_attn_mask.rows;
++
++    ggml_tensor * cur = nullptr;
++
++    // Brain Engine 0036 (LLAMA_KV_SPLIT): this layer's K and V are in RAM with a copy of the first cells on the card
++    const bool split = !cparams.training && inp->split_mode > 0 && inp->self_kv_idxs_hot != nullptr && mctx_cur->has_split(il);
++
+     if (cparams.training) {
+         GGML_ASSERT(mctx_cur->get_n_kv() == n_tokens);
+ 
+@@ -3716,18 +3783,84 @@ ggml_tensor * llm_graph_context::build_attn(
+             const auto & k_idxs = inp->get_k_idxs();
+             const auto & v_idxs = inp->get_v_idxs();
+ 
++            if (split) {
++                mctx_cur->split_write_begin();
++            }
+             ggml_build_forward_expand(gf, mctx_cur->cpy_k(ctx0, k_cur, k_idxs, il));
+             ggml_build_forward_expand(gf, mctx_cur->cpy_v(ctx0, v_cur, v_idxs, il));
++            if (split) {
++                mctx_cur->split_write_end();
++                ggml_build_forward_expand(gf, mctx_cur->cpy_k_hot(ctx0, k_cur, inp->self_kv_idxs_hot, il));
++                ggml_build_forward_expand(gf, mctx_cur->cpy_v_hot(ctx0, v_cur, inp->self_kv_idxs_hot, il));
++            }
+         }
+ 
+         k = mctx_cur->get_k(ctx0, il);
+         v = mctx_cur->get_v(ctx0, il);
+     }
+ 
+-    const auto & kq_mask = inp->self_attn_mask.raw;
+-    const auto & kv_rows = inp->self_attn_mask.rows;
+-
+-    ggml_tensor * cur = build_attn_mha(q, k, v, kq_b, kq_mask, kv_rows, sinks, v_mla, 0, kq_scale, il);
++    const uint32_t n_kv  = split ? mctx_cur->get_n_kv() : 0;
++    const uint32_t n_hot = split ? mctx_cur->get_split_hot() : 0;
++    ggml_backend_t be_card = split ? kv_split_backend_of(sched, mctx_cur->get_k_hot(ctx0, il, 1)->view_src) : nullptr;
++
++    if (split && be_card != nullptr && inp->split_mode == 1) {
++        // the whole chat fits in the card's copy
++        inp->split_used = std::max(inp->split_used, 1);
++        cur = build_attn_mha(q, mctx_cur->get_k_hot(ctx0, il, n_kv), mctx_cur->get_v_hot(ctx0, il, n_kv),
++                kq_b, kq_mask, kv_rows, sinks, v_mla, 0, kq_scale, il);
++    } else if (split && be_card != nullptr && inp->split_mode == 2 && sinks == nullptr && kq_b == nullptr && kv_rows == nullptr &&
++               cparams.flash_attn && kq_mask != nullptr && kq_mask->type == GGML_TYPE_F16 && !hparams.attn_soft_cap &&
++               hparams.f_max_alibi_bias == 0.0f && n_tokens == 1) {
++        // writing past the card's copy: the card attends to cells [0, n_hot), the processor to [n_hot, n_kv), and the two
++        // are merged exactly. Each part's log-sum-exp is the other's sink, so each comes out already weighted by its share.
++        const uint32_t n_cold = n_kv - n_hot;
++        ggml_tensor * k_hot  = mctx_cur->get_k_hot(ctx0, il, n_hot);
++        ggml_tensor * v_hot  = mctx_cur->get_v_hot(ctx0, il, n_hot);
++        ggml_tensor * k_cold = ggml_view_4d(ctx0, k, k->ne[0], k->ne[1], n_cold, 1, k->nb[1], k->nb[2], k->nb[3], k->nb[2]*n_hot);
++        ggml_tensor * v_cold = ggml_view_4d(ctx0, v, v->ne[0], v->ne[1], n_cold, 1, v->nb[1], v->nb[2], v->nb[3], v->nb[2]*n_hot);
++        ggml_tensor * m_hot  = ggml_view_2d(ctx0, kq_mask, n_hot,  1, kq_mask->nb[1], 0);
++        ggml_tensor * m_cold = ggml_view_2d(ctx0, kq_mask, n_cold, 1, kq_mask->nb[1], ggml_row_size(kq_mask->type, n_hot));
++
++        auto pin = [&](ggml_tensor * t, ggml_backend_t be) {
++            ggml_backend_sched_set_tensor_backend(sched, t, be);
++            return t;
++        };
++        auto part_lse = [&](ggml_tensor * kp, ggml_tensor * mp, uint32_t n_part, ggml_backend_t be) {
++            ggml_tensor * qp = ggml_permute(ctx0, q, 0, 2, 1, 3);  // [d, n_tokens, n_head]
++            ggml_tensor * kt = ggml_permute(ctx0, kp, 0, 2, 1, 3); // [d, n_part, n_head_kv]
++            ggml_tensor * x  = pin(ggml_mul_mat(ctx0, kt, qp), be); // [n_part, n_tokens, n_head]
++            ggml_prec_set_acc(x, GGML_PREC_F32);
++            x = pin(ggml_scale(ctx0, x, kq_scale), be);
++            x = pin(ggml_add(ctx0, x, pin(ggml_cast(ctx0, mp, GGML_TYPE_F32), be)), be);
++            x = ggml_reshape_2d(ctx0, x, n_part, x->ne[1]*x->ne[2]);
++            ggml_tensor * c = pin(ggml_pool_1d(ctx0, x, GGML_OP_POOL_MAX, n_part, n_part, 0), be); // [1, n_head]
++            ggml_tensor * e = pin(ggml_exp(ctx0, pin(ggml_sub(ctx0, x, c), be)), be);
++            ggml_tensor * l = pin(ggml_add(ctx0, pin(ggml_log(ctx0, pin(ggml_sum_rows(ctx0, e), be)), be), c), be);
++            return ggml_reshape_1d(ctx0, l, l->ne[1]); // [n_head]
++        };
++
++        ggml_tensor * lse_hot  = part_lse(k_hot,  m_hot,  n_hot,  be_card);
++        ggml_tensor * lse_cold = part_lse(k_cold, m_cold, n_cold, backend_cpu);
++        cb(lse_hot,  "kv_split_lse_hot",  il);
++        cb(lse_cold, "kv_split_lse_cold", il);
++
++        fa_backend = be_card;
++        ggml_tensor * o_hot  = build_attn_mha(q, k_hot,  v_hot,  nullptr, m_hot,  nullptr, lse_cold, nullptr, 0, kq_scale, il);
++        fa_backend = backend_cpu;
++        ggml_tensor * o_cold = build_attn_mha(q, k_cold, v_cold, nullptr, m_cold, nullptr, lse_hot,  nullptr, 0, kq_scale, il);
++        fa_backend = nullptr;
++        cur = ggml_add(ctx0, o_hot, o_cold);
++        cb(cur, "kv_split_merged", il);
++        inp->split_used = 2;
++    } else if (split && be_card != nullptr) {
++        // a prompt past the card's copy: the card attends to the RAM copy, which the scheduler uploads for this layer
++        fa_backend = be_card;
++        inp->split_used = std::max(inp->split_used, 3);
++        cur = build_attn_mha(q, k, v, kq_b, kq_mask, kv_rows, sinks, v_mla, 0, kq_scale, il);
++        fa_backend = nullptr;
++    } else {
++        cur = build_attn_mha(q, k, v, kq_b, kq_mask, kv_rows, sinks, v_mla, 0, kq_scale, il);
++    }
+     cur = build_attn_scale_kv_output(ctx0, mctx_cur, cur, il);
+     cb(cur, "kqv_out", il);
+ 
+diff --git a/src/llama-graph.h b/src/llama-graph.h
+index 32a8892..999eeb1 100644
+--- a/src/llama-graph.h
++++ b/src/llama-graph.h
+@@ -390,6 +390,11 @@ public:
+     ggml_tensor * self_k_idxs = nullptr; // I64 [n_batch]
+     ggml_tensor * self_v_idxs = nullptr; // I64 [n_batch] or [n_batch*n_embd_v_gqa]
+ 
++    // Brain Engine 0036 (LLAMA_KV_SPLIT): where the card's copy of the first cells is written, and how attention reads
++    ggml_tensor * self_kv_idxs_hot = nullptr; // I64 [n_batch]
++    int split_mode = 0; // 0 no split, 1 card copy only, 2 card + processor merged (writing), 3 the RAM copy (prompts)
++    int split_used = 0; // the way the layers actually read it (a layer the merge can't take reads the RAM copy)
++
+     llm_attn_mask self_attn_mask;
+ 
+     // note: assumes v_rot^2 == I
+@@ -1095,6 +1100,8 @@ struct llm_graph_context {
+ 
+     ggml_backend_t backend_cpu; // TODO: needed by build_attn_mha, figure out a way to remove?
+ 
++    mutable ggml_backend_t fa_backend = nullptr; // Brain Engine 0036: build_attn_mha pins its flash attention here when set
++
+     const llama_adapter_cvec     * cvec;
+     const llama_adapter_emask    * emask;
+     const llama_adapter_dials    * dials;
+diff --git a/src/llama-kv-cache.cpp b/src/llama-kv-cache.cpp
+index eec661b..9c9b1ca 100644
+--- a/src/llama-kv-cache.cpp
++++ b/src/llama-kv-cache.cpp
+@@ -162,6 +162,23 @@ llama_kv_cache::llama_kv_cache(
+ 
+     const bool is_mla = hparams.is_mla();
+ 
++    // Brain Engine 0036: LLAMA_KV_SPLIT=N keeps the first N cells of each card layer's K and V on the card and the
++    // whole of them in RAM; the graph reads the card's copy while the chat fits in it, and past it reads the rest from
++    // RAM (see build_attn). Plain caches only: one chat, flash attention, no shared cells.
++    uint32_t split_req = 0;
++    if (const char * ks = getenv("LLAMA_KV_SPLIT"); ks != nullptr && *ks != '\0' && atoll(ks) > 0) {
++        const uint32_t r = GGML_PAD((uint32_t) std::min<long long>(atoll(ks), UINT32_MAX - 512), 256u);
++        const char * why = !offload ? "the KV cache is in RAM already (-nkvo)" : v_trans ? "it needs flash attention" :
++            n_stream > 1 || n_seq_max > 1 ? "it works with one chat at a time (-np 1)" : is_mla ? "MLA brains keep a different cache" :
++            other != nullptr || share ? "this cache shares cells with another" : is_indexer ? "indexer caches stay as they are" :
++            swa_type != LLAMA_SWA_TYPE_NONE ? "sliding-window caches are small already" : r >= kv_size ? "the context is not bigger than the split" : nullptr;
++        if (why != nullptr) {
++            LLAMA_LOG_WARN("%s: !!! LLAMA_KV_SPLIT=%s NOT USED%s%s: %s\n", __func__, ks, *name_tag ? " for the " : "", name_tag, why);
++        } else {
++            split_req = r;
++        }
++    }
++
+     for (uint32_t il = 0; il < n_layer; il++) {
+         if (!hparams.has_kv(il)) {
+             LLAMA_LOG_DEBUG("%s: layer %3d: does not have KV cache\n", __func__, il);
+@@ -212,12 +229,21 @@ llama_kv_cache::llama_kv_cache(
+         const char * dev_name = "CPU";
+ 
+         ggml_backend_buffer_type_t buft = ggml_backend_cpu_buffer_type();
++        ggml_backend_buffer_type_t buft_hot = nullptr; // Brain Engine 0036
+ 
+         if (offload) {
+             auto * dev = model.dev_layer(il);
+             buft = ggml_backend_dev_buffer_type(dev);
+ 
+             dev_name = ggml_backend_dev_name(dev);
++
++            const auto dev_type = ggml_backend_dev_type(dev);
++            if (split_req > 0 && (dev_type == GGML_BACKEND_DEVICE_TYPE_GPU || dev_type == GGML_BACKEND_DEVICE_TYPE_IGPU)) {
++                // the full copy goes in the card's pinned RAM when it has some, so the uploads past the split are quick
++                ggml_backend_buffer_type_t host = ggml_backend_dev_host_buffer_type(dev);
++                buft_hot = buft;
++                buft     = host != nullptr ? host : ggml_backend_cpu_buffer_type();
++            }
+         }
+ 
+         LLAMA_LOG_DEBUG("%s: layer %3d: dev = %s\n", __func__, il, dev_name);
+@@ -247,6 +273,26 @@ llama_kv_cache::llama_kv_cache(
+         map_layer_ids[il] = layers.size();
+ 
+         layers.push_back({ il, k, v, model.layers[il].k_cache_s, model.layers[il].v_cache_s, k_stream, v_stream, });
++
++        if (buft_hot != nullptr) {
++            ggml_context * ctx_hot = ctx_for_buft(buft_hot);
++            if (!ctx_hot) {
++                throw std::runtime_error("failed to create ggml context for kv cache");
++            }
++            auto & l = layers.back();
++            l.k_hot = has_k ? ggml_new_tensor_2d(ctx_hot, type_k, n_embd_k_gqa, split_req + 1) : nullptr;
++            l.v_hot = has_v ? ggml_new_tensor_2d(ctx_hot, type_v, n_embd_v_gqa, split_req + 1) : nullptr;
++            has_k && ggml_format_name(l.k_hot, "cache_%sk_hot_l%d", name_tag, il);
++            has_v && ggml_format_name(l.v_hot, "cache_%sv_hot_l%d", name_tag, il);
++            split_hot = split_req;
++        }
++    }
++    if (split_req > 0 && split_hot == 0) {
++        LLAMA_LOG_WARN("%s: !!! LLAMA_KV_SPLIT NOT USED%s%s: no layer of this cache is on a card\n", __func__, *name_tag ? " for the " : "", name_tag);
++    }
++    if (split_hot > 0) {
++        LLAMA_LOG_INFO("%s: KV split: the first %u of %u cells of each card layer on the card, all of them in RAM (LLAMA_KV_SPLIT)\n",
++            __func__, split_hot, kv_size);
+     }
+ 
+     if (reuse) {
+@@ -1238,6 +1284,10 @@ void llama_kv_cache::apply_ubatch(const slot_info & sinfo, const llama_ubatch &
+ }
+ 
+ bool llama_kv_cache::get_can_shift() const {
++    // Brain Engine 0036: a shift would rope the RAM copy and leave the card's copy behind
++    if (split_hot > 0) {
++        return false;
++    }
+     // Step35 uses per-layer RoPE dims; K-shift assumes a single global n_rot.
+     if (model.arch == LLM_ARCH_STEP35) {
+         return false;
+@@ -1494,11 +1544,98 @@ ggml_tensor * llama_kv_cache::get_v_scale(int32_t il) const {
+     return layers[ikv].v_scale;
+ }
+ 
++// Brain Engine 0036: the KV split
++
++bool llama_kv_cache::has_split(int32_t il) const {
++    const auto it = map_layer_ids.find(il);
++    return split_hot > 0 && it != map_layer_ids.end() && layers[it->second].k_hot != nullptr && !layers[it->second].hot_stale;
++}
++
++// the card's copy is only kept right by the split-aware attention; a layer stored some other way reads RAM from then on
++static void split_mark_write(const bool split_writing, const llama_kv_cache * kv, bool & stale, bool has_hot, int32_t il) {
++    if (has_hot && !split_writing && !stale) {
++        stale = true;
++        LLAMA_LOG_WARN("%s: layer %d is stored outside the split-aware attention; it reads its whole K and V from RAM now\n", __func__, il);
++    }
++    GGML_UNUSED(kv);
++}
++
++ggml_tensor * llama_kv_cache::get_k_hot(ggml_context * ctx, int32_t il, uint32_t n_kv) const {
++    const auto & l = layers[map_layer_ids.at(il)];
++    ggml_tensor * k = l.k_hot;
++    GGML_ASSERT(k != nullptr && n_kv <= split_hot);
++    return ggml_view_4d(ctx, k, hparams.n_embd_head_k(il), hparams.n_head_kv(il), n_kv, 1,
++            ggml_row_size(k->type, hparams.n_embd_head_k(il)), k->nb[1], k->nb[1]*k->ne[1], 0);
++}
++
++ggml_tensor * llama_kv_cache::get_v_hot(ggml_context * ctx, int32_t il, uint32_t n_kv) const {
++    const auto & l = layers[map_layer_ids.at(il)];
++    ggml_tensor * v = l.v_hot;
++    GGML_ASSERT(v != nullptr && n_kv <= split_hot && !v_trans);
++    return ggml_view_4d(ctx, v, hparams.n_embd_head_v(il), hparams.n_head_kv(il), n_kv, 1,
++            ggml_row_size(v->type, hparams.n_embd_head_v(il)), v->nb[1], v->nb[1]*v->ne[1], 0);
++}
++
++ggml_tensor * llama_kv_cache::cpy_k_hot(ggml_context * ctx, ggml_tensor * k_cur, ggml_tensor * idxs_hot, int32_t il) const {
++    ggml_tensor * k = layers[map_layer_ids.at(il)].k_hot;
++    GGML_ASSERT(ggml_row_size(k_cur->type, k_cur->ne[0]) == k_cur->nb[1]);
++    k_cur = ggml_view_2d(ctx, k_cur, k_cur->ne[0]*k_cur->ne[1], k_cur->ne[2], k_cur->nb[2], 0);
++    return ggml_set_rows(ctx, k, k_cur, idxs_hot);
++}
++
++ggml_tensor * llama_kv_cache::cpy_v_hot(ggml_context * ctx, ggml_tensor * v_cur, ggml_tensor * idxs_hot, int32_t il) const {
++    ggml_tensor * v = layers[map_layer_ids.at(il)].v_hot;
++    GGML_ASSERT(ggml_row_size(v_cur->type, v_cur->ne[0]) == v_cur->nb[1]);
++    v_cur = ggml_view_2d(ctx, v_cur, v_cur->ne[0]*v_cur->ne[1], v_cur->ne[2], v_cur->nb[2], 0);
++    return ggml_set_rows(ctx, v, v_cur, idxs_hot);
++}
++
++void llama_kv_cache::set_input_idxs_hot(ggml_tensor * dst, const llama_ubatch * ubatch, const slot_info & sinfo) const {
++    GGML_ASSERT(ubatch->n_tokens == (int64_t) sinfo.size() && sinfo.n_stream() == 1);
++    GGML_ASSERT(ggml_backend_buffer_is_host(dst->buffer));
++    int64_t * data = (int64_t *) dst->data;
++    for (uint32_t i = 0; i < sinfo.size(); ++i) {
++        // a cell after the card's part goes to the spare cell at its end
++        data[i] = std::min<int64_t>(sinfo.idxs[0][i], split_hot);
++    }
++}
++
++bool llama_kv_cache::split_hot_used(const slot_info & sinfo) const {
++    const auto & cells = v_cells[sinfo.s0];
++    const uint32_t n = std::min(split_hot, cells.size());
++    for (uint32_t i = 0; i < n; ++i) {
++        if (!cells.is_empty(i)) {
++            return true;
++        }
++    }
++    return false;
++}
++
++void llama_kv_cache::split_refresh() {
++    if (split_hot == 0) {
++        return;
++    }
++    std::vector<uint8_t> buf;
++    for (const auto & l : layers) {
++        for (auto [src, dst] : { std::make_pair(l.k, l.k_hot), std::make_pair(l.v, l.v_hot) }) {
++            if (src == nullptr || dst == nullptr) {
++                continue;
++            }
++            const size_t n = src->nb[1]*split_hot;
++            buf.resize(n);
++            ggml_backend_tensor_get(src, buf.data(), 0, n);
++            ggml_backend_tensor_set(dst, buf.data(), 0, n);
++        }
++    }
++}
++
+ ggml_tensor * llama_kv_cache::cpy_k(ggml_context * ctx, ggml_tensor * k_cur, ggml_tensor * k_idxs, int32_t il, const slot_info & sinfo) const {
+     GGML_UNUSED(sinfo);
+ 
+     const int32_t ikv = map_layer_ids.at(il);
+ 
++    split_mark_write(split_writing, this, layers[ikv].hot_stale, layers[ikv].k_hot != nullptr, il); // Brain Engine 0036
++
+     ggml_tensor * k = layers[ikv].k;
+ 
+     const int64_t n_embd_head = k_cur->ne[0];
+@@ -1534,6 +1671,8 @@ ggml_tensor * llama_kv_cache::cpy_v(ggml_context * ctx, ggml_tensor * v_cur, ggm
+ 
+     const int32_t ikv = map_layer_ids.at(il);
+ 
++    split_mark_write(split_writing, this, layers[ikv].hot_stale, layers[ikv].v_hot != nullptr, il); // Brain Engine 0036
++
+     auto * v = layers[ikv].v;
+ 
+     const int64_t n_embd_head = v_cur->ne[0];
+@@ -2477,6 +2616,8 @@ const slot_info_vec_t *   sinfos_in) {
+             (*sinfos_out)[s] = sinfo;
+         }
+     }
++
++    split_refresh(); // Brain Engine 0036
+ }
+ 
+ void llama_kv_cache::state_write_meta(llama_io_write_i & io, const cell_ranges_t & cr, llama_seq_id seq_id) const {
+@@ -3189,6 +3330,31 @@ ggml_type llama_kv_cache_context::type_v() const {
+     return kv->type_v();
+ }
+ 
++// Brain Engine 0036
++uint32_t llama_kv_cache_context::get_split_hot() const { return kv->get_split_hot(); }
++bool llama_kv_cache_context::has_split(int32_t il) const { return kv->has_split(il); }
++bool llama_kv_cache_context::split_hot_used() const { return kv->split_hot_used(sinfos[i_cur]); }
++void llama_kv_cache_context::split_write_begin() const { kv->split_write_begin(); }
++bool llama_kv_cache_context::split_first(int mode) const { return kv->split_first(mode); }
++void llama_kv_cache_context::split_write_end() const { kv->split_write_end(); }
++ggml_tensor * llama_kv_cache_context::get_k_hot(ggml_context * ctx, int32_t il, uint32_t n) const { return kv->get_k_hot(ctx, il, n); }
++ggml_tensor * llama_kv_cache_context::get_v_hot(ggml_context * ctx, int32_t il, uint32_t n) const { return kv->get_v_hot(ctx, il, n); }
++ggml_tensor * llama_kv_cache_context::cpy_k_hot(ggml_context * ctx, ggml_tensor * k_cur, ggml_tensor * idxs_hot, int32_t il) const {
++    return kv->cpy_k_hot(ctx, k_cur, idxs_hot, il);
++}
++ggml_tensor * llama_kv_cache_context::cpy_v_hot(ggml_context * ctx, ggml_tensor * v_cur, ggml_tensor * idxs_hot, int32_t il) const {
++    return kv->cpy_v_hot(ctx, v_cur, idxs_hot, il);
++}
++ggml_tensor * llama_kv_cache_context::build_input_idxs_hot(ggml_context * ctx, const llama_ubatch & ubatch) const {
++    ggml_tensor * t = ggml_new_tensor_1d(ctx, GGML_TYPE_I64, ubatch.n_tokens);
++    ggml_set_input(t);
++    ggml_set_name(t, "attn_inp_kv_idxs_hot");
++    return t;
++}
++void llama_kv_cache_context::set_input_idxs_hot(ggml_tensor * dst, const llama_ubatch * ubatch) const {
++    kv->set_input_idxs_hot(dst, ubatch, sinfos[i_cur]);
++}
++
+ ggml_tensor * llama_kv_cache_context::get_k(ggml_context * ctx, int32_t il) const {
+     return kv->get_k(ctx, il, n_kv, sinfos[i_cur]);
+ }
+diff --git a/src/llama-kv-cache.h b/src/llama-kv-cache.h
+index 148998b..8f14ad6 100644
+--- a/src/llama-kv-cache.h
++++ b/src/llama-kv-cache.h
+@@ -287,8 +287,34 @@ private:
+ 
+         ggml_tensor * k_rot = nullptr;
+         ggml_tensor * v_rot = nullptr;
++
++        // Brain Engine 0036 (LLAMA_KV_SPLIT): k and v are in RAM, and these hold a copy of the first split_hot cells
++        // on the layer's card, plus one cell that takes the writes of the cells after them
++        ggml_tensor * k_hot = nullptr;
++        ggml_tensor * v_hot = nullptr;
++        mutable bool  hot_stale = false; // something other than the split-aware attention wrote this layer
+     };
+ 
++    mutable bool split_writing = false; // set while the split-aware attention stores K and V
++    mutable uint32_t split_told = 0;
++
++    uint32_t split_hot = 0; // Brain Engine 0036: cells kept on the card, 0 = no split
++    void split_refresh();   // copies the first split_hot cells from RAM to the card (after a state read)
++public:
++    uint32_t get_split_hot() const { return split_hot; }
++    bool     has_split(int32_t il) const;
++    ggml_tensor * get_k_hot(ggml_context * ctx, int32_t il, uint32_t n_kv) const;
++    ggml_tensor * get_v_hot(ggml_context * ctx, int32_t il, uint32_t n_kv) const;
++    ggml_tensor * cpy_k_hot(ggml_context * ctx, ggml_tensor * k_cur, ggml_tensor * idxs_hot, int32_t il) const;
++    ggml_tensor * cpy_v_hot(ggml_context * ctx, ggml_tensor * v_cur, ggml_tensor * idxs_hot, int32_t il) const;
++    void set_input_idxs_hot(ggml_tensor * dst, const llama_ubatch * ubatch, const slot_info & sinfo) const;
++    bool split_hot_used(const slot_info & sinfo) const; // some cell before split_hot is in use
++    // true the first time a way of reading the split is used by this cache (for its log line)
++    bool split_first(int mode) const { const bool f = !(split_told & (1u << mode)); split_told |= 1u << mode; return f; }
++    void split_write_begin() const { split_writing = true; }
++    void split_write_end()   const { split_writing = false; }
++private:
++
+     bool v_trans = true;  // the value tensor is transposed
+ 
+     const uint32_t n_seq_max = 1;
+@@ -428,6 +454,20 @@ public:
+     llama_swa_type get_swa_type() const;
+     bool           get_has_ext_2d() const; // Brain Engine 0028
+ 
++    // Brain Engine 0036
++    uint32_t      get_split_hot() const;
++    bool          has_split(int32_t il) const;
++    bool          split_hot_used() const;
++    bool          split_first(int mode) const;
++    void          split_write_begin() const;
++    void          split_write_end() const;
++    ggml_tensor * get_k_hot(ggml_context * ctx, int32_t il, uint32_t n) const;
++    ggml_tensor * get_v_hot(ggml_context * ctx, int32_t il, uint32_t n) const;
++    ggml_tensor * cpy_k_hot(ggml_context * ctx, ggml_tensor * k_cur, ggml_tensor * idxs_hot, int32_t il) const;
++    ggml_tensor * cpy_v_hot(ggml_context * ctx, ggml_tensor * v_cur, ggml_tensor * idxs_hot, int32_t il) const;
++    ggml_tensor * build_input_idxs_hot(ggml_context * ctx, const llama_ubatch & ubatch) const;
++    void          set_input_idxs_hot(ggml_tensor * dst, const llama_ubatch * ubatch) const;
++
+     uint32_t get_n_kv_rows() const;
+ 
+     ggml_type type_k() const;

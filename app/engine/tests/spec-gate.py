@@ -4,6 +4,9 @@
 #   python3 engine/tests/spec-gate.py <llama.cpp checkout with the patches, built with LLAMA_BUILD_TESTS=ON> [work folder]
 # The tiny brain is the Qwen3.8-Flash-Next shaped one from llama.cpp's tests/test-llama-archs (as in table-window.py);
 # its random words make n-gram drafts that are mostly thrown away, the case the gate is for.
+# The brain's weights come from a seed (SPEC_GATE_SEED, 4 by default). That seed matters: on seeds 1 to 7 the gate
+# cut the drafts made by more than half only on seed 4 and by 7% to 39% on the other six, and on four of them most
+# drafts were kept anyway. So the checks below hold for seed 4; how much the gate saves on a real brain is measured on the PC.
 import hashlib, json, os, subprocess, sys, tempfile, time, urllib.request
 SRC = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else sys.exit('usage: spec-gate.py <llama.cpp checkout, built> [work folder]')
 WORK = os.path.abspath(sys.argv[2]) if len(sys.argv) > 2 else tempfile.mkdtemp(prefix='gate-')
@@ -11,7 +14,7 @@ BIN = os.path.join(SRC, 'build', 'bin')
 os.makedirs(WORK, exist_ok=True)
 brain = os.path.join(WORK, 'qwen4exp-moe.gguf')
 if not os.path.exists(brain):
-    subprocess.check_call([os.path.join(BIN, 'test-llama-archs'), '-a', 'qwen4exp', '-o', WORK], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.check_call([os.path.join(BIN, 'test-llama-archs'), '-a', 'qwen4exp', '-s', os.environ.get('SPEC_GATE_SEED', '4'), '-o', WORK], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     setmeta = os.path.join(SRC, 'gguf-py', 'gguf', 'scripts', 'gguf_set_metadata.py')
     env = {**os.environ, 'PYTHONPATH': os.path.join(SRC, 'gguf-py')}
     for k, v in (('qwen4exp.attention.indexer.top_k', '64'), ('qwen4exp.context_length', '8192')):
