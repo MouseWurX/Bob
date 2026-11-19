@@ -1,0 +1,196 @@
+{
+ "name": "Answer drift of the no-table mask (LLAMA_KQ_MASK_POS=1, patch 0026+0028) on Brain Engine 18: f16 off base vs f16 POS, q4_0 off, q4_0 POS, 4K x 4 and 8K x 2, step 1024 so each chunk is read in several pieces (the server reads a long prompt in pieces too)",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 56)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be18": {
+   "exe": "${BE18_PERPLEXITY}"
+  }
+ },
+ "text": "long-text.md",
+ "baseArgs": [
+  "-fa",
+  "on",
+  "--fit",
+  "on"
+ ],
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "rowTimeoutMs": 2700000,
+ "groups": [
+  {
+   "id": "mask-pos-4K-ub1024",
+   "about": "f16 with the table (base) vs f16 POS, q4_0 table, q4_0 POS, on 4x4 (Addendum 56)",
+   "ctx": 4096,
+   "chunks": 4,
+   "needDiskGB": 12,
+   "base": {
+    "id": "4x4-f16-off",
+    "engine": "be18",
+    "args": [
+     "-b",
+     "4096",
+     "-ub",
+     "1024",
+     "--moe-cache-mib",
+     "4096",
+     "--moe-cache-cpu-share",
+     "0",
+     "-ctk",
+     "f16",
+     "-ctv",
+     "f16"
+    ]
+   },
+   "rows": [
+    {
+     "id": "4x4-f16-pos",
+     "engine": "be18",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "1024",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "f16",
+      "-ctv",
+      "f16"
+     ],
+     "env": {
+      "LLAMA_KQ_MASK_POS": "1"
+     }
+    },
+    {
+     "id": "4x4-q4_0-off",
+     "engine": "be18",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "1024",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ]
+    },
+    {
+     "id": "4x4-q4_0-pos",
+     "engine": "be18",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "1024",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ],
+     "env": {
+      "LLAMA_KQ_MASK_POS": "1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "mask-pos-8K-ub1024",
+   "about": "f16 with the table (base) vs f16 POS, q4_0 table, q4_0 POS, on 4x4 (Addendum 56)",
+   "ctx": 8192,
+   "chunks": 2,
+   "needDiskGB": 12,
+   "base": {
+    "id": "4x4-f16-off",
+    "engine": "be18",
+    "args": [
+     "-b",
+     "4096",
+     "-ub",
+     "1024",
+     "--moe-cache-mib",
+     "4096",
+     "--moe-cache-cpu-share",
+     "0",
+     "-ctk",
+     "f16",
+     "-ctv",
+     "f16"
+    ]
+   },
+   "rows": [
+    {
+     "id": "4x4-f16-pos",
+     "engine": "be18",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "1024",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "f16",
+      "-ctv",
+      "f16"
+     ],
+     "env": {
+      "LLAMA_KQ_MASK_POS": "1"
+     }
+    },
+    {
+     "id": "4x4-q4_0-off",
+     "engine": "be18",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "1024",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ]
+    },
+    {
+     "id": "4x4-q4_0-pos",
+     "engine": "be18",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "1024",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ],
+     "env": {
+      "LLAMA_KQ_MASK_POS": "1"
+     }
+    }
+   ]
+  }
+ ]
+}

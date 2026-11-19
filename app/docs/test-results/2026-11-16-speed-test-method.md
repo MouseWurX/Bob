@@ -947,6 +947,11 @@ f16 with the table as the base, against f16 POS, q4_0 with the table and q4_0 PO
 half of q8_0's 0.0037) and same top word at least 99%, and q4_0 POS is within 0.001 KLD of q4_0 with the table. If it
 fails, POS stays off until the engine thread finds the cause.
 
+**Added before the verbose rerun (Nov 19, 6:55 AM):** the first run logged too little to confirm the switch, and showed
+f16 POS at exactly 0 KLD. With `-ub 4096` each 4K chunk is read in one piece, so it may never meet the case the server
+does (a long prompt read in pieces after earlier ones). `perplexity-mask-pos-ub1024.json` repeats the check at `-ub 1024`.
+Both run with `LLAMA_ARG_LOG_VERBOSITY=4` and count only if each POS row logs "attention mask as positions (no table)".
+
 **Predictions, written before any run:** f16 POS lands at mean KLD 0.0005-0.002 and same top 98.5-99.7%, so it may
 miss the 99% line; q4_0 POS is within 0.001 of q4_0 with the table.
 
