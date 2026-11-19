@@ -24,6 +24,7 @@ import { draftNumArgs, TURBO_EVERYDAY_MAX, READING_STEPS } from './engine-extras
 import { BRAIN_ENGINE_PIN } from './engines.js';
 import { HOT_KINDS, mixFor, addMass, saveProfile, profileStamp, rankingFile, hotCacheMB, parseCacheLog, RANKING_ENV } from './hot-experts.js';
 import { saveSettings } from './config.js';
+import { sharedGpuMB, SPILL_MB } from './card-busy.js';
 import { gaming } from './sessions.js';
 import { readJson, writeJson, makeRoom, runJob, pageLog, chatOnce } from './lab-jobs.js';
 
@@ -67,7 +68,10 @@ export function calSpeedTries({ mtp = 0, cacheMB = 0 } = {}) {
   const out = [r('normal', 0, 'Reading speed Normal (512 at a time)'), r('faster', READING_STEPS.faster, 'Reading speed Faster (2,048 at a time)'), r('fastest', READING_STEPS.fastest, 'Reading speed Fastest (4,096 at a time)')];
   if (cacheMB > 0) {
     const gb = Math.round((cacheMB / 1024) * 10) / 10;
-    for (const t of out.slice(0, 3)) out.push({ ...t, id: `${t.id}-hot`, cache: true, extra: [...t.extra, ...hotCopyArgs(cacheMB)], label: `${t.label}, with ${gb} GB of hot experts on the card` });
+    // Nov 17 (the owner): a cache that doesn't fit beside a reading step steps down 1 GB at a time, to 2 GB at least,
+    // so each step gets the biggest cache that runs (sizes, biggest first; the row says which one ran).
+    const sizes = [cacheMB]; for (let mb = cacheMB - 1024; mb >= 2048; mb -= 1024) sizes.push(mb);
+    for (const t of out.slice(0, 3)) out.push({ ...t, id: `${t.id}-hot`, cache: true, sizes, extra: [...t.extra, ...hotCopyArgs(cacheMB)], base: t.extra, label: `${t.label}, with ${gb} GB of hot experts on the card` });
   }
   if (mtp > 0) out.push({ id: 'turbo', turbo: true, extra: ['--spec-type', 'draft-mtp', ...draftNumArgs(0, TURBO_EVERYDAY_MAX)], label: 'Turbo: the brain\'s own guesser' });
   return out;
@@ -95,8 +99,43 @@ export function calSpeedBest(rows) {
   const what = `Reading speed ${name}${cache ? ' with hot experts' : ''}`;
   const readWhy = top === base ? `Reading speed Normal: bigger pieces didn't read the long prompt more than 10% faster without slowing writing (${base.readTps} tokens a second)${pool.some((r) => r.cache) ? ', and hot experts didn\'t write faster' : ''}.` : cache ? `${what}: wrote ${top.tps} words a second against ${base.tps} on Normal, and read the long prompt at ${top.readTps} tokens a second against ${base.readTps} (first word ${top.firstWordS} s against ${base.firstWordS} s).` : `Reading speed ${name}: read the long prompt at ${top.readTps} tokens a second against ${base.readTps} on Normal (first word ${top.firstWordS} s against ${base.firstWordS} s), writing ${top.tps} against ${base.tps}.`;
   const turboWhy = !t ? '' : turbo ? ` Turbo on: ${t.tps} words a second against ${base.tps}${t.accepted != null ? `, ${t.accepted}% of its guesses kept` : ''}.` : ` Turbo off: ${t.tps} words a second against ${base.tps}, not enough to be worth it.`;
-  return { reading: top.reading, cache, turbo, why: readWhy + turboWhy };
+  return { reading: top.reading, cache, ...(cache && top.cacheMB ? { cacheMB: top.cacheMB } : {}), turbo, why: readWhy + turboWhy };
 }
+
+// Nov 17 (the owner agreed): a second recommendation for brains that do coding and agent work. Those jobs read far more
+// than they write (a repo, tool results, a long plan each step), so reading speed and the first word count for more.
+// Same pairs, same pool (writing within 10% of Normal's); then any pair writing within 10% of the fastest writer, and
+// the fastest reader among them. A bigger step still needs a real reading gain (over 10% faster than Normal). On the
+// 16 GB card this picks step 4096 with the same 4 GB cache (X4c): about 7% slower writing at 32K than step 2048 with
+// it, but about 43% faster reading and the first word 4.3 s sooner. calSpeedBest above stays the rule recorded for
+// chat brains and on the results page. -> { reading, cache, turbo, why, job: 'work' } or null when Normal didn't run.
+export function calSpeedWork(rows) {
+  const ok = rows.filter((r) => !r.failed && r.tps > 0);
+  const base = ok.find((r) => r.id === 'read-normal');
+  if (!base) return null;
+  const pool = ok.filter((r) => r.reading && !r.turbo && r.tps >= base.tps * 0.9);
+  const maxTps = Math.max(...pool.map((r) => r.tps));
+  const fast = pool.filter((r) => r.tps >= maxTps * 0.9 && r.readTps > 0).sort((a, b) => b.readTps - a.readTps || b.tps - a.tps)[0];
+  const top = fast && fast !== base && fast.readTps > (base.readTps || 0) * 1.1 ? fast : base;
+  const name = { normal: 'Normal', faster: 'Faster', fastest: 'Fastest' }[top.reading];
+  const cache = top.cache === true;
+  const what = `Reading speed ${name}${cache ? ' with hot experts' : ''}`;
+  const why = top === base ? `For coding and agent work, Reading speed Normal: nothing read the long prompt more than 10% faster while writing within 10% of the fastest (${base.readTps} tokens a second).` : `For coding and agent work, ${what}: read the long prompt at ${top.readTps} tokens a second against ${base.readTps} on Normal (first word ${top.firstWordS} s against ${base.firstWordS} s), writing ${top.tps} words a second against ${base.tps}.`;
+  const t = ok.find((r) => r.id === 'turbo');
+  return { reading: top.reading, cache, ...(cache && top.cacheMB ? { cacheMB: top.cacheMB } : {}), turbo: Boolean(t && t.tps > base.tps * 1.05), why, job: 'work' };
+}
+// Which recommendation a brain gets: 'work' when it holds a coding, research or review job, is the Coding session's
+// brain, or is the main brain with no separate coding brain (One brain, or the workbench slot empty: then the main
+// brain does the coding and the tool loops itself); else 'chat'.
+const WORK_JOBS = new Set(['tinker', 'scout', 'reviewer', 'coder', 'coding']);
+export function speedJob(cfg, model) {
+  if (!model) return 'chat';
+  const jobs = Object.entries(cfg?.models || {}).filter(([, m]) => m === model).map(([k]) => k);
+  if (jobs.some((j) => WORK_JOBS.has(j)) || cfg?.sessionBrains?.coding === model) return 'work';
+  if (jobs.includes('bob') && (cfg?.oneBrain === true || !cfg?.models?.tinker)) return 'work';
+  return 'chat';
+}
+export const SPEED_JOB_NAMES = { chat: 'chat', work: 'coding and agent work' };
 
 // The Brain Engine patches this Bob carries (engine/patches), for the profile stamp.
 export const enginePatches = (dir = new URL('../engine/patches/', import.meta.url)) => { try { return fs.readdirSync(dir).filter((f) => /^\d{4}-.*\.patch$/.test(f)).map((f) => f.replace(/\.patch$/, '')).sort(); } catch { return []; } };
@@ -134,7 +173,7 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
   const ask = await makeRoom(lab, unload); if (ask) return ask;
   const log = pageLog(lab.cfg, 'calibrate');
   const exe = lab.tools().server.path;
-  const fx = { serve: (o) => startServer({ exe, log, ...o }), chat: chatOnce, trace: traceOnce, ...lab.stepFns };
+  const fx = { serve: (o) => startServer({ exe, log, ...o }), chat: chatOnce, trace: traceOnce, sharedMB: () => sharedGpuMB(), ...lab.stepFns };
   const plans = list.map((b) => { const r = lab.brain.engine.resolve(b.model); const info = ggufInfo(r.gguf); const layers = info?.shape?.layers || lab.brain.engine.placeInfo(b.model).layers; return { ...b, name: b.name || b.model, gguf: r.gguf, layers, tries: calTries(layers), speedTries: calSpeedTries({ mtp: info?.mtp || 0, cacheMB: (lab.brain.engine.buildNo?.() || 0) >= 12359 ? hotCacheMB(lab.cfg) : 0 }), hot: (lab.brain.engine.buildNo?.() || 0) >= 12359 }; });
   const steps = plans.flatMap((p, i) => [...p.tries, ...p.speedTries, ...(p.hot ? HOT_STEPS : [])].map((t) => [`${i}:${t.id}`, plans.length > 1 ? `${p.name}: ${t.label}` : t.label]));
   const total = steps.length;
@@ -178,17 +217,41 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
           row.failed = 'Skipped: every expert already sits on the card.';
           speedRows.push(row); set(id, 'failed'); progress((100 * ++done) / total); continue;
         }
-        try {
-          srv = await fx.serve({ gguf: p.gguf, ctx: CAL_CTX, signal, cpuOk: false, extra: t.extra, ...(place ? { place } : {}) });
-          const long = await fx.chat(srv.url, [{ role: 'user', content: CAL_LONG }], { maxTokens: 24, signal });
-          const short = await fx.chat(srv.url, msg, { maxTokens: 200, signal });
-          const dn = Number(short.timings?.draft_n) || 0, da = Number(short.timings?.draft_n_accepted) || 0;
-          row = { ...row, readTps: round1(Number(long.timings?.prompt_per_second) || 0), firstWordS: long.timings?.prompt_ms ? round1(long.timings.prompt_ms / 1000) : null, tps: round1(Number(short.timings?.predicted_per_second) || 0), ...(t.turbo && dn ? { accepted: Math.round((100 * da) / dn) } : {}) };
-          if (!(row.tps > 0)) row.failed = 'It answered, but gave no speed.';
-        } catch (e) {
-          if (signal.aborted) throw e;
-          row.failed = 'Didn\'t start: too much for the card this way.';
-        } finally { try { srv?.stop(); } catch {} }
+        const sizes = t.cache && t.sizes?.length ? t.sizes : [null];
+        const head = row;
+        for (const mb of sizes) {
+          row = { ...head, ...(mb ? { cacheMB: mb } : {}) };
+          srv = null;
+          // Nov 17: shared GPU memory before and after (Windows); a pair that spills card memory into RAM fails, never wins
+          const readShared = () => (fx.sharedMB ? Promise.resolve().then(fx.sharedMB).catch(() => null) : null);
+          const shared0 = await readShared();
+          try {
+            srv = await fx.serve({ gguf: p.gguf, ctx: CAL_CTX, signal, cpuOk: false, extra: mb ? [...t.base, ...hotCopyArgs(mb)] : t.extra, ...(place ? { place } : {}) });
+            const long = await fx.chat(srv.url, [{ role: 'user', content: CAL_LONG }], { maxTokens: 24, signal });
+            const short = await fx.chat(srv.url, msg, { maxTokens: 200, signal });
+            const dn = Number(short.timings?.draft_n) || 0, da = Number(short.timings?.draft_n_accepted) || 0;
+            row = { ...row, readTps: round1(Number(long.timings?.prompt_per_second) || 0), firstWordS: long.timings?.prompt_ms ? round1(long.timings.prompt_ms / 1000) : null, tps: round1(Number(short.timings?.predicted_per_second) || 0), ...(t.turbo && dn ? { accepted: Math.round((100 * da) / dn) } : {}) };
+            if (!(row.tps > 0)) row.failed = 'It answered, but gave no speed.';
+            const shared1 = Number.isFinite(shared0) ? await readShared() : null;
+            if (Number.isFinite(shared1)) {
+              // Nov 17 (npc): shared GPU memory rises with the reading step itself (about 0.14 GB at Normal, 0.34 at
+              // 2048, 0.59 at 4096, the same with any cache size): working memory the step always uses, not a spill.
+              // So a try is judged against its own baseline: a cache try against the same step without the cache, any
+              // other try against Normal with room for its bigger step. A rise past that is the card overflowing.
+              row.sharedRiseMB = shared1 - shared0;
+              const twin = speedRows.find((x) => x.id === (t.cache ? t.id.replace(/-hot$/, '') : 'read-normal') && Number.isFinite(x.sharedRiseMB));
+              const allow = t.cache ? SPILL_MB : 2 * SPILL_MB;
+              const extra = twin && t.id !== 'read-normal' ? row.sharedRiseMB - twin.sharedRiseMB : 0;
+              if (extra > allow && !row.failed) { row.spillMB = extra; row.failed = `Spilled: about ${Math.round(extra / 102.4) / 10} GB more card memory went to RAM than ${t.cache ? 'this reading speed uses without hot experts' : 'Normal reading uses'}, which can slow everything else down.`; }
+            }
+          } catch (e) {
+            if (signal.aborted) throw e;
+            row.failed = 'Didn\'t start: too much for the card this way.';
+          } finally { try { srv?.stop(); } catch {} }
+          if (!row.failed || mb === sizes[sizes.length - 1]) break;
+          head.steppedDown = [...(head.steppedDown || []), mb]; // too big beside this step: one size smaller
+        }
+        if (head.steppedDown) row.steppedDown = head.steppedDown;
         speedRows.push(row);
         set(id, row.failed ? 'failed' : 'done');
         progress((100 * ++done) / total);
@@ -254,7 +317,7 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
         hot.on = Boolean(base && hot.tps > base.tps * 1.05);
         hot.why = !hot.tps ? (hot.failed || hot.timeFailed || 'Hot experts weren\'t timed.') : hot.on ? `Hot experts on: ${hot.tps} words a second with ${Math.round(hot.mb / 1024 * 10) / 10} GB of the card for them, against ${base.tps} without.` : `Hot experts off: ${hot.tps} words a second against ${base?.tps ?? '?'} without, not enough to be worth it.`;
       }
-      const rec = { at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), model: p.model, name: p.name, layers: p.layers, ctx: CAL_CTX, rows, best, speedRows, speed: calSpeedBest(speedRows), ...(hot ? { hot } : {}) };
+      const rec = { at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), model: p.model, name: p.name, layers: p.layers, ctx: CAL_CTX, rows, best, speedRows, speed: calSpeedBest(speedRows), speedWork: calSpeedWork(speedRows), ...(hot ? { hot } : {}) };
       const file = path.join(calibrateDir(lab.cfg), `${slugOf(p.model)}.json`);
       writeJson(file, [rec, ...readJson(file, [])].slice(0, 10));
       out.push(rec);
@@ -263,9 +326,13 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
   });
 }
 
-// "Use recommended": save the newest result's recommendation as this brain's placement.
-export function useCalibrated(lab, model) {
-  const rec = calResult(lab.cfg, model);
+// "Use recommended": save the newest result's recommendation as this brain's placement. The speed options come from
+// the recommendation for this brain's job (speedJob), or the one asked for ({ job: 'chat' | 'work' }).
+export function useCalibrated(lab, model, { job } = {}) {
+  const found = calResult(lab.cfg, model);
+  const use = job === 'chat' || job === 'work' ? job : speedJob(lab.cfg, model);
+  const work = use === 'work' && Boolean(found?.speedWork); // a result from before Nov 17 has only the chat one
+  const rec = work ? { ...found, speed: found.speedWork } : found;
   if (!rec?.best) throw new Error('This brain has no calibration result yet.');
   const cur = lab.cfg.brainPlace?.[model] || {};
   const set = rec.best.mode === 'hand' ? { mode: 'hand', cpuMoe: rec.best.cpuMoe } : { ...cur, mode: 'auto' };
@@ -273,10 +340,12 @@ export function useCalibrated(lab, model) {
   // Nov 16: the speed options too, for this brain only. Turbo only goes on (a Turbo set by hand is never switched off).
   if ((rec.hot?.on || rec.speed?.cache) && lab.cfg.hotExperts !== true) saveSettings(lab.cfg, { hotExperts: true });
   // Nov 17: the pair grid's cache is the copy kind; remembered per brain (a big brain may still do better without copying)
+  // a pick that only fitted with a smaller cache sets Room for hot experts to that size (it's one setting for every brain)
+  if (rec.speed?.cache && rec.speed.cacheMB && rec.speed.cacheMB !== hotCacheMB(lab.cfg)) saveSettings(lab.cfg, { hotExpertsGB: Math.round((rec.speed.cacheMB / 1024) * 2) / 2 });
   if (rec.speed) saveSettings(lab.cfg, { hotExpertsCopy: { ...(lab.cfg.hotExpertsCopy || {}), [model]: rec.speed.cache === true } });
   if (rec.speed) {
     saveSettings(lab.cfg, { readingFor: { ...(lab.cfg.readingFor || {}), [model]: rec.speed.reading } });
     if (rec.speed.turbo && !lab.cfg.llamacpp?.turbo?.[model]?.on) saveSettings(lab.cfg, { llamacpp: { turbo: { ...(lab.cfg.llamacpp?.turbo || {}), [model]: { on: true, mtp: true, max: TURBO_EVERYDAY_MAX } } } });
   }
-  return { ok: true, set: lab.cfg.brainPlace[model], reading: lab.cfg.readingFor?.[model] || null, turbo: lab.cfg.llamacpp?.turbo?.[model]?.on === true, hotExperts: lab.cfg.hotExperts === true, hotCopy: lab.cfg.hotExpertsCopy?.[model] === true };
+  return { ok: true, set: lab.cfg.brainPlace[model], reading: lab.cfg.readingFor?.[model] || null, turbo: lab.cfg.llamacpp?.turbo?.[model]?.on === true, hotExperts: lab.cfg.hotExperts === true, hotCopy: lab.cfg.hotExpertsCopy?.[model] === true, job: work ? 'work' : 'chat' };
 }

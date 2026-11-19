@@ -1,0 +1,208 @@
+{
+ "name": "Brain Engine 20 (rerun after the crash fix): short prompts read through the copy cache on the processor (0032), 2x4 at -ub 2048, 3 rounds",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 60)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be20": {
+   "exe": "${BE20_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "p300": "long-text.md",
+  "p900": "long-text.md",
+  "p2000": "long-text.md"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 3,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "rows": [
+  {
+   "id": "cpuread-off",
+   "engine": "be20",
+   "prompts": [
+    "start",
+    "p300",
+    "p900",
+    "p2000"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  },
+  {
+   "id": "cpuread-256",
+   "engine": "be20",
+   "prompts": [
+    "start",
+    "p300",
+    "p900",
+    "p2000"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_CPU_READ": "256"
+   }
+  },
+  {
+   "id": "cpuread-512",
+   "engine": "be20",
+   "prompts": [
+    "start",
+    "p300",
+    "p900",
+    "p2000"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_CPU_READ": "512"
+   }
+  },
+  {
+   "id": "cpuread-1024",
+   "engine": "be20",
+   "prompts": [
+    "start",
+    "p300",
+    "p900",
+    "p2000"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_CPU_READ": "1024"
+   }
+  },
+  {
+   "id": "cpuread-2048",
+   "engine": "be20",
+   "prompts": [
+    "start",
+    "p300",
+    "p900",
+    "p2000"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_CPU_READ": "2048"
+   }
+  }
+ ],
+ "saveText": true,
+ "promptTokens": {
+  "p300": 300,
+  "p900": 900,
+  "p2000": 2000
+ },
+ "question": {
+  "p300": "\n\nIn two sentences, what is this text about?",
+  "p900": "\n\nIn two sentences, what is this text about?",
+  "p2000": "\n\nIn two sentences, what is this text about?"
+ }
+}

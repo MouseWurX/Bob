@@ -1,0 +1,131 @@
+{
+ "name": "Brain Engine 19: where the time goes (0029, 0033), diagnostic logs, 2 rounds",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 54 (T))",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be19": {
+   "exe": "${BE19_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "k32": "long-text.md"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 2,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "rows": [
+  {
+   "id": "T1-2x4-timing",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "GGML_SCHED_TIMING": "50"
+   }
+  },
+  {
+   "id": "T2-2x4-share1-overlap",
+   "engine": "be19",
+   "prompts": [
+    "start"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "1",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "GGML_SCHED_OVERLAP_LOG": "50"
+   }
+  },
+  {
+   "id": "T2-2x4-share0.5-overlap",
+   "engine": "be19",
+   "prompts": [
+    "start"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0.5",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "GGML_SCHED_OVERLAP_LOG": "50"
+   }
+  }
+ ],
+ "saveText": true,
+ "promptTokens": {
+  "k32": 32768
+ },
+ "question": {
+  "k32": "\n\nIn two sentences, what is this text about?"
+ }
+}

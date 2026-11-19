@@ -54,7 +54,7 @@ export const hotCopyFor = (cfg, model) => cfg?.hotExpertsCopy?.[model] === true;
 export const cleanHotGB = (v) => { const n = Number(v); return Number.isFinite(n) && n >= 1 && n <= 12 ? Math.round(n * 2) / 2 : null; };
 
 // Which profile a brain loads: the kind of its job (from the jobs it holds), else mixed.
-const JOB_KIND = { coder: 'coding', coding: 'coding', code: 'coding', office: 'office', research: 'research', deep: 'research', thinker: 'research', bob: 'chat', quick: 'chat', chat: 'chat' };
+const JOB_KIND = { tinker: 'coding', reviewer: 'coding', ledger: 'office', scout: 'research', coder: 'coding', coding: 'coding', code: 'coding', office: 'office', research: 'research', deep: 'research', thinker: 'research', bob: 'chat', quick: 'chat', chat: 'chat' };
 export function kindFor(cfg, model) {
   const jobs = Object.entries(cfg?.models || {}).filter(([, m]) => m === model).map(([k]) => JOB_KIND[k]).filter(Boolean);
   const kinds = [...new Set(jobs)];

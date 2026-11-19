@@ -1,0 +1,161 @@
+{
+ "name": "Brain Engine 19: n-gram drafts only when they pay (0034), code edit vs plain chat, 3 rounds",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 54 (D))",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be19": {
+   "exe": "${BE19_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "code": "code-edit.md"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "--no-webui"
+ ],
+ "maxTokens": 1200,
+ "rounds": 3,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "rows": [
+  {
+   "id": "ngram-gate-off",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "code"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512",
+    "--spec-type",
+    "ngram-mod"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  },
+  {
+   "id": "ngram-gate-0.3",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "code"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512",
+    "--spec-type",
+    "ngram-mod"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_SPEC_GATE": "0.3"
+   }
+  },
+  {
+   "id": "ngram-gate-0.5",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "code"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512",
+    "--spec-type",
+    "ngram-mod"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_SPEC_GATE": "0.5"
+   }
+  },
+  {
+   "id": "no-drafts-ref",
+   "engine": "be19",
+   "prompts": [
+    "start",
+    "code"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  }
+ ],
+ "saveText": true
+}

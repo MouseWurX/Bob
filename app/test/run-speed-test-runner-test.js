@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { quantile, median, parseSmiLine, cardSummary, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, lineSplitter, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns, parseDiskstats, parseDiskRaw, diskUse } from '../model-lab/speed-test.mjs';
+import { quantile, median, parseSmiLine, cardSummary, realThrottled, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, lineSplitter, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns, parseDiskstats, parseDiskRaw, diskUse, parseSharedMB, exitText } from '../model-lab/speed-test.mjs';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -19,6 +19,11 @@ check('quantiles: median and p99 by interpolation, junk skipped', median([3, 1, 
   check('a short line is no sample', parseSmiLine('1, 2') === null);
   const c = cardSummary([s, idle]);
   check('the card summary: peaks, lowest clock, throttled samples', c.maxTempC === 71 && c.peakMemMB === 15123 && c.minSmMHz === 210 && c.throttledSamples === 1); }
+{ const line = (mhz, r) => parseSmiLine(`t, 60, 150, 300, ${mhz}, 14001, ${r}, 15000, 95, 40, 60, 4, 16`);
+  const busy = [line(2887, '0x0'), line(2887, '0x0'), line(2880, '0x4')];
+  check('a power-cap-only blip at full clocks is not throttling (Nov 17)', realThrottled(busy).length === 0 && cardSummary(busy).powerCapBlips === 1);
+  check('a power cap that drops clocks more than 3% is throttling', realThrottled([...busy, line(2700, '0x4')]).length === 1);
+  check('heat always counts', realThrottled([...busy, line(2887, '0x20')]).length === 1); }
 
 // a fake streamed answer: words arrive at the clock's times
 function fakeStream(times, timings) {
@@ -46,6 +51,8 @@ fs.writeFileSync(planFile, JSON.stringify(plan));
   fs.writeFileSync(planFile, JSON.stringify({ ...plan, rows: [...plan.rows, { id: 'A', engine: 'none', prompts: ['long'] }] }));
   const bad = loadPlan(planFile).problems.join(' | ');
   check('a bad plan says what\'s wrong', /no engine "none"/.test(bad) && /no prompt "long"/.test(bad) && /share an id/.test(bad));
+  fs.writeFileSync(planFile, JSON.stringify({ ...plan, promptRepeat: { short: 3 } }));
+  check('promptRepeat lays a prompt file end to end N times', loadPlan(planFile).prompts.short.text === 'Say hi.\n\n\nSay hi.\n\n\nSay hi.\n');
   fs.writeFileSync(planFile, JSON.stringify(plan)); }
 check('rows taken in turn, round after round', schedule([{ id: 1 }, { id: 2 }], 3).map((x) => `${x.round}${x.row.id}`).join() === '01,02,11,12,21,22');
 
@@ -68,10 +75,21 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   check('every engine starts at -lv 4 so its info lines (cache totals, prefetch count) are printed', f.seen.starts[0].args.join(' ').endsWith('-lv 4'));
   check('a warm-up first (untimed), then the timed run', f.seen.streams.length === 2 && f.seen.streams[0].n_predict === 16 && res.runs.length === 1 && res.runs[0].writeTps === 41);
   check('speed runs: temperature 0, seed 42, 300 words, no prompt cache', f.seen.streams[1].temperature === 0 && f.seen.streams[1].seed === 42 && f.seen.streams[1].n_predict === 300 && f.seen.streams[1].ignore_eos === true && f.seen.streams[1].cache_prompt === false);
-  check('the card and the engine\'s cache lines go with it, and the engine stops', res.runs[0].card.peakMemMB === 14000 && res.load.filled === 10 && f.seen.stops === 1); }
+  check('the card and the engine\'s cache lines go with it, and the engine stops', res.runs[0].card.peakMemMB === 14000 && res.load.filled === 10 && f.seen.stops === 1);
+  check('the load time (start to ready, seconds) is kept with the row', typeof res.loadS === 'number' && res.loadS >= 0); }
 { const { prompts } = loadPlan(planFile); const f = fx({ up: false });
   const res = await runRow({ plan, prompts, row: plan.rows[0], round: 0, fx: f });
   check('a row that can\'t start is not run, with why, and nothing is timed', res.notRun === 'out of memory' && !res.runs.length && f.seen.stops === 1); }
+{ const { prompts } = loadPlan(planFile); const f = fx(); let dead = '';
+  f.start = (exe, args, env) => ({ url: 'http://fake', log: () => '', ready: async () => ({ ok: true }), stop: async () => { f.seen.stops++; }, exitCode: () => dead });
+  f.stream = async () => { dead = 'exit code 0xC0000005'; throw new Error('read ECONNRESET'); };
+  const res = await runRow({ plan, prompts, row: plan.rows[0], round: 0, fx: f });
+  check('an engine that dies in the warm-up is written down as crashed with its exit code, and the runner goes on', /warm-up: read ECONNRESET \(engine ended, exit code 0xC0000005\)/.test(res.notRun || '') && !res.runs.length && f.seen.stops === 1, res.notRun);
+  let k = 0; dead = '';
+  f.stream = async (url, body) => { if (k++ === 0) return { writeTps: 40, gaps: {}, gapsMs: [] }; dead = 'exit code 0xC0000409'; throw new Error('fetch failed'); };
+  const two = await runRow({ plan, prompts, row: { ...plan.rows[0], prompts: [plan.rows[0].prompts[0], plan.rows[0].prompts[0]] }, round: 0, fx: f });
+  check('a timed run whose engine died keeps the exit code and stops the row (no more prompts to a dead engine)', two.runs.length === 1 && /0xC0000409/.test(two.runs[0].failed) && /0xC0000409/.test(two.crashed || '') && k === 2, two); }
+check('exit codes: Windows crash codes in hex, small codes plain, a signal by name, nothing while running', exitText(3221225477) === 'exit code 0xC0000005' && exitText(-1073740791) === 'exit code 0xC0000409' && exitText(1) === 'exit code 1' && exitText(null, 'SIGKILL') === 'signal SIGKILL' && exitText(null, null) === '');
 { const { prompts } = loadPlan(planFile); const f = fx({ stopAfter: 0 });
   const res = await runRow({ plan, prompts, row: plan.rows[0], round: 0, fx: f });
   check('a game starting stops the row and frees the card', res.stopped === 'game started' && !res.runs.length && f.seen.stops === 1); }
@@ -183,6 +201,68 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   const md = summarise([res], { prompts: {}, plan });
   check('the summary has a disk table when there are disk readings, and none without', /Read from the disk during the timed runs/.test(md) && /\| 50 \(50 to 50\) \|/.test(md) && !/Read from the disk/.test(summarise([{ ...res, runs: res.runs.map(({ disk, ...r }) => r) }], { prompts: {}, plan }))); }
 
+// ---------- Big rows: free card memory first, spills into RAM (Nov 17) ----------
+{ const { prompts } = loadPlan(planFile);
+  const f = { ...fx(), cardFreeMB: async () => 9000 };
+  const skip = await runRow({ plan, prompts, row: { ...plan.rows[1], needFreeMB: 14000 }, round: 0, fx: f });
+  check('a row wanting more free card memory than there is: skipped before loading, said as not run', /^skipped: 9000 MB free on the card before loading, 14000 MB wanted$/.test(skip.notRun) && !f.seen.starts.length && !skip.runs.length);
+  const g = { ...fx(), cardFreeMB: async () => 15000 };
+  const go = await runRow({ plan, prompts, row: { ...plan.rows[1], needFreeMB: 14000 }, round: 0, fx: g });
+  check('with enough free it loads, and the free memory is written down', !go.notRun && go.cardFreeMB === 15000 && go.runs.length === 1);
+  let k = 0; const h = { ...fx(), sharedGpuMB: async () => [300, 1400][Math.min(k++, 1)] };
+  const sp = await runRow({ plan: { ...plan, spillCheck: true }, prompts, row: plan.rows[1], round: 0, fx: h });
+  check('shared GPU memory rising over 512 MB during a load marks the run failed as a spill, not slow', /^spilled: shared GPU memory rose 1100 MB/.test(sp.runs[0].failed) && sp.runs[0].sharedRiseMB === 1100);
+  let j = 0; const q = { ...fx(), sharedGpuMB: async () => [300, 500][Math.min(j++, 1)] };
+  const fine = await runRow({ plan: { ...plan, spillCheck: true }, prompts, row: plan.rows[1], round: 0, fx: q });
+  const offSp = await runRow({ plan, prompts, row: plan.rows[1], round: 0, fx: h });
+  check('a small rise is fine, and the check is off unless the plan asks', !fine.runs[0].failed && fine.runs[0].sharedRiseMB === 200 && offSp.runs[0].sharedRiseMB === undefined);
+  check('shared memory: bytes to MB; nothing or an error is no number', parseSharedMB('2147483648\r\n') === 2048 && parseSharedMB('') === null && parseSharedMB('Get-Counter : error') === null); }
+
+// ---------- Stepping a cache down that doesn't fit (Nov 17) ----------
+{ const { prompts } = loadPlan(planFile);
+  const big = { id: 'S', engine: 'be', prompts: ['short'], args: ['-ub', '6144', '--moe-cache-mib', '4096'], cacheDown: [3072, 2048] };
+  const mk = (failAt) => { const f = fx(); const start = f.start; f.start = (exe, args, env) => { const s0 = start(exe, args, env); const mib = Number(args[args.indexOf('--moe-cache-mib') + 1]); return { ...s0, ready: async () => (mib >= failAt ? { ok: false, why: 'out of memory' } : { ok: true }) }; }; return f; };
+  const f = mk(4096);
+  const r3 = await runRow({ plan, prompts, row: big, round: 0, fx: f });
+  check('a 4 GB cache that doesn\'t load steps down to 3 GB, and says so', r3.cacheMiB === 3072 && r3.runs.length === 1 && r3.steppedDown?.length === 1 && r3.steppedDown[0].mib === 4096 && f.seen.starts.map((x) => x.args[x.args.indexOf('--moe-cache-mib') + 1]).join() === '4096,3072');
+  const r2 = await runRow({ plan, prompts, row: big, round: 0, fx: mk(3072) });
+  check('and to 2 GB when 3 doesn\'t either', r2.cacheMiB === 2048 && r2.steppedDown.map((d) => d.mib).join() === '4096,3072');
+  const none = await runRow({ plan, prompts, row: big, round: 0, fx: mk(1) });
+  check('when nothing loads, the last try is the result, not run', none.notRun === 'out of memory' && none.cacheMiB === 2048);
+  const ok = await runRow({ plan, prompts, row: big, round: 0, fx: mk(99999) });
+  check('a cache that fits runs once at its own size', ok.cacheMiB === 4096 && !ok.steppedDown);
+  let k = 0; const sp = { ...fx(), sharedGpuMB: async () => (k++ < 2 ? [0, 2000][k - 1] : 0) };
+  const spilled = await runRow({ plan: { ...plan, spillCheck: true }, prompts, row: big, round: 0, fx: sp });
+  check('a spill steps down too', spilled.cacheMiB === 3072 && /spilled/.test(spilled.steppedDown[0].why));
+  const busy = await runRow({ plan, prompts, row: { ...big, needFreeMB: 14000 }, round: 0, fx: { ...fx(), cardFreeMB: async () => 5000 } });
+  check('a busy card is skipped, not stepped down', /^skipped/.test(busy.notRun) && busy.cacheMiB === 4096 && !busy.steppedDown);
+  const md = summarise([r3, ok], { prompts: {}, plan });
+  check('the summary says which size each load ran with', /\| S \| 1 \| 3072 MiB \| 4096 MiB \(out of memory\) \|/.test(md) && /\| S \| 1 \| 4096 MiB \| - \|/.test(md)); }
+
+// ---------- The engine's own staging buffer isn't a spill (Nov 17) ----------
+{ const { prompts } = loadPlan(planFile);
+  let k = 0; const h = { ...fx(), sharedGpuMB: async () => [1000, 1592][Math.min(k++, 1)] };
+  const x = await runRow({ plan: { ...plan, spillCheck: true, spillMinusStep: true }, prompts, row: { ...plan.rows[1], args: ['-b', '4096', '-ub', '4096'] }, round: 0, fx: h });
+  check('with spillMinusStep, the pinned step buffer is taken off before judging (no -c: 4096 x 4096 x 2 + 128 = 160 MB; a 592 MB rise passes)', !x.runs[0].failed && x.runs[0].sharedRiseMB === 592 && x.runs[0].stagingMB === 160, JSON.stringify(x.runs[0].stagingMB));
+  { const { pinnedStepMB } = await import('../model-lab/speed-test.mjs');
+    check('the engine\'s real line, with two spaces after CUDA_Host, is read (Nov 18 run: it was missed)', pinnedStepMB(['-ub', '4096'], 'sched_reserve:  CUDA_Host  compute buffer size =  2176.00 MiB') === 2176);
+    check('the buffer is the size the engine printed (the biggest, Windows log lines)', pinnedStepMB(['-ub', '4096'], 'load: CUDA_Host compute buffer size =   512.00 MiB\r\nCUDA_Host compute buffer size =  2176.03 MiB\r\n') === 2176);
+    check('with no such line, the mask formula: 256K x 4096 = 2176 MiB, 128K (139264) x 6144 = 1824 MiB (both as the engine printed on the test PC)', pinnedStepMB(['-c', '262144', '-ub', '4096']) === 2176 && pinnedStepMB(['-c', '139264', '-ub', '6144']) === 1824);
+    const mtpLog = 'sched_reserve:  CUDA_Host  compute buffer size =  1216.03 MiB\nsched_reserve:  CUDA_Host  compute buffer size =  1152.14 MiB\nsched_reserve:  CUDA_Host  compute buffer size =  1152.14 MiB\n';
+    check('with an MTP head, its own pinned buffer counts too (Nov 18 rerun: 1216 + 1152, the repeated line once)', pinnedStepMB(['-ub', '4096', '--spec-type', 'draft-mtp'], mtpLog) === 2368);
+    check('without a draft, only the biggest counts', pinnedStepMB(['-ub', '4096'], mtpLog) === 1216); }
+  let m = 0; const hl = { ...fx({ log: 'sched_reserve:  CUDA_Host  compute buffer size =  2176.00 MiB\n' }), sharedGpuMB: async () => [1000, 3257][Math.min(m++, 1)] };
+  const z = await runRow({ plan: { ...plan, spillCheck: true, spillMinusStep: true }, prompts, row: { ...plan.rows[1], args: ['-c', '262144', '-b', '4096', '-ub', '4096'] }, round: 0, fx: hl });
+  check('Nov 18: the 256K rise of 2257 MB, all of it the pinned buffer the engine printed, is not a spill', !z.runs[0].failed && z.runs[0].stagingMB === 2176);
+  let j = 0; const g = { ...fx(), sharedGpuMB: async () => [1000, 2200][Math.min(j++, 1)] };
+  const y = await runRow({ plan: { ...plan, spillCheck: true, spillMinusStep: true }, prompts, row: { ...plan.rows[1], args: ['-b', '4096', '-ub', '4096'] }, round: 0, fx: g });
+  check('a rise well past the staging buffer still fails, and says how much was the buffer', /rose 1200 MB during the load \(160 MB of it the engine's own pinned step buffer\)/.test(y.runs[0].failed || '')); }
+
+// ---------- Same answer, fair writing comparison (Nov 17) ----------
+{ const run = (prompt, sha, w) => ({ prompt, textSha: sha, writeTps: w, readTps: 1, firstWordMs: 1, gaps: {}, card: {} });
+  const md = summarise([{ row: 'A', round: 0, runs: [run('short', 'aaaa1111bbbb', 90), run('long', 'cc', 80)] }, { row: 'B', round: 0, runs: [run('short', 'aaaa1111bbbb', 95), run('long', 'dd', 70)] }], { prompts: {}, plan: {} });
+  check('writing compared only between runs that wrote the same answer', /\| short \| aaaa1111 \| A 90, B 95 \|/.test(md) && !/\| long \| cc/.test(md)); }
+
 // ---------- The written answers, kept when a plan asks (Nov 17) ----------
 { const { prompts } = loadPlan(planFile);
   const f = { ...fx(), stream: async () => ({ writeTps: 40, gaps: { median: 25 }, gapsMs: [], textSha: 'abc', text: 'Hello there.' }) };
@@ -190,6 +270,31 @@ function fx({ up = true, stopAfter = Infinity, log = '' } = {}) {
   const on = await runRow({ plan: { ...plan, saveText: true }, prompts, row: plan.rows[1], round: 0, fx: f });
   check('answers are left out unless the plan asks, the fingerprint always kept', off.runs.length > 0 && off.runs.every((r) => r.text === undefined && r.textSha === 'abc'));
   check('with saveText each run keeps what was written', on.runs.length > 0 && on.runs.every((r) => r.text === 'Hello there.')); }
+
+// ---------- Running some rows again (Nov 18) ----------
+{ const { pickRows } = await import('../model-lab/speed-test.mjs');
+  const r = pickRows([{ id: 'a' }, { id: 'b' }, { id: 'c' }], 'c, a,x');
+  check('--only keeps the plan order and names rows that do not exist', r.rows.map((x) => x.id).join() === 'a,c' && r.missing.join() === 'x'); }
+
+// ---------- Needle in a haystack (Nov 18) ----------
+{ const { placeNeedle } = await import('../model-lab/speed-test.mjs');
+  const put = placeNeedle('One two. Three four. Five six.', 0.5, 'The code is 42.');
+  check('a needle goes in after the nearest sentence end, no word split', put === 'One two. Three four. The code is 42. Five six.', put);
+  check('depth 0 and 1 put it near the start and at the end', placeNeedle('A b. C d.', 0, 'N.').startsWith('A b. N.') && placeNeedle('A b. C d.', 1, 'N.').endsWith('C d. N.'));
+  const { prompts } = loadPlan(planFile);
+  const p3 = { ...plan, promptTokens: { short: 2 }, needles: { short: { at: 1, say: 'Code 7.', find: '\\b7\\b', ask: ' Code?' } } };
+  const said = ['The code is 7.', 'No idea.'];
+  let k = 0; const f = { ...fx(), stream: async (url, body) => { f.seen.streams.push(body); return { writeTps: 40, gaps: {}, gapsMs: [], text: body.n_predict === 16 ? '' : said[k++] }; } };
+  const a = await runRow({ plan: p3, prompts, row: plan.rows[0], round: 0, fx: f });
+  const b = await runRow({ plan: p3, prompts, row: plan.rows[0], round: 0, fx: f });
+  check('the needle goes into the cut text, with its own question after', f.seen.streams[1].prompt === 'Say hi.\n Code 7. Code?', f.seen.streams[1].prompt);
+  check('each run says whether the fact came back (found and missed)', a.runs[0].needle?.found === true && b.runs[0].needle?.found === false && a.runs[0].text === undefined);
+  const md = summarise([{ row: 'q8', round: 0, runs: a.runs }, { row: 'q4', round: 0, runs: b.runs }], { prompts: {}, plan: {} });
+  check('the summary has a needle table and a count per row', /\| q8 \| short \| 100% \| 1 of 1 \|/.test(md) && /q8 1 of 1, q4 0 of 1/.test(md), md.split('Needle')[1]);
+  fs.writeFileSync(planFile, JSON.stringify({ ...plan, needles: { nope: { at: 2, say: '', find: '(' } } }));
+  const bad = loadPlan(planFile).problems.join(' ');
+  check('a bad needle is named: no such prompt, depth out of range', bad.includes('no such prompt') && bad.includes('at (0 to 1)'));
+  fs.writeFileSync(planFile, JSON.stringify(plan)); }
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

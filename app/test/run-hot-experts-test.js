@@ -35,6 +35,7 @@ check('the dial keeps half steps from 1 to 12 GB only', cleanHotGB(2.3) === 2.5 
 
 // ---------- Which profile ----------
 check('a coder brain loads the coding profile', kindFor({ models: { coder: 'qwen' } }, 'qwen') === 'coding');
+check('Bob\'s own slots map too: workbench coding, scouting research, ledger office', kindFor({ models: { tinker: 'q' } }, 'q') === 'coding' && kindFor({ models: { scout: 'q' } }, 'q') === 'research' && kindFor({ models: { ledger: 'q' } }, 'q') === 'office');
 check('a brain doing several kinds of job loads mixed', kindFor({ models: { coder: 'qwen', bob: 'qwen' } }, 'qwen') === 'mixed' && kindFor({}, 'qwen') === 'mixed');
 
 // ---------- Counting and the ranking file ----------

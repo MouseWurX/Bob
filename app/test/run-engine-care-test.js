@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   CrashBudget, plainEngineError, memoryFailure, shrinkCtx, memCheck, settingsOnly, sameSettings, settingsDiff, pickPort, portFree,
-  SpeedWatch, speedBucket, checkBrainFile, recordBrainFile, brainFilesPath, TextCallWatch, readJson
+  SpeedWatch, speedBucket, checkBrainFile, recordBrainFile, brainFilesPath, TextCallWatch, readJson, unpinnedEnv, UNPINNED_ENV
 } from '../src/engine-care.js';
 import { LlamaCpp } from '../src/llamacpp.js';
 import { templateFor } from '../src/model-family.js';
@@ -20,6 +20,16 @@ let failures = 0, passes = 0;
 const check = (ok, name, more = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok || !more ? '' : `  [${more}]`}`); if (ok) passes++; else failures++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 8000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return true; await sleep(100); } return false; };
+
+// ---------- step buffer in ordinary RAM (Nov 18) ----------
+{
+  const base = { PATH: 'x' };
+  check(unpinnedEnv(base)[UNPINNED_ENV] === '1' && base[UNPINNED_ENV] === undefined, 'unpinned: on by default, without changing the env it was given');
+  check(unpinnedEnv(base, { card: 'none' }) === base, 'unpinned: not set when the engine can\'t see the card');
+  check(unpinnedEnv(base, { lc: { pinnedSteps: true } }) === base, 'unpinned: llamacpp.pinnedSteps true keeps locked RAM');
+  check(unpinnedEnv({ [UNPINNED_ENV]: '0' })[UNPINNED_ENV] === '0', 'unpinned: an env that already sets it wins');
+  check(/env = unpinnedEnv\(env, \{ card, lc: this\.lc \}\);[^\n]*\n[^\n]*\n[^\n]*\n[^\n]*\n\s*const child = safeSpawn/.test(read('src/llamacpp.js')), 'unpinned: wired into the engine start, before the spawn');
+}
 
 // ---------- pure parts ----------
 {

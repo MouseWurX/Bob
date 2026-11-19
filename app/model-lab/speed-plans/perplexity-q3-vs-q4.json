@@ -1,0 +1,188 @@
+{
+ "name": "Q3 (UD-Q3_K_XL) against our Q4 (UD-Q4_K_XL) of stock Qwen3.6 35B, Brain Engine 15, 4x4, 4K x 4 and 8K x 2, base = Q4 with f16 cache",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 57)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be15": {
+   "exe": "${BE15_PERPLEXITY}"
+  }
+ },
+ "text": "long-text.md",
+ "baseArgs": [
+  "-fa",
+  "on",
+  "--fit",
+  "on"
+ ],
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "rowTimeoutMs": 2700000,
+ "groups": [
+  {
+   "id": "q3q4-4K",
+   "about": "Q3 (UD-Q3_K_XL) against our Q4 (UD-Q4_K_XL) of stock Qwen3.6 35B, Brain Engine 15, 4x4, 4K x 4 and 8K x 2, base = Q4 with f16 cache",
+   "ctx": 4096,
+   "chunks": 4,
+   "needDiskGB": 12,
+   "base": {
+    "id": "q4-f16",
+    "engine": "be15",
+    "args": [
+     "-b",
+     "4096",
+     "-ub",
+     "4096",
+     "--moe-cache-mib",
+     "4096",
+     "--moe-cache-cpu-share",
+     "0",
+     "-ctk",
+     "f16",
+     "-ctv",
+     "f16"
+    ]
+   },
+   "rows": [
+    {
+     "id": "q3-f16",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "f16",
+      "-ctv",
+      "f16"
+     ],
+     "brain": "${BRAIN_Q3}"
+    },
+    {
+     "id": "q4-q4_0",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ]
+    },
+    {
+     "id": "q3-q4_0",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ],
+     "brain": "${BRAIN_Q3}"
+    }
+   ]
+  },
+  {
+   "id": "q3q4-8K",
+   "about": "Q3 (UD-Q3_K_XL) against our Q4 (UD-Q4_K_XL) of stock Qwen3.6 35B, Brain Engine 15, 4x4, 4K x 4 and 8K x 2, base = Q4 with f16 cache",
+   "ctx": 8192,
+   "chunks": 2,
+   "needDiskGB": 12,
+   "base": {
+    "id": "q4-f16",
+    "engine": "be15",
+    "args": [
+     "-b",
+     "4096",
+     "-ub",
+     "4096",
+     "--moe-cache-mib",
+     "4096",
+     "--moe-cache-cpu-share",
+     "0",
+     "-ctk",
+     "f16",
+     "-ctv",
+     "f16"
+    ]
+   },
+   "rows": [
+    {
+     "id": "q3-f16",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "f16",
+      "-ctv",
+      "f16"
+     ],
+     "brain": "${BRAIN_Q3}"
+    },
+    {
+     "id": "q4-q4_0",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ]
+    },
+    {
+     "id": "q3-q4_0",
+     "engine": "be15",
+     "args": [
+      "-b",
+      "4096",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ],
+     "brain": "${BRAIN_Q3}"
+    }
+   ]
+  }
+ ]
+}

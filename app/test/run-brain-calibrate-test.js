@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { calibrateDir, calTries, calBest, calLock, calResult, calibrated, startCalibrate, useCalibrated, CAL_CTX, calSpeedTries, calSpeedBest, CAL_LONG } from '../src/brain-calibrate.js';
+import { calibrateDir, calTries, calBest, calLock, calResult, calibrated, startCalibrate, useCalibrated, CAL_CTX, calSpeedTries, calSpeedBest, CAL_LONG, calSpeedWork, speedJob } from '../src/brain-calibrate.js';
+import { sharedGpuMB } from '../src/card-busy.js';
 import { brainsHtml, calLock as pageLock, canCalibrate, brainsInUse } from '../public/brains.js';
 
 let pass = 0, fail = 0;
@@ -36,6 +37,14 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
   const near = calSpeedBest(card16.map((r) => (r.id === 'read-fastest-hot' ? { ...r, tps: 107 } : r)));
   check('pairs: within 3% of the fastest writer, the faster reader wins', near.reading === 'fastest' && near.cache === true);
   const noHelp = calSpeedBest(card16.map((r) => (r.cache ? { ...r, tps: 70 } : r)));
+  // Nov 17: the second pick, for coding and agent brains (reading weighs more): step 4096 with the cache on that card
+  const wk = calSpeedWork(card16);
+  check('work pick: within 10% of the fastest writer, the fastest reader (16 GB card: step 4096 with the cache), and says so', wk.reading === 'fastest' && wk.cache === true && wk.job === 'work' && /^For coding and agent work, Reading speed Fastest with hot experts: read the long prompt at 3276/.test(wk.why));
+  check('work pick: a reader that writes over 10% slower than the fastest loses', calSpeedWork(card16.filter((r) => r.id !== 'read-fastest-hot')).reading === 'faster' && calSpeedWork(card16.filter((r) => r.id !== 'read-fastest-hot')).cache === true);
+  check('work pick: Normal stays when nothing reads over 10% faster, and none without Normal', calSpeedWork([base, { id: 'read-fastest', reading: 'fastest', readTps: 420, tps: 60 }]).reading === 'normal' && calSpeedWork([{ id: 'read-faster', reading: 'faster', tps: 9, readTps: 9 }]) === null);
+  check('work pick: chat keeps the recorded rule (step 2048 with the cache)', calSpeedBest(card16).reading === 'faster');
+  check('job: coding, research, review or Coding-session brains do work; a chat-only brain does chat', speedJob({ models: { tinker: 'q' } }, 'q') === 'work' && speedJob({ models: { scout: 'q', bob: 'b', tinker: 't' } }, 'q') === 'work' && speedJob({ models: { bob: 'b', tinker: 't' }, sessionBrains: { coding: 'b' } }, 'b') === 'work' && speedJob({ models: { bob: 'b', tinker: 't' } }, 'b') === 'chat' && speedJob({ models: { bob: 'b', tinker: 't' } }, 'nobody') === 'chat');
+  check('job: the main brain with no coding brain of its own, or with One brain, does the work itself', speedJob({ models: { bob: 'b' } }, 'b') === 'work' && speedJob({ oneBrain: true, models: { bob: 'b', tinker: 't' } }, 'b') === 'work');
   check('pairs: a cache that doesn\'t write faster loses, and the reading rule from before decides', noHelp.cache === false && noHelp.reading === 'fastest' && /hot experts didn't write faster|Fastest: read/.test(noHelp.why));
 }
 
@@ -49,6 +58,7 @@ const mkLab = (speeds, over = {}) => {
     brain: { engine: { placeInfo: (m) => (m === 'big' ? { layers: 40 } : m === 'plain' ? { layers: 30 } : null), resolve: (m) => ({ gguf: path.join(tmp, `${m}.gguf`) }), loaded: async () => over.loaded || [], unloadAll: async () => { lab.unloaded = true; } } },
     stepFns: {
       serve: async (o) => { served.push(o); const key = o.place ? Number(o.place[1]) : 'auto'; if (speeds[key] === undefined) throw new Error('out of memory'); return { url: `fake:${key}`, stop() { served.stopped = (served.stopped || 0) + 1; }, where: 'card' }; },
+      sharedMB: async () => null, // tests never read the real card
       chat: async (url) => ({ text: 'ok', timings: { predicted_per_second: speeds[url.slice(5) === 'auto' ? 'auto' : Number(url.slice(5))], prompt_ms: 1200 } })
     },
     ...over.lab
@@ -77,6 +87,52 @@ const wait = async (lab) => { for (let i = 0; i < 300 && lab.job; i++) await new
   lab.cfg.hotExpertsCopy = {}; fs.writeFileSync(path.join(calibrateDir(lab.cfg), 'big.json'), JSON.stringify([{ ...rec, speed: { reading: 'faster', cache: true, turbo: false, why: 'x' } }]));
   const u2 = useCalibrated(lab, 'big');
   check('a pair with the cache turns Hot experts on, the copy kind for that brain, and its reading speed', u2.hotExperts === true && u2.hotCopy === true && u2.reading === 'faster');
+  fs.writeFileSync(path.join(calibrateDir(lab.cfg), 'big.json'), JSON.stringify([{ ...rec, speed: { reading: 'faster', cache: true, turbo: false, why: 'x' }, speedWork: { reading: 'fastest', cache: true, turbo: false, why: 'y', job: 'work' } }]));
+  lab.cfg.models = { bob: 'big' };
+  const u3 = useCalibrated(lab, 'big');
+  check('Use recommended on a brain that does the coding sets the work pick (step 4096)', u3.reading === 'fastest' && u3.job === 'work' && u3.hotCopy === true);
+  lab.cfg.models = { bob: 'big', tinker: 'other' };
+  const u4 = useCalibrated(lab, 'big');
+  check('a chat brain gets the chat pick; asked for, either one', u4.reading === 'faster' && u4.job === 'chat' && useCalibrated(lab, 'big', { job: 'work' }).reading === 'fastest');
+  check('a result from before the work pick falls back to the chat one', (fs.writeFileSync(path.join(calibrateDir(lab.cfg), 'big.json'), JSON.stringify([{ ...rec, speedWork: undefined, speed: { reading: 'faster', cache: false, turbo: false, why: 'x' } }])), useCalibrated(lab, 'big', { job: 'work' }).job === 'chat'));
+  check('the Brains page gets both picks and the brain\'s job', /speedWork: cal\.speedWork \|\| null/.test(read('src/server.js')) && /job: speedJob\(cfg, model\)/.test(read('src/server.js')) && /useCalibrated\(lab, String\(b\.model \|\| ''\), \{ job: b\.job \}\)/.test(read('src/server.js')));
+  check('the run saves both picks', rec.speed && 'speedWork' in rec);
+}
+{
+  // Nov 17: a cache that doesn't fit beside a reading step steps down 1 GB at a time (to 2 GB at least)
+  check('cache sizes: biggest first, 1 GB smaller each time, down to 2 GB', calSpeedTries({ cacheMB: 4096 })[3].sizes.join() === '4096,3072,2048' && calSpeedTries({ cacheMB: 2048 })[3].sizes.join() === '2048');
+  const lab = mkLab({ auto: 60.04, 8: 71.26, 16: 66, 24: 50, 32: 41, 40: 30 });
+  lab.cfg.gpuVramGB = 16; lab.brain.engine.buildNo = () => 12359;
+  const serve0 = lab.stepFns.serve;
+  lab.stepFns.serve = async (o) => { const x = o.extra || []; const mib = Number(x[x.indexOf('--moe-cache-mib') + 1]); if (x.includes('--moe-cache-mib') && x[1] === '4096' && mib >= 4096) { lab.served.push(o); throw new Error('out of memory'); } return serve0(o); };
+  lab.stepFns.trace = async () => { throw new Error('no trace here'); };
+  await startCalibrate(lab, [{ model: 'big', name: 'Big', experts: true }]); await wait(lab);
+  const rec = calResult(lab.cfg, 'big');
+  const fh = rec.speedRows.find((r) => r.id === 'read-fastest-hot'), ff = rec.speedRows.find((r) => r.id === 'read-faster-hot');
+  check('a 4 GB cache that doesn\'t fit beside step 4096 steps down to 3 GB, and the row says so', fh.cacheMB === 3072 && fh.steppedDown?.join() === '4096' && !fh.failed && fh.tps > 0);
+  check('one that fits runs once at its own size', ff.cacheMB === 4096 && !ff.steppedDown);
+  check('a pick with a cache carries the size it ran with', calSpeedWork([{ id: 'read-normal', reading: 'normal', tps: 50, readTps: 100 }, { id: 'read-fastest-hot', reading: 'fastest', cache: true, cacheMB: 3072, tps: 55, readTps: 300 }]).cacheMB === 3072);
+  fs.writeFileSync(path.join(calibrateDir(lab.cfg), 'big.json'), JSON.stringify([{ ...rec, speed: { reading: 'faster', cache: true, cacheMB: 3072, turbo: false, why: 'x' }, speedWork: undefined }]));
+  const u = useCalibrated(lab, 'big', { job: 'chat' });
+  check('Use recommended sets Room for hot experts to a smaller size the pick ran with', lab.cfg.hotExpertsGB === 3 && u.hotExperts === true);
+}
+{
+  // Nov 17 (npc): shared GPU memory rises with the reading step (0.14 GB Normal, 0.34 at 2048, 0.59 at 4096), the same
+  // with any cache; only a rise past a try's own baseline is a spill
+  const lab = mkLab({ auto: 60.04, 8: 71.26, 16: 66, 24: 50, 32: 41, 40: 30 });
+  lab.cfg.gpuVramGB = 16; lab.brain.engine.buildNo = () => 12359;
+  let cur = 1000, next = 0;
+  const serve0 = lab.stepFns.serve;
+  const STEP_RISE = { '': 144, 2048: 336, 4096: 592 };
+  lab.stepFns.serve = async (o) => { const x = o.extra || []; const step = x[0] === '-b' ? x[1] : ''; const mib = x.includes('--moe-cache-mib') ? Number(x[x.indexOf('--moe-cache-mib') + 1]) : 0; next = STEP_RISE[step] + (step === '2048' && mib >= 3072 ? 900 : 0); return serve0(o); };
+  let reads = 0; lab.stepFns.sharedMB = async () => (reads++ % 2 ? cur + next : cur);
+  lab.stepFns.trace = async () => { throw new Error('no trace here'); };
+  await startCalibrate(lab, [{ model: 'big', name: 'Big', experts: true }]); await wait(lab);
+  const rec = calResult(lab.cfg, 'big');
+  const row = (id) => rec.speedRows.find((r) => r.id === id);
+  check('the rise a reading step always brings is not a spill (step 4096: 0.59 GB, with or without the cache)', !row('read-fastest').failed && row('read-fastest').sharedRiseMB === 592 && !row('read-fastest-hot').failed && row('read-fastest-hot').cacheMB === 4096);
+  check('a cache that adds a real spill past its step\'s own rise fails and steps down (4 and 3 GB spilled, 2 GB ran)', row('read-faster-hot').cacheMB === 2048 && row('read-faster-hot').steppedDown?.join() === '4096,3072' && !row('read-faster-hot').failed);
+  check('the reader is Windows only, and reads bytes as whole MB', await sharedGpuMB({ platform: 'linux' }) === null && await sharedGpuMB({ platform: 'win32', run: (exe, a, o, cb) => cb(null, '1073741824\r\n') }) === 1024 && await sharedGpuMB({ platform: 'win32', run: (exe, a, o, cb) => cb(new Error('x')) }) === null);
 }
 {
   const lab = mkLab({ auto: 60, 0: 61, 8: 55, 16: 50, 24: 45, 32: 40, 40: 30 });
@@ -122,6 +178,9 @@ const wait = async (lab) => { for (let i = 0; i < 300 && lab.job; i++) await new
   const run = brainsHtml({ ...ctx, place: { ...place, job: { state: 'running', stepLabel: 'By hand: 8 of 40 layers\' experts in memory', progress: 43 } } });
   check('while it runs: what it is doing, how far, a Stop button, and no second start', /role="status"><strong>Calibrating\.<\/strong> By hand: 8 of 40 layers&#39; experts in memory <span class="muted">43%/.test(run) && /data-calstop/.test(run) && /data-calibrate="bobert-35b" disabled/.test(run) && /data-calibrate="\*" disabled/.test(run));
   const one = brainsHtml({ ...ctx, setUp: 'bobert-35b' });
+  const two = { ...cal, speedRows: [{ id: 'read-normal', reading: 'normal', tps: 87.7, readTps: 1232, firstWordS: 26.6 }, { id: 'read-faster-hot', reading: 'faster', cache: true, tps: 109.2, readTps: 2290, firstWordS: 14.3 }, { id: 'read-fastest-hot', reading: 'fastest', cache: true, cacheMB: 3072, steppedDown: [4096], tps: 102, readTps: 3276, firstWordS: 10 }], speed: { reading: 'faster', cache: true, why: 'Chat line.' }, speedWork: { reading: 'fastest', cache: true, why: 'Work line.', job: 'work' } };
+  const pick = (job) => brainsHtml({ ...ctx, setUp: 'bobert-35b', place: { ...place, brains: { ...place.brains, 'bobert-35b': { ...place.brains['bobert-35b'], cal: two, job } } } });
+  check('Set up shows both picks, says which this brain gets, and stars that one', /Chat line\.<\/p><p class="muted">Work line\.<\/p><p class="muted">This brain does coding and agent work, so Use recommended sets the second one/.test(pick('work')) && /<tr class="best"><td>Reading speed Fastest, hot experts 3 GB \(4 GB didn(?:'|&#39;)t fit\)/.test(pick('work')) && /This brain does chat, so Use recommended sets the first one/.test(pick('chat')) && /<tr class="best"><td>Reading speed Faster, hot experts/.test(pick('chat')));
   check('the Set up page shows what each try measured and stars the recommended one', /<tr class="best"><td>By hand, 8 in memory<\/td><td>71\.3 words a second<\/td><td>first word 1\.1 s<\/td><td>★ recommended<\/td>/.test(one) && /<td>By hand, 0 in memory<\/td><td><span class="muted">Didn&#39;t start/.test(one) && /Last calibrated 2026-11-11\. By hand with 8 was fastest/.test(one));
   check('the recommendation sits beside the slider, and Use recommended is offered until it is in use', /★ Recommended by the last calibration: <strong>8<\/strong> by hand/.test(one) && /data-caluse="bobert-35b" >Use recommended/.test(one) && /data-caluse="bobert-35b" disabled/.test(brainsHtml({ ...ctx, setUp: 'bobert-35b', place: { ...place, brains: { ...place.brains, 'bobert-35b': { ...place.brains['bobert-35b'], set: { mode: 'hand', cpuMoe: 8 } } } } })) && /\(in use\)/.test(brainsHtml({ ...ctx, setUp: 'bobert-35b', place: { ...place, brains: { ...place.brains, 'bobert-35b': { ...place.brains['bobert-35b'], set: { mode: 'hand', cpuMoe: 8 } } } } })));
   check('not calibrated yet says so; Use recommended is there but locked', /Not calibrated yet/.test(brainsHtml({ ...ctx, setUp: 'riker-28b-q3' })) && /data-caluse="riker-28b-q3" disabled/.test(brainsHtml({ ...ctx, setUp: 'riker-28b-q3' })));

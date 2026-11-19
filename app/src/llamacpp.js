@@ -30,7 +30,7 @@ import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: 
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
 import { memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
-import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
+import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson, unpinnedEnv } from './engine-care.js'; // reliability items 218-228
 
 // 1.5.19: the context a brain gets when nothing else picks one. 32K fits a 26B brain on a 16 GB card.
 
@@ -1189,6 +1189,7 @@ export class LlamaCpp {
     this.slotDir = args.includes('--slot-save-path') ? args[args.indexOf('--slot-save-path') + 1] : ''; // where this engine run saves readings
     this.placeChat = null; // a fresh engine holds no chat's reading yet
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
+    env = unpinnedEnv(env, { card, lc: this.lc }); // Nov 18: the step buffer in ordinary RAM (no "spill"; same speed)
     if (args.includes('--moe-cache-mib') && this.hotEnv?.[RANKING_ENV]) env = { ...env, ...this.hotEnv }; // Nov 16: the hot-expert profile (patch 0016)
     if (helpers.length) env = { ...env, ...scutEnv(this.cfg, { wired: Boolean(this.spread?.allWired?.()) }), ...linkEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.

@@ -1,0 +1,308 @@
+{
+ "name": "Brain Engine 20 (rerun after the crash fix): chat memory split between card and RAM (0036), 128K and 256K, 3 rounds; split 32768 also with pinned steps (GGML_CUDA_NO_PINNED unset), since 0036 keeps K/V in the CUDA host buffer type",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 60)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be20": {
+   "exe": "${BE20_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "k2": "long-text.md",
+  "k32": "long-text.md",
+  "k100": "long-text.md",
+  "k250": "long-text.md"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 3,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "rows": [
+  {
+   "id": "K-128K-off",
+   "engine": "be20",
+   "prompts": [
+    "start",
+    "k2",
+    "k32",
+    "k100"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "5120",
+    "-ub",
+    "5120",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  },
+  {
+   "id": "K-128K-split32768",
+   "engine": "be20",
+   "prompts": [
+    "start",
+    "k2",
+    "k32",
+    "k100"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "5120",
+    "-ub",
+    "5120",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_KV_SPLIT": "32768"
+   }
+  },
+  {
+   "id": "K-128K-split65536",
+   "engine": "be20",
+   "prompts": [
+    "start",
+    "k2",
+    "k32",
+    "k100"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "5120",
+    "-ub",
+    "5120",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_KV_SPLIT": "65536"
+   }
+  },
+  {
+   "id": "K-256K-off",
+   "engine": "be20",
+   "prompts": [
+    "start",
+    "k2",
+    "k32",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  },
+  {
+   "id": "K-256K-split32768",
+   "engine": "be20",
+   "prompts": [
+    "start",
+    "k2",
+    "k32",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_KV_SPLIT": "32768"
+   }
+  },
+  {
+   "id": "K-256K-split65536",
+   "engine": "be20",
+   "prompts": [
+    "start",
+    "k2",
+    "k32",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_KV_SPLIT": "65536"
+   }
+  },
+  {
+   "id": "K-128K-split32768-pinned",
+   "engine": "be20",
+   "prompts": [
+    "start",
+    "k2",
+    "k32",
+    "k100"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "5120",
+    "-ub",
+    "5120",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "LLAMA_KV_SPLIT": "32768"
+   }
+  },
+  {
+   "id": "K-256K-split32768-pinned",
+   "engine": "be20",
+   "prompts": [
+    "start",
+    "k2",
+    "k32",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "LLAMA_KV_SPLIT": "32768"
+   }
+  }
+ ],
+ "saveText": true,
+ "promptTokens": {
+  "k2": 2048,
+  "k32": 32768,
+  "k100": 102400,
+  "k250": 253952
+ },
+ "question": {
+  "k2": "\n\nIn two sentences, what is this text about?",
+  "k32": "\n\nIn two sentences, what is this text about?",
+  "k100": "\n\nIn two sentences, what is this text about?",
+  "k250": "\n\nIn two sentences, what is this text about?"
+ },
+ "promptRepeat": {
+  "k100": 4,
+  "k250": 8
+ }
+}

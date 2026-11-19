@@ -46,7 +46,7 @@ import { capabilities } from './capabilities.js';
 import { cloudStatus } from './cloud.js';
 import { rentRoute } from './rental-routes.js'; // 1.5.127 rented brains
 import { Lab, labRoute, labOn, labRoom } from './lab.js'; // 1.5.141 Computer Science Lab
-import { startCalibrate, useCalibrated, calResult, calibrated } from './brain-calibrate.js'; // 1.5.205
+import { startCalibrate, useCalibrated, calResult, calibrated, speedJob } from './brain-calibrate.js'; // 1.5.205
 import { splitRemoved } from './catalog-removed.js'; // 1.5.205
 import { KOKORO_VOICES, DEFAULT_KOKORO_VOICE, stopVoices } from './tts.js';
 import { receiveCarry, sendCarry, carryInOn } from './carry.js'; // Carry on on another Bob (item 140, off unless turned on)
@@ -773,7 +773,7 @@ const server = http.createServer(async (req, res) => {
       const b = (await body(req)) || {};
       try {
         if (p === '/api/brain-place/calibrate') return send(res, 200, await startCalibrate(lab, (Array.isArray(b.brains) ? b.brains : []).slice(0, 16).map((x) => ({ model: String(x?.model || ''), name: String(x?.name || '').slice(0, 120), experts: x?.experts === true })), { unload: b.unload === true }));
-        if (p === '/api/brain-place/use') return send(res, 200, useCalibrated(lab, String(b.model || '')));
+        if (p === '/api/brain-place/use') return send(res, 200, useCalibrated(lab, String(b.model || ''), { job: b.job }));
         if (p === '/api/brain-place/stop') return send(res, 200, lab.job?.run?.kind === 'calibrate' ? lab.stop() : { stopped: false });
       } catch (e) { return send(res, 400, { error: e.message }); }
       return send(res, 404, { error: 'no' });
@@ -1651,7 +1651,7 @@ function brainPlaceView() {
   for (const model of models) {
     const info = cfg.engine === 'llamacpp' ? brain.engine?.placeInfo?.(model) || null : null;
     const cal = calResult(cfg, model);
-    brains[model] = { layers: info?.layers || null, set: cfg.brainPlace?.[model] || { mode: 'auto' }, memType: cfg.brainMemType?.[model] || 'standard', kv32: cfg.engine === 'llamacpp' ? brain.engine?.kvGB?.(model, 32768) ?? null : null, memEngine: cfg.engine === 'llamacpp', pinned: Number.isInteger(cfg.llamacpp?.nCpuMoe?.[model]), cal: cal ? { when: cal.when, best: cal.best, rows: cal.rows, speed: cal.speed || null, speedRows: cal.speedRows || [] } : null };
+    brains[model] = { layers: info?.layers || null, set: cfg.brainPlace?.[model] || { mode: 'auto' }, memType: cfg.brainMemType?.[model] || 'standard', kv32: cfg.engine === 'llamacpp' ? brain.engine?.kvGB?.(model, 32768) ?? null : null, memEngine: cfg.engine === 'llamacpp', pinned: Number.isInteger(cfg.llamacpp?.nCpuMoe?.[model]), cal: cal ? { when: cal.when, best: cal.best, rows: cal.rows, speed: cal.speed || null, speedWork: cal.speedWork || null, speedRows: cal.speedRows || [] } : null, job: speedJob(cfg, model) };
   }
   const run = lab.job?.run?.kind === 'calibrate' ? lab.runView(lab.job.run) : null;
   return { engine: cfg.engine || '', brains, job: run, busy: Boolean(lab.job) && !run, engineHere: cfg.engine === 'llamacpp' && lab.tools().server.found };

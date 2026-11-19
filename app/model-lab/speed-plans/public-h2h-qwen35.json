@@ -1,0 +1,183 @@
+{
+ "name": "Public head to head, stock Qwen3.6 35B A3B on a 16 GB card: plain llama.cpp b12359 (its defaults, -b 2048 -ub 512, and steps 4096 and 6144) against Brain Engine 14 (no cache, chat pick, work pick, step 6144 + 3.5 GB), 5 rounds, Claude and Bob closed",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 28)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "plain": {
+   "exe": "${PLAIN_SERVER}"
+  },
+  "be14": {
+   "exe": "${BE14_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "k16": "long-text.md",
+  "k32": "long-text.md"
+ },
+ "promptTokens": {
+  "k16": 16384,
+  "k32": 32768
+ },
+ "question": {
+  "k16": "\n\nIn two sentences, what is this text about?",
+  "k32": "\n\nIn two sentences, what is this text about?"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "-ctk",
+  "q8_0",
+  "-ctv",
+  "q8_0",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "-c",
+  "49152",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 5,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 600000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "rows": [
+  {
+   "id": "P0",
+   "engine": "plain",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": []
+  },
+  {
+   "id": "P4",
+   "engine": "plain",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096"
+   ]
+  },
+  {
+   "id": "P6",
+   "engine": "plain",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "6144",
+    "-ub",
+    "6144"
+   ]
+  },
+  {
+   "id": "E4",
+   "engine": "be14",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096"
+   ]
+  },
+  {
+   "id": "F4c",
+   "engine": "be14",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "X4096",
+   "engine": "be14",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "S6k3584",
+   "engine": "be14",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  }
+ ],
+ "saveText": true
+}

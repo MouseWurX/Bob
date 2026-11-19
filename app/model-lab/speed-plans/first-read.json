@@ -1,0 +1,82 @@
+{
+ "name": "First read after a load: step 2048 + 4 GB cache on Brain Engine 10 against Brain Engine 12, start prompt only, 3 rounds",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 26)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be10": {
+   "exe": "${BE10_SERVER}"
+  },
+  "be12": {
+   "exe": "${BE12_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "-ctk",
+  "q8_0",
+  "-ctv",
+  "q8_0",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "-c",
+  "49152",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 3,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 600000,
+ "rows": [
+  {
+   "id": "F4c-be10",
+   "engine": "be10",
+   "prompts": [
+    "start"
+   ],
+   "args": [
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "F4c-be12",
+   "engine": "be12",
+   "prompts": [
+    "start"
+   ],
+   "args": [
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  }
+ ],
+ "saveText": true
+}

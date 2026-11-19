@@ -1,0 +1,131 @@
+{
+ "name": "Read layout (Brain Engine 15, patch 0024): whole layers in the cache during big reads, step 8192/4096 + 4 GB, against the same without it, step 4096 + 4 GB and step 6144 with no cache, 3 rounds",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 30)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be15": {
+   "exe": "${BE15_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "k32": "long-text.md"
+ },
+ "promptTokens": {
+  "k32": 32768
+ },
+ "question": {
+  "k32": "\n\nIn two sentences, what is this text about?"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "-ctk",
+  "q8_0",
+  "-ctv",
+  "q8_0",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "-c",
+  "49152",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 3,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 600000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "rows": [
+  {
+   "id": "X4096",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "R1",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "8192",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_READ_LAYERS": "4096"
+   }
+  },
+  {
+   "id": "R0",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "8192",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "S6k0",
+   "engine": "be15",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "needFreeMB": 14000,
+   "args": [
+    "-b",
+    "6144",
+    "-ub",
+    "6144"
+   ]
+  }
+ ],
+ "saveText": true
+}

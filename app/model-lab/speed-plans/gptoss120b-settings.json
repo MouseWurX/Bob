@@ -1,0 +1,145 @@
+{
+ "name": "Our speed settings on GPT-OSS 120B (63 GB brain, 16 GB card, 32 GB RAM): the Nov 10 best placement against --fit with reading steps 2048 and 4096 and the hot-experts copy cache (Brain Engine 15), 3 rounds",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 32)",
+ "brain": "${BRAIN120}",
+ "engines": {
+  "be15": {
+   "exe": "${BE15_SERVER}"
+  }
+ },
+ "prompts": {
+  "k2": "long-text.md"
+ },
+ "promptTokens": {
+  "k2": 2048
+ },
+ "question": {
+  "k2": "\n\nIn two sentences, what is this text about?"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "-ctk",
+  "q8_0",
+  "-ctv",
+  "q8_0",
+  "-np",
+  "1",
+  "-c",
+  "8192",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 3,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 1200000,
+ "diskReads": true,
+ "rows": [
+  {
+   "id": "B0",
+   "engine": "be15",
+   "prompts": [
+    "k2"
+   ],
+   "args": [
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--n-cpu-moe",
+    "28"
+   ]
+  },
+  {
+   "id": "N0",
+   "engine": "be15",
+   "prompts": [
+    "k2"
+   ],
+   "args": [
+    "--fit",
+    "on",
+    "-b",
+    "2048",
+    "-ub",
+    "512"
+   ]
+  },
+  {
+   "id": "F0",
+   "engine": "be15",
+   "prompts": [
+    "k2"
+   ],
+   "args": [
+    "--fit",
+    "on",
+    "-b",
+    "2048",
+    "-ub",
+    "2048"
+   ]
+  },
+  {
+   "id": "X0",
+   "engine": "be15",
+   "prompts": [
+    "k2"
+   ],
+   "args": [
+    "--fit",
+    "on",
+    "-b",
+    "4096",
+    "-ub",
+    "4096"
+   ]
+  },
+  {
+   "id": "F2c",
+   "engine": "be15",
+   "prompts": [
+    "k2"
+   ],
+   "args": [
+    "--fit",
+    "on",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "2048",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "F4c",
+   "engine": "be15",
+   "prompts": [
+    "k2"
+   ],
+   "args": [
+    "--fit",
+    "on",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  }
+ ]
+}

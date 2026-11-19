@@ -208,3 +208,12 @@ export class TextCallWatch {
   }
 }
 export const templateLine = (label) => `The ${label} kept writing its tool calls as plain text, so I'm loading it with its family's chat template before the next job.`;
+// Nov 18: the engine's step buffer (the attention mask, up to 2 GB at 256K) goes in ordinary RAM instead of locked
+// ("pinned") RAM. Windows counts locked RAM as shared card memory, which showed as a "spill" at 128K/256K. 16 loads on
+// the test PC: same words, same speed (within 2%), rise 2.3 GB -> 75 MB. Only CUDA reads it; other engines ignore it.
+// Off when the engine can't see the card, or when config sets llamacpp.pinnedSteps: true (or the env already has it).
+export const UNPINNED_ENV = 'GGML_CUDA_NO_PINNED';
+export function unpinnedEnv(env, { card = '', lc = {} } = {}) {
+  if (card === 'none' || lc?.pinnedSteps === true || env?.[UNPINNED_ENV] !== undefined) return env;
+  return { ...env, [UNPINNED_ENV]: '1' };
+}
