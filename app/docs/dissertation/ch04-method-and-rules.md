@@ -57,6 +57,31 @@ Before any setting that changes how the brain is served becomes a default, it is
 
 All speeds are tokens a second. "Read" is prompt reading speed and "write" is writing speed. "First word" is the wait before the first word appears, in seconds. Unless a row says otherwise, the brain is stock Qwen3.6 35B A3B at Q4 (unsloth UD-Q4_K_XL) on a 16 GB card with 32 GB of RAM and an 8-core processor.
 
+**What is settled and what is provisional.** Some conclusions rest on a known mechanism, many loads, or both. Others rest on single loads or wait on the stock comparison, and each of those has a check queued in section 4.3.3.6.
+
+*Settled:*
+
+- **The 128K and 256K "spill" is the attention mask in pinned RAM.** Its size formula matches every load, and turning pinning off removed it in 16 loads over 2 rounds, with identical words (section 4.3.3.5).
+- **The speed settings don't change the answers** beyond the last digits of perplexity (section 4.3.3.4).
+- **The reading step drives reading speed.** Only `-ub` matters.
+- **The 256K cliff at step 8192.** Only 30 of 41 layers fit on the card there (Figure 4.1).
+- **512 MB is the floor for the fit margin.** At 256 MB a real spill starts (section 4.3.3.3).
+- **What's out:** iq4_nl (it timed out), the context cache in RAM (writing 73% to 76% slower), sending copy-cache misses to the processor (keep the share at 0), and Turbo at big steps (5 more layers go to RAM). Turbo's extra rise is its own pinned buffer, not overflow.
+- **Brain Engine 16 freed nothing, and we found why:** Qwen3.6's position codes made it fall back every time. Brain Engine 17 carries the fix (section 4.3.3.5).
+- **A busy desktop costs 10% to 18% of writing,** in 8 paired loads.
+- **A 35B load takes about 6 s,** across about 100 loads. The browser left open on 18 November from 11:40 AM to 12:23 PM made no measurable difference.
+
+*Provisional:*
+
+- **Step 5120 as the balance point, and the fastest first word at 8192 (128K) and 7168 (256K).** These are single loads, and a recheck is queued.
+- **The 512 MB margin's writing gain.** It rests on 2 loads, and the busy-desktop pass agrees except for 2x4 at 32K.
+- **The chat pick between 2x4 and 4x4.**
+- **The writing order of cache types at 256K.** These are single loads.
+- **q4_0 passing the quality gate** rests on one perplexity run, and a second run is queued. The needle test for q5_1, f8_e4m3 and the mixed caches has not been run.
+- **Turbo's net effect.** It helped at a small step with a big copy cache and hurt at big steps with a small one, in 1 load each.
+- **Every score, and every claim against stock llama.cpp,** until the stock comparison runs.
+- **The 120B soft cut's answer quality.** Its perplexity run is paused.
+
 #### 4.3.3.1 How the speed tests were run
 
 - **Written down first.** The method was written on 16 November, before any timed run. Each later test got a dated addendum (41 by 18 November), written before that test ran, with its settings, its predictions and the rule for "best". Results are graded against the addendum as written, including the predictions that missed. The method and addenda are in `docs/test-results/2026-11-16-speed-test-method.md`.
