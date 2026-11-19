@@ -549,6 +549,7 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 - **Agent work drops the copy cache.** On a 600-token job it lost by 3.8% at 32K (the stock comparison) and 9% at 128K.
 - **Long-form work keeps it, narrowly.** Blended over 128K and 256K on a 2,000-token job, no copy cache took 120.6 s against 123.2 s, 2.1% quicker, which is a tie under the 3% rule. The tie-break goes to the copy cache, which left slightly more RAM free at its lowest point at both sizes (1,940 against 1,918 MB, and 420 against 358 MB). That margin is thin, and a rerun could flip it.
 - **Chat keeps it.** Its real strength is short prompts, where it wrote 18% to 26% faster. That backs 2x4 for chat.
+- **Coding keeps it at 32K to 64K.** Code answers often run past 1,000 tokens, and the copy cache pays past about 840 tokens at 32K: on a 2,000-token answer at 32K, 4x4 finished in 29.9 s against 32.7 s for 4x0 (the stock comparison). The scoring rules have no coding use yet, so this pick rests on that one comparison.
 - **Most of these loads throttled lightly,** the no-copy-cache rows most (11% to 16% of samples, against 1% to 3%), moving writing by at most 2.2 tokens a second. A rerun is queued, and both sets will be published.
 
 #### 4.3.3.3 The fit margin at 128K and 256K (18 November, Brain Engine 15)
