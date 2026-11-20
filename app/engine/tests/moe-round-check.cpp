@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <random>
 #include <vector>
@@ -36,8 +37,15 @@ static std::vector<float> run(ggml_type t, const std::vector<uint8_t> & wq, cons
     if (card) { const int32_t one = 1; memcpy(y->op_params, &one, sizeof(one)); }
     ggml_cgraph * gf = ggml_new_graph(ctx);
     ggml_build_forward_expand(gf, y);
-    ggml_backend_t be = ggml_backend_cpu_init();
-    ggml_backend_cpu_set_n_threads(be, threads);
+    // Through the backend registry, so it also runs where the CPU part is a loadable DLL (the Windows zip): there
+    // ggml_backend_cpu_init is not in ggml.dll, and the best ggml-cpu variant for this processor is the one loaded.
+    ggml_backend_t be = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_CPU, nullptr);
+    if (!be) { printf("FAIL no CPU backend found beside this program\n"); exit(1); }
+    {
+        ggml_backend_reg_t reg = ggml_backend_dev_backend_reg(ggml_backend_get_device(be));
+        auto set_threads = (ggml_backend_set_n_threads_t) ggml_backend_reg_get_proc_address(reg, "ggml_backend_set_n_threads");
+        if (set_threads) set_threads(be, threads);
+    }
     ggml_backend_buffer_t buf = ggml_backend_alloc_ctx_tensors(ctx, be);
     ggml_backend_tensor_set(w, wq.data(), 0, wq.size());
     ggml_backend_tensor_set(b, x.data(), 0, x.size()*sizeof(float));
@@ -52,6 +60,7 @@ static std::vector<float> run(ggml_type t, const std::vector<uint8_t> & wq, cons
 }
 
 int main() {
+    ggml_backend_load_all();
     const int n_embd = 512, n_ff = 64, n_exp = 8, n_used = 2, n_tok = 24;
     std::mt19937 rng(7);
     std::normal_distribution<float> nd(0.0f, 1.0f);
