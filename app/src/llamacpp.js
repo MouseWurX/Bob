@@ -28,7 +28,7 @@ import { scutEnv, linkEnv, linkLive } from './share-card.js'; // SCUT, the fast 
 import { LinkLog } from './link-log.js'; // what the link to a lent card carried, kept in a file and the logbook
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
-import { helpHasQ3, q3CardOk, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
+import { helpHasQ3, helpHasTiers, tiersEnv, q3CardOk, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
 
@@ -323,7 +323,7 @@ export class LlamaCpp {
     const gb = (b) => Math.round((b / 1024 ** 3) * 10) / 10;
     try {
       const f = this.resolve(model).gguf;
-      const need = needBytes(fs.statSync(f).size, ggufInfo(f)?.shape, ctx, memArgs(this.cfg, model, this.lc.args, { q3: this.kvQ3() })); // 100: the brain's memory type
+      const need = needBytes(fs.statSync(f).size, ggufInfo(f)?.shape, ctx, memArgs(this.cfg, model, this.lc.args, this.memCaps()), this.tiersFor(model, ctx)); // 100: the brain's memory type
       if (!need) return { fits: null };
       const room = roomBytes(ramBytes, cardBytes);
       return { fits: need <= room, needGB: gb(need), roomGB: gb(room) };
@@ -508,7 +508,6 @@ export class LlamaCpp {
     let flag = null;
     if (/llama-server/i.test(path.basename(exe)) && fs.existsSync(exe)) {
       try {
-        if (!q3CardOk(fs.readdirSync(path.dirname(exe)), process.platform)) throw new Error('no 3-bit kernels for this card');
         const r = spawnSync(exe, ['--help'], { timeout: 5000, encoding: 'utf8', windowsHide: true });
         const text = `${r.stdout || ''}${r.stderr || ''}`;
         flag = /--load-mode\b/.test(text) ? 'load-mode' : /--no-mmap\b/.test(text) ? 'no-mmap' : null;
@@ -521,19 +520,29 @@ export class LlamaCpp {
   // Nov 19 (Brain Engine patch 0038): does this engine have the 3-bit chat memory type (q3_0)? Asked once per exe from
   // its --help, whose cache type list names it. Anything else, or no answer within 5 s, counts as no, so the
   // Smallest memory type falls back to Smaller and is not offered on the Brains page.
-  kvQ3() {
+  // Nov 20 (patch 0039): the same --help names LLAMA_KV_TIERS when the engine has Progressive Memory (kvTiers).
+  // Only for CUDA cards and the processor (q3CardOk): Vulkan and Metal have no 3-bit kernels.
+  kvCaps() {
     const exe = this.exePath();
-    if (this._kvQ3 && this._kvQ3.exe === exe) return this._kvQ3.has;
-    let has = false;
+    if (this._kvQ3 && this._kvQ3.exe === exe) return this._kvQ3;
+    let has = false, tiers = false;
     if (/llama-server/i.test(path.basename(exe)) && fs.existsSync(exe)) {
       try {
+        if (!q3CardOk(fs.readdirSync(path.dirname(exe)), process.platform)) throw new Error('no 3-bit kernels for this card');
         const r = spawnSync(exe, ['--help'], { timeout: 5000, encoding: 'utf8', windowsHide: true });
-        has = helpHasQ3(`${r.stdout || ''}${r.stderr || ''}`);
+        const text = `${r.stdout || ''}${r.stderr || ''}`;
+        has = helpHasQ3(text);
+        tiers = has && helpHasTiers(text);
       } catch {}
     }
-    this._kvQ3 = { exe, has };
-    return has;
+    this._kvQ3 = { exe, has, tiers };
+    return this._kvQ3;
   }
+  kvQ3() { return this.kvCaps().has; }
+  kvTiers() { return this.kvCaps().tiers; }
+  // The brain's chat memory flags and, for Progressive, its steps (both from the Brains page pick).
+  memCaps() { const c = this.kvCaps(); return { q3: c.has, tiers: c.tiers }; }
+  tiersFor(model, ctx) { return tiersEnv(this.cfg, model, ctx, { ...this.memCaps(), handArgs: this.lc.args }).LLAMA_KV_TIERS || ''; }
 
   // 1.5.90: no memory-mapping when some of the brain is placed in RAM on the card route (see buildArgs).
   // 1.5.193: not when the brain is bigger than the card and RAM can hold together (gpt-oss 120B, about 63 GB, on a
@@ -591,7 +600,7 @@ export class LlamaCpp {
       ...this.stretchArgs(gguf, ctx || lc.ctx || DEFAULT_CTX),
       ...(mmproj && lc.vision !== false && !(lc.noEyes || []).includes(model) ? ['--mmproj', mmproj] : []), // Lab: "Load without eyes and ears" for one brain
       // 100 (opt-in, the Brains page): the brain's chat memory type, Standard (8-bit) unless picked. Flags set by hand win.
-      ...memArgs(this.cfg, model, lc.args, { q3: this.kvQ3() }),
+      ...memArgs(this.cfg, model, lc.args, this.memCaps()),
       // 98 Laptop mode (opt-in): on battery, half the cores. Games-first and threads set by hand win.
       ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : laptopThreads(this.cfg) ? ['-t', String(laptopThreads(this.cfg))] : num(lc.threads, '-t')),
       ...num(lc.batch, '-b'), ...num(lc.ubatch, '-ub'),
@@ -937,6 +946,8 @@ export class LlamaCpp {
     if (!sameExceptCtx(args, prevArgs)) return false;
     const n = Number(args[args.indexOf('-c') + 1]);
     if (!(n > 0)) return false;
+    // Progressive chat memory's steps are set when the engine starts; a size that needs other steps starts it again
+    if (this.tiersFor(model, n) !== this.tiersFor(model, Number(prevArgs[prevArgs.indexOf('-c') + 1]))) return false;
     try {
       const res = await fetch(`${this.url}/context`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ n_ctx: n }), signal: AbortSignal.timeout(300000) });
       if (!res.ok) { this.log?.('engine', `${model}: the engine can't change its chat memory in place (${res.status}); starting it again instead`); return false; }
@@ -969,7 +980,7 @@ export class LlamaCpp {
     if (!card || !Number.isFinite(card.freeMB)) return null;
     let shape = null;
     try { shape = ggufInfo(gguf)?.shape; } catch {}
-    const kvFor = (c) => kvBytes(shape, c, memArgs(this.cfg, model, this.lc.args, { q3: this.kvQ3() })) || 0;
+    const kvFor = (c) => kvBytes(shape, c, memArgs(this.cfg, model, this.lc.args, this.memCaps()), this.tiersFor(model, c)) || 0;
     return { ...memCheck({ fileBytes: size, kvFor, ctx, cardFreeMB: card.freeMB, ramFreeBytes: this.freeRam ? this.freeRam() : os.freemem(), cardOnly }), cardFreeMB: card.freeMB };
   }
 
@@ -981,7 +992,7 @@ export class LlamaCpp {
     let shape = null;
     try { shape = ggufInfo(gguf)?.shape; } catch {}
     const c = ctx || this.lc.ctx || DEFAULT_CTX;
-    const kv = kvBytes(shape, c, memArgs(this.cfg, model, this.lc.args, { q3: this.kvQ3() })) ?? Math.min(c, 131072) * 60 * 1024;
+    const kv = kvBytes(shape, c, memArgs(this.cfg, model, this.lc.args, this.memCaps()), this.tiersFor(model, c)) ?? Math.min(c, 131072) * 60 * 1024;
     return apuNeed({ fileBytes: size, kvBytes: kv, ubatch: this.lc.ubatch || 512 });
   }
   apuMaxCtx(model) { return this.cfg.sharedGraphics === true ? Number(this.careData.apuFit?.[model]?.maxCtx) || 0 : 0; }
@@ -1208,6 +1219,9 @@ export class LlamaCpp {
     this.placeChat = null; // a fresh engine holds no chat's reading yet
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
     if (args.includes('--moe-cache-mib') && this.hotEnv?.[RANKING_ENV]) env = { ...env, ...this.hotEnv }; // Nov 16: the hot-expert profile (patch 0016)
+    // Nov 20 (patch 0039, opt-in): Progressive chat memory, the newest words kept sharper. Its steps come from the
+    // context it loads with (a resize in place that would need other steps starts the engine again instead).
+    { const t = tiersEnv(this.cfg, model, ctx || this.lc.ctx || DEFAULT_CTX, { ...this.memCaps(), handArgs: args }); if (t.LLAMA_KV_TIERS) { env = { ...env, ...t }; this.log?.('engine', `${model}: Progressive chat memory, 3-bit with sharper copies of the newest words (${t.LLAMA_KV_TIERS})`); } }
     if (helpers.length) env = { ...env, ...scutEnv(this.cfg, { wired: Boolean(this.spread?.allWired?.()) }), ...linkEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
     const child = safeSpawn(spawn, exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });

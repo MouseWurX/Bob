@@ -575,10 +575,18 @@ index 09b7f02..d632b87 100644
              get_rows_cuda_q<QK4_0, QR4_0, dequantize_q4_0>(src0_d, src1_d, dst_d,
                  ne00, nb01, nb02, nb03, ne10, ne11, ne12, nb10, nb11, nb12, nb1, nb2, nb3, stream);
 diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
-index fed14dd..aabf154 100644
+index fed14dd..7f26440 100644
 --- a/ggml/src/ggml-cuda/ggml-cuda.cu
 +++ b/ggml/src/ggml-cuda/ggml-cuda.cu
-@@ -6338,6 +6338,7 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
+@@ -6298,6 +6298,7 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
+                     case GGML_TYPE_F16:
+                     case GGML_TYPE_Q1_0:
+                     case GGML_TYPE_Q2_0:
++                    case GGML_TYPE_Q3_0: // Brain Engine 0038: through cuBLAS (dequantized to f16), for the KV split's and Progressive Memory's scores
+                     case GGML_TYPE_Q4_0:
+                     case GGML_TYPE_Q4_1:
+                     case GGML_TYPE_Q5_0:
+@@ -6338,6 +6339,7 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
                      case GGML_TYPE_I32:
                      case GGML_TYPE_Q1_0:
                      case GGML_TYPE_Q2_0:
@@ -586,7 +594,7 @@ index fed14dd..aabf154 100644
                      case GGML_TYPE_Q4_0:
                      case GGML_TYPE_Q4_1:
                      case GGML_TYPE_Q5_0:
-@@ -6375,7 +6376,8 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
+@@ -6375,7 +6377,8 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
                             (
                                 (op->type == GGML_TYPE_F32 || op->type == GGML_TYPE_F16 || op->type == GGML_TYPE_BF16 || op->type == GGML_TYPE_F8_E4M3 ||
                                 op->type == GGML_TYPE_Q4_0 || op->type == GGML_TYPE_Q4_1 || op->type == GGML_TYPE_Q5_0 ||
@@ -596,6 +604,19 @@ index fed14dd..aabf154 100644
                                 op->src[0]->type == GGML_TYPE_F32
                             ) || (
                                 op->type == GGML_TYPE_F16 && op->src[0]->type == GGML_TYPE_F16
+diff --git a/ggml/src/ggml-cuda/mmvq.cu b/ggml/src/ggml-cuda/mmvq.cu
+index c6d895d..aab5570 100644
+--- a/ggml/src/ggml-cuda/mmvq.cu
++++ b/ggml/src/ggml-cuda/mmvq.cu
+@@ -313,7 +313,7 @@ int get_mmvq_mmid_max_batch(ggml_type type, int cc) {
+ }
+ 
+ bool ggml_cuda_should_use_mmvq(enum ggml_type type, int cc, int64_t ne11) {
+-    if (!ggml_is_quantized(type)) {
++    if (!ggml_is_quantized(type) || type == GGML_TYPE_Q3_0) { // Brain Engine 0038: no q3_0 vector kernel, cuBLAS takes it
+         return false;
+     }
+     // k-quants cost more to decode and mvq redoes that per column, so MMQ wins sooner.
 diff --git a/ggml/src/ggml-cuda/set-rows.cu b/ggml/src/ggml-cuda/set-rows.cu
 index 4be3e64..1c4ab8a 100644
 --- a/ggml/src/ggml-cuda/set-rows.cu

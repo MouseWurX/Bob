@@ -11,7 +11,7 @@ import { mergeSettings } from '../src/config.js';
 import { LlamaCpp } from '../src/llamacpp.js';
 import { modelFor } from '../src/sessions.js';
 import {
-  EXTRA_SWITCHES, extraOn, newSpecFlags, draftNumArgs, copyGuessArgs, COPY_GUESS_ARGS, cleanMemType, memTypeOf, memArgs, MEM_TYPES, helpHasQ3, q3CardOk,
+  EXTRA_SWITCHES, extraOn, newSpecFlags, draftNumArgs, copyGuessArgs, COPY_GUESS_ARGS, cleanMemType, memTypeOf, memArgs, MEM_TYPES, helpHasQ3, q3CardOk, helpHasTiers, progressiveTiers, tiersEnv, TIERS_SLACK,
   parseWinBattery, parseMacBattery, linuxBattery, onBattery, setOnBattery, batteryNow, laptopSaving, laptopThreads,
   cardKey, cardChange, placesToAuto, handoffHat, warmRoom, warmFile, WARM_SPARE, plainEngineNotes, engineNoteLine, brainEngineNumber,
   READING_PICKS, readingPick, readingSteps, readingChoice, readingArgs, dropReading, lockRoom, lockFloor, everydayTurboArgs, TURBO_EVERYDAY_MAX, lockMemoryArgs
@@ -118,6 +118,24 @@ check('3-bit only where it has kernels: CUDA or the processor, never Vulkan alon
   check('the page only offers Smallest when the engine has it', !plain.some((x) => x.id === 'smallest') && Math.abs(with3.find((x) => x.id === 'smallest').gb - 2 * 14 / 34) < 0.05); }
 { const k4 = kvBytes({ perToken: 20480 }, 32768, ['-ctk', 'q4_0', '-ctv', 'q4_0']), k3 = kvBytes({ perToken: 20480 }, 32768, ['-ctk', 'q3_0', '-ctv', 'q3_0']);
   check('room math counts 3-bit memory as 14 of q4_0\'s 18', k4 > 0 && Math.abs(k3 / k4 - 14 / 18) < 0.001, `${k3} ${k4}`); }
+
+// Progressive (Nov 20, patch 0039): 3-bit with sharper copies of the newest words, only with an engine that has both
+check('Progressive is kept when saved, off unless picked', JSON.stringify(cleanMemType({ a: 'progressive' })) === '{"a":"progressive"}' && memTypeOf({}, 'big', { q3: true, tiers: true }) === 'standard');
+check('Progressive needs 3-bit and Progressive Memory, else Smaller', memTypeOf({ brainMemType: { big: 'progressive' } }, 'big', { q3: true, tiers: true }) === 'progressive' && memTypeOf({ brainMemType: { big: 'progressive' } }, 'big', { q3: true }) === 'small' && memTypeOf({ brainMemType: { big: 'progressive' } }, 'big') === 'small');
+check('Progressive keeps every word in 3-bit', memArgs({ brainMemType: { big: 'progressive' } }, 'big', [], { q3: true, tiers: true }).join(' ') === '-fa on -ctk q3_0 -ctv q3_0');
+check('the engine\'s help is read for Progressive Memory', helpHasTiers('  Progressive Memory (Brain Engine 0039): env\n  LLAMA_KV_TIERS=type:window,...') && !helpHasTiers('LLAMA_KV_SPLIT') && !helpHasTiers(null));
+check('its steps: 8-bit for the newest 8K, 4-bit for the newest 64K past 96K, every window below the context',
+  progressiveTiers(32768) === 'q8_0:8192' && progressiveTiers(262144) === 'q8_0:8192,q4_0:65536' && progressiveTiers(8192) === 'q8_0:4096' && progressiveTiers(98304) === 'q8_0:8192' && progressiveTiers(500) === '');
+{ const cfg = { brainMemType: { big: 'progressive', other: 'small' } };
+  const e = tiersEnv(cfg, 'big', 131072, { q3: true, tiers: true });
+  check('the steps go to the engine as its keys, only for a Progressive brain on an engine that has it', e.LLAMA_KV_TIERS === 'q8_0:8192,q4_0:65536' && e.LLAMA_KV_TIERS_SLACK === String(TIERS_SLACK) &&
+    !tiersEnv(cfg, 'other', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS && !tiersEnv(cfg, 'big', 131072, { q3: true }).LLAMA_KV_TIERS);
+  check('not with two chats at once (the engine would say NOT USED)', !tiersEnv(cfg, 'big', 131072, { q3: true, tiers: true, handArgs: ['-np', '2'] }).LLAMA_KV_TIERS && tiersEnv(cfg, 'big', 131072, { q3: true, tiers: true, handArgs: ['-np', '1'] }).LLAMA_KV_TIERS); }
+{ const only3 = memTypeTrade(2, { q3: true }), both = memTypeTrade(2, { q3: true, tiers: true });
+  check('the page offers Progressive only when the engine has it', !only3.some((x) => x.id === 'progressive') && both.some((x) => x.id === 'progressive') && !memTypeTrade(2, { tiers: true }).some((x) => x.id === 'progressive')); }
+{ const k3 = kvBytes({ perToken: 20480 }, 262144, ['-ctk', 'q3_0', '-ctv', 'q3_0']), kp = kvBytes({ perToken: 20480 }, 262144, ['-ctk', 'q3_0', '-ctv', 'q3_0'], 'q8_0:8192,q4_0:65536', 4096);
+  const want = 20480 * (262144 * 14 / 32 + 12288 * 34 / 32 + 69632 * 18 / 32);
+  check('room math counts each step\'s copy (window plus room for a batch)', Math.abs(kp - want) < 2 && kp > k3, `${kp} ${want}`); }
 
 // ---------- 98 Laptop mode ----------
 check('Windows battery: 1 is on battery, 2 plugged in, nothing is no battery', parseWinBattery('1\r\n') === true && parseWinBattery('2') === false && parseWinBattery('') === null);
