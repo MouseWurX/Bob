@@ -85,7 +85,7 @@ export function modelsFor(job, models) {
 // has its own Get (asked first, with the size, like any download). Only levels that passed show, unless "Show quant
 // levels not checked yet" is on too. The usual file is the one on the row itself.
 export function quantStepsHtml(m, ctx = {}) {
-  const list = stepChoices(m, ctx.allModels || ctx.models || [], { on: ctx.quantOn === true, untested: ctx.quantUntested === true });
+  const list = stepChoices(m, ctx.allModels || ctx.models || [], { on: ctx.quantOn === true });
   if (!list.length || !list[0].usual || list[0].id !== m.id) return '';
   const items = list.slice(1).map((s) => {
     const here = s.entry.status?.state === 'installed';

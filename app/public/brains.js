@@ -345,7 +345,7 @@ const rowPicker = (b, ctx, main) => {
 // Quant level menu once Settings, Brains, "Pick a quant level for big brains" is on. Picking a level you have moves
 // the row's jobs to it; one you don't have yet asks to download it first (with the size), like the catalogue's Get.
 export function quantPickHtml(b, ctx) {
-  const list = stepChoices(b.entry, ctx.models || [], { on: ctx.quantOn === true, untested: ctx.quantUntested === true });
+  const list = stepChoices(b.entry, ctx.models || [], { on: ctx.quantOn === true });
   if (!list.length) return '';
   const cur = b.entry?.id || '';
   const opts = list.map((s) => {
@@ -353,7 +353,7 @@ export function quantPickHtml(b, ctx) {
     return `<option value="${esc(s.id)}"${s.id === cur ? ' selected' : ''}>${esc(s.label)}${here ? '' : ' (get it first)'}</option>`;
   }).join('');
   const now = list.find((s) => s.id === cur);
-  return `<div class="model quant-pick"><label>Quant level <select data-rowquant="${esc(cur)}" data-rowjobs="${esc(b.jobs.map((s) => s.id).join(','))}" aria-label="${esc(`Quant level for ${b.name}`)}">${opts}</select></label> ${tipHtml(now?.why || 'Q4 is my usual. Lower levels are smaller and a little less sharp; I only list ones that passed my checks.', 'About quant levels')}<div class="confirm" hidden></div></div>`;
+  return `<div class="model quant-pick"><label>Quant level <select data-rowquant="${esc(cur)}" data-rowjobs="${esc(b.jobs.map((s) => s.id).join(','))}" aria-label="${esc(`Quant level for ${b.name}`)}">${opts}</select></label> ${tipHtml(now?.why || 'Q4 is my usual. Lower levels are smaller and a little less sharp; each says how it did in my checks and whether I recommend it.', 'About quant levels')}<div class="confirm" hidden></div></div>`;
 }
 // The main brain: the row with the Brain job. The others: every other brain with a job.
 export function brainRows(ctx) {
