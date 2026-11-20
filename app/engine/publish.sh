@@ -23,7 +23,8 @@ else notes="$notes
 
 The patches in this build change only llama and the server; the ggml and card files are the official ones."; fi
 for i in 1 2 3; do
-  gh release view "$rel" -R "$repo" > /dev/null 2>&1 && break
+  # Nov 20: a rebuild under the same number refreshes the note and the commit it points at, so they never name older patches.
+  if gh release view "$rel" -R "$repo" > /dev/null 2>&1; then gh release edit "$rel" --target "$GITHUB_SHA" --notes "$notes" -R "$repo" || true; break; fi
   gh release create "$rel" --target "$GITHUB_SHA" --title "Brain Engine ${ver#v} (Brain Engine ${ver%%b*} on llama.cpp $tag, test build)" --notes "$notes" --prerelease --latest=false -R "$repo" && break || sleep 10
 done
 gh release upload "$rel" "$file" "$file.sha256" --clobber -R "$repo"
