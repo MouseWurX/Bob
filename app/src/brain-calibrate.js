@@ -10,8 +10,8 @@ import fs from 'node:fs';
 //   speedRows, speed }].
 // Nov 16 (the owner: "an automatic calibration for performance, as well as configurable, manual switches"): after the
 // placement tries, the best placement is timed again with each Reading speed (Normal, Faster, Fastest) and, for a
-// brain with its own guesser, with Turbo. Each speed try reads one long prompt (about 8,000 tokens: reading speed and
-// time to the first word) and writes one short answer (writing speed, and for Turbo how many guesses were kept).
+// brain with its own guesser, with MTP. Each speed try reads one long prompt (about 8,000 tokens: reading speed and
+// time to the first word) and writes one short answer (writing speed, and for MTP how many guesses were kept).
 // Then, with Brain Engine on llama.cpp b12359 or newer, the hot-expert profiles: the brain reads the fixed mix of each
 // kind of work (src/hot-experts-mix.js) with the expert trace on, the picks are counted, and one profile per kind is
 // saved; then one more try times the cache filled from the mixed profile against Normal.
@@ -53,7 +53,7 @@ export function calBest(rows) {
   return { mode: 'auto', tps: auto.tps, autoTps: auto.tps, why: hand ? `Auto was as fast as anything set by hand (about ${auto.tps} words a second; the best by hand was ${hand.tps}).` : `Auto ran at about ${auto.tps} words a second. Nothing set by hand started.` };
 }
 
-// ---- Speed options (Reading speed, Turbo), timed on the best placement ----
+// ---- Speed options (Reading speed, MTP), timed on the best placement ----
 // One fixed long prompt: the same paragraph many times over (about 8,000 tokens with Qwen's words), then a short ask.
 const CAL_PARA = 'A bicycle gear system moves the chain between sprockets of different sizes. A small front ring with a large rear sprocket makes pedalling light for climbing hills, while a large front ring with a small rear sprocket makes each turn of the pedals carry the bike further on flat roads. The derailleurs push the chain sideways when the rider shifts, and the chain climbs onto the next sprocket as the pedals turn. ';
 export const CAL_LONG = CAL_PARA.repeat(90) + '\n\nIn one sentence, what does the text above explain?';
@@ -69,13 +69,13 @@ export function calSpeedTries({ mtp = 0, cacheMB = 0 } = {}) {
     const gb = Math.round((cacheMB / 1024) * 10) / 10;
     for (const t of out.slice(0, 3)) out.push({ ...t, id: `${t.id}-hot`, cache: true, extra: [...t.extra, ...hotCopyArgs(cacheMB)], label: `${t.label}, with ${gb} GB of hot experts on the card` });
   }
-  if (mtp > 0) out.push({ id: 'turbo', turbo: true, extra: ['--spec-type', 'draft-mtp', ...draftNumArgs(0, TURBO_EVERYDAY_MAX)], label: 'Turbo: the brain\'s own guesser' });
+  if (mtp > 0) out.push({ id: 'turbo', turbo: true, extra: ['--spec-type', 'draft-mtp', ...draftNumArgs(0, TURBO_EVERYDAY_MAX)], label: 'MTP: the brain\'s own guesser' });
   return out;
 }
 const hotCopyArgs = (mb) => ['--moe-cache-mib', String(mb), '--moe-cache-cpu-share', '0', '-lv', '4'];
 // The recommendation, over every pair that ran (writing within 10% of Normal's): the fastest writer, and among those
 // writing within 3% of it, the fastest reader (the rule set before the Nov 17 calibration run). When that isn't a
-// pair with the cache, the old reading rule decides: the fastest reader if it reads over 10% faster. Turbo when it writes
+// pair with the cache, the old reading rule decides: the fastest reader if it reads over 10% faster. MTP when it writes
 // more than 5% faster than Normal. -> { reading, cache, turbo, why } or null when Normal didn't run.
 export function calSpeedBest(rows) {
   const ok = rows.filter((r) => !r.failed && r.tps > 0);
@@ -94,7 +94,7 @@ export function calSpeedBest(rows) {
   const cache = top.cache === true;
   const what = `Reading speed ${name}${cache ? ' with hot experts' : ''}`;
   const readWhy = top === base ? `Reading speed Normal: bigger pieces didn't read the long prompt more than 10% faster without slowing writing (${base.readTps} tokens a second)${pool.some((r) => r.cache) ? ', and hot experts didn\'t write faster' : ''}.` : cache ? `${what}: wrote ${top.tps} words a second against ${base.tps} on Normal, and read the long prompt at ${top.readTps} tokens a second against ${base.readTps} (first word ${top.firstWordS} s against ${base.firstWordS} s).` : `Reading speed ${name}: read the long prompt at ${top.readTps} tokens a second against ${base.readTps} on Normal (first word ${top.firstWordS} s against ${base.firstWordS} s), writing ${top.tps} against ${base.tps}.`;
-  const turboWhy = !t ? '' : turbo ? ` Turbo on: ${t.tps} words a second against ${base.tps}${t.accepted != null ? `, ${t.accepted}% of its guesses kept` : ''}.` : ` Turbo off: ${t.tps} words a second against ${base.tps}, not enough to be worth it.`;
+  const turboWhy = !t ? '' : turbo ? ` MTP on: ${t.tps} words a second against ${base.tps}${t.accepted != null ? `, ${t.accepted}% of its guesses kept` : ''}.` : ` MTP off: ${t.tps} words a second against ${base.tps}, not enough to be worth it.`;
   return { reading: top.reading, cache, turbo, why: readWhy + turboWhy };
 }
 
@@ -270,7 +270,7 @@ export function useCalibrated(lab, model) {
   const cur = lab.cfg.brainPlace?.[model] || {};
   const set = rec.best.mode === 'hand' ? { mode: 'hand', cpuMoe: rec.best.cpuMoe } : { ...cur, mode: 'auto' };
   saveSettings(lab.cfg, { brainPlace: { ...(lab.cfg.brainPlace || {}), [model]: set } });
-  // Nov 16: the speed options too, for this brain only. Turbo only goes on (a Turbo set by hand is never switched off).
+  // Nov 16: the speed options too, for this brain only. MTP only goes on (an MTP set by hand is never switched off).
   if ((rec.hot?.on || rec.speed?.cache) && lab.cfg.hotExperts !== true) saveSettings(lab.cfg, { hotExperts: true });
   // Nov 17: the pair grid's cache is the copy kind; remembered per brain (a big brain may still do better without copying)
   if (rec.speed) saveSettings(lab.cfg, { hotExpertsCopy: { ...(lab.cfg.hotExpertsCopy || {}), [model]: rec.speed.cache === true } });

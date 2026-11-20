@@ -162,7 +162,7 @@ const publicDir = path.join(appDir, 'public');
 // llama.cpp speed settings, as the app shows them.
 function speedView() {
   const lc = cfg.llamacpp || {};
-  return { fit: typeof lc.fit === 'boolean' ? lc.fit : null, threads: lc.threads || null, batch: lc.batch || null, ubatch: lc.ubatch || null, ctx: lc.ctx || null, draft: lc.draft || { enabled: false, model: '', max: 16, min: 1, ngld: 99 }, modelArgs: lc.modelArgs || {}, args: lc.args || null, turbo: lc.turbo || {}, expertsPerWord: lc.expertsPerWord || {}, trainer: trainerState(cfg).ok, brainEngine: lc.brainEngine !== false, onBrainEngine: /[\\/]brain-engine[\\/]/.test(lc.exe || '') }; // 1.5.16x Turbo per brain, the Lab's Trainer pack
+  return { fit: typeof lc.fit === 'boolean' ? lc.fit : null, threads: lc.threads || null, batch: lc.batch || null, ubatch: lc.ubatch || null, ctx: lc.ctx || null, draft: lc.draft || { enabled: false, model: '', max: 16, min: 1, ngld: 99 }, modelArgs: lc.modelArgs || {}, args: lc.args || null, turbo: lc.turbo || {}, expertsPerWord: lc.expertsPerWord || {}, trainer: trainerState(cfg).ok, brainEngine: lc.brainEngine !== false, onBrainEngine: /[\\/]brain-engine[\\/]/.test(lc.exe || '') }; // 1.5.16x MTP per brain, the Lab's Trainer pack
 }
 // 1.5.41 Save folder, as Settings shows it: the folder now, Bob's own, and whether a picked one has gone.
 // 1.5.79: the memory banks for Settings (general + one per project), and what the last message recalled.

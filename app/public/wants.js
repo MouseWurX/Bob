@@ -67,7 +67,7 @@ export const WANTS = [
     label: 'Tell you how a long job is going', note: 'My Quick brain sees what my big brain is on, and can pass it a note.' },
   { card: 'brains', key: 'memoryRecall', setting: 'Relevant memories only', where: 'Speed & memory',
     label: 'Read only the memories that fit each message', note: 'Keeps chats light.' },
-  { card: 'brains', key: 'turboEveryday', setting: 'Turbo for everyday brains', where: 'Speed & memory',
+  { card: 'brains', key: 'turboEveryday', setting: 'MTP for everyday brains', where: 'Speed & memory',
     label: 'Write faster with a brain\'s own guesser', note: 'Only brains that have one. The answer is the same.' },
   { card: 'brains', key: 'lockBrainMemory', setting: 'Lock brain memory', where: 'Speed & memory',
     label: 'Keep my brain in RAM between replies', note: 'Uses that RAM until the brain unloads.' },

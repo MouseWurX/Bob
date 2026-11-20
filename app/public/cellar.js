@@ -869,7 +869,7 @@ export function createCellar({ popOut = null } = {}) {
         window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: {} }));
         return;
       }
-      if (b.dataset.turboremove) { const r = await api('/api/settings', { speed: { turbo: { [b.dataset.turboremove]: null } } }); settings.speed = r.speed; const box = b.closest('div')?.parentElement; flash(box || b, 'Turbo removed for that brain.'); b.closest('.row')?.remove(); return; } // 1.5.16x
+      if (b.dataset.turboremove) { const r = await api('/api/settings', { speed: { turbo: { [b.dataset.turboremove]: null } } }); settings.speed = r.speed; const box = b.closest('div')?.parentElement; flash(box || b, 'MTP removed for that brain.'); b.closest('.row')?.remove(); return; } // 1.5.16x
       if ('trainerremove' in b.dataset) { // 1.5.167: in-page confirm, same words as the Lab's Teach it page
         const p = b.parentElement; if (p.querySelector('[data-trainerremovego]')) return;
         b.setAttribute('aria-expanded', 'true');
@@ -1367,7 +1367,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.tts) { const v = el.dataset.tts === 'speed' ? Number(el.value) : el.value; const r = await api('/api/settings', { tts: { [el.dataset.tts]: v } }); settings.tts = { ...settings.tts, ...r.tts }; if (el.dataset.tts === 'voice') { for (const sb of dlg.querySelectorAll('[data-sample-engine="kokoro"]:not(.voice-grid *)')) sb.dataset.sampleVoice = el.value; for (const s of dlg.querySelectorAll('select[data-tts="voice"]')) s.value = el.value; } flash(el, 'Saved. Press ▶ Play sample to hear it.'); return; }
       if (el.dataset.speed) { const v = el.value.trim() === '' ? null : Number(el.value); const r = await api('/api/settings', { speed: { [el.dataset.speed]: v } }); settings.speed = r.speed; el.value = r.speed[el.dataset.speed] ?? ''; flash(el, 'Saved.'); return; }
       if ('fit' in el.dataset) { const r = await api('/api/settings', { speed: { fit: el.checked } }); settings.speed = r.speed; flash(el, 'Saved.'); return; }
-      if (el.dataset.turbo) { // 1.5.16x Turbo per brain
+      if (el.dataset.turbo) { // 1.5.16x MTP per brain
         const id = el.dataset.turbo, t = { ...(settings.speed?.turbo?.[id] || {}) };
         if (el.dataset.turbok === 'on') t.on = el.checked; else { const n = Math.round(Number(el.value)); if (!(n >= 1 && n <= 32)) { alertIn(el, 'Pick 1 to 32 words ahead.'); return; } t.max = n; }
         const r = await api('/api/settings', { speed: { turbo: { [id]: t } } }); settings.speed = r.speed; flash(el, 'Saved. Applies the next time this brain loads.'); return;

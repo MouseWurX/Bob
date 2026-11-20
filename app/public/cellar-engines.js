@@ -29,13 +29,13 @@ export function createEngineParts(now) {
         <label class="pick"><span>Experts per word <span class="tag warn">experimental</span> ${tip('For a mixture-of-experts brain: experts used per token. Empty is the brain\'s own count. More is slower and can help or hurt; fewer is faster. One number, or one per layer with commas. Brain Engine applies it at the next answer with no reload, and the brain file never changes. Try counts first in the Lab, Peek inside.', 'Experts per word')}</span><input type="text" inputmode="numeric" data-perword value="${esc(pw == null ? '' : Array.isArray(pw) ? pw.join(',') : pw)}" placeholder="its own" style="width:9em" aria-label="Experts per word for this brain, empty for its own"></label></div>
     </div>`;
   }
-  // 1.5.16x Turbo per brain: rows the Lab's Turbo page wrote with "Use this in Bob". Each wins over the one draft above
+  // 1.5.16x MTP per brain: rows the Lab's MTP page wrote with "Use this in Bob". Each wins over the one draft above
   // for its brain. Switch, guess length, Remove; the guesser itself is picked (and measured) in the Lab.
   function turboRowsHtml(sp, llms) {
     const rows = Object.entries(sp.turbo || {}).filter(([, t]) => t);
     if (!rows.length) return '';
     const nameOf = (id) => llms.find((o) => o.value === id)?.label || id;
-    return `<div><strong>Turbo, per brain</strong> ${tip('Set from the Lab, Test, Faster: "Use this in Bob". For these brains this wins over the draft brain above. Its own guesser means the brain carries a multi-token head, so nothing else loads.', 'Turbo, per brain')}
+    return `<div><strong>MTP, per brain</strong> ${tip('Set from the Lab, Test, Faster: "Use this in Bob". For these brains this wins over the draft brain above. Its own guesser means the brain carries a multi-token head, so nothing else loads.', 'MTP, per brain')}
       ${rows.map(([id, t]) => `<div class="row"><label class="switch"><input type="checkbox" data-turbo="${esc(id)}" data-turbok="on" ${t.on ? 'checked' : ''}><span><strong>${esc(nameOf(id))}</strong> <span class="muted">${t.mtp ? 'its own guesser' : `${esc(nameOf(t.draft))} guessing`}</span></span></label>
         <label class="pick"><span>Guess ahead</span><input type="text" inputmode="numeric" data-turbo="${esc(id)}" data-turbok="max" value="${esc(t.max ?? 8)}" style="width:4em" aria-label="Guess this many words ahead for ${esc(nameOf(id))}"></label>
         <button type="button" class="link" data-turboremove="${esc(id)}">Remove</button></div>`).join('')}</div>`;
@@ -67,9 +67,9 @@ export function createEngineParts(now) {
     const bat = settings.onBattery === true ? 'On battery right now.' : settings.onBattery === false ? 'Plugged in right now.' : settings.laptopMode ? 'No battery found, so nothing changes here.' : '';
     return `<div class="tune engine-extras"><strong>Engine extras</strong> <span class="tag">off unless you turn it on</span>
          ${tip('Each switch is separate. They work with Brain Engine and llama.cpp; Ollama runs its own way, so only the speed history and Laptop mode reach it. Bob\'s Android app runs its own small engine and isn\'t changed by these.', 'Engine extras')}
-        ${sswitch('copyGuess', settings.copyGuess === true, 'Prompt-lookup decoding', 'Speeds up rewrites of code and documents by copying text already in the chat. Same answer, no second brain. Not used with Turbo.')}
+        ${sswitch('copyGuess', settings.copyGuess === true, 'Prompt-lookup decoding', 'Speeds up rewrites of code and documents by copying text already in the chat. Same answer, no second brain. Not used with MTP.')}
         ${readingSpeedHtml()}
-        ${sswitch('turboEveryday', settings.turboEveryday === true, 'Turbo for everyday brains', 'Brains with their own built-in guesser use it for every reply, without the Lab. Same answer, written faster. Brains without one are unchanged.')}
+        ${sswitch('turboEveryday', settings.turboEveryday === true, 'MTP for everyday brains', 'Brains with their own built-in guesser use it for every reply, without the Lab. Same answer, written faster. Brains without one are unchanged.')}
         ${sswitch('lockBrainMemory', settings.lockBrainMemory === true, 'Lock brain memory', 'When part of a brain sits in RAM, it stays there, so replies after a break don\'t wait on the drive. Uses that RAM until the brain unloads. Not used in Gaming.')}
         ${sswitch('hotExperts', settings.hotExperts === true, 'Hot experts on the card', 'For a brain made of experts that doesn\'t fit the card: the experts it uses most sit on the card from the first word, and the rest are worked out on the processor, so nothing swaps while I write. Calibrate counts which ones. Helps writing, not reading long prompts. Brain Engine 9 or newer.')}
         ${settings.hotExperts === true ? hotRoomHtml() : ''}

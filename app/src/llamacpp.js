@@ -644,13 +644,13 @@ export class LlamaCpp {
     if (this.buildNo() >= 4500 && !args.includes('--cache-reuse') && !this.noReuse.has(model)) args.push('--cache-reuse', String(CACHE_REUSE));
     args.push(...this.templateArgs(model, gguf, args));
     // Speculative decoding: a small "draft" model guesses ahead and the big one checks, often 1.5-2x faster.
-    // 1.5.16x Turbo per brain (the Lab's Turbo page, Settings): wins over the one draft for every brain. The brain's own
+    // 1.5.16x MTP per brain (the Lab's MTP page, Settings): wins over the one draft for every brain. The brain's own
     // built-in guesser (a multi-token head) needs no second brain; a draft brain is named, never a path.
     const tb = lc.turbo?.[model];
     if (tb?.on && !cpu && (tb.mtp || (tb.draft && tb.draft !== model))) {
       // Engines from about b9530 refuse the old --draft-max/--draft-min and won't start (draftNumArgs picks the names).
       // 1.5.207 PC check: a saved "own guesser" on a brain whose file has none stopped Engine 4. Leave it out then.
-      if (tb.mtp && !(ggufInfo(gguf)?.mtp > 0)) { this.log?.('engine', `${model}: Turbo's own guesser is set, but this brain's file has none; starting without it`); return args; }
+      if (tb.mtp && !(ggufInfo(gguf)?.mtp > 0)) { this.log?.('engine', `${model}: MTP's own guesser is set, but this brain's file has none; starting without it`); return args; }
       if (tb.mtp) args.push('--spec-type', 'draft-mtp', ...draftNumArgs(this.buildNo(), tb.max || 8));
       else { let dg = null; try { dg = this.resolve(tb.draft).gguf; } catch {} if (dg) args.push('-md', dg, ...draftNumArgs(this.buildNo(), tb.max || 8, 0), '-ngld', '99'); }
       return args;
@@ -661,7 +661,7 @@ export class LlamaCpp {
       const draft = path.isAbsolute(d.model) || /\.gguf$/i.test(d.model) ? d.model : this.resolve(d.model).gguf;
       args.push('-md', draft, ...draftNumArgs(this.buildNo(), d.max ?? 16, d.min ?? 1), '-ngld', String(d.ngld ?? 99));
     }
-    // 102 Turbo for everyday brains (opt-in): a brain with its own guesser uses it, unless Turbo or a draft is set.
+    // 102 MTP for everyday brains (opt-in): a brain with its own guesser uses it, unless MTP or a draft is set.
     args.push(...everydayTurboArgs(this.cfg, { build: this.buildNo(), args, mtp: ggufInfo(gguf)?.mtp || 0, cpu: cpu || this.role === BESIDE }));
     // 94 Guess-ahead from the chat (opt-in): with no draft brain, the engine guesses by copying what the chat holds.
     args.push(...copyGuessArgs(this.cfg, { build: this.buildNo(), args }));

@@ -244,13 +244,13 @@ function calibrateHtml(b, ctx) {
       ${rows ? `<table class="cal-rows"><caption class="sr-only">What each try measured</caption>${rows}</table>` : ''}
       ${speedRowsHtml(cal)}</section>`;
 }
-// Nov 16: the speed options Calibrate timed on the best placement (Reading speed, and Turbo for a brain with its own guesser).
+// Nov 16: the speed options Calibrate timed on the best placement (Reading speed, and MTP for a brain with its own guesser).
 const READ_NAMES = { normal: 'Normal', faster: 'Faster', fastest: 'Fastest' };
 function speedRowsHtml(cal) {
   const sp = cal?.speed || null;
   const rows = (cal?.speedRows || []).map((r) => {
     const star = sp && (r.turbo ? sp.turbo : r.reading === sp.reading);
-    const name = r.turbo ? 'Turbo (own guesser)' : `Reading speed ${READ_NAMES[r.reading] || r.reading}`;
+    const name = r.turbo ? 'MTP (own guesser)' : `Reading speed ${READ_NAMES[r.reading] || r.reading}`;
     return `<tr${star ? ' class="best"' : ''}><td>${name}</td><td>${r.failed ? `<span class="muted">${esc(r.failed)}</span>` : `reads ${r.readTps} tokens a second, writes ${r.tps}${r.accepted != null ? `, ${r.accepted}% of guesses kept` : ''}`}</td><td>${r.failed || r.firstWordS == null ? '' : `first word ${r.firstWordS} s on a long prompt`}</td><td>${star ? '★ recommended' : ''}</td></tr>`;
   }).join('');
   if (!rows) return '';

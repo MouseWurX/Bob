@@ -11,7 +11,7 @@
 //
 // What it can't do: only words written one or a few at a time (batches up to 32) go through the cache. Prompt reading
 // goes in big batches that skip it, so hot experts never make prompt reading or the first word of a long prompt
-// faster; Reading speed is the setting for that. With Turbo, the guesses are checked in small batches, which do use
+// faster; Reading speed is the setting for that. With MTP, the guesses are checked in small batches, which do use
 // the cache, and can move a few experts (the engine counts them as "uploaded").
 //
 // Wrong rankings are refused out loud, never used quietly: the engine prints the brain's fingerprint at load, the

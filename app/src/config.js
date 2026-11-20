@@ -485,7 +485,7 @@ function cleanLlamacpp(lc) {
       ngld: Number.isInteger(d.ngld) && d.ngld >= 0 && d.ngld <= 999 ? d.ngld : 99
     };
   }
-  // 1.5.16x Turbo, per brain (from the Lab's Turbo page or Settings): on/off, the draft brain by its model name (never
+  // 1.5.16x MTP, per brain (from the Lab's MTP page or Settings): on/off, the draft brain by its model name (never
   // a path), or the brain's own built-in guesser, and how many words it guesses ahead. null removes a brain's row.
   if ('turbo' in out) {
     const t = {};

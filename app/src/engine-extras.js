@@ -8,7 +8,7 @@
 //   engineNotes  99  Engine updates in plain words
 //   brainMemType 100 The engine's memory type per brain (Brains page, Set up)
 //   readingSpeed 101 Reading speed: bigger reading steps (-b/-ub) so a long prompt is read in fewer, larger pieces
-//   turboEveryday 102 Turbo for everyday brains: a brain's own built-in guesser (MTP) on, without the Lab
+//   turboEveryday 102 MTP for everyday brains: a brain's own built-in guesser (MTP) on, without the Lab
 //   hotExperts   104 Hot experts on the card: llama.cpp's expert cache, filled from a profile (src/hot-experts.js)
 //   lockBrainMemory 103 Lock brain memory: the part of a brain in RAM stays there (--mlock), so Windows can't page it out
 import fs from 'node:fs';
@@ -37,7 +37,7 @@ export function draftNumArgs(build, max, min) {
 export const COPY_GUESS_ARGS = ['--spec-type', 'ngram-mod'];
 export function copyGuessArgs(cfg, { build = 0, args = [] } = {}) {
   if (!extraOn(cfg, 'copyGuess') || !newSpecFlags(build)) return [];
-  if (args.some((a) => ['--spec-type', '-md', '--model-draft', '--spec-draft-model', '--spec-draft-hf', '-hfd'].includes(a))) return []; // Turbo or a draft brain already guesses
+  if (args.some((a) => ['--spec-type', '-md', '--model-draft', '--spec-draft-model', '--spec-draft-hf', '-hfd'].includes(a))) return []; // MTP or a draft brain already guesses
   return [...COPY_GUESS_ARGS];
 }
 
@@ -90,10 +90,10 @@ export function dropReading(args) {
   return args;
 }
 
-// ---------- 102 Turbo for everyday brains ----------
+// ---------- 102 MTP for everyday brains ----------
 // Some brains carry their own guesser in the file (a multi-token prediction head, "nextn"): it guesses the next few
-// words and the brain checks them in one go, so the answer is the same, only quicker. The Lab's Turbo page turns it
-// on per brain; this switch turns it on for every brain that has one, unless Turbo or a draft brain is set for it.
+// words and the brain checks them in one go, so the answer is the same, only quicker. The Lab's MTP page turns it
+// on per brain; this switch turns it on for every brain that has one, unless MTP or a draft brain is set for it.
 // 3 guesses at a time: one head's guesses get worse the further out they go.
 export const TURBO_EVERYDAY_MAX = 3;
 export function everydayTurboArgs(cfg, { build = 0, args = [], mtp = 0, cpu = false } = {}) {
