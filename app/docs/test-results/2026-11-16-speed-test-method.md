@@ -915,6 +915,18 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 73 (Nov 20, before any run): the Progressive Memory rework (0045) on Brain Engine 26
+
+On Brain Engine 22, Progressive Memory wrote 56-78% slower than plain q3_0 on long chats (section 44 of the results): each written
+word worked out the main cache's log-sum-exp with a plain matrix multiply over the whole cache, beside flash attention. Patch 0045
+takes it from flash attention itself (CUDA vector kernel, 1-2 query rows, head size 64/128/256, cache length a multiple of 256; other
+shapes and LLAMA_KV_TIERS_EXPLICIT=1 take the old pass). `speed-plans/speed-progressive-be26.json`: q4_0, q3_0, 3-step and 8+3 at
+32K/128K/256K as before, plus 3-step at 32K and 8+3 at 128K with the old pass forced, 2 rounds; `perplexity-progressive-be26.json`:
+the 16K x 2 accuracy plan on Brain Engine 26 plus 8+3 with the old pass. Read the log for the fast merge line and the sharp rings' MiB
+in the cache size line. Pass, written before the run: Progressive writing within 10% of plain q3_0 at 32K and 128K; the old-pass rows
+as slow as section 44 (within 10%); the same words as Brain Engine 22's Progressive rows at temp 0 (start chat at 32K: 565bcff4);
+perplexity of the fast and old pass equal to 4 decimals. Expected: 3-step and 8+3 within 5-10% of q3_0 at 32K, 5-15% at 256K.
+
 ## Addendum 72 (Nov 20, before any run): does patch 0044 close the 3-bit memory's long-chat gap
 
 At 128K the 3-bit memory (q3_0 K and V) wrote 18% slower than q4_0 (47.3 against 58.0 t/s, section 39 of the results), while at
