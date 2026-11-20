@@ -8,7 +8,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { LlamaCpp } from '../src/llamacpp.js';
-import { conductorOn, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP } from '../src/conductor.js';
+import { conductorOn, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX } from '../src/conductor.js';
 import { cleanTuning, mergeTuning } from '../src/engine-tuning.js';
 import { HELP } from '../public/help-content.js';
 
@@ -73,7 +73,7 @@ const engineOf = (extra = {}, lc = {}) => { const e = new LlamaCpp({ agentDir: t
 
 // ---------- One reply against a fake engine ----------
 const calls = [];
-let refuse = false;
+let refuse = false, freeMiB = null;
 const srv = http.createServer((req, res) => {
   let body = '';
   req.on('data', (c) => (body += c));
@@ -82,7 +82,7 @@ const srv = http.createServer((req, res) => {
     if (req.url === '/context' && refuse) { res.writeHead(404); return res.end('no'); }
     res.writeHead(200, { 'content-type': 'application/json' });
     if (req.url === '/v1/chat/completions') return res.end(JSON.stringify({ choices: [{ message: { content: '.' } }], timings: { prompt_n: 30000, prompt_per_second: 3600, cache_n: 0 } }));
-    res.end('{}');
+    res.end(req.url === '/context' && freeMiB != null ? JSON.stringify({ devices: [{ name: 'CUDA0', free_mib: freeMiB, total_mib: 16303 }] }) : '{}');
   });
 });
 await new Promise((r) => srv.listen(0, '127.0.0.1', r));
@@ -118,6 +118,25 @@ const longMsg = [{ role: 'user', content: 'x'.repeat(240000) }];
   check('never while another reply holds the engine', calls.length === 0);
   e.active = 1; e.spreadNow = true; await e.conduct({ model: 'big', messages: longMsg });
   check('never while spread over other Bobs\' cards', calls.length === 0); }
+// ---------- The cache grown for writing (Nov 20, the owner's idea) ----------
+check('long replies are expected with thinking or a code or file job', expectOut({ think: true }) === 2500 && expectOut({ task: 'code' }) === 1500 && expectOut({}) === 300);
+check('the cache grows by what the card has free, up to 2 GB, keeping 768 MiB', cacheGrow({ total: 30000, outTok: 2500, cacheMiB: 4096, freeMiB: 5000 }) === 2048 && cacheGrow({ total: 30000, outTok: 2500, cacheMiB: 4096, freeMiB: 2000 }) === 1024);
+check('it doesn\'t grow for a short reply, a long chat, no cache, unknown free memory, little room or when already grown',
+  [{ outTok: 300 }, { total: CACHE_FLIP_MAX }, { cacheMiB: 0 }, { freeMiB: null }, { freeMiB: 1200 }, { grown: 1024 }].every((o) => cacheGrow({ total: 30000, outTok: 2500, cacheMiB: 4096, freeMiB: 5000, ...o }) === 0));
+check('the free memory comes from the engine\'s answer (the tightest card), or null', freeFrom({ devices: [{ free_mib: 3000 }, { free_mib: 2500 }] }) === 2500 && freeFrom({}) === null);
+{ calls.length = 0; freeMiB = 3000; const e = live(); e.condChat = CHAT_STEP; e.condStep = CHAT_STEP; e.condCacheBase = 4096; e.condHeld = 0;
+  const msg = [{ role: 'user', content: 'x'.repeat(3000) }];
+  await e.conduct({ model: 'big', messages: msg, think: true });
+  const ctx = calls.filter((c) => c.startsWith('POST /context')).map((c) => JSON.parse(c.slice(14)).moe_cache_mib);
+  check('thinking on: asks the free memory once, reads at the reading cache, then writes with it grown', JSON.stringify(ctx) === '[4096,6144]' && calls.some((c) => c === 'POST /v1/chat/completions 1') && e.condGrown === 2048, JSON.stringify(calls));
+  check('it says so in the logbook', e.logs.some((l) => /copy cache grows from 4096 to 6144 MiB/.test(l)));
+  calls.length = 0; e.condHeld = 1000;
+  await e.conduct({ model: 'big', messages: longMsg });
+  const back = calls.filter((c) => c.startsWith('POST /context')).map((c) => JSON.parse(c.slice(14)).moe_cache_mib);
+  check('a long read next: the cache goes back to the reading size first', back[0] === 4096 && e.condGrown === 0, JSON.stringify(calls));
+  calls.length = 0; freeMiB = null; const old = live(); old.condChat = CHAT_STEP; old.condStep = CHAT_STEP; old.condCacheBase = 4096; old.condHeld = 0;
+  await old.conduct({ model: 'big', messages: msg, think: true });
+  check('an engine that doesn\'t report free memory never grows the cache', !calls.some((c) => /moe_cache_mib":6144/.test(c)) && !old.condGrown, JSON.stringify(calls)); }
 srv.close();
 
 // ---------- Settings, Help, FAQ, glossary ----------

@@ -84,6 +84,28 @@ export function noteSwitch(st, { seconds, guess, held = 32768 }) {
   return { switchS: s.switchS > 0 ? s.switchS * 0.6 + seconds * 0.4 : seconds, ratio: s.ratio > 0 ? s.ratio * 0.6 + r * 0.4 : r, slow, stopped: s.stopped || slow >= SLOW_TRIES };
 }
 
+// Nov 20 (the owner's idea, measured on a 16 GB card, Qwen3.6 35B): reading wants the big step and a modest expert copy
+// cache, writing wants a bigger cache (a big cache at the big step crowds the card: reading 32K took 16 s with 5 GB and
+// 133 s with 6 GB, against 8.4 s with 4 GB). Reading with 2 GB then writing with 6 GB wrote 89.4 tokens a second against
+// 82.8, the hit rate 94% against 88%; the switch paid from about 1,500 tokens written at 32K, and at 128K the gain was
+// 2%, too little for the switch. So the cache grows for writing only in a chat under CACHE_FLIP_MAX tokens when the reply
+// is expected to be long (thinking, coding, writing a file), and only by what the card has free (Brain Engine 0047
+// reports it after each change), and shrinks back before the next long read.
+export const CACHE_FLIP_MAX = 65536;
+export const CACHE_FLIP_MIN_OUT = 1500;
+export const CACHE_GROW_MAX = 2048; // MiB
+export const CACHE_FREE_KEEP = 768; // MiB left free on the card
+// the reply length to expect: thinking replies and code or file writes run long
+export const expectOut = ({ think, task } = {}) => (think ? 2500 : /code|edit|write|file/i.test(String(task || '')) ? 1500 : 300);
+// how much to grow the cache for writing (MiB, whole 256s), or 0. freeMiB: the card's free memory now (null: unknown)
+export function cacheGrow({ total = 0, outTok = 0, cacheMiB = 0, freeMiB = null, grown = 0 }) {
+  if (grown > 0 || !(cacheMiB > 0) || !(freeMiB >= 0) || total >= CACHE_FLIP_MAX || outTok < CACHE_FLIP_MIN_OUT) return 0;
+  const g = Math.min(CACHE_GROW_MAX, Math.floor((freeMiB - CACHE_FREE_KEEP) / 256) * 256);
+  return g >= 512 ? g : 0;
+}
+// the most free memory left on any card after a change (POST /context's answer with 0047), or null
+export const freeFrom = (answer) => { const d = Array.isArray(answer?.devices) ? answer.devices.filter((x) => Number.isFinite(x?.free_mib)) : []; return d.length ? Math.min(...d.map((x) => x.free_mib)) : null; };
+
 // in plain words, for the logbook
 export function planLine(model, p) {
   const say = { readBig: `reading at step ${p.step}, then writing at the chat step`, big: `reading and writing at step ${p.step}`, back: `back to the chat step ${p.step}` }[p.plan];
