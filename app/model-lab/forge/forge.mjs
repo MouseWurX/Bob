@@ -161,8 +161,11 @@ function ledgerChecked(lc) {
 }
 const lessonsDir = plan.ledger_check ? ledgerChecked(plan.ledger_check) : path.resolve(here, '..', plan.lessons || 'out/lessons');
 const countsFile = path.resolve(here, '..', plan.counts_file || 'out/experts/' + plan.counts);
-for (const f of ['lessons.jsonl', 'toolsets.json']) if (!fs.existsSync(path.join(lessonsDir, f))) { console.error(`missing ${path.join(lessonsDir, f)}`); process.exit(1); }
-if (!fs.existsSync(countsFile)) { console.error(`missing counts file ${countsFile}`); process.exit(1); }
+// 20 Nov: a benchmark-only run needs no lesson file or counts (the pod's benchmark section ends before either is read; run.sh
+// "No teacher, no lessons"), so it neither asks for them nor sends them: the lesson-score plan keeps its lessons on the PC
+const benchNeedsNoLessons = plan.benchmark_only === true;
+if (!benchNeedsNoLessons) for (const f of ['lessons.jsonl', 'toolsets.json']) if (!fs.existsSync(path.join(lessonsDir, f))) { console.error(`missing ${path.join(lessonsDir, f)}`); process.exit(1); }
+if (!benchNeedsNoLessons && !fs.existsSync(countsFile)) { console.error(`missing counts file ${countsFile}`); process.exit(1); }
 // 15 Nov: the never-taught gate. A training or heal plan checks every lesson it would send against the held-out and calib files
 // (forge/never-taught.json, plan.never, the quiz) before anything is rented or sent; one match stops it (model-lab/never-gate.mjs)
 if (!args.resume && !args['send-plan'] && !args['send-token'] && !args.urls) {
@@ -493,9 +496,11 @@ if (args.restart) {
   const { execSync } = await import('node:child_process');
   execSync(`tar czf "${tgz}" --exclude=__pycache__ -C "${here}" pod`, { stdio: 'inherit' });
   await upload('forge.tgz', tgz);
-  await upload('lessons.jsonl', path.join(lessonsDir, 'lessons.jsonl'));
-  await upload('toolsets.json', path.join(lessonsDir, 'toolsets.json'));
-  await upload('counts.json', countsFile);
+  if (!benchNeedsNoLessons) {
+    await upload('lessons.jsonl', path.join(lessonsDir, 'lessons.jsonl'));
+    await upload('toolsets.json', path.join(lessonsDir, 'toolsets.json'));
+    await upload('counts.json', countsFile);
+  }
   if (plan.publish || plan.benchmark_only) { // build 17: the pod uploads the GGUF files to Hugging Face itself; the token lives in forge/hf-token.txt (never in the plan or the repo). 10 Nov: a benchmark-only run gets it too, so a brain on a private page can be fetched
     const tok = hfToken();
     if (!tok) log(plan.publish ? 'plan.publish is set but there is no Hugging Face token (forge/hf-token.txt, one line, or HF_TOKEN): the pod will keep the files for download instead' : 'no Hugging Face token (forge/hf-token.txt or HF_TOKEN): a brain on a private page cannot be fetched for the benchmark');

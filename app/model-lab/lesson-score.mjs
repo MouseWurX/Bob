@@ -191,7 +191,8 @@ async function main(argv) {
   }
   const url = arg('--url'), out = arg('--out');
   const lessonsFile = arg('--lessons'), toolsetsFile = arg('--toolsets');
-  if (!url || !out || !lessonsFile || !toolsetsFile) { console.error('needs --url --lessons --toolsets --out'); process.exit(1); }
+  const pre = a.includes('--preflight'); // 20 Nov: a preflight sends nothing and writes nothing, so it needs only the lessons and tool sets
+  if (!lessonsFile || !toolsetsFile || (!pre && (!url || !out))) { console.error('needs --lessons --toolsets, and --url --out unless --preflight'); process.exit(1); }
   const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   const rows = read(lessonsFile).split('\n').filter(Boolean).map((l) => JSON.parse(l));
   const toolsets = JSON.parse(read(toolsetsFile));

@@ -915,6 +915,17 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 72 (Nov 20, before any run): does patch 0044 close the 3-bit memory's long-chat gap
+
+At 128K the 3-bit memory (q3_0 K and V) wrote 18% slower than q4_0 (47.3 against 58.0 t/s, section 39 of the results), while at
+32K its attention cost only 0.1-0.5 ms more per word (Addendum 70). Patch 0044 unpacks q3_0's codes four at a time in the CUDA
+vector kernel, for the K dot and the V unpack, with the same codes. `speed-plans/kv3-kernel-128k.json`: q4_0/q4_0, q3_0/q3_0 and
+q4_0 K / q3_0 V at 128K (start chat, then a 122,880-token read), on the engine before 0044 and the one after, GGML_SCHED_TIMING=1,
+fit placement as the speed-kv3 fit rows, 2 rounds, 6 loads. Written before the run: before 0044, q3/q3 writes 15-20% slower than q4/q4
+after the long read, and the card's part per word is 1.5-3 ms larger; after 0044, q3/q3 within 5% of q4/q4 (pass), the same words as
+before 0044 for each memory type (the codes are unchanged), and q4_0/q4_0 unchanged within 2%. If q3/q3 stays more than 10% slower,
+the gap is not the unpack and the timing lines say where it is. The timing lines slow every row the same way, so only the ratios count.
+
 ## Addendum 71 (Nov 20, before any run): Progressive Memory on Brain Engine 22
 
 Progressive Memory (patch 0039, `LLAMA_KV_TIERS`, slack 4096) keeps the newest words sharp and the older ones in q3_0. Types, as Bob
@@ -930,6 +941,13 @@ needles 25/25. The 3-step type becomes the default only if it is within 3% of q8
 at 8K every Progressive type equals q8_0 (the whole text sits in the 8K q8_0 step, so 8K says little); at 32K, A and D sit between
 q8_0 and q3_0, nearer q8_0; A with -ub 8192 equals plain q3_0; all needles found; writing 0-10% slower than plain q3_0 (one extra pass per
 step), reading up to 15% slower (f16 copies per batch).
+
+Result note on the perplexity half (Nov 20, after the run): void for Progressive Memory, a plan mistake. At 8K the engine said
+"NOT USED: the context is not bigger than the biggest window" for 3-step, 2-step and 8+3 (all three equal plain q3_0), and the 32K x 1
+group needs 64K tokens of text where long-text.md has 40,398, so its f16 base wrote no score. The plain rows stand (8K x 2 against f16:
+q8_0 KLD 0.0037, q4_0 0.0095, q3_0 0.0259). `speed-plans/perplexity-progressive-16k.json` reruns it at 16K x 2 with the windows a
+quarter of the 32K design (8+3 = q8_0 for the newest 4,096; 2-step q4_0 for 8,192; 3-step both) and step 2048 for every row. Written
+before that run: 8+3, 2-step and 3-step each land between q3_0 and their sharper type, 3-step closest to q8_0; all three pass the 3% bar.
 
 ## Addendum 70 (Nov 20, before any run): which half of the 3-bit memory costs writing speed
 
@@ -951,6 +969,11 @@ only pays where the processor takes misses: share 1, as with the learning cache.
 The ceiling per layer is about the smaller of the card's expert part and the processor's part. Written before the run: with learn 16
 the processor part is 15-30% of a word's time, so the ceiling is 10-25% faster writing on code edits; under 8% means the overlap is
 not worth its 1.5-2.5 weeks on the test PC. Diagnostic only: no speed claim is made from these loads (the logs slow the engine).
+
+Result note (Nov 20, after the run): the engine turns GGML_SCHED_OVERLAP_LOG off when GGML_SCHED_TIMING is on ("NOT USED: GGML_SCHED_TIMING
+waits for every piece, so nothing overlaps"), so the who-waits half of every row is void. The timing half stands: overlap ceiling
+22-26% of each word (about 3 ms of 11-14 ms), inside the 10-25% prediction; no card split between experts and the rest is logged.
+`speed-plans/overlap-waitlog.json` reruns the same 3 rows with the who-waits log alone.
 
 ## Addendum 68 (Nov 20, before any run): how long the n-gram drafts may be
 
