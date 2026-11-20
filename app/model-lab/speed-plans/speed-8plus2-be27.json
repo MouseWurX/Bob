@@ -1,0 +1,543 @@
+{
+ "brain": "${BRAIN}",
+ "prompts": {
+  "start": "start.json",
+  "k32": "long-text.md",
+  "k120": "long-text.md",
+  "k250": "long-text.md"
+ },
+ "promptTokens": {
+  "k32": 32768,
+  "k120": 122880,
+  "k250": 253952
+ },
+ "question": {
+  "k32": "\n\nIn two sentences, what is this text about?",
+  "k120": "\n\nIn two sentences, what is this text about?",
+  "k250": "\n\nIn two sentences, what is this text about?"
+ },
+ "promptRepeat": {
+  "k120": 4,
+  "k250": 8
+ },
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "name": "Progressive 8+2 (q2_kv) on Brain Engine 27: writing speed of plain q2_kv, 8+2 and K q4_0 + V q2_kv with the q8_0 ring, beside q4_0 and q3_0, at 32K/128K/256K, 2 rounds, cool-down on",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 77)",
+ "engines": {
+  "be27": {
+   "exe": "${BE27_SERVER}"
+  }
+ },
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "--cache-reuse",
+  "256"
+ ],
+ "maxTokens": 300,
+ "rounds": 2,
+ "saveText": true,
+ "rows": [
+  {
+   "id": "q4_0-32K",
+   "engine": "be27",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "q3_0-32K",
+   "engine": "be27",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q3_0",
+    "-ctv",
+    "q3_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "q2_kv-32K",
+   "engine": "be27",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q2_kv",
+    "-ctv",
+    "q2_kv",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "8plus2-32K",
+   "engine": "be27",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q2_kv",
+    "-ctv",
+    "q2_kv",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_KV_TIERS_SLACK": "4096",
+    "LLAMA_KV_TIERS": "q8_0:8192"
+   }
+  },
+  {
+   "id": "K4V2plus8-32K",
+   "engine": "be27",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q2_kv",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_KV_TIERS_SLACK": "4096",
+    "LLAMA_KV_TIERS": "q8_0:8192"
+   }
+  },
+  {
+   "id": "q4_0-128K",
+   "engine": "be27",
+   "prompts": [
+    "start",
+    "k120"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "5120",
+    "-ub",
+    "5120",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "q3_0-128K",
+   "engine": "be27",
+   "prompts": [
+    "start",
+    "k120"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "5120",
+    "-ub",
+    "5120",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q3_0",
+    "-ctv",
+    "q3_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "q2_kv-128K",
+   "engine": "be27",
+   "prompts": [
+    "start",
+    "k120"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "5120",
+    "-ub",
+    "5120",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q2_kv",
+    "-ctv",
+    "q2_kv",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "8plus2-128K",
+   "engine": "be27",
+   "prompts": [
+    "start",
+    "k120"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "5120",
+    "-ub",
+    "5120",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q2_kv",
+    "-ctv",
+    "q2_kv",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_KV_TIERS_SLACK": "4096",
+    "LLAMA_KV_TIERS": "q8_0:8192"
+   }
+  },
+  {
+   "id": "K4V2plus8-128K",
+   "engine": "be27",
+   "prompts": [
+    "start",
+    "k120"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "5120",
+    "-ub",
+    "5120",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q2_kv",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_KV_TIERS_SLACK": "4096",
+    "LLAMA_KV_TIERS": "q8_0:8192"
+   }
+  },
+  {
+   "id": "q4_0-256K",
+   "engine": "be27",
+   "prompts": [
+    "start",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "q3_0-256K",
+   "engine": "be27",
+   "prompts": [
+    "start",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q3_0",
+    "-ctv",
+    "q3_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "q2_kv-256K",
+   "engine": "be27",
+   "prompts": [
+    "start",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q2_kv",
+    "-ctv",
+    "q2_kv",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "8plus2-256K",
+   "engine": "be27",
+   "prompts": [
+    "start",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q2_kv",
+    "-ctv",
+    "q2_kv",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_KV_TIERS_SLACK": "4096",
+    "LLAMA_KV_TIERS": "q8_0:8192"
+   }
+  },
+  {
+   "id": "K4V2plus8-256K",
+   "engine": "be27",
+   "prompts": [
+    "start",
+    "k250"
+   ],
+   "args": [
+    "-c",
+    "262144",
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q2_kv",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_KV_TIERS_SLACK": "4096",
+    "LLAMA_KV_TIERS": "q8_0:8192"
+   }
+  }
+ ]
+}

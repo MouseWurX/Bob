@@ -915,6 +915,17 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 77 (Nov 20, before any run): Progressive 8+2, the 2-bit chat memory (q2_kv, patch 0046), Turbo only
+
+The owner approved an 8+2 test: a 2-bit main cache (q2_kv; upstream's q2_0 is a brain-file type) with the newest 8,192 words at q8_0.
+Brain Engine 27 first passes the setup checks (moe-round-check now expected to pass with its fixed reference). Plans:
+`perplexity-8plus2-be27.json` (16K x 2, ring a quarter scale as in section 50: q4_0, q3_0, 8+3, 8+4, plain q2_kv, 8+2, and K q4_0 +
+V q2_kv with the ring), `needle-8plus2-be27.json` (128K, the five depths of needle-progressive, for 8+2, the K4/V2 mix and plain q2_kv),
+`speed-8plus2-be27.json` (32K/128K/256K, plain q2_kv, 8+2 and the mix beside q4_0 and q3_0, 2 rounds, Addendum 74 cool-down). Bars:
+perplexity within 3% of f16's group reference q4_0 (3-5% needs a real-jobs check, over 5% fails), every needle found, writing within 5%
+of q4_0. Prediction written before any test by the engine side: bob-wip/engine-speed/progressive-8plus2-prediction.md (fast and small,
+likely failing the 3% bar and missing some deep needles). If 8+2 fails, the K q4_0 + V q2_kv mix is the follow-up, already in each plan.
+
 ## Addendum 76 (Nov 20, before any run): does reading at one setting and writing at another beat one setting
 
 The owner asked whether flipping to the best reading settings for the read and the best writing settings for the reply would beat

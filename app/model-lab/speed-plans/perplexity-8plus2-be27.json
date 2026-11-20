@@ -1,0 +1,191 @@
+{
+ "name": "Progressive 8+2 (q2_kv) on Brain Engine 27: perplexity/KLD at 16K x 2 (ring a quarter scale, q8_0:4096) of plain q2_kv, 8+2 and K q4_0 + V q2_kv with the ring, beside q4_0, q3_0, 8+3 and 8+4",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 77)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be27": {
+   "exe": "${BE27_PERPLEXITY}"
+  }
+ },
+ "text": "long-text.md",
+ "baseArgs": [
+  "-fa",
+  "on",
+  "--fit",
+  "on"
+ ],
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "rowTimeoutMs": 2700000,
+ "groups": [
+  {
+   "id": "prog-16K",
+   "about": "f16 base vs q8_0, q4_0, q3_0 and Progressive A (3-step), C (2-step), D (8+3) with windows a quarter of the 32K design so they engage at 16K (Addendum 71, rerun note)",
+   "ctx": 16384,
+   "chunks": 2,
+   "needDiskGB": 12,
+   "base": {
+    "id": "f16",
+    "engine": "be27",
+    "args": [
+     "-b",
+     "2048",
+     "-ub",
+     "2048",
+     "--moe-cache-mib",
+     "4096",
+     "--moe-cache-cpu-share",
+     "0",
+     "-ctk",
+     "f16",
+     "-ctv",
+     "f16"
+    ]
+   },
+   "rows": [
+    {
+     "id": "q4_0",
+     "engine": "be27",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "2048",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ]
+    },
+    {
+     "id": "q3_0",
+     "engine": "be27",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "2048",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q3_0",
+      "-ctv",
+      "q3_0"
+     ]
+    },
+    {
+     "id": "D-8plus3",
+     "engine": "be27",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "2048",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q3_0",
+      "-ctv",
+      "q3_0"
+     ],
+     "env": {
+      "LLAMA_KV_TIERS_SLACK": "2048",
+      "LLAMA_KV_TIERS": "q8_0:4096"
+     }
+    },
+    {
+     "id": "E-8plus4",
+     "engine": "be27",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "2048",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ],
+     "env": {
+      "LLAMA_KV_TIERS_SLACK": "2048",
+      "LLAMA_KV_TIERS": "q8_0:4096"
+     }
+    },
+    {
+     "id": "q2_kv",
+     "engine": "be27",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "2048",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q2_kv",
+      "-ctv",
+      "q2_kv"
+     ]
+    },
+    {
+     "id": "F-8plus2",
+     "engine": "be27",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "2048",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q2_kv",
+      "-ctv",
+      "q2_kv"
+     ],
+     "env": {
+      "LLAMA_KV_TIERS_SLACK": "2048",
+      "LLAMA_KV_TIERS": "q8_0:4096"
+     }
+    },
+    {
+     "id": "G-K4V2plus8",
+     "engine": "be27",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "2048",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q2_kv"
+     ],
+     "env": {
+      "LLAMA_KV_TIERS_SLACK": "2048",
+      "LLAMA_KV_TIERS": "q8_0:4096"
+     }
+    }
+   ]
+  }
+ ]
+}
