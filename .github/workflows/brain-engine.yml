@@ -175,6 +175,10 @@ jobs:
             if not defined GGMLBASELIB exit /b 1
             clang-cl /O2 /EHsc /std:c++17 /I ggml\include ..\app\engine\tests\mask-pos-check.cpp "!GGMLLIB!" "!GGMLBASELIB!" /Fe:build\bin\Release\mask-pos-check.exe || exit /b 1
           )
+          rem Nov 20: the expert cache's CPU rounding check (0040), the same way.
+          if exist ..\app\engine\tests\moe-round-check.cpp (
+            clang-cl /O2 /EHsc /std:c++17 /I ggml\include ..\app\engine\tests\moe-round-check.cpp "!GGMLLIB!" "!GGMLBASELIB!" /Fe:build\bin\Release\moe-round-check.exe || exit /b 1
+          )
       - name: Build llama-cvector-generator and llama-export-lora on their own (CPU, static; upstream skips it when the backends load at run time)
         shell: cmd
         working-directory: llama.cpp
@@ -210,6 +214,7 @@ jobs:
           fi
           if [ "${{ needs.detect.outputs.cuda }}" = "true" ]; then cp ggml-cuda/ggml-cuda.dll "$out/"; fi
           if [ -f llama.cpp/build/bin/Release/mask-pos-check.exe ]; then cp llama.cpp/build/bin/Release/mask-pos-check.exe "$out/"; fi
+          if [ -f llama.cpp/build/bin/Release/moe-round-check.exe ]; then cp llama.cpp/build/bin/Release/moe-round-check.exe "$out/"; fi
           cp llama.cpp/build/bin/Release/test-llama-archs.exe "$out/" # Nov 19: every brain family loads and runs on these patches
           ls -la "$out"
       # Smart App Control (app/docs/SIGNING.md): off until the owner's Microsoft Artifact Signing account is set up.

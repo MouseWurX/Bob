@@ -5,7 +5,7 @@
 import { SLOTS, allSlots, equipped, entryOf, slotTakes, isActive, tipHtml, kitHtml, starterHtml } from './equip.js';
 import { placeFor, sizeLine, placeWord, hasExperts } from './place.js';
 import { esc, gb } from './util.js';
-import { memTypeTrade } from './mem-types.js';
+import { memTypeTrade, MEM_TYPES } from './mem-types.js';
 
 // The jobs a brain can hold (every thinking slot; the rented brain is its own thing).
 export const brainJobs = () => allSlots().filter((s) => s.kind === 'llm');
@@ -294,6 +294,7 @@ export function memTypeHtml(b, ctx) {
   return `<section class="brains-panel"><h3>Chat memory type ${tipHtml('The chat memory (KV cache) sits beside the brain on the card and grows as a chat gets longer. Standard is what I use unless you pick. Sharper keeps it at full detail: twice the room, a touch more exact on long code. Smaller packs it tighter: about half the room, so a longer chat fits, a little less exact. Smallest (only with a Brain Engine that has it) packs it tighter still: about two fifths, for the longest chats, less exact again. Progressive (only with a Brain Engine that has it) keeps the newest words sharp and packs older ones tight: 3-step keeps the newest at 8-bit, then 4-bit; 2-step at 4-bit. A long chat takes less room than Standard and stays nearly as exact. A change takes effect the next time this brain loads.', 'About the chat memory type')}</h3>
       <div class="seg" role="group" aria-label="Chat memory type for ${esc(b.name)}">${rows.map(seg).join('')}</div>
       <ul class="mem-trade">${rows.map((r) => `<li${r.id === cur ? ' class="on"' : ''}><strong>${esc(r.name)}</strong>${r.gb != null ? ` · about ${r.gb} GB for a 32K chat` : ''} <span class="muted">${esc(r.about)}</span></li>`).join('')}</ul>
+      ${p?.turboMem ? `<p class="muted">⚡ Turbo is on, so this brain uses <strong>${esc(MEM_TYPES[p.turboMem]?.name || p.turboMem)}</strong> until Turbo is off (Settings, Engine extras).</p>` : ''}
       <p class="muted">${off ? '🔒 Only with Brain Engine or llama.cpp. Ollama sets its chat memory for every brain at once.' : cur === 'standard' ? 'Standard. Takes effect the next time this brain loads.' : 'In use. Takes effect the next time this brain loads.'}</p></section>`;
 }
 

@@ -70,6 +70,8 @@ export function createEngineParts(now) {
         ${sswitch('copyGuess', settings.copyGuess === true, 'Prompt-lookup decoding', 'Speeds up rewrites of code and documents by copying text already in the chat. Same answer, no second brain. Not used with MTP.')}
         ${readingSpeedHtml()}
         ${sswitch('turboEveryday', settings.turboEveryday === true, 'MTP for everyday brains', 'Brains with their own built-in guesser use it for every reply, without the Lab. Same answer, written faster. Brains without one are unchanged.')}
+        ${sswitch('turbo', settings.turbo === true, 'Turbo', 'Show-off speed: every speed trick that costs a little answer quality, at once. For showing how fast I can go, not for real jobs. Your brains\' own picks come back when it\'s off.')}
+        ${settings.turbo === true ? turboHtml() : ''}
         ${sswitch('lockBrainMemory', settings.lockBrainMemory === true, 'Lock brain memory', 'When part of a brain sits in RAM, it stays there, so replies after a break don\'t wait on the drive. Uses that RAM until the brain unloads. Not used in Gaming.')}
         ${sswitch('hotExperts', settings.hotExperts === true, 'Hot experts on the card', 'For a brain made of experts that doesn\'t fit the card: the experts it uses most sit on the card from the first word, and the rest are worked out on the processor, so nothing swaps while I write. Calibrate counts which ones. Helps writing, not reading long prompts. Brain Engine 9 or newer.')}
         ${settings.hotExperts === true ? hotRoomHtml() : ''}
@@ -79,6 +81,15 @@ export function createEngineParts(now) {
         ${sswitch('speedLog', settings.speedLog === true, 'Speed history', 'Logs each reply\'s speed per day, brain and engine version. Numbers only, kept here for 90 days.')}
         ${speedLogHtml()}
       </div>`;
+  }
+  // Turbo (opt-in): what it turns on. Chat memory Smallest unless picked; 4 experts per word unless switched off.
+  function turboHtml() {
+    const pick = settings.turboMem || 'smallest';
+    const opts = [['smallest', 'Smallest (3-bit)'], ['small', 'Smaller (4-bit)'], ['progressive', 'Progressive 3-step'], ['progressive2', 'Progressive 2-step']];
+    return `<label class="pick"><strong>Turbo chat memory</strong> ${tip('The chat memory type every brain uses while Turbo is on. Smallest packs it tightest, for the most speed and room. Smaller and the Progressive kinds keep more detail. Smallest and Progressive need a Brain Engine that has them; otherwise I use Smaller.', 'Turbo chat memory')}
+        <select data-set="turboMem" aria-label="Turbo chat memory">${opts.map(([v, label]) => `<option value="${v}" ${v === pick ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
+      ${sswitch('turboExperts', settings.turboExperts !== false, 'Turbo: 4 experts per word', 'A brain made of experts asks only 4 of them per word, when it has more. Faster writing, a little less exact. A count you saved for a brain wins.')}
+      <span class="muted">Applies the next time a brain loads.</span>`;
   }
   // 101 Reading speed: how big a piece of a prompt the engine reads at a time. Normal is what Bob always did.
   function readingSpeedHtml() {

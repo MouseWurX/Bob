@@ -18,7 +18,7 @@ import { execFile } from 'node:child_process';
 import { MEM_TYPES, memTypeTrade } from '../public/mem-types.js';
 import { brainEngineBuild } from '../public/engine-name.js';
 
-export const EXTRA_SWITCHES = ['copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'turboEveryday', 'lockBrainMemory', 'hotExperts'];
+export const EXTRA_SWITCHES = ['copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'turboEveryday', 'lockBrainMemory', 'hotExperts', 'turbo'];
 export const extraOn = (cfg, key) => cfg?.[key] === true;
 
 // ---------- 94 Guess-ahead from the chat ----------
@@ -145,12 +145,23 @@ export function cleanMemType(v) {
 export const q3CardOk = (files, platform) => platform !== 'darwin' && !((files || []).some((f) => /ggml-(vulkan|metal)/i.test(f)) && !(files || []).some((f) => /ggml-cuda/i.test(f)));
 // The engine lists its chat memory types under -ctv in --help (wrapped over lines); 3-bit is there only on a Brain Engine with 0038.
 export const helpHasQ3 = (text) => { const t = String(text ?? ''), at = t.indexOf('--cache-type-v'); const m = at < 0 ? null : t.slice(at).match(/allowed values:[^\n]*(?:\r?\n[ \t]+[^-\s][^\n]*)*/); return Boolean(m) && /\bq3_0\b/.test(m[0]); };
+// ---------- Turbo (Nov 20, the owner's ask; off unless switched on) ----------
+// A show-off speed mode, not for real jobs: every speed trick that costs a little answer quality, at once. Its chat
+// memory is 3-bit (Smallest) for every brain unless picked otherwise (Smaller, or one of the Progressive kinds), and a
+// brain made of experts uses 4 per word when it has more (turboExperts, on unless switched off). The brain's own picks
+// come back when Turbo is off. Without a Brain Engine that has 3-bit, Smallest and Progressive fall back to Smaller.
+export const TURBO_MEMS = ['smallest', 'small', 'progressive', 'progressive2'];
+export const turboMem = (cfg) => (TURBO_MEMS.includes(cfg?.turboMem) ? cfg.turboMem : 'smallest');
+export const TURBO_EXPERTS = 4;
+export const turboExperts = (cfg) => cfg?.turbo === true && cfg?.turboExperts !== false;
+// The experts per word Turbo asks of a brain whose own count is `own`: 4 when it has more, else nothing.
+export const turboPerWord = (cfg, own) => (turboExperts(cfg) && Number(own) > TURBO_EXPERTS ? TURBO_EXPERTS : null);
 // Progressive Memory (Brain Engine patch 0039): the engine names LLAMA_KV_TIERS under -ctv in --help.
 export const helpHasTiers = (text) => /\bLLAMA_KV_TIERS\b/.test(String(text ?? ''));
 // Smallest (3-bit, Brain Engine patch 0038) needs an engine that has q3_0; without one it falls back to Smaller.
 // Progressive needs both; without them it falls back to Smaller too (the nearest in room).
 export function memTypeOf(cfg, model, { q3 = false, tiers = false } = {}) {
-  const t = cfg?.brainMemType?.[model];
+  const t = cfg?.turbo === true ? turboMem(cfg) : cfg?.brainMemType?.[model];
   if (t === 'smallest') return q3 ? 'smallest' : 'small';
   if (t === 'progressive' || t === 'progressive2') return q3 && tiers ? t : 'small';
   return t === 'sharp' || t === 'small' ? t : 'standard';

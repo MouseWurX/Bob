@@ -28,7 +28,7 @@ import { scutEnv, linkEnv, linkLive } from './share-card.js'; // SCUT, the fast 
 import { LinkLog } from './link-log.js'; // what the link to a lent card carried, kept in a file and the logbook
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
-import { helpHasQ3, helpHasTiers, tiersEnv, q3CardOk, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
+import { helpHasQ3, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
 
@@ -1413,7 +1413,15 @@ export class LlamaCpp {
   // this engine and again after a change, with no reload. Nothing is sent for a brain without one. Only when this
   // reply has the engine to itself (Brain Engine refuses while answering); otherwise the next reply sends it.
   async sendPerWord(model) {
-    const want = perWordFor(this.lc, model);
+    let want = perWordFor(this.lc, model);
+    // Turbo (opt-in): 4 experts per word for a brain made of more, unless a count is saved for it
+    if (want === null && turboExperts(this.cfg) && this.current === model && this.active <= 1) {
+      this.ownPerWord ||= {};
+      if (!(model in this.ownPerWord)) {
+        try { const r = await fetch(`${this.url}/experts-per-word`, { signal: AbortSignal.timeout(15000) }); this.ownPerWord[model] = r.ok ? Number((await r.json())?.n_expert_used) || 0 : 0; } catch { this.ownPerWord[model] = 0; }
+      }
+      want = turboPerWord(this.cfg, this.ownPerWord[model]);
+    }
     const key = `${model}|${JSON.stringify(want)}`;
     if (this.perWordSent === key || this.current !== model || this.active > 1) return;
     if (want === null && !this.perWordLive) { this.perWordSent = key; return; } // the brain's own, and the engine has it

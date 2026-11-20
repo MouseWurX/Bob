@@ -11,7 +11,7 @@ import { mergeSettings } from '../src/config.js';
 import { LlamaCpp } from '../src/llamacpp.js';
 import { modelFor } from '../src/sessions.js';
 import {
-  EXTRA_SWITCHES, extraOn, newSpecFlags, draftNumArgs, copyGuessArgs, COPY_GUESS_ARGS, cleanMemType, memTypeOf, memArgs, MEM_TYPES, helpHasQ3, q3CardOk, helpHasTiers, progressiveTiers, tiersEnv, TIERS_SLACK,
+  EXTRA_SWITCHES, extraOn, newSpecFlags, draftNumArgs, copyGuessArgs, COPY_GUESS_ARGS, cleanMemType, memTypeOf, memArgs, MEM_TYPES, helpHasQ3, q3CardOk, helpHasTiers, progressiveTiers, tiersEnv, TIERS_SLACK, turboMem, turboPerWord, TURBO_MEMS,
   parseWinBattery, parseMacBattery, linuxBattery, onBattery, setOnBattery, batteryNow, laptopSaving, laptopThreads,
   cardKey, cardChange, placesToAuto, handoffHat, warmRoom, warmFile, WARM_SPARE, plainEngineNotes, engineNoteLine, brainEngineNumber,
   READING_PICKS, readingPick, readingSteps, readingChoice, readingArgs, dropReading, lockRoom, lockFloor, everydayTurboArgs, TURBO_EVERYDAY_MAX, lockMemoryArgs
@@ -33,7 +33,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-extras-'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- Off unless turned on ----------
-check('nine switches, all off in a fresh Bob', EXTRA_SWITCHES.length === 9 && EXTRA_SWITCHES.every((k) => !extraOn({}, k)));
+check('ten switches (Turbo is the tenth), all off in a fresh Bob', EXTRA_SWITCHES.length === 10 && EXTRA_SWITCHES.every((k) => !extraOn({}, k)));
 { const m = mergeSettings({}, Object.fromEntries(EXTRA_SWITCHES.map((k) => [k, 'yes'])));
   check('only true turns one on when saved', EXTRA_SWITCHES.every((k) => m[k] === false) && mergeSettings({}, { copyGuess: true }).copyGuess === true); }
 check('the example settings file switches none of them on', (() => { const ex = JSON.parse(read('config.example.json')); return EXTRA_SWITCHES.every((k) => ex[k] !== true) && !ex.brainMemType; })());
@@ -139,6 +139,14 @@ check('2-step is kept, needs the same engine, and goes to the engine as its own 
 { const k3 = kvBytes({ perToken: 20480 }, 262144, ['-ctk', 'q3_0', '-ctv', 'q3_0']), kp = kvBytes({ perToken: 20480 }, 262144, ['-ctk', 'q3_0', '-ctv', 'q3_0'], 'q8_0:8192,q4_0:65536', 4096);
   const want = 20480 * (262144 * 14 / 32 + 12288 * 34 / 32 + 69632 * 18 / 32);
   check('room math counts each step\'s copy (window plus room for a batch)', Math.abs(kp - want) < 2 && kp > k3, `${kp} ${want}`); }
+
+// Turbo (Nov 20, off unless switched on): show-off speed, every brain's memory to the Turbo pick, 4 experts per word
+check('Turbo is off unless switched on', !EXTRA_SWITCHES.includes('turbo') ? false : memTypeOf({ brainMemType: { big: 'sharp' } }, 'big', { q3: true }) === 'sharp');
+check('Turbo puts every brain on 3-bit chat memory, over its own pick', memTypeOf({ turbo: true, brainMemType: { big: 'sharp' } }, 'big', { q3: true }) === 'smallest' && memTypeOf({ turbo: true }, 'other', { q3: true }) === 'smallest');
+check('Turbo\'s memory can be picked: Smaller or Progressive', memTypeOf({ turbo: true, turboMem: 'small' }, 'big', { q3: true }) === 'small' && memTypeOf({ turbo: true, turboMem: 'progressive' }, 'big', { q3: true, tiers: true }) === 'progressive' && turboMem({ turboMem: 'nonsense' }) === 'smallest' && TURBO_MEMS.length === 4);
+check('Turbo without a 3-bit engine falls back to Smaller', memTypeOf({ turbo: true }, 'big') === 'small');
+check('Turbo\'s Progressive pick reaches the engine as its steps', tiersEnv({ turbo: true, turboMem: 'progressive2' }, 'big', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS === 'q4_0:65536' && !tiersEnv({ turbo: true }, 'big', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS);
+check('Turbo asks 4 experts per word only of a brain with more, and only while on', turboPerWord({ turbo: true }, 8) === 4 && turboPerWord({ turbo: true }, 4) === null && turboPerWord({ turbo: true }, 0) === null && turboPerWord({}, 8) === null && turboPerWord({ turbo: true, turboExperts: false }, 8) === null);
 
 // ---------- 98 Laptop mode ----------
 check('Windows battery: 1 is on battery, 2 plugged in, nothing is no battery', parseWinBattery('1\r\n') === true && parseWinBattery('2') === false && parseWinBattery('') === null);
