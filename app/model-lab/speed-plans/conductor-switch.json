@@ -1,0 +1,252 @@
+{
+ "name": "Conductor switch cost on Brain Engine 21: live POST /context changes at 32K with the brain kept loaded (fixed placement), chat saved and restored around each, against a fresh start at the same setting, 5 repeats",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 65)",
+ "exe": "${BE21_SERVER}",
+ "brain": "${BRAIN}",
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "-c",
+  "49152",
+  "-b",
+  "4096",
+  "-ub",
+  "4096",
+  "--fit",
+  "off",
+  "-ngl",
+  "99",
+  "--n-cpu-moe",
+  "${NCMOE_32K}",
+  "--moe-cache-mib",
+  "4096",
+  "--moe-cache-cpu-share",
+  "0",
+  "-ctk",
+  "q4_0",
+  "-ctv",
+  "q4_0",
+  "--slot-save-path",
+  "${SLOT_DIR}",
+  "-lv",
+  "4"
+ ],
+ "env": {
+  "GGML_CUDA_NO_PINNED": "1",
+  "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+ },
+ "prompt": {
+  "file": "long-text.md",
+  "tokens": 32768
+ },
+ "followUp": "\n\nIn two sentences, what is this text about?",
+ "maxTokens": 64,
+ "repeats": 5,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "switches": [
+  {
+   "id": "step-2048-to-4096",
+   "from": {
+    "n_batch": 2048,
+    "n_ubatch": 2048,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "n_batch": 4096,
+    "n_ubatch": 4096
+   }
+  },
+  {
+   "id": "step-4096-to-2048",
+   "from": {
+    "n_batch": 4096,
+    "n_ubatch": 4096,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "n_batch": 2048,
+    "n_ubatch": 2048
+   }
+  },
+  {
+   "id": "step-4096-to-6144",
+   "from": {
+    "n_batch": 4096,
+    "n_ubatch": 4096,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "n_batch": 6144,
+    "n_ubatch": 6144
+   }
+  },
+  {
+   "id": "step-6144-to-4096",
+   "from": {
+    "n_batch": 6144,
+    "n_ubatch": 6144,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "n_batch": 4096,
+    "n_ubatch": 4096
+   }
+  },
+  {
+   "id": "learn-on",
+   "from": {
+    "n_batch": 4096,
+    "n_ubatch": 4096,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "moe_cache_cpu_share": 1,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": 16,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": 1.5
+    }
+   }
+  },
+  {
+   "id": "learn-off",
+   "from": {
+    "n_batch": 4096,
+    "n_ubatch": 4096,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 1,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": 16,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": 1.5,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "moe_cache_cpu_share": 0,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null
+    }
+   }
+  },
+  {
+   "id": "lend-on",
+   "from": {
+    "n_batch": 4096,
+    "n_ubatch": 4096,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEND": 4096
+    }
+   }
+  },
+  {
+   "id": "lend-off",
+   "from": {
+    "n_batch": 4096,
+    "n_ubatch": 4096,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": 4096
+    }
+   },
+   "to": {
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   }
+  },
+  {
+   "id": "kv-q4-to-q8",
+   "from": {
+    "n_batch": 4096,
+    "n_ubatch": 4096,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "cache_type_k": "q8_0",
+    "cache_type_v": "q8_0"
+   }
+  },
+  {
+   "id": "kv-q8-to-q4",
+   "from": {
+    "n_batch": 4096,
+    "n_ubatch": 4096,
+    "cache_type_k": "q8_0",
+    "cache_type_v": "q8_0",
+    "moe_cache_cpu_share": 0,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0"
+   }
+  }
+ ]
+}

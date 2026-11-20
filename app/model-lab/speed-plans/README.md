@@ -57,6 +57,7 @@ starts.
 - `perplexity-cpu-read.json`: answer drift of the processor read at 1024 on Brain Engine 20, share 0 and 1 each against its own base, 8 runs (Addendum 61).
 - `coding-32k-64k.json`: the coding use (1,500 written tokens): stock vs 2x4, 4x4 and 4x0 at 32K and 64K, 24 loads (Addendum 63).
 - `perplexity-kv3.json`, `needle-kv3.json`, `speed-kv3.json`: the 3-bit chat memory (q3_0) on Brain Engine 21: drift, needles, speed and memory, 10 runs, 20 and 36 loads (Addendum 64).
+- `conductor-switch.json`: live `POST /context` switch cost at 32K on Brain Engine 21 (`model-lab/switch-cost.mjs`), 10 switches x 5 repeats on one load, plus fresh-start references (Addendum 65).
 - `perplexity-q3-vs-q4.json`: UD-Q3_K_XL against our UD-Q4_K_XL (f16 and q4_0 cache), 8 runs; needs `BRAIN_Q3`. `perplexity-q8-reference.json`: Q4 and Q3 against Q8_0, 6 runs; needs `BRAIN_Q8` (Addendum 57).
 - `real-desktop.json`: the picks so far at margins 512/1024, run on a clean desktop and again with a busy browser, 8 loads per pass (Addendum 45).
 - `cpu-share.json`: copy cache with processor share 0 / 0.25 / 0.5, 4x4 q4_0 margin 512, 32K and 128K, 6 loads (Addendum 46).

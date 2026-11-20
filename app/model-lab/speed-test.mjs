@@ -496,7 +496,7 @@ function crashText(what, e, srv) {
 }
 
 // The real world: spawn the engine, sample the card, the stop rules, the lock.
-function realFx(plan, outDir) {
+export function realFx(plan, outDir) {
   const logDir = path.join(outDir, 'engine-logs');
   fs.mkdirSync(logDir, { recursive: true });
   let n = 0;
@@ -507,7 +507,7 @@ function realFx(plan, outDir) {
       const child = nodeSpawn(exe, args, { env: { ...process.env, ...env }, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
       let said = '';
       const log = fs.createWriteStream(file);
-      const keep = lineSplitter((line) => { if (/MoE cache|ranked fill|llama_moe_cache:|CUDA_Host\s+compute buffer/.test(line)) said += line + '\n'; });
+      const keep = lineSplitter((line) => { if (/MoE cache|ranked fill|llama_moe_cache:|CUDA_Host\s+compute buffer|brain kept loaded|brain loaded again|context \d+ -> \d+ tokens/.test(line)) said += line + '\n'; });
       child.stderr.on('data', (d) => { log.write(d); keep(d); });
       const url = `http://127.0.0.1:${args[args.indexOf('--port') + 1]}`;
       return {

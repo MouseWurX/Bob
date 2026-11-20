@@ -915,6 +915,24 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 65 (Nov 19, before any run): what a live setting change costs the conductor
+
+The owner wants the conductor (Bob changing engine settings per job step). It only pays if a change is cheap. Brain
+Engine 21 has `POST /context` (patches 0035 and 0037), which changes the step, the chat memory type, the processor share
+and the engine keys (learning, lending) with the brain kept loaded. New runner `model-lab/switch-cost.mjs`, plan
+`conductor-switch.json`: one load at 32K, 4x4, q4_0, fixed placement (`--fit off -ngl 99 --n-cpu-moe ${NCMOE_32K}`, so
+layers never move), 10 switches (step 2048 <-> 4096, 4096 <-> 6144; learning on/off at share 1 with learn 16; lending
+on/off; chat memory q4_0 <-> q8_0), 5 repeats each. For each: set the `from` setting, read a 32K prompt, save the chat,
+switch (timed, plus the engine's own seconds and its kept-loaded line), restore the chat (timed; a refusal is written
+down), and ask a follow-up (first word, words). Then a fresh engine started at each `to` setting answers the same prompt
+and follow-up, and the words are compared.
+
+**Predictions, written before any run:** every switch logs "brain kept loaded". Step and key switches take under 1 s,
+the chat memory switch under 2 s, and save plus restore of a 32K chat under 1 s; the restore is refused across chat
+memory types (the saved cache is in the old type), so that switch must read the chat again (about 9 s at 32K). The
+words after a switch match a fresh start at that setting, except where Section 25's placement effect applies (none
+expected with the placement fixed).
+
 ## Addendum 64 (Nov 19, before any run): the 3-bit chat memory (q3_0) on Brain Engine 21
 
 The owner asked for a 3-bit chat memory and approved its test (Speed thread card, 5:22 PM). Brain Engine 21
