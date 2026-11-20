@@ -915,6 +915,19 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 85 (Nov 20, before any run): every 3-bit, 2-bit and Progressive row at step 4096 with a 4 GB cache
+
+The 3-bit gap check (Addendum 78) found the 15-16% q3_0 gap in the Progressive plans came from their step 5120 with
+a 3.5 GB copy cache (q3_0 loses 14% from the smaller cache, q4_0 3%), not from 3-bit memory: at step 4096 with 4 GB
+q3_0 trails q4_0 by 4%. Bob's app never uses 3.5 GB. From here every Progressive and plain q3_0/q2_kv row runs at
+step 4096 with a 4 GB copy cache: `progressive-ring-be26.json` and `speed-8plus2-be27.json` are changed to it (the
+needle plan already used it), and the new `speed-8plus3-c4096-be26.json` reruns 8+3 against q3_0 and q4_0 at 32K and
+128K, 5 rounds taking turns, cool-down on; it replaces Addendum 73's 8+3 speed verdict. With `--fit on` the 256K rows
+of the 8+2 plan may move a few layers to fit the bigger cache; the summary's placement shows it.
+
+**Predictions, written before any run:** at step 4096 with 4 GB, 8+3 writes within 8% of q3_0 at 32K and within 3%
+at 128K, and q3_0 within 5% of q4_0 at both. Addendum 73's speed bars apply unchanged.
+
 ## Addendum 84 (Nov 20, before any run): lend a 6 GB copy cache to the reading step instead of switching
 
 The owner noted a reply's length is not known before it is written, and Bob's 440 clean lessons agree (replies with
