@@ -915,6 +915,19 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 69 (Nov 20, before any run): how much the doorbell overlap could save
+
+Strata's overlap lets the card and the processor work on different experts at once. Section 28's where-time was at processor share 0,
+where the processor does almost nothing (0.1 ms against 3.3 ms of copies per word), so it says nothing about the overlap. The overlap
+only pays where the processor takes misses: share 1, as with the learning cache. `speed-plans/overlap-ceiling.json`, Brain Engine 21,
+1 round, 3 loads: 2x4 at 32K share 1, the same with LLAMA_MOE_CACHE_LEARN 16 / margin 1.5, and that at 128K (start, code edit; the
+128K load also reads 122,880 tokens), each with GGML_SCHED_TIMING=64 and GGML_SCHED_OVERLAP_LOG=64. Read per written word: card ms
+(expert part and the rest), processor ms, copy ms, and who waits on whom.
+
+The ceiling per layer is about the smaller of the card's expert part and the processor's part. Written before the run: with learn 16
+the processor part is 15-30% of a word's time, so the ceiling is 10-25% faster writing on code edits; under 8% means the overlap is
+not worth its 1.5-2.5 weeks on the test PC. Diagnostic only: no speed claim is made from these loads (the logs slow the engine).
+
 ## Addendum 68 (Nov 20, before any run): how long the n-gram drafts may be
 
 N-gram drafts wrote code edits about 45% faster on Brain Engine 19 but left word gaps of 170-330 ms at p99 (Addendum 54 (D)).

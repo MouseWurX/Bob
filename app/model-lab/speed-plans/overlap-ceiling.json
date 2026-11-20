@@ -1,0 +1,145 @@
+{
+ "name": "Overlap ceiling at processor share 1 (doorbell go/no-go), Brain Engine 21, diagnostic logs, 1 round",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 69)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be21": {
+   "exe": "${BE21_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "code": "code-edit.md",
+  "k120": "long-text.md"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 1,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "saveText": true,
+ "promptTokens": {
+  "k120": 122880
+ },
+ "question": {
+  "k120": "\n\nIn two sentences, what is this text about?"
+ },
+ "promptRepeat": {
+  "k120": 4
+ },
+ "rows": [
+  {
+   "id": "O1-2x4-share1",
+   "engine": "be21",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "1",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "GGML_SCHED_TIMING": "64",
+    "GGML_SCHED_OVERLAP_LOG": "64"
+   },
+   "prompts": [
+    "start",
+    "code"
+   ]
+  },
+  {
+   "id": "O2-2x4-share1-learn16",
+   "engine": "be21",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "1",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "GGML_SCHED_TIMING": "64",
+    "GGML_SCHED_OVERLAP_LOG": "64",
+    "LLAMA_MOE_CACHE_LEARN": "16",
+    "LLAMA_MOE_CACHE_LEARN_MARGIN": "1.5"
+   },
+   "prompts": [
+    "start",
+    "code"
+   ]
+  },
+  {
+   "id": "O3-2x4-share1-learn16-128K",
+   "engine": "be21",
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "1",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "GGML_SCHED_TIMING": "64",
+    "GGML_SCHED_OVERLAP_LOG": "64",
+    "LLAMA_MOE_CACHE_LEARN": "16",
+    "LLAMA_MOE_CACHE_LEARN_MARGIN": "1.5"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k120"
+   ]
+  }
+ ]
+}
