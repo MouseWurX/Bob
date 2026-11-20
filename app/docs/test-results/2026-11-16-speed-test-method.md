@@ -915,6 +915,23 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 84 (Nov 20, before any run): lend a 6 GB copy cache to the reading step instead of switching
+
+The owner noted a reply's length is not known before it is written, and Bob's 440 clean lessons agree (replies with
+thinking: median 81 tokens, 90th percentile 281, none over 1,500), so Bob no longer grows the cache on a guess and
+Addendum 83's grow way is renamed `e-forced-long-reply-grow`: a measurement of the mechanism, not Bob's behaviour.
+The same goal with no switch: hold a 6 GB copy cache and let patch 0022 lend it to the step's working blocks for long
+reads (`LLAMA_MOE_CACHE_LEND=4096`), giving it back at the first short write. Plans
+`lend-bigcache-{32k,128k}-r{600,2000}.json` (`conductor-e2e.mjs`, Brain Engine 28, fixed placement, q4_0 memory,
+5 rounds taking turns, cool-down on): a 28,672-token read, then one reply of 600 tokens (thinking off) or 2,000
+tokens (thinking on), at a 48K or 136K context; way f stays at step 6144 with 4 GB, way g at step 6144 with 6 GB and
+the lend. The engine log gives the lend and refill times.
+
+**Predictions, written before any run:** with the lend, g reads within 5% of f (Addendum 82's 6 GB read took 133 s
+without it); the refill after the read costs 0.3-1 s; g writes 5-12% faster (Addendum 82: 94 against 83 t/s at 32K,
+smaller at 128K). So g wins the 2,000-token job at 32K by 1-2 s and ties at 600 tokens and at 128K. Pass: g's median
+job is no longer than f's at every size and length, and g writes the same words in every round.
+
 ## Addendum 83 (Nov 20, before any run): the conductor grows the copy cache for a long thinking reply, 32K
 
 Addenda 81-82 found that a bigger copy cache writes faster (89 against 83 t/s at 6 GB) but costs a switch, and that

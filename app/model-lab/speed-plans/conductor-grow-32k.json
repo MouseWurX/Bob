@@ -1,5 +1,5 @@
 {
- "name": "Conductor grows the copy cache for a long thinking reply at 32K (Brain Engine 28, patch 0047's free memory): a 28K-token file read, then one follow-up answered with thinking on in 2,000 tokens; staying at step 6144 with 4 GB against Bob's grow (4 GB + min(2 GB, card free - 768 MiB) before the long reply), 5 rounds round-robin, cool-down on",
+ "name": "Conductor grows the copy cache for a long thinking reply at 32K (Brain Engine 28, patch 0047's free memory): a 28K-token file read, then one follow-up answered with thinking on in 2,000 tokens; staying at step 6144 with 4 GB against Bob's grow (forced long reply: a mechanism measurement, Bob no longer guesses reply length) (4 GB + min(2 GB, card free - 768 MiB) before the long reply), 5 rounds round-robin, cool-down on",
  "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 83)",
  "brain": "${BRAIN}",
  "engines": {
@@ -61,7 +61,7 @@
    ]
   },
   {
-   "id": "e-conductor-grow",
+   "id": "e-forced-long-reply-grow",
    "engine": "be28",
    "args": [
     "-b",

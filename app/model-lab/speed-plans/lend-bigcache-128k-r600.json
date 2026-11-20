@@ -1,0 +1,82 @@
+{
+ "name": "Lend a 6 GB copy cache to the reading step at 128K (Brain Engine 28, patch 0022): a 28K-token read, then one 600-token reply; staying at step 6144 with 4 GB against step 6144 with 6 GB and LLAMA_MOE_CACHE_LEND=4096, no switch, 5 rounds round-robin, cool-down on",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 84)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be28": {
+   "exe": "${BE28_SERVER}",
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  }
+ },
+ "text": "long-text.md",
+ "textRepeat": 1,
+ "system": "You are a helpful assistant. Answer plainly.",
+ "bigRead": 28672,
+ "followUps": 1,
+ "followTokens": 200,
+ "replyTokens": 300,
+ "rounds": 5,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "wordsRef": "f-stay-6144-c4096",
+ "baseArgs": [
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "-c",
+  "139264",
+  "--fit",
+  "off",
+  "-ngl",
+  "99",
+  "--n-cpu-moe",
+  "${NCMOE_128K}",
+  "--moe-cache-mib",
+  "4096",
+  "--moe-cache-cpu-share",
+  "0",
+  "-ctk",
+  "q4_0",
+  "-ctv",
+  "q4_0",
+  "--slot-save-path",
+  "${SLOT_DIR}",
+  "-lv",
+  "4"
+ ],
+ "ways": [
+  {
+   "id": "f-stay-6144-c4096",
+   "engine": "be28",
+   "args": [
+    "-b",
+    "6144",
+    "-ub",
+    "6144"
+   ]
+  },
+  {
+   "id": "g-stay-6144-c6144-lend4096",
+   "engine": "be28",
+   "args": [
+    "-b",
+    "6144",
+    "-ub",
+    "6144",
+    "--moe-cache-mib",
+    "6144"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LEND": "4096"
+   }
+  }
+ ],
+ "followQuestion": "How does this part fit with what came before? Answer in a few paragraphs.",
+ "followReplyTokens": 600,
+ "thinking": false
+}
