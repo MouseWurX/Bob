@@ -95,6 +95,7 @@ All speeds are tokens a second. "Read" is prompt reading speed and "write" is wr
 - **Fixed settings.** Bob's own engine flags were used (`--jinja -fa on -ctk q8_0 -ctv q8_0 --fit on -np 1`) at a context of 49,152 unless a row changes one. Each run used temperature 0, seed 42, `ignore_eos` and exactly 300 written tokens, with no prompt cache between runs. The exact command line of every run is saved. The Turbo rows marked "Bob's sampling" used Bob's own sampling instead.
 - **What is measured.** First word, read and write come from the engine's own timings. Peak card memory was sampled by nvidia-smi every 250 ms. We also record the layers whose experts `--fit` placed in RAM. For hot-expert rows we record cache hits, misses and megabytes copied.
 - **Machine state.** Card temperature, power, clocks and throttle reasons were sampled every 250 ms. Processor temperature came from HWiNFO when it was logging. We recorded free RAM and the top 5 other processes at the start and end of each run. A throttled run is kept and flagged, not dropped.
+- **Cool-down, from 20 November (Addendum 74).** The 3-bit memory looked 18% slower at 128K in one run and 6% slower in a same-day head-to-head, because the first run's long rows throttled 43% to 56% of the time. Since then every speed test reads the idle card's temperature first and waits, before every load and timed run, until the card is back within 3 °C of it (at least 35 °C, at most 300 s a wait). Each row records its start and top temperature and its median and lowest clock. Waits, and waits that hit the limit, are written down, and runs whose start temperatures differ by more than 5 °C are flagged, not averaged. A rerun of Progressive Memory with the cool-down matched the run without it within 1% to 3%. The long 128K and 256K runs still showed as throttled at under 72 °C, which is the card's boost backing off for power during the long prompt, not heat. On the 128K switch test the 300 s cap was hit 29 of 30 times (2.4 hours of waiting), because the empty card idles cooler than a loaded one; the target now rises after a full wait.
 - **Clean-machine and lock rules.**
   - The test takes the PC's test lock, runs on its own port and in its own folder, and keeps its windows minimized.
   - It never touches the copy of Bob in daily use.
@@ -763,7 +764,9 @@ These are queued on the home PC in this order, and each has its addendum written
 | Whether q4_0 counts as passing the quality gate | – | decided 19 November: a borderline pass |
 | Coding use (Addendum 63: 1,500 written tokens, 32K and 64K): stock, 2x4, 4x4 and 4x0 | 24 | done: 4x4 ties stock (0.3%); prediction of a 3% win failed |
 | Coding rerun of the throttled 64K rows (stock and 4x0) | – | queued |
-| Read-then-write switch (Addendum 76) | 18 | provisional: the step switch ties staying at 128K, and the learning cache switched on mid-chat cuts writing by 62% to 63%. The stay rows rerun with the cache-moving switch (Addendum 81) |
+| Read-then-write switch (Addenda 76, 81, 82) | about 140 | done: no switch beats staying at the big step with a 4 GB cache for 600-word replies; the learning cache switched on mid-chat cuts writing by 62% to 63% |
+| Growing the cache for a known long reply, and lending a 6 GB cache to reading (Addenda 83, 84) | – | planned, needs Brain Engine 28 |
+| Progressive Memory rework (0045, Brain Engine 26) | 77 | done: 8+3 passes speed at 128K and 256K and fails at 32K; accuracy passes at a quarter scale |
 | Q3 brain against Q4 (Addendum 57) | – | done: perplexity +0.9% to 1.5%, but mean KLD 0.034 to 0.043 and same top word 91.5% fail the drift line; whether to keep testing it is waiting on approval |
 | Processor reads of cache misses (patch 0032) | – | done: same top word 97.8% to 98% against the 99% gate, so it fails and stays out of the picks |
 | KV split (patch 0036) | – | shelved: writing collapses past the split |
@@ -822,13 +825,34 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 - **Its accuracy run was void.** The plan used an 8K text, which never passes the 8,192 and 16,384-word windows, so the engine correctly said "NOT USED". A 16K rerun is planned.
 - **It failed on speed** (28 loads, every row engaged). It wrote 56% to 78% slower than plain q3_0 on long chats, and worse as the chat grew: 6.5 to 7.5 tokens a second at 256K against 29.7. Reading was untouched, so the cost is in each written word.
 - **Recall passes.** The needle was found 150 of 150 times (each of the three layouts 25 of 25 at 128K and at 256K, 30 loads), though writing stayed at 6 to 14 tokens a second.
-- **Fix 0045, in Brain Engine 26, is unproven in our lab, as we have yet to test.**
+- **Fix 0045 (Brain Engine 26) made it 2.2 to 3.4 times faster** by taking the main cache's share from flash attention itself instead of a separate pass. Writing tokens a second, with the cool-down (34 loads; a run without it matched within 1% to 3%):
+
+| Size | q4_0 | q3_0 | 3-step | 8+3 | 8+4 |
+|---|---|---|---|---|---|
+| 32K | 92.3 | 88.5 | 69.2 | 73.2 | 72.4 |
+| 128K | 57.9 | 48.8 | 38.8 | 48.1 | 50.3 |
+| 256K | 36.5 | 32.6 | 28.4 | 30.9 | 33.0 |
+
+- **Against the bars set before the run** (within 10% of q3_0; 8+4 within 5% of q4_0): 8+3 passes at 128K and 256K and fails at 32K (17% slower). 3-step fails. 8+4 fails against q4_0 (10% to 22% slower).
+- **Accuracy passes** (16K × 2, 9 runs, every layer of the memory engaged; f16 base):
+
+| Cache | Mean KLD | Same top word |
+|---|---|---|
+| q8_0 | 0.0120 | 97.05% |
+| q4_0 | 0.0227 | 95.42% |
+| q3_0 | 0.0484 | 92.67% |
+| 3-step | 0.0271 | 96.13% |
+| 8+3 | 0.0278 | 95.67% |
+| 8+4 | 0.0164 | 96.70% |
+
+  8+3 drifts 42% less than plain q3_0, close to q4_0, and 8+4 beats plain q4_0 on every measure. The fast and old passes gave identical numbers, and the start chat wrote the same words as Brain Engine 22. These KLD values are higher than the 4K and 8K runs because the text and splits differ; compare within this table only. The windows were a quarter of their full size, so the full-size claim is unproven in our lab, as we have yet to test.
+- **8+3 saves memory only past about 128K.** Its sharp copy adds 170 MiB, so at 32K it uses 380 MiB against 270 for q4_0, and at 128K the two are equal.
 
 **Changing settings without a reload (the "conductor", Brain Engine 21).** Each switch saves the chat, changes the setting and restores the chat, with the brain kept loaded every time (10 switches × 5 repeats at 32K, 2 × 3 at 128K, no crashes).
 - **A step, learning-cache or lend switch costs about 0.9 to 1.0 s at 32K and about 2.4 s at 128K**, against about 50 s to read a 128K chat again. So these can change between messages.
 - **Changing the memory type (q4_0 to q8_0) can't restore the saved chat.** The chat is read again, which took about 10.5 s at 32K. So the memory type can change only at a chat's start or on short chats.
 - **The replies after a switch differ from a fresh start,** because the chat was read at the old step. Each switched reply matches a fresh start at its old step, and repeats were identical, so this is a step effect, not damage.
-- **Reading at a big step, then writing at a small one (Brain Engine 25, 20 November, 18 loads, 3 repeats, provisional).** A 600-word reply after the chat was read:
+- **Reading at a big step, then writing at a small one (Brain Engine 25, 20 November, 18 loads, 3 repeats).** A 600-word reply after the chat was read:
 
 | Size | Switch after reading | Writing tokens a second | Job s |
 |---|---|---|---|
@@ -837,7 +861,24 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 | 128K | step 5120 to 2048 | 59.2 | 56.3 |
 | 128K | learning cache on | 22.0 | 73.9 |
 
-- **The step switch saves nothing at 128K.** Staying at step 5120 comes to about 56 s too, estimated from its timed read (46.4 s) and fresh-start writing (59 to 59.5 tokens a second), because writing speed doesn't depend on the step at 128K. The rows that stay at the big step were refused by a bug in our test runner, which sent an empty request. It is fixed, and they rerun with the cache-moving switch (Addendum 81), so this result is provisional until then.
+- **The step switch saves nothing.** In the first run the rows that stay at the big step were refused by a bug in our test runner, which sent an empty request. After the fix, the rerun below measured staying at step 5120 at 54.8 s against 57.8 s for the switch at 128K, and 15.8 s against 16.8 s at 32K.
+- **Moving the copy cache to the writing side doesn't pay either (Addendum 81, 5 repeats each, cool-down on).** MouseWurX's idea: read at a big step with a small copy cache, then switch to a small step with a big one. 600-word replies:
+
+| Size | Setting | Writing tokens a second | Job s |
+|---|---|---|---|
+| 32K | stay at step 6144, 4 GB cache | 82.9 | **15.8** |
+| 32K | stay at step 2048, 4 GB | 76.0 | 22.6 |
+| 32K | switch step 6144 to 2048, 4 GB | 82.8 | 16.8 |
+| 32K | switch cache 2 GB to 6 GB | **89.4** | 16.5 |
+| 32K | switch cache 2 GB to 7 or 8 GB | 21 to 24 | 57 to 59 |
+| 128K | stay at step 5120, 4 GB | 59.1 | **54.8** |
+| 128K | switch step 5120 to 2048, 4 GB | 59.2 | 57.8 |
+| 128K | switch cache 2 GB to 6 GB | 60.3 | 57.4 |
+
+- **A bigger writing cache writes up to 8% faster at 32K** (hit rate 88% to 94% at 6 GB) but only 2% at 128K. It still loses the whole job to staying at the big step, by about 0.7 s at 32K and 2.6 s at 128K: the switch (about 0.9 s at 32K, 2.3 s at 128K) and a later first word outweigh the faster writing on 600 words. At 32K it would break even near 1,500 words. 7 and 8 GB overfill the card at 32K.
+- **Holding a bigger cache without switching wrecks reading (Addendum 82).** At step 6144, a 5 GB cache read 32K in 16.2 s and a 6 GB cache in 132.8 s, against 8.7 s with 4 GB, because the cache and the reading step don't both fit on the card. The 6 GB row wrote fastest, 94.4 tokens a second, but its job took 139 s. Staying at step 6144 with 4 GB was the best single setting at both sizes.
+- **The cache size changes the words.** Each size wrote the same words on every repeat, but 4, 5 and 6 GB wrote different words from each other, because which experts run on the card and which on the processor changes the rounding. Switched runs also differed from a fresh start, for the step reason above.
+- **Real replies are short, so Bob doesn't grow the cache on a guess.** Bob's 440 clean lessons, replies with thinking, have a median of 81 tokens and a 90th percentile of 281, and none passes 1,500. A reply's length isn't known before it's written, and a guessed switch would pay only past about 1,500 words. So guess-based switching was dropped. Two ways that need no guess, growing the cache for a reply known to be long and lending a 6 GB cache to the reading step, are unproven in our lab, as we have yet to test (Addenda 83 and 84).
 - **Turning the learning cache on mid-chat cut writing by 62% to 63%.** That is far worse than predicted, and unlike the 19 November gain when it learned from the start over many turns of code edits. Don't switch it on mid-chat.
 
 **How much a word could gain from overlap (Brain Engine 21, 3 loads).** The timing log splits each written word into card, processor and copy time.
