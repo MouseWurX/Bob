@@ -326,7 +326,7 @@ function clean(patch) {
   if ('engineTuning' in out) out.engineTuning = savedTuning(cleanTuning(out.engineTuning)); // Engine tuning, set by hand
   if ('brainMemType' in out) out.brainMemType = cleanMemType(out.brainMemType); // 100 memory type per brain; Standard when not set
   if ('readingSpeed' in out) out.readingSpeed = READING_PICKS.includes(out.readingSpeed) ? out.readingSpeed : 'normal'; // 101, Normal unless picked
-  if ('turboMem' in out && !['smallest', 'small', 'progressive', 'progressive2', 'progressive83'].includes(out.turboMem)) delete out.turboMem; // Turbo's chat memory
+  if ('turboMem' in out && !['smallest', 'small', 'progressive', 'progressive2', 'progressive83', 'progressive84'].includes(out.turboMem)) delete out.turboMem; // Turbo's chat memory
   if ('turboExperts' in out && typeof out.turboExperts !== 'boolean') delete out.turboExperts;
   if ('turboStandins' in out && typeof out.turboStandins !== 'boolean') delete out.turboStandins;
   if ('hotExpertsGB' in out) out.hotExpertsGB = cleanHotGB(out.hotExpertsGB); // 104: null = a quarter of the card, at most 4 GB

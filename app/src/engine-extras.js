@@ -135,7 +135,7 @@ export function cleanMemType(v) {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return out;
   for (const [k, t] of Object.entries(v).slice(0, 64)) {
     if (typeof k !== 'string' || !k || k.length > 200 || /[\u0000-\u001f]/.test(k)) continue;
-    if (t === 'standard' || t === 'sharp' || t === 'small' || t === 'smallest' || t === 'progressive' || t === 'progressive2' || t === 'progressive83') out[k] = t; // standard is kept, so a saved change back to it wins
+    if (t === 'standard' || t === 'sharp' || t === 'small' || t === 'smallest' || t === 'progressive' || t === 'progressive2' || t === 'progressive83' || t === 'progressive84') out[k] = t; // standard is kept, so a saved change back to it wins
   }
   return out;
 }
@@ -150,7 +150,7 @@ export const helpHasQ3 = (text) => { const t = String(text ?? ''), at = t.indexO
 // memory is 4-bit (Smaller) for every brain unless picked otherwise (Smallest, or one of the Progressive kinds), and a
 // brain made of experts uses 4 per word when it has more (turboExperts, on unless switched off). The brain's own picks
 // come back when Turbo is off. Without a Brain Engine that has 3-bit, Smallest and Progressive fall back to Smaller.
-export const TURBO_MEMS = ['smallest', 'small', 'progressive', 'progressive2', 'progressive83'];
+export const TURBO_MEMS = ['smallest', 'small', 'progressive', 'progressive2', 'progressive83', 'progressive84'];
 // Nov 20: Smaller (4-bit) unless picked. The speed test on a 16 GB card found 3-bit writing 5% slower at 32K and 18%
 // at 128K and 256K (its attention reads are slower), so Smallest only wins on room until that's fixed in the engine.
 export const turboMem = (cfg) => (TURBO_MEMS.includes(cfg?.turboMem) ? cfg.turboMem : 'small');
@@ -171,6 +171,7 @@ export function memTypeOf(cfg, model, { q3 = false, tiers = false } = {}) {
   const t = cfg?.turbo === true ? turboMem(cfg) : cfg?.brainMemType?.[model];
   if (t === 'smallest') return q3 ? 'smallest' : 'small';
   if (t === 'progressive' || t === 'progressive2' || t === 'progressive83') return q3 && tiers ? t : 'small';
+  if (t === 'progressive84') return tiers ? t : 'small'; // 4-bit base: needs Progressive Memory, not the 3-bit type
   return t === 'sharp' || t === 'small' ? t : 'standard';
 }
 // The engine's own flags for this brain. Flags set by hand (llamacpp.args in config.json) are kept, but a memory
@@ -193,6 +194,7 @@ export function memArgs(cfg, model, handArgs, { q3 = false, tiers = false } = {}
 // Progressive's steps for a context. 3-step: 8-bit for the newest 8K (a quarter of the chat when that's smaller), then
 // 4-bit for the newest 64K (half the chat when that's smaller). 2-step: 4-bit for the newest 64K (or half the chat).
 // 8+3: 8-bit for the newest 8K (or a quarter of the chat), the rest 3-bit, with no 4-bit step.
+// 8+4 (Nov 20): the same 8-bit step over a 4-bit base, for 4-bit's writing speed with the newest words sharp.
 // Windows are whole 256s, below the context, or the engine says NOT USED.
 // The slack is room in each step for one batch: the reading step (4096 covers Fastest); a bigger batch still works,
 // it reads the 3-bit copy for that batch only.
@@ -202,12 +204,12 @@ export function progressiveTiers(ctx, type = 'progressive') {
   if (c < 2048) return '';
   const fit = (most, part) => Math.min(most, Math.floor(c / part / 256) * 256);
   const q4 = `q4_0:${fit(65536, 2)}`;
-  if (type === 'progressive83') return `q8_0:${fit(8192, 4)}`;
+  if (type === 'progressive83' || type === 'progressive84') return `q8_0:${fit(8192, 4)}`;
   return type === 'progressive2' ? q4 : `q8_0:${fit(8192, 4)},${q4}`;
 }
 export function tiersEnv(cfg, model, ctx, { q3 = false, tiers = false, handArgs } = {}) {
   const type = memTypeOf(cfg, model, { q3, tiers });
-  if (type !== 'progressive' && type !== 'progressive2' && type !== 'progressive83') return {};
+  if (type !== 'progressive' && type !== 'progressive2' && type !== 'progressive83' && type !== 'progressive84') return {};
   if (Array.isArray(handArgs) && handArgs.some((a) => ['-np', '--parallel'].includes(a) && Number(handArgs[handArgs.indexOf(a) + 1]) > 1)) return {};
   const t = progressiveTiers(ctx, type);
   return t ? { LLAMA_KV_TIERS: t, LLAMA_KV_TIERS_SLACK: String(TIERS_SLACK) } : {};
