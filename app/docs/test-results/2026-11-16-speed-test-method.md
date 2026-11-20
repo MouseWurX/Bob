@@ -915,6 +915,20 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 80 (Nov 20, before any run): look-ahead, doorbell and stand-ins on Brain Engine 26
+
+Patches 0041 (look-ahead: fetch the next layers' likely experts while writing, LLAMA_MOE_LOOKAHEAD), 0042 (doorbell: the card and the
+processor work on different experts at once, LLAMA_MOE_DOORBELL, share > 0) and 0043 (stand-ins: a missing expert is replaced by a
+near one already on the card, LLAMA_MOE_STANDIN, lossy, Turbo only) are in Brain Engines 25 and 26 but were never run.
+`speed-plans/strata-tricks-be26.json`: 32K and 128K, step 4096, copy cache 4 GB, q4_0 memory, fixed placement (so the words can be
+compared), start chat, code edit and a long read, 2 rounds, cool-down on: share 0 baseline; look-ahead 1 and 2; share 0.5 alone and with
+the doorbell; share 1 + learn 16 alone and with the doorbell; stand-ins rank with at most 1 and 2 per word.
+`perplexity-standins-be26.json`: KLD of stand-ins (and look-ahead 1 as a lossless check) against off at 16K x 2. Bars: look-ahead and
+the doorbell must give the same words as their own baseline and at least +5% writing to be worth defaulting; stand-ins are judged on
+speed against KLD, with no default. Written before the run: look-ahead +5-15% writing at share 0 (a third of each word is copies,
+section 28) with the same words; the doorbell +10-20% at share 1 with learn 16 (the overlap ceiling was 22-26%, section 40) and less at
+share 0.5; stand-ins +15-30% writing with KLD 0.02-0.06 against off.
+
 ## Addendum 79 (Nov 20, before any run): the conductor end to end
 
 The owner asked when the conductor itself is tested (only its switch cost was, sections 37-38). `model-lab/conductor-e2e.mjs` with

@@ -1,0 +1,706 @@
+{
+ "brain": "${BRAIN}",
+ "prompts": {
+  "start": "start.json",
+  "k32": "long-text.md",
+  "k120": "long-text.md",
+  "k250": "long-text.md",
+  "code": "code-edit.md"
+ },
+ "promptTokens": {
+  "k32": 32768,
+  "k120": 122880,
+  "k250": 253952
+ },
+ "question": {
+  "k32": "\n\nIn two sentences, what is this text about?",
+  "k120": "\n\nIn two sentences, what is this text about?",
+  "k250": "\n\nIn two sentences, what is this text about?"
+ },
+ "promptRepeat": {
+  "k120": 4,
+  "k250": 8
+ },
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "name": "Strata tricks on Brain Engine 26: look-ahead (0041), doorbell overlap (0042) and stand-ins (0043, Turbo only) at 32K and 128K, fixed placement, beside the share-0 baseline, 2 rounds, cool-down on",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 80)",
+ "engines": {
+  "be26": {
+   "exe": "${BE26_SERVER}"
+  }
+ },
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "--cache-reuse",
+  "256"
+ ],
+ "maxTokens": 300,
+ "rounds": 2,
+ "saveText": true,
+ "rows": [
+  {
+   "id": "base-share0-32K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_32K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k32"
+   ]
+  },
+  {
+   "id": "lookahead1-32K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_32K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_LOOKAHEAD": "1"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k32"
+   ]
+  },
+  {
+   "id": "lookahead2-32K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_32K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_LOOKAHEAD": "2"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k32"
+   ]
+  },
+  {
+   "id": "share0.5-32K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_32K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0.5",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k32"
+   ]
+  },
+  {
+   "id": "share0.5-doorbell-32K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_32K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0.5",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_DOORBELL": "1"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k32"
+   ]
+  },
+  {
+   "id": "share1-learn16-32K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_32K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "1",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_LEARN": "16",
+    "LLAMA_MOE_CACHE_LEARN_MARGIN": "1.5"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k32"
+   ]
+  },
+  {
+   "id": "share1-learn16-doorbell-32K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_32K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "1",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_LEARN": "16",
+    "LLAMA_MOE_CACHE_LEARN_MARGIN": "1.5",
+    "LLAMA_MOE_DOORBELL": "1"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k32"
+   ]
+  },
+  {
+   "id": "standin-rank-max1-32K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_32K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_STANDIN": "rank",
+    "LLAMA_MOE_STANDIN_MAX": "1"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k32"
+   ]
+  },
+  {
+   "id": "standin-rank-max2-32K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_32K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_STANDIN": "rank",
+    "LLAMA_MOE_STANDIN_MAX": "2"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k32"
+   ]
+  },
+  {
+   "id": "base-share0-128K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_128K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k120"
+   ]
+  },
+  {
+   "id": "lookahead1-128K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_128K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_LOOKAHEAD": "1"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k120"
+   ]
+  },
+  {
+   "id": "lookahead2-128K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_128K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_LOOKAHEAD": "2"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k120"
+   ]
+  },
+  {
+   "id": "share0.5-128K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_128K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0.5",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k120"
+   ]
+  },
+  {
+   "id": "share0.5-doorbell-128K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_128K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0.5",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_DOORBELL": "1"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k120"
+   ]
+  },
+  {
+   "id": "share1-learn16-128K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_128K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "1",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_LEARN": "16",
+    "LLAMA_MOE_CACHE_LEARN_MARGIN": "1.5"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k120"
+   ]
+  },
+  {
+   "id": "share1-learn16-doorbell-128K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_128K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "1",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_LEARN": "16",
+    "LLAMA_MOE_CACHE_LEARN_MARGIN": "1.5",
+    "LLAMA_MOE_DOORBELL": "1"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k120"
+   ]
+  },
+  {
+   "id": "standin-rank-max1-128K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_128K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_STANDIN": "rank",
+    "LLAMA_MOE_STANDIN_MAX": "1"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k120"
+   ]
+  },
+  {
+   "id": "standin-rank-max2-128K",
+   "engine": "be26",
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--fit",
+    "off",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "${NCMOE_128K}",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_STANDIN": "rank",
+    "LLAMA_MOE_STANDIN_MAX": "2"
+   },
+   "prompts": [
+    "start",
+    "code",
+    "k120"
+   ]
+  }
+ ]
+}
