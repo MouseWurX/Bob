@@ -12,7 +12,11 @@ export const READ_STEP = 4096;
 export const BIG_STEP = 6144; // reads at 128K and up
 export const BIG_FROM = 131072;
 export const MIN_NEW = 4096; // shorter new reads are never worth a switch
-export const SWITCH_GUESS_S = 0.9; // measured on a 16 GB card at 32K (Nov 19, medians): save 0.31-0.36 s + step 0.22-0.24 s + put back 0.31-0.34 s
+// A switch's time grows with what the chat memory holds (saving and putting it back). Measured on a 16 GB card,
+// Qwen3.6 35B (Nov 19-20, medians): about 0.9 s at 32K (save 0.31-0.36 + step 0.22-0.24 + put back 0.31-0.34) and
+// 2.4 s with 122,880 tokens held (1.15 + 0.32 + 0.97). A brain's own switches then scale this guess (ratio).
+export const switchGuess = (held = 0, ratio = 1) => (0.35 + 1.66e-5 * Math.max(0, Number(held) || 0)) * (ratio > 0 ? ratio : 1);
+export const SWITCH_GUESS_S = switchGuess(32768);
 export const SLOW_TRIES = 3;
 
 // Until a brain's own speeds are known, read and write speeds at a step, as shares of the chat step's. Measured with
@@ -71,11 +75,13 @@ export function conductorPlan({ newTok = 0, cachedTok = 0, outTok = 300, cur, ch
 }
 
 // a switch's measured time against the guess: three slower than guessed in a row and Bob stops switching for it
-export function noteSwitch(st, { seconds, guess }) {
-  const s = st || { switchS: 0, slow: 0, stopped: false };
+// (ratio: this brain's switches against the size-based guess, kept as a running mean)
+export function noteSwitch(st, { seconds, guess, held = 32768 }) {
+  const s = st || { switchS: 0, ratio: 0, slow: 0, stopped: false };
   const slower = seconds > Math.max(guess * 1.5, guess + 0.5);
   const slow = slower ? s.slow + 1 : 0;
-  return { switchS: s.switchS > 0 ? s.switchS * 0.6 + seconds * 0.4 : seconds, slow, stopped: s.stopped || slow >= SLOW_TRIES };
+  const r = seconds / switchGuess(held);
+  return { switchS: s.switchS > 0 ? s.switchS * 0.6 + seconds * 0.4 : seconds, ratio: s.ratio > 0 ? s.ratio * 0.6 + r * 0.4 : r, slow, stopped: s.stopped || slow >= SLOW_TRIES };
 }
 
 // in plain words, for the logbook

@@ -29,7 +29,7 @@ import { LinkLog } from './link-log.js'; // what the link to a lent card carried
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
 import { tuningArgs } from './engine-tuning.js';
-import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, SWITCH_GUESS_S } from './conductor.js'; // off unless picked
+import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess } from './conductor.js'; // off unless picked
 import { turboStandins, STANDIN_ENV } from './engine-extras.js'; // Turbo: stand-ins (0043, off unless switched on)
 import { helpHasQ3, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
@@ -1535,7 +1535,7 @@ export class LlamaCpp {
     const held = Math.min(this.condHeld || 0, total);
     const newTok = total - held;
     const outTok = /code|edit|write/i.test(String(task || '')) ? 1500 : 300;
-    const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: (this.condSpeeds ||= {})[model], switchS: st?.switchS || SWITCH_GUESS_S });
+    const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: (this.condSpeeds ||= {})[model], switchS: switchGuess(held, st?.ratio) });
     if (p.plan === 'stay') return;
     this.log?.('engine', planLine(model, p));
     if (!(await this.condSwitch(model, p.step, held))) return;
@@ -1550,7 +1550,7 @@ export class LlamaCpp {
 
   // One step change: the reading saved, the step changed, the reading put back. Measured against the guess.
   async condSwitch(model, step, held) {
-    const t0 = Date.now(), guess = this.condState?.[model]?.switchS || SWITCH_GUESS_S;
+    const t0 = Date.now(), guess = switchGuess(held, this.condState?.[model]?.ratio);
     const file = `conductor-${this.port}.bin`;
     if (held > 0) await this.slotAction('save', file);
     const res = await fetch(`${this.url}/context`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ n_batch: step, n_ubatch: step }), signal: AbortSignal.timeout(300000) });
@@ -1562,7 +1562,7 @@ export class LlamaCpp {
       try { fs.rmSync(path.join(this.slotDir, file), { force: true }); } catch {}
     }
     const seconds = (Date.now() - t0) / 1000;
-    const st = (this.condState[model] = noteSwitch(this.condState[model], { seconds, guess }));
+    const st = (this.condState[model] = noteSwitch(this.condState[model], { seconds, guess, held }));
     this.log?.('engine', `${model}: Conductor: step ${step} in ${seconds.toFixed(2)} s (guessed ${guess.toFixed(2)} s)${st.stopped ? '; slower than guessed three times in a row, so no more switching for this brain' : ''}`);
     return true;
   }

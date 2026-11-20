@@ -8,7 +8,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { LlamaCpp } from '../src/llamacpp.js';
-import { conductorOn, conductorPlan, learnStep, speedAt, noteSwitch, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP } from '../src/conductor.js';
+import { conductorOn, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP } from '../src/conductor.js';
 import { cleanTuning, mergeTuning } from '../src/engine-tuning.js';
 import { HELP } from '../public/help-content.js';
 
@@ -46,6 +46,10 @@ check('nothing switches before any speed is known', conductorPlan({ newTok: 3000
 check('a big step with a short message goes back to the chat step', conductorPlan({ newTok: 100, cachedTok: 30000, outTok: 3000, cur: READ_STEP, speeds: known, switchS: 0.3 }).plan === 'back');
 check('at 128K it reads at the bigger step', conductorPlan({ newTok: 60000, cachedTok: 90000, outTok: 300, cur: CHAT_STEP, speeds: known, switchS: 0.5 }).step === BIG_STEP);
 check('the logbook line is plain', /Conductor: reading at step 4096, then writing at the chat step/.test(planLine('big', { plan: 'readBig', step: 4096, why: 'x' })) && planLine('big', { plan: 'stay' }) === '');
+
+// ---------- Switch time ----------
+check('the switch guess grows with the chat memory: about 0.9 s at 32K, 2.4 s at 123K', Math.abs(switchGuess(32768) - 0.9) < 0.05 && Math.abs(switchGuess(122880) - 2.4) < 0.05);
+check('a brain whose switches ran twice as long guesses twice as long', Math.abs(switchGuess(32768, noteSwitch(undefined, { seconds: 1.8, guess: 0.9, held: 32768 }).ratio) - 1.8) < 0.01);
 
 // ---------- Stopping ----------
 { let st;
