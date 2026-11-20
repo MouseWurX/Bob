@@ -162,6 +162,9 @@ jobs:
         working-directory: llama.cpp
         run: |
           call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          rem Nov 20: the runner's MSVC STL (14.52) asks for Clang 22 and its LLVM is 20; the STL still works with it.
+          set "CFLAGS=-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"
+          set "CXXFLAGS=-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"
           cmake -S . -B build -G "Ninja Multi-Config" -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake -DLLAMA_BUILD_BORINGSSL=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_OPENMP=ON -DGGML_OPENMP_FETCH=ON -DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_TESTS=ON
           cmake --build build --config Release --target llama-server llama-bench llama-gguf-split ggml-rpc-server llama-diffusion-cli test-llama-archs
           rem Nov 18: the engine's card check (0026), against ggml only; it loads every backend beside it.
@@ -173,17 +176,20 @@ jobs:
             echo ggml.lib: !GGMLLIB!  ggml-base.lib: !GGMLBASELIB!
             if not defined GGMLLIB exit /b 1
             if not defined GGMLBASELIB exit /b 1
-            clang-cl /O2 /EHsc /std:c++17 /I ggml\include ..\app\engine\tests\mask-pos-check.cpp "!GGMLLIB!" "!GGMLBASELIB!" /Fe:build\bin\Release\mask-pos-check.exe || exit /b 1
+            clang-cl /O2 /EHsc /std:c++17 /D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH /I ggml\include ..\app\engine\tests\mask-pos-check.cpp "!GGMLLIB!" "!GGMLBASELIB!" /Fe:build\bin\Release\mask-pos-check.exe || exit /b 1
           )
           rem Nov 20: the expert cache's CPU rounding check (0040), the same way.
           if exist ..\app\engine\tests\moe-round-check.cpp (
-            clang-cl /O2 /EHsc /std:c++17 /I ggml\include ..\app\engine\tests\moe-round-check.cpp "!GGMLLIB!" "!GGMLBASELIB!" /Fe:build\bin\Release\moe-round-check.exe || exit /b 1
+            clang-cl /O2 /EHsc /std:c++17 /D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH /I ggml\include ..\app\engine\tests\moe-round-check.cpp "!GGMLLIB!" "!GGMLBASELIB!" /Fe:build\bin\Release\moe-round-check.exe || exit /b 1
           )
       - name: Build llama-cvector-generator and llama-export-lora on their own (CPU, static; upstream skips it when the backends load at run time)
         shell: cmd
         working-directory: llama.cpp
         run: |
           call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          rem Nov 20: the runner's MSVC STL (14.52) asks for Clang 22 and its LLVM is 20; the STL still works with it.
+          set "CFLAGS=-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"
+          set "CXXFLAGS=-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"
           cmake -S . -B build-cv -G Ninja -D CMAKE_BUILD_TYPE=Release -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
           cmake --build build-cv --target llama-cvector-generator llama-export-lora
       - name: Get our ggml-cuda.dll (only when a patch changes the CUDA backend)
