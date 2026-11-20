@@ -78,7 +78,7 @@ All speeds are tokens a second. "Read" is prompt reading speed and "write" is wr
 - **The 512 MB margin's writing gain.** It rests on 2 loads, and the busy-desktop pass agrees except for 2x4 at 32K.
 - **The chat pick between 2x4 and 4x4.**
 - **The writing order of cache types at 256K.** These are single loads.
-- **q4_0 is a borderline pass.** It does not pass outright. In the second perplexity run it failed the mean-KLD limit of 0.01 by 1.6% on the 4K × 4 split (0.01016) and passed on the 8K × 2 split (0.00951) (section 4.3.3.4). MouseWurX ruled on 19 November that it counts as a borderline pass, so it may be used, with q8_0 still the safe choice where memory allows. Stock llama.cpp has no 3-bit context cache. Brain Engine now adds one (q3_0, patch 0038) and a mixed 3/4/8-bit one (patch 0039). q3_0 passes perplexity and the needle test but writes up to 18% slower than q4_0 on long chats, and patch 0039 failed on speed (section 4.3.3.8).
+- **q4_0 is a borderline pass.** It does not pass outright. In the second perplexity run it failed the mean-KLD limit of 0.01 by 1.6% on the 4K × 4 split (0.01016) and passed on the 8K × 2 split (0.00951) (section 4.3.3.4). MouseWurX ruled on 19 November that it counts as a borderline pass, so it may be used, with q8_0 still the safe choice where memory allows. Stock llama.cpp has no 3-bit context cache. Brain Engine now adds one (q3_0, patch 0038) and a mixed 3/4/8-bit one (patch 0039). q3_0 passes perplexity and the needle test, and with fix 0044 writes 2.9% slower than q4_0 at 128K. Patch 0039 failed on speed (section 4.3.3.8).
 - **Turbo's net effect.** It helped at a small step with a big copy cache and hurt at big steps with a small one, in 1 load each.
 - **The copy-cache choices.** By the scoring rules, agent work drops the copy cache and chat keeps it. Long-form work keeps it only on the tie-break, after a 2.1% tie (section 4.3.3.2). Most long-context loads throttled lightly, and a rerun could flip the long-form choice.
 - **The 120B soft cut's answer quality.** Its perplexity run is paused.
@@ -767,8 +767,8 @@ These are queued on the home PC in this order, and each has its addendum written
 | Processor reads of cache misses (patch 0032) | – | done: same top word 97.8% to 98% against the 99% gate, so it fails and stays out of the picks |
 | KV split (patch 0036) | – | shelved: writing collapses past the split |
 | No-table mask (patch 0026) | 44 | done: frees 2 to 4 GB at long context, same words and 3% to 6% slower writing at a fixed placement; a long-context option, off by default |
-| 3-bit chat memory, q3_0 (patch 0038) | 66 | done (section 4.3.3.8): passes perplexity and needles, but writes 5% / 18% / 18% slower than q4_0 at 32K / 128K / 256K. Fix 0044 in Brain Engine 25 is unproven in our lab, as we have yet to test |
-| Progressive Memory (patch 0039): every word kept in 3-bit, the newest words kept again at 8-bit and 4-bit, each read from its sharpest copy. It builds on KIVI, SKVQ, PM-KVQ (arXiv 2505.18610) and KVmix | 28 | failed on speed on Brain Engine 22 (56% to 78% slower than q3_0); its accuracy run was void. Fix 0045 in Brain Engine 26 and its needles are unproven in our lab, as we have yet to test |
+| 3-bit chat memory, q3_0 (patch 0038) | 66 | done (section 4.3.3.8): passes perplexity and needles. With fix 0044 (Brain Engine 25) it writes 2.9% slower than q4_0 at 128K, inside the 5% bar; 32K and 256K on that build are unproven in our lab, as we have yet to test |
+| Progressive Memory (patch 0039): every word kept in 3-bit, the newest words kept again at 8-bit and 4-bit, each read from its sharpest copy. It builds on KIVI, SKVQ, PM-KVQ (arXiv 2505.18610) and KVmix | 28 | failed on speed on Brain Engine 22 (56% to 78% slower than q3_0); its accuracy run was void; needles 150 of 150. Fix 0045 in Brain Engine 26 is unproven in our lab, as we have yet to test |
 | q4_0 perplexity run again, and the needle test for q5_1 and f8_e4m3 | 10 | done: q4_0 on the line, needles all found (section 4.3.3.4) |
 
 #### 4.3.3.7 Improvements we could still try
@@ -814,12 +814,14 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 
 - **Reading and the first word were unchanged** (within about 2%).
 - **At 32K the 3-bit attention kernels cost only 0.1 to 0.5 ms a word** (4 loads, 1 run each). The per-word gaps there came mostly from where --fit put the expert copies. The q3_0-keys / q4_0-values mix has no compiled kernel and falls back to f16. The 18% loss at 128K and 256K is not explained yet.
-- **So 3-bit memory is not a default.** Fix 0044, in Brain Engine 25, is unproven in our lab, as we have yet to test.
+- **The 18% at 128K and 256K was overstated.** Those long runs were hotter, more throttled and placed differently. In a same-day head-to-head at 128K (12 loads, medians of 2), q3_0 wrote only 6% slower than q4_0 before the fix, so treat the 128K and 256K ratios above as soft.
+- **Fix 0044 (Brain Engine 25) closes most of the gap.** At 128K, q3_0 went from 54.2 to 56.1 tokens a second, 2.9% under q4_0's 57.8, which passes the 5% bar. The words were the same, q4_0 was unchanged, and the 3-bit card cost per word fell from about 0.5 to 0.17 ms. The 256K and 32K rows on Brain Engine 25 are unproven in our lab, as we have yet to test.
 
 **Progressive Memory (patch 0039, Brain Engine 22).** Every word is kept in 3-bit, and the newest words are kept again at 8-bit and 4-bit.
 - **Its accuracy run was void.** The plan used an 8K text, which never passes the 8,192 and 16,384-word windows, so the engine correctly said "NOT USED". A 16K rerun is planned.
 - **It failed on speed** (28 loads, every row engaged). It wrote 56% to 78% slower than plain q3_0 on long chats, and worse as the chat grew: 6.5 to 7.5 tokens a second at 256K against 29.7. Reading was untouched, so the cost is in each written word.
-- **Fix 0045, in Brain Engine 26, and the needle test are unproven in our lab, as we have yet to test.**
+- **Recall passes.** The needle was found 150 of 150 times (each of the three layouts 25 of 25 at 128K and at 256K, 30 loads), though writing stayed at 6 to 14 tokens a second.
+- **Fix 0045, in Brain Engine 26, is unproven in our lab, as we have yet to test.**
 
 **Changing settings without a reload (the "conductor", Brain Engine 21).** Each switch saves the chat, changes the setting and restores the chat, with the brain kept loaded every time (10 switches × 5 repeats at 32K, 2 × 3 at 128K, no crashes).
 - **A step, learning-cache or lend switch costs about 0.9 to 1.0 s at 32K and about 2.4 s at 128K**, against about 50 s to read a 128K chat again. So these can change between messages.
