@@ -26,6 +26,7 @@
 //   partial_look   he answered for the whole inbox (or folder) after seeing only the newest few ("271 messages, newest 15
 //                  shown") and didn't say so (inbox run: gave_up_paging, 43 of 120)
 //   maths          totals worked out in his head (Qwen invented_result: several wrong sums)
+//   inside_talk    the app's own words for how it works in the answer ("the brain has to step out while the painter works")
 //   draft_unsaved  asked to draft a reply and no manage_email draft was saved (17 Nov)
 //   mail_route     a mail job (trash, archive, reply to a sender's mail) answered without the mail tools: the live inbox
 //                  run (16 Nov) saw bulk trash/archive jobs wander into list_folder, search_files, web_search or
@@ -184,6 +185,12 @@ export function answerChecks({ text = '', reply = '', actions = [], usable = () 
   }
   if (REVIEW_LEAK.test(said)) {
     add('review_leak', `Your answer shows your own working ("${cap(said.match(REVIEW_LEAK)[0], 50)}"). ${who} never saw your review, plan or notes. Write the answer again for ${who} only: the result, in plain words, with nothing about reviews, jobs or steps.`);
+  }
+  // inside_talk (20 Nov, after1 real jobs fx-0e4a1c049c, fx-8696b0c1fd): the app's own words for how it works ("the chat
+  // brain has to step out while the painter works") shown to the user, here after a diagram, where nothing steps out.
+  const INSIDE = /\b(?:the )?(?:chat )?brain (?:has (?:to )?|had to |will )?step(?:s|ped)? out\b|\bwhile the painter work(?:s|ed)\b/i.exec(said);
+  if (INSIDE) {
+    add('inside_talk', `Your answer uses the app's own words for how it works ("${cap(INSIDE[0], 50)}"). ${who} doesn't need them. Write the answer again without them: the result, in plain words.`);
   }
   // cut_off
   if (cutOff(said)) add('cut_off', 'Your answer stops in the middle. Give the whole answer again, finished, in one reply.');

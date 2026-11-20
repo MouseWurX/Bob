@@ -233,6 +233,14 @@ const again = await run([]);
 check('a second start picks up where it stopped (nothing run twice)', /nothing to run/.test(again.log) || /0 to go/.test(again.log), again.log.slice(-200));
 { const dj = fs.readFileSync(new URL('../model-lab/do-jobs.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   check('said is what the window shows (no step or moot text); the full join is kept as said_all (16 Nov distill grading)', /filter\(\(m\) => !m\.step && !m\.moot\)/.test(dj) && /said_all:/.test(dj)); }
+{ // 20 Nov after1: the record kept 6,000 characters of a tool reply the brain saw whole; the calculator was off for real jobs
+  const dj = fs.readFileSync(new URL('../model-lab/do-jobs.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const line = dj.split('\n').find((l) => l.startsWith('export const recordText'));
+  const recordText = new Function(`${line.replace('export const recordText', 'const recordText')}; return recordText;`)();
+  const long = 'x'.repeat(8500);
+  check('the record keeps a long tool reply whole (8,500 of 8,500), and marks a cut past 40,000', recordText(long).length === 8500 && /record cut here: the brain saw 50000/.test(recordText('y'.repeat(50000))) && /call\.result = recordText\(/.test(dj) && !/call\.result = kit\.neutral\(t\)\.slice\(0, 6000\)/.test(dj));
+  check('every job has the calculator on unless --no-calculator', /if \(String\(o\.calculator \?\? 'on'\)\.toLowerCase\(\) !== 'off' && !o\['no-calculator'\]\) kit\.cfg\.moreTools = \{ \.\.\.\(kit\.cfg\.moreTools \|\| \{\}\), calculator: true \}/.test(dj));
+}
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

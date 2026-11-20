@@ -72,6 +72,8 @@ import { fitMail, sortCardAnswer, mailCardAnswer } from './mail-world.mjs';
 import { officeAfter } from './office-jobs.mjs';
 import { buildBytes } from './office-files.mjs';
 
+// What a run's record keeps of a tool reply: all of it up to 40,000 characters, then a plain cut mark.
+export const recordText = (t, max = 40000) => { const s = String(t ?? ''); return s.length > max ? `${s.slice(0, max)}\n[record cut here: the brain saw ${s.length} characters]` : s; };
 const o = opts({ parallel: 2, max: 4096, 'job-minutes': 10, hours: 0, 'search-gap': 2 });
 const L = locate(o);
 const url = String(o.url || process.env.LAB_URL || '');
@@ -351,6 +353,10 @@ async function runJob(j) {
   // 16 Nov (MouseWurX: test Bob's features "one category at a time. starting with office files"): an office job plants its
   // own made-up files (office-jobs.mjs) and has "Let Bob compare files" on, as a person who asked for it would; 17 Nov: and the calculator, so the
   // head-maths job (excel-sum-tricky) can show whether the maths check sends sums to calculate, and query_data for the big sheet
+  // 20 Nov (MouseWurX: "Why doesnt he use a calculator or work it out in code? There is settings for it."): the after1
+  // real jobs ran with every More tools switch off, so Qwen had no calculator and did 4 sums in his head (all 4 wrong).
+  // Every job now has "Let Bob use a calculator" on, as a person who switched it on would; --no-calculator turns it off.
+  if (String(o.calculator ?? 'on').toLowerCase() !== 'off' && !o['no-calculator']) kit.cfg.moreTools = { ...(kit.cfg.moreTools || {}), calculator: true };
   let ow = null;
   if (j.office) {
     kit.cfg.moreTools = { ...(kit.cfg.moreTools || {}), compareFiles: true, calculator: true, dataQuery: true };
@@ -428,7 +434,10 @@ async function runJob(j) {
     const t = typeof res === 'string' ? res : typeof res?.text === 'string' ? res.text : JSON.stringify(res ?? '');
     if (name === 'web_search' && !bad && !hit) { cachePut(cacheKey(a), t); counted(tavilyUsed()); noResultsInRow = BLOCKED.test(t) ? noResultsInRow + 1 : 0; if (noResultsInRow >= 5 && String(o['search-stop'] ?? 'on').toLowerCase() !== 'off') searchStop = true; }
     if (name === 'make_diagram' && /^Drawing: /.test(t)) { call.drawn = standInWindow(kit, kit.neutral(t)) || 'nothing drawn'; call.window = 'stand-in window (the lab, no chat window)'; }
-    call.result = kit.neutral(t).slice(0, 6000);
+    // 20 Nov (after1 blind read): the record kept only the first 6,000 characters of a tool reply, but the brain saw it
+    // all. Graders read the record, so three right answers about live settings (bob_help lists them near the end)
+    // were marked as made up. The record now keeps what the brain saw, up to 40,000, and says so when it is cut.
+    call.result = recordText(kit.neutral(t));
     return { ...(res && typeof res === 'object' ? res : {}), text: kit.neutral(t) || '(no result)' };
   };
   brain.ensureModel = async () => {}; brain.fitCtx = async () => ctxSize; brain.recall = async () => '';

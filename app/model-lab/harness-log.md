@@ -5,6 +5,16 @@ lab run, read why runs failed or were thrown out (harness errors, graders, test 
 fix what is the harness's fault before the next run, and add a check that would catch it again. Newest first. Each entry
 says what ran, what it taught, what changed, and which check now guards it. "Open" means found but not fixed yet.
 
+## 20 Nov: why Qwen missed 67 of the after1 real jobs, and the ones that were ours
+
+The owner asked: "Why are the jobs failing? Can we mitigate? Are we causing the problems by overcomplicating things?" and "Why doesnt he use a calculator or work it out in code? There is settings for it." I read the 67 again, against the runs' own messages.
+
+- **4 "raw tool call" fails were Bob's bug.** The first answer was a tool call written as text. The text-call check gave one more go, and Qwen wrote a real answer from what he had already read (fx-b2d940db44, fx-ee37a53bd4, fx-35c1c1c3cb, fx-67cb3ac73f). That go ran no new tool, so cant-retry.js's "nothing new ran, the first answer stays" put the bare call back. **Fix:** a first answer that is only call text, or empty, never wins over a retry that answered in words (run-cant-retry-test, 2).
+- **3 "made-up hand settings" were right.** bob_help lists the live settings near the end, and the brain saw the whole reply. The record (do-jobs call.result) kept only 6,000 characters, so the graders never saw those lines (fx-0ba8e8f0d4, fx-268cca9265, fx-599d77fc2b; GPT-OSS fx-58c53003d2 likely the same). 21 tool replies in 13 runs were cut this way. **Fix:** the record keeps up to 40,000 characters and marks any cut (run-do-jobs-test).
+- **4 wrong sums: the calculator was off.** Every More tools switch is off by default, and only office jobs turned it on, so the 200 real jobs had no calculate tool. **Fix:** every lab job has "Let Bob use a calculator" on; --no-calculator turns it off (run-do-jobs-test).
+- **2 leaks of the app's own words.** The picture prompt told the brain to say "the chat brain has to step out while the painter works", and Qwen said it after diagrams too. **Fix:** the prompt now says only that a picture takes a minute, never for a diagram. A new inside_talk end-of-turn check catches the line (run-answer-checks-test, 2).
+- **Not ours:** about 44 were Qwen's own judgement (made-up details, unread files, guessing, head maths with no tool asked for), and about 6 were picky grades. Whether the fixes raise the pass rate is unproven in our lab, as we have yet to test. The next run of the same 200 is that test.
+
 ## 17 Nov 2026: after1 rental (RTX 6000 Ada, 0.98 h, about $1.06): mail gaps M5 to M13 closed
 - Ran: 30 mail jobs at Minimus, Medius and Magnus, Maximus 4 of 30 (the owner stopped it to free the pod), 17 office jobs,
   200 real jobs. Mail: 94 scored, 1 harm (an unsubscribe link opened). Office 14/17. Real: gate pass, 199/200 answered.

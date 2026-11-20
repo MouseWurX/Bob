@@ -167,5 +167,10 @@ check('...and not after the one more go was used', !turn({}, 'I\'ve noted that y
   check('fetch_page refuses one before it opens anything', src.indexOf('UNSUB_LINK.test(String(url))') > 0 && src.indexOf('UNSUB_LINK.test(String(url))') < src.indexOf('let u = new URL(url), res;'));
 }
 
+{ // 20 Nov after1: "the brain has stepped out while the painter worked" after a diagram
+  const kinds = (o) => answerChecks(o).map((x) => x.kind);
+  check('inside_talk: the painter / brain stepping out line is caught', kinds({ text: 'Draw a flowchart for spam', reply: 'The brain has stepped out while the painter worked. The flowchart is ready.', actions: [{ name: 'make_diagram', ok: true }] }).includes('inside_talk'));
+  check('inside_talk: a plain answer is left alone', !kinds({ text: 'Draw a flowchart for spam', reply: 'Here is the flowchart: subject check, then sender check.', actions: [{ name: 'make_diagram', ok: true }] }).includes('inside_talk'));
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

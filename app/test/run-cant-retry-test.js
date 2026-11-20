@@ -41,5 +41,15 @@ check('the steps nudge asks for the whole answer, and allows one tool doing two 
 check('the Office Hand, said short', /Office documents/.test(cantReason({}, 'The **Office Hand is off**, so I can\'t write a .docx.')));
 check('the Run Hand by its first word', /Run programs/.test(cantReason({}, "I can't start it: the Run Hand is still off.")));
 check('"use the ... Hand" is not the browser Hand', !/browser/.test(cantReason({ hands: { files: true } }, "I can't: use the Files Hand first.")));
+{ // 20 Nov after1: a bare text call first, the retry answers in words with no new tool: the words stay
+  const msgs = [{ role: 'user', content: 'Look up IPCC' }, { role: 'tool', content: 'page text' }];
+  const first = { role: 'assistant', content: '<tool_call>\n<function=fetch_page>\n<parameter=url>\nhttps://x.org\n</parameter>\n</function>\n</tool_call>' };
+  msgs.push(first); const ctx = {}; markCant(ctx, first, msgs);
+  const second = { role: 'assistant', content: 'Here is the IPCC summary from the pages I read: warming is about 1.1 C so far.' }; msgs.push(second);
+  check('a bare text call first, a real answer after with no new tool: the real answer stays', settleCant(ctx, second, msgs) === 'replaced' && !msgs.includes(first) && msgs.at(-1).content.startsWith('Here is the IPCC'));
+  const msgs2 = [{ role: 'user', content: 'x' }]; const f2 = { role: 'assistant', content: '<tool_call><function=list_folder></function></tool_call>' }; msgs2.push(f2); const c2 = {}; markCant(c2, f2, msgs2);
+  const s2 = { role: 'assistant', content: '<tool_call><function=read_file></function></tool_call>' }; msgs2.push(s2);
+  check('both bare text calls: still one answer (the clean-up line comes later)', settleCant(c2, s2, msgs2) === 'kept' && msgs2.filter((m) => m.role === 'assistant').length === 1);
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
