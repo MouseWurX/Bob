@@ -78,7 +78,7 @@ All speeds are tokens a second. "Read" is prompt reading speed and "write" is wr
 - **The 512 MB margin's writing gain.** It rests on 2 loads, and the busy-desktop pass agrees except for 2x4 at 32K.
 - **The chat pick between 2x4 and 4x4.**
 - **The writing order of cache types at 256K.** These are single loads.
-- **q4_0 is a borderline pass.** A second perplexity run passed it on one split of the text and missed the mean-KLD limit by 1.6% on the other (section 4.3.3.4). MouseWurX ruled on 19 November that it counts as a borderline pass, so it may be used, with q8_0 still the safe choice where memory allows. A 3-bit context cache does not exist in llama.cpp; it would need an engine patch and is not planned unless MouseWurX asks.
+- **q4_0 is a borderline pass.** A second perplexity run passed it on one split of the text and missed the mean-KLD limit by 1.6% on the other (section 4.3.3.4). MouseWurX ruled on 19 November that it counts as a borderline pass, so it may be used, with q8_0 still the safe choice where memory allows. Stock llama.cpp has no 3-bit context cache. Brain Engine now adds one (q3_0, patch 0038) and a mixed 3/4/8-bit one (patch 0039); both are unproven in our lab, as we have yet to test on a real card.
 - **Turbo's net effect.** It helped at a small step with a big copy cache and hurt at big steps with a small one, in 1 load each.
 - **The copy-cache choices.** By the scoring rules, agent work drops the copy cache and chat keeps it. Long-form work keeps it only on the tie-break, after a 2.1% tie (section 4.3.3.2). Most long-context loads throttled lightly, and a rerun could flip the long-form choice.
 - **The 120B soft cut's answer quality.** Its perplexity run is paused.
@@ -747,12 +747,13 @@ These are queued on the home PC in this order, and each has its addendum written
 | Whether the copy cache comes off the 128K and 256K picks | 18 | done: off for agent work, kept for chat and, narrowly, long-form (section 4.3.3.2) |
 | Rerun of the throttled long-context rows | – | queued |
 | Whether q4_0 counts as passing the quality gate | – | decided 19 November: a borderline pass |
-| A 3-bit context cache (needs an engine patch) | – | not planned unless MouseWurX asks |
 | Coding use (Addendum 63: 1,500 written tokens, 32K and 64K): stock, 2x4, 4x4 and 4x0 | 24 | done: 4x4 ties stock (0.3%); prediction of a 3% win failed |
 | Coding rerun of the throttled 64K rows (stock and 4x0) | – | queued |
 | Q3 brain against Q4 (Addendum 57) | – | done: perplexity +0.9% to 1.5%, but mean KLD 0.034 to 0.043 and same top word 91.5% fail the drift line; whether to keep testing it is waiting on approval |
 | Processor reads of cache misses (patch 0032) | – | done: same top word 97.8% to 98% against the 99% gate, so it fails and stays out of the picks |
 | KV split (patch 0036) | – | shelved: writing collapses past the split |
+| 3-bit chat memory, q3_0 (patch 0038) | – | built; unproven in our lab, as we have yet to test on a real card |
+| Progressive Memory (patch 0039): every word kept in 3-bit, the newest words kept again at 8-bit and 4-bit, each read from its sharpest copy. It builds on KIVI, SKVQ, PM-KVQ (arXiv 2505.18610) and KVmix | – | built; unproven in our lab, as we have yet to test on a real card |
 | q4_0 perplexity run again, and the needle test for q5_1 and f8_e4m3 | 10 | done: q4_0 on the line, needles all found (section 4.3.3.4) |
 
 #### 4.3.3.7 Improvements we could still try

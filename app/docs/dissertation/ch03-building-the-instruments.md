@@ -66,7 +66,7 @@ Two rules run through all three layers: nothing is rented without typed approval
 
 ### 3.4.1 What it is and why it exists
 
-Brain Engine is llama.cpp at a pinned tag with fourteen patches applied in order (engine/README.md, ENGINE-MAP.md). At the time of writing the build is Brain Engine 8, on llama.cpp b12359. It is not an official llama.cpp build. The patches change only the model library and the server, with one exception: six patches touch the card-sharing backend of ggml, and no CUDA, Vulkan, Metal or CPU code is changed (ENGINE-MAP.md).
+Brain Engine is llama.cpp at a pinned tag with its patches applied in order (engine/README.md, ENGINE-MAP.md); there are 39 at the time of writing. The newest build tested on a real card is Brain Engine 19, on llama.cpp b12359. It is not an official llama.cpp build. Most patches change only the model library and the server, but some change ggml itself: the CUDA card code (0026, 0038, 0039), the CPU backend (0020, 0026, 0038, 0039), the scheduler (0017, 0029, 0033) and card sharing (the rpc patches). A build with those carries its own ggml files (ENGINE-MAP.md).
 
 The patches fall into four groups: change a model live (0001, 0003, 0013), watch which parts fire (0002, 0007, 0009, 0010), share a card across machines (0004, 0005, 0006, 0008, 0011, 0014), and one small helper (0012). Only the first two matter for the studies.
 
