@@ -31,7 +31,7 @@ import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.
 import { tuningArgs } from './engine-tuning.js';
 import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess } from './conductor.js'; // off unless picked
 import { turboStandins, STANDIN_ENV } from './engine-extras.js'; // Turbo: stand-ins (0043, off unless switched on)
-import { helpHasQ3, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
+import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
 
@@ -528,7 +528,7 @@ export class LlamaCpp {
   kvCaps() {
     const exe = this.exePath();
     if (this._kvQ3 && this._kvQ3.exe === exe) return this._kvQ3;
-    let has = false, tiers = false;
+    let has = false, tiers = false, q2 = false;
     if (/llama-server/i.test(path.basename(exe)) && fs.existsSync(exe)) {
       try {
         if (!q3CardOk(fs.readdirSync(path.dirname(exe)), process.platform)) throw new Error('no 3-bit kernels for this card');
@@ -536,15 +536,16 @@ export class LlamaCpp {
         const text = `${r.stdout || ''}${r.stderr || ''}`;
         has = helpHasQ3(text);
         tiers = has && helpHasTiers(text);
+        q2 = has && helpHasQ2(text); // 0046: 2-bit, Turbo's Progressive 8+2 only
       } catch {}
     }
-    this._kvQ3 = { exe, has, tiers };
+    this._kvQ3 = { exe, has, tiers, q2 };
     return this._kvQ3;
   }
   kvQ3() { return this.kvCaps().has; }
   kvTiers() { return this.kvCaps().tiers; }
   // The brain's chat memory flags and, for Progressive, its steps (both from the Brains page pick).
-  memCaps() { const c = this.kvCaps(); return { q3: c.has, tiers: c.tiers }; }
+  memCaps() { const c = this.kvCaps(); return { q3: c.has, q2: c.q2, tiers: c.tiers }; }
   tiersFor(model, ctx) { return tiersEnv(this.cfg, model, ctx, { ...this.memCaps(), handArgs: this.lc.args }).LLAMA_KV_TIERS || ''; }
 
   // 1.5.90: no memory-mapping when some of the brain is placed in RAM on the card route (see buildArgs).
@@ -1243,7 +1244,7 @@ export class LlamaCpp {
     if (args.includes('--moe-cache-mib') && this.hotEnv?.[RANKING_ENV]) env = { ...env, ...this.hotEnv }; // Nov 16: the hot-expert profile (patch 0016)
     // Nov 20 (patch 0039, opt-in): Progressive chat memory, the newest words kept sharper. Its steps come from the
     // context it loads with (a resize in place that would need other steps starts the engine again instead).
-    { const t = tiersEnv(this.cfg, model, ctx || this.lc.ctx || DEFAULT_CTX, { ...this.memCaps(), handArgs: args }); if (t.LLAMA_KV_TIERS) { env = { ...env, ...t }; this.log?.('engine', `${model}: Progressive chat memory, 3-bit with sharper copies of the newest words (${t.LLAMA_KV_TIERS})`); } }
+    { const t = tiersEnv(this.cfg, model, ctx || this.lc.ctx || DEFAULT_CTX, { ...this.memCaps(), handArgs: args }); if (t.LLAMA_KV_TIERS) { env = { ...env, ...t }; this.log?.('engine', `${model}: Progressive chat memory, sharper copies of the newest words (${t.LLAMA_KV_TIERS})`); } }
     if (helpers.length) env = { ...env, ...scutEnv(this.cfg, { wired: Boolean(this.spread?.allWired?.()) }), ...linkEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
     const child = safeSpawn(spawn, exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });

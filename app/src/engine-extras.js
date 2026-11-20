@@ -144,15 +144,20 @@ export function cleanMemType(v) {
 // card file is Vulkan without CUDA would run that attention on the processor, so Bob doesn't offer it there.
 export const q3CardOk = (files, platform) => platform !== 'darwin' && !((files || []).some((f) => /ggml-(vulkan|metal)/i.test(f)) && !(files || []).some((f) => /ggml-cuda/i.test(f)));
 // The engine lists its chat memory types under -ctv in --help (wrapped over lines); 3-bit is there only on a Brain Engine with 0038.
-export const helpHasQ3 = (text) => { const t = String(text ?? ''), at = t.indexOf('--cache-type-v'); const m = at < 0 ? null : t.slice(at).match(/allowed values:[^\n]*(?:\r?\n[ \t]+[^-\s][^\n]*)*/); return Boolean(m) && /\bq3_0\b/.test(m[0]); };
+const helpHasKv = (text, type) => { const t = String(text ?? ''), at = t.indexOf('--cache-type-v'); const m = at < 0 ? null : t.slice(at).match(/allowed values:[^\n]*(?:\r?\n[ \t]+[^-\s][^\n]*)*/); return Boolean(m) && new RegExp(`\\b${type}\\b`).test(m[0]); };
+export const helpHasQ3 = (text) => helpHasKv(text, 'q3_0');
+// 2-bit (Brain Engine patch 0046, Nov 20): the same list names q2_0. Turbo only (Progressive 8+2), same cards as 3-bit.
+export const helpHasQ2 = (text) => helpHasKv(text, 'q2_0');
 // ---------- Turbo (Nov 20, the owner's ask; off unless switched on) ----------
 // A show-off speed mode, not for real jobs: every speed trick that costs a little answer quality, at once. Its chat
 // memory is 4-bit (Smaller) for every brain unless picked otherwise (Smallest, or one of the Progressive kinds), and a
 // brain made of experts uses 4 per word when it has more (turboExperts, on unless switched off). The brain's own picks
 // come back when Turbo is off. Without a Brain Engine that has 3-bit, Smallest and Progressive fall back to Smaller.
-export const TURBO_MEMS = ['smallest', 'small', 'progressive', 'progressive2', 'progressive83', 'progressive84'];
+export const TURBO_MEMS = ['smallest', 'small', 'progressive', 'progressive2', 'progressive83', 'progressive84', 'progressive82'];
 // Nov 20: Smaller (4-bit) unless picked. The speed test on a 16 GB card found 3-bit writing 5% slower at 32K and 18%
 // at 128K and 256K (its attention reads are slower), so Smallest only wins on room until that's fixed in the engine.
+// Patch 0044 (Brain Engine 25): 3-bit at 128K went from 54.2 to 56.1 tokens a second against 4-bit's 57.8 (-2.9%),
+// so Smaller stays the pick for speed and Smallest costs little for its room.
 export const turboMem = (cfg) => (TURBO_MEMS.includes(cfg?.turboMem) ? cfg.turboMem : 'small');
 export const TURBO_EXPERTS = 4;
 export const turboExperts = (cfg) => cfg?.turbo === true && cfg?.turboExperts !== false;
@@ -167,18 +172,20 @@ export const turboPerWord = (cfg, own) => (turboExperts(cfg) && Number(own) > TU
 export const helpHasTiers = (text) => /\bLLAMA_KV_TIERS\b/.test(String(text ?? ''));
 // Smallest (3-bit, Brain Engine patch 0038) needs an engine that has q3_0; without one it falls back to Smaller.
 // Progressive needs both; without them it falls back to Smaller too (the nearest in room).
-export function memTypeOf(cfg, model, { q3 = false, tiers = false } = {}) {
+// Progressive 8+2 (Turbo only, Nov 20) needs the 2-bit type (patch 0046) and Progressive Memory.
+export function memTypeOf(cfg, model, { q3 = false, q2 = false, tiers = false } = {}) {
   const t = cfg?.turbo === true ? turboMem(cfg) : cfg?.brainMemType?.[model];
   if (t === 'smallest') return q3 ? 'smallest' : 'small';
   if (t === 'progressive' || t === 'progressive2' || t === 'progressive83') return q3 && tiers ? t : 'small';
   if (t === 'progressive84') return tiers ? t : 'small'; // 4-bit base: needs Progressive Memory, not the 3-bit type
+  if (t === 'progressive82') return cfg?.turbo !== true ? 'standard' : q2 && tiers ? t : 'small'; // 2-bit base: Turbo only
   return t === 'sharp' || t === 'small' ? t : 'standard';
 }
 // The engine's own flags for this brain. Flags set by hand (llamacpp.args in config.json) are kept, but a memory
 // type picked for this brain on the Brains page sets -ctk and -ctv (1.5.207 PC check: config.example.json ships
 // "-fa on -ctk q8_0 -ctv q8_0", so every new home had args "set by hand" and Sharper and Smaller did nothing).
-export function memArgs(cfg, model, handArgs, { q3 = false, tiers = false } = {}) {
-  const type = memTypeOf(cfg, model, { q3, tiers });
+export function memArgs(cfg, model, handArgs, { q3 = false, q2 = false, tiers = false } = {}) {
+  const type = memTypeOf(cfg, model, { q3, q2, tiers });
   const t = MEM_TYPES[type];
   if (!Array.isArray(handArgs)) return ['-fa', 'on', '-ctk', t.k, '-ctv', t.v];
   if (type === 'standard') return handArgs;
@@ -195,6 +202,7 @@ export function memArgs(cfg, model, handArgs, { q3 = false, tiers = false } = {}
 // 4-bit for the newest 64K (half the chat when that's smaller). 2-step: 4-bit for the newest 64K (or half the chat).
 // 8+3: 8-bit for the newest 8K (or a quarter of the chat), the rest 3-bit, with no 4-bit step.
 // 8+4 (Nov 20): the same 8-bit step over a 4-bit base, for 4-bit's writing speed with the newest words sharp.
+// 8+2 (Nov 20, Turbo only): the same 8-bit step over a 2-bit base, for the most room.
 // Windows are whole 256s, below the context, or the engine says NOT USED.
 // The slack is room in each step for one batch: the reading step (4096 covers Fastest); a bigger batch still works,
 // it reads the 3-bit copy for that batch only.
@@ -204,12 +212,12 @@ export function progressiveTiers(ctx, type = 'progressive') {
   if (c < 2048) return '';
   const fit = (most, part) => Math.min(most, Math.floor(c / part / 256) * 256);
   const q4 = `q4_0:${fit(65536, 2)}`;
-  if (type === 'progressive83' || type === 'progressive84') return `q8_0:${fit(8192, 4)}`;
+  if (type === 'progressive83' || type === 'progressive84' || type === 'progressive82') return `q8_0:${fit(8192, 4)}`;
   return type === 'progressive2' ? q4 : `q8_0:${fit(8192, 4)},${q4}`;
 }
-export function tiersEnv(cfg, model, ctx, { q3 = false, tiers = false, handArgs } = {}) {
-  const type = memTypeOf(cfg, model, { q3, tiers });
-  if (type !== 'progressive' && type !== 'progressive2' && type !== 'progressive83' && type !== 'progressive84') return {};
+export function tiersEnv(cfg, model, ctx, { q3 = false, q2 = false, tiers = false, handArgs } = {}) {
+  const type = memTypeOf(cfg, model, { q3, q2, tiers });
+  if (!/^progressive(2|83|84|82)?$/.test(type)) return {};
   if (Array.isArray(handArgs) && handArgs.some((a) => ['-np', '--parallel'].includes(a) && Number(handArgs[handArgs.indexOf(a) + 1]) > 1)) return {};
   const t = progressiveTiers(ctx, type);
   return t ? { LLAMA_KV_TIERS: t, LLAMA_KV_TIERS_SLACK: String(TIERS_SLACK) } : {};

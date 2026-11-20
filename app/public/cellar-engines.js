@@ -105,7 +105,7 @@ export function createEngineParts(now) {
   // Turbo (opt-in): what it turns on. Chat memory Smaller unless picked; 4 experts per word unless switched off.
   function turboHtml() {
     const pick = settings.turboMem || 'small';
-    const opts = [['smallest', 'Smallest (3-bit)'], ['small', 'Smaller (4-bit)'], ['progressive', 'Progressive 3-step'], ['progressive2', 'Progressive 2-step'], ['progressive83', 'Progressive 8+3'], ['progressive84', 'Progressive 8+4']];
+    const opts = [['smallest', 'Smallest (3-bit)'], ['small', 'Smaller (4-bit)'], ['progressive', 'Progressive 3-step'], ['progressive2', 'Progressive 2-step'], ['progressive83', 'Progressive 8+3'], ['progressive84', 'Progressive 8+4'], ['progressive82', 'Progressive 8+2 (2-bit, a test)']];
     return `<label class="pick"><strong>Turbo chat memory</strong> ${tip('The chat memory type every brain uses while Turbo is on. Smaller (4-bit) is the fastest writer today. Smallest packs it tightest, for the most room, but writes long chats up to a fifth slower for now. The Progressive kinds keep the newest words sharper. Smallest and Progressive need a Brain Engine that has them; otherwise I use Smaller.', 'Turbo chat memory')}
         <select data-set="turboMem" aria-label="Turbo chat memory">${opts.map(([v, label]) => `<option value="${v}" ${v === pick ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
       ${sswitch('turboExperts', settings.turboExperts !== false, 'Turbo: 4 experts per word', 'A brain made of experts asks only 4 of them per word, when it has more. Faster writing, a little less exact. A count you saved for a brain wins.')}
