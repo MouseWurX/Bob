@@ -1,0 +1,28 @@
+{
+ "name": "Conductor end to end at 64K: a 24K-token file read then 5 follow-ups, fixed step 2048, fixed 4096, the conductor (2048, reading at 6144) and stock llama.cpp b12359 at its own defaults, 5 rounds round-robin, cool-down on",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 79)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be26": { "exe": "${BE26_SERVER}", "env": { "GGML_CUDA_NO_PINNED": "1" } },
+  "plain": { "exe": "${PLAIN_SERVER}" }
+ },
+ "text": "long-text.md",
+ "textRepeat": 2,
+ "system": "You are a helpful assistant. Answer plainly.",
+ "bigRead": 24576,
+ "followUps": 5,
+ "followTokens": 200,
+ "replyTokens": 300,
+ "rounds": 5,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "wordsRef": "a-fixed-2048",
+ "baseArgs": ["-np", "1", "--no-webui", "-fa", "on", "-c", "65536", "--fit", "off", "-ngl", "99", "--n-cpu-moe", "${NCMOE_64K}", "--moe-cache-mib", "4096", "--moe-cache-cpu-share", "0", "-ctk", "q4_0", "-ctv", "q4_0", "--slot-save-path", "${SLOT_DIR}", "-lv", "4"],
+ "ways": [
+  { "id": "a-fixed-2048", "engine": "be26", "args": ["-b", "2048", "-ub", "2048"] },
+  { "id": "b-fixed-4096", "engine": "be26", "args": ["-b", "4096", "-ub", "4096"] },
+  { "id": "c-conductor", "engine": "be26", "args": ["-b", "2048", "-ub", "2048"], "conduct": { "readStep": 6144, "chatStep": 2048 } },
+  { "id": "d-stock-llama.cpp", "engine": "plain", "noBase": true, "args": ["-np", "1", "--no-webui", "-c", "65536", "-ngl", "99", "--n-cpu-moe", "${NCMOE_64K_STOCK}"] }
+ ]
+}

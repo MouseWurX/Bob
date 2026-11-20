@@ -915,6 +915,21 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 79 (Nov 20, before any run): the conductor end to end
+
+The owner asked when the conductor itself is tested (only its switch cost was, sections 37-38). `model-lab/conductor-e2e.mjs` with
+`speed-plans/conductor-e2e-64k.json`: Qwen3.6 35B, 64K context, one fixed job (a 24,576-token file pasted as a new read with a question,
+then 5 follow-ups each adding 200 tokens of the same text further on, every reply 300 words, temperature 0, seed 42), four ways, 5 rounds
+round-robin, a fresh load each time, the Addendum 74 cool-down before every load and turn (its waits left out of the job time):
+(a) Brain Engine 26, fixed step 2048; (b) fixed 4096; (c) the conductor as Bob plans this job (readBig): start at 2048, POST /context to
+6144 before the big read (the chat is empty then, so nothing to save), then save, POST /context back to 2048, restore, before the
+follow-ups; (d) stock llama.cpp b12359, its own defaults (step 2048 / 512, f16 memory), only the placement flags. All Brain Engine ways
+use q4_0 memory and the same fixed placement. Read: total time to the last word, the big read's reading speed and first word, the
+follow-ups' reading and writing speeds, each switch's seconds, and the same words or not (against (a); (d) may differ, its memory type
+differs). Pass, written before the run: (c) at least as fast as the better of (a) and (b), with the same words as (a). Expected: the big
+read takes about 15 s at 2048, 11 s at 4096 and 9 s at 6144 (section 37's 32K reads scaled); (c) saves 4-6 s against (a) and 1-2 s
+against (b) after its ~1 s switch back; (d) is the slowest, by its 512 micro-step on reading.
+
 ## Addendum 78 (Nov 20, before any run): why the 3-bit memory's gap depends on the settings
 
 At 128K, q3_0 wrote 2.9% slower than q4_0 in the kernel test (section 47: step 4096, copy cache 4 GB) but 16% slower in the Progressive
