@@ -145,8 +145,9 @@ check('2-step is kept, needs the same engine, and goes to the engine as its own 
 
 // Turbo (Nov 20, off unless switched on): show-off speed, every brain's memory to the Turbo pick, 4 experts per word
 check('Turbo is off unless switched on', !EXTRA_SWITCHES.includes('turbo') ? false : memTypeOf({ brainMemType: { big: 'sharp' } }, 'big', { q3: true }) === 'sharp');
-check('Turbo puts every brain on 3-bit chat memory, over its own pick', memTypeOf({ turbo: true, brainMemType: { big: 'sharp' } }, 'big', { q3: true }) === 'smallest' && memTypeOf({ turbo: true }, 'other', { q3: true }) === 'smallest');
-check('Turbo\'s memory can be picked: Smaller or Progressive', memTypeOf({ turbo: true, turboMem: 'small' }, 'big', { q3: true }) === 'small' && memTypeOf({ turbo: true, turboMem: 'progressive' }, 'big', { q3: true, tiers: true }) === 'progressive' && turboMem({ turboMem: 'nonsense' }) === 'smallest' && TURBO_MEMS.length === 5);
+check('Turbo puts every brain on 4-bit chat memory (Smaller), over its own pick', memTypeOf({ turbo: true, brainMemType: { big: 'sharp' } }, 'big', { q3: true }) === 'small' && memTypeOf({ turbo: true }, 'other', { q3: true }) === 'small');
+check('Turbo can still be asked for 3-bit', memTypeOf({ turbo: true, turboMem: 'smallest' }, 'big', { q3: true }) === 'smallest');
+check('Turbo\'s memory can be picked: Smaller or Progressive', memTypeOf({ turbo: true, turboMem: 'small' }, 'big', { q3: true }) === 'small' && memTypeOf({ turbo: true, turboMem: 'progressive' }, 'big', { q3: true, tiers: true }) === 'progressive' && turboMem({ turboMem: 'nonsense' }) === 'small' && TURBO_MEMS.length === 5);
 check('Turbo without a 3-bit engine falls back to Smaller', memTypeOf({ turbo: true }, 'big') === 'small');
 check('Turbo\'s Progressive pick reaches the engine as its steps', tiersEnv({ turbo: true, turboMem: 'progressive2' }, 'big', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS === 'q4_0:65536' && !tiersEnv({ turbo: true }, 'big', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS);
 check('Turbo asks 4 experts per word only of a brain with more, and only while on', turboPerWord({ turbo: true }, 8) === 4 && turboPerWord({ turbo: true }, 4) === null && turboPerWord({ turbo: true }, 0) === null && turboPerWord({}, 8) === null && turboPerWord({ turbo: true, turboExperts: false }, 8) === null);

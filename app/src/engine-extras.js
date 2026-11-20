@@ -147,11 +147,13 @@ export const q3CardOk = (files, platform) => platform !== 'darwin' && !((files |
 export const helpHasQ3 = (text) => { const t = String(text ?? ''), at = t.indexOf('--cache-type-v'); const m = at < 0 ? null : t.slice(at).match(/allowed values:[^\n]*(?:\r?\n[ \t]+[^-\s][^\n]*)*/); return Boolean(m) && /\bq3_0\b/.test(m[0]); };
 // ---------- Turbo (Nov 20, the owner's ask; off unless switched on) ----------
 // A show-off speed mode, not for real jobs: every speed trick that costs a little answer quality, at once. Its chat
-// memory is 3-bit (Smallest) for every brain unless picked otherwise (Smaller, or one of the Progressive kinds), and a
+// memory is 4-bit (Smaller) for every brain unless picked otherwise (Smallest, or one of the Progressive kinds), and a
 // brain made of experts uses 4 per word when it has more (turboExperts, on unless switched off). The brain's own picks
 // come back when Turbo is off. Without a Brain Engine that has 3-bit, Smallest and Progressive fall back to Smaller.
 export const TURBO_MEMS = ['smallest', 'small', 'progressive', 'progressive2', 'progressive83'];
-export const turboMem = (cfg) => (TURBO_MEMS.includes(cfg?.turboMem) ? cfg.turboMem : 'smallest');
+// Nov 20: Smaller (4-bit) unless picked. The speed test on a 16 GB card found 3-bit writing 5% slower at 32K and 18%
+// at 128K and 256K (its attention reads are slower), so Smallest only wins on room until that's fixed in the engine.
+export const turboMem = (cfg) => (TURBO_MEMS.includes(cfg?.turboMem) ? cfg.turboMem : 'small');
 export const TURBO_EXPERTS = 4;
 export const turboExperts = (cfg) => cfg?.turbo === true && cfg?.turboExperts !== false;
 // Turbo: stand-ins (Brain Engine 0043, off unless switched on, and only with Turbo and the hot-experts cache): while
