@@ -1,5 +1,6 @@
 // switch-cost.mjs (Addendum 65): the conductor's switch timing, with a fake engine (no card, no network, no files).
 import { argsFor, parseSwitchLog, measureSwitch, runSwitches, summariseSwitches, loadSwitchPlan } from '../model-lab/switch-cost.mjs';
+import { coolTarget } from '../model-lab/speed-test.mjs';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra) => { if (ok) { pass++; console.log(`PASS ${name}`); } else { fail++; console.log(`FAIL ${name}${extra !== undefined ? ` (${JSON.stringify(extra)})` : ''}`); } };
@@ -50,7 +51,13 @@ function fakeFx({ restoreOk = true, refSha = 'S' } = {}) {
 { const fx = fakeFx({ refSha: 'OTHER' });
   const plan = { exe: 'srv', brain: 'b', prompt: {}, switches: [{ id: 'a', from: {}, to: { n_batch: 4096 } }] };
   const res = await runSwitches({ plan, text: 't', fx, repeats: 1 });
-  check('different words from a fresh start are counted, not hidden', /\| 0 of 1 \|$/m.test(summariseSwitches(res.runs, res.refs))); }
+  check('different words from a fresh start are counted, not hidden', /\| 0 of 1 \| [^|]+ \| [^|]+ \|$/m.test(summariseSwitches(res.runs, res.refs)));
+  // Nov 20 (the owner): back to the idle card's baseline before each switch, and the card's heat and clocks during each timed reply
+  const temps = [55, 44, 40]; const naps = [];
+  const fx2 = { ...fakeFx({}), cardTempC: async () => temps.shift() ?? 40, sleep: async (ms) => { naps.push(ms); }, sampleCard: () => ({ stop: () => [{ tempC: 41, smMHz: 2800 }, { tempC: 60, smMHz: 2650 }] }) };
+  const r2 = await runSwitches({ plan: { ...plan, cool: coolTarget({}, 38) }, text: 't', fx: fx2, repeats: 1 });
+  const md = summariseSwitches(r2.runs, r2.refs);
+  check('each switch waits for the card to cool to its baseline and records the card during the reply', r2.runs[0].coolDown?.startC === 55 && r2.runs[0].coolDown.waitedS === 10 && r2.runs[0].card?.startTempC === 41 && r2.runs[0].card.maxTempC === 60 && /card °C start \/ max/.test(md) && /\| 41 \(41-41\) \/ 60 \(60-60\) \|/.test(md), { run: r2.runs[0], md }); }
 { const files = { '/p/plan.json': '{"exe":"${X}","brain":"b","prompt":{"file":"t.md"},"switches":[{"id":"s","from":{},"to":{}}]}', '/p/t.md': 'line\r\ntwo' };
   const ok = loadSwitchPlan('/p/plan.json', { read: (f) => { if (!(f in files)) throw new Error('no'); return files[f].replace(/\r\n/g, '\n'); }, vars: { X: 'exe' } });
   const bad = loadSwitchPlan('/p/plan.json', { read: (f) => files[f].replace(/\r\n/g, '\n'), vars: {} });

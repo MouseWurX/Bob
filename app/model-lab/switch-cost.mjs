@@ -17,7 +17,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { realFx, median, sha256, takeLock, freePort } from './speed-test.mjs';
+import { realFx, median, sha256, takeLock, freePort, coolTarget, coolWait, cardSummary } from './speed-test.mjs';
 
 const r2 = (x) => (Number.isFinite(x) ? Math.round(x * 100) / 100 : null);
 
@@ -90,7 +90,9 @@ export async function measureSwitch({ sw, srv, fx, prompt, followUp, maxTokens, 
   const rest = await fx.postJson(srv.url, '/slots/0?action=restore', { filename: slotFile });
   out.restoreS = r2((fx.now() - t) / 1000); out.restored = rest.ok;
   if (!rest.ok) out.restoreWhy = rest.why;
+  const card = fx.sampleCard ? fx.sampleCard() : null; // Nov 20: the card's heat and clocks during the timed reply
   const ans = await fx.stream(srv.url, { prompt: prompt + followUp, n_predict: maxTokens, temperature: 0, seed: 42, ignore_eos: true, cache_prompt: true });
+  if (card) { const c = cardSummary(card.stop()); out.card = { startTempC: c.startTempC, maxTempC: Number.isFinite(c.maxTempC) ? c.maxTempC : null, medSmMHz: c.medSmMHz, minSmMHz: Number.isFinite(c.minSmMHz) ? c.minSmMHz : null, throttledSamples: c.throttledSamples ?? 0 }; }
   out.nextFirstWordMs = ans.firstWordMs; out.writeTps = ans.writeTps; out.textSha = ans.textSha;
   out.totalS = r2((out.saveS || 0) + out.switchS + (out.restoreS || 0) + (ans.firstWordMs || 0) / 1000);
   return out;
@@ -114,12 +116,12 @@ export function summariseSwitches(runs, refs) {
   const by = new Map();
   for (const r of runs) { if (!by.has(r.switch)) by.set(r.switch, []); by.get(r.switch).push(r); }
   const f = (xs) => { const a = xs.filter(Number.isFinite); return a.length ? `${r2(median(a))} (${r2(Math.min(...a))}-${r2(Math.max(...a))})` : '-'; };
-  const lines = ['| switch | n | save s | switch s | engine s | restore s | next first word ms | kept loaded | restored | same words as a fresh start |', '|---|---|---|---|---|---|---|---|---|---|'];
+  const lines = ['| switch | n | save s | switch s | engine s | restore s | next first word ms | kept loaded | restored | same words as a fresh start | card °C start / max | clock MHz median / min |', '|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const [id, rs] of by) {
     const ok = rs.filter((r) => !r.failed);
     const ref = refs[id];
     const same = ref?.textSha ? `${ok.filter((r) => r.textSha === ref.textSha).length} of ${ok.length}` : (ref?.notRun ? `reference not run: ${ref.notRun}` : '-');
-    lines.push(`| ${id} | ${ok.length}${rs.length > ok.length ? ` (${rs.length - ok.length} failed)` : ''} | ${f(ok.map((r) => r.saveS))} | ${f(ok.map((r) => r.switchS))} | ${f(ok.map((r) => r.engineS))} | ${f(ok.map((r) => r.restoreS))} | ${f(ok.map((r) => r.nextFirstWordMs))} | ${ok.filter((r) => r.kept === true).length} of ${ok.length} | ${ok.filter((r) => r.restored).length} of ${ok.length} | ${same} |`);
+    lines.push(`| ${id} | ${ok.length}${rs.length > ok.length ? ` (${rs.length - ok.length} failed)` : ''} | ${f(ok.map((r) => r.saveS))} | ${f(ok.map((r) => r.switchS))} | ${f(ok.map((r) => r.engineS))} | ${f(ok.map((r) => r.restoreS))} | ${f(ok.map((r) => r.nextFirstWordMs))} | ${ok.filter((r) => r.kept === true).length} of ${ok.length} | ${ok.filter((r) => r.restored).length} of ${ok.length} | ${same} | ${f(ok.map((r) => r.card?.startTempC))} / ${f(ok.map((r) => r.card?.maxTempC))} | ${f(ok.map((r) => r.card?.medSmMHz))} / ${f(ok.map((r) => r.card?.minSmMHz))} |`);
   }
   const failed = runs.filter((r) => r.failed || r.restoreWhy);
   return `${lines.join('\n')}\n${failed.length ? `\nRefusals:\n${failed.map((r) => `- ${r.switch}: ${r.failed || `restore: ${r.restoreWhy}`}`).join('\n')}\n` : ''}`;
@@ -140,9 +142,10 @@ export async function runSwitches({ plan, text, fx, repeats, onRun = () => {} })
       for (const sw of plan.switches) {
         const why = fx.shouldStop();
         if (why) return { runs, refs: {}, stopped: why };
+        const cooled = plan.cool ? await coolWait(plan.cool, fx) : null; // Nov 20: back to the idle card's baseline before each switch
         let r;
         try { r = await measureSwitch({ sw, srv, fx, prompt: cut, followUp, maxTokens, slotFile: `switch-${sw.id}.bin` }); } catch (e) { r = { switch: sw.id, failed: String(e.message || e) }; }
-        r.repeat = k; runs.push(r); onRun(r);
+        r.repeat = k; if (cooled) r.coolDown = cooled; runs.push(r); onRun(r);
       }
     }
   } finally { await srv.stop(); }
@@ -185,7 +188,9 @@ async function main() {
   if (!lock.ok) { console.error(lock.why); process.exit(3); }
   const jsonl = path.join(outDir, 'runs.jsonl');
   let res;
-  try { res = await runSwitches({ plan, text, fx: liveFx(plan, outDir), repeats, onRun: (r) => { fs.appendFileSync(jsonl, JSON.stringify(r) + '\n'); console.log(JSON.stringify(r)); } }); } finally { lock.release(); }
+  const lfx = liveFx(plan, outDir);
+  plan.cool = coolTarget(plan, lfx.cardTempC ? await lfx.cardTempC() : null); // Nov 20: the idle card's baseline, before the load
+  try { res = await runSwitches({ plan, text, fx: lfx, repeats, onRun: (r) => { fs.appendFileSync(jsonl, JSON.stringify(r) + '\n'); console.log(JSON.stringify(r)); } }); } finally { lock.release(); }
   fs.writeFileSync(path.join(outDir, 'summary.md'), `# ${plan.name}\n\n${res.notRun ? `Not run: ${res.notRun}\n` : ''}${res.stopped ? `Stopped: ${res.stopped}\n` : ''}\n${summariseSwitches(res.runs, res.refs)}`);
   console.log(`Done. ${path.join(outDir, 'summary.md')}`);
 }

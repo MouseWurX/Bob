@@ -5,6 +5,10 @@ Plans for `model-lab/speed-test.mjs`, following the pre-registered method in
 the stop file, the hot-expert ranking) are never written here: they are given with `--var NAME=value` when the run
 starts.
 
+Since 20 November (Addendum 74) every plan waits for the card to cool to the idle card's own temperature plus 3 °C before each load
+and each timed run, and the summary shows the card's start and top temperature and its clocks for every row. A plan can set
+`"coolDown": {"cardC": N}` or turn it off with `"coolDown": false`.
+
 - `night1.json`: reading steps (Question 1), Brain Engine cost (Question 2), each new feature alone and together
   (Addenda 1 and 5), the expert cache at sizes and shares (Addendum 2), and the live trace every N words (Addendum 4).
 - `start.json`: Bob's real start (system prompt and tools for the Qwen 3.5/3.6 family, as a throwaway Bob with every

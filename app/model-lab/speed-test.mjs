@@ -46,6 +46,24 @@ export function realThrottled(samples) {
   return s.filter((x) => x.throttled && (x.reasons !== POWER_CAP || med === null || x.smMHz === null || x.smMHz < 0.97 * med));
 }
 
+// Nov 20 (the owner: log the card's heat and clocks for every row and let it cool to a set baseline before each run, so
+// heat can't skew a comparison as it did the 3-bit 128K rows): unless a plan says "coolDown": false, the runner reads
+// the idle card's temperature before the first load and waits for the card to come back to it (plus coolDown.overC,
+// 3 °C) before every load AND every timed run. A plan's own coolDown.cardC still wins. Waits are recorded, never hidden.
+export function coolTarget(plan, idleC) {
+  if (plan.coolDown === false) return null;
+  const c = typeof plan.coolDown === 'object' && plan.coolDown ? plan.coolDown : {};
+  const base = Number.isFinite(c.cardC) ? c.cardC : Number.isFinite(idleC) ? Math.max(c.floorC ?? 35, idleC + (c.overC ?? 3)) : null;
+  if (base === null) return null;
+  return { cardC: base, idleC: Number.isFinite(idleC) ? idleC : null, maxWaitS: c.maxWaitS ?? 300, everyS: c.everyS ?? 5 };
+}
+export async function coolWait(cool, fx) {
+  if (!cool || !fx.cardTempC) return null;
+  let t = await fx.cardTempC(), waited = 0;
+  const startC = t;
+  while (Number.isFinite(t) && t > cool.cardC && waited < cool.maxWaitS && !fx.shouldStop()) { await fx.sleep(cool.everyS * 1000); waited += cool.everyS; t = await fx.cardTempC(); }
+  return { startC, endC: t, waitedS: waited, hitLimit: Number.isFinite(t) && t > cool.cardC };
+}
 export const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 export function quantile(xs, q) {
   const a = xs.filter(Number.isFinite).sort((x, y) => x - y);
@@ -79,7 +97,8 @@ export function cardSummary(samples) {
   if (!s.length) return { samples: 0 };
   const max = (k) => s.reduce((m, x) => (x[k] !== null && x[k] > m ? x[k] : m), -Infinity);
   const fin = (v) => (Number.isFinite(v) ? v : null);
-  return { samples: s.length, maxTempC: max('tempC'), maxMemTempC: fin(max('memTempC')), maxUtilPct: fin(max('utilPct')), maxFanPct: fin(max('fanPct')), minPcieGen: fin(s.reduce((m, x) => (x.pcieGen !== null && x.pcieGen !== undefined && x.pcieGen < m ? x.pcieGen : m), Infinity)), maxPowerW: max('powerW'), peakMemMB: max('memMB'), minSmMHz: s.reduce((m, x) => (x.smMHz !== null && x.smMHz < m ? x.smMHz : m), Infinity), throttledSamples: realThrottled(s).length, powerCapBlips: s.filter((x) => x.throttled).length - realThrottled(s).length };
+  const sm = s.map((x) => x.smMHz).filter(Number.isFinite).sort((a, b) => a - b);
+  return { samples: s.length, startTempC: fin(s[0].tempC), startSmMHz: fin(s[0].smMHz), medSmMHz: sm.length ? sm[Math.floor(sm.length / 2)] : null, maxTempC: max('tempC'), maxMemTempC: fin(max('memTempC')), maxUtilPct: fin(max('utilPct')), maxFanPct: fin(max('fanPct')), minPcieGen: fin(s.reduce((m, x) => (x.pcieGen !== null && x.pcieGen !== undefined && x.pcieGen < m ? x.pcieGen : m), Infinity)), maxPowerW: max('powerW'), peakMemMB: max('memMB'), minSmMHz: s.reduce((m, x) => (x.smMHz !== null && x.smMHz < m ? x.smMHz : m), Infinity), throttledSamples: realThrottled(s).length, powerCapBlips: s.filter((x) => x.throttled).length - realThrottled(s).length };
 }
 
 // Processor busy share between two os.cpus() readings, over all cores (0 to 100).
@@ -294,13 +313,8 @@ async function runRowOnce({ plan, prompts, row, round, fx }) {
   const out = { round, row: row.id, engine: row.engine, cmd: [eng.exe, ...args].join(' '), env: Object.keys(env), runs: [] };
   // plan.coolDown {cardC, maxWaitS}: before each load, wait for the card to cool to cardC (laptops), so a hot row
   // never hands its heat to the next one. The wait and the start temperature are recorded, never hidden.
-  if (plan.coolDown && fx.cardTempC) {
-    const want = plan.coolDown.cardC ?? 60, most = plan.coolDown.maxWaitS ?? 300, step = plan.coolDown.everyS ?? 5;
-    let t = await fx.cardTempC(), waited = 0;
-    const startC = t;
-    while (Number.isFinite(t) && t > want && waited < most && !fx.shouldStop()) { await fx.sleep(step * 1000); waited += step; t = await fx.cardTempC(); }
-    out.coolDown = { startC, endC: t, waitedS: waited, hitLimit: Number.isFinite(t) && t > want };
-  }
+  const cool = plan.cool !== undefined ? plan.cool : plan.coolDown ? coolTarget(plan, null) : null;
+  if (cool) out.coolDown = await coolWait(cool, fx);
   // Nov 17 (the owner: "if 6 doesn't fit my computer won't crash, will it?"): row.needFreeMB skips a load when the card
   // has less free than that before it starts (something else is on it), written down as not run, never as slow.
   if (row.needFreeMB && fx.cardFreeMB) {
@@ -355,6 +369,7 @@ async function runRowOnce({ plan, prompts, row, round, fx }) {
     catch (e) { out.notRun = crashText('the engine failed the warm-up', e, srv); return out; }
     for (const p of row.prompts || []) {
       if (fx.shouldStop()) { out.stopped = fx.shouldStop(); break; }
+      const runCool = cool ? await coolWait(cool, fx) : null; // the card back at its baseline before every timed run
       const disk0 = plan.diskReads ? await fx.diskReadBytes?.() : null; // off unless the plan asks (a PowerShell call each side on Windows)
       const card = fx.sampleCard();
       const cpu = fx.cpuMark?.();
@@ -377,7 +392,7 @@ async function runRowOnce({ plan, prompts, row, round, fx }) {
       }
       if (needle(p) && r && !r.failed) r = { ...r, needle: { at: needle(p).at, found: typeof r.text === 'string' && new RegExp(needle(p).find, 'i').test(r.text) } };
       const { text: said, ...rest } = r || {};
-      out.runs.push({ prompt: p, ...rest, ...(plan.saveText && typeof said === 'string' ? { text: said } : {}), ...(proc ? { cpu: proc } : {}), ...(disk ? { disk } : {}), card: cardSummary(samples), throttled: realThrottled(samples).length > 0, cardSamples: samples });
+      out.runs.push({ prompt: p, ...rest, ...(plan.saveText && typeof said === 'string' ? { text: said } : {}), ...(proc ? { cpu: proc } : {}), ...(disk ? { disk } : {}), ...(runCool ? { coolDown: runCool } : {}), card: cardSummary(samples), throttled: realThrottled(samples).length > 0, cardSamples: samples });
       if (r?.failed && srv.exitCode?.()) { out.crashed = r.failed; break; } // a dead engine answers nothing more
     }
     out.cache = parseCacheLog(srv.log()); // with LLAMA_MOE_CACHE_LOG_EVERY set, the latest totals
@@ -409,13 +424,13 @@ export function summarise(results, { prompts = {}, plan = {} } = {}) {
     `# Speed test results: ${plan.name || 'unnamed plan'}`, '',
     'Median, with min and max in brackets, over the timed runs. Throttled runs are kept and counted. Raw numbers: runs.jsonl.', '',
     `Prompts: ${Object.entries(prompts).map(([id, p]) => `${id} sha256 ${p.sha.slice(0, 16)}`).join('; ') || 'none'}.`, '',
-    '| Row | Prompt | Runs | First word (ms) | Reading (t/s) | Writing (t/s) | Gap p50 / p99 / max (ms) | Kept guesses | Peak card MB | Throttled |',
-    '|---|---|---|---|---|---|---|---|---|---|'
+    '| Row | Prompt | Runs | First word (ms) | Reading (t/s) | Writing (t/s) | Gap p50 / p99 / max (ms) | Kept guesses | Peak card MB | Card °C start / max | Clock MHz median / min | Throttled |',
+    '|---|---|---|---|---|---|---|---|---|---|---|---|'
   ];
   for (const g of by.values()) {
-    if (g.notRun) { lines.push(`| ${g.row} | - | 0 | not run: ${g.notRun} | | | | | | |`); continue; }
+    if (g.notRun) { lines.push(`| ${g.row} | - | 0 | not run: ${g.notRun} | | | | | | | | |`); continue; }
     const ok = g.runs.filter((x) => !x.failed);
-    lines.push(`| ${g.row} | ${g.prompt} | ${ok.length}${g.runs.length > ok.length ? ` (+${g.runs.length - ok.length} failed)` : ''} | ${mm(ok.map((x) => x.firstWordMs))} | ${mm(ok.map((x) => x.readTps))} | ${mm(ok.map((x) => x.writeTps))} | ${r1(median(ok.map((x) => x.gaps?.median)))} / ${r1(median(ok.map((x) => x.gaps?.p99)))} / ${r1(Math.max(...ok.map((x) => x.gaps?.max ?? -Infinity)))} | ${ok.some((x) => x.keptPct !== undefined) ? mm(ok.map((x) => x.keptPct)) + '%' : '-'} | ${mm(ok.map((x) => x.card?.peakMemMB))} | ${ok.filter((x) => x.throttled).length} |`);
+    lines.push(`| ${g.row} | ${g.prompt} | ${ok.length}${g.runs.length > ok.length ? ` (+${g.runs.length - ok.length} failed)` : ''} | ${mm(ok.map((x) => x.firstWordMs))} | ${mm(ok.map((x) => x.readTps))} | ${mm(ok.map((x) => x.writeTps))} | ${r1(median(ok.map((x) => x.gaps?.median)))} / ${r1(median(ok.map((x) => x.gaps?.p99)))} / ${r1(Math.max(...ok.map((x) => x.gaps?.max ?? -Infinity)))} | ${ok.some((x) => x.keptPct !== undefined) ? mm(ok.map((x) => x.keptPct)) + '%' : '-'} | ${mm(ok.map((x) => x.card?.peakMemMB))} | ${r1(median(ok.map((x) => x.card?.startTempC).filter(Number.isFinite)))} / ${r1(Math.max(...ok.map((x) => x.card?.maxTempC ?? -Infinity)))} | ${r1(median(ok.map((x) => x.card?.medSmMHz).filter(Number.isFinite)))} / ${r1(Math.min(...ok.map((x) => x.card?.minSmMHz ?? Infinity)))} | ${ok.filter((x) => x.throttled).length} |`);
   }
   const cond = [...by.values()].filter((g) => !g.notRun && g.runs.some((x) => x.card?.samples || x.cpu));
   if (cond.length) {
@@ -438,8 +453,8 @@ export function summarise(results, { prompts = {}, plan = {} } = {}) {
     lines.push('', 'Time the card spent throttled (share of samples, median with min and max; then the writing speed of the least and most throttled run):', '', '| Row | Prompt | Throttled % | Writing t/s, least throttled | Writing t/s, most throttled |', '|---|---|---|---|---|');
     for (const g of slowed) { const ok = g.runs.filter((x) => !x.failed && share(x) !== null).sort((a, b) => share(a) - share(b)); lines.push(`| ${g.row} | ${g.prompt} | ${mm(ok.map(share))} | ${r1(ok[0]?.writeTps)} | ${r1(ok[ok.length - 1]?.writeTps)} |`); }
   }
-  const cools = results.map((x) => x.coolDown).filter(Boolean);
-  if (cools.length) { const w = cools.map((c) => c.waitedS); lines.push('', `Cool-down before each load (to ${plan.coolDown?.cardC ?? 60} °C): waited ${r1(median(w))} s median (${r1(Math.min(...w))} to ${r1(Math.max(...w))}); card ${r1(median(cools.map((c) => c.startC).filter(Number.isFinite)))} °C median at the start; ${cools.filter((c) => c.hitLimit).length} of ${cools.length} loads started above the target after the longest wait.`); }
+  const cools = results.flatMap((x) => [x.coolDown, ...(x.runs || []).map((r) => r.coolDown)]).filter(Boolean);
+  if (cools.length) { const w = cools.map((c) => c.waitedS); lines.push('', `Cool-down before each load and each timed run (to ${plan.cool?.cardC ?? plan.coolDown?.cardC ?? 60} °C${Number.isFinite(plan.cool?.idleC) ? `, the idle card read ${plan.cool.idleC} °C before the first load` : ''}): waited ${r1(median(w))} s median (${r1(Math.min(...w))} to ${r1(Math.max(...w))}); card ${r1(median(cools.map((c) => c.startC).filter(Number.isFinite)))} °C median at the start; ${cools.filter((c) => c.hitLimit).length} of ${cools.length} started above the target after the longest wait.`); }
   const twice = [...by.values()].filter((g) => g.runs.filter((x) => x.throttled).length > 1).map((g) => `${g.row}/${g.prompt}`);
   if (twice.length) lines.push('', `More than one throttled run (to be run again, both sets published, per the method): ${twice.join(', ')}.`);
   const cache = results.filter((x) => x.cache?.small || x.load?.refused);
@@ -624,6 +639,8 @@ async function main() {
   const lock = takeLock(plan.lock, 'speed-test');
   if (!lock.ok) { console.error(lock.why); process.exit(3); }
   const fx = realFx(plan, outDir);
+  plan.cool = coolTarget(plan, fx.cardTempC ? await fx.cardTempC() : null); // the idle card, before anything loads
+  if (plan.cool) console.log(`card baseline: ${plan.cool.idleC ?? '?'} °C idle; every load and timed run starts at or under ${plan.cool.cardC} °C (waits up to ${plan.cool.maxWaitS} s)`);
   const results = [];
   const jsonl = path.join(outDir, 'runs.jsonl');
   try {

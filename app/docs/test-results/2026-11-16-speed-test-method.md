@@ -915,6 +915,17 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 74 (Nov 20): every speed test cools the card to its own baseline and logs heat and clocks per row
+
+The 3-bit memory looked 18% slower than q4_0 at 128K in section 39, but 6% in a same-day head-to-head (section 47): the long rows in
+the first run were throttled 43-56% of the time. From now on `speed-test.mjs` and `switch-cost.mjs` read the idle card's temperature
+before the first load and wait for the card to return to it plus 3 °C (at least 35 °C, at most 300 s per wait) before every load and
+every timed run (switch-cost: before every switch). A plan can set its own target with "coolDown": {"cardC": N} or turn it off with
+"coolDown": false. Each run records the card's temperature and clock at its start, its top temperature, its median and lowest clock,
+and the summary table shows "Card °C start / max" and "Clock MHz median / min" for every row, beside the throttle count. Waits,
+and any wait that hit its limit, are written in the summary; nothing is dropped. Comparisons across runs whose start temperatures
+differ by more than 5 °C are flagged in the write-up, not averaged.
+
 ## Addendum 73 (Nov 20, before any run): the Progressive Memory rework (0045) on Brain Engine 26
 
 On Brain Engine 22, Progressive Memory wrote 56-78% slower than plain q3_0 on long chats (section 44 of the results): each written

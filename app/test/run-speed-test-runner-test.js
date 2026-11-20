@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { quantile, median, parseSmiLine, cardSummary, realThrottled, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, lineSplitter, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns, parseDiskstats, parseDiskRaw, diskUse, parseSharedMB, exitText } from '../model-lab/speed-test.mjs';
+import { quantile, median, parseSmiLine, cardSummary, realThrottled, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, lineSplitter, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns, parseDiskstats, parseDiskRaw, diskUse, parseSharedMB, exitText, coolTarget } from '../model-lab/speed-test.mjs';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -175,7 +175,18 @@ check('exit codes: Windows crash codes in hex, small codes plain, a signal by na
   const mk = (w, thr) => ({ prompt: 'short', writeTps: w, firstWordMs: 1, readTps: 1, gaps: {}, card: { samples: 100, throttledSamples: thr }, throttled: thr > 0 });
   const md = summarise([{ row: 'L', round: 0, runs: [mk(30, 0)], coolDown: res.coolDown }, { row: 'L', round: 1, runs: [mk(22, 40)], coolDown: hot.coolDown }], { prompts: {}, plan: { coolDown: { cardC: 60 } } });
   check('the summary shows the time spent throttled and the writing speed least and most throttled', /\| L \| short \| 20 \(0 to 40\) \| 30 \| 22 \|/.test(md));
-  check('the summary shows the cool-down waits and loads that started hot', /Cool-down before each load \(to 60 °C\)/.test(md) && /1 of 2 loads started above the target/.test(md)); }
+  check('the summary shows the cool-down waits and loads that started hot', /Cool-down before each load and each timed run \(to 60 °C\)/.test(md) && /1 of 2 started above the target/.test(md));
+  // Nov 20 (the owner): every plan cools to the idle card's own baseline before each load and each timed run, unless it says no
+  check('the baseline is the idle card plus 3 °C, a plan\'s own target wins, and "coolDown": false turns it off', coolTarget({}, 38).cardC === 41 && coolTarget({}, 38).idleC === 38 && coolTarget({ coolDown: { cardC: 60 } }, 38).cardC === 60 && coolTarget({ coolDown: false }, 38) === null && coolTarget({}, null) === null && coolTarget({}, 20).cardC === 35);
+  const seq = [70, 50, 40, 66, 40]; const naps = [];
+  const k = { ...fx(), cardTempC: async () => seq.shift() ?? 40, sleep: async (ms) => { naps.push(ms); } };
+  const both = await runRow({ plan: { ...plan, cool: coolTarget({}, 38) }, prompts, row: plan.rows[1], round: 0, fx: k });
+  check('the card is cooled before the load and again before each timed run, each wait recorded', both.coolDown?.startC === 70 && both.coolDown.endC === 40 && both.runs[0].coolDown?.startC === 66 && both.runs[0].coolDown.waitedS === 5 && naps.length === 3, { load: both.coolDown, run: both.runs[0]?.coolDown });
+  const cs = cardSummary([parseSmiLine('2026/11/20 08:00:00.000, 41, 100, 300, 2800, 13801, 0x0, 9000, 90, 30, [N/A], 4, 16'), parseSmiLine('2026/11/20 08:00:00.250, 63, 250, 300, 2600, 13801, 0x0, 9000, 99, 60, [N/A], 4, 16'), parseSmiLine('2026/11/20 08:00:00.500, 66, 250, 300, 2700, 13801, 0x0, 9000, 99, 60, [N/A], 4, 16')]);
+  check('each run records the card\'s temperature and clock at its start, its median clock and its lowest', cs.startTempC === 41 && cs.startSmMHz === 2800 && cs.medSmMHz === 2700 && cs.minSmMHz === 2600 && cs.maxTempC === 66, cs);
+  const md2 = summarise([{ row: 'T', round: 0, runs: [{ prompt: 'short', writeTps: 50, firstWordMs: 1, readTps: 1, gaps: {}, card: cs, throttled: false }] }], { prompts: {}, plan: {} });
+  check('the summary table shows the card\'s start and top temperature and its clocks for every row', /Card °C start \/ max \| Clock MHz median \/ min/.test(md2) && /\| 41 \/ 66 \| 2700 \/ 2600 \|/.test(md2), md2.split('\n').find((l) => l.startsWith('| T')));
+}
 
 { const header = '"Date","Time","Core VIDs (avg) [V]","CPU (Tctl/Tdie) [°C]","CPU Die (average) [°C]","CPU Package Power [W]"';
   check('HWiNFO columns are found by name', hwinfoColumns(header).temp === 3 && hwinfoColumns(header).power === 5);
