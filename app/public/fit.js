@@ -144,7 +144,7 @@ export function pickFor(slotId, models, ctx = {}) {
     // 1.5.56: new brains (trial: true) are listed but not recommended until they've been tried on a real PC.
     // 1.5.133: a naughty (uncensored) brain is never the pick among the well-behaved ones; on the naughty list's own side
     // (ctx.naughtyPick) the pick is made among naughty brains only, and shown as Bob's quiet pick (a red devil).
-    const able = models.filter((m) => canDo(slotId, { entry: m }) && !m.gated && !m.trial && (m.naughty === true) === (ctx.naughtyPick === true) && !fullRunsHere(m, models, hw, ctx.platform));
+    const able = models.filter((m) => canDo(slotId, { entry: m }) && !m.gated && !m.trial && !m.quantOf && (m.naughty === true) === (ctx.naughtyPick === true) && !fullRunsHere(m, models, hw, ctx.platform));
     const pool = able.filter((m) => suit(m, hw, ctx.platform).level === 'ok');
     if (!pool.length) return null;
     // 1.5.169: Bob's default brains: catalog bobPick lists the jobs each is the default for. Where one suits this

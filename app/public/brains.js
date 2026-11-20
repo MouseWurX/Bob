@@ -8,6 +8,7 @@ import { esc, gb } from './util.js';
 import { memTypeTrade } from './mem-types.js';
 import { brainChoices, choiceOptions, takesJob } from './brain-choices.js';
 import { OWN_BUTTONS, ownFormHtml } from './catalogue.js';
+import { stepChoices } from './quant-steps.js';
 
 // The jobs a brain can hold (every thinking slot; the rented brain is its own thing).
 export const brainJobs = () => allSlots().filter((s) => s.kind === 'llm');
@@ -193,7 +194,7 @@ function chipHtml(s, b, ctx, greyed) {
 function brainRowHtml(b, ctx) {
   const chips = b.jobs.map((s) => chipHtml(s, b, ctx, oneBrainCovers(s, ctx) && s.id !== 'bob' && b.value !== val('bob', ctx))).join('');
   const trial = b.entry?.trial ? '<span class="tag">Not tried yet</span>' : '';
-  return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name"><strong>${esc(b.name)}</strong> ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
+  return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name"><strong>${esc(b.name)}</strong> ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${quantPickHtml(b, ctx)}${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
     <div class="brain-jobs">${chips}${jobSelect(b.value, jobsFor(b.value, ctx), `Give ${b.name} another job`)}</div>
     <div class="brain-place">${placeBarHtml(b.entry, ctx)}${actHtml(b, ctx)}</div></li>`;
 }
@@ -340,6 +341,20 @@ const rowPicker = (b, ctx, main) => {
   const list = rowChoices(b.jobs, ctx, b.value);
   return `<label class="row-pick"><span class="sr-only">${main ? 'Main brain' : `Brain for ${esc(b.jobs.map((s) => s.name).join(', '))}`}</span><select data-rowbrain="${esc(b.value)}" data-rowjobs="${esc(b.jobs.map((s) => s.id).join(','))}" aria-label="${esc(main ? 'Main brain' : `Brain for ${b.jobs.map((s) => s.name).join(', ')}`)}">${choiceOptions(list, b.value, esc)}</select></label>`;
 };
+// Nov 19 2026 (the owner: "having the quantization level is a big one up"): a big brain's row (35B and up) gets a
+// Quant level menu once Settings, Brains, "Pick a quant level for big brains" is on. Picking a level you have moves
+// the row's jobs to it; one you don't have yet asks to download it first (with the size), like the catalogue's Get.
+export function quantPickHtml(b, ctx) {
+  const list = stepChoices(b.entry, ctx.models || [], { on: ctx.quantOn === true });
+  if (!list.length) return '';
+  const cur = b.entry?.id || '';
+  const opts = list.map((s) => {
+    const here = s.id === cur || s.entry.status?.state === 'installed';
+    return `<option value="${esc(s.id)}"${s.id === cur ? ' selected' : ''}>${esc(s.label)}${here ? '' : ' (get it first)'}</option>`;
+  }).join('');
+  const now = list.find((s) => s.id === cur);
+  return `<div class="model quant-pick"><label>Quant level <select data-rowquant="${esc(cur)}" data-rowjobs="${esc(b.jobs.map((s) => s.id).join(','))}" aria-label="${esc(`Quant level for ${b.name}`)}">${opts}</select></label> ${tipHtml(now?.why || 'Q4 is my usual. Lower levels are smaller and a little less sharp; each says how it did in my checks and whether I recommend it.', 'About quant levels')}<div class="confirm" hidden></div></div>`;
+}
 // The main brain: the row with the Brain job. The others: every other brain with a job.
 export function brainRows(ctx) {
   const used = brainsInUse(ctx);
@@ -349,14 +364,14 @@ export function brainRows(ctx) {
 function mainRowHtml(b, ctx) {
   const chips = b.jobs.filter((s) => s.id !== 'bob').map((s) => chipHtml(s, b, ctx, false)).join('');
   const trial = b.entry?.trial ? '<span class="tag">Not tried yet</span>' : '';
-  return `<li class="brain-row main-row" id="brain-${esc(b.value)}"><div class="brain-name"><span class="row-label">🧠 Main brain</span>${rowPicker(b, ctx, true)} ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
+  return `<li class="brain-row main-row" id="brain-${esc(b.value)}"><div class="brain-name"><span class="row-label">🧠 Main brain</span>${rowPicker(b, ctx, true)} ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${quantPickHtml(b, ctx)}${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
     <div class="brain-jobs"><span class="muted">${ctx.oneBrain ? 'Every job.' : 'Every job no other brain has.'}</span>${chips}</div>
     <div class="brain-place">${placeBarHtml(b.entry, ctx)}${actHtml(b, ctx)}</div></li>`;
 }
 function otherRowHtml(b, ctx) {
   const chips = b.jobs.map((s) => chipHtml(s, b, ctx, false)).join('');
   const trial = b.entry?.trial ? '<span class="tag">Not tried yet</span>' : '';
-  return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name">${rowPicker(b, ctx, false)} ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
+  return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name">${rowPicker(b, ctx, false)} ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${quantPickHtml(b, ctx)}${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
     <div class="brain-jobs">${chips}${jobSelect(b.value, jobsFor(b.value, ctx).filter((s) => s.id !== 'bob'), `Give ${b.name} another job`)}</div>
     <div class="brain-place">${placeBarHtml(b.entry, ctx)}${actHtml(b, ctx)}</div></li>`;
 }
