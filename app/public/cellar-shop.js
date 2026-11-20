@@ -36,6 +36,7 @@ export function createShopParts(now) {
       const eng = m.needs && (data.engines || []).find((e) => e.name === m.needs);
       return `<div class="have">✓ ${where}</div>${m.use ? `<button data-use="${esc(m.id)}">Use this</button>` : ''}${engineStep(eng)}`;
     }
+    if (m.waitsFor) return `<div class="muted"><span class="tag warn">Waiting for Brain Engine</span> ${esc(m.waitsFor)}</div>`;
     if (m.gated) return `<div class="muted"><span class="tag warn">needs a Hugging Face account</span> ${esc(m.gatedWhy || '')}</div>`;
     if (!s.canDownload) return `<div class="muted">Needs Ollama running to download. Start Ollama, then press Check again.</div><button type="button" data-recheck>Check again</button>`;
     const part = s.state === 'partial' ? ' (some files are already here)' : '';
@@ -49,6 +50,7 @@ export function createShopParts(now) {
   // download still asks first), or the same progress and notes as the model pages while it's going.
   function catAction(m) {
     const waiting = (data.downloads || []).some((d) => d.id === m.id && ['queued', 'paused', 'failed'].includes(d.state));
+    if (m.waitsFor) return `<span class="tag warn" tabindex="0" data-tip="${esc(m.waitsFor)}">Waiting for Brain Engine</span>`;
     if (live.has(m.id) || waiting || m.gated || !m.status.canDownload || m.status.state === 'partial') return action(m);
     const fit = suit(m);
     if (fit.level === 'blocked') return '<span class="tag bad">Can\'t install here</span>';

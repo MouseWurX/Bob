@@ -211,6 +211,7 @@ export const FAMILIES = {
   GLM: 'Made by Z.ai. A coding and tools brain that thinks before it answers.',
   Laguna: 'Made by Poolside. A coder that is small for what it does.',
   Muse: 'Made by Meta. Muse Glimmer, a 30B that sees pictures and is strong with tools.',
+  Raon: 'Made by KRAFTON, the PUBG company. Brains with a new kind of inside (fast long-memory layers), from a 3B to a 30B made of experts. Apache 2.0. They wait for a newer Brain Engine before Bob can run them.',
   LFM: 'Made by Liquid AI. Quick brains built a different way inside, from a tiny 1.7B for phones to a fast 24B. Liquid\'s own licence: free for personal use; read it before using one for a business.',
   Phi: 'Made by Microsoft. Small brains that are good at maths and plain reasoning for their size.',
   'GPT-OSS': 'Made by OpenAI, open to download. A careful thinker and reviewer.',
