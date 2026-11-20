@@ -1,0 +1,570 @@
+diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
+index d488c1a..8f49b0f 100644
+--- a/ggml/include/ggml.h
++++ b/ggml/include/ggml.h
+@@ -2299,6 +2299,33 @@ extern "C" {
+             struct ggml_tensor * a,
+             struct ggml_tensor * sinks);
+ 
++    // Brain Engine 0045: flash attention that also hands back each query row's log-sum-exp: the natural log of
++    // the softmax's sum (sink included), in the units of scale*KQ + mask. The result is ggml_flash_attn_ext's with
++    // one more slice at the end of dim 3: [n_embd_v, n_head, n_batch, ne3 + 1]. Read it through the two views:
++    //   ggml_flash_attn_ext_get_out: [n_embd_v, n_head, n_batch, ne3], the usual result
++    //   ggml_flash_attn_ext_get_lse: [n_head, n_batch, ne3] F32, row (i_batch, i3) of head h at h + n_head*(i_batch + n_batch*i3)
++    // Back ends: CPU, and CUDA for 1 or 2 query rows (its vector kernel). Every other back end refuses it in
++    // supports_op (checked once in ggml_backend_dev_supports_op), so check that before building on it.
++    GGML_API struct ggml_tensor * ggml_flash_attn_ext_with_lse(
++            struct ggml_context * ctx,
++            struct ggml_tensor  * q,
++            struct ggml_tensor  * k,
++            struct ggml_tensor  * v,
++            struct ggml_tensor  * mask,
++            float                 scale,
++            float                 max_bias,
++            float                 logit_softcap);
++
++    GGML_API bool ggml_flash_attn_ext_has_lse(const struct ggml_tensor * a);
++
++    GGML_API struct ggml_tensor * ggml_flash_attn_ext_get_out(
++            struct ggml_context * ctx,
++            struct ggml_tensor  * a);
++
++    GGML_API struct ggml_tensor * ggml_flash_attn_ext_get_lse(
++            struct ggml_context * ctx,
++            struct ggml_tensor  * a);
++
+     // TODO: needs to be adapted to ggml_flash_attn_ext
+     GGML_API struct ggml_tensor * ggml_flash_attn_back(
+            struct ggml_context * ctx,
+diff --git a/ggml/src/ggml-backend.cpp b/ggml/src/ggml-backend.cpp
+index 688db25..f9a640e 100644
+--- a/ggml/src/ggml-backend.cpp
++++ b/ggml/src/ggml-backend.cpp
+@@ -1030,6 +1030,14 @@ ggml_backend_buffer_t ggml_backend_dev_buffer_from_host_ptr(ggml_backend_dev_t d
+ 
+ bool ggml_backend_dev_supports_op(ggml_backend_dev_t device, const struct ggml_tensor * op) {
+     GGML_ASSERT(device);
++    // Brain Engine 0045: flash attention that also writes each row's log-sum-exp is known only to the processor,
++    // CUDA and card sharing (whose far side checks again); every other back end would leave that slice unwritten
++    if (ggml_flash_attn_ext_has_lse(op)) {
++        const char * reg = device->reg ? ggml_backend_reg_name(device->reg) : "";
++        if (strcmp(reg, "CPU") != 0 && strcmp(reg, "CUDA") != 0 && strncmp(reg, "RPC", 3) != 0) {
++            return false;
++        }
++    }
+     return device->iface.supports_op(device, op);
+ }
+ 
+diff --git a/ggml/src/ggml-cpu/ops.cpp b/ggml/src/ggml-cpu/ops.cpp
+index 0870fa0..33814e6 100644
+--- a/ggml/src/ggml-cpu/ops.cpp
++++ b/ggml/src/ggml-cpu/ops.cpp
+@@ -8748,6 +8748,21 @@ static inline float ggml_fa_pos_mask_value(const int32_t * kpos, int32_t qpos, i
+     return (p0 <= qpos && (n_swa == 0 || qpos - p0 < n_swa)) ? 0.0f : -INFINITY;
+ }
+ 
++// Brain Engine 0045: where a row's log-sum-exp goes when the op asks for it (ggml_flash_attn_ext_with_lse), else NULL:
++// the extra slice after the result, row iq1 of head h in stream iq3 at h + n_head*(iq1 + n_batch*iq3)
++static inline float * ggml_fa_lse_row(const ggml_tensor * dst, int64_t h, int64_t iq1, int64_t iq3) {
++    if (!ggml_flash_attn_ext_has_lse(dst)) {
++        return NULL;
++    }
++    const ggml_tensor * q = dst->src[0];
++    float * lse = (float *) ((char *) dst->data + dst->nb[3]*q->ne[3]);
++    return lse + h + q->ne[2]*(iq1 + q->ne[1]*iq3);
++}
++
++static inline float ggml_fa_lse_value(float M, float S) {
++    return S > 0.0f ? M + logf(S) : -INFINITY;
++}
++
+ static void ggml_compute_forward_flash_attn_ext_f16_one_chunk(
+         const ggml_compute_params * params,
+         ggml_tensor * dst,
+@@ -8968,6 +8983,10 @@ static void ggml_compute_forward_flash_attn_ext_f16_one_chunk(
+             const int i2 = iq2;
+             const int i3 = iq3;
+ 
++            if (float * lse = ggml_fa_lse_row(dst, iq2, iq1, iq3)) {
++                *lse = ggml_fa_lse_value(M, S); // Brain Engine 0045
++            }
++
+             // permute(0, 2, 1, 3)
+             memcpy((char *) dst->data + (i3*ne2*ne1 + i2 + i1*ne1)*nb1, VKQ32, nb1);
+         }
+@@ -9247,6 +9266,7 @@ static void ggml_compute_forward_flash_attn_ext_tiled(
+ 
+                 if (s > M[tq]) {
+                     ms = expf(M[tq] - s);
++                    M[tq] = s; // Brain Engine 0045: the log-sum-exp reads M
+                     ggml_vec_scale_f32(DV, VKQ32 + tq * DV, ms);
+                 } else {
+                     vs = expf(s - M[tq]);
+@@ -9266,6 +9286,10 @@ static void ggml_compute_forward_flash_attn_ext_tiled(
+             const int i2 = iq2;
+             const int i3 = iq3;
+ 
++            if (float * lse = ggml_fa_lse_row(dst, i2, i1, i3)) {
++                *lse = ggml_fa_lse_value(M[tq], S[tq]); // Brain Engine 0045
++            }
++
+             // permute(0, 2, 1, 3)
+             memcpy((char *) dst->data + (i3*ne2*ne1 + i2 + i1*ne1)*nb1, VKQ32 + tq * DV, nb1);
+         }
+@@ -9341,6 +9365,9 @@ static void ggml_flash_attn_ext_reduce_partials(
+             const float S_inv = 1.0f / S_final;
+             ggml_vec_scale_f32(DV, VKQ_final, S_inv);
+         }
++        if (float * lse = ggml_fa_lse_row(dst, q_head, 0, 0)) {
++            *lse = ggml_fa_lse_value(M_final, S_final); // Brain Engine 0045
++        }
+         // iq1=0, iq3=0 for decode
+         memcpy((char *) dst->data + (0*ne2*ne1 + q_head + 0*ne1)*nb1, VKQ_final, nb1);
+     }
+diff --git a/ggml/src/ggml-cpu/spacemit/ime.cpp b/ggml/src/ggml-cpu/spacemit/ime.cpp
+index dc51ad0..2d49b4a 100644
+--- a/ggml/src/ggml-cpu/spacemit/ime.cpp
++++ b/ggml/src/ggml-cpu/spacemit/ime.cpp
+@@ -1192,8 +1192,9 @@ class tensor_traits_common : public tensor_traits_base {
+         const bool supported_types = (q->type == GGML_TYPE_F32 && k->type == GGML_TYPE_F16 && v->type == GGML_TYPE_F16);
+         const bool supported_shape = (DK > 0 && DK <= 128 && DV > 0 && DV <= 128);
+         const bool supported_vlen  = (__riscv_vlenb() == 128);
++        const bool supported_lse   = !ggml_flash_attn_ext_has_lse(dst); // Brain Engine 0045: only the common path writes it
+ 
+-        if (!(supported_prec && supported_types && supported_shape && supported_vlen)) {
++        if (!(supported_prec && supported_types && supported_shape && supported_vlen && supported_lse)) {
+             ggml_compute_forward_flash_attn_ext(params, dst);
+             return;
+         }
+diff --git a/ggml/src/ggml-cuda/fattn-common.cuh b/ggml/src/ggml-cuda/fattn-common.cuh
+index 8c8ce7e..1a7abb7 100644
+--- a/ggml/src/ggml-cuda/fattn-common.cuh
++++ b/ggml/src/ggml-cuda/fattn-common.cuh
+@@ -1205,6 +1205,30 @@ static __global__ void flash_attn_combine_results(
+     dst[tid] = VKQ_numerator / VKQ_denominator;
+ }
+ 
++// Brain Engine 0045: each row's log-sum-exp from the blocks' [max, sum] pairs, for ggml_flash_attn_ext_with_lse
++static __global__ void flash_attn_write_lse(
++        const float2 * meta_ptr,
++        float * lse_ptr,
++        const int nrows,
++        const int parallel_blocks) {
++    ggml_cuda_pdl_lc();
++    const int j = blockIdx.x*blockDim.x + threadIdx.x;
++    ggml_cuda_pdl_sync();
++    if (j >= nrows) {
++        return;
++    }
++    const float2 * meta = meta_ptr + int64_t(j)*parallel_blocks;
++    float kqmax = meta[0].x;
++    for (int l = 1; l < parallel_blocks; ++l) {
++        kqmax = fmaxf(kqmax, meta[l].x);
++    }
++    float kqsum = 0.0f;
++    for (int l = 0; l < parallel_blocks; ++l) {
++        kqsum += meta[l].y*expf(meta[l].x - kqmax);
++    }
++    lse_ptr[j] = kqsum > 0.0f ? kqmax + logf(kqsum) : -INFINITY;
++}
++
+ template <int DV, int ncols1, int ncols2>
+ void launch_fattn(
+     ggml_backend_cuda_context & ctx, ggml_tensor * dst, fattn_kernel_t fattn_kernel, const int nwarps, const size_t nbytes_shared,
+@@ -1241,6 +1265,10 @@ void launch_fattn(
+ 
+     GGML_ASSERT(!mask || mask->type == GGML_TYPE_F16);
+ 
++    // Brain Engine 0045: the vector kernel also hands back each row's [max, sum], made into the log-sum-exp below
++    const bool want_lse = ggml_flash_attn_ext_has_lse(KQV);
++    GGML_ASSERT(!want_lse || (!stream_k && !use_sparse && !kv_rows));
++
+     ggml_cuda_pool & pool = ctx.pool();
+     cudaStream_t main_stream = ctx.stream();
+     const int id  = ggml_cuda_get_device();
+@@ -1477,6 +1505,8 @@ void launch_fattn(
+         if (parallel_blocks > 1) {
+             dst_tmp.alloc(parallel_blocks*ggml_nelements(KQV));
+             dst_tmp_meta.alloc(parallel_blocks*ggml_nrows(KQV));
++        } else if (want_lse) {
++            dst_tmp_meta.alloc(ggml_nrows(KQV)); // one block: the kernel writes its [max, sum] when given somewhere to
+         }
+     }
+ 
+@@ -1571,4 +1601,15 @@ void launch_fattn(
+             dst_tmp.ptr, dst_tmp_meta.ptr, (float *) KQV->data, parallel_blocks);
+     }
+     CUDA_CHECK(cudaGetLastError());
++
++    if (want_lse) {
++        // rows in the order of the result: head fastest, then the query row, then the stream
++        const int nrows = int(Q->ne[1]*Q->ne[2]*Q->ne[3]);
++        float * lse = (float *) ((char *) KQV->data + KQV->nb[3]*Q->ne[3]);
++        const dim3 block_dim_lse(128, 1, 1);
++        const dim3 blocks_num_lse((nrows + 127)/128, 1, 1);
++        const ggml_cuda_kernel_launch_params launch_params = ggml_cuda_kernel_launch_params(blocks_num_lse, block_dim_lse, 0, main_stream);
++        ggml_cuda_kernel_launch(flash_attn_write_lse, launch_params, (const float2 *) dst_tmp_meta.ptr, lse, nrows, parallel_blocks);
++        CUDA_CHECK(cudaGetLastError());
++    }
+ }
+diff --git a/ggml/src/ggml-cuda/fattn-vec.cuh b/ggml/src/ggml-cuda/fattn-vec.cuh
+index 2a90ac7..9147ac2 100644
+--- a/ggml/src/ggml-cuda/fattn-vec.cuh
++++ b/ggml/src/ggml-cuda/fattn-vec.cuh
+@@ -539,7 +539,8 @@ static __global__ void flash_attn_ext_vec(
+ 
+     }
+ 
+-    if (gridDim.y != 1 && tid < ncols && (ncols == 1 || ic0 + tid < int(ne01.z))) {
++    // Brain Engine 0045: with one block per row, [max, sum] is written only when asked (dst_meta given) for the log-sum-exp
++    if ((gridDim.y != 1 || dst_meta != nullptr) && tid < ncols && (ncols == 1 || ic0 + tid < int(ne01.z))) {
+         dst_meta[((sequence*int(ne01.z) + ic0 + tid)*ne02 + head)*gridDim.y + blockIdx.y] = make_float2(KQ_max[tid], KQ_sum[tid]);
+     }
+ #else
+diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
+index facbf9b..4a81dfe 100644
+--- a/ggml/src/ggml-cuda/fattn.cu
++++ b/ggml/src/ggml-cuda/fattn.cu
+@@ -607,7 +607,7 @@ static bool ggml_cuda_fattn_kv_type_supported(const ggml_type type) {
+     }
+ }
+ 
+-static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const ggml_tensor * dst) {
++static best_fattn_kernel ggml_cuda_get_best_fattn_kernel_any(const int device, const ggml_tensor * dst) {
+ #ifndef FLASH_ATTN_AVAILABLE
+     GGML_UNUSED(device); GGML_UNUSED(dst);
+     return BEST_FATTN_KERNEL_NONE;
+@@ -804,6 +804,21 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
+     return BEST_FATTN_KERNEL_TILE;
+ }
+ 
++// Brain Engine 0045: only the vector kernel writes the log-sum-exp (ggml_flash_attn_ext_with_lse), so such a request is
++// taken only where it can run: 1 or 2 query rows, a head size it has, K/V a multiple of FATTN_KQ_STRIDE long
++static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const ggml_tensor * dst) {
++    const best_fattn_kernel best = ggml_cuda_get_best_fattn_kernel_any(device, dst);
++    if (best == BEST_FATTN_KERNEL_NONE || !ggml_flash_attn_ext_has_lse(dst)) {
++        return best;
++    }
++    const ggml_tensor * Q = dst->src[0];
++    const ggml_tensor * K = dst->src[1];
++    const ggml_tensor * V = dst->src[2];
++    const bool vec_ok = Q->ne[1] <= 2 && Q->ne[0] <= 256 && Q->ne[0] % 64 == 0 && Q->ne[0] != 192 && V->ne[0] == K->ne[0] &&
++        K->ne[1] % FATTN_KQ_STRIDE == 0 && dst->src[5] == nullptr;
++    return vec_ok ? BEST_FATTN_KERNEL_VEC : BEST_FATTN_KERNEL_NONE;
++}
++
+ size_t ggml_cuda_flash_attn_ext_get_alloc_size(int device, const ggml_tensor * dst) {
+     GGML_ASSERT(dst->op == GGML_OP_FLASH_ATTN_EXT);
+ 
+diff --git a/ggml/src/ggml-rpc/ggml-rpc.cpp b/ggml/src/ggml-rpc/ggml-rpc.cpp
+index 44f5d61..b7cf696 100644
+--- a/ggml/src/ggml-rpc/ggml-rpc.cpp
++++ b/ggml/src/ggml-rpc/ggml-rpc.cpp
+@@ -3716,6 +3716,16 @@ static bool ggml_backend_rpc_device_supports_op(ggml_backend_dev_t dev, const st
+     if (op->op == GGML_OP_MOE_DOORBELL) {
+         return false;
+     }
++    // Brain Engine 0045: the far side may be a CUDA card, whose flash attention writes the log-sum-exp only in
++    // its vector kernel: 1 or 2 query rows, head size 64, 128 or 256, K/V a multiple of 256 cells long
++    if (ggml_flash_attn_ext_has_lse(op)) {
++        const ggml_tensor * q = op->src[0];
++        const ggml_tensor * k = op->src[1];
++        const ggml_tensor * v = op->src[2];
++        const int64_t d = k->ne[0];
++        return q->ne[1] <= 2 && (d == 64 || d == 128 || d == 256) && v->ne[0] == d && k->ne[1] % 256 == 0 &&
++            op->src[5] == nullptr && (op->src[3] == nullptr || op->src[3]->type == GGML_TYPE_F16);
++    }
+     //TODO: call the remote backend and cache the results
+     return true;
+ }
+diff --git a/ggml/src/ggml.c b/ggml/src/ggml.c
+index ca1ef87..897b8c1 100644
+--- a/ggml/src/ggml.c
++++ b/ggml/src/ggml.c
+@@ -5426,7 +5426,8 @@ static struct ggml_tensor * ggml_flash_attn_ext_impl(
+         struct ggml_tensor  * kv_rows,
+         float                 scale,
+         float                 max_bias,
+-        float                 logit_softcap) {
++        float                 logit_softcap,
++        bool                  with_lse) {
+     GGML_ASSERT(ggml_can_mul_mat(k, q));
+     // TODO: check if vT can be multiplied by (k*qT)
+ 
+@@ -5466,11 +5467,16 @@ static struct ggml_tensor * ggml_flash_attn_ext_impl(
+     }
+ 
+     // permute(0, 2, 1, 3)
+-    int64_t ne[4] = { v->ne[0], q->ne[2], q->ne[1], q->ne[3] };
++    // Brain Engine 0045: with_lse adds one slice at the end of dim 3 for each row's log-sum-exp
++    GGML_ASSERT(!with_lse || q->ne[3] < v->ne[0]);
++    int64_t ne[4] = { v->ne[0], q->ne[2], q->ne[1], q->ne[3] + (with_lse ? 1 : 0) };
+     struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne);
+ 
+     float params[] = { scale, max_bias, logit_softcap };
+     ggml_set_op_params(result, params, sizeof(params));
++    if (with_lse) {
++        ggml_set_op_params_i32(result, 5, 1);
++    }
+ 
+     result->op     = GGML_OP_FLASH_ATTN_EXT;
+     result->src[0] = q;
+@@ -5491,7 +5497,7 @@ struct ggml_tensor * ggml_flash_attn_ext(
+         float                 scale,
+         float                 max_bias,
+         float                 logit_softcap) {
+-    return ggml_flash_attn_ext_impl(ctx, q, k, v, mask, NULL, scale, max_bias, logit_softcap);
++    return ggml_flash_attn_ext_impl(ctx, q, k, v, mask, NULL, scale, max_bias, logit_softcap, false);
+ }
+ 
+ struct ggml_tensor * ggml_flash_attn_ext_rows(
+@@ -5504,7 +5510,7 @@ struct ggml_tensor * ggml_flash_attn_ext_rows(
+         float                 scale,
+         float                 max_bias,
+         float                 logit_softcap) {
+-    return ggml_flash_attn_ext_impl(ctx, q, k, v, mask, kv_rows, scale, max_bias, logit_softcap);
++    return ggml_flash_attn_ext_impl(ctx, q, k, v, mask, kv_rows, scale, max_bias, logit_softcap, false);
+ }
+ 
+ 
+@@ -5555,6 +5561,40 @@ void ggml_flash_attn_ext_add_sinks(
+     a->src[4] = sinks;
+ }
+ 
++// Brain Engine 0045: flash attention with each row's log-sum-exp in one extra slice of dim 3 (op param 5 says so)
++
++struct ggml_tensor * ggml_flash_attn_ext_with_lse(
++        struct ggml_context * ctx,
++        struct ggml_tensor  * q,
++        struct ggml_tensor  * k,
++        struct ggml_tensor  * v,
++        struct ggml_tensor  * mask,
++        float                 scale,
++        float                 max_bias,
++        float                 logit_softcap) {
++    return ggml_flash_attn_ext_impl(ctx, q, k, v, mask, NULL, scale, max_bias, logit_softcap, true);
++}
++
++bool ggml_flash_attn_ext_has_lse(const struct ggml_tensor * a) {
++    return a->op == GGML_OP_FLASH_ATTN_EXT && ggml_get_op_params_i32(a, 5) != 0;
++}
++
++struct ggml_tensor * ggml_flash_attn_ext_get_out(
++        struct ggml_context * ctx,
++        struct ggml_tensor  * a) {
++    GGML_ASSERT(ggml_flash_attn_ext_has_lse(a));
++    return ggml_view_4d(ctx, a, a->ne[0], a->ne[1], a->ne[2], a->ne[3] - 1, a->nb[1], a->nb[2], a->nb[3], 0);
++}
++
++struct ggml_tensor * ggml_flash_attn_ext_get_lse(
++        struct ggml_context * ctx,
++        struct ggml_tensor  * a) {
++    GGML_ASSERT(ggml_flash_attn_ext_has_lse(a));
++    const int64_t n_head = a->ne[1];
++    const int64_t n_batch = a->ne[2];
++    return ggml_view_3d(ctx, a, n_head, n_batch, a->ne[3] - 1, n_head*sizeof(float), n_head*n_batch*sizeof(float), a->nb[3]*(a->ne[3] - 1));
++}
++
+ // ggml_flash_attn_back
+ 
+ struct ggml_tensor * ggml_flash_attn_back(
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index c4e51b2..c52c37b 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -895,6 +895,13 @@ static void kv_tiers_set_input(llm_graph_input_attn_kv * inp, const llama_kv_cac
+         kv->tiers_cut_main_mask(inp->tier_main_mask, ubatch, mctx->get_n_kv());
+     }
+     kv_tiers_tell(mctx, inp->tiers_used);
++    // Brain Engine 0045: said once each, how writing got each part's share
++    if (inp->tiers_used == 1 && inp->tiers_lse == 1 && kv->tiers_first(5)) {
++        LLAMA_LOG_INFO("%s: Progressive Memory: writing: each part's share comes from its own flash attention (the main cache read once a word)\n", __func__);
++    } else if (inp->tiers_used == 1 && inp->tiers_lse == 2 && kv->tiers_first(6)) {
++        LLAMA_LOG_INFO("%s: Progressive Memory: writing: some parts' shares come from one more pass over their K "
++            "(LLAMA_KV_TIERS_EXPLICIT, or flash attention that can't hand them back on this back end)\n", __func__);
++    }
+ }
+ 
+ void llm_graph_input_attn_kv::set_input(const llama_ubatch * ubatch) {
+@@ -3576,7 +3583,8 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+          ggml_tensor * v_mla,
+              int64_t   n_kv_max,
+                float   kq_scale,
+-                 int   il) const {
++                 int   il,
++         ggml_tensor ** lse) const {
+     const bool v_trans = v->nb[1] > v->nb[2];
+ 
+     // split the batch into streams if needed
+@@ -3595,6 +3603,7 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+ 
+     const bool use_flash_attn = cparams.flash_attn && kq_b == nullptr;
+     GGML_ASSERT(use_flash_attn || kv_rows == nullptr);
++    GGML_ASSERT(use_flash_attn || lse == nullptr);
+     GGML_ASSERT((use_flash_attn || kq_mask == nullptr || kq_mask->type != GGML_TYPE_I32) && "Brain Engine 0026: a position mask needs flash attention");
+     if (use_flash_attn) {
+         GGML_ASSERT(kq_b == nullptr && "Flash attention does not support KQ bias yet");
+@@ -3612,7 +3621,12 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+             v = ggml_cast(ctx0, v, GGML_TYPE_F16);
+         }
+ 
+-        if (kv_rows) {
++        if (lse != nullptr) {
++            // Brain Engine 0045: the same attention, and each row's log-sum-exp in one more slice
++            GGML_ASSERT(kv_rows == nullptr && v_mla == nullptr);
++            cur = ggml_flash_attn_ext_with_lse(ctx0, q, k, v, kq_mask, kq_scale, hparams.f_max_alibi_bias,
++                                               hparams.attn_soft_cap ? hparams.f_attn_logit_softcapping : 0.0f);
++        } else if (kv_rows) {
+             cur = ggml_flash_attn_ext_rows(ctx0, q, k, v, kq_mask, kv_rows, kq_scale, hparams.f_max_alibi_bias,
+                                            hparams.attn_soft_cap ? hparams.f_attn_logit_softcapping : 0.0f);
+         } else {
+@@ -3629,6 +3643,11 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+         ggml_flash_attn_ext_set_n_kv_max(cur, static_cast<int32_t>(n_kv_max));
+         ggml_prec_set_acc(cur, GGML_PREC_F32);
+ 
++        if (lse != nullptr) {
++            *lse = ggml_flash_attn_ext_get_lse(ctx0, cur);
++            cur  = ggml_flash_attn_ext_get_out(ctx0, cur);
++        }
++
+         if (v_mla) {
+ #if 0
+             // v_mla can be applied as a matrix-vector multiplication with broadcasting across dimension 3 == n_tokens.
+@@ -4037,7 +4056,14 @@ ggml_tensor * llm_graph_context::build_attn(
+     if (tiers_can && inp->tiers_mode == 1 && inp->tier_main_mask != nullptr) {
+         // one word: attend to the main cache (without the cells a tier holds) and to each ring, each part on its own
+         // with a sink far below every score (so a part with nothing to read gives 0, not 0/0), then weight each part
+-        // by its share: the softmax of the parts' log-sum-exps, worked out from the same scores
++        // by its share: the softmax of the parts' log-sum-exps.
++        // Brain Engine 0045: each part's log-sum-exp comes from its own flash attention, which keeps it anyway, so the
++        // main cache is read once a word as without tiers. A part whose back end can't hand it back (or every part,
++        // with LLAMA_KV_TIERS_EXPLICIT=1, for tests) works it out from its own scores, as 0039 did: one more pass over K.
++        static const bool lse_explicit = [] {
++            const char * e = getenv("LLAMA_KV_TIERS_EXPLICIT");
++            return e != nullptr && atoi(e) != 0;
++        }();
+         const uint32_t n_kv = mctx_cur->get_n_kv();
+         struct part { ggml_tensor * k, * v, * m; int64_t n; };
+         std::vector<part> parts;
+@@ -4049,20 +4075,59 @@ ggml_tensor * llm_graph_context::build_attn(
+         ggml_tensor * floor_sink = ggml_fill(ctx0, ggml_new_tensor_1d(ctx0, GGML_TYPE_F32, n_head), -1e30f);
+         ggml_tensor * lses = nullptr;
+         std::vector<ggml_tensor *> outs;
++        // can the back end holding this part's K hand back the log-sum-exp? Asked with a stand-in node in a scratch
++        // context of its own, so nothing is added to the graph
++        auto fa_gives_lse = [&](ggml_tensor * kp, ggml_tensor * vp, ggml_tensor * mp) {
++            if (lse_explicit || n_tokens != 1) {
++                return false;
++            }
++            const ggml_tensor * kc = kp->view_src ? kp->view_src : kp;
++            ggml_backend_t be = kv_split_backend_of(sched, kc);
++            for (int i = 0; be == nullptr && kc->buffer != nullptr && i < ggml_backend_sched_get_n_backends(sched); ++i) {
++                // the processor's buffer type names no device: take the first back end that can use the buffer
++                ggml_backend_t b = ggml_backend_sched_get_backend(sched, i);
++                if (ggml_backend_supports_buft(b, ggml_backend_buffer_get_type(kc->buffer))) {
++                    be = b;
++                }
++            }
++            if (be == nullptr) {
++                return false;
++            }
++            ggml_init_params ip = { 16*ggml_tensor_overhead(), nullptr, true };
++            ggml_context * cx = ggml_init(ip);
++            if (cx == nullptr) {
++                return false;
++            }
++            ggml_tensor * probe = ggml_flash_attn_ext_with_lse(cx, ggml_permute(cx, q, 0, 2, 1, 3), ggml_permute(cx, kp, 0, 2, 1, 3),
++                    ggml_permute(cx, vp, 0, 2, 1, 3), mp, kq_scale, 0.0f, 0.0f);
++            ggml_flash_attn_ext_add_sinks(probe, floor_sink);
++            ggml_prec_set_acc(probe, GGML_PREC_F32);
++            const bool ok = ggml_backend_supports_op(be, probe);
++            ggml_free(cx);
++            return ok;
++        };
+         for (const auto & pt : parts) {
+-            ggml_tensor * qp = ggml_permute(ctx0, q, 0, 2, 1, 3);       // [d, n_tokens, n_head]
+-            ggml_tensor * kt = ggml_permute(ctx0, pt.k, 0, 2, 1, 3);    // [d, n, n_head_kv]
+-            ggml_tensor * x  = ggml_mul_mat(ctx0, kt, qp);              // [n, n_tokens, n_head]
+-            ggml_prec_set_acc(x, GGML_PREC_F32);
+-            x = ggml_scale(ctx0, x, kq_scale);
+-            x = ggml_add(ctx0, x, ggml_cast(ctx0, ggml_view_2d(ctx0, pt.m, pt.n, 1, pt.m->nb[1], 0), GGML_TYPE_F32));
+-            x = ggml_reshape_2d(ctx0, x, pt.n, x->ne[1]*x->ne[2]);
+-            ggml_tensor * c = ggml_clamp(ctx0, ggml_pool_1d(ctx0, x, GGML_OP_POOL_MAX, pt.n, pt.n, 0), -1e30f, 1e30f);
+-            ggml_tensor * e = ggml_exp(ctx0, ggml_sub(ctx0, x, c));
+-            ggml_tensor * l = ggml_add(ctx0, ggml_log(ctx0, ggml_sum_rows(ctx0, e)), c); // [1, n_head]
+-            l = ggml_reshape_2d(ctx0, l, 1, n_head);
++            ggml_tensor * l = nullptr;
++            if (fa_gives_lse(pt.k, pt.v, pt.m)) {
++                outs.push_back(build_attn_mha(q, pt.k, pt.v, nullptr, pt.m, nullptr, floor_sink, nullptr, 0, kq_scale, il, &l));
++                l = ggml_reshape_2d(ctx0, l, 1, n_head);                // [1, n_head]
++                inp->tiers_lse = std::max(inp->tiers_lse, 1);
++            } else {
++                ggml_tensor * qp = ggml_permute(ctx0, q, 0, 2, 1, 3);       // [d, n_tokens, n_head]
++                ggml_tensor * kt = ggml_permute(ctx0, pt.k, 0, 2, 1, 3);    // [d, n, n_head_kv]
++                ggml_tensor * x  = ggml_mul_mat(ctx0, kt, qp);              // [n, n_tokens, n_head]
++                ggml_prec_set_acc(x, GGML_PREC_F32);
++                x = ggml_scale(ctx0, x, kq_scale);
++                x = ggml_add(ctx0, x, ggml_cast(ctx0, ggml_view_2d(ctx0, pt.m, pt.n, 1, pt.m->nb[1], 0), GGML_TYPE_F32));
++                x = ggml_reshape_2d(ctx0, x, pt.n, x->ne[1]*x->ne[2]);
++                ggml_tensor * c = ggml_clamp(ctx0, ggml_pool_1d(ctx0, x, GGML_OP_POOL_MAX, pt.n, pt.n, 0), -1e30f, 1e30f);
++                ggml_tensor * e = ggml_exp(ctx0, ggml_sub(ctx0, x, c));
++                l = ggml_add(ctx0, ggml_log(ctx0, ggml_sum_rows(ctx0, e)), c); // [1, n_head]
++                l = ggml_reshape_2d(ctx0, l, 1, n_head);
++                outs.push_back(build_attn_mha(q, pt.k, pt.v, nullptr, pt.m, nullptr, floor_sink, nullptr, 0, kq_scale, il));
++                inp->tiers_lse = 2;
++            }
+             lses = lses == nullptr ? l : ggml_concat(ctx0, lses, l, 0);   // [n_parts, n_head]
+-            outs.push_back(build_attn_mha(q, pt.k, pt.v, nullptr, pt.m, nullptr, floor_sink, nullptr, 0, kq_scale, il));
+         }
+         cb(lses, "tiers_lse", il);
+         ggml_tensor * w = ggml_soft_max(ctx0, lses);                      // [n_parts, n_head]
+diff --git a/src/llama-graph.h b/src/llama-graph.h
+index 18752e9..1131a4c 100644
+--- a/src/llama-graph.h
++++ b/src/llama-graph.h
+@@ -399,6 +399,7 @@ public:
+     // 2 a batch: the sharp copies laid over the main cache read as f16, 3 a batch too big: the rings written only
+     int tiers_mode = 0;
+     int tiers_used = 0;
++    int tiers_lse  = 0; // Brain Engine 0045, mode 1: 1 every part's share came from its flash attention, 2 some from their scores
+     std::vector<ggml_tensor *> tier_idxs;  // I64 [n_tokens]: each word's ring slot
+     std::vector<ggml_tensor *> tier_mask;  // mode 1: F16 [ring, 1]
+     ggml_tensor * tier_main_mask = nullptr; // mode 1: F16 [n_kv, 1], the main mask without the cells a tier holds
+@@ -1343,7 +1344,8 @@ struct llm_graph_context {
+             ggml_tensor * v_mla,   // [n_embd_head_v_mla, n_embd_head_v, n_head_v]
+                 int64_t   n_kv_max,
+                   float   kq_scale,
+-                    int   il) const;
++                    int   il,
++            ggml_tensor ** lse = nullptr) const; // Brain Engine 0045: set, flash attention also hands back each row's log-sum-exp [n_head, n_tokens]
+ 
+     llm_graph_input_attn_no_cache * build_attn_inp_no_cache() const;
+ 
+diff --git a/src/llama-kv-cache.cpp b/src/llama-kv-cache.cpp
+index 2ee269e..74a5ab5 100644
+--- a/src/llama-kv-cache.cpp
++++ b/src/llama-kv-cache.cpp
+@@ -397,10 +397,21 @@ llama_kv_cache::llama_kv_cache(
+         const size_t memory_size_k = size_k_bytes();
+         const size_t memory_size_v = size_v_bytes();
+ 
+-        LLAMA_LOG_INFO("%s: size = %7.2f MiB (%6u cells, %3d layers, %2u/%u seqs), K (%s): %7.2f MiB, V (%s): %7.2f MiB\n", __func__,
++        // Brain Engine 0045: with Progressive Memory (0039) the line also says the rings' room, by type
++        std::string rings;
++        for (size_t t = 0; t < tiers.size(); ++t) {
++            size_t n = 0;
++            for (const auto & l : layers) {
++                n += t < l.k_tier.size() && l.k_tier[t] ? ggml_nbytes(l.k_tier[t]) : 0;
++                n += t < l.v_tier.size() && l.v_tier[t] ? ggml_nbytes(l.v_tier[t]) : 0;
++            }
++            rings += format(", sharp rings (%s): %7.2f MiB", ggml_type_name(tiers[t].type), n / (1024.0f * 1024.0f));
++        }
++
++        LLAMA_LOG_INFO("%s: size = %7.2f MiB (%6u cells, %3d layers, %2u/%u seqs), K (%s): %7.2f MiB, V (%s): %7.2f MiB%s\n", __func__,
+                 (float)(memory_size_k + memory_size_v) / (1024.0f * 1024.0f), kv_size, (int) layers.size(), n_seq_max, n_stream,
+                 ggml_type_name(type_k), (float)memory_size_k / (1024.0f * 1024.0f),
+-                ggml_type_name(type_v), (float)memory_size_v / (1024.0f * 1024.0f));
++                ggml_type_name(type_v), (float)memory_size_v / (1024.0f * 1024.0f), rings.c_str());
+     }
+ 
+     // TODO: refactor [TAG_KV_CACHE_SHARE_CELLS]
