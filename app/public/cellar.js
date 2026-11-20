@@ -1078,6 +1078,7 @@ export function createCellar({ popOut = null } = {}) {
       // 1.5.205 one brain's Set up page: open, back, and Auto or By hand.
       if ('brainsetup' in b.dataset) { setUpBrain = b.dataset.brainsetup; if (setUpBrain) await placeLoad(); draw(); if (setUpBrain) dlg.scrollTop = 0; else dlg.querySelector('#brain-' + CSS.escape(b.dataset.brainsetup || ''))?.scrollIntoView({ block: 'nearest' }); return; }
       if (b.dataset.placemode) { await placeSave(b.dataset.model, { mode: b.dataset.placemode }); draw(); return; }
+      if ('tuneclear' in b.dataset) { const r = await api('/api/settings', { engineTuning: { model: b.dataset.tuneclear, levers: {} } }); settings.engineTuning = r.engineTuning; draw(); return; } // Engine tuning
       if (b.dataset.memtype) { await api('/api/settings', { brainMemType: { [b.dataset.model]: b.dataset.memtype } }); await placeLoad(); draw(); return; } // 100
       // 1.5.205 setups on the Brains page: show the list of changes first; Apply saves them one job at a time.
       if ('setup' in b.dataset) { setupAsk = b.dataset.setup; draw(); dlg.querySelector('.setup-ask')?.scrollIntoView({ block: 'nearest' }); return; }
@@ -1379,6 +1380,18 @@ export function createCellar({ popOut = null } = {}) {
         const r = await api('/api/settings', { speed: { draft: d } }); settings.speed = r.speed; flash(el, 'Saved.'); return;
       }
       if ('margsmodel' in el.dataset) { speedModel = el.value; draw(); return; }
+      if ('tunemodel' in el.dataset) { speedModel = el.value; draw(); return; } // Engine tuning
+      if (el.dataset.tunemode) { const r = await api('/api/settings', { engineTuning: { mode: el.dataset.tunemode } }); settings.engineTuning = r.engineTuning; draw(); return; }
+      if (el.dataset.tune) {
+        const m = el.dataset.model;
+        const levers = { ...(settings.engineTuning?.brains?.[m] || {}) };
+        if (el.value.trim() === '') delete levers[el.dataset.tune]; else levers[el.dataset.tune] = Number(el.value.trim());
+        const r = await api('/api/settings', { engineTuning: { model: m, levers } }); settings.engineTuning = r.engineTuning;
+        const kept = r.engineTuning?.brains?.[m]?.[el.dataset.tune];
+        el.value = kept ?? '';
+        flash(el, el.value.trim() === '' && levers[el.dataset.tune] !== undefined ? 'Out of range, so left to Bob.' : 'Saved. Applies the next time this brain loads.');
+        return;
+      }
       if ('perword' in el.dataset) { // Brain Engine 0013: experts per word, per brain; empty = the brain's own
         const model = speedModel || dlg.querySelector('[data-margsmodel]')?.value;
         if (!model) return;

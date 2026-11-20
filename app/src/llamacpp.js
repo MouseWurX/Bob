@@ -28,6 +28,8 @@ import { scutEnv, linkEnv, linkLive } from './share-card.js'; // SCUT, the fast 
 import { LinkLog } from './link-log.js'; // what the link to a lent card carried, kept in a file and the logbook
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
+import { tuningArgs } from './engine-tuning.js';
+import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, SWITCH_GUESS_S } from './conductor.js'; // off unless picked
 import { helpHasQ3, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
@@ -591,6 +593,11 @@ export class LlamaCpp {
     const lc = this.lc;
     const { gguf, mmproj, args: modelArgs } = this.resolve(model);
     const num = (v, flag) => (Number.isInteger(v) && v > 0 ? [flag, String(v)] : []);
+    // Settings, Engine tuning (off unless "I'll set them myself"): this brain's levers set by hand. Flags typed by hand win.
+    const handFlags = [...(lc.args || []), ...(modelArgs || lc.modelArgs?.[model] || [])];
+    const tune = this.role === BESIDE ? tuningArgs({}, model) : tuningArgs(this.cfg, model, { handArgs: handFlags, cpu });
+    this.tuneEnv = tune.env;
+    const tunedStep = tune.taken.includes('-ub') || Number.isInteger(lc.batch) || Number.isInteger(lc.ubatch);
     const args = [
       ...(lc.preArgs || []),
       '-m', gguf, '--host', '127.0.0.1', '--port', String(this.port),
@@ -605,10 +612,11 @@ export class LlamaCpp {
       ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : laptopThreads(this.cfg) ? ['-t', String(laptopThreads(this.cfg))] : num(lc.threads, '-t')),
       ...num(lc.batch, '-b'), ...num(lc.ubatch, '-ub'),
       // 101 Reading speed (opt-in): bigger reading steps on the card. A batch set by hand wins.
-      ...(this.role === BESIDE ? [] : readingArgs(this.cfg, { cpu, hand: lc, recent: this.recentPrompts, model })),
+      ...(this.role === BESIDE ? [] : readingArgs(this.cfg, { cpu, hand: tune.taken.includes('-ub') ? { ...lc, batch: 1 } : lc, recent: this.recentPrompts, model })),
       // 1.5.24 "Warm up while typing": on the processor, his reading of the instructions is kept on disk.
       ...(cpu && tuning(this.cfg).readyWhileTyping ? ['--slot-save-path', startDir(this.cfg)] : chatPlacesOn(this.cfg) && this.role !== BESIDE ? ['--slot-save-path', placesDir(this.cfg)] : []), // or each chat's place (chat-places.js)
       ...(modelArgs || lc.modelArgs?.[model] || []),
+      ...tune.args,
       // Mixture-of-experts models: keep this many layers' experts in system RAM so the rest fits the card.
       ...(Number.isInteger(lc.nCpuMoe?.[model]) ? ['--n-cpu-moe', String(lc.nCpuMoe[model])]
         // 1.5.205: set by hand on the Brains page (brain-place.js). The config file's own number, above, wins.
@@ -620,8 +628,18 @@ export class LlamaCpp {
     // Without fit, every layer goes on the card as before.
     if (this.fitsItself(args, cpu)) args.push('--fit', 'on');
     else if (!args.includes('-ngl')) args.push('-ngl', '999');
+    // The Conductor (Engine tuning, off unless picked): the start step is the chat step, and the reading needs a
+    // place on disk while the step changes. A step set by hand (flags, the config file) means no Conductor.
+    this.condChat = 0;
+    if (conductorOn(this.cfg) && !cpu && this.role !== BESIDE && !tunedStep && !handFlags.some((a) => ['-b', '-ub', '--batch-size', '--ubatch-size'].includes(a))) {
+      if (!args.includes('--slot-save-path')) args.push('--slot-save-path', path.join(this.cfg.dataDir, 'conductor'));
+      const ub = args.lastIndexOf('-ub');
+      this.condChat = ub >= 0 ? Number(args[ub + 1]) || CHAT_STEP : 512; // llama-server's own step when none is given
+    }
     // 101: what Auto chose and why, for Settings and the logbook (said once each time it changes).
-    if (!cpu && this.role !== BESIDE) { const why = readingChoice(this.cfg, { recent: this.recentPrompts, model }).why; if (why && why !== this.readingWhy) this.log?.('engine', `${model}: ${why}`); this.readingWhy = why; }
+    if (tune.said && tune.said !== this.tuneSaid) this.log?.('engine', `${model}: ${tune.said}`);
+    this.tuneSaid = tune.said;
+    if (!cpu && this.role !== BESIDE && !tunedStep) { const why = readingChoice(this.cfg, { recent: this.recentPrompts, model }).why; if (why && why !== this.readingWhy) this.log?.('engine', `${model}: ${why}`); this.readingWhy = why; }
     // 103 Lock brain memory (opt-in): the part of the brain in RAM stays there.
     if (this.cfg.lockBrainMemory === true && !cpu && this.role !== BESIDE) {
       let size = 0; try { size = fs.statSync(gguf).size; } catch {}
@@ -1217,7 +1235,9 @@ export class LlamaCpp {
     if (args.includes('--slot-save-path')) { try { fs.mkdirSync(args[args.indexOf('--slot-save-path') + 1] || startDir(this.cfg), { recursive: true }); } catch {} }
     this.slotDir = args.includes('--slot-save-path') ? args[args.indexOf('--slot-save-path') + 1] : ''; // where this engine run saves readings
     this.placeChat = null; // a fresh engine holds no chat's reading yet
+    this.condStep = this.condChat || 0; this.condOff = ''; this.condHeld = 0; // the Conductor starts each engine run at the chat step
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
+    if (this.tuneEnv && Object.keys(this.tuneEnv).length) env = { ...env, ...this.tuneEnv }; // Engine tuning, set by hand
     if (args.includes('--moe-cache-mib') && this.hotEnv?.[RANKING_ENV]) env = { ...env, ...this.hotEnv }; // Nov 16: the hot-expert profile (patch 0016)
     // Nov 20 (patch 0039, opt-in): Progressive chat memory, the newest words kept sharper. Its steps come from the
     // context it loads with (a resize in place that would need other steps starts the engine again instead).
@@ -1455,6 +1475,7 @@ export class LlamaCpp {
     }
     if (this.noMidSystem.has(model)) messages = foldSystem(messages);
     await this.sendPerWord(model);
+    await this.conduct({ model, messages, tools, think, task, temperature, signal }).catch((e) => this.condStop(model, e.message));
     // Item 14 (Nov 11): a reply that stops sending words is stopped, not waited on until someone presses Stop. Once
     // words are coming, a quiet spell longer than STALL_MS (twice that when the brain is spread over other Bobs' cards)
     // means the engine hung: it is let go and the error says "terminated", so Bob loads it again and asks once more.
@@ -1499,8 +1520,68 @@ export class LlamaCpp {
     return this.readStream(res, { model, messages, tools, signal, onToken, onThink, think, budget, onOver, onChunk });
   }
 
+  // ---------- The Conductor (conductor.js; Engine tuning, off unless picked) ----------
+  // Before a reply: pick the step to read and write at, and switch with the brain loaded. Only the main engine, on the
+  // card, with this reply the only one, never spread over other Bobs' cards. Anything refused turns it off for this run.
+  async conduct({ model, messages, tools, think, task, temperature, signal }) {
+    if (!this.condChat || this.condOff || this.role === BESIDE || this.spreadNow || this.currentCpu || this.active > 1 || this.current !== model || !this.slotDir || !this.child || this.child.exitCode !== null) return;
+    const st = (this.condState ||= {})[model];
+    if (st?.stopped) return;
+    const total = Math.round(promptChars(messages, tools) / (this.charsPerToken(model) || 3));
+    // what the chat memory holds: the last reply's reading and writing (another chat's makes this a guess on the high
+    // side, so the Conductor switches less, never wrongly)
+    const held = Math.min(this.condHeld || 0, total);
+    const newTok = total - held;
+    const outTok = /code|edit|write/i.test(String(task || '')) ? 1500 : 300;
+    const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: (this.condSpeeds ||= {})[model], switchS: st?.switchS || SWITCH_GUESS_S });
+    if (p.plan === 'stay') return;
+    this.log?.('engine', planLine(model, p));
+    if (!(await this.condSwitch(model, p.step, held))) return;
+    if (p.plan !== 'readBig' || signal?.aborted) return;
+    // read now at the big step (one word, thrown away, the reading kept), then back to the chat step to write
+    const res = await this.post(model, messages, tools, signal, think, task, temperature, { stream: false, max_tokens: 1 });
+    if (!res.ok) throw new Error(`reading ahead: llama-server returned ${res.status}`);
+    const j = await res.json().catch(() => ({}));
+    if (j?.timings) this.condLearn(model, { ...j.timings, predicted_n: 0 });
+    await this.condSwitch(model, this.condChat, total);
+  }
+
+  // One step change: the reading saved, the step changed, the reading put back. Measured against the guess.
+  async condSwitch(model, step, held) {
+    const t0 = Date.now(), guess = this.condState?.[model]?.switchS || SWITCH_GUESS_S;
+    const file = `conductor-${this.port}.bin`;
+    if (held > 0) await this.slotAction('save', file);
+    const res = await fetch(`${this.url}/context`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ n_batch: step, n_ubatch: step }), signal: AbortSignal.timeout(300000) });
+    if (!res.ok) { this.condStop(model, `the engine can't change its step in place (${res.status})`); return false; }
+    await res.text().catch(() => '');
+    this.condStep = step;
+    if (held > 0) {
+      try { await this.slotAction('restore', file); } catch (e) { this.log?.('engine', `${model}: Conductor: the reading didn't come back (${e.message}), so the chat is read again`); }
+      try { fs.rmSync(path.join(this.slotDir, file), { force: true }); } catch {}
+    }
+    const seconds = (Date.now() - t0) / 1000;
+    const st = (this.condState[model] = noteSwitch(this.condState[model], { seconds, guess }));
+    this.log?.('engine', `${model}: Conductor: step ${step} in ${seconds.toFixed(2)} s (guessed ${guess.toFixed(2)} s)${st.stopped ? '; slower than guessed three times in a row, so no more switching for this brain' : ''}`);
+    return true;
+  }
+
+  condStop(model, why) {
+    if (this.condOff) return;
+    this.condOff = why || 'stopped';
+    this.log?.('engine', `${model}: Conductor off for this engine run: ${this.condOff}. Replies go ahead as usual.`);
+  }
+
+  // what each reply teaches: read and write speed at the step it ran at, and what the chat memory now holds
+  condLearn(model, t) {
+    if (!this.condChat || !this.condStep) return;
+    const sp = (this.condSpeeds ||= {});
+    if ((t.prompt_n || 0) >= 512) sp[model] = learnStep(sp[model], 'read', this.condStep, Number(t.prompt_per_second));
+    if ((t.predicted_n || 0) >= 32) sp[model] = learnStep(sp[model], 'write', this.condStep, Number(t.predicted_per_second));
+    this.condHeld = (t.prompt_n || 0) + (t.cache_n || 0) + (t.predicted_n || 0);
+  }
+
   // `temperature`: an assistant preset's own (presets.js); otherwise the brain's usual word settings decide.
-  post(model, messages, tools, signal, think, task, temperature) {
+  post(model, messages, tools, signal, think, task, temperature, over) {
     return fetch(this.url + '/v1/chat/completions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -1511,7 +1592,7 @@ export class LlamaCpp {
         // 15 Nov 2026: GPT-OSS reads a reasoning level instead (model-family.js thinkKwargs: off = low).
         ...this.thinkArgs(model, think),
         // fNRI's small cube in Bob's thinking: only while someone has it open, and only Brain Engine answers it
-        ...(this.wantTrace?.() ? { expert_trace: true, expert_trace_stream: true } : {}) }), // 1.5.210: Brain Engine 5 also sends the picks with every word (older builds ignore the ask)
+        ...(this.wantTrace?.() ? { expert_trace: true, expert_trace_stream: true } : {}), ...(over || {}) }), // 1.5.210: Brain Engine 5 also sends the picks with every word (older builds ignore the ask)
       signal
     });
   }
@@ -1550,6 +1631,7 @@ export class LlamaCpp {
         if (ev.timings) this.lastStats = this.statsOut(replyStats({ model: this.current || model, messages, promptTokens: (ev.timings.prompt_n || 0) + (ev.timings.cache_n || 0), outTokens: ev.timings.predicted_n, tokPerSec: ev.timings.predicted_per_second, ctx: this.currentCtx || this.lc.ctx || DEFAULT_CTX })) || this.lastStats;
         if (ev.choices?.[0]?.finish_reason) finish = ev.choices[0].finish_reason;
         if (ev.timings) this.readSpeed[this.current || model] = learnReadSpeed(this.readSpeed[this.current || model], ev.timings); // item 208
+        if (ev.timings) this.condLearn(this.current || model, ev.timings); // the Conductor's speeds per step
         const d = ev.choices?.[0]?.delta || {};
         if (budget && d.reasoning_content && ++thought > budget && !content) onOver(); // stop.over marks it, so real errors aren't retried
         if (d.reasoning_content && onThink) onThink(d.reasoning_content); // 1.5.53: only while the thinking window is open

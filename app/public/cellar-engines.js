@@ -56,6 +56,7 @@ export function createEngineParts(now) {
       ${more('Each project has its own memory bank; other projects\' memories are left out. Add [always] to a line in the memory file to have it read every time. Matching is by meaning when the 🗂 Memory (finding past chats) model is downloaded (CPU, never in Gaming), by words otherwise.')}
       ${settings.memoryRecall ? memoryBanksHtml() : ''}
       ${engineExtrasHtml()}
+      ${engineTuningHtml()}
       ${sswitch('memorySources', settings.memorySources === true, 'Memory sources', 'Each new memory links to the chat it came from. Where my memories came from, below, lists them with Open the chat and Forget.')}
       ${sswitch('memoryExpiry', settings.memoryExpiry === true, 'Expiring memories', 'Say "remember this for the week" (or a day, a month, until a date). Bob drops the memory when the time is up.')}
       ${sswitch('memoryWhere', settings.memoryWhere === true, 'Per-project memories', 'A project\'s memories load only while Bob works on that project. Needs Relevant memories only.')}
@@ -63,6 +64,25 @@ export function createEngineParts(now) {
       ${speedTestHtml()}`;
   }
   // List items 94-98: engine and speed extras, each off unless turned on. (99 sits in Engines, 100 on the Brains page.)
+  // Engine tuning: every lever by hand, per brain, or Bob picks (the calibration's picks, later the conductor).
+  function engineTuningHtml() {
+    const t = settings.engineTuning || { mode: 'bob', brains: {} };
+    const fields = settings.tuningFields || [];
+    const llms = roles?.options?.llm || [];
+    const models = [...new Set([...llms.map((o) => o.value), ...Object.keys(t.brains || {})])];
+    const model = models.includes(speedModel) ? speedModel : models[0] || '';
+    const hand = t.mode === 'hand';
+    const l = t.brains?.[model] || {};
+    const radio = (v, label) => `<label class="pick"><input type="radio" name="tunemode" data-tunemode="${v}" ${t.mode === v ? 'checked' : ''}> ${label}</label>`;
+    return `<div class="tune engine-tuning"><strong>Engine tuning</strong> <span class="tag">Bob picks unless you choose to set them</span>
+        ${tip('Every speed lever of my own engine in one place, per brain, instead of engine flags. "Let Bob pick" uses what the calibration found best for your card. "I\'ll set them myself" uses the boxes you fill; an empty box stays Bob\'s pick. "Let the Conductor drive" changes the reading step for each reply without loading the brain again. Engine flags typed under Extra settings for one brain still win. Changes apply the next time the brain loads.', 'Engine tuning')}
+      <div class="row">${radio('bob', 'Let Bob pick')}${radio('conductor', 'Let the Conductor drive')}${radio('hand', 'I\'ll set them myself')}</div>
+      ${t.mode === 'conductor' ? '<p class="muted">For each reply I pick the reading step: a long new read at a big step, which reads faster, then back to the chat step, which writes faster, with the brain kept loaded. Brain Engine on a graphics card only. Every switch and its time is in the logbook.</p>' : ''}
+      ${hand && models.length ? `<div class="row"><label class="pick"><span>Brain</span><select data-tunemodel aria-label="Brain to tune">${models.map((m) => `<option ${m === model ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label></div>
+      <div class="row wrap">${fields.map((f) => `<label class="pick"><span>${esc(f.label)}</span><input type="text" inputmode="decimal" data-tune="${esc(f.k)}" data-model="${esc(model)}" value="${esc(l[f.k] ?? '')}" placeholder="Bob's pick" title="${esc(f.hint || '')}" aria-label="${esc(f.label)}" style="width:7em"></label>`).join('')}</div>
+      <p class="muted">Empty is Bob's pick. Only for brains made of experts with part of them in RAM do the cache boxes do anything. <button type="button" class="link" data-tuneclear="${esc(model)}">Clear this brain</button></p>` : hand ? '<p class="muted">Add a brain first.</p>' : ''}
+    </div>`;
+  }
   function engineExtrasHtml() {
     const bat = settings.onBattery === true ? 'On battery right now.' : settings.onBattery === false ? 'Plugged in right now.' : settings.laptopMode ? 'No battery found, so nothing changes here.' : '';
     return `<div class="tune engine-extras"><strong>Engine extras</strong> <span class="tag">off unless you turn it on</span>
