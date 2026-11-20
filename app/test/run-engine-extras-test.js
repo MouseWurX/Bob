@@ -124,15 +124,18 @@ check('Progressive is kept when saved, off unless picked', JSON.stringify(cleanM
 check('Progressive needs 3-bit and Progressive Memory, else Smaller', memTypeOf({ brainMemType: { big: 'progressive' } }, 'big', { q3: true, tiers: true }) === 'progressive' && memTypeOf({ brainMemType: { big: 'progressive' } }, 'big', { q3: true }) === 'small' && memTypeOf({ brainMemType: { big: 'progressive' } }, 'big') === 'small');
 check('Progressive keeps every word in 3-bit', memArgs({ brainMemType: { big: 'progressive' } }, 'big', [], { q3: true, tiers: true }).join(' ') === '-fa on -ctk q3_0 -ctv q3_0');
 check('the engine\'s help is read for Progressive Memory', helpHasTiers('  Progressive Memory (Brain Engine 0039): env\n  LLAMA_KV_TIERS=type:window,...') && !helpHasTiers('LLAMA_KV_SPLIT') && !helpHasTiers(null));
-check('its steps: 8-bit for the newest 8K, 4-bit for the newest 64K past 96K, every window below the context',
-  progressiveTiers(32768) === 'q8_0:8192' && progressiveTiers(262144) === 'q8_0:8192,q4_0:65536' && progressiveTiers(8192) === 'q8_0:4096' && progressiveTiers(98304) === 'q8_0:8192' && progressiveTiers(500) === '');
+check('3-step: 8-bit for the newest 8K, 4-bit for the newest 64K, shrunk to a quarter and a half of a short chat',
+  progressiveTiers(262144) === 'q8_0:8192,q4_0:65536' && progressiveTiers(32768) === 'q8_0:8192,q4_0:16384' && progressiveTiers(8192) === 'q8_0:2048,q4_0:4096' && progressiveTiers(1000) === '');
+check('2-step: 4-bit for the newest 64K, or half the chat', progressiveTiers(262144, 'progressive2') === 'q4_0:65536' && progressiveTiers(32768, 'progressive2') === 'q4_0:16384');
+check('2-step is kept, needs the same engine, and goes to the engine as its own steps', JSON.stringify(cleanMemType({ a: 'progressive2' })) === '{"a":"progressive2"}' && memTypeOf({ brainMemType: { b: 'progressive2' } }, 'b') === 'small' &&
+  tiersEnv({ brainMemType: { b: 'progressive2' } }, 'b', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS === 'q4_0:65536');
 { const cfg = { brainMemType: { big: 'progressive', other: 'small' } };
   const e = tiersEnv(cfg, 'big', 131072, { q3: true, tiers: true });
   check('the steps go to the engine as its keys, only for a Progressive brain on an engine that has it', e.LLAMA_KV_TIERS === 'q8_0:8192,q4_0:65536' && e.LLAMA_KV_TIERS_SLACK === String(TIERS_SLACK) &&
     !tiersEnv(cfg, 'other', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS && !tiersEnv(cfg, 'big', 131072, { q3: true }).LLAMA_KV_TIERS);
   check('not with two chats at once (the engine would say NOT USED)', !tiersEnv(cfg, 'big', 131072, { q3: true, tiers: true, handArgs: ['-np', '2'] }).LLAMA_KV_TIERS && tiersEnv(cfg, 'big', 131072, { q3: true, tiers: true, handArgs: ['-np', '1'] }).LLAMA_KV_TIERS); }
 { const only3 = memTypeTrade(2, { q3: true }), both = memTypeTrade(2, { q3: true, tiers: true });
-  check('the page offers Progressive only when the engine has it', !only3.some((x) => x.id === 'progressive') && both.some((x) => x.id === 'progressive') && !memTypeTrade(2, { tiers: true }).some((x) => x.id === 'progressive')); }
+  check('the page offers Progressive only when the engine has it', !only3.some((x) => /^progressive/.test(x.id)) && both.some((x) => x.id === 'progressive') && both.some((x) => x.id === 'progressive2') && !memTypeTrade(2, { tiers: true }).some((x) => x.id === 'progressive')); }
 { const k3 = kvBytes({ perToken: 20480 }, 262144, ['-ctk', 'q3_0', '-ctv', 'q3_0']), kp = kvBytes({ perToken: 20480 }, 262144, ['-ctk', 'q3_0', '-ctv', 'q3_0'], 'q8_0:8192,q4_0:65536', 4096);
   const want = 20480 * (262144 * 14 / 32 + 12288 * 34 / 32 + 69632 * 18 / 32);
   check('room math counts each step\'s copy (window plus room for a batch)', Math.abs(kp - want) < 2 && kp > k3, `${kp} ${want}`); }

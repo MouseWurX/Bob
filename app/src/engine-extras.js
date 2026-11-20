@@ -135,7 +135,7 @@ export function cleanMemType(v) {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return out;
   for (const [k, t] of Object.entries(v).slice(0, 64)) {
     if (typeof k !== 'string' || !k || k.length > 200 || /[\u0000-\u001f]/.test(k)) continue;
-    if (t === 'standard' || t === 'sharp' || t === 'small' || t === 'smallest' || t === 'progressive') out[k] = t; // standard is kept, so a saved change back to it wins
+    if (t === 'standard' || t === 'sharp' || t === 'small' || t === 'smallest' || t === 'progressive' || t === 'progressive2') out[k] = t; // standard is kept, so a saved change back to it wins
   }
   return out;
 }
@@ -152,7 +152,7 @@ export const helpHasTiers = (text) => /\bLLAMA_KV_TIERS\b/.test(String(text ?? '
 export function memTypeOf(cfg, model, { q3 = false, tiers = false } = {}) {
   const t = cfg?.brainMemType?.[model];
   if (t === 'smallest') return q3 ? 'smallest' : 'small';
-  if (t === 'progressive') return q3 && tiers ? 'progressive' : 'small';
+  if (t === 'progressive' || t === 'progressive2') return q3 && tiers ? t : 'small';
   return t === 'sharp' || t === 'small' ? t : 'standard';
 }
 // The engine's own flags for this brain. Flags set by hand (llamacpp.args in config.json) are kept, but a memory
@@ -172,22 +172,24 @@ export function memArgs(cfg, model, handArgs, { q3 = false, tiers = false } = {}
   if (!out.includes('-fa') && !out.includes('--flash-attn')) out.push('-fa', 'on');
   return [...out, '-ctk', t.k, '-ctv', t.v];
 }
-// Progressive's steps for a context: 8-bit for the newest 8K (half the chat when that's smaller), and 4-bit for the
-// newest 64K once the chat can run past 96K. Every window is below the context, or the engine says NOT USED.
+// Progressive's steps for a context. 3-step: 8-bit for the newest 8K (a quarter of the chat when that's smaller), then
+// 4-bit for the newest 64K (half the chat when that's smaller). 2-step: 4-bit for the newest 64K (or half the chat).
+// Windows are whole 256s, below the context, or the engine says NOT USED.
 // The slack is room in each step for one batch: the reading step (4096 covers Fastest); a bigger batch still works,
 // it reads the 3-bit copy for that batch only.
 export const TIERS_SLACK = 4096;
-export function progressiveTiers(ctx) {
+export function progressiveTiers(ctx, type = 'progressive') {
   const c = Number(ctx) || 0;
-  if (c < 1024) return '';
-  const steps = [`q8_0:${Math.min(8192, Math.floor(c / 2 / 256) * 256)}`];
-  if (c > 98304) steps.push('q4_0:65536');
-  return steps.join(',');
+  if (c < 2048) return '';
+  const fit = (most, part) => Math.min(most, Math.floor(c / part / 256) * 256);
+  const q4 = `q4_0:${fit(65536, 2)}`;
+  return type === 'progressive2' ? q4 : `q8_0:${fit(8192, 4)},${q4}`;
 }
 export function tiersEnv(cfg, model, ctx, { q3 = false, tiers = false, handArgs } = {}) {
-  if (memTypeOf(cfg, model, { q3, tiers }) !== 'progressive') return {};
+  const type = memTypeOf(cfg, model, { q3, tiers });
+  if (type !== 'progressive' && type !== 'progressive2') return {};
   if (Array.isArray(handArgs) && handArgs.some((a) => ['-np', '--parallel'].includes(a) && Number(handArgs[handArgs.indexOf(a) + 1]) > 1)) return {};
-  const t = progressiveTiers(ctx);
+  const t = progressiveTiers(ctx, type);
   return t ? { LLAMA_KV_TIERS: t, LLAMA_KV_TIERS_SLACK: String(TIERS_SLACK) } : {};
 }
 // ---------- 98 Laptop mode ----------
