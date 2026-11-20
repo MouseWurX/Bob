@@ -2,7 +2,7 @@
 # Runs when app/engine/ or this file changes on main or in a pull request that is ready for review, and by hand.
 # Pushes to work branches and draft pull requests run nothing, like build.yml, so a work-in-progress patch never
 # sends a failed-build e-mail: a thread checks its engine patch with its own build first (app/engine/README.md).
-# Windows x64: the llama.dll / llama-server.exe set, to put over a COPY of the official CUDA or Vulkan zip for the same tag (the card backends are separate DLLs and are not changed).
+# Windows x64: the llama.dll / llama-server.exe set, to put over a COPY of the official CUDA or Vulkan zip for the same tag (the card backends are separate DLLs; when a patch changes ggml, the zip also carries our own ggml, ggml-cpu and ggml-cuda DLLs, which replace the official ones).
 # Linux x64: the same set for checking. Every action is pinned to a full commit SHA, like build.yml.
 name: Brain Engine
 
