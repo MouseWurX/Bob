@@ -2,7 +2,7 @@
 # Runs when app/engine/ or this file changes on main or in a pull request that is ready for review, and by hand.
 # Pushes to work branches and draft pull requests run nothing, like build.yml, so a work-in-progress patch never
 # sends a failed-build e-mail: a thread checks its engine patch with its own build first (app/engine/README.md).
-# Windows x64: the llama.dll / llama-server.exe set, to put over a COPY of the official CUDA or Vulkan zip for the same tag (the card backends are separate DLLs and are not changed).
+# Windows x64: the llama.dll / llama-server.exe set, to put over a COPY of the official CUDA or Vulkan zip for the same tag (the card backends are separate DLLs; when a patch changes ggml, the zip also carries our own ggml, ggml-cpu and ggml-cuda DLLs, which replace the official ones).
 # Linux x64: the same set for checking. Every action is pinned to a full commit SHA, like build.yml.
 name: Brain Engine
 
@@ -162,13 +162,18 @@ jobs:
         working-directory: llama.cpp
         run: |
           call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          cmake -S . -B build -G "Ninja Multi-Config" -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake -DLLAMA_BUILD_BORINGSSL=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_OPENMP=ON -DGGML_OPENMP_FETCH=ON -DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON
-          cmake --build build --config Release --target llama-server llama-bench llama-gguf-split ggml-rpc-server llama-diffusion-cli
+          cmake -S . -B build -G "Ninja Multi-Config" -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake -DLLAMA_BUILD_BORINGSSL=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_OPENMP=ON -DGGML_OPENMP_FETCH=ON -DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_TESTS=ON
+          cmake --build build --config Release --target llama-server llama-bench llama-gguf-split ggml-rpc-server llama-diffusion-cli test-llama-archs
           rem Nov 18: the engine's card check (0026), against ggml only; it loads every backend beside it.
+          rem Delayed expansion: inside ( ) a plain %VAR% is read before the set runs.
+          setlocal EnableDelayedExpansion
           if exist ..\app\engine\tests\mask-pos-check.cpp (
             for /f "delims=" %%i in ('dir /s /b build\ggml.lib') do set "GGMLLIB=%%i"
             for /f "delims=" %%i in ('dir /s /b build\ggml-base.lib') do set "GGMLBASELIB=%%i"
-            clang-cl /O2 /EHsc /std:c++17 /I ggml\include ..\app\engine\tests\mask-pos-check.cpp "%GGMLLIB%" "%GGMLBASELIB%" /Fe:build\bin\Release\mask-pos-check.exe || exit /b 1
+            echo ggml.lib: !GGMLLIB!  ggml-base.lib: !GGMLBASELIB!
+            if not defined GGMLLIB exit /b 1
+            if not defined GGMLBASELIB exit /b 1
+            clang-cl /O2 /EHsc /std:c++17 /I ggml\include ..\app\engine\tests\mask-pos-check.cpp "!GGMLLIB!" "!GGMLBASELIB!" /Fe:build\bin\Release\mask-pos-check.exe || exit /b 1
           )
       - name: Build llama-cvector-generator and llama-export-lora on their own (CPU, static; upstream skips it when the backends load at run time)
         shell: cmd
@@ -205,6 +210,7 @@ jobs:
           fi
           if [ "${{ needs.detect.outputs.cuda }}" = "true" ]; then cp ggml-cuda/ggml-cuda.dll "$out/"; fi
           if [ -f llama.cpp/build/bin/Release/mask-pos-check.exe ]; then cp llama.cpp/build/bin/Release/mask-pos-check.exe "$out/"; fi
+          cp llama.cpp/build/bin/Release/test-llama-archs.exe "$out/" # Nov 19: every brain family loads and runs on these patches
           ls -la "$out"
       # Smart App Control (app/docs/SIGNING.md): off until the owner's Microsoft Artifact Signing account is set up.
       # Then: variable ARTIFACT_SIGNING_ENABLED = true, ARTIFACT_SIGNING_ENDPOINT, ARTIFACT_SIGNING_ACCOUNT,
@@ -265,8 +271,8 @@ jobs:
       - name: Build
         working-directory: llama.cpp
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON
-          cmake --build build -j4 --target llama-server llama-bench llama-gguf-split ggml-rpc-server llama-diffusion-cli
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_TESTS=ON
+          cmake --build build -j4 --target llama-server llama-bench llama-gguf-split ggml-rpc-server llama-diffusion-cli test-llama-archs
           # upstream skips cvector-generator and export-lora when the backends load at run time, so it gets its own CPU-only, static build
           cmake -B build-cv -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
           cmake --build build-cv -j4 --target llama-cvector-generator llama-export-lora
@@ -274,7 +280,7 @@ jobs:
         run: |
           out=brain-engine-$BEV-linux-x64
           mkdir "$out"
-          cp llama.cpp/build/bin/llama-server llama.cpp/build/bin/llama-bench llama.cpp/build/bin/llama-gguf-split llama.cpp/build/bin/ggml-rpc-server llama.cpp/build/bin/llama-diffusion-cli llama.cpp/build-cv/bin/llama-cvector-generator llama.cpp/build-cv/bin/llama-export-lora $(ls llama.cpp/build/bin/*.so* | grep -v '/libggml') llama.cpp/build/bin/libggml-rpc.so* "$out/"
+          cp llama.cpp/build/bin/llama-server llama.cpp/build/bin/llama-bench llama.cpp/build/bin/llama-gguf-split llama.cpp/build/bin/ggml-rpc-server llama.cpp/build/bin/llama-diffusion-cli llama.cpp/build/bin/test-llama-archs llama.cpp/build-cv/bin/llama-cvector-generator llama.cpp/build-cv/bin/llama-export-lora $(ls llama.cpp/build/bin/*.so* | grep -v '/libggml') llama.cpp/build/bin/libggml-rpc.so* "$out/"
           if [ "${{ needs.detect.outputs.ggml }}" = "true" ]; then cp -P llama.cpp/build/bin/libggml*.so* "$out/"; fi # Nov 18 (0026): our own ggml set
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
           cp app/engine/README.md "$out/README-Brain-Engine.md"

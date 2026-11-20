@@ -10,11 +10,18 @@ sha256sum "$file" | awk '{print $1}' > "$file.sha256"
 notes=$(cat <<NOTES
 **Test build.** Brain Engine is a fork of [llama.cpp](https://github.com/ggml-org/llama.cpp), created to give better flexibility when using AI models. It is not an official llama.cpp build.
 
-This is llama.cpp $tag with the patches in [app/engine/patches](https://github.com/$repo/tree/$GITHUB_SHA/app/engine/patches) (the expert switch: \`GET\`/\`POST /expert-mask\`). Only the llama and server files are here: put them over a copy of the official llama.cpp $tag download (zip or tar.gz) for your card (the card backends are not changed). Bob does this for you under Get models, Engines.
+This is llama.cpp $tag with the patches in [app/engine/patches](https://github.com/$repo/tree/$GITHUB_SHA/app/engine/patches) (the expert switch: \`GET\`/\`POST /expert-mask\`). Put these files over a copy of the official llama.cpp $tag download (zip or tar.gz) for your card. Bob does this for you under Get models, Engines.
 
 llama.cpp is MIT licensed: Copyright (c) 2023-2026 The ggml authors. The licence text is in every download as LICENSE-llama.cpp.
 NOTES
 )
+# Nov 18: a build whose patches change ggml carries our own ggml files too (and ggml-cuda on Windows), which replace the official ones.
+if [ "${BE_GGML:-}" = "true" ]; then notes="$notes
+
+**This build changes ggml too, including the card code.** Some patches change ggml itself (the CPU and CUDA backends, the scheduler, new number types), so its own ggml, ggml-base, every ggml-cpu variant (and on Windows ggml-cuda) are in the download and replace the official ones. The Vulkan backend is not rebuilt, so use it with NVIDIA's CUDA download only."
+else notes="$notes
+
+The patches in this build change only llama and the server; the ggml and card files are the official ones."; fi
 for i in 1 2 3; do
   gh release view "$rel" -R "$repo" > /dev/null 2>&1 && break
   gh release create "$rel" --target "$GITHUB_SHA" --title "Brain Engine ${ver#v} (Brain Engine ${ver%%b*} on llama.cpp $tag, test build)" --notes "$notes" --prerelease --latest=false -R "$repo" && break || sleep 10
