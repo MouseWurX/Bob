@@ -69,7 +69,7 @@ All speeds are tokens a second. "Read" is prompt reading speed and "write" is wr
 - **What's out:** iq4_nl (it timed out), the context cache in RAM (writing 73% to 76% slower), sending copy-cache misses to the processor (keep the share at 0), and Turbo at big steps (5 more layers go to RAM). Turbo's extra rise is its own pinned buffer, not overflow.
 - **Brain Engine 16 freed nothing, and we found why:** Qwen3.6's position codes made it fall back every time. Brain Engine 17 carries the fix (section 4.3.3.5).
 - **A busy desktop costs 10% to 18% of writing,** in 8 paired loads.
-- **Against llama.cpp's own defaults, our picks finish a 300-token job 2.4 to 2.9 times sooner, and nearly all of that comes from settings any llama.cpp user can pass** (section 4.3.3.2, 20 loads over 2 rounds). The copy cache only pays on long answers.
+- **Against llama.cpp's own defaults, our picks finish a 300-token job 2.4 to 2.9 times sooner, and nearly all of that comes from settings any llama.cpp user can pass** (section 4.3.3.2, 20 loads over 2 rounds). That gain is in the first word and reading. Writing, the speed felt through the whole answer, gains far less: 1.3 times at the short prompt (109.8 against 82.9 tokens a second), 1.2 times at 32K (98.5 against 83.8), the same at 128K (63.9 against 63.6), and at 256K stock defaults write 12% faster (48.1 against 42.3). The copy cache only pays on long answers.
 - **A 35B load takes about 6 s,** across about 100 loads. The browser left open on 18 November from 11:40 AM to 12:23 PM made no measurable difference.
 
 *Provisional:*
@@ -78,7 +78,7 @@ All speeds are tokens a second. "Read" is prompt reading speed and "write" is wr
 - **The 512 MB margin's writing gain.** It rests on 2 loads, and the busy-desktop pass agrees except for 2x4 at 32K.
 - **The chat pick between 2x4 and 4x4.**
 - **The writing order of cache types at 256K.** These are single loads.
-- **q4_0 is a borderline pass.** A second perplexity run passed it on one split of the text and missed the mean-KLD limit by 1.6% on the other (section 4.3.3.4). MouseWurX ruled on 19 November that it counts as a borderline pass, so it may be used, with q8_0 still the safe choice where memory allows. Stock llama.cpp has no 3-bit context cache. Brain Engine now adds one (q3_0, patch 0038) and a mixed 3/4/8-bit one (patch 0039); both are unproven in our lab, as we have yet to test on a real card.
+- **q4_0 is a borderline pass.** It does not pass outright. In the second perplexity run it failed the mean-KLD limit of 0.01 by 1.6% on the 4K × 4 split (0.01016) and passed on the 8K × 2 split (0.00951) (section 4.3.3.4). MouseWurX ruled on 19 November that it counts as a borderline pass, so it may be used, with q8_0 still the safe choice where memory allows. Stock llama.cpp has no 3-bit context cache. Brain Engine now adds one (q3_0, patch 0038) and a mixed 3/4/8-bit one (patch 0039). One sanity load of q3_0 wrote about 30% slower than q8_0; its quality, and patch 0039, are unproven in our lab, as we have yet to test.
 - **Turbo's net effect.** It helped at a small step with a big copy cache and hurt at big steps with a small one, in 1 load each.
 - **The copy-cache choices.** By the scoring rules, agent work drops the copy cache and chat keeps it. Long-form work keeps it only on the tie-break, after a 2.1% tie (section 4.3.3.2). Most long-context loads throttled lightly, and a rerun could flip the long-form choice.
 - **The 120B soft cut's answer quality.** Its perplexity run is paused.
@@ -126,7 +126,7 @@ Shorthand used below: **step** is the reading batch (`-b`/`-ub`). **Copy cache**
 | 16 Nov | Brain Engine 8 | step 4096 | 5 | 4,225 / 4,161 | 80.1 / 73.8 | 7.9 | Read 3.4x, writing 5% to 9% slower |
 | 16 Nov | Brain Engine 9 | 4 GB processor cache, our ranking (N4) | 5 | 807 / – | 103.7 / 87.6 | 37.5 | Writing +17%, reading −30% |
 | 16 Nov | Brain Engine 9 | 4 GB copy cache, learned (H7) | 5 | 782 / – | 109.2 / – | | Fastest writer that night |
-| 16 Nov | Brain Engine 9 | prefetch (N5) | 5 | – / 1,091 | – / – | | Reading 12% slower; dropped |
+| 16 Nov | Brain Engine 9 | prefetch (N5) | 5 | – / 1,091 | – / – | | Reading 12% slower in this round (6% to 13% slower across rounds); dropped |
 | 16 Nov | Brain Engine 9, MTP file | Turbo, 3 ahead, Bob's sampling (T3S) | 5 | – / 1,048 | 70.0 / 77.7 | 31.3 | −17% to +3%; not offered |
 | 17 Nov | Brain Engine 9 | calibration default (0.5x0) | 5 | 1,154 / 1,232 | 87.7 / 77.3 | 26.6 | Baseline for the pairs |
 | 17 Nov | Brain Engine 9 | 2x4 | 5 | 2,180 / 2,290 | 109.2 / 99.2 | 14.3 | Won the rule set beforehand: +25% / +28% writing |
@@ -146,7 +146,7 @@ Shorthand used below: **step** is the reading batch (`-b`/`-ub`). **Copy cache**
 | 17 Nov | Brain Engine 10 | step 6144 + 512 MB / 1 GB / 2 GB | 1 each | 2,879 / 2,849 / 2,798 (start) | 56.5 / 68.9 / 85.1 (start) | 7.2 / 7.7 / 8.0 | A small cache writes slower than none |
 | 17 Nov | Brain Engine 11 | 4x4 | 5 | 2,666 / 3,377 | 99.3 / 94.5 | 9.7 | Head to head |
 | 17 Nov | Brain Engine 11 | 6x3.5 | 5 | 2,671 / 3,902 | 95.2 / 88.5 | 8.4 | Finishes long prompts about 1 s sooner, writes 4% to 24% slower |
-| 17 Nov | Brain Engine 13 | 6x4, cache lent to reading (6x4 lend) | 1 | 2,672 / 3,657 | 99.3 / 92.8 | 9.0 | Lending lifts writing over plain 6x4 (91.9 / 76.2) |
+| 17 Nov | Brain Engine 13 | 6x4, cache lent to reading (6x4 lend) | 1 | 2,672 / 3,657 | 99.3 / 92.8 | 9.0 | Lending lifts writing over plain 6x4 in the same round (Brain Engine 13, 32K: 92.8 against 88.4); plain 6x4's 91.9 / 76.2 elsewhere in this section are from another round |
 | 17 Nov | Brain Engine 14 | 6x4 lend with the cache refilled behind writing | 1 | 3,325 / 3,859 | 109.0 / 92.8 | 8.5 | |
 | 17 Nov | Brain Engine 14 | refill batch 64 (B64) | 1 | 3,414 / 3,868 | 109.1 / 70.4 | 8.5 | Big refill batches hurt 32K writing |
 | 17 Nov | Brain Engine 14 | 6x3.5 (6x3.5) | 1 | 3,394 / 3,913 | 104.6 / 88.2 | 8.4 | |
@@ -266,7 +266,7 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 - **How picks are scored.** The full scorer works per use, not per size, and it has no weights beyond the answer length and the mix of sizes. Each use gets one blended job time: chat is 300 tokens, 60% at the short prompt and 40% at 32K. Agent work is 600 tokens, 60% at 32K and 40% at 128K. Long-form is 2,000 tokens, half at 128K and half at 256K. Its score is stock llama.cpp's blended job time divided by ours, × 100, with gaps under 3% counted as ties. A setting is only eligible if it passes every gate, each of which reads pass, fail or "not measured":
   - real spill under 150 MB
   - the needle found at every depth
-  - mean KLD of 0.01 or less, with the top word the same at least 95% of the time (single-run values are flagged, and q4_0 passes narrowly on one run)
+  - mean KLD of 0.01 or less, with the top word the same at least 95% of the time. Single-run values are flagged. The q4_0 context cache fails mean KLD by 1.6% on the 4K × 4 split (0.01016) and passes on the 8K × 2 split (0.00951); MouseWurX ruled it a borderline pass on 19 November. This 95% bar is for picks, which a person chooses per use. A change that is on for everyone, such as an engine default, must keep the top word the same at least 99% of the time.
   - no aborted loads
   - a busy desktop costing 25% or less
   - at least 512 MiB of the card left free
@@ -526,7 +526,7 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 
 \* The card throttled lightly in both loads (2% to 12% of samples). A rerun is queued, and both sets will be published.
 
-- **Against stock defaults, our picks finish a 300-token job 2.4 times sooner at 32K, 2.9 times at 128K and 2.8 times at 256K.**
+- **Against stock defaults, our picks finish a 300-token job 2.4 times sooner at 32K, 2.9 times at 128K and 2.8 times at 256K.** The gain is in the first word and reading. Writing gains far less: 1.2 times at 32K (98.5 against 83.8), the same at 128K, and 12% slower at 256K.
 - **Nearly all of that comes from settings stock llama.cpp also accepts:** a bigger step, a q4_0 context cache, a 512 MB margin and pinning off. Stock llama.cpp with those settings and no copy cache was as fast or faster for chat and agent jobs. So this is not evidence that Brain Engine is faster than llama.cpp. It is evidence that llama.cpp's defaults are slow for long prompts on this card.
 - **The copy cache, which only Brain Engine has, writes 8% to 23% faster but reads 10% to 20% slower.** It pays only on long answers. It breaks even at about 840 tokens at 32K, about 3,000 at 128K and about 4,300 at 256K, and at 256K it lost even a 2,000-token answer by 3%.
 - **Stock defaults wrote fastest at 256K (48.1),** because step 512 leaves the most card room for experts. Their reading is what makes them slow.
@@ -721,7 +721,21 @@ At 128K and 256K, Windows' "shared GPU memory" rose by 1.3 to 3.4 GB during a lo
 
 - **The patch ran and was harmless.** Every load with it on logged that the mask was made on the card. The words were identical in all 5 pairs, in both rounds, and speed stayed within 2%.
 - **The memory prediction failed.** The pinned buffer was the same size with the patch on, so the rise didn't change at any size. The engine log shows why. Qwen3.6 uses M-RoPE, a kind of position code that gives every batch two-dimensional positions, even plain text. The patch handled only one-dimensional positions, so it fell back to the full mask table on every batch, and the engine's planned work was identical with the patch on. A follow-up, patch 0028 for Brain Engine 17, lets plain text use the mask made from positions. That is exact for text. It gave bit-identical results in 24 of 24 checks on a small brain shaped like Qwen3.6. Whether it frees the predicted 2 GB of pinned RAM at 256K is unproven in our lab, as we have yet to test.
-- **Pinning off stays the working fix.** This is a negative result, and we report it as one.
+- **Pinning off fixed the spill, and 0025 was dropped.** Pinning off (`GGML_CUDA_NO_PINNED=1`) is what fixed the spill. Patch 0025 was dropped once patch 0026, below, covered its use. This is a negative result, and we report it as one.
+
+**The mask with no table (patch 0026, Brain Engine 18, 19 November, 36 loads over 2 rounds, then 8 loads at a fixed placement).** Patch 0026 drops the mask table and has the attention kernels work the mask out from the token positions. A test program first checked that it gives the same numbers as the table, 13 of 13 on the card and 13 of 13 on the processor. Memory at load, card work space / pinned RAM in MiB:
+
+| Size, step | Table | No table | Freed |
+|---|---|---|---|
+| 32K, 4096 | 1,264 / 512 | 880 / 128 | about 0.8 GB |
+| 128K, 4096 | 2,128 / 1,216 | 1,027 / 129 | about 2.1 GB |
+| 256K, 4096 | 3,314 / 2,176 | 1,267 / 129 | about 4.0 GB |
+| 256K, 8192 | 5,890 / 4,352 | 1,665 / 257 | about 8.1 GB |
+
+- **It frees 2 to 4 GB at long context** at Bob's step, and more at bigger steps.
+- **At a fixed placement it writes the same words, 3% to 6% slower** (`--fit off`, the same layers on the card, 32K: 75.4 against 70.6 tokens a second).
+- **The first runs looked faster, and some words changed, because `--fit` used the freed room** to put more of the brain on the card. That is a placement effect, not the mask.
+- **So it is a long-context memory saver, not a default.** It is off unless chosen.
 
 #### 4.3.3.6 Still running or planned (18 November)
 
@@ -752,7 +766,8 @@ These are queued on the home PC in this order, and each has its addendum written
 | Q3 brain against Q4 (Addendum 57) | – | done: perplexity +0.9% to 1.5%, but mean KLD 0.034 to 0.043 and same top word 91.5% fail the drift line; whether to keep testing it is waiting on approval |
 | Processor reads of cache misses (patch 0032) | – | done: same top word 97.8% to 98% against the 99% gate, so it fails and stays out of the picks |
 | KV split (patch 0036) | – | shelved: writing collapses past the split |
-| 3-bit chat memory, q3_0 (patch 0038) | – | built; unproven in our lab, as we have yet to test on a real card |
+| No-table mask (patch 0026) | 44 | done: frees 2 to 4 GB at long context, same words and 3% to 6% slower writing at a fixed placement; a long-context option, off by default |
+| 3-bit chat memory, q3_0 (patch 0038) | 1 | started: one sanity load wrote 67.8 tokens a second against 96.1 for q8_0 (4x4, 32K), about 30% slower, for a cache about 22% smaller than q4_0. Quality and the full speed rows are unproven in our lab, as we have yet to test |
 | Progressive Memory (patch 0039): every word kept in 3-bit, the newest words kept again at 8-bit and 4-bit, each read from its sharpest copy. It builds on KIVI, SKVQ, PM-KVQ (arXiv 2505.18610) and KVmix | – | built; unproven in our lab, as we have yet to test on a real card |
 | q4_0 perplexity run again, and the needle test for q5_1 and f8_e4m3 | 10 | done: q4_0 on the line, needles all found (section 4.3.3.4) |
 
@@ -762,7 +777,7 @@ Each of these is unproven in our lab, as we have yet to test:
 
 - **One shared card budget.** Size the layers, the hot-experts cache and the step's work space together for the chosen context, instead of letting each take its share alone. This includes a smaller step as the context grows.
 - **Context-aware reloads.** Keep a fast 32K to 64K load for chat. Reload with big-context settings when a job would pass about 75% of the context, and switch back afterwards.
-- **Engine patches.** A 3-bit context cache, a paged context cache in RAM (only if it keeps the newest part on the card, since the whole cache in RAM cut writing by three quarters), and an attention mask that takes no pinned RAM at all. A first try, Brain Engine 16, made the mask on the card but freed nothing, because it didn't handle Qwen3.6's position codes. Brain Engine 17 fixes that (section 4.3.3.5). A deeper change that drops the mask table inside the attention kernels could free about 2 GB of card memory at 256K.
+- **Engine patches.** A paged context cache in RAM (only if it keeps the newest part on the card, since the whole cache in RAM cut writing by three quarters), and an attention mask that takes no pinned RAM at all. A first try, Brain Engine 16, made the mask on the card but freed nothing, because it didn't handle Qwen3.6's position codes. Brain Engine 17 fixes that (section 4.3.3.5). The deeper change, dropping the mask table inside the attention kernels, is now measured (patch 0026, section 4.3.3.5): it frees 2 to 4 GB at long context and writes 3% to 6% slower at the same placement.
 - **Expert tiers for brains bigger than RAM,** such as GPT-OSS 120B: a warm tier and a cold tier read from disk.
 - **The same tests on other machines:** the laptop plan (written, not run), other cards and other brains.
 - **Quality on Bob's jobs.** Perplexity shows the speed settings cost almost nothing. A run of Bob's own jobs at the chosen settings would confirm it.
