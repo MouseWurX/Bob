@@ -327,6 +327,7 @@ So step 4096 with 4 GB was the coding pick on 17 November. On 18 November, the s
 
 What not to turn on, on this machine:
 
+- **3-bit chat memory (q3_0) or Progressive Memory, for now.** q3_0 saves about 22% of the chat memory and passes perplexity and the needle test, but it writes 18% slower than q4_0 at 128K and 256K. Progressive Memory wrote 56% to 78% slower still. Fixes for both are unproven in our lab, as we have yet to test (section 4.3.3.8).
 - **Turbo (MTP).** On 16 November it slowed prompt reading by 13% to 16%, and writing ranged from 17% slower to 3% faster with Bob's sampling. On 18 November, at a small step with a big copy cache, it wrote 17% to 26% faster on long prompts but still read 13% to 15% slower. At the bigger steps this guide picks, its guessing head pushed 5 more layers' experts to RAM, so it wrote no faster and read about 15% slower. Leave it off.
 - **The context cache in RAM (`-nkvo`).** It freed only 2 to 3 layers' experts and cut writing by about three quarters at 128K and 256K.
 - **Sending some copy-cache misses to the processor.** Shares of 0.25 and 0.5 left reading the same and cut writing by 8% or more. Keep the share at 0.
