@@ -1,3 +1,16 @@
+diff --git a/common/arg.cpp b/common/arg.cpp
+index c9882c4..bf6ca52 100644
+--- a/common/arg.cpp
++++ b/common/arg.cpp
+@@ -2740,7 +2740,7 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
+     ).set_env("LLAMA_ARG_N_CPU_MOE"));
+     add_opt(common_arg(
+         {"--moe-cache-mib"}, "N",
+-        "GPU cache size in MiB for the MoE experts kept in the CPU. with multiple GPUs, it is split among them like the layers (--tensor-split) (default: 0, disabled); look-ahead (Brain Engine 0041): env LLAMA_MOE_LOOKAHEAD=M uploads up to M guessed experts a layer ahead while writing, with --moe-cache-cpu-share 0",
++        "GPU cache size in MiB for the MoE experts kept in the CPU. with multiple GPUs, it is split among them like the layers (--tensor-split) (default: 0, disabled); look-ahead (Brain Engine 0041): env LLAMA_MOE_LOOKAHEAD=M uploads up to M guessed experts a layer ahead while writing, with --moe-cache-cpu-share 0; stand-ins (Brain Engine 0043): env LLAMA_MOE_STANDIN=rank|near|drop lets up to LLAMA_MOE_STANDIN_MAX (default 2) missed experts a layer a word be skipped or stood in for while writing (lossy, off by default)",
+         [](common_params & params, int value) {
+             if (value < 0) {
+                 throw std::invalid_argument("invalid value");
 diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
 index dcc0fda..c4e51b2 100644
 --- a/src/llama-graph.cpp

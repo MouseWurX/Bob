@@ -1,7 +1,8 @@
 // Brain Engine 0040 check: an expert product marked for the card's rounding (op_params[0] = 1, the expert cache's
 // processor part) must round its input in blocks of 32 (q8_0, as a CUDA card's q8_1) and not in the k-quants' blocks of
 // 256 (q8_K). The reference is worked out here in double: the weights turned to floats, the input rounded to q8_0 and
-// back. Builds against ggml only:   moe-round-check
+// back, rounded by the loaded CPU part itself (its fast rounding can differ from the plain one in the last bit).
+// Builds against ggml only:   moe-round-check
 // Prints one line per check, PASS or FAIL, then ALL PASS or N FAILED.
 #include "ggml.h"
 #include "ggml-alloc.h"
@@ -59,6 +60,29 @@ static std::vector<float> run(ggml_type t, const std::vector<uint8_t> & wq, cons
     return r;
 }
 
+// The input rounded to q8_0 by the loaded CPU part itself (a copy step), so the reference uses the same rounding as
+// the marked product: the processor's fast rounding (AVX2, AVX-512) can differ from ggml's plain one in the last bit.
+static std::vector<uint8_t> cpu_q8_0(const std::vector<float> & x, int n_embd, int rows) {
+    ggml_init_params ip = { 8*ggml_tensor_overhead() + ggml_graph_overhead(), nullptr, true };
+    ggml_context * ctx = ggml_init(ip);
+    ggml_tensor * a = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, n_embd, rows);
+    ggml_tensor * q = ggml_new_tensor_2d(ctx, GGML_TYPE_Q8_0, n_embd, rows);
+    ggml_tensor * c = ggml_cpy(ctx, a, q);
+    ggml_cgraph * gf = ggml_new_graph(ctx);
+    ggml_build_forward_expand(gf, c);
+    ggml_backend_t be = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_CPU, nullptr);
+    if (!be) { printf("FAIL no CPU backend found beside this program\n"); exit(1); }
+    ggml_backend_buffer_t buf = ggml_backend_alloc_ctx_tensors(ctx, be);
+    ggml_backend_tensor_set(a, x.data(), 0, x.size()*sizeof(float));
+    ggml_backend_graph_compute(be, gf);
+    std::vector<uint8_t> r(ggml_nbytes(q));
+    ggml_backend_tensor_get(q, r.data(), 0, r.size());
+    ggml_backend_buffer_free(buf);
+    ggml_backend_free(be);
+    ggml_free(ctx);
+    return r;
+}
+
 int main() {
     ggml_backend_load_all();
     const int n_embd = 512, n_ff = 64, n_exp = 8, n_used = 2, n_tok = 24;
@@ -74,8 +98,7 @@ int main() {
     for (int j = 0; j < n_tok; j++) for (int u = 0; u < n_used; u++) ids[j*n_used + u] = (j == 3 && u == 1) ? -1 : (int) ((j*3 + u*5) % n_exp);
 
     // the input rounded the card's way, and back to floats
-    std::vector<uint8_t> xq(ggml_row_size(GGML_TYPE_Q8_0, n_embd) * n_used * n_tok);
-    ggml_quantize_chunk(GGML_TYPE_Q8_0, x.data(), xq.data(), 0, n_used*n_tok, n_embd, nullptr);
+    const std::vector<uint8_t> xq = cpu_q8_0(x, n_embd, n_used*n_tok);
     std::vector<float> x32(x.size());
     ggml_get_type_traits(GGML_TYPE_Q8_0)->to_float(xq.data(), x32.data(), (int64_t) x.size());
 
