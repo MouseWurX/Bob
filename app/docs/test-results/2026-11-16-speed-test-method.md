@@ -915,6 +915,28 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 81 (Nov 20, before any run): the owner's flip, with the copy cache moved to the writing side
+
+Addendum 76's flip kept the copy cache at 4 GB on both sides, so it did not test the owner's design: read at the big
+step with a smaller copy cache, then write at step 2048 with a bigger one, using the card room the small step's
+working blocks free up. Plans `flip-cache-32k.json` and `flip-cache-128k.json` (`switch-cost.mjs`, Brain Engine 25,
+fixed placement, q4_0 memory, 600-word replies, 5 repeats, cool-down on) time, per row, the read, the switch
+(save, `POST /context` with `moe_cache_mib`, which refills the copy cache, then restore), the reply and the whole job:
+
+- stay at the reading step with 4 GB, stay at 2048 with 4 GB (no switch sent; the runner fix in ed127a7);
+- flip the step only, 4 GB both sides (Addendum 76's row, for the same-run comparison);
+- flip with the cache moved: 3 GB to 5 GB, 2 GB to 6 GB, 2 GB to 7 GB and, at 32K only, 2 GB to 8 GB. The biggest
+  rows come last, because a cache that does not fit can stop the engine; a refused or failed row is the answer for
+  that size, and the placement never moves (`--fit off`).
+
+The engine log (`LLAMA_MOE_CACHE_LOG_EVERY`) gives the copy cache's hit rate while writing.
+
+**Predictions, written before any run:** writing at 2048 gains 0-6% from 4 GB to 6 GB and nothing more past it
+(earlier rows flattened past 4 GB); the cache refill adds 0.5-2 s to the switch; reading with a 2 GB cache is within
+3% of 4 GB at 32K. So the moved-cache flip beats the step-only flip by under 1 s at 32K and is level at 128K, and
+the 7-8 GB rows at 32K may not fit. Pass for the owner's design: a moved-cache flip has a shorter median job than
+both stay rows and the step-only flip, with every switch restored.
+
 ## Addendum 80 (Nov 20, before any run): look-ahead, doorbell and stand-ins on Brain Engine 26
 
 Patches 0041 (look-ahead: fetch the next layers' likely experts while writing, LLAMA_MOE_LOOKAHEAD), 0042 (doorbell: the card and the

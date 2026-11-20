@@ -1,0 +1,194 @@
+{
+ "name": "The owner's flip at 32K on Brain Engine 25: read at step 6144 with a smaller copy cache, then write at step 2048 with a bigger one (the room the small step frees); job time against staying, 5 repeats, cool-down on",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 81)",
+ "exe": "${BE25_SERVER}",
+ "brain": "${BRAIN}",
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "-c",
+  "49152",
+  "-b",
+  "4096",
+  "-ub",
+  "4096",
+  "--fit",
+  "off",
+  "-ngl",
+  "99",
+  "--n-cpu-moe",
+  "${NCMOE_32K}",
+  "--moe-cache-mib",
+  "4096",
+  "--moe-cache-cpu-share",
+  "0",
+  "-ctk",
+  "q4_0",
+  "-ctv",
+  "q4_0",
+  "--slot-save-path",
+  "${SLOT_DIR}",
+  "-lv",
+  "4"
+ ],
+ "env": {
+  "GGML_CUDA_NO_PINNED": "1",
+  "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+ },
+ "prompt": {
+  "file": "long-text.md",
+  "tokens": 32768
+ },
+ "followUp": "\n\nIn two sentences, what is this text about?",
+ "maxTokens": 600,
+ "repeats": 5,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "switches": [
+  {
+   "id": "stay-6144-c4096",
+   "stay": true,
+   "from": {
+    "n_batch": 6144,
+    "n_ubatch": 6144,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "moe_cache_mib": 4096,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {}
+  },
+  {
+   "id": "stay-2048-c4096",
+   "stay": true,
+   "from": {
+    "n_batch": 2048,
+    "n_ubatch": 2048,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "moe_cache_mib": 4096,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {}
+  },
+  {
+   "id": "flip-6144-to-2048-c4096",
+   "from": {
+    "n_batch": 6144,
+    "n_ubatch": 6144,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "moe_cache_mib": 4096,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "n_batch": 2048,
+    "n_ubatch": 2048
+   }
+  },
+  {
+   "id": "flip-6144-c3072-to-2048-c5120",
+   "from": {
+    "n_batch": 6144,
+    "n_ubatch": 6144,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "moe_cache_mib": 3072,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "n_batch": 2048,
+    "n_ubatch": 2048,
+    "moe_cache_mib": 5120
+   }
+  },
+  {
+   "id": "flip-6144-c2048-to-2048-c6144",
+   "from": {
+    "n_batch": 6144,
+    "n_ubatch": 6144,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "moe_cache_mib": 2048,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "n_batch": 2048,
+    "n_ubatch": 2048,
+    "moe_cache_mib": 6144
+   }
+  },
+  {
+   "id": "flip-6144-c2048-to-2048-c7168",
+   "from": {
+    "n_batch": 6144,
+    "n_ubatch": 6144,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "moe_cache_mib": 2048,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "n_batch": 2048,
+    "n_ubatch": 2048,
+    "moe_cache_mib": 7168
+   }
+  },
+  {
+   "id": "flip-6144-c2048-to-2048-c8192",
+   "from": {
+    "n_batch": 6144,
+    "n_ubatch": 6144,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "moe_cache_mib": 2048,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "n_batch": 2048,
+    "n_ubatch": 2048,
+    "moe_cache_mib": 8192
+   }
+  }
+ ]
+}
