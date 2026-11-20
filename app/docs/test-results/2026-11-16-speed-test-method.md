@@ -915,6 +915,31 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 76 (Nov 20, before any run): does reading at one setting and writing at another beat one setting
+
+The owner asked whether flipping to the best reading settings for the read and the best writing settings for the reply would beat
+one setting. Only the switch's cost was measured so far (sections 37-38: about 0.9 s at 32K, 2.4 s at 128K; read 14.7 / 10.4 / 8.5 s
+at step 2048 / 4096 / 6144 at 32K, writing 78 / 78 / 75 t/s). `speed-plans/flip-read-write-32k.json` and `-128k.json` (switch-cost.mjs,
+Brain Engine 25, fixed placement, q4_0 memory throughout, since a memory change forces a re-read; cool-down per Addendum 74), each 3
+repeats: stay at the best reading step (6144 at 32K, 5120 at 128K); stay at 2048; read at the best step then flip to 2048; then flip to
+2048 with the learning cache (share 1, learn 16, margin 1.5); and the learning cache alone. Every reply is 600 words. Job time = the read
++ the switch (left out for "stay" rows) + the reply's first word and writing. Written before the run: at 32K, flipping the step alone
+loses about 0.5 s against staying at 6144 (writing gains about 0.3 s, the switch costs 0.9 s); flipping to the learning cache is about
+even at 600 words (writing about 10% faster saves about 0.8 s) and pays only for longer replies; every flip beats staying at 2048 by
+5 s or more. At 128K every flip loses 1-2 s against staying at 5120, since the switch costs 2.4 s. If so, the conductor should read at
+the best reading step and keep it, and flip only for replies of over about 1,000 words.
+
+## Addendum 75 (Nov 20, before any run): how much speed a smaller sharp ring gives back
+
+On Brain Engine 26 (section 49), 8+3 wrote 18% slower than q3_0 at 32K and 8+4 13-21% slower than q4_0. Likely cause (the engine
+side's arithmetic, unproven): each word reads the main cache outside the window plus the whole 8-bit ring (8,192 + 4,096 slack slots
+at 34 bytes per 32), 1.5x plain q3_0's attention bytes at 32K, 1.13x at 128K. `speed-plans/progressive-ring-be26.json`: 8+3 and 8+4
+with a q8_0 ring of 2,048 and 4,096 words at 32K and 128K, and 8+4 at 32K with slack 1,024, beside plain q3_0/q4_0, 2 rounds, with the
+Addendum 74 cool-down. `perplexity-progressive-ring-be26.json`: the 16K x 2 accuracy plan with rings of 1,024 and 2,048 (a quarter
+scale) beside the full ring. Written before the run: at 32K a 4,096 ring brings 8+3 within 10% of q3_0 and a 2,048 ring within 5%;
+at 128K every ring size is within 5%; slack 1,024 is within 3% of slack 4,096 (if it is much faster, unfilled slack slots are being
+read and the engine should skip them). Each smaller ring's KLD against f16 lies between the full ring's and plain q3_0's (or q4_0's).
+
 ## Addendum 74 (Nov 20): every speed test cools the card to its own baseline and logs heat and clocks per row
 
 The 3-bit memory looked 18% slower than q4_0 at 128K in section 39, but 6% in a same-day head-to-head (section 47): the long rows in

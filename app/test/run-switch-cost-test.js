@@ -51,7 +51,12 @@ function fakeFx({ restoreOk = true, refSha = 'S' } = {}) {
 { const fx = fakeFx({ refSha: 'OTHER' });
   const plan = { exe: 'srv', brain: 'b', prompt: {}, switches: [{ id: 'a', from: {}, to: { n_batch: 4096 } }] };
   const res = await runSwitches({ plan, text: 't', fx, repeats: 1 });
-  check('different words from a fresh start are counted, not hidden', /\| 0 of 1 \| [^|]+ \| [^|]+ \|$/m.test(summariseSwitches(res.runs, res.refs)));
+  check('different words from a fresh start are counted, not hidden', /\| 0 of 1 \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \|$/m.test(summariseSwitches(res.runs, res.refs)));
+  // Nov 20 (the owner: read with the best reading settings, then flip to the best writing ones): the whole job time
+  { const f3 = fakeFx({}); const p3 = { exe: 'srv', brain: 'b', prompt: {}, maxTokens: 100, switches: [{ id: 'flip', from: {}, to: { n_batch: 2048 } }, { id: 'stay', stay: true, from: {}, to: {} }] };
+    const r3 = await runSwitches({ plan: p3, text: 't', fx: f3, repeats: 1 });
+    const fl = r3.runs.find((r) => r.switch === 'flip'), st = r3.runs.find((r) => r.switch === 'stay');
+    check('the job time is the read, plus the switch unless the row only stays, plus the reply', Number.isFinite(fl.jobS) && Number.isFinite(st.jobS) && Math.abs((fl.jobS - st.jobS) - ((fl.saveS || 0) + fl.switchS + (fl.restoreS || 0))) < 0.02 && /\| job s \|/.test(summariseSwitches(r3.runs, r3.refs)), { fl, st }); }
   // Nov 20 (the owner): back to the idle card's baseline before each switch, and the card's heat and clocks during each timed reply
   const temps = [55, 44, 40]; const naps = [];
   const fx2 = { ...fakeFx({}), cardTempC: async () => temps.shift() ?? 40, sleep: async (ms) => { naps.push(ms); }, sampleCard: () => ({ stop: () => [{ tempC: 41, smMHz: 2800 }, { tempC: 60, smMHz: 2650 }] }) };

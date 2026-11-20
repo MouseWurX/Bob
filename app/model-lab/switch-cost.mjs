@@ -95,6 +95,12 @@ export async function measureSwitch({ sw, srv, fx, prompt, followUp, maxTokens, 
   if (card) { const c = cardSummary(card.stop()); out.card = { startTempC: c.startTempC, maxTempC: Number.isFinite(c.maxTempC) ? c.maxTempC : null, medSmMHz: c.medSmMHz, minSmMHz: Number.isFinite(c.minSmMHz) ? c.minSmMHz : null, throttledSamples: c.throttledSamples ?? 0 }; }
   out.nextFirstWordMs = ans.firstWordMs; out.writeTps = ans.writeTps; out.textSha = ans.textSha;
   out.totalS = r2((out.saveS || 0) + out.switchS + (out.restoreS || 0) + (ans.firstWordMs || 0) / 1000);
+  // Nov 20 (the owner: read with the best reading settings, then flip to the best writing ones): the whole job, the
+  // read at `from` plus the switch plus the reply at `to`. A switch marked "stay" is the one-setting comparison: the
+  // switch is only there to keep the steps the same, so its cost is left out of the job time.
+  const words = Number(ans.writtenN ?? ans.words) || maxTokens;
+  const replyS = (ans.firstWordMs || 0) / 1000 + (Number.isFinite(ans.writeTps) && ans.writeTps > 0 ? words / ans.writeTps : 0);
+  out.jobS = r2((out.readMs || 0) / 1000 + (sw.stay ? 0 : (out.saveS || 0) + out.switchS + (out.restoreS || 0)) + replyS);
   return out;
 }
 
@@ -116,12 +122,12 @@ export function summariseSwitches(runs, refs) {
   const by = new Map();
   for (const r of runs) { if (!by.has(r.switch)) by.set(r.switch, []); by.get(r.switch).push(r); }
   const f = (xs) => { const a = xs.filter(Number.isFinite); return a.length ? `${r2(median(a))} (${r2(Math.min(...a))}-${r2(Math.max(...a))})` : '-'; };
-  const lines = ['| switch | n | save s | switch s | engine s | restore s | next first word ms | kept loaded | restored | same words as a fresh start | card °C start / max | clock MHz median / min |', '|---|---|---|---|---|---|---|---|---|---|---|---|'];
+  const lines = ['| switch | n | save s | switch s | engine s | restore s | next first word ms | kept loaded | restored | same words as a fresh start | card °C start / max | clock MHz median / min | read s | writing t/s | job s |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const [id, rs] of by) {
     const ok = rs.filter((r) => !r.failed);
     const ref = refs[id];
     const same = ref?.textSha ? `${ok.filter((r) => r.textSha === ref.textSha).length} of ${ok.length}` : (ref?.notRun ? `reference not run: ${ref.notRun}` : '-');
-    lines.push(`| ${id} | ${ok.length}${rs.length > ok.length ? ` (${rs.length - ok.length} failed)` : ''} | ${f(ok.map((r) => r.saveS))} | ${f(ok.map((r) => r.switchS))} | ${f(ok.map((r) => r.engineS))} | ${f(ok.map((r) => r.restoreS))} | ${f(ok.map((r) => r.nextFirstWordMs))} | ${ok.filter((r) => r.kept === true).length} of ${ok.length} | ${ok.filter((r) => r.restored).length} of ${ok.length} | ${same} | ${f(ok.map((r) => r.card?.startTempC))} / ${f(ok.map((r) => r.card?.maxTempC))} | ${f(ok.map((r) => r.card?.medSmMHz))} / ${f(ok.map((r) => r.card?.minSmMHz))} |`);
+    lines.push(`| ${id} | ${ok.length}${rs.length > ok.length ? ` (${rs.length - ok.length} failed)` : ''} | ${f(ok.map((r) => r.saveS))} | ${f(ok.map((r) => r.switchS))} | ${f(ok.map((r) => r.engineS))} | ${f(ok.map((r) => r.restoreS))} | ${f(ok.map((r) => r.nextFirstWordMs))} | ${ok.filter((r) => r.kept === true).length} of ${ok.length} | ${ok.filter((r) => r.restored).length} of ${ok.length} | ${same} | ${f(ok.map((r) => r.card?.startTempC))} / ${f(ok.map((r) => r.card?.maxTempC))} | ${f(ok.map((r) => r.card?.medSmMHz))} / ${f(ok.map((r) => r.card?.minSmMHz))} | ${f(ok.map((r) => (Number.isFinite(r.readMs) ? r.readMs / 1000 : null)))} | ${f(ok.map((r) => r.writeTps))} | ${f(ok.map((r) => r.jobS))} |`);
   }
   const failed = runs.filter((r) => r.failed || r.restoreWhy);
   return `${lines.join('\n')}\n${failed.length ? `\nRefusals:\n${failed.map((r) => `- ${r.switch}: ${r.failed || `restore: ${r.restoreWhy}`}`).join('\n')}\n` : ''}`;

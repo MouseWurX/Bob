@@ -1,0 +1,153 @@
+{
+ "name": "Read then write flip on Brain Engine 25 at 32K: read the chat at step 6144, switch to the writing settings (step 2048, or 2048 with the learning cache), write 600 words; job time against staying on one setting, 3 repeats, cool-down on",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 76)",
+ "exe": "${BE25_SERVER}",
+ "brain": "${BRAIN}",
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "-c",
+  "49152",
+  "-b",
+  "4096",
+  "-ub",
+  "4096",
+  "--fit",
+  "off",
+  "-ngl",
+  "99",
+  "--n-cpu-moe",
+  "${NCMOE_32K}",
+  "--moe-cache-mib",
+  "4096",
+  "--moe-cache-cpu-share",
+  "0",
+  "-ctk",
+  "q4_0",
+  "-ctv",
+  "q4_0",
+  "--slot-save-path",
+  "${SLOT_DIR}",
+  "-lv",
+  "4"
+ ],
+ "env": {
+  "GGML_CUDA_NO_PINNED": "1",
+  "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+ },
+ "prompt": {
+  "file": "long-text.md",
+  "tokens": 32768
+ },
+ "followUp": "\n\nIn two sentences, what is this text about?",
+ "maxTokens": 600,
+ "repeats": 3,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "switches": [
+  {
+   "id": "stay-6144",
+   "stay": true,
+   "from": {
+    "n_batch": 6144,
+    "n_ubatch": 6144,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {}
+  },
+  {
+   "id": "stay-2048",
+   "stay": true,
+   "from": {
+    "n_batch": 2048,
+    "n_ubatch": 2048,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {}
+  },
+  {
+   "id": "flip-6144-to-2048",
+   "from": {
+    "n_batch": 6144,
+    "n_ubatch": 6144,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "n_batch": 2048,
+    "n_ubatch": 2048
+   }
+  },
+  {
+   "id": "flip-6144-to-2048-learn",
+   "from": {
+    "n_batch": 6144,
+    "n_ubatch": 6144,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "n_batch": 2048,
+    "n_ubatch": 2048,
+    "moe_cache_cpu_share": 1,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": 16,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": 1.5
+    }
+   }
+  },
+  {
+   "id": "flip-6144-learn-only",
+   "from": {
+    "n_batch": 6144,
+    "n_ubatch": 6144,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {
+    "moe_cache_cpu_share": 1,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": 16,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": 1.5
+    }
+   }
+  }
+ ]
+}
