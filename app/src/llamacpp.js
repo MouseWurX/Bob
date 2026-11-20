@@ -1541,7 +1541,7 @@ export class LlamaCpp {
     // a long read coming with the cache grown for writing: back to the reading cache first
     if (this.condGrown && newTok >= MIN_NEW && !(await this.condSwitch(model, this.condStep, held, { moe_cache_mib: this.condCacheBase }))) return;
     // the card's free memory isn't known yet (it comes with each change): ask once, while the chat memory is empty
-    if (this.condCacheBase > 0 && this.condFree == null && !this.condFreeAsked && held === 0 && total < CACHE_FLIP_MAX && outTok >= CACHE_FLIP_MIN_OUT) {
+    if (this.cfg?.engineTuning?.growGuess === true && this.condCacheBase > 0 && this.condFree == null && !this.condFreeAsked && held === 0 && total < CACHE_FLIP_MAX && outTok >= CACHE_FLIP_MIN_OUT) {
       this.condFreeAsked = true;
       await this.condSwitch(model, this.condStep, 0, { moe_cache_mib: this.condCacheBase });
     }
