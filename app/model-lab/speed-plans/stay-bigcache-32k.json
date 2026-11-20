@@ -1,0 +1,108 @@
+{
+ "name": "Staying at step 6144 with a bigger copy cache at 32K on Brain Engine 25: does 5-6 GB fit next to the big step's working blocks, and does it beat the owner's flip (Addendum 82); 5 repeats, cool-down on",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 82)",
+ "exe": "${BE25_SERVER}",
+ "brain": "${BRAIN}",
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "-c",
+  "49152",
+  "-b",
+  "4096",
+  "-ub",
+  "4096",
+  "--fit",
+  "off",
+  "-ngl",
+  "99",
+  "--n-cpu-moe",
+  "${NCMOE_32K}",
+  "--moe-cache-mib",
+  "4096",
+  "--moe-cache-cpu-share",
+  "0",
+  "-ctk",
+  "q4_0",
+  "-ctv",
+  "q4_0",
+  "--slot-save-path",
+  "${SLOT_DIR}",
+  "-lv",
+  "4"
+ ],
+ "env": {
+  "GGML_CUDA_NO_PINNED": "1",
+  "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+ },
+ "prompt": {
+  "file": "long-text.md",
+  "tokens": 32768
+ },
+ "followUp": "\n\nIn two sentences, what is this text about?",
+ "maxTokens": 600,
+ "repeats": 5,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "switches": [
+  {
+   "id": "stay-6144-c4096",
+   "stay": true,
+   "from": {
+    "n_batch": 6144,
+    "n_ubatch": 6144,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "moe_cache_mib": 4096,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {}
+  },
+  {
+   "id": "stay-6144-c5120",
+   "stay": true,
+   "from": {
+    "n_batch": 6144,
+    "n_ubatch": 6144,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "moe_cache_mib": 5120,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {}
+  },
+  {
+   "id": "stay-6144-c6144",
+   "stay": true,
+   "from": {
+    "n_batch": 6144,
+    "n_ubatch": 6144,
+    "cache_type_k": "q4_0",
+    "cache_type_v": "q4_0",
+    "moe_cache_cpu_share": 0,
+    "moe_cache_mib": 6144,
+    "engine_keys": {
+     "LLAMA_MOE_CACHE_LEARN": null,
+     "LLAMA_MOE_CACHE_LEARN_MARGIN": null,
+     "LLAMA_MOE_CACHE_LEND": null
+    }
+   },
+   "to": {}
+  }
+ ]
+}

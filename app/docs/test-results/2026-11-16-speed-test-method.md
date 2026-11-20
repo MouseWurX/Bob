@@ -915,6 +915,18 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 82 (Nov 20, before any run): staying at the big step with a bigger copy cache, 32K
+
+Addendum 81's 32K rows: the moved-cache flip (2 GB reading, 6 GB writing) writes 8% faster than 4 GB, but its job
+(16.5 s) still trails staying at step 6144 with 4 GB (15.8 s), and 7-8 GB at step 2048 overfill the card (first word
+21 s, writing about 22 t/s). The comparison that is left is staying at step 6144 with a 5 GB or 6 GB cache and no
+switch. Plan `stay-bigcache-32k.json` (`switch-cost.mjs`, Brain Engine 25, 5 repeats, cool-down on): stay 6144 with
+4 GB (again, same run), 5 GB, then 6 GB (biggest last).
+
+**Predictions, written before any run:** 5 GB fits and writes 4-6% faster than 4 GB with a job about 0.4 s shorter.
+6 GB at step 6144 may not fit beside the bigger working blocks; if it overfills, the first word goes past 5 s, as in
+Addendum 81's 7 GB row. Pass for the flip: the owner's 2-to-6 GB flip beats every stay row that fits.
+
 ## Addendum 81 (Nov 20, before any run): the owner's flip, with the copy cache moved to the writing side
 
 Addendum 76's flip kept the copy cache at 4 GB on both sides, so it did not test the owner's design: read at the big
