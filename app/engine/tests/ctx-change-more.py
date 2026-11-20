@@ -60,6 +60,8 @@ try:
         check('it answers like a fresh server', ask(50262) == want['base'])
         r = post(50262, '/context', {'n_batch': 2048, 'n_ubatch': 1024})
         check('a new reading step', r.get('n_ubatch') == 1024 and r.get('n_batch') == 2048, f'{r}')
+        check('0047: the answer names each card\'s free memory and the MoE cache size', isinstance(r.get('devices'), list) and 'moe_cache_mib' in r and all(d.get('total_mib', 0) >= d.get('free_mib', -1) >= 0 for d in r['devices']), f'{r}')
+        check('0047: the log names the free memory after the change', 'context change:' in open(log).read() if r.get('devices') else True)
         check('the new reading step gives the words of a server started with it', ask(50262) == want['ub1024'])
         r = post(50262, '/context', {'n_ubatch': 512, 'cache_type_k': 'q8_0', 'cache_type_v': 'q8_0'})
         check('a new chat memory type', r.get('cache_type_k') == 'q8_0' and r.get('cache_type_v') == 'q8_0', f'{r}')
