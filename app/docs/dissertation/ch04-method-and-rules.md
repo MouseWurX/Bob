@@ -763,6 +763,7 @@ These are queued on the home PC in this order, and each has its addendum written
 | Whether q4_0 counts as passing the quality gate | – | decided 19 November: a borderline pass |
 | Coding use (Addendum 63: 1,500 written tokens, 32K and 64K): stock, 2x4, 4x4 and 4x0 | 24 | done: 4x4 ties stock (0.3%); prediction of a 3% win failed |
 | Coding rerun of the throttled 64K rows (stock and 4x0) | – | queued |
+| Read-then-write switch (Addendum 76) | 18 | provisional: the step switch ties staying at 128K, and the learning cache switched on mid-chat cuts writing by 62% to 63%. The stay rows rerun with the cache-moving switch (Addendum 81) |
 | Q3 brain against Q4 (Addendum 57) | – | done: perplexity +0.9% to 1.5%, but mean KLD 0.034 to 0.043 and same top word 91.5% fail the drift line; whether to keep testing it is waiting on approval |
 | Processor reads of cache misses (patch 0032) | – | done: same top word 97.8% to 98% against the 99% gate, so it fails and stays out of the picks |
 | KV split (patch 0036) | – | shelved: writing collapses past the split |
@@ -827,6 +828,17 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 - **A step, learning-cache or lend switch costs about 0.9 to 1.0 s at 32K and about 2.4 s at 128K**, against about 50 s to read a 128K chat again. So these can change between messages.
 - **Changing the memory type (q4_0 to q8_0) can't restore the saved chat.** The chat is read again, which took about 10.5 s at 32K. So the memory type can change only at a chat's start or on short chats.
 - **The replies after a switch differ from a fresh start,** because the chat was read at the old step. Each switched reply matches a fresh start at its old step, and repeats were identical, so this is a step effect, not damage.
+- **Reading at a big step, then writing at a small one (Brain Engine 25, 20 November, 18 loads, 3 repeats, provisional).** A 600-word reply after the chat was read:
+
+| Size | Switch after reading | Writing tokens a second | Job s |
+|---|---|---|---|
+| 32K | step 6144 to 2048 | 82.6 | 16.9 |
+| 32K | learning cache on | 32.1 | 28.3 |
+| 128K | step 5120 to 2048 | 59.2 | 56.3 |
+| 128K | learning cache on | 22.0 | 73.9 |
+
+- **The step switch saves nothing at 128K.** Staying at step 5120 comes to about 56 s too, estimated from its timed read (46.4 s) and fresh-start writing (59 to 59.5 tokens a second), because writing speed doesn't depend on the step at 128K. The rows that stay at the big step were refused by a bug in our test runner, which sent an empty request. It is fixed, and they rerun with the cache-moving switch (Addendum 81), so this result is provisional until then.
+- **Turning the learning cache on mid-chat cut writing by 62% to 63%.** That is far worse than predicted, and unlike the 19 November gain when it learned from the start over many turns of code edits. Don't switch it on mid-chat.
 
 **How much a word could gain from overlap (Brain Engine 21, 3 loads).** The timing log splits each written word into card, processor and copy time.
 - **Overlapping the processor's part with the card's could save at most 22% to 26% of each word** (2.6 to 3.2 ms of 11 to 14 ms). That clears the 8% bar for building the overlap, which is unproven in our lab, as we have yet to test.
