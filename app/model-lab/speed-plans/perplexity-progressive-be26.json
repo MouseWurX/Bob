@@ -164,6 +164,28 @@
      }
     },
     {
+     "id": "E-8plus4",
+     "engine": "be26",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "2048",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ],
+     "env": {
+      "LLAMA_KV_TIERS_SLACK": "2048",
+      "LLAMA_KV_TIERS": "q8_0:4096"
+     }
+    },
+    {
      "id": "D-8plus3-old-pass",
      "engine": "be26",
      "args": [

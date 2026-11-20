@@ -926,6 +926,7 @@ the 16K x 2 accuracy plan on Brain Engine 26 plus 8+3 with the old pass. Read th
 in the cache size line. Pass, written before the run: Progressive writing within 10% of plain q3_0 at 32K and 128K; the old-pass rows
 as slow as section 44 (within 10%); the same words as Brain Engine 22's Progressive rows at temp 0 (start chat at 32K: 565bcff4);
 perplexity of the fast and old pass equal to 4 decimals. Expected: 3-step and 8+3 within 5-10% of q3_0 at 32K, 5-15% at 256K.
+Added before the run: Progressive 8+4 (q4_0 main, q8_0 for the newest 8,192; 4,096 in the 16K accuracy plan) beside q4_0 at each size. Its bar: writing within 5% of plain q4_0, and KLD against f16 below plain q4_0's in the same group.
 
 ## Addendum 72 (Nov 20, before any run): does patch 0044 close the 3-bit memory's long-chat gap
 
