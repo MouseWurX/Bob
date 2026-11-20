@@ -154,6 +154,11 @@ export const TURBO_MEMS = ['smallest', 'small', 'progressive', 'progressive2', '
 export const turboMem = (cfg) => (TURBO_MEMS.includes(cfg?.turboMem) ? cfg.turboMem : 'smallest');
 export const TURBO_EXPERTS = 4;
 export const turboExperts = (cfg) => cfg?.turbo === true && cfg?.turboExperts !== false;
+// Turbo: stand-ins (Brain Engine 0043, off unless switched on, and only with Turbo and the hot-experts cache): while
+// writing, up to 2 missed experts a layer are replaced by the best-scored expert already on the card instead of being
+// copied over. Faster, and the words change (lossy), so it's a show-off switch only.
+export const turboStandins = (cfg) => cfg?.turbo === true && cfg?.turboStandins === true;
+export const STANDIN_ENV = { LLAMA_MOE_STANDIN: 'rank', LLAMA_MOE_STANDIN_MAX: '2' };
 // The experts per word Turbo asks of a brain whose own count is `own`: 4 when it has more, else nothing.
 export const turboPerWord = (cfg, own) => (turboExperts(cfg) && Number(own) > TURBO_EXPERTS ? TURBO_EXPERTS : null);
 // Progressive Memory (Brain Engine patch 0039): the engine names LLAMA_KV_TIERS under -ctv in --help.

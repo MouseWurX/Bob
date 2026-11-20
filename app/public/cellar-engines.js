@@ -109,6 +109,7 @@ export function createEngineParts(now) {
     return `<label class="pick"><strong>Turbo chat memory</strong> ${tip('The chat memory type every brain uses while Turbo is on. Smallest packs it tightest, for the most speed and room. Smaller and the Progressive kinds keep more detail. Smallest and Progressive need a Brain Engine that has them; otherwise I use Smaller.', 'Turbo chat memory')}
         <select data-set="turboMem" aria-label="Turbo chat memory">${opts.map(([v, label]) => `<option value="${v}" ${v === pick ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
       ${sswitch('turboExperts', settings.turboExperts !== false, 'Turbo: 4 experts per word', 'A brain made of experts asks only 4 of them per word, when it has more. Faster writing, a little less exact. A count you saved for a brain wins.')}
+      ${sswitch('turboStandins', settings.turboStandins === true, 'Turbo: stand-ins', 'An experiment. While writing, when an expert a word wants isn\'t on the graphics card, the best other expert already there stands in for it, up to 2 a layer, instead of copying it over. Faster where experts sit in RAM, and the answer changes. Needs Hot experts on the card. Off unless you switch it on.')}
       <span class="muted">Applies the next time a brain loads.</span>`;
   }
   // 101 Reading speed: how big a piece of a prompt the engine reads at a time. Normal is what Bob always did.

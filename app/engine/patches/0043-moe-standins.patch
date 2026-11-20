@@ -1,0 +1,503 @@
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 2c17ac3..7e5325b 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -2752,6 +2752,21 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+         }
+     }
+ 
++    // Brain Engine 0043 (LLAMA_MOE_STANDIN): for a one-word batch the MoE cache reads the router scores with the picks,
++    // so it can let an expert on the card play a missed one; the weights then take its factors (below). Off: no change
++    ggml_tensor * standin_scale = nullptr;
++    if (moe_cache != nullptr && il >= 0 && n_tokens == 1 && probs_in == nullptr && selected_experts_in == nullptr && !weight_before_ffn &&
++            (gating_op == LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX || gating_op == LLAMA_EXPERT_GATING_FUNC_TYPE_SIGMOID) &&
++            n_expert == hparams.n_expert && hparams.n_expert_groups <= 1 && arch != LLM_ARCH_GROVEMOE &&
++            logits->ne[0] == n_expert && logits->ne[1] == 1 && logits->type == GGML_TYPE_F32) {
++        if (ggml_tensor * dst = moe_cache->get_standin_scores(il, n_tokens, gating_op == LLAMA_EXPERT_GATING_FUNC_TYPE_SIGMOID)) {
++            ggml_tensor * scores = ggml_cpy(ctx0, logits, dst);
++            cb(scores, "ffn_moe_standin_scores", il);
++            ggml_build_forward_expand(gf, scores);
++            standin_scale = moe_cache->get_standin_scale(il);
++        }
++    }
++
+     // compute the expert input before the slot lookup, so that the scheduler prefetches it for the CPU part (the router can read a different tensor)
+     ggml_build_forward_expand(gf, cur);
+ 
+@@ -2762,6 +2777,16 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+         std::none_of(exps.begin(), exps.end(), [&](ggml_tensor * w) { return w != nullptr && hdmd != nullptr && hdmd->rot.count(w) > 0; });
+     const llm_graph_moe_cache_slots cache = build_moe_cache_slots(selected_experts, up_exps, gate_exps, down_exps, gate_up_exps, can_cpu_share, il);
+ 
++    // Brain Engine 0043: each pick's weight times the factor the cache set for its slot (1 unless a stand-in played in
++    // this word). Read through the slots, so it comes after the lookup that sets the factors
++    if (standin_scale != nullptr && cache.slots != nullptr) {
++        ggml_tensor * f = ggml_get_rows(ctx0, standin_scale, ggml_reshape_1d(ctx0, cache.slots, ggml_nelements(cache.slots))); // [1, n_expert_used]
++        f = ggml_reshape_3d(ctx0, f, 1, weights->ne[1], weights->ne[2]);
++        cb(f, "ffn_moe_standin_factor", il);
++        weights = ggml_mul(ctx0, weights, f);
++        cb(weights, "ffn_moe_weights_standin", il);
++    }
++
+     // Brain Engine: copy the picks into this layer's kept tensor. The copy comes after the router's last node, so the
+     // fused top-k kernel and CUDA graphs stay on, nothing in the graph is marked as an output, and no eval callback
+     // is needed: the context reads the kept tensors after each micro-batch
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index a9d6460..6b37c4e 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -15,6 +15,7 @@
+ #include <cstdlib>
+ #include <cstring>
+ #include <stdexcept>
++#include <string>
+ #include <thread>
+ #include <unordered_map>
+ #include <vector>
+@@ -391,6 +392,17 @@ struct llama_moe_cache::impl {
+         uint32_t cpu_acc = 0;               // fraction of a miss carried over to the next plan, in 1/65536
+         int64_t  learn_tokens = 0;          // Brain Engine 0031: tokens since this layer last let a miss into the cache
+         ggml_tensor * guess = nullptr;      // Brain Engine 0041: I32 [la_k, max_batch] on the device, the guessed experts of this layer
++        // Brain Engine 0043: stand-ins (see sp_choose)
++        ggml_tensor * sp_scores = nullptr;  // F32 [n_expert, 1] on the device, the router scores of a one-word batch
++        ggml_tensor * sp_scale  = nullptr;  // F32 [1, n_slots + n_zero] on the device, the factor of the pick read from each slot
++        mutable bool  sp_hooked = false;    // a graph copies the scores and applies the factors for this layer
++        mutable bool  sp_sigmoid = false;   // the router's gating is a sigmoid (else a softmax)
++        std::vector<float>    sp_scale_host; // what sp_scale holds, 1 but for the slots in sp_dirty
++        std::vector<int32_t>  sp_dirty;      // slots whose factor is not 1
++        std::vector<int32_t>  sp_map;        // the slot map sent to the device when a stand-in plays a miss
++        std::vector<float>    sp_score;      // host copy of the router scores
++        std::vector<uint16_t> sp_near;       // LLAMA_MOE_STANDIN=near: per expert, the others by router likeness, sp_nn each
++        int32_t               sp_nn = 0;
+         std::vector<ggml_tensor *> experts; // host expert tensors, in the order of the banks
+     };
+ 
+@@ -527,6 +539,8 @@ struct llama_moe_cache::impl {
+             }
+         }
+ 
++        sp_init(no_alloc);
++
+         // with misses on the CPU, the n_zero slots after the cached ones stay zero: the device computes these misses as zero
+         // one extra slot at the end, CUDA MMQ can read past the last expert
+         n_zero = cpu_share > 0.0f ? std::min<int32_t>(n_expert_used, 64) : 0;
+@@ -608,7 +622,7 @@ struct llama_moe_cache::impl {
+                 continue;
+             }
+             g.lru.init(model.layers.size(), n_expert, g.n_slots);
+-            n_tensors[g.id] += g.ref.size()*(1 + g.layers.size()) + (la_max > 0 ? g.layers.size() : 0);
++            n_tensors[g.id] += g.ref.size()*(1 + g.layers.size()) + (la_max > 0 ? g.layers.size() : 0) + (sp_mode != SP_OFF ? 2*g.layers.size() : 0);
+             n_tensors_host  += g.layers.size()*(n_zero > 0 ? 3 : 1); // slot maps and CPU map
+         }
+         if (n_tensors_host == 0) {
+@@ -664,6 +678,12 @@ struct llama_moe_cache::impl {
+                     l.guess = ggml_new_tensor_2d(ctx, GGML_TYPE_I32, la_k, max_batch);
+                     ggml_format_name(l.guess, "moe_cache.guess-%d", il);
+                 }
++                if (sp_mode != SP_OFF) {
++                    l.sp_scores = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, g.ref[0]->ne[2], 1);
++                    ggml_format_name(l.sp_scores, "moe_cache.standin_scores-%d", il);
++                    l.sp_scale = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, 1, g.n_slots + n_zero);
++                    ggml_format_name(l.sp_scale, "moe_cache.standin_scale-%d", il);
++                }
+                 l.slot_map = ggml_new_tensor_2d(ctx_host.get(), GGML_TYPE_I32, 1, g.ref[0]->ne[2]);
+                 ggml_format_name(l.slot_map, "moe_cache.slot_map-%d", il);
+                 // Brain Engine 0038: its lookup starts a split, so the selected experts are always computed in an earlier one
+@@ -708,6 +728,7 @@ struct llama_moe_cache::impl {
+                     }
+                 }
+             }
++            sp_load(model);
+         }
+ 
+         // as weights, the ops that read the banks run on the device and the slot maps are copied with the copy callback
+@@ -991,6 +1012,305 @@ struct llama_moe_cache::impl {
+         }
+         la_cv.notify_all();
+     }
++
++    // Brain Engine 0043 (LLAMA_MOE_STANDIN): while writing (one-word batches), a picked expert that is not on the card
++    // can be played by one that is, instead of being copied in (or computed on the processor). It changes the words, so
++    // it is off unless the key is set, and Bob only sets it in Turbo mode. The ways (after Strata-HotRod, MIT):
++    //   rank  the cached expert the router scored best for this word, that the word didn't pick (what HotRod does)
++    //   near  the cached expert whose router column is most like the missed one's (cosine, worked out once at load)
++    //   drop  no stand-in: the missed expert counts for nothing
++    // The stand-in counts with its own router score, then the kept weights are scaled back to the word's total (for
++    // drop: the hits share the missed one's part). At most LLAMA_MOE_STANDIN_MAX (default 2) misses a layer a word get
++    // one, the lightest first, never the word's top pick; the others are copied in as before. Long reads never use it.
++    enum sp_way { SP_OFF, SP_DROP, SP_NEAR, SP_RANK };
++    int     sp_mode = SP_OFF;
++    int32_t sp_max  = 2;
++    int64_t sp_word = 0;       // one-word batches seen, for the log
++    int32_t sp_last = -1;      // the layer of the last one-word lookup
++    size_t  sp_n = 0, sp_words = 0, sp_copied = 0;
++    struct sp_pair { int32_t pick; int32_t miss; int32_t standin; };
++    std::vector<sp_pair> sp_pairs;
++    std::vector<int32_t> sp_orig;  // the word's picks as the router made them
++
++    static const char * sp_name(int m) {
++        return m == SP_DROP ? "drop" : m == SP_NEAR ? "near" : m == SP_RANK ? "rank" : "off";
++    }
++
++    void sp_init(bool no_alloc) {
++        const char * v = getenv("LLAMA_MOE_STANDIN");
++        if (no_alloc || v == nullptr || *v == '\0' || strcmp(v, "0") == 0 || strcmp(v, "off") == 0) {
++            return;
++        }
++        sp_mode = strcmp(v, "drop") == 0 ? SP_DROP : strcmp(v, "near") == 0 ? SP_NEAR : strcmp(v, "rank") == 0 ? SP_RANK : SP_OFF;
++        if (sp_mode == SP_OFF) {
++            LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_STANDIN=%s NOT USED: it must be rank, near or drop\n", __func__, v);
++            return;
++        }
++        if (const char * k = getenv("LLAMA_MOE_STANDIN_MAX"); k != nullptr && *k != '\0') {
++            sp_max = atoi(k);
++        }
++        sp_max = std::clamp<int32_t>(sp_max, 1, std::max<int32_t>(1, n_expert_used - 1));
++        LLAMA_LOG_WARN("%s: !!! MoE stand-ins ON (LLAMA_MOE_STANDIN=%s): while writing, up to %d missed experts a layer a word "
++                       "are played by experts already on the card. The words change: this is an experiment.\n", __func__, sp_name(sp_mode), sp_max);
++    }
++
++    // after the buffers are made: every factor 1, and for near the likeness of the router columns
++    void sp_load(const llama_model & model) {
++        if (sp_mode == SP_OFF) {
++            return;
++        }
++        for (layer & l : layers) {
++            if (l.sp_scale == nullptr) {
++                continue;
++            }
++            l.sp_scale_host.assign(l.sp_scale->ne[1], 1.0f);
++            ggml_backend_tensor_set(l.sp_scale, l.sp_scale_host.data(), 0, ggml_nbytes(l.sp_scale));
++            l.sp_score.assign(l.sp_scores->ne[0], 0.0f);
++        }
++        if (sp_mode != SP_NEAR) {
++            return;
++        }
++        const int64_t t0 = ggml_time_us();
++        std::atomic<size_t> n_done{0};
++        std::atomic<size_t> next{0};
++        std::mutex read_mutex;
++        // the layers are spread over a few threads: a big brain has tens of layers of hundreds of experts
++        auto work = [&]() {
++        for (size_t il = next++; il < layers.size(); il = next++) {
++            layer & l = layers[il];
++            const ggml_tensor * gi = model.layers[il].ffn_gate_inp;
++            if (l.sp_scale == nullptr || gi == nullptr || gi->ne[1] != l.sp_scores->ne[0] || gi->ne[1] > 65535) {
++                continue;
++            }
++            const int64_t n_embd = gi->ne[0];
++            const int64_t n_exp  = gi->ne[1];
++            const auto * tt = ggml_get_type_traits(gi->type);
++            if (gi->type != GGML_TYPE_F32 && tt->to_float == nullptr) {
++                continue;
++            }
++            std::vector<uint8_t> raw(ggml_nbytes(gi));
++            {
++                std::lock_guard<std::mutex> lock(read_mutex); // one read at a time: a backend (RPC) may not take two at once
++                ggml_backend_tensor_get(gi, raw.data(), 0, raw.size());
++            }
++            std::vector<float> col((size_t) n_embd*n_exp);
++            for (int64_t e = 0; e < n_exp; ++e) {
++                const uint8_t * row = raw.data() + e*gi->nb[1];
++                float * out = col.data() + e*n_embd;
++                if (gi->type == GGML_TYPE_F32) {
++                    memcpy(out, row, n_embd*sizeof(float));
++                } else {
++                    tt->to_float(row, out, n_embd);
++                }
++                double norm = 0.0;
++                for (int64_t i = 0; i < n_embd; ++i) {
++                    norm += (double) out[i]*out[i];
++                }
++                const float inv = norm > 0.0 ? (float) (1.0/std::sqrt(norm)) : 0.0f;
++                for (int64_t i = 0; i < n_embd; ++i) {
++                    out[i] *= inv;
++                }
++            }
++            const int32_t nn = (int32_t) std::min<int64_t>(64, n_exp - 1);
++            l.sp_near.assign((size_t) n_exp*nn, 0);
++            std::vector<std::pair<float, int32_t>> sim(n_exp);
++            for (int64_t a = 0; a < n_exp; ++a) {
++                for (int64_t b = 0; b < n_exp; ++b) {
++                    float d = 0.0f;
++                    const float * x = col.data() + a*n_embd;
++                    const float * y = col.data() + b*n_embd;
++                    for (int64_t i = 0; i < n_embd; ++i) {
++                        d += x[i]*y[i];
++                    }
++                    sim[b] = { b == a ? -2.0f : d, (int32_t) b };
++                }
++                std::partial_sort(sim.begin(), sim.begin() + nn, sim.end(), [](const auto & x, const auto & y) {
++                    return x.first != y.first ? x.first > y.first : x.second < y.second;
++                });
++                for (int32_t k = 0; k < nn; ++k) {
++                    l.sp_near[a*nn + k] = (uint16_t) sim[k].second;
++                }
++            }
++            l.sp_nn = nn;
++            n_done++;
++        }
++        };
++        const unsigned n_threads = std::clamp(std::thread::hardware_concurrency(), 1u, 8u);
++        std::vector<std::thread> pool;
++        for (unsigned i = 1; i < n_threads; ++i) {
++            pool.emplace_back(work);
++        }
++        work();
++        for (std::thread & t : pool) {
++            t.join();
++        }
++        LLAMA_LOG_INFO("%s: MoE stand-ins: router likeness of %zu layers worked out in %.1f s\n", __func__, n_done.load(), (ggml_time_us() - t0)/1e6);
++    }
++
++    // the graph of a one-word batch copies the router scores here and applies sp_scale; sigmoid: the router's gating
++    ggml_tensor * get_standin_scores(int32_t il, int64_t n_tokens, bool sigmoid) const {
++        if (sp_mode == SP_OFF || n_tokens != 1 || il < 0 || il >= (int32_t) layers.size() || layers[il].ig < 0 ||
++                layers[il].sp_scores == nullptr || reading || lent || filling) {
++            return nullptr;
++        }
++        if (sp_mode == SP_NEAR && layers[il].sp_near.empty()) {
++            return nullptr;
++        }
++        layers[il].sp_hooked  = true;
++        layers[il].sp_sigmoid = sigmoid;
++        return layers[il].sp_scores;
++    }
++
++    ggml_tensor * get_standin_scale(int32_t il) const {
++        return sp_mode == SP_OFF || il < 0 || il >= (int32_t) layers.size() ? nullptr : layers[il].sp_scale;
++    }
++
++    // the router weight of an expert, up to a factor shared by the word (enough for ratios)
++    float sp_weight(const layer & l, int32_t e, float top) const {
++        const float x = l.sp_score[e];
++        return l.sp_sigmoid ? 1.0f/(1.0f + std::exp(-x)) : std::exp(x - top);
++    }
++
++    // before the plan: pick the stand-ins of one word's misses and put them in the ids in place of the misses
++    int32_t sp_choose(int32_t il, layer & l, const group & g, int32_t n_used) {
++        sp_pairs.clear();
++        sp_orig.assign(ids.begin(), ids.end());
++        const int32_t * slots = g.lru.slot_map[il];
++        const int32_t n_exp = (int32_t) l.sp_score.size();
++        auto picked = [&](int32_t e) {
++            for (int32_t k = 0; k < n_used; ++k) {
++                if (ids[k] == e) {
++                    return true;
++                }
++            }
++            return false;
++        };
++        // the picks, lightest first; the top pick is never stood in for
++        std::vector<int32_t> order(n_used);
++        for (int32_t k = 0; k < n_used; ++k) {
++            order[k] = k;
++        }
++        std::sort(order.begin(), order.end(), [&](int32_t a, int32_t b) {
++            const float sa = l.sp_score[ids[a]], sb = l.sp_score[ids[b]];
++            return sa != sb ? sa < sb : a > b;
++        });
++        size_t n_miss = 0;
++        for (int32_t k = 0; k < n_used; ++k) {
++            n_miss += slots[ids[k]] >= g.n_slots;
++        }
++        for (int32_t oi = 0; oi + 1 < n_used && (int32_t) sp_pairs.size() < sp_max; ++oi) {
++            const int32_t k = order[oi];
++            const int32_t m = ids[k];
++            if (slots[m] < g.n_slots) {
++                continue; // a hit
++            }
++            int32_t r = -1;
++            if (sp_mode == SP_NEAR) {
++                for (int32_t j = 0; j < l.sp_nn && r < 0; ++j) {
++                    const int32_t e = l.sp_near[(size_t) m*l.sp_nn + j];
++                    if (slots[e] < g.n_slots && !picked(e)) {
++                        r = e;
++                    }
++                }
++            } else {
++                float best = -INFINITY;
++                for (int32_t e = 0; e < n_exp; ++e) {
++                    if (slots[e] < g.n_slots && l.sp_score[e] > best && !picked(e)) {
++                        best = l.sp_score[e];
++                        r    = e;
++                    }
++                }
++                if (r >= 0 && !(best > -INFINITY)) {
++                    r = -1; // an expert that is off
++                }
++            }
++            if (r < 0) {
++                continue; // nothing on the card to play it: copied in as before
++            }
++            sp_pairs.push_back({ k, m, r });
++            ids[k] = r; // the plan sees the stand-in as this word's pick (a hit): the miss isn't copied in
++        }
++        sp_copied += n_miss - sp_pairs.size();
++        return (int32_t) sp_pairs.size();
++    }
++
++    // after the plan: the factors of the word's picks and the slot map the device reads, with the stand-ins in place of
++    // the misses (the cache's own slot map is unchanged: a missed expert is still not on the card)
++    const int32_t * sp_apply(int32_t il, layer & l, const group & g, ggml_backend_t backend, int32_t n_used) {
++        // the factors left from the last stand-in of this layer go back to 1
++        for (int32_t s : l.sp_dirty) {
++            l.sp_scale_host[s] = 1.0f;
++            ggml_backend_tensor_set_async(backend, l.sp_scale, &l.sp_scale_host[s], (size_t) s*sizeof(float), sizeof(float));
++        }
++        l.sp_dirty.clear();
++        if (sp_pairs.empty()) {
++            return nullptr;
++        }
++        const int32_t * slots = g.lru.slot_map[il];
++        float top = -INFINITY;
++        for (int32_t k = 0; k < n_used; ++k) {
++            top = std::max(top, l.sp_score[sp_orig[k]]);
++        }
++        std::vector<float> w_orig(n_used), w_used(n_used);
++        double sum_orig = 0.0, sum_used = 0.0;
++        for (int32_t k = 0; k < n_used; ++k) {
++            w_orig[k] = sp_weight(l, sp_orig[k], top);
++            w_used[k] = w_orig[k];
++        }
++        for (const sp_pair & p : sp_pairs) {
++            w_used[p.pick] = sp_mode == SP_DROP ? 0.0f : sp_weight(l, p.standin, top);
++        }
++        for (int32_t k = 0; k < n_used; ++k) {
++            sum_orig += w_orig[k];
++            sum_used += w_used[k];
++        }
++        const double back = sum_used > 0.0 ? sum_orig/sum_used : 1.0;
++        l.sp_map.assign(slots, slots + l.slot_map->ne[1]);
++        for (const sp_pair & p : sp_pairs) {
++            l.sp_map[p.miss] = slots[p.standin];
++        }
++        for (int32_t k = 0; k < n_used; ++k) {
++            const int32_t s = l.sp_map[sp_orig[k]];
++            GGML_ASSERT(s >= 0 && s < (int32_t) l.sp_scale_host.size());
++            l.sp_scale_host[s] = w_orig[k] > 0.0f ? (float) (w_used[k]/w_orig[k]*back) : 0.0f;
++            l.sp_dirty.push_back(s);
++            ggml_backend_tensor_set_async(backend, l.sp_scale, &l.sp_scale_host[s], (size_t) s*sizeof(float), sizeof(float));
++        }
++        sp_n += sp_pairs.size();
++        sp_cur_n += (int32_t) sp_pairs.size();
++        sp_cur_layer = std::max(sp_cur_layer, (int32_t) sp_pairs.size());
++        std::string list;
++        for (const sp_pair & p : sp_pairs) {
++            char buf[48];
++            snprintf(buf, sizeof(buf), "%s%d->%d", list.empty() ? "" : " ", p.miss, sp_mode == SP_DROP ? -1 : p.standin);
++            list += buf;
++        }
++        LLAMA_LOG_DEBUG("llama_moe_cache: stand-ins: word %lld layer %d: %zu (%s)\n", (long long) sp_word, il, sp_pairs.size(), list.c_str());
++        return l.sp_map.data();
++    }
++    // the stand-ins of the word being written, and of the last words (one -lv 4 line every 64 words)
++    int32_t sp_cur_n = 0, sp_cur_layer = 0;
++    int64_t sp_win_words = 0, sp_win_n = 0;
++    int32_t sp_win_word = 0, sp_win_layer = 0, sp_most_layer = 0;
++
++    void sp_end_word() {
++        sp_words      += sp_cur_n > 0;
++        sp_win_words++;
++        sp_win_n      += sp_cur_n;
++        sp_win_word    = std::max(sp_win_word, sp_cur_n);
++        sp_win_layer   = std::max(sp_win_layer, sp_cur_layer);
++        sp_most_layer  = std::max(sp_most_layer, sp_cur_layer);
++        sp_cur_n = sp_cur_layer = 0;
++        sp_word++;
++        if (sp_win_words >= 64) {
++            LLAMA_LOG_INFO("llama_moe_cache: stand-ins, words %lld-%lld: %lld, %.2f a word, most %d in a word, most %d in a layer for a word (at most %d)\n",
++                (long long) (sp_word - sp_win_words), (long long) sp_word - 1, (long long) sp_win_n, (double) sp_win_n/sp_win_words,
++                sp_win_word, sp_win_layer, sp_max);
++            sp_win_words = sp_win_n = 0;
++            sp_win_word = sp_win_layer = 0;
++        }
++    }
++
+     uint64_t n_updates    = 0;
+     uint32_t n_expert_all = 0; // experts per layer in the brain
+ 
+@@ -1331,6 +1651,15 @@ struct llama_moe_cache::impl {
+             la_guess.resize((size_t) la_k*n_tok);
+             ggml_backend_tensor_get_async(backend, layers[il_next].guess, la_guess.data(), 0, la_guess.size()*sizeof(int32_t));
+         }
++        // Brain Engine 0043: the router scores of a one-word batch, copied by its graph before the picks were made
++        const bool sp_on = sp_mode != SP_OFF && n_tok == 1 && l.sp_hooked && (int64_t) l.sp_score.size() == l.slot_map->ne[1];
++        if (sp_on) {
++            ggml_backend_tensor_get_async(backend, l.sp_scores, l.sp_score.data(), 0, l.sp_score.size()*sizeof(float));
++            if (il <= sp_last) {
++                sp_end_word();
++            }
++            sp_last = il;
++        }
+         ggml_backend_synchronize(backend);
+ 
+         if (trace != nullptr) {
+@@ -1339,6 +1668,7 @@ struct llama_moe_cache::impl {
+         if (ids_sink != nullptr && !has_cpu) {
+             ids_sink(ids_sink_ud, il, ids.data(), ids.size(), n_used);
+         }
++        const int32_t n_sp = sp_on ? sp_choose(il, l, g, n_used) : 0;
+ 
+         // part of the misses is computed on the CPU once the cache is full, the carry keeps the share right on average
+         // Brain Engine 0032: a prompt batch of more than max_batch tokens sends every miss to the CPU, full cache or not
+@@ -1396,7 +1726,7 @@ struct llama_moe_cache::impl {
+         }
+ 
+         stats & st = read_cpu ? stats_read : ids.size() <= (size_t) 8*n_expert_used ? stats_small : stats_large;
+-        st.hits   += n_hit;
++        st.hits   += n_hit - n_sp; // a stand-in is not a hit
+         st.misses += fills.size() + cpu.size();
+         st.cpu    += cpu.size();
+         st.bytes  += bytes;
+@@ -1409,7 +1739,8 @@ struct llama_moe_cache::impl {
+         }
+ 
+         // the next copy synchronizes the backend before it changes the slot map again
+-        ggml_backend_tensor_set_async(backend, dst, l.slot_map->data, 0, ggml_nbytes(l.slot_map));
++        const int32_t * sp_map = sp_on ? sp_apply(il, l, g, backend, n_used) : nullptr;
++        ggml_backend_tensor_set_async(backend, dst, sp_map != nullptr ? (const void *) sp_map : l.slot_map->data, 0, ggml_nbytes(l.slot_map));
+ 
+         // Brain Engine 0041: the next layer's guessed misses go up while this layer computes
+         if (il_next >= 0) {
+@@ -1652,6 +1983,10 @@ struct llama_moe_cache::impl {
+             LLAMA_LOG_INFO("llama_moe_cache: looked ahead: %zu experts uploaded ahead (%.2f MiB), %zu of them used (%.1f%%)\n",
+                 la_n_up, la_bytes/1024.0/1024.0, la_n_used, la_n_up > 0 ? 100.0*la_n_used/la_n_up : 0.0);
+         }
++        if (sp_mode != SP_OFF) {
++            LLAMA_LOG_INFO("llama_moe_cache: stood in (%s, at most %d a layer a word): %zu stand-ins in %zu of %lld words, %zu misses copied as before while writing, most %d in a layer for a word\n",
++                sp_name(sp_mode), sp_max, sp_n, sp_words + (sp_cur_n > 0), (long long) (sp_word + (sp_last >= 0)), sp_copied, std::max(sp_most_layer, sp_cur_layer));
++        }
+         if (learn_every > 0) {
+             LLAMA_LOG_INFO("llama_moe_cache: learned while writing: %zu experts came in\n", n_learned);
+         }
+@@ -1681,6 +2016,14 @@ ggml_tensor * llama_moe_cache::get_guess(ggml_context * ctx, int32_t il, int64_t
+     return pimpl->get_guess(ctx, il, n_tokens, k);
+ }
+ 
++ggml_tensor * llama_moe_cache::get_standin_scores(int32_t il, int64_t n_tokens, bool sigmoid) const {
++    return pimpl->get_standin_scores(il, n_tokens, sigmoid);
++}
++
++ggml_tensor * llama_moe_cache::get_standin_scale(int32_t il) const {
++    return pimpl->get_standin_scale(il);
++}
++
+ ggml_tensor * llama_moe_cache::get_experts(const ggml_tensor * w) const {
+     return pimpl->get_experts(w);
+ }
+diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
+index 53e4177..1d8048d 100644
+--- a/src/llama-moe-cache.h
++++ b/src/llama-moe-cache.h
+@@ -27,6 +27,11 @@ public:
+     // Brain Engine 0041 (LLAMA_MOE_LOOKAHEAD): where the graph of layer il writes its guess of layer il + 1's experts,
+     // I32 [k, n_tokens] (top k of layer il + 1's router on layer il's expert input), nullptr if there is no look-ahead
+     ggml_tensor * get_guess(ggml_context * ctx, int32_t il, int64_t n_tokens, int32_t * k) const;
++    // Brain Engine 0043 (LLAMA_MOE_STANDIN): for a one-word batch of layer il, where the graph copies the router scores
++    // (F32 [n_expert, 1], what the gating reads; sigmoid: the gating is a sigmoid, else a softmax), nullptr if there are
++    // no stand-ins. A graph that takes it must multiply the picks' weights by get_rows(get_standin_scale(il), slots).
++    ggml_tensor * get_standin_scores(int32_t il, int64_t n_tokens, bool sigmoid) const;
++    ggml_tensor * get_standin_scale(int32_t il) const;
+     // the experts of w in the cache, nullptr if w is not cached
+     ggml_tensor * get_experts(const ggml_tensor * w) const;
+ 

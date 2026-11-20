@@ -12,7 +12,7 @@ export const READ_STEP = 4096;
 export const BIG_STEP = 6144; // reads at 128K and up
 export const BIG_FROM = 131072;
 export const MIN_NEW = 4096; // shorter new reads are never worth a switch
-export const SWITCH_GUESS_S = 1.2; // measured on a 16 GB card at 32K (Nov 19): save 0.34 s + step 0.23 s + put back 0.34 s, about 1.1-1.2 s in all
+export const SWITCH_GUESS_S = 0.9; // measured on a 16 GB card at 32K (Nov 19, medians): save 0.31-0.36 s + step 0.22-0.24 s + put back 0.31-0.34 s
 export const SLOW_TRIES = 3;
 
 // Until a brain's own speeds are known, read and write speeds at a step, as shares of the chat step's. Measured with

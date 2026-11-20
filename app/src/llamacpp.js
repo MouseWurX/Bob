@@ -30,6 +30,7 @@ import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: 
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
 import { tuningArgs } from './engine-tuning.js';
 import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, SWITCH_GUESS_S } from './conductor.js'; // off unless picked
+import { turboStandins, STANDIN_ENV } from './engine-extras.js'; // Turbo: stand-ins (0043, off unless switched on)
 import { helpHasQ3, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
@@ -1237,6 +1238,7 @@ export class LlamaCpp {
     this.placeChat = null; // a fresh engine holds no chat's reading yet
     this.condStep = this.condChat || 0; this.condOff = ''; this.condHeld = 0; // the Conductor starts each engine run at the chat step
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
+    if (args.includes('--moe-cache-mib') && turboStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...STANDIN_ENV }; this.log?.('engine', `${model}: Turbo stand-ins on (up to 2 missed experts a layer stood in for while writing; the words change)`); }
     if (this.tuneEnv && Object.keys(this.tuneEnv).length) env = { ...env, ...this.tuneEnv }; // Engine tuning, set by hand
     if (args.includes('--moe-cache-mib') && this.hotEnv?.[RANKING_ENV]) env = { ...env, ...this.hotEnv }; // Nov 16: the hot-expert profile (patch 0016)
     // Nov 20 (patch 0039, opt-in): Progressive chat memory, the newest words kept sharper. Its steps come from the
