@@ -915,6 +915,22 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 71 (Nov 20, before any run): Progressive Memory on Brain Engine 22
+
+Progressive Memory (patch 0039, `LLAMA_KV_TIERS`, slack 4096) keeps the newest words sharp and the older ones in q3_0. Types, as Bob
+sets them: A 3-step at 32K (q3_0 main, `q8_0:8192,q4_0:16384`), B 3-step past 32K (`q8_0:8192,q4_0:65536`), C 2-step (`q4_0:16384` at
+32K, `q4_0:65536` past it) and D 8+3 (`q8_0:8192`, no 4-bit step; the owner asked for it on Nov 19). Plans, in run order:
+`perplexity-progressive.json` (f16 base vs q8_0, q4_0, q3_0, A, C, D at 8K x 2 and 32K x 1, plus A with -ub 8192 at 32K, which should
+equal plain q3_0 since the batch passes the slack), `speed-progressive.json` (q8_0 at 32K/128K, q4_0, q3_0, 3-step and 8+3 at 32K,
+128K and 256K, --fit, 2 rounds; the saved words at temperature 0 also give the same-words check against q8_0), `needle-progressive.json`
+(B, C, D at 128K and 256K, 25 each).
+
+Bar (Addendum 62 and the owner's Nov 19 rule): perplexity within 3% of q4_0 passes, 3-5% needs the real-jobs check, over 5% fails;
+needles 25/25. The 3-step type becomes the default only if it is within 3% of q8_0 and passes the needles. Written before the run:
+at 8K every Progressive type equals q8_0 (the whole text sits in the 8K q8_0 step, so 8K says little); at 32K, A and D sit between
+q8_0 and q3_0, nearer q8_0; A with -ub 8192 equals plain q3_0; all needles found; writing 0-10% slower than plain q3_0 (one extra pass per
+step), reading up to 15% slower (f16 copies per batch).
+
 ## Addendum 70 (Nov 20, before any run): which half of the 3-bit memory costs writing speed
 
 For the engine side's q3_0 kernel work: `speed-plans/kv3-kernel-diag.json`, Brain Engine 21, 4x4 with --fit at a 48K context, one
