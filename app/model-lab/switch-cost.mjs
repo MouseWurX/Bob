@@ -53,7 +53,7 @@ export function parseSwitchLog(log = '') {
 }
 
 export function loadSwitchPlan(file, { read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n'), vars = {} } = {}) {
-  const raw = read(file).replace(/\$\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : (process.env[k] ?? m)));
+  const raw = read(file).replace(/\$\{(\w+)\}/g, (m, k) => { const v = k in vars ? vars[k] : process.env[k]; return v === undefined ? m : JSON.stringify(String(v)).slice(1, -1); }); // 20 Nov: escaped, so a Windows path (backslashes) stays valid JSON
   const plan = JSON.parse(raw);
   const problems = [];
   if (!plan.exe) problems.push('no exe');
@@ -64,6 +64,9 @@ export function loadSwitchPlan(file, { read = (f) => fs.readFileSync(f, 'utf8').
   const dir = path.dirname(file);
   let text = '';
   if (plan.prompt?.file) { try { text = read(path.resolve(dir, plan.prompt.file)); } catch { problems.push(`can't read ${plan.prompt.file}`); } } else problems.push('no prompt file');
+  // 20 Nov: a long context (128K) needs the 37K-token text several times over, as the speed plans do (promptRepeat)
+  const rep = Number(plan.prompt?.repeat) || 1;
+  if (text && rep > 1) text = Array(rep).fill(text).join('\n\n');
   return { plan, text, problems };
 }
 

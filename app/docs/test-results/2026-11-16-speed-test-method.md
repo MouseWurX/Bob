@@ -915,6 +915,17 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 66 (Nov 20, before any run): the conductor's switch cost at 128K
+
+The conductor (GUPPI design, bob-wip/engine-speed/guppi-conductor-design.md) needs the whole cost of a live change on a long chat, not
+only at 32K: save the chat, change the setting, restore it. `speed-plans/conductor-switch-128k.json` runs the same five steps as
+Addendum 65 at 128K with a fixed placement (`${NCMOE_128K}` from the speed-kv3 fit probe), q4_0 chat memory, the text laid 4 times end
+to end and cut to 122,880 tokens, step 5120 to 4096 and back, 3 repeats, then a fresh start per switch for the words check.
+
+Written before the run: save and restore each take longer at 128K than at 32K, roughly in step with the chat memory's size (about
+4 times); the context change itself stays within 1 s of the 32K figure, since the brain stays loaded. A restore that is refused, or
+words that differ from the fresh start, are counted and shown. Pass for the conductor: save + switch + restore under 10 s at 128K.
+
 ## Addendum 65 (Nov 19, before any run): what a live setting change costs the conductor
 
 The owner wants the conductor (Bob changing engine settings per job step). It only pays if a change is cheap. Brain

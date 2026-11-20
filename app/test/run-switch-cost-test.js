@@ -55,6 +55,12 @@ function fakeFx({ restoreOk = true, refSha = 'S' } = {}) {
   const ok = loadSwitchPlan('/p/plan.json', { read: (f) => { if (!(f in files)) throw new Error('no'); return files[f].replace(/\r\n/g, '\n'); }, vars: { X: 'exe' } });
   const bad = loadSwitchPlan('/p/plan.json', { read: (f) => files[f].replace(/\r\n/g, '\n'), vars: {} });
   check('a plan reads its prompt (CRLF stripped) and names unset variables', ok.problems.length === 0 && ok.text === 'line\ntwo' && bad.problems.some((p) => p.includes('${X}')), ok.problems); }
+{ const files = { '/p/plan.json': '{"exe":"e","brain":"b","prompt":{"file":"t.md","repeat":3},"switches":[{"id":"s","from":{},"to":{}}]}', '/p/t.md': 'ab' };
+  const r = loadSwitchPlan('/p/plan.json', { read: (f) => files[f.replace(/\\/g, '/')] });
+  check('prompt.repeat lays the text end to end for a long context', r.text === 'ab\n\nab\n\nab', r.text); }
+{ const files = { '/p/plan.json': '{"exe":"${E}","brain":"b","prompt":{"file":"t.md"},"switches":[{"id":"s","from":{},"to":{}}]}', '/p/t.md': 'x' };
+  const r = loadSwitchPlan('/p/plan.json', { read: (f) => files[f], vars: { E: 'C:\\Some Folder\\be21\\llama-server.exe' } });
+  check('a Windows path with backslashes in --var stays valid JSON', r.plan.exe === 'C:\\Some Folder\\be21\\llama-server.exe', r.plan.exe); }
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
