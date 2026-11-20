@@ -1,0 +1,69 @@
+{
+ "run": "q3-fairness-lessons",
+ "note": "20 Nov (the owner tapped 'Yes, rent an L40S (cap $3)'): stock Qwen3.6 35B at Q8_0 (reference), our UD-Q4_K_XL and UD-Q3_K_XL, scored on the same 120 real-jobs lessons written by Qwen3.8 Flash-Next (model-lab/lesson-score.mjs: forced right answer, raw odds per token, split by tool names / JSON / paths / code / prose). Measure only, no_hands, nothing uploaded. Q8 first so a cut-short run still has the reference. KV is q8_0 on the pod for all three (run.sh), the same for each. The lesson file stays on the PC lab folder (two folders up); only each turn's prompt and answer text go to the card, as for every benchmark. The Q8 comparison is the fairness check (KLD on lesson text), so no separate perplexity run.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA L40S"
+ ],
+ "step_up": [],
+ "disk_gb": 100,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 2.5,
+ "dollars_max": 3,
+ "rent_minutes": 30,
+ "download_quants": [],
+ "llama_tag": "b12359",
+ "no_hands": true,
+ "benchmark": {
+  "note": "One brain at a time, Q8 then Q4 then Q3. engine-check first (chat, room for a 20K prompt); then lesson-score. At home: node lesson-score.mjs --compare <out>/bench/q3-fairness-lessons/q8/lessons <...>/q4/lessons <...>/q3/lessons --out q3-lessons-report.md",
+  "hours_each": 0.6,
+  "models": [
+   {
+    "name": "q8",
+    "nickname": "Q8_0 reference",
+    "file": "hf:unsloth/Qwen3.6-35B-A3B-GGUF:Qwen3.6-35B-A3B-Q8_0.gguf",
+    "quant": "Q8_0",
+    "slots": 1,
+    "ctx": 32768,
+    "extra": "",
+    "hours": 0.6,
+    "commands": [
+     "node engine-check.mjs --url {{url}} --min-ctx 20000",
+     "node lesson-score.mjs --url {{url}} --lessons ../../clean-lessons-2026-11-16/lessons.jsonl --toolsets ../../clean-lessons-2026-11-16/toolsets.json --pick 120 --out {{out}}/lessons"
+    ]
+   },
+   {
+    "name": "q4",
+    "nickname": "UD-Q4_K_XL (our pick)",
+    "file": "hf:unsloth/Qwen3.6-35B-A3B-GGUF:Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+    "quant": "Q4_K_XL",
+    "slots": 1,
+    "ctx": 32768,
+    "extra": "",
+    "hours": 0.6,
+    "commands": [
+     "node engine-check.mjs --url {{url}} --min-ctx 20000",
+     "node lesson-score.mjs --url {{url}} --lessons ../../clean-lessons-2026-11-16/lessons.jsonl --toolsets ../../clean-lessons-2026-11-16/toolsets.json --pick 120 --out {{out}}/lessons"
+    ]
+   },
+   {
+    "name": "q3",
+    "nickname": "UD-Q3_K_XL (smaller option)",
+    "file": "hf:unsloth/Qwen3.6-35B-A3B-GGUF:Qwen3.6-35B-A3B-UD-Q3_K_XL.gguf",
+    "quant": "Q3_K_XL",
+    "slots": 1,
+    "ctx": 32768,
+    "extra": "",
+    "hours": 0.6,
+    "commands": [
+     "node engine-check.mjs --url {{url}} --min-ctx 20000",
+     "node lesson-score.mjs --url {{url}} --lessons ../../clean-lessons-2026-11-16/lessons.jsonl --toolsets ../../clean-lessons-2026-11-16/toolsets.json --pick 120 --out {{out}}/lessons"
+    ]
+   }
+  ]
+ }
+}

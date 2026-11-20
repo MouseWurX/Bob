@@ -60,6 +60,11 @@ Bob. Lessons are not filtered yet: before training, drop the ones where the tool
    and `--split holdout` tests on phrasings the brain never trained on. Seeds never come from the benchmark's held-out 5%.
    `tool-score --split train --sample N` does the same harvest on Bob's ordinary training lessons.
 
+9. `node lesson-score.mjs --url <server> --lessons <lessons.jsonl> --toolsets <toolsets.json> --pick 120 --out <folder>`:
+   how sure a brain is of the right answer, token by token, on real-jobs lessons it did not write (the answer forced by a
+   grammar, raw odds read back), split by tool names, JSON, paths, code and prose. `--compare <ref> <folder>...` adds KLD
+   and same-first-pick against a reference brain (Q8 for a quant check). Reads lessons only; writes nothing to train on.
+
 ## The lesson kit (14 Nov 2026, the plan is `docs/TOOL-LESSONS-PLAN.md`)
 
 Nothing here trains, rents or uploads. Run the teacher on a rental (`--url`), never on the home PC.

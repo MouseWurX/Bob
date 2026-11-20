@@ -915,6 +915,23 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 67 (Nov 20, before any run): Q3 against Q4 on real-jobs lessons, Q8 as the reference (rental)
+
+The owner's worry about the Q3 brain is coding and tool use, which whole-text perplexity hides. `model-lab/lesson-score.mjs` makes each
+brain write exactly the right answer of 120 real-jobs lessons (picked by a hash of the idea from the 370 written by Qwen3.8 Flash-Next,
+none by our 35B; every assistant turn, thinking off, the lesson's own system prompt and tools) through a grammar that allows only that
+text, greedy, and reads back the brain's raw odds per token (before the grammar). Each token is marked tool name, JSON, path, code,
+prose or other (think/tool marks). Plan `forge/plans/q3-fairness-lessons.json`: one L40S, stock llama.cpp b12359, Q8_0 then UD-Q4_K_XL
+then UD-Q3_K_XL from unsloth's page, q8_0 chat memory for all three, cap 2.5 h / $3.
+
+Reported per kind: mean right-token log-odds, how often the brain's own first pick is the right token, and against Q8 (only while both
+wrote the same tokens) KLD over the top 20 and the same-first-pick rate.
+
+Written before the run: Q4 sits close to Q8 everywhere (first pick within 1 point). Q3 loses most on tool names and paths, least on
+prose. Pass for Q3 as a smaller option (Addendum 62's middle band): on tool names, JSON and paths its first-pick rate is no more than
+2 points under Q4's, and its KLD against Q8 is no more than twice Q4's on every kind. Otherwise Q3 stays off for tool work. These are
+odds on a given answer, not job results: the smaller real-jobs check still follows.
+
 ## Addendum 66 (Nov 20, before any run): the conductor's switch cost at 128K
 
 The conductor (GUPPI design, bob-wip/engine-speed/guppi-conductor-design.md) needs the whole cost of a live change on a long chat, not
