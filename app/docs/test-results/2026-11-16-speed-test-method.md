@@ -915,6 +915,18 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 68 (Nov 20, before any run): how long the n-gram drafts may be
+
+N-gram drafts wrote code edits about 45% faster on Brain Engine 19 but left word gaps of 170-330 ms at p99 (Addendum 54 (D)).
+Likely cause, unproven: each draft is checked in one batch, and on this card a batch of many tokens pulls many experts from RAM,
+so a rejected draft costs about as much as a short read. `speed-plans/spec-draft-length.json` runs on Brain Engine 21, 4x4-style
+settings at 32K (step 2048, q4_0 memory, margin 512, unpinned), code edit and plain chat, 2 rounds: no drafts, and ngram-mod with
+`--spec-ngram-mod-n-max` 4, 8, 16 and 64, plus n-max 8 with the pay gate at 0.5 (LLAMA_SPEC_GATE, patch 0034).
+
+Written before the run: the p99 word gap falls with the draft length (about 100 ms or less at 4-8) while most of the code-edit gain
+stays (+25-40% at 8); plain chat gains little at any length. Pick: the longest n-max whose p99 gap is at most 100 ms on both
+prompts and whose code-edit writing is at least 15% over no drafts; if none qualifies, drafts stay off.
+
 ## Addendum 67 (Nov 20, before any run): Q3 against Q4 on real-jobs lessons, Q8 as the reference (rental)
 
 The owner's worry about the Q3 brain is coding and tool use, which whole-text perplexity hides. `model-lab/lesson-score.mjs` makes each

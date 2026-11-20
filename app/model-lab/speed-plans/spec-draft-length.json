@@ -1,0 +1,232 @@
+{
+ "name": "Draft length for n-gram drafts on Brain Engine 21: shorter guesses against the 170-330 ms pauses, code edit vs plain chat, 2 rounds",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 68)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be21": {
+   "exe": "${BE21_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "code": "code-edit.md"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "--no-webui"
+ ],
+ "maxTokens": 1200,
+ "rounds": 2,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "saveText": true,
+ "rows": [
+  {
+   "id": "no-drafts-ref",
+   "engine": "be21",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   },
+   "prompts": [
+    "start",
+    "code"
+   ]
+  },
+  {
+   "id": "ngram-max4",
+   "engine": "be21",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512",
+    "--spec-type",
+    "ngram-mod",
+    "--spec-ngram-mod-n-max",
+    "4"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   },
+   "prompts": [
+    "start",
+    "code"
+   ]
+  },
+  {
+   "id": "ngram-max8",
+   "engine": "be21",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512",
+    "--spec-type",
+    "ngram-mod",
+    "--spec-ngram-mod-n-max",
+    "8"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   },
+   "prompts": [
+    "start",
+    "code"
+   ]
+  },
+  {
+   "id": "ngram-max16",
+   "engine": "be21",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512",
+    "--spec-type",
+    "ngram-mod",
+    "--spec-ngram-mod-n-max",
+    "16"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   },
+   "prompts": [
+    "start",
+    "code"
+   ]
+  },
+  {
+   "id": "ngram-max64",
+   "engine": "be21",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512",
+    "--spec-type",
+    "ngram-mod",
+    "--spec-ngram-mod-n-max",
+    "64"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   },
+   "prompts": [
+    "start",
+    "code"
+   ]
+  },
+  {
+   "id": "ngram-max8-gate0.5",
+   "engine": "be21",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit-target",
+    "512",
+    "--spec-type",
+    "ngram-mod",
+    "--spec-ngram-mod-n-max",
+    "8"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_SPEC_GATE": "0.5"
+   },
+   "prompts": [
+    "start",
+    "code"
+   ]
+  }
+ ]
+}
