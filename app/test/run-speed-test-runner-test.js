@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { quantile, median, parseSmiLine, cardSummary, realThrottled, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, lineSplitter, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns, parseDiskstats, parseDiskRaw, diskUse, parseSharedMB, exitText, coolTarget } from '../model-lab/speed-test.mjs';
+import { quantile, median, parseSmiLine, cardSummary, realThrottled, streamOnce, loadPlan, schedule, runRow, summarise, liveSummary, lineSplitter, takeLock, sha256, cpuBusy, parseSystem, SYSTEM_PS, parseHwinfo, hwinfoColumns, parseDiskstats, parseDiskRaw, diskUse, parseSharedMB, exitText, coolTarget, coolWait } from '../model-lab/speed-test.mjs';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
@@ -177,6 +177,10 @@ check('exit codes: Windows crash codes in hex, small codes plain, a signal by na
   check('the summary shows the time spent throttled and the writing speed least and most throttled', /\| L \| short \| 20 \(0 to 40\) \| 30 \| 22 \|/.test(md));
   check('the summary shows the cool-down waits and loads that started hot', /Cool-down before each load and each timed run \(to 60 °C\)/.test(md) && /1 of 2 started above the target/.test(md));
   // Nov 20 (the owner): every plan cools to the idle card's own baseline before each load and each timed run, unless it says no
+  { const cool = { cardC: 40.6, maxWaitS: 20, everyS: 5 }; const temps = [45, 42, 41.2, 41, 41.1];
+    const fx = { cardTempC: async () => temps.shift() ?? 41, sleep: async () => {}, shouldStop: () => '' };
+    const w1 = await coolWait(cool, fx); temps.push(41.5); const w2 = await coolWait(cool, fx);
+    check('a full wait that never reaches the target moves it to the lowest the card reached plus 1 °C, and the next wait passes', w1.hitLimit && w1.raisedToC === 42 && cool.cardC === 42 && w2.waitedS === 0, { w1, w2, cool }); }
   check('the baseline is the idle card plus 3 °C, a plan\'s own target wins, and "coolDown": false turns it off', coolTarget({}, 38).cardC === 41 && coolTarget({}, 38).idleC === 38 && coolTarget({ coolDown: { cardC: 60 } }, 38).cardC === 60 && coolTarget({ coolDown: false }, 38) === null && coolTarget({}, null) === null && coolTarget({}, 20).cardC === 35);
   const seq = [70, 50, 40, 66, 40]; const naps = [];
   const k = { ...fx(), cardTempC: async () => seq.shift() ?? 40, sleep: async (ms) => { naps.push(ms); } };

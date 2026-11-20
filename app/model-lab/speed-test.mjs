@@ -61,8 +61,14 @@ export async function coolWait(cool, fx) {
   if (!cool || !fx.cardTempC) return null;
   let t = await fx.cardTempC(), waited = 0;
   const startC = t;
-  while (Number.isFinite(t) && t > cool.cardC && waited < cool.maxWaitS && !fx.shouldStop()) { await fx.sleep(cool.everyS * 1000); waited += cool.everyS; t = await fx.cardTempC(); }
-  return { startC, endC: t, waitedS: waited, hitLimit: Number.isFinite(t) && t > cool.cardC };
+  let lowC = t;
+  while (Number.isFinite(t) && t > cool.cardC && waited < cool.maxWaitS && !fx.shouldStop()) { await fx.sleep(cool.everyS * 1000); waited += cool.everyS; t = await fx.cardTempC(); if (Number.isFinite(t) && !(t >= lowC)) lowC = t; }
+  const hitLimit = Number.isFinite(t) && t > cool.cardC;
+  // Nov 20 (the test PC's 128K flip waited out the 300 s cap 29 times, 2.4 h): with a brain loaded the card idles a
+  // few degrees above the empty card the target came from, so a full wait that never reaches it moves the target up
+  // to the lowest the card reached plus 1 °C for the rest of the run, and says so.
+  if (hitLimit && waited >= cool.maxWaitS && Number.isFinite(lowC)) { const to = Math.ceil(lowC) + 1; if (to > cool.cardC) { cool.cardC = to; return { startC, endC: t, waitedS: waited, hitLimit, raisedToC: to }; } }
+  return { startC, endC: t, waitedS: waited, hitLimit };
 }
 export const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 export function quantile(xs, q) {
