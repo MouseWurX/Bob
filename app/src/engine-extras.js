@@ -146,8 +146,8 @@ export const q3CardOk = (files, platform) => platform !== 'darwin' && !((files |
 // The engine lists its chat memory types under -ctv in --help (wrapped over lines); 3-bit is there only on a Brain Engine with 0038.
 const helpHasKv = (text, type) => { const t = String(text ?? ''), at = t.indexOf('--cache-type-v'); const m = at < 0 ? null : t.slice(at).match(/allowed values:[^\n]*(?:\r?\n[ \t]+[^-\s][^\n]*)*/); return Boolean(m) && new RegExp(`\\b${type}\\b`).test(m[0]); };
 export const helpHasQ3 = (text) => helpHasKv(text, 'q3_0');
-// 2-bit (Brain Engine patch 0046, Nov 20): the same list names q2_0. Turbo only (Progressive 8+2), same cards as 3-bit.
-export const helpHasQ2 = (text) => helpHasKv(text, 'q2_0');
+// 2-bit (Brain Engine patch 0046, Nov 20): the same list names q2_kv. Turbo only (Progressive 8+2), same cards as 3-bit.
+export const helpHasQ2 = (text) => helpHasKv(text, 'q2_kv');
 // ---------- Turbo (Nov 20, the owner's ask; off unless switched on) ----------
 // A show-off speed mode, not for real jobs: every speed trick that costs a little answer quality, at once. Its chat
 // memory is 4-bit (Smaller) for every brain unless picked otherwise (Smallest, or one of the Progressive kinds), and a

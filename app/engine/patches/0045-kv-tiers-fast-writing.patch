@@ -1,3 +1,17 @@
+diff --git a/common/arg.cpp b/common/arg.cpp
+index bf6ca52..b7dfa45 100644
+--- a/common/arg.cpp
++++ b/common/arg.cpp
+@@ -2425,7 +2425,8 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
+             "KV cache data type for V\n"
+             "allowed values: %s\n"
+             "(default: %s)\n"
+-            "Progressive Memory (Brain Engine 0039): env LLAMA_KV_TIERS=type:window,... keeps the newest words again at sharper types",
++            "Progressive Memory (Brain Engine 0039): env LLAMA_KV_TIERS=type:window,... keeps the newest words again at sharper types\n"
++            "(Brain Engine 0045: env LLAMA_KV_TIERS_EXPLICIT=1 forces the old two-pass way of writing, for tests)",
+             get_all_kv_cache_types().c_str(),
+             ggml_type_name(params.cache_type_v)
+         ),
 diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
 index d488c1a..8f49b0f 100644
 --- a/ggml/include/ggml.h
