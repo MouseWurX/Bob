@@ -73,10 +73,14 @@ export function loadSwitchPlan(file, { read = (f) => fs.readFileSync(f, 'utf8').
 // One switch, once: the five steps above on a loaded engine.
 export async function measureSwitch({ sw, srv, fx, prompt, followUp, maxTokens, slotFile }) {
   const out = { switch: sw.id };
-  const ctx0 = await fx.postJson(srv.url, '/context', sw.from);
+  const ctx0 = Object.keys(sw.from || {}).length ? await fx.postJson(srv.url, '/context', sw.from) : { ok: true }; // empty = the loaded setting
   if (!ctx0.ok) { out.failed = `setting "from" refused: ${ctx0.why}`; return out; }
   const read = await fx.stream(srv.url, { prompt, n_predict: 16, temperature: 0, seed: 42, cache_prompt: true });
   out.readMs = read.firstWordMs;
+  // 20 Nov (the test PC run): a "stay" row, or one with nothing in `to`, changes nothing, and the engine refuses an
+  // empty /context body, so it sends no save, switch or restore at all; it times the reply on the setting it read at.
+  if (sw.stay || !Object.keys(sw.to || {}).length) { out.saveS = 0; out.switchS = 0; out.restoreS = 0; out.stayed = true; out.restored = true; }
+  else {
   let t = fx.now();
   const save = await fx.postJson(srv.url, '/slots/0?action=save', { filename: slotFile });
   out.saveS = r2((fx.now() - t) / 1000); out.saved = save.ok;
@@ -90,6 +94,7 @@ export async function measureSwitch({ sw, srv, fx, prompt, followUp, maxTokens, 
   const rest = await fx.postJson(srv.url, '/slots/0?action=restore', { filename: slotFile });
   out.restoreS = r2((fx.now() - t) / 1000); out.restored = rest.ok;
   if (!rest.ok) out.restoreWhy = rest.why;
+  }
   const card = fx.sampleCard ? fx.sampleCard() : null; // Nov 20: the card's heat and clocks during the timed reply
   const ans = await fx.stream(srv.url, { prompt: prompt + followUp, n_predict: maxTokens, temperature: 0, seed: 42, ignore_eos: true, cache_prompt: true });
   if (card) { const c = cardSummary(card.stop()); out.card = { startTempC: c.startTempC, maxTempC: Number.isFinite(c.maxTempC) ? c.maxTempC : null, medSmMHz: c.medSmMHz, minSmMHz: Number.isFinite(c.minSmMHz) ? c.minSmMHz : null, throttledSamples: c.throttledSamples ?? 0 }; }
@@ -158,7 +163,7 @@ export async function runSwitches({ plan, text, fx, repeats, onRun = () => {} })
   const refs = {};
   for (const sw of plan.switches) {
     if (fx.shouldStop()) break;
-    refs[sw.id] = await reference({ plan, body: { ...(plan.refBase || {}), ...sw.to, engine_keys: { ...(plan.refBase?.engine_keys || {}), ...(sw.to.engine_keys || {}) } }, fx, prompt: cut, followUp, maxTokens });
+    refs[sw.id] = await reference({ plan, body: (() => { const to = sw.stay || !Object.keys(sw.to || {}).length ? sw.from : sw.to; return { ...(plan.refBase || {}), ...to, engine_keys: { ...(plan.refBase?.engine_keys || {}), ...(to.engine_keys || {}) } }; })(), fx, prompt: cut, followUp, maxTokens });
     onRun({ reference: sw.id, ...refs[sw.id] });
   }
   return { runs, refs };

@@ -24,6 +24,7 @@ function fakeFx({ restoreOk = true, refSha = 'S' } = {}) {
     tokenize: async (u, s) => s.split(' '), detokenize: async (u, toks) => toks.join(' '),
     async postJson(u, p, body) {
       seen.posts.push({ p, body });
+      if (p === '/context' && !Object.keys(body || {}).length) return { ok: false, why: 'give one or more of n_ctx, n_batch, ...' }; // as the engine does
       if (p === '/context') { log += 'brain kept loaded: only the context is made again\ncontext 100 -> 100 tokens in 0.3 s\n'; return { ok: true, json: { seconds: 0.3 } }; }
       if (p.includes('restore')) return restoreOk ? { ok: true } : { ok: false, why: 'cache type differs' };
       return { ok: true };
@@ -56,6 +57,7 @@ function fakeFx({ restoreOk = true, refSha = 'S' } = {}) {
   { const f3 = fakeFx({}); const p3 = { exe: 'srv', brain: 'b', prompt: {}, maxTokens: 100, switches: [{ id: 'flip', from: {}, to: { n_batch: 2048 } }, { id: 'stay', stay: true, from: {}, to: {} }] };
     const r3 = await runSwitches({ plan: p3, text: 't', fx: f3, repeats: 1 });
     const fl = r3.runs.find((r) => r.switch === 'flip'), st = r3.runs.find((r) => r.switch === 'stay');
+    check('a stay row sends no save, switch or restore (the engine refuses an empty /context), only its own "from"', st && !st.failed && st.stayed === true && st.switchS === 0, st);
     check('the job time is the read, plus the switch unless the row only stays, plus the reply', Number.isFinite(fl.jobS) && Number.isFinite(st.jobS) && Math.abs((fl.jobS - st.jobS) - ((fl.saveS || 0) + fl.switchS + (fl.restoreS || 0))) < 0.02 && /\| job s \|/.test(summariseSwitches(r3.runs, r3.refs)), { fl, st }); }
   // Nov 20 (the owner): back to the idle card's baseline before each switch, and the card's heat and clocks during each timed reply
   const temps = [55, 44, 40]; const naps = [];
