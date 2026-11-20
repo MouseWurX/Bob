@@ -323,6 +323,11 @@ int main() {
     }
 
     // ---- 3. the processor's dot product with q8_0 ----
+    // ggml_get_type_traits_cpu lives in the CPU part, which the Windows zip loads as a DLL at run time, so the Windows
+    // build (BOB_CPU_IS_DLL) skips this one; part 4 still runs the processor's q2_kv code through the backend.
+#ifdef BOB_CPU_IS_DLL
+    printf("SKIP the processor's dot product with q8_0 (the CPU part is a loadable DLL here)\n");
+#else
     {
         const int n = 4096;
         std::vector<float> a(n), b(n), ab, bb;
@@ -336,6 +341,7 @@ int main() {
         check("dot product with q8_0 = the dot of the dequantized rows", std::fabs(s - r) <= 1e-4*std::max(1.0, std::fabs(r)), s, r);
         check("the processor's q2_kv dot type is q8_0", ggml_get_type_traits_cpu(GGML_TYPE_Q2_KV)->vec_dot_type == GGML_TYPE_Q8_0);
     }
+#endif
 
     // ---- 4. flash attention on the processor ----
     const int D = 128, H = 8, Hkv = 2, N = 1024;

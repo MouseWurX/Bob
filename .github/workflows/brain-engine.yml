@@ -182,6 +182,10 @@ jobs:
           if exist ..\app\engine\tests\moe-round-check.cpp (
             clang-cl /O2 /EHsc /std:c++17 /D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH /I ggml\include ..\app\engine\tests\moe-round-check.cpp "!GGMLLIB!" "!GGMLBASELIB!" /Fe:build\bin\Release\moe-round-check.exe || exit /b 1
           )
+          rem Nov 20: the 2-bit chat memory check (0046), the same way.
+          if exist ..\app\engine\tests\kv-q2-check.cpp (
+            clang-cl /O2 /EHsc /std:c++17 /D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH /DBOB_CPU_IS_DLL /I ggml\include ..\app\engine\tests\kv-q2-check.cpp "!GGMLLIB!" "!GGMLBASELIB!" /Fe:build\bin\Release\kv-q2-check.exe || exit /b 1
+          )
       - name: Build llama-cvector-generator and llama-export-lora on their own (CPU, static; upstream skips it when the backends load at run time)
         shell: cmd
         working-directory: llama.cpp
@@ -221,6 +225,7 @@ jobs:
           if [ "${{ needs.detect.outputs.cuda }}" = "true" ]; then cp ggml-cuda/ggml-cuda.dll "$out/"; fi
           if [ -f llama.cpp/build/bin/Release/mask-pos-check.exe ]; then cp llama.cpp/build/bin/Release/mask-pos-check.exe "$out/"; fi
           if [ -f llama.cpp/build/bin/Release/moe-round-check.exe ]; then cp llama.cpp/build/bin/Release/moe-round-check.exe "$out/"; fi
+          if [ -f llama.cpp/build/bin/Release/kv-q2-check.exe ]; then cp llama.cpp/build/bin/Release/kv-q2-check.exe "$out/"; fi
           cp llama.cpp/build/bin/Release/test-llama-archs.exe "$out/" # Nov 19: every brain family loads and runs on these patches
           ls -la "$out"
       # Smart App Control (app/docs/SIGNING.md): off until the owner's Microsoft Artifact Signing account is set up.
