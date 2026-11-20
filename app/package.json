@@ -117,6 +117,7 @@
     "test/run-memory-test.js",
     "test/run-perf-test.js",
     "test/run-fit-help-test.js",
+    "test/run-waits-for-test.js",
     "test/run-moot-test.js",
     "test/run-honest-talk-test.js",
     "test/run-toolbox-test.js",

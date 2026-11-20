@@ -3909,6 +3909,72 @@
       }
     },
     {
+      "id": "raon-1-nano",
+      "family": "Raon",
+      "category": "chat",
+      "jobs": ["small", "office", "scout"],
+      "name": "Raon-1 nano",
+      "published": "2026-11-10",
+      "what": "KRAFTON's small thinking brain, about 2 GB: 3B in all, made by shrinking Raon-1 mini. Thinks before it answers, calls tools and keeps 256K in mind. Tuned for English and Korean chat. Text only.",
+      "sizeGB": 2.1,
+      "vramGB": 3,
+      "params": 3.1,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "thinks": true,
+      "waitsFor": "Its file is a new kind of brain (Raon) that only KRAFTON's own copy of llama.cpp runs so far. Bob offers it once Brain Engine can run it.",
+      "files": [
+        {
+          "url": "https://huggingface.co/KRAFTON/Raon-1-nano-gguf/resolve/67d566c2064079b67d0623c5a4acb981e13475cb/raon-1-nano-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 2082677632,
+          "sha256": "90e9ea83613626457c1249bb85e8d8471dd8874e62b4fa707d40c96737d764b6"
+        }
+      ],
+      "use": {
+        "models": {
+          "small": "$model"
+        }
+      }
+    },
+    {
+      "id": "raon-1-mini-preview",
+      "family": "Raon",
+      "category": "chat",
+      "jobs": ["bob", "office", "scout", "tinker"],
+      "name": "Raon-1 mini (preview)",
+      "published": "2026-10-20",
+      "what": "KRAFTON's bigger thinking brain: 29B of knowledge, about 4B working on each word, so on a 16 GB card the busy parts sit on the card and the rest waits in memory. Calls tools and keeps 256K in mind. A preview, not the finished brain. Tuned for English and Korean. Text only.",
+      "sizeGB": 19.7,
+      "vramGB": 21,
+      "params": 28.8,
+      "activeParams": 4.3,
+      "experts": true,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "thinks": true,
+      "waitsFor": "Its file is a new kind of brain (Raon) that only KRAFTON's own copy of llama.cpp runs so far. Bob offers it once Brain Engine can run it.",
+      "files": [
+        {
+          "url": "https://huggingface.co/KRAFTON/Raon-1-mini-preview-gguf/resolve/3afcfcdb462ec3995e48099257143c3e352a4471/raon-1-mini-preview-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 19686434304,
+          "sha256": "bedbd8a35de6242c686bbbcdc6e8caac1920423e1dd320616ba14b1a04fe1705"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
+        }
+      }
+    },
+    {
       "id": "granite-4.2-3b",
       "family": "Granite",
       "category": "chat",

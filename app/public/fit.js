@@ -64,6 +64,9 @@ export const engineRunsOn = (name, platform) => !platform || (ENGINE_PLATFORMS[n
 
 // How well a model runs on this PC. hw: { vramGB, ramGB, freeGB }. Each answer that isn't ok has a one-line reason.
 export function suit(m, hw = {}, platform = '') {
+  // Nov 20 2026: a brain whose file needs a newer Brain Engine than Bob has (a new kind of brain inside) is listed so
+  // you can see it coming, but it can't be got until the engine can run it.
+  if (m.waitsFor) return { level: 'blocked', waits: true, why: m.waitsFor };
   if (hw.freeGB != null && m.status?.state !== 'installed' && m.sizeGB > hw.freeGB) return { level: 'blocked', why: `Needs ${gb(m.sizeGB)} of disk space; ${hw.freeGB} GB is free.` };
   if (m.needs && platform && !engineRunsOn(m.needs, platform)) return { level: 'blocked', why: `${m.needs} doesn't run on ${platform === 'darwin' ? 'a Mac' : 'this replicant matrix'} yet.` };
   const v = hw.vramGB;
@@ -144,7 +147,7 @@ export function pickFor(slotId, models, ctx = {}) {
     // 1.5.56: new brains (trial: true) are listed but not recommended until they've been tried on a real PC.
     // 1.5.133: a naughty (uncensored) brain is never the pick among the well-behaved ones; on the naughty list's own side
     // (ctx.naughtyPick) the pick is made among naughty brains only, and shown as Bob's quiet pick (a red devil).
-    const able = models.filter((m) => canDo(slotId, { entry: m }) && !m.gated && !m.trial && (m.naughty === true) === (ctx.naughtyPick === true) && !fullRunsHere(m, models, hw, ctx.platform));
+    const able = models.filter((m) => canDo(slotId, { entry: m }) && !m.gated && !m.waitsFor && !m.trial && (m.naughty === true) === (ctx.naughtyPick === true) && !fullRunsHere(m, models, hw, ctx.platform));
     const pool = able.filter((m) => suit(m, hw, ctx.platform).level === 'ok');
     if (!pool.length) return null;
     // 1.5.169: Bob's default brains: catalog bobPick lists the jobs each is the default for. Where one suits this

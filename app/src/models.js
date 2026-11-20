@@ -459,6 +459,7 @@ export class ModelShop {
     }
     const entry = this.catalog.models.find((m) => m.id === id);
     if (!entry) throw new Error('No such model in the catalog.');
+    if (entry.waitsFor) throw new Error(`${entry.name} can't be got yet: ${entry.waitsFor}`);
     if (entry.gated) throw new Error(`${entry.name} needs a Hugging Face account to download. ${entry.gatedWhy || ''}`.trim());
     return { id, name: entry.name, kind: 'model', total: Math.round(entry.sizeGB * 1e9), viaOllama: this.viaOllama(entry) };
   }
