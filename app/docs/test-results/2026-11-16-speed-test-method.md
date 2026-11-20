@@ -915,6 +915,15 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 78 (Nov 20, before any run): why the 3-bit memory's gap depends on the settings
+
+At 128K, q3_0 wrote 2.9% slower than q4_0 in the kernel test (section 47: step 4096, copy cache 4 GB) but 16% slower in the Progressive
+plans (sections 49 and 51: step 5120, copy cache 3.5 GB), on engines with patch 0044. `speed-plans/kv3-gap-128k.json`: q4_0 and q3_0 at
+128K in both settings on Brain Engine 25, GGML_SCHED_TIMING=1, 2 rounds, cool-down on. Written before the run: the gap follows the
+settings, not the engine. With the 3.5 GB cache, --fit places q3_0 (a smaller chat memory) differently, and more of each word goes to
+copying experts; the timing lines' "weights copied" share will show it. If the gap is the same in both settings, the q3_0 attention kernel
+is slower at step 5120, and that goes back to the engine side.
+
 ## Addendum 77 (Nov 20, before any run): Progressive 8+2, the 2-bit chat memory (q2_kv, patch 0046), Turbo only
 
 The owner approved an 8+2 test: a 2-bit main cache (q2_kv; upstream's q2_0 is a brain-file type) with the newest 8,192 words at q8_0.

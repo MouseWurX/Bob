@@ -1,0 +1,184 @@
+{
+ "brain": "${BRAIN}",
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "engines": {
+  "be25": {
+   "exe": "${BE25_SERVER}"
+  }
+ },
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "--cache-reuse",
+  "256"
+ ],
+ "maxTokens": 300,
+ "name": "Why 3-bit memory trails q4_0 by 16% in the Progressive plans but 3% in the kernel test: q4_0 and q3_0 at 128K with step 4096 / copy cache 4 GB against step 5120 / 3.5 GB, Brain Engine 25, timing on, 2 rounds, cool-down on",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 78)",
+ "prompts": {
+  "start": "start.json",
+  "k120": "long-text.md"
+ },
+ "promptTokens": {
+  "k120": 122880
+ },
+ "question": {
+  "k120": "\n\nIn two sentences, what is this text about?"
+ },
+ "rounds": 2,
+ "saveText": true,
+ "rows": [
+  {
+   "id": "q4_0-step4096-cache4096-128K",
+   "engine": "be25",
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512",
+    "-lv",
+    "4"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "GGML_SCHED_TIMING": "1"
+   },
+   "prompts": [
+    "start",
+    "k120"
+   ]
+  },
+  {
+   "id": "q3_0-step4096-cache4096-128K",
+   "engine": "be25",
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q3_0",
+    "-ctv",
+    "q3_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512",
+    "-lv",
+    "4"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "GGML_SCHED_TIMING": "1"
+   },
+   "prompts": [
+    "start",
+    "k120"
+   ]
+  },
+  {
+   "id": "q4_0-step5120-cache3584-128K",
+   "engine": "be25",
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "5120",
+    "-ub",
+    "5120",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512",
+    "-lv",
+    "4"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "GGML_SCHED_TIMING": "1"
+   },
+   "prompts": [
+    "start",
+    "k120"
+   ]
+  },
+  {
+   "id": "q3_0-step5120-cache3584-128K",
+   "engine": "be25",
+   "args": [
+    "-c",
+    "139264",
+    "-b",
+    "5120",
+    "-ub",
+    "5120",
+    "--moe-cache-mib",
+    "3584",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q3_0",
+    "-ctv",
+    "q3_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512",
+    "-lv",
+    "4"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "GGML_SCHED_TIMING": "1"
+   },
+   "prompts": [
+    "start",
+    "k120"
+   ]
+  }
+ ],
+ "promptRepeat": {
+  "k120": 4
+ }
+}
