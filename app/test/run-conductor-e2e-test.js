@@ -50,6 +50,13 @@ function fakeFx({ words = (body) => 'A', temps = [] } = {}) {
     const md = m.summariseE2e(res, plan);
     check('the summary gives the job time, the reading and writing speeds, the switches and the same words per way', /\| c \| 2 \| [^|]+ \| 900 \(900-900\) \|/.test(md) && /\| a \| 2 \| .* \| - \| 2 of 2 \|/.test(md) && /\| c \| .* \| 2 of 2 \|/.test(md), md); }
 
+  { check('the writing cache grows by the smaller of 2 GB and the card\'s free memory less 768 MiB, and not at all without the free-memory report', m.growBy({ maxMib: 2048, marginMib: 768 }, { devices: [{ free_mib: 2000 }] }) === 1232 && m.growBy({}, { devices: [{ free_mib: 9000 }] }) === 2048 && m.growBy({}, {}) === 0 && m.growBy(null, { devices: [{ free_mib: 9000 }] }) === 0);
+    const fx = fakeFx(); const post = fx.postJson; fx.postJson = async (u, p, body) => { const r = await post(u, p, body); return p === '/context' ? { ...r, json: { devices: [{ name: 'card', free_mib: 3000, total_mib: 16000 }], moe_cache_mib: body.moe_cache_mib ?? 4096 } } : r; };
+    const gp = { ...plan, thinking: true, followUps: 1, followReplyTokens: 2000 };
+    const r = await m.runWay({ plan: gp, text, way: { id: 'e', engine: 'e', conduct: { readStep: 6144, chatStep: 6144, grow: { baseMib: 4096 } } }, round: 0, fx, cool: null });
+    const ctx = fx.seen.posts.filter((x) => x.p === '/context').map((x) => x.body);
+    check('Bob\'s grow: after the read the cache grows to 4096 + min(2048, free - 768) for the long reply, with thinking on and the long reply length', ctx[1]?.moe_cache_mib === 6144 && r.switches[1].grewMib === 2048 && r.switches[1].cacheMib === 6144 && fx.seen.streams[1].n_predict === 2000 && fx.seen.streams[0].n_predict === 300 && fx.seen.streams[1].prompt.endsWith('<think>\n') && /\| e \| 1 \| .*\| 2048 \(2048-2048\) \(3000 \(3000-3000\)\) \|/.test(m.summariseE2e([r], gp)), { s1: fx.seen.streams.map((b) => [b.n_predict, b.prompt.slice(-12)]), md: m.summariseE2e([r], gp).split("\n")[2] }); }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

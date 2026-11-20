@@ -915,6 +915,23 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 83 (Nov 20, before any run): the conductor grows the copy cache for a long thinking reply, 32K
+
+Addenda 81-82 found that a bigger copy cache writes faster (89 against 83 t/s at 6 GB) but costs a switch, and that
+holding a bigger cache through the read overfills the card at step 6144. Bob's conductor now grows the cache only
+for a long reply (thinking on, or a code, edit, write or file job), by min(2 GB, the card's free memory less
+768 MiB), from the free memory Brain Engine 28 reports after `POST /context` (patch 0047), and shrinks it again
+before the next long read. Plan `conductor-grow-32k.json` (`conductor-e2e.mjs`, Brain Engine 28, fixed placement,
+q4_0 memory, 5 rounds taking turns, cool-down on): read 28,672 tokens of a file, then one follow-up answered with
+thinking on in 2,000 tokens. Way f stays at step 6144 with 4 GB; way e is the same plus the grow, done as Bob does it
+(save, `POST /context` with the bigger cache, restore) before the long reply. The summary gives the job time, the
+writing speed, the switch time, how much the cache grew and the card's free memory after the read.
+
+**Predictions, written before any run:** the grow is 1-2 GB (the card has 1.8-2.8 GB free at step 6144 with 4 GB);
+the switch costs about 1 s; writing is 4-8% faster, which on 2,000 tokens at about 83 t/s saves 1-2 s, so way e
+finishes 0-1 s sooner than f. Pass: e's median job is shorter than f's, every switch restores, and e writes the same
+words in every round (the cache size may change them from f's, as Addendum 82 found).
+
 ## Addendum 82 (Nov 20, before any run): staying at the big step with a bigger copy cache, 32K
 
 Addendum 81's 32K rows: the moved-cache flip (2 GB reading, 6 GB writing) writes 8% faster than 4 GB, but its job

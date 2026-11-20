@@ -49,18 +49,28 @@ export async function makeTurns({ plan, text, fx, url }) {
   return turns;
 }
 
-const chatText = (history) => history.map((h) => `<|im_start|>${h.role}\n${h.content}<|im_end|>\n`).join('') + '<|im_start|>assistant\n<think>\n\n</think>\n\n';
+// Nov 20: plan.thinking leaves the think block open, so the brain thinks first (a long reply, as with thinking on in Bob)
+const chatText = (history, thinking = false) => history.map((h) => `<|im_start|>${h.role}\n${h.content}<|im_end|>\n`).join('') + (thinking ? '<|im_start|>assistant\n<think>\n' : '<|im_start|>assistant\n<think>\n\n</think>\n\n');
+
+// Nov 20 (Bob's conductor grows the copy cache for a long reply, Speed thread 3cb4cce2): by min(maxMib, the card's
+// free memory less marginMib), from the free memory Brain Engine 28's POST /context answer reports (patch 0047);
+// nothing when the engine doesn't report it.
+export function growBy(grow, ctxJson) {
+  const free = (ctxJson?.devices || []).map((d) => Number(d.free_mib)).filter(Number.isFinite);
+  if (!grow || !free.length) return 0;
+  return Math.max(0, Math.min(grow.maxMib ?? 2048, Math.min(...free) - (grow.marginMib ?? 768)));
+}
 
 // One switch the way Bob's conductor does it: save the chat, change the step, restore. Seconds for each part.
-export async function liveStep({ fx, url, step, slotFile }) {
+export async function liveStep({ fx, url, step, slotFile, extra = {} }) {
   const t0 = fx.now();
   const save = await fx.postJson(url, '/slots/0?action=save', { filename: slotFile });
   const t1 = fx.now();
-  const ctx = await fx.postJson(url, '/context', { n_batch: step, n_ubatch: step });
+  const ctx = await fx.postJson(url, '/context', { n_batch: step, n_ubatch: step, ...extra });
   const t2 = fx.now();
   const rest = await fx.postJson(url, '/slots/0?action=restore', { filename: slotFile });
   const t3 = fx.now();
-  return { step, saveS: r2((t1 - t0) / 1000), switchS: r2((t2 - t1) / 1000), restoreS: r2((t3 - t2) / 1000), totalS: r2((t3 - t0) / 1000), ok: !!(save.ok && ctx.ok && rest.ok), why: [save, ctx, rest].filter((x) => !x.ok).map((x) => x.why).join('; ') || undefined };
+  return { step, saveS: r2((t1 - t0) / 1000), switchS: r2((t2 - t1) / 1000), restoreS: r2((t3 - t2) / 1000), totalS: r2((t3 - t0) / 1000), ...(ctx.json?.devices ? { freeMib: ctx.json.devices.map((d) => d.free_mib), cacheMib: ctx.json.moe_cache_mib } : {}), ok: !!(save.ok && ctx.ok && rest.ok), why: [save, ctx, rest].filter((x) => !x.ok).map((x) => x.why).join('; ') || undefined };
 }
 
 // One way, once: load, the whole job, stop.
@@ -77,16 +87,20 @@ export async function runWay({ plan, text, way, round, fx, cool }) {
     const turns = await makeTurns({ plan, text, fx, url: srv.url });
     const history = plan.system ? [{ role: 'system', content: plan.system }] : [];
     const t0 = fx.now();
-    let coolS = 0;
+    let coolS = 0, lastCtx = null;
     for (const [i, turn] of turns.entries()) {
       if (fx.shouldStop()) { out.stopped = fx.shouldStop(); break; }
       if (cool && i > 0) { const tc = fx.now(); const c = await coolWait(cool, fx); coolS += (fx.now() - tc) / 1000; out.turns.at(-1).coolAfter = c; }
       // before the big read the chat is still empty, so the step changes without a save and restore (nothing to keep)
-      if (way.conduct && i === 0) { const tt = fx.now(); const ctx = await fx.postJson(srv.url, '/context', { n_batch: way.conduct.readStep, n_ubatch: way.conduct.readStep }); out.switches.push({ before: 'read', step: way.conduct.readStep, switchS: r2((fx.now() - tt) / 1000), totalS: r2((fx.now() - tt) / 1000), ok: !!ctx.ok, why: ctx.ok ? undefined : ctx.why }); }
-      if (way.conduct && i === 1) out.switches.push({ before: 'follow-ups', ...(await liveStep({ fx, url: srv.url, step: way.conduct.chatStep, slotFile: `e2e-${way.id}.bin` })) });
+      if (way.conduct && i === 0) { const tt = fx.now(); const ctx = await fx.postJson(srv.url, '/context', { n_batch: way.conduct.readStep, n_ubatch: way.conduct.readStep }); lastCtx = ctx.json; out.switches.push({ before: 'read', step: way.conduct.readStep, switchS: r2((fx.now() - tt) / 1000), totalS: r2((fx.now() - tt) / 1000), ...(ctx.json?.devices ? { freeMib: ctx.json.devices.map((d) => d.free_mib), cacheMib: ctx.json.moe_cache_mib } : {}), ok: !!ctx.ok, why: ctx.ok ? undefined : ctx.why }); }
+      if (way.conduct && i === 1) {
+        const g = growBy(way.conduct.grow, lastCtx);
+        const extra = g > 0 ? { moe_cache_mib: (way.conduct.grow.baseMib ?? 4096) + g } : {};
+        out.switches.push({ before: 'follow-ups', ...(g > 0 ? { grewMib: g } : way.conduct.grow ? { grewMib: 0 } : {}), ...(await liveStep({ fx, url: srv.url, step: way.conduct.chatStep, slotFile: `e2e-${way.id}.bin`, extra })) });
+      }
       history.push({ role: 'user', content: turn.say });
       const card = fx.sampleCard ? fx.sampleCard() : null;
-      const r = await fx.stream(srv.url, { prompt: chatText(history), n_predict: plan.replyTokens || 300, temperature: 0, seed: 42, ignore_eos: true, cache_prompt: true });
+      const r = await fx.stream(srv.url, { prompt: chatText(history, !!plan.thinking), n_predict: (i > 0 && plan.followReplyTokens) || plan.replyTokens || 300, temperature: 0, seed: 42, ignore_eos: true, cache_prompt: true });
       const c = card ? cardSummary(card.stop()) : null;
       history.push({ role: 'assistant', content: r.text || '' });
       out.turns.push({ kind: turn.kind, firstWordMs: r.firstWordMs, totalMs: r.totalMs, readTps: r.readTps, writeTps: r.writeTps, promptN: r.promptN, writtenN: r.writtenN, textSha: r.textSha, ...(c ? { card: { startTempC: c.startTempC, maxTempC: Number.isFinite(c.maxTempC) ? c.maxTempC : null, medSmMHz: c.medSmMHz, throttledSamples: c.throttledSamples ?? 0 } } : {}) });
@@ -106,12 +120,12 @@ export function summariseE2e(results, plan = {}) {
   for (const r of results) { if (!by.has(r.way)) by.set(r.way, []); by.get(r.way).push(r); }
   const ref = plan.wordsRef || [...by.keys()][0];
   const refShas = new Set((by.get(ref) || []).map((r) => r.wordsSha).filter(Boolean));
-  const lines = ['| way | runs | job s to the last word | big read: read t/s | big read: first word s | follow-ups: read t/s | follow-ups: write t/s | switches s | same words as ' + ref + ' |', '|---|---|---|---|---|---|---|---|---|'];
+  const lines = ['| way | runs | job s to the last word | big read: read t/s | big read: first word s | follow-ups: read t/s | follow-ups: write t/s | switches s | cache grown MiB (card free MiB) | same words as ' + ref + ' |', '|---|---|---|---|---|---|---|---|---|---|'];
   for (const [id, rs] of by) {
     const ok = rs.filter((r) => !r.notRun && !r.failed && !r.stopped);
     const big = ok.map((r) => r.turns[0]).filter(Boolean), fol = ok.flatMap((r) => r.turns.slice(1));
     const sw = ok.map((r) => r.switches.reduce((s, x) => s + (x.totalS || 0), 0));
-    lines.push(`| ${id} | ${ok.length}${rs.length > ok.length ? ` (+${rs.length - ok.length} not run)` : ''} | ${f(ok.map((r) => r.jobS))} | ${f(big.map((t) => t.readTps))} | ${f(big.map((t) => t.firstWordMs / 1000))} | ${f(fol.map((t) => t.readTps))} | ${f(fol.map((t) => t.writeTps))} | ${ok.some((r) => r.switches.length) ? f(sw) : '-'} | ${ok.filter((r) => refShas.has(r.wordsSha)).length} of ${ok.length} |`);
+    lines.push(`| ${id} | ${ok.length}${rs.length > ok.length ? ` (+${rs.length - ok.length} not run)` : ''} | ${f(ok.map((r) => r.jobS))} | ${f(big.map((t) => t.readTps))} | ${f(big.map((t) => t.firstWordMs / 1000))} | ${f(fol.map((t) => t.readTps))} | ${f(fol.map((t) => t.writeTps))} | ${ok.some((r) => r.switches.length) ? f(sw) : '-'} | ${(() => { const g = ok.flatMap((r) => r.switches.filter((x) => Number.isFinite(x.grewMib))); const fr = ok.flatMap((r) => r.switches.filter((x) => x.before === 'read' && x.freeMib).map((x) => Math.min(...x.freeMib))); return g.length ? `${f(g.map((x) => x.grewMib))}${fr.length ? ` (${f(fr)})` : ''}` : '-'; })()} | ${ok.filter((r) => refShas.has(r.wordsSha)).length} of ${ok.length} |`);
   }
   const bad = results.filter((r) => r.notRun || r.failed || r.switches?.some((s) => !s.ok));
   if (bad.length) lines.push('', 'Problems:', ...bad.map((r) => `- ${r.way} round ${r.round + 1}: ${r.notRun || r.failed || r.switches.filter((s) => !s.ok).map((s) => `switch before ${s.before}: ${s.why}`).join('; ')}`));
@@ -126,7 +140,8 @@ function liveFx(plan, outDir) {
       try {
         const r = await fetch(url + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15 * 60e3) });
         const t = await r.text();
-        return { ok: r.ok, why: r.ok ? '' : t.slice(0, 300) };
+        let json = null; try { json = JSON.parse(t); } catch { /* not JSON */ }
+        return { ok: r.ok, json, why: r.ok ? '' : t.slice(0, 300) };
       } catch (e) { return { ok: false, why: String(e.message || e) }; }
     }
   };
