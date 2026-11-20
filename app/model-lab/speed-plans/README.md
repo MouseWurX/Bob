@@ -58,6 +58,7 @@ starts.
 - `coding-32k-64k.json`: the coding use (1,500 written tokens): stock vs 2x4, 4x4 and 4x0 at 32K and 64K, 24 loads (Addendum 63).
 - `perplexity-kv3.json`, `needle-kv3.json`, `speed-kv3.json`: the 3-bit chat memory (q3_0) on Brain Engine 21: drift, needles, speed and memory, 10 runs, 20 and 36 loads (Addendum 64).
 - `conductor-switch.json`: live `POST /context` switch cost at 32K on Brain Engine 21 (`model-lab/switch-cost.mjs`), 10 switches x 5 repeats on one load, plus fresh-start references (Addendum 65).
+- `kv3-kernel-diag.json`: q4_0/q4_0, q3_0/q3_0, q4_0 K/q3_0 V and q3_0 K/q4_0 V at 8K and 32K, -lv 4 and GGML_SCHED_TIMING=1, 4 loads, Brain Engine 21: whether K or V reads slow the 3-bit memory (Addendum 70, diagnostic).
 - `overlap-ceiling.json`: where the time goes at processor share 1 (plain, learn 16, learn 16 at 128K) with GGML_SCHED_TIMING and GGML_SCHED_OVERLAP_LOG, 3 loads, Brain Engine 21: the doorbell overlap's ceiling (Addendum 69).
 - `spec-draft-length.json`: n-gram draft length 4/8/16/64 and n-max 8 with the pay gate, against no drafts, code edit and plain chat, Brain Engine 21, 2 rounds, 12 loads (Addendum 68).
 - `conductor-switch-128k.json`: the same save, `POST /context` and restore timing at 128K (fixed placement `${NCMOE_128K}`, text laid 4 times end to end), step 5120 to 4096 and back, 3 repeats (Addendum 66).

@@ -1,0 +1,188 @@
+{
+ "brain": "${BRAIN}",
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "engines": {
+  "be21": {
+   "exe": "${BE21_SERVER}"
+  }
+ },
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "--cache-reuse",
+  "256"
+ ],
+ "maxTokens": 300,
+ "name": "3-bit chat memory kernel split on Brain Engine 21: K or V reads, writing at 8K and 32K, -lv 4 attention path lines, 1 round (diagnostic)",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 70)",
+ "prompts": {
+  "start": "start.json",
+  "k8": "long-text.md",
+  "k32": "long-text.md"
+ },
+ "promptTokens": {
+  "k8": 8192,
+  "k32": 32768
+ },
+ "question": {
+  "k8": "\n\nIn two sentences, what is this text about?",
+  "k32": "\n\nIn two sentences, what is this text about?"
+ },
+ "rounds": 1,
+ "saveText": true,
+ "rows": [
+  {
+   "id": "diag-Kq4_0-Vq4_0",
+   "engine": "be21",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512",
+    "-lv",
+    "4"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "GGML_SCHED_TIMING": "1"
+   },
+   "prompts": [
+    "start",
+    "k8",
+    "k32"
+   ]
+  },
+  {
+   "id": "diag-Kq3_0-Vq3_0",
+   "engine": "be21",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q3_0",
+    "-ctv",
+    "q3_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512",
+    "-lv",
+    "4"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "GGML_SCHED_TIMING": "1"
+   },
+   "prompts": [
+    "start",
+    "k8",
+    "k32"
+   ]
+  },
+  {
+   "id": "diag-Kq4_0-Vq3_0",
+   "engine": "be21",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q3_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512",
+    "-lv",
+    "4"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "GGML_SCHED_TIMING": "1"
+   },
+   "prompts": [
+    "start",
+    "k8",
+    "k32"
+   ]
+  },
+  {
+   "id": "diag-Kq3_0-Vq4_0",
+   "engine": "be21",
+   "args": [
+    "-c",
+    "49152",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q3_0",
+    "-ctv",
+    "q4_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512",
+    "-lv",
+    "4"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "GGML_SCHED_TIMING": "1"
+   },
+   "prompts": [
+    "start",
+    "k8",
+    "k32"
+   ]
+  }
+ ]
+}

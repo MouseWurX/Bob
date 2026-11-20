@@ -915,6 +915,14 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 70 (Nov 20, before any run): which half of the 3-bit memory costs writing speed
+
+For the engine side's q3_0 kernel work: `speed-plans/kv3-kernel-diag.json`, Brain Engine 21, 4x4 with --fit at a 48K context, one
+load per memory type (q4_0/q4_0, q3_0/q3_0, q4_0 K with q3_0 V, q3_0 K with q4_0 V), start plus 8K and 32K prompts, -lv 4 for the
+attention path lines and GGML_SCHED_TIMING=1. Diagnostic only, 1 round; speed claims come from speed-kv3 (Addendum 64), not from here.
+Written before the run: if one half is slow, the row with only that half in q3_0 writes at least 5% slower than q4_0/q4_0 at 32K and
+the other mixed row within 2% of it.
+
 ## Addendum 69 (Nov 20, before any run): how much the doorbell overlap could save
 
 Strata's overlap lets the card and the processor work on different experts at once. Section 28's where-time was at processor share 0,
