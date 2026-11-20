@@ -324,7 +324,7 @@ function clean(patch) {
   for (const k of EXTRA_SWITCHES) if (k in out) out[k] = out[k] === true;
   if ('brainMemType' in out) out.brainMemType = cleanMemType(out.brainMemType); // 100 memory type per brain; Standard when not set
   if ('readingSpeed' in out) out.readingSpeed = READING_PICKS.includes(out.readingSpeed) ? out.readingSpeed : 'normal'; // 101, Normal unless picked
-  if ('turboMem' in out && !['smallest', 'small', 'progressive', 'progressive2'].includes(out.turboMem)) delete out.turboMem; // Turbo's chat memory
+  if ('turboMem' in out && !['smallest', 'small', 'progressive', 'progressive2', 'progressive83'].includes(out.turboMem)) delete out.turboMem; // Turbo's chat memory
   if ('turboExperts' in out && typeof out.turboExperts !== 'boolean') delete out.turboExperts;
   if ('hotExpertsGB' in out) out.hotExpertsGB = cleanHotGB(out.hotExpertsGB); // 104: null = a quarter of the card, at most 4 GB
   if ('hotExpertsCopy' in out) out.hotExpertsCopy = Object.fromEntries(Object.entries(out.hotExpertsCopy && typeof out.hotExpertsCopy === 'object' ? out.hotExpertsCopy : {}).filter(([k, v]) => typeof k === 'string' && k.length <= 300 && typeof v === 'boolean').slice(0, 200)); // Nov 17: per brain, from Calibrate's Use recommended

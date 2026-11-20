@@ -127,6 +127,9 @@ check('the engine\'s help is read for Progressive Memory', helpHasTiers('  Progr
 check('3-step: 8-bit for the newest 8K, 4-bit for the newest 64K, shrunk to a quarter and a half of a short chat',
   progressiveTiers(262144) === 'q8_0:8192,q4_0:65536' && progressiveTiers(32768) === 'q8_0:8192,q4_0:16384' && progressiveTiers(8192) === 'q8_0:2048,q4_0:4096' && progressiveTiers(1000) === '');
 check('2-step: 4-bit for the newest 64K, or half the chat', progressiveTiers(262144, 'progressive2') === 'q4_0:65536' && progressiveTiers(32768, 'progressive2') === 'q4_0:16384');
+check('8+3: 8-bit for the newest 8K (or a quarter of the chat), no 4-bit step', progressiveTiers(262144, 'progressive83') === 'q8_0:8192' && progressiveTiers(16384, 'progressive83') === 'q8_0:4096');
+check('8+3 is kept, falls back to Smaller without the engine, and goes to the engine as its one step', JSON.stringify(cleanMemType({ a: 'progressive83' })) === '{"a":"progressive83"}' && memTypeOf({ brainMemType: { b: 'progressive83' } }, 'b') === 'small' &&
+  tiersEnv({ brainMemType: { b: 'progressive83' } }, 'b', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS === 'q8_0:8192' && tiersEnv({ turbo: true, turboMem: 'progressive83' }, 'b', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS === 'q8_0:8192');
 check('2-step is kept, needs the same engine, and goes to the engine as its own steps', JSON.stringify(cleanMemType({ a: 'progressive2' })) === '{"a":"progressive2"}' && memTypeOf({ brainMemType: { b: 'progressive2' } }, 'b') === 'small' &&
   tiersEnv({ brainMemType: { b: 'progressive2' } }, 'b', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS === 'q4_0:65536');
 { const cfg = { brainMemType: { big: 'progressive', other: 'small' } };
@@ -143,7 +146,7 @@ check('2-step is kept, needs the same engine, and goes to the engine as its own 
 // Turbo (Nov 20, off unless switched on): show-off speed, every brain's memory to the Turbo pick, 4 experts per word
 check('Turbo is off unless switched on', !EXTRA_SWITCHES.includes('turbo') ? false : memTypeOf({ brainMemType: { big: 'sharp' } }, 'big', { q3: true }) === 'sharp');
 check('Turbo puts every brain on 3-bit chat memory, over its own pick', memTypeOf({ turbo: true, brainMemType: { big: 'sharp' } }, 'big', { q3: true }) === 'smallest' && memTypeOf({ turbo: true }, 'other', { q3: true }) === 'smallest');
-check('Turbo\'s memory can be picked: Smaller or Progressive', memTypeOf({ turbo: true, turboMem: 'small' }, 'big', { q3: true }) === 'small' && memTypeOf({ turbo: true, turboMem: 'progressive' }, 'big', { q3: true, tiers: true }) === 'progressive' && turboMem({ turboMem: 'nonsense' }) === 'smallest' && TURBO_MEMS.length === 4);
+check('Turbo\'s memory can be picked: Smaller or Progressive', memTypeOf({ turbo: true, turboMem: 'small' }, 'big', { q3: true }) === 'small' && memTypeOf({ turbo: true, turboMem: 'progressive' }, 'big', { q3: true, tiers: true }) === 'progressive' && turboMem({ turboMem: 'nonsense' }) === 'smallest' && TURBO_MEMS.length === 5);
 check('Turbo without a 3-bit engine falls back to Smaller', memTypeOf({ turbo: true }, 'big') === 'small');
 check('Turbo\'s Progressive pick reaches the engine as its steps', tiersEnv({ turbo: true, turboMem: 'progressive2' }, 'big', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS === 'q4_0:65536' && !tiersEnv({ turbo: true }, 'big', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS);
 check('Turbo asks 4 experts per word only of a brain with more, and only while on', turboPerWord({ turbo: true }, 8) === 4 && turboPerWord({ turbo: true }, 4) === null && turboPerWord({ turbo: true }, 0) === null && turboPerWord({}, 8) === null && turboPerWord({ turbo: true, turboExperts: false }, 8) === null);
