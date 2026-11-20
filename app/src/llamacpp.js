@@ -1546,7 +1546,9 @@ export class LlamaCpp {
       await this.condSwitch(model, this.condStep, 0, { moe_cache_mib: this.condCacheBase });
     }
     const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: (this.condSpeeds ||= {})[model], switchS: switchGuess(held, st?.ratio) });
-    const grow = this.condOff ? 0 : cacheGrow({ total, outTok, cacheMiB: this.condCacheBase, freeMiB: this.condFree, grown: this.condGrown });
+    // Nov 20: off unless engineTuning.growGuess is set (a test switch). Bob's 440 clean job lessons: replies with thinking
+    // median 81 tokens, none over 1,500, so a guess made before the reply mostly misses; growing mid-reply is the way.
+    const grow = this.condOff || this.cfg?.engineTuning?.growGuess !== true ? 0 : cacheGrow({ total, outTok, cacheMiB: this.condCacheBase, freeMiB: this.condFree, grown: this.condGrown });
     if (p.plan === 'stay' && !grow) return;
     if (p.plan !== 'stay') {
       this.log?.('engine', planLine(model, p));

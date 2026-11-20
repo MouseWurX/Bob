@@ -124,7 +124,7 @@ check('the cache grows by what the card has free, up to 2 GB, keeping 768 MiB', 
 check('it doesn\'t grow for a short reply, a long chat, no cache, unknown free memory, little room or when already grown',
   [{ outTok: 300 }, { total: CACHE_FLIP_MAX }, { cacheMiB: 0 }, { freeMiB: null }, { freeMiB: 1200 }, { grown: 1024 }].every((o) => cacheGrow({ total: 30000, outTok: 2500, cacheMiB: 4096, freeMiB: 5000, ...o }) === 0));
 check('the free memory comes from the engine\'s answer (the tightest card), or null', freeFrom({ devices: [{ free_mib: 3000 }, { free_mib: 2500 }] }) === 2500 && freeFrom({}) === null);
-{ calls.length = 0; freeMiB = 3000; const e = live(); e.condChat = CHAT_STEP; e.condStep = CHAT_STEP; e.condCacheBase = 4096; e.condHeld = 0;
+{ calls.length = 0; freeMiB = 3000; const e = live({ engineTuning: { mode: 'conductor', growGuess: true } }); e.condChat = CHAT_STEP; e.condStep = CHAT_STEP; e.condCacheBase = 4096; e.condHeld = 0;
   const msg = [{ role: 'user', content: 'x'.repeat(3000) }];
   await e.conduct({ model: 'big', messages: msg, think: true });
   const ctx = calls.filter((c) => c.startsWith('POST /context')).map((c) => JSON.parse(c.slice(14)).moe_cache_mib);
@@ -134,9 +134,12 @@ check('the free memory comes from the engine\'s answer (the tightest card), or n
   await e.conduct({ model: 'big', messages: longMsg });
   const back = calls.filter((c) => c.startsWith('POST /context')).map((c) => JSON.parse(c.slice(14)).moe_cache_mib);
   check('a long read next: the cache goes back to the reading size first', back[0] === 4096 && e.condGrown === 0, JSON.stringify(calls));
-  calls.length = 0; freeMiB = null; const old = live(); old.condChat = CHAT_STEP; old.condStep = CHAT_STEP; old.condCacheBase = 4096; old.condHeld = 0;
+  calls.length = 0; freeMiB = null; const old = live({ engineTuning: { mode: 'conductor', growGuess: true } }); old.condChat = CHAT_STEP; old.condStep = CHAT_STEP; old.condCacheBase = 4096; old.condHeld = 0;
   await old.conduct({ model: 'big', messages: msg, think: true });
   check('an engine that doesn\'t report free memory never grows the cache', !calls.some((c) => /moe_cache_mib":6144/.test(c)) && !old.condGrown, JSON.stringify(calls)); }
+{ calls.length = 0; freeMiB = 3000; const e = live(); e.condChat = CHAT_STEP; e.condStep = CHAT_STEP; e.condCacheBase = 4096; e.condHeld = 0;
+  await e.conduct({ model: 'big', messages: [{ role: 'user', content: 'x'.repeat(3000) }], think: true });
+  check('growing on a guess is off unless the test switch is set (job replies are short: median 81 tokens with thinking)', !calls.some((c) => /moe_cache_mib/.test(c)) && !e.condGrown, JSON.stringify(calls)); freeMiB = null; }
 srv.close();
 
 // ---------- Settings, Help, FAQ, glossary ----------
