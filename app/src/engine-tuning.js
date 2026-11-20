@@ -14,6 +14,7 @@ export const TUNING_FIELDS = [
   { k: 'learn', label: 'Learning cache (every N words)', env: 'LLAMA_MOE_CACHE_LEARN', min: 1, max: 4096, int: true, hint: 'with a processor share above 0' },
   { k: 'learnMargin', label: 'Learning margin', env: 'LLAMA_MOE_CACHE_LEARN_MARGIN', min: 1, max: 16, hint: 'how much busier an expert must be to come in' },
   { k: 'lookahead', label: 'Look ahead (experts a layer)', env: 'LLAMA_MOE_LOOKAHEAD', min: 1, max: 64, int: true, hint: 'with a processor share of 0' },
+  { k: 'doorbell', label: 'Card and processor at once (1 = on)', env: 'LLAMA_MOE_DOORBELL', min: 0, max: 1, int: true, hint: 'with a processor share above 0; Brain Engine 0042, CUDA cards only' },
   { k: 'cpuRead', label: 'Processor reads short prompts (up to N words)', env: 'LLAMA_MOE_CACHE_CPU_READ', min: 33, max: 16384, int: true, hint: 'changes answers slightly' },
   { k: 'lend', label: 'Lend the cache to long reads (over N words)', env: 'LLAMA_MOE_CACHE_LEND', min: 33, max: 16384, int: true, hint: 'below the reading step' },
   { k: 'draftGate', label: 'Pause guessing below (share kept)', env: 'LLAMA_SPEC_GATE', min: 0.01, max: 1, hint: 'for drafting, 0.3 pauses when under 30% of guesses are kept' }

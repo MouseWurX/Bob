@@ -1,15 +1,16 @@
 diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
-index 2c17ac3..7e5325b 100644
+index dcc0fda..c4e51b2 100644
 --- a/src/llama-graph.cpp
 +++ b/src/llama-graph.cpp
-@@ -2752,6 +2752,21 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+@@ -2786,9 +2786,35 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+             }
          }
      }
- 
 +    // Brain Engine 0043 (LLAMA_MOE_STANDIN): for a one-word batch the MoE cache reads the router scores with the picks,
-+    // so it can let an expert on the card play a missed one; the weights then take its factors (below). Off: no change
++    // so it can let an expert on the card play a missed one; the weights then take its factors (below). Off: no change.
++    // A word written through the doorbell (0042) has no copy callback, so no stand-ins there
 +    ggml_tensor * standin_scale = nullptr;
-+    if (moe_cache != nullptr && il >= 0 && n_tokens == 1 && probs_in == nullptr && selected_experts_in == nullptr && !weight_before_ffn &&
++    if (moe_cache != nullptr && !doorbell && il >= 0 && n_tokens == 1 && probs_in == nullptr && selected_experts_in == nullptr && !weight_before_ffn &&
 +            (gating_op == LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX || gating_op == LLAMA_EXPERT_GATING_FUNC_TYPE_SIGMOID) &&
 +            n_expert == hparams.n_expert && hparams.n_expert_groups <= 1 && arch != LLM_ARCH_GROVEMOE &&
 +            logits->ne[0] == n_expert && logits->ne[1] == 1 && logits->type == GGML_TYPE_F32) {
@@ -21,12 +22,8 @@ index 2c17ac3..7e5325b 100644
 +        }
 +    }
 +
-     // compute the expert input before the slot lookup, so that the scheduler prefetches it for the CPU part (the router can read a different tensor)
-     ggml_build_forward_expand(gf, cur);
- 
-@@ -2762,6 +2777,16 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
-         std::none_of(exps.begin(), exps.end(), [&](ggml_tensor * w) { return w != nullptr && hdmd != nullptr && hdmd->rot.count(w) > 0; });
-     const llm_graph_moe_cache_slots cache = build_moe_cache_slots(selected_experts, up_exps, gate_exps, down_exps, gate_up_exps, can_cpu_share, il);
+     const llm_graph_moe_cache_slots cache = doorbell ? llm_graph_moe_cache_slots{ nullptr, nullptr } :
+         build_moe_cache_slots(selected_experts, up_exps, gate_exps, down_exps, gate_up_exps, can_cpu_share, il);
  
 +    // Brain Engine 0043: each pick's weight times the factor the cache set for its slot (1 unless a stand-in played in
 +    // this word). Read through the slots, so it comes after the lookup that sets the factors
@@ -42,10 +39,10 @@ index 2c17ac3..7e5325b 100644
      // fused top-k kernel and CUDA graphs stay on, nothing in the graph is marked as an output, and no eval callback
      // is needed: the context reads the kept tensors after each micro-batch
 diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
-index a9d6460..6b37c4e 100644
+index 10b367f..0420a43 100644
 --- a/src/llama-moe-cache.cpp
 +++ b/src/llama-moe-cache.cpp
-@@ -15,6 +15,7 @@
+@@ -21,6 +21,7 @@
  #include <cstdlib>
  #include <cstring>
  #include <stdexcept>
@@ -53,10 +50,10 @@ index a9d6460..6b37c4e 100644
  #include <thread>
  #include <unordered_map>
  #include <vector>
-@@ -391,6 +392,17 @@ struct llama_moe_cache::impl {
-         uint32_t cpu_acc = 0;               // fraction of a miss carried over to the next plan, in 1/65536
-         int64_t  learn_tokens = 0;          // Brain Engine 0031: tokens since this layer last let a miss into the cache
+@@ -399,6 +400,17 @@ struct llama_moe_cache::impl {
          ggml_tensor * guess = nullptr;      // Brain Engine 0041: I32 [la_k, max_batch] on the device, the guessed experts of this layer
+         ggml_tensor * db_map = nullptr;     // Brain Engine 0042: I32 [n_expert] on the device, the slot map as of the last word
+         ggml_tensor * db_map_host = nullptr; // the same in host memory: what the processor's part and its own ring read
 +        // Brain Engine 0043: stand-ins (see sp_choose)
 +        ggml_tensor * sp_scores = nullptr;  // F32 [n_expert, 1] on the device, the router scores of a one-word batch
 +        ggml_tensor * sp_scale  = nullptr;  // F32 [1, n_slots + n_zero] on the device, the factor of the pick read from each slot
@@ -71,27 +68,26 @@ index a9d6460..6b37c4e 100644
          std::vector<ggml_tensor *> experts; // host expert tensors, in the order of the banks
      };
  
-@@ -527,6 +539,8 @@ struct llama_moe_cache::impl {
+@@ -560,6 +572,7 @@ struct llama_moe_cache::impl {
+                 db_force_cpu_ring = pc != nullptr && atoi(pc) > 0;
              }
          }
- 
 +        sp_init(no_alloc);
-+
+ 
          // with misses on the CPU, the n_zero slots after the cached ones stay zero: the device computes these misses as zero
          // one extra slot at the end, CUDA MMQ can read past the last expert
-         n_zero = cpu_share > 0.0f ? std::min<int32_t>(n_expert_used, 64) : 0;
-@@ -608,7 +622,7 @@ struct llama_moe_cache::impl {
+@@ -642,7 +655,7 @@ struct llama_moe_cache::impl {
                  continue;
              }
              g.lru.init(model.layers.size(), n_expert, g.n_slots);
--            n_tensors[g.id] += g.ref.size()*(1 + g.layers.size()) + (la_max > 0 ? g.layers.size() : 0);
-+            n_tensors[g.id] += g.ref.size()*(1 + g.layers.size()) + (la_max > 0 ? g.layers.size() : 0) + (sp_mode != SP_OFF ? 2*g.layers.size() : 0);
-             n_tensors_host  += g.layers.size()*(n_zero > 0 ? 3 : 1); // slot maps and CPU map
+-            n_tensors[g.id] += g.ref.size()*(1 + g.layers.size()) + (la_max > 0 ? g.layers.size() : 0) + (db_on ? g.layers.size() : 0);
++            n_tensors[g.id] += g.ref.size()*(1 + g.layers.size()) + (la_max > 0 ? g.layers.size() : 0) + (db_on ? g.layers.size() : 0) + (sp_mode != SP_OFF ? 2*g.layers.size() : 0);
+             n_tensors_host  += g.layers.size()*(n_zero > 0 ? 3 : 1) + (db_on ? g.layers.size() : 0); // slot maps and CPU map
          }
          if (n_tensors_host == 0) {
-@@ -664,6 +678,12 @@ struct llama_moe_cache::impl {
-                     l.guess = ggml_new_tensor_2d(ctx, GGML_TYPE_I32, la_k, max_batch);
-                     ggml_format_name(l.guess, "moe_cache.guess-%d", il);
+@@ -705,6 +718,12 @@ struct llama_moe_cache::impl {
+                     ggml_format_name(l.db_map_host, "moe_cache.db_map_host-%d", il);
+                     buf_host_size += GGML_PAD(ggml_nbytes(l.db_map_host), alignment_host);
                  }
 +                if (sp_mode != SP_OFF) {
 +                    l.sp_scores = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, g.ref[0]->ne[2], 1);
@@ -102,7 +98,7 @@ index a9d6460..6b37c4e 100644
                  l.slot_map = ggml_new_tensor_2d(ctx_host.get(), GGML_TYPE_I32, 1, g.ref[0]->ne[2]);
                  ggml_format_name(l.slot_map, "moe_cache.slot_map-%d", il);
                  // Brain Engine 0038: its lookup starts a split, so the selected experts are always computed in an earlier one
-@@ -708,6 +728,7 @@ struct llama_moe_cache::impl {
+@@ -749,6 +768,7 @@ struct llama_moe_cache::impl {
                      }
                  }
              }
@@ -110,11 +106,10 @@ index a9d6460..6b37c4e 100644
          }
  
          // as weights, the ops that read the banks run on the device and the slot maps are copied with the copy callback
-@@ -991,6 +1012,305 @@ struct llama_moe_cache::impl {
-         }
-         la_cv.notify_all();
+@@ -1525,6 +1545,309 @@ struct llama_moe_cache::impl {
+         db_bell = nullptr;
      }
-+
+ 
 +    // Brain Engine 0043 (LLAMA_MOE_STANDIN): while writing (one-word batches), a picked expert that is not on the card
 +    // can be played by one that is, instead of being copied in (or computed on the processor). It changes the words, so
 +    // it is off unless the key is set, and Bob only sets it in Turbo mode. The ways (after Strata-HotRod, MIT):
@@ -154,6 +149,11 @@ index a9d6460..6b37c4e 100644
 +        sp_max = std::clamp<int32_t>(sp_max, 1, std::max<int32_t>(1, n_expert_used - 1));
 +        LLAMA_LOG_WARN("%s: !!! MoE stand-ins ON (LLAMA_MOE_STANDIN=%s): while writing, up to %d missed experts a layer a word "
 +                       "are played by experts already on the card. The words change: this is an experiment.\n", __func__, sp_name(sp_mode), sp_max);
++        if (db_on) {
++            // Brain Engine 0042: a word written through the doorbell plans on the card, with no copy callback to stand in
++            LLAMA_LOG_WARN("%s: !!! MoE stand-ins are off while the doorbell (LLAMA_MOE_DOORBELL) runs: only the words written "
++                           "the usual way (before the cache is full, or where the doorbell can't ring) get stand-ins\n", __func__);
++        }
 +    }
 +
 +    // after the buffers are made: every factor 1, and for near the likeness of the router columns
@@ -416,7 +416,7 @@ index a9d6460..6b37c4e 100644
      uint64_t n_updates    = 0;
      uint32_t n_expert_all = 0; // experts per layer in the brain
  
-@@ -1331,6 +1651,15 @@ struct llama_moe_cache::impl {
+@@ -1867,6 +2190,15 @@ struct llama_moe_cache::impl {
              la_guess.resize((size_t) la_k*n_tok);
              ggml_backend_tensor_get_async(backend, layers[il_next].guess, la_guess.data(), 0, la_guess.size()*sizeof(int32_t));
          }
@@ -432,7 +432,7 @@ index a9d6460..6b37c4e 100644
          ggml_backend_synchronize(backend);
  
          if (trace != nullptr) {
-@@ -1339,6 +1668,7 @@ struct llama_moe_cache::impl {
+@@ -1875,6 +2207,7 @@ struct llama_moe_cache::impl {
          if (ids_sink != nullptr && !has_cpu) {
              ids_sink(ids_sink_ud, il, ids.data(), ids.size(), n_used);
          }
@@ -440,7 +440,7 @@ index a9d6460..6b37c4e 100644
  
          // part of the misses is computed on the CPU once the cache is full, the carry keeps the share right on average
          // Brain Engine 0032: a prompt batch of more than max_batch tokens sends every miss to the CPU, full cache or not
-@@ -1396,7 +1726,7 @@ struct llama_moe_cache::impl {
+@@ -1932,7 +2265,7 @@ struct llama_moe_cache::impl {
          }
  
          stats & st = read_cpu ? stats_read : ids.size() <= (size_t) 8*n_expert_used ? stats_small : stats_large;
@@ -449,7 +449,7 @@ index a9d6460..6b37c4e 100644
          st.misses += fills.size() + cpu.size();
          st.cpu    += cpu.size();
          st.bytes  += bytes;
-@@ -1409,7 +1739,8 @@ struct llama_moe_cache::impl {
+@@ -1945,7 +2278,8 @@ struct llama_moe_cache::impl {
          }
  
          // the next copy synchronizes the backend before it changes the slot map again
@@ -459,7 +459,7 @@ index a9d6460..6b37c4e 100644
  
          // Brain Engine 0041: the next layer's guessed misses go up while this layer computes
          if (il_next >= 0) {
-@@ -1652,6 +1983,10 @@ struct llama_moe_cache::impl {
+@@ -2193,6 +2527,10 @@ struct llama_moe_cache::impl {
              LLAMA_LOG_INFO("llama_moe_cache: looked ahead: %zu experts uploaded ahead (%.2f MiB), %zu of them used (%.1f%%)\n",
                  la_n_up, la_bytes/1024.0/1024.0, la_n_used, la_n_up > 0 ? 100.0*la_n_used/la_n_up : 0.0);
          }
@@ -470,7 +470,7 @@ index a9d6460..6b37c4e 100644
          if (learn_every > 0) {
              LLAMA_LOG_INFO("llama_moe_cache: learned while writing: %zu experts came in\n", n_learned);
          }
-@@ -1681,6 +2016,14 @@ ggml_tensor * llama_moe_cache::get_guess(ggml_context * ctx, int32_t il, int64_t
+@@ -2226,6 +2564,14 @@ ggml_tensor * llama_moe_cache::get_guess(ggml_context * ctx, int32_t il, int64_t
      return pimpl->get_guess(ctx, il, n_tokens, k);
  }
  
@@ -486,10 +486,10 @@ index a9d6460..6b37c4e 100644
      return pimpl->get_experts(w);
  }
 diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
-index 53e4177..1d8048d 100644
+index b0f98d1..b451887 100644
 --- a/src/llama-moe-cache.h
 +++ b/src/llama-moe-cache.h
-@@ -27,6 +27,11 @@ public:
+@@ -28,6 +28,11 @@ public:
      // Brain Engine 0041 (LLAMA_MOE_LOOKAHEAD): where the graph of layer il writes its guess of layer il + 1's experts,
      // I32 [k, n_tokens] (top k of layer il + 1's router on layer il's expert input), nullptr if there is no look-ahead
      ggml_tensor * get_guess(ggml_context * ctx, int32_t il, int64_t n_tokens, int32_t * k) const;
