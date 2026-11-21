@@ -98,7 +98,20 @@ jobs:
           rem No web page: Bob talks to the server API only, and the prebuilt page download from HF failed its file check.
           rem -k 0: keep going after a failed file, so one run lists every file Windows still rejects.
           rem The full log goes to a file (the job log view keeps only its end); on a failure, every failed file and error line is printed.
-          cmake --build build --config Release -j 4 --target llama-server llama-bench -- -k 0 > ..\build-log.txt 2>&1 || (echo BUILD FAILED & findstr /n /i /c:"FAILED:" /c:": error" /c:"error C" /c:"error LNK" /c:"fatal error" ..\build-log.txt & exit /b 1)
+          cmake --build build --config Release -j 4 --target llama-server llama-bench -- -k 0 > ..\build-log.txt 2>&1 || (echo BUILD FAILED & exit /b 1)
+      - name: Show each build error once, with its source lines
+        if: failure()
+        shell: pwsh
+        run: |
+          if (-not (Test-Path build-log.txt)) { 'no build log'; exit 0 }
+          $l = Get-Content build-log.txt; $seen = @{}
+          for ($i = 0; $i -lt $l.Count; $i++) {
+            if ($l[$i] -match 'FAILED:|: error|error C\d|error LNK|fatal error') {
+              $k = $l[$i] -replace '^\s+', ''
+              if (-not $seen.ContainsKey($k)) { $seen[$k] = 1; '-----'; $l[[Math]::Max(0, $i - 3)..[Math]::Min($l.Count - 1, $i + 6)] }
+            }
+          }
+          "$($seen.Count) different error lines"
       - name: Keep the full build log
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
