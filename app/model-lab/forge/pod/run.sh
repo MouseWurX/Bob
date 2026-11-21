@@ -404,6 +404,8 @@ if [ "$(plan ".get('benchmark_only',False)")" = "True" ]; then
   done
   run_bench
   rm -f $IN/hf-token
+  # 21 Nov 2026: after2 served nothing (no llama-server built) yet ended "finished"; a serve-only run without a server is a failure
+  [ -f $S/llama-server-ready ] || die "benchmark_only: no CUDA llama-server was built, so no brain was served (see out/llama-server-build.log)"
   run_done "benchmark finished: the reports are on the PC under out/bench"; exit 0
 fi
 TEACHER=$(plan "['teacher']")

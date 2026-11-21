@@ -262,3 +262,8 @@ The owner asked: "Why are the jobs failing? Can we mitigate? Are we causing the 
 ## 17 Nov: the after2 rerun plan
 
 - jobs-after2.json (was jobs-mail-after2) puts both reruns on one card, as the owner asked: "and we will only test on minimus and medius". The 30 inbox jobs run at Minimus and Medius (catalog on), and the 36 office jobs run at Minimus, so each change made for an office prediction gets a job of its own. 12 slots x 32K, caps 1.5 h / $3. Held until the owner taps go. run-forge-slots-test checks that it fits the card, has no Magnus or Maximus, and scores office.
+
+## 21 Nov: after2 rented, built nothing, called itself finished
+- What broke: the pod's llama.cpp b12282 build fetches the server's web page files from a Hugging Face bucket; a partial set came back, the asset check failed ("UI: missing required asset(s)", llama-ui-assets Error 1), so no llama-server. The serve-only run then skipped the brain and ended "finished". Cost about $0.05; no jobs ran.
+- Fix: the build turns the web page off (-DLLAMA_BUILD_UI=OFF -DLLAMA_USE_PREBUILT_UI=OFF) and clears any partial asset folder; Bob only uses the API. A serve-only run with no llama-server now ends failed.
+- Check added: run-forge-slots-test checks both lines.
