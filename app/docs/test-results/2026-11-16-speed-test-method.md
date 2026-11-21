@@ -915,6 +915,20 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 88 (Nov 20, before any run): a 400 MiB free margin
+
+Avalon keeps a calculated 400 MiB free outside its expert cache; Bob's picks are `--fit-target 512` at 128K and
+256K and 1,024 at 32K (the 32K pick came from a busy-desktop result). Plan `fit-target-400-be28.json`
+(`speed-test.mjs`, Brain Engine 28, `--fit on`, step 4096, 4 GB copy cache, q4_0 memory, 5 rounds, cool-down on):
+400 against 1,024 at 32K and 400 against 512 at 128K. Rounds 1-4 on a clean desktop, round 5 with a normal desktop
+open (browser tabs and a muted video, as Addendum 45). Reported: writing and reading speed, the layers and copy
+cache `--fit` settled on, card free memory after load, and the spill check (shared GPU memory rise over the step's
+pinned buffer, and any slow-word gap).
+
+**Predictions, written before any run:** 400 places the same layers as 512 at 128K (within a layer) and writes
+within 2%; at 32K 400 keeps one or two more layers on the card than 1,024 and writes 3-8% faster on a clean desktop,
+but on the busy round it spills or shows slow-word gaps, which is why 1,024 was picked.
+
 ## Addendum 87 (Nov 20, before any run): stand-in drift scored while writing
 
 Addendum 80's stand-in perplexity rows came back with zero KLD and 99.99% same top, the same as look-ahead, but the

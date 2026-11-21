@@ -75,6 +75,7 @@ and each timed run, and the summary shows the card's start and top temperature a
 - `progressive-lend-128k-be28.json` (for `conductor-e2e.mjs`, Brain Engine 28): 8+3 and 8+4 with the 2,048 ring at 128K, staying, lending at the same step (answer-match check) and reading at step 8192 with 6 GB lent, beside plain q4_0 (Addendum 86).
 - `perplexity-ring3072-be26.json`: 8+3 and 8+4 with a 3,072-word ring at 16K x 2, filling in the ring grid (Addendum 86).
 - `perplexity-standins-decode-be26.json`: stand-in drift scored one token per step (`-ub 1`, the writing path), 4K x 4, with look-ahead 1 as the lossless control (Addendum 87).
+- `fit-target-400-be28.json` (5 rounds, the last on a busy desktop): `--fit-target` 400 against 1,024 at 32K and 512 at 128K (Addendum 88).
 - `speed-8plus2-be27.json` (15 rows x 2 rounds), `perplexity-8plus2-be27.json` (8 runs) and `needle-8plus2-be27.json` (3 rows at 128K): Progressive 8+2 with the 2-bit chat memory q2_kv (patch 0046, Turbo only), plain q2_kv, and K q4_0 + V q2_kv with the q8_0 ring, Brain Engine 27 (Addendum 77).
 - `kv3-kernel-diag.json`: q4_0/q4_0, q3_0/q3_0, q4_0 K/q3_0 V and q3_0 K/q4_0 V at 8K and 32K, -lv 4 and GGML_SCHED_TIMING=1, 4 loads, Brain Engine 21: whether K or V reads slow the 3-bit memory (Addendum 70, diagnostic).
 - `kv3-kernel-128k.json`: q4_0/q4_0, q3_0/q3_0 and q4_0 K/q3_0 V at 128K (122,880-token read) on the engine before and after patch 0044 (BE_BEFORE_SERVER, BE_AFTER_SERVER), GGML_SCHED_TIMING=1, 2 rounds, 6 loads: whether the faster q3_0 unpack closes the long-chat gap (Addendum 72).
