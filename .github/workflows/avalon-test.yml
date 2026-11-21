@@ -94,7 +94,8 @@ jobs:
           nvcc --version
           rem Avalon's processor code uses GCC atomics and OpenMP loop forms MSVC rejects: C and C++ go through clang-cl (VS ships it), CUDA through nvcc with MSVC as its host.
           set "PATH=%VCINSTALLDIR%Tools\Llvm\x64\bin;%PATH%"
-          cmake -S . -B build -G "Ninja Multi-Config" -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DGGML_CUDA=ON -DGGML_CUDA_NCCL=OFF -DCMAKE_CUDA_ARCHITECTURES=120a-real -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DCMAKE_CUDA_COMPILER="%CUDA_PATH%\bin\nvcc.exe"
+          cmake -S . -B build -G "Ninja Multi-Config" -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DGGML_CUDA=ON -DGGML_CUDA_NCCL=OFF -DCMAKE_CUDA_ARCHITECTURES=120a-real -DLLAMA_OPENSSL=OFF -DLLAMA_USE_PREBUILT_UI=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DCMAKE_CUDA_COMPILER="%CUDA_PATH%\bin\nvcc.exe"
+          rem No web page: Bob talks to the server API only, and the prebuilt page download from HF failed its file check.
           rem -k 0: keep going after a failed file, so one run lists every file Windows still rejects.
           cmake --build build --config Release -j 4 --target llama-server llama-bench -- -k 0
       - name: Pack it with the CUDA runtime it needs
