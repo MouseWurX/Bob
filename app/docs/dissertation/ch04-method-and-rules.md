@@ -808,7 +808,7 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 - **Perplexity passes** the 3% bar (Addendum 62), **and the needle was found 25 of 25 times** at 128K and at 256K for both 3-bit types (20 loads).
 - **The drift is bigger.** Mean KLD is about 1.7 times q4_0's for the mix and 2.6 times for full q3_0. Both fail the 0.01 pick gate, which is why 3-bit memory is judged on the 3% perplexity bar for a "Smallest" option, not offered as a pick.
 - **It saves about 22% of the chat memory** (at 256K: 1,120 MiB against 1,440 for q4_0).
-- **It writes slower on long chats** (36 loads, medians of 2). Writing tokens a second with --fit:
+- **It writes slower on long chats** (36 loads, medians of 2; superseded below: the gap was mostly the settings). Writing tokens a second with --fit:
 
 | Size | q4_0 | q4_0 keys / q3_0 values | q3_0 | q3_0 vs q4_0 |
 |---|---|---|---|---|
@@ -820,6 +820,7 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 - **At 32K the 3-bit attention kernels cost only 0.1 to 0.5 ms a word** (4 loads, 1 run each). The per-word gaps there came mostly from where --fit put the expert copies. The q3_0-keys / q4_0-values mix has no compiled kernel and falls back to f16. The 18% loss at 128K and 256K is not explained yet.
 - **The 18% at 128K and 256K was overstated.** Those long runs were hotter, more throttled and placed differently. In a same-day head-to-head at 128K (12 loads, medians of 2), q3_0 wrote only 6% slower than q4_0 before the fix, so treat the 128K and 256K ratios above as soft.
 - **Fix 0044 (Brain Engine 25) closes most of the gap.** At 128K, q3_0 went from 54.2 to 56.1 tokens a second, 2.9% under q4_0's 57.8, which passes the 5% bar. The words were the same, q4_0 was unchanged, and the 3-bit card cost per word fell from about 0.5 to 0.17 ms. The 256K and 32K rows on Brain Engine 25 are unproven in our lab, as we have yet to test.
+- **The rest of the gap was the settings, not the memory (20 November, Addendum 78, 8 loads over 2 rounds, cool-down on).** At step 4096 with a 4 GB copy cache, q3_0 wrote 4% slower than q4_0 at 128K (55.3 against 57.7), and 1.6% slower in a second run. At step 5120 with a 3.5 GB cache it was 15% slower (47.8 against 56.1): the smaller cache cost q4_0 3% but q3_0 14%, so 3-bit writing is more sensitive to the copy cache. On short prompts q3_0 wrote faster (106.7 against 95.5). Earlier claims that q3_0 is 16% to 18% slower are superseded.
 
 **Progressive Memory (patch 0039, Brain Engine 22).** Every word is kept in 3-bit, and the newest words are kept again at 8-bit and 4-bit.
 - **Its accuracy run was void.** The plan used an 8K text, which never passes the 8,192 and 16,384-word windows, so the engine correctly said "NOT USED". A 16K rerun is planned.
@@ -833,7 +834,19 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 | 128K | 57.9 | 48.8 | 38.8 | 48.1 | 50.3 |
 | 256K | 36.5 | 32.6 | 28.4 | 30.9 | 33.0 |
 
-- **Against the bars set before the run** (within 10% of q3_0; 8+4 within 5% of q4_0): 8+3 passes at 128K and 256K and fails at 32K (17% slower). 3-step fails. 8+4 fails against q4_0 (10% to 22% slower).
+- **Against the bars set before the run** (within 10% of q3_0; 8+4 within 5% of q4_0): 8+3 passes at 128K and 256K and fails at 32K (17% slower). 3-step fails. 8+4 fails against q4_0 (10% to 22% slower). These verdicts used the 3.5 GB copy cache that slows 3-bit memory, and are superseded by the rerun below.
+- **Rerun at step 4096 with a 4 GB cache, by sharp-copy size (Addenda 75 and 85, 2 rounds, cool-down on).** Writing tokens a second on the long prompt:
+
+| Setting | 32K | 128K |
+|---|---|---|
+| q4_0 | 92.7 | 57.5 |
+| q3_0 | 88.6 | 56.6 |
+| 8+3, newest 2,048 sharp | 80.1 | 54.8 |
+| 8+3, newest 4,096 sharp | 74.9 | 54.0 |
+| 8+4, newest 2,048 sharp | 75.7 | 50.3 |
+| 8+4, newest 4,096 sharp | 73.7 | 50.3 |
+
+  8+3 with 2,048 sharp words is the best version: 3% under q3_0 and 4.7% under q4_0 at 128K, but 10% under q3_0 at 32K. A 4,096-word sharp copy never helped, and 8+4 is 12% under q4_0 at 128K. Progressive Memory costs 10% to 20% at 32K, so it pays only on long chats. Reading was the same on every row.
 - **Accuracy passes** (16K × 2, 9 runs, every layer of the memory engaged; f16 base):
 
 | Cache | Mean KLD | Same top word |
