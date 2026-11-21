@@ -915,6 +915,28 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 86 (Nov 20, before any run): lending with Progressive Memory, and the ring grid filled in
+
+The owner asked whether lending (patch 0022) composes with Progressive Memory's 8-bit ring, and for the ring size to
+be priced on a grid, not one point. Two plans:
+
+- `progressive-lend-128k-be28.json` (`conductor-e2e.mjs`, Brain Engine 28, 128K context, fixed placement, 3 rounds
+  taking turns, cool-down on): a 110,592-token read then one 600-token reply. 8+3 and 8+4, both with the 2,048-word
+  ring, each three ways: stay at step 4096 with 4 GB; lend at the same step and cache (`LLAMA_MOE_CACHE_LEND=2048`),
+  which must write the same words as staying (the answer-match check: lending moves no expert between card and CPU);
+  and read at step 8192 with 6 GB lent (`LLAMA_MOE_CACHE_LEND=4096`). Plain q4_0 at step 4096 with 4 GB for scale.
+- `perplexity-ring3072-be26.json` (16K x 2, against f16): 8+3 and 8+4 with a 3,072-word ring, the scaled 6,144
+  point between Addendum 75's 2,048 and full 4,096, so each layout has four ring sizes priced for quality.
+
+**Predictions, written before any run:** the same-step lend writes the same words as staying in every round, for
+both layouts, and costs under 1 s per job; at step 8192 with 6 GB lent the 110K read is 8-13 s shorter than at step
+4096 and writing is within 2% of staying, so the job is 6-12 s shorter. Ring 3,072 lands between 2,048 and 4,096 on
+KLD for both layouts. Pass for composition: words match and no row fails or refuses the lend.
+
+Labels for anything built from these tables: rows read off a run are "measured"; the step 8192 and 12,288 reading
+times in the owner's discussion of Nov 20 are fitted from two points and stay "estimate" until a run measures them;
+a claim about a setting not yet run is a "prediction".
+
 ## Addendum 85 (Nov 20, before any run): every 3-bit, 2-bit and Progressive row at step 4096 with a 4 GB cache
 
 The 3-bit gap check (Addendum 78) found the 15-16% q3_0 gap in the Progressive plans came from their step 5120 with

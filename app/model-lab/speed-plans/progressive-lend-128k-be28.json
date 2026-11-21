@@ -1,0 +1,198 @@
+{
+ "name": "Lend with Progressive Memory at 128K (Brain Engine 28): 8+3 and 8+4 with the 2,048-word ring, each staying at step 4096 with 4 GB, lending at the same step and cache (answer-match check), and reading at step 8192 with 6 GB lent; plain q4_0 for scale; a 110K-token read then a 600-token reply, 3 rounds round-robin, cool-down on",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 86)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be28": {
+   "exe": "${BE28_SERVER}",
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  }
+ },
+ "text": "long-text.md",
+ "textRepeat": 4,
+ "system": "You are a helpful assistant. Answer plainly.",
+ "bigRead": 110592,
+ "followUps": 1,
+ "followTokens": 200,
+ "replyTokens": 300,
+ "rounds": 3,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "wordsRef": "p3-stay-4096-c4096",
+ "baseArgs": [
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "-c",
+  "139264",
+  "--fit",
+  "off",
+  "-ngl",
+  "99",
+  "--n-cpu-moe",
+  "${NCMOE_128K}",
+  "--moe-cache-mib",
+  "4096",
+  "--moe-cache-cpu-share",
+  "0",
+  "-ctk",
+  "q4_0",
+  "-ctv",
+  "q4_0",
+  "--slot-save-path",
+  "${SLOT_DIR}",
+  "-lv",
+  "4"
+ ],
+ "ways": [
+  {
+   "id": "p3-stay-4096-c4096",
+   "engine": "be28",
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "-ctk",
+    "q3_0",
+    "-ctv",
+    "q3_0"
+   ],
+   "env": {
+    "LLAMA_KV_TIERS": "q8_0:2048",
+    "LLAMA_KV_TIERS_SLACK": "4096"
+   }
+  },
+  {
+   "id": "p3-lend-4096-c4096",
+   "engine": "be28",
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "-ctk",
+    "q3_0",
+    "-ctv",
+    "q3_0"
+   ],
+   "env": {
+    "LLAMA_KV_TIERS": "q8_0:2048",
+    "LLAMA_KV_TIERS_SLACK": "4096",
+    "LLAMA_MOE_CACHE_LEND": "2048"
+   }
+  },
+  {
+   "id": "p3-lend-8192-c6144",
+   "engine": "be28",
+   "args": [
+    "-b",
+    "8192",
+    "-ub",
+    "8192",
+    "--moe-cache-mib",
+    "6144",
+    "-ctk",
+    "q3_0",
+    "-ctv",
+    "q3_0"
+   ],
+   "env": {
+    "LLAMA_KV_TIERS": "q8_0:2048",
+    "LLAMA_KV_TIERS_SLACK": "4096",
+    "LLAMA_MOE_CACHE_LEND": "4096"
+   }
+  },
+  {
+   "id": "p4-stay-4096-c4096",
+   "engine": "be28",
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "LLAMA_KV_TIERS": "q8_0:2048",
+    "LLAMA_KV_TIERS_SLACK": "4096"
+   }
+  },
+  {
+   "id": "p4-lend-4096-c4096",
+   "engine": "be28",
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "LLAMA_KV_TIERS": "q8_0:2048",
+    "LLAMA_KV_TIERS_SLACK": "4096",
+    "LLAMA_MOE_CACHE_LEND": "2048"
+   }
+  },
+  {
+   "id": "p4-lend-8192-c6144",
+   "engine": "be28",
+   "args": [
+    "-b",
+    "8192",
+    "-ub",
+    "8192",
+    "--moe-cache-mib",
+    "6144",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {
+    "LLAMA_KV_TIERS": "q8_0:2048",
+    "LLAMA_KV_TIERS_SLACK": "4096",
+    "LLAMA_MOE_CACHE_LEND": "4096"
+   }
+  },
+  {
+   "id": "q4-stay-4096-c4096",
+   "engine": "be28",
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0"
+   ],
+   "env": {}
+  }
+ ],
+ "followQuestion": "How does this part fit with what came before? Answer in a few paragraphs.",
+ "followReplyTokens": 600,
+ "thinking": false
+}

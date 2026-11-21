@@ -1,0 +1,111 @@
+{
+ "name": "Progressive ring 3,072 at 16K x 2 (the 6,144-word ring scaled like the others; fills the gap between 2,048 and the full 4,096 in Addendum 75's grid), beside q4_0, Brain Engine 26",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 86)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be26": {
+   "exe": "${BE26_PERPLEXITY}"
+  }
+ },
+ "text": "long-text.md",
+ "baseArgs": [
+  "-fa",
+  "on",
+  "--fit",
+  "on"
+ ],
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "rowTimeoutMs": 2700000,
+ "groups": [
+  {
+   "id": "prog-16K",
+   "about": "f16 base vs q8_0, q4_0, q3_0 and Progressive A (3-step), C (2-step), D (8+3) with windows a quarter of the 32K design so they engage at 16K (Addendum 71, rerun note)",
+   "ctx": 16384,
+   "chunks": 2,
+   "needDiskGB": 12,
+   "base": {
+    "id": "f16",
+    "engine": "be26",
+    "args": [
+     "-b",
+     "2048",
+     "-ub",
+     "2048",
+     "--moe-cache-mib",
+     "4096",
+     "--moe-cache-cpu-share",
+     "0",
+     "-ctk",
+     "f16",
+     "-ctv",
+     "f16"
+    ]
+   },
+   "rows": [
+    {
+     "id": "q4_0",
+     "engine": "be26",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "2048",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ]
+    },
+    {
+     "id": "D-8plus3-ring3072",
+     "engine": "be26",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "2048",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q3_0",
+      "-ctv",
+      "q3_0"
+     ],
+     "env": {
+      "LLAMA_KV_TIERS_SLACK": "2048",
+      "LLAMA_KV_TIERS": "q8_0:3072"
+     }
+    },
+    {
+     "id": "E-8plus4-ring3072",
+     "engine": "be26",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "2048",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ],
+     "env": {
+      "LLAMA_KV_TIERS_SLACK": "2048",
+      "LLAMA_KV_TIERS": "q8_0:3072"
+     }
+    }
+   ]
+  }
+ ]
+}
