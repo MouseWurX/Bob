@@ -1,13 +1,15 @@
 # A one-off test build (Nov 20, the owner's pick on the decision card): plain Avalon (github freriadoc/Avalon, MIT, a
 # llama.cpp fork by Frederic Belval) at a pinned commit, for Windows x64 and NVIDIA cards (sm_120, the 50 series), so
 # it can be measured once on the test PC against Brain Engine 28's best settings. Built here, never on the test PC.
-# Nothing of Bob's is applied. Runs when this file changes on a claude/ work branch, and by hand.
+# Nothing of Bob's is applied. Avalon is written for GCC/Clang on Linux, and nvcc on Windows must use MSVC, which
+# rejects a few GCC-only spellings: .github/avalon-win/fix-windows-build.py makes build-only fixes (listed in its log and
+# in the zip's README), no engine changes. Runs when this file or the fixes change on a claude/ work branch, and by hand.
 name: Avalon test build
 
 on:
   push:
     branches: ['claude/**']
-    paths: ['.github/workflows/avalon-test.yml']
+    paths: ['.github/workflows/avalon-test.yml', '.github/avalon-win/**']
   workflow_dispatch:
 
 permissions:
@@ -22,6 +24,9 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 300
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github
       - name: Fetch Avalon at the pinned commit
         shell: bash
         run: |
@@ -30,6 +35,11 @@ jobs:
           git fetch --depth 1 origin "$AVALON_SHA"
           git checkout -q FETCH_HEAD
           git log -1 --format='%H %ci %s'
+      - name: Windows build fixes (spelling only, listed)
+        shell: bash
+        run: |
+          python .github/avalon-win/fix-windows-build.py avalon
+          cd avalon && git add -A && git diff --cached --stat && git diff --cached > ../out-windows-build-fixes.diff
       - name: Install CUDA ${{ env.CUDAVER }} (NVIDIA's redistributable parts, compiler and headers only)
         shell: pwsh
         run: |
@@ -85,7 +95,8 @@ jobs:
           rem Avalon's processor code uses GCC atomics and OpenMP loop forms MSVC rejects: C and C++ go through clang-cl (VS ships it), CUDA through nvcc with MSVC as its host.
           set "PATH=%VCINSTALLDIR%Tools\Llvm\x64\bin;%PATH%"
           cmake -S . -B build -G "Ninja Multi-Config" -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DGGML_CUDA=ON -DGGML_CUDA_NCCL=OFF -DCMAKE_CUDA_ARCHITECTURES=120a-real -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DCMAKE_CUDA_COMPILER="%CUDA_PATH%\bin\nvcc.exe"
-          cmake --build build --config Release -j 4 --target llama-server llama-bench
+          rem -k 0: keep going after a failed file, so one run lists every file Windows still rejects.
+          cmake --build build --config Release -j 4 --target llama-server llama-bench -- -k 0
       - name: Pack it with the CUDA runtime it needs
         shell: bash
         run: |
@@ -93,7 +104,8 @@ jobs:
           cp avalon/build/bin/Release/*.exe avalon/build/bin/Release/*.dll out/ 2>/dev/null || true
           cp "$CUDA_PATH"/bin/cudart64_*.dll "$CUDA_PATH"/bin/cublas64_*.dll "$CUDA_PATH"/bin/cublasLt64_*.dll out/
           cp avalon/LICENSE out/AVALON-LICENSE.txt
-          echo "Avalon $AVALON_SHA (github freriadoc/Avalon, MIT), CUDA $CUDAVER, sm_120a. A test build for one measurement." > out/README.txt
+          cp out-windows-build-fixes.diff out/WINDOWS-BUILD-FIXES.diff
+          echo "Avalon $AVALON_SHA (github freriadoc/Avalon, MIT), CUDA $CUDAVER, sm_120a. A test build for one measurement. Windows build-only fixes: WINDOWS-BUILD-FIXES.diff. On Linux NVIDIA, Avalon sets CUDA_MODULE_LOADING=EAGER and GGML_CUDA_MOE_RING_PREFILL=900 by itself at start; its Windows build does not, so set both for a like-for-like run." > out/README.txt
           ls -la out
           test -f out/llama-server.exe
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
