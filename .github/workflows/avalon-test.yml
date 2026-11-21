@@ -1,0 +1,100 @@
+# A one-off test build (Nov 20, the owner's pick on the decision card): plain Avalon (github freriadoc/Avalon, MIT, a
+# llama.cpp fork by Frederic Belval) at a pinned commit, for Windows x64 and NVIDIA cards (sm_120, the 50 series), so
+# it can be measured once on the test PC against Brain Engine 28's best settings. Built here, never on the test PC.
+# Nothing of Bob's is applied. Runs when this file changes on a claude/ work branch, and by hand.
+name: Avalon test build
+
+on:
+  push:
+    branches: ['claude/**']
+    paths: ['.github/workflows/avalon-test.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AVALON_SHA: 0019bc940a4abe07519974aff0ef7ae29f41f76b
+  CUDAVER: '12.9'
+
+jobs:
+  windows-cuda:
+    runs-on: windows-2022
+    timeout-minutes: 300
+    steps:
+      - name: Fetch Avalon at the pinned commit
+        shell: bash
+        run: |
+          git init avalon && cd avalon
+          git remote add origin https://github.com/freriadoc/Avalon.git
+          git fetch --depth 1 origin "$AVALON_SHA"
+          git checkout -q FETCH_HEAD
+          git log -1 --format='%H %ci %s'
+      - name: Install CUDA ${{ env.CUDAVER }} (NVIDIA's redistributable parts, compiler and headers only)
+        shell: pwsh
+        run: |
+          $want = '${{ env.CUDAVER }}'
+          if (-not $want) { throw 'No official CUDA zip found for this tag' }
+          $base = 'https://developer.download.nvidia.com/compute/cuda/redist/'
+          $list = (Invoke-WebRequest $base -UseBasicParsing).Content
+          $ver = [regex]::Matches($list, "redistrib_($([regex]::Escape($want))(\.\d+)*)\.json") | ForEach-Object { $_.Groups[1].Value } | Sort-Object { [version]$_ } | Select-Object -Last 1
+          if (-not $ver) { throw "No NVIDIA redistributable list for CUDA $want" }
+          "CUDA $want -> $ver"
+          $json = Invoke-RestMethod "$base/redistrib_$ver.json"
+          $cuda = "$env:RUNNER_TEMP\cuda"
+          New-Item -ItemType Directory -Force $cuda | Out-Null
+          $names = @($json.PSObject.Properties | Where-Object { $_.Value -is [psobject] } | ForEach-Object { $_.Name })
+          "parts in ${ver}: $($names -join ', ')"
+          # CCCL (CUB, Thrust) moved name over CUDA versions (cuda_cccl, then others): take whatever part carries it.
+          $want = @('cuda_nvcc','cuda_crt','libnvvm','cuda_cudart','cuda_nvrtc','cuda_nvtx','cuda_profiler_api','libcublas') + @($names | Where-Object { $_ -match 'cccl' })
+          foreach ($n in $want) {
+            $part = $json.$n
+            if (-not $part) { "skip $n (not in $ver)"; continue }
+            $rel = $part.'windows-x86_64'.relative_path
+            if (-not $rel) { "skip $n (no Windows part)"; continue }
+            "get $n $($part.version)"
+            Invoke-WebRequest "$base/$rel" -OutFile part.zip
+            Expand-Archive part.zip -DestinationPath parts -Force
+            Remove-Item part.zip
+          }
+          Get-ChildItem parts -Directory | ForEach-Object { Copy-Item "$($_.FullName)\*" $cuda -Recurse -Force }
+          if (-not (Test-Path "$cuda\bin\nvcc.exe")) { throw 'nvcc did not install' }
+          # CMake's CUDA::cudart lists include\cccl from CUDA 13 on; without a CCCL part the folder must still be there,
+          # and the headers then come from NVIDIA's CCCL on GitHub at the tag that matches.
+          if (-not (Test-Path "$cuda\include\cccl\cub")) {
+            "No CCCL part in the list: getting it from github.com/NVIDIA/cccl"
+            $cv = Select-String -Path "$cuda\include\cuda\std\__cccl\version.h" -Pattern 'define CCCL_(MAJOR|MINOR|PATCH)_VERSION\s+(\d+)' -ErrorAction SilentlyContinue | ForEach-Object { $_.Matches[0].Groups[2].Value }
+            $ctag = if ($cv.Count -eq 3) { "v$($cv -join '.')" } else { 'main' }
+            "CCCL tag: $ctag"
+            git clone --depth 1 --branch $ctag https://github.com/NVIDIA/cccl.git "$env:RUNNER_TEMP\cccl"
+            New-Item -ItemType Directory -Force "$cuda\include\cccl" | Out-Null
+            foreach ($d in 'cub\cub','thrust\thrust','libcudacxx\include\cuda','libcudacxx\include\nv') { Copy-Item "$env:RUNNER_TEMP\cccl\$d" "$cuda\include\cccl\" -Recurse -Force }
+          }
+          Get-ChildItem "$cuda\include\cccl" -ErrorAction SilentlyContinue | Select-Object -First 10 Name
+          "CUDA_PATH=$cuda" | Out-File -Append $env:GITHUB_ENV
+          "CUDAToolkit_ROOT=$cuda" | Out-File -Append $env:GITHUB_ENV
+          "$cuda\bin" | Out-File -Append $env:GITHUB_PATH
+      - name: Install Ninja
+        run: choco install ninja
+      - name: Build llama-server (CUDA in, one set of files)
+        shell: cmd
+        working-directory: avalon
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          nvcc --version
+          cmake -S . -B build -G "Ninja Multi-Config" -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DGGML_CUDA=ON -DGGML_CUDA_NCCL=OFF -DCMAKE_CUDA_ARCHITECTURES=120a-real -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DCMAKE_CUDA_COMPILER="%CUDA_PATH%\bin\nvcc.exe"
+          cmake --build build --config Release -j 4 --target llama-server llama-bench
+      - name: Pack it with the CUDA runtime it needs
+        shell: bash
+        run: |
+          mkdir -p out
+          cp avalon/build/bin/Release/*.exe avalon/build/bin/Release/*.dll out/ 2>/dev/null || true
+          cp "$CUDA_PATH"/bin/cudart64_*.dll "$CUDA_PATH"/bin/cublas64_*.dll "$CUDA_PATH"/bin/cublasLt64_*.dll out/
+          cp avalon/LICENSE out/AVALON-LICENSE.txt
+          echo "Avalon $AVALON_SHA (github freriadoc/Avalon, MIT), CUDA $CUDAVER, sm_120a. A test build for one measurement." > out/README.txt
+          ls -la out
+          test -f out/llama-server.exe
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: avalon-0019bc9-win-cuda-sm120
+          path: out/
