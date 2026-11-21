@@ -200,7 +200,7 @@ export function memArgs(cfg, model, handArgs, { q3 = false, q2 = false, tiers = 
 }
 // Progressive's steps for a context. 3-step: 8-bit for the newest 8K (a quarter of the chat when that's smaller), then
 // 4-bit for the newest 64K (half the chat when that's smaller). 2-step: 4-bit for the newest 64K (or half the chat).
-// 8+3: 8-bit for the newest 8K (or a quarter of the chat), the rest 3-bit, with no 4-bit step.
+// 8+3: 8-bit for the newest 2K (or a quarter of the chat), the rest 3-bit, with no 4-bit step. 8+4 the same over 4-bit.
 // 8+4 (Nov 20): the same 8-bit step over a 4-bit base, for 4-bit's writing speed with the newest words sharp.
 // 8+2 (Nov 20, Turbo only): the same 8-bit step over a 2-bit base, for the most room.
 // Windows are whole 256s, below the context, or the engine says NOT USED.
@@ -212,7 +212,10 @@ export function progressiveTiers(ctx, type = 'progressive') {
   if (c < 2048) return '';
   const fit = (most, part) => Math.min(most, Math.floor(c / part / 256) * 256);
   const q4 = `q4_0:${fit(65536, 2)}`;
-  if (type === 'progressive83' || type === 'progressive84' || type === 'progressive82') return `q8_0:${fit(8192, 4)}`;
+  // Nov 21 (npc, BE26, step 4096 / c4096): a 2K ring writes faster than 8K (8+3 at 32K 80.1 vs 74.9 t/s) and stays
+  // sharper than q4 for 8+4 (KLD 0.0196 vs q4 0.0227; 8+3 0.0322, between q4 and q3 0.0484). 8+2 keeps its tested 8K.
+  if (type === 'progressive83' || type === 'progressive84') return `q8_0:${fit(2048, 4)}`;
+  if (type === 'progressive82') return `q8_0:${fit(8192, 4)}`;
   return type === 'progressive2' ? q4 : `q8_0:${fit(8192, 4)},${q4}`;
 }
 export function tiersEnv(cfg, model, ctx, { q3 = false, q2 = false, tiers = false, handArgs } = {}) {
