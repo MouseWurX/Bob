@@ -267,3 +267,8 @@ The owner asked: "Why are the jobs failing? Can we mitigate? Are we causing the 
 - What broke: the pod's llama.cpp b12282 build fetches the server's web page files from a Hugging Face bucket; a partial set came back, the asset check failed ("UI: missing required asset(s)", llama-ui-assets Error 1), so no llama-server. The serve-only run then skipped the brain and ended "finished". Cost about $0.05; no jobs ran.
 - Fix: the build turns the web page off (-DLLAMA_BUILD_UI=OFF -DLLAMA_USE_PREBUILT_UI=OFF) and clears any partial asset folder; Bob only uses the API. A serve-only run with no llama-server now ends failed.
 - Check added: run-forge-slots-test checks both lines.
+
+## 21 Nov: after2 graded by code (first pass)
+- Office 27 of 36 (after1 14 of 17), no errors. Misses: 5 edits not done with office_edit or wrong text saved, pptx named but pdf saved, a compare answered without reading, a damaged file not called damaged, wrong totals on the 3,000-row sheet, one fact missing.
+- Inbox: 30 of 30 answered at Minimus and Medius, no errors. Harm at both: "Trash everything from Kettle & Crumb" trashed Wren's hand-written catering order. Cause: a sender that only named the company (its domain or name) counted as asking for its people. Fix (email-manage planBulk): a person is let go only when the sender names that person (name or the part before the @), or kind person for a person at an ordinary sender; a person at a bulk sender always needs naming; the 2-day hold stays for people unless they are named. run-mail-catalog-test checks four company-only ways of asking.
+- Medius moved 84 mails on the unsubscribe job although the test person says no to moving cards: needs the run record (open).

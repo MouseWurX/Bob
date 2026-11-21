@@ -433,15 +433,22 @@ export async function planBulk(cfg, args, opts = {}, { now = Date.now() } = {}) 
   const fill = await fillCatalog(cfg, { perCall: 100000, untilMs: Number(opts.fillMs) || 20000 }, opts);
   const cat = loadCatalog(cfg);
   const found = select(cat, args, { now });
-  const askedPeople = kinds.includes('person') || Boolean(args.sender);
+  // 21 Nov 2026 (after2: at Minimus and Medius, "Trash everything from Kettle & Crumb" trashed Wren's hand-written catering
+  // order): a sender that only names the company (its domain or name) used to count as asking for its people too. Now a
+  // person is let go only when the sender names that person (their name or the part of the address before the @), or,
+  // for a person at an ordinary sender, when kind person was asked; a person at a bulk sender always needs naming.
+  const want = String(args.sender || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const pl = (x) => String(x ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const named = (r) => Boolean(want) && want.length >= 3 && (pl(String(r.addr).split('@')[0]).includes(want) || pl(r.name).includes(want) || want.includes(pl(String(r.addr).split('@')[0])) && pl(String(r.addr).split('@')[0]).length >= 3);
+  const askedFor = (r) => named(r) || (kinds.includes('person') && r.sure);
   const recentFrom = now - HOLD_RECENT_DAYS * DAY;
   const held = { person: [], flagged: [], recent: [], scam: [] };
   const go = [], scams = [];
   for (const r of found) {
     if (r.flagged) held.flagged.push(r);
     else if (r.kind === 'scam' && what !== 'trash') held.scam.push(r);
-    else if ((r.kind === 'person' || !r.sure) && !askedPeople) held.person.push(r);
-    else if (!(Number(args.older_than_days) > 0) && !args.include_recent && !args.sender && r.at >= recentFrom) held.recent.push(r);
+    else if ((r.kind === 'person' || !r.sure) && !askedFor(r)) held.person.push(r);
+    else if (!(Number(args.older_than_days) > 0) && !args.include_recent && !(args.sender && ((r.kind !== 'person' && r.sure) || named(r))) && r.at >= recentFrom) held.recent.push(r);
     else { go.push(r); if (r.kind === 'scam') scams.push(r); }
   }
   const take = go.slice(0, BULK_MAX), over = go.length - take.length;

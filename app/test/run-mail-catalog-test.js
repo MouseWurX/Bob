@@ -101,6 +101,12 @@ const g = setup('owner', { size: 300, seed: 11, flavour: 'gmail', kind: 'graded'
   check('one undo puts every one back', /put back/.test(undone) && !Object.values(b.changed).some((c) => c.folders.some((f) => /trash/i.test(f))), undone);
   const both = await tool.check({ action: 'bulk', do: 'trash', sender: 'wren.ashvale' });
   check('asking for the person by name includes them', /Move to Trash: 1 message/.test(both), both.slice(0, 200));
+  for (const a of [{ sender: 'kettlecrumb' }, { sender: 'Kettle & Crumb' }, { sender: 'kettlecrumb.example' }, { org: 'Kettle & Crumb', kind: ['person', 'newsletter', 'notice', 'receipt', 'offer'] }]) {
+    const c = await tool.check({ action: 'bulk', do: 'trash', ...a });
+    check(`naming only the company (${JSON.stringify(a)}) still holds Wren back (after2 trashed her catering order)`, /Held back: 1 from a person/.test(c) && !/Wren/.test(c.split('Held back')[0]), c.slice(0, 300));
+  }
+  const byName = await tool.check({ action: 'bulk', do: 'trash', sender: 'Wren' });
+  check('asking for Wren by first name includes her catering mail', /Move to Trash: \d+ message/.test(byName) && /catering order/.test(byName.split('Held back')[0]), byName.slice(0, 200));
   const arch = await tool.check({ action: 'bulk', do: 'archive', org: 'Quillmoor Bank', older_than_days: 14 });
   check('archiving the bank\'s notices holds back the scam that copies the bank', /Archive: \d+ message/.test(arch) && (/look dangerous/.test(arch) || true), arch.slice(0, 300));
 }
