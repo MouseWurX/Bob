@@ -1,5 +1,5 @@
 {
- "name": "Lend a 6 GB copy cache to the reading step at 32K (Brain Engine 28, patch 0022): a 28K-token read, then one 600-token reply; staying at step 6144 with 4 GB against step 6144 with 6 GB and LLAMA_MOE_CACHE_LEND=4096, no switch, 5 rounds round-robin, cool-down on",
+ "name": "Lend a 6 GB copy cache to the reading step at 32K (Brain Engine 28, patch 0022): a 28K-token read, then one 600-token reply; staying at step 6144 with 4 GB against step 6144 with 6 GB and LLAMA_MOE_CACHE_LEND=4096, and step 8192 with the same lend, no switch, 5 rounds round-robin, cool-down on",
  "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 84)",
  "brain": "${BRAIN}",
  "engines": {
@@ -68,6 +68,21 @@
     "6144",
     "-ub",
     "6144",
+    "--moe-cache-mib",
+    "6144"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LEND": "4096"
+   }
+  },
+  {
+   "id": "h-stay-8192-c6144-lend4096",
+   "engine": "be28",
+   "args": [
+    "-b",
+    "8192",
+    "-ub",
+    "8192",
     "--moe-cache-mib",
     "6144"
    ],

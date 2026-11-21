@@ -938,12 +938,13 @@ reads (`LLAMA_MOE_CACHE_LEND=4096`), giving it back at the first short write. Pl
 `lend-bigcache-{32k,128k}-r{600,2000}.json` (`conductor-e2e.mjs`, Brain Engine 28, fixed placement, q4_0 memory,
 5 rounds taking turns, cool-down on): a 28,672-token read, then one reply of 600 tokens (thinking off) or 2,000
 tokens (thinking on), at a 48K or 136K context; way f stays at step 6144 with 4 GB, way g at step 6144 with 6 GB and
-the lend. The engine log gives the lend and refill times.
+the lend; way h (added before any run, the owner's ask) reads at step 8192 with the same 6 GB and lend. The engine log gives the lend and refill times.
 
 **Predictions, written before any run:** with the lend, g reads within 5% of f (Addendum 82's 6 GB read took 133 s
 without it); the refill after the read costs 0.3-1 s; g writes 5-12% faster (Addendum 82: 94 against 83 t/s at 32K,
 smaller at 128K). So g wins the 2,000-token job at 32K by 1-2 s and ties at 600 tokens and at 128K. Pass: g's median
-job is no longer than f's at every size and length, and g writes the same words in every round.
+job is no longer than f's at every size and length, and g writes the same words in every round. For h:
+reading 32K at step 8192 saves under 0.5 s against g, and at 128K it may not fit beside the larger memory.
 
 ## Addendum 83 (Nov 20, before any run): the conductor grows the copy cache for a long thinking reply, 32K
 
