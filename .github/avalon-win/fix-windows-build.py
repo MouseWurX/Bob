@@ -63,4 +63,23 @@ template <typename T, typename U> static inline T avalon_win_add_fetch(volatile 
 edit('moe-cache.cu', lambda s: s.replace('#include "moe-cache.cuh"\n', '#include "moe-cache.cuh"\n#include "avalon-win-atomics.h" // Windows build fix\n', 1))
 changes.append('avalon-win-atomics.h (new)')
 
+# 4. mmvq.cu, mul_mat_vec_q: nvcc's MSVC mode loses a brace when it instantiates the template ("expected a }" at the
+#    end of the function). The two constructs Avalon added there that upstream does not have: a "#pragma unroll"
+#    inside an "if constexpr" block (the q8_dst write, a loop over ncols_dst, a constant the compiler unrolls anyway),
+#    and an "else" whose statement is a bare switch. The pragma goes; the switch gets braces (same code).
+def mmvq(s):
+    a = ('                ggml_cuda_fence_acquire_device();\n#pragma unroll\n                for (int j = 0; j < ncols_dst; ++j) {\n')
+    assert s.count(a) == 1, 'mmvq.cu: q8_dst loop not found'
+    s = s.replace(a, '                ggml_cuda_fence_acquire_device();\n                for (int j = 0; j < ncols_dst; ++j) { // Windows build fix: no pragma inside if constexpr\n')
+    b = '                        } else\n                        switch (active_glu) {\n'
+    assert s.count(b) == 1, 'mmvq.cu: else switch not found'
+    s = s.replace(b, '                        } else { // Windows build fix: braces\n                        switch (active_glu) {\n')
+    c = ('                                result = result * gate_value;\n                                break;\n'
+         '                        }\n                    }\n')
+    assert s.count(c) == 1, 'mmvq.cu: switch end not found'
+    s = s.replace(c, '                                result = result * gate_value;\n                                break;\n'
+                     '                        }\n                        }\n                    }\n')
+    return s
+edit('mmvq.cu', mmvq)
+
 print('Windows build fixes applied to:', ', '.join(changes))
