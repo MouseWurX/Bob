@@ -1,0 +1,76 @@
+{
+ "name": "Avalon (plain, 0019bc9) vs Brain Engine 28 at short: a 1024-token file read then 5 follow-ups, BE28 on Bob's best settings (step 4096, 4 GB copy cache, share 0, fit target 1024, q8_0 memory), Avalon on its own defaults (step 32768, fit on) with the same memory type, 3 rounds alternating, cool-down on, retry once",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 89)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be28": {
+   "exe": "${BE28_SERVER}",
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1"
+   }
+  },
+  "avalon": {
+   "exe": "${AVALON_SERVER}"
+  }
+ },
+ "text": "long-text.md",
+ "textRepeat": 4,
+ "system": "You are a helpful assistant. Answer plainly.",
+ "bigRead": 1024,
+ "followUps": 5,
+ "followTokens": 200,
+ "replyTokens": 300,
+ "rounds": 3,
+ "alternate": true,
+ "retryOnce": true,
+ "saveText": true,
+ "spillCheck": true,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "wordsRef": "be28-best",
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "-c",
+  "32768",
+  "-ctk",
+  "q8_0",
+  "-ctv",
+  "q8_0",
+  "--fit",
+  "on"
+ ],
+ "ways": [
+  {
+   "id": "be28-best",
+   "engine": "be28",
+   "args": [
+    "--fit-target",
+    "1024",
+    "-b",
+    "4096",
+    "-ub",
+    "4096",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ]
+  },
+  {
+   "id": "avalon-defaults",
+   "engine": "avalon",
+   "args": [
+    "-b",
+    "32768",
+    "-ub",
+    "32768"
+   ]
+  }
+ ]
+}

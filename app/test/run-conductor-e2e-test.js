@@ -64,6 +64,15 @@ function fakeFx({ words = (body) => 'A', temps = [] } = {}) {
     const r = await m.runWay({ plan: { ...plan, followUps: 2 }, text, way: plan.ways[0], round: 0, fx, cool: null });
     check('each turn records its own lends and refills, and the summary gives them per job', r.turns.every((x) => x.lend?.lends === 1 && x.lend.refillMs === 300) && /\| 3 \(3-3\) \/ 3 \(3-3\), lend 100 \(100-100\), refill 300 \(300-300\) \|/.test(m.summariseE2e([r], plan)), m.summariseE2e([r], plan).split('\n')[2]); }
 
+  { check('with plan.alternate, odd rounds run the ways in reverse (A, B, then B, A)', m.order(plan.ways, 2, true).map((x) => x.way.id).join() === 'a,c,d,d,c,a');
+    check('the first differing word is found by turn and word, and same replies give none', m.firstDiff([{ text: 'a b' }, { text: 'c d e' }], [{ text: 'a b' }, { text: 'c x e' }]) === 'turn 2 word 2' && m.firstDiff([{ text: 'a b' }], [{ text: 'a b' }]) === '');
+    const sp = { ...plan, saveText: true, spillCheck: true, followUps: 1 };
+    const mk = (shared, mem) => { const fx = fakeFx(); let n = 0; fx.sharedGpuMB = async () => shared[Math.min(n++, shared.length - 1)]; fx.sampleCard = () => ({ stop: () => [{ tempC: 40, smMHz: 2000, memMB: mem }] }); return fx; };
+    const ra = await m.runWay({ plan: sp, text, way: plan.ways[0], round: 0, fx: mk([100, 100, 900], 15000), cool: null });
+    const rc = await m.runWay({ plan: sp, text, way: plan.ways[1], round: 0, fx: mk([100, 100, 100], 14000), cool: null });
+    const md = m.summariseE2e([ra, rc], sp);
+    check('each turn keeps its words, peak card memory and the shared-memory rise, and the summary shows them', ra.turns[1].spillMB === 800 && ra.turns[0].card.peakMemMB === 15000 && typeof ra.turns[0].text === 'string' && /\| a \| 1 \| .* \| 15000 \(15000-15000\) \| 800 \| - \|/.test(md) && /\| c \| 1 \| .* \| 14000 \(14000-14000\) \| 0 \| (same|turn \d+ word \d+) \|/.test(md), md); }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

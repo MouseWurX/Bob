@@ -86,6 +86,8 @@ export async function runWay({ plan, text, way, round, fx, cool }) {
   const eng = plan.engines[way.engine];
   const out = { way: way.id, round, turns: [], switches: [] };
   if (cool) out.coolDown = await coolWait(cool, fx);
+  // Nov 21 (Avalon vs BE28): Windows shared GPU memory before the load, then after each turn; a rise is a spill
+  const shared0 = plan.spillCheck && fx.sharedGpuMB ? await fx.sharedGpuMB() : null;
   const port = await fx.port();
   const args = ['-m', plan.brain, '--host', '127.0.0.1', '--port', String(port), ...(way.noBase ? [] : plan.baseArgs || []), ...(way.args || [])];
   const srv = fx.start(eng.exe, args, { ...(eng.env || {}), ...(way.env || {}) });
@@ -111,8 +113,9 @@ export async function runWay({ plan, text, way, round, fx, cool }) {
       const r = await fx.stream(srv.url, { prompt: chatText(history, !!plan.thinking), n_predict: (i > 0 && plan.followReplyTokens) || plan.replyTokens || 300, temperature: 0, seed: 42, ignore_eos: true, cache_prompt: true });
       const c = card ? cardSummary(card.stop()) : null;
       history.push({ role: 'assistant', content: r.text || '' });
+      const sharedNow = shared0 !== null ? await fx.sharedGpuMB() : null;
       const logNow = String(srv.log?.() || ''); const lt = lendTimes(logNow.slice(logAt)); logAt = logNow.length;
-      out.turns.push({ kind: turn.kind, firstWordMs: r.firstWordMs, totalMs: r.totalMs, readTps: r.readTps, writeTps: r.writeTps, promptN: r.promptN, writtenN: r.writtenN, textSha: r.textSha, ...(lt.lends || lt.refills ? { lend: lt } : {}), ...(c ? { card: { startTempC: c.startTempC, maxTempC: Number.isFinite(c.maxTempC) ? c.maxTempC : null, medSmMHz: c.medSmMHz, throttledSamples: c.throttledSamples ?? 0 } } : {}) });
+      out.turns.push({ kind: turn.kind, firstWordMs: r.firstWordMs, totalMs: r.totalMs, readTps: r.readTps, writeTps: r.writeTps, promptN: r.promptN, writtenN: r.writtenN, textSha: r.textSha, ...(plan.saveText ? { text: r.text || '' } : {}), ...(Number.isFinite(sharedNow) && Number.isFinite(shared0) ? { spillMB: Math.max(0, sharedNow - shared0) } : {}), ...(lt.lends || lt.refills ? { lend: lt } : {}), ...(c ? { card: { startTempC: c.startTempC, maxTempC: Number.isFinite(c.maxTempC) ? c.maxTempC : null, medSmMHz: c.medSmMHz, peakMemMB: Number.isFinite(c.peakMemMB) ? c.peakMemMB : null, throttledSamples: c.throttledSamples ?? 0 } } : {}) });
     }
     // the job's time to the last word, the cool-down pauses between turns left out (they are the test's, not the job's)
     out.jobS = r2((fx.now() - t0) / 1000 - coolS);
@@ -121,23 +124,35 @@ export async function runWay({ plan, text, way, round, fx, cool }) {
   return out;
 }
 
-export const order = (ways, rounds) => Array.from({ length: rounds }, (_, round) => ways.map((way) => ({ round, way }))).flat();
+// plan.alternate (Nov 21): odd rounds run the ways in reverse, so no engine always goes first (A, B, then B, A)
+export const order = (ways, rounds, alternate = false) => Array.from({ length: rounds }, (_, round) => (alternate && round % 2 ? [...ways].reverse() : ways).map((way) => ({ round, way }))).flat();
+
+// The first word (counted by spaces) where a run's replies part from the reference run's, as "turn N word M"; '' if same.
+export function firstDiff(turns = [], refTurns = []) {
+  for (let i = 0; i < Math.max(turns.length, refTurns.length); i++) {
+    const a = String(turns[i]?.text ?? '').split(/\s+/), b = String(refTurns[i]?.text ?? '').split(/\s+/);
+    for (let j = 0; j < Math.max(a.length, b.length); j++) if (a[j] !== b[j]) return `turn ${i + 1} word ${j + 1}`;
+  }
+  return '';
+}
+const failedRun = (r) => !!(r.notRun || r.failed || r.stopped);
 
 export function summariseE2e(results, plan = {}) {
   const f = (xs) => { const a = xs.filter(Number.isFinite); return a.length ? `${r2(median(a))} (${r2(Math.min(...a))}-${r2(Math.max(...a))})` : '-'; };
   const by = new Map();
   for (const r of results) { if (!by.has(r.way)) by.set(r.way, []); by.get(r.way).push(r); }
   const ref = plan.wordsRef || [...by.keys()][0];
+  const refRun = (by.get(ref) || []).find((r) => !failedRun(r) && r.turns?.every((t) => typeof t.text === 'string'));
   const refShas = new Set((by.get(ref) || []).map((r) => r.wordsSha).filter(Boolean));
-  const lines = ['| way | runs | job s to the last word | big read: read t/s | big read: first word s | follow-ups: read t/s | follow-ups: write t/s | switches s | cache grown MiB (card free MiB) | lends / refills per job, ms each (median) | same words as ' + ref + ' |', '|---|---|---|---|---|---|---|---|---|---|---|'];
+  const lines = ['| way | runs | job s to the last word | big read: read t/s | big read: first word s | follow-ups: read t/s | follow-ups: write t/s | switches s | cache grown MiB (card free MiB) | lends / refills per job, ms each (median) | same words as ' + ref + ' | peak card MB | shared spill MB (max) | first word that differs from ' + ref + ' |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const [id, rs] of by) {
     const ok = rs.filter((r) => !r.notRun && !r.failed && !r.stopped);
     const big = ok.map((r) => r.turns[0]).filter(Boolean), fol = ok.flatMap((r) => r.turns.slice(1));
     const sw = ok.map((r) => r.switches.reduce((s, x) => s + (x.totalS || 0), 0));
-    lines.push(`| ${id} | ${ok.length}${rs.length > ok.length ? ` (+${rs.length - ok.length} not run)` : ''} | ${f(ok.map((r) => r.jobS))} | ${f(big.map((t) => t.readTps))} | ${f(big.map((t) => t.firstWordMs / 1000))} | ${f(fol.map((t) => t.readTps))} | ${f(fol.map((t) => t.writeTps))} | ${ok.some((r) => r.switches.length) ? f(sw) : '-'} | ${(() => { const g = ok.flatMap((r) => r.switches.filter((x) => Number.isFinite(x.grewMib))); const fr = ok.flatMap((r) => r.switches.filter((x) => x.before === 'read' && x.freeMib).map((x) => Math.min(...x.freeMib))); return g.length ? `${f(g.map((x) => x.grewMib))}${fr.length ? ` (${f(fr)})` : ''}` : '-'; })()} | ${(() => { const ls = ok.flatMap((r) => r.turns.filter((t) => t.lend).map((t) => t.lend)); if (!ls.length) return '-'; const n = ok.map((r) => r.turns.reduce((s, t) => s + (t.lend?.lends || 0), 0)); const per = (k, c) => ls.filter((x) => x[c]).map((x) => x[k] / x[c]); return `${f(n)} / ${f(ok.map((r) => r.turns.reduce((s, t) => s + (t.lend?.refills || 0), 0)))}, lend ${f(per('lendMs', 'lends'))}, refill ${f(per('refillMs', 'refills'))}`; })()} | ${ok.filter((r) => refShas.has(r.wordsSha)).length} of ${ok.length} |`);
+    lines.push(`| ${id} | ${ok.length}${rs.length > ok.length ? ` (+${rs.length - ok.length} not run)` : ''} | ${f(ok.map((r) => r.jobS))} | ${f(big.map((t) => t.readTps))} | ${f(big.map((t) => t.firstWordMs / 1000))} | ${f(fol.map((t) => t.readTps))} | ${f(fol.map((t) => t.writeTps))} | ${ok.some((r) => r.switches.length) ? f(sw) : '-'} | ${(() => { const g = ok.flatMap((r) => r.switches.filter((x) => Number.isFinite(x.grewMib))); const fr = ok.flatMap((r) => r.switches.filter((x) => x.before === 'read' && x.freeMib).map((x) => Math.min(...x.freeMib))); return g.length ? `${f(g.map((x) => x.grewMib))}${fr.length ? ` (${f(fr)})` : ''}` : '-'; })()} | ${(() => { const ls = ok.flatMap((r) => r.turns.filter((t) => t.lend).map((t) => t.lend)); if (!ls.length) return '-'; const n = ok.map((r) => r.turns.reduce((s, t) => s + (t.lend?.lends || 0), 0)); const per = (k, c) => ls.filter((x) => x[c]).map((x) => x[k] / x[c]); return `${f(n)} / ${f(ok.map((r) => r.turns.reduce((s, t) => s + (t.lend?.refills || 0), 0)))}, lend ${f(per('lendMs', 'lends'))}, refill ${f(per('refillMs', 'refills'))}`; })()} | ${ok.filter((r) => refShas.has(r.wordsSha)).length} of ${ok.length} | ${f(ok.map((r) => Math.max(...r.turns.map((t) => t.card?.peakMemMB ?? -Infinity))))} | ${(() => { const sp = ok.flatMap((r) => r.turns.map((t) => t.spillMB)).filter(Number.isFinite); return sp.length ? String(Math.max(...sp)) : '-'; })()} | ${id === ref || !refRun ? '-' : ok.map((r) => (r.turns.every((t) => typeof t.text === 'string') ? firstDiff(r.turns, refRun.turns) || 'same' : '?')).join('; ')} |`);
   }
-  const bad = results.filter((r) => r.notRun || r.failed || r.switches?.some((s) => !s.ok));
-  if (bad.length) lines.push('', 'Problems:', ...bad.map((r) => `- ${r.way} round ${r.round + 1}: ${r.notRun || r.failed || r.switches.filter((s) => !s.ok).map((s) => `switch before ${s.before}: ${s.why}`).join('; ')}`));
+  const bad = results.filter((r) => r.notRun || r.failed || r.stopped || r.switches?.some((s) => !s.ok));
+  if (bad.length) lines.push('', 'Problems (each one is a result; a failed load is retried once when the plan says retryOnce):', ...bad.map((r) => `- ${r.way} round ${r.round + 1}${r.retry ? ' (retry)' : ''}: ${r.stopped ? `stopped: ${r.stopped}` : ''}${r.notRun || r.failed || r.switches.filter((s) => !s.ok).map((s) => `switch before ${s.before}: ${s.why}`).join('; ')}`));
   return lines.join('\n') + '\n';
 }
 
@@ -166,7 +181,7 @@ async function main() {
   const { plan, text, problems } = loadE2ePlan(planFile, { vars });
   if (problems.length) { console.error('The plan has problems:\n- ' + problems.join('\n- ')); process.exit(1); }
   const rounds = Number(opt('--rounds', plan.rounds || 5));
-  const todo = order(plan.ways, rounds);
+  const todo = order(plan.ways, rounds, !!plan.alternate);
   if (a.includes('--dry')) { console.log(`${todo.length} loads (${plan.ways.length} ways x ${rounds} rounds, round-robin). Text ${sha256(text).slice(0, 12)}. Nothing started.`); return; }
   fs.mkdirSync(outDir, { recursive: true });
   const lock = takeLock(plan.lock, 'conductor-e2e');
@@ -182,6 +197,13 @@ async function main() {
       const res = await runWay({ plan, text, way, round, fx, cool });
       results.push(res);
       fs.appendFileSync(path.join(outDir, 'runs.jsonl'), JSON.stringify(res) + '\n');
+      // plan.retryOnce (Nov 21, the owner: no gaps): a failed load or job is kept as a result, then run once more
+      if (plan.retryOnce && (res.notRun || res.failed) && !fx.shouldStop()) {
+        console.log(`round ${round + 1}/${rounds}: ${way.id} failed (${res.notRun || res.failed}), retrying once`);
+        const again = { ...(await runWay({ plan, text, way, round, fx, cool })), retry: true };
+        results.push(again);
+        fs.appendFileSync(path.join(outDir, 'runs.jsonl'), JSON.stringify(again) + '\n');
+      }
       fs.writeFileSync(path.join(outDir, 'summary-so-far.md'), summariseE2e(results, plan));
     }
   } finally { lock.release(); }
