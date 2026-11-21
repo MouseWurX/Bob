@@ -915,6 +915,17 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 87 (Nov 20, before any run): stand-in drift scored while writing
+
+Addendum 80's stand-in perplexity rows came back with zero KLD and 99.99% same top, the same as look-ahead, but the
+speed run's words show the stand-ins change the answer. `llama-perplexity` scores the text in big batches, and the
+stand-ins act only on the writing path, so that check measured nothing: its stand-in rows are void. Plan
+`perplexity-standins-decode-be26.json` scores 4K x 4 one token per step (`-ub 1`, the writing path) for the base
+(stand-ins off), stand-ins rank max 1 and max 2, and look-ahead 1 (lossless control).
+
+**Predictions, written before any run:** look-ahead 1 gives zero KLD; stand-ins max 1 KLD 0.005-0.02 and max 2 about
+twice that, same top 96-99%. They are Turbo-only whatever the result; the drift goes on the Turbo page.
+
 ## Addendum 86 (Nov 20, before any run): lending with Progressive Memory, and the ring grid filled in
 
 The owner asked whether lending (patch 0022) composes with Progressive Memory's 8-bit ring, and for the ring size to
