@@ -97,7 +97,15 @@ jobs:
           cmake -S . -B build -G "Ninja Multi-Config" -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DGGML_CUDA=ON -DGGML_CUDA_NCCL=OFF -DCMAKE_CUDA_ARCHITECTURES=120a-real -DLLAMA_OPENSSL=OFF -DLLAMA_USE_PREBUILT_UI=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DCMAKE_CUDA_COMPILER="%CUDA_PATH%\bin\nvcc.exe"
           rem No web page: Bob talks to the server API only, and the prebuilt page download from HF failed its file check.
           rem -k 0: keep going after a failed file, so one run lists every file Windows still rejects.
-          cmake --build build --config Release -j 4 --target llama-server llama-bench -- -k 0
+          rem The full log goes to a file (the job log view keeps only its end); on a failure, every failed file and error line is printed.
+          cmake --build build --config Release -j 4 --target llama-server llama-bench -- -k 0 > ..\build-log.txt 2>&1 || (echo BUILD FAILED & findstr /n /i /c:"FAILED:" /c:": error" /c:"error C" /c:"error LNK" /c:"fatal error" ..\build-log.txt & exit /b 1)
+      - name: Keep the full build log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: avalon-build-log
+          path: build-log.txt
+          if-no-files-found: ignore
       - name: Pack it with the CUDA runtime it needs
         shell: bash
         run: |
