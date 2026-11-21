@@ -917,16 +917,20 @@ table, on the card). Speed with BUILD is within 3% of off at every size.
 
 ## Addendum 89 (Nov 21, before any run): plain Avalon against Brain Engine 28
 
-The owner approved a head-to-head of plain Avalon (github freriadoc/Avalon at 0019bc94, MIT, a Flash-Next fork;
-built on GitHub, CUDA 12.9, sm_120a) against Brain Engine 28 on Bob's best settings. Plans
+The owner approved a head-to-head of Avalon (github freriadoc/Avalon at 0019bc94, MIT, a Flash-Next fork, plus
+Windows build-only fixes, listed in the zip's WINDOWS-BUILD-FIXES.diff; built on GitHub, CUDA 12.9, sm_120a) against Brain Engine 28 on Bob's best settings. Plans
 `avalon-vs-be28-{short,32k,64k,128k,256k}.json` (`conductor-e2e.mjs`): the conductor-e2e job at five sizes, a file
 read of 1,024 / 12,288 / 24,576 / 49,152 / 98,304 tokens then 5 follow-ups of 200 tokens, 300-word replies,
 temperature 0, seed 42, same text and questions for both engines (`-c` 32K for short chat and 32K, then 64K, 128K,
 256K). Brain Engine 28: step 4096, 4 GB copy cache, share 0, `--fit on` with target 1,024 (32K and under) or 512,
-`GGML_CUDA_NO_PINNED=1`. Avalon: its own defaults, step 32768, `--fit on`, no Bob keys. Both `-fa on`, `-np 1`,
+`GGML_CUDA_NO_PINNED=1`. Avalon: its own defaults, step 32768, `--fit on`, no Bob keys; its Linux build sets
+`CUDA_MODULE_LOADING=EAGER` and `GGML_CUDA_MOE_RING_PREFILL=900` itself at start and its Windows build skips that
+step, so the plans set both for it (its intended NVIDIA defaults). Both `-fa on`, `-np 1`,
 and the same memory type (q8_0 at 32K and under, q4_0 above). Avalon has no MTP head and no ranking file for this
 brain, so its cache starts cold. 3 rounds per size, the engines alternating (A, B, then B, A), cool-down before
-every load and turn with temperature and clocks logged, and a failed load or job recorded then retried once.
+every load and turn with temperature and clocks logged, and a failed load or job recorded then retried once. Round 3 at 128K runs with a normal desktop open (browser tabs
+and a muted video, as Addendum 45, started by the plan's busy-desktop command, then a minute to settle); those jobs
+get their own line, and if the desktop can't open they are listed as not run.
 Recorded per job: reading speed and first word on the big read, writing speed, the job time, peak card memory,
 the Windows shared GPU memory rise (spill), crashes, and the first word where Avalon's replies differ from Brain
 Engine 28's. No earlier rows are reused: tonight's 64K way b ran on Brain Engine 26 with `--fit off`, so it is not

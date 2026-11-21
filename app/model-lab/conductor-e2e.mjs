@@ -13,6 +13,7 @@
 // writing speed, each switch's seconds, the same words or not; median with min and max). It takes the PC test lock,
 // stops between turns on the stop file or a game, never compiles, never touches live Bob and reads no keys.
 import fs from 'node:fs';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { realFx, median, sha256, takeLock, freePort, coolTarget, coolWait, cardSummary } from './speed-test.mjs';
@@ -135,12 +136,23 @@ export function firstDiff(turns = [], refTurns = []) {
   }
   return '';
 }
+// plan.busy (Nov 21, the owner: round 3 at 128K on a normal desktop): before the first load of busy.round, start
+// busy.cmd (browser tabs and a muted video), wait busy.settleS, and mark that round's jobs busy. If it can't start, the
+// round's jobs are recorded as not run, never quietly run on a clean desktop.
+export async function openBusy(busy, fx) {
+  if (!busy?.cmd) return { ok: false, why: 'no busy-desktop command given' };
+  const r = await fx.runDetached(busy.cmd);
+  if (!r.ok) return { ok: false, why: `the busy desktop didn't open: ${r.why}` };
+  await fx.sleep((busy.settleS ?? 60) * 1000);
+  return { ok: true };
+}
 const failedRun = (r) => !!(r.notRun || r.failed || r.stopped);
 
 export function summariseE2e(results, plan = {}) {
   const f = (xs) => { const a = xs.filter(Number.isFinite); return a.length ? `${r2(median(a))} (${r2(Math.min(...a))}-${r2(Math.max(...a))})` : '-'; };
   const by = new Map();
-  for (const r of results) { if (!by.has(r.way)) by.set(r.way, []); by.get(r.way).push(r); }
+  // busy-desktop jobs get their own line, so they never move the clean-desktop medians
+  for (const r of results) { const k = r.busy ? `${r.way} (busy desktop)` : r.way; if (!by.has(k)) by.set(k, []); by.get(k).push(r); }
   const ref = plan.wordsRef || [...by.keys()][0];
   const refRun = (by.get(ref) || []).find((r) => !failedRun(r) && r.turns?.every((t) => typeof t.text === 'string'));
   const refShas = new Set((by.get(ref) || []).map((r) => r.wordsSha).filter(Boolean));
@@ -152,7 +164,7 @@ export function summariseE2e(results, plan = {}) {
     lines.push(`| ${id} | ${ok.length}${rs.length > ok.length ? ` (+${rs.length - ok.length} not run)` : ''} | ${f(ok.map((r) => r.jobS))} | ${f(big.map((t) => t.readTps))} | ${f(big.map((t) => t.firstWordMs / 1000))} | ${f(fol.map((t) => t.readTps))} | ${f(fol.map((t) => t.writeTps))} | ${ok.some((r) => r.switches.length) ? f(sw) : '-'} | ${(() => { const g = ok.flatMap((r) => r.switches.filter((x) => Number.isFinite(x.grewMib))); const fr = ok.flatMap((r) => r.switches.filter((x) => x.before === 'read' && x.freeMib).map((x) => Math.min(...x.freeMib))); return g.length ? `${f(g.map((x) => x.grewMib))}${fr.length ? ` (${f(fr)})` : ''}` : '-'; })()} | ${(() => { const ls = ok.flatMap((r) => r.turns.filter((t) => t.lend).map((t) => t.lend)); if (!ls.length) return '-'; const n = ok.map((r) => r.turns.reduce((s, t) => s + (t.lend?.lends || 0), 0)); const per = (k, c) => ls.filter((x) => x[c]).map((x) => x[k] / x[c]); return `${f(n)} / ${f(ok.map((r) => r.turns.reduce((s, t) => s + (t.lend?.refills || 0), 0)))}, lend ${f(per('lendMs', 'lends'))}, refill ${f(per('refillMs', 'refills'))}`; })()} | ${ok.filter((r) => refShas.has(r.wordsSha)).length} of ${ok.length} | ${f(ok.map((r) => Math.max(...r.turns.map((t) => t.card?.peakMemMB ?? -Infinity))))} | ${(() => { const sp = ok.flatMap((r) => r.turns.map((t) => t.spillMB)).filter(Number.isFinite); return sp.length ? String(Math.max(...sp)) : '-'; })()} | ${id === ref || !refRun ? '-' : ok.map((r) => (r.turns.every((t) => typeof t.text === 'string') ? firstDiff(r.turns, refRun.turns) || 'same' : '?')).join('; ')} |`);
   }
   const bad = results.filter((r) => r.notRun || r.failed || r.stopped || r.switches?.some((s) => !s.ok));
-  if (bad.length) lines.push('', 'Problems (each one is a result; a failed load is retried once when the plan says retryOnce):', ...bad.map((r) => `- ${r.way} round ${r.round + 1}${r.retry ? ' (retry)' : ''}: ${r.stopped ? `stopped: ${r.stopped}` : ''}${r.notRun || r.failed || r.switches.filter((s) => !s.ok).map((s) => `switch before ${s.before}: ${s.why}`).join('; ')}`));
+  if (bad.length) lines.push('', 'Problems (each one is a result; a failed load is retried once when the plan says retryOnce):', ...bad.map((r) => `- ${r.way} round ${r.round + 1}${r.retry ? ' (retry)' : ''}${r.busy ? ' (busy desktop)' : ''}: ${r.stopped ? `stopped: ${r.stopped}` : ''}${r.notRun || r.failed || r.switches.filter((s) => !s.ok).map((s) => `switch before ${s.before}: ${s.why}`).join('; ')}`));
   return lines.join('\n') + '\n';
 }
 
@@ -160,6 +172,12 @@ function liveFx(plan, outDir) {
   const fx = realFx(plan, outDir);
   return {
     ...fx, port: freePort, now: () => performance.now(),
+    sleep: fx.sleep || ((ms) => new Promise((r) => setTimeout(r, ms))),
+    runDetached(cmd) {
+      return new Promise((r) => {
+        try { const c = spawn(cmd, { shell: true, detached: true, stdio: 'ignore', windowsHide: false }); c.on('error', (e) => r({ ok: false, why: String(e.message || e) })); c.unref(); setTimeout(() => r({ ok: true }), 2000); } catch (e) { r({ ok: false, why: String(e.message || e) }); }
+      });
+    },
     async postJson(url, p, body) {
       try {
         const r = await fetch(url + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15 * 60e3) });
@@ -190,17 +208,21 @@ async function main() {
   const cool = coolTarget(plan, fx.cardTempC ? await fx.cardTempC() : null);
   if (cool) console.log(`card baseline: ${cool.idleC ?? '?'} °C idle; every load and turn starts at or under ${cool.cardC} °C (waits up to ${cool.maxWaitS} s)`);
   const results = [];
+  let busyAt = null;
   try {
     for (const { round, way } of todo) {
       const why = fx.shouldStop(); if (why) break;
-      console.log(`round ${round + 1}/${rounds}: ${way.id}`);
-      const res = await runWay({ plan, text, way, round, fx, cool });
+      const isBusy = plan.busy && round + 1 === plan.busy.round;
+      if (isBusy && !busyAt) { busyAt = await openBusy(plan.busy, fx); console.log(busyAt.ok ? `round ${round + 1}: normal desktop open` : busyAt.why); }
+      console.log(`round ${round + 1}/${rounds}: ${way.id}${isBusy ? ' (busy desktop)' : ''}`);
+      if (isBusy && !busyAt.ok) { const res = { way: way.id, round, turns: [], switches: [], busy: true, notRun: busyAt.why }; results.push(res); fs.appendFileSync(path.join(outDir, 'runs.jsonl'), JSON.stringify(res) + '\n'); continue; }
+      const res = { ...(await runWay({ plan, text, way, round, fx, cool })), ...(isBusy ? { busy: true } : {}) };
       results.push(res);
       fs.appendFileSync(path.join(outDir, 'runs.jsonl'), JSON.stringify(res) + '\n');
       // plan.retryOnce (Nov 21, the owner: no gaps): a failed load or job is kept as a result, then run once more
       if (plan.retryOnce && (res.notRun || res.failed) && !fx.shouldStop()) {
         console.log(`round ${round + 1}/${rounds}: ${way.id} failed (${res.notRun || res.failed}), retrying once`);
-        const again = { ...(await runWay({ plan, text, way, round, fx, cool })), retry: true };
+        const again = { ...(await runWay({ plan, text, way, round, fx, cool })), retry: true, ...(isBusy ? { busy: true } : {}) };
         results.push(again);
         fs.appendFileSync(path.join(outDir, 'runs.jsonl'), JSON.stringify(again) + '\n');
       }

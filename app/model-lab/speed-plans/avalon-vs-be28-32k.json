@@ -1,5 +1,5 @@
 {
- "name": "Avalon (plain, 0019bc9) vs Brain Engine 28 at 32k: a 12288-token file read then 5 follow-ups, BE28 on Bob's best settings (step 4096, 4 GB copy cache, share 0, fit target 1024, q8_0 memory), Avalon on its own defaults (step 32768, fit on) with the same memory type, 3 rounds alternating, cool-down on, retry once",
+ "name": "Avalon (0019bc9 plus Windows build-only fixes) vs Brain Engine 28 at 32k: a 12288-token file read then 5 follow-ups, BE28 on Bob's best settings (step 4096, 4 GB copy cache, share 0, fit target 1024, q8_0 memory), Avalon on its own defaults (step 32768, fit on, its Linux start-up keys CUDA_MODULE_LOADING=EAGER and GGML_CUDA_MOE_RING_PREFILL=900) with the same memory type, 3 rounds alternating, cool-down on, retry once",
  "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 89)",
  "brain": "${BRAIN}",
  "engines": {
@@ -10,7 +10,11 @@
    }
   },
   "avalon": {
-   "exe": "${AVALON_SERVER}"
+   "exe": "${AVALON_SERVER}",
+   "env": {
+    "CUDA_MODULE_LOADING": "EAGER",
+    "GGML_CUDA_MOE_RING_PREFILL": "900"
+   }
   }
  },
  "text": "long-text.md",

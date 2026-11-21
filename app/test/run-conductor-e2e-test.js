@@ -73,6 +73,13 @@ function fakeFx({ words = (body) => 'A', temps = [] } = {}) {
     const md = m.summariseE2e([ra, rc], sp);
     check('each turn keeps its words, peak card memory and the shared-memory rise, and the summary shows them', ra.turns[1].spillMB === 800 && ra.turns[0].card.peakMemMB === 15000 && typeof ra.turns[0].text === 'string' && /\| a \| 1 \| .* \| 15000 \(15000-15000\) \| 800 \| - \|/.test(md) && /\| c \| 1 \| .* \| 14000 \(14000-14000\) \| 0 \| (same|turn \d+ word \d+) \|/.test(md), md); }
 
+  { const slept = []; const fx = { runDetached: async (c) => (c === 'bad' ? { ok: false, why: 'not found' } : { ok: true }), sleep: async (ms) => slept.push(ms) };
+    const ok = await m.openBusy({ round: 3, cmd: 'open-desktop.cmd', settleS: 60 }, fx), bad = await m.openBusy({ round: 3, cmd: 'bad' }, fx), none = await m.openBusy({ round: 3 }, fx);
+    check('the busy desktop opens, then settles for a minute; a failure or a missing command says why', ok.ok && slept[0] === 60000 && !bad.ok && /didn't open: not found/.test(bad.why) && !none.ok);
+    const r0 = await m.runWay({ plan, text, way: plan.ways[0], round: 2, fx: fakeFx(), cool: null });
+    const md = m.summariseE2e([await m.runWay({ plan, text, way: plan.ways[0], round: 0, fx: fakeFx(), cool: null }), { ...r0, busy: true }, { way: 'c', round: 2, turns: [], switches: [], busy: true, notRun: "the busy desktop didn't open: x" }], plan);
+    check('busy-desktop jobs get their own line in the summary and are listed when they could not run', /\| a \| 1 \|/.test(md) && /\| a \(busy desktop\) \| 1 \|/.test(md) && /- c round 3 \(busy desktop\): the busy desktop didn't open/.test(md), md); }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();
