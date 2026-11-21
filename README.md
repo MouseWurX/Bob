@@ -217,10 +217,22 @@ Nothing trains, rents a card or uploads without the owner's go, and every rental
 |---|---|
 | **The Computer Science Lab**, where every step runs | [Below](#the-computer-science-lab), and the [Lab steps plan](app/docs/LAB-STEPS-PLAN.md) |
 | **The costs**, every rental and dollar, failures included | [What Bob costs to make](app/docs/COSTS.md) |
+| **How we test**, and how that changed | [How we test brains](app/docs/TESTING.md) · [the harness log](app/model-lab/harness-log.md) |
 | **The models**, each with a card that says what it is and how it scored | [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) · [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) · [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) (none is in Bob's catalogue since 1.5.245) · [gpt-oss-120b cut to 38B](https://huggingface.co/MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF) (cut, not yet healed) |
 | **The data** | [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) (the lessons, clean, full and preference files) · [bob-studies](https://huggingface.co/datasets/MouseWurX/bob-studies) (surgery and interview studies, never used for training) |
 | **The dissertation** (draft, all 13 chapters) | [Clean lessons beat more lessons](app/docs/dissertation/README.md) |
 | **The record** | [Bob's own models](app/docs/BOBS-OWN-MODELS.md) (every score and what went wrong) · [the Forge journal](app/docs/FORGE-JOURNAL.md) (the lab notebook) |
+
+## How we test
+
+Brains are tested on **real jobs** in Bob's real loop, with his real tools, in a small made-up world built fresh for each job. How we test has changed a lot, and every change came from a run that went wrong. The whole story is in [How we test brains](app/docs/TESTING.md).
+
+- **The test bench proves itself first.** In the 800-job run, 47 results were the bench's fault, not the brain's. Now a self-test checks that every job is fair before a card is rented, and every run's faults are fixed and logged in the [harness log](app/model-lab/harness-log.md).
+- **Blind grading.** Claude Opus grades runs with the labels shuffled, on the answer the user actually sees.
+- **Checks from real mistakes.** Slips that kept coming back are now code checks at the end of Bob's turn (shipped in 1.5.248).
+- **Effort levels, Minimus to Maximus,** tested on the same 100 jobs. More effort isn't better yet.
+- **One untested category at a time,** starting with Office files.
+- **Code does the clerk work.** On mail, the brain writes the rule and code does the paging, counting and moving (built, off by default, untested on a rental).
 
 ## Coming next
 
@@ -236,7 +248,7 @@ Nothing trains, rents a card or uploads without the owner's go, and every rental
 
 ## What it costs
 
-Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 15 Nov 2026: about **$2,002** spent in all, of which about $496 is rented GPU time (failures included), and about $2,501 to $2,575 projected for the planned family of models. The page lists every rental and what came of it.
+Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 16 Nov 2026: about **$2,757** spent in all, of which $549 is rented GPU time (failures included), and about $3,262 to $3,340 projected for the planned family of models. Most test rentals cost under $2.50; the 800-job run cost $19.42. The page lists every rental and what came of it.
 
 ## What Bob does
 
