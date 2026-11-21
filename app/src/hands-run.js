@@ -12,6 +12,7 @@ import { isSensitive } from './tools.js';
 import { limitOn, readOnlyRoots } from './hands-settings.js';
 import { killTree as stopTree } from './platform.js';
 import { trackChild } from './hang-guard.js'; // item 213: Stop really stops
+import { findOnPath } from './coding-agents.js';
 
 const MAX_OUT = 400_000; // characters of output kept for Bob (the chat gets all of it live); tool-kinds.js trims it smartly after (RESULT_MAX)
 const WIN = process.platform === 'win32';
@@ -170,7 +171,7 @@ export function checkCommand(cfg, { cmd, args = [], cwd } = {}) {
       if (inside) return no(`The script ${path.basename(file)} is refused: it ${inside}.`);
     } catch { if (SCRIPT_EXT.has(ext)) return no(`The script ${file} doesn't exist.`); }
   }
-  if ((ext === '.bat' || ext === '.cmd') && args.some((a) => CMD_META.test(a))) return no('Arguments to a .bat or .cmd file may not contain & | < > ^ % ! or quotes (Windows would read them as commands).');
+  if ((ext === '.bat' || ext === '.cmd' || /\.(bat|cmd)$/i.test(bareShim(cmd))) && args.some((a) => CMD_META.test(a))) return no('Arguments to a .bat or .cmd file may not contain & | < > ^ % ! or quotes (Windows would read them as commands).');
   if (name === 'cmd' && args.some((a) => /^\/[a-z]$/i.test(a) && !/^\/[cdsq]$/i.test(a))) return no('Only cmd /c (run one command) is allowed.');
   const kind = SCRIPT_EXT.has(ext) ? 'script' : INTERPRETERS.has(name) ? 'interpreter' : 'program';
   return { ok: true, why: '', line, kind, file };
@@ -201,6 +202,17 @@ export function safeEnv(env = process.env) {
   return out;
 }
 
+// 21 Nov 2026 (the repo-jobs test): on Windows, npm, npx, pnpm and yarn are .cmd shims, and with no shell Windows
+// can't start a bare "npm"; Bob's own "run the tests" nudge says npm test. A bare name with no extension is looked up on
+// PATH (with PATHEXT) and, when it's a .cmd or .bat, goes through cmd /d /c like any other one, with the same refusal of
+// cmd's special characters. Elsewhere, and for anything already named in full, nothing changes.
+export function bareShim(cmd, { win = WIN, env = process.env, find = findOnPath } = {}) {
+  const c = String(cmd || '');
+  if (!win || !c || /[\\/]/.test(c) || path.extname(c)) return '';
+  const f = find(c, { env, os_: 'win' });
+  return /\.(bat|cmd)$/i.test(f) ? f : '';
+}
+
 // How to start it without a shell. .ps1 goes through PowerShell -File, .py through Python, and .bat/.cmd
 // through cmd /d /c (the only way Windows runs them; checkCommand already refused cmd's special characters).
 export function launchPlan(cmd, args) {
@@ -229,7 +241,7 @@ const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07/g;
 // Runs it. Resolves with { code, out, killed, why } and never throws for the program's own failure.
 export function runCommand({ cmd, args = [], cwd, timeoutMs = 15 * 60_000, signal, onOutput = () => {}, onStart = () => {}, env } = {}) {
   return new Promise((resolve) => {
-    const plan = launchPlan(path.isAbsolute(cmd) || !/[\\/]/.test(cmd) ? cmd : path.resolve(cwd, cmd), args);
+    const plan = launchPlan(bareShim(cmd) || (path.isAbsolute(cmd) || !/[\\/]/.test(cmd) ? cmd : path.resolve(cwd, cmd)), args);
     let out = '', killed = '', child;
     const keep = (t) => { out += t; if (out.length > MAX_OUT) out = '[...earlier output cut...]\n' + out.slice(-MAX_OUT); };
     try {

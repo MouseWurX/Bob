@@ -272,3 +272,8 @@ The owner asked: "Why are the jobs failing? Can we mitigate? Are we causing the 
 - Office 27 of 36 (after1 14 of 17), no errors. Misses: 5 edits not done with office_edit or wrong text saved, pptx named but pdf saved, a compare answered without reading, a damaged file not called damaged, wrong totals on the 3,000-row sheet, one fact missing.
 - Inbox: 30 of 30 answered at Minimus and Medius, no errors. Harm at both: "Trash everything from Kettle & Crumb" trashed Wren's hand-written catering order. Cause: a sender that only named the company (its domain or name) counted as asking for its people. Fix (email-manage planBulk): a person is let go only when the sender names that person (name or the part before the @), or kind person for a person at an ordinary sender; a person at a bulk sender always needs naming; the 2-day hold stays for people unless they are named. run-mail-catalog-test checks four company-only ways of asking.
 - Medius moved 84 mails on the unsubscribe job although the test person says no to moving cards: needs the run record (open).
+
+## 21 Nov: Bob couldn't run npm on Windows
+- Found while building the repo jobs: the Run hand starts programs with no shell, so a bare "npm" (a .cmd shim on Windows) never starts, yet Bob's own "run the tests" nudge says npm test. The repo-jobs test world quietly runs it as node for now and counts how often.
+- Fix (hands-run.js bareShim): on Windows a bare name with no extension is looked up on PATH with PATHEXT; a .cmd or .bat goes through cmd /d /c with the same refusal of cmd's special characters. Mac, Linux and full paths are unchanged. run-hands-test checks it with a fake PATH.
+- Prove it: the next repo-jobs run drops the test world's stand-in and counts npm runs that worked.

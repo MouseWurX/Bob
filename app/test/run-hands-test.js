@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { cleanHands, handOn, toolsOff, HANDS } from '../src/hands-settings.js';
-import { checkCommand, runCommand, safeEnv } from '../src/hands-run.js';
+import { checkCommand, runCommand, safeEnv, bareShim } from '../src/hands-run.js';
 import { collect, writeZip, unzip, readZipList, safeEntryName } from '../src/zip.js';
 import { planFiles, applyFiles, undoJob, loadJournal, guardPath, handsRoots } from '../src/hands-files.js';
 import { handsTools, stopEverything, runApproved, saveRecipe, loadRecipes, handsPrompt, runningNow } from '../src/hands.js';
@@ -315,6 +315,12 @@ const put = (rel, body = 'x', root = work) => { const f = path.join(root, rel); 
   check('every run is in the logbook', logs.filter((l) => /^hands: run:/.test(l)).length >= 3);
 }
 
+{ // 21 Nov 2026 (repo-jobs test): Windows can't start a bare "npm" without a shell; it is found on PATH as npm.cmd
+  const find = (n, o) => (o.os_ === 'win' && ['npm', 'npx'].includes(n) ? `C:\\Program Files\\nodejs\\${n}.cmd` : '');
+  check('Windows: a bare npm is found as its .cmd shim', bareShim('npm', { win: true, find }) === 'C:\\Program Files\\nodejs\\npm.cmd');
+  check('not on Windows, or named in full, nothing changes', bareShim('npm', { win: false, find }) === '' && bareShim('npm.cmd', { win: true, find }) === '' && bareShim('C:\\x\\npm', { win: true, find }) === '');
+  check('a real program that is not a shim stays as it is', bareShim('git', { win: true, find: () => 'C:\\Git\\git.exe' }) === '');
+}
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
