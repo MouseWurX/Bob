@@ -67,6 +67,7 @@ changes.append('avalon-win-atomics.h (new)')
 #    end of the function). The two constructs Avalon added there that upstream does not have: a "#pragma unroll"
 #    inside an "if constexpr" block (the q8_dst write, a loop over ncols_dst, a constant the compiler unrolls anyway),
 #    and an "else" whose statement is a bare switch. The pragma goes; the switch gets braces (same code).
+#    (Build 8 confirmed the brace fix.)
 def mmvq(s):
     a = ('                ggml_cuda_fence_acquire_device();\n#pragma unroll\n                for (int j = 0; j < ncols_dst; ++j) {\n')
     assert s.count(a) == 1, 'mmvq.cu: q8_dst loop not found'
@@ -79,6 +80,10 @@ def mmvq(s):
     assert s.count(c) == 1, 'mmvq.cu: switch end not found'
     s = s.replace(c, '                                result = result * gate_value;\n                                break;\n'
                      '                        }\n                        }\n                    }\n')
+    # GCC's __builtin_memcpy -> CUDA's memcpy (a fixed 16-byte copy, the same load)
+    d = '    __builtin_memcpy(&r, groups + 1 + MOE_GROUP_MAX_ROWS + c_ncols*chunk, sizeof(r));\n'
+    assert s.count(d) == 1, 'mmvq.cu: __builtin_memcpy not found'
+    s = s.replace(d, '    memcpy(&r, groups + 1 + MOE_GROUP_MAX_ROWS + c_ncols*chunk, sizeof(r)); // Windows build fix\n')
     return s
 edit('mmvq.cu', mmvq)
 
