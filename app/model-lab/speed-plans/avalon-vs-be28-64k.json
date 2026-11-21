@@ -64,7 +64,8 @@
     "4096",
     "--moe-cache-cpu-share",
     "0"
-   ]
+   ],
+   "rounds": 0
   },
   {
    "id": "avalon-defaults",
@@ -76,5 +77,6 @@
     "32768"
    ]
   }
- ]
+ ],
+ "reusedRows": "Brain Engine side: conductor-e2e-64k way b-fixed-4096 (Nov 20, Brain Engine 26, --fit off with a fixed --n-cpu-moe, same job), reused at the owner's word, not the same engine or placement"
 }

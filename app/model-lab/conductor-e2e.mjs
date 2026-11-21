@@ -126,7 +126,8 @@ export async function runWay({ plan, text, way, round, fx, cool }) {
 }
 
 // plan.alternate (Nov 21): odd rounds run the ways in reverse, so no engine always goes first (A, B, then B, A)
-export const order = (ways, rounds, alternate = false) => Array.from({ length: rounds }, (_, round) => (alternate && round % 2 ? [...ways].reverse() : ways).map((way) => ({ round, way }))).flat();
+// way.rounds (Nov 21, the owner: compare Avalon with the BE28 numbers we have): a way runs only its first N rounds.
+export const order = (ways, rounds, alternate = false) => Array.from({ length: rounds }, (_, round) => (alternate && round % 2 ? [...ways].reverse() : ways).filter((way) => !Number.isFinite(way.rounds) || round < way.rounds).map((way) => ({ round, way }))).flat();
 
 // The first word (counted by spaces) where a run's replies part from the reference run's, as "turn N word M"; '' if same.
 export function firstDiff(turns = [], refTurns = []) {

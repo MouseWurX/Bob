@@ -64,7 +64,8 @@
     "4096",
     "--moe-cache-cpu-share",
     "0"
-   ]
+   ],
+   "rounds": 1
   },
   {
    "id": "avalon-defaults",

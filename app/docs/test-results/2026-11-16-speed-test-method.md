@@ -936,6 +936,11 @@ the Windows shared GPU memory rise (spill), crashes, and the first word where Av
 Engine 28's. No earlier rows are reused: tonight's 64K way b ran on Brain Engine 26 with `--fit off`, so it is not
 the same settings.
 
+**Change before any run (Nov 21, the owner: "run Avalon vs be28's numbers, we have plenty"):** Avalon keeps its 3
+rounds at every size; Brain Engine 28 runs one load at short chat, 32K, 128K and 256K (the same job and words to
+compare against), and none at 64K, where tonight's conductor-e2e-64k way b (Brain Engine 26, `--fit off`, same job)
+is reused and marked as not the same engine or placement.
+
 **Predictions, written before any run:** Avalon's step-32768 reading wins the big reads from 32K up, by 1.3-2x at
 128K and 256K, and its first word comes sooner. Writing is within 10% either way at 32K and under; above that,
 Avalon's larger cache (it owns the spare memory) writes 5-15% faster. Avalon's words differ from Brain Engine 28's

@@ -80,6 +80,9 @@ function fakeFx({ words = (body) => 'A', temps = [] } = {}) {
     const md = m.summariseE2e([await m.runWay({ plan, text, way: plan.ways[0], round: 0, fx: fakeFx(), cool: null }), { ...r0, busy: true }, { way: 'c', round: 2, turns: [], switches: [], busy: true, notRun: "the busy desktop didn't open: x" }], plan);
     check('busy-desktop jobs get their own line in the summary and are listed when they could not run', /\| a \| 1 \|/.test(md) && /\| a \(busy desktop\) \| 1 \|/.test(md) && /- c round 3 \(busy desktop\): the busy desktop didn't open/.test(md), md); }
 
+  { const ws = [{ id: 'b', rounds: 1 }, { id: 'v' }, { id: 'z', rounds: 0 }];
+    check('a way with rounds runs only its first N rounds, and rounds 0 never runs', m.order(ws, 3, true).map((x) => x.way.id).join() === 'b,v,v,v'); }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();
