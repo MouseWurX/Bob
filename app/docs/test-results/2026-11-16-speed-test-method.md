@@ -931,7 +931,13 @@ be priced on a grid, not one point. Two plans:
 **Predictions, written before any run:** the same-step lend writes the same words as staying in every round, for
 both layouts, and costs under 1 s per job; at step 8192 with 6 GB lent the 110K read is 8-13 s shorter than at step
 4096 and writing is within 2% of staying, so the job is 6-12 s shorter. Ring 3,072 lands between 2,048 and 4,096 on
-KLD for both layouts. Pass for composition: words match and no row fails or refuses the lend.
+KLD for both layouts, with the curve bending early (16K x 2 scale): 8+3 about 0.030 KLD and 95.3% same top, 8+4
+about 0.018 and 96.6%. At or above those, the knee sits at 2,048 and small rings are the efficient pick; 8+3 under
+0.029 means the ring still has room to give. Pass for composition: words match and no row fails or refuses the lend.
+
+Lend frequency: a lend fires only on a read longer than N tokens, so in a chat it is one lend and one refill per turn
+that brings in a long text, none for short turns. `conductor-e2e.mjs` now records the lends and refills each turn adds
+to the engine log, with their times, and the summary gives them per job, so a 30-turn cost can be read off the runs.
 
 Labels for anything built from these tables: rows read off a run are "measured"; the step 8192 and 12,288 reading
 times in the owner's discussion of Nov 20 are fitted from two points and stay "estimate" until a run measures them;

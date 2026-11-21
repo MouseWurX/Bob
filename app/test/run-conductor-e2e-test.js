@@ -57,6 +57,13 @@ function fakeFx({ words = (body) => 'A', temps = [] } = {}) {
     const ctx = fx.seen.posts.filter((x) => x.p === '/context').map((x) => x.body);
     check('Bob\'s grow: after the read the cache grows to 4096 + min(2048, free - 768) for the long reply, with thinking on and the long reply length', ctx[1]?.moe_cache_mib === 6144 && r.switches[1].grewMib === 2048 && r.switches[1].cacheMib === 6144 && fx.seen.streams[1].n_predict === 2000 && fx.seen.streams[0].n_predict === 300 && fx.seen.streams[1].prompt.endsWith('<think>\n') && /\| e \| 1 \| .*\| 2048 \(2048-2048\) \(3000 \(3000-3000\)\) \|/.test(m.summariseE2e([r], gp)), { s1: fx.seen.streams.map((b) => [b.n_predict, b.prompt.slice(-12)]), md: m.summariseE2e([r], gp).split("\n")[2] }); }
 
+  { const lt = m.lendTimes('x\nMoE cache lent in 80.5 ms\ncache back from prompt reading: 4096 MiB uploaded again in 280 ms\nMoE cache lent in 90 ms\n');
+    check('the lend lines a turn adds are counted and timed', lt.lends === 2 && lt.lendMs === 170.5 && lt.refills === 1 && lt.refillMs === 280, lt);
+    const fx = fakeFx(); let log = ''; const st = fx.start; fx.start = (...a) => { const s2 = st(...a); return { ...s2, log: () => log }; };
+    const stream = fx.stream; fx.stream = async (u, b) => { log += 'MoE cache lent in 100 ms\nuploaded again in 300 ms\n'; return stream(u, b); };
+    const r = await m.runWay({ plan: { ...plan, followUps: 2 }, text, way: plan.ways[0], round: 0, fx, cool: null });
+    check('each turn records its own lends and refills, and the summary gives them per job', r.turns.every((x) => x.lend?.lends === 1 && x.lend.refillMs === 300) && /\| 3 \(3-3\) \/ 3 \(3-3\), lend 100 \(100-100\), refill 300 \(300-300\) \|/.test(m.summariseE2e([r], plan)), m.summariseE2e([r], plan).split('\n')[2]); }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

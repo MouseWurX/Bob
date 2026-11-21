@@ -61,6 +61,14 @@ export function growBy(grow, ctxJson) {
   return Math.max(0, Math.min(grow.maxMib ?? 2048, Math.min(...free) - (grow.marginMib ?? 768)));
 }
 
+// Nov 20 (the owner: a long chat lends on every long read, so price lending per turn): the lend (patch 0022) lines a
+// turn added to the engine log, "MoE cache lent in X ms" and "... uploaded again in X ms".
+export function lendTimes(logText = '') {
+  const lent = [...String(logText).matchAll(/MoE cache lent in ([\d.]+) ms/g)].map((m) => Number(m[1]));
+  const back = [...String(logText).matchAll(/uploaded again in ([\d.]+) ms/g)].map((m) => Number(m[1]));
+  return { lends: lent.length, lendMs: r2(lent.reduce((a, b) => a + b, 0)), refills: back.length, refillMs: r2(back.reduce((a, b) => a + b, 0)) };
+}
+
 // One switch the way Bob's conductor does it: save the chat, change the step, restore. Seconds for each part.
 export async function liveStep({ fx, url, step, slotFile, extra = {} }) {
   const t0 = fx.now();
@@ -87,7 +95,7 @@ export async function runWay({ plan, text, way, round, fx, cool }) {
     const turns = await makeTurns({ plan, text, fx, url: srv.url });
     const history = plan.system ? [{ role: 'system', content: plan.system }] : [];
     const t0 = fx.now();
-    let coolS = 0, lastCtx = null;
+    let coolS = 0, lastCtx = null, logAt = String(srv.log?.() || '').length;
     for (const [i, turn] of turns.entries()) {
       if (fx.shouldStop()) { out.stopped = fx.shouldStop(); break; }
       if (cool && i > 0) { const tc = fx.now(); const c = await coolWait(cool, fx); coolS += (fx.now() - tc) / 1000; out.turns.at(-1).coolAfter = c; }
@@ -103,7 +111,8 @@ export async function runWay({ plan, text, way, round, fx, cool }) {
       const r = await fx.stream(srv.url, { prompt: chatText(history, !!plan.thinking), n_predict: (i > 0 && plan.followReplyTokens) || plan.replyTokens || 300, temperature: 0, seed: 42, ignore_eos: true, cache_prompt: true });
       const c = card ? cardSummary(card.stop()) : null;
       history.push({ role: 'assistant', content: r.text || '' });
-      out.turns.push({ kind: turn.kind, firstWordMs: r.firstWordMs, totalMs: r.totalMs, readTps: r.readTps, writeTps: r.writeTps, promptN: r.promptN, writtenN: r.writtenN, textSha: r.textSha, ...(c ? { card: { startTempC: c.startTempC, maxTempC: Number.isFinite(c.maxTempC) ? c.maxTempC : null, medSmMHz: c.medSmMHz, throttledSamples: c.throttledSamples ?? 0 } } : {}) });
+      const logNow = String(srv.log?.() || ''); const lt = lendTimes(logNow.slice(logAt)); logAt = logNow.length;
+      out.turns.push({ kind: turn.kind, firstWordMs: r.firstWordMs, totalMs: r.totalMs, readTps: r.readTps, writeTps: r.writeTps, promptN: r.promptN, writtenN: r.writtenN, textSha: r.textSha, ...(lt.lends || lt.refills ? { lend: lt } : {}), ...(c ? { card: { startTempC: c.startTempC, maxTempC: Number.isFinite(c.maxTempC) ? c.maxTempC : null, medSmMHz: c.medSmMHz, throttledSamples: c.throttledSamples ?? 0 } } : {}) });
     }
     // the job's time to the last word, the cool-down pauses between turns left out (they are the test's, not the job's)
     out.jobS = r2((fx.now() - t0) / 1000 - coolS);
@@ -120,12 +129,12 @@ export function summariseE2e(results, plan = {}) {
   for (const r of results) { if (!by.has(r.way)) by.set(r.way, []); by.get(r.way).push(r); }
   const ref = plan.wordsRef || [...by.keys()][0];
   const refShas = new Set((by.get(ref) || []).map((r) => r.wordsSha).filter(Boolean));
-  const lines = ['| way | runs | job s to the last word | big read: read t/s | big read: first word s | follow-ups: read t/s | follow-ups: write t/s | switches s | cache grown MiB (card free MiB) | same words as ' + ref + ' |', '|---|---|---|---|---|---|---|---|---|---|'];
+  const lines = ['| way | runs | job s to the last word | big read: read t/s | big read: first word s | follow-ups: read t/s | follow-ups: write t/s | switches s | cache grown MiB (card free MiB) | lends / refills per job, ms each (median) | same words as ' + ref + ' |', '|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const [id, rs] of by) {
     const ok = rs.filter((r) => !r.notRun && !r.failed && !r.stopped);
     const big = ok.map((r) => r.turns[0]).filter(Boolean), fol = ok.flatMap((r) => r.turns.slice(1));
     const sw = ok.map((r) => r.switches.reduce((s, x) => s + (x.totalS || 0), 0));
-    lines.push(`| ${id} | ${ok.length}${rs.length > ok.length ? ` (+${rs.length - ok.length} not run)` : ''} | ${f(ok.map((r) => r.jobS))} | ${f(big.map((t) => t.readTps))} | ${f(big.map((t) => t.firstWordMs / 1000))} | ${f(fol.map((t) => t.readTps))} | ${f(fol.map((t) => t.writeTps))} | ${ok.some((r) => r.switches.length) ? f(sw) : '-'} | ${(() => { const g = ok.flatMap((r) => r.switches.filter((x) => Number.isFinite(x.grewMib))); const fr = ok.flatMap((r) => r.switches.filter((x) => x.before === 'read' && x.freeMib).map((x) => Math.min(...x.freeMib))); return g.length ? `${f(g.map((x) => x.grewMib))}${fr.length ? ` (${f(fr)})` : ''}` : '-'; })()} | ${ok.filter((r) => refShas.has(r.wordsSha)).length} of ${ok.length} |`);
+    lines.push(`| ${id} | ${ok.length}${rs.length > ok.length ? ` (+${rs.length - ok.length} not run)` : ''} | ${f(ok.map((r) => r.jobS))} | ${f(big.map((t) => t.readTps))} | ${f(big.map((t) => t.firstWordMs / 1000))} | ${f(fol.map((t) => t.readTps))} | ${f(fol.map((t) => t.writeTps))} | ${ok.some((r) => r.switches.length) ? f(sw) : '-'} | ${(() => { const g = ok.flatMap((r) => r.switches.filter((x) => Number.isFinite(x.grewMib))); const fr = ok.flatMap((r) => r.switches.filter((x) => x.before === 'read' && x.freeMib).map((x) => Math.min(...x.freeMib))); return g.length ? `${f(g.map((x) => x.grewMib))}${fr.length ? ` (${f(fr)})` : ''}` : '-'; })()} | ${(() => { const ls = ok.flatMap((r) => r.turns.filter((t) => t.lend).map((t) => t.lend)); if (!ls.length) return '-'; const n = ok.map((r) => r.turns.reduce((s, t) => s + (t.lend?.lends || 0), 0)); const per = (k, c) => ls.filter((x) => x[c]).map((x) => x[k] / x[c]); return `${f(n)} / ${f(ok.map((r) => r.turns.reduce((s, t) => s + (t.lend?.refills || 0), 0)))}, lend ${f(per('lendMs', 'lends'))}, refill ${f(per('refillMs', 'refills'))}`; })()} | ${ok.filter((r) => refShas.has(r.wordsSha)).length} of ${ok.length} |`);
   }
   const bad = results.filter((r) => r.notRun || r.failed || r.switches?.some((s) => !s.ok));
   if (bad.length) lines.push('', 'Problems:', ...bad.map((r) => `- ${r.way} round ${r.round + 1}: ${r.notRun || r.failed || r.switches.filter((s) => !s.ok).map((s) => `switch before ${s.before}: ${s.why}`).join('; ')}`));
