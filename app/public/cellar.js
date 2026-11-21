@@ -1381,6 +1381,7 @@ export function createCellar({ popOut = null } = {}) {
       }
       if ('margsmodel' in el.dataset) { speedModel = el.value; draw(); return; }
       if ('tunemodel' in el.dataset) { speedModel = el.value; draw(); return; } // Engine tuning
+      if ('tunefit' in el.dataset) { const r = await api('/api/settings', { engineTuning: { fitWindow: el.checked } }); settings.engineTuning = r.engineTuning; draw(); return; } // the window lever
       if (el.dataset.tunemode) { const r = await api('/api/settings', { engineTuning: { mode: el.dataset.tunemode } }); settings.engineTuning = r.engineTuning; draw(); return; }
       if (el.dataset.tune) {
         const m = el.dataset.model;

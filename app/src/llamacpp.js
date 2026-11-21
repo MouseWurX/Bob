@@ -29,7 +29,7 @@ import { LinkLog } from './link-log.js'; // what the link to a lent card carried
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
 import { tuningArgs } from './engine-tuning.js';
-import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT } from './conductor.js'; // off unless picked
+import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB } from './conductor.js'; // off unless picked
 import { turboStandins, STANDIN_ENV } from './engine-extras.js'; // Turbo: stand-ins (0043, off unless switched on)
 import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
@@ -632,13 +632,15 @@ export class LlamaCpp {
     else if (!args.includes('-ngl')) args.push('-ngl', '999');
     // The Conductor (Engine tuning, off unless picked): the start step is the chat step, and the reading needs a
     // place on disk while the step changes. A step set by hand (flags, the config file) means no Conductor.
-    this.condChat = 0;
+    this.condChat = 0; this.condWinFull = 0;
     if (conductorOn(this.cfg) && !cpu && this.role !== BESIDE && !tunedStep && !handFlags.some((a) => ['-b', '-ub', '--batch-size', '--ubatch-size'].includes(a))) {
       if (!args.includes('--slot-save-path')) args.push('--slot-save-path', path.join(this.cfg.dataDir, 'conductor'));
       const ub = args.lastIndexOf('-ub');
       this.condChat = ub >= 0 ? Number(args[ub + 1]) || CHAT_STEP : 512; // llama-server's own step when none is given
       const mc = args.lastIndexOf('--moe-cache-mib');
       this.condCacheBase = mc >= 0 ? Number(args[mc + 1]) || 0 : 0; // the copy cache it reads with; writing may get more
+      // Nov 21, the window lever (off unless switched on): the whole context it loads with, cut to the chat later
+      this.condWinFull = fitWindowOn(this.cfg) && this.condCacheBase > 0 ? Number(ctx || lc.ctx || DEFAULT_CTX) || 0 : 0;
     }
     // 101: what Auto chose and why, for Settings and the logbook (said once each time it changes).
     if (tune.said && tune.said !== this.tuneSaid) this.log?.('engine', `${model}: ${tune.said}`);
@@ -1239,7 +1241,7 @@ export class LlamaCpp {
     if (args.includes('--slot-save-path')) { try { fs.mkdirSync(args[args.indexOf('--slot-save-path') + 1] || startDir(this.cfg), { recursive: true }); } catch {} }
     this.slotDir = args.includes('--slot-save-path') ? args[args.indexOf('--slot-save-path') + 1] : ''; // where this engine run saves readings
     this.placeChat = null; // a fresh engine holds no chat's reading yet
-    this.condStep = this.condChat || 0; this.condOff = ''; this.condHeld = 0; this.condGrown = 0; this.condFree = null; this.condFreeAsked = false; // the Conductor starts each engine run at the chat step
+    this.condStep = this.condChat || 0; this.condOff = ''; this.condHeld = 0; this.condGrown = 0; this.condFree = null; this.condFreeAsked = false; this.condWin = this.condWinFull || 0; this.condWinExtra = 0; // the Conductor starts each engine run at the chat step, with the whole window
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
     if (args.includes('--moe-cache-mib') && turboStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...STANDIN_ENV }; this.log?.('engine', `${model}: Turbo stand-ins on (up to 2 missed experts a layer stood in for while writing; the words change)`); }
     if (this.tuneEnv && Object.keys(this.tuneEnv).length) env = { ...env, ...this.tuneEnv }; // Engine tuning, set by hand
@@ -1538,17 +1540,28 @@ export class LlamaCpp {
     const held = Math.min(this.condHeld || 0, total);
     const newTok = total - held;
     const outTok = expectOut({ think, task });
+    // the window lever (off unless switched on): the chat memory cut to this chat and its longest reply, the rest lent
+    // to the copy cache. Rides on a step switch when there is one, else switches by itself.
+    let win = null;
+    if (this.condWinFull > 0) {
+      const w = nextWindow({ cur: this.condWin, want: fitWindow({ full: this.condWinFull, total, reply: replyTokens(this.currentCtx, MAX_REPLY_TOKENS) }) });
+      if (w && w !== this.condWin) { const extra = this.condWinCache(model, w); win = { n_ctx: w, moe_cache_mib: this.condCacheBase + extra, _winExtra: extra }; }
+    }
     // a long read coming with the cache grown for writing: back to the reading cache first
-    if (this.condGrown && newTok >= MIN_NEW && !(await this.condSwitch(model, this.condStep, held, { moe_cache_mib: this.condCacheBase }))) return;
+    if (this.condGrown && newTok >= MIN_NEW && !(await this.condSwitch(model, this.condStep, held, win || { moe_cache_mib: this.condRead() }))) return;
+    if (!this.condGrown && win && this.condWin !== win.n_ctx && (win.n_ctx > this.condWin || held === 0)) {
+      this.log?.('engine', `${model}: Conductor: chat memory window ${this.condWin} -> ${win.n_ctx} tokens, expert copy cache ${this.condRead()} -> ${win.moe_cache_mib} MiB`);
+      if (!(await this.condSwitch(model, this.condStep, held, win))) return;
+    }
     // the card's free memory isn't known yet (it comes with each change): ask once, while the chat memory is empty
     if (this.cfg?.engineTuning?.growGuess === true && this.condCacheBase > 0 && this.condFree == null && !this.condFreeAsked && held === 0 && total < CACHE_FLIP_MAX && outTok >= CACHE_FLIP_MIN_OUT) {
       this.condFreeAsked = true;
-      await this.condSwitch(model, this.condStep, 0, { moe_cache_mib: this.condCacheBase });
+      await this.condSwitch(model, this.condStep, 0, { moe_cache_mib: this.condRead() });
     }
     const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: (this.condSpeeds ||= {})[model], switchS: switchGuess(held, st?.ratio) });
     // Nov 20: off unless engineTuning.growGuess is set (a test switch). Bob's 440 clean job lessons: replies with thinking
     // median 81 tokens, none over 1,500, so a guess made before the reply mostly misses; growing mid-reply is the way.
-    const grow = this.condOff || this.cfg?.engineTuning?.growGuess !== true ? 0 : cacheGrow({ total, outTok, cacheMiB: this.condCacheBase, freeMiB: this.condFree, grown: this.condGrown });
+    const grow = this.condOff || this.cfg?.engineTuning?.growGuess !== true ? 0 : cacheGrow({ total, outTok, cacheMiB: this.condRead(), freeMiB: this.condFree, grown: this.condGrown });
     if (p.plan === 'stay' && !grow) return;
     if (p.plan !== 'stay') {
       this.log?.('engine', planLine(model, p));
@@ -1564,13 +1577,26 @@ export class LlamaCpp {
       if (j?.timings) this.condLearn(model, { ...j.timings, predicted_n: 0 });
     }
     const step = p.plan === 'readBig' ? this.condChat : this.condStep;
-    if (grow) this.log?.('engine', `${model}: Conductor: a long reply is expected, so the expert copy cache grows from ${this.condCacheBase} to ${this.condCacheBase + grow} MiB for writing (the words may differ slightly from the reading cache's)`);
-    await this.condSwitch(model, step, total, grow ? { moe_cache_mib: this.condCacheBase + grow } : {});
+    if (grow) this.log?.('engine', `${model}: Conductor: a long reply is expected, so the expert copy cache grows from ${this.condRead()} to ${this.condRead() + grow} MiB for writing (the words may differ slightly from the reading cache's)`);
+    await this.condSwitch(model, step, total, grow ? { moe_cache_mib: this.condRead() + grow } : {});
   }
 
   // One step change: the reading saved, the step changed, the reading put back. Measured against the guess.
+  // the copy cache replies read with: the one the engine loaded with, plus what the window lever lent it
+  condRead() { return (this.condCacheBase || 0) + (this.condWinExtra || 0); }
+  // what a window of `win` tokens frees for the copy cache, from the brain's shape and its chat memory's number format
+  condWinCache(model, win) {
+    try {
+      const shape = ggufInfo(this.resolve(model).gguf)?.shape;
+      const args = memArgs(this.cfg, model, this.lc.args, this.memCaps()), tiers = this.tiersFor(model, this.condWinFull);
+      return windowCacheMiB(kvBytes(shape, this.condWinFull, args, tiers), kvBytes(shape, win, args, tiers));
+    } catch { return 0; }
+  }
+
   async condSwitch(model, step, held, more = {}) {
     const t0 = Date.now(), guess = switchGuess(held, this.condState?.[model]?.ratio);
+    const winExtra = more._winExtra;
+    more = Object.fromEntries(Object.entries(more).filter(([k]) => !k.startsWith('_')));
     const file = `conductor-${this.port}.bin`;
     if (held > 0) await this.slotAction('save', file);
     const res = await fetch(`${this.url}/context`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ n_batch: step, n_ubatch: step, ...more }), signal: AbortSignal.timeout(300000) });
@@ -1578,7 +1604,8 @@ export class LlamaCpp {
     const answer = await res.json().catch(() => ({}));
     this.condStep = step;
     this.condFree = freeFrom(answer); // Brain Engine 0047; null on an engine without it, and then the cache never grows
-    if ('moe_cache_mib' in more) this.condGrown = Math.max(0, more.moe_cache_mib - this.condCacheBase);
+    if ('n_ctx' in more) { this.condWin = Number(answer?.n_ctx) || more.n_ctx; this.condWinExtra = Number(winExtra) || 0; }
+    if ('moe_cache_mib' in more) this.condGrown = Math.max(0, more.moe_cache_mib - this.condRead());
     if (held > 0) {
       try { await this.slotAction('restore', file); } catch (e) { this.log?.('engine', `${model}: Conductor: the reading didn't come back (${e.message}), so the chat is read again`); }
       try { fs.rmSync(path.join(this.slotDir, file), { force: true }); } catch {}

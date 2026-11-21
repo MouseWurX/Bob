@@ -8,7 +8,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { LlamaCpp } from '../src/llamacpp.js';
-import { conductorOn, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX } from '../src/conductor.js';
+import { conductorOn, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP } from '../src/conductor.js';
 import { cleanTuning, mergeTuning } from '../src/engine-tuning.js';
 import { HELP } from '../public/help-content.js';
 
@@ -140,9 +140,40 @@ check('the free memory comes from the engine\'s answer (the tightest card), or n
 { calls.length = 0; freeMiB = 3000; const e = live(); e.condChat = CHAT_STEP; e.condStep = CHAT_STEP; e.condCacheBase = 4096; e.condHeld = 0;
   await e.conduct({ model: 'big', messages: [{ role: 'user', content: 'x'.repeat(3000) }], think: true });
   check('growing on a guess is off unless the test switch is set (job replies are short: median 81 tokens with thinking)', !calls.some((c) => /moe_cache_mib/.test(c)) && !e.condGrown, JSON.stringify(calls)); freeMiB = null; }
+// ---------- The window lever (Nov 21, Avalon's idea): chat memory cut to the chat, the rest lent to the copy cache ----------
+check('the window lever is off unless switched on, and only with the Conductor', !fitWindowOn({ engineTuning: { mode: 'conductor' } }) && !fitWindowOn({ engineTuning: { mode: 'bob', fitWindow: true } }) && fitWindowOn({ engineTuning: { mode: 'conductor', fitWindow: true } }));
+check('the window is the chat plus its longest reply plus 4K, in 16K steps, never under 16K or over the brain\'s own',
+  fitWindow({ full: 131072, total: 20000, reply: 32768 }) === 65536 && fitWindow({ full: 131072, total: 100, reply: 2048 }) === 16384 && fitWindow({ full: 131072, total: 120000, reply: 32768 }) === 131072 && fitWindow({ full: 0, total: 1 }) === 0);
+check('it grows whenever the chat needs it, and shrinks only when that halves it',
+  nextWindow({ cur: 65536, want: 81920 }) === 81920 && nextWindow({ cur: 65536, want: 49152 }) === 65536 && nextWindow({ cur: 65536, want: 16384 }) === 16384 && nextWindow({ cur: 0, want: 32768 }) === 32768);
+check('the cache gains the chat memory freed, in whole 256 MiB pieces', windowCacheMiB(2 * 2 ** 30, 2 ** 29) === 1536 && windowCacheMiB(2 ** 29, 2 ** 30) === 0 && windowCacheMiB(null, 1) === 0);
+check('cleanTuning keeps the switch only when it is on, and a change can turn it off', cleanTuning({ mode: 'conductor', fitWindow: true }).fitWindow === true && !('fitWindow' in cleanTuning({ mode: 'conductor', fitWindow: 'yes' }))
+  && mergeTuning({ mode: 'conductor' }, { fitWindow: true }).fitWindow === true && !('fitWindow' in mergeTuning({ mode: 'conductor', fitWindow: true }, { fitWindow: false })));
+{ const on = engineOf({ engineTuning: { mode: 'conductor', fitWindow: true }, readingSpeed: 'fastest' }); const a = on.buildArgs('big', { ctx: 131072 });
+  check('switched on with a copy cache, it knows the whole window it loaded with', a.includes('--moe-cache-mib') ? on.condWinFull === 131072 : on.condWinFull === 0, a.join(' '));
+  const off = engineOf({ engineTuning: { mode: 'conductor' }, readingSpeed: 'fastest' }); off.buildArgs('big', { ctx: 131072 });
+  check('switched off, no window', off.condWinFull === 0); }
+{ calls.length = 0; const e = live(); e.condChat = CHAT_STEP; e.condStep = CHAT_STEP; e.condCacheBase = 4096; e.condHeld = 0;
+  e.condWinFull = 131072; e.condWin = 131072; e.condWinExtra = 0; e.currentCtx = 131072; e.condWinCache = (_m, w) => (w < 131072 ? 1536 : 0);
+  await e.conduct({ model: 'big', messages: [{ role: 'user', content: 'x'.repeat(3000) }] });
+  const ctx = calls.filter((c) => c.startsWith('POST /context')).map((c) => JSON.parse(c.slice(14)));
+  check('a new short chat: the window shrinks to fit (no reading to save) and the cache takes the room', ctx.length === 1 && ctx[0].n_ctx === 49152 && ctx[0].moe_cache_mib === 5632 && !('_winExtra' in ctx[0]) && !calls.some((c) => /save/.test(c)) && e.condWin === 49152 && e.condRead() === 5632, JSON.stringify(calls));
+  check('it says so in the logbook', e.logs.some((l) => /window 131072 -> 49152 tokens, expert copy cache 4096 -> 5632 MiB/.test(l)));
+  calls.length = 0; e.condHeld = 3000;
+  await e.conduct({ model: 'big', messages: [{ role: 'user', content: 'x'.repeat(3600) }] });
+  check('the same chat a little longer: no switch', calls.length === 0, JSON.stringify(calls));
+  calls.length = 0; e.condHeld = 1000;
+  await e.conduct({ model: 'big', messages: [{ role: 'user', content: 'x'.repeat(60000) }] });
+  const grow = calls.filter((c) => c.startsWith('POST /context')).map((c) => JSON.parse(c.slice(14)));
+  check('the chat outgrows it: the reading saved, the window grows before the reply, put back', grow[0]?.n_ctx === 65536 && calls[0] === 'POST /slots/0?action=save' && calls[2] === 'POST /slots/0?action=restore' && e.condWin === 65536, JSON.stringify(calls)); }
+{ calls.length = 0; const e = live(); e.condChat = CHAT_STEP; e.condStep = CHAT_STEP; e.condCacheBase = 4096; e.condHeld = 0; e.currentCtx = 131072;
+  await e.conduct({ model: 'big', messages: [{ role: 'user', content: 'x'.repeat(3000) }] });
+  check('switched off: the window is never touched', !calls.some((c) => /n_ctx/.test(c)), JSON.stringify(calls)); }
 srv.close();
 
 // ---------- Settings, Help, FAQ, glossary ----------
+check('Settings offers the window lever under the Conductor', /data-tunefit/.test(read('public/cellar-engines.js')) && /tunefit/.test(read('public/cellar.js')));
+check('Help, the FAQ and the glossary explain the window lever', /Fit the chat memory to the chat/.test(HELP.find((h) => h.id === 'settings-speed')?.html || '') && /window/i.test(HELP.find((h) => h.id === 'faq-conductor-window')?.html || '') && /<dt>Chat memory window<\/dt>/.test(HELP.find((h) => h.id === 'glossary')?.html || ''));
 check('Settings offers "Let the Conductor drive"', /radio\('conductor', 'Let the Conductor drive'\)/.test(read('public/cellar-engines.js')));
 check('Settings Help names it', /Let the Conductor drive/.test(HELP.find((h) => h.id === 'settings-speed')?.html || ''));
 check('the FAQ answers it and says where it works', /Android app/.test(HELP.find((h) => h.id === 'faq-conductor' && h.group === 'FAQ')?.html || ''));

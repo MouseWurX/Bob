@@ -48,16 +48,19 @@ export function cleanTuning(t) {
   };
   if (Array.isArray(t?.list)) for (const row of t.list.slice(0, 200)) add(row?.model, row);
   if (t?.brains && typeof t.brains === 'object' && !Array.isArray(t.brains)) for (const [m, v] of Object.entries(t.brains)) add(m, v);
-  return { mode, brains };
+  // Nov 21: the Conductor's window lever (off unless switched on): the chat memory sized to the chat, the rest lent to
+  // the expert copy cache
+  return t?.fitWindow === true ? { mode, brains, fitWindow: true } : { mode, brains };
 }
 // the saved form of a cleaned tuning
-export const savedTuning = (t) => ({ mode: t.mode, list: Object.entries(t.brains).map(([model, l]) => ({ model, ...l })) });
+export const savedTuning = (t) => ({ mode: t.mode, ...(t.fitWindow === true ? { fitWindow: true } : {}), list: Object.entries(t.brains).map(([model, l]) => ({ model, ...l })) });
 
 // a change from the Settings page: { mode } and/or { model, levers } (levers replace that brain's, {} clears them);
 // gives the saved form
 export function mergeTuning(cur, change) {
   const t = cleanTuning(cur);
   if (MODES.includes(change?.mode)) t.mode = change.mode;
+  if (typeof change?.fitWindow === 'boolean') { if (change.fitWindow) t.fitWindow = true; else delete t.fitWindow; }
   if (typeof change?.model === 'string' && change.model && change.levers && typeof change.levers === 'object') {
     const l = cleanLevers(change.levers);
     if (Object.keys(l).length) t.brains[change.model] = l; else delete t.brains[change.model];

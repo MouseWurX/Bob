@@ -111,3 +111,28 @@ export function planLine(model, p) {
   const say = { readBig: `reading at step ${p.step}, then writing at the chat step`, big: `reading and writing at step ${p.step}`, back: `back to the chat step ${p.step}` }[p.plan];
   return say ? `${model}: Conductor: ${say} (${p.why})` : '';
 }
+
+// Nov 21, the window lever (Engine tuning, Conductor, off unless switched on; Avalon's idea, github freriadoc/Avalon,
+// MIT): a brain loads with chat memory for its whole context, but a chat rarely fills it. The window is cut to the chat
+// plus the longest reply it may write, in steps of 16K, and the chat memory that frees goes to the expert copy cache,
+// which writes faster the bigger it is. When the chat outgrows the window, the window grows back (and the cache
+// shrinks) before the reply: the same context change as a step switch, the reading kept.
+export const WIN_STEP = 16384;
+export const WIN_MIN = 16384;
+export const WIN_MARGIN = 4096; // tokens on top of the chat and the reply (chat template, tools, a guess on the low side)
+export const fitWindowOn = (cfg) => conductorOn(cfg) && cfg?.engineTuning?.fitWindow === true;
+// the window for a chat of `total` tokens that may write `reply` more, never over the brain's own `full` context
+export function fitWindow({ full = 0, total = 0, reply = 0 }) {
+  if (!(full > 0)) return 0;
+  const need = Math.max(0, total) + Math.max(0, reply) + WIN_MARGIN;
+  return Math.min(full, Math.max(WIN_MIN, Math.ceil(need / WIN_STEP) * WIN_STEP));
+}
+// the window to switch to: a bigger one whenever the chat needs it, a smaller one only when it at least halves the
+// window (a new, short chat), so a chat that grows a little doesn't switch back and forth; `cur` when nothing changes
+export function nextWindow({ cur = 0, want = 0 }) {
+  if (!(want > 0)) return cur;
+  if (!(cur > 0) || want > cur) return want;
+  return want <= cur / 2 ? want : cur;
+}
+// what the copy cache gains from a window: the chat memory it frees, whole 256 MiB pieces
+export const windowCacheMiB = (kvFullBytes, kvWinBytes) => Math.max(0, Math.floor((Number(kvFullBytes) - Number(kvWinBytes)) / 2 ** 20 / 256) * 256) || 0;
