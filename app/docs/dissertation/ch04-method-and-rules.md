@@ -926,6 +926,47 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 - **One unexplained word change.** Greedy drafting should give the same words, and the code edit did in all 6 rows. On the start chat, drafts of up to 8 gave different words from none, 16 and 64. This needs a look before drafts are offered.
 - **This rests on two prompts.** Beyond them it is unproven in our lab, as we have yet to test.
 
+**Strata's tricks (Brain Engine 26, 20 November, Addendum 80, 2 rounds, cool-down on, fixed placement, step 4096, 4 GB cache, q4_0).** Writing tokens a second, start chat / code edit / long prompt:
+
+| Setting | 32K | 128K |
+|---|---|---|
+| none (share 0) | 91.3 / 73.2 / 72.3 | 75.4 / 67.7 / 50.6 |
+| look-ahead 1 | 87.2 / 76.8 / 73.9 | 78.1 / 71.7 / 51.8 |
+| look-ahead 2 | 84.1 / 75.3 / 73.4 | 83.7 / 68.5 / 53.1 |
+| stand-ins, rank 1 | 105.7 / 74.1 / 78.4 | 92.4 / 74.2 / 51.2 |
+| stand-ins, rank 2 | 95.1 / 89.9 / 77.5 | 88.3 / 79.6 / 50.9 |
+| share 0.5 | 63.8 / 51.3 / 59.6 | 68.6 / 45.0 / 40.8 |
+| share 1 + learning | 58.1 / 25.9 / 33.4 | 48.8 / 22.1 / 23.8 |
+| share 1 + learning + doorbell | 58.4 / 25.3 / 30.9 | 48.7 / 21.3 / 22.1 |
+
+- **Look-ahead (patch 0041) is lossless and small.** It wrote the same words 6 of 6 times. It gained about 5% on 128K long prompts and lost 4% to 8% on 32K start chats, so it misses the 5% bar at 32K and is borderline at 128K. It is an opt-in for long contexts only.
+- **Stand-ins (patch 0043) write 16% to 23% faster on start chats and code edits** and about the same on long prompts. They change the words, so they are for Turbo only. Their perplexity run was void, because the perplexity tool reads in big batches and stand-ins act only while writing; their drift is unproven in our lab, as we have yet to test.
+- **The doorbell (patch 0042) fails.** It works as designed: every miss of a word runs on the processor, so with it share 0.5 behaves like share 1. Against share 1 with learning it was flat or worse.
+- **Sending misses to the processor got about 3 times slower per miss between Brain Engine 21 and 26** (share 1 with learning, 32K: 100.6 / 87.5 on Brain Engine 21 against 58.1 / 25.9 on 26, same command). Share 0, Bob's default, is unaffected. Patch 0040, which rounds processor work like the card, is the suspect; the check that turning it off restores the speed is unproven in our lab, as we have yet to test.
+- **The 128K no-trick row (50.6) is lower than section 57's 57.5** because this run fixed the placement instead of using --fit. Compare within this table only.
+
+**Bob's settings end to end at 64K (Addendum 79, 5 rounds, cool-down on).** A 24K file read, then 5 follow-ups with 300-word replies:
+
+| Way | Job s | First word on the big read s | Follow-up writing tokens a second |
+|---|---|---|---|
+| step 2048 throughout | 44.3 | 14.0 | 68.0 |
+| step 4096 throughout | **37.4** | 10.1 | 76.3 |
+| conductor: read at 6144, chat at 2048 | 38.7 | 8.8 | 71.4 |
+| stock llama.cpp b12359, its own defaults | 70.2 | 36.8 | 62.4 |
+
+- **Step 4096 throughout was best.** The conductor read faster but lost 1.25 s overall: about 1 s of switching and slower writing at step 2048. If the conductor stays, it should chat at 4096.
+- **Against stock defaults the job took 1.9 times as long.** Most of that gap comes from settings stock llama.cpp also accepts (the step, flash attention and the context cache), so this compares Bob's settings with stock defaults. It is not evidence that Brain Engine is faster than llama.cpp.
+
+**Speed testing was halted on 20 November at 8:34 PM by MouseWurX.** These were planned, with their plans written (speed-test-method Addenda 77 and 83 to 88), and never run. Each is unproven in our lab, as we have yet to test:
+- lending a 6 GB copy cache to the reading step, with step 8192, and with Progressive Memory at 128K
+- growing the copy cache for a reply known to be long
+- the 8+3 speed rerun at step 4096 with a 4 GB cache, so the Progressive verdict above stays provisional
+- a 3,072-word sharp copy
+- 8+2 with 2-bit chat memory
+- a 400 MB fit margin
+- the check of patch 0040 behind the processor-share slowdown
+- stand-in drift measured while writing
+
 ## 4.4 Benchmarks
 
 Each benchmark answers a different question. The table gives each one's size and what it measures. Chapters 5 to 9 report the results.
