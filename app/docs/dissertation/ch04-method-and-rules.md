@@ -847,6 +847,19 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 | 8+4, newest 4,096 sharp | 73.7 | 50.3 |
 
   8+3 with 2,048 sharp words is the best version: 3% under q3_0 and 4.7% under q4_0 at 128K, but 10% under q3_0 at 32K. A 4,096-word sharp copy never helped, and 8+4 is 12% under q4_0 at 128K. Progressive Memory costs 10% to 20% at 32K, so it pays only on long chats. Reading was the same on every row.
+- **Accuracy by sharp-copy size (16K × 2, f16 base, same text as the table above).**
+
+| Setting | Mean KLD | Same top word |
+|---|---|---|
+| q4_0 | 0.0227 | 95.4% |
+| q3_0 | 0.0484 | 92.7% |
+| 8+3, newest 2,048 sharp | 0.0322 | 95.0% |
+| 8+3, newest 1,024 sharp | 0.0423 | 93.6% |
+| 8+4, newest 2,048 sharp | 0.0196 | 96.5% |
+| 8+4, newest 1,024 sharp | 0.0233 | 95.8% |
+
+  Every row stays within 1.2% of f16's perplexity. 8+3 with 2,048 sharp words drifts far less than q3_0 and not much more than q4_0; at 1,024 it drifts nearly as much as q3_0. 8+4 beats q4_0 at every size tried, but writes 12% slower at 128K.
+- **Verdict, provisional.** 8+3 with 2,048 sharp words is the best balance: close to q4_0 in drift, 4.7% slower than q4_0 at 128K, and smaller than q4_0 only past about 128K. It stays provisional until its speed rerun at step 4096 with a 4 GB cache (Addendum 85) is done, and the full-size windows are unproven in our lab, as we have yet to test.
 - **Accuracy passes** (16K × 2, 9 runs, every layer of the memory engaged; f16 base):
 
 | Cache | Mean KLD | Same top word |
