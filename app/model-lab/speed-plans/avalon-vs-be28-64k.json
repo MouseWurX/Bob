@@ -72,9 +72,9 @@
    "engine": "avalon",
    "args": [
     "-b",
-    "32768",
+    "${AVALON_STEP}",
     "-ub",
-    "32768"
+    "${AVALON_STEP}"
    ]
   }
  ],
