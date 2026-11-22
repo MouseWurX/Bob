@@ -993,6 +993,64 @@ The method of section 4.3.3.1 stays. Three things were added after speed testing
 - **An absolute gate for lossy tricks (MouseWurX, 21 November).** A trick that changes the words, such as stand-ins or a cut, is judged on real jobs: the same after1 and after2 jobs and seeds, run with the trick on. It passes only if the jobs' graders mark the work correct, with no crashes, no bad tool calls and no broken files. Its count against the full brain is reported as information only. Perplexity, KL divergence, same top word and the 128K needle are early screens: a trick that fails them badly skips the real-jobs run, and passing them decides nothing.
 - **The harness comes before calibration.** No expert scoring or cut is made until Bob's harness passes its own jobs cleanly, with no broken tools, no blocked search and tests that run on Windows. Section 13.6.12 gives the reason.
 
+#### 4.3.3.11 Engine tests of 22 November (Brain Engine 29 to 31, and the patch 0040 check)
+
+Speed testing resumed on 22 November for the borrowing work of section 13.7. All runs below are on the home PC with stock Qwen3.6 35B unless the row says Flash-Next. Sources: the Calibrate thread's reports and the Speed thread's replies of 22 November, with plans on the speed-plans pull request (Addenda 94 to 98). Timings in the cloud are left out: only home-PC numbers are given.
+
+**Gate 1 on Brain Engine 29 (borrowed reading): FAIL.** Borrowing fired on every borrow load (5 of 5 jobs, 10 of 10 speed runs, 4 of 4 needle runs), but every log line read "reading step 4096 (own 4096)". The step never grew, because the cache could lend only 1,126 MiB (2,001 slots of its first bank) and step 8192 needed 1,726 MiB borrowed.
+
+| Way, 64K job (median of 5) | Job s | Follow-up writing t/s | Follow-up reading t/s |
+|---|---|---|---|
+| Brain Engine 28, fixed step 4096 | 47.1 | 88.5 | – |
+| Brain Engine 29, fixed step 4096 | 44.5 | 88.8 | 576 |
+| Brain Engine 29, borrow | 42.1 (5.4% shorter) | 87.7 | 685 |
+
+- Long-prompt writing with borrow: 71.4 against 74.2 t/s at 32K (3.8% slower) and 46.5 against 56.4 t/s at 128K (18% slower). Reading was about even: first word at 128K 50.1 s against 53.6 s.
+- Perplexity screen: KL divergence 0.00000, same top word 99.99%. The 128K needle: 10 of 10 for both q3_0 and Progressive 8+3.
+- No shared-memory spill: peak card memory at 128K was 15.63 to 15.65 GB on both ways, and the shared rise was 75 to 77 MB on every run, the same as the baseline.
+- Brain Engine 29's fixed way was itself 5.5% shorter than Brain Engine 28's on the same settings.
+
+Gate 1 needs writing no more than 2% slower, so it failed, and Bob kept Brain Engine 28's settings.
+
+**Where the 18% at 128K came from.** It was not borrowing. One fixed run at the borrow's batch size (`-b 16384 -ub 4096`, no borrow) wrote 44.9 t/s at 128K, and its words matched the borrow run's on every turn. Brain Engine 31's fixed way at `-b 16384` wrote 47.1 t/s at 128K and 78.5 at 32K. The logs show why: card buffers, cache size and reading step are identical, but the larger batch cuts the prompt's last piece at a different place, so the brain gives a different answer. That answer's experts hit the cache less in the second half of writing (83% against 96.6%), with about 10 GB more uploaded. So writing speeds across batch sizes are compared only between runs that wrote the same text, a rule added to every later plan (Addendum 96).
+
+**Brain Engine 31 (lending from every bank): void.** Its borrow way wrote "3333…" instead of words on every borrow run, at 32K and 128K, even where it fell back to step 4096. Its fixed way was normal (71.5 and 69.4 t/s on the sanity loads). The cause was found in patch 0051: the lent slots were not a whole number of the card's Q4_K and Q6_K blocks, so every expert after the first was read from the wrong place. The processor tests read in bytes and missed it. All Brain Engine 31 borrow numbers are void. The fix is patch 0052, in Brain Engine 32. From Brain Engine 32 on, every new build first gets a 2-minute word check ("2+2" and a short file summary, compared with the build before) before any long test.
+
+**Flash-Next on the home PC (Brain Engine 29, 32K, 2 rounds, both at `-b 16384`).** This is the full Flash-Next 125B (Q4_K_XL, 111 GB) on a 16 GB card and 32 GB of RAM, so most experts come from RAM and the drive. It ran in the test runner, not in Bob's chat.
+
+| Way | Job s | Big read t/s | First word s | Writing t/s | Peak card MB |
+|---|---|---|---|---|---|
+| No borrow | 2,697 | 22.0 | 563 | 1.3 | 12,636 |
+| Borrow | 2,090 | 36.1 | 342 | 1.75 | 12,747 |
+
+- Borrow made the big read 64% faster and the whole job 22% shorter. Writing hit the card cache for only 52% to 54% of experts, with about 1.2 TB uploaded per job and about 3 GB of the card left idle.
+- Borrow's words differed from no-borrow's at word 7 of turn 1, in both rounds. On Flash-Next, borrow reads at step 8192 against its own 4096, and Flash-Next's linear-attention layers work in chunks that follow the step, so this may be the step and not a bug. The check (plain at `-ub 8192` against borrow) has not run, so it is unproven in our lab, as we have yet to test. Until then the borrow row does not count as a pass.
+
+**The lock-up (Brain Engine 30, drive tier).** During the Flash-Next drive-tier runs, the home PC locked up at the second way. The log showed free RAM at a median of 281 MB and a low of 76 MB, with drive reads up to 3.4 GB/s: the 111 GB model, mapped from the drive, starved Windows of memory. All Flash-Next runs on the home PC were stopped by MouseWurX, and the drive-tier rows are incomplete. The answer is a RAM floor (patch 0054, in Brain Engine 32): when free RAM drops under 512 MiB, the engine gives memory back. Windows had held on for about 40 minutes at about 0.3 GB free and froze only near 0.1 GB, so 512 MiB was chosen as the default, kept as a setting. It turns on with the drive tier or drive stand-ins, so every later Flash-Next plan runs with the drive tier on. Whether 512 MiB keeps Windows responsive is unproven in our lab, as we have yet to test.
+
+**The processor-share slowdown is patch 0040 (Figure 4.5).** Section 4.3.3.8 found that sharing misses with the processor became about 3 times slower from Brain Engine 21 to 26. A bisect on 22 November (share 1, learn 16, 32K, start and code prompts, one round each) switched patch 0040's rounding (`LLAMA_MOE_CACHE_CPU_ROUND`) on and off across builds:
+
+| Build | Start prompt t/s | Code prompt t/s |
+|---|---|---|
+| Brain Engine 21 (before 0040) | 95.3 | 86.7 |
+| Brain Engine 22, 0040 on / off | 56.7 / 97.2 | 24.1 / 88.1 |
+| Brain Engine 25, 0040 on | 58.9 | 23.3 |
+| Brain Engine 26, 0040 on (`--poll 0`) / off | 58.6 / 92.7 | 23.7 / 84.1 |
+| Brain Engine 28, 0040 on / off | 58.4 / 95.1 | 24.0 / 82.2 |
+
+![Figure 4.5: writing speed on the code prompt with processor share, patch 0040 on and off](figures/cpu-share-0040.svg)
+
+*Figure 4.5. The patch 0040 bisect on the home PC, 22 November. Every build with 0040 on writes about 24 tokens a second on the code prompt; every build with it off is back at Brain Engine 21's speed. One round per row.*
+
+- With 0040 off, the words match Brain Engine 21 exactly. With it on, the start prompt's words differ. The cache hit rate barely moved (63.2% off, 65.9% on), and `--poll 0` changed nothing.
+- So 0040 is the whole slowdown, about 3.6 times on the code prompt. Patch 0040 rounds the processor's input in blocks of 32, like the card, to stop processor reads drifting from card reads, and its slow path was the cost.
+- The default, share 0, was never affected.
+- Instead of switching 0040 off, its rounding was rewritten as a one-pass kernel (patch 0055, in Brain Engine 33; extended to more expert types for Brain Engine 34). It passes 0040's own accuracy check on every type tested. Its speed was measured only in the cloud so far. On the home PC it is unproven in our lab, as we have yet to test.
+
+**A rule for defaults (MouseWurX, 22 November).** Every result row now says "same words: yes/no" against plain settings at the same step. A trick that keeps the same words, with no crash and no spill on the home PC, becomes a default. A trick that changes the words goes behind the Turbo button, and must also pass the real-jobs gate of section 4.3.3.10. For those tricks (drive stand-ins, the older stand-ins, the step changes that come with borrowing, and 0055's rounding), the real-jobs check is the same 99 jobs (30 mail, 36 office, 33 repo) as plain settings, about 2 to 5 hours per setting on the home PC (Addendum 97). None has run yet.
+
+**Still to run on the home PC** (in order): the Brain Engine 32 word check and Gate 1 rerun, the reading copy-against-compute split at steps 4096 and 8192, the borrow spare of 512 against 1,024 MiB at 64K and 128K, the processor-share rerun with patch 0055, and the doorbell's first run on the card. Flash-Next waits for MouseWurX to lift the stop.
+
 ## 4.4 Benchmarks
 
 Each benchmark answers a different question. The table gives each one's size and what it measures. Chapters 5 to 9 report the results.

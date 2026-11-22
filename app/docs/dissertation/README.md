@@ -42,6 +42,7 @@ Small open models can run a useful agent on one consumer graphics card, but how 
 
 - **Every main result in one table, with what each means:** [section 13.2.7](ch13-conclusion.md#1327-every-result-in-one-table-and-what-each-means-added-22-november).
 - **How speed is tested:** [section 4.3.3.1](ch04-method-and-rules.md#43331-how-the-speed-tests-were-run), with what was added since in [section 4.3.3.10](ch04-method-and-rules.md#433310-how-the-speed-method-carries-forward-added-22-november).
+- **Speed results:** every setting in [section 4.3.3.2](ch04-method-and-rules.md#43332-every-setting-tried-oldest-first), engine features in [section 4.3.3.8](ch04-method-and-rules.md#43338-engine-features-tested-19-to-20-november-brain-engine-21-and-22), and the tests of 22 November in [section 4.3.3.11](ch04-method-and-rules.md#433311-engine-tests-of-22-november-brain-engine-29-to-31-and-the-patch-0040-check).
 - **Where the work is heading:** [section 13.7](ch13-conclusion.md#137-where-the-work-is-heading-added-22-november).
 
 ## Figures
@@ -54,6 +55,7 @@ Every figure is drawn from a measured table in its chapter.
 | 4.2 | How far each chat-memory type drifts from full precision | 4 |
 | 4.3 | A 64K job with Bob's settings and with stock defaults | 4 |
 | 4.4 | Where the 16 GB card goes at 128K | 4 |
+| 4.5 | Sharing misses with the processor: the patch 0040 check | 4 |
 | 6.1 | What a full read found | 6 |
 | 9.1 | Experts per word: quality against speed | 9 |
 | 11.1 | after1: 200 real jobs, graded blind | 11 |

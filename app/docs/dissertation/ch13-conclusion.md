@@ -127,7 +127,7 @@ The answers above cover the five research questions. The thesis also measured ho
 | Steps per job | Median 2 everyday, 4 Office, 9 coding; longest 29; the old caps cost 5 of 96 runs (Figure 11.4) | Fixed step caps cut real work; they are removed | Moderate (518 runs) | 11 |
 | Broken tools | 1,650 calls read: none crashed or hung; Office file lookup failed 30% to 40% | The breakage was in finding files, not in the tools | Moderate | 11 |
 
-**Speed on the home PC** (method in section 4.3.3.1, with what was added since in section 4.3.3.10)
+**Speed on the home PC** (method in section 4.3.3.1, with what was added since in section 4.3.3.10, and the tests of 22 November in section 4.3.3.11)
 
 | Result | Measured | What it means | Strength | Ch. |
 |---|---|---|---|---|
@@ -137,7 +137,10 @@ The answers above cover the five research questions. The thesis also measured ho
 | The 256K cliff | Step 8192 leaves only 30 of 41 layers on the card; writing collapses (Figure 4.1) | Don't go past about 6144 at 256K | Strong (mechanism) | 4 |
 | The "spill" | It is the attention mask in pinned RAM, matched to the MiB in every load | No card memory went to RAM; the earlier speeds stand | Strong | 4 |
 | 3-bit and Progressive chat memory | q3_0 saves 22% of chat memory at 256K and passes perplexity; Progressive 8+4 beats q4_0 on every drift measure | Long chats can use less card memory at a measured speed cost | Provisional | 4 |
-| Sharing misses with the processor | About 3 times slower per miss from Brain Engine 21 to 26 | Keep the share at 0; patch 0040 is the suspect | Moderate | 4 |
+| Sharing misses with the processor | 24 against 82 to 88 t/s with patch 0040 on and off, Brain Engine 22 to 28 (Figure 4.5) | 0040 is the whole slowdown; a fast rewrite (0055) awaits its home-PC run | Moderate (one round per row) | 4 |
+| Borrowed reading, Brain Engine 29 (Gate 1) | 64K job 42.1 against 44.5 s; writing 3.8% slower at 32K, 18% at 128K; step stuck at 4096 | Failed the gate; the 128K drop was a different answer from a bigger batch, not borrowing | Moderate (5 rounds) | 4 |
+| Lending from every bank, Brain Engine 31 | Wrote "3333…" on every borrow run | A layout bug, fixed in Brain Engine 32; all its borrow numbers void | Strong (every run) | 4 |
+| Flash-Next 125B on the home PC | Borrow: job 2,090 against 2,697 s, reading 36 against 22 t/s, writing 1.75 against 1.3 t/s; then a lock-up at 76 MB free RAM | Borrow helps reading; writing waits on RAM and the drive; Flash-Next stopped until a RAM floor is tested | Provisional (2 rounds) | 4 |
 | Avalon's own Windows build | Crashed or hung at its own steps; 20 against 44 tokens a second with fusion off | Rebuild its ideas inside Brain Engine instead | Moderate (one session) | 4 |
 
 **What the table adds up to.** The lesson results (RQ1 to RQ3) are the best measured part of the thesis, and the decisive retrain is still missing. The speed results are many small, careful runs on one PC: they settle the defaults for that PC and say little about other machines. The harness results are new and single runs, but they changed the work: since 21 November the main task is making the stock brain finish real jobs reliably, before any more training or cutting.
