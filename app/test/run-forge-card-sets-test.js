@@ -74,7 +74,7 @@ check('--rent-plan shows what each set would post and posts nothing', rp.code ==
   const rd = (f) => fs.readFileSync(path.join(here, '..', 'model-lab', 'forge', f), 'utf8').replace(/\r\n/g, '\n');
   const dp = JSON.parse(rd('plans/jobs-deepseek-tools.json'));
   check('deepseek plan: fast sets only (H100 x4; the account allows one H200)', dp.card_sets.length > 0 && dp.card_sets.every((c) => c.count === 4 && c.gpus.every((g) => /H100/.test(g))));
-  check('deepseek plan: download limit and size set, caps 3 h / $28', dp.benchmark.download_max_minutes > 0 && dp.benchmark.models[0].download_gb > 0 && dp.hours_max === 3 && dp.dollars_max === 28);
+  check('deepseek plan: download limit and size set, caps 3 h / $35 (the owner raised it, 22 Nov)', dp.benchmark.download_max_minutes > 0 && dp.benchmark.models[0].download_gb > 0 && dp.hours_max === 3 && dp.dollars_max === 35);
   const sh = rd('pod/run.sh');
   check('run.sh: the split-GGUF download goes through dl_watched, which fails the run when too slow', /dl_watched\(\) \{/.test(sh) && /dl_watched \$W\/bench\/hf-\$BN "\$BGB" "\$BDM" hf download/.test(sh) && /die "download too slow/.test(sh));
 }

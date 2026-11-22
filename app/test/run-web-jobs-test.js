@@ -102,6 +102,8 @@ const tools = read('src/tools.js'), dj = read('model-lab/do-jobs.mjs');
 check("Bob's web tools ask cfg.webGet only when the Lab set one, else the internet as before", /const webGet = \(url, opts, signal\) => \(typeof cfg\.webGet === 'function' \? cfg\.webGet\(url, opts, signal\) : fetchRetry\(url, opts, signal\)\);/.test(tools) && /get: \(url, opts\) => webGet\(url, opts, signal\)/.test(tools) && /res = await webGet\(u, /.test(tools));
 check('do-jobs gives a web job its made-up web, no backup search and no shared cache, and keeps the log', /const ww = j\.web \? worldGet\(j\.web, \{ today \}\) : null;/.test(dj) && /if \(ww\) \{ delete kit\.cfg\.searchBackup; kit\.cfg\.webGet = ww\.get; \}/.test(dj) && /const live = name === 'web_search' && !bad && !ww;/.test(dj) && /web: ww\.log/.test(dj));
 
+const hp = JSON.parse(read('model-lab/forge/plans/jobs-held1.json')), hc = hp.benchmark.models[0].commands;
+check('the held1 plan: held, small caps, writes all four held sets and scores each', /^HELD/.test(hp.note) && hp.hours_max <= 2 && hp.dollars_max <= 3 && hp.publish.models.length === 0 && ['mail-jobs.mjs --catalog --held', 'office-jobs.mjs --held', 'repo-jobs.mjs --held --check', 'web-jobs.mjs'].every((x) => hc.some((c) => c.includes(x))) && ['mail-score', 'office-score', 'repo-score', 'web-score', 'tool-faults'].every((x) => hc.some((c) => c.startsWith(`node ${x}.mjs`))) && hc.some((c) => /jobs-matrix\.mjs --prefix held1 [^\n]*web=[^\n]*web-jobs\/jobs\.jsonl/.test(c)));
 fs.rmSync(home, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -30,7 +30,7 @@ const seq = (...xs) => { let i = 0; return () => xs[Math.min(i++, xs.length - 1)
   const spread = new Set(Array.from({ length: 20 }, () => backoffMs(3, { base: 1000 })));
   check('194 two waits are seldom the same (randomness)', spread.size > 5);
   check('194 jitter keeps a fixed wait within a quarter', jitter(1000, lo) === 750 && jitter(1000, hi) === 1250);
-  check('194 the engine, web, connected apps and other Bobs all use it', /jitter\(this\.delays/.test(read('src/handoff.js')) && /get: \(url, opts\) => fetchRetry\(url, opts, signal\)/.test(read('src/tools.js')) && /get\('https:\/\/html\.duckduckgo/.test(read('src/web-search.js')) && /backoffMs\(0, \{ base: 1000 \}\)/.test(read('src/mcp.js')) && /jitter\(pause\[i\]/.test(read('src/share-jobs.js')));
+  check('194 the engine, web, connected apps and other Bobs all use it', /jitter\(this\.delays/.test(read('src/handoff.js')) && /get: \(url, opts\) => webGet\(url, opts, signal\)/.test(read('src/tools.js')) && /: fetchRetry\(url, opts, signal\)\);/.test(read('src/tools.js')) && /get\('https:\/\/html\.duckduckgo/.test(read('src/web-search.js')) && /backoffMs\(0, \{ base: 1000 \}\)/.test(read('src/mcp.js')) && /jitter\(pause\[i\]/.test(read('src/share-jobs.js')));
   // withRetry: still retries, still stops at once on Stop
   let n = 0;
   const v = await withRetry(async () => { if (n++ === 0) throw new Error('flaky'); return 'ok'; }, { tries: 2, wait: 5 });

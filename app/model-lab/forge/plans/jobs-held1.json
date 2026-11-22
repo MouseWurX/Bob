@@ -1,0 +1,64 @@
+{
+ "run": "jobs-held1",
+ "note": "HELD: not to be rented until the owner gives the go. 22 Nov (the owner said yes to fresh jobs never used for tuning): stock Qwen at Medius on the held-out sets only: 14 inbox jobs on 4 new inboxes, 14 Office jobs on 9 new files, 12 repository jobs with new bugs, and 11 web jobs on a made-up web (no searches spent). Same Bob and brain as after3, so the two show whether the fixes carry over to jobs they were never tuned on. Never make lessons or tune anything from these runs.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA L40S",
+  "NVIDIA RTX 6000 Ada Generation"
+ ],
+ "step_up": [],
+ "disk_gb": 60,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 1.5,
+ "dollars_max": 2,
+ "rent_minutes": 60,
+ "download_quants": [],
+ "llama_tag": "b12359",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one server on one card: stock Qwen3.6 35B; inbox, office and repository jobs, then the three scorers and the tool-fault count (no expert map).",
+  "hours_each": 2.4,
+  "models": [
+   {
+    "name": "held1-qwen",
+    "nickname": "Qwen3.6-35B-A3B on the held-out inbox, office, repo and web jobs",
+    "file": "hf:unsloth/Qwen3.6-35B-A3B-MTP-GGUF:Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 8,
+    "ctx": 393216,
+    "extra": "",
+    "hours": 1.1,
+    "commands": [
+     "node mail-jobs.mjs --catalog --held --out ../../bob-model-lab/out/mail-jobs-held/jobs.jsonl",
+     "node office-jobs.mjs --held --out ../../bob-model-lab/out/office-jobs-held/jobs.jsonl",
+     "node repo-jobs.mjs --held --check --out ../../bob-model-lab/out/repo-jobs-held/jobs.jsonl",
+     "node web-jobs.mjs --out ../../bob-model-lab/out/web-jobs/jobs.jsonl",
+     "node jobs-matrix.mjs --prefix held1 --no-scenes --variants \"medius=--effort medium --solo-effort;office=--jobs ../../bob-model-lab/out/office-jobs-held/jobs.jsonl --parallel 2 --office ../../../lab-office/libreoffice/program/soffice.exe;repo=--effort medium --solo-effort --jobs ../../bob-model-lab/out/repo-jobs-held/jobs.jsonl --parallel 3;web=--effort medium --solo-effort --jobs ../../bob-model-lab/out/web-jobs/jobs.jsonl --parallel 3\" --url {{url}} --bob .. --jobs ../../bob-model-lab/out/mail-jobs-held/jobs.jsonl --parallel 2 --want-shapes 5 --max bob --hours 1",
+     "node mail-score.mjs --runs ../../bob-model-lab/out/held1-medius/runs.jsonl --out ../../bob-model-lab/out/held1-mail-score --digests",
+     "node office-score.mjs --runs ../../bob-model-lab/out/held1-office/runs.jsonl --out ../../bob-model-lab/out/held1-office-score",
+     "node repo-score.mjs --runs ../../bob-model-lab/out/held1-repo/runs.jsonl --out ../../bob-model-lab/out/held1-repo-score",
+     "node web-score.mjs --runs ../../bob-model-lab/out/held1-web/runs.jsonl --out ../../bob-model-lab/out/held1-web-score",
+     "node tool-faults.mjs --runs \"qwen held inbox=../../bob-model-lab/out/held1-medius/runs.jsonl,qwen held office=../../bob-model-lab/out/held1-office/runs.jsonl,qwen held repo=../../bob-model-lab/out/held1-repo/runs.jsonl,qwen held web=../../bob-model-lab/out/held1-web/runs.jsonl\" --out ../../bob-model-lab/out/held1-tool-faults"
+    ]
+   }
+  ]
+ },
+ "prep": [
+  "HELD: the owner gives the go before this is rented, and never while the owner's speed test runs on the PC.",
+  "Kit: the same kit as after3 (one kit serves both), rebuilt from the branch head that has the held-out sets (web-jobs.mjs, --held), with bob-wip/after3/after3-kit.patch applied; run the full tests in the kit before renting.",
+  "Pre-flight on npc first (node forge.mjs --plan plans/jobs-held1.json --preflight)."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20
+}

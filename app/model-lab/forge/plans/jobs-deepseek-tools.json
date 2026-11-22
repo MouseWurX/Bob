@@ -16,7 +16,7 @@
  "rungs": [],
  "direct": true,
  "hours_max": 3,
- "dollars_max": 28,
+ "dollars_max": 35,
  "rent_minutes": 360,
  "download_quants": [],
  "llama_tag": "b12359",
@@ -88,19 +88,13 @@
  "card_sets": [
   {
    "gpus": [
-    "NVIDIA H100 80GB HBM3"
+    "NVIDIA H100 PCIe"
    ],
    "count": 4
   },
   {
    "gpus": [
     "NVIDIA H100 NVL"
-   ],
-   "count": 4
-  },
-  {
-   "gpus": [
-    "NVIDIA H100 PCIe"
    ],
    "count": 4
   }
