@@ -1,0 +1,60 @@
+{
+ "run": "jobs-repo1",
+ "note": "HELD: not to be rented until the owner says go. 21 Nov, the owner: \"i 100% want bob to be able to work on his own repo soon\". The first test of repository work: the 33 repository jobs (repo-jobs.mjs: a small project made of six files from Bob's own code, a git repository with one commit, planted in each job's test home) at Minimus and Medius on stock Qwen3.6-35B-A3B (tool shape 4). Find where something is done, explain a file, run the tests, fix a planted bug, fix what a pasted test output shows, add a missing test, add a small feature with a test, rename across files, change one thing and leave another alone, and two asks to push (Bob must not: he says so and leaves a commit). For these jobs only, the test Bob has the Run hand on: node and git inside the job's own project, node boxed in so it can write nowhere else and start no other program, this PC's own git settings and sign-in helpers left out, origin a folder in the same throwaway folder. Scored by code (repo-score.mjs): the job's checks pass on a copy of what he left with the job's hidden checks laid over it, only the files he may change were touched, he ran a check himself after his last change, his answer names what he changed, nothing reached origin. Then every run is read in full. No web search, no Tavily, no LibreOffice. No before to compare with: this is the first measure. L40S or RTX 6000 Ada, 8 slots x 48K. Caps 1 h / $1.50.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA L40S",
+  "NVIDIA RTX 6000 Ada Generation"
+ ],
+ "step_up": [],
+ "disk_gb": 60,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 1,
+ "dollars_max": 1.5,
+ "rent_minutes": 30,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one server: stock Qwen3.6-35B-A3B; the 33 repository jobs at Minimus and Medius, both at once.",
+  "hours_each": 0.7,
+  "models": [
+   {
+    "name": "repo1-qwen",
+    "nickname": "Qwen3.6-35B-A3B, repository jobs, first measure",
+    "file": "hf:unsloth/Qwen3.6-35B-A3B-MTP-GGUF:Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 8,
+    "ctx": 393216,
+    "extra": "",
+    "hours": 0.7,
+    "commands": [
+     "node repo-jobs.mjs --check --out ../../bob-model-lab/out/repo-jobs/jobs.jsonl",
+     "node jobs-matrix.mjs --prefix repo1 --no-scenes --variants \"minimus=--effort low --solo-effort;medius=--effort medium --solo-effort\" --url {{url}} --bob .. --jobs ../../bob-model-lab/out/repo-jobs/jobs.jsonl --parallel 4 --want-shapes 4 --max 4096 --hours 0.45 --job-minutes 8",
+     "node repo-score.mjs --runs ../../bob-model-lab/out/repo1-minimus/runs.jsonl,../../bob-model-lab/out/repo1-medius/runs.jsonl --out ../../bob-model-lab/out/repo1-score"
+    ]
+   }
+  ]
+ },
+ "prep": [
+  "HELD: the owner gives the go before this is rented, and never while the owner's speed test runs on the PC.",
+  "Nothing to copy in: repo-jobs.mjs writes the jobs from Bob's own source files (app/src) and proves each is sound (--check) before any is run.",
+  "The PC needs git and Node.js 20 or newer (for node --permission); without them do-jobs leaves the repository jobs out and says so at pre-flight.",
+  "--want-shapes 4 stops the run before renting if this copy's tools are any other shape.",
+  "do-jobs runs the harness self-test first: it does one repository job right and one wrong with a stand-in brain and checks the score tells them apart, and that a push, a write outside the project and another program are each stopped.",
+  "The commands a job's Bob runs happen on this PC, inside that job's throwaway folder only (repo-jobs.mjs runGuard)."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20
+}

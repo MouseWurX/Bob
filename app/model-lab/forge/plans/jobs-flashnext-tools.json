@@ -1,0 +1,86 @@
+{
+ "run": "jobs-flashnext-tools",
+ "note": "HELD: not to be rented until the owner double-clicks Rent-flashnext-tools.cmd. 22 Nov, the owner asked to run a big brain like Flash-Next in Bob on a rented card, to see how it does with the tools and whether they need adapting to a new tool shape. Qwen3.8-Flash-Next (unsloth UD-Q4_K_XL, 4 parts, 103.7 GiB) in Bob at 3fff3cf with the npc fixes (npc-fixes-on-3fff3cf0.patch): no step count at any Effort, no nudge cap, no thinking budget, no fixed reply size (do-jobs --max bob = the whole slot, as Bob), no per-job clock (--job-minutes 0); the rental hours and dollars caps are the outer net. Same jobs and scorers as stock Qwen3.6-35B-A3B: the 30 inbox catalog jobs at Minimus and Medius (mail-score; before = after2, steps40), the 36 office jobs (office-score), the 33 repository jobs at Minimus and Medius (repo-score; before = repo1), plus the repository jobs at Medius with thinking on every step (--think-every-step; the owner: \"why are we limiting thinking at all?\"). tool-faults.mjs counts calls by fault kind next to stock Qwen. Served on Brain Engine (llama.cpp b12359 + all 14 engine patches, from 3fff3cf) so that after every job and score, one phase maps the experts each kind of job uses (trace-read.mjs --runs, --parallel 1, 20 runs a kind, --mass) into out/expert-map. H200 (103.7 GiB does not fit a 96 GB RTX PRO 6000), 15 slots x 48K (12 full-attention layers x 2 KV heads: ~24 KiB a token, ~17 GiB for all slots). Caps 2.1 h / $11.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.8-Flash-Next",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H200",
+  "NVIDIA H200 NVL"
+ ],
+ "step_up": [],
+ "disk_gb": 170,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 2.1,
+ "dollars_max": 11,
+ "rent_minutes": 30,
+ "download_quants": [],
+ "llama_tag": "b12359",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one server: Qwen3.8-Flash-Next; inbox, office and repository jobs at once, then the three scorers and the tool-fault count.",
+  "hours_each": 1.75,
+  "models": [
+   {
+    "name": "fnt-flashnext",
+    "nickname": "Qwen3.8-Flash-Next 125B, Bob at 3fff3cf, no counts",
+    "file": "hf:unsloth/Qwen3.8-Flash-Next-GGUF:UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 15,
+    "ctx": 737280,
+    "extra": "",
+    "hours": 1.75,
+    "commands": [
+     "node mail-jobs.mjs --catalog --out ../../bob-model-lab/out/mail-jobs-catalog/jobs.jsonl",
+     "node office-jobs.mjs --out ../../bob-model-lab/out/office-jobs/jobs.jsonl",
+     "node repo-jobs.mjs --check --out ../../bob-model-lab/out/repo-jobs/jobs.jsonl",
+     "node jobs-matrix.mjs --prefix fnt --no-scenes --variants \"minimus=--effort low --solo-effort;medius=--effort medium --solo-effort;office=--jobs ../../bob-model-lab/out/office-jobs/jobs.jsonl --parallel 2 --office ../../../lab-office/libreoffice/program/soffice.exe;repominimus=--effort low --solo-effort --jobs ../../bob-model-lab/out/repo-jobs/jobs.jsonl --parallel 3;repomedius=--effort medium --solo-effort --jobs ../../bob-model-lab/out/repo-jobs/jobs.jsonl --parallel 3;repothink=--effort medium --solo-effort --jobs ../../bob-model-lab/out/repo-jobs/jobs.jsonl --parallel 3 --think-every-step\" --url {{url}} --bob .. --jobs ../../bob-model-lab/out/mail-jobs-catalog/jobs.jsonl --parallel 2 --want-shapes 4 --max bob --hours 1.2",
+     "node mail-score.mjs --runs ../../bob-model-lab/out/fnt-minimus/runs.jsonl,../../bob-model-lab/out/fnt-medius/runs.jsonl --out ../../bob-model-lab/out/fnt-mail-score --digests",
+     "node office-score.mjs --runs ../../bob-model-lab/out/fnt-office/runs.jsonl --out ../../bob-model-lab/out/fnt-office-score",
+     "node repo-score.mjs --runs ../../bob-model-lab/out/fnt-repominimus/runs.jsonl,../../bob-model-lab/out/fnt-repomedius/runs.jsonl,../../bob-model-lab/out/fnt-repothink/runs.jsonl --out ../../bob-model-lab/out/fnt-repo-score",
+     "node tool-faults.mjs --runs \"flashnext inbox minimus=../../bob-model-lab/out/fnt-minimus/runs.jsonl,flashnext inbox medius=../../bob-model-lab/out/fnt-medius/runs.jsonl,flashnext office=../../bob-model-lab/out/fnt-office/runs.jsonl,flashnext repo minimus=../../bob-model-lab/out/fnt-repominimus/runs.jsonl,flashnext repo medius=../../bob-model-lab/out/fnt-repomedius/runs.jsonl,flashnext repo medius thinking every step=../../bob-model-lab/out/fnt-repothink/runs.jsonl,qwen inbox minimus (after2)=../../../lab-kit-after2/bob-model-lab/out/after2-minimus/runs.jsonl,qwen inbox medius (after2)=../../../lab-kit-after2/bob-model-lab/out/after2-medius/runs.jsonl,qwen office (after2)=../../../lab-kit-after2/bob-model-lab/out/after2-office/runs.jsonl,qwen inbox minimus (steps40)=../../../lab-kit-steps/bob-model-lab/out/steps40-minimus/runs.jsonl,qwen inbox medius (steps40)=../../../lab-kit-steps/bob-model-lab/out/steps40-medius/runs.jsonl,qwen office (steps40)=../../../lab-kit-steps/bob-model-lab/out/steps40-office/runs.jsonl,qwen repo minimus (repo1)=../../../lab-kit-repojobs/bob-model-lab/out/repo1-minimus/runs.jsonl,qwen repo medius (repo1)=../../../lab-kit-repojobs/bob-model-lab/out/repo1-medius/runs.jsonl\" --out ../../bob-model-lab/out/fnt-tool-faults",
+     "node trace-read.mjs --url {{url}} --runs inbox=../../bob-model-lab/out/fnt-medius/runs.jsonl,office=../../bob-model-lab/out/fnt-office/runs.jsonl,repo=../../bob-model-lab/out/fnt-repomedius/runs.jsonl --mass --parallel 1 --per 20 --out out/expert-map"
+    ]
+   }
+  ],
+  "brain_engine": {
+   "ref": "3fff3cf084e3def210b6e92c1d415280bfbb4e3a",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word",
+    "0014-rpc-any-version"
+   ],
+   "note": "Brain Engine b12359 + all 14 of Bob's engine patches at 3fff3cf (expert trace with mass for the expert-map phase)"
+  }
+ },
+ "prep": [
+  "HELD: the owner gives the go (double-click) before this is rented, and never while the owner's speed test runs on the PC.",
+  "Before = after2 (lab-kit-after2 out/after2-*-score), steps40 (lab-kit-steps out/steps40-*-score) and repo1 (lab-kit-repojobs out/repo1-score). Same jobs files and scorers. Limits differ on purpose: this copy has no step, nudge, thinking or reply-size limits, and the lab runs at --max bob.",
+  "The three job writers make their jobs on this PC (repo-jobs.mjs --check proves each repository job). The PC needs git, Node.js 20+ and lab-office's LibreOffice.",
+  "--want-shapes 4 stops the run before renting if this copy's tools are any other shape. Flash-Next is a Qwen brain to Bob (model-family.js), so it gets the Qwen tool set.",
+  "The expert-map phase runs last, alone (--parallel 1: Brain Engine gives the trace only to a request that ran alone), so it never slows or skews a score. Its pre-flight reads a made-up run for each runs file the jobs have not made yet.",
+  "fnt-tool-faults/TOOL-FAULTS.md is the key report; out/expert-map holds counts.json, lift.json, dials.json, keep/ and trace-read.md."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20
+}

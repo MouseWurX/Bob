@@ -24,6 +24,7 @@
 // Set LAB_API_KEY for a server with a key (the Forge's rented card).
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import crypto from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { countRows, emptyScores, addTrace, keepLists } from './reap-pick.mjs';
@@ -134,7 +135,7 @@ async function main() {
   const out = path.resolve(String(args.out || process.env.LAB_OUT || 'trace-read')); fs.mkdirSync(out, { recursive: true });
   const per = Number(args.per) || 300, perStyle = Number(args['per-style']) || per, top = Number(args.top) || 4;
   const headers = { 'content-type': 'application/json', ...(process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {}) };
-  const post = async (body, tries = 4) => {
+  const post = async (body, tries = Math.max(1, Number(args.tries) || 4)) => { // --tries: asks per replay (default 4)
     for (let i = 1; ; i++) {
       try { const r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(10 * 60_000) }); const t = await r.text(); if (!r.ok) throw new Error(`${r.status}: ${t.slice(0, 200)}`); return JSON.parse(t); }
       catch (e) { if (i >= tries) throw e; await new Promise((res) => setTimeout(res, 4000 * i)); }
@@ -142,6 +143,27 @@ async function main() {
   };
   const onlyJobs = args.jobs ? new Set(String(args.jobs).split(',').map((x) => `job:${x.trim()}`)) : null;
   const runFiles = String(args.runs || '').split(',').filter(Boolean).map((x) => { const [n, ...f] = x.split('='); return [n.trim(), path.resolve(f.join('=').trim())]; });
+  // 22 Nov (flashnext-tools): --preflight reads without a server. A runs file that is there is read as the trace phase
+  // will read it; one not made yet (the jobs run first) is stood in for by a made-up do-jobs row, so a rental never
+  // reaches the trace phase with a reader that can't turn a run into a chat. Nothing is sent anywhere.
+  if (args.preflight) {
+    const bad = [];
+    for (const [name, file] of runFiles) {
+      if (!/^[\w-]{1,40}$/.test(name)) { bad.push(`run kind "${name}": letters, digits, - and _ only`); continue; }
+      if (fs.existsSync(file)) { const n = pickRuns([[name, file]], per).length; console.log(`trace-read pre-flight: ${name}: ${n} run(s) to read in ${file}`); if (!n) bad.push(`${name}: ${file} has no run that reads as a chat`); continue; }
+      const st = path.join(fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'trace-pf-')), 'runs.jsonl');
+      fs.writeFileSync(st, JSON.stringify({ id: 'stand-in', text: 'What is on my list?', messages: [{ role: 'system', content: 'You are Bob.' }, { role: 'user', content: 'What is on my list?' }, { role: 'assistant', content: '', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'read_file', arguments: { path: 'list.txt' } } }] }, { role: 'tool', tool_call_id: 'c1', tool_name: 'read_file', content: 'milk' }, { role: 'assistant', content: 'Milk.' }] }) + '\n');
+      const w = pickRuns([[name, st]], per);
+      const ok = w.length === 1 && w[0].target === `job:${name}` && w[0].messages.some((m) => m.role === 'tool') && w[0].messages.at(-1)?.content === 'Milk.';
+      console.log(`trace-read pre-flight: ${name}: ${file} is made by the jobs first; a made-up run ${ok ? 'reads as a chat' : 'did NOT read as a chat'}`);
+      if (!ok) bad.push(`${name}: a made-up do-jobs run did not read as a chat (runChat)`);
+      try { fs.rmSync(path.dirname(st), { recursive: true, force: true }); } catch {}
+    }
+    if (!runFiles.length && !setDirs.length) bad.push('nothing to read');
+    for (const b of bad) console.log(`PRE-FLIGHT FAIL: ${b}`);
+    if (!bad.length) console.log('trace-read pre-flight OK');
+    process.exit(bad.length ? 1 : 0);
+  }
   const work = [...(setDirs.length ? pickLessons(setDirs, per, perStyle) : []), ...pickRuns(runFiles, per)].filter((w) => !onlyJobs || onlyJobs.has(w.target));
   const par = Math.max(1, Number(args.parallel) || 1), why = {};
   const failed = (kind, w, msg = '') => { fails++; (why[kind] ||= { n: 0, first: [] }).n++; if (why[kind].first.length < 5) why[kind].first.push(`${w.target} ${w.lesson.idea}${msg ? ': ' + msg.slice(0, 160) : ''}`); if (fails <= 3) console.log(`  failed (${kind}) ${w.target} ${w.lesson.idea} ${msg.slice(0, 120)}`); };
@@ -157,11 +179,22 @@ async function main() {
       E ||= Number(j.expert_trace?.n_expert) || 0; used ||= Number(j.expert_trace?.n_expert_used) || 0;
       if (!addTo(acc, w.target, j.expert_trace)) failed('no-trace', w, j.expert_trace ? `kind ${j.expert_trace.kind || '?'}, no layers or rows` : 'reply had no expert_trace');
       else if (mass) addTrace((reap[w.target] ||= emptyScores()), j.expert_trace);
-    } catch (e) { failed('http', w, e.message); }
+    } catch (e) { failed('http', w, e.message); if (done < FIRST) firstErrs.push(String(e.message || '').slice(0, 160)); }
     if (++done % 50 === 0) console.log(`  ${done}/${work.length}`);
   };
+  // 22 Nov (flashnext-tools: all 60 replays failed with the same template error, about 25 s each with retries): when
+  // the first FIRST replays all fail with the same HTTP error, the server will refuse the rest too, so the phase stops
+  // and says why (exit 87) instead of using the rental's last minutes on it.
+  const FIRST = 3, firstErrs = [];
   // in batches of --parallel; each trace is folded in and dropped at once, so memory stays flat
-  for (let i = 0; i < work.length; i += par) await Promise.all(work.slice(i, i + par).map(readOne));
+  for (let i = 0; i < work.length; i += par) {
+    await Promise.all(work.slice(i, i + par).map(readOne));
+    if (done >= FIRST && work.length > FIRST && firstErrs.length >= FIRST && new Set(firstErrs.slice(0, FIRST)).size === 1) {
+      fs.writeFileSync(path.join(out, 'fails.json'), JSON.stringify({ lessons: work.length, failed: fails, stopped_after: done, why }, null, 1));
+      console.log(`TRACE STOP: the first ${FIRST} replays all failed the same way, so the rest would too; stopped after ${done} of ${work.length}. Error: ${firstErrs[0]}`);
+      process.exit(87);
+    }
+  }
   fs.writeFileSync(path.join(out, 'fails.json'), JSON.stringify({ lessons: work.length, failed: fails, why }, null, 1));
   // --gate 0.2: a smoke run that loses more than this share of lessons stops the whole rental (exit 86, the Forge deletes the pod)
   if (args.gate !== undefined && fails > (Number(args.gate) || 0) * work.length) { console.log(`GATE STOP: expert maps lost ${fails} of ${work.length} lessons (${Object.entries(why).map(([k, v]) => `${k} ${v.n}: ${v.first[0] || ''}`).join('; ')})`); process.exit(86); }

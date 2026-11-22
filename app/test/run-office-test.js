@@ -112,7 +112,9 @@ const brain = { cfg, log: (k, t) => logs.push(`${k}: ${t}`) };
   fs.writeFileSync(path.join(work, '.env'), 'KEY=1');
   check('reads in a readable folder', canRead(cfg, path.join(outside, 'b.docx')) === path.join(outside, 'b.docx'));
   check('secret files are off-limits', throws(() => canRead(cfg, path.join(work, '.env')), /keys or passwords/));
-  check('a relative path is refused', throws(() => canRead(cfg, 'a.docx'), /full path/));
+  check('a relative path with a folder is refused', throws(() => canRead(cfg, 'sub/a.docx'), /full path/));
+  // 22 Nov: a bare name is looked up in the folders Bob may read (run-office-find-test.js), as read_file does
+  check('a bare name is looked up, never taken as relative', (() => { try { return path.isAbsolute(canRead(cfg, 'a.docx')); } catch (e) { return /no file called a.docx|There are d+ files called a.docx/.test(e.message); } })());
   check('saves in a ticked folder', Boolean(canWrite(cfg, path.join(work, 'a.pdf'))));
   check('saves in Bob\'s own Documents folder', Boolean(canWrite(cfg, path.join(officeDir(cfg), 'x.docx'))));
   check('won\'t save in a folder that isn\'t ticked', throws(() => canWrite(cfg, path.join(outside, 'b.pdf')), /only save in/));

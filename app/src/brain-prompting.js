@@ -9,6 +9,12 @@ import { capabilities } from './capabilities.js';
 import { cloudHelpers } from './cloud.js';
 import { toolSetOfModel, inSet, stickyFor } from './tool-sets.js';
 import { allToolsOn, toolboxPrompt, tidySchema, onlyGroups, groupsFor, CORE, fillUseTools, guessGroups, groupOf, STICKY_TURNS } from './toolbox.js';
+// A request that names one of the user's projects (Settings, projects: name -> folder), by name or by its folder.
+export function namesProject(cfg, text) {
+  const t = String(text || ''), low = t.toLowerCase().replace(/\//g, '\\');
+  return Object.entries(cfg?.projects || {}).some(([name, dir]) => (String(name).length >= 3 && new RegExp(`\\b${String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(t))
+    || (String(dir || '').length >= 6 && low.includes(String(dir).toLowerCase().replace(/\//g, '\\').replace(/\\+$/, ''))));
+}
 import { HANDS, freeOn, toolsOff } from './hands-settings.js';
 import { handsPrompt } from './hands.js';
 import { webPrompt, linkPrompt, webOn, WEB_TOOLS } from './web.js';
@@ -275,6 +281,10 @@ export const promptParts = {
   // Which groups start loaded this turn: the ones the user's words point at, plus ones this chat used lately.
   startGroups(sessionId, text) {
     const loaded = new Set(guessGroups(this, text));
+    // 22 Nov (flashnext-tools read of repo1: 11 of 54 right fixes failed for "never ran a check himself"): "Track numbers
+    // come out wrong in my bob-tools project" has no run word, so the Run group wasn't there and he said "the tests
+    // should pass now" without running them. A request that names one of the user's projects starts with it.
+    if (groupsFor(this).run && namesProject(this.cfg, text)) loaded.add('run');
     const sticky = this.stickyGroups.get(sessionId);
     if (sticky) for (const [g, left] of sticky) { if (left > 0) loaded.add(g); }
     return loaded;

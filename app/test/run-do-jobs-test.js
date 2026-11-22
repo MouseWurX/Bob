@@ -15,7 +15,7 @@ let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
 const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'do jobs '));
-const ossAsks = [];
+const ossAsks = []; const thinkAsks = [];
 let busy = 0, most = 0; const offered = new Set(); let sceneAsks = 0, leaked = '', jsonAsked = false; const systems = [];
 const call = (name, args, think = '') => ({ choices: [{ message: { role: 'assistant', content: '', reasoning_content: think, tool_calls: [{ id: 'c1', type: 'function', function: { name, arguments: JSON.stringify(args) } }] } }], usage: { completion_tokens: 12, prompt_tokens: 900 } });
 const say = (t, think = '') => ({ choices: [{ message: { role: 'assistant', content: t, reasoning_content: think } }], usage: { completion_tokens: 5, prompt_tokens: 950 } });
@@ -44,6 +44,7 @@ const srv = http.createServer((req, res) => {
     }
     if (msgs[0]?.role === 'system') systems.push(String(msgs[0].content));
     const ask = String(msgs.find((m) => m.role === 'user')?.content || '');
+    if (/^Think job/.test(ask)) thinkAsks.push({ tag: ask.slice(10, 14), on: j.chat_template_kwargs?.enable_thinking, tools: (j.tools || []).length, temp: j.temperature, top_p: j.top_p });
     if (/^GPT-OSS job/.test(ask)) ossAsks.push({ kw: j.chat_template_kwargs || {}, temp: j.temperature, top_p: j.top_p, names, listFolder: (j.tools || []).find((t) => t.function?.name === 'list_folder')?.function?.description || '', afterTool: msgs.at(-1)?.role === 'tool' });
     const last = [...msgs].reverse().find((m) => m.role === 'tool' || m.role === 'user') || {};
     let out;
@@ -157,6 +158,19 @@ const groupFile = path.join(tmp, `tavily-searches-${new Date().toISOString().sli
 fs.writeFileSync(groupFile, JSON.stringify({ used: 4 }));
 const grp = await run(['--preflight', '--search', 'tavily', '--search-cap', '6', '--search-group', 'g1'], { env: { LAB_TAVILY_KEY: KEY } });
 const grpFull = await run(['--preflight', '--search', 'tavily', '--search-cap', '6', '--search-group', 'g1'], { env: { LAB_TAVILY_KEY: KEY } });
+{ // 22 Nov (the owner: "why are we limiting thinking at all?"): --think-every-step thinks on the tool steps too
+  const mk = (tag) => { const f = path.join(tmp, `ideas-think-${tag}.jsonl`); fs.writeFileSync(f, JSON.stringify({ id: `t-${tag}`, job: 'files', text: `Think job ${tag}: what is on my shopping list in Documents\\shop.txt?`, setup: [{ path: 'Documents\\shop.txt', content: 'plums\n' }] }) + '\n'); return f; };
+  const plain = await run(['--parallel', '1'], { jobsFile: mk('aaaa'), dir: 'think0' });
+  const all = await run(['--parallel', '1', '--think-every-step'], { jobsFile: mk('bbbb'), dir: 'think1' });
+  const a = thinkAsks.filter((x) => x.tag === 'aaaa'), b = thinkAsks.filter((x) => x.tag === 'bbbb');
+  const row = fs.existsSync(path.join(tmp, 'think1', 'runs.jsonl')) ? JSON.parse(fs.readFileSync(path.join(tmp, 'think1', 'runs.jsonl'), 'utf8').trim().split('\n')[0]) : {};
+  check('--think-every-step: every request thinks (the tool steps too), and the run says so; without it a tool step does not', plain.code === 0 && all.code === 0 && a.some((x) => x.on === false) && b.length >= 2 && b.every((x) => x.on === true) && row.think_every_step === true, JSON.stringify({ a, b, flag: row.think_every_step }));
+  // 22 Nov (deepseek-tools): --family deepseek asks thinking with enable_thinking, at DeepSeek's sampling, in Bob's own wording
+  const ds = await run(['--parallel', '1', '--family', 'deepseek'], { jobsFile: mk('cccc'), dir: 'ds1' });
+  const c = thinkAsks.filter((x) => x.tag === 'cccc');
+  const drow = fs.existsSync(path.join(tmp, 'ds1', 'runs.jsonl')) ? JSON.parse(fs.readFileSync(path.join(tmp, 'ds1', 'runs.jsonl'), 'utf8').trim().split('\n')[0]) : {};
+  check('--family deepseek: thinking is switched with enable_thinking (off at Effort low, as for Qwen), temperature 1.0 and top_p 1.0, the run stamped deepseek', ds.code === 0 && /family deepseek: Bob's own tool wording/.test(ds.log) && c.length >= 2 && c.every((x) => x.on === false) && c.every((x) => x.temp === 1 && x.top_p === 1) && drow.family === 'deepseek', JSON.stringify({ c, family: drow.family, log: ds.log.slice(-300) }));
+}
 const groupAfter = JSON.parse(fs.readFileSync(groupFile, 'utf8')).used;
 { const ossJobs = path.join(tmp, 'ideas-oss.jsonl');
   fs.writeFileSync(ossJobs, JSON.stringify({ id: 'g1', job: 'files', text: 'GPT-OSS job: what is on my shopping list in Documents\\shop.txt?', setup: [{ path: 'Documents\\shop.txt', content: 'plums\n' }] }) + '\n');
@@ -198,6 +212,8 @@ check('two jobs at a time, never more', most <= 2 && most >= 1, `most at once: $
 { const all = JSON.stringify(rows), enc = (p) => encodeURIComponent(p);
   check('no real folder names reach the runs, plain or inside a file link', !all.includes(tmp) && !all.includes(os.homedir()) && !/bob-lab-/.test(all) && !all.includes(enc(os.tmpdir())) && !all.includes(enc(os.homedir())) && by.a6 && (by.a6.steps || []).flatMap((st) => st.calls).some((c) => c.name === 'write_file'), (all.match(/.{40}bob-lab-.{20}/) || [''])[0]); }
 check('each run carries its family, tool shape and Bob copy', by.a1.family === 'qwen' && by.a1.tool_shapes != null && by.a1.bob_src && Array.isArray(by.a1.messages));
+{ const st = (by.a1.steps || []).find((s) => (s.calls || []).length); const f = st?.raw_calls?.[0];
+  check('22 Nov (flashnext-tools): a step keeps the tools it offered and each call as the brain wrote it (tool-faults.mjs)', Array.isArray(st?.offered) && st.offered.includes(f?.name) && ['native', 'text'].includes(f?.how) && !f.bad_json && !f.not_offered, JSON.stringify(st ? { offered: st.offered?.length, raw: st.raw_calls } : null).slice(0, 300)); }
 check('nothing the brain is sent carries the throwaway folder or a real folder name (prompt, tools, results)', !leaked, leaked);
 { const row = JSON.parse(fs.readFileSync(path.join(tmp, 'scene1', 'runs.jsonl'), 'utf8').trim().split('\n')[0]);
   const calls = (row.steps || []).flatMap((s) => s.calls), res = (p) => calls.find((c) => c.name === 'read_file' && c.args.path === p)?.result || '';

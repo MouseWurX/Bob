@@ -21,7 +21,9 @@ export const FAULTS = {
   office_missing: 'an office tool found no LibreOffice in the test world (do-jobs --office)',
   tool_switched_off: 'a tool the job needs was switched off in the test Bob',
   path_not_moved: "a path in a tool's arguments was never moved into the test home",
-  office_file_missing: "an office job's own file was not planted"
+  office_file_missing: "an office job's own file was not planted",
+  // 21 Nov (repository jobs, repo-jobs.mjs)
+  repo_not_planted: "a repository job's project was not made (git missing or failing in the test home)"
 };
 // Folder names a request gives in quotes ("the folder 'Old Projects (2020-2021)'", "'Q3' folder"), not ones Bob is asked to
 // make or rename to (16 Nov, GPT-OSS trial: a rename job had no folder to rename, so the brain could only ask where it was)
@@ -66,6 +68,7 @@ export function harnessFaults(row) {
   }
   const planted = [...(sc.folders || []), ...(sc.files || []).map((f) => String(f).replace(/[\\/][^\\/]*$/, ''))].map((x) => String(x).toLowerCase().replace(/\//g, '\\'));
   for (const m of row?.office?.missing || []) add('office_file_missing', m);
+  for (const m of row?.repo?.missing || []) add('repo_not_planted', m);
   for (const c of calls(row)) {
     const res = String(c.result || '');
     if (/^(?:Error: )?There's no LibreOffice/.test(res)) add('office_missing', `${c.name}: ${res.slice(0, 80)}`);

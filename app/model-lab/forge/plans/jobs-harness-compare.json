@@ -1,0 +1,66 @@
+{
+ "run": "jobs-harness-compare",
+ "note": "HELD: not to be rented until the owner double-clicks Rent-harness-compare.cmd. 21 Nov, the owner, on how Bob's harness compares with others: \"we can run it at the same time cant we?\". The same 33 repository jobs as repo1 (repo-jobs.mjs, same jobs file) on the same stock Qwen3.6-35B-A3B UD-Q4_K_XL, the same llama.cpp tag (b12282) and build fix, the same card kind, but done by two well-known open coding-agent harnesses instead of Bob: Qwen Code CLI 0.28.3 (headless -p --yolo, JSON out, 40 turns) and mini-swe-agent 2.4.6 (bash only, SWE-bench style, 40 steps). Both are installed ON THE POD only (forge/pod/harness/harness.sh), run there as an unprivileged user with a clean environment, 4 jobs at a time each (8 slots x 48K), 8 min a job at most. The job worlds are planted on the pod (repo-jobs.mjs plantRepo, origin a bare folder beside the project) and read back there with repo-jobs.mjs repoAfter; node, npm and git starts are logged by shims so 'ran a check after the last change' and push tries can be scored. The PC fetches the rows, transcripts and leftover folders and scores them with the same repo-score.mjs, next to Bob's repo1 rows. Same rules: no push (a push that reaches the throwaway origin is a fail), only allowed files, hidden checks. Caps 1 h / $1.50.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA L40S",
+  "NVIDIA RTX 6000 Ada Generation"
+ ],
+ "step_up": [],
+ "disk_gb": 60,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 1,
+ "dollars_max": 1.5,
+ "rent_minutes": 30,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one server: stock Qwen3.6-35B-A3B; Qwen Code and mini-swe-agent each do the 33 repository jobs on the pod, side by side.",
+  "hours_each": 0.85,
+  "pod_harness": {
+   "run": "hc",
+   "harnesses": ["qwen-code", "mini-swe-agent"],
+   "parallel": 4,
+   "job_minutes": 8,
+   "turns": 40,
+   "hours": 0.5,
+   "model_name": "qwen3.6"
+  },
+  "models": [
+   {
+    "name": "hc-qwen",
+    "nickname": "Qwen3.6-35B-A3B, repository jobs in other harnesses",
+    "file": "hf:unsloth/Qwen3.6-35B-A3B-MTP-GGUF:Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 8,
+    "ctx": 393216,
+    "extra": "",
+    "hours": 0.85,
+    "commands": [
+     "node harness-pull.mjs --out ../../bob-model-lab/out --minutes 50",
+     "node repo-score.mjs --runs \"../../bob-model-lab/out/hc-qwen-code/runs.jsonl,../../bob-model-lab/out/hc-mini-swe-agent/runs.jsonl,../../../lab-kit-repojobs/bob-model-lab/out/repo1-minimus/runs.jsonl,../../../lab-kit-repojobs/bob-model-lab/out/repo1-medius/runs.jsonl\" --out ../../bob-model-lab/out/harness-compare-score"
+    ]
+   }
+  ]
+ },
+ "prep": [
+  "HELD: the owner gives the go (double-click) before this is rented, and never while the owner's speed test runs on the PC.",
+  "Nothing is installed on this PC. Rent-harness-compare.cmd runs node harness-prep.mjs first: it writes the 33 jobs into forge/pod/harness/ (they go to the pod inside forge.tgz), proves the pod-side runner with stand-in harnesses (plant, shims, read-back, score: a right stand-in passes, a wrong one fails), checks harness.sh parses and that the pinned Node.js, Qwen Code and mini-swe-agent versions exist. Any failure and nothing is rented.",
+  "Only the pod can prove: the downloads and installs (Node.js 22.21.1, @qwen-code/qwen-code 0.28.3, mini-swe-agent 2.4.6), each harness reaching llama-server (a smoke ask per harness first; a harness that fails it is skipped, not run 33 times), the harness settings (Qwen Code settings.json, mini-swe-agent yaml) and the answer read from their output.",
+  "Bob's repo1 rows (lab-kit-repojobs) are scored again beside them by the same repo-score.mjs, so the table lines up."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20
+}

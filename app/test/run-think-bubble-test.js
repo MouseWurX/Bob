@@ -99,6 +99,12 @@ const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8')
   check('a reply that is only a text tool call is replaced with an honest line', /didn't finish this/.test(r.text) && /list_folder/.test(r.text) && !/<tool_call>/.test(turn[1].content), r.text);
   check('a real answer that shows a code sample is left alone', !bareTextCall('Here is how to call it from Python:\n```json\n{"name": "x", "arguments": {}}\n```\nThat makes the request, then you read the reply and print it.'));
   check('a plain answer is left alone', !bareTextCall('Done: 19 messages from Kettle & Crumb moved to Trash.'));
+  // 22 Nov (flashnext-tools read, repo1): words, then an XML call that never ran. The call text comes out, the words stay.
+  { const m = { role: 'assistant', content: 'The run_command tool seems to start node without a script. Let me try with a command argument:\n\n<tool_call>\n<function=run_command>\n<parameter=cmd>\nnode test/run.js\n</parameter>\n</function>\n</tool_call>' };
+    const p = pickAnswer([m]);
+    check('words then an XML call: the call is taken out, the words stay, and it says the step never ran', !/<tool_call>|<function=|Let me try/.test(p.text) && /without a script\./.test(p.text) && /next step \(run_command\) never ran/.test(p.text) && m.textCall === true, p.text);
+    const code = 'Here is how to call it from Python:\n```json\n{"name": "x", "arguments": {}}\n```\nThat makes the request, then you read the reply and print it.';
+    check('a JSON code sample in an answer is still left alone', pickAnswer([{ role: 'assistant', content: code }]).text === code); }
 }
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

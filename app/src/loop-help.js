@@ -301,6 +301,7 @@ const NOT_PROMISE = /\b(?:if you(?:'d| would)? like|if you want|want me to|shall
 // check it", "once that's on, I'll convert it", "if you meant another city, I'll look again" wait on the user; they
 // aren't a promise to call a tool now. Nor is a reply that asks something, or ends on a colon before its questions.
 const WAITS_ON_USER = /\b(?:once|the moment|as soon as|when(?:ever)?|if|after|until|then)\b|\b(?:press|click|tap|paste|tell me|send (?:me|it|the|them)|point me|name (?:the|your|a)|say (?:the word|which|so)|drop|attach|share|upload|give me|switch it on)\b/i;
+const FROM_NOW_ON = /\b(?:from now on|going forward|from here on(?: out)?|in (?:the )?future|next time|every time|each time|whenever you|keep (?:that|it|this) in mind|bear (?:that|it|this) in mind|make sure (?:to|that|any|all|every|I)\b)/i;
 export function promisesAction(text) {
   const t = String(text || '').trim();
   if (!t || t.length > 600) return false;
@@ -308,6 +309,11 @@ export function promisesAction(text) {
   // Only when the promise is the end of the reply (the last two sentences): "I'll search for it." and nothing after.
   const tail = t.split(/(?<=[.!])\s+/).slice(-2).join(' ');
   if (/\?/.test(tail) || WAITS_ON_USER.test(tail)) return false;
+  // 22 Nov (flashnext-tools read, steps40 real: both of these nudges were false): remember had run and said
+  // "Remembered.", then "I'll make sure to use your name going forward" read as a promise to call a tool. Sent back, he
+  // second-guessed a saved fact ("that was already in my memory from earlier today"). How he'll behave from now on is
+  // not a step left undone.
+  if (FROM_NOW_ON.test(tail)) return false;
   return PROMISE.test(tail);
 }
 export const PROMISE_NUDGE = 'You said you would do it, but no tool ran: nothing happens until you call the tool. Call it now, in this reply. If no tool you have can do it, say so in one line.';

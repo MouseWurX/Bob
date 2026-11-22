@@ -88,6 +88,12 @@ check('"What\'s the code Theo emailed me?" -> mail_route', has({ text: 'What\'s 
 check('"Wren asked me about my order. Draft a reply" -> mail_route', has({ text: 'Wren from Kettle & Crumb asked me about my catering order. Draft a reply saying yes.', reply: 'Hi Wren, yes please.' }, 'mail_route'));
 check('"Trash the old logs from Build" names a file -> quiet', !has({ text: 'Trash build.log from Builds', reply: 'Done.' }, 'mail_route'));
 check('text call in the answer -> text_call (a claim)', (() => { const c = answerChecks({ text: 'fix line 9', reply: 'Done.\n<tool_call>\n<function=edit_file>\n<parameter=path>\na.py\n</parameter>\n</function>\n</tool_call>' }).find((x) => x.kind === 'text_call'); return c && c.claim && /edit_file/.test(c.nudge); })());
+{ // 22 Nov (flashnext-tools read of repo1): with the tools taken away, the line asks for words, not "the real call now"
+  const r = 'Let me run it:\n<tool_call>\n<function=run_command>\n<parameter=cmd>\nnode test/run.js\n</parameter>\n</function>\n</tool_call>';
+  const off = answerChecks({ text: 'run the tests', reply: r, toolsOff: true }).find((x) => x.kind === 'text_call');
+  const on = answerChecks({ text: 'run the tests', reply: r }).find((x) => x.kind === 'text_call');
+  check('tools off: the text-call line asks for plain words and never for a real call', off && /Tools are off/.test(off.nudge) && !/real call now/.test(off.nudge) && /run_command/.test(off.nudge) && on && /real call now/.test(on.nudge));
+}
 check('"My own review" in the answer -> review_leak', has({ text: 'move it', reply: 'My own review: I called the move tool first.' }, 'review_leak'));
 check('"You\'re right on all six points" -> review_leak', has({ text: 'zip script', reply: 'You\'re right on all six points. Here is the script.' }, 'review_leak'));
 // 16 Nov after1 Maximus: the improve round answered its own review as if the user had pushed back

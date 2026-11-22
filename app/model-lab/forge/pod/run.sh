@@ -385,6 +385,9 @@ PY
       kill -0 $BS 2>/dev/null || { echo "bench $BN: llama-server died (see out/bench/$BN-server.log)"; tail -3 $OUT/bench/$BN-server.log; continue; }
       rm -f $IN/bench-done-$BN
       status bench "$BN ready: the PC runs the tests now (port 8001, $SLOTS slot(s), ctx $CTX)"
+      # 21 Nov 2026 (harness compare): plan.benchmark.pod_harness = other coding-agent harnesses run the repository jobs here on
+      # the pod against this brain (pod/harness/harness.sh); the PC's command waits for out/bench/harness/done.json and fetches it
+      if [ -n "$(plan "['benchmark'].get('pod_harness','')")" ]; then mkdir -p $OUT/bench/harness; ( bash $POD/harness/harness.sh run "$BN" > $OUT/bench/harness/run.log 2>&1 ) & fi
       BH=$(plan "['benchmark']['models'][$b].get('hours', p['benchmark'].get('hours_each',2))")   # 13 Nov: a model can have its own hours
       for i in $(seq 1 $(python3 -c "print(int($BH*120))")); do [ -f $IN/bench-done-$BN ] && break; kill -0 $BS 2>/dev/null || { echo "bench $BN: the server died during the tests"; break; }; sleep 30; done
       kill $BS 2>/dev/null; wait $BS 2>/dev/null; sleep 3
@@ -402,6 +405,8 @@ if [ "$(plan ".get('benchmark_only',False)")" = "True" ]; then
   for f in $(plan "['benchmark']['models']" | python3 -c "import json,sys; print(' '.join(m.get('file','') for m in json.load(sys.stdin)))"); do
     case "$f" in rebuild|volume:*|out:*) die "benchmark_only: '$f' needs a teacher, a drive or a run; give the brain as hf:<repo>:<path>";; esac
   done
+  # 21 Nov 2026 (harness compare): the other harnesses install while llama-server builds and the brain downloads
+  if [ -n "$(plan "['benchmark'].get('pod_harness','')")" ]; then mkdir -p $OUT/bench/harness; ( bash $POD/harness/harness.sh install > $OUT/bench/harness/install.log 2>&1 ) & fi
   run_bench
   rm -f $IN/hf-token
   # 21 Nov 2026: after2 served nothing (no llama-server built) yet ended "finished"; a serve-only run without a server is a failure

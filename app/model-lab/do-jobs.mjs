@@ -59,6 +59,11 @@
 // --cap-go-on (the owner, 16 Nov: "small brain keeps 100" searches): once --search-cap is used, jobs still start; Bob's
 // own backup cap stops his Tavily searches there and he says so himself (each row: search_capped). The month's budget
 // still stops new jobs. --leave-out-kinds web: jobs of those kinds (the ideas' "job" field) are not run.
+// 21 Nov (the owner: "i 100% want bob to be able to work on his own repo soon"): a job with a repo (repo-jobs.mjs) gets its
+// own small git repository planted in the test home as the person's main project, and for those jobs only the Run hand
+// is on, so run_command is there (node and git inside that project only, node boxed in: repo-jobs.mjs runGuard). After
+// the run the repository is read back by code into row.repo.after: what changed, whether the job's checks pass, the
+// commits, and any try at a push. Jobs of every other kind run exactly as before.
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -71,6 +76,7 @@ import { labKey, scrubber, tavilyCheck, tavilyUsage } from './lab-keys.mjs';
 import { fitMail, sortCardAnswer, mailCardAnswer } from './mail-world.mjs';
 import { officeAfter } from './office-jobs.mjs';
 import { buildBytes } from './office-files.mjs';
+import { plantRepo, repoAfter, runGuard, repoReady, gitEnv } from './repo-jobs.mjs';
 
 // What a run's record keeps of a tool reply: all of it up to 40,000 characters, then a plain cut mark.
 export const recordText = (t, max = 40000) => { const s = String(t ?? ''); return s.length > max ? `${s.slice(0, max)}\n[record cut here: the brain saw ${s.length} characters]` : s; };
@@ -110,7 +116,7 @@ if (o.never && !neverFiles.length) fail(`--never ${o.never} holds no .jsonl file
 for (const f of neverFiles) {
   for (const r of readJsonl(f)) for (const t of [r.text, r.question, r.prompt, r.ask, (r.messages || []).find((m) => m.role === 'user')?.content]) if (typeof t === 'string' && t.trim()) never.add(norm(t));
 }
-let jobs = files.flatMap((f) => readJsonl(f)).filter((j) => j && typeof j.text === 'string' && j.text.trim()).map((j, i) => ({ id: String(j.id || `job-${i}`), job: j.job || '', text: j.text, setup: Array.isArray(j.setup) ? j.setup : [], ...(j.from && typeof j.from === 'object' ? { from: j.from } : {}), ...(j.mail && typeof j.mail === 'object' ? { mail: j.mail, key: String(j.key || '') } : {}), ...(j.office && typeof j.office === 'object' ? { office: j.office, key: String(j.key || '') } : {}) }));
+let jobs = files.flatMap((f) => readJsonl(f)).filter((j) => j && typeof j.text === 'string' && j.text.trim()).map((j, i) => ({ id: String(j.id || `job-${i}`), job: j.job || '', text: j.text, setup: Array.isArray(j.setup) ? j.setup : [], ...(j.from && typeof j.from === 'object' ? { from: j.from } : {}), ...(j.mail && typeof j.mail === 'object' ? { mail: j.mail, key: String(j.key || '') } : {}), ...(j.office && typeof j.office === 'object' ? { office: j.office, key: String(j.key || '') } : {}), ...(j.repo && typeof j.repo === 'object' ? { repo: j.repo, key: String(j.key || ''), type: String(j.type || '') } : {}) }));
 const held = jobs.filter((j) => never.has(norm(j.text)));
 jobs = jobs.filter((j) => !never.has(norm(j.text)));
 const seen = new Set(); jobs = jobs.filter((j) => (seen.has(j.id) ? false : seen.add(j.id)));
@@ -120,12 +126,18 @@ jobs = jobs.filter((j) => !leaveOut.has(String(j.job).toLowerCase()));
 // test Bob has no Office Hand, so those jobs are left out (and said so), never run as Bob failing
 const noOffice = o.office ? [] : jobs.filter((j) => j.office?.lo);
 jobs = jobs.filter((j) => !noOffice.includes(j));
+// 21 Nov: a repository job needs git, and a Node.js that can box a program in; without them those jobs are left out
+// (and said so), never run as Bob failing
+const repoWhy = jobs.some((j) => j.repo) ? repoReady() : '';
+const noRepo = repoWhy ? jobs.filter((j) => j.repo) : [];
+jobs = jobs.filter((j) => !noRepo.includes(j));
 const done = new Set(readJsonl(F.runs).map((r) => r.id));
 const queue = jobs.filter((j) => !done.has(j.id)).slice(0, Number(o.count || 1e9));
 say(`pre-flight: jobs file(s) ${files.join(', ')}: ${jobs.length + held.length} rows`);
 if (leaveOut.size) say(`pre-flight: ${leftOut.length} job(s) of kind ${[...leaveOut].join(', ')} left out (--leave-out-kinds)`);
 if (noOffice.length) say(`pre-flight: ${noOffice.length} office job(s) left out: they need LibreOffice (--office <soffice>)`);
 if (o.never) say(`pre-flight: ${held.length} held-out request(s) left out (--never: ${neverFiles.length} file(s), ${never.size} requests known)`);
+if (noRepo.length) say(`pre-flight: ${noRepo.length} repository job(s) left out: ${repoWhy}`);
 say(`pre-flight: ${done.size} already run in this folder, ${queue.length} to go`);
 const sceneMode = String(o.scene || '').toLowerCase();
 if (sceneMode && !['make', 'reuse'].includes(sceneMode)) fail(`--scene ${o.scene}: use make or reuse`);
@@ -143,7 +155,13 @@ if (o.office && !fs.existsSync(String(o.office))) fail(`no LibreOffice at --offi
 // them on, as he would); Office only with --office (LibreOffice).
 const HANDS_HERE = ['files', 'sort', 'security', ...(o.office ? ['office'] : [])];
 const kitOpts = { world: true, makers: false, docs: true, hands: HANDS_HERE, office: o.office ? String(o.office) : '' };
-const FAMILIES = { qwen: 'qwen3.6-35b-a3b', 'gpt-oss': 'gpt-oss-120b' }; // the brain name Bob's loop picks the family's tool set by
+// 21 Nov: a repository job's Bob has the Run hand on too. What he runs stays inside the job's own project (runGuard),
+// and git leaves this PC's own settings and sign-in helpers out (gitEnv), for him as for the test world.
+const repoKitOpts = { ...kitOpts, hands: [...HANDS_HERE, 'run'] };
+if (queue.some((j) => j.repo)) { Object.assign(process.env, gitEnv({})); say(`pre-flight: ${queue.filter((j) => j.repo).length} repository job(s): the Run hand is on for them, node and git only, inside each job's own project`); }
+// 22 Nov (deepseek-tools): DeepSeek V4.1 has no tool set of its own in Bob, so it gets Bob's own wording; its template takes
+// enable_thinking as Qwen's does, and DeepSeek's own sampling (temperature 1.0, top_p 1.0; the model card)
+const FAMILIES = { qwen: 'qwen3.6-35b-a3b', 'gpt-oss': 'gpt-oss-120b', deepseek: 'deepseek-v4.1-flash' }; // the brain name Bob's loop picks the family's tool set by
 const family = String(o.family || 'qwen').toLowerCase();
 if (!FAMILIES[family]) fail(`--family ${o.family}: use ${Object.keys(FAMILIES).join(' or ')}`);
 // Bob's loop works out the tool set from the brain's name (brain-prompting.js toolSetOf), so each job's Bob is told it
@@ -220,7 +238,8 @@ say(`pre-flight: every job is asked at Effort ${effort}${solo ? ', with Effort o
 const probe = asFamily(await loadBob(L.bob, kitOpts));
 const probeUsed = keyedSearch(probe);
 say(`Bob's tools from ${L.bob}: ${probe.bobSrc?.version || '?'}${probe.bobSrc?.commit ? ` (${probe.bobSrc.commit})` : ''}; tool shape ${probe.toolShapes ?? '?'}`);
-if (family !== 'qwen') {
+if (family === 'deepseek') say("pre-flight: family deepseek: Bob's own tool wording (no DeepSeek tool set yet), thinking asked with enable_thinking, DeepSeek's sampling");
+else if (family !== 'qwen') {
   const set = probe.brain.toolSetOf?.(FAMILIES[family]);
   if (set?.id !== family) fail(`this Bob copy has no ${family} tool set (src/tool-sets.js), so its jobs would run in another family's shape`);
   say(`pre-flight: family ${family}: Bob's ${set.label || family} tool set${set.hide?.length ? ` (${set.hide.join(', ')} left out)` : ''}, thinking asked the ${family} way`);
@@ -252,6 +271,38 @@ const bobUrl = (f) => pathToFileURL(path.join(L.bob, 'src', f)).href;
 const { textCalls, LlamaCpp } = await import(bobUrl('llamacpp.js'));
 const { docText } = await import(bobUrl('doc-text.js')); // office jobs: the files Bob left, read back as words
 const { checkArgs } = await import(bobUrl('loop-help.js'));
+// 22 Nov (flashnext-tools): what one call looked like as the brain wrote it, against the tool list it was offered that
+// step. Only flags that are true are kept, so a clean call is { name, how }. tool-faults.mjs reads these.
+function textForm(content) {
+  const t = String(content || '');
+  if (/to=functions\.|<\|channel\|>/.test(t)) return 'harmony';
+  if (/<tool_call>/.test(t) && /<function=/.test(t)) return 'qwen xml in text';
+  if (/<function=/.test(t)) return 'function xml';
+  if (/<tool_call>/.test(t)) return 'tool_call json';
+  if (/^\s*```/.test(t)) return 'fenced json';
+  if (/^\s*[[{]/.test(t)) return 'bare json';
+  return 'other';
+}
+const looksLikeCall = (t) => /<tool_call>|<function=[\w.-]+>|to=functions\.[\w.-]+|^\s*\[?\s*\{\s*"name"\s*:|```(?:json)?\s*\{\s*"name"\s*:/.test(String(t || ''));
+function rawCallFacts(name, rawArgs, parsed, tools, how) {
+  const f = { name: String(name ?? ''), how };
+  const tool = (tools || []).find((x) => x.function?.name === name);
+  if (!tool) f.not_offered = true;
+  let a = parsed?.arguments;
+  if (typeof rawArgs === 'string') {
+    try { a = JSON.parse(rawArgs || '{}'); } catch { f.bad_json = String(rawArgs).slice(0, 300); a = undefined; }
+    if (typeof a === 'string') { try { const b = JSON.parse(a); if (b && typeof b === 'object') { f.double_encoded = true; a = b; } } catch {} }
+  }
+  if (a !== undefined && (a === null || typeof a !== 'object' || Array.isArray(a))) f.args_not_object = typeof a;
+  const params = tool?.function?.parameters;
+  if (params && a && typeof a === 'object' && !Array.isArray(a)) {
+    const props = params.properties || {};
+    const extra = Object.keys(a).filter((k) => !(k in props)); if (extra.length) f.extra_keys = extra.slice(0, 6);
+    const missing = (params.required || []).filter((k) => a[k] === undefined || a[k] === ''); if (missing.length) f.missing = missing;
+    try { const p = checkArgs(params, a).problems; if (p.length) f.problems = p.slice(0, 3).map((x) => String(x).slice(0, 120)); } catch {}
+  }
+  return f;
+}
 let saveExport = null; try { ({ saveExport } = await import(bobUrl('diagram.js'))); } catch {}
 // 16 Nov (800-job read): make_diagram with save_to waits for the chat window to draw the diagram and send the file
 // back; a test home has no window, so the file never came and Bob searched for it (10 runs). The lab stands in for the
@@ -274,8 +325,8 @@ function standInWindow(kit, text) {
 const { MID_SYSTEM_REFUSED, foldSystem } = await import(bobUrl('system-notes.js'));
 const { thinkKwargs, samplingFor } = await import(bobUrl('model-family.js'));
 // how a step asks for thinking, and its sampling: Qwen as before; another family by Bob's own model-family.js
-const thinkBody = (think) => (family === 'qwen' ? { chat_template_kwargs: { enable_thinking: think !== false } } : thinkKwargs(family, think));
-const sampling = (tools, think) => (family === 'qwen' ? { temperature: tools ? 0.6 : 0.7, top_p: 0.8, top_k: 20 } : samplingFor(null, FAMILIES[family], null, { tools, think }));
+const thinkBody = (think) => (family === 'qwen' || family === 'deepseek' ? { chat_template_kwargs: { enable_thinking: think !== false } } : thinkKwargs(family, think));
+const sampling = (tools, think) => (family === 'deepseek' ? { temperature: 1.0, top_p: 1.0 } : family === 'qwen' ? { temperature: tools ? 0.6 : 0.7, top_p: 0.8, top_k: 20 } : samplingFor(null, FAMILIES[family], null, { tools, think }));
 const effortOf = (think) => (family === 'gpt-oss' ? (think === false ? 'low' : think === 'high' || think === 'extreme' ? 'high' : 'medium') : undefined);
 const auth = process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {};
 const today = new Date().toISOString().slice(0, 10);
@@ -317,6 +368,7 @@ let lastSearch = 0, noResultsInRow = 0, searchStop = false;
 // --search-stop off: keep going after 5 empty searches (a replay, jobs-recheck.mjs, is offline on purpose)
 async function searchTurn() { const gap = Number(o['search-gap']) * 1000; for (;;) { const w = lastSearch + gap - Date.now(); if (w <= 0) break; await wait(w); } lastSearch = Date.now(); }
 const ctxSize = Number(o['slot-ctx'] || o.ctx || 32768);
+const thinkAll = o['think-every-step'] === true || String(o['think-every-step'] || '') === 'true';
 const replyMax = String(o.max) === 'bob' ? Math.max(2048, ctxSize) : Number(o.max); // as Bob's replyTokens (model-family.js): the whole slot since 21 Nov
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 let strict = null;
@@ -347,10 +399,10 @@ export const NOT_HERE = new Set(['run_command', 'run_recipe', 'open_app', 'app_l
 const NOT_SET_UP = new Set(['make_image', 'make_video', 'make_music', 'make_sound']);
 
 async function runJob(j) {
-  const kit = asFamily(await loadBob(L.bob, kitOpts));
+  const kit = asFamily(await loadBob(L.bob, j.repo ? repoKitOpts : kitOpts));
   const tavilyUsed = keyedSearch(kit);
   const brain = kit.brain;
-  for (const n of NOT_HERE) delete brain.tools[n];
+  for (const n of NOT_HERE) if (!(j.repo && n === 'run_command')) delete brain.tools[n];
   // 16 Nov (MouseWurX: tests "to make sure bob can manage an email inbox"): an inbox job gets Bob's own read_email and
   // manage_email, his account set up on a made-up mailbox (mail-world.mjs) that answers nothing else, so nothing can be sent
   const mw = j.mail ? await fitMail(kit, j.mail) : null;
@@ -372,6 +424,8 @@ async function runJob(j) {
     for (const d of [].concat(j.office.readOnly || [])) { const r = kit.allow(d); if (r) kit.cfg.readOnlyRoots = [...(kit.cfg.readOnlyRoots || []), r]; }
     ow = { files: put.files, missing: [...put.skipped.map((x) => `${x.path}: ${x.why}`), ...want.filter((f) => !put.files.some((p) => p.toLowerCase().endsWith(f.path.split('\\').pop().toLowerCase()))).map((f) => f.path)].filter((x, i, a) => a.indexOf(x) === i) };
   }
+  // 21 Nov: a repository job's project, a git repository with one commit and a local "origin" (repo-jobs.mjs plantRepo)
+  const rw = j.repo ? plantRepo(kit, j.repo) : null;
   brain.cfg.loopHelpOff = false; brain.cfg.toolHelp = true;
   if (solo) brain.cfg.soloEffort = true;
   const steps = []; const missing = new Set(); let real = 0, asks = 0;
@@ -390,7 +444,7 @@ async function runJob(j) {
     const want = namedFolders(j.text).filter((d) => !parts.has(d.toLowerCase())).map((d) => `C:\\Users\\you\\${home ? home[0].toUpperCase() + home.slice(1).toLowerCase() : 'Documents'}\\${d}`);
     if (want.length) { const more = plantScene(kit, { folders: want }, { day: today }); put.folders.push(...more.folders); put.skipped.push(...more.skipped); if (sc.scene) sc.scene.folders = [...(sc.scene.folders || []), ...want]; }
   }
-  const planted = [...new Set([...start.files, ...put.files, ...(ow?.files || [])])];
+  const planted = [...new Set([...start.files, ...put.files, ...(ow?.files || []), ...(rw?.files || [])])];
   // 16 Nov (Opus read of run 3): a coding job's planted script sat outside any project, so Bob's guard (tools.js) refused
   // every edit and the job couldn't be done. Its folder is a project of this test home, as a person who codes with Bob has.
   const codeDirs = [...new Set([...start.codeDirs, ...put.codeDirs])];
@@ -426,13 +480,17 @@ async function runJob(j) {
     call.kind = !tool ? 'none' : OWN.has(name) ? 'bob' : name === 'ask_user' ? 'pick' : NOT_SET_UP.has(name) ? 'setup' : 'real';
     if (!tool) missing.add(name); else if (call.kind === 'real') real++;
     (steps.at(-1)?.calls || steps).push(call);
-    const { args: a, bad } = kit.sandboxArgs(args);
+    // 21 Nov: in a repository job a command runs only inside the job's own project (runGuard); one the test world
+    // refuses is marked (call.guard), and one it ran another way says how (call.ran_as)
+    const gd = rw && name === 'run_command' && tool ? runGuard(kit, rw, args) : null;
+    if (gd?.refuse) call.guard = kit.neutral(gd.refuse); else if (gd?.ranAs) call.ran_as = gd.ranAs;
+    const { args: a, bad } = kit.sandboxArgs(gd?.args || args);
     let res;
     const hit = name === 'web_search' && !bad ? cacheGet(cacheKey(a)) : null;
     if (hit) { cacheHits++; call.cached = true; }
     else if (name === 'web_search' && !bad) { await searchTurn(); webSearches++; }
     try {
-      res = hit ? { text: hit } : bad ? { text: `Error: ${kit.neutral(bad)} is outside the folders Bob may use here` }
+      res = gd?.refuse ? { text: `Error: ${kit.neutral(gd.refuse)}` } : hit ? { text: hit } : bad ? { text: `Error: ${kit.neutral(bad)} is outside the folders Bob may use here` }
         : await Promise.race([bobRunTool(name, a, ctx), wait(120000).then(() => ({ text: `Error: ${name} took too long` }))]);
     } catch (e) { if (ctx?.signal?.aborted) throw e; res = { text: `Error: ${String(e?.message || e)}` }; }
     const t = typeof res === 'string' ? res : typeof res?.text === 'string' ? res.text : JSON.stringify(res ?? '');
@@ -441,6 +499,7 @@ async function runJob(j) {
     // 20 Nov (after1 blind read): the record kept only the first 6,000 characters of a tool reply, but the brain saw it
     // all. Graders read the record, so three right answers about live settings (bob_help lists them near the end)
     // were marked as made up. The record now keeps what the brain saw, up to 40,000, and says so when it is cut.
+    if (gd && !gd.refuse && /ERR_ACCESS_DENIED/.test(t)) call.boxed = true; // node, boxed in, was stopped from writing outside the project or starting a program
     call.result = recordText(kit.neutral(t));
     return { ...(res && typeof res === 'object' ? res : {}), text: kit.neutral(t) || '(no result)' };
   };
@@ -455,9 +514,11 @@ async function runJob(j) {
       const out = deepNeutral(kit, q.messages);
       const msgs = (await strictTemplate()) ? foldSystem(out) : out;
       const asked = q.think; // Bob's loop: false on a tool step (step-thinking.js), 'high' for a deep review, else his default
-      const think = asked === undefined ? true : asked === 'high' || asked === 'extreme' ? true : Boolean(asked);
+      // 22 Nov (the owner: "why are we limiting thinking at all?"): --think-every-step sends every request with thinking
+      // on, the tool steps too (Bob's own rule thinks only to plan and to answer), to measure what that is worth
+      const think = thinkAll ? true : asked === undefined ? true : asked === 'high' || asked === 'extreme' ? true : Boolean(asked);
       const body = { cache_prompt: true, messages: LlamaCpp.toOpenAI(msgs), ...(q.tools?.length ? { tools: deepNeutral(kit, q.tools) } : {}), max_tokens: replyMax, stream: false,
-        ...thinkBody(family === 'qwen' ? think : asked), ...sampling(Boolean(q.tools?.length), asked), ...loraBody };
+        ...thinkBody(family === 'qwen' || family === 'deepseek' || thinkAll ? think : asked), ...sampling(Boolean(q.tools?.length), asked), ...loraBody };
       const stepEffort = effortOf(asked); // GPT-OSS reasoning level of this step (the job's Effort is `effort`)
       const t0 = Date.now();
       const r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth }, body: wholeBody(body), signal: q.signal });
@@ -469,7 +530,18 @@ async function runJob(j) {
       const res = await r.json(); const m = res.choices?.[0]?.message || {};
       steps.push({ think, ...(stepEffort ? { effort: stepEffort } : {}), thinking: kit.neutral(String(m.reasoning_content || '')), content: kit.neutral(String(m.content || '')), calls: [], secs: (Date.now() - t0) / 1000, tokens: res.usage?.completion_tokens ?? null, prompt_tokens: res.usage?.prompt_tokens ?? null, finish: res.choices?.[0]?.finish_reason || '' });
       const calls = (m.tool_calls || []).map((c) => { let a = {}, raw; try { a = JSON.parse(c.function?.arguments || '{}'); } catch { raw = c.function?.arguments; } return { function: { name: c.function?.name, arguments: a, ...(raw !== undefined ? { raw } : {}) } }; });
-      if (!calls.length && q.tools?.length) { const tc = textCalls(m.content || '', new Set(q.tools.map((x) => x.function?.name))); if (tc) return { role: 'assistant', content: tc.text, tool_calls: tc.calls }; }
+      // 22 Nov (flashnext-tools, the owner: whether the tools "need adapting to a new tool shape"): each step keeps the
+      // calls as the brain wrote them, before Bob mends or bounces them, so tool-faults.mjs can count by kind.
+      const st = steps.at(-1), offered = (q.tools || []).map((x) => x.function?.name).filter(Boolean);
+      st.offered = offered;
+      st.raw_calls = (m.tool_calls || []).map((c, i) => rawCallFacts(c.function?.name, c.function?.arguments, calls[i].function, q.tools, 'native'));
+      if (!calls.length && q.tools?.length) {
+        const tc = textCalls(m.content || '', new Set(offered));
+        if (tc) { st.text_form = textForm(m.content); st.raw_calls = tc.calls.map((c) => rawCallFacts(c.function?.name, c.function?.arguments, c.function, q.tools, 'text')); return { role: 'assistant', content: tc.text, tool_calls: tc.calls }; }
+        if (looksLikeCall(m.content)) st.text_form = `${textForm(m.content)} (not read)`; // a call written as text that Bob could not turn into a real one
+        if (looksLikeCall(m.reasoning_content)) st.call_in_thinking = true; // a call written inside the thinking, never sent
+      } else if (!calls.length && looksLikeCall(m.content)) st.text_form = `${textForm(m.content)} (no tools that step)`; // Bob had taken the tools away (a cap, a final answer)
+      if (res.choices?.[0]?.finish_reason === 'length' && /<tool_call>|<function=/.test(String(m.content || '') + String(m.reasoning_content || ''))) st.call_cut = true;
       return { role: 'assistant', content: m.content || '', tool_calls: calls.length ? calls : undefined };
     },
     unloadAll: async () => [], loaded: async () => [], unload: async () => [], isLoaded: async () => true
@@ -491,9 +563,10 @@ async function runJob(j) {
   const row = {
     id: j.id, job: j.job, text: j.text, ...(j.from ? { from: j.from } : {}), planted, scene, said: kit.neutral(said), ...(saidAll !== said ? { said_all: kit.neutral(saidAll) } : {}), ...(partial ? { said_partial: kit.neutral(partial) } : {}), steps, asks, real, standins: [], missing: [...missing],
     secs: (Date.now() - t0) / 1000, ...(error ? { error: kit.neutral(error).slice(0, 400) } : {}),
-    effort, solo_effort: solo, search_capped: steps.some((st) => (st.calls || []).some((c) => c.name === 'web_search' && /at its monthly cap/.test(String(c.result || '')))), ...(loraScale !== null ? { lora_scale: loraScale } : {}), family, tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
+    effort, solo_effort: solo, ...(thinkAll ? { think_every_step: true } : {}), search_capped: steps.some((st) => (st.calls || []).some((c) => c.name === 'web_search' && /at its monthly cap/.test(String(c.result || '')))), ...(loraScale !== null ? { lora_scale: loraScale } : {}), family, tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
     messages: deepNeutral(kit, brain.session(session)),
     ...(ow ? { key: j.key, office: { lo: Boolean(j.office.lo), files: ow.files, missing: ow.missing, after: officeAfter(kit, docText) } } : {}),
+    ...(rw ? { key: j.key, type: j.type, repo: { name: j.repo.name, dir: j.repo.dir, ...(j.repo.passed ? { passed: j.repo.passed } : {}), files: rw.files.length, missing: rw.missing, ...(rw.missing.length ? {} : { after: repoAfter(kit, rw, j.repo, steps) }) } } : {}),
     ...(mw ? { key: j.key, mail: { spec: j.mail, ...(saidNo ? { said_no: saidNo } : {}), cards: sortCards.map((c) => ({ batches: (c.batches || []).map((b) => ({ name: b.name, action: b.action, folder: b.folder, ids: b.ids })), replyFirst: (c.replyFirst || []).map((x) => ({ id: x.id, why: x.why })) })), ...mw.server.after() } } : {})
   };
   // what the test world got wrong in this run, if anything (harness-faults.mjs): kept with the run for the read

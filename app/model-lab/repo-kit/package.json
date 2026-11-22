@@ -1,0 +1,10 @@
+{
+  "name": "bob-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A few small helpers taken from Bob: git looks, the code map, naming rules, token counts, speed readings and step planning.",
+  "scripts": {
+    "test": "node test/run.js"
+  }
+}

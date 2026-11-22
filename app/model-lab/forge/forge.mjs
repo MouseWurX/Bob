@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { STARTUP_LOG, readStartups, recordStartup, freezingCards, orderCards, startupSummary } from './card-health.mjs';
 import { gate as neverGate, trains as planTrains, loadNever, neverFilesFor, findLeaks } from '../never-gate.mjs';
-import { V2, createPod, podV1, listOf, volumeV1, volumeBodyV2 } from './runpod-v2.mjs';
+import { V2, createPod, podV1, listOf, volumeV1, volumeBodyV2, podBodyV2 } from './runpod-v2.mjs';
 import { slotsUsed } from './slots.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -61,9 +61,34 @@ async function rp(method, p, body) {
 }
 // RunPod's older GraphQL door (read-only here: where cards and storage are)
 async function gql(query) {
-  const r = await fetch(`https://api.runpod.io/graphql?api_key=${encodeURIComponent(KEY)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query }) });
+  // FORGE_GQL: tests only (a made-up RunPod)
+  const r = await fetch(`${process.env.FORGE_GQL || 'https://api.runpod.io/graphql'}?api_key=${encodeURIComponent(KEY)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query }) });
   const j = await r.json().catch(() => ({})); if (j.errors) throw new Error(JSON.stringify(j.errors).slice(0, 300)); return j.data;
 }
+// 22 Nov (deepseek-tools: 2 x H200 NVL kept answering "no instances available"): plan.card_sets lists the card sets to try
+// in order, each its own type and count: [{ "gpus": ["NVIDIA H200 NVL"], "count": 2 }, { "gpus": ["NVIDIA H200"], "count": 2 }, ...].
+// Without it there is one set: plan.gpus at plan.gpu_count (default 1). Every set is priced from RunPod's live secure
+// price before anything is rented, and one whose expected cost (per hour x plan.expected_hours, else hours_max) passes
+// dollars_max, or whose cards hold less than plan.vram_gb (or the set's own vram_gb), is left out.
+const cardCount = (n) => Math.max(1, Math.min(8, Math.floor(Number(n) || 1)));
+function cardSets(p) {
+  if (Array.isArray(p.card_sets) && p.card_sets.length) return p.card_sets.map((s) => ({ gpus: [].concat(s.gpus || s.gpu || []), count: cardCount(s.count), vram_gb: s.vram_gb }));
+  return [{ gpus: p.gpus || GPUS, count: cardCount(p.gpu_count) }];
+}
+async function cardOptions(p) {
+  const prices = {};
+  try { const d = await gql('{ gpuTypes { id securePrice memoryInGb } }'); for (const g of d?.gpuTypes || []) prices[g.id] = { price: Number(g.securePrice) || 0, mem: Number(g.memoryInGb) || 0 }; } catch (e) { return { error: String(e.message || e).slice(0, 200), options: [] }; }
+  const hours = Number(p.expected_hours) || Number(p.hours_max) || 1, cap = Number(p.dollars_max) || Infinity;
+  const options = [];
+  for (const s of cardSets(p)) for (const g of s.gpus) {
+    const pr = prices[g], perHour = pr ? +(pr.price * s.count).toFixed(2) : null, expected = perHour != null ? +(perHour * hours).toFixed(2) : null;
+    const vram = pr ? pr.mem * s.count : null, need = Number(s.vram_gb ?? p.vram_gb) || 0;
+    const why = !pr ? 'RunPod lists no such card' : !perHour ? 'RunPod lists no secure price for it' : expected > cap ? `expected $${expected} (${hours} h) is over the $${cap} cap` : need && vram < need ? `${vram} GB of VRAM, the brain needs ${need} GB` : '';
+    options.push({ gpu: g, count: s.count, perHour, expected, vram, ok: !why, why });
+  }
+  return { options, hours };
+}
+const optionLine = (o) => `${o.count} x ${o.gpu}${o.vram ? ` (${o.vram} GB)` : ''}${o.perHour != null ? `, $${o.perHour}/h, about $${o.expected} expected` : ''}${o.ok ? '' : `: LEFT OUT, ${o.why}`}`;
 // Where a wanted card is in stock, with storage for a network volume. Returns [{id, name, gpu, stock}] best first.
 async function placesFor(gpus) {
   // RunPod's "available" flag here is stricter than pod creation (it said no for a card we were running on), so it only ranks; it never rules a place out
@@ -201,14 +226,20 @@ if (podId) { const t = JSON.parse(fs.readFileSync(tokenFile, 'utf8')); hdr['X-Fo
 async function rent({ again = false, avoidNow = new Set() } = {}) {
   const boot = zlib.gzipSync(fs.readFileSync(path.join(here, 'pod', 'bootstrap.py'))).toString('base64');
   const rungs = plan.benchmark_only ? `benchmark only: the card serves ${(plan.benchmark?.models || []).map((m) => `${m.name}${m.nickname ? ` (${m.nickname})` : ''} from ${String(m.file || '').replace(/^hf:/, 'Hugging Face ')}`).join(' and ')} and this PC runs ${(plan.benchmark?.commands || []).length || 1} test command(s) against each; nothing is trained, cut, uploaded or downloaded but the reports` : plan.rebuild ? ((plan.rebuild.models || []).every((m) => m.weights_only) ? `upload the full-size weights of ${(plan.rebuild.models || []).map((m) => `${m.name}${m.nickname ? ` (${m.nickname}, ${m.private === false ? 'PUBLIC' : 'private'})` : ''}`).join(' and ')} from the drive to Hugging Face (${plan.publish?.user}); nothing is rebuilt or trained, nothing comes down to this PC` : `rebuild ${(plan.rebuild.models || []).map((m) => `${m.name}${m.nickname ? ` (${m.nickname}, ${m.private === false ? 'PUBLIC' : 'private'})` : ''}`).join(' and ')} from the stock teacher + adapter and put GGUFs, full weights, adapters and cards on Hugging Face (${plan.publish?.user}); nothing is trained, nothing comes down to this PC`) : plan.lessons_only ? `lessons only: ${plan.teacher_gguf ? `the GGUF teacher ${plan.teacher_gguf.repo} (${plan.teacher_gguf.file})` : 'the full Qwen'} writes them, nothing is scored, cut or healed` : (plan.train_teacher ? `${plan.train_teacher.name || '35Bob'} (the full Qwen trained on every lesson, no cut)${plan.rungs.length ? ', then ' : ''}` : '') + (plan.rungs.length ? plan.rungs.map((r) => r.name).join(', ') : plan.train_teacher ? '' : plan.skills ? 'expert counts per skill only (no Bob is cut; the counts come back for the differential table)' : 'lessons and the teacher scores only (no Bob is cut)') + (plan.publish ? ` -- Hugging Face (${plan.publish.user}, private): ${[plan.publish.odds ? 'the teacher odds' : '', ...(plan.publish.models || []).map((m) => `${m} (tested, from the drive)`)].filter(Boolean).join(', ') || 'nothing this run'}; no untested Bob is uploaded` : '') + (plan.download_quants ? `; only ${plan.download_quants.join(', ')} GGUF files come down to this PC, the rest stay on the drive` : '');
-  console.log(`\nAbout to rent ONE GPU on RunPod to make: ${rungs}`);
+  // 22 Nov: the card sets, priced live (cardOptions); the message names how many cards one pod gets
+  const offer = Array.isArray(plan.card_sets) && plan.card_sets.length ? await cardOptions(plan) : null;
+  if (offer && !offer.options.some((o) => o.ok)) throw new Error(`no card set fits the caps: ${offer.error || offer.options.map(optionLine).join('; ')}; nothing was rented`);
+  const oneCount = cardCount(plan.gpu_count);
+  const what = offer ? `ONE pod (the first free of: ${offer.options.filter((o) => o.ok).map((o) => `${o.count} x ${o.gpu}`).join(', then ')})` : oneCount > 1 ? `ONE pod with ${oneCount} GPUs` : 'ONE GPU';
+  console.log(`\nAbout to rent ${what} on RunPod to make: ${rungs}`);
+  if (offer) for (const o of offer.options) console.log(`  card set: ${optionLine(o)}`);
   // 10 Nov: a rebuild run can carry a benchmark and the brain scans; the yes-prompt must say so (the PC's check caught a summary that did not)
   if (plan.rebuild && plan.benchmark) console.log(`Then a benchmark on the same card: it serves ${(plan.benchmark.models || []).map((m) => `${m.name}${m.nickname ? ` (${m.nickname})` : ''}`).join(', ')} in turn (${plan.benchmark.hours_each || 2} h cap each) and this PC runs ${(plan.benchmark.commands || []).length || 1} test command(s) against each; the reports land under out/bench. This window must stay open for that.`);
   if (plan.scan) console.log(`Then brain scans (FNRI): the card builds a patched llama.cpp, makes the stock ${plan.scan.stock || 'teacher'} Q4 from the teacher, scans ${(plan.scan.brains || []).join(', ')} one by one, and the recordings come down to this PC as ${plan.scan.zip || 'a zip under out/fnri'}. About 1 to 1.5 hours of card time.`);
   console.log(`Caps: ${hoursMax} hours or $${dollarsMax}, whichever comes first; the pod is deleted when the Bobs are downloaded, or at the cap.`);
   if (plan.volume) { const kv = knownVolumes(); console.log(`Network volume: ${plan.volume.gb || 100} GB kept between sessions (about $${((plan.volume.gb || 100) * 0.07).toFixed(2)} a month each, a standing charge until deleted). Have: ${kv.length ? kv.map((v) => `${v.id} in ${v.name || v.dataCenterId}`).join(', ') : 'none'}. ${plan.data_centers ? `Only in: ${plan.data_centers.join(', ')} (plan.data_centers).` : 'A card is only taken in a data centre with a volume'}${plan.volume_new === false || plan.rebuild ? '; NO new volume is made this run' : '; a new volume is made where the card is if ours are out'}.`); }
   const stepUpShown = stepUpFor(plan.gpus || GPUS);
-  console.log(`Cards, in order of preference: ${(plan.gpus || GPUS).join(', ')}`);
+  if (!offer) console.log(`Cards, in order of preference: ${(plan.gpus || GPUS).join(', ')}${oneCount > 1 ? ` (${oneCount} of one type in the pod)` : ''}`);
   if (stepUpShown.length) console.log(`Step-up card(s) if none is free after ${plan.volume_wait_minutes || 20} minutes: ${stepUpShown.join(', ')}${plan.step_up_note ? ` (${plan.step_up_note})` : ''}\n`); else console.log('');
   if (plan.write_lessons) { const ws = Array.isArray(plan.write_lessons) ? plan.write_lessons : [plan.write_lessons]; console.log(`First the full Qwen writes ${ws.reduce((t, w) => t + (w.count || 800), 0)} extra lessons on the card (${ws.map((w) => w.jobs || 'coding').join(', ')}).`); }
   if (!args.yes && !again) {
@@ -218,7 +249,7 @@ async function rent({ again = false, avoidNow = new Set() } = {}) {
     if (!['yes', 'y', 'yep', 'yeah'].includes(a)) { log(`Not renting: the answer was "${ans.trim().slice(0, 20)}", not yes.`); process.exit(0); }
     log('yes typed: renting');
   }
-  const gpus = plan.gpus || GPUS;
+  const gpus = offer ? [...new Set(offer.options.filter((o) => o.ok).map((o) => o.gpu))] : plan.gpus || GPUS;
   const run = plan.run || `${plan.rungs[0]?.name || 'counts'}-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}`;
   // Build 15 rules (the owner's): (1) a card is taken ONLY in a data centre with a network volume; if our volumes' data centres are
   // out of cards, a volume is made in another data centre that has storage and the card (the teacher downloads again there, once);
@@ -258,18 +289,27 @@ async function rent({ again = false, avoidNow = new Set() } = {}) {
         let useVol = t.vol, root = '/workspace';
         if (plan.volume && t.dc && !useVol) { tried.add(t.dc); useVol = await volumeIn(t.dc, t.name); }
         if (useVol) root = '/forge';
-        const pod = await createPod(rp, {
+        // 22 Nov (deepseek-tools): each card set is asked for in turn, with its own count (cardOptions; plan.gpu_count without sets)
+        const asks = offer ? offer.options.filter((o) => o.ok && cards.includes(o.gpu)).map((o) => ({ cards: [o.gpu], count: o.count })) : [{ cards, count: oneCount }];
+        let pod = null, askErr = null, gotCount = 1;
+        for (const ask of asks) {
+          try {
+        pod = await createPod(rp, {
           name: `bob-forge-${plan.rungs[0]?.name || (plan.lessons_only ? 'lessons' : 'counts')}-${String(plan.run || '').replace(/[^\w.-]/g, '_').slice(0, 40)}`, imageName: plan.image || 'vllm/vllm-openai:v0.28.0', cloudType: 'SECURE',
-          gpuTypeIds: cards, gpuTypePriority: 'custom', gpuCount: 1, volumeMountPath: '/workspace',
+          gpuTypeIds: ask.cards, gpuTypePriority: 'custom', gpuCount: ask.count, volumeMountPath: '/workspace',
           ...(useVol ? { networkVolumeId: useVol.id, dataCenterIds: [useVol.dataCenterId], containerDiskInGb: plan.disk_gb || 350 } : { volumeInGb: plan.disk_gb || 350, containerDiskInGb: 40, ...(t.dc ? { dataCenterIds: [t.dc] } : {}) }),
           ports: directPorts() || ((plan.write_lessons || plan.benchmark) ? ['8000/http', '8001/http'] : ['8000/http']), supportPublicIp: Boolean(plan.direct),
           // the PC's RunPod key goes in as FORGE_RUNPOD_KEY (RunPod injects its own limited RUNPOD_API_KEY into every pod, which cannot delete) so the pod can delete itself near the time cap even if this PC falls asleep.
           env: { FORGE_TOKEN: token, FORGE_RUNPOD_KEY: KEY, HF_HUB_ENABLE_HF_TRANSFER: '0', FORGE_HOURS_MAX: String(hoursMax), FORGE_ROOT: root, FORGE_SHARED: '/workspace' },
           dockerEntrypoint: ['bash', '-c'],
           dockerStartCmd: [`mkdir -p ${root} && echo ${boot} | base64 -d | gunzip > /workspace/bootstrap.py && exec python3 /workspace/bootstrap.py`]
-        }, cards); // v2: one card type a request, so each wanted card is asked for in turn
+        }, ask.cards); // v2: one card type a request, so each wanted card is asked for in turn
+            gotCount = ask.count; break;
+          } catch (e) { askErr = e; }
+        }
+        if (!pod) throw askErr || new Error('no card set to ask for in this minute');
         podId = pod.id; price = pod.costPerHr || 0;
-        const got = pod.machine?.gpuTypeId || 'a card';
+        const got = `${gotCount > 1 ? `${gotCount} x ` : ''}${pod.machine?.gpuTypeId || 'a card'}`;
         // 14 Nov: keep the host's id and data centre (RunPod forgets them once a pod is deleted; a stuck host can then be reported)
         const host = pod.machineId || pod.machine?.id || null, where = pod.machine?.dataCenterId || t.dc || null;
         log(`rented ${got}: pod ${podId}, $${price}/h, in ${t.name}${host ? ` (host ${host}${where ? `, ${where}` : ''})` : ''}${useVol ? ` with volume ${useVol.id}` : ' WITHOUT a volume'}${stepUp.includes(got) ? ' (the STEP-UP card: the wanted one was out)' : ''}`);
@@ -277,7 +317,7 @@ async function rent({ again = false, avoidNow = new Set() } = {}) {
         return;
       } catch (e) { if (attempt % 5 === 0) log(`rent in ${t.name}: ${e.message.slice(0, 160)} (asking again every minute, ${minutes} min so far)`); }
     }
-    await sleep(60000);
+    await sleep(Math.max(0, Math.min(60000, rentMinutes * 60000 - (Date.now() - t0)))); // never past the rent window
   }
   throw new Error(`no card available in ${rentMinutes} minutes; nothing was rented. Try again later.`);
 }
@@ -365,7 +405,9 @@ function lessonPreflight() {
   const q = (v) => `"${String(v).replace(/"/g, '')}"`;
   const cmds = [];
   // 16 Nov: a jobs gate between two job runs (jobs-gate.mjs) is checked too (its key and folder), though it needs no --hours
-  for (const m of plan.benchmark?.models || []) for (const c of (m.commands?.length ? m.commands : plan.benchmark?.commands || [])) if (/(write-lessons|do-jobs|jobs-gate|jobs-matrix)\.mjs/.test(c)) cmds.push([m, c]);
+  for (const m of plan.benchmark?.models || []) for (const c of (m.commands?.length ? m.commands : plan.benchmark?.commands || [])) if (/(write-lessons|do-jobs|jobs-gate|jobs-matrix|trace-read)\.mjs/.test(c)) cmds.push([m, c]);
+  // 22 Nov (flashnext-tools): an expert-map phase (trace-read.mjs) needs the served brain on Brain Engine with the expert trace
+  if (cmds.some(([, c]) => /trace-read\.mjs/.test(c)) && !(plan.benchmark?.brain_engine?.patches || []).includes('0002-expert-trace')) bad.push('a trace-read.mjs phase needs benchmark.brain_engine with 0002-expert-trace (the expert trace), or it maps nothing');
   for (const w of plan.write_lessons ? (Array.isArray(plan.write_lessons) ? plan.write_lessons : [plan.write_lessons]) : []) if (w.from_ideas) bad.push(`plan.write_lessons (${w.dir}) has no pre-flight yet: use benchmark commands`);
   // 16 Nov: an add-on (llama-server --lora) for a served brain comes from Hugging Face
   for (const m of plan.benchmark?.models || []) if (m.lora !== undefined && !/^hf:[^:\s]+\/[^:\s]+:[^\s]+\.gguf$/.test(String(m.lora))) bad.push(`${m.name}: lora must be hf:<repo>:<file>.gguf`);
@@ -378,7 +420,7 @@ function lessonPreflight() {
     const nVar = /jobs-matrix\.mjs/.test(c) ? Math.max(1, ((c.match(/--variants\s+("[^"]*"|\S+)/) || [])[1] || '').split(';').filter((x) => x.replace(/"/g, '').trim()).length) : 1;
     const par = slotsUsed(c), hrs = Number((c.match(/--hours\s+([\d.]+)/) || [])[1] || 0);
     hoursSum += hrs;
-    if (!(hrs > 0) && !/jobs-gate\.mjs/.test(c)) bad.push(`${m.name} command ${i + 1} has no --hours`);
+    if (!(hrs > 0) && !/jobs-gate\.mjs|trace-read\.mjs/.test(c)) bad.push(`${m.name} command ${i + 1} has no --hours`);
     if (par > slots) bad.push(`${m.name} command ${i + 1}: --parallel ${par}${nVar > 1 ? ` (${nVar} variants at once)` : ''} but the card serves ${slots} slot(s)`);
     if (/--gate\s+off/.test(c)) bad.push(`${m.name} command ${i + 1}: --gate off (every rental starts with a sample)`);
     const cmd = `${c.replace(/{{url}}/g, 'http://preflight.invalid').replace(/{{name}}/g, m.name).replace(/"?{{out}}"?/g, q(path.join(outDir, 'bench', plan.run || 'run', m.name))).replace(/"?{{lessons}}"?/g, q(path.join(outDir, 'lessons'))).replace(/{{run}}/g, plan.run || 'run')} --preflight --slot-ctx ${slotCtx}`;
@@ -397,6 +439,15 @@ if (!podId || args.preflight) {
   // 16 Nov: RunPod retired its old address while a trial waited for a card, and the window retried for half an hour. Now a
   // read-only ask (the pod list) must answer before anything is rented, so a moved or broken address stops at pre-flight. FORGE_NO_RUNPOD_CHECK: tests only (they have no internet).
   if (!args.local && !process.env.FORGE_NO_RUNPOD_CHECK) { try { listOf(await rp('GET', '/pods'), 'pods'); log(`pre-flight: RunPod answers at ${REST}`); } catch (e) { bad.push(`RunPod's rental address ${REST} does not answer (${String(e.cause?.code || e.message).slice(0, 160)}); nothing can be rented or deleted through it`); } }
+  // 22 Nov (deepseek-tools): card sets are priced live; one that passes the dollar cap or is too small is left out, none left fails
+  if ((Array.isArray(plan.card_sets) && plan.card_sets.length) || args['rent-plan']) {
+    const offer = await cardOptions(plan);
+    if (offer.error) bad.push(`RunPod's card prices did not come back (${offer.error}); the card sets cannot be checked`);
+    for (const o of offer.options) log(`pre-flight: card set ${optionLine(o)}`);
+    if (!offer.error && !offer.options.some((o) => o.ok)) bad.push(`no card set fits: every one is left out (caps $${plan.dollars_max} / ${offer.hours} h expected)`);
+    // --rent-plan: read-only, what each card set would post (the v2 body's card part), then stop
+    if (args['rent-plan'] && !bad.length) { for (const o of offer.options.filter((x) => x.ok)) { const b = podBodyV2({ gpuTypeIds: [o.gpu], gpuCount: o.count, cloudType: 'SECURE', imageName: plan.image || 'vllm/vllm-openai:v0.28.0', env: {}, ports: ['8000/tcp'] }, o.gpu); console.log(`would post: ${JSON.stringify({ gpu: b.gpu, cloudType: b.cloudType })}`); } process.exit(0); }
+  }
   if (bad.length) { for (const b of bad) log(`PRE-FLIGHT FAIL: ${b}`); log('Not renting: fix the plan first.'); process.exit(1); }
   if (args.preflight) { log('pre-flight OK: nothing rented (--preflight)'); process.exit(0); }
 }
@@ -651,7 +702,7 @@ async function benchOnPod(name) {
     const cmd = c.replace(/{{url}}/g, url).replace(/{{name}}/g, name).replace(/"?{{out}}"?/g, q(dir)).replace(/"?{{lessons}}"?/g, q(path.join(outDir, 'lessons'))).replace(/{{run}}/g, plan.run || 'run') + slotArg;
     const lf = path.join(dir, `${String(i + 1).padStart(2, '0')}.log`); fs.writeFileSync(lf, `$ ${cmd}\n`);
     log(`  ${cmd}`);
-    const code = await new Promise((res) => { const ch = spawn(cmd, { cwd: path.join(here, '..'), shell: true, windowsHide: true, env: { ...process.env, LAB_URL: url, LAB_API_KEY: hdr['X-Forge-Token'], LAB_MODEL_NAME: name, LAB_REMOTE: '1', LAB_OUT: dir, ...(plan.no_hands ? { LAB_NO_HANDS: '1' } : {}) } }); const w = (d) => { fs.appendFileSync(lf, d); process.stdout.write(d); }; ch.stdout.on('data', w); ch.stderr.on('data', w); ch.on('exit', res); ch.on('error', (e) => { w(`${e.message}\n`); res(1); }); });
+    const code = await new Promise((res) => { const ch = spawn(cmd, { cwd: path.join(here, '..'), shell: true, windowsHide: true, env: { ...process.env, LAB_URL: url, LAB_DOOR: base, LAB_API_KEY: hdr['X-Forge-Token'], LAB_MODEL_NAME: name, LAB_REMOTE: '1', LAB_OUT: dir, ...(plan.no_hands ? { LAB_NO_HANDS: '1' } : {}) } }); const w = (d) => { fs.appendFileSync(lf, d); process.stdout.write(d); }; ch.stdout.on('data', w); ch.stderr.on('data', w); ch.on('exit', res); ch.on('error', (e) => { w(`${e.message}\n`); res(1); }); });
     fs.appendFileSync(lf, `\n[exit ${code}]\n`); if (code) log(`  command ${i + 1} ended with code ${code} (see ${lf})`);
     // 13 Nov: exit 86 = a gate said stop (smoke-gate.mjs): no more commands, and the run ends so the pod is deleted
     if (code === 86) { const why = (fs.readFileSync(lf, 'utf8').match(/GATE STOP: ([^\r\n]+)/) || [])[1] || `command ${i + 1} stopped the run`; log(`  gate: ${why}`); return `gate stopped the run: ${why}`; }

@@ -182,6 +182,14 @@ const hiddenNotes = () => brain.session('main').filter((m) => m.role === 'system
   check('154: stale after the rounds stopped adding anything', seenTools.at(-1) === 0 && ran.length <= 4, `${seenTools.join(',')} ran ${ran.length}`);
   check('154: answered', brain.session('main').at(-1)?.content === 'Nothing turned up.');
 }
+{ // 22 Nov (repo1 repo-feat-branches): different edits that each answer with the same words are real work, not "nothing new"
+  reset();
+  toolImpl = () => ({ text: 'Edited C:\\proj\\test\\a.test.js. (Backup kept in the inn.)' });
+  script = [...[1, 2, 3, 4, 5].map((i) => call('edit_file', { path: 'C:\\proj\\test\\a.test.js', find: `old ${i}`, replace: `new ${i}` })), { role: 'assistant', content: 'All five edits are in.' }];
+  const before = hiddenNotes().length;
+  await run('make the five edits');
+  check('22 Nov: five different edits with the same reply words all run, and the turn is not stopped as stale', ran.length === 5 && !hiddenNotes().slice(before).some((t) => t === WRAP_NOTES.stale('Sam')) && brain.session('main').at(-1)?.content === 'All five edits are in.', `${ran.length} ran | ${hiddenNotes().slice(before).join(' / ').slice(0, 200)} | tools ${seenTools.join(',')} | ${brain.session('main').at(-1)?.content}`);
+}
 { // 155: two actions taking turns (each clears the repeat count), with nothing changing
   reset();
   toolImpl = () => ({ text: 'Saved.' });
