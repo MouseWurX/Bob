@@ -56,7 +56,7 @@ const size = (step) => JSON.stringify(step.tools).length;
 {
   const target = path.join(innDir, 'note.txt');
   const steps = await turn('hmm', [call('write_file', { path: target, content: 'x' })], 's6');
-  check('calling a tool from a group not added yet still works (the group is added)', steps.length === 2 && names(steps[1]).includes('write_file'));
+  check('calling a tool from a group not added yet still works (the group is added)', steps.length >= 2 && names(steps[1]).includes('write_file')); // a third step is the unsaid_changes check (21 Nov): "done" names no file
   const off = await brain.runTool('run_command', { cmd: 'echo', args: ['hi'] }, { emit: () => {}, signal: new AbortController().signal, allowAll: new Set() });
   check('a tool from a Hand that is off is refused with how to turn it on', /(switched off|is off).*Settings, Hands/.test(off.text), off.text);
   const bad = await turn('hmm', [call('use_tools', { group: 'run' })], 's7');

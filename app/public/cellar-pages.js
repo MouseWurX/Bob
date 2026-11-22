@@ -259,17 +259,17 @@ export function createSettingsParts(now) {
         <p class="muted">Your app icon: ${esc(LAMPS.find((l) => l.id === lampId(st)).name)}.</p></div>
       <div><strong>Your own theme</strong><p class="muted">Make or edit a theme on the <button type="button" class="link" data-tab="style">🎨 Style</button> page (Make your own theme).</p></div>`;
   }
-  // Settings, Jobs (src/job-helps.js): how Bob works through a job. Eleven switches, all off unless you turn them on.
+  // Settings, Jobs (src/job-helps.js): how Bob works through a job. Eleven switches, off unless you turn them on, except Run tests after code edits (on since 21 Nov).
   const jobsHtml = () => {
     const j = settings.jobHelps || {};
-    const sw = (k, label, note) => sswitch('jh' + k[0].toUpperCase() + k.slice(1), j[k] === true, label, note);
+    const sw = (k, label, note) => sswitch('jh' + k[0].toUpperCase() + k.slice(1), k === 'runTests' ? j[k] !== false : j[k] === true, label, note); // runTests is on unless switched off (21 Nov)
     return `<p class="muted">How I work through a job.</p>
       ${sw('steer', 'Steer mid-job', 'A message in the job\'s chat is read before my next step, not after the whole job.')}
       ${sw('softStop', 'Stop after this step', 'A softer Stop: the current step finishes and keeps its result, then I say what\'s done and what\'s left.')}
       ${sw('timeLimit', 'Job time limit', 'A bar shows the time left. When it runs out, a card asks whether to give me more; with no answer in 2 minutes I wrap up.')}
       <div class="srow"><label class="pick"><strong>Time limit</strong> <select data-jhminutes aria-label="Time limit">${[5, 10, 15, 20, 30, 45, 60].map((m) => `<option value="${m}" ${(j.minutes || 10) === m ? 'selected' : ''}>${m} minutes</option>`).join('')}</select></label> <span class="muted">This also stops any work that runs past it, switch on or off, so I never run away.</span></div>
       ${sw('receipt', 'Job receipt', 'Files changed, commands run and pages read, each with Open or Undo. Undo works for a week.')}
-      ${sw('runTests', 'Run tests after code edits', 'In a project with tests, I run them after an edit and fix what fails before I say done. The command still asks first.')}
+      ${sw('runTests', 'Run tests after code edits', 'On by default. After I change code, I run the project\'s tests (or check a JavaScript file for mistakes when there are none) and fix what fails before I say done. The command still asks first.')}
       ${sw('askFirst', 'Ask before a vague job', 'If a big ask could mean two things, I ask you to pick one first.')}
       ${sw('rememberNo', 'Remember a no', 'A step you deny stays denied for the whole chat, with your reason if you type one.')}
       ${sw('lookupCache', 'Cache look-ups for an hour', 'The same search or page within an hour is reused, not fetched again.')}

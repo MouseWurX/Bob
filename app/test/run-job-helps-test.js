@@ -29,7 +29,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-jobs-'));
 // ---------- The setting ----------
 {
   const c = cleanJobHelps({});
-  check('every switch starts off', JOB_HELPS.length === 11 && JOB_HELPS.every((k) => c[k] === false));
+  check('every switch starts off, except checking code after an edit (on since 21 Nov)', JOB_HELPS.length === 11 && JOB_HELPS.every((k) => c[k] === (k === 'runTests')) && cleanJobHelps({ runTests: false }).runTests === false);
   check('only true turns one on', cleanJobHelps({ steer: 'true', sources: 1, receipt: true }).receipt === true && cleanJobHelps({ steer: 'true' }).steer === false && cleanJobHelps({ sources: 1 }).sources === false);
   check('time limit: 10 minutes to start, only the listed choices', c.minutes === 10 && cleanJobHelps({ minutes: 30 }).minutes === 30 && cleanJobHelps({ minutes: 7 }).minutes === 10 && cleanJobHelps({ minutes: '1e9' }).minutes === 10);
   check('editor: VS Code to start, only the listed ones', c.editor === 'vscode' && cleanJobHelps({ editor: 'cursor' }).editor === 'cursor' && cleanJobHelps({ editor: 'calc.exe' }).editor === 'vscode');
@@ -37,8 +37,8 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-jobs-'));
   check('saved settings are cleaned', mergeSettings({}, { jobHelps: { steer: true, bogus: true, minutes: 5 } }).jobHelps.steer === true && !('bogus' in mergeSettings({}, { jobHelps: { bogus: true } }).jobHelps));
   check('nothing saved means no key', !('jobHelps' in mergeSettings({}, { catName: 'Patches' })));
   check('jobHelp reads the switch', jobHelp({ jobHelps: { sources: true } }, 'sources') && !jobHelp({}, 'sources') && !jobHelp({ jobHelps: { sources: 'yes' } }, 'sources'));
-  check('Bob can say what is on', /Jobs \(Settings, Jobs\): all off/.test(jobHelpsNow({})) && /steer, sources; time limit/.test(jobHelpsNow({ jobHelps: { steer: true, sources: true, timeLimit: true } })) === false && /steer, timeLimit, sources; time limit 10 minutes/.test(jobHelpsNow({ jobHelps: { steer: true, sources: true, timeLimit: true } })));
-  check('his settings list includes it', settingsNow({}).includes('Jobs (Settings, Jobs): all off'));
+  check('Bob can say what is on', /Jobs \(Settings, Jobs\): runTests$/.test(jobHelpsNow({})) && /steer, sources; time limit/.test(jobHelpsNow({ jobHelps: { steer: true, sources: true, timeLimit: true } })) === false && /steer, timeLimit, runTests, sources; time limit 10 minutes/.test(jobHelpsNow({ jobHelps: { steer: true, sources: true, timeLimit: true } })));
+  check('his settings list includes it', settingsNow({}).includes('Jobs (Settings, Jobs): runTests'));
 }
 
 // ---------- 51 Steer him mid-job ----------
@@ -139,9 +139,9 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-jobs-'));
   const fake = { exists: (f) => f.replace(/\\/g, '/') in files || f.replace(/\\/g, '/').replace(/^[A-Z]:/, '') in files, read: (f) => files[f.replace(/\\/g, '/').replace(/^[A-Z]:/, '')] };
   const at = (f) => testCommandFor(f, fake);
   check('npm test in a project with a test script', at('/p/src/a.js')?.cmd === 'npm' && path.resolve(at('/p/src/a.js').root) === path.resolve('/p'));
-  check('the npm placeholder script is not a test', at('/q/a.js') === null);
+  check('the npm placeholder script is not a test: a JavaScript file gets node --check instead', at('/q/a.js')?.cmd === 'node' && at('/q/a.js').args[0] === '--check');
   check('cargo, pytest', at('/r/src/main.rs')?.cmd === 'cargo' && at('/t/x.py')?.args.join(' ') === '-m pytest -q');
-  check('stops at the top of the repository', at('/s/a.js') === null);
+  check('stops at the top of the repository (then node --check for a .js file, nothing for others)', at('/s/a.js')?.cmd === 'node' && at('/s/x.rb') === null);
   check('a text file is not code', at('/p/readme.md') === null);
   const b = { cfg: { userName: 'Sam', jobHelps: { runTests: true } }, usable: () => true, log() {} };
   const ctx = { job: {}, codeEdits: ['/p/src/a.js'], testedAfterEdit: false };
@@ -346,7 +346,7 @@ const run = async (text, sid = 'main') => { const { jobId } = brain.enqueue(sid,
   const offWas = brain.offTools; brain.offTools = () => new Set(); // the Run Hand on, for this turn
   brain.tools.run_command = { schema: { type: 'function', function: { name: 'run_command', description: 'Run', parameters: { type: 'object', properties: { cmd: { type: 'string' } }, required: ['cmd'] } } }, run: async () => 'Exit code 0. All passed.', summary: (a) => `run ${a.cmd}` };
   seen.length = 0; events.length = 0; autoYes = true;
-  script = [call('write_file', { path: path.join(proj, 'src', 'a.js'), content: 'let a = 2;\n' }), { role: 'assistant', content: 'Changed it.' }, call('run_command', { cmd: 'npm', args: ['test'], cwd: proj }), { role: 'assistant', content: 'Changed it, and the tests pass.' }];
+  script = [call('write_file', { path: path.join(proj, 'src', 'a.js'), content: 'let a = 2;\n' }), { role: 'assistant', content: 'Changed a.js.' }, call('run_command', { cmd: 'npm', args: ['test'], cwd: proj }), { role: 'assistant', content: 'Changed a.js, and the tests pass.' }];
   await run('change a to 2 in my project src/a.js');
   check('he is asked to run the tests before he says done', seen.some((s) => s.messages.some((m) => m.role === 'system' && /Run its tests with run_command \(cmd "npm"/.test(m.content))));
   check('and his last word comes after the tests', /tests pass/.test(brain.session('main').at(-1).content));

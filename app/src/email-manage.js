@@ -377,10 +377,14 @@ export function finalBatches(batches, answer, folders = []) {
   return [...byKey.values()].filter((b) => b.ids.length);
 }
 
+export const sortNamesFolders = (text) => /\b(?:folders?|labels?)\b/i.test(String(text || ''));
 export async function sortPlan(brain, cfg, args, ctx, opts = {}) {
   const { folders, mail } = await scanMail(cfg, args, opts);
   if (!mail.length) return `No mail in ${emailSettings(cfg).folder} from the last ${Math.max(1, Number(args.days) || 30)} days to sort.`;
   const given = Array.isArray(args.batches) && args.batches.length;
+  // 21 Nov (steps40: sort jobs 95% -> 0): with no batches the app's own plan archives newsletters and notices, which
+  // ignored the folders the user named ("Newsletters and Notices folders"). Asked for folders: his batches, or bulk.
+  if (!given && sortNamesFolders(ctx?.turnText)) return 'Error: not run. The ask names folders, and with no batches the app would only use its own plan (archive newsletters and notices), not those folders. Next: call manage_email sort again with batches, each with action "move" and the folder named in the ask, or use bulk with that folder.';
   const batches = cleanBatches(given ? args.batches : suggestBatches(mail), mail);
   for (const b of batches) if (b.action === 'move') b.newFolder = !namedFolder(folders, b.folder);
   const byId = new Map(mail.map((m) => [m.uid, m]));
@@ -520,7 +524,7 @@ export function manageEmailTool(cfg, on = () => true, opts = {}, brain = null) {
       undo: { type: 'string', description: 'undo: its id; none = the last.' },
       days: { type: 'integer', description: 'sort: days back (30).' },
       reply_first: { type: 'array', description: 'sort: answer first, most important first.', items: { type: 'object', properties: { id: { type: 'integer' }, why: { type: 'string' } } } },
-      batches: { type: 'array', description: 'sort: your batches (optional).', items: { type: 'object', properties: { name: { type: 'string' }, why: { type: 'string' }, action: { type: 'string', enum: SORT_ACTIONS }, folder: { type: 'string' }, ids: { type: 'array', items: { type: 'integer' } } } } }
+      batches: { type: 'array', description: 'sort: your batches; needed when folders are named.', items: { type: 'object', properties: { name: { type: 'string' }, why: { type: 'string' }, action: { type: 'string', enum: SORT_ACTIONS }, folder: { type: 'string' }, ids: { type: 'array', items: { type: 'integer' } } } } }
     }, ['action']);
   const p = plainSchema.function.parameters;
   const bulkSchema = fn('manage_email', 'Tidy the user\'s email. sort = a plan card the user approves (for a clean-up). bulk = a whole company, sender, kind or age at once (from the catalog, any size). Or mark, flag, move, archive, trash, draft (never sent), undo. ids from read_email.', {

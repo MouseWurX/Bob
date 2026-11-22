@@ -19,7 +19,7 @@ export const SOLO_ROUNDS = 2; // reviews per gate at Max
 // Then the owner, later the same day: "on maximus time isn't a constraint, you just want the best possible outcome."
 // So SOLO_CALLS is only a backstop against a runaway job (12x Minimus), not a time limit, and each review may read and
 // look things up 6 times to check facts.
-export const SOLO_CALLS = 96;
+export const SOLO_CALLS = Infinity; // 21 Nov (the owner: "NO STEP LIMITS"): was 96
 export const ANSWER_RESERVE = 8;
 export const REVIEW_STEPS = 6;
 export const MAX_JOBS = 6; // small jobs in a Max plan
@@ -186,7 +186,7 @@ export function soloMinutes(level, rounds) {
 
 // The brain that does every part: the main Brain slot, with this level's thinking for reviews.
 // 16 Nov distill test: a Max review that thought without limit asked for 132 searches. Reviews think on a budget
-// ('medium': about 1,500 tokens of thinking on Bob's engine), and the plan check gets no tools (noTools).
+// ('medium' thinking; no thinking budget since 21 Nov), and the plan check gets no tools (noTools).
 export const soloBrain = (cfg, { noTools = false } = {}) => (cfg?.models?.bob ? { model: cfg.models.bob, cpu: false, think: 'medium', ctx: null, solo: true, maxSteps: noTools ? 1 : REVIEW_STEPS, ...(noTools ? { noTools: true } : {}) } : null);
 
 // High and Max: Bob's loop around runOn. brain: the Brain; run(note, { phase, noTools }) runs one full job on the same

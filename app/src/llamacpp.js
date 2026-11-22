@@ -79,13 +79,26 @@ const samePath = (a, b) => Boolean(a && b) && path.resolve(String(a)).toLowerCas
 export const DEFAULT_CTX = 32768;
 const LOAD_LOG_MAX = 256 * 1024; // 1.5.133: how much llama-server output a failed load keeps
 // 1.5.19: Medium thinks, but only this long (tokens of thinking), then it is asked to answer.
-export const THINK_BUDGET = { medium: 1536 };
+// 21 Nov (the owner: "why are we limiting thinking at all?"): no thinking budget at any level. The 1.5.68 case (45K
+// tokens on a small hand-off) was a stuck brain, and the reply's own size (MAX_REPLY_TOKENS) still ends it: a reply
+// that is all thinking and no answer is asked again with thinking off (chatOnce), so it is never a failed job.
+export const THINK_BUDGET = {};
 // 1.5.68: the always-thinking Coding copy (Qwen3.6) gets a budget at every effort too. On the PC it once thought for
 // 10 minutes (about 45K tokens) on a small hand-off without answering; in the race every task finished in under
 // 6,400 tokens. Medium keeps its shorter budget above.
-export const LONG_THINK_BUDGET = 12288;
+export const LONG_THINK_BUDGET = 0;
 // And every request has a ceiling on how much it may write (thinking plus answer), so no single reply runs forever.
-export const MAX_REPLY_TOKENS = 32768;
+export const MAX_REPLY_TOKENS = 32768; // rentals (rental.js) only: Bob's own engine has no fixed reply size (replyTokens)
+// 21 Nov (the owner: "why are we limiting reply length?"): what ends a runaway reply is the reply repeating itself, not
+// a count. Every REPEAT_EVERY characters the last REPEAT_TAIL are checked for one piece written 8+ times running at its end (1,500+ characters).
+export const REPEAT_EVERY = 2000, REPEAT_TAIL = 6000;
+export function repeating(text) {
+  const t = String(text || '');
+  if (t.length < 400) return false;
+  // At least 1,500 characters of the same piece over and over, so a ruled line or a short repeated row isn't a loop.
+  const m = t.trimEnd().match(/([\s\S]{8,400}?)\1{7,}$/);
+  return Boolean(m && m[0].length >= 1500);
+}
 export function thinkBudget(model, think) {
   if (think === false) return 0;
   return THINK_BUDGET[think] || (LONG_CODER.test(String(model || '')) ? LONG_THINK_BUDGET : 0);
@@ -1321,7 +1334,15 @@ export class LlamaCpp {
   // with thinking off and a note to answer now (llama-server keeps the prompt cached, so the retry starts quickly).
   async chatOnce(opts) {
     const budget = thinkBudget(opts.model, opts.think);
-    if (!budget) return this.chatStream(opts);
+    if (!budget) {
+      const r = await this.chatStream(opts);
+      // All thinking and no answer (it filled the reply): asked once more with thinking off, from what it worked out.
+      if (opts.think !== false && r?.cut === 'length' && !String(r.content || '').trim() && !r.tool_calls?.length && !opts.signal?.aborted) {
+        this.log?.('engine', `${opts.model}'s reply was all thinking and no answer; asked again with thinking off`);
+        return this.chatStream({ ...opts, messages: [...opts.messages, { role: 'system', content: 'Thinking time is up. Answer now, using what you have worked out so far.' }], think: false });
+      }
+      return r;
+    }
     const stop = new AbortController();
     const onAbort = () => stop.abort();
     opts.signal?.addEventListener?.('abort', onAbort);
@@ -1421,7 +1442,7 @@ export class LlamaCpp {
     return fetch(this.url + '/v1/chat/completions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, max_tokens: replyTokens(this.current === model ? this.currentCtx : null, MAX_REPLY_TOKENS), // 1.5.148: less on a small context. 1.5.26: no empty enums (llama.cpp rejects them)
+      body: JSON.stringify({ model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, max_tokens: replyTokens(this.current === model ? this.currentCtx : null), // 1.5.148: less on a small context. 1.5.26: no empty enums (llama.cpp rejects them)
         ...this.sampling(model, { tools: !!tools?.length, think, task }),
         ...(Number.isFinite(temperature) ? { temperature } : {}),
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
@@ -1444,7 +1465,8 @@ export class LlamaCpp {
     let buf = '';
     let done = false, finish = ''; // items 210, 211: how the reply ended
     const decoder = new TextDecoder();
-    for await (const chunk of res.body) {
+    let tail = '', sinceCheck = 0, looping = false; // 21 Nov: no fixed reply size; a reply stuck repeating itself is what ends
+    read: for await (const chunk of res.body) {
       onChunk(); // item 14: words are coming; the stall timer starts again
       buf += decoder.decode(chunk, { stream: true });
       let nl;
@@ -1467,6 +1489,11 @@ export class LlamaCpp {
         if (ev.choices?.[0]?.finish_reason) finish = ev.choices[0].finish_reason;
         if (ev.timings) this.readSpeed[this.current || model] = learnReadSpeed(this.readSpeed[this.current || model], ev.timings); // item 208
         const d = ev.choices?.[0]?.delta || {};
+        const more = String(d.reasoning_content || '') + String(d.content || '');
+        if (more) {
+          tail = (tail + more).slice(-REPEAT_TAIL); sinceCheck += more.length;
+          if (sinceCheck >= REPEAT_EVERY) { sinceCheck = 0; if (repeating(tail)) { looping = true; done = true; finish = 'length'; break read; } }
+        }
         if (budget && d.reasoning_content && ++thought > budget && !content) onOver(); // stop.over marks it, so real errors aren't retried
         if (d.reasoning_content && onThink) onThink(d.reasoning_content); // 1.5.53: only while the thinking window is open
         if (d.content) {
@@ -1503,6 +1530,7 @@ export class LlamaCpp {
       // Nov 11: broken JSON is kept as written, so the call can be mended before it runs (loop-help.js).
       return { ...(c.id ? { id: c.id } : {}), function: { name: c.name, arguments: args, ...(raw !== undefined ? { raw } : {}) } };
     });
+    if (looping) this.log?.('engine', `${model}'s reply kept repeating the same words, so it was stopped there (${content.length.toLocaleString()} characters)`);
     if (end === 'length') this.log?.('engine', `${model}'s reply hit the length limit${tool_calls.some((c) => c.cut) ? ' in the middle of a tool call' : ''}`);
     if (!tool_calls.length && tools?.length) {
       const names = new Set(tools.map((t) => t.function?.name).filter(Boolean));

@@ -277,3 +277,26 @@ The owner asked: "Why are the jobs failing? Can we mitigate? Are we causing the 
 - Found while building the repo jobs: the Run hand starts programs with no shell, so a bare "npm" (a .cmd shim on Windows) never starts, yet Bob's own "run the tests" nudge says npm test. The repo-jobs test world quietly runs it as node for now and counts how often.
 - Fix (hands-run.js bareShim): on Windows a bare name with no extension is looked up on PATH with PATHEXT; a .cmd or .bat goes through cmd /d /c with the same refusal of cmd's special characters. Mac, Linux and full paths are unchanged. run-hands-test checks it with a fake PATH.
 - Prove it: the next repo-jobs run drops the test world's stand-in and counts npm runs that worked.
+
+## 21 Nov: repo1 (Bob on his own code), first read
+- 33 jobs: Minimus 19 pass (work right 26), Medius 20 (28); nobody pushed. Most common misses: no check after the last change (7 Minimus, 9 Medius), didn't say what changed (4, 6), the work itself wrong (4, 4).
+- Fix 1: "Run tests after code edits" is on by default (it was off, so nothing asked him to check), and with no test script a JavaScript file gets node --check. Fix 2: answer check unsaid_changes: files changed and the answer names none, one more go with a line per file. Help, FAQ updated. run-job-helps-test, run-answer-checks-test.
+- Prediction: the two habit misses fall from 7-9 and 4-6 to 2 or fewer each on the next repo run. Prove it on the next repo rental.
+## 21 Nov: stop him only when he's stuck
+- The owner: "if stopping him is causing failures we shouldnt be stopping him"; "remove the 10 minute time limit for now". after2: 5 of 96 runs failed only because 8 steps ran out while he was on the right track (ppt-add, excel-big, Gmail bulk-archive, big-recipe, big-old); none hit 10 minutes.
+- Fix (then the owner: "NO STEP LIMITS"): no step count at any level (was 8/12/16/24), no calls-per-turn cap (was 40), no Maximus call cap (was 96); chats from other people keep 30 steps. The always-on 10-minute net is off unless cfg.loopTimeNet (the Jobs time limit switch is unchanged). Stuck checks (3 rounds nothing new, error rounds, circles) still end a runaway turn. Help, FAQ and glossary updated. run-loop-guard-test and run-fifty-test check it.
+- Prove it: rerun the 66 after2 jobs; the 5 must finish and nothing may loop.
+
+## 21 Nov: the lab itself was cutting him short
+- The owner: "did you make rules that limit bob's ability to work?" Audit (bob-wip/limits/limits-audit-2026-11-21.md): do-jobs cut every reply at 4,096 tokens where Bob allows 32,768 (or half the slot), and every job at 8-10 minutes. Now --max defaults to Bob's own reply size on the slot and --job-minutes to 0 (no limit); the rental's hours/$ cap is the outer net. Plans that still pass --max 4096 or --job-minutes keep them until edited.
+
+## 21 Nov: no shared nudge count
+- The owner: "nudges?". All end-of-turn send-backs (claims, can't, promise, tests, checkTurn) shared 2 a turn, so a third real catch went out unfixed. NUDGE_BUDGET is now Infinity; each kind still fires once a turn by its own flag, so it can't loop. Maximus's SOLO_CALLS (96) is gone too, matching "NO STEP LIMITS". Helper brains (tinker 30, reviewer 15) keep their counts until they get stuck checks of their own.
+
+## 21 Nov: no thinking budget, no fixed reply size
+- The owner: "why are we limiting thinking at all?" and "why are we limiting reply length?". Medium's 1,536-token thinking budget and the coder's 12,288 are gone; a reply that is all thinking and no answer is asked again with thinking off. Replies no longer carry max_tokens 32,768 (half the memory on small ones): the engine stops when the memory is full, and a reply repeating the same piece 8+ times (1,500+ characters) is stopped and marked cut (llamacpp.js repeating). The lab's --max bob is now the whole slot. Stock Qwen barely touched these (Medius thinks on ~1 step in 10, ~200 tokens), so the change matters for big brains.
+
+## 21 Nov: finding files by name; sort jobs 95% -> 0
+- Broken-tool check of 1,650 calls in 518 stock-Qwen runs: nothing crashed or hung. Once a path guess failed, no tool could find a file by its name (excel-big: an .xlsx in Documents reported missing). search_files now also lists files and folders whose NAME matches, any type, secret files never.
+- steps40 sort jobs: Medius called manage_email sort with no batches, so the app's own plan archived newsletters and ignored the folders asked for; Minimus wrote "Here's the plan" and stopped. sort with no batches when the ask names folders or labels is now sent back ("send batches with those folders, or bulk"), and a new answer check (mail_plan_only) gives one more go when a mail-tidy ask got only a plan or "Shall I...?" and nothing changed.
+- Flash-Next run: expert routing is mapped AFTER the jobs (trace-read.mjs --runs kind=runs.jsonl, --parallel 1), so the trace can't slow or skew the scores; the engine patches apply to b12359, which also has deepseek41.

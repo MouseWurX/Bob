@@ -102,7 +102,7 @@ for (const [effort, name] of Object.entries(LEVELS)) {
     check(`${name}: ...one shown answer, with no "no file there" note or second go`, r.shown.length === 1 && /Saved the summary/.test(text(r.shown[0])) && !r.shown[0].correction && !r.logs.some((l) => /one more go|said but not done/.test(l)), JSON.stringify(r.shown.map((m) => [text(m), m.correction])) + r.logs.filter((l) => /handoff|honesty/.test(l)).join(' / '));
   }
   { // a brain that never stops: it still ends, with an answer
-    const r = await runJob(effort, 'endless');
+    const r = await runJob(effort, 'endless', { extra: { stepCap: 30 } }); // the app has no step count (21 Nov); the test sets one so this brain can end
     check(`${name}: a brain that never stops calling tools still ends, with no error`, !r.error && r.ran.length <= 40, `${r.error} ran ${r.ran.length}`);
     check(`${name}: ...and answers with what he has`, r.shown.length >= 1 && r.shown.every((m) => text(m).trim()), JSON.stringify(r.shown.map(text)));
   }

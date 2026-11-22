@@ -4,10 +4,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ERROR_ROUNDS, NUDGE_BUDGET, CALLS_PER_TURN, nudgeOk, spendNudge, Progress, findCycle, resultHash, WRAP_NOTES, wrapUp, droppedNote, outOfStepsLine, noteWait, waitedFor, busyMs, pastCeiling, ceilingMs, ceilingMins, stage, carriedBudget, keepBudget, CARRIED_MIN_STEPS, CAP_SKIP, EXTRA_STEPS, extraSteps } from '../src/loop-guard.js';
-import { Brain, MAX_CALLS_PER_REPLY } from '../src/brain.js';
+import { Brain, MAX_CALLS_PER_REPLY, loopSteps } from '../src/brain.js';
+const S = 8; // the mechanics are tested with a cap of 8 (cfg.stepCap); the app itself has none since 21 Nov
 import { saveSettings } from '../src/config.js';
 
 let pass = 0, fail = 0;
+const read = (f) => fs.readFileSync(new URL('../' + f, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (f, ms = 4000) => { for (let i = 0; i < ms / 20; i++) { if (f()) return true; await wait(20); } return false; };
@@ -16,8 +18,9 @@ const until = async (f, ms = 4000) => { for (let i = 0; i < ms / 20; i++) { if (
 {
   const ctx = {};
   check('152: the budget starts open', nudgeOk(ctx));
-  for (let i = 0; i < NUDGE_BUDGET; i++) spendNudge(ctx);
-  check(`152: after ${NUDGE_BUDGET} sends-back, no more`, !nudgeOk(ctx) && NUDGE_BUDGET === 2);
+  for (let i = 0; i < 12; i++) spendNudge(ctx);
+  check('152: no shared count (the owner, 21 Nov): every kind of nudge still gets its one go', nudgeOk(ctx) && NUDGE_BUDGET === Infinity && ctx.nudges === 12);
+  check('152: each kind sends him back once a turn, so nudges cannot loop', ['claimChecked', 'observeChecked', 'jobGuessChecked', 'cantRetried', 'promiseChecked'].every((f) => new RegExp(`ctx\\.${f} = true`).test(read('src/brain-run-on.js'))) && /ctx\.testsNudged = true/.test(read('src/job-helps.js')));
 }
 
 // ---------- 154-156: progress ----------
@@ -78,7 +81,7 @@ const until = async (f, ms = 4000) => { for (let i = 0; i < ms / 20; i++) { if (
   noteWait(sig, 60000); noteWait(sig, 30000);
   check('163: card waits add up per job', waitedFor(sig) === 90000);
   check('163: card waits are taken off the turn time', busyMs(0, sig, 100000) === 10000);
-  check('161: the ceiling is the job time limit (default 10 minutes)', ceilingMs({}) === 600000 && ceilingMins({ jobHelps: { minutes: 30 } }) === 30);
+  check('161: the net is off for now (21 Nov), on with loopTimeNet: the job time limit (default 10 minutes)', ceilingMs({}) === Infinity && ceilingMs({ loopTimeNet: true }) === 600000 && ceilingMins({ jobHelps: { minutes: 30 } }) === 30);
   check('161: a strange minutes value goes back to the default', ceilingMins({ jobHelps: { minutes: 7 } }) === 10);
   check('161: past the ceiling', pastCeiling(0, sig, 600000 + 90000, 600000) && !pastCeiling(0, sig, 600000, 600000));
 }
@@ -115,7 +118,7 @@ const until = async (f, ms = 4000) => { for (let i = 0; i < ms / 20; i++) { if (
   check('extra: none when the last round found nothing new', extraSteps(b) === 0);
   const c = live(); c.progress.round({ ran: 1, fresh: 1, failed: 1 });
   check('extra: none when the last round failed', extraSteps(c) === 0);
-  check('extra: none at the call ceiling', extraSteps({ ...live(), capHit: true }) === 0 && extraSteps({ ...live(), callsRun: CALLS_PER_TURN - 1 }) === 0);
+  check('extra: none at the call ceiling', extraSteps({ ...live(), capHit: true }) === 0 && (!Number.isFinite(CALLS_PER_TURN) || extraSteps({ ...live(), callsRun: CALLS_PER_TURN - 1 }) === 0));
   check('extra: none in a round with no tools', extraSteps({ ...live(), noTools: true }) === 0);
   check('extra: none before any tool ran', extraSteps({ progress: new Progress() }) === 0);
 }
@@ -128,6 +131,7 @@ const cfg = { agentDir, innDir, dataDir, settingsFile: path.join(dataDir, 'setti
   models: { bob: 'small:latest' }, engine: 'ollama', ollamaUrl: 'http://127.0.0.1:1', session: 'normal', autoSession: false };
 const events = [], logs = [];
 const brain = new Brain(cfg, (ev) => { events.push(ev); if (ev?.type === 'approval') setTimeout(() => brain.answerApproval(ev.id, true), 0); }); // every card says yes
+brain.cfg.stepCap = S;
 clearInterval(brain.reminderTimer);
 brain.ensureModel = async () => {}; brain.fitCtx = async () => 8192; brain.recall = async () => '';
 const realLog = brain.log.bind(brain);
@@ -215,11 +219,13 @@ const hiddenNotes = () => brain.session('main').filter((m) => m.role === 'system
   await run('what is the weather?');
   check('152: no more than 3 asks (the first try and 2 sends-back)', asked <= 3, String(asked));
 }
-{ // 157: the calls-per-turn ceiling
+if (!Number.isFinite(CALLS_PER_TURN)) { // 21 Nov (the owner: "NO STEP LIMITS"): no calls-per-turn ceiling
+  check('157: no calls-per-turn ceiling any more', CALLS_PER_TURN === Infinity);
+} else { // 157: the calls-per-turn ceiling
   reset();
   let n = 0;
   const round = () => calls(...Array.from({ length: MAX_CALLS_PER_REPLY }, () => ['web_search', { query: `q${n++}` }]));
-  script = Array.from({ length: 7 }, round);
+  script = Array.from({ length: Math.ceil((CALLS_PER_TURN + 1) / MAX_CALLS_PER_REPLY) }, round);
   script.push((o) => ({ role: 'assistant', content: o.tools?.length ? 'tools still there' : 'Stopping here.' }));
   brain.cfg.jobHelps = { minutes: 60 };
   const j = await run('search lots', { effort: 'extreme' });
@@ -233,28 +239,28 @@ const hiddenNotes = () => brain.session('main').filter((m) => m.role === 'system
   reset();
   let n = 0;
   toolImpl = () => ({ text: `page ${n++}` });
-  script = [...Array.from({ length: 9 }, (_, i) => call('fetch_page', { url: `https://example.com/${i}` })), { role: 'assistant', content: 'All nine pages read.' }];
+  script = [...Array.from({ length: S + 1 }, (_, i) => call('fetch_page', { url: `https://example.com/${i}` })), { role: 'assistant', content: 'All nine pages read.' }];
   await run('read the whole site');
-  check('extra: one more step past the usual 8 lets him finish', ran.length === 9 && brain.session('main').at(-1)?.content === 'All nine pages read.', `${ran.length} | ${brain.session('main').at(-1)?.content}`);
+  check(`extra: one more step past the usual ${S} lets him finish`, ran.length === S + 1 && brain.session('main').at(-1)?.content === 'All nine pages read.', `${ran.length} | ${brain.session('main').at(-1)?.content}`);
   check('extra: the logbook says why', logs.some((l) => /still found something new: 2 more steps to finish \(once a turn\)/.test(l)), logs.filter((l) => l.startsWith('loop')).join(' / '));
   reset();
   n = 0;
   toolImpl = () => ({ text: `page ${n++}` });
-  script = Array.from({ length: 30 }, (_, i) => (o) => (o.tools?.length ? call('fetch_page', { url: `https://example.com/${i}` }) : { role: 'assistant', content: 'Here is what I read so far.' }));
+  script = Array.from({ length: S + 6 }, (_, i) => (o) => (o.tools?.length ? call('fetch_page', { url: `https://example.com/${i}` }) : { role: 'assistant', content: 'Here is what I read so far.' }));
   await run('read the whole site');
-  check('extra: never endless: 8 + 2 steps, the last with no tools', ran.length === 9 && seenTools.length === 10 && seenTools.at(-1) === 0, `${ran.length} ran, ${seenTools.join(',')}`);
+  check(`extra: never endless: ${S} + 2 steps, the last with no tools`, ran.length === S + 1 && seenTools.length === S + 2 && seenTools.at(-1) === 0, `${ran.length} ran, ${seenTools.join(',')}`);
   check('extra: he answers with what he has', brain.session('main').at(-1)?.content === 'Here is what I read so far.');
   reset();
   toolImpl = () => ({ text: 'No results.' });
-  script = Array.from({ length: 30 }, (_, i) => (o) => (o.tools?.length ? call('web_search', { query: `q${i}` }) : { role: 'assistant', content: 'Nothing found.' }));
+  script = Array.from({ length: S + 6 }, (_, i) => (o) => (o.tools?.length ? call('web_search', { query: `q${i}` }) : { role: 'assistant', content: 'Nothing found.' }));
   await run('find something rare');
-  check('extra: nothing new coming in: no extra steps', !logs.some((l) => /more steps to finish/.test(l)) && seenTools.length <= 8, seenTools.join(','));
+  check('extra: nothing new coming in: no extra steps', !logs.some((l) => /more steps to finish/.test(l)) && seenTools.length <= S, seenTools.join(','));
 }
 { // 160: steps run out -> a real ending
   reset();
   let n = 0;
   toolImpl = (name, args) => ({ text: `page ${n++}` });
-  script = Array.from({ length: 8 }, (_, i) => call('fetch_page', { url: `https://example.com/${i}` }));
+  script = Array.from({ length: S }, (_, i) => call('fetch_page', { url: `https://example.com/${i}` }));
   brain.helpOff = (k) => k === 'last'; // the last step keeps its tools, so the steps really run out
   await run('read the whole site');
   delete brain.helpOff;
@@ -264,6 +270,7 @@ const hiddenNotes = () => brain.session('main').filter((m) => m.role === 'system
 }
 { // 161: the safety net uses the job time limit, card waits aside
   reset();
+  brain.cfg.loopTimeNet = true;
   const realNow = Date.now;
   let skew = 0;
   Date.now = () => realNow() + skew;
@@ -274,10 +281,12 @@ const hiddenNotes = () => brain.session('main').filter((m) => m.role === 'system
   check('161: past the 10-minute limit the next round has no tools', seenTools[1] === 0, seenTools.join(','));
   check('161: and he wraps up', brain.session('main').at(-1)?.content === 'Out of time, here is what I have.');
   check('161: the note names the limit', hiddenNotes().some((t) => t === WRAP_NOTES.time('Sam', 10)));
+  delete brain.cfg.loopTimeNet;
 }
 { // 161: the limit is read fresh at every check, so a change in Settings counts at once, even mid-job
   for (const [from, to, wraps] of [[60, 10, true], [10, 30, false]]) {
     reset();
+    brain.cfg.loopTimeNet = true;
     saveSettings(brain.cfg, { jobHelps: { minutes: from } });
     const realNow = Date.now;
     let skew = 0;

@@ -942,7 +942,7 @@ export function buildTools(cfg) {
   t.search_files = {
     // 1.5.32: project is optional. Brains kept asking "which project?" when the user didn't say; now leaving it out
     // searches every project (results say which file each hit is in).
-    schema: fn('search_files', "Search the text in {{USER}}'s files: projects, or a folder. Returns matching lines with file and line number.", {
+    schema: fn('search_files', "Search {{USER}}'s files by name and by the text inside: projects, or a folder. Returns matching file names, then matching lines with file and line number.", {
       project: str('Optional: project name. Leave out unless {{USER}} named one: it searches all.', { enum: Object.keys(cfg.projects || {}) }),
       folder: str('Optional: a full folder path to search instead of the projects.'),
       text: str('Text to look for. Starts and ends with / for a pattern, like /todo|fixme/.'),
@@ -967,6 +967,9 @@ export function buildTools(cfg) {
       const want = filePattern(files);
       if (!roots.length) throw new Error('No projects are set up and no folder was given, so there\'s nothing to search. Give a folder (folder: the full path), or use list_folder and read_file.');
       const hits = [];
+      // 21 Nov (broken-tool check of 518 runs): once a path guess failed, nothing could find a file by its NAME (an .xlsx
+      // in Documents was reported missing). Names of files and folders that match are listed too, any file type.
+      const named = [];
       let scanned = 0;
       // 17 Nov after1: every name search also "found" the ask itself in Bob's own queue and logs (queue.json), so Bob read
       // his own record as the user's file. His own data folder is left out unless it's the folder asked for.
@@ -983,6 +986,7 @@ export function buildTools(cfg) {
         for (const e of entries) {
           if (hits.length >= 60) return;
           const full = path.join(dir, e.name);
+          if (named.length < 30 && match(e.name) && !isSensitive(cfg, full)) named.push(`${full}${e.isDirectory() ? path.sep : ''}`);
           if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) walk(full); continue; }
           if (!(want ? want.test(e.name) : TEXT_EXT.test(e.name)) || isSensitive(cfg, full)) continue;
           scanned++;
@@ -996,7 +1000,9 @@ export function buildTools(cfg) {
       };
       for (const root of roots) { const r = path.resolve(root); ownHere = own.filter((o) => o !== r && o.startsWith(r + path.sep)); walk(root); }
       const where = inUserFolders ? ` (no project is set up, so this searched ${roots.join('; ')})` : '';
-      return hits.length ? `${hits.join('\n')}${where ? `\n${where.trim()}` : ''}` : `No matches in ${scanned} files${where}.`;
+      const names = named.length ? `Files and folders whose name matches:\n${named.join('\n')}` : '';
+      if (!hits.length && !names) return `No matches in ${scanned} files or their names${where}.`;
+      return [names, hits.length ? `${names ? 'Lines that match:\n' : ''}${hits.join('\n')}` : '', where.trim()].filter(Boolean).join('\n');
     },
     summary: ({ project, folder, text, files }) => `search ${folder || project || 'all projects'}${files ? ` (${files})` : ''} for "${text}"`
   };

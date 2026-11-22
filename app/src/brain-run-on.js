@@ -42,7 +42,7 @@ import { cantReason, markCant, settleCant } from './cant-retry.js';
 import { askTogether } from './together.js';
 import { callKey, realState, linkKey, NOW_IN_NOTE, staleHandErrors, meanwhileNear, claimsPcAction, CLAIM_CORRECTION, CLAIM_NUDGE, claimsObservation, OBSERVE_CORRECTION, OBSERVE_NUDGE, LINK_NUDGE, EMPTY_NUDGE, CANT_NUDGE, EMPTY_NOTE, DOING_TOOLS, isLook, ALT_ROUTE_DONE, ALT_ROUTE_NUDGE, quickHandBack } from './brain-words.js';
 import { sidePick, apuRoom } from './brain-lanes.js';
-import { MAX_STEPS, loopSteps, borrowedLine, MAX_CALLS_PER_REPLY, HAND_TOOLS, repeatCheck, repeatNote, trailOf, REPEAT_STOP_LINE, REPEATS_THEN_ANSWER, ANSWER_NOW_NUDGE } from './brain.js';
+import { MAX_STEPS, GUEST_STEPS, loopSteps, borrowedLine, MAX_CALLS_PER_REPLY, HAND_TOOLS, repeatCheck, repeatNote, trailOf, REPEAT_STOP_LINE, REPEATS_THEN_ANSWER, ANSWER_NOW_NUDGE } from './brain.js';
 
 // Methods of the Brain class, put on it in its main file with the same rules as the methods written inside it.
 export const runOnParts = {
@@ -254,7 +254,7 @@ export const runOnParts = {
     // long job a short "where we are" note last. The last step has no tools, so he answers instead of running out.
     // Reliability 164: a job that runs again (session switch, rented-brain card, Gaming, restart) carries on with the
     // steps, sends-back and calls it has left, instead of a whole new budget each time.
-    const carried = carriedBudget(job, this.plainLoop || job?.guest ? MAX_STEPS : loopSteps(job?.effort));
+    const carried = carriedBudget(job, job?.guest ? GUEST_STEPS : Number(this.cfg.stepCap) > 0 ? Number(this.cfg.stepCap) : this.plainLoop ? MAX_STEPS : loopSteps(job?.effort)); // stepCap: tests only, never set by the app
     let maxSteps = carried.maxSteps; // can grow once by EXTRA_STEPS (loop-guard.js extraSteps)
     // Max effort on one brain (solo-effort.js): each part gets only what's left of the whole job's budget (SOLO_CALLS).
     if (job?.soloLeft != null) maxSteps = Math.max(2, Math.min(maxSteps, job.soloLeft));

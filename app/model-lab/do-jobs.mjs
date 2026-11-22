@@ -74,7 +74,10 @@ import { buildBytes } from './office-files.mjs';
 
 // What a run's record keeps of a tool reply: all of it up to 40,000 characters, then a plain cut mark.
 export const recordText = (t, max = 40000) => { const s = String(t ?? ''); return s.length > max ? `${s.slice(0, max)}\n[record cut here: the brain saw ${s.length} characters]` : s; };
-const o = opts({ parallel: 2, max: 4096, 'job-minutes': 10, hours: 0, 'search-gap': 2 });
+// 21 Nov 2026 (the owner: "did you make rules that limit bob's ability to work?"): the lab cut every reply at 4,096 tokens
+// where Bob allows 32,768 (or half the context), and cut every job at 10 minutes. Now --max defaults to what Bob himself
+// allows on the slot, and --job-minutes to 0 = no limit (the rental's own hours and dollars caps are the outer net).
+const o = opts({ parallel: 2, max: 'bob', 'job-minutes': 0, hours: 0, 'search-gap': 2 });
 const L = locate(o);
 const url = String(o.url || process.env.LAB_URL || '');
 const dir = path.join(L.out, String(o.dir || 'do-jobs'));
@@ -314,6 +317,7 @@ let lastSearch = 0, noResultsInRow = 0, searchStop = false;
 // --search-stop off: keep going after 5 empty searches (a replay, jobs-recheck.mjs, is offline on purpose)
 async function searchTurn() { const gap = Number(o['search-gap']) * 1000; for (;;) { const w = lastSearch + gap - Date.now(); if (w <= 0) break; await wait(w); } lastSearch = Date.now(); }
 const ctxSize = Number(o['slot-ctx'] || o.ctx || 32768);
+const replyMax = String(o.max) === 'bob' ? Math.max(2048, ctxSize) : Number(o.max); // as Bob's replyTokens (model-family.js): the whole slot since 21 Nov
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 let strict = null;
 const strictTemplate = async () => {
@@ -452,7 +456,7 @@ async function runJob(j) {
       const msgs = (await strictTemplate()) ? foldSystem(out) : out;
       const asked = q.think; // Bob's loop: false on a tool step (step-thinking.js), 'high' for a deep review, else his default
       const think = asked === undefined ? true : asked === 'high' || asked === 'extreme' ? true : Boolean(asked);
-      const body = { cache_prompt: true, messages: LlamaCpp.toOpenAI(msgs), ...(q.tools?.length ? { tools: deepNeutral(kit, q.tools) } : {}), max_tokens: Number(o.max), stream: false,
+      const body = { cache_prompt: true, messages: LlamaCpp.toOpenAI(msgs), ...(q.tools?.length ? { tools: deepNeutral(kit, q.tools) } : {}), max_tokens: replyMax, stream: false,
         ...thinkBody(family === 'qwen' ? think : asked), ...sampling(Boolean(q.tools?.length), asked), ...loraBody };
       const stepEffort = effortOf(asked); // GPT-OSS reasoning level of this step (the job's Effort is `effort`)
       const t0 = Date.now();
@@ -473,7 +477,7 @@ async function runJob(j) {
   const t0 = Date.now(); const session = `job-${j.id}`; let error = '';
   try {
     const { jobId } = brain.enqueue(session, j.text, [], effort);
-    const until = Date.now() + Number(o['job-minutes']) * 60000;
+    const until = Number(o['job-minutes']) > 0 ? Date.now() + Number(o['job-minutes']) * 60000 : Infinity;
     for (;;) { const s = brain.queue.find((x) => x.id === jobId); if (!s || ['done', 'failed', 'interrupted', 'cancelled'].includes(s.state)) { if (s && s.state !== 'done') error = `${s.state}: ${String(s.error || '')}`; break; } if (Date.now() > until) { error = 'took too long'; try { brain.cancel?.(jobId); } catch {} break; } await wait(200); }
   } catch (e) { error = String(e.message || e); }
   // said: what the user's window shows (16 Nov: Bob marks working text `step` and his reviews and minutes `moot`, so the

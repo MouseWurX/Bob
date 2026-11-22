@@ -96,12 +96,10 @@ check('the glossary says coding always thinks and chat doesn\'t', /Thinking firs
 // ---------- 1.5.68: the always-thinking Coding copy can't think forever ----------
 {
   const os = await import('node:os'); const path = await import('node:path');
-  const { LlamaCpp, thinkBudget, LONG_THINK_BUDGET, MAX_REPLY_TOKENS, THINK_BUDGET } = await import('../src/llamacpp.js');
+  const { LlamaCpp, thinkBudget, LONG_THINK_BUDGET, THINK_BUDGET, repeating } = await import('../src/llamacpp.js');
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob budget '));
   const lc = new LlamaCpp({ agentDir: tmp, dataDir: tmp, llamacpp: {} });
-  check('Qwen3.6 thinking has a budget at Low (Coding thinks by default) and at High', thinkBudget(id, undefined) === LONG_THINK_BUDGET && thinkBudget(id, 'high') === LONG_THINK_BUDGET && LONG_THINK_BUDGET >= 8192 && LONG_THINK_BUDGET <= 16384);
-  check('Medium keeps its own shorter budget; no thinking means no budget', thinkBudget(id, 'medium') === THINK_BUDGET.medium && thinkBudget(id, false) === 0);
-  check('other brains thinking at High are left as they were', thinkBudget('qwen3.8-27b', 'high') === 0 && thinkBudget('gemma4:26b', undefined) === 0);
+  check('no thinking budget at any level (the owner, 21 Nov: "why are we limiting thinking at all?")', thinkBudget(id, undefined) === 0 && thinkBudget(id, 'high') === 0 && thinkBudget(id, 'medium') === 0 && LONG_THINK_BUDGET === 0 && !Object.keys(THINK_BUDGET).length);
   const realFetch = globalThis.fetch;
   const bodies = [];
   const thinkChunks = (n) => Array.from({ length: n }, () => 'data: {"choices":[{"delta":{"reasoning_content":"hm"}}]}\n\n').join('');
@@ -109,19 +107,23 @@ check('the glossary says coding always thinks and chat doesn\'t', /Thinking firs
     if (!init?.body) throw new Error('no props here');
     const b = JSON.parse(init.body); bodies.push(b);
     if (b.chat_template_kwargs?.enable_thinking === false) return new Response('data: {"choices":[{"delta":{"content":"answer"}}]}\n\ndata: [DONE]\n\n');
-    const stream = new ReadableStream({ async pull(c) { if (init.signal.aborted) { c.error(new DOMException('aborted', 'AbortError')); return; } c.enqueue(new TextEncoder().encode(thinkChunks(500))); await new Promise((r) => setTimeout(r, 0)); } });
-    return new Response(stream);
+    return new Response(`${thinkChunks(500)}data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n`);
   };
-  for (const [label, think] of [['Low', undefined], ['High', 'high']]) {
+  for (const [label, think] of [['Low', undefined], ['High', 'high'], ['Medium', 'medium']]) {
     bodies.length = 0;
     const r = await lc.chatOnce({ model: id, messages: [{ role: 'user', content: 'tidy this Unreal helper' }], think });
-    check(`${label} Coding on Qwen3.6: endless thinking is stopped at the budget, then it answers`, r.content === 'answer' && bodies.length === 2 && /Thinking time is up/.test(JSON.stringify(bodies[1].messages)), JSON.stringify({ r, n: bodies.length }));
-    check(`${label} Coding on Qwen3.6 sends presence_penalty 0 while thinking (Qwen3.6 Best Practices) and a reply ceiling`, bodies[0].presence_penalty === 0 && bodies[0].max_tokens === MAX_REPLY_TOKENS && bodies[1].max_tokens === MAX_REPLY_TOKENS);
+    check(`${label} on Qwen3.6: thinking runs on until the reply is full; all thinking and no answer is asked again with thinking off`, r.content === 'answer' && bodies.length === 2 && /Thinking time is up/.test(JSON.stringify(bodies[1].messages)), JSON.stringify({ r, n: bodies.length }));
+    check(`${label} on Qwen3.6 sends presence_penalty 0 while thinking (Qwen3.6 Best Practices) and no fixed reply size`, bodies[0].presence_penalty === 0 && bodies[0].max_tokens === undefined && bodies[1].max_tokens === undefined);
   }
   bodies.length = 0;
   globalThis.fetch = async (url, init) => { if (!init?.body) throw new Error('no props'); bodies.push(JSON.parse(init.body)); return new Response('data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n'); };
   await lc.chatOnce({ model: 'gemma4:26b', messages: [{ role: 'user', content: 'x' }], think: false });
-  check('every request has the reply ceiling, any brain', bodies[0].max_tokens === MAX_REPLY_TOKENS);
+  check('no request has a fixed reply ceiling, any brain (the engine stops when its memory is full)', bodies[0].max_tokens === undefined);
+  check('a reply stuck repeating itself is spotted; a ruled line, a short repeat or a varied answer is not', repeating('I will check the file. '.repeat(80)) && !repeating('I will check the file. '.repeat(20)) && !repeating(`ok ${'-'.repeat(100)}\ntext`) && !repeating(Array.from({ length: 300 }, (_, i) => `word${i}`).join(' ')));
+  bodies.length = 0;
+  globalThis.fetch = async (url, init) => { if (!init?.body) throw new Error('no props'); bodies.push(JSON.parse(init.body)); return new Response(`${Array.from({ length: 400 }, () => 'data: {"choices":[{"delta":{"content":"Let me check the file again. "}}]}\n\n').join('')}data: [DONE]\n\n`); };
+  const loopy = await lc.chatOnce({ model: 'gemma4:26b', messages: [{ role: 'user', content: 'x' }], think: false });
+  check('a looping reply is stopped part way and marked cut, not run to the end of memory', loopy.cut === 'length' && loopy.content.length < 400 * 29, JSON.stringify({ cut: loopy.cut, n: loopy.content.length }));
   globalThis.fetch = realFetch;
   fs.rmSync(tmp, { recursive: true, force: true });
 }

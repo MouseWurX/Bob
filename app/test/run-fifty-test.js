@@ -48,7 +48,7 @@ check('3: characters counted like fitContext counts them', promptChars([{ conten
 check('4: a 32K brain keeps 40 messages, a 128K brain more, 240 at most', historyKeep(32768) === 40 && historyKeep(131072) === 163 && historyKeep(1e7) === 240 && historyKeep(0) === 40);
 
 // ---------- 5. Steps by effort ----------
-check('5: Low 8 steps, Medium 12, High 16, Extreme 24', loopSteps('low') === 8 && loopSteps('medium') === 12 && loopSteps('high') === 16 && loopSteps('extreme') === 24 && loopSteps('nonsense') === 8);
+check('5: no step count at any level (21 Nov, the owner: "NO STEP LIMITS"; after2 lost 5 runs to the old 8)', ['low', 'medium', 'high', 'extreme', 'nonsense'].every((e) => loopSteps(e) === Infinity));
 
 // ---------- 7. A long result keeps the lines that match the ask ----------
 {

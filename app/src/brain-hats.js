@@ -176,7 +176,7 @@ export const hatParts = {
       // Effort on one brain (solo-effort.js): his own review can also check facts on the web, when web search is on.
       reviewer: ['list_folder', 'read_file', 'search_files', ...(web ? ['web_search', 'fetch_page'] : [])]
     }[hat] || [];
-    const maxSteps = Number(steps) > 0 ? Math.min(Number(steps), 100) : hat === 'tinker' ? 30 : hat === 'reviewer' ? 15 : MAX_STEPS;
+    const maxSteps = Number(steps) > 0 ? Math.min(Number(steps), 100) : hat === 'tinker' ? 30 : hat === 'reviewer' ? 15 : 30; // helper brains keep a count (no stuck checks of their own)
     const packet = this.handoff(ctx, via?.check?.ctx ? Math.min(brainCtx || via.check.ctx, via.check.ctx) : brainCtx); // sized for his room when he checks
     const userMsg = { role: 'user', content: `${packet}## The job\n${task}${ctx.picNote ? `\n\n${ctx.picNote}` : ''}` };
     // Raw pictures only go to a brain that can see; any brain still gets the Eyes descriptions above.

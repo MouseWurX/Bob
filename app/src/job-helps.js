@@ -27,6 +27,9 @@ export function cleanJobHelps(v) {
   const src = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
   const out = {};
   for (const k of JOB_HELPS) out[k] = src[k] === true;
+  // 21 Nov 2026 (repo1: 7 of 33 Minimus and 9 of 33 Medius runs changed code and never checked it after): checking code
+  // after editing it is a reliability help, so it is on unless switched off
+  out.runTests = src.runTests !== false;
   const m = Number(src.minutes);
   out.minutes = TIME_CHOICES.includes(m) ? m : DEFAULT_MINUTES;
   out.editor = EDITORS.includes(src.editor) ? src.editor : 'vscode';
@@ -212,11 +215,13 @@ export function testCommandFor(file, { exists = fs.existsSync, read = (f) => fs.
     if (exists(at('go.mod'))) return { root: dir, cmd: 'go', args: ['test', './...'] };
     if (exists(at('pytest.ini')) || exists(at('conftest.py'))) return { root: dir, cmd: 'python', args: ['-m', 'pytest', '-q'] };
     if (exists(at('pyproject.toml')) && /\[tool\.pytest/.test(String(read(at('pyproject.toml'))))) return { root: dir, cmd: 'python', args: ['-m', 'pytest', '-q'] };
-    if (exists(at('.git'))) return null; // the top of the repository, and nothing to run
+    if (exists(at('.git'))) break; // the top of the repository, and no test command
     const up = path.dirname(dir);
-    if (up === dir) return null;
+    if (up === dir) break;
     dir = up;
   }
+  // 21 Nov 2026: no test command, but a JavaScript file can still be checked for mistakes without running it
+  if (/\.(?:m|c)?js$/i.test(file)) return { root: path.dirname(path.resolve(file)), cmd: 'node', args: ['--check', path.resolve(file)] };
   return null;
 }
 export const TESTS_NOTE = (who, t) => `Before you say this is done: you changed code in ${t.root}. Run its tests with run_command (cmd "${t.cmd}", args ${JSON.stringify(t.args)}, in that folder). ${who} sees the exact command and says yes first. If any test fails, fix what you broke and run them again. If ${who} says no, say the tests weren't run.`;

@@ -5,14 +5,20 @@
 import crypto from 'node:crypto';
 import { cleanJobHelps } from './job-helps.js';
 
-export const NUDGE_BUDGET = 2;          // 152: the honesty, empty, can't, promise and tests nudges share two sends-back per turn
-export const CALLS_PER_TURN = 40;       // 157: tool calls one turn may run, across all its replies
+// 152: the honesty, empty, can't, promise and tests nudges shared two sends-back per turn. 21 Nov (the owner asked
+// "nudges?" after "NO STEP LIMITS"): no shared count. Each kind still sends him back at most once a turn (its own
+// claimChecked, cantRetried, promiseChecked, testsNudged... flag), so they can't loop; a third catch is no longer dropped.
+export const NUDGE_BUDGET = Infinity;
+export const CALLS_PER_TURN = Infinity; // 21 Nov (the owner: "NO STEP LIMITS"): was 40; being stuck ends a turn, not a count       // 157: tool calls one turn may run, across all its replies
 // 161 (Nov 12): the safety net is always on and uses the job time limit's minutes (Settings, Jobs), whether
 // that switch is on or off, so no Bob runs away. Card waits don't count (163).
 // Read fresh from the live settings at every check, never copied, so a change in Settings counts at once, even for
 // work already running.
 export const ceilingMins = (cfg) => cleanJobHelps(cfg?.jobHelps).minutes;
-export const ceilingMs = (cfg) => ceilingMins(cfg) * 60000;
+// 21 Nov 2026 (the owner: "remove the 10 minute time limit for now, because on larger models that 10 minutes might make any
+// task fail"): the always-on net is off until cfg.loopTimeNet is true. The Jobs time limit switch (its own card) is
+// unchanged; being stuck (stale, error and circle rounds) and the step backstop still end a runaway turn.
+export const ceilingMs = (cfg) => (cfg?.loopTimeNet === true ? ceilingMins(cfg) * 60000 : Infinity);
 export const STALE_ROUNDS = 3;          // 154: rounds in a row that find nothing new
 // 159: rounds in a row where every call failed. Four: one tool is set aside after three fails in a row (item 200,
 // the owner's rule), and its fourth call comes back "not run"; this is the backstop one round after that.

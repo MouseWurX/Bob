@@ -48,6 +48,11 @@ fs.writeFileSync(path.join(tmp, 'config.json'), JSON.stringify(cfg));
   const nt = buildTools({ ...gcfg, projects: {} });
   const fromHome = await nt.search_files.run({ text: 'needle' });
   checkEarly(/notes\.txt/.test(fromHome) && /no project is set up, so this searched/.test(fromHome) && !/google-services|config\.json/.test(fromHome), 'search_files with no project searches his readable folders and says so');
+  // 21 Nov (broken-tool check): a file is found by its name too, any type, in a folder below; secret files never by name
+  fs.mkdirSync(path.join(sdir, 'Documents')); fs.writeFileSync(path.join(sdir, 'Documents', 'Orders_2026.xlsx'), 'PK');
+  const byName = await nt.search_files.run({ text: 'orders_2026' });
+  checkEarly(/Files and folders whose name matches:\n.*Orders_2026\.xlsx/.test(byName), 'search_files finds a file by its name, any type, in a folder below', byName);
+  checkEarly(!/release\.jks/.test(await nt.search_files.run({ text: 'release' })), 'search_files never names a secret file');
   checkEarly(isSensitive(gcfg, path.join(here, '..', 'config.json')), "Bob's own config.json is off-limits");
   checkEarly(isSensitive(gcfg, path.join(gcfg.agentDir, 'open-webui-data', 'webui.db')), 'open-webui-data is off-limits');
   checkEarly(!isSensitive(gcfg, path.join(sdir, 'notes.txt')), 'ordinary files still readable');

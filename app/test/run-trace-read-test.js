@@ -7,7 +7,7 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { pickLessons, addTo, lifts, dialTrials, countsShape, whole } from '../model-lab/trace-read.mjs';
+import { pickLessons, addTo, lifts, dialTrials, countsShape, whole, runChat, pickRuns } from '../model-lab/trace-read.mjs';
 import { carryover } from '../model-lab/trace-carryover.mjs';
 
 let pass = 0, fail = 0;
@@ -73,6 +73,16 @@ check('the run finds coding on expert 3 and the style on expert 5', lift.lift['j
 check('dials.json and the report are written', fs.existsSync(path.join(out, 'dials.json')) && fs.readFileSync(path.join(out, 'trace-read.md'), 'utf8').includes('style:sherlock'));
 check('no held-out lesson is read', !seen.some((j) => JSON.stringify(j.messages).includes('HELDOUT-SECRET')));
 
+// 21 Nov: finished do-jobs runs are read as they ran (the owner: map a big brain's experts while it runs Bob's jobs)
+{
+  const rf = path.join(tmp, 'runs.jsonl');
+  const run = (id, ok = true) => JSON.stringify({ id, job: 'x', messages: [{ role: 'user', content: 'tidy the inbox' }, ...(ok ? [{ role: 'assistant', content: '', tool_calls: [{ function: { name: 'read_email', arguments: { folder: 'Inbox' } } }] }, { role: 'tool', content: '3 mails' }, { role: 'assistant', content: 'Done.' }] : [])] });
+  fs.writeFileSync(rf, [run('a'), run('b', false), run('c')].join('\n') + '\n');
+  const w = pickRuns([['inbox', rf]], 10);
+  check('runs: one target per kind, runs with no answer skipped', w.length === 2 && w.every((x) => x.target === 'job:inbox'));
+  const m = runChat(JSON.parse(run('a')));
+  check('runs: tool calls go in the server\'s shape, arguments as text', m[1].tool_calls[0].type === 'function' && m[1].tool_calls[0].function.arguments === '{"folder":"Inbox"}' && m[2].role === 'tool');
+}
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -341,7 +341,7 @@ export function onTrackNote({ ask, turn, step, max, who = 'the user' }) {
     return `${m.tool_name || 'tool'} ${bad ? 'failed' : 'ok'}: ${t.slice(0, 70)}${t.length > 70 ? '…' : ''}`;
   });
   const left = Math.max(0, max - step);
-  const lines = [`Where we are (written by the app, step ${step + 1} of ${max}). ${who} asked: "${String(ask || '').replace(/\s+/g, ' ').trim().slice(0, 240)}"`];
+  const lines = [`Where we are (written by the app, step ${step + 1}${Number.isFinite(max) ? ` of ${max}` : ''}). ${who} asked: "${String(ask || '').replace(/\s+/g, ' ').trim().slice(0, 240)}"`];
   if (done.length) lines.push(`Done so far: ${done.join(' / ')}`);
   lines.push(left <= 2 ? `Only ${left} step${left === 1 ? '' : 's'} left: answer now with what you have, unless one more call is really needed.` : 'Keep going on what is still missing, or answer if you have it all.');
   return lines.join('\n');

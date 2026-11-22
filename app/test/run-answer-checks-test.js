@@ -144,6 +144,14 @@ check('...and not after the one more go was used', !turn({}, 'I\'ve noted that y
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
+// ---------- unsaid_changes (21 Nov, repo1: the work was done, the answer never said what changed) ----------
+{
+  const ed = { name: 'edit_file', args: { path: 'C:/p/src/pad.js' }, text: 'Edited.' };
+  const u = answerChecks({ text: 'fix the padding bug', reply: 'Fixed it, the bug is gone.', actions: [ed] }).find((c) => c.kind === 'unsaid_changes');
+  check('unsaid_changes: an edit the answer never names gets one more go', u && /pad\.js/.test(u.nudge), JSON.stringify(u));
+  check('unsaid_changes: naming the file is enough', !answerChecks({ text: 'fix it', reply: 'Fixed the off-by-one in pad.js.', actions: [ed] }).some((c) => c.kind === 'unsaid_changes'));
+  check('unsaid_changes: a failed edit changed nothing', !answerChecks({ text: 'fix it', reply: 'It failed.', actions: [{ ...ed, text: 'Error: no such text' }] }).some((c) => c.kind === 'unsaid_changes'));
+}
 // ---------- draft_unsaved (17 Nov, after1: drafts typed in the chat, never saved) ----------
 {
   const ask = "Wren from Kettle & Crumb asked me about my catering order. Draft a reply saying I'd like the lemon buns, please.";
@@ -171,6 +179,15 @@ check('...and not after the one more go was used', !turn({}, 'I\'ve noted that y
   const kinds = (o) => answerChecks(o).map((x) => x.kind);
   check('inside_talk: the painter / brain stepping out line is caught', kinds({ text: 'Draw a flowchart for spam', reply: 'The brain has stepped out while the painter worked. The flowchart is ready.', actions: [{ name: 'make_diagram', ok: true }] }).includes('inside_talk'));
   check('inside_talk: a plain answer is left alone', !kinds({ text: 'Draw a flowchart for spam', reply: 'Here is the flowchart: subject check, then sender check.', actions: [{ name: 'make_diagram', ok: true }] }).includes('inside_talk'));
+}
+// mail_plan_only (21 Nov, steps40 sort jobs 95% -> 0)
+{
+  const ask = 'Sort my inbox: newsletters into a Newsletters folder and notices into a Notices folder';
+  const seen = [{ name: 'read_email', ok: true, args: { action: 'list' } }];
+  check('mail_plan_only: a plan in words and nothing moved gets one more go', kinds({ text: ask, reply: "Here's the plan: move 12 newsletters to Newsletters and 5 notices to Notices.", actions: seen }).includes('mail_plan_only'));
+  check('mail_plan_only: "Shall I archive these two?" too', kinds({ text: 'Archive the old shipping mails in my inbox', reply: 'I found two. Shall I archive these two?', actions: seen }).includes('mail_plan_only'));
+  check('mail_plan_only: not once manage_email has run', !kinds({ text: ask, reply: "Done. Here's the plan I followed: newsletters to Newsletters.", actions: [...seen, { name: 'manage_email', ok: true, args: { action: 'bulk' }, text: 'Moved 12' }] }).includes('mail_plan_only'));
+  check('mail_plan_only: not when a plan was what was asked for', !kinds({ text: 'Suggest a plan to sort my inbox into folders', reply: "Here's the plan: newsletters to a Newsletters folder.", actions: seen }).includes('mail_plan_only'));
 }
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

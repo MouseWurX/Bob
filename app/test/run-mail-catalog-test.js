@@ -18,7 +18,7 @@ const imp = (f) => import(pathToFileURL(path.join(app, f)).href);
 const { makeInbox, mailServer, HOST, USER, PASS } = await imp('model-lab/mail-world.mjs');
 const cat = await imp('src/mail-catalog.js');
 const { emailTool } = await imp('src/email-read.js');
-const { manageEmailTool, planBulk, undoFile, BULK_MAX } = await imp('src/email-manage.js');
+const { manageEmailTool, planBulk, undoFile, BULK_MAX, sortNamesFolders } = await imp('src/email-manage.js');
 const vault = await imp('src/vault.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mail catalog '));
 const NOW = Date.now();
@@ -223,6 +223,9 @@ const g = setup('owner', { size: 300, seed: 11, flavour: 'gmail', kind: 'graded'
   check('a mail from 500 days ago is found by sender with a long reach', new RegExp(`id ${big.inbox.needles['old-code']} `).test(old), old.slice(0, 900) + ' want ' + big.inbox.needles['old-code']);
 }
 
+// 21 Nov (steps40 sort jobs 95% -> 0): sort with no batches when folders were named is sent back, never the app's own plan
+check('sort: an ask that names folders needs his batches', sortNamesFolders('newsletters into a Newsletters folder') && sortNamesFolders('use the labels Bills and Kids') && !sortNamesFolders('tidy my inbox'));
+check('sort: wired in before the app makes its own plan', /if \(!given && sortNamesFolders\(ctx\?\.turnText\)\) return 'Error: not run/.test(fs.readFileSync(path.join(app, 'src', 'email-manage.js'), 'utf8')));
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

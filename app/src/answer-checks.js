@@ -28,12 +28,16 @@
 //   maths          totals worked out in his head (Qwen invented_result: several wrong sums)
 //   inside_talk    the app's own words for how it works in the answer ("the brain has to step out while the painter works")
 //   draft_unsaved  asked to draft a reply and no manage_email draft was saved (17 Nov)
+//   mail_plan_only asked to tidy mail, nothing changed, and the answer is a plan or "shall I...?" (21 Nov, sort jobs)
+//   unsaid_changes files were written or edited this turn and the answer names none of them (21 Nov, repo1: 4 of 33
+//                  Minimus and 6 of 33 Medius runs did the work and never said what changed)
 //   mail_route     a mail job (trash, archive, reply to a sender's mail) answered without the mail tools: the live inbox
 //                  run (16 Nov) saw bulk trash/archive jobs wander into list_folder, search_files, web_search or
 //                  file_hands, and draft-reply jobs answered with no tool at all
 //
 // Off only with cfg.toolHelp === false (the "Better tool calling" switch), like the other loop helps.
 
+const PLAN_ONLY = /\b(?:here'?s|here is) (?:the|my) plan\b|\bI(?:'ll| will| would| can| could) (?:move|archive|trash|sort|file|put|tidy|clean)\b|\b(?:shall|should) I\b|\b(?:do you )?want me to\b|\bwould you like me to\b/i;
 const LOOKS = new Set(['read_file', 'office_read', 'inspect_file', 'find_in_documents', 'search_files', 'query_data', 'compare_files', 'read_spreadsheet', 'list_folder', 'file_hands', 'edit_file', 'write_file', 'doc_index']);
 const WEB = new Set(['web_search', 'fetch_page', 'news', 'search_news', 'deep_search']);
 const MATHS_TOOLS = new Set(['calculate', 'query_data', 'read_spreadsheet', 'save_spreadsheet', 'run_code']);
@@ -224,6 +228,13 @@ export function answerChecks({ text = '', reply = '', actions = [], usable = () 
     const wander = acts.filter((a) => /^(?:list_folder|search_files|find_in_documents|web_search|fetch_page|file_hands)$/.test(a.name)).map((a) => a.name);
     add('mail_route', `This is a mail job, but no mail tool ran${wander.length ? ` (${[...new Set(wander)].join(', ')} look at files or the web, not the mail)` : ''}. Use read_email to find the messages (by sender, subject or words), then manage_email to trash, archive or move only the ones the request covers (look at each: a real person who wrote to the user isn't bulk mail; say so instead), or read_email first and then write the reply from what the message says. Don't look in folders or on the web for mail.`, ['mail']);
   }
+  // mail_plan_only (21 Nov, steps40: the sort jobs fell from 95% to 0; Minimus wrote "Here's the plan: ..." and stopped,
+  // Medius asked "Shall I archive these two?"): asked to tidy mail, the mail tools there, nothing changed, and the answer
+  // is a plan or a question. The user asked for it done; manage_email's own card is where they say OK.
+  const mailChanged = acts.some((a) => a.name === 'manage_email' && a.ok !== false && !/^Error|^Not run/i.test(String(a.text ?? a.result ?? '')));
+  if (MAIL_ASK.test(ask) && /\b(?:trash|archive|delete|move|sort|tidy|clean (?:up|out)|file away|label|unsubscribe)\b/i.test(ask) && !MAIL_NOT.test(ask) && !/\?\s*$/.test(ask.trim()) && !/\b(?:plan|suggest|ideas?|how (?:should|would|could)|what (?:should|would))\b/i.test(ask) && usable('manage_email') && !mailChanged && PLAN_ONLY.test(said)) {
+    add('mail_plan_only', `${who} asked for this to be done, and nothing was moved yet: you only wrote a plan or asked. Do it now with manage_email (bulk for a whole sender or kind, move with ids, or sort with your batches and the folders ${who} named). The card that comes up is where ${who} says OK, so don't ask first in words.`, ['mail']);
+  }
   // draft_unsaved (17 Nov, after1: 6 of 6 Medius and Minimus drafts were typed in the chat, never saved): asked to draft a
   // reply, with manage_email there, and no draft was saved this turn. The draft goes in Drafts, where the user sends it.
   const argsOf = (a) => { if (a.args && typeof a.args === 'object') return a.args; try { return JSON.parse(a.args); } catch { return {}; } };
@@ -232,6 +243,13 @@ export function answerChecks({ text = '', reply = '', actions = [], usable = () 
     const read = acts.filter((a) => a.name === 'read_email' && String(argsOf(a).action || '') === 'read').map((a) => argsOf(a).id).filter(Boolean).at(-1);
     add('draft_unsaved', `You were asked to draft a reply, but no draft was saved. Save it now with manage_email action draft, ${read ? `reply_to ${read}` : 'reply_to the id of the message being answered (find it with read_email)'} and text = the words of the reply; who it goes to and the subject are filled in. Then say it's in Drafts and not sent.`, ['mail']);
   }
+  // unsaid_changes (21 Nov, repo1): he wrote or edited files and the answer names none of them, so the user can't tell
+  // what changed. One more go: a line per file, what changed in it.
+  const changed = [...new Set(acts.filter((a) => ['write_file', 'edit_file'].includes(a.name) && a.ok !== false && !/^Error|^Not run|said no/i.test(String(a.text ?? a.result ?? ''))).map((a) => String(argsOf(a).path || '')).filter(Boolean))];
+  const base = (f) => f.split(/[\\/]/).pop().toLowerCase();
+  // Not when a change failed this turn: the half-done note (verify.js 185) already lists what was and wasn't done.
+  const failedChange = acts.some((a) => ['write_file', 'edit_file'].includes(a.name) && (a.ok === false || /^Error|^Not run|said no/i.test(String(a.text ?? a.result ?? ''))));
+  if (changed.length && !failedChange && !changed.some((f) => said.toLowerCase().includes(base(f)))) add('unsaid_changes', `You changed ${changed.length === 1 ? 'a file' : `${changed.length} files`} this turn (${changed.slice(0, 6).map(base).join(', ')}), but your answer doesn't say so. Write the whole answer again with a short line for each file changed: its name and what changed in it. Don't change anything more.`, ['files']);
   return out;
 }
 

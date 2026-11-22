@@ -4,6 +4,9 @@
 // for a Bob set, "style:<name>" for a style set. What carries over to a brain is only what was measured ON that brain, so the
 // same lessons are read by the writer (GPT-OSS 120B), its cut (the 38B) and the student (a Qwen Bob), each in its own folder.
 //
+// 21 Nov (the owner: map Flash-Next's experts while it runs Bob's jobs): --runs inbox=<runs.jsonl>,repo=<runs.jsonl>,... reads
+// finished do-jobs runs (each job's whole chat as Bob had it) instead of lessons, one target per kind: "job:<kind>". Run
+// it AFTER the jobs, at --parallel 1, so the scores are never slowed or skewed by the trace.
 // node trace-read.mjs --url <server> --sets bob=<dir>,sherlock=<dir>,... [--per 300] [--per-style N] [--top 4] [--mass --keep 0.75,0.5] [--out <folder>]
 //   [--gate 0.2] stop the rental (exit 86) if more than this share of lessons fail
 //   [--jobs files,run,...] only these jobs (styles are skipped) [--parallel 1] lessons read at once. Keep it at 1: the Brain
@@ -56,6 +59,26 @@ export function pickLessons(setDirs, per, perStyle = per) {
   return out;
 }
 
+// A do-jobs run's chat (brain.session) in the server's shape; a run with no answer from the brain is skipped.
+export function runChat(row) {
+  const msgs = [];
+  for (const m of row?.messages || []) {
+    if (m.role === 'assistant') msgs.push({ role: 'assistant', content: String(m.content || ''), ...(m.tool_calls?.length ? { tool_calls: m.tool_calls.map((c, i) => ({ id: c.id || `call_${i}`, type: 'function', function: { name: c.function?.name || c.name, arguments: typeof c.function?.arguments === 'string' ? c.function.arguments : JSON.stringify(c.function?.arguments ?? c.arguments ?? {}) } })) } : {}) });
+    else if (m.role === 'tool') msgs.push({ role: 'tool', tool_call_id: m.tool_call_id || 'call_0', content: String(m.content || '') });
+    else if (m.role === 'system' || m.role === 'user') msgs.push({ role: m.role, content: typeof m.content === 'string' ? m.content : String(m.content?.find?.((p) => p.type === 'text')?.text || '') });
+  }
+  return msgs.some((m) => m.role === 'assistant') && msgs.some((m) => m.role === 'user') ? msgs : null;
+}
+export function pickRuns(runFiles, per) {
+  const out = [];
+  for (const [name, file] of runFiles) {
+    const rows = readJsonl(file).map((r) => ({ r, messages: runChat(r) })).filter((x) => x.messages);
+    const n = Math.min(per, rows.length), stride = rows.length / Math.max(n, 1);
+    for (let i = 0; i < n; i++) { const x = rows[Math.floor(i * stride)]; out.push({ target: `job:${name}`, messages: x.messages, lesson: { idea: x.r.id } }); }
+  }
+  return out;
+}
+
 // Add one trace to a target's per-layer counts.
 export function addTo(acc, target, tr) {
   if (!tr || (tr.kind && tr.kind !== 'experts')) return false;
@@ -103,8 +126,8 @@ export const countsShape = (acc) => Object.fromEntries(Object.entries(acc).map((
 async function main() {
   const args = Object.fromEntries(process.argv.slice(2).reduce((a, x, i, arr) => (x.startsWith('--') ? [...a, [x.slice(2), arr[i + 1] && !arr[i + 1].startsWith('--') ? arr[i + 1] : true]] : a), []));
   const url = String(args.url || process.env.LAB_URL || '').replace(/\/+$/, '');
-  if (!url || !args.sets) { console.error('node trace-read.mjs --url <Brain Engine server> --sets bob=<dir>,sherlock=<dir> [--per 300] [--out <folder>]'); process.exit(1); }
-  const setDirs = String(args.sets).split(',').filter(Boolean).map((x) => { const [n, ...d] = x.split('='); return [n.trim(), path.resolve(d.join('=').trim())]; });
+  if (!url || (!args.sets && !args.runs)) { console.error('node trace-read.mjs --url <Brain Engine server> --sets bob=<dir>,sherlock=<dir> [--per 300] [--out <folder>]'); process.exit(1); }
+  const setDirs = String(args.sets || '').split(',').filter(Boolean).map((x) => { const [n, ...d] = x.split('='); return [n.trim(), path.resolve(d.join('=').trim())]; });
   const out = path.resolve(String(args.out || process.env.LAB_OUT || 'trace-read')); fs.mkdirSync(out, { recursive: true });
   const per = Number(args.per) || 300, perStyle = Number(args['per-style']) || per, top = Number(args.top) || 4;
   const headers = { 'content-type': 'application/json', ...(process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {}) };
@@ -115,7 +138,8 @@ async function main() {
     }
   };
   const onlyJobs = args.jobs ? new Set(String(args.jobs).split(',').map((x) => `job:${x.trim()}`)) : null;
-  const work = pickLessons(setDirs, per, perStyle).filter((w) => !onlyJobs || onlyJobs.has(w.target));
+  const runFiles = String(args.runs || '').split(',').filter(Boolean).map((x) => { const [n, ...f] = x.split('='); return [n.trim(), path.resolve(f.join('=').trim())]; });
+  const work = [...(setDirs.length ? pickLessons(setDirs, per, perStyle) : []), ...pickRuns(runFiles, per)].filter((w) => !onlyJobs || onlyJobs.has(w.target));
   const par = Math.max(1, Number(args.parallel) || 1), why = {};
   const failed = (kind, w, msg = '') => { fails++; (why[kind] ||= { n: 0, first: [] }).n++; if (why[kind].first.length < 5) why[kind].first.push(`${w.target} ${w.lesson.idea}${msg ? ': ' + msg.slice(0, 160) : ''}`); if (fails <= 3) console.log(`  failed (${kind}) ${w.target} ${w.lesson.idea} ${msg.slice(0, 120)}`); };
   console.log(`Reading ${work.length} lessons over ${new Set(work.map((w) => w.target)).size} targets (up to ${per} each; held-out never read)`);
@@ -124,7 +148,7 @@ async function main() {
   const mass = Boolean(args.mass), shares = String(args.keep || '0.75,0.5').split(',').map(Number).filter((x) => x > 0 && x <= 1);
   let done = 0;
   const readOne = async (w) => {
-    const messages = whole(w.lesson, w.sets); if (!messages) return failed('no-set', w, `set "${w.lesson.messages?.find((m) => m.role === 'assistant')?.set ?? ''}" not in toolsets.json`);
+    const messages = w.messages || whole(w.lesson, w.sets); if (!messages) return failed('no-set', w, `set "${w.lesson.messages?.find((m) => m.role === 'assistant')?.set ?? ''}" not in toolsets.json`);
     try {
       const j = await post({ messages, max_tokens: 1, cache_prompt: false, expert_trace: true, ...(mass ? { expert_trace_mass: true } : {}), temperature: 0 });
       E ||= Number(j.expert_trace?.n_expert) || 0; used ||= Number(j.expert_trace?.n_expert_used) || 0;

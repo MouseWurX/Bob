@@ -86,11 +86,17 @@ export { SIDE_LANE, sideOk, APU_MIN_CTX, APU_CARVE_MARGIN_GB, APU_NO_ROOM, apuRo
 export { APU_HOLDBACK_DEFAULT_GB, apuHoldbackGB } from './brain-lanes.js';
 export { NOW_IN_NOTE, CUT_NOTE, fitContext, askWords, cutKeeping, MAX_TRACE, fileBefore, traceStep, TOO_LONG, staleHandErrors, claimsPcAction, claimsObservation, OBSERVE_CORRECTION, realState, meanwhileNear, engineLabel, linkKey, CLAIM_CORRECTION, realPcPrompt, ALT_ROUTE_NUDGE, ALT_ROUTE_DONE, askedCount, quickHandBack, EMPTY_NOTE, COMPACT_KEEP, HISTORY_PER, HISTORY_MAX, historyKeep, NO_ANSWER_NOTE, UNCAUGHT_QUIET_MS, NO_ANSWER_PARKED, editPrompt, loadMode, loadLine, thinkStream } from './brain-words.js';
 
-export const MAX_STEPS = 8;
+// 21 Nov 2026 (the owner: "if stopping him is causing failures we shouldnt be stopping him", then "NO STEP LIMITS"):
+// after2 lost 5 of 96 runs only because the 8 steps ran out while he was on the right track. There is no step count for
+// your own jobs at any level: what ends a turn is being stuck (3 rounds finding nothing new, error rounds, going in
+// circles: loop-guard.js), Stop, or the Jobs time limit if you turned it on. Chats from other people (Discord, Telegram,
+// another Bob) keep GUEST_STEPS, so a stranger can't keep your computer busy.
+export const MAX_STEPS = Infinity;
+export const GUEST_STEPS = 30;
 export const QUEUE_SAVE_MS = 1000; // item 230
 // Nov 11 (item 5): bigger jobs get more steps. Low effort (the usual chat) keeps 8; Medium, High and Extreme get more
 // room before the last step (no tools, answer with what he has). The "where we are" note keeps a long job on track.
-export const STEPS_BY_EFFORT = { low: 8, medium: 12, high: 16, extreme: 24 };
+export const STEPS_BY_EFFORT = { low: Infinity, medium: Infinity, high: Infinity, extreme: Infinity };
 export const loopSteps = (effort) => STEPS_BY_EFFORT[cleanEffort(effort)] || MAX_STEPS;
 // #57 stopgap (two-Bob trial, Test B); Bob's own #57 fix replaces these.
 export const MAX_CALLS_PER_REPLY = 6;

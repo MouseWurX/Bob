@@ -116,12 +116,13 @@ export function samplingFor(lc, model, gguf, { tools = false, think, task, own }
   return base;
 }
 
-// 1.5.148: how long one reply may get. Qwen recommends 32,768 tokens; a brain loaded with a small context gets half of
-// it for the reply (never under 2,048), so a reply on a small device can't fill the whole memory and stall there.
-export function replyTokens(ctx, max = 32768) {
+// 1.5.148: how long one reply may get (was: 32,768 tokens, half the memory on a small one). 21 Nov (the owner: "why are we
+// limiting reply length?"): the whole memory. The engine stops on its own when the memory is full, and a reply stuck
+// repeating itself is stopped by llamacpp.js repeating(). Unknown memory: nothing is sent (the engine's own "until full").
+export function replyTokens(ctx, max = Infinity) {
   const n = Number(ctx);
-  if (!Number.isFinite(n) || n <= 0) return max;
-  return Math.max(2048, Math.min(max, Math.floor(n / 2)));
+  if (!Number.isFinite(n) || n <= 0) return Number.isFinite(max) ? max : undefined;
+  return Math.max(2048, Math.min(max, n));
 }
 
 // 15 Nov 2026: how a request asks a brain to think or not (step-thinking.js decides when). Qwen and most families

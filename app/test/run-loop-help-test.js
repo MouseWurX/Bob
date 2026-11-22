@@ -6,7 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { repairJson, checkArgs, fixCalls, exampleCall, nearName, errorHint, promisesAction, PROMISE_NUDGE, nearKey, onTrackNote, LAST_ROUND_NOTE, tidyOld, togetherCalls, meaningPick, GroupVectors, GROUP_EXAMPLES } from '../src/loop-help.js';
 import { asDoc, asQuery, vecKey, freshVec, EMBED_PREFIX_V } from '../src/embed-prefix.js';
-import { Brain } from '../src/brain.js';
+import { Brain, loopSteps } from '../src/brain.js';
+const S = 8; // the mechanics are tested with a cap of 8 (cfg.stepCap); the app itself has none since 21 Nov
 import { LlamaCpp } from '../src/llamacpp.js';
 import { Topics } from '../src/topics.js';
 
@@ -185,6 +186,7 @@ const cfg = { agentDir, innDir, dataDir, settingsFile: path.join(dataDir, 'setti
   models: { bob: 'small:latest' }, engine: 'ollama', ollamaUrl: 'http://127.0.0.1:1', session: 'normal', autoSession: false };
 const events = [];
 const brain = new Brain(cfg, (ev) => events.push(ev));
+brain.cfg.stepCap = S;
 clearInterval(brain.reminderTimer);
 brain.ensureModel = async () => {}; brain.fitCtx = async () => 8192; brain.recall = async () => '';
 const ran = [];
@@ -249,13 +251,13 @@ const reset = () => { ran.length = 0; events.length = 0; seen.length = 0; slow =
   reset();
   // Eight steps, and 2 more because the searches keep finding new things (Nov 16, the owner: "a couple more steps"):
   // nine rounds of different searches, then the last step has no tools.
-  script = Array.from({ length: 9 }, (_, i) => call('web_search', { query: `topic ${['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel', 'india'][i]}` }));
+  script = Array.from({ length: S + 1 }, (_, i) => call('web_search', { query: `topic ${i}` }));
   script.push((o) => ({ role: 'assistant', content: o.tools?.length ? 'still had tools' : 'Here is what I found.' }));
   await run('research everything');
   check('turn: the last step has no tools, so he answers', brain.session('main').at(-1)?.content === 'Here is what I found.', brain.session('main').at(-1)?.content);
   check('turn: it says so in the note', seen.at(-1)?.messages.at(-1)?.content === LAST_ROUND_NOTE('Sam'));
   check('turn: no "round in circles" line', !events.some((e) => e.type === 'token' && /round in circles/.test(e.text)));
-  check('turn: a "where we are" note after two rounds', seen[2]?.messages.at(-1)?.role === 'system' && /Where we are .*step 3 of 8/.test(seen[2].messages.at(-1).content), seen[2]?.messages.at(-1)?.content);
+  check('turn: a "where we are" note after two rounds', seen[2]?.messages.at(-1)?.role === 'system' && new RegExp(`Where we are .*step 3 of ${S}`).test(seen[2].messages.at(-1).content), seen[2]?.messages.at(-1)?.content);
 }
 {
   reset();

@@ -104,7 +104,7 @@ check('family: unknown stays unknown', familyOf('llama3:8b', ggufInfo(odd)) === 
   check('own presets: numbers kept in range', q({ think: false, own: mine }).top_k === 200);
   check('own presets: a hand-picked temperature is not cooled for tools', q({ tools: true, own: mine }).temperature === 0.8);
   check('own presets: junk is dropped', JSON.stringify(cleanPresets({ on: 'yes', coding: { temperature: 'hot', top_p: '' }, x: { temperature: 1 } })) === '{"on":false}');
-  check('reply length: 32K on a big context, half on a small one, never under 2K', replyTokens(262144) === 32768 && replyTokens(16384) === 8192 && replyTokens(2048) === 2048 && replyTokens(undefined) === 32768);
+  check('reply length: no fixed size (the owner, 21 Nov): the whole memory, never under 2K; unknown memory sends none', replyTokens(262144) === 262144 && replyTokens(16384) === 16384 && replyTokens(1024) === 2048 && replyTokens(undefined) === undefined && replyTokens(65536, 32768) === 32768);
 }
 
 // Through the engine: the request carries the sampling, and thinking switches are unchanged.
