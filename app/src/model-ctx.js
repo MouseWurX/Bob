@@ -105,7 +105,7 @@ export function ctxGuide(max, pick, { gaming = false, stretch = null } = {}) {
     parts.push('Bigger reads longer files and chats, but uses more memory and takes longer to read when it\'s full.');
   }
   if (stretch && max) parts.push(`With Long memory on it can be stretched to ${ctxLabel(stretch)}. A stretched size makes short chats a little worse while it's picked, and a full one takes a long time to read.`);
-  if (gaming) parts.push(`In a Gaming session this brain runs on the processor, so Bob keeps it at ${ctxLabel(GAMING_CTX)} while you play and doesn't take RAM from your game.`);
+  if (gaming) parts.push(`A Gaming session defaults to ${ctxLabel(GAMING_CTX)} while you play. A smaller context leaves more room for your game. Even on the processor alone, Bob still uses system RAM.`);
   return parts.join(' ');
 }
 
