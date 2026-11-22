@@ -1,13 +1,13 @@
 diff --git a/ggml/src/ggml-cpu/ggml-cpu.c b/ggml/src/ggml-cpu/ggml-cpu.c
-index 5498459..bc589b4 100644
+index 5498459..7fbf81e 100644
 --- a/ggml/src/ggml-cpu/ggml-cpu.c
 +++ b/ggml/src/ggml-cpu/ggml-cpu.c
-@@ -1721,6 +1721,149 @@ static bool ggml_mul_mat_id_card_round(const struct ggml_tensor * dst) {
+@@ -1721,6 +1721,252 @@ static bool ggml_mul_mat_id_card_round(const struct ggml_tensor * dst) {
             ggml_row_size(GGML_TYPE_Q8_0, src0->ne[0]) <= ggml_row_size(GGML_TYPE_Q8_K, src0->ne[0]);
  }
  
 +
-+// Brain Engine 0054: q4_K and q6_K rows against q8_0 input with whole-number sums per block of 32, the way the card's
++// Brain Engine 0055: q2_K to q6_K rows (q4_K and q6_K only without AVX2) against q8_0 input with whole-number sums per block of 32, the way the card's
 +// q4_K x q8_1 and q6_K x q8_1 dots work, instead of turning every weight into a float first (6-35x slower than the stock
 +// kernel in a cloud test). With AVX2 the dot works straight from the packed weights; without it, a plain whole-number loop.
 +static inline void be_scale_min_k4(int j, const uint8_t * q, uint8_t * d, uint8_t * m) {
@@ -87,6 +87,20 @@ index 5498459..bc589b4 100644
 +    return _mm256_madd_epi16(_mm256_maddubs_epi16(q, a), _mm256_set1_epi16(1));
 +#endif
 +}
++// per-16 types (q2_K, q3_K, q6_K): v[k] holds block k's whole-number sums, lanes 0-3 its first 16 values, 4-7 its
++// second 16. Two levels of hadd give the 16 half-block sums, which get their own scale (sc, 16 signed bytes) and
++// the block's input scale, all in one float step per 8 halves.
++static inline __m256 be_acc16(__m256 acc, const __m256i * v, const int8_t * sc, float d, const float * da) {
++    const __m256i t0 = _mm256_hadd_epi32(v[0], v[1]), t1 = _mm256_hadd_epi32(v[2], v[3]);
++    const __m256i t2 = _mm256_hadd_epi32(v[4], v[5]), t3 = _mm256_hadd_epi32(v[6], v[7]);
++    const __m256i u0 = _mm256_hadd_epi32(t0, t1), u1 = _mm256_hadd_epi32(t2, t3); // [b0..b3 first | b0..b3 second]
++    const __m128i sb = _mm_shuffle_epi8(_mm_loadu_si128((const __m128i *) sc), _mm_setr_epi8(0, 2, 4, 6, 1, 3, 5, 7, 8, 10, 12, 14, 9, 11, 13, 15));
++    const __m256 s0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(sb)), s1 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(sb, 8)));
++    const __m256 dv = _mm256_set1_ps(d);
++    acc = _mm256_fmadd_ps(_mm256_cvtepi32_ps(u0), _mm256_mul_ps(_mm256_mul_ps(dv, s0), _mm256_broadcast_ps((const __m128 *) da)), acc);
++    acc = _mm256_fmadd_ps(_mm256_cvtepi32_ps(u1), _mm256_mul_ps(_mm256_mul_ps(dv, s1), _mm256_broadcast_ps((const __m128 *) (da + 4))), acc);
++    return acc;
++}
 +// one q4_K row against q8_0 input, straight from the packed weights. da_: the input's block scales, ms: da*sum per block.
 +// Whole-number sum per block of 32, then times (weight scale x input scale), like the card's q4_K x q8_1.
 +static float be_dot_q4_K_q8_0(const block_q4_K * x, const block_q8_0 * a, const float * da_, const float * ms, int64_t nbk) {
@@ -133,17 +147,106 @@ index 5498459..bc589b4 100644
 +            q[2] = _mm256_or_si256(_mm256_and_si256(_mm256_srli_epi16(l0, 4), m4), _mm256_slli_epi16(_mm256_and_si256(_mm256_srli_epi16(h, 4), m3), 4));
 +            q[3] = _mm256_or_si256(_mm256_and_si256(_mm256_srli_epi16(l1, 4), m4), _mm256_slli_epi16(_mm256_and_si256(_mm256_srli_epi16(h, 6), m3), 4));
 +            for (int k = 0; k < 4; ++k) {
-+                const int s = n*8 + 2*k;
-+                const __m256i s16 = _mm256_set_m128i(_mm_set1_epi16(sc[s + 1]), _mm_set1_epi16(sc[s]));
-+                v[n*4 + k] = _mm256_madd_epi16(_mm256_maddubs_epi16(q[k], _mm256_loadu_si256((const __m256i *) a[i*8 + n*4 + k].qs)), s16);
++                v[n*4 + k] = be_dotu8(q[k], _mm256_loadu_si256((const __m256i *) a[i*8 + n*4 + k].qs));
 +            }
 +        }
 +        const float d = GGML_CPU_FP16_TO_FP32(x[i].d);
-+        acc = _mm256_fmadd_ps(_mm256_cvtepi32_ps(be_hsum8(v)), _mm256_mul_ps(_mm256_set1_ps(d), _mm256_loadu_ps(da_ + i*8)), acc);
++        acc = be_acc16(acc, v, sc, d, da_ + i*8);
 +        const __m128i scb = _mm_loadu_si128((const __m128i *) sc);
 +        const __m256 d32 = _mm256_set1_ps(32.0f*d);
 +        off = _mm256_fmadd_ps(_mm256_mul_ps(d32, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(scb))), _mm256_loadu_ps(ms16 + i*16), off);
 +        off = _mm256_fmadd_ps(_mm256_mul_ps(d32, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(scb, 8)))), _mm256_loadu_ps(ms16 + i*16 + 8), off);
++    }
++    return be_hsum(_mm256_sub_ps(acc, off));
++}
++
++// q5_K: q4_K's scales and mins, a fifth bit per value from qh
++static float be_dot_q5_K_q8_0(const block_q5_K * x, const block_q8_0 * a, const float * da_, const float * ms, int64_t nbk) {
++    const __m256i m4 = _mm256_set1_epi8(0xF), m1 = _mm256_set1_epi8(1);
++    __m256 acc = _mm256_setzero_ps(), off = _mm256_setzero_ps();
++    for (int64_t i = 0; i < nbk; ++i) {
++        uint32_t u[4];
++        memcpy(u, x[i].scales, 12);
++        u[3] = ((u[2] >> 4) & 0x0f0f0f0f) | (((u[1] >> 6) & 0x03030303) << 4);
++        const uint32_t ua = u[1] & 0x3f3f3f3f;
++        u[1] = (u[2] & 0x0f0f0f0f) | (((u[0] >> 6) & 0x03030303) << 4);
++        u[2] = ua;
++        u[0] &= 0x3f3f3f3f;
++        const __m256 sc = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_loadl_epi64((const __m128i *) &u[0])));
++        const __m256 mn = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_loadl_epi64((const __m128i *) &u[2])));
++        const block_q8_0 * ab = a + i*8;
++        const __m256i h = _mm256_loadu_si256((const __m256i *) x[i].qh);
++        __m256i v[8];
++        for (int j = 0; j < 4; ++j) {
++            const __m256i raw = _mm256_loadu_si256((const __m256i *) (x[i].qs + 32*j));
++            const __m256i h0 = _mm256_slli_epi16(_mm256_and_si256(_mm256_srli_epi16(h, 2*j), m1), 4);
++            const __m256i h1 = _mm256_slli_epi16(_mm256_and_si256(_mm256_srli_epi16(h, 2*j + 1), m1), 4);
++            v[2*j]     = be_dotu8(_mm256_or_si256(_mm256_and_si256(raw, m4), h0), _mm256_loadu_si256((const __m256i *) ab[2*j].qs));
++            v[2*j + 1] = be_dotu8(_mm256_or_si256(_mm256_and_si256(_mm256_srli_epi16(raw, 4), m4), h1), _mm256_loadu_si256((const __m256i *) ab[2*j + 1].qs));
++        }
++        const __m256 dav = _mm256_loadu_ps(da_ + i*8);
++        const __m256 d = _mm256_set1_ps(GGML_CPU_FP16_TO_FP32(x[i].d)), dmin = _mm256_set1_ps(GGML_CPU_FP16_TO_FP32(x[i].dmin));
++        acc = _mm256_fmadd_ps(_mm256_cvtepi32_ps(be_hsum8(v)), _mm256_mul_ps(_mm256_mul_ps(d, sc), dav), acc);
++        off = _mm256_fmadd_ps(_mm256_mul_ps(dmin, mn), _mm256_loadu_ps(ms + i*8), off);
++    }
++    return be_hsum(_mm256_sub_ps(acc, off));
++}
++// q3_K: 2 low bits from qs, the third from hmask, values kept 0..7 (the 4 taken off through the input's sums per 16),
++// 16 signed 6-bit scales per 256
++static float be_dot_q3_K_q8_0(const block_q3_K * x, const block_q8_0 * a, const float * da_, const float * ms16, int64_t nbk) {
++    const __m256i m3 = _mm256_set1_epi8(3), m1 = _mm256_set1_epi8(1);
++    __m256 acc = _mm256_setzero_ps(), off = _mm256_setzero_ps();
++    for (int64_t i = 0; i < nbk; ++i) {
++        uint32_t aux[4];
++        memcpy(aux, x[i].scales, 12);
++        const uint32_t tmp = aux[2];
++        aux[2] = ((aux[0] >> 4) & 0x0f0f0f0f) | (((tmp >> 4) & 0x03030303) << 4);
++        aux[3] = ((aux[1] >> 4) & 0x0f0f0f0f) | (((tmp >> 6) & 0x03030303) << 4);
++        aux[0] = (aux[0] & 0x0f0f0f0f) | (((tmp >> 0) & 0x03030303) << 4);
++        aux[1] = (aux[1] & 0x0f0f0f0f) | (((tmp >> 2) & 0x03030303) << 4);
++        int8_t sc[16];
++        _mm_storeu_si128((__m128i *) sc, _mm_sub_epi8(_mm_loadu_si128((const __m128i *) aux), _mm_set1_epi8(32)));
++        const __m256i hm = _mm256_loadu_si256((const __m256i *) x[i].hmask);
++        __m256i v[8];
++        for (int n = 0; n < 2; ++n) {
++            const __m256i qv = _mm256_loadu_si256((const __m256i *) (x[i].qs + 32*n));
++            for (int j = 0; j < 4; ++j) {
++                const __m256i lo = _mm256_and_si256(_mm256_srli_epi16(qv, 2*j), m3);
++                const __m256i hb = _mm256_slli_epi16(_mm256_and_si256(_mm256_srli_epi16(hm, 4*n + j), m1), 2);
++                v[n*4 + j] = be_dotu8(_mm256_or_si256(lo, hb), _mm256_loadu_si256((const __m256i *) a[i*8 + n*4 + j].qs));
++            }
++        }
++        const float d = GGML_CPU_FP16_TO_FP32(x[i].d);
++        acc = be_acc16(acc, v, sc, d, da_ + i*8);
++        const __m128i scb = _mm_loadu_si128((const __m128i *) sc);
++        const __m256 d4 = _mm256_set1_ps(4.0f*d);
++        off = _mm256_fmadd_ps(_mm256_mul_ps(d4, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(scb))), _mm256_loadu_ps(ms16 + i*16), off);
++        off = _mm256_fmadd_ps(_mm256_mul_ps(d4, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(scb, 8)))), _mm256_loadu_ps(ms16 + i*16 + 8), off);
++    }
++    return be_hsum(_mm256_sub_ps(acc, off));
++}
++// q2_K: 2 bits per value, a 4-bit scale and a 4-bit min per 16
++static float be_dot_q2_K_q8_0(const block_q2_K * x, const block_q8_0 * a, const float * da_, const float * ms16, int64_t nbk) {
++    const __m256i m3 = _mm256_set1_epi8(3);
++    __m256 acc = _mm256_setzero_ps(), off = _mm256_setzero_ps();
++    for (int64_t i = 0; i < nbk; ++i) {
++        const uint8_t * sc = x[i].scales;
++        int8_t sl[16];
++        _mm_storeu_si128((__m128i *) sl, _mm_and_si128(_mm_loadu_si128((const __m128i *) sc), _mm_set1_epi8(0xF)));
++        __m256i v[8];
++        for (int n = 0; n < 2; ++n) {
++            const __m256i qv = _mm256_loadu_si256((const __m256i *) (x[i].qs + 32*n));
++            for (int j = 0; j < 4; ++j) {
++                v[n*4 + j] = be_dotu8(_mm256_and_si256(_mm256_srli_epi16(qv, 2*j), m3), _mm256_loadu_si256((const __m256i *) a[i*8 + n*4 + j].qs));
++            }
++        }
++        const float d = GGML_CPU_FP16_TO_FP32(x[i].d);
++        acc = be_acc16(acc, v, sl, d, da_ + i*8);
++        const __m128i scb = _mm_srli_epi16(_mm_loadu_si128((const __m128i *) sc), 4);
++        const __m128i mb = _mm_and_si128(scb, _mm_set1_epi8(0xF));
++        const __m256 dm = _mm256_set1_ps(GGML_CPU_FP16_TO_FP32(x[i].dmin));
++        off = _mm256_fmadd_ps(_mm256_mul_ps(dm, _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(mb))), _mm256_loadu_ps(ms16 + i*16), off);
++        off = _mm256_fmadd_ps(_mm256_mul_ps(dm, _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(mb, 8)))), _mm256_loadu_ps(ms16 + i*16 + 8), off);
 +    }
 +    return be_hsum(_mm256_sub_ps(acc, off));
 +}
@@ -152,13 +255,19 @@ index 5498459..bc589b4 100644
  static void ggml_compute_forward_mul_mat_id_card_round(
          const struct ggml_compute_params * params,
                struct ggml_tensor * dst) {
-@@ -1774,8 +1917,74 @@ static void ggml_compute_forward_mul_mat_id_card_round(
+@@ -1774,8 +2020,86 @@ static void ggml_compute_forward_mul_mat_id_card_round(
  
      ggml_barrier(params->threadpool);
  
 -    float w[16384];
      const int64_t nb = ne00 / QK8_0;
-+    const bool whole = (src0->type == GGML_TYPE_Q4_K || src0->type == GGML_TYPE_Q6_K) && ne00 % QK_K == 0;
++    const enum ggml_type ty = src0->type;
++#if defined(__AVX2__)
++    const bool whole = (ty == GGML_TYPE_Q2_K || ty == GGML_TYPE_Q3_K || ty == GGML_TYPE_Q4_K || ty == GGML_TYPE_Q5_K ||
++                        ty == GGML_TYPE_Q6_K) && ne00 % QK_K == 0;
++#else
++    const bool whole = (ty == GGML_TYPE_Q4_K || ty == GGML_TYPE_Q6_K) && ne00 % QK_K == 0;
++#endif
 +    if (whole) {
 +        int8_t q[16384]; float fs[16384/16], fm[16384/32];
 +        for (int cur_a = 0; cur_a < n_as; ++cur_a) {
@@ -176,7 +285,7 @@ index 5498459..bc589b4 100644
 +                    const int64_t i11 = rm.i1 % ne11, i12 = rm.i2;
 +                    const block_q8_0 * a = (const block_q8_0 *) (qdata + (i12*ne11 + i11)*row_size);
 +                    float da[16384/32], ms[16384/16];
-+                    const bool q4 = src0->type == GGML_TYPE_Q4_K;
++                    const bool q4 = ty == GGML_TYPE_Q4_K || ty == GGML_TYPE_Q5_K; // sums per 32; the rest per 16
 +                    for (int64_t b = 0; b < nb; ++b) {
 +                        da[b] = GGML_CPU_FP16_TO_FP32(a[b].d);
 +                        int32_t s0 = 0, s1 = 0;
@@ -186,8 +295,14 @@ index 5498459..bc589b4 100644
 +                    float * out = (float *) ((char *) dst->data + rm.i1*nb1 + rm.i2*nb2);
 +                    for (int64_t ir = ir0; ir < ir1; ++ir) {
 +                        const void * row = src0_cur + ir*nb01;
-+                        out[ir] = q4 ? be_dot_q4_K_q8_0((const block_q4_K *) row, a, da, ms, ne00/QK_K)
-+                                     : be_dot_q6_K_q8_0((const block_q6_K *) row, a, da, ms, ne00/QK_K);
++                        const int64_t nbk = ne00/QK_K;
++                        switch (ty) {
++                            case GGML_TYPE_Q2_K: out[ir] = be_dot_q2_K_q8_0((const block_q2_K *) row, a, da, ms, nbk); break;
++                            case GGML_TYPE_Q3_K: out[ir] = be_dot_q3_K_q8_0((const block_q3_K *) row, a, da, ms, nbk); break;
++                            case GGML_TYPE_Q4_K: out[ir] = be_dot_q4_K_q8_0((const block_q4_K *) row, a, da, ms, nbk); break;
++                            case GGML_TYPE_Q5_K: out[ir] = be_dot_q5_K_q8_0((const block_q5_K *) row, a, da, ms, nbk); break;
++                            default:             out[ir] = be_dot_q6_K_q8_0((const block_q6_K *) row, a, da, ms, nbk); break;
++                        }
 +                    }
 +                }
 +                continue;
