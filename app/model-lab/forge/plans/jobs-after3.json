@@ -1,0 +1,62 @@
+{
+ "run": "jobs-after3",
+ "note": "HELD: not to be rented until the owner gives the go. 22 Nov: the next stock-Qwen round after the Flash-Next fixes, to count failures against after2 / steps40 / repo1 (standing rule: every report shows failure counts vs the last round). Bob = claude/project-thread-et6g5x at df17bfd3 + PR 312 (tool-shape lock, made-up-number retry) + PR 311 (clock once per turn), tool shapes 5 (after3-kit patch in bob-wip/after3). No step, nudge, thinking or reply-size limits (--max bob, no --job-minutes). Same inbox, office and repository jobs, scorers and tool-fault count as jobs-flashnext-tools; the report also counts PR 312's made-up-number flags so false ones show before it stays on. llama.cpp b12359 (the Flash-Next base). Caps 3 h / $4.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA L40S",
+  "NVIDIA RTX 6000 Ada Generation"
+ ],
+ "step_up": [],
+ "disk_gb": 60,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 3,
+ "dollars_max": 4,
+ "rent_minutes": 60,
+ "download_quants": [],
+ "llama_tag": "b12359",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one server on one card: stock Qwen3.6 35B; inbox, office and repository jobs, then the three scorers and the tool-fault count (no expert map).",
+  "hours_each": 2.4,
+  "models": [
+   {
+    "name": "after3-qwen",
+    "nickname": "Qwen3.6-35B-A3B, inbox, office and repo jobs after the Flash-Next fixes",
+    "file": "hf:unsloth/Qwen3.6-35B-A3B-MTP-GGUF:Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 8,
+    "ctx": 393216,
+    "extra": "",
+    "hours": 2.4,
+    "commands": [
+     "node mail-jobs.mjs --catalog --out ../../bob-model-lab/out/mail-jobs-catalog/jobs.jsonl",
+     "node office-jobs.mjs --out ../../bob-model-lab/out/office-jobs/jobs.jsonl",
+     "node repo-jobs.mjs --check --out ../../bob-model-lab/out/repo-jobs/jobs.jsonl",
+     "node jobs-matrix.mjs --prefix after3 --no-scenes --variants \"minimus=--effort low --solo-effort;medius=--effort medium --solo-effort;office=--jobs ../../bob-model-lab/out/office-jobs/jobs.jsonl --parallel 2 --office ../../../lab-office/libreoffice/program/soffice.exe;repominimus=--effort low --solo-effort --jobs ../../bob-model-lab/out/repo-jobs/jobs.jsonl --parallel 3;repomedius=--effort medium --solo-effort --jobs ../../bob-model-lab/out/repo-jobs/jobs.jsonl --parallel 3;repothink=--effort medium --solo-effort --jobs ../../bob-model-lab/out/repo-jobs/jobs.jsonl --parallel 3 --think-every-step\" --url {{url}} --bob .. --jobs ../../bob-model-lab/out/mail-jobs-catalog/jobs.jsonl --parallel 2 --want-shapes 5 --max bob --hours 2.0",
+     "node mail-score.mjs --runs ../../bob-model-lab/out/after3-minimus/runs.jsonl,../../bob-model-lab/out/after3-medius/runs.jsonl --out ../../bob-model-lab/out/after3-mail-score --digests",
+     "node office-score.mjs --runs ../../bob-model-lab/out/after3-office/runs.jsonl --out ../../bob-model-lab/out/after3-office-score",
+     "node repo-score.mjs --runs ../../bob-model-lab/out/after3-repominimus/runs.jsonl,../../bob-model-lab/out/after3-repomedius/runs.jsonl,../../bob-model-lab/out/after3-repothink/runs.jsonl --out ../../bob-model-lab/out/after3-repo-score",
+     "node tool-faults.mjs --runs \"qwen inbox minimus (after3)=../../bob-model-lab/out/after3-minimus/runs.jsonl,qwen inbox medius (after3)=../../bob-model-lab/out/after3-medius/runs.jsonl,qwen office (after3)=../../bob-model-lab/out/after3-office/runs.jsonl,qwen repo minimus (after3)=../../bob-model-lab/out/after3-repominimus/runs.jsonl,qwen repo medius (after3)=../../bob-model-lab/out/after3-repomedius/runs.jsonl,qwen repo thinking every step (after3)=../../bob-model-lab/out/after3-repothink/runs.jsonl,qwen inbox minimus (after2)=../../../lab-kit-after2/bob-model-lab/out/after2-minimus/runs.jsonl,qwen inbox medius (after2)=../../../lab-kit-after2/bob-model-lab/out/after2-medius/runs.jsonl,qwen office (after2)=../../../lab-kit-after2/bob-model-lab/out/after2-office/runs.jsonl,qwen inbox minimus (steps40)=../../../lab-kit-steps/bob-model-lab/out/steps40-minimus/runs.jsonl,qwen inbox medius (steps40)=../../../lab-kit-steps/bob-model-lab/out/steps40-medius/runs.jsonl,qwen office (steps40)=../../../lab-kit-steps/bob-model-lab/out/steps40-office/runs.jsonl,qwen repo minimus (repo1)=../../../lab-kit-repojobs/bob-model-lab/out/repo1-minimus/runs.jsonl,qwen repo medius (repo1)=../../../lab-kit-repojobs/bob-model-lab/out/repo1-medius/runs.jsonl\" --out ../../bob-model-lab/out/after3-tool-faults"
+    ]
+   }
+  ]
+ },
+ "prep": [
+  "HELD: the owner gives the go before this is rented, and never while the owner's speed test runs on the PC.",
+  "Kit: a copy of the repo at df17bfd3 with bob-wip/after3/after3-kit-on-df17bfd3.patch applied (PR 312 + PR 311 + tool shapes 5); run the full tests in the kit before renting.",
+  "Pre-flight on npc first (node forge.mjs --plan plans/jobs-after3.json --preflight)."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20
+}
