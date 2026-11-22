@@ -10,6 +10,8 @@ Status first, because it limits every answer below. The decisive retrain on revi
 
 All numbers in this chapter come from the checked list of 15 November 2026 or from the chapters that cite their run files. This chapter introduces no new measurement.
 
+*Added 22 November.* Section 13.2.7 gathers every main result of the thesis, including the speed and harness results of Chapters 4 and 11, in one table with what each means. Section 13.6.12 adds a possible cause to re-test, and section 13.7 sets out where the work is heading. These also add no new measurement: each number is cited from the chapter that reports it.
+
 ## 13.2 Answers to the research questions
 
 Each answer gives the finding, the evidence, a strength rating, and the main reason for doubt. The ratings are plain: strong means a large, directly measured count; moderate means a real measurement with a known weakness; weak means a single run or a small test; none means not shown.
@@ -84,6 +86,61 @@ Each answer gives the finding, the evidence, a strength rating, and the main rea
 | RQ5 cause or brake | A brake and a direction across layers | Weak |
 
 The headline claim, that clean lessons beat more lessons, is therefore supported in part and not proved. RQ1 and the leak half of RQ3 are well measured. The link from faults to habits (RQ2) rests on one case. The step that would tie it all together, training on reviewed lessons and scoring on a leak-free test, has not been done.
+
+### 13.2.7 Every result in one table, and what each means (added 22 November)
+
+The answers above cover the five research questions. The thesis also measured how the brain runs on a home PC and how well Bob's harness does real jobs. This table puts all the main results side by side. Strength uses the same plain scale as above. Each row's chapter holds the run, its limits and its source file.
+
+**Lessons and tests**
+
+| Result | Measured | What it means | Strength | Ch. |
+|---|---|---|---|---|
+| Faults in the tool lessons | 189 of 5,788 kept as written (3.3%); 4,208 needed a rewrite; scripts had found 231 of 9,059 | Synthetic lessons are mostly unfit to teach as written, and scripts miss most faults | Strong (count) | 6 |
+| Leaked test items | 519 of 534 word for word in training-side files | Scores on that set can't be trusted until models are re-scored; the inflation is unmeasured | Strong (leak), none (effect) | 7 |
+| The hand-off habit | 37% of coding lessons handed code off; Riker's coding race went from 6 to 9 of 13 on clean lessons (full Qwen 12); quick code test 3 to 6 of 6 | A lesson fault can become a habit and cleaning can undo it, but the re-cut also kept more experts (208 against 176) | Weak to moderate | 5 |
+
+**Tools**
+
+| Result | Measured | What it means | Strength | Ch. |
+|---|---|---|---|---|
+| Rewording tools | GPT-OSS 120B 63.3% with Bob's wording; every other wording within about 1 point | Wording is not the lever | Moderate | 8 |
+| Thinking on tool steps | 54.2%, 9.1 points worse (plus or minus 5.0) | Tool steps think off | Moderate | 8 |
+| Showing the exact call | Coached completion: Bobert 88% / 86%, Riker 78 / 76 of 83 steps (thinking off / on) | A hint with the exact call lifts completion; shape against content is still open | Weak | 8 |
+
+**Inside the model and through a cut**
+
+| Result | Measured | What it means | Strength | Ch. |
+|---|---|---|---|---|
+| Where a habit sits | Harshness 3.67 of 10 as built, 6.67 with 16 experts dialled to 0.3; no single feature made plain answers harsh | A brake and a direction across layers, not one "evil neuron" | Weak | 10 |
+| Experts per word | 8 to 4: 82.7 to 102.5 tokens a second, quality level; 3 falls; 2 collapses (Figure 9.1) | About 4 is the floor on this brain, on small tests | Weak (one run) | 9 |
+| What a cut keeps | Riker (208 kept) 205 of 314 held-out, level with uncut Bobert's 205; Bill (144 kept) 213 of 314 but 12 of 20 facts and 1 of 6 code | A cut keeps the narrow trained task and loses wide skills | Weak (inside noise) | 9 |
+
+**Real jobs and the harness**
+
+| Result | Measured | What it means | Strength | Ch. |
+|---|---|---|---|---|
+| Two brains on 200 real jobs | Qwen3.6 35B 133 right, GPT-OSS 120B 107 right; no harms (Figure 11.1) | Stock Qwen stays the default brain | Moderate (one run, one grader) | 11 |
+| Mail by effort | Minimus 9, Medius 12, Magnus 7 of 30; Maximus 0 of 4 (Figure 11.2) | More effort did not help; a review argued right answers away | Weak to moderate | 11 |
+| Office | 14 of 17 (after1); 27 of 36 (after2, and again in steps40) | Office mostly works; misses are finding and saving files | Moderate | 11 |
+| Bob on his own code | 19 and 20 of 33 passed, 26 and 28 right; never pushed | Most failures are good work that skipped its own check | Weak (one run) | 11 |
+| Other harnesses, same brain | Qwen Code 21 passed / 30 right; mini-swe-agent 21 / 29 (Figure 11.3) | Bob's extra rules did not buy right answers on coding; his lead is safety | Weak (one run) | 11 |
+| Steps per job | Median 2 everyday, 4 Office, 9 coding; longest 29; the old caps cost 5 of 96 runs (Figure 11.4) | Fixed step caps cut real work; they are removed | Moderate (518 runs) | 11 |
+| Broken tools | 1,650 calls read: none crashed or hung; Office file lookup failed 30% to 40% | The breakage was in finding files, not in the tools | Moderate | 11 |
+
+**Speed on the home PC** (method in section 4.3.3.1, with what was added since in section 4.3.3.10)
+
+| Result | Measured | What it means | Strength | Ch. |
+|---|---|---|---|---|
+| Bob's settings against stock defaults | 64K job 37.4 s against 70.2 s; first word 10.1 s against 36.8 (Figure 4.3) | Most of the gain is settings any llama.cpp user can pass, not the engine | Moderate (5 rounds) | 4 |
+| Answers under the speed settings | Perplexity moves only in the last digits; q4_0 chat memory a borderline pass on mean KLD | The speed settings do not change the answers in a way the screens can see | Moderate | 4 |
+| The cost of the engine's patches | Features off: nothing measurable; the fNRI trace 2% or less after the fix | The instruments can be left in without slowing Bob | Moderate (3 rounds) | 3 |
+| The 256K cliff | Step 8192 leaves only 30 of 41 layers on the card; writing collapses (Figure 4.1) | Don't go past about 6144 at 256K | Strong (mechanism) | 4 |
+| The "spill" | It is the attention mask in pinned RAM, matched to the MiB in every load | No card memory went to RAM; the earlier speeds stand | Strong | 4 |
+| 3-bit and Progressive chat memory | q3_0 saves 22% of chat memory at 256K and passes perplexity; Progressive 8+4 beats q4_0 on every drift measure | Long chats can use less card memory at a measured speed cost | Provisional | 4 |
+| Sharing misses with the processor | About 3 times slower per miss from Brain Engine 21 to 26 | Keep the share at 0; patch 0040 is the suspect | Moderate | 4 |
+| Avalon's own Windows build | Crashed or hung at its own steps; 20 against 44 tokens a second with fusion off | Rebuild its ideas inside Brain Engine instead | Moderate (one session) | 4 |
+
+**What the table adds up to.** The lesson results (RQ1 to RQ3) are the best measured part of the thesis, and the decisive retrain is still missing. The speed results are many small, careful runs on one PC: they settle the defaults for that PC and say little about other machines. The harness results are new and single runs, but they changed the work: since 21 November the main task is making the stock brain finish real jobs reliably, before any more training or cutting.
 
 ## 13.3 What was not shown
 
@@ -206,7 +263,46 @@ Before Brain Engine 11, tracing for the fNRI system changed the words the brain 
 
 The faster serving settings in Chapter 4 (section 4.3.3), a bigger reading step with a 4 GB hot-experts cache, also write different words from the default. They need a quality check on Bob's jobs, and timing on other cards, other brains and a bigger cache.
 
-## 13.7 Closing
+### 13.6.12 Re-cutting on a clean harness (added 22 November)
+
+A possible cause, not a result. Riker's and Bill's keep lists were chosen from expert counts over lessons made with the older harness, and both were healed on lessons from it. That harness had known faults: 37% of the coding lessons handed the work off (Chapter 5), and section 11.7.6 found broken file lookup, lost text calls and caps that cut jobs short. If a lesson spends its turns on errors and retries, the counts favour the experts that handle failure and undercount the ones real work needs. Bill fits that picture: 12 of 20 facts and 1 of 6 code tasks, where Riker kept 18 of 20 and 6 of 6 (section 9.9). But the cut's size also explains it, since Bill kept 144 experts to Riker's 208, and the two causes have not been separated.
+
+The test is to fix the harness first, have the full brain pass its own jobs cleanly, score the experts with REAP over those clean real jobs, cut again, and judge the new cuts against stock Qwen on jobs they never saw. Since 21 November no expert scoring or cut is made before the harness is clean (section 4.3.3.10). That the old cuts were harmed this way is unproven in our lab, as we have yet to test.
+
+## 13.7 Where the work is heading (added 22 November)
+
+The project's goal is a reliable personal assistant on one consumer PC: mail, research, small projects and code, without crashes or bad tool calls. The thesis's results point the work in five directions. None of the plans below has a result yet, and each will be reported in full however it comes out.
+
+**1. The harness first.** The 21 November runs (section 11.7.6) showed that the stock brain does most jobs right and loses passes on habits the harness can catch: not checking its own work, not finding files, writing calls as text. The fixes are made and tested in the suite, and the next run of the same jobs is their test. Each results report now ranks failures by count against the last round, with a fix for each. MouseWurX's aim is for Bob to work on his own code reliably; if he can't, a local harness that gates every change on the repository's own tests is the fallback.
+
+**2. Bigger brains, tried in Bob before anything is built for them.** Two rentals were prepared and passed pre-flight on 21 November. Both wait for MouseWurX's go.
+
+- **Qwen3.8-Flash-Next** (125B, 512 experts, 10 used per word): one H200, capped at 2.1 hours and $11. It runs the inbox, Office and repo jobs at Minimus and Medius, plus a repo run with thinking on every step, and counts bad tool calls by type against stock Qwen.
+- **DeepSeek V4.1 Flash**: two H200 NVL cards, the 3-bit file (395 GB), capped at 3 hours and $25. The 4-bit file was skipped because its memory table gives wrong answers on current llama.cpp, with no error.
+- **Both map which experts each kind of job uses,** in a separate phase after the jobs so the trace can't skew the scores. That map is the starting data for any cut and for the engine's cache.
+- **GPT-OSS 120B is no longer the planned bigger brain** (MouseWurX, 21 November). It stays as a reference that every engine change must still run.
+
+**3. The engine: borrowing, inside Brain Engine.** Avalon's own build was not usable on this PC (section 4.3.3.9), so its ideas are to be rebuilt as Brain Engine patches on Brain Engine 28, with credit:
+
+- the expert copy cache owns all the card's spare memory
+- each reading step borrows the cache's coldest slots and fits its step to what can be lent, with no restart
+- unused chat-memory cells lend room to the cache until the chat reaches them
+- the reserve is measured on this PC, not copied
+
+Each step is off by default and must pass Gate 1 (section 4.3.3.10) or be dropped. After that come the levers that today need a restart (chat-memory type by length, Turbo levers per phase), a sweep of 1 to 8 draft words for a brain with a built-in draft head, a RAM tier on Windows for brains bigger than RAM, a rule to run one-time misses on the processor and copy only the experts used again soon, and a lossless reorder of the brain file so hot experts sit together on the drive. All of this is planned and not built.
+
+**4. Fitting a big brain on 16 GB of card and 32 GB of RAM.** By the engine work's estimate, not a measurement, Windows, the chat memory and working memory leave about 35 to 38 GB of the 48 GB for the brain file. So Flash-Next would need to keep a bit under half its experts to fit, and DeepSeek V4.1 Flash, 233 GB even at 1 bit, would keep about 15%, far deeper than any cut tested in this thesis. The method is to be proved on Flash-Next first:
+
+- score experts with REAP over clean real jobs of every kind (13.6.12)
+- set how many experts each layer uses; Brain Engine already takes one count per layer, live, while a cut file with a different count per layer needs a new patch
+- judge on jobs it never saw with the absolute real-jobs gate (section 4.3.3.10)
+- publish only what passes
+
+**5. Lessons wait.** Training is parked until the harness is clean. The decisive retrain of section 13.6.1 is still the test of the headline claim, and a new Bobert is to start from fresh stock Qwen. Stock Qwen stays the default unless a trained or cut brain beats it on held-out jobs.
+
+What would change this plan: if Flash-Next in Bob does no better than the stock 35B on the same jobs, the case for fitting a bigger brain at home weakens and the effort goes to the harness and the 35B. If the harness fixes do not lift passes, the comparison with plain harnesses (Figure 11.3) says to use fewer rules, not more.
+
+## 13.8 Closing
 
 The thesis began with a small model that handed work off to a tool when it should have done the work itself. Looking for the cause led to the lessons, and then to the test. The lessons held far more faults than scripts had found. The test held items that were also in the training files. The tools built along the way were needed to see either of these.
 

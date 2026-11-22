@@ -105,6 +105,10 @@ Two further notes from the journal affect how the outside sets are used. The set
 
 So 3.3% of the lessons that were read were fit to teach as they stood. Almost three quarters needed a rewrite. Counted against all 6,322 tool lessons, 189 is 3.0%.
 
+![Verdicts of the full read, as shares of each set](figures/full-read-verdicts.svg)
+
+*Figure 6.1. The verdicts above as shares of the 5,788 lessons read, beside the sort of the 534 held-out test items (Chapter 7). Keep is the thin strip at the left of the top bar: about 1 lesson in 30 was fit to teach as written.*
+
 The `by` field of each verdict records how it was reached: `haiku+opus` for 3,706 lessons where Opus agreed, `spot-check` for 2,065 where Opus changed the verdict or gave its own reasons, `auto` for the 17 guard demotions, and `pre` for the 534 held-out items (TALLY.md). No lesson was left at a Haiku-only verdict.
 
 ### 6.6.2 What Opus changed

@@ -292,6 +292,10 @@ Every real job ran in the fake test home with real web search. Nothing was train
 
 The graders picked Qwen's run as better on 84 jobs and GPT-OSS's on 51, with 65 ties.
 
+![after1 real jobs, right, partly right and failed, by brain](figures/after1-real-jobs.svg)
+
+*Figure 11.1. The blind read above, drawn as shares of the 200 jobs. Qwen's lead is in jobs done right (133 against 107); GPT-OSS gave more partly right and failed answers.*
+
 - **Qwen's most common faults:** made-up details (12), incomplete answers (12), wrong answers (11), a tool call shown as text (6) and claiming something not done (6).
 - **GPT-OSS's most common faults:** incomplete answers (21), asking the user instead of looking (17), wrong answers (13), made-up details (12) and giving up early (10).
 
@@ -310,6 +314,10 @@ The limits are one run per job per brain and one grader per job. GPT-OSS ran onl
 
 Higher effort did not help mail. Two of Maximus's finished jobs asked which senders are real people. In both, the first answer was right. Then the review read a shortened copy of the tool result as the tool's own cut-off and called the right answer a hallucination, and the final answer argued with itself. Magnus showed the same leak in 3 answers. At every level the biggest single mail fault was routing. 14 runs never added the mail tools for asks like "Trash everything from Kettle & Crumb", and searched the computer's folders instead.
 
+![Mail jobs passed by effort level](figures/mail-by-effort.svg)
+
+*Figure 11.2. The mail table above as pass rates. Medius passed the most. Magnus passed fewer while taking over 3 times as long, and Maximus finished only 4 jobs before it was stopped.*
+
 **Office.** 17 Word, Excel and PowerPoint jobs ran with LibreOffice in the test home, and 14 passed by code. Two misses made a new file instead of finding the user's own. One wrote a CSV in Bob's folder in place of the reading-log spreadsheet. The other asked for a deck's path after listing one empty folder. The third miss was a scorer slip.
 
 **What changed because of it.** Each fix has a check in the test suite and an entry in the harness log:
@@ -326,6 +334,64 @@ Higher effort did not help mail. Two of Maximus's finished jobs asked which send
 A replay of the new checks over all 511 after1 runs found that each new check fired only on real misses in the runs that were read, with no false alarms seen. Whether the fixes raise the pass rate is unproven in our lab, as we have yet to test. The next run of the same jobs is that test.
 
 **Decisions taken from it.** Stock Qwen3.6 35B stays the default brain, and GPT-OSS 120B stays a tested alternative. Mail is to run at Medius at most, with a short path for bulk acts. That was MouseWurX's call, backed by the mail table above. The short path is being built and is unproven in our lab, as we have yet to test.
+
+### 11.7.6 after2, Bob's own code, and other harnesses (21 November)
+
+Training was parked, and the work turned to making the harness reliable with the stock brain (MouseWurX, 21 November). Four rentals ran that day, all with stock Qwen3.6 35B at Q4 and nothing trained. The figures here come from the rental reports of that day (score reports and run records kept on the home PC); they are one run per job.
+
+**after2 (about $0.40).** The after1 mail jobs at Minimus and Medius, plus 36 Office jobs, 96 runs in all.
+
+- **Office passed 27 of 36** by code. The misses were five edits not made or not saved, a .pptx taken for a .pdf, files compared without being read, a damaged file not called damaged, wrong totals on a 3,000-row sheet, and a fact left out.
+- **Two harms in the mail jobs.** In the first, naming only a company trashed mail from people who work there; that is fixed and tested. In the second, on an unsubscribe job at Medius, Bob moved 84 mails he should not have; the bulk-plan guard is being fixed.
+- **The step caps cost 5 of the 96 runs** (8, 12, 16 or 24 steps by level).
+- A second run of 300 everyday jobs stopped after 41 because the web search was blocked (about $0.41). Its jobs were rerun in steps40.
+
+**steps40 (about $0.69).** 66 of after2's jobs and about 260 everyday jobs again, with a keyed search service and the caps raised to 40 steps (48 at Magnus, 64 at Maximus) and no 10-minute cutoff. The 5 runs that ran out of steps all finished, nothing looped, and Office stayed at 27 of 36.
+
+**repo1 (about $0.41).** 33 jobs on a throwaway copy of Bob's own code, scored by code. A pass needs the change to be right and hidden checks to pass, and also needs Bob to have run the tests or a check himself, said which files he changed, touched no file he shouldn't, and not pushed.
+
+| Level | Passed | Work done right | Pushed |
+|---|---|---|---|
+| Minimus | 19 / 33 | 26 | 0 |
+| Medius | 20 / 33 | 28 | 0 |
+
+The gap between right work and passes is mostly one habit: not checking his own work. Checking code after an edit was off by default, and that alone failed 7 to 9 jobs. Bob also ran a bare `node` with no script 21 times, which looked like success each time.
+
+**The harness comparison (about $0.62).** The same 33 jobs, the same brain on the same card, run in two well-known open coding harnesses and scored by the same code:
+
+| Harness | Passed | Work done right | Never ran a check | Pushed (a fail) |
+|---|---|---|---|---|
+| Qwen Code | 21 | 30 | 1 | 2 |
+| mini-swe-agent (bash only, no guards) | 21 | 29 | 0 | 1 |
+| Bob, Minimus | 19 | 26 | 7 | 0 |
+| Bob, Medius | 20 | 28 | 8 | 0 |
+
+![Passes and right work on 33 repo jobs in four harnesses](figures/harness-comparison.svg)
+
+*Figure 11.3. The comparison above. In every harness the passes fall well short of the right work. The other two lost passes on not naming the changed files (13 times for Qwen Code, 8 for mini-swe-agent) and on pushing. Bob lost his on never running a check.*
+
+A plain bash loop with no rules did the work as well as Qwen Code and slightly better than Bob, so on coding Bob's extra rules did not buy right answers. Where Bob led was safety: he never pushed. One run per harness on 33 jobs leaves differences of 1 or 2 jobs inside the noise.
+
+**How many steps jobs take.** Steps were counted over 518 stock-Qwen runs. Everyday jobs typically take 2 steps and 9 in 10 finish within 6. Office jobs typically take 4, and 9 in 10 within 7. Coding typically takes 9, 9 in 10 within 17, and the longest took 29.
+
+![Steps per job by kind, against the old step caps](figures/steps-per-job.svg)
+
+*Figure 11.4. The step counts above, with the old caps. The cap of 8 at Minimus sat below the typical coding job, so it would have cut off over half of them.*
+
+**Every tool call checked.** All 1,650 tool calls in the 518 runs were read for broken tools. No tool crashed or hung, and 27 tools never failed. The real breakage was the Office tools not finding files: they failed 30% to 40% of the time, and 27 of 36 "no file there" errors were files one folder away, usually in Documents. In one job Bob said a spreadsheet was not on the computer when it was. A second fault lost 21 calls in 11 runs: once the tools were taken away near a job's end, the brain wrote its next call as text, and the nudge asked for a real call it had no tools to make. Of 75 nudges graded, the maths nudge was ignored 7 times in 8.
+
+**Limits removed (MouseWurX, 21 November).** "No step limits." An audit listed every limit that could stop or cut short Bob's work (bob-wip/limits/limits-audit-2026-11-21.md). These were removed, because misfiring rules, not lack of room, were ending good jobs:
+
+- the step counts at every level (other people's chats keep 30)
+- the 40-call and 96-call caps
+- the always-on 10-minute cutoff
+- the cap of 2 send-backs a turn (each kind of nudge now gets one go)
+- the thinking budgets and the fixed reply size; a reply now stops only when it repeats itself
+- in the lab, replies cut at 4,096 tokens (Bob allows up to 32,768) and jobs cut at 8 to 10 minutes. These made test scores worse than real use. The rental's money and time cap is now the only outer limit.
+
+What still ends a job is being stuck: 3 rounds with nothing new, 4 rounds where every call failed, going in circles, or the same call 3 times. The safety rules stay: never push, post or send without a card, no admin, no shell, and the Recycle Bin only.
+
+**Fixes made from these runs.** Checking code after an edit is on by default; the answer names the changed files; tests run on Windows; a bare `node` is refused with a hint; failing tests no longer get the tool set aside; Office tools find files the way `read_file` does; file search also matches file names; the text-call nudge asks for plain words when tools are off; and the Run tools load for project jobs. Each has a check in the test suite. Whether they lift Bob's passes towards his right work is unproven in our lab, as we have yet to test. The Flash-Next and DeepSeek runs of section 13.7 carry them.
 
 ## 11.8 Discussion
 

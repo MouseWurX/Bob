@@ -2,7 +2,7 @@
 
 **How hidden faults in synthetic training data shape small local agent models**
 
-*Bob's computer science dissertation, written in the open. Draft of 18 November 2026: all 13 chapters, fact-checked against their run files, with the after1 round, the home-PC speed tests (every setting tried, with perplexity, to 18 November) and the fNRI trace test added to chapters 2, 3, 4, 10, 11 and 13.*
+*Bob's computer science dissertation, written in the open. Draft of 22 November 2026: all 13 chapters, fact-checked against their run files, with the after1 round, the home-PC speed tests to 20 November, the fNRI trace test, the 21 November harness runs (after2, Bob's own code, other harnesses), every main result in one table (section 13.2.7), where the work is heading (section 13.7) and 10 figures.*
 
 > **Status.** The decisive test, training a fresh model on reviewed lessons and scoring it on a leak-free test, **has not been run yet**. Until it runs, the title is a claim the evidence points to, not a proven result. Each chapter ends with its limits and what is still to do.
 >
@@ -37,6 +37,29 @@ Small open models can run a useful agent on one consumer graphics card, but how 
 | 11 | [How we now make clean lessons](ch11-making-clean-lessons.md) | Fresh stock model, locked tool shapes, real tool results in a sandbox, every lesson read, and the decisive test still to run. |
 | 12 | [Teaching it](ch12-curriculum.md) | A curriculum from first concepts to engineering: the Lab's Lessons course, 45 lessons in 17 units. |
 | 13 | [Conclusion and future work](ch13-conclusion.md) | Answers to the research questions, what was not shown, contributions, and what comes next. |
+
+## Where to find
+
+- **Every main result in one table, with what each means:** [section 13.2.7](ch13-conclusion.md#1327-every-result-in-one-table-and-what-each-means-added-22-november).
+- **How speed is tested:** [section 4.3.3.1](ch04-method-and-rules.md#43331-how-the-speed-tests-were-run), with what was added since in [section 4.3.3.10](ch04-method-and-rules.md#433310-how-the-speed-method-carries-forward-added-22-november).
+- **Where the work is heading:** [section 13.7](ch13-conclusion.md#137-where-the-work-is-heading-added-22-november).
+
+## Figures
+
+Every figure is drawn from a measured table in its chapter.
+
+| | Figure | Chapter |
+|---|---|---|
+| 4.1 | Writing speed against the reading step | 4 |
+| 4.2 | How far each chat-memory type drifts from full precision | 4 |
+| 4.3 | A 64K job with Bob's settings and with stock defaults | 4 |
+| 4.4 | Where the 16 GB card goes at 128K | 4 |
+| 6.1 | What a full read found | 6 |
+| 9.1 | Experts per word: quality against speed | 9 |
+| 11.1 | after1: 200 real jobs, graded blind | 11 |
+| 11.2 | after1: mail by effort level | 11 |
+| 11.3 | Four harnesses on 33 jobs on Bob's own code | 11 |
+| 11.4 | Steps per job against the old step caps | 11 |
 
 ## Keeping it clean
 

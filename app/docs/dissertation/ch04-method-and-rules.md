@@ -957,6 +957,10 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 - **Step 4096 throughout was best.** The conductor read faster but lost 1.25 s overall: about 1 s of switching and slower writing at step 2048. If the conductor stays, it should chat at 4096.
 - **Against stock defaults the job took 1.9 times as long.** Most of that gap comes from settings stock llama.cpp also accepts (the step, flash attention and the context cache), so this compares Bob's settings with stock defaults. It is not evidence that Brain Engine is faster than llama.cpp.
 
+![Seconds for the 64K job, Bob's settings against stock defaults](figures/job-time-64k.svg)
+
+*Figure 4.3. The 64K job from the table above. The bars are the whole job; the first-word wait on the big read is in brackets. Step 4096 throughout was quickest, and stock defaults took 1.9 times as long, mostly through settings stock llama.cpp also accepts.*
+
 **Speed testing was halted on 20 November at 8:34 PM by MouseWurX.** These were planned, with their plans written (speed-test-method Addenda 77 and 83 to 88), and never run. Each is unproven in our lab, as we have yet to test:
 - lending a 6 GB copy cache to the reading step, with step 8192, and with Progressive Memory at 128K
 - growing the copy cache for a reply known to be long
@@ -966,6 +970,28 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 - a 400 MB fit margin
 - the check of patch 0040 behind the processor-share slowdown
 - stand-in drift measured while writing
+
+![Where the 16 GB card's memory goes at 128K with Bob's settings](figures/card-memory-at-128k.svg)
+
+*Figure 4.4. How Bob's best settings of 20 November share the 16 GB card at a 128K chat. The 4 GB copy cache is a set value, the 765 MiB of q4_0 chat memory is the measured size at 128K (the context-cache-in-RAM run above), and the 512 MB margin is the fit target. The rest holds the brain's layers and the working memory of each step; the engine does not log those two apart, so they are shown as one slice. The attention mask is held in pinned RAM, not on the card (section 4.3.3.5). The borrowing work of section 13.7 aims to hand the copy cache all of the spare room, so this split would change with each step.*
+
+#### 4.3.3.9 Avalon on the home PC (21 November)
+
+Avalon (github freriadoc/Avalon, MIT) is an open llama.cpp fork whose expert cache owns all spare card memory and lends it to each reading step. Its Windows test build (pre-release avalon-test-0019bc9) was tried on the home PC with stock Qwen3.6 35B on 21 November (bob-wip/engine-speed/borrowing-rebuild-scope.md):
+
+- At its default reading step of 32,768 it crashed on the first question. At 16,384 it hung.
+- At smaller steps it wrote wrong words until ggml-cuda's graph fusion was turned off (`GGML_CUDA_DISABLE_FUSION=1`). With fusion off it wrote at 20 tokens a second, against Brain Engine 28's 44 on the same question.
+- It also hung at start without its prompt ring, or with a step of 1.
+
+So the plain build is not usable on this PC. Its ideas are being rebuilt as Brain Engine patches instead (section 13.7). Avalon's own published speeds are for another brain, card and system, and are a reference only.
+
+#### 4.3.3.10 How the speed method carries forward (added 22 November)
+
+The method of section 4.3.3.1 stays. Three things were added after speed testing was halted, for the work of section 13.7:
+
+- **Whole jobs, not only speeds.** A change to how the brain is served is now judged on a whole job as well as on reading and writing speed. Gate 1 for the borrowing work is the 64K job of Figure 4.3: it must take no longer than step 4096 throughout (37.4 s), with zero switch time, writing no more than 2% slower, same-seed words matching at least 99% on the top word, no crash, no shared-memory spill, and peak card memory under the card's size. Each run is 5 rounds, round-robin, cooled, with temperature and clocks logged. A failure means stopping and keeping Brain Engine 28's settings.
+- **An absolute gate for lossy tricks (MouseWurX, 21 November).** A trick that changes the words, such as stand-ins or a cut, is judged on real jobs: the same after1 and after2 jobs and seeds, run with the trick on. It passes only if the jobs' graders mark the work correct, with no crashes, no bad tool calls and no broken files. Its count against the full brain is reported as information only. Perplexity, KL divergence, same top word and the 128K needle are early screens: a trick that fails them badly skips the real-jobs run, and passing them decides nothing.
+- **The harness comes before calibration.** No expert scoring or cut is made until Bob's harness passes its own jobs cleanly, with no broken tools, no blocked search and tests that run on Windows. Section 13.6.12 gives the reason.
 
 ## 4.4 Benchmarks
 
