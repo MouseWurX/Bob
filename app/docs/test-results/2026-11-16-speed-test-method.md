@@ -915,6 +915,20 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 91 (Nov 21, before any run): Flash-Next on the test PC, mmap on
+
+Qwen3.8-Flash-Next 125B (Unsloth UD-Q4_K_XL, 4 shards, the quant that won the rental jobs) is bigger than the test
+PC's RAM plus card, so with mmap on the cold experts are read from the drive. Plan `flashnext-q4kxl-32k-be29.json`
+(`conductor-e2e.mjs`, Brain Engine 29): the 32K job (a 12K read and 5 follow-ups), `-ngl 99 --n-cpu-moe 999`,
+`-b 16384 -ub 4096`, a 4 GB copy cache, share 0, q4_0 memory, borrowing on against off, 2 rounds alternating.
+Logged alongside: drive reads (`typeperf "\PhysicalDisk(_Total)\Disk Read Bytes/sec"`), RAM in use, and the
+cache hit-rate lines (`LLAMA_MOE_CACHE_LOG_EVERY=2000`). This is a measurement, not a gate: it says which tier
+(card, RAM or drive) limits writing. Job quality at this quant was checked on the rental, not here.
+
+**Predictions, written before any run:** it loads and answers; writing 3-10 t/s, limited by drive reads
+(hundreds of MB/s while writing); cache hit rate 60-80%; borrowing changes reading by under 10% (reading is
+drive-bound too).
+
 ## Addendum 90 (Nov 21, before any run): Gate 1 for borrowed reading (patch 0048, Brain Engine 29)
 
 Patch 0048 lets a reading step borrow working memory from the expert cache's coldest slots inside the engine, so no

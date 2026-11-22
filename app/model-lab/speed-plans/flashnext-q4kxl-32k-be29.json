@@ -1,0 +1,71 @@
+{
+ "name": "Flash-Next (UD-Q4_K_XL, mmap on) on npc with Brain Engine 29: the conductor-e2e job at 32K (12K read + 5 follow-ups), borrowing on against off, 4 GB copy cache, share 0, 2 rounds alternating, cool-down on; drive reads and RAM logged alongside (typeperf)",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 91)",
+ "brain": "${FLASHNEXT}",
+ "engines": {
+  "be29": {
+   "exe": "${BE29_SERVER}",
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "2000"
+   }
+  }
+ },
+ "text": "long-text.md",
+ "textRepeat": 1,
+ "system": "You are a helpful assistant. Answer plainly.",
+ "bigRead": 12288,
+ "followUps": 5,
+ "followTokens": 200,
+ "replyTokens": 300,
+ "rounds": 2,
+ "alternate": true,
+ "retryOnce": true,
+ "saveText": true,
+ "spillCheck": true,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 2700000,
+ "wordsRef": "no-borrow",
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "-c",
+  "32768",
+  "-ctk",
+  "q4_0",
+  "-ctv",
+  "q4_0",
+  "-ngl",
+  "99",
+  "--n-cpu-moe",
+  "999",
+  "-ub",
+  "4096",
+  "-b",
+  "16384",
+  "--moe-cache-mib",
+  "4096",
+  "--moe-cache-cpu-share",
+  "0",
+  "-lv",
+  "4"
+ ],
+ "ways": [
+  {
+   "id": "borrow",
+   "engine": "be29",
+   "env": {
+    "LLAMA_MOE_CACHE_BORROW": "1"
+   }
+  },
+  {
+   "id": "no-borrow",
+   "engine": "be29"
+  }
+ ]
+}
