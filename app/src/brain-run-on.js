@@ -156,6 +156,9 @@ export const runOnParts = {
     ctx.meanwhile = job?.side ? meanwhile : '';
     const extras = [state, meanwhile, presetPrompt(ctx.preset, this.cfg.userName || 'the user'), guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), jobHelpsPrompt(this.cfg, job), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
     const brainCtx = await this.fitCtx(model, wantCtx);
+    // Nov 22 (Hermes Agent check): the time in the turn note is read once per turn. The note sits before the latest
+    // message, so a time that changed between steps made the engine read every step of the job again each minute.
+    const turnTime = this.now();
     // 1.5.127: a chat that no longer fits the biggest brain here, with a rented brain in its slot: offer it (the job carries on here meanwhile).
     if (!job?.rent && !job?.side && !job?.guest && this.rentals.current() && !ctx.rentOffered) {
       const tokens = roughTokens({ messages: msgs });
@@ -308,13 +311,13 @@ export const runOnParts = {
       if (thinkNow !== think && !ctx.stepThinkSaid) { ctx.stepThinkSaid = true; this.log('chat', 'tool steps: no thinking (planning and the answer keep it)'); }
       const pub = Boolean(job?.guest?.public); // Bob on Discord: no memory, about-me or backstory of the owner's
       const hush = pub || isGuestId(sessionId); // a guest chat: no memory or about-me either (guest-chat.js)
-      const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: this.now(), memory: hush ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: hush ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
+      const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: turnTime, memory: hush ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: hush ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
       // Nov 11 (item 1): what changes every turn (the time, the Right now line, recalled bits) goes in a short note just
       // before the latest message, not in the instructions. The time changed every minute and the RAM line every turn,
       // so the engine threw away the whole chat it had already read and read it again; now it keeps it (its prompt cache).
       const steadySys = { role: 'system', content: this.withLimits(systemPrompt({ now: NOW_IN_NOTE, memory: hush ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: hush ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) };
       const waitingOn = pendingLine(this.switchesOff(), this.pendingSwitches()); // 1.5.207: one short line, only while an offer waits
-      const turnNote = `Current date and time for ${pub ? 'the owner' : this.cfg.userName || 'the user'}: ${this.now()}.${extras}${waitingOn ? `\n${waitingOn}` : ''}${earlier ? `\n\n${earlier}` : ''}`;
+      const turnNote = `Current date and time for ${pub ? 'the owner' : this.cfg.userName || 'the user'}: ${turnTime}.${extras}${waitingOn ? `\n${waitingOn}` : ''}${earlier ? `\n\n${earlier}` : ''}`;
       let reply = null;
       // A lender keeps the start of the chat it read last time (its prompt cache), so what changes every turn (the time,
       // the Right now line, recalled bits) goes in a short note just before the latest message, not in the instructions.

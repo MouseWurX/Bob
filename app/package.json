@@ -119,6 +119,7 @@
     "test/run-fit-help-test.js",
     "test/run-moot-test.js",
     "test/run-honest-talk-test.js",
+    "test/run-turn-time-test.js",
     "test/run-toolbox-test.js",
     "test/run-free-test.js",
     "test/run-made-test.js",
