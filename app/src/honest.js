@@ -146,6 +146,10 @@ const COUNT_NOUN = 'files?|folders?|lines?|items?|results?|errors?|warnings?|tes
 const NUM = '(\\d{1,3}(?:[,\\s\\u202f]\\d{3})+|\\d+)(?:[.,](\\d+))?';
 const SIZE_RX = rx(`\\b<${NUM}\\s?(bytes?|b|kib|kb|mib|mb|gib|gb|tib|tb|ko|mo|go|to)\\b>`, 'giu');
 const COUNT_RX = rx(`\\b<${NUM}\\s+(?:[\\p{L}-]+\\s+)?(${COUNT_NOUN})\\b>`, 'giu');
+// 21 Nov: money ($12.50, 1,299 dollars, 40 €), a stated total ("the total is 4,210", "comes to 312"), and clock times (14:05)
+const MONEY_RX = rx(`(?:[$€£¥]\\s?${NUM}|\\b<${NUM}\\s?(?:dollars?|euros?|pounds?|usd|eur|gbp|cad|aud|€|\\$|dólares|livres)\\b>)`, 'giu');
+const TOTAL_RX = rx(`\\b<(?:total|grand total|subtotal|sum|altogether|in all|comes? to|adds? up to|somme|suma)\\b>(?:\\s+(?:is|was|of|comes to|est|es|de))?\\s*[:=]?\\s*(?:about\\s+|around\\s+|~)?[$€£]?\\s?${NUM}`, 'giu');
+const TIME_RX = /(?<![\d:.])([01]?\d|2[0-3]):([0-5]\d)(?![\d:])/g;
 const toNum = (int, frac) => Number(`${String(int).replace(/[,\s\u202f]/g, '')}${frac ? `.${frac}` : ''}`);
 // Nov 12 (the owner asked): the honesty note is a diff between the answer and the results, the sandbox's above all. A number Bob
 // worked out from his results isn't made up, so before a number is flagged the app redoes the simple sums a brain
@@ -183,7 +187,10 @@ export function unbackedNumbers(reply, sources = [], lists = sources, sandbox = 
   const t = plain(reply).replace(/```[\s\S]*?```/g, ' ').replace(URL_RX, ' ').replace(/(?:[A-Za-z]:\\|\/)[^\s]+/g, ' ');
   const seen = plain(sources.join('\n'));
   const nums = new Set(numbersIn(seen));
-  const groups = sources.map(numbersIn).filter((g) => g.length);
+  // A column's total counts as worked out too: the last number on each line of a result (a CSV's amount column), so
+  // dates on the same lines don't spoil the sum.
+  const columns = sources.map((s) => String(s).split('\n').map((l) => { const f = plain(l).split(/[,;\t|]/).at(-1).replace(/[$€£¥\s]/g, ''); return /^-?\d+(?:\.\d+)?$/.test(f) ? Number(f) : undefined; }).filter((v) => v !== undefined)).filter((g) => g.length > 1);
+  const groups = [...sources.map(numbersIn).filter((g) => g.length), ...columns];
   const sizes = [...seen.matchAll(SIZE_RX)].map((m) => toNum(m[1], m[2]) * SIZE[m[3].toLowerCase()]).concat([...nums].filter((n) => n >= 1024));
   const lines = Math.max(0, ...lists.map((s) => String(s).split('\n').filter((l) => l.trim()).length));
   const out = [], mismatch = [];
@@ -197,6 +204,16 @@ export function unbackedNumbers(reply, sources = [], lists = sources, sandbox = 
     if (nums.has(n) || n <= lines + 1 || workedOut(n, groups, shownDecimals(m[2]))) continue;
     out.push(m[0].trim());
   }
+  // 21 Nov (after1, Lumo's review): a "total" made up after reading a CSV, error counts and file times that no result held.
+  // Money, a stated total, and clock times now count as well. A total may be worked out from the results (workedOut);
+  // a time must be in a result or the chat as written (9:05 and 09:05 are the same).
+  for (const re of [MONEY_RX, TOTAL_RX]) for (const m of t.matchAll(re)) {
+    const n = toNum(m[1], m[2]);
+    if (!Number.isFinite(n) || nums.has(n) || workedOut(n, groups, shownDecimals(m[2]))) continue;
+    out.push(m[0].trim());
+  }
+  const times = new Set([...seen.matchAll(TIME_RX)].map((m) => `${Number(m[1])}:${m[2]}`));
+  for (const m of t.matchAll(TIME_RX)) if (!times.has(`${Number(m[1])}:${m[2]}`)) out.push(m[0].trim());
   // The diff against the sandbox: its numbers, and what can be worked out from them and the other results.
   const box = sandbox.map(numbersIn).filter((g) => g.length);
   if (box.length) {

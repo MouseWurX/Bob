@@ -96,6 +96,18 @@ check('182 admitting trouble in Spanish is read', admitsTrouble('No pude mover d
 // ---- 186-188: numbers, quotes, links
 check('186 a count no result holds is flagged', unbackedNumbers('I found 340 files in there.', ['a.txt\nb.txt\nc.txt'])[0] === '340 files');
 check('186 a count he could count off the list is fine', unbackedNumbers('I found 3 files in there.', ['a.txt\nb.txt\nc.txt']).length === 0);
+// 21 Nov (after1 51f55, cbc33): money, bare totals and clock times, which 186 didn't read.
+{
+  const csv = 'item,price\nbread,12.50\nmilk,30.00\njam,7.25';
+  check('186 a money total that sums the column is fine', unbackedNumbers('The total is $49.75.', [csv]).length === 0);
+  check('186 a made-up money total is flagged', unbackedNumbers('The total is $52.10.', [csv]).length > 0);
+  check('186 a rounded money total is fine', unbackedNumbers('That comes to about $50.', [csv]).length === 0);
+  check('186 a bare total no result holds is flagged', unbackedNumbers('The grand total: 812.', [csv]).length > 0);
+  const ls = 'soup.txt  2026-11-02 14:31\nstew.txt  2026-11-03 09:05';
+  check('186 a made-up file time is flagged', unbackedNumbers('soup.txt was saved at 00:00 and stew.txt at 12:00.', [ls]).length > 0);
+  check('186 a time the listing shows is fine', unbackedNumbers('stew.txt was saved at 09:05.', [ls]).length === 0);
+  check('186 a time with a dropped zero still matches', unbackedNumbers('stew.txt was saved at 9:05.', [ls]).length === 0);
+}
 check('186 a size written another way is fine', unbackedNumbers('It takes 2.5 GB.', ['size: 2684354560 bytes']).length === 0);
 check('186 a size no result holds is flagged', unbackedNumbers('It takes 9.1 GB.', ['size: 2684354560 bytes']).length === 1);
 check('186 a number he worked out from the results is not flagged (a sum)', unbackedNumbers('The two files hold 340 lines in all.', ['a: 120 lines', 'b: 220 lines']).length === 0);

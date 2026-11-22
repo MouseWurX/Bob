@@ -14,7 +14,7 @@ import { HANDS } from './hands-settings.js';
 import { kindOf, repeatSafe } from './tool-kinds.js';
 import { answerChecks } from './answer-checks.js'; // Nov 16: the real-jobs reads' most common mistakes
 import { stepsNudge } from './job-steps.js'; // Nov 13: several things asked, fewer tool steps ran
-import { PIC_CLAIM_FR_ES, FILE_CLAIM_FR_ES, admitsTrouble, plain } from './honest.js'; // Nov 12, items 182 and 185
+import { PIC_CLAIM_FR_ES, FILE_CLAIM_FR_ES, admitsTrouble, plain, unbackedNumbers } from './honest.js'; // Nov 12, items 182 and 185; numbers 21 Nov
 
 // ---------------------------------------------------------------- what was asked for
 
@@ -537,6 +537,21 @@ export function afterTurn(ctx = {}, replyText) {
     let more = [];
     try { more = answerChecks({ text: ctx.turnText || ex0?.words || '', reply: said, actions, usable, who, exists, already: nudges.join(' ') }); } catch {}
     for (const m of more.slice(0, 2)) { push(m.nudge, m.groups); if (m.claim && !claims.length) notes.push('Bob said something was done that the app couldn\'t see happen; he was asked to check.'); }
+  }
+
+  // 2e. 21 Nov (after1, Lumo's review): the honesty check (honest.js 186) found numbers no tool result holds, but only
+  // put a note under the answer, so the made-up total still stood. Now a number, sum, price or time that no result
+  // this turn (or the chat) holds, and that can't be worked out from them, gets the same one more go, asking for the
+  // tool line it came from word for word rather than a reworded guess. The note under the answer stays as before for
+  // what is left after that go.
+  if (ctx.cfg?.toolHelp !== false && !nudged && !nudges.length && said && (ctx.seen || []).length) {
+    let nums = [];
+    try {
+      const chat = (ctx.msgs || []).filter((m) => m && (m.role === 'user' || m.role === 'tool')).slice(-40).map((m) => String(m.text ?? m.content ?? ''));
+      nums = unbackedNumbers(said, [...ctx.seen, ...chat], ctx.seen, ctx.sandboxOut || []);
+    } catch {}
+    const which = nums.mismatch?.length ? nums.mismatch.map((x) => `"${x.said}"`) : nums.map((n) => `"${n}"`);
+    if (which.length) push(`Your answer says ${which.slice(0, 3).join(', ')}, but no tool result this turn has ${which.length === 1 ? 'that number' : 'those numbers'}, and ${which.length === 1 ? 'it' : 'they'} can't be worked out from the results. For each one, quote the tool line it comes from, word for word, and use the number in it. If no result has it, say plainly you don't know it, or work it out with a tool (calculate, or read the rest of the file). Don't reword it as "about" or "roughly".`);
   }
 
   // 3. The claims' nudge (the note was worked out above).
