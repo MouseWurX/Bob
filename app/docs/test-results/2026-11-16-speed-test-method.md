@@ -915,6 +915,22 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 98 (Nov 22, before any run): the doorbell with the fast processor kernel (Brain Engine 33)
+
+The doorbell (0042: card and processor work on different experts at once) showed no gain over share 1 on Brain
+Engine 24/26 (sections 59-60), when the processor path was slowed about 3.6x by 0040's rounding. Brain Engine 33's
+0055 keeps 0040's rounding at full speed, so the doorbell is tried again. Plan `doorbell-35b-32k-be33.json`: the 35B
+on the 32K conductor-e2e job, share 0, share 1, share 1 with `LLAMA_MOE_DOORBELL=1`, learning off,
+`CUDA_MODULE_LOADING=EAGER`, a 1.5 s doorbell time limit (Windows resets the card driver after about 2 s), 2 rounds
+alternating. Share 1 and the doorbell must give the same words; the plan stops on a driver reset, a time-limit stop
+or different words. Plan `doorbell-flashnext-q2-32k-be33.json` runs only after that passes and Flash-Next runs are
+allowed again: the Q2_K_XL file, the same three ways, the drive tier on so the RAM floor (0054, 512 MiB) is on, and a
+stop if free RAM stays under 256 MiB for 30 s.
+
+**Predictions, written before any run:** on the 35B, share 1 with the doorbell writes faster than share 1 without it
+and slower than share 0, with the same words as share 1. On Flash-Next, the doorbell helps writing only when most
+misses are already in RAM; the Q2 file's q2/q3/q5_K parts still use the slow processor path, so the gain is under 10%.
+
 ## Addendum 97 (Nov 22, before any run): real-jobs quality for word-changing speed tricks
 
 Every speed trick that changes the words gets a real-jobs check, not only speed rows. The gate is absolute: jobs

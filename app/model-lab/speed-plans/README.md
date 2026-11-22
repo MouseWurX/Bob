@@ -104,3 +104,4 @@ and each timed run, and the summary shows the card's start and top temperature a
 - `read-split-64k-be32.json`: where a 60K read's time goes on Brain Engine 32 (patch 0029's split timing): card compute against weights copied per step, fixed `-ub 4096`, fixed `-ub 8192` and borrowing, 2 rounds (Addendum 95).
 - `borrow-spare-128k-be32.json`: borrowing's spare card memory, 512 against 1024 MiB, on the 128K conductor-e2e job, 3 rounds alternating, round 3 on a normal desktop (Addendum 95).
 - `gate1-borrow-e2e-64k-be32.json` and `gate1-borrow-speed-be32.json`: the Gate 1 rerun on Brain Engine 32 (0052), borrow against fixed at `-b 16384 -ub 4096`, plus plain `-ub 8192` on the 64K job (Addendum 96).
+- `doorbell-35b-32k-be33.json` and `doorbell-flashnext-q2-32k-be33.json` (for `conductor-e2e.mjs`): the doorbell (0042) against share 0 and share 1 with Brain Engine 33's fast processor kernel, on the 35B and then on Flash-Next Q2 (Addendum 98).

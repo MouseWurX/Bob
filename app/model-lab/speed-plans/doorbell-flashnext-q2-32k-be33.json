@@ -1,0 +1,86 @@
+{
+ "name": "Doorbell (0042) on Flash-Next (UD-Q2_K_XL, ~79 GB, mmap on) with Brain Engine 33, only after the 35B doorbell check passed and the owner allows Flash-Next runs on the test PC again: the 32K conductor-e2e job, share 0 vs share 1 vs share 1 with the doorbell, drive tier on so the RAM floor (0054, default 512 MiB) is on; 1 round, cool-down on. Stop on a driver reset, a time-limit stop, a RAM floor stall or a lockup sign (free RAM under 256 MiB for 30 s).",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 98)",
+ "brain": "${FLASHNEXT_Q2}",
+ "engines": {
+  "be33": {
+   "exe": "${BE33_SERVER}",
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "2000",
+    "CUDA_MODULE_LOADING": "EAGER",
+    "LLAMA_MOE_DOORBELL_TIMEOUT_MS": "1500",
+    "LLAMA_MOE_DRIVE": "1"
+   }
+  }
+ },
+ "text": "long-text.md",
+ "system": "You are a helpful assistant. Answer plainly.",
+ "followUps": 5,
+ "followTokens": 200,
+ "replyTokens": 300,
+ "retryOnce": true,
+ "saveText": true,
+ "spillCheck": true,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "textRepeat": 1,
+ "bigRead": 12288,
+ "rounds": 1,
+ "alternate": false,
+ "loadTimeoutMs": 2700000,
+ "wordsRef": "share1",
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "-c",
+  "32768",
+  "-ctk",
+  "q4_0",
+  "-ctv",
+  "q4_0",
+  "-ngl",
+  "99",
+  "--n-cpu-moe",
+  "999",
+  "-ub",
+  "4096",
+  "--moe-cache-mib",
+  "4096",
+  "-lv",
+  "4"
+ ],
+ "ways": [
+  {
+   "id": "share0",
+   "engine": "be33",
+   "args": [
+    "--moe-cache-cpu-share",
+    "0"
+   ]
+  },
+  {
+   "id": "share1",
+   "engine": "be33",
+   "args": [
+    "--moe-cache-cpu-share",
+    "1"
+   ]
+  },
+  {
+   "id": "share1-doorbell",
+   "engine": "be33",
+   "args": [
+    "--moe-cache-cpu-share",
+    "1"
+   ],
+   "env": {
+    "LLAMA_MOE_DOORBELL": "1"
+   }
+  }
+ ]
+}

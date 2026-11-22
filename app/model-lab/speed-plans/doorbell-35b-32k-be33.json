@@ -1,0 +1,83 @@
+{
+ "name": "Doorbell (0042) words and speed check on the 35B with Brain Engine 33, its first card run with the fast processor kernel (0055; the Brain Engine 24/26 card runs showed no gain over share 1): the 32K conductor-e2e job, share 0 (today) vs share 1 vs share 1 with LLAMA_MOE_DOORBELL=1; CUDA_MODULE_LOADING=EAGER and a 1.5 s doorbell time limit (Windows resets the card driver after about 2 s); learning off so share 1 and the doorbell must give the same words; 2 rounds alternating, cool-down on. Stop at once on a driver reset, a time-limit stop or different words.",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 98)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be33": {
+   "exe": "${BE33_SERVER}",
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "2000",
+    "CUDA_MODULE_LOADING": "EAGER",
+    "LLAMA_MOE_DOORBELL_TIMEOUT_MS": "1500"
+   }
+  }
+ },
+ "text": "long-text.md",
+ "system": "You are a helpful assistant. Answer plainly.",
+ "followUps": 5,
+ "followTokens": 200,
+ "replyTokens": 300,
+ "retryOnce": true,
+ "saveText": true,
+ "spillCheck": true,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "textRepeat": 1,
+ "bigRead": 12288,
+ "rounds": 2,
+ "alternate": true,
+ "loadTimeoutMs": 900000,
+ "wordsRef": "share1",
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "-c",
+  "32768",
+  "-ctk",
+  "q4_0",
+  "-ctv",
+  "q4_0",
+  "--fit",
+  "on",
+  "--fit-target",
+  "512",
+  "--moe-cache-mib",
+  "4096",
+  "-lv",
+  "4"
+ ],
+ "ways": [
+  {
+   "id": "share0",
+   "engine": "be33",
+   "args": [
+    "--moe-cache-cpu-share",
+    "0"
+   ]
+  },
+  {
+   "id": "share1",
+   "engine": "be33",
+   "args": [
+    "--moe-cache-cpu-share",
+    "1"
+   ]
+  },
+  {
+   "id": "share1-doorbell",
+   "engine": "be33",
+   "args": [
+    "--moe-cache-cpu-share",
+    "1"
+   ],
+   "env": {
+    "LLAMA_MOE_DOORBELL": "1"
+   }
+  }
+ ]
+}
