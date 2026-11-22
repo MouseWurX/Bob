@@ -4,7 +4,7 @@ set -u
 W=${FORGE_ROOT:-/workspace}; IN=$W/in; OUT=$W/out; POD=$IN/pod
 # S: what every session shares on a network volume (teacher, general text, llama tools, HF cache); W: this run's own files
 S=${FORGE_SHARED:-$W}
-export HF_HOME=$S/hf HF_HUB_ENABLE_HF_TRANSFER=0 PYTHONUNBUFFERED=1 TOKENIZERS_PARALLELISM=false
+export HF_HOME=$S/hf HF_HUB_ENABLE_HF_TRANSFER=0 HF_XET_HIGH_PERFORMANCE=1 PYTHONUNBUFFERED=1 TOKENIZERS_PARALLELISM=false
 mkdir -p $OUT $S/hf
 cd $POD
 fetch() { python3 -c "import sys,urllib.request,shutil; r=urllib.request.Request(sys.argv[1], headers={'User-Agent':'bob-forge/1.0'}); shutil.copyfileobj(urllib.request.urlopen(r, timeout=120), open(sys.argv[2],'wb'))" "$1" "$2"; }
@@ -167,6 +167,24 @@ hf_get() {   # hf_get <repo> <path> <dir>: one file from Hugging Face with the p
 resolve_in() {   # resolve_in <spec> <dir> -> path: "hf:<repo>:<path>" is downloaded, anything else is a file in in/
   case "$1" in hf:*) local R P; R=$(echo "$1" | cut -d: -f2); P=$(echo "$1" | cut -d: -f3); hf_get "$R" "$P" "$2" && echo "$2/$P" ;; "") echo "" ;; *) echo "$IN/$1" ;; esac; }
 plist() { plan "$1" | python3 -c "import json,sys; d=sys.stdin.read().strip(); print(','.join(json.loads(d)) if d else '')"; }   # a list field as a,b,c
+# dl_watched <dir> <expected GB> <max minutes> <command...>: 22 Nov (DeepSeek try 1): 395 GB came down at 40 MB/s and ate the
+# whole 3 h cap before one job ran ($24). The download runs in the background; from minute 8 its speed so far gives a finish time,
+# and once that passes the limit (plan.benchmark.download_max_minutes) it is stopped and the run fails, so the pod is deleted at once.
+# Blank GB or minutes = no watch (as before). Bytes on disk (du -B1), not file sizes, so space set aside ahead doesn't count.
+dl_watched() {
+  local D=$1 GB=$2 MAXM=$3; shift 3
+  "$@" & local P=$! T0=$(date +%s) EL GOTB PROJ LAST=0
+  if [ -z "$GB" ] || [ -z "$MAXM" ]; then wait $P; return $?; fi
+  while kill -0 $P 2>/dev/null; do sleep 30
+    EL=$(( $(date +%s) - T0 )); [ $EL -lt 480 ] && continue
+    GOTB=$(du -s -B1 "$D" 2>/dev/null | cut -f1); GOTB=${GOTB:-0}
+    PROJ=$(python3 -c "g=$GOTB;e=$EL;t=$GB*1e9;r=g/e;print(int((e+(max(t-g,0)/r if r>0 else 1e9))/60))")
+    [ $((EL/300)) -gt $LAST ] && { LAST=$((EL/300)); status bench "download: $((GOTB/1000000000)) of $GB GB after $((EL/60)) min ($((GOTB/EL/1000000)) MB/s), about $PROJ min in all"; }
+    if [ "$PROJ" -gt "$MAXM" ]; then kill $P 2>/dev/null; pkill -f "hf download" 2>/dev/null; wait $P 2>/dev/null
+      die "download too slow: $((GOTB/EL/1000000)) MB/s, about $PROJ min for $GB GB, over the $MAXM min limit; stopping early so the pod is deleted"; fi
+  done
+  wait $P
+}
 # REAP scoring (plan "score": "reap" or "mass"; left out or "counts" = pick counts, as every Bob so far). With it the counting
 # passes also record router weight x output size per expert (reap.py) and keep.py / prune.py judge the experts by that.
 SCORE=$(plan ".get('score','counts')"); case "$SCORE" in reap|mass) REAP=--reap;; *) SCORE=counts; REAP=;; esac
@@ -312,7 +330,8 @@ PY
           fi ;;
         hf:*) REPO=$(echo "$BF" | cut -d: -f2); FP=$(echo "$BF" | cut -d: -f3); status bench "$BN: downloading $FP from Hugging Face"
           # 12 Nov: a split GGUF (name-00001-of-0000N.gguf) brings all its parts; llama-server loads them from the first
-          case "$FP" in *-00001-of-*.gguf) HF_TOKEN=$(cat $IN/hf-token 2>/dev/null) hf download "$REPO" --include "${FP%%-00001-of-*}-*-of-*.gguf" --local-dir $W/bench/hf-$BN > /dev/null 2>&1 && [ -f "$W/bench/hf-$BN/$FP" ] ;; *) hf_get "$REPO" "$FP" $W/bench/hf-$BN ;; esac || { echo "bench $BN: download failed"; continue; }
+          BGB=$(plan "['benchmark']['models'][$b].get('download_gb','')"); BDM=$(plan "['benchmark'].get('download_max_minutes','')"); mkdir -p $W/bench/hf-$BN
+          case "$FP" in *-00001-of-*.gguf) HF_TOKEN=$(cat $IN/hf-token 2>/dev/null) dl_watched $W/bench/hf-$BN "$BGB" "$BDM" hf download "$REPO" --include "${FP%%-00001-of-*}-*-of-*.gguf" --local-dir $W/bench/hf-$BN > /dev/null 2>&1 && [ -f "$W/bench/hf-$BN/$FP" ] ;; *) hf_get "$REPO" "$FP" $W/bench/hf-$BN ;; esac || { echo "bench $BN: download failed"; continue; }
           BFILE=$W/bench/hf-$BN/$FP ;;
         same:*) BFILE=${GOT[${BF#same:}]:-}; [ -n "$BFILE" ] || { echo "bench $BN: no earlier brain called ${BF#same:} to reuse"; continue; } ;;   # 12 Nov: serve an earlier entry's file again (another expert count), no new download
         volume:*) BFILE=$S/${BF#volume:} ;;
@@ -385,6 +404,9 @@ PY
       kill -0 $BS 2>/dev/null || { echo "bench $BN: llama-server died (see out/bench/$BN-server.log)"; tail -3 $OUT/bench/$BN-server.log; continue; }
       rm -f $IN/bench-done-$BN
       status bench "$BN ready: the PC runs the tests now (port 8001, $SLOTS slot(s), ctx $CTX)"
+      # 21 Nov 2026 (harness compare): plan.benchmark.pod_harness = other coding-agent harnesses run the repository jobs here on
+      # the pod against this brain (pod/harness/harness.sh); the PC's command waits for out/bench/harness/done.json and fetches it
+      if [ -n "$(plan "['benchmark'].get('pod_harness','')")" ]; then mkdir -p $OUT/bench/harness; ( bash $POD/harness/harness.sh run "$BN" > $OUT/bench/harness/run.log 2>&1 ) & fi
       BH=$(plan "['benchmark']['models'][$b].get('hours', p['benchmark'].get('hours_each',2))")   # 13 Nov: a model can have its own hours
       for i in $(seq 1 $(python3 -c "print(int($BH*120))")); do [ -f $IN/bench-done-$BN ] && break; kill -0 $BS 2>/dev/null || { echo "bench $BN: the server died during the tests"; break; }; sleep 30; done
       kill $BS 2>/dev/null; wait $BS 2>/dev/null; sleep 3
@@ -402,6 +424,8 @@ if [ "$(plan ".get('benchmark_only',False)")" = "True" ]; then
   for f in $(plan "['benchmark']['models']" | python3 -c "import json,sys; print(' '.join(m.get('file','') for m in json.load(sys.stdin)))"); do
     case "$f" in rebuild|volume:*|out:*) die "benchmark_only: '$f' needs a teacher, a drive or a run; give the brain as hf:<repo>:<path>";; esac
   done
+  # 21 Nov 2026 (harness compare): the other harnesses install while llama-server builds and the brain downloads
+  if [ -n "$(plan "['benchmark'].get('pod_harness','')")" ]; then mkdir -p $OUT/bench/harness; ( bash $POD/harness/harness.sh install > $OUT/bench/harness/install.log 2>&1 ) & fi
   run_bench
   rm -f $IN/hf-token
   # 21 Nov 2026: after2 served nothing (no llama-server built) yet ended "finished"; a serve-only run without a server is a failure

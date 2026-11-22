@@ -65,7 +65,10 @@ export function pathCheck(said, saved, after) {
   if (!saved.length) return null;
   const have = new Set([...saved, ...after.map((f) => f.path)].map((p) => base(p).toLowerCase()));
   // a name inside a longer one ("Budget (2).csv" holds "(2).csv") is the longer one; names are read whole, spaces in brackets kept
-  const names = [...String(said).matchAll(/([A-Za-z0-9_.-][^\n\\/"'`*<>|:]*?(?: \(\d+\))?\.(?:docx|xlsx|pptx|odt|ods|odp|pdf|csv|rtf))\b/gi)].map((m) => m[1].trim().split(/\s(?=[^\s(])/).pop().replace(/^\(/, ''));
+  const names = [...String(said).matchAll(/([A-Za-z0-9_.-][^\n\\/"'`*<>|:]*?(?: \(\d+\))?\.(?:docx|xlsx|pptx|odt|ods|odp|pdf|csv|rtf))\b/gi)].map((m) => m[1].trim().split(/\s(?!\(\d+\)\.)/).pop().replace(/^\(/, ''))
+    // 22 Nov (Flash-Next office): "Your deck (Garden_Club_Pitch.pptx on the Desktop)" was read as "deck (Garden_Club_Pitch.pptx",
+    // and "The .docx originals are untouched" as a file called ".docx": a bracket is a split unless it is "(2)."; a bare kind is no name
+    .filter((x) => !/^\.[a-z]+$/i.test(x));
   const said_ = names.map((x) => x.toLowerCase());
   // a taken name: "X (2).pdf" or "X-2.pdf" (convert_file) was saved, and the answer gives "X.pdf" without "X (2).pdf" (that is the old file)
   const stale = saved.map(base).flatMap((b) => { const m = b.match(/^(.*?)(?: \(\d+\)|-\d{1,3})(\.\w+)$/); return m && !said_.includes(b.toLowerCase()) && said_.includes((m[1] + m[2]).toLowerCase()) ? [m[1] + m[2]] : []; });

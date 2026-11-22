@@ -81,7 +81,35 @@ check('no held-out lesson is read', !seen.some((j) => JSON.stringify(j.messages)
   const w = pickRuns([['inbox', rf]], 10);
   check('runs: one target per kind, runs with no answer skipped', w.length === 2 && w.every((x) => x.target === 'job:inbox'));
   const m = runChat(JSON.parse(run('a')));
+  const mid = runChat({ messages: [{ role: 'system', content: 'You are Bob.' }, { role: 'user', content: 'tidy' }, { role: 'system', content: 'Check the maths.' }, { role: 'assistant', content: 'Done.' }] });
+  check('runs: only one system message, first (mid-chat notes folded as Bob folds them)', mid.filter((x) => x.role === 'system').length === 1 && mid[0].role === 'system' && mid.slice(1).every((x) => x.role !== 'system'), JSON.stringify(mid));
   check('runs: tool calls go in the server\'s shape, arguments as text', m[1].tool_calls[0].type === 'function' && m[1].tool_calls[0].function.arguments === '{"folder":"Inbox"}' && m[2].role === 'tool');
+}
+{ // 22 Nov (flashnext-tools): --preflight sends nothing; a runs file not made yet is stood in for by a made-up run
+  const pf = (runs) => new Promise((r) => { let out = ''; const p = spawn(process.execPath, [path.join(here, '..', 'model-lab', 'trace-read.mjs'), '--url', 'http://127.0.0.1:9', '--runs', runs, '--preflight'], { cwd: tmp }); p.stdout.on('data', (d) => (out += d)); p.stderr.on('data', (d) => (out += d)); p.on('close', (code) => r({ code, out })); });
+  const real = path.join(tmp, 'real-runs.jsonl');
+  fs.writeFileSync(real, JSON.stringify({ id: 'r1', job: 'x', messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'Hello.' }] }) + '\n');
+  const ok = await pf(`inbox=${path.join(tmp, 'not-made-yet', 'runs.jsonl')},office=${real}`);
+  check('--preflight: a runs file not made yet passes on a made-up run; one that is there is read; nothing is sent', ok.code === 0 && /inbox: .* made-up run reads as a chat/.test(ok.out) && /office: 1 run\(s\) to read/.test(ok.out) && /pre-flight OK/.test(ok.out), ok.out);
+  const empty = path.join(tmp, 'empty-runs.jsonl'); fs.writeFileSync(empty, '');
+  const bad = await pf(`repo=${empty},bad name=${real}`);
+  check('--preflight: a runs file with nothing readable, or a bad kind name, stops it', bad.code === 1 && /PRE-FLIGHT FAIL: repo: .* no run that reads as a chat/.test(bad.out) && /PRE-FLIGHT FAIL: run kind "bad name"/.test(bad.out), bad.out);
+}
+{ // 22 Nov (flashnext-tools: every replay failed 500 "System message must be at the beginning")
+  const row = { id: 'n1', messages: [{ role: 'system', content: 'You are Bob.' }, { role: 'user', content: 'tidy it' }, { role: 'assistant', content: 'Done.' }, { role: 'system', content: 'You said you would do it.' }, { role: 'assistant', content: 'Done, really.' }] };
+  const m = runChat(row);
+  check('runChat: Bob\'s mid-chat system notes are folded (only the first message is system), as do-jobs folds them', m[0].role === 'system' && m.slice(1).every((x) => x.role !== 'system') && m.some((x) => x.role === 'user' && /You said you would do it/.test(x.content)), JSON.stringify(m.map((x) => x.role)));
+  // the first 3 replays failing the same way stop the phase, so the rental's last minutes aren't spent on the rest
+  let asks = 0;
+  const bad = http.createServer((q, r) => { q.resume(); q.on('end', () => { asks++; r.writeHead(500, { 'content-type': 'application/json' }); r.end(JSON.stringify({ error: { code: 500, message: 'System message must be at the beginning' } })); }); });
+  await new Promise((r) => bad.listen(0, '127.0.0.1', r));
+  const rf = path.join(tmp, 'many-runs.jsonl');
+  fs.writeFileSync(rf, Array.from({ length: 12 }, (_, i) => JSON.stringify({ id: `m${i}`, messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'Hello.' }] })).join('\n') + '\n');
+  const outDir = path.join(tmp, 'stop-out');
+  const res = await new Promise((r) => { let o = ''; const p = spawn(process.execPath, [path.join(here, '..', 'model-lab', 'trace-read.mjs'), '--url', `http://127.0.0.1:${bad.address().port}`, '--runs', `inbox=${rf}`, '--parallel', '1', '--per', '12', '--tries', '1', '--out', outDir]); p.stdout.on('data', (d) => (o += d)); p.stderr.on('data', (d) => (o += d)); p.on('close', (code) => r({ code, o })); });
+  bad.close();
+  const fj = fs.existsSync(path.join(outDir, 'fails.json')) ? JSON.parse(fs.readFileSync(path.join(outDir, 'fails.json'), 'utf8')) : {};
+  check('the first 3 replays failing with the same error stop the phase (exit 87), say why, and ask no more', res.code === 87 && asks === 3 && /TRACE STOP: the first 3 replays all failed the same way/.test(res.o) && /System message must be at the beginning/.test(res.o) && fj.stopped_after === 3, `code ${res.code}, asks ${asks}, ${res.o.slice(-300)}`);
 }
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

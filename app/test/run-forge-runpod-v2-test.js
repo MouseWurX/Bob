@@ -33,7 +33,7 @@ check('the Forge and the pod no longer use rest.runpod.io', !/['"`]https:\/\/res
 check('the pod deletes itself through v2 (normal end and the time cap)', (sh.match(/'https:\/\/api\.runpod\.io\/v2\/pods\/'\+os\.environ\['RUNPOD_POD_ID'\], method='DELETE'/g) || []).length === 2);
 check('v2 network-volume paths', /rp\('PATCH', `\/network-volumes\/\$\{have\.id\}`/.test(fm) && /rp\('POST', '\/network-volumes'/.test(fm) && /rp\('DELETE', `\/network-volumes\/\$\{id\}`/.test(fm) && !/\/networkvolumes/.test(fm));
 check('while the door is shut, each "still waiting" line says what RunPod reports (status, uptime, ports)', /still waiting for the pod door \(.*\$\{await podState\(\)\}/.test(fm) && /RunPod says \$\{p\.status/.test(fm) && /not started on its host yet/.test(fm));
-check('renting asks for each wanted card in turn', /await createPod\(rp, \{/.test(fm) && /\}, cards\);/.test(fm));
+check('renting asks for each wanted card in turn (22 Nov: each card set in turn, with its own count)', /pod = await createPod\(rp, \{/.test(fm) && /\}, ask\.cards\);/.test(fm) && /gpuCount: ask\.count/.test(fm));
 
 // ---- the body ----
 const v1 = { name: 'bob-forge-x', imageName: 'vllm/vllm-openai:v0.28.0', cloudType: 'SECURE', gpuTypeIds: ['A', 'B'], gpuTypePriority: 'custom', gpuCount: 1, volumeMountPath: '/workspace', networkVolumeId: 'vol1', dataCenterIds: ['US-KS-2'], containerDiskInGb: 350, ports: ['8000/tcp', '8001/tcp'], supportPublicIp: true, env: { FORGE_TOKEN: 't' }, dockerEntrypoint: ['bash', '-c'], dockerStartCmd: ['echo hi'] };

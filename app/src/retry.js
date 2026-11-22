@@ -146,6 +146,7 @@ export function toolErrorText(e) {
 // the rest of it. A success clears its count. After the job, Bob offers once to look at it harder and fix it.
 export const STRIKES = 3;
 // ---------------------------------------------------------------------------------------------------------------
+export const RAN_TO_END = /^(?:Error:\s*)?Finished with exit code -?\d+/;
 const NEVER_STRUCK = new Set(['use_tools', 'ask_user', 'show_plan', 'ask_together', 'offer_setup']);
 export class ToolStrikes {
   constructor() { this.fails = new Map(); this.off = new Set(); this.last = new Map(); }
@@ -154,7 +155,10 @@ export class ToolStrikes {
   // Returns how many times in a row it has now failed (0 after a success).
   record(tool, ok, text = '') {
     if (NEVER_STRUCK.has(tool)) return 0;
-    if (ok) { this.fails.delete(tool); return 0; }
+    // 22 Nov (flashnext-tools read, repo1 repo-test-tokens): a program that ran and ended with a code other than 0 (tests
+    // failing while he fixes them) is the program's answer, not the tool failing. Three failing test runs set run_command
+    // aside, so he could no longer check his own fix. Only a run that couldn't start or was refused is a strike.
+    if (ok || RAN_TO_END.test(String(text || ''))) { this.fails.delete(tool); return 0; }
     this.last.set(tool, String(text || '').replace(/^Error:\s*/, '').replace(/\s+/g, ' ').slice(0, 160));
     const n = (this.fails.get(tool) || 0) + 1;
     this.fails.set(tool, n);

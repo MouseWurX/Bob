@@ -314,6 +314,21 @@ const mkCfg = (name) => {
   check('the glossary has it', /<dt>Undo changes<\/dt>/.test(g.html) && /<dt>Set aside \(a saved file\)<\/dt>/.test(g.html));
 }
 
+// ---------- save_spreadsheet keeps the name and folder asked for (Nov 22, Flash-Next office run) ----------
+{
+  const c = mkCfg('sheet'); const docs = path.join(tmp, 'sheet', 'docs'); fs.mkdirSync(docs, { recursive: true });
+  const t = buildTools(c);
+  const a = await t.save_spreadsheet.run({ name: 'Subscriptions', csv: 'Name,Cost\nStreamly,12.99', folder: 'docs' });
+  check('a bare folder name that is one of the allowed places is used, and the name has no date', fs.existsSync(path.join(docs, 'Subscriptions.csv')), a);
+  const b = await t.save_spreadsheet.run({ name: 'Subscriptions.csv', csv: 'a,b', folder: docs });
+  check('a second save never overwrites', fs.existsSync(path.join(docs, 'Subscriptions-2.csv')), b);
+  await t.save_spreadsheet.run({ name: 'bills', csv: 'a,b' });
+  check('no folder: the ledger folder, still the name asked for', fs.existsSync(path.join(c.ledgerDir, 'bills.csv')));
+  let err = '';
+  try { await t.save_spreadsheet.run({ name: 'x', csv: 'a,b', folder: path.join(tmp, 'elsewhere') }); } catch (e) { err = e.message; }
+  check('a folder outside the allowed places is refused', /not allowed/.test(err), err);
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

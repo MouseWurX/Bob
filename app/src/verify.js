@@ -535,7 +535,7 @@ export function afterTurn(ctx = {}, replyText) {
   // words and this turn's tool record (answer-checks.js). They join the same one more go; never a loop.
   if (ctx.cfg?.toolHelp !== false && !nudged) {
     let more = [];
-    try { more = answerChecks({ text: ctx.turnText || ex0?.words || '', reply: said, actions, usable, who, exists, already: nudges.join(' ') }); } catch {}
+    try { more = answerChecks({ text: ctx.turnText || ex0?.words || '', reply: said, actions, usable, who, exists, already: nudges.join(' '), toolsOff: Boolean(ctx.noTools) }); } catch {}
     for (const m of more.slice(0, 2)) { push(m.nudge, m.groups); if (m.claim && !claims.length) notes.push('Bob said something was done that the app couldn\'t see happen; he was asked to check.'); }
   }
 

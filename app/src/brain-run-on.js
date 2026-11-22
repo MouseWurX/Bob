@@ -645,7 +645,11 @@ export const runOnParts = {
           // action in between, counts as a repeat (the count no longer starts over after every action).
           ctx.callsRun = (ctx.callsRun || 0) + 1; round.ran++; ranIt = true;
           const was = ctx.progress.record(key, res.text);
-          if (was === 'new') round.fresh++;
+          // 22 Nov (flashnext-tools read, repo1 repo-feat-branches): six edits to one test file each came back "Edited
+          // <file>. (Backup kept in the inn.)", the same words, so three rounds of real work counted as "nothing new"
+          // and the turn was stopped before he ran the tests. An action that worked and wasn't this exact call again is
+          // progress, whatever its words.
+          if (was === 'new' || (doing && was !== 'same' && !/^Error:/.test(String(res.text)))) round.fresh++;
           if (/^Error:/.test(String(res.text))) round.failed++;
           if (was === 'same' && !isLook(name)) { ctx.repeatSkips = (ctx.repeatSkips || 0) + 1; this.log('tool', `${name} gave the same result as before`); }
           trailOf(ctx, name, call.function?.arguments, res.text, doing, this.tools);

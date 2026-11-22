@@ -65,8 +65,8 @@ changed name, wording or input changes it. If the hashes change while `TOOL_SHAP
 bump `TOOL_SHAPES`, tell the tool lessons thread, then run `node test/run-tool-shapes-lock-test.js --write`. Lab job
 rows and lesson stamps carry `tool_hash` too, so a lesson can be matched to the exact list it was made with.
 
-The mail catalog's new inputs (16 Nov) went in with `TOOL_SHAPES` still 4, and nothing noticed. The search_files
-wording fix of 21 Nov was kept at 4 on purpose and counts toward the next bump.
+The mail catalog's new inputs (16 Nov) went in with `TOOL_SHAPES` still 4, and nothing noticed. Shape 5 (22 Nov)
+covers search_files matching file names, save_spreadsheet's folder (and no date), and office_make's wording.
 
 ## Languages the end-of-turn checks read
 

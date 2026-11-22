@@ -1,0 +1,5 @@
+{
+ "_note": "pre-flight only: the planted bug of a few jobs as [file, right text, planted text], so the stand-in harness can put it back (repo-jobs.mjs BUG)",
+ "fix-history": ["src/git-look.js", "'-n', '20'", "'-n', '2'"],
+ "keep-tests": ["src/sort-names.js", "k === 'albumartist') v = info.artist", "k === 'albumartist') v = info.album"]
+}

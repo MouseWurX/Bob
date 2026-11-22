@@ -256,6 +256,11 @@ export function handsTools(brain, opts = {}) {
     // Nov 15 (Bobert's coached tool run, a habit from old lessons): a command that only writes a file goes to write_file,
     // which shows the file, needs no shell, and is undone the usual way. Refused before any card, so he tries again.
     if (writesFileOnly(a) && brain.tools?.write_file) throw new Error('Not run: this command only writes a file. Use write_file (path, content) to write one, or edit_file to change one. run_command is for running programs.');
+    // 22 Nov (flashnext-tools read of repo1: 21 calls in 6 runs): node with no arguments. With no shell and no
+    // keyboard it starts, reads nothing and ends: "exit code 0, no output", which reads as success. He ran it again
+    // and again, then wrote the call as text. Refused with what to give instead.
+    const prog = a.cmd.toLowerCase().replace(/^.*[\\/]/, '').replace(/\.exe$/, '');
+    if (/^(?:node|python3?|py|ruby|perl|deno|bun)$/.test(prog) && !a.args.some((x) => x.trim())) throw new Error(`Not run: ${a.cmd} with no arguments does nothing here (no shell, no keyboard). Give the script in args: a file, like args ["test/run.js"], or code, like args ${/^(?:python3?|py)$/.test(prog) ? '["-c", "print(1)"]' : prog === 'node' ? '["-e", "console.log(1)"]' : '["-e", "..."]'}.`);
     const c = checkCommand(cfg, a);
     if (!c.ok) throw new Error(c.why);
     return { a, c };

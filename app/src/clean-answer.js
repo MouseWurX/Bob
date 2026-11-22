@@ -41,6 +41,13 @@ export function pickAnswer(added = [], rounds = null) {
   if (final && bareTextCall(text)) {
     const line = unfinishedLine(text);
     text = line; final.content = line; if (final.showText) final.showText = line; final.textCall = true;
+  } else if (final && XML_CALL.test(text)) {
+    // 22 Nov (flashnext-tools read, repo1: 3 runs): words, then the call ("Let me try with a command argument:
+    // <tool_call>...") passed the check above and the raw call was shown. The final answer's calls never ran, so the
+    // call text comes out and a plain line says the next step didn't run. Only the XML forms: a JSON code sample in an
+    // answer is left alone.
+    const line = proseAndUnfinished(text);
+    text = line; final.content = line; if (final.showText) final.showText = line; final.textCall = true;
   }
   return { final, text, checked: minutes ? String(minutes.content) : '' };
 }
@@ -52,7 +59,18 @@ export function bareTextCall(text) {
   if (!/<tool_call>|<function=|"name"\s*:\s*"[a-z_]+"\s*,\s*"arguments"|<\|(?:channel|call|start)\|?/.test(t)) return false;
   return t.replace(CALL_BLOCK, '').replace(/\s+/g, ' ').trim().length < 40;
 }
+const XML_CALL = /<tool_call>\s*<function=|<function=[\w.-]+>\s*<parameter=/;
+const XML_BLOCK = /<tool_call>[\s\S]*?(?:<\/tool_call>|$)|<function=[\s\S]*?(?:<\/function>|$)/g;
+// The words around an XML call written as text, without it, and one line saying that step never ran.
+export function proseAndUnfinished(text) {
+  const name = (String(text || '').match(/<function=([\w.-]+)>/) || [])[1];
+  // "Let me run it:" / "Now let's run the tests:" just before the call is about a step that never happened
+  const words = String(text || '').replace(XML_BLOCK, '').replace(/\s*(?:(?:Now|OK|Okay|So),?\s+)?(?:let me|let's|I'll|I will)\b[^.!?\n]*:\s*$/i, '').replace(/\n{3,}/g, '\n\n').trim();
+  const line = `I didn't finish this: my next step${name ? ` (${name})` : ''} never ran, so it isn't done. Say "keep going" and I'll carry on.`;
+  return words ? `${words}\n\n${line}` : line;
+}
 export function unfinishedLine(text) {
   const name = (String(text || '').match(/<function=([\w.-]+)>|"name"\s*:\s*"([a-z_]+)"/) || []).slice(1).find(Boolean);
-  return `I didn't finish this: I ran out of steps while I was still looking${name ? ` (my next try, ${name}, never ran)` : ''}, so nothing was done. Tell me where to look, or say "keep going".`;
+  // 22 Nov: not "I ran out of steps": with steps as backstops, "found nothing new" ends a turn far more often
+  return `I didn't finish this: I stopped while I was still looking${name ? ` (my next try, ${name}, never ran)` : ''}, so nothing was done. Tell me where to look, or say "keep going".`;
 }

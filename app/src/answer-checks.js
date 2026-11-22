@@ -103,7 +103,7 @@ function cutOff(reply) {
 
 // ctx: { text (what the user asked), reply, actions (ledger actions this turn), usable(name), who, exists(path) }
 // Returns [{ kind, nudge, groups, claim? }]: what verify.js adds to its one-more-go line (the first ones win).
-export function answerChecks({ text = '', reply = '', actions = [], usable = () => true, who = 'the user', exists = () => false, already = '' } = {}) {
+export function answerChecks({ text = '', reply = '', actions = [], usable = () => true, who = 'the user', exists = () => false, already = '', toolsOff = false } = {}) {
   const said = String(reply || '').trim(); const ask = String(text || '');
   const out = []; const add = (kind, nudge, groups = [], claim = false) => out.push({ kind, nudge, groups, claim });
   if (!said) return out;
@@ -153,7 +153,12 @@ export function answerChecks({ text = '', reply = '', actions = [], usable = () 
   // text_call: a call written out instead of made
   if (TEXT_CALL.test(said)) {
     const name = (said.match(/<function=([\w.-]+)>|"name"\s*:\s*"([a-z_]+)"|to=functions\.([\w.-]+)/) || []).slice(1).find(Boolean);
-    add('text_call', `Your answer has a tool call written as text${name ? ` (${name})` : ''}. Text never runs: nothing happened. Make the real call now if it's still needed, then answer from what it returns, and don't say it's done until a tool says so. Never show call text to ${who}.`, [], true);
+    // 22 Nov (flashnext-tools read of after2 and repo1: 21 calls in 11 runs): after the last step or "found nothing new",
+    // Bob takes the tools away, the brain writes its next call as text, and this line used to say "make the real call
+    // now" with no tool to make it with. It wrote the call as text again, and the raw call reached the user. With the
+    // tools off, the line asks for words instead.
+    if (toolsOff) add('text_call', `Your answer has a tool call written as text${name ? ` (${name})` : ''}. Tools are off for this answer, so it can't run, and ${who} would see it as code. Answer now in plain words, with no call text: what you did and found, what isn't done yet, and the next step you would take${name ? ` (${name})` : ''}.`, [], true);
+    else add('text_call', `Your answer has a tool call written as text${name ? ` (${name})` : ''}. Text never runs: nothing happened. Make the real call now if it's still needed, then answer from what it returns, and don't say it's done until a tool says so. Never show call text to ${who}.`, [], true);
   }
   // find_first (17 Nov after1 office): "add X to my reading log spreadsheet" made a NEW csv and said "added to your reading
   // log"; "add a slide to my garden club deck" listed one empty folder and asked for the path. The user's own file is

@@ -45,9 +45,9 @@ export const SETS = {
 // Which tool shapes are live, as a short stamp. The tool record (tool-record.js) starts a fresh history when this
 // changes, and moves the old one to an archive folder (Nov 14, the owner: "if i have a history in it we restart that
 // history new when we try the new tool shapes"). Bump TOOL_SHAPES when tool wording or inputs change for every brain.
-export const TOOL_SHAPES = 4; // 2 (Nov 15): save_to on the save tools and make_diagram, a new name on convert_file. 3: GPT-OSS shape locked. 4: Qwen hides 2 helpers; run_command sends file writes to write_file
-// Waiting for the next bump (kept at 4 on purpose, 21 Nov: the stock-Qwen comparisons pin shape 4 and training is parked):
-// search_files' wording now says it also matches file names (3fff3cf0). Count it in the next bump when lessons start again.
+export const TOOL_SHAPES = 5; // 2 (Nov 15): save_to on the save tools and make_diagram, a new name on convert_file. 3: GPT-OSS shape locked. 4: Qwen hides 2 helpers; run_command sends file writes to write_file. 5 (Nov 22): search_files by name, save_spreadsheet folder + no date, office_make wording
+// 4 was kept on purpose on 21 Nov (the stock-Qwen comparisons pinned it); search_files' file-name wording (3fff3cf0) waited
+// for this bump. test/tool-shapes-lock.json holds the exact lists each number stands for.
 export function shapeStamp(cfg) {
   const live = toolSetsOn(cfg) ? Object.keys(SETS).filter((k) => SETS[k].proven !== false && cfg?.toolSets?.[k] !== false).sort() : [];
   return `${TOOL_SHAPES}-${live.join('+') || 'bob'}`;

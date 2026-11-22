@@ -92,6 +92,11 @@ check('"Let me search for that." is a promise', promisesAction('Sure! Let me sea
 check('"I\'ll look it up now." is a promise', promisesAction("Good question. I'll look it up now."));
 check('"I will open the file and check." is a promise', promisesAction('I will open the file and check.'));
 check('a question is not', !promisesAction('Shall I search for that?'));
+// 22 Nov (steps40 real fx-9621704542, fx-15eb1d1a4a): remember had run; how he'll behave from now on is not a step left undone
+check('"I\'ll make sure to use your name going forward" is not a promise', !promisesAction("Done, Sam. I'll make sure to use your name going forward."));
+check('"I\'ll address you by name from now on" is not', !promisesAction("Got it, Sam. I'll address you by name from now on."));
+check('"I\'ll make sure any food recommendations are gluten-free" is not', !promisesAction("I've added that to my memory. I'll make sure any food recommendations I give are gluten-free from now on."));
+check('"Let me check the file now." still is', promisesAction('Got it. Let me check the file now.'));
 check('an offer is not', !promisesAction('If you want, I can search for that.'));
 check('an answer is not', !promisesAction('The moon is about 3,474 km across.'));
 check('a promise in the middle of a full answer is not', !promisesAction("I'll search for that. The moon is about 3,474 km across. It's the fifth largest moon. Hope that helps!"));

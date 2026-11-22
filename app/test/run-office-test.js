@@ -112,7 +112,9 @@ const brain = { cfg, log: (k, t) => logs.push(`${k}: ${t}`) };
   fs.writeFileSync(path.join(work, '.env'), 'KEY=1');
   check('reads in a readable folder', canRead(cfg, path.join(outside, 'b.docx')) === path.join(outside, 'b.docx'));
   check('secret files are off-limits', throws(() => canRead(cfg, path.join(work, '.env')), /keys or passwords/));
-  check('a relative path is refused', throws(() => canRead(cfg, 'a.docx'), /full path/));
+  check('a relative path with a folder is refused', throws(() => canRead(cfg, 'sub/a.docx'), /full path/));
+  // 22 Nov: a bare name is looked up in the folders Bob may read (run-office-find-test.js), as read_file does
+  check('a bare name is looked up, never taken as relative', (() => { try { return path.isAbsolute(canRead(cfg, 'a.docx')); } catch (e) { return /no file called a.docx|There are d+ files called a.docx/.test(e.message); } })());
   check('saves in a ticked folder', Boolean(canWrite(cfg, path.join(work, 'a.pdf'))));
   check('saves in Bob\'s own Documents folder', Boolean(canWrite(cfg, path.join(officeDir(cfg), 'x.docx'))));
   check('won\'t save in a folder that isn\'t ticked', throws(() => canWrite(cfg, path.join(outside, 'b.pdf')), /only save in/));
@@ -269,6 +271,11 @@ if (ff && process.platform !== 'win32') {
   check('office_read cut note: a document says only that there is more (the reader stops early, so no false total)', /has more/.test(doc) && !/20005/.test(doc), doc);
   const py = fs.readFileSync(new URL('../src/office-uno.py', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   check('office-uno read_calc counts the rows it showed and flags a sheet cut short', /sheet\['shown'\] = i \+ 1/.test(py) && /cut = any\(x\['shown'\] < x\['rows'\]/.test(py) && /or bool\(info\.get\('cut'\)\)/.test(py));
+}
+// 22 Nov (Flash-Next office): "a spreadsheet called Subscriptions" became Subscriptions-2026-11-21.xlsx; the name is kept as asked
+{
+  const m = planMake(cfg, { kind: 'calc', name: 'Subscriptions', sheets: [{ name: 'S', rows: [['a'], [1]] }] });
+  check('office_make keeps the name asked for, with no date', path.basename(m.job.out) === 'Subscriptions.xlsx', m.job.out);
 }
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

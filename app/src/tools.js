@@ -689,13 +689,25 @@ export function buildTools(cfg) {
   };
 
   t.save_spreadsheet = {
-    schema: fn('save_spreadsheet', 'Save a table as a CSV file in the ledger folder (opens in Excel). Never overwrites.', {
-      name: str('Short file name, like monthly-bills.'),
-      csv: str('CSV text with a header row first.')
-    }),
-    async run({ name, csv }) {
+    schema: fn('save_spreadsheet', 'Save a table as CSV (opens in Excel). Never overwrites.', {
+      name: str('File name as asked.'),
+      csv: str('CSV, header row first.'),
+      folder: str('Optional: folder asked for.')
+    }, ['name', 'csv']),
+    async run({ name, csv, folder }) {
       if (!csv || !csv.trim()) throw new Error('The CSV is empty.');
-      const file = uniquePath(path.join(cfg.ledgerDir, `${safeName(name)}-${today(cfg)}.csv`));
+      // Nov 22 (Flash-Next office run): the folder asked for was ignored and a date was added to the name, so
+      // "a spreadsheet in Documents called Subscriptions" landed as ledger/Subscriptions-2026-11-21.csv. Now the
+      // name is kept as asked and a folder inside Bob's allowed places is used; the date only when no name is given.
+      let dir = cfg.ledgerDir;
+      if (folder && String(folder).trim()) {
+        const f = String(folder).trim();
+        const root = !path.isAbsolute(f) && !/^~/.test(f) && (cfg.readRoots || []).find((r) => path.basename(r).toLowerCase() === f.toLowerCase());
+        dir = root || resolveUserPath(f);
+        if (!insideAny(cfg.readRoots, dir)) throw new Error(`I'm not allowed to write in that folder. Allowed: ${cfg.readRoots.join('; ')}`);
+      }
+      const base = String(name || '').trim() ? safeName(String(name).replace(/\.csv$/i, '')) : `table-${today(cfg)}`;
+      const file = uniquePath(path.join(dir, `${base}.csv`));
       saveFile(file, '\ufeff' + csv.trim() + '\r\n');
       const rows = csv.trim().split(/\r?\n/).length;
       return `Saved ${file} (${rows} lines including the header). Double-click it to open in Excel.`;

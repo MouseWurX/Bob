@@ -13,6 +13,7 @@ import { handOn, handOffWhy, readOnlyRoots } from './hands-settings.js';
 import { handsRoots } from './hands-files.js';
 import { routeFor, extOf, kindName, docKindOf, DOC_KINDS, findOffice, findFfmpeg, officeJob, pictureJob, mediaJob, OFFICE_MISSING, FFMPEG_MISSING } from './office.js';
 import { fileSize, freeName } from './util.js';
+import { findByName } from './find-by-name.js';
 
 const fn = (name, description, properties, required = Object.keys(properties)) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
@@ -32,10 +33,22 @@ function full(p) {
 
 // Where Bob may read from: anywhere he may read files, the Hands folders, and his own Documents folder.
 export function canRead(cfg, p) {
-  const f = full(p);
+  const roots = [...(cfg.readRoots || []), ...handsRoots(cfg), officeDir(cfg)];
+  // 22 Nov (flashnext-tools read of after2 and steps40: 27 of 36 "no file there" errors on office_read, office_edit and
+  // inspect_file were files that were there, a folder away: "C:\\Users\\you\\Q3_Sales.xlsx" for Documents\\Q3_Sales.xlsx).
+  // read_file looks a bare or missing name up a few folders down (find-by-name.js); these tools now do the same. One
+  // file by that name is the one; several are named so the brain picks by full path.
+  const lookUp = (name, asked) => {
+    const hits = findByName(roots, name, { skip: (x) => isSensitive(cfg, x) }).filter((x) => { try { return fs.statSync(x).isFile(); } catch { return false; } });
+    if (hits.length === 1) return hits[0];
+    if (hits.length > 1) throw new Error(`There are ${hits.length} files called ${name}: ${hits.join('; ')}. Give the right one by its full path.`);
+    throw new Error(asked ? `There's no file at ${asked}, and no file called ${name} in the folders I can read.` : `There's no file called ${name} in the folders I can read. Give its full path.`);
+  };
+  if (typeof p === 'string' && p.trim() && !/[\\/]/.test(p.trim()) && !/^~/.test(p.trim())) return lookUp(p.trim(), '');
+  let f = full(p);
   if (isSensitive(cfg, f)) throw new Error('That file holds keys or passwords, so it stays off-limits to me.');
-  if (!insideAny([...(cfg.readRoots || []), ...handsRoots(cfg), officeDir(cfg)], f)) throw new Error(`I'm not allowed to open files in ${path.dirname(f)}. You can tick that folder in Settings, Hands.`);
-  if (!fs.existsSync(f)) throw new Error(`There's no file at ${f}.`);
+  if (!insideAny(roots, f)) throw new Error(`I'm not allowed to open files in ${path.dirname(f)}. You can tick that folder in Settings, Hands.`);
+  if (!fs.existsSync(f)) f = lookUp(path.basename(f), f);
   if (fs.statSync(f).isDirectory()) throw new Error(`${f} is a folder. Give me a file.`);
   return f;
 }
@@ -124,7 +137,7 @@ function cleanSlides(slides) {
 export function planMake(cfg, args) {
   const kind = String(args.kind || '').toLowerCase();
   if (!KIND_WORDS[kind]) throw new Error('kind must be writer (text document), calc (spreadsheet) or impress (presentation).');
-  let out = args.path ? full(args.path) : path.join(officeDir(cfg), `${String(args.name || KIND_WORDS[kind]).replace(/[^\w .-]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'document'}-${today(cfg)}.${DEFAULT_EXT[kind]}`);
+  let out = args.path ? full(args.path) : path.join(officeDir(cfg), `${String(args.name || KIND_WORDS[kind]).replace(/[^\w .-]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'document'}.${DEFAULT_EXT[kind]}`); // 22 Nov (Flash-Next office): no date added; freeName keeps it from overwriting
   if (!path.extname(out)) out += '.' + DEFAULT_EXT[kind];
   const ext = extOf(out);
   if (!DOC_KINDS[kind].out.includes(ext)) throw new Error(`A ${KIND_WORDS[kind]} can be saved as: ${DOC_KINDS[kind].out.join(', ')}.`);
@@ -262,16 +275,17 @@ export function officeTools(brain, { env = process.env } = {}) {
       if (!docKindOf(ext) && ext !== 'pdf') throw new Error(`I read documents, spreadsheets and presentations with this; a ${kindName(ext)} isn't one. Try read_file.`);
       const r = await officeJob(cfg, { op: 'read', src, max: 20000, sheet: args.sheet || '', formulas: args.formulas === true }, { signal: ctx?.signal, office: findOffice(cfg, env) });
       const about = r.kind === 'calc' ? r.info.sheets.map((s) => `${s.name} (${s.area})`).join(', ') : r.kind === 'writer' ? `${r.info.pages ? `${r.info.pages} pages, ` : ''}${r.info.paragraphs} paragraphs` : `${r.info.slides} slides`;
-      return `${path.basename(src)}: ${about}.\n\n${r.text}${r.cut ? `\n\n${cutNote(r)}` : ''}`;
+      const moved = path.resolve(String(args.path || '')).toLowerCase() !== src.toLowerCase() ? `(Found it at ${src}: use that path from now on.)\n` : '';
+      return `${moved}${path.basename(src)}: ${about}.\n\n${r.text}${r.cut ? `\n\n${cutNote(r)}` : ''}`;
     },
     summary: ({ path: p }) => `read ${path.basename(String(p || ''))}`
   };
 
   t.office_make = {
-    schema: fn('office_make', 'Make a new document, spreadsheet, presentation or PDF. No path = your Documents folder.', {
+    schema: fn('office_make', 'New document, spreadsheet, slides or PDF. No path = Bob\'s own folder; for {{USER}}\'s, a full path.', {
       kind: str('writer, calc or impress', { enum: ['writer', 'calc', 'impress'] }),
       path: str('Optional: full path ending in .docx, .odt, .xlsx, .ods, .pptx, .odp or .pdf. Never overwrites.'),
-      name: str('Optional, when there is no path: a short file name.'),
+      name: str('Optional, with no path: a short name.'),
       text: str('writer: simple Markdown: # headings, - bullets, | tables |, **bold**, ---page--- for a new page.'),
       sheets: { type: 'array', description: 'calc: the sheets.', items: { type: 'object', properties: { name: { type: 'string' }, rows: { type: 'array', description: 'Rows; the first is the header. A cell starting with = is a formula.', items: { type: 'array', items: {} } } } } },
       slides: { type: 'array', description: 'impress: the slides.', items: { type: 'object', properties: { title: { type: 'string' }, bullets: { type: 'array', items: { type: 'string' } }, notes: { type: 'string', description: 'Speaker notes.' } } } }
