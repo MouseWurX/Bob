@@ -1,0 +1,721 @@
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index d755c79..3ed2ec9 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -12,6 +12,9 @@
+ #include "llama-mmap.h"
+ #include "llama-model.h"
+ #include "llama-moe-cache.h"
++#include "llama-kv-cache.h"
++#include "llama-kv-cache-iswa.h"
++#include "llama-memory-hybrid.h"
+ #include "llama-expert-tiers.h"
+ #include "llama-ext.h"
+ #include "llama-sampler.h"
+@@ -671,6 +674,33 @@ llama_context::llama_context(
+                     LLAMA_LOG_WARN("%s: borrowed reading: no bigger step than -ub %u (raise -b to let it borrow)\n", __func__, cparams.n_ubatch);
+                 }
+             }
++            // Brain Engine 0049: LLAMA_MOE_CACHE_TAIL=1 lends the chat memory past LLAMA_MOE_CACHE_TAIL_KEEP cells (default
++            // 8192) to the cache as a shelf for evicted experts; the chat takes it back LLAMA_MOE_CACHE_TAIL_STEP cells
++            // (default 8192) at a time as it grows
++            if (moe_cache->tail_wanted()) {
++                llama_kv_cache * kv = dynamic_cast<llama_kv_cache *>(memory.get());
++                if (auto * h = dynamic_cast<llama_memory_hybrid *>(memory.get())) {
++                    kv = h->get_mem_attn();
++                } else if (auto * w = dynamic_cast<llama_kv_cache_iswa *>(memory.get())) {
++                    kv = w->get_base();
++                }
++                auto env_u = [](const char * name, uint32_t def) {
++                    const char * v = getenv(name);
++                    return v != nullptr && atol(v) > 0 ? (uint32_t) atol(v) : def;
++                };
++                const uint32_t keep = GGML_PAD(std::max<uint32_t>(256, env_u("LLAMA_MOE_CACHE_TAIL_KEEP", 8192)), 256u);
++                const uint32_t step = env_u("LLAMA_MOE_CACHE_TAIL_STEP", 8192);
++                const char * why = kv == nullptr ? "this brain keeps no chat memory of that kind" : kv->tail_refuse();
++                if (why != nullptr) {
++                    LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_CACHE_TAIL NOT USED: %s\n", __func__, why);
++                } else if (moe_cache->tail_attach(kv->tail_tensors(), kv->get_size(), std::min(keep, kv->get_size()))) {
++                    llama_moe_cache * mc = moe_cache.get();
++                    kv->tail_lend(keep, step, {
++                        [mc](uint32_t from, uint32_t to) { mc->tail_take(from, to); },
++                        [mc]() { mc->tail_lost(); },
++                    });
++                }
++            }
+             if (const char * rl = getenv("LLAMA_MOE_CACHE_READ_LAYERS"); rl != nullptr && *rl != '\0' && getenv("LLAMA_MOE_CACHE_LEND") == nullptr) {
+                 const long v = strtol(rl, nullptr, 10);
+                 if (v > 32) {
+diff --git a/src/llama-kv-cache.cpp b/src/llama-kv-cache.cpp
+index 74a5ab5..5e6eb6b 100644
+--- a/src/llama-kv-cache.cpp
++++ b/src/llama-kv-cache.cpp
+@@ -88,6 +88,8 @@ llama_kv_cache::llama_kv_cache(
+     v_cells_impl(other ? other->v_cells_impl : std::make_shared<llama_kv_cells_vec>()),
+     v_cells(*v_cells_impl) {
+ 
++    tail_share = other != nullptr || (bool) reuse || (bool) share; // Brain Engine 0049
++
+     // shared cells view the source cache's K/V tensors, so the cell count
+     // follows the source allocation: a fitted target can be smaller than the
+     // draft default and oversized views would overflow the source tensors
+@@ -556,6 +558,11 @@ void llama_kv_cache::clear(bool data) {
+     }
+ 
+     if (data) {
++        // Brain Engine 0049: the lent tail is wiped too, so the lender forgets it and gets it back past the kept cells
++        if (tail_lim > 0 && tail_cb.lost) {
++            tail_cb.lost();
++            tail_lim = std::min(get_size(), tail_keep);
++        }
+         for (auto & [_, buf] : ctxs_bufs) {
+             ggml_backend_buffer_clear(buf.get(), 0);
+         }
+@@ -952,7 +959,11 @@ llama_kv_cache::slot_info_vec_t llama_kv_cache::prepare(const std::vector<llama_
+ 
+     for (const auto & ubatch : ubatches) {
+         // only find a suitable slot for the ubatch. don't modify the cells yet
+-        const auto sinfo_new = find_slot(ubatch, false);
++        auto sinfo_new = find_slot(ubatch, false);
++        // Brain Engine 0049: no room before the lent tail, so take a step of it back and look again
++        while (sinfo_new.empty() && tail_grow(tail_lim + std::max(ubatch.n_tokens, tail_step))) {
++            sinfo_new = find_slot(ubatch, false);
++        }
+         if (sinfo_new.empty()) {
+             success = false;
+             break;
+@@ -1192,6 +1203,12 @@ llama_kv_cache::slot_info llama_kv_cache::find_slot(const llama_ubatch & ubatch,
+ 
+         uint32_t head_cur = v_heads[seq_to_stream[seq_id]];
+ 
++        // Brain Engine 0049: the cells past tail_lim are lent, the search wraps there
++        const uint32_t n_cells = tail_lim > 0 ? std::min(tail_lim, cells.size()) : cells.size();
++        if (head_cur >= n_cells) {
++            head_cur = 0;
++        }
++
+         // if we have enough unused cells before the current head ->
+         //   better to start searching from the beginning of the cache, hoping to fill it
+         if (head_cur > cells.get_used() + 2*n_tokens) {
+@@ -1202,6 +1219,9 @@ llama_kv_cache::slot_info llama_kv_cache::find_slot(const llama_ubatch & ubatch,
+             LLAMA_LOG_ERROR("%s: n_tokens = %d > size = %u\n", __func__, n_tokens, cells.size());
+             return { };
+         }
++        if (n_tokens > n_cells) {
++            return { }; // the caller takes back more of the lent tail
++        }
+ 
+         uint32_t n_tested = 0;
+ 
+@@ -1210,8 +1230,8 @@ llama_kv_cache::slot_info llama_kv_cache::find_slot(const llama_ubatch & ubatch,
+         const uint32_t n_test = cont ? n_tokens : 1;
+ 
+         while (true) {
+-            if (head_cur + n_test > cells.size()) {
+-                n_tested += cells.size() - head_cur;
++            if (head_cur + n_test > n_cells) {
++                n_tested += n_cells - head_cur;
+                 head_cur = 0;
+                 continue;
+             }
+@@ -1269,7 +1289,7 @@ llama_kv_cache::slot_info llama_kv_cache::find_slot(const llama_ubatch & ubatch,
+                 res.idxs[s].clear();
+             }
+ 
+-            if (n_tested >= cells.size()) {
++            if (n_tested >= n_cells) {
+                 //LLAMA_LOG_ERROR("%s: failed to find a slot for %d tokens\n", __func__, n_tokens);
+                 return { };
+             }
+@@ -2698,7 +2718,14 @@ ggml_cgraph * llama_kv_cache::build_graph_shift(llm_graph_result * res, llama_co
+             continue;
+         }
+ 
+-        ggml_tensor * cur = build_rope_shift(cparams, ctx, layer.k, inp->k_shift, layer.k_rot, il);
++        // Brain Engine 0049: only the chat's cells turn; the lent tail holds experts
++        ggml_tensor * k     = layer.k;
++        ggml_tensor * shift = inp->k_shift;
++        if (tail_lim > 0 && tail_lim < get_size()) {
++            k     = ggml_view_2d(ctx, layer.k, layer.k->ne[0], tail_lim, layer.k->nb[1], 0);
++            shift = ggml_view_1d(ctx, inp->k_shift, tail_lim, 0);
++        }
++        ggml_tensor * cur = build_rope_shift(cparams, ctx, k, shift, layer.k_rot, il);
+ 
+         ggml_build_forward_expand(gf, cur);
+     }
+@@ -3085,6 +3112,9 @@ bool llama_kv_cache::state_read_meta(llama_io_read_i & io, uint32_t strm, uint32
+             }
+         } else {
+             sinfo = find_slot(ubatch, false);
++            while (sinfo.empty() && tail_grow(tail_lim + std::max(cell_count, tail_step))) { // Brain Engine 0049
++                sinfo = find_slot(ubatch, false);
++            }
+             if (sinfo.empty()) {
+                 LLAMA_LOG_ERROR("%s: failed to find %d available cells in kv cache\n", __func__,  cell_count);
+                 return false;
+@@ -3122,6 +3152,8 @@ bool llama_kv_cache::state_read_meta(llama_io_read_i & io, uint32_t strm, uint32
+             return false;
+         }
+ 
++        tail_grow(cell_count); // Brain Engine 0049: the cells go in from 0
++
+         // the cells go in from 0, so a mirrored cache lands on the same ones as long as it restores the same count. the layout itself carries no more information here
+         if (sinfo_in && (sinfo_in->empty() || sinfo_in->n_stream() != 1 || sinfo_in->idxs[0].size() != cell_count)) {
+             LLAMA_LOG_ERROR("%s: mirrored slot layout holds %d cells, this cache restores %d\n", __func__,
+@@ -3449,6 +3481,58 @@ void llama_kv_cache::state_clear(llama_seq_id seq_id, uint32_t strm, const slot_
+     }
+ }
+ 
++// Brain Engine 0049 (LLAMA_MOE_CACHE_TAIL)
++
++const char * llama_kv_cache::tail_refuse() const {
++    bool v_rows = true;
++    for (const auto & l : layers) {
++        if (l.k == nullptr || l.k_hot != nullptr || !l.k_tier.empty()) {
++            v_rows = false;
++        }
++    }
++    return n_stream > 1 || n_seq_max > 1 ? "it works with one chat at a time (-np 1)" :
++        tail_share ? "this cache shares cells or tensors with another" : is_indexer ? "indexer caches stay as they are" :
++        swa_type != LLAMA_SWA_TYPE_NONE ? "sliding-window caches are small already" : hparams.is_mla() ? "MLA brains keep a different cache" :
++        split_hot > 0 || !tiers.empty() || !v_rows ? "not together with LLAMA_KV_SPLIT or LLAMA_KV_TIERS" :
++        layers.empty() ? "no layer keeps chat memory" : nullptr;
++}
++
++std::vector<ggml_tensor *> llama_kv_cache::tail_tensors() const {
++    std::vector<ggml_tensor *> res;
++    for (const auto & l : layers) {
++        res.push_back(l.k);
++        if (l.v != nullptr && !v_trans) {
++            res.push_back(l.v); // a transposed V keeps a cell's values apart, one per row of the tensor
++        }
++    }
++    return res;
++}
++
++void llama_kv_cache::tail_lend(uint32_t keep, uint32_t step, tail_hooks hooks) {
++    tail_keep = std::min(get_size(), GGML_PAD(std::max<uint32_t>(keep, 256), 256u));
++    tail_step = GGML_PAD(std::max<uint32_t>(step, 256), 256u);
++    tail_cb   = std::move(hooks);
++    uint32_t used = 0;
++    for (uint32_t s = 0; s < n_stream; ++s) {
++        used = std::max(used, v_cells[s].used_max_p1());
++    }
++    tail_lim = std::max(tail_keep, std::min(get_size(), GGML_PAD(used, 256u)));
++}
++
++bool llama_kv_cache::tail_grow(uint32_t need) {
++    if (tail_lim == 0 || tail_lim >= get_size() || need <= tail_lim) {
++        return false;
++    }
++    const uint32_t to = std::min(get_size(), GGML_PAD(need, 256u));
++    LLAMA_LOG_INFO("%s: chat memory takes back cells %u to %u from the MoE cache (%u of %u now the chat's)\n", __func__,
++            tail_lim, to, to, get_size());
++    if (tail_cb.take) {
++        tail_cb.take(tail_lim, to);
++    }
++    tail_lim = to;
++    return true;
++}
++
+ //
+ // llama_kv_cache_context
+ //
+diff --git a/src/llama-kv-cache.h b/src/llama-kv-cache.h
+index a98f6b3..cf9cce1 100644
+--- a/src/llama-kv-cache.h
++++ b/src/llama-kv-cache.h
+@@ -5,6 +5,7 @@
+ #include "llama-kv-cells.h"
+ #include "llama-memory.h"
+ 
++#include <functional>
+ #include <unordered_map>
+ #include <vector>
+ 
+@@ -356,7 +357,25 @@ public:
+     void tiers_cut_main_mask(ggml_tensor * mask, const llama_ubatch * ubatch, uint32_t n_kv) const;
+     // a batch (reading): for the newest `window` words, the tier slot and the cell it goes over
+     void set_input_tier_fill(ggml_tensor * slots, ggml_tensor * cells_dst, const llama_ubatch * ubatch, uint32_t t, uint32_t n_kv) const;
++
++    // Brain Engine 0049 (LLAMA_MOE_CACHE_TAIL): the cells from tail_lim to the end are lent to the MoE cache while the
++    // chat is short. take(from, to) is called before cells [from, to) are used again (the lender empties them and
++    // writes zeros there); lost() when the whole cache was cleared (the lender forgets what it kept there).
++    struct tail_hooks {
++        std::function<void(uint32_t from, uint32_t to)> take;
++        std::function<void()>                           lost;
++    };
++    const char * tail_refuse() const;                // why the tail can't be lent here, nullptr if it can
++    std::vector<ggml_tensor *> tail_tensors() const; // the tensors whose rows past tail_lim are lent (one row per cell)
++    void     tail_lend(uint32_t keep, uint32_t step, tail_hooks hooks);
++    uint32_t get_tail_lim() const { return tail_lim; }
+ private:
++    uint32_t   tail_lim  = 0; // 0: nothing lent
++    uint32_t   tail_keep = 0;
++    uint32_t   tail_step = 0;
++    tail_hooks tail_cb;
++    bool       tail_share = false; // layers share or reuse tensors, or another cache's cells
++    bool tail_grow(uint32_t need); // cells up to need (padded) are the chat's again; false if all of them already are
+ 
+     bool v_trans = true;  // the value tensor is transposed
+ 
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 95f340a..2c2525e 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -20,6 +20,7 @@
+ #include <cstdio>
+ #include <cstdlib>
+ #include <cstring>
++#include <deque>
+ #include <stdexcept>
+ #include <string>
+ #include <thread>
+@@ -213,6 +214,7 @@ struct moe_cache_lru {
+     struct fill {
+         int32_t expert;
+         int32_t slot;
++        int32_t old = -1; // Brain Engine 0049: the key the slot held before, -1 if it was empty
+     };
+ 
+     // give a slot to each expert selected by ids (n_tokens tokens) in layer il
+@@ -285,7 +287,7 @@ struct moe_cache_lru {
+                 key_of[s] = key;
+                 slots[learned.back()] = s;
+                 move(s, class_of(key));
+-                fills.push_back({ learned.back(), s });
++                fills.push_back({ learned.back(), s, vk });
+             }
+             if (n_learned) {
+                 *n_learned += learned.size();
+@@ -341,8 +343,9 @@ struct moe_cache_lru {
+         std::sort(misses.begin(), misses.end());
+         for (int32_t e : misses) {
+             const int32_t s = victim(il);
+-            if (key_of[s] >= 0) {
+-                slot_map[key_layer(key_of[s])][key_expert(key_of[s])] = empty;
++            const int32_t old = key_of[s];
++            if (old >= 0) {
++                slot_map[key_layer(old)][key_expert(old)] = empty;
+             } else {
+                 n_filled++;
+             }
+@@ -350,7 +353,7 @@ struct moe_cache_lru {
+             key_of[s] = key;
+             slots[e]  = s;
+             move(s, class_of(key));
+-            fills.push_back({ e, s });
++            fills.push_back({ e, s, old });
+         }
+         clock[il] += n_tokens;
+         return true;
+@@ -836,6 +839,7 @@ struct llama_moe_cache::impl {
+         }
+ 
+         bw_init(no_alloc); // Brain Engine 0048
++        tl_init(no_alloc); // Brain Engine 0049
+ 
+         for (size_t id = 0; id < devices.size(); ++id) {
+             const device & d = devices[id];
+@@ -2136,6 +2140,9 @@ struct llama_moe_cache::impl {
+ 
+         // large batches only read the cache, so the experts used in generation stay in it
+         const int32_t * slots = g.lru.slot_map[b.il];
++        if (slots != nullptr && slots[e] >= g.n_slots && tl_on) {
++            return tl_copy_out(backend, g, b, dst, e); // Brain Engine 0049: from the shelf
++        }
+         if (slots == nullptr || slots[e] >= g.n_slots) {
+             return 0;
+         }
+@@ -2276,18 +2283,22 @@ struct llama_moe_cache::impl {
+             }
+         }
+ 
++        // Brain Engine 0049: the evicted experts go to the shelf in the lent chat-memory tail, and the misses the shelf
++        // holds come back from it on the card; only the rest go up from RAM
++        const std::vector<moe_cache_lru::fill> & up = tl_on ? tl_exchange(il, g, backend, fills) : fills;
++
+         // upload the missing experts, consecutive experts going to consecutive slots are uploaded together
+         size_t bytes = 0;
+         for (size_t ip = 0; ip < l.experts.size(); ++ip) {
+             const ggml_tensor * w    = l.experts[ip];
+             ggml_tensor       * bank = g.banks[ip];
+             const size_t expert_size = w->nb[2];
+-            for (size_t i = 0; i < fills.size();) {
++            for (size_t i = 0; i < up.size();) {
+                 size_t n = 1;
+-                while (i + n < fills.size() && fills[i + n].expert == fills[i].expert + (int32_t) n && fills[i + n].slot == fills[i].slot + (int32_t) n) {
++                while (i + n < up.size() && up[i + n].expert == up[i].expert + (int32_t) n && up[i + n].slot == up[i].slot + (int32_t) n) {
+                     n++;
+                 }
+-                ggml_backend_tensor_set_async(backend, bank, (const uint8_t *) w->data + fills[i].expert*expert_size, fills[i].slot*expert_size, n*expert_size);
++                ggml_backend_tensor_set_async(backend, bank, (const uint8_t *) w->data + up[i].expert*expert_size, up[i].slot*expert_size, n*expert_size);
+                 bytes += n*expert_size;
+                 i += n;
+             }
+@@ -2318,6 +2329,313 @@ struct llama_moe_cache::impl {
+         return true;
+     }
+ 
++    // Brain Engine 0049 (LLAMA_MOE_CACHE_TAIL=1): the shelf. While the chat is short, the chat-memory cells it has
++    // not reached (the tail of each layer's K and V) hold experts the cache evicted. A miss the shelf holds comes back
++    // card to card instead of over the bus from RAM. The chat memory takes its tail back a step at a time before it
++    // writes there (tl_take): the entries there are forgotten (RAM still has the experts) and the cells zeroed, so the
++    // attention never reads anything but chat memory or zeros.
++    struct tl_entry {
++        ggml_tensor * t;       // the K or V tensor it lies in
++        size_t   off;          // bytes into t
++        size_t   row;          // bytes of one cell of t
++        int32_t  key   = -1;   // the expert it holds (key of the group's LRU), -1 if free
++        uint64_t stamp = 0;
++        bool     dead  = false; // in cells the chat took back
++        bool     pin   = false; // read by the exchange going on
++    };
++    bool tl_want = false, tl_on = false;
++    int32_t tl_dev = -1;
++    size_t  tl_bytes = 0; // of an entry: one expert, all of its matrices
++    uint32_t tl_keep = 0;
++    std::vector<ggml_tensor *> tl_tensors;
++    std::vector<tl_entry> tl_entries;
++    std::vector<int32_t>  tl_free;                    // free entries, the farthest into the tail last (taken first)
++    std::deque<std::pair<int32_t, uint64_t>> tl_fifo; // filled entries, oldest first; stale pairs are skipped
++    std::unordered_map<int32_t, int32_t> tl_of;       // key -> entry
++    uint64_t tl_clock = 0;
++    ggml_context_ptr ctx_tl;
++    std::vector<moe_cache_lru::fill> tl_rest;
++    std::vector<int32_t> tl_from;
++    size_t tl_saved = 0, tl_hits = 0, tl_hit_bytes = 0, tl_read_hits = 0, tl_forgot = 0, tl_takes = 0;
++
++    void tl_init(bool no_alloc) {
++        const char * on = getenv("LLAMA_MOE_CACHE_TAIL");
++        if (no_alloc || on == nullptr || atoi(on) <= 0) {
++            return;
++        }
++        auto refuse = [](const char * why) {
++            LLAMA_LOG_WARN("llama_moe_cache: !!! LLAMA_MOE_CACHE_TAIL NOT USED: %s\n", why);
++        };
++        int n_dev = 0;
++        for (size_t id = 0; id < devices.size(); ++id) {
++            if (devices[id].ctx) {
++                n_dev++;
++                tl_dev = (int32_t) id;
++            }
++        }
++        if (n_dev != 1) {
++            refuse("it works with one card only");
++            return;
++        }
++        if (cpu_share > 0.0f || n_zero > 0) {
++            refuse("it needs --moe-cache-cpu-share 0");
++            return;
++        }
++        if (la_max > 0 || db_on || sp_mode != SP_OFF) {
++            refuse("not together with LLAMA_MOE_LOOKAHEAD, LLAMA_MOE_DOORBELL or LLAMA_MOE_STANDIN yet");
++            return;
++        }
++        if (getenv("LLAMA_MOE_CACHE_LEND") != nullptr || getenv("LLAMA_MOE_CACHE_READ_LAYERS") != nullptr) {
++            refuse("not together with LLAMA_MOE_CACHE_LEND or LLAMA_MOE_CACHE_READ_LAYERS");
++            return;
++        }
++        ggml_init_params params = {
++            /*.mem_size   =*/ 2*ggml_tensor_overhead(),
++            /*.mem_buffer =*/ nullptr,
++            /*.no_alloc   =*/ true,
++        };
++        ctx_tl.reset(ggml_init(params));
++        tl_want = true;
++    }
++
++    // n bytes on the card from src (in buffer bs) to dst (in buffer bd), queued on the card's stream
++    void tl_copy(ggml_backend_t backend, ggml_backend_buffer_t bs, void * src, ggml_backend_buffer_t bd, void * dst, size_t n) {
++        ggml_reset(ctx_tl.get());
++        ggml_tensor * a = ggml_new_tensor_1d(ctx_tl.get(), GGML_TYPE_I8, (int64_t) n);
++        ggml_tensor * b = ggml_new_tensor_1d(ctx_tl.get(), GGML_TYPE_I8, (int64_t) n);
++        a->buffer = bs;
++        a->data   = src;
++        b->buffer = bd;
++        b->data   = dst;
++        ggml_backend_tensor_copy_async(backend, backend, a, b);
++    }
++
++    bool tl_attach(const std::vector<ggml_tensor *> & ts, uint32_t size, uint32_t keep) {
++        if (!tl_want) {
++            return false;
++        }
++        device & d = devices[tl_dev];
++        ggml_backend_dev_t dev = ggml_backend_buft_get_device(d.buft);
++        size_t bytes = 0;
++        for (const group & g : groups) {
++            if (g.id != tl_dev || g.n_slots == 0) {
++                continue;
++            }
++            size_t b = 0;
++            for (const ggml_tensor * bank : g.banks) {
++                b += bank->nb[2];
++            }
++            bytes = std::max(bytes, b);
++        }
++        for (ggml_tensor * t : ts) {
++            if (t == nullptr || t->buffer == nullptr || ggml_backend_buft_get_device(ggml_backend_buffer_get_type(t->buffer)) != dev ||
++                    t->ne[1] != (int64_t) size || t->ne[2] != 1) {
++                LLAMA_LOG_WARN("llama_moe_cache: !!! LLAMA_MOE_CACHE_TAIL NOT USED: the chat memory is not on the cache's card\n");
++                tl_want = false;
++                return false;
++            }
++        }
++        if (bytes == 0 || keep >= size) {
++            LLAMA_LOG_WARN("llama_moe_cache: !!! LLAMA_MOE_CACHE_TAIL NOT USED: %s\n", bytes == 0 ? "no cached experts" : "the context is not bigger than the kept cells");
++            tl_want = false;
++            return false;
++        }
++        tl_bytes = GGML_PAD(bytes, 256);
++        tl_keep  = keep;
++        tl_tensors = ts;
++        // depth j counts entries from the end of each tensor; the deepest are taken back last, so they are used first
++        std::vector<std::vector<int32_t>> by_depth;
++        for (ggml_tensor * t : ts) {
++            const size_t row = t->nb[1], start = (size_t) keep*row, end = (size_t) size*row;
++            for (size_t j = 0; end >= start + (j + 1)*tl_bytes; ++j) {
++                if (by_depth.size() <= j) {
++                    by_depth.emplace_back();
++                }
++                by_depth[j].push_back((int32_t) tl_entries.size());
++                tl_entry e;
++                e.t = t;
++                e.off = end - (j + 1)*tl_bytes;
++                e.row = row;
++                tl_entries.push_back(e);
++            }
++        }
++        for (size_t j = by_depth.size(); j-- > 0; ) {
++            for (int32_t e : by_depth[j]) {
++                tl_free.push_back(e);
++            }
++        }
++        if (tl_entries.empty()) {
++            LLAMA_LOG_WARN("llama_moe_cache: !!! LLAMA_MOE_CACHE_TAIL NOT USED: the tail holds no whole expert (%.2f MiB each)\n", tl_bytes/1024.0/1024.0);
++            tl_want = false;
++            return false;
++        }
++        tl_on = true;
++        LLAMA_LOG_INFO("llama_moe_cache: the shelf: %zu experts of %.2f MiB fit in the chat memory past cell %u of %u (%.2f MiB in %zu tensors); "
++            "the chat takes it back as it grows\n", tl_entries.size(), tl_bytes/1024.0/1024.0, keep, size,
++            tl_entries.size()*tl_bytes/1024.0/1024.0, ts.size());
++        return true;
++    }
++
++    int32_t tl_get_entry() {
++        while (!tl_free.empty()) {
++            const int32_t e = tl_free.back();
++            tl_free.pop_back();
++            if (!tl_entries[e].dead && tl_entries[e].key < 0) {
++                return e;
++            }
++        }
++        for (size_t n = tl_fifo.size(); n > 0 && !tl_fifo.empty(); --n) {
++            const auto [e, st] = tl_fifo.front();
++            tl_fifo.pop_front();
++            tl_entry & en = tl_entries[e];
++            if (en.dead || en.key < 0 || en.stamp != st) {
++                continue; // stale
++            }
++            if (en.pin) {
++                tl_fifo.emplace_back(e, st);
++                continue;
++            }
++            tl_of.erase(en.key);
++            en.key = -1;
++            return e;
++        }
++        return -1;
++    }
++
++    // the experts of slot s of group g (key) onto the shelf, before the slot is filled again
++    void tl_put(const group & g, int32_t key, int32_t s, ggml_backend_t backend) {
++        if (tl_of.count(key)) {
++            return;
++        }
++        const int32_t e = tl_get_entry();
++        if (e < 0) {
++            return;
++        }
++        tl_entry & en = tl_entries[e];
++        size_t at = 0;
++        for (const ggml_tensor * bank : g.banks) {
++            tl_copy(backend, bank->buffer, (char *) bank->data + (size_t) s*bank->nb[2], en.t->buffer, (char *) en.t->data + en.off + at, bank->nb[2]);
++            at += bank->nb[2];
++        }
++        en.key   = key;
++        en.stamp = ++tl_clock;
++        tl_of[key] = e;
++        tl_fifo.emplace_back(e, en.stamp);
++        tl_saved++;
++    }
++
++    void tl_release(int32_t e) {
++        tl_entry & en = tl_entries[e];
++        tl_of.erase(en.key);
++        en.key = -1;
++        en.pin = false;
++        if (!en.dead) {
++            tl_free.push_back(e);
++        }
++    }
++
++    // the plan's fills: evicted experts go onto the shelf, misses the shelf holds come back from it; returns the rest
++    const std::vector<moe_cache_lru::fill> & tl_exchange(int32_t il, const group & g, ggml_backend_t backend, const std::vector<moe_cache_lru::fill> & fills) {
++        tl_rest.clear();
++        tl_from.assign(fills.size(), -1);
++        for (size_t i = 0; i < fills.size(); ++i) {
++            const auto it = tl_of.find(g.lru.make_key(il, fills[i].expert));
++            if (it != tl_of.end()) {
++                tl_from[i] = it->second;
++                tl_entries[it->second].pin = true;
++            }
++        }
++        for (const auto & f : fills) {
++            if (f.old >= 0) {
++                tl_put(g, f.old, f.slot, backend);
++            }
++        }
++        for (size_t i = 0; i < fills.size(); ++i) {
++            const int32_t e = tl_from[i];
++            if (e < 0) {
++                tl_rest.push_back(fills[i]);
++                continue;
++            }
++            const tl_entry & en = tl_entries[e];
++            size_t at = 0;
++            for (const ggml_tensor * bank : g.banks) {
++                tl_copy(backend, en.t->buffer, (char *) en.t->data + en.off + at, bank->buffer, (char *) bank->data + (size_t) fills[i].slot*bank->nb[2], bank->nb[2]);
++                at += bank->nb[2];
++            }
++            tl_hits++;
++            tl_hit_bytes += at;
++            tl_release(e);
++        }
++        return tl_rest;
++    }
++
++    // a large batch's copy of expert e of w: from the shelf if it is there
++    int64_t tl_copy_out(ggml_backend_t backend, const group & g, const binding & b, ggml_tensor * dst, int64_t e) {
++        const auto it = tl_of.find(g.lru.make_key(b.il, (int32_t) e));
++        if (it == tl_of.end()) {
++            return 0;
++        }
++        const tl_entry & en = tl_entries[it->second];
++        size_t at = 0;
++        for (int32_t ip = 0; ip < b.ip; ++ip) {
++            at += g.banks[ip]->nb[2];
++        }
++        const size_t n = g.banks[b.ip]->nb[2];
++        GGML_ASSERT((size_t) dst->nb[2] == n);
++        tl_copy(backend, en.t->buffer, (char *) en.t->data + en.off + at, dst->buffer, (char *) dst->data + (size_t) e*dst->nb[2], n);
++        tl_read_hits++;
++        return 1;
++    }
++
++    // the chat takes cells [from, to) back
++    void tl_take(uint32_t from, uint32_t to) {
++        if (!tl_on || to <= from) {
++            return;
++        }
++        ggml_backend_synchronize(devices[tl_dev].backend); // no copy may still go to or from those cells
++        size_t forgot = 0;
++        for (size_t e = 0; e < tl_entries.size(); ++e) {
++            tl_entry & en = tl_entries[e];
++            if (!en.dead && en.off < (size_t) to*en.row) {
++                en.dead = true;
++                if (en.key >= 0) {
++                    tl_of.erase(en.key);
++                    en.key = -1;
++                    forgot++;
++                }
++            }
++        }
++        for (ggml_tensor * t : tl_tensors) {
++            ggml_backend_tensor_memset(t, 0, (size_t) from*t->nb[1], (size_t) (to - from)*t->nb[1]);
++        }
++        tl_forgot += forgot;
++        tl_takes++;
++        LLAMA_LOG_INFO("llama_moe_cache: the shelf: the chat took cells %u to %u back, %zu experts on the shelf forgotten\n", from, to, forgot);
++    }
++
++    // the chat memory was wiped: the shelf is empty, and all of it past the kept cells is lent again
++    void tl_lost() {
++        if (!tl_on) {
++            return;
++        }
++        ggml_backend_synchronize(devices[tl_dev].backend);
++        tl_of.clear();
++        tl_fifo.clear();
++        tl_free.clear();
++        std::vector<std::pair<size_t, int32_t>> order; // farthest from the kept cells last
++        for (size_t e = 0; e < tl_entries.size(); ++e) {
++            tl_entry & en = tl_entries[e];
++            en.key = -1;
++            en.dead = false;
++            en.pin = false;
++            order.emplace_back(en.off/en.row, (int32_t) e);
++        }
++        std::sort(order.begin(), order.end());
++        for (const auto & [cell, e] : order) {
++            tl_free.push_back(e);
++        }
++    }
++
+     // Brain Engine 0048 (LLAMA_MOE_CACHE_BORROW=1): borrowed reading. The working memory of the card and the cache share
+     // one region: the working memory owns its front (bw_own, the most any graph at the own step or writing needs), the
+     // banks follow, group bw_g's first bank first. A bigger graph runs over the front and the start of that bank, so
+@@ -2823,6 +3141,11 @@ struct llama_moe_cache::impl {
+         }
+         log("ubatch  > 8", stats_large);
+         log("prompts read with misses on the CPU", stats_read);
++        if (tl_on) {
++            LLAMA_LOG_INFO("llama_moe_cache: the shelf: %zu experts put on it, %zu came back from it on the card (%.2f MiB not uploaded), "
++                "%zu read from it by large batches, %zu forgotten in %zu take-backs\n", tl_saved, tl_hits, tl_hit_bytes/1024.0/1024.0,
++                tl_read_hits, tl_forgot, tl_takes);
++        }
+         if (stats_copy.hits > 0) {
+             LLAMA_LOG_INFO("llama_moe_cache: large batches: %zu experts copied from the cache, %.2f MiB\n", stats_copy.hits, stats_copy.bytes/1024.0/1024.0);
+         }
+@@ -2983,3 +3306,20 @@ std::map<ggml_backend_buffer_type_t, size_t> llama_moe_cache::memory_breakdown()
+     }
+     return res;
+ }
++
++// Brain Engine 0049
++bool llama_moe_cache::tail_wanted() const {
++    return pimpl->tl_want;
++}
++
++bool llama_moe_cache::tail_attach(const std::vector<ggml_tensor *> & tensors, uint32_t size, uint32_t keep) {
++    return pimpl->tl_attach(tensors, size, keep);
++}
++
++void llama_moe_cache::tail_take(uint32_t from, uint32_t to) {
++    pimpl->tl_take(from, to);
++}
++
++void llama_moe_cache::tail_lost() {
++    pimpl->tl_lost();
++}
+diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
+index 5e0066e..ccb50a4 100644
+--- a/src/llama-moe-cache.h
++++ b/src/llama-moe-cache.h
+@@ -109,6 +109,14 @@ public:
+     // before a graph that uses peak bytes of the working memory (from its start): empties the slots it runs over
+     void borrow_before_graph(size_t peak);
+ 
++    // Brain Engine 0049 (LLAMA_MOE_CACHE_TAIL=1): the shelf. The chat memory's cells past `keep` (rows of tensors, each
++    // with size rows) hold evicted experts until the chat takes them back with tail_take(from, to); tail_lost() after
++    // the chat memory was wiped. tail_wanted: asked for, and nothing here refuses it.
++    bool tail_wanted() const;
++    bool tail_attach(const std::vector<ggml_tensor *> & tensors, uint32_t size, uint32_t keep);
++    void tail_take(uint32_t from, uint32_t to);
++    void tail_lost();
++
+ private:
+     struct impl;
+     std::unique_ptr<impl> pimpl;
