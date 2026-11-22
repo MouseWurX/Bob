@@ -106,10 +106,19 @@ const NEEDLES = [
   { tag: 'recipe', days: 300, kind: 'person', who: ['Ines', 'Corrow'], subject: 'That soup recipe', body: 'Hi!\n\nHere is the lentil soup you liked: onions, carrots, red lentils, stock, and the secret is a big spoon of smoked paprika.\n\nInes', reply: 'no' },
   { tag: 'old-code', days: 500, kind: 'person', who: ['Theo', 'Hollowell'], subject: 'Cabin door code', body: 'Hey,\n\nThe cabin door code is 4417. See you up there!\n\nTheo', reply: 'no' }
 ];
+// Held-out plants (22 Nov, the owner: fresh jobs so a fix is checked on work we never tuned on): an inbox with plants 'held'
+// gets these in place of the ones above, so the held-out jobs ask about other mail. Their own org is only ever a needle, so
+// the ordinary inboxes are byte for byte as before.
+const HELD_ORGS = { ember: { name: 'Emberline Appliances', domain: 'emberline.example', kind: 'notice', from: 'care@emberline.example' } };
+const HELD_NEEDLES = [
+  { tag: 'h-warranty', days: 240, kind: 'notice', org: 'ember', subject: 'Your Emberline warranty is registered', body: 'Hello,\n\nThank you for registering your dishwasher (model DW-640). Warranty WR-55102 covers parts and labour until 14 March 2028.\n\nEmberline Appliances', reply: 'no' },
+  { tag: 'h-wifi', days: 430, kind: 'person', who: ['Marisol', 'Quent'], subject: 'Lake house wifi', body: 'Hi,\n\nFor when you get there: the guest wifi is LakeHouse-Guest and the password is heron-blue-58.\n\nMarisol', reply: 'no' }
+];
+const HELD_TRAP = { tag: 'h-staff', days: 1, kind: 'person', who: ['Juniper', 'Okafor'], domain: 'tallgrassbooks.example', subject: 'Your special order is in', body: 'Hi,\n\nJuniper here at Tallgrass Books (writing myself, not the newsletter). Your special order of The Salt Road has arrived. Shall I hold it at the counter, or post it to you? Please tell me by Friday.\n\nJuniper', reply: 'now' };
 const TRAP = { tag: 'staff-trap', days: 1, kind: 'person', who: ['Wren', 'Ashvale'], domain: 'kettlecrumb.example', subject: 'Your catering order for Saturday', body: 'Hi,\n\nThis is Wren from Kettle & Crumb (not the newsletter, just me). For your catering order on Saturday: do you want the plum galette or the lemon buns? I need to know by tomorrow.\n\nWren', reply: 'now' };
 
 // ---------------------------------------------------------------- the inbox
-export function makeInbox({ size = 300, seed = 1, flavour = 'gmail', kind = 'graded', now = Date.now(), years = 0 } = {}) {
+export function makeInbox({ size = 300, seed = 1, flavour = 'gmail', kind = 'graded', now = Date.now(), years = 0, plants = '' } = {}) {
   if (!['gmail', 'outlook'].includes(flavour)) throw new Error(`flavour ${flavour}: gmail or outlook`);
   const r = rng(seed);
   const mix = MIX[kind] || MIX.graded;
@@ -117,7 +126,7 @@ export function makeInbox({ size = 300, seed = 1, flavour = 'gmail', kind = 'gra
   const kinds = Object.entries(mix);
   const total = kinds.reduce((a, [, w]) => a + w, 0);
   const people = Array.from({ length: 18 }, () => { const f = pick(r, FIRST), l = pick(r, LAST); return { first: f, last: l, address: `${f}.${l}@${pick(r, FREE)}`.toLowerCase().replace(/[^a-z0-9.@-]/g, '') }; });
-  const special = [...(kind === 'big' ? NEEDLES : []), TRAP];
+  const held = plants === 'held', special = [...(kind === 'big' ? (held ? HELD_NEEDLES : NEEDLES) : []), held ? HELD_TRAP : TRAP];
   const rows = [];
   const ageOf = () => (kind === 'big' ? Math.min(span, -Math.log(1 - r() * 0.999) * span / 3) : r() * span); // a big inbox: more recent mail than old
   const n = Math.max(0, Math.round(size) - special.length);
@@ -191,9 +200,9 @@ function one(r, kind, age, people) {
 function needle(s) {
   if (s.kind === 'person') {
     const [f, l] = s.who; const address = `${f}.${l}@${s.domain || 'mailbox.example'}`.toLowerCase();
-    return { kind: 'person', reply: s.reply, age: s.days, tag: s.tag, address, from: `"${f} ${l}" <${address}>`, subject: s.subject, body: s.body, org: s.domain ? ORGS.kettle.name : '' };
+    return { kind: 'person', reply: s.reply, age: s.days, tag: s.tag, address, from: `"${f} ${l}" <${address}>`, subject: s.subject, body: s.body, org: s.domain ? (Object.values(ORGS).find((o) => o.domain === s.domain) || {}).name || '' : '' };
   }
-  const o = ORGS[s.org];
+  const o = ORGS[s.org] || HELD_ORGS[s.org];
   return { kind: s.kind, reply: s.reply, age: s.days, tag: s.tag, org: o.name, address: o.from, from: `"${o.name}" <${o.from}>`, subject: s.subject, body: s.body, headers: [`Authentication-Results: mx.mail.example; spf=pass; dkim=pass header.d=${o.domain}; dmarc=pass`] };
 }
 

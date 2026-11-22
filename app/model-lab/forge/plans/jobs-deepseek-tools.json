@@ -1,13 +1,14 @@
 {
  "run": "jobs-deepseek-tools",
- "note": "HELD: not to be rented until the owner double-clicks Rent-deepseek-tools.cmd. 22 Nov: after Flash-Next, the same test on DeepSeek-V4.1-Flash-1017 (unsloth UD-IQ3_XXS, 7 parts, 394.7 GB: 233.4 GB of experts and the rest in VRAM, the Q6_K Engram n-gram table (161.3 GB, part 7) kept off the cards: -ot per_layer_token_embd=CPU and --lazy-mode auto, so its rows are read from the mmapped file on demand). Not UD-Q4_K_XL: its Engram table is MXFP8, which llama.cpp b12233 and newer read as F8_E4M3 and give wrong output without an error (the repo's engram README). Bob at 3fff3cf + the npc fixes, no step, nudge, thinking or reply-size limits; --family deepseek (Bob's own tool wording, enable_thinking, DeepSeek's sampling 1.0/1.0). llama.cpp b12359 (DeepSeek V4.1 DSML tool calls parsed, common/chat.cpp) + all 14 engine patches. Same jobs, scorers, tool-fault count and expert-map phase as jobs-flashnext-tools. Cards, in order, any data centre: 2 x H200 NVL, 2 x H200, 3 x RTX PRO 6000 Blackwell Server Edition (plan.card_sets; each priced live from RunPod before renting, and left out if 2.5 h at its price passes the cap or its cards hold under 270 GB). Caps 3 h / $28 (22 Nov, the owner: \"Yes raise deepseeks cap\", so 2 x H200 fits as the second set). Live prices on 22 Nov: 2 x H200 NVL $7.58/h (about $19 for 2.5 h), 2 x H200 $10.58/h (about $26.45), 3 x RTX PRO 6000 $8.07/h (about $20). 22 Nov retry: try 1 (3 x RTX PRO 6000, the only set in stock) spent $24.21 and ran no job: the 395 GB download took 2 h 43 min at 40 MB/s. Now: H200 sets only (the owner: \"dont run it on a slow card\"); if neither is in stock the Forge keeps asking once a minute for up to 6 h (rent_minutes 360) and rents nothing otherwise; the download is watched from minute 8 and stopped, failing the run so the pod is deleted, once it projects past 45 min (benchmark.download_max_minutes; download_gb 395); HF_XET_HIGH_PERFORMANCE=1.",
+ "note": "HELD: not to be rented until the owner double-clicks Rent-deepseek-tools.cmd. 22 Nov: after Flash-Next, the same test on DeepSeek-V4.1-Flash-1017 (unsloth UD-IQ3_XXS, 7 parts, 394.7 GB: 233.4 GB of experts and the rest in VRAM, the Q6_K Engram n-gram table (161.3 GB, part 7) kept off the cards: -ot per_layer_token_embd=CPU and --lazy-mode auto, so its rows are read from the mmapped file on demand). Not UD-Q4_K_XL: its Engram table is MXFP8, which llama.cpp b12233 and newer read as F8_E4M3 and give wrong output without an error (the repo's engram README). Bob at 3fff3cf + the npc fixes, no step, nudge, thinking or reply-size limits; --family deepseek (Bob's own tool wording, enable_thinking, DeepSeek's sampling 1.0/1.0). llama.cpp b12359 (DeepSeek V4.1 DSML tool calls parsed, common/chat.cpp) + all 14 engine patches. Same jobs, scorers, tool-fault count and expert-map phase as jobs-flashnext-tools. Cards, in order, any data centre: 2 x H200 NVL, 2 x H200, 3 x RTX PRO 6000 Blackwell Server Edition (plan.card_sets; each priced live from RunPod before renting, and left out if 2.5 h at its price passes the cap or its cards hold under 270 GB). Caps 3 h / $28 (22 Nov, the owner: \"Yes raise deepseeks cap\", so 2 x H200 fits as the second set). Live prices on 22 Nov: 2 x H200 NVL $7.58/h (about $19 for 2.5 h), 2 x H200 $10.58/h (about $26.45), 3 x RTX PRO 6000 $8.07/h (about $20). 22 Nov retry: try 1 (3 x RTX PRO 6000, the only set in stock) spent $24.21 and ran no job: the 395 GB download took 2 h 43 min at 40 MB/s. Now: H200 sets only (the owner: \"dont run it on a slow card\"); if neither is in stock the Forge keeps asking once a minute for up to 6 h (rent_minutes 360) and rents nothing otherwise; the download is watched from minute 8 and stopped, failing the run so the pod is deleted, once it projects past 45 min (benchmark.download_max_minutes; download_gb 395); HF_XET_HIGH_PERFORMANCE=1. 22 Nov 4:20 PM: RunPod allows this account one H200-class card at a time, so 2 x H200 was refused for 6 h; the owner picked 4 x H100 (320-376 GB, outside that limit).",
  "benchmark_only": true,
  "teacher": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
  "counts": "expert-counts-2026-11-04T23-23-19.json",
  "lessons": "out/lessons",
  "gpus": [
-  "NVIDIA H200 NVL",
-  "NVIDIA H200"
+  "NVIDIA H100 80GB HBM3",
+  "NVIDIA H100 NVL",
+  "NVIDIA H100 PCIe"
  ],
  "step_up": [],
  "disk_gb": 480,
@@ -87,15 +88,21 @@
  "card_sets": [
   {
    "gpus": [
-    "NVIDIA H200 NVL"
+    "NVIDIA H100 80GB HBM3"
    ],
-   "count": 2
+   "count": 4
   },
   {
    "gpus": [
-    "NVIDIA H200"
+    "NVIDIA H100 NVL"
    ],
-   "count": 2
+   "count": 4
+  },
+  {
+   "gpus": [
+    "NVIDIA H100 PCIe"
+   ],
+   "count": 4
   }
  ],
  "vram_gb": 270,

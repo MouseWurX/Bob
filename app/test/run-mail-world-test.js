@@ -15,7 +15,7 @@ const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${o
 const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const imp = (f) => import(pathToFileURL(path.join(app, f)).href);
 const { makeInbox, mailServer, HOST, USER, PASS } = await imp('model-lab/mail-world.mjs');
-const { mailJobs, MAIL_JOBS, INBOXES } = await imp('model-lab/mail-jobs.mjs');
+const { mailJobs, MAIL_JOBS, INBOXES, HELD_MAIL_JOBS, HELD_INBOXES } = await imp('model-lab/mail-jobs.mjs');
 const { scoreRun, named, digest } = await imp('model-lab/mail-score.mjs');
 const { bridge } = await imp('model-lab/mail-bench.mjs');
 const { emailTool } = await imp('src/email-read.js');
@@ -187,6 +187,26 @@ const setup = (inbox) => {
   kit.done();
   check('a Bob without the mail switches has no mail tools; fitMail gives him read_email and manage_email', !before.includes('read_email') && after.includes('read_email') && after.includes('manage_email'));
   check('jobs-to-lessons makes an inbox job\'s tool list with the mail tools on', /kitFor\(family, row\.mail\?\.spec/.test(fs.readFileSync(path.join(app, 'model-lab', 'jobs-to-lessons.mjs'), 'utf8').replace(/\r\n/g, '\n')));
+}
+
+// ---- 22 Nov: the held-out inbox jobs (new requests, new inboxes and planted mail; never tuned on)
+{
+  const held = mailJobs({ held: true });
+  check('held-out jobs: one per inbox, ids unique and apart from the tuned set, all marked held', held.length === HELD_MAIL_JOBS.reduce((a, j) => a + j.inboxes.length, 0) && new Set(held.map((j) => j.id)).size === held.length && !held.some((h) => mailJobs().some((j) => j.id === h.id)) && held.every((j) => j.held && j.mail.plants === 'held'));
+  check('held-out jobs ask other things than the tuned ones', HELD_MAIL_JOBS.every((h) => !MAIL_JOBS.some((j) => j.text === h.text)));
+  const ib = makeInbox(HELD_INBOXES['held-gmail']);
+  const trap = ib.needles['h-staff'];
+  check('a held inbox has its own trap and not the tuned one', Number.isFinite(trap) && ib.needles['staff-trap'] === undefined && ib.key[trap].org === 'Tallgrass Books');
+  const big = makeInbox({ ...HELD_INBOXES['held-big-gmail-20k'], size: 2000 });
+  check('a held big inbox has its own needles', ['h-warranty', 'h-wifi'].every((t) => Number.isFinite(big.needles[t])) && big.needles.invoice === undefined);
+  const letters = Object.entries(ib.key).filter(([, k]) => k.org === 'Tallgrass Books' && k.kind === 'newsletter').map(([id]) => Number(id));
+  const changed = Object.fromEntries(letters.map((id) => [id, { folders: ['[Gmail]/Trash'], flags: [], was: [] }]));
+  const base = { id: 'mail-h-bulk-trash-held-gmail', key: 'h-bulk-trash', said: 'Done.', steps: [{ calls: [], prompt_tokens: 3000 }], secs: 12, mail: { spec: { inbox: 'held-gmail', ...HELD_INBOXES['held-gmail'] }, cards: [], changed, drafts: [], stats: {} } };
+  const good = scoreRun(base);
+  check('held bulk trash that leaves Juniper scores full, no harm', letters.length > 0 && good.coverage === 100 && good.trap_kept === true && good.ok, JSON.stringify(good));
+  const k = ib.key[trap];
+  const draft = scoreRun({ ...base, id: 'mail-h-draft-held-gmail', key: 'h-draft', mail: { ...base.mail, changed: {}, drafts: [{ to: `Juniper <${k.sender}>`, subject: `Re: ${k.subject}`, text: 'Please post it to me, thank you!' }] } });
+  check('a right held draft is scored right', draft.right_person && draft.says_it && !draft.sent, JSON.stringify(draft));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

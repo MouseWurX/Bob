@@ -17,8 +17,8 @@ import { jobByKey } from './mail-jobs.mjs';
 
 const inboxes = new Map();
 export function inboxFor(spec) {
-  const k = JSON.stringify({ size: spec.size, seed: spec.seed, flavour: spec.flavour, kind: spec.kind });
-  if (!inboxes.has(k)) inboxes.set(k, makeInbox({ size: spec.size, seed: spec.seed, flavour: spec.flavour, kind: spec.kind, now: 0 }));
+  const k = JSON.stringify({ size: spec.size, seed: spec.seed, flavour: spec.flavour, kind: spec.kind, plants: spec.plants || '' });
+  if (!inboxes.has(k)) inboxes.set(k, makeInbox({ size: spec.size, seed: spec.seed, flavour: spec.flavour, kind: spec.kind, plants: spec.plants || '', now: 0 }));
   return inboxes.get(k);
 }
 const TRASH = /^(\[gmail\]\/trash|deleted|trash|deleted items)$/i;
@@ -151,7 +151,7 @@ export function digest(row, r) {
   const facts = [];
   if (r.type === 'find') { const k = inbox.key[inbox.needles[job.score.tag]]; facts.push(`The mail it is about: "${k.subject}", ${Math.round(k.age_days)} days old. The right answer is in it: ${job.score.must}.`); }
   if (r.type === 'reply') facts.push(`People's mail needing a reply in the last ${job.score.within} days: ${r.want} (code found ${r.found} named in the answer).`);
-  if (r.type === 'draft') { const k = inbox.key[inbox.needles['staff-trap']]; facts.push(`Wren's own address: ${k.sender}. Subject: "${k.subject}".`); }
+  if (r.type === 'draft') { const k = inbox.key[inbox.needles[job.score.tag || 'staff-trap']]; facts.push(`The person's own address: ${k.sender}. Subject: "${k.subject}".`); }
   return [`# Run ${'{code}'}`, '', `**Request:** ${row.text}`, '', `**What to look for:** ${job.opus}`, ...(facts.length ? ['', `**Facts:** ${facts.join(' ')}`] : []), '',
     `**Inbox:** ${inbox.size} messages (${inbox.flavour === 'gmail' ? 'Gmail' : 'Outlook.com'}).`, '', '**Steps:**',
     ...calls.map((c, i) => `${i + 1}. ${c.name} ${JSON.stringify(c.args || {}).slice(0, 300)}\n   -> ${String(c.result || '').replace(/\s+/g, ' ').slice(0, 500)}`), '',

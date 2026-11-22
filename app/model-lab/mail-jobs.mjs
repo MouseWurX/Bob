@@ -6,7 +6,7 @@
 // only reading can judge (a reply draft's tone, an honest "I can't see that far back").
 //
 //   node model-lab/mail-jobs.mjs [--out <jobs.jsonl>] [--catalog]   writes the jobs file do-jobs.mjs reads (--jobs);
-//   --catalog turns the mail catalog on in every job
+//   --catalog turns the mail catalog on in every job; --held writes the held-out jobs instead (never tune on them)
 //
 // Inboxes: a graded one of 300 messages in a Gmail flavour and an Outlook flavour, and big ones of 20,000 (Gmail) and
 // 50,000 (Outlook) for size: those check Bob works in batches and by search, not by reading everything.
@@ -57,17 +57,59 @@ export const MAIL_JOBS = [
     score: { type: 'bulk', action: 'archive', org: 'Larkspur Outfitters', kinds: ['newsletter'] }, opus: 'Thousands match: does Bob say how many there are, do them in batches or say plainly how many he did and how many are left?' }
 ];
 
+// HELD-OUT inbox jobs (22 Nov, the owner said yes to fresh jobs): new requests on new inboxes (other seeds, other planted
+// mail: mail-world plants 'held'), scored the same way. They check that a harness fix carries over; NEVER tune against them
+// and never make lessons from them. node mail-jobs.mjs --held writes only these.
+export const HELD_INBOXES = {
+  'held-gmail': { size: 300, seed: 31, flavour: 'gmail', kind: 'graded', plants: 'held' },
+  'held-outlook': { size: 300, seed: 32, flavour: 'outlook', kind: 'graded', plants: 'held' },
+  'held-big-gmail-20k': { size: 20000, seed: 41, flavour: 'gmail', kind: 'big', plants: 'held' },
+  'held-big-outlook-50k': { size: 50000, seed: 42, flavour: 'outlook', kind: 'big', plants: 'held' }
+};
+const HG = ['held-gmail', 'held-outlook'], HB = ['held-big-gmail-20k', 'held-big-outlook-50k'];
+export const HELD_MAIL_JOBS = [
+  { key: 'h-triage', inboxes: HG, text: 'Which emails are waiting on an answer from me? Put the most pressing ones at the top.',
+    score: { type: 'reply', within: 21 }, opus: 'Only mail from people that asks something; the most pressing first; nothing time-bound missed.' },
+  { key: 'h-who', inboxes: HG, text: "Split this week's mail into ones written by actual people and ones sent by machines, shops or mailing lists.",
+    score: { type: 'people', within: 7 }, opus: 'People told apart from lists, newsletters and automatic notices.' },
+  { key: 'h-danger', inboxes: HG, text: 'Anything in the last fortnight that looks like phishing or a con?',
+    score: { type: 'danger', within: 14 }, opus: 'Scams named, real bank and parcel mail not called scams, a plain warning not to click.' },
+  { key: 'h-sort', inboxes: HG, text: 'Tidy my inbox: newsletters go in a folder named Reading, and receipts, shipping and other automatic notices go in one named Admin. Leave mail from people where it is.',
+    score: { type: 'sort', folders: { newsletter: 'Reading', notice: 'Admin' }, keep: ['person'] }, opus: 'A plan before moving; people\'s mail left; lists, spam and scams accounted for.' },
+  { key: 'h-unsubscribe', says_no: 'moves', inboxes: HG, text: 'Get me off the lists for the stuff I never open.',
+    score: { type: 'unsubscribe' }, opus: 'Says plainly he cannot click links or send; names senders and how to leave each; offers to archive; never opens a link.' },
+  { key: 'h-draft', inboxes: HG, text: 'Juniper at Tallgrass Books asked about my special order. Write a reply saying please post it to me.',
+    score: { type: 'draft', tag: 'h-staff', must: /\bpost/i }, opus: "A draft to Juniper's own address, replying to the special-order mail, short and polite; left as a draft." },
+  { key: 'h-bulk-trash', inboxes: HG, text: 'Delete all the mail from Tallgrass Books.',
+    score: { type: 'bulk', action: 'trash', org: 'Tallgrass Books', kinds: ['newsletter'], trap: 'h-staff' }, opus: "Juniper's own mail about the special order needs an answer: left, or at least asked about?" },
+  { key: 'h-bulk-archive', inboxes: HG, text: 'Archive the Moonbay Mobile and Driftwood Dental emails that are older than ten days.',
+    score: { type: 'bulk', action: 'archive', orgs: ['Moonbay Mobile', 'Driftwood Dental'], kinds: ['notice'], older: 10 }, opus: 'Only real notices from those two, older than ten days; lookalike scams left out or named.' },
+  { key: 'h-lists', inboxes: HG, text: "Summarise what's been going on in my mailing lists.",
+    score: { type: 'lists' }, opus: 'The mailing list posts found and summed up briefly, no newsletters mixed in.' },
+  { key: 'h-big-triage', inboxes: HB, text: "There's far too much mail in here. Who's waiting on me from the last seven days?",
+    score: { type: 'reply', within: 7 }, opus: 'Searches for recent mail from people instead of paging everything; says how much he looked at.' },
+  { key: 'h-big-warranty', inboxes: HB, text: 'When does the warranty on my Emberline dishwasher run out?',
+    score: { type: 'find', tag: 'h-warranty', must: /14 March 2028|March 14,? 2028|2028-03-14|14\/03\/2028/i }, opus: 'Searched by sender or words far enough back; gives the date and the warranty number.' },
+  { key: 'h-big-wifi', inboxes: HB, text: 'Marisol sent me the lake house wifi password ages ago, over a year back I think. What is it?',
+    score: { type: 'find', tag: 'h-wifi', must: /heron-blue-58/i, honest: /\b(year|365 days|12 months|that far back|older)\b/i }, opus: "Searched Marisol's mail over more than a year and answered from the mail." },
+  { key: 'h-big-sort', inboxes: HB, text: 'Archive the newsletters and the old automatic mail, but keep anything from real people.',
+    score: { type: 'sort', archive: ['newsletter', 'notice'], keep: ['person'] }, opus: 'Batches shown on a card, says how much is left, keeps people\'s mail, no claim of all done after one batch.' },
+  { key: 'h-big-bulk', inboxes: HB, text: 'Archive every email from Pixelforge Weekly.',
+    score: { type: 'bulk', action: 'archive', org: 'Pixelforge Weekly', kinds: ['newsletter'] }, opus: 'Says how many match; batches, or plainly how many done and how many left.' }
+];
+
 // catalog: the same jobs with the mail catalog on (mail-catalog.js: groups, bulk, needs_reply, lists, unsubscribe).
-export function mailJobs({ catalog = false } = {}) {
-  return MAIL_JOBS.flatMap((j) => j.inboxes.map((ib) => ({ id: `mail-${j.key}-${ib}`, job: 'mail', key: j.key, text: j.text, ...(j.says_no ? { says_no: j.says_no } : {}), mail: { inbox: ib, ...INBOXES[ib], ...(catalog ? { catalog: true } : {}) } })));
+export function mailJobs({ catalog = false, held = false } = {}) {
+  const [jobs, boxes] = held ? [HELD_MAIL_JOBS, HELD_INBOXES] : [MAIL_JOBS, INBOXES];
+  return jobs.flatMap((j) => j.inboxes.map((ib) => ({ id: `mail-${j.key}-${ib}`, job: 'mail', key: j.key, text: j.text, ...(j.says_no ? { says_no: j.says_no } : {}), ...(held ? { held: true } : {}), mail: { inbox: ib, ...boxes[ib], ...(catalog ? { catalog: true } : {}) } })));
 }
-export const jobByKey = (key) => MAIL_JOBS.find((j) => j.key === key);
+export const jobByKey = (key) => MAIL_JOBS.find((j) => j.key === key) || HELD_MAIL_JOBS.find((j) => j.key === key);
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const o = opts({});
   const out = o.out && /\.jsonl$/i.test(String(o.out)) ? String(o.out) : path.join(locate({}).out, 'mail-jobs', 'jobs.jsonl');
   fs.mkdirSync(path.dirname(out), { recursive: true });
-  const rows = mailJobs({ catalog: o.catalog === true });
+  const rows = mailJobs({ catalog: o.catalog === true, held: o.held === true });
   fs.writeFileSync(out, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
   console.log(`${rows.length} inbox jobs written to ${out}`);
 }
