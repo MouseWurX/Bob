@@ -214,7 +214,7 @@ if (why) {
 
 // ---- do-jobs, the self-test and the plan know about repository jobs ----
 const dj = read('model-lab/do-jobs.mjs');
-check('do-jobs switches the Run hand on for repository jobs only, and keeps run_command only for them', /const repoKitOpts = \{ \.\.\.kitOpts, hands: \[\.\.\.HANDS_HERE, 'run'\] \}/.test(dj) && /loadBob\(L\.bob, j\.repo \? repoKitOpts : kitOpts\)/.test(dj) && /if \(!\(j\.repo && n === 'run_command'\)\) delete brain\.tools\[n\]/.test(dj) && /const HANDS_HERE = \['files', 'sort', 'security', \.\.\.\(o\.office \? \['office'\] : \[\]\)\];/.test(dj));
+check('do-jobs switches the Run hand on for repository jobs only, and keeps run_command only for them', /const repoKitOpts = \{ \.\.\.kitOpts, hands: \[\.\.\.HANDS_HERE, 'run'\] \}/.test(dj) && /loadBob\(L\.bob, j\.repo \? repoKitOpts : j\.blender \? blenderKitOpts : kitOpts\)/.test(dj) && /if \(!\(j\.repo && n === 'run_command'\) && !\(j\.blender && n === 'mcp_use'\)\) delete brain\.tools\[n\]/.test(dj) && /const HANDS_HERE = \['files', 'sort', 'security', \.\.\.\(o\.office \? \['office'\] : \[\]\)\];/.test(dj));
 check('do-jobs guards each command of a repository job and reads the repository back', /runGuard\(kit, rw, args\)/.test(dj) && /call\.guard = /.test(dj) && /after: repoAfter\(kit, rw, j\.repo, steps\)/.test(dj) && /repository job\(s\) left out/.test(dj));
 const st = read('model-lab/jobs-selftest.mjs');
 check('the self-test does a repository job right and wrong, and tries the guard', ["id: 'st-repo-right'", "id: 'st-repo-wrong'", "id: 'st-repo-guard'"].every((x) => st.includes(x)) && /repoScore\(row, REPO_RULES\)\.verdict === 'pass'/.test(st) && /s\.verdict === 'fail'/.test(st));

@@ -78,6 +78,8 @@ import { officeAfter } from './office-jobs.mjs';
 import { buildBytes } from './office-files.mjs';
 import { plantRepo, repoAfter, runGuard, repoReady, gitEnv } from './repo-jobs.mjs';
 import { worldGet } from './web-jobs.mjs';
+import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 
 // What a run's record keeps of a tool reply: all of it up to 40,000 characters, then a plain cut mark.
 export const recordText = (t, max = 40000) => { const s = String(t ?? ''); return s.length > max ? `${s.slice(0, max)}\n[record cut here: the brain saw ${s.length} characters]` : s; };
@@ -117,7 +119,7 @@ if (o.never && !neverFiles.length) fail(`--never ${o.never} holds no .jsonl file
 for (const f of neverFiles) {
   for (const r of readJsonl(f)) for (const t of [r.text, r.question, r.prompt, r.ask, (r.messages || []).find((m) => m.role === 'user')?.content]) if (typeof t === 'string' && t.trim()) never.add(norm(t));
 }
-let jobs = files.flatMap((f) => readJsonl(f)).filter((j) => j && typeof j.text === 'string' && j.text.trim()).map((j, i) => ({ id: String(j.id || `job-${i}`), job: j.job || '', text: j.text, setup: Array.isArray(j.setup) ? j.setup : [], ...(j.from && typeof j.from === 'object' ? { from: j.from } : {}), ...(j.mail && typeof j.mail === 'object' ? { mail: j.mail, key: String(j.key || '') } : {}), ...(j.office && typeof j.office === 'object' ? { office: j.office, key: String(j.key || '') } : {}), ...(j.repo && typeof j.repo === 'object' ? { repo: j.repo, key: String(j.key || ''), type: String(j.type || '') } : {}), ...(j.web && typeof j.web === 'object' && Array.isArray(j.web.pages) ? { web: j.web, key: String(j.key || ''), type: String(j.type || '') } : {}) }));
+let jobs = files.flatMap((f) => readJsonl(f)).filter((j) => j && typeof j.text === 'string' && j.text.trim()).map((j, i) => ({ id: String(j.id || `job-${i}`), job: j.job || '', text: j.text, setup: Array.isArray(j.setup) ? j.setup : [], ...(j.from && typeof j.from === 'object' ? { from: j.from } : {}), ...(j.mail && typeof j.mail === 'object' ? { mail: j.mail, key: String(j.key || '') } : {}), ...(j.office && typeof j.office === 'object' ? { office: j.office, key: String(j.key || '') } : {}), ...(j.repo && typeof j.repo === 'object' ? { repo: j.repo, key: String(j.key || ''), type: String(j.type || '') } : {}), ...(j.web && typeof j.web === 'object' && Array.isArray(j.web.pages) ? { web: j.web, key: String(j.key || ''), type: String(j.type || '') } : {}), ...(j.blender && typeof j.blender === 'object' && typeof j.blender.setup === 'string' ? { blender: j.blender, key: String(j.key || ''), type: String(j.type || '') } : {}) }));
 const held = jobs.filter((j) => never.has(norm(j.text)));
 jobs = jobs.filter((j) => !never.has(norm(j.text)));
 const seen = new Set(); jobs = jobs.filter((j) => (seen.has(j.id) ? false : seen.add(j.id)));
@@ -132,12 +134,18 @@ jobs = jobs.filter((j) => !noOffice.includes(j));
 const repoWhy = jobs.some((j) => j.repo) ? repoReady() : '';
 const noRepo = repoWhy ? jobs.filter((j) => j.repo) : [];
 jobs = jobs.filter((j) => !noRepo.includes(j));
+// 22 Nov: a Blender job (blender-jobs.mjs, held-out) needs a Python with Blender's own module (bpy) for the test Blender
+// (blender-world.mjs); without --blender-python those jobs are left out (and said so), never run as Bob failing
+const blenderPy = o['blender-python'] && o['blender-python'] !== true ? path.resolve(String(o['blender-python'])) : '';
+const noBlender = blenderPy && fs.existsSync(blenderPy) ? [] : jobs.filter((j) => j.blender);
+jobs = jobs.filter((j) => !noBlender.includes(j));
 const done = new Set(readJsonl(F.runs).map((r) => r.id));
 const queue = jobs.filter((j) => !done.has(j.id)).slice(0, Number(o.count || 1e9));
 say(`pre-flight: jobs file(s) ${files.join(', ')}: ${jobs.length + held.length} rows`);
 if (leaveOut.size) say(`pre-flight: ${leftOut.length} job(s) of kind ${[...leaveOut].join(', ')} left out (--leave-out-kinds)`);
 if (noOffice.length) say(`pre-flight: ${noOffice.length} office job(s) left out: they need LibreOffice (--office <soffice>)`);
 if (o.never) say(`pre-flight: ${held.length} held-out request(s) left out (--never: ${neverFiles.length} file(s), ${never.size} requests known)`);
+if (noBlender.length) say(`pre-flight: ${noBlender.length} Blender job(s) left out: they need --blender-python <a Python with bpy>${blenderPy ? ` (no ${blenderPy})` : ''}`);
 if (noRepo.length) say(`pre-flight: ${noRepo.length} repository job(s) left out: ${repoWhy}`);
 say(`pre-flight: ${done.size} already run in this folder, ${queue.length} to go`);
 const sceneMode = String(o.scene || '').toLowerCase();
@@ -159,6 +167,9 @@ const kitOpts = { world: true, makers: false, docs: true, hands: HANDS_HERE, off
 // 21 Nov: a repository job's Bob has the Run hand on too. What he runs stays inside the job's own project (runGuard),
 // and git leaves this PC's own settings and sign-in helpers out (gitEnv), for him as for the test world.
 const repoKitOpts = { ...kitOpts, hands: [...HANDS_HERE, 'run'] };
+// 22 Nov: a Blender job's Bob has the Connected apps (MCP) hand on, with one app, the test Blender, switched on
+const blenderKitOpts = { ...kitOpts, hands: [...HANDS_HERE, 'mcp'] };
+let blenderN = 0;
 if (queue.some((j) => j.repo)) { Object.assign(process.env, gitEnv({})); say(`pre-flight: ${queue.filter((j) => j.repo).length} repository job(s): the Run hand is on for them, node and git only, inside each job's own project`); }
 // 22 Nov (deepseek-tools): DeepSeek V4.1 has no tool set of its own in Bob, so it gets Bob's own wording; its template takes
 // enable_thinking as Qwen's does, and DeepSeek's own sampling (temperature 1.0, top_p 1.0; the model card)
@@ -343,6 +354,7 @@ async function sceneFor(j) {
   if (j.mail) return { scene: null, problems: [], made: 'none' }; // an inbox job's world is its mailbox (mail-world.mjs)
   if (j.office) return { scene: null, problems: [], made: 'none' }; // an office job brings its own files (office-jobs.mjs)
   if (j.web) return { scene: null, problems: [], made: 'none' }; // a web job's world is its made-up web (web-jobs.mjs)
+  if (j.blender) return { scene: null, problems: [], made: 'none' }; // a Blender job's world is its own test Blender (blender-jobs.mjs)
   const had = scenes.get(j.id, j.text);
   // 16 Nov (800-job read): a scene whose reply couldn't be read was saved and then reused as an empty home every time;
   // with --scene make it is written again instead
@@ -400,15 +412,38 @@ export const NOT_HERE = new Set(['run_command', 'run_recipe', 'open_app', 'app_l
   'save_reference']); // save_reference: the Lab copy of Bob has no reference shelf set up, so it would fail where real Bob works
 const NOT_SET_UP = new Set(['make_image', 'make_video', 'make_music', 'make_sound']);
 
+// The test Blender for one job: a connected app in this job's Bob (his own mcp-servers.json), started by his own MCP
+// Hand when he first uses it. Its id is this job's own, so jobs run side by side never share one.
+function fitBlender(kit, spec) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lab-blender-'));
+  const setup = path.join(dir, 'setup.py'), dump = path.join(dir, 'scene.json');
+  fs.writeFileSync(setup, spec.setup);
+  const id = `blender-${process.pid}-${++blenderN}`;
+  const world = path.join(path.dirname(fileURLToPath(import.meta.url)), 'blender-world.mjs');
+  fs.mkdirSync(kit.cfg.dataDir, { recursive: true });
+  fs.writeFileSync(path.join(kit.cfg.dataDir, 'mcp-servers.json'), JSON.stringify({ servers: [{ id, name: 'Blender', cmd: process.execPath, args: [world, '--python', blenderPy, '--dump', dump, '--setup', setup], on: true }] }));
+  return { id, dir, dump };
+}
+// What Bob left in Blender: the scene as set up and as he left it (blender-world.mjs writes both). The app is stopped first.
+async function blenderAfter(bw) {
+  try { const m = await import(pathToFileURL(path.join(L.bob, 'src', 'mcp.js')).href); m.stopServer?.(bw.id); } catch {}
+  let got = null;
+  try { got = JSON.parse(fs.readFileSync(bw.dump, 'utf8')); } catch {}
+  try { fs.rmSync(bw.dir, { recursive: true, force: true }); } catch {}
+  return got ? { before: got.before, after: got.after } : { missing: 'Blender was never started (no scene written)' };
+}
+
 async function runJob(j) {
-  const kit = asFamily(await loadBob(L.bob, j.repo ? repoKitOpts : kitOpts));
+  const kit = asFamily(await loadBob(L.bob, j.repo ? repoKitOpts : j.blender ? blenderKitOpts : kitOpts));
   const tavilyUsed = keyedSearch(kit);
   const brain = kit.brain;
   // 22 Nov: a web job (web-jobs.mjs, held-out) gets its own made-up web: Bob's own web_search and fetch_page ask the
   // test world (cfg.webGet) instead of the internet, so no search is spent, no key is used and the pages never change
   const ww = j.web ? worldGet(j.web, { today }) : null;
   if (ww) { delete kit.cfg.searchBackup; kit.cfg.webGet = ww.get; }
-  for (const n of NOT_HERE) if (!(j.repo && n === 'run_command')) delete brain.tools[n];
+  for (const n of NOT_HERE) if (!(j.repo && n === 'run_command') && !(j.blender && n === 'mcp_use')) delete brain.tools[n];
+  // 22 Nov: a Blender job's own test Blender (blender-world.mjs), set up as the job says, its scene written to bw.dump after every call
+  const bw = j.blender ? fitBlender(kit, j.blender) : null;
   // 16 Nov (MouseWurX: tests "to make sure bob can manage an email inbox"): an inbox job gets Bob's own read_email and
   // manage_email, his account set up on a made-up mailbox (mail-world.mjs) that answers nothing else, so nothing can be sent
   const mw = j.mail ? await fitMail(kit, j.mail) : null;
@@ -574,6 +609,7 @@ async function runJob(j) {
     messages: deepNeutral(kit, brain.session(session)),
     ...(ow ? { key: j.key, office: { lo: Boolean(j.office.lo), files: ow.files, missing: ow.missing, after: officeAfter(kit, docText) } } : {}),
     ...(ww ? { key: j.key, type: j.type, web: ww.log } : {}),
+    ...(bw ? { key: j.key, type: j.type, blender: await blenderAfter(bw) } : {}),
     ...(rw ? { key: j.key, type: j.type, repo: { name: j.repo.name, dir: j.repo.dir, ...(j.repo.passed ? { passed: j.repo.passed } : {}), files: rw.files.length, missing: rw.missing, ...(rw.missing.length ? {} : { after: repoAfter(kit, rw, j.repo, steps) }) } } : {}),
     ...(mw ? { key: j.key, mail: { spec: j.mail, ...(saidNo ? { said_no: saidNo } : {}), cards: sortCards.map((c) => ({ batches: (c.batches || []).map((b) => ({ name: b.name, action: b.action, folder: b.folder, ids: b.ids })), replyFirst: (c.replyFirst || []).map((x) => ({ id: x.id, why: x.why })) })), ...mw.server.after() } } : {})
   };
