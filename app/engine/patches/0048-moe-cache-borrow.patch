@@ -1,0 +1,768 @@
+diff --git a/ggml/include/ggml-alloc.h b/ggml/include/ggml-alloc.h
+index 81cce2e..1574d3d 100644
+--- a/ggml/include/ggml-alloc.h
++++ b/ggml/include/ggml-alloc.h
+@@ -72,6 +72,8 @@ GGML_API bool ggml_gallocr_reserve_n(
+ GGML_API bool ggml_gallocr_alloc_graph(ggml_gallocr_t galloc, struct ggml_cgraph * graph);
+ 
+ GGML_API size_t ggml_gallocr_get_buffer_size(ggml_gallocr_t galloc, int buffer_id);
++// Brain Engine 0048: the bytes of the buffer the last planned graph uses, counted from its start
++GGML_API size_t ggml_gallocr_get_plan_size(ggml_gallocr_t galloc, int buffer_id);
+ 
+ // Utils
+ // Create a buffer and allocate all the tensors in a ggml_context
+diff --git a/ggml/include/ggml-backend.h b/ggml/include/ggml-backend.h
+index 97d58c5..b749c1e 100644
+--- a/ggml/include/ggml-backend.h
++++ b/ggml/include/ggml-backend.h
+@@ -366,6 +366,13 @@ extern "C" {
+ 
+     GGML_API ggml_backend_buffer_type_t ggml_backend_sched_get_buffer_type(ggml_backend_sched_t sched, ggml_backend_t backend);
+     GGML_API size_t                     ggml_backend_sched_get_buffer_size(ggml_backend_sched_t sched, ggml_backend_t backend);
++    // Brain Engine 0048: a buffer type that is base in every way but where its buffers come from (alloc); free it with
++    // ggml_backend_buft_free_alloc_from once nothing uses it
++    typedef ggml_backend_buffer_t (*ggml_backend_buft_alloc_fn)(void * user_data, size_t size);
++    GGML_API ggml_backend_buffer_type_t ggml_backend_buft_new_alloc_from(ggml_backend_buffer_type_t base, ggml_backend_buft_alloc_fn alloc, void * user_data);
++    GGML_API void                       ggml_backend_buft_free_alloc_from(ggml_backend_buffer_type_t buft);
++    // Brain Engine 0048: the bytes of the backend's compute buffer the current graph uses, counted from its start
++    GGML_API size_t                     ggml_backend_sched_get_plan_size(ggml_backend_sched_t sched, ggml_backend_t backend);
+ 
+     GGML_API void                 ggml_backend_sched_set_tensor_backend(ggml_backend_sched_t sched, struct ggml_tensor * node, ggml_backend_t backend);
+     GGML_API ggml_backend_t       ggml_backend_sched_get_tensor_backend(ggml_backend_sched_t sched, struct ggml_tensor * node);
+diff --git a/ggml/src/ggml-alloc.c b/ggml/src/ggml-alloc.c
+index 65d2bea..560f9a2 100644
+--- a/ggml/src/ggml-alloc.c
++++ b/ggml/src/ggml-alloc.c
+@@ -1094,6 +1094,21 @@ bool ggml_gallocr_alloc_graph(ggml_gallocr_t galloc, struct ggml_cgraph * graph)
+     return true;
+ }
+ 
++// Brain Engine 0048: how many bytes of buffer buffer_id the graph planned last uses (0 if none), from offset 0 up
++size_t ggml_gallocr_get_plan_size(ggml_gallocr_t galloc, int buffer_id) {
++    GGML_ASSERT(buffer_id >= 0 && buffer_id < galloc->n_buffers);
++    struct ggml_dyn_tallocr * talloc = galloc->buf_tallocs[buffer_id];
++    if (talloc == NULL || talloc->n_chunks == 0) {
++        return 0;
++    }
++    // a buffer of more than one chunk has no single range from offset 0, report all of it
++    size_t res = 0;
++    for (int c = 0; c < talloc->n_chunks; c++) {
++        res += ggml_dyn_tallocr_max_size(talloc, c);
++    }
++    return res;
++}
++
+ size_t ggml_gallocr_get_buffer_size(ggml_gallocr_t galloc, int buffer_id) {
+     GGML_ASSERT(buffer_id >= 0 && buffer_id < galloc->n_buffers);
+ 
+diff --git a/ggml/src/ggml-backend.cpp b/ggml/src/ggml-backend.cpp
+index f9a640e..202a27b 100644
+--- a/ggml/src/ggml-backend.cpp
++++ b/ggml/src/ggml-backend.cpp
+@@ -2694,6 +2694,43 @@ size_t ggml_backend_sched_get_buffer_size(ggml_backend_sched_t sched, ggml_backe
+     return ggml_gallocr_get_buffer_size(sched->galloc, backend_index);
+ }
+ 
++// Brain Engine 0048: a buffer type that is base in every way (its name, so the backend takes it as its own, alignment,
++// sizes) except that its buffers come from alloc(user_data, size)
++struct ggml_backend_buft_alloc_from {
++    struct ggml_backend_buffer_type buft;
++    ggml_backend_buft_alloc_fn      alloc;
++    void *                          user_data;
++};
++
++static ggml_backend_buffer_t ggml_backend_buft_alloc_from_alloc(ggml_backend_buffer_type_t buft, size_t size) {
++    ggml_backend_buft_alloc_from * w = (ggml_backend_buft_alloc_from *) buft;
++    return w->alloc(w->user_data, size);
++}
++
++ggml_backend_buffer_type_t ggml_backend_buft_new_alloc_from(ggml_backend_buffer_type_t base, ggml_backend_buft_alloc_fn alloc, void * user_data) {
++    GGML_ASSERT(base && alloc);
++    ggml_backend_buft_alloc_from * w = new ggml_backend_buft_alloc_from;
++    w->buft = *base;
++    w->buft.iface.alloc_buffer   = ggml_backend_buft_alloc_from_alloc;
++    w->buft.iface.alloc_buffer_n = NULL;
++    w->alloc     = alloc;
++    w->user_data = user_data;
++    return &w->buft;
++}
++
++void ggml_backend_buft_free_alloc_from(ggml_backend_buffer_type_t buft) {
++    delete (ggml_backend_buft_alloc_from *) buft;
++}
++
++// Brain Engine 0048: the bytes of the backend's compute buffer the current graph uses, from its start
++size_t ggml_backend_sched_get_plan_size(ggml_backend_sched_t sched, ggml_backend_t backend) {
++    GGML_ASSERT(sched);
++    int backend_index = ggml_backend_sched_backend_id(sched, backend);
++    GGML_ASSERT(backend_index >= 0 && backend_index < sched->n_backends);
++
++    return ggml_gallocr_get_plan_size(sched->galloc, backend_index);
++}
++
+ void ggml_backend_sched_set_tensor_backend(ggml_backend_sched_t sched, struct ggml_tensor * node, ggml_backend_t backend) {
+     GGML_ASSERT(sched);
+     int backend_index = ggml_backend_sched_backend_id(sched, backend);
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index 35a1d0f..aeb55b3 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -946,6 +946,7 @@ struct ggml_backend_cuda_buffer_context {
+     int device;
+     void * dev_ptr = nullptr;
+     std::string name;
++    bool owned = true; // Brain Engine 0048: false for a buffer over memory another buffer owns
+ 
+     ggml_backend_cuda_buffer_context(int device, void * dev_ptr) :
+         device(device), dev_ptr(dev_ptr),
+@@ -953,7 +954,9 @@ struct ggml_backend_cuda_buffer_context {
+     }
+ 
+     ~ggml_backend_cuda_buffer_context() {
+-        CUDA_CHECK(cudaFree(dev_ptr));
++        if (owned) {
++            CUDA_CHECK(cudaFree(dev_ptr));
++        }
+     }
+ };
+ 
+@@ -1215,6 +1218,22 @@ static ggml_backend_buffer_t ggml_backend_cuda_buffer_type_alloc_buffer(ggml_bac
+     return ggml_backend_buffer_init(buft, ggml_backend_cuda_buffer_interface, ctx, size);
+ }
+ 
++// Brain Engine 0048: a CUDA buffer over size bytes at ptr inside the CUDA buffer parent, which keeps owning the memory
++// (freeing this one leaves it alone); parent must outlive it
++static ggml_backend_buffer_t ggml_backend_cuda_buffer_from_ptr(ggml_backend_buffer_t parent, void * ptr, size_t size) {
++    if (parent == nullptr || !ggml_backend_buffer_is_cuda(parent) || ptr == nullptr) {
++        return nullptr;
++    }
++    const char * base = (const char *) ggml_backend_buffer_get_base(parent);
++    if ((const char *) ptr < base || (const char *) ptr + size > base + ggml_backend_buffer_get_size(parent)) {
++        return nullptr;
++    }
++    ggml_backend_cuda_buffer_context * pctx = (ggml_backend_cuda_buffer_context *)parent->context;
++    ggml_backend_cuda_buffer_context * ctx = new ggml_backend_cuda_buffer_context(pctx->device, ptr);
++    ctx->owned = false;
++    return ggml_backend_buffer_init(parent->buft, ggml_backend_cuda_buffer_interface, ctx, size);
++}
++
+ static size_t ggml_backend_cuda_buffer_type_get_alignment(ggml_backend_buffer_type_t buft) {
+     return 128;
+ 
+@@ -6889,6 +6908,10 @@ static void * ggml_backend_cuda_reg_get_proc_address(ggml_backend_reg_t reg, con
+     if (strcmp(name, "ggml_backend_get_features") == 0) {
+         return (void *)ggml_backend_cuda_get_features;
+     }
++    // Brain Engine 0048: a CUDA buffer over memory another CUDA buffer owns (the expert cache's borrowed reading)
++    if (strcmp(name, "ggml_backend_cuda_buffer_from_ptr") == 0) {
++        return (void *)ggml_backend_cuda_buffer_from_ptr;
++    }
+     // Brain Engine 0042: mapped pinned memory for the MoE doorbell
+     if (strcmp(name, "ggml_backend_cuda_moe_doorbell_alloc") == 0) {
+         return (void *)ggml_cuda_moe_doorbell_alloc;
+diff --git a/ggml/src/ggml-rpc/ggml-rpc.cpp b/ggml/src/ggml-rpc/ggml-rpc.cpp
+index b7cf696..4c874e1 100644
+--- a/ggml/src/ggml-rpc/ggml-rpc.cpp
++++ b/ggml/src/ggml-rpc/ggml-rpc.cpp
+@@ -480,6 +480,7 @@ struct ggml_backend_rpc_buffer_context {
+     std::shared_ptr<rpc_dispatcher>   dispatcher;
+     void                            * base_ptr;
+     uint64_t                          remote_ptr;
++    bool                              owned = true; // Brain Engine 0048: false for a range of another buffer
+ };
+ 
+ // RPC helper functions
+@@ -1278,6 +1279,10 @@ static std::shared_ptr<rpc_dispatcher> get_dispatcher(const std::string & endpoi
+ 
+ static void ggml_backend_rpc_buffer_free_buffer(ggml_backend_buffer_t buffer) {
+     ggml_backend_rpc_buffer_context * ctx = (ggml_backend_rpc_buffer_context *)buffer->context;
++    if (!ctx->owned) {
++        delete ctx;
++        return;
++    }
+     auto request = std::make_shared<rpc_msg_free_buffer_req>();
+     request->remote_ptr = ctx->remote_ptr;
+     LOG_DBG2("[%s] remote_ptr: 0x%" PRIx64 "\n", __func__, request->remote_ptr);
+@@ -3942,7 +3947,25 @@ static bool ggml_backend_rpc_comm_allreduce_tensor(void * comm_ctx_v, ggml_tenso
+     return true;
+ }
+ 
++// Brain Engine 0048: a buffer over size bytes at ptr inside the RPC buffer parent (the far side's same buffer, so every
++// tensor in it is checked against the parent's range there); freeing it frees nothing on the far side
++static ggml_backend_buffer_t ggml_backend_rpc_buffer_from_ptr(ggml_backend_buffer_t parent, void * ptr, size_t size) {
++    if (parent == nullptr || !ggml_backend_buffer_is_rpc(parent) || ptr == nullptr) {
++        return nullptr;
++    }
++    const char * base = (const char *) ggml_backend_buffer_get_base(parent);
++    if ((const char *) ptr != base || size > ggml_backend_buffer_get_size(parent)) {
++        return nullptr; // only from the start: the far side's base is the parent's
++    }
++    ggml_backend_rpc_buffer_context * pctx = (ggml_backend_rpc_buffer_context *)parent->context;
++    ggml_backend_rpc_buffer_context * ctx = new ggml_backend_rpc_buffer_context{pctx->dispatcher, pctx->base_ptr, pctx->remote_ptr, false};
++    return ggml_backend_buffer_init(parent->buft, ggml_backend_rpc_buffer_interface, ctx, size);
++}
++
+ static void * ggml_backend_rpc_get_proc_address(ggml_backend_reg_t reg, const char * name) {
++    if (std::strcmp(name, "ggml_backend_rpc_buffer_from_ptr") == 0) {
++        return (void *)ggml_backend_rpc_buffer_from_ptr;
++    }
+     if (std::strcmp(name, "ggml_backend_rpc_add_server") == 0) {
+         return (void *)ggml_backend_rpc_add_server;
+     }
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index d1e8df3..d755c79 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -648,6 +648,29 @@ llama_context::llama_context(
+             // Brain Engine 0024: LLAMA_MOE_CACHE_READ_LAYERS=<tokens>: a longer decode reads with the cache holding whole
+             // layers (they read on the card, nothing uploaded for them), back to the hot experts for writing. Off unless
+             // set; not together with LLAMA_MOE_CACHE_LEND (that one frees the cache instead).
++            // Brain Engine 0048: LLAMA_MOE_CACHE_BORROW=1, reading steps above -ub (up to LLAMA_MOE_CACHE_BORROW_UB, default
++            // 16384, at most -b) borrow the cache's coldest slots; the scheduler takes the card's working memory from the cache
++            if (moe_cache->borrow_on()) {
++                uint32_t max_ub = 16384;
++                if (const char * bu = getenv("LLAMA_MOE_CACHE_BORROW_UB"); bu != nullptr && atol(bu) > 0) {
++                    max_ub = (uint32_t) atol(bu);
++                }
++                max_ub = std::min({ max_ub, cparams.n_batch, cparams.n_ctx });
++                cparams.moe_cache_borrow        = true;
++                cparams.moe_cache_borrow_own_ub = cparams.n_ubatch;
++                cparams.moe_cache_borrow_max_ub = std::max(max_ub, cparams.n_ubatch);
++                for (size_t i = 0; i < backend_ptrs.size(); ++i) {
++                    if (backend_ptrs[i] == moe_cache->borrow_backend()) {
++                        cparams.moe_cache_borrow_real_buft = backend_buft[i];
++                        backend_buft[i] = moe_cache->borrow_buft(backend_buft[i]);
++                    }
++                }
++                LLAMA_LOG_INFO("%s: borrowed reading: own step %u, bigger steps up to %u borrow from the MoE cache (-b %u)\n",
++                        __func__, cparams.moe_cache_borrow_own_ub, cparams.moe_cache_borrow_max_ub, cparams.n_batch);
++                if (cparams.moe_cache_borrow_max_ub <= cparams.n_ubatch) {
++                    LLAMA_LOG_WARN("%s: borrowed reading: no bigger step than -ub %u (raise -b to let it borrow)\n", __func__, cparams.n_ubatch);
++                }
++            }
+             if (const char * rl = getenv("LLAMA_MOE_CACHE_READ_LAYERS"); rl != nullptr && *rl != '\0' && getenv("LLAMA_MOE_CACHE_LEND") == nullptr) {
+                 const long v = strtol(rl, nullptr, 10);
+                 if (v > 32) {
+@@ -910,7 +933,7 @@ void llama_context::sched_reserve() {
+ 
+     const uint32_t n_seqs = cparams.n_seq_max;
+     // Brain Engine 0022: with the cache in place, the working memory only needs the smaller step
+-    const uint32_t n_tokens = std::min(cparams.n_ctx, cparams.moe_cache_lend_ub > 0 && !cparams.moe_cache_lent ?
++    uint32_t n_tokens = std::min(cparams.n_ctx, cparams.moe_cache_lend_ub > 0 && !cparams.moe_cache_lent ?
+             std::min(cparams.n_ubatch, cparams.moe_cache_lend_ub) : cparams.n_ubatch);
+ 
+     const size_t max_nodes = this->graph_max_nodes();
+@@ -944,6 +967,99 @@ void llama_context::sched_reserve() {
+     // avoid reserving graphs with zero outputs - assume one output per sequence
+     const int n_outputs = n_seqs;
+ 
++    // Brain Engine 0048: measure the working memory of writing and of the own step (it owns that much), then of bigger
++    // steps; the biggest step whose working memory fits in what it owns plus what the cache lends is the reading step
++    if (cparams.moe_cache_borrow && moe_cache && !model.no_alloc()) {
++        ggml_backend_t bb = moe_cache->borrow_backend();
++        int ib = -1;
++        for (size_t i = 0; i < backend_ptrs.size(); ++i) {
++            if (backend_ptrs[i] == bb) {
++                ib = (int) i;
++            }
++        }
++        std::vector<size_t> sz(backend_ptrs.size(), 0);
++        auto measure = [&](uint32_t nt) -> size_t {
++            std::fill(sz.begin(), sz.end(), 0);
++            const uint32_t no = std::max<uint32_t>(1, std::min(nt, cparams.n_outputs_max));
++            if (!graph_reserve(nt, n_seqs, nt == n_seqs ? n_seqs : no, mctx.get(), true, sz.data())) {
++                return SIZE_MAX;
++            }
++            return ib >= 0 ? sz[ib] : SIZE_MAX;
++        };
++        const uint32_t own_ub = std::min(cparams.n_ctx, cparams.moe_cache_borrow_own_ub);
++        const size_t   own    = std::max(measure(n_seqs), measure(own_ub));
++        if (ib < 0 || own == SIZE_MAX || !moe_cache->borrow_setup(own)) {
++            LLAMA_LOG_WARN("%s: !!! borrowed reading NOT USED: reading at the own step %u\n", __func__, own_ub);
++            cparams.moe_cache_borrow = false;
++            for (size_t i = 0; i < backend_ptrs.size(); ++i) {
++                if (backend_ptrs[i] == bb && cparams.moe_cache_borrow_real_buft) {
++                    backend_buft[i] = cparams.moe_cache_borrow_real_buft;
++                }
++            }
++            cparams.n_ubatch = own_ub;
++            n_tokens = own_ub;
++            sched_new({
++                /*.max_nodes  =*/ max_nodes,
++                /*.parallel   =*/ cparams.pipeline_parallel,
++                /*.op_offload =*/ cparams.op_offload,
++            });
++        } else {
++            const size_t room = moe_cache->borrow_own() + moe_cache->borrow_lendable();
++            uint32_t best = own_ub;
++            size_t   best_need = own;
++            std::vector<std::pair<uint32_t, size_t>> needs;
++            LLAMA_LOG_INFO("%s: borrowed reading: step %5u needs %8.2f MiB of working memory (owned)\n", __func__, own_ub, own/1024.0/1024.0);
++            for (uint32_t ub = own_ub*2; ; ub *= 2) {
++                const uint32_t u = std::min(ub, cparams.moe_cache_borrow_max_ub);
++                if (u <= best) {
++                    break;
++                }
++                const size_t need = measure(u);
++                const bool fits = need != SIZE_MAX && need <= room;
++                LLAMA_LOG_INFO("%s: borrowed reading: step %5u needs %8.2f MiB (%.2f MiB borrowed)%s\n", __func__, u, need/1024.0/1024.0,
++                        need > moe_cache->borrow_own() && need != SIZE_MAX ? (need - moe_cache->borrow_own())/1024.0/1024.0 : 0.0,
++                        fits ? "" : ", more than the cache lends");
++                if (!fits) {
++                    break;
++                }
++                needs.emplace_back(u, need);
++                best = u;
++                if (u == cparams.moe_cache_borrow_max_ub) {
++                    break;
++                }
++            }
++            // the card's own scratch (outside the scheduler) grows with the step too: keep room free for it
++            {
++                ggml_backend_dev_t dev = ggml_backend_get_device(bb);
++                size_t free = 0, total = 0;
++                ggml_backend_dev_memory(dev, &free, &total);
++                size_t spare = 512ull*1024*1024;
++                if (const char * sp = getenv("LLAMA_MOE_CACHE_BORROW_SPARE_MIB"); sp != nullptr && atol(sp) >= 0) {
++                    spare = (size_t) atol(sp)*1024*1024;
++                }
++                while (best > own_ub) {
++                    const size_t scratch = (size_t) (best - own_ub)*model.hparams.n_embd*std::max<uint32_t>(1, model.hparams.n_expert_used_max())*2;
++                    if (scratch + spare <= free) {
++                        break;
++                    }
++                    LLAMA_LOG_WARN("%s: borrowed reading: step %u would need about %.0f MiB of card scratch, %.0f MiB free: a smaller step\n",
++                            __func__, best, (scratch + spare)/1024.0/1024.0, free/1024.0/1024.0);
++                    best /= 2;
++                    best = std::max(best, own_ub);
++                }
++            }
++            for (const auto & [u, need] : needs) {
++                if (u == best) {
++                    best_need = need;
++                }
++            }
++            moe_cache->borrow_set_step(best_need);
++            cparams.n_ubatch = best;
++            n_tokens = std::min(cparams.n_ctx, best);
++            LLAMA_LOG_INFO("%s: borrowed reading: reading step %u (own %u)\n", __func__, best, own_ub);
++        }
++    }
++
+     LLAMA_LOG_DEBUG("%s: worst-case: n_tokens = %d, n_seqs = %d, n_outputs = %d\n", __func__, n_tokens, n_seqs, n_outputs);
+ 
+     resolve_fused_ops(mctx.get(), n_seqs);
+@@ -2427,6 +2543,11 @@ llm_graph_result * llama_context::process_ubatch(const llama_ubatch & ubatch, ll
+     {
+         //const auto t_start_us = ggml_time_us();
+ 
++        // Brain Engine 0048: a graph at a borrowed step runs over the cache's first slots: empty them first
++        if (cparams.moe_cache_borrow && moe_cache) {
++            moe_cache->borrow_before_graph(ggml_backend_sched_get_plan_size(sched.get(), moe_cache->borrow_backend()));
++        }
++
+         // FIXME this call causes a crash if any model inputs were not used in the graph and were therefore not allocated
+         res->set_inputs(&ubatch);
+ 
+diff --git a/src/llama-cparams.h b/src/llama-cparams.h
+index 4e98b57..c01063a 100644
+--- a/src/llama-cparams.h
++++ b/src/llama-cparams.h
+@@ -81,6 +81,12 @@ struct llama_cparams {
+     // Brain Engine 0024 (LLAMA_MOE_CACHE_READ_LAYERS): a decode of more tokens than this switches the cache to whole
+     // layers for the read, and the first write of 32 tokens or fewer switches it back; 0 = off
+     uint32_t moe_cache_read_ub = 0;
++    // Brain Engine 0048 (LLAMA_MOE_CACHE_BORROW): reading steps above the own step (-ub) borrow the coldest slots of the
++    // MoE cache instead of owning working memory; n_ubatch becomes the biggest step that fits, up to the max step
++    bool     moe_cache_borrow        = false;
++    uint32_t moe_cache_borrow_own_ub = 0;
++    uint32_t moe_cache_borrow_max_ub = 0;
++    ggml_backend_buffer_type_t moe_cache_borrow_real_buft = nullptr; // the card's own buffer type, if borrowing goes off
+ 
+     // Brain Engine 0025 (LLAMA_KQ_MASK_BUILD): make the attention mask in the graph from each cache cell's position and
+     // each query word's position (a few MB) instead of filling the whole table on the processor and copying it over
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 0420a43..95f340a 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -119,6 +119,30 @@ struct moe_cache_lru {
+         list_of[s] = c;
+     }
+ 
++    // Brain Engine 0048: slot s, now empty, to the least recently used end of list c, so victim() takes it first
++    void move_head(int32_t s, int c) {
++        const int from = list_of[s];
++        if (prev[s] >= 0) {
++            next[prev[s]] = next[s];
++        } else {
++            head[from] = next[s];
++        }
++        if (next[s] >= 0) {
++            prev[next[s]] = prev[s];
++        } else {
++            tail[from] = prev[s];
++        }
++        prev[s] = -1;
++        next[s] = head[c];
++        if (head[c] >= 0) {
++            prev[head[c]] = s;
++        } else {
++            tail[c] = s;
++        }
++        head[c] = s;
++        list_of[s] = c;
++    }
++
+     // key = index of an expert of a layer in crf and last_use
+     int32_t make_key(int32_t il, int32_t e) const { return il*n_expert + e; }
+     int32_t key_layer (int32_t key) const { return key / n_expert; }
+@@ -811,6 +835,8 @@ struct llama_moe_cache::impl {
+             }
+         }
+ 
++        bw_init(no_alloc); // Brain Engine 0048
++
+         for (size_t id = 0; id < devices.size(); ++id) {
+             const device & d = devices[id];
+             if (d.host_bytes == 0) {
+@@ -2011,6 +2037,9 @@ struct llama_moe_cache::impl {
+     }
+ 
+     ~impl() {
++        if (bw_buft) {
++            ggml_backend_buft_free_alloc_from(bw_buft); // the context's scheduler, which used it, is gone by now
++        }
+         db_shutdown();
+         if (filler.joinable()) {
+             filler.join();
+@@ -2289,6 +2318,260 @@ struct llama_moe_cache::impl {
+         return true;
+     }
+ 
++    // Brain Engine 0048 (LLAMA_MOE_CACHE_BORROW=1): borrowed reading. The working memory of the card and the cache share
++    // one region: the working memory owns its front (bw_own, the most any graph at the own step or writing needs), the
++    // banks follow, group bw_g's first bank first. A bigger graph runs over the front and the start of that bank, so
++    // before it runs the slots it covers are emptied: their hot experts move card to card into colder slots further on,
++    // the rest are dropped. Nothing is freed or allocated, and the scheduler is not made again; after the read the empty
++    // slots fill again from the misses while writing, as at load.
++    using bw_from_ptr_t = ggml_backend_buffer_t (*)(ggml_backend_buffer_t, void *, size_t);
++    bool          bw_on     = false;
++    int32_t       bw_dev    = -1;
++    int32_t       bw_g      = -1;
++    size_t        bw_own    = 0;   // bytes of the region the working memory owns, from its start
++    size_t        bw_lend   = 0;   // bytes after bw_own it may borrow: the slots of group bw_g's first bank
++    size_t        bw_step   = 0;   // the measured working memory of the reading step: a read lends that much at once
++    bw_from_ptr_t bw_from_ptr = nullptr;
++    ggml_backend_buffer_type_t bw_buft = nullptr; // the card's buffer type, but its buffers come from bw_alloc
++    ggml_context_ptr ctx_bw;       // a byte view of one slot, twice per bank of group bw_g, for the moves
++    std::vector<std::pair<ggml_tensor *, ggml_tensor *>> bw_views;
++    size_t        bw_moved = 0, bw_dropped = 0, bw_clears = 0;
++
++    // called at the end of the constructor; turns borrowing on if it is asked for and can work here
++    void bw_init(bool no_alloc) {
++        const char * on = getenv("LLAMA_MOE_CACHE_BORROW");
++        if (no_alloc || on == nullptr || atoi(on) <= 0) {
++            return;
++        }
++        auto refuse = [](const char * why) {
++            LLAMA_LOG_WARN("llama_moe_cache: !!! LLAMA_MOE_CACHE_BORROW NOT USED: %s\n", why);
++        };
++        int n_dev = 0;
++        for (size_t id = 0; id < devices.size(); ++id) {
++            if (devices[id].ctx) {
++                n_dev++;
++                bw_dev = (int32_t) id;
++            }
++        }
++        if (n_dev != 1) {
++            refuse("it works with one card only");
++            return;
++        }
++        if (cpu_share > 0.0f || n_zero > 0) {
++            refuse("it needs --moe-cache-cpu-share 0 (the zero slots must stay zero)");
++            return;
++        }
++        if (la_max > 0 || db_on || sp_mode != SP_OFF) {
++            refuse("not together with LLAMA_MOE_LOOKAHEAD, LLAMA_MOE_DOORBELL or LLAMA_MOE_STANDIN yet");
++            return;
++        }
++        if (getenv("LLAMA_MOE_CACHE_LEND") != nullptr || getenv("LLAMA_MOE_CACHE_READ_LAYERS") != nullptr) {
++            refuse("not together with LLAMA_MOE_CACHE_LEND or LLAMA_MOE_CACHE_READ_LAYERS (it replaces them)");
++            return;
++        }
++        device & d = devices[bw_dev];
++        const ggml_tensor * first = ggml_get_first_tensor(d.ctx.get());
++        for (size_t ig = 0; ig < groups.size(); ++ig) {
++            if (groups[ig].n_slots > 0 && !groups[ig].banks.empty() && groups[ig].banks[0] == first) {
++                bw_g = (int32_t) ig;
++            }
++        }
++        if (bw_g < 0) {
++            refuse("the cache's first bank was not found");
++            return;
++        }
++        ggml_backend_dev_t dev = ggml_backend_buft_get_device(d.buft);
++        ggml_backend_reg_t reg = dev ? ggml_backend_dev_backend_reg(dev) : nullptr;
++        bw_from_ptr = reg ? (bw_from_ptr_t) ggml_backend_reg_get_proc_address(reg, "ggml_backend_cuda_buffer_from_ptr") : nullptr;
++        if (bw_from_ptr == nullptr && reg) {
++            bw_from_ptr = (bw_from_ptr_t) ggml_backend_reg_get_proc_address(reg, "ggml_backend_rpc_buffer_from_ptr"); // the stand-in card of the tests
++        }
++        if (bw_from_ptr == nullptr) {
++            refuse("this card's backend can't lend memory (CUDA, or card sharing for tests)");
++            return;
++        }
++        const group & g = groups[bw_g];
++        ggml_init_params params = {
++            /*.mem_size   =*/ 2*g.banks.size()*ggml_tensor_overhead(),
++            /*.mem_buffer =*/ nullptr,
++            /*.no_alloc   =*/ true,
++        };
++        ctx_bw.reset(ggml_init(params));
++        for (const ggml_tensor * bank : g.banks) {
++            ggml_tensor * a = ggml_new_tensor_1d(ctx_bw.get(), GGML_TYPE_I8, (int64_t) bank->nb[2]);
++            ggml_tensor * b = ggml_new_tensor_1d(ctx_bw.get(), GGML_TYPE_I8, (int64_t) bank->nb[2]);
++            bw_views.emplace_back(a, b);
++        }
++        bw_buft = ggml_backend_buft_new_alloc_from(d.buft, bw_alloc, this);
++        bw_on = true;
++        LLAMA_LOG_INFO("llama_moe_cache: borrowed reading on: big reading steps borrow the cache's coldest slots, nothing is freed\n");
++    }
++
++    // the scheduler's working memory buffers for the card come from here: the front of the region (and past it, what is lent)
++    static ggml_backend_buffer_t bw_alloc(void * user_data, size_t size) {
++        impl * o = (impl *) user_data;
++        device & d = o->devices[o->bw_dev];
++        if (!d.buf || o->bw_own == 0) {
++            LLAMA_LOG_ERROR("llama_moe_cache: borrowed reading: working memory asked for before the region was made\n");
++            return nullptr;
++        }
++        if (size > o->bw_own + o->bw_lend) {
++            LLAMA_LOG_ERROR("llama_moe_cache: borrowed reading: working memory of %.2f MiB asked for, the region lends %.2f MiB\n",
++                size/1024.0/1024.0, (o->bw_own + o->bw_lend)/1024.0/1024.0);
++            return nullptr;
++        }
++        ggml_backend_buffer_t res = o->bw_from_ptr(d.buf.get(), ggml_backend_buffer_get_base(d.buf.get()), std::max<size_t>(size, 1));
++        if (res == nullptr) {
++            LLAMA_LOG_ERROR("llama_moe_cache: borrowed reading: the card refused a buffer over the region\n");
++        }
++        return res;
++    }
++
++    // (re)makes the region with own bytes in front of the banks and puts the experts back; true if the region is there
++    bool bw_setup(size_t own) {
++        if (!bw_on) {
++            return false;
++        }
++        device & d = devices[bw_dev];
++        const size_t align = ggml_backend_buft_get_alignment(d.buft);
++        own = GGML_PAD(std::max<size_t>(own, 1), align);
++        if (bw_own > 0 && own <= bw_own) {
++            return true;
++        }
++        const int64_t t0 = ggml_time_us();
++        finish_fill();
++        ggml_backend_synchronize(d.backend);
++        size_t bytes = 0;
++        for (ggml_tensor * t = ggml_get_first_tensor(d.ctx.get()); t != nullptr; t = ggml_get_next_tensor(d.ctx.get(), t)) {
++            if (t->view_src == nullptr) {
++                bytes += GGML_PAD(ggml_backend_buft_get_alloc_size(d.buft, t), align);
++            }
++            t->data   = nullptr;
++            t->buffer = nullptr;
++        }
++        d.buf.reset();
++        ggml_backend_buffer_t buf = ggml_backend_buft_alloc_buffer(d.buft, own + bytes + align);
++        if (buf == nullptr) {
++            LLAMA_LOG_WARN("llama_moe_cache: !!! borrowed reading NOT USED: no room for a region of %.2f MiB, the cache goes back as it was\n",
++                (own + bytes)/1024.0/1024.0);
++            bw_on = false;
++            bw_own = 0;
++            alloc_banks();
++            upload_slots([&](int32_t id) { return devices[id].backend; });
++            return false;
++        }
++        ggml_backend_buffer_clear(buf, 0); // the padding of the banks
++        ggml_tallocr ta = ggml_tallocr_new(buf);
++        ta.offset += own;
++        for (ggml_tensor * t = ggml_get_first_tensor(d.ctx.get()); t != nullptr; t = ggml_get_next_tensor(d.ctx.get(), t)) {
++            if (t->view_src == nullptr) {
++                GGML_ASSERT(ggml_tallocr_alloc(&ta, t) == GGML_STATUS_SUCCESS);
++            }
++        }
++        for (ggml_tensor * t = ggml_get_first_tensor(d.ctx.get()); t != nullptr; t = ggml_get_next_tensor(d.ctx.get(), t)) {
++            if (t->view_src != nullptr) {
++                GGML_ASSERT(ggml_backend_view_init(t) == GGML_STATUS_SUCCESS);
++            }
++        }
++        ggml_backend_buffer_set_usage(buf, GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
++        d.buf.reset(buf);
++        d.buf_size = bytes;
++        const group & g = groups[bw_g];
++        bw_own  = (size_t) ((const char *) g.banks[0]->data - (const char *) ggml_backend_buffer_get_base(buf));
++        bw_lend = (size_t) g.n_slots*g.banks[0]->nb[2];
++        const auto [up, n] = upload_slots([&](int32_t id) { return devices[id].backend; });
++        LLAMA_LOG_INFO("llama_moe_cache: borrowed reading: region %.2f MiB = working memory %.2f MiB + cache %.2f MiB, up to %.2f MiB lent "
++            "(%d slots of the first bank); %zu experts put back in %.1f ms\n", ggml_backend_buffer_get_size(buf)/1024.0/1024.0,
++            bw_own/1024.0/1024.0, bytes/1024.0/1024.0, bw_lend/1024.0/1024.0, g.n_slots, n, (ggml_time_us() - t0)/1000.0);
++        GGML_UNUSED(up);
++        return true;
++    }
++
++    // before a graph that uses peak bytes of the working memory: empty the slots it would run over
++    void bw_before_graph(size_t peak) {
++        if (!bw_on || bw_own == 0 || peak <= bw_own) {
++            return;
++        }
++        // lend what the reading step needs at its biggest right away (the attention grows as a read goes on), so the
++        // experts move once per read, not a few more with every step
++        peak = std::max(peak, std::min(bw_step, bw_own + bw_lend));
++        if (peak > bw_own + bw_lend) {
++            GGML_ABORT("MoE cache borrowed reading: a graph needs %zu bytes of working memory, only %zu can be lent", peak, bw_own + bw_lend);
++        }
++        group & g = groups[bw_g];
++        moe_cache_lru & lru = g.lru;
++        const size_t  nb2  = g.banks[0]->nb[2];
++        const int32_t dead = (int32_t) std::min<size_t>(g.n_slots, (peak - bw_own + nb2 - 1)/nb2);
++        std::vector<int32_t> src;
++        for (int32_t s = 0; s < dead; ++s) {
++            if (lru.key_of[s] >= 0) {
++                src.push_back(s);
++            }
++        }
++        if (src.empty()) {
++            return;
++        }
++        const int64_t t0 = ggml_time_us();
++        device & d = devices[bw_dev];
++        ggml_backend_synchronize(d.backend); // nothing may still read the slots that are moved over
++        auto heat = [&](int32_t key) { return lru.decayed_crf(lru.key_layer(key), key); };
++        // the hottest first, into the coldest slots past the lent ones (empty ones first)
++        std::sort(src.begin(), src.end(), [&](int32_t a, int32_t b) { return heat(lru.key_of[a]) > heat(lru.key_of[b]); });
++        std::vector<int32_t> dst;
++        for (int32_t s = dead; s < g.n_slots; ++s) {
++            dst.push_back(s);
++        }
++        std::sort(dst.begin(), dst.end(), [&](int32_t a, int32_t b) {
++            const int32_t ka = lru.key_of[a];
++            const int32_t kb = lru.key_of[b];
++            if ((ka < 0) != (kb < 0)) {
++                return ka < 0;
++            }
++            return ka >= 0 && heat(ka) < heat(kb);
++        });
++        char * base = (char *) ggml_backend_buffer_get_base(d.buf.get());
++        size_t moved = 0, dropped = 0;
++        size_t it = 0;
++        for (int32_t s : src) {
++            const int32_t key = lru.key_of[s];
++            const int32_t t   = it < dst.size() ? dst[it] : -1;
++            if (t >= 0 && (lru.key_of[t] < 0 || heat(lru.key_of[t]) < heat(key))) {
++                it++;
++                for (size_t ip = 0; ip < g.banks.size(); ++ip) {
++                    const ggml_tensor * bank = g.banks[ip];
++                    ggml_tensor * a = bw_views[ip].first;
++                    ggml_tensor * b = bw_views[ip].second;
++                    a->buffer = d.buf.get();
++                    b->buffer = d.buf.get();
++                    a->data   = (char *) bank->data + (size_t) s*bank->nb[2];
++                    b->data   = (char *) bank->data + (size_t) t*bank->nb[2];
++                    GGML_ASSERT((char *) a->data >= base && (char *) b->data >= base);
++                    ggml_backend_tensor_copy(a, b);
++                }
++                const int32_t tk = lru.key_of[t];
++                if (tk >= 0) {
++                    lru.slot_map[lru.key_layer(tk)][lru.key_expert(tk)] = lru.empty;
++                    lru.n_filled--;
++                }
++                lru.key_of[t] = key;
++                lru.slot_map[lru.key_layer(key)][lru.key_expert(key)] = t;
++                lru.move(t, lru.class_of(key));
++                moved++;
++            } else {
++                lru.slot_map[lru.key_layer(key)][lru.key_expert(key)] = lru.empty;
++                lru.n_filled--;
++                dropped++;
++            }
++            lru.key_of[s] = -1;
++            lru.move_head(s, 0);
++        }
++        bw_moved   += moved;
++        bw_dropped += dropped;
++        bw_clears++;
++        LLAMA_LOG_INFO("llama_moe_cache: borrowed reading: %.2f MiB lent (%d slots): %zu experts moved on the card, %zu dropped, in %.1f ms\n",
++            (peak - bw_own)/1024.0/1024.0, dead, moved, dropped, (ggml_time_us() - t0)/1000.0);
++    }
++
+     bool lend() {
+         la_drain();
+         finish_fill();
+@@ -2580,6 +2863,41 @@ ggml_tensor * llama_moe_cache::get_cpu_map(int32_t il, int64_t n_tokens) const {
+     return pimpl->get_cpu_map(il, n_tokens);
+ }
+ 
++bool llama_moe_cache::borrow_on() const {
++    return pimpl->bw_on;
++}
++
++ggml_backend_t llama_moe_cache::borrow_backend() const {
++    return pimpl->bw_on ? pimpl->devices[pimpl->bw_dev].backend : nullptr;
++}
++
++ggml_backend_buffer_type_t llama_moe_cache::borrow_buft(ggml_backend_buffer_type_t buft) const {
++    if (!pimpl->bw_on || buft != pimpl->devices[pimpl->bw_dev].buft) {
++        return buft;
++    }
++    return pimpl->bw_buft;
++}
++
++size_t llama_moe_cache::borrow_lendable() const {
++    return pimpl->bw_on ? (size_t) pimpl->groups[pimpl->bw_g].n_slots*pimpl->groups[pimpl->bw_g].banks[0]->nb[2] : 0;
++}
++
++bool llama_moe_cache::borrow_setup(size_t own) {
++    return pimpl->bw_setup(own);
++}
++
++size_t llama_moe_cache::borrow_own() const {
++    return pimpl->bw_own;
++}
++
++void llama_moe_cache::borrow_set_step(size_t bytes) {
++    pimpl->bw_step = bytes;
++}
++
++void llama_moe_cache::borrow_before_graph(size_t peak) {
++    pimpl->bw_before_graph(peak);
++}
++
+ bool llama_moe_cache::lend() {
+     return pimpl->lend();
+ }
+diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
+index b451887..5e0066e 100644
+--- a/src/llama-moe-cache.h
++++ b/src/llama-moe-cache.h
+@@ -92,6 +92,23 @@ public:
+     void    end_read_layout();
+     bool    is_reading() const;
+ 
++    // Brain Engine 0048 (LLAMA_MOE_CACHE_BORROW=1): borrowed reading. The card's working memory and the cache share one
++    // region; graphs at a bigger reading step borrow the coldest slots of the cache's first bank (see the impl).
++    bool borrow_on() const;
++    // the card whose working memory borrows (nullptr if off)
++    ggml_backend_t borrow_backend() const;
++    // the buffer type the scheduler must use for that card (buft itself if it is not that card's, or borrowing is off)
++    ggml_backend_buffer_type_t borrow_buft(ggml_backend_buffer_type_t buft) const;
++    // the most bytes the working memory may borrow past its own part
++    size_t borrow_lendable() const;
++    // makes the region with own bytes in front of the cache (again, only if it grew); false if borrowing went off
++    bool borrow_setup(size_t own);
++    size_t borrow_own() const;
++    // the working memory the reading step needs at most (measured): a read lends that much at its first borrowed graph
++    void borrow_set_step(size_t bytes);
++    // before a graph that uses peak bytes of the working memory (from its start): empties the slots it runs over
++    void borrow_before_graph(size_t peak);
++
+ private:
+     struct impl;
+     std::unique_ptr<impl> pimpl;
