@@ -915,6 +915,17 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 92 (Nov 22, before any run): Flash-Next with the drive tier (Brain Engine 30)
+
+Patches 0049 (the shelf) and 0050 (the drive tier, `LLAMA_MOE_DRIVE=1`, and a saved hot set,
+`LLAMA_MOE_CACHE_SAVE` / `LLAMA_MOE_CACHE_RANKING`) are off by default. Plan `flashnext-q4kxl-32k-be30.json`: the
+Addendum 91 job and flags with borrowing on, one load each in order: plain, drive tier, drive tier saving the hot
+set, then drive tier ranked from that file. Logged: writing t/s, the drive-tier line ("N runs read from the drive
+(X MiB, Y MiB/s), M misses were in RAM"), the hit rate, RAM in use, and whether the log says "drive tier on".
+
+**Predictions, written before any run:** the drive tier writes 10-30% faster than plain (fewer page faults, larger
+reads); the ranked load starts with a higher hit rate and writes a further 5-10% faster in its first turns.
+
 ## Addendum 91 (Nov 21, before any run): Flash-Next on the test PC, mmap on
 
 Qwen3.8-Flash-Next 125B (Unsloth UD-Q4_K_XL, 4 shards, the quant that won the rental jobs) is bigger than the test
