@@ -55,13 +55,28 @@ export const PLAIN = {
   'word-broken': [[['office_read', { path: F('broken') }]], "Minutes_Oct.docx is damaged, so I can't read who chaired the meeting."],
   'excel-ambiguous': [[['list_folder', { path: 'C:\\Users\\you\\Documents' }], ['office_read', { path: F('budget') }]], 'Your rent is 1,850 a month, from Budget_2026.xlsx (there is an older 2025 budget too).'],
   'excel-big': [[['convert_file', { paths: [F('orders')], to: 'csv' }], ['query_data', { file: 'C:\\Users\\you\\Documents\\Orders_2026.csv', action: 'ask', sql: "SELECT count(*), round(sum(Amount), 2) FROM data WHERE City = 'Leeds'" }]], '428 orders came from Leeds, adding up to 195,831.51.'],
-  'word-missing': [[['list_folder', { path: 'C:\\Users\\you\\Documents' }]], "I can't find Minutes_September.docx in your Documents."]
+  'word-missing': [[['list_folder', { path: 'C:\\Users\\you\\Documents' }]], "I can't find Minutes_September.docx in your Documents."],
+  // 22 Nov: the held-out jobs, the plain way (a check of the harness only, like the rest)
+  'h-word-read': [[['office_read', { path: F('hpolicy') }]], 'The pet deposit is 300, and you can have two pets.'],
+  'h-excel-read': [[['office_read', { path: F('hmeals') }]], 'Friday costs the most (12.30): pizza for dinner.'],
+  'h-excel-sum': [[['office_read', { path: F('hmeals') }], ['calculate', { expression: '8.40+6.90+9.75+5.60+12.30' }]], 'The week comes to 42.95.'],
+  'h-ppt-read': [[['office_read', { path: F('hdeck') }]], 'Night Ferry in January and The Salt Road in June.'],
+  'h-word-compare': [[['compare_files', { first: F('hbikeA'), second: F('hbikeB') }]], 'B costs 95 instead of 85, adds new cables, and is ready next day.'],
+  'h-excel-compare': [[['compare_files', { first: F('hjune'), second: F('hjuly') }]], 'Yoga moved to 07:30, Pilates is gone and Boxing is new at 19:00.'],
+  'h-sum-tricky': [[['office_read', { path: F('htrip') }], ['calculate', { expression: '64.20+88.00+51.35-25.00+14.50' }]], 'The trip cost 193.05 in all.'],
+  'h-missing': [[['list_folder', { path: 'C:\\Users\\you\\Documents' }]], "I can't find Minutes_August.docx in your Documents."],
+  'h-word-edit': [[['office_read', { path: F('hbake') }], ['office_edit', { path: F('hbake'), changes: [{ op: 'replace', find: 'Sunday 9 May', replace: 'Sunday 16 May' }] }]], 'The bake sale is on Sunday 16 May now.'],
+  'h-word-to-pdf': [[['convert_file', { paths: [F('hpolicy')], to: 'pdf' }]], 'Saved Pet_Policy_Elm_Court.pdf next to it.'],
+  'h-ppt-add': [[['office_read', { path: F('hdeck') }], ['office_edit', { path: F('hdeck'), changes: [{ op: 'add_slide', at: 4, title: 'Snacks', bullets: ['Bring something to share'] }] }]], 'Snacks is slide 4 now, before Questions.'],
+  'h-excel-edit': [[['office_read', { path: F('hmeals') }], ['office_edit', { path: F('hmeals'), changes: [{ op: 'set_cells', cells: { C5: 'Stew' } }] }]], "Thursday's dinner is Stew now."],
+  'h-excel-make': [[['office_make', { kind: 'calc', path: `${D}Plant_Watering.xlsx`, sheets: [{ name: 'Plants', rows: [['Plant', 'Every (days)'], ['Fern', 3], ['Cactus', 14], ['Basil', 1]] }] }]], 'Saved Plant_Watering.xlsx in Documents.'],
+  'h-word-desktop': [[['office_make', { kind: 'writer', path: 'C:\\Users\\you\\Desktop\\Gate_Note.docx', text: 'Hello,\n\nThe side gate code is 2580.\n\nThank you!' }]], 'Saved Gate_Note.docx on your Desktop.']
 };
 
 // lazy: the brain calls no tool and says "Done, all sorted." to every job: every job must FAIL, so a claim alone never passes
-export async function oracle({ bob = path.resolve(here, '..'), office = '', keep = false, lazy = false, log = console.log } = {}) {
+export async function oracle({ bob = path.resolve(here, '..'), office = '', keep = false, lazy = false, held = false, log = console.log } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'office-oracle-'));
-  const rowsIn = officeJobs().filter((j) => office || !j.office.lo);
+  const rowsIn = officeJobs({ held }).filter((j) => office || !j.office.lo);
   // without LibreOffice the test Bob has no Office Hand: the plain way is then read_file
   const plainOf = (key) => (office ? PLAIN[key][0] : PLAIN[key][0].map(([t, a]) => [t === 'office_read' ? 'read_file' : t, a]));
     const endOf = (key) => PLAIN[key][1];
@@ -87,12 +102,12 @@ export async function oracle({ bob = path.resolve(here, '..'), office = '', keep
   const ok = scores.length === rowsIn.length && scores.every((s) => s.verdict === want);
   if (!ok && rows.length < rowsIn.length) log(runLog.slice(-1500));
   if (!keep) try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} else log(`kept: ${tmp}`);
-  return { ok, scores, left_out: office ? 0 : officeJobs().length - rowsIn.length };
+  return { ok, scores, left_out: office ? 0 : officeJobs({ held }).length - rowsIn.length };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const a = process.argv.slice(2), get = (k) => { const i = a.indexOf(k); return i >= 0 ? a[i + 1] : ''; };
-  const r = await oracle({ bob: get('--bob') || undefined, office: get('--office'), keep: a.includes('--keep'), lazy: a.includes('--lazy') });
+  const r = await oracle({ bob: get('--bob') || undefined, office: get('--office'), keep: a.includes('--keep'), lazy: a.includes('--lazy'), held: a.includes('--held') });
   console.log(r.ok ? `office oracle OK: ${r.scores.length} jobs ${a.includes('--lazy') ? 'fail for a do-nothing brain' : 'pass the plain way'}${r.left_out ? ` (${r.left_out} left out: no --office)` : ''}` : 'OFFICE ORACLE FAIL: a job, its files or its score is wrong');
   process.exit(r.ok ? 0 : 1);
 }

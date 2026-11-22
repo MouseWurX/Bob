@@ -148,6 +148,11 @@ try {
   check(`the oracle passes every job LibreOffice isn't needed for (${good.scores.length})`, good.ok && good.scores.length === 15, JSON.stringify(good.scores.filter((s) => s.verdict !== 'pass')).slice(0, 600));
   const lazy = await oracle({ bob: app, lazy: true, log: quiet });
   check('a do-nothing brain that says "Done" fails every one', lazy.ok, JSON.stringify(lazy.scores.filter((s) => s.verdict !== 'fail')).slice(0, 600));
+  // 22 Nov: the held-out office jobs (new files and requests, never tuned on) check themselves the same way
+  const hgood = await oracle({ bob: app, held: true, log: quiet });
+  check(`held-out: the oracle passes every job LibreOffice isn't needed for (${hgood.scores.length})`, hgood.ok && hgood.scores.length === 8, JSON.stringify(hgood.scores.filter((s) => s.verdict !== 'pass')).slice(0, 600));
+  const hlazy = await oracle({ bob: app, held: true, lazy: true, log: quiet });
+  check('held-out: a do-nothing brain fails every one', hlazy.ok, JSON.stringify(hlazy.scores.filter((s) => s.verdict !== 'fail')).slice(0, 600));
 }
 
 // 17 Nov (after1, M11): "doesn't appear to exist anywhere" was marked "does not say the file is not there"

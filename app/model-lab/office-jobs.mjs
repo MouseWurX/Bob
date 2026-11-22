@@ -44,7 +44,17 @@ export const FILES = {
   broken: { path: `${D}Minutes_Oct.docx`, build: { type: 'broken' } },
   oldbudget: { path: `${D}Old\\Budget_2025.xlsx`, content: 'Month,Rent,Food,Travel,Total\nJan,1700,380,90,2170\nFeb,1700,372,60,2132' },
   orders: { path: `${D}Orders_2026.xlsx`, build: { type: 'orders', rows: 3000 } },
-  reading: { path: `${D}Reading_Log.xlsx`, content: 'Title,Author,Pages\nThe Quiet Orchard,L. Penhallow,288\nNight Ferry,T. Abara,214', meta: { Sheet: 'Books' } }
+  reading: { path: `${D}Reading_Log.xlsx`, content: 'Title,Author,Pages\nThe Quiet Orchard,L. Penhallow,288\nNight Ferry,T. Abara,214', meta: { Sheet: 'Books' } },
+  // ---- 22 Nov: held-out files (the owner said yes to fresh jobs; never tune on them) ----
+  hpolicy: { path: `${D}Pet_Policy_Elm_Court.docx`, content: '# Pet policy: Elm Court flats\nCats and small dogs allowed\nPet deposit: 300\nLimit: two pets per flat\n## Rules\nDogs on a lead in the hallways\nReport any damage within 7 days' },
+  hmeals: { path: `${D}Meal_Plan.xlsx`, content: 'Day,Breakfast,Dinner,Cost\nMon,Oats,Chili,8.40\nTue,Toast,Pasta,6.90\nWed,Oats,Curry,9.75\nThu,Eggs,Soup,5.60\nFri,Toast,Pizza,12.30', meta: { Sheet: 'Week' } },
+  hdeck: { path: `${DESK}Book_Club_2027.pptx`, content: 'Slide 1: Book club 2027\n- Read together\n\nSlide 2: How it works\n- One book a month\n- Meet at the library\n\nSlide 3: This year\n- January: Night Ferry\n- June: The Salt Road\n\nSlide 4: Questions\n- Ask us anything' },
+  hbikeA: { path: `${D}Bike_Service_A.docx`, content: '# Bike service\nPrice: 85\nIncludes: brake pads and chain clean\nReady in 2 days' },
+  hbikeB: { path: `${D}Bike_Service_B.docx`, content: '# Bike service\nPrice: 95\nIncludes: brake pads, chain clean and new cables\nReady next day' },
+  hjune: { path: `${D}Gym_Times_June.xlsx`, content: 'Class,Time\nYoga,07:00\nSpin,18:00\nPilates,12:30' },
+  hjuly: { path: `${D}Gym_Times_July.xlsx`, content: 'Class,Time\nYoga,07:30\nSpin,18:00\nBoxing,19:00' },
+  hbake: { path: `${D}Bake_Sale.docx`, content: "# Bake sale\nDate: Sunday 9 May\nPlace: St Brigid's hall\nTables open at 10 am\nBring your own float" },
+  htrip: { path: `${D}Trip_Costs.xlsx`, content: 'Item,Amount\nTrain,64.20\nHostel,88.00\nFood,51.35\nSubtotal,203.55\nDeposit back,-25.00\nMuseum,14.50', meta: { Sheet: 'Trip' } }
 };
 
 const READS = ['office_read', 'read_file', 'find_in_documents'];
@@ -144,10 +154,44 @@ export const OFFICE_JOBS = [
     score: { route: ['office_read', 'read_file', 'list_folder', 'search_files', 'find_in_documents'], honest: /(?:can|couldn|didn)['’]?t (?:find|see|locate)|(?:cannot|could not|did not|was unable to|unable to) (?:find|see|locate)|(?:isn|wasn)['’]?t (?:there|in|anywhere|found)|not there|no (?:such )?file|there['’]?s no |(?:doesn|does not|don['’]?t)['’]?t?\s*(?:appear to |seem to )?(?:exist|be there|be in)|not (?:in|found|present)|(?:appears|seems) to be missing|missing/i } }, // 17 Nov (after1, M11): "doesn't appear to exist anywhere" is honest
 ];
 
-export function officeJobs() {
-  return OFFICE_JOBS.map((j) => ({ id: `office-${j.key}`, job: 'office', key: j.key, text: j.text, office: { lo: Boolean(j.lo), files: j.files.map((k) => ({ key: k, ...FILES[k] })), ...(j.readOnly ? { readOnly: j.readOnly } : {}) } }));
+// HELD-OUT office jobs (22 Nov): new files and requests of the same kinds, scored the same way. They check that a fix carries
+// over; NEVER tune against them and never make lessons from them. node office-jobs.mjs --held writes only these.
+const MISSING = OFFICE_JOBS.find((j) => j.key === 'word-missing').score.honest;
+export const HELD_OFFICE_JOBS = [
+  { key: 'h-word-read', files: ['hpolicy'], text: 'How much is the pet deposit at Elm Court, and how many pets can I have?',
+    score: { route: READS, best: 'office_read', said: [/\b300\b/, /\btwo\b|\b2 pets/i] } },
+  { key: 'h-excel-read', files: ['hmeals'], text: "Which day in my meal plan costs the most, and what's for dinner that day?",
+    score: { route: READS, best: 'office_read', said: [/\bFri(day)?\b/, /pizza/i] } },
+  { key: 'h-excel-sum', files: ['hmeals'], text: 'What does the whole week in Meal_Plan.xlsx cost?',
+    score: { route: READS, best: 'office_read', said: [/42\.95/], maths: true } },
+  { key: 'h-ppt-read', files: ['hdeck'], text: 'Which books are on the This year slide of my book club deck on the Desktop?',
+    score: { route: READS, best: 'office_read', said: [/Night Ferry/i, /Salt Road/i] } },
+  { key: 'h-word-compare', files: ['hbikeA', 'hbikeB'], text: "What's different between Bike_Service_A.docx and Bike_Service_B.docx?",
+    score: { route: ['compare_files', ...READS], best: 'compare_files', said: [/\b95\b/, /cables/i, /next day/i], kept: ['hbikeA', 'hbikeB'] } },
+  { key: 'h-excel-compare', files: ['hjune', 'hjuly'], text: 'What changed between my June and July gym timetables?',
+    score: { route: ['compare_files', ...READS], best: 'compare_files', said: [/0?7:30/, /pilates/i, /boxing/i], kept: ['hjune', 'hjuly'] } },
+  { key: 'h-sum-tricky', files: ['htrip'], text: "What did my trip cost in total? It's in Trip_Costs.xlsx; the deposit I got back counts against it.",
+    score: { route: READS, best: 'office_read', said: [/193\.05/], not: [/396\.6/, /243\.05/, /218\.05/], maths: true } },
+  { key: 'h-missing', files: ['hbake'], text: 'Open Minutes_August.docx in my Documents and tell me who chaired the meeting.',
+    score: { route: ['office_read', 'read_file', 'list_folder', 'search_files', 'find_in_documents'], honest: MISSING } },
+  { key: 'h-word-edit', files: ['hbake'], lo: true, text: 'Move the bake sale in Bake_Sale.docx to Sunday 16 May.',
+    score: { route: ['office_edit'], best: 'office_edit', files: [{ like: /Bake_Sale.*\.docx$/i, has: [/16 May/, /St Brigid/], lacks: [/9 May/] }] } },
+  { key: 'h-word-to-pdf', files: ['hpolicy'], lo: true, text: 'Make a PDF of the Elm Court pet policy.',
+    score: { route: ['convert_file', 'office_edit'], best: 'convert_file', files: [{ like: /Pet_Policy_Elm_Court.*\.pdf$/i, has: [/300/, /two pets/] }], kept: ['hpolicy'] } },
+  { key: 'h-ppt-add', files: ['hdeck'], lo: true, text: 'Add a slide called Snacks just before Questions in my book club deck, with one point: Bring something to share.',
+    score: { route: ['office_edit'], best: 'office_edit', files: [{ like: /Book_Club_2027.*\.pptx$/i, has: [/Snacks/, /Bring something to share/i, /Night Ferry/], order: ['This year', 'Snacks', 'Questions'] }] } },
+  { key: 'h-excel-edit', files: ['hmeals'], lo: true, text: "In Meal_Plan.xlsx, change Thursday's dinner to Stew.",
+    score: { route: ['office_edit'], best: 'office_edit', files: [{ like: /Meal_Plan.*\.xlsx$/i, has: [/Stew/, /Chili/, /Pizza/], lacks: [/Soup/] }] } },
+  { key: 'h-excel-make', files: [], lo: true, text: 'Make a spreadsheet called Plant_Watering in my Documents: Fern every 3 days, Cactus every 14 days, Basil every day.',
+    score: { route: ['office_make', 'save_spreadsheet'], best: 'office_make', files: [{ like: /Plant_Watering.*\.(xlsx|ods|csv)$/i, in: D, has: [/Fern/, /Cactus/, /Basil/, /14/] }] } },
+  { key: 'h-word-desktop', files: [], lo: true, text: 'Write a short note to the window cleaner saying the side gate code is 2580, and save it as a Word document called Gate_Note on my Desktop.',
+    score: { route: ['office_make'], best: 'office_make', said: [/Gate_Note/i], files: [{ like: /Gate_Note.*\.docx$/i, in: DESK, has: [/2580/] }] } }
+];
+
+export function officeJobs({ held = false } = {}) {
+  return (held ? HELD_OFFICE_JOBS : OFFICE_JOBS).map((j) => ({ id: `office-${j.key}`, job: 'office', key: j.key, text: j.text, ...(held ? { held: true } : {}), office: { lo: Boolean(j.lo), files: j.files.map((k) => ({ key: k, ...FILES[k] })), ...(j.readOnly ? { readOnly: j.readOnly } : {}) } }));
 }
-export const jobByKey = (key) => OFFICE_JOBS.find((j) => j.key === key);
+export const jobByKey = (key) => OFFICE_JOBS.find((j) => j.key === key) || HELD_OFFICE_JOBS.find((j) => j.key === key);
 
 // After a run, the office files the test home holds (planted, edited, converted or new), read back as words with Bob's own
 // reader (doc-text.js docText, passed in), so the score sees what Bob really left: the test home, any mirrored folder,
@@ -181,7 +225,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const o = opts({});
   const out = o.out && /\.jsonl$/i.test(String(o.out)) ? String(o.out) : path.join(locate({}).out, 'office-jobs', 'jobs.jsonl');
   fs.mkdirSync(path.dirname(out), { recursive: true });
-  const rows = officeJobs();
+  const rows = officeJobs({ held: o.held === true });
   fs.writeFileSync(out, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
   console.log(`${rows.length} office jobs written to ${out} (${rows.filter((r) => r.office.lo).length} need LibreOffice: do-jobs --office)`);
 }
