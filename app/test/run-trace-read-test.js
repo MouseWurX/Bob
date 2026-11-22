@@ -81,6 +81,8 @@ check('no held-out lesson is read', !seen.some((j) => JSON.stringify(j.messages)
   const w = pickRuns([['inbox', rf]], 10);
   check('runs: one target per kind, runs with no answer skipped', w.length === 2 && w.every((x) => x.target === 'job:inbox'));
   const m = runChat(JSON.parse(run('a')));
+  const mid = runChat({ messages: [{ role: 'system', content: 'You are Bob.' }, { role: 'user', content: 'tidy' }, { role: 'system', content: 'Check the maths.' }, { role: 'assistant', content: 'Done.' }] });
+  check('runs: only one system message, first (mid-chat notes folded as Bob folds them)', mid.filter((x) => x.role === 'system').length === 1 && mid[0].role === 'system' && mid.slice(1).every((x) => x.role !== 'system'), JSON.stringify(mid));
   check('runs: tool calls go in the server\'s shape, arguments as text', m[1].tool_calls[0].type === 'function' && m[1].tool_calls[0].function.arguments === '{"folder":"Inbox"}' && m[2].role === 'tool');
 }
 fs.rmSync(tmp, { recursive: true, force: true });

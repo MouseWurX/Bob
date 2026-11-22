@@ -27,6 +27,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { countRows, emptyScores, addTrace, keepLists } from './reap-pick.mjs';
+import { foldSystem } from '../src/system-notes.js';
 
 const isHoldout = (id) => parseInt(crypto.createHash('md5').update(String(id)).digest('hex').slice(0, 8), 16) / 0xFFFFFFFF < 0.05;
 const readJsonl = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean) : []);
@@ -67,7 +68,9 @@ export function runChat(row) {
     else if (m.role === 'tool') msgs.push({ role: 'tool', tool_call_id: m.tool_call_id || 'call_0', content: String(m.content || '') });
     else if (m.role === 'system' || m.role === 'user') msgs.push({ role: m.role, content: typeof m.content === 'string' ? m.content : String(m.content?.find?.((p) => p.type === 'text')?.text || '') });
   }
-  return msgs.some((m) => m.role === 'assistant') && msgs.some((m) => m.role === 'user') ? msgs : null;
+  // Bob's mid-chat system notes are folded as Bob folds them (system-notes.js), or the Qwen template refuses the replay
+  // (Flash-Next, 21 Nov: 500 "System message must be at the beginning" on every run).
+  return msgs.some((m) => m.role === 'assistant') && msgs.some((m) => m.role === 'user') ? foldSystem(msgs) : null;
 }
 export function pickRuns(runFiles, per) {
   const out = [];
