@@ -593,7 +593,7 @@ within 2% of R0. The 128K and 256K rows spill less than step 6144 did (a smaller
 ## Addendum 32 (Nov 17, before any run): our speed settings on GPT-OSS 120B
 
 The owner asked whether the settings that won on Qwen3.6 35B also work on GPT-OSS 120B (MXFP4, 63.4 GB). The brain is
-bigger than npc's 32 GB of RAM, so part of it is read from disk while writing. Plan `gptoss120b-settings.json`, Brain
+bigger than the test PC's 32 GB of RAM, so part of it is read from disk while writing. Plan `gptoss120b-settings.json`, Brain
 Engine 15, the 2K prompt of Addendum 17, 300 words written, 3 rounds, 6 rows, 18 loads. Disk reads are logged.
 
 - **B0:** the Nov 10 best, `-b 2048 -ub 2048 --n-cpu-moe 28` (17.4 writing, about 30 reading then, on plain llama.cpp).
