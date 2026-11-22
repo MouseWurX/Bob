@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { apuNeed, apuPlace, nextStep, lendRoom, computeBytes, apuHoldbackGB, apuKeepBytes, APU_DRIVER_BYTES, LEND_MIN_MB } from '../src/apu-fit.js';
 import { LlamaCpp, spreadArgs, SPREAD_FIT_TARGET_MIB } from '../src/llamacpp.js';
 import { apuRoom } from '../src/brain.js';
+import { memGrowCtx } from '../src/brain-lanes.js';
 import { engineFailKind } from '../src/retry.js';
 import { CardLender, CardBorrower, LEND_NO } from '../src/share-card.js';
 import { readJson } from '../src/engine-care.js';
@@ -49,6 +50,19 @@ r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(
 check(r.ok && r.shortened && r.ctx < 32768, 'tighter: the chat memory is shortened', JSON.stringify(r));
 r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 20 * GB, kvBytes: kvAt(c) })), 'big', 32768, { freeMem: 6.6 * GB });
 check(!r.ok && typeof r.line === 'string', 'a brain that fits no way is refused with the plain line', JSON.stringify(r));
+
+// ---------- Nov 22: a shortened chat memory grows as the chat does ----------
+{ const b = brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(c) }), { apuHoldbackGB: 2 });
+  const cut = { want: 32768, ctx: 8192 };
+  check(memGrowCtx(b, 'qwen3-4b', cut, 3000, { freeMem: 4.5 * GB }) === 0, 'a short chat in an 8K memory: no growing');
+  check(memGrowCtx(b, 'qwen3-4b', cut, 7000, { freeMem: 4.5 * GB }) === 16384, 'the chat passes three quarters of 8K and there is room: it grows to 16K');
+  check(memGrowCtx(b, 'qwen3-4b', cut, 20000, { freeMem: 6 * GB }) === 32768, 'a much longer chat with plenty free: straight to what was asked for (32K), never past it');
+  check(memGrowCtx(b, 'qwen3-4b', cut, 20000, { freeMem: 2.8 * GB }) === 16384, 'room for one step but not two: the biggest step that keeps Windows its share');
+  check(memGrowCtx(b, 'qwen3-4b', cut, 7000, { freeMem: 2.05 * GB }) === 0, 'no room past Windows\'s share: it stays, and the chat is fitted as before');
+  check(memGrowCtx(b, 'qwen3-4b', { want: 8192, ctx: 8192 }, 7000, { freeMem: 6 * GB }) === 0 && memGrowCtx(b, 'x', null, 7000) === 0, 'already at the size asked for, or never shortened: nothing to grow'); }
+{ const src = read('src/brain-asking.js');
+  check(/memCut \|\|= new Map\(\)\)\.set\(model/.test(src) && /cut\.want === fit && room\.ok && room\.needGB === undefined\) return cut\.ctx/.test(src), 'a brain loaded short stays short on the next reply (it never jumps back to the full size that ran out of memory)');
+  check(/memGrowCtx\(this, opts\.model, cut, tokens\)/.test(src) && src.indexOf('memGrowCtx(this') < src.indexOf('const fitted = fitContext(opts.messages'), 'the chat memory grows before the chat is trimmed to fit'); }
 
 // ---------- retries ----------
 check(engineFailKind(new Error('llama-server: Invalid input batch.')) === 'state' && engineFailKind(new Error('Compute error.')) === 'state', '"Invalid input batch" and "Compute error": the engine is started fresh');

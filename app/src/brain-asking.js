@@ -12,7 +12,7 @@ import { saveSettings } from './config.js';
 import { pickedCtx, GAMING_CTX } from './model-ctx.js';
 import { gaming } from './sessions.js';
 import { MORE_SECONDS, thinkStream, fitContext, TOO_LONG, APPROVAL_TIMEOUT_MS, UNCAUGHT_QUIET_MS } from './brain-words.js';
-import { apuRoom } from './brain-lanes.js';
+import { apuRoom, memGrowCtx } from './brain-lanes.js';
 
 // Methods of the Brain class, put on it in its main file with the same rules as the methods written inside it.
 export const askingParts = {
@@ -77,6 +77,14 @@ export const askingParts = {
     // Reliability 221: a brain that loaded with a smaller chat memory (memory was short) is fitted to what it really has.
     if (!opts.beside && opts.ctx) { const real = this.engine?.realCtx?.(opts.model, opts.ctx, opts.cpu); if (real && real !== opts.ctx) opts = { ...opts, ctx: real }; }
     const per = this.engine?.charsPerToken?.(opts.model) || 3; // item 3: the brain's own figure once known
+    // Nov 22 (the Conductor's memory job): a chat memory shortened so Windows keeps its share grows as the chat does
+    { const cut = !opts.beside && this.memCut?.get(opts.model);
+      if (cut && opts.ctx === cut.ctx) {
+        const tokens = opts.messages.reduce((a, m) => a + Math.ceil(String(m.content ?? '').length / per) + 8, 0) + (opts.tools ? Math.ceil(JSON.stringify(opts.tools).length / per) : 0);
+        const next = memGrowCtx(this, opts.model, cut, tokens);
+        if (next) { this.log('model', `${opts.model}: the chat grew, so its chat memory grows from ${cut.ctx} to ${next} (there's room, and Windows keeps its share)`); cut.ctx = next; if (next >= cut.want) this.memCut.delete(opts.model); opts = { ...opts, ctx: next }; }
+        else if (tokens > cut.ctx * 0.75 && cut.said !== cut.ctx) { cut.said = cut.ctx; this.log('model', `${opts.model}: the chat is long for its ${cut.ctx} chat memory, but there isn't room to grow it now, so older tool results are shortened`); }
+      } }
     const fitted = fitContext(opts.messages, opts.ctx, opts.tools, 0.75, per);
     if (fitted !== opts.messages) { this.log('chat', `shortened tool results so the chat fits in ${opts.model}'s memory (${opts.ctx} tokens)`); opts = { ...opts, messages: fitted }; }
     { const t = turnNow(); if (t) t.asks++; } // item 246: steps per job
@@ -340,7 +348,12 @@ export const askingParts = {
     // 0.3 GB for Windows): the chat memory is shortened to the biggest size that keeps Windows's share, and the brain
     // is still tried at that size. When even the shortest doesn't fit, the size picked is tried as before.
     const room = await apuRoom(this, model, fit);
-    if (room.ok && room.shortened && room.ctx < fit) { this.log('model', `${model}: ${room.ctx} chat memory instead of ${fit}, so Windows keeps its share (~${room.needGB} GB needed, ~${room.roomGB} GB free)`); return room.ctx; }
+    if (room.ok && room.shortened && room.ctx < fit) { (this.memCut ||= new Map()).set(model, { want: fit, ctx: room.ctx }); this.log('model', `${model}: ${room.ctx} chat memory instead of ${fit}, so Windows keeps its share (~${room.needGB} GB needed, ~${room.roomGB} GB free); it grows as the chat does, when there's room`); return room.ctx; }
+    // Nov 22: already loaded at a shortened size (apuRoom has nothing new to check): it stays there until the chat needs
+    // more (chatSafe grows it), instead of jumping back to the full size, which is what ran out of memory
+    const cut = this.memCut?.get(model);
+    if (cut && cut.want === fit && room.ok && room.needGB === undefined) return cut.ctx;
+    if (cut && room.needGB !== undefined) this.memCut.delete(model); // loading again and it all fits now
     if (!room.ok) this.log('model', `keeping ${model}'s ${fit} chat memory: the estimate says ~${room.needGB} GB against ~${room.roomGB} GB free; if it runs out, it loads again with less`);
     return fit;
   },
