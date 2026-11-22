@@ -102,10 +102,14 @@ int main() {
     std::vector<float> x32(x.size());
     ggml_get_type_traits(GGML_TYPE_Q8_0)->to_float(xq.data(), x32.data(), (int64_t) x.size());
 
-    for (ggml_type t : { GGML_TYPE_Q4_K, GGML_TYPE_Q5_K, GGML_TYPE_Q6_K, GGML_TYPE_Q3_K, GGML_TYPE_Q2_K }) {
+    // the iq types need an importance list to be made; all ones here (every value weighs the same)
+    std::vector<float> imat((size_t) n_embd, 1.0f);
+    for (ggml_type t : { GGML_TYPE_Q4_K, GGML_TYPE_Q5_K, GGML_TYPE_Q6_K, GGML_TYPE_Q3_K, GGML_TYPE_Q2_K,
+                         GGML_TYPE_IQ4_XS, GGML_TYPE_IQ3_S, GGML_TYPE_IQ3_XXS, GGML_TYPE_IQ2_S, GGML_TYPE_IQ2_XS,
+                         GGML_TYPE_IQ2_XXS, GGML_TYPE_IQ1_M, GGML_TYPE_IQ1_S }) {
         const char * tn = ggml_type_name(t);
         std::vector<uint8_t> wq(ggml_row_size(t, n_embd) * n_ff * n_exp);
-        ggml_quantize_chunk(t, wf.data(), wq.data(), 0, n_ff*n_exp, n_embd, nullptr);
+        ggml_quantize_chunk(t, wf.data(), wq.data(), 0, n_ff*n_exp, n_embd, imat.data());
         std::vector<float> wd(wf.size());
         ggml_get_type_traits(t)->to_float(wq.data(), wd.data(), (int64_t) wd.size());
 
