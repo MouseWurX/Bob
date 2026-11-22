@@ -67,6 +67,18 @@ posts.length = 0;
 const rp = await run({ run: 'rentplan', ...sets }, ['--rent-plan']);
 check('--rent-plan shows what each set would post and posts nothing', rp.code === 0 && /would post: \{"gpu":\{"id":"NVIDIA H200 NVL","count":2\}/.test(rp.o) && posts.length === 0, rp.o.slice(-400));
 
+// 22 Nov 2026 (DeepSeek try 1: 395 GB at 40 MB/s ate the 3 h cap, $24, no job ran): the retry plan asks for H200 sets only
+// (the owner: "dont run it on a slow card"), waits for stock, and the pod stops a download that projects past the limit.
+{
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const rd = (f) => fs.readFileSync(path.join(here, '..', 'model-lab', 'forge', f), 'utf8').replace(/\r\n/g, '\n');
+  const dp = JSON.parse(rd('plans/jobs-deepseek-tools.json'));
+  check('deepseek plan: H200 sets only', dp.card_sets.length > 0 && dp.card_sets.every((c) => c.gpus.every((g) => /H200/.test(g))));
+  check('deepseek plan: download limit and size set, caps 3 h / $28', dp.benchmark.download_max_minutes > 0 && dp.benchmark.models[0].download_gb > 0 && dp.hours_max === 3 && dp.dollars_max === 28);
+  const sh = rd('pod/run.sh');
+  check('run.sh: the split-GGUF download goes through dl_watched, which fails the run when too slow', /dl_watched\(\) \{/.test(sh) && /dl_watched \$W\/bench\/hf-\$BN "\$BGB" "\$BDM" hf download/.test(sh) && /die "download too slow/.test(sh));
+}
+
 srv.close();
 try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
 console.log(`\n${pass} passed, ${fail} failed`);

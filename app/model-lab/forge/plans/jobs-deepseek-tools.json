@@ -1,14 +1,13 @@
 {
  "run": "jobs-deepseek-tools",
- "note": "HELD: not to be rented until the owner double-clicks Rent-deepseek-tools.cmd. 22 Nov: after Flash-Next, the same test on DeepSeek-V4.1-Flash-1017 (unsloth UD-IQ3_XXS, 7 parts, 394.7 GB: 233.4 GB of experts and the rest in VRAM, the Q6_K Engram n-gram table (161.3 GB, part 7) kept off the cards: -ot per_layer_token_embd=CPU and --lazy-mode auto, so its rows are read from the mmapped file on demand). Not UD-Q4_K_XL: its Engram table is MXFP8, which llama.cpp b12233 and newer read as F8_E4M3 and give wrong output without an error (the repo's engram README). Bob at 3fff3cf + the npc fixes, no step, nudge, thinking or reply-size limits; --family deepseek (Bob's own tool wording, enable_thinking, DeepSeek's sampling 1.0/1.0). llama.cpp b12359 (DeepSeek V4.1 DSML tool calls parsed, common/chat.cpp) + all 14 engine patches. Same jobs, scorers, tool-fault count and expert-map phase as jobs-flashnext-tools. Cards, in order, any data centre: 2 x H200 NVL, 2 x H200, 3 x RTX PRO 6000 Blackwell Server Edition (plan.card_sets; each priced live from RunPod before renting, and left out if 2.5 h at its price passes the cap or its cards hold under 270 GB). Caps 3 h / $28 (22 Nov, the owner: \"Yes raise deepseeks cap\", so 2 x H200 fits as the second set). Live prices on 22 Nov: 2 x H200 NVL $7.58/h (about $19 for 2.5 h), 2 x H200 $10.58/h (about $26.45), 3 x RTX PRO 6000 $8.07/h (about $20).",
+ "note": "HELD: not to be rented until the owner double-clicks Rent-deepseek-tools.cmd. 22 Nov: after Flash-Next, the same test on DeepSeek-V4.1-Flash-1017 (unsloth UD-IQ3_XXS, 7 parts, 394.7 GB: 233.4 GB of experts and the rest in VRAM, the Q6_K Engram n-gram table (161.3 GB, part 7) kept off the cards: -ot per_layer_token_embd=CPU and --lazy-mode auto, so its rows are read from the mmapped file on demand). Not UD-Q4_K_XL: its Engram table is MXFP8, which llama.cpp b12233 and newer read as F8_E4M3 and give wrong output without an error (the repo's engram README). Bob at 3fff3cf + the npc fixes, no step, nudge, thinking or reply-size limits; --family deepseek (Bob's own tool wording, enable_thinking, DeepSeek's sampling 1.0/1.0). llama.cpp b12359 (DeepSeek V4.1 DSML tool calls parsed, common/chat.cpp) + all 14 engine patches. Same jobs, scorers, tool-fault count and expert-map phase as jobs-flashnext-tools. Cards, in order, any data centre: 2 x H200 NVL, 2 x H200, 3 x RTX PRO 6000 Blackwell Server Edition (plan.card_sets; each priced live from RunPod before renting, and left out if 2.5 h at its price passes the cap or its cards hold under 270 GB). Caps 3 h / $28 (22 Nov, the owner: \"Yes raise deepseeks cap\", so 2 x H200 fits as the second set). Live prices on 22 Nov: 2 x H200 NVL $7.58/h (about $19 for 2.5 h), 2 x H200 $10.58/h (about $26.45), 3 x RTX PRO 6000 $8.07/h (about $20). 22 Nov retry: try 1 (3 x RTX PRO 6000, the only set in stock) spent $24.21 and ran no job: the 395 GB download took 2 h 43 min at 40 MB/s. Now: H200 sets only (the owner: \"dont run it on a slow card\"); if neither is in stock the Forge keeps asking once a minute for up to 6 h (rent_minutes 360) and rents nothing otherwise; the download is watched from minute 8 and stopped, failing the run so the pod is deleted, once it projects past 45 min (benchmark.download_max_minutes; download_gb 395); HF_XET_HIGH_PERFORMANCE=1.",
  "benchmark_only": true,
  "teacher": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
  "counts": "expert-counts-2026-11-04T23-23-19.json",
  "lessons": "out/lessons",
  "gpus": [
   "NVIDIA H200 NVL",
-  "NVIDIA H200",
-  "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+  "NVIDIA H200"
  ],
  "step_up": [],
  "disk_gb": 480,
@@ -17,7 +16,7 @@
  "direct": true,
  "hours_max": 3,
  "dollars_max": 28,
- "rent_minutes": 45,
+ "rent_minutes": 360,
  "download_quants": [],
  "llama_tag": "b12359",
  "no_hands": true,
@@ -44,7 +43,8 @@
      "node repo-score.mjs --runs ../../bob-model-lab/out/dst-repominimus/runs.jsonl,../../bob-model-lab/out/dst-repomedius/runs.jsonl,../../bob-model-lab/out/dst-repothink/runs.jsonl --out ../../bob-model-lab/out/dst-repo-score",
      "node tool-faults.mjs --runs \"deepseek inbox minimus=../../bob-model-lab/out/dst-minimus/runs.jsonl,deepseek inbox medius=../../bob-model-lab/out/dst-medius/runs.jsonl,deepseek office=../../bob-model-lab/out/dst-office/runs.jsonl,deepseek repo minimus=../../bob-model-lab/out/dst-repominimus/runs.jsonl,deepseek repo medius=../../bob-model-lab/out/dst-repomedius/runs.jsonl,deepseek repo medius thinking every step=../../bob-model-lab/out/dst-repothink/runs.jsonl,qwen inbox minimus (after2)=../../../lab-kit-after2/bob-model-lab/out/after2-minimus/runs.jsonl,qwen inbox medius (after2)=../../../lab-kit-after2/bob-model-lab/out/after2-medius/runs.jsonl,qwen office (after2)=../../../lab-kit-after2/bob-model-lab/out/after2-office/runs.jsonl,qwen inbox minimus (steps40)=../../../lab-kit-steps/bob-model-lab/out/steps40-minimus/runs.jsonl,qwen inbox medius (steps40)=../../../lab-kit-steps/bob-model-lab/out/steps40-medius/runs.jsonl,qwen office (steps40)=../../../lab-kit-steps/bob-model-lab/out/steps40-office/runs.jsonl,qwen repo minimus (repo1)=../../../lab-kit-repojobs/bob-model-lab/out/repo1-minimus/runs.jsonl,qwen repo medius (repo1)=../../../lab-kit-repojobs/bob-model-lab/out/repo1-medius/runs.jsonl\" --out ../../bob-model-lab/out/dst-tool-faults",
      "node trace-read.mjs --url {{url}} --runs inbox=../../bob-model-lab/out/dst-medius/runs.jsonl,office=../../bob-model-lab/out/dst-office/runs.jsonl,repo=../../bob-model-lab/out/dst-repomedius/runs.jsonl --mass --parallel 1 --per 20 --out out/expert-map-deepseek"
-    ]
+    ],
+    "download_gb": 395
    }
   ],
   "brain_engine": {
@@ -66,13 +66,15 @@
     "0014-rpc-any-version"
    ],
    "note": "Brain Engine b12359 + all 14 of Bob's engine patches at 3fff3cf (expert trace with mass for the expert-map phase)"
-  }
+  },
+  "download_max_minutes": 45
  },
  "prep": [
   "HELD: the owner gives the go (double-click) before this is rented, and never while the owner's speed test runs on the PC.",
   "Run after jobs-flashnext-tools, so the two big brains line up: same jobs files, scorers and expert-map phase (out/expert-map-deepseek).",
   "Only the pod can prove: that llama-server b12359 + the 14 patches loads deepseek41 split over two cards with the Engram on the CPU, that -ctk/-ctv q8_0 with -fa on works for its compressed attention, and that the expert trace (patch 0002) reads this architecture. A failed load ends the run before any job (the serve-only check); a trace that maps nothing ends only the last phase.",
-  "The download is 394.7 GB (about 25 min at run 3's rate); start-up is about 45 min of the 3 h."
+  "The download is 394.7 GB (about 25 min at run 3's rate); start-up is about 45 min of the 3 h.",
+  "22 Nov retry: H200 sets only, wait up to 6 h for stock, download stopped early if it projects past 45 min (about $6 at most for a slow host)."
  ],
  "publish": {
   "user": "MouseWurX",
@@ -94,12 +96,6 @@
     "NVIDIA H200"
    ],
    "count": 2
-  },
-  {
-   "gpus": [
-    "NVIDIA RTX PRO 6000 Blackwell Server Edition"
-   ],
-   "count": 3
   }
  ],
  "vram_gb": 270,
