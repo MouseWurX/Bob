@@ -915,6 +915,21 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 96 (Nov 22, before any run): Gate 1 rerun on Brain Engine 32
+
+Brain Engine 32 adds 0052 (every bank laid out slot by slot, padded to whole blocks, fixing Brain Engine 31's
+garbled lent experts), 0053 (drive stand-ins, off) and 0054 (RAM floor, on only with the drive tier or drive
+stand-ins). Plans `gate1-borrow-e2e-64k-be32.json` and `gate1-borrow-speed-be32.json` repeat Addendum 93 on Brain
+Engine 32. The 64K job adds a third way, plain `-b 16384 -ub 8192` without borrowing: if borrowing reaches step 8192
+and its words match this way, a word change from borrowing is the bigger step, not a bug. A 2-minute word check
+(a short question and a short file summary, compared with Brain Engine 28) runs first; a failure stops the plan.
+Writing speed is compared only between loads with the same reply text (Addendum 95's finding: a different `-b` can
+cut the prompt's last batch differently and change the answer). Logged: the "reading step" line at each size.
+
+**Predictions, written before any run:** borrowing reaches step 8192 at 64K and words match the plain 8192 way; the 64K
+job is 5-10% shorter with borrowing than fixed at the same `-b`; at 128K borrowing may stay at step 4096 (too little
+card scratch, as on Brain Engine 31), so reading there is within 3% of fixed.
+
 ## Addendum 95 (Nov 22, before any run): where a long read's time goes, and borrowing's spare memory
 
 Reading Avalon's source (github freriadoc/Avalon, MIT; notes in the project's engine-speed folder) raised three

@@ -1,0 +1,89 @@
+{
+ "name": "Gate 1 for borrowed reading (patch 0048, Brain Engine 32 (0052, every bank padded to whole blocks)): the 64K conductor-e2e job (24K read + 5 follow-ups), fixed -b 16384 -ub 4096 on BE32 against BE32 with LLAMA_MOE_CACHE_BORROW=1 at -b 16384 -ub 4096, 4 GB copy cache, share 0, fit on target 512, q4_0, 5 rounds alternating, cool-down on, retry once; plus plain -ub 8192 without borrowing, to tell a bigger step from a borrow bug",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 96)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be32": {
+   "exe": "${BE32_SERVER}",
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  }
+ },
+ "text": "long-text.md",
+ "textRepeat": 2,
+ "system": "You are a helpful assistant. Answer plainly.",
+ "bigRead": 24576,
+ "followUps": 5,
+ "followTokens": 200,
+ "replyTokens": 300,
+ "rounds": 5,
+ "alternate": true,
+ "retryOnce": true,
+ "saveText": true,
+ "spillCheck": true,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "wordsRef": "be32-fixed-b16384",
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "-c",
+  "65536",
+  "--fit",
+  "on",
+  "--fit-target",
+  "512",
+  "--moe-cache-mib",
+  "4096",
+  "--moe-cache-cpu-share",
+  "0",
+  "-ctk",
+  "q4_0",
+  "-ctv",
+  "q4_0",
+  "-lv",
+  "4"
+ ],
+ "ways": [
+  {
+   "id": "be32-fixed-b16384",
+   "engine": "be32",
+   "args": [
+    "-b",
+    "16384",
+    "-ub",
+    "4096"
+   ]
+  },
+  {
+   "id": "be32-borrow",
+   "engine": "be32",
+   "args": [
+    "-b",
+    "16384",
+    "-ub",
+    "4096"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_BORROW": "1"
+   }
+  },
+  {
+   "id": "be32-plain-ub8192",
+   "engine": "be32",
+   "args": [
+    "-b",
+    "16384",
+    "-ub",
+    "8192"
+   ]
+  }
+ ]
+}
