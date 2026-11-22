@@ -1,0 +1,82 @@
+{
+ "name": "Borrowed reading's spare card memory on Brain Engine 32 (Addendum 95): the 128K conductor-e2e job (a 49,152-token read + 5 follow-ups), LLAMA_MOE_CACHE_BORROW=1 at -b 16384 -ub 4096, LLAMA_MOE_CACHE_BORROW_SPARE_MIB 512 (today) against 1024 (Avalon's NVIDIA floor), 4 GB cache, share 0, fit target 512, q4_0, 3 rounds alternating, round 3 with a normal desktop open, cool-down on, retry once",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 95)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be32": {
+   "exe": "${BE32_SERVER}",
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_BORROW": "1"
+   }
+  }
+ },
+ "text": "long-text.md",
+ "textRepeat": 4,
+ "system": "You are a helpful assistant. Answer plainly.",
+ "bigRead": 49152,
+ "followUps": 5,
+ "followTokens": 200,
+ "replyTokens": 300,
+ "rounds": 3,
+ "alternate": true,
+ "retryOnce": true,
+ "saveText": true,
+ "spillCheck": true,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "wordsRef": "spare-512",
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "-c",
+  "131072",
+  "--fit",
+  "on",
+  "--fit-target",
+  "512",
+  "--moe-cache-mib",
+  "4096",
+  "--moe-cache-cpu-share",
+  "0",
+  "-ctk",
+  "q4_0",
+  "-ctv",
+  "q4_0",
+  "-b",
+  "16384",
+  "-ub",
+  "4096",
+  "-lv",
+  "4"
+ ],
+ "ways": [
+  {
+   "id": "spare-512",
+   "engine": "be32",
+   "args": [],
+   "env": {
+    "LLAMA_MOE_CACHE_BORROW_SPARE_MIB": "512"
+   }
+  },
+  {
+   "id": "spare-1024",
+   "engine": "be32",
+   "args": [],
+   "env": {
+    "LLAMA_MOE_CACHE_BORROW_SPARE_MIB": "1024"
+   }
+  }
+ ],
+ "busy": {
+  "round": 3,
+  "cmd": "${BUSY_CMD}",
+  "settleS": 60
+ }
+}

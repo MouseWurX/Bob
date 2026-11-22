@@ -40,6 +40,11 @@ function fakeStream(times, timings) {
   check('the engine\'s own reading and writing speed', r.readTps === 1500 && r.writeTps === 40 && r.writtenN === 5);
   check('Turbo\'s kept guesses', r.draftN === 10 && r.keptPct === 70);
   check('the answer is fingerprinted, and handed on for a plan that keeps it (saveText)', r.textSha === sha256('w w w w w ') && r.text === 'w w w w w '); }
+{ const times = [100]; for (let k = 1; k <= 80; k++) times.push(times[k - 1] + (k <= 50 ? 30 : 20));
+  const { fetchImpl, now } = fakeStream(times, { predicted_per_second: 40 });
+  const r = await streamOnce('http://x', { prompt: 'hi' }, { fetchImpl, now });
+  const short = await streamOnce('http://x', { prompt: 'hi' }, fakeStream([100, 110, 120], {}));
+  check('the first 50 gaps against the rest (Addendum 95), only on a long answer', r.earlyGapMs === 30 && r.lateGapMs === 20 && short.earlyGapMs === undefined); }
 
 // plans
 fs.writeFileSync(path.join(tmp, 'short.txt'), 'Say hi.\r\n');

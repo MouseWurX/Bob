@@ -197,7 +197,10 @@ export async function streamOnce(url, body, { fetchImpl = fetch, now = () => per
     }
   }
   const gaps = arrivals.slice(1).map((t, k) => t - arrivals[k]);
+  // Nov 22 (Addendum 95): the first 50 gaps against the rest, so a cold copy cache right after a big read shows up
+  const early = gaps.length > 60 ? { earlyGapMs: r1(median(gaps.slice(0, 50))), lateGapMs: r1(median(gaps.slice(50))) } : {};
   return {
+    ...early,
     firstWordMs: arrivals.length ? r1(arrivals[0] - t0) : null,
     totalMs: r1(now() - t0),
     words: arrivals.length,
@@ -402,6 +405,8 @@ async function runRowOnce({ plan, prompts, row, round, fx }) {
       if (r?.failed && srv.exitCode?.()) { out.crashed = r.failed; break; } // a dead engine answers nothing more
     }
     out.cache = parseCacheLog(srv.log()); // with LLAMA_MOE_CACHE_LOG_EVERY set, the latest totals
+    // Nov 22 (Addendum 95): patch 0029's lines (GGML_SCHED_TIMING) and the borrowed step, kept as the engine wrote them
+    { const kept = srv.log().split('\n').filter((l) => /split timing|reading step/.test(l)); if (kept.length) out.splitTiming = kept; }
   } finally { await srv.stop(); }
   out.sysAfter = await fx.system?.();
   return out;
@@ -528,7 +533,7 @@ export function realFx(plan, outDir) {
       const child = nodeSpawn(exe, args, { env: { ...process.env, ...env }, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
       let said = '';
       const log = fs.createWriteStream(file);
-      const keep = lineSplitter((line) => { if (/MoE cache|ranked fill|llama_moe_cache:|CUDA_Host\s+compute buffer|brain kept loaded|brain loaded again|context \d+ -> \d+ tokens/.test(line)) said += line + '\n'; });
+      const keep = lineSplitter((line) => { if (/MoE cache|ranked fill|llama_moe_cache:|CUDA_Host\s+compute buffer|brain kept loaded|brain loaded again|context \d+ -> \d+ tokens|split timing|reading step/.test(line)) said += line + '\n'; });
       child.stderr.on('data', (d) => { log.write(d); keep(d); });
       const url = `http://127.0.0.1:${args[args.indexOf('--port') + 1]}`;
       return {

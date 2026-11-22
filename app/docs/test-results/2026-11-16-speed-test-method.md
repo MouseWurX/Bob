@@ -915,6 +915,31 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 95 (Nov 22, before any run): where a long read's time goes, and borrowing's spare memory
+
+Reading Avalon's source (github freriadoc/Avalon, MIT; notes in the project's engine-speed folder) raised three
+questions the Brain Engine 32 runs can answer before more borrowing work is built.
+
+1. **Copies or compute?** Plan `read-split-64k-be32.json` (`speed-test.mjs`): a 61,440-token read and 300 written
+   words with patch 0029's split timing on (`GGML_SCHED_TIMING=4`), at fixed `-b 16384 -ub 4096` (4 GB cache), fixed
+   `-b 8192 -ub 8192` (2,296 MiB cache, the size that fit on Brain Engine 29) and borrowing at `-b 16384 -ub 4096`
+   (4 GB cache). 2 rounds, cool-down on. The runner now keeps every "split timing" and "reading step" line in the
+   record (`splitTiming`). Reported per row: the reading graphs' card time, weights-copied time and their ratio, and
+   reading speed. Split timing waits for every piece, so these speeds are not compared with timed rows elsewhere.
+2. **How much spare?** Plan `borrow-spare-128k-be32.json` (`conductor-e2e.mjs`): the 128K job with borrowing on,
+   `LLAMA_MOE_CACHE_BORROW_SPARE_MIB` 512 (today's default) against 1024 (Avalon's floor on NVIDIA, where 400 ran out
+   of memory on a 4090), 3 rounds alternating, round 3 with a normal desktop open. Reported: the reading step borrowing
+   picked, job time, peak card memory, shared-memory rise, crashes, and the first differing word.
+3. **A cold cache after a big read?** No new plan: every `speed-test.mjs` run now records the median gap of the first
+   50 written words (`earlyGapMs`) and of the rest (`lateGapMs`). Calibrate's Brain Engine 32 Gate 1 rows give
+   borrow against fixed. A rewarm patch (the evicted experts copied back before the first written word) is scoped
+   only if borrowing's early gaps are clearly slower than fixed's.
+
+**Predictions, written before any run:** at `-ub 4096` the weights copied take 40-70% of each reading graph's time,
+and less per token at 8192, so a reading path that overlaps uploads with compute is worth building. Spare 1024 picks
+the same or one smaller step than 512 at 128K, with a job time within 3%, and it has no spill on the busy round,
+where 512 may. Borrowing's first 50 gaps are 5-20% slower than its later ones, and fixed's are within 3%.
+
 ## Addendum 94 (Nov 22, before any run): Flash-Next with a bigger copy cache and stand-ins
 
 The Brain Engine 29 Flash-Next logs showed a 52-54% hit rate while writing (4,091 MiB of copy cache for 73,450 MiB of
