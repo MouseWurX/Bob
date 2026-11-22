@@ -137,7 +137,7 @@ function cleanSlides(slides) {
 export function planMake(cfg, args) {
   const kind = String(args.kind || '').toLowerCase();
   if (!KIND_WORDS[kind]) throw new Error('kind must be writer (text document), calc (spreadsheet) or impress (presentation).');
-  let out = args.path ? full(args.path) : path.join(officeDir(cfg), `${String(args.name || KIND_WORDS[kind]).replace(/[^\w .-]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'document'}-${today(cfg)}.${DEFAULT_EXT[kind]}`);
+  let out = args.path ? full(args.path) : path.join(officeDir(cfg), `${String(args.name || KIND_WORDS[kind]).replace(/[^\w .-]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'document'}.${DEFAULT_EXT[kind]}`); // 22 Nov (Flash-Next office): no date added; freeName keeps it from overwriting
   if (!path.extname(out)) out += '.' + DEFAULT_EXT[kind];
   const ext = extOf(out);
   if (!DOC_KINDS[kind].out.includes(ext)) throw new Error(`A ${KIND_WORDS[kind]} can be saved as: ${DOC_KINDS[kind].out.join(', ')}.`);
@@ -282,10 +282,10 @@ export function officeTools(brain, { env = process.env } = {}) {
   };
 
   t.office_make = {
-    schema: fn('office_make', 'Make a new document, spreadsheet, presentation or PDF. No path = your Documents folder.', {
+    schema: fn('office_make', 'New document, spreadsheet, slides or PDF. No path = Bob\'s own folder; for {{USER}}\'s, a full path.', {
       kind: str('writer, calc or impress', { enum: ['writer', 'calc', 'impress'] }),
       path: str('Optional: full path ending in .docx, .odt, .xlsx, .ods, .pptx, .odp or .pdf. Never overwrites.'),
-      name: str('Optional, when there is no path: a short file name.'),
+      name: str('Optional, with no path: a short name.'),
       text: str('writer: simple Markdown: # headings, - bullets, | tables |, **bold**, ---page--- for a new page.'),
       sheets: { type: 'array', description: 'calc: the sheets.', items: { type: 'object', properties: { name: { type: 'string' }, rows: { type: 'array', description: 'Rows; the first is the header. A cell starting with = is a formula.', items: { type: 'array', items: {} } } } } },
       slides: { type: 'array', description: 'impress: the slides.', items: { type: 'object', properties: { title: { type: 'string' }, bullets: { type: 'array', items: { type: 'string' } }, notes: { type: 'string', description: 'Speaker notes.' } } } }

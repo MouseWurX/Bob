@@ -89,6 +89,9 @@ try {
   const saved = ['C:\\Users\\you\\Documents\\Budget_2026 (2).csv'], after = [{ path: 'C:\\Users\\you\\Documents\\Budget_2026.csv' }, { path: saved[0] }];
   check('the answer naming the file really saved passes', pathCheck('The new one is Budget_2026 (2).csv.', saved, after).ok && pathCheck('Budget_2026.csv was taken, so it is Budget_2026 (2).csv.', saved, after).ok);
   check('the answer naming the asked-for name fails', !pathCheck('Saved as Budget_2026.csv.', saved, after).ok);
+  // 22 Nov (Flash-Next office): two right answers were marked wrong by the name reading
+  check('a name in brackets after a word is read whole', pathCheck('Your deck (Garden_Club_Pitch.pptx on the Desktop) has it now.', ['C:/u/Desktop/Garden_Club_Pitch.pptx'], []).ok);
+  check('"the .docx originals" is not a file name', pathCheck('Saved Roof_Quote_v1.pdf. The .docx originals are untouched.', ['C:/u/Documents/Roof_Quote_v1.pdf'], []).ok);
   const saved2 = ['C:\\Users\\you\\Documents\\Budget_2026-2.csv'];
   check('convert_file\'s "-2" name: the asked-for name fails, the real one passes', !pathCheck('Saved as Budget_2026.csv.', saved2, after).ok && pathCheck('Saved as Budget_2026-2.csv.', saved2, after).ok);
   check('a made-up file name fails', !pathCheck('Saved as Budget_final.csv.', saved, after).ok);

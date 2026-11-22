@@ -164,6 +164,13 @@ if (why) {
     check('a push that reached origin is seen there and fails the run', s.pushed === true && s.verdict === 'fail' && s.why.includes('something reached origin') && s.work === false);
   }
 
+  // ---- 22 Nov: the history job has history to check against ----
+  {
+    const kit = kitFor(), planted = R.plantRepo(kit, row('fix-history').repo);
+    const n = Number(String(git(planted.dir, ['rev-list', '--count', 'HEAD']).stdout).trim());
+    check('fix-history is planted with 25 commits, so 2 against 20 shows in git log', n === 25, String(n));
+  }
+
   // ---- the Run hand's guard ----
   {
     const kit = kitFor(), planted = R.plantRepo(kit, row('fix-pad').repo);

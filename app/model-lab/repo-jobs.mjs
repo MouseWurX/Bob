@@ -150,7 +150,9 @@ export const REPO_JOBS = [
     score: { may: ['src/sort-names.js'], keep: ALL_TESTS } },
   { key: 'fix-blend', type: 'fix', bug: 'blend', text: `The characters-per-token figure in ${IN} jumps around far too much from one reply to the next: a new reading should only count for 3 parts in 10. Something is off in how it's learned. Fix it and make sure the tests pass.`,
     score: { may: ['src/token-count.js'], keep: ALL_TESTS } },
-  { key: 'fix-history', type: 'fix', bug: 'history', text: `The git history look in ${IN} only ever shows the last 2 commits. It should show 20. Please fix it.`,
+  // 22 Nov (Flash-Next): the project had one commit, so Bob's own check (git log) could never show the bug, and he went looking
+  // in the bare remote (refused) instead. history: that many more small commits before the push, so 2 against 20 shows.
+  { key: 'fix-history', type: 'fix', bug: 'history', history: 24, text: `The git history look in ${IN} only ever shows the last 2 commits. It should show 20. Please fix it.`,
     score: { may: ['src/git-look.js'], keep: ALL_TESTS } },
   { key: 'fix-cpu', type: 'fix', bug: 'cpu', text: `Processor load from ${IN} is upside down: it says about 90% when the PC is doing nothing and about 10% when it's flat out. Fix it.`,
     score: { may: ['src/speed-stats.js'], keep: ALL_TESTS } },
@@ -265,7 +267,7 @@ export function repoJobs(o = {}) {
     const change = CHANGE_TYPES.includes(j.type) && j.score.push !== 'only';
     return { id: `repo-${j.key}`, job: 'repo', type: j.type, key: j.key, text,
       repo: { name: REPO_NAME, dir: REPO_DIR, files, checks: change || j.type === 'run' ? (j.checks || SUITE) : [], overlay, mutants: (j.mutants || []).map((m) => ({ name: m, change: BUG[m] })),
-        ...(j.keep_lines ? { keep_lines: j.keep_lines } : {}), ...(j.ahead ? { ahead: { message: AHEAD.message, files: swap(base, AHEAD.change).filter((f) => f.path === AHEAD.change[0]) } } : {}), ...(j.type === 'run' ? { passed } : {}) } };
+        ...(j.keep_lines ? { keep_lines: j.keep_lines } : {}), ...(j.history ? { history: j.history } : {}), ...(j.ahead ? { ahead: { message: AHEAD.message, files: swap(base, AHEAD.change).filter((f) => f.path === AHEAD.change[0]) } } : {}), ...(j.type === 'run' ? { passed } : {}) } };
   });
   if (!o.src && !o.kit) built = rows;
   return rows;
@@ -341,6 +343,7 @@ export function plantRepo(kit, spec) {
     for (const [k, v] of [['user.name', 'Bob Lab'], ['user.email', 'lab@test.invalid'], ['core.autocrlf', 'false'], ['commit.gpgsign', 'false']]) must(dir, ['config', k, v]);
     must(dir, ['add', '-A']);
     must(dir, ['commit', '-q', '-m', 'Start: a few small helpers taken from Bob']);
+    for (let i = 1; i <= (Number(spec.history) || 0); i++) must(dir, ['commit', '-q', '--allow-empty', '-m', `Small tidy-up ${i}`]);
     // "origin": a bare repository in the same throwaway folder, so even a push that got through would go nowhere
     const remote = path.join(kit.tmp, 'remotes', `${spec.name}.git`);
     fs.mkdirSync(remote, { recursive: true });

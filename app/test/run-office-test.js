@@ -272,6 +272,11 @@ if (ff && process.platform !== 'win32') {
   const py = fs.readFileSync(new URL('../src/office-uno.py', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   check('office-uno read_calc counts the rows it showed and flags a sheet cut short', /sheet\['shown'\] = i \+ 1/.test(py) && /cut = any\(x\['shown'\] < x\['rows'\]/.test(py) && /or bool\(info\.get\('cut'\)\)/.test(py));
 }
+// 22 Nov (Flash-Next office): "a spreadsheet called Subscriptions" became Subscriptions-2026-11-21.xlsx; the name is kept as asked
+{
+  const m = planMake(cfg, { kind: 'calc', name: 'Subscriptions', sheets: [{ name: 'S', rows: [['a'], [1]] }] });
+  check('office_make keeps the name asked for, with no date', path.basename(m.job.out) === 'Subscriptions.xlsx', m.job.out);
+}
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

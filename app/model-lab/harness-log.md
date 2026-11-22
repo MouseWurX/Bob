@@ -312,3 +312,11 @@ The owner asked: "Why are the jobs failing? Can we mitigate? Are we causing the 
 - **Checked:** run-repo-jobs-test: all 33 jobs done right by code score a pass, a do-nothing brain fails 33/33. The self-test (now 15 checks) does one job right and one wrong (the test changed instead of the code) with a stand-in brain through Bob's real loop, and tries a push, a write outside the project, cmd and npm test.
 - **Not covered yet:** work_on_repo (the managed job on a code copy, with its own brain pick and long memory) is still not offered in the test Bob; these jobs use the plain tools on a project. Unproven in our lab, as we have yet to test it.
 - **Plan:** forge/plans/jobs-repo1.json, Minimus and Medius, 8 slots x 48K, caps 1 h / $1.50. HELD until the owner says go.
+
+## 22 Nov: Flash-Next harness faults fixed (each one a test)
+
+- **Office grader, 2 right jobs marked wrong:** "Your deck (Garden_Club_Pitch.pptx on the Desktop)" was read as a file called "deck (Garden_Club_Pitch.pptx", and "the .docx originals are untouched" as a file called ".docx". office-score pathCheck now splits at a bracket unless it is "(2)." and drops a bare kind. (run-office-jobs-test)
+- **office_make and save_spreadsheet:** the name asked for got a date added (Subscriptions-2026-11-21.xlsx), and office_make's wording said "No path = your Documents folder" while it saved in Bob's own folder. Both keep the name now (never overwriting), office_make says where it saves, and save_spreadsheet takes a folder inside Bob's allowed places. (run-office-test, run-saving-test)
+- **Repo job fix-history, decided by the test world twice:** the project had one commit, so git log could never show "2 instead of 20"; Bob went looking in the bare remote and was refused. It is planted with 25 commits now. (run-repo-jobs-test)
+- **npm test in the test world:** came with npc's fixes (runGuard runs the script's own node command). Windows-only commands (findstr, dir, cmd ren, powershell) stay refused there: 9 of the 14 refusals; Bob's own search_files and edit_file do the same jobs.
+- **DeepSeek try 1:** 395 GB at 40 MB/s ate the 3 h cap ($24.21, no job). The pod now stops a download that projects past plan.benchmark.download_max_minutes (dl_watched in run.sh); the retry plan asks for H200 sets only. (run-forge-card-sets-test)
