@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mergeSettings } from '../src/config.js';
-import { turboStandins, STANDIN_ENV } from '../src/engine-extras.js';
+import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV } from '../src/engine-extras.js';
 import { HELP } from '../public/help-content.js';
 
 let pass = 0, fail = 0;
@@ -20,6 +20,8 @@ check('the engine keys: rank stand-ins, at most 2 a layer', STANDIN_ENV.LLAMA_MO
   check('set only with the hot-experts cache, never for the helper beside', /args\.includes\('--moe-cache-mib'\) && turboStandins\(this\.cfg\) && this\.role !== BESIDE/.test(src));
   check('Engine tuning keys typed by hand come after, so they win', src.indexOf('...STANDIN_ENV') < src.indexOf('env = { ...env, ...this.tuneEnv }')); }
 check('the engine has the patch', fs.existsSync(path.join(here, '..', 'engine', 'patches', '0043-moe-standins.patch')));
+check('never wait on the drive: off in a fresh Bob, only with Turbo, and stand-ins win', !turboDriveStandins({}) && !turboDriveStandins({ turboDriveStandins: true }) && turboDriveStandins({ turbo: true, turboDriveStandins: true }) && !turboDriveStandins({ turbo: true, turboDriveStandins: true, turboStandins: true }) && DRIVE_STANDIN_ENV.LLAMA_MOE_STANDIN === 'drive');
+check('never wait on the drive: only true is kept, and the start line sets it with the cache only', mergeSettings({}, { turboDriveStandins: 1 }).turboDriveStandins === undefined && /args\.includes\('--moe-cache-mib'\) && turboDriveStandins\(this\.cfg\) && this\.role !== BESIDE/.test(read('src/llamacpp.js')) && /sswitch\('turboDriveStandins'/.test(read('public/cellar-engines.js')) && /dataset\.set === 'turboDriveStandins'/.test(read('public/cellar.js')));
 check('Settings has the switch under Turbo', /sswitch\('turboStandins'/.test(read('public/cellar-engines.js')) && /dataset\.set === 'turboStandins'/.test(read('public/cellar.js')));
 check('Settings Help names it, off', /Turbo: stand-ins/.test(HELP.find((h) => h.id === 'engine-extras')?.html || ''));
 check('the FAQ answers it and says where it works', /Android app/.test(HELP.find((h) => h.id === 'faq-standins' && h.group === 'FAQ')?.html || ''));

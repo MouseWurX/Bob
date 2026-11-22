@@ -166,6 +166,11 @@ export const turboExperts = (cfg) => cfg?.turbo === true && cfg?.turboExperts !=
 // copied over. Faster, and the words change (lossy), so it's a show-off switch only.
 export const turboStandins = (cfg) => cfg?.turbo === true && cfg?.turboStandins === true;
 export const STANDIN_ENV = { LLAMA_MOE_STANDIN: 'rank', LLAMA_MOE_STANDIN_MAX: '2' };
+// Nov 22 (Brain Engine 32, patch 0053): Turbo: never wait on the drive. Only an expert that has dropped out of RAM is
+// stood in for, by the next best on the card or in RAM, and read back in the background. Changes the words, so it
+// sits behind Turbo; Turbo: stand-ins wins when both are on.
+export const turboDriveStandins = (cfg) => cfg?.turbo === true && cfg?.turboDriveStandins === true && !turboStandins(cfg);
+export const DRIVE_STANDIN_ENV = { LLAMA_MOE_STANDIN: 'drive' };
 // The experts per word Turbo asks of a brain whose own count is `own`: 4 when it has more, else nothing.
 export const turboPerWord = (cfg, own) => (turboExperts(cfg) && Number(own) > TURBO_EXPERTS ? TURBO_EXPERTS : null);
 // Progressive Memory (Brain Engine patch 0039): the engine names LLAMA_KV_TIERS under -ctv in --help.
