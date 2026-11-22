@@ -339,10 +339,12 @@ export const askingParts = {
     if (!want) return null;
     const fit = max ? Math.min(pick && pick > max ? pick : max, want) : want;
     // 1.5.126: on built-in graphics, shorter still when the RAM says so (apuRoom above).
-    // Nov 12: not shortened from the estimate any more: the chat memory picked is tried, and only a real
-    // out-of-memory makes it shorter (apu-fit.js). The estimate stays in the logbook.
+    // Nov 12: the estimate never stops a load. Nov 22 (a friend's Legion Go, 3 GB set aside, 4.5 GB free: 32K left
+    // 0.3 GB for Windows): the chat memory is shortened to the biggest size that keeps Windows's share, and the brain
+    // is still tried at that size. When even the shortest doesn't fit, the size picked is tried as before.
     const room = await apuRoom(this, model, fit);
-    if (room.shortened || !room.ok) this.log('model', `keeping ${model}'s ${fit} chat memory: the estimate says ~${room.needGB} GB against ~${room.roomGB} GB free; if it runs out, it loads again with less`);
+    if (room.ok && room.shortened && room.ctx < fit) { this.log('model', `${model}: ${room.ctx} chat memory instead of ${fit}, so Windows keeps its share (~${room.needGB} GB needed, ~${room.roomGB} GB free)`); return room.ctx; }
+    if (!room.ok) this.log('model', `keeping ${model}'s ${fit} chat memory: the estimate says ~${room.needGB} GB against ~${room.roomGB} GB free; if it runs out, it loads again with less`);
     return fit;
   },
 };
