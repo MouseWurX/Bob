@@ -170,6 +170,8 @@ if (family && !['qwen', 'gpt-oss'].includes(family)) { console.error('--family i
 let stamp = { ...(teacherName ? { teacher: teacherName } : {}), ...(kind ? { kind } : {}), ...(family ? { family } : {}) };
 // 15 Nov: every lesson says which tool-shape version it was written for (tool-sets.js TOOL_SHAPES); the owner locks one per family
 if (kit.toolShapes !== null) stamp = { ...stamp, tool_shapes: kit.toolShapes };
+// 21 Nov: and the exact tool list's hash (switches included), so a lesson says which tools it saw, not only the counter
+{ const h = kit.toolHash?.(); if (h) stamp = { ...stamp, tool_hash: h }; }
 const SCI_ANGLES = ['physics: motion, energy, forces, heat, light, with a worked calculation', 'electronics: circuits, Ohm\'s law, resistors, capacitors, transistors, microcontrollers, power supplies', 'chemistry: reactions, moles, acids and bases, materials, safety', 'maths beyond arithmetic: algebra, geometry, trig, probability, a bit of calculus', 'checking a calculation or unit conversion the person already did', 'explaining a science concept in plain words to a curious adult', 'practical engineering: batteries, motors, 3D printing materials, soldering, sensors'];
 const thinkMode = String(o.think || 'half');
 // --think 80 (13 Nov): that percent of the lessons think, spread evenly (a style set: mostly thinking, a few without so both modes stay healthy)

@@ -109,7 +109,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     sets[k] ||= { system, tools, bob_src: row.bob_src || kit.bobSrc, family };
     const messages = lessonMessages(row);
     const first = messages.find((m) => m.role === 'assistant'); if (first) first.set = k;
-    lessons.push({ idea: `${label}:${row.id}`, job: row.job || '', source: 'do-jobs', kind: 'real-job', family, tool_shapes: row.tool_shapes ?? null, bob_src: row.bob_src || null, brain: row.brain || null,
+    lessons.push({ idea: `${label}:${row.id}`, job: row.job || '', source: 'do-jobs', kind: 'real-job', family, tool_shapes: row.tool_shapes ?? null, ...(row.tool_hash ? { tool_hash: row.tool_hash } : {}), bob_src: row.bob_src || null, brain: row.brain || null,
       think: messages.some((m) => m.role === 'assistant' && m.think === true), grade: { verdict: grade.verdict, ...(grade.note ? { note: grade.note } : {}) }, messages });
   }
   for (const kit of kits.values()) kit.done();

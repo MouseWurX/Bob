@@ -237,6 +237,7 @@
     "test/run-tool-wording-test.js",
     "test/run-tool-learn-test.js",
     "test/run-tool-sets-test.js",
+    "test/run-tool-shapes-lock-test.js",
     "test/run-email-safe-test.js",
     "test/run-tool-record-test.js",
     "test/run-loop-help-test.js",
