@@ -28,7 +28,7 @@ check('settings keep only known sizes (and null to clear)', JSON.stringify(clean
 check('settings refuse junk', JSON.stringify(cleanBrainCtx([1, 2])) === '{}' && JSON.stringify(cleanBrainCtx('x')) === '{}' && Object.keys(cleanBrainCtx({ ['x'.repeat(300)]: 32768 })).length === 0);
 check('Bob\'s pick: Qwen3.6 256K, others the 32K chat size', bobsPick('qwen3.6-35b-a3b') === 262144 && bobsPick('gemma4:26b') === 32768);
 check('the guideline says the limit and Bob\'s pick (settings text: Bob in the third person)', /Made for up to 256K\. Bob uses 256K/.test(ctxGuide(262144, 262144)) && /menu only goes up to 32K/.test(ctxGuide(null, 32768)) && !/\bI\b/.test(ctxGuide(262144, 262144)));
-check('the Gaming brain\'s guideline says it stays small while you play', /Gaming session.*32K while you play/.test(ctxGuide(262144, 32768, { gaming: true })));
+check('the Gaming brain\'s guideline explains the 32K default and says Bob still uses system RAM', /Gaming session.*defaults to 32K/.test(ctxGuide(262144, 32768, { gaming: true })) && /still uses system RAM/.test(ctxGuide(262144, 32768, { gaming: true })));
 
 // The GGUF header carries the most a model was made for (<arch>.context_length).
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-ctx-'));
