@@ -78,15 +78,19 @@ export function runChat(row) {
 // an inbox job (mail-score: graded, no verdict) counts as clean with no harm and at least 80% of what it should find or do
 const mailClean = (v) => Array.isArray(v.harm) && v.inbox !== undefined && !v.harm.length && (v.coverage ?? v.recall ?? -1) >= 80;
 export function passedIds(files) {
+  // 22 Nov (npc's read of the REAP plan): a score file holds several runs (fnt-repominimus, fnt-repomedius, ...) with the same
+  // job ids, so a job passed in one run was read from the runs where it failed too. Each pass is kept as "<run>:<id>" as
+  // well, under the run (top-level key) it was scored in; pickRuns uses those for a runs file in a folder of that name.
   const ids = new Set();
-  const walk = (v) => { if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === 'object') { if (v.id !== undefined && (v.verdict === 'pass' || v.pass === true || mailClean(v))) ids.add(String(v.id)); Object.values(v).forEach(walk); } };
-  for (const f of files) { try { walk(JSON.parse(fs.readFileSync(f, 'utf8'))); } catch {} }
+  const walk = (v, run) => { if (Array.isArray(v)) v.forEach((x) => walk(x, run)); else if (v && typeof v === 'object') { if (v.id !== undefined && (v.verdict === 'pass' || v.pass === true || mailClean(v))) { ids.add(String(v.id)); if (run) ids.add(`${run}:${v.id}`); } Object.values(v).forEach((x) => walk(x, run)); } };
+  for (const f of files) { try { const j = JSON.parse(fs.readFileSync(f, 'utf8')); if (j && typeof j === 'object' && !Array.isArray(j)) for (const [k, v] of Object.entries(j)) walk(v, k); else walk(j, ''); } catch {} }
   return ids;
 }
 export function pickRuns(runFiles, per, passed = null) {
   const out = [];
   for (const [name, file] of runFiles) {
-    const rows = readJsonl(file).filter((r) => !passed || passed.has(String(r.id))).map((r) => ({ r, messages: runChat(r) })).filter((x) => x.messages);
+    const run = path.basename(path.dirname(file)), scoped = passed && [...passed].some((k) => k.startsWith(`${run}:`));
+    const rows = readJsonl(file).filter((r) => !passed || passed.has(scoped ? `${run}:${r.id}` : String(r.id))).map((r) => ({ r, messages: runChat(r) })).filter((x) => x.messages);
     const n = Math.min(per, rows.length), stride = rows.length / Math.max(n, 1);
     for (let i = 0; i < n; i++) { const x = rows[Math.floor(i * stride)]; out.push({ target: `job:${name}`, messages: x.messages, lesson: { idea: x.r.id } }); }
   }

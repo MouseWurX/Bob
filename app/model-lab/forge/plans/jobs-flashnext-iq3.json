@@ -27,7 +27,7 @@
    {
     "name": "fn3-flashnext",
     "nickname": "Qwen3.8-Flash-Next UD-IQ3_XXS, Bob at 3fff3cf, no counts",
-    "file": "hf:unsloth/Qwen3.8-Flash-Next-GGUF:UD-IQ3_XXS/Qwen3.8-Flash-Next-UD-IQ3_XXS-00001-of-00003.gguf",
+    "file": "hf:unsloth/Qwen3.8-Flash-Next-GGUF:UD-IQ3_XXS/Qwen3.8-Flash-Next-UD-IQ3_XXS-00001-of-00004.gguf",
     "quant": "UD-IQ3_XXS",
     "slots": 15,
     "ctx": 737280,
@@ -43,7 +43,7 @@
      "node repo-score.mjs --runs ../../bob-model-lab/out/fn3-repominimus/runs.jsonl,../../bob-model-lab/out/fn3-repomedius/runs.jsonl,../../bob-model-lab/out/fn3-repothink/runs.jsonl --out ../../bob-model-lab/out/fn3-repo-score",
      "node tool-faults.mjs --runs \"flashnext iq3 inbox minimus=../../bob-model-lab/out/fn3-minimus/runs.jsonl,flashnext iq3 inbox medius=../../bob-model-lab/out/fn3-medius/runs.jsonl,flashnext iq3 office=../../bob-model-lab/out/fn3-office/runs.jsonl,flashnext iq3 repo minimus=../../bob-model-lab/out/fn3-repominimus/runs.jsonl,flashnext iq3 repo medius=../../bob-model-lab/out/fn3-repomedius/runs.jsonl,flashnext iq3 repo medius thinking every step=../../bob-model-lab/out/fn3-repothink/runs.jsonl,qwen inbox minimus (after2)=../../../lab-kit-after2/bob-model-lab/out/after2-minimus/runs.jsonl,qwen inbox medius (after2)=../../../lab-kit-after2/bob-model-lab/out/after2-medius/runs.jsonl,qwen office (after2)=../../../lab-kit-after2/bob-model-lab/out/after2-office/runs.jsonl,qwen inbox minimus (steps40)=../../../lab-kit-steps/bob-model-lab/out/steps40-minimus/runs.jsonl,qwen inbox medius (steps40)=../../../lab-kit-steps/bob-model-lab/out/steps40-medius/runs.jsonl,qwen office (steps40)=../../../lab-kit-steps/bob-model-lab/out/steps40-office/runs.jsonl,qwen repo minimus (repo1)=../../../lab-kit-repojobs/bob-model-lab/out/repo1-minimus/runs.jsonl,qwen repo medius (repo1)=../../../lab-kit-repojobs/bob-model-lab/out/repo1-medius/runs.jsonl\" --out ../../bob-model-lab/out/fn3-tool-faults"
     ],
-    "download_gb": 70
+    "download_gb": 84
    }
   ],
   "brain_engine": {

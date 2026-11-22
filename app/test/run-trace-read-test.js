@@ -119,11 +119,18 @@ fs.rmSync(tmp, { recursive: true, force: true });
   const sc = path.join(d, 'score.json');
   fs.writeFileSync(sc, JSON.stringify({ a: { scores: [{ id: 'r1', verdict: 'pass' }, { id: 'r2', verdict: 'fail' }] }, mail: [{ id: 'm1', inbox: 'x', harm: [], coverage: 90 }, { id: 'm2', inbox: 'x', harm: ['trashed'], coverage: 100 }, { id: 'm3', inbox: 'x', harm: [], recall: 50 }] }));
   const ids = T.passedIds([sc]);
-  check('passedIds: verdict pass and clean inbox runs only', ids.has('r1') && ids.has('m1') && !ids.has('r2') && !ids.has('m2') && !ids.has('m3') && ids.size === 2, [...ids].join(','));
+  check('passedIds: verdict pass and clean inbox runs only', ids.has('r1') && ids.has('m1') && !ids.has('r2') && !ids.has('m2') && !ids.has('m3') && [...ids].filter((k) => !k.includes(':')).length === 2 && ids.has('a:r1') && !ids.has('a:r2'), [...ids].join(','));
   const rf = path.join(d, 'runs.jsonl');
   const chat = (id) => JSON.stringify({ id, messages: [{ role: 'system', content: 's' }, { role: 'user', content: 'u' }, { role: 'assistant', content: 'a' }] });
   fs.writeFileSync(rf, [chat('r1'), chat('r2'), chat('m1')].join('\n'));
   check('pickRuns with passed reads only those runs', T.pickRuns([['repo', rf]], 10, ids).length === 2 && T.pickRuns([['repo', rf]], 10).length === 3);
+  // a job passed in one run (folder fnt-repominimus) but failed in another (fnt-repomedius) is read only from the first
+  const s2 = path.join(d, 'repo-score.json');
+  fs.writeFileSync(s2, JSON.stringify({ 'fnt-repominimus': { scores: [{ id: 'j1', verdict: 'pass' }, { id: 'j2', verdict: 'fail' }] }, 'fnt-repomedius': { scores: [{ id: 'j1', verdict: 'fail' }, { id: 'j2', verdict: 'pass' }] } }));
+  const both = T.passedIds([s2]);
+  for (const v of ['fnt-repominimus', 'fnt-repomedius']) { fs.mkdirSync(path.join(d, v)); fs.writeFileSync(path.join(d, v, 'runs.jsonl'), [chat('j1'), chat('j2')].join('\n')); }
+  const got = T.pickRuns([['repo', path.join(d, 'fnt-repominimus', 'runs.jsonl')], ['repo', path.join(d, 'fnt-repomedius', 'runs.jsonl')]], 10, both).map((w) => w.lesson.idea);
+  check('pickRuns reads each run\'s own passes, not a pass from another run of the same job', got.join(',') === 'j1,j2', got.join(','));
   fs.rmSync(d, { recursive: true, force: true });
 }
 console.log(`\n${pass} passed, ${fail} failed`);
