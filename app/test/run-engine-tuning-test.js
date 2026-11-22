@@ -17,7 +17,7 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-tuning-'));
 
 // ---------- The levers ----------
-check('fourteen levers, each a flag or an engine key with a range', TUNING_FIELDS.length === 14 && TUNING_FIELDS.every((f) => (f.flags || f.env) && f.min < f.max && f.label));
+check('fifteen levers, each a flag or an engine key with a range', TUNING_FIELDS.length === 15 && TUNING_FIELDS.every((f) => (f.flags || f.env) && f.min < f.max && f.label));
 check('levers: unknown keys, out of range, fractions where whole numbers go and blanks are dropped',
   JSON.stringify(cleanLevers({ step: 2048, cacheMB: 100, learn: 2.5, lookahead: '4', cpuShare: '', junk: 3, draftGate: true })) === JSON.stringify({ step: 2048, lookahead: 4 }));
 check('levers: not an object gives none', Object.keys(cleanLevers(null)).length === 0 && Object.keys(cleanLevers([1])).length === 0);
@@ -55,6 +55,7 @@ check('the new switches are off unless set, and only 0 or 1', JSON.stringify(cle
   check('the hot set is saved in Bob\'s own folder, per brain', r.env.LLAMA_MOE_CACHE_SAVE === savedHotFile(cfg, 'big') && savedHotFile(cfg, 'big').startsWith(path.join(tmp, 'hot-experts')) && !r.env.LLAMA_MOE_CACHE_RANKING);
   const again = tuningArgs(cfg, 'big', { exists: (f) => f === savedHotFile(cfg, 'big') });
   check('a saved hot set is loaded next time', again.env.LLAMA_MOE_CACHE_RANKING === savedHotFile(cfg, 'big'));
+  check('drive stand-ins set the stand-in way to drive', tuningArgs({ dataDir: tmp, ...hand({ driveStandin: 1 }) }, 'big').env.LLAMA_MOE_STANDIN === 'drive' && !('LLAMA_MOE_STANDIN' in tuningArgs({ dataDir: tmp, ...hand({ driveStandin: 0, step: 1024 }) }, 'big').env));
   check('0 saves nothing', !tuningArgs({ dataDir: tmp, ...hand({ hotSave: 0, step: 1024 }) }, 'big').env.LLAMA_MOE_CACHE_SAVE);
   check('the processor-only load gets none of them', !Object.keys(tuningArgs(cfg, 'big', { cpu: true }).env).length); }
 
@@ -76,10 +77,10 @@ const engineOf = (extra = {}, lc = {}) => { const e = new LlamaCpp({ agentDir: t
   check('Settings has the box with both choices and a clear button', /data-tunemode="\$\{v\}"/.test(t) && /radio\('bob'/.test(t) && /radio\('hand'/.test(t) && /data-tuneclear/.test(t)); }
 check('Settings Help names the box and its default', /Engine tuning/.test(HELP.find((h) => h.id === 'settings-speed')?.html || ''));
 check('the FAQ answers it', HELP.some((h) => h.id === 'faq-engine-tuning' && h.group === 'FAQ'));
-for (const [name, id] of [['Long reads borrow the cache', 'faq-moe-borrow'], ['Empty chat memory holds experts', 'faq-moe-borrow'], ['Read missed experts straight from the drive', 'faq-moe-drive'], ['Remember the busy experts', 'faq-moe-drive']]) {
+for (const [name, id] of [['Long reads borrow the cache', 'faq-moe-borrow'], ['Empty chat memory holds experts', 'faq-moe-borrow'], ['Read missed experts straight from the drive', 'faq-moe-drive'], ['Remember the busy experts', 'faq-moe-drive'], ['Experts on the drive: use the next best', 'faq-moe-drive-standin']]) {
   check(`Help names "${name}"`, (HELP.find((h) => h.id === 'settings-speed')?.html || '').includes(name));
   check(`the FAQ ${id} answers it`, HELP.some((h) => h.id === id && h.group === 'FAQ')); }
-check('the glossary has the shelf, the drive tier and the saved hot set', ['Borrowed reading', 'Expert shelf', 'Drive tier', 'Saved hot set'].every((w) => (HELP.find((h) => h.id === 'glossary')?.html || '').includes(`<dt>${w}`)));
+check('the glossary has the shelf, the drive tier and the saved hot set', ['Borrowed reading', 'Expert shelf', 'Drive tier', 'Saved hot set', 'Drive stand-in'].every((w) => (HELP.find((h) => h.id === 'glossary')?.html || '').includes(`<dt>${w}`)));
 check('the glossary explains it', /<dt>Engine tuning/.test(HELP.find((h) => h.id === 'glossary')?.html || ''));
 
 fs.rmSync(tmp, { recursive: true, force: true });

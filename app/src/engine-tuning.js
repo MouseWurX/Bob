@@ -25,6 +25,7 @@ export const TUNING_FIELDS = [
   { k: 'borrow', label: 'Long reads borrow the cache (1 = on)', env: 'LLAMA_MOE_CACHE_BORROW', min: 0, max: 1, int: true, hint: 'with a copy cache; Brain Engine 30 or newer' },
   { k: 'shelf', label: 'Empty chat memory holds experts (1 = on)', env: 'LLAMA_MOE_CACHE_TAIL', min: 0, max: 1, int: true, hint: 'with a copy cache; Brain Engine 30 or newer' },
   { k: 'drive', label: 'Read missed experts straight from the drive (1 = on)', env: 'LLAMA_MOE_DRIVE', min: 0, max: 1, int: true, hint: 'with a copy cache, for a brain bigger than RAM; Brain Engine 30 or newer' },
+  { k: 'driveStandin', label: 'Experts on the drive: use the next best (1 = on)', env: 'LLAMA_MOE_STANDIN', value: 'drive', min: 0, max: 1, int: true, hint: 'with a copy cache; changes the words; Brain Engine 32 or newer' },
   { k: 'hotSave', label: 'Remember the busy experts for next time (1 = on)', env: 'LLAMA_MOE_CACHE_SAVE', path: true, min: 0, max: 1, int: true, hint: 'with a copy cache; Brain Engine 30 or newer' }
 ];
 export const MODES = ['bob', 'hand', 'conductor'];
@@ -109,6 +110,9 @@ export function tuningArgs(cfg, model, { handArgs = [], cpu = false, exists = fs
         const file = savedHotFile(cfg, model);
         env[f.env] = file;
         if (exists(file)) env[RANKING_ENV] = file;
+      } else if (f.value) {
+        if (l[f.k] === 1) env[f.env] = f.value; // a switch that sets a word, not a number
+        else continue;
       } else env[f.env] = v;
     }
     said.push(`${f.label.replace(/ \(.*\)$/, '').toLowerCase()} ${v}`);
