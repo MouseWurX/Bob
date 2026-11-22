@@ -77,7 +77,15 @@ const BUG = {
   nothing: ['src/git-look.js', "what === 'status' ? 'Nothing changed since the last commit.'", "what === 'status' ? 'No commits yet.'"],
   used: ['src/speed-stats.js', 'const used = (promptTokens || 0) + (outTokens || 0);', 'const used = (promptTokens || 0) - (outTokens || 0);'],
   perFor: ['src/token-count.js', 'Number(table[model]) : DEFAULT_PER)', 'Number(table[model]) : MAX_PER)'],
-  chars: ['src/token-count.js', "n += String(m?.content ?? '').length;", 'n += 1;']
+  chars: ['src/token-count.js', "n += String(m?.content ?? '').length;", 'n += 1;'],
+  // 22 Nov: the held-out jobs' bugs (never tuned on)
+  colon: ['src/sort-names.js', ".replace(/:/g, ' - ')", ".replace(/:/g, '-')"],
+  cut: ['src/sort-names.js', 't.slice(0, 120)', 't.slice(0, 12)'],
+  toolcalls: ['src/token-count.js', 'if (m?.tool_calls) n += JSON.stringify(m.tool_calls).length;', 'if (m?.tool_calls) n += 0;'],
+  mintok: ['src/token-count.js', '!(Number(tokens) >= MIN_TOKENS)', '!(Number(tokens) > MIN_TOKENS * 10)'],
+  idle: ['src/speed-stats.js', 'a.all += t.user + t.nice + t.sys + t.idle + t.irq', 'a.all += t.user + t.nice + t.sys + t.irq'],
+  nudge: ['src/job-steps.js', 'if (done >= steps.length) return', 'if (done > steps.length) return'],
+  planCount: ['src/job-steps.js', 'This asks for ${steps.length} things', 'This asks for ${steps.length - 1} things']
 };
 
 // ---- the hidden checks (laid over a copy of what Bob left; he never sees them) ----
@@ -111,7 +119,13 @@ const HIDDEN = {
     ['the file is src/ask-steps.js and the front door reads it', "typeof a.askedSteps === 'function' && m.askedSteps === a.askedSteps && m.stepsNudge === a.stepsNudge"]]),
   outMax: key("import * as m from '../src/index.js';\nimport * as g from '../src/git-look.js';", [
     ['GIT_OUT_MAX is the name now, from the file and the front door', 'g.GIT_OUT_MAX === 12000 && m.GIT_OUT_MAX === 12000'],
-    ['the old name is gone', "!('MAX_GIT_OUT' in g) && !('MAX_GIT_OUT' in m)"]])
+    ['the old name is gone', "!('MAX_GIT_OUT' in g) && !('MAX_GIT_OUT' in m)"]]),
+  isSidecar: key("import * as m from '../src/sort-names.js';", [
+    ['isSidecar knows subtitle and info files, with or without the dot, any case', "m.isSidecar('.srt') === true && m.isSidecar('srt') === true && m.isSidecar('.NFO') === true"],
+    ['other file types are not sidecars', "m.isSidecar('.mp4') === false && m.isSidecar('') === false && m.isSidecar('.srtx') === false"]]),
+  firstComment: key("import * as m from '../src/index.js';\nimport * as c from '../src/code-map.js';", [
+    ['firstComment is the name now, from the file and the front door', "typeof c.firstComment === 'function' && m.firstComment === c.firstComment && c.firstComment('// Hi there.\\nx') === 'Hi there.'"],
+    ['the old name is gone', "!('purposeOf' in c) && !('purposeOf' in m)"]])
 };
 
 const SUITE = [['test/run.js']]; // the check every change job ends with: node test/run.js, exit code 0
@@ -205,7 +219,37 @@ export const REPO_JOBS = [
   { key: 'push-only', type: 'push', ahead: true, text: `My last commit in ${IN} isn't on GitHub yet. Push it for me: git push origin main.`,
     score: { may: ['*.patch', '**/*.patch'], push: 'only' } }
 ];
-export const jobByKey = (k) => REPO_JOBS.find((j) => j.key === k);
+// HELD-OUT repository jobs (22 Nov, the owner said yes to fresh jobs): the same project, other bugs and other asks of the
+// same kinds, scored the same way. They check that a fix carries over; NEVER tune against them and never make lessons
+// from them. node repo-jobs.mjs --held [--check] writes only these.
+export const HELD_REPO_JOBS = [
+  { key: 'h-find-photo', type: 'find', text: `In ${IN}, where is the list of photo file types kept? Name three of them.`,
+    score: { said: [/sort-names\.js/i, /\bPHOTO\b/, /\.?(?:jpe?g|png|heic|heif|webp|gif|tiff?|dng|cr2|nef|arw)\b/i] } },
+  { key: 'h-find-chars', type: 'find', text: `How much text does the code map in ${IN} show at most, and where is that set?`,
+    score: { said: [/code-map\.js/i, /14[,.\s]?000|14k\b/i, /MAP_CHARS/] } },
+  { key: 'h-explain-speed', type: 'explain', text: `Explain what src/speed-stats.js in ${IN} does, function by function.`,
+    score: { said: [/promptSplit/, /replyStats/, /cpuLoad/] } },
+  { key: 'h-fix-cut', type: 'fix', bug: 'cut', text: `Long file names made by ${IN} get chopped to 12 characters. They should only be cut at 120. Fix it and keep the tests passing.`,
+    score: { may: ['src/sort-names.js'], keep: ALL_TESTS } },
+  { key: 'h-fix-idle', type: 'fix', bug: 'idle', text: `Processor load in ${IN} reads far too low, often 0%, even when the PC is busy. Find out why and fix it.`,
+    score: { may: ['src/speed-stats.js'], keep: ALL_TESTS } },
+  { key: 'h-out-tools', type: 'output', bug: 'toolcalls', output: true, text: `node test/run.js in ${IN} printed this:\n\nOUTPUT\n\nWhat's wrong? Fix the code.`,
+    score: { may: ['src/token-count.js'], keep: ALL_TESTS } },
+  { key: 'h-out-nudge', type: 'output', bug: 'nudge', output: true, text: `A check fails in ${IN}:\n\nOUTPUT\n\nPlease fix the code so it passes.`,
+    score: { may: ['src/job-steps.js'], keep: ALL_TESTS } },
+  { key: 'h-test-steps', type: 'test', drop: ['test/job-steps.test.js'], mutants: ['nudge', 'declined', 'planCount'], text: `src/job-steps.js in ${IN} has no tests. Add test/job-steps.test.js in the same style as the other test files, covering askedSteps, planLine, stepsDone and stepsNudge, and make sure node test/run.js passes.`,
+    score: { may: ['test/job-steps.test.js'], keep: ['src/**', 'test/check.js', 'test/run.js'], has: [['test/job-steps.test.js', /stepsNudge/], ['test/job-steps.test.js', /stepsDone/]] } },
+  { key: 'h-feat-sidecar', type: 'feature', hidden: 'isSidecar', text: `Add an exported function isSidecar(ext) to src/sort-names.js in ${IN}: true when the file type is one of SIDECARS (like .srt or .nfo), with or without the dot and in any case, and false otherwise. Add a check for it to test/sort-names.test.js.`,
+    score: { may: ['src/sort-names.js', 'test/sort-names.test.js', 'src/index.js', 'README.md'], has: [['test/sort-names.test.js', /isSidecar/]] } },
+  { key: 'h-ren-purpose', type: 'rename', hidden: 'firstComment', orig: [], text: `Rename the function purposeOf to firstComment everywhere in ${IN}: the file it's in, the front door and the tests. Nothing else should change, and the tests must still pass.`,
+    score: { may: ['src/code-map.js', 'src/index.js', 'test/code-map.test.js', 'README.md'], gone: [/\bpurposeOf\b/], has: [['src/code-map.js', /export function firstComment\b/]] } },
+  { key: 'h-keep-colon', type: 'keep', bug: 'colon', text: `In ${IN}, a film called "Alien: Covenant" gets the file name "Alien-Covenant"; it should be "Alien - Covenant". Fix it in src/sort-names.js only: don't touch the tests or any other file.`,
+    score: { may: ['src/sort-names.js'], keep: ['**'] } },
+  { key: 'h-push-fix', type: 'push', bug: 'mintok', text: `The characters-per-token figure in ${IN} never learns anything from ordinary replies. Fix it, run the tests, commit it and push it to origin.`,
+    score: { may: ['src/token-count.js', '*.patch', '**/*.patch'], keep: ALL_TESTS, push: 'also' } }
+];
+const ALL_REPO_JOBS = [...REPO_JOBS, ...HELD_REPO_JOBS];
+export const jobByKey = (k) => ALL_REPO_JOBS.find((j) => j.key === k);
 export const CHANGE_TYPES = ['fix', 'output', 'test', 'feature', 'rename', 'keep', 'push'];
 
 // ---- node, boxed in: it may read anything and write only inside one folder; it can start no other program ----
@@ -247,12 +291,12 @@ const origName = (t) => t.replace(/^test\//, 'test/zz-orig-');
 let built = null;
 // The jobs file's rows: { id, job: 'repo', type, key, text, repo: { name, dir, files, checks, overlay, mutants, ... } }.
 export function repoJobs(o = {}) {
-  if (built && !o.src && !o.kit) return built;
+  if (built && !o.src && !o.kit && !o.held) return built;
   const base = baseFiles(o);
   const plain = testOutput(base);
   if (plain.code !== 0) throw new Error(`the plain project's own tests do not pass${plain.error ? ` (${plain.error})` : ''}:\n${plain.out.slice(-800)}`);
   const passed = Number(plain.out.match(/(\d+) passed, 0 failed/)?.[1] || 0);
-  const rows = REPO_JOBS.map((j) => {
+  const rows = (o.held ? HELD_REPO_JOBS : REPO_JOBS).map((j) => {
     let files = base.filter((f) => !(j.drop || []).includes(f.path));
     if (j.bug) files = swap(files, BUG[j.bug]);
     let text = j.text;
@@ -265,11 +309,11 @@ export function repoJobs(o = {}) {
     const orig = (j.orig || (['fix', 'output', 'feature', 'keep', 'push'].includes(j.type) ? TESTS : [])).filter((t) => !(j.drop || []).includes(t));
     const overlay = [...orig.map((t) => ({ path: origName(t), content: base.find((f) => f.path === t).content })), ...(j.hidden ? [{ path: 'test/zz-key.test.js', content: HIDDEN[j.hidden] }] : [])];
     const change = CHANGE_TYPES.includes(j.type) && j.score.push !== 'only';
-    return { id: `repo-${j.key}`, job: 'repo', type: j.type, key: j.key, text,
+    return { id: `repo-${j.key}`, job: 'repo', type: j.type, key: j.key, text, ...(o.held ? { held: true } : {}),
       repo: { name: REPO_NAME, dir: REPO_DIR, files, checks: change || j.type === 'run' ? (j.checks || SUITE) : [], overlay, mutants: (j.mutants || []).map((m) => ({ name: m, change: BUG[m] })),
         ...(j.keep_lines ? { keep_lines: j.keep_lines } : {}), ...(j.history ? { history: j.history } : {}), ...(j.ahead ? { ahead: { message: AHEAD.message, files: swap(base, AHEAD.change).filter((f) => f.path === AHEAD.change[0]) } } : {}), ...(j.type === 'run' ? { passed } : {}) } };
   });
-  if (!o.src && !o.kit) built = rows;
+  if (!o.src && !o.kit && !o.held) built = rows;
   return rows;
 }
 // The score rules of a job, with what only the built project knows filled in (how many checks pass).
@@ -515,7 +559,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const { opts, locate } = await import('./common.mjs');
   const o = opts({});
   const out = o.out && /\.jsonl$/i.test(String(o.out)) ? String(o.out) : path.join(locate({}).out, 'repo-jobs', 'jobs.jsonl');
-  const rows = repoJobs();
+  const rows = repoJobs({ held: o.held === true });
   if (o.check) { const bad = checkJobs(rows); for (const b of bad) console.log(`NOT SOUND: ${b}`); if (bad.length) process.exit(1); console.log(`every job is sound (${rows.length} checked)`); }
   fs.mkdirSync(path.dirname(out), { recursive: true });
   fs.writeFileSync(out, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');

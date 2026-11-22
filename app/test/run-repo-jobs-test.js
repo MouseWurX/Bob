@@ -49,6 +49,11 @@ if (why) {
   check('every job is sound: the plain project passes, each planted bug fails, each hidden check fails before the work', bad.length === 0, bad.join(' | '));
   check('a pasted test output is the real one, with the folder as the brain sees it', /FAIL a reserved Windows name/.test(row('out-reserved').text) && /TypeError: messages\.items is not iterable\n\s+at promptChars \(file:\/\/\/C:\/Users\/you\/Projects\/bob-tools\/src\/token-count\.js:\d+/.test(row('out-throw').text) && !rows.some((r) => r.text.includes(os.tmpdir())));
   check('the hidden checks and the planted bugs for his tests are in the row, never in the project', row('feat-hastoken').repo.overlay.some((f) => f.path === 'test/zz-key.test.js') && !row('feat-hastoken').repo.files.some((f) => /zz-/.test(f.path)) && row('test-speed').repo.mutants.length === 3 && !row('test-speed').repo.files.some((f) => f.path === 'test/speed-stats.test.js'));
+  // 22 Nov: the held-out set (never tuned on): same kinds, other bugs and asks, every one sound, no key shared
+  const held = R.repoJobs({ held: true });
+  const hbad = R.checkJobs(held);
+  check('the held-out repository jobs are their own set, all sound, every kind covered', held.length === R.HELD_REPO_JOBS.length && held.length >= 12 && held.every((r) => r.held === true && /^h-/.test(r.key) && !REPO_JOBS.some((j) => j.key === r.key)) && ['find', 'explain', ...CHANGE_TYPES].every((t) => held.some((r) => r.type === t)) && hbad.length === 0, hbad.join(' | '));
+  check('the held-out jobs plant bugs the first set never uses', R.HELD_REPO_JOBS.filter((j) => j.bug).every((j) => !REPO_JOBS.some((k) => k.bug === j.bug)) && R.jobByKey('h-fix-idle')?.bug === 'idle' && R.repoJobs().length === REPO_JOBS.length);
   check('the run-the-tests job knows how many checks pass', row('run-tests').repo.passed >= 60 && R.scoreOf(row('run-tests')).score.said[0].test(`All ${row('run-tests').repo.passed} checks pass`));
 
   // ---- a throwaway home, as do-jobs gives a job ----
