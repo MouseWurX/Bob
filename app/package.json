@@ -69,6 +69,7 @@
     "test/run-mail-world-test.js",
     "test/run-office-jobs-test.js",
     "test/run-repo-jobs-test.js",
+    "test/run-web-jobs-test.js",
     "test/run-mail-catalog-test.js",
     "test/run-step-thinking-test.js",
     "test/run-solo-effort-test.js",

@@ -724,12 +724,15 @@ export function buildTools(cfg) {
     summary: ({ topic }) => `Help: ${topic || 'settings'}`
   };
 
+  const webGet = (url, opts, signal) => (typeof cfg.webGet === 'function' ? cfg.webGet(url, opts, signal) : fetchRetry(url, opts, signal));
   t.web_search = {
     schema: fn('web_search', 'Search the web. Returns titles, links and snippets. Operators work: "exact phrase", -word, site:, filetype:, intitle:, OR.', { query: str('Search words.'), when: str('Optional: only the past day, week, month or year.', { enum: ['day', 'week', 'month', 'year'] }) }, ['query']),
     // Item 20: a look-up that hangs stops on its own after WEB_TIMEOUT_MS. Item 21: when DuckDuckGo's plain page gives
     // nothing, Mojeek is asked instead. Nov 16 (web-search.js): a robot-check page is named as one, and the backup
     // search with a key (off unless turned on) stands in. The answer always says who answered.
-    async run({ query, when }, { signal }) { return webSearch({ query, when }, { cfg, signal, get: (url, opts) => fetchRetry(url, opts, signal) }); },
+    // 22 Nov: cfg.webGet (a function, set only by the Lab's test world for a web job, never read from settings) answers
+    // instead of the internet, so a held-out web job gets the same made-up pages every run (model-lab/web-jobs.mjs)
+    async run({ query, when }, { signal }) { return webSearch({ query, when }, { cfg, signal, get: (url, opts) => webGet(url, opts, signal) }); },
     summary: ({ query, when }) => `search: ${query}${when ? ` (past ${when})` : ''}`
   };
 
@@ -758,7 +761,7 @@ export function buildTools(cfg) {
       for (let hop = 0; ; hop++) {
         if (!/^https?:$/.test(u.protocol)) throw new Error('Only http and https links.');
         if (isPrivateHost(u.hostname)) throw new Error('I don\'t open addresses on the home network.');
-        res = await fetchRetry(u, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' }, redirect: 'manual' }, signal);
+        res = await webGet(u, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bob/0.1' }, redirect: 'manual' }, signal);
         const next = res.status >= 300 && res.status < 400 && res.headers.get('location');
         if (!next) break;
         if (hop >= 5) throw new Error('That link redirects too many times.');

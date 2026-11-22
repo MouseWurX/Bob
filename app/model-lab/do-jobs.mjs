@@ -77,6 +77,7 @@ import { fitMail, sortCardAnswer, mailCardAnswer } from './mail-world.mjs';
 import { officeAfter } from './office-jobs.mjs';
 import { buildBytes } from './office-files.mjs';
 import { plantRepo, repoAfter, runGuard, repoReady, gitEnv } from './repo-jobs.mjs';
+import { worldGet } from './web-jobs.mjs';
 
 // What a run's record keeps of a tool reply: all of it up to 40,000 characters, then a plain cut mark.
 export const recordText = (t, max = 40000) => { const s = String(t ?? ''); return s.length > max ? `${s.slice(0, max)}\n[record cut here: the brain saw ${s.length} characters]` : s; };
@@ -116,7 +117,7 @@ if (o.never && !neverFiles.length) fail(`--never ${o.never} holds no .jsonl file
 for (const f of neverFiles) {
   for (const r of readJsonl(f)) for (const t of [r.text, r.question, r.prompt, r.ask, (r.messages || []).find((m) => m.role === 'user')?.content]) if (typeof t === 'string' && t.trim()) never.add(norm(t));
 }
-let jobs = files.flatMap((f) => readJsonl(f)).filter((j) => j && typeof j.text === 'string' && j.text.trim()).map((j, i) => ({ id: String(j.id || `job-${i}`), job: j.job || '', text: j.text, setup: Array.isArray(j.setup) ? j.setup : [], ...(j.from && typeof j.from === 'object' ? { from: j.from } : {}), ...(j.mail && typeof j.mail === 'object' ? { mail: j.mail, key: String(j.key || '') } : {}), ...(j.office && typeof j.office === 'object' ? { office: j.office, key: String(j.key || '') } : {}), ...(j.repo && typeof j.repo === 'object' ? { repo: j.repo, key: String(j.key || ''), type: String(j.type || '') } : {}) }));
+let jobs = files.flatMap((f) => readJsonl(f)).filter((j) => j && typeof j.text === 'string' && j.text.trim()).map((j, i) => ({ id: String(j.id || `job-${i}`), job: j.job || '', text: j.text, setup: Array.isArray(j.setup) ? j.setup : [], ...(j.from && typeof j.from === 'object' ? { from: j.from } : {}), ...(j.mail && typeof j.mail === 'object' ? { mail: j.mail, key: String(j.key || '') } : {}), ...(j.office && typeof j.office === 'object' ? { office: j.office, key: String(j.key || '') } : {}), ...(j.repo && typeof j.repo === 'object' ? { repo: j.repo, key: String(j.key || ''), type: String(j.type || '') } : {}), ...(j.web && typeof j.web === 'object' && Array.isArray(j.web.pages) ? { web: j.web, key: String(j.key || ''), type: String(j.type || '') } : {}) }));
 const held = jobs.filter((j) => never.has(norm(j.text)));
 jobs = jobs.filter((j) => !never.has(norm(j.text)));
 const seen = new Set(); jobs = jobs.filter((j) => (seen.has(j.id) ? false : seen.add(j.id)));
@@ -341,6 +342,7 @@ async function sceneChat(messages) {
 async function sceneFor(j) {
   if (j.mail) return { scene: null, problems: [], made: 'none' }; // an inbox job's world is its mailbox (mail-world.mjs)
   if (j.office) return { scene: null, problems: [], made: 'none' }; // an office job brings its own files (office-jobs.mjs)
+  if (j.web) return { scene: null, problems: [], made: 'none' }; // a web job's world is its made-up web (web-jobs.mjs)
   const had = scenes.get(j.id, j.text);
   // 16 Nov (800-job read): a scene whose reply couldn't be read was saved and then reused as an empty home every time;
   // with --scene make it is written again instead
@@ -402,6 +404,10 @@ async function runJob(j) {
   const kit = asFamily(await loadBob(L.bob, j.repo ? repoKitOpts : kitOpts));
   const tavilyUsed = keyedSearch(kit);
   const brain = kit.brain;
+  // 22 Nov: a web job (web-jobs.mjs, held-out) gets its own made-up web: Bob's own web_search and fetch_page ask the
+  // test world (cfg.webGet) instead of the internet, so no search is spent, no key is used and the pages never change
+  const ww = j.web ? worldGet(j.web, { today }) : null;
+  if (ww) { delete kit.cfg.searchBackup; kit.cfg.webGet = ww.get; }
   for (const n of NOT_HERE) if (!(j.repo && n === 'run_command')) delete brain.tools[n];
   // 16 Nov (MouseWurX: tests "to make sure bob can manage an email inbox"): an inbox job gets Bob's own read_email and
   // manage_email, his account set up on a made-up mailbox (mail-world.mjs) that answers nothing else, so nothing can be sent
@@ -486,15 +492,16 @@ async function runJob(j) {
     if (gd?.refuse) call.guard = kit.neutral(gd.refuse); else if (gd?.ranAs) call.ran_as = gd.ranAs;
     const { args: a, bad } = kit.sandboxArgs(gd?.args || args);
     let res;
-    const hit = name === 'web_search' && !bad ? cacheGet(cacheKey(a)) : null;
+    const live = name === 'web_search' && !bad && !ww;
+    const hit = live ? cacheGet(cacheKey(a)) : null;
     if (hit) { cacheHits++; call.cached = true; }
-    else if (name === 'web_search' && !bad) { await searchTurn(); webSearches++; }
+    else if (live) { await searchTurn(); webSearches++; }
     try {
       res = gd?.refuse ? { text: `Error: ${kit.neutral(gd.refuse)}` } : hit ? { text: hit } : bad ? { text: `Error: ${kit.neutral(bad)} is outside the folders Bob may use here` }
         : await Promise.race([bobRunTool(name, a, ctx), wait(120000).then(() => ({ text: `Error: ${name} took too long` }))]);
     } catch (e) { if (ctx?.signal?.aborted) throw e; res = { text: `Error: ${String(e?.message || e)}` }; }
     const t = typeof res === 'string' ? res : typeof res?.text === 'string' ? res.text : JSON.stringify(res ?? '');
-    if (name === 'web_search' && !bad && !hit) { cachePut(cacheKey(a), t); counted(tavilyUsed()); noResultsInRow = BLOCKED.test(t) ? noResultsInRow + 1 : 0; if (noResultsInRow >= 5 && String(o['search-stop'] ?? 'on').toLowerCase() !== 'off') searchStop = true; }
+    if (live && !hit) { cachePut(cacheKey(a), t); counted(tavilyUsed()); noResultsInRow = BLOCKED.test(t) ? noResultsInRow + 1 : 0; if (noResultsInRow >= 5 && String(o['search-stop'] ?? 'on').toLowerCase() !== 'off') searchStop = true; }
     if (name === 'make_diagram' && /^Drawing: /.test(t)) { call.drawn = standInWindow(kit, kit.neutral(t)) || 'nothing drawn'; call.window = 'stand-in window (the lab, no chat window)'; }
     // 20 Nov (after1 blind read): the record kept only the first 6,000 characters of a tool reply, but the brain saw it
     // all. Graders read the record, so three right answers about live settings (bob_help lists them near the end)
@@ -566,6 +573,7 @@ async function runJob(j) {
     effort, solo_effort: solo, ...(thinkAll ? { think_every_step: true } : {}), search_capped: steps.some((st) => (st.calls || []).some((c) => c.name === 'web_search' && /at its monthly cap/.test(String(c.result || '')))), ...(loraScale !== null ? { lora_scale: loraScale } : {}), family, tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
     messages: deepNeutral(kit, brain.session(session)),
     ...(ow ? { key: j.key, office: { lo: Boolean(j.office.lo), files: ow.files, missing: ow.missing, after: officeAfter(kit, docText) } } : {}),
+    ...(ww ? { key: j.key, type: j.type, web: ww.log } : {}),
     ...(rw ? { key: j.key, type: j.type, repo: { name: j.repo.name, dir: j.repo.dir, ...(j.repo.passed ? { passed: j.repo.passed } : {}), files: rw.files.length, missing: rw.missing, ...(rw.missing.length ? {} : { after: repoAfter(kit, rw, j.repo, steps) }) } } : {}),
     ...(mw ? { key: j.key, mail: { spec: j.mail, ...(saidNo ? { said_no: saidNo } : {}), cards: sortCards.map((c) => ({ batches: (c.batches || []).map((b) => ({ name: b.name, action: b.action, folder: b.folder, ids: b.ids })), replyFirst: (c.replyFirst || []).map((x) => ({ id: x.id, why: x.why })) })), ...mw.server.after() } } : {})
   };
