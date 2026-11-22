@@ -65,11 +65,11 @@ def check(name, ok, why=''):
     global fails
     print(('PASS ' if ok else 'FAIL ') + name + (f' ({why})' if why and not ok else ''))
     fails += not ok
-def serve(tag, env, ub, b='2048', share='0', cache='24', port=50242):
+def serve(tag, env, ub, b='2048', share='0', cache='24', port=50242, model=None):
     log = os.path.join(WORK, f'{tag}.log')
-    p = subprocess.Popen([os.path.join(BIN, 'llama-server'), '-m', brain, '--rpc', f'127.0.0.1:{RPORT}', '-ngl', '99', '--n-cpu-moe', '4',
+    p = subprocess.Popen([os.path.join(BIN, 'llama-server'), '-m', model or brain, '--rpc', f'127.0.0.1:{RPORT}', '-ngl', '99', '--n-cpu-moe', '4',
                           '--moe-cache-mib', cache, '--moe-cache-cpu-share', share, '-c', '4096', '-np', '1', '-t', '2',
-                          '-b', b, '-ub', str(ub), '--port', str(port), '-lv', '4', '--no-warmup'],
+                          '-b', b, '-ub', str(ub), '--port', str(port), '-lv', '4', '--no-warmup'] + (['--no-repack'] if model else []),
                          stdout=subprocess.DEVNULL, stderr=open(log, 'w'), env={**os.environ, **env})
     for _ in range(300):
         try:
@@ -107,6 +107,17 @@ try:
     w3, err3 = serve('borrow-lend', {'LLAMA_MOE_CACHE_BORROW': '1', 'LLAMA_MOE_CACHE_LEND': '48'}, 64)
     w3p, _ = serve('plain-lend', {'LLAMA_MOE_CACHE_LEND': '48'}, 64)
     check('next to LLAMA_MOE_CACHE_LEND it says NOT USED and answers as the lend run', 'LLAMA_MOE_CACHE_BORROW NOT USED' in err3 and w3 == w3p, f'{w3} vs {w3p}')
+    # 0052: banks of different types (Q4_K gates, Q8_0 downs, 144 and 34 byte blocks). The card's kernels take the
+    # expert stride in blocks of each type, so the striped slot is padded to whole blocks; the words stay the same.
+    mixed = os.path.join(WORK, 'moe-wide-q4k-q8down.gguf')
+    if not os.path.exists(mixed):
+        subprocess.run([os.path.join(BIN, 'llama-quantize'), '--tensor-type', 'ffn_down_exps=q8_0', brain, mixed, 'Q4_K_M'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    mon, merr = serve('borrow-mixed', {'LLAMA_MOE_CACHE_BORROW': '1'}, 64, cache='12', model=mixed)
+    mstep = re.findall(r'borrowed reading: reading step (\d+) \(own (\d+)\)', merr)
+    check('mixed block types: every bank is lent, padded to whole blocks', 'every bank, laid out slot by slot, padded to whole blocks' in merr, merr[-600:])
+    mbig = int(mstep[-1][0]) if mstep else 64
+    mplain, _ = serve('plain-mixed', {}, mbig, cache='12', model=mixed)
+    check('mixed block types: the same words as a plain run at that step', mbig > 64 and mon == mplain and len(mon) == 2 and not any(w.startswith('ERROR') for w in mon), f'{mon} vs {mplain}')
     w4, _ = serve('plain-own', {}, 64)
     print(f'info: reading step {big}; borrowed words same as -ub 64 plain: {w4 == on}')
 finally:
