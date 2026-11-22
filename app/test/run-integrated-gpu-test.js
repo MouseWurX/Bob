@@ -124,6 +124,7 @@ check('a real graphics card: untouched (the card has its own memory)', r.ok && r
 r = await apuRoom({ ...fakeBrain(), gate: { brainBytes: () => undefined } }, 'qwen', 32768, { freeMem: 1 * GB });
 check('a brain whose size is unknown goes the old way', r.ok && !r.shortened);
 const brainSrc = brainText();
+check('Nov 22: once loaded at the shortened size, the next reply keeps it (no jump back to the full size)', /if \(cut && cut\.want === fit && room\.ok && room\.needGB === undefined\) return cut\.ctx;/.test(brainSrc));
 check('Nov 22: fitCtx shortens the chat memory to what keeps Windows\'s share, and still loads', /if \(room\.ok && room\.shortened && room\.ctx < fit\)[^\n]*return room\.ctx;/.test(brainSrc));
 check('Nov 12: the guard never stops a load from the estimate (fitCtx, ensureModel, wake only log it; a real out-of-memory steps down)', /const room = await apuRoom\(this, model, fit\);/.test(brainSrc) && !/throw new Error\(room\.line\)/.test(brainSrc) && !/not waking \$\{model\}: too little RAM/.test(brainSrc) && /loading \$\{model\} anyway: the estimate says/.test(brainSrc) && /waking \$\{model\} anyway/.test(brainSrc) && /keeping \$\{model\}'s \$\{fit\} chat memory/.test(brainSrc));
 
