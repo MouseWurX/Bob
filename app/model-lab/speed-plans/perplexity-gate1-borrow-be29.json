@@ -1,0 +1,76 @@
+{
+ "name": "Gate 1 words check for borrowed reading (0048, BE29): same-top and KLD of borrowing (-b 16384 -ub 4096) against fixed step 4096 without it, q4_0, 16K x 2",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 90)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be29": {
+   "exe": "${BE29_PERPLEXITY}"
+  }
+ },
+ "text": "long-text.md",
+ "baseArgs": [
+  "-fa",
+  "on",
+  "--fit",
+  "on"
+ ],
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "rowTimeoutMs": 2700000,
+ "groups": [
+  {
+   "id": "borrow-16K",
+   "about": "fixed 4096 as the base, borrowing as the row; pass is same-top 99% or more",
+   "ctx": 16384,
+   "chunks": 2,
+   "needDiskGB": 12,
+   "base": {
+    "id": "fixed4096",
+    "engine": "be29",
+    "args": [
+     "-b",
+     "4096",
+     "-ub",
+     "4096",
+     "--moe-cache-mib",
+     "4096",
+     "--moe-cache-cpu-share",
+     "0",
+     "-ctk",
+     "q4_0",
+     "-ctv",
+     "q4_0"
+    ],
+    "env": {
+     "GGML_CUDA_NO_PINNED": "1",
+     "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+    }
+   },
+   "rows": [
+    {
+     "id": "borrow",
+     "engine": "be29",
+     "args": [
+      "-b",
+      "16384",
+      "-ub",
+      "4096",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ],
+     "env": {
+      "GGML_CUDA_NO_PINNED": "1",
+      "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+      "LLAMA_MOE_CACHE_BORROW": "1"
+     }
+    }
+   ]
+  }
+ ]
+}

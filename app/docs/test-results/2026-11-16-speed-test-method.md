@@ -915,6 +915,29 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 90 (Nov 21, before any run): Gate 1 for borrowed reading (patch 0048, Brain Engine 29)
+
+Patch 0048 lets a reading step borrow working memory from the expert cache's coldest slots inside the engine, so no
+`/context` switch is needed (`LLAMA_MOE_CACHE_BORROW=1`, off by default). Gate 1 is in the rebuild scope
+(bob-wip/engine-speed/borrowing-rebuild-scope.md), measured against the best-settings file. Four plans, all on Brain
+Engine 29, `--fit on`, a 4 GB copy cache, share 0, `GGML_CUDA_NO_PINNED=1`, cool-down on:
+- `gate1-borrow-e2e-64k-be29.json` (`conductor-e2e.mjs`, 5 rounds alternating, retry once): the 64K job, fixed
+  step 4096 on Brain Engine 28 (regression row) and 29 against borrowing at `-b 16384 -ub 4096`; fit target 512, q4_0.
+- `gate1-borrow-speed-be29.json` (`speed-test.mjs`, 5 rounds): reading, first word and writing at 32K (fit 1,024) and
+  128K (fit 512), fixed 4096 against borrowing, with the spill check.
+- `perplexity-gate1-borrow-be29.json`: same-top and KLD of borrowing against fixed 4096 as the base, 16K x 2.
+- `gate1-borrow-needle-be29.json`: the 128K needle at 5 depths x 2 rounds with borrowing on, q3_0 and Progressive
+  8+3 (ring 2,048).
+
+**Pass (set in the scope before any run):** the 64K job is no slower than fixed 4096 with zero switch time (aim: 5%
+shorter, or reading at 32K or 128K 10% faster); writing no more than 2% slower; same-top 99% or more; no crash, no
+shared-memory spill, peak card memory under the card; needles found. If it fails, Bob keeps Brain Engine 28's best
+settings.
+
+**Predictions, written before any run:** the 64K job is 3-8% shorter (the big read at a 16K batch); reading at 128K
+is 10-20% faster and at 32K 0-10%; writing is within 1%; same-top 99.5% or more (only step rounding changes); no
+spill; 10 of 10 needles per row.
+
 ## Addendum 89 (Nov 21, before any run): plain Avalon against Brain Engine 28
 
 The owner approved a head-to-head of Avalon (github freriadoc/Avalon at 0019bc94, MIT, a Flash-Next fork, plus

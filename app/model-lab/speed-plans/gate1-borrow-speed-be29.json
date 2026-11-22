@@ -1,0 +1,177 @@
+{
+ "brain": "${BRAIN}",
+ "prompts": {
+  "start": "start.json",
+  "k32": "long-text.md",
+  "k120": "long-text.md"
+ },
+ "promptTokens": {
+  "k32": 32768,
+  "k120": 122880
+ },
+ "question": {
+  "k32": "\n\nIn two sentences, what is this text about?",
+  "k120": "\n\nIn two sentences, what is this text about?"
+ },
+ "promptRepeat": {
+  "k120": 4
+ },
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 900000,
+ "spillCheck": true,
+ "spillMB": 512,
+ "spillMinusStep": true,
+ "name": "Gate 1 for borrowed reading (0048, BE29): reading, first word and writing at 32K and 128K, fixed step 4096 against borrowing at -b 16384 -ub 4096, q4_0, 4 GB cache, share 0, 5 rounds, cool-down on",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 90)",
+ "engines": {
+  "be29": {
+   "exe": "${BE29_SERVER}"
+  }
+ },
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "--cache-reuse",
+  "256"
+ ],
+ "maxTokens": 300,
+ "rounds": 5,
+ "saveText": true,
+ "rows": [
+  {
+   "id": "fixed4096-32K",
+   "engine": "be29",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "1024",
+    "-b",
+    "4096",
+    "-ub",
+    "4096"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "borrow-32K",
+   "engine": "be29",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "args": [
+    "-c",
+    "49152",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "1024",
+    "-b",
+    "16384",
+    "-ub",
+    "4096"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_BORROW": "1"
+   }
+  },
+  {
+   "id": "fixed4096-128K",
+   "engine": "be29",
+   "prompts": [
+    "start",
+    "k120"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512",
+    "-b",
+    "4096",
+    "-ub",
+    "4096"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "borrow-128K",
+   "engine": "be29",
+   "prompts": [
+    "start",
+    "k120"
+   ],
+   "args": [
+    "-c",
+    "139264",
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "--fit",
+    "on",
+    "--fit-target",
+    "512",
+    "-b",
+    "16384",
+    "-ub",
+    "4096"
+   ],
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000",
+    "LLAMA_MOE_CACHE_BORROW": "1"
+   }
+  }
+ ]
+}
