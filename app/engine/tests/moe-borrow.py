@@ -6,7 +6,7 @@
 #   - a second long read after writing moves the hot experts out of the lent slots (or drops them) and says so
 #   - the words are the same as a plain run that owns that bigger step's working memory (same step, same words),
 #     over two long reads with writing in between
-#   - it refuses (NOT USED) next to the CPU share and the old lend switch, and the words are those of a plain run
+#   - it stays on next to the CPU share (0058) and refuses (NOT USED) next to the old lend switch, and the words are those of a plain run
 #   python3 engine/tests/moe-borrow.py <llama.cpp checkout with the patches, built with GGML_RPC=ON> [work folder]
 import json, os, re, subprocess, sys, tempfile, time, urllib.request
 SRC = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else sys.exit('usage: moe-borrow.py <llama.cpp checkout, built> [work folder]')
@@ -107,7 +107,7 @@ try:
     norw, _ = serve('borrow-norewarm', {'LLAMA_MOE_CACHE_BORROW': '1', 'LLAMA_MOE_CACHE_REWARM': '0'}, 64)
     check('0056: rewarm changes no words (same as with it off)', norw == on, f'{norw} vs {on}')
     _, err2 = serve('borrow-share', {'LLAMA_MOE_CACHE_BORROW': '1'}, 64, share='0.5')
-    check('next to the CPU share it says NOT USED', 'LLAMA_MOE_CACHE_BORROW NOT USED' in err2)
+    check('0058: next to the CPU share it stays on (moe-borrow-doorbell.py checks its words)', 'borrowed reading on' in err2 and 'LLAMA_MOE_CACHE_BORROW NOT USED' not in err2)
     w3, err3 = serve('borrow-lend', {'LLAMA_MOE_CACHE_BORROW': '1', 'LLAMA_MOE_CACHE_LEND': '48'}, 64)
     w3p, _ = serve('plain-lend', {'LLAMA_MOE_CACHE_LEND': '48'}, 64)
     check('next to LLAMA_MOE_CACHE_LEND it says NOT USED and answers as the lend run', 'LLAMA_MOE_CACHE_BORROW NOT USED' in err3 and w3 == w3p, f'{w3} vs {w3p}')

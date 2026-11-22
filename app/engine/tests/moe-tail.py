@@ -5,7 +5,7 @@
 #   - it turns on and says how many experts fit; experts go onto the shelf and come back from it
 #   - the chat takes cells back as it grows (while reading and while writing) and the shelf forgets what was there
 #   - the words are the same as a plain run, over a short read, a longer read and long writing; also with borrowing
-#   - it refuses (NOT USED) with two chats at once (-np 2) and next to the CPU share
+#   - it refuses (NOT USED) with two chats at once (-np 2); next to the CPU share and the doorbell it works (0058)
 #   python3 engine/tests/moe-tail.py <llama.cpp checkout with the patches, built with GGML_RPC=ON> [work folder]
 import json, os, re, subprocess, sys, tempfile, time, urllib.request
 SRC = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else sys.exit('usage: moe-tail.py <llama.cpp checkout, built> [work folder]')
@@ -110,8 +110,19 @@ try:
     check('with borrowed reading too: on, and the words of a plain run at its step', 'the shelf: ' in berr and step and both == plain_big, f'{step} {both} vs {plain_big}')
     _, err2 = serve('tail-np2', tail_env, np_='2')
     check('with -np 2 it says NOT USED', 'LLAMA_MOE_CACHE_TAIL NOT USED' in err2)
-    _, err3 = serve('tail-share', tail_env, share='0.5')
-    check('next to the CPU share it says NOT USED', 'LLAMA_MOE_CACHE_TAIL NOT USED' in err3)
+    # Brain Engine 0058: next to a processor share, and with the doorbell (the processor's own ring on the stand-in).
+    # The shelf moves the same bytes, so the words are those of the same run without it.
+    shelf = lambda e: [tuple(map(int, m)) for m in re.findall(r'the shelf: (\d+) experts put on it, (\d+) came back from it', e)]
+    sh, err3 = serve('tail-share', tail_env, share='0.5')
+    sh_plain, _ = serve('plain-share', {}, share='0.5')
+    check('0058: next to the CPU share it is on, used, and the words of a plain run with that share', 'LLAMA_MOE_CACHE_TAIL NOT USED' not in err3 and
+          shelf(err3) and shelf(err3)[-1][0] > 0 and sh == sh_plain, f'{shelf(err3)} {sh} vs {sh_plain}')
+    ring = {'LLAMA_MOE_DOORBELL': '1', 'LLAMA_MOE_DOORBELL_CPU_RING': '1'}
+    db, err4 = serve('tail-share-doorbell', {**tail_env, **ring}, share='0.5')
+    db_plain, dperr = serve('doorbell-share', ring, share='0.5')
+    rings = re.findall(r'doorbell: (\d+) rings', err4)
+    check('0058: with the doorbell too it rings, the shelf is used between words, and the words of the doorbell without the shelf',
+          rings and int(rings[-1]) > 0 and shelf(err4) and shelf(err4)[-1][0] > 0 and shelf(err4)[-1][1] > 0 and db == db_plain, f'{rings} {shelf(err4)} {db} vs {db_plain}')
     print(f'info: shelf {fit[:1]}, take-backs {len(took)}, last totals {st[-1:] }')
 finally:
     rpc.kill()
