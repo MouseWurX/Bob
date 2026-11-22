@@ -915,6 +915,20 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 94 (Nov 22, before any run): Flash-Next with a bigger copy cache and stand-ins
+
+The Brain Engine 29 Flash-Next logs showed a 52-54% hit rate while writing (4,091 MiB of copy cache for 73,450 MiB of
+experts off the card, about 1.2 TB uploaded per job) and a card peak of 12.7 GB of 16. Plan
+`flashnext-q4kxl-32k-standin-be30.json`: the Addendum 92 job on Brain Engine 30, borrowing on, one load each: plain
+(4 GB), a 7,000 MiB cache, stand-ins (0043, `LLAMA_MOE_STANDIN=rank`, max 1), and stand-ins with 7,000 MiB. Last, a
+no-borrow load on Brain Engine 29 at `-ub 8192` with 2,296 MiB of cache, whose first 40 words of turn 1 are compared
+with the Addendum 91 borrow load: a match means borrow's word change is only the bigger reading step. Quality gate for
+stand-ins: `perplexity-standins-decode-be30.json`, the Addendum 87 decode-path drift check on Brain Engine 30.
+
+**Predictions, written before any run:** the 7,000 MiB cache lifts the writing hit rate to 60-70% and writing 15-40%,
+unless it spills to shared memory; stand-ins write 20-60% faster than plain on Flash-Next and change the words; the
+step-8192 check matches the borrow load's first 40 words; stand-in drift (KLD) at max 1 is under 0.05 on the 35B.
+
 ## Addendum 93 (Nov 22, before any run): Gate 1 rerun on Brain Engine 31
 
 On Brain Engine 29 borrowing never grew past step 4096: step 8192 needed 1,726 MiB borrowed, but only the first

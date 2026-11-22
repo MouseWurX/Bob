@@ -1,0 +1,183 @@
+{
+ "name": "Flash-Next (UD-Q4_K_XL, mmap on) on the test PC with Brain Engine 30: the 32K conductor-e2e job with a 7 GB copy cache and with stand-ins (0043, rank, max 1), against plain 4 GB; then a no-borrow row at -ub 8192 on Brain Engine 29 to check whether borrow's word change is only the bigger reading step; 1 round, cool-down on",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 94)",
+ "brain": "${FLASHNEXT}",
+ "engines": {
+  "be30": {
+   "exe": "${BE30_SERVER}",
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "2000",
+    "LLAMA_MOE_CACHE_BORROW": "1"
+   }
+  },
+  "be29": {
+   "exe": "${BE29_SERVER}",
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "2000"
+   }
+  }
+ },
+ "text": "long-text.md",
+ "textRepeat": 1,
+ "system": "You are a helpful assistant. Answer plainly.",
+ "bigRead": 12288,
+ "followUps": 5,
+ "followTokens": 200,
+ "replyTokens": 300,
+ "rounds": 1,
+ "alternate": false,
+ "retryOnce": true,
+ "saveText": true,
+ "spillCheck": true,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 2700000,
+ "wordsRef": "plain",
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "-c",
+  "32768",
+  "-ctk",
+  "q4_0",
+  "-ctv",
+  "q4_0",
+  "-ngl",
+  "99",
+  "--n-cpu-moe",
+  "999",
+  "-ub",
+  "4096",
+  "-b",
+  "16384",
+  "--moe-cache-mib",
+  "4096",
+  "--moe-cache-cpu-share",
+  "0",
+  "-lv",
+  "4"
+ ],
+ "ways": [
+  {
+   "id": "plain",
+   "engine": "be30"
+  },
+  {
+   "id": "cache-7g",
+   "engine": "be30",
+   "noBase": true,
+   "args": [
+    "--jinja",
+    "-np",
+    "1",
+    "--no-webui",
+    "-fa",
+    "on",
+    "-c",
+    "32768",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "999",
+    "-ub",
+    "4096",
+    "-b",
+    "16384",
+    "--moe-cache-mib",
+    "7000",
+    "--moe-cache-cpu-share",
+    "0",
+    "-lv",
+    "4"
+   ]
+  },
+  {
+   "id": "standin1",
+   "engine": "be30",
+   "env": {
+    "LLAMA_MOE_STANDIN": "rank",
+    "LLAMA_MOE_STANDIN_MAX": "1"
+   }
+  },
+  {
+   "id": "standin1-7g",
+   "engine": "be30",
+   "noBase": true,
+   "args": [
+    "--jinja",
+    "-np",
+    "1",
+    "--no-webui",
+    "-fa",
+    "on",
+    "-c",
+    "32768",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "999",
+    "-ub",
+    "4096",
+    "-b",
+    "16384",
+    "--moe-cache-mib",
+    "7000",
+    "--moe-cache-cpu-share",
+    "0",
+    "-lv",
+    "4"
+   ],
+   "env": {
+    "LLAMA_MOE_STANDIN": "rank",
+    "LLAMA_MOE_STANDIN_MAX": "1"
+   }
+  },
+  {
+   "id": "step8192-check",
+   "engine": "be29",
+   "noBase": true,
+   "args": [
+    "--jinja",
+    "-np",
+    "1",
+    "--no-webui",
+    "-fa",
+    "on",
+    "-c",
+    "32768",
+    "-ctk",
+    "q4_0",
+    "-ctv",
+    "q4_0",
+    "-ngl",
+    "99",
+    "--n-cpu-moe",
+    "999",
+    "-ub",
+    "8192",
+    "-b",
+    "16384",
+    "--moe-cache-mib",
+    "2296",
+    "--moe-cache-cpu-share",
+    "0",
+    "-lv",
+    "4"
+   ]
+  }
+ ]
+}

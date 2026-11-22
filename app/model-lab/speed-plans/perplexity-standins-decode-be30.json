@@ -1,0 +1,114 @@
+{
+ "name": "Stand-ins (0043) drift while writing on Brain Engine 30: perplexity/KLD scored one token at a time (-ub 1, the writing path where stand-ins act), 4K x 4, against the same engine with stand-ins off; look-ahead 1 as a lossless check",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 94)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be30": {
+   "exe": "${BE30_PERPLEXITY}"
+  }
+ },
+ "text": "long-text.md",
+ "baseArgs": [
+  "-fa",
+  "on",
+  "--fit",
+  "on"
+ ],
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "rowTimeoutMs": 2700000,
+ "groups": [
+  {
+   "id": "strata-decode-4K",
+   "about": "one token per step (-ub 1) so the stand-ins and look-ahead act as they do while writing",
+   "ctx": 4096,
+   "chunks": 4,
+   "needDiskGB": 12,
+   "base": {
+    "id": "q4_0-off",
+    "engine": "be30",
+    "args": [
+     "-b",
+     "2048",
+     "-ub",
+     "1",
+     "--moe-cache-mib",
+     "4096",
+     "--moe-cache-cpu-share",
+     "0",
+     "-ctk",
+     "q4_0",
+     "-ctv",
+     "q4_0"
+    ]
+   },
+   "rows": [
+    {
+     "id": "standin-rank-max1",
+     "engine": "be30",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "1",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ],
+     "env": {
+      "LLAMA_MOE_STANDIN": "rank",
+      "LLAMA_MOE_STANDIN_MAX": "1"
+     }
+    },
+    {
+     "id": "standin-rank-max2",
+     "engine": "be30",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "1",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ],
+     "env": {
+      "LLAMA_MOE_STANDIN": "rank",
+      "LLAMA_MOE_STANDIN_MAX": "2"
+     }
+    },
+    {
+     "id": "lookahead1",
+     "engine": "be30",
+     "args": [
+      "-b",
+      "2048",
+      "-ub",
+      "1",
+      "--moe-cache-mib",
+      "4096",
+      "--moe-cache-cpu-share",
+      "0",
+      "-ctk",
+      "q4_0",
+      "-ctv",
+      "q4_0"
+     ],
+     "env": {
+      "LLAMA_MOE_LOOKAHEAD": "1"
+     }
+    }
+   ]
+  }
+ ]
+}

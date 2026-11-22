@@ -100,3 +100,4 @@ and each timed run, and the summary shows the card's start and top temperature a
 - `flashnext-q4kxl-32k-be29.json` (for `conductor-e2e.mjs`): Flash-Next UD-Q4_K_XL with mmap on, the 32K job, borrowing on against off, with drive reads and RAM logged alongside (Addendum 91).
 - `flashnext-q4kxl-32k-be30.json`: the same Flash-Next job on Brain Engine 30, plain, drive tier, drive tier saving the hot set, then reading it as the ranking (Addendum 92).
 - `gate1-borrow-e2e-64k-be31.json` and `gate1-borrow-speed-be31.json`: the Gate 1 rerun on Brain Engine 31 (0051), borrow against fixed with both at `-b 16384 -ub 4096` so the words match (Addendum 93).
+- `flashnext-q4kxl-32k-standin-be30.json` (for `conductor-e2e.mjs`): Flash-Next with a 7 GB copy cache and stand-ins against plain 4 GB on Brain Engine 30, then a step-8192 word check on Brain Engine 29; `perplexity-standins-decode-be30.json`: the stand-in drift check on the writing path on Brain Engine 30 (Addendum 94).
