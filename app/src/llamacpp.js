@@ -28,7 +28,7 @@ import { scutEnv, linkEnv, linkLive } from './share-card.js'; // SCUT, the fast 
 import { LinkLog } from './link-log.js'; // what the link to a lent card carried, kept in a file and the logbook
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
-import { tuningArgs } from './engine-tuning.js';
+import { tuningArgs, doorbellEnv } from './engine-tuning.js';
 import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB } from './conductor.js'; // off unless picked
 import { turboStandins, STANDIN_ENV } from './engine-extras.js'; // Turbo: stand-ins (0043, off unless switched on)
 import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
@@ -1251,6 +1251,7 @@ export class LlamaCpp {
     // context it loads with (a resize in place that would need other steps starts the engine again instead).
     { const t = tiersEnv(this.cfg, model, ctx || this.lc.ctx || DEFAULT_CTX, { ...this.memCaps(), handArgs: args }); if (t.LLAMA_KV_TIERS) { env = { ...env, ...t }; this.log?.('engine', `${model}: Progressive chat memory, sharper copies of the newest words (${t.LLAMA_KV_TIERS})`); } }
     if (helpers.length) env = { ...env, ...scutEnv(this.cfg, { wired: Boolean(this.spread?.allWired?.()) }), ...linkEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
+    { const db = doorbellEnv(env); if (Object.keys(db).length) { env = { ...env, ...db }; this.log?.('engine', `${model}: the doorbell is on, so ${Object.entries(db).map(([k, v]) => `${k}=${v}`).join(' and ')} (safe on Windows)`); } }
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
     const child = safeSpawn(spawn, exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
     // 1.5.24 "Games first": on the processor, the engine yields to games (below normal priority).

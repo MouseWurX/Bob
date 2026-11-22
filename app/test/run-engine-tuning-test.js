@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mergeSettings } from '../src/config.js';
 import { LlamaCpp } from '../src/llamacpp.js';
-import { TUNING_FIELDS, cleanLevers, cleanTuning, savedTuning, mergeTuning, handTuningOn, tuningArgs, savedHotFile } from '../src/engine-tuning.js';
+import { TUNING_FIELDS, cleanLevers, cleanTuning, savedTuning, mergeTuning, handTuningOn, tuningArgs, savedHotFile, doorbellEnv } from '../src/engine-tuning.js';
 import { HELP } from '../public/help-content.js';
 
 let pass = 0, fail = 0;
@@ -83,6 +83,15 @@ for (const [name, id] of [['Long reads borrow the cache', 'faq-moe-borrow'], ['E
   check(`the FAQ ${id} answers it`, HELP.some((h) => h.id === id && h.group === 'FAQ')); }
 check('the glossary has the shelf, the drive tier and the saved hot set', ['Borrowed reading', 'Expert shelf', 'Drive tier', 'Saved hot set', 'Drive stand-in', 'RAM floor'].every((w) => (HELP.find((h) => h.id === 'glossary')?.html || '').includes(`<dt>${w}`)));
 check('the glossary explains it', /<dt>Engine tuning/.test(HELP.find((h) => h.id === 'glossary')?.html || ''));
+
+// Nov 22: the doorbell's safety keys for Windows, added only when it's on and only where nothing set them already
+check('the doorbell on adds EAGER loading and a 1.5 s wait', JSON.stringify(doorbellEnv({ LLAMA_MOE_DOORBELL: '1' })) === JSON.stringify({ CUDA_MODULE_LOADING: 'EAGER', LLAMA_MOE_DOORBELL_TIMEOUT_MS: '1500' }));
+check('the doorbell off or unset adds nothing', !Object.keys(doorbellEnv({})).length && !Object.keys(doorbellEnv({ LLAMA_MOE_DOORBELL: '0' })).length && !Object.keys(doorbellEnv({ LLAMA_MOE_DOORBELL: '' })).length && !Object.keys(doorbellEnv({ CUDA_MODULE_LOADING: 'LAZY' })).length);
+check('keys already set win', (() => { const d = doorbellEnv({ LLAMA_MOE_DOORBELL: '1', CUDA_MODULE_LOADING: 'LAZY', LLAMA_MOE_DOORBELL_TIMEOUT_MS: '5000' }); return !Object.keys(d).length; })());
+check('one key set: only the other is added', JSON.stringify(doorbellEnv({ LLAMA_MOE_DOORBELL: '1', LLAMA_MOE_DOORBELL_TIMEOUT_MS: '800' })) === JSON.stringify({ CUDA_MODULE_LOADING: 'EAGER' }));
+check('Engine tuning\'s doorbell lever turns it on', (() => { const r = tuningArgs({ dataDir: tmp, ...hand({ cacheMB: 4096, cpuShare: 1, doorbell: 1 }) }, 'big'); return doorbellEnv(r.env).CUDA_MODULE_LOADING === 'EAGER'; })());
+check('the engine start adds them after every other key', (() => { const src = fs.readFileSync(fileURLToPath(new URL('../src/llamacpp.js', import.meta.url)), 'utf8').replace(/\r\n/g, '\n'); const at = src.indexOf('doorbellEnv(env)'); return at > src.indexOf('...this.tuneEnv') && at > src.indexOf('tiersEnv(') && at < src.indexOf('const child = safeSpawn('); })());
+check('Help says why, in the lever and the glossary', /1\.5 seconds/.test(HELP.map((h) => h.html).join(' ').match(/Card and processor at once[\s\S]{0,1200}/g)?.join(' ') || ''));
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

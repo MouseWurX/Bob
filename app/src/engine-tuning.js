@@ -32,6 +32,17 @@ export const TUNING_FIELDS = [
 export const MODES = ['bob', 'hand', 'conductor'];
 const BY_KEY = Object.fromEntries(TUNING_FIELDS.map((f) => [f.k, f]));
 
+// Nov 22: with the doorbell on (patch 0042), the card waits in a kernel for the processor. Two keys make that safe on
+// Windows unless they're already set (by Engine tuning or the computer's own settings): CUDA loads every kernel at the
+// start (EAGER), so none is loaded while the card waits, and the wait gives up after 1.5 s, under the 2 s after which
+// Windows resets the card's driver. Without the doorbell, nothing is added.
+export const DOORBELL_SAFE_ENV = { CUDA_MODULE_LOADING: 'EAGER', LLAMA_MOE_DOORBELL_TIMEOUT_MS: '1500' };
+export function doorbellEnv(env = {}) {
+  const on = env.LLAMA_MOE_DOORBELL !== undefined && env.LLAMA_MOE_DOORBELL !== '' && Number(env.LLAMA_MOE_DOORBELL) !== 0;
+  if (!on) return {};
+  return Object.fromEntries(Object.entries(DOORBELL_SAFE_ENV).filter(([k]) => env[k] === undefined || env[k] === ''));
+}
+
 // one brain's levers: only known keys, numbers in range, the rest dropped
 export function cleanLevers(v) {
   const out = {};
