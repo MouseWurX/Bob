@@ -3123,8 +3123,8 @@ ${set('Resize chat memory without reloading', 'Off', 'A job that needs a bigger 
 <dt>Bob's menu</dt><dd>The small menu that opens when you click my picture: what I'm doing, the brain I have loaded, and doors to Settings, Brains, Style and Get models. On a phone it's bigger: it slides up from the bottom with every page and tool as a tile. See ${go('faq-bob-picture', 'What happens when I click Bob\'s picture?')}.</dd>
 <dt>Bob's own brains (Riker, Bobert)</dt><dd>Brains made for me in my workshop from open Qwen brains and benchmarked before they reach you, in the Bob family of the Brain catalogue. See ${go('faq-bob-brains', 'Why is Riker or Bobert my pick?')}</dd>
 <dt>Bob-Net</dt><dd>Your Bobs on your own replicant matrices, sharing brains and jobs over Tailscale. Set it up in Settings, <strong>Bob-Net</strong>.</dd>
-<dt>Borrowed reading</dt><dd>My engine borrowing the copy cache's quiet slots as room for a bigger reading step while it reads a long prompt, and filling them back before it writes. Off unless switched on. See ${go('faq-moe-borrow', 'the FAQ')}.</dd>
 <dt>Borrowed brain</dt><dd>When another of your Bobs thinks a quick reply for me over Tailscale (📡 in the chat). I still run the tools.</dd>
+<dt>Borrowed reading</dt><dd>My engine borrowing the copy cache's quiet slots as room for a bigger reading step while it reads a long prompt, and filling them back before it writes. Off unless switched on. See ${go('faq-moe-borrow', 'the FAQ')}.</dd>
 <dt>Bottom bar</dt><dd>On a phone or a narrow window, the row along the bottom: Chat, Tasks, New, Topics and Bob. Bob opens my whole menu from the bottom (on a phone my cube does the same). See ${go('around', 'Finding your way around')}.</dd>
 <dt>Brain</dt><dd>A model that thinks and chats. Bigger brains are usually smarter but slower and need more memory.</dd>
 <dt>Brain catalogue</dt><dd>My full list of models, sorted by job, with what each one needs and where it comes from.</dd>
