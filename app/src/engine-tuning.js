@@ -26,6 +26,7 @@ export const TUNING_FIELDS = [
   { k: 'shelf', label: 'Empty chat memory holds experts (1 = on)', env: 'LLAMA_MOE_CACHE_TAIL', min: 0, max: 1, int: true, hint: 'with a copy cache; Brain Engine 30 or newer' },
   { k: 'drive', label: 'Read missed experts straight from the drive (1 = on)', env: 'LLAMA_MOE_DRIVE', min: 0, max: 1, int: true, hint: 'with a copy cache, for a brain bigger than RAM; Brain Engine 30 or newer' },
   { k: 'driveStandin', label: 'Experts on the drive: use the next best (1 = on)', env: 'LLAMA_MOE_STANDIN', value: 'drive', min: 0, max: 1, int: true, hint: 'with a copy cache; changes the words; Brain Engine 32 or newer' },
+  { k: 'ramFloor', label: 'Keep RAM free for the computer (MB)', env: 'LLAMA_MOE_RAM_FLOOR_MIB', min: 0, max: 65536, int: true, hint: 'with the drive switches; empty is 512, 0 turns the guard off; Brain Engine 32 or newer' },
   { k: 'hotSave', label: 'Remember the busy experts for next time (1 = on)', env: 'LLAMA_MOE_CACHE_SAVE', path: true, min: 0, max: 1, int: true, hint: 'with a copy cache; Brain Engine 30 or newer' }
 ];
 export const MODES = ['bob', 'hand', 'conductor'];

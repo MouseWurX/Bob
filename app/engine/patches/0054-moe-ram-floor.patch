@@ -1,0 +1,232 @@
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 4461e2e..27872b3 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -43,6 +43,9 @@
+ #include <psapi.h>
+ #else
+ #include <sys/mman.h>
++#if defined(__APPLE__)
++#include <mach/mach.h>
++#endif
+ #include <unistd.h>
+ #endif
+ 
+@@ -861,6 +864,7 @@ struct llama_moe_cache::impl {
+         bw_init(no_alloc); // Brain Engine 0048
+         tl_init(no_alloc); // Brain Engine 0049
+         dr_init(model, no_alloc); // Brain Engine 0050
++        rf_init(no_alloc);        // Brain Engine 0054
+ 
+         for (size_t id = 0; id < devices.size(); ++id) {
+             const device & d = devices[id];
+@@ -1810,6 +1814,11 @@ struct llama_moe_cache::impl {
+                     }
+                     it = sd_q.front();
+                     sd_q.pop_front();
++                    if (rf_low.load()) {
++                        sd_queued.erase({ it.l, it.e }); // 0054: under the RAM floor, the read is dropped
++                        sd_warm_dropped++;
++                        continue;
++                    }
+                 }
+                 size_t got = 0;
+                 for (const ggml_tensor * w : it.l->experts) {
+@@ -1843,8 +1852,8 @@ struct llama_moe_cache::impl {
+         if (sd_queued.count(key)) {
+             return;
+         }
+-        if (sd_q.size() >= sd_q_max) {
+-            sd_warm_dropped++;
++        if (sd_q.size() >= sd_q_max || rf_low.load()) {
++            sd_warm_dropped++; // 0054: no background reads while free RAM is under the floor
+             return;
+         }
+         sd_queued.insert(key);
+@@ -2463,6 +2472,9 @@ struct llama_moe_cache::impl {
+             sp_last = il;
+         }
+         ggml_backend_synchronize(backend);
++        if (rf_on) {
++            rf_tick(); // Brain Engine 0054: the uploads of the last call are done, so their pages may go
++        }
+ 
+         if (trace != nullptr) {
+             write_trace(il, n_used);
+@@ -2533,6 +2545,9 @@ struct llama_moe_cache::impl {
+                 const size_t    dst = (size_t) up[i].slot*bank->nb[2];
+                 if (!dr_on || !dr_want(w, src, n*expert_size)) {
+                     ggml_backend_tensor_set_async(backend, bank, src, dst, n*expert_size);
++                    if (rf_on) {
++                        rf_note(w, src, n*expert_size);
++                    }
+                 } else {
+                     dr_jobs.push_back({ w, bank, (size_t) up[i].expert*expert_size, dst, n*expert_size, nullptr });
+                 }
+@@ -2647,6 +2662,155 @@ struct llama_moe_cache::impl {
+ #endif
+     }
+ 
++    // Brain Engine 0054: the RAM floor. A brain bigger than RAM is read through the memory map, and the pages of the
++    // experts read through it stay in RAM until the system takes them back. On npc (Windows, 32 GB, a 111 GB brain) free
++    // RAM sat near 281 MB and the computer locked up after dips to 76 MB. With the drive tier (0050) or drive stand-ins
++    // (0053) on, the cache checks free RAM (at most every 100 ms, while writing and reading) and when it is under
++    // LLAMA_MOE_RAM_FLOOR_MIB (default 512; 0 turns the floor off) it gives back the pages of the experts it copied up
++    // from the map (oldest first: Windows VirtualUnlock takes them out of the working set, elsewhere MADV_DONTNEED), on
++    // Windows trims the whole working set if that wasn't enough, and stops the background reads of 0053 until RAM is
++    // back over the floor. Misses that are not in RAM then go through the drive tier's own reads, which skip the file
++    // cache. LLAMA_MOE_RAM_FLOOR_TEST_AVAIL_MIB (tests) pretends free RAM is that much.
++    bool   rf_on = false;
++    std::atomic<bool> rf_low{false};
++    size_t rf_floor = 512ull*1048576;
++    double rf_test_mib = -1.0;
++    int64_t rf_last_us = 0, rf_last_log_us = 0;
++    uint64_t rf_gen = 0;
++    struct rf_range { const uint8_t * p; size_t n; uint64_t gen; };
++    std::deque<rf_range> rf_ring;
++    size_t rf_ring_bytes = 0;
++    size_t rf_engaged = 0, rf_trimmed = 0, rf_ws_trims = 0, rf_min_mib = SIZE_MAX;
++
++    static double rf_avail_mib() {
++#ifdef _WIN32
++        MEMORYSTATUSEX ms = {};
++        ms.dwLength = sizeof(ms);
++        if (GlobalMemoryStatusEx(&ms)) {
++            return ms.ullAvailPhys/1048576.0;
++        }
++        return -1.0;
++#elif defined(__linux__)
++        FILE * f = fopen("/proc/meminfo", "r");
++        if (f == nullptr) {
++            return -1.0;
++        }
++        char line[256];
++        double kb = -1.0;
++        while (fgets(line, sizeof(line), f)) {
++            if (strncmp(line, "MemAvailable:", 13) == 0) {
++                kb = atof(line + 13);
++                break;
++            }
++        }
++        fclose(f);
++        return kb >= 0 ? kb/1024.0 : -1.0;
++#elif defined(__APPLE__)
++        vm_statistics64_data_t vs;
++        mach_msg_type_number_t cnt = HOST_VM_INFO64_COUNT;
++        if (host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t) &vs, &cnt) != KERN_SUCCESS) {
++            return -1.0;
++        }
++        return ((double) vs.free_count + vs.inactive_count + vs.purgeable_count)*(double) vm_page_size/1048576.0;
++#else
++        return -1.0;
++#endif
++    }
++
++    static void rf_release(const uint8_t * p, size_t n) {
++        static const size_t page = dr_page();
++        const uintptr_t a = ((uintptr_t) p + page - 1) & ~(uintptr_t) (page - 1); // whole pages inside the range only
++        const uintptr_t b = ((uintptr_t) p + n) & ~(uintptr_t) (page - 1);
++        if (b <= a) {
++            return;
++        }
++#ifdef _WIN32
++        VirtualUnlock((LPVOID) a, (SIZE_T) (b - a)); // on pages that aren't locked: out of the working set
++#elif defined(__linux__) || defined(__APPLE__)
++        madvise((void *) a, (size_t) (b - a), MADV_DONTNEED);
++#endif
++    }
++
++    void rf_init(bool no_alloc) {
++        if (no_alloc || !(dr_on || sp_mode == SP_DRIVE)) {
++            return;
++        }
++        if (const char * f = getenv("LLAMA_MOE_RAM_FLOOR_MIB"); f != nullptr && *f != '\0') {
++            if (atof(f) <= 0) {
++                LLAMA_LOG_WARN("llama_moe_cache: !!! RAM floor OFF (LLAMA_MOE_RAM_FLOOR_MIB=%s): free RAM is not watched; a brain bigger than RAM can starve the system\n", f);
++                return;
++            }
++            rf_floor = (size_t) (atof(f)*1048576.0);
++        }
++        if (const char * t = getenv("LLAMA_MOE_RAM_FLOOR_TEST_AVAIL_MIB"); t != nullptr && *t != '\0') {
++            rf_test_mib = atof(t);
++        }
++        if (rf_test_mib < 0 && rf_avail_mib() < 0) {
++            LLAMA_LOG_WARN("llama_moe_cache: !!! RAM floor NOT USED: free RAM can't be read on this system\n");
++            return;
++        }
++        rf_on = true;
++        LLAMA_LOG_INFO("llama_moe_cache: RAM floor on: when free RAM drops under %.0f MiB, the pages of experts copied up from the map are given back and background reads wait%s\n",
++            rf_floor/1048576.0, rf_test_mib >= 0 ? " (test: free RAM pretended)" : "");
++    }
++
++    void rf_note(const ggml_tensor * w, const uint8_t * p, size_t n) {
++        if (w->buffer == nullptr || !ggml_backend_buffer_is_host(w->buffer) || strstr(ggml_backend_buffer_name(w->buffer), "Mapped") == nullptr) {
++            return; // read in whole: nothing the system could take back
++        }
++        rf_ring.push_back({ p, n, rf_gen });
++        rf_ring_bytes += n;
++        while (rf_ring.size() > 65536) {
++            rf_ring_bytes -= rf_ring.front().n;
++            rf_ring.pop_front();
++        }
++    }
++
++    void rf_tick() {
++        const uint64_t done = rf_gen++; // ranges noted up to this call's start have gone up: the card was waited for
++        const int64_t now = ggml_time_us();
++        if (now - rf_last_us < 100000) {
++            return;
++        }
++        rf_last_us = now;
++        const double avail = rf_test_mib >= 0 ? rf_test_mib : rf_avail_mib();
++        if (avail < 0) {
++            return;
++        }
++        rf_min_mib = std::min(rf_min_mib, (size_t) avail);
++        if (avail*1048576.0 >= (double) rf_floor) {
++            if (rf_low.exchange(false)) {
++                LLAMA_LOG_INFO("llama_moe_cache: RAM floor: %.0f MiB free again, over %.0f MiB; background reads go on\n", avail, rf_floor/1048576.0);
++            }
++            return;
++        }
++        const bool was_low = rf_low.exchange(true);
++        rf_engaged++;
++        // give back what is needed to reach the floor, and a quarter of it more, oldest first
++        const size_t want = (size_t) (rf_floor - avail*1048576.0)*5/4;
++        size_t freed = 0;
++        while (!rf_ring.empty() && rf_ring.front().gen < done && freed < want) {
++            const rf_range r = rf_ring.front();
++            rf_ring.pop_front();
++            rf_ring_bytes -= r.n;
++            rf_release(r.p, r.n);
++            freed += r.n;
++        }
++        rf_trimmed += freed;
++        bool ws = false;
++#ifdef _WIN32
++        if (freed < want) {
++            ws = SetProcessWorkingSetSizeEx(GetCurrentProcess(), (SIZE_T) -1, (SIZE_T) -1, 0) != 0; // the rest of the map's pages too
++            rf_ws_trims += ws;
++        }
++#endif
++        if (!was_low || now - rf_last_log_us > 10000000) {
++            rf_last_log_us = now;
++            LLAMA_LOG_WARN("llama_moe_cache: RAM floor engaged: %.0f MiB free, under %.0f MiB: %.1f MiB of expert pages given back%s, background reads wait (%zu times so far)\n",
++                avail, rf_floor/1048576.0, freed/1048576.0, ws ? ", working set trimmed" : "", rf_engaged);
++        }
++    }
++
+     void dr_init(const llama_model & model, bool no_alloc) {
+         const char * on = getenv("LLAMA_MOE_DRIVE");
+         if (no_alloc || on == nullptr || atoi(on) <= 0) {
+@@ -3763,6 +3927,10 @@ struct llama_moe_cache::impl {
+         if (sp_mode != SP_OFF) {
+             LLAMA_LOG_INFO("llama_moe_cache: stood in (%s, at most %d a layer a word): %zu stand-ins in %zu of %lld words, %zu misses copied as before while writing, most %d in a layer for a word\n",
+                 sp_name(sp_mode), sp_max, sp_n, sp_words + (sp_cur_n > 0), (long long) (sp_word + (sp_last >= 0)), sp_copied, std::max(sp_most_layer, sp_cur_layer));
++            if (rf_on) {
++                LLAMA_LOG_INFO("llama_moe_cache: RAM floor %.0f MiB: engaged %zu times, %.2f MiB of expert pages given back, %zu working set trims, lowest free %zu MiB\n",
++                    rf_floor/1048576.0, rf_engaged, rf_trimmed/1048576.0, rf_ws_trims, rf_min_mib == SIZE_MAX ? (size_t) 0 : rf_min_mib);
++            }
+             if (sp_mode == SP_DRIVE) {
+                 std::lock_guard<std::mutex> lock(sd_mutex);
+                 LLAMA_LOG_INFO("llama_moe_cache: drive stand-ins: %zu misses on the drive alone, %zu stood in (%zu of them by an expert in RAM), %zu background reads done (%.2f MiB), %zu waiting, %zu not queued (queue full)\n",

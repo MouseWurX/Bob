@@ -7,6 +7,8 @@
 #   - with LLAMA_MOE_STANDIN_TEST_NO_RAM=1 (as if no expert were in RAM) it stands in, never for the top pick, reads in
 #     the background and says so, and both answers come back
 #   - borrowed reading (0048) still turns on next to it
+#   - 0054's RAM floor is on with either, 512 MiB unless set, engages under it (free RAM pretended) without changing
+#     the words, and 0 turns it off
 #   python3 engine/tests/moe-drive-standin.py <llama.cpp checkout with the patches, built with GGML_RPC=ON> [work folder]
 import json, os, re, subprocess, sys, tempfile, time, urllib.request
 SRC = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else sys.exit('usage: moe-drive-standin.py <llama.cpp checkout, built> [work folder]')
@@ -77,6 +79,19 @@ try:
     bw, err = serve('drive-borrow', {'LLAMA_MOE_STANDIN': 'drive', 'LLAMA_MOE_STANDIN_TEST_NO_RAM': '1', 'LLAMA_MOE_CACHE_BORROW': '1'})
     check('borrowed reading still turns on next to it', 'borrowed reading on' in err and 'LLAMA_MOE_CACHE_BORROW NOT USED' not in err, err[-600:])
     check('and both answers come back', len(bw) == 2 and not any(w.startswith('ERROR') for w in bw), f'{bw}')
+    # 0054: the RAM floor, on whenever the drive tier or drive stand-ins are
+    check('no RAM floor while neither is on', 'RAM floor' not in serve('plain-again', {})[1])
+    low, err = serve('floor-low', {'LLAMA_MOE_STANDIN': 'drive', 'LLAMA_MOE_RAM_FLOOR_TEST_AVAIL_MIB': '100'})
+    check('the floor is on with drive stand-ins, 512 MiB by default', 'RAM floor on: when free RAM drops under 512 MiB' in err, err[-400:])
+    check('under the floor it engages, gives pages back and says so', re.search(r'RAM floor engaged: 100 MiB free, under 512 MiB: [\d.]+ MiB of expert pages given back', err) is not None, err[-600:])
+    eng = last(r'RAM floor 512 MiB: engaged (\d+) times, ([\d.]+) MiB of expert pages given back', err)
+    check('the totals count it', eng is not None and int(eng[0]) > 0, f'{eng}')
+    check('giving pages back changes no words', low == plain, f'{low} vs {plain}')
+    dlow, err = serve('floor-drive', {'LLAMA_MOE_DRIVE': '1', 'LLAMA_MOE_DRIVE_ALL': '1', 'LLAMA_MOE_RAM_FLOOR_MIB': '2048', 'LLAMA_MOE_RAM_FLOOR_TEST_AVAIL_MIB': '1000'})
+    check('the floor is on with the drive tier, and takes its setting', 'RAM floor on: when free RAM drops under 2048 MiB' in err and 'RAM floor engaged: 1000 MiB free' in err, err[-600:])
+    check('with the drive tier under the floor, the words are a plain run\'s', dlow == plain, f'{dlow} vs {plain}')
+    _, err = serve('floor-off', {'LLAMA_MOE_STANDIN': 'drive', 'LLAMA_MOE_RAM_FLOOR_MIB': '0'})
+    check('0 turns it off, with a warning', 'RAM floor OFF' in err and 'RAM floor on' not in err)
 finally:
     rpc.kill()
 print('ALL PASS' if fails == 0 else f'{fails} FAILED')
