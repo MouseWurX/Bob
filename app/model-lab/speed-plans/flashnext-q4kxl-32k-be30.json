@@ -1,5 +1,5 @@
 {
- "name": "Flash-Next (UD-Q4_K_XL, mmap on) on npc with Brain Engine 30: the 32K conductor-e2e job, plain, the drive tier (0050), the drive tier saving the hot set, then the drive tier reading that saved ranking; 1 round in this order, cool-down on",
+ "name": "Flash-Next (UD-Q4_K_XL, mmap on) on the test PC with Brain Engine 30: the 32K conductor-e2e job, plain, the drive tier (0050), the drive tier saving the hot set, then the drive tier reading that saved ranking; 1 round in this order, cool-down on",
  "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 92)",
  "brain": "${FLASHNEXT}",
  "engines": {

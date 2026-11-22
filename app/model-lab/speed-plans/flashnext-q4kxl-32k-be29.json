@@ -1,5 +1,5 @@
 {
- "name": "Flash-Next (UD-Q4_K_XL, mmap on) on npc with Brain Engine 29: the conductor-e2e job at 32K (12K read + 5 follow-ups), borrowing on against off, 4 GB copy cache, share 0, 2 rounds alternating, cool-down on; drive reads and RAM logged alongside (typeperf)",
+ "name": "Flash-Next (UD-Q4_K_XL, mmap on) on the test PC with Brain Engine 29: the conductor-e2e job at 32K (12K read + 5 follow-ups), borrowing on against off, 4 GB copy cache, share 0, 2 rounds alternating, cool-down on; drive reads and RAM logged alongside (typeperf)",
  "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 91)",
  "brain": "${FLASHNEXT}",
  "engines": {
