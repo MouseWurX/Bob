@@ -1245,6 +1245,7 @@ export class LlamaCpp {
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
     if (args.includes('--moe-cache-mib') && turboStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...STANDIN_ENV }; this.log?.('engine', `${model}: Turbo stand-ins on (up to 2 missed experts a layer stood in for while writing; the words change)`); }
     if (this.tuneEnv && Object.keys(this.tuneEnv).length) env = { ...env, ...this.tuneEnv }; // Engine tuning, set by hand
+    if (this.tuneEnv?.LLAMA_MOE_CACHE_SAVE) { try { fs.mkdirSync(path.dirname(this.tuneEnv.LLAMA_MOE_CACHE_SAVE), { recursive: true }); } catch {} } // the engine writes the saved hot set there
     if (args.includes('--moe-cache-mib') && this.hotEnv?.[RANKING_ENV]) env = { ...env, ...this.hotEnv }; // Nov 16: the hot-expert profile (patch 0016)
     // Nov 20 (patch 0039, opt-in): Progressive chat memory, the newest words kept sharper. Its steps come from the
     // context it loads with (a resize in place that would need other steps starts the engine again instead).

@@ -6,6 +6,9 @@
 // Each lever is a flag llama-server knows, or a key Brain Engine reads at start (an older engine ignores keys it
 // doesn't know, so nothing breaks: the lever just does nothing there).
 
+import fs from 'node:fs';
+import { rankingFile, RANKING_ENV } from './hot-experts.js';
+
 // k: the setting, flags or env: what it sets, min/max: the range kept, int: whole numbers only
 export const TUNING_FIELDS = [
   { k: 'step', label: 'Reading step', flags: ['-b', '-ub'], min: 64, max: 16384, int: true, hint: 'words read at once (2048 chat, 4096 long files)' },
@@ -17,7 +20,12 @@ export const TUNING_FIELDS = [
   { k: 'doorbell', label: 'Card and processor at once (1 = on)', env: 'LLAMA_MOE_DOORBELL', min: 0, max: 1, int: true, hint: 'with a processor share above 0; Brain Engine 0042, CUDA cards only' },
   { k: 'cpuRead', label: 'Processor reads short prompts (up to N words)', env: 'LLAMA_MOE_CACHE_CPU_READ', min: 33, max: 16384, int: true, hint: 'changes answers slightly' },
   { k: 'lend', label: 'Lend the cache to long reads (over N words)', env: 'LLAMA_MOE_CACHE_LEND', min: 33, max: 16384, int: true, hint: 'below the reading step' },
-  { k: 'draftGate', label: 'Pause guessing below (share kept)', env: 'LLAMA_SPEC_GATE', min: 0.01, max: 1, hint: 'for drafting, 0.3 pauses when under 30% of guesses are kept' }
+  { k: 'draftGate', label: 'Pause guessing below (share kept)', env: 'LLAMA_SPEC_GATE', min: 0.01, max: 1, hint: 'for drafting, 0.3 pauses when under 30% of guesses are kept' },
+  // Nov 22, Brain Engine 30/31 (patches 0048-0051): each does nothing without a copy cache
+  { k: 'borrow', label: 'Long reads borrow the cache (1 = on)', env: 'LLAMA_MOE_CACHE_BORROW', min: 0, max: 1, int: true, hint: 'with a copy cache; Brain Engine 30 or newer' },
+  { k: 'shelf', label: 'Empty chat memory holds experts (1 = on)', env: 'LLAMA_MOE_CACHE_TAIL', min: 0, max: 1, int: true, hint: 'with a copy cache; Brain Engine 30 or newer' },
+  { k: 'drive', label: 'Read missed experts straight from the drive (1 = on)', env: 'LLAMA_MOE_DRIVE', min: 0, max: 1, int: true, hint: 'with a copy cache, for a brain bigger than RAM; Brain Engine 30 or newer' },
+  { k: 'hotSave', label: 'Remember the busy experts for next time (1 = on)', env: 'LLAMA_MOE_CACHE_SAVE', path: true, min: 0, max: 1, int: true, hint: 'with a copy cache; Brain Engine 30 or newer' }
 ];
 export const MODES = ['bob', 'hand', 'conductor'];
 const BY_KEY = Object.fromEntries(TUNING_FIELDS.map((f) => [f.k, f]));
@@ -76,7 +84,11 @@ const typed = (args, flag) => (FLAG_ALIASES[flag] || [flag]).some((a) => args.in
 // The flags and keys for one brain load, with hand tuning on. Flags typed by hand win, and the processor-only load
 // (cpu) gets no card levers. `taken` lists the flags set here, so the caller leaves those levers alone.
 // -> { args, env, taken, said }
-export function tuningArgs(cfg, model, { handArgs = [], cpu = false } = {}) {
+// The saved hot set (patch 0050): the engine writes its busiest experts to this file now and then and when it stops,
+// and the next load starts from it. A Calibrate profile (Hot experts on the card) still wins over it.
+export const savedHotFile = (cfg, model) => rankingFile(cfg, model, 'saved');
+
+export function tuningArgs(cfg, model, { handArgs = [], cpu = false, exists = fs.existsSync } = {}) {
   const none = { args: [], env: {}, taken: [], said: '' };
   if (!handTuningOn(cfg) || !model) return none;
   const l = cleanTuning(cfg.engineTuning).brains[model] || {};
@@ -92,7 +104,12 @@ export function tuningArgs(cfg, model, { handArgs = [], cpu = false } = {}) {
       for (const fl of f.flags) { args.push(fl, v); taken.push(fl); }
     } else {
       if (cpu) continue;
-      env[f.env] = v;
+      if (f.path) {
+        if (l[f.k] !== 1) continue; // 0 is off: no file
+        const file = savedHotFile(cfg, model);
+        env[f.env] = file;
+        if (exists(file)) env[RANKING_ENV] = file;
+      } else env[f.env] = v;
     }
     said.push(`${f.label.replace(/ \(.*\)$/, '').toLowerCase()} ${v}`);
   }
