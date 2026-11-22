@@ -343,7 +343,12 @@ export const askingParts = {
     // 0.3 GB for Windows): the chat memory is shortened to the biggest size that keeps Windows's share, and the brain
     // is still tried at that size. When even the shortest doesn't fit, the size picked is tried as before.
     const room = await apuRoom(this, model, fit);
-    if (room.ok && room.shortened && room.ctx < fit) { this.log('model', `${model}: ${room.ctx} chat memory instead of ${fit}, so Windows keeps its share (~${room.needGB} GB needed, ~${room.roomGB} GB free)`); return room.ctx; }
+    if (room.ok && room.shortened && room.ctx < fit) { (this.memCut ||= new Map()).set(model, { want: fit, ctx: room.ctx }); this.log('model', `${model}: ${room.ctx} chat memory instead of ${fit}, so Windows keeps its share (~${room.needGB} GB needed, ~${room.roomGB} GB free)`); return room.ctx; }
+    // Nov 22: already loaded at a shortened size (apuRoom has nothing new to check): it stays there, instead of jumping
+    // back to the full size, which is what ran out of memory
+    const cut = this.memCut?.get(model);
+    if (cut && cut.want === fit && room.ok && room.needGB === undefined) return cut.ctx;
+    if (cut && room.needGB !== undefined) this.memCut.delete(model); // loading again and it all fits now
     if (!room.ok) this.log('model', `keeping ${model}'s ${fit} chat memory: the estimate says ~${room.needGB} GB against ~${room.roomGB} GB free; if it runs out, it loads again with less`);
     return fit;
   },
