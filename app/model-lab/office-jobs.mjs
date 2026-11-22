@@ -79,7 +79,8 @@ export const OFFICE_JOBS = [
   { key: 'word-to-pdf', files: ['lease'], lo: true, text: 'Turn my Harbor Lane lease summary into a PDF.',
     score: { route: ['convert_file', 'office_edit'], best: 'convert_file', files: [{ like: /Lease_Summary_Harbor_Lane.*\.pdf$/i, has: [/1,?850/, /60 days/] }], kept: ['lease'] } },
   { key: 'excel-to-csv', files: ['budget'], lo: true, text: 'Save my Budget_2026 spreadsheet as a CSV file too.',
-    score: { route: ['convert_file', 'office_edit'], best: 'convert_file', files: [{ like: /Budget_2026.*\.csv$/i, has: [/640/, /2920/] }], kept: ['budget'] } },
+    // 22 Nov (Flash-Next rescore): save_spreadsheet writing the right CSV is a right route too; convert_file stays the best one
+    score: { route: ['convert_file', 'office_edit', 'save_spreadsheet'], best: 'convert_file', files: [{ like: /Budget_2026.*\.csv$/i, has: [/640/, /2920/] }], kept: ['budget'] } },
   // 16 Nov (the lead, from the Maximus rerun v5-d6-3-r0): the name is taken, so convert_file saves "Budget_2026-2.csv"; his answer
   // must name the file he really saved, not the one he asked for (office-score.mjs pathCheck)
   { key: 'excel-to-csv-taken', files: ['budget', 'oldcsv'], lo: true, text: 'Export Budget_2026.xlsx to CSV again, I need the newest numbers. Tell me what the new file is called.',

@@ -76,6 +76,13 @@ try {
   check('"Done" with no tool fails', scoreRun(run('word-to-pdf', { said: 'Done, saved the PDF.' })).verdict === 'fail');
   const pdfRun = (pdfText) => run('word-to-pdf', { said: 'Saved.', steps: [{ calls: [call('convert_file', {}, 'Saved: x.pdf')] }], office: { after: [lease, { path: 'C:\\Users\\you\\Documents\\Lease_Summary_Harbor_Lane.pdf', text: pdfText }] } });
   check('a convert job with the right file passes', scoreRun(pdfRun(lease.text)).verdict === 'pass');
+  const OJ = await imp('model-lab/office-jobs.mjs');
+  // 22 Nov (Flash-Next rescore): a first save in Bob's own folder, then the right file copied to Documents, passes; the first save alone fails
+  const subs = 'Streamly 12.99 CloudBox 2.99 FitTrack 7.50 Total 23.48', innSubs = 'C:\\Users\\you\\AppData\\Local\\Bob\\Agent\\inn\\documents\\Subscriptions.xlsx';
+  const make = (after) => run('excel-make', { said: 'Saved Subscriptions.xlsx in Documents.', steps: [{ calls: [call('office_make', {}, `Saved: ${innSubs} (spreadsheet)`), call('file_hands', {}, 'Copied.')] }], office: { after } });
+  check('a right file where asked passes even when the first save landed in Bob\'s folder', scoreRun(make([{ path: innSubs, text: subs }, { path: 'C:\\Users\\you\\Documents\\Subscriptions.xlsx', text: subs }])).verdict === 'pass');
+  check('the first save alone, in Bob\'s folder, still fails', scoreRun(make([{ path: innSubs, text: subs }])).why.some((w) => /saved in .* not C:\\Users\\you\\Documents/.test(w)));
+  check('a CSV made with save_spreadsheet is a right route for excel-to-csv', OJ.jobByKey('excel-to-csv').score.route.includes('save_spreadsheet') && OJ.jobByKey('excel-to-csv').score.best === 'convert_file');
   check('a convert job whose PDF lacks the words fails', scoreRun(pdfRun('blank')).verdict === 'fail');
   check('a convert job that changed the original fails', scoreRun(run('word-to-pdf', { steps: [{ calls: [call('convert_file', {}, 'Saved')] }], office: { after: [{ ...lease, text: 'gone' }, { path: 'C:\\Users\\you\\Documents\\Lease_Summary_Harbor_Lane.pdf', text: lease.text }] } })).why.some((w) => /was changed/.test(w)));
   const deck = (t) => run('ppt-add', { steps: [{ calls: [call('office_edit', {}, 'Saved')] }], office: { after: [{ path: FILES.pitch.path, text: t }] } });

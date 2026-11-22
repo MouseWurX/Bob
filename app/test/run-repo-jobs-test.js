@@ -223,5 +223,6 @@ const cmds = plan.benchmark.models[0].commands;
 check('the repo1 plan: stock Qwen3.6-35B-A3B, held, caps of 1 h and $1.50', /^HELD/.test(plan.note) && plan.hours_max === 1 && plan.dollars_max === 1.5 && plan.benchmark.models[0].file === 'hf:unsloth/Qwen3.6-35B-A3B-MTP-GGUF:Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf' && plan.benchmark_only === true && plan.publish.models.length === 0);
 check('the repo1 plan writes the jobs, runs them at Minimus and Medius, and scores them', /^node repo-jobs\.mjs --check --out /.test(cmds[0]) && /jobs-matrix\.mjs --prefix repo1 --no-scenes --variants "minimus=--effort low --solo-effort;medius=--effort medium --solo-effort"/.test(cmds[1]) && /repo-jobs\/jobs\.jsonl/.test(cmds[1]) && /--hours [\d.]+/.test(cmds[1]) && !/--search/.test(cmds[1]) && /^node repo-score\.mjs --runs [^ ]*repo1-minimus\/runs\.jsonl,[^ ]*repo1-medius\/runs\.jsonl --out /.test(cmds[2]));
 
+check('a command Bob pointed outside the project is his own fail, not the test world\'s (22 Nov rescore)', /\(a\.guard \|\| \[\]\)\.filter\(\(g\) => !\/ is outside the project:\/\.test\(g\.why\)\)\.length/.test(read('model-lab/repo-score.mjs')) && / is outside the project: /.test(read('model-lab/repo-jobs.mjs')));
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

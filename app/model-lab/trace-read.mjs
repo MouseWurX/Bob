@@ -184,6 +184,8 @@ async function main() {
   const acc = {}, reap = {}; let fails = 0, E = 0, used = 0;
   // --mass: also REAP scores per target (patch 0009) and keep lists per target at --keep shares, for per-job live presets
   const mass = Boolean(args.mass), shares = String(args.keep || '0.75,0.5').split(',').map(Number).filter((x) => x > 0 && x <= 1);
+  // 22 Nov: with more than one target, keep lists for all of them together too (all-keep-NN.json), for one mask that fits every job
+  const multi = new Set(work.map((w) => w.target)).size > 1;
   let done = 0;
   const readOne = async (w) => {
     const messages = w.messages || whole(w.lesson, w.sets); if (!messages) return failed('no-set', w, `set "${w.lesson.messages?.find((m) => m.role === 'assistant')?.set ?? ''}" not in toolsets.json`);
@@ -191,7 +193,7 @@ async function main() {
       const j = await post({ messages, max_tokens: 1, cache_prompt: false, expert_trace: true, ...(mass ? { expert_trace_mass: true } : {}), temperature: 0 });
       E ||= Number(j.expert_trace?.n_expert) || 0; used ||= Number(j.expert_trace?.n_expert_used) || 0;
       if (!addTo(acc, w.target, j.expert_trace)) failed('no-trace', w, j.expert_trace ? `kind ${j.expert_trace.kind || '?'}, no layers or rows` : 'reply had no expert_trace');
-      else if (mass) addTrace((reap[w.target] ||= emptyScores()), j.expert_trace);
+      else if (mass) { addTrace((reap[w.target] ||= emptyScores()), j.expert_trace); if (multi) addTrace((reap.all ||= emptyScores()), j.expert_trace); }
     } catch (e) { failed('http', w, e.message); if (done < FIRST) firstErrs.push(String(e.message || '').slice(0, 160)); }
     if (++done % 50 === 0) console.log(`  ${done}/${work.length}`);
   };

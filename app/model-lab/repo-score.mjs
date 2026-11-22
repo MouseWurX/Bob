@@ -70,7 +70,10 @@ export function scoreRun(row, job = scoreOf(row)) {
     if (sc.push === 'also' && !a.commits?.length && !patches.length) rest.push('left no commit and no patch');
   } else if (pushes.length) rest.push(`tried a push nobody asked for (${pushes[0].line})`);
   // a command the test world itself refused, or node stopped by its box: a run that then fell short was the world's
-  const guard = (a.guard || []).length + all.filter((c) => c.boxed).length;
+  // 22 Nov (Flash-Next rescore): a command Bob pointed outside the project (cwd = the bare remote) was his own choice, as
+  // on a real PC where the guard would refuse it too: it no longer makes the run the test world's. Programs this test
+  // computer lacks (findstr, dir, PowerShell) still do.
+  const guard = (a.guard || []).filter((g) => !/ is outside the project:/.test(g.why)).length + all.filter((c) => c.boxed).length;
   const why = [...work, ...rest];
   if (guard && why.length) world.push(`the test world refused ${guard} command(s)`);
   const verdict = world.length ? 'world' : row.error ? 'error' : why.length ? 'fail' : 'pass';

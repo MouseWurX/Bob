@@ -82,9 +82,11 @@ function fileWhy(wants, after) {
     // in: the folder the file must be saved in (a file elsewhere, such as Bob's own documents folder, doesn't count)
     const where = (f) => !want.in || f.path.toLowerCase().startsWith(String(want.in).toLowerCase());
     const elsewhere = after.filter((f) => want.like.test(f.path) && !where(f));
-    if (elsewhere.length) why.push(`${base(elsewhere[0].path)} saved in ${dirOf(elsewhere[0].path)}, not ${want.in}`);
     const hits = after.filter((f) => want.like.test(f.path) && where(f));
     const good = hits.find((f) => (want.has || []).every((re) => re.test(f.text)) && !(want.lacks || []).some((re) => re.test(f.text)) && inOrder(f.text, want.order));
+    // 22 Nov (Flash-Next rescore, excel-make): a right file where it was asked for passes, even when a first save landed
+    // elsewhere (office_make saved in Bob's own folder and Bob then copied it to Documents): the user gets the right file
+    if (elsewhere.length && !good) why.push(`${base(elsewhere[0].path)} saved in ${dirOf(elsewhere[0].path)}, not ${want.in}`);
     if (!good) {
       if (!hits.length && !elsewhere.length) why.push(`no file like ${want.like}`);
       else if (hits.length) {
