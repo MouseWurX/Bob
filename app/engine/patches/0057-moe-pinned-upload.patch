@@ -1,0 +1,407 @@
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index aeb55b3..4d7c091 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -1725,6 +1725,23 @@ static void * ggml_cuda_host_malloc(size_t size) {
+     return ptr;
+ }
+ 
++// Brain Engine 0057: pinned memory even when GGML_CUDA_NO_PINNED is set (that switch is for the step buffer; the long
++// reads' upload ring must be pinned or its copies are not asynchronous). nullptr when the driver refuses.
++static void * ggml_backend_cuda_pinned_alloc(size_t size) {
++    void * ptr = nullptr;
++    if (cudaMallocHost(&ptr, size) != cudaSuccess) {
++        (void) cudaGetLastError();
++        return nullptr;
++    }
++    return ptr;
++}
++
++static void ggml_backend_cuda_pinned_free(void * ptr) {
++    if (ptr) {
++        CUDA_CHECK(cudaFreeHost(ptr));
++    }
++}
++
+ static ggml_backend_buffer_t ggml_backend_cuda_host_buffer_type_alloc_buffer(ggml_backend_buffer_type_t buft, size_t size) {
+     void * ptr = ggml_cuda_host_malloc(size);
+ 
+@@ -6912,6 +6929,13 @@ static void * ggml_backend_cuda_reg_get_proc_address(ggml_backend_reg_t reg, con
+     if (strcmp(name, "ggml_backend_cuda_buffer_from_ptr") == 0) {
+         return (void *)ggml_backend_cuda_buffer_from_ptr;
+     }
++    // Brain Engine 0057: pinned memory for the long reads' upload ring
++    if (strcmp(name, "ggml_backend_cuda_pinned_alloc") == 0) {
++        return (void *)ggml_backend_cuda_pinned_alloc;
++    }
++    if (strcmp(name, "ggml_backend_cuda_pinned_free") == 0) {
++        return (void *)ggml_backend_cuda_pinned_free;
++    }
+     // Brain Engine 0042: mapped pinned memory for the MoE doorbell
+     if (strcmp(name, "ggml_backend_cuda_moe_doorbell_alloc") == 0) {
+         return (void *)ggml_cuda_moe_doorbell_alloc;
+diff --git a/ggml/src/ggml-rpc/ggml-rpc.cpp b/ggml/src/ggml-rpc/ggml-rpc.cpp
+index 4c874e1..1aa7964 100644
+--- a/ggml/src/ggml-rpc/ggml-rpc.cpp
++++ b/ggml/src/ggml-rpc/ggml-rpc.cpp
+@@ -3771,6 +3771,14 @@ static void ggml_backend_rpc_device_event_synchronize(ggml_backend_dev_t dev, gg
+     dispatcher->event_synchronize(event);
+ }
+ 
++// Brain Engine 0057 (tests only): the stand-in card takes big expert products from RAM as a real card does (op offload
++// at 32 rows or more), so the long reads' upload path runs in the tests. Off unless GGML_RPC_TEST_OFFLOAD is set.
++static bool ggml_backend_rpc_device_offload_op(ggml_backend_dev_t dev, const ggml_tensor * op) {
++    GGML_UNUSED(dev);
++    static const bool on = getenv("GGML_RPC_TEST_OFFLOAD") && atoi(getenv("GGML_RPC_TEST_OFFLOAD")) != 0;
++    return on && op->op == GGML_OP_MUL_MAT_ID && op->ne[2] >= 32;
++}
++
+ static const struct ggml_backend_device_i ggml_backend_rpc_device_i = {
+     /* .get_name             = */ ggml_backend_rpc_device_get_name,
+     /* .get_description      = */ ggml_backend_rpc_device_get_description,
+@@ -3783,7 +3791,7 @@ static const struct ggml_backend_device_i ggml_backend_rpc_device_i = {
+     /* .buffer_from_host_ptr = */ NULL,
+     /* .supports_op          = */ ggml_backend_rpc_device_supports_op,
+     /* .supports_buft        = */ ggml_backend_rpc_device_supports_buft,
+-    /* .offload_op           = */ NULL,
++    /* .offload_op           = */ ggml_backend_rpc_device_offload_op,
+     /* .event_new            = */ ggml_backend_rpc_device_event_new,
+     /* .event_free           = */ ggml_backend_rpc_device_event_free,
+     /* .event_synchronize    = */ ggml_backend_rpc_device_event_synchronize,
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index c168e15..38efe06 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -28,6 +28,9 @@
+ #include <stdexcept>
+ #include <string>
+ #include <unordered_map>
++#include <condition_variable>
++#include <mutex>
++#include <thread>
+ 
+ //
+ // llama_context
+@@ -1063,7 +1066,7 @@ void llama_context::sched_reserve() {
+                 ggml_backend_dev_t dev = ggml_backend_get_device(bb);
+                 size_t free = 0, total = 0;
+                 ggml_backend_dev_memory(dev, &free, &total);
+-                // Brain Engine 0056: 1024 MiB on NVIDIA cards (CUDA's own pool grows outside the scheduler; Avalon ran out of
++                // Brain Engine 0057: 1024 MiB on NVIDIA cards (CUDA's own pool grows outside the scheduler; Avalon ran out of
+                 // memory at 400 on a 4090), 512 elsewhere
+                 size_t spare = (strstr(ggml_backend_dev_name(dev), "CUDA") != nullptr ? 1024ull : 512ull)*1024*1024;
+                 if (const char * sp = getenv("LLAMA_MOE_CACHE_BORROW_SPARE_MIB"); sp != nullptr && atol(sp) >= 0) {
+@@ -2847,6 +2850,8 @@ static bool needs_raw_logits(const llama_ubatch & ubatch, const std::map<llama_s
+     return false; // all sequences use backend sampling
+ }
+ 
++static void llama_pinned_upload_report(llama_pinned_upload * pu);   // Brain Engine 0057
++
+ int llama_context::decode(const llama_batch_ext & batch_inp) {
+     if (!memory) {
+         LLAMA_LOG_DEBUG("%s: cannot decode batches with this context (calling encode() instead)\n", __func__);
+@@ -3392,6 +3397,11 @@ int llama_context::decode(const llama_batch_ext & batch_inp) {
+         }
+     }
+ 
++    // Brain Engine 0057: one line per long read that went through the pinned ring (the totals so far)
++    if (pinned_upload) {
++        llama_pinned_upload_report(pinned_upload.get());
++    }
++
+     // wait for the computation to finish (automatically done when obtaining the model output)
+     //synchronize();
+ 
+@@ -3975,6 +3985,224 @@ ggml_status llama_context::graph_compute(
+ // contents (an event recorded after that move). No math code and no scheduler code change: this sits in the copy
+ // callback llama already gives the scheduler. Only for batches that use at least half the experts (prompt reading);
+ // one-word writing is untouched.
++// Brain Engine 0057: a long read's uploads from RAM through a pinned ring (LLAMA_MOE_PINNED_UPLOAD=1, off unless set).
++// The brain's experts sit in a memory map, which is plain pageable memory: the card copies from it through the driver's
++// own small staging buffer, and the call returns only once the bytes are staged, so the copy is neither asynchronous
++// nor at the link's speed (on Windows the driver refuses to pin a read-only file mapping). Here worker threads copy
++// each piece into one of two pinned slots (page faults land on them, not on the card's stream) while the card takes
++// the slot before over the link. Same bytes to the same place: the words do not change.
++// Idea from Avalon (freriadoc/Avalon, MIT), whose experts sit in registered memory; the code is ours.
++struct llama_pinned_upload {
++    using alloc_t = void * (*)(size_t);
++    using free_t  = void (*)(void *);
++
++    size_t                 slot_bytes = 0;
++    void                 * pin[2]     = { nullptr, nullptr };
++    std::vector<uint8_t>   plain[2];               // test mode only (the stand-in card has no pinned memory)
++    ggml_backend_event_t   done[2]    = { nullptr, nullptr };
++    bool                   busy[2]    = { false, false };
++    ggml_backend_t         last       = nullptr;   // the backend the slots' copies were queued on
++    free_t                 pin_free   = nullptr;
++    int                    turn       = 0;
++
++    // the copy threads: each takes its share of one piece
++    std::vector<std::thread> pool;
++    std::mutex               mu;
++    std::condition_variable  cv_go, cv_done;
++    uint64_t                 job = 0;
++    int                      left = 0;
++    int                      n_workers = 0;
++    size_t                   min_split = (size_t) 4 << 20;   // pieces smaller than this are copied by one thread
++    bool                     stop = false;
++    uint8_t       * job_dst = nullptr;
++    const uint8_t * job_src = nullptr;
++    size_t          job_n   = 0;
++
++    uint64_t n_bytes = 0, n_pieces = 0, n_waits = 0, n_direct = 0;
++    int64_t  t_copy_us = 0, t_wait_us = 0;
++
++    ~llama_pinned_upload() {
++        if (last) {
++            ggml_backend_synchronize(last);
++        }
++        {
++            std::lock_guard<std::mutex> lk(mu);
++            stop = true;
++        }
++        cv_go.notify_all();
++        for (auto & t : pool) {
++            t.join();
++        }
++        for (int i = 0; i < 2; i++) {
++            if (done[i])          { ggml_backend_event_free(done[i]); }
++            if (pin[i] && pin_free) { pin_free(pin[i]); }
++        }
++        report();
++    }
++
++    // the totals so far, printed only when something new went through the ring
++    uint64_t n_reported = 0;
++    void report() {
++        if (n_pieces == n_reported) {
++            return;
++        }
++        n_reported = n_pieces;
++        LLAMA_LOG_INFO("llama_pinned_upload: %.2f MiB in %llu pieces through the pinned ring (%llu small copies direct), copying %.1f ms, waiting for a slot %.1f ms (%llu waits)\n",
++                n_bytes/1024.0/1024.0, (unsigned long long) n_pieces, (unsigned long long) n_direct,
++                t_copy_us/1000.0, t_wait_us/1000.0, (unsigned long long) n_waits);
++    }
++
++    static int env_int(const char * name, int def, int lo, int hi) {
++        const char * v = getenv(name);
++        if (!v || !*v) {
++            return def;
++        }
++        const int x = atoi(v);
++        return x < lo || x > hi ? def : x;
++    }
++
++    bool init(ggml_backend_t backend) {
++        ggml_backend_dev_t dev = ggml_backend_get_device(backend);
++        if (!dev || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_CPU) {
++            return false;
++        }
++        slot_bytes = (size_t) env_int("LLAMA_MOE_PINNED_UPLOAD_MIB", 64, 1, 1024) << 20;
++        const int n_threads = env_int("LLAMA_MOE_PINNED_UPLOAD_THREADS", 4, 1, 32);
++        const bool test = getenv("LLAMA_MOE_PINNED_UPLOAD_TEST") && atoi(getenv("LLAMA_MOE_PINNED_UPLOAD_TEST")) != 0;
++
++        ggml_backend_reg_t reg = ggml_backend_dev_backend_reg(dev);
++        auto pin_alloc = reg ? (alloc_t) ggml_backend_reg_get_proc_address(reg, "ggml_backend_cuda_pinned_alloc") : nullptr;
++        pin_free       = reg ? (free_t)  ggml_backend_reg_get_proc_address(reg, "ggml_backend_cuda_pinned_free")  : nullptr;
++        for (int i = 0; i < 2; i++) {
++            if (pin_alloc && pin_free) {
++                pin[i] = pin_alloc(slot_bytes);
++                if (!pin[i]) {
++                    LLAMA_LOG_WARN("llama_pinned_upload: !!! pinned upload NOT USED: the driver refused %zu MiB of pinned memory\n", slot_bytes >> 20);
++                    return false;
++                }
++            } else if (test) {
++                plain[i].resize(slot_bytes);   // the stand-in card: same pipeline, plain memory
++                pin[i] = plain[i].data();
++            } else {
++                LLAMA_LOG_WARN("llama_pinned_upload: !!! pinned upload NOT USED: %s has no pinned memory\n", ggml_backend_dev_name(dev));
++                return false;
++            }
++            done[i] = ggml_backend_event_new(dev);   // nullptr where events aren't supported: the slot waits for the backend
++        }
++        if (test && !(pin_alloc && pin_free)) {
++            pin_free = nullptr;   // the vectors free themselves
++        }
++        if (test) {
++            min_split = 0;   // the tests' small brain: every piece goes through the threads
++        }
++        n_workers = n_threads - 1;   // the calling thread is the last copier
++        for (int i = 0; i < n_workers; i++) {
++            pool.emplace_back([this, i] { worker(i); });
++        }
++        LLAMA_LOG_INFO("llama_pinned_upload: long reads upload from RAM through 2 x %zu MiB of %s memory, %d copy threads\n",
++                slot_bytes >> 20, pin_alloc && pin_free ? "pinned" : "plain (test)", n_threads);
++        return true;
++    }
++
++    // part i of n of the current piece
++    void part(int i, int n) {
++        const size_t per   = (job_n + n - 1) / n;
++        const size_t begin = std::min(job_n, (size_t) i * per);
++        const size_t end   = std::min(job_n, begin + per);
++        if (end > begin) {
++            memcpy(job_dst + begin, job_src + begin, end - begin);
++        }
++    }
++
++    void worker(int me) {
++        uint64_t seen = 0;
++        for (;;) {
++            {
++                std::unique_lock<std::mutex> lk(mu);
++                cv_go.wait(lk, [&] { return stop || job != seen; });
++                if (stop) {
++                    return;
++                }
++                seen = job;
++            }
++            part(me, n_workers + 1);
++            {
++                std::lock_guard<std::mutex> lk(mu);
++                if (--left == 0) {
++                    cv_done.notify_one();
++                }
++            }
++        }
++    }
++
++    void copy_piece(uint8_t * dst, const uint8_t * src, size_t n) {
++        if (n_workers == 0 || n < min_split) {
++            memcpy(dst, src, n);
++            return;
++        }
++        {
++            std::lock_guard<std::mutex> lk(mu);
++            job_dst = dst; job_src = src; job_n = n;
++            left = n_workers;
++            job++;
++        }
++        cv_go.notify_all();
++        part(n_workers, n_workers + 1);
++        std::unique_lock<std::mutex> lk(mu);
++        cv_done.wait(lk, [&] { return left == 0; });
++    }
++
++    void wait_slot(int s) {
++        if (!busy[s]) {
++            return;
++        }
++        const int64_t t0 = ggml_time_us();
++        if (done[s]) {
++            ggml_backend_event_synchronize(done[s]);
++        } else {
++            ggml_backend_synchronize(last);
++        }
++        t_wait_us += ggml_time_us() - t0;
++        n_waits++;
++        busy[s] = false;
++    }
++
++    // dst[offset .. offset + size) = src[0 .. size), queued on backend's stream like ggml_backend_tensor_set_async
++    void upload(ggml_backend_t backend, ggml_tensor * dst, const uint8_t * src, size_t offset, size_t size) {
++        if (size < ((size_t) 256 << 10)) {
++            ggml_backend_tensor_set_async(backend, dst, src, offset, size);   // a small copy isn't worth a slot
++            n_direct++;
++            return;
++        }
++        if (last && last != backend) {
++            ggml_backend_synchronize(last);   // the slots' copies were on another stream
++            busy[0] = busy[1] = false;
++        }
++        last = backend;
++        for (size_t at = 0; at < size; ) {
++            const size_t n = std::min(slot_bytes, size - at);
++            const int s = turn;
++            turn ^= 1;
++            wait_slot(s);   // the card has taken this slot's last piece
++            const int64_t t0 = ggml_time_us();
++            copy_piece((uint8_t *) pin[s], src + at, n);
++            t_copy_us += ggml_time_us() - t0;
++            ggml_backend_tensor_set_async(backend, dst, pin[s], offset + at, n);
++            if (done[s]) {
++                ggml_backend_event_record(done[s], backend);
++            }
++            busy[s] = true;
++            n_bytes += n;
++            n_pieces++;
++            at += n;
++        }
++    }
++};
++
++static void llama_pinned_upload_report(llama_pinned_upload * pu) {
++    pu->report();
++}
++
+ struct llama_expert_prefetch {
+     struct slot {
+         ggml_backend_buffer_t buf      = nullptr;
+@@ -4140,6 +4368,26 @@ bool llama_context::sched_copy_experts(ggml_backend_t backend, const ggml_tensor
+         return true;
+     }
+ 
++    // Brain Engine 0057: uploads through the pinned ring
++    if (!lctx->pinned_upload_tried) {
++        lctx->pinned_upload_tried = true;
++        const char * on = getenv("LLAMA_MOE_PINNED_UPLOAD");
++        if (on && atoi(on) > 0) {
++            auto pu = std::make_unique<llama_pinned_upload>();
++            if (pu->init(backend)) {
++                lctx->pinned_upload = std::move(pu);
++            }
++        }
++    }
++    auto upload = [&](size_t offset, size_t size) {
++        const uint8_t * from = (const uint8_t *) src->data + offset;
++        if (lctx->pinned_upload) {
++            lctx->pinned_upload->upload(backend, dst, from, offset, size);
++        } else {
++            ggml_backend_tensor_set_async(backend, dst, from, offset, size);
++        }
++    };
++
+     auto & st = lctx->copy_experts;
+ 
+     // the ids must be computed before the split starts, so only the first node of the split is considered
+@@ -4196,7 +4444,7 @@ bool llama_context::sched_copy_experts(ggml_backend_t backend, const ggml_tensor
+                 continue;
+             }
+             if (next < e) {
+-                ggml_backend_tensor_set_async(backend, dst, (const uint8_t *) src->data + next*expert_size, next*expert_size, (e - next)*expert_size);
++                upload(next*expert_size, (e - next)*expert_size);
+             }
+             e   += n;
+             next = e;
+@@ -4207,7 +4455,7 @@ bool llama_context::sched_copy_experts(ggml_backend_t backend, const ggml_tensor
+         const size_t padding = last < n_expert - 1 ? std::min<size_t>(expert_size, 512) : 0;
+         const size_t size    = (last + 1 - next)*expert_size + padding;
+         if (size > 0) {
+-            ggml_backend_tensor_set_async(backend, dst, (const uint8_t *) src->data + offset, offset, size);
++            upload(offset, size);
+         }
+ 
+         first = last + 1;
+diff --git a/src/llama-context.h b/src/llama-context.h
+index c8438d1..0a45354 100644
+--- a/src/llama-context.h
++++ b/src/llama-context.h
+@@ -20,6 +20,7 @@ struct llama_model;
+ class llama_batch_allocr;
+ class llama_moe_cache;
+ struct llama_expert_prefetch; // Brain Engine 0019
++struct llama_pinned_upload;   // Brain Engine 0057
+ 
+ class llama_io_read_i;
+ class llama_io_write_i;
+@@ -450,6 +451,10 @@ private:
+     std::unique_ptr<llama_expert_prefetch> expert_prefetch;
+     bool expert_prefetch_tried = false;
+ 
++    // Brain Engine 0057: long reads' uploads from RAM through a pinned ring, copied by threads (LLAMA_MOE_PINNED_UPLOAD=1)
++    std::unique_ptr<llama_pinned_upload> pinned_upload;
++    bool pinned_upload_tried = false;
++
+     // graph reallocations during inference where the backend assignments did not change, split by whether the
+     // graph size is the same as the previously scheduled one (unexpected) or different
+     int32_t n_reallocs_same = 0;
