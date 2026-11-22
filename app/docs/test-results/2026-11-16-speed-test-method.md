@@ -915,6 +915,18 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 97 (Nov 22, before any run): real-jobs quality for word-changing speed tricks
+
+Every speed trick that changes the words gets a real-jobs check, not only speed rows. The gate is absolute: jobs
+done correctly, no crashes, no bad tool calls, no broken files; pass counts against plain are reported as information.
+On Brain Engine 32 with the 35B, the same job files (repo 33, office 36, the first 40 mail jobs, low effort) and the
+same Bob are run against four servers: plain `-b 4096 -ub 4096`, fixed `-b 16384 -ub 4096`, borrowing at `-b 16384
+-ub 4096`, and stand-ins (0043, rank, max 1). Later rows: the 0055 rounding (share 1, against 0040 off and Brain
+Engine 21) and drive stand-ins (0053) on Flash-Next, once Flash-Next runs are allowed again with the RAM floor on.
+
+**Predictions, written before any run:** borrowing and fixed `-b 16384` pass the gate with pass counts within 2 jobs of
+plain; stand-ins at max 1 pass the gate but lose 1-4 jobs against plain.
+
 ## Addendum 96 (Nov 22, before any run): Gate 1 rerun on Brain Engine 32
 
 Brain Engine 32 adds 0052 (every bank laid out slot by slot, padded to whole blocks, fixing Brain Engine 31's
