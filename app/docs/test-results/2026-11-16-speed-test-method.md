@@ -915,6 +915,18 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 93 (Nov 22, before any run): Gate 1 rerun on Brain Engine 31
+
+On Brain Engine 29 borrowing never grew past step 4096: step 8192 needed 1,726 MiB borrowed, but only the first
+bank lent (1,126 MiB). Patch 0051 lends from every bank. A word check also showed the Addendum 90 word difference
+came from `-b 16384`, not from borrowing. So the rerun puts both ways at `-b 16384 -ub 4096`, and borrowing is the
+only difference. Plans `gate1-borrow-e2e-64k-be31.json` (5 rounds alternating) and `gate1-borrow-speed-be31.json`
+(32K and 128K, 5 rounds). The logs must show "reading step 8192" or higher and "every bank". Same pass marks as
+Addendum 90; same-top is checked as identical words between the two ways.
+
+**Predictions, written before any run:** reading at 128K 10-25% faster with borrowing, the 64K job 3-8% shorter,
+writing within 2%, and the same words.
+
 ## Addendum 92 (Nov 22, before any run): Flash-Next with the drive tier (Brain Engine 30)
 
 Patches 0049 (the shelf) and 0050 (the drive tier, `LLAMA_MOE_DRIVE=1`, and a saved hot set,
