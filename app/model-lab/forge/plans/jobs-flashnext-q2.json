@@ -1,0 +1,99 @@
+{
+ "run": "jobs-flashnext-q2",
+ "note": "HELD: not to be rented until the owner gives the go in the tools thread. 22 Nov, the owner: \"can we spin up two rentals run as bob, and test tools at iq3 and q2?\" Same Bob (lab-kit-fn3fff: 3fff3cf + npc fixes), jobs, scorers and tool-fault count as jobs-flashnext-tools (UD-Q4_K_XL), so the three quants line up; only the file differs: unsloth UD-Q2_K_XL. No expert-map phase (the Q4 run made that). Cards: 1 x RTX PRO 6000 (96 GB), else 1 x H100 80GB; the n-gram table (per_layer_token_embd) stays mmapped on the CPU (-ot per_layer_token_embd=CPU), so the rest fits; the account's one H200 goes to the Q4 REAP read. Tool quality, not speed, is measured. The download is watched (benchmark.download_max_minutes 30). Caps 2.3 h / $8. FILE NAME AND SIZE TO CONFIRM ON HUGGING FACE AT PRE-FLIGHT (the cloud can't reach it).",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.8-Flash-Next",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+  "NVIDIA H100 80GB HBM3"
+ ],
+ "step_up": [],
+ "disk_gb": 140,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 2.3,
+ "dollars_max": 8,
+ "rent_minutes": 120,
+ "download_quants": [],
+ "llama_tag": "b12359",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one server: Qwen3.8-Flash-Next; inbox, office and repository jobs at once, then the three scorers and the tool-fault count.",
+  "hours_each": 1.75,
+  "models": [
+   {
+    "name": "fn2-flashnext",
+    "nickname": "Qwen3.8-Flash-Next UD-Q2_K_XL, Bob at 3fff3cf, no counts",
+    "file": "hf:unsloth/Qwen3.8-Flash-Next-GGUF:UD-Q2_K_XL/Qwen3.8-Flash-Next-UD-Q2_K_XL-00001-of-00003.gguf",
+    "quant": "UD-Q2_K_XL",
+    "slots": 15,
+    "ctx": 737280,
+    "extra": "-ot per_layer_token_embd=CPU",
+    "hours": 1.75,
+    "commands": [
+     "node mail-jobs.mjs --catalog --out ../../bob-model-lab/out/mail-jobs-catalog/jobs.jsonl",
+     "node office-jobs.mjs --out ../../bob-model-lab/out/office-jobs/jobs.jsonl",
+     "node repo-jobs.mjs --check --out ../../bob-model-lab/out/repo-jobs/jobs.jsonl",
+     "node jobs-matrix.mjs --prefix fn2 --no-scenes --variants \"minimus=--effort low --solo-effort;medius=--effort medium --solo-effort;office=--jobs ../../bob-model-lab/out/office-jobs/jobs.jsonl --parallel 2 --office ../../../lab-office/libreoffice/program/soffice.exe;repominimus=--effort low --solo-effort --jobs ../../bob-model-lab/out/repo-jobs/jobs.jsonl --parallel 3;repomedius=--effort medium --solo-effort --jobs ../../bob-model-lab/out/repo-jobs/jobs.jsonl --parallel 3;repothink=--effort medium --solo-effort --jobs ../../bob-model-lab/out/repo-jobs/jobs.jsonl --parallel 3 --think-every-step\" --url {{url}} --bob .. --jobs ../../bob-model-lab/out/mail-jobs-catalog/jobs.jsonl --parallel 2 --want-shapes 4 --max bob --hours 1.2",
+     "node mail-score.mjs --runs ../../bob-model-lab/out/fn2-minimus/runs.jsonl,../../bob-model-lab/out/fn2-medius/runs.jsonl --out ../../bob-model-lab/out/fn2-mail-score --digests",
+     "node office-score.mjs --runs ../../bob-model-lab/out/fn2-office/runs.jsonl --out ../../bob-model-lab/out/fn2-office-score",
+     "node repo-score.mjs --runs ../../bob-model-lab/out/fn2-repominimus/runs.jsonl,../../bob-model-lab/out/fn2-repomedius/runs.jsonl,../../bob-model-lab/out/fn2-repothink/runs.jsonl --out ../../bob-model-lab/out/fn2-repo-score",
+     "node tool-faults.mjs --runs \"flashnext q2 inbox minimus=../../bob-model-lab/out/fn2-minimus/runs.jsonl,flashnext q2 inbox medius=../../bob-model-lab/out/fn2-medius/runs.jsonl,flashnext q2 office=../../bob-model-lab/out/fn2-office/runs.jsonl,flashnext q2 repo minimus=../../bob-model-lab/out/fn2-repominimus/runs.jsonl,flashnext q2 repo medius=../../bob-model-lab/out/fn2-repomedius/runs.jsonl,flashnext q2 repo medius thinking every step=../../bob-model-lab/out/fn2-repothink/runs.jsonl,qwen inbox minimus (after2)=../../../lab-kit-after2/bob-model-lab/out/after2-minimus/runs.jsonl,qwen inbox medius (after2)=../../../lab-kit-after2/bob-model-lab/out/after2-medius/runs.jsonl,qwen office (after2)=../../../lab-kit-after2/bob-model-lab/out/after2-office/runs.jsonl,qwen inbox minimus (steps40)=../../../lab-kit-steps/bob-model-lab/out/steps40-minimus/runs.jsonl,qwen inbox medius (steps40)=../../../lab-kit-steps/bob-model-lab/out/steps40-medius/runs.jsonl,qwen office (steps40)=../../../lab-kit-steps/bob-model-lab/out/steps40-office/runs.jsonl,qwen repo minimus (repo1)=../../../lab-kit-repojobs/bob-model-lab/out/repo1-minimus/runs.jsonl,qwen repo medius (repo1)=../../../lab-kit-repojobs/bob-model-lab/out/repo1-medius/runs.jsonl\" --out ../../bob-model-lab/out/fn2-tool-faults"
+    ],
+    "download_gb": 70
+   }
+  ],
+  "brain_engine": {
+   "ref": "3fff3cf084e3def210b6e92c1d415280bfbb4e3a",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word",
+    "0014-rpc-any-version"
+   ],
+   "note": "Brain Engine b12359 + all 14 of Bob's engine patches at 3fff3cf (expert trace with mass for the expert-map phase)"
+  },
+  "download_max_minutes": 30
+ },
+ "prep": [
+  "HELD: the owner's go, written in the tools thread.",
+  "Pre-flight on npc: confirm the exact file name, part count and size on Hugging Face (unsloth/Qwen3.8-Flash-Next-GGUF) and fix models[0].file and download_gb before renting.",
+  "Runs from lab-kit-fn3fff, like jobs-flashnext-tools; out folders fn2-*. Office scores are re-run for all three quants with the fixed grader (22 Nov) so they line up."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20,
+ "card_sets": [
+  {
+   "gpus": [
+    "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+   ],
+   "count": 1
+  },
+  {
+   "gpus": [
+    "NVIDIA H100 80GB HBM3"
+   ],
+   "count": 1
+  }
+ ],
+ "vram_gb": 80
+}

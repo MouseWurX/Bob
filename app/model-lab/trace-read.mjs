@@ -73,10 +73,20 @@ export function runChat(row) {
   // (Flash-Next, 21 Nov: 500 "System message must be at the beginning" on every run).
   return msgs.some((m) => m.role === 'assistant') && msgs.some((m) => m.role === 'user') ? foldSystem(msgs) : null;
 }
-export function pickRuns(runFiles, per) {
+// 22 Nov (the owner: "run the q4 for reap analysis"): REAP on Bob's clean jobs reads only the runs a scorer passed.
+// passedIds(files): every { id, verdict: 'pass' } (or pass: true) found anywhere in the score JSON files given.
+// an inbox job (mail-score: graded, no verdict) counts as clean with no harm and at least 80% of what it should find or do
+const mailClean = (v) => Array.isArray(v.harm) && v.inbox !== undefined && !v.harm.length && (v.coverage ?? v.recall ?? -1) >= 80;
+export function passedIds(files) {
+  const ids = new Set();
+  const walk = (v) => { if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === 'object') { if (v.id !== undefined && (v.verdict === 'pass' || v.pass === true || mailClean(v))) ids.add(String(v.id)); Object.values(v).forEach(walk); } };
+  for (const f of files) { try { walk(JSON.parse(fs.readFileSync(f, 'utf8'))); } catch {} }
+  return ids;
+}
+export function pickRuns(runFiles, per, passed = null) {
   const out = [];
   for (const [name, file] of runFiles) {
-    const rows = readJsonl(file).map((r) => ({ r, messages: runChat(r) })).filter((x) => x.messages);
+    const rows = readJsonl(file).filter((r) => !passed || passed.has(String(r.id))).map((r) => ({ r, messages: runChat(r) })).filter((x) => x.messages);
     const n = Math.min(per, rows.length), stride = rows.length / Math.max(n, 1);
     for (let i = 0; i < n; i++) { const x = rows[Math.floor(i * stride)]; out.push({ target: `job:${name}`, messages: x.messages, lesson: { idea: x.r.id } }); }
   }
@@ -143,6 +153,9 @@ async function main() {
   };
   const onlyJobs = args.jobs ? new Set(String(args.jobs).split(',').map((x) => `job:${x.trim()}`)) : null;
   const runFiles = String(args.runs || '').split(',').filter(Boolean).map((x) => { const [n, ...f] = x.split('='); return [n.trim(), path.resolve(f.join('=').trim())]; });
+  // --passed <score.json,...>: only runs these scores passed (REAP on clean jobs); none found = stop, never read them all
+  const passed = args.passed ? passedIds(String(args.passed).split(',').filter(Boolean).map((f) => path.resolve(f.trim()))) : null;
+  if (passed && !passed.size) { console.error(`trace-read: --passed gave no passed run ids (${args.passed})`); process.exit(1); }
   // 22 Nov (flashnext-tools): --preflight reads without a server. A runs file that is there is read as the trace phase
   // will read it; one not made yet (the jobs run first) is stood in for by a made-up do-jobs row, so a rental never
   // reaches the trace phase with a reader that can't turn a run into a chat. Nothing is sent anywhere.
@@ -150,7 +163,7 @@ async function main() {
     const bad = [];
     for (const [name, file] of runFiles) {
       if (!/^[\w-]{1,40}$/.test(name)) { bad.push(`run kind "${name}": letters, digits, - and _ only`); continue; }
-      if (fs.existsSync(file)) { const n = pickRuns([[name, file]], per).length; console.log(`trace-read pre-flight: ${name}: ${n} run(s) to read in ${file}`); if (!n) bad.push(`${name}: ${file} has no run that reads as a chat`); continue; }
+      if (fs.existsSync(file)) { const n = pickRuns([[name, file]], per, passed).length; console.log(`trace-read pre-flight: ${name}: ${n} run(s) to read in ${file}`); if (!n) bad.push(`${name}: ${file} has no run that reads as a chat`); continue; }
       const st = path.join(fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'trace-pf-')), 'runs.jsonl');
       fs.writeFileSync(st, JSON.stringify({ id: 'stand-in', text: 'What is on my list?', messages: [{ role: 'system', content: 'You are Bob.' }, { role: 'user', content: 'What is on my list?' }, { role: 'assistant', content: '', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'read_file', arguments: { path: 'list.txt' } } }] }, { role: 'tool', tool_call_id: 'c1', tool_name: 'read_file', content: 'milk' }, { role: 'assistant', content: 'Milk.' }] }) + '\n');
       const w = pickRuns([[name, st]], per);
@@ -164,7 +177,7 @@ async function main() {
     if (!bad.length) console.log('trace-read pre-flight OK');
     process.exit(bad.length ? 1 : 0);
   }
-  const work = [...(setDirs.length ? pickLessons(setDirs, per, perStyle) : []), ...pickRuns(runFiles, per)].filter((w) => !onlyJobs || onlyJobs.has(w.target));
+  const work = [...(setDirs.length ? pickLessons(setDirs, per, perStyle) : []), ...pickRuns(runFiles, per, passed)].filter((w) => !onlyJobs || onlyJobs.has(w.target));
   const par = Math.max(1, Number(args.parallel) || 1), why = {};
   const failed = (kind, w, msg = '') => { fails++; (why[kind] ||= { n: 0, first: [] }).n++; if (why[kind].first.length < 5) why[kind].first.push(`${w.target} ${w.lesson.idea}${msg ? ': ' + msg.slice(0, 160) : ''}`); if (fails <= 3) console.log(`  failed (${kind}) ${w.target} ${w.lesson.idea} ${msg.slice(0, 120)}`); };
   console.log(`Reading ${work.length} lessons over ${new Set(work.map((w) => w.target)).size} targets (up to ${per} each; held-out never read)`);

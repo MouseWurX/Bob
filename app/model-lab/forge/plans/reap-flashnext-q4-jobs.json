@@ -1,0 +1,92 @@
+{
+ "run": "reap-flashnext-q4-jobs",
+ "note": "HELD: not to be rented until the owner gives the go in the tools thread. 22 Nov, the owner: \"run the q4 for reap analysis too, we know it does darn well with our tools\". REAP on Bob's clean jobs: the same Q4 file and Brain Engine (b12359 + 14 patches) as jobs-flashnext-tools re-read (one word out, trace on, --parallel 1) only the runs its scorers passed (trace-read --passed; the office runs re-scored first with the fixed 22 Nov grader). Out: out/reap-flashnext-q4-jobs (counts.json, lift.json, dials.json, keep/<job>-keep-75/50.json per layer, trace-read.md). Nothing is cut or uploaded here; a cut is tested in Bob before anything else (lossy tricks gate). 1 x H200 or H200 NVL (103.7 GiB; the account allows one at a time). Caps 1.8 h / $11.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.8-Flash-Next",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H200 NVL",
+  "NVIDIA H200"
+ ],
+ "step_up": [],
+ "disk_gb": 170,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 1.8,
+ "dollars_max": 11,
+ "rent_minutes": 120,
+ "download_quants": [],
+ "llama_tag": "b12359",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one server on one H200: Flash-Next Q4 replays every clean run from the Q4 tools run (inbox, office, repository) with the expert trace and REAP mass on; nothing new is generated.",
+  "hours_each": 1.4,
+  "models": [
+   {
+    "name": "reap-fnt-q4",
+    "nickname": "Qwen3.8-Flash-Next UD-Q4_K_XL, REAP read of the clean Flash-Next tool runs",
+    "file": "hf:unsloth/Qwen3.8-Flash-Next-GGUF:UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 15,
+    "ctx": 737280,
+    "extra": "",
+    "hours": 1.4,
+    "commands": [
+     "node office-score.mjs --runs ../../bob-model-lab/out/fnt-office/runs.jsonl --out ../../bob-model-lab/out/fnt-office-score-fixed",
+     "node trace-read.mjs --url {{url}} --runs inbox=../../bob-model-lab/out/fnt-minimus/runs.jsonl,inbox=../../bob-model-lab/out/fnt-medius/runs.jsonl,office=../../bob-model-lab/out/fnt-office/runs.jsonl,repo=../../bob-model-lab/out/fnt-repominimus/runs.jsonl,repo=../../bob-model-lab/out/fnt-repomedius/runs.jsonl,repo=../../bob-model-lab/out/fnt-repothink/runs.jsonl --passed ../../bob-model-lab/out/fnt-mail-score/mail-score.json,../../bob-model-lab/out/fnt-office-score-fixed/office-score.json,../../bob-model-lab/out/fnt-repo-score/repo-score.json --mass --keep 0.75,0.5 --parallel 1 --per 120 --out out/reap-flashnext-q4-jobs"
+    ],
+    "download_gb": 112
+   }
+  ],
+  "brain_engine": {
+   "ref": "3fff3cf084e3def210b6e92c1d415280bfbb4e3a",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word",
+    "0014-rpc-any-version"
+   ],
+   "note": "Brain Engine b12359 + all 14 of Bob's engine patches at 3fff3cf (expert trace with mass for the expert-map phase)"
+  },
+  "download_max_minutes": 30
+ },
+ "prep": [
+  "HELD: the owner's go, written in the tools thread.",
+  "Runs from lab-kit-fn3fff (its fnt-* runs and scores are the input); copy the 22 Nov trace-read.mjs (--passed) and office-score.mjs into the kit first.",
+  "Pre-flight on npc: trace-read lists how many clean runs each kind reads (none = stop)."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20,
+ "card_sets": [
+  {
+   "gpus": [
+    "NVIDIA H200 NVL"
+   ],
+   "count": 1
+  },
+  {
+   "gpus": [
+    "NVIDIA H200"
+   ],
+   "count": 1
+  }
+ ]
+}

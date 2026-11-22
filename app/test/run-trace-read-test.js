@@ -112,5 +112,19 @@ check('no held-out lesson is read', !seen.some((j) => JSON.stringify(j.messages)
   check('the first 3 replays failing with the same error stop the phase (exit 87), say why, and ask no more', res.code === 87 && asks === 3 && /TRACE STOP: the first 3 replays all failed the same way/.test(res.o) && /System message must be at the beginning/.test(res.o) && fj.stopped_after === 3, `code ${res.code}, asks ${asks}, ${res.o.slice(-300)}`);
 }
 fs.rmSync(tmp, { recursive: true, force: true });
+// 22 Nov: --passed reads only clean runs (REAP on Bob's clean jobs)
+{
+  const T = await import('../model-lab/trace-read.mjs');
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'trace-passed-'));
+  const sc = path.join(d, 'score.json');
+  fs.writeFileSync(sc, JSON.stringify({ a: { scores: [{ id: 'r1', verdict: 'pass' }, { id: 'r2', verdict: 'fail' }] }, mail: [{ id: 'm1', inbox: 'x', harm: [], coverage: 90 }, { id: 'm2', inbox: 'x', harm: ['trashed'], coverage: 100 }, { id: 'm3', inbox: 'x', harm: [], recall: 50 }] }));
+  const ids = T.passedIds([sc]);
+  check('passedIds: verdict pass and clean inbox runs only', ids.has('r1') && ids.has('m1') && !ids.has('r2') && !ids.has('m2') && !ids.has('m3') && ids.size === 2, [...ids].join(','));
+  const rf = path.join(d, 'runs.jsonl');
+  const chat = (id) => JSON.stringify({ id, messages: [{ role: 'system', content: 's' }, { role: 'user', content: 'u' }, { role: 'assistant', content: 'a' }] });
+  fs.writeFileSync(rf, [chat('r1'), chat('r2'), chat('m1')].join('\n'));
+  check('pickRuns with passed reads only those runs', T.pickRuns([['repo', rf]], 10, ids).length === 2 && T.pickRuns([['repo', rf]], 10).length === 3);
+  fs.rmSync(d, { recursive: true, force: true });
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
