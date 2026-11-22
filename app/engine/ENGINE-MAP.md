@@ -577,8 +577,8 @@ Written Nov 22 before the borrowing work (scope: rebuild Avalon's ideas inside B
 
 ### 0055-moe-cpu-round-fast: 0040's round-like-the-card product in whole numbers
 - **Why:** the processor-sharing regression (BE21 to BE26). 0040's kernel (`ggml_compute_forward_mul_mat_id_card_round`, on by default with a processor share above 0) turned every weight row into floats and ran a plain float loop. One expert product for one word was 6-35 times slower than the stock q4_K/q6_K x q8_K kernel. A share of 0 never runs it.
-- **How:** whole-number dots per block of 32 for q4_K and q6_K, the way the card's q4_K x q8_1 and q6_K x q8_1 work. There's an AVX2 path that reads the packed weights directly, and a plain integer loop on other processors (ARM and Android included). Other types (q5_K, q3_K, q2_K, iq*) keep 0040's float loop.
+- **How:** whole-number dots per block of 32 for q4_K and q6_K, the way the card's q4_K x q8_1 and q6_K x q8_1 work. It works in one pass with an AVX2 path that reads the packed weights directly, and uses VNNI where the processor build has it (the Zen 4/5 builds). Other processors (ARM and Android included) and q2_K, q3_K and q5_K keep a slower fallback.
 - **Upstream files:** `ggml/src/ggml-cpu/ggml-cpu.c`.
 - **Re-check on rebase:** the q4_K and q6_K block layouts (`block_q4_K`, `block_q6_K`).
-- **Tests:** in the cloud (Nov 22, another thread): output equal to 0040's to 4-5 digits, one expert product about 1.5-2 times the stock kernel instead of 6-35 times. moe-cpu-read.py, moe-learn.py and moe-doorbell.py pass on top of 0001-0054 (their brains are f16, so they don't run the new q4_K/q6_K paths). Whole-brain writing on npc: unproven in our lab, as we have yet to test.
+- **Tests:** in the cloud (Nov 22, the 0040 bisect thread): one word on 4 threads, q4_K 0.142 ms against stock's 0.159, and q6_K 0.172-0.217 against 0.158-0.176. moe-round-check.cpp passes 26 of 26 here too (0040's accuracy is kept), and moe-cpu-read.py and moe-learn.py pass on top of 0001-0054. On npc (share 1 + learn 16, code): 0040 on 23-24 words/s, off 82-88. With this patch: unproven in our lab, as we have yet to test.
 
