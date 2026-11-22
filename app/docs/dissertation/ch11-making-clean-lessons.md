@@ -344,7 +344,7 @@ Training was parked, and the work turned to making the harness reliable with the
 - **Office passed 27 of 36** by code. The misses were five edits not made or not saved, a .pptx taken for a .pdf, files compared without being read, a damaged file not called damaged, wrong totals on a 3,000-row sheet, and a fact left out.
 - **Two harms in the mail jobs.** In the first, naming only a company trashed mail from people who work there; that is fixed and tested. In the second, on an unsubscribe job at Medius, Bob moved 84 mails he should not have; the bulk-plan guard is being fixed.
 - **The step caps cost 5 of the 96 runs** (8, 12, 16 or 24 steps by level).
-- **The mail pass totals by level are not recorded here.** Their score report was kept only on the home PC and could not be read when this was written; it may have gone in a cleanup. They are left out rather than estimated.
+- **The mail pass totals by level were not recorded.** Their score report was kept only on the home PC and was deleted in a cleanup before it was copied anywhere else. They are left out rather than estimated.
 - A second run of 300 everyday jobs stopped after 41 because the web search was blocked (about $0.41). Its jobs were rerun in steps40.
 
 **steps40 (about $0.69).** 66 of after2's jobs and about 260 everyday jobs again, with a keyed search service and the caps raised to 40 steps (48 at Magnus, 64 at Maximus) and no 10-minute cutoff. The 5 runs that ran out of steps all finished, nothing looped, and Office stayed at 27 of 36.
