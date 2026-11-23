@@ -6,6 +6,8 @@
 #   3. experts in RAM (--n-cpu-moe): no NaN (upstream #32710), the same words as on the card
 #   4. Brain Engine's MoE cache (--moe-cache-mib) with misses on the card and half on the processor: the same words
 #   5. a 16 GB card's budget: --fit with 15.5 GB (16 GB less the 512 MB margin) and its peak card memory
+#   6. DSpark guess-ahead (0092, Unsloth's dspark-Inkling-2-Mini-Q8_0 drafter), the guesses picked on the card and on the
+#      host: the same greedy words as without it, how many guesses are kept, and the words a second with and without it
 # Usage: inkling-real.sh <bob checkout> <work folder> [quant, default UD-Q4_K_M]
 # Needs: git, cmake, nvcc (CUDA 12.8+ for Blackwell), python3 with huggingface_hub, ~60 GB of disk.
 set -euo pipefail
@@ -42,6 +44,12 @@ q, work = sys.argv[1], sys.argv[2]
 p = hf_hub_download('unsloth/Inkling-2-Mini-GGUF', f'Mainline_Support/Inkling-2-Mini-{q}.gguf_file', local_dir=work)
 shutil.move(p, os.path.join(work, f'Inkling-2-Mini-{q}.gguf'))
 EOF
+fi
+
+D=$WORK/dspark-Inkling-2-Mini-Q8_0.gguf
+if [ ! -f "$D" ]; then
+  log "downloading dspark-Inkling-2-Mini-Q8_0.gguf"
+  python3 -c "from huggingface_hub import hf_hub_download as d; d('unsloth/Inkling-2-Mini-GGUF', 'dspark-Inkling-2-Mini-Q8_0.gguf', local_dir='$WORK')"
 fi
 
 SHORT='Write a Python function that returns the n-th Fibonacci number, then explain it in two sentences.'
@@ -88,6 +96,17 @@ grep -h "MoE cache size\|slots (\|hit rate" be-cache0.log | sed 's/^/    /'
 log "5: a 16 GB card"
 run be be-16g -ngl 99 --fit on --fit-target 512 -c 32768
 check "fits 15.5 GB (peak $(cat be-16g.peak) MiB)" "$( [ "$(cat be-16g.peak)" -le 15872 ] && echo 1 )"
+
+log "6: DSpark guess-ahead"
+SPEC="-md $D --spec-type draft-dspark --spec-draft-n-max 3 -ngld 99"
+run be be-dspark-card -ngl 99 $SPEC --spec-draft-backend-sampling
+run be be-dspark-host -ngl 99 $SPEC --no-spec-draft-backend-sampling
+check "DSpark, guesses picked on the card: same words" "$(cmp -s be-card.out be-dspark-card.out && echo 1)"
+check "DSpark, guesses picked on the host: same words" "$(cmp -s be-card.out be-dspark-host.out && echo 1)"
+check "DSpark: the Inkling drafter is used" "$(grep -q 'Inkling2 DSpark: block_size=8' be-dspark-card.log && echo 1)"
+for t in be-card be-dspark-card be-dspark-host; do
+  echo "    $t: $(grep -o 'eval time.*tokens per second)' $t.log | tail -1)  $(grep -o 'draft acceptance = [0-9.]* ( *[0-9]* accepted / *[0-9]* generated)' $t.log | tail -1)"
+done
 
 log "perplexity (wikitext-2 test, 32 chunks of 512)"
 if [ ! -f wiki.test.raw ]; then
