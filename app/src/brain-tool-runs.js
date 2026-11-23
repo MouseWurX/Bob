@@ -6,6 +6,7 @@ import { WATCH_TOOLS } from './meanwhile.js';
 import { receiptBefore, cachedLook, keepLook, receiptAfter, noteNo } from './job-helps.js';
 import { inTurn as inChangeTurn, afterChanges } from './turn-changes.js';
 import { recordCall } from './tool-learn.js';
+import { traced, toolStatus } from './trace-log.js'; // Nov 16 Monitoring log
 import { keepRecord } from './tool-record.js';
 import { SAVE_AS, saveAs } from './save-as.js';
 import path from 'node:path';
@@ -60,7 +61,8 @@ export const toolRunParts = {
     // Items 237-238: every save the tool makes is tied to this turn (Undo takes the whole turn back; memory changes say
     // which turn wrote them). Not for another Bob's, Telegram's or Discord's jobs.
     const scope = ctx?.askId && !ctx.job?.guest ? { cfg: this.cfg, sessionId: ctx.sessionId, askId: ctx.askId, jobId: ctx.job?.id, tool: name } : null;
-    const res = cachedLook(this, name, args, ctx) || await inChangeTurn(scope, async () => { try { return await this.runToolNow(name, args, ctx, tool); } finally { if (scope && afterChanges(scope)) { ctx.changed = true; ctx.emit?.({ type: 'turn-changed', askId: ctx.askId }); } } }); // Jobs: Reuse look-ups
+    // Monitoring log (trace-log.js): one span per call, with the tool's name, time, status and the answer's size only.
+    const res = await traced('tool', name === 'use_my_tool' && args?.name ? `use_my_tool:${args.name}` : name, async () => cachedLook(this, name, args, ctx) || await inChangeTurn(scope, async () => { try { return await this.runToolNow(name, args, ctx, tool); } finally { if (scope && afterChanges(scope)) { ctx.changed = true; ctx.emit?.({ type: 'turn-changed', askId: ctx.askId }); } } }), (r) => ({ status: toolStatus(r?.text), chars: String(r?.text ?? '').length, detail: { in: args, out: r?.text } }), { signal: ctx?.signal, before: { in: args } }); // Jobs: Reuse look-ups
     keepLook(this, name, args, res);
     receiptAfter(this, name, args, res, ctx, before);
     noteNo(this, ctx, name, args, res?.text); // Jobs: Remember a "no" for the whole chat

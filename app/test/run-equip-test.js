@@ -66,8 +66,8 @@ const ctx = { roles, models, brains: { small: 'gemma4:e4b' }, embed: '', selecte
   check('no non-commercial or revenue-limited models in the sets', packs.every((p) => p.models.every((id) => !banned.test(id))));
   check('every set slot is a real slot', packs.every((p) => Object.values(p.slots).flat().every((s) => allSlots().some((x) => x.id === s))));
   check('every set model has a slot', packs.every((p) => p.models.every((id) => (p.slots[id] || []).length)));
-  check('8 GB and processor-only sets put one model in chat, quick brain, eyes and ears', ['mid', 'cpu'].every((id) => packs.find((p) => p.id === id).slots['gemma4-e4b'].join() === 'bob,small,eyes,voice'));
-  check('the 6 GB set: light Qwen3 4B for chat and quick brain, Gemma 4 E4B for eyes and ears', packs.find((p) => p.id === 'small').slots['qwen3-4b'].join() === 'bob,small' && packs.find((p) => p.id === 'small').slots['gemma4-e4b'].join() === 'eyes,voice');
+  check('8 GB and processor-only sets put one model in chat, quick brain and eyes, and Whisper base hears', ['mid', 'cpu'].every((id) => packs.find((p) => p.id === id).slots['gemma4-e4b'].join() === 'bob,small,eyes' && packs.find((p) => p.id === id).slots['whisper-base-en'].join() === 'voice'));
+  check('the 6 GB set: light Qwen3 4B for chat and quick brain, Gemma 4 E4B for eyes and ears', packs.find((p) => p.id === 'small').slots['qwen3-4b'].join() === 'bob,small' && packs.find((p) => p.id === 'small').slots['gemma4-e4b'].join() === 'eyes');
   check('picked by card size', packFor(packs, 16).id === 'big' && packFor(packs, 8).id === 'mid' && packFor(packs, 6).id === 'small' && packFor(packs, 4).id === 'cpu' && packFor(packs, null).id === 'cpu');
   check('small cards are told how long pictures take', ['mid', 'small'].every((id) => /minute/.test(packs.find((p) => p.id === id).times)));
   const mid = packs.find((p) => p.id === 'mid'), small = packs.find((p) => p.id === 'small');

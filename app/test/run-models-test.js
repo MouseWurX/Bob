@@ -122,8 +122,9 @@ check('engine status sees an older sd.exe build as installed', es.find((e) => e.
 // --- what Bob can do here
 const cap0 = capabilities({ agentDir: agent, stt: { provider: 'whispercpp', model: path.join(agent, 'nope.bin') }, painter: { engine: 'sdcpp', sdcpp: { exe: path.join(agent, 'sd.cpp', exeName('sd')), image: cfg.painter.sdcpp.image } } });
 check('pictures count only when the painter program and every model file exist', cap0.pictures === true && cap0.video === false && cap0.hearing === false, JSON.stringify(cap0));
-const cap1 = capabilities({ agentDir: agent, stt: { provider: 'ollama', model: 'gemma4:26b' }, painter: { engine: 'comfy', comfy: {} } });
-check('hearing through Ollama counts when the model is pulled; no ComfyUI workflow means no pictures', cap1.hearing === true && cap1.pictures === false, JSON.stringify(cap1));
+check('Nov 16 2026: Ollama\'s hearing doesn\'t count while Ollama is off', capabilities({ agentDir: agent, stt: { provider: 'ollama', model: 'gemma4:26b' }, painter: { engine: 'comfy', comfy: {} } }).hearing === false);
+const cap1 = capabilities({ agentDir: agent, useOllama: true, stt: { provider: 'ollama', model: 'gemma4:26b' }, painter: { engine: 'comfy', comfy: {} } });
+check('hearing through Ollama counts when the model is pulled and Use Ollama too is on; no ComfyUI workflow means no pictures', cap1.hearing === true && cap1.pictures === false, JSON.stringify(cap1));
 
 const capM = capabilities({ agentDir: agent, stt: {}, painter: { engine: 'maestro' }, maestro: { enabled: false, image: 'flux2_klein_9b', video: 'ltx2_25' } });
 check('Maestro settings do nothing while Maestro is switched off', !capM.pictures && !capM.video);

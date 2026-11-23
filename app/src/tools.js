@@ -709,6 +709,14 @@ export function buildTools(cfg) {
     }, ['url']),
     async run({ url, part, find }, ctx = {}) {
       const { signal } = ctx;
+      // Nov 16 (800-job read, an outlier): a brain passed a JSON blob holding a link as the url. A url with spaces,
+      // braces or quotes is refused with what a link looks like; a link found inside it is used instead.
+      const given = String(url ?? '').trim();
+      if (!/^https?:\/\/[^\s"'{}<>]+$/i.test(given)) {
+        const inside = given.match(/https?:\/\/[^\s"'{}<>\\]+/i)?.[0];
+        if (!inside) throw new Error(`"${given.slice(0, 80)}" isn't a web link. Give just the address, like https://example.com/page.`);
+        url = inside;
+      }
       const pw = cleanPrivateWeb(cfg.privateWeb);
       const job = ctx.job?.id || ctx.askId || ctx.sessionId || '';
       const link = pw.on ? cleanLink(url) : String(url); // Private web: tracking bits off the link

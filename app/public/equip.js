@@ -3,6 +3,7 @@
 // and it uses the slots, kits and tips here. Nothing is ever equipped by itself. Pure HTML builders; cellar.js
 // handles the clicks.
 import { packFor, packsFor, canDo, suit, pickFor } from './fit.js';
+import { takesJob } from './brain-choices.js';
 import { houseGroupOf } from './house-style.js';
 import { tip } from './tips.js';
 import { esc, gb } from './util.js';
@@ -14,7 +15,7 @@ export const SLOTS = [
   { id: 'bob', name: 'Brain', icon: '🧠', side: 'L', how: 'job', kind: 'llm', cats: ['chat', 'coding'], does: 'Thinks, chats and plans. Everything else hangs off this.', empty: "No brain: Bob can't think or chat" },
   { id: 'small', name: 'Quick brain', icon: '⚡', side: 'L', how: 'brain', kind: 'llm', cats: ['chat'], does: 'A small, fast brain for quick answers and the Art session, so the painter keeps the card.', empty: 'No quick brain: the Art session has nothing small to run' },
   // 1.5.56: the session brains are slots too, so every brain is equipped in one place.
-  { id: 'gaming', name: 'Gaming', icon: '🎮', side: 'L', how: 'brain', kind: 'llm', cats: ['chat'], does: 'Chats on the processor while you play, so your game keeps the graphics card. Only brains timed for that go here.', empty: 'No gaming brain: chat waits while Gaming is on' },
+  { id: 'gaming', name: 'Gaming', icon: '🎮', side: 'L', how: 'brain', kind: 'llm', cats: ['chat'], does: 'Chats on the processor while you play, so your game keeps the graphics card. Only brains timed for that go here.', empty: 'No gaming brain: no brain loads while you play, and jobs wait (or go to another of your Bobs with Send jobs)' },
   { id: 'deep', name: 'Deep thinking', icon: '🔭', side: 'L', how: 'brain', kind: 'llm', cats: ['chat', 'coding'], does: 'The strongest thinker, for Medium, High and Extreme effort.', empty: 'Uses the Review or main brain' },
   // 1.5.127: a brain hired from an online service, for one job at a time. Only used when the owner says so (a card, or the chat page's 🏗 switch).
   { id: 'rent', name: 'Rented brain', icon: '🏗', side: 'L', how: 'rent', kind: 'rent', cats: [], does: 'A big brain hired by the answer or by the minute from a service you have an account with. Only used when you say so, after a card with the cost.', empty: 'Empty: every job runs on this replicant matrix' },
@@ -59,7 +60,8 @@ export function equipped(slot, { roles, brains, embed, rent }) {
 // can do the slot's job are listed: a brain that can't see never shows under Seeing pictures, a big brain never under Quick brain.
 export function kitFor(slot, { roles, models }) {
   const able = (entry, o) => slot.kind !== 'llm' || canDo(slot.id, { entry, name: o?.value, caps: o?.caps });
-  const have = (roles?.options?.[slot.kind] || []).map((o) => ({ ...o, entry: entryOf(models, o.value), installed: true })).filter((k) => able(k.entry, k));
+  // Nov 18 2026: a brain you have can take any thinking job (brain-choices.js); downloads stay the ones made for it.
+  const have = (roles?.options?.[slot.kind] || []).map((o) => ({ ...o, entry: entryOf(models, o.value), installed: true })).filter((k) => slot.kind !== 'llm' || takesJob(slot.id, { entry: k.entry, name: k.value, caps: k.caps }).ok);
   const haveIds = new Set(have.map((h) => h.entry?.id).filter(Boolean));
   const shop = models.filter((m) => slot.cats.includes(m.category) && Boolean(m.use?.painter?.sdcpp?.edit) === Boolean(slot.editOnly) && m.status?.state !== 'installed' && !m.gated && !haveIds.has(m.id) && able(m))
     .map((m) => ({ value: m.id, label: m.name, entry: m, installed: false }));
@@ -70,7 +72,7 @@ export function kitFor(slot, { roles, models }) {
 export function slotTakes(slot, value, { roles, models }) {
   if (!slot || slot.kind !== 'llm') return true;
   const o = (roles?.options?.llm || []).find((x) => x.value === value);
-  return canDo(slot.id, { entry: entryOf(models, value), name: value, caps: o?.caps });
+  return takesJob(slot.id, { entry: entryOf(models, value), name: value, caps: o?.caps }).ok; // Nov 18 2026: one rule (brain-choices.js)
 }
 
 // How each kit item stands for this slot on this PC: Bob's pick for the job, fits the card, or doesn't suit (with why).

@@ -111,7 +111,7 @@ export function tooBigEverywhere(m, hw = {}, rooms = [], platform = '') {
 // card, since lightness alone would always pick the most squeezed picture model.
 // Small cards (8 GB or less): a brain that fills most of the card leaves no room for longer chats, so it pays
 // extra. On a 6 GB laptop that makes the light Qwen3 4B the Brain and Quick brain, and Gemma 4 E4B the one that
-// sees pictures and hears you.
+// sees pictures (Whisper base hears you, from the starter set).
 const QUALITY = { bob: 4, deep: 5, tinker: 5, reviewer: 4, office: 3, eyes: 2, ledger: 1, scout: 2, painter: 1, small: 0, gaming: 0 };
 export const W = { cover: 2, weight: 6, spill: 10, room: 12, smallCard: 8 };
 
@@ -164,6 +164,12 @@ export function pickFor(slotId, models, ctx = {}) {
   const m = id && models.find((x) => x.id === id);
   if (!m) return null;
   const s = suit(m, hw, ctx.platform);
+  // Nov 16 2026: Whisper hears you in every starter set; where whisper.cpp has no build (a Mac), the set's brain that
+  // can hear (Gemma 4 E4B, on Bob's own engine) is the pick instead.
+  if (slotId === 'voice' && s.level === 'blocked') {
+    const ear = (pack.models || []).map((x) => models.find((y) => y.id === x)).find((y) => y && (y.jobs || []).includes('voice') && (y.files || []).some((f) => f.role === 'mmproj') && suit(y, hw, ctx.platform).level === 'ok');
+    if (ear) return { id: ear.id, why: 'Hears you on my own engine, since whisper.cpp has no build here' };
+  }
   if (s.level === 'blocked' || s.ram || (s.level !== 'ok' && !(pack.tick || []).includes(m.id))) return null;
   return { id: m.id, why: `In the starter set for your card${m.vramGB ? ` · ${gb(m.vramGB)} of graphics memory` : ''}` };
 }

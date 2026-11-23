@@ -362,3 +362,18 @@ Read against the Hugging Face MoE training handbook (Tazi, von Werra and Wolf, 2
 Tests: `pod/selftest_training.py` 72 of 72 checks (new: the old and new router rules agree on Qwen; the gate spots a missing router tensor) (new: the router mode and dtype in the report, a frozen-router heal
 with the routing record, no router weights in a frozen adapter, `grpo.py --router frozen`), `pod/selftest_gptoss.py`
 all pass. Both on a CPU with tiny made-up models: the code runs; whether a frozen router heals better is for a real run.
+
+## RunPod's new address (16 Nov 2026, tested with a made-up RunPod only)
+RunPod retired its old rental address (`rest.runpod.io/v1`) while the GPT-OSS trial was waiting for a card: the name
+stopped resolving and every rent said "fetch failed". RunPod's docs now say v1 "is deprecated and no longer available"
+and point to v2 at `https://api.runpod.io/v2` (same key). `runpod-v2.mjs` turns the Forge's requests into v2's shape and
+v2's answers back into what the Forge reads. What changed:
+- v2 takes one card type per request, so the Forge asks for each wanted card in turn (best first). A broken request
+  (422) or a key/balance refusal stops at once instead of trying every card.
+- The body is nested: `image`, `gpu {id, count}`, `disk` (container disk), `mounts` (a network volume or a host disk,
+  never both), `entrypoint` + `cmd`. There is no public-IP switch; a pod's TCP ports and their address come back in
+  `runtime.ports`, which `--urls` and the direct door read.
+- Network volumes live at `/network-volumes`, with `dataCenter` for the data centre.
+- The pod's own self-delete (normal end and the time cap, `pod/run.sh`) uses the v2 address too.
+- Where cards and storage are (`--places`) still asks RunPod's GraphQL door, which still answers.
+Test: `test/run-forge-runpod-v2-test.js`. Unproven in our lab on a real rental, as we have yet to rent through it.

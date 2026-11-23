@@ -1,6 +1,6 @@
 {
   "name": "bob",
-  "version": "1.5.246",
+  "version": "1.5.251",
   "description": "Bob, a local AI who lives on your PC: chat, pictures, video, voice and more, all on your own hardware.",
   "type": "module",
   "private": true,
@@ -20,6 +20,7 @@
     "dist:linux": "electron-builder --linux AppImage --publish never"
   },
   "testSuites": [
+    "test/run-brain-choices-test.js",
     "test/run-syntax-test.js",
     "test/run-harness-test.js",
     "test/run-fade-chat-test.js",
@@ -62,6 +63,7 @@
     "test/run-scenes-test.js",
     "test/run-jobs-gate-test.js",
     "test/run-jobs-to-lessons-test.js",
+    "test/run-forge-runpod-v2-test.js",
     "test/run-step-thinking-test.js",
     "test/run-solo-effort-test.js",
     "test/run-cant-retry-test.js",
@@ -71,6 +73,7 @@
     "test/run-web-search-test.js",
     "test/run-facts-first-test.js",
     "test/run-private-web-test.js",
+    "test/run-monitoring-log-test.js",
     "test/run-lab-watch-test.js",
     "test/run-squeezed-brain-test.js",
     "test/run-gaming-card-test.js",
@@ -90,6 +93,7 @@
     "test/run-painter-test.js",
     "test/run-models-test.js",
     "test/run-stt-test.js",
+    "test/run-native-hearing-test.js",
     "test/run-maestro-test.js",
     "test/run-cloud-test.js",
     "test/run-clan-test.js",
@@ -113,6 +117,7 @@
     "test/run-personality-test.js",
     "test/run-schedules-test.js",
     "test/run-hands-test.js",
+    "test/run-answer-checks-test.js",
     "test/run-hands-schedules-test.js",
     "test/run-apps-test.js",
     "test/run-apps-route-test.js",
@@ -293,6 +298,7 @@
     "test/run-task-pop-test.js",
     "test/run-phone-menu-test.js",
     "test/run-status-line-test.js",
+    "test/run-patches-steps-test.js",
     "test/run-net-overlay-test.js",
     "test/run-game-guard-test.js",
     "test/run-engine-name-test.js",
@@ -318,9 +324,9 @@
   ],
   "bob": {
     "release": "1.5",
-    "patch": 246,
+    "patch": 251,
     "branch": "",
-    "build": 298,
+    "build": 303,
     "bundledLlamaTag": "b12359",
     "brainEngineVersion": 8,
     "brainEngine": {

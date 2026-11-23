@@ -78,7 +78,7 @@ export function createSettingsParts(now) {
 `)}${panel('ev-how', '⚡ How Bob works', howSum, `
       <h4 class="ssub">How he works</h4>
       ${sswitch('autoSession', settings.autoSession !== false, 'Auto session', 'Bob switches to the session that suits the job (Art, Coding, Office or Gaming) and returns to Normal after 2 quiet minutes. He stays in Gaming while a game uses the GPU. A session you pick is kept while you work.')}
-      ${sswitch('oneBrain', settings.oneBrain, 'One brain', 'The main brain does every job and the Quick brain is off. No swaps (about 20 seconds each). Other picks are kept, greyed on the Brains page.')}
+      ${sswitch('oneBrain', settings.oneBrain, 'One brain', 'The main brain does every job, the Quick brain is off, and so is the Gaming brain. No swaps (about 20 seconds each). Other picks are kept, greyed on the Brains page.')}
       ${sswitch('soloEffort', settings.soloEffort === true, 'Effort on one brain', 'The Effort button changes how the main brain works, not which brain. Low: no thinking. Medium: thinks to plan. High: also checks his work and improves it once. Max: plans small jobs, checks the plan and the result.')}
       ${srow('Facts first', `<select data-set="factsFirst" aria-label="Facts first">${[['high', 'Magnus and Maximus'], ['all', 'Every level'], ['off', 'Off']].map(([v, n]) => `<option value="${v}" ${(settings.factsFirst || 'high') === v ? 'selected' : ''}>${n}</option>`).join('')}</select> ${tip('On a question of fact, Bob notes what he remembers, looks it up, answers from the source and says where the two differ. Chat and questions about your own files are left alone. Needs web search on.', 'Facts first')}`)}
       ${sswitch('readFirst', settings.readFirst !== false, 'Read what you were given', 'Bob reads a file or folder you name before he answers or asks about it, and looks in his folders before asking which file. On unless you turn it off.')}
@@ -86,6 +86,7 @@ export function createSettingsParts(now) {
       ${sswitch('howtos', settings.howtos === true, 'Learn how-tos', 'After a multi-step job goes well, Bob offers to save the steps as a how-to and follows it for similar asks. Nothing is kept without your click. Your how-tos are in 🧰 Tools and how-tos below.')}
       ${sswitch('editOwn', settings.editOwn === true, 'Edit his own messages', 'Bob corrects his earlier message instead of sending a new one. It says edited; press that to see the original.')}
       ${sswitch('thinkBubble', settings.thinkBubble !== false, 'Thinking bubble', 'One folded bubble above the answer holds every step, draft and fix. Off: it all types out in the chat.')}
+      ${sswitch('patchesSteps', settings.patchesSteps !== false, `${esc(settings.catName || 'Patches')} tells the steps`, 'The cat narrates the short step lines in the thinking bubble. Bob still gives the answers. Off: plain step lines.')}
       ${sswitch('statusJokes', settings.statusJokes !== false, 'Funny status line', 'The line under my name says what I\'m doing, in my own words. Off: plain words.')}
       ${sswitch('chatRedo', settings.chatRedo !== false, 'Try again, Edit and Delete', 'Adds them to each message\'s … menu.')}
       ${sswitch('quickNotes', settings.quickNotes === true, 'Quick notes', 'Say "note: ..." or "jot this down" in any chat, here, on your phone, in Discord DMs or Telegram. Find notes by a word or #tag.')}
@@ -123,7 +124,7 @@ export function createSettingsParts(now) {
       ${sswitch('labPro', settings.labPro === true, 'Lab: Professional mode', keep('Shows every control, the test logs and each method\'s proper name. The same switch is at the top of the Lab.'))}
       ${sswitch('labLessons', settings.labLessons === true, 'Lab: Lessons', keep('Adds Lessons to Lab, Learn: a short course from tokens to cutting and healing a brain. Each lesson is read, try it on your loaded brain, then two quick questions.'))}
       ${selfWorkHtml()}
-      ${sswitch('naughtyList', settings.naughtyList === true, 'Show the naughty list', keep('Adds a Naughty list to the Brain catalogue: Qwen and Gemma remixes with the refusals removed ("heretic" or "abliterated"). What they say is on you. Bob never recommends one. Off: hidden; one already equipped stays.'))}
+      ${sswitch('naughtyList', settings.naughtyList === true, 'Show the naughty list', keep('Adds a Naughty list to the Brain catalogue: remixes of Qwen, Gemma and other open brains with the refusals removed ("heretic" or "abliterated"). What they say is on you. Bob never recommends one. Off: hidden; one already equipped stays.'))}
 `)}${EVERY_EXTRA.map(([id, label, note, body]) => panel(id, label, typeof note === 'function' ? note() : note, body())).join('')}
     </div>`;
   }

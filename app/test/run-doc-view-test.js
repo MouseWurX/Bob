@@ -139,7 +139,7 @@ cfg.docView = true;
   check('Settings, How Bob works has the switch, off by default', /sswitch\('docView', settings\.docView === true, 'Documents in the side panel'/.test(cellar) && /dataset\.set === 'docView'/.test(cellar));
   check('the Welcome list offers it', WANTS.some((w) => w.key === 'docView' && w.setting === 'Documents in the side panel'));
   const main = read('electron/main.cjs');
-  check('Bob\'s window can draw PDF pages', /nodeIntegration: false, plugins: true \}/.test(main));
+  check('Bob\'s window can draw PDF pages', /nodeIntegration: false, plugins: true[ ,]/.test(main));
   const ids = new Set(HELP.map((e) => e.id));
   check('Help, an FAQ and a glossary entry', ids.has('doc-view') && ids.has('faq-doc-view') && /<dt>Side panel<\/dt>/.test(HELP.find((e) => e.id === 'glossary').html));
   const h = HELP.find((e) => e.id === 'doc-view').html;

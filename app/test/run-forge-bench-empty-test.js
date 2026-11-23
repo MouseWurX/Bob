@@ -15,13 +15,13 @@ const plan = { run: 'bench-empty-test', benchmark_only: true, counts: 'no-such-c
   benchmark: { models: [{ name: 'teacher', file: 'hf:someone/some-GGUF:a.gguf', slots: 1, ctx: 32768, commands: ['node -e 0 -- --hours 0.1 --gate 10:0.6'] }] } };
 const planFile = path.join(tmp, 'plan.json');
 fs.writeFileSync(planFile, JSON.stringify(plan));
-const r = spawnSync(process.execPath, ['forge.mjs', '--plan', planFile, '--preflight'], { cwd: forge, encoding: 'utf8', env: { ...process.env, RUNPOD_API_KEY: 'test-not-a-key', FORGE_OUT: tmp, HF_TOKEN: '' } });
+const r = spawnSync(process.execPath, ['forge.mjs', '--plan', planFile, '--preflight'], { cwd: forge, encoding: 'utf8', env: { ...process.env, RUNPOD_API_KEY: 'test-not-a-key', FORGE_OUT: tmp, HF_TOKEN: '', FORGE_NO_RUNPOD_CHECK: '1' } });
 const out = `${r.stdout || ''}${r.stderr || ''}`.replace(/\r\n/g, '\n');
 check('a benchmark-only plan passes the file check with no lessons or counts on this PC', r.status === 0 && !/missing /.test(out) && /pre-flight OK: nothing rented/.test(out), out.slice(-400));
 const stand = path.join(tmp, 'forge', 'bench-empty');
 check('the pod gets empty stand-ins, not an old lesson set or tool list', fs.readFileSync(path.join(stand, 'lessons.jsonl'), 'utf8') === '' && fs.readFileSync(path.join(stand, 'toolsets.json'), 'utf8').trim() === '{}' && fs.readFileSync(path.join(stand, 'counts.json'), 'utf8').trim() === '{}');
 const p2 = { ...plan, benchmark_only: false, run: 'not-bench' }; fs.writeFileSync(planFile, JSON.stringify(p2));
-const r2 = spawnSync(process.execPath, ['forge.mjs', '--plan', planFile, '--preflight'], { cwd: forge, encoding: 'utf8', env: { ...process.env, RUNPOD_API_KEY: 'test-not-a-key', FORGE_OUT: tmp, HF_TOKEN: '' } });
+const r2 = spawnSync(process.execPath, ['forge.mjs', '--plan', planFile, '--preflight'], { cwd: forge, encoding: 'utf8', env: { ...process.env, RUNPOD_API_KEY: 'test-not-a-key', FORGE_OUT: tmp, HF_TOKEN: '', FORGE_NO_RUNPOD_CHECK: '1' } });
 check('any other plan still stops when its lessons are missing', r2.status !== 0 && /missing .*no-such-lessons/.test(`${r2.stdout}${r2.stderr}`));
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

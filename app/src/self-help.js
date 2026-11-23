@@ -57,6 +57,7 @@ export function settingsNow(cfg) {
     `Stop and wait words: ${onOff(cfg.stopWords !== false)}`,
     `Thinking bubble: ${onOff(cfg.thinkBubble !== false)}`,
     `Funny status line: ${onOff(cfg.statusJokes !== false)}`,
+    `Patches tells the steps: ${onOff(cfg.patchesSteps !== false)}`,
     `Quick brain sees the job: ${onOff(cfg.quickSeesJob === true)}`,
     `Engine extras (Speed & memory): Prompt-lookup decoding: ${onOff(cfg.copyGuess === true)}; Preload the next brain: ${onOff(cfg.preloadNext === true)}; Laptop mode: ${onOff(cfg.laptopMode === true)}; Auto-test a new GPU: ${onOff(cfg.newCardTest === true)}; Speed history: ${onOff(cfg.speedLog === true)}; Engine update notes (Engines): ${onOff(cfg.engineNotes === true)}; Chat memory type picked for ${Object.values(cfg.brainMemType || {}).filter((t) => t !== 'standard').length} brain(s), the rest Standard`,
     harnessNow(cfg), // items 62 to 72: crashes, safe start, undo, quiet hours, weekly, shortcut, chat extras

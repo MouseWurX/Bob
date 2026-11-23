@@ -77,7 +77,7 @@ check('a folder with no runs stops it', none.status === STOP && /no runs in the 
   W('fl/lessons.jsonl', '{}\n'); W('fl/toolsets.json', '{}');
   const gateCmd = `node jobs-gate.mjs --out "${tmp}" --dir later --runs 45 --want-shapes 4 --search tavily --user ${ME.user} --host ${ME.host} --words ${ME.words[0]}`;
   const planF = W('plan.json', JSON.stringify({ run: 'pf-gate', benchmark_only: true, lessons: path.join(tmp, 'fl'), counts_file: W('fc.json', '{}'), rungs: [], hours_max: 2, dollars_max: 2, rent_minutes: 30, benchmark: { models: [{ name: 'flashnext-jobs', slots: 2, ctx: 65536, commands: [gateCmd] }] } }));
-  const forge = (env) => spawnSync(process.execPath, ['forge/forge.mjs', '--plan', planF, '--preflight'], { cwd: path.join(app, 'model-lab'), encoding: 'utf8', env: { ...process.env, FORGE_OUT: path.join(tmp, 'fout'), RUNPOD_API_KEY: 'none-in-tests', ...env } });
+  const forge = (env) => spawnSync(process.execPath, ['forge/forge.mjs', '--plan', planF, '--preflight'], { cwd: path.join(app, 'model-lab'), encoding: 'utf8', env: { ...process.env, FORGE_NO_RUNPOD_CHECK: '1', FORGE_OUT: path.join(tmp, 'fout'), RUNPOD_API_KEY: 'none-in-tests', ...env } });
   const good = forge({ LAB_TAVILY_KEY: KEY }), bad = forge({ LAB_TAVILY_KEY: '' });
   check('forge pre-flight: the gate needs no --hours and passes when its key opens', good.status === 0 && /gate pre-flight OK/.test(good.stdout) && /pre-flight OK: nothing rented/.test(good.stdout), (good.stdout + good.stderr).slice(-400));
   check("forge pre-flight: a gate that couldn't check for the key stops the rental", bad.status === 1 && /PRE-FLIGHT FAIL: flashnext-jobs command 1: the Lab's Tavily key can't be opened/.test(bad.stdout) && /Not renting/.test(bad.stdout), bad.stdout.slice(-400));

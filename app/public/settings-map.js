@@ -11,7 +11,7 @@ export const GROUPS = [
   ['Agents', ['adv-claude', 'adv-openai', 'adv-gemini', 'adv-qwen', 'adv-opencode', 'adv-discord', 'adv-telegram']], // 1.5.228 one section per company and chat app
   ['What Bob may do', ['adv-hands', 'ev-howtos']],
   ['Fun', ['adv-adventure', 'adv-games']],
-  ['This replicant matrix', ['ev-pc', 'ev-home', 'ev-save', 'ev-projects', 'ev-backup', 'adv-housekeeping', 'ev-lock', 'ev-secrets', 'adv-health', 'adv-remove']]
+  ['This replicant matrix', ['ev-pc', 'ev-home', 'ev-save', 'ev-projects', 'ev-backup', 'adv-housekeeping', 'ev-lock', 'ev-secrets', 'adv-health', 'adv-tracelog', 'adv-remove']]
 ];
 
 // Simple: the cards. `about` says what's inside, in a few plain words.
@@ -24,7 +24,7 @@ export const CARDS = [
   { id: 'agents', icon: '🤝', name: 'Agents', about: 'Claude, OpenAI, Gemini, Qwen, OpenCode, Discord, Telegram.', words: 'claude anthropic codex chatgpt gemini google qwen opencode discord telegram chat head cube moderate moderator keep order kick ban spam bot', topics: ['adv-claude', 'adv-openai', 'adv-gemini', 'adv-qwen', 'adv-opencode', 'adv-discord', 'adv-telegram'] },
   { id: 'may', icon: '✋', name: 'What Bob may do', about: 'Files, programs, apps and the tools he made.', topics: ['adv-hands', 'ev-howtos'] },
   { id: 'fun', icon: '🎲', name: 'Fun', about: 'Adventure and games.', topics: ['adv-adventure', 'adv-games'] },
-  { id: 'pc', icon: '💻', name: 'This replicant matrix', about: 'Updates, passcode, secrets, folders, backups, tidying, removing Bob.', topics: ['ev-pc', 'adv-health', 'ev-lock', 'ev-projects', 'ev-home', 'ev-secrets', 'ev-save', 'ev-backup', 'adv-housekeeping', 'adv-remove'] }
+  { id: 'pc', icon: '💻', name: 'This replicant matrix', about: 'Updates, passcode, secrets, folders, backups, tidying, removing Bob.', words: 'monitoring log trace timing slow steps debug opentelemetry', topics: ['ev-pc', 'adv-health', 'ev-lock', 'ev-projects', 'ev-home', 'ev-secrets', 'ev-save', 'ev-backup', 'adv-housekeeping', 'adv-tracelog', 'adv-remove'] }
 ];
 
 export const VIEW_KEY = 'bob-settings-view';

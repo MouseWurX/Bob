@@ -23,7 +23,12 @@ export function opts(defaults) {
   return o;
 }
 
+// Nov 16: Bob's monitoring log (src/trace-log.js, inn/bob/monitoring-log/) can hold real chat data when "Include
+// details" is on. It is for debugging Bob on this computer only: no lesson tool reads it, finds it or uploads it.
+export const notMonitoringLog = (p) => !/(^|[\\/])monitoring-log([\\/]|$)|(^|[\\/])bob-monitoring[^\\/]*\.txt$/i.test(String(p || ''));
+
 export function findFile(root, test, depth = 5) {
+  if (!notMonitoringLog(root)) return null;
   let st; try { st = fs.statSync(root); } catch { return null; }
   if (!st.isDirectory()) return test(path.basename(root)) ? root : null;
   let list = []; try { list = fs.readdirSync(root, { withFileTypes: true }); } catch { return null; }
@@ -202,7 +207,7 @@ export function joinStream(text) {
 
 export const stamp = () => new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 export function appendJsonl(file, obj) { fs.appendFileSync(file, JSON.stringify(obj) + '\n'); }
-export function readJsonl(file) { if (!fs.existsSync(file)) return []; return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); }
+export function readJsonl(file) { if (!notMonitoringLog(file) || !fs.existsSync(file)) return []; return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); }
 
 // Nov 13 (the owner: "he can pause after a step for the response then carry on again"): Bob asks a running test to
 // pause by writing card-pause.json in the Agent folder (src/card-guard.js). Call this between steps: when asked, it
