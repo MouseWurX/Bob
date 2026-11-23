@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mergeSettings } from '../src/config.js';
 import { LlamaCpp } from '../src/llamacpp.js';
-import { TUNING_FIELDS, cleanLevers, cleanTuning, savedTuning, mergeTuning, handTuningOn, tuningArgs, savedHotFile, doorbellEnv } from '../src/engine-tuning.js';
+import { TUNING_FIELDS, cleanLevers, cleanTuning, savedTuning, mergeTuning, handTuningOn, tuningArgs, savedHotFile, doorbellEnv, registerRamEnv } from '../src/engine-tuning.js';
 import { HELP } from '../public/help-content.js';
 
 let pass = 0, fail = 0;
@@ -46,6 +46,13 @@ check('nothing for a brain with no boxes filled', tuningArgs(hand({ step: 4096 }
 check('Brain Engine 0109: locking the experts in RAM is its own key, off unless set, and skipped on the processor-only load',
   tuningArgs(hand({ registerRam: 1 }), 'big').env.LLAMA_MOE_REGISTER_RAM === '1' && !('LLAMA_MOE_REGISTER_RAM' in tuningArgs(hand({ step: 512 }), 'big').env) &&
   !('LLAMA_MOE_REGISTER_RAM' in tuningArgs(hand({ registerRam: 1 }), 'big', { cpu: true }).env));
+check('0109 on Linux: locked by default when experts stay in RAM; not elsewhere, not processor-only, not without expert flags, and a set key wins',
+  registerRamEnv({}, { platform: 'linux', args: ['--n-cpu-moe', '99'] }).LLAMA_MOE_REGISTER_RAM === '1' &&
+  !registerRamEnv({}, { platform: 'win32', args: ['--n-cpu-moe', '99'] }).LLAMA_MOE_REGISTER_RAM &&
+  !registerRamEnv({}, { platform: 'darwin', args: ['--moe-cache-mib', '4096'] }).LLAMA_MOE_REGISTER_RAM &&
+  !registerRamEnv({}, { platform: 'linux', args: ['--n-cpu-moe', '99'], cpu: true }).LLAMA_MOE_REGISTER_RAM &&
+  !registerRamEnv({}, { platform: 'linux', args: ['-ngl', '99'] }).LLAMA_MOE_REGISTER_RAM &&
+  !registerRamEnv({ LLAMA_MOE_REGISTER_RAM: '0' }, { platform: 'linux', args: ['--n-cpu-moe', '99'] }).LLAMA_MOE_REGISTER_RAM);
 check('a processor share alone does nothing', !tuningArgs(hand({ cpuShare: 1 }), 'big').args.includes('--moe-cache-cpu-share'));
 check('flags typed by hand win', (() => { const r = tuningArgs(hand({ step: 4096, cacheMB: 4096 }), 'big', { handArgs: ['--ubatch-size', '512', '--moe-cache-mib', '2048'] }); return !r.args.includes('-ub') && !r.args.includes('--moe-cache-mib'); })());
 check('the processor-only load gets the step but no card levers', (() => { const r = tuningArgs(hand({ step: 1024, cacheMB: 4096, lookahead: 4 }), 'big', { cpu: true }); return r.args.join(' ') === '-b 1024 -ub 1024' && !Object.keys(r.env).length; })());
