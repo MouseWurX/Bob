@@ -1,0 +1,104 @@
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 235f87a..69e209f 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -1094,6 +1094,47 @@ void llama_context::sched_reserve() {
+                     break;
+                 }
+             }
++            // Brain Engine 0064 (LLAMA_MOE_STEP_FIT=1, off unless set): the working memory grows about in a line with the
++            // step (need = a + b x tokens), so a line fitted to the steps measured above gives the biggest step on a
++            // 256-token grid that fits what the cache lends, not just a power of two.
++            // The step it picks is measured again before it's used. From Avalon's ubatch_fit (freriadoc/Avalon, MIT).
++            const bool step_fit = [] { const char * v = getenv("LLAMA_MOE_STEP_FIT"); return v && atoi(v) > 0; }();
++            if (step_fit) {
++                std::vector<std::pair<double, double>> pts = { { (double) own_ub, (double) own } };
++                for (const auto & [u, need] : needs) {
++                    pts.emplace_back((double) u, (double) need);
++                }
++                if (pts.size() >= 2) {
++                    double mx = 0, my = 0;
++                    for (const auto & [x, y] : pts) { mx += x; my += y; }
++                    mx /= pts.size(); my /= pts.size();
++                    double sxx = 0, sxy = 0;
++                    for (const auto & [x, y] : pts) { sxx += (x - mx)*(x - mx); sxy += (x - mx)*(y - my); }
++                    const double b = sxx > 0 ? sxy/sxx : 0.0;
++                    const double a = my - b*mx;
++                    const uint32_t grid = 256;
++                    uint32_t u = std::max(own_ub, cparams.moe_cache_borrow_max_ub/grid*grid);
++                    // Avalon keeps a margin of 256 MiB + 10% on the line's guess; here the guess is measured before it's
++                    // used (and the card's own scratch keeps its spare below), so the line only says where to start
++                    auto fits_line = [&](uint32_t t) {
++                        return a + b*t <= (double) room;
++                    };
++                    while (u > best && !fits_line(u)) {
++                        u -= grid;
++                    }
++                    // check the line's pick with a real measure, a grid step lower each time it's wrong (a few times)
++                    for (int tries = 0; u > best && tries < 8; tries++, u -= grid) {
++                        const size_t need = measure(u);
++                        if (need != SIZE_MAX && need <= room) {
++                            LLAMA_LOG_INFO("%s: fitted step: need = %.1f MiB + %.4f MiB x tokens, step %u needs %.2f MiB (the doubling picked %u)\n",
++                                    __func__, a/1048576.0, b/1048576.0, u, need/1048576.0, best);
++                            needs.emplace_back(u, need);
++                            best = u;
++                            break;
++                        }
++                    }
++                }
++            }
+             // the card's own scratch (outside the scheduler) grows with the step too: keep room free for it
+             {
+                 ggml_backend_dev_t dev = ggml_backend_get_device(bb);
+@@ -1112,15 +1153,23 @@ void llama_context::sched_reserve() {
+                     }
+                     LLAMA_LOG_WARN("%s: borrowed reading: step %u would need about %.0f MiB of card scratch, %.0f MiB free: a smaller step\n",
+                             __func__, best, (scratch + spare)/1024.0/1024.0, free/1024.0/1024.0);
+-                    best /= 2;
++                    best = step_fit ? (best > own_ub + 256 ? (best - 256)/256*256 : own_ub) : best/2; // 0064: a grid step at a time
+                     best = std::max(best, own_ub);
+                 }
+             }
++            best_need = 0;
+             for (const auto & [u, need] : needs) {
+                 if (u == best) {
+                     best_need = need;
+                 }
+             }
++            if (best_need == 0) {
++                best_need = best == own_ub ? own : measure(best); // 0064: a grid step that wasn't measured yet
++                if (best_need == SIZE_MAX) {
++                    best = own_ub;
++                    best_need = own;
++                }
++            }
+             moe_cache->borrow_set_step(best_need);
+             cparams.n_ubatch = best;
+             n_tokens = std::min(cparams.n_ctx, best);
+@@ -3075,8 +3124,25 @@ int llama_context::decode(const llama_batch_ext & batch_inp) {
+ 
+     llama_memory_context_ptr mctx;
+ 
++    // Brain Engine 0064 (LLAMA_EQUAL_PARTS=1, off unless set): a read is cut into equal parts on a 256-token grid, not
++    // into full steps and a small rest (BE29's 128K read ended in an 11-token piece). Never bigger than the step, so the
++    // working memory measured for the step holds. From Avalon (freriadoc/Avalon, MIT).
++    uint32_t n_ub_use = cparams.n_ubatch;
++    {
++        static const bool equal_parts = [] { const char * v = getenv("LLAMA_EQUAL_PARTS"); return v && atoi(v) > 0; }();
++        const uint32_t n_all = balloc->get_n_tokens();
++        if (equal_parts && n_all > cparams.n_ubatch && cparams.causal_attn) {
++            const uint32_t k    = (n_all + cparams.n_ubatch - 1)/cparams.n_ubatch;
++            const uint32_t part = std::min(cparams.n_ubatch, ((n_all + k - 1)/k + 255)/256*256);
++            if (part < cparams.n_ubatch) {
++                n_ub_use = part;
++                LLAMA_LOG_INFO("%s: equal parts: %u tokens in %u parts of up to %u (step %u)\n", __func__, n_all, (n_all + part - 1)/part, part, cparams.n_ubatch);
++            }
++        }
++    }
++
+     while (true) {
+-        mctx = memory->init_batch(*balloc, cparams.n_ubatch, embd_all);
++        mctx = memory->init_batch(*balloc, n_ub_use, embd_all);
+         if (!mctx) {
+             return -2;
+         }
