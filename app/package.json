@@ -21,6 +21,7 @@
   },
   "testSuites": [
     "test/run-hf-sign-in-test.js",
+    "test/run-engine-min-test.js",
     "test/run-brain-choices-test.js",
     "test/run-syntax-test.js",
     "test/run-harness-test.js",

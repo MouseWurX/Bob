@@ -23,6 +23,7 @@ import { allSlots, slotValue } from '../public/equip.js';
 import { mergeMadeBrains } from './lab.js'; // 1.5.141
 import { jitter } from './retry.js'; // item 194
 import { gatedBlock, gatedToken, withHfKey, signedFetch, refusedWords } from './hf-sign-in.js'; // Nov 22 2026 gated brains
+import { brainEngineBuild } from '../public/engine-name.js';
 
 const MODEL_EXT = new Set(['.gguf', '.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.sft']);
 const SKIP = new Set(['node_modules', '.git', '__pycache__', 'site-packages', 'venv', '.venv', 'env', 'cache', '.cache', 'Lib', 'include', 'temp', 'tmp', 'logs', 'blobs']);
@@ -210,6 +211,18 @@ export function rentAsOf(m) {
   return hit ? `${hit[1]}/${hit[2]}` : '';
 }
 
+// Nov 23 2026: a brain that only a newer Brain Engine runs (catalogue engineMin, the build number, e.g. 36 for Raon-1).
+// Read from the installed Brain Engine's own marker. '' when it's new enough, else plain words. Download still works,
+// so the brain can come down while the engine update waits.
+export function engineShort(entry, { agentDir = '', read = fs.readFileSync } = {}) {
+  const min = Number(entry?.engineMin) || 0;
+  if (!min) return '';
+  let n = 0;
+  try { n = brainEngineBuild(JSON.parse(read(path.join(agentDir, 'brain-engine', 'bob-brainengine.json'), 'utf8')).version)?.n || 0; } catch {}
+  if (n >= min) return '';
+  return `${entry.name} needs Brain Engine ${min} or newer${n ? ` (this replicant matrix has Brain Engine ${n})` : ' (this replicant matrix has none)'}. Settings, Engines, Brain Engine gets or updates it.`;
+}
+
 export class ModelShop {
   constructor(cfg, emit, engine) {
     this.cfg = cfg;
@@ -335,7 +348,8 @@ export class ModelShop {
     const canDownload = Boolean((this.viaOllama(entry) && ollama) || need);
     // Nov 22 2026: a gated brain says whether it can download yet (src/hf-sign-in.js); never the key, only words.
     const sign = entry.gated ? gatedBlock(this.cfg, entry) : '';
-    return { state, where, located, canDownload, ...(entry.gated ? { signIn: sign ? 'needed' : 'ready', signInWhy: sign } : {}) };
+    const engineWhy = engineShort(entry, { agentDir: this.cfg.agentDir });
+    return { state, where, located, canDownload, ...(entry.gated ? { signIn: sign ? 'needed' : 'ready', signInWhy: sign } : {}), ...(engineWhy ? { engineWhy } : {}) };
   }
 
   async list() {

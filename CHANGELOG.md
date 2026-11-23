@@ -12,8 +12,9 @@ I can download brains that need a Hugging Face account.
 
 - **Brains that need a Hugging Face account.** Some brain makers only let a signed-in account that accepted their terms download their brain. Save a read-only Hugging Face key as HF_TOKEN in 🔐 Locked secrets and switch on **Download brains that need a Hugging Face account** (Settings, How Bob works, Going online), and those brains get a normal Download button. Off to start with.
 - **Your key stays put.** I send it only to huggingface.co, only for those brains, and drop it before Hugging Face hands the file to its storage. Every other download stays signed out. The key is locked like your other keys and never shown or logged.
+- **KRAFTON's Raon-1 mini and nano in the Brain catalogue.** A 29B coder that works 4B at a time, and a 3B small brain. They need Brain Engine 36 or newer, and the card says so until it's here. Their downloads don't need a Hugging Face account.
 
-**Where it works:** Windows, Mac and Linux. Bob for Android doesn't download these brains yet.
+**Where it works:** Windows, Mac and Linux. Bob for Android doesn't download these brains yet, and its phone engine doesn't run Raon.
 
 ## 1.5.251
 
