@@ -14,7 +14,7 @@ import {
   EXTRA_SWITCHES, extraOn, newSpecFlags, draftNumArgs, copyGuessArgs, COPY_GUESS_ARGS, cleanMemType, memTypeOf, memArgs, MEM_TYPES, helpHasQ3, helpHasQ2, q3CardOk, helpHasTiers, progressiveTiers, tiersEnv, TIERS_SLACK, turboMem, turboPerWord, TURBO_MEMS,
   parseWinBattery, parseMacBattery, linuxBattery, onBattery, setOnBattery, batteryNow, laptopSaving, laptopThreads,
   cardKey, cardChange, placesToAuto, handoffHat, warmRoom, warmFile, WARM_SPARE, plainEngineNotes, engineNoteLine, brainEngineNumber,
-  READING_PICKS, readingPick, readingSteps, readingChoice, readingArgs, dropReading, lockRoom, lockFloor, everydayTurboArgs, TURBO_EVERYDAY_MAX, lockMemoryArgs, mtpSidecar, mtpArgs
+  READING_PICKS, readingPick, readingSteps, readingChoice, readingArgs, dropReading, lockRoom, lockFloor, everydayTurboArgs, specGateEnv, TURBO_EVERYDAY_MAX, lockMemoryArgs, mtpSidecar, mtpArgs
 } from '../src/engine-extras.js';
 import { startEngineExtras, engineLabel } from '../src/engine-extras-run.js';
 import { addReply, speedSeries, logReply, readSpeedLog, KEEP_DAYS } from '../src/speed-log.js';
@@ -52,6 +52,7 @@ check('Auto says why: the card, then the last 3 prompts', (() => { const big = {
 check('Auto: fewer than 3 prompts seen keeps Fastest on a big card', readingChoice({ readingSpeed: 'auto', gpuVramGB: 16 }, { recent: [500, 600] }).steps === 4096);
 
 // ---------- 102 Turbo for everyday brains ----------
+check('the draft gate pauses MTP under 30% kept, unless set by hand', specGateEnv({}).LLAMA_SPEC_GATE === '0.3' && !specGateEnv({ LLAMA_SPEC_GATE: '0.5' }).LLAMA_SPEC_GATE);
 check('everyday Turbo: on unless switched off (Nov 23), nothing once off', everydayTurboArgs({}, { mtp: 1, build: 12359 }).length > 0 && everydayTurboArgs({ turboEveryday: false }, { mtp: 1, build: 12359 }).length === 0);
 check('everyday Turbo: a brain with its own guesser uses it, 3 at a time', everydayTurboArgs({ turboEveryday: true }, { mtp: 1, build: 12359 }).join(' ') === `--spec-type draft-mtp --spec-draft-n-max ${TURBO_EVERYDAY_MAX}` && TURBO_EVERYDAY_MAX === 3);
 check('everyday Turbo: no guesser, the processor, an old engine, or Turbo/draft already set: nothing', [everydayTurboArgs({ turboEveryday: true }, { mtp: 0 }), everydayTurboArgs({ turboEveryday: true }, { mtp: 1, cpu: true }), everydayTurboArgs({ turboEveryday: true }, { mtp: 1, build: 9000 }), everydayTurboArgs({ turboEveryday: true }, { mtp: 1, args: ['-md', 'd.gguf'] }), everydayTurboArgs({ turboEveryday: true }, { mtp: 1, args: ['--spec-type', 'ngram-mod'] })].every((x) => x.length === 0));

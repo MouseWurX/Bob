@@ -132,6 +132,9 @@ export function mtpArgs(gguf, opts = {}) {
 export const TURBO_EVERYDAY_MAX = 3;
 // Nov 23 (the owner: "MTP typically doesn't hurt answers"; it's stock llama.cpp): on unless switched off
 export const turboEverydayOn = (cfg) => cfg?.turboEveryday !== false;
+// with it on by default, drafting pauses where it doesn't pay (Brain Engine 0034's gate); a share set by hand wins
+export const SPEC_GATE_DEFAULT = '0.3';
+export const specGateEnv = (env = {}) => (env && env.LLAMA_SPEC_GATE !== undefined && env.LLAMA_SPEC_GATE !== '' ? {} : { LLAMA_SPEC_GATE: SPEC_GATE_DEFAULT });
 export function everydayTurboArgs(cfg, { build = 0, args = [], mtp = 0, cpu = false, guesser = null } = {}) {
   // guesser: mtpArgs() for the brain (its own head, or the file beside it); without it, mtp > 0 means its own head
   const g = guesser || (mtp > 0 ? ['--spec-type', 'draft-mtp'] : []);

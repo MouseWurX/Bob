@@ -31,7 +31,7 @@ import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.
 import { tuningArgs, doorbellEnv } from './engine-tuning.js';
 import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv } from './conductor.js'; // off unless picked
 import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV } from './engine-extras.js'; // Turbo: stand-ins (0043, off unless switched on)
-import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
+import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
 
@@ -708,7 +708,12 @@ export class LlamaCpp {
       args.push('-md', draft, ...draftNumArgs(this.buildNo(), d.max ?? 16, d.min ?? 1), '-ngld', String(d.ngld ?? 99));
     }
     // 102 MTP for everyday brains (opt-in): a brain with its own guesser uses it, unless MTP or a draft is set.
-    args.push(...everydayTurboArgs(this.cfg, { build: this.buildNo(), args, guesser: cpu || this.role === BESIDE ? [] : mtpArgs(gguf), cpu: cpu || this.role === BESIDE }));
+    { const ev = everydayTurboArgs(this.cfg, { build: this.buildNo(), args, guesser: cpu || this.role === BESIDE ? [] : mtpArgs(gguf), cpu: cpu || this.role === BESIDE });
+      args.push(...ev);
+      // Nov 23: MTP is on by default, so on a brain where its guesses rarely hold (a small brain, a slow card) Brain
+      // Engine pauses drafting while under 30% of guesses are kept (patch 0034), and it never costs writing speed for
+      // long. A pause share set by hand wins; other engines ignore the key.
+      if (ev.length && this.beNo() > 0) this.tuneEnv = { ...(this.tuneEnv || {}), ...specGateEnv(this.tuneEnv) }; }
     // 94 Guess-ahead from the chat (opt-in): with no draft brain, the engine guesses by copying what the chat holds.
     args.push(...copyGuessArgs(this.cfg, { build: this.buildNo(), args }));
     return args;

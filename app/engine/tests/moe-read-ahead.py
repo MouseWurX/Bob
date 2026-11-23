@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-# Brain Engine 0071 test: read ahead (LLAMA_MOE_CACHE_READ_AHEAD=1, off unless set) inside the in-place long read (0069).
+# Brain Engine 0071 test: read ahead (LLAMA_MOE_CACHE_READ_AHEAD; on by default since 0075, =0 turns it off) inside the in-place long read (0069).
 # The zone becomes two halves taken in turn by a group's layers; while a layer computes, the next one's misses go up into
 # the other half on a second stream, and its lookup uploads nothing. Stand-in card (ggml-rpc-server,
 # GGML_RPC_TEST_OFFLOAD=1). It checks, over three rounds of two long reads with writing between them, that:
 #   - it says it is on, sends experts ahead, and the lookups use them
 #   - the same words as in-place reads without it and as without the cache, in line and queued by a thread,
 #     at a few cache sizes and with a 2048-token step; a cache too small for two halves reads with one zone as before
-#   - off unless set; NOT USED without in-place reads and next to the drive tier, with the same words
+#   - on unless =0 (0075), and quiet when unset where it can't run; NOT USED without in-place reads and next to the drive tier, with the same words
 #   python3 engine/tests/moe-read-ahead.py <llama.cpp checkout with the patches, built with GGML_RPC=ON> [work folder]
 import json, os, re, subprocess, sys, tempfile, time, urllib.request
 SRC = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else sys.exit('usage: moe-read-ahead.py <llama.cpp checkout, built> [work folder]')
@@ -101,8 +101,12 @@ ok = lambda w: len(w) == 6 and not any(x.startswith('ERROR') for x in w)
 try:
     nocache, _ = serve('nocache', {}, cache='')
     check('without the cache it answers', ok(nocache), f'{nocache}')
-    plain, perr = serve('in-place', {})
-    check('off unless set', 'read ahead on' not in perr and ra(perr) == (0, 0, 0, 0), perr[-300:])
+    plain, perr = serve('in-place', {'LLAMA_MOE_CACHE_READ_AHEAD': '0'})
+    check('=0 turns it off', 'read ahead on' not in perr and ra(perr) == (0, 0, 0, 0), perr[-300:])
+    dflt, derr = serve('default', {}, cache='72')
+    check('on by default (0075): experts sent ahead, the same words', 'read ahead on' in derr and ra(derr)[0] > 0 and dflt == nocache, f'{ra(derr)} {dflt == nocache}')
+    qw, qe = serve('default-no-in-place', {'LLAMA_MOE_CACHE_READ_IN_PLACE': '0'})
+    check('unset without in-place reads: steps aside quietly, the same words', 'READ_AHEAD NOT USED' not in qe and qw == nocache, f'{qw == nocache}')
     check('in-place reads alone: the words of no cache', plain == nocache, f'{plain} vs {nocache}')
     info = []
     for tag, env, cache, ub in (('inline', RA, '72', '512'), ('thread', TH, '72', '512'), ('thread-88', TH, '88', '512'),
