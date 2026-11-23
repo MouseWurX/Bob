@@ -145,7 +145,7 @@ export async function runApproved(cfg, { cmd, args = [], cwd }, { emit = () => {
   log('hands', `run ended: ${c.line} -> ${res.why || (res.killed ? res.killed : `exit ${res.code}`)}`);
   const tail = res.out.length > 6000 ? '[...]\n' + res.out.slice(-6000) : res.out;
   if (res.why) return `It didn't start: ${res.why}`;
-  const netLine = commandNet(cfg) === 'off' ? (res.offline ? '\nIt ran without internet (Strict offline commands is on and Web is off). If it failed for want of the internet, say so: the person can turn on Web, or switch Strict offline commands off in Settings, Hands.' : `\n${OFFLINE_NOTE}`) : '';
+  const netLine = commandNet(cfg) === 'off' ? (res.offline ? `\nIt ran without internet (Strict offline commands is on and Web is off)${offlineWay() === 'appcontainer' ? ', in a Windows sandbox that sees only the folder it ran in' : ''}. If it failed for want of the internet${offlineWay() === 'appcontainer' ? ' or of files in another folder' : ''}, say so: the person can turn on Web, or switch Strict offline commands off in Settings, Hands.` : `\n${OFFLINE_NOTE}`) : '';
   return `${res.killed === 'stopped' ? 'Stopped by the user.' : res.killed === 'timeout' ? `Stopped: it ran past the ${handsSettings(cfg).timeoutMin}-minute limit.` : `Finished with exit code ${res.code}${res.code === 0 ? ' (success)' : ''}.`}\nOutput (end):\n${tail || '(no output)'}${netLine}`;
 }
 

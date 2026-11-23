@@ -12,7 +12,7 @@ import { isSensitive } from './tools.js';
 import { limitOn, readOnlyRoots } from './hands-settings.js';
 import { killTree as stopTree } from './platform.js';
 import { trackChild } from './hang-guard.js'; // item 213: Stop really stops
-import { WIN_SANDBOX_READY, sandboxPlan } from './win-offline.js'; // Nov 23 2026: the Windows sandbox (off until checked on a real PC)
+import { WIN_SANDBOX_READY, sandboxPlan } from './win-offline.js'; // Nov 23 2026: the Windows sandbox (passed the live check on a real PC)
 
 const MAX_OUT = 400_000; // characters of output kept for Bob (the chat gets all of it live); tool-kinds.js trims it smartly after (RESULT_MAX)
 const WIN = process.platform === 'win32';
@@ -230,11 +230,11 @@ const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07/g;
 // Nov 23 2026: commands without internet while Web is off (commandNet). Linux: the
 // command gets its own empty network (unshare -n as your own user, or -rn on older systems: no admin needed where the
 // system allows user namespaces). Mac: a
-// sandbox that denies every network use (sandbox-exec). Not on this system, or Windows: '' (the card says so).
+// sandbox that denies every network use (sandbox-exec). Not on this system, or Android: '' (the card says so).
 const MAC_NO_NET = '(version 1)(allow default)(deny network*)';
 let wayCache;
 export function offlineWay({ os_ = process.platform, probe } = {}) {
-  if (!probe && process.env.BOB_NO_SANDBOX === '1') return ''; // tests only: act like a computer with no sandbox (Windows today)
+  if (!probe && process.env.BOB_NO_SANDBOX === '1') return ''; // tests only: act like a computer with no sandbox (Android today)
   if (!probe && wayCache !== undefined && os_ === process.platform) return wayCache;
   const ok = probe || ((file, args) => { try { return spawnSync(file, args, { stdio: 'ignore', timeout: 5000 }).status === 0; } catch { return false; } });
   const way = os_ === 'win32' ? (WIN_SANDBOX_READY ? 'appcontainer' : '') : os_ === 'linux' ? (ok('unshare', ['--map-current-user', '-n', 'true']) ? 'unshare-c' : ok('unshare', ['-rn', 'true']) ? 'unshare' : '') : os_ === 'darwin' ? (ok('sandbox-exec', ['-p', MAC_NO_NET, 'true']) ? 'sandbox-exec' : '') : '';
@@ -254,7 +254,7 @@ export function offlinePlan(plan, way, { exe = '', cwd = '' } = {}) {
 // (hands.strictOffline, off unless switched on): only then do commands run sandboxed while Web is off. Off, they work
 // with the PC exactly as before (the "Don't send anything out" checks still apply).
 export const commandNet = (cfg = {}) => (cfg.hands?.strictOffline === true && cfg.webSearch !== true ? 'off' : 'open');
-export const NO_SANDBOX = 'Not run: "Strict offline commands" is on and Web is off, and this computer can\'t run commands in a sandbox without internet yet (Windows gets one next). Turn on Web, or switch Strict offline commands off in Settings, Hands.';
+export const NO_SANDBOX = 'Not run: "Strict offline commands" is on and Web is off, and this computer can\'t run commands in a sandbox without internet yet. Turn on Web, or switch Strict offline commands off in Settings, Hands.';
 export const OFFLINE_NOTE = 'This command can still reach the internet: this computer can\'t keep commands offline yet.';
 
 // Runs it. Resolves with { code, out, killed, why } and never throws for the program's own failure.
