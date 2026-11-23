@@ -17,7 +17,7 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-tuning-'));
 
 // ---------- The levers ----------
-check('twenty-two levers, each a flag or an engine key with a range', TUNING_FIELDS.length === 22 && TUNING_FIELDS.every((f) => (f.flags || f.env) && f.min < f.max && f.label));
+check('twenty-three levers, each a flag or an engine key with a range', TUNING_FIELDS.length === 23 && TUNING_FIELDS.every((f) => (f.flags || f.env) && f.min < f.max && f.label));
 check('levers: unknown keys, out of range, fractions where whole numbers go and blanks are dropped',
   JSON.stringify(cleanLevers({ step: 2048, cacheMB: 100, learn: 2.5, lookahead: '4', cpuShare: '', junk: 3, draftGate: true })) === JSON.stringify({ step: 2048, lookahead: 4 }));
 check('levers: not an object gives none', Object.keys(cleanLevers(null)).length === 0 && Object.keys(cleanLevers([1])).length === 0);
@@ -43,6 +43,9 @@ check('nothing for a brain with no boxes filled', tuningArgs(hand({ step: 4096 }
   const a = r.args.join(' ');
   check('step sets -b and -ub, cache sets the cache with share 0 and its log lines', /-b 4096 -ub 4096/.test(a) && /--moe-cache-mib 4096/.test(a) && /--moe-cache-cpu-share 0/.test(a) && /-lv 4/.test(a), a);
   check('engine keys go in the start keys', r.env.LLAMA_MOE_LOOKAHEAD === '4' && /set by hand/.test(r.said)); }
+check('Brain Engine 0109: locking the experts in RAM is its own key, off unless set, and skipped on the processor-only load',
+  tuningArgs(hand({ registerRam: 1 }), 'big').env.LLAMA_MOE_REGISTER_RAM === '1' && !('LLAMA_MOE_REGISTER_RAM' in tuningArgs(hand({ step: 512 }), 'big').env) &&
+  !('LLAMA_MOE_REGISTER_RAM' in tuningArgs(hand({ registerRam: 1 }), 'big', { cpu: true }).env));
 check('a processor share alone does nothing', !tuningArgs(hand({ cpuShare: 1 }), 'big').args.includes('--moe-cache-cpu-share'));
 check('flags typed by hand win', (() => { const r = tuningArgs(hand({ step: 4096, cacheMB: 4096 }), 'big', { handArgs: ['--ubatch-size', '512', '--moe-cache-mib', '2048'] }); return !r.args.includes('-ub') && !r.args.includes('--moe-cache-mib'); })());
 check('the processor-only load gets the step but no card levers', (() => { const r = tuningArgs(hand({ step: 1024, cacheMB: 4096, lookahead: 4 }), 'big', { cpu: true }); return r.args.join(' ') === '-b 1024 -ub 1024' && !Object.keys(r.env).length; })());
