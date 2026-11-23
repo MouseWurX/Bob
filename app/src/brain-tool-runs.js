@@ -1,5 +1,6 @@
 // Running a tool call: limits, saving what it made, checking the result, offering a fix, and handing results back.
 // Methods of the Brain class. Split out of brain.js.
+import { FOLDER_REFUSED } from './folder-offer.js';
 import { SAVING_TOOLS, saysNoSave, noSaveLine } from './no-save.js';
 import { gate as qGate, after as qAfter, noteStrike } from './quarantine.js';
 import { WATCH_TOOLS } from './meanwhile.js';
@@ -213,6 +214,7 @@ export const toolRunParts = {
       const ok = v.ok !== false && !/^Error:/.test(text);
       ctx.ledger?.action(name, args, ok || Boolean(v.declined), text, startedAt, v);
       // Item 207: the logbook keeps the real cause (the first error), not the last wrapper.
+      if (!ok && name !== 'offer_setup') ctx.lastFailed = { name, text: String(text).slice(0, 400) }; // Nov 18: offer_setup says what really stopped it
       this.log(ok ? 'tool' : 'error', ok ? (tool.summary ? tool.summary(args) : name) : `${name}: ${(ctx.toolError?.cause || text.replace(/^Error:\s*/, '')).slice(0, 400)}`);
       let strikeNote = '';
       if (!v.declined && !(!ok && badAddress(text))) { // 1.5.210: a made-up or missing address isn't the tool's fault
@@ -240,6 +242,8 @@ export const toolRunParts = {
       this.log('error', `${name}: ${causeLine(e).slice(0, 400)}`); // item 207
       this.noteToolError(name);
       const te = toolErrorText(e);
+      if (FOLDER_REFUSED.test(String(e?.message || ''))) te.text += this.offerFolder(args, ctx); // Nov 18: the Add it card
+      if (name !== 'offer_setup') ctx.lastFailed = { name, text: te.text.slice(0, 400) };
       return { text: te.text, ok: false, ...(te.hinted ? { hinted: true } : {}) };
     }
   },
@@ -267,6 +271,7 @@ export const toolRunParts = {
       }
       // Item 198: plain words, from the error's own code (retry.js); the logbook keeps the real cause.
       const te = toolErrorText(e); te.cause = causeLine(e); ctx.toolError = te;
+      if (FOLDER_REFUSED.test(String(e?.message || ''))) { const more = this.offerFolder(args, ctx); if (more) return te.text + more; } // Nov 18: the Add it card
       return te.text;
     }
     const clean = cleanResult(raw);

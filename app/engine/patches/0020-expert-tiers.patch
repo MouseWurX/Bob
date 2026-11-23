@@ -1,0 +1,486 @@
+diff --git a/ggml/src/ggml-cpu/ggml-cpu-impl.h b/ggml/src/ggml-cpu/ggml-cpu-impl.h
+index f8b3637..ffa85ff 100644
+--- a/ggml/src/ggml-cpu/ggml-cpu-impl.h
++++ b/ggml/src/ggml-cpu/ggml-cpu-impl.h
+@@ -15,6 +15,11 @@
+ extern "C" {
+ #endif
+ 
++// Brain Engine 0020 (expert tiers, the cold tier): before a mixture-of-experts matrix product on the processor, ask the
++// operating system to read each picked expert's bytes in one go, when that expert hasn't been used lately (so it may be
++// back on the disk). Off unless LLAMA_EXPERT_READ_WHOLE=1. counts[e] > 0 marks expert e as picked. Call from one thread.
++void ggml_cpu_expert_read_whole(const struct ggml_tensor * src0, const int64_t * counts, int n_as);
++
+ struct ggml_compute_params {
+     // ith = thread index, nth = number of threads
+     int ith, nth;
+diff --git a/ggml/src/ggml-cpu/ggml-cpu.c b/ggml/src/ggml-cpu/ggml-cpu.c
+index a76af84..b7535b6 100644
+--- a/ggml/src/ggml-cpu/ggml-cpu.c
++++ b/ggml/src/ggml-cpu/ggml-cpu.c
+@@ -1563,6 +1563,139 @@ static void * incr_ptr_aligned(void ** p, size_t size, size_t align) {
+     return ptr;
+ }
+ 
++// ---- Brain Engine 0020: expert tiers, the cold tier (see ggml-cpu-impl.h) ----
++// When a brain is bigger than the RAM, the operating system keeps only part of the mapped brain file in memory and drops
++// what hasn't been used lately. A dropped expert is then read back a few pages at a time as the product touches it, and
++// a disk is slow at many small scattered reads. Asking for the whole expert at once (PrefetchVirtualMemory on Windows,
++// madvise(MADV_WILLNEED) elsewhere) lets the disk read it in large requests instead. An expert used in the last
++// `window` products of the same tensor is very likely still in memory, so it is skipped: asking costs a system call.
++#if !defined(_WIN32)
++#include <sys/mman.h>
++#include <unistd.h>
++#endif
++
++#define GGML_EXPERT_TIERS_MAX_TENSORS 4096
++
++struct ggml_expert_read_entry {
++    const void * key;    // the tensor's data
++    int          n_as;   // its experts
++    uint64_t     calls;  // products seen
++    uint64_t   * last;   // [n_as] product number of the last use + 1 (0 = never)
++};
++
++static struct ggml_expert_read_entry ggml_expert_read_table[GGML_EXPERT_TIERS_MAX_TENSORS];
++static int      ggml_expert_read_state  = -1; // -1 not read yet, 0 off, 1 on
++static uint64_t ggml_expert_read_window = 64;
++static uint64_t ggml_expert_read_every  = 0;  // LLAMA_EXPERT_READ_LOG_EVERY
++static uint64_t ggml_expert_read_n_calls = 0, ggml_expert_read_n_asked = 0, ggml_expert_read_n_skipped = 0, ggml_expert_read_bytes = 0;
++static size_t   ggml_expert_read_page = 0;
++
++#if defined(_WIN32)
++typedef BOOL (WINAPI * ggml_prefetch_vm_t)(HANDLE, ULONG_PTR, PVOID, ULONG);
++typedef struct { PVOID VirtualAddress; SIZE_T NumberOfBytes; } ggml_vm_range_t; // WIN32_MEMORY_RANGE_ENTRY
++static ggml_prefetch_vm_t ggml_prefetch_vm = NULL;
++#endif
++
++static void ggml_expert_read_init(void) {
++    const char * on = getenv("LLAMA_EXPERT_READ_WHOLE");
++    ggml_expert_read_state = (on != NULL && strcmp(on, "1") == 0) ? 1 : 0;
++    const char * w = getenv("LLAMA_EXPERT_READ_WINDOW");
++    if (w != NULL && strtoull(w, NULL, 10) > 0) {
++        ggml_expert_read_window = strtoull(w, NULL, 10);
++    }
++    const char * every = getenv("LLAMA_EXPERT_READ_LOG_EVERY");
++    if (every != NULL) {
++        ggml_expert_read_every = strtoull(every, NULL, 10);
++    }
++#if defined(_WIN32)
++    SYSTEM_INFO si;
++    GetSystemInfo(&si);
++    ggml_expert_read_page = (size_t) si.dwPageSize;
++    ggml_prefetch_vm = (ggml_prefetch_vm_t) (void *) GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "PrefetchVirtualMemory");
++    if (ggml_expert_read_state == 1 && ggml_prefetch_vm == NULL) {
++        GGML_LOG_WARN("%s: !!! expert read-whole NOT USED: this Windows has no PrefetchVirtualMemory (Windows 8 or newer needed)\n", __func__);
++        ggml_expert_read_state = 0;
++    }
++#else
++    ggml_expert_read_page = (size_t) sysconf(_SC_PAGESIZE);
++#endif
++    if (ggml_expert_read_state == 1) {
++        GGML_LOG_INFO("%s: expert read-whole on: a picked expert unused for %llu products is asked for in one go\n", __func__,
++            (unsigned long long) ggml_expert_read_window);
++    }
++}
++
++static void ggml_expert_read_range(const char * p, size_t n) {
++    const uintptr_t a = (uintptr_t) p & ~(uintptr_t) (ggml_expert_read_page - 1);
++    const size_t    len = (size_t) ((uintptr_t) p + n - a);
++#if defined(_WIN32)
++    ggml_vm_range_t r = { (PVOID) a, (SIZE_T) len };
++    ggml_prefetch_vm(GetCurrentProcess(), 1, &r, 0);
++#else
++    madvise((void *) a, len, MADV_WILLNEED);
++#endif
++}
++
++void ggml_cpu_expert_read_whole(const struct ggml_tensor * src0, const int64_t * counts, int n_as) {
++    if (ggml_expert_read_state == 0) {
++        return;
++    }
++    ggml_critical_section_start();
++    if (ggml_expert_read_state < 0) {
++        ggml_expert_read_init();
++    }
++    if (ggml_expert_read_state == 0 || src0->data == NULL || n_as <= 0) {
++        ggml_critical_section_end();
++        return;
++    }
++    // find or claim this tensor's entry (open addressing on the data pointer; entries are never freed)
++    const uintptr_t key = (uintptr_t) src0->data;
++    struct ggml_expert_read_entry * en = NULL;
++    for (size_t k = 0, i = (size_t) ((key >> 6) * 0x9E3779B97F4A7C15ULL >> 52) % GGML_EXPERT_TIERS_MAX_TENSORS; k < GGML_EXPERT_TIERS_MAX_TENSORS; ++k, i = (i + 1) % GGML_EXPERT_TIERS_MAX_TENSORS) {
++        struct ggml_expert_read_entry * c = &ggml_expert_read_table[i];
++        if (c->key == src0->data && c->n_as == n_as) {
++            en = c;
++            break;
++        }
++        if (c->key == NULL) {
++            c->last = (uint64_t *) calloc((size_t) n_as, sizeof(uint64_t));
++            if (c->last == NULL) {
++                break;
++            }
++            c->key  = src0->data;
++            c->n_as = n_as;
++            en = c;
++            break;
++        }
++    }
++    if (en == NULL) {
++        ggml_critical_section_end();
++        return; // table full: products still run, just without asking ahead
++    }
++    en->calls++;
++    ggml_expert_read_n_calls++;
++    const size_t nb02 = src0->nb[2];
++    for (int e = 0; e < n_as; ++e) {
++        if (counts[e] <= 0) {
++            continue;
++        }
++        if (en->last[e] != 0 && en->calls - en->last[e] < ggml_expert_read_window) {
++            ggml_expert_read_n_skipped++;
++        } else {
++            ggml_expert_read_range((const char *) src0->data + (size_t) e*nb02, nb02);
++            ggml_expert_read_n_asked++;
++            ggml_expert_read_bytes += nb02;
++        }
++        en->last[e] = en->calls;
++    }
++    if (ggml_expert_read_every > 0 && ggml_expert_read_n_calls % ggml_expert_read_every == 0) {
++        GGML_LOG_INFO("%s: expert read-whole: %llu products, %llu experts asked for whole (%.1f MiB), %llu skipped as recently used\n", __func__,
++            (unsigned long long) ggml_expert_read_n_calls, (unsigned long long) ggml_expert_read_n_asked,
++            ggml_expert_read_bytes/1024.0/1024.0, (unsigned long long) ggml_expert_read_n_skipped);
++    }
++    ggml_critical_section_end();
++}
++
+ static void ggml_compute_forward_mul_mat_id(
+         const struct ggml_compute_params * params,
+               struct ggml_tensor * dst) {
+@@ -1680,6 +1813,10 @@ static void ggml_compute_forward_mul_mat_id(
+         }
+     }
+ 
++    if (ith == 0) {
++        ggml_cpu_expert_read_whole(src0, matrix_row_counts, n_as); // Brain Engine 0020, off unless asked
++    }
++
+     // reset current_chunk
+     for (int cur_a = ith; cur_a < n_as; cur_a += nth) {
+         atomic_int * current_chunk_ctr = (atomic_int *)(atomic_current_chunk + cur_a);
+diff --git a/ggml/src/ggml-cpu/repack.cpp b/ggml/src/ggml-cpu/repack.cpp
+index 9282ca2..a0eed1d 100644
+--- a/ggml/src/ggml-cpu/repack.cpp
++++ b/ggml/src/ggml-cpu/repack.cpp
+@@ -4866,6 +4866,8 @@ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PAR
+                     matrix_row_counts[i02] += 1;
+                 }
+             }
++
++            ggml_cpu_expert_read_whole(src0, matrix_row_counts, n_as); // Brain Engine 0020, off unless asked
+         }
+ 
+         ggml_barrier(params->threadpool);
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 426c487..1ce88dd 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -29,6 +29,7 @@ set(LLAMA_CORE_SOURCES
+     llama-kv-cache-dsv4.cpp
+     llama-memory.cpp
+     llama-moe-cache.cpp
++    llama-expert-tiers.cpp
+     llama-memory-hybrid.cpp
+     llama-memory-hybrid-iswa.cpp
+     llama-memory-hybrid-idx.cpp
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index b56b4bb..ce76170 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -12,6 +12,7 @@
+ #include "llama-mmap.h"
+ #include "llama-model.h"
+ #include "llama-moe-cache.h"
++#include "llama-expert-tiers.h"
+ #include "llama-ext.h"
+ #include "llama-sampler.h"
+ #include "llama.h"
+@@ -614,6 +615,10 @@ llama_context::llama_context(
+             moe_cache = std::make_unique<llama_moe_cache>(model, model.no_alloc(), backend_ptrs, backend_buft, cparams.moe_cache_size, cparams.moe_cache_cpu_share);
+         }
+ 
++        if (!model.no_alloc()) {
++            llama_expert_tiers_pin_warm(model); // Brain Engine 0020, off unless LLAMA_EXPERT_WARM_MIB is set
++        }
++
+         sched_reserve();
+ 
+         if (!cparams.flash_attn) {
+diff --git a/src/llama-expert-tiers.cpp b/src/llama-expert-tiers.cpp
+new file mode 100644
+index 0000000..ec67895
+--- /dev/null
++++ b/src/llama-expert-tiers.cpp
+@@ -0,0 +1,223 @@
++#include "llama-expert-tiers.h"
++
++#include "llama-impl.h"
++#include "llama-mmap.h"
++#include "llama-model.h"
++
++#include "ggml-backend.h"
++
++#include <algorithm>
++#include <cstdint>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <memory>
++#include <mutex>
++#include <set>
++#include <string>
++#include <tuple>
++#include <vector>
++
++#if defined(_WIN32)
++#define WIN32_LEAN_AND_MEAN
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#include <windows.h>
++#else
++#include <unistd.h>
++#endif
++
++// The three tiers:
++//   hot  = the busiest experts copied to the card (llama.cpp's --moe-cache-mib, filled from a ranking by 0016)
++//   warm = the next busiest experts pinned in RAM (this file): never dropped back to the disk
++//   cold = the rest: left to the operating system; with LLAMA_EXPERT_READ_WHOLE=1 a cold expert that is picked is read
++//          from the disk in one go instead of a few pages at a time (ggml-cpu, ggml_cpu_expert_read_whole)
++//
++// LLAMA_EXPERT_WARM_MIB=N       how much RAM the warm tier may pin, in MiB (off unless set and > 0)
++// LLAMA_EXPERT_WARM_RANKING=P   the ranking file (the same "bob-moe-ranking 2" file as 0016); if unset,
++//                               LLAMA_MOE_CACHE_RANKING is used
++// The experts are pinned busiest first (ties by layer, then expert, so one file always pins the same set). Only experts
++// whose bytes sit in host memory are pinned; layers on the card are skipped. A ranking made on another brain, or one
++// that doesn't fit this brain, is refused out loud and nothing is pinned.
++
++// gate, up, down or gate_up, down: the same tensors, in the same order, as 0016's fingerprint
++static std::vector<ggml_tensor *> tiers_layer_experts(const llama_layer & layer) {
++    std::vector<ggml_tensor *> res;
++    for (ggml_tensor * t : { layer.ffn_gate_up_exps, layer.ffn_gate_exps, layer.ffn_up_exps, layer.ffn_down_exps }) {
++        if (t != nullptr) {
++            res.push_back(t);
++        }
++    }
++    return res;
++}
++
++// Must stay the same as 0016's model_fingerprint() in llama-moe-cache.cpp, so one ranking file serves both tiers.
++static uint64_t tiers_fingerprint(const llama_model & model) {
++    uint64_t h = 1469598103934665603ULL;
++    auto mix = [&](const void * p, size_t n) { const uint8_t * b = (const uint8_t *) p; for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ULL; } };
++    for (size_t il = 0; il < model.layers.size(); ++il) {
++        for (const ggml_tensor * t : tiers_layer_experts(model.layers[il])) {
++            const int32_t type = (int32_t) t->type;
++            mix(&il, sizeof(il));
++            mix(&type, sizeof(type));
++            mix(t->ne, sizeof(t->ne));
++            const size_t n = std::min<size_t>(64, t->nb[2]);
++            for (const size_t off : { (size_t) 0, (size_t) (t->ne[2] - 1)*t->nb[2] + t->nb[2] - n }) {
++                uint8_t buf[64];
++                ggml_backend_tensor_get(t, buf, off, n);
++                mix(buf, n);
++            }
++        }
++    }
++    return h;
++}
++
++static size_t tiers_page_size() {
++#if defined(_WIN32)
++    SYSTEM_INFO si;
++    GetSystemInfo(&si);
++    return (size_t) si.dwPageSize;
++#else
++    return (size_t) sysconf(_SC_PAGESIZE);
++#endif
++}
++
++void llama_expert_tiers_pin_warm(const llama_model & model) {
++    const char * mib_s = getenv("LLAMA_EXPERT_WARM_MIB");
++    if (mib_s == nullptr || *mib_s == '\0') {
++        return;
++    }
++    const unsigned long long mib = strtoull(mib_s, nullptr, 10);
++    if (mib == 0) {
++        return;
++    }
++
++    static std::mutex                                 mtx;
++    static std::set<const llama_model *>              done;
++    static std::vector<std::unique_ptr<llama_mlock>>  locks; // kept until the engine stops
++    std::lock_guard<std::mutex> lock(mtx);
++    if (!done.insert(&model).second) {
++        return;
++    }
++
++    const char * path = getenv("LLAMA_EXPERT_WARM_RANKING");
++    if (path == nullptr || *path == '\0') {
++        path = getenv("LLAMA_MOE_CACHE_RANKING");
++    }
++    auto refuse = [&](const std::string & why) {
++        LLAMA_LOG_WARN("%s: !!! warm experts NOT PINNED: %s (%s). Nothing is pinned; the operating system manages the RAM as usual.\n",
++            __func__, why.c_str(), path ? path : "no ranking file");
++    };
++    if (path == nullptr || *path == '\0') {
++        refuse("LLAMA_EXPERT_WARM_MIB is set but no ranking file is (LLAMA_EXPERT_WARM_RANKING or LLAMA_MOE_CACHE_RANKING)");
++        return;
++    }
++    if (!llama_mlock::SUPPORTED) {
++        refuse("this system can't pin memory");
++        return;
++    }
++    const uint32_t n_expert = model.hparams.n_expert;
++    if (n_expert == 0) {
++        refuse("this brain has no experts");
++        return;
++    }
++
++    FILE * f = fopen(path, "r");
++    if (f == nullptr) {
++        refuse("the file can't be opened");
++        return;
++    }
++    char magic[32] = {0};
++    int version = 0;
++    unsigned long long fp = 0;
++    char stamp[256] = {0};
++    if (fscanf(f, "%31s %d %llx %255s", magic, &version, &fp, stamp) != 4 || strcmp(magic, "bob-moe-ranking") != 0 || version != 2) {
++        fclose(f);
++        refuse("not a bob-moe-ranking 2 file");
++        return;
++    }
++    const uint64_t fingerprint = tiers_fingerprint(model);
++    if ((uint64_t) fp != fingerprint) {
++        fclose(f);
++        char why[128];
++        snprintf(why, sizeof(why), "made on another brain (fingerprint %016llx, this brain %016llx)", fp, (unsigned long long) fingerprint);
++        refuse(why);
++        return;
++    }
++    std::vector<std::tuple<double, int, int>> cand; // (count, layer, expert)
++    int il = 0, e = 0;
++    double count = 0.0;
++    size_t n_bad = 0;
++    int got = 0;
++    while ((got = fscanf(f, "%d %d %lf", &il, &e, &count)) == 3) {
++        if (il < 0 || (size_t) il >= model.layers.size() || e < 0 || (uint32_t) e >= n_expert || !(count > 0.0)) {
++            n_bad++;
++            continue;
++        }
++        cand.emplace_back(count, il, e);
++    }
++    const bool tail_ok = got == EOF;
++    fclose(f);
++    if (!tail_ok || n_bad > 0 || cand.empty()) {
++        char why[160];
++        snprintf(why, sizeof(why), "%s (%zu lines read, %zu naming a layer or expert this brain doesn't have)",
++            !tail_ok ? "a line that can't be read" : cand.empty() ? "no experts in it" : "it doesn't fit this brain", cand.size() + n_bad, n_bad);
++        refuse(why);
++        return;
++    }
++    // the busiest first; ties by layer, then expert
++    std::sort(cand.begin(), cand.end(), [](const auto & a, const auto & b) {
++        if (std::get<0>(a) != std::get<0>(b)) { return std::get<0>(a) > std::get<0>(b); }
++        if (std::get<1>(a) != std::get<1>(b)) { return std::get<1>(a) < std::get<1>(b); }
++        return std::get<2>(a) < std::get<2>(b);
++    });
++    cand.erase(std::unique(cand.begin(), cand.end(), [](const auto & a, const auto & b) {
++        return std::get<1>(a) == std::get<1>(b) && std::get<2>(a) == std::get<2>(b); }), cand.end());
++
++    const size_t page   = tiers_page_size();
++    const size_t budget = (size_t) mib * 1024 * 1024;
++    size_t pinned = 0, n_experts = 0, n_on_card = 0;
++    bool   failed = false;
++    for (const auto & c : cand) {
++        const llama_layer & layer = model.layers[std::get<1>(c)];
++        const int ex = std::get<2>(c);
++        std::vector<std::pair<uintptr_t, size_t>> ranges;
++        size_t need = 0;
++        for (const ggml_tensor * t : tiers_layer_experts(layer)) {
++            if (t->buffer == nullptr || !ggml_backend_buffer_is_host(t->buffer) || t->data == nullptr) {
++                continue;
++            }
++            const uintptr_t p = (uintptr_t) t->data + (size_t) ex*t->nb[2];
++            const uintptr_t a = p & ~(uintptr_t) (page - 1);
++            ranges.emplace_back(a, (size_t) (p + t->nb[2] - a));
++            need += t->nb[2];
++        }
++        if (ranges.empty()) {
++            n_on_card++;
++            continue; // this layer's experts sit on the card
++        }
++        if (pinned + need > budget) {
++            break;
++        }
++        for (const auto & r : ranges) {
++            auto ml = std::make_unique<llama_mlock>();
++            ml->init((void *) r.first);
++            ml->grow_to(r.second);
++            const bool ok = !ml->failed();
++            locks.push_back(std::move(ml));
++            if (!ok) {
++                failed = true; // llama_mlock has logged why; the system's limit is reached, so stop here
++                break;
++            }
++        }
++        if (failed) {
++            break;
++        }
++        pinned += need;
++        n_experts++;
++    }
++    LLAMA_LOG_INFO("%s: warm experts: %zu experts pinned in RAM, %.1f MiB of the %llu MiB allowed (%zu ranked experts sit on the card, %zu ranked in all)%s\n",
++        __func__, n_experts, pinned/1024.0/1024.0, mib, n_on_card, cand.size(),
++        failed ? "; stopped early: the system refused to pin more (on Linux raise 'ulimit -l', on Windows the working set limit)" : "");
++}
+diff --git a/src/llama-expert-tiers.h b/src/llama-expert-tiers.h
+new file mode 100644
+index 0000000..880f58a
+--- /dev/null
++++ b/src/llama-expert-tiers.h
+@@ -0,0 +1,8 @@
++#pragma once
++
++struct llama_model;
++
++// Brain Engine 0020 (expert tiers, the warm tier): pin the busiest experts that sit in RAM, so the operating system
++// never drops them back to the disk when a brain is bigger than the RAM. Off unless LLAMA_EXPERT_WARM_MIB is set.
++// Runs once per brain; later calls for the same brain do nothing.
++void llama_expert_tiers_pin_warm(const llama_model & model);
+diff --git a/src/llama-mmap.cpp b/src/llama-mmap.cpp
+index 9688a7e..0997905 100644
+--- a/src/llama-mmap.cpp
++++ b/src/llama-mmap.cpp
+@@ -1057,6 +1057,7 @@ llama_mlock::~llama_mlock() = default;
+ 
+ void llama_mlock::init(void * ptr) { pimpl->init(ptr); }
+ void llama_mlock::grow_to(size_t target_size) { pimpl->grow_to(target_size); }
++bool llama_mlock::failed() const { return pimpl->failed_already; }
+ 
+ #if defined(_POSIX_MEMLOCK_RANGE) || defined(_WIN32)
+ const bool llama_mlock::SUPPORTED = true;
+diff --git a/src/llama-mmap.h b/src/llama-mmap.h
+index 6c6393d..8933181 100644
+--- a/src/llama-mmap.h
++++ b/src/llama-mmap.h
+@@ -71,6 +71,7 @@ struct llama_mlock {
+ 
+     void init(void * ptr);
+     void grow_to(size_t target_size);
++    bool failed() const; // Brain Engine 0020: a lock was refused (the warning is already logged)
+ 
+     static const bool SUPPORTED;
+ 

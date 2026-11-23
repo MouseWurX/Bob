@@ -1,0 +1,613 @@
+diff --git a/include/llama.h b/include/llama.h
+index b362ec4..45c22b8 100644
+--- a/include/llama.h
++++ b/include/llama.h
+@@ -1158,11 +1158,19 @@ extern "C" {
+     // The callback sees every graph node; while one is set, the graph is computed step by step, which is slower.
+     LLAMA_API void llama_set_eval_callback(struct llama_context * ctx, ggml_backend_sched_eval_callback cb_eval, void * cb_eval_user_data);
+ 
+-    // Brain Engine: keep every layer's expert picks ("ffn_moe_topk-<layer>" and the node it views) alive until the
+-    // step ends, so an eval callback can read them all once, at the last layer, instead of stopping at every layer.
+-    // Changing it rebuilds the graph. Waits for pending work first.
++    // Brain Engine: keep every layer's expert picks. Each micro-batch copies its picks into a small tensor per layer
++    // that lives on the layer's device, and the context queues a copy of them to host memory right after it, so no
++    // eval callback is needed, the fused router kernel and CUDA graphs stay on, and the words don't change. Read them
++    // with llama_get_kept_expert_ids. Changing it rebuilds the graph. Waits for pending work first.
+     LLAMA_API void llama_set_keep_expert_ids(struct llama_context * ctx, bool keep);
+ 
++    // Brain Engine: the experts layer il picked for every token decoded since the last llama_clear_kept_expert_ids,
++    // in the order computed (k ids per token). Waits for pending work. Returns the number of tokens (0 for a layer
++    // without experts or with nothing kept, -1 when the picks couldn't be kept); *ids stays valid until the next
++    // decode or clear.
++    LLAMA_API int32_t llama_get_kept_expert_ids(struct llama_context * ctx, int32_t il, const int32_t ** ids, int32_t * k);
++    LLAMA_API void    llama_clear_kept_expert_ids(struct llama_context * ctx);
++
+     // Brain Engine: copy n tensors of the step being computed (from inside an eval callback) to host memory, queued
+     // together and waited for once. sizes[i] bytes from the start of ts[i] go to dsts[i].
+     LLAMA_API void llama_get_tensors(struct llama_context * ctx, struct ggml_tensor * const * ts, void * const * dsts, const size_t * sizes, int32_t n);
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index ce76170..33fc789 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -1407,12 +1407,283 @@ void llama_context::set_eval_callback(ggml_backend_sched_eval_callback cb_eval,
+ void llama_context::set_keep_expert_ids(bool keep) {
+     synchronize();
+ 
+-    // the graph is rebuilt on the next step (graph reuse compares this), and the scheduler lays out its memory again:
+-    // a layout made without the picks kept would let a later layer write over an earlier layer's picks
++    // the graph is rebuilt on the next step (graph reuse compares this) with or without the copies into the kept
++    // tensors, and the scheduler lays out its memory again
+     if (cparams.keep_expert_ids != keep) {
+         sched_need_reserve = true;
+     }
+     cparams.keep_expert_ids = keep;
++    clear_kept_expert_ids();
++    if (keep) {
++        ids_keep_ensure();
++    } else if (moe_cache) {
++        moe_cache->set_ids_sink(nullptr, nullptr);
++    }
++}
++
++bool llama_context::ids_keep_ensure() {
++    const auto & hparams = model.hparams;
++    const uint32_t n_layer = hparams.n_layer();
++    auto & st = ids_keep;
++
++    // what each layer needs now: k picks (the live experts-per-word count, or the brain's own) for n_ubatch tokens
++    std::vector<int32_t> need(n_layer, 0);
++    bool remake = st.t.size() != n_layer || st.n_ubatch < cparams.n_ubatch || st.n_batch < cparams.n_batch;
++    for (uint32_t il = 0; il < n_layer; il++) {
++        if (model.layers[il].ffn_gate_inp == nullptr || hparams.n_expert_used(il) == 0) {
++            continue;
++        }
++        uint32_t k = hparams.n_expert_used(il);
++        if (cparams.expert_used && il < cparams.expert_used_n && cparams.expert_used[il] > 0) {
++            k = cparams.expert_used[il];
++        }
++        need[il] = (int32_t) k;
++        remake = remake || il >= st.k_alloc.size() || st.k_alloc[il] < (int32_t) k;
++    }
++    if (!remake) {
++        return true;
++    }
++
++    synchronize();
++    cparams.expert_ids_keep   = nullptr;
++    cparams.expert_ids_keep_n = 0;
++    cparams.expert_ids_keep_gen++;
++    sched_need_reserve = true;
++    st = {};
++    st.t.assign(n_layer, nullptr);
++    st.dev_of.assign(n_layer, -1);
++    st.slot.assign(n_layer, -1);
++    st.k_alloc.assign(n_layer, 0);
++    st.host.assign(n_layer, {});
++    st.k.assign(n_layer, 0);
++    st.bad.assign(n_layer, 0);
++    st.n_ubatch = cparams.n_ubatch;
++    st.n_batch  = cparams.n_batch;
++
++    // the layers of each device: the one that holds the layer's router, so the copy stays next to the picks
++    std::vector<ggml_backend_dev_t> dev_list;
++    for (uint32_t il = 0; il < n_layer; il++) {
++        if (need[il] == 0) {
++            continue;
++        }
++        const ggml_tensor * router = model.layers[il].ffn_gate_inp;
++        ggml_backend_dev_t dev = router->buffer ? ggml_backend_buft_get_device(ggml_backend_buffer_get_type(router->buffer)) : nullptr;
++        ggml_backend_t backend = nullptr;
++        for (auto & b : backends) {
++            if (dev && ggml_backend_get_device(b.get()) == dev) {
++                backend = b.get();
++                break;
++            }
++        }
++        if (!backend) {
++            backend = backend_cpu;
++            dev     = ggml_backend_get_device(backend_cpu);
++        }
++        int32_t d = -1;
++        for (size_t j = 0; j < dev_list.size(); j++) {
++            if (dev_list[j] == dev) {
++                d = (int32_t) j;
++            }
++        }
++        if (d < 0) {
++            d = (int32_t) dev_list.size();
++            dev_list.push_back(dev);
++            st.devs.emplace_back();
++            st.devs.back().backend = backend;
++        }
++        auto & D = st.devs[d];
++        st.dev_of[il] = d;
++        st.slot[il]   = D.n_slots++;
++        D.k_max       = std::max(D.k_max, need[il]);
++        st.k_alloc[il] = need[il];
++    }
++    for (size_t d = 0; d < st.devs.size(); d++) {
++        auto & D = st.devs[d];
++        ggml_init_params ip = { /*.mem_size =*/ ggml_tensor_overhead()*(n_layer + 1), /*.mem_buffer =*/ nullptr, /*.no_alloc =*/ true };
++        ggml_context * c = ggml_init(ip);
++        if (!c) {
++            LLAMA_LOG_ERROR("%s: could not make the kept expert picks\n", __func__);
++            st = {};
++            return false;
++        }
++        st.ctxs.emplace_back(c);
++        D.big = ggml_new_tensor_3d(c, GGML_TYPE_I32, D.k_max, D.n_slots, cparams.n_ubatch);
++        ggml_format_name(D.big, "expert_ids_kept_dev%zu", d);
++        for (uint32_t il = 0; il < n_layer; il++) {
++            if (st.dev_of[il] == (int32_t) d) {
++                st.t[il] = ggml_view_2d(c, D.big, need[il], cparams.n_ubatch, D.big->nb[2], st.slot[il]*D.big->nb[1]);
++                ggml_format_name(st.t[il], "expert_ids_kept-%u", il);
++            }
++        }
++        ggml_backend_buffer_type_t buft = ggml_backend_dev_buffer_type(dev_list[d]);
++        ggml_backend_buffer_t buf = ggml_backend_alloc_ctx_tensors_from_buft(c, buft);
++        if (!buf) {
++            LLAMA_LOG_ERROR("%s: no room for the kept expert picks on %s\n", __func__, ggml_backend_buft_name(buft));
++            st = {};
++            return false;
++        }
++        ggml_backend_buffer_clear(buf, 0);
++        st.bufs.emplace_back(buf);
++
++        // the stage holds every token of the biggest batch, pinned so the copy really is async
++        D.stage_n = (size_t) cparams.n_batch*D.k_max*D.n_slots;
++        ggml_backend_buffer_type_t host_buft = ggml_backend_dev_host_buffer_type(dev_list[d]);
++        if (host_buft) {
++            D.stage_buf.reset(ggml_backend_buft_alloc_buffer(host_buft, D.stage_n*sizeof(int32_t)));
++        }
++        if (D.stage_buf) {
++            D.stage = (int32_t *) ggml_backend_buffer_get_base(D.stage_buf.get());
++        } else {
++            D.stage_vec.resize(D.stage_n);
++            D.stage = D.stage_vec.data();
++        }
++    }
++    cparams.expert_ids_keep   = st.t.data();
++    cparams.expert_ids_keep_n = n_layer;
++    cparams.expert_ids_keep_gen++;
++    if (moe_cache) {
++        moe_cache->set_ids_sink(ids_keep_sink, this);
++    }
++    return true;
++}
++
++void llama_context::ids_keep_room(uint32_t n_tokens) {
++    auto & st = ids_keep;
++    for (const auto & D : st.devs) {
++        if (D.stage_at + (size_t) n_tokens*D.k_max*D.n_slots > D.stage_n) {
++            ids_keep_drain(); // nobody read the earlier batches yet: sort them out first (waits)
++            return;
++        }
++    }
++}
++
++void llama_context::ids_keep_sink(void * user_data, int32_t il, const int32_t * ids, size_t n, int32_t n_used) {
++    // called by the MoE cache while the graph computes, with the ids it has just read (and waited for) on the host
++    auto * lctx = (llama_context *) user_data;
++    auto & st = lctx->ids_keep;
++    if (!lctx->cparams.keep_expert_ids || il < 0 || (size_t) il >= st.t.size() || !st.t[il] || n_used <= 0) {
++        return;
++    }
++    ids_keep_state::pending p;
++    p.at = st.side.size();
++    p.il = il;
++    p.k  = n_used;
++    p.n  = (int32_t) (n / n_used);
++    st.side.insert(st.side.end(), ids, ids + n);
++    st.queued.push_back(std::move(p));
++}
++
++void llama_context::ids_keep_read(const llm_graph_result * res) {
++    auto & st = ids_keep;
++    // one block per device: the first n tokens of all its layers, n the most any of its layers computed
++    for (size_t d = 0; d < st.devs.size(); d++) {
++        auto & D = st.devs[d];
++        ids_keep_state::pending p;
++        p.dev = (int32_t) d;
++        int32_t n = 0;
++        for (const auto & e : res->ids_kept) {
++            const int32_t il = e[0];
++            if (il >= 0 && (size_t) il < st.t.size() && st.dev_of[il] == (int32_t) d) {
++                p.layers.push_back(e);
++                n = std::max(n, e[2]);
++            }
++        }
++        if (n == 0) {
++            continue;
++        }
++        const size_t ints = (size_t) n*D.k_max*D.n_slots;
++        if (D.stage_at + ints > D.stage_n) {
++            for (const auto & e : p.layers) {
++                st.bad[e[0]] = 1; // no room (ids_keep_room makes it before every decode, so this shouldn't happen)
++            }
++            continue;
++        }
++        p.at = D.stage_at;
++        D.stage_at += ints;
++        // queued on the stream that computed this micro-batch, so it lands before the next one writes the tensor again
++        ggml_backend_tensor_get_async(D.backend, D.big, D.stage + p.at, 0, ints*sizeof(int32_t));
++        st.queued.push_back(std::move(p));
++    }
++}
++
++void llama_context::ids_keep_drain() {
++    auto & st = ids_keep;
++    if (st.queued.empty()) {
++        return;
++    }
++    synchronize();
++    auto put = [&](int32_t il, int32_t k, const int32_t * src, int32_t n, size_t stride) {
++        if (st.bad[il]) {
++            return;
++        }
++        if (st.k[il] != 0 && st.k[il] != k) {
++            st.bad[il] = 1; // a changed count within one read
++            return;
++        }
++        st.k[il] = k;
++        auto & h = st.host[il];
++        for (int32_t i = 0; i < n; i++) {
++            h.insert(h.end(), src + i*stride, src + i*stride + k);
++        }
++    };
++    for (const auto & p : st.queued) {
++        if (p.dev < 0) {
++            put(p.il, p.k, st.side.data() + p.at, p.n, p.k);
++            continue;
++        }
++        const auto & D = st.devs[p.dev];
++        const size_t tok = (size_t) D.k_max*D.n_slots;
++        for (const auto & e : p.layers) {
++            put(e[0], e[1], D.stage + p.at + (size_t) st.slot[e[0]]*D.k_max, e[2], tok);
++        }
++    }
++    st.queued.clear();
++    st.side.clear();
++    for (auto & D : st.devs) {
++        D.stage_at = 0;
++    }
++}
++
++int32_t llama_context::get_kept_expert_ids(int32_t il, const int32_t ** ids, int32_t * k) {
++    auto & st = ids_keep;
++    ids_keep_drain();
++    if (ids) {
++        *ids = nullptr;
++    }
++    if (k) {
++        *k = 0;
++    }
++    if (il < 0 || (size_t) il >= st.t.size() || !st.t[il]) {
++        return 0;
++    }
++    if (st.bad[il]) {
++        return -1;
++    }
++    if (st.k[il] == 0) {
++        return 0;
++    }
++    if (ids) {
++        *ids = st.host[il].data();
++    }
++    if (k) {
++        *k = st.k[il];
++    }
++    return (int32_t) (st.host[il].size()/st.k[il]);
++}
++
++void llama_context::clear_kept_expert_ids() {
++    synchronize();
++    auto & st = ids_keep;
++    st.queued.clear();
++    st.side.clear();
++    for (auto & D : st.devs) {
++        D.stage_at = 0;
++    }
++    for (size_t il = 0; il < st.host.size(); il++) {
++        st.host[il].clear();
++        st.k[il]   = 0;
++        st.bad[il] = 0;
++    }
+ }
+ 
+ void llama_context::get_tensors(ggml_tensor * const * ts, void * const * dsts, const size_t * sizes, int32_t n) {
+@@ -2419,6 +2690,13 @@ int llama_context::decode(const llama_batch_ext & batch_inp) {
+     output_swaps.clear();
+     embd_batch_idxs.clear();
+ 
++    // Brain Engine: the kept expert picks must fit this step's experts per word before the graph is laid out, and the
++    // host side needs room for every token of this batch before any copy is queued
++    if (cparams.keep_expert_ids) {
++        ids_keep_ensure();
++        ids_keep_room(n_tokens_all);
++    }
++
+     sched_reserve();
+ 
+     bool did_optimize = false;
+@@ -2542,6 +2820,10 @@ int llama_context::decode(const llama_batch_ext & batch_inp) {
+ 
+         const auto * res = process_ubatch(ubatch, ctx_type_to_graph_type(cparams.ctx_type), mctx.get(), status);
+ 
++        if (res && cparams.keep_expert_ids && !res->ids_kept.empty()) {
++            ids_keep_read(res);
++        }
++
+         if (!res) {
+             // the last ubatch failed or was aborted -> remove all positions of that ubatch from the memory module
+             llama_pos pos_min[LLAMA_MAX_SEQ];
+@@ -5032,6 +5314,14 @@ void llama_set_keep_expert_ids(llama_context * ctx, bool keep) {
+     ctx->set_keep_expert_ids(keep);
+ }
+ 
++int32_t llama_get_kept_expert_ids(llama_context * ctx, int32_t il, const int32_t ** ids, int32_t * k) {
++    return ctx->get_kept_expert_ids(il, ids, k);
++}
++
++void llama_clear_kept_expert_ids(llama_context * ctx) {
++    ctx->clear_kept_expert_ids();
++}
++
+ void llama_get_tensors(llama_context * ctx, ggml_tensor * const * ts, void * const * dsts, const size_t * sizes, int32_t n) {
+     ctx->get_tensors(ts, dsts, sizes, n);
+ }
+diff --git a/src/llama-context.h b/src/llama-context.h
+index d25c6c9..c8438d1 100644
+--- a/src/llama-context.h
++++ b/src/llama-context.h
+@@ -122,6 +122,8 @@ struct llama_context {
+     void set_abort_callback(bool (*abort_callback)(void * data), void * abort_callback_data);
+     void set_eval_callback(ggml_backend_sched_eval_callback cb_eval, void * cb_eval_user_data);
+     void set_keep_expert_ids(bool keep);
++    int32_t get_kept_expert_ids(int32_t il, const int32_t ** ids, int32_t * k);
++    void clear_kept_expert_ids();
+     void get_tensors(ggml_tensor * const * ts, void * const * dsts, const size_t * sizes, int32_t n);
+ 
+     void set_embeddings (bool value);
+@@ -456,6 +458,48 @@ private:
+     ggml_backend_t backend_cpu = nullptr;
+     std::vector<ggml_backend_ptr> backends;
+ 
++    // Brain Engine: the kept expert picks (see llama_set_keep_expert_ids). Per device one tensor [k_max, n_slots, n_ubatch]
++    // holds every layer's picks of a micro-batch token-major, so the first n tokens of all its layers are one block,
++    // copied to pinned host memory with a single async copy per micro-batch and sorted into layers when read.
++    struct ids_keep_state {
++        struct device {
++            ggml_backend_t            backend = nullptr;
++            ggml_tensor             * big     = nullptr;
++            int32_t                   k_max   = 0;
++            int32_t                   n_slots = 0;
++            ggml_backend_buffer_ptr   stage_buf;          // pinned when the device has a host buffer type
++            std::vector<int32_t>      stage_vec;          // otherwise
++            int32_t                 * stage   = nullptr;
++            size_t                    stage_n = 0;        // ints
++            size_t                    stage_at = 0;       // ints queued so far
++        };
++        struct pending {
++            int32_t dev = -1;      // >= 0: a block in that device's stage; -1: ids handed over by the MoE cache
++            size_t  at  = 0;       // where in the stage, or in side
++            int32_t il = -1, k = 0, n = 0; // the cache's layer (dev -1)
++            std::vector<std::array<int32_t, 3>> layers; // a stage block's layers: {il, k, n}
++        };
++        std::vector<ggml_context_ptr>        ctxs;
++        std::vector<ggml_backend_buffer_ptr> bufs;
++        std::vector<device>                  devs;
++        std::vector<ggml_tensor *>           t;       // per layer, a [k_alloc, n_ubatch] view into its device's tensor
++        std::vector<int32_t>                 dev_of;  // per layer
++        std::vector<int32_t>                 slot;    // per layer, its place among its device's layers
++        std::vector<int32_t>                 k_alloc;
++        uint32_t                             n_ubatch = 0;
++        uint32_t                             n_batch  = 0;
++        std::vector<pending>                 queued;  // in the order computed
++        std::vector<int32_t>                 side;    // ids handed over by the MoE cache, not yet sorted
++        std::vector<std::vector<int32_t>>    host;    // per layer, the picks read since the last clear
++        std::vector<int32_t>                 k;       // per layer, picks per token in host (0 = none yet)
++        std::vector<uint8_t>                 bad;     // per layer
++    } ids_keep;
++    bool ids_keep_ensure();                    // (re)make the kept tensors when missing or too small
++    void ids_keep_room(uint32_t n_tokens);     // sort what is queued first if the stages can't take n_tokens more
++    void ids_keep_read(const llm_graph_result * res);
++    void ids_keep_drain();                     // wait, then sort every queued block into the layers
++    static void ids_keep_sink(void * user_data, int32_t il, const int32_t * ids, size_t n, int32_t n_used);
++
+     // training
+     ggml_opt_context_t opt_ctx = nullptr;
+ 
+diff --git a/src/llama-cparams.h b/src/llama-cparams.h
+index ea91936..1add3a0 100644
+--- a/src/llama-cparams.h
++++ b/src/llama-cparams.h
+@@ -51,6 +51,11 @@ struct llama_cparams {
+     bool auto_fkvr;
+     bool no_perf;
+     bool keep_expert_ids = false; // Brain Engine: keep every layer's expert picks until the step ends
++    // Brain Engine: with keep_expert_ids, per layer a tensor that each step copies its picks into ([k, n_ubatch] i32,
++    // nullptr for a layer without experts); the generation changes whenever they are made again
++    struct ggml_tensor * const * expert_ids_keep = nullptr;
++    uint32_t expert_ids_keep_n   = 0;
++    uint32_t expert_ids_keep_gen = 0;
+ 
+     // Brain Engine: experts per word set live (llama_set_expert_used), one count per layer, 0 = the model's own.
+     // Points into the context's own list; expert_used_gen changes with every change, so a graph is never reused across one.
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 2ca858b..5dad787 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -1438,6 +1438,7 @@ void llm_graph_result::reset() {
+ 
+     inputs.clear();
+     fused_nodes.clear();
++    ids_kept.clear();
+     hdmd_inputs.clear();
+ 
+     const size_t meta_size = ggml_tensor_overhead()*max_nodes + ggml_graph_overhead_custom(max_nodes, false);
+@@ -2400,11 +2401,8 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+         cb(selected_experts->src[0], "ffn_moe_argsort", il);
+     }
+     cb(selected_experts, "ffn_moe_topk", il);
+-    if (cparams.keep_expert_ids) {
+-        // Brain Engine: keep the picks until the step is done, so a trace can read every layer's at once at the end
+-        // instead of stopping the card at every layer
+-        ggml_set_output(selected_experts->view_src ? selected_experts->view_src : selected_experts);
+-    }
++    // Brain Engine: the picks as the router made them, for the kept copy below
++    ggml_tensor * picks_made = selected_experts;
+ 
+     if (arch == LLM_ARCH_GROVEMOE && n_expert != hparams.n_expert) {
+         // TODO: Use scalar div instead when/if implemented
+@@ -2472,6 +2470,25 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+         std::none_of(exps.begin(), exps.end(), [&](ggml_tensor * w) { return w != nullptr && hdmd != nullptr && hdmd->rot.count(w) > 0; });
+     const llm_graph_moe_cache_slots cache = build_moe_cache_slots(selected_experts, up_exps, gate_exps, down_exps, gate_up_exps, can_cpu_share, il);
+ 
++    // Brain Engine: copy the picks into this layer's kept tensor. The copy comes after the router's last node, so the
++    // fused top-k kernel and CUDA graphs stay on, nothing in the graph is marked as an output, and no eval callback
++    // is needed: the context reads the kept tensors after each micro-batch
++    // A layer read through the MoE cache slots gets no copy: the cache reads the same ids to the host for its lookup and
++    // hands them over (llama_moe_cache::set_ids_sink), and a copy there would move the graph's splits around the lookup
++    if (cache.slots == nullptr && cparams.keep_expert_ids && cparams.expert_ids_keep && il >= 0 && (uint32_t) il < cparams.expert_ids_keep_n) {
++        ggml_tensor * keep = cparams.expert_ids_keep[il];
++        if (keep && picks_made->type == GGML_TYPE_I32 && picks_made->ne[2] == 1 && picks_made->ne[3] == 1 &&
++                picks_made->ne[0] <= keep->ne[0] && picks_made->ne[1] <= keep->ne[1] && picks_made->ne[1] > 0) {
++            // keep is a view into its device's [k_max, n_slots, n_ubatch] tensor: its rows are a token apart
++            ggml_tensor * dst = ggml_view_2d(ctx0, keep, picks_made->ne[0], picks_made->ne[1], keep->nb[1], 0);
++            ggml_tensor * kept = ggml_cpy(ctx0, picks_made, dst);
++            cb(kept, "ffn_moe_topk_kept", il);
++            ggml_build_forward_expand(gf, kept);
++            res->ids_kept.push_back({ il, (int32_t) picks_made->ne[0], (int32_t) picks_made->ne[1] });
++        }
++    }
++
++
+     cur = ggml_reshape_3d(ctx0, cur, n_embd, 1, n_tokens);
+ 
+     if (weight_before_ffn) {
+diff --git a/src/llama-graph.h b/src/llama-graph.h
+index 94e0832..c33c7ad 100644
+--- a/src/llama-graph.h
++++ b/src/llama-graph.h
+@@ -5,6 +5,7 @@
+ #include "llama-hparams.h"
+ #include "llama-adapter.h"
+ 
++#include <array>
+ #include <cstdint>
+ #include <cstdlib>
+ #include <vector>
+@@ -909,6 +910,7 @@ struct llm_graph_params {
+             cparams.embeddings_nextn_masked == other.cparams.embeddings_nextn_masked &&
+             cparams.causal_attn             == other.cparams.causal_attn             &&
+             cparams.keep_expert_ids         == other.cparams.keep_expert_ids         &&
++            cparams.expert_ids_keep_gen     == other.cparams.expert_ids_keep_gen     &&
+             cparams.expert_used_gen         == other.cparams.expert_used_gen         &&
+             layer_inp_dev == other.layer_inp_dev &&
+             layer_inp_src == other.layer_inp_src &&
+@@ -973,6 +975,9 @@ public:
+ 
+     const std::vector<llm_graph_fused_node> & get_fused_nodes() const { return fused_nodes; }
+ 
++    // Brain Engine: the layers whose picks this graph copies into the kept tensors: {layer, k, n_tokens}
++    std::vector<std::array<int32_t, 3>> ids_kept;
++
+     void set_params(const llm_graph_params & params);
+ 
+     // important graph nodes
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 5ac49f9..faf9a78 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -389,6 +389,8 @@ struct llama_moe_cache::impl {
+ 
+     // LLAMA_MOE_CACHE_TRACE: the selected experts of each slot lookup, for a simulator of the cache
+     FILE * trace = nullptr;
++    llama_moe_cache::ids_sink_t ids_sink = nullptr;
++    void * ids_sink_ud = nullptr;
+ 
+     // slot maps in host memory
+     ggml_context_ptr ctx_host;
+@@ -942,6 +944,9 @@ struct llama_moe_cache::impl {
+         if (trace != nullptr) {
+             write_trace(il, n_used);
+         }
++        if (ids_sink != nullptr && !has_cpu) {
++            ids_sink(ids_sink_ud, il, ids.data(), ids.size(), n_used);
++        }
+ 
+         // part of the misses is computed on the CPU once the cache is full, the carry keeps the share right on average
+         const uint32_t share_q = has_cpu && g.lru.n_filled == g.lru.n_slots ? cpu_share_q : 0;
+@@ -1041,6 +1046,11 @@ ggml_tensor * llama_moe_cache::get_cpu_map(int32_t il, int64_t n_tokens) const {
+     return pimpl->get_cpu_map(il, n_tokens);
+ }
+ 
++void llama_moe_cache::set_ids_sink(ids_sink_t sink, void * user_data) {
++    pimpl->ids_sink    = sink;
++    pimpl->ids_sink_ud = user_data;
++}
++
+ bool llama_moe_cache::copy(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_cgraph * graph) {
+     return pimpl->copy(backend, src, dst, graph);
+ }
+diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
+index 636bc45..0aed417 100644
+--- a/src/llama-moe-cache.h
++++ b/src/llama-moe-cache.h
+@@ -40,6 +40,11 @@ public:
+ 
+     std::map<ggml_backend_buffer_type_t, size_t> memory_breakdown() const;
+ 
++    // Brain Engine: called with every layer's selected experts as the cache reads them (n ids, n_used per token), so
++    // a kept expert trace can take them from here instead of copying them out of the graph; nullptr turns it off
++    using ids_sink_t = void (*)(void * user_data, int32_t il, const int32_t * ids, size_t n, int32_t n_used);
++    void set_ids_sink(ids_sink_t sink, void * user_data);
++
+ private:
+     struct impl;
+     std::unique_ptr<impl> pimpl;
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 3e666c9..57fe6b5 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -5320,7 +5320,9 @@ private:
+             etrace.keep = want && !etrace.neurons && !etrace.heads && !etrace.mass;
+         }
+         llama_set_keep_expert_ids(ctx_tgt, etrace.keep);
+-        if (want) {
++        // with the picks kept, the context copies them out itself after each micro-batch: no eval callback, so the
++        // graph is computed whole, the fused router kernel and CUDA graphs stay on, and the words don't change
++        if (want && !etrace.keep) {
+             llama_set_eval_callback(ctx_tgt, server_expert_trace::cb_eval, &etrace);
+         }
+     }
+@@ -5624,8 +5626,29 @@ private:
+                     }
+                     etrace.tags.push_back({ batch.tokens[i].id_slot, batch.tokens[i].token, batch.tokens[i].is_prompt, batch.tokens[i].output });
+                 }
++                if (etrace.keep) {
++                    // the picks of every micro-batch of this decode, in the order computed, as the callback gave them
++                    for (int il = 0; il < (int) etrace.cols.size(); il++) {
++                        const int32_t * ids = nullptr;
++                        int32_t k = 0;
++                        const int32_t n = llama_get_kept_expert_ids(ctx_tgt, il, &ids, &k);
++                        if (n < 0 || (n > 0 && etrace.k_of[il] != 0 && etrace.k_of[il] != k)) {
++                            etrace.bad = true;
++                            break;
++                        }
++                        if (n > 0) {
++                            etrace.k_of[il] = k;
++                            etrace.n_used   = std::max(etrace.n_used, k);
++                            etrace.cols[il].insert(etrace.cols[il].end(), ids, ids + (size_t) n*k);
++                            etrace.n_cols[il] += n;
++                        }
++                    }
++                }
+             }
+         }
++        if (etrace.keep) {
++            llama_clear_kept_expert_ids(ctx_tgt);
++        }
+ 
+         if (ret != 0) {
+             {

@@ -5,6 +5,8 @@ import { applySavedStyle } from './themes.js';
 import { installTips } from './tips.js';
 import { createLab } from './lab.js';
 import { CHANNEL, message } from './lab-link.js';
+import { installPathCleaning } from './clean-path.js'; // Nov 18: pasted paths lose their quotes and invisible marks
+installPathCleaning();
 
 applySavedStyle();
 installTips();

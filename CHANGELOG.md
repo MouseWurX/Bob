@@ -4,6 +4,34 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.252
+
+Rentals are safer, and you can pick a quant level or finish a robot check yourself.
+
+### New
+
+- **Pick a quant level** (Settings, How Bob works, Brains; off to start). A brain that comes in smaller files gets a Quant level menu. Every level is listed, with how it did in our tests and whether I recommend it. The choice is yours.
+- **Let me finish robot checks** (Settings, Connections, Private web; off to start). When a page wants a person, I ask first, open it in my browser window and wait while you finish it. I never click or type on the check myself.
+
+### Fixed
+
+- **Rentals.** Your account key no longer goes onto a rented pod. A pod that vanishes or stops fails at once with the service's reason. The pod's server log is kept, and an early exit waits for it. Stopping a pod that's already gone counts as stopped.
+- **Borrowing.** "Borrowing More Brains" goes away once a lending Bob takes his card back.
+- **Add a rental** shows the right boxes for the service the first time it opens, and refuses a bare `.gguf` name that would start a paid pod with nothing to load.
+- **A folder that isn't on my list.** When a Files or Office job needs a folder you haven't ticked, a card asks "Add it?" and I carry on once you press it.
+- **Hands switched off.** If a job needs a Hand that's off, I show the Switch it on card and say plainly that nothing was done.
+- **Pasted paths.** Quotes and invisible Windows marks are stripped from folder paths you paste, and Settings, Hands says why a folder wasn't added.
+- **Bob-Net engine check.** Before lending a card, a Bob checks that both sides run the same engine build. The logbook says why when they don't.
+- **Chat page.** The job time bar is a thin line along the bottom of the window. Clear chat is a plain button at the top right. The fade line only shows once something has faded. Gaming's unload plays the cube's letting-go animation.
+- **The newest message gets the answer,** not an old ask that was stopped earlier.
+- **Long jobs read faster.** I read the time once per turn, so a minute ticking over mid-job no longer makes the engine read every step again.
+
+### Docs
+
+- How we test brains (`docs/TESTING.md`), costs to 16 Nov, and the dissertation's new results table, direction chapter and 21 Nov harness runs.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.251
 
 One way to pick brains, and I find your brain files every time I start.
@@ -151,21 +179,6 @@ Send a whole folder to your other Bob with one Yes, and Journey gets its laptop-
 - **Journey on a laptop.** A 720p window fits without scrolling, menus too. The talk box and choices are real windows with sharp words. Elf and pixie ears show with Bob's wide headset look, and the tab icons have an outline so they stand out (Pets is now 🐶).
 
 **Where it works:** Windows, Mac, Linux and Bob for Android. Folder sending works on Windows, Mac and Linux; both Bobs need 1.5.243.
-
-## 1.5.242
-
-Journey plays like a proper game now: every menu lives inside the game screen.
-
-### New
-
-- **Every Journey menu opens inside the game.** The menu, shops, crafting, the bag, the paper doll, quests, fights, choices and New adventure all show in the blue talk box, right on the game screen.
-- **A ⚙ System tab.** Save, load, sound, full screen, quit and the controls, all in one place.
-- **Play with a controller.** Plug in a gamepad and Journey answers it. You can also tap the game screen to read on or to pick a choice.
-- **Party size, one to four.** Pick how many travel together; rolled characters fill any empty seats.
-- **You can see each race.** Races now show on the sprite and the paper doll.
-- **A stat every level.** Each level up raises a stat.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
 
 ## Older versions
 
