@@ -8,11 +8,16 @@
 # same words as before the switch and still draft. Freed memory is only caught for sure on a build made with
 # -DLLAMA_SANITIZE_ADDRESS=ON (the test then also fails on any AddressSanitizer report); a plain build may survive the
 # old bug by luck.
+# Brain Engine 0087: with CTX_FIT=1 there's no -ngl, so the fit places the brain; set LLAMA_ARG_FIT_TARGET to the stand-in
+# card's free MiB minus about 7 (16080 on the cloud's) so the fit leaves most of it on the processor. Each switch must then
+# reuse the kept brain: the fit runs once and no switch loads the weights again.
 #   python3 engine/tests/ctx-change-mtp.py <llama.cpp checkout with the patches, built with GGML_RPC=ON and LLAMA_BUILD_TESTS=ON> [work folder] [build folder, default build]
 import json, os, subprocess, sys, tempfile, time, urllib.request
 SRC = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else sys.exit('usage: ctx-change-mtp.py <llama.cpp checkout, built> [work folder] [build folder]')
 WORK = os.path.abspath(sys.argv[2]) if len(sys.argv) > 2 else tempfile.mkdtemp(prefix='ctxmtp-')
 BUILD = sys.argv[3] if len(sys.argv) > 3 else 'build'
+# CTX_FIT=1: no -ngl, so the fit places the brain (Bob's default); 0087 then keeps that placement on a switch
+FIT = os.environ.get('CTX_FIT') == '1'
 BIN = os.path.join(SRC, BUILD, 'bin')
 ARCHS = os.path.join(SRC, 'build', 'bin', 'test-llama-archs')
 sys.path.insert(0, os.path.join(SRC, 'gguf-py'))
@@ -76,7 +81,7 @@ rpc = subprocess.Popen([os.path.join(BIN, 'ggml-rpc-server'), '-p', str(RPC)], s
 time.sleep(1.5)
 log = os.path.join(WORK, 'server.txt')
 srv = subprocess.Popen([os.path.join(BIN, 'llama-server'), '-m', brain, '--port', str(PORT), '-c', '1024', '-np', '1', '-t', '2',
-                        '--rpc', f'127.0.0.1:{RPC}', '-ngl', '99', '--spec-type', 'draft-mtp', '-b', '256', '-ub', '256'],
+                        '--rpc', f'127.0.0.1:{RPC}'] + ([] if FIT else ['-ngl', '99']) + ['--spec-type', 'draft-mtp', '-b', '256', '-ub', '256'],
                        stdout=subprocess.DEVNULL, stderr=open(log, 'w'), env=env)
 try:
     for _ in range(100):
@@ -106,5 +111,10 @@ finally:
 text = open(log, encoding='utf-8', errors='replace').read().replace('\r\n', '\n')
 check('no freed memory touched (AddressSanitizer)', 'AddressSanitizer' not in text, 'see ' + log)
 check('no GGML_ASSERT', 'GGML_ASSERT' not in text, 'see ' + log)
+if FIT:
+    # Brain Engine 0087: every switch keeps the brain; none fits again or loads the weights again
+    check('the fit placed the brain once and was kept', text.count('fit kept for later contexts') == 1, 'see ' + log)
+    check('every switch kept the brain loaded', text.count('brain kept loaded: only the context is made again') == 3, 'see ' + log)
+    check('no switch loaded the brain again', 'brain loaded again: its placement changed' not in text, 'see ' + log)
 print(f'\n{"all passed" if fails == 0 else f"{fails} failed"}')
 sys.exit(1 if fails else 0)
