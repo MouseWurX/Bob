@@ -72,6 +72,7 @@ import { ownKitCounts } from './own-kit.js';
 import { quarantineRoute } from './quarantine-routes.js';
 import { moreToolsRoute } from './more-tools-routes.js'; // 🧰 More tools (Settings, How Bob works)
 import { schedulesRoute, startSchedules } from './hands-schedules.js';
+import { routinesRoute, startRoutines } from './hands-routines.js'; // Routines (Settings, Hands; the editor is public/routines.html)
 import { checkinsRoute, startCheckins } from './checkins.js';
 import { adventureRoute } from './adventure.js';
 import { gamesRoute } from './games.js';
@@ -372,6 +373,7 @@ shop.equipHook = async (slot, value) => {
 };
 shop.applyEquip().catch(() => {}); // anything finished while Bob was closed
 startSchedules(brain); // ticks once a minute; nothing is ever due while the Schedules hand is off
+startRoutines(brain); // Routines: a look at what starts each one, once a minute; nothing runs while the Routines Hand is off
 startCheckins(brain); // 1.5.78: ticks once a minute; does nothing while Check-ins are off
 telegram = startTelegram(brain); // does nothing (no request at all) unless Bob on Telegram is on and a bot token is set
 discord = startDiscord(brain); // does nothing (no connection at all) unless Bob on Discord is on and a bot token is set
@@ -1453,6 +1455,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, brain.answerApproval(id, allow, rows, items, note) ? 200 : 404, { ok: true });
     }
     if (p === '/api/checkins' && await checkinsRoute({ req, res, p, isLocal, brain, body, send })) return;
+    if (p === '/api/routines' && await routinesRoute({ req, res, p, url, isLocal, brain, body, send })) return; // Routines (the Routines Hand)
     if (p.startsWith('/api/everyday/') && await everydayRoute({ req, res, p, isLocal, cfg, brain, focus, profiles, body, send })) return; // 🗓 Everyday helpers
     if (p.startsWith('/api/adventure') && await adventureRoute({ req, res, p, isLocal, brain, body, send })) return; // 1.5.117 🎲 Adventure
     if (p.startsWith('/api/games') && await gamesRoute({ req, res, p, isLocal, brain, body, send })) return; // 1.5.121 🧩 Games

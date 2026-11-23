@@ -270,6 +270,7 @@
     "test/run-lock-reset-test.js",
     "test/run-iphone-test.js",
     "test/run-toolpacks-test.js",
+    "test/run-routines-test.js",
     "test/run-backup-test.js",
     "test/run-parts3d-test.js",
     "test/run-model3d-test.js",
