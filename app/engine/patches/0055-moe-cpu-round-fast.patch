@@ -1,8 +1,8 @@
 diff --git a/ggml/src/ggml-cpu/arch/x86/quants.c b/ggml/src/ggml-cpu/arch/x86/quants.c
-index 21cd631..61b8de9 100644
+index 21cd631..6efe41e 100644
 --- a/ggml/src/ggml-cpu/arch/x86/quants.c
 +++ b/ggml/src/ggml-cpu/arch/x86/quants.c
-@@ -4170,3 +4170,243 @@ void ggml_vec_dot_iq4_xs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const v
+@@ -4170,3 +4170,265 @@ void ggml_vec_dot_iq4_xs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const v
      ggml_vec_dot_iq4_xs_q8_K_generic(n, s, bs, vx, bx, vy, by, nrc);
  #endif
  }
@@ -52,6 +52,13 @@ index 21cd631..61b8de9 100644
 +static inline __m256 be_iq_f8(const float * f) { return _mm256_setr_ps(f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7]); }
 +static inline __m256i be_iq_a(const block_q8_0 * a) { return _mm256_loadu_si256((const __m256i *) a->qs); }
 +
++// four blocks' sums reduced as they come (few vectors live at once; keeping all eight spilled to the stack, ~12%)
++static inline __m256i be_red4(__m256i a0, __m256i a1, __m256i a2, __m256i a3) {
++    return _mm256_hadd_epi32(_mm256_hadd_epi32(a0, a1), _mm256_hadd_epi32(a2, a3)); // [a0..a3 low halves | a0..a3 high halves]
++}
++static inline __m256i be_red_fin(__m256i u0, __m256i u1) { // lane k: block k's whole sum
++    return _mm256_add_epi32(_mm256_permute2x128_si256(u0, u1, 0x20), _mm256_permute2x128_si256(u0, u1, 0x31));
++}
 +static float be_iq2_xxs(const block_iq2_xxs * x, const block_q8_0 * a, const float * da, int64_t nbk) {
 +    const uint64_t * signs64 = (const uint64_t *) keven_signs_q2xs;
 +    __m256 acc = _mm256_setzero_ps();
@@ -89,60 +96,75 @@ index 21cd631..61b8de9 100644
 +    }
 +    return be_iq_hsumf(acc);
 +}
++static inline __m256i be_iq2_s_blk(const block_iq2_s * x, int k, const int8_t * a) {
++    const uint8_t * q = x->qs + 4*k; const uint32_t h = x->qh[k];
++    const __m256i w = _mm256_set_epi64x(iq2s_grid[q[3] | ((h << 2) & 0x300)], iq2s_grid[q[2] | ((h << 4) & 0x300)],
++                                        iq2s_grid[q[1] | ((h << 6) & 0x300)], iq2s_grid[q[0] | ((h << 8) & 0x300)]);
++    uint32_t s4; memcpy(&s4, x->qs + QK_K/8 + 4*k, 4);
++    return be_iq_dot(w, _mm256_sign_epi8(_mm256_loadu_si256((const __m256i *) a), be_iq_signs(s4)));
++}
 +static float be_iq2_s(const block_iq2_s * x, const block_q8_0 * a, const float * da, int64_t nbk) {
 +    __m256 acc = _mm256_setzero_ps();
 +    for (int64_t i = 0; i < nbk; ++i) {
-+        const float d = 0.125f * GGML_CPU_FP16_TO_FP32(x[i].d);
-+        const uint8_t * qs = x[i].qs; const uint8_t * qh = x[i].qh; const uint8_t * sg = x[i].qs + QK_K/8;
-+        __m256i v[8]; float sc[16];
-+        for (int k = 0; k < 8; ++k) {
-+            const uint8_t * q = qs + 4*k;
-+            const __m256i w = _mm256_set_epi64x(iq2s_grid[q[3] | ((qh[k] << 2) & 0x300)], iq2s_grid[q[2] | ((qh[k] << 4) & 0x300)],
-+                                                iq2s_grid[q[1] | ((qh[k] << 6) & 0x300)], iq2s_grid[q[0] | ((qh[k] << 8) & 0x300)]);
-+            uint32_t s4; memcpy(&s4, sg + 4*k, 4);
-+            v[k] = be_iq_dot(w, _mm256_sign_epi8(be_iq_a(a + i*8 + k), be_iq_signs(s4)));
-+            sc[2*k]     = d * (float) (2*(x[i].scales[k] & 0xf) + 1);
-+            sc[2*k + 1] = d * (float) (2*(x[i].scales[k] >>  4) + 1);
-+        }
-+        acc = be_iq_acc16(acc, v, sc, da + i*8);
++        const block_q8_0 * ab = a + i*8; const block_iq2_s * xi = x + i;
++        const __m256i u0 = be_red4(be_iq2_s_blk(xi, 0, ab[0].qs), be_iq2_s_blk(xi, 1, ab[1].qs), be_iq2_s_blk(xi, 2, ab[2].qs), be_iq2_s_blk(xi, 3, ab[3].qs));
++        const __m256i u1 = be_red4(be_iq2_s_blk(xi, 4, ab[4].qs), be_iq2_s_blk(xi, 5, ab[5].qs), be_iq2_s_blk(xi, 6, ab[6].qs), be_iq2_s_blk(xi, 7, ab[7].qs));
++        // per-16 scales: u0 lanes = blocks 0-3 first 16 | second 16, u1 the same for blocks 4-7; nibbles 2*(lo|hi)+1
++        const __m128i sb = _mm_loadl_epi64((const __m128i *) x[i].scales);
++        const __m128i lo = _mm_and_si128(sb, _mm_set1_epi8(0xF)), hi = _mm_and_si128(_mm_srli_epi16(sb, 4), _mm_set1_epi8(0xF));
++        const __m256 s0 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_unpacklo_epi32(lo, hi)));               // [lo0..3 | hi0..3]
++        const __m256 s1 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_unpacklo_epi32(_mm_srli_si128(lo, 4), _mm_srli_si128(hi, 4))));
++        const __m256 two = _mm256_set1_ps(2.0f), one = _mm256_set1_ps(1.0f);
++        const __m256 d = _mm256_set1_ps(0.125f * GGML_CPU_FP16_TO_FP32(x[i].d));
++        acc = _mm256_fmadd_ps(_mm256_cvtepi32_ps(u0), _mm256_mul_ps(_mm256_mul_ps(d, _mm256_fmadd_ps(s0, two, one)), _mm256_broadcast_ps((const __m128 *) (da + i*8))), acc);
++        acc = _mm256_fmadd_ps(_mm256_cvtepi32_ps(u1), _mm256_mul_ps(_mm256_mul_ps(d, _mm256_fmadd_ps(s1, two, one)), _mm256_broadcast_ps((const __m128 *) (da + i*8 + 4))), acc);
 +    }
 +    return be_iq_hsumf(acc);
 +}
-+static float be_iq3_xxs(const block_iq3_xxs * x, const block_q8_0 * a, const float * da, int64_t nbk) {
++static inline __m256i be_iq3_xxs_blk(const uint8_t * q, const uint8_t * ss4, const int8_t * a) {
 +    const uint64_t * signs64 = (const uint64_t *) keven_signs_q2xs;
++    uint32_t aux; memcpy(&aux, ss4, 4);
++    const __m256i w = _mm256_set_epi32(iq3xxs_grid[q[7]], iq3xxs_grid[q[6]], iq3xxs_grid[q[5]], iq3xxs_grid[q[4]],
++                                       iq3xxs_grid[q[3]], iq3xxs_grid[q[2]], iq3xxs_grid[q[1]], iq3xxs_grid[q[0]]);
++    const __m256i s = _mm256_set_epi64x(signs64[(aux >> 21) & 127], signs64[(aux >> 14) & 127],
++                                        signs64[(aux >>  7) & 127], signs64[(aux >>  0) & 127]);
++    return _mm256_madd_epi16(_mm256_maddubs_epi16(w, _mm256_sign_epi8(_mm256_loadu_si256((const __m256i *) a), s)),
++                             _mm256_set1_epi16((short) (2*(aux >> 28) + 1)));
++}
++static float be_iq3_xxs(const block_iq3_xxs * x, const block_q8_0 * a, const float * da, int64_t nbk) {
 +    __m256 acc = _mm256_setzero_ps();
 +    for (int64_t i = 0; i < nbk; ++i) {
 +        const float d = 0.25f * GGML_CPU_FP16_TO_FP32(x[i].d);
 +        const uint8_t * qs = x[i].qs; const uint8_t * ss = x[i].qs + QK_K/4;
-+        __m256i v[8];
-+        for (int k = 0; k < 8; ++k) {
-+            const uint8_t * q = qs + 8*k;
-+            uint32_t aux; memcpy(&aux, ss + 4*k, 4);
-+            const __m256i w = _mm256_set_epi32(iq3xxs_grid[q[7]], iq3xxs_grid[q[6]], iq3xxs_grid[q[5]], iq3xxs_grid[q[4]],
-+                                               iq3xxs_grid[q[3]], iq3xxs_grid[q[2]], iq3xxs_grid[q[1]], iq3xxs_grid[q[0]]);
-+            const __m256i s = _mm256_set_epi64x(signs64[(aux >> 21) & 127], signs64[(aux >> 14) & 127],
-+                                                signs64[(aux >>  7) & 127], signs64[(aux >>  0) & 127]);
-+            v[k] = _mm256_madd_epi16(_mm256_maddubs_epi16(w, _mm256_sign_epi8(be_iq_a(a + i*8 + k), s)), _mm256_set1_epi16((short) (2*(aux >> 28) + 1)));
-+        }
-+        acc = _mm256_fmadd_ps(_mm256_cvtepi32_ps(be_iq_hsum8(v)), _mm256_mul_ps(_mm256_set1_ps(d), _mm256_loadu_ps(da + i*8)), acc);
++        const block_q8_0 * ab = a + i*8;
++        // reduced as it goes, so only a few vectors are live at once
++        const __m256i t0 = _mm256_hadd_epi32(be_iq3_xxs_blk(qs +  0, ss +  0, ab[0].qs), be_iq3_xxs_blk(qs +  8, ss +  4, ab[1].qs));
++        const __m256i t1 = _mm256_hadd_epi32(be_iq3_xxs_blk(qs + 16, ss +  8, ab[2].qs), be_iq3_xxs_blk(qs + 24, ss + 12, ab[3].qs));
++        const __m256i u0 = _mm256_hadd_epi32(t0, t1);
++        const __m256i t2 = _mm256_hadd_epi32(be_iq3_xxs_blk(qs + 32, ss + 16, ab[4].qs), be_iq3_xxs_blk(qs + 40, ss + 20, ab[5].qs));
++        const __m256i t3 = _mm256_hadd_epi32(be_iq3_xxs_blk(qs + 48, ss + 24, ab[6].qs), be_iq3_xxs_blk(qs + 56, ss + 28, ab[7].qs));
++        const __m256i u1 = _mm256_hadd_epi32(t2, t3);
++        const __m256i sum = _mm256_add_epi32(_mm256_permute2x128_si256(u0, u1, 0x20), _mm256_permute2x128_si256(u0, u1, 0x31));
++        acc = _mm256_fmadd_ps(_mm256_cvtepi32_ps(sum), _mm256_mul_ps(_mm256_set1_ps(d), _mm256_loadu_ps(da + i*8)), acc);
 +    }
 +    return be_iq_hsumf(acc);
++}
++static inline __m256i be_iq3_s_blk(const block_iq3_s * x, int k, const int8_t * a) {
++    const uint8_t * q = x->qs + 8*k; const uint32_t h = x->qh[k];
++    const __m256i w = _mm256_set_epi32(
++        iq3s_grid[q[7] | ((h << 1) & 256)], iq3s_grid[q[6] | ((h << 2) & 256)], iq3s_grid[q[5] | ((h << 3) & 256)], iq3s_grid[q[4] | ((h << 4) & 256)],
++        iq3s_grid[q[3] | ((h << 5) & 256)], iq3s_grid[q[2] | ((h << 6) & 256)], iq3s_grid[q[1] | ((h << 7) & 256)], iq3s_grid[q[0] | ((h << 8) & 256)]);
++    uint32_t s4; memcpy(&s4, x->signs + 4*k, 4);
++    return _mm256_madd_epi16(_mm256_maddubs_epi16(w, _mm256_sign_epi8(_mm256_loadu_si256((const __m256i *) a), be_iq_signs(s4))),
++                             _mm256_set1_epi16((short) (1 + 2*((x->scales[k/2] >> 4*(k%2)) & 0xf))));
 +}
 +static float be_iq3_s(const block_iq3_s * x, const block_q8_0 * a, const float * da, int64_t nbk) {
 +    __m256 acc = _mm256_setzero_ps();
 +    for (int64_t i = 0; i < nbk; ++i) {
-+        const float d = GGML_CPU_FP16_TO_FP32(x[i].d);
-+        __m256i v[8];
-+        for (int k = 0; k < 8; ++k) {
-+            const uint8_t * q = x[i].qs + 8*k; const uint32_t h = x[i].qh[k];
-+            const __m256i w = _mm256_set_epi32(
-+                iq3s_grid[q[7] | ((h << 1) & 256)], iq3s_grid[q[6] | ((h << 2) & 256)], iq3s_grid[q[5] | ((h << 3) & 256)], iq3s_grid[q[4] | ((h << 4) & 256)],
-+                iq3s_grid[q[3] | ((h << 5) & 256)], iq3s_grid[q[2] | ((h << 6) & 256)], iq3s_grid[q[1] | ((h << 7) & 256)], iq3s_grid[q[0] | ((h << 8) & 256)]);
-+            uint32_t s4; memcpy(&s4, x[i].signs + 4*k, 4);
-+            v[k] = _mm256_madd_epi16(_mm256_maddubs_epi16(w, _mm256_sign_epi8(be_iq_a(a + i*8 + k), be_iq_signs(s4))),
-+                                     _mm256_set1_epi16((short) (1 + 2*((x[i].scales[k/2] >> 4*(k%2)) & 0xf))));
-+        }
-+        acc = _mm256_fmadd_ps(_mm256_cvtepi32_ps(be_iq_hsum8(v)), _mm256_mul_ps(_mm256_set1_ps(d), _mm256_loadu_ps(da + i*8)), acc);
++        const block_q8_0 * ab = a + i*8; const block_iq3_s * xi = x + i;
++        const __m256i u0 = be_red4(be_iq3_s_blk(xi, 0, ab[0].qs), be_iq3_s_blk(xi, 1, ab[1].qs), be_iq3_s_blk(xi, 2, ab[2].qs), be_iq3_s_blk(xi, 3, ab[3].qs));
++        const __m256i u1 = be_red4(be_iq3_s_blk(xi, 4, ab[4].qs), be_iq3_s_blk(xi, 5, ab[5].qs), be_iq3_s_blk(xi, 6, ab[6].qs), be_iq3_s_blk(xi, 7, ab[7].qs));
++        acc = _mm256_fmadd_ps(_mm256_cvtepi32_ps(be_red_fin(u0, u1)), _mm256_mul_ps(_mm256_set1_ps(GGML_CPU_FP16_TO_FP32(x[i].d)), _mm256_loadu_ps(da + i*8)), acc);
 +    }
 +    return be_iq_hsumf(acc);
 +}
