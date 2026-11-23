@@ -9,6 +9,7 @@ import { apuNeed, apuPlace, nextStep, lendRoom, computeBytes, apuHoldbackGB, apu
 import { LlamaCpp, spreadArgs, SPREAD_FIT_TARGET_MIB } from '../src/llamacpp.js';
 import { apuRoom } from '../src/brain.js';
 import { memGrowCtx } from '../src/brain-lanes.js';
+import { tooLongError } from '../src/brain-asking.js';
 import { engineFailKind } from '../src/retry.js';
 import { CardLender, CardBorrower, LEND_NO } from '../src/share-card.js';
 import { readJson } from '../src/engine-care.js';
@@ -66,6 +67,11 @@ check(!r.ok && typeof r.line === 'string', 'a brain that fits no way is refused 
 { const src = read('src/brain-asking.js');
   check(/memCut \|\|= new Map\(\)\)\.set\(model/.test(src) && /cut\.want === fit && room\.ok && room\.needGB === undefined\) return cut\.ctx/.test(src), 'a brain loaded short stays short on the next reply (it never jumps back to the full size that ran out of memory)');
   check(/memGrowCtx\(this, opts\.model, cut, tokens\)/.test(src) && src.indexOf('memGrowCtx(this') < src.indexOf('const fitted = fitContext(opts.messages'), 'the chat memory grows before the chat is trimmed to fit'); }
+
+{ const t = tooLongError(new Error('llama-server returned 400: request (12492 tokens) exceeds the available context size (8192 tokens)'), 8192);
+  check(t.code === 'too_long' && /about 12492 tokens, with room for 8192/.test(t.message) && /shorter paste/.test(t.message), 'a paste bigger than the chat memory says so in plain words (it used to be an empty reply)', t.message);
+  const src = read('src/brain-asking.js');
+  check(/didn't fit in its \$\{cut\.ctx\} chat memory, so it grows to/.test(src) && src.indexOf("didn't fit in its") < src.indexOf('const tighter = fitContext'), 'a shortened chat memory first grows to what the chat needs (up to the size picked), before the chat is cut harder'); }
 
 // ---------- retries ----------
 check(engineFailKind(new Error('llama-server: Invalid input batch.')) === 'state' && engineFailKind(new Error('Compute error.')) === 'state', '"Invalid input batch" and "Compute error": the engine is started fresh');

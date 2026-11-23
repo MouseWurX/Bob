@@ -14,6 +14,14 @@ import { gaming } from './sessions.js';
 import { MORE_SECONDS, thinkStream, fitContext, TOO_LONG, APPROVAL_TIMEOUT_MS, UNCAUGHT_QUIET_MS } from './brain-words.js';
 import { apuRoom, APU_MIN_CTX, memGrowCtx } from './brain-lanes.js';
 
+// Nov 22: the engine's "exceeds the available context size" in plain words, so the chat says why instead of staying empty.
+export function tooLongError(e, ctx) {
+  const asked = Number(String(e?.message).match(/\((\d+) tokens\)/)?.[1]) || 0;
+  const err = new Error(`That's more than this brain can hold in its chat memory right now (${asked ? `about ${asked} tokens, with room for ${ctx}` : `room for ${ctx} tokens`}). Try a shorter paste or split it into parts, or start a new chat, or free some memory and ask again.`);
+  err.code = 'too_long'; err.cause = e;
+  return err;
+}
+
 // Methods of the Brain class, put on it in its main file with the same rules as the methods written inside it.
 export const askingParts = {
   // ---------- "Make another picture?" ----------
@@ -92,10 +100,27 @@ export const askingParts = {
     catch (e) {
       // Still too long (the guess at token counts was low): once more, with every tool result cut harder.
       if (opts.signal?.aborted || !TOO_LONG.test(String(e?.message)) || !(Number(opts.ctx) > 0)) throw e;
+      // Nov 22 (the Go test: a 12K paste into an 8K chat memory gave an empty reply): a chat memory shortened so Windows
+      // keeps its share grows to what this chat needs, up to the size picked, even when memory is tight. The estimate
+      // never stops a load: if it really runs out, the brain loads again with less, as always.
+      const asked = Number(String(e.message).match(/\((\d+) tokens\)/)?.[1]) || 0;
+      const cut = !opts.beside && this.memCut?.get(opts.model);
+      if (cut && opts.ctx === cut.ctx && cut.ctx < cut.want && asked > 0) {
+        let next = cut.ctx;
+        while (next < cut.want && next * 0.9 < asked) next = Math.min(cut.want, next * 2);
+        if (next * 0.9 >= asked || next === cut.want) {
+          this.log('model', `${opts.model}: the chat (${asked} tokens) didn't fit in its ${cut.ctx} chat memory, so it grows to ${next} even with memory tight (if it runs out, it loads again with less)`);
+          cut.ctx = next; if (next >= cut.want) this.memCut.delete(opts.model);
+          const grown = { ...opts, ctx: next, messages: fitContext(opts.messages, next, opts.tools, 0.75, per) };
+          try { return await this.chatRetry(grown, { emit, who }); }
+          catch (e2) { if (grown.signal?.aborted || !TOO_LONG.test(String(e2?.message))) throw e2; e = e2; opts = grown; }
+        }
+      }
       const tighter = fitContext(opts.messages, opts.ctx, opts.tools, 0.4, per);
-      if (tighter === opts.messages) throw e;
+      if (tighter === opts.messages) throw tooLongError(e, opts.ctx);
       this.log('chat', `the brain said the chat was too long (${String(e.message).slice(0, 120)}); cut the tool results harder and asked again`);
-      return await this.chatRetry({ ...opts, messages: tighter }, { emit, who });
+      try { return await this.chatRetry({ ...opts, messages: tighter }, { emit, who }); }
+      catch (e3) { if (opts.signal?.aborted || !TOO_LONG.test(String(e3?.message))) throw e3; throw tooLongError(e3, opts.ctx); }
     }
     finally { mind?.flush(); }
   },
