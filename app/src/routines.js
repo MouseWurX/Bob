@@ -26,6 +26,7 @@ import crypto from 'node:crypto';
 import { NODES, ROUTINE_TOOLS, cleanRoutine, checkRoutine, graphHash, approvalLines, isTrigger, refsIn, onlyRef, outsOf, MAX_LOOP, MAX_STEPS, MAX_WAIT_S, blankRoutine, triggerWords } from '../public/routine-nodes.js';
 import { cleanWhen, nextAfter, describe } from './schedules.js';
 import { writeJsonAtomic, stripBom } from './util.js';
+import { importN8n, MAX_IMPORT_BYTES } from '../public/n8n-import.js';
 
 export const MAX_ROUTINES = 100;
 export const KEEP_RUNS = 50;
@@ -370,6 +371,23 @@ export class Routines {
   create(name) {
     const id = `r${crypto.randomBytes(5).toString('hex')}`;
     return this.view(this.store.save(blankRoutine(id, String(name || 'New routine').slice(0, 80))));
+  }
+  // Bring in a routine from a file: an n8n workflow (turned into Bob's boxes, with a report of what changed) or a
+  // routine saved from Bob. Either way it gets a new id, so it comes in switched off and needs your OK.
+  bringIn(text, { start = '', now = '' } = {}) {
+    const id = `r${crypto.randomBytes(5).toString('hex')}`;
+    let raw = null;
+    if (typeof text === 'string' && text.length > MAX_IMPORT_BYTES) throw new Error('That file is too big to be a routine.');
+    try { raw = typeof text === 'string' ? JSON.parse(stripBom(text)) : text; } catch { throw new Error('That file isn\'t a routine or an n8n workflow (it isn\'t JSON).'); }
+    if (raw?.bobRoutine) {
+      const r = this.store.save({ ...cleanRoutine({ ...raw, id }), from: 'file' });
+      this.log(`routine "${r.name}" brought in from a file (off, needs your OK)`);
+      return { routine: this.view(r), report: null };
+    }
+    const { routine, report } = importN8n(raw, { id, start, now });
+    const r = this.store.save(routine);
+    this.log(`n8n workflow "${r.name}" brought in: ${report.kept} of ${report.steps} steps became Bob's boxes, ${report.todo.length} to replace (off, needs your OK)`);
+    return { routine: this.view(r), report };
   }
   save(raw) {
     const r = this.store.save(raw);

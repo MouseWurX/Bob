@@ -8,6 +8,7 @@
 //   GET  /api/routines?id=x&run=y         one run, step by step (the editor's live view polls this while it runs)
 //   POST /api/routines                    { create } | { save } | { remove } | { approve, hash } | { id, on }
 //                                         | { runNow } | { test } | { stop } | { rollback, version }
+//                                         | { bringIn: file text, start } (an n8n workflow or a saved routine)
 // Changes come only from this replicant matrix itself, except switching one off, Run now and Stop (the phone can do those).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -184,6 +185,7 @@ export async function routinesRoute({ req, res, p, url, isLocal, brain, body, se
     let out = {};
     if (b.create !== undefined) { out.routine = R.create(String(b.create || 'New routine')); clicked(`new routine "${out.routine.name}"`); }
     else if (b.save) out.routine = R.save(b.save);
+    else if (b.bringIn) { Object.assign(out, R.bringIn(b.bringIn, { start: String(b.start || ''), now: new Date().toLocaleDateString() })); clicked(`routine brought in: "${out.routine.name}"`); }
     else if (b.remove) { R.remove(String(b.remove)); clicked('routine removed'); }
     else if (b.approve) out.routine = R.approve(String(b.approve), String(b.hash || ''));
     else if (b.id && 'on' in b) out.routine = R.setOn(String(b.id), b.on === true);

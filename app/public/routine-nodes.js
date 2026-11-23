@@ -42,7 +42,11 @@ export const GROUPS = {
   tool: { label: 'Bob\'s tools', colour: '#2f5f9e' },
   logic: { label: 'Logic', colour: '#3f7f3f' },
   brain: { label: 'Brain', colour: '#6b3fa0' },
-  output: { label: 'Results', colour: '#b8661f' }
+  output: { label: 'Results', colour: '#b8661f' },
+  note: { label: 'Notes', colour: '#7a7340' },
+  // Only made by an import (public/n8n-import.js): a step from somewhere else that Bob can't do. It blocks the
+  // routine until you replace or remove it, so an import never runs half-done.
+  todo: { label: 'Needs replacing', colour: '#8a2b5c' }
 };
 
 // The tools a routine may use, with the fields their node shows. Only tools whose job fits a routine: no tool that
@@ -105,8 +109,15 @@ export const NODES = {
   'out.made': { group: 'output', label: 'Add to Made by Bob', what: 'Puts a file in the Made by Bob panel, so you can open it from Bob\'s window.', fields: { path: 'file' }, out: {} },
   'out.notice': { group: 'output', label: 'Put on the notice board', what: 'Adds a line (or several) to your notice board.', fields: { text: 'text' }, out: {} },
   'out.tap': { group: 'output', label: 'Tap me on the shoulder', what: 'Pops up a note on this replicant matrix, and on your phone too if "Show reminders on my phone" is on.', fields: { text: 'text' }, out: {} },
-  'out.chat': { group: 'output', label: 'Post in the Routines chat', what: 'Writes a message in the Routines chat, so you can read it later or ask Bob about it.', fields: { text: 'text' }, out: {} }
+  'out.chat': { group: 'output', label: 'Post in the Routines chat', what: 'Writes a message in the Routines chat, so you can read it later or ask Bob about it.', fields: { text: 'text' }, out: {} },
+  // ---- Notes (never run; not part of the OK) ----
+  note: { group: 'note', label: 'Note', what: 'A note for you on the grid. It never runs and changing it doesn\'t need a new OK.', input: false, fields: { text: 'text' }, out: {}, exec: [], literal: ['text'] },
+  // ---- Needs replacing (imports only) ----
+  todo: { group: 'todo', label: 'Needs replacing', what: 'A step from an imported routine that Bob can\'t do. Replace it with Bob\'s own boxes, or remove it, before the routine can run.', hidden: true,
+    fields: {}, out: { text: 'text' }, literal: ['was', 'why'] }
 };
+// Left in a field by an import where a formula couldn't be turned into Bob's {{node.pin}} values.
+export const UNCONVERTED = /\[\[n8n:[\s\S]*?\]\]/;
 
 export const isTrigger = (kind) => NODES[kind]?.group === 'trigger';
 export const execOuts = (node) => (NODES[node.kind]?.exec ?? ['then']);
@@ -134,7 +145,7 @@ export const onlyRef = (v) => { const r = refsIn(v); return r.length === 1 && St
 // A stable fingerprint of what a routine does (its nodes, fields and wires, not where the boxes sit). Approval is
 // tied to it: change a step, a field or a wire and the routine needs your OK again. Plain FNV-1a, no imports.
 export function graphHash(r) {
-  const nodes = [...(r.nodes || [])].map((n) => ({ id: n.id, kind: n.kind, f: sortObj(n.f || {}) })).sort((a, b) => (a.id < b.id ? -1 : 1));
+  const nodes = [...(r.nodes || [])].filter((n) => n.kind !== 'note').map((n) => ({ id: n.id, kind: n.kind, f: sortObj(n.f || {}) })).sort((a, b) => (a.id < b.id ? -1 : 1));
   const wires = [...(r.wires || [])].map((w) => `${w.from}.${w.out}>${w.to}`).sort();
   const s = JSON.stringify({ nodes, wires });
   let h = 0x811c9dc5;
@@ -200,7 +211,7 @@ export function checkRoutine(r, { tools = null, afterMail = null } = {}) {
     const stack = [triggers[0].id];
     while (stack.length) { const id = stack.pop(); if (reach.has(id)) continue; reach.add(id); for (const w of r.wires || []) if (w.from === id) stack.push(w.to); }
   }
-  for (const n of nodes) if (!isTrigger(n.kind) && byId.get(n.id) === n && NODES[n.kind] && !reach.has(n.id)) say(n.id, 'Nothing runs into this node, so it would never run. Wire a white "then" pin into it.');
+  for (const n of nodes) if (!isTrigger(n.kind) && n.kind !== 'note' && byId.get(n.id) === n && NODES[n.kind] && !reach.has(n.id)) say(n.id, 'Nothing runs into this node, so it would never run. Wire a white "then" pin into it.');
   // Loops: an exec wire back to an earlier node would run forever. Only For each repeats.
   if (triggers[0]) {
     const state = new Map();
@@ -218,8 +229,10 @@ export function checkRoutine(r, { tools = null, afterMail = null } = {}) {
   const usesMail = nodes.some((n) => NODES[n.kind]?.mail || (n.kind === 'tool' && ROUTINE_TOOLS[n.f?.tool]?.mail));
   for (const n of nodes) {
     const def = NODES[n.kind];
-    if (!def) continue;
+    if (!def || n.kind === 'note') continue;
     const f = n.f || {};
+    if (n.kind === 'todo') say(n.id, `Bob can't do this step${f.was ? ` ("${String(f.was).slice(0, 80)}")` : ''}${f.why ? `: ${String(f.why).slice(0, 200)}` : ''}. Replace it with Bob's own boxes or remove it.`);
+    for (const [k, v] of Object.entries(f)) if (UNCONVERTED.test(String(v))) say(n.id, `The "${k}" field still has a formula from the import that Bob can't work out (in [[ ]]). Rewrite it with values from the list.`);
     if (n.kind === 'tool') {
       const t = ROUTINE_TOOLS[f.tool];
       if (!f.tool) say(n.id, 'Pick which tool this node uses.');

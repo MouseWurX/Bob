@@ -7,8 +7,8 @@ boxes, and only to answer. Bob never makes or changes a routine.
 - Turn on: Settings, Hands, **Let Bob use Hands** and **Routines** (both off by default).
 - Edit: Settings, Hands, Routines, **Open the Routines editor** (`public/routines.html`).
 - Code: `public/routine-nodes.js` (box kinds, pins, checks; shared by both sides), `src/routines.js` (store, runner,
-  triggers), `src/hands-routines.js` (Bob's side: tools, brain, results, `/api/routines`), test
-  `test/run-routines-test.js`.
+  triggers), `src/hands-routines.js` (Bob's side: tools, brain, results, `/api/routines`), `public/n8n-import.js`
+  (bringing in n8n workflows), test `test/run-routines-test.js`.
 
 ## The file
 
@@ -64,6 +64,8 @@ Each routine is `inn\bob\routines\<id>.json`:
 | | `out.notice` | `text` | |
 | | `out.tap` | `text` | |
 | | `out.chat` | `text` | |
+| Notes | `note` | `text` | never runs, no pins; not part of the OK's fingerprint |
+| Needs replacing | `todo` | `was`, `why` | made only by an import; always a red mark |
 
 The tools a routine may use are listed in `ROUTINE_TOOLS` in `public/routine-nodes.js`. Tools that wait on a
 person, always ask, run commands, drive apps or browsers, or cost money are left out on purpose.
@@ -79,3 +81,41 @@ person, always ask, run commands, drive apps or browsers, or cost money are left
 - A routine that reads e-mail gets the mail lock (`src/mail-guard.js`): only the tools allowed after e-mail.
 - Triggers are looked at once a minute (e-mail every 5 minutes, pages every 1 to 24 hours) while the Routines
   Hand is on, and wait during Quiet hours or while another person is signed in.
+
+## Bringing in n8n workflows
+
+**Bring in…** in the editor (`POST /api/routines { bringIn, start }`, this replicant matrix only) takes an n8n
+workflow file (`{ nodes, connections }`, or `{ workflow: { ... } }` as community templates come) or a routine file
+saved from Bob. Nothing from n8n runs: `public/n8n-import.js` maps steps to boxes and the result is an ordinary
+routine with a new id, switched off and needing an OK. Credentials are never read (n8n files hold only their names,
+which are dropped).
+
+| n8n | Bob |
+| --- | --- |
+| Schedule, Cron, Interval | `trigger.time` (daily, weekly, every N minutes, at least 5; simple cron lines) |
+| Gmail / IMAP / Outlook trigger | `trigger.mail` |
+| Local File Trigger | `trigger.file` |
+| Manual, webhook, form, chat and other triggers | `trigger.manual` (the report says what it was) |
+| HTTP Request (GET), RSS Read | `tool` `fetch_page` |
+| Read/Write Files from Disk | `tool` `read_file` / `write_file` |
+| Gmail / Outlook (reading) | `tool` `read_email` |
+| Set / Edit Fields | one `text` box per field |
+| If, Filter | `if` (several tests: a row of If boxes; "not" tests swap yes and no) |
+| Switch | a row of `if` boxes, first match wins |
+| Split Out, Loop Over Items | `lines` + `forEach` (the wire back to the loop is dropped) |
+| Wait (up to an hour) | `wait` |
+| Stop and Error | `stop` |
+| AI Agent, Basic LLM Chain, OpenAI / Anthropic / Gemini text, Summarize, Information Extractor, Text Classifier | `brain` (Text Classifier: `brain` + a row of `if`) |
+| No-op, Merge, Respond to Webhook, HTML/Markdown/Extract from File | left out, wires go straight through |
+| Sticky Note | `note` |
+| Code, HTTP POST/PUT, sending e-mail or messages, other online services | `todo` (Needs replacing) |
+
+- Formulas: `{{ $json.x }}`, `$('Step').item.json.x`, `$node["Step"].json.x`, `$input.first().json.x` become
+  `{{node.pin}}` when the field matches a pin (or a known other name: `data`/`body` → `text`, `output` → `answer`).
+  Anything else stays as `[[n8n: ...]]`, which `checkRoutine` marks red.
+- A step that went to two places in n8n runs them one after the other; where two ways meet again (Merge), the
+  earlier way leads into the later one.
+- With several starts, the one that reaches the most steps comes in (or the one you pick on the report card); the
+  others' own steps are left out.
+- Tested on the 361 workflows in a popular community template collection: none made it crash; 44% of steps (median)
+  became Bob's boxes, the rest were mostly code and online services.

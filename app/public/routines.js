@@ -28,6 +28,53 @@ let polling = null;
 let say = '';
 
 // ---------------------------------------------------------------------------------------------------------------
+// Bringing in a routine: an n8n workflow (a file exported from n8n, or a community template) or one saved from Bob
+// ---------------------------------------------------------------------------------------------------------------
+let lastImport = null; // { text, id }: so you can pick another start for the same file
+const MAX_FILE = 900 * 1024;
+function bringCard() {
+  const card = $('rtCard').firstElementChild;
+  card.innerHTML = `<h2 id="rtCardTitle">Bring in a routine</h2>
+    <p>Pick a workflow file exported from n8n (or a template from the n8n community), or a routine saved from Bob. Bob turns n8n's steps into his own boxes. Steps he can't do become "Needs replacing" boxes, and it comes in switched off until you've checked it and given your OK.</p>
+    <p><input type="file" id="rtFile" accept=".json,application/json"></p>
+    <label class="rt-f"><span>Or paste it here</span><textarea id="rtPaste" rows="5" placeholder='{"nodes": [...], "connections": {...}}'></textarea></label>
+    <p id="rtBringSay" class="warn-text" role="status"></p>
+    <div class="row"><button type="button" data-card="no">Cancel</button><button type="button" data-card="bring" class="big">Bring it in</button></div>`;
+  $('rtCard').hidden = false;
+  $('rtFile').focus();
+}
+async function bringIn(again) {
+  const say_ = (t) => { const el = $('rtBringSay'); if (el) el.textContent = t; else note(t); };
+  try {
+    let text = '', start = '';
+    if (again) { text = lastImport?.text || ''; start = $('rtStartPick')?.value || ''; }
+    else { const f = $('rtFile')?.files?.[0]; if (f && f.size > MAX_FILE) return say_('That file is too big to be a routine.'); text = f ? await f.text() : $('rtPaste').value.trim(); }
+    if (!text) return say_('Pick a file or paste one in first.');
+    if (text.length > MAX_FILE) return say_('That is too big to be a routine.');
+    if (again && lastImport?.id) { await api('/api/routines', { remove: lastImport.id }).catch(() => {}); }
+    if (dirty()) await save();
+    const got = await api('/api/routines', { bringIn: text, start });
+    lastImport = { text, id: got.routine.id };
+    cur = null;
+    await loadAll(got.routine.id);
+    if (got.report) reportCard(got.report); else { $('rtCard').hidden = true; note('Brought in, switched off. Check it, then switch it on.'); }
+  } catch (err) { say_(err.message); }
+}
+function reportCard(rep) {
+  const card = $('rtCard').firstElementChild;
+  const list = (title, items, open) => (items.length ? `<details ${open ? 'open' : ''}><summary>${esc(title)} (${items.length})</summary><ul>${items.map((x) => `<li>${x.step ? `<strong>${esc(x.step)}</strong>: ` : ''}${esc(x.text)}</li>`).join('')}</ul></details>` : '');
+  card.innerHTML = `<h2 id="rtCardTitle">Brought in "${esc(rep.name)}"</h2>
+    ${rep.lines.map((l) => `<p>${esc(l)}</p>`).join('')}
+    ${rep.starts?.length > 1 ? `<p><label>It has ${rep.starts.length} starts. Start with <select id="rtStartPick">${rep.starts.map((s) => `<option ${s === rep.start ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></label> <button type="button" data-card="restart">Use this start</button></p>` : ''}
+    ${list('Needs fixing', rep.todo, true)}
+    ${list('Works a bit differently', rep.changed, rep.todo.length < 4)}
+    ${list('Left out', rep.dropped, false)}
+    <p id="rtBringSay" class="warn-text" role="status"></p>
+    <div class="row"><button type="button" data-card="no" class="big">OK, let me look</button></div>`;
+  $('rtCard').hidden = false;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Loading and saving
 // ---------------------------------------------------------------------------------------------------------------
 async function loadAll(pick) {
@@ -53,7 +100,7 @@ async function open(id) {
   fit();
   if (got.running) follow(got.running);
 }
-const strip = (v) => ({ bobRoutine: 1, id: v.id, name: v.name, what: v.what || '', nodes: v.nodes.map((n) => ({ id: n.id, kind: n.kind, x: n.x, y: n.y, f: { ...n.f } })), wires: v.wires.map((w) => ({ ...w })), ...(v.from ? { from: v.from } : {}) });
+const strip = (v) => ({ bobRoutine: 1, id: v.id, name: v.name, what: v.what || '', nodes: v.nodes.map((n) => ({ id: n.id, kind: n.kind, x: n.x, y: n.y, f: { ...n.f }, ...(n.note ? { note: n.note } : {}) })), wires: v.wires.map((w) => ({ ...w })), ...(v.from ? { from: v.from } : {}) });
 const dirty = () => cur && JSON.stringify(cur) !== saved;
 async function save() {
   if (!cur) return;
@@ -97,9 +144,12 @@ function draw() {
     const fields = fieldsOf(n), outs = outsOf(n);
     const execs = def.exec ?? ['then'];
     const st = stepState.get(n.id) || '';
+    // A note: words on the grid, no pins.
+    if (n.kind === 'note') return `<div class="rt-node rt-note${sel.nodes.has(n.id) ? ' sel' : ''}" data-node="${esc(n.id)}" style="left:${n.x}px;top:${n.y}px"><div class="rt-head" style="background:${colourOf(n)}" data-drag="${esc(n.id)}"><span>Note</span><span class="rt-id">${esc(n.id)}</span></div><div class="rt-notetext">${esc(String(n.f.text || '').slice(0, 600))}</div></div>`;
     return `<div class="rt-node${sel.nodes.has(n.id) ? ' sel' : ''}${bad.has(n.id) ? ' bad' : ''}${st ? ` ${st}` : ''}" data-node="${esc(n.id)}" style="left:${n.x}px;top:${n.y}px">
       <div class="rt-head" style="background:${colourOf(n)}" data-drag="${esc(n.id)}">${def.input === false ? '' : `<span class="rt-pin exec in" data-pin="in" data-n="${esc(n.id)}"></span>`}
         <span>${esc(label(n))}</span><span class="rt-id">${esc(n.id)}</span>${bad.has(n.id) ? `<span class="rt-badge" title="${esc(bad.get(n.id).join('\n'))}">!</span>` : ''}</div>
+      ${n.note ? `<div class="rt-sub" title="Its name where it came from">${esc(n.note)}</div>` : ''}
       <div class="rt-body">
         ${execs.map((o) => `<div class="rt-row"><span></span><span class="muted">${o === 'then' ? '' : esc(o)}</span><span class="rt-pin exec out" data-pin="exec" data-n="${esc(n.id)}" data-o="${esc(o)}" title="${esc(o)}"></span></div>`).join('')}
         ${Object.entries(fields).filter(([k]) => !(n.kind === 'tool' && k === 'tool')).map(([k, t]) => `<div class="rt-row"><span class="rt-pin in${refsIn(n.f[k]).length ? ' filled' : ''}" style="color:${PIN_TYPES[t].colour}" data-pin="field" data-n="${esc(n.id)}" data-k="${esc(k)}" data-t="${t}" title="${esc(PIN_TYPES[t].label)}"></span><span>${esc(k)}</span><span class="rt-val">${esc(short(n.f[k]))}</span></div>`).join('')}
@@ -217,6 +267,8 @@ function nodePanel(n) {
     return `<textarea id="${id}" data-f="${esc(k)}" rows="${['text', 'content', 'question', 'input'].includes(k) ? 3 : 1}" placeholder="${esc(hint(n, k))}">${esc(v)}</textarea>`;
   };
   return `<h2><span style="color:${colourOf(n)}">■</span> ${esc(label(n))} <span class="muted">${esc(n.id)}</span></h2>
+    ${n.note ? `<p class="muted">Came in as "${esc(n.note)}".</p>` : ''}
+    ${n.kind === 'todo' ? `<p class="warn-text">${esc(n.f.was || '')}: ${esc(n.f.why || '')}.</p>` : ''}
     <p class="muted">${esc(n.kind === 'tool' && ROUTINE_TOOLS[n.f.tool] ? `${ROUTINE_TOOLS[n.f.tool].risk === 'look' ? 'Only looks; tried twice if it fails.' : 'Changes something; listed on the OK card, and never tried twice.'} ${def.what}` : def.what || '')}</p>
     ${Object.entries(fields).map(([k, t]) => `<label class="rt-f"><span>${esc(k)} <span style="color:${PIN_TYPES[t].colour}">●</span> ${esc(PIN_TYPES[t].label)}</span>${input(k, t)}</label>`).join('')}
     ${values.length ? `<h3>Values you can use here</h3><p class="muted">Click one to put it in the last field you were in, or drag a wire from its pin.</p><div class="rt-values">${values.map((x) => `<button type="button" data-ins="${esc(x.ref)}" style="border-color:${PIN_TYPES[x.t].colour}">${esc(x.label)}</button>`).join('')}</div>` : ''}
@@ -404,7 +456,7 @@ function fillMenu(q) {
   for (const [g, def] of Object.entries(GROUPS)) {
     const here = [];
     for (const [kind, n] of Object.entries(NODES)) {
-      if (n.group !== g) continue;
+      if (n.group !== g || n.hidden) continue;
       if (kind === 'tool') { for (const [t, x] of Object.entries(ROUTINE_TOOLS)) if (all?.tools?.[t]?.here !== false) here.push({ kind, f: { tool: t }, label: x.label, what: `${x.risk === 'look' ? 'Looks' : 'Changes something'}` }); }
       else here.push({ kind, f: {}, label: n.label, what: n.what });
     }
@@ -532,6 +584,7 @@ $('rtSide').addEventListener('click', async (e) => {
 $('rtCard').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-card]');
   if (!b && e.target !== $('rtCard')) return;
+  if (b?.dataset.card === 'bring' || b?.dataset.card === 'restart') { await bringIn(b.dataset.card === 'restart'); return; }
   $('rtCard').hidden = true;
   if (b?.dataset.card !== 'yes') return;
   try { const got = await api('/api/routines', { approve: cur.id, hash: serverView.routine.hash }); serverView = { ...serverView, routine: got.routine }; say = 'On, with your OK.'; await loadAll(cur.id); } catch (err) { say = err.message; draw(); }
@@ -559,6 +612,7 @@ $('rtOn').addEventListener('click', async () => {
 $('rtUndo').addEventListener('click', () => { if (!undo.length) return; redo.push(JSON.stringify(cur)); cur = JSON.parse(undo.pop()); sel = { nodes: new Set(), wire: null }; draw(); });
 $('rtRedo').addEventListener('click', () => { if (!redo.length) return; undo.push(JSON.stringify(cur)); cur = JSON.parse(redo.pop()); sel = { nodes: new Set(), wire: null }; draw(); });
 $('rtFit').addEventListener('click', fit);
+$('rtBring').addEventListener('click', bringCard);
 $('rtAdd').addEventListener('click', () => { const r = canvas.getBoundingClientRect(); menuFrom = null; showMenu(r.left + 60, r.top + 60); });
 document.addEventListener('keydown', (e) => {
   const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');

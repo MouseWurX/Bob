@@ -10,10 +10,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { HANDS, toolsOff, cleanHands } from '../src/hands-settings.js';
 import { Routines, RoutineStore, runRoutine, fieldValue, ifTest, listFolder, globRe, dayList } from '../src/routines.js';
-import { checkRoutine, graphHash, approvalLines, cleanRoutine, NODES, ROUTINE_TOOLS, runsBefore, refsIn } from '../public/routine-nodes.js';
+import { checkRoutine, graphHash, approvalLines, cleanRoutine, NODES, ROUTINE_TOOLS, runsBefore, refsIn, UNCONVERTED } from '../public/routine-nodes.js';
 import { writeOut, sample, callTool } from '../src/hands-routines.js';
 import { AFTER_MAIL } from '../src/mail-guard.js';
 import { HELP } from '../public/help-content.js';
+import { importN8n } from '../public/n8n-import.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + JSON.stringify(extra).slice(0, 400) : ''}`); };
@@ -257,6 +258,104 @@ check('days and file patterns', dayList('mon, thu').join() === '1,4' && globRe('
   check('a tool that isn\'t for routines never reaches the runner', (await callTool(fakeBrain, { id: 'r1' }, 'run_command', {})).ok === false);
   const src = fs.readFileSync(new URL('../src/brain-tool-runs.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   check('the runner still runs check() first, so hard limits hold, and skips the card only for routine steps', /need && ctx\.routineOk && !tool\.alwaysAsk/.test(src) && src.indexOf('ctx.routineOk') > src.indexOf('let need = tool.check'));
+}
+
+// ---------- bringing in n8n workflows ----------
+// Small hand-made workflows in n8n's own shape (made up here; no community file is copied into the tests).
+{
+  const step = (name, type, parameters = {}, extra = {}) => ({ name, type: type.includes('.') ? type : `n8n-nodes-base.${type}`, typeVersion: 2, position: [0, 0], parameters, ...extra });
+  const to = (...names) => ({ main: [names.map((node) => ({ node, type: 'main', index: 0 }))] });
+  const wf = {
+    name: 'Morning news',
+    nodes: [
+      step('Every morning', 'scheduleTrigger', { rule: { interval: [{ field: 'days', triggerAtHour: 7, triggerAtMinute: 30 }] } }, { typeVersion: 1.2 }),
+      step('Get page', 'httpRequest', { url: 'https://example.com/news', options: {} }, { typeVersion: 4.2 }),
+      step('Keep words', 'set', { assignments: { assignments: [{ name: 'body', value: '={{ $json.data }}', type: 'string' }] } }, { typeVersion: 3.4 }),
+      step('Has news?', 'if', { conditions: { combinator: 'and', conditions: [{ leftValue: '={{ $json.body }}', rightValue: '', operator: { type: 'string', operation: 'notEmpty' } }] } }),
+      step('Sum up', '@n8n/n8n-nodes-langchain.chainLlm', { text: "={{ $('Keep words').item.json.body }}", messages: { messageValues: [{ message: 'Sum up the news in 3 lines.' }] } }, { typeVersion: 1.4 }),
+      step('Model', '@n8n/n8n-nodes-langchain.lmChatOpenAi', { model: 'gpt-4o-mini' }),
+      step('Mail it', 'gmail', { operation: 'send', sendTo: 'someone', message: '={{ $json.text }}' }),
+      step('Sticky', 'stickyNote', { content: 'Reads the news every morning.' }),
+      step('Old step', 'noOp', {}, { disabled: true })
+    ],
+    connections: { 'Every morning': to('Get page'), 'Get page': to('Keep words'), 'Keep words': to('Has news?'), 'Has news?': to('Sum up'), 'Sum up': to('Mail it'), Model: { ai_languageModel: [[{ node: 'Sum up', type: 'ai_languageModel', index: 0 }]] } }
+  };
+  const { routine: r, report } = importN8n(JSON.stringify(wf), { id: 'rnews' });
+  const kind = (note) => r.nodes.find((n) => n.note === note || n.note?.startsWith(`${note}:`));
+  check('n8n: the schedule becomes a time start', kind('Every morning')?.kind === 'trigger.time' && kind('Every morning').f.type === 'daily' && kind('Every morning').f.at === '07:30');
+  check('n8n: a page fetch becomes "Read a web page"', kind('Get page')?.kind === 'tool' && kind('Get page').f.tool === 'fetch_page' && kind('Get page').f.url === 'https://example.com/news');
+  const g = kind('Get page').id, k = kind('Keep words').id;
+  check('n8n: $json from the step before becomes a wired value', kind('Keep words').f.text === `{{${g}.text}}`, kind('Keep words').f);
+  check('n8n: If keeps its test, with the value by name', kind('Has news?').f.test === 'notEmpty' && kind('Has news?').f.value === `{{${k}.text}}`);
+  check('n8n: an AI chain asks Bob\'s brain, with $(\'Step\') turned into a value', kind('Sum up')?.kind === 'brain' && /Sum up the news/.test(kind('Sum up').f.question) && kind('Sum up').f.input === `{{${k}.text}}`, kind('Sum up')?.f);
+  check('n8n: sending e-mail needs replacing (routines never send mail)', kind('Mail it')?.kind === 'todo' && report.todo.length === 1);
+  check('n8n: the AI model part and the switched-off step are not boxes', !kind('Model') && !kind('Old step'));
+  check('n8n: a sticky note becomes a note that never runs', kind('Sticky')?.kind === 'note' && !checkRoutine(r).some((p) => p.node === kind('Sticky').id));
+  const ifId = kind('Has news?').id;
+  check('n8n: wires follow the flow, If goes on from "yes"', r.wires.some((w) => w.from === ifId && w.out === 'yes' && w.to === kind('Sum up').id) && r.wires.some((w) => w.from === kind('Every morning').id && w.to === g));
+  const probs = checkRoutine(r);
+  check('n8n: the only problem is the step to replace, so it can\'t run until you do', probs.length === 1 && probs[0].node === kind('Mail it').id, probs);
+  check('n8n: the report counts and lists what came across', report.steps === 5 && report.kept === 4 && report.lines.some((l) => /switched off/.test(l)) && report.changed.some((c) => /small brain/.test(c.text)));
+  check('n8n: it comes in as a normal routine (keys of sign-ins never come along)', cleanRoutine(r).id === 'rnews' && !JSON.stringify(r).includes('credentials'));
+  const noteless = { ...r, nodes: r.nodes.map((n) => (n.kind === 'note' ? { ...n, f: { text: 'changed' } } : n)) };
+  check('changing a note doesn\'t need a new OK', graphHash(noteless) === graphHash(r));
+}
+{
+  const step = (name, type, parameters = {}, extra = {}) => ({ name, type: `n8n-nodes-base.${type}`, typeVersion: 1, position: [0, 0], parameters, ...extra });
+  const main = (...outs) => ({ main: outs.map((names) => names.map((node) => ({ node, type: 'main', index: 0 }))) });
+  // Two starts, code, a loop that goes back, a step that goes to two places, and a formula Bob can't read.
+  const wf = {
+    nodes: [
+      step('Test button', 'manualTrigger'),
+      step('Inbox', 'emailReadImap'),
+      step('Lines', 'splitInBatches', {}, { typeVersion: 3 }),
+      step('Fetch', 'httpRequest', { url: '={{ $json.url }}' }, { typeVersion: 4 }),
+      step('Post', 'httpRequest', { method: 'POST', url: 'https://example.com' }, { typeVersion: 4 }),
+      step('Code', 'code', { jsCode: 'return items' }),
+      step('Shout', 'set', { assignments: { assignments: [{ name: 'x', value: '={{ $json.text.toUpperCase() }}' }] } }, { typeVersion: 3.4 }),
+      step('Pause', 'wait', { amount: 2, unit: 'days' }),
+      step('Short pause', 'wait', { amount: 30 }, { typeVersion: 1.1 })
+    ],
+    connections: {
+      'Test button': main(['Code']), Inbox: main(['Lines']), Lines: main(['Shout'], ['Fetch']), Fetch: main(['Lines', 'Short pause']),
+      Code: main(['Post']), Shout: main(['Pause'])
+    }
+  };
+  const { routine: r, report } = importN8n(wf, { id: 'rmix' });
+  const by = (note) => r.nodes.filter((n) => n.note === note || n.note?.startsWith(`${note}:`));
+  check('n8n: with two starts, the one reaching most steps (or a start Bob has) wins, and you can pick', r.nodes.find((n) => n.kind.startsWith('trigger.')).kind === 'trigger.mail' && report.starts.length === 2 && report.start === 'Inbox');
+  const other = importN8n(wf, { id: 'rmix2', start: 'Test button' });
+  check('n8n: picking the other start brings in its own steps', other.routine.nodes.some((n) => n.kind === 'trigger.manual') && other.report.todo.length === 2 && !other.routine.nodes.some((n) => n.note === 'Inbox'));
+  check('n8n: code and POST need replacing; steps from the other start are left out', other.report.todo.some((t) => /ran code/.test(t.text)) && other.report.todo.some((t) => /POST/.test(t.text)) && report.dropped.some((d) => d.step === 'Code'));
+  const each = by('Lines').find((n) => n.kind === 'forEach');
+  check('n8n: "Loop over items" becomes Split into lines + For each', each && by('Lines').some((n) => n.kind === 'lines') && r.wires.some((w) => w.from === each.id && w.out === 'each' && w.to === by('Fetch')[0].id) && r.wires.some((w) => w.from === each.id && w.out === 'done' && w.to === by('Shout')[0].id));
+  check('n8n: the wire back to the loop is gone (no circles)', !checkRoutine(r).some((p) => /circle/.test(p.text)));
+  check('n8n: inside the loop, $json is the item', by('Fetch')[0].f.url === `{{${each.id}.item}}`);
+  check('n8n: a step that went two places runs them in a row', r.wires.some((w) => w.from === by('Fetch')[0].id && w.out === 'then' && w.to === by('Short pause')[0].id) && by('Short pause')[0].f.seconds === 30);
+  check('n8n: a formula Bob can\'t read stays marked, and blocks the routine', UNCONVERTED.test(by('Shout')[0].f.text) && checkRoutine(r).some((p) => p.node === by('Shout')[0].id && /formula/.test(p.text)));
+  check('n8n: a wait longer than an hour needs replacing', by('Pause')[0].kind === 'todo' && /days/.test(by('Pause')[0].f.why));
+  for (const [bad, why] of [['not json', /isn't JSON/], ['{"a":1}', /no "nodes"/], [`﻿${JSON.stringify({ nodes: [], connections: {} })}`, null], ['x'.repeat(1e6), /too big/]]) {
+    let err = null; try { importN8n(bad); } catch (e) { err = e.message; }
+    check(`n8n: ${why ? `refuses ${String(why).slice(1, 16)}` : 'reads a file with a BOM (Windows)'}`, why ? why.test(err || '') : err === null, err);
+  }
+  // Every n8n schedule shape the templates use.
+  const t = (p, type = 'scheduleTrigger') => importN8n({ nodes: [step('S', type, p)], connections: {} }).routine.nodes[0].f;
+  check('n8n: every 15 minutes', t({ rule: { interval: [{ field: 'minutes', minutesInterval: 15 }] } }).everyMinutes === 15);
+  check('n8n: every minute becomes every 5 (the shortest)', t({ rule: { interval: [{ field: 'minutes', minutesInterval: 1 }] } }).everyMinutes === 5);
+  check('n8n: weekly on Monday and Friday', t({ rule: { interval: [{ field: 'weeks', triggerAtDay: [1, 5], triggerAtHour: 9 }] } }).days === 'mon, fri');
+  check('n8n: a plain cron line', t({ rule: { interval: [{ field: 'cronExpression', expression: '0 8 * * 1-5' }] } }).days === 'mon, tue, wed, thu, fri');
+  check('n8n: the old Cron node', t({ triggerTimes: { item: [{ mode: 'everyDay', hour: 18, minute: 5 }] } }, 'cron').at === '18:05');
+}
+{
+  // Bringing in through the Routines store: new id, switched off, needs an OK; a Bob routine file too.
+  const R = new Routines({ ...cfg, dataDir: path.join(tmp, 'inn3') }, { isOn: () => true, tools: () => Object.keys(ROUTINE_TOOLS), afterMail: [...AFTER_MAIL] });
+  const got = R.bringIn(JSON.stringify({ name: 'Page check', nodes: [{ name: 'Go', type: 'n8n-nodes-base.manualTrigger', parameters: {}, position: [0, 0] }, { name: 'Read', type: 'n8n-nodes-base.httpRequest', typeVersion: 4, parameters: { url: 'https://example.com' }, position: [200, 0] }], connections: { Go: { main: [[{ node: 'Read', type: 'main', index: 0 }]] } } }));
+  check('bring in: an n8n file becomes a saved routine, off and needing your OK', got.routine.name === 'Page check' && got.routine.on === false && got.routine.approved === false && got.routine.problems.length === 0 && R.get(got.routine.id));
+  check('bring in: Bob\'s boxes remember the n8n step names', R.get(got.routine.id).nodes.some((n) => n.note === 'Read'));
+  const mine = R.bringIn(JSON.stringify({ bobRoutine: 1, id: got.routine.id, name: 'Copy', nodes: R.get(got.routine.id).nodes, wires: R.get(got.routine.id).wires }));
+  check('bring in: a routine saved from Bob gets its own new id (never takes over one you have)', mine.routine.id !== got.routine.id && mine.routine.approved === false && mine.report === null);
+  let err = ''; try { R.bringIn('nope'); } catch (e) { err = e.message; }
+  check('bring in: a broken file says so', /isn't JSON/.test(err));
 }
 
 // ---------- Help ----------
