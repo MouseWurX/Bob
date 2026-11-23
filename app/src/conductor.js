@@ -116,10 +116,19 @@ export const freeFrom = (answer) => { const d = Array.isArray(answer?.devices) ?
 // answers don't change. A fill set by hand (Engine tuning) wins, 0 included.
 export const FILL_FROM_BE = 39;
 // Nov 23 (the test PC: the Conductor's switch from the chat step to the read step spilled 308 MB and read at half speed,
-// because the fill was sized at the chat step): from Brain Engine 41 the fill is sized for the biggest step the Conductor
+// because the fill was sized at the chat step): from Brain Engine 42 the fill is sized for the biggest step the Conductor
 // will use (LLAMA_MOE_CACHE_FILL_STEP, patch 0085), so every switch finds room and the cache keeps one size. Before
 // that build, no fill next to borrowed reading (0072 didn't check it there).
 export const FILL_STEP_FROM_BE = 42;
+// Nov 23 (the test PC, BE39, 35B with MTP: the engine stopped on the Conductor's first step switch): before Brain Engine
+// 43 (patch 0086) a step switch freed the main context before the MTP draft that still pointed at it. So with the MTP
+// draft on an older engine, the Conductor keeps the step it loaded at and doesn't switch.
+export const MTP_SWITCH_FROM_BE = 43;
+export function mtpBlocksSwitch(args = [], beNo = 0) {
+  const a = Array.isArray(args) ? args : [];
+  const mtp = a.some((x, i) => (x === '--spec-type' || x === '--spec-types') && String(a[i + 1] || '').split(',').includes('draft-mtp'));
+  return mtp && !(beNo >= MTP_SWITCH_FROM_BE);
+}
 export function fillEnv({ cacheMiB = 0, beNo = 0, env = {}, step = 0 } = {}) {
   if (!(cacheMiB > 0) || !(beNo >= FILL_FROM_BE) || (env && env.LLAMA_MOE_CACHE_FILL !== undefined && env.LLAMA_MOE_CACHE_FILL !== '')) return {};
   const borrow = env && env.LLAMA_MOE_CACHE_BORROW !== undefined && env.LLAMA_MOE_CACHE_BORROW !== '' && Number(env.LLAMA_MOE_CACHE_BORROW) !== 0;

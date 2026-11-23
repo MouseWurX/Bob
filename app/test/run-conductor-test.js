@@ -8,7 +8,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { LlamaCpp } from '../src/llamacpp.js';
-import { conductorOn, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP, fillEnv, FILL_FROM_BE, loadAtStep } from '../src/conductor.js';
+import { conductorOn, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP, fillEnv, FILL_FROM_BE, loadAtStep, mtpBlocksSwitch, MTP_SWITCH_FROM_BE } from '../src/conductor.js';
 import { cleanTuning, mergeTuning } from '../src/engine-tuning.js';
 import { HELP } from '../public/help-content.js';
 
@@ -130,6 +130,8 @@ check('before Brain Engine 42, no fill next to borrowed reading', !fillEnv({ cac
 check('the brain loads at the read step, -b at least that', loadAtStep(['-m', 'x', '-ub', '2048', '-b', '8192'], 4096).join(' ') === '-m x -ub 4096 -b 8192' && loadAtStep(['-m', 'x'], 4096).join(' ') === '-m x -ub 4096 -b 4096');
 check('no read step past the one planned for at load', conductorPlan({ newTok: 30000, outTok: 300, cur: 2048, chat: 2048, speeds: { read: { 2048: 1000, 4096: 1400, 6144: 1700 }, write: { 2048: 80, 4096: 80, 6144: 77 } }, switchS: 0.5, maxStep: 4096 }).step <= 4096);
 check('at a big step with a long read: read there, then one switch down to write', (() => { const p = conductorPlan({ newTok: 30000, outTok: 2000, cur: 4096, chat: 2048, speeds: { read: { 2048: 1000, 4096: 1400 }, write: { 2048: 90, 4096: 70 } }, switchS: 0.5, maxStep: 4096 }); return p.plan === 'readBig' && p.step === 4096; })());
+check('with MTP on, no step switch before Brain Engine 43 (0086)', MTP_SWITCH_FROM_BE === 43 && mtpBlocksSwitch(['-m', 'x', '--spec-type', 'draft-mtp'], 42) && !mtpBlocksSwitch(['--spec-type', 'draft-mtp'], 43));
+check('without MTP, or with another draft, the Conductor switches on any engine', !mtpBlocksSwitch(['-m', 'x'], 39) && !mtpBlocksSwitch(['--spec-type', 'ngram-simple'], 39) && !mtpBlocksSwitch(undefined, 0));
 check('the Conductor fills the card with the copy cache from Brain Engine 39', FILL_FROM_BE === 39 && fillEnv({ cacheMiB: 4096, beNo: 39 }).LLAMA_MOE_CACHE_FILL === '1');
 check('no fill before Brain Engine 39, with no copy cache, or with the fill set by hand', !fillEnv({ cacheMiB: 4096, beNo: 38 }).LLAMA_MOE_CACHE_FILL &&
   !fillEnv({ cacheMiB: 0, beNo: 40 }).LLAMA_MOE_CACHE_FILL && !fillEnv({ cacheMiB: 4096, beNo: 40, env: { LLAMA_MOE_CACHE_FILL: '0' } }).LLAMA_MOE_CACHE_FILL);

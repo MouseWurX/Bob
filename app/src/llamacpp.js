@@ -29,7 +29,7 @@ import { LinkLog } from './link-log.js'; // what the link to a lent card carried
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
 import { tuningArgs, doorbellEnv } from './engine-tuning.js';
-import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor } from './conductor.js'; // off unless picked
+import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch } from './conductor.js'; // off unless picked
 import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV } from './engine-extras.js'; // Turbo: stand-ins (0043, off unless switched on)
 import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
@@ -1572,6 +1572,7 @@ export class LlamaCpp {
     if (!this.condChat || this.condOff || this.role === BESIDE || this.spreadNow || this.currentCpu || this.active > 1 || this.current !== model || !this.slotDir || !this.child || this.child.exitCode !== null) return;
     const st = (this.condState ||= {})[model];
     if (st?.stopped) return;
+    if (mtpBlocksSwitch(this.lastArgs, this.beNo())) { this.condStop(model, 'MTP is on and this engine (before Brain Engine 43) can stop on a step switch with it'); return; }
     const total = Math.round(promptChars(messages, tools) / (this.charsPerToken(model) || 3));
     // what the chat memory holds: the last reply's reading and writing (another chat's makes this a guess on the high
     // side, so the Conductor switches less, never wrongly)
