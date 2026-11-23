@@ -107,6 +107,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # the test pre-release only
+      actions: read # to fetch this run's builds
     steps:
       - name: Zip each build with its sha256 and put them on the test pre-release
         env:
