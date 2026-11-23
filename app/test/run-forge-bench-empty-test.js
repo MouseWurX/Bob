@@ -23,6 +23,15 @@ check('the pod gets empty stand-ins, not an old lesson set or tool list', fs.rea
 const p2 = { ...plan, benchmark_only: false, run: 'not-bench' }; fs.writeFileSync(planFile, JSON.stringify(p2));
 const r2 = spawnSync(process.execPath, ['forge.mjs', '--plan', planFile, '--preflight'], { cwd: forge, encoding: 'utf8', env: { ...process.env, RUNPOD_API_KEY: 'test-not-a-key', FORGE_NO_RUNPOD_CHECK: '1', FORGE_OUT: tmp, HF_TOKEN: '' } });
 check('any other plan still stops when its lessons are missing', r2.status !== 0 && /missing .*no-such-lessons/.test(`${r2.stdout}${r2.stderr}`));
+// 23 Nov (after2-qwen): every variant said "0 to go" and the Forge still rented a card for nothing
+const pf = (cmds) => { fs.writeFileSync(planFile, JSON.stringify({ ...plan, run: 'to-go', rent_minutes: 30, benchmark: { models: [{ ...plan.benchmark.models[0], commands: cmds }] } })); const x = spawnSync(process.execPath, ['forge.mjs', '--plan', planFile, '--preflight'], { cwd: forge, encoding: 'utf8', env: { ...process.env, RUNPOD_API_KEY: 'test-not-a-key', FORGE_NO_RUNPOD_CHECK: '1', FORGE_OUT: tmp, HF_TOKEN: '' } }); return { code: x.status, out: `${x.stdout}${x.stderr}` }; };
+let sayN = 0;
+const say = (lines) => { const f = path.join(tmp, `say-${++sayN}`, 'do-jobs.mjs'); fs.mkdirSync(path.dirname(f), { recursive: true }); // a stand-in do-jobs that prints its pre-flight lines
+  fs.writeFileSync(f, `console.log(${JSON.stringify(lines.join('\n'))});`); return `node "${f}" --hours 0.1`; };
+const none = pf([say(['[a] pre-flight: 30 already run in this folder, 0 to go', '[b] pre-flight: 36 already run in this folder, 0 to go'])]);
+check('a benchmark-only plan with nothing left to run is refused: nothing is rented', none.code !== 0 && /PRE-FLIGHT FAIL: nothing to run: every job in the plan's 2 job folder\(s\) has already run/.test(none.out) && /Not renting/.test(none.out), none.out.slice(-400));
+const some = pf([say(['[a] pre-flight: 30 already run in this folder, 0 to go', '[b] pre-flight: 0 already run in this folder, 14 to go'])]);
+check('one job left to run is enough to rent', some.code === 0 && /pre-flight OK: nothing rented/.test(some.out), some.out.slice(-400));
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

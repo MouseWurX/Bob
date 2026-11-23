@@ -81,6 +81,11 @@ check('v2 volumes: dataCenter in and out', volumeBodyV2({ name: 'n', size: 300, 
   const rest = http.createServer((q, r) => { let body = ''; q.on('data', (d) => (body += d)); q.on('end', () => {
     seen.push(`${q.method} ${q.url}`);
     r.setHeader('content-type', 'application/json');
+    if (q.url.startsWith('/door/')) { // the pod's own door, for --kill's log salvage
+      if (q.headers['x-forge-token'] !== 'tok') { r.writeHead(403); r.end('{}'); return; }
+      if (q.url === '/door/status') { r.end(JSON.stringify({ status: { step: 'jobs' }, files: [{ path: 'logs/hw-telemetry.log', bytes: 5 }, { path: 'logs/hw-environment.log', bytes: 5 }] })); return; }
+      if (q.url.startsWith('/door/out/logs/')) { r.setHeader('content-type', 'text/plain'); r.end('temps'); return; }
+    }
     if (!q.url.startsWith('/v2/')) { r.writeHead(404); r.end('{"title":"Not Found"}'); return; }
     if (q.headers.authorization !== 'Bearer k') { r.writeHead(401); r.end('{"title":"Unauthorized"}'); return; }
     if (q.method === 'GET' && q.url === '/v2/pods') { r.end(JSON.stringify({ pods: pods(), pagination: { nextCursor: null, hasNextPage: false } })); return; }
@@ -90,7 +95,8 @@ check('v2 volumes: dataCenter in and out', volumeBodyV2({ name: 'n', size: 300, 
   }); });
   await new Promise((res) => rest.listen(0, '127.0.0.1', res));
   const fo = path.join(tmp, 'out'); fs.mkdirSync(path.join(fo, 'forge'), { recursive: true });
-  const env = { ...process.env, RUNPOD_API_KEY: 'k', FORGE_REST: `http://127.0.0.1:${rest.address().port}/v2`, FORGE_OUT: fo };
+  const env = { ...process.env, RUNPOD_API_KEY: 'k', FORGE_REST: `http://127.0.0.1:${rest.address().port}/v2`, FORGE_OUT: fo, FORGE_POD_DOOR: `http://127.0.0.1:${rest.address().port}/door` };
+  fs.writeFileSync(path.join(fo, 'forge', 'pod-token-v2test.json'), JSON.stringify({ pod: 'podx', token: 'tok' }));
   const run = (extra) => new Promise((res) => { const c = spawn(process.execPath, [path.join(lab, 'forge', 'forge.mjs'), ...extra], { stdio: 'pipe', env, cwd: path.join(lab, 'forge') }); let o = ''; c.stdout.on('data', (d) => (o += d)); c.stderr.on('data', (d) => (o += d)); c.on('exit', (code) => res({ code, o })); });
 
   const st = await run(['--status']);
@@ -98,6 +104,9 @@ check('v2 volumes: dataCenter in and out', volumeBodyV2({ name: 'n', size: 300, 
   seen.length = 0;
   const k = await run(['--kill', 'podx']);
   check('--kill <pod> deletes only that Forge pod, through v2', k.code === 0 && seen.includes('DELETE /v2/pods/podx') && !seen.some((s) => /DELETE .*theirs/.test(s)) && /deleted podx/.test(k.o), k.o.slice(-300));
+  // 22 Nov: --kill used podId/base/hdr before they were declared; the error was caught, so the pod went but its logs didn't
+  const kept = path.join(fo, 'forge', 'pod-podx');
+  check('--kill saves the pod\'s logs first (hardware logs included), then deletes it', /pod logs saved to/.test(k.o) && fs.existsSync(path.join(kept, 'logs_hw-telemetry.log')) && fs.existsSync(path.join(kept, 'logs_hw-environment.log')) && fs.existsSync(path.join(kept, 'status.json')) && seen.indexOf('GET /door/status') >= 0 && seen.indexOf('GET /door/status') < seen.indexOf('DELETE /v2/pods/podx'), k.o.slice(-400));
 
   const les = path.join(tmp, 'lessons'); fs.mkdirSync(les); fs.writeFileSync(path.join(les, 'lessons.jsonl'), '\n'); fs.writeFileSync(path.join(les, 'toolsets.json'), '{}'); fs.writeFileSync(path.join(les, 'counts.json'), '{}');
   const pf = path.join(tmp, 'plan.json'); fs.writeFileSync(pf, JSON.stringify({ run: 'v2test', direct: true, rungs: [], lessons: les, counts_file: path.join(les, 'counts.json'), benchmark: { models: [] } }));

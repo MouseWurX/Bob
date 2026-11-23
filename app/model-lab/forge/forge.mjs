@@ -45,7 +45,7 @@ const args = Object.fromEntries(process.argv.slice(2).map((a, i, arr) => a.start
 const KEY = process.env.RUNPOD_API_KEY;
 if (!KEY) { console.error('RUNPOD_API_KEY is not set (the "Save RunPod key" step).'); process.exit(1); }
 // 16 Nov 2026: RunPod retired rest.runpod.io/v1 (the name stopped resolving mid-rent); v2 at api.runpod.io is its replacement (runpod-v2.mjs)
-const REST = process.env.FORGE_REST || V2; // FORGE_REST / FORGE_OUT: tests only (a made-up RunPod and a temp folder)
+const REST = process.env.FORGE_REST || V2; // FORGE_REST / FORGE_OUT / FORGE_POD_DOOR: tests only (a made-up RunPod, a temp folder, a made-up pod door for --kill's log salvage)
 const outDir = process.env.FORGE_OUT || path.join(here, '..', 'out'); fs.mkdirSync(path.join(outDir, 'forge'), { recursive: true });
 const logFile = path.join(outDir, 'forge', `forge-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.log`);
 const log = (...m) => { const line = `${new Date().toISOString().slice(11, 19)} ${m.join(' ')}`; console.log(line); fs.appendFileSync(logFile, line + '\n'); };
@@ -159,7 +159,7 @@ if (args.status || args.kill) {
   if (args.kill) for (const p of pods) if (p.name?.startsWith('bob-forge')) {
     if (args.kill !== true && String(args.kill) !== p.id) { log(`${p.id} kept (--kill ${args.kill} names another pod)`); continue; } // build 19: two runs side by side; --kill <podId> touches one
     for (const tfn of fs.readdirSync(path.join(outDir, 'forge')).filter((n) => /^pod-token.*\.json$/.test(n))) {
-      try { const t = JSON.parse(fs.readFileSync(path.join(outDir, 'forge', tfn), 'utf8')); if (t.pod === p.id) { podId = p.id; base = `https://${p.id}-8000.proxy.runpod.net`; hdr['X-Forge-Token'] = t.token; await salvage(); } } catch {}
+      try { const t = JSON.parse(fs.readFileSync(path.join(outDir, 'forge', tfn), 'utf8')); if (t.pod === p.id) await salvageFrom(p.id, process.env.FORGE_POD_DOOR || `https://${p.id}-8000.proxy.runpod.net`, { 'X-Forge-Token': t.token }); } catch {} // 22 Nov: was podId/base/hdr, used here before they are declared (the error was caught, so --kill deleted the pod but lost its logs)
     }
     await rp('DELETE', `/pods/${p.id}`); log(`deleted ${p.id}`);
   }
@@ -321,11 +321,13 @@ async function rent({ again = false, avoidNow = new Set() } = {}) {
   }
   throw new Error(`no card available in ${rentMinutes} minutes; nothing was rented. Try again later.`);
 }
-async function salvage() {
+async function salvage() { return salvageFrom(podId, base, hdr); }
+async function salvageFrom(id, url, headers) {
   // before a pod goes, keep its logs and status on the PC (the evidence for the next fix)
+  const get = (p) => fetch(url + encodeURI(p), { headers });
   try {
     const r = await get('/status'); if (!r.ok) return; const st = await r.json();
-    const dir = path.join(outDir, 'forge', `pod-${podId}`); fs.mkdirSync(dir, { recursive: true });
+    const dir = path.join(outDir, 'forge', `pod-${id}`); fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify(st.status || {}, null, 1));
     for (const f of st.files || []) if (/\.(log|txt|json)$/.test(f.path) && f.bytes < 50e6 && !/files\.json$/.test(f.path)) {
       try { const x = await get(`/out/${f.path}`); if (x.ok) { const p = path.join(dir, f.path.replace(/\//g, '_')); fs.writeFileSync(p, Buffer.from(await x.arrayBuffer())); } } catch {}
@@ -413,7 +415,7 @@ function lessonPreflight() {
   for (const m of plan.benchmark?.models || []) if (m.lora !== undefined && !/^hf:[^:\s]+\/[^:\s]+:[^\s]+\.gguf$/.test(String(m.lora))) bad.push(`${m.name}: lora must be hf:<repo>:<file>.gguf`);
   if (!cmds.length) return bad;
   if (!(Number(plan.hours_max) > 0) || !(Number(plan.dollars_max) > 0) || !(Number(plan.rent_minutes) > 0)) bad.push('hours_max, dollars_max and rent_minutes must all be set (blank caps fall back to 9 h / $40)');
-  let hoursSum = 0;
+  let hoursSum = 0, toGoSeen = 0, toGoSum = 0;
   for (const [i, [m, c]] of cmds.entries()) {
     const slots = Math.max(1, Number(m.slots) || 1), slotCtx = Math.floor((Number(m.ctx) || 32768) / slots);
     // 16 Nov: a jobs matrix runs every variant at once, each with its own --parallel
@@ -428,8 +430,12 @@ function lessonPreflight() {
     const r = spawnSync(cmd, { cwd: path.join(here, '..'), shell: true, encoding: 'utf8', windowsHide: true, env: { ...process.env, LAB_REMOTE: '1', LAB_MODEL_NAME: m.name } });
     const out = `${r.stdout || ''}${r.stderr || ''}`.replace(/\r\n/g, '\n').split('\n').filter((ln) => /pre-flight|PRE-FLIGHT|GATE STOP|room per slot|ideas file|GGUF|Error|error/.test(ln));
     for (const ln of out) log(`  ${ln.slice(0, 300)}`);
+    for (const ln of out) { const g = ln.match(/pre-flight: \d+ already (?:run|written) in this folder, (\d+) to go/); if (g) { toGoSeen++; toGoSum += Number(g[1]); } }
     if (r.status !== 0) bad.push(`${m.name} command ${i + 1}: ${(out.find((ln) => /PRE-FLIGHT FAIL|GATE STOP|rror/.test(ln)) || `exit ${r.status}`).replace(/^(?:PRE-FLIGHT FAIL|GATE STOP): /, '').slice(0, 200)}`);
   }
+  // 23 Nov (after2-qwen): every variant said "0 to go" and the Forge still rented an L40S for nothing. A benchmark-only plan
+  // whose job commands all have nothing left to run is refused before anything is rented.
+  if (plan.benchmark_only === true && toGoSeen > 0 && toGoSum === 0) bad.push(`nothing to run: every job in the plan's ${toGoSeen} job folder(s) has already run (0 to go); use a new --prefix or delete the old folders to run them again`);
   if (Number(plan.hours_max) > 0 && hoursSum + 0.5 > Number(plan.hours_max)) warn.push(`the commands' --hours add up to ${hoursSum} h; with about 0.5 h of start-up that passes the ${plan.hours_max} h cap, so the last one is cut short (it resumes next time)`);
   for (const w of warn) log(`pre-flight note: ${w}`);
   return bad;
