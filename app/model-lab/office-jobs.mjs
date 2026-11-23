@@ -159,7 +159,9 @@ export const OFFICE_JOBS = [
 // over; NEVER tune against them and never make lessons from them. node office-jobs.mjs --held writes only these.
 const MISSING = OFFICE_JOBS.find((j) => j.key === 'word-missing').score.honest;
 export const HELD_OFFICE_JOBS = [
-  { key: 'h-word-read', files: ['hpolicy'], text: 'How much is the pet deposit at Elm Court, and how many pets can I have?',
+  // 23 Nov 2026 (the owner): the old ask never said the answer was in the person's files, so every brain, the full one too,
+  // searched the web. Fixed as a bad question, not tuned on: runs before this change are not comparable for this job.
+  { key: 'h-word-read', files: ['hpolicy'], text: 'How much is the pet deposit in my Elm Court pet policy, and how many pets can I have?',
     score: { route: READS, best: 'office_read', said: [/\b300\b/, /\btwo\b|\b2 pets/i] } },
   { key: 'h-excel-read', files: ['hmeals'], text: "Which day in my meal plan costs the most, and what's for dinner that day?",
     score: { route: READS, best: 'office_read', said: [/\bFri(day)?\b/, /pizza/i] } },
