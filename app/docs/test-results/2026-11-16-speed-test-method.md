@@ -915,6 +915,31 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 100 (Nov 23, before any run): Progressive Memory and every chat memory type on Brain Engine 40
+
+Progressive Memory (0039/0045, with the 3-bit 0038/0044 and 2-bit 0046 chat memory) last ran on Brain Engine 26 to 28.
+The 2-bit 8+2 rows were written (Addendum 77) but never ran, because speed testing paused on Nov 20. Nothing ran
+on real jobs. These plans redo it on Brain Engine 40, at the Nov 20 settings (step 4096, 4 GB cache, share 0, fit 512):
+
+- `speed-progressive-be40.json`: f16, q8_0, q4_0, q3_0, q2_kv, 8+2 (q2_kv, 8K q8_0 ring), 8+3 and 8+4 (2K q8_0 ring)
+  at 32K, 128K and 256K. Each row also records card memory and spill, which gives the largest chat for each type.
+  It adds the card/RAM chat memory split (0036, `LLAMA_KV_SPLIT` 32768/65536) for q8_0, f16 and 8+3 at 128K and 256K.
+- `perplexity-progressive-be40.json`: KLD against f16 at 16K x 2, with rings at a quarter scale so they engage.
+- `needle-progressive-be40.json`: long-chat recall, 5 depths at 128K and 256K, 3 rounds.
+- Real jobs: mail, office and repo (normal sets), plus the held-out sets, at q8_0 (reference), 8+3, 8+4, 8+2, then f16,
+  q3_0 and q2_kv. The gate is absolute: jobs done correctly, no crashes, no bad tool calls, no broken files.
+
+Predictions (before any run):
+- Speed: 8+3 and 8+4 stay within 5% of their base type at 128K and 256K, and are 10-18% slower at 32K (as on
+  Brain Engine 28). 8+2 sits within 5% of q2_kv past 128K. f16 at 256K does not fit on the card beside a 4 GB cache,
+  so fit moves layers off or the row spills. The split keeps it on the card, but writes 20-40% slower.
+- KLD: 8+4 is about 0.02 and 8+3 about 0.03, as on Brain Engine 26. 8+2 is about 0.05-0.08, and plain q2_kv is
+  worse than 0.1.
+- Needles: q8_0, q4_0, 8+3 and 8+4 find all of them. 8+2 finds at least 90%. Plain q2_kv misses some at 256K.
+- Real jobs: 8+4 and 8+3 pass the gate. 8+2 is unproven in our lab, as we have yet to test it.
+
+Progressive goes on by default only if it passes the real-jobs gate, held-out sets included.
+
 ## Addendum 99 (Nov 22, before any run): word checks on Brain Engine 36
 
 Brain Engine 33 to 35 with borrowing on had a wrong-words fault: rewarm and the last row's misses could write into
