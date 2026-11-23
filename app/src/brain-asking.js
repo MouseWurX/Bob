@@ -3,6 +3,7 @@
 import crypto from 'node:crypto';
 import { bigSession, chatBrain, sameModel } from './brain-mode.js';
 import { turnNow } from './turn-log.js';
+import { guppiNotesOn, guppiListener } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { traced, engineAttrs, lastAsked } from './trace-log.js'; // Nov 16 Monitoring log
 import { carryOnTokens, engineFailKind, backoffMs, causeLine, pause } from './retry.js';
 import { memoryFailure } from './engine-care.js';
@@ -97,6 +98,9 @@ export const askingParts = {
     const fitted = fitContext(opts.messages, opts.ctx, opts.tools, 0.75, per);
     if (fitted !== opts.messages) { this.log('chat', `shortened tool results so the chat fits in ${opts.model}'s memory (${opts.ctx} tokens)`); opts = { ...opts, messages: fitted }; }
     { const t = turnNow(); if (t) t.asks++; } // item 246: steps per job
+    // Nov 23: GUPPI's records (guppi-notes.js) go to the window and on the turn, never to a brain
+    const guppiBy = !opts.beside && emit && this.engine && guppiNotesOn(this.cfg) ? guppiListener(emit, turnNow()) : null;
+    if (guppiBy) this.engine.guppiSay = guppiBy;
     try { const r = await this.chatRetry(opts, { emit, who }); this.engineNotes(emit); return r; }
     catch (e) {
       // Still too long (the guess at token counts was low): once more, with every tool result cut harder.
@@ -123,7 +127,7 @@ export const askingParts = {
       try { return await this.chatRetry({ ...opts, messages: tighter }, { emit, who }); }
       catch (e3) { if (opts.signal?.aborted || !TOO_LONG.test(String(e3?.message))) throw e3; throw tooLongError(e3, opts.ctx); }
     }
-    finally { mind?.flush(); }
+    finally { mind?.flush(); if (guppiBy && this.engine.guppiSay === guppiBy) this.engine.guppiSay = null; }
   },
   // Items 193-195, 201 (retry.js): a call that fails for a reason a second try can fix goes again.
   //   busy (503, "loading model"): wait a little longer each time, with a bit of randomness, and ask again (3 tries)

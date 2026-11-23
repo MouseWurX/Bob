@@ -30,6 +30,7 @@ import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: 
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
 import { tuningArgs, doorbellEnv } from './engine-tuning.js';
 import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv } from './conductor.js'; // off unless picked
+import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV } from './engine-extras.js'; // Turbo: stand-ins (0043, off unless switched on)
 import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
@@ -1699,6 +1700,7 @@ export class LlamaCpp {
     const winExtra = more._winExtra;
     more = Object.fromEntries(Object.entries(more).filter(([k]) => !k.startsWith('_')));
     const file = `conductor-${this.port}.bin`;
+    const was = { step: this.condStep, win: this.condWin, cache: this.condRead() + (this.condGrown || 0) }; // for GUPPI's record in the chat
     if (held > 0) await this.slotAction('save', file);
     const res = await fetch(`${this.url}/context`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ n_batch: step, n_ubatch: step, ...more }), signal: AbortSignal.timeout(300000) });
     if (!res.ok) { this.condStop(model, `the engine can't change its step in place (${res.status})`); return false; }
@@ -1714,6 +1716,10 @@ export class LlamaCpp {
     const seconds = (Date.now() - t0) / 1000;
     const st = (this.condState[model] = noteSwitch(this.condState[model], { seconds, guess, held }));
     this.log?.('engine', `${model}: Conductor: step ${step} in ${seconds.toFixed(2)} s (guessed ${guess.toFixed(2)} s)${st.stopped ? '; slower than guessed three times in a row, so no more switching for this brain' : ''}`);
+    try { // Nov 23: GUPPI's record in the chat (guppi-notes.js; display only, never sent to a brain)
+      const nowCache = 'moe_cache_mib' in more ? Number(more.moe_cache_mib) || 0 : this.condRead() + (this.condGrown || 0);
+      this.guppiSay?.(guppiSwitch({ from: was.step, to: step, seconds, guess, held, stopped: st.stopped, win: 'n_ctx' in more ? { from: was.win, to: this.condWin } : null, cache: 'moe_cache_mib' in more || 'n_ctx' in more ? { from: was.cache, to: nowCache } : null }));
+    } catch {}
     return true;
   }
 
@@ -1721,6 +1727,7 @@ export class LlamaCpp {
     if (this.condOff) return;
     this.condOff = why || 'stopped';
     this.log?.('engine', `${model}: Conductor off for this engine run: ${this.condOff}. Replies go ahead as usual.`);
+    try { this.guppiSay?.(guppiStop(this.condOff)); } catch {} // Nov 23: GUPPI's record in the chat
   }
 
   // what each reply teaches: read and write speed at the step it ran at, and what the chat memory now holds

@@ -2410,6 +2410,12 @@ body.still .think *, .think.finished * { animation: none !important; }
 @media (prefers-reduced-motion: reduce) { .think * { animation: none !important; transition: none !important; } }
 @media (max-width: 600px) { .think { max-width: 100%; } .think-dots i:nth-child(n+9) { display: none; } }
 
+/* Nov 23 GUPPI's own bubble (guppi-bubble.js): the thinking bubble's look, a square mark in the "good" colour, no animation. */
+.think.guppi { border-color: color-mix(in srgb, var(--good) 45%, var(--line)); }
+.think.guppi .guppi-mark { border-radius: 2px; background: var(--good); opacity: .8; transform: rotate(45deg) scale(.8); }
+.think.guppi .think-line { font-style: italic; }
+.think.guppi .think-row span { overflow-wrap: anywhere; }
+
 /* 1.5.210 First run: the four switches that help most, then everything else folded below. */
 .want-top { margin-bottom: 8px; }
 .wants-more > summary { cursor: pointer; padding: 6px 0; font-weight: 600; }

@@ -54,6 +54,7 @@ import { createBubbles } from './say-bubbles.js';
 import { createBobLife } from './bob-life.js';
 import { createViewer, outCard, fillPeeks } from './viewer.js';
 import { createThinkBubbles } from './think-bubble.js'; // 1.5.210: the thinking bubble above the answer
+import { createGuppiBubbles } from './guppi-bubble.js'; // Nov 23: GUPPI's own bubble, a record of each engine change
 import { PAW, stepWords as catStep, stepKind, bobAside, asideSeed } from './patches-steps.js'; // Nov 16: Patches tells the steps
 import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
@@ -326,6 +327,10 @@ let thinkOn = true, catName = 'Patches', patchesOn = true, lastStep = '', oddSte
 const stillNow = () => document.body.classList.contains('still') || Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 window.addEventListener('bob-think-bubble', (e) => { thinkOn = e.detail !== false; }); // Settings, from this window
 window.addEventListener('bob-patches-steps', (e) => { patchesOn = e.detail !== false; }); // Settings, from this window
+// Nov 23: GUPPI's records (public/guppi-bubble.js), display only. Settings, Engine tuning, "GUPPI's notes in the chat".
+let guppiOn = true;
+window.addEventListener('bob-guppi-notes', (e) => { guppiOn = e.detail !== false; });
+const guppiBubbles = createGuppiBubbles({ add, esc, last: () => log.lastElementChild, on: () => guppiOn });
 const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () => thinkOn, still: stillNow, cat: () => catName, patches: () => patchesOn, openMind: () => $('mindBtn')?.click(), copy: (t) => navigator.clipboard?.writeText(t).then(() => note('Copied the steps.')).catch(() => {}) });
 
 // ---------- Status, badge, notifications ----------
@@ -662,6 +667,7 @@ async function loadHistory(n = 20) {
       // A reply with no words and nothing made shows only its note, never an empty bubble.
       if (m.role !== 'user' && !String(m.content || '').trim() && !m.media?.length) { if (m.correction) note(m.correction, 'error'); continue; }
       if (thinkOn && m.role !== 'user' && m.steps?.length && !m.stepsShown) { thinkBubbles.saved([], 0, m.steps); m.stepsShown = true; } // steps but nothing written on the way: still one bubble, no list under it
+      if (m.role !== 'user' && m.guppi?.length) guppiBubbles.saved(m.guppi); // Nov 23: GUPPI's records, above the answer they came before
       const el = decorate(add(m.role === 'user' ? 'msg you' : 'msg bob', m.role === 'user' ? esc(m.content) + picsHtml(m.pics) : render(m.content) + mediaHtml(m.media)), m.content, m.media);
       if (m.id) el.dataset.mid = m.id;
       if (m.at) el.dataset.at = m.at; // Fade old messages: when it fades
@@ -954,6 +960,9 @@ function onEvent(ev) {
     case 'stuck': // item 8: he gave up on this one; offer the harder try under it
       stuckNow = true; drawRedo();
       break;
+    case 'guppi': // Nov 23: a change GUPPI made to the engine, as a record that stays (folded, a quip outside)
+      if (guppiBubbles.take(ev)) scrollDown();
+      return;
     case 'announce':
       endReply(ev);
       note(ev.text, 'announce');
@@ -1732,7 +1741,7 @@ installShortcuts({
 });
 
 async function start() {
-  try { const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; patchesOn = st.patchesSteps !== false; catName = st.catName || catName; shortcutsOn = st.shortcuts === true; applyReading(st); readingKeep = { textSize: st.textSize, readableFont: st.readableFont }; await applyMath(st.mathView === true); } catch {}
+  try { const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; patchesOn = st.patchesSteps !== false; guppiOn = st.guppiNotes !== false; catName = st.catName || catName; shortcutsOn = st.shortcuts === true; applyReading(st); readingKeep = { textSize: st.textSize, readableFont: st.readableFont }; await applyMath(st.mathView === true); } catch {}
   await loadHistory(20);
   let cat = 'Patches';
   try { cat = (await (await fetch('/api/settings')).json()).catName || cat; } catch {}
@@ -1747,7 +1756,7 @@ async function start() {
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
   try {
-    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; patchesOn = st.patchesSteps !== false; statusLine.jokes(st.statusJokes !== false); netOverlay.setOn(st.netOverlay === true); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
+    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; patchesOn = st.patchesSteps !== false; guppiOn = st.guppiNotes !== false; statusLine.jokes(st.statusJokes !== false); netOverlay.setOn(st.netOverlay === true); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
     if (shouldOfferOwnCode(st.profiles)) offerOwnCode(st.profiles); // a person's own first time in: their own passcode, if they want one
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"
