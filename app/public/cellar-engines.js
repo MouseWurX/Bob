@@ -89,7 +89,7 @@ export function createEngineParts(now) {
          ${tip('Each switch is separate. They work with Brain Engine and llama.cpp; Ollama runs its own way, so only the speed history and Laptop mode reach it. Bob\'s Android app runs its own small engine and isn\'t changed by these.', 'Engine extras')}
         ${sswitch('copyGuess', settings.copyGuess === true, 'Prompt-lookup decoding', 'Speeds up rewrites of code and documents by copying text already in the chat. Same answer, no second brain. Not used with MTP.')}
         ${readingSpeedHtml()}
-        ${sswitch('turboEveryday', settings.turboEveryday === true, 'MTP for everyday brains', 'Brains with their own built-in guesser use it for every reply, without the Lab. Same answer, written faster. Brains without one are unchanged.')}
+        ${sswitch('turboEveryday', settings.turboEveryday !== false, 'MTP for everyday brains', 'Brains with their own built-in guesser use it for every reply, without the Lab. Same answer, written faster. Brains without one are unchanged.')}
         ${sswitch('turbo', settings.turbo === true, 'Turbo', 'Show-off speed: every speed trick that costs a little answer quality, at once. For showing how fast I can go, not for real jobs. Your brains\' own picks come back when it\'s off.')}
         ${settings.turbo === true ? turboHtml() : ''}
         ${sswitch('lockBrainMemory', settings.lockBrainMemory === true, 'Lock brain memory', 'When part of a brain sits in RAM, it stays there, so replies after a break don\'t wait on the drive. Uses that RAM until the brain unloads. Not used in Gaming.')}

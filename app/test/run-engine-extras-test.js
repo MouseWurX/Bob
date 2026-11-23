@@ -52,7 +52,7 @@ check('Auto says why: the card, then the last 3 prompts', (() => { const big = {
 check('Auto: fewer than 3 prompts seen keeps Fastest on a big card', readingChoice({ readingSpeed: 'auto', gpuVramGB: 16 }, { recent: [500, 600] }).steps === 4096);
 
 // ---------- 102 Turbo for everyday brains ----------
-check('everyday Turbo: nothing while off', everydayTurboArgs({}, { mtp: 1 }).length === 0);
+check('everyday Turbo: on unless switched off (Nov 23), nothing once off', everydayTurboArgs({}, { mtp: 1, build: 12359 }).length > 0 && everydayTurboArgs({ turboEveryday: false }, { mtp: 1, build: 12359 }).length === 0);
 check('everyday Turbo: a brain with its own guesser uses it, 3 at a time', everydayTurboArgs({ turboEveryday: true }, { mtp: 1, build: 12359 }).join(' ') === `--spec-type draft-mtp --spec-draft-n-max ${TURBO_EVERYDAY_MAX}` && TURBO_EVERYDAY_MAX === 3);
 check('everyday Turbo: no guesser, the processor, an old engine, or Turbo/draft already set: nothing', [everydayTurboArgs({ turboEveryday: true }, { mtp: 0 }), everydayTurboArgs({ turboEveryday: true }, { mtp: 1, cpu: true }), everydayTurboArgs({ turboEveryday: true }, { mtp: 1, build: 9000 }), everydayTurboArgs({ turboEveryday: true }, { mtp: 1, args: ['-md', 'd.gguf'] }), everydayTurboArgs({ turboEveryday: true }, { mtp: 1, args: ['--spec-type', 'ngram-mod'] })].every((x) => x.length === 0));
 

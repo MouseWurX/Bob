@@ -8,7 +8,7 @@
 //   engineNotes  99  Engine updates in plain words
 //   brainMemType 100 The engine's memory type per brain (Brains page, Set up)
 //   readingSpeed 101 Reading speed: bigger reading steps (-b/-ub) so a long prompt is read in fewer, larger pieces
-//   turboEveryday 102 MTP for everyday brains: a brain's own built-in guesser (MTP) on, without the Lab
+//   turboEveryday 102 MTP for everyday brains: a brain's own built-in guesser (MTP) on, without the Lab (ON unless switched off, Nov 23)
 //   hotExperts   104 Hot experts on the card: llama.cpp's expert cache, filled from a profile (src/hot-experts.js)
 //   lockBrainMemory 103 Lock brain memory: the part of a brain in RAM stays there (--mlock), so Windows can't page it out
 import fs from 'node:fs';
@@ -130,10 +130,12 @@ export function mtpArgs(gguf, opts = {}) {
 // on per brain; this switch turns it on for every brain that has one, unless MTP or a draft brain is set for it.
 // 3 guesses at a time: one head's guesses get worse the further out they go.
 export const TURBO_EVERYDAY_MAX = 3;
+// Nov 23 (the owner: "MTP typically doesn't hurt answers"; it's stock llama.cpp): on unless switched off
+export const turboEverydayOn = (cfg) => cfg?.turboEveryday !== false;
 export function everydayTurboArgs(cfg, { build = 0, args = [], mtp = 0, cpu = false, guesser = null } = {}) {
   // guesser: mtpArgs() for the brain (its own head, or the file beside it); without it, mtp > 0 means its own head
   const g = guesser || (mtp > 0 ? ['--spec-type', 'draft-mtp'] : []);
-  if (!extraOn(cfg, 'turboEveryday') || cpu || !g.length || !newSpecFlags(build)) return [];
+  if (!turboEverydayOn(cfg) || cpu || !g.length || !newSpecFlags(build)) return [];
   if (args.some((a) => ['--spec-type', '-md', '--model-draft', '--spec-draft-model', '--spec-draft-hf', '-hfd'].includes(a))) return [];
   return [...g, ...draftNumArgs(build, TURBO_EVERYDAY_MAX)];
 }
