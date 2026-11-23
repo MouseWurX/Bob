@@ -7,7 +7,7 @@ import { applyStyle, applySavedStyle } from './themes.js';
 import { netFileEvent, wireNetFileButtons } from './net-files.js'; // Nov 14 Bob-Net Files and brains
 import { createStatusLine } from './status-line.js'; // 1.5.216: his line follows his state
 import { startWindowBar } from './window-bar.js'; // 1.5.228 Window buttons on Bob's bar
-import { createMindCube } from './mind-cube.js'; // 1.5.209: Bob's picture as the fNRI cube
+import { createMindCube, CUBE_LIVE_DEFAULT } from './mind-cube.js'; // 1.5.209: Bob's picture as the fNRI cube
 applySavedStyle();
 import { startI18n, followSaved } from './i18n.js';
 startI18n();
@@ -217,7 +217,7 @@ let lastFrame = '', lastProp = '';
 // A small fNRI cube in place of the pixel Bob: it builds itself when a brain loads, rests with the odd spark, glows
 // while he thinks and drains away when the brain is let go, with the neon sign when none is loaded. It glows for show,
 // so it costs the engine nothing; with Real experts on (Bob's thinking) it shows the experts he really used. It draws
-// small and never turns, and while it shows the pixel Bob's loop slows right down and the brain-swap machine rests.
+// small and turns slowly (Nov 23), and while it shows the pixel Bob's loop slows right down and the brain-swap machine rests.
 // In Adventure the pixel Bob comes back (the small characters are the game's). 1.5.222: the cube for everyone,
 // outside games; the pixel look is picked in Adventure, Characters, Party (public/bob-game-look.js).
 var cubeAvatarOn = false; // var: the pixel loop above reads it before this line runs
@@ -232,14 +232,17 @@ function showCubeAvatar() {
   if (!box) return;
   bobCanvas.hidden = on;
   if (on) {
-    if (!cubeAvatar) cubeAvatar = createMindCube({ box, canvas: $('bobCube'), says: $('bobCubeSays'), open: $('bobCubeOpen') }, { avatar: true, lamp: () => true, still: () => document.body.classList.contains('still'), live: () => store.get('bob-cube-live', '0') === '1' });
-    cubeAvatar.connect(); hideSwap();
+    if (!cubeAvatar) cubeAvatar = createMindCube({ box, canvas: $('bobCube'), says: $('bobCubeSays'), open: $('bobCubeOpen') }, { avatar: true, lamp: () => true, still: () => document.body.classList.contains('still'), live: () => store.get('bob-cube-live', CUBE_LIVE_DEFAULT) === '1' });
+    if (!document.hidden) cubeAvatar.connect(); hideSwap();
   } else if (cubeAvatar) { cubeAvatar.disconnect(); cubeAvatar.hide(); lastFrame = ''; }
 }
 function setAvatarCube(on) { cubeWanted = Boolean(on); store.set('bob-avatar-cube', cubeWanted ? '1' : '0'); showCubeAvatar(); }
 window.setAvatarCube = (on) => { setAvatarCube(on); api('/api/settings', { style: { avatar: on ? 'cube' : 'pixel' } }).catch(() => {}); }; // the Style page's looks call this
 window.addEventListener('bob-avatar', (e) => setAvatarCube(e.detail?.cube === true));
-window.addEventListener('bob-cube-live', () => { if (cubeAvatarOn && cubeAvatar) cubeAvatar.relive(); }); // Real experts switched in Bob's thinking
+window.addEventListener('bob-cube-live', () => { if (cubeAvatarOn && cubeAvatar) cubeAvatar.relive(); });
+// Nov 23: with Bob's window hidden or minimised the corner cube stops listening, so Bob asks Brain Engine for no trace
+// (Real experts costs a little on every word); it picks up again, brain and all, when the window shows.
+document.addEventListener('visibilitychange', () => { if (!cubeAvatarOn || !cubeAvatar) return; if (document.hidden) cubeAvatar.disconnect(); else cubeAvatar.connect(); }); // Real experts switched in Bob's thinking
 setAvatarCube(true); // 1.5.222: the cube is Bob's picture, always; the pixel Bob only shows in games (Adventure, Journey)
 if (advDlg && globalThis.MutationObserver) new MutationObserver(showCubeAvatar).observe(advDlg, { attributes: true, attributeFilter: ['open'] });
 // 1.5.210 Lamplight on a phone: the left menu is a sheet, so the porthole moves to the top of the chat with Bob's
@@ -565,7 +568,7 @@ bobCanvas.setAttribute('aria-label', 'Bob. Open my menu');
 // 1.5.210 Lamplight: the top bar keeps only Bob, the pages and Find anything; the rest of the menu sits here.
 // Each line presses the very button it stands for, so nothing behaves differently.
 const lamp = () => document.body.classList.contains('look-lamplight');
-const LAMP_TOOLS = [['settingsBtn', '⚙', 'Settings'], ['dlBtn', '⬇', 'Downloads'], ['tidyBtn', '🧹', 'Tidy up'], ['shelfBtn', '🖼', 'References'], ['helpBtn', '❔', 'Help'], ['ear', '🎙', 'Listen for "Hey Bob"'], ['speak', '🔊', 'Read aloud'], ['notify', '🔔', 'Alerts']];
+const LAMP_TOOLS = [['settingsBtn', '⚙', 'Settings'], ['dlBtn', '⬇', 'Downloads'], ['tidyBtn', '🧹', 'Tidy up'], ['shelfBtn', '🖼', 'References'], ['helpBtn', '❔', 'Help'], ['ear', '🎙', 'Listen for "Hey Bob"'], ['speak', '🔊', 'Read aloud'], ['notify', '🔔', 'Alerts'], ['mindCubeLive', '🧊', 'Real experts']]; // Nov 23: Real experts (the live map in the porthole) is a row here too
 const lampTools = () => (lamp() ? LAMP_TOOLS.filter(([id]) => $(id) && !$(id).hidden).map(([id, icon, label]) => ({ id, icon, label, st: $(id).querySelector('.st')?.textContent || '' })) : []);
 const bobMenu = createBobMenu({
   anchor: bobCanvas,
