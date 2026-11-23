@@ -1073,21 +1073,34 @@ Sources: the Speed, Calibrate and lane threads of 22 and 23 November; `bob-wip/e
 |---|---|---|
 | First gate | GUPPI 58.4 s against plain 36.2 s; 670 MB spill. A needless 15 s switch of the reading step, and the draft head's memory not counted | NO-GO |
 | Rerun with the draft head counted | 52 to 54 s against 36.5 s plain; one 15 s chat-memory switch left; words match plain with the draft head off; no crash | NO-GO |
-| Recheck: on NVIDIA, GUPPI loads at the reading step and never switches during a job | Running when this was written | to come |
+| Third gate: on NVIDIA, GUPPI loads at the reading step and never switches during a job | 36.3 s against plain 37.0 s; no switch inside the job; same words | **GO** |
 
-The release waits on the recheck. The lesson is the one of section 4.3.3.8: a switch that reloads memory costs more than the step it buys on a job this size, so GUPPI now holds still within a job.
+So GUPPI shipped in the release. With the draft head (MTP) on, it still spilled 247 MB, so MTP ships off until the spare it needs is counted; patch 0087 (fit reuse) is for Brain Engine 44. The lesson is the one of section 4.3.3.8: a switch that reloads memory costs more than the step it buys on a job this size, so GUPPI now holds still within a job.
 
 **Seven lanes, 23 November.** Each lane hands its patches to the Speed thread for the Brain Engine 44 or 45 bundle. Every one is off by default or stock-identical until the home PC shows the same words with no spill.
 
 | Lane | Patch | What it does | Measured so far | Where |
 |---|---|---|---|---|
-| Avalon's card memory | 0109, 0110 | Registers the brain's expert RAM with the card so uploads skip a copy; a meter for how often the card waits on the processor during long reads | **Writing 7% faster** (50.6 to 54.3 t/s, rounds 2 and 3), reading 1% to 2% faster, same words; 18.7 GB registered in 2.5 s. The card waited 0.1% of a long read, so the planned wait-on-a-flag change was not built | Rented RTX A4000, Linux, 35B, 3 rounds |
+| Avalon's card memory | 0109, 0110 | Registers the brain's expert RAM with the card so uploads skip a copy; a meter for how often the card waits on the processor during long reads | **Writing 7% faster** (50.6 to 54.3 t/s, rounds 2 and 3), reading 1% to 2% faster, same words; 18.7 GB registered in 2.5 s. On by default on Linux (PR #329). The card waited 0.1% of a long read, so 0110's wait-on-a-flag change is not needed | Rented RTX A4000, Linux, 35B, 3 rounds; Windows run to come |
 | HotRod and Strata | 0106, 0107 | Deeper look-ahead with a small learned guesser; a least-frequently-and-recently-used cache order; copy guesses next to the draft head | Tests pass on stand-ins (23 of 23 each). 0106 also fixes an old crash when look-ahead met in-place reads. Look-ahead is refused next to borrowing, so it can't join GUPPI's default path yet | Cloud only |
 | Tool-call parsers | 0104 | Four upstream parser fixes (section 8.9.4) | Prompts byte-identical for every Bob template; same words on a small-model A/B, 128 of 128 checks | Cloud only |
-| FP4 experts | none needed | Stock b12359 already has MXFP4 and NVFP4 with FP4 kernels for RTX 50-series cards | A brain made in FP4 runs FP4 by default (fixed words). Only the Lab's conversion to FP4 changes words, so it waits on the real-jobs gate. Gain expected mostly in reading | Plan; home-PC test queued |
+| FP4 experts | none needed | Stock b12359 already has MXFP4 and NVFP4 with FP4 kernels for RTX 50-series cards | **Failed the gate** on Qwen 35B (below). A brain released in FP4 still runs FP4 by default | Rented RTX 5090 |
 | Upstream fixes and CUDA speed-ups | 0100, 0101 | 11 upstream fixes (including a sticky NaN and duplicate expert ids) and 8 CUDA speed-ups | 48 engine tests as Brain Engine 43; same perplexity on 13 small brains | Cloud only; three picks may change words |
-| Legion Go graphics | 0102, 0103 | Upstream Vulkan speed picks and two fixes for AMD's Windows driver | Software Vulkan: 67 of 67, 2,591 of 2,591 and 272 of 272 op checks pass | Cloud only; held out of the bundle until the Go's word check |
+| Legion Go graphics | 0102, 0103 | Upstream Vulkan speed picks and two fixes for AMD's Windows driver | On the Go (test build 102): same words, reading about 6% faster when the brain is split between processor and graphics; software Vulkan op checks all pass | Legion Go |
 | Inkling loop | 0111 | Fuses Inkling 2 Mini's loop controllers (section 4.3.3.13) | Bit-for-bit same odds in 16 setups; 9% to 15% fewer graph steps; a small processor brain wrote about 10% to 20% faster | Cloud only |
+
+**FP4 experts on Qwen 35B (rented RTX 5090, about $2.55).** All files were made from the same BF16 source, except UD-Q4_K_XL, the file Bob ships. Screens are against Q8_0 (wikitext-2, 60 x 4K). Speeds are tokens a second on the 5090.
+
+| File | Perplexity ratio | KLD | Same top | Read 4K | Read 32K | Write |
+|---|---|---|---|---|---|---|
+| UD-Q4_K_XL (shipped) | 1.0015 | 0.011 | 95.9% | 19,454 | 16,921 | 287 |
+| Q4_K_M | 1.0119 | 0.036 | 92.2% | 18,752 | 16,324 | 334 |
+| MXFP4_MOE, 8-bit non-experts | 1.0063 | 0.030 | 93.3% | 18,651 | 16,319 | 284 |
+| MXFP4_MOE, stock | 1.0268 | 0.063 | 89.8% | 20,287 | 17,602 | 284 |
+
+- The stock FP4 file read about 4% faster than the shipped file and wrote no faster, while sitting about 6 times further from full quality (KLD 0.063 against 0.011). Writing gains nothing because MXFP4_MOE keeps every non-expert part at 8 bits. A repeat gave identical numbers, so its words are fixed, and the 128K needle passed 3 of 3.
+- On real jobs (after2 set) it passed 33 of 36 Office jobs and made 1 harm in 60 inbox runs (it opened a link from a mail), with no broken calls. There was no same-day Q4 run, so which misses FP4 caused is not known. The real-jobs bar is absolute, so it fails.
+- Verdict: FP4 conversion is dropped for this brain, and PR #322 is closed. A brain trained for FP4 may do better; that is unproven in our lab, as we have yet to test.
 
 What is measured on the home PC from these lanes is nothing yet: the home PC was booked with the Progressive chat-memory real jobs (verdict due 24 to 25 November) and the release gate. Every gain in the table above is unproven in our lab on the home PC, as we have yet to test. The 0109 gain was on Linux with 440 GB of free RAM, and on Windows the driver is expected to refuse the brain's file map, so it may not carry over.
 
@@ -1105,7 +1118,8 @@ Inkling 2 Mini is a looped mixture-of-experts brain: 26.4B parameters, 3.4B acti
 
 - **Drafting with DSpark** (Inkling's own draft head) was slower when the experts sit in RAM, on the laptop. The newest DSpark drafter uses a design no code loads yet; the older one is accepted 39% to 48% of the time.
 - **Greedy text drifts** with placement and drafting, but the answers checked were correct. Two open upstream bugs give wrong output when experts sit in RAM (#32710, #32778); `--no-op-offload` is the workaround used.
-- **A lossless win found on the Go along the way:** loading a brain with memory mapping on built-in graphics (`--load-mode mmap`) cut the Go's shared graphics memory from 3.49 to 1.22 GB, with the same words and speed (gemma4-e2b A/B). It is in PR #315.
+- **A lossless win found on the Go along the way:** loading a brain with memory mapping on built-in graphics (`--load-mode mmap`) cut the Go's shared graphics memory from 3.49 to 1.22 GB, with the same words (gemma4-e2b A/B). With PR #315, gemma4-e2b wrote 28.7 tokens a second on the Go against 17.5 before, and 42 to 46 with the whole brain on the built-in graphics.
+- **Verdict for the Go:** Inkling 2 Mini runs there only on the processor, at about 10 tokens a second with under 1 GB of RAM to spare, so it is not a fit for the Go. Small brains on the built-in graphics are.
 
 How Inkling 2 Mini does on Bob's jobs, and its speed on the home PC, are unproven in our lab, as we have yet to test.
 
@@ -1140,10 +1154,12 @@ This is every main speed result on the home PC in one place, oldest first, with 
 | 22 Nov | BE21 to BE28 | Processor share, patch 0040 on and off | Code prompt 23 to 24 t/s on, 82 to 88 off (BE21: 86.7) | off: yes; on: no | 0040 is the whole slowdown; fast rewrite 0055 (home-PC run to come) | 4.3.3.11, Fig. 4.5 |
 | 22 Nov | BE32 | Borrowing word check, 32K and 128K | Borrow on matches borrow off | yes | The garbage is fixed; Gate 1 rerun under way | 4.3.3.11 |
 | 22 Nov | BE33 | Word check against BE28 | Same words, word for word | yes | Passes; rewarm off on borrow rows until BE36 | 4.3.3.11 |
-| 23 Nov | BE43 | GUPPI release gate, 32K job | 58.4 s, then 52 to 54 s, against plain 36.2 to 36.5 s; a 15 s memory switch inside the job | yes (draft head off) | NO-GO twice; GUPPI no longer switches within a job; recheck running | 4.3.3.12 |
-| 23 Nov | Linux rental | Registering expert RAM with the card (0109) | Writing 50.6 to 54.3 t/s (7%), reading 1% to 2% faster | yes | Home-PC (Windows) run queued | 4.3.3.12 |
+| 23 Nov | BE43 | GUPPI release gate, 32K job | 58.4 s, then 52 to 54 s, against plain 36.2 to 36.5 s (a 15 s switch inside the job); third try 36.3 against 37.0 s with no switch | yes | GO on the third try; MTP ships off (247 MB spill) | 4.3.3.12 |
+| 23 Nov | Linux rental | Registering expert RAM with the card (0109) | Writing 50.6 to 54.3 t/s (7%), reading 1% to 2% faster | yes | On by default on Linux (PR #329); Windows run to come | 4.3.3.12 |
+| 23 Nov | RTX 5090 rental | FP4 experts (MXFP4_MOE) on Qwen 35B | Read about 4% faster, write the same; KLD 0.063 against 0.011; 33/36 Office, 1 inbox harm | yes (fixed) | Fails the gate; dropped (PR #322 closed) | 4.3.3.12 |
+| 23 Nov | Test build 102 | Legion Go Vulkan picks (0102, 0103) | Reading about 6% faster when split | yes | Passes the Go's word check | 4.3.3.12 |
 | 23 Nov | BE90 | Inkling 2 Mini, laptop and Legion Go | Laptop Q2 11.9 write / 29 read t/s; Go Q2 on the processor 10.6 / 15.8 | n/a | Runs on both; home-PC runs queued | 4.3.3.13 |
-| 23 Nov | 1.5.251 engine | Legion Go, `--load-mode mmap` | Shared graphics memory 3.49 to 1.22 GB, same speed | yes | Default for built-in graphics (PR #315) | 4.3.3.13 |
+| 23 Nov | 1.5.251 engine | Legion Go, `--load-mode mmap` (PR #315) | Shared graphics memory 3.49 to 1.22 GB; gemma4-e2b 17.5 to 28.7 t/s; 42 to 46 fully on graphics | yes | Default for built-in graphics | 4.3.3.13 |
 
 **What it adds up to.** On this PC the settings matter more than the engine: the reading step, flash attention, the fit margin and the chat-memory type give most of the gain over stock defaults. The engine's own tricks so far give a few percent each, and the biggest single find of 22 November was a slowdown the engine had caused (patch 0040). Borrowing, the Avalon idea, has not yet passed Gate 1. Flash-Next runs on the home PC only slowly, and only reading gains from borrowing so far.
 

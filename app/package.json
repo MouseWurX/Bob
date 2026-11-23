@@ -1,6 +1,6 @@
 {
   "name": "bob",
-  "version": "1.5.253",
+  "version": "1.5.254",
   "description": "Bob, a local AI who lives on your PC: chat, pictures, video, voice and more, all on your own hardware.",
   "type": "module",
   "private": true,
@@ -20,6 +20,8 @@
     "dist:linux": "electron-builder --linux AppImage --publish never"
   },
   "testSuites": [
+    "test/run-hf-sign-in-test.js",
+    "test/run-engine-min-test.js",
     "test/run-brain-choices-test.js",
     "test/run-quant-steps-test.js",
     "test/run-syntax-test.js",
@@ -329,9 +331,9 @@
   ],
   "bob": {
     "release": "1.5",
-    "patch": 253,
+    "patch": 254,
     "branch": "",
-    "build": 305,
+    "build": 306,
     "bundledLlamaTag": "b12359",
     "brainEngineVersion": 43,
     "brainEngine": {
