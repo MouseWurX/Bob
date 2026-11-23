@@ -74,6 +74,8 @@ import { applyReading, startEveryday, shouldOfferOwnCode } from './everyday.js';
 import { createReplyParts } from './app-replies.js';
 import { createRedoParts } from './app-redo.js';
 import { createCopyParts } from './app-copy.js';
+import { installPathCleaning } from './clean-path.js'; // Nov 18: pasted paths lose their quotes and invisible marks
+installPathCleaning();
 // Pieces of the chat that live in their own files (app-*.js). Their functions read app.js's values fresh on every call.
 // app-replies.js
 const {
@@ -864,6 +866,7 @@ function onEvent(ev) {
           if (!r.ok) note(r.why || 'That card is too old now. Ask me again.', 'error');
           else if (r.done === 'download') note(`Getting ${r.names.join(' and ')} (about ${r.size}). Progress is in Downloads.${ev.carryOn ? ' Your request waits in Tasks, and I carry on by myself as soon as it\'s in.' : ''}`);
           else if (r.done === 'equip') note(ev.carryOn ? 'Done, it\'s in its slot. Carrying on with your request.' : 'Done, it\'s in its slot.');
+          else if (r.done === 'folder') note(ev.carryOn ? `Added ${r.folder}. Carrying on with your request.` : `Added ${r.folder}. You can take it off again in ${ev.where}.`);
           else if (r.done === 'switch') note(ev.carryOn ? `Switched on "${ev.name}". Carrying on with your request.` : `Switched on "${ev.name}". You can switch it off again in ${ev.where}.`);
         } catch (e) { yes.disabled = no.disabled = false; note(e.message, 'error'); }
       };
@@ -983,8 +986,8 @@ function onEvent(ev) {
       if (ev.action === 'thinking') { endReply(ev); add('note borrow', `🏗 Rented brain: ${esc(ev.rental)}${ev.service ? ` on ${esc(ev.service)}` : ''} thinks this one. The tools still run here.`); }
       else if (ev.action === 'back') { endReply(ev); add('note borrow', `🏗 ${esc(ev.rental)} couldn't take it (${esc(ev.why || '')}), so Bob thinks this one himself.`); }
       else if (ev.action === 'start') add('note borrow', `🏗 Started a rented machine on ${esc(ev.service)} for ${esc(ev.rental)}. It stops when the job is done, or after ${ev.minutes} minutes whatever happens.`);
-      else if (ev.action === 'used') add('note borrow muted', `🏗 ${esc(ev.rental)}: about ${esc(ev.usd)} so far this job; ${esc(ev.monthUsd)} this month.`);
-      else if (ev.action === 'stop') add('note borrow', ev.stopped ? `🏗 Stopped the rented machine (${esc(ev.service)}) after ${ev.minutes} min, ${esc(ev.usd)}: ${esc(ev.why)}.` : `🏗 I couldn't stop the rented machine on ${esc(ev.service)} (${esc(ev.machine || '')}). Please stop it on their website so it doesn't keep billing.`);
+      else if (ev.action === 'used') add('note borrow muted', `🏗 ${esc(ev.rental)}: about ${esc(ev.usd)} so far this job; about ${esc(ev.monthUsd)} this month (Bob's estimate; the service's bill is the real one).`);
+      else if (ev.action === 'stop') add('note borrow', ev.stopped ? `🏗 Stopped the rented machine (${esc(ev.service)}) after ${ev.minutes} min, about ${esc(ev.usd)} by Bob's estimate: ${esc(ev.why)}.` : `🏗 I couldn't stop the rented machine on ${esc(ev.service)} (${esc(ev.machine || '')}). Please stop it on their website so it doesn't keep billing.`);
       else if (ev.action === 'warn') add('note borrow', `🏗 ${esc(ev.text)}`);
       else if (ev.action === 'leftover') add('note borrow', `🏗 ${ev.machines.length === 1 ? 'A rented machine is' : `${ev.machines.length} rented machines are`} still running from before: ${ev.machines.map((m) => `${esc(m.service)} ${esc(m.id)}${m.perHour ? ` (about $${(+m.perHour).toFixed(2)} an hour)` : ''}`).join(', ')}. Stop them in Settings, Online services, Rented brains.`);
       else if (ev.action === 'slot') { rentSwitch.update(ev.rental); window.dispatchEvent(new CustomEvent('bob-rent-slot', { detail: { rental: ev.rental } })); }

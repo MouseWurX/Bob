@@ -42,6 +42,9 @@ import { cantReason, markCant, settleCant } from './cant-retry.js';
 import { askTogether } from './together.js';
 import { callKey, realState, linkKey, NOW_IN_NOTE, staleHandErrors, meanwhileNear, claimsPcAction, CLAIM_CORRECTION, CLAIM_NUDGE, claimsObservation, OBSERVE_CORRECTION, OBSERVE_NUDGE, LINK_NUDGE, EMPTY_NUDGE, CANT_NUDGE, EMPTY_NOTE, DOING_TOOLS, isLook, ALT_ROUTE_DONE, ALT_ROUTE_NUDGE, quickHandBack } from './brain-words.js';
 import { sidePick, apuRoom } from './brain-lanes.js';
+import { handOffPromise, HAND_OFF_LINE, HAND_OFF_LOG } from './hand-off-promise.js';
+import { switchFor } from './setup-offer.js';
+import { settleOld } from './stale-asks.js';
 import { MAX_STEPS, loopSteps, borrowedLine, MAX_CALLS_PER_REPLY, HAND_TOOLS, repeatCheck, repeatNote, trailOf, REPEAT_STOP_LINE, REPEATS_THEN_ANSWER, ANSWER_NOW_NUDGE } from './brain.js';
 
 // Methods of the Brain class, put on it in its main file with the same rules as the methods written inside it.
@@ -74,7 +77,7 @@ export const runOnParts = {
     // Try again and Edit (redo.js): the message is already in the chat, changed in place, so the brain gets a hidden note only.
     const again = (Boolean(job?.switchedTo) || Boolean(job?.rentAgain) || Boolean(job?.redo)) && Boolean(lastUser) && String(lastUser.text ?? lastUser.content ?? '').startsWith(text);
     if (again) msgs.push({ role: 'system', content: job.switchedTo ? switchedNote(job.switchedTo) : job.redo && !job.carryOn ? (job.redo === 'edit' ? EDIT_NOTE : REDO_NOTE) : job.carryOn || '', hidden: true });
-    else { msgs.push(user); if (!job?.guest) emit({ type: 'asked', id: user.id }); } // the window marks your bubble, for Edit (redo.js)
+    else { if (settleOld(msgs)) this.log('honesty', 'an old ask with no answer, or an old carry-on note, was set aside before the new message'); msgs.push(user); if (!job?.guest) emit({ type: 'asked', id: user.id }); } // Nov 18: stale-asks.js // the window marks your bubble, for Edit (redo.js)
     if (job) job.rentAgain = false;
     const turnStart = again ? msgs.map((m) => m.role).lastIndexOf('user') : msgs.length - 1;
     // 1.5.207 PC check: after Switch it on (or any carry-on), the same chat line went in the logbook a second time.
@@ -156,6 +159,9 @@ export const runOnParts = {
     ctx.meanwhile = job?.side ? meanwhile : '';
     const extras = [state, meanwhile, presetPrompt(ctx.preset, this.cfg.userName || 'the user'), guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), jobHelpsPrompt(this.cfg, job), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
     const brainCtx = await this.fitCtx(model, wantCtx);
+    // Nov 22 (Hermes Agent check): the time in the turn note is read once per turn. The note sits before the latest
+    // message, so a time that changed between steps made the engine read every step of the job again each minute.
+    const turnTime = this.now();
     // 1.5.127: a chat that no longer fits the biggest brain here, with a rented brain in its slot: offer it (the job carries on here meanwhile).
     if (!job?.rent && !job?.side && !job?.guest && this.rentals.current() && !ctx.rentOffered) {
       const tokens = roughTokens({ messages: msgs });
@@ -308,13 +314,13 @@ export const runOnParts = {
       if (thinkNow !== think && !ctx.stepThinkSaid) { ctx.stepThinkSaid = true; this.log('chat', 'tool steps: no thinking (planning and the answer keep it)'); }
       const pub = Boolean(job?.guest?.public); // Bob on Discord: no memory, about-me or backstory of the owner's
       const hush = pub || isGuestId(sessionId); // a guest chat: no memory or about-me either (guest-chat.js)
-      const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: this.now(), memory: hush ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: hush ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
+      const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: turnTime, memory: hush ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: hush ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
       // Nov 11 (item 1): what changes every turn (the time, the Right now line, recalled bits) goes in a short note just
       // before the latest message, not in the instructions. The time changed every minute and the RAM line every turn,
       // so the engine threw away the whole chat it had already read and read it again; now it keeps it (its prompt cache).
       const steadySys = { role: 'system', content: this.withLimits(systemPrompt({ now: NOW_IN_NOTE, memory: hush ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: hush ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) };
       const waitingOn = pendingLine(this.switchesOff(), this.pendingSwitches()); // 1.5.207: one short line, only while an offer waits
-      const turnNote = `Current date and time for ${pub ? 'the owner' : this.cfg.userName || 'the user'}: ${this.now()}.${extras}${waitingOn ? `\n${waitingOn}` : ''}${earlier ? `\n\n${earlier}` : ''}`;
+      const turnNote = `Current date and time for ${pub ? 'the owner' : this.cfg.userName || 'the user'}: ${turnTime}.${extras}${waitingOn ? `\n${waitingOn}` : ''}${earlier ? `\n\n${earlier}` : ''}`;
       let reply = null;
       // A lender keeps the start of the chat it read last time (its prompt cache), so what changes every turn (the time,
       // the Right now line, recalled bits) goes in a short note just before the latest message, not in the instructions.
@@ -531,6 +537,20 @@ export const runOnParts = {
       } // asked for something that didn't happen: one more go
       // Quick brain sees the job: a note that came while the big brain was writing its answer (no next step)
       // still reaches it, once: it says what changes, or that it saw it (PC test 1.5.203: the note never arrived).
+      // Nov 18 (hand-off-promise.js): the job needs a Hand that's off and he promised it anyway. No nudge (he has no
+      // tool for it): the Switch it on card goes up and the reply says plainly that nothing was done.
+      if (!reply.tool_calls && !empty && !ctx.handOffSaid && !job?.side && !ctx.noTools) {
+        const need = handOffPromise({ ask: text, reply: reply.content, usable: (n) => this.usable(n) });
+        if (need && !ctx.offered?.has(need)) {
+          ctx.handOffSaid = true; ctx.promiseChecked = true; // no "do it now" nudge after: he has no tool for it
+          const r = await this.offerSetup(need, ctx, { quiet: true }).catch(() => '');
+          if (r && ctx.offeredNow) {
+            const name = switchFor(this.cfg, need)?.name || 'That Hand';
+            const line = HAND_OFF_LINE(name); emit({ type: 'token', text: line }); reply.content = String(reply.content || '') + line;
+            this.log('honesty', HAND_OFF_LOG(need));
+          }
+        }
+      }
       // Nov 11 (loop-help.js): "I'll look that up." and nothing ran: one nudge to really do it.
       if (!reply.tool_calls && !empty && !this.helpOff('promise') && !ctx.promiseChecked && !ctx.noTools && nudgeOk(ctx) && promisesAction(reply.content)) {
         ctx.promiseChecked = true;

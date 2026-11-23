@@ -1117,6 +1117,9 @@ export class LlamaCpp {
         try { this.log?.('engine', `${model}: spread over ${helpers.length} other Bob${helpers.length > 1 ? 's' : ''}' card${helpers.length > 1 ? 's' : ''} (${helpers.join(', ')}). The first time, part of the brain is sent over the network: over Wi-Fi that can take a while (I'll wait up to ${mins} min), and a network cable is much faster. Later loads only send what's missing.`); } catch {}
       }
     }
+    // Nov 17: a load without lent cards (processor only, no card, a spread that failed, or none lent) lets go of any
+    // lends left from before, so the brain line never says "borrowing" for a brain running here alone.
+    if (!helpers.length && this.role !== BESIDE && this.spread?.using?.length) this.spread.close();
     // Nov 12 (apu-fit.js): on built-in graphics, the brain goes where it really fits, read with the memory free now.
     if (!helpers.length && !cpu && card !== 'none') this.apuFit(model, args, ctx || this.lc.ctx || DEFAULT_CTX);
     // A llama-server left over from a crash would hold the port: stop it first.

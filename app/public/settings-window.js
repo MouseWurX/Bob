@@ -10,6 +10,8 @@ import { createHelp } from './help.js';
 import { installTips } from './tips.js';
 import { CHANNEL, RELAY, jumpFromHash, message } from './settings-link.js';
 import { applyReading } from './everyday.js';
+import { installPathCleaning } from './clean-path.js'; // Nov 18: pasted paths lose their quotes and invisible marks
+installPathCleaning();
 
 applySavedStyle();
 startI18n();

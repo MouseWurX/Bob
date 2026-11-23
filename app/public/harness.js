@@ -64,7 +64,7 @@ export function harnessHtml(part, v, crashes = []) {
     <div class="srow" role="radiogroup" aria-label="When they fade"><strong>When they fade</strong>
       ${radio('fadeMode', 'hide', f.mode, 'Hide them', 'Bob still remembers. Topics and search still find them.')}
       ${radio('fadeMode', 'delete', f.mode, 'Delete them for good', 'For privacy: the words are gone from disk, Topics and search. His notes and memory stay.')}</div>
-    <p><button type="button" data-hx-clearchat>🧹 Clear this chat</button> <span class="muted">Asks first. Also at the top of the chat and in Find anything.</span></p>
+    <p><button type="button" data-hx-clearchat>Clear this chat</button> <span class="muted">Asks first. Also at the top right of the chat and in Find anything.</span></p>
   </div>`;
   const amnesia = `<div class="fade-set" id="amnesia-mode">
     ${sw('amnesiaOffer', v.amnesiaOffer)}

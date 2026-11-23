@@ -98,7 +98,11 @@ Experts per word is a separate setting from the cut: how many of the experts tha
 | 3 | 26 | 19 | 4 | 106.7 |
 | 2 | 1 | 11 | 0 | 106.0 |
 
-Quality held at 8, 6 and 4 and fell at 3. At 2 it collapsed to 1 of 97 right tool and 0 of 6 code tasks. The same test on four healed cuts at the default 8 per word:
+Quality held at 8, 6 and 4 and fell at 3. At 2 it collapsed to 1 of 97 right tool and 0 of 6 code tasks.
+
+![Experts per word: quality on three tests, and writing speed](figures/experts-per-word.svg)
+
+*Figure 9.1. The first table above, drawn. On the left, the share right on each test; on the right, writing speed. Going from 8 to 4 experts per word gave 24% more speed for 1 fewer right tool of 97, inside the quiz's noise. Going below 4 gave almost no more speed and cost quality on every test. One run per setting, on small tests.* The same test on four healed cuts at the default 8 per word:
 
 | Model | Experts kept | Right tool (of 97) | Facts (of 20) | Code runs (of 6) |
 |---|---|---|---|---|

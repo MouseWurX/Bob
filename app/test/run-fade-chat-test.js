@@ -227,6 +227,7 @@ const chat = () => [
   check('the 🫥 button is a switch, hidden until offered', /setAttribute\('role', 'switch'\)/.test(pub) && /btn\.hidden = !\(a\.offered \|\| a\.on\)/.test(pub));
   check('one redraw at a time (no chat drawn twice)', /if \(drawing\) \{ again = true; return drawing; \}/.test(pub));
   check('app.js asks for faded turns only with Show them', /fadeChat\?\.showAll \? '&all=1' : ''/.test(appJs) && /el\.dataset\.at = m\.at/.test(appJs));
+  check('no fade line until something faded; Clear chat sits top right with no broom (Nov 18)', /if \(!gone && !showAll\) return;/.test(pub) && !/Nothing has faded yet/.test(pub) && !/🧹/.test(pub) && /clearBtn\.textContent = 'Clear chat'/.test(pub) && /\.clear-chat-top \{ position: absolute; top: 10px; right: 20px/.test(read('public/style.css')) && /\.mid\.paged > #clearChatTop \{ display: none !important; \}/.test(read('public/style.css')));
   check('Clear chat is in Find anything', /label: 'Clear chat', kind: 'Tool'/.test(appJs));
   check('nothing new goes in the brain\'s start prompt', !/fade|amnesia/i.test(read('src/brain-prompting.js')));
   const ids = ['fade-chat', 'amnesia-mode', 'faq-fade', 'faq-amnesia'];

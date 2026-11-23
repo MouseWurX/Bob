@@ -172,7 +172,10 @@ async function askBackups(q, w, { cfg, get, signal, now, key, tried }) {
 }
 
 // get(url, opts) does the fetching. Returns the text web_search gives the brain.
-export async function webSearch({ query, when }, { cfg = {}, get, signal, now = Date.now, key } = {}) {
+// person(url): "Let me finish robot checks" (human-check.js, from tools.js; off by default). When every search page
+// showed a robot check and no backup answered, the first one goes to you on a card; resolves { html } when you finished
+// it, { skipped } or null. Bob never does the check himself.
+export async function webSearch({ query, when }, { cfg = {}, get, signal, now = Date.now, key, person = null } = {}) {
   const w = String(when || '').toLowerCase();
   const df = DDG_DATE[w];
   const q = String(query || '').trim();
@@ -185,17 +188,20 @@ export async function webSearch({ query, when }, { cfg = {}, get, signal, now = 
     if (got) return `(From ${SERVICES[got.id].name}, first because Private web is on.)\n${resultLines(got.list)}`;
   }
   let list = [], why = '', blocked = [];
+  const pages = []; // the search pages that showed a robot check: { name, url, parse }
+  const ddgUrl = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q) + (df ? `&df=${df}` : '');
+  const mojeekUrl = 'https://www.mojeek.com/search?q=' + encodeURIComponent(q);
   try {
-    const res = await get('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q) + (df ? `&df=${df}` : ''), { headers: UA });
+    const res = await get('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q) + (df ? `&df=${df}` : ''), { headers: UA }); // the same address as ddgUrl
     const html = res.status === 200 || res.status === 202 || res.status === 403 || res.status === 429 ? await res.text().catch(() => '') : '';
-    if (blockedPage(res.status, html)) { blocked.push('DuckDuckGo'); why = 'DuckDuckGo showed its robot check'; }
+    if (blockedPage(res.status, html)) { blocked.push('DuckDuckGo'); pages.push({ name: 'DuckDuckGo', url: ddgUrl, parse: parseDdg }); why = 'DuckDuckGo showed its robot check'; }
     else if (res.ok) list = parseDdg(html); else why = `DuckDuckGo answered ${res.status}`;
   } catch (e) { if (signal?.aborted || e?.route) throw e; why = e.name === 'TimeoutError' ? 'DuckDuckGo took too long' : `DuckDuckGo: ${e.message}`; }
   if (list.length) return resultLines(list);
   try {
-    const res = await get('https://www.mojeek.com/search?q=' + encodeURIComponent(q), { headers: UA });
+    const res = await get(mojeekUrl, { headers: UA });
     const html = await res.text().catch(() => '');
-    if (blockedPage(res.status, html)) blocked.push('Mojeek');
+    if (blockedPage(res.status, html)) { blocked.push('Mojeek'); pages.push({ name: 'Mojeek', url: mojeekUrl, parse: parseMojeek }); }
     else if (res.ok) list = parseMojeek(html);
   } catch (e) { if (signal?.aborted || e?.route) throw e; }
   if (list.length) return `(From Mojeek: ${why || 'DuckDuckGo found nothing'}${df ? '; no date filter there' : ''}.)\n${resultLines(list)}`;
@@ -210,11 +216,21 @@ export async function webSearch({ query, when }, { cfg = {}, get, signal, now = 
       return `(From ${SERVICES[id].name}, the backup search${SERVICES[id].keyless ? ' (no key)' : ' with your key'}: ${lead}${w && !SERVICES[id].dates ? '; no date filter there' : ''}.)\n${resultLines(got.list)}`;
     }
   }
+  let personSaid = '';
+  if (pages.length && typeof person === 'function') {
+    const p = pages[0]; // one card a search, at most
+    const got = await person(p.url);
+    if (got?.html) {
+      const l = p.parse(got.html);
+      if (l.length) return `(${p.name} asked for a person to finish its robot check, and you did.${p.name === 'Mojeek' && df ? ' No date filter there.' : ''})\n${resultLines(l)}`;
+      personSaid = ` You finished ${p.name}'s check, but its page had no results I could read.`;
+    } else if (got?.skipped) personSaid = ` I didn't hand you the check: ${got.skipped}.`;
+  }
   if (blocked.length) {
     const backup = backupOn(cfg)
       ? (tried.length ? ` The backup search didn't help: ${tried.join('; ')}.` : ' The search service you turned on has no key yet: Settings, Connections, Search API keys.')
       : ' A search service with your own key can stand in: Settings, Connections, Search API keys (each off unless you turn it on).';
-    return `The search pages are blocking this computer right now (${blocked.join(' and ')} showed a robot check). I don't get round those.${backup} fetch_page still works for a link you already have.`;
+    return `The search pages are blocking this computer right now (${blocked.join(' and ')} showed a robot check). I don't get round those.${personSaid}${backup} fetch_page still works for a link you already have.`;
   }
   return `No results (or the search pages changed). Try different words.${tried.length ? ` The backup search: ${tried.join('; ')}.` : ''}`;
 }

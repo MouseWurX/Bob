@@ -1,0 +1,406 @@
+diff --git a/common/arg.cpp b/common/arg.cpp
+index 6bf9355..669f9d9 100644
+--- a/common/arg.cpp
++++ b/common/arg.cpp
+@@ -3617,6 +3617,19 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
+             params.n_cache_reuse = value;
+         }
+     ).set_examples({LLAMA_EXAMPLE_SERVER}).set_env("LLAMA_ARG_CACHE_REUSE"));
++    add_opt(common_arg(
++        {"--prompt-odds-max"}, "N",
++        string_format(
++            "Brain Engine: let requests score their own prompt (prompt_odds), reading up to N places per batch. Keeps room for N more\n"
++            "outputs, N x vocabulary x 4 bytes on the card and in memory (default: %d, prompt_odds refused)", params.prompt_odds_max
++        ),
++        [](common_params & params, int value) {
++            if (value < 0) {
++                throw std::invalid_argument("--prompt-odds-max must be 0 or more");
++            }
++            params.prompt_odds_max = value;
++        }
++    ).set_examples({LLAMA_EXAMPLE_SERVER}).set_env("LLAMA_ARG_PROMPT_ODDS_MAX"));
+     add_opt(common_arg(
+         {"--metrics"},
+         string_format("enable prometheus compatible metrics endpoint (default: %s)", params.endpoint_metrics ? "enabled" : "disabled"),
+diff --git a/common/common.h b/common/common.h
+index 6043ab3..c857321 100644
+--- a/common/common.h
++++ b/common/common.h
+@@ -649,6 +649,7 @@ struct common_params {
+     int32_t sse_ping_interval   = 30;            // SSE ping interval in seconds
+     int32_t n_threads_http      = -1;    // number of threads to process HTTP requests (TODO: support threadpool)
+     int32_t n_cache_reuse       = 0;     // min chunk size to reuse from the cache via KV shifting
++    int32_t prompt_odds_max     = 0;     // Brain Engine: places a batch may score for prompt_odds (0 = prompt_odds off)
+     bool    cache_prompt        = true;  // whether to enable prompt caching
+     bool    cache_idle_slots    = true;  // save and clear idle slots upon starting a new task
+     int32_t n_ctx_checkpoints   = 32;    // max number of context checkpoints per slot
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 3e666c9..1c43a85 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -24,6 +24,8 @@
+ #include "base64.hpp"
+ 
+ #include <algorithm>
++#include <cmath>
++#include <functional>
+ #include <cstddef>
+ #include <cstring>
+ #include <cinttypes>
+@@ -631,6 +633,22 @@ struct server_slot {
+ 
+     std::vector<completion_token_output> generated_token_probs;
+ 
++    // Brain Engine: the prompt's own odds (prompt_odds), filled as the prompt is read. Row r is prompt token from + r:
++    // own[r] its log-probability, top_ids/top the k likeliest tokens at that place, most likely first.
++    struct prompt_odds_rows {
++        int32_t k    = 0;
++        int32_t from = 1;
++        int32_t n    = 0;
++        int32_t got  = 0;
++        std::vector<int32_t> ids;
++        std::vector<float>   own;
++        std::vector<int32_t> top_ids;
++        std::vector<float>   top;
++        std::vector<uint8_t> have;
++
++        void clear() { *this = prompt_odds_rows(); }
++    } podds;
++
+     bool has_next_token = true;
+     bool has_new_line   = false;
+     bool truncated      = false;
+@@ -1422,6 +1440,8 @@ private:
+     json dials_now = json::array();   // Brain Engine dials as they were set, empty = everything at 1
+     server_expert_trace etrace;
+ 
++    int32_t podds_in_batch = 0; // Brain Engine: places scored for prompt_odds in the batch being filled
++
+     server_metrics metrics;
+ 
+     // queued prompt stats - llama_decode() is async, so the timing is only valid after a sync
+@@ -1521,6 +1541,9 @@ private:
+         params_base = params;
+         const auto output_limits = server_output_limits(params_base);
+         params_base.n_outputs_max = output_limits.total;
++        // Brain Engine: room for the places a batch scores for prompt_odds, on top of the usual outputs
++        params_base.prompt_odds_max = std::min(std::max(0, params_base.prompt_odds_max), params_base.n_batch);
++        params_base.n_outputs_max += params_base.prompt_odds_max;
+         params_base.n_outputs_max_per_seq = output_limits.per_seq;
+ 
+         const bool has_mmproj = !params.mmproj.path.empty();
+@@ -2384,6 +2407,9 @@ private:
+             // TODO: check verify if this actually works with TTS
+             use_backend_sampling &= task.type != SERVER_TASK_TYPE_TTS;
+ 
++            // Brain Engine: the prompt's odds read the logits on the host
++            use_backend_sampling &= task.params.prompt_odds == 0;
++
+             // TODO: tmp until backend sampling is fully implemented
+             if (use_backend_sampling) {
+                 llama_set_sampler(ctx_tgt, slot.id, common_sampler_get(slot.smpl.get()));
+@@ -2404,12 +2430,32 @@ private:
+             slot.smpl.reset();
+         }
+ 
++        // Brain Engine: the prompt's odds need plain text (a token's position is its place in the prompt) and a model
++        // that reads left to right
++        if (task.params.prompt_odds > 0 && task.need_sampling()) {
++            if (params_base.prompt_odds_max <= 0) {
++                send_error(task, "prompt_odds is off: start the engine with --prompt-odds-max N (for example 128)", ERROR_TYPE_NOT_SUPPORTED);
++                return false;
++            }
++            if (!llama_get_memory(ctx_tgt) || !llama_get_causal_attn(ctx_tgt)) {
++                send_error(task, "prompt_odds needs a model that reads left to right", ERROR_TYPE_INVALID_REQUEST);
++                return false;
++            }
++            for (size_t i = 0; i < task.tokens.size(); i++) {
++                if (task.tokens[i] == LLAMA_TOKEN_NULL) {
++                    send_error(task, "prompt_odds scores text only, and this prompt has an image or sound in it", ERROR_TYPE_INVALID_REQUEST);
++                    return false;
++                }
++            }
++        }
++
+         // the per-request limit takes priority over the global one
+         slot.n_predict_max = task.params.n_predict != -1 ? task.params.n_predict : params_base.n_predict;
+ 
+         slot.task = std::make_unique<const server_task>(std::move(task));
+ 
+         expert_trace_begin(slot);
++        prompt_odds_begin(slot);
+ 
+         if (slot.task->type == SERVER_TASK_TYPE_TTS) {
+             slot.state = SLOT_STATE_PROCESSING_PROMPT;
+@@ -2742,6 +2788,7 @@ private:
+         res->prompt          = slot.task->tokens.detokenize(ctx_tgt, true);
+         res->response_fields = std::move(slot.task->params.response_fields);
+         res->expert_trace    = expert_trace_end(slot);
++        res->prompt_odds     = prompt_odds_end(slot);
+ 
+         res->truncated             = slot.truncated;
+         res->n_decoded             = slot.stats.n_gen;
+@@ -4454,6 +4501,7 @@ private:
+ 
+         // start populating the batch for this iteration
+         batch.clear();
++        podds_in_batch = 0;
+ 
+         // track if given slot can be batched with slots already in the batch
+         auto & slot_batched = batch.slot_batched;
+@@ -4730,6 +4778,11 @@ private:
+                                 // reuse any previously computed tokens that are common with the new prompt
+                                 n_past = slot.prompt.tokens.get_common_prefix(input_tokens);
+ 
++                                // Brain Engine: the odds of token `from` come out of reading token `from - 1`
++                                if (slot.task->params.prompt_odds > 0) {
++                                    n_past = std::min(n_past, slot.task->params.prompt_odds_from - 1);
++                                }
++
+                                 // the children start from the shared prefix, do not go past it
+                                 if (slot.task->n_tokens_shared > 0) {
+                                     n_past = std::min(n_past, slot.task->n_tokens_shared);
+@@ -5117,13 +5170,20 @@ private:
+                             break;
+                         }
+ 
++                        // Brain Engine: the places scored for prompt_odds share the room --prompt-odds-max made in each batch
++                        const bool podds_out = prompt_odds_wants(slot, slot.prompt.n_tokens());
++                        if (podds_out && podds_in_batch >= params_base.prompt_odds_max) {
++                            break;
++                        }
++                        podds_in_batch += podds_out ? 1 : 0;
++
+                         // embedding requires all tokens in the batch to be output;
+                         // MTP also wants logits at every prompt position so the
+                         // streaming hook can mirror t_h_nextn into ctx_dft.
+                         add_ok &= batch.add(slot.id,
+                             cur_tok,
+                             /* pos       = */ slot.prompt.tokens.pos_next(),
+-                            /* output    = */ slot.need_embd(),
++                            /* output    = */ slot.need_embd() || podds_out,
+                             /* is_prompt = */ true);
+                         if (!slot.task->decision.order.empty()) {
+                             batch.set_decision_order(batch.size() - 1, slot.task->decision.order[slot.prompt.n_tokens()]);
+@@ -5294,6 +5354,145 @@ private:
+         return false;
+     }
+ 
++    // Brain Engine: the prompt's own odds (prompt_odds). Every prompt token from `from` on gets the log-probability the
++    // model gave it after reading the tokens before it (teacher forcing), and the k likeliest tokens at that place.
++    void prompt_odds_begin(server_slot & slot) {
++        slot.podds.clear();
++        const auto & p = slot.task->params;
++        if (p.prompt_odds <= 0 || !slot.task->need_sampling()) {
++            return;
++        }
++        const int32_t n_prompt = slot.task->n_tokens();
++        slot.podds.k    = std::min(p.prompt_odds, llama_vocab_n_tokens(vocab));
++        slot.podds.from = p.prompt_odds_from;
++        slot.podds.n    = std::max(0, n_prompt - p.prompt_odds_from);
++        const size_t n = slot.podds.n, k = slot.podds.k;
++        slot.podds.ids.resize(n);
++        slot.podds.own.resize(n);
++        slot.podds.top_ids.resize(n*k);
++        slot.podds.top.resize(n*k);
++        slot.podds.have.assign(n, 0);
++        for (size_t r = 0; r < n; r++) {
++            slot.podds.ids[r] = slot.task->tokens[slot.podds.from + r];
++        }
++        if (slot.podds.n == 0) {
++            slot.podds.k = -1; // asked for, nothing to score: answer with no rows and add no outputs
++        }
++    }
++
++    // does reading prompt token `idx` give odds we keep (those of token idx + 1)?
++    static bool prompt_odds_wants(const server_slot & slot, int32_t idx) {
++        const int32_t r = idx + 1 - slot.podds.from;
++        return slot.podds.k > 0 && r >= 0 && r < slot.podds.n;
++    }
++
++    // one place: the k likeliest tokens (by logit, the same order as by odds) and the log of the softmax's sum
++    static void prompt_odds_row(const float * lg, int32_t n_vocab, int32_t k, llama_token own,
++                                int32_t * top_ids, float * top, float * own_lp) {
++        std::vector<std::pair<float, int32_t>> heap;
++        heap.reserve(k + 1);
++        float mx = -INFINITY;
++        for (int32_t v = 0; v < n_vocab; v++) {
++            const float x = lg[v];
++            mx = std::max(mx, x);
++            if ((int32_t) heap.size() < k) {
++                heap.emplace_back(x, v);
++                std::push_heap(heap.begin(), heap.end(), std::greater<>());
++            } else if (x > heap.front().first) {
++                std::pop_heap(heap.begin(), heap.end(), std::greater<>());
++                heap.back() = { x, v };
++                std::push_heap(heap.begin(), heap.end(), std::greater<>());
++            }
++        }
++        double sum = 0.0;
++        for (int32_t v = 0; v < n_vocab; v++) {
++            sum += std::exp((double) (lg[v] - mx));
++        }
++        const float lse = mx + (float) std::log(sum);
++        std::sort_heap(heap.begin(), heap.end(), std::greater<>()); // most likely first
++        for (int32_t i = 0; i < k; i++) {
++            top_ids[i] = heap[i].second;
++            top[i]     = heap[i].first - lse;
++        }
++        *own_lp = lg[own] - lse;
++    }
++
++    // after a sub-batch: the rows its outputs give, worked out over a few threads (a big vocab is ~250k floats a row)
++    void prompt_odds_read(server_slot & slot, const common_batch & view, int32_t n_view) {
++        auto & o = slot.podds;
++        std::vector<std::pair<const float *, int32_t>> todo; // (logits, row)
++        for (int32_t j = 0; j < n_view && j < view.size(); j++) {
++            const auto & t = view.tokens[j];
++            if (!t.output || t.seq_id != slot.id) {
++                continue;
++            }
++            const int32_t r = t.pos[0] + 1 - o.from;
++            if (r < 0 || r >= o.n || o.have[r]) {
++                continue;
++            }
++            const float * lg = llama_get_logits_ith(slot.ctx_tgt, j);
++            if (lg != nullptr) {
++                todo.emplace_back(lg, r);
++            }
++        }
++        if (todo.empty()) {
++            return;
++        }
++        const int32_t n_vocab = llama_vocab_n_tokens(vocab);
++        const int32_t k = o.k;
++        auto work = [&](size_t first, size_t step) {
++            for (size_t i = first; i < todo.size(); i += step) {
++                const int32_t r = todo[i].second;
++                prompt_odds_row(todo[i].first, n_vocab, k, o.ids[r], &o.top_ids[(size_t) r*k], &o.top[(size_t) r*k], &o.own[r]);
++            }
++        };
++        const size_t n_thr = std::min<size_t>({ (size_t) std::max(1, params_base.cpuparams.n_threads), (size_t) 16, (todo.size() + 7) / 8 });
++        std::vector<std::thread> pool;
++        for (size_t t = 1; t < n_thr; t++) {
++            pool.emplace_back(work, t, n_thr);
++        }
++        work(0, n_thr);
++        for (auto & th : pool) {
++            th.join();
++        }
++        for (const auto & d : todo) {
++            o.have[d.second] = 1;
++        }
++        o.got += (int32_t) todo.size();
++    }
++
++    // {from, n, k, ids, own, top_ids, top, missing}: row r is prompt token from + r. missing counts rows never read
++    // (should be 0); a row that was missed has own 0 and no top tokens.
++    json prompt_odds_end(server_slot & slot) {
++        auto & o = slot.podds;
++        if (o.k == 0) {
++            return nullptr;
++        }
++        const int32_t k = std::max(0, o.k);
++        json top_ids = json::array(), top = json::array();
++        for (int32_t r = 0; r < o.n; r++) {
++            if (!o.have[r]) {
++                top_ids.push_back(json::array());
++                top.push_back(json::array());
++                continue;
++            }
++            top_ids.push_back(std::vector<int32_t>(o.top_ids.begin() + (size_t) r*k, o.top_ids.begin() + (size_t) (r + 1)*k));
++            top.push_back(std::vector<float>(o.top.begin() + (size_t) r*k, o.top.begin() + (size_t) (r + 1)*k));
++        }
++        json out = {
++            { "from",    o.from },
++            { "n",       o.n },
++            { "k",       k },
++            { "ids",     o.ids },
++            { "own",     o.own },
++            { "top_ids", std::move(top_ids) },
++            { "top",     std::move(top) },
++            { "missing", o.n - o.got },
++        };
++        o.clear();
++        return out;
++    }
++
+     void expert_trace_begin(server_slot & slot) {
+         const bool want = slot.task->params.expert_trace;
+         if (!want && !etrace.on) {
+@@ -5747,6 +5946,11 @@ private:
+         };
+ 
+         iterate(slots, [&](server_slot & slot) {
++            // Brain Engine: the prompt's odds, from every output of this slot in this sub-batch
++            if (slot.podds.k > 0 && (slot.state == SLOT_STATE_PROCESSING_PROMPT || slot.state == SLOT_STATE_DONE_PROMPT)) {
++                prompt_odds_read(slot, batch.view, n_batch_tokens);
++            }
++
+             // optionally send prompt processing progress
+             if (slot.state == SLOT_STATE_PROCESSING_PROMPT || slot.state == SLOT_STATE_DONE_PROMPT) {
+                 if (slot.task->params.stream && slot.task->params.return_progress) {
+diff --git a/tools/server/server-schema.cpp b/tools/server/server-schema.cpp
+index 079ed06..df0d370 100644
+--- a/tools/server/server-schema.cpp
++++ b/tools/server/server-schema.cpp
+@@ -48,6 +48,14 @@ std::vector<std::unique_ptr<field>> make_llama_cmpl_schema(const common_params &
+     add((new field_bool("expert_trace_mass", params.expert_trace_mass))
+         ->set_desc("Brain Engine: with `expert_trace` on a mixture-of-experts model, also return `mass`: for every layer and expert, the sum over its picks of the router weight times the size (L2 norm) of what the expert wrote (REAP; mass / picks is the REAP score)"));
+ 
++    add((new field_num("prompt_odds", params.prompt_odds))
++        ->set_hard_limits(0, 128)
++        ->set_desc("Brain Engine: score the prompt itself. For every prompt token from `prompt_odds_from` on, return the log-probability the model gave it after reading the tokens before it, and the top N tokens it would have picked there, in the `prompt_odds` field of the final result ({from, n, k, ids, own, top_ids, top}). Teacher-forced scoring for distillation and perplexity. 0 = off"));
++
++    add((new field_num("prompt_odds_from", params.prompt_odds_from))
++        ->set_hard_limits(1, INT32_MAX)
++        ->set_desc("Brain Engine: with `prompt_odds`, the first prompt token to score (default 1). The tokens before the one in front of it can come from the prompt cache"));
++
+     add((new field_bool("return_progress", params.return_progress))
+         ->set_desc("Include prompt processing progress events in stream mode"));
+ 
+diff --git a/tools/server/server-task.cpp b/tools/server/server-task.cpp
+index 909e74e..24876a1 100644
+--- a/tools/server/server-task.cpp
++++ b/tools/server/server-task.cpp
+@@ -354,6 +354,9 @@ json server_task_result_cmpl_final::to_json_non_oaicompat() {
+     if (!expert_trace.is_null()) {
+         res["expert_trace"] = expert_trace;
+     }
++    if (!prompt_odds.is_null()) {
++        res["prompt_odds"] = prompt_odds; // Brain Engine
++    }
+     return response_fields.empty() ? res : json_get_nested_values(response_fields, res);
+ }
+ 
+@@ -450,6 +453,9 @@ json server_task_result_cmpl_final::to_json_oaicompat_chat() {
+     if (!expert_trace.is_null()) {
+         res["expert_trace"] = expert_trace; // Brain Engine: the chat endpoint carries the trace too
+     }
++    if (!prompt_odds.is_null()) {
++        res["prompt_odds"] = prompt_odds; // Brain Engine: and the prompt's odds
++    }
+     if (stats.is_set()) {
+         res["timings"] = stats.to_json();
+     }
+diff --git a/tools/server/server-task.h b/tools/server/server-task.h
+index bfcf03f..7ab798c 100644
+--- a/tools/server/server-task.h
++++ b/tools/server/server-task.h
+@@ -87,6 +87,8 @@ struct task_params {
+     bool expert_trace_stream = false; // Brain Engine: with expert_trace and stream, every streamed piece carries the rows read since the last one
+     bool expert_trace_mass  = false; // Brain Engine: with expert_trace, also add up each expert's router-weighted output size (REAP)
+     bool return_progress = false;
++    int32_t prompt_odds      = 0; // Brain Engine: odds for the prompt's own tokens, with the top N other tokens at each place (0 = off)
++    int32_t prompt_odds_from = 1; // Brain Engine: the first prompt token to score (the 0th has nothing before it)
+ 
+     int32_t sse_ping_interval = 30; // seconds between SSE comment pings while the stream stays silent, -1 disables
+ 
+@@ -444,6 +446,7 @@ struct server_task_result_cmpl_final : server_task_result {
+     std::vector<std::string>  response_fields;
+ 
+     json expert_trace; // Brain Engine: null unless asked for
++    json prompt_odds;  // Brain Engine: null unless asked for
+ 
+     task_params generation_params;
+ 

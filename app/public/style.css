@@ -494,7 +494,7 @@ body.left-folded .nav-item.on { box-shadow: none; }
 body.left-folded .side .session-wrap { flex-direction: column; padding: 4px 0; }
 body.left-folded .side .session { width: 52px; font-size: 10px; padding: 2px 0; }
 
-.mid { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.mid { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; }
 .ctx { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--panel); min-height: 42px; }
 .ctx-title { font-size: 14px; }
 .ctx-fill { flex: 1; }
@@ -748,6 +748,7 @@ button.big { padding: 9px 18px; font-size: 15px; min-height: 40px; }
 
 /* ---------- 1.5.0: Settings, Get models and Style as a page in the main area ---------- */
 .mid.paged > :is(#log, #chips, #tray, #composer) { display: none !important; }
+.mid.paged > #clearChatTop { display: none !important; }
 .cellar.page { position: static; flex: 1; min-height: 0; width: auto; max-width: none; max-height: none; margin: 0; border: 0; border-radius: 0; overflow: auto; background: var(--bg); }
 .cellar.page:not([open]) { display: none; }
 .cellar.page.wide { width: auto; }
@@ -2192,9 +2193,10 @@ a.mini.button:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 
 /* Settings, Jobs (public/job-helps.js) */
 .stop-after { background: transparent; color: var(--bad); border: 1px solid var(--bad); font-weight: 600; padding: 7px 12px; margin-right: 6px; }
-.job-clock { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 0.85em; color: var(--muted, inherit); }
-.job-clock-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--line, rgba(127,127,127,.25)); overflow: hidden; }
+.job-clock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: block; height: 4px; margin: 0; pointer-events: auto; } /* Nov 17: a thin bar along the very bottom of the window */
+.job-clock-bar { display: block; height: 100%; background: var(--line, rgba(127,127,127,.25)); overflow: hidden; }
 .job-clock-bar > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .5s; }
+.job-clock-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* read out and shown as the bar's tooltip */
 .note.receipt ul.receipt-list { margin: 4px 0 0; padding-left: 1.2em; }
 .note.receipt li { margin: 2px 0; overflow-wrap: anywhere; }
 .approval .why-not { flex: 1 1 14em; min-width: 0; }
@@ -2561,6 +2563,9 @@ body.still .net-row .nb:is(:hover, :focus-visible) .nb-port, body.still.look-lam
 .msg.fading-out { opacity: .15; transition: opacity 1.4s ease; }
 body.still .msg.fading-out { transition: none; }
 /* Nov 14: the Amnesia line is very subtle. One quiet line, no fill; the box you type in gets a thin purple edge, no glow. */
+.clear-chat-top { position: absolute; top: 10px; right: 20px; z-index: 6; min-height: 32px; padding: 4px 12px; font: inherit; font-size: 12.5px; color: var(--muted); background: color-mix(in srgb, var(--bg) 80%, transparent); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
+.clear-chat-top:hover, .clear-chat-top:focus-visible { color: var(--text); border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+@media (max-width: 900px) { .clear-chat-top { position: static; align-self: flex-end; margin: 8px 12px 0; } }
 .amnesia-bar { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 10px; margin: 2px auto 12px; max-width: 760px; padding: 2px 10px; color: var(--muted); font-size: 12.5px; }
 .amnesia-bar .amn-ic { font-size: 14px; opacity: .8; }
 .amnesia-bar .amn-t { line-height: 1.4; }
