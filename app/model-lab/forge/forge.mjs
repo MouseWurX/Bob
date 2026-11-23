@@ -42,8 +42,9 @@ function hfToken() {
   return tok;
 }
 const args = Object.fromEntries(process.argv.slice(2).map((a, i, arr) => a.startsWith('--') ? [a.slice(2), arr[i + 1]?.startsWith('--') || arr[i + 1] === undefined ? true : arr[i + 1]] : []).filter((x) => x.length));
-const KEY = process.env.RUNPOD_API_KEY;
-if (!KEY) { console.error('RUNPOD_API_KEY is not set (the "Save RunPod key" step).'); process.exit(1); }
+// the key from the environment, else from Bob's saved keys (store-key.mjs; FORGE_BOB_HOME = Bob's home folder)
+const KEY = process.env.RUNPOD_API_KEY || (process.env.FORGE_BOB_HOME ? (await import('./store-key.mjs')).storeKey('RUNPOD_API_KEY') : '');
+if (!KEY) { console.error(`RUNPOD_API_KEY is not set (the "Save RunPod key" step)${process.env.FORGE_BOB_HOME ? ', and Bob\'s saved keys in FORGE_BOB_HOME have none' : '; or set FORGE_BOB_HOME to Bob\'s home folder to use his saved keys'}.`); process.exit(1); }
 // 16 Nov 2026: RunPod retired rest.runpod.io/v1 (the name stopped resolving mid-rent); v2 at api.runpod.io is its replacement (runpod-v2.mjs)
 const REST = process.env.FORGE_REST || V2; // FORGE_REST / FORGE_OUT / FORGE_POD_DOOR: tests only (a made-up RunPod, a temp folder, a made-up pod door for --kill's log salvage)
 const outDir = process.env.FORGE_OUT || path.join(here, '..', 'out'); fs.mkdirSync(path.join(outDir, 'forge'), { recursive: true });
