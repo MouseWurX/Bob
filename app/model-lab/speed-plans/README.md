@@ -105,3 +105,4 @@ and each timed run, and the summary shows the card's start and top temperature a
 - `borrow-spare-128k-be32.json`: borrowing's spare card memory, 512 against 1024 MiB, on the 128K conductor-e2e job, 3 rounds alternating, round 3 on a normal desktop (Addendum 95).
 - `gate1-borrow-e2e-64k-be32.json` and `gate1-borrow-speed-be32.json`: the Gate 1 rerun on Brain Engine 32 (0052), borrow against fixed at `-b 16384 -ub 4096`, plus plain `-ub 8192` on the 64K job (Addendum 96).
 - `doorbell-35b-32k-be33.json` and `doorbell-flashnext-q2-32k-be33.json` (for `conductor-e2e.mjs`): the doorbell (0042) against share 0 and share 1 with Brain Engine 33's fast processor kernel, on the 35B and then on Flash-Next Q2 (Addendum 98).
+- `borrow-35b-words-be36.json`, `mtp-35b-words-be36.json` and `mtp-flashnext-q2-be36.json`: word checks on Brain Engine 36 for borrowed writing, rewarm, the fitted step and draft-mtp (Addendum 99).

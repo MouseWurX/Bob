@@ -1,0 +1,128 @@
+{
+ "name": "Borrowing words check on the 35B (Qwen3.6-35B-A3B) with Brain Engine 36: the 32K conductor-e2e job, temperature 0. Ref = borrowed reading alone (rewarm on, now fixed by 0063). 0065 (borrowed writing) must give the ref's words (lossless). 0064's fitted step and equal parts change the step, so they compare with a plain run at the step they log (see the logbook line), not with the ref. 2 rounds alternating, cool-down on.",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 99)",
+ "brain": "${BRAIN_35B}",
+ "engines": {
+  "be36": {
+   "exe": "${BE36_SERVER}",
+   "env": {
+    "GGML_CUDA_NO_PINNED": "1",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "2000",
+    "LLAMA_MOE_CACHE_BORROW": "1"
+   }
+  }
+ },
+ "text": "long-text.md",
+ "system": "You are a helpful assistant. Answer plainly.",
+ "followUps": 5,
+ "followTokens": 200,
+ "replyTokens": 300,
+ "retryOnce": true,
+ "saveText": true,
+ "spillCheck": true,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "textRepeat": 1,
+ "bigRead": 12288,
+ "rounds": 2,
+ "alternate": true,
+ "loadTimeoutMs": 900000,
+ "wordsRef": "borrow",
+ "baseArgs": [
+  "--jinja",
+  "-np",
+  "1",
+  "--no-webui",
+  "-fa",
+  "on",
+  "-c",
+  "32768",
+  "-ctk",
+  "q4_0",
+  "-ctv",
+  "q4_0",
+  "--fit",
+  "on",
+  "--fit-target",
+  "512",
+  "--moe-cache-mib",
+  "4096",
+  "-lv",
+  "4"
+ ],
+ "ways": [
+  {
+   "id": "borrow",
+   "engine": "be36",
+   "args": [
+    "--moe-cache-cpu-share",
+    "0",
+    "-b",
+    "8192",
+    "-ub",
+    "512"
+   ]
+  },
+  {
+   "id": "borrow-write",
+   "engine": "be36",
+   "args": [
+    "--moe-cache-cpu-share",
+    "0",
+    "-b",
+    "8192",
+    "-ub",
+    "512"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_BORROW_WRITE": "1"
+   }
+  },
+  {
+   "id": "borrow-norewarm",
+   "engine": "be36",
+   "args": [
+    "--moe-cache-cpu-share",
+    "0",
+    "-b",
+    "8192",
+    "-ub",
+    "512"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_REWARM": "0"
+   }
+  },
+  {
+   "id": "step-fit",
+   "engine": "be36",
+   "args": [
+    "--moe-cache-cpu-share",
+    "0",
+    "-b",
+    "8192",
+    "-ub",
+    "512"
+   ],
+   "env": {
+    "LLAMA_MOE_STEP_FIT": "1"
+   }
+  },
+  {
+   "id": "step-fit-equal",
+   "engine": "be36",
+   "args": [
+    "--moe-cache-cpu-share",
+    "0",
+    "-b",
+    "8192",
+    "-ub",
+    "512"
+   ],
+   "env": {
+    "LLAMA_MOE_STEP_FIT": "1",
+    "LLAMA_EQUAL_PARTS": "1"
+   }
+  }
+ ]
+}

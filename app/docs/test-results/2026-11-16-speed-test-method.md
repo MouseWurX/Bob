@@ -915,6 +915,21 @@ identical to off, the reserve line shows more nodes and input tensors than off, 
 `-ub 4096` falls by at least 1.8 GB against off. CUDA0 compute falls with POS but not with BUILD (BUILD still makes a
 table, on the card). Speed with BUILD is within 3% of off at every size.
 
+## Addendum 99 (Nov 22, before any run): word checks on Brain Engine 36
+
+Brain Engine 33 to 35 with borrowing on had a wrong-words fault: rewarm and the last row's misses could write into
+lent slots mid-read (fixed in 0063, Brain Engine 36). Borrowing word differences on those builds are suspect, even
+with `LLAMA_MOE_CACHE_REWARM=0`, which avoids only half of it; their speed and spill numbers still stand. Brain Engine
+32 has no rewarm and its word checks stand. Plans: `borrow-35b-words-be36.json` (borrowed reading as reference,
+against borrowed writing `LLAMA_MOE_CACHE_BORROW_WRITE=1`, rewarm off, and the fitted step with and without equal
+parts; the fitted-step ways are compared with a plain load at the step the log shows, not with the reference),
+`mtp-35b-words-be36.json` (plain against `--spec-type draft-mtp`, 3 guesses, temperature 0), and
+`mtp-flashnext-q2-be36.json` (only once Flash-Next runs on the test PC are allowed again).
+
+**Predictions, written before any run:** borrowed writing and rewarm off give the same words as borrowed reading;
+the fitted-step ways match plain at their logged step; draft-mtp at temperature 0 gives the same words as plain and
+writes 20-50% faster on the 35B.
+
 ## Addendum 98 (Nov 22, before any run): the doorbell with the fast processor kernel (Brain Engine 33)
 
 The doorbell (0042: card and processor work on different experts at once) showed no gain over share 1 on Brain
