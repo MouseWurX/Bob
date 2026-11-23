@@ -7,7 +7,7 @@
 #   - with LLAMA_MOE_STANDIN_TEST_NO_RAM=1 (as if no expert were in RAM) it stands in, never for the top pick, reads in
 #     the background and says so, and both answers come back
 #   - borrowed reading (0048) still turns on next to it
-#   - 0054's RAM floor is on with either, 512 MiB unless set, engages under it (free RAM pretended) without changing
+#   - 0054's RAM floor is on with either (0062: or on its own when LLAMA_MOE_RAM_FLOOR_MIB is set), 512 MiB unless set, engages under it (free RAM pretended) without changing
 #     the words, and 0 turns it off
 #   python3 engine/tests/moe-drive-standin.py <llama.cpp checkout with the patches, built with GGML_RPC=ON> [work folder]
 import json, os, re, subprocess, sys, tempfile, time, urllib.request
@@ -92,6 +92,9 @@ try:
     check('with the drive tier under the floor, the words are a plain run\'s', dlow == plain, f'{dlow} vs {plain}')
     _, err = serve('floor-off', {'LLAMA_MOE_STANDIN': 'drive', 'LLAMA_MOE_RAM_FLOOR_MIB': '0'})
     check('0 turns it off, with a warning', 'RAM floor OFF' in err and 'RAM floor on' not in err)
+    # 0062: on its own when asked for, without the drive tier or drive stand-ins
+    alone, err = serve('floor-alone', {'LLAMA_MOE_RAM_FLOOR_MIB': '1024', 'LLAMA_MOE_RAM_FLOOR_TEST_AVAIL_MIB': '500'})
+    check('asked for on its own, the floor is on and engages, with a plain run\'s words', 'RAM floor on: when free RAM drops under 1024 MiB' in err and 'RAM floor engaged: 500 MiB free' in err and alone == plain, err[-600:])
 finally:
     rpc.kill()
 print('ALL PASS' if fails == 0 else f'{fails} FAILED')

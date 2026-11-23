@@ -1,0 +1,17 @@
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 39992b8..0dc4c40 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -2797,7 +2797,11 @@ struct llama_moe_cache::impl {
+     }
+ 
+     void rf_init(bool no_alloc) {
+-        if (no_alloc || !(dr_on || sp_mode == SP_DRIVE)) {
++        // Brain Engine 0062: also on its own, when LLAMA_MOE_RAM_FLOOR_MIB is set above 0 (a brain bigger than RAM read
++        // through the map without the drive tier)
++        const char * asked = getenv("LLAMA_MOE_RAM_FLOOR_MIB");
++        const bool on_its_own = asked != nullptr && atof(asked) > 0;
++        if (no_alloc || !(dr_on || sp_mode == SP_DRIVE || on_its_own)) {
+             return;
+         }
+         if (const char * f = getenv("LLAMA_MOE_RAM_FLOOR_MIB"); f != nullptr && *f != '\0') {
