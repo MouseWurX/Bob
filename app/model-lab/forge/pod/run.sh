@@ -376,7 +376,20 @@ PY
             for q in $(plist "$CJ['quants']" | tr ',' ' '); do
               QF=$CD/$CFILE-$q.gguf
               status bench "$BN: quantizing $q"
-              LD_LIBRARY_PATH="$(dirname $QZ):${LD_LIBRARY_PATH:-}" $QZ --allow-requantize $( [ -f $IMX ] && echo --imatrix $IMX ) $CUTQ8 $QF $q $(nproc) > $OUT/bench/cut-$BN/quant-$q.log 2>&1 || { echo "bench $BN: $q failed (see out/bench/cut-$BN/quant-$q.log)"; rm -f $QF; continue; }
+              grep -q "^$q " $OUT/bench/cut-$BN/published.txt 2>/dev/null && [ "$q" != "$SQ" ] && { echo "$q is already on Hugging Face; skipped"; continue; }   # a restarted run doesn't redo finished quants
+              [ "$q" = "$SQ" ] && [ -f $QF ] && grep -q "^$q " $OUT/bench/cut-$BN/sizes.txt 2>/dev/null && { echo "$q already made"; continue; }
+              # 23 Nov (first Bobert run): IQ1/IQ2 refuse any tensor the imatrix doesn't fully cover (an expert the training chats never
+              # reached). Those few tensors get q2_k instead (needs no imatrix); every other tensor keeps the asked type.
+              # First an expert the chats never reached gets the average importance of its seen neighbours (imatrix_fill.py), so it can
+              # stay at the low type; a tensor with no entry at all goes to q2_k (imatrix_gaps.py).
+              TT=(); QIMX=$IMX
+              case "$q" in IQ1*|IQ2*) if [ -f $IMX ]; then
+                QIMX=$W/bench/imatrix-filled-$BN.gguf
+                [ -f $QIMX ] || PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/imatrix_fill.py --imatrix $IMX --out $QIMX >> $OUT/bench/cut-$BN/gaps-$q.txt 2>&1 || QIMX=$IMX
+                mapfile -t TT < <(PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/imatrix_gaps.py --model $CUTQ8 --imatrix $QIMX 2>>$OUT/bench/cut-$BN/gaps-$q.txt)
+                head -1 $OUT/bench/cut-$BN/gaps-$q.txt; fi ;; esac
+              [ ${#TT[@]} -gt 0 ] && echo "$q: $(( ${#TT[@]} / 2 )) tensor(s) with no imatrix entry go to q2_k (out/bench/cut-$BN/gaps-$q.txt)"
+              LD_LIBRARY_PATH="$(dirname $QZ):${LD_LIBRARY_PATH:-}" $QZ --allow-requantize $( [ -f $QIMX ] && echo --imatrix $QIMX ) "${TT[@]}" $CUTQ8 $QF $q $(nproc) > $OUT/bench/cut-$BN/quant-$q.log 2>&1 || { echo "bench $BN: $q failed (see out/bench/cut-$BN/quant-$q.log)"; tail -2 $OUT/bench/cut-$BN/quant-$q.log; rm -f $QF; continue; }
               echo "$q $(basename $QF) bytes $(stat -c %s $QF) sha256 $(sha256sum $QF | cut -d' ' -f1)" | tee -a $OUT/bench/cut-$BN/sizes.txt   # a home download is checked against these
               if [ -z "${NOUP:-}" ]; then
                 PYTHONPATH= python3 $POD/cut_card.py --dir $CD --cut $OUT/bench/cut-$BN/cut.json --name "$CNAME" --base "$(plan "$CJ['base']")" --base-params $BP --source "$(plan "$CJ['source_note']")" --license-name "$(plan "$CJ['license_name']")" --extra "$IN/$(basename "$(plan "$CJ.get('card_extra','none')")")" > /dev/null
@@ -385,8 +398,9 @@ PY
               # keep the served quant; the rest are on Hugging Face (or failed to go up: then kept for the PC to see in the log)
               [ "$q" != "$SQ" ] && grep -q "^$q " $OUT/bench/cut-$BN/published.txt 2>/dev/null && rm -f $QF
             done
-            rm -f $CUTQ8
             BFILE=$(ls $CD/*-$SQ.gguf 2>/dev/null | head -1)
+            # the cut Q8_0 stays while the served quant is missing, so a fixed run (--restart) can make it without a new download
+            [ -n "$BFILE" ] && rm -f $CUTQ8 || echo "bench $BN: $SQ wasn't made; the cut Q8_0 is kept on the pod for a retry"
           fi ;;
         hf:*) REPO=$(echo "$BF" | cut -d: -f2); FP=$(echo "$BF" | cut -d: -f3); status bench "$BN: downloading $FP from Hugging Face"
           # 12 Nov: a split GGUF (name-00001-of-0000N.gguf) brings all its parts; llama-server loads them from the first

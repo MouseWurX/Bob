@@ -26,7 +26,7 @@ const sh = read('forge/pod/run.sh');
 const block = sh.slice(sh.indexOf('        cut)\n'), sh.indexOf('        hf:*) REPO=', sh.indexOf('        cut)\n')));
 check('the pod has a cut step', block.length > 500 && /gguf_cut_experts\.py/.test(block));
 check('no license, no upload', /NOUP=1/.test(block) && (block.match(/\[ -z "\$\{NOUP:-\}" \]/g) || []).length >= 2);
-check('the ~190 GB source is deleted once the cut is written, and the cut Q8_0 at the end', /rm -rf "\$\{W:\?\}"\/bench\/src-/.test(block) && /rm -f \$CUTQ8\n/.test(block));
+check('the ~190 GB source is deleted once the cut is written, and the cut Q8_0 at the end', /rm -rf "\$\{W:\?\}"\/bench\/src-/.test(block) && /rm -f \$CUTQ8/.test(block));
 check('a quant is deleted only after it is on Hugging Face, and never the served one', /\[ "\$q" != "\$SQ" \] && grep -q "\^\$q " .*published\.txt.* && rm -f \$QF/.test(block));
 check('the imatrix runs on the training chats the PC sent', /imatrix-\$BN\.tgz/.test(block) && /all\.txt/.test(block));
 check('a quant over 50 GB goes up in parts (its parts are named in the upload)', /-\*-of-\*\.gguf/.test(block));
