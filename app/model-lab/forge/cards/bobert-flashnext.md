@@ -65,10 +65,13 @@ thinking on or off moved nothing beyond noise, while the shape of the tool set m
 
 ## Where the testing is written up
 
-From the Bob dissertation (in the Bob repo, docs/dissertation):
-- [Chapter 4: method and rules](https://github.com/MouseWurX/Bob/blob/main/app/docs/dissertation/ch04-method-and-rules.md): held-out jobs, grading, noise.
-- [Chapter 8: tool shape or lesson content](https://github.com/MouseWurX/Bob/blob/main/app/docs/dissertation/ch08-study4-tool-shape.md): what tool shapes are and why shape 4 is locked for Qwen.
-- [Chapter 9: lessons through a cut](https://github.com/MouseWurX/Bob/blob/main/app/docs/dissertation/ch09-study5-lessons-through-a-cut.md): earlier REAP trims with no heal, and cuts.
+From the Bob dissertation (in the Bob repo, app/docs/dissertation):
+- [REAP levels 100 to 50%, office protect, redirect and this cut](https://github.com/MouseWurX/Bob/blob/main/app/docs/dissertation/ch11-making-clean-lessons.md#reap-levels)
+- [How the experts were chosen](https://github.com/MouseWurX/Bob/blob/main/app/docs/dissertation/ch11-making-clean-lessons.md#expert-selection)
+- [Flash-Next in Bob, against stock Qwen and at other quants](https://github.com/MouseWurX/Bob/blob/main/app/docs/dissertation/ch11-making-clean-lessons.md#flash-next-in-bob)
+- [The tools and the shape it was tested with](https://github.com/MouseWurX/Bob/blob/main/app/docs/dissertation/ch08-study4-tool-shape.md#tool-shapes-tested), [what a tool shape is](https://github.com/MouseWurX/Bob/blob/main/app/docs/dissertation/ch08-study4-tool-shape.md#tool-shapes) and [the tool-shape findings](https://github.com/MouseWurX/Bob/blob/main/app/docs/dissertation/ch08-study4-tool-shape.md#tool-shape-findings)
+- [Speed: how it is measured](https://github.com/MouseWurX/Bob/blob/main/app/docs/dissertation/ch04-method-and-rules.md#speed-method) and [the speed table](https://github.com/MouseWurX/Bob/blob/main/app/docs/dissertation/ch04-method-and-rules.md#speed-table)
+- [Where the Bob project is going](https://github.com/MouseWurX/Bob/blob/main/app/docs/dissertation/ch13-conclusion.md#direction)
 
 ## Test systems
 
