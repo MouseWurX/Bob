@@ -76,6 +76,7 @@ check('the code_map tool is in the documents group and on the workbench', /'code
   const map = fs.readFileSync(path.join(dir, 'ENGINE-MAP.md'), 'utf8').replace(/\r\n/g, '\n');
   const patches = fs.readdirSync(path.join(dir, 'patches')).filter((f) => f.endsWith('.patch')).map((f) => f.replace(/\.patch$/, ''));
   check('ENGINE-MAP.md has a section for every engine patch', patches.length >= 5 && patches.every((p) => map.includes(`### ${p}`)));
+  { const empty = patches.filter((p) => !(fs.statSync(path.join(dir, 'patches', p + '.patch')).size > 0) || !/^diff --git /m.test(fs.readFileSync(path.join(dir, 'patches', p + '.patch'), 'utf8'))); check('every engine patch file holds a diff (Nov 22: a hand-over once came with an empty 0065)', empty.length === 0, empty.join(', ')); }
   check('it has the rebase checklist and says what is not covered yet', /## Rebase checklist/.test(map) && /## What's not covered yet/.test(map) && /README\.md/.test(map));
   const ymlFile = fileURLToPath(new URL('../../.github/workflows/brain-engine.yml', import.meta.url));
   if (fs.existsSync(ymlFile)) check('a docs-only change in engine/ builds no engine', (fs.readFileSync(ymlFile, 'utf8').match(/'!app\/engine\/\*\*\/\*\.md'/g) || []).length === 2); // only in the repo, not in an installed Bob
