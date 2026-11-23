@@ -247,14 +247,14 @@ const reset = () => { ran.length = 0; events.length = 0; seen.length = 0; slow =
 }
 {
   reset();
-  // Eight steps: seven rounds of different searches, then the last step has no tools.
+  // Nov 23 (no step cap): seven rounds of different searches, and he still has his tools on the eighth.
   script = Array.from({ length: 7 }, (_, i) => call('web_search', { query: `topic ${['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf'][i]}` }));
-  script.push((o) => ({ role: 'assistant', content: o.tools?.length ? 'still had tools' : 'Here is what I found.' }));
+  script.push((o) => ({ role: 'assistant', content: o.tools?.length ? 'Here is what I found.' : 'tools gone' }));
   await run('research everything');
-  check('turn: the last step has no tools, so he answers', brain.session('main').at(-1)?.content === 'Here is what I found.', brain.session('main').at(-1)?.content);
-  check('turn: it says so in the note', seen.at(-1)?.messages.at(-1)?.content === LAST_ROUND_NOTE('Sam'));
+  check('turn: no step cap, so the eighth step still has tools', brain.session('main').at(-1)?.content === 'Here is what I found.', brain.session('main').at(-1)?.content);
+  check('turn: no last-step note', seen.at(-1)?.messages.at(-1)?.content !== LAST_ROUND_NOTE('Sam'));
   check('turn: no "round in circles" line', !events.some((e) => e.type === 'token' && /round in circles/.test(e.text)));
-  check('turn: a "where we are" note after two rounds', seen[2]?.messages.at(-1)?.role === 'system' && /Where we are .*step 3 of 8/.test(seen[2].messages.at(-1).content), seen[2]?.messages.at(-1)?.content);
+  check('turn: a "where we are" note after two rounds, with no step count', seen[2]?.messages.at(-1)?.role === 'system' && /Where we are \(written by the app, step 3\)/.test(seen[2].messages.at(-1).content), seen[2]?.messages.at(-1)?.content);
 }
 {
   reset();

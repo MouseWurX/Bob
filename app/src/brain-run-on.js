@@ -27,8 +27,8 @@ import { cleanPersonality, personalityPrompt } from '../public/personality.js';
 import { roughTokens, wantsBorrow } from './share-brains.js';
 import { howtosOn, usingLine, howtoPrompt, trailStep } from './howtos.js';
 import { causeLine, sideJob, STRIKE_NOTE } from './retry.js';
-import { carriedBudget, Progress, spendNudge, keepBudget, stage, pastCeiling, ceilingMs, wrapUp, ceilingMins, waitedFor, outOfStepsLine, nudgeOk, CALLS_PER_TURN, CAP_SKIP, droppedNote } from './loop-guard.js';
-import { tidyOld, LAST_ROUND_NOTE, onTrackNote, promisesAction, PROMISE_NUDGE, PROMISE_LOG, nearKey, errorHint } from './loop-help.js';
+import { carriedBudget, Progress, spendNudge, keepBudget, stage, pastCeiling, ceilingMs, wrapUp, loudLine, ceilingMins, waitedFor, outOfStepsLine, nudgeOk, CALLS_PER_TURN, CAP_SKIP, droppedNote, ALWAYS_ON_CEILING } from './loop-guard.js';
+import { tidyOld, LAST_ROUND_NOTE, onTrackNote, promisesAction, PROMISE_NUDGE, PROMISE_LOG, nearKey, errorHint, pastedText, PASTED_NOTE } from './loop-help.js';
 import { midJobOn } from './mid-job.js';
 import { systemPrompt } from './persona.js';
 import { lookPrompt } from './look.js';
@@ -273,6 +273,8 @@ export const runOnParts = {
     };
     // Jobs, One question before a vague big job (job-helps.js): a hint to ask once with ask_user before starting.
     if (!again) { const ask = askFirstNote(this, ctx, text); if (ask) msgs.push({ role: 'system', content: ask, hidden: true }); }
+    // Nov 23: a long pasted text is answered from the message, not looked for on the PC (loop-help.js PASTED_NOTE).
+    if (!again && !ctx.noTools && !job?.guest && !this.helpOff('note') && pastedText(text)) { msgs.push({ role: 'system', content: PASTED_NOTE(whoFor()), hidden: true }); this.log('loop', 'a long pasted text: told to answer from the message itself'); }
     // Nov 13 (job-steps.js): two or more things asked in one message get one line naming them, and a check at the end.
     if (!again && !ctx.noTools && !this.helpOff('plan') && !job?.guest) { ctx.stepsAsked = askedSteps(text); if (ctx.stepsAsked.length) { msgs.push({ role: 'system', content: planLine(ctx.stepsAsked), hidden: true }); this.log('loop', `${ctx.stepsAsked.length} things asked: a plan line, and a check at the end`); } }
     for (step = 0; step < maxSteps; step++) {
@@ -284,7 +286,8 @@ export const runOnParts = {
       // Reliability 161: an always-on ceiling per turn (card waits don't count), apart from the opt-in job time limit.
       // It uses the job time limit's minutes; when that switch is on for this job, its own card (which can give more
       // time) is in charge instead.
-      if (!ctx.lastRound && !ctx.noTools && step > 0 && !timeCardOwns && pastCeiling(ctx.turnStartedAt, signal, Date.now(), ceilingMs(this.cfg))) wrapUp(ctx, msgs, 'time', whoFor(), log, ceilingMins(this.cfg));
+      // Nov 23 (the owner's rule: no time caps): the always-on ceiling is gone; only the opt-in job time limit (its card) ends a turn on time.
+      if (!ctx.lastRound && !ctx.noTools && step > 0 && !timeCardOwns && ALWAYS_ON_CEILING && pastCeiling(ctx.turnStartedAt, signal, Date.now(), ceilingMs(this.cfg))) wrapUp(ctx, msgs, 'time', whoFor(), log, ceilingMins(this.cfg));
       // Jobs (job-helps.js): "Stop after this step" pressed, or the job's time limit used up: no more tools, he wraps up.
       if (!ctx.lastRound && step > 0) {
         const who = this.cfg.userName || 'the user';
@@ -639,6 +642,7 @@ export const runOnParts = {
           // action in between, counts as a repeat (the count no longer starts over after every action).
           ctx.callsRun = (ctx.callsRun || 0) + 1; round.ran++; ranIt = true;
           const was = ctx.progress.record(key, res.text);
+          ctx.progress.refusal(res.text); // Nov 23: refusals in a row end the tools (loop-guard.js REFUSED_IN_A_ROW)
           if (was === 'new') round.fresh++;
           if (/^Error:/.test(String(res.text))) round.failed++;
           if (was === 'same' && !isLook(name)) { ctx.repeatSkips = (ctx.repeatSkips || 0) + 1; this.log('tool', `${name} gave the same result as before`); }
@@ -692,11 +696,12 @@ export const runOnParts = {
       if ((ctx.repeatSkips || 0) >= REPEATS_THEN_ANSWER && !ctx.noTools) {
         ctx.noTools = true;
         msgs.push({ role: 'system', content: ANSWER_NOW_NUDGE, hidden: true });
+        emit({ type: 'announce', text: '(I stopped using tools: I kept asking for things I already had. Here\'s what I have.)' }); // Nov 23: loud
         this.log('tool', `${ctx.repeatSkips} repeat calls skipped this turn; the next round has no tools, so he answers`);
       }
       // Reliability 154, 155, 157, 159: no progress, going back and forth, too many calls, or every call failing twice:
       // the next round has no tools, with one line saying why.
-      if (!ctx.noTools) { const why = ctx.capHit ? 'calls' : ctx.progress.round(round); if (why) wrapUp(ctx, msgs, why, whoFor(), log); }
+      if (!ctx.noTools) { const why = ctx.capHit ? 'calls' : ctx.progress.round(round); if (why && wrapUp(ctx, msgs, why, whoFor(), log)) { emit({ type: 'announce', text: loudLine(why) }); this.log('warn', `a guard stopped the tools: ${why} (${model || 'brain'}, step ${step + 1})`); } }
       // 1.5.20: a picture or clip that was all the user asked for is shown with a short line, instead of loading the
       // brain back onto the card (6 s for the quick brain, 20-30 s for a big one) just to say "here it is".
       // The quick brain then loads again in the background once the turn lets go of the card (settle).

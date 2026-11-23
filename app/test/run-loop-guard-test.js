@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ERROR_ROUNDS, NUDGE_BUDGET, CALLS_PER_TURN, nudgeOk, spendNudge, Progress, findCycle, resultHash, WRAP_NOTES, wrapUp, droppedNote, outOfStepsLine, noteWait, waitedFor, busyMs, pastCeiling, ceilingMs, ceilingMins, stage, carriedBudget, keepBudget, CARRIED_MIN_STEPS, CAP_SKIP } from '../src/loop-guard.js';
+import { ERROR_ROUNDS, STALE_ROUNDS, REFUSED_IN_A_ROW, LOUD_LINES, loudLine, isRefusal, ALWAYS_ON_CEILING, NUDGE_BUDGET, CALLS_PER_TURN, nudgeOk, spendNudge, Progress, findCycle, resultHash, WRAP_NOTES, wrapUp, droppedNote, outOfStepsLine, noteWait, waitedFor, busyMs, pastCeiling, ceilingMs, ceilingMins, stage, carriedBudget, keepBudget, CARRIED_MIN_STEPS, CAP_SKIP } from '../src/loop-guard.js';
 import { Brain, MAX_CALLS_PER_REPLY } from '../src/brain.js';
 import { saveSettings } from '../src/config.js';
 
@@ -17,7 +17,7 @@ const until = async (f, ms = 4000) => { for (let i = 0; i < ms / 20; i++) { if (
   const ctx = {};
   check('152: the budget starts open', nudgeOk(ctx));
   for (let i = 0; i < NUDGE_BUDGET; i++) spendNudge(ctx);
-  check(`152: after ${NUDGE_BUDGET} sends-back, no more`, !nudgeOk(ctx) && NUDGE_BUDGET === 2);
+  check(`152: after ${NUDGE_BUDGET} sends-back, no more`, !nudgeOk(ctx) && NUDGE_BUDGET === 4); // Nov 23: more generous (was 2)
 }
 
 // ---------- 154-156: progress ----------
@@ -30,8 +30,8 @@ const until = async (f, ms = 4000) => { for (let i = 0; i < ms / 20; i++) { if (
   check('the same call with a changed result is new', p.record('read|a', 'hello there') === 'new');
   const q = new Progress();
   check('154: one round with nothing new is fine', q.round({ ran: 1, fresh: 0, failed: 0 }) === '');
-  q.round({ ran: 1, fresh: 0, failed: 0 });
-  check('154: three in a row is stale', q.round({ ran: 1, fresh: 0, failed: 0 }) === 'stale');
+  for (let i = 2; i < STALE_ROUNDS; i++) q.round({ ran: 1, fresh: 0, failed: 0 });
+  check(`154: ${STALE_ROUNDS} in a row is stale`, q.round({ ran: 1, fresh: 0, failed: 0 }) === 'stale');
   const r = new Progress();
   r.round({ ran: 1, fresh: 0, failed: 0 }); r.round({ ran: 1, fresh: 1, failed: 0 });
   check('154: something new starts the count over', r.round({ ran: 1, fresh: 0, failed: 0 }) === '');
@@ -42,6 +42,18 @@ const until = async (f, ms = 4000) => { for (let i = 0; i < ms / 20; i++) { if (
   const f = new Progress();
   f.round({ ran: 2, fresh: 2, failed: 2 });
   check('159: a round with one success breaks the run', f.round({ ran: 2, fresh: 2, failed: 1 }) === '' && f.round({ ran: 1, fresh: 1, failed: 1 }) === '');
+}
+{ // Nov 23: refusals by a safety rule in a row
+  check('a folder refusal is a refusal', isRefusal("Error: I'm not allowed to look in C:\\x. Allowed: C:\\y") && isRefusal('Error: That file is outside the folders Bob may open.'));
+  check('a plain failure is not', !isRefusal('Error: no such file') && !isRefusal('Found 3 files'));
+  const g = new Progress();
+  for (let i = 0; i < REFUSED_IN_A_ROW; i++) g.refusal("Error: I'm not allowed to look in C:\\x");
+  check(`${REFUSED_IN_A_ROW} refusals in a row end the tools`, g.round({ ran: 1, fresh: 1, failed: 1 }) === 'refused');
+  const h = new Progress();
+  h.refusal("Error: I'm not allowed to read a"); h.refusal('Found 3 files'); h.refusal("Error: I'm not allowed to read b");
+  check('a call that worked starts the count over', h.round({ ran: 1, fresh: 1, failed: 0 }) === '');
+  check('every guard has a loud line for the chat', Object.keys(WRAP_NOTES).every((k) => loudLine(k).startsWith('(I stopped')), Object.keys(WRAP_NOTES).filter((k) => !loudLine(k)).join(','));
+  check('no step, call or time cap by default', CALLS_PER_TURN === Infinity && ALWAYS_ON_CEILING === false);
 }
 {
   check('155: read, write, read, write with the same results is a loop', findCycle(['r#1', 'w#2', 'r#1', 'w#2']) === 2);
@@ -158,9 +170,11 @@ const hiddenNotes = () => brain.session('main').filter((m) => m.role === 'system
 { // 154: three rounds with nothing new -> answer
   reset();
   toolImpl = () => ({ text: 'No results.' });
-  script = [call('web_search', { query: 'a' }), call('web_search', { query: 'b' }), call('web_search', { query: 'c' }), call('web_search', { query: 'd' }), { role: 'assistant', content: 'Nothing turned up.' }];
+  script = [...Array.from({ length: STALE_ROUNDS + 1 }, (_, i) => call('web_search', { query: `q${i}` })), { role: 'assistant', content: 'Nothing turned up.' }];
   await run('find something rare');
-  check('154: stale after the rounds stopped adding anything', seenTools.at(-1) === 0 && ran.length <= 4, `${seenTools.join(',')} ran ${ran.length}`);
+  check('154: stale after the rounds stopped adding anything', seenTools.at(-1) === 0 && ran.length <= STALE_ROUNDS + 1, `${seenTools.join(',')} ran ${ran.length}`);
+  check('Nov 23: the stop is said in the chat', events.some((e) => e.type === 'announce' && e.text === LOUD_LINES.stale));
+  check('Nov 23: and a warn line in the logbook', logs.some((l) => l.startsWith('warn: a guard stopped the tools: stale')));
   check('154: answered', brain.session('main').at(-1)?.content === 'Nothing turned up.');
 }
 { // 155: two actions taking turns (each clears the repeat count), with nothing changing
@@ -198,33 +212,46 @@ const hiddenNotes = () => brain.session('main').filter((m) => m.role === 'system
     { role: 'assistant', content: 'never reached' }
   ];
   await run('what is the weather?');
-  check('152: no more than 3 asks (the first try and 2 sends-back)', asked <= 3, String(asked));
+  check(`152: no more than ${1 + NUDGE_BUDGET} asks (the first try and ${NUDGE_BUDGET} sends-back)`, asked <= 1 + NUDGE_BUDGET, String(asked));
 }
-{ // 157: the calls-per-turn ceiling
+{ // 157, Nov 23: no calls-per-turn cap (was 40): 42 searches that keep finding new things all run
   reset();
   let n = 0;
   const round = () => calls(...Array.from({ length: MAX_CALLS_PER_REPLY }, () => ['web_search', { query: `q${n++}` }]));
   script = Array.from({ length: 7 }, round);
-  script.push((o) => ({ role: 'assistant', content: o.tools?.length ? 'tools still there' : 'Stopping here.' }));
-  brain.cfg.jobHelps = { minutes: 60 };
-  const j = await run('search lots', { effort: 'extreme' });
-  check(`157: no more than ${CALLS_PER_TURN} calls ran in one turn`, ran.length === CALLS_PER_TURN, String(ran.length));
-  check('157: then he answers with no tools', brain.session('main').at(-1)?.content === 'Stopping here.', brain.session('main').at(-1)?.content);
-  check('157: the calls past it got the plain line', seenMsgs.at(-1).some((m) => m.role === 'tool' && String(m.content).startsWith(CAP_SKIP)));
-  check('164: the job kept its count', j?.loopUsed?.calls === CALLS_PER_TURN, JSON.stringify(j?.loopUsed));
-  delete brain.cfg.jobHelps;
+  script.push((o) => ({ role: 'assistant', content: o.tools?.length ? 'All found.' : 'tools gone' }));
+  const j = await run('search lots', { effort: 'low' });
+  check('157: all 42 calls ran in one turn', ran.length === 42, String(ran.length));
+  check('157: and he still had his tools after them', brain.session('main').at(-1)?.content === 'All found.', brain.session('main').at(-1)?.content);
+  check('164: the job kept its count', j?.loopUsed?.calls === 42, JSON.stringify(j?.loopUsed));
 }
-{ // 160: steps run out -> a real ending
+{ // 160, Nov 23: no step cap (was 8 at Low effort): a job that keeps finding new pages goes past 8 steps
   reset();
   let n = 0;
   toolImpl = (name, args) => ({ text: `page ${n++}` });
-  script = Array.from({ length: 8 }, (_, i) => call('fetch_page', { url: `https://example.com/${i}` }));
-  brain.helpOff = (k) => k === 'last'; // the last step keeps its tools, so the steps really run out
+  script = [...Array.from({ length: 12 }, (_, i) => call('fetch_page', { url: `https://example.com/${i}` })), { role: 'assistant', content: 'Read it all.' }];
   await run('read the whole site');
-  delete brain.helpOff;
-  check('160: no fixed circles line', !said().includes('round in circles'), said());
-  check('160: the ending says what was looked at', /\(I ran out of steps before finishing\. I looked \d+ times but changed nothing yet\./.test(said()), said().slice(-200));
-  check('160: the ending is kept in the chat', /^\(I ran out of steps/.test(brain.session('main').at(-1)?.content || ''));
+  check('160: all 12 pages were read', ran.length === 12, String(ran.length));
+  check('160: no "ran out of steps" ending', !said().includes('ran out of steps') && brain.session('main').at(-1)?.content === 'Read it all.', said().slice(-200));
+}
+{ // Nov 23 (Legion Go): folder after folder refused -> he stops looking, says so, and answers
+  reset();
+  toolImpl = (name, args) => ({ text: `Error: I'm not allowed to look in ${args?.path}. Allowed: C:\\inn` });
+  script = [...Array.from({ length: REFUSED_IN_A_ROW }, (_, i) => call('list_folder', { path: `C:\\x${i}` })), (o) => ({ role: 'assistant', content: o.tools?.length ? 'tools still there' : 'this.cfg is part of your paste.' })];
+  await run('what does this.cfg do?');
+  check(`after ${REFUSED_IN_A_ROW} refusals, the next round has no tools`, ran.length === REFUSED_IN_A_ROW && brain.session('main').at(-1)?.content === 'this.cfg is part of your paste.', `${ran.length} | ${brain.session('main').at(-1)?.content}`);
+  check('the stop is said in the chat', events.some((e) => e.type === 'announce' && e.text === LOUD_LINES.refused));
+}
+{ // Nov 23: a long pasted text gets one line: answer from the message
+  reset();
+  script = [{ role: 'assistant', content: 'It sets the config.' }];
+  await run(`What does this do?\n${'const a = this.cfg.x; '.repeat(200)}`);
+  check('a long paste: answer from the message', hiddenNotes().some((t) => /pasted the text into the message itself/.test(t)));
+  const before = hiddenNotes().filter((t) => /pasted the text/.test(t)).length;
+  reset();
+  script = [{ role: 'assistant', content: 'Hi.' }];
+  await run('hello there');
+  check('a short message gets no paste line', hiddenNotes().filter((t) => /pasted the text/.test(t)).length === before);
 }
 { // 161: the safety net uses the job time limit, card waits aside
   reset();
@@ -235,12 +262,11 @@ const hiddenNotes = () => brain.session('main').filter((m) => m.role === 'system
   script = [call('web_search', { query: 'a' }), (o) => ({ role: 'assistant', content: o.tools?.length ? 'tools still there' : 'Out of time, here is what I have.' })];
   await run('a long job');
   Date.now = realNow;
-  check('161: past the 10-minute limit the next round has no tools', seenTools[1] === 0, seenTools.join(','));
-  check('161: and he wraps up', brain.session('main').at(-1)?.content === 'Out of time, here is what I have.');
-  check('161: the note names the limit', hiddenNotes().some((t) => t === WRAP_NOTES.time('Sam', 10)));
+  // Nov 23 (the owner's rule: no time caps): with the job time limit switch off, nothing ends a turn on time.
+  check('161: past 10 minutes, the tools are still there', seenTools[1] > 0 && brain.session('main').at(-1)?.content === 'tools still there', seenTools.join(','));
 }
 { // 161: the limit is read fresh at every check, so a change in Settings counts at once, even mid-job
-  for (const [from, to, wraps] of [[60, 10, true], [10, 30, false]]) {
+  for (const [from, to, wraps] of [[60, 10, false], [10, 30, false]]) { // Nov 23: no always-on ceiling, so neither wraps
     reset();
     saveSettings(brain.cfg, { jobHelps: { minutes: from } });
     const realNow = Date.now;
