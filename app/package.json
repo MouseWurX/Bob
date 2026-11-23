@@ -319,6 +319,7 @@
     "test/run-hand-off-test.js",
     "test/run-rent-form-test.js",
     "test/run-rental-live-fixes-test.js",
+    "test/run-eyes-rest-test.js",
     "test/run-bob-net-home-test.js",
     "test/run-experts-per-word-test.js",
     "test/run-mind-only-test.js",

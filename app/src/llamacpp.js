@@ -110,6 +110,7 @@ export function loadDots() {
     return null;
   };
 }
+export const EYES_REST_MS = 5 * 60_000; // Nov 23: a picture reader brought back on tight memory goes out after this long without a picture
 export const idleFor = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ''}`; };
 export function keepAliveMs(cfg) {
   const k = String(cfg?.ollamaKeepAlive ?? '5m');
@@ -419,6 +420,7 @@ export class LlamaCpp {
       const now = await this.gamingCardPlan(this.current);
       if (now !== this.currentCard && this.active === 0) { this.cardFlip = { from: this.currentCard, to: now, at: this.now() }; await this.stopServer(); return true; }
     }
+    if (await this.restEyes()) return false; // Nov 23: a tight-memory lever (below); the brain stays loaded
     let hold = null;
     try { hold = this.holdModel(); } catch {}
     if (hold && hold === this.current) { this.lastUse = this.now(); return false; }
@@ -1054,6 +1056,12 @@ export class LlamaCpp {
     if (placeArgs(this.cfg, model, { cpu: false, layers: (gguf && ggufInfo(gguf)?.shape?.layers) || 0 }).length) return true;
     return hand.some((a) => ['-ngl', '--n-gpu-layers', '--gpu-layers', '--fit', '-ot', '--override-tensor', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-dev', '--device', '-ts', '--tensor-split'].includes(a));
   }
+  handLoadMode(model) {
+    const lc = this.lc;
+    let modelArgs = [];
+    try { modelArgs = this.resolve(model).args || lc.modelArgs?.[model] || []; } catch {}
+    return [...(lc.preArgs || []), ...(Array.isArray(lc.args) ? lc.args : []), ...modelArgs].some((a) => ['--load-mode', '-lm', '--mmap', '--no-mmap'].includes(a));
+  }
   // Where the brain goes on built-in graphics, right before the engine starts (after the last brain let go): wholly on
   // the graphics when it fits with room to spare, else as many layers as fit, else the processor alone. Changes args.
   apuFit(model, args, ctx) {
@@ -1074,7 +1082,14 @@ export class LlamaCpp {
       args.push('-ngl', String(plan.layers));
       if (plan.place === 'cpu' && this.buildNo() >= 5000) args.push('--device', 'none'); // nothing on the graphics at all
       // The processor's part is read from the drive as needed (memory-mapped), so Windows can let go of it.
-      if (this.lc.loadMode !== 'whole') { drop('--load-mode'); drop('--no-mmap', false); }
+      // Nov 23 (Legion Go): left to itself, llama.cpp turns memory-mapping off whenever a device can't map files, and
+      // Vulkan on built-in graphics says it can't, so the processor's part was copied into pinned RAM (gemma4-e2b at
+      // 12 of 35 layers: 2.3 GB of "shared GPU memory"). --load-mode mmap keeps it mapped: 3.5 -> 1.2 GB shared, 0.5-0.9 GB
+      // more free, same speed, same words (8 runs). A load mode set by hand in llamacpp.args is kept.
+      if (!this.handLoadMode(model)) {
+        drop('--load-mode'); drop('--no-mmap', false); drop('--mmap', false);
+        if (this.loadFlag() === 'load-mode') args.push('--load-mode', 'mmap');
+      }
     }
     const gb = (b) => Math.round((b / 1024 ** 3) * 10) / 10;
     const where = plan.place === 'card' ? 'wholly on the graphics' : plan.place === 'split' ? `${plan.layers} of ${layers} layers on the graphics, the rest on the processor` : 'on the processor alone';
@@ -1426,12 +1441,42 @@ export class LlamaCpp {
     try { return this.cfg.sharedGraphics === true && Boolean(this.resolve(model).mmproj) && this.lc.vision !== false && !(this.lc.noEyes || []).includes(model) && !this.eyesShut?.has(model); } catch { return false; }
   }
   shutEyes(model) { (this.eyesShut ||= new Set()).add(model); }
+  // Nov 23 (the owner's pick): one of the Conductor's levers for tight memory. A reader that came back for a picture
+  // goes out again once no picture has come for EYES_REST_MS and memory is still tight (less free than Windows's share
+  // plus the reader), so Windows gets its share back. Only between replies, never mid-reply; the next picture brings it
+  // back again. Not after every picture: each swap reloads the brain (5-8 s on the Legion Go) and re-reads the chat.
+  eyesRestDue(model = this.current) {
+    const back = this.eyesBack?.get(model);
+    if (!back || model !== this.current || this.active > 0 || this.eyesShut?.has(model) || this.now() - back < EYES_REST_MS) return false;
+    let extra = 0;
+    try { extra = fs.statSync(this.resolve(model).mmproj).size; } catch { return false; }
+    const free = this.freeRam ? this.freeRam() : os.freemem();
+    return free < apuKeepBytes(this.cfg) + extra;
+  }
+  async restEyes() {
+    const model = this.current;
+    if (!this.eyesRestDue(model)) return false;
+    // The Go test: a rest reload just before the keep-alive lets the whole brain go is wasted work. Skip it then.
+    let hold = null;
+    try { hold = this.holdModel(); } catch {}
+    if (hold !== model && keepAliveMs(this.cfg) - (this.now() - this.lastUse) < 2 * 60_000) return false;
+    this.eyesBack.delete(model);
+    this.shutEyes(model);
+    this.reloadWanted.add(model);
+    try { this.log?.('engine', `${model}: no picture for ${idleFor(EYES_REST_MS)} and memory is still tight, so I'm loading it again without its picture reader; it comes back with the next picture`); } catch {}
+    try { await this.preload(model, undefined, { ctx: this.currentCtx || undefined, cpu: Boolean(this.currentCpu) }); }
+    catch (e) { try { this.log?.('engine', `${model}: couldn't load it again without its picture reader (${String(e.message || e).slice(0, 160)}); the next job tries again`); } catch {} }
+    return true;
+  }
   async chat(opts) {
     const b = this.route(opts);
     if (b) return b.chat({ ...opts, beside: false, cpu: true });
     // A picture for a brain loaded without its reader: load it again with the reader first.
-    if (this.eyesShut?.has(opts?.model) && (opts.messages || []).some((m) => m.images?.length)) {
+    const picture = (opts?.messages || []).some((m) => m.images?.length);
+    if (picture && this.eyesBack?.has(opts.model)) this.eyesBack.set(opts.model, this.now()); // the rest clock starts again
+    if (this.eyesShut?.has(opts?.model) && picture) {
       this.eyesShut.delete(opts.model);
+      (this.eyesBack ||= new Map()).set(opts.model, this.now());
       this.reloadWanted.add(opts.model);
       try { this.log?.('engine', `${opts.model}: a picture came in, so I'm loading its picture reader again (memory is tight, so this may be slow)`); } catch {}
       await this.preload(opts.model, opts.signal, { ctx: opts.ctx || this.currentCtx || undefined, cpu: Boolean(opts.cpu) });
