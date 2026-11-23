@@ -122,7 +122,7 @@ check('v2 volumes: dataCenter in and out', volumeBodyV2({ name: 'n', size: 300, 
   const pp = path.join(tmp, 'pre.json'); fs.writeFileSync(pp, JSON.stringify({ run: 'pre', rungs: [], lessons: les, counts_file: path.join(les, 'counts.json'), hours_max: 1, dollars_max: 5 }));
   seen.length = 0;
   const ok = await run(['--plan', pp, '--preflight']);
-  check('pre-flight asks RunPod for the pod list (read-only) and passes when it answers', ok.code === 0 && seen.includes('GET /v2/pods') && !seen.some((x) => /^(POST|DELETE|PATCH)/.test(x)) && /RunPod answers at/.test(ok.o), ok.o.slice(-400));
+  check('pre-flight asks RunPod for the pod list, proves the key can delete on a pod id that cannot exist, and changes nothing else', ok.code === 0 && seen.includes('GET /v2/pods') && seen.filter((x) => /^(POST|DELETE|PATCH)/.test(x)).join() === 'DELETE /v2/pods/zzzznotapod000' && /RunPod answers at/.test(ok.o), ok.o.slice(-400));
   const dead = await new Promise((res) => { const c = spawn(process.execPath, [path.join(lab, 'forge', 'forge.mjs'), '--plan', pp, '--preflight'], { stdio: 'pipe', env: { ...env, FORGE_REST: 'http://127.0.0.1:9/v1' }, cwd: path.join(lab, 'forge') }); let o = ''; c.stdout.on('data', (d) => (o += d)); c.stderr.on('data', (d) => (o += d)); c.on('exit', (code) => res({ code, o })); });
   check('a RunPod address that does not answer fails pre-flight, so nothing is rented', dead.code === 1 && /PRE-FLIGHT FAIL: RunPod's rental address/.test(dead.o) && /Not renting/.test(dead.o), dead.o.slice(-400));
   brain.close(); rest.close();

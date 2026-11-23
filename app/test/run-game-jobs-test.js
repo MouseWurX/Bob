@@ -110,8 +110,8 @@ check('the same seed gives the same letters', JSON.stringify(key.map((k) => [k.g
 // ---- the three plans ----
 const plans = ['q2', 'iq3', 'q4'].map((t) => JSON.parse(read(`model-lab/forge/plans/games-flashnext-${t}.json`)));
 const cmdOf = (p) => p.benchmark.models[0].commands.find((c) => /do-jobs\.mjs/.test(c));
-check('the three sizes run the same game command but the folder (same jobs, settings, Godot, nudges)', new Set(plans.map((p) => cmdOf(p).replace(/--dir g\w+-games/, ''))).size === 1 && /--godot \S+Godot_v4\.7\.2-stable_win64_console\.exe/.test(cmdOf(plans[0])) && /--nudges 3 --game-minutes 30 --nudge-minutes 10/.test(cmdOf(plans[0])) && /--effort medium/.test(cmdOf(plans[0])));
-check('only the file differs between the sizes; nothing is uploaded; caps set', new Set(plans.map((p) => p.benchmark.models[0].file)).size === 3 && plans.every((p) => p.benchmark_only === true && p.publish.models.length === 0 && p.hours_max <= 2.5 && p.dollars_max <= 12 && p.rent_minutes > 0));
+check('the three sizes run the same game command but the folder (same jobs, settings, Godot, nudges)', new Set(plans.map((p) => cmdOf(p).replace(/--dir g\w+-games2?/, ''))).size === 1 && /--godot \S+Godot_v4\.7\.2-stable_win64_console\.exe/.test(cmdOf(plans[0])) && /--nudges 3 --game-minutes 60 --nudge-minutes 15/.test(cmdOf(plans[0])) && /--effort medium/.test(cmdOf(plans[0])));
+check('only the file differs between the sizes; nothing is uploaded; caps set', new Set(plans.map((p) => p.benchmark.models[0].file)).size === 3 && plans.every((p) => p.benchmark_only === true && p.publish.models.length === 0 && p.hours_max <= 3 && p.dollars_max <= 16 && p.rent_minutes > 0));
 
 // ---- wiring ----
 const dj = read('model-lab/do-jobs.mjs');

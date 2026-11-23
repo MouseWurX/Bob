@@ -373,6 +373,17 @@ PY
           rm -rf $XW
         else echo "bench $BN: no llama-act-dump or no in/interp-$BN.tgz; interp skipped" | tee $XD/skipped.txt; fi
       fi
+      # 23 Nov: expert_pair true = before serving, how alike every two experts' outputs are on the same words (llama-expert-pair,
+      # pod patch 0016; prompts from the PC as in/pair-<name>.tgz, never held-out): out/bench/pair-<name>/sim-<il>.f32 and info.json.
+      # Read only. The PC pairs each switched-off expert with its most alike kept one (expert-redirect.mjs) for the live redirect.
+      if [ "$(plan "['benchmark']['models'][$b].get('expert_pair',False)")" = "True" ]; then
+        EP=$S/llama.cpp/build-cuda/bin/llama-expert-pair; PD=$OUT/bench/pair-$BN; PW=$W/pair-$BN; mkdir -p $PD $PW
+        if [ -x "$EP" ] && [ -f $IN/pair-$BN.tgz ] && tar xzf $IN/pair-$BN.tgz -C $PW; then
+          status bench "$BN: measuring how alike the experts are (read only)"
+          LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" timeout $(plan "['benchmark']['models'][$b].get('pair_minutes',40)*60") $EP -m "$BFILE" --pair-prompts $PW/prompts.txt --pair-out $PD --pair-max $(plan "['benchmark']['models'][$b].get('pair_tokens',1024)") -ngl 999 -ub 16 -c 4096 > $PD/pair.log 2>&1 || echo "bench $BN: expert pairing failed (see out/bench/pair-$BN/pair.log)"
+          rm -rf $PW
+        else echo "bench $BN: no llama-expert-pair or no in/pair-$BN.tgz; pairing skipped" | tee $PD/skipped.txt; fi
+      fi
       # 13 Nov: imatrix true = llama-imatrix on every text the PC sent (in/imatrix-<name>.tgz: all.txt and job-<job>.txt), before serving;
       # the importance data a job-tuned quant or adapter uses later. The PC fetches out/bench/imatrix-<name>/ first.
       if [ "$(plan "['benchmark']['models'][$b].get('imatrix',False)")" = "True" ]; then

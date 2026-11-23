@@ -1,0 +1,116 @@
+{
+ "run": "reap-redirect",
+ "note": "23 Nov 2026, the owner: \"yes add the redirect in the rental\" (REAP 80%: when the router picks an expert that is off, its share goes to the kept expert whose outputs are most alike, instead of masking it). The review: run \"80% redirect ... alongside 80% mask and the unmodified model\", \"the same model file and the exact same kept experts for both 80% runs\"; redirect \"tests whether the kept expert can substitute as-is\", not a merge; a clear win with no new critical misses justifies the paid merge, a tie or loss holds the $20-30; neither run says anything about speed (the file has not shrunk). Before serving, the pod measures how alike every two experts' outputs are on Bob's normal (never held-out) job words (llama-expert-pair, pod patch 0016); the PC pairs each off expert of all-keep-80 with its most alike kept one (expert-redirect.mjs). Then the same held-out office and inbox sets three ways on one server: every expert, 80% masked, 80% redirected. Rules (expert-redirect.mjs): a kept expert's gate weight is its own share plus its paired off experts' shares, before the top-k pick; no two picks can land on one expert. Nothing is cut, healed, saved or uploaded.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.8-Flash-Next",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H200 NVL",
+  "NVIDIA H200"
+ ],
+ "step_up": [],
+ "disk_gb": 170,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 3.0,
+ "dollars_max": 12,
+ "rent_minutes": 170,
+ "download_quants": [],
+ "llama_tag": "b12359",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one server: Flash-Next Q4 on Brain Engine with the redirect; held-out office and inbox, every expert / 80% mask / 80% redirect.",
+  "hours_each": 2.3,
+  "models": [
+   {
+    "name": "reap-redirect-q4",
+    "nickname": "Qwen3.8-Flash-Next UD-Q4_K_XL: every expert, REAP 80% masked, REAP 80% redirected",
+    "file": "hf:unsloth/Qwen3.8-Flash-Next-GGUF:UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 15,
+    "ctx": 737280,
+    "extra": "",
+    "hours": 2.3,
+    "commands": [
+     "node office-jobs.mjs --held --out ../../bob-model-lab/out/office-jobs-held/jobs.jsonl",
+     "node mail-jobs.mjs --catalog --held --out ../../bob-model-lab/out/mail-jobs-held/jobs.jsonl",
+     "node expert-redirect.mjs --sim {{out}}/pair --keep out/reap-flashnext-q4-jobs/keep/all-keep-80.json --out out/reap-redirect/all-80-redirect.json",
+     "node expert-mask.mjs --url {{url}} --off",
+     "node do-jobs.mjs --url {{url}} --bob .. --want-shapes 4 --max bob --jobs ../../bob-model-lab/out/office-jobs-held/jobs.jsonl --parallel 2 --office ../../../lab-office/libreoffice/program/soffice.exe --dir rr100-office --hours 0.35",
+     "node do-jobs.mjs --url {{url}} --bob .. --want-shapes 4 --max bob --jobs ../../bob-model-lab/out/mail-jobs-held/jobs.jsonl --effort medium --solo-effort --parallel 4 --dir rr100-inbox --hours 0.35",
+     "node expert-mask.mjs --url {{url}} --keep out/reap-flashnext-q4-jobs/keep/all-keep-80.json",
+     "node do-jobs.mjs --url {{url}} --bob .. --want-shapes 4 --max bob --jobs ../../bob-model-lab/out/office-jobs-held/jobs.jsonl --parallel 2 --office ../../../lab-office/libreoffice/program/soffice.exe --dir rm80-office --hours 0.35",
+     "node do-jobs.mjs --url {{url}} --bob .. --want-shapes 4 --max bob --jobs ../../bob-model-lab/out/mail-jobs-held/jobs.jsonl --effort medium --solo-effort --parallel 4 --dir rm80-inbox --hours 0.35",
+     "node expert-mask.mjs --url {{url}} --keep out/reap-flashnext-q4-jobs/keep/all-keep-80.json --redirect out/reap-redirect/all-80-redirect.json",
+     "node do-jobs.mjs --url {{url}} --bob .. --want-shapes 4 --max bob --jobs ../../bob-model-lab/out/office-jobs-held/jobs.jsonl --parallel 2 --office ../../../lab-office/libreoffice/program/soffice.exe --dir rr80-office --hours 0.35",
+     "node do-jobs.mjs --url {{url}} --bob .. --want-shapes 4 --max bob --jobs ../../bob-model-lab/out/mail-jobs-held/jobs.jsonl --effort medium --solo-effort --parallel 4 --dir rr80-inbox --hours 0.35",
+     "node expert-mask.mjs --url {{url}} --off",
+     "node office-score.mjs --runs ../../bob-model-lab/out/rr100-office/runs.jsonl --out ../../bob-model-lab/out/rr100-office-score",
+     "node office-score.mjs --runs ../../bob-model-lab/out/rm80-office/runs.jsonl --out ../../bob-model-lab/out/rm80-office-score",
+     "node office-score.mjs --runs ../../bob-model-lab/out/rr80-office/runs.jsonl --out ../../bob-model-lab/out/rr80-office-score",
+     "node mail-score.mjs --runs ../../bob-model-lab/out/rr100-inbox/runs.jsonl --out ../../bob-model-lab/out/rr100-inbox-score",
+     "node mail-score.mjs --runs ../../bob-model-lab/out/rm80-inbox/runs.jsonl --out ../../bob-model-lab/out/rm80-inbox-score",
+     "node mail-score.mjs --runs ../../bob-model-lab/out/rr80-inbox/runs.jsonl --out ../../bob-model-lab/out/rr80-inbox-score",
+     "node tool-faults.mjs --runs \"every expert office=../../bob-model-lab/out/rr100-office/runs.jsonl,80% mask office=../../bob-model-lab/out/rm80-office/runs.jsonl,80% redirect office=../../bob-model-lab/out/rr80-office/runs.jsonl,every expert inbox=../../bob-model-lab/out/rr100-inbox/runs.jsonl,80% mask inbox=../../bob-model-lab/out/rm80-inbox/runs.jsonl,80% redirect inbox=../../bob-model-lab/out/rr80-inbox/runs.jsonl\" --out ../../bob-model-lab/out/rr-tool-faults"
+    ],
+    "download_gb": 112,
+    "expert_pair": true,
+    "pair_from": "../../bob-model-lab/out/pair-prompts",
+    "pair_tokens": 1024,
+    "pair_minutes": 40
+   }
+  ],
+  "brain_engine": {
+   "ref": "3fff3cf084e3def210b6e92c1d415280bfbb4e3a",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word",
+    "0014-rpc-any-version",
+    "pod:0016-expert-redirect"
+   ],
+   "note": "Brain Engine b12359 + all 14 of Bob's engine patches at 3fff3cf (expert trace with mass for the expert-map phase); pod:0016-expert-redirect (lab-only, sent with the pod scripts): the live redirect on /expert-mask and llama-expert-pair"
+  },
+  "download_max_minutes": 30
+ },
+ "prep": [
+  "Runs from the kit that has out/reap-flashnext-q4-jobs/keep/all-keep-80.json (the laptop: /mnt/project-files/laptop-rentals/keep).",
+  "Before launch, in app/model-lab: node office-jobs.mjs --out ../../bob-model-lab/out/pair-src/office.jsonl; node mail-jobs.mjs --catalog --out ../../bob-model-lab/out/pair-src/mail.jsonl; node repo-jobs.mjs --check --out ../../bob-model-lab/out/pair-src/repo.jsonl; node pair-prompts.mjs --jobs ../../bob-model-lab/out/pair-src/office.jsonl,../../bob-model-lab/out/pair-src/mail.jsonl,../../bob-model-lab/out/pair-src/repo.jsonl --out ../../bob-model-lab/out/pair-prompts",
+  "The owner (23 Nov): \"can't we run the redirect rental simultaneously?\": its own pod beside office protect; its folders (rr100-*, rm80-*, rr80-*, out/reap-redirect) are its own."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20,
+ "card_sets": [
+  {
+   "gpus": [
+    "NVIDIA H200 NVL"
+   ],
+   "count": 1
+  },
+  {
+   "gpus": [
+    "NVIDIA H200"
+   ],
+   "count": 1
+  }
+ ],
+ "expected_hours": 2.7
+}

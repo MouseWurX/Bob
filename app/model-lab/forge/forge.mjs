@@ -451,7 +451,11 @@ if (!podId || args.preflight) {
   const bad = lessonPreflight();
   // 16 Nov: RunPod retired its old address while a trial waited for a card, and the window retried for half an hour. Now a
   // read-only ask (the pod list) must answer before anything is rented, so a moved or broken address stops at pre-flight. FORGE_NO_RUNPOD_CHECK: tests only (they have no internet).
-  if (!args.local && !process.env.FORGE_NO_RUNPOD_CHECK) { try { listOf(await rp('GET', '/pods'), 'pods'); log(`pre-flight: RunPod answers at ${REST}`); } catch (e) { bad.push(`RunPod's rental address ${REST} does not answer (${String(e.cause?.code || e.message).slice(0, 160)}); nothing can be rented or deleted through it`); } }
+  if (!args.local && !process.env.FORGE_NO_RUNPOD_CHECK) { try { listOf(await rp('GET', '/pods'), 'pods'); log(`pre-flight: RunPod answers at ${REST}`);
+    // 23 Nov (a narrowed key read pods but could not delete them: REAP's finished pod kept billing): a key must be able to
+    // delete, or no pod it rents can be stopped. Deleting a pod id that cannot exist answers 404 with write, 403 without.
+    try { await rp('DELETE', '/pods/zzzznotapod000'); } catch (e2) { if (/: 40[13]\b/.test(String(e2.message))) bad.push(`this RunPod key cannot delete pods (${String(e2.message).slice(0, 120)}); a pod rented with it could never be stopped, so nothing is rented. It needs pods read and write`); }
+  } catch (e) { bad.push(`RunPod's rental address ${REST} does not answer (${String(e.cause?.code || e.message).slice(0, 160)}); nothing can be rented or deleted through it`); } }
   // 22 Nov (deepseek-tools): card sets are priced live; one that passes the dollar cap or is too small is left out, none left fails
   if ((Array.isArray(plan.card_sets) && plan.card_sets.length) || args['rent-plan']) {
     const offer = await cardOptions(plan);
@@ -553,6 +557,13 @@ async function sendImatrixTexts() {
     const { execSync } = await import('node:child_process');
     const from = path.resolve(here, '..', m.interp_from); if (!fs.existsSync(path.join(from, 'prompts.txt'))) { log(`${m.name}: interp_from ${from} has no prompts.txt (interp-prep.mjs makes it); no interp step for him`); continue; }
     const itgz = path.join(outDir, 'forge', `interp-${m.name}.tgz`); execSync(`tar czf "${itgz}" -C "${from}" .`, { stdio: 'inherit' }); await upload(`interp-${m.name}.tgz`, itgz); log(`${m.name}: interp prompts sent`);
+  }
+  // 23 Nov: pair_from (a PC folder with prompts.txt from pair-prompts.mjs, never held-out) goes up as in/pair-<name>.tgz; before
+  // serving, the pod measures how alike the experts' outputs are (llama-expert-pair, pod patch 0016) for the live redirect
+  for (const m of plan.benchmark?.models || []) if (m.pair_from) {
+    const { execSync } = await import('node:child_process');
+    const from = path.resolve(here, '..', m.pair_from); if (!fs.existsSync(path.join(from, 'prompts.txt'))) { log(`${m.name}: pair_from ${from} has no prompts.txt (pair-prompts.mjs makes it); no pairing for him`); continue; }
+    const ptgz = path.join(outDir, 'forge', `pair-${m.name}.tgz`); execSync(`tar czf "${ptgz}" -C "${from}" .`, { stdio: 'inherit' }); await upload(`pair-${m.name}.tgz`, ptgz); log(`${m.name}: pairing prompts sent`);
   }
 }
 if (args['send-plan']) {
@@ -704,7 +715,7 @@ async function benchOnPod(name) {
   // first, so the PC's commands can read them and the report doesn't wait for the end of the run
   try {
     const r = await get('/status'); const st = r.ok ? await r.json() : null;
-    for (const f of (st?.files || []).filter((x) => x.path.startsWith(`bench/evil-${name}/`) || x.path.startsWith(`bench/imatrix-${name}/`) || x.path.startsWith(`bench/interp-${name}/`))) await download(f.path, path.join(dir, f.path.startsWith(`bench/evil-`) ? 'evil' : f.path.startsWith(`bench/interp-`) ? 'interp' : 'imatrix', path.basename(f.path)), f.bytes, null);
+    for (const f of (st?.files || []).filter((x) => x.path.startsWith(`bench/evil-${name}/`) || x.path.startsWith(`bench/imatrix-${name}/`) || x.path.startsWith(`bench/interp-${name}/`) || x.path.startsWith(`bench/pair-${name}/`))) await download(f.path, path.join(dir, f.path.startsWith(`bench/evil-`) ? 'evil' : f.path.startsWith(`bench/interp-`) ? 'interp' : f.path.startsWith(`bench/pair-`) ? 'pair' : 'imatrix', path.basename(f.path)), f.bytes, null);
   } catch (e) { log(`  pod files for ${name}: ${e.message.slice(0, 120)}`); }
   for (const [i, c] of cmds.entries()) {
     if (skipCmds.has(`${name}:${i + 1}`)) { log(`  command ${i + 1} skipped (--skip-cmds; it runs elsewhere)`); continue; }

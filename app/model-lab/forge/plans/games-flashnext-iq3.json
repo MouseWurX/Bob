@@ -1,6 +1,6 @@
 {
  "run": "games-flashnext-iq3",
- "note": "23 Nov 2026, the owner: \"could we have each version produce a game that we can try? same prompt? same seed ... same settings\", then the two games (a 3D fighter, \"Emberfall\", and a side-scroller, \"Lantern Run\") in Godot. Flash-Next UD-IQ3_XXS: the same Bob, prompts, settings and seeds (1, 2, 3) as the other two sizes; Bob builds each game with his own file tools at Effort medium, 30 minutes, then the game is run in Godot 4.7.2 (godot-check.mjs) and its problems sent back word for word up to 3 times (10 minutes each). Every game is kept (out/giq3-games/games) for the owner to play, labelled blind afterwards (game-blind.mjs). Held-out: never tuned on, never made into lessons. Nothing is uploaded.",
+ "note": "23 Nov 2026, the owner: \"could we have each version produce a game that we can try? same prompt? same seed ... same settings\", then the two games (a 3D fighter, \"Emberfall\", and a side-scroller, \"Lantern Run\") in Godot. Flash-Next UD-IQ3_XXS: the same Bob, prompts, settings and seeds (1, 2, 3) as the other two sizes; Bob builds each game with his own file tools at Effort medium, 30 minutes, then the game is run in Godot 4.7.2 (godot-check.mjs) and its problems sent back word for word up to 3 times (10 minutes each). Every game is kept (out/giq3-games2/games) for the owner to play, labelled blind afterwards (game-blind.mjs). Held-out: never tuned on, never made into lessons. Nothing is uploaded. 23 Nov rerun (games2): the harness fix (no mid-job sorting, wait for idle, network retries) and 60 min builds with 15 min nudges, after every Q2 and Q4 game ran out of time.",
  "benchmark_only": true,
  "teacher": "Qwen/Qwen3.8-Flash-Next",
  "counts": "expert-counts-2026-11-04T23-23-19.json",
@@ -14,15 +14,15 @@
  "general_tokens": 0,
  "rungs": [],
  "direct": true,
- "hours_max": 2.0,
- "dollars_max": 6,
- "rent_minutes": 120,
+ "hours_max": 2.8,
+ "dollars_max": 8,
+ "rent_minutes": 170,
  "download_quants": [],
  "llama_tag": "b12359",
  "no_hands": true,
  "benchmark": {
   "note": "one server: Qwen3.8-Flash-Next UD-IQ3_XXS; six game jobs at once (two games x three seeds), then the tool-fault count.",
-  "hours_each": 1.3,
+  "hours_each": 2.1,
   "models": [
    {
     "name": "giq3-flashnext",
@@ -32,11 +32,11 @@
     "slots": 15,
     "ctx": 737280,
     "extra": "-ot per_layer_token_embd=CPU",
-    "hours": 1.3,
+    "hours": 2.1,
     "commands": [
      "node game-jobs.mjs --out ../../bob-model-lab/out/game-jobs/jobs.jsonl",
-     "node do-jobs.mjs --url {{url}} --bob .. --jobs ../../bob-model-lab/out/game-jobs/jobs.jsonl --dir giq3-games --godot ../../../../lab-godot/Godot_v4.7.2-stable_win64_console.exe --effort medium --solo-effort --parallel 6 --want-shapes 4 --max bob --nudges 3 --game-minutes 30 --nudge-minutes 10 --hours 1.2",
-     "node tool-faults.mjs --runs \"flashnext iq3 games=../../bob-model-lab/out/giq3-games/runs.jsonl\" --out ../../bob-model-lab/out/giq3-tool-faults"
+     "node do-jobs.mjs --url {{url}} --bob .. --jobs ../../bob-model-lab/out/game-jobs/jobs.jsonl --dir giq3-games2 --godot ../../../../lab-godot/Godot_v4.7.2-stable_win64_console.exe --effort medium --solo-effort --parallel 6 --want-shapes 4 --max bob --nudges 3 --game-minutes 60 --nudge-minutes 15 --hours 2.0",
+     "node tool-faults.mjs --runs \"flashnext iq3 games=../../bob-model-lab/out/giq3-games2/runs.jsonl\" --out ../../bob-model-lab/out/giq3-tool-faults"
     ],
     "download_gb": 84
    }

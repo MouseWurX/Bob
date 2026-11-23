@@ -1,0 +1,509 @@
+diff --git a/include/llama.h b/include/llama.h
+index b362ec4..a72daa3 100644
+--- a/include/llama.h
++++ b/include/llama.h
+@@ -746,6 +746,14 @@ extern "C" {
+     // Turn MoE experts on or off without reloading the model.
+     // keep has n_layer x n_expert values, layer by layer: 0 = off, other = on.
+     // Each layer must keep at least n_expert_used experts. keep = NULL turns all experts on.
++    // Brain Engine: while the expert mask is on, each expert that is off hands its router share to a kept one in the same
++    // layer (to has n_layer x n_expert values: a kept expert maps to itself). to = NULL turns the redirect off; a new
++    // mask also turns it off.
++    LLAMA_API int32_t llama_set_expert_redirect(
++            struct llama_context * ctx,
++                   const int32_t * to,
++                          size_t   len);
++
+     LLAMA_API int32_t llama_set_expert_mask(
+             struct llama_context * ctx,
+                    const uint8_t * keep,
+diff --git a/src/llama-adapter.cpp b/src/llama-adapter.cpp
+index eb0e14d..c3f04aa 100644
+--- a/src/llama-adapter.cpp
++++ b/src/llama-adapter.cpp
+@@ -199,8 +199,11 @@ bool llama_adapter_emask::init(const llama_model & model) {
+ bool llama_adapter_emask::apply(const llama_model & model, const uint8_t * keep, size_t len) {
+     const auto & hparams = model.hparams;
+ 
++    ractive = false; // a new mask (or none) turns the redirect off
++
+     if (keep == nullptr) {
+         active = false;
++        keep_now.clear();
+         return true;
+     }
+ 
+@@ -240,11 +243,101 @@ bool llama_adapter_emask::apply(const llama_model & model, const uint8_t * keep,
+         ggml_backend_tensor_set(tensors[il], row.data(), 0, n_expert*sizeof(float));
+     }
+ 
++    keep_now.assign(keep, keep + len);
+     active = true;
+ 
+     return true;
+ }
+ 
++ggml_tensor * llama_adapter_emask::redirect_for(int il) const {
++    if (!active || !ractive || il < 0 || (size_t) il >= rtensors.size()) {
++        return nullptr;
++    }
++
++    return rtensors[il];
++}
++
++bool llama_adapter_emask::apply_redirect(const llama_model & model, const int32_t * to, size_t len) {
++    const auto & hparams = model.hparams;
++
++    if (to == nullptr) {
++        ractive = false;
++        return true;
++    }
++
++    const size_t n_expert = hparams.n_expert;
++    const size_t n_layer  = hparams.n_layer();
++
++    if (!active || keep_now.size() != n_layer*n_expert) {
++        LLAMA_LOG_ERROR("%s: set the expert mask first, the redirect pairs off experts with kept ones\n", __func__);
++        return false;
++    }
++    if (len != n_layer*n_expert) {
++        LLAMA_LOG_ERROR("%s: redirect has %zu values, expected %zu (n_layer x n_expert)\n", __func__, len, n_layer*n_expert);
++        return false;
++    }
++    for (size_t il = 0; il < n_layer; il++) {
++        for (size_t e = 0; e < n_expert; e++) {
++            const int32_t t = to[il*n_expert + e];
++            const bool kept = keep_now[il*n_expert + e] != 0;
++            if (t < 0 || (size_t) t >= n_expert || !keep_now[il*n_expert + t] || (kept && (size_t) t != e)) {
++                LLAMA_LOG_ERROR("%s: layer %zu expert %zu: a kept expert maps to itself, an expert that is off maps to a kept one (got %d)\n", __func__, il, e, t);
++                return false;
++            }
++        }
++    }
++
++    if (rtensors.empty()) {
++        std::map<ggml_backend_buffer_type_t, ggml_context *> ctx_map;
++        for (size_t il = 0; il < n_layer; il++) {
++            ggml_backend_buffer_type_t buft = model.select_buft(il);
++            auto it = ctx_map.find(buft);
++            ggml_context * ctx = nullptr;
++            if (it != ctx_map.end()) {
++                ctx = it->second;
++            } else {
++                ggml_init_params params = {
++                    /*.mem_size   =*/ n_layer*ggml_tensor_overhead(),
++                    /*.mem_buffer =*/ NULL,
++                    /*.no_alloc   =*/ true,
++                };
++                ctx = ggml_init(params);
++                if (!ctx) {
++                    LLAMA_LOG_ERROR("%s: failed to allocate context for the expert redirect\n", __func__);
++                    return false;
++                }
++                ctx_map[buft] = ctx;
++                rctxs.emplace_back(ctx);
++            }
++            rtensors.push_back(ggml_new_tensor_2d(ctx, GGML_TYPE_F32, n_expert, n_expert));
++        }
++        for (auto it : ctx_map) {
++            ggml_backend_buffer_t buf = ggml_backend_alloc_ctx_tensors_from_buft(it.second, it.first);
++            if (!buf) {
++                LLAMA_LOG_ERROR("%s: failed to allocate buffer for the expert redirect\n", __func__);
++                rtensors.clear();
++                rctxs.clear();
++                return false;
++            }
++            rbufs.emplace_back(buf);
++        }
++    }
++
++    // m[from + to*n_expert] = 1: ggml_mul_mat(m, probs) gives each kept expert its own share plus its partners'
++    std::vector<float> m(n_expert*n_expert);
++    for (size_t il = 0; il < n_layer; il++) {
++        std::fill(m.begin(), m.end(), 0.0f);
++        for (size_t e = 0; e < n_expert; e++) {
++            m[e + (size_t) to[il*n_expert + e]*n_expert] = 1.0f;
++        }
++        ggml_backend_tensor_set(rtensors[il], m.data(), 0, m.size()*sizeof(float));
++    }
++
++    ractive = true;
++
++    return true;
++}
++
+ // dials
+ 
+ bool llama_adapter_dials::init(const llama_model & model) {
+diff --git a/src/llama-adapter.h b/src/llama-adapter.h
+index 7e1345d..f4715ff 100644
+--- a/src/llama-adapter.h
++++ b/src/llama-adapter.h
+@@ -51,11 +51,24 @@ struct llama_adapter_emask {
+ 
+     bool apply(const llama_model & model, const uint8_t * keep, size_t len);
+ 
++    // Brain Engine redirect: per layer, an [n_expert (from), n_expert (to)] 0/1 matrix. While it is on, an expert that is
++    // off hands its router share to the kept expert it is paired with (to[e]), before the top-k pick; kept experts map
++    // to themselves. Needs the mask on; a new mask turns it off.
++    ggml_tensor * redirect_for(int il) const;
++
++    bool apply_redirect(const llama_model & model, const int32_t * to, size_t len);
++
+ private:
+     bool init(const llama_model & model);
+ 
+     bool active = false;
+ 
++    bool ractive = false;
++    std::vector<uint8_t> keep_now; // the mask that is on, n_layer x n_expert
++    std::vector<ggml_context_ptr> rctxs;
++    std::vector<ggml_backend_buffer_ptr> rbufs;
++    std::vector<ggml_tensor *> rtensors; // per layer
++
+     std::vector<ggml_context_ptr> ctxs;
+     std::vector<ggml_backend_buffer_ptr> bufs;
+ 
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index fcadf10..a1a7800 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -1888,6 +1888,14 @@ bool llama_context::set_expert_mask(const uint8_t * keep, size_t len) {
+     return res;
+ }
+ 
++bool llama_context::set_expert_redirect(const int32_t * to, size_t len) {
++    bool res = emask->apply_redirect(model, to, len);
++
++    sched_need_reserve = true;
++
++    return res;
++}
++
+ int32_t llama_context::set_expert_used(const int32_t * used, size_t n) {
+     const auto & hparams = model.hparams;
+     const uint32_t n_layer  = hparams.n_layer();
+@@ -5069,6 +5077,13 @@ int32_t llama_set_dials(
+     return res ? 0 : -1;
+ }
+ 
++int32_t llama_set_expert_redirect(
++        llama_context * ctx,
++        const int32_t * to,
++               size_t   len) {
++    return ctx->set_expert_redirect(to, len) ? 0 : -1;
++}
++
+ int32_t llama_set_expert_mask(
+         llama_context * ctx,
+         const uint8_t * keep,
+diff --git a/src/llama-context.h b/src/llama-context.h
+index 3ecee65..effe129 100644
+--- a/src/llama-context.h
++++ b/src/llama-context.h
+@@ -154,6 +154,7 @@ struct llama_context {
+                 int32_t   il_end);
+ 
+     bool set_expert_mask(const uint8_t * keep, size_t len);
++    bool set_expert_redirect(const int32_t * to, size_t len);
+ 
+     int32_t set_expert_used(const int32_t * used, size_t n);
+     int32_t get_expert_used(int32_t il) const;
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 2ca858b..0c6bc96 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -2317,7 +2317,11 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+ 
+     // experts that are off get -inf, as if their router rows were removed
+     ggml_tensor * expert_mask = n_expert == hparams.n_expert ? emask->tensor_for(il) : nullptr;
+-    if (expert_mask) {
++    // Brain Engine redirect (softmax routers only): the off experts are not masked out of the router; their share goes to
++    // their kept partner after the softmax, and only then are they masked out of the pick
++    ggml_tensor * expert_redirect = expert_mask && probs_in == nullptr && gating_op == LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX &&
++        arch != LLM_ARCH_LLAMA4 && arch != LLM_ARCH_GROVEMOE ? emask->redirect_for(il) : nullptr;
++    if (expert_mask && !expert_redirect) {
+         logits = ggml_add(ctx0, logits, expert_mask);
+         cb(logits, "ffn_moe_logits_masked", il);
+     }
+@@ -2345,6 +2349,11 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+     }
+     cb(probs, "ffn_moe_probs", il);
+ 
++    if (expert_redirect) {
++        probs = ggml_mul_mat(ctx0, expert_redirect, probs); // [n_expert, n_tokens]: each kept expert's share plus its partners'
++        cb(probs, "ffn_moe_probs_redirected", il);
++    }
++
+     // add experts selection bias - introduced in DeepSeek V3
+     // leave probs unbiased as it's later used to get expert weights
+     ggml_tensor * selection_probs = probs;
+@@ -2355,6 +2364,8 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+         if (expert_mask) {
+             selection_probs = ggml_add(ctx0, selection_probs, expert_mask);
+         }
++    } else if (expert_redirect) {
++        selection_probs = ggml_add(ctx0, probs, expert_mask); // the off experts hold 0 now; -inf keeps them out of the pick
+     }
+ 
+     // llama4 doesn't have exp_probs_b, and sigmoid is only used after top_k
+diff --git a/tools/CMakeLists.txt b/tools/CMakeLists.txt
+index 6a6592c..dc2853a 100644
+--- a/tools/CMakeLists.txt
++++ b/tools/CMakeLists.txt
+@@ -41,6 +41,9 @@ else()
+         add_subdirectory(export-lora)
+     endif()
+     add_subdirectory(fit-params)
++    if (NOT GGML_BACKEND_DL AND GGML_CPU)
++        add_subdirectory(expert-pair) # Brain Engine lab tool (pod patch 0016)
++    endif()
+     if (GGML_METAL)
+         add_subdirectory(tuning)
+     endif()
+diff --git a/tools/expert-pair/CMakeLists.txt b/tools/expert-pair/CMakeLists.txt
+new file mode 100644
+index 0000000..352e3c7
+--- /dev/null
++++ b/tools/expert-pair/CMakeLists.txt
+@@ -0,0 +1,4 @@
++set(TARGET llama-expert-pair)
++add_executable(${TARGET} expert-pair.cpp)
++target_link_libraries(${TARGET} PRIVATE llama-common llama ggml ${CMAKE_THREAD_LIBS_INIT})
++target_compile_features(${TARGET} PRIVATE cxx_std_17)
+diff --git a/tools/expert-pair/expert-pair.cpp b/tools/expert-pair/expert-pair.cpp
+new file mode 100644
+index 0000000..dee1e9c
+--- /dev/null
++++ b/tools/expert-pair/expert-pair.cpp
+@@ -0,0 +1,161 @@
++// Brain Engine lab tool (pod patch 0016): how alike the experts of each layer are, judged by what they put out on the same
++// words. Every expert of every layer is run on every token of the prompts (experts per word = all of them, the mask off),
++// and for each token the cosine between each pair of experts' outputs is added up. Written per layer as
++// <out>/sim-<il>.f32 (n_expert x n_expert, the mean cosine over the tokens) with <out>/info.json. expert-redirect.mjs turns it
++// into the pairs for the live redirect (each expert that is off goes to its most alike kept one). Read only.
++//   llama-expert-pair -m brain.gguf --pair-prompts prompts.txt --pair-out dir [--pair-max 256] [-ub 16] [llama args]
++#include "arg.h"
++#include "common.h"
++#include "llama.h"
++#include "ggml.h"
++#include "ggml-cpu.h"
++#include "ggml-backend.h"
++
++#include <cmath>
++#include <cstdio>
++#include <cstring>
++#include <fstream>
++#include <string>
++#include <thread>
++#include <vector>
++
++struct pair_cb {
++    int n_layer = 0, n_expert = 0, n_threads = 4;
++    std::vector<std::vector<int32_t>> ids;  // per layer: the last top-k picks [n_tok x n_used]
++    std::vector<int> ids_used;               // per layer: n_used of those picks
++    std::vector<std::vector<double>> sum;   // per layer: n_expert x n_expert
++    std::vector<long> count;                // per layer: tokens added
++    std::vector<float> buf;
++    long skipped = 0;
++};
++
++static int layer_of(const char * name, const char * prefix) {
++    const size_t n = strlen(prefix);
++    if (strncmp(name, prefix, n) != 0 || name[n] != '-') return -1;
++    return atoi(name + n + 1);
++}
++
++static bool cb_eval(struct ggml_tensor * t, bool ask, void * user_data) {
++    auto * cb = (pair_cb *) user_data;
++    const int il_k = layer_of(t->name, "ffn_moe_topk");
++    const int il_d = layer_of(t->name, "ffn_moe_down");
++    if (ask) return il_k >= 0 || il_d >= 0;
++    if (il_k >= 0 && il_k < cb->n_layer && t->type == GGML_TYPE_I32) {
++        const size_t n = ggml_nelements(t);
++        cb->ids[il_k].resize(n);
++        if (ggml_is_contiguous(t)) {
++            ggml_backend_tensor_get(t, cb->ids[il_k].data(), 0, n * sizeof(int32_t));
++        } else {
++            for (int64_t r = 0; r < t->ne[1]; r++) ggml_backend_tensor_get(t, cb->ids[il_k].data() + r * t->ne[0], r * t->nb[1], t->ne[0] * sizeof(int32_t));
++        }
++        cb->ids_used[il_k] = (int) t->ne[0];
++        return true;
++    }
++    if (il_d < 0 || il_d >= cb->n_layer || t->type != GGML_TYPE_F32 || !ggml_is_contiguous(t)) return true;
++    const int64_t n_embd = t->ne[0], n_used = t->ne[1], n_tok = t->ne[2];
++    if (n_used != cb->n_expert || cb->ids_used[il_d] != n_used || (int64_t) cb->ids[il_d].size() != n_used * n_tok) { cb->skipped++; return true; }
++    cb->buf.resize(ggml_nelements(t));
++    ggml_backend_tensor_get(t, cb->buf.data(), 0, cb->buf.size() * sizeof(float));
++    // unit length, so the dot product is the cosine (an expert that puts out nothing stays 0)
++    for (int64_t r = 0; r < n_used * n_tok; r++) {
++        float * v = cb->buf.data() + r * n_embd; double s = 0;
++        for (int64_t i = 0; i < n_embd; i++) s += (double) v[i] * v[i];
++        const float k = s > 0 ? (float) (1.0 / std::sqrt(s)) : 0.0f;
++        for (int64_t i = 0; i < n_embd; i++) v[i] *= k;
++    }
++    // G = U^T U for each token on the CPU (ggml's own threaded matmul)
++    const size_t mem = (size_t) (n_used * n_used * n_tok + n_embd * n_used * n_tok) * sizeof(float) + 16 * ggml_tensor_overhead() + ggml_graph_overhead() + (1 << 20);
++    ggml_init_params ip = { mem, nullptr, false };
++    ggml_context * gc = ggml_init(ip);
++    ggml_tensor * u = ggml_new_tensor_3d(gc, GGML_TYPE_F32, n_embd, n_used, n_tok);
++    memcpy(u->data, cb->buf.data(), cb->buf.size() * sizeof(float));
++    ggml_tensor * g = ggml_mul_mat(gc, u, u); // [n_used, n_used, n_tok]
++    ggml_cgraph * gf = ggml_new_graph(gc);
++    ggml_build_forward_expand(gf, g);
++    ggml_graph_compute_with_ctx(gc, gf, cb->n_threads);
++    const float * G = (const float *) g->data;
++    auto & S = cb->sum[il_d];
++    const int32_t * id = cb->ids[il_d].data();
++    const int E = cb->n_expert;
++    for (int64_t tk = 0; tk < n_tok; tk++) {
++        const int32_t * row = id + tk * n_used;
++        const float * Gt = G + tk * n_used * n_used;
++        for (int64_t a = 0; a < n_used; a++) for (int64_t b = 0; b < n_used; b++) S[(size_t) row[a] * E + row[b]] += Gt[a + b * n_used];
++    }
++    cb->count[il_d] += n_tok;
++    ggml_free(gc);
++    return true;
++}
++
++int main(int argc, char ** argv) {
++    std::string prompts_file, out_dir;
++    int max_tokens = 256;
++    std::vector<char *> rest = { argv[0] };
++    for (int i = 1; i < argc; i++) {
++        std::string a = argv[i];
++        if (a == "--pair-prompts" && i + 1 < argc) prompts_file = argv[++i];
++        else if (a == "--pair-out" && i + 1 < argc) out_dir = argv[++i];
++        else if (a == "--pair-max" && i + 1 < argc) max_tokens = atoi(argv[++i]);
++        else rest.push_back(argv[i]);
++    }
++    if (prompts_file.empty() || out_dir.empty()) {
++        fprintf(stderr, "usage: %s -m brain.gguf --pair-prompts file --pair-out dir [--pair-max 256] [-ub 16]\n", argv[0]);
++        return 1;
++    }
++    common_params params;
++    common_init();
++    if (!common_params_parse((int) rest.size(), rest.data(), params, LLAMA_EXAMPLE_COMMON)) return 1;
++    pair_cb cb;
++    params.cb_eval = cb_eval;
++    params.cb_eval_user_data = &cb;
++    params.warmup = false;
++    if (params.n_batch < max_tokens) params.n_batch = max_tokens;
++    if (params.n_ctx < max_tokens) params.n_ctx = max_tokens;
++    cb.n_threads = std::max(1, (int) std::thread::hardware_concurrency());
++
++    llama_backend_init();
++    auto init = common_init_from_params(params);
++    auto * model = init->model();
++    auto * ctx   = init->context();
++    if (!model || !ctx) { fprintf(stderr, "could not load the brain\n"); return 1; }
++    cb.n_layer = llama_model_n_layer(model);
++    cb.n_expert = llama_model_n_expert(model);
++    if (cb.n_expert <= 0) { fprintf(stderr, "the brain has no experts\n"); return 1; }
++    cb.ids.resize(cb.n_layer); cb.ids_used.assign(cb.n_layer, 0); cb.count.assign(cb.n_layer, 0);
++    cb.sum.assign(cb.n_layer, std::vector<double>((size_t) cb.n_expert * cb.n_expert, 0.0));
++    // every expert on every word
++    std::vector<int32_t> all(cb.n_layer, cb.n_expert);
++    const int32_t r = llama_set_expert_used(ctx, all.data(), all.size());
++    if (r != 0) { fprintf(stderr, "could not run all %d experts per word (code %d); try a smaller -ub\n", cb.n_expert, r); return 1; }
++
++    std::ifstream in(prompts_file);
++    std::string line; int p = 0; size_t total = 0;
++    while (std::getline(in, line) && (int) total < max_tokens) {
++        if (!line.empty() && line.back() == '\r') line.pop_back();
++        if (line.empty()) continue;
++        std::string text; for (size_t i = 0; i < line.size(); i++) { if (line[i] == '\\' && i + 1 < line.size() && line[i + 1] == 'n') { text += '\n'; i++; } else text += line[i]; }
++        std::vector<llama_token> toks = common_tokenize(ctx, text, true, true);
++        if ((int) (total + toks.size()) > max_tokens) toks.resize(max_tokens - total);
++        if (toks.empty()) continue;
++        llama_memory_clear(llama_get_memory(ctx), true);
++        if (llama_decode(ctx, llama_batch_get_one(toks.data(), (int) toks.size()))) { fprintf(stderr, "prompt %d failed to run\n", p); return 1; }
++        total += toks.size(); p++;
++        fprintf(stderr, "expert-pair: %d prompts, %zu tokens\n", p, total);
++    }
++    int ok_layers = 0;
++    for (int il = 0; il < cb.n_layer; il++) {
++        if (!cb.count[il]) continue;
++        std::vector<float> m((size_t) cb.n_expert * cb.n_expert);
++        for (size_t i = 0; i < m.size(); i++) m[i] = (float) (cb.sum[il][i] / cb.count[il]);
++        FILE * f = fopen((out_dir + "/sim-" + std::to_string(il) + ".f32").c_str(), "wb");
++        if (!f) { fprintf(stderr, "could not write to %s\n", out_dir.c_str()); return 1; }
++        fwrite(m.data(), sizeof(float), m.size(), f); fclose(f); ok_layers++;
++    }
++    FILE * info = fopen((out_dir + "/info.json").c_str(), "wb");
++    fprintf(info, "{\"n_layer\":%d,\"n_expert\":%d,\"layers\":[", cb.n_layer, cb.n_expert);
++    for (int il = 0, k = 0; il < cb.n_layer; il++) if (cb.count[il]) fprintf(info, "%s%d", k++ ? "," : "", il);
++    fprintf(info, "],\"prompts\":%d,\"tokens\":%zu,\"skipped\":%ld,\"measure\":\"mean cosine of the two experts' outputs on the same token\"}\n", p, total, cb.skipped);
++    fclose(info);
++    printf("expert-pair: %d prompts, %zu tokens, %d MoE layers measured (%ld tensors skipped) -> %s\n", p, total, ok_layers, cb.skipped, out_dir.c_str());
++    return ok_layers > 0 ? 0 : 1;
++}
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 3e666c9..59e20ed 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -1416,6 +1416,8 @@ private:
+ 
+     int n_empty_consecutive = 0;
+ 
++    std::vector<int32_t> expert_redirect; // Brain Engine redirect that is on (pod patch 0016), empty = none
++
+     std::unique_ptr<server_prompt_cache> prompt_cache;
+ 
+     std::vector<uint8_t> expert_keep; // empty = all experts on
+@@ -3991,6 +3993,38 @@ private:
+             return "invalid expert mask, each layer must keep at least n_expert_used experts";
+         }
+         expert_keep = std::move(new_keep);
++        expert_redirect.clear();
++
++        // Brain Engine redirect: {"redirect": [[to for each expert] | null, ... one per layer]}; each off expert names the
++        // kept expert in its layer that takes its router share, a kept expert names itself, null = a layer with none off
++        if (body.contains("redirect") && !body.at("redirect").is_null()) {
++            const json & rd = body.at("redirect");
++            if (expert_keep.empty()) {
++                return "\"redirect\" needs \"keep\": the redirect pairs off experts with kept ones";
++            }
++            if (!rd.is_array() || (int64_t) rd.size() != n_layer) {
++                return string_format("\"redirect\" must be an array of %" PRId64 " layers", n_layer);
++            }
++            std::vector<int32_t> to(n_layer*n_expert);
++            for (int64_t il = 0; il < n_layer; il++) {
++                const json & row = rd[(size_t) il];
++                for (int64_t e = 0; e < n_expert; e++) {
++                    if (row.is_null()) {
++                        to[il*n_expert + e] = (int32_t) e;
++                    } else if (!row.is_array() || (int64_t) row.size() != n_expert || !row[(size_t) e].is_number_integer()) {
++                        return string_format("\"redirect\" layer %" PRId64 " must be null or %" PRId64 " expert ids", il, n_expert);
++                    } else {
++                        to[il*n_expert + e] = row[(size_t) e].get<int32_t>();
++                    }
++                }
++            }
++            if (llama_set_expert_redirect(ctx_tgt, to.data(), to.size()) != 0) {
++                llama_set_expert_mask(ctx_tgt, nullptr, 0);
++                expert_keep.clear();
++                return "invalid redirect: a kept expert maps to itself and an expert that is off maps to a kept one in its layer (the mask was cleared)";
++            }
++            expert_redirect = std::move(to);
++        }
+ 
+         // cached prompts were computed with the old mask
+         for (auto & slot : slots) {
+@@ -4000,7 +4034,7 @@ private:
+             prompt_cache->states.clear();
+         }
+ 
+-        SRV_INF("expert mask %s\n", expert_keep.empty() ? "cleared" : "set");
++        SRV_INF("expert mask %s%s\n", expert_keep.empty() ? "cleared" : "set", expert_redirect.empty() ? "" : ", with redirect");
+ 
+         return "";
+     }
+@@ -4028,6 +4062,7 @@ private:
+             {"n_expert",      n_expert},
+             {"n_expert_used", llama_model_n_expert_used(model_tgt)},
+             {"keep",          keep},
++            {"redirect",      !expert_redirect.empty()},
+         };
+     }
+ 

@@ -505,6 +505,10 @@ async function runJob(j) {
   const gw = j.game ? (() => { const d = kit.place(j.game.dir); if (!d) return null; fs.mkdirSync(d, { recursive: true }); kit.cfg.projects = { ...(kit.cfg.projects || {}), [path.basename(d)]: d }; return { dir: d, checks: [] }; })() : null;
   brain.cfg.loopHelpOff = false; brain.cfg.toolHelp = true;
   if (solo) brain.cfg.soloEffort = true;
+  // 23 Nov (gq2-games: every nudge came back as a bare "[CHANGE]" or never ran): a lab job is one message at a time, so
+  // Bob's answer-mid-job sorting has nothing to sort; a nudge sent while a failed step's job still looked busy was taken
+  // as a mid-job message instead of new work. Off here, so every message is a job of its own.
+  brain.cfg.answerMidJob = false;
   const steps = []; const missing = new Set(); let real = 0, asks = 0;
   // the job's own starting files (an ideas row's setup), then its scene
   const start = plantScene(kit, { files: j.setup.filter((f) => f && typeof f.path === 'string').map((f) => ({ path: f.path, content: String(f.content ?? '') })) }, { day: today });
@@ -600,14 +604,20 @@ async function runJob(j) {
         ...thinkBody(family === 'qwen' || family === 'deepseek' || thinkAll ? think : asked), ...sampling(Boolean(q.tools?.length), asked), ...loraBody, ...(seedOf !== null ? { seed: seedOf } : {}) };
       const stepEffort = effortOf(asked); // GPT-OSS reasoning level of this step (the job's Effort is `effort`)
       const t0 = Date.now();
-      const r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth }, body: wholeBody(body), signal: q.signal });
+      // 23 Nov (gq2-games: a 30-minute build died on one "fetch failed"): a dropped connection is asked again, twice,
+      // after 15 and 45 s; the cause is kept on the step (net_retries) so a server that fell over shows in the record
+      let r, netErr = [];
+      for (let k = 0; ; k++) {
+        try { r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth }, body: wholeBody(body), signal: q.signal }); break; }
+        catch (e) { if (q.signal?.aborted || k >= 2) { e.message = `${e.message}${e.cause?.code ? ` (${e.cause.code})` : ''}${netErr.length ? ` after ${netErr.length} retries` : ''}`; throw e; } netErr.push(String(e.cause?.code || e.message).slice(0, 80)); await wait(k ? 45000 : 15000); }
+      }
       if (!r.ok) {
         const full = await r.text();
         if (!strict && MID_SYSTEM_REFUSED.test(full)) { strict = true; asks--; return this.chat(q); }
         throw new Error(`llama-server ${r.status}: ${full.slice(0, 300)}`);
       }
       const res = await r.json(); const m = res.choices?.[0]?.message || {};
-      steps.push({ think, ...(stepEffort ? { effort: stepEffort } : {}), thinking: kit.neutral(String(m.reasoning_content || '')), content: kit.neutral(String(m.content || '')), calls: [], secs: (Date.now() - t0) / 1000, tokens: res.usage?.completion_tokens ?? null, prompt_tokens: res.usage?.prompt_tokens ?? null, finish: res.choices?.[0]?.finish_reason || '' });
+      steps.push({ ...(netErr.length ? { net_retries: netErr } : {}), think, ...(stepEffort ? { effort: stepEffort } : {}), thinking: kit.neutral(String(m.reasoning_content || '')), content: kit.neutral(String(m.content || '')), calls: [], secs: (Date.now() - t0) / 1000, tokens: res.usage?.completion_tokens ?? null, prompt_tokens: res.usage?.prompt_tokens ?? null, finish: res.choices?.[0]?.finish_reason || '' });
       const calls = (m.tool_calls || []).map((c) => { let a = {}, raw; try { a = JSON.parse(c.function?.arguments || '{}'); } catch { raw = c.function?.arguments; } return { function: { name: c.function?.name, arguments: a, ...(raw !== undefined ? { raw } : {}) } }; });
       // 22 Nov (flashnext-tools, the owner: whether the tools "need adapting to a new tool shape"): each step keeps the
       // calls as the brain wrote them, before Bob mends or bounces them, so tool-faults.mjs can count by kind.
@@ -627,17 +637,24 @@ async function runJob(j) {
   };
   const t0 = Date.now(); const session = `job-${j.id}`; let error = '';
   try {
+    const turns = [];
     const turn = async (text, mins) => {
-      const { jobId } = brain.enqueue(session, text, [], effort);
+      // 23 Nov: never send while an earlier job of this brain is still busy (a cancelled step can take a moment to end)
+      for (const t9 = Date.now() + 120000; Date.now() < t9 && brain.queue.some((x) => ['working', 'waiting'].includes(x.state)); ) await wait(500);
+      const s0 = steps.length, t1 = Date.now();
+      const { jobId, answered } = brain.enqueue(session, text, [], effort);
+      if (!jobId) { turns.push({ steps: 0, state: 'not queued', note: kit.neutral(String(answered || '')).slice(0, 200) }); error = 'the message was not queued as a job'; return; }
       const until = mins > 0 ? Date.now() + mins * 60000 : Infinity;
       for (;;) { const s = brain.queue.find((x) => x.id === jobId); if (!s || ['done', 'failed', 'interrupted', 'cancelled'].includes(s.state)) { if (s && s.state !== 'done') error = `${s.state}: ${String(s.error || '')}`; break; } if (Date.now() > until) { error = 'took too long'; try { brain.cancel?.(jobId); } catch {} break; } await wait(200); }
+      const s = brain.queue.find((x) => x.id === jobId);
+      turns.push({ steps: steps.length - s0, state: s?.state || 'gone', secs: Math.round((Date.now() - t1) / 1000), ...(error ? { error: kit.neutral(error).slice(0, 200) } : {}) });
     };
     await turn(j.text, gw ? Number(o['game-minutes'] ?? 30) : Number(o['job-minutes']));
     // 23 Nov: a game is run in Godot after each turn; its problems go back to Bob word for word, up to --nudges times
     if (gw) for (let n = 0; ; n++) {
       const t1 = Date.now(), res = await runGame(godotBin, gw.dir);
       const problems = [...commonProblems(res), ...(res.ran && res.facts ? gameJob(j.key).check(res.facts) : [])].map((x) => kit.neutral(x));
-      gw.checks.push({ after: n ? `nudge ${n}` : 'build', problems, facts: res.facts || null, secs: (Date.now() - t1) / 1000, ...(error ? { error: kit.neutral(error).slice(0, 200) } : {}) });
+      gw.checks.push({ after: n ? `nudge ${n}` : 'build', problems, facts: res.facts || null, secs: (Date.now() - t1) / 1000, turn: turns.at(-1) || null, ...(error ? { error: kit.neutral(error).slice(0, 200) } : {}) });
       if (!problems.length || n >= nudgesMax) break;
       error = '';
       await turn(`I ran the game in Godot and the check found these problems:\n${problems.map((x) => `- ${x}`).join('\n')}\nPlease fix them.`, Number(o['nudge-minutes'] ?? 10));

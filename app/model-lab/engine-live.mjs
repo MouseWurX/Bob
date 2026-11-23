@@ -20,7 +20,7 @@ export function live(url, key = process.env.LAB_API_KEY) {
     // one count for every layer (N), a list per layer, or null = the brain's own
     setUsed: (used) => call('/experts-per-word', { used: used ?? null }),
     getUsed: () => call('/experts-per-word'),
-    setMask: (keep) => call('/expert-mask', { keep: keep ?? null }),
+    setMask: (keep, redirect) => call('/expert-mask', { keep: keep ?? null, ...(redirect ? { redirect } : {}) }),
     setDials: (dials) => call('/dials', { dials: dials?.length ? dials : [] }),
     // 14 Nov: a stopped neuron sweep left its live control vector on and every later answer was "....,,,," : reset clears a
     // live-set vector too (pod patch 0014; only one set over /control-vector, never a vector loaded at start)

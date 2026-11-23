@@ -3,7 +3,9 @@
 // mcguffin", and Godot): two game jobs Bob builds in Godot 4 with his own file tools, one prompt each, the same for every
 // brain. A seed does not carry over between file sizes, so each job runs at seeds 1, 2 and 3 and every game is kept.
 // The checker (godot-check.mjs) runs each game headless; on a fail Bob is sent its problems word for word (do-jobs
-// --nudges). These are held-out: never tuned on, never made into lessons. All names here are made up for this test.
+// --nudges). 23 Nov (Q2 and Q4 both pointed project.godot at a main scene they never wrote, and used Godot 3 names):
+// FINISH asks for every loaded file under its exact name and for the Godot 4 API, the same words for every brain.
+// These are held-out: never tuned on, never made into lessons. All names here are made up for this test.
 //   node game-jobs.mjs [--seeds 1,2,3] [--out <jobs.jsonl>]
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,7 +14,7 @@ import { count, said } from './godot-check.mjs';
 
 const GODOT = 'Godot 4.7 (GDScript only, no C#, no add-ons, nothing downloaded: build every model, level and effect from Godot\'s own meshes, shapes, materials, particles and code; sound is optional and, if any, made in code)';
 const CONTROLS = 'Keyboard and a game controller both work (set up named input actions in the project\'s Input Map with keys and controller buttons). Show the controls on the title screen.';
-const FINISH = 'Make it a complete Godot project in that folder: project.godot with the main scene set, the scenes (.tscn) and scripts (.gd). It must open and run in Godot with no errors. When you are done, say how to run it and what is in it.';
+const FINISH = 'Make it a complete Godot project in that folder: project.godot with the main scene set, the scenes (.tscn) and scripts (.gd). Every scene or script that project.godot or your code loads must exist under exactly that name and letter case. Use the Godot 4 API, not Godot 3. It must open and run in Godot with no errors. When you are done, say how to run it and what is in it.';
 
 export const GAME_JOBS = [
   {

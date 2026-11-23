@@ -15,7 +15,7 @@ const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${o
 const lab = fileURLToPath(new URL('../model-lab', import.meta.url));
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-cardsets-'));
 const posts = [];
-let gqlDenied = false;
+let gqlDenied = false, noWrite = false;
 const PRICES = [
   { id: 'NVIDIA H200 NVL', securePrice: 3.79, memoryInGb: 143 },
   { id: 'NVIDIA H200', securePrice: 5.29, memoryInGb: 141 },
@@ -25,6 +25,7 @@ const PRICES = [
 const srv = http.createServer((q, r) => { let body = ''; q.on('data', (d) => (body += d)); q.on('end', () => {
   r.setHeader('content-type', 'application/json');
   if (q.url.startsWith('/graphql')) { r.end(JSON.stringify(gqlDenied ? { errors: [{ message: 'not allowed for this key' }] } : { data: { gpuTypes: PRICES } })); return; }
+  if (noWrite && q.method === 'DELETE') { r.writeHead(403); r.end(JSON.stringify({ detail: 'this API key does not grant pods:write' })); return; }
   if (q.method === 'GET' && q.url === '/v2/pods') { r.end(JSON.stringify({ pods: [] })); return; }
   if (q.method === 'POST' && q.url === '/v2/pods') { try { posts.push(JSON.parse(body)); } catch { posts.push({ bad: body }); } r.writeHead(400); r.end(JSON.stringify({ detail: 'There are no longer any instances available with the requested specifications.' })); return; }
   r.writeHead(404); r.end('{}');
@@ -75,6 +76,11 @@ check('GraphQL refused: the sets are priced from the table, said plainly, H100 (
 const tb5 = await run({ run: 'table5', ...sets, dollars_max: 5 }, ['--preflight']);
 check('GraphQL refused: the dollar cap still leaves every set out', tb5.code === 1 && /PRE-FLIGHT FAIL: no card set fits/.test(tb5.o), tb5.o.slice(-300));
 gqlDenied = false;
+// 23 Nov (a narrowed key could list pods but not delete them; REAP's finished pod kept billing): pre-flight proves it can delete
+noWrite = true;
+const nw = await run({ run: 'nowrite', ...sets }, ['--preflight']);
+check('a key that cannot delete pods fails pre-flight, and nothing is rented', nw.code === 1 && /PRE-FLIGHT FAIL: this RunPod key cannot delete pods/.test(nw.o) && posts.length === 0, nw.o.slice(-400));
+noWrite = false;
 
 // 22 Nov 2026 (DeepSeek try 1: 395 GB at 40 MB/s ate the 3 h cap, $24, no job ran): the retry plan asks for H200 sets only
 // (the owner: "dont run it on a slow card"), waits for stock, and the pod stops a download that projects past the limit.
