@@ -1,5 +1,6 @@
 // Fade old messages, Clear chat and 🫥 Amnesia mode in the chat (src/fade-chat.js, src/amnesia.js on the server).
-//   - With fading on, a line at the top of the chat says how many messages faded, with Show them and 🧹 Clear chat.
+//   - Once something has faded, a line at the top of the chat says how many, with Show them. Nothing faded = no line.
+//   - Clear chat is a small plain button at the top right of the chat, under the window buttons (Nov 18).
 //     Every 20 seconds a turn past its time dims for a moment, then the chat redraws without it.
 //   - Clear chat asks first, in a box with "Delete it for good" (unticked). Also in Settings and Find anything.
 //   - With "Amnesia mode" on, 🫥 Amnesia sits beside Web search. While it's on: a banner at the top of the chat,
@@ -10,7 +11,8 @@ import { esc } from './rich.js';
 const get = (u) => fetch(u).then((r) => r.json());
 const post = (u, d) => fetch(u, { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify(d) }).then(async (r) => { const data = await r.json().catch(() => ({})); if (!r.ok) throw new Error(data.error || 'That didn\'t work.'); return data; });
 const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
-const clock = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+// Nov 16: a time from another day says the day too, so "since 5:31 PM" can't read as later today.
+const clock = (t, now = new Date()) => { const d = new Date(t); const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); return d.toDateString() === now.toDateString() ? time : `${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}, ${time}`; };
 export function fadeWords(minutes) {
   const m = Math.max(0, Math.round(Number(minutes) || 0));
   if (m && m % 1440 === 0) { const d = m / 1440; return d % 7 === 0 && d < 28 ? plural(d / 7, 'week') : plural(d, 'day'); }
@@ -64,6 +66,14 @@ export function createFadeChat(app) {
     document.body.classList.toggle('amnesia-on', Boolean(a.on));
   }
 
+  // ---- Clear chat: top right of the chat page, under the window buttons. Plain words, no icon.
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button'; clearBtn.id = 'clearChatTop'; clearBtn.className = 'clear-chat-top';
+  clearBtn.textContent = 'Clear chat';
+  clearBtn.title = 'Empty this chat (it asks first)';
+  clearBtn.addEventListener('click', () => clearChat());
+  app.log.before?.(clearBtn);
+
   // ---- The line (and the banner) at the top of the chat
   function drawTop() {
     const log = app.log;
@@ -78,17 +88,16 @@ export function createFadeChat(app) {
     }
     const f = st.fade || {};
     const gone = !showAll && st.faded > 0;
-    if (!f.on && !gone && !showAll) return;
+    if (!gone && !showAll) return; // Nov 18: no line until something has faded
     const line = document.createElement('div');
     line.className = 'fade-line'; line.setAttribute('role', 'status');
-    const what = showAll ? 'Showing faded messages too' : gone ? `${plural(st.faded, 'older message')} ${f.on && f.mode === 'delete' ? 'faded away' : 'faded into memory'}` : 'Nothing has faded yet';
+    const what = showAll ? 'Showing faded messages too' : `${plural(st.faded, 'older message')} ${f.on && f.mode === 'delete' ? 'faded away' : 'faded into memory'}`;
     line.innerHTML = `<span class="hg" aria-hidden="true">⌛</span><span>${esc(what)}</span>${f.on ? `<span class="fade-after">· after ${esc(fadeWords(f.minutes))}</span>` : ''}
-      ${gone || showAll ? `<button type="button" class="plain" data-fade="show">${showAll ? 'Hide them again' : 'Show them'}</button>` : ''}<button type="button" data-fade="clear">🧹 Clear chat</button>`;
+      <button type="button" class="plain" data-fade="show">${showAll ? 'Hide them again' : 'Show them'}</button>`;
     line.addEventListener('click', (e) => {
       const b = e.target.closest('[data-fade]');
       if (!b) return;
       if (b.dataset.fade === 'show') { showAll = !showAll; reload(); }
-      if (b.dataset.fade === 'clear') clearChat();
     });
     const after = log.querySelector(':scope > .amnesia-bar');
     if (after) after.after(line); else log.prepend(line);

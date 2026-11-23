@@ -5,6 +5,7 @@ import { brainsHtml, listSetUpHtml, listRowHtml, listTopHtml } from './brains.js
 import { entryOf, isActive, tipHtml } from './equip.js';
 import { isNaughty, familyOf } from './catalogue.js';
 import { noteOrTip } from './tips.js';
+import { brainChoices } from './brain-choices.js';
 
 // now() hands over createCellar's own values as they are at the moment of each call; fresh() copies them in.
 export function createShopParts(now) {
@@ -146,9 +147,12 @@ export function createShopParts(now) {
     if (setUpPage) return setUpPage;
     // 1.5.56: only active models that can do the job are listed (the Brain catalogue's Active switches); what's picked
     // now always stays. Get more opens the catalogue at that job.
-    const listFor = (kind, job, cur) => (roles.options[kind] || []).filter((o) => o.value === cur || ((kind !== 'llm' || canDo(job, { entry: entryOf(data.models, o.value), name: o.value, caps: o.caps }))
-      && (naughtyOn() || !isNaughty(entryOf(data.models, o.value))) // 1.5.132: the naughty list stays out of the menus while its switch is off
-      && isActive({ entry: entryOf(data.models, o.value), value: o.value, installed: true }, settings.activeModels)));
+    // Nov 18 2026: brain menus use the one rule the Brains page uses (brain-choices.js): any brain you have, the ones
+    // made for the job first, the rest marked. Other menus: active models only. The naughty list stays out while it's off.
+    const listFor = (kind, job, cur) => kind === 'llm'
+      ? brainChoices(job, { options: roles.options.llm, entryOf: (v) => entryOf(data.models, v), current: cur, isActive: (k) => isActive(k, settings.activeModels), naughtyOn: naughtyOn() }).map((c) => ({ value: c.value, label: c.made ? c.label : `${c.label} (not made for this job)` }))
+      : (roles.options[kind] || []).filter((o) => o.value === cur || ((naughtyOn() || !isNaughty(entryOf(data.models, o.value)))
+        && isActive({ entry: entryOf(data.models, o.value), value: o.value, installed: true }, settings.activeModels)));
     // 1.5.101: brain menus group their choices by family (Qwen, Gemma...), the same families as the Brain catalogue.
     // Only when there are two or more families; brains Bob doesn't know go under Other brains.
     const optsHtml = (list, cur, kind = 'llm') => {
@@ -173,14 +177,16 @@ export function createShopParts(now) {
           ${optsHtml(list, cur, j.kind)}
         </select>${getMore(j.id)}${j.kind === 'llm' ? listRowHtml(cur, { ...bx, rowId: j.id }) : ''}${j.id === 'speech' && cur ? nestedVoiceHtml() : ''}${!cur && opts.length && j.kind !== 'llm' ? `<div class="ready-hint"><span class="tag good">On this replicant matrix, not assigned yet</span> <button data-userole="${esc(j.id)}" data-value="${esc(opts[0].value)}">Use ${esc(opts[0].label)}</button></div>` : ''}</td></tr>`;
     };
-    const thinkers = roles.jobs.filter((j) => j.kind === 'llm');
+    // Nov 18 2026 (the owner: "we dont need more than one picker for a single brain set up"): with One brain on, one menu.
+    const one = settings.oneBrain === true;
+    const thinkers = roles.jobs.filter((j) => j.kind === 'llm' && (!one || j.id === 'bob'));
     const makers = roles.jobs.filter((j) => j.kind !== 'llm');
     return `<p class="muted">Pick which brain thinks for each job, and which model makes the pictures, clips and hearing. ${tipHtml('Using one brain for several jobs is faster; a different brain means a short swap (the brain machine), usually 10 to 20 seconds.', 'About swaps')} Only active models are listed: the <button type="button" class="link" data-tab="catalogue">📚 Brain catalogue</button> has every model, sorted by job.</p>
       ${listTopHtml(bx)}
-      <h3>Thinking (writes, plans, codes, writes prompts)</h3><table class="roles">${thinkers.map(row).join('')}</table>
+      <h3>Thinking (writes, plans, codes, writes prompts)</h3><table class="roles">${thinkers.map(row).join('')}</table>${one ? '<p class="muted one-brain-line">One brain is on: this brain does every thinking job. Turn it off in Settings, How Bob works, to give a job its own brain.</p>' : ''}
       <h3>Making (does the actual work)</h3><table class="roles">${makers.map(row).join('')}</table>
-      ${fold('Session brains', [['small', 'Quick'], ['gaming', 'Gaming'], ['deep', 'Deep thinking'], ['coding', 'Coding'], ['office', 'Office']].map(([k, l]) => `${l}: ${settings.sessionBrains?.[k] ? (entryOf(data.models, settings.sessionBrains[k])?.name || settings.sessionBrains[k]) : 'Bob\'s pick'}`).join(', '), `<p class="muted">Pick a session from the menu next to Bob's name. Each one keeps a set of brains that fit in your graphics card together, so there are no swaps. Art runs the small brain on the processor so the painter keeps the card.</p>
-      <table class="roles">${[['small', 'Quick brain', 'The Art session', 'small'], ['gaming', 'Gaming', 'Chats on the processor while you play (Qwen3 4B Instruct 2507)', 'gaming'], ['deep', 'Deep thinking', 'Medium, High and Extreme effort', 'deep'], ['coding', 'Coding session', 'The brain used when the session is Coding. The Coding job on the Brains page is the copy Bob hands code jobs to in any session.', 'tinker'], ['office', 'Office', 'Does everything in an Office session', 'office']].map(([k, label, what, job]) => {
+      ${one ? '' : fold('Session brains', [['small', 'Quick'], ['gaming', 'Gaming'], ['deep', 'Deep thinking'], ['coding', 'Coding'], ['office', 'Office']].map(([k, l]) => `${l}: ${settings.sessionBrains?.[k] ? (entryOf(data.models, settings.sessionBrains[k])?.name || settings.sessionBrains[k]) : 'Bob\'s pick'}`).join(', '), `<p class="muted">Pick a session from the menu next to Bob's name. Each one keeps a set of brains that fit in your graphics card together, so there are no swaps. Art runs the small brain on the processor so the painter keeps the card.</p>
+      <table class="roles">${[['small', 'Quick brain', 'The Art session', 'small'], ['gaming', 'Gaming', 'Chats on the processor while you play. Bob\'s pick is Qwen3 4B Instruct 2507. Empty, or with One brain on, no brain loads while you play', 'gaming'], ['deep', 'Deep thinking', 'Medium, High and Extreme effort', 'deep'], ['coding', 'Coding session', 'The brain used when the session is Coding. The Coding job on the Brains page is the copy Bob hands code jobs to in any session.', 'tinker'], ['office', 'Office', 'Does everything in an Office session', 'office']].map(([k, label, what, job]) => {
         const cur = settings.sessionBrains?.[k] || '';
         const list = listFor('llm', job, cur);
         return `<tr><th scope="row">${esc(label)} ${tipHtml(what, `About ${label}`)}</th><td><select data-sbrain="${k}" aria-label="${esc(label)}">${list.some((o) => o.value === cur) || !cur ? '' : `<option value="${esc(cur)}" selected>${esc(entryOf(data.models, cur)?.name || cur)} (not downloaded)</option>`}${optsHtml(list, cur)}</select>${getMore(job)}</td></tr>`;

@@ -6,8 +6,16 @@
 // What the window itself refuses, whatever the brain asks: downloads, pop-ups and new windows (links open in the
 // same window), every permission (camera, microphone, location, notifications...), and any address that isn't
 // http(s) or that is one of Bob's own pages.
+//
+// Private web (src/private-web.js, off unless turned on): the window uses a throwaway profile instead (partition
+// bob-browser-private, no persist: nothing is kept, and it's all gone when the window closes), blocks the known
+// trackers in tracker-list.cjs, refuses third-party cookies, and keeps WebRTC from showing the real address
+// (disable_non_proxied_udp). Its look stays plain, current Chromium: never faked or randomised. With a route set
+// (your proxy or Tor), the window goes only through it.
 const { BrowserWindow, session, nativeImage } = require('electron');
 const fs = require('node:fs');
+const { isTracker, siteKey } = require('./tracker-list.cjs');
+const { chromiumRule } = require('./web-route.cjs');
 
 const PICTURE_WIDTH = 1280; // pictures for the chat and the eyes brain are shrunk to this
 const SETTLE_MS = 6000;     // how long to wait for a page to finish loading after an action
@@ -57,12 +65,42 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function makeBobBrowser({ base, icon } = {}) {
   let win = null;
-  const ses = () => session.fromPartition('persist:bob-browser');
+  let privacy = { on: false, route: '' }, opened = { on: false, route: '' };
+  const partition = () => (privacy.on ? 'bob-browser-private' : 'persist:bob-browser');
+  const ses = () => session.fromPartition(partition());
+  // Private web's guards on a session, once each.
+  function guardPrivate(s) {
+    if (s.bobPrivate) return;
+    s.bobPrivate = true;
+    s.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (d, cb) => cb({ cancel: d.resourceType !== 'mainFrame' && isTracker(d.url) }));
+    // Third-party cookies: none sent and none kept for a site other than the page's own.
+    const top = (d) => { try { return siteKey(new URL(d.frame?.top?.url || d.webContents?.getURL() || d.referrer || d.url).hostname); } catch { return ''; } };
+    s.webRequest.onBeforeSendHeaders({ urls: ['http://*/*', 'https://*/*'] }, (d, cb) => {
+      const h = { ...d.requestHeaders, 'Sec-GPC': '1' };
+      if (d.resourceType !== 'mainFrame' && top(d) && siteKey(new URL(d.url).hostname) !== top(d)) { delete h.Cookie; delete h.cookie; }
+      cb({ requestHeaders: h });
+    });
+    s.webRequest.onHeadersReceived({ urls: ['http://*/*', 'https://*/*'] }, (d, cb) => {
+      if (d.resourceType === 'mainFrame' || !top(d) || siteKey(new URL(d.url).hostname) === top(d)) return cb({});
+      const h = { ...d.responseHeaders }; for (const k of Object.keys(h)) if (/^set-cookie$/i.test(k)) delete h[k];
+      cb({ responseHeaders: h });
+    });
+  }
+  async function routeSession(s) {
+    const rule = chromiumRule(privacy.route);
+    if (s.bobRule === rule) return;
+    await s.setProxy(rule ? { mode: 'fixed_servers', proxyRules: rule, proxyBypassRules: '' } : { mode: 'system' });
+    s.bobRule = rule;
+  }
   const okUrl = (url) => { try { const u = new URL(url); if (!/^https?:$/.test(u.protocol)) return false; return !(base && url.startsWith(base)); } catch { return false; } };
 
-  function ensure() {
-    if (win && !win.isDestroyed()) return win;
+  async function ensure() {
+    if (win && !win.isDestroyed() && opened.on === privacy.on && opened.route === privacy.route) return win;
+    if (win && !win.isDestroyed()) { win.destroy(); win = null; } // the mode changed: a fresh window in the right profile
     const s = ses();
+    if (privacy.on) guardPrivate(s);
+    await routeSession(s);
+    opened = { ...privacy };
     // No downloads, no permissions: the window is for looking and clicking, nothing more.
     if (!s.bobGuarded) {
       s.bobGuarded = true;
@@ -72,15 +110,20 @@ function makeBobBrowser({ base, icon } = {}) {
     }
     win = new BrowserWindow({
       width: 1100, height: 800, minWidth: 400, minHeight: 300, title: 'Bob is browsing', icon, autoHideMenuBar: true, backgroundColor: '#ffffff',
-      webPreferences: { partition: 'persist:bob-browser', sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, spellcheck: false }
+      webPreferences: { partition: partition(), sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, spellcheck: false }
     });
     win.setMenu?.(null);
     const wc = win.webContents;
+    if (privacy.on || privacy.route) wc.setWebRTCIPHandlingPolicy?.('disable_non_proxied_udp');
     wc.on('page-title-updated', (e, title) => { e.preventDefault(); if (!win.isDestroyed()) win.setTitle(`Bob is browsing: ${String(title || '').slice(0, 80) || wc.getURL()}`); });
     wc.setWindowOpenHandler(({ url }) => { if (okUrl(url)) wc.loadURL(url).catch(() => {}); return { action: 'deny' }; });
     wc.on('will-navigate', (e, url) => { if (!okUrl(url)) e.preventDefault(); });
     wc.on('will-redirect', (e, url) => { if (!okUrl(url)) e.preventDefault(); });
-    win.on('closed', () => { win = null; });
+    win.on('closed', () => {
+      win = null;
+      // The throwaway profile: everything goes when the window closes.
+      if (opened.on) { const p = session.fromPartition('bob-browser-private'); p.clearStorageData().catch(() => {}); p.clearCache().catch(() => {}); }
+    });
     return win;
   }
   const wc = () => { if (!win || win.isDestroyed()) throw new Error("Bob's browser window is closed. Open a page first (browser_open)."); return win.webContents; };
@@ -95,16 +138,22 @@ function makeBobBrowser({ base, icon } = {}) {
 
   return {
     available: () => true,
+    // hands-browser.js tells the window the Private web settings before each page. { on, route }.
+    setPrivacy(p = {}) { privacy = { on: p.on === true, route: typeof p.route === 'string' ? p.route : '' }; },
     isOpen: () => Boolean(win && !win.isDestroyed()),
     async open(url) {
       if (!okUrl(url)) throw new Error('Only http and https pages, and never Bob\'s own pages.');
-      const w = ensure();
+      const w = await ensure();
       w.show();
       // ERR_ABORTED is what Electron says when the page itself moved on (a redirect); the page still loads.
       try { await w.webContents.loadURL(url); } catch (e) { if (!/ERR_ABORTED/.test(String(e?.message))) throw new Error(String(e?.message || e).replace(/^Error invoking remote method [^:]*: /, '')); }
       await settle();
       return here();
     },
+    // "Let me finish robot checks" (src/human-check.js): the page's own HTML, only to see whether a check is still on
+    // it, and the window brought to the front for you. Bob never acts on a check.
+    async html() { const c = wc(); return String(await c.executeJavaScript('document.documentElement ? document.documentElement.outerHTML.slice(0, 400000) : ""', true) || ''); },
+    focus() { if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } return true; },
     async snapshot({ max = 150 } = {}) {
       const c = wc();
       const s = await c.executeJavaScript(SNAPSHOT_JS(max), true);

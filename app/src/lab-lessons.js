@@ -4,6 +4,8 @@
 // says why). Some lessons also show a Real result: a measured finding from Bob's own published research (docs/), labelled
 // as real and never mixed with what a learner tries. Off unless switched on (Settings, How Bob works, Brains, "Lab: Lessons"). This is a course for people. It is NOT training
 // data: nothing here is ever read by a lesson set, the Forge or any training script.
+// 16 Nov 2026: some lessons also carry From the research (cite): a finding from someone else's published work, named
+// with its authors, year and link, shown apart from my own Real results so the two are never mixed.
 // Try it is read-only: it tokenises, asks for odds, writes a few words, or reads the brain file's header. Nothing rents,
 // downloads or changes a brain. Progress (which lessons are done) is the only thing saved, in the Lab folder.
 import fs from 'node:fs';
@@ -39,6 +41,16 @@ export const UNITS = [
   { id: 'truth', level: 'engineering', title: 'Testing that tells the truth', about: 'Eval harnesses, baselines and leak checks.' },
   { id: 'looking', level: 'engineering', title: 'Looking inside', about: 'Probes, steering and patching.' }
 ];
+
+// 16 Nov 2026: the dissertation chapter each Real result draws on (real.ch), so the course can show its own index:
+// lesson, chapter, measured result, source file. Every Real result also says how strong it is (real.status).
+export const CHAPTERS = {
+  4: { title: 'Method and rules', file: 'docs/dissertation/ch04-method-and-rules.md' },
+  5: { title: 'Study 1: the hand-off habit', file: 'docs/dissertation/ch05-study1-hand-off-habit.md' },
+  6: { title: 'Study 2: what a full read finds', file: 'docs/dissertation/ch06-study2-full-read.md' },
+  7: { title: 'Study 3: leaks in the test', file: 'docs/dissertation/ch07-study3-test-leaks.md' },
+  9: { title: 'Study 5: lessons through a cut', file: 'docs/dissertation/ch09-study5-lessons-through-a-cut.md' }
+};
 
 // Answers: [text, right, why]. Keep two questions a lesson, three or four answers each, one right.
 const q = (text, ...answers) => ({ q: text, answers: answers.map(([t, right, why]) => ({ t, right: right === true, why })) });
@@ -137,7 +149,7 @@ export const LESSONS = [
     ] },
   // ---- Changing a brain ----
   { id: 'finetune', unit: 'change', title: 'Lessons and fine-tuning', pro: 'Supervised fine-tuning (SFT)',
-    real: { text: '37% of Bob\'s first coding lessons handed the job to a coding tool with a pretend result, so the brain learned to hand off code. Coding race, 13 tasks, thinking on: Riker v1 8, v2 6, the re-cut Riker 9, full Qwen 12. The re-cut kept 208 experts against v1 and v2\'s 176, so its gain is not from the clean lessons alone.', from: 'docs/FORGE-JOURNAL.md' },
+    real: { text: '37% of Bob\'s first coding lessons handed the job to a coding tool with a pretend result, so the brain learned to hand off code. Coding race, 13 tasks, thinking on: Riker v1 8, v2 6, the re-cut Riker 9, full Qwen 12. The re-cut kept 208 experts against v1 and v2\'s 176, so its gain is not from the clean lessons alone.', from: 'docs/FORGE-JOURNAL.md', ch: 5, status: 'One run of 13 tasks for each brain, not repeated. The lessons and the cut size changed together.' },
     read: ['To teach a brain, you show it example chats, called lessons, and nudge its weights so the right answers become likelier. That is fine-tuning.',
       'The lessons are everything: bad lessons teach bad habits. Every lesson should be read and checked, and the results of its tool calls should be real.'],
     try: { kind: 'page', ask: 'See how the Lab builds lessons from your files and a teacher brain.', page: 'teach', button: 'Open Teach' },
@@ -154,7 +166,7 @@ export const LESSONS = [
       q('Why freeze the lower layers?', ['They often hold general language worth keeping', true, 'Right. It protects what the brain already knows.'], ['They are empty', false, 'They are full of useful weights.'])
     ] },
   { id: 'cut', unit: 'change', title: 'Cutting experts', pro: 'Expert pruning (REAP)',
-    real: { text: 'Keeping 208 of 256 experts, Bob\'s skills kept 97 to 98% of their routing, but general knowledge kept 90%. At 144 they kept 87 to 90%, and general knowledge 66%. Layer 2 was the worst layer for every skill.', from: 'docs/forge-runs/2026-11-06-counts-v3/ladder.md' },
+    real: { text: 'Keeping 208 of 256 experts, Bob\'s own skills kept 97 to 98% of their routing, but general knowledge (the web and open-chat text, the table\'s longtext column) kept 90%. At 144 the skills kept 87 to 90%, and general knowledge 66%. Layer 2 was the worst layer for every skill.', from: 'docs/forge-runs/2026-11-06-counts-v3/ladder.md', ch: 9, status: 'Counted once on the full brain\'s routing, before any heal. Routing kept is not the same as skill kept.' },
     read: ['A mixture-of-experts brain often has experts that rarely get picked for your kind of work. Cutting them makes the file smaller, so it fits a smaller card.',
       'To choose, I count which experts get picked on real tasks, keep the busy ones, and test before and after. Cut too much and it forgets things.'],
     try: { kind: 'page', ask: 'See how the Lab counts experts and makes a smaller brain.', page: 'make', button: 'Open Make a brain' },
@@ -163,9 +175,10 @@ export const LESSONS = [
       q('What must happen after a cut?', ['Test it against the original', true, 'Right. Always benchmark before and after.'], ['Nothing', false, 'A cut can quietly break skills. Test it.'])
     ] },
   { id: 'heal', unit: 'change', title: 'Healing', pro: 'Knowledge distillation',
-    real: { text: 'Healing can\'t grow back a removed expert: it only trains the experts that are left. That is why Bob\'s smaller brains below about half their experts are planned as a gentle cut plus a heal, never a cut alone.', from: 'docs/MAKING-SMALLER-MODELS.md' },
+    real: { text: 'Healing can\'t grow back a removed expert: it only trains the experts that are left. That is why Bob\'s smaller brains below about half their experts are planned as a gentle cut plus a heal, never a cut alone.', from: 'docs/MAKING-SMALLER-MODELS.md', ch: 9, status: 'A rule from how healing works, not a measurement.' },
     read: ['After a cut, a brain loses a little. Healing trains it to copy the original\'s odds on lots of text, so it gets back what it lost. The original is the teacher.',
-      'Copying full odds teaches far more than copying answers, because the student learns what the teacher nearly said, too.'],
+      'Copying full odds teaches far more than copying answers, because the student learns what the teacher nearly said, too.',
+      'I keep the router steady while healing: full precision, a slow learning rate (or none), and no balance rule. The experts were kept for the router as it is.'],
     try: { kind: 'page', ask: 'See healing and the other steps in the Lab\'s protocol.', page: 'steps', button: 'Open Steps' },
     check: [
       q('In healing, who is the teacher?', ['The original, uncut brain', true, 'Right. The cut brain learns to copy it.'], ['The person', false, 'You run it, but the brain learns from the original.']),
@@ -192,7 +205,7 @@ export const LESSONS = [
   { id: 'loss', unit: 'learning', title: 'Loss', pro: 'Cross-entropy loss',
     read: ['Training needs one number that says how wrong the brain was. For each token in a lesson, take the odds the brain gave the right next token, and score it minus the log of those odds. That is the loss.',
       'Odds of 1 give a loss of 0. Odds of 0.5 give 0.69. Odds of 0.01 give 4.6. Averaged over every token, lower is better. A heal or a fine-tune is judged by this number on lessons it never trained on.'],
-    real: { text: 'Healing Riker after its cut took its loss on held-out lessons from 0.401 to 0.362. The uncut teacher scored 0.324, so the heal closed most of the gap.', from: 'docs/FORGE-JOURNAL.md' },
+    real: { text: 'Healing Riker after its cut took its loss on held-out lessons from 0.401 to 0.362. The uncut teacher scored 0.324, so the heal closed most of the gap.', from: 'docs/FORGE-JOURNAL.md', ch: 9, status: 'One heal, scored on one held-out lesson set.' },
     try: { kind: 'next', loss: true, ask: 'See my odds, and the loss I\'d get if the top token were the right one.', text: 'The capital of France is' },
     check: [
       q('The right token got odds of 0.5. What is the loss for that token?', ['About 0.69', true, 'Right. Minus the natural log of 0.5.'], ['0.5', false, 'The loss is minus the log of the odds, not the odds.'], ['0', false, '0 only when the odds are 1.']),
@@ -219,7 +232,7 @@ export const LESSONS = [
   { id: 'kvmath', unit: 'transformers', title: 'Attention heads and memory', pro: 'Multi-head and grouped-query attention, KV cache size',
     read: ['Each layer\'s attention is split into heads, each looking for something different. Each token stores a key and a value for every layer, so later tokens can look back.',
       'KV cache size = 2 (key and value) x layers x KV heads x head size x bytes per number x tokens. Grouped-query attention shares one key and value between several heads, which shrinks the cache a lot. Storing the cache at 8 bits halves it again.'],
-    real: { text: 'Riker found one fact hidden at 25, 50 and 75% depth in 8K, 32K, 64K and 128K windows: 12 out of 12, the same as full Qwen. A 128K window fits a 16 GB card with part of the brain off the card.', from: 'docs/FORGE-JOURNAL.md' },
+    real: { text: 'Riker found one fact hidden at 25, 50 and 75% depth in 8K, 32K, 64K and 128K windows: 12 out of 12, the same as full Qwen. A 128K window fits a 16 GB card with part of the brain off the card.', from: 'docs/FORGE-JOURNAL.md', ch: 9, status: '12 hidden facts, one run each: a small, simple test. Harder long-context tasks are not tested.' },
     try: { kind: 'context', ask: 'Paste a long text and see how much of my context it fills.', text: 'Paste a long document here.' },
     check: [
       q('What does grouped-query attention save?', ['KV cache memory, by sharing keys and values', true, 'Right. Fewer KV heads, smaller cache.'], ['Disk space for the brain file', false, 'It mostly saves memory while running.']),
@@ -228,7 +241,10 @@ export const LESSONS = [
   // ---- Advanced: Mixture of experts ----
   { id: 'routing', unit: 'moe', title: 'Routers', pro: 'Top-k gating',
     read: ['In each MoE layer, the router scores every expert for this token, keeps the top k (often 8 of 256), and mixes their outputs by those scores. The rest do nothing for this token.',
-      'In training, a balance rule pushes the router to use all experts, so none sit idle. That is also why experts follow word patterns rather than tidy topics.'],
+      'In training, a balance rule pushes the router to use all experts, so none sit idle. That is also why experts follow word patterns rather than tidy topics.',
+      'There are two kinds of balance rule. An extra loss rewards even use, but it pulls against learning the words. A bias nudges which experts get picked without touching the loss. Qwen3 uses the loss; DeepSeek-V3 mostly the bias.',
+      'The router\'s maths is done in full 32-bit precision. In 16-bit, two close scores can tie and a different expert wins.'],
+    cite: { text: 'Training MoE brains on many cards: Qwen3 MoE balances with a global-batch loss and no bias; DeepSeek-V3 uses a tiny per-sequence loss plus a bias. A BF16 router can change which experts win; keep it in FP32.', who: 'Tazi, von Werra and Wolf (2026), The Ultimate MoE Training Handbook, sections 3.1 and 3.3', url: 'https://huggingface.co/spaces/huggingface/moe-blogpost' },
     try: { kind: 'facts', ask: 'See how many experts my brain has, and how many the router keeps per token.', show: ['experts', 'active'] },
     check: [
       q('What does the router do?', ['Scores the experts and keeps the top few for each token', true, 'Right. Top-k.'], ['Sends messages to Bob', false, 'Different router.']),
@@ -236,12 +252,24 @@ export const LESSONS = [
     ] },
   { id: 'perword', unit: 'moe', title: 'Experts per word', pro: 'Active experts (k) vs quality',
     read: ['You can run a brain with fewer experts per token than it was trained with. Fewer is faster, because less is read for each token, but at some point quality falls off a cliff.',
-      'The cliff is sudden, not gentle. So test each setting, and test again after every cut.'],
-    real: { text: 'Full Qwen3.6-35B-A3B: at 8, 6 and 4 experts per word it kept 45/97 right tools, 20/20 facts and 6/6 code, at 82.7, 92.1 and 102.5 tokens a second. At 3 it fell to 26/97 tools and 4/6 code. At 2 it collapsed to 1/97 and 0/6.', from: 'docs/forge-runs/benchmarks/experts-per-word-full-qwen-2026-11-04.md' },
+      'The cliff is sudden, not gentle. So test each setting, and test again after every cut.',
+      'How the kept experts are weighed matters too. Normally their weights are scaled to add up to 1. With fewer experts, that scales each one up past what it was trained for. Keeping their share of a wider group (say the top 16) loses far less.'],
+    cite: { text: 'Qwen3.6-35B-A3B at 4 experts instead of 8: weights scaled to add up to 1 lost 4.65 MMLU points; kept at their share of the top 16 it lost 0.35 (not significant). Word odds and task scores picked different settings, so judge on tasks.', who: 'Chen and Yao (2026), Training-Free Halving of Activated Experts in Fine-Grained Mixture-of-Experts Models', url: 'https://arxiv.org/abs/2609.04575' },
+    real: { text: 'Full Qwen3.6-35B-A3B: at 8, 6 and 4 experts per word it kept 45/97 right tools, 20/20 facts and 6/6 code, at 82.7, 92.1 and 102.5 tokens a second. At 3 it fell to 26/97 tools and 4/6 code. At 2 it collapsed to 1/97 and 0/6.', from: 'docs/forge-runs/benchmarks/experts-per-word-full-qwen-2026-11-04.md', ch: 9, status: 'One run of each setting on one brain.' },
     try: { kind: 'page', ask: 'See the Lab\'s experts-per-word test.', page: 'test', button: 'Open Test' },
     check: [
       q('What happens with fewer experts per token?', ['Faster, and fine until a sudden cliff', true, 'Right. 4 was fine, 3 was not.'], ['Slower and better', false, 'Fewer experts means less to read, so faster.']),
       q('You cut a brain. Do the old experts-per-word results still hold?', ['No: test again after every cut', true, 'Right. The cliff can move.'], ['Yes', false, 'A cut changes what each expert carries.'])
+    ] },
+  { id: 'routerhealth', unit: 'moe', title: 'Watching the router', pro: 'Router diagnostics (MaxVio, entropy, expert output norms)',
+    read: ['To see if a router is healthy, count how many words each expert gets in each layer. MaxVio is the busiest expert\'s count over the average, minus 1: 0 is perfectly even.',
+      'Also look at how sure the router is (are the chosen weights all equal, or is one clearly ahead?) and how big each expert\'s output is next to the layer\'s middle one. An expert drifting far from the rest is a warning sign.',
+      'After a heal I compare these before and after, beside the scores. A heal that scores well but reshuffles most picks has drifted from the keep list.'],
+    cite: { text: 'The handbook\'s monitoring appendix: per-layer token counts and MaxVio, weight entropy and the top-two ratio, per-expert output size against the layer median, and a table from each symptom to its likely cause.', who: 'Tazi, von Werra and Wolf (2026), The Ultimate MoE Training Handbook, appendix A.1 and A.2; MaxVio from Wang et al. (2024), arXiv:2408.15664', url: 'https://huggingface.co/spaces/huggingface/moe-blogpost' },
+    try: { kind: 'page', ask: 'See which experts my brain picks, layer by layer.', page: 'inside', button: 'Open Look inside' },
+    check: [
+      q('A layer has MaxVio 0. What does that mean?', ['Every expert got the same number of words', true, 'Right. Perfectly even.'], ['No expert was picked', false, 'Then there is nothing to divide by: MaxVio has no value.'], ['One expert got every word', false, 'That is the far end: a very large MaxVio.']),
+      q('After a heal, most expert picks changed but the scores rose. Worth noting?', ['Yes: the heal moved away from what the keep list was chosen for', true, 'Right. The next cut should be counted again.'], ['No, only scores matter', false, 'The picks tell you whether the keep list still fits.'])
     ] },
   // ---- Advanced: Making brains smaller ----
   { id: 'quantmath', unit: 'smaller', title: 'How quantization works', pro: 'Block quantization, K-quants and imatrix',
@@ -255,7 +283,8 @@ export const LESSONS = [
   { id: 'reap', unit: 'smaller', title: 'Scoring experts', pro: 'REAP (router-weighted expert activation pruning)',
     read: ['Counting how often an expert is picked isn\'t enough. REAP also weighs how much each expert actually changes the output when it is picked. An expert picked often but adding little can go first.',
       'Try a keep list first by switching experts off in place, which you can undo exactly. Only slice the file once the list is right.'],
-    real: { text: 'REAP trims with no heal, scored on 314 held-out chat turns at 100, 75, 50 and 35% of experts kept. Bobert (uncut): 204, 204, 198, 145. Riker (already cut once): 210, 204, 163, 72. An uncut brain has slack; a cut one doesn\'t.', from: 'docs/MAKING-SMALLER-MODELS.md' },
+    cite: { text: 'A caution from others: on Qwen3.6-35B-A3B and Qwen3.5-397B-A17B the router was well balanced and expert use was strongly tied to the kind of text, so these authors saw little room for cutting experts. Measure every cut on your own tasks.', who: 'Chen and Yao (2026), Training-Free Halving of Activated Experts in Fine-Grained Mixture-of-Experts Models', url: 'https://arxiv.org/abs/2609.04575' },
+    real: { text: 'REAP trims with no heal, scored on 314 held-out chat turns at 100, 75, 50 and 35% of experts kept. Bobert (uncut): 204, 204, 198, 145. Riker (already cut once): 210, 204, 163, 72. An uncut brain has slack; a cut one doesn\'t.', from: 'docs/MAKING-SMALLER-MODELS.md', ch: 9, status: 'One run at each size, with no heal, scored out of 314 turns.' },
     try: { kind: 'page', ask: 'See the Lab\'s cut plans.', page: 'make', button: 'Open Make a brain' },
     check: [
       q('What does REAP add to plain counting?', ['How much each expert changes the output', true, 'Right. Busy isn\'t the same as useful.'], ['The expert\'s file size', false, 'All experts in a layer are the same size.']),
@@ -265,7 +294,7 @@ export const LESSONS = [
   { id: 'habits', unit: 'data', title: 'Lessons teach habits', pro: 'Behaviour from training data',
     read: ['A brain copies what its lessons do, not what they say. If lessons hand work off or invent results, the brain learns to hand off and invent.',
       'So read the lessons, not just their count. One bad pattern repeated a few hundred times becomes a habit.'],
-    real: { text: '37% of Bob\'s first coding lessons handed code off to a tool with a pretend result. Coding race, 13 tasks, thinking on: Riker v1 8, v2 6, the re-cut Riker 9, full Qwen 12. The re-cut kept 208 experts against v1 and v2\'s 176, so its gain is not from the clean lessons alone.', from: 'docs/FORGE-JOURNAL.md' },
+    real: { text: '37% of Bob\'s first coding lessons handed code off to a tool with a pretend result. Coding race, 13 tasks, thinking on: Riker v1 8, v2 6, the re-cut Riker 9, full Qwen 12. The re-cut kept 208 experts against v1 and v2\'s 176, so its gain is not from the clean lessons alone.', from: 'docs/FORGE-JOURNAL.md', ch: 5, status: 'One run of 13 tasks for each brain, not repeated. The lessons and the cut size changed together.' },
     try: { kind: 'page', ask: 'See how the Lab builds and checks lessons.', page: 'teach', button: 'Open Teach' },
     check: [
       q('What does a brain learn from a lesson?', ['What the lesson does', true, 'Right. Its habits, good and bad.'], ['Only the facts in it', false, 'It learns the behaviour too.']),
@@ -274,7 +303,7 @@ export const LESSONS = [
   { id: 'cleaning', unit: 'data', title: 'Cleaning a lesson set', pro: 'Data cleaning and deduplication',
     read: ['Before training, drop lessons that never reach an answer, loop on one tool call, call a tool that doesn\'t exist, are empty, or are duplicates.',
       'Keep a held-out split that is never trained on, and check that no test item hides in the training side. A test the brain has seen is a memory test.'],
-    real: { text: 'Cleaning Bob\'s first 16 lesson sets took them from 9,059 to 8,828 lessons: 73 duplicates, 123 with no final answer, 28 calling unknown tools, 6 loops and 1 empty.', from: 'docs/MAKING-SMALLER-MODELS.md' },
+    real: { text: 'Cleaning Bob\'s first 16 lesson sets took them from 9,059 to 8,828 lessons: 73 duplicates, 123 with no final answer, 28 calling unknown tools, 6 loops and 1 empty.', from: 'docs/MAKING-SMALLER-MODELS.md', ch: 6, status: 'Scripts only. Scripts miss faults that a careful reader finds (Chapter 6).' },
     try: { kind: 'page', ask: 'See the cleaning step in the Lab.', page: 'steps', button: 'Open Steps' },
     check: [
       q('Which lesson should be dropped?', ['One that calls a tool that doesn\'t exist', true, 'Right. It teaches inventing tools.'], ['A short one that is right', false, 'Short and right is fine.']),
@@ -308,7 +337,9 @@ export const LESSONS = [
     ] },
   { id: 'reward', unit: 'beyond', title: 'Learning from rewards', pro: 'Reinforcement learning (GRPO)',
     read: ['Instead of copying, the brain tries a task several times, each try is scored by a checker (did the code run, was the tool call right), and better-than-average tries are made likelier. GRPO compares the tries in each group.',
-      'It only works if the checker is right. A checker that can be fooled teaches the brain to fool it.'],
+      'It only works if the checker is right. A checker that can be fooled teaches the brain to fool it.',
+      'Mixture-of-experts brains add a catch. If one engine writes the tries and another does the learning, they can pick different experts for the same word, so the brain learns from tries it didn\'t quite make. Routing replay saves the picks and reuses them.'],
+    cite: { text: 'In Qwen3-30B-A3B, about 10% of router choices differed between the engine writing answers (SGLang) and the trainer (Megatron). Replaying the picks (R3) roughly halved the gap and stopped training from collapsing.', who: 'Ma et al. (2025), Stabilizing MoE Reinforcement Learning by Aligning Training and Inference Routers; figures as summarised by Tazi, von Werra and Wolf (2026), section 4', url: 'https://arxiv.org/abs/2510.11370' },
     try: { kind: 'page', ask: 'See reward training in the Lab\'s protocol.', page: 'steps', button: 'Open Steps' },
     check: [
       q('What does GRPO compare?', ['Several tries at the same task, scored by a checker', true, 'Right. Better than the group average gets reinforced.'], ['Two different brains', false, 'It compares one brain\'s own tries.']),
@@ -325,7 +356,7 @@ export const LESSONS = [
       q('Where does a tensor\'s data start?', ['At the data start plus its offset', true, 'Right. The table gives each tensor\'s offset from the aligned data start.'], ['Right after its name', false, 'Names are in the table; bytes are all together after it.'])
     ] },
   { id: 'counting', unit: 'tools', title: 'Counting experts', pro: 'Router activation counts',
-    real: { text: 'Bob\'s first cut kept the busiest experts overall, and nothing stopped a small skill from losing its experts. The fix: count each job, keep enough in every layer to cover 95% of its routing (99% for tools, coding and exact formats), and keep the union.', from: 'docs/MAKING-SMALLER-MODELS.md' },
+    real: { text: 'Bob\'s first cut kept the busiest experts overall, and nothing stopped a small skill from losing its experts. The fix: count each job, keep enough in every layer to cover 95% of its routing (99% for tools, coding and exact formats), and keep the union.', from: 'docs/MAKING-SMALLER-MODELS.md', ch: 9, status: 'A rule, not a measurement.' },
     read: ['To know which experts matter, run real tasks and count how often the router picks each expert in each layer. The engine adds a counter beside the router and writes the totals to a file.',
       'Count per skill (code, chat, tools) and keep an expert if it covers a skill you need. Counting on the wrong tasks keeps the wrong experts.'],
     code: { from: 'app/src/lab-gguf.js, coverageKeep (idea)', text: "for each layer:\n  sort experts by count, busiest first\n  keep experts until each skill's picks are 95% covered\nkeep = the same number in every layer (the file needs it)" },
@@ -382,11 +413,22 @@ export const LESSONS = [
   { id: 'harness', unit: 'truth', title: 'Building an eval harness', pro: 'Evaluation harness',
     read: ['A test harness asks the same questions the same way every time: same prompt, temperature 0, same seed, thinking set on purpose. It scores with code where it can (did the tool call match, did the code run), not by eye.',
       'It records what ran and what was skipped, and runs the stock brain as a baseline next to the new one.'],
-    real: { text: 'A 97-question quiz moves by 3 to 5 between runs, so small wins on small quizzes can be luck. Bob trusts held-out chats for decisions.', from: 'docs/MAKING-SMALLER-MODELS.md' },
+    real: { text: 'A 97-question quiz moves by 3 to 5 between runs, so small wins on small quizzes can be luck. Bob trusts held-out chats for decisions.', from: 'docs/MAKING-SMALLER-MODELS.md', ch: 4, status: 'Measured on one 97-question quiz.' },
     try: { kind: 'page', ask: 'See the Lab\'s challenges and wobble check.', page: 'test', button: 'Open Test' },
     check: [
       q('Why temperature 0 in a harness?', ['So the same brain gets the same score twice', true, 'Right. Fewer moving parts.'], ['It makes brains smarter', false, 'It only makes runs repeatable.']),
       q('A new brain beats the old by 2 on a 97-question quiz. Real?', ['Not yet: that is inside the 3-to-5 noise', true, 'Right. Run it more, or use a bigger test.'], ['Yes, any win counts', false, 'Small quizzes wobble.'])
+    ] },
+  { id: 'splitleak', unit: 'truth', title: 'The split was right, and still leaked', pro: 'Test contamination (near-copy leaks)',
+    read: ['I held out about 5% of my lessons by a hash of each lesson\'s idea, so a lesson couldn\'t cross sides by being copied under a new id. That split was correct.',
+      'It still wasn\'t enough. The same requests had been written again under new ids, in other lesson sets and in the chats used to score experts. A split by id can\'t see a copy with a different id. Only comparing the words finds it.',
+      'So check the words, not the labels: compare every test item with every training-side file, in code, before every training run. And say plainly which past scores used the leaked test.'],
+    real: { text: '519 of my 534 held-out tool test items turned up word for word in training-side lesson files, and 7 more shared their first 60 characters: 526 of 534 had a copy or a near copy. Only 8 had no match. The copies sat in other lesson sets, the GPT-OSS runs, the thinking-style sets, the lesson-kit seeds and the chats used for REAP scoring.', from: 'docs/dissertation/ch07-study3-test-leaks.md', ch: 7, status: 'Counted once on the lab PC\'s files. How much it raised past scores is not measured.' },
+    code: { from: 'idea', text: "held_out = md5(idea) < 0.05   # right: follows the idea, not the file\n# but the same request saved under a new idea lands on the training side\n# so also compare the words (next lesson: Writing a leak check)" },
+    try: { kind: 'page', ask: 'See the Lab\'s steps, where the leak check runs before training.', page: 'steps', button: 'Open Steps' },
+    check: [
+      q('Your split by id hash is correct. Can test items still leak?', ['No, a correct split stops every leak', false, 'That\'s what I thought too. 519 of 534 leaked anyway.'], ['Yes, if the same words sit on the training side under another id', true, 'Right. A split by id can\'t see a copy with a new id.'], ['Only if the hash is broken', false, 'The hash was fine. The copies had different ids.']),
+      q('You find a leak after scores were shared. What do you do?', ['Nothing, the split was right', false, 'A right split doesn\'t make the score right.'], ['Quietly delete the copies', false, 'That stops new leaks, but hides what the old scores measured.'], ['Say which scores used the leaked test, and that they may be too high', true, 'Right. Name the problem, even when its size isn\'t measured yet.'])
     ] },
   { id: 'leakcheck', unit: 'truth', title: 'Writing a leak check', pro: 'Contamination detection',
     read: ['Before training, compare every test item with every training lesson. Normalise first (case, spaces, punctuation), then look for exact matches and for long shared starts.',
@@ -398,6 +440,17 @@ export const LESSONS = [
       q('When should the leak check run?', ['Before every training run, in code', true, 'Right. Block the run if it finds one.'], ['After publishing', false, 'Too late: the scores are already wrong.'])
     ] },
   // ---- Engineering: Looking inside ----
+  { id: 'reviewer', unit: 'truth', title: 'Auditing your reviewer', pro: 'LLM-as-a-judge and reviewer bias',
+    read: ['When a brain reviews lessons or grades answers, it is a measuring tool with its own biases. Studies of model judges find they can favour the answer shown first, longer answers, and their own writing. My reviewers are models too, so the same can hold for them.',
+      'Audit a reviewer like any instrument. Have a second reviewer read the same items and count where they disagree, and which way. Read a sample yourself, starting where they disagree. Swap the order of two answers and see if the verdict moves. Write the rule down, because a vague rule makes reviewers disagree.',
+      'Two reviewers from one model family can share a blind spot, so their agreement isn\'t proof. And a stricter reviewer is not, by that alone, a more accurate one.'],
+    real: { text: 'A cheaper model (Haiku) sorted 5,788 of my tool lessons, then a stronger one (Opus) read all 5,788. Opus changed 1,922 verdicts (33%). 71% of the changes were about how much work a lesson needed (a fix or a rewrite), not whether it needed work. The changes ran one way: Opus moved 533 of Haiku\'s keeps to worse, and 23 lessons to better.', from: 'docs/dissertation/ch06-study2-full-read.md', ch: 6, status: 'Each reviewer read once. No person has checked a sample yet, so which reviewer was right is not measured.' },
+    cite: { text: 'A strong model judge agreed with people over 80% of the time, about as often as people agree with each other, and still showed biases for answer position, length and its own writing.', who: 'Zheng et al. (2023), Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena', url: 'https://arxiv.org/abs/2306.05685' },
+    try: { kind: 'page', ask: 'See the Clean step, where a person\'s hand review can overrule the lessons.', page: 'steps', button: 'Open Steps' },
+    check: [
+      q('Two model reviewers agree a lesson is good. Is it?', ['Yes, two agree', false, 'Both can miss the same fault.'], ['Not proven: they may share a blind spot', true, 'Right. Read a sample yourself.']),
+      q('One reviewer marks far more lessons bad than another. What does that tell you?', ['It is the better reviewer', false, 'It might be raising false alarms.'], ['The lessons got worse', false, 'The lessons are the same; only the reader changed.'], ['It is stricter; a person must check a sample to know who is right', true, 'Right. Strict is not the same as accurate.'])
+    ] },
   { id: 'steering', unit: 'looking', title: 'Probes and steering', pro: 'Linear probes and activation steering',
     read: ['A behaviour often shows up as a direction in a layer\'s numbers. Average the activations on asks that show it, subtract the average on asks that don\'t, and you have a direction (a control vector).',
       'A probe reads how strongly that direction shows. Steering adds it, or takes it away, while the brain runs. Nothing in the file changes, so it is a safe way to test an idea before any surgery.'],
@@ -534,7 +587,7 @@ export async function lessonsRoute({ req, res, p, lab, body, send, labOn, labDir
   const dir = labDir(lab.cfg);
   if (req.method === 'GET' && p === '/api/lab/lessons') {
     const b = learnBrain(lab.brain);
-    send(res, 200, { on, levels: LEVELS, units: UNITS, lessons: LESSONS, ...readProgress(dir), ready: b.ready, why: b.why || '', wake: b.wake === true, brain: b.ready ? (lab.brain?.brainLabel?.(b.model) || b.model) : '' });
+    send(res, 200, { on, levels: LEVELS, units: UNITS, lessons: LESSONS, chapters: CHAPTERS, ...readProgress(dir), ready: b.ready, why: b.why || '', wake: b.wake === true, brain: b.ready ? (lab.brain?.brainLabel?.(b.model) || b.model) : '' });
     return true;
   }
   if (req.method !== 'POST') { send(res, 404, { error: 'no' }); return true; }

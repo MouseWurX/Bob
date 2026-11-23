@@ -1234,6 +1234,9 @@ export class LlamaCpp {
         try { this.log?.('engine', `${model}: spread over ${helpers.length} other Bob${helpers.length > 1 ? 's' : ''}' card${helpers.length > 1 ? 's' : ''} (${helpers.join(', ')}). The first time, part of the brain is sent over the network: over Wi-Fi that can take a while (I'll wait up to ${mins} min), and a network cable is much faster. Later loads only send what's missing.`); } catch {}
       }
     }
+    // Nov 17: a load without lent cards (processor only, no card, a spread that failed, or none lent) lets go of any
+    // lends left from before, so the brain line never says "borrowing" for a brain running here alone.
+    if (!helpers.length && this.role !== BESIDE && this.spread?.using?.length) this.spread.close();
     // Nov 12 (apu-fit.js): on built-in graphics, the brain goes where it really fits, read with the memory free now.
     if (!helpers.length && !cpu && card !== 'none') this.apuFit(model, args, ctx || this.lc.ctx || DEFAULT_CTX);
     // A llama-server left over from a crash would hold the port: stop it first.
@@ -1244,7 +1247,7 @@ export class LlamaCpp {
       if (old && old !== process.pid && /llama-server/i.test(await commandLineOf(old))) { process.kill(old, 'SIGTERM'); await new Promise((r) => setTimeout(r, 800)); }
     } catch {}
     // 224: the port is really free (another program can hold it too, and its answers would look like the engine's).
-    const avoid = this.role === BESIDE ? [] : [this.lc.besidePort || this.basePort + 1, this.lc.embedPort || this.basePort + 2];
+    const avoid = this.role === BESIDE ? [] : [this.lc.besidePort || this.basePort + 1, this.lc.embedPort || this.basePort + 2, this.lc.hearPort || this.basePort + 3]; // + Bob's ears (hearing.js)
     const port = await pickPort(this.basePort, { avoid, ...(this.portCheck ? { isFree: this.portCheck } : {}) });
     if (port === null) throw Object.assign(new Error(`Something else is using port ${this.basePort} and the spare ones after it, so my engine can't start. Restarting the PC frees them.`), { noRetry: true });
     if (port !== this.port) { this.log?.('engine', `port ${this.basePort} is taken by another program; starting the engine on ${port}`); this.port = port; this.url = `http://127.0.0.1:${port}`; }

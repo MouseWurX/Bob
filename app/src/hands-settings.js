@@ -1,4 +1,5 @@
-import { cleanSortRules } from './sort-names.js'; // no imports of its own, so config.js can still use this file
+import { cleanSortRules } from './sort-names.js';
+import { cleanPath } from './clean-path.js'; // no imports either // no imports of its own, so config.js can still use this file
 // Hands settings (no other imports, so config.js can use it). Hands are the things Bob can do on the PC beyond chatting:
 // work with files, run commands, schedules, and open and use apps. Every Hand is OFF until the user turns it on,
 // and there is one master switch over all of them. Bob asks before every action unless the user switches on
@@ -104,9 +105,9 @@ export function cleanHands(v = {}) {
   // today = item 12 (Nov 11): command cards also offer "Allow this here for today". Off unless the user turns it on.
   const out = { enabled: v.enabled === true, held: v.held === true, free: v.free === true, today: v.today === true };
   for (const id of Object.keys(HANDS)) out[id] = { on: v[id]?.on === true };
-  out.folders = [...new Set([].concat(v.folders || []).filter(isAbs))].slice(0, 30);
+  out.folders = [...new Set([].concat(v.folders || []).map(cleanPath).filter(isAbs))].slice(0, 30);
   out.sortRules = cleanSortRules(v.sortRules); // Sort and rename: the naming rule for each kind of file (sort-names.js)
-  out.readOnlyFolders = [...new Set([].concat(v.readOnlyFolders || []).filter(isAbs))].slice(0, 30); // 1.5.117: read-only projects added in Settings
+  out.readOnlyFolders = [...new Set([].concat(v.readOnlyFolders || []).map(cleanPath).filter(isAbs))].slice(0, 30); // 1.5.117: read-only projects added in Settings
   out.limits = {};
   for (const k of Object.keys(LIMITS)) out.limits[k] = v.limits?.[k] !== false;
   out.timeoutMin = [1, 5, 15, 30, 60, 120].includes(Number(v.timeoutMin)) ? Number(v.timeoutMin) : 15;

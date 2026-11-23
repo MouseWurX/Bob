@@ -494,7 +494,7 @@ body.left-folded .nav-item.on { box-shadow: none; }
 body.left-folded .side .session-wrap { flex-direction: column; padding: 4px 0; }
 body.left-folded .side .session { width: 52px; font-size: 10px; padding: 2px 0; }
 
-.mid { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.mid { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; }
 .ctx { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--panel); min-height: 42px; }
 .ctx-title { font-size: 14px; }
 .ctx-fill { flex: 1; }
@@ -748,6 +748,7 @@ button.big { padding: 9px 18px; font-size: 15px; min-height: 40px; }
 
 /* ---------- 1.5.0: Settings, Get models and Style as a page in the main area ---------- */
 .mid.paged > :is(#log, #chips, #tray, #composer) { display: none !important; }
+.mid.paged > #clearChatTop { display: none !important; }
 .cellar.page { position: static; flex: 1; min-height: 0; width: auto; max-width: none; max-height: none; margin: 0; border: 0; border-radius: 0; overflow: auto; background: var(--bg); }
 .cellar.page:not([open]) { display: none; }
 .cellar.page.wide { width: auto; }
@@ -2070,6 +2071,20 @@ button.learn-odd:hover, button.learn-odd:focus-visible { border-color: var(--acc
 .brains-panel .kit-panel:empty { display: none; }
 .brains-panel .kit-panel { margin-top: 10px; }
 @media (max-width: 760px) { .brain-row { grid-template-columns: 1fr; } .budget-row { grid-template-columns: 70px 1fr; } .budget-row .muted { grid-column: 1 / 3; } }
+/* Nov 18 2026 the Brains page: one row per brain, the main brain first, each with its own picker; + Add a brain below. */
+.main-row { border-color: var(--accent); }
+.row-label { display: block; font-size: 12px; color: var(--muted); font-weight: 600; margin-bottom: 2px; }
+.row-pick select { max-width: 100%; font-weight: 600; }
+.brains-panel .spec { margin: -4px 0 8px; font-size: 12px; overflow-wrap: anywhere; }
+.add-brain { margin-top: 8px; }
+.add-brain > summary { cursor: pointer; list-style: none; display: inline-flex; gap: 8px; align-items: center; }
+.add-brain > summary::-webkit-details-marker { display: none; }
+.add-brain > summary .get { pointer-events: none; }
+.add-brain-form { margin-top: 8px; display: grid; gap: 8px; border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; background: var(--card); }
+.add-brain-form fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.add-brain-form legend { font-size: 13px; color: var(--muted); padding: 0; margin-bottom: 4px; }
+.add-jobs { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.add-job { display: inline-flex; gap: 4px; align-items: center; font-size: 13px; white-space: nowrap; }
 .setup-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
 .setup-card { text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; color: var(--text); cursor: pointer; font: inherit; line-height: 1.35; }
 .setup-card.on { border-color: var(--good); }
@@ -2178,9 +2193,10 @@ a.mini.button:focus-visible { outline: 2px solid var(--accent); outline-offset: 
 
 /* Settings, Jobs (public/job-helps.js) */
 .stop-after { background: transparent; color: var(--bad); border: 1px solid var(--bad); font-weight: 600; padding: 7px 12px; margin-right: 6px; }
-.job-clock { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 0.85em; color: var(--muted, inherit); }
-.job-clock-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--line, rgba(127,127,127,.25)); overflow: hidden; }
+.job-clock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: block; height: 4px; margin: 0; pointer-events: auto; } /* Nov 17: a thin bar along the very bottom of the window */
+.job-clock-bar { display: block; height: 100%; background: var(--line, rgba(127,127,127,.25)); overflow: hidden; }
 .job-clock-bar > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .5s; }
+.job-clock-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* read out and shown as the bar's tooltip */
 .note.receipt ul.receipt-list { margin: 4px 0 0; padding-left: 1.2em; }
 .note.receipt li { margin: 2px 0; overflow-wrap: anywhere; }
 .approval .why-not { flex: 1 1 14em; min-width: 0; }
@@ -2226,6 +2242,7 @@ html.readable-font code, html.readable-font pre, html.readable-font kbd { font-f
 .cat-filter select { min-height: 36px; max-width: 100%; }
 .tag.official-tag { border-color: var(--accent); }
 .tag.reap-tag { border-style: dashed; }
+.tag.turbo-tag { border-style: double; border-width: 3px; }
 
 /* 1.5.210 The porthole: the fNRI cube seen through a round window into a foggy room (public/fog.js draws the fog on its own
    canvas behind the cube's). The rim is the theme's colours, so it fits every look. */
@@ -2546,6 +2563,9 @@ body.still .net-row .nb:is(:hover, :focus-visible) .nb-port, body.still.look-lam
 .msg.fading-out { opacity: .15; transition: opacity 1.4s ease; }
 body.still .msg.fading-out { transition: none; }
 /* Nov 14: the Amnesia line is very subtle. One quiet line, no fill; the box you type in gets a thin purple edge, no glow. */
+.clear-chat-top { position: absolute; top: 10px; right: 20px; z-index: 6; min-height: 32px; padding: 4px 12px; font: inherit; font-size: 12.5px; color: var(--muted); background: color-mix(in srgb, var(--bg) 80%, transparent); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
+.clear-chat-top:hover, .clear-chat-top:focus-visible { color: var(--text); border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+@media (max-width: 900px) { .clear-chat-top { position: static; align-self: flex-end; margin: 8px 12px 0; } }
 .amnesia-bar { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 10px; margin: 2px auto 12px; max-width: 760px; padding: 2px 10px; color: var(--muted); font-size: 12.5px; }
 .amnesia-bar .amn-ic { font-size: 14px; opacity: .8; }
 .amnesia-bar .amn-t { line-height: 1.4; }
@@ -2862,3 +2882,48 @@ body.still .phone-menu { animation: none; }
 .lesson-nav { justify-content: space-between; }
 @media (max-width: 600px) { .lesson-facts { grid-template-columns: 1fr; } .lesson-facts dd { margin-bottom: 4px; } }
 .lesson-real { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: var(--r); padding: 4px 10px; margin: 8px 0; }
+/* 16 Nov Lessons: How strong a Real result is, and the index of every Real result (a card per row on a phone) */
+.lesson-status { display: block; margin-top: 2px; }
+.lesson-index { margin: 10px 0; }
+.lesson-index table { width: 100%; }
+.lesson-index caption { text-align: left; font-weight: bold; padding: 4px 0; }
+.lesson-index th, .lesson-index td { vertical-align: top; overflow-wrap: anywhere; }
+.lesson-index th .link { text-align: left; }
+@media (max-width: 600px) {
+  .lesson-index table, .lesson-index tbody, .lesson-index tr, .lesson-index th, .lesson-index td { display: block; width: auto; }
+  .lesson-index caption { display: block; }
+  .lesson-index .lesson-index-head { display: none; }
+  .lesson-index tr { border: 1px solid var(--line); border-radius: var(--r); margin-bottom: 8px; }
+  .lesson-index th, .lesson-index td { border: 0; padding: 2px 8px; }
+  .lesson-index td[data-label]::before { content: attr(data-label) ": "; font-weight: bold; }
+}
+
+/* Nov 16 Settings, This replicant matrix, 📈 Monitoring log (public/trace-log.js): a bar per step along the turn's time */
+.help-entry pre { overflow-x: auto; max-width: 100%; font-family: var(--mono); font-size: 12px; border: 1px solid var(--line); border-radius: var(--r); padding: 6px 8px; }
+.trace-log-box .tl-size { align-items: center; gap: 8px; }
+.trace-log-box .tl-turn { border: 1px solid var(--line); border-radius: var(--r); padding: 4px 8px; margin: 6px 0; }
+.trace-log-box .tl-turn summary { cursor: pointer; }
+.trace-log-box .tl-rows { list-style: none; margin: 6px 0 2px; padding: 0; }
+.trace-log-box .tl-row { display: grid; grid-template-columns: minmax(0, 14em) minmax(60px, 1fr) minmax(0, 40%); gap: 8px; align-items: center; padding: 2px 0; font-size: 13px; }
+.trace-log-box .tl-name { overflow-wrap: anywhere; }
+.trace-log-box .tl-kind { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.trace-log-box .tl-track { display: block; height: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.trace-log-box .tl-bar { display: block; height: 100%; min-width: 2px; background: var(--accent); border-radius: 5px; }
+.trace-log-box .tl-error .tl-bar, .trace-log-box .tl-refused .tl-bar { background: var(--bad); }
+.trace-log-box .tl-declined .tl-bar, .trace-log-box .tl-stopped .tl-bar, .trace-log-box .tl-unfinished .tl-bar { background: var(--warn); }
+.trace-log-box .tl-time { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .trace-log-box .tl-row { grid-template-columns: 1fr; gap: 2px; }
+}
+.trace-log-box .tl-detail { grid-column: 1 / -1; font-size: 12px; }
+.trace-log-box .tl-detail summary { cursor: pointer; color: var(--muted); }
+.trace-log-box .tl-dlabel { margin: 4px 0 0; color: var(--muted); }
+.trace-log-box .tl-detail pre { margin: 2px 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16em; overflow: auto; font-family: var(--mono); border: 1px solid var(--line); border-radius: var(--r); padding: 4px 6px; }
+.trace-log-box .tl-keep { margin: 4px 0; }
+/* The brain catalogue's i: one card layout for every brain (label column, value column). */
+.info-card { display: block; }
+.info-card .ic-what { display: block; margin-bottom: 6px; }
+.info-card .ic-row { display: grid; grid-template-columns: 5.2em 1fr; gap: 8px; padding: 2px 0; border-top: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); }
+.info-card .ic-k { color: var(--accent); font-weight: 600; }
+.info-card .ic-v { overflow-wrap: anywhere; }
+.add-why:empty { display: none; }

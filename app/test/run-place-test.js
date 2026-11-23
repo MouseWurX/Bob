@@ -8,6 +8,8 @@ let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ' ' + extra}`); };
 const here = path.dirname(fileURLToPath(import.meta.url));
 const catalog = JSON.parse(fs.readFileSync(path.join(here, '..', 'catalog.json'), 'utf8').replace(/\r\n/g, '\n'));
+// 1.5.245: Riker and Bobert left the catalogue; their old entries stay here as test brains (a fitting and a spilling MoE).
+catalog.models.push(...JSON.parse(fs.readFileSync(path.join(here, 'fixtures', 'bob-brains-removed.json'), 'utf8').replace(/\r\n/g, '\n')).models);
 const by = (id) => catalog.models.find((m) => m.id === id);
 const pc = { vramGB: 16, ramGB: 32 }, laptop = { vramGB: 6, ramGB: 16 }, noCard = { vramGB: 0, ramGB: 16 }, mac = { vramGB: 24, ramGB: 32, unified: true };
 const oss120 = { id: 'gpt-oss-120b', name: 'GPT-OSS 120B', sizeGB: 63.4, vramGB: 66, files: [{ role: 'gguf', url: 'https://huggingface.co/x/y/resolve/0/gpt-oss-120b-MXFP4.gguf' }] };

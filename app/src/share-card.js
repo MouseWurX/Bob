@@ -58,15 +58,15 @@ export const scutOn = (cfg) => cfg.share?.scut === true;
 export const scutSealOn = (cfg) => scutOn(cfg) && sealOn(cfg);
 // Nov 14 (the owner: "they are definitely not going to try to share with wireless bob"): one brain is never spread over
 // cable Bobs and Wi-Fi or Tailscale Bobs together; the slow link would hold the whole brain back. Each kind can share
-// among itself. When both kinds lend, the group whose cards hold more of the brain is used (room(u): his card's GB, from
-// his hello), the cable group on a tie. lent: the cards that said yes; drop(u) lets one go.
-export function oneKind(lent, drop = () => {}, room = () => 0) {
+// among itself. Nov 16, the owner: "cable wins if there is cable, wifi is to extend capability if infrastructure is
+// impossible. the wifi bobs then get handed jobs their bobs can handle, like chatting, web search." So when any cable
+// Bob lends, only cable Bobs are used; Wi-Fi and Tailscale Bobs share a brain only when no cable Bob does. A Bob let go
+// still takes whole jobs (Send jobs). lent: the cards that said yes; drop(u) lets one go. (Card room no longer decides.)
+export function oneKind(lent, drop = () => {}) {
   const wired = lent.filter((u) => u.wired), other = lent.filter((u) => !u.wired);
   if (!wired.length || !other.length) return lent;
-  const sum = (g) => g.reduce((t, u) => t + (Number(room(u)) || 0), 0);
-  const keep = sum(other) > sum(wired) ? other : wired;
-  for (const u of lent) if (!keep.includes(u)) drop(u);
-  return keep;
+  for (const u of other) drop(u);
+  return wired;
 }
 export const SEED_MS = 20 * 60000; // the most a lender spends filling its card store from its own copy of a brain
 const SEED_SPARE = 10e9; // the disk room a seed always leaves free
@@ -286,6 +286,8 @@ export class CardLender {
     return '';
   }
 
+  // Nov 18: which engine build this card program is from (its folder's marker), told to the asking Bob.
+  engine() { const t = this.tool(); return t?.found && t.dir ? engineStamp(t.dir) : ''; }
   view() { return { lending: Boolean(this.child), to: this.from, via: this.via, since: this.child ? this.last : 0, ...(this.leaving ? { leaving: this.leaving.why } : {}), ...(this.child && this.powers ? { powers: this.powers } : {}) }; }
 
   // the owner, Nov 13: the brain this card helps run has Hands, Autonomy or Screen use on over there. The asking Bob says
@@ -463,13 +465,30 @@ export class CardLender {
   }
 }
 
+// Nov 18 (a 120B load): a Bob on an older engine lent its card, and the brain crashed ("Remote RPC server crashed or
+// returned malformed response"). Both ends must run the same engine build, so each says which one it runs: the name in
+// the bob-*.json marker of the folder its card program (or brain engine) is in. '' when there's no marker.
+export function engineStamp(dir) {
+  try { for (const f of fs.readdirSync(dir)) if (/^bob-[\w-]+\.json$/.test(f)) { const v = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'))?.version; if (v) return String(v).slice(0, 80); } } catch {}
+  return '';
+}
+// Why a lend can't go ahead with these two engines, or ''. mine: the asking Bob's; his: the lending Bob's (null = an
+// older Bob that doesn't say). Unknown on either side ('', an engine set up by hand) = no check.
+export function engineMismatch(mine, his) {
+  if (!mine || his === '') return '';
+  if (his == null) return `it runs an older Bob that can't say which engine it has (I run ${mine}); update Bob there so both run the same engine`;
+  return his === mine ? '' : `its engine is ${his} and mine is ${mine}; update so both run the same one (Settings, Engines)`;
+}
+
 // POST /api/lend/card { action: 'open' | 'keep' | 'close', from }. Only through the door (or this machine itself).
 export function lendCardRoute(lender, req, b = {}) {
   const action = ['open', 'keep', 'close'].includes(b.action) ? b.action : '';
   if (!action) return Promise.resolve({ status: 400, body: { error: 'no' } });
   if (action === 'keep') { const ok = lender.keep('powers' in b ? b.powers : undefined); return Promise.resolve({ status: 200, body: { ok, ...(lender.leaving ? { leaving: String(lender.leaving.why).replace(/^(memory|game): /, '') } : {}) } }); }
   if (action === 'close') { lender.close(); return Promise.resolve({ status: 200, body: { ok: true } }); }
-  return lender.open({ localAddr: req.socket?.localAddress, remoteAddr: req.socket?.remoteAddress, from: b.from, home: Array.isArray(b.home) ? b.home.map(String) : [], brain: cleanBrain(b.brain), seal: cleanSealAsk(b.seal), wired: Array.isArray(b.wired) ? b.wired.slice(0, 8).map(String) : [] }).then((r) => { if (r?.ok && 'powers' in b) lender.setPowers(b.powers); return { status: 200, body: r }; });
+  const engine = lender.engine?.() || '';
+  if (typeof b.engine === 'string' && b.engine && engine && b.engine !== engine) { lender.log?.('bob-net', `lent graphics card: said no to ${String(b.from || 'another Bob').slice(0, 60)}, our engines differ (mine ${engine}, theirs ${String(b.engine).slice(0, 80)})`); return Promise.resolve({ status: 200, body: { ok: false, why: 'engine', engine, error: `Different engines: mine is ${engine}.` } }); }
+  return lender.open({ localAddr: req.socket?.localAddress, remoteAddr: req.socket?.remoteAddress, from: b.from, home: Array.isArray(b.home) ? b.home.map(String) : [], brain: cleanBrain(b.brain), seal: cleanSealAsk(b.seal), wired: Array.isArray(b.wired) ? b.wired.slice(0, 8).map(String) : [] }).then((r) => { if (r?.ok && 'powers' in b) lender.setPowers(b.powers); return { status: 200, body: { ...r, engine } }; });
 }
 
 // Hands, Autonomy and Screen use on the asking Bob (the owner, Nov 13), as it tells a lending Bob: only the ones on, or
@@ -496,12 +515,13 @@ export function cleanBrain(b) {
 
 // ---------- Borrowing ----------
 // Why a Bob didn't lend, in plain words (CardLender.refusal's reasons).
-export const LEND_NO = { 'own brain': 'its own brain is loaded, and it lends only when free ("Lending may unload my brain" is off there)', off: 'lending is off there', gaming: 'it\'s gaming (the Gaming button, or a game on its graphics card)', 'no room': 'its memory is too full to lend right now', 'not tailscale': 'asked on an address it doesn\'t lend on', 'no tool': 'its card server is missing', failed: 'it couldn\'t start' };
+export const LEND_NO = { 'own brain': 'its own brain is loaded, and it lends only when free ("Lending may unload my brain" is off there)', off: 'lending is off there', gaming: 'it\'s gaming (the Gaming button, or a game on its graphics card)', 'no room': 'its memory is too full to lend right now', 'not tailscale': 'asked on an address it doesn\'t lend on', 'no tool': 'its card server is missing', failed: 'it couldn\'t start', engine: 'it runs a different engine build' };
 export class CardBorrower {
   // lenders: the Bob-Net list (src/share-brains.js Lenders: bobs(), call()).
-  constructor(cfg, lenders, { now = Date.now, log = () => {}, name = () => os.hostname(), home = homeIps, linkKind = () => '', powers = () => null } = {}) {
-    Object.assign(this, { cfg, lenders, now, log, name, home, linkKind, powers });
+  constructor(cfg, lenders, { now = Date.now, log = () => {}, name = () => os.hostname(), home = homeIps, linkKind = () => '', powers = () => null, engine = () => '' } = {}) {
+    Object.assign(this, { cfg, lenders, now, log, name, home, linkKind, powers, engine });
     this.using = []; this.down = new Map(); this.homeDown = new Map(); this.timer = null;
+    this.gen = 0; // Nov 17: bumped by close(), so an open() still asking when the brain stopped can't bring old lends back
   }
 
   // Sealed SCUT packets: the keys llama-server needs for the lent cards in use (GGML_RPC_SCUT_KEYS), or {}.
@@ -514,6 +534,7 @@ export class CardBorrower {
   // that takes). 2026-11-14: with SCUT off too.
   async open({ sizeGB, file = '' } = {}) {
     this.close();
+    const gen = this.gen;
     let brain = null;
     if (file) { try { brain = cleanBrain({ file, bytes: fs.statSync(file).size, head: headHash(file) }); } catch {} }
     if (!wantsSpread(this.cfg, { sizeGB })) return [];
@@ -521,16 +542,20 @@ export class CardBorrower {
     const here = this.home(), mine = homeFirst(this.cfg) ? here : [];
     const skipped = [];
     for (const [addr, until] of this.down) if (until > this.now()) { const b = (this.lenders?.bobs?.() || []).find((x) => x.address === addr); if (b) skipped.push(`${b.name} (a load with that card failed a few minutes ago)`); }
+    const myEngine = this.engine() || '';
     const tries = await Promise.all(bobs.map(async (bob) => {
       try {
         // My addresses, the one on the quickest path to this Bob first (a cable before Wi-Fi), so he opens the gate there.
         const quick = this.lenders?.nearMine?.get(bob.address) || [];
         const home = this.homeDown.get(bob.address) > this.now() ? [] : [...mine.map((m) => m.address)].sort((a, b) => (quick.indexOf(a) + 1 || 99) - (quick.indexOf(b) + 1 || 99));
         const seal = scutSealOn(this.cfg) ? sealAsk(this.cfg, bob.address) : null;
-        const r = await this.lenders.call(bob, '/api/lend/card', { method: 'POST', body: { action: 'open', from: this.name(), powers: this.powers(), home, wired: home.filter((a) => isWired(this.linkKind(a))), ...(brain ? { brain } : {}), ...(seal ? { seal } : {}) }, timeout: brain ? SEED_MS + 15000 : 8000 });
+        const r = await this.lenders.call(bob, '/api/lend/card', { method: 'POST', body: { action: 'open', from: this.name(), engine: myEngine, powers: this.powers(), home, wired: home.filter((a) => isWired(this.linkKind(a))), ...(brain ? { brain } : {}), ...(seal ? { seal } : {}) }, timeout: brain ? SEED_MS + 15000 : 8000 });
         const j = await r.json().catch(() => ({}));
         const host = bob.address.split(':')[0];
-        if (!(r.ok && j.ok && Number(j.port) > 0)) { skipped.push(`${bob.name} (${LEND_NO[j.why] || (r.status === 401 ? 'the passcode was turned down' : 'said no')})`); return null; }
+        if (!(r.ok && j.ok && Number(j.port) > 0)) { skipped.push(`${bob.name} (${j.why === 'engine' && j.engine ? engineMismatch(myEngine, j.engine) : LEND_NO[j.why] || (r.status === 401 ? 'the passcode was turned down' : 'said no')})`); return null; }
+        // Nov 18: his engine must be the same build as mine, or the brain crashes mid-load. His card goes straight back.
+        const diff = engineMismatch(myEngine, typeof j.engine === 'string' ? j.engine : null);
+        if (diff) { this.lenders.call(bob, '/api/lend/card', { method: 'POST', body: { action: 'close' }, timeout: 5000 }).catch(() => {}); skipped.push(`${bob.name} (${diff})`); return null; }
         // Sealed SCUT packets: this lend's key from his salt, or 'off' (he doesn't seal, so no SCUT with him).
         const key = seal ? borrowerSeal(this.cfg, { address: bob.address, reply: j.seal && typeof j.seal === 'object' ? j.seal : null, asked: seal }) : '';
         if (key === 'off') this.log('bob-net', j.seal?.unknownKey === true ? `${bob.name} and I don't share a SCUT key yet (he couldn't keep a new one), so his card uses the usual link this time; the next lend agrees one` : `${bob.name} doesn't seal SCUT packets (an older Bob, or sealing is off there), so his card uses the usual link`);
@@ -541,12 +566,18 @@ export class CardBorrower {
         return null;
       } catch { skipped.push(`${bob.name} (not reachable)`); return null; }
     }));
+    // Nov 17 (a desktop and a laptop): the brain was stopped or loaded again while the Bobs were still answering. Their
+    // cards go straight back, so "borrowing" can't stay on for a brain that runs here alone.
+    if (gen !== this.gen) {
+      for (const u of tries.filter(Boolean)) this.lenders.call(u.bob, '/api/lend/card', { method: 'POST', body: { action: 'close' }, timeout: 5000 }).catch(() => {});
+      return [];
+    }
     this.using = oneKind(tries.filter(Boolean), (u) => {
       // Nov 14 (the owner): cable Bobs and Wi-Fi or Tailscale Bobs never share one brain (the slow link holds it all back).
-      // The one left out is let go and named, and still takes jobs.
+      // Nov 16: cable always wins. The one left out is let go and named, and still takes jobs.
       this.lenders.call(u.bob, '/api/lend/card', { method: 'POST', body: { action: 'close' }, timeout: 5000 }).catch(() => {});
-      skipped.push(u.wired ? `${u.bob.name} (on a cable, and Bobs on Wi-Fi or Tailscale with more room are sharing this one; he still takes jobs)` : `${u.bob.name} (on ${u.via === 'home' ? 'Wi-Fi' : 'Tailscale'}, and Bobs on a cable are sharing this one; he still takes jobs)`);
-    }, (u) => this.lenders?.state?.get?.(u.bob.address)?.room?.vramGB || 0);
+      skipped.push(`${u.bob.name} (on ${u.via === 'home' ? 'Wi-Fi' : 'Tailscale'}, and Bobs on a cable are sharing this one; he still takes jobs)`);
+    });
     // 1.5.210: each Bob that didn't lend is named, with why, so a spread that quietly ran here can't happen again.
     if (skipped.length) this.log('bob-net', `spread a brain: skipped ${skipped.join(', ')}`);
     if (!this.using.length) { this.log('bob-net', bobs.length ? 'spread a brain: none of my other Bobs lent a card, so it loads here' : 'spread a brain: no other Bob is on my list, so it loads here'); return []; }
@@ -581,7 +612,9 @@ export class CardBorrower {
   // spread doesn't wake his card again over the other route right away (1.5.189).
   failed({ route = false } = {}) { for (const u of this.using) (route && u.via === 'home' ? this.homeDown : this.down).set(u.bob.address, this.now() + DOWN_MS); this.close(); }
 
-  view() { return this.using.map((u) => u.bob.name); }
+  view() { return this.inUse().map((u) => u.bob.name); }
+  // Nov 17: the lent cards the running brain really uses. One taken back (lost) isn't, even before the reload.
+  inUse() { return this.using.filter((u) => !u.lost); }
   // 1.5.214: every lent card in use is reached over a network cable or USB4 (SCUT's Auto cap goes to 1000).
   allWired() { return this.using.length > 0 && this.using.every((u) => u.wired); }
   // Nov 12: how much the engine should leave free on each lent card, in the order they're handed to it (--rpc), or
@@ -589,6 +622,7 @@ export class CardBorrower {
   fitTargets() { return this.using.some((u) => u.marginMB > 0) ? this.using.map((u) => u.marginMB || 0) : null; }
 
   close() {
+    this.gen++;
     clearInterval(this.timer); this.timer = null;
     const was = this.using; this.using = [];
     for (const u of was) this.lenders.call(u.bob, '/api/lend/card', { method: 'POST', body: { action: 'close' }, timeout: 5000 }).catch(() => {});

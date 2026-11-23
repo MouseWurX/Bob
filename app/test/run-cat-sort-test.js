@@ -61,11 +61,11 @@ check('a remembered quantization that no brain has now stays in the menu', /<opt
   const ctx = { models, roles: { current: {}, options: { llm: [] } }, brains: {}, active: {}, packs: [], bobNet: [], vramGB: 16, ramGB: 32, freeGB: 400, naughtyOn: false, catView: 'well', showUnsuited: true, famOpen: {} };
   const html = catalogueHtml(ctx);
   check('the catalogue shows the bar, the Official tag and the REAP tag', /class="cat-filters"/.test(html) && /Official · Alibaba/.test(html) && /✂ REAP cut/.test(html));
-  check('a REAP cut is in the Well behaved list with the switch off; the naughty brain is not', /id="cat-bob-r-reap"/.test(html) && !/id="cat-bob-n-naughty"/.test(html));
+  check('a REAP cut is in the Well behaved list with the switch off; the naughty brain is not', /id="cat-brains-r-reap"/.test(html) && !/id="cat-brains-n-naughty"/.test(html));
   const sorted = catalogueHtml({ ...ctx, filters: { sort: 'newest' } });
-  check('a picked sort lists a job in one run, newest first', /class="kit-list cat-list cat-flat"/.test(sorted) && sorted.indexOf('id="cat-bob-r-reap"') < sorted.indexOf('id="cat-bob-a-new"') && sorted.indexOf('id="cat-bob-a-new"') < sorted.indexOf('id="cat-bob-b-old"') && !/class="kit-list cat-list cat-flat"/.test(html));
+  check('a picked sort lists a job in one run, newest first', /class="kit-list cat-list cat-flat"/.test(sorted) && sorted.indexOf('id="cat-brains-r-reap"') < sorted.indexOf('id="cat-brains-a-new"') && sorted.indexOf('id="cat-brains-a-new"') < sorted.indexOf('id="cat-brains-b-old"') && !/class="kit-list cat-list cat-flat"/.test(html));
   const official = catalogueHtml({ ...ctx, filters: { maker: 'community' } });
-  check('Made by: Community leaves the official ones out', /id="cat-bob-c-nodate"/.test(official) && !/id="cat-bob-a-new"/.test(official));
+  check('Made by: Community leaves the official ones out', /id="cat-brains-c-nodate"/.test(official) && !/id="cat-brains-a-new"/.test(official));
   check('a job left empty by the filters says so', /Nothing here matches the filters above\./.test(catalogueHtml({ ...ctx, filters: { quant: 'Q6_K' } })));
   check('the fit tag says how: memory, or experts on the drive', /place-tag"[^>]*>Fits with memory</.test(html) && /place-tag"[^>]*>Fits with experts on the drive</.test(html));
 }

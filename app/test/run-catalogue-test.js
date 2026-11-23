@@ -6,7 +6,7 @@ import path from 'node:path';
 import { catalogueHtml, catJobs, modelsFor, familyOf, FAMILIES, isNaughty, isCommunity, visibleModels, communityLine, NAUGHTY_WARNING, DEVIL, modelsForView, makerTag, makerOf } from '../public/catalogue.js';
 import { deviceFit, sourceOf, pickFor } from '../public/fit.js';
 import { allSlots, isActive } from '../public/equip.js';
-import { saveNameOf } from '../src/models.js';
+import { saveNameOf, ModelShop, isPartRole } from '../src/models.js';
 import { mergeSettings, ollamaModelsDir, pinokioRoots } from '../src/config.js';
 import { sessionBrains } from '../src/sessions.js';
 import { publicText } from './source-text.js';
@@ -47,12 +47,28 @@ const ctx = { roles, models, brains: {}, active: {}, vramGB: 16, ramGB: 32, free
   const html = catalogueHtml(ctx);
   check('each row has an Active switch', /data-active="qwen3.6-35b-a3b"/.test(html) && /role="switch" aria-checked="true" data-active="gemma4-26b"/.test(html) && /role="switch" aria-checked="false" data-active="qwen3.6-35b-a3b"/.test(html));
   check('the switch follows what was saved', /aria-checked="true" data-active="qwen3.6-35b-a3b"/.test(catalogueHtml({ ...ctx, active: { 'qwen3.6-35b-a3b': true } })) && /aria-checked="false" data-active="gemma4-26b"/.test(catalogueHtml({ ...ctx, active: { 'gemma4-26b': false } })));
-  check('models here get Equip (or say equipped); the rest get Get', /data-catequip="tinker" data-catvalue="gemma4:26b"/.test(html) && /equipped/.test(html) && /data-get="qwen3.6-35b-a3b"/.test(html));
-  check('1.5.137: a brain not tried yet has no New tag for that (the tip says it), and is never ★ Recommended', !/<span class="tag">New<\/span>/.test(html) && /Not tried on a real replicant matrix yet, so I don&#39;t recommend it yet|Not tried on a real replicant matrix yet, so I don't recommend it yet/.test(html) && !Object.keys(Object.fromEntries(catJobs().map((j) => [j.id, 1]))).some((j) => models.filter((m) => m.trial).some((m) => pickFor(j, models, ctx)?.id === m.id)));
-  check('the detail sits in an "i" tip: size on other machines and licence; the source is on the ↗ (1.5.101: said once)', /class="tip-i"[^>]*><span class="tip-src" hidden>[^<]*(<br>[^<]*)*6 GB laptop card[^]*?Licence Apache 2\.0[^]*?data-tip="Where it comes from: unsloth\/Qwen3\.6-35B-A3B-GGUF @ a483e9e"/.test(html) && !/tip-src" hidden>[^]*?From unsloth/.test(html));
-check('each machine answer is said once (grouped), and Active is explained once at the top, not on every row', /Runs well on every card and with no graphics card|Runs well: /.test(html) && !/16 GB graphics card: Runs well · 8 GB graphics card: Runs well/.test(html) && !/data-active="[^"]*" data-tip=/.test(html));
+  // Nov 18 2026: in the one Brains list a brain here says In use, or offers Use as main brain; the rest get Get.
+  check('models here say In use (or offer Use as main brain); the rest get Get', /id="cat-brains-gemma4-26b"[^]*?In use/.test(html) && /data-get="qwen3.6-35b-a3b"/.test(html) && /Use as main brain/.test(catalogueHtml({ ...ctx, roles: { ...roles, current: { bob: 'qwen3-coder:30b' } } })));
+  check('1.5.137: a brain not tried yet has no New tag for that (the tip says it), and is never ★ Recommended', !/<span class="tag">New<\/span>/.test(html) && /<span class="ic-k">Notes<\/span><span class="ic-v">[^<]*(<br>[^<]*)*Not tried yet/.test(html) && !Object.keys(Object.fromEntries(catJobs().map((j) => [j.id, 1]))).some((j) => models.filter((m) => m.trial).some((m) => pickFor(j, models, ctx)?.id === m.id)));
+  check('the detail sits in an "i" tip: size on other machines and licence; the source is on the ↗ (1.5.101: said once)', /class="tip-i"[^>]*><span class="tip-src" hidden><span class="info-card">[^]*?Licence<\/span><span class="ic-v">Apache 2\.0[^]*?data-tip="Where it comes from: unsloth\/Qwen3\.6-35B-A3B-GGUF @ a483e9e"/.test(html) && /6 GB laptop card/.test(catalogueHtml({ ...ctx, vramGB: 0, ramGB: 0 })) && !/tip-src" hidden>[^]*?From unsloth/.test(html));
+  // Nov 16 2026: every brain's i is the same card, the same rows in the same order (the owner: "like a rolodex card").
+  const ORDER = ['Made by', 'Released', 'Size', 'Room', 'Here', 'Elsewhere', 'Notes', 'Licence'];
+  const cards = [...html.matchAll(/<span class="info-card">([^]*?)<\/span><\/button>/g)].map((x) => [...x[1].matchAll(/<span class="ic-k">([^<]+)<\/span>/g)].map((y) => y[1]));
+  check('every brain\'s i is one card: Made by, Released, Size, Room, Licence always, in one order', cards.length > 20 && cards.every((ks) => ['Made by', 'Released', 'Size', 'Room', 'Licence'].every((k) => ks.includes(k)) && ks.every((k, i) => i === 0 || ORDER.indexOf(k) > ORDER.indexOf(ks[i - 1]))), `${cards.length} cards; odd one: ${JSON.stringify(cards.find((ks) => !ks.includes('Made by') || !ks.includes('Released')) || '')}`);
+  check('a brain\'s Room says how much in all and how well it splits: one made of experts splits well (drive too)', /<span class="ic-k">Room<\/span><span class="ic-v">25 GB in all\. Splits well \(made of experts\): card, memory, drive or another Bob/.test(html));
+  check('...one where every part works on every word splits less well and never onto the drive', /ic-k">Room<\/span><span class="ic-v">[^<]*Splits less well \(every part works on every word\): card, memory or another Bob; not the drive/.test(html));
+  check('...and Here says how it splits on YOUR setup (16 GB card + 32 GB here): GB on the card and in memory', /<span class="ic-k">Here<\/span><span class="ic-v">\d+(\.\d)? GB on your card, \d+(\.\d)? GB in memory; runs well\.</.test(html));
+  {
+    const big = { ...byId('qwen3.6-35b-a3b'), sizeGB: 60, vramGB: 40 };
+    const one = catalogueHtml({ ...ctx, models: [big] });
+    const net = catalogueHtml({ ...ctx, models: [big], bobNet: [{ name: 'laptop', vramGB: 16, ramGB: 64 }] });
+    check('...a brain too big for this one machine names the Bob on your Bob-Net that makes it fit', !/laptop on your Bob-Net/.test(one) && /Or laptop on your Bob-Net holds the rest instead/.test(net));
+  }
+  check('...and the example machines only show while this one hasn\'t been read', !/ic-k">Elsewhere/.test(html) && /ic-k">Elsewhere<\/span><span class="ic-v">[^<]*16 GB card \+ 32 GB/.test(catalogueHtml({ ...ctx, vramGB: 0, ramGB: 0 })));
+  check('the card says who made it: the lab for an official one', /<span class="ic-k">Made by<\/span><span class="ic-v">Alibaba \(official\)<\/span>/.test(html));
+check('each machine answer is said once (grouped), and Active is explained once at the top, not on every row', /Runs well on every card and with no graphics card|Runs well: /.test(catalogueHtml({ ...ctx, vramGB: 0, ramGB: 0 })) && !/16 GB graphics card: Runs well · 8 GB graphics card: Runs well/.test(html) && !/data-active="[^"]*" data-tip=/.test(html));
   check('the source link opens the exact commit', /href="https:\/\/huggingface\.co\/unsloth\/Qwen3\.6-35B-A3B-GGUF\/tree\/a483e9e6cbd595906af30beda3187c2663a1118c"/.test(html) && /href="https:\/\/huggingface\.co\/unsloth\/Qwen3\.8-27B-GGUF\/tree\/4ca720788d1e01f1bff70c033e0d0028fd02e502"/.test(catalogueHtml({ ...ctx, showUnsuited: true })));
-  check('1.5.205: a brain bigger than the card is listed and says how it runs here; its row shows the quantization', /id="cat-deep-qwen3.8-27b"/.test(html) && /class="tag warn place-tag"[^>]*>Fits with memory<\/span>/.test((html.match(/<li class="[^"]*" id="cat-deep-qwen3\.8-27b">[^]*?<\/li>/) || [''])[0]) && /<span class="muted">18 GB · Q4_K_XL<\/span>/.test(html));
+  check('1.5.205: a brain bigger than the card is listed and says how it runs here; its row shows the quantization', /id="cat-brains-qwen3.8-27b"/.test(html) && /class="tag warn place-tag"[^>]*>Fits with memory<\/span>/.test((html.match(/<li class="[^"]*" id="cat-brains-qwen3\.8-27b">[^]*?<\/li>/) || [''])[0]) && /<span class="muted">18 GB · Q4_K_XL<\/span>/.test(html));
   check('a brain too big even with memory and the drive is not in the job lists', !/id="cat-[a-z]+-deepseek-r1-distill-llama-70b"/.test(catalogueHtml({ ...ctx, showUnsuited: true })));
   check('brains not in Bob\'s list get their own Active switch', /Other brains on this replicant matrix[^]*data-active="mystery:7b"/.test(html));
   check('the phone section has no Active switch or Get', !/id="cat-phone-[^"]*"[^]*?data-active[^]*?<\/li>/.test(html.slice(html.indexOf('catjob-phone'), html.indexOf('catjob-voice'))));
@@ -65,15 +81,16 @@ check('each machine answer is said once (grouped), and Active is explained once 
   check('every family has a line about who makes it', [...new Set(models.map(familyOf))].every((f) => FAMILIES[f]), [...new Set(models.map(familyOf))].filter((f) => !FAMILIES[f]).join(','));
   check('a model without a family falls back to the first word of its name', familyOf({ name: 'Mistral Small 3' }) === 'Mistral');
   const html = catalogueHtml(ctx);
-  const tinker = html.slice(html.indexOf('id="catjob-tinker"'), html.indexOf('id="catjob-office"'));
-  check('Coding has one header per family (Qwen, Gemma, GPT-OSS)', ['Qwen', 'Gemma', 'GPT-OSS'].every((f) => tinker.includes(`data-fam="tinker:${f}"`)));
+  const tinker = html.slice(html.indexOf('id="catjob-brains"'), html.indexOf('id="catjob-phone"'));
+  check('Coding has one header per family (Qwen, Gemma, GPT-OSS)', ['Qwen', 'Gemma', 'GPT-OSS'].every((f) => tinker.includes(`data-fam="brains:${f}"`)));
   check('families start closed', !/<details class="cat-fam"[^>]* open>/.test(html));
-  check('a family opened before stays open', /data-fam="tinker:Qwen" id="catfam-tinker-Qwen" open>/.test(catalogueHtml({ ...ctx, famOpen: { 'tinker:Qwen': true } })) && !/data-fam="bob:Qwen"[^>]* open>/.test(catalogueHtml({ ...ctx, famOpen: { 'tinker:Qwen': true } })));
-  check('each model row sits inside its family', /data-fam="tinker:Qwen"[^]*?id="cat-tinker-qwen3-coder-30b"[^]*?<\/details>/.test(tinker) && !/data-fam="tinker:Gemma"[^>]*>(?:(?!<\/details>)[^])*cat-tinker-qwen3-coder-30b/.test(tinker));
-  check('a closed header says how many, the size range, and what is here', /data-fam="tinker:Qwen"[^]*?<summary>[^]*?\d+ models · [\d.]+ (GB|MB) to [\d.]+ GB[^]*?On this replicant matrix|data-fam="tinker:Qwen"[^]*?<summary>[^]*?on this replicant matrix/.test(tinker));
+  check('a family opened before stays open', /data-fam="brains:Qwen" id="catfam-brains-Qwen" open>/.test(catalogueHtml({ ...ctx, famOpen: { 'brains:Qwen': true } })) && !/data-fam="bob:Qwen"[^>]* open>/.test(catalogueHtml({ ...ctx, famOpen: { 'brains:Qwen': true } })));
+  check('each model row sits inside its family', /data-fam="brains:Qwen"[^]*?id="cat-brains-qwen3-coder-30b"[^]*?<\/details>/.test(tinker) && !/data-fam="brains:Gemma"[^>]*>(?:(?!<\/details>)[^])*cat-brains-qwen3-coder-30b/.test(tinker));
+  check('a closed header says how many, the size range, and what is here', /data-fam="brains:Qwen"[^]*?<summary>[^]*?\d+ models · [\d.]+ (GB|MB) to [\d.]+ GB[^]*?On this replicant matrix|data-fam="brains:Qwen"[^]*?<summary>[^]*?on this replicant matrix/.test(tinker));
   const pick = byId(pickFor('tinker', models, ctx).id);
-  check('the header of the family holding Bob\'s pick says so', new RegExp(`data-fam="tinker:${familyOf(pick)}"[^>]*>\\s*<summary>(?:(?!</summary>)[^])*★ Recommended inside`).test(tinker));
-  check('the family with Bob\'s pick comes first', tinker.indexOf(`data-fam="tinker:${familyOf(pick)}"`) === tinker.indexOf('data-fam="tinker:'));
+  check('the header of the family holding Bob\'s pick says so', new RegExp(`data-fam="brains:${familyOf(pick)}"[^>]*>\\s*<summary>(?:(?!</summary>)[^])*★ Recommended inside`).test(tinker));
+  // Nov 18 2026: one Brains list, so the first family is one holding one of Bob's picks (for any job).
+  check('the family with Bob\'s pick comes first', /^data-fam="brains:[^"]+"[^>]*>\s*<summary>(?:(?!<\/summary>)[^])*★ Recommended inside/.test(tinker.slice(tinker.indexOf('data-fam="brains:'))));
   check('Open all families and Close all buttons are there', /data-famall="open">Open all families/.test(html) && /data-famall="close">Close all/.test(html));
   check('a family name can\'t inject markup', !/<img/.test(catalogueHtml({ ...ctx, models: [...models, { ...byId('qwen3-4b'), id: 'evil', family: '<img src=x>' }] })));
 }
@@ -107,16 +124,16 @@ check('each machine answer is said once (grouped), and Active is explained once 
   check('each is marked naughty by an explicit field, not by its name', NAUGHTY.every((id) => byId(id).naughty === true && isNaughty(byId(id))) && !isNaughty({ name: 'Qwen Heretic Uncensored' }));
   check('every naughty entry is a community build that says who made it and from what', models.filter(isNaughty).every((m) => isCommunity(m) && m.community.by && m.community.base && m.community.baseBy));
   check('no stock model is marked naughty or community', !['gemma4-26b', 'qwen3.6-35b-a3b', 'qwen3.6-27b', 'qwen3.8-27b', 'qwen3.5-9b'].some((id) => isNaughty(byId(id)) || isCommunity(byId(id))));
-  check('naughty entries are never Bob\'s pick (trial) and sit under their base family (Qwen or Gemma), named after the base', models.filter(isNaughty).every((m) => m.trial && m.pick === 'optional' && ['Qwen', 'Gemma'].includes(m.family) && FAMILIES[m.family]) && ['qwen3.6-35b-a3b', 'qwen3.6-27b', 'qwen3.8-27b', 'gemma4-26b', 'qwen3.5-9b'].every((id) => byId(`${id}-heretic`).name === `${byId(id).name} Heretic` && byId(`${id}-heretic`).family === byId(id).family));
+  check('naughty entries are never Bob\'s pick (trial) and sit under their base family (one with its own blurb), named after the base', models.filter(isNaughty).every((m) => m.trial && m.pick === 'optional' && FAMILIES[m.family]) && ['qwen3.6-35b-a3b', 'qwen3.6-27b', 'qwen3.8-27b', 'gemma4-26b', 'qwen3.5-9b'].every((id) => byId(`${id}-heretic`).name === `${byId(id).name} Heretic` && byId(`${id}-heretic`).family === byId(id).family));
   check('each naughty brain says what it is and warns in its blurb', models.filter(isNaughty).every((m) => /refusals cut out/.test(m.what) && /without refusing/.test(m.what)));
-  check('every naughty brain is Q4 or better and sees pictures through a picture reader', models.filter(isNaughty).every((m) => /Q4_K_[MS]|Q4_0/.test(m.files[0].url) && m.files.some((f) => f.role === 'mmproj')));
+  check('every naughty brain is a 4-bit file or better, and the ones that see pictures bring a picture reader', models.filter(isNaughty).every((m) => /Q4_K|Q4_0|IQ4_XS|mxfp4/i.test(m.files[0].url) && (!m.jobs.includes('eyes') || m.files.some((f) => f.role === 'mmproj'))), models.filter(isNaughty).filter((m) => !/Q4_K|Q4_0|IQ4_XS|mxfp4/i.test(m.files[0].url) || (m.jobs.includes('eyes') && !m.files.some((f) => f.role === 'mmproj'))).map((m) => m.id).join(','));
   check('a shared picture reader is the very same file as the stock one', byId('qwen3.6-35b-a3b-heretic').files[1].sha256 === byId('qwen3.6-35b-a3b').files[1].sha256 && byId('gemma4-26b-heretic').files[1].sha256 === byId('gemma4-26b').files[1].sha256 && byId('qwen3.5-9b-heretic').files[1].sha256 === byId('qwen3.5-9b').files[1].sha256);
   check('the credit line names the remixer, the base and its maker', /remix by llmfan46 from Alibaba's Qwen3.6 35B-A3B; files packed by mradermacher\. Not a release by Alibaba\./.test(communityLine(byId('qwen3.6-35b-a3b-heretic'))) && communityLine(byId('gemma4-26b')) === '');
   // Off (the default): nowhere.
-  check('with the switch off, visibleModels drops every naughty entry and keeps the rest', !visibleModels(models, false).some(isNaughty) && visibleModels(models, false).length === models.length - NAUGHTY.length && visibleModels(models, true).length === models.length);
+  check('with the switch off, visibleModels drops every naughty entry and keeps the rest', !visibleModels(models, false).some(isNaughty) && visibleModels(models, false).length === models.length - models.filter(isNaughty).length && visibleModels(models, true).length === models.length);
   const off = catalogueHtml({ ...ctx, showUnsuited: true });
   check('with the switch off, the catalogue lists no naughty brain, in any job', !NAUGHTY.some((id) => off.includes(`id="cat-`) && new RegExp(`id="cat-[a-z]+-${id.replace(/\./g, '\\.')}"`).test(off)));
-  check('the toggle shows, Naughty list greyed, with "Show the naughty list" and the warning in a tip', /data-catview="well">😇 Well behaved/.test(off) && /aria-checked="false" data-catview="naughty" aria-disabled="true"><svg class="devil"[^]*?<\/svg> Naughty list \(9\)/.test(off) && /data-naughtyon>Show the naughty list/.test(off) && off.includes('refusals cut out'));
+  check('the toggle shows, Naughty list greyed, with "Show the naughty list" and the warning in a tip', /data-catview="well">😇 Well behaved/.test(off) && new RegExp(`aria-checked="false" data-catview="naughty" aria-disabled="true"><svg class="devil"[^]*?</svg> Naughty list \\(${models.filter(isNaughty).length}\\)`).test(off) && /data-naughtyon>Show the naughty list/.test(off) && off.includes('refusals cut out'));
   // On, Well behaved side: still no naughty brain listed, toggle live.
   const onWell = catalogueHtml({ ...ctx, showUnsuited: true, naughtyOn: true });
   check('switch on, Well behaved side: no naughty brain listed, no greyed button, no "Show the naughty list" link', !/cat-[a-z]+-qwen3\.6-35b-a3b-heretic/.test(onWell) && !/aria-disabled/.test(onWell) && !/data-naughtyon/.test(onWell));
@@ -124,11 +141,11 @@ check('each machine answer is said once (grouped), and Active is explained once 
   const on = catalogueHtml({ ...ctx, showUnsuited: true, naughtyOn: true, catView: 'naughty' });
   check('Naughty list side lists all six and nothing else', NAUGHTY.every((id) => new RegExp(`id="cat-[a-z]+-${id.replace(/\./g, '\\.')}"`).test(on)) && !/id="cat-[a-z]+-gemma4-26b"/.test(on) && !/id="cat-[a-z]+-qwen3\.6-35b-a3b"/.test(on) && !/Other brains on this replicant matrix/.test(on));
   check('the warning is at the top in Bob\'s words with a Help link, and no job is empty', on.includes('naughty-note') && on.includes('what it says is on you') && /data-help="faq-naughty"/.test(on) && !/Nothing in Bob's list for this job yet/.test(on) && !/catjob-gaming/.test(on));
-  check('each naughty row wears the red devil tag with the remixer\'s name, and its tip credits the remixer', /cat-tinker-qwen3\.6-35b-a3b-heretic[^]*?<span class="tag warn maker-tag" tabindex="0" data-tip="Community build: uncensored remix by llmfan46[^"]*"[^>]*><svg class="devil"[^]*?<\/svg> Naughty list · llmfan46<\/span>/.test(on) && /Community build: uncensored remix by llmfan46/.test(on));
+  check('each naughty row wears the red devil tag with the remixer\'s name, and its tip credits the remixer', /cat-brains-qwen3\.6-35b-a3b-heretic[^]*?<span class="tag warn maker-tag" tabindex="0" data-tip="Community build: uncensored remix by llmfan46[^"]*"[^>]*><svg class="devil"[^]*?<\/svg> Naughty list · llmfan46<\/span>/.test(on) && /Community build: uncensored remix by llmfan46/.test(on));
   check('a naughty brain is never ★ Recommended, even on its own list', !/<span class="tag rec">★ Recommended/.test(on));
   check('the toggle on the Naughty side is checked and not greyed', /aria-checked="true" data-catview="naughty"><svg class="devil"/.test(on) && !/aria-disabled/.test(on));
   check('asking for the Naughty side with the switch off still shows Well behaved', !/cat-[a-z]+-qwen3\.6-35b-a3b-heretic/.test(catalogueHtml({ ...ctx, showUnsuited: true, catView: 'naughty' })));
-  check('the warning says they are not the makers\' releases and that the answers are on you', /not Alibaba's or Google's releases/.test(NAUGHTY_WARNING) && /what it says is on you/.test(NAUGHTY_WARNING));
+  check('the warning says they are not the makers\' releases and that the answers are on you', /not the original makers' releases/.test(NAUGHTY_WARNING) && /what it says is on you/.test(NAUGHTY_WARNING));
   // The setting itself.
   check('naughtyList is a known setting, off unless true', mergeSettings({}, { naughtyList: 'yes' }).naughtyList === false && mergeSettings({}, { naughtyList: true }).naughtyList === true && mergeSettings({}, {}).naughtyList !== true);
   const cellar = publicText('cellar.js');
@@ -139,13 +156,13 @@ check('each machine answer is said once (grouped), and Active is explained once 
 
 // ---- 1.5.133: the red devil, the Community side and Bob's quiet pick ----
 {
-  const COMM = ['qwen3.6-35b-a3b-opus-distilled', 'qwen3.6-35b-a3b-distill-3.8', 'mimo-9b'];
+  const COMM = ['qwen3.6-35b-a3b-opus-distilled', 'qwen3.6-35b-a3b-distill-3.8', 'mimo-9b', 'qwen3.8-27b-coding-distilled', 'qwen3.5-9b-kimi-distilled', 'hermes-4-14b', 'glm-4.7-flash-reap-23b', 'qwen3.6-35b-a3b-coding-reap50'];
   check('the red devil is a drawing, not an emoji: red face, orange horns, nothing nasty inside', /<svg class="devil"/.test(DEVIL) && /#d7263d/.test(DEVIL) && /#f28c28/.test(DEVIL) && !/<script|on\w+=/.test(DEVIL) && !/[\u{1F47F}\u{1F608}]/u.test(DEVIL));
-  check('the three well-behaved community builds are in, marked community (not naughty), pinned, trial, under Qwen', COMM.every((id) => byId(id) && isCommunity(byId(id)) && !isNaughty(byId(id)) && byId(id).trial && byId(id).family === 'Qwen' && byId(id).community.by && byId(id).community.kind === 'distilled' && /\/resolve\/[0-9a-f]{40}\//.test(byId(id).files[0].url) && byId(id).files.some((f) => f.role === 'mmproj')));
+  check('the well-behaved community builds are in, marked community (not naughty), pinned, trial, under their base family, saying how they were made', COMM.every((id) => byId(id) && isCommunity(byId(id)) && !isNaughty(byId(id)) && byId(id).trial && FAMILIES[byId(id).family] && byId(id).community.by && ['distilled', 'fine-tuned', 'reap'].includes(byId(id).community.kind) && /\/resolve\/[0-9a-f]{40}\//.test(byId(id).files[0].url) && (!byId(id).jobs.includes('eyes') || byId(id).files.some((f) => f.role === 'mmproj'))));
   check('their credit line names the maker and the base, and says it is not the base maker\'s release', /Community build: remix by hesamation from Alibaba's Qwen3.6 35B-A3B\. Not a release by Alibaba\./.test(communityLine(byId(COMM[0]))));
   check('modelsForView: well = all but naughty, community = community but not naughty, naughty only with the switch', !modelsForView(models, 'well').some(isNaughty) && modelsForView(models, 'well').some((m) => COMM.includes(m.id)) && modelsForView(models, 'community').map((m) => m.id).sort().join() === [...COMM].sort().join() && modelsForView(models, 'naughty', false).length === models.length - models.filter(isNaughty).length && modelsForView(models, 'naughty', true).every(isNaughty));
   const well = catalogueHtml({ ...ctx, showUnsuited: true });
-  check('Well behaved lists the community builds with a Community tag carrying the maker\'s name, never a devil', /cat-tinker-qwen3\.6-35b-a3b-opus-distilled[^]*?<span class="tag maker-tag" tabindex="0" data-tip="Community build: remix by hesamation[^"]*"[^>]*>Community · hesamation<\/span>/.test(well) && !/devil-rec/.test(well) && !/<svg class="devil"[^]*?<\/svg> Naughty list/.test(well.slice(well.indexOf('</nav>'))));
+  check('Well behaved lists the community builds with a Community tag carrying the maker\'s name, never a devil', /cat-brains-qwen3\.6-35b-a3b-opus-distilled[^]*?<span class="tag maker-tag" tabindex="0" data-tip="Community build: remix by hesamation[^"]*"[^>]*>Community · hesamation<\/span>/.test(well) && !/devil-rec/.test(well) && !/<svg class="devil"[^]*?<\/svg> Naughty list/.test(well.slice(well.indexOf('</nav>'))));
   // 1.5.133 (the owner: "i can't tell community models apart"): a stripe that differs in shape, not only colour.
   const naughtyHtml = catalogueHtml({ ...ctx, showUnsuited: true, naughtyOn: true, catView: 'naughty' });
   const rowClass = (html, id) => (html.match(new RegExp(`<li class="([^"]*)" id="cat-[a-z]+-${id.replace(/\./g, '\\.')}"`)) || [])[1] || '';
@@ -160,13 +177,13 @@ check('each machine answer is said once (grouped), and Active is explained once 
   check('a team build: tag says the team, tip lists the members; a solo build names the person; a stock model has no tag', makerOf(team) === 'Unsloth' && /Community · Unsloth<\/span>/.test(makerTag(team)) && /data-tip="Community build: remix by the Unsloth team \(Daniel, Michael\) from Alibaba&#39;s Qwen3\.6 35B-A3B\. Not a release by Alibaba\."/.test(makerTag(team)) && makerTag(byId('gemma4-26b')) === '' && makerOf(byId('qwen3.5-9b-heretic')) === 'darkc0de');
   check('a maker\'s name can\'t inject markup into the tag', !/<img/.test(makerTag({ ...team, community: { ...team.community, team: '<img src=x>' } })));
   const comm = catalogueHtml({ ...ctx, showUnsuited: true, catView: 'community' });
-  check('the Community side lists only the community builds, with its own words and Help', COMM.every((id) => new RegExp(`id="cat-[a-z]+-${id.replace(/\./g, '\\.')}"`).test(comm)) && !/id="cat-[a-z]+-gemma4-26b"/.test(comm) && !/id="cat-[a-z]+-[a-z0-9.-]*-heretic"/.test(comm) && /aria-checked="true" data-catview="community">🤝 Community \(3\)/.test(comm) && /data-help="faq-community"/.test(comm));
-  check('a community build is recommendable once tried: with trial off it takes ★ Recommended for Coding on a 16 GB card', (() => { const tried = models.map((m) => (m.id === COMM[0] ? { ...m, trial: false, raced: 'test' } : m)).filter((m) => m.id !== 'qwen3.6-35b-a3b' && !m.madeByBob); return pickFor('tinker', tried, ctx)?.id === COMM[0] && /cat-tinker-qwen3\.6-35b-a3b-opus-distilled[^]*?★ Recommended<\/span>/.test(catalogueHtml({ ...ctx, models: tried, catView: 'community' })); })());
+  check('the Community side lists only the community builds, with its own words and Help', COMM.every((id) => new RegExp(`id="cat-[a-z]+-${id.replace(/\./g, '\\.')}"`).test(comm)) && !/id="cat-[a-z]+-gemma4-26b"/.test(comm) && !/id="cat-[a-z]+-[a-z0-9.-]*-heretic"/.test(comm) && new RegExp(`aria-checked="true" data-catview="community">🤝 Community \\(${COMM.length}\\)`).test(comm) && /data-help="faq-community"/.test(comm));
+  check('a community build is recommendable once tried: with trial off it takes ★ Recommended for Coding on a 16 GB card', (() => { const tried = models.map((m) => (m.id === COMM[0] ? { ...m, trial: false, raced: 'test' } : m)).filter((m) => m.id !== 'qwen3.6-35b-a3b' && !m.madeByBob); return pickFor('tinker', tried, ctx)?.id === COMM[0] && /cat-brains-qwen3\.6-35b-a3b-opus-distilled[^]*?★ Recommended<\/span>/.test(catalogueHtml({ ...ctx, models: tried, catView: 'community' })); })());
   // The quiet pick: a naughty brain that has been tried gets the red devil on its own, on the naughty side only.
   const tried = models.map((m) => (m.id === 'qwen3.6-35b-a3b-heretic' ? { ...m, trial: false } : m));
   check('a naughty brain is never Bob\'s pick among the well-behaved, even once tried and with the switch on', pickFor('tinker', tried, ctx)?.id !== 'qwen3.6-35b-a3b-heretic' && !/devil-rec/.test(catalogueHtml({ ...ctx, models: tried, naughtyOn: true })) && !/devil-rec/.test(catalogueHtml({ ...ctx, models: tried, naughtyOn: true, catView: 'community' })));
   const onTried = catalogueHtml({ ...ctx, showUnsuited: true, models: tried, naughtyOn: true, catView: 'naughty' });
-  check('on the naughty side the tried brain wears the red devil alone where ★ would be, with a tip, and its family header says "inside"', /cat-tinker-qwen3\.6-35b-a3b-heretic[^]*?<span class="tag rec devil-rec" tabindex="0" data-tip="Bob's quiet pick[^"]*" aria-label="Bob's quiet pick for this job"><svg class="devil"/.test(onTried) && !/<span class="tag rec">★ Recommended/.test(onTried) && /<span class="tag rec devil-rec" aria-label="Bob's quiet pick is inside"><svg class="devil"[^]*?<\/svg> inside<\/span>/.test(onTried) && pickFor('tinker', tried, { ...ctx, naughtyPick: true })?.id === 'qwen3.6-35b-a3b-heretic');
+  check('on the naughty side the tried brain wears the red devil alone where ★ would be, with a tip, and its family header says "inside"', /cat-brains-qwen3\.6-35b-a3b-heretic[^]*?<span class="tag rec devil-rec" tabindex="0" data-tip="Bob's quiet pick[^"]*" aria-label="Bob's quiet pick for this job"><svg class="devil"/.test(onTried) && !/<span class="tag rec">★ Recommended/.test(onTried) && /<span class="tag rec devil-rec" aria-label="Bob's quiet pick is inside"><svg class="devil"[^]*?<\/svg> inside<\/span>/.test(onTried) && pickFor('tinker', tried, { ...ctx, naughtyPick: true })?.id === 'qwen3.6-35b-a3b-heretic');
   const onNew = catalogueHtml({ ...ctx, showUnsuited: true, naughtyOn: true, catView: 'naughty' });
   check('with every naughty brain still New, the naughty side has no quiet pick', !/devil-rec/.test(onNew));
   check('the quiet pick is explained at the top of the naughty side', /red devil on its own, where ★ Recommended would be, is my quiet pick/.test(onNew));
@@ -200,6 +217,44 @@ check('each machine answer is said once (grouped), and Active is explained once 
   check('...then Bob\'s own models folder if Ollama keeps its files there', ollamaModelsDir({ agentDir: '/bob', env: {}, home: '/h', exists: (p) => p === path.join('/bob', 'models', 'manifests') }) === path.join('/bob', 'models'));
   check('...else Ollama\'s usual folder in the user\'s home', ollamaModelsDir({ agentDir: '/bob', env: {}, home: '/h', exists: (p) => p === path.join('/h', '.ollama', 'models') }) === path.join('/h', '.ollama', 'models'));
   check('Pinokio is looked for on any drive and in the home folder, not only C:', pinokioRoots({ platform: 'win32', home: '/h', exists: (p) => p === 'E:\\pinokio' }).length === 2 && pinokioRoots({ platform: 'linux', home: '/h', exists: (p) => p === path.join('/h', 'pinokio') }).length === 2 && !pinokioRoots({ platform: 'win32', home: '/h', exists: no }).length);
+}
+
+// ---- native only by default: Ollama is opt-in ----
+{
+  const cat = JSON.parse(fs.readFileSync(new URL('../catalog.json', import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
+  const named = cat.models.filter((m) => m.ollama);
+  check('every brain with an Ollama name also has its own pinned GGUF with a sha256', named.length > 0 && named.every((m) => (m.files || []).some((f) => f.role === 'gguf' && /^[0-9a-f]{64}$/.test(f.sha256 || ''))), named.filter((m) => !(m.files || []).some((f) => f.sha256)).map((m) => m.id).join(','));
+  const run = async (engine) => {
+    const shop = Object.create(ModelShop.prototype);
+    shop.cfg = { engine, ollamaUrl: 'http://127.0.0.1:11434' };
+    shop.ollamaNames = async () => new Set(named.map((m) => m.ollama)); // Ollama is running and has them all
+    let took = '';
+    shop.pullOllama = async () => { took = 'ollama'; };
+    shop.fetchFiles = async () => { took = 'own'; };
+    await shop.runModel(named[0], {}, null, () => {});
+    return took;
+  };
+  check('with Brain Engine, a download is Bob\'s own pinned file even while Ollama runs', await run('llamacpp') === 'own');
+  check('pulling through Ollama only happens when Ollama is the engine set by hand', await run('ollama') === 'ollama');
+}
+
+// ---- a big brain in parts: every part downloads, and it only counts as here when all parts sit beside part 1 ----
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-parts-'));
+  const dir = path.join(tmp, 'chat'), other = path.join(tmp, 'elsewhere');
+  fs.mkdirSync(dir, { recursive: true }); fs.mkdirSync(other, { recursive: true });
+  const u = (n) => `https://huggingface.co/someone/big-GGUF/resolve/${'a'.repeat(40)}/${n}`;
+  const entry = { id: 'big', category: 'chat', files: [{ url: u('big-00001-of-00002.gguf'), role: 'gguf' }, { url: u('big-00002-of-00002.gguf'), role: 'gguf-part-2' }] };
+  const shop = Object.create(ModelShop.prototype);
+  shop.cfg = { agentDir: tmp }; shop.dir = tmp; shop.found = { files: [] };
+  fs.writeFileSync(path.join(dir, 'big-00001-of-00002.gguf'), 'x');
+  fs.writeFileSync(path.join(other, 'big-00002-of-00002.gguf'), 'x');
+  shop.found.files = [{ name: 'big-00002-of-00002.gguf', path: path.join(other, 'big-00002-of-00002.gguf') }];
+  check('a part sitting in another folder doesn\'t count (the engine looks beside part 1)', isPartRole('gguf-part-2') && !isPartRole('gguf') && !shop.locate(entry)['gguf-part-2']);
+  fs.writeFileSync(path.join(dir, 'big-00002-of-00002.gguf'), 'x');
+  const loc = shop.locate(entry);
+  check('...and with both parts beside each other, both are found', Boolean(loc.gguf && loc['gguf-part-2']));
+  fs.rmSync(tmp, { recursive: true, force: true });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

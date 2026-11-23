@@ -145,7 +145,7 @@ export function realPcPrompt(cfg) {
   return `\n\n${base} Driving apps (open, click, type in them) needs the Apps hand, which is off: ${handOffWhy(cfg, 'apps')} If asked to drive, say that and offer to start as soon as it's on.`;
 }
 // After a doing-tool fails: one other route, then stop (asked for 2026-11-02).
-export const ALT_ROUTE_NUDGE = (who) => ` (If another route could still do this, try ONE other way now: for example, if a file or command tool failed, do it in the app with the Apps hand; if the Apps hand failed, use write_file, the Files Hand or the Run Hand. Then tell ${who} which way worked, or say plainly that neither did.)`;
+export const ALT_ROUTE_NUDGE = (who) => ` (If another route could still do this, try ONE other way now: for example, if a file or command tool failed, do it in the app with the Apps hand; if the Apps hand failed, use write_file (documents group), the Files Hand or the Run Hand, whichever you have; call use_tools for its group first. Then tell ${who} which way worked, or say plainly that neither did.)`;
 export const ALT_ROUTE_DONE = (who) => ` (You already tried another way this turn. Stop here and tell ${who} plainly what failed, in the tools' own words.)`;
 export const DOING_TOOLS = new Set(['write_file', 'edit_file', 'save_spreadsheet']);
 export const isLook = (name) => isVolatile(name); // looks whose answer changes between calls (tool-kinds.js, item 172)
@@ -176,7 +176,7 @@ export function quickHandBack(cfg, ctx, reply) {
 }
 export const callKey = (name, args) => { let a = args; if (typeof a === 'string') { try { a = JSON.parse(a); } catch {} } return `${name}|${JSON.stringify(a ?? {})}`; };
 export const LINK_NUDGE = 'Web search is on, and the page from the link is just above (the fetch_page result). Answer from it now; never say you have no web access.';
-export const CANT_NUDGE = 'You now have every tool you can use on this PC. If one of them does what was asked, call it now. If none does, say so in one line; don\'t repeat yourself.';
+export const CANT_NUDGE = 'You now have every tool you can use on this PC. If one of them does what was asked, call it now, then give your whole answer again: it replaces your last one. If none does, say so in one line.';
 export const EMPTY_NUDGE = 'Your last reply was empty. You now have every tool you can use on this PC. Do what was asked: call the right tool now (for a picture, make_image), or answer in words.';
 export const EMPTY_NOTE = 'Bob didn\'t answer that one. Send it again, or put it another way.';
 export const MAX_HISTORY = 40;

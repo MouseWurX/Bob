@@ -1,5 +1,6 @@
 // Bob's panel: chat, approvals, status, taskbar badge, read-aloud, and the brain-swap machine.
 import './sample-data.js'; // 1.5.210 sample-data mode (?sample=1 in the address only): made-up brains, nothing saved
+import { bringToFront } from './window-front.js'; // Nov 16: an open window comes to the front
 import { drawBob, setLook } from './bob-sprite.js';
 import { secretNoteHtml, wireSecretNote } from './more-tools.js'; // 🧰 More tools: a password Bob made
 import { applyStyle, applySavedStyle } from './themes.js';
@@ -53,6 +54,7 @@ import { createBubbles } from './say-bubbles.js';
 import { createBobLife } from './bob-life.js';
 import { createViewer, outCard, fillPeeks } from './viewer.js';
 import { createThinkBubbles } from './think-bubble.js'; // 1.5.210: the thinking bubble above the answer
+import { PAW, stepWords as catStep, stepKind, bobAside, asideSeed } from './patches-steps.js'; // Nov 16: Patches tells the steps
 import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
 import { createPromptMenu } from './prompts.js'; // saved prompts: the / menu in the message box
@@ -72,6 +74,8 @@ import { applyReading, startEveryday, shouldOfferOwnCode } from './everyday.js';
 import { createReplyParts } from './app-replies.js';
 import { createRedoParts } from './app-redo.js';
 import { createCopyParts } from './app-copy.js';
+import { installPathCleaning } from './clean-path.js'; // Nov 18: pasted paths lose their quotes and invisible marks
+installPathCleaning();
 // Pieces of the chat that live in their own files (app-*.js). Their functions read app.js's values fresh on every call.
 // app-replies.js
 const {
@@ -104,6 +108,7 @@ function openSettingsWindow(jump) {
     if (settingsWin && !settingsWin.closed) settingsChan.postMessage({ from: 'main', name: 'bob-goto', detail: jump || '' });
     else settingsWin = window.open(settingsUrl(jump), WINDOW_NAME, WINDOW_SIZE);
     settingsWin?.focus();
+    bringToFront('settings'); // Nov 16: an open Settings window behind others (or minimised) comes forward
   } catch { settingsWin = null; }
   return Boolean(settingsWin);
 }
@@ -314,10 +319,11 @@ const correctedBubbles = new Map();
 // 1.5.210 The thinking bubble (public/think-bubble.js): while Bob works, his steps, drafts and fixes go in one folded
 // bubble above the answer; the chat bubble gets only the finished answer, whole. Settings, Bob himself, "Thinking
 // bubble above answers" (on unless turned off); off, the chat is as it was.
-let thinkOn = true, catName = 'Patches';
+let thinkOn = true, catName = 'Patches', patchesOn = true, lastStep = '', oddSteps = -1, asideJob = { seed: 0, used: new Set() };
 const stillNow = () => document.body.classList.contains('still') || Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 window.addEventListener('bob-think-bubble', (e) => { thinkOn = e.detail !== false; }); // Settings, from this window
-const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () => thinkOn, still: stillNow, cat: () => catName, openMind: () => $('mindBtn')?.click(), copy: (t) => navigator.clipboard?.writeText(t).then(() => note('Copied the steps.')).catch(() => {}) });
+window.addEventListener('bob-patches-steps', (e) => { patchesOn = e.detail !== false; }); // Settings, from this window
+const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () => thinkOn, still: stillNow, cat: () => catName, patches: () => patchesOn, openMind: () => $('mindBtn')?.click(), copy: (t) => navigator.clipboard?.writeText(t).then(() => note('Copied the steps.')).catch(() => {}) });
 
 // ---------- Status, badge, notifications ----------
 // 1.5.216: the line under his name follows his state in his voice (public/status-line.js). Settings, How Bob works,
@@ -523,7 +529,7 @@ const labChan = 'BroadcastChannel' in window ? new BroadcastChannel(LAB_CHANNEL)
 let labWin = null;
 function openLabWindow() {
   if (!labWantsWindow({ hasChannel: Boolean(labChan), coarse: matchMedia('(pointer: coarse)').matches, standalone: matchMedia('(display-mode: standalone)').matches, width: window.innerWidth })) return false;
-  try { if (!labWin || labWin.closed) labWin = window.open(LAB_URL, LAB_WINDOW_NAME, LAB_WINDOW_SIZE); labWin?.focus(); } catch { labWin = null; }
+  try { if (!labWin || labWin.closed) labWin = window.open(LAB_URL, LAB_WINDOW_NAME, LAB_WINDOW_SIZE); labWin?.focus(); bringToFront('lab'); } catch { labWin = null; }
   return Boolean(labWin);
 }
 labChan?.addEventListener('message', (e) => { const m = labAccept(e.data); if (m?.kind === 'go') labGo(m.where); else if (m?.kind === 'note') note(m.text); });
@@ -735,6 +741,7 @@ $('mindBtn')?.addEventListener('click', () => {
   if (layout.mindDocked()) return layout.showMind();
   const w = window.open('/mind.html', 'bob-mind', 'popup,width=380,height=480');
   try { w?.focus(); } catch {}
+  bringToFront('mind');
 });
 const mindTitle = (docked) => {
   const b = $('mindBtn'); if (!b) return;
@@ -859,6 +866,7 @@ function onEvent(ev) {
           if (!r.ok) note(r.why || 'That card is too old now. Ask me again.', 'error');
           else if (r.done === 'download') note(`Getting ${r.names.join(' and ')} (about ${r.size}). Progress is in Downloads.${ev.carryOn ? ' Your request waits in Tasks, and I carry on by myself as soon as it\'s in.' : ''}`);
           else if (r.done === 'equip') note(ev.carryOn ? 'Done, it\'s in its slot. Carrying on with your request.' : 'Done, it\'s in its slot.');
+          else if (r.done === 'folder') note(ev.carryOn ? `Added ${r.folder}. Carrying on with your request.` : `Added ${r.folder}. You can take it off again in ${ev.where}.`);
           else if (r.done === 'switch') note(ev.carryOn ? `Switched on "${ev.name}". Carrying on with your request.` : `Switched on "${ev.name}". You can switch it off again in ${ev.where}.`);
         } catch (e) { yes.disabled = no.disabled = false; note(e.message, 'error'); }
       };
@@ -893,6 +901,7 @@ function onEvent(ev) {
       return;
     case 'start':
       endReply(ev);
+      lastStep = ''; oddSteps = -1; asideJob = { seed: asideSeed(), used: new Set() };
       running.add(ev.turnId);
       setBusy(true);
       return;
@@ -977,8 +986,8 @@ function onEvent(ev) {
       if (ev.action === 'thinking') { endReply(ev); add('note borrow', `🏗 Rented brain: ${esc(ev.rental)}${ev.service ? ` on ${esc(ev.service)}` : ''} thinks this one. The tools still run here.`); }
       else if (ev.action === 'back') { endReply(ev); add('note borrow', `🏗 ${esc(ev.rental)} couldn't take it (${esc(ev.why || '')}), so Bob thinks this one himself.`); }
       else if (ev.action === 'start') add('note borrow', `🏗 Started a rented machine on ${esc(ev.service)} for ${esc(ev.rental)}. It stops when the job is done, or after ${ev.minutes} minutes whatever happens.`);
-      else if (ev.action === 'used') add('note borrow muted', `🏗 ${esc(ev.rental)}: about ${esc(ev.usd)} so far this job; ${esc(ev.monthUsd)} this month.`);
-      else if (ev.action === 'stop') add('note borrow', ev.stopped ? `🏗 Stopped the rented machine (${esc(ev.service)}) after ${ev.minutes} min, ${esc(ev.usd)}: ${esc(ev.why)}.` : `🏗 I couldn't stop the rented machine on ${esc(ev.service)} (${esc(ev.machine || '')}). Please stop it on their website so it doesn't keep billing.`);
+      else if (ev.action === 'used') add('note borrow muted', `🏗 ${esc(ev.rental)}: about ${esc(ev.usd)} so far this job; about ${esc(ev.monthUsd)} this month (Bob's estimate; the service's bill is the real one).`);
+      else if (ev.action === 'stop') add('note borrow', ev.stopped ? `🏗 Stopped the rented machine (${esc(ev.service)}) after ${ev.minutes} min, about ${esc(ev.usd)} by Bob's estimate: ${esc(ev.why)}.` : `🏗 I couldn't stop the rented machine on ${esc(ev.service)} (${esc(ev.machine || '')}). Please stop it on their website so it doesn't keep billing.`);
       else if (ev.action === 'warn') add('note borrow', `🏗 ${esc(ev.text)}`);
       else if (ev.action === 'leftover') add('note borrow', `🏗 ${ev.machines.length === 1 ? 'A rented machine is' : `${ev.machines.length} rented machines are`} still running from before: ${ev.machines.map((m) => `${esc(m.service)} ${esc(m.id)}${m.perHour ? ` (about $${(+m.perHour).toFixed(2)} an hour)` : ''}`).join(', ')}. Stop them in Settings, Online services, Rented brains.`);
       else if (ev.action === 'slot') { rentSwitch.update(ev.rental); window.dispatchEvent(new CustomEvent('bob-rent-slot', { detail: { rental: ev.rental } })); }
@@ -995,7 +1004,7 @@ function onEvent(ev) {
       else add('note borrow', `📡 ${esc(ev.name)} ${esc(ev.why || 'couldn\'t take it')}, so I'll do this one here.`);
       break;
     case 'tool':
-      if (!/^hat:/.test(ev.summary) && ev.name !== 'edit_my_message') note(`· ${ev.summary}`); // an edit shows as "edited" on the message itself
+      if (!/^hat:/.test(ev.summary) && ev.name !== 'edit_my_message') { const said = patchesOn ? catStep(ev.summary, catName, lastStep) : null; const aside = said && stepKind(ev.summary) ? bobAside(ev.summary, ++oddSteps, asideJob) : ''; note(said ? `${PAW} ${said}${aside ? ` (Bob: ${aside})` : ''}` : `· ${ev.summary}`); lastStep = String(ev.summary || ''); } // an edit shows as "edited" on the message itself; Nov 16 the cat tells it
       endReply(ev);
       break;
     case 'house': { // 1.5.34: "Used your house style: 30 seconds · Change" (Settings, House style)
@@ -1720,7 +1729,7 @@ installShortcuts({
 });
 
 async function start() {
-  try { const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; catName = st.catName || catName; shortcutsOn = st.shortcuts === true; applyReading(st); readingKeep = { textSize: st.textSize, readableFont: st.readableFont }; await applyMath(st.mathView === true); } catch {}
+  try { const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; patchesOn = st.patchesSteps !== false; catName = st.catName || catName; shortcutsOn = st.shortcuts === true; applyReading(st); readingKeep = { textSize: st.textSize, readableFont: st.readableFont }; await applyMath(st.mathView === true); } catch {}
   await loadHistory(20);
   let cat = 'Patches';
   try { cat = (await (await fetch('/api/settings')).json()).catName || cat; } catch {}
@@ -1735,7 +1744,7 @@ async function start() {
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
   try {
-    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; statusLine.jokes(st.statusJokes !== false); netOverlay.setOn(st.netOverlay === true); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
+    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; patchesOn = st.patchesSteps !== false; statusLine.jokes(st.statusJokes !== false); netOverlay.setOn(st.netOverlay === true); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
     if (shouldOfferOwnCode(st.profiles)) offerOwnCode(st.profiles); // a person's own first time in: their own passcode, if they want one
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"

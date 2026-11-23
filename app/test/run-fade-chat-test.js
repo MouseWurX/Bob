@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { cleanFade, fadeOf, fadeWords, turnsOf, visibleHistory, dropOldTurns, sweepChat, sweepAll, clearChat, clearedAt, markCleared, FADE_MAX } from '../src/fade-chat.js';
-import { startAmnesia, endAmnesia, amnesiaState, amnesiaCount, amnesiaTick, madeSince, cleanAmnesiaAuto } from '../src/amnesia.js';
+import { startAmnesia, endAmnesia, amnesiaBusy, amnesiaState, amnesiaCount, amnesiaTick, madeSince, cleanAmnesiaAuto } from '../src/amnesia.js';
 import { fadeRoute } from '../src/fade-routes.js';
 import { harnessView, cleanHarness } from '../src/harness.js';
 import { OPT_IN, OPT_IN_GROUPS, safeStartPlan } from '../src/crash-catch.js';
@@ -146,6 +146,11 @@ const chat = () => [
   brain.turns.set('main', { sessionId: 'main' });
   check('not while Bob is working', Boolean(endAmnesia(cfg, { brain, made }).error) && amnesiaState(cfg).on);
   brain.turns.clear();
+  brain.queue = [{ id: 'old', state: 'cancelled' }, { id: 'old2', state: 'failed' }, { id: 'w', state: 'waiting' }];
+  check('a cancelled or failed task in the list does not block turning it off', !amnesiaBusy(brain));
+  brain.queue.push({ id: 'run', state: 'working' });
+  check('a running task does', amnesiaBusy(brain) && Boolean(endAmnesia(cfg, { brain, made }).error) && amnesiaState(cfg).on);
+  brain.queue = [{ id: 'old', state: 'cancelled' }];
   const e = endAmnesia(cfg, { brain, made, deleteMade: false });
   check('turning it off forgets the memory line', e.ok && fs.readFileSync(cfg.memoryFile, 'utf8') === 'likes tea\n');
   check('a note file that wasn\'t there goes', !fs.existsSync(path.join(cfg.innDir, 'quick-notes.md')));
@@ -222,6 +227,7 @@ const chat = () => [
   check('the 🫥 button is a switch, hidden until offered', /setAttribute\('role', 'switch'\)/.test(pub) && /btn\.hidden = !\(a\.offered \|\| a\.on\)/.test(pub));
   check('one redraw at a time (no chat drawn twice)', /if \(drawing\) \{ again = true; return drawing; \}/.test(pub));
   check('app.js asks for faded turns only with Show them', /fadeChat\?\.showAll \? '&all=1' : ''/.test(appJs) && /el\.dataset\.at = m\.at/.test(appJs));
+  check('no fade line until something faded; Clear chat sits top right with no broom (Nov 18)', /if \(!gone && !showAll\) return;/.test(pub) && !/Nothing has faded yet/.test(pub) && !/🧹/.test(pub) && /clearBtn\.textContent = 'Clear chat'/.test(pub) && /\.clear-chat-top \{ position: absolute; top: 10px; right: 20px/.test(read('public/style.css')) && /\.mid\.paged > #clearChatTop \{ display: none !important; \}/.test(read('public/style.css')));
   check('Clear chat is in Find anything', /label: 'Clear chat', kind: 'Tool'/.test(appJs));
   check('nothing new goes in the brain\'s start prompt', !/fade|amnesia/i.test(read('src/brain-prompting.js')));
   const ids = ['fade-chat', 'amnesia-mode', 'faq-fade', 'faq-amnesia'];

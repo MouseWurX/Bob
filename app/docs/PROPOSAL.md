@@ -102,7 +102,7 @@ No dates are promised. Rentals happen when the owner says so, one at a time, eac
 
 ## 7. Costs
 
-Every dollar spent, including the runs that made nothing, is on [What Bob costs to make](COSTS.md), with the rate and the hours. In short, as of 15 November 2026:
+Every dollar spent, including the runs that made nothing, is on [What Bob costs to make](COSTS.md), with the rate and the hours. In short, as of 15 November 2026 (since then: the 15 and 16 November rentals, $53.53 more, and Claude extra usage, now $2,000 in all; both are on the costs page):
 
 | | |
 |---|---|

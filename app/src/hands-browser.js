@@ -16,6 +16,14 @@ import fs from 'node:fs';
 import { handOn, handOffWhy, limitOn } from './hands-settings.js';
 import { pieceOf } from './tools.js';
 import { eyesCheck, eyesOn } from './eyes.js';
+import { cleanPrivateWeb, cleanLink, pageBlock } from './private-web.js'; // Nov 16: Private web's throwaway profile and route
+
+// Nov 18: Bob never does a robot check himself, whatever the page or the brain asks. Reading, scrolling and going back
+// still work; clicking, typing, keys and picking options on a check page don't.
+export const ROBOT_CHECK_LINE = "This page is a robot check, and a person has to do those; I never do them myself. Say so plainly. With \"Let me finish robot checks\" on (Settings, Connections, Private web), fetch_page and web_search can hand it to the person on a card.";
+async function onRobotCheck(d) {
+  try { const h = typeof d?.html === 'function' ? await d.html() : ''; return Boolean(h && pageBlock(200, h)); } catch { return false; }
+}
 
 const fn = (name, description, properties, required = Object.keys(properties)) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
@@ -120,9 +128,11 @@ export function browserTools(brain, { driver = null, track = () => () => {} } = 
     },
     async run(args, ctx) {
       off();
-      const url = String(args.url || '').trim();
+      const pw = cleanPrivateWeb(cfg.privateWeb);
+      const url = pw.on ? cleanLink(String(args.url || '').trim()) : String(args.url || '').trim(); // tracking bits off
       const p = urlProblem(cfg, url); if (p) throw new Error(p);
       ensure();
+      drv().setPrivacy?.({ on: pw.on, route: pw.route }); // the window picks its profile and route from these
       let r;
       try { r = await drv().open(url); }
       catch (e) { log('hands', `browser: open ${url} failed: ${e.message}`); throw new Error(`The page didn't open: ${e.message} (That is the real reason. Tell ${cfg.userName || 'the user'} plainly; don't say it opened.)`); }
@@ -190,6 +200,7 @@ export function browserTools(brain, { driver = null, track = () => () => {} } = 
       else if (action === 'scroll') what = `Scroll ${args.direction === 'up' ? 'up' : 'down'}`;
       else what = 'Go back one page';
       const b = browserBlock(cfg, action, item || {}, { host }); if (b) throw new Error(b);
+      if (['click', 'type', 'keys', 'select'].includes(action) && await onRobotCheck(drv())) throw new Error(ROBOT_CHECK_LINE);
       if (ctx) { ctx.browserItem = item; ctx.browserWhat = what; }
       return { text: `${what} on ${where()}. Nothing else happens on the page.`, command: what, cwd: `Bob's browser, ${host}`, button: 'Do it' };
     },
@@ -203,6 +214,7 @@ export function browserTools(brain, { driver = null, track = () => () => {} } = 
       if (ctx) { ctx.browserItem = null; ctx.browserKey = null; ctx.browserWhat = null; }
       // Checked again right before acting (the card may have waited a while).
       const b = browserBlock(cfg, action, item ? { ...item, key } : { key, search: true }, { host: hostOf(state.url) }); if (b) throw new Error(b);
+      if (['click', 'type', 'keys', 'select'].includes(action) && await onRobotCheck(drv())) throw new Error(ROBOT_CHECK_LINE);
       let r;
       try { r = await drv().act({ action, n: item?.n, text: action === 'type' ? String(args.text ?? '') : '', key, option: action === 'select' ? String(args.option || '') : '', direction: args.direction === 'up' ? 'up' : 'down' }); }
       catch (e) { log('hands', `browser: ${what} failed: ${e.message}`); throw new Error(`${e.message} (That is the real reason, from the browser. Tell ${cfg.userName || 'the user'} plainly; nothing else was done.)`); }

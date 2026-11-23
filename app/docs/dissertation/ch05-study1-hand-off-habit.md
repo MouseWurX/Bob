@@ -53,7 +53,7 @@ All three builds start from the same full model, Qwen3.6-35B-A3B, and are healed
 | Riker v2 (24Bob, line B) | 176 of 256, the same keep list | Bob's lessons plus 717 coding and software-engineering lessons | full pass, 524 of 524 steps, 4.8 h, 35.5M tokens seen | FORGE-JOURNAL.md |
 | Riker (28Bob, clean lessons) | 208 of 256, built per skill from counts | rewritten coding lessons and new skill sets (section 5.4.3) | full pass, 929 of 929 steps, 5.9 h, 63.4M tokens | FORGE-JOURNAL.md |
 
-Two points about this table deserve care. First, v1 was stopped by the clock partway through. The owner's later rule, "no clock-capped heals, full passes", came from this run. So v1 is a partly healed model, and the comparison of v1 with v2 mixes the effect of more lessons with the effect of finishing the pass. Second, the last row differs from v2 in the cut as well as the lessons. We return to this in sections 5.6 and 5.7.
+Two points about this table deserve care. First, v1 was stopped by the clock partway through. MouseWurX's later rule, "no clock-capped heals, full passes", came from this run. So v1 is a partly healed model, and the comparison of v1 with v2 mixes the effect of more lessons with the effect of finishing the pass. Second, the last row differs from v2 in the cut as well as the lessons. We return to this in sections 5.6 and 5.7.
 
 The v2 heal cost US $72.67 on an H200 card and the re-cut Riker cost $51.79 on the statement (BOBS-OWN-MODELS.md). Those figures are small enough that a second, cleaner experiment would have been affordable. We did not run one.
 

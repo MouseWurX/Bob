@@ -26,9 +26,21 @@ For a person with one consumer card, the active parameter count sets the speed, 
 
 For the interpretability work in Chapter 10, the expert structure adds a second reason to care. A model whose computation is divided into named parts invites the hypothesis that a behavior lives in one part. The router and the expert indices give a natural vocabulary for such a hypothesis. We return to this in Section 2.9, where we ask whether the hypothesis is supported.
 
-### 2.1.4 Summary of 2.1
+### 2.1.4 How the router is trained, balanced and run
 
-The transformer and the sparse mixture of experts are the settings in which the thesis works. The review so far gives three points that later chapters use. Each token uses only a few experts. The number of experts per token is a dial that can be turned. The residual stream is a place where behavior can be read and changed.
+Tazi, von Werra and Wolf (2026) wrote a practical handbook for training mixture-of-experts models from scratch on many cards, with a run behind each recommendation. Most of it concerns pre-training at scale: clusters, the exchange of words between cards, and keeping every card equally busy. Three of its themes bear on the work here, which starts from a finished model.
+
+**Router arithmetic.** The router turns its scores into weights, keeps the top k, and usually scales the kept weights to add up to 1. The handbook recommends computing the router in float32, because in BF16 two close scores can tie and a different expert wins, and Switch Transformers diverged with a BF16 router (Fedus et al., 2021). It also reports that serving fewer experts than the model was trained with is sensitive to that scaling. Chen and Yao (2026) measured this on Qwen3.6-35B-A3B, the base model of this thesis. At 4 experts instead of 8, scaling the four to add up to 1 cost 4.65 MMLU points. Dividing by the weight of the top 16 instead cost 0.35, which was not significant. They explain that the top 8 hold only about 18% of the router's probability, so the usual scaling multiplies them about 5.5 times, and fewer experts inflate the expert output further. They also found that word odds and task accuracy favour different settings. Gu et al. (2025) report the opposite direction: running more experts than trained does not help and soon hurts, which they call an inference-time scaling wall.
+
+**Balance.** Balance rules push the router to spread words, either with an extra loss or with a bias that changes only which experts are chosen (Wang et al., 2024). Model makers differ: per the handbook, Qwen3 MoE uses a global-batch loss with no bias, and DeepSeek-V3 a small per-sequence loss plus a bias. The handbook measures balance with MaxVio, the busiest expert's load over the mean, minus 1 (Wang et al., 2024), and its appendix gives per-layer token counts, weight entropy, expert output size against the layer median, and a table from symptoms to causes. The purpose of balance there is speed: a step waits for the busiest card.
+
+**Routing after training.** In reinforcement learning, the engine that writes answers and the trainer can route the same word to different experts. Ma et al. (2025) found this for about 10% of routers on Qwen3-30B-A3B and proposed replaying the recorded routing in the trainer (R3), which they report prevents training collapse. The handbook also notes that one model maker freezes the router during reinforcement learning.
+
+The handbook does not treat pruning, healing or distillation of a finished mixture-of-experts model. It is cited here for the router's arithmetic, its balance and its measures, which chapter 4 (section 4.12.1) turns into rules for the heal.
+
+### 2.1.5 Summary of 2.1
+
+The transformer and the sparse mixture of experts are the settings in which the thesis works. The review so far gives four points that later chapters use. Each token uses only a few experts. The number of experts per token is a dial that can be turned, but how the kept experts are weighed decides how much a lower setting costs. The router is sensitive to precision and to balance rules, which were made for training speed. The residual stream is a place where behavior can be read and changed.
 
 ## 2.2 Compressing models
 
@@ -62,7 +74,7 @@ Lu et al. (2024) addressed expert pruning directly in "Not All Experts Are Equal
 
 Lasby et al. (2025) proposed REAP, router-weighted expert activation pruning. It scores each expert using both its router gate values and its activation norms, with a score chosen to minimize a bound on reconstruction error. They challenge earlier work that favored merging experts. Their finding is that expert pruning is better for generative tasks, because merging loses fine-grained control over routing. They report that REAP beats merging and other pruning methods on generative benchmarks across models from 20 billion to 1 trillion parameters, with the widest advantage at 50% compression. They report near-lossless code generation for two large models after half the experts were pruned.
 
-REAP is the pruning rule behind the project's "REAP trims". These are cuts that keep a share of the experts without any healing step. On 314 held-out turns, at 100, 75, 50 and 35% kept, the REAP trims scored 204, 204, 198 and 145 for Bobert, 210, 204, 163 and 72 for Riker (which was already cut), and 204, 204 and 196 for GPT-OSS 120B at the first three levels (MAKING-SMALLER-MODELS.md). The pattern agrees in kind with the claim of Lasby et al. that pruning half the experts can be close to lossless on a generative task. It adds a caution: a model that was already cut loses more when cut again. The numbers come from the project's own tests, not from the REAP paper's benchmarks, so we do not claim that they replicate it.
+REAP is the pruning rule behind the project's "REAP trims". These are cuts that keep a share of the experts without any healing step. On 314 held-out turns, at 100, 75, 50 and 35% kept, the REAP trims scored 204, 204, 198 and 145 for Bobert, 210, 204, 163 and 72 for Riker (which was already cut), and 204, 204 and 196 for GPT-OSS 120B at the first three levels (MAKING-SMALLER-MODELS.md). The pattern agrees in kind with the claim of Lasby et al. that pruning half the experts can be close to lossless on a generative task. It adds a caution: a model that was already cut loses more when cut again. The numbers come from the project's own tests, not from the REAP paper's benchmarks, so we do not claim that they replicate it. A counterpoint comes from Chen and Yao (2026). On the same base model and on Qwen3.5-397B-A17B they found the router well balanced and expert use strongly tied to the kind of text, and so saw little room for expert pruning. Their test was general knowledge (MMLU) and arithmetic (GSM8K), while the project's numbers are for its own tool turns. The two need not conflict, but they warn against reading one task's slack as a general one.
 
 The research question about where a habit sits connects here. REAP and similar methods choose experts by how much they matter to a score or a reconstruction. Chapter 10 reports a group of 16 experts that looked like a cause of a harsh habit on a trace and turned out to act as a brake. A pruning rule that keeps the active experts and drops the quiet ones does not tell these two roles apart. We return to this point in Section 2.11.
 
@@ -184,7 +196,7 @@ BFCL is a public benchmark, and Bob's tool set is not the public one. Bob's mode
 
 ### 2.6.5 Tool shape
 
-A tool's "shape" is the name, description and argument layout the model sees. The published tool-use work treats shape mostly as given. The benchmark supplies the functions and the model must cope. Our fourth question asks whether shape or lesson content matters more. On GPT-OSS 120B, 264 turns, thinking off, Bob's wording scored 63.3% and every other wording was within about 1 point, inside the 95% range (WORDING.md). The result suggests that, at least for this model and this tool set, rewording is a weak lever. We know of no published study that varies tool wording in this way for a small agent model, and we did not search exhaustively. The claim is limited to what we opened and read.
+We separate a tool's "wording", the text of its description, from its "shape": which tools exist, how they divide the work, their names and inputs, and the call format (Chapter 8). The published tool-use work treats shape mostly as given. The benchmark supplies the functions and the model must cope. Our fourth question asks whether shape or lesson content matters more. On GPT-OSS 120B, 264 turns, thinking off, Bob's wording scored 63.3% and every other wording was within about 1 point, inside the 95% range (WORDING.md). The result suggests that, at least for this model and this tool set, rewording is a weak lever. We know of no published study that varies tool wording in this way for a small agent model, and we did not search exhaustively. The claim is limited to what we opened and read. Open agent apps point the same way in their code: the ones that adapt to a model change the tool's shape to the format that model was trained on, never the wording alone (section 8.2, from a reading of their source, not a measured result).
 
 ### 2.6.6 Summary of 2.6
 
@@ -222,7 +234,7 @@ Rafailov et al. (2023) proposed Direct Preference Optimization (DPO). It reparam
 
 ### 2.8.2 Group relative policy optimization
 
-Shao et al. (2024) introduced Group Relative Policy Optimization (GRPO) in DeepSeekMath. It is a reinforcement learning method derived from PPO that reduces memory cost. They credit the math ability of their 7 billion parameter model to a careful data selection pipeline and to GRPO. GRPO has since been widely used to train reasoning behaviors from verifiable rewards, though we rely here on the DeepSeekMath paper only for the method's definition and its first use.
+Shao et al. (2024) introduced Group Relative Policy Optimization (GRPO) in DeepSeekMath. It is a reinforcement learning method derived from PPO that reduces memory cost. They credit the math ability of their 7 billion parameter model to a careful data selection pipeline and to GRPO. GRPO has since been widely used to train reasoning behaviors from verifiable rewards, though we rely here on the DeepSeekMath paper only for the method's definition and its first use. For mixture-of-experts models, Zheng et al. (2025) proposed GSPO, which they report stabilizes reinforcement learning on such models, and Ma et al. (2025) traced instability to routing that differs between the engine writing answers and the trainer (Section 2.1.4).
 
 ### 2.8.3 Relevance and limits
 
@@ -288,6 +300,57 @@ These two pieces matter for the thesis in two ways. First, they set the deployme
 
 We did not find a peer-reviewed paper for llama.cpp or GGUF among the sources we opened. The two cited pages are project documentation, and we treat them as such. They describe the software as it is, and not as a result that has been independently evaluated.
 
+### 2.10.1 Choosing a brain and its settings at home (updated 19 November)
+
+The speed tests of 16 to 18 November turn the deployment target above into measured advice for one kind of home machine. That machine has a 16 GB card, 32 GB of RAM and an 8-core processor, and runs stock Qwen3.6 35B A3B at Q4 through Brain Engines 9 to 15. Speeds are tokens a second.
+
+Every setting tried is in Chapter 4, section 4.3.3, with the testing method, the perplexity scores and the tests still running. The cost of the fNRI trace is in Chapter 3, section 3.4.3.
+
+| If you mostly... | Measured choice on this machine | What you get | What it costs |
+|---|---|---|---|
+| Chat, short asks | Reading step 2048 + 4 GB hot-experts cache, missed experts copied to the card (2x4) | Writing 14% to 28% faster, reading 1.9x, first word on 32K in 14.3 s against 26.6 s | Answers drift no more than the default (perplexity, section 4.3.3.4) |
+| Run agent jobs, work on a repository, paste long documents, up to about 128K | Reading step 4096 at 32K or 5120 at 128K, no copy cache, q4_0 context cache, 512 MB fit margin, pinning off (4x0 or 5x0). Stock llama.cpp accepts all of these | On a 600-token job, 3.8% faster than 4x4 at 32K and 9% faster than 5x3.5 at 128K. First word on 32K in about 7.6 s | q4_0 sits on the quality line (section 4.3.3.4). Use q8_0 if you want the safe side |
+| Write code, where answers run long (about 1,000 tokens or more) at up to 64K | 4x4: reading step 4096 + 4 GB copy cache, q4_0 context cache, 512 MB fit margin, pinning off | Tied with stock llama.cpp at Bob's step (4096): on 1,500-token answers at 32K and 64K, 4x4 took 31.1 s blended against 31.2 s, 0.3% apart. Both beat 4x0 (32.6 s) and the chat pick 2x4 (36.6 s) | Provisional, pending a rerun: the stock and 4x0 rows at 64K were throttled in all 3 runs. Because it ties stock, most of the gain is from the step, not the copy cache |
+| Write long answers (about 2,000 tokens) at 128K to 256K | 5x3.5 at 128K and 6x3.5 at 256K, with a q4_0 context cache, a 512 MB fit margin and pinning off | Ties no copy cache (2.1% apart) and keeps it only on the tie-break; it writes faster but reads slower | A thin margin that a rerun could flip. q4_0 found all 5 of 5 hidden facts at both sizes, which rules out a large loss in recall but not a small one, and sits on the quality line |
+| Want the default's exact words | Bob's defaults (step 512, no cache, q8_0 cache) | Bob's settings are already 6% faster at writing and 9% faster at reading than llama.cpp's own defaults | Slow first word on long prompts (26.6 s at 32K, about 157 s at 256K) |
+
+**Most of the gain is in llama.cpp already (18 November).** Against stock llama.cpp with its own defaults, these picks finish a 300-token job 2.4 to 2.9 times sooner. That gain is in the first word and reading. Writing, which you feel through the whole answer, gains far less: about 1.2 to 1.3 times up to 32K, the same at 128K, and stock defaults write 12% faster at 256K. But stock llama.cpp given the same step, a q4_0 context cache, a 512 MB fit margin and pinning off was as fast or faster for chat and agent jobs, and Brain Engine without its copy cache matched stock within 1%. The copy cache, which only Brain Engine has, writes faster and reads slower. It pays on short prompts, where it writes 18% to 26% faster, which is why chat keeps it, and on long answers. If you run plain llama.cpp, those four settings are where most of the speed is (section 4.3.3.2).
+
+**Two coding picks, head to head (17 November).** A bigger step with a slightly smaller cache was tried against the coding pick above: step 6144 with a 3.5 GB cache, against step 4096 with 4 GB.
+
+- **Step 6144** finished long prompts about 1 s sooner.
+- **Step 4096** wrote 4% to 24% faster and left about 0.3 GB more RAM free, which matters when only 1 to 3 GB is free.
+
+So step 4096 with 4 GB was the coding pick on 17 November. On 18 November, the same step with no copy cache beat it on agent-length jobs, and replaced it (table above).
+
+**Speed settings don't change the answers.** On 18 November the copy cache and the read layout scored identically to the last digit in perplexity, and the reading step moved it only in the last digits. Nearly all the drift from full precision comes from the q8_0 context cache that Bob already uses.
+
+What not to turn on, on this machine:
+
+- **A copy cache over 4 GB at a big reading step, or switching settings between reading and writing.** At step 6144, 5 and 6 GB caches made a 32K read take 16 s and 133 s instead of 9 s. Switching to a bigger writing cache mid-chat wrote up to 8% faster but lost the whole 600-word job to staying put, at 32K and 128K. Stay at the big step with 4 GB (section 4.3.3.8).
+- **3-bit chat memory (q3_0) or Progressive Memory, for now.** q3_0 saves about 22% of the chat memory and passes perplexity and the needle test. With Brain Engine 25 at step 4096 and a 4 GB copy cache it writes only 1.6% to 4% slower than q4_0 at 128K, and faster on short prompts; with a smaller copy cache it falls 15% behind, so don't pair it with less than 4 GB. Its drift is still about 2.6 times q4_0's. Progressive Memory's best version (8+3, 2,048 sharp words) writes 4.7% slower than q4_0 at 128K and 10% to 20% slower at 32K, so it only suits long chats; its full-size accuracy check is unproven in our lab, as we have yet to test (section 4.3.3.8).
+- **Turbo (MTP).** On 16 November it slowed prompt reading by 13% to 16%, and writing ranged from 17% slower to 3% faster with Bob's sampling. On 18 November, at a small step with a big copy cache, it wrote 17% to 26% faster on long prompts but still read 13% to 15% slower. At the bigger steps this guide picks, its guessing head pushed 5 more layers' experts to RAM, so it wrote no faster and read about 15% slower. Leave it off.
+- **The context cache in RAM (`-nkvo`).** It freed only 2 to 3 layers' experts and cut writing by about three quarters at 128K and 256K.
+- **Sending some copy-cache misses to the processor.** Shares of 0.25 and 0.5 left reading the same and cut writing by 8% or more. Keep the share at 0. On Brain Engine 26 it got worse: shares above 0 lost 30% to 65% of writing, and the doorbell added nothing (section 4.3.3.8).
+- **Prefetch.** It read 5.6% to 12.7% slower and used more of the card.
+- **Hot-experts caches under 4 GB, or over 4 GB.** Under 4 GB they often lost to no cache on long prompts, and a 512 MB cache wrote 30% slower than none. Over 4 GB they wrote slower at 32K.
+- **The iq4_nl context cache.** It read about 210 tokens a second, and every long prompt timed out.
+- **A bigger fit margin.** It only pushed layers off the card and cut writing, by up to 70% at 256K. Going below 512 MB is no good either: at 256 MB a small real spill starts. A 512 MB margin wrote 18% to 19% faster than the default at 32K and 128K. A second load matched it within 1%, so it is promising, but it rests on 2 loads.
+- **A reading step of 8192 at 256K.** Its work space pushed 11 layers off the card, and writing fell to about 21.
+- **The fNRI live trace, on engines before 12.** Before Brain Engine 11 it cost 9% to 11% of writing and changed the words. From Brain Engine 11 the words match. On Brain Engine 12 it costs 2% or less, with or without the cache, so it is fine to leave on (section 3.4.3, over 3 rounds).
+
+**Bigger than RAM.** GPT-OSS 120B (a 63 GB file) crawled on this machine with every expert on. With a soft cut to 41 of its 128 experts per layer, it loaded in 29 to 39 s and wrote about 30 tokens a second, or 32 with 2x4. Whether the cut answers as well as the full brain is unproven in our lab, as we have yet to test.
+
+Five practical notes:
+
+- **RAM is tight.** 32 GB of RAM leaves only 1 to 4 GB free with this brain loaded, so other large programs can slow it. With a busy browser open at 256K, free RAM fell to 0.3 GB.
+- **A busy desktop costs about a sixth.** With a browser running 8 tabs and three muted videos, the first word came 16% to 17% later, reading was 12% to 15% slower and writing 10% to 18% slower. The brain stayed in the same place on the card and nothing spilled.
+- **Loading is quick.** Every 35B load took 5 to 7 s at every size and setting, or 13 to 14 s when the file had to come from disk again. A busy desktop adds about 1 s. The 120B soft cut takes about 30 s.
+- **Shared GPU memory isn't overflow.** At long contexts, Windows shows "shared GPU memory" rising by 1 to 3.4 GB. That is the attention mask in pinned RAM, not the card overflowing (section 4.3.3.5). It costs no speed. Setting `GGML_CUDA_NO_PINNED=1` makes it vanish with the same words and every speed within 2%, over 16 loads.
+- **The brain's own size matters more than any setting.** The dense 27B Qwen wrote about 10 words a second on the same card, against 70 to 90 for the 35B mixture-of-experts brain, because the mixture-of-experts brain uses only a few experts for each word (section 2.1.3).
+
+Other cards, laptops, handhelds and other brains are unproven in our lab, as we have yet to test.
+
 ## 2.11 Gaps this thesis addresses
 
 The review gives a good deal of ground to stand on. It also leaves gaps. We list six. For each we say what the thesis does and what it does not do.
@@ -298,7 +361,7 @@ The review gives a good deal of ground to stand on. It also leaves gaps. We list
 
 **Gap 3: contamination work focuses on public benchmarks, not a project's own held-out set.** The surveys and the rephrasing study set out the problem and the limits of exact match (Xu et al., 2024; Yang et al., 2023). Chapter 7 measures a private case, 519 of 534 leaked, and reports as "not measured" the inflation of past scores. It does not use a model-based check for reworded copies.
 
-**Gap 4: tool shape is treated as given.** Benchmarks supply tool definitions, and models cope (Patil et al., 2025). Chapter 8 varies the wording and finds a weak effect for one model, with a stronger effect from coaching hints that give the exact call. Hints are not lessons, so the lesson-content half is not yet tested. The result is for the models and tool set of one project. The re-test of the new tool shapes (PR #251) has not been run.
+**Gap 4: tool shape is treated as given.** Benchmarks supply tool definitions, and models cope (Patil et al., 2025). Chapter 8 varies the wording and finds a weak effect for one model, with a stronger effect from coaching hints that give the exact call. Hints are not lessons, so the lesson-content half is not yet tested. The result is for the models and tool set of one project. The project has since locked one working shape per family, Qwen shape 4 and GPT-OSS shape 3 (PR #271), but the re-test of the new shapes has not been run.
 
 **Gap 5: compression is judged by scores, and not by what happens to habits.** Pruning and distillation papers report benchmark results (Muralidharan et al., 2024; Lasby et al., 2025). Chapter 9 asks what a cut keeps and what a heal teaches, with lesson quality in view. It argues for cleaning before cutting. The argument rests on the checked numbers above and not on a controlled experiment, because the decisive retrain on reviewed lessons has not been run.
 
@@ -322,6 +385,8 @@ Chen, L., Li, S., Yan, J., Wang, H., Gunaratna, K., Yadav, V., Tang, Z., Sriniva
 
 Chen, R., Arditi, A., Sleight, H., Evans, O., and Lindsey, J. (2025). Persona Vectors: Monitoring and Controlling Character Traits in Language Models. arXiv:2507.21509. https://arxiv.org/abs/2507.21509
 
+Chen, X., and Yao, H. (2026). Training-Free Halving of Activated Experts in Fine-Grained Mixture-of-Experts Models. arXiv:2609.04575. https://arxiv.org/abs/2609.04575
+
 Chen, X., Xu, J., Liang, T., He, Z., Pang, J., Yu, D., Song, L., Liu, Q., Zhou, M., Zhang, Z., Wang, R., Tu, Z., Mi, H., and Yu, D. (2024). Do NOT Think That Much for 2+3=? On the Overthinking of o1-Like LLMs. arXiv:2412.21187. https://arxiv.org/abs/2412.21187
 
 Dai, D., Deng, C., Zhao, C., et al. (2024). DeepSeekMoE: Towards Ultimate Expert Specialization in Mixture-of-Experts Language Models. arXiv:2401.06066. https://arxiv.org/abs/2401.06066
@@ -342,6 +407,8 @@ Gao, L., Dupre la Tour, T., Tillman, H., Goh, G., Troll, R., Radford, A., Sutske
 
 ggml project (n.d.). GGUF file format specification. https://github.com/ggml-org/ggml/blob/master/docs/gguf.md
 
+Gu, N., Zhang, Z., Feng, Y., Chen, Y., Fu, P., Lin, Z., Wang, S., Sun, Y., Wu, H., Wang, W., and Wang, H. (2025). Elastic MoE: Unlocking the Inference-Time Scalability of Mixture-of-Experts. arXiv:2509.21892. https://arxiv.org/abs/2509.21892
+
 Gunasekar, S., Zhang, Y., Aneja, J., et al. (2023). Textbooks Are All You Need. arXiv:2306.11644. https://arxiv.org/abs/2306.11644
 
 Hinton, G., Vinyals, O., and Dean, J. (2015). Distilling the Knowledge in a Neural Network. NIPS 2014 Deep Learning Workshop; arXiv:1503.02531. https://arxiv.org/abs/1503.02531
@@ -360,6 +427,8 @@ llama.cpp project (n.d.). LLM inference in C/C++. https://github.com/ggml-org/ll
 
 Lu, X., Liu, Q., Xu, Y., Zhou, A., Huang, S., Zhang, B., Yan, J., and Li, H. (2024). Not All Experts are Equal: Efficient Expert Pruning and Skipping for Mixture-of-Experts Large Language Models. arXiv:2402.14800. https://arxiv.org/abs/2402.14800
 
+Ma, W., Zhang, H., Zhao, L., Song, Y., Wang, Y., Sui, Z., and Luo, F. (2025). Stabilizing MoE Reinforcement Learning by Aligning Training and Inference Routers. arXiv:2510.11370. https://arxiv.org/abs/2510.11370
+
 Meng, K., Bau, D., Andonian, A., and Belinkov, Y. (2022). Locating and Editing Factual Associations in GPT. NeurIPS 2022; arXiv:2202.05262. https://arxiv.org/abs/2202.05262
 
 Muralidharan, S., Sreenivas, S. T., Joshi, R., Chochowski, M., Patwary, M., Shoeybi, M., Catanzaro, B., Kautz, J., and Molchanov, P. (2024). Compact Language Models via Pruning and Knowledge Distillation. arXiv:2407.14679. https://arxiv.org/abs/2407.14679
@@ -368,9 +437,9 @@ OpenAI (2025). gpt-oss-120b & gpt-oss-20b Model Card. arXiv:2508.10925. https://
 
 Ouyang, L., Wu, J., Jiang, X., et al. (2022). Training language models to follow instructions with human feedback. arXiv:2203.02155. https://arxiv.org/abs/2203.02155
 
-Patil, S. G., Zhang, T., Wang, X., and Gonzalez, J. E. (2023). Gorilla: Large Language Model Connected with Massive APIs. arXiv:2305.15334. https://arxiv.org/abs/2305.15334
-
 Patil, S. G., Mao, H., Yan, F., Ji, C. C.-J., Suresh, V., Stoica, I., and Gonzalez, J. E. (2025). The Berkeley Function Calling Leaderboard (BFCL): From Tool Use to Agentic Evaluation of Large Language Models. ICML 2025, PMLR 267:48371-48392. https://proceedings.mlr.press/v267/patil25a.html
+
+Patil, S. G., Zhang, T., Wang, X., and Gonzalez, J. E. (2023). Gorilla: Large Language Model Connected with Massive APIs. arXiv:2305.15334. https://arxiv.org/abs/2305.15334
 
 Qin, Y., Liang, S., Ye, Y., et al. (2023). ToolLLM: Facilitating Large Language Models to Master 16000+ Real-world APIs. arXiv:2307.16789. https://arxiv.org/abs/2307.16789
 
@@ -386,9 +455,13 @@ Sprague, Z., Yin, F., Rodriguez, J. D., Jiang, D., Wadhwa, M., Singhal, P., Zhao
 
 Sreenivas, S. T., Muralidharan, S., Joshi, R., et al. (2024). LLM Pruning and Distillation in Practice: The Minitron Approach. arXiv:2408.11796. https://arxiv.org/abs/2408.11796
 
+Tazi, N., von Werra, L., and Wolf, T. (2026). The Ultimate MoE Training Handbook. Hugging Face, published 5 November 2026. https://huggingface.co/spaces/huggingface/moe-blogpost
+
 Turner, A. M., Thiergart, L., Leech, G., Udell, D., Vazquez, J. J., Mini, U., and MacDiarmid, M. (2023). Steering Language Models With Activation Engineering. arXiv:2308.10248. https://arxiv.org/abs/2308.10248
 
 Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, L., and Polosukhin, I. (2017). Attention Is All You Need. arXiv:1706.03762. https://arxiv.org/abs/1706.03762
+
+Wang, L., Gao, H., Zhao, C., Sun, X., and Dai, D. (2024). Auxiliary-Loss-Free Load Balancing Strategy for Mixture-of-Experts. arXiv:2408.15664. https://arxiv.org/abs/2408.15664
 
 Wang, Y., Kordi, Y., Mishra, S., Liu, A., Smith, N. A., Khashabi, D., and Hajishirzi, H. (2023). Self-Instruct: Aligning Language Models with Self-Generated Instructions. arXiv:2212.10560. https://arxiv.org/abs/2212.10560
 
@@ -403,6 +476,8 @@ Yang, S., Chiang, W.-L., Zheng, L., Gonzalez, J. E., and Stoica, I. (2023). Reth
 Yao, S., Zhao, J., Yu, D., Du, N., Shafran, I., Narasimhan, K., and Cao, Y. (2022). ReAct: Synergizing Reasoning and Acting in Language Models. ICLR 2023; arXiv:2210.03629. https://arxiv.org/abs/2210.03629
 
 Zhang, F., and Nanda, N. (2023). Towards Best Practices of Activation Patching in Language Models: Metrics and Methods. arXiv:2309.16042. https://arxiv.org/abs/2309.16042
+
+Zheng, C., Liu, S., Li, M., Chen, X.-H., Yu, B., Gao, C., Dang, K., Liu, Y., Men, R., Yang, A., Zhou, J., and Lin, J. (2025). Group Sequence Policy Optimization. arXiv:2507.18071. https://arxiv.org/abs/2507.18071
 
 Zheng, L., Chiang, W.-L., Sheng, Y., et al. (2023). Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena. NeurIPS 2023 Datasets and Benchmarks; arXiv:2306.05685. https://arxiv.org/abs/2306.05685
 

@@ -2,6 +2,7 @@
 // "Now running" panel on the right (Ctrl+J) with tasks, downloads and graphics card memory.
 // Both remember how you left them. In a narrow window the right panel slides over the chat.
 import { brainPlace, cardLevel, ramLevel, cpuLevel, cpuShare, quietBaseline } from './mem-colours.js';
+import { bringToFront } from './window-front.js'; // Nov 16: an open window comes to the front
 import { makeSortable, neighbour, taskRow, downloadRow } from './lists.js';
 import { currentStyle } from './themes.js';
 import { catMoment } from './patches.js';
@@ -214,7 +215,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
     window.dispatchEvent(new CustomEvent('bob-mind-dock', { detail: { docked } }));
   }
   dockBtn.onclick = () => { docked = !docked; store.set('bob-mind-dock', docked ? '1' : '0'); drawDock(); if (docked) $('mindDockLog').focus({ preventScroll: true }); };
-  $('mindDockPop').onclick = () => { const w = window.open('/mind.html', 'bob-mind', 'popup,width=380,height=480'); try { w?.focus(); } catch {} };
+  $('mindDockPop').onclick = () => { const w = window.open('/mind.html', 'bob-mind', 'popup,width=380,height=480'); try { w?.focus(); } catch {} bringToFront('mind'); };
   document.addEventListener('visibilitychange', mindListen);
   // fNRI's small cube: it only listens while the section is showing. Its glow is for show unless Real experts is on
   // (off to begin with), which makes Bob ask Brain Engine for the experts each reply used, and that slows his replies.

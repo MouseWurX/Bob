@@ -34,5 +34,5 @@ export function stepsNudge(steps, actions, who = 'the user') {
   if (!Array.isArray(steps) || steps.length < 2) return '';
   const done = stepsDone(actions);
   if (done >= steps.length) return '';
-  return `${who} asked for ${steps.length} things (${steps.map((s, i) => `${i + 1}) ${s}`).join('; ')}), but only ${done} tool step${done === 1 ? '' : 's'} ran. Do the rest now with the right tools, or say plainly which one wasn't done and why.`;
+  return `${who} asked for ${steps.length} things (${steps.map((s, i) => `${i + 1}) ${s}`).join('; ')}), but only ${done} tool step${done === 1 ? '' : 's'} ran. Do the rest now with the right tools, or say plainly which one wasn't done and why. If one tool already did more than one of them, say so. Then give your whole answer again: it replaces your last one.`;
 }

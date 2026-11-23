@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Bob's model shop. Each entry says what it is for, how big it is, how much graphics memory it wants, and its licence. Every model has 'files', downloaded straight from a pinned link into models\\bob and checked against its sha256. An 'ollama' name as well means: pulled through Ollama instead when Ollama is Bob's engine (no second copy). Links marked verify:true are re-checked before a release (size and sha256 at the pinned commit, by the release checklist's pin check); Bob himself doesn't read the flag. 'community' marks a build made by someone other than the model's maker: by (one person) or team + members, base, baseBy, kind, files (who packed the files); 'naughty: true' marks an uncensored (heretic / abliterated) one, listed only while the Naughty list is switched on.",
+  "note": "Bob's model shop. Each entry says what it is for, how big it is, how much graphics memory it wants, and its licence. Every model has 'files', downloaded straight from a pinned link into models\\bob and checked against its sha256. An 'ollama' name as well is only for the opt-in Ollama engine (set by hand in config.json): by default Bob always downloads his own pinned files for Brain Engine, even when Ollama is running. Links marked verify:true are re-checked before a release (size and sha256 at the pinned commit, by the release checklist's pin check); Bob himself doesn't read the flag. 'community' marks a build made by someone other than the model's maker: by (one person) or team + members, base, baseBy, kind, files (who packed the files); 'naughty: true' marks an uncensored (heretic / abliterated) one, listed only while the Naughty list is switched on.",
   "categories": [
     {
       "id": "chat",
@@ -452,14 +452,15 @@
       "id": "gpt-oss-120b-mxfp4",
       "family": "GPT-OSS",
       "category": "coding",
-      "jobs": ["deep", "reviewer", "tinker", "bob", "office"],
+      "jobs": ["deep", "reviewer", "tinker", "bob", "office", "scout"],
       "name": "gpt-oss 120B",
       "published": "2025-08-05",
-      "what": "gpt-oss 20B's big brother: a careful thinker. Far bigger than a home graphics card, so most of it waits in memory and on the drive. Slow, but it runs.",
+      "what": "gpt-oss 20B's big brother: a careful thinker and reviewer. Only 5B of it works on each word, so on a 16 GB card the busy parts sit on the card and the rest waits in memory and on the drive.",
       "sizeGB": 63.4,
       "vramGB": 66,
       "params": 117,
       "activeParams": 5,
+      "experts": true,
       "license": "Apache 2.0",
       "commercial": true,
       "trial": true,
@@ -523,6 +524,7 @@
       "license": "Apache 2.0",
       "commercial": true,
       "pick": "best",
+      "bobPick": ["bob", "tinker", "deep"],
       "raced": "Beat Qwen3 Coder 30B on a 16 GB card (2026-11-03). At 256K (2026-11-04) it uses 15.0 GB on the card with the rest in RAM, writes about 49 tok/s, and found a fact hidden 201K tokens in.",
       "files": [
         {
@@ -736,6 +738,7 @@
       "commercial": true,
       "pick": "optional",
       "trial": true,
+      "turbo": true,
       "naughty": true,
       "community": {
         "by": "llmfan46",
@@ -2034,6 +2037,7 @@
       "pick": "optional",
       "trial": true,
       "published": "2026-05-01",
+      "dated": {"newer": ["granite-4.2-3b"], "why": "Granite 4.2 (August 2026) is IBM's newer release in the same size."},
       "files": [
         {
           "url": "https://huggingface.co/ibm-granite/granite-4.1-3b-GGUF/resolve/ab4701481089b58a082ef63cc1cee738887293ff/granite-4.1-3b-Q4_K_M.gguf",
@@ -2146,6 +2150,7 @@
       "pick": "optional",
       "trial": true,
       "published": "2026-05-01",
+      "dated": {"newer": ["granite-4.2-8b"], "why": "Granite 4.2 (August 2026) is IBM's newer release in the same size."},
       "files": [
         {
           "url": "https://huggingface.co/ibm-granite/granite-4.1-8b-GGUF/resolve/865b82c2e7970d82e3731278c88c57ae7138359c/granite-4.1-8b-Q4_K_M.gguf",
@@ -2453,6 +2458,7 @@
       "pick": "optional",
       "trial": true,
       "published": "2026-05-01",
+      "dated": {"newer": ["granite-4.2-30b"], "why": "Granite 4.2 (August 2026) is IBM's newer release in the same size."},
       "files": [
         {
           "url": "https://huggingface.co/ibm-granite/granite-4.1-30b-GGUF/resolve/26a44ffe9923eea39af3ad811b56c9b0071e4347/granite-4.1-30b-Q4_K_M.gguf",
@@ -2636,90 +2642,6 @@
       "use": {
         "models": {
           "small": "$model"
-        }
-      }
-    },
-    {
-      "id": "riker-28b",
-      "family": "Bob",
-      "category": "chat",
-      "jobs": ["bob", "deep", "tinker", "reviewer", "office", "ledger", "scout"],
-      "name": "28Bob Riker",
-      "nickname": "Riker",
-      "published": "2026-11-08",
-      "what": "Bob's own brain, cut down from Qwen3.6 35B-A3B in his workshop: it keeps the full brain's tool habits, coding and exact formats and runs about 30% faster, a little vaguer on trivia.",
-      "sizeGB": 17.5,
-      "vramGB": 16,
-      "params": 28,
-      "activeParams": 3,
-      "license": "Apache 2.0",
-      "commercial": true,
-      "pick": "optional",
-      "bobPick": [],
-      "madeByBob": true,
-      "bench": "Benchmarked 2026-11-08: ARC-Challenge 93.9% (thinking on), ARC-Easy 98.3%; Bob's own test: tools 65, routing 96, needle 100 (the full Qwen: tools 67).",
-      "cutFrom": {
-        "name": "Qwen3.6 35B-A3B",
-        "by": "Alibaba",
-        "hf": "Qwen/Qwen3.6-35B-A3B"
-      },
-      "files": [
-        {
-          "url": "https://huggingface.co/MouseWurX/28Bob-Riker/resolve/5a46bf8d91c56ff1e1541f87934c3624c7e4120a/28Bob-Q4_K_M.gguf",
-          "role": "gguf",
-          "verify": true,
-          "bytes": 17494120544,
-          "sha256": "c96ae59c62b6e1802788d07e2d3e2edb540b3a765dd71689d92a1b546e4439e7",
-          "aka": [
-            "28Bob-Riker-Q4_K_M.gguf"
-          ]
-        }
-      ],
-      "use": {
-        "models": {
-          "bob": "$model"
-        }
-      }
-    },
-    {
-      "id": "riker-28b-q3",
-      "family": "Bob",
-      "category": "chat",
-      "jobs": ["bob", "deep", "tinker", "reviewer", "office", "ledger", "scout"],
-      "name": "28Bob Riker (quick)",
-      "nickname": "Riker",
-      "published": "2026-11-08",
-      "what": "Riker in a smaller file. On my tests it scores within a point of the bigger file and answers about half again as fast, because nearly all of it fits on a 16 GB card.",
-      "sizeGB": 13.9,
-      "vramGB": 15,
-      "params": 28,
-      "activeParams": 3,
-      "license": "Apache 2.0",
-      "commercial": true,
-      "pick": "best",
-      "bobPick": ["bob"],
-      "madeByBob": true,
-      "bench": "Benchmarked 2026-11-09 on a 16 GB card: ARC-Challenge 94.3% (thinking on), ARC-Easy 97.3% (thinking off); Bob's own test: tools 64, needle 12 of 12; about 170 words a second, 14.7 GB on the card.",
-      "cutFrom": {
-        "name": "Qwen3.6 35B-A3B",
-        "by": "Alibaba",
-        "hf": "Qwen/Qwen3.6-35B-A3B"
-      },
-      "files": [
-        {
-          "url": "https://huggingface.co/MouseWurX/28Bob-Riker/resolve/5a46bf8d91c56ff1e1541f87934c3624c7e4120a/28Bob-Q3_K_M.gguf",
-          "role": "gguf",
-          "verify": true,
-          "bytes": 13873840224,
-          "sha256": "d3b65bbc3ae8529f721675350b2f2a6e12e3205269345eaf6066d3e535684267",
-          "aka": [
-            "28Bob-Riker-Q3_K_M.gguf"
-          ]
-        }
-      ],
-      "use": {
-        "models": {
-          "bob": "$model"
         }
       }
     },
@@ -2955,35 +2877,43 @@
       }
     },
     {
-      "id": "bobert-35b",
-      "family": "Bob",
+      "id": "qwen3.6-35b-a3b-abliterated",
+      "family": "Qwen",
       "category": "coding",
-      "jobs": ["tinker", "bob", "reviewer", "deep", "office", "ledger", "scout"],
-      "name": "35Bob Bobert",
-      "nickname": "Bobert",
-      "published": "2026-11-09",
-      "what": "Bob's own brain: the whole Qwen3.6 35B-A3B, taught Bob's ways in his workshop. Only 3B of it works at a time, so it stays quick with part of it in RAM.",
-      "sizeGB": 21.2,
+      "jobs": ["tinker", "bob", "reviewer", "deep", "office", "eyes", "ledger", "scout"],
+      "name": "Qwen3.6 35B-A3B Abliterated (huihui)",
+      "published": "2026-05-19",
+      "what": "Qwen3.6 35B-A3B with the refusals cut out by huihui-ai, the most downloaded uncensored brain on Hugging Face. Same quick coder and all-rounder underneath: sees pictures, thinks first, 256K in mind. Its maker calls the method a rough first try. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 22.6,
       "vramGB": 16,
       "params": 35,
-      "activeParams": 3,
       "license": "Apache 2.0",
       "commercial": true,
-      "pick": "best",
-      "bobPick": ["tinker", "deep"],
-      "madeByBob": true,
-      "cutFrom": {
-        "name": "Qwen3.6 35B-A3B",
-        "by": "Alibaba",
-        "hf": "Qwen/Qwen3.6-35B-A3B"
+      "pick": "optional",
+      "trial": true,
+      "turbo": true,
+      "naughty": true,
+      "community": {
+        "by": "huihui-ai",
+        "base": "Qwen3.6 35B-A3B",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
       },
       "files": [
         {
-          "url": "https://huggingface.co/MouseWurX/35Bob-Bobert/resolve/7dd5307168afc157098b9b589316e773dc78048f/35Bob-Q4_K_M.gguf",
+          "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF/resolve/1fbb5305060b5365c84879612a619d0d2c0b137a/Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-Q4_K.gguf",
           "role": "gguf",
           "verify": true,
-          "bytes": 21166757984,
-          "sha256": "c4b2f9f4266d37349e92b66f86a9a7a1403affdf259c784bf5a08dcf71c16c94"
+          "bytes": 21712409824,
+          "sha256": "63b75afb4b68fc61059c78115b580037074de88146e0762f4a496081e410cf81"
+        },
+        {
+          "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF/resolve/1fbb5305060b5365c84879612a619d0d2c0b137a/mmproj-model-f16.gguf",
+          "role": "mmproj",
+          "saveAs": "Huihui-Qwen3.6-35B-A3B-mmproj-f16.gguf",
+          "verify": true,
+          "bytes": 899283104,
+          "sha256": "41578def81dbfd5c193f3b4633f9ab45e3c85f116442d6b2025464082f201d6d"
         }
       ],
       "use": {
@@ -2993,42 +2923,1462 @@
       }
     },
     {
-      "id": "bobert-35b-q3",
-      "family": "Bob",
+      "id": "qwen3.6-35b-a3b-hauhaucs",
+      "family": "Qwen",
       "category": "coding",
-      "jobs": ["tinker", "bob", "reviewer", "deep", "office", "ledger", "scout"],
-      "name": "35Bob Bobert (8 GB card version)",
-      "nickname": "Bobert",
-      "published": "2026-11-09",
-      "what": "Bobert squeezed into a smaller file for cards of 8 GB or less. A little less sharp than the full one, and most of it sits in your RAM, so replies come slower. On a bigger card I use the full version instead.",
-      "sizeGB": 16.8,
-      "vramGB": 12,
+      "jobs": ["tinker", "bob", "reviewer", "deep", "office", "eyes", "ledger", "scout"],
+      "name": "Qwen3.6 35B-A3B Uncensored (HauhauCS Aggressive)",
+      "published": "2026-04-17",
+      "what": "Qwen3.6 35B-A3B with the refusals cut out, the \"Aggressive\" build: fully unlocked, though it may still add a short warning. Its maker reports no refusals on 465 test prompts and says nothing else was changed. Sees pictures, 256K in mind. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 22.1,
+      "vramGB": 16,
       "params": 35,
-      "activeParams": 3,
       "license": "Apache 2.0",
       "commercial": true,
-      "pick": "small",
-      "bobPick": ["tinker"],
-      "madeByBob": true,
-      "squeezedOf": "bobert-35b",
-      "maxCardGB": 8,
-      "cutFrom": {
-        "name": "Qwen3.6 35B-A3B",
-        "by": "Alibaba",
-        "hf": "Qwen/Qwen3.6-35B-A3B"
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "HauhauCS",
+        "base": "Qwen3.6 35B-A3B",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
       },
       "files": [
         {
-          "url": "https://huggingface.co/MouseWurX/35Bob-Bobert/resolve/7dd5307168afc157098b9b589316e773dc78048f/35Bob-Q3_K_M.gguf",
+          "url": "https://huggingface.co/HauhauCS/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive/resolve/f12a584fecbeb5f20001130d8ecd66c9327ae685/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf",
           "role": "gguf",
           "verify": true,
-          "bytes": 16764764256,
-          "sha256": "5ab29e67f4f463cc9ef9cf791ab68850fcb45d503831adb4d6063d49007d8377"
+          "bytes": 21166758016,
+          "sha256": "bbef58c37ce88820be9d98b6437f1cf4bac890c947bd55fc7b68e22098574231"
+        },
+        {
+          "url": "https://huggingface.co/HauhauCS/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive/resolve/f12a584fecbeb5f20001130d8ecd66c9327ae685/mmproj-Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-f16.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 899283072,
+          "sha256": "c8e702344a81f8c226a914aa980ed6e1f604bce9374f1fed8e65c896908af414"
         }
       ],
       "use": {
         "models": {
           "tinker": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.6-27b-abliterated",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["deep", "reviewer", "tinker", "bob", "office", "eyes", "scout"],
+      "name": "Qwen3.6 27B Abliterated (huihui)",
+      "published": "2026-05-19",
+      "what": "Qwen3.6 27B with the refusals cut out by huihui-ai. A careful thinker for Deep thinking and reviews; a little of it sits in RAM on a 16 GB card, so replies are slower. Sees pictures. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 17.7,
+      "vramGB": 18,
+      "params": 27,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "turbo": true,
+      "naughty": true,
+      "community": {
+        "by": "huihui-ai",
+        "base": "Qwen3.6 27B",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.6-27B-abliterated-MTP-GGUF/resolve/2da8c0432f0a42c25c14cbc99f90028a90d3dcd3/Huihui-Qwen3.6-27B-abliterated-ggml-model-Q4_K.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 16810713408,
+          "sha256": "1654c3cbde5561bb2b8fd60b6400f3fb6561aab5a00b69366936b9368cf5bd6b"
+        },
+        {
+          "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.6-27B-abliterated-MTP-GGUF/resolve/2da8c0432f0a42c25c14cbc99f90028a90d3dcd3/mmproj-model-f16.gguf",
+          "role": "mmproj",
+          "saveAs": "Huihui-Qwen3.6-27B-mmproj-f16.gguf",
+          "verify": true,
+          "bytes": 927607136,
+          "sha256": "dca6010f6b2c28cf901807623385966828a74694958708d8b12e2913e2722277"
+        }
+      ],
+      "use": {
+        "models": {
+          "reviewer": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.8-27b-abliterated",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["deep", "reviewer", "bob", "tinker", "office", "eyes", "scout"],
+      "name": "Qwen 3.8 27B Abliterated (huihui)",
+      "published": "2026-08-16",
+      "what": "Qwen 3.8 27B with the refusals cut out by huihui-ai; the most downloaded uncensored Qwen 3.8. The slow but smart thinker, and it sees pictures. About 10 words a second on a 16 GB card. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 17.7,
+      "vramGB": 18,
+      "params": 27,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "huihui-ai",
+        "base": "Qwen 3.8 27B",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF/resolve/c4b90228246aef7ecc6cb2be9d80575a911a0f3a/Huihui-Qwen3.8-27B-abliterated-Q4_K.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 16810714400,
+          "sha256": "6c2c13cef89238c3604d756b07b3ef5fafebbd61095feb8553ff449c95e4c1c6"
+        },
+        {
+          "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF/resolve/c4b90228246aef7ecc6cb2be9d80575a911a0f3a/mmproj-model-bf16.gguf",
+          "role": "mmproj",
+          "saveAs": "Huihui-Qwen3.8-27B-mmproj-bf16.gguf",
+          "verify": true,
+          "bytes": 931145888,
+          "sha256": "c9a09064683620bea3d3bfed5d4462e1a97a7d2fff7e5045d6862a0a85eeb5b5"
+        }
+      ],
+      "use": {
+        "models": {
+          "reviewer": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.8-27b-hauhaucs",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["deep", "reviewer", "bob", "tinker", "office", "eyes", "scout"],
+      "name": "Qwen 3.8 27B Uncensored (HauhauCS Aggressive)",
+      "published": "2026-08-17",
+      "what": "Qwen 3.8 27B with the refusals cut out, the \"Aggressive\" build. A slightly smaller file (IQ4_XS), so a little more of it fits on a 16 GB card. Sees pictures. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 16.6,
+      "vramGB": 17,
+      "params": 27,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "HauhauCS",
+        "base": "Qwen 3.8 27B",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-GGUF/resolve/993a5971fda8f30dd1b7eb2654792ba4415c7460/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-IQ4_XS.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 15705860224,
+          "sha256": "034b4c6b7c5cd9f4a2f99570d5097698f9d1e265a0fb000207223cbf9f9bd0b0"
+        },
+        {
+          "url": "https://huggingface.co/HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-GGUF/resolve/993a5971fda8f30dd1b7eb2654792ba4415c7460/mmproj-Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-BF16.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 931146624,
+          "sha256": "5681b690bcb8eb10cd28d62d078cb4e01521a3ea4880a3fc7d54de72de2dd142"
+        }
+      ],
+      "use": {
+        "models": {
+          "reviewer": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.8-27b-uncensored-coletti",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["deep", "reviewer", "bob", "tinker", "office", "eyes", "scout"],
+      "name": "Qwen 3.8 27B Uncensored (JonathanColetti)",
+      "published": "2026-08-14",
+      "what": "Qwen 3.8 27B with most refusals cut out by the Heretic tool, and the most carefully measured one here: its maker reports 12 refusals in 100 (the original: 98) and only about 0.7% worse on a word-guessing test. Sees pictures. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 17.7,
+      "vramGB": 18,
+      "params": 27,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "turbo": true,
+      "naughty": true,
+      "community": {
+        "by": "JonathanColetti",
+        "base": "Qwen 3.8 27B",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/JonathanColetti/Qwen3.8-27B-Uncensored-GGUF/resolve/45d0fc0ad6cfcf9eeee6008ddaea925536409b18/Qwen3.8-27B-Uncensored-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 16810714528,
+          "sha256": "4c5e2db039e9325ac7724c8846c71356a24ad1cdfa28002d73ecb6be645f9675"
+        },
+        {
+          "url": "https://huggingface.co/JonathanColetti/Qwen3.8-27B-Uncensored-GGUF/resolve/45d0fc0ad6cfcf9eeee6008ddaea925536409b18/mmproj-Qwen3.8-27B-Uncensored-F16.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 927606912,
+          "sha256": "5ac423f8a29059dc24e51bc6a43e9380dcd57a9347f28b62591e0b3f60b7081c"
+        }
+      ],
+      "use": {
+        "models": {
+          "reviewer": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.5-9b-abliterated",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["bob", "tinker", "eyes", "office", "ledger", "scout", "painter"],
+      "name": "Qwen3.5 9B Abliterated (huihui)",
+      "published": "2026-03-10",
+      "what": "Qwen3.5 9B with the refusals cut out by huihui-ai. The small all-rounder for 8 GB cards: chats, codes a little, sees pictures. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 6.3,
+      "vramGB": 8,
+      "params": 9,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "huihui-ai",
+        "files": "mradermacher",
+        "base": "Qwen3.5 9B",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/mradermacher/Huihui-Qwen3.5-9B-abliterated-GGUF/resolve/419ca34f424adbd9276c09e0271cb6b718e8da1d/Huihui-Qwen3.5-9B-abliterated.Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 5627045248,
+          "sha256": "ea1858ef4dc4b648b8dbb44612962a0333e945060dd0545ac0f28d7c4416e4b3"
+        },
+        {
+          "url": "https://huggingface.co/mradermacher/Huihui-Qwen3.5-9B-abliterated-GGUF/resolve/419ca34f424adbd9276c09e0271cb6b718e8da1d/Huihui-Qwen3.5-9B-abliterated.mmproj-Q8_0.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 624229760,
+          "sha256": "cf54897b6bbfa89c809fdc2b8236e0977bed70760b39ee8f11d87296e1d0e046"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.5-9b-defiant-fable",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["bob", "tinker", "eyes", "office", "ledger", "scout", "painter"],
+      "name": "Qwen3.5 9B Defiant Fable (DavidAU)",
+      "published": "2026-07-19",
+      "what": "DavidAU's remix of Qwen3.5 9B: the refusals cut out with Heretic, then tuned for livelier, more creative writing. The most downloaded small uncensored brain. Fits an 8 GB card and sees pictures. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 7.9,
+      "vramGB": 8,
+      "params": 9,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "turbo": true,
+      "naughty": true,
+      "community": {
+        "by": "DavidAU",
+        "base": "Qwen3.5 9B",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/DavidAU/Qwen3.5-9B-The-Defiant-Fable-Uncensored-Heretic-NEO-IMATRIX-MAX-MTP-GGUF/resolve/4d47954f2ef8277567a20508dd3f88def5404455/Qwen3.5-9B-The-Defiant-Fable-Uncnr-Heretic-NEO-MAX-MTP-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 6979975392,
+          "sha256": "d7eb4fac9389d53fa576f64a6ff53e914a00bc7705dc354d1065887565147320"
+        },
+        {
+          "url": "https://huggingface.co/DavidAU/Qwen3.5-9B-The-Defiant-Fable-Uncensored-Heretic-NEO-IMATRIX-MAX-MTP-GGUF/resolve/4d47954f2ef8277567a20508dd3f88def5404455/mmproj-F16.gguf",
+          "role": "mmproj",
+          "saveAs": "Qwen3.5-9B-Defiant-Fable-mmproj-F16.gguf",
+          "verify": true,
+          "bytes": 918166080,
+          "sha256": "f70dc3509053962b0d0d3ee8a7eacebf5d60aa560cad78254ae8698516ae029f"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.6-14b-a3b-fablevibes",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["bob", "tinker", "deep", "eyes", "office", "scout"],
+      "name": "Qwen3.6 14B-A3B FableVibes",
+      "published": "2026-06-14",
+      "what": "tvall43's Qwen3.6 35B-A3B made smaller: started from their copy with the refusals cut out, cut to 14B with REAP, then taught to reason step by step from about 4,600 worked answers by a big cloud brain. Fits an 8 to 12 GB card and sees pictures. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 9.4,
+      "vramGB": 10,
+      "params": 14,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "tvall43",
+        "base": "Qwen3.6 35B-A3B",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/tvall43/Qwen3.6-14B-A3B-FableVibes-GGUF/resolve/9cf910a7ad68dfedcbdfc46ef0fe5003dec07c23/Qwen3.6-14B-A3B-FableVibes-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 8465553920,
+          "sha256": "21aa4b0b28090469e8a319c889451df2f1ea6aad27ac3818c8c8a86f86d5bc9e"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/a483e9e6cbd595906af30beda3187c2663a1118c/mmproj-F16.gguf",
+          "role": "mmproj",
+          "saveAs": "Qwen3.6-35B-A3B-mmproj-F16.gguf",
+          "verify": true,
+          "bytes": 899283680,
+          "sha256": "8971ee4f331ff0a4c609374f32984b3d4e6dc086c0aa35f1d637fad1829e887f"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
+        }
+      }
+    },
+    {
+      "id": "gemma4-12b-hauhaucs",
+      "family": "Gemma",
+      "category": "chat",
+      "jobs": ["bob", "eyes", "office", "ledger", "scout", "painter", "tinker", "reviewer"],
+      "name": "Gemma 4 12B Uncensored (HauhauCS Balanced)",
+      "published": "2026-06-22",
+      "what": "Gemma 4 12B with the refusals cut out, the \"Balanced\" build that keeps a few guardrails. Built from Google's quantization-trained copy, so the small file loses little. For 12 GB cards and the Legion Go; sees pictures. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 7.6,
+      "vramGB": 10,
+      "params": 12,
+      "license": "Gemma terms",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "HauhauCS",
+        "base": "Gemma 4 12B",
+        "baseBy": "Google",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/HauhauCS/Gemma4-12B-QAT-Uncensored-HauhauCS-Balanced/resolve/ae8045ac2bd216293ca49a3065da2c942dde4b68/Gemma4-12B-QAT-Uncensored-HauhauCS-Balanced-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 7381381760,
+          "sha256": "59656d7494d6376ca97e9e20b64ea2e16cd97f12ec6d47bfccba91cb785b5134"
+        },
+        {
+          "url": "https://huggingface.co/HauhauCS/Gemma4-12B-QAT-Uncensored-HauhauCS-Balanced/resolve/ae8045ac2bd216293ca49a3065da2c942dde4b68/mmproj-Gemma4-12B-QAT-Uncensored-HauhauCS-Balanced-BF16.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 175115264,
+          "sha256": "b59e815479b7e5f0665bd29e6784c104a368092bcbc63120148c606f9276ab8e"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
+        }
+      }
+    },
+    {
+      "id": "gemma4-26b-hauhaucs",
+      "family": "Gemma",
+      "category": "chat",
+      "jobs": ["bob", "deep", "tinker", "reviewer", "eyes", "ledger", "scout", "painter", "office"],
+      "name": "Gemma 4 26B Uncensored (HauhauCS Balanced)",
+      "published": "2026-06-24",
+      "what": "Gemma 4 26B with the refusals cut out, the \"Balanced\" build that keeps a few guardrails. Fast, sees pictures, good with tools, like the original. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 18,
+      "vramGB": 16,
+      "params": 26,
+      "license": "Gemma terms",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "HauhauCS",
+        "base": "Gemma 4 26B",
+        "baseBy": "Google",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/HauhauCS/Gemma4-26B-A4B-QAT-Uncensored-HauhauCS-Balanced-MTP/resolve/f9093662a2e7ae0503f637088bc96f77a1a70c83/Gemma4-26B-A4B-QAT-Uncensored-HauhauCS-Balanced-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 16796015520,
+          "sha256": "3c13133469e431312fffb8b1d9c85ae42199e6bb5746ea1da84e8ddf2097d73c"
+        },
+        {
+          "url": "https://huggingface.co/HauhauCS/Gemma4-26B-A4B-QAT-Uncensored-HauhauCS-Balanced-MTP/resolve/f9093662a2e7ae0503f637088bc96f77a1a70c83/mmproj-Gemma4-26B-A4B-QAT-Uncensored-HauhauCS-Balanced-BF16.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 1194827776,
+          "sha256": "b5346e5bfd906f5e16878c2d0b8243e948ca7410fa28ea35be9b0c54a0ac10b7"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
+        }
+      }
+    },
+    {
+      "id": "gpt-oss-20b-abliterated",
+      "family": "GPT-OSS",
+      "category": "coding",
+      "jobs": ["deep", "reviewer", "tinker", "bob", "ledger", "scout", "office"],
+      "name": "gpt-oss 20B Abliterated (huihui)",
+      "published": "2025-09-27",
+      "what": "gpt-oss 20B with the refusals cut out by huihui-ai (second version). Still the fast, careful thinker; fits a 16 GB card. Text only. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 13.8,
+      "vramGB": 15,
+      "params": 20,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "huihui-ai",
+        "base": "gpt-oss 20B",
+        "baseBy": "OpenAI",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/huihui-ai/Huihui-gpt-oss-20b-mxfp4-abliterated-v2/resolve/79f64a520a4a0275f639c1a47d9a5614a8a54477/GGUF/Huihui-gpt-oss-20b-mxfp4-abliterated.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 13792637408,
+          "sha256": "db7fa5d5c20375b944426278dea2e10a0c41da5ab429b705b4ea29041831cd69"
+        }
+      ],
+      "use": {
+        "models": {
+          "reviewer": "$model"
+        }
+      }
+    },
+    {
+      "id": "glm-4.7-flash-abliterated",
+      "family": "GLM",
+      "category": "coding",
+      "jobs": ["tinker", "bob", "deep", "reviewer", "scout"],
+      "name": "GLM-4.7 Flash 30B-A3B Abliterated (huihui)",
+      "published": "2026-01-22",
+      "what": "GLM-4.7 Flash with the refusals cut out by huihui-ai. Still Z.ai's quick coder and tool user; runs on a 16 GB card with part of it in RAM. Text only. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 18.1,
+      "vramGB": 16,
+      "params": 30,
+      "license": "MIT",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "huihui-ai",
+        "files": "mradermacher",
+        "base": "GLM-4.7 Flash",
+        "baseBy": "Z.ai",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/mradermacher/Huihui-GLM-4.7-Flash-abliterated-GGUF/resolve/2d925ab0fdaa279a87485f4786ca22661bf030b2/Huihui-GLM-4.7-Flash-abliterated.Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 18132722048,
+          "sha256": "ca247d439725435ad5addc43926d311d0b0cd97cb65a32eb7d5b3ac479bf434d"
+        }
+      ],
+      "use": {
+        "models": {
+          "tinker": "$model"
+        }
+      }
+    },
+    {
+      "id": "muse-glimmer-30b-abliterated",
+      "family": "Muse",
+      "category": "chat",
+      "jobs": ["bob", "deep", "reviewer", "tinker", "eyes", "office", "scout"],
+      "name": "Muse Glimmer 30B Abliterated",
+      "published": "2026-08-10",
+      "what": "Meta's Muse Glimmer 30B with the refusals cut out. A dense brain that sees pictures and is strong with tools; on a 16 GB card a little of it sits in RAM, so replies are slower. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 18.3,
+      "vramGB": 18,
+      "params": 30,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "Blackfrost Research",
+        "files": "The-freezer",
+        "base": "Muse Glimmer 30B",
+        "baseBy": "Meta",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/The-freezer/Muse-Glimmer-30B-Abliterated-GGUF/resolve/83e7dc723f5515704adc8767dfeb279de3df914d/Muse-Glimmer-30B-Abliterated-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 16935296896,
+          "sha256": "1316a7e2b90c362a820a906867bb60941511906361827314817a8e83c33d179e"
+        },
+        {
+          "url": "https://huggingface.co/The-freezer/Muse-Glimmer-30B-Abliterated-GGUF/resolve/83e7dc723f5515704adc8767dfeb279de3df914d/mmproj-Muse-Glimmer-30B-Abliterated-Q4_K_M.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 1400329152,
+          "sha256": "acd4058ce27e4b263a99841a70c63385620ca2351aa8cc3ae4d8f8cef2a0b973"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
+        }
+      }
+    },
+    {
+      "id": "devstral-small-2-abliterated",
+      "family": "Mistral",
+      "category": "coding",
+      "jobs": ["tinker", "reviewer", "eyes"],
+      "name": "Devstral Small 2 24B Abliterated",
+      "published": "2026-03-24",
+      "what": "Mistral's Devstral Small 2 coder with the refusals cut out. Works through a whole project step by step with tools and can look at screenshots. Fits a 16 GB card. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 15.2,
+      "vramGB": 16,
+      "params": 24,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "wangzhang",
+        "files": "mradermacher",
+        "base": "Devstral Small 2 24B",
+        "baseBy": "Mistral AI",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/mradermacher/Devstral-Small-2-24B-Instruct-abliterated-GGUF/resolve/09dc967f831cfcd861e5a48323940df49392123f/Devstral-Small-2-24B-Instruct-abliterated.Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 14333914176,
+          "sha256": "6f906d34e49035b49079d6a98567ca95baa01b987f9838284628e5100a870ca1"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/Devstral-Small-2-24B-Instruct-2512-GGUF/resolve/6e458b8add42681bfd023de5eab93637694aaf82/mmproj-F16.gguf",
+          "role": "mmproj",
+          "saveAs": "Devstral-Small-2-mmproj-F16.gguf",
+          "verify": true,
+          "bytes": 878054048,
+          "sha256": "236bb4f0500620164917f26749cd402485b7d749034ea817c6a2d65253b126b9"
+        }
+      ],
+      "use": {
+        "models": {
+          "tinker": "$model"
+        }
+      }
+    },
+    {
+      "id": "lfm2.5-24b-a2b-uncensored",
+      "family": "LFM",
+      "category": "chat",
+      "jobs": ["bob", "office", "scout", "ledger", "tinker"],
+      "name": "LFM2.5 24B-A2B Uncensored (AtomicChat)",
+      "published": "2026-10-09",
+      "what": "Liquid AI's quick 24B brain (2B working at once) with the refusals cut out. Its maker reports refusals down from 96% to about 1%, the same test scores, and all 20 tool calls they tried still valid. Fits a 16 GB card; text only. Answers without refusing, so what it says is on you; a little rougher than the original. Liquid AI's own licence: free for personal use; read it before using it for a business.",
+      "sizeGB": 15.4,
+      "vramGB": 16,
+      "params": 24,
+      "license": "LFM Open License v1.0",
+      "commercial": false,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "AtomicChat",
+        "base": "LFM2.5 24B-A2B",
+        "baseBy": "Liquid AI",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/AtomicChat/LFM2.5-24B-A2B-Uncensored-GGUF/resolve/b0f357bb729bcf03269e7f138cd4d30060515dee/LFM2.5-24B-A2B-Uncensored-AD-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 15359771360,
+          "sha256": "17a5de7f9718d8f6133ef08579d35845dd69bb51f329204ead0fc0ee97a75a41"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
+        }
+      }
+    },
+    {
+      "id": "lfm3-1.7b-uncensored",
+      "family": "LFM",
+      "category": "chat",
+      "jobs": ["small", "office", "scout"],
+      "name": "LFM3 1.7B Uncensored (AtomicChat)",
+      "published": "2026-10-27",
+      "what": "Liquid AI's tiny LFM3 with the refusals cut out. About 1 GB: runs on a phone, a laptop or with no graphics card. Text only. Answers without refusing, so what it says is on you; a little rougher than the original. Liquid AI's own licence: free for personal use; read it before using it for a business.",
+      "sizeGB": 1.1,
+      "vramGB": 2,
+      "params": 1.7,
+      "license": "LFM Open License v1.0",
+      "commercial": false,
+      "pick": "optional",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "AtomicChat",
+        "base": "LFM3 1.7B",
+        "baseBy": "Liquid AI",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/AtomicChat/LFM3-1.7B-Uncensored-GGUF/resolve/3ad712542eb9de349dbd28f2739b69c925cdec7d/LFM3-1.7B-Uncensored-AD-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 1132208000,
+          "sha256": "b22df65673b54ed326f18f74826d76f3b65dadc237ffd6306cd52be04544827d"
+        }
+      ],
+      "use": {
+        "models": {
+          "small": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.8-27b-coding-distilled",
+      "family": "Qwen",
+      "category": "coding",
+      "jobs": ["tinker", "reviewer", "deep", "bob", "eyes"],
+      "name": "Qwen 3.8 27B Coding Distilled (khazarai)",
+      "published": "2026-09-16",
+      "what": "Qwen 3.8 27B taught from about 12,500 coding and debugging answers written by a big cloud brain (Claude Fable 5). The most downloaded Qwen 3.8 coding remix. Sees pictures; on a 16 GB card a little of it sits in RAM, so replies are slower.",
+      "sizeGB": 17.4,
+      "vramGB": 18,
+      "params": 27,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "community": {
+        "by": "khazarai",
+        "files": "mradermacher",
+        "base": "Qwen 3.8 27B",
+        "baseBy": "Alibaba",
+        "kind": "distilled"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/mradermacher/Qwen3.8-27B-Fable-5-Coding-Distilled-GGUF/resolve/e8eeb91df17f4b8c107dbaaf3edeeff9f9bfb928/Qwen3.8-27B-Fable-5-Coding-Distilled.Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 16810716704,
+          "sha256": "f730bb8dd54fc9ae404d5fbe65fe2cbde54d099ac76214a87641c70328dc6c5c"
+        },
+        {
+          "url": "https://huggingface.co/mradermacher/Qwen3.8-27B-Fable-5-Coding-Distilled-GGUF/resolve/e8eeb91df17f4b8c107dbaaf3edeeff9f9bfb928/Qwen3.8-27B-Fable-5-Coding-Distilled.mmproj-Q8_0.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 629247840,
+          "sha256": "bb45ab43fd413434a2750177df09344a4a48009f692e6482f368f286ce619514"
+        }
+      ],
+      "use": {
+        "models": {
+          "tinker": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.5-9b-kimi-distilled",
+      "family": "Qwen",
+      "category": "coding",
+      "jobs": ["tinker", "bob", "eyes", "office", "scout"],
+      "name": "Qwen3.5 9B Kimi K3 Distilled (khazarai)",
+      "published": "2026-09-16",
+      "what": "Qwen3.5 9B taught from coding and debugging answers written by Moonshot's giant Kimi K3. The most downloaded small coding remix. Fits an 8 GB card and sees pictures.",
+      "sizeGB": 6.4,
+      "vramGB": 8,
+      "params": 9,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "community": {
+        "by": "khazarai",
+        "files": "mradermacher",
+        "base": "Qwen3.5 9B",
+        "baseBy": "Alibaba",
+        "kind": "distilled"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF/resolve/5172f92801f0bec7be7a7c309c4acc2331190004/Qwen3.5-9B-Kimi-k3-Distilled.Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 5780091776,
+          "sha256": "ff0649d92045b564daf4e0b9b0e6b21c6b83b2b1b59448554cf778ad206695f7"
+        },
+        {
+          "url": "https://huggingface.co/mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF/resolve/5172f92801f0bec7be7a7c309c4acc2331190004/Qwen3.5-9B-Kimi-k3-Distilled.mmproj-Q8_0.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 624230144,
+          "sha256": "9fbb5577b8fe017a4fd26f11263c64db2293b2ca101f24bee7cdd105486bdfb5"
+        }
+      ],
+      "use": {
+        "models": {
+          "tinker": "$model"
+        }
+      }
+    },
+    {
+      "id": "hermes-4-14b",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["bob", "tinker", "office", "ledger", "scout", "deep"],
+      "name": "Hermes 4 14B (Nous Research)",
+      "published": "2025-08-26",
+      "what": "Nous Research's Hermes 4, built on Qwen3 14B: thinks when you want it to, calls tools cleanly and writes tidy JSON. A well-known agent brain for 10 to 12 GB cards. Text only.",
+      "sizeGB": 9,
+      "vramGB": 11,
+      "params": 14,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "community": {
+        "by": "Nous Research",
+        "files": "bartowski",
+        "base": "Qwen3 14B",
+        "baseBy": "Alibaba",
+        "kind": "fine-tuned"
+      },
+      "dated": {"newer": ["qwen3.5-9b", "gemma4-12b"], "why": "From August 2025, on the older Qwen3. Newer brains of the same size also see pictures."},
+      "files": [
+        {
+          "url": "https://huggingface.co/bartowski/NousResearch_Hermes-4-14B-GGUF/resolve/0693c8f45031215d6734406947e6b43d1b3ee0de/NousResearch_Hermes-4-14B-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 9001753536,
+          "sha256": "7ad9be1e446e3da0c149fdf55284c90be666d3e13c6e2581587853f4f9538073"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
+        }
+      }
+    },
+    {
+      "id": "glm-4.7-flash-reap-23b",
+      "family": "GLM",
+      "category": "coding",
+      "jobs": ["tinker", "bob", "deep", "reviewer", "scout"],
+      "name": "GLM-4.7 Flash REAP 23B-A3B (Cerebras)",
+      "published": "2026-01-23",
+      "reap": true,
+      "what": "GLM-4.7 Flash with its least-used experts cut out by Cerebras (REAP), from 30B to 23B, so all of it fits on a 16 GB card. Still the quick coder and tool user. Text only.",
+      "sizeGB": 14.1,
+      "vramGB": 16,
+      "params": 23,
+      "license": "MIT",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "community": {
+        "by": "Cerebras",
+        "files": "unsloth",
+        "base": "GLM-4.7 Flash",
+        "baseBy": "Z.ai",
+        "kind": "reap"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/GLM-4.7-Flash-REAP-23B-A3B-GGUF/resolve/983a65c63bc7bd37353e5246abc8005b3f72d5ec/GLM-4.7-Flash-REAP-23B-A3B-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 14113838816,
+          "sha256": "038e930ee1e050dca7732a7a2c768a4b0f83f5655add1acb6c7380852b9eef68"
+        }
+      ],
+      "use": {
+        "models": {
+          "tinker": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.6-35b-a3b-coding-reap50",
+      "family": "Qwen",
+      "category": "coding",
+      "jobs": ["tinker", "bob", "reviewer", "scout"],
+      "name": "Qwen3.6 35B-A3B Coding REAP50",
+      "published": "2026-07-18",
+      "reap": true,
+      "what": "Qwen3.6 35B-A3B with half its experts cut out (REAP), keeping the ones coding uses most. About 11 GB, so all of it fits on a 12 or 16 GB card. Text only; best kept to coding jobs.",
+      "sizeGB": 11.4,
+      "vramGB": 12,
+      "params": 18,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "community": {
+        "by": "anik-jha",
+        "base": "Qwen3.6 35B-A3B",
+        "baseBy": "Alibaba",
+        "kind": "reap"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/anik-jha/Qwen3.6-35B-A3B-coding-reap50-GGUF/resolve/260dffbddaba1f7edb30f823118247e477fc8877/qwen36-reap50-Q4_K_M-imat.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 11373058080,
+          "sha256": "ebe5abe7606dd64df7b10a9347da4f97a583374825de28665ed6f3fce51bb08a"
+        }
+      ],
+      "use": {
+        "models": {
+          "tinker": "$model"
+        }
+      }
+    },
+    {
+      "id": "muse-glimmer-30b",
+      "family": "Muse",
+      "category": "chat",
+      "jobs": ["bob", "deep", "reviewer", "tinker", "eyes", "office", "scout"],
+      "name": "Muse Glimmer 30B",
+      "published": "2026-08-10",
+      "what": "Meta's open Muse brain: a dense 30B that sees pictures and is strong with tools (Meta reports it ahead of Qwen3.6 27B on tool tests). On a 16 GB card a little of it sits in RAM, so replies are slower.",
+      "sizeGB": 18.2,
+      "vramGB": 18,
+      "params": 30,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/meta-models/Muse-Glimmer-30B-GGUF/resolve/b44f1072cf75e918a1b82a3a17b45c4389b076e7/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 16756683904,
+          "sha256": "4cc57c0f51040a226e5a72cc47b7613f7772950e460a665f7083de89f183f60e"
+        },
+        {
+          "url": "https://huggingface.co/meta-models/Muse-Glimmer-30B-GGUF/resolve/b44f1072cf75e918a1b82a3a17b45c4389b076e7/mmproj-Muse-Glimmer-30B-Q4_K_M.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 1400328928,
+          "sha256": "f48b452316f9b213758e8659444029b961a24a07f99a1abb2a9f88b06f7c00c6"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
+        }
+      }
+    },
+    {
+      "id": "lfm2.5-24b-a2b",
+      "family": "LFM",
+      "category": "chat",
+      "jobs": ["bob", "office", "scout", "ledger", "tinker"],
+      "name": "LFM2.5 24B-A2B",
+      "published": "2026-10-09",
+      "what": "Liquid AI's quick everyday brain: 24B of knowledge, 2B working at once, so it answers fast and fits a 16 GB card. Keeps 128K in mind. Text only. Liquid AI's own licence: free for personal use; read it before using it for a business.",
+      "sizeGB": 14.5,
+      "vramGB": 16,
+      "params": 24,
+      "license": "LFM Open License v1.0",
+      "commercial": false,
+      "pick": "optional",
+      "trial": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/LiquidAI/LFM2.5-24B-A2B-GGUF/resolve/4a79de634b3ad965a5f49c8ae1ce3368112e6ad2/LFM2.5-24B-A2B-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 14526258464,
+          "sha256": "d3334405b96228eb9908cdebb5c6194908f2da64282bda852afc3a3910c64e7d"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
+        }
+      }
+    },
+    {
+      "id": "lfm3-1.7b",
+      "family": "LFM",
+      "category": "chat",
+      "jobs": ["small", "office", "scout"],
+      "name": "LFM3 1.7B",
+      "published": "2026-10-24",
+      "what": "Liquid AI's tiny LFM3, about 1 GB. Liquid reports it ahead of Qwen3.5 9B at calling tools. A Quick brain for a phone, a laptop or no graphics card. Text only. Liquid AI's own licence: free for personal use; read it before using it for a business.",
+      "sizeGB": 1.1,
+      "vramGB": 2,
+      "params": 1.7,
+      "license": "LFM Open License v1.0",
+      "commercial": false,
+      "pick": "optional",
+      "trial": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/cd0c74c575b5c416f3011b5b4c298077f26ca8c2/LFM3-1.7B-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 1099627808,
+          "sha256": "3793e1e6e2266919d6e015287221b41100175a98eddaba92e111aed3b05c93c4"
+        }
+      ],
+      "use": {
+        "models": {
+          "small": "$model"
+        }
+      }
+    },
+    {
+      "id": "granite-4.2-3b",
+      "family": "Granite",
+      "category": "chat",
+      "jobs": ["small", "office", "ledger", "scout"],
+      "name": "Granite 4.2 3B",
+      "published": "2026-08-12",
+      "what": "IBM's newest small office brain. Reads long documents on a laptop or with no graphics card. Text only.",
+      "sizeGB": 2.2,
+      "vramGB": 3,
+      "params": 3,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/ibm-granite/granite-4.2-3b-GGUF/resolve/c40945d71cd90f249a56985e8155551a9188dc30/granite-4.2-3b-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 2244011552,
+          "sha256": "e0406663965846ae22a403456eb826ccce5f450840491f71952f18a7cb78e7d5"
+        }
+      ],
+      "use": {
+        "models": {
+          "office": "$model"
+        }
+      }
+    },
+    {
+      "id": "granite-4.2-8b",
+      "family": "Granite",
+      "category": "chat",
+      "jobs": ["office", "bob", "ledger", "scout", "painter"],
+      "name": "Granite 4.2 8B",
+      "published": "2026-08-12",
+      "what": "IBM's newest everyday office brain: letters, sheets, long documents. Fits an 8 GB card. Text only.",
+      "sizeGB": 5.3,
+      "vramGB": 7,
+      "params": 8,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/ibm-granite/granite-4.2-8b-GGUF/resolve/93f3f6a8938ee922b784cf4e5b4203cd3428df8f/granite-4.2-8b-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 5347917952,
+          "sha256": "16a9369d0805f80b7377d25d87f937a90c05dc04ad79173a52001e42c9aab311"
+        }
+      ],
+      "use": {
+        "models": {
+          "office": "$model"
+        }
+      }
+    },
+    {
+      "id": "granite-4.2-30b",
+      "family": "Granite",
+      "category": "chat",
+      "jobs": ["office", "deep", "reviewer", "ledger", "bob"],
+      "name": "Granite 4.2 30B",
+      "published": "2026-08-12",
+      "what": "IBM's newest big Granite: careful office work and reviews over long documents. All 30B works at once, so it's best on a 24 GB card. Text only.",
+      "sizeGB": 17.7,
+      "vramGB": 20,
+      "params": 30,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/ibm-granite/granite-4.2-30b-GGUF/resolve/27b350a791e81d9a4d1ddca1c49282e9ec533768/granite-4.2-30b-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 17721455328,
+          "sha256": "f299dace85d77ee0e24ca0b6720bd211b1f4cd1f65b9c0a2111e79692e29c9be"
+        }
+      ],
+      "use": {
+        "models": {
+          "office": "$model"
+        }
+      }
+    },
+    {
+      "id": "ministral-3-3b",
+      "family": "Mistral",
+      "category": "chat",
+      "jobs": ["small", "bob", "eyes", "office", "scout"],
+      "name": "Ministral 3 3B",
+      "published": "2025-12-02",
+      "what": "Mistral's smallest brain, about 2 GB. Sees pictures and is good with European languages. For a laptop, a phone or a 4 GB card.",
+      "sizeGB": 3,
+      "vramGB": 4,
+      "params": 3,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF/resolve/eb599d408350ea2bb60452cb86be7c7b2fc28227/Ministral-3-3B-Instruct-2512-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 2147023008,
+          "sha256": "9ed150d4367e68df0ac8e1540f6ddc65b42d0ee26378329d1ecbca60f93fc5f8"
+        },
+        {
+          "url": "https://huggingface.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF/resolve/eb599d408350ea2bb60452cb86be7c7b2fc28227/Ministral-3-3B-Instruct-2512-BF16-mmproj.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 841501856,
+          "sha256": "70ca26e41ecea9da997e2887462ad68b848fbf64da011ff4107bbe7353519ee0"
+        }
+      ],
+      "use": {
+        "models": {
+          "small": "$model"
+        }
+      }
+    },
+    {
+      "id": "mistral-small-3.2-24b",
+      "family": "Mistral",
+      "category": "chat",
+      "jobs": ["bob", "eyes", "office", "scout", "reviewer", "ledger"],
+      "name": "Mistral Small 3.2 24B",
+      "published": "2025-06-20",
+      "what": "Mistral's everyday 24B: steady at following instructions and calling tools, sees pictures. The most downloaded Mistral GGUF. Fits a 16 GB card.",
+      "sizeGB": 15.2,
+      "vramGB": 16,
+      "params": 24,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "dated": {"newer": ["ministral-3-14b", "devstral-small-2"], "why": "From mid-2025. Ministral 3 14B is newer and smaller; Devstral Small 2 codes better."},
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/Mistral-Small-3.2-24B-Instruct-2506-GGUF/resolve/b750ec2299225e492f1bd27cab88a0a595fa848f/Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 14333922848,
+          "sha256": "a3cc56310807ed0d145eaf9f018ccda9ae7ad8edb41ec870aa2454b0d4700b3c"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/Mistral-Small-3.2-24B-Instruct-2506-GGUF/resolve/b750ec2299225e492f1bd27cab88a0a595fa848f/mmproj-F16.gguf",
+          "role": "mmproj",
+          "saveAs": "Mistral-Small-3.2-mmproj-F16.gguf",
+          "verify": true,
+          "bytes": 878053568,
+          "sha256": "d6af684ae9136398eaa0b59ea9e0b0b850bb6ac5084f1e8c5cb8f85251825eaf"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
+        }
+      }
+    },
+    {
+      "id": "phi-4-mini",
+      "family": "Phi",
+      "category": "chat",
+      "jobs": ["small", "office", "scout"],
+      "name": "Phi-4 mini 3.8B",
+      "published": "2025-02-26",
+      "what": "Microsoft's small Phi: good at maths and plain reasoning for its size, about 2.5 GB. For a laptop or no graphics card. Text only.",
+      "sizeGB": 2.5,
+      "vramGB": 4,
+      "params": 3.8,
+      "license": "MIT",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "dated": {"newer": ["granite-4.2-3b", "qwen3.5-4b"], "why": "From early 2025. Newer small brains keep more in mind and use tools better."},
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/Phi-4-mini-instruct-GGUF/resolve/78eb92a46fc37e6b524df991ed9aca9bc6aa7b80/Phi-4-mini-instruct-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 2491874272,
+          "sha256": "88c00229914083cd112853aab84ed51b87bdf6b9ce42f532d8c85c7c63b1730a"
+        }
+      ],
+      "use": {
+        "models": {
+          "small": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.6-35b-a3b-turbo",
+      "family": "Qwen",
+      "category": "coding",
+      "jobs": ["tinker", "bob", "reviewer", "deep", "office", "eyes", "ledger", "scout"],
+      "name": "Qwen3.6 35B-A3B Turbo",
+      "published": "2026-05-11",
+      "what": "A newer coder and all-rounder: sees pictures, thinks before it answers, and keeps up to 256K in mind. Only 3B of it works at a time, so it stays quick even with part of it in RAM. The file is about 2 GB bigger than the plain one.",
+      "sizeGB": 23.8,
+      "vramGB": 16,
+      "params": 35,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "turbo": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF/resolve/5bc3e238d916f48a861bac2f8a1990a0e9b7e98d/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+          "role": "gguf",
+          "saveAs": "Qwen3.6-35B-A3B-UD-Q4_K_XL-MTP.gguf",
+          "verify": true,
+          "bytes": 22853663008,
+          "sha256": "55983c5a75a1ab969824077b3bb3de4146e82a9234072b48ad4e8f92ad3fe9f1"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF/resolve/5bc3e238d916f48a861bac2f8a1990a0e9b7e98d/mmproj-F16.gguf",
+          "role": "mmproj",
+          "saveAs": "Qwen3.6-35B-A3B-MTP-mmproj-F16.gguf",
+          "verify": true,
+          "bytes": 899283584,
+          "sha256": "71f3cbc1f7cc0f30d09d41cfa924c0060827ebc33bf15ace7e86661e856f0160"
+        }
+      ],
+      "use": {
+        "models": {
+          "tinker": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.6-27b-turbo",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["deep", "reviewer", "tinker", "bob", "office", "eyes", "scout"],
+      "name": "Qwen3.6 27B Turbo",
+      "published": "2026-05-11",
+      "what": "A careful, strong thinker for Deep thinking and reviews. All 27B of it works at once, so a little sits in RAM on a 16 GB card and replies are slower.",
+      "sizeGB": 18,
+      "vramGB": 18,
+      "params": 27,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "turbo": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF/resolve/5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace/Qwen3.6-27B-Q4_K_M.gguf",
+          "role": "gguf",
+          "saveAs": "Qwen3.6-27B-Q4_K_M-MTP.gguf",
+          "verify": true,
+          "bytes": 17106773120,
+          "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF/resolve/5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace/mmproj-F16.gguf",
+          "role": "mmproj",
+          "saveAs": "Qwen3.6-27B-MTP-mmproj-F16.gguf",
+          "verify": true,
+          "bytes": 927607360,
+          "sha256": "eacf610d1ee4bd5ed0197a0777dd8f4fceb8eefa27009067c7d496cb68fbde45"
+        }
+      ],
+      "use": {
+        "models": {
+          "reviewer": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.5-9b-turbo",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["bob", "tinker", "eyes", "office", "ledger", "scout", "painter"],
+      "name": "Qwen3.5 9B Turbo",
+      "published": "2026-05-13",
+      "what": "A small all-rounder for 8 GB cards: chats, codes a little, sees pictures and keeps a long chat in mind.",
+      "sizeGB": 6.8,
+      "vramGB": 8,
+      "params": 9,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "turbo": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3.5-9B-MTP-GGUF/resolve/9716a636ee4bddc3fed678220b7a33dd2a4160ae/Qwen3.5-9B-Q4_K_M.gguf",
+          "role": "gguf",
+          "saveAs": "Qwen3.5-9B-Q4_K_M-MTP.gguf",
+          "verify": true,
+          "bytes": 5868826976,
+          "sha256": "e8dd94817e95d6c0939102049d068418269978377b13616c4726235e232841fe"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3.5-9B-MTP-GGUF/resolve/9716a636ee4bddc3fed678220b7a33dd2a4160ae/mmproj-F16.gguf",
+          "role": "mmproj",
+          "saveAs": "Qwen3.5-9B-MTP-mmproj-F16.gguf",
+          "verify": true,
+          "bytes": 918165984,
+          "sha256": "5a40d1f771686432172a4981018a0d30d03a5aaf5793a5badd5416573362a232"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model",
+          "scout": "$model",
+          "painter": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.5-4b-turbo",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["small", "bob", "eyes", "scout", "painter", "ledger"],
+      "name": "Qwen3.5 4B Turbo",
+      "published": "2026-05-13",
+      "what": "A tiny brain that also sees pictures. Fits 4 to 6 GB cards.",
+      "sizeGB": 3.5,
+      "vramGB": 4,
+      "params": 4,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "turbo": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3.5-4B-MTP-GGUF/resolve/86835bf9949e4d14d6860f7910b1340ad4f271a9/Qwen3.5-4B-Q4_K_M.gguf",
+          "role": "gguf",
+          "saveAs": "Qwen3.5-4B-Q4_K_M-MTP.gguf",
+          "verify": true,
+          "bytes": 2834975040,
+          "sha256": "3874209241c9a397e2f62cd3f70f80fd2dfbf0dfccb6838416bdb48a714e8630"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3.5-4B-MTP-GGUF/resolve/86835bf9949e4d14d6860f7910b1340ad4f271a9/mmproj-F16.gguf",
+          "role": "mmproj",
+          "saveAs": "Qwen3.5-4B-MTP-mmproj-F16.gguf",
+          "verify": true,
+          "bytes": 672423488,
+          "sha256": "d63b1a847fe9cd52e8e1525008cd33703821299f5a9eae40b2865426208767e7"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model",
+          "scout": "$model",
+          "painter": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3-next-80b-a3b",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["deep", "bob", "reviewer", "tinker", "office", "scout"],
+      "name": "Qwen3-Next 80B-A3B",
+      "published": "2025-09-11",
+      "dated": { "newer": [ "qwen3.6-35b-a3b" ], "why": "From September 2025; Qwen3.6 35B-A3B is newer, smaller and sees pictures" },
+      "what": "A big, quick all-rounder: 80B of knowledge, only 3B working at once. Almost fits a 16 GB card plus 32 GB of memory. Answers straight away, no thinking out loud. Text only.",
+      "sizeGB": 48.5,
+      "vramGB": 51,
+      "params": 80,
+      "activeParams": 3,
+      "experts": true,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3-Next-80B-A3B-Instruct-GGUF/resolve/6688872b7a4e5eb8a121ceea08009530a024ba1d/Qwen3-Next-80B-A3B-Instruct-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 48506100512,
+          "sha256": "f73551b55e3796526c37772c96227151fa11af328802b8f9865d635104e280fd"
+        }
+      ],
+      "use": {
+        "models": {
+          "deep": "$model"
+        }
+      }
+    },
+    {
+      "id": "glm-4.5-air-gguf",
+      "family": "GLM",
+      "category": "chat",
+      "jobs": ["deep", "bob", "reviewer", "tinker", "office", "scout"],
+      "name": "GLM-4.5 Air",
+      "published": "2025-07-28",
+      "dated": { "newer": [ "glm-4.7-flash" ], "why": "From July 2025; Z.ai's GLM-4.7 Flash is newer and much smaller" },
+      "what": "Z.ai's big coding and tools brain that thinks before it answers: 106B of knowledge, 12B working at once.",
+      "sizeGB": 67.7,
+      "vramGB": 70,
+      "params": 106,
+      "activeParams": 12,
+      "experts": true,
+      "license": "MIT",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/GLM-4.5-Air-GGUF/resolve/506d64aa8c5cfe9dbbf00bc7a15739438f83204d/UD-Q4_K_XL/GLM-4.5-Air-UD-Q4_K_XL-00001-of-00002.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 49580287296,
+          "sha256": "1acd6d4acdb4f463c9a61696cb7e830e1a34134e610b573e87a4397adcd90bd7"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/GLM-4.5-Air-GGUF/resolve/506d64aa8c5cfe9dbbf00bc7a15739438f83204d/UD-Q4_K_XL/GLM-4.5-Air-UD-Q4_K_XL-00002-of-00002.gguf",
+          "role": "gguf-part-2",
+          "verify": true,
+          "bytes": 18140784576,
+          "sha256": "8e220a3cdf4e19763cc7a5fd0a6215f1da1b3fda1306e64e88456d045c2007f8"
+        }
+      ],
+      "use": {
+        "models": {
+          "deep": "$model"
+        }
+      }
+    },
+    {
+      "id": "llama-4-scout-gguf",
+      "family": "Llama",
+      "category": "chat",
+      "jobs": ["bob", "office", "scout", "reviewer"],
+      "name": "Llama 4 Scout 109B-A17B",
+      "published": "2025-04-05",
+      "dated": { "newer": [ "muse-glimmer-30b" ], "why": "From April 2025; newer brains think and use tools better" },
+      "what": "Meta's Llama 4 Scout: 109B of knowledge, 17B working at once, with a very long memory for big documents. This copy has no picture reader, so it reads text only.",
+      "sizeGB": 65.4,
+      "vramGB": 68,
+      "params": 109,
+      "activeParams": 17,
+      "experts": true,
+      "license": "Llama 4 Community License",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/Llama-4-Scout-17B-16E-Instruct-GGUF/resolve/72a6853f56a66dc13a3a4b6bdc9cf7ee4c364b47/Q4_K_M/Llama-4-Scout-17B-16E-Instruct-Q4_K_M-00001-of-00002.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 49848379744,
+          "sha256": "fbe956902467171ed7c0c326e5d868771a84d46468d407abecd0f289297313f9"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/Llama-4-Scout-17B-16E-Instruct-GGUF/resolve/72a6853f56a66dc13a3a4b6bdc9cf7ee4c364b47/Q4_K_M/Llama-4-Scout-17B-16E-Instruct-Q4_K_M-00002-of-00002.gguf",
+          "role": "gguf-part-2",
+          "verify": true,
+          "bytes": 15511520608,
+          "sha256": "e7330ae14527f08e8a44a6a573b45084052b8822c4b8a5179c5cad9cd6f6f795"
+        }
+      ],
+      "use": {
+        "models": {
+          "deep": "$model"
         }
       }
     }
@@ -3039,17 +4389,22 @@
       "label": "16 GB card or more",
       "minVramGB": 12,
       "models": [
-        "bobert-35b",
-        "riker-28b-q3",
+        "qwen3.6-35b-a3b",
         "gemma4-26b",
         "z-image-turbo",
         "qwen-image-edit-2509",
         "wan2.2-ti2v-5b",
         "gemma4-e4b",
+        "whisper-base-en",
         "kokoro-v1",
         "nomic-embed-text"
       ],
       "slots": {
+        "qwen3.6-35b-a3b": [
+          "bob",
+          "tinker",
+          "deep"
+        ],
         "gemma4-26b": [
           "office"
         ],
@@ -3064,7 +4419,9 @@
         ],
         "gemma4-e4b": [
           "small",
-          "eyes",
+          "eyes"
+        ],
+        "whisper-base-en": [
           "voice"
         ],
         "kokoro-v1": [
@@ -3072,20 +4429,13 @@
         ],
         "nomic-embed-text": [
           "embed"
-        ],
-        "riker-28b-q3": [
-          "bob"
-        ],
-        "bobert-35b": [
-          "tinker",
-          "deep"
         ]
       },
       "notes": {
-        "gemma4-e4b": "the quick brain, and it sees pictures and hears you",
-        "gemma4-26b": "Office and Deep thinking",
-        "riker-28b-q3": "Bob's own everyday brain: nearly all of it fits on your card, so it's quick, with a big context (256K, how much it keeps in mind)",
-        "bobert-35b": "Bob's own coding and deep-thinking brain: the whole Qwen3.6 35B, taught Bob's ways"
+        "qwen3.6-35b-a3b": "the everyday, coding and deep-thinking brain in one, so chat and code never swap: only 3B of it works at a time, so it stays quick with part of it in RAM, and it keeps up to 256K in mind",
+        "gemma4-e4b": "the quick brain, and it sees pictures",
+        "whisper-base-en": "hears you (English), on the processor",
+        "gemma4-26b": "Office and Deep thinking"
       },
       "times": "Pictures take about 10 seconds each, clips a few minutes.",
       "cardGB": 16
@@ -3095,8 +4445,9 @@
       "label": "8 GB card",
       "minVramGB": 7,
       "models": [
-        "bobert-35b-q3",
+        "qwen3.6-35b-a3b-q3",
         "gemma4-e4b",
+        "whisper-base-en",
         "kokoro-v1",
         "nomic-embed-text",
         "z-image-turbo-q5",
@@ -3107,7 +4458,9 @@
         "gemma4-e4b": [
           "bob",
           "small",
-          "eyes",
+          "eyes"
+        ],
+        "whisper-base-en": [
           "voice"
         ],
         "kokoro-v1": [
@@ -3125,19 +4478,20 @@
         "wan2.2-ti2v-5b-q4": [
           "video"
         ],
-        "bobert-35b-q3": [
+        "qwen3.6-35b-a3b-q3": [
           "tinker"
         ]
       },
       "tick": [
-        "bobert-35b-q3"
+        "qwen3.6-35b-a3b-q3"
       ],
       "notes": {
-        "gemma4-e4b": "one model for chat, quick brain, eyes and ears, so everyday chat never swaps",
+        "gemma4-e4b": "one model for chat, quick brain and eyes, so everyday chat never swaps",
+        "whisper-base-en": "hears you (English), on the processor",
         "z-image-turbo-q5": "a version of the painter made to fit your card",
         "flux2-klein-4b": "a small, quick editor: change a picture with words or keep a look from references",
         "wan2.2-ti2v-5b-q4": "slow on this card: keep clips to a few seconds",
-        "bobert-35b-q3": "Bob's own coder, squeezed for your card; most of it sits in your RAM, so replies are slower"
+        "qwen3.6-35b-a3b-q3": "the coder, squeezed for your card; most of it sits in your RAM, so replies are slower"
       },
       "times": "Rough guesses, not yet measured on an 8 GB card: about 30 seconds to a minute a picture, a minute or two an edit, 10 minutes or more a short clip. Bob puts his brain away while he paints, so chat waits until the picture is done.",
       "cardGB": 8
@@ -3149,6 +4503,7 @@
       "models": [
         "qwen3-4b",
         "gemma4-e4b",
+        "whisper-base-en",
         "kokoro-v1",
         "nomic-embed-text",
         "qwen2.5-coder-7b",
@@ -3162,7 +4517,9 @@
           "small"
         ],
         "gemma4-e4b": [
-          "eyes",
+          "eyes"
+        ],
+        "whisper-base-en": [
           "voice"
         ],
         "kokoro-v1": [
@@ -3186,7 +4543,8 @@
       },
       "notes": {
         "qwen3-4b": "the everyday brain: small and quick, and leaves room on the card for longer chats",
-        "gemma4-e4b": "sees pictures and hears you; it loads only for those jobs",
+        "gemma4-e4b": "sees pictures; it loads only for that job",
+        "whisper-base-en": "hears you (English), on the processor",
         "qwen2.5-coder-7b": "small, quick coder that fits the card",
         "z-image-turbo-q4": "a version of the painter made to fit 6 GB cards",
         "flux2-klein-4b-q4": "a small editor made to fit 6 GB cards",
@@ -3203,6 +4561,7 @@
       "models": [
         "qwen3-4b",
         "gemma4-e4b",
+        "whisper-base-en",
         "kokoro-v1",
         "nomic-embed-text",
         "qwen2.5-coder-7b",
@@ -3216,7 +4575,9 @@
           "small"
         ],
         "gemma4-e4b": [
-          "eyes",
+          "eyes"
+        ],
+        "whisper-base-en": [
           "voice"
         ],
         "kokoro-v1": [
@@ -3263,7 +4624,8 @@
       ],
       "notes": {
         "qwen3-4b": "the everyday brain: small and quick on built-in graphics",
-        "gemma4-e4b": "sees pictures and hears you; it loads only for those jobs",
+        "gemma4-e4b": "sees pictures; it loads only for that job",
+        "whisper-base-en": "hears you (English), on the processor",
         "qwen2.5-coder-7b": "small, quick coder",
         "z-image-turbo-q4": "the small painter: a picture takes a few minutes on built-in graphics",
         "flux2-klein-4b-q4": "a small editor: change a picture with words, or keep a look from references",
@@ -3278,6 +4640,7 @@
       "minVramGB": 0,
       "models": [
         "gemma4-e4b",
+        "whisper-base-en",
         "kokoro-v1",
         "nomic-embed-text"
       ],
@@ -3285,7 +4648,9 @@
         "gemma4-e4b": [
           "bob",
           "small",
-          "eyes",
+          "eyes"
+        ],
+        "whisper-base-en": [
           "voice"
         ],
         "kokoro-v1": [
@@ -3296,7 +4661,8 @@
         ]
       },
       "notes": {
-        "gemma4-e4b": "chats, plans, researches, sees pictures and hears you, all on the processor"
+        "gemma4-e4b": "chats, plans, researches and sees pictures, all on the processor",
+        "whisper-base-en": "hears you (English), on the processor"
       },
       "times": "Without a graphics card Bob can talk, plan, research, read pictures and speak, but not paint or film.",
       "cardGB": 0
@@ -3361,7 +4727,7 @@
       "cardGB": 0
     }
   ],
-  "updated": "2026-11-10",
+  "updated": "2026-11-16",
   "bigBrains": [
     {
       "id": "mistral-large-4",

@@ -111,8 +111,9 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
   brain.engine.chat = async ({ signal }) => new Promise((resolve, reject) => { release = resolve; signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))); });
   const { jobId } = brain.enqueue('main', 'write me a long report');
   await until(() => brain.turns.size === 1);
-  const before = unloads;
+  const before = unloads, evAt = events.length;
   const r = await brain.setGamingLock(true);
+  check('🎮 on: the page is told the brain went (status line and the cube\'s letting-go animation)', events.slice(evAt).some((e) => e.type === 'brain'));
   const job = brain.queue.find((j) => j.id === jobId);
   check('🎮 on: Gaming, saved', r.on && cfg.session === 'light' && cfg.gamingLock === true);
   check('🎮 on: the card is cleared', unloads > before);

@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { STARTUP_LOG, readStartups, recordStartup, freezingCards, orderCards, startupSummary } from './card-health.mjs';
 import { gate as neverGate, trains as planTrains, loadNever, neverFilesFor, findLeaks } from '../never-gate.mjs';
+import { V2, createPod, podV1, listOf, volumeV1, volumeBodyV2 } from './runpod-v2.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -42,7 +43,8 @@ function hfToken() {
 const args = Object.fromEntries(process.argv.slice(2).map((a, i, arr) => a.startsWith('--') ? [a.slice(2), arr[i + 1]?.startsWith('--') || arr[i + 1] === undefined ? true : arr[i + 1]] : []).filter((x) => x.length));
 const KEY = process.env.RUNPOD_API_KEY;
 if (!KEY) { console.error('RUNPOD_API_KEY is not set (the "Save RunPod key" step).'); process.exit(1); }
-const REST = process.env.FORGE_REST || 'https://rest.runpod.io/v1'; // FORGE_REST / FORGE_OUT: tests only (a made-up RunPod and a temp folder)
+// 16 Nov 2026: RunPod retired rest.runpod.io/v1 (the name stopped resolving mid-rent); v2 at api.runpod.io is its replacement (runpod-v2.mjs)
+const REST = process.env.FORGE_REST || V2; // FORGE_REST / FORGE_OUT: tests only (a made-up RunPod and a temp folder)
 const outDir = process.env.FORGE_OUT || path.join(here, '..', 'out'); fs.mkdirSync(path.join(outDir, 'forge'), { recursive: true });
 const logFile = path.join(outDir, 'forge', `forge-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.log`);
 const log = (...m) => { const line = `${new Date().toISOString().slice(11, 19)} ${m.join(' ')}`; console.log(line); fs.appendFileSync(logFile, line + '\n'); };
@@ -88,14 +90,14 @@ async function volumeIn(dc, name) {
   if (have) { // build 17: a volume we already have is enlarged to the plan's size first (RunPod enlarges, never shrinks); 8 Nov a 100 GB drive was reused for a 300 GB run
     if ((have.size || 0) < gb) {
       try {
-        await rp('PATCH', `/networkvolumes/${have.id}`, { size: gb });
+        await rp('PATCH', `/network-volumes/${have.id}`, { size: gb });
         have.size = gb; saveVolumes(knownVolumes().map((v) => v.id === have.id ? { ...v, size: gb, enlarged: new Date().toISOString() } : v));
         log(`enlarged the network volume ${have.id} to ${gb} GB (about $${(gb * 0.07).toFixed(2)} a month)`);
       } catch (e) { log(`could not enlarge the network volume ${have.id} from ${have.size || '?'} to ${gb} GB: ${e.message.slice(0, 120)}; the run may run out of room`); }
     }
     return have;
   }
-  const v = await rp('POST', '/networkvolumes', { name: plan.volume.name || 'bob-forge', size: gb, dataCenterId: dc });
+  const v = volumeV1(await rp('POST', '/network-volumes', volumeBodyV2({ name: plan.volume.name || 'bob-forge', size: gb, dataCenterId: dc })));
   const rec = { id: v.id, size: v.size || gb, dataCenterId: v.dataCenterId || dc, name: name || dc, made: new Date().toISOString() };
   saveVolumes([rec, ...knownVolumes()]);
   log(`made the network volume ${v.id}: ${gb} GB in ${rec.name} (${dc}), about $${(gb * 0.07).toFixed(2)} a month until deleted`);
@@ -122,10 +124,10 @@ if (args.places) { // where are the cards + storage right now (read-only)
 if (args['drop-volume']) { // 9 Nov: two empty volumes were made by the rent loop in data centres that only had the card for a minute; this deletes one by id and forgets it
   const id = String(args['drop-volume']); const known = knownVolumes();
   if (!known.find((v) => v.id === id)) { log(`${id} is not in ${volFile()}; nothing deleted (only volumes Forge made are dropped here)`); process.exit(1); }
-  await rp('DELETE', `/networkvolumes/${id}`); saveVolumes(known.filter((v) => v.id !== id)); log(`deleted the network volume ${id} and forgot it`); process.exit(0);
+  await rp('DELETE', `/network-volumes/${id}`); saveVolumes(known.filter((v) => v.id !== id)); log(`deleted the network volume ${id} and forgot it`); process.exit(0);
 }
 if (args.status || args.kill) {
-  const pods = (await rp('GET', '/pods')) || [];
+  const pods = listOf(await rp('GET', '/pods'), 'pods').map(podV1);
   for (const p of pods) log(`${p.id} ${p.name} ${p.desiredStatus} ${p.machine?.gpuTypeId || ''} $${p.costPerHr}/h`);
   if (!pods.length) log('no pods');
   if (args.kill) for (const p of pods) if (p.name?.startsWith('bob-forge')) {
@@ -251,7 +253,7 @@ async function rent({ again = false, avoidNow = new Set() } = {}) {
         let useVol = t.vol, root = '/workspace';
         if (plan.volume && t.dc && !useVol) { tried.add(t.dc); useVol = await volumeIn(t.dc, t.name); }
         if (useVol) root = '/forge';
-        const pod = await rp('POST', '/pods', {
+        const pod = await createPod(rp, {
           name: `bob-forge-${plan.rungs[0]?.name || (plan.lessons_only ? 'lessons' : 'counts')}-${String(plan.run || '').replace(/[^\w.-]/g, '_').slice(0, 40)}`, imageName: plan.image || 'vllm/vllm-openai:v0.28.0', cloudType: 'SECURE',
           gpuTypeIds: cards, gpuTypePriority: 'custom', gpuCount: 1, volumeMountPath: '/workspace',
           ...(useVol ? { networkVolumeId: useVol.id, dataCenterIds: [useVol.dataCenterId], containerDiskInGb: plan.disk_gb || 350 } : { volumeInGb: plan.disk_gb || 350, containerDiskInGb: 40, ...(t.dc ? { dataCenterIds: [t.dc] } : {}) }),
@@ -260,7 +262,7 @@ async function rent({ again = false, avoidNow = new Set() } = {}) {
           env: { FORGE_TOKEN: token, FORGE_RUNPOD_KEY: KEY, HF_HUB_ENABLE_HF_TRANSFER: '0', FORGE_HOURS_MAX: String(hoursMax), FORGE_ROOT: root, FORGE_SHARED: '/workspace' },
           dockerEntrypoint: ['bash', '-c'],
           dockerStartCmd: [`mkdir -p ${root} && echo ${boot} | base64 -d | gunzip > /workspace/bootstrap.py && exec python3 /workspace/bootstrap.py`]
-        });
+        }, cards); // v2: one card type a request, so each wanted card is asked for in turn
         podId = pod.id; price = pod.costPerHr || 0;
         const got = pod.machine?.gpuTypeId || 'a card';
         // 14 Nov: keep the host's id and data centre (RunPod forgets them once a pod is deleted; a stuck host can then be reported)
@@ -337,7 +339,7 @@ async function download(rel, dest, bytes, sha) {
 function directPorts() { return plan.direct ? ['8000/tcp', '8001/tcp'] : null; }
 async function directUrls() {
   if (!plan.direct || args.local) return null;
-  try { const p = await rp('GET', `/pods/${podId}`); const ip = p.publicIp, pm = p.portMappings || {};
+  try { const p = podV1(await rp('GET', `/pods/${podId}`)); const ip = p.publicIp, pm = p.portMappings || {};
     return ip && pm['8000'] ? { door: `http://${ip}:${pm['8000']}`, llama: pm['8001'] ? `http://${ip}:${pm['8001']}` : null } : null; } catch { return null; }
 }
 // the brain's address for the PC's commands: the direct one when it answers /health, else the proxy
@@ -382,6 +384,9 @@ function lessonPreflight() {
 }
 if (!podId || args.preflight) {
   const bad = lessonPreflight();
+  // 16 Nov: RunPod retired its old address while a trial waited for a card, and the window retried for half an hour. Now a
+  // read-only ask (the pod list) must answer before anything is rented, so a moved or broken address stops at pre-flight. FORGE_NO_RUNPOD_CHECK: tests only (they have no internet).
+  if (!args.local && !process.env.FORGE_NO_RUNPOD_CHECK) { try { listOf(await rp('GET', '/pods'), 'pods'); log(`pre-flight: RunPod answers at ${REST}`); } catch (e) { bad.push(`RunPod's rental address ${REST} does not answer (${String(e.cause?.code || e.message).slice(0, 160)}); nothing can be rented or deleted through it`); } }
   if (bad.length) { for (const b of bad) log(`PRE-FLIGHT FAIL: ${b}`); log('Not renting: fix the plan first.'); process.exit(1); }
   if (args.preflight) { log('pre-flight OK: nothing rented (--preflight)'); process.exit(0); }
 }
@@ -422,7 +427,15 @@ let up = false;
 // well over 15 min, so the door wait is configurable (plan.door_minutes, default 15) and longer for no-volume runs
 const doorMin = plan.door_minutes || (plan.volume ? 15 : 25);
 const doorTries = Math.max(1, Math.round(doorMin * 6));
-async function waitDoor() { for (let i = 0; i < doorTries && !up; i++) { if (plan.direct && !args.local && i % 3 === 0) { const d = await directUrls(); if (d) base = d.door; } try { const r = await get('/status'); up = r.ok; } catch {} if (!up) { if (i && i % 30 === 0) log(`still waiting for the pod door (${i / 6 | 0} min of ${doorMin})`); await sleep(10000); } } }
+// 16 Nov: what RunPod says about the pod while the door is shut, so a frozen host (stuck PROVISIONING/STARTING, no
+// uptime) can be told from a container that runs without its port (RUNNING, uptime, no 8000)
+async function podState() {
+  if (args.local || !podId) return '';
+  try { const p = await rp('GET', `/pods/${podId}`); const rt = p.runtime || null;
+    return `; RunPod says ${p.status || p.desiredStatus || '?'}${rt ? `, up ${rt.uptime ?? rt.uptimeInSeconds ?? '?'} s, ports ${(rt.ports || []).map((x) => `${x.private}/${x.type}`).join(' ') || 'none'}` : ', not started on its host yet'}`;
+  } catch (e) { return `; RunPod's pod record: ${String(e.message).slice(0, 80)}`; }
+}
+async function waitDoor() { for (let i = 0; i < doorTries && !up; i++) { if (plan.direct && !args.local && i % 3 === 0) { const d = await directUrls(); if (d) base = d.door; } try { const r = await get('/status'); up = r.ok; } catch {} if (!up) { if (i && i % 30 === 0) log(`still waiting for the pod door (${i / 6 | 0} min of ${doorMin})${await podState()}`); await sleep(10000); } } }
 await waitDoor();
 // 14 Nov (the owner: "if its always the same card type freezing up change to a different card type"): every start-up is
 // logged by card type and data centre. When a pod rented in this run never answers, it's deleted and, up to

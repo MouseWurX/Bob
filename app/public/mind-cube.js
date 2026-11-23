@@ -6,6 +6,7 @@
 // come word by word while he writes ('trace-part'); older engines send them when the reply is finished, and the cube
 // plays them back word by word. Nothing is saved. The same drawing as the big viewer (watch-view.js).
 import { createView } from './watch-view.js';
+import { bringToFront } from './window-front.js'; // Nov 16: an open window comes to the front
 import { createFog } from './fog.js';
 import { specialise, liveRecording, partOf, PART_LABEL, say, NAME, mapLook, litSkills, lookOf, LOAD_STYLES, loadStyle, UNLOAD_STYLES, unloadStyle } from './lab-watch-math.js';
 
@@ -368,6 +369,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     if (!rec) return;
     const w = window.open('/watch.html', 'bob-watch', 'popup,width=1180,height=820');
     if (!w) { says.textContent = 'The viewer window was blocked. Allow pop-ups for Bob\'s page, then press it again.'; return; }
+    try { w.focus(); } catch {} bringToFront('watch');
     const give = () => { try { w.bobWatch?.load(JSON.parse(JSON.stringify(rec))); } catch {} };
     w.addEventListener('load', () => setTimeout(give, 300)); setTimeout(give, 1500);
   };

@@ -1,11 +1,13 @@
 // Running a tool call: limits, saving what it made, checking the result, offering a fix, and handing results back.
 // Methods of the Brain class. Split out of brain.js.
+import { FOLDER_REFUSED } from './folder-offer.js';
 import { SAVING_TOOLS, saysNoSave, noSaveLine } from './no-save.js';
 import { gate as qGate, after as qAfter, noteStrike } from './quarantine.js';
 import { WATCH_TOOLS } from './meanwhile.js';
 import { receiptBefore, cachedLook, keepLook, receiptAfter, noteNo } from './job-helps.js';
 import { inTurn as inChangeTurn, afterChanges } from './turn-changes.js';
 import { recordCall } from './tool-learn.js';
+import { traced, toolStatus } from './trace-log.js'; // Nov 16 Monitoring log
 import { keepRecord } from './tool-record.js';
 import { SAVE_AS, saveAs } from './save-as.js';
 import path from 'node:path';
@@ -60,7 +62,8 @@ export const toolRunParts = {
     // Items 237-238: every save the tool makes is tied to this turn (Undo takes the whole turn back; memory changes say
     // which turn wrote them). Not for another Bob's, Telegram's or Discord's jobs.
     const scope = ctx?.askId && !ctx.job?.guest ? { cfg: this.cfg, sessionId: ctx.sessionId, askId: ctx.askId, jobId: ctx.job?.id, tool: name } : null;
-    const res = cachedLook(this, name, args, ctx) || await inChangeTurn(scope, async () => { try { return await this.runToolNow(name, args, ctx, tool); } finally { if (scope && afterChanges(scope)) { ctx.changed = true; ctx.emit?.({ type: 'turn-changed', askId: ctx.askId }); } } }); // Jobs: Reuse look-ups
+    // Monitoring log (trace-log.js): one span per call, with the tool's name, time, status and the answer's size only.
+    const res = await traced('tool', name === 'use_my_tool' && args?.name ? `use_my_tool:${args.name}` : name, async () => cachedLook(this, name, args, ctx) || await inChangeTurn(scope, async () => { try { return await this.runToolNow(name, args, ctx, tool); } finally { if (scope && afterChanges(scope)) { ctx.changed = true; ctx.emit?.({ type: 'turn-changed', askId: ctx.askId }); } } }), (r) => ({ status: toolStatus(r?.text), chars: String(r?.text ?? '').length, detail: { in: args, out: r?.text } }), { signal: ctx?.signal, before: { in: args } }); // Jobs: Reuse look-ups
     keepLook(this, name, args, res);
     receiptAfter(this, name, args, res, ctx, before);
     noteNo(this, ctx, name, args, res?.text); // Jobs: Remember a "no" for the whole chat
@@ -211,6 +214,7 @@ export const toolRunParts = {
       const ok = v.ok !== false && !/^Error:/.test(text);
       ctx.ledger?.action(name, args, ok || Boolean(v.declined), text, startedAt, v);
       // Item 207: the logbook keeps the real cause (the first error), not the last wrapper.
+      if (!ok && name !== 'offer_setup') ctx.lastFailed = { name, text: String(text).slice(0, 400) }; // Nov 18: offer_setup says what really stopped it
       this.log(ok ? 'tool' : 'error', ok ? (tool.summary ? tool.summary(args) : name) : `${name}: ${(ctx.toolError?.cause || text.replace(/^Error:\s*/, '')).slice(0, 400)}`);
       let strikeNote = '';
       if (!v.declined && !(!ok && badAddress(text))) { // 1.5.210: a made-up or missing address isn't the tool's fault
@@ -238,6 +242,8 @@ export const toolRunParts = {
       this.log('error', `${name}: ${causeLine(e).slice(0, 400)}`); // item 207
       this.noteToolError(name);
       const te = toolErrorText(e);
+      if (FOLDER_REFUSED.test(String(e?.message || ''))) te.text += this.offerFolder(args, ctx); // Nov 18: the Add it card
+      if (name !== 'offer_setup') ctx.lastFailed = { name, text: te.text.slice(0, 400) };
       return { text: te.text, ok: false, ...(te.hinted ? { hinted: true } : {}) };
     }
   },
@@ -265,6 +271,7 @@ export const toolRunParts = {
       }
       // Item 198: plain words, from the error's own code (retry.js); the logbook keeps the real cause.
       const te = toolErrorText(e); te.cause = causeLine(e); ctx.toolError = te;
+      if (FOLDER_REFUSED.test(String(e?.message || ''))) { const more = this.offerFolder(args, ctx); if (more) return te.text + more; } // Nov 18: the Add it card
       return te.text;
     }
     const clean = cleanResult(raw);

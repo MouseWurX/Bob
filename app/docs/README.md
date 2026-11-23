@@ -22,6 +22,7 @@ Everything written about Bob, in one list. New here? Start with the [user guide]
 | [Test results](test-results/README.md) | Dated measurements: speed, engines, Bob-Net, small brains, gaming. |
 | [Forge benchmarks](forge-runs/benchmarks/) | The raw score cards from each Forge run. |
 | [What Bob costs to make](COSTS.md) | Every rental and every dollar, failures included. |
+| [How we test brains](TESTING.md) | Real jobs, blind grading, self-tests and checks: how testing changed, run by run. |
 | [The proposal](PROPOSAL.md) | The plan for the model family, written as a business proposal. |
 | [The Forge journal](FORGE-JOURNAL.md) | The lab notebook, kept as the work happens. |
 | [Roadmap to one all-round Bob](ROADMAP-ONE-MODEL.md) | The plan: a clean new Bobert first, the protocol stage by stage, then the rest of the family. |

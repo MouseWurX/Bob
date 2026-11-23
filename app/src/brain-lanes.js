@@ -120,11 +120,15 @@ export function reviewBrainOf(brain) {
   return { model: m, cpu: false, ctx: Math.min(brainDefaults(m, 'reviewer').ctx || 32768, 32768), gb: ggufGB(brain, m) };
 }
 // Not on the PC: null, and quick replies beside a job wait (E4B never runs on the processor; settings sign-off 1.5.54).
+// Nov 16: a Gaming slot that is empty or holds the main brain (One brain) is no talker: a second copy of the big
+// brain never loads beside a job, so quick replies wait for it.
+const ownGaming = (cfg, sb) => (sb.gaming && !sameModel(sb.gaming, cfg.models?.bob) ? sb.gaming : '');
 export function talkerModel(brain) {
-  const sb = sessionBrains(brain.cfg || {});
-  return sb.gaming && runnable(brain, sb.gaming) ? sb.gaming : null;
+  const cfg = brain.cfg || {};
+  const g = ownGaming(cfg, sessionBrains(cfg));
+  return g && runnable(brain, g) ? g : null;
 }
-export const isTalker = (brain, m) => { const sb = sessionBrains(brain.cfg || {}); return Boolean(m) && (sameModel(m, sb.small) || sameModel(m, sb.gaming)); };
+export const isTalker = (brain, m) => { const cfg = brain.cfg || {}; const sb = sessionBrains(cfg); return Boolean(m) && ((sb.small && sameModel(m, sb.small)) || Boolean(ownGaming(cfg, sb) && sameModel(m, ownGaming(cfg, sb)))); };
 export async function sidePick(brain, job) {
   const sb = sessionBrains(brain.cfg || {});
   const base = { cpu: true, ...(job?.beside ? { beside: true } : {}) };

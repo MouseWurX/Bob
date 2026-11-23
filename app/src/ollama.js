@@ -4,12 +4,13 @@ import { replyStats } from './speed-stats.js';
 import { readCard } from './gaming-card.js';
 import { MID_SYSTEM_REFUSED, foldSystem } from './system-notes.js';
 import fs from 'node:fs';
+import { OLLAMA_URL } from './ollama-optin.js';
 import path from 'node:path';
 
 export class Ollama {
   constructor(cfg) {
     this.cfg = cfg;
-    this.url = cfg.ollamaUrl.replace(/\/$/, '');
+    this.url = String(cfg.ollamaUrl || OLLAMA_URL).replace(/\/$/, ''); // only made with Ollama as the engine (opt-in)
     this.timesFile = path.join(cfg.dataDir, 'load-times.json');
     try { this.loadTimes = JSON.parse(fs.readFileSync(this.timesFile, 'utf8')); } catch { this.loadTimes = {}; }
     this.sizes = {};

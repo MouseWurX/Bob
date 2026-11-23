@@ -6,7 +6,7 @@ import { serverText, brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { cleanOwnModels, ownId, paramsOf, inspectOwn, jobsFor, ownEntry, ownEntries, ownResolve, pickFileArgs, pickFile, OWN_FAMILY } from '../src/own-models.js';
+import { cleanOwnModels, ownId, paramsOf, inspectOwn, jobsFor, ownEntry, ownEntries, ownResolve, pickFileArgs, pickFile, pickOptions, OWN_FAMILY } from '../src/own-models.js';
 import { mergeSettings, SETTING_KEYS } from '../src/config.js';
 import { catalogueHtml, ownHtml, isOwn, VIEWS } from '../public/catalogue.js';
 import { pickFor } from '../public/fit.js';
@@ -92,11 +92,11 @@ fs.writeFileSync(junk, 'not a brain');
   const roles = Object.fromEntries(['bob', 'small', 'deep', 'reviewer', 'tinker', 'office', 'eyes', 'gaming'].map((j) => [j, models.filter((m) => m.jobs?.includes(j) && m.category === 'chat').map((m) => ({ value: m.id, label: m.name, caps: ['completion', 'tools'] }))]));
   const ctx = { roles, models, brains: {}, active: {}, vramGB: 16, ramGB: 32, freeGB: 500, packs: catalog.packs, platform: 'win32', naughtyOn: true };
   const well = catalogueHtml({ ...ctx, catView: 'well' });
-  check('the Well behaved side ends with ➕ Your own brains and an Add button', /id="catjob-own"/.test(well) && /➕ Your own brains/.test(well) && /data-ownadd>➕ Add a brain from a file/.test(well) && well.indexOf('catjob-own') > well.indexOf('catjob-eyes'));
+  check('the Well behaved side ends with ➕ Your own brains and an Add button', /id="catjob-own"/.test(well) && /➕ Your own brains/.test(well) && /data-ownadd>📁 Add a brain from a file/.test(well) && well.indexOf('catjob-own') > well.indexOf('catjob-embed'));
   check('the section has a Help button to the FAQ', /data-help="faq-own-brain"/.test(well));
   check('each own brain is a row with its path and Remove from Bob\'s list', /id="own-own-my-remix"[^]*?My-Remix-9B-Q4_K_M\.gguf[^]*?data-ownremove="own-my-remix">Remove from Bob's list/.test(well));
   check('a brain whose file is gone says File not found, with no Get button', /id="own-own-gone"[^]*?File not found/.test(well) && !/data-get="own-gone"/.test(well));
-  check('own brains sit in the job lists with a "Your own file" tag and never ★ Recommended', /id="cat-bob-own-my-remix"[^]*?Your own file/.test(well) && !/id="cat-[a-z]+-own-[^"]*"[^]*?<span class="tag rec">★ Recommended[^]*?<\/li>/.test(well.replace(/<\/li>/g, '</li>\n').split('\n').filter((l) => /own-my-remix/.test(l)).join('\n')));
+  check('own brains sit in the job lists with a "Your own file" tag and never ★ Recommended', /id="cat-brains-own-my-remix"[^]*?Your own file/.test(well) && !/id="cat-[a-z]+-own-[^"]*"[^]*?<span class="tag rec">★ Recommended[^]*?<\/li>/.test(well.replace(/<\/li>/g, '</li>\n').split('\n').filter((l) => /own-my-remix/.test(l)).join('\n')));
   check('the quiet pick and the ★ never land on a brain of your own', !['bob', 'small', 'deep', 'tinker', 'office'].some((j) => isOwn(pickFor(j, models, ctx))) && !['bob', 'small', 'deep', 'tinker', 'office'].some((j) => isOwn(pickFor(j, models, { ...ctx, naughtyPick: true }))));
   check('the Community and Naughty sides do not show the section', !/catjob-own/.test(catalogueHtml({ ...ctx, catView: 'community' })) && !/catjob-own/.test(catalogueHtml({ ...ctx, catView: 'naughty' })) && VIEWS.length === 3);
   const form = ownHtml({ ...ctx, ownForm: { file: 'C:\\brains\\x.gguf', name: 'My Remix 9B', params: 9, sizeGB: 5.6, mmproj: '', error: '' } });
@@ -153,6 +153,30 @@ fs.writeFileSync(junk, 'not a brain');
   check('1.5.177: without Bob\'s window, the Windows helper shows its owner and brings it to the front first, so the picker is on top', /\$owner\.Show\(\); \$owner\.Activate\(\);.*ShowDialog\(\$owner\)/.test(ps));
   const main = read('electron/main.cjs').replace(/\r\n/g, '\n');
   check('1.5.177: Bob.exe lends Electron\'s picker, parented to Bob\'s window', /globalThis\.bobPick = async/.test(main) && /dialog\.showOpenDialog\(owner/.test(main));
+}
+
+// ---- Nov 16: "Add a brain from a file" opened nothing on a busy Bob. The page now asks Bob's window for the picker ----
+{
+  const main = read('electron/main.cjs').replace(/\r\n/g, '\n'), pre = read('electron/preload.cjs').replace(/\r\n/g, '\n'), cellar = publicText('cellar.js');
+  check('Nov 16: one title and filter list per kind; an unknown kind is a brain file', pickOptions('mmproj').filters[0].extensions[0] === 'gguf' && pickOptions('docs').filters.some((f) => f.extensions.includes('*')) && pickOptions('zzz').kind === 'gguf' && pickOptions('__proto__').kind === 'gguf');
+  check('Nov 16: the preload lends only "pick", through one IPC channel, and no Node', /exposeInMainWorld\('bobApp', \{\s*pick:/.test(pre) && (pre.match(/ipcRenderer\.\w+/g) || []).every((x) => x === 'ipcRenderer.invoke') && /'bob:pick'/.test(pre) && !/require\('(node:)?(fs|child_process|path)'\)/.test(pre));
+  check('Nov 16: Bob\'s window answers the picker only for his own pages, owned by the window that asked', /ipcMain\.handle\('bob:pick'/.test(main) && /senderFrame\?\.url[^\n]*startsWith\(base \+ '\/'\)/.test(main) && /from: BrowserWindow\.fromWebContents\(e\.sender\)/.test(main));
+  check('Nov 16: the main, Settings and Lab windows carry the preload, still sandboxed and isolated', (main.match(/contextIsolation: true, sandbox: true, nodeIntegration: false(, plugins: true)?, preload: PRELOAD/g) || []).length === 3);
+  check('Nov 16: a picker asked for from the Settings window sits on it, not behind it on the main window', /live\(from\) \|\| live\(BrowserWindow\.getFocusedWindow\(\)\) \|\| live\(win\)/.test(main));
+  check('Nov 16: the page uses Bob\'s window when it has one, else the web request (a phone, a browser)', /typeof window\.bobApp\?\.pick === 'function' \? viaWindow\(kind\) : api\('\/api\/own-models\/pick'/.test(cellar) && /api\('\/api\/own-models\/inspect', \{ file \}\)/.test(cellar));
+  check('Nov 16: no greyed button that does nothing: after a few seconds it says so, works again and points to typing the path', /b\.disabled = false; b\.insertAdjacentHTML\('afterend'[^\n]*own-slow[^\n]*type its path/.test(cellar) && /clearTimeout\(slow\)/.test(cellar));
+  // the page side, run: a stand-in window lends pick, and the picked brain is looked at by Bob (inspect), not picked again
+  const calls = [];
+  globalThis.window = { bobApp: { pick: async (k) => { calls.push(['pick', k]); return k === 'mmproj' ? 'C:\\brains\\mm.gguf' : 'C:\\brains\\a.gguf'; } } };
+  const fetchWas = globalThis.fetch;
+  globalThis.fetch = async (url, o) => { calls.push(['fetch', url, JSON.parse(o.body)]); return { ok: true, json: async () => ({ file: 'C:\\brains\\a.gguf', name: 'A', sizeGB: 4 }) }; };
+  const src = cellar.slice(cellar.indexOf('async function viaWindow'), cellar.indexOf('async function ownPick'));
+  const api = async (url, data) => { const r = await fetch(url, { method: 'POST', body: JSON.stringify(data) }); return r.json(); };
+  const viaWindow = new Function('api', `${src}; return viaWindow;`)(api);
+  const g = await viaWindow('gguf'), m = await viaWindow('mmproj');
+  globalThis.fetch = fetchWas; delete globalThis.window;
+  check('Nov 16: a brain picked in Bob\'s window is then read by Bob (inspect), never sent to the web picker', g.file === 'C:\\brains\\a.gguf' && g.name === 'A' && calls.some((c) => c[0] === 'fetch' && c[1] === '/api/own-models/inspect' && c[2].file === 'C:\\brains\\a.gguf') && !calls.some((c) => c[1] === '/api/own-models/pick'), JSON.stringify(calls));
+  check('Nov 16: its picture reader is only picked, not inspected', m.file === 'C:\\brains\\mm.gguf' && calls.filter((c) => c[0] === 'fetch').length === 1);
 }
 
 fs.rmSync(dir, { recursive: true, force: true });

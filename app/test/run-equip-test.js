@@ -66,13 +66,13 @@ const ctx = { roles, models, brains: { small: 'gemma4:e4b' }, embed: '', selecte
   check('no non-commercial or revenue-limited models in the sets', packs.every((p) => p.models.every((id) => !banned.test(id))));
   check('every set slot is a real slot', packs.every((p) => Object.values(p.slots).flat().every((s) => allSlots().some((x) => x.id === s))));
   check('every set model has a slot', packs.every((p) => p.models.every((id) => (p.slots[id] || []).length)));
-  check('8 GB and processor-only sets put one model in chat, quick brain, eyes and ears', ['mid', 'cpu'].every((id) => packs.find((p) => p.id === id).slots['gemma4-e4b'].join() === 'bob,small,eyes,voice'));
-  check('the 6 GB set: light Qwen3 4B for chat and quick brain, Gemma 4 E4B for eyes and ears', packs.find((p) => p.id === 'small').slots['qwen3-4b'].join() === 'bob,small' && packs.find((p) => p.id === 'small').slots['gemma4-e4b'].join() === 'eyes,voice');
+  check('8 GB and processor-only sets put one model in chat, quick brain and eyes, and Whisper base hears', ['mid', 'cpu'].every((id) => packs.find((p) => p.id === id).slots['gemma4-e4b'].join() === 'bob,small,eyes' && packs.find((p) => p.id === id).slots['whisper-base-en'].join() === 'voice'));
+  check('the 6 GB set: light Qwen3 4B for chat and quick brain, Gemma 4 E4B for eyes and ears', packs.find((p) => p.id === 'small').slots['qwen3-4b'].join() === 'bob,small' && packs.find((p) => p.id === 'small').slots['gemma4-e4b'].join() === 'eyes');
   check('picked by card size', packFor(packs, 16).id === 'big' && packFor(packs, 8).id === 'mid' && packFor(packs, 6).id === 'small' && packFor(packs, 4).id === 'cpu' && packFor(packs, null).id === 'cpu');
   check('small cards are told how long pictures take', ['mid', 'small'].every((id) => /minute/.test(packs.find((p) => p.id === id).times)));
   const mid = packs.find((p) => p.id === 'mid'), small = packs.find((p) => p.id === 'small');
   const ticks = starterTicks(mid, models, 8);
-  check('what fits is ticked, and the coder the set recommends', ticks.has('gemma4-e4b') && ticks.has(mid.tick[0]) && (mid.tick[0] === 'qwen3-coder-30b' || mid.tick[0] === 'bobert-35b-q3') && /* 1.5.169: Bobert's Q3 is the 8 GB coder */ ticks.has('kokoro-v1') && ticks.has('z-image-turbo-q5') && ticks.has('flux2-klein-4b'));
+  check('what fits is ticked, and the coder the set recommends', ticks.has('gemma4-e4b') && ticks.has(mid.tick[0]) && mid.tick[0] === 'qwen3.6-35b-a3b-q3' && /* 1.5.245: stock Qwen's 8 GB version is the 8 GB coder */ ticks.has('kokoro-v1') && ticks.has('z-image-turbo-q5') && ticks.has('flux2-klein-4b'));
   const smallTicks = starterTicks(small, models, 6);
   check('too big and not recommended: left unticked', !smallTicks.has('wan2.2-ti2v-5b-q4') && smallTicks.has('z-image-turbo-q4'));
   check('no card detected: judged by the card the set is for', !starterTicks(small, models, null).has('wan2.2-ti2v-5b-q4') && starterTicks(mid, models, null).has('wan2.2-ti2v-5b-q4') && starterTicks(packs.find((p) => p.id === 'big'), models, null).has('wan2.2-ti2v-5b'));

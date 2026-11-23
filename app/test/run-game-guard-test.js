@@ -32,10 +32,10 @@ check('another engine (a test brain) is not a game', gameOnCard({ others: [{ nam
   const room = (gb) => (u) => gb[u.bob.name] || 0;
   const dropped = [];
   const used = oneKind([cable, wifi, ts], (u) => dropped.push(u.bob.name), room({ Go: 16, Laptop: 6, Phone: 0 }));
-  check('cable and wireless lend: one kind only, the one with more room (here the cable)', used.length === 1 && used[0] === cable && dropped.join() === 'Laptop,Phone');
+  check('cable and wireless lend: cable only', used.length === 1 && used[0] === cable && dropped.join() === 'Laptop,Phone');
   const d2 = [];
   const used2 = oneKind([cable, wifi], (u) => d2.push(u.bob.name), room({ Go: 4, Laptop: 12 }));
-  check('more room on the Wi-Fi side: Wi-Fi Bobs only, the cable Bob let go', used2.length === 1 && used2[0] === wifi && d2.join() === 'Go');
+  check('Nov 16 (the owner: "cable wins if there is cable"): more room on the Wi-Fi side still goes to the cable', used2.length === 1 && used2[0] === cable && d2.join() === 'Laptop');
   check('a tie goes to the cable', oneKind([cable, wifi], () => {}, () => 8)[0] === cable);
   const none = [];
   check('only Wi-Fi and Tailscale Bobs: they share among themselves', oneKind([wifi, ts], (u) => none.push(u)).length === 2 && none.length === 0);

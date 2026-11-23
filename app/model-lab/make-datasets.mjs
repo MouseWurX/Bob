@@ -19,7 +19,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { opts, readJsonl, AGENT } from './common.mjs';
+import { opts, readJsonl, AGENT, notMonitoringLog } from './common.mjs';
 import { scrubber, scrubValue, scrubFolder, privateWordsFrom, splitKeep } from './scrub-data.mjs';
 import { parseArgs, judgeTurn } from './tool-judge.mjs';
 import { FACTS, CODE, runCode } from './quiz-items.mjs';
@@ -30,7 +30,7 @@ const from = String(o.from), out = String(o.out);
 if (path.resolve(out).startsWith(path.resolve(from) + path.sep) || path.resolve(out) === path.resolve(from)) { console.error('--out must be outside --from (the raw folder is never changed)'); process.exit(1); }
 fs.mkdirSync(out, { recursive: true });
 
-const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
+const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).filter((e) => notMonitoringLog(path.join(d, e.name))).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
 const files = walk(from);
 const rel = (f) => path.relative(from, f).split(path.sep);
 const clean = (s) => String(s).replace(/[^\w.-]/g, '_');

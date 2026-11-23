@@ -4,6 +4,156 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.252
+
+Rentals are safer, and you can pick a quant level or finish a robot check yourself.
+
+### New
+
+- **Pick a quant level** (Settings, How Bob works, Brains; off to start). A brain that comes in smaller files gets a Quant level menu. Every level is listed, with how it did in our tests and whether I recommend it. The choice is yours.
+- **Let me finish robot checks** (Settings, Connections, Private web; off to start). When a page wants a person, I ask first, open it in my browser window and wait while you finish it. I never click or type on the check myself.
+
+### Fixed
+
+- **Rentals.** Your account key no longer goes onto a rented pod. A pod that vanishes or stops fails at once with the service's reason. The pod's server log is kept, and an early exit waits for it. Stopping a pod that's already gone counts as stopped.
+- **Borrowing.** "Borrowing More Brains" goes away once a lending Bob takes his card back.
+- **Add a rental** shows the right boxes for the service the first time it opens, and refuses a bare `.gguf` name that would start a paid pod with nothing to load.
+- **A folder that isn't on my list.** When a Files or Office job needs a folder you haven't ticked, a card asks "Add it?" and I carry on once you press it.
+- **Hands switched off.** If a job needs a Hand that's off, I show the Switch it on card and say plainly that nothing was done.
+- **Pasted paths.** Quotes and invisible Windows marks are stripped from folder paths you paste, and Settings, Hands says why a folder wasn't added.
+- **Bob-Net engine check.** Before lending a card, a Bob checks that both sides run the same engine build. The logbook says why when they don't.
+- **Chat page.** The job time bar is a thin line along the bottom of the window. Clear chat is a plain button at the top right. The fade line only shows once something has faded. Gaming's unload plays the cube's letting-go animation.
+- **The newest message gets the answer,** not an old ask that was stopped earlier.
+- **Long jobs read faster.** I read the time once per turn, so a minute ticking over mid-job no longer makes the engine read every step again.
+
+### Docs
+
+- How we test brains (`docs/TESTING.md`), costs to 16 Nov, and the dissertation's new results table, direction chapter and 21 Nov harness runs.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.251
+
+One way to pick brains, and I find your brain files every time I start.
+
+### New
+
+- **One brain picker.** Every brain menu follows the same rule: any brain you have can take any thinking job. Gaming and Seeing pictures still need a brain made for them. A brain that wasn't made for a job is marked, never hidden.
+- **Brains page.** The Main brain row has its own picker and does every job. "+ Add a brain" makes a row for the jobs you choose. With One brain on, you just see the main row. A line shows your card, processor, memory and free drive space.
+- **Catalogue.** Each brain is listed once in one Brains list, grouped by family, with the jobs it was made for.
+
+### Fixed
+
+- **I find brain files at every start,** and look again when my list is more than ten minutes old, so a brain you just copied in shows up.
+- **gpt-oss 120B is listed once.** It had two entries for the same file.
+- **Add a brain from a file is on the Brains page,** and if the window's picker comes back empty straight away, I open my own.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.250
+
+Amnesia mode lets go again.
+
+### Fixed
+
+- **"Turn off and forget" works again.** A cancelled or failed task left in the Tasks list (they stay for a week) made me refuse to turn Amnesia mode off, so nothing got forgotten. Now only a task I'm running right now holds it up. The banner also says the day when Amnesia mode started on another day, so "since 5:31 PM" can't read as later today.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.249
+
+A much bigger brain catalogue, Turbo-ready copies of stock Qwen, and big expert brains you can download.
+
+### New
+
+- **More brains to pick from.** 31 new brains across the Community, Naughty and Official lists. The Naughty list is other people's remixes of open brains with the refusals taken out, and it carries a warning.
+- **Turbo-ready stock Qwen.** Copies of stock Qwen 35B, 27B, 9B and 4B that carry the extra layer for drafting ahead (MTP), so they can answer faster on Brain Engine.
+- **Big expert brains as downloads.** GPT-OSS 120B, Qwen3-Next 80B, GLM-4.5 Air and Llama 4 Scout. A brain that comes in parts downloads every part, and its extra files sit beside part 1.
+- **One card for every brain.** Every (i) in the catalogue shows the same card. Room says how well the brain splits across cards, and Here says how it would split on your setup.
+
+### Fixed
+
+- **Catalogue brains download my own pinned files.** I only use Ollama when you set it as your engine yourself.
+
+None of the new brains has been tried in the Lab yet, so treat them as new.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android. The big expert brains need a big computer or several Bobs.
+
+## 1.5.248
+
+I hear you on my own now, there's a log of what I did if you want one, and Gaming with One brain truly leaves your card alone.
+
+### New
+
+- **I hear you without Ollama.** "Hearing you" uses whisper.cpp with Whisper base to start, and it's in every desktop starter set. On a Mac I hear through Gemma 4 E4B on my own engine. Gemma on Brain Engine is still a pick in Get models. If you were hearing through Ollama, I move you over once, when the new files are here. Ollama is now off unless you turn on "Use Ollama too" in Settings, Engines. With it off, I never knock on Ollama's door. Hearing pauses in Gaming mode. (Not tried on a real PC yet.)
+- **Monitoring log.** Off to start. Settings, This replicant matrix. I write each turn's steps to a plain text file as each step finishes, so a crash loses at most the step that was running. "Include details" adds the tool inputs and results too, with keys and passcodes hidden and email left out. Keep this turn and Keep the current file hold on to what matters. Only the size limit drops old files, and the Lab and lessons never read them.
+- **Better checks at the end of a turn.** I catch the slips I made most often in the Lab's runs: asking where a file is without looking, saying something was done when nothing did it, answers cut off mid-list, research after only one search, mail jobs done with the wrong tools, and pointing you back at something I never showed you. I get one more go to fix it, never a loop. I also won't move my own working folder, I tidy up a garbled link before reading it, and stray citation marks no longer reach you.
+
+### Fixed
+
+- **Gaming with One brain.** With One brain on, or when you press ✕ on the Gaming chip, no brain loads during Gaming, not even the main one. Jobs wait, and I say once that I'm paused. Other Bobs on Bob-Net can take them meanwhile.
+- **Add a brain from a file opens its picker even when I'm busy.** It used to wait behind my live streams and stay greyed out. The picker now opens on the window you asked from, so Settings no longer hides it.
+- **The Lab's Forge says what RunPod reports** while it waits for a rented card's door (its status, uptime and ports).
+
+**Where it works:** Windows, Mac, Linux and Bob for Android. The Monitoring log and hearing are for computers.
+
+## 1.5.247
+
+Rentals work again, Patches tells the steps, and the cable always wins on Bob-Net.
+
+### Fixed
+
+- **Renting a card works again.** RunPod retired its old address on 15 November, so every rental call failed. My rentals and the Lab's Forge now use RunPod's new address (v2) with the same key. Nothing to change on your side. (This hasn't been tried on a real rental yet.)
+
+### New
+
+- **Patches tells the steps.** While I work, Patches the cat reads out the steps in my thinking bubble, and I add the odd surprised remark. It's only what you see: nothing of it reaches a brain. On to start; turn it off in Settings if you'd rather not.
+- **Cable always wins.** When Bobs on a cable and Bobs on Wi-Fi both offer their graphics cards, the cable Bobs share the brain. Wi-Fi and Tailscale are for when a cable isn't possible, and those Bobs still take chats and web searches.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android. Rentals and Bob-Net sharing are for computers.
+
+## 1.5.246
+
+Private web, one answer instead of two, and more Lab lessons.
+
+### New
+
+- **Private web.** In Settings, Connections, 🕶 Private web. It's off until you turn it on. Then I send only the search words, keep no cookies, take tracking bits off links, and my browser window uses a throwaway profile that blocks trackers. You can also send my web search and pages through your own proxy or Tor; if it's down, I stop instead of going direct. Gaming mode, the Lab, Bob-Net and downloads aren't touched.
+- **Try other sources when one blocks me.** When a site turns me away with a block or a robot check, I never try to get past it. I skip that site for the rest of the job and read the same facts from up to 3 others, like another search result or a copy the Internet Archive already has, and I say what I skipped.
+- **Lab Lessons.** Two new Engineering lessons (a held-out leak, and auditing your reviewer), a How strong line on every Real result, and a page showing where every Real result comes from.
+
+### Fixed
+
+- **One answer, not two.** After I said "I can't" and had one more go, or after the check that only some tool steps ran, my second answer was stacked under the first. Now only one stays: the new one if it used a tool, otherwise the first.
+
+### Also
+
+- The README has a privacy note under the title, a Quick start, and a table of where everything is.
+- The dissertation now follows the locked tool shapes (Qwen shape 4, GPT-OSS shape 3), with new findings in chapter 8 and the rule in chapter 4.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android. Routing and the private browser window are for the desktop app.
+
+## 1.5.245
+
+A new default brain, a backup search with or without a key, and Settings that comes to the front.
+
+### New
+
+- **Bob's default brain is now stock Qwen3.6 35B-A3B; Riker and Bobert are out of the Brain catalogue (files already on a PC still run from Your own brains).** On a 16 GB card it does Brain, Coding and Deep thinking; on an 8 GB card its smaller file does the coding. On the first start after this update, a job set to Riker or Bobert moves to Qwen once, but only if Qwen's file is already on your computer.
+- **Search API keys.** When the free search pages block your computer, I can ask a backup search instead: Brave Search, Marginalia, Mojeek or Tavily with your own key, or Firecrawl with no key at all. No key comes with me, and each one is off until you switch it on. Each has a monthly cap and a Test button, and a saved key is never shown again. Firecrawl gets a small free allowance a day, so I keep to 50 a day and leave it alone for the day if it says that's enough. Find it all in Settings, Connections, Search API keys.
+- **Watching the router.** A new Lab lesson, and a From the research panel that cites other people's papers apart from my own results.
+
+### Fixed
+
+- **Pressing Settings again brings it to the front.** If Settings, the Lab, the fNRI viewer or my thinking window was already open behind other windows or minimised, pressing its button now raises it.
+
+### In the Lab
+
+- The heal keeps the router learning slowly, always in full precision, and can freeze it or record which experts it picks before and after.
+- **Unproven in our lab, as we have yet to test:** reading the code suggests the GPT-OSS router may have been learning at the fast rate. No GPT-OSS heal has run, so no past result changes. A gate now checks the router count before any training, and the first real heal will prove it either way.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android. Bringing windows to the front is for the desktop app.
+
 ## 1.5.244
 
 The link log tells the same time as the logbook.
@@ -29,135 +179,6 @@ Send a whole folder to your other Bob with one Yes, and Journey gets its laptop-
 - **Journey on a laptop.** A 720p window fits without scrolling, menus too. The talk box and choices are real windows with sharp words. Elf and pixie ears show with Bob's wide headset look, and the tab icons have an outline so they stand out (Pets is now 🐶).
 
 **Where it works:** Windows, Mac, Linux and Bob for Android. Folder sending works on Windows, Mac and Linux; both Bobs need 1.5.243.
-
-## 1.5.242
-
-Journey plays like a proper game now: every menu lives inside the game screen.
-
-### New
-
-- **Every Journey menu opens inside the game.** The menu, shops, crafting, the bag, the paper doll, quests, fights, choices and New adventure all show in the blue talk box, right on the game screen.
-- **A ⚙ System tab.** Save, load, sound, full screen, quit and the controls, all in one place.
-- **Play with a controller.** Plug in a gamepad and Journey answers it. You can also tap the game screen to read on or to pick a choice.
-- **Party size, one to four.** Pick how many travel together; rolled characters fill any empty seats.
-- **You can see each race.** Races now show on the sprite and the paper doll.
-- **A stat every level.** Each level up raises a stat.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.241
-
-The Lab Lessons tell the true story, and the CS Lab gets its write-up.
-
-### New
-
-- **The CS Lab on the front page.** The README has a CS Lab section, a picture of how SCUT compares with plain TCP, and the full write-up of the Lab's work in 13 chapters (docs/dissertation).
-
-### Fixed
-
-- **Lab Lessons: the Real result panels are fact-checked.** The coding race now reads v1 8, v2 6, re-cut 9 and full Qwen 12, with a note that the cut brains kept 208 experts and the re-cut 176. A panel with an unchecked overlap figure is gone.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.240
-
-Tool shapes are locked for GPT-OSS and Qwen, the Lab console is complete, and a security update underneath.
-
-### Fixed
-
-- **Security:** my window runs on Electron 44.10.1 (was 44.9.0), and an old file-matching library in the build tools is replaced with its fixed version. The security audit now finds nothing.
-- **Installing an engine into a folder with a space in its name** (like Program Files) works. The installer was given the path without quotes, so Windows refused it with error 1639.
-
-### New
-
-- **Tool shapes locked for GPT-OSS and Qwen.** GPT-OSS keeps my own tool names and wording, which beat every other wording in its tests; list_folder and search_files now say clearly which is which. Qwen brains no longer see tools they used wrongly (ask_specialist, pick_session), and nothing points them to a tool they can't see. The tool record starts fresh for the new shapes.
-- **run_command won't write files.** A command that only writes a file (like `echo > notes.txt`) is turned away before it runs, with a pointer to write_file. Programs that write their own output still run.
-- **The Lab console is complete.** Every Lab job is a form in Set up, plus Pipelines, the rented-run form (only the purchase card rents), Rented cards (Look, Take over, End it), Use Bob's brain, and Lab job logs in the Server panel.
-- **Lab:** a stricter lesson teacher and first filter, the lesson sandbox gets Bob's notice board, memory and logbook, an optional LibreOffice for office lessons, and step-by-step thinking for GPT-OSS heal lessons, and a fairer tool judge (looking first is fine when the action is right).
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.239
-
-I think where it helps: at the start to plan and at the end to check, not before every single step.
-
-### Fixed
-
-- **Think to plan and review, not on each step.** On a long job I now think at the start and when checking the result, and run the steps in between without stopping to think each time. It's on by default, and you can switch it off in Settings, How Bob works.
-- **Folders ticked for Hands can be read.** With the Files Hand on, list_folder, read_file and search work in the folders you ticked for Hands, not only the read folders. Before, I could move files there but was told I wasn't allowed to look.
-- **Lab: Professional mode** in Settings now stays on when you turn it on. Before, the switch was never saved.
-- **GPT-OSS brains with thinking off** now really think less (low effort). Before, they always thought at medium.
-
-### New
-
-- **Lab, Learn, Lessons:** a 42-lesson course that walks you through the Lab step by step, from the basics to advanced work. It's off until you switch on **Lab lessons** in Settings, How Bob works, Brains.
-- **Lab:** the tool tests take an effort level, and the Forge checks a plan's lessons against the lesson ledger before a heal is rented. The tool-wish test (the tools a brain reaches for when none are offered) is in the Lab kit too.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.238
-
-Python gets real packages, my tools take the names other brains reach for, and the Lab gets stricter about what it teaches and what it rents.
-
-### New
-
-- **Python packages.** Under Python in Settings, How Bob works, 🧰 More tools, **Get packages** fetches numpy, pandas, scipy, matplotlib, Pillow, python-docx, openpyxl, python-pptx, pypdf and more, each pinned and checked. Nothing downloads until you press it. A run loads only what its code imports, with no internet and no other folders, and gets 60 s instead of 30.
-- **`save_to` on make_image, make_sound, save_as and make_diagram** keeps a copy where you ask. It never overwrites.
-- **Tool names other brains reach for** (run_shell_command, list_directory, write_to_file and friends) now run my own tool, under my name. That only happens when I have no tool by that name and the real one is on offer. The tool record starts fresh for the new tool shape; the old one is kept in the archive.
-- **Lab: one lesson kit per brain family.** Lessons are stamped with the family they're for, and never cross-train.
-- **Lab: a never-taught gate.** Before any plan that teaches is rented, every lesson is checked against the held-out test questions. A match, a missing test file or an unchecked set stops the plan with nothing rented.
-- **Lab: pre-flight for lesson rentals.** Room per slot, the ideas file and the caps are checked in code before anything costs money, and a 10-idea sample gate ends a rental that isn't saving lessons.
-- **Lab: a Riker study plan** for finding where the cruelty lives (patching and sparse-autoencoder features). It is a study record only, and it needs your typed go to rent.
-- **Costs pages** show the 14 Nov rentals at their billed costs.
-
-### Fixed
-
-- The Forge console's buttons fit a phone screen.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.237
-
-Housekeeping gets its own brain job, you can pick how jobs are shared out between your Bobs, and the phone gets one tidy menu.
-
-### New
-
-- **🧹 Housekeeping is a brain job.** On the Brains page you can give it a small brain of its own, or leave it empty so it uses the main brain, which is how it starts. ✕ takes it back like any other job.
-- **Each housekeeping round shows in Tasks and Now running**, so you can see when I'm tidying up a long chat while you're away, and when I'm done.
-- **Pick how jobs are shared out.** In Settings, Bob-Net, under Send jobs, switch on and order the rules for picking one of your Bobs: least busy, fastest, biggest graphics card, closest, or computers before phones. You can also keep jobs on your home network or off the phone, cap how many jobs one Bob gets, and give each kind of job a first-choice Bob. A Bob you're gaming on never gets one. Left as it is, I pick just like before.
-- **One menu on a phone.** At phone width the bottom bar is Chat, Tasks, + New, Topics and Bob. The Bob button or the cube opens one menu that slides up from the bottom, and Settings on a phone is two tidy lists. Wide windows are the same as before.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.236
-
-The Lab gets a Forge console: one window for everything the Forge and the Lab run.
-
-### New
-
-- **Forge console in the Lab.** It sits at the top of the Forge tab, and everything the Lab runs shows up there live, never in a window you can't see.
-  - **Four big buttons:** **Load model locally**, **Open rental** (you pick the brain, the cards and the caps, and only the purchase card rents), **STOP** (stops everything running here, never a rental) and **END RENTAL** (ends only that run's card).
-  - **Three panels:** **Server** is the terminal, with the server log, every request and reply, and scripts. **Chat** shows the brain's replies as bubbles, with thinking folded and tool calls as cards. **Set up** has sliders and tick boxes for temperature, top-p, max tokens, thinking and more, which tools to offer, a system prompt, and forms for the Lab's jobs. Put any panel on either side, side by side or one at a time. On a phone they stack.
-  - **Relay:** every request a tool sends goes through it and goes on the record. **Hold each request** lets you read it, fix it, then send or drop it.
-  - Running anything needs **Let the Lab run commands here**, which stays off until you switch it on. Keys never reach the console.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.235
-
-Bob's chat memory meter moves to where you can see it, you can take any job back from a brain, and two phone menus in Lamplight are fixed.
-
-### New
-
-- **Chat memory: NN%** now sits under the typing box, across from the brain label, with an (i) that says what it means. **Sum up and carry on** shows from 70%, and the reading comes back after a reload.
-
-### Fixed
-
-- **Brains page: take any job back.** Every job chip has a ✕ now, except the main Brain and Gaming. Quick brain, Office and Deep thinking can be taken off and show under Unassigned jobs, and Bob keeps chatting on his main brain.
-- On a phone in Lamplight, the **Effort** choices float above the button, so you can see and pick them all.
-- On a phone in Lamplight, the **More** menu has a solid back, so it isn't see-through.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
 
 ## Older versions
 

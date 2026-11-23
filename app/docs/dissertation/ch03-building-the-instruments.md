@@ -60,13 +60,13 @@ Figure 3.1 is the same flow as a simple diagram. Brain Engine is used in steps 3
 
 *Figure 3.1. A lesson from idea to scored model.*
 
-Two rules run through all three layers: nothing is rented without the owner's typed yes, under an hours cap and a dollars cap, and every new function is off unless the plan asks (model-lab/forge/README.md).
+Two rules run through all three layers: nothing is rented without typed approval, under an hours cap and a dollars cap, and every new function is off unless the plan asks (model-lab/forge/README.md).
 
 ## 3.4 Brain Engine: a patched llama.cpp
 
 ### 3.4.1 What it is and why it exists
 
-Brain Engine is llama.cpp at a pinned tag with fourteen patches applied in order (engine/README.md, ENGINE-MAP.md). At the time of writing the build is Brain Engine 8, on llama.cpp b12359. It is not an official llama.cpp build. The patches change only the model library and the server, with one exception: six patches touch the card-sharing backend of ggml, and no CUDA, Vulkan, Metal or CPU code is changed (ENGINE-MAP.md).
+Brain Engine is llama.cpp at a pinned tag with its patches applied in order (engine/README.md, ENGINE-MAP.md); there are 39 at the time of writing. The newest build tested on a real card is Brain Engine 19, on llama.cpp b12359. It is not an official llama.cpp build. Most patches change only the model library and the server, but some change ggml itself: the CUDA card code (0026, 0038, 0039), the CPU backend (0020, 0026, 0038, 0039), the scheduler (0017, 0029, 0033) and card sharing (the rpc patches). A build with those carries its own ggml files (ENGINE-MAP.md).
 
 The patches fall into four groups: change a model live (0001, 0003, 0013), watch which parts fire (0002, 0007, 0009, 0010), share a card across machines (0004, 0005, 0006, 0008, 0011, 0014), and one small helper (0012). Only the first two matter for the studies.
 
@@ -88,6 +88,63 @@ The patches fall into four groups: change a model live (0001, 0003, 0013), watch
 
 **0010, trace once.** With 0002 alone, a traced request stopped after every layer to copy the picks out, 40 to 48 stops a word. On a consumer card this cost about a fifth of word speed: 122.7 words a second fell to 99.2 (engine/README.md). The patch keeps each layer's picks on the card and fetches them together with one wait. The trace returned is the same, row for row.
 
+Together these patches feed Bob's **fNRI system**. It has two parts: brain scans, which map the experts each skill leans on, and a live view that lights up the experts Bob picks while he writes. Every expert map in this thesis that comes from a home scan rests on this trace.
+
+**0018, trace every N words.** This patch sends the live trace only every N words, to cut its cost. Measured on 16 November, it made no difference: tracing every word, every 4th word and every 14th word all wrote within 1% of each other (79.6, 78.9 and 79.2 words a second, against 88.4 with the trace off). The cost is in recording the picks, not in sending them, so 0018 is to be dropped.
+
+#### Does the fNRI trace change what the brain writes? (16 to 17 November)
+
+**Why we ran it.** The fNRI system is meant to watch the brain, not steer it. If tracing changes the words, a scan describes a slightly different brain from the one users talk to. The live view would then also change Bob's answers whenever it is switched on. Night 1 of the speed tests (section 4.3.3) found exactly that. With the live trace on, stock Qwen3.6 35B A3B wrote different words at temperature 0 than with it off, although every row wrote the same words in all 5 of its own runs. So we tested whether the trace itself alters the words, and which part of it does.
+
+**What we tested.** The trace path changes two things in the engine's graph. It marks the router's sort as an output (`ggml_set_output`), and it adds an eval callback that reads the picks. Three settings were run, 5 times each, on the start prompt and a 32K prompt, in the same engine, brain and settings:
+
+- the trace with the sort marked as an output
+- the trace with its mass (patch 0009), which takes a path without `ggml_set_output` but keeps the callback
+- the brain with CUDA graphs switched off, to rule the graphs in or out
+
+**What we found:**
+
+| Setting | Writing, start prompt | Writing, 32K | Words against no trace |
+|---|---|---|---|
+| No trace | 85.3 | 77.1 | (baseline) |
+| CUDA graphs off, no trace | 42% slower | 38% slower | the same |
+| Trace, sort marked as output | 8% slower | 9% slower | different |
+| Trace with mass, no `ggml_set_output`, callback kept | 27% slower | 24% slower | different, and different again from the row above |
+
+- **Graphs are not the cause.** Turning graphs off cost far more speed than the trace but kept the same words.
+- **The output mark is not the only cause.** Taking `ggml_set_output` away still changed the words, so the callback changes them too.
+- **One limit:** the mass trace also asks the callback for a second node per layer, so this run cannot say whether the pick callback alone changes the words. That doesn't change the decision.
+
+A likely common cause, which we have not confirmed: the card fuses the router's softmax, sort, top-k and weighting into one kernel only inside one graph piece, and both the output mark and a callback split that piece.
+
+**The fix.** Patch 0021 in Brain Engine 11 reads the picks from kept copies, with no eval callback and no `ggml_set_output`, so the router's fused kernel stays whole. An earlier build of the fix (Brain Engine 10) crashed when the trace and the hot-experts cache were on together, and Brain Engine 11 fixed that. Before the fix, the same pairing crashed in round 1.
+
+**Results after the fix (17 November).** Brain Engine 11 (llama.cpp b12359 with patches 0001 to 0021) ran on the same card and brain, 5 rounds, 25 loads, and all 25 ran clean. The settings were Normal and the step 2048 + 4 GB copy cache from section 4.3.3.
+
+- **Same words.** With the trace on, the brain wrote exactly the same words as with it off, on the start prompt and at 32K, in every run and at both settings.
+- **The fused kernel is no longer broken.** As a control, the fused kernel was switched off by hand (`GGML_CUDA_DISABLE_FUSION`), and that run wrote different words. So it was the broken fusion that changed the words, and the trace no longer breaks it.
+
+| Setting | Writing cost with the trace on, start / 32K | Before the fix | Rule set beforehand (2% or less) |
+|---|---|---|---|
+| Step 2048 + 4 GB copy cache | −1.8% / −1.0% | crashed | passes |
+| Normal (step 512, no cache) | −4.0% / −3.9% | −9% to −11% | misses |
+
+Reading speed stayed within about 1%. The fNRI trace now watched without changing what the brain writes, but on the plain engine it still cost about 4% of writing.
+
+**Second fix and its results (17 November).** In Brain Engine 12, patch 0021 (version 3) keeps one pinned copy per reading step. It was tested on the same card and brain.
+
+| Setting | Writing, trace off, start / 32K | Writing, trace on, start / 32K | Cost |
+|---|---|---|---|
+| Normal (step 512, no cache) | 92.2 / 81.2 | 90.4 / 81.2 | −1.95% / 0% |
+| Step 2048 + 4 GB copy cache | 110.6 / 95.7 | 111.6 / 96.7 | none measured (slightly faster) |
+
+- **The words were byte-identical** with the trace on and off, on the start prompt and at 32K, at both settings.
+- **Reading speed was equal**, and nothing crashed.
+- **It passes the 2% rule set beforehand.** The start-prompt row on the plain engine sits right at the line, at −1.95%.
+- **Over the three engines**, the trace went from about −11% with different words (Brain Engine 10's old trace), to −4% with the same words (Brain Engine 11), to −2% or less with the same words (Brain Engine 12).
+
+**Limits.** This run stopped after 3 rounds (16 loads) by MouseWurX's choice, not the 5 rounds set beforehand, so its medians rest on fewer runs. It was run only on the 35B brain. The trace on GPT-OSS 120B and on other cards is unproven in our lab, as we have yet to test.
+
 ### 3.4.4 Card sharing and the small helper
 
 Patches 0004, 0005, 0006, 0008, 0011 and 0014 let one model spread over the cards of several computers. Patch 0004 offers a hash for every weight over 1 MiB, so a lent card that already has a weight skips the copy. Patch 0005 is SCUT, an experimental UDP link. Over a simulated Wi-Fi of 3 ms delay and 1% loss it raised speed from about 9 to about 15 words a second, with byte-identical output (engine/README.md). Patches 0006, 0008, 0011 and 0014 add signed packets, a link log, one trip a word and a frozen wire numbering. None is used in the studies. A numbering clash should be noted: the Forge's pod patch `0014-live-control-vector` adds a live steering vector, and only the neuron sweep uses it (section 3.6.6).
@@ -100,13 +157,19 @@ The checks differ in strength, and the list is ordered from strongest to weakest
 - **Live steering equals loading.** Steering at x8 live matches loading the same vector at x8. Sending an empty setting restores the same words as before (PR #227; checked-numbers.md).
 - **Per-layer test for 0013.** `engine/tests/experts-per-word.py` builds a tiny model and compares the live setting with the engine's own override flag, layer by layer through the trace, and checks the refusals (ENGINE-MAP.md).
 - **Cross-build card sharing for 0014.** `engine/tests/rpc-any-version.sh` runs a model with every layer on a lent card in all four old and new pairings. All four matched a local run word for word, on a tiny llama model with CPU builds on Linux, 15 November 2026 (ENGINE-MAP.md).
+- **With-and-without timing (16 November).** On the home PC's 16 GB card with stock Qwen3.6 35B A3B at Q4, Brain Engine 8 and 9 with every feature off ran within 1% of plain llama.cpp with Bob's settings, and wrote the same words, word for word. Experts per word, the expert mask and the dials each cost under 1.5% more. The live trace cost about 9% of writing speed and nothing on reading. Each row was loaded 5 times at temperature 0 (docs/test-results, 2026-11-17 speed results).
+- **Prefetch (0019) measured, and dropped.** Prefetch was meant to load the next experts early. Instead it read prompts 5.6% to 12.7% slower and used half a gigabyte more of the card, so it is to be dropped from the next Brain Engine.
 - **Timing.** On the full Qwen, 8, 6 and 4 experts per word ran at 82.7, 92.1 and 102.5 tokens a second (docs/forge-runs/benchmarks/experts-per-word-full-qwen-2026-11-04.md). This describes the model, not the cost of the patch.
 
 ### 3.4.6 What Brain Engine does not have
 
 No patch is tested automatically against a real engine build. Placement errors are the dangerous kind: a mask after the top-k pick, or a dial on the wrong head slice, still builds and gives wrong answers without an error, and would show up only in the PC test (ENGINE-MAP.md). The map proposes a short engine test on a tiny mixture-of-experts file (mask, trace rows, dials against mask, card handshake, SCUT off). It is proposed and not built.
 
+Brain Engine has no choice of how the kept experts are weighed when fewer are used. llama.cpp's Qwen3 mixture-of-experts graph scales the chosen experts' weights to add up to 1 (src/models/qwen3moe.cpp, read on 16 November), so patch 0013 at 4 experts uses the weighting that Chen and Yao (2026) found cost 4.65 MMLU points on the same base model, against 0.35 when the four keep their share of the top 16. The project's own test at 4 experts held tools, facts and code level (section 3.4.5), but on far fewer questions and different tasks. The other weighting is not built; it is future work (section 13.6.9).
+
 There are no clean overhead numbers per patch. Only a few patches have any timing, and none was taken in the full study configuration. The dissertation therefore makes no claim about what the patches cost in speed: not measured.
+
+*Amended 17 November:* the overhead has now been measured on the home PC. With their features off, the patches cost nothing measurable, and the live trace costs about 9% of writing speed (section 3.4.5).
 
 A weekly workflow replays the patches on the newest llama.cpp tag and opens an issue when they apply and build (engine/README.md). It checks that the patches go on, not that they are correct.
 
@@ -116,11 +179,11 @@ A weekly workflow replays the patches on the newest llama.cpp tag and opens an i
 
 A 35-billion-parameter model cannot be cut and healed on a home 16 GB card. Renting by the hour is affordable only if a failed run cannot keep billing, so the Forge is built around cost controls and the training code is the smaller part.
 
-It has a PC side and a pod side. The PC side, `forge.mjs`, shows the caps, asks the owner to type yes, rents one card, sends the scripts and lessons, watches the pod every minute, downloads each finished model, and deletes the card. The pod side starts a tiny upload and download door (`pod/bootstrap.py`), then runs `pod/run.sh`, driven by a plan file. The pod also deletes itself 8 minutes before the hours cap, in case the PC side has died (model-lab/forge/README.md).
+It has a PC side and a pod side. The PC side, `forge.mjs`, shows the caps, asks for a typed yes, rents one card, sends the scripts and lessons, watches the pod every minute, downloads each finished model, and deletes the card. The pod side starts a tiny upload and download door (`pod/bootstrap.py`), then runs `pod/run.sh`, driven by a plan file. The pod also deletes itself 8 minutes before the hours cap, in case the PC side has died (model-lab/forge/README.md).
 
 ### 3.5.2 Pod scripts
 
-The pod scripts do these jobs. `teacher.py` records the full model's top-32 next-word log-probabilities at every answer position. `data.py` renders lessons and holds out 5% by id hash. `prune.py`, `keep.py`, `count.py` and `countskills.py` count which experts each skill uses, build a keep list that covers every skill, and cut the model by slicing weight bytes. `reap.py` scores experts by router weight times output size. `heal.py` and `lora.py` train a LoRA on every linear layer, the experts and the router. `pref.py`, `grpo.py` and `onpolicy.py` add preference pairs (ORPO, DPO, KTO), a reward pass and on-policy teaching, each off unless the plan asks. `merge.py`, `fold.py` and `surgery.py` blend, fold or bake in a tested change. `export.py` and `rebuild.py` write GGUF files and brain cards and rebuild a model from its keep list and adapter. `family.py` separates Qwen from GPT-OSS, and two self-test scripts dry-run everything on tiny models.
+The pod scripts do these jobs. `teacher.py` records the full model's top-32 next-word log-probabilities at every answer position. `data.py` renders lessons and holds out 5% by id hash. `prune.py`, `keep.py`, `count.py` and `countskills.py` count which experts each skill uses, build a keep list that covers every skill, and cut the model by slicing weight bytes. `reap.py` scores experts by router weight times output size. `heal.py` and `lora.py` train a LoRA on every linear layer and the experts, and train the router itself in float32 at a fifth of the main rate, or leave it frozen. From Build 25 a heal can also record expert picks on held-out lessons before and after (section 4.12.1). `pref.py`, `grpo.py` and `onpolicy.py` add preference pairs (ORPO, DPO, KTO), a reward pass and on-policy teaching, each off unless the plan asks. `merge.py`, `fold.py` and `surgery.py` blend, fold or bake in a tested change. `export.py` and `rebuild.py` write GGUF files and brain cards and rebuild a model from its keep list and adapter. `family.py` separates Qwen from GPT-OSS, and two self-test scripts dry-run everything on tiny models.
 
 ### 3.5.3 Data flow
 
@@ -158,7 +221,7 @@ One failure deserves a longer note, because it is the same kind of fault the dis
 
 ### 3.5.7 GPT-OSS as a second family
 
-Build 23 extended the Forge to GPT-OSS for the studies of the 120B and its 38B cut (model-lab/forge/README.md). `family.py` reads `config.json` and picks the model class, router module and stop tokens. The teacher keeps its MXFP4 weights when the card allows, and a student is always unpacked to BF16, since MXFP4 cannot be trained. Lessons use the harmony template, and LoRA is applied per expert in GPT-OSS's own layout. GRPO, fold, surgery and merge are skipped for GPT-OSS. The 38B heal plan exists but is not approved; it needs the owner's typed go.
+Build 23 extended the Forge to GPT-OSS for the studies of the 120B and its 38B cut (model-lab/forge/README.md). `family.py` reads `config.json` and picks the model class, router module and stop tokens. The teacher keeps its MXFP4 weights when the card allows, and a student is always unpacked to BF16, since MXFP4 cannot be trained. Lessons use the harmony template, and LoRA is applied per expert in GPT-OSS's own layout. GRPO, fold, surgery and merge are skipped for GPT-OSS. The 38B heal plan exists and is waiting on approval. A read of the heal code on 16 November, prompted by the router rules of section 4.12.1, suggested that the GPT-OSS router (its weight and bias) was not in the heal's low-rate group and would have learned at the main rate, five times faster than the Qwen router. The finding is unproven in our lab, as we have yet to test on a real brain. On the tiny GPT-OSS model the old rule matched none of the eight router tensors and the new rule matches all eight (selftest_gptoss.py). The rule was changed before any GPT-OSS heal ran (Build 25), and a gate stops any heal before training unless the count is right, so the first real heal tests the finding.
 
 ### 3.5.8 How the Forge was verified
 
@@ -222,7 +285,8 @@ The instruments were made because the questions demanded them: the mask, dials, 
 - **Small stand-ins.** The strongest Brain Engine checks used tiny models, CPU builds or one trial on a 35B model. They show the code does what it claims, not that the instruments are unbiased on a real large model.
 - **No automatic engine test.** A patch in the wrong place would be found only by the PC test.
 - **Dry runs prove running, not helping.** The self-tests say so themselves, and most Forge builds after build 14 had no card test when the README was written.
-- **Overhead not measured.** No clean with-and-without timing exists for the patches the studies use.
+- **Overhead measured on one machine only.** The with-and-without timings in section 3.4.5 (added 17 November) come from one consumer PC, one brain and one quant. Other cards and brains are unproven in our lab, as we have yet to test.
+- **Traces taken before Brain Engine 11 changed the words.** Before the fix in section 3.4.3, a traced answer could differ from an untraced one at temperature 0, so expert maps from those runs describe the traced brain. From Brain Engine 11 the words match, and from Brain Engine 12 the cost is 2% or less on the 35B.
 - **One builder.** The code was written and checked inside one project, with an AI assistant as a contributor (docs/COSTS.md). No outsider has reviewed it.
 - **Judge limits.** The tool judge measures agreement with the teacher, and is blind to a call that is right in a way the teacher did not record.
 - **Status.** The never-taught gate shipped in release 1.5.238. The decisive retrain on reviewed lessons has not been run, so no instrument here has yet been used on the lessons the dissertation finally recommends.
@@ -233,22 +297,23 @@ Three layers of instruments were built. Brain Engine adds live masks, dials, exp
 
 ## References
 
+- Chen, X., and Yao, H. (2026). Training-Free Halving of Activated Experts in Fine-Grained Mixture-of-Experts Models. arXiv:2609.04575. https://arxiv.org/abs/2609.04575
+- Ethayarajh, K., Xu, W., Muennighoff, N., Jurafsky, D., and Kiela, D. (2024). KTO: Model Alignment as Prospect Theoretic Optimization. arXiv:2402.01306. https://arxiv.org/abs/2402.01306
 - Hinton, G., Vinyals, O., and Dean, J. (2015). Distilling the Knowledge in a Neural Network. arXiv:1503.02531. https://arxiv.org/abs/1503.02531
 - Hong, J., Lee, N., and Thorne, J. (2024). ORPO: Monolithic Preference Optimization without Reference Model. arXiv:2403.07691. https://arxiv.org/abs/2403.07691
 - Hu, E. J., Shen, Y., Wallis, P., Allen-Zhu, Z., Li, Y., Wang, S., Wang, L., and Chen, W. (2021). LoRA: Low-Rank Adaptation of Large Language Models. arXiv:2106.09685. https://arxiv.org/abs/2106.09685
-- Ethayarajh, K., Xu, W., Muennighoff, N., Jurafsky, D., and Kiela, D. (2024). KTO: Model Alignment as Prospect Theoretic Optimization. arXiv:2402.01306. https://arxiv.org/abs/2402.01306
 - Jiang, A. Q., Sablayrolles, A., Roux, A., et al. (2024). Mixtral of Experts. arXiv:2401.04088. https://arxiv.org/abs/2401.04088
 - Kwon, W., Li, Z., Zhuang, S., Sheng, Y., Zheng, L., Yu, C. H., Gonzalez, J. E., Zhang, H., and Stoica, I. (2023). Efficient Memory Management for Large Language Model Serving with PagedAttention. arXiv:2309.06180. https://arxiv.org/abs/2309.06180
 - Lasby, M., Lazarevich, I., Sinnadurai, N., Lie, S., Ioannou, Y., and Thangarasa, V. (2025). REAP the Experts: Why Pruning Prevails for One-Shot MoE Compression. arXiv:2510.13999. https://arxiv.org/abs/2510.13999
+- llama.cpp project page (ggml-org), MIT licence. https://github.com/ggml-org/llama.cpp
 - Muralidharan, S., Sreenivas, S. T., Joshi, R., Chochowski, M., Patwary, M., Shoeybi, M., Catanzaro, B., Kautz, J., and Molchanov, P. (2024). Compact Language Models via Pruning and Knowledge Distillation. arXiv:2407.14679. https://arxiv.org/abs/2407.14679
 - OpenAI (2025). gpt-oss-120b and gpt-oss-20b Model Card. arXiv:2508.10925. https://arxiv.org/abs/2508.10925
+- PEFT: Parameter-Efficient Fine-Tuning library (Hugging Face). https://github.com/huggingface/peft
 - Rafailov, R., Sharma, A., Mitchell, E., Ermon, S., Manning, C. D., and Finn, C. (2023). Direct Preference Optimization: Your Language Model is Secretly a Reward Model. arXiv:2305.18290. https://arxiv.org/abs/2305.18290
 - Shao, Z., et al. (2024). DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models (introduces GRPO). arXiv:2402.03300. https://arxiv.org/abs/2402.03300
 - Shazeer, N., Mirhoseini, A., Maziarz, K., Davis, A., Le, Q., Hinton, G., and Dean, J. (2017). Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer. arXiv:1701.06538. https://arxiv.org/abs/1701.06538
+- TRL: Transformers Reinforcement Learning library (Hugging Face). https://github.com/huggingface/trl
 - Yadav, P., Tam, D., Choshen, L., Raffel, C., and Bansal, M. (2023). TIES-Merging: Resolving Interference When Merging Models. arXiv:2306.01708. https://arxiv.org/abs/2306.01708
 - Yang, A., et al. (2025). Qwen3 Technical Report. arXiv:2505.09388. https://arxiv.org/abs/2505.09388
 - Yu, L., Yu, B., Yu, H., Huang, F., and Li, Y. (2023). Language Models are Super Mario: Absorbing Abilities from Homologous Models as a Free Lunch (DARE). arXiv:2311.03099. https://arxiv.org/abs/2311.03099
 - Zou, A., Phan, L., Chen, S., et al. (2023). Representation Engineering: A Top-Down Approach to AI Transparency. arXiv:2310.01405. https://arxiv.org/abs/2310.01405
-- llama.cpp project page (ggml-org), MIT licence. https://github.com/ggml-org/llama.cpp
-- PEFT: Parameter-Efficient Fine-Tuning library (Hugging Face). https://github.com/huggingface/peft
-- TRL: Transformers Reinforcement Learning library (Hugging Face). https://github.com/huggingface/trl

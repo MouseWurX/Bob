@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LEVELS, UNITS, LESSONS, LESSON_PAGES, cleanTry, runTry, factsOf, ggufTour, readProgress, markDone, resetProgress, lessonsRoute, LONG_TEXT, WEATHER_TOOL } from '../src/lab-lessons.js';
+import { LEVELS, UNITS, LESSONS, LESSON_PAGES, CHAPTERS, cleanTry, runTry, factsOf, ggufTour, readProgress, markDone, resetProgress, lessonsRoute, LONG_TEXT, WEATHER_TOOL } from '../src/lab-lessons.js';
 import { HELP } from '../public/help-content.js';
 
 let pass = 0, fail = 0;
@@ -29,7 +29,22 @@ check('every lesson has two questions, each with exactly one right answer and a 
 check('the right answer is not always first', LESSONS.flatMap((l) => l.check).some((q) => !q.answers[0].right));
 check('lessons follow units in order (the list reads top to bottom)', LESSONS.every((l, i) => i === 0 || UNITS.findIndex((u) => u.id === l.unit) >= UNITS.findIndex((u) => u.id === LESSONS[i - 1].unit)));
 check('Real results name a published doc that exists', LESSONS.filter((l) => l.real).length >= 4 && LESSONS.filter((l) => l.real).every((l) => l.real.text && fs.existsSync(fileURLToPath(new URL(`../${l.real.from}`, import.meta.url)))));
+check('From the research: authors, year and an https link, kept apart from Real results (16 Nov)', LESSONS.filter((l) => l.cite).length >= 5 && LESSONS.filter((l) => l.cite).every((l) => l.cite.text && /\(\d{4}\)/.test(l.cite.who) && /^https:\/\//.test(l.cite.url) && l.cite.text !== l.real?.text));
+check('the MoE unit has its router health lesson', LESSONS.some((l) => l.id === 'routerhealth' && l.unit === 'moe'));
 check('Real results carry no unchecked figures (fact-check, Nov 15)', !LESSONS.some((l) => /6 to 9|72 to 76/.test(l.real?.text || '')));
+// 16 Nov: the curriculum review. Every Real result names its chapter and says how strong it is; the course shows its
+// own index; the held-out leak and the reviewer audit are lessons; their numbers are the ones in the chapters.
+const reals = LESSONS.filter((l) => l.real);
+check('every Real result names a dissertation chapter that exists', reals.every((l) => CHAPTERS[l.real.ch] && fs.existsSync(fileURLToPath(new URL(`../${CHAPTERS[l.real.ch].file}`, import.meta.url)))), reals.filter((l) => !CHAPTERS[l.real.ch]).map((l) => l.id).join(','));
+check('every Real result says how strong it is', reals.every((l) => typeof l.real.status === 'string' && l.real.status.length > 10));
+check('the coding panels carry the cut caveat', reals.filter((l) => /Coding race/.test(l.real.text)).length === 2 && reals.filter((l) => /Coding race/.test(l.real.text)).every((l) => /208 experts against/.test(l.real.text)));
+check('the cut panel names which column is general knowledge', /longtext column/.test(LESSONS.find((l) => l.id === 'cut').real.text));
+const leak = LESSONS.find((l) => l.id === 'splitleak'), rev = LESSONS.find((l) => l.id === 'reviewer'), ch7 = read('docs/dissertation/ch07-study3-test-leaks.md'), ch6 = read('docs/dissertation/ch06-study2-full-read.md');
+check('the held-out leak is a lesson in Testing that tells the truth, before the leak check', leak?.unit === 'truth' && LESSONS.indexOf(leak) === LESSONS.findIndex((l) => l.id === 'leakcheck') - 1);
+check('its numbers are the ones in Chapter 7', leak.real.ch === 7 && ['519', '534', '526', '7 more', 'first 60 characters'].every((x) => leak.real.text.includes(x)) && /519 of 534/.test(ch7) && /526 of 534/.test(ch7) && /first 60 characters/.test(ch7));
+check('Auditing your reviewer is an Engineering lesson', rev && UNITS.find((u) => u.id === rev.unit)?.level === 'engineering' && /reviewer/i.test(rev.title));
+check('its numbers are the ones in Chapter 6, and it cites the judge-bias paper', rev.real.ch === 6 && ['5,788', '1,922', '71%', '533', '23'].every((x) => rev.real.text.includes(x) && ch6.includes(x)) && /2306\.05685/.test(rev.cite.url));
+check('the course is 45 lessons with 13 Real results', LESSONS.length === 45 && reals.length === 13, `${LESSONS.length}/${reals.length}`);
 check('lesson words carry no folders', !/[A-Z]:\\|\/home\/|\/Users\//.test(JSON.stringify(LESSONS)));
 
 // ---- what Try it may send ----
@@ -136,10 +151,16 @@ check('each lesson is Read, Try it, Check', /1\. Read/.test(page) && /2\. Try it
 check('questions are real radio groups in fieldsets with legends', /<fieldset><legend>/.test(page) && /type="radio" name="lq-/.test(page));
 check('the proper name opens the glossary and has an (i)', /data-lessongloss/.test(page) && /tip\(/.test(page));
 const css = read('public/style.css'), ours = css.slice(css.indexOf('/* 15 Nov Lab, Learn, Lessons */'));
+check('the list opens an index of every Real result: lesson, chapter, result, how strong, source', /data-lessonsindex/.test(page) && /Where every Real result comes from/.test(page) && /<th scope="col">Chapter<\/th>/.test(page) && /<th scope="col">How strong<\/th>/.test(page) && /<th scope="col">Source<\/th>/.test(page));
+check('the index keeps other people\'s findings in their own table', /From the research, not my own/.test(page));
+check('each Real result shows How strong', /How strong:<\/strong> \$\{esc\(l\.real\.status\)\}/.test(page));
+check('the index becomes one card per row on a phone', /@media \(max-width: 600px\) \{\n  \.lesson-index table/.test(css) && /data-label/.test(page));
 check('the lesson styles use theme colours only', ours.length > 100 && !/#[0-9a-f]{3,8}\b|rgb\(|hsl\(/i.test(ours));
 const topic = HELP.find((h) => h.id === 'lab-lessons'), faq = HELP.find((h) => h.id === 'faq-lab-lessons'), gloss = HELP.find((h) => h.id === 'glossary');
 check('Help has a Lessons page and an FAQ', topic && faq && /Lab: Lessons/.test(topic.html) && /never used as training data/.test(topic.html));
 check('the glossary has the new words', ['Held-out test', 'Lessons (Lab course)', 'System prompt', 'Tool call (function calling)'].every((w) => gloss.html.includes(`<dt>${w}</dt>`)));
+check('Help has the index, the reviewer FAQ and the sources FAQ', HELP.some((h) => h.id === 'faq-lab-reviewer') && HELP.some((h) => h.id === 'faq-lab-lesson-sources') && /Where every Real result comes from/.test(topic.html) && /45 lessons/.test(topic.html));
+check('the glossary has the review words', ['LLM-as-a-judge (reviewer bias)', 'Real result (Lab Lessons)', 'Reviewer audit', 'Near-copy leak'].every((w) => gloss.html.includes(`<dt>${w}</dt>`)));
 check('Help says where it does not work', /Android app has no Lab/.test(topic.html));
 
 console.log(`\n${pass} passed, ${fail} failed`);

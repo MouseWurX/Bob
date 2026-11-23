@@ -15,6 +15,7 @@ const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${o
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\r\n/g, '\n');
 const catalog = JSON.parse(read('catalog.json'));
+catalog.models.push(...JSON.parse(read('test/fixtures/bob-brains-removed.json')).models); // 1.5.245: Riker and Bobert left the catalogue; kept here as test brains
 const have = ['gemma4-e4b', 'bobert-35b', 'riker-28b-q3', 'qwen3-4b'];
 const models = catalog.models.map((m) => ({ ...m, status: { state: have.includes(m.id) ? 'installed' : 'missing' } }));
 const roles = {
@@ -46,17 +47,20 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
 }
 {
   const html = brainsHtml(ctx);
-  check('the page has its four parts', ['This replicant matrix', 'Brains in use', 'Add a brain', 'Senses and tools'].every((h) => html.includes(`<h3>${h}`)));
+  // Nov 18 2026: My brains (one row per brain, + Add a brain), This replicant matrix, Senses and tools.
+  check('the page has its parts', ['My brains', 'This replicant matrix', 'Senses and tools'].every((h) => html.includes(`<h3>${h}`)) && /\+ Add a brain/.test(html));
   check('each brain row shows size and quantization', /21 GB · Q4_K_M/.test(html) && /14 GB · Q3_K_M/.test(html));
   check('job chips: a job that can go without has a ✕ with a spoken name; the main brain has none', /data-unequip="tinker" aria-label="Take [^"]+ off Coding"/.test(html) && !/data-unequip="bob"/.test(html));
   // Nov 15 (the owner): "i cant take jobs away from brains once i issue them". Quick, Office and Deep thinking had no ✕.
   const all = brainsHtml({ ...ctx, brains: { small: 'gemma4-e4b', deep: 'bobert-35b', office: 'bobert-35b', gaming: 'qwen3-4b' } });
-  check('every job can be taken back with a ✕ except the main brain and Gaming', ['small', 'deep', 'office', 'tinker', 'reviewer', 'eyes'].every((id) => all.includes(`data-unequip="${id}"`)) && !/data-unequip="(bob|gaming)"/.test(all), all.match(/data-unequip="\w+"/g)?.join());
-  check('a job that always needs a brain says how to move it, aloud too', /Gaming always needs a brain\. To move it, use \+ job on another brain\./.test(all) && /<span class="sr-only"> \(Brain always needs a brain/.test(all));
-  check('One brain on: a greyed pick can still be taken back', /job-chip-off[^>]*>.*?<button type="button" class="chip-x" data-unequip="deep"/.test(brainsHtml({ ...ctx, oneBrain: true })));
+  // Nov 16 (the owner): "i cannot remove it" (the Gaming brain). Gaming has a ✕ now; only the main brain has none.
+  check('every job can be taken back with a ✕ except the main brain', ['small', 'gaming', 'deep', 'office', 'tinker', 'reviewer', 'eyes'].every((id) => all.includes(`data-unequip="${id}"`)) && !/data-unequip="bob"/.test(all), all.match(/data-unequip="\w+"/g)?.join());
+  check('the main brain has no ✕: its row says it does every other job', !/data-unequip="bob"/.test(all) && /Every job no other brain has\./.test(all));
+  check('One brain on: only the main row shows, and the other picks are kept', (brainsHtml({ ...ctx, oneBrain: true, brains: { ...ctx.brains, gaming: 'qwen3-4b' } }).match(/data-rowbrain=/g) || []).length === 1);
+  check('One brain on: one press turns it off again', /data-onebrainoff/.test(brainsHtml({ ...ctx, oneBrain: true })));
   check('the Set up page has the same ✕', /data-unequip="deep"/.test(setUpHtml(brainsInUse(ctx).find((b) => b.value === 'bobert-35b'), ctx)));
   // Nov 15 (the owner): "is housekeeping on a brain?? ... make it assignable".
-  check('Housekeeping is a job: unassigned (the main brain does it) until given a brain', emptyJobs(ctx).some((s) => s.id === 'housekeeping') && /🧹 <strong>Housekeeping<\/strong> <span class="muted">Uses the main brain/.test(html));
+  check('Housekeeping is a job: the main brain does it until a row gets it', emptyJobs(ctx).some((s) => s.id === 'housekeeping') && /data-addjob="housekeeping"/.test(html));
   const hkHtml = brainsHtml({ ...ctx, roles: { ...roles, current: { ...roles.current, housekeeping: 'qwen3-4b' } } });
   check('...given a brain it shows on that brain with a ✕ to take it back', /🧹 Housekeeping<button type="button" class="chip-x" data-unequip="housekeeping"/.test(hkHtml) && jobsFor('gemma4-e4b', ctx).some((s) => s.id === 'housekeeping'));
   check('any brain that chats can do Housekeeping, an embedding model can\'t', canDo('housekeeping', { entry: models.find((m) => m.id === 'qwen3-4b') }) && canDo('housekeeping', { name: 'some:7b', caps: ['completion'] }) && !canDo('housekeeping', { name: 'nomic-embed-text', caps: ['embedding'] }));
@@ -64,12 +68,12 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
   const round = taskRow({ id: 'hk-1', kind: 'housekeeping', housekeeping: true, text: 'Housekeeping: summing up', state: 'working', status: 'in progress', startedAt: Date.now() }, { movable: false, full: true });
   check('a housekeeping round in Tasks: 🧹, Stop and ✕, no Pause or Try again', /🧹/.test(round) && /data-t="cancel"/.test(round) && /data-t="remove"/.test(round) && !/data-t="pause"/.test(round) && !/data-t="retry"/.test(taskRow({ id: 'hk-2', kind: 'housekeeping', housekeeping: true, text: 'x', state: 'cancelled', status: 'cancelled' }, { movable: false, full: true })));
   check('+ job is a labelled menu on each brain', /<select class="job-add" data-brainjob="bobert-35b" aria-label="Give [^"]+ another job">/.test(html));
-  check('an empty job says what happens meanwhile and offers a brain or the catalogue', /data-jobbrain="office"/.test(html) && /data-catjob="office"/.test(html) && /Uses the Spreadsheets helper or the main brain/.test(html));
+  check('an empty job can be given a brain with + Add a brain, and the catalogue is one press away', /data-addjob="office"/.test(html) && /data-addbrain/.test(html) && /data-tab="catalogue"/.test(html));
   check('senses: every one listed with Change or Pick; nothing chosen shows no kit', senseSlots().every((s) => html.includes(`data-slotpick="${s.id}"`)) && /<section class="kit-panel" aria-live="polite"><\/section>/.test(html));
   check('picking a sense opens its choices right there', /<section class="kit-panel" aria-live="polite"><h3>🎨 Painter/.test(brainsHtml({ ...ctx, selected: 'image' })));
   check('the plain list is one press away, and the catalogue too; the paper doll is gone (1.5.210)', !/data-eqview="doll"/.test(html) && /data-eqview="list"/.test(html) && /data-tab="catalogue"/.test(html));
   check('the chest is not on this page (it belongs to the Adventure page)', !/data-chest\b/.test(html) && !/chest-tile/.test(html));
-  check('no computer specs yet: the page still draws', /Brains in use/.test(brainsHtml({ ...ctx, vramGB: null, ramGB: null })));
+  check('no computer specs yet: the page still draws', /My brains/.test(brainsHtml({ ...ctx, vramGB: null, ramGB: null })));
 }
 {
   const cellar = publicText('cellar.js');
@@ -149,22 +153,22 @@ const ctx = { roles, models, brains: { small: 'gemma4-e4b', deep: 'bobert-35b' }
   check('Quick + Big: the Deep thinker becomes the big brain for the main job too; the Quick brain is kept', plan('duo') === 'bob=bobert-35b,reviewer=,tinker=', plan('duo'));
   check('Specialists and Across my Bobs change nothing by themselves', plan('specialists') === '' && plan('bobs') === '');
   check('Quick + Big says when the Quick slot has no small brain of its own', !duoNeedsQuick(ctx) && duoNeedsQuick({ ...ctx, brains: { deep: 'bobert-35b' } }) && duoNeedsQuick({ ...ctx, brains: { small: 'bobert-35b', deep: 'bobert-35b' } }));
-  const html = brainsHtml(ctx);
+  const html = listTopHtml(ctx);
   check('the setups are buttons that say which is in use, in words', SETUPS.every((s) => html.includes(`data-setup="${s.id}"`)) && /data-setup="specialists" aria-pressed="true"><strong>[^<]*<\/strong> <span class="tag good">in use<\/span>/.test(html) && !/setup-ask/.test(html));
-  const ask = brainsHtml({ ...ctx, setupAsk: 'one' });
+  const ask = listTopHtml({ ...ctx, setupAsk: 'one' });
   check('pressing One brain shows the jobs the main brain takes first, with Apply and Cancel', /class="setup-ask"/.test(ask) && /data-setupapply="one"/.test(ask) && /<strong>Coding<\/strong>/.test(ask) && /Quick brain is off/.test(ask) && /picks stay on the page, greyed/.test(ask), ask.slice(ask.indexOf('setup-ask'), ask.indexOf('setup-ask') + 600));
-  check('a setup with nothing to change: no Apply button', !/data-setupapply/.test(brainsHtml({ ...ctx, setupAsk: 'specialists' })) && !/data-setupapply/.test(brainsHtml({ ...ctx, oneBrain: true, setupAsk: 'one' })));
+  check('a setup with nothing to change: no Apply button', !/data-setupapply/.test(listTopHtml({ ...ctx, setupAsk: 'specialists' })) && !/data-setupapply/.test(listTopHtml({ ...ctx, oneBrain: true, setupAsk: 'one' })));
   // Nov 13 (the owner): "switching to one brain does not disable deep thinking brain, office brain, or quick brain".
   const on = { ...ctx, oneBrain: true };
-  const onHtml = brainsHtml(on);
+  const onHtml = listTopHtml(on);
   check('One brain on: it is the setup in use, whatever is picked', setupOf(on) === 'one' && /data-setup="one" aria-pressed="true"/.test(onHtml));
-  check('One brain on: other jobs stay on the page, greyed and marked main brain, never hidden', /job-chip job-chip-off[^>]*>[^<]*Deep thinking <span class="muted">\(main brain\)/.test(onHtml) && /data-onebrainoff/.test(onHtml) && /Quick brain is off/.test(onHtml), onHtml.slice(onHtml.indexOf('brain-list'), onHtml.indexOf('brain-list') + 900));
-  check('One brain on: the main brain\'s own jobs and Seeing pictures are not greyed', !/job-chip-off[^>]*>[^<]*Brain </.test(onHtml) && !/job-chip-off[^>]*>[^<]*Seeing pictures/.test(onHtml));
-  check('One brain on: an empty Quick brain says it is off, an empty Office says the main brain does it', /<strong>Quick brain<\/strong> <span class="muted">Off: One brain is on/.test(brainsHtml({ ...on, brains: { deep: 'bobert-35b' } })));
-  check('One brain on: another setup offers to turn it off', /turn One brain off|Turns One brain off/.test(brainsHtml({ ...on, setupAsk: 'duo' })) && /data-setupapply="specialists"/.test(brainsHtml({ ...on, setupAsk: 'specialists' })));
+  check('One brain on: the Brains page keeps the other rows\' picks and says how to turn it off', /keeps its jobs for when it's off|keep their jobs for when it's off/.test(brainsHtml({ ...on, roles: { ...on.roles, current: { ...on.roles.current, tinker: 'bobert-35b' } } })) && /data-onebrainoff/.test(onHtml) && /Quick brain is off/.test(onHtml));
+  check('One brain on: nothing on the main row is greyed', !/job-chip-off/.test(brainsHtml(on).split('main-row')[1].split('</li>')[0]));
+  check('One brain on: the main row says it does every job', /Every job\./.test(brainsHtml(on)));
+  check('One brain on: another setup offers to turn it off', /turn One brain off|Turns One brain off/.test(listTopHtml({ ...on, setupAsk: 'duo' })) && /data-setupapply="specialists"/.test(listTopHtml({ ...on, setupAsk: 'specialists' })));
   const cel = publicText('cellar.js');
   check('Apply on One brain turns the switch on; any other setup turns it off first', /oneBrain: id === 'one'/.test(cel) && /const plan = id === 'one' \? \[\]/.test(cel) && /'onebrainoff' in b\.dataset/.test(cel) && /oneBrain: settings\?\.oneBrain === true/.test(cel));
-  check('Across my Bobs points at the Bob-Net settings and says it is all off until turned on', /data-setupbobnet/.test(brainsHtml({ ...ctx, setupAsk: 'bobs' })) && /off until you turn it on/.test(brainsHtml({ ...ctx, setupAsk: 'bobs' })));
+  check('Across my Bobs points at the Bob-Net settings and says it is all off until turned on', /data-setupbobnet/.test(listTopHtml({ ...ctx, setupAsk: 'bobs' })) && /off until you turn it on/.test(listTopHtml({ ...ctx, setupAsk: 'bobs' })));
   const cellar = publicText('cellar.js');
   check('Apply saves each job through the usual call, then reloads', /for \(const c of plan\) await equipSlot\(c\.slot, c\.value\);/.test(cellar) && /jumpTo = 'adv-bobnet'/.test(cellar));
 }

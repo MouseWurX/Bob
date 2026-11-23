@@ -11,9 +11,9 @@ The chapter is a method in progress. Most of its effect on a trained model is **
 Status matters here, so we state it up front.
 
 - PRs #254 (the lesson kit), #257 (the never-taught gate) and #263 (the lesson pre-flight) shipped in release 1.5.238 on 15 November 2026, whose pre-release check passed 276 of 276 test suites (1.5.238-PC-CHECKS.md).
-- PR #251 (Qwen tool shape v2 and the GPT-OSS shape) shipped in the same release but has not been re-tested.
+- PR #251 (Qwen tool shape 2) shipped in the same release but has not been re-tested. The locked shapes, Qwen shape 4 and GPT-OSS shape 3, shipped later in PR #271 (release 1.5.240) and have not been re-scored either (section 8.10).
 - The pre-flight values of section 11.5 (PR #263) are taken from the lab PC's console log of the lkt-fix3 run.
-- The 534 held-out test items were sorted by Haiku with a 5% Opus spot-check. On 15 November the owner chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs.
+- The 534 held-out test items were sorted by Haiku with a 5% Opus spot-check. On 15 November MouseWurX chose to keep the held-out tests as they are while the full Opus re-sort of the lessons runs.
 - The decisive retraining on reviewed lessons has **not** been run.
 
 Sources are docs/TOOL-LESSONS-PLAN.md, docs/ROADMAP-ONE-MODEL.md, the "Clean-lesson pipeline" section of checked-numbers.md, the rentals hand-off of 15 November 2026 (HANDOFF-rentals-2026-11-15.md) and the lab PC's run files as copied into those documents.
@@ -117,11 +117,11 @@ Each old set receives one of three marks: clean, mend (only flagged rows are rew
 
 ### 11.4.4 Tool shapes are locked first
 
-Chapter 8 found that the misses are about tool shape. So the shape is chosen before the lessons are written. The plan says the final lessons are written once the owner has picked each brain family's tool shape (TOOL-LESSONS-PLAN.md).
+Chapter 8 found that the misses are about tool shape. So the shape is chosen before the lessons are written. The plan says the final lessons are written once MouseWurX has picked each brain family's tool shape (TOOL-LESSONS-PLAN.md).
 
-A shape has a version. The Qwen tree used in the rewrite runs carries `TOOL_SHAPES = 2` in src/tool-sets.js. Reviewers must use the shape-2 tool file, because the main-branch tool file lacks the `save_to` input (hand-off).
+A shape has a version, `TOOL_SHAPES` in src/tool-sets.js. MouseWurX locked the shapes on 15 November: shape 4 for Qwen brains and shape 3 for GPT-OSS brains (section 8.10). The early rewrite runs reported in this chapter, lkt-fix1 to lkt-fix3, were made on a shape-2 Qwen tree, before the lock, and their lessons say so in their `tool_shapes` stamp. Later lesson runs use the shape-4 tree and pass `--want-shapes 4` in the pre-flight, and the real-jobs runs of draft PR #275 run Bob's real loop with the shape-4 tools. Lessons for GPT-OSS brains are written on shape 3 and stamped `family: gpt-oss`. Lessons from a shape-2 tree are converted to shape 4 or dropped before any Qwen training, and are never mixed in unmarked (section 4.9.4).
 
-A tool that already works for a family keeps its shape. "Working" means about 9 in 10 right, tool and inputs, in both thinking modes. Only failing tools get new shapes (TOOL-LESSONS-PLAN.md, section 2). Lessons are stored once, in Bob's tool names, and each family's wording is added at training time. PR #254 is titled "Lab: lesson kit on main, one lesson set per brain family", and we take that newer title as current. The two statements do not fully agree, and we did not find a file that resolves it.
+A tool that already works for a family keeps its shape. "Working" means about 9 in 10 right, tool and inputs, in both thinking modes. Only failing tools get new shapes (TOOL-LESSONS-PLAN.md, section 2). An older line of the plan said that lessons are stored once, in Bob's tool names, with each family's wording added at training time. That line is superseded. MouseWurX's rule of 15 November is one lesson set per brain family, never cross-trained, and the code enforces it: every lesson carries a `family` stamp (model-lab/write-lessons.mjs, `--family qwen|gpt-oss`) and the heal skips a lesson stamped for another family (model-lab/forge/pod/data.py). The tool names and inputs are still the same for every family, so a lesson's calls need no renaming, but each family's lessons are written by a teacher of that family on that family's shape.
 
 ### 11.4.5 Every tool result is real, or labelled
 
@@ -167,7 +167,7 @@ Before a lesson rental, code checks the plan and stops if it is wrong. On the lo
 |---|---|
 | Ideas file rows counted | 211 |
 | Already written (skipped) | 94 done, 117 to go |
-| Tool shape | 2, checked |
+| Tool shape | 2, checked (before the shapes were locked; later runs check 4) |
 | Room per slot | 32,768 tokens (longest first request about 10,838, plus 16,384 to grow) |
 | Sample gate | on: the first 10 ideas must save at least 60% |
 
@@ -218,7 +218,7 @@ Four rules shape how the reviewer is used.
 
 Scripts alone are not trusted to judge a lesson. A figure that scripts agreed with readers only 41% of the time was suggested for this chapter, but it is in no file we found. We do not use it.
 
-What the files show is a full read. Opus read all 5,788 non-held-out tool lessons (Table 11.1). The test items were read differently. Haiku sorted the 534 held-out items, and Opus spot-checked 5% of them (hand-off). The result was 148 keep, 381 fix and 5 discard (checked-numbers.md). So the test items have not had a full Opus read, and the owner chose on 15 November to keep them as they are while the full Opus re-sort of the lessons runs.
+What the files show is a full read. Opus read all 5,788 non-held-out tool lessons (Table 11.1). The test items were read differently. Haiku sorted the 534 held-out items, and Opus spot-checked 5% of them (hand-off). The result was 148 keep, 381 fix and 5 discard (checked-numbers.md). So the test items have not had a full Opus read, and MouseWurX chose on 15 November to keep them as they are while the full Opus re-sort of the lessons runs.
 
 ## 11.7 First results, with honest keep rates
 
@@ -274,6 +274,167 @@ Part of the low yield is the result of set-up faults and not of the method. lkt-
 
 Spending so far, from the hand-off and the console log, is about $0.41 (two hung cards), $0.55 (lkt-fix1), $0.82 (lkt-fix2) and $0.31 (lkt-fix3). Added together, that is about $2.09. The figures come from different files, and the sum is our arithmetic. The rewrite of the whole 5,565-idea file has not been costed from these rounds, and we do not extrapolate from them.
 
+### 11.7.5 The after1 round: the newest measured results (16 to 17 November)
+
+after1 was two rentals at the same time on the same code: the end-of-turn loop checks, the Qwen text-call rescue and the hardware log (Chapter 4, section 4.8.4).
+
+- **Stock Qwen3.6 35B, on an RTX 6000 Ada:** 200 real jobs at Minimus, and 30 mail jobs at each of Minimus, Medius and Magnus. Maximus did 4 of the 30 mail jobs before MouseWurX stopped it early. It also did 17 Office jobs. About $1.06.
+- **GPT-OSS 120B, on an A100 80GB:** the same 200 real jobs at Minimus. About $1.04.
+
+Every real job ran in the fake test home with real web search. Nothing was trained.
+
+**Real jobs, blind A/B read** (method in section 4.5.5):
+
+| Brain | Right | Partly | Failed | Harm | Reply quality (1-5) |
+|---|---|---|---|---|---|
+| Qwen3.6 35B | 133 | 47 | 20 | 0 | 3.87 |
+| GPT-OSS 120B | 107 | 56 | 37 | 0 | 3.52 |
+
+The graders picked Qwen's run as better on 84 jobs and GPT-OSS's on 51, with 65 ties.
+
+![after1 real jobs, right, partly right and failed, by brain](figures/after1-real-jobs.svg)
+
+*Figure 11.1. The blind read above, drawn as shares of the 200 jobs. Qwen's lead is in jobs done right (133 against 107); GPT-OSS gave more partly right and failed answers.*
+
+- **Qwen's most common faults:** made-up details (12), incomplete answers (12), wrong answers (11), a tool call shown as text (6) and claiming something not done (6).
+- **GPT-OSS's most common faults:** incomplete answers (21), asking the user instead of looking (17), wrong answers (13), made-up details (12) and giving up early (10).
+
+GPT-OSS was faster (a median of 13 s against 24 s). It also made half as many tool calls (0.87 a job against 1.73), which matches its habit of asking instead of looking.
+
+The limits are one run per job per brain and one grader per job. GPT-OSS ran only at Minimus with low reasoning. Its other reasoning levels are unproven in our lab, as we have yet to test.
+
+**Mail, by effort level.** The same 30 mail jobs, each on two made-up inboxes of up to 50,000 messages. These are code scores only, with a rough pass mark:
+
+| Level | Pass | Mean time | Mean steps |
+|---|---|---|---|
+| Minimus | 9 / 30 | 37 s | 4.2 |
+| Medius | 12 / 30 | 81 s | 6.0 |
+| Magnus | 7 / 30 | 260 s | 12.0 |
+| Maximus | 0 / 4 | 1,160 s | 13.8 |
+
+Higher effort did not help mail. Two of Maximus's finished jobs asked which senders are real people. In both, the first answer was right. Then the review read a shortened copy of the tool result as the tool's own cut-off and called the right answer a hallucination, and the final answer argued with itself. Magnus showed the same leak in 3 answers. At every level the biggest single mail fault was routing. 14 runs never added the mail tools for asks like "Trash everything from Kettle & Crumb", and searched the computer's folders instead.
+
+![Mail jobs passed by effort level](figures/mail-by-effort.svg)
+
+*Figure 11.2. The mail table above as pass rates. Medius passed the most. Magnus passed fewer while taking over 3 times as long, and Maximus finished only 4 jobs before it was stopped.*
+
+**Office.** 17 Word, Excel and PowerPoint jobs ran with LibreOffice in the test home, and 14 passed by code. Two misses made a new file instead of finding the user's own. One wrote a CSV in Bob's folder in place of the reading-log spreadsheet. The other asked for a deck's path after listing one empty folder. The third miss was a scorer slip.
+
+**What changed because of it.** Each fix has a check in the test suite and an entry in the harness log:
+
+- Mail asks that never say "email" now add the mail tools.
+- An answer that is only a text tool call is shown as an honest "I didn't finish" line.
+- Leaks from the recheck, and talk about earlier drafts, are caught.
+- "Find it first" applies to the user's own files.
+- "I've updated my memory" with no save behind it is caught.
+- File searches leave Bob's own logs out.
+- The review's record says when a tool result was only shortened for the review.
+- Every engine shares one exit hook.
+
+A replay of the new checks over all 511 after1 runs found that each new check fired only on real misses in the runs that were read, with no false alarms seen. Whether the fixes raise the pass rate is unproven in our lab, as we have yet to test. The next run of the same jobs is that test.
+
+**Decisions taken from it.** Stock Qwen3.6 35B stays the default brain, and GPT-OSS 120B stays a tested alternative. Mail is to run at Medius at most, with a short path for bulk acts. That was MouseWurX's call, backed by the mail table above. The short path is being built and is unproven in our lab, as we have yet to test.
+
+### 11.7.6 after2, Bob's own code, and other harnesses (21 November)
+
+Training was parked, and the work turned to making the harness reliable with the stock brain (MouseWurX, 21 November). Four rentals ran that day, all with stock Qwen3.6 35B at Q4 and nothing trained. The figures here come from the rental reports of that day (score reports and run records kept on the home PC); they are one run per job.
+
+**after2 (about $0.40).** The after1 mail jobs at Minimus and Medius, plus 36 Office jobs, 96 runs in all.
+
+- **Office passed 27 of 36** by code. The misses were five edits not made or not saved, a .pptx taken for a .pdf, files compared without being read, a damaged file not called damaged, wrong totals on a 3,000-row sheet, and a fact left out.
+- **Two harms in the mail jobs.** In the first, naming only a company trashed mail from people who work there; that is fixed and tested. In the second, on an unsubscribe job at Medius, Bob moved 84 mails he should not have; the bulk-plan guard is being fixed.
+- **The step caps cost 5 of the 96 runs** (8, 12, 16 or 24 steps by level).
+- **The mail scores by level are missing.** They were computed at the time, but the sole score report was inadvertently removed during an AI-assisted cleanup of the home PC before it was archived, and no other copy survives. They are reported as missing rather than estimated, until the same jobs are run again.
+- A second run of 300 everyday jobs stopped after 41 because the web search was blocked (about $0.41). Its jobs were rerun in steps40.
+
+**steps40 (about $0.69).** 66 of after2's jobs and about 260 everyday jobs again, with a keyed search service and the caps raised to 40 steps (48 at Magnus, 64 at Maximus) and no 10-minute cutoff. The 5 runs that ran out of steps all finished, nothing looped, and Office stayed at 27 of 36.
+
+**repo1 (about $0.41).** 33 jobs on a throwaway copy of Bob's own code, scored by code. A pass needs the change to be right and hidden checks to pass, and also needs Bob to have run the tests or a check himself, said which files he changed, touched no file he shouldn't, and not pushed.
+
+| Level | Passed | Work done right | Pushed |
+|---|---|---|---|
+| Minimus | 19 / 33 | 26 | 0 |
+| Medius | 20 / 33 | 28 | 0 |
+
+The gap between right work and passes is mostly one habit: not checking his own work. Checking code after an edit was off by default, and that alone failed 7 to 9 jobs. Bob also ran a bare `node` with no script 21 times, which looked like success each time.
+
+**The harness comparison (about $0.62).** The same 33 jobs, the same brain on the same card, run in two well-known open coding harnesses and scored by the same code:
+
+| Harness | Passed | Work done right | Never ran a check | Pushed (a fail) |
+|---|---|---|---|---|
+| Qwen Code | 21 | 30 | 1 | 2 |
+| mini-swe-agent (bash only, no guards) | 21 | 29 | 0 | 1 |
+| Bob, Minimus | 19 | 26 | 7 | 0 |
+| Bob, Medius | 20 | 28 | 8 | 0 |
+
+![Passes and right work on 33 repo jobs in four harnesses](figures/harness-comparison.svg)
+
+*Figure 11.3. The comparison above. In every harness the passes fall well short of the right work. The other two lost passes on not naming the changed files (13 times for Qwen Code, 8 for mini-swe-agent) and on pushing. Bob lost his on never running a check.*
+
+A plain bash loop with no rules did the work as well as Qwen Code and slightly better than Bob, so on coding Bob's extra rules did not buy right answers. Where Bob led was safety: he never pushed. One run per harness on 33 jobs leaves differences of 1 or 2 jobs inside the noise.
+
+**How many steps jobs take.** Steps were counted over 518 stock-Qwen runs. Everyday jobs typically take 2 steps and 9 in 10 finish within 6. Office jobs typically take 4, and 9 in 10 within 7. Coding typically takes 9, 9 in 10 within 17, and the longest took 29.
+
+![Steps per job by kind, against the old step caps](figures/steps-per-job.svg)
+
+*Figure 11.4. The step counts above, with the old caps. The cap of 8 at Minimus sat below the typical coding job, so it would have cut off over half of them.*
+
+**Every tool call checked.** All 1,650 tool calls in the 518 runs were read for broken tools. No tool crashed or hung, and 27 tools never failed. The real breakage was the Office tools not finding files: they failed 30% to 40% of the time, and 27 of 36 "no file there" errors were files one folder away, usually in Documents. In one job Bob said a spreadsheet was not on the computer when it was. A second fault lost 21 calls in 11 runs: once the tools were taken away near a job's end, the brain wrote its next call as text, and the nudge asked for a real call it had no tools to make. Of 75 nudges graded, the maths nudge was ignored 7 times in 8.
+
+**Limits removed (MouseWurX, 21 November).** "No step limits." An audit listed every limit that could stop or cut short Bob's work (bob-wip/limits/limits-audit-2026-11-21.md). These were removed, because misfiring rules, not lack of room, were ending good jobs:
+
+- the step counts at every level (other people's chats keep 30)
+- the 40-call and 96-call caps
+- the always-on 10-minute cutoff
+- the cap of 2 send-backs a turn (each kind of nudge now gets one go)
+- the thinking budgets and the fixed reply size; a reply now stops only when it repeats itself
+- in the lab, replies cut at 4,096 tokens (Bob allows up to 32,768) and jobs cut at 8 to 10 minutes. These made test scores worse than real use. The rental's money and time cap is now the only outer limit.
+
+What still ends a job is being stuck: 3 rounds with nothing new, 4 rounds where every call failed, going in circles, or the same call 3 times. The safety rules stay: never push, post or send without a card, no admin, no shell, and the Recycle Bin only.
+
+**Fixes made from these runs.** Checking code after an edit is on by default; the answer names the changed files; tests run on Windows; a bare `node` is refused with a hint; failing tests no longer get the tool set aside; Office tools find files the way `read_file` does; file search also matches file names; the text-call nudge asks for plain words when tools are off; and the Run tools load for project jobs. Each has a check in the test suite. Whether they lift Bob's passes towards his right work is unproven in our lab, as we have yet to test. The Flash-Next and DeepSeek runs of section 13.7 carry them.
+
+### 11.7.7 Flash-Next in Bob, smaller files, held-out jobs and a first cut (21 to 22 November)
+
+The bigger-brain rentals of section 13.7 ran on 21 and 22 November, on rented cards in the cloud, in Bob's own harness. Sources: the rentals thread's reports of 21 to 23 November, with plans in `app/model-lab/forge/plans/` (jobs-flashnext-iq3.json, jobs-flashnext-q2.json, reap-flashnext-q4-jobs.json, jobs-held1.json). None of these runs was on the home PC.
+
+**Flash-Next against stock Qwen (21 November, Q4_K_XL, one H200).** On the normal job sets Flash-Next passed 29, 31 and 32 of 33 repo jobs (Minimus, Medius, thinking on every step) against stock Qwen's 19 to 20, and covered 89% to 93% of the inbox against 57% to 73%, with no harms. Badly shaped tool calls fell from 21 in 937 to 2 in 1,254.
+
+**Smaller Flash-Next files (22 November).** The same jobs, run on the IQ3 and Q2 files (about 80 GB for Q2, against 111 GB for Q4):
+
+| Jobs | IQ3 | Q2 | Q4 |
+|---|---|---|---|
+| Office | 33/36 | 34/36 | 33/36 |
+| Repo, Minimus | 32/33 | 32/33 | 29/33 |
+| Repo, Medius | 31/33 | 31/33 | 31/33 |
+| Repo, thinking every step | 32/33 | 33/33 | 32/33 |
+| Inbox coverage | 82% | 82% | 86% |
+| Badly shaped tool calls | 0 to 1 per set | 0 to 1 per set | 0 to 1 per set |
+
+Going down to the smaller files cost about 4 points of inbox coverage and nearly nothing elsewhere, on one run each. The rentals cost $3.22 (IQ3) and $2.74 (Q2). The Q2 misses also found a real Bob bug: an edit with several changes at once reported the file as missing, which broke two repo jobs. It is fixed, with three smaller tool fixes. Pass rates do not say whether the smaller files make work as good; a game-building test (two small Godot games, three seeds per file, played blind by MouseWurX) is set up to show that, and has no result yet.
+
+**Held-out jobs (held1, 22 November).** The normal job sets have been tuned on, so a fresh set of each kind was written once and is never used for tuning or lessons (inbox 14 jobs on 4 new inboxes, Office 14, repo 12, web 11 on a made-up web; Blender 12, not run). held1 ran stock Qwen at Medius on them, for $0.61, against the Flash-Next Q4 baseline of the REAP run below:
+
+| Held-out set | Qwen3.6 35B | Flash-Next Q4 |
+|---|---|---|
+| Office | 11/14 | 13/14 |
+| Repo | 8/12 | 12/12 |
+| Web | 4/11 | 8/11 |
+| Inbox coverage | 76% (22 of 28 ran) | 85% |
+| Badly shaped tool calls | 8 in 360 | 0 to 1 |
+
+The gap on jobs nobody tuned on is as wide as on the normal sets, so Flash-Next's lead is not an artefact of tuning. Two causes are the test, not the brain: Qwen's inbox run stopped at 22 jobs because live web searches from the home PC came back empty (the fix is to give inbox runs the made-up web), and its repo run used a kit from before the edit fix above, so some of its 3 repo fails may be that bug. Web and badly shaped calls look like Qwen itself.
+
+**A first cut (REAP on Flash-Next Q4, 22 November, one H200 NVL).** Every expert in each layer was ranked by how much it is used on 153 clean Flash-Next runs of Bob's jobs. Each keep level was then scored on the held-out jobs with the other experts switched off, with no healing and no cut file saved:
+
+| Experts kept | Office | Repo | Web | Inbox coverage | Harms |
+|---|---|---|---|---|---|
+| All | 13/14 | 12/12 | 8/11 | 85% | 0 |
+| 90% | 13/14 | 12/12 | 9/11 | 93% | 0 |
+
+Keeping 90% of the experts lost nothing on these jobs. The jobs are few, so the small gains at 90% are probably noise. The deeper levels (80, 75, 65, 60 and 50%) were still running when this was written. Fitting Flash-Next on the home PC needs a much deeper cut than 90% (section 13.7), so whether a cut that fits still passes is unproven in our lab, as we have yet to test.
+
+
 ## 11.8 Discussion
 
 ### 11.8.1 What the method buys
@@ -313,7 +474,7 @@ The question that the dissertation asks cannot be answered without a trained mod
 
 **Cost.** The roadmap's rough estimate for the first full training run is about 18 to 24 hours on an H200 and about $95 to $130 (ROADMAP-ONE-MODEL.md, stage 5). The cost of three arms is **not measured**.
 
-**Preconditions.** The full Opus re-sort of the lessons must finish. The never-taught gate (PR #257, shipped in 1.5.238) must run on the plan. The test items must be replaced or re-sorted. Every step also waits for the owner's typed go, because nothing trains or rents without one.
+**Preconditions.** The full Opus re-sort of the lessons must finish. The never-taught gate (PR #257, shipped in 1.5.238) must run on the plan. The test items must be replaced or re-sorted. Every step also waits on approval, because nothing trains or rents without it.
 
 ## 11.11 Future work
 

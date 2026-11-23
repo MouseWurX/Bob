@@ -9,6 +9,7 @@ import { isGuestId, GUEST_LOG } from './guest-chat.js';
 import { namedType } from './save-as.js';
 import { lastFinished, giveIds, toolMessage } from './tool-kinds.js';
 import { turnNow } from './turn-log.js';
+import { traced, traceNow, replyText } from './trace-log.js'; // Nov 16 Monitoring log
 import { Ledger, doneBefore, doneBeforeNote } from './handoff.js';
 import { expectFrom } from './verify.js';
 import { presetFor, presetGroups, LimitedGroups, presetBrain, presetPrompt } from './presets.js';
@@ -37,9 +38,13 @@ import { HANDS } from './hands-settings.js';
 import { noteStrike, maybeAsk as qAsk } from './quarantine.js';
 import { planGate } from './plan.js';
 import { stepThink, toolRanThisTurn } from './step-thinking.js';
+import { cantReason, markCant, settleCant } from './cant-retry.js';
 import { askTogether } from './together.js';
 import { callKey, realState, linkKey, NOW_IN_NOTE, staleHandErrors, meanwhileNear, claimsPcAction, CLAIM_CORRECTION, CLAIM_NUDGE, claimsObservation, OBSERVE_CORRECTION, OBSERVE_NUDGE, LINK_NUDGE, EMPTY_NUDGE, CANT_NUDGE, EMPTY_NOTE, DOING_TOOLS, isLook, ALT_ROUTE_DONE, ALT_ROUTE_NUDGE, quickHandBack } from './brain-words.js';
 import { sidePick, apuRoom } from './brain-lanes.js';
+import { handOffPromise, HAND_OFF_LINE, HAND_OFF_LOG } from './hand-off-promise.js';
+import { switchFor } from './setup-offer.js';
+import { settleOld } from './stale-asks.js';
 import { MAX_STEPS, loopSteps, borrowedLine, MAX_CALLS_PER_REPLY, HAND_TOOLS, repeatCheck, repeatNote, trailOf, REPEAT_STOP_LINE, REPEATS_THEN_ANSWER, ANSWER_NOW_NUDGE } from './brain.js';
 
 // Methods of the Brain class, put on it in its main file with the same rules as the methods written inside it.
@@ -72,7 +77,7 @@ export const runOnParts = {
     // Try again and Edit (redo.js): the message is already in the chat, changed in place, so the brain gets a hidden note only.
     const again = (Boolean(job?.switchedTo) || Boolean(job?.rentAgain) || Boolean(job?.redo)) && Boolean(lastUser) && String(lastUser.text ?? lastUser.content ?? '').startsWith(text);
     if (again) msgs.push({ role: 'system', content: job.switchedTo ? switchedNote(job.switchedTo) : job.redo && !job.carryOn ? (job.redo === 'edit' ? EDIT_NOTE : REDO_NOTE) : job.carryOn || '', hidden: true });
-    else { msgs.push(user); if (!job?.guest) emit({ type: 'asked', id: user.id }); } // the window marks your bubble, for Edit (redo.js)
+    else { if (settleOld(msgs)) this.log('honesty', 'an old ask with no answer, or an old carry-on note, was set aside before the new message'); msgs.push(user); if (!job?.guest) emit({ type: 'asked', id: user.id }); } // Nov 18: stale-asks.js // the window marks your bubble, for Edit (redo.js)
     if (job) job.rentAgain = false;
     const turnStart = again ? msgs.map((m) => m.role).lastIndexOf('user') : msgs.length - 1;
     // 1.5.207 PC check: after Switch it on (or any carry-on), the same chat line went in the logbook a second time.
@@ -154,6 +159,9 @@ export const runOnParts = {
     ctx.meanwhile = job?.side ? meanwhile : '';
     const extras = [state, meanwhile, presetPrompt(ctx.preset, this.cfg.userName || 'the user'), guestNote(job, this.cfg.userName || 'the user'), effortPrompt(job?.effort), jobHelpsPrompt(this.cfg, job), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
     const brainCtx = await this.fitCtx(model, wantCtx);
+    // Nov 22 (Hermes Agent check): the time in the turn note is read once per turn. The note sits before the latest
+    // message, so a time that changed between steps made the engine read every step of the job again each minute.
+    const turnTime = this.now();
     // 1.5.127: a chat that no longer fits the biggest brain here, with a rented brain in its slot: offer it (the job carries on here meanwhile).
     if (!job?.rent && !job?.side && !job?.guest && this.rentals.current() && !ctx.rentOffered) {
       const tokens = roughTokens({ messages: msgs });
@@ -306,13 +314,13 @@ export const runOnParts = {
       if (thinkNow !== think && !ctx.stepThinkSaid) { ctx.stepThinkSaid = true; this.log('chat', 'tool steps: no thinking (planning and the answer keep it)'); }
       const pub = Boolean(job?.guest?.public); // Bob on Discord: no memory, about-me or backstory of the owner's
       const hush = pub || isGuestId(sessionId); // a guest chat: no memory or about-me either (guest-chat.js)
-      const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: this.now(), memory: hush ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: hush ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
+      const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: turnTime, memory: hush ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: hush ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
       // Nov 11 (item 1): what changes every turn (the time, the Right now line, recalled bits) goes in a short note just
       // before the latest message, not in the instructions. The time changed every minute and the RAM line every turn,
       // so the engine threw away the whole chat it had already read and read it again; now it keeps it (its prompt cache).
       const steadySys = { role: 'system', content: this.withLimits(systemPrompt({ now: NOW_IN_NOTE, memory: hush ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: hush ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) };
       const waitingOn = pendingLine(this.switchesOff(), this.pendingSwitches()); // 1.5.207: one short line, only while an offer waits
-      const turnNote = `Current date and time for ${pub ? 'the owner' : this.cfg.userName || 'the user'}: ${this.now()}.${extras}${waitingOn ? `\n${waitingOn}` : ''}${earlier ? `\n\n${earlier}` : ''}`;
+      const turnNote = `Current date and time for ${pub ? 'the owner' : this.cfg.userName || 'the user'}: ${turnTime}.${extras}${waitingOn ? `\n${waitingOn}` : ''}${earlier ? `\n\n${earlier}` : ''}`;
       let reply = null;
       // A lender keeps the start of the chat it read last time (its prompt cache), so what changes every turn (the time,
       // the Right now line, recalled bits) goes in a short note just before the latest message, not in the instructions.
@@ -341,7 +349,7 @@ export const runOnParts = {
         if (!ctx.rentSaid) { ctx.rentSaid = true; emit({ type: 'rent', action: 'thinking', rental: rName, service: this.rentals.view().rentals.find((r) => r.id === rented.id)?.serviceName || '' }); }
         let rentShown = 0;
         try {
-          reply = await this.rentals.chat(rented, { messages: [sys, ...loopView(staleHandErrors(msgs, turnStart), step)], tools, signal, think: thinkNow, job, emit, onToken: (t) => { rentShown += String(t).length; emit({ type: 'token', text: t }); } });
+          reply = await traced('rented', 'rented brain', () => this.rentals.chat(rented, { messages: [sys, ...loopView(staleHandErrors(msgs, turnStart), step)], tools, signal, think: thinkNow, job, emit, onToken: (t) => { rentShown += String(t).length; emit({ type: 'token', text: t }); } }), (r) => ({ chars: String(r?.content ?? '').length, detail: { reply: replyText(r) } }), { signal }); // Monitoring log: a rented brain's request, no names
         } catch (e) {
           if (signal?.aborted) throw e;
           // Item 205: it falls back once (rented stays off for the rest of this job), the half answer it gave is taken
@@ -361,7 +369,7 @@ export const runOnParts = {
         let said = false;
         const askedAt = Date.now(); let firstAt = 0, lentShown = 0;
         try {
-          reply = await this.lenders.chat(lender, { messages: lentMsgs, tools, signal, from: this.cfg.windowsName || 'Bob', onToken: (t) => { if (!said) firstAt = Date.now(); said = true; lentShown += String(t).length; emit({ type: 'token', text: t }); } });
+          reply = await traced('lent', 'other Bob', () => this.lenders.chat(lender, { messages: lentMsgs, tools, signal, from: this.cfg.windowsName || 'Bob', onToken: (t) => { if (!said) firstAt = Date.now(); said = true; lentShown += String(t).length; emit({ type: 'token', text: t }); } }), (r) => ({ chars: String(r?.content ?? '').length, detail: { reply: replyText(r) } }), { signal }); // Monitoring log: never the other Bob's name
           // 1.5.181 (two-Bob trial: the reply came back empty and nothing ran here): an empty answer counts as a "couldn't".
           if (!String(reply?.content || '').trim() && !(reply?.tool_calls || []).length) { reply = null; throw Object.assign(new Error('it came back empty'), { busy: !said }); }
           // 1.5.196 (Tailscale test): a borrowed reply that went well leaves a line in the logbook too, once per Bob per
@@ -482,11 +490,16 @@ export const runOnParts = {
       const empty = !reply.tool_calls && !String(reply.content || '').trim();
       if (!reply.tool_calls && !empty) this.checkSaid(ctx, reply); // 1.5.207: said but not done, before any retry
       if (!reply.tool_calls) stage(ctx, 'checking', step, log);
+      // Jobs run 3: after "I can't" and one more go, one answer stays, never two stacked (cant-retry.js).
+      if (!reply.tool_calls && !empty) { const kept = settleCant(ctx, reply, msgs); if (kept) this.log('toolbox', kept === 'replaced' ? 'the answer after trying again replaces the first' : 'trying again ran nothing new; the first answer stays'); }
+      const cantWhy = !reply.tool_calls && !empty && !ctx.cantRetried && saysCant(reply.content) ? cantReason(this.cfg, reply.content, msgs.slice(turnStart)) : '';
+      if (cantWhy) { ctx.cantRetried = true; this.log('toolbox', `Bob said he could not, and ${cantWhy}; no second go with every tool`); }
       if (!reply.tool_calls && !ctx.cantRetried && nudgeOk(ctx) && saysCant(reply.content)) {
         // 1.5.65: web search is on and a link is there (this message or a recent one): open it and give him one more go.
         const u = webLinks && !ctx.linkOpened && String(reply.content || '').trim() ? (findLinks(text, 1)[0] || earlierLink()) : null;
         if (u) {
           ctx.cantRetried = true;
+          markCant(ctx, reply, msgs); // the answer after reading the page replaces this one
           await openLink(u, 'Bob said he could not; opened the link and asked again');
           msgs.push({ role: 'system', content: LINK_NUDGE, hidden: true }); ctx.retrying = true;
           emit({ type: 'token', text: '\n\n' });
@@ -499,6 +512,7 @@ export const runOnParts = {
           missing.forEach((g) => ctx.loaded.add(g));
           if (missing.length) emit({ type: 'tool', name: 'use_tools', summary: 'Trying again with all his tools' });
           if (empty) msgs.pop(); // an empty reply isn't worth keeping in the chat
+          else markCant(ctx, reply, msgs);
           msgs.push({ role: 'system', content: empty ? EMPTY_NUDGE : CANT_NUDGE, hidden: true }); ctx.retrying = true;
           this.log('toolbox', empty ? 'Bob gave an empty reply; added every tool group and asked again' : 'Bob said he could not; added every tool group and asked again');
           emit({ type: 'token', text: '\n\n' });
@@ -515,9 +529,28 @@ export const runOnParts = {
           msgs.push({ role: 'assistant', content: '', correction: EMPTY_NOTE });
         }
         this.log('toolbox', 'Bob gave an empty reply twice');
-      } else if (!reply.tool_calls && this.checkTurn(ctx, reply, nudgeOk(ctx))) { ctx.retrying = true; nudged(); continue; } // asked for something that didn't happen: one more go
+      } else if (!reply.tool_calls && this.checkTurn(ctx, reply, nudgeOk(ctx))) {
+        // Jobs run 3 (v5-d6-3-r0): the "only 1 tool step ran" go stacked a second answer on a good first one. One answer
+        // stays, as after "I can't" (cant-retry.js). A reply corrected for a claim with nothing behind it isn't kept.
+        if (!reply.correction && !ctx.cantAt) markCant(ctx, reply, msgs);
+        ctx.retrying = true; nudged(); continue;
+      } // asked for something that didn't happen: one more go
       // Quick brain sees the job: a note that came while the big brain was writing its answer (no next step)
       // still reaches it, once: it says what changes, or that it saw it (PC test 1.5.203: the note never arrived).
+      // Nov 18 (hand-off-promise.js): the job needs a Hand that's off and he promised it anyway. No nudge (he has no
+      // tool for it): the Switch it on card goes up and the reply says plainly that nothing was done.
+      if (!reply.tool_calls && !empty && !ctx.handOffSaid && !job?.side && !ctx.noTools) {
+        const need = handOffPromise({ ask: text, reply: reply.content, usable: (n) => this.usable(n) });
+        if (need && !ctx.offered?.has(need)) {
+          ctx.handOffSaid = true; ctx.promiseChecked = true; // no "do it now" nudge after: he has no tool for it
+          const r = await this.offerSetup(need, ctx, { quiet: true }).catch(() => '');
+          if (r && ctx.offeredNow) {
+            const name = switchFor(this.cfg, need)?.name || 'That Hand';
+            const line = HAND_OFF_LINE(name); emit({ type: 'token', text: line }); reply.content = String(reply.content || '') + line;
+            this.log('honesty', HAND_OFF_LOG(need));
+          }
+        }
+      }
       // Nov 11 (loop-help.js): "I'll look that up." and nothing ran: one nudge to really do it.
       if (!reply.tool_calls && !empty && !this.helpOff('promise') && !ctx.promiseChecked && !ctx.noTools && nudgeOk(ctx) && promisesAction(reply.content)) {
         ctx.promiseChecked = true;
@@ -572,6 +605,7 @@ export const runOnParts = {
           // Nov 11: a call that can't run as it is (a missing input, no such tool) goes back with what to fix.
           res = { text: call.bounce };
           this.log('tool', `${name}: not run, ${call.bounce.slice(9, 160)}`);
+          traceNow()?.start('tool', name).end('refused', {}, { in: call.function?.arguments, out: call.bounce }); // Monitoring log: a call that couldn't run as it was (a missing input, no such tool)
         } else if (doneBefore(job, name, call.function?.arguments)) {
           // Item 245: this exact action finished before Bob restarted. It isn't done twice.
           res = { text: doneBeforeNote(doneBefore(job, name, call.function?.arguments)) };

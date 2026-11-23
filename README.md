@@ -2,6 +2,9 @@
 
 <p align="center"><b>A local AI agent with a personality. He runs on your own computer, and nothing goes online unless you turn it on.</b></p>
 
+> *"This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it."*  
+> From Bob's [privacy policy](app/docs/legal/PRIVACY.md).
+
 <p align="center">
   <a href="#download"><b>Download</b></a> ·
   <a href="#what-bob-does">What Bob does</a> ·
@@ -16,6 +19,16 @@
 ![Bob's window in the Lamplight look, Mercury lamp: the glowing cube top left with the chat heads under it, tabs across the top, the window's own buttons on the same bar, a chat about a Blender lantern in the middle and a quiet composer below](app/docs/screenshot.png)
 
 <p align="center">Windows · Mac · Linux · Raspberry Pi · Android · iPhone &nbsp;|&nbsp; free and open source &nbsp;|&nbsp; no account, no telemetry</p>
+
+## Quick start
+
+1. **Download** Bob for your computer from the [latest release](https://github.com/MouseWurX/Bob/releases/latest) ([all downloads](#download)).
+2. **Unpack it:** on Windows, [unblock the zip](#windows-10-or-11-in-five-steps) and unzip it into a folder you'll keep; on a Mac, drag Bob into Applications; on Linux, mark the AppImage as executable.
+3. **Start Bob:** double-click **Bob.exe**, Bob, or the AppImage. [More on installing](#getting-bob).
+4. **Get Bob ready:** he suggests a brain and engines for your graphics card. Nothing big downloads until you press it.
+5. **Say hello.**
+
+**What it needs:** tested on a 16 GB graphics card (RTX 5070 Ti) with 32 GB of memory, which runs stock Qwen3.6-35B-A3B, a 35B mixture-of-experts brain, with 256K context. Its smaller Q3 file runs on an 8 GB card.
 
 ## At a glance
 
@@ -43,13 +56,13 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.244-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.244-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.244-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.244-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.244-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.244-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.244-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.244-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.244-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.244-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.244-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.244-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.244-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.244-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.252-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.252-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.252-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.252-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.252-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.252-linux-x86_64.AppImage) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.252-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.252-linux-amd64.deb) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.252-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.252-linux-x86_64.flatpak) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.252-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.252-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
+| **Android phone** | [`Bob-1.5.252-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.252-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
@@ -200,12 +213,26 @@ Nothing trains, rents a card or uploads without the owner's go, and every rental
 
 **Where everything is:**
 
-- **The Computer Science Lab**, where every step runs: [below](#the-computer-science-lab), and the [Lab steps plan](app/docs/LAB-STEPS-PLAN.md).
-- **The costs**, every rental and dollar, failures included: [What Bob costs to make](app/docs/COSTS.md).
-- **The models**, each with a card that says what it is and how it scored: [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) · [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) · [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) · [gpt-oss-120b cut to 38B](https://huggingface.co/MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF) (cut, not yet healed).
-- **The data**: [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) (the lessons, clean, full and preference files) · [bob-studies](https://huggingface.co/datasets/MouseWurX/bob-studies) (surgery and interview studies, never used for training).
-- **The dissertation** (draft, all 13 chapters): [Clean lessons beat more lessons](app/docs/dissertation/README.md).
-- **The record**: [Bob's own models](app/docs/BOBS-OWN-MODELS.md) (every score and what went wrong) and [the Forge journal](app/docs/FORGE-JOURNAL.md) (the lab notebook).
+| What | Where |
+|---|---|
+| **The Computer Science Lab**, where every step runs | [Below](#the-computer-science-lab), and the [Lab steps plan](app/docs/LAB-STEPS-PLAN.md) |
+| **The costs**, every rental and dollar, failures included | [What Bob costs to make](app/docs/COSTS.md) |
+| **How we test**, and how that changed | [How we test brains](app/docs/TESTING.md) · [the harness log](app/model-lab/harness-log.md) |
+| **The models**, each with a card that says what it is and how it scored | [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) · [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) · [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) (none is in Bob's catalogue since 1.5.245) · [gpt-oss-120b cut to 38B](https://huggingface.co/MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF) (cut, not yet healed) |
+| **The data** | [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) (the lessons, clean, full and preference files) · [bob-studies](https://huggingface.co/datasets/MouseWurX/bob-studies) (surgery and interview studies, never used for training) |
+| **The dissertation** (draft, all 13 chapters) | [Clean lessons beat more lessons](app/docs/dissertation/README.md) |
+| **The record** | [Bob's own models](app/docs/BOBS-OWN-MODELS.md) (every score and what went wrong) · [the Forge journal](app/docs/FORGE-JOURNAL.md) (the lab notebook) |
+
+## How we test
+
+Brains are tested on **real jobs** in Bob's real loop, with his real tools, in a small made-up world built fresh for each job. How we test has changed a lot, and every change came from a run that went wrong. The whole story is in [How we test brains](app/docs/TESTING.md).
+
+- **The test bench proves itself first.** In the 800-job run, 47 results were the bench's fault, not the brain's. Now a self-test checks that every job is fair before a card is rented, and every run's faults are fixed and logged in the [harness log](app/model-lab/harness-log.md).
+- **Blind grading.** Claude Opus grades runs with the labels shuffled, on the answer the user actually sees.
+- **Checks from real mistakes.** Slips that kept coming back are now code checks at the end of Bob's turn (shipped in 1.5.248).
+- **Effort levels, Minimus to Maximus,** tested on the same 100 jobs. More effort isn't better yet.
+- **One untested category at a time,** starting with Office files.
+- **Code does the clerk work.** On mail, the brain writes the rule and code does the paging, counting and moving (built, off by default, untested on a rental).
 
 ## Coming next
 
@@ -221,7 +248,7 @@ Nothing trains, rents a card or uploads without the owner's go, and every rental
 
 ## What it costs
 
-Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 15 Nov 2026: about **$2,002** spent in all, of which about $496 is rented GPU time (failures included), and about $2,501 to $2,575 projected for the planned family of models. The page lists every rental and what came of it.
+Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 16 Nov 2026: about **$2,757** spent in all, of which $549 is rented GPU time (failures included), and about $3,262 to $3,340 projected for the planned family of models. Most test rentals cost under $2.50; the 800-job run cost $19.42. The page lists every rental and what came of it.
 
 ## What Bob does
 
@@ -301,11 +328,11 @@ Lab jobs need at least 12 GB of memory; a smaller computer can start them on a b
 
 ### Lessons: a course on how brains work
 
-**Learn > Lessons** is a short course in **42 lessons and 17 units**, at three levels: **Foundations** (tokens, weights, experts, prompts, tool calls), **Advanced** (how brains learn, transformers, cutting and healing, why lessons decide habits) and **Engineering** (building the tools, inference engines, training at scale, honest tests, looking inside). It's off by default: turn on **Lab: Lessons** in Settings, How Bob works, Brains.
+**Learn > Lessons** is a short course in **45 lessons and 17 units**, at three levels: **Foundations** (tokens, weights, experts, prompts, tool calls), **Advanced** (how brains learn, transformers, cutting and healing, why lessons decide habits) and **Engineering** (building the tools, inference engines, training at scale, honest tests, looking inside). It's off by default: turn on **Lab: Lessons** in Settings, How Bob works, Brains.
 
 Each lesson has three parts:
 
-1. **Read.** Bob explains one idea in plain words, with its proper name and a glossary link. Some lessons add a code excerpt, and some a **Real result** from Bob's own research, with the file it comes from.
+1. **Read.** Bob explains one idea in plain words, with its proper name and a glossary link. Some lessons add a code excerpt, and some a **Real result** from Bob's own research, with the file it comes from and how strong it is. **Where every Real result comes from** lists them all in one table, with the chapter of the write-up each one comes from.
 2. **Try it.** One read-only step on the brain Bob has loaded, or a button to the Lab page that does the real job. Nothing rents, downloads or changes a brain.
 3. **Check.** Two questions, and every answer says why it's right or wrong.
 
@@ -345,7 +372,7 @@ Three models made from Qwen3.6-35B-A3B with the same tools that are in the Lab: 
 | Code that runs | **6 of 6** | **6 of 6** | 1 of 6 |
 | Download | [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) | [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) | [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) |
 
-Same tests, same rented card, each Bob served from his public Q4 file. Riker matches Bobert at a size that suits a 16 GB card, so he is Bob's default. Bill is best at tool decisions and weakest at facts and code, and is published as he is.
+Same tests, same rented card, each Bob served from his public Q4 file. Riker matches Bobert at a size that suits a 16 GB card. Since 1.5.245 none of the three is in Bob's Brain catalogue: stock Qwen3.6-35B-A3B is the default, until a Bob beats it on a held-out test. Their files stay on Hugging Face. Bill is best at tool decisions and weakest at facts and code, and is published as he is.
 
 **Riker against the model he was cut from**, at home on a 16 GB card:
 
@@ -368,7 +395,7 @@ Same tests, same rented card, each Bob served from his public Q4 file. Riker mat
 | [What they cost](app/docs/COSTS.md) | Every rental, itemized, failures included. |
 | [Brain races](app/docs/BRAIN-RACES.md) · [test results](app/docs/test-results/README.md) | How other brains score on the same tests and the same PC. |
 
-Bob picks Riker's file for your card himself: Q4, or Q3 on an 8 GB card.
+Bob's default is stock Qwen3.6-35B-A3B (its Q3 file codes on an 8 GB card). A Riker file already on a PC still runs from ➕ Your own brains.
 
 ## Bob-Net: Bobs working together
 

@@ -4,6 +4,7 @@ import { brainEngineName } from './engine-name.js';
 import { progressHtml, animateWorkers } from './progress.js';
 import { createStylePage } from './style-page.js';
 import { createSampler, sampleButton, sampleHint } from './voice-samples.js';
+import { takesJob } from './brain-choices.js';
 import { allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml, readyList, readyDefaults, readyToggle, readyOrder, SPLITS, splitPicks } from './equip.js';
 import { cleanFilters } from './cat-sort.js';
 import { cleanFind } from './cat-find.js';
@@ -32,6 +33,9 @@ import { adventureSettingsHtml, mountAdventureSettings } from './adventure.js';
 import { gamesSettingsHtml, mountGamesSettings } from './games.js';
 import { shareBrainsHtml, mountShareBrains } from './share-brains.js';
 import { mountNetFiles } from './net-files.js'; // Nov 14 Bob-Net: Files and brains
+import { mountPrivateWeb, privateWebHtml } from './private-web.js'; // Nov 16 Settings, Connections: Private web
+import { mountTraceLog, traceLogHtml } from './trace-log.js'; // Nov 16 Settings, This replicant matrix: Monitoring log
+import { mountSearchBackup, searchBackupHtml } from './search-backup.js'; // Nov 16 Settings, Connections: Search API keys
 import { findTheme, DEFAULT_THEME } from './themes.js';
 import { tip, noteOrTip, stripTags, keep } from './tips.js';
 import { HOUSE, houseStyleHtml } from './house-style.js';
@@ -200,8 +204,19 @@ export function createCellar({ popOut = null } = {}) {
     document.body.appendChild(pop); pop.showModal();
     pop.querySelector('[data-pickkey]:not([disabled])')?.focus();
   }
+  // Nov 16: in Bob's own window the page asks the window for the picker (window.bobApp, electron/preload.cjs), not Bob
+  // over the web: with every connection to Bob busy, the web request used to wait and the picker never opened.
+  async function viaWindow(kind) {
+    // Nov 18 2026: an empty answer in under half a second is no person pressing Cancel: the window turned the ask
+    // down (or has no picker). Ask Bob's own picker instead, so the file window still opens.
+    const t0 = Date.now();
+    let file = String((await window.bobApp.pick(kind).catch(() => '')) || '');
+    if (!file && Date.now() - t0 < 500) { const r = await api('/api/own-models/pick', { kind }); if (r.error) return r; file = String(r.file || ''); if (!file || kind !== 'gguf') return { file }; return r; }
+    if (!file || kind !== 'gguf') return { file };
+    return { file, ...(await api('/api/own-models/inspect', { file })) };
+  }
   async function ownPick(kind) {
-    const r = await api('/api/own-models/pick', { kind }).catch((e) => ({ error: e.message }));
+    const r = await (typeof window.bobApp?.pick === 'function' ? viaWindow(kind) : api('/api/own-models/pick', { kind })).catch((e) => ({ error: e.message }));
     if (r.error) { ownForm = { ...(ownForm || { file: '', name: '' }), error: r.error }; draw(); if (!ownForm.file) dlg.querySelector('[data-ownpath]')?.focus(); return null; }
     return r;
   }
@@ -435,6 +450,8 @@ export function createCellar({ popOut = null } = {}) {
     ['opencode', 'OpenCode', 'opencode sst coding agent chat head cube sign in account', () => agentSectionHtml('opencode')],
     ['discord', 'Discord', 'discord bot token server channel group chat moderate moderator keep order kick ban spam chat head cube', () => chatAppHtml('discord')],
     ['telegram', 'Telegram', 'telegram bot botfather token pairing wake phrase chat head cube', () => chatAppHtml('telegram')],
+    ['search', '🔎 Search API keys', 'search api keys key backup search blocked robot check captcha web search tavily brave marginalia mojeek firecrawl no key monthly cap test', () => searchBackupHtml()],
+    ['privweb', '🕶 Private web', 'private web privacy private mode tracking trackers cookies do not sell proxy tor vpn socks route through fingerprint blocked other sources internet archive throwaway', () => privateWebHtml()],
     ['email', '📧 Email account', 'email mail account imap smtp app password gmail outlook hotmail icloud yahoo reading sending server reset code', () => emailAccountHtml()],
     ['apps', '🔌 Other apps', 'other apps comfyui workflows port unreal blender mcp openai compatible api vs code continue opencode command line terminal cli key claude claude code desktop connect hands key', () => otherAppsHtml()],
     ['hands', '✋ Hands', 'files run commands schedules apps permission quarantine reviewer', () => handsSettingsHtml() + quarantineSettingsHtml()],
@@ -444,6 +461,7 @@ export function createCellar({ popOut = null } = {}) {
     ['jobs', '🔁 Jobs', 'jobs job steer mid-job stop after this step time limit minutes receipt undo run tests after code edits question vague remember no deny reason reuse look-ups cache sources how sure file line links editor vs code cursor', () => jobsHtml()],
     ['prompts', '📝 Saved prompts', 'saved prompts prompt library slash / menu template templates reuse snippets blanks variables {file} curly brackets', () => sswitch('promptMenu', settings.promptMenu === true, 'Saved prompts with /', 'Type / at the start of a message to pick a saved prompt. Words in {curly brackets} are blanks; Tab jumps to the next.') + promptsHtml()],
     ['health', '🩺 Health and history', 'health page crash crashes catch crash report safe start opt-in switches put back undo settings changes put it back history weekly week what bob did counts statistics engine card disk errors', () => '<div class="harness-box" data-part="health"></div>'], // public/harness.js
+    ['tracelog', '📈 Monitoring log', 'monitoring log trace traces tracing span spans timing timings slow steps debug debugging opentelemetry otel otlp jaeger telemetry text file txt tool calls engine requests errors', () => traceLogHtml()],
     ['quiet', '🌙 Quiet hours and shortcut', 'quiet hours do not disturb night sleep notifications pop-ups sounds urgent reminders shortcut hotkey global key ctrl space ask box anywhere', () => '<div class="harness-box" data-part="quiet"></div>'],
     ['chatx', '💬 Chat extras', 'fade old messages fade into memory clear chat amnesia mode forget privacy wipe try from here branch fork copy chat pin pinned message keep in mind guest chat incognito private nothing saved chat places engine memory switch chats quick', () => '<div class="harness-box" data-part="chats"></div>'],
     ['daily', '🗓 Everyday helpers', 'everyday helpers today card weather reminders morning focus timer pomodoro quiet do not disturb receipt receipts spending sheet expenses budget csv profiles people family shared pc guest tour what\'s new after an update tray dot badge text size font', () => dailyHtml()],
@@ -679,6 +697,9 @@ export function createCellar({ popOut = null } = {}) {
     mountGamesSettings(dlg.querySelector('.games-box'), { api, settings }); // 1.5.121 🧩 Games
     mountShareBrains(dlg.querySelector('.share-box')); // Bob-Net: My other Bobs and What they share
     mountNetFiles(dlg.querySelector('.net-files-box')); // Nov 14 Bob-Net: Files and brains
+    mountPrivateWeb(dlg.querySelector('.private-web-box')); // Nov 16 Settings, Connections: Private web
+    mountTraceLog(dlg.querySelector('.trace-log-box')); // Nov 16 Settings, This replicant matrix: Monitoring log
+    mountSearchBackup(dlg.querySelector('.search-backup-box')); // Nov 16 Settings, Connections: Search API keys
     readyLine(); // 1.5.117: "Bob 1.5.117 is ready · Restart Bob now" on the updates line when a new Bob waits
     const page = mode === 'welcome' ? 'Welcome' : tab === 'settings' ? 'Settings' : tab === 'style' ? 'Style' : 'Get models';
     $('cellar-title').textContent = page;
@@ -769,6 +790,8 @@ export function createCellar({ popOut = null } = {}) {
   let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-brains-view') === 'list' ? 'list' : 'brains'; } catch { return 'brains'; } })(); // 1.5.210 a remembered paper doll view lands on the Brains page
   function eqCtx() {
     return { roles, models: shownModels(), brains: settings?.sessionBrains || {}, oneBrain: settings?.oneBrain === true, embed: roles?.current?.embed || '', selected: eqSelected, vramGB: hw?.vramGB || hw?.gpu?.vramGB || null, unified: Boolean(hw?.gpu?.unified), integrated: Boolean(hw?.gpu?.integrated), arm: hw?.board === 'arm', ramGB: hw?.ramGB || null, freeGB: hw?.freeGB ?? null, platform: settings?.platform, showUnsuited,
+      spec: hw?.spec || '', gpuName: hw?.gpu?.name || '', cpu: hw?.cpu || '', naughtyOn: naughtyOn(), ownForm,
+      quantOn: settings?.quantPicker === true, // Nov 19 2026 quant levels (public/quant-steps.js) // Nov 18 2026: one rule for every brain menu (brain-choices.js)
       famOpen, packs: data?.packs || [], packId: starterPack, picks: starterPicks, engines: data?.engines || [], starterOpen,
       houseStyle: settings?.houseStyle || {}, active: settings?.activeModels || {}, saveDir: settings?.saveDir || {},
       rent }; // 1.5.127 the Rented brain slot
@@ -899,7 +922,12 @@ export function createCellar({ popOut = null } = {}) {
       if ('catfilterReset' in b.dataset) { setCatFilters({}); draw(); return; }
       if (b.dataset.catview) { if (b.dataset.catview === 'naughty' && !naughtyOn()) return; setCatView(b.dataset.catview); draw(); return; }
       // 1.5.135: ➕ Your own brains. Pick the file (a window on this replicant matrix), name it, add it; or take one off the list.
-      if ('ownadd' in b.dataset) { b.disabled = true; const r = await ownPick('gguf'); if (!r) return; if (!r.file) { b.disabled = false; return; } ownForm = r.error ? { file: r.file, name: '', error: r.error } : { file: r.file, name: r.name, params: r.params, sizeGB: r.sizeGB, mmproj: r.mmproj || '', card: r.card || null }; draw(); dlg.querySelector('[data-ownname]')?.focus(); return; }
+      if ('ownadd' in b.dataset) {
+        // Nov 16: never a greyed button with nothing happening. After a few seconds without the file window, say so and
+        // offer the path box; the button works again.
+        b.disabled = true;
+        const slow = setTimeout(() => { if (!b.isConnected || b.nextElementSibling?.classList.contains('own-slow')) return; b.disabled = false; b.insertAdjacentHTML('afterend', ' <span class="muted own-slow" role="status">The file window hasn\'t opened yet. It may be behind this one, or Bob is busy. You can also type its path.</span>'); }, 6000);
+        const r = await ownPick('gguf'); clearTimeout(slow); if (!r) return; if (!r.file) { b.disabled = false; return; } ownForm = r.error ? { file: r.file, name: '', error: r.error } : { file: r.file, name: r.name, params: r.params, sizeGB: r.sizeGB, mmproj: r.mmproj || '', card: r.card || null }; draw(); dlg.querySelector('[data-ownname]')?.focus(); return; }
       if (b.dataset.ownmm) { if (!ownForm) return; ownForm.name = dlg.querySelector('[data-ownname]')?.value || ownForm.name; if (b.dataset.ownmm === 'clear') { ownForm.mmproj = ''; draw(); return; } const r = await ownPick('mmproj'); if (r && r.file) { ownForm.mmproj = r.file; ownForm.error = ''; draw(); } return; }
       if ('owncancel' in b.dataset) { ownForm = null; draw(); return; }
       if ('ownpathopen' in b.dataset) { ownForm = { file: '', name: '' }; draw(); dlg.querySelector('[data-ownpath]')?.focus(); return; }
@@ -1059,7 +1087,7 @@ export function createCellar({ popOut = null } = {}) {
       if ('resetbob' in b.dataset) { const r = await api('/api/settings', { personality: DEFAULTS }); settings.personality = r.personality; draw(); return; }
       // 1.5.56 Brain catalogue: Get more (from a kit or a menu) opens it at that job; Active switches; Equip from a row.
       if ('recheck' in b.dataset) { b.disabled = true; const y = dlg.scrollTop; await load(); dlg.scrollTop = y; return; } // 1.5.56
-      if (b.dataset.catjob) { catFocus = b.dataset.catjob; setTab('catalogue'); draw(); dlg.querySelector('#catjob-' + CSS.escape(catFocus))?.scrollIntoView({ block: 'start' }); return; }
+      if (b.dataset.catjob) { catFocus = b.dataset.catjob; setTab('catalogue'); draw(); (dlg.querySelector('#catjob-' + CSS.escape(catFocus)) || dlg.querySelector('#catjob-brains'))?.scrollIntoView({ block: 'start' }); return; } // Nov 18 2026: a brain job opens the one Brains list, filtered to it
       if (b.dataset.famall) { const open = b.dataset.famall === 'open'; for (const d of dlg.querySelectorAll('details.cat-fam')) { d.open = open; if (open) famOpen[d.dataset.fam] = true; else delete famOpen[d.dataset.fam]; } saveFam(); return; } // 1.5.101
       if (b.dataset.catjump) { catFocus = b.dataset.catjump; dlg.querySelector('#catjob-' + CSS.escape(catFocus))?.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
       if (b.dataset.active) {
@@ -1083,6 +1111,23 @@ export function createCellar({ popOut = null } = {}) {
       // 1.5.205 setups on the Brains page: show the list of changes first; Apply saves them one job at a time.
       if ('setup' in b.dataset) { setupAsk = b.dataset.setup; draw(); dlg.querySelector('.setup-ask')?.scrollIntoView({ block: 'nearest' }); return; }
       if ('setupbobnet' in b.dataset) { setupAsk = ''; sampler.stop(); setTab('settings'); jumpTo = 'adv-bobnet'; draw(); return; }
+      // Nov 18 2026 + Add a brain: the brain picked takes the jobs ticked (One brain goes off: there are two brains now).
+      if ('addgo' in b.dataset) {
+        const box = b.closest('.add-brain-form'); const why = box?.querySelector('.add-why');
+        const value = box?.querySelector('[data-addbrain]')?.value || '';
+        const ids = [...(box?.querySelectorAll('[data-addjob]:checked') || [])].map((x) => x.dataset.addjob);
+        if (!value || !ids.length) { if (why) why.textContent = !value ? 'Pick a brain first.' : 'Tick at least one job.'; return; }
+        const opt = (roles?.options?.llm || []).find((o) => o.value === value);
+        const can = ids.filter((id) => takesJob(id, { entry: entryOf(data?.models || [], value), name: value, caps: opt?.caps }).ok);
+        const cant = ids.filter((id) => !can.includes(id)).map((id) => allSlots().find((s) => s.id === id)?.name || id);
+        if (!can.length) { if (why) why.textContent = `That brain can't do ${cant.join(', ')}.`; return; }
+        b.disabled = true;
+        if (settings.oneBrain) settings.oneBrain = (await api('/api/settings', { oneBrain: false })).oneBrain;
+        for (const id of can) { const sl = allSlots().find((s) => s.id === id); if (sl) await equipSlot(sl, value).catch(() => {}); }
+        await eqReload(); draw();
+        if (cant.length) flash(dlg.querySelector('.add-brain') || dlg, `Left out: ${cant.join(', ')} (that brain can't do ${cant.length === 1 ? 'it' : 'them'}).`);
+        return;
+      }
       if ('onebrainoff' in b.dataset) { b.disabled = true; settings.oneBrain = (await api('/api/settings', { oneBrain: false })).oneBrain; draw(); return; }
       if (b.dataset.setupapply) {
         const id = b.dataset.setupapply;
@@ -1336,6 +1381,7 @@ export function createCellar({ popOut = null } = {}) {
     ownForm = null;
     await ownRefresh();
     const row = dlg.querySelector('#own-' + CSS.escape(r.added?.id || ''));
+    if (!row) { const at = dlg.querySelector('.add-brain'); if (at) flash(at, `Added. ${esc(r.added?.name || 'Your brain')} is in the brain menus now.`); }
     if (row) { row.scrollIntoView({ block: 'center' }); flash(row, `Added. ${esc(r.added.name)} is on your list now: switch it Active and equip it like any other brain.`); }
   });
   const onChange = async (e) => {
@@ -1347,7 +1393,23 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.placemoe || el.dataset.placemoenum) { const max = Number(el.max) || 0; const n = Math.max(0, Math.min(max, Math.round(Number(el.value) || 0))); await placeSave(el.dataset.placemoe || el.dataset.placemoenum, { cpuMoe: n }); draw(); return; }
       // 1.5.205 the Brains page: give a brain another job, or pick a brain for an empty job.
       if (el.dataset.find) { const y = dlg.scrollTop; find = { ...find, q: dlg.querySelector('[data-findq]')?.value ?? find.q, [el.dataset.find]: el.value }; findKeep(); draw(); dlg.scrollTop = y; dlg.querySelector(`[data-find="${el.dataset.find}"]`)?.focus(); return; } // 1.5.209 Search is what asks the site; changing a menu alone does not
+      if ('catbrainjob' in el.dataset) { const y = dlg.scrollTop; catFocus = el.value; draw(); dlg.scrollTop = y; dlg.querySelector('[data-catbrainjob]')?.focus(); return; } // Nov 18 2026
       if (el.dataset.catfilter) { const y = dlg.scrollTop; setCatFilters({ ...catFilters, [el.dataset.catfilter]: el.value }); draw(); dlg.scrollTop = y; dlg.querySelector(`[data-catfilter="${el.dataset.catfilter}"]`)?.focus(); return; } // 1.5.208
+      // Nov 18 2026: a row's brain picker moves every job on that row to the brain picked.
+      if (el.dataset.rowbrain !== undefined && el.value && el.value !== el.dataset.rowbrain) {
+        const y = dlg.scrollTop; el.disabled = true;
+        for (const id of (el.dataset.rowjobs || '').split(',').filter(Boolean)) { const sl = allSlots().find((s) => s.id === id); if (sl) await equipSlot(sl, el.value).catch(() => {}); }
+        await eqReload(); draw(); dlg.scrollTop = y; return;
+      }
+      // Nov 19 2026: a big brain's Quant level menu. One you have takes the row's jobs; one you don't asks to download first.
+      if (el.dataset.rowquant !== undefined && el.value && el.value !== el.dataset.rowquant) {
+        const m = (data?.models || []).find((x) => x.id === el.value);
+        const y = dlg.scrollTop;
+        if (m?.status?.state !== 'installed') { el.value = el.dataset.rowquant; if (m) confirmBox(el.closest('.model'), m); dlg.scrollTop = y; return; }
+        el.disabled = true;
+        for (const id of (el.dataset.rowjobs || '').split(',').filter(Boolean)) { const sl = allSlots().find((s) => s.id === id); const v = sl && slotValue(sl, m, roles); if (v) await equipSlot(sl, v).catch(() => {}); }
+        await eqReload(); draw(); dlg.scrollTop = y; return;
+      }
       if (el.dataset.brainjob && el.value) { const y = dlg.scrollTop; await equip(el.value, el.dataset.brainjob, { offer: false }); dlg.scrollTop = y; return; }
       if (el.dataset.jobbrain && el.value) { const y = dlg.scrollTop; await equip(el.dataset.jobbrain, el.value, { offer: false }); dlg.scrollTop = y; return; }
       if (el.dataset.proxy) { const side = $(el.dataset.proxy); if (side && (side.getAttribute('aria-pressed') === 'true') !== el.checked) side.click(); setTimeout(() => { el.checked = side?.getAttribute('aria-pressed') === 'true'; }, 300); return; }
@@ -1420,6 +1482,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.bctx) { const v = el.value ? Number(el.value) : null; const r = await api('/api/settings', { brainCtx: { [el.dataset.bctx]: v } }); settings.brainCtx = r.brainCtx; const b = (bctx.brains || []).find((x) => x.model === el.dataset.bctx); if (b) b.picked = v; flash(el, 'Saved. Applies when the brain next loads.'); return; }
       if (el.dataset.sctx) { const v = el.value ? Number(el.value) : null; const r = await api('/api/settings', { sessionCtx: { [el.dataset.sctx]: v } }); settings.sessionCtx = r.sessionCtx; flash(el, 'Saved. Applies when the brain next loads.'); return; }
       if (el.dataset.sbrain) { const r = await api('/api/settings', { sessionBrains: { [el.dataset.sbrain]: el.value } }); settings.sessionBrains = r.sessionBrains; flash(el, 'Saved.'); return; }
+      if (el.dataset.set === 'useOllama') { const r = await api('/api/settings', { useOllama: el.checked }); settings.useOllama = r.useOllama === true; el.checked = settings.useOllama; flash(el, settings.useOllama ? 'On. Bob can use Ollama too.' : 'Off. Bob uses only his own parts.'); return; }
       if (el.dataset.set === 'pictureNoWait') { const r = await api('/api/settings', { pictureNoWait: el.checked }); settings.pictureNoWait = r.pictureNoWait; el.checked = r.pictureNoWait; return; }
       // List items 94-99: engine and speed extras, each saved on its own.
       if (el.dataset.set === 'readingSpeed') { const r = await api('/api/settings', { readingSpeed: el.value }); settings.readingSpeed = r.readingSpeed; settings.readingSteps = r.readingSteps; const y = dlg.scrollTop; draw(); dlg.scrollTop = y; return; } // 101
@@ -1453,6 +1516,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.set === 'howtos') { const r = await api('/api/settings', { howtos: el.checked }); settings.howtos = r.howtos; el.checked = r.howtos; flash(el, r.howtos ? 'On. After a job with a few steps goes well, Bob offers to keep them as a how-to.' : 'Off. Bob won\'t offer or use how-tos. Saved ones stay in 🧰 Tools and how-tos.'); return; }
       if (el.dataset.set === 'computerLab') { const r = await api('/api/settings', { computerLab: el.checked }); settings.computerLab = r.computerLab === true; el.checked = settings.computerLab; window.dispatchEvent(new CustomEvent('bob-lab-switch', { detail: { on: settings.computerLab } })); flash(el, r.computerLabWhy || (settings.computerLab ? 'On. 🧪 Lab is in the left pane.' : 'Off. The Lab button is hidden; brains you made stay in Bob.')); return; } // 1.5.141
       if (el.dataset.set === 'labPro' || el.dataset.set === 'labLessons') { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k] === true; el.checked = settings[k]; flash(el, settings[k] ? 'On.' : 'Off.'); return; } // 15 Nov: Lab switches (labPro had no handler here)
+      if (el.dataset.set === 'quantPicker') { const r = await api('/api/settings', { quantPicker: el.checked }); settings.quantPicker = r.quantPicker === true; el.checked = settings.quantPicker; draw(); return; } // Nov 19 2026
       if (el.dataset.set === 'naughtyList') { const r = await api('/api/settings', { naughtyList: el.checked }); settings.naughtyList = r.naughtyList === true; el.checked = settings.naughtyList; if (!settings.naughtyList && catView === 'naughty') setCatView('well'); flash(el, settings.naughtyList ? 'On. The Naughty list side (the red devil) is at the top of the Brain catalogue.' : 'Off. The naughty list is out of every list again.'); return; }
       if (el.dataset.set === 'catalogUpdates') { const r = await api('/api/settings', { catalogUpdates: el.checked }); settings.catalogUpdates = r.catalogUpdates === true; el.checked = settings.catalogUpdates; flash(el, settings.catalogUpdates ? (r.listCheck?.why ? `On. ${r.listCheck.why}` : 'On. Bob looks for a newer brain list once a day.') : 'Off. Bob uses the brain list that came with this version.'); await load().catch(() => {}); return; } // 1.5.137
       if (el.dataset.set === 'webSearch') { const r = await api('/api/settings', { webSearch: el.checked }); settings.webSearch = r.webSearch; el.checked = r.webSearch; window.dispatchEvent(new CustomEvent('bob-web', { detail: { webSearch: r.webSearch } })); flash(el, r.webSearch ? 'On. Bob can search the web when a question needs it.' : 'Off. Bob won\'t go online to look things up.'); return; }
@@ -1503,6 +1567,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.netvoice) { const r = await api('/api/settings', { netVoiceMap: { [el.dataset.netvoice]: el.value } }); settings.netVoiceMap = r.netVoiceMap || {}; window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: {} })); flash(el, 'Saved.'); return; }
       if (el.dataset.set === 'editOwn') { const r = await api('/api/settings', { editOwn: el.checked }); settings.editOwn = r.editOwn; el.checked = r.editOwn; flash(el, r.editOwn ? 'On. Bob can fix his own earlier messages.' : 'Off. Bob sends a new message for any fix.'); return; }
       if (el.dataset.set === 'statusJokes') { const r = await api('/api/settings', { statusJokes: el.checked }); settings.statusJokes = r.statusJokes; el.checked = r.statusJokes; window.dispatchEvent(new CustomEvent('bob-status-jokes', { detail: r.statusJokes })); return; }
+      if (el.dataset.set === 'patchesSteps') { const r = await api('/api/settings', { patchesSteps: el.checked }); settings.patchesSteps = r.patchesSteps; el.checked = r.patchesSteps; window.dispatchEvent(new CustomEvent('bob-patches-steps', { detail: r.patchesSteps })); return; }
       if (el.dataset.set === 'thinkBubble') { const r = await api('/api/settings', { thinkBubble: el.checked }); settings.thinkBubble = r.thinkBubble; el.checked = r.thinkBubble; window.dispatchEvent(new CustomEvent('bob-think-bubble', { detail: r.thinkBubble })); return; }
       if (el.dataset.set === 'chatRedo') { const r = await api('/api/settings', { chatRedo: el.checked }); settings.chatRedo = r.chatRedo; el.checked = r.chatRedo; window.dispatchEvent(new CustomEvent('bob-chat-redo', { detail: r.chatRedo })); flash(el, r.chatRedo ? 'On. Try again, Edit and Delete are in each message\'s … menu.' : 'Off. The … menu has Copy only.'); return; }
       if (el.dataset.set === 'netReview') { const r = await api('/api/settings', { netReview: el.checked }); settings.netReview = r.netReview; el.checked = r.netReview; return; }

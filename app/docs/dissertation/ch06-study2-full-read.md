@@ -105,6 +105,10 @@ Two further notes from the journal affect how the outside sets are used. The set
 
 So 3.3% of the lessons that were read were fit to teach as they stood. Almost three quarters needed a rewrite. Counted against all 6,322 tool lessons, 189 is 3.0%.
 
+![Verdicts of the full read, as shares of each set](figures/full-read-verdicts.svg)
+
+*Figure 6.1. The verdicts above as shares of the 5,788 lessons read, beside the sort of the 534 held-out test items (Chapter 7). Keep is the thin strip at the left of the top bar: about 1 lesson in 30 was fit to teach as written.*
+
 The `by` field of each verdict records how it was reached: `haiku+opus` for 3,706 lessons where Opus agreed, `spot-check` for 2,065 where Opus changed the verdict or gave its own reasons, `auto` for the 17 guard demotions, and `pre` for the 534 held-out items (TALLY.md). No lesson was left at a Haiku-only verdict.
 
 ### 6.6.2 What Opus changed
@@ -172,7 +176,7 @@ TALLY.md groups the faults that Haiku passed and Opus caught. We quote the group
 | Results no real tool returns | A search or a security check that "saves" files; an app look that returns prose or GPU facts instead of controls; a notice board or reminder result with fields the tool does not have; a forget step that finishes without its preview |
 | Repeating the specialist | Bob rewrites an answer that already went straight to the user. A decision on 15 November counts this as repair |
 | Needless calls | Tools used for stable knowledge; guessed folder listings when the user gave no path |
-| Leaks, loops and private paths | Reasoning that loops or quotes the prompt; the owner's user folder in calls and answers |
+| Leaks, loops and private paths | Reasoning that loops or quotes the prompt; MouseWurX's user folder in calls and answers |
 | Wrong facts | Many code and API facts (Unreal, Blender, Rust, Kotlin, Python) |
 
 These groups have two things in common. They are invisible to a script that checks form, because the call parses and the result is well formed. And they need knowledge of the real system: what each tool actually returns, what fields it has, what its limits are. A likely cause is that the writer model had Bob's tool list but not Bob's real tool behaviour, so it invented plausible results. The files do not test this.

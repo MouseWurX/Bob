@@ -23,7 +23,7 @@ export const OFFICIAL = {
 export const FAMILY_MAKER = {
   Qwen: 'Alibaba', Gemma: 'Google', Granite: 'IBM', Mistral: 'Mistral AI', Nemotron: 'NVIDIA', DeepSeek: 'DeepSeek', GLM: 'Z.ai',
   Laguna: 'Poolside', 'GPT-OSS': 'OpenAI', Whisper: 'OpenAI', 'Z-Image': 'Alibaba', FLUX: 'Black Forest Labs', LTX: 'Lightricks',
-  Wan: 'Alibaba', Nomic: 'Nomic', 'ACE-Step': 'ACE Studio', Phi: 'Microsoft', Llama: 'Meta',
+  Wan: 'Alibaba', Nomic: 'Nomic', 'ACE-Step': 'ACE Studio', Phi: 'Microsoft', Llama: 'Meta', Muse: 'Meta', LFM: 'Liquid AI',
 };
 const orgOf = (m) => String(m?.source?.repo || '').split('/')[0].toLowerCase();
 
@@ -47,6 +47,11 @@ export function officialTag(m) {
 export const isReap = (m) => m?.reap === true || m?.community?.kind === 'reap' || /(^|[^a-z])reap([^a-z]|$)/i.test(`${m?.name || ''} ${m?.source?.repo || ''}`);
 export const REAP_LINE = 'REAP cut: the experts this brain uses least were taken out, so the file is smaller and it can run quicker. Nothing was done to its refusals, so it is not a naughty-list brain.';
 export const reapTag = (m) => (isReap(m) ? `<span class="tag reap-tag" tabindex="0" data-tip="${esc(REAP_LINE)}" aria-label="REAP cut: made smaller, refusals untouched">✂ REAP cut</span>` : '');
+// Turbo-ready: the file carries its own guesser (an MTP head, "multi-token prediction"), so Turbo needs no second
+// brain. Only an explicit `turbo: true` in catalog.json says so (offer MTP files where they exist).
+export const isTurbo = (m) => m?.turbo === true;
+export const TURBO_LINE = 'Turbo-ready: this file carries its own guesser (MTP, multi-token prediction). It guesses the next few words and the brain checks them all at once, so replies can come faster with the same words. Turbo is off until you switch it on: Lab, Test, Faster, Its own guesser, then Use this in Bob. It costs a little more memory.';
+export const turboTag = (m) => (isTurbo(m) ? `<span class="tag turbo-tag" tabindex="0" data-tip="${esc(TURBO_LINE)}" aria-label="Turbo-ready: carries its own guesser">⚡ Turbo-ready</span>` : '');
 // Words in a name that mean refusals were cut out. REAP is not one of them.
 export const NAUGHTY_WORDS = /abliterat|heretic|uncensored|derestrict|decensor|no[-_ ]?refus/i;
 export const looksNaughty = (name) => NAUGHTY_WORDS.test(String(name || ''));

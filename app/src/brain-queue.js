@@ -5,7 +5,7 @@ import { readSaved } from './saving.js';
 import { carryOnPlan, finishedSteps, MAX_AUTO_RESUMES, interruptedNote, isBareOk, NOTHING_TO_OK, NOTHING_TO_OK_BUSY, queuedLine, plainDoing } from './handoff.js';
 import { writeJsonAtomic } from './util.js';
 import { isGuestId, GUEST_LOG } from './guest-chat.js';
-import { waitsForGaming, GAMING_TAG, GAMING_HINT, laneOf, suggestSession } from './sessions.js';
+import { waitsForGaming, GAMING_TAG, GAMING_HINT, GAMING_PAUSED_LINE, noGamingBrain, laneOf, suggestSession } from './sessions.js';
 import { steerNote } from './job-helps.js';
 import { asksAboutJob, meanwhileOn } from './meanwhile.js';
 import crypto from 'node:crypto';
@@ -324,7 +324,12 @@ export const queueParts = {
       }
       if (job.away) continue; // with another Bob (or being sent)
       if (!homeOpen(this.cfg, job)) { if (!job.homeWait) { job.homeWait = true; this.log('queue', HOME_WAIT); } continue; } // item 236: another person's job waits for them
-      if (waitsForGaming(this.cfg, job)) { this.gamingProbe?.(); continue; } // 1.5.23: waits in Tasks until the session isn't Gaming
+      if (waitsForGaming(this.cfg, job)) { // 1.5.23: waits in Tasks until the session isn't Gaming
+        // Nov 16 (the owner: "during gaming the main brain doesnt load"): with no Gaming brain, a chat that no other Bob
+        // took (Send jobs, above) gets one line saying Bob is paused, so it doesn't look ignored.
+        if (job.kind === 'chat' && !job.gamingNoted && noGamingBrain(this.cfg)) { job.gamingNoted = true; this.broadcast({ type: 'busy-note', sessionId: job.sessionId, jobId: job.id, text: GAMING_PAUSED_LINE(Boolean(this.cfg.share?.borrow?.jobs)) }); }
+        this.gamingProbe?.(); continue;
+      }
       if (job.after && !this.downloadReady(job)) continue; // 1.5.38: waits for the download it needs
       let lane = laneOf(this.cfg, job);
       let beside = false;

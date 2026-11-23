@@ -78,11 +78,12 @@ export function createSettingsParts(now) {
 `)}${panel('ev-how', '⚡ How Bob works', howSum, `
       <h4 class="ssub">How he works</h4>
       ${sswitch('autoSession', settings.autoSession !== false, 'Auto session', 'Bob switches to the session that suits the job (Art, Coding, Office or Gaming) and returns to Normal after 2 quiet minutes. He stays in Gaming while a game uses the GPU. A session you pick is kept while you work.')}
-      ${sswitch('oneBrain', settings.oneBrain, 'One brain', 'The main brain does every job and the Quick brain is off. No swaps (about 20 seconds each). Other picks are kept, greyed on the Brains page.')}
+      ${sswitch('oneBrain', settings.oneBrain, 'One brain', 'The main brain does every job, the Quick brain is off, and so is the Gaming brain. No swaps (about 20 seconds each). Other picks are kept, greyed on the Brains page.')}
       ${sswitch('planFirst', settings.planFirst === true, 'Plan before big jobs', keep('Before a multi-step job, or one that changes files or runs programs, Bob shows the steps on one card and waits for your OK.'))}
       ${sswitch('howtos', settings.howtos === true, 'Learn how-tos', 'After a multi-step job goes well, Bob offers to save the steps as a how-to and follows it for similar asks. Nothing is kept without your click. Your how-tos are in 🧰 Tools and how-tos below.')}
       ${sswitch('editOwn', settings.editOwn === true, 'Edit his own messages', 'Bob corrects his earlier message instead of sending a new one. It says edited; press that to see the original.')}
       ${sswitch('thinkBubble', settings.thinkBubble !== false, 'Thinking bubble', 'One folded bubble above the answer holds every step, draft and fix. Off: it all types out in the chat.')}
+      ${sswitch('patchesSteps', settings.patchesSteps !== false, `${esc(settings.catName || 'Patches')} tells the steps`, 'The cat narrates the short step lines in the thinking bubble. Bob still gives the answers. Off: plain step lines.')}
       ${sswitch('statusJokes', settings.statusJokes !== false, 'Funny status line', 'The line under my name says what I\'m doing, in my own words. Off: plain words.')}
       ${sswitch('chatRedo', settings.chatRedo !== false, 'Try again, Edit and Delete', 'Adds them to each message\'s … menu.')}
       ${sswitch('quickNotes', settings.quickNotes === true, 'Quick notes', 'Say "note: ..." or "jot this down" in any chat, here, on your phone, in Discord DMs or Telegram. Find notes by a word or #tag.')}
@@ -120,7 +121,8 @@ export function createSettingsParts(now) {
       ${sswitch('labPro', settings.labPro === true, 'Lab: Professional mode', keep('Shows every control, the test logs and each method\'s proper name. The same switch is at the top of the Lab.'))}
       ${sswitch('labLessons', settings.labLessons === true, 'Lab: Lessons', keep('Adds Lessons to Lab, Learn: a short course from tokens to cutting and healing a brain. Each lesson is read, try it on your loaded brain, then two quick questions.'))}
       ${selfWorkHtml()}
-      ${sswitch('naughtyList', settings.naughtyList === true, 'Show the naughty list', keep('Adds a Naughty list to the Brain catalogue: Qwen and Gemma remixes with the refusals removed ("heretic" or "abliterated"). What they say is on you. Bob never recommends one. Off: hidden; one already equipped stays.'))}
+      ${sswitch('quantPicker', settings.quantPicker === true, 'Pick a quant level', keep('A brain with smaller files (Q3, Q2, 1-bit) gets a Quant level menu on the Brains page and in the catalogue. Smaller fits more on the card and runs faster, a little less sharp. Every level shows how it did in Bob\'s checks and whether he recommends it; the choice is yours. Q4 stays the usual; Bob never picks a lower one for you.'))}
+      ${sswitch('naughtyList', settings.naughtyList === true, 'Show the naughty list', keep('Adds a Naughty list to the Brain catalogue: remixes of Qwen, Gemma and other open brains with the refusals removed ("heretic" or "abliterated"). What they say is on you. Bob never recommends one. Off: hidden; one already equipped stays.'))}
 `)}${EVERY_EXTRA.map(([id, label, note, body]) => panel(id, label, typeof note === 'function' ? note() : note, body())).join('')}
     </div>`;
   }
@@ -193,6 +195,10 @@ export function createSettingsParts(now) {
     const pickOpt = (p) => `<option value="${esc(p.key)}">${esc(p.name)}${p.by ? ` (${esc(p.by)})` : ''}${p.answerOnly ? ': pay per answer only' : p.cards > 1 ? `: needs ${p.cards} cards` : ''}</option>`;
     const bigs = picks.filter((p) => p.group === 'big'), tooBig = picks.filter((p) => p.group === 'too-big');
     const pickSel = picks.length ? `<label class="pick"><strong>Pick a brain from Bob's list</strong><select data-rentadd="pick" aria-label="Pick a brain from Bob's list"><option value="">None: I'll type the model's name</option>${bigs.length ? `<optgroup label="Really big brains">${bigs.map(pickOpt).join('')}</optgroup>` : ''}${tooBig.length ? `<optgroup label="Too big for your Bobs">${tooBig.map(pickOpt).join('')}</optgroup>` : ''}</select></label>` : '';
+    // Nov 17: the boxes for the service shown at first match it from the start (the Service change handler in
+    // cellar.js does the same when you pick another), so a RunPod rental doesn't show "Another service"'s boxes.
+    const first = (r.services || []).find((x) => x.enabled) || null;
+    const hideCard = !first || first.kind === 'answer' ? ' hidden' : '', hideCards = !first || first.kind !== 'machine' ? ' hidden' : '', hideOther = first?.id !== 'other' ? ' hidden' : '';
     const svcOpts = (r.services || []).map((s) => `<option value="${esc(s.id)}" ${s.enabled ? '' : 'disabled'}>${esc(s.name)}${s.enabled ? '' : ' (switch it on first)'}</option>`).join('');
     return `<div class="rent-block"><strong>Rented brains</strong> <span class="tag">off unless you turn one on</span>
       ${more('A rental is a service plus a model (for example Qwen 3.6 35B on OpenRouter, or a full-size 24Bob on a RunPod card). Put one in the Rented brain job in Settings, Brains, then use the 🏗 Rented brain switch under the chat. You press a card before anything is spent. It shows the cost and what leaves this replicant matrix: that job\'s chat, its attached files, Bob\'s instructions and what he remembers about you. Keys are environment variables Bob only reads (on Mac and Linux also ~/.config/bob/env); he never stores or shows one. Costs are estimates; the service\'s billing page is the real bill.')}
@@ -210,11 +216,11 @@ export function createSettingsParts(now) {
         <label class="pick"><strong>Service</strong><select data-rentadd="service" aria-label="Service">${svcOpts}</select></label>
         <label class="pick"><strong>Model</strong><input data-rentadd="model" placeholder="as the service lists it, e.g. qwen/qwen3.6-35b-a3b, or Owner/Repo/file.gguf" aria-label="Model name" style="width:24em"> <button type="button" class="mini" data-rentfind hidden>Find it on this service</button></label>
         <p class="muted rent-pick-note" aria-live="polite"></p>
-        <label class="pick rent-card-pick"><strong>Card size</strong><select data-rentadd="card" aria-label="Card size">${cardOpts}</select></label>
-        <label class="pick rent-cards-pick"><strong>Cards on the machine</strong><select data-rentadd="cards" aria-label="How many cards on the machine">${(r.cardCounts || [1]).map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n === 1 ? '1 card (the usual)' : `${n} cards at once: ${n} times the hourly price`}</option>`).join('')}</select> <span class="muted">Only for a model too big for one card. The price and the limits apply to the whole machine.</span></label>
+        <label class="pick rent-card-pick"${hideCard}><strong>Card size</strong><select data-rentadd="card" aria-label="Card size">${cardOpts}</select></label>
+        <label class="pick rent-cards-pick"${hideCards}><strong>Cards on the machine</strong><select data-rentadd="cards" aria-label="How many cards on the machine">${(r.cardCounts || [1]).map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n === 1 ? '1 card (the usual)' : `${n} cards at once: ${n} times the hourly price`}</option>`).join('')}</select> <span class="muted">Only for a model too big for one card. The price and the limits apply to the whole machine.</span></label>
         <div class="confirm rent-multi-warn" hidden></div>
-        <label class="pick rent-other"><strong>Web address</strong><input data-rentadd="address" placeholder="https://…/v1" aria-label="Web address" style="width:20em"></label>
-        <label class="pick rent-other"><strong>Key variable</strong><input data-rentadd="keyEnv" placeholder="MY_SERVICE_API_KEY" aria-label="Key variable name" style="width:16em"></label>
+        <label class="pick rent-other"${hideOther}><strong>Web address</strong><input data-rentadd="address" placeholder="https://…/v1" aria-label="Web address" style="width:20em"></label>
+        <label class="pick rent-other"${hideOther}><strong>Key variable</strong><input data-rentadd="keyEnv" placeholder="MY_SERVICE_API_KEY" aria-label="Key variable name" style="width:16em"></label>
         <label class="pick"><strong>Name</strong><input data-rentadd="name" placeholder="optional, e.g. Qwen 35B on OpenRouter" aria-label="Rental name" style="width:20em"></label>
         <p class="row"><button type="button" class="get" data-rentaddgo>Add this rental</button><span class="muted rent-add-note"></span></p>
       </details>
