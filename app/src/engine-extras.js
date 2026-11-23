@@ -36,9 +36,21 @@ export function draftNumArgs(build, max, min) {
 // The copying guesser needs no second brain: ngram-mod looks the last 24 words up in what the chat already holds
 // and offers what came after them last time. The brain checks every guess, so answers come out the same.
 export const COPY_GUESS_ARGS = ['--spec-type', 'ngram-mod'];
+// Nov 23 (Strata's way): next to MTP too. llama.cpp tries its guessers in order and keeps the first one that offers
+// words, and the copying one comes first: where the chat holds a match the copied words are offered, elsewhere MTP's.
+// Not next to a separate draft brain (that one guesses alone), nor when another kind of guesser was set by hand.
+const DRAFT_BRAIN = ['-md', '--model-draft', '--spec-draft-model', '--spec-draft-hf', '-hfd'];
+export function specTypes(args = []) {
+  const out = [];
+  for (let i = 0; i < args.length - 1; i++) if (args[i] === '--spec-type') out.push(...String(args[i + 1]).split(',').map((t) => t.trim()).filter(Boolean));
+  return out;
+}
 export function copyGuessArgs(cfg, { build = 0, args = [] } = {}) {
   if (!extraOn(cfg, 'copyGuess') || !newSpecFlags(build)) return [];
-  if (args.some((a) => ['--spec-type', '-md', '--model-draft', '--spec-draft-model', '--spec-draft-hf', '-hfd'].includes(a))) return []; // MTP or a draft brain already guesses
+  const types = specTypes(args);
+  if (types.includes('ngram-mod')) return []; // already there
+  const mtp = types.includes('draft-mtp');
+  if (!mtp && (types.length || args.some((a) => DRAFT_BRAIN.includes(a)))) return []; // a draft brain or another guesser
   return [...COPY_GUESS_ARGS];
 }
 

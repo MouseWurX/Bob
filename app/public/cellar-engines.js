@@ -87,7 +87,7 @@ export function createEngineParts(now) {
     const bat = settings.onBattery === true ? 'On battery right now.' : settings.onBattery === false ? 'Plugged in right now.' : settings.laptopMode ? 'No battery found, so nothing changes here.' : '';
     return `<div class="tune engine-extras"><strong>Engine extras</strong> <span class="tag">off unless you turn it on</span>
          ${tip('Each switch is separate. They work with Brain Engine and llama.cpp; Ollama runs its own way, so only the speed history and Laptop mode reach it. Bob\'s Android app runs its own small engine and isn\'t changed by these.', 'Engine extras')}
-        ${sswitch('copyGuess', settings.copyGuess === true, 'Prompt-lookup decoding', 'Speeds up rewrites of code and documents by copying text already in the chat. Same answer, no second brain. Not used with MTP.')}
+        ${sswitch('copyGuess', settings.copyGuess === true, 'Prompt-lookup decoding', 'Speeds up rewrites of code and documents by copying text already in the chat. Same answer, no second brain. Works next to MTP: copied words where the chat has them, MTP\'s guesses elsewhere.')}
         ${readingSpeedHtml()}
         ${sswitch('turboEveryday', settings.turboEveryday !== false, 'MTP for everyday brains', 'Brains with their own built-in guesser use it for every reply, without the Lab. Same answer, written faster. Brains without one are unchanged.')}
         ${sswitch('turbo', settings.turbo === true, 'Turbo', 'Show-off speed: every speed trick that costs a little answer quality, at once. For showing how fast I can go, not for real jobs. Your brains\' own picks come back when it\'s off.')}
