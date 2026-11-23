@@ -124,10 +124,13 @@ check('a real graphics card: untouched (the card has its own memory)', r.ok && r
 r = await apuRoom({ ...fakeBrain(), gate: { brainBytes: () => undefined } }, 'qwen', 32768, { freeMem: 1 * GB });
 check('a brain whose size is unknown goes the old way', r.ok && !r.shortened);
 const brainSrc = brainText();
+check('Nov 23: when no size keeps Windows\'s share, the brain loads without its picture reader first', /if \(!room\.ok && this\.engine\?\.canShutEyes\?\.\(model\)\) \{ this\.engine\.shutEyes\(model\);[^\n]*room = await apuRoom\(this, model, fit\); \}/.test(brainSrc));
+{ const eng = fs.readFileSync(new URL('../src/llamacpp.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  check('Nov 23: a reader left off is left out of the load and the sums, and comes back with the first picture', /!this\.eyesShut\?\.has\(model\) \? \['--mmproj', mmproj\]/.test(eng) && /&& !this\.eyesShut\?\.has\(model\)\) \{ try \{ extra = /.test(eng) && /this\.eyesShut\.delete\(opts\.model\);\n\s*this\.reloadWanted\.add\(opts\.model\);/.test(eng)); }
 check('Nov 22: when even the shortest leaves too little, the shortest is tried (not the full size)', /if \(!room\.ok && fit > APU_MIN_CTX\)[^\n]*return APU_MIN_CTX;/.test(brainSrc));
 check('Nov 22: once loaded at the shortened size, the next reply keeps it (no jump back to the full size)', /if \(cut && cut\.want === fit && room\.ok && room\.needGB === undefined\) return cut\.ctx;/.test(brainSrc));
 check('Nov 22: fitCtx shortens the chat memory to what keeps Windows\'s share, and still loads', /if \(room\.ok && room\.shortened && room\.ctx < fit\)[^\n]*return room\.ctx;/.test(brainSrc));
-check('Nov 12: the guard never stops a load from the estimate (fitCtx, ensureModel, wake only log it; a real out-of-memory steps down)', /const room = await apuRoom\(this, model, fit\);/.test(brainSrc) && !/throw new Error\(room\.line\)/.test(brainSrc) && !/not waking \$\{model\}: too little RAM/.test(brainSrc) && /loading \$\{model\} anyway: the estimate says/.test(brainSrc) && /waking \$\{model\} anyway/.test(brainSrc) && /keeping \$\{model\}'s \$\{fit\} chat memory/.test(brainSrc));
+check('Nov 12: the guard never stops a load from the estimate (fitCtx, ensureModel, wake only log it; a real out-of-memory steps down)', /(?:const|let) room = await apuRoom\(this, model, fit\);/.test(brainSrc) && !/throw new Error\(room\.line\)/.test(brainSrc) && !/not waking \$\{model\}: too little RAM/.test(brainSrc) && /loading \$\{model\} anyway: the estimate says/.test(brainSrc) && /waking \$\{model\} anyway/.test(brainSrc) && /keeping \$\{model\}'s \$\{fit\} chat memory/.test(brainSrc));
 
 // ---- 1.5.133: the set-aside counts (Legion Go: every brain was refused with 8 GB set aside) ----
 const goBrain = (reserved, size) => ({ cfg: { sharedGraphics: true, reservedGraphicsGB: reserved }, gate: { brainBytes: (m, { ctx }) => size * GB + Math.min(ctx || 32768, 131072) * 60 * 1024 }, engine: { loaded: async () => [] } });

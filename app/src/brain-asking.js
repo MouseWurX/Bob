@@ -342,7 +342,10 @@ export const askingParts = {
     // Nov 12: the estimate never stops a load. Nov 22 (a friend's Legion Go, 3 GB set aside, 4.5 GB free: 32K left
     // 0.3 GB for Windows): the chat memory is shortened to the biggest size that keeps Windows's share, and the brain
     // is still tried at that size. When even the shortest doesn't fit, the size picked is tried as before.
-    const room = await apuRoom(this, model, fit);
+    let room = await apuRoom(this, model, fit);
+    // Nov 23 (the owner's pick): no size keeps Windows's share: first the brain loads without its picture reader (it comes
+    // back when a picture is sent), then the sums again.
+    if (!room.ok && this.engine?.canShutEyes?.(model)) { this.engine.shutEyes(model); this.log('model', `${model}: loading it without its picture reader for now, so Windows keeps its share (~${room.needGB} GB needed, ~${room.roomGB} GB free); it comes back when you send a picture`); room = await apuRoom(this, model, fit); }
     if (room.ok && room.shortened && room.ctx < fit) { (this.memCut ||= new Map()).set(model, { want: fit, ctx: room.ctx }); this.log('model', `${model}: ${room.ctx} chat memory instead of ${fit}, so Windows keeps its share (~${room.needGB} GB needed, ~${room.roomGB} GB free)`); return room.ctx; }
     // Nov 22: already loaded at a shortened size (apuRoom has nothing new to check): it stays there, instead of jumping
     // back to the full size, which is what ran out of memory

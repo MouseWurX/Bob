@@ -563,7 +563,7 @@ export class LlamaCpp {
       '-c', String(ctx || lc.ctx || DEFAULT_CTX), ...this.layerArgs(cpu, card), '--jinja',
       // Long memory: past what the brain was made for, its positions are stretched (YaRN) to the size picked.
       ...this.stretchArgs(gguf, ctx || lc.ctx || DEFAULT_CTX),
-      ...(mmproj && lc.vision !== false && !(lc.noEyes || []).includes(model) ? ['--mmproj', mmproj] : []), // Lab: "Load without eyes and ears" for one brain
+      ...(mmproj && lc.vision !== false && !(lc.noEyes || []).includes(model) && !this.eyesShut?.has(model) ? ['--mmproj', mmproj] : []), // Lab: "Load without eyes and ears" for one brain; eyesShut: no room (below)
       // 100 (opt-in, the Brains page): the brain's chat memory type, Standard (8-bit) unless picked. Flags set by hand win.
       ...memArgs(this.cfg, model, lc.args),
       // 98 Laptop mode (opt-in): on battery, half the cores. Games-first and threads set by hand win.
@@ -912,7 +912,7 @@ export class LlamaCpp {
   // What this brain needs at a chat memory size: { card, cpu } in bytes, or null when the file can't be read.
   apuNeed(model, ctx) {
     let gguf, size = 0, extra = 0;
-    try { const r = this.resolve(model); gguf = r.gguf; size = fs.statSync(gguf).size; if (r.mmproj && this.lc.vision !== false && !(this.lc.noEyes || []).includes(model)) { try { extra = fs.statSync(r.mmproj).size; } catch {} } } catch { return null; }
+    try { const r = this.resolve(model); gguf = r.gguf; size = fs.statSync(gguf).size; if (r.mmproj && this.lc.vision !== false && !(this.lc.noEyes || []).includes(model) && !this.eyesShut?.has(model)) { try { extra = fs.statSync(r.mmproj).size; } catch {} } } catch { return null; }
     let shape = null, experts = 0;
     try { const info = ggufInfo(gguf); shape = info?.shape; experts = info?.experts || 0; } catch {}
     const c = ctx || this.lc.ctx || DEFAULT_CTX;
@@ -1271,9 +1271,22 @@ export class LlamaCpp {
     return out;
   }
 
+  // Nov 23 (the owner's pick, Legion Go): on built-in graphics, when the brain can't keep Windows's share at any chat
+  // memory size, it loads without its picture reader (about 0.5 GB), until Bob restarts or a picture comes in.
+  canShutEyes(model) {
+    try { return this.cfg.sharedGraphics === true && Boolean(this.resolve(model).mmproj) && this.lc.vision !== false && !(this.lc.noEyes || []).includes(model) && !this.eyesShut?.has(model); } catch { return false; }
+  }
+  shutEyes(model) { (this.eyesShut ||= new Set()).add(model); }
   async chat(opts) {
     const b = this.route(opts);
     if (b) return b.chat({ ...opts, beside: false, cpu: true });
+    // A picture for a brain loaded without its reader: load it again with the reader first.
+    if (this.eyesShut?.has(opts?.model) && (opts.messages || []).some((m) => m.images?.length)) {
+      this.eyesShut.delete(opts.model);
+      this.reloadWanted.add(opts.model);
+      try { this.log?.('engine', `${opts.model}: a picture came in, so I'm loading its picture reader again (memory is tight, so this may be slow)`); } catch {}
+      await this.preload(opts.model, opts.signal, { ctx: opts.ctx || this.currentCtx || undefined, cpu: Boolean(opts.cpu) });
+    }
     if (opts?.chatId && chatPlacesOn(this.cfg)) await this.switchPlace(opts.chatId, opts.model).catch((e) => { try { this.log?.('engine', `couldn't swap chat places (${e.message})`); } catch {} });
     this.active++;
     this.lastUse = this.now();
