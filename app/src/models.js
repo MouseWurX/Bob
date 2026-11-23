@@ -22,6 +22,8 @@ import { packFor } from '../public/fit.js';
 import { allSlots, slotValue } from '../public/equip.js';
 import { mergeMadeBrains } from './lab.js'; // 1.5.141
 import { jitter } from './retry.js'; // item 194
+import { gatedBlock, gatedToken, withHfKey, signedFetch, refusedWords } from './hf-sign-in.js'; // Nov 22 2026 gated brains
+import { brainEngineBuild } from '../public/engine-name.js';
 
 const MODEL_EXT = new Set(['.gguf', '.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.sft']);
 const SKIP = new Set(['node_modules', '.git', '__pycache__', 'site-packages', 'venv', '.venv', 'env', 'cache', '.cache', 'Lib', 'include', 'temp', 'tmp', 'logs', 'blobs']);
@@ -136,7 +138,8 @@ export function ticker(pub, emit) {
 
 // What a failed link means, in plain words. 401/403: the model is gated (an account and accepted terms);
 // 404: the file moved. Neither is worth retrying.
-export function linkError(name, status) {
+export function linkError(name, status, signed = false) {
+  if (signed && (status === 401 || status === 403)) return refusedWords(name, status);
   if (status === 401 || status === 403) return `This model needs a Hugging Face account to download (${name}, ${status}). Bob doesn't sign in for you.`;
   return `The link for ${name} is broken (${status}).`;
 }
@@ -144,10 +147,11 @@ export function linkError(name, status) {
 // 1.5.32: HEAD a download link, following up to 5 same-site redirects (301/302/307/308, relative or not) until a hop
 // carries x-linked-size or answers 200. A redirect to another host (the file storage) stops there: that hop's headers
 // already describe the file.
-export async function headFile(url, signal) {
+// token (a gated brain, src/hf-sign-in.js): sent to huggingface.co only, and this never leaves that host anyway.
+export async function headFile(url, signal, token = '') {
   let u = url, r;
   for (let hop = 0; hop < 6; hop++) {
-    r = await fetch(u, { method: 'HEAD', redirect: 'manual', signal: withDeadline(signal, 30_000) }); // item 212
+    r = await fetch(u, { method: 'HEAD', headers: withHfKey(u, {}, token), redirect: 'manual', signal: withDeadline(signal, 30_000) }); // item 212
     if (![301, 302, 307, 308].includes(r.status) || r.headers.get('x-linked-size')) return r;
     const loc = r.headers.get('location');
     if (!loc) return r;
@@ -159,13 +163,13 @@ export async function headFile(url, signal) {
 }
 
 // 1.5.32: { size, sha256 } of a Hugging Face file from its repo's file list (the same host), or null if it can't be read.
-export async function hfFileInfo(url, signal) {
+export async function hfFileInfo(url, signal, token = '') {
   const m = String(url).match(/^https:\/\/huggingface\.co\/([\w.-]+\/[\w.-]+)\/resolve\/([\w.-]+)\/(.+)$/);
   if (!m) return null;
   const [, repo, rev, file] = m;
   const dir = file.includes('/') ? file.slice(0, file.lastIndexOf('/')) : '';
   try {
-    const r = await fetch(`https://huggingface.co/api/models/${repo}/tree/${rev}${dir ? '/' + dir.split('/').map(encodeURIComponent).join('/') : ''}`, { signal: withDeadline(signal, 30_000) });
+    const r = await fetch(`https://huggingface.co/api/models/${repo}/tree/${rev}${dir ? '/' + dir.split('/').map(encodeURIComponent).join('/') : ''}`, { headers: withHfKey('https://huggingface.co/', {}, token), signal: withDeadline(signal, 30_000) });
     if (!r.ok) return null;
     const hit = (await r.json()).find((x) => x.path === decodeURIComponent(file));
     if (!hit) return null;
@@ -205,6 +209,18 @@ export function rentAsOf(m) {
   const f = (m.files || []).find((x) => x.role === 'gguf');
   const hit = String(f?.url || '').match(/^https:\/\/huggingface\.co\/([\w.-]+\/[\w.-]+)\/resolve\/[0-9a-f]{40}\/([^?#]+\.gguf)$/i);
   return hit ? `${hit[1]}/${hit[2]}` : '';
+}
+
+// Nov 23 2026: a brain that only a newer Brain Engine runs (catalogue engineMin, the build number, e.g. 37 for Raon-1).
+// Read from the installed Brain Engine's own marker. '' when it's new enough, else plain words. Download still works,
+// so the brain can come down while the engine update waits.
+export function engineShort(entry, { agentDir = '', read = fs.readFileSync } = {}) {
+  const min = Number(entry?.engineMin) || 0;
+  if (!min) return '';
+  let n = 0;
+  try { n = brainEngineBuild(JSON.parse(read(path.join(agentDir, 'brain-engine', 'bob-brainengine.json'), 'utf8')).version)?.n || 0; } catch {}
+  if (n >= min) return '';
+  return `${entry.name} needs Brain Engine ${min} or newer${n ? ` (this replicant matrix has Brain Engine ${n})` : ' (this replicant matrix has none)'}. Settings, Engines, Brain Engine gets or updates it.`;
 }
 
 export class ModelShop {
@@ -330,7 +346,10 @@ export class ModelShop {
     else if (have) state = 'partial';
     const where = pulled ? ['Ollama'] : byHand ? ['config.json'] : [...new Set(Object.values(located).map(ownerOf))];
     const canDownload = Boolean((this.viaOllama(entry) && ollama) || need);
-    return { state, where, located, canDownload };
+    // Nov 22 2026: a gated brain says whether it can download yet (src/hf-sign-in.js); never the key, only words.
+    const sign = entry.gated ? gatedBlock(this.cfg, entry) : '';
+    const engineWhy = engineShort(entry, { agentDir: this.cfg.agentDir });
+    return { state, where, located, canDownload, ...(entry.gated ? { signIn: sign ? 'needed' : 'ready', signInWhy: sign } : {}), ...(engineWhy ? { engineWhy } : {}) };
   }
 
   async list() {
@@ -459,7 +478,8 @@ export class ModelShop {
     }
     const entry = this.catalog.models.find((m) => m.id === id);
     if (!entry) throw new Error('No such model in the catalog.');
-    if (entry.gated) throw new Error(`${entry.name} needs a Hugging Face account to download. ${entry.gatedWhy || ''}`.trim());
+    const blocked = gatedBlock(this.cfg, entry); // Nov 22 2026: a gated brain downloads only with the switch on and a key saved
+    if (blocked) throw new Error(blocked);
     return { id, name: entry.name, kind: 'model', total: Math.round(entry.sizeGB * 1e9), viaOllama: this.viaOllama(entry) };
   }
 
@@ -666,6 +686,7 @@ export class ModelShop {
   async fetchFiles(entry, pub, signal, tick) {
     const located = this.locate(entry);
     const todo = entry.files.filter((f) => !located[f.role]);
+    const token = gatedToken(this.cfg, entry); // '' for every brain that doesn't need a Hugging Face account
     pub.phase = 'links'; pub.fileCount = todo.length; tick();
     // Ask each link for its size and checksum first, so a broken link or a full disk is caught before anything downloads.
     const heads = [];
@@ -673,16 +694,16 @@ export class ModelShop {
       if (!modelHostAllowed(f.url)) throw new Error(`I only download from Hugging Face, ModelScope and GitHub. ${f.url} isn't one of those.`);
       // 1.5.32: follow a renamed repo's redirect (Hugging Face answers 307 with a relative address and no file details)
       // until a hop names the file's size; the storage hop itself (another host) isn't asked.
-      const r = await headFile(f.url, signal);
+      const r = await headFile(f.url, signal, token);
       // 1.5.32: a redirect's content-length is the size of the redirect itself, not the file. Only x-linked-size, or the
       // length of a plain 200 answer, is the file's size.
       let size = Number(r.headers.get('x-linked-size') || (r.status === 200 ? r.headers.get('content-length') : 0) || 0);
-      if (r.status >= 400) throw new Error(linkError(fileNameOf(f.url), r.status));
+      if (r.status >= 400) throw new Error(linkError(fileNameOf(f.url), r.status, Boolean(token)));
       let linked = String(r.headers.get('x-linked-etag') || '').replace(/^W\//, '').replace(/"/g, '');
       // 1.5.32: when the quick check disagrees with the pin, ask Hugging Face's file list before giving up. Some storage
       // answers with headers that don't describe the file (a Wan 2.2 file was refused although it had not changed).
       if ((f.bytes && size && size !== f.bytes) || (f.sha256 && /^[0-9a-f]{64}$/.test(linked) && linked !== f.sha256)) {
-        const info = await hfFileInfo(f.url, signal);
+        const info = await hfFileInfo(f.url, signal, token);
         if (info) { size = info.size; linked = info.sha256 || linked; }
       }
       // Every catalog file is pinned (1.5.0): its size, and its sha256 unless marked sizeOnly. A file that changed
@@ -716,11 +737,17 @@ export class ModelShop {
       const base = pub.done;
       const q = quietGuard(signal); // item 212: two quiet minutes and the download stops (it resumes from here next time)
       let res;
-      try { res = await fetch(h.f.url, { headers: have ? { range: `bytes=${have}-` } : {}, redirect: 'follow', signal: q.signal }); } catch (e) { q.done(); throw q.quiet() && !signal?.aborted ? new Error(`Download of ${name} didn't start (nothing for 2 minutes). Try again; it picks up where it stopped.`) : e; }
-      if (!modelHostAllowed(res.url)) throw new Error('The download was redirected somewhere I don\'t trust. Stopped.');
+      let at = '';
+      try {
+        const headers = have ? { range: `bytes=${have}-` } : {};
+        // A gated brain: redirects followed by hand so the key stays on huggingface.co (src/hf-sign-in.js).
+        if (token) ({ res, url: at } = await signedFetch(h.f.url, { token, headers, signal: q.signal, allowed: modelHostAllowed }));
+        else { res = await fetch(h.f.url, { headers, redirect: 'follow', signal: q.signal }); at = res.url; }
+      } catch (e) { q.done(); throw q.quiet() && !signal?.aborted ? new Error(`Download of ${name} didn't start (nothing for 2 minutes). Try again; it picks up where it stopped.`) : e; }
+      if (!modelHostAllowed(at)) throw new Error('The download was redirected somewhere I don\'t trust. Stopped.');
       // The server ignored the Range request: start this file again from nothing.
       if (have && res.status === 200) { have = 0; hash.destroy?.(); fs.rmSync(part, { force: true }); return this.fetchFiles(entry, pub, signal, tick); }
-      if (!res.ok && res.status !== 206) throw new Error(res.status === 401 || res.status === 403 || res.status === 404 ? linkError(name, res.status) : `Download of ${name} failed (${res.status}).`);
+      if (!res.ok && res.status !== 206) throw new Error(res.status === 401 || res.status === 403 || res.status === 404 ? linkError(name, res.status, Boolean(token)) : `Download of ${name} failed (${res.status}).`);
       const out = fs.createWriteStream(part, { flags: have ? 'a' : 'w' });
       let last = 0, got = have;
       try {

@@ -4,6 +4,18 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.254
+
+KRAFTON's Raon-1 brains are in the catalogue, and I can download brains that need a Hugging Face account.
+
+### New
+
+- **KRAFTON's Raon-1 mini and nano in the Brain catalogue.** A 29B coder that works 4B at a time, and a 3B small brain. They need Brain Engine 37 or newer (this release has 43), and a card on an older engine says so. Their downloads don't need a Hugging Face account.
+- **Brains that need a Hugging Face account.** Some brain makers only let a signed-in account that accepted their terms download their brain. Save a read-only Hugging Face key as HF_TOKEN in 🔐 Locked secrets and switch on **Download brains that need a Hugging Face account** (Settings, How Bob works, Going online), and those brains get a normal Download button. Off to start with.
+- **Your key stays put.** I send it only to huggingface.co, only for those brains, and drop it before Hugging Face hands the file to its storage. Every other download stays signed out. The key is locked like your other keys and never shown or logged.
+
+**Where it works:** Windows, Mac and Linux. Bob for Android doesn't download these brains yet, and its phone engine doesn't run Raon.
+
 ## 1.5.253
 
 A new engine, Brain Engine 43, and Routines. Long reads are faster, and Bob fits better on built-in graphics.
@@ -172,16 +184,6 @@ A new default brain, a backup search with or without a key, and Settings that co
 - **Unproven in our lab, as we have yet to test:** reading the code suggests the GPT-OSS router may have been learning at the fast rate. No GPT-OSS heal has run, so no past result changes. A gate now checks the router count before any training, and the first real heal will prove it either way.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android. Bringing windows to the front is for the desktop app.
-
-## 1.5.244
-
-The link log tells the same time as the logbook.
-
-### Fixed
-
-- **The link log no longer reads an hour behind.** The Link log (the notes kept while a brain runs over another Bob's card) stamped its lines with the computer's own clock, which on some Windows PCs is an hour off from the real zone. It now uses the same time zone as the logbook, so the two always agree.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
 
 ## Older versions
 
