@@ -40,18 +40,20 @@ check(p.place === 'cpu', '...and after that, the processor alone');
 check(apuPlace({ need: go, layers: 0, freeBytes: 6.6 * GB, keepBytes: 2 * GB, budgetBytes: 7 * GB }).place === 'cpu', 'layers unknown and it won\'t all fit: the processor alone');
 check(JSON.stringify(nextStep({ share: 1, ctx: 32768 })) === '{"share":0.5}' && JSON.stringify(nextStep({ share: 0.5, ctx: 32768 })) === '{"share":0}' && JSON.stringify(nextStep({ share: 0, ctx: 32768 })) === '{"ctx":16384}' && nextStep({ share: 0, ctx: 8192 }) === null, 'steps down: half the graphics, the processor alone, then half the chat memory, never under 8K');
 check(JSON.stringify(nextStep({ share: 1, ctx: 32768, cpu: true })) === '{"ctx":16384}', 'a brain already on the processor goes straight to a shorter chat memory');
-check(apuHoldbackGB({}) === 2 && apuKeepBytes({ apuHoldbackGB: 0 }) === 1 * GB && apuKeepBytes({ apuHoldbackGB: 3 }) === 3 * GB, 'Memory kept for Windows starts at 2 GB, and at least 1 GB is always kept');
+check(apuHoldbackGB({}) === 0.5 && apuKeepBytes({ apuHoldbackGB: 0 }) === 1 * GB && apuKeepBytes({ apuHoldbackGB: 3 }) === 3 * GB, 'Memory kept for Windows starts at 0.5 GB (Nov 23), and at least 1 GB is always kept for placing');
 
 // ---------- the room check uses the engine's figure ----------
 const brainWith = (need, extra = {}) => ({ cfg: { sharedGraphics: true, reservedGraphicsGB: 0.5, ...extra }, gate: { brainBytes: () => 99 * GB }, engine: { loaded: async () => [], apuNeed: (m, c) => need(c) } });
 const kvAt = (c) => (2.4 * GB * c) / 32768;
-let r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(c) })), 'qwen3-4b', 32768, { freeMem: 6.6 * GB });
+let r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(c) }), { apuHoldbackGB: 2 }), 'qwen3-4b', 32768, { freeMem: 6.6 * GB });
 check(r.ok && r.ctx === 16384 && r.shortened, 'the Go, 6.6 GB free, 2 GB kept: Qwen3 4B (dense, its whole file in RAM) is shortened to 16K so Windows keeps its share', JSON.stringify(r));
 r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(c), experts: 128 })), 'moe', 32768, { freeMem: 6.6 * GB });
 check(r.ok && r.ctx === 32768 && !r.shortened, 'a brain with experts leaves half its file on the drive: it keeps 32K at the same free memory', JSON.stringify(r));
 check(apuNeed({ fileBytes: 2.5 * GB, extraBytes: 0.5 * GB }).cpu === apuNeed({ fileBytes: 2.5 * GB }).cpu + 0.5 * GB, 'the picture reader (mmproj) is counted');
-r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(c) })), 'qwen3-4b', 32768, { freeMem: 4.5 * GB });
+r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(c) }), { apuHoldbackGB: 2 }), 'qwen3-4b', 32768, { freeMem: 4.5 * GB });
 check(!r.ok && r.needGB > r.roomGB, 'tighter (the friend\'s Go, 4.5 GB free): even 8K leaves Windows less than its share (fitCtx then tries 8K)', JSON.stringify(r));
+r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(c) })), 'qwen3-4b', 32768, { freeMem: 4.5 * GB });
+check(r.ok && r.ctx === 8192, 'the same Go with the Nov 23 default (0.5 GB kept): it fits at 8K', JSON.stringify(r));
 r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 20 * GB, kvBytes: kvAt(c) })), 'big', 32768, { freeMem: 6.6 * GB });
 check(!r.ok && typeof r.line === 'string', 'a brain that fits no way is refused with the plain line', JSON.stringify(r));
 
@@ -158,7 +160,7 @@ try {
 // ---------- lending ----------
 check(lendRoom({ sharedGraphics: false }, { freeBytes: 1 }) === null, 'a real card reports its memory truly: nothing added');
 const lr = lendRoom({ sharedGraphics: true, gpuVramGB: 7, reservedGraphicsGB: 0.5 }, { freeBytes: 6 * GB });
-check(lr.roomMB > 2000 && lr.roomMB < 4000 && lr.marginMB === 7 * 1024 - lr.roomMB, 'built-in graphics lend what the RAM really has, and tell the asker how much to leave free', JSON.stringify(lr));
+check(lr.roomMB > 2000 && lr.roomMB < 5000 && lr.marginMB === 7 * 1024 - lr.roomMB, 'built-in graphics lend what the RAM really has, and tell the asker how much to leave free', JSON.stringify(lr));
 check(spreadArgs(['--fit', 'on'], [4000, 0]).join(' ') === `--fit-target 4000,${SPREAD_FIT_TARGET_MIB},${SPREAD_FIT_TARGET_MIB} -ub 512` && spreadArgs(['--fit', 'on']).join(' ') === `--fit-target ${SPREAD_FIT_TARGET_MIB} -ub 512`, 'the asking engine leaves that much free on each lent card (lent cards first), the usual room elsewhere');
 {
   const cfg = { sharedGraphics: true, gpuVramGB: 7, reservedGraphicsGB: 0.5, share: { lendCard: true }, remote: { enabled: true, passcode: 'abcdefgh' } };
