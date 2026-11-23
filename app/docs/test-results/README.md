@@ -14,6 +14,7 @@ Your numbers will differ on other hardware. Small samples are noted in each file
 
 | Date | Result |
 |---|---|
+| 2026-11-17 | [The cube fix: the expert trace keeps the words, at 2% or less on Brain Engine 12](2026-11-17-cube-fix-results.md) |
 | 2026-11-17 | [Calibration: reading step 2048 + 4 GB hot experts writes 14 to 28% faster and reads 1.9x; the cube changes words, CUDA graphs don't](2026-11-17-calibration-results.md) |
 | 2026-11-17 | [Speed test results: reading speed 2.5x to 3.4x faster, patches cost nothing when off, Turbo and prefetch don't help](2026-11-17-speed-test-results.md) |
 | 2026-11-16 | [Speed test method: reading steps, Brain Engine cost, job finish times (pre-registered)](2026-11-16-speed-test-method.md) |

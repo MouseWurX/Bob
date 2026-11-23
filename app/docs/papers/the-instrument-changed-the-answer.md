@@ -98,7 +98,7 @@ On the processor, a tiny made-up model passed 16 checks (`engine/tests/trace-kep
 
 **Rule written in advance** (Addendum 19): the fix works when each traced row writes the same words as its untraced pair, on both prompts, in all runs, and its median writing speed is within 2% of the pair. If the words differ, the fix fails whatever the speed. An amendment added a control row, U0: no trace, with fusion switched off by hand (`GGML_CUDA_DISABLE_FUSION=1`), to check that the fused kernel still runs.
 
-The build history matters here. The first build of the fix (Brain Engine 10) crashed when the trace and the hot-experts cache were on together. Brain Engine 11 fixed the crash.
+The build history matters here. The first build of the fix (Brain Engine 10) kept the words in its first round, then crashed when the trace and the hot-experts cache were on together, so the run stopped after 4 loads. Brain Engine 11 fixed the crash.
 
 **Brain Engine 11 (17 November):** 5 rounds, 25 loads, all clean.
 
@@ -110,7 +110,7 @@ The build history matters here. The first build of the fix (Brain Engine 10) cra
 | Reading step 2048 + 4 GB copy cache | −1.8% / −1.0% | crashed | passes |
 | Normal (reading step 512, no cache) | −4.0% / −3.9% | −9% to −11% | misses |
 
-*Table 2. Brain Engine 11. Reading speed stayed within about 1%.*
+*Table 2. Brain Engine 11 (docs/test-results/2026-11-17-cube-fix-results.md). Reading speed stayed within about 2%.*
 
 **Brain Engine 12 (17 November):** patch 0021, version 3, keeps one pinned copy per reading step instead of one copy per layer per token.
 
@@ -119,11 +119,11 @@ The build history matters here. The first build of the fix (Brain Engine 10) cra
 | Normal (reading step 512, no cache) | 92.2 / 81.2 | 90.4 / 81.2 | −1.95% / 0% |
 | Reading step 2048 + 4 GB copy cache | 110.6 / 95.7 | 111.6 / 96.7 | none measured (slightly faster) |
 
-*Table 3. Brain Engine 12. The words were byte-identical with the trace on and off, on both prompts, at both settings. Reading speed was equal, and nothing crashed.*
+*Table 3. Brain Engine 12 (docs/test-results/2026-11-17-cube-fix-results.md). The words were byte-identical with the trace on and off, on both prompts, at both settings. Reading speed was equal, and nothing crashed.*
 
 | Engine | Trace cost on writing (Normal) | Words |
 |---|---|---|
-| Brain Engine 9/10, old trace | about −8% to −11% | different |
+| Brain Engine 9, old trace | about −8% to −11% | different |
 | Brain Engine 11, kept copies | about −4% | identical |
 | Brain Engine 12, one pinned copy per step | −2% or less | byte-identical |
 
@@ -193,7 +193,7 @@ The method is simple. Log every failure with its cost, find the default that hid
 - **One machine, one brain, one quant.** All card results come from one 16 GB consumer card with Qwen3.6 35B A3B at Q4. The trace on GPT-OSS 120B, on other cards and on other backends is unproven in our lab, as we have yet to test.
 - **A shortened final run.** The Brain Engine 12 run stopped after 3 rounds (16 loads), not the 5 set beforehand, by MouseWurX's choice. Its medians rest on fewer runs, and its short-prompt cost (−1.95%) sits right at the 2% line.
 - **The mechanism is supported, not proven.** The fused-kernel explanation rests on the ablation and on the fusion-off control, not on inspecting the kernels. G2 confounds the top-k callback with a second callback node.
-- **Raw data for the fix runs.** The night-1, calibration and cube-check runs are published with raw data (docs/test-results/data/2026-11-16-speed/). The Brain Engine 11 and 12 summaries behind Tables 2 to 4 are reported in the dissertation, but their raw files are not yet in the repository's test-results folder. They should be published before submission.
+- **Raw data for the fix runs.** The night-1, calibration and cube-check runs are published with raw data (docs/test-results/data/2026-11-16-speed/). The Brain Engine 10, 11 and 12 fix runs are published as summaries and a per-run table of all 88 runs with a words hash (docs/test-results/data/2026-11-17-cube-fix/). Their complete per-run files are packed on the test PC and still have to be added.
 - **The experts-per-word patch uses a weighting known to be worse.** Patch 0013 changes how many experts each token uses, live. llama.cpp's Qwen3 MoE graph rescales the kept experts' weights to add up to 1. On the same base model, Chen and Yao (2026) report that going from 8 to 4 experts costs 4.65 MMLU points under that standard renormalization, but only 0.35 points when the kept weights are normalized against the top 16 instead. So the patch's default is measurably suboptimal at reduced counts. Our own 4-expert test held tools, facts and code level, but on far fewer questions and different tasks. The other weighting is not built.
 - **Small stand-ins.** The strongest engine checks below rung 5 used tiny models and CPU builds. They show the code does what it claims, not that the instruments are unbiased on a large model.
 - **One builder.** The code was written and checked inside one project, with an AI assistant as a contributor. No outsider has reviewed it.
@@ -227,7 +227,7 @@ A trace that only reads changed what the model wrote, because reading from the m
 | Decision rules for G2 and for the fix, U0 control | docs/test-results/2026-11-16-speed-test-method.md (Addenda 18, 19) | yes |
 | 0021 design, 640 KB kept tensor, 16 processor checks | engine/README.md; ENGINE-MAP.md | yes |
 | 0010 check "same, row for row" | engine/README.md | yes |
-| Brain Engine 11 and 12 results (Tables 2 to 4) | dissertation chapter 3, section 3.4.3 | **raw summaries not in the repository yet** |
+| Brain Engine 11 and 12 results (Tables 2 to 4), U0 control | docs/test-results/2026-11-17-cube-fix-results.md and data/2026-11-17-cube-fix/ (88 runs, words hashes) | yes; the complete runs.jsonl pack is still to be added |
 | Brain model and file size | calibration results | yes |
 | Twenty failures, $24.97, $549.26, about 149 h | docs/COSTS.md (23 Nov) | yes; the row costs add to $24.63, and the ledger's total is from the rental statement |
 | 45% template skip; 195 and 163 of 456 steps; 10.3 h vs about 16 h; $11 idle | docs/FORGE-JOURNAL.md; docs/COSTS.md | yes; COSTS.md gives the second heal's stop as step 155, the journal 163 |
