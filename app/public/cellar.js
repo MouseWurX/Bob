@@ -18,6 +18,7 @@ import { phoneAccessHtml, mountPhoneAccess } from './phone-access.js';
 import { lockSettingsHtml, mountLockSettings, lockSummary } from './lock-settings.js'; // 🔒 Passcode lock
 import { secretsHtml, mountSecrets } from './secrets.js';
 import { moreToolsHtml, mountMoreTools } from './more-tools.js';
+import { mountNetLog } from './net-log.js'; // Nov 23 2026: 📡 Where Bob connected (Online services)
 import { emailAccountHtml, mountEmailAccount } from './email-account.js'; // 📧 Email account (Online services)
 import { telegramHtml, mountTelegram } from './telegram.js';
 import { discordHtml, mountDiscord } from './discord.js';
@@ -668,6 +669,7 @@ export function createCellar({ popOut = null } = {}) {
     mountPhoneAccess(dlg.querySelector('.phone-box')); // Bob-Net, This Bob: Bob-Net access
     mountLockSettings(dlg.querySelector('.lock-box'), { onChange: (v) => { if (settings) settings.passcodeLock = v; const n = dlg.querySelector('[data-panel="ev-lock"] .spanel-note'); if (n) n.textContent = lockSummary(v); } }); // 🔒 Passcode lock
     mountTelegram(dlg.querySelector('.telegram-box')); // Online services: Bob on Telegram
+    mountNetLog(dlg.querySelector('.net-log-box')); // Online services: 📡 Where Bob connected
     mountDiscord(dlg.querySelector('.discord-box')); // Online services: Bob on Discord
     mountAppsDoor(dlg.querySelector('.apps-door-box')); // Other apps: Brains for other apps
     mountClaudeDoor(dlg.querySelector('.claude-door-box')); // Other apps: Hands for Claude
@@ -1513,10 +1515,10 @@ export function createCellar({ popOut = null } = {}) {
       else if (el.dataset.rentenable) { // 1.5.127: the first time a service goes on, a warning card says what leaves this replicant matrix
         const id = el.dataset.rentenable;
         const s = (rent.services || []).find((x) => x.id === id);
-        if (el.checked && s && !s.warned) {
-          el.checked = false;
-          const box = el.closest('.rent-service')?.querySelector('.rent-warn');
-          if (box) { box.hidden = false; box.innerHTML = `<p><strong>This sends your chat to ${esc(s.name)}.</strong> When you hire a brain for a job, the chat of that job, the files you attach to it, Bob's instructions and what he remembers about you go to ${esc(s.name)} to be worked on there, and come under their privacy policy, not Bob's.${s.plain ? ' With a hired machine the chat travels over a plain, unencrypted connection.' : ''} Nothing goes until you press Hire it on a job, and Bob shuts the machine down when the job is done. Bob never stores your key.</p><div class="row"><button type="button" class="get" data-rentwarnok="${esc(id)}">I understand, turn it on</button><button type="button" data-rentwarnno="${esc(id)}">Leave it off</button></div>`; }
+        // Nov 23 2026: the privacy card (privacy-card.js) now asks every time a service goes on, so no box here.
+        if (el.checked && s) {
+          try { rent = await api('/api/rent/settings', { enabled: { [id]: true }, warned: { [id]: true } }); flash(el.closest('.cloud'), 'On. Bob still asks before every hire.'); draw(); }
+          catch { el.checked = false; flash(el.closest('.cloud'), 'Kept off.'); }
           return;
         }
         rent = await api('/api/rent/settings', { enabled: { [id]: el.checked } }); flash(el.closest('.cloud'), el.checked ? 'On. Bob still asks before every hire.' : 'Off.'); draw(); return;

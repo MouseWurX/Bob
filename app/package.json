@@ -75,6 +75,8 @@
     "test/run-expert-mask-test.js",
     "test/run-game-jobs-test.js",
     "test/run-mail-catalog-test.js",
+    "test/run-privacy-card-test.js",
+    "test/run-net-log-test.js",
     "test/run-step-thinking-test.js",
     "test/run-solo-effort-test.js",
     "test/run-cant-retry-test.js",

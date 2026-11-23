@@ -243,6 +243,15 @@ try {
   const shopList = await (await fetch(base + '/api/models')).json();
   check(shopList.categories.length === 8 && shopList.models.length >= 10 && shopList.packs.length === 7, 'model shop lists categories, models and starter sets');
   check((await post('/api/models/download', { id: 'does-not-exist' })).status === 409, 'unknown model download refused');
+  { // Nov 23 2026: the privacy card. Turning web search on is refused (428, with the card) until it is confirmed; off never asks.
+    const r1 = await post('/api/settings', { webSearch: true }); const j1 = await r1.json();
+    const still = (await (await fetch(base + '/api/settings')).json()).webSearch;
+    check(r1.status === 428 && j1.privacy?.[0]?.id === 'web-search' && still === false, 'turning on web search shows the privacy card first and changes nothing');
+    const r2 = await post('/api/settings', { webSearch: true }, { 'x-bob': '1', 'x-bob-privacy-ok': 'web-search' });
+    check(r2.status === 200 && (await r2.json()).webSearch === true, 'with the card confirmed, web search goes on');
+    const r3 = await post('/api/settings', { webSearch: false });
+    check(r3.status === 200 && (await r3.json()).webSearch === false, 'turning web search off never asks');
+  }
   check((await post('/api/settings', { setupDone: true })).status === 200 && (await (await fetch(base + '/api/settings')).json()).setupDone === true, 'finishing setup is remembered');
   // Every setting the app changes goes through the server both ways (keep-alive was once dropped).
   for (const [patch, ok] of [
@@ -280,6 +289,10 @@ try {
     const after = await (await fetch(base + '/api/idle')).json();
     check(before.quietForSeconds >= 1 && after.quietForSeconds === 0 && after.idle === false, 'clicking or typing in Bob\'s window counts as activity, so an update waits');
     check(Array.isArray(after.loaded) && after.engine === 'ollama', 'the idle check lists the models still loaded');
+  }
+  { // Nov 23 2026, the offline proof: with every service off, a whole run of chats, settings and the queue went nowhere
+    const nl = await (await fetch(base + '/api/net-log?n=500')).json();
+    check(Array.isArray(nl.recent) && nl.recent.length === 0 && nl.now.length === 0, `with every service off, Bob connected nowhere and nothing can send data out${nl.recent?.length ? ': ' + nl.recent.map((e) => e.host).join(', ') : ''}`);
   }
 } catch (e) {
   console.error(e);
