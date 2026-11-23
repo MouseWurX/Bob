@@ -1,5 +1,5 @@
 diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
-index 39992b8..0dc4c40 100644
+index 9f91162..195b7d9 100644
 --- a/src/llama-moe-cache.cpp
 +++ b/src/llama-moe-cache.cpp
 @@ -2797,7 +2797,11 @@ struct llama_moe_cache::impl {

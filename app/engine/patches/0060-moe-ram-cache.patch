@@ -1,5 +1,5 @@
 diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
-index 4cf4c4c..39992b8 100644
+index 4cf4c4c..9f91162 100644
 --- a/src/llama-moe-cache.cpp
 +++ b/src/llama-moe-cache.cpp
 @@ -17,6 +17,7 @@
@@ -98,7 +98,7 @@ index 4cf4c4c..39992b8 100644
              for (size_t i = first; i < last; ++i) {
                  const dr_job & j = dr_jobs[i];
                  ggml_backend_tensor_set_async(backend, j.bank, j.stage, j.dst, j.size);
-@@ -3057,6 +3069,366 @@ struct llama_moe_cache::impl {
+@@ -3057,6 +3069,388 @@ struct llama_moe_cache::impl {
      }
      std::vector<dr_job> dr_work; // the batch the workers read, set under dr_mutex
  
@@ -357,6 +357,28 @@ index 4cf4c4c..39992b8 100644
 +        return true;
 +    }
 +
++    // for other uploaders (0059's staging): the entry holding expert e of w, marked as used by this call, or nullptr
++    const void * rc_lookup(const ggml_tensor * w, int32_t e) {
++        if (!rc_on) {
++            return nullptr;
++        }
++        const auto it = rc_tensor.find(w);
++        if (it == rc_tensor.end()) {
++            return nullptr;
++        }
++        rc_class & c = rc_classes[it->second.first];
++        std::lock_guard<std::mutex> lock(rc_mutex);
++        const auto f = c.slot_of.find(rc_key(it->second.second, e));
++        if (f == c.slot_of.end()) {
++            return nullptr;
++        }
++        c.lru.splice(c.lru.begin(), c.lru, c.pos[f->second]);
++        c.gen_of[f->second] = rc_gen;
++        rc_hits++;
++        rc_hit_bytes += c.size;
++        return c.at[f->second];
++    }
++
 +    // the start fill: the ranking's busiest experts the card doesn't hold, read from the drive, until the block is full
 +    void rc_prefill(const std::string & path) {
 +        FILE * f = fopen(path.c_str(), "r");
@@ -465,7 +487,7 @@ index 4cf4c4c..39992b8 100644
      void dr_shutdown() {
          if (dr_pool.empty()) {
              return;
-@@ -4072,6 +4444,11 @@ struct llama_moe_cache::impl {
+@@ -4072,6 +4466,11 @@ struct llama_moe_cache::impl {
              LLAMA_LOG_INFO("llama_moe_cache: drive tier: %zu runs read from the drive (%.2f MiB, %.0f MiB/s while reading), %zu misses were in RAM, %zu ring waits\n",
                  dr_n, dr_bytes/1048576.0, dr_us > 0 ? dr_bytes/1048576.0/(dr_us/1e6) : 0.0, dr_ram, dr_waits);
          }
@@ -477,3 +499,28 @@ index 4cf4c4c..39992b8 100644
          if (tl_on) {
              LLAMA_LOG_INFO("llama_moe_cache: the shelf: %zu experts put on it, %zu came back from it on the card (%.2f MiB not uploaded), "
                  "%zu read from it by large batches, %zu forgotten in %zu take-backs\n", tl_saved, tl_hits, tl_hit_bytes/1024.0/1024.0,
+@@ -4117,6 +4516,10 @@ ggml_tensor * llama_moe_cache::get_cpu_map(int32_t il, int64_t n_tokens) const {
+     return pimpl->get_cpu_map(il, n_tokens);
+ }
+ 
++const void * llama_moe_cache::ram_lookup(const ggml_tensor * w, int32_t e) {
++    return pimpl->rc_lookup(w, e);
++}
++
+ bool llama_moe_cache::borrow_on() const {
+     return pimpl->bw_on;
+ }
+diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
+index 22995fd..931092c 100644
+--- a/src/llama-moe-cache.h
++++ b/src/llama-moe-cache.h
+@@ -98,6 +98,9 @@ public:
+     // Brain Engine 0048 (LLAMA_MOE_CACHE_BORROW=1): borrowed reading. The card's working memory and the cache share one
+     // region; graphs at a bigger reading step borrow the coldest slots of the cache's first bank (see the impl).
+     bool borrow_on() const;
++    // Brain Engine 0060: the RAM cache's copy of expert e of the expert tensor w, or nullptr when it has none (or is
++    // off). A hit counts as a use. The bytes stay valid until the next MoE cache copy call. Main thread only.
++    const void * ram_lookup(const struct ggml_tensor * w, int32_t e);
+     // the card whose working memory borrows (nullptr if off)
+     ggml_backend_t borrow_backend() const;
+     // the buffer type the scheduler must use for that card (buft itself if it is not that card's, or borrowing is off)
