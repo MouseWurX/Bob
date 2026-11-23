@@ -20,6 +20,7 @@ import { planFiles, planCard, applyFiles, undoJob, loadJournal, handsRoots, undo
 import { planSort, sortSummary } from './sort-library.js';
 import { exampleFor, TOKENS } from './sort-names.js';
 import { checkCommand, runCommand, safeEnv, OFFLINE_NOTE, commandNet, offlineWay, NO_SANDBOX } from './hands-run.js';
+import { ensureSandbox, grantFolder } from './win-offline.js';
 import { codeCopyRoot } from './self-work.js';
 import { toolPath } from './self-work-tools.js'; // "Work on repositories": his own Git and Node first in the code copy
 import { appsTools } from './hands-apps.js';
@@ -104,6 +105,19 @@ function saveRun(cfg, r) {
   writeJsonAtomic(runsFile(cfg), [...loadRuns(cfg), r].slice(-50));
 }
 
+// Windows, Web off, once the sandbox is ready (win-offline.js): build it, let it use the command's folder and the
+// program's own folder, and run the command inside it. Elsewhere: nothing.
+function winSandbox(cfg, cmd, cwd) {
+  if (commandNet(cfg) !== 'off' || offlineWay() !== 'appcontainer') return {};
+  const exe = ensureSandbox(cfg);
+  if (!exe) throw new Error(NO_SANDBOX);
+  const tmp = path.join(cfg.dataDir, 'sandbox-tmp');
+  fs.mkdirSync(tmp, { recursive: true });
+  for (const dir of [cwd, tmp]) if (!grantFolder(exe, dir, 'change')) throw new Error(`Not run: Bob's sandbox couldn't be given ${dir}.`);
+  if (path.isAbsolute(cmd)) grantFolder(exe, path.dirname(cmd), 'read'); // best effort: Program Files is readable to sandboxes already, and needs admin to change
+  return { sandboxExe: exe, env: { ...safeEnv(), TEMP: tmp, TMP: tmp } };
+}
+
 // Runs an approved command: live output to the chat (emit), registered so Stop can reach it.
 export async function runApproved(cfg, { cmd, args = [], cwd }, { emit = () => {}, signal, log = () => {} } = {}) {
   const c = checkCommand(cfg, { cmd, args, cwd }); // checked again right before it starts
@@ -121,7 +135,7 @@ export async function runApproved(cfg, { cmd, args = [], cwd }, { emit = () => {
   const timeoutMs = handsSettings(cfg).timeoutMin * 60_000;
   let res;
   try {
-    res = await runCommand({ cmd, args, cwd, timeoutMs, signal: controller.signal, net: commandNet(cfg), ...(isInside(codeCopyRoot(cfg), cwd) ? { env: toolPath(cfg, safeEnv()) } : {}), onOutput: (text) => emit({ type: 'run-output', runId: id, text }) });
+    res = await runCommand({ cmd, args, cwd, timeoutMs, signal: controller.signal, net: commandNet(cfg), ...winSandbox(cfg, cmd, cwd), ...(isInside(codeCopyRoot(cfg), cwd) ? { env: toolPath(cfg, safeEnv()) } : {}), onOutput: (text) => emit({ type: 'run-output', runId: id, text }) });
   } finally {
     running.delete(id);
     signal?.removeEventListener?.('abort', onAbort);

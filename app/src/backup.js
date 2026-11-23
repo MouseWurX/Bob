@@ -53,6 +53,7 @@ export const NOT_BACKED_UP = [
   'bob/queue.json', 'bob/housekeeping-runs.json', 'bob/electron/', 'bob/doc-index.json', 'bob/digest.json', 'bob/tool-group-vectors.json', 'bob/receipts/', 'bob/claude-door.json', 'bob/tool-packs.json', 'tool-packs/', 'bob/sd-server-args.txt', 'bob/backup-state.json', 'bob/restore-result.json',
   'bob/seeded-brains.json', 'bob/keys.json', 'bob/bob-net-link-keys.json', // brains seeded on a lent card (worked out again); locked secrets and Bob-Net link keys are locked to this computer (keys travel in the locked part; Bobs pair again)
   'bob/monitoring-log/', // Nov 16 Monitoring log (trace-log.js): a log of runs, up to 10 GB, and with details on it holds chat data
+  'bob/bin/', 'bob/sandbox-tmp/', 'bob/net-log.jsonl', 'bob/net-log.jsonl.1', // Nov 23 2026: the Windows sandbox (built again), its scratch, and Where Bob connected (about this computer)
   'bob/saved-formats.json', 'bob/turn-changes/', // items 232 and 238: worked out again; a turn's Undo is about this computer's files
   'bob/running.json', 'bob/crash-reports/', 'bob/before-safe-start.json', 'bob/settings-undo.json', 'bob/weekly.json', 'bob/chat-places/', 'bob/conductor/', 'bob/tool-errors.json', 'bob/amnesia/', // items 62 to 72 (and reliability item 206's error counts; Amnesia mode's copy from before it went on): worked out again on this computer, or about this computer only
   'bob/brain-files.json', 'bob/engine-care.json', 'bob/engine-care-beside.json', // reliability 218-228: about this computer's engine and files
