@@ -52,9 +52,16 @@ check('due and tight: loaded again without the reader, brain kept (no unload)', 
 check('the logbook says why, in plain words', logs.some((l) => /no picture for 5 min and memory is still tight, so I'm loading it again without its picture reader; it comes back with the next picture/.test(l)));
 await eng.chat({ model: 'gemma', messages: [{ role: 'user', content: 'one more', images: ['iVBORzz'] }] });
 check('the next picture brings it back again', loads.length === 3 && loads[2].eyes && eng.eyesBack.has('gemma'));
+eng.holdModel = () => null; // the usual 5-minute keep-alive
+await eng.chat({ model: 'gemma', messages: [{ role: 'user', content: 'a picture', images: ['iVBORqq'] }] });
+t += 60_000; await eng.chat({ model: 'gemma', messages: [{ role: 'user', content: 'text' }] });
+t += EYES_REST_MS - 60_000 + 30_000;
+check('no rest reload when the keep-alive lets the brain go within 2 minutes anyway (wasted work)', !(await eng.restEyes()) && loads.length === 3 && !eng.eyesShut.has('gemma'));
+eng.cfg.ollamaKeepAlive = '30m';
+check('with a longer keep-alive it does rest', await eng.restEyes() && loads.length === 4 && eng.eyesShut.has('gemma'));
 eng.current = 'qwen';
 t += 10 * 60_000;
-check('another brain loaded: nothing to drop', !eng.eyesRestDue('gemma') && loads.length === 3);
+check('another brain loaded: nothing to drop', !eng.eyesRestDue('gemma') && loads.length === 4);
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

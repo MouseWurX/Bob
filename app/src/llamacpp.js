@@ -1294,6 +1294,10 @@ export class LlamaCpp {
   async restEyes() {
     const model = this.current;
     if (!this.eyesRestDue(model)) return false;
+    // The Go test: a rest reload just before the keep-alive lets the whole brain go is wasted work. Skip it then.
+    let hold = null;
+    try { hold = this.holdModel(); } catch {}
+    if (hold !== model && keepAliveMs(this.cfg) - (this.now() - this.lastUse) < 2 * 60_000) return false;
     this.eyesBack.delete(model);
     this.shutEyes(model);
     this.reloadWanted.add(model);
