@@ -11,10 +11,11 @@ import path from 'node:path';
 import { HANDS, toolsOff, cleanHands } from '../src/hands-settings.js';
 import { Routines, RoutineStore, runRoutine, fieldValue, ifTest, listFolder, globRe, dayList } from '../src/routines.js';
 import { checkRoutine, graphHash, approvalLines, cleanRoutine, NODES, ROUTINE_TOOLS, runsBefore, refsIn, UNCONVERTED } from '../public/routine-nodes.js';
-import { writeOut, sample, callTool } from '../src/hands-routines.js';
+import { writeOut, sample, callTool, routinesRoute } from '../src/hands-routines.js';
 import { AFTER_MAIL } from '../src/mail-guard.js';
 import { HELP } from '../public/help-content.js';
 import { importN8n } from '../public/n8n-import.js';
+import { bobMenuHtml } from '../public/bob-menu.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + JSON.stringify(extra).slice(0, 400) : ''}`); };
@@ -371,6 +372,18 @@ check('days and file patterns', dayList('mon, thu').join() === '1,4' && globRe('
   check('going back to the OK\'d version keeps the OK, and the logbook agrees', back.approved === true && /the OK holds/.test(logs.at(-1) || ''), logs.at(-1));
   const back1 = R.rollback(id, 1);
   check('going back to a version never OK\'d needs a new OK, and says so', back1.approved === false && /needs your OK again/.test(logs.at(-1) || ''), logs.at(-1));
+}
+
+// ---------- Bob's menu (click his cube) ----------
+{
+  const on = bobMenuHtml({ loaded: [] }, { routines: true }), off = bobMenuHtml({ loaded: [] }, {});
+  check('Bob\'s menu has a Routines row while the Hand is on, and none while it\'s off', /data-bobmenu="routines"/.test(on) && !/routines/i.test(off));
+  check('the row sits after Get models', on.indexOf('data-bobmenu="models"') < on.indexOf('data-bobmenu="routines"'));
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  check('the row opens the editor, and only shows on the PC itself', /routines: \(\) => \{ const w = window\.open\('\/routines\.html'/.test(app) && /getRoutines: async \(\) => \['127\.0\.0\.1'.*brief=1/.test(app));
+  const sent = [];
+  await routinesRoute({ req: { method: 'GET', url: '/api/routines?brief=1' }, res: {}, p: '/api/routines', url: new URL('http://x/api/routines?brief=1'), isLocal: true, brain: { cfg: { ...cfg, dataDir: path.join(tmp, 'inn5'), hands: { enabled: true, routines: { on: true } } }, tools: {} }, body: async () => ({}), send: (res, code, obj) => sent.push(obj) });
+  check('the menu asks the light way (?brief=1: on and how many, nothing else)', sent[0] && Object.keys(sent[0]).sort().join() === 'count,on', sent[0]);
 }
 
 // ---------- Help ----------

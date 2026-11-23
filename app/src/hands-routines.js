@@ -171,6 +171,7 @@ export async function routinesRoute({ req, res, p, url, isLocal, brain, body, se
   if (req.method === 'GET') {
     const q = url?.searchParams || new URLSearchParams(String(req.url || '').split('?')[1] || '');
     const id = q.get('id');
+    if (q.get('brief')) { send(res, 200, { on: handOn(brain.cfg, 'routines'), count: R.store.list().length }); return true; } // Bob's menu: show the Routines row?
     if (id && q.get('run')) { const run = R.live(id)?.id === q.get('run') ? R.live(id) : R.store.run(id, q.get('run')); send(res, run ? 200 : 404, run || { error: 'No such run.' }); return true; }
     if (id) { const v = R.get(id); send(res, v ? 200 : 404, v ? { routine: v, versions: R.store.versions(id), runs: R.store.runs(id), running: R.live(id)?.id || '' } : { error: 'No such routine.' }); return true; }
     send(res, 200, routinesView(brain));
