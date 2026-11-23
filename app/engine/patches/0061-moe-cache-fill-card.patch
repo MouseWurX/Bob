@@ -7,12 +7,12 @@ index b091b6d..6a889a6 100644
          }
  
 +        // Brain Engine 0061: LLAMA_MOE_CACHE_FILL=1 grows the cache into the card memory still free once the weights and
-+        // the chat memory are in, less LLAMA_MOE_CACHE_FILL_SPARE_MIB (default 2048, for the working buffers made next
++        // the chat memory are in, less LLAMA_MOE_CACHE_FILL_SPARE_MIB (default 512, for the working buffers made next
 +        // and the card's own pool). Never smaller than --moe-cache-mib. Only in the real load: the fit's measuring pass
 +        // (no_alloc) sees the size asked for, so the fit is unchanged and the cache takes what the fit left. Lossless.
 +        if (cparams.moe_cache_size > 0 && !model.no_alloc()) {
 +            if (const char * fill = getenv("LLAMA_MOE_CACHE_FILL"); fill != nullptr && atoi(fill) > 0) {
-+                size_t spare = 2048ull*1024*1024;
++                size_t spare = 512ull*1024*1024;
 +                if (const char * sp = getenv("LLAMA_MOE_CACHE_FILL_SPARE_MIB"); sp != nullptr && atof(sp) >= 0) {
 +                    spare = (size_t) (atof(sp)*1024*1024);
 +                }
