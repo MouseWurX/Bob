@@ -110,6 +110,7 @@ export function cleanHands(v = {}) {
   out.limits = {};
   for (const k of Object.keys(LIMITS)) out.limits[k] = v.limits?.[k] !== false;
   out.timeoutMin = [1, 5, 15, 30, 60, 120].includes(Number(v.timeoutMin)) ? Number(v.timeoutMin) : 15;
+  out.strictOffline = v.strictOffline === true; // Nov 23 2026: Strict offline commands (hands-run.js commandNet), off unless switched on
   out.eyesCheck = v.eyesCheck !== false; // "Visual check" (src/eyes.js): on, used only when an eyes brain is equipped
   return out;
 }
