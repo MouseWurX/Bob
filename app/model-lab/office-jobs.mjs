@@ -172,7 +172,7 @@ export const HELD_OFFICE_JOBS = [
   { key: 'h-excel-compare', files: ['hjune', 'hjuly'], text: 'What changed between my June and July gym timetables?',
     score: { route: ['compare_files', ...READS], best: 'compare_files', said: [/0?7:30/, /pilates/i, /boxing/i], kept: ['hjune', 'hjuly'] } },
   { key: 'h-sum-tricky', files: ['htrip'], text: "What did my trip cost in total? It's in Trip_Costs.xlsx; the deposit I got back counts against it.",
-    score: { route: READS, best: 'office_read', said: [/193\.05/], not: [/396\.6/, /243\.05/, /218\.05/], maths: true } },
+    score: { route: READS, best: 'office_read', said: [/193\.05/], not: [/^(?![\s\S]*193\.05)[\s\S]*(396\.6|243\.05|218\.05)/], maths: true } }, // 23 Nov (REAP rq80): a wrong total shown as working on the way to 193.05 is not a wrong answer
   { key: 'h-missing', files: ['hbake'], text: 'Open Minutes_August.docx in my Documents and tell me who chaired the meeting.',
     score: { route: ['office_read', 'read_file', 'list_folder', 'search_files', 'find_in_documents'], honest: MISSING } },
   { key: 'h-word-edit', files: ['hbake'], lo: true, text: 'Move the bake sale in Bake_Sale.docx to Sunday 16 May.',

@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' ' + extra : ''}`); };
@@ -42,6 +42,13 @@ check('the REAP plan reads the clean runs and writes keep lists at 90/80/75/65/6
 check('each level: mask set (100% = all experts), the held-out jobs run, each kind scored', levels.every((lv) => { const i = c.findIndex((x) => x.includes(`--prefix rq${lv} `)); const m = c[i - 1] || ''; return i > 0 && (lv === 100 ? /expert-mask\.mjs .*--off/.test(m) : m.includes(`--keep out/reap-flashnext-q4-jobs/keep/all-keep-${lv}.json`)) && /mail-jobs-held.*office-jobs-held|office-jobs-held[^\n]*repo-jobs-held[^\n]*web-jobs/.test(c[i]) && ['mail', 'office', 'repo', 'web'].every((k) => c.some((x) => x.startsWith(`node ${k}-score.mjs --runs ../../bob-model-lab/out/rq${lv}-`))); }));
 check('the mask goes off at the end; nothing is cut, healed or uploaded; caps fit the levels', /expert-mask\.mjs .*--off/.test(c.at(-2)) && !c.some((x) => /scut|heal|upload|hf upload/i.test(x)) && p.publish.models.length === 0 && p.hours_max >= 7 * 0.6 + 0.5 && p.dollars_max <= 25);
 
+// 23 Nov (the owner: "do we selectively keep more office experts to make up for that drop?"): one list = all-80 plus office's own
+const { mergeKeep } = await import(pathToFileURL(path.join(app, 'model-lab', 'keep-merge.mjs')).href);
+const mk = mergeKeep({ target: 'all', share: 0.8, keep: [[0, 1, 2], null, [5, 6]] }, { target: 'job:office', share: 0.9, keep: [[2, 3], [1], [6, 7, 8]] }, 4);
+check('keep-merge: each layer keeps both lists, a whole layer stays whole, and the real share is said', JSON.stringify(mk.keep) === JSON.stringify([[0, 1, 2, 3], null, [5, 6, 7, 8]]) && mk.masked_layers === 2 && mk.whole_layers === 1 && mk.share === 1 && mk.target === 'all+job:office');
+const pp = JSON.parse(read('model-lab/forge/plans/reap-office-protect.json')), pc = pp.benchmark.models[0].commands;
+const maskThen = (mask, dir) => { const i = pc.findIndex((x) => x.includes(`--dir ${dir} `)); return i > 0 && pc[i - 1].includes(`--keep out/reap-flashnext-q4-jobs/keep/${mask}`); };
+check('the office-protect plan: the same 80% again, each kind with its own 80%, and 80% plus office, each scored; nothing cut, caps small', maskThen('all-keep-80.json', 'rq80b-office') && maskThen('job-office-keep-80.json', 'rp80-office') && maskThen('job-inbox-keep-80.json', 'rp80-inbox') && maskThen('job-repo-keep-80.json', 'rp80-repo') && maskThen('all-80-office-80.json', 'ru80-office') && pc.some((x) => /^node keep-merge\.mjs .*--out out\/reap-flashnext-q4-jobs\/keep\/all-80-office-80\.json/.test(x)) && /expert-mask\.mjs .*--off/.test(pc.at(-7)) && ['rq80b-office-score', 'rp80-office-score', 'rp80-mail-score', 'rp80-repo-score', 'ru80-office-score'].every((d) => pc.some((x) => x.endsWith(`/${d}`))) && !pc.some((x) => /scut|heal|upload/i.test(x)) && pp.publish.models.length === 0 && pp.dollars_max <= 10);
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

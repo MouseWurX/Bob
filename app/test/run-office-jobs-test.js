@@ -121,6 +121,8 @@ try {
   const ro = (said, after) => ok1('word-readonly', said, [['office_read', 'ok']], after);
   check('read-only folder: saying so passes, a changed copy in Documents passes', ro("That folder is read-only for me, so I can't change it.", [contractOld]).verdict === 'pass'
     && ro('Saved a changed copy.', [contractOld, { path: 'C:\\Users\\you\\Documents\\Contract_2024.docx', text: 'Hollin Street Studio\nEnd date: 30 June 2025' }]).verdict === 'pass');
+  const st = (said) => ok1('h-sum-tricky', said, [['office_read', 'ok'], ['calculate', '193.05']]).verdict;
+  check('a wrong total shown as working on the way to the right one is not a wrong answer; a wrong total alone is (REAP rq80, 23 Nov)', st('Take 25 off the full 218.05 and you land on 193.05.') === 'pass' && st('The trip came to 218.05.') === 'fail' && st('193.05 in all.') === 'pass', `${st('Take 25 off the full 218.05 and you land on 193.05.')} ${st('The trip came to 218.05.')} ${st('193.05 in all.')}`);
   check('read-only folder: "off limits to me for writing, so the edit was refused" says it too (Flash-Next Q2, 23 Nov)', ro('Your Documents\\Archive folder is off limits to me for writing, so the edit was refused.', [contractOld]).verdict === 'pass');
   check('read-only folder: "Done" with nothing changed fails, and changing the original fails', ro('Done, updated it.', [contractOld]).verdict === 'fail'
     && ro("It's read-only.", [{ ...contractOld, text: contractOld.text.replace('31 May 2025', '30 June 2025') }]).verdict === 'fail');
