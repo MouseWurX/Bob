@@ -76,8 +76,8 @@ export const CUBE_IN_MS = 1600, CUBE_OUT_MS = 1100, VASE_IN_MS = 3200, DRAIN_OUT
 // colour (all-rounders a dashed white outline); with no scan the cube is one colour and says how to get the rest.
 // els: { box, canvas, says, open, key, mono, colour, colourBox, details, load, unload, loadBox, spin, lines, linesBox }. still() = animations are off (the last word is shown, nothing moves).
 export function createMindCube({ box, canvas, says, open, key = null, mono = null, colour = null, colourBox = null, details = null, load = null, unload = null, loadBox = null, spin = null, lines = null, linesBox = null }, { still = () => false, onWhy = null, live = () => false, EventSourceImpl = globalThis.EventSource, avatar = false, lamp = () => false, plain = avatar } = {}) { // lamp(): this cube drives the room's lamplight (--cube-light)
-  // avatar: Bob's picture in the corner is this cube (Style, Bob's look). Drawn small and never turning, so it costs
-  // less than the pixel Bob it stands in for. plain (Nov 23, the corner cube): no made-up animation at all, no drifting
+  // avatar: Bob's picture in the corner is this cube (Style, Bob's look). Drawn small (and since Nov 23 turning slowly,
+  // redrawn 10 times a second). plain (Nov 23, the corner cube): no made-up animation at all, no drifting
   // fog, sparks, pulse, ripple or glow for show. It builds as a brain loads, drains as it goes, and lights up only with
   // the experts he really uses (Real experts); with that off it rests as the brain's still shape.
   const view = createView(canvas, { min: [32, 32] }); // square: the porthole is round
@@ -147,14 +147,18 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   // Turning: on to begin with, at the big viewer's slowest speed (0.05 a second, about two minutes a turn). Remembered.
   // Never while animations are off.
   const SPIN = 0.05;
-  let turning = !avatar; try { if (!avatar) turning = localStorage.getItem('bob-cube-spin') !== '0'; } catch {}
+  // Nov 23 (the owner: "please?"): the corner cube turns too, at the same slow speed, redrawn only 10 times a second
+  // (SPIN_AVATAR_MS), which is plenty at that speed. One switch for both: Stop turning in Bob's thinking.
+  const SPIN_AVATAR_MS = 100;
+  let turning = true; try { turning = localStorage.getItem('bob-cube-spin') !== '0'; } catch {}
   let connected = false, spinRaf = 0, spinLast = 0;
   function spinTick(now) {
     spinRaf = 0;
     if (!connected || !turning || still() || (!rec && !shell)) { spinLast = 0; return; }
-    const dt = spinLast ? Math.min(0.1, Math.max(0, (now - spinLast) / 1000)) : 0; spinLast = now;
+    if (avatar && spinLast && now - spinLast < SPIN_AVATAR_MS) { spinRaf = requestAnimationFrame(spinTick); return; }
+    const dt = spinLast ? Math.min(0.25, Math.max(0, (now - spinLast) / 1000)) : 0; spinLast = now;
     view.set({ yaw: view.get().yaw + dt * SPIN });
-    if (!raf && !view.loading()) view.draw(rec ? lit() : showLit()); // while a reply plays, or the block builds, those frames draw it
+    if (!raf && !liveTimer && !view.loading()) view.draw(rec ? lit() : showLit()); // while a reply plays, or the block builds, those frames draw it
     spinRaf = requestAnimationFrame(spinTick);
   }
   const spinGo = () => { if (!spinRaf && connected && turning && !still() && (rec || shell) && globalThis.requestAnimationFrame) { spinLast = 0; spinRaf = requestAnimationFrame(spinTick); } };

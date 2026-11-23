@@ -217,7 +217,7 @@ let lastFrame = '', lastProp = '';
 // A small fNRI cube in place of the pixel Bob: it builds itself when a brain loads, rests with the odd spark, glows
 // while he thinks and drains away when the brain is let go, with the neon sign when none is loaded. It glows for show,
 // so it costs the engine nothing; with Real experts on (Bob's thinking) it shows the experts he really used. It draws
-// small and never turns, and while it shows the pixel Bob's loop slows right down and the brain-swap machine rests.
+// small and turns slowly (Nov 23), and while it shows the pixel Bob's loop slows right down and the brain-swap machine rests.
 // In Adventure the pixel Bob comes back (the small characters are the game's). 1.5.222: the cube for everyone,
 // outside games; the pixel look is picked in Adventure, Characters, Party (public/bob-game-look.js).
 var cubeAvatarOn = false; // var: the pixel loop above reads it before this line runs
