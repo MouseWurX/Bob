@@ -5,15 +5,15 @@
 // An AppContainer sees none of your folders until one is granted to it, so the folder a command runs in is granted
 // (change) and the program's own folder (read) before it runs; Bob says which on the command's card.
 //
-// WIN_SANDBOX_READY stays false until the owner's computer has passed the live check (test/win-offline-live.mjs):
-// until then commands don't run on Windows while Web is off (src/hands.js), never unprotected.
+// WIN_SANDBOX_READY: true since the live check (test/win-offline-live.mjs) passed on a real Windows laptop, Nov 23 2026.
+// Set it false to make strict commands refuse to run on Windows instead (src/hands.js), never run unprotected.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const WIN_SANDBOX_READY = false;
+export const WIN_SANDBOX_READY = true; // Nov 23 2026: passed the live check on a real Windows laptop (13 of 13, no admin)
 const SRC = path.join(path.dirname(fileURLToPath(import.meta.url)), 'win-offline.cs');
 
 export function compilerPath(env = process.env, exists = fs.existsSync) {
