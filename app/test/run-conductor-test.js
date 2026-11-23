@@ -109,7 +109,7 @@ const longMsg = [{ role: 'user', content: 'x'.repeat(240000) }];
 { calls.length = 0; const e = live(); e.condChat = CHAT_STEP; e.condStep = e.condLoad;
   await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
   const ctx = calls.filter((c) => c.startsWith('POST /context')).map((c) => JSON.parse(c.slice(14)).n_ubatch);
-  check('loaded at the read step: reads there, then one switch down to write (no switch up)', e.condLoad === READ_STEP && JSON.stringify(ctx) === '[2048]' && e.condStep === CHAT_STEP, JSON.stringify(calls)); }
+  check('Nov 23 gate rerun: loaded at the read step it reads and writes there, no switch down either (BE43 reloads on the first switch)', e.condLoad === READ_STEP && ctx.length === 0 && e.condStep === READ_STEP, JSON.stringify(calls)); }
 { calls.length = 0; const e = live(); e.condChat = CHAT_STEP; e.condStep = e.condLoad; e.tuneEnv = { LLAMA_MOE_CACHE_FILL: '1', LLAMA_MOE_CACHE_FILL_STEP: '4096' };
   await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
   check('Nov 23 gate: with the fill sized for the read step it reads and writes there, no switch at all', calls.length === 0 && e.condStep === e.condLoad, JSON.stringify(calls)); }
