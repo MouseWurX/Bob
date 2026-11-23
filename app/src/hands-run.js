@@ -13,6 +13,7 @@ import { limitOn, readOnlyRoots } from './hands-settings.js';
 import { killTree as stopTree } from './platform.js';
 import { trackChild } from './hang-guard.js'; // item 213: Stop really stops
 import { findOnPath } from './coding-agents.js';
+import { WIN_SANDBOX_READY, sandboxPlan } from './win-offline.js'; // Nov 23 2026: the Windows sandbox (off until checked on a real PC)
 
 const MAX_OUT = 400_000; // characters of output kept for Bob (the chat gets all of it live); tool-kinds.js trims it smartly after (RESULT_MAX)
 const WIN = process.platform === 'win32';
@@ -248,11 +249,12 @@ export function offlineWay({ os_ = process.platform, probe } = {}) {
   if (!probe && process.env.BOB_NO_SANDBOX === '1') return ''; // tests only: act like a computer with no sandbox (Windows today)
   if (!probe && wayCache !== undefined && os_ === process.platform) return wayCache;
   const ok = probe || ((file, args) => { try { return spawnSync(file, args, { stdio: 'ignore', timeout: 5000 }).status === 0; } catch { return false; } });
-  const way = os_ === 'linux' ? (ok('unshare', ['--map-current-user', '-n', 'true']) ? 'unshare-c' : ok('unshare', ['-rn', 'true']) ? 'unshare' : '') : os_ === 'darwin' ? (ok('sandbox-exec', ['-p', MAC_NO_NET, 'true']) ? 'sandbox-exec' : '') : '';
+  const way = os_ === 'win32' ? (WIN_SANDBOX_READY ? 'appcontainer' : '') : os_ === 'linux' ? (ok('unshare', ['--map-current-user', '-n', 'true']) ? 'unshare-c' : ok('unshare', ['-rn', 'true']) ? 'unshare' : '') : os_ === 'darwin' ? (ok('sandbox-exec', ['-p', MAC_NO_NET, 'true']) ? 'sandbox-exec' : '') : '';
   if (!probe && os_ === process.platform) wayCache = way;
   return way;
 }
-export function offlinePlan(plan, way) {
+export function offlinePlan(plan, way, { exe = '', cwd = '' } = {}) {
+  if (way === 'appcontainer') return exe ? sandboxPlan(exe, cwd, plan) : plan;
   if (way === 'unshare-c') return { ...plan, file: 'unshare', args: ['--map-current-user', '-n', '--', plan.file, ...plan.args] }; // keeps your own user
   if (way === 'unshare') return { ...plan, file: 'unshare', args: ['-rn', '--', plan.file, ...plan.args] };
   if (way === 'sandbox-exec') return { ...plan, file: 'sandbox-exec', args: ['-p', MAC_NO_NET, plan.file, ...plan.args] };
@@ -266,10 +268,10 @@ export const OFFLINE_NOTE = 'This command can still reach the internet: this com
 
 // Runs it. Resolves with { code, out, killed, why } and never throws for the program's own failure.
 // net: 'off' runs it without internet where this system can (offline: true in the answer), 'open' as it is.
-export function runCommand({ cmd, args = [], cwd, timeoutMs = 15 * 60_000, signal, onOutput = () => {}, onStart = () => {}, env, net = 'open', way } = {}) {
+export function runCommand({ cmd, args = [], cwd, timeoutMs = 15 * 60_000, signal, onOutput = () => {}, onStart = () => {}, env, net = 'open', way, sandboxExe = '' } = {}) {
   return new Promise((resolve) => {
     const w = net === 'off' ? (way ?? offlineWay()) : '';
-    const plan = offlinePlan(launchPlan(bareShim(cmd) || (path.isAbsolute(cmd) || !/[\\/]/.test(cmd) ? cmd : path.resolve(cwd, cmd)), args), w);
+    const plan = offlinePlan(launchPlan(bareShim(cmd) || (path.isAbsolute(cmd) || !/[\\/]/.test(cmd) ? cmd : path.resolve(cwd, cmd)), args), w, { exe: sandboxExe, cwd });
     let out = '', killed = '', child;
     const keep = (t) => { out += t; if (out.length > MAX_OUT) out = '[...earlier output cut...]\n' + out.slice(-MAX_OUT); };
     try {
