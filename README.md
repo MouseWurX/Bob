@@ -70,6 +70,15 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 
 ## What's new
 
+**With Brain Engine 43** (the next release, 23 Nov 2026):
+
+| | |
+|---|---|
+| 🎮 **More memory free on a handheld** | On built-in graphics, the processor's part of a brain is now read straight from its file instead of copied into memory: 0.5 to 0.9 GB more free, at the same speed and with the same answers. Bob also shortens the chat memory so Windows keeps its share (**Memory kept for Windows** now starts at 0.5 GB), counts what a small brain really uses, and loads without the picture reader first when nothing else fits. |
+| 🎼 **A steadier Conductor** | When you let the Conductor drive (off to start with), it stays at the reading step it loaded at instead of switching back up for each long read, which cost about 15 seconds a switch on our test PC. It also leaves room on the card for MTP, the brain's built-in guesser, so nothing spills off the card, and a step switch with MTP on no longer stops the engine. |
+
+**1.5.228 to 1.5.252** (15 to 22 Nov 2026) are in the [changelog](CHANGELOG.md).
+
 **In 1.5.212 to 1.5.227** (13 and 14 Nov 2026):
 
 | | |
@@ -245,6 +254,16 @@ Brains are tested on **real jobs** in Bob's real loop, with his real tools, in a
 | 🔧 **Tools brains already know** | Giving each brain family the tool shapes it was trained on (for GPT-OSS: its browser, python and apply_patch tools), mapped back to Bob's own tools in code. A study for now; it needs an engine change first. |
 | 🪜 **Every Lab method as a step** | Each advanced method (tool interviews, expert maps, the evil check, steering, cuts, teaching) as a step you can run on its own or as part of a whole pipeline, with run records, comparisons and costs per run. [Plan](app/docs/LAB-STEPS-PLAN.md) |
 | 🔬 **Where a behaviour lives** | Research on Riker: layer-by-layer patching and sparse-autoencoder features, to find where a behaviour sits in the brain. Kept as a study record; it never trains anything. |
+
+**In Brain Engine 44**, after the next release. Built and in testing; unproven in our lab, as we have yet to test them on real jobs. Anything that could change a brain's answers stays off.
+
+| | |
+|---|---|
+| 🧰 **Tool calls read right** | llama.cpp's own fixes for reading tool calls. A Gemma 4 call made before its thinking ends now arrives as a call instead of being kept as thinking. Same prompts and tool lists for every brain Bob ships with. |
+| 🔢 **FP4 brains** | A brain that comes as FP4 runs as it is, on the RTX 50-series cards' FP4 units, with no switch. Turning another brain's experts into FP4 is a Lab job you start yourself, and won't be a default until it passes the real-jobs test. |
+| 🧠 **Inkling 2 Mini, quicker** | Its loop layers run in fewer steps with exactly the same numbers. |
+| 🏎 **Smarter expert guessing** | Off unless set: the engine guesses the next experts two or four layers ahead, learns from the brain's real picks, and keeps its expert caches in a better order. Copying guesses (prompt lookup) can work next to MTP. Same answers either way. |
+| 🧱 **Faster expert reads from memory** | Off unless set: experts kept in the computer's memory are shared with the card in place, so they move at the link's full speed. An idea from the Avalon project (MIT), with our own code. |
 
 ## What it costs
 
