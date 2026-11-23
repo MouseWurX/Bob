@@ -70,12 +70,24 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 
 ## What's new
 
+**In 1.5.254** (23 Nov 2026):
+
+| | |
+|---|---|
+| 🎼 **The Conductor works with MTP** | With MTP on (the brain's built-in guesser), the Conductor now leaves the guesser's room on the card when it plans, so nothing spills off the card. Still off to start with. |
+| 🧠 **Raon-1 mini and nano** | KRAFTON's 29B coder that works 4B at a time, and a 3B small brain, in the Brain catalogue. They run on Brain Engine 37 or newer. |
+| 🔑 **Brains that need a Hugging Face account** | Off to start with. Save a read-only Hugging Face key in 🔐 Locked secrets and those brains get a normal Download button. The key goes only to huggingface.co, only for those brains, and is never shown or logged. |
+| 📄 **The dissertation** | New results: the FP4 test that failed its gate, the Conductor's release gate, handheld results, and faster expert reads on Linux. |
+
 **In 1.5.253, with Brain Engine 43** (23 Nov 2026):
 
 | | |
 |---|---|
+| ⚡ **Brain Engine 43** | llama.cpp b12359 with our own patches, up from Brain Engine 8. Lossless speed-ups are on: long reads use the experts already on the card and read ahead (24% faster at 32K and 35% at 64K on our test PC, same tokens). MTP is on for brains that come with their own guesser. Anything that can change a brain's answers stays behind Turbo, off. |
+| 🔁 **Routines** | Off to start with. Build a job by wiring boxes together, like Blueprints, or bring in n8n workflows. You OK a routine once, on a card that lists its steps, and then it runs in plain code with no brain unless a step asks for one. While the Routines Hand is on, Bob's menu has a Routines row. |
 | 🎮 **More memory free on a handheld** | On built-in graphics, the processor's part of a brain is now read straight from its file instead of copied into memory: 0.5 to 0.9 GB more free, at the same speed and with the same answers. Bob also shortens the chat memory so Windows keeps its share (**Memory kept for Windows** now starts at 0.5 GB), counts what a small brain really uses, and loads without the picture reader first when nothing else fits. |
-| 🎼 **A steadier Conductor** | When you let the Conductor drive (off to start with), it stays at the reading step it loaded at instead of switching back up for each long read, which cost about 15 seconds a switch on our test PC. It also leaves room on the card for MTP, the brain's built-in guesser, so nothing spills off the card, and a step switch with MTP on no longer stops the engine. |
+| 🎼 **The Conductor** | Off to start with. When you let it drive, it plans the card's memory before loading (the brain, the chat memory, the expert copy cache and the reading step) with a 512 MB margin, and never switches the reading step inside a job: each switch cost about 15 seconds on our test PC. A step switch with MTP on no longer stops the engine. |
+| 📄 **The dissertation** | Every result in one table, Flash-Next and held-out jobs, how far a brain can be cut (for Flash-Next, 80% of its experts is the floor so far, from one run per level), and Routines. |
 
 **1.5.228 to 1.5.252** (15 to 22 Nov 2026) are in the [changelog](CHANGELOG.md).
 
@@ -255,7 +267,7 @@ Brains are tested on **real jobs** in Bob's real loop, with his real tools, in a
 | 🪜 **Every Lab method as a step** | Each advanced method (tool interviews, expert maps, the evil check, steering, cuts, teaching) as a step you can run on its own or as part of a whole pipeline, with run records, comparisons and costs per run. [Plan](app/docs/LAB-STEPS-PLAN.md) |
 | 🔬 **Where a behaviour lives** | Research on Riker: layer-by-layer patching and sparse-autoencoder features, to find where a behaviour sits in the brain. Kept as a study record; it never trains anything. |
 
-**In Brain Engine 44**, after 1.5.253. Built and in testing; unproven in our lab, as we have yet to test them on real jobs. Anything that could change a brain's answers stays off.
+**In Brain Engine 44**, in a later release. Built and in testing; unproven in our lab, as we have yet to test them on real jobs. Anything that could change a brain's answers stays off.
 
 | | |
 |---|---|
