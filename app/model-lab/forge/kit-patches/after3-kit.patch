@@ -1,0 +1,541 @@
+diff --git a/app/docs/TOOL-SETS.md b/app/docs/TOOL-SETS.md
+index 79d932d2..15b7df9d 100644
+--- a/app/docs/TOOL-SETS.md
++++ b/app/docs/TOOL-SETS.md
+@@ -56,6 +56,31 @@ Keep a family's wording only when right-tool plus right-arguments goes up. Score
+ 
+ Lesson writing picks the teacher's family by itself once that family is proven. Use `--tool-set off` for Bob's own wording, or `--tool-set gpt-oss` to name an unproven one.
+ 
++## The tool-shape lock (`test/run-tool-shapes-lock-test.js`)
++
++Every tool list a brain can be offered (Bob's wording and each family, all More tools off, each switch on alone, and
++all the mail ones together) is kept as a short hash in `test/tool-shapes-lock.json`, beside the `TOOL_SHAPES` it was
++taken at. The hash is of the exact tool JSON sent (`shapeSchemas` and `toolListHash` in `src/tool-sets.js`), so a
++changed name, wording or input changes it. If the hashes change while `TOOL_SHAPES` stays the same, `npm test` fails:
++bump `TOOL_SHAPES`, tell the tool lessons thread, then run `node test/run-tool-shapes-lock-test.js --write`. Lab job
++rows and lesson stamps carry `tool_hash` too, so a lesson can be matched to the exact list it was made with.
++
++The mail catalog's new inputs (16 Nov) went in with `TOOL_SHAPES` still 4, and nothing noticed. The search_files
++wording fix of 21 Nov was kept at 4 on purpose and counts toward the next bump.
++
++## Languages the end-of-turn checks read
++
++- The honesty check (`src/honest.js`: claims, numbers, quotes, links, switches) reads English, French and Spanish.
++  Its made-up number check gives one more go (`src/verify.js`, 2e) in any language, since it reads numbers.
++- The other end-of-turn send-backs (`src/answer-checks.js`) are English only. A French or Spanish answer gets the
++  honesty note but not always one more go. Translating the top checks is open work.
++
++## Tool list size
++
++`src/toolbox.js` says the start list is "~4,000 tokens". That was never measured. On 21 Nov all 52 tools came to about
++32 KB of JSON, and the start list about 6 KB (roughly 1,500 tokens). Measure with `kit.allTools()` in
++`model-lab/bob-kit.mjs` before quoting a number.
++
+ ## Making new tools with this in mind
+ 
+ The whole guide is [WRITING-TOOLS.md](WRITING-TOOLS.md). In short:
+diff --git a/app/model-lab/bob-kit.mjs b/app/model-lab/bob-kit.mjs
+index 28857fdf..a2337ec1 100644
+--- a/app/model-lab/bob-kit.mjs
++++ b/app/model-lab/bob-kit.mjs
+@@ -34,6 +34,8 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false, home = fa
+   const { systemPrompt } = await import(src('persona.js'));
+   const tb = await import(src('toolbox.js'));
+   let toolShapes = null; try { toolShapes = (await import(src('tool-sets.js'))).TOOL_SHAPES ?? null; } catch {} // the tool-shape version this Bob's lessons are written for
++  // 21 Nov (Lumo's review): the exact tool list as a short hash, switches included (tool-sets.js shapeSchemas); null on an older Bob
++  let shapeOf = null; try { const ts = await import(src('tool-sets.js')); if (ts.shapeSchemas && ts.toolListHash) shapeOf = (b, set) => ts.toolListHash(ts.shapeSchemas(b, set)); } catch {}
+   let phrasings = [];
+   try { phrasings = (await import(pathToFileURL(path.join(bobDir, 'test', 'phrasings.js')).href)).PHRASINGS; } catch {}
+ 
+@@ -163,6 +165,8 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false, home = fa
+       return { system: neutral(sys), tools: JSON.parse(neutral(JSON.stringify(brain.frontDeskTools(loaded)))) };
+     },
+     allTools: () => brain.toolSchemas(Object.keys(brain.tools), toolSet),
++    // the hash of every tool this Bob can offer right now, with the switches as they are (null on an older Bob)
++    toolHash: () => { try { return shapeOf ? shapeOf(brain, toolSet) : null; } catch { return null; } },
+     // Runs use_tools the way Bob does (adds the group), so a lesson can go on to the real tool.
+     useTools(args, loaded) { return brain.tools.use_tools.run(args, { loaded }); },
+     done() { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} }
+diff --git a/app/model-lab/do-jobs.mjs b/app/model-lab/do-jobs.mjs
+index 04e29162..7c4ca4c4 100644
+--- a/app/model-lab/do-jobs.mjs
++++ b/app/model-lab/do-jobs.mjs
+@@ -605,7 +605,7 @@ async function runJob(j) {
+   const row = {
+     id: j.id, job: j.job, text: j.text, ...(j.from ? { from: j.from } : {}), planted, scene, said: kit.neutral(said), ...(saidAll !== said ? { said_all: kit.neutral(saidAll) } : {}), ...(partial ? { said_partial: kit.neutral(partial) } : {}), steps, asks, real, standins: [], missing: [...missing],
+     secs: (Date.now() - t0) / 1000, ...(error ? { error: kit.neutral(error).slice(0, 400) } : {}),
+-    effort, solo_effort: solo, ...(thinkAll ? { think_every_step: true } : {}), search_capped: steps.some((st) => (st.calls || []).some((c) => c.name === 'web_search' && /at its monthly cap/.test(String(c.result || '')))), ...(loraScale !== null ? { lora_scale: loraScale } : {}), family, tool_shapes: kit.toolShapes, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
++    effort, solo_effort: solo, ...(thinkAll ? { think_every_step: true } : {}), search_capped: steps.some((st) => (st.calls || []).some((c) => c.name === 'web_search' && /at its monthly cap/.test(String(c.result || '')))), ...(loraScale !== null ? { lora_scale: loraScale } : {}), family, tool_shapes: kit.toolShapes, tool_hash: kit.toolHash?.() ?? null, bob_src: kit.bobSrc, brain: process.env.LAB_MODEL_NAME || 'served', at: new Date().toISOString(),
+     messages: deepNeutral(kit, brain.session(session)),
+     ...(ow ? { key: j.key, office: { lo: Boolean(j.office.lo), files: ow.files, missing: ow.missing, after: officeAfter(kit, docText) } } : {}),
+     ...(ww ? { key: j.key, type: j.type, web: ww.log } : {}),
+diff --git a/app/model-lab/jobs-to-lessons.mjs b/app/model-lab/jobs-to-lessons.mjs
+index c3fb462a..ae398132 100644
+--- a/app/model-lab/jobs-to-lessons.mjs
++++ b/app/model-lab/jobs-to-lessons.mjs
+@@ -109,7 +109,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
+     sets[k] ||= { system, tools, bob_src: row.bob_src || kit.bobSrc, family };
+     const messages = lessonMessages(row);
+     const first = messages.find((m) => m.role === 'assistant'); if (first) first.set = k;
+-    lessons.push({ idea: `${label}:${row.id}`, job: row.job || '', source: 'do-jobs', kind: 'real-job', family, tool_shapes: row.tool_shapes ?? null, bob_src: row.bob_src || null, brain: row.brain || null,
++    lessons.push({ idea: `${label}:${row.id}`, job: row.job || '', source: 'do-jobs', kind: 'real-job', family, tool_shapes: row.tool_shapes ?? null, ...(row.tool_hash ? { tool_hash: row.tool_hash } : {}), bob_src: row.bob_src || null, brain: row.brain || null,
+       think: messages.some((m) => m.role === 'assistant' && m.think === true), grade: { verdict: grade.verdict, ...(grade.note ? { note: grade.note } : {}) }, messages });
+   }
+   for (const kit of kits.values()) kit.done();
+diff --git a/app/model-lab/write-lessons.mjs b/app/model-lab/write-lessons.mjs
+index d1531dc7..9769d5e2 100644
+--- a/app/model-lab/write-lessons.mjs
++++ b/app/model-lab/write-lessons.mjs
+@@ -170,6 +170,8 @@ if (family && !['qwen', 'gpt-oss'].includes(family)) { console.error('--family i
+ let stamp = { ...(teacherName ? { teacher: teacherName } : {}), ...(kind ? { kind } : {}), ...(family ? { family } : {}) };
+ // 15 Nov: every lesson says which tool-shape version it was written for (tool-sets.js TOOL_SHAPES); the owner locks one per family
+ if (kit.toolShapes !== null) stamp = { ...stamp, tool_shapes: kit.toolShapes };
++// 21 Nov: and the exact tool list's hash (switches included), so a lesson says which tools it saw, not only the counter
++{ const h = kit.toolHash?.(); if (h) stamp = { ...stamp, tool_hash: h }; }
+ const SCI_ANGLES = ['physics: motion, energy, forces, heat, light, with a worked calculation', 'electronics: circuits, Ohm\'s law, resistors, capacitors, transistors, microcontrollers, power supplies', 'chemistry: reactions, moles, acids and bases, materials, safety', 'maths beyond arithmetic: algebra, geometry, trig, probability, a bit of calculus', 'checking a calculation or unit conversion the person already did', 'explaining a science concept in plain words to a curious adult', 'practical engineering: batteries, motors, 3D printing materials, soldering, sensors'];
+ const thinkMode = String(o.think || 'half');
+ // --think 80 (13 Nov): that percent of the lessons think, spread evenly (a style set: mostly thinking, a few without so both modes stay healthy)
+diff --git a/app/package.json b/app/package.json
+index cf26ca68..d41b220a 100644
+--- a/app/package.json
++++ b/app/package.json
+@@ -137,6 +137,7 @@
+     "test/run-fit-help-test.js",
+     "test/run-moot-test.js",
+     "test/run-honest-talk-test.js",
++    "test/run-turn-time-test.js",
+     "test/run-toolbox-test.js",
+     "test/run-free-test.js",
+     "test/run-made-test.js",
+@@ -244,6 +245,7 @@
+     "test/run-tool-wording-test.js",
+     "test/run-tool-learn-test.js",
+     "test/run-tool-sets-test.js",
++    "test/run-tool-shapes-lock-test.js",
+     "test/run-email-safe-test.js",
+     "test/run-tool-record-test.js",
+     "test/run-loop-help-test.js",
+diff --git a/app/public/help-content.js b/app/public/help-content.js
+index e96c1ad3..f1956b12 100644
+--- a/app/public/help-content.js
++++ b/app/public/help-content.js
+@@ -779,16 +779,17 @@ ${set('Alerts', 'Off', 'Pops up a notification when I need you, for example when
+ <ul><li><strong>Done only from the record.</strong> Each "I've deleted the folder" or "I've run the tests" needs a step that did it, and a file I name must be one a step touched. If not, a short note under my answer says so.</li>
+ <li><strong>Edits and commands, checked.</strong> After I change a file, the app reads it back and checks it's what the change should make, not only that the new words are somewhere in it. After a command, a file it was told to make (like <code>-o main.exe</code>) must be there.</li>
+ <li><strong>Half done is said as half done.</strong> If some steps worked and some didn't and my answer doesn't say so, the note lists both.</li>
+-<li><strong>Numbers, quotes and links.</strong> A count or size no result gave me, a quote that isn't word for word in what I read, or a web link no search or page showed me gets a note. A number I worked out isn't flagged: the app redoes the simple sums (adding, taking away, multiplying, dividing, percentages, totals and averages of my results) and checks it at the precision I wrote it.</li>
++<li><strong>Numbers, quotes and links.</strong> A count or size no result gave me, a quote that isn't word for word in what I read, or a web link no search or page showed me gets a note. Prices, totals ("the total is $52.10") and clock times ("saved at 12:00") count too. A number I worked out isn't flagged: the app redoes the simple sums (adding, taking away, multiplying, dividing, percentages, totals and averages of my results, a column of a file I read) and checks it at the precision I wrote it. "About $50" for $49.75 is fine.</li>
++<li><strong>Made-up numbers get one more go.</strong> With ${go('tool-loop', 'Better tool calling')} on, a number no result this turn holds sends my answer back once, asking me to quote the line it came from, word for word, or say I don't know it. Hedging it as "roughly" doesn't count. If it still doesn't match, the note stays under the answer.</li>
+ <li><strong>A diff against the sandbox.</strong> When I worked something out in the ${go('sandbox', 'sandbox')}, every number in my answer is compared with what the sandbox gave back. One that's close to it but not it gets a note like "The answer says 45; the sandbox gave 44."</li>
+ <li><strong>Switches.</strong> If I say a setting is on while it's off, the note says where to turn it on.</li>
+-<li><strong>In your language.</strong> These checks read English, French and Spanish.</li>
++<li><strong>In your language.</strong> These checks read English, French and Spanish. The other send-backs in ${go('tool-loop', 'How I keep my tool calls on track')} (like "you said you'd look it up and didn't") read English only for now, so in French or Spanish you get the note here but not always one more go.</li>
+ <li><strong>Corrections show once.</strong> When the app corrects me and I try again, my first try folds away as replaced, with one press to see it.</li>
+ <li><strong>On the record.</strong> Every correction is a step in <strong>How I got here</strong> under the answer, and stays with the job.</li>
+ <li><strong>Honesty score.</strong> The Brains page shows, for each brain, how many of its answers needed no correction, out of 100 once it has ten answers. It's one small file on this replicant matrix.</li></ul>
+ <p>A note is a diff, not a verdict: it says what my answer says and what the record shows, side by side, and doesn't say which is right. A link I know by heart can get one, for example. Nothing is blocked. It's the same on Windows, Mac and Linux. In the Android app, the notes show in the reply and a replaced first try becomes one short line.</p>` },
+   { id: 'faq-honest', group: 'FAQ', title: 'Why is there a note under Bob\'s answer saying something wasn\'t done?', words: 'faq note under answer not done wasn\'t done didn\'t do it lied claim check number quote link corrected replaced first try honesty',
+-    html: `<p>My app compared my answer with what really happened that turn and found a difference: I said I did a thing no step did, or gave a number, quote or link the results don't have (or one that differs from what the sandbox worked out). The note shows both sides; it doesn't say which is right. More in ${go('honest-report', 'How my answers stay honest')}.</p>` },
++    html: `<p>My app compared my answer with what really happened that turn and found a difference: I said I did a thing no step did, or gave a number, quote or link the results don't have (or one that differs from what the sandbox worked out). For a number, with Better tool calling on, I've usually had one more go to quote where it came from already, and the note means that go didn't fix it. The note shows both sides; it doesn't say which is right. More in ${go('honest-report', 'How my answers stay honest')}.</p>` },
+   { id: 'tool-learning', group: 'Using Bob', title: 'Learning from my tools', words: 'learn tools tool notes scorecard wins misses fails failing mistakes fix better improve remember what worked tool made own tools forget replicant matrix pc computer laptop mac device machine android',
+     html: `<p>With <strong>Learn from tool errors</strong> on (Settings, How Bob works; off unless you turn it on), I learn from how my tools go:</p>
+ <ul><li><strong>Tool notes.</strong> When a tool fails and then works later in the same job, I keep one line on what fixed it, like what I changed in the call. Next time I pick up that tool, the line is on it, so I get it right first go. I keep the newest two lines for each tool.</li>
+@@ -3045,7 +3046,7 @@ ${set('Per-chat engine cache', 'Off', "Switching chats saves the engine's readin
+ <p><strong>Let Bob check spelling</strong>: spelling and simple grammar (a word twice, "a" or "an", "could of"), offline. Press <strong>Get the word list</strong> once (about 1 MB); without it only grammar is checked. I list what I found and only fix it if you ask.</p>
+ <p><strong>Let Bob turn recordings into notes</strong>: a meeting recording becomes a transcript with who said what, then notes. It needs FFmpeg and a hearing model. Who said what is my best guess from how voices sound: tell me how many people spoke and it's better.</p>
+ <p><strong>Let Bob compare files</strong>: two versions of a document or list, and I say what changed in words. Word, Excel, PDF and text files.</p>` },
+-  { id: 'glossary', group: 'Troubleshooting', title: 'Glossary', words: 'office jobs word excel powerpoint tests effort on one brain minimus medius magnus maximus effort names thinking per step reasoning level console relay hold each request harmony gpt-oss chat format channel discord keep order moderation tool wording tool sets fade old messages clear chat amnesia mode straight facts censorship probe government line discord group chat accept decline auto-accept room gate find anything paused task pause resume remove task look lamplight classic terminal talk with bob hands-free safety net runaway send back sends-back focus timer profile person spending sheet receipts today tray dot crash report safe start put it health quiet hours urgent reminder place weekly ask box try pin message guest blind taste elo rating agreement near-repeat near-duplicate minhash mended call tool call embedding openings search_query search_document where we are note folders you point him to assistant preset presets openai-compatible other apps key command smart app control document index meaning search find by meaning bring in chats import export chat share a chat maths formula latex katex keyboard shortcuts saved prompt blank slash menu passcode lock turn off the lock spare key reset code email account encrypt encryption scrambled iphone ipad ios home screen phone screen tool pack packs bob-pack.json appimage deb .deb flatpak flathub back up and move backup restore trellis trellis.2 picture to 3d openscad stl obj glb 3d model side panel show documents fold folding merge experts expert merging reap router-weighted expert activation pruning first-time setup welcome do you want me quick note sandbox scanned pdf proper names jargon technical benchmark arc gsm8k mmlu hellaswag winogrande ifeval humaneval bfcl xstest distillation healing heal expert pruning fine-tuning sft full-size weights f16 bf16 importance matrix imatrix kv cache lora qlora adapter mixture of experts moe router model merging merge linear slerp ties passthrough needle in a haystack perplexity surprise temperature quantization quantized abliteration speculative decoding edited fix own messages best of n self-training preference training pairs dpo judge keep engines up to date auto update aifeui voxel lesson parts thinking path tag think words meaning bestiary characters page met enemies character screen paper doll games twenty questions word ladder five letters story dice shelf help bundle handoff mermaid svg ffmpeg waiting hourglass ⏳ line replicant matrix pc computer laptop mac device machine mcp connected app mcp door claude app claude code tip bubble github release checksum sha256 model brain gpu vram ram graphics memory gguf engine commercial session hands context effort moot copy token processor cpu ollama llama.cpp thinking borrowed lend memory bank model family diffusion brain standard speed test llama-bench lend my graphics card lent card store brain in parts bigger checker onyx recommended voice developer id notarized notarization signed ad hoc show avatars avatar bob-net list naming rule sort rename wobble plus minus queue lab from mistakes meter how i got here outside text injection turn why stopped reliability this week replay undo changes set aside broken file paused time limit first first-word length cut off watchdog stuck frozen backoff retry care restart honesty score replaced source digest sunday digest obsidian vault imap password calendar link ics webcal csv sql pyodide passphrase web service api experts per word top-k lamp mercury sodium thallium neon title bar window buttons pages hello brains users privacy helpers done python packages save mail world mail catalog made-up inbox',
++  { id: 'glossary', group: 'Troubleshooting', title: 'Glossary', words: 'office jobs word excel powerpoint tests effort on one brain minimus medius magnus maximus effort names thinking per step reasoning level console relay hold each request harmony gpt-oss chat format channel discord keep order moderation tool wording tool sets fade old messages clear chat amnesia mode straight facts censorship probe government line discord group chat accept decline auto-accept room gate find anything paused task pause resume remove task look lamplight classic terminal talk with bob hands-free safety net runaway send back sends-back focus timer profile person spending sheet receipts today tray dot crash report safe start put it health quiet hours urgent reminder place weekly ask box try pin message guest blind taste elo rating agreement near-repeat near-duplicate minhash mended call tool call embedding openings search_query search_document where we are note folders you point him to assistant preset presets openai-compatible other apps key command smart app control document index meaning search find by meaning bring in chats import export chat share a chat maths formula latex katex keyboard shortcuts saved prompt blank slash menu passcode lock turn off the lock spare key reset code email account encrypt encryption scrambled iphone ipad ios home screen phone screen tool pack packs bob-pack.json appimage deb .deb flatpak flathub back up and move backup restore trellis trellis.2 picture to 3d openscad stl obj glb 3d model side panel show documents fold folding merge experts expert merging reap router-weighted expert activation pruning first-time setup welcome do you want me quick note sandbox scanned pdf proper names jargon technical benchmark arc gsm8k mmlu hellaswag winogrande ifeval humaneval bfcl xstest distillation healing heal expert pruning fine-tuning sft full-size weights f16 bf16 importance matrix imatrix kv cache lora qlora adapter mixture of experts moe router model merging merge linear slerp ties passthrough needle in a haystack perplexity surprise temperature quantization quantized abliteration speculative decoding edited fix own messages best of n self-training preference training pairs dpo judge keep engines up to date auto update aifeui voxel lesson parts thinking path tag think words meaning bestiary characters page met enemies character screen paper doll games twenty questions word ladder five letters story dice shelf help bundle handoff mermaid svg ffmpeg waiting hourglass ⏳ line replicant matrix pc computer laptop mac device machine mcp connected app mcp door claude app claude code tip bubble github release checksum sha256 model brain gpu vram ram graphics memory gguf engine commercial session hands context effort moot copy token processor cpu ollama llama.cpp thinking borrowed lend memory bank model family diffusion brain standard speed test llama-bench lend my graphics card lent card store brain in parts bigger checker onyx recommended voice developer id notarized notarization signed ad hoc show avatars avatar bob-net list naming rule sort rename wobble plus minus queue lab from mistakes meter how i got here outside text injection turn why stopped reliability this week replay undo changes set aside broken file paused time limit first first-word length cut off watchdog stuck frozen backoff retry care restart honesty score replaced source digest sunday digest obsidian vault imap password calendar link ics webcal csv sql pyodide passphrase web service api experts per word top-k lamp mercury sodium thallium neon title bar window buttons pages hello brains users privacy helpers done python packages save mail world mail catalog made-up inbox made-up number price total time',
+     html: `<p>The words I use, in plain English, A to Z, with the proper names people in the field use where the Lab has one. I'll try not to say "tensor" without warning you.</p>
+ <dl>
+ <dt>Ablation sweep</dt><dd>Turning experts or neurons down a few at a time, live, to find which ones cause a habit. Its answers are never-train.</dd>
+@@ -3275,6 +3276,7 @@ ${set('Per-chat engine cache', 'Off', "Switching chats saves the engine's readin
+ <dt>Look for rented cards (Lab console)</dt><dd>A button in the console's Set up, under Rented cards. It asks the rental service which Forge cards are up, with the run each came from and its caps, and changes nothing. Each one can be taken over or ended from there. See ${go('lab-console', 'The Forge console')}.</dd>
+ <dt>LoRA, QLoRA (adapter)</dt><dd>A small set of extra weights taught on top of a brain, instead of changing all of it, then folded in. QLoRA does it against a 4-bit copy, so it fits a smaller card. The Lab's <strong>Light</strong> teaching back, and <strong>Teach it</strong> here.</dd>
+ <dt>Low-data mode</dt><dd>In the Android app: text only, with pictures, clips and songs waiting for a tap. Off, only on mobile data, or always.</dd>
++<dt>Made-up number</dt><dd>A count, price, total or time in my answer that no tool result that turn had and the app couldn't work out from them. It gets one more go and, if it's still there, a note. See ${go('honest-report', 'How my answers stay honest')}.</dd>
+ <dt>Magnus</dt><dd>The third Effort level (High): more thinking, then the work is checked before you get it.</dd>
+ <dt>Mail catalog</dt><dd>A small list I keep of your email's senders, companies, subjects and dates (never the messages themselves), so I can sort a huge inbox by company and kind and act on a whole company at once. Each person on Bob has their own, locked like their chats. Only with <strong>Let Bob catalog my email</strong> on. See ${go('faq-big-inbox', 'Can Bob handle an inbox with tens of thousands of emails?')}</dd>
+ <dt>Mail lock</dt><dd>Once a chat has email in it, I can't send, post, open web pages, search, run commands or remember things in that chat, and every change asks you first. So an email with hidden orders has nothing harmful to make me do. See ${go('email-tidy', 'Tidying your email safely')}.</dd>
+diff --git a/app/src/brain-run-on.js b/app/src/brain-run-on.js
+index d9905cd6..2e890d2f 100644
+--- a/app/src/brain-run-on.js
++++ b/app/src/brain-run-on.js
+@@ -163,6 +163,9 @@ export const runOnParts = {
+     ctx.meanwhile = job?.side ? meanwhile : '';
+     const extras = [state, meanwhile, presetPrompt(ctx.preset, this.cfg.userName || 'the user'), guestNote(job, this.cfg.userName || 'the user'), job?.solo ? soloPrompt(job.effort, '{{USER}}') : effortPrompt(job?.effort), jobHelpsPrompt(this.cfg, job), catPrompt({ cat: this.cfg.catName, turn: turnNo, dials: cleanPersonality(this.cfg.personality), user: this.cfg.userName || 'the user' })].filter(Boolean).map((x) => `\n\n${x.replaceAll('{{USER}}', this.cfg.userName || 'the user')}`).join('');
+     const brainCtx = await this.fitCtx(model, wantCtx);
++    // Nov 22 (Hermes Agent check): the time in the turn note is read once per turn. The note sits before the latest
++    // message, so a time that changed between steps made the engine read every step of the job again each minute.
++    const turnTime = this.now();
+     // 1.5.127: a chat that no longer fits the biggest brain here, with a rented brain in its slot: offer it (the job carries on here meanwhile).
+     if (!job?.rent && !job?.side && !job?.guest && this.rentals.current() && !ctx.rentOffered) {
+       const tokens = roughTokens({ messages: msgs });
+@@ -325,13 +328,13 @@ export const runOnParts = {
+       if (thinkNow !== think && !ctx.stepThinkSaid) { ctx.stepThinkSaid = true; this.log('chat', 'tool steps: no thinking (planning and the answer keep it)'); }
+       const pub = Boolean(job?.guest?.public); // Bob on Discord: no memory, about-me or backstory of the owner's
+       const hush = pub || isGuestId(sessionId); // a guest chat: no memory or about-me either (guest-chat.js)
+-      const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: this.now(), memory: hush ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: hush ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
++      const sys = { role: 'system', content: this.withLimits(systemPrompt({ now: turnTime, memory: hush ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: hush ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) + extras + (earlier ? `\n\n${earlier}` : '') };
+       // Nov 11 (item 1): what changes every turn (the time, the Right now line, recalled bits) goes in a short note just
+       // before the latest message, not in the instructions. The time changed every minute and the RAM line every turn,
+       // so the engine threw away the whole chat it had already read and read it again; now it keeps it (its prompt cache).
+       const steadySys = { role: 'system', content: this.withLimits(systemPrompt({ now: NOW_IN_NOTE, memory: hush ? '' : this.memory(), user: pub ? 'the owner' : this.cfg.userName, backstory: pub ? '' : this.backstory(), about: hush ? '' : this.about(), cat: this.cfg.catName, look: lookPrompt(this.cfg), dials: personalityPrompt(this.cfg.personality, pub ? 'the owner' : this.cfg.userName || 'the user') }), ctx.loaded) };
+       const waitingOn = pendingLine(this.switchesOff(), this.pendingSwitches()); // 1.5.207: one short line, only while an offer waits
+-      const turnNote = `Current date and time for ${pub ? 'the owner' : this.cfg.userName || 'the user'}: ${this.now()}.${extras}${waitingOn ? `\n${waitingOn}` : ''}${earlier ? `\n\n${earlier}` : ''}`;
++      const turnNote = `Current date and time for ${pub ? 'the owner' : this.cfg.userName || 'the user'}: ${turnTime}.${extras}${waitingOn ? `\n${waitingOn}` : ''}${earlier ? `\n\n${earlier}` : ''}`;
+       let reply = null;
+       // A lender keeps the start of the chat it read last time (its prompt cache), so what changes every turn (the time,
+       // the Right now line, recalled bits) goes in a short note just before the latest message, not in the instructions.
+diff --git a/app/src/honest.js b/app/src/honest.js
+index 7552e116..0a77bc7c 100644
+--- a/app/src/honest.js
++++ b/app/src/honest.js
+@@ -146,6 +146,10 @@ const COUNT_NOUN = 'files?|folders?|lines?|items?|results?|errors?|warnings?|tes
+ const NUM = '(\\d{1,3}(?:[,\\s\\u202f]\\d{3})+|\\d+)(?:[.,](\\d+))?';
+ const SIZE_RX = rx(`\\b<${NUM}\\s?(bytes?|b|kib|kb|mib|mb|gib|gb|tib|tb|ko|mo|go|to)\\b>`, 'giu');
+ const COUNT_RX = rx(`\\b<${NUM}\\s+(?:[\\p{L}-]+\\s+)?(${COUNT_NOUN})\\b>`, 'giu');
++// 21 Nov: money ($12.50, 1,299 dollars, 40 €), a stated total ("the total is 4,210", "comes to 312"), and clock times (14:05)
++const MONEY_RX = rx(`(?:[$€£¥]\\s?${NUM}|\\b<${NUM}\\s?(?:dollars?|euros?|pounds?|usd|eur|gbp|cad|aud|€|\\$|dólares|livres)\\b>)`, 'giu');
++const TOTAL_RX = rx(`\\b<(?:total|grand total|subtotal|sum|altogether|in all|comes? to|adds? up to|somme|suma)\\b>(?:\\s+(?:is|was|of|comes to|est|es|de))?\\s*[:=]?\\s*(?:about\\s+|around\\s+|~)?[$€£]?\\s?${NUM}`, 'giu');
++const TIME_RX = /(?<![\d:.])([01]?\d|2[0-3]):([0-5]\d)(?![\d:])/g;
+ const toNum = (int, frac) => Number(`${String(int).replace(/[,\s\u202f]/g, '')}${frac ? `.${frac}` : ''}`);
+ // Nov 12 (the owner asked): the honesty note is a diff between the answer and the results, the sandbox's above all. A number Bob
+ // worked out from his results isn't made up, so before a number is flagged the app redoes the simple sums a brain
+@@ -183,7 +187,10 @@ export function unbackedNumbers(reply, sources = [], lists = sources, sandbox =
+   const t = plain(reply).replace(/```[\s\S]*?```/g, ' ').replace(URL_RX, ' ').replace(/(?:[A-Za-z]:\\|\/)[^\s]+/g, ' ');
+   const seen = plain(sources.join('\n'));
+   const nums = new Set(numbersIn(seen));
+-  const groups = sources.map(numbersIn).filter((g) => g.length);
++  // A column's total counts as worked out too: the last number on each line of a result (a CSV's amount column), so
++  // dates on the same lines don't spoil the sum.
++  const columns = sources.map((s) => String(s).split('\n').map((l) => { const f = plain(l).split(/[,;\t|]/).at(-1).replace(/[$€£¥\s]/g, ''); return /^-?\d+(?:\.\d+)?$/.test(f) ? Number(f) : undefined; }).filter((v) => v !== undefined)).filter((g) => g.length > 1);
++  const groups = [...sources.map(numbersIn).filter((g) => g.length), ...columns];
+   const sizes = [...seen.matchAll(SIZE_RX)].map((m) => toNum(m[1], m[2]) * SIZE[m[3].toLowerCase()]).concat([...nums].filter((n) => n >= 1024));
+   const lines = Math.max(0, ...lists.map((s) => String(s).split('\n').filter((l) => l.trim()).length));
+   const out = [], mismatch = [];
+@@ -197,6 +204,16 @@ export function unbackedNumbers(reply, sources = [], lists = sources, sandbox =
+     if (nums.has(n) || n <= lines + 1 || workedOut(n, groups, shownDecimals(m[2]))) continue;
+     out.push(m[0].trim());
+   }
++  // 21 Nov (after1, Lumo's review): a "total" made up after reading a CSV, error counts and file times that no result held.
++  // Money, a stated total, and clock times now count as well. A total may be worked out from the results (workedOut);
++  // a time must be in a result or the chat as written (9:05 and 09:05 are the same).
++  for (const re of [MONEY_RX, TOTAL_RX]) for (const m of t.matchAll(re)) {
++    const n = toNum(m[1], m[2]);
++    if (!Number.isFinite(n) || nums.has(n) || workedOut(n, groups, shownDecimals(m[2]))) continue;
++    out.push(m[0].trim());
++  }
++  const times = new Set([...seen.matchAll(TIME_RX)].map((m) => `${Number(m[1])}:${m[2]}`));
++  for (const m of t.matchAll(TIME_RX)) if (!times.has(`${Number(m[1])}:${m[2]}`)) out.push(m[0].trim());
+   // The diff against the sandbox: its numbers, and what can be worked out from them and the other results.
+   const box = sandbox.map(numbersIn).filter((g) => g.length);
+   if (box.length) {
+diff --git a/app/src/tool-sets.js b/app/src/tool-sets.js
+index b97e945a..e2a11669 100644
+--- a/app/src/tool-sets.js
++++ b/app/src/tool-sets.js
+@@ -8,6 +8,7 @@
+ // A family's tool list is never longer in all than Bob's own (test/run-tool-sets-test.js): the examples are paid for
+ // by shorter lines elsewhere, so the start of a job stays inside its budget (test/run-start-budget-test.js). A family is picked by itself only after tool-score shows it
+ // fails less with its own wording (docs/TOOL-SETS.md has the numbers); until then it's `proven: false` and only used when named.
++import crypto from 'node:crypto';
+ import { familyOf } from './model-family.js';
+ import { ggufInfo } from './gguf.js';
+ 
+@@ -44,12 +45,26 @@ export const SETS = {
+ // Which tool shapes are live, as a short stamp. The tool record (tool-record.js) starts a fresh history when this
+ // changes, and moves the old one to an archive folder (Nov 14, the owner: "if i have a history in it we restart that
+ // history new when we try the new tool shapes"). Bump TOOL_SHAPES when tool wording or inputs change for every brain.
+-export const TOOL_SHAPES = 4; // 2 (Nov 15): save_to on the save tools and make_diagram, a new name on convert_file. 3: GPT-OSS shape locked. 4: Qwen hides 2 helpers; run_command sends file writes to write_file
++export const TOOL_SHAPES = 5; // 2 (Nov 15): save_to on the save tools and make_diagram, a new name on convert_file. 3: GPT-OSS shape locked. 4: Qwen hides 2 helpers; run_command sends file writes to write_file. 5 (Nov 22): search_files by name, save_spreadsheet folder + no date, office_make wording
++// Waiting for the next bump (kept at 4 on purpose, 21 Nov: the stock-Qwen comparisons pin shape 4 and training is parked):
++// search_files' wording now says it also matches file names (3fff3cf0). Count it in the next bump when lessons start again.
+ export function shapeStamp(cfg) {
+   const live = toolSetsOn(cfg) ? Object.keys(SETS).filter((k) => SETS[k].proven !== false && cfg?.toolSets?.[k] !== false).sort() : [];
+   return `${TOOL_SHAPES}-${live.join('+') || 'bob'}`;
+ }
+ 
++// The exact shape of every tool a brain can be offered with these settings: names, wording (the {{USER}} and {{HOME}}
++// placeholders left in, so it never depends on who or where) and inputs, in order. Anything Settings turns on or off
++// changes it: a More tools switch, a Hand, the mail catalog. Lumo's review (Nov 21) of the after1 tools: the mail catalog
++// added read_email and manage_email inputs while TOOL_SHAPES stayed 4, and one counter can't say which tools a brain saw.
++// A run or lesson can now carry this hash beside TOOL_SHAPES, and test/run-tool-shapes-lock-test.js fails when the tool
++// list changes without a TOOL_SHAPES bump. brain: a Brain (its tools, offTools and usable); set: a family's tool set.
++export function shapeSchemas(brain, set = null) {
++  const off = brain.offTools();
++  return Object.keys(brain.tools).filter((n) => brain.tools[n]?.schema && brain.usable(n, off) && !set?.hide?.includes(n)).map((n) => inSet(brain.tools[n].schema, set));
++}
++export const toolListHash = (schemas) => crypto.createHash('sha256').update(JSON.stringify(schemas ?? [])).digest('hex').slice(0, 12);
++
+ // The tool set a brain uses: { id, ...set } or null for Bob's own wording.
+ export function toolSetFor(cfg, model, { info, family } = {}) {
+   if (!toolSetsOn(cfg)) return null;
+diff --git a/app/src/verify.js b/app/src/verify.js
+index 88a4c61a..4049b50e 100644
+--- a/app/src/verify.js
++++ b/app/src/verify.js
+@@ -14,7 +14,7 @@ import { HANDS } from './hands-settings.js';
+ import { kindOf, repeatSafe } from './tool-kinds.js';
+ import { answerChecks } from './answer-checks.js'; // Nov 16: the real-jobs reads' most common mistakes
+ import { stepsNudge } from './job-steps.js'; // Nov 13: several things asked, fewer tool steps ran
+-import { PIC_CLAIM_FR_ES, FILE_CLAIM_FR_ES, admitsTrouble, plain } from './honest.js'; // Nov 12, items 182 and 185
++import { PIC_CLAIM_FR_ES, FILE_CLAIM_FR_ES, admitsTrouble, plain, unbackedNumbers } from './honest.js'; // Nov 12, items 182 and 185; numbers 21 Nov
+ 
+ // ---------------------------------------------------------------- what was asked for
+ 
+@@ -539,6 +539,21 @@ export function afterTurn(ctx = {}, replyText) {
+     for (const m of more.slice(0, 2)) { push(m.nudge, m.groups); if (m.claim && !claims.length) notes.push('Bob said something was done that the app couldn\'t see happen; he was asked to check.'); }
+   }
+ 
++  // 2e. 21 Nov (after1, Lumo's review): the honesty check (honest.js 186) found numbers no tool result holds, but only
++  // put a note under the answer, so the made-up total still stood. Now a number, sum, price or time that no result
++  // this turn (or the chat) holds, and that can't be worked out from them, gets the same one more go, asking for the
++  // tool line it came from word for word rather than a reworded guess. The note under the answer stays as before for
++  // what is left after that go.
++  if (ctx.cfg?.toolHelp !== false && !nudged && !nudges.length && said && (ctx.seen || []).length) {
++    let nums = [];
++    try {
++      const chat = (ctx.msgs || []).filter((m) => m && (m.role === 'user' || m.role === 'tool')).slice(-40).map((m) => String(m.text ?? m.content ?? ''));
++      nums = unbackedNumbers(said, [...ctx.seen, ...chat], ctx.seen, ctx.sandboxOut || []);
++    } catch {}
++    const which = nums.mismatch?.length ? nums.mismatch.map((x) => `"${x.said}"`) : nums.map((n) => `"${n}"`);
++    if (which.length) push(`Your answer says ${which.slice(0, 3).join(', ')}, but no tool result this turn has ${which.length === 1 ? 'that number' : 'those numbers'}, and ${which.length === 1 ? 'it' : 'they'} can't be worked out from the results. For each one, quote the tool line it comes from, word for word, and use the number in it. If no result has it, say plainly you don't know it, or work it out with a tool (calculate, or read the rest of the file). Don't reword it as "about" or "roughly".`);
++  }
++
+   // 3. The claims' nudge (the note was worked out above).
+   if (claims.length) {
+     const what = claims.map((c) => ({ picture: 'a picture', clip: 'a clip', sound: 'a sound', file: 'a saved file', app: 'an app step' })[c]);
+diff --git a/app/test/run-honest-report-test.js b/app/test/run-honest-report-test.js
+index bac65e89..9fc60a33 100644
+--- a/app/test/run-honest-report-test.js
++++ b/app/test/run-honest-report-test.js
+@@ -96,6 +96,18 @@ check('182 admitting trouble in Spanish is read', admitsTrouble('No pude mover d
+ // ---- 186-188: numbers, quotes, links
+ check('186 a count no result holds is flagged', unbackedNumbers('I found 340 files in there.', ['a.txt\nb.txt\nc.txt'])[0] === '340 files');
+ check('186 a count he could count off the list is fine', unbackedNumbers('I found 3 files in there.', ['a.txt\nb.txt\nc.txt']).length === 0);
++// 21 Nov (after1 51f55, cbc33): money, bare totals and clock times, which 186 didn't read.
++{
++  const csv = 'item,price\nbread,12.50\nmilk,30.00\njam,7.25';
++  check('186 a money total that sums the column is fine', unbackedNumbers('The total is $49.75.', [csv]).length === 0);
++  check('186 a made-up money total is flagged', unbackedNumbers('The total is $52.10.', [csv]).length > 0);
++  check('186 a rounded money total is fine', unbackedNumbers('That comes to about $50.', [csv]).length === 0);
++  check('186 a bare total no result holds is flagged', unbackedNumbers('The grand total: 812.', [csv]).length > 0);
++  const ls = 'soup.txt  2026-11-02 14:31\nstew.txt  2026-11-03 09:05';
++  check('186 a made-up file time is flagged', unbackedNumbers('soup.txt was saved at 00:00 and stew.txt at 12:00.', [ls]).length > 0);
++  check('186 a time the listing shows is fine', unbackedNumbers('stew.txt was saved at 09:05.', [ls]).length === 0);
++  check('186 a time with a dropped zero still matches', unbackedNumbers('stew.txt was saved at 9:05.', [ls]).length === 0);
++}
+ check('186 a size written another way is fine', unbackedNumbers('It takes 2.5 GB.', ['size: 2684354560 bytes']).length === 0);
+ check('186 a size no result holds is flagged', unbackedNumbers('It takes 9.1 GB.', ['size: 2684354560 bytes']).length === 1);
+ check('186 a number he worked out from the results is not flagged (a sum)', unbackedNumbers('The two files hold 340 lines in all.', ['a: 120 lines', 'b: 220 lines']).length === 0);
+diff --git a/app/test/run-tool-shapes-lock-test.js b/app/test/run-tool-shapes-lock-test.js
+new file mode 100644
+index 00000000..99f8aa56
+--- /dev/null
++++ b/app/test/run-tool-shapes-lock-test.js
+@@ -0,0 +1,75 @@
++// The tool-shape lock (Nov 21, from Lumo's review of the after1 tools): every tool a brain can be offered, for each
++// family and each switch that changes the list, is kept as a short hash in test/tool-shapes-lock.json, beside the
++// TOOL_SHAPES it was taken at. If the tools change while TOOL_SHAPES stays the same, this test fails: bump TOOL_SHAPES
++// (src/tool-sets.js) and tell the tool lessons thread, then write the new hashes with
++//   node test/run-tool-shapes-lock-test.js --write
++// The mail catalog's new inputs went in on 16 Nov with TOOL_SHAPES still 4, and nothing noticed. This would have.
++// Nothing here reads the real computer: a throwaway config, the Windows tool list (BOB_PLATFORM), and the wording's
++// {{USER}} and {{HOME}} placeholders left in.
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const here = path.dirname(fileURLToPath(import.meta.url));
++const app = path.join(here, '..');
++const lockFile = path.join(here, 'tool-shapes-lock.json');
++const write = process.argv.includes('--write');
++let pass = 0, fail = 0;
++const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
++
++process.env.BOB_PLATFORM = 'win32';
++const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-shapes-'));
++const conf = path.join(tmp, 'config.json');
++fs.copyFileSync(path.join(app, 'config.example.json'), conf);
++process.env.BOB_CONFIG = conf; process.env.BOB_AGENT_DIR = tmp;
++const { loadConfig } = await import('../src/config.js');
++const { Brain } = await import('../src/brain.js');
++const { HANDS } = await import('../src/hands-settings.js');
++const { SETS, TOOL_SHAPES, shapeSchemas, toolListHash, toolSetFor } = await import('../src/tool-sets.js');
++const { SWITCH_KEYS } = await import('../src/more-tools.js');
++
++const cfg = loadConfig(); cfg.userName = 'Sam'; cfg.timeZone = 'UTC'; cfg.readRoots = [tmp];
++cfg.webSearch = true; cfg.hands = { enabled: true, ...Object.fromEntries(Object.keys(HANDS).map((h) => [h, { on: true }])) };
++const brain = new Brain(cfg, () => {}); clearInterval(brain.reminderTimer);
++
++// Every family with its own set, plus Bob's own wording.
++const families = [['bob', null], ...[...new Set(Object.values(SETS))].map((s) => [Object.keys(SETS).find((k) => SETS[k] === s), toolSetFor({}, '', { family: Object.keys(SETS).find((k) => SETS[k] === s) })])];
++// Switch states: all More tools off; each one on by itself; and all of the mail ones together (the catalog needs them).
++const states = [['all-off', {}], ...SWITCH_KEYS.map((k) => [k, { [k]: true }]), ['mail-all', { email: true, emailTidy: true, emailCatalog: true }]];
++const hashes = {};
++for (const [st, more] of states) {
++  brain.cfg.moreTools = { ...more };
++  for (const [fam, set] of families) hashes[`${fam}/${st}`] = toolListHash(shapeSchemas(brain, set));
++}
++
++// The hash follows the switches: the mail catalog changes read_email and manage_email.
++{
++  brain.cfg.moreTools = { email: true, emailTidy: true };
++  const without = toolListHash(shapeSchemas(brain, null));
++  brain.cfg.moreTools = { email: true, emailTidy: true, emailCatalog: true };
++  const withCat = toolListHash(shapeSchemas(brain, null));
++  check('turning the mail catalog on changes the hash', without !== withCat, `${without} = ${withCat}`);
++  brain.cfg.moreTools = {};
++  check('the same settings give the same hash', toolListHash(shapeSchemas(brain, null)) === hashes['bob/all-off']);
++  check('a family that hides tools has its own hash', hashes['bob/all-off'] !== hashes['gpt-oss/all-off']);
++  check('no wording is filled in with a name or a folder', !JSON.stringify(shapeSchemas(brain, null)).includes(tmp) && !JSON.stringify(shapeSchemas(brain, null)).includes('Sam'));
++}
++
++if (write) {
++  fs.writeFileSync(lockFile, JSON.stringify({ tool_shapes: TOOL_SHAPES, hashes }, null, 1) + '\n');
++  console.log(`Wrote ${Object.keys(hashes).length} hashes at TOOL_SHAPES ${TOOL_SHAPES} to test/tool-shapes-lock.json`);
++} else {
++  let lock = null;
++  try { lock = JSON.parse(fs.readFileSync(lockFile, 'utf8').replace(/\r\n/g, '\n')); } catch {}
++  check('the lock file is there', Boolean(lock?.hashes), 'run node test/run-tool-shapes-lock-test.js --write');
++  if (lock?.hashes) {
++    const changed = Object.keys({ ...hashes, ...lock.hashes }).filter((k) => hashes[k] !== lock.hashes[k]);
++    if (lock.tool_shapes === TOOL_SHAPES) check(`the tools are the ones locked at TOOL_SHAPES ${TOOL_SHAPES}`, !changed.length, `changed: ${changed.slice(0, 8).join(', ')}${changed.length > 8 ? '…' : ''}. A tool's name, wording or inputs changed: bump TOOL_SHAPES in src/tool-sets.js, tell the tool lessons thread, then run node test/run-tool-shapes-lock-test.js --write`);
++    else check(`the lock was taken at TOOL_SHAPES ${TOOL_SHAPES}`, false, `the lock is from ${lock.tool_shapes}: run node test/run-tool-shapes-lock-test.js --write`);
++  }
++}
++
++try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
++console.log(`\n${pass} passed, ${fail} failed`);
++process.exit(fail ? 1 : 0);
+diff --git a/app/test/run-turn-time-test.js b/app/test/run-turn-time-test.js
+new file mode 100644
+index 00000000..e53b6077
+--- /dev/null
++++ b/app/test/run-turn-time-test.js
+@@ -0,0 +1,36 @@
++// Nov 22 (Hermes Agent check): the time in the turn note is read once per turn. The note sits just before the latest
++// message, so when the minute changed between two steps of one job, the engine read every step of the job again.
++// Here the clock moves on every read; the two engine calls of one turn must still carry the same note.
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { Brain } from '../src/brain.js';
++
++let pass = 0, fail = 0;
++const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
++
++const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-turn-time-'));
++const dataDir = path.join(tmp, 'inn', 'bob'); fs.mkdirSync(dataDir, { recursive: true });
++const brain = new Brain({ agentDir: tmp, innDir: path.join(tmp, 'inn'), dataDir, settingsFile: path.join(dataDir, 'settings.json'), readRoots: [], readOnlyRoots: [], userName: 'Sam', quickOnCpu: false, models: { bob: 'small:latest' }, engine: 'ollama', ollamaUrl: 'http://127.0.0.1:1' }, () => {});
++clearInterval(brain.reminderTimer);
++brain.ensureModel = async () => {}; brain.fitCtx = async () => 8192; brain.recall = async () => '';
++let minute = 0;
++brain.now = () => `Sunday, November 22, 2026, 9:${String(10 + minute++).padStart(2, '0')} p.m. (Test/Zone)`; // a new minute on every read
++// The first reply makes up an observation, so the app sends it back once: two engine calls in one turn.
++const script = [{ role: 'assistant', content: 'I was just observing a subtle loop in the file handle caching.' }, { role: 'assistant', content: 'All quiet here.' }];
++const seen = [];
++brain.engine = { chat: async ({ messages }) => { seen.push(messages); return script.shift() || { role: 'assistant', content: 'ok' }; } };
++await brain.runOn([], "so what's good, bob?", () => {}, new AbortController().signal, [], null, 't1');
++
++const noteOf = (msgs) => msgs.find((m) => m.role === 'system' && /^Current date and time for/.test(m.content))?.content || '';
++const firstLine = (s) => s.split('\n')[0];
++check('the turn made two engine calls', seen.length === 2, String(seen.length));
++check('both calls carry the turn note', Boolean(noteOf(seen[0])) && Boolean(noteOf(seen[1])));
++check('the clock moves on every read, and the time in the note stays the same for the whole turn', firstLine(noteOf(seen[0])) === firstLine(noteOf(seen[1])), `${firstLine(noteOf(seen[0]))} / ${firstLine(noteOf(seen[1]))}`);
++check('the steady instructions are the same on both calls', seen[0][0].content === seen[1][0].content);
++const at = (msgs) => msgs.findIndex((m) => m.role === 'system' && /^Current date and time for/.test(m.content));
++check('everything up to and including the note is the same on both calls (the engine keeps its reading)', at(seen[0]) > 0 && JSON.stringify(seen[0].slice(0, at(seen[0]) + 1)) === JSON.stringify(seen[1].slice(0, at(seen[1]) + 1)));
++
++fs.rmSync(tmp, { recursive: true, force: true });
++console.log(`\n${pass} passed, ${fail} failed`);
++process.exit(fail ? 1 : 0);
+diff --git a/app/test/run-verify-test.js b/app/test/run-verify-test.js
+index 292132a3..bb3b6a32 100644
+--- a/app/test/run-verify-test.js
++++ b/app/test/run-verify-test.js
+@@ -197,6 +197,17 @@ check('afterTurn: Apps hand off and an empty reply: the switch to turn on', afte
+ check('afterTurn: he claimed the picture he didn\'t make: the correction, not "didn\'t make"', afterTurn(T({ expect: expectFrom('make me a picture'), nudged: 1 }), 'Here is your picture!')?.note === 'Nothing was actually made in that reply. Bob said he made a picture, but no picture was made.');
+ check('afterTurn: plain chat: nothing to do', afterTurn(T({ expect: expectFrom('hi bob') }), 'Hey Sam!') === null);
+ check('afterTurn: one nudge only per turn', afterTurn(T({ nudged: 1 }), 'Here\'s your picture!')?.nudge === undefined);
++// 21 Nov (Lumo's review): a number no tool result holds gets one more go asking for the tool line, not just a note.
++{
++  const csv = 'item,price\nbread,12.50\nmilk,30.00\njam,7.25';
++  const made = afterTurn({ ...T({ actions: [{ name: 'read_file', ok: true }] }), seen: [csv] }, 'The total is $52.10.');
++  check('afterTurn: a made-up total gets one more go', /quote the tool line/.test(made?.nudge || ''));
++  check('afterTurn: the go names the number', /\$52\.10/.test(made?.nudge || ''));
++  check('afterTurn: a total that sums the column gets no go', !afterTurn({ ...T({ actions: [{ name: 'read_file', ok: true }] }), seen: [csv] }, 'The total is $49.75.')?.nudge);
++  check('afterTurn: no tool results, no number go', !/quote the tool line/.test(afterTurn(T(), 'The total is $52.10.')?.nudge || ''));
++  check('afterTurn: the number go is once per turn', !afterTurn({ ...T({ nudged: 1, actions: [{ name: 'read_file', ok: true }] }), seen: [csv] }, 'The total is $52.10.')?.nudge);
++  check('afterTurn: tool help off, no number go', !afterTurn({ ...T({ actions: [{ name: 'read_file', ok: true }] }), cfg: { ...cfg, toolHelp: false }, seen: [csv] }, 'The total is $52.10.')?.nudge);
++}
+ 
+ fs.rmSync(dir, { recursive: true, force: true });
+ console.log(`\n${pass} passed, ${fail} failed`);
+diff --git a/app/test/tool-shapes-lock.json b/app/test/tool-shapes-lock.json
+new file mode 100644
+index 00000000..9e1378c0
+--- /dev/null
++++ b/app/test/tool-shapes-lock.json
+@@ -0,0 +1,59 @@
++{
++ "tool_shapes": 5,
++ "hashes": {
++  "bob/all-off": "901bd4a653c6",
++  "qwen3/all-off": "e0732e3faa63",
++  "gpt-oss/all-off": "aa7cbb52c2d0",
++  "bob/calculator": "04ffaa3f47c6",
++  "qwen3/calculator": "ccca4e11d831",
++  "gpt-oss/calculator": "2ce9c5d29075",
++  "bob/python": "901bd4a653c6",
++  "qwen3/python": "e0732e3faa63",
++  "gpt-oss/python": "aa7cbb52c2d0",
++  "bob/passwords": "cf0ca38636d9",
++  "qwen3/passwords": "856c35196be1",
++  "gpt-oss/passwords": "e2a57bb1213b",
++  "bob/repeatReminders": "3bde4275c323",
++  "qwen3/repeatReminders": "bd9a97906fe7",
++  "gpt-oss/repeatReminders": "10a2e771a212",
++  "bob/phoneReminders": "901bd4a653c6",
++  "qwen3/phoneReminders": "e0732e3faa63",
++  "gpt-oss/phoneReminders": "aa7cbb52c2d0",
++  "bob/email": "d527c252fece",
++  "qwen3/email": "84851a232651",
++  "gpt-oss/email": "287ab3e6d24d",
++  "bob/emailTidy": "53cbf5173eb7",
++  "qwen3/emailTidy": "949b910a327f",
++  "gpt-oss/emailTidy": "21157fec8117",
++  "bob/emailCatalog": "901bd4a653c6",
++  "qwen3/emailCatalog": "e0732e3faa63",
++  "gpt-oss/emailCatalog": "aa7cbb52c2d0",
++  "bob/calendar": "92636ae9d519",
++  "qwen3/calendar": "706b22a5035f",
++  "gpt-oss/calendar": "d8968fa9212d",
++  "bob/pageWatch": "d1dfe9bfe9b8",
++  "qwen3/pageWatch": "83e9255a1bdf",
++  "gpt-oss/pageWatch": "86036ab03806",
++  "bob/webApi": "844d2d492858",
++  "qwen3/webApi": "0b9a67c59f05",
++  "gpt-oss/webApi": "154b0a4b9b1c",
++  "bob/dataQuery": "5be7d18b9884",
++  "qwen3/dataQuery": "9bf39fa1083a",
++  "gpt-oss/dataQuery": "e43505409226",
++  "bob/charts": "922586fac0d0",
++  "qwen3/charts": "92eb68fba1a0",
++  "gpt-oss/charts": "0673e57ddcd8",
++  "bob/spellCheck": "580e084a92c3",
++  "qwen3/spellCheck": "f6db37133873",
++  "gpt-oss/spellCheck": "54ca34673be8",
++  "bob/meetingNotes": "2c8402827695",
++  "qwen3/meetingNotes": "320799c34ed1",
++  "gpt-oss/meetingNotes": "f4b85fe6d72e",
++  "bob/compareFiles": "fb71b76d691a",
++  "qwen3/compareFiles": "29d9a9c041b3",
++  "gpt-oss/compareFiles": "a525d5a56fe5",
++  "bob/mail-all": "1f938e8b92d1",
++  "qwen3/mail-all": "d9139b4781ce",
++  "gpt-oss/mail-all": "c2945772ad8b"
++ }
++}
