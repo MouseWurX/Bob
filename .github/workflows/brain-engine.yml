@@ -19,6 +19,14 @@ on:
         description: 'Also put the two files on a test pre-release (brain-engine-<brainEngineVersion>b<llama.cpp build>), for Get models, Engines'
         type: boolean
         default: false
+      vulkan_release:
+        description: 'Build only our own ggml-vulkan.dll (test builds for AMD/Intel graphics) and add it to this test pre-release (brain-engine-<N>b<llama.cpp build>); empty = the usual build'
+        type: string
+        default: ''
+      vulkan_without:
+        description: 'With vulkan_release: leave out the patches whose names start with these numbers (space separated, e.g. "0102 0103"), for a before/after pair; the zip name then ends in -without-<numbers>'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -28,7 +36,7 @@ jobs:
   # Then the zip must carry our own ggml files too, built from the same patched tree: a mix with the official ones
   # crashes or quietly runs the stock kernels. This job says which parts the patches touch.
   detect:
-    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'workflow_dispatch' || inputs.vulkan_release == '') }}
     runs-on: ubuntu-latest
     outputs:
       ggml: ${{ steps.d.outputs.ggml }}
@@ -311,3 +319,76 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BE_GGML: ${{ needs.detect.outputs.ggml }}
         run: bash app/engine/publish.sh "$BEV" "$TAG" brain-engine-*-linux-x64.tar.gz
+
+  vulkan:
+    # Nov 23: a Brain Engine whose patches change ggml ships its own ggml and ggml-base, so the official Vulkan DLL (built
+    # against the official ggml) can't sit beside it. This builds ggml-vulkan.dll from the same patched tree, by hand only,
+    # for a test build on AMD or Intel graphics (first for Brain Engine 90 on the Legion Go). Not part of a release.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.vulkan_release != '' }}
+    runs-on: windows-2025-vs2026
+    permissions:
+      contents: write # only used by the upload to the test pre-release, when one is named
+    env:
+      VULKAN_VERSION: 1.4.313.2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fetch llama.cpp at the tested tag and apply the patches
+        shell: bash
+        env:
+          VULKAN_WITHOUT: ${{ inputs.vulkan_without }}
+        run: |
+          tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
+          sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
+          skip="$VULKAN_WITHOUT"
+          for p in app/engine/patches/*.patch; do
+            n=$(basename "$p" | cut -c1-4)
+            case " $skip " in *" $n "*) echo "left out: $p"; continue;; esac
+            git -C llama.cpp apply --verbose "../$p"
+          done
+      - name: Install the Vulkan SDK
+        shell: pwsh
+        run: |
+          curl.exe -fL -o "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_VERSION.exe"
+          & "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" --accept-licenses --default-answer --confirm-command install
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK=C:\VulkanSDK\$env:VULKAN_VERSION"
+          Add-Content $env:GITHUB_PATH "C:\VulkanSDK\$env:VULKAN_VERSION\bin"
+      - name: Install Ninja
+        run: choco install ninja
+      - name: Build ggml-vulkan (the same settings as the Windows Brain Engine, plus Vulkan)
+        shell: cmd
+        working-directory: llama.cpp
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          set "CFLAGS=-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"
+          set "CXXFLAGS=-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"
+          cmake -S . -B build -G "Ninja Multi-Config" -D CMAKE_TOOLCHAIN_FILE=cmake/x64-windows-llvm.cmake -DLLAMA_BUILD_BORINGSSL=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_OPENMP=ON -DGGML_OPENMP_FETCH=ON -DGGML_RPC=ON -DGGML_VULKAN=ON -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF
+          cmake --build build --config Release --target ggml-vulkan
+      - name: Pack
+        shell: bash
+        run: |
+          out=brain-engine-vulkan-win-x64
+          mkdir "$out"
+          cp llama.cpp/build/bin/Release/ggml-vulkan.dll "$out/"
+          cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
+          printf 'ggml-vulkan.dll built from llama.cpp %s with app/engine/patches (commit %s).\nPut it beside the Brain Engine files of the same build (over a copy of the official %s Vulkan or CPU zip), replacing the official ggml-vulkan.dll.\nTest build only.\n' "$TAG" "$GITHUB_SHA" "$TAG" > "$out/README.txt"
+          7z a "$out.zip" "./$out/*"
+          ls -la "$out"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: brain-engine-vulkan-win-x64
+          path: brain-engine-vulkan-win-x64.zip
+      - name: Add it to the test pre-release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REL: ${{ inputs.vulkan_release }}
+          WITHOUT: ${{ inputs.vulkan_without }}
+        run: |
+          case "$REL" in brain-engine-*) ;; *) echo "not a Brain Engine test release: $REL"; exit 1;; esac
+          f="$REL-win-x64-vulkan.zip"
+          if [ -n "$WITHOUT" ]; then f="$REL-win-x64-vulkan-without-$(echo $WITHOUT | tr ' ' '-').zip"; fi
+          mv brain-engine-vulkan-win-x64.zip "$f"
+          sha256sum "$f" | awk '{print $1}' > "$f.sha256"
+          gh release upload "$REL" "$f" "$f.sha256" --clobber -R "$GITHUB_REPOSITORY"
