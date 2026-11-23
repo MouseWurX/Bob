@@ -20,7 +20,7 @@ import path from 'node:path';
 import { labDir, slugOf } from './lab.js';
 import { startServer } from './lab-test.js';
 import { ggufInfo } from './gguf.js';
-import { draftNumArgs, TURBO_EVERYDAY_MAX, READING_STEPS } from './engine-extras.js';
+import { draftNumArgs, TURBO_EVERYDAY_MAX, READING_STEPS, mtpArgs } from './engine-extras.js';
 import { BRAIN_ENGINE_PIN } from './engines.js';
 import { HOT_KINDS, mixFor, addMass, saveProfile, profileStamp, rankingFile, hotCacheMB, parseCacheLog, RANKING_ENV } from './hot-experts.js';
 import { saveSettings } from './config.js';
@@ -62,14 +62,15 @@ export const CAL_LONG = CAL_PARA.repeat(90) + '\n\nIn one sentence, what does th
 // results.md: step 2048 with a 4 GB cache that copies missed experts to the card wrote 14 to 28% faster than Normal and
 // read 1.9 times as fast; either one alone did much less). cacheMB > 0 adds each step with the cache, the copy kind
 // (--moe-cache-cpu-share 0), which beat working missed experts out on the processor at every size tried.
-export function calSpeedTries({ mtp = 0, cacheMB = 0 } = {}) {
+export function calSpeedTries({ mtp = 0, cacheMB = 0, guesser = null } = {}) {
+  const g = guesser || (mtp > 0 ? ['--spec-type', 'draft-mtp'] : []); // Nov 22: or the mtp- file beside the brain
   const r = (pick, n, label) => ({ id: `read-${pick}`, reading: pick, extra: n ? ['-b', String(n), '-ub', String(n)] : [], label });
   const out = [r('normal', 0, 'Reading speed Normal (512 at a time)'), r('faster', READING_STEPS.faster, 'Reading speed Faster (2,048 at a time)'), r('fastest', READING_STEPS.fastest, 'Reading speed Fastest (4,096 at a time)')];
   if (cacheMB > 0) {
     const gb = Math.round((cacheMB / 1024) * 10) / 10;
     for (const t of out.slice(0, 3)) out.push({ ...t, id: `${t.id}-hot`, cache: true, extra: [...t.extra, ...hotCopyArgs(cacheMB)], label: `${t.label}, with ${gb} GB of hot experts on the card` });
   }
-  if (mtp > 0) out.push({ id: 'turbo', turbo: true, extra: ['--spec-type', 'draft-mtp', ...draftNumArgs(0, TURBO_EVERYDAY_MAX)], label: 'MTP: the brain\'s own guesser' });
+  if (g.length) out.push({ id: 'turbo', turbo: true, extra: [...g, ...draftNumArgs(0, TURBO_EVERYDAY_MAX)], label: 'MTP: the brain\'s own guesser' });
   return out;
 }
 const hotCopyArgs = (mb) => ['--moe-cache-mib', String(mb), '--moe-cache-cpu-share', '0', '-lv', '4'];
@@ -135,7 +136,7 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
   const log = pageLog(lab.cfg, 'calibrate');
   const exe = lab.tools().server.path;
   const fx = { serve: (o) => startServer({ exe, log, ...o }), chat: chatOnce, trace: traceOnce, ...lab.stepFns };
-  const plans = list.map((b) => { const r = lab.brain.engine.resolve(b.model); const info = ggufInfo(r.gguf); const layers = info?.shape?.layers || lab.brain.engine.placeInfo(b.model).layers; return { ...b, name: b.name || b.model, gguf: r.gguf, layers, tries: calTries(layers), speedTries: calSpeedTries({ mtp: info?.mtp || 0, cacheMB: (lab.brain.engine.buildNo?.() || 0) >= 12359 ? hotCacheMB(lab.cfg) : 0 }), hot: (lab.brain.engine.buildNo?.() || 0) >= 12359 }; });
+  const plans = list.map((b) => { const r = lab.brain.engine.resolve(b.model); const info = ggufInfo(r.gguf); const layers = info?.shape?.layers || lab.brain.engine.placeInfo(b.model).layers; return { ...b, name: b.name || b.model, gguf: r.gguf, layers, tries: calTries(layers), speedTries: calSpeedTries({ mtp: info?.mtp || 0, guesser: mtpArgs(r.gguf), cacheMB: (lab.brain.engine.buildNo?.() || 0) >= 12359 ? hotCacheMB(lab.cfg) : 0 }), hot: (lab.brain.engine.buildNo?.() || 0) >= 12359 }; });
   const steps = plans.flatMap((p, i) => [...p.tries, ...p.speedTries, ...(p.hot ? HOT_STEPS : [])].map((t) => [`${i}:${t.id}`, plans.length > 1 ? `${p.name}: ${t.label}` : t.label]));
   const total = steps.length;
   return runJob(lab, { kind: 'calibrate', name: plans.length === 1 ? `Calibrate ${plans[0].name}` : `Calibrate ${plans.length} brains`, from: plans[0].model, fromName: plans[0].name, steps }, async (r, { set, signal, progress }) => {

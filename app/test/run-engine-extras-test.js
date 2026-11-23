@@ -14,7 +14,7 @@ import {
   EXTRA_SWITCHES, extraOn, newSpecFlags, draftNumArgs, copyGuessArgs, COPY_GUESS_ARGS, cleanMemType, memTypeOf, memArgs, MEM_TYPES, helpHasQ3, helpHasQ2, q3CardOk, helpHasTiers, progressiveTiers, tiersEnv, TIERS_SLACK, turboMem, turboPerWord, TURBO_MEMS,
   parseWinBattery, parseMacBattery, linuxBattery, onBattery, setOnBattery, batteryNow, laptopSaving, laptopThreads,
   cardKey, cardChange, placesToAuto, handoffHat, warmRoom, warmFile, WARM_SPARE, plainEngineNotes, engineNoteLine, brainEngineNumber,
-  READING_PICKS, readingPick, readingSteps, readingChoice, readingArgs, dropReading, lockRoom, lockFloor, everydayTurboArgs, TURBO_EVERYDAY_MAX, lockMemoryArgs
+  READING_PICKS, readingPick, readingSteps, readingChoice, readingArgs, dropReading, lockRoom, lockFloor, everydayTurboArgs, TURBO_EVERYDAY_MAX, lockMemoryArgs, mtpSidecar, mtpArgs
 } from '../src/engine-extras.js';
 import { startEngineExtras, engineLabel } from '../src/engine-extras-run.js';
 import { addReply, speedSeries, logReply, readSpeedLog, KEEP_DAYS } from '../src/speed-log.js';
@@ -282,6 +282,18 @@ check('Help has a section for the extras, and for the memory type', HELP.some((h
 const gl = HELP.find((h) => h.id === 'glossary')?.html || '';
 check('the glossary explains the new words', /<dt>Copy guessing/.test(gl) && /<dt>Laptop mode/.test(gl) && /<dt>Speed history/.test(gl) && /<dt>Chat memory type/.test(gl));
 for (const id of ['faq-copy-guess', 'faq-laptop-mode', 'faq-mem-type', 'faq-new-card']) check(`FAQ ${id}`, HELP.some((h) => h.id === id && h.group === 'FAQ'));
+// Nov 22: the guesser as a file beside the brain (llama.cpp's downloader names it mtp-<name>.gguf). Fakes only.
+{ const dir = path.join('x', 'brains');
+  const files = { [path.join(dir, 'Flash-Next-Q2.gguf')]: { arch: 'qwen4exp', mtp: 0 }, [path.join(dir, 'mtp-Flash-Next-Q8_0.gguf')]: { arch: 'qwen4exp', mtp: 1 },
+    [path.join(dir, 'mtp-Other-Q8_0.gguf')]: { arch: 'qwen3next', mtp: 1 }, [path.join(dir, 'Own-Q4.gguf')]: { arch: 'qwen35moe', mtp: 1 },
+    [path.join(dir, 'Empty-Q4.gguf')]: { arch: 'qwen4exp', mtp: 0 }, [path.join(dir, 'mtp-Empty-Q4.gguf')]: { arch: 'qwen4exp', mtp: 0 } };
+  const opts = { readdir: () => Object.keys(files).map((f) => path.basename(f)), info: (f) => files[f] || null };
+  check('a brain whose file has no guesser takes the mtp- file beside it as the draft', mtpArgs(path.join(dir, 'Flash-Next-Q2.gguf'), opts).join(' ') === `--spec-type draft-mtp -md ${path.join(dir, 'mtp-Flash-Next-Q8_0.gguf')}`);
+  check('a brain with its own guesser uses its own, with no second file', mtpArgs(path.join(dir, 'Own-Q4.gguf'), opts).join(' ') === '--spec-type draft-mtp');
+  check('an mtp- file of another kind of brain, or one without the guesser\'s parts, doesn\'t count', !mtpSidecar(path.join(dir, 'Empty-Q4.gguf'), { ...opts, readdir: () => ['Empty-Q4.gguf', 'mtp-Empty-Q4.gguf', 'mtp-Other-Q8_0.gguf'] }) && !mtpArgs(path.join(dir, 'Empty-Q4.gguf'), { ...opts, readdir: () => ['Empty-Q4.gguf', 'mtp-Empty-Q4.gguf', 'mtp-Other-Q8_0.gguf'] }).length);
+  check('everyday Turbo passes the file beside the brain on', everydayTurboArgs({ turboEveryday: true }, { build: 12359, guesser: mtpArgs(path.join(dir, 'Flash-Next-Q2.gguf'), opts) }).includes('-md'));
+  check('a folder that can\'t be read: none', mtpSidecar(path.join(dir, 'Flash-Next-Q2.gguf'), { ...opts, readdir: () => { throw new Error('no'); } }) === '');
+  check('Help and the FAQ name the file beside the brain, and the FAQ is honest about rounding', /mtp-/.test(HELP.find((h) => h.id === 'faq-turbo-everyday')?.html || '') && /unproven in our lab/.test(HELP.find((h) => h.id === 'faq-turbo-everyday')?.html || '') && /mtp-/.test(HELP.find((h) => h.id === 'glossary')?.html || '')); }
 check('Help says which platforms, and that the Android app isn\'t changed', /Android app/.test(HELP.find((h) => h.id === 'engine-extras')?.html || '') && /Windows, Mac/.test(HELP.find((h) => h.id === 'engine-extras')?.html || ''));
 
 fs.rmSync(tmp, { recursive: true, force: true });

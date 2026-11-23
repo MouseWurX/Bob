@@ -17,6 +17,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { MEM_TYPES, memTypeTrade } from '../public/mem-types.js';
 import { brainEngineBuild } from '../public/engine-name.js';
+import { ggufInfo } from './gguf.js';
 
 export const EXTRA_SWITCHES = ['copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'turboEveryday', 'lockBrainMemory', 'hotExperts', 'turbo'];
 export const extraOn = (cfg, key) => cfg?.[key] === true;
@@ -90,16 +91,51 @@ export function dropReading(args) {
   return args;
 }
 
+// ---------- MTP from a file beside the brain (Nov 22) ----------
+// Some brains ship their guesser as a second file next to the brain ("mtp-<name>.gguf", the way llama.cpp's downloader
+// names it) instead of inside it. When the brain's own file has none, that file is the guesser: the engine loads it
+// as the draft with --spec-type draft-mtp. Only a file whose guesser tensors are really there (ggufInfo's mtp) and
+// whose kind of brain matches counts; the closest name wins when there are several.
+export function mtpSidecar(gguf, { readdir = fs.readdirSync, info = ggufInfo } = {}) {
+  if (!gguf) return '';
+  const dir = path.dirname(gguf), me = path.basename(gguf);
+  let names = [];
+  try { names = readdir(dir); } catch { return ''; }
+  const arch = info(gguf)?.arch || '';
+  const stem = (n) => n.replace(/\.gguf$/i, '').replace(/-0*1-of-\d+$/i, '').toLowerCase();
+  const like = (a, b) => { let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++; return i; };
+  const want = stem(me);
+  const found = names
+    .filter((n) => n !== me && /\.gguf$/i.test(n) && /(^|[-_.])mtp[-_.]/i.test(n) && !/-0*([2-9]|\d{2,})-of-\d+\.gguf$/i.test(n))
+    .map((n) => ({ n, score: like(stem(n).replace(/(^|[-_.])mtp[-_.]/i, ''), want) }))
+    .sort((a, b) => b.score - a.score);
+  for (const { n } of found) {
+    const f = path.join(dir, n), i = info(f);
+    if (i?.mtp > 0 && (!arch || !i.arch || i.arch === arch)) return f;
+  }
+  return '';
+}
+
+// The guesser's arguments for a brain: its own (inside the file), or the one beside it; [] when there is none.
+export function mtpArgs(gguf, opts = {}) {
+  const info = opts.info || ggufInfo;
+  if (info(gguf)?.mtp > 0) return ['--spec-type', 'draft-mtp'];
+  const side = mtpSidecar(gguf, opts);
+  return side ? ['--spec-type', 'draft-mtp', '-md', side] : [];
+}
+
 // ---------- 102 MTP for everyday brains ----------
 // Some brains carry their own guesser in the file (a multi-token prediction head, "nextn"): it guesses the next few
 // words and the brain checks them in one go, so the answer is the same, only quicker. The Lab's MTP page turns it
 // on per brain; this switch turns it on for every brain that has one, unless MTP or a draft brain is set for it.
 // 3 guesses at a time: one head's guesses get worse the further out they go.
 export const TURBO_EVERYDAY_MAX = 3;
-export function everydayTurboArgs(cfg, { build = 0, args = [], mtp = 0, cpu = false } = {}) {
-  if (!extraOn(cfg, 'turboEveryday') || cpu || !(mtp > 0) || !newSpecFlags(build)) return [];
+export function everydayTurboArgs(cfg, { build = 0, args = [], mtp = 0, cpu = false, guesser = null } = {}) {
+  // guesser: mtpArgs() for the brain (its own head, or the file beside it); without it, mtp > 0 means its own head
+  const g = guesser || (mtp > 0 ? ['--spec-type', 'draft-mtp'] : []);
+  if (!extraOn(cfg, 'turboEveryday') || cpu || !g.length || !newSpecFlags(build)) return [];
   if (args.some((a) => ['--spec-type', '-md', '--model-draft', '--spec-draft-model', '--spec-draft-hf', '-hfd'].includes(a))) return [];
-  return ['--spec-type', 'draft-mtp', ...draftNumArgs(build, TURBO_EVERYDAY_MAX)];
+  return [...g, ...draftNumArgs(build, TURBO_EVERYDAY_MAX)];
 }
 
 // ---------- 103 Lock brain memory ----------

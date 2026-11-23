@@ -31,7 +31,7 @@ import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.
 import { tuningArgs, doorbellEnv } from './engine-tuning.js';
 import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB } from './conductor.js'; // off unless picked
 import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV } from './engine-extras.js'; // Turbo: stand-ins (0043, off unless switched on)
-import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
+import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
 
@@ -683,8 +683,10 @@ export class LlamaCpp {
     if (tb?.on && !cpu && (tb.mtp || (tb.draft && tb.draft !== model))) {
       // Engines from about b9530 refuse the old --draft-max/--draft-min and won't start (draftNumArgs picks the names).
       // 1.5.207 PC check: a saved "own guesser" on a brain whose file has none stopped Engine 4. Leave it out then.
-      if (tb.mtp && !(ggufInfo(gguf)?.mtp > 0)) { this.log?.('engine', `${model}: MTP's own guesser is set, but this brain's file has none; starting without it`); return args; }
-      if (tb.mtp) args.push('--spec-type', 'draft-mtp', ...draftNumArgs(this.buildNo(), tb.max || 8));
+      const guess = tb.mtp ? mtpArgs(gguf) : [];
+      if (tb.mtp && !guess.length) { this.log?.('engine', `${model}: MTP's own guesser is set, but this brain's file has none (and no mtp- file beside it); starting without it`); return args; }
+      if (tb.mtp && guess.includes('-md')) this.log?.('engine', `${model}: MTP's guesser comes from ${path.basename(guess[guess.indexOf('-md') + 1])} beside the brain`);
+      if (tb.mtp) args.push(...guess, ...draftNumArgs(this.buildNo(), tb.max || 8));
       else { let dg = null; try { dg = this.resolve(tb.draft).gguf; } catch {} if (dg) args.push('-md', dg, ...draftNumArgs(this.buildNo(), tb.max || 8, 0), '-ngld', '99'); }
       return args;
     }
@@ -695,7 +697,7 @@ export class LlamaCpp {
       args.push('-md', draft, ...draftNumArgs(this.buildNo(), d.max ?? 16, d.min ?? 1), '-ngld', String(d.ngld ?? 99));
     }
     // 102 MTP for everyday brains (opt-in): a brain with its own guesser uses it, unless MTP or a draft is set.
-    args.push(...everydayTurboArgs(this.cfg, { build: this.buildNo(), args, mtp: ggufInfo(gguf)?.mtp || 0, cpu: cpu || this.role === BESIDE }));
+    args.push(...everydayTurboArgs(this.cfg, { build: this.buildNo(), args, guesser: cpu || this.role === BESIDE ? [] : mtpArgs(gguf), cpu: cpu || this.role === BESIDE }));
     // 94 Guess-ahead from the chat (opt-in): with no draft brain, the engine guesses by copying what the chat holds.
     args.push(...copyGuessArgs(this.cfg, { build: this.buildNo(), args }));
     return args;
