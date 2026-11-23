@@ -417,7 +417,8 @@ export class Routines {
     return this.get(id);
   }
   remove(id) { this.running.get(id)?.ac.abort(); return this.store.remove(id); }
-  rollback(id, n) { const r = this.store.rollback(id, n); this.log(`"${r.name}" went back to version ${n}; it needs your OK again`); return this.view(r); }
+  // Going back to exactly what you OK'd keeps the OK (it's tied to the routine's fingerprint); anything else needs a new one.
+  rollback(id, n) { const r = this.store.rollback(id, n); const v = this.view(r); this.log(`"${r.name}" went back to version ${n}${v.approved ? ', which is what you OK\'d, so the OK holds' : '; it needs your OK again'}`); return v; }
 
   // Can this routine run right now? '' when it can, or why not.
   whyNot(v) {

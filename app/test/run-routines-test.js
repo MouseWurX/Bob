@@ -358,6 +358,21 @@ check('days and file patterns', dayList('mon, thu').join() === '1,4' && globRe('
   check('bring in: a broken file says so', /isn't JSON/.test(err));
 }
 
+{
+  // Going back to the version you OK'd: the OK holds again, and the logbook says so (npc's run, Nov 23).
+  const logs = [];
+  const R = new Routines({ ...cfg, dataDir: path.join(tmp, 'inn4') }, { isOn: () => true, tools: () => Object.keys(ROUTINE_TOOLS), afterMail: [...AFTER_MAIL], log: (k, t) => logs.push(t) });
+  const id = R.create('back').id;
+  const r = { bobRoutine: 1, id, name: 'back', nodes: [N('n1', 'trigger.manual'), N('n2', 'out.notice', { text: 'one' })], wires: [W('n1', 'n2')] };
+  const v2 = R.save(r);
+  R.approve(id, v2.hash);
+  R.save({ ...r, nodes: [r.nodes[0], N('n2', 'out.notice', { text: 'two' })] });
+  const back = R.rollback(id, 2); // 1 is the empty routine New made, 2 the one OK'd, 3 the change
+  check('going back to the OK\'d version keeps the OK, and the logbook agrees', back.approved === true && /the OK holds/.test(logs.at(-1) || ''), logs.at(-1));
+  const back1 = R.rollback(id, 1);
+  check('going back to a version never OK\'d needs a new OK, and says so', back1.approved === false && /needs your OK again/.test(logs.at(-1) || ''), logs.at(-1));
+}
+
 // ---------- Help ----------
 {
   const help = (id) => HELP.find((e) => e.id === id);
