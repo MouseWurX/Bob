@@ -2,7 +2,7 @@
 
 **How hidden faults in synthetic training data shape small local agent models**
 
-*Bob's computer science dissertation, written in the open. Draft of 23 November 2026: all 13 chapters, fact-checked against their run files, with the after1 round, the home-PC speed tests to 22 November (every speed result in one table, section 4.3.4), the fNRI trace test, the 21 November harness runs (after2, Bob's own code, other harnesses), Flash-Next with held-out jobs and a first cut (section 11.7.7), every main result in one table (section 13.2.7), where the work is heading (section 13.7) and 11 figures.*
+*Bob's computer science dissertation, written in the open. Draft of 23 November 2026 (evening): all 13 chapters, fact-checked against their run files, with the after1 round, the home-PC speed tests to 22 November (every speed result in one table, section 4.3.4), the fNRI trace test, the 21 November harness runs (after2, Bob's own code, other harnesses), Flash-Next with held-out jobs (section 11.7.7), every REAP keep level and the 80% cut (section 11.7.8), the tools and shapes they were tested with (section 8.9.4), the engine work and Inkling 2 Mini of 23 November (sections 4.3.3.12 and 4.3.3.13), Bob Routines (section 13.7), every main result in one table (section 13.2.7), where the work is heading (section 13.7) and 12 figures.*
 
 > **Status.** The decisive test, training a fresh model on reviewed lessons and scoring it on a leak-free test, **has not been run yet**. Until it runs, the title is a claim the evidence points to, not a proven result. Each chapter ends with its limits and what is still to do.
 >
@@ -40,6 +40,7 @@ Small open models can run a useful agent on one consumer graphics card, but how 
 
 ## Where to find
 
+- **Flash-Next cut to 80% (Bobert Flash-Next REAP80):** every keep level and how the experts were chosen in [section 11.7.8](ch11-making-clean-lessons.md#reap-levels); the tools and tool shape it was tested with in [section 8.9.4](ch08-study4-tool-shape.md#tool-shapes-tested); Flash-Next against stock Qwen on held-out jobs in [section 11.7.7](ch11-making-clean-lessons.md#flash-next-in-bob).
 - **Every speed result in one table:** [section 4.3.4](ch04-method-and-rules.md#434-speed-results-in-one-table-updated-23-november).
 - **Every main result in one table, with what each means:** [section 13.2.7](ch13-conclusion.md#1327-every-result-in-one-table-and-what-each-means-added-22-november).
 - **How speed is tested:** [section 4.3.3.1](ch04-method-and-rules.md#43331-how-the-speed-tests-were-run), with what was added since in [section 4.3.3.10](ch04-method-and-rules.md#433310-how-the-speed-method-carries-forward-added-22-november).
@@ -63,6 +64,7 @@ Every figure is drawn from a measured table in its chapter.
 | 11.2 | after1: mail by effort level | 11 |
 | 11.3 | Four harnesses on 33 jobs on Bob's own code | 11 |
 | 11.4 | Steps per job against the old step caps | 11 |
+| 11.5 | Flash-Next at each REAP keep level | 11 |
 
 ## Keeping it clean
 

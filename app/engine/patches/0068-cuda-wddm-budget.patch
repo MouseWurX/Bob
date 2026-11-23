@@ -1,0 +1,168 @@
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index 4d7c091..a78cba1 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -3,6 +3,7 @@
+ #include "ggml-backend-impl.h"
+ 
+ #include "ggml-cuda/allreduce.cuh"
++#include "ggml-cuda/wddm-budget.cuh"
+ #include "ggml-cuda/common.cuh"
+ #include "ggml-cuda/graph.cuh"
+ #include "ggml-cuda/acc.cuh"
+@@ -5996,10 +5997,66 @@ static int ggml_cuda_physical_device_share_count(int device) {
+     return info.devices[device].physical_share_count;
+ }
+ 
++// Brain Engine 0068: GGML_CUDA_WDDM_BUDGET=1 (Windows; off unless set) caps the free figure at what WDDM's budget for
++// this program still allows, so a fit never plans memory that Windows would quietly move to shared system memory
++static void ggml_cuda_apply_wddm_budget(int device, size_t * free) {
++#if defined(_WIN32) && !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
++    static const bool on = [] {
++        const char * v = getenv("GGML_CUDA_WDDM_BUDGET");
++        return v != nullptr && atoi(v) != 0;
++    }();
++    if (!on) {
++        return;
++    }
++    static std::mutex mutex;
++    static char luids[GGML_CUDA_MAX_DEVICES][8];
++    static int  state[GGML_CUDA_MAX_DEVICES] = {}; // 0 not read yet, 1 has a LUID, -1 none (TCC or unknown)
++    static bool logged[GGML_CUDA_MAX_DEVICES] = {};
++    const int phys = ggml_cuda_get_physical_device(device);
++    if (phys < 0 || phys >= GGML_CUDA_MAX_DEVICES) {
++        return;
++    }
++    std::lock_guard<std::mutex> lock(mutex);
++    if (state[phys] == 0) {
++        cudaDeviceProp prop;
++        state[phys] = -1;
++        if (cudaGetDeviceProperties(&prop, phys) == cudaSuccess && prop.luidDeviceNodeMask != 0) {
++            memcpy(luids[phys], prop.luid, 8);
++            state[phys] = 1;
++        } else {
++            (void) cudaGetLastError();
++            GGML_LOG_WARN("%s: !!! GGML_CUDA_WDDM_BUDGET NOT USED on CUDA%d: the card has no WDDM LUID (TCC mode?)\n", __func__, device);
++        }
++    }
++    size_t budget = 0;
++    size_t used   = 0;
++    if (state[phys] != 1 || !ggml_cuda_wddm_budget(luids[phys], &budget, &used)) {
++        if (state[phys] == 1 && !logged[phys]) {
++            logged[phys] = true;
++            GGML_LOG_WARN("%s: !!! GGML_CUDA_WDDM_BUDGET NOT USED on CUDA%d: DXGI gave no budget for the card\n", __func__, device);
++        }
++        return;
++    }
++    const size_t room = budget > used ? budget - used : 0;
++    if (!logged[phys]) {
++        logged[phys] = true;
++        GGML_LOG_INFO("%s: CUDA%d WDDM budget %.0f MiB, this program uses %.0f MiB, so %.0f MiB more fits (CUDA says %.0f MiB free)\n",
++            __func__, device, budget/1048576.0, used/1048576.0, room/1048576.0, *free/1048576.0);
++    }
++    if (room < *free) {
++        *free = room;
++    }
++#else
++    GGML_UNUSED(device);
++    GGML_UNUSED(free);
++#endif
++}
++
+ void ggml_backend_cuda_get_device_memory(int device, size_t * free, size_t * total) {
+     ggml_cuda_set_device(device);
+ 
+     CUDA_CHECK(cudaMemGetInfo(free, total));
++    ggml_cuda_apply_wddm_budget(device, free); // Brain Engine 0068
+ 
+     // virtual devices sharing one physical GPU share its memory pool; split it between them
+     const int share_count = ggml_cuda_physical_device_share_count(device);
+@@ -6172,6 +6229,7 @@ static void ggml_backend_cuda_device_get_memory(ggml_backend_dev_t dev, size_t *
+         }
+     }
+ #endif // defined(__linux__) && !defined(GGML_USE_HIP)
++    ggml_cuda_apply_wddm_budget(ctx->device, free); // Brain Engine 0068
+ 
+     // virtual devices sharing one physical GPU share its memory pool; split it between them
+     const int share_count = ggml_cuda_physical_device_share_count(ctx->device);
+diff --git a/ggml/src/ggml-cuda/wddm-budget.cu b/ggml/src/ggml-cuda/wddm-budget.cu
+new file mode 100644
+index 0000000..29f5711
+--- /dev/null
++++ b/ggml/src/ggml-cuda/wddm-budget.cu
+@@ -0,0 +1,62 @@
++// Brain Engine 0068: on Windows, the card's free memory as WDDM will let this program use it.
++//
++// cudaMemGetInfo on a WDDM card doesn't know what Windows has promised other programs (a game, the desktop), and when
++// a program goes over its share WDDM doesn't fail: it quietly moves memory to shared system memory over PCIe, and the
++// brain gets very slow. DXGI's QueryVideoMemoryInfo gives the budget Windows sets for this program and what it uses
++// now, so (budget - used) is what can still be taken without spilling. The card is matched by its LUID; a card with
++// no DXGI adapter (TCC mode) or any failure returns false and the caller keeps cudaMemGetInfo's figure.
++// dxgi.dll is loaded at run time, so nothing new is linked.
++
++#include "wddm-budget.cuh"
++
++#if defined(_WIN32) && !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
++
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#include <windows.h>
++#include <dxgi1_4.h>
++#include <cstring>
++#include <cstddef>
++
++bool ggml_cuda_wddm_budget(const char luid[8], size_t * budget, size_t * used) {
++    static HMODULE dxgi = LoadLibraryA("dxgi.dll");
++    if (dxgi == nullptr) {
++        return false;
++    }
++    typedef HRESULT (WINAPI * create_factory_t)(REFIID, void **);
++    const create_factory_t create = (create_factory_t) (void *) GetProcAddress(dxgi, "CreateDXGIFactory1");
++    if (create == nullptr) {
++        return false;
++    }
++    IDXGIFactory1 * factory = nullptr;
++    if (FAILED(create(__uuidof(IDXGIFactory1), (void **) &factory)) || factory == nullptr) {
++        return false;
++    }
++    bool found = false;
++    IDXGIAdapter1 * adapter = nullptr;
++    for (UINT i = 0; !found && factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i) {
++        DXGI_ADAPTER_DESC1 desc;
++        if (SUCCEEDED(adapter->GetDesc1(&desc)) && std::memcmp(&desc.AdapterLuid, luid, sizeof(LUID)) == 0) {
++            IDXGIAdapter3 * adapter3 = nullptr;
++            if (SUCCEEDED(adapter->QueryInterface(__uuidof(IDXGIAdapter3), (void **) &adapter3)) && adapter3 != nullptr) {
++                DXGI_QUERY_VIDEO_MEMORY_INFO info;
++                if (SUCCEEDED(adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &info)) && info.Budget > 0) {
++                    *budget = (size_t) info.Budget;
++                    *used   = (size_t) info.CurrentUsage;
++                    found   = true;
++                }
++                adapter3->Release();
++            }
++        }
++        adapter->Release();
++        adapter = nullptr;
++    }
++    factory->Release();
++    return found;
++}
++
++#endif // defined(_WIN32) && !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
+diff --git a/ggml/src/ggml-cuda/wddm-budget.cuh b/ggml/src/ggml-cuda/wddm-budget.cuh
+new file mode 100644
+index 0000000..cb37de6
+--- /dev/null
++++ b/ggml/src/ggml-cuda/wddm-budget.cuh
+@@ -0,0 +1,7 @@
++#pragma once
++
++#include <cstddef>
++
++// Brain Engine 0068: Windows only (see wddm-budget.cu). WDDM's video memory budget for this program and what it uses
++// now, for the card with this LUID; false when there is none (TCC mode, no DXGI) or on any failure.
++bool ggml_cuda_wddm_budget(const char luid[8], size_t * budget, size_t * used);

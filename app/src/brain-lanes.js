@@ -86,6 +86,24 @@ export async function apuRoom(brain, model, ctx, { freeMem, loaded = null, minCt
   return { ok: false, ctx, needGB: gb(least(need)), roomGB: gb(room), line: APU_NO_ROOM(gb(least(need)), gb(room), apuHoldbackGB(brain.cfg)) };
 }
 
+// Nov 22, the Conductor's memory job: a brain that loaded with a shorter chat memory so Windows keeps its share
+// (fitCtx, brain.memCut) grows it again as the chat grows, one size at a time (doubling, up to what was asked for), when
+// the memory free now covers the extra chat memory and still leaves Windows its share. On Bob's own engine (Brain
+// Engine) the chat memory grows in place with the brain loaded; on other engines the brain loads again at the new size.
+// -> the new size, or 0 to stay (and the chat is fitted to what it has, as before).
+export function memGrowCtx(brain, model, cut, tokens, { freeMem = freeMemNow() } = {}) {
+  if (!cut || !(cut.ctx < cut.want) || !(tokens > cut.ctx * 0.75)) return 0;
+  let next = cut.ctx;
+  while (next < cut.want && next * 0.75 < tokens) next = Math.min(cut.want, next * 2);
+  const need = (c) => { const e = brain.engine?.apuNeed?.(model, c); return e ? Math.min(e.card, e.cpu) : null; };
+  const now = need(cut.ctx), then = need(next);
+  if (now == null || then == null) return 0;
+  const spare = freeMem - apuHoldbackGB(brain.cfg) * GB;
+  // too little room for the whole step: the biggest doubling that fits, if any
+  while (next > cut.ctx && then != null && need(next) - now > spare) next = Math.max(cut.ctx, Math.floor(next / 2));
+  return next > cut.ctx ? next : 0;
+}
+
 // A side-lane reply: always the small brain on the processor, so it never touches the card the painter holds.
 // 1.5.51: beside a big text job it goes to the engine's second server (beside: true), so the main brain stays loaded.
 export const sideBrain = (cfg, job) => ({ model: sessionBrains(cfg).small, cpu: true, ...(job?.beside ? { beside: true } : {}) });

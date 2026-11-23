@@ -107,10 +107,12 @@ async function sayPython(cfg, engine, words, signal, voice = '') {
   const w = worker(cfg, engine);
   // The first sentence also loads the model (Chatterbox fetches about 3 GB the very first time).
   const limit = new Promise((_, reject) => { const tm = setTimeout(() => reject(new Error('The voice took too long.')), 15 * 60e3); tm.unref?.(); signal?.addEventListener('abort', () => reject(new Error('Stopped.')), { once: true }); });
-  await Promise.race([w.ask(job), limit]);
-  const buf = fs.readFileSync(out);
-  fs.rmSync(out, { force: true });
-  return buf;
+  try {
+    await Promise.race([w.ask(job), limit]);
+    return fs.readFileSync(out);
+  } finally {
+    fs.rmSync(out, { force: true }); // also when the voice fails or is stopped, so no sound file is left behind
+  }
 }
 
 // Plain words only: code, links and markdown are skipped so he doesn't read out symbols.
@@ -146,7 +148,7 @@ export function say(cfg, text, { signal, voice = '' } = {}) {
     child.on('error', (e) => { clearTimeout(timer); reject(new Error(`Couldn't start Piper (${e.message}).`)); });
     child.on('close', (code) => {
       clearTimeout(timer);
-      if (code !== 0 || !fs.existsSync(out)) return reject(new Error(`Piper failed (code ${code}): ${err.slice(-300)}`));
+      if (code !== 0 || !fs.existsSync(out)) { fs.rmSync(out, { force: true }); return reject(new Error(`Piper failed (code ${code}): ${err.slice(-300)}`)); }
       const buf = fs.readFileSync(out);
       fs.rmSync(out, { force: true });
       resolve(buf);

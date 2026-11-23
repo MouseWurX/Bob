@@ -1,0 +1,506 @@
+diff --git a/src/llama-model.cpp b/src/llama-model.cpp
+index 10ac562..f20b9f7 100644
+--- a/src/llama-model.cpp
++++ b/src/llama-model.cpp
+@@ -2173,6 +2173,15 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
+         }
+     }
+ 
++    // Brain Engine 0050: where each mapped expert tensor lies in its file, for the MoE cache's drive tier
++    if (const char * dr = getenv("LLAMA_MOE_DRIVE"); dr && atoi(dr) > 0 && ml.use_mmap) {
++        for (const auto & [name, w] : ml.weights_map) {
++            if (name.find("_exps") != std::string::npos && w.idx < ml.file_paths.size()) {
++                expert_file_of[name] = { ml.file_paths[w.idx], w.offs };
++            }
++        }
++    }
++
+     // Brain Engine 0030: read the lazy lookup tables with unbuffered I/O into a window of our own
+     if (const char * td = getenv("LLAMA_TABLE_DIRECT"); td && strcmp(td, "1") == 0) {
+         const char * tm = getenv("LLAMA_TABLE_DIRECT_MIB");
+diff --git a/src/llama-model.h b/src/llama-model.h
+index 1b7ea1c..647e8a3 100644
+--- a/src/llama-model.h
++++ b/src/llama-model.h
+@@ -949,6 +949,10 @@ struct llama_model {
+     // which tensors can be prefetched - driven by TENSOR_READ_LAZY
+     std::unordered_set<const ggml_tensor *> can_prefetch;
+ 
++    // Brain Engine 0050 (LLAMA_MOE_DRIVE=1): the file and offset of each expert tensor read through the memory map, so the
++    // MoE cache can read cold experts straight from the drive (unbuffered); empty unless asked for
++    std::unordered_map<std::string, std::pair<std::string, size_t>> expert_file_of;
++
+     // statically allocated context for assigning
+     struct llama_meta_device_get_split_state_userdata get_split_state_ud;
+ 
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 2c2525e..2c459b1 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -3,6 +3,7 @@
+ #include "llama-impl.h"
+ #include "llama-memory.h"
+ #include "llama-model.h"
++#include "llama-mmap.h"
+ 
+ #include "ggml-cpp.h"
+ #include "ggml-alloc.h"
+@@ -21,12 +22,27 @@
+ #include <cstdlib>
+ #include <cstring>
+ #include <deque>
++#include <filesystem>
+ #include <stdexcept>
+ #include <string>
+ #include <thread>
+ #include <unordered_map>
+ #include <vector>
+ 
++#ifdef _WIN32
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#ifndef PSAPI_VERSION
++#define PSAPI_VERSION 2 // QueryWorkingSetEx from kernel32, no psapi.lib
++#endif
++#include <windows.h>
++#include <psapi.h>
++#else
++#include <sys/mman.h>
++#include <unistd.h>
++#endif
++
+ namespace {
+ 
+ // ClassLRU: one LRU list per frequency class, over the experts of a group of layers
+@@ -836,10 +852,12 @@ struct llama_moe_cache::impl {
+             if (const char * path = getenv("LLAMA_MOE_CACHE_RANKING"); path != nullptr && *path != '\0') {
+                 fill_from_ranking(path);
+             }
++            hs_init(); // Brain Engine 0050
+         }
+ 
+         bw_init(no_alloc); // Brain Engine 0048
+         tl_init(no_alloc); // Brain Engine 0049
++        dr_init(model, no_alloc); // Brain Engine 0050
+ 
+         for (size_t id = 0; id < devices.size(); ++id) {
+             const device & d = devices[id];
+@@ -1909,6 +1927,66 @@ struct llama_moe_cache::impl {
+     // made on another brain (fingerprint), or naming a layer or expert this brain doesn't have, is refused with a
+     // warning, and the cache fills the stock way (first come) instead: a ranking from the wrong weights would quietly
+     // install a bad placement, which is worse than none.
++    // Brain Engine 0050 (LLAMA_MOE_CACHE_SAVE=<path>): the saved hot set. The cache writes how busy each expert has been
++    // (its CRF, decayed to now) as a ranking file stamped with this brain's fingerprint, every LLAMA_MOE_CACHE_SAVE_EVERY
++    // cache updates (default 4096) and when the cache closes. Given as LLAMA_MOE_CACHE_RANKING at the next start, the
++    // busiest experts are on the card from the first word. Written to <path>.tmp, then moved over <path>.
++    std::string hs_path;
++    size_t hs_every = 4096, hs_updates = 0, hs_saves = 0;
++
++    void hs_init() {
++        const char * p = getenv("LLAMA_MOE_CACHE_SAVE");
++        if (p == nullptr || *p == '\0' || fingerprint == 0) {
++            return;
++        }
++        hs_path = p;
++        if (const char * e = getenv("LLAMA_MOE_CACHE_SAVE_EVERY"); e != nullptr && atoll(e) > 0) {
++            hs_every = (size_t) atoll(e);
++        }
++        LLAMA_LOG_INFO("llama_moe_cache: the hot set is saved to %s every %zu cache updates and at the end\n", hs_path.c_str(), hs_every);
++    }
++
++    void save_hot_set() {
++        if (hs_path.empty()) {
++            return;
++        }
++        const std::string tmp = hs_path + ".tmp";
++        FILE * f = fopen(tmp.c_str(), "w");
++        if (f == nullptr) {
++            LLAMA_LOG_WARN("llama_moe_cache: !!! the hot set can't be saved: %s can't be written\n", tmp.c_str());
++            hs_path.clear();
++            return;
++        }
++        fprintf(f, "bob-moe-ranking 2 %016llx saved-hot-set\n", (unsigned long long) fingerprint);
++        size_t n = 0;
++        for (const group & g : groups) {
++            const moe_cache_lru & lru = g.lru;
++            for (int32_t il : g.layers) {
++                for (int32_t e = 0; e < lru.n_expert; ++e) {
++                    const int32_t key = lru.make_key(il, e);
++                    if ((size_t) key >= lru.crf.size() || lru.last_use[key] < 0) {
++                        continue;
++                    }
++                    const double c = lru.decayed_crf(il, key);
++                    if (c > 1e-3) {
++                        fprintf(f, "%d %d %.4f\n", il, e, c);
++                        n++;
++                    }
++                }
++            }
++        }
++        const bool ok = fflush(f) == 0 && fclose(f) == 0;
++        std::error_code ec;
++        if (ok && n > 0) {
++            std::filesystem::rename(tmp, hs_path, ec);
++        }
++        if (!ok || ec) {
++            LLAMA_LOG_WARN("llama_moe_cache: !!! the hot set was not saved to %s\n", hs_path.c_str());
++            return;
++        }
++        hs_saves += n > 0;
++    }
++
+     void fill_from_ranking(const char * path) {
+         auto refuse = [&](const std::string & why) {
+             LLAMA_LOG_WARN("%s: !!! MoE cache ranking NOT USED: %s (%s). The cache fills the stock way instead.\n", __func__, why.c_str(), path);
+@@ -2045,6 +2123,8 @@ struct llama_moe_cache::impl {
+             ggml_backend_buft_free_alloc_from(bw_buft); // the context's scheduler, which used it, is gone by now
+         }
+         db_shutdown();
++        dr_shutdown(); // Brain Engine 0050
++        save_hot_set();
+         if (filler.joinable()) {
+             filler.join();
+         }
+@@ -2288,7 +2368,11 @@ struct llama_moe_cache::impl {
+         const std::vector<moe_cache_lru::fill> & up = tl_on ? tl_exchange(il, g, backend, fills) : fills;
+ 
+         // upload the missing experts, consecutive experts going to consecutive slots are uploaded together
++        // Brain Engine 0050: runs that are not in RAM are read from the drive first (dr_upload), all of a layer's at once
+         size_t bytes = 0;
++        if (dr_on) {
++            dr_jobs.clear();
++        }
+         for (size_t ip = 0; ip < l.experts.size(); ++ip) {
+             const ggml_tensor * w    = l.experts[ip];
+             ggml_tensor       * bank = g.banks[ip];
+@@ -2298,11 +2382,19 @@ struct llama_moe_cache::impl {
+                 while (i + n < up.size() && up[i + n].expert == up[i].expert + (int32_t) n && up[i + n].slot == up[i].slot + (int32_t) n) {
+                     n++;
+                 }
+-                ggml_backend_tensor_set_async(backend, bank, (const uint8_t *) w->data + up[i].expert*expert_size, up[i].slot*expert_size, n*expert_size);
++                const uint8_t * src = (const uint8_t *) w->data + up[i].expert*expert_size;
++                if (!dr_on || !dr_want(w, src, n*expert_size)) {
++                    ggml_backend_tensor_set_async(backend, bank, src, up[i].slot*expert_size, n*expert_size);
++                } else {
++                    dr_jobs.push_back({ w, bank, (size_t) up[i].expert*expert_size, (size_t) up[i].slot*expert_size, n*expert_size, nullptr });
++                }
+                 bytes += n*expert_size;
+                 i += n;
+             }
+         }
++        if (dr_on && !dr_jobs.empty()) {
++            dr_upload(backend);
++        }
+ 
+         stats & st = read_cpu ? stats_read : ids.size() <= (size_t) 8*n_expert_used ? stats_small : stats_large;
+         st.hits   += n_hit - n_sp; // a stand-in is not a hit
+@@ -2316,6 +2408,11 @@ struct llama_moe_cache::impl {
+         if (log_every > 0 && ++n_updates % log_every == 0) {
+             log_stats();
+         }
++        // Brain Engine 0050: the hot set is saved every hs_every cache updates (a stopped server on Windows never gets
++        // to its destructor)
++        if (!hs_path.empty() && ++hs_updates % hs_every == 0) {
++            save_hot_set();
++        }
+ 
+         // the next copy synchronizes the backend before it changes the slot map again
+         const int32_t * sp_map = sp_on ? sp_apply(il, l, g, backend, n_used) : nullptr;
+@@ -2329,6 +2426,285 @@ struct llama_moe_cache::impl {
+         return true;
+     }
+ 
++    // Brain Engine 0050 (LLAMA_MOE_DRIVE=1): the drive tier. A brain bigger than RAM is read through the memory map, so a
++    // miss whose pages are not in RAM is read a page fault at a time while the card waits. With the drive tier, such a
++    // miss is read with unbuffered reads from the brain's file (LLAMA_MOE_DRIVE_THREADS reads at once, default 4) into a
++    // pinned staging ring (LLAMA_MOE_DRIVE_MIB, default 512) and uploaded from there. Misses whose pages are in RAM go up
++    // from the map as before. The reads skip the system's file cache, so they don't push warm experts out of RAM.
++    // LLAMA_MOE_DRIVE_ALL=1 (tests) reads every miss from the drive.
++    struct dr_src { int32_t file; size_t offs; };
++    struct dr_job {
++        const ggml_tensor * w;
++        ggml_tensor * bank;
++        size_t src;   // bytes into w
++        size_t dst;   // bytes into bank
++        size_t size;
++        uint8_t * stage;
++    };
++    bool dr_on = false, dr_all = false;
++    std::vector<std::string> dr_paths;
++    std::unordered_map<const ggml_tensor *, dr_src> dr_of;
++    std::vector<dr_job> dr_jobs;
++    ggml_backend_buffer_ptr dr_stage_buf;   // pinned, when the card has a host buffer type
++    std::vector<uint8_t>    dr_stage_mem;   // else plain memory (the uploads are then waited for)
++    uint8_t * dr_base = nullptr;
++    size_t    dr_size = 0, dr_pos = 0;
++    bool      dr_pinned = false;
++    int       dr_n_threads = 4;
++    std::vector<std::thread> dr_pool;
++    std::mutex dr_mutex;
++    std::condition_variable dr_cv, dr_cv_done;
++    size_t dr_next = 0, dr_done = 0, dr_gen = 0;
++    bool   dr_stop = false;
++    std::string dr_err;
++    size_t dr_n = 0, dr_bytes = 0, dr_ram = 0, dr_waits = 0;
++    int64_t dr_us = 0;
++
++    static size_t dr_page() {
++#ifdef _WIN32
++        SYSTEM_INFO si;
++        GetSystemInfo(&si);
++        return si.dwPageSize;
++#else
++        return (size_t) sysconf(_SC_PAGESIZE);
++#endif
++    }
++
++    // are the first and last page of [p, p + n) in RAM?
++    static bool dr_resident(const void * p, size_t n) {
++        static const size_t page = dr_page();
++        const uintptr_t first = (uintptr_t) p & ~(uintptr_t) (page - 1);
++        const uintptr_t last  = ((uintptr_t) p + n - 1) & ~(uintptr_t) (page - 1);
++#ifdef _WIN32
++        PSAPI_WORKING_SET_EX_INFORMATION info[2] = {};
++        info[0].VirtualAddress = (PVOID) first;
++        info[1].VirtualAddress = (PVOID) last;
++        if (!QueryWorkingSetEx(GetCurrentProcess(), info, sizeof(info))) {
++            return true; // can't tell: the map, as before
++        }
++        return info[0].VirtualAttributes.Valid && info[1].VirtualAttributes.Valid;
++#elif defined(__linux__) || defined(__APPLE__)
++#if defined(__APPLE__)
++        char v[2] = {};
++#else
++        unsigned char v[2] = {};
++#endif
++        if (mincore((void *) first, page, &v[0]) != 0 || mincore((void *) last, page, &v[1]) != 0) {
++            return true;
++        }
++        return (v[0] & 1) && (v[1] & 1);
++#else
++        GGML_UNUSED(p); GGML_UNUSED(n);
++        return true;
++#endif
++    }
++
++    void dr_init(const llama_model & model, bool no_alloc) {
++        const char * on = getenv("LLAMA_MOE_DRIVE");
++        if (no_alloc || on == nullptr || atoi(on) <= 0) {
++            return;
++        }
++        auto refuse = [](const char * why) {
++            LLAMA_LOG_WARN("llama_moe_cache: !!! LLAMA_MOE_DRIVE NOT USED: %s\n", why);
++        };
++        if (model.expert_file_of.empty()) {
++            refuse("the brain is not read through the memory map (--load-mode none), or has no expert tensors");
++            return;
++        }
++        std::unordered_map<std::string, int32_t> file_id;
++        size_t biggest = 0;
++        for (const layer & l : layers) {
++            if (l.ig < 0) {
++                continue;
++            }
++            for (const ggml_tensor * w : l.experts) {
++                const auto it = model.expert_file_of.find(ggml_get_name(w));
++                if (it == model.expert_file_of.end() || w->data == nullptr || w->buffer == nullptr || !ggml_backend_buffer_is_host(w->buffer) ||
++                        strstr(ggml_backend_buffer_name(w->buffer), "Mapped") == nullptr) {
++                    continue; // read through the map as before
++                }
++                auto [fit, added] = file_id.emplace(it->second.first, (int32_t) dr_paths.size());
++                if (added) {
++                    dr_paths.push_back(it->second.first);
++                }
++                dr_of[w] = { fit->second, it->second.second };
++                biggest = std::max(biggest, (size_t) w->nb[2]);
++            }
++        }
++        if (dr_of.empty()) {
++            refuse("no cached expert tensor was found in the brain's files");
++            return;
++        }
++        if (const char * t = getenv("LLAMA_MOE_DRIVE_THREADS"); t != nullptr && atoi(t) > 0) {
++            dr_n_threads = std::min(32, atoi(t));
++        }
++        double mib = 512.0;
++        if (const char * m = getenv("LLAMA_MOE_DRIVE_MIB"); m != nullptr && atof(m) > 0) {
++            mib = atof(m);
++        }
++        dr_all = getenv("LLAMA_MOE_DRIVE_ALL") != nullptr && atoi(getenv("LLAMA_MOE_DRIVE_ALL")) > 0;
++        dr_size = std::max((size_t) (mib*1048576.0), 4*biggest);
++        // pinned memory of the first card that has a host buffer type
++        for (const device & d : devices) {
++            if (!d.ctx) {
++                continue;
++            }
++            ggml_backend_dev_t dev = ggml_backend_buft_get_device(d.buft);
++            ggml_backend_buffer_type_t host = dev ? ggml_backend_dev_host_buffer_type(dev) : nullptr;
++            if (host != nullptr) {
++                dr_stage_buf.reset(ggml_backend_buft_alloc_buffer(host, dr_size));
++                if (dr_stage_buf) {
++                    dr_base = (uint8_t *) ggml_backend_buffer_get_base(dr_stage_buf.get());
++                    dr_pinned = true;
++                }
++            }
++            break;
++        }
++        if (dr_base == nullptr) {
++            dr_stage_mem.resize(dr_size);
++            dr_base = dr_stage_mem.data();
++        }
++        for (int i = 0; i < dr_n_threads; ++i) {
++            dr_pool.emplace_back([this, i] { dr_worker(i); });
++        }
++        dr_on = true;
++        LLAMA_LOG_INFO("llama_moe_cache: drive tier on: misses not in RAM are read unbuffered from %zu file(s), %d at once, through a %s staging ring of %.0f MiB%s\n",
++            dr_paths.size(), dr_n_threads, dr_pinned ? "pinned" : "plain", dr_size/1048576.0, dr_all ? " (every miss: LLAMA_MOE_DRIVE_ALL)" : "");
++    }
++
++    bool dr_want(const ggml_tensor * w, const void * src, size_t n) {
++        if (dr_of.find(w) == dr_of.end() || n > dr_size) {
++            return false;
++        }
++        if (!dr_all && dr_resident(src, n)) {
++            dr_ram++;
++            return false;
++        }
++        return true;
++    }
++
++    void dr_worker(int id) {
++        GGML_UNUSED(id);
++        std::vector<std::unique_ptr<llama_file>> files(dr_paths.size());
++        size_t gen_seen = 0;
++        for (;;) {
++            size_t j;
++            {
++                std::unique_lock<std::mutex> lock(dr_mutex);
++                dr_cv.wait(lock, [&] { return dr_stop || (dr_gen != gen_seen && dr_next < dr_work.size()); });
++                if (dr_stop) {
++                    return;
++                }
++                j = dr_next++;
++                if (dr_next >= dr_work.size()) {
++                    gen_seen = dr_gen;
++                }
++            }
++            const dr_job & job = dr_work[j]; // dr_work changes only after every job of the batch is done
++            const dr_src & src = dr_of.at(job.w);
++            std::string err;
++            try {
++                if (!files[src.file]) {
++                    files[src.file] = std::make_unique<llama_file>(dr_paths[src.file].c_str(), "rb", /*use_direct_io =*/ true);
++                }
++                files[src.file]->seek(src.offs + job.src, SEEK_SET);
++                files[src.file]->read_raw(job.stage, job.size);
++            } catch (const std::exception & e) {
++                err = e.what();
++            }
++            {
++                std::lock_guard<std::mutex> lock(dr_mutex);
++                if (!err.empty() && dr_err.empty()) {
++                    dr_err = err;
++                }
++                dr_done++;
++            }
++            dr_cv_done.notify_all();
++        }
++    }
++
++    // read the queued jobs from the drive into the ring, all at once, then upload them in order
++    void dr_upload(ggml_backend_t backend) {
++        const int64_t t0 = ggml_time_us();
++        size_t total = 0;
++        for (const dr_job & j : dr_jobs) {
++            total += j.size;
++        }
++        // the ring's next stretch must not hold uploads still going up: wrap, after waiting for the card
++        auto place = [&](size_t n) {
++            if (dr_pos + n > dr_size) {
++                ggml_backend_synchronize(backend);
++                dr_pos = 0;
++                dr_waits++;
++            }
++            uint8_t * p = dr_base + dr_pos;
++            dr_pos += GGML_PAD(n, 4096);
++            return p;
++        };
++        size_t first = 0;
++        while (first < dr_jobs.size()) {
++            // as many jobs as fit in the ring from here; a wrap waits for the uploads before it
++            size_t last = first, room = dr_size - dr_pos;
++            if (GGML_PAD(dr_jobs[first].size, 4096) > room) {
++                ggml_backend_synchronize(backend);
++                dr_pos = 0;
++                dr_waits++;
++                room = dr_size;
++            }
++            size_t used = 0;
++            while (last < dr_jobs.size() && used + GGML_PAD(dr_jobs[last].size, 4096) <= room) {
++                used += GGML_PAD(dr_jobs[last].size, 4096);
++                last++;
++            }
++            for (size_t i = first; i < last; ++i) {
++                dr_jobs[i].stage = place(dr_jobs[i].size);
++            }
++            {
++                // the workers read jobs [first, last) of dr_jobs: hand them over as a fresh batch
++                std::lock_guard<std::mutex> lock(dr_mutex);
++                dr_work.assign(dr_jobs.begin() + first, dr_jobs.begin() + last);
++                dr_done = 0;
++                dr_next = 0;
++                dr_gen++;
++            }
++            dr_cv.notify_all();
++            {
++                std::unique_lock<std::mutex> lock(dr_mutex);
++                dr_cv_done.wait(lock, [&] { return dr_done >= dr_work.size(); });
++            }
++            if (!dr_err.empty()) {
++                GGML_ABORT("MoE cache drive tier: a read failed: %s", dr_err.c_str());
++            }
++            for (size_t i = first; i < last; ++i) {
++                const dr_job & j = dr_jobs[i];
++                ggml_backend_tensor_set_async(backend, j.bank, j.stage, j.dst, j.size);
++            }
++            if (!dr_pinned) {
++                ggml_backend_synchronize(backend); // plain memory: the copy may still read it
++            }
++            first = last;
++        }
++        dr_n     += dr_jobs.size();
++        dr_bytes += total;
++        dr_us    += ggml_time_us() - t0;
++    }
++    std::vector<dr_job> dr_work; // the batch the workers read, set under dr_mutex
++
++    void dr_shutdown() {
++        if (dr_pool.empty()) {
++            return;
++        }
++        {
++            std::lock_guard<std::mutex> lock(dr_mutex);
++            dr_stop = true;
++        }
++        dr_cv.notify_all();
++        for (auto & t : dr_pool) {
++            t.join();
++        }
++        dr_pool.clear();
++    }
++
+     // Brain Engine 0049 (LLAMA_MOE_CACHE_TAIL=1): the shelf. While the chat is short, the chat-memory cells it has
+     // not reached (the tail of each layer's K and V) hold experts the cache evicted. A miss the shelf holds comes back
+     // card to card instead of over the bus from RAM. The chat memory takes its tail back a step at a time before it
+@@ -3141,6 +3517,10 @@ struct llama_moe_cache::impl {
+         }
+         log("ubatch  > 8", stats_large);
+         log("prompts read with misses on the CPU", stats_read);
++        if (dr_on) {
++            LLAMA_LOG_INFO("llama_moe_cache: drive tier: %zu runs read from the drive (%.2f MiB, %.0f MiB/s while reading), %zu misses were in RAM, %zu ring waits\n",
++                dr_n, dr_bytes/1048576.0, dr_us > 0 ? dr_bytes/1048576.0/(dr_us/1e6) : 0.0, dr_ram, dr_waits);
++        }
+         if (tl_on) {
+             LLAMA_LOG_INFO("llama_moe_cache: the shelf: %zu experts put on it, %zu came back from it on the card (%.2f MiB not uploaded), "
+                 "%zu read from it by large batches, %zu forgotten in %zu take-backs\n", tl_saved, tl_hits, tl_hit_bytes/1024.0/1024.0,

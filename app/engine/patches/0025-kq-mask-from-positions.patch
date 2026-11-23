@@ -1,0 +1,417 @@
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 6cd2836..2bad764 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -381,6 +381,16 @@ llama_context::llama_context(
+ 
+     cparams.op_offload     = params.op_offload;
+     cparams.kv_unified     = params.kv_unified;
++
++    // Brain Engine 0025: LLAMA_KQ_MASK_BUILD=1 makes the attention mask in the graph from positions (off by default;
++    // never for ALiBi brains, whose mask holds distances, not just 0 or -inf)
++    if (const char * mb = getenv("LLAMA_KQ_MASK_BUILD"); mb != nullptr && atoi(mb) > 0) {
++        if (model.hparams.use_alibi) {
++            LLAMA_LOG_WARN("%s: LLAMA_KQ_MASK_BUILD NOT USED: this brain uses ALiBi\n", __func__);
++        } else {
++            cparams.kq_mask_build = true;
++        }
++    }
+     cparams.moe_cache_size      = params.moe_cache_size;
+     cparams.moe_cache_cpu_share = params.moe_cache_cpu_share;
+ 
+@@ -659,6 +669,23 @@ llama_context::llama_context(
+             llama_expert_tiers_pin_warm(model); // Brain Engine 0020, off unless LLAMA_EXPERT_WARM_MIB is set
+         }
+ 
++        // Brain Engine 0025: the made mask goes on the card when one card runs every layer; otherwise the scheduler
++        // places it like any other op (it is still made from positions, just maybe on the processor)
++        if (cparams.kq_mask_build) {
++            ggml_backend_dev_t dev = model.dev_layer(0);
++            bool one = dev != nullptr && ggml_backend_dev_type(dev) != GGML_BACKEND_DEVICE_TYPE_CPU;
++            for (uint32_t il = 1; one && il < model.hparams.n_layer(); ++il) {
++                one = model.dev_layer(il) == dev;
++            }
++            for (ggml_backend_t b : backend_ptrs) {
++                if (one && ggml_backend_get_device(b) == dev) {
++                    cparams.kq_mask_backend = b;
++                }
++            }
++            LLAMA_LOG_INFO("%s: attention mask made from positions, on %s\n", __func__,
++                    cparams.kq_mask_backend ? ggml_backend_dev_name(dev) : "the scheduler's choice");
++        }
++
+         sched_reserve();
+ 
+         if (!cparams.flash_attn) {
+@@ -3511,6 +3538,11 @@ uint32_t llama_context::graph_max_nodes() const {
+         res += llama_sampler_backend_n_nodes(sampler) * cparams.n_outputs_max_per_seq;
+     }
+ 
++    // Brain Engine 0025: making a mask in the graph adds up to 64 blocks of at most 10 tensors, for up to 3 masks
++    if (cparams.kq_mask_build) {
++        res += 3*64*10;
++    }
++
+     if (cparams.training) {
+         res *= 4;
+     }
+diff --git a/src/llama-cparams.h b/src/llama-cparams.h
+index 5c2fca6..cca3b5b 100644
+--- a/src/llama-cparams.h
++++ b/src/llama-cparams.h
+@@ -82,6 +82,11 @@ struct llama_cparams {
+     // layers for the read, and the first write of 32 tokens or fewer switches it back; 0 = off
+     uint32_t moe_cache_read_ub = 0;
+ 
++    // Brain Engine 0025 (LLAMA_KQ_MASK_BUILD): make the attention mask in the graph from each cache cell's position and
++    // each query word's position (a few MB) instead of filling the whole table on the processor and copying it over
++    bool           kq_mask_build   = false;
++    ggml_backend_t kq_mask_backend = nullptr; // the card that runs every attention layer, where the mask is made
++
+     std::vector<bool> embeddings_layer_inp; // [n_layer()] extract input embeddings for layer
+     bool embeddings_layer_inp_dev; // write enabled layer inputs to a device buffer instead of host
+     bool embeddings_nextn_dev;     // write the unmasked h_nextn rows to a device buffer instead of host, see llama_set_embeddings_nextn_dev()
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 5dad787..cdb9086 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -48,6 +48,37 @@ static ggml_tensor * build_attn_inp_kq_mask(
+     return res;
+ }
+ 
++// Brain Engine 0025 (LLAMA_KQ_MASK_BUILD): can this ubatch's mask be made in the graph from positions? Only the plain
++// cases: causal, no ALiBi (kq_mask_build is off for ALiBi brains), no 2-D (vision) positions, no or standard sliding
++// window, and one chat per stream with every word in one chat. Everything else keeps the processor-filled table.
++static bool kq_mask_can_build(
++        const llama_kv_cache_context * mctx,
++        const llama_ubatch & ubatch,
++        const llama_cparams & cparams,
++        int64_t n_tps,
++        int64_t ns) {
++    if (!cparams.kq_mask_build || !cparams.causal_attn || ubatch.is_pos_2d()) {
++        return false;
++    }
++    const llama_swa_type st = mctx->get_swa_type();
++    if (st != LLAMA_SWA_TYPE_NONE && st != LLAMA_SWA_TYPE_STANDARD) {
++        return false;
++    }
++    if (n_tps*ns != (int64_t) ubatch.n_tokens) {
++        return false;
++    }
++    for (int64_t s = 0; s < ns; ++s) {
++        const llama_seq_id seq_id = ubatch.seq_id[s*n_tps][0];
++        for (int64_t ii = 0; ii < n_tps; ++ii) {
++            const int64_t i = s*n_tps + ii;
++            if (ubatch.n_seq_id[i] != 1 || ubatch.seq_id[i][0] != seq_id) {
++                return false;
++            }
++        }
++    }
++    return true;
++}
++
+ static bool can_reuse_kq_mask(
+         ggml_tensor * kq_mask,
+         const llama_kv_cache_context * mctx,
+@@ -84,6 +115,11 @@ static bool can_reuse_attn_mask(
+         return false;
+     }
+ 
++    // Brain Engine 0025: and on whether the mask is made in the graph
++    if ((attn_mask.kv_pos != nullptr) != kq_mask_can_build(mctx, ubatch, cparams, attn_mask.raw->ne[1], attn_mask.raw->ne[3])) {
++        return false;
++    }
++
+     if (!use_rows) {
+         return can_reuse_kq_mask(attn_mask.raw, mctx, ubatch, cparams);
+     }
+@@ -99,6 +135,94 @@ static bool can_reuse_attn_mask(
+     return res;
+ }
+ 
++// Brain Engine 0025: replace attn_mask.raw by a table made in the graph. For a block of query rows at a time:
++//   d       = cell position - query position                       (repeat + sub)
++//   allowed = step(0.5 - d)              (cell not later: causal)  (scale_bias + step)
++//           * step(d + n_swa - 0.5)      (inside the window: SWA)  (scale_bias + step + mul, standard SWA only)
++//   row     = log(allowed)               = 0 or -inf, the values the processor writes
++// then written into the table with set_rows (which also turns f32 into the f16 flash attention reads). Positions are
++// whole numbers below 2^24, exact in f32; hidden cells get 1e9 so the causal test hides them. A block is at most
++// 64 MiB of f32 unless that needs more than 64 blocks.
++static void build_attn_inp_attn_mask_made(
++        ggml_context * ctx,
++        const llama_kv_cache_context * mctx,
++        llm_attn_mask & attn_mask) {
++    ggml_tensor * tmpl = attn_mask.raw;
++
++    const int64_t n_kv  = tmpl->ne[0];
++    const int64_t n_tps = tmpl->ne[1];
++    const int64_t ns    = tmpl->ne[3];
++    GGML_ASSERT(tmpl->ne[2] == 1);
++
++    attn_mask.kv_pos = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, n_kv, 1, 1, ns);
++    ggml_set_input(attn_mask.kv_pos);
++    ggml_set_name(attn_mask.kv_pos, "attn_inp_kq_mask_kv_pos");
++
++    attn_mask.q_pos = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, 1, n_tps, 1, ns);
++    ggml_set_input(attn_mask.q_pos);
++    ggml_set_name(attn_mask.q_pos, "attn_inp_kq_mask_q_pos");
++
++    attn_mask.q_rows = ggml_new_tensor_1d(ctx, GGML_TYPE_I64, n_tps);
++    ggml_set_input(attn_mask.q_rows);
++    ggml_set_name(attn_mask.q_rows, "attn_inp_kq_mask_rows");
++
++    // the table itself: not an input any more, every row is written below
++    tmpl->flags &= ~GGML_TENSOR_FLAG_INPUT;
++    ggml_set_name(tmpl, "attn_kq_mask_made");
++    attn_mask.made.push_back(tmpl);
++
++    const llama_swa_type st    = mctx->get_swa_type();
++    const float          n_swa = (float) mctx->get_n_swa();
++
++    const int64_t blk_mem = std::max<int64_t>(1, (int64_t) (64u*1024*1024) / (n_kv*ns*(int64_t) sizeof(float)));
++    const int64_t blk     = std::min<int64_t>(n_tps, std::max<int64_t>(blk_mem, (n_tps + 63)/64));
++
++    ggml_tensor * cur = tmpl;
++    for (int64_t r0 = 0; r0 < n_tps; r0 += blk) {
++        const int64_t nr = std::min<int64_t>(blk, n_tps - r0);
++
++        ggml_tensor * q = ggml_view_4d(ctx, attn_mask.q_pos, 1, nr, 1, ns,
++                attn_mask.q_pos->nb[1], attn_mask.q_pos->nb[2], attn_mask.q_pos->nb[3], r0*attn_mask.q_pos->nb[1]);
++        if (ns > 1) {
++            q = ggml_cont(ctx, q);
++            attn_mask.made.push_back(q);
++        }
++
++        ggml_tensor * d = ggml_repeat_4d(ctx, attn_mask.kv_pos, n_kv, nr, 1, ns);
++        attn_mask.made.push_back(d);
++        d = ggml_sub_inplace(ctx, d, q);
++        attn_mask.made.push_back(d);
++
++        ggml_tensor * a = ggml_scale_bias(ctx, d, -1.0f, 0.5f);
++        attn_mask.made.push_back(a);
++        a = ggml_step_inplace(ctx, a);
++        attn_mask.made.push_back(a);
++
++        if (st == LLAMA_SWA_TYPE_STANDARD) {
++            ggml_tensor * w = ggml_scale_bias(ctx, d, 1.0f, n_swa - 0.5f);
++            attn_mask.made.push_back(w);
++            w = ggml_step_inplace(ctx, w);
++            attn_mask.made.push_back(w);
++            a = ggml_mul_inplace(ctx, a, w);
++            attn_mask.made.push_back(a);
++        }
++
++        a = ggml_log_inplace(ctx, a);
++        attn_mask.made.push_back(a);
++
++        ggml_tensor * idx = ggml_view_1d(ctx, attn_mask.q_rows, nr, r0*ggml_element_size(attn_mask.q_rows));
++
++        cur = ggml_set_rows(ctx, cur, a, idx);
++        attn_mask.made.push_back(cur);
++    }
++
++    ggml_set_name(cur, "attn_kq_mask");
++    attn_mask.raw = cur;
++
++    LLAMA_LOG_DEBUG("%s: attention mask made in the graph: %lld cells x %lld words x %lld streams, %lld rows a block\n",
++            __func__, (long long) n_kv, (long long) n_tps, (long long) ns, (long long) blk);
++}
++
+ // KQ mask over the cell lists of kv_rows, or over the whole cache if kv_rows is not used
+ static llm_attn_mask build_attn_inp_attn_mask(
+         ggml_context * ctx,
+@@ -126,6 +250,11 @@ static llm_attn_mask build_attn_inp_attn_mask(
+         ggml_set_name(attn_mask.raw, "attn_inp_kq_mask");
+     }
+ 
++    // Brain Engine 0025
++    if (kq_mask_can_build(mctx, ubatch, cparams, attn_mask.raw->ne[1], attn_mask.raw->ne[3])) {
++        build_attn_inp_attn_mask_made(ctx, mctx, attn_mask);
++    }
++
+     return attn_mask;
+ }
+ 
+@@ -2731,6 +2860,17 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+     return moe_out;
+ }
+ 
++// Brain Engine 0025: the made mask and the ops that make it go on the card that runs the attention layers, so the
++// scheduler copies only the small inputs over
++void llm_graph_context::place_kq_mask(const llm_attn_mask & m) const {
++    if (cparams.kq_mask_backend == nullptr || m.kv_pos == nullptr) {
++        return;
++    }
++    for (ggml_tensor * t : m.made) {
++        ggml_backend_sched_set_tensor_backend(sched, t, cparams.kq_mask_backend);
++    }
++}
++
+ llm_graph_moe_cache_slots llm_graph_context::build_moe_cache_slots(
+          ggml_tensor * selected_experts,
+          ggml_tensor * up_exps,
+@@ -3405,6 +3545,7 @@ llm_graph_input_attn_kv * llm_graph_context::build_attn_inp_kv() const {
+     const auto * mctx_cur = static_cast<const llama_kv_cache_context *>(mctx);
+ 
+     auto inp = build_attn_inp_kv_impl(ctx0, ubatch, hparams, cparams, mctx_cur);
++    place_kq_mask(inp->self_attn_mask); // Brain Engine 0025
+ 
+     return (llm_graph_input_attn_kv *) res->add_input(std::move(inp));
+ }
+@@ -4058,6 +4199,7 @@ llm_graph_input_attn_kv_iswa * llm_graph_context::build_attn_inp_kv_iswa() const
+         inp->self_v_idxs = mctx_cur->get_base()->build_input_v_idxs(ctx0, ubatch);
+ 
+         inp->self_attn_mask = build_attn_inp_attn_mask(ctx0, mctx_cur->get_base(), ubatch, cparams);
++        place_kq_mask(inp->self_attn_mask); // Brain Engine 0025
+     }
+ 
+     {
+@@ -4067,6 +4209,7 @@ llm_graph_input_attn_kv_iswa * llm_graph_context::build_attn_inp_kv_iswa() const
+         inp->self_v_idxs_swa = mctx_cur->get_swa()->build_input_v_idxs(ctx0, ubatch);
+ 
+         inp->self_attn_mask_swa = build_attn_inp_attn_mask(ctx0, mctx_cur->get_swa(), ubatch, cparams);
++        place_kq_mask(inp->self_attn_mask_swa); // Brain Engine 0025
+     }
+ 
+     inp->self_k_rot = mctx_cur->get_base()->get_k_rot();
+@@ -4328,6 +4471,7 @@ llm_graph_input_mem_hybrid * llm_graph_context::build_inp_mem_hybrid() const {
+ 
+     auto inp_rs   = build_rs_inp_impl     (ctx0, ubatch, mctx_cur->get_recr());
+     auto inp_attn = build_attn_inp_kv_impl(ctx0, ubatch, hparams, cparams, mctx_cur->get_attn());
++    place_kq_mask(inp_attn->self_attn_mask); // Brain Engine 0025
+ 
+     auto inp = std::make_unique<llm_graph_input_mem_hybrid>(cparams, std::move(inp_attn), std::move(inp_rs), mctx_cur);
+ 
+diff --git a/src/llama-graph.h b/src/llama-graph.h
+index c33c7ad..32a8892 100644
+--- a/src/llama-graph.h
++++ b/src/llama-graph.h
+@@ -341,6 +341,13 @@ struct llm_attn_mask {
+ 
+     // fill every token of a sequence with the mask row of its first token (dspark draft blocks)
+     bool block_uniform = false;
++
++    // Brain Engine 0025 (LLAMA_KQ_MASK_BUILD): when set, raw is made in the graph from these small inputs, with the
++    // same 0 / -inf values the processor would write; nullptr = raw is filled on the processor as before
++    ggml_tensor * kv_pos = nullptr; // F32 [n_kv, 1, 1, n_stream]: each cell's position, 1e9 when hidden from the chat
++    ggml_tensor * q_pos  = nullptr; // F32 [1, n_tps, 1, n_stream]: each query word's position
++    ggml_tensor * q_rows = nullptr; // I64 [n_tps]: 0, 1, 2, ... (where each made row goes)
++    std::vector<ggml_tensor *> made; // the tensors that make it, placed on the card with the attention layers
+ };
+ 
+ class llm_graph_input_attn_no_cache : public llm_graph_input_i {
+@@ -1264,6 +1271,9 @@ struct llm_graph_context {
+ 
+     // the slots of the selected experts in the MoE cache, nullptr if the experts of the layer are not read from the cache
+     // with cpu_part, also the misses computed from the host experts, if the cache leaves any to the CPU
++    // Brain Engine 0025: put the made attention mask on the card (no-op when it isn't made in the graph)
++    void place_kq_mask(const llm_attn_mask & m) const;
++
+     llm_graph_moe_cache_slots build_moe_cache_slots(
+              ggml_tensor * selected_experts,
+              ggml_tensor * up_exps,
+diff --git a/src/llama-kv-cache.cpp b/src/llama-kv-cache.cpp
+index 4ec7fb8..b35ca3c 100644
+--- a/src/llama-kv-cache.cpp
++++ b/src/llama-kv-cache.cpp
+@@ -1934,6 +1934,59 @@ void llama_kv_cache::set_input_attn_mask(const llm_attn_mask & attn_mask, const
+         cells.get_seq_cells(get_kv_rows_slices(*ubatch, n_slices, n_swa, swa_type), data, n_rows);
+     }
+ 
++    // Brain Engine 0025: the mask is made in the graph, only its small inputs are filled here, with the same rules as
++    // set_input_attn_mask_impl: a cell is hidden from a stream when it is padding, empty or not of the stream's chat
++    // (its position becomes 1e9, later than any word), every other cell gives its position; the graph then hides later
++    // cells (causal) and cells outside the window (standard SWA). Only built for one chat per stream, causal, no ALiBi,
++    // no 2-D positions, so those branches aren't needed (see kq_mask_can_build in llama-graph.cpp).
++    if (attn_mask.kv_pos) {
++        if (attn_mask.kv_pos->buffer == nullptr || attn_mask.raw == nullptr || attn_mask.raw->buffer == nullptr) {
++            return;
++        }
++        GGML_ASSERT(ggml_backend_buffer_is_host(attn_mask.kv_pos->buffer));
++        GGML_ASSERT(ggml_backend_buffer_is_host(attn_mask.q_pos->buffer));
++        GGML_ASSERT(ggml_backend_buffer_is_host(attn_mask.q_rows->buffer));
++        GGML_ASSERT(causal_attn);
++
++        const int64_t n_kv_m = attn_mask.kv_pos->ne[0];
++        const int64_t ns     = attn_mask.kv_pos->ne[3];
++        const int64_t n_tps  = attn_mask.q_pos->ne[1];
++        GGML_ASSERT(ns*n_tps == (int64_t) ubatch->n_tokens);
++
++        const int32_t * rows = attn_mask.rows && attn_mask.rows->buffer ? (const int32_t *) attn_mask.rows->data : nullptr;
++
++        float   * kp = (float   *) attn_mask.kv_pos->data;
++        float   * qp = (float   *) attn_mask.q_pos->data;
++        int64_t * qr = (int64_t *) attn_mask.q_rows->data;
++
++        uint32_t seq_first[LLAMA_MAX_SEQ];
++        std::fill(seq_first, seq_first + LLAMA_MAX_SEQ, ubatch->n_tokens);
++        for (uint32_t i = 0; i < ubatch->n_tokens; ++i) {
++            seq_first[ubatch->seq_id[i][0]] = std::min(seq_first[ubatch->seq_id[i][0]], i);
++        }
++
++        for (int64_t s = 0; s < ns; ++s) {
++            const llama_seq_id seq_id = ubatch->seq_id[s*n_tps][0];
++            const auto & cells = v_cells.at(seq_to_stream[seq_id]);
++
++            for (int64_t c = 0; c < n_kv_m; ++c) {
++                const int32_t j = rows ? rows[s*n_kv_m + c] : (int32_t) c;
++                const bool hide = j < 0 || cells.is_empty(j) || !cells.seq_has(j, seq_id);
++                kp[s*n_kv_m + c] = hide ? 1e9f : (float) cells.pos_get(j);
++            }
++            for (int64_t ii = 0; ii < n_tps; ++ii) {
++                const uint32_t i  = s*n_tps + ii;
++                GGML_ASSERT(ubatch->n_seq_id[i] == 1 && ubatch->seq_id[i][0] == seq_id);
++                const uint32_t iq = attn_mask.block_uniform ? seq_first[seq_id] : i;
++                qp[s*n_tps + ii] = (float) ubatch->pos[iq];
++            }
++        }
++        for (int64_t ii = 0; ii < n_tps; ++ii) {
++            qr[ii] = ii;
++        }
++        return;
++    }
++
+     // the mask is left unallocated when the graph only stores K/V without attending
+     if (attn_mask.raw && attn_mask.raw->buffer) {
+         ggml_tensor * dst = attn_mask.raw;
+@@ -3057,6 +3110,14 @@ uint32_t llama_kv_cache_context::get_n_kv_rows() const {
+     return n_kv_rows;
+ }
+ 
++uint32_t llama_kv_cache_context::get_n_swa() const {
++    return kv->get_n_swa();
++}
++
++llama_swa_type llama_kv_cache_context::get_swa_type() const {
++    return kv->get_swa_type();
++}
++
+ ggml_type llama_kv_cache_context::type_k() const {
+     return kv->type_k();
+ }
+diff --git a/src/llama-kv-cache.h b/src/llama-kv-cache.h
+index a81cd84..da9e813 100644
+--- a/src/llama-kv-cache.h
++++ b/src/llama-kv-cache.h
+@@ -164,6 +164,10 @@ public:
+     bool get_has_shift() const;
+ 
+     ggml_type type_k() const;
++
++    // Brain Engine 0025
++    uint32_t       get_n_swa()    const { return n_swa; }
++    llama_swa_type get_swa_type() const { return swa_type; }
+     ggml_type type_v() const;
+ 
+     std::vector<uint32_t> get_layer_ids() const;
+@@ -417,6 +421,10 @@ public:
+     //
+ 
+     uint32_t get_n_kv() const;
++    // Brain Engine 0025
++    uint32_t       get_n_swa()    const;
++    llama_swa_type get_swa_type() const;
++
+     uint32_t get_n_kv_rows() const;
+ 
+     ggml_type type_k() const;

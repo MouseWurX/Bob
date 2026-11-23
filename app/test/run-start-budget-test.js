@@ -15,7 +15,9 @@ import { fileURLToPath } from 'node:url';
 const app = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
-const DEFAULT_CAP = 15500, ALL_CAP = 48500;
+// Nov 23: the routines tool (Routines Hand, off by default, so the default start is unchanged) adds about 260 with
+// everything on; ALL_CAP moved from 48,500 to 48,800, still under 50,000.
+const DEFAULT_CAP = 15500, ALL_CAP = 48800;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-start-'));
 const conf = path.join(tmp, 'config.json');

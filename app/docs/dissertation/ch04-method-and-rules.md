@@ -53,7 +53,7 @@ The Bobert wording study ran on a rented 48 GB A40 with 8 slots of 8,192 tokens 
 
 ### 4.3.3 Speed settings measured on the home PC (updated 18 November)
 
-Before any setting that changes how the brain is served becomes a default, it is timed on MouseWurX's consumer PC against the default. **For every speed result in one table, see section 4.3.4.** This section gathers every speed result from 4 to 18 November in one place, oldest first, with later tests in sections 4.3.3.8 to 4.3.3.11. Section 2.10.1 turns the results into advice for a home machine. Section 3.4.3 covers the cost of the fNRI trace.
+Before any setting that changes how the brain is served becomes a default, it is timed on MouseWurX's consumer PC against the default. **For every speed result in one table, see section 4.3.4.** This section gathers every speed result from 4 to 18 November in one place, oldest first, with later tests in sections 4.3.3.8 to 4.3.3.13. Section 2.10.1 turns the results into advice for a home machine. Section 3.4.3 covers the cost of the fNRI trace.
 
 All speeds are tokens a second. "Read" is prompt reading speed and "write" is writing speed. "First word" is the wait before the first word appears, in seconds. Unless a row says otherwise, the brain is stock Qwen3.6 35B A3B at Q4 (unsloth UD-Q4_K_XL) on a 16 GB card with 32 GB of RAM and an 8-core processor.
 
@@ -82,6 +82,8 @@ All speeds are tokens a second. "Read" is prompt reading speed and "write" is wr
 - **Turbo's net effect.** It helped at a small step with a big copy cache and hurt at big steps with a small one, in 1 load each.
 - **The copy-cache choices.** By the scoring rules, agent work drops the copy cache and chat keeps it. Long-form work keeps it only on the tie-break, after a 2.1% tie (section 4.3.3.2). Most long-context loads throttled lightly, and a rerun could flip the long-form choice.
 - **The 120B soft cut's answer quality.** Its perplexity run is paused.
+
+<a id="speed-method"></a>
 
 #### 4.3.3.1 How the speed tests were run
 
@@ -993,6 +995,8 @@ The method of section 4.3.3.1 stays. Three things were added after speed testing
 - **An absolute gate for lossy tricks (MouseWurX, 21 November).** A trick that changes the words, such as stand-ins or a cut, is judged on real jobs: the same after1 and after2 jobs and seeds, run with the trick on. It passes only if the jobs' graders mark the work correct, with no crashes, no bad tool calls and no broken files. Its count against the full brain is reported as information only. Perplexity, KL divergence, same top word and the 128K needle are early screens: a trick that fails them badly skips the real-jobs run, and passing them decides nothing.
 - **The harness comes before calibration.** No expert scoring or cut is made until Bob's harness passes its own jobs cleanly, with no broken tools, no blocked search and tests that run on Windows. Section 13.6.12 gives the reason.
 
+<a id="engine-nov22"></a>
+
 #### 4.3.3.11 Engine tests of 22 November (Brain Engine 29 to 31, and the patch 0040 check)
 
 Speed testing resumed on 22 November for the borrowing work of section 13.7. All runs below are on the home PC with stock Qwen3.6 35B unless the row says Flash-Next. Sources: the Calibrate thread's reports and the Speed thread's replies of 22 November, with plans on the speed-plans pull request (Addenda 94 to 98). Timings in the cloud are left out: only home-PC numbers are given.
@@ -1053,6 +1057,60 @@ Gate 1 needs writing no more than 2% slower, so it failed, and Bob kept Brain En
 
 **Still to run on the home PC** (in order): the rest of the Brain Engine 32 Gate 1 rerun, the reading copy-against-compute split at steps 4096 and 8192, the borrow spare of 512 against 1,024 MiB at 64K and 128K, the processor-share rerun with patch 0055, and the doorbell's first run on the card. Flash-Next waits for MouseWurX to lift the stop.
 
+<a id="engine-nov23"></a>
+
+#### 4.3.3.12 Engine work of 23 November: GUPPI, the release gate and seven lanes (Brain Engine 36 to 44)
+
+Sources: the Speed, Calibrate and lane threads of 22 and 23 November; `bob-wip/engine-speed/be44/0109-linux-results.md`; `bob-wip/tool-call-parsers/cloud-ab/RESULTS.txt`; pull requests #319 and #321 to #326. Rows from rented cards and the cloud are marked as such. Only the home-PC rows count for Bob's defaults.
+
+**Rules set on 23 November (MouseWurX).** A stock llama.cpp setting whose words are fixed run to run, such as the reading step or a q8 chat memory, is not a Turbo trick and may be a default. Brain Engine's own word-changing patches stay off until the real-jobs gate. Spill must be prevented up front: brain, chat memory, copy cache and reading step must fit the card's budget less 512 MB, while riding as close to that edge as measured memory allows. A switch that costs time, like reloading the chat memory, may happen only between whole jobs; a switch that costs nothing may happen mid-job. The part of Bob that makes these choices, the Conductor, was renamed GUPPI ("Governor of Unified Placement, Paging, and Inference").
+
+**Bigger builds.** On MouseWurX's ask for "leaps and bounds, not baby steps", Brain Engine 36 bundled many lossless items, each behind its own switch so they can be word-checked one at a time: an engine-owned RAM expert cache (0060), a copy cache that fills the card to the 512 MB margin (0061) and the RAM floor on its own (0062). Brain Engine 43 is the release candidate on the b12359 base. Its home-PC rows for 0060 to 0062 are not in yet.
+
+**The release gate for GUPPI (Brain Engine 43, home PC, 32K job, 2 rounds).** GUPPI must finish the job no slower than plain fixed settings, with the same words and no spill.
+
+| Run | Result | Verdict |
+|---|---|---|
+| First gate | GUPPI 58.4 s against plain 36.2 s; 670 MB spill. A needless 15 s switch of the reading step, and the draft head's memory not counted | NO-GO |
+| Rerun with the draft head counted | 52 to 54 s against 36.5 s plain; one 15 s chat-memory switch left; words match plain with the draft head off; no crash | NO-GO |
+| Recheck: on NVIDIA, GUPPI loads at the reading step and never switches during a job | Running when this was written | to come |
+
+The release waits on the recheck. The lesson is the one of section 4.3.3.8: a switch that reloads memory costs more than the step it buys on a job this size, so GUPPI now holds still within a job.
+
+**Seven lanes, 23 November.** Each lane hands its patches to the Speed thread for the Brain Engine 44 or 45 bundle. Every one is off by default or stock-identical until the home PC shows the same words with no spill.
+
+| Lane | Patch | What it does | Measured so far | Where |
+|---|---|---|---|---|
+| Avalon's card memory | 0109, 0110 | Registers the brain's expert RAM with the card so uploads skip a copy; a meter for how often the card waits on the processor during long reads | **Writing 7% faster** (50.6 to 54.3 t/s, rounds 2 and 3), reading 1% to 2% faster, same words; 18.7 GB registered in 2.5 s. The card waited 0.1% of a long read, so the planned wait-on-a-flag change was not built | Rented RTX A4000, Linux, 35B, 3 rounds |
+| HotRod and Strata | 0106, 0107 | Deeper look-ahead with a small learned guesser; a least-frequently-and-recently-used cache order; copy guesses next to the draft head | Tests pass on stand-ins (23 of 23 each). 0106 also fixes an old crash when look-ahead met in-place reads. Look-ahead is refused next to borrowing, so it can't join GUPPI's default path yet | Cloud only |
+| Tool-call parsers | 0104 | Four upstream parser fixes (section 8.9.4) | Prompts byte-identical for every Bob template; same words on a small-model A/B, 128 of 128 checks | Cloud only |
+| FP4 experts | none needed | Stock b12359 already has MXFP4 and NVFP4 with FP4 kernels for RTX 50-series cards | A brain made in FP4 runs FP4 by default (fixed words). Only the Lab's conversion to FP4 changes words, so it waits on the real-jobs gate. Gain expected mostly in reading | Plan; home-PC test queued |
+| Upstream fixes and CUDA speed-ups | 0100, 0101 | 11 upstream fixes (including a sticky NaN and duplicate expert ids) and 8 CUDA speed-ups | 48 engine tests as Brain Engine 43; same perplexity on 13 small brains | Cloud only; three picks may change words |
+| Legion Go graphics | 0102, 0103 | Upstream Vulkan speed picks and two fixes for AMD's Windows driver | Software Vulkan: 67 of 67, 2,591 of 2,591 and 272 of 272 op checks pass | Cloud only; held out of the bundle until the Go's word check |
+| Inkling loop | 0111 | Fuses Inkling 2 Mini's loop controllers (section 4.3.3.13) | Bit-for-bit same odds in 16 setups; 9% to 15% fewer graph steps; a small processor brain wrote about 10% to 20% faster | Cloud only |
+
+What is measured on the home PC from these lanes is nothing yet: the home PC was booked with the Progressive chat-memory real jobs (verdict due 24 to 25 November) and the release gate. Every gain in the table above is unproven in our lab on the home PC, as we have yet to test. The 0109 gain was on Linux with 440 GB of free RAM, and on Windows the driver is expected to refuse the brain's file map, so it may not carry over.
+
+<a id="inkling-2-mini"></a>
+
+#### 4.3.3.13 Inkling 2 Mini on the handheld, the laptop and the home PC (23 November)
+
+Inkling 2 Mini is a looped mixture-of-experts brain: 26.4B parameters, 3.4B active per word, 24 layers of which layers 6 to 17 run three times with shared weights, and 8 of 128 experts per word. Its chat memory is tiny, about 2.2 GB at 128K in q8. Brain Engine's b12359 base could not load it, so upstream llama.cpp's support was ported (patches 0090 to 0092, PR #319, merged), with the copy cache keyed by the physical layer so a looped layer isn't cached three times. Sources: the Inkling threads and their test kits and logs, 23 November.
+
+| Machine | File | Settings that worked | Writing t/s | Reading t/s | Notes |
+|---|---|---|---|---|---|
+| Laptop (RTX 3060 6 GB, 32 GB RAM) | UD-Q2_K_XL | `--fit on --fit-target 512 --no-op-offload -ub 256`, experts in RAM | 11.9 | 29 | Card 5.02 GB. Without `--no-op-offload` the prompt buffer copied experts to the card (8.4 GB buffer). Q4_K_M did not fit the RAM, 128K and `-ub 512` did not fit the card |
+| Legion Go (16 GB shared) | Q2_K_XL | processor only, `-ngl 0 --cache-ram 0 -ub 128`, Claude app closed | 10.6 | 15.8 | Lowest available RAM 0.81 GB, 92 °C. Vulkan layers were always a copy and slower, so the Go runs it on the processor |
+| Home PC (RTX 5070 Ti 16 GB) | Q4_K_M | Brain Engine 90 (a test build) | to come | to come | The Qwen 35B wrote the same words at the same speed on Brain Engine 90 as before. The Inkling runs and an Inkling-against-Qwen comparison on held-out jobs are queued |
+
+- **Drafting with DSpark** (Inkling's own draft head) was slower when the experts sit in RAM, on the laptop. The newest DSpark drafter uses a design no code loads yet; the older one is accepted 39% to 48% of the time.
+- **Greedy text drifts** with placement and drafting, but the answers checked were correct. Two open upstream bugs give wrong output when experts sit in RAM (#32710, #32778); `--no-op-offload` is the workaround used.
+- **A lossless win found on the Go along the way:** loading a brain with memory mapping on built-in graphics (`--load-mode mmap`) cut the Go's shared graphics memory from 3.49 to 1.22 GB, with the same words and speed (gemma4-e2b A/B). It is in PR #315.
+
+How Inkling 2 Mini does on Bob's jobs, and its speed on the home PC, are unproven in our lab, as we have yet to test.
+
+<a id="speed-table"></a>
+
 ### 4.3.4 Speed results in one table (updated 23 November)
 
 This is every main speed result on the home PC in one place, oldest first, with what it decided. The full runs, with their sources and limits, are in the sections named in the last column. "Same words" compares the words written against plain settings at the same step; "n/a" means the row changes nothing the words depend on, or was not checked.
@@ -1082,6 +1140,10 @@ This is every main speed result on the home PC in one place, oldest first, with 
 | 22 Nov | BE21 to BE28 | Processor share, patch 0040 on and off | Code prompt 23 to 24 t/s on, 82 to 88 off (BE21: 86.7) | off: yes; on: no | 0040 is the whole slowdown; fast rewrite 0055 (home-PC run to come) | 4.3.3.11, Fig. 4.5 |
 | 22 Nov | BE32 | Borrowing word check, 32K and 128K | Borrow on matches borrow off | yes | The garbage is fixed; Gate 1 rerun under way | 4.3.3.11 |
 | 22 Nov | BE33 | Word check against BE28 | Same words, word for word | yes | Passes; rewarm off on borrow rows until BE36 | 4.3.3.11 |
+| 23 Nov | BE43 | GUPPI release gate, 32K job | 58.4 s, then 52 to 54 s, against plain 36.2 to 36.5 s; a 15 s memory switch inside the job | yes (draft head off) | NO-GO twice; GUPPI no longer switches within a job; recheck running | 4.3.3.12 |
+| 23 Nov | Linux rental | Registering expert RAM with the card (0109) | Writing 50.6 to 54.3 t/s (7%), reading 1% to 2% faster | yes | Home-PC (Windows) run queued | 4.3.3.12 |
+| 23 Nov | BE90 | Inkling 2 Mini, laptop and Legion Go | Laptop Q2 11.9 write / 29 read t/s; Go Q2 on the processor 10.6 / 15.8 | n/a | Runs on both; home-PC runs queued | 4.3.3.13 |
+| 23 Nov | 1.5.251 engine | Legion Go, `--load-mode mmap` | Shared graphics memory 3.49 to 1.22 GB, same speed | yes | Default for built-in graphics (PR #315) | 4.3.3.13 |
 
 **What it adds up to.** On this PC the settings matter more than the engine: the reading step, flash attention, the fit margin and the chat-memory type give most of the gain over stock defaults. The engine's own tricks so far give a few percent each, and the biggest single find of 22 November was a slowdown the engine had caused (patch 0040). Borrowing, the Avalon idea, has not yet passed Gate 1. Flash-Next runs on the home PC only slowly, and only reading gains from borrowing so far.
 

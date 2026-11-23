@@ -29,13 +29,13 @@ export function createEngineParts(now) {
         <label class="pick"><span>Experts per word <span class="tag warn">experimental</span> ${tip('For a mixture-of-experts brain: experts used per token. Empty is the brain\'s own count. More is slower and can help or hurt; fewer is faster. One number, or one per layer with commas. Brain Engine applies it at the next answer with no reload, and the brain file never changes. Try counts first in the Lab, Peek inside.', 'Experts per word')}</span><input type="text" inputmode="numeric" data-perword value="${esc(pw == null ? '' : Array.isArray(pw) ? pw.join(',') : pw)}" placeholder="its own" style="width:9em" aria-label="Experts per word for this brain, empty for its own"></label></div>
     </div>`;
   }
-  // 1.5.16x Turbo per brain: rows the Lab's Turbo page wrote with "Use this in Bob". Each wins over the one draft above
+  // 1.5.16x MTP per brain: rows the Lab's MTP page wrote with "Use this in Bob". Each wins over the one draft above
   // for its brain. Switch, guess length, Remove; the guesser itself is picked (and measured) in the Lab.
   function turboRowsHtml(sp, llms) {
     const rows = Object.entries(sp.turbo || {}).filter(([, t]) => t);
     if (!rows.length) return '';
     const nameOf = (id) => llms.find((o) => o.value === id)?.label || id;
-    return `<div><strong>Turbo, per brain</strong> ${tip('Set from the Lab, Test, Faster: "Use this in Bob". For these brains this wins over the draft brain above. Its own guesser means the brain carries a multi-token head, so nothing else loads.', 'Turbo, per brain')}
+    return `<div><strong>MTP, per brain</strong> ${tip('Set from the Lab, Test, Faster: "Use this in Bob". For these brains this wins over the draft brain above. Its own guesser means the brain carries a multi-token head, so nothing else loads.', 'MTP, per brain')}
       ${rows.map(([id, t]) => `<div class="row"><label class="switch"><input type="checkbox" data-turbo="${esc(id)}" data-turbok="on" ${t.on ? 'checked' : ''}><span><strong>${esc(nameOf(id))}</strong> <span class="muted">${t.mtp ? 'its own guesser' : `${esc(nameOf(t.draft))} guessing`}</span></span></label>
         <label class="pick"><span>Guess ahead</span><input type="text" inputmode="numeric" data-turbo="${esc(id)}" data-turbok="max" value="${esc(t.max ?? 8)}" style="width:4em" aria-label="Guess this many words ahead for ${esc(nameOf(id))}"></label>
         <button type="button" class="link" data-turboremove="${esc(id)}">Remove</button></div>`).join('')}</div>`;
@@ -56,6 +56,7 @@ export function createEngineParts(now) {
       ${more('Each project has its own memory bank; other projects\' memories are left out. Add [always] to a line in the memory file to have it read every time. Matching is by meaning when the 🗂 Memory (finding past chats) model is downloaded (CPU, never in Gaming), by words otherwise.')}
       ${settings.memoryRecall ? memoryBanksHtml() : ''}
       ${engineExtrasHtml()}
+      ${engineTuningHtml()}
       ${sswitch('memorySources', settings.memorySources === true, 'Memory sources', 'Each new memory links to the chat it came from. Where my memories came from, below, lists them with Open the chat and Forget.')}
       ${sswitch('memoryExpiry', settings.memoryExpiry === true, 'Expiring memories', 'Say "remember this for the week" (or a day, a month, until a date). Bob drops the memory when the time is up.')}
       ${sswitch('memoryWhere', settings.memoryWhere === true, 'Per-project memories', 'A project\'s memories load only while Bob works on that project. Needs Relevant memories only.')}
@@ -63,17 +64,71 @@ export function createEngineParts(now) {
       ${speedTestHtml()}`;
   }
   // List items 94-98: engine and speed extras, each off unless turned on. (99 sits in Engines, 100 on the Brains page.)
+  // Engine tuning: every lever by hand, per brain, or Bob picks (the calibration's picks, later the conductor).
+  function engineTuningHtml() {
+    const t = settings.engineTuning || { mode: 'bob', brains: {} };
+    const fields = settings.tuningFields || [];
+    const llms = roles?.options?.llm || [];
+    const models = [...new Set([...llms.map((o) => o.value), ...Object.keys(t.brains || {})])];
+    const model = models.includes(speedModel) ? speedModel : models[0] || '';
+    const hand = t.mode === 'hand';
+    const l = t.brains?.[model] || {};
+    const radio = (v, label) => `<label class="pick"><input type="radio" name="tunemode" data-tunemode="${v}" ${t.mode === v ? 'checked' : ''}> ${label}</label>`;
+    return `<div class="tune engine-tuning"><strong>Engine tuning</strong> <span class="tag">Bob picks unless you choose to set them</span>
+        ${tip('Every speed lever of my own engine in one place, per brain, instead of engine flags. "Let Bob pick" uses what the calibration found best for your card. "I\'ll set them myself" uses the boxes you fill; an empty box stays Bob\'s pick. "Let the Conductor drive" changes the reading step for each reply without loading the brain again. Engine flags typed under Extra settings for one brain still win. Changes apply the next time the brain loads.', 'Engine tuning')}
+      <div class="row">${radio('bob', 'Let Bob pick')}${radio('conductor', 'Let the Conductor drive')}${radio('hand', 'I\'ll set them myself')}</div>
+      ${t.mode === 'conductor' ? '<p class="muted">For each reply I pick the reading step: a long new read at a big step, which reads faster, then back to the chat step, which writes faster, with the brain kept loaded. Brain Engine on a graphics card only. Every switch and its time is in the logbook.</p><label class="pick"><input type="checkbox" data-tunefit ' + (t.fitWindow === true ? 'checked' : '') + '> Fit the chat memory to the chat</label> ' + tip('Off unless ticked. My chat memory is kept only as big as the chat plus the longest reply, and the room that frees goes to the expert copy cache, which helps writing. It grows back before a reply that needs it. A test idea, from Avalon.', 'Fit the chat memory to the chat') : ''}
+      ${hand && models.length ? `<div class="row"><label class="pick"><span>Brain</span><select data-tunemodel aria-label="Brain to tune">${models.map((m) => `<option ${m === model ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label></div>
+      <div class="row wrap">${fields.map((f) => `<label class="pick"><span>${esc(f.label)}</span><input type="text" inputmode="decimal" data-tune="${esc(f.k)}" data-model="${esc(model)}" value="${esc(l[f.k] ?? '')}" placeholder="Bob's pick" title="${esc(f.hint || '')}" aria-label="${esc(f.label)}" style="width:7em"></label>`).join('')}</div>
+      <p class="muted">Empty is Bob's pick. Only for brains made of experts with part of them in RAM do the cache boxes do anything. <button type="button" class="link" data-tuneclear="${esc(model)}">Clear this brain</button></p>` : hand ? '<p class="muted">Add a brain first.</p>' : ''}
+    </div>`;
+  }
   function engineExtrasHtml() {
     const bat = settings.onBattery === true ? 'On battery right now.' : settings.onBattery === false ? 'Plugged in right now.' : settings.laptopMode ? 'No battery found, so nothing changes here.' : '';
     return `<div class="tune engine-extras"><strong>Engine extras</strong> <span class="tag">off unless you turn it on</span>
          ${tip('Each switch is separate. They work with Brain Engine and llama.cpp; Ollama runs its own way, so only the speed history and Laptop mode reach it. Bob\'s Android app runs its own small engine and isn\'t changed by these.', 'Engine extras')}
-        ${sswitch('copyGuess', settings.copyGuess === true, 'Prompt-lookup decoding', 'Speeds up rewrites of code and documents by copying text already in the chat. Same answer, no second brain. Not used with Turbo.')}
+        ${sswitch('copyGuess', settings.copyGuess === true, 'Prompt-lookup decoding', 'Speeds up rewrites of code and documents by copying text already in the chat. Same answer, no second brain. Not used with MTP.')}
+        ${readingSpeedHtml()}
+        ${sswitch('turboEveryday', settings.turboEveryday !== false, 'MTP for everyday brains', 'Brains with their own built-in guesser use it for every reply, without the Lab. Same answer, written faster. Brains without one are unchanged.')}
+        ${sswitch('turbo', settings.turbo === true, 'Turbo', 'Show-off speed: every speed trick that costs a little answer quality, at once. For showing how fast I can go, not for real jobs. Your brains\' own picks come back when it\'s off.')}
+        ${settings.turbo === true ? turboHtml() : ''}
+        ${sswitch('lockBrainMemory', settings.lockBrainMemory === true, 'Lock brain memory', 'When part of a brain sits in RAM, it stays there, so replies after a break don\'t wait on the drive. Uses that RAM until the brain unloads. Not used in Gaming.')}
+        ${sswitch('hotExperts', settings.hotExperts === true, 'Hot experts on the card', 'For a brain made of experts that doesn\'t fit the card: the experts it uses most sit on the card from the first word, and the rest are worked out on the processor, so nothing swaps while I write. Calibrate counts which ones. Helps writing, not reading long prompts. Brain Engine 9 or newer.')}
+        ${settings.hotExperts === true ? hotRoomHtml() : ''}
         ${sswitch('preloadNext', settings.preloadNext === true, 'Preload the next brain', 'Reads the next brain\'s file into RAM during a hand-off, so the swap is quicker. Needs the brain\'s size plus 4 GB free.')}
         ${sswitch('laptopMode', settings.laptopMode === true, 'Laptop mode', `On battery, the Quick brain answers and the engine uses half the cores.${bat ? ' ' + keep(bat) : ''}`)}
         ${sswitch('newCardTest', settings.newCardTest === true, 'Auto-test a new GPU', 'When Bob starts on a different GPU, he runs the one-minute speed test and puts hand-set brains back on Auto.')}
         ${sswitch('speedLog', settings.speedLog === true, 'Speed history', 'Logs each reply\'s speed per day, brain and engine version. Numbers only, kept here for 90 days.')}
         ${speedLogHtml()}
       </div>`;
+  }
+  // Turbo (opt-in): what it turns on. Chat memory Smaller unless picked; 4 experts per word unless switched off.
+  function turboHtml() {
+    const pick = settings.turboMem || 'small';
+    const opts = [['smallest', 'Smallest (3-bit)'], ['small', 'Smaller (4-bit)'], ['progressive', 'Progressive 3-step'], ['progressive2', 'Progressive 2-step'], ['progressive83', 'Progressive 8+3'], ['progressive84', 'Progressive 8+4'], ['progressive82', 'Progressive 8+2 (2-bit, a test)']];
+    return `<label class="pick"><strong>Turbo chat memory</strong> ${tip('The chat memory type every brain uses while Turbo is on. Smaller (4-bit) is the fastest writer today. Smallest packs it tightest, for the most room; measured on a 16 GB card it writes a 128K chat about 2 to 4% slower than Smaller. The Progressive kinds keep the newest words sharper: 8+3 is the speed pick for long chats, 8+4 the most exact (measured on a 16 GB card: 8+4 more exact than Smaller, about 12% slower at 128K). Smallest and Progressive need a Brain Engine that has them; otherwise I use Smaller.', 'Turbo chat memory')}
+        <select data-set="turboMem" aria-label="Turbo chat memory">${opts.map(([v, label]) => `<option value="${v}" ${v === pick ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
+      ${sswitch('turboExperts', settings.turboExperts !== false, 'Turbo: 4 experts per word', 'A brain made of experts asks only 4 of them per word, when it has more. Faster writing, a little less exact. A count you saved for a brain wins.')}
+      ${sswitch('turboStandins', settings.turboStandins === true, 'Turbo: stand-ins', 'An experiment. While writing, when an expert a word wants isn\'t on the graphics card, the best other expert already there stands in for it, up to 2 a layer, instead of copying it over. Faster where experts sit in RAM, and the answer changes. Needs Hot experts on the card. Off unless you switch it on.')}
+      ${sswitch('turboDriveStandins', settings.turboDriveStandins === true, 'Turbo: never wait on the drive', 'For a brain bigger than your RAM. While writing, when an expert a word wants has dropped out of RAM, the next best one on the card or in RAM plays it instead of waiting on the drive, and the missed one is read back in the background. Never for a word\'s top pick. The answer changes. Brain Engine 32 or newer. Turbo: stand-ins wins when both are on. Off unless you switch it on.')}
+      <span class="muted">Applies the next time a brain loads.</span>`;
+  }
+  // 101 Reading speed: how big a piece of a prompt the engine reads at a time. Normal is what Bob always did.
+  function readingSpeedHtml() {
+    const pick = settings.readingSpeed || 'normal';
+    const opts = [['normal', 'Normal'], ['faster', 'Faster'], ['fastest', 'Fastest'], ['auto', 'Auto (by graphics card)']];
+    const now = settings.readingSteps ? `Reads ${settings.readingSteps} tokens at a time.` : 'Reads 512 tokens at a time.';
+    return `<label class="pick"><strong>Reading speed</strong> ${tip('How much of a long message or file my engine reads at a time. Bigger pieces read long prompts much faster when part of a brain is in RAM, but take about 1 to 2 GB more graphics memory, so writing can get a little slower. Auto picks by your card and your last 3 prompts, and says why here and in the logbook.', 'Reading speed')}
+        <select data-set="readingSpeed" aria-label="Reading speed">${opts.map(([v, label]) => `<option value="${v}" ${v === pick ? 'selected' : ''}>${label}</option>`).join('')}</select>
+        <span class="muted">${now}${pick === 'auto' && settings.readingWhy ? ' ' + esc(settings.readingWhy) : ''} Applies the next time a brain loads. Test Bob's speed shows the difference on this computer.</span></label>`;
+  }
+  // 104 Hot experts: how much of the card the cache may use. Auto is a quarter of the card, at most 4 GB.
+  function hotRoomHtml() {
+    const pick = settings.hotExpertsGB ? String(settings.hotExpertsGB) : '';
+    const opts = [['', 'Auto (a quarter of the card, up to 4 GB)'], ...[1, 2, 3, 4, 6, 8].map((g) => [String(g), `${g} GB`])];
+    return `<label class="pick"><strong>Room for hot experts</strong> ${tip('How much of the graphics card holds the busiest experts. More room keeps more of them on the card, but leaves less for the rest of the brain and its chat memory, so the engine may move other parts to RAM. Calibrate tries the size you pick here.', 'Room for hot experts')}
+        <select data-set="hotExpertsGB" aria-label="Room for hot experts">${opts.map(([v, label]) => `<option value="${v}" ${v === pick ? 'selected' : ''}>${label}</option>`).join('')}</select>
+        <span class="muted">Applies the next time a brain loads.</span></label>`;
   }
   // 96 Speed history: one small line chart per brain, words a second by day, with a mark where the engine changed.
   function speedLogHtml() {

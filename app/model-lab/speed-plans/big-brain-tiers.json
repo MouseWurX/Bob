@@ -1,0 +1,110 @@
+{
+ "name": "Big brain tiers: GPT-OSS 120B (63 GB) on a 16 GB card and 32 GB RAM: baseline, 3 experts per word, prefetch, cold and warm expert tiers (Brain Engine 10, patch 0020)",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 17)",
+ "brain": "${BRAIN120}",
+ "engines": {
+  "be10": {
+   "exe": "${BE10_SERVER}"
+  }
+ },
+ "prompts": {
+  "k2": "long-text.md"
+ },
+ "promptTokens": {
+  "k2": 2048
+ },
+ "question": {
+  "k2": "\n\nIn two sentences, what is this text about?"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "-ctk",
+  "q8_0",
+  "-ctv",
+  "q8_0",
+  "-np",
+  "1",
+  "-c",
+  "8192",
+  "-b",
+  "2048",
+  "-ub",
+  "2048",
+  "--n-cpu-moe",
+  "28",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 5,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 1200000,
+ "diskReads": true,
+ "rows": [
+  {
+   "id": "B0",
+   "engine": "be10",
+   "prompts": [
+    "k2"
+   ]
+  },
+  {
+   "id": "K3",
+   "engine": "be10",
+   "prompts": [
+    "k2"
+   ],
+   "args": [
+    "--override-kv",
+    "gpt-oss.expert_used_count=int:3"
+   ]
+  },
+  {
+   "id": "P1",
+   "engine": "be10",
+   "prompts": [
+    "k2"
+   ],
+   "env": {
+    "LLAMA_PREFETCH_EXPERTS": "1"
+   }
+  },
+  {
+   "id": "C1",
+   "engine": "be10",
+   "prompts": [
+    "k2"
+   ],
+   "env": {
+    "LLAMA_EXPERT_READ_WHOLE": "1",
+    "LLAMA_EXPERT_READ_LOG_EVERY": "20000"
+   }
+  },
+  {
+   "id": "W8",
+   "engine": "be10",
+   "prompts": [
+    "k2"
+   ],
+   "env": {
+    "LLAMA_EXPERT_WARM_MIB": "8192",
+    "LLAMA_EXPERT_WARM_RANKING": "${RANK120}"
+   }
+  },
+  {
+   "id": "CW",
+   "engine": "be10",
+   "prompts": [
+    "k2"
+   ],
+   "env": {
+    "LLAMA_EXPERT_READ_WHOLE": "1",
+    "LLAMA_EXPERT_READ_LOG_EVERY": "20000",
+    "LLAMA_EXPERT_WARM_MIB": "8192",
+    "LLAMA_EXPERT_WARM_RANKING": "${RANK120}"
+   }
+  }
+ ]
+}

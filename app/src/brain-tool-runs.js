@@ -136,7 +136,13 @@ export const toolRunParts = {
         // "Work without asking" (Settings, Hands; off by default): no card, but the hard limits in check()
         // still apply, every action still goes in the logbook and the chat, and ✋ Hands turns it off at once.
         // Tools marked alwaysAsk (cloud helpers: they cost money) still show their card.
-        if (need && !tool.alwaysAsk && !ctx.alwaysAsk && !afterOutside && freeOn(this.cfg)) { // a call from another app always shows its card
+        // Routines (routines.js): a step of a routine you switched on with your OK on its card, which listed this step
+        // and its target. No second card, but check() above still ran, so the hard limits and the Hand's folders hold.
+        if (need && ctx.routineOk && !tool.alwaysAsk && !mailGo?.card) {
+          const text = typeof need === 'string' ? need : need.text;
+          this.log('approval', `routine step, OK'd on the routine's card: ${text}${need.command ? ` [${need.command}]` : ''}`);
+          ctx.emit({ type: 'auto-approved', text, command: need.command || '' });
+        } else if (need && !tool.alwaysAsk && !ctx.alwaysAsk && !afterOutside && freeOn(this.cfg)) { // a call from another app always shows its card
           const text = typeof need === 'string' ? need : need.text;
           this.log('approval', `done without asking: ${text}${need.command ? ` [${need.command}]` : ''}`);
           ctx.emit({ type: 'auto-approved', text, command: need.command || '', rows: Array.isArray(need.plan) ? need.plan.filter((r) => !r.blocked).length : null });

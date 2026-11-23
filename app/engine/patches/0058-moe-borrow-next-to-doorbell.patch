@@ -1,0 +1,120 @@
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 226fbdc..dc4136d 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -1137,7 +1137,7 @@ struct llama_moe_cache::impl {
+     void (*db_free_fn)(void *) = nullptr;
+     std::vector<uint8_t> db_bell_mem;   // the processor's version: plain memory
+     ggml_backend_buffer_ptr db_bell_buf; // the doorbell's memory as a CPU buffer, for the inputs and the result of db_side
+-    struct db_fill { int32_t il, expert, slot, key; };
++    struct db_fill { int32_t il, expert, slot, key, old = -1; }; // 0058: old, the key the slot held (for the shelf)
+     std::vector<db_fill> db_pending;    // decided while writing, uploaded between words
+     std::vector<moe_cache_lru::fill> db_fills, db_cpu;
+     size_t  db_rings = 0, db_rings_cpu = 0, db_deferred = 0, db_up = 0, db_up_bytes = 0;
+@@ -1488,7 +1488,7 @@ struct llama_moe_cache::impl {
+         }
+         // decide now, bring in next word: this word computed them on the processor
+         for (const auto & f : db_fills) {
+-            db_pending.push_back({ il, f.expert, f.slot, g.lru.make_key(il, f.expert) });
++            db_pending.push_back({ il, f.expert, f.slot, g.lru.make_key(il, f.expert), f.old });
+         }
+         db_deferred += db_fills.size();
+         stats & st = n_ids <= (size_t) 8*n_expert_used ? stats_small : stats_large;
+@@ -1515,11 +1515,46 @@ struct llama_moe_cache::impl {
+         const bool banks = !lent && !filling && !reading;
+         if (!db_pending.empty()) {
+             if (banks) {
++                // Brain Engine 0058: with the shelf (0049), the expert a slot really holds goes onto the shelf before the
++                // slot is filled (the first fill of a slot in this word names it), and a fill the shelf holds comes from it
++                std::unordered_map<int64_t, int32_t> was;
++                if (tl_on) {
++                    for (const db_fill & f : db_pending) {
++                        was.emplace(((int64_t) layers[f.il].ig << 32) | (uint32_t) f.slot, f.old);
++                    }
++                }
+                 for (const db_fill & f : db_pending) {
+                     group & g = groups[layers[f.il].ig];
+                     if (g.lru.key_of[f.slot] != f.key) {
+                         continue; // taken again later in the same word
+                     }
++                    if (tl_on) {
++                        const ggml_backend_t be = devices[g.id].backend;
++                        const auto it = tl_of.find(f.key);
++                        const int32_t from = it != tl_of.end() ? it->second : -1;
++                        if (from >= 0) {
++                            tl_entries[from].pin = true; // not given to the old expert below
++                        }
++                        const int32_t old = was[((int64_t) layers[f.il].ig << 32) | (uint32_t) f.slot];
++                        if (old >= 0) {
++                            tl_put(g, old, f.slot, be);
++                        }
++                        if (from >= 0) {
++                            const tl_entry & en = tl_entries[from];
++                            size_t at = 0;
++                            for (size_t ip = 0; ip < g.banks.size(); ++ip) {
++                                const ggml_tensor * bank = g.banks[ip];
++                                const size_t n = g.ref[ip]->nb[2];
++                                tl_copy(be, en.t->buffer, (char *) en.t->data + en.off + at, bank->buffer, (char *) bank->data + (size_t) f.slot*bank->nb[2], n);
++                                at += n;
++                            }
++                            tl_hits++;
++                            tl_hit_bytes += at;
++                            tl_release(from);
++                            db_up++;
++                            continue;
++                        }
++                    }
+                     for (size_t ip = 0; ip < layers[f.il].experts.size(); ++ip) {
+                         const ggml_tensor * w = layers[f.il].experts[ip];
+                         const size_t es = w->nb[2];
+@@ -3068,12 +3103,10 @@ struct llama_moe_cache::impl {
+             refuse("it works with one card only");
+             return;
+         }
+-        if (cpu_share > 0.0f || n_zero > 0) {
+-            refuse("it needs --moe-cache-cpu-share 0");
+-            return;
+-        }
+-        if (la_max > 0 || db_on || sp_mode != SP_OFF) {
+-            refuse("not together with LLAMA_MOE_LOOKAHEAD, LLAMA_MOE_DOORBELL or LLAMA_MOE_STANDIN yet");
++        // Brain Engine 0058: next to a processor share and the doorbell too. The misses left to the processor never come
++        // in, so they never touch the shelf; the ones that come in go through it, and the doorbell's between words
++        if (la_max > 0 || sp_mode != SP_OFF) {
++            refuse("not together with LLAMA_MOE_LOOKAHEAD or LLAMA_MOE_STANDIN yet");
+             return;
+         }
+         if (getenv("LLAMA_MOE_CACHE_LEND") != nullptr || getenv("LLAMA_MOE_CACHE_READ_LAYERS") != nullptr) {
+@@ -3376,12 +3409,11 @@ struct llama_moe_cache::impl {
+             refuse("it works with one card only");
+             return;
+         }
+-        if (cpu_share > 0.0f || n_zero > 0) {
+-            refuse("it needs --moe-cache-cpu-share 0 (the zero slots must stay zero)");
+-            return;
+-        }
+-        if (la_max > 0 || db_on || (sp_mode != SP_OFF && sp_mode != SP_DRIVE)) { // 0053: drive stand-ins only touch one-word batches
+-            refuse("not together with LLAMA_MOE_LOOKAHEAD, LLAMA_MOE_DOORBELL or LLAMA_MOE_STANDIN yet");
++        // Brain Engine 0058: next to a processor share, the doorbell (0042) and the learning cache (0031). Those work while
++        // writing and borrowing while reading. The zero slots sit after the n_slots cached ones, and a read lends at most
++        // the first n_slots slots, so they stay zero; the doorbell's mirrors are made again after each change below.
++        if (la_max > 0 || (sp_mode != SP_OFF && sp_mode != SP_DRIVE)) { // 0053: drive stand-ins only touch one-word batches
++            refuse("not together with LLAMA_MOE_LOOKAHEAD or LLAMA_MOE_STANDIN (but drive) yet");
+             return;
+         }
+         if (getenv("LLAMA_MOE_CACHE_LEND") != nullptr || getenv("LLAMA_MOE_CACHE_READ_LAYERS") != nullptr) {
+@@ -3663,6 +3695,7 @@ struct llama_moe_cache::impl {
+             n++;
+         }
+         ggml_backend_synchronize(backend);
++        db_dirty = true; // 0058: the doorbell's mirrors follow the slot maps
+         bw_rewarmed += n;
+         bw_rewarm_bytes += bytes;
+         bw_rewarms++;
+@@ -3750,6 +3783,7 @@ struct llama_moe_cache::impl {
+             lru.key_of[s] = -1;
+             lru.move_head(s, 0);
+         }
++        db_dirty = true; // 0058: the doorbell's mirrors follow the slot maps
+         bw_moved   += moved;
+         bw_dropped += dropped;
+         bw_clears++;

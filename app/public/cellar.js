@@ -892,7 +892,7 @@ export function createCellar({ popOut = null } = {}) {
         window.dispatchEvent(new CustomEvent('bob-voice-net', { detail: {} }));
         return;
       }
-      if (b.dataset.turboremove) { const r = await api('/api/settings', { speed: { turbo: { [b.dataset.turboremove]: null } } }); settings.speed = r.speed; const box = b.closest('div')?.parentElement; flash(box || b, 'Turbo removed for that brain.'); b.closest('.row')?.remove(); return; } // 1.5.16x
+      if (b.dataset.turboremove) { const r = await api('/api/settings', { speed: { turbo: { [b.dataset.turboremove]: null } } }); settings.speed = r.speed; const box = b.closest('div')?.parentElement; flash(box || b, 'MTP removed for that brain.'); b.closest('.row')?.remove(); return; } // 1.5.16x
       if ('trainerremove' in b.dataset) { // 1.5.167: in-page confirm, same words as the Lab's Teach it page
         const p = b.parentElement; if (p.querySelector('[data-trainerremovego]')) return;
         b.setAttribute('aria-expanded', 'true');
@@ -1106,6 +1106,7 @@ export function createCellar({ popOut = null } = {}) {
       // 1.5.205 one brain's Set up page: open, back, and Auto or By hand.
       if ('brainsetup' in b.dataset) { setUpBrain = b.dataset.brainsetup; if (setUpBrain) await placeLoad(); draw(); if (setUpBrain) dlg.scrollTop = 0; else dlg.querySelector('#brain-' + CSS.escape(b.dataset.brainsetup || ''))?.scrollIntoView({ block: 'nearest' }); return; }
       if (b.dataset.placemode) { await placeSave(b.dataset.model, { mode: b.dataset.placemode }); draw(); return; }
+      if ('tuneclear' in b.dataset) { const r = await api('/api/settings', { engineTuning: { model: b.dataset.tuneclear, levers: {} } }); settings.engineTuning = r.engineTuning; draw(); return; } // Engine tuning
       if (b.dataset.memtype) { await api('/api/settings', { brainMemType: { [b.dataset.model]: b.dataset.memtype } }); await placeLoad(); draw(); return; } // 100
       // 1.5.205 setups on the Brains page: show the list of changes first; Apply saves them one job at a time.
       if ('setup' in b.dataset) { setupAsk = b.dataset.setup; draw(); dlg.querySelector('.setup-ask')?.scrollIntoView({ block: 'nearest' }); return; }
@@ -1429,7 +1430,7 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.tts) { const v = el.dataset.tts === 'speed' ? Number(el.value) : el.value; const r = await api('/api/settings', { tts: { [el.dataset.tts]: v } }); settings.tts = { ...settings.tts, ...r.tts }; if (el.dataset.tts === 'voice') { for (const sb of dlg.querySelectorAll('[data-sample-engine="kokoro"]:not(.voice-grid *)')) sb.dataset.sampleVoice = el.value; for (const s of dlg.querySelectorAll('select[data-tts="voice"]')) s.value = el.value; } flash(el, 'Saved. Press ▶ Play sample to hear it.'); return; }
       if (el.dataset.speed) { const v = el.value.trim() === '' ? null : Number(el.value); const r = await api('/api/settings', { speed: { [el.dataset.speed]: v } }); settings.speed = r.speed; el.value = r.speed[el.dataset.speed] ?? ''; flash(el, 'Saved.'); return; }
       if ('fit' in el.dataset) { const r = await api('/api/settings', { speed: { fit: el.checked } }); settings.speed = r.speed; flash(el, 'Saved.'); return; }
-      if (el.dataset.turbo) { // 1.5.16x Turbo per brain
+      if (el.dataset.turbo) { // 1.5.16x MTP per brain
         const id = el.dataset.turbo, t = { ...(settings.speed?.turbo?.[id] || {}) };
         if (el.dataset.turbok === 'on') t.on = el.checked; else { const n = Math.round(Number(el.value)); if (!(n >= 1 && n <= 32)) { alertIn(el, 'Pick 1 to 32 words ahead.'); return; } t.max = n; }
         const r = await api('/api/settings', { speed: { turbo: { [id]: t } } }); settings.speed = r.speed; flash(el, 'Saved. Applies the next time this brain loads.'); return;
@@ -1441,6 +1442,19 @@ export function createCellar({ popOut = null } = {}) {
         const r = await api('/api/settings', { speed: { draft: d } }); settings.speed = r.speed; flash(el, 'Saved.'); return;
       }
       if ('margsmodel' in el.dataset) { speedModel = el.value; draw(); return; }
+      if ('tunemodel' in el.dataset) { speedModel = el.value; draw(); return; } // Engine tuning
+      if ('tunefit' in el.dataset) { const r = await api('/api/settings', { engineTuning: { fitWindow: el.checked } }); settings.engineTuning = r.engineTuning; draw(); return; } // the window lever
+      if (el.dataset.tunemode) { const r = await api('/api/settings', { engineTuning: { mode: el.dataset.tunemode } }); settings.engineTuning = r.engineTuning; draw(); return; }
+      if (el.dataset.tune) {
+        const m = el.dataset.model;
+        const levers = { ...(settings.engineTuning?.brains?.[m] || {}) };
+        if (el.value.trim() === '') delete levers[el.dataset.tune]; else levers[el.dataset.tune] = Number(el.value.trim());
+        const r = await api('/api/settings', { engineTuning: { model: m, levers } }); settings.engineTuning = r.engineTuning;
+        const kept = r.engineTuning?.brains?.[m]?.[el.dataset.tune];
+        el.value = kept ?? '';
+        flash(el, el.value.trim() === '' && levers[el.dataset.tune] !== undefined ? 'Out of range, so left to Bob.' : 'Saved. Applies the next time this brain loads.');
+        return;
+      }
       if ('perword' in el.dataset) { // Brain Engine 0013: experts per word, per brain; empty = the brain's own
         const model = speedModel || dlg.querySelector('[data-margsmodel]')?.value;
         if (!model) return;
@@ -1471,11 +1485,18 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.set === 'useOllama') { const r = await api('/api/settings', { useOllama: el.checked }); settings.useOllama = r.useOllama === true; el.checked = settings.useOllama; flash(el, settings.useOllama ? 'On. Bob can use Ollama too.' : 'Off. Bob uses only his own parts.'); return; }
       if (el.dataset.set === 'pictureNoWait') { const r = await api('/api/settings', { pictureNoWait: el.checked }); settings.pictureNoWait = r.pictureNoWait; el.checked = r.pictureNoWait; return; }
       // List items 94-99: engine and speed extras, each saved on its own.
-      if (['copyGuess', 'preloadNext', 'laptopMode', 'newCardTest', 'speedLog', 'engineNotes'].includes(el.dataset.set)) {
+      if (el.dataset.set === 'readingSpeed') { const r = await api('/api/settings', { readingSpeed: el.value }); settings.readingSpeed = r.readingSpeed; settings.readingSteps = r.readingSteps; const y = dlg.scrollTop; draw(); dlg.scrollTop = y; return; } // 101
+      if (el.dataset.set === 'turboMem') { const r = await api('/api/settings', { turboMem: el.value }); settings.turboMem = r.turboMem; flash(el, 'Saved. Applies the next time a brain loads.'); return; } // Turbo
+      if (el.dataset.set === 'turboStandins') { const r = await api('/api/settings', { turboStandins: el.checked }); settings.turboStandins = r.turboStandins; el.checked = r.turboStandins; flash(el, r.turboStandins ? 'On. Applies the next time a brain loads.' : 'Off.'); return; }
+      if (el.dataset.set === 'turboDriveStandins') { const r = await api('/api/settings', { turboDriveStandins: el.checked }); settings.turboDriveStandins = r.turboDriveStandins; el.checked = r.turboDriveStandins; flash(el, r.turboDriveStandins ? 'On. Applies the next time a brain loads.' : 'Off.'); return; }
+      if (el.dataset.set === 'turboExperts') { const r = await api('/api/settings', { turboExperts: el.checked }); settings.turboExperts = r.turboExperts; el.checked = r.turboExperts; flash(el, r.turboExperts ? 'On. Applies with the next reply.' : 'Off. Brains use their own count.'); return; }
+      if (el.dataset.set === 'hotExpertsGB') { const r = await api('/api/settings', { hotExpertsGB: el.value ? Number(el.value) : null }); settings.hotExpertsGB = r.hotExpertsGB; flash(el, 'Saved. Applies the next time a brain loads.'); return; } // 104
+      if (['copyGuess', 'turboEveryday', 'lockBrainMemory', 'hotExperts', 'preloadNext', 'laptopMode', 'newCardTest', 'speedLog', 'engineNotes', 'turbo'].includes(el.dataset.set)) {
         const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k];
         if ('onBattery' in r) settings.onBattery = r.onBattery; if ('engineNote' in r) settings.engineNote = r.engineNote; if (k === 'engineNotes') { const y = dlg.scrollTop; draw(); dlg.scrollTop = y; }
+        if (k === 'hotExperts' || k === 'turbo') { const y = dlg.scrollTop; draw(); dlg.scrollTop = y; }
         if (k === 'speedLog') { speedLogData = await api('/api/speed-log').catch(() => speedLogData); const y = dlg.scrollTop; draw(); dlg.scrollTop = y; }
-        flash(el, !r[k] ? 'Off.' : k === 'copyGuess' ? 'On. Applies the next time a brain loads.' : k === 'laptopMode' ? (r.onBattery === true ? 'On. On battery now: applies the next time a brain loads.' : r.onBattery === false ? 'On. Plugged in now, so nothing changes yet.' : 'On. No battery found here, so nothing changes.') : k === 'newCardTest' ? 'On. Bob looks for a new card each time he starts.' : 'On.');
+        flash(el, !r[k] ? 'Off.' : k === 'copyGuess' || k === 'turboEveryday' || k === 'lockBrainMemory' || k === 'turbo' ? 'On. Applies the next time a brain loads.' : k === 'hotExperts' ? 'On. Applies the next time a brain loads. Calibrate on the Brains page counts which experts to keep.' : k === 'laptopMode' ? (r.onBattery === true ? 'On. On battery now: applies the next time a brain loads.' : r.onBattery === false ? 'On. Plugged in now, so nothing changes yet.' : 'On. No battery found here, so nothing changes.') : k === 'newCardTest' ? 'On. Bob looks for a new card each time he starts.' : 'On.');
         return;
       }
       if (['readyWhileTyping', 'gamesFirst', 'pictureFit'].includes(el.dataset.set)) { const k = el.dataset.set; const r = await api('/api/settings', { [k]: el.checked }); settings[k] = r[k]; el.checked = r[k]; flash(el, 'Saved. Applies when the brain or picture model next loads.'); return; }

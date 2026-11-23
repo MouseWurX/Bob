@@ -1,0 +1,492 @@
+{
+ "name": "Night 1: reading steps, Brain Engine cost, new features, expert cache (stock Qwen3.6 35B A3B, 16 GB card)",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addenda 1 to 5)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "plain": {
+   "exe": "${PLAIN_SERVER}"
+  },
+  "be8": {
+   "exe": "${BE8_SERVER}"
+  },
+  "be9": {
+   "exe": "${BE9_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "k16": "long-text.md",
+  "k32": "long-text.md"
+ },
+ "promptTokens": {
+  "k16": 16384,
+  "k32": 32768
+ },
+ "question": {
+  "k16": "\n\nIn two sentences, what is this text about?",
+  "k32": "\n\nIn two sentences, what is this text about?"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "-ctk",
+  "q8_0",
+  "-ctv",
+  "q8_0",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "-c",
+  "49152",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 5,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 600000,
+ "rows": [
+  {
+   "id": "R512",
+   "engine": "be8",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "args": [
+    "-b",
+    "2048",
+    "-ub",
+    "512"
+   ]
+  },
+  {
+   "id": "R2048",
+   "engine": "be8",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "args": [
+    "-b",
+    "2048",
+    "-ub",
+    "2048"
+   ]
+  },
+  {
+   "id": "R4096",
+   "engine": "be8",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096"
+   ]
+  },
+  {
+   "id": "P0",
+   "engine": "plain",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "noBase": true,
+   "args": [
+    "-c",
+    "49152",
+    "--no-webui"
+   ]
+  },
+  {
+   "id": "P1",
+   "engine": "plain",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ]
+  },
+  {
+   "id": "E0",
+   "engine": "be8",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ]
+  },
+  {
+   "id": "E1",
+   "engine": "be8",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "setup": [
+    {
+     "path": "/experts-per-word",
+     "body": {
+      "used": 8
+     }
+    }
+   ]
+  },
+  {
+   "id": "E2",
+   "engine": "be8",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "setup": [
+    {
+     "path": "/expert-mask",
+     "allBut": 0
+    }
+   ]
+  },
+  {
+   "id": "E3",
+   "engine": "be8",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "setup": [
+    {
+     "path": "/dials",
+     "body": {
+      "dials": [
+       {
+        "kind": "expert",
+        "layer": 0,
+        "index": 0,
+        "scale": 0.9
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "E4",
+   "engine": "be8",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "body": {
+    "expert_trace": true,
+    "expert_trace_stream": true
+   }
+  },
+  {
+   "id": "E5",
+   "engine": "be8",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "setup": [
+    {
+     "path": "/experts-per-word",
+     "body": {
+      "used": 8
+     }
+    },
+    {
+     "path": "/expert-mask",
+     "allBut": 0
+    },
+    {
+     "path": "/dials",
+     "body": {
+      "dials": [
+       {
+        "kind": "expert",
+        "layer": 0,
+        "index": 0,
+        "scale": 0.9
+       }
+      ]
+     }
+    }
+   ],
+   "body": {
+    "expert_trace": true,
+    "expert_trace_stream": true
+   }
+  },
+  {
+   "id": "N0",
+   "engine": "be9",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ]
+  },
+  {
+   "id": "N1",
+   "engine": "be9",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096"
+   ]
+  },
+  {
+   "id": "N3",
+   "engine": "be9",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "args": [
+    "--mlock"
+   ]
+  },
+  {
+   "id": "N4",
+   "engine": "be9",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "args": [
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "1"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_RANKING": "${RANKING_MIXED}",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "N5",
+   "engine": "be9",
+   "prompts": [
+    "k16",
+    "k32"
+   ],
+   "env": {
+    "LLAMA_PREFETCH_EXPERTS": "1"
+   }
+  },
+  {
+   "id": "N5F",
+   "engine": "be9",
+   "prompts": [
+    "k16",
+    "k32"
+   ],
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096"
+   ],
+   "env": {
+    "LLAMA_PREFETCH_EXPERTS": "1"
+   }
+  },
+  {
+   "id": "H1",
+   "engine": "be9",
+   "prompts": [
+    "start"
+   ],
+   "args": [
+    "--moe-cache-mib",
+    "2048",
+    "--moe-cache-cpu-share",
+    "1"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "H4",
+   "engine": "be9",
+   "prompts": [
+    "start"
+   ],
+   "args": [
+    "--moe-cache-mib",
+    "2048",
+    "--moe-cache-cpu-share",
+    "1"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_RANKING": "${RANKING_MIXED}",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "H2",
+   "engine": "be9",
+   "prompts": [
+    "start"
+   ],
+   "args": [
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "1"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "H5",
+   "engine": "be9",
+   "prompts": [
+    "start"
+   ],
+   "args": [
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "1"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_RANKING": "${RANKING_MIXED}",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "H3",
+   "engine": "be9",
+   "prompts": [
+    "start"
+   ],
+   "args": [
+    "--moe-cache-mib",
+    "6144",
+    "--moe-cache-cpu-share",
+    "1"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "H6",
+   "engine": "be9",
+   "prompts": [
+    "start"
+   ],
+   "args": [
+    "--moe-cache-mib",
+    "6144",
+    "--moe-cache-cpu-share",
+    "1"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_RANKING": "${RANKING_MIXED}",
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "H7",
+   "engine": "be9",
+   "prompts": [
+    "start"
+   ],
+   "args": [
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "H8",
+   "engine": "be9",
+   "prompts": [
+    "start"
+   ],
+   "args": [
+    "--moe-cache-mib",
+    "4096",
+    "--moe-cache-cpu-share",
+    "0.5"
+   ],
+   "env": {
+    "LLAMA_MOE_CACHE_LOG_EVERY": "4000"
+   }
+  },
+  {
+   "id": "C2-1",
+   "engine": "be9",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "body": {
+    "expert_trace": true,
+    "expert_trace_stream": true,
+    "expert_trace_every": 1
+   }
+  },
+  {
+   "id": "C2-4",
+   "engine": "be9",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "body": {
+    "expert_trace": true,
+    "expert_trace_stream": true,
+    "expert_trace_every": 4
+   }
+  },
+  {
+   "id": "C2-14",
+   "engine": "be9",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "body": {
+    "expert_trace": true,
+    "expert_trace_stream": true,
+    "expert_trace_every": 14
+   }
+  }
+ ]
+}

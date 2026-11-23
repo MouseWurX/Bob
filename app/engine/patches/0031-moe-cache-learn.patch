@@ -1,0 +1,135 @@
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 9c1e30c..f81fb1a 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -53,6 +53,7 @@ struct moe_cache_lru {
+     uint32_t seen_gen = 0;
+     std::vector<int32_t> uniq;  // the distinct selected experts
+     std::vector<int32_t> misses;
++    std::vector<int32_t> learned; // Brain Engine 0031
+     std::vector<uint64_t> token_zero; // [n_tokens] zero slots used by each token
+ 
+     void init(int32_t n_layer, int32_t n_expert, int32_t n_slots) {
+@@ -187,7 +188,8 @@ struct moe_cache_lru {
+     // returns false if the ids select more distinct experts than there are slots
+     template <typename F>
+     bool plan(int32_t il, const int32_t * ids, size_t n_ids, int64_t n_tokens, int32_t n_used, int32_t n_zero, F && n_cpu,
+-            std::vector<fill> & fills, std::vector<fill> & cpu, size_t & n_hit) {
++            std::vector<fill> & fills, std::vector<fill> & cpu, size_t & n_hit, size_t n_learn = 0, float learn_margin = 2.0f,
++            size_t * n_learned = nullptr) {
+         fills.clear();
+         cpu.clear();
+         n_hit = 0;
+@@ -223,6 +225,40 @@ struct moe_cache_lru {
+             }
+         }
+ 
++        // Brain Engine 0031 (LLAMA_MOE_CACHE_LEARN): up to n_learn misses that are used clearly more than the expert they
++        // would replace (CRF at least learn_margin times the victim's, decayed) enter the cache even when the misses go to
++        // the CPU, so a cache filled from a ranking follows the chat. Taken out before the CPU share is applied.
++        learned.clear();
++        if (n_learn > 0 && n_filled == n_slots && !misses.empty()) {
++            std::sort(misses.begin(), misses.end(), [&](int32_t a, int32_t b) {
++                const float crf_a = crf[make_key(il, a)];
++                const float crf_b = crf[make_key(il, b)];
++                return crf_a != crf_b ? crf_a > crf_b : a < b;
++            });
++            for (size_t i = 0; i < misses.size() && learned.size() < n_learn; ) {
++                const int32_t s = victim(il);
++                const int32_t vk = key_of[s];
++                const float   vc = vk < 0 ? 0.0f : decayed_crf(key_layer(vk), vk);
++                if (crf[make_key(il, misses[i])] < learn_margin*vc) {
++                    break; // sorted: the others are used even less
++                }
++                learned.push_back(misses[i]);
++                misses.erase(misses.begin() + i);
++                // take the victim's place right away, so the next candidate is compared with the next victim
++                if (vk >= 0) {
++                    slot_map[key_layer(vk)][key_expert(vk)] = empty;
++                }
++                const int32_t key = make_key(il, learned.back());
++                key_of[s] = key;
++                slots[learned.back()] = s;
++                move(s, class_of(key));
++                fills.push_back({ learned.back(), s });
++            }
++            if (n_learned) {
++                *n_learned += learned.size();
++            }
++        }
++
+         // the misses with the lowest CRF are left to the CPU, a miss that keeps being used gains CRF and enters the cache
+         // all misses are used at the same clock, so their CRF compare without decay
+         const size_t n_c = std::min(n_cpu(misses.size()), misses.size());
+@@ -351,6 +387,7 @@ struct llama_moe_cache::impl {
+         ggml_tensor * cpu_map  = nullptr;   // I32 [1, n_expert] in host memory, if cpu_share > 0
+         std::vector<int32_t> cpu_experts;   // experts set in cpu_map
+         uint32_t cpu_acc = 0;               // fraction of a miss carried over to the next plan, in 1/65536
++        int64_t  learn_tokens = 0;          // Brain Engine 0031: tokens since this layer last let a miss into the cache
+         std::vector<ggml_tensor *> experts; // host expert tensors, in the order of the banks
+     };
+ 
+@@ -653,6 +690,20 @@ struct llama_moe_cache::impl {
+             if (const char * every = getenv("LLAMA_MOE_CACHE_LOG_EVERY"); every != nullptr) {
+                 log_every = strtoull(every, nullptr, 10);
+             }
++            // Brain Engine 0031: the cache learns while writing (with --moe-cache-cpu-share above 0)
++            if (const char * le = getenv("LLAMA_MOE_CACHE_LEARN"); le != nullptr && atoll(le) > 0) {
++                learn_every = atoll(le);
++                if (const char * lm = getenv("LLAMA_MOE_CACHE_LEARN_MARGIN"); lm != nullptr && atof(lm) >= 1.0) {
++                    learn_margin = (float) atof(lm);
++                }
++                if (cpu_share <= 0.0f) {
++                    LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_CACHE_LEARN NOT USED: with --moe-cache-cpu-share 0 every miss is copied in already\n", __func__);
++                    learn_every = 0;
++                } else {
++                    LLAMA_LOG_INFO("%s: the MoE cache learns while writing: a miss used %.1fx more than the expert it replaces "
++                                   "may come in, at most one a layer every %lld tokens\n", __func__, learn_margin, (long long) learn_every);
++                }
++            }
+             LLAMA_LOG_INFO("%s: MoE cache brain fingerprint = %016llx\n", __func__, (unsigned long long) fingerprint);
+             if (const char * path = getenv("LLAMA_MOE_CACHE_RANKING"); path != nullptr && *path != '\0') {
+                 fill_from_ranking(path);
+@@ -678,6 +729,9 @@ struct llama_moe_cache::impl {
+ 
+     uint64_t fingerprint  = 0;
+     uint64_t log_every    = 0; // LLAMA_MOE_CACHE_LOG_EVERY
++    int64_t  learn_every  = 0; // Brain Engine 0031: LLAMA_MOE_CACHE_LEARN, 0 = off
++    float    learn_margin = 2.0f;
++    size_t   n_learned    = 0;
+     uint64_t n_updates    = 0;
+     uint32_t n_expert_all = 0; // experts per layer in the brain
+ 
+@@ -1000,9 +1054,21 @@ struct llama_moe_cache::impl {
+             return (size_t) (acc >> 16);
+         };
+         size_t n_hit = 0;
+-        if (!g.lru.plan(il, ids.data(), ids.size(), sel->src[0]->ne[1], n_used, n_zero, n_cpu, fills, cpu, n_hit)) {
++        // Brain Engine 0031: one miss a layer may enter the cache every learn_every tokens, only when misses go to the CPU
++        size_t n_learn = 0;
++        if (learn_every > 0 && share_q > 0) {
++            l.learn_tokens += sel->src[0]->ne[1];
++            if (l.learn_tokens >= learn_every) {
++                n_learn = 1;
++            }
++        }
++        const size_t learned_before = n_learned;
++        if (!g.lru.plan(il, ids.data(), ids.size(), sel->src[0]->ne[1], n_used, n_zero, n_cpu, fills, cpu, n_hit, n_learn, learn_margin, &n_learned)) {
+             GGML_ABORT("the MoE cache is too small for the experts selected in layer %d", il);
+         }
++        if (n_learned > learned_before) {
++            l.learn_tokens = 0;
++        }
+         if (has_cpu) {
+             int32_t * cpu_map = (int32_t *) l.cpu_map->data;
+             for (int32_t e : l.cpu_experts) {
+@@ -1278,6 +1344,9 @@ struct llama_moe_cache::impl {
+                 name, st.hits, st.misses, st.cpu, 100.0*st.hits/n, st.bytes/1024.0/1024.0);
+         };
+         log("ubatch <= 8", stats_small);
++        if (learn_every > 0) {
++            LLAMA_LOG_INFO("llama_moe_cache: learned while writing: %zu experts came in\n", n_learned);
++        }
+         log("ubatch  > 8", stats_large);
+         if (stats_copy.hits > 0) {
+             LLAMA_LOG_INFO("llama_moe_cache: large batches: %zu experts copied from the cache, %.2f MiB\n", stats_copy.hits, stats_copy.bytes/1024.0/1024.0);

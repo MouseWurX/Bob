@@ -56,19 +56,28 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 | | Download |
 |---|---|
-| **Windows 10 / 11** | [`Bob-1.5.252-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.252-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.252-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.252-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.252-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.252-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.252-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.252-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.252-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.252-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.252-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.252-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.252-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.252-android.apk) |
+| **Windows 10 / 11** | [`Bob-1.5.253-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.253-win-x64.zip) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.253-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.253-mac-arm64.zip) |
+| **Linux (64-bit)** | [`Bob-1.5.253-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.253-linux-x86_64.AppImage) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.253-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.253-linux-amd64.deb) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.253-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.253-linux-x86_64.flatpak) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.253-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.253-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
+| **Android phone** | [`Bob-1.5.253-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.253-android.apk) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
 **On Windows 11?** Bob isn't code signed yet, so Smart App Control may stop him from running. [Read this first](#windows-11-smart-app-control).
 
 ## What's new
+
+**In 1.5.253, with Brain Engine 43** (23 Nov 2026):
+
+| | |
+|---|---|
+| 🎮 **More memory free on a handheld** | On built-in graphics, the processor's part of a brain is now read straight from its file instead of copied into memory: 0.5 to 0.9 GB more free, at the same speed and with the same answers. Bob also shortens the chat memory so Windows keeps its share (**Memory kept for Windows** now starts at 0.5 GB), counts what a small brain really uses, and loads without the picture reader first when nothing else fits. |
+| 🎼 **A steadier Conductor** | When you let the Conductor drive (off to start with), it stays at the reading step it loaded at instead of switching back up for each long read, which cost about 15 seconds a switch on our test PC. It also leaves room on the card for MTP, the brain's built-in guesser, so nothing spills off the card, and a step switch with MTP on no longer stops the engine. |
+
+**1.5.228 to 1.5.252** (15 to 22 Nov 2026) are in the [changelog](CHANGELOG.md).
 
 **In 1.5.212 to 1.5.227** (13 and 14 Nov 2026):
 
@@ -245,6 +254,16 @@ Brains are tested on **real jobs** in Bob's real loop, with his real tools, in a
 | 🔧 **Tools brains already know** | Giving each brain family the tool shapes it was trained on (for GPT-OSS: its browser, python and apply_patch tools), mapped back to Bob's own tools in code. A study for now; it needs an engine change first. |
 | 🪜 **Every Lab method as a step** | Each advanced method (tool interviews, expert maps, the evil check, steering, cuts, teaching) as a step you can run on its own or as part of a whole pipeline, with run records, comparisons and costs per run. [Plan](app/docs/LAB-STEPS-PLAN.md) |
 | 🔬 **Where a behaviour lives** | Research on Riker: layer-by-layer patching and sparse-autoencoder features, to find where a behaviour sits in the brain. Kept as a study record; it never trains anything. |
+
+**In Brain Engine 44**, after 1.5.253. Built and in testing; unproven in our lab, as we have yet to test them on real jobs. Anything that could change a brain's answers stays off.
+
+| | |
+|---|---|
+| 🧰 **Tool calls read right** | llama.cpp's own fixes for reading tool calls. A Gemma 4 call made before its thinking ends now arrives as a call instead of being kept as thinking. Same prompts and tool lists for every brain Bob ships with. |
+| 🔢 **FP4 brains** | A brain that comes as FP4 runs as it is, on the RTX 50-series cards' FP4 units, with no switch. Turning another brain's experts into FP4 is a Lab job you start yourself, and won't be a default until it passes the real-jobs test. |
+| 🧠 **Inkling 2 Mini, quicker** | Its loop layers run in fewer steps with exactly the same numbers. |
+| 🏎 **Smarter expert guessing** | Off unless set: the engine guesses the next experts two or four layers ahead, learns from the brain's real picks, and keeps its expert caches in a better order. Copying guesses (prompt lookup) can work next to MTP. Same answers either way. |
+| 🧱 **Faster expert reads from memory** | Off unless set: experts kept in the computer's memory are shared with the card in place, so they move at the link's full speed. An idea from the Avalon project (MIT), with our own code. |
 
 ## What it costs
 
