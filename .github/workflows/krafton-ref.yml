@@ -1,0 +1,102 @@
+# Krafton's own llama.cpp (krafton-ai/llama.cpp, MIT) built as-is, as a reference for timing Raon-1 against Brain
+# Engine 0080-0082 on the same computer (the owner, Nov 23 2026: "Build it in the cloud", never on npc). Nothing here
+# ships with Bob. Pinned to the fork's commits, so a later push to the fork changes nothing. Builds only when this file
+# changes on the Raon branch, or by hand.
+name: Krafton reference engine (Raon timing)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/project-thread-wd5i5e]
+    paths: [.github/workflows/krafton-ref.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: mini-cuda
+            sha: fb895662d25868756a19253ca5e0688f99b18994 # branch raon-1-mini-preview
+            backend: cuda
+          - name: nano-cuda
+            sha: b6626358828007d0140d42399705b73bb7a6444b # branch raon-1-nano
+            backend: cuda
+          - name: nano-vulkan
+            sha: b6626358828007d0140d42399705b73bb7a6444b # branch raon-1-nano (Legion Go)
+            backend: vulkan
+    env:
+      VULKAN_VERSION: 1.4.357.0
+      CUDA_V: v13.1
+    steps:
+      - name: Fetch Krafton's llama.cpp at the pinned commit
+        shell: bash
+        run: |
+          git init -q krafton && cd krafton
+          git remote add origin https://github.com/krafton-ai/llama.cpp.git
+          git fetch -q --depth 1 origin ${{ matrix.sha }}
+          git checkout -q FETCH_HEAD
+          git log -1 --format='%H %s'
+      - name: Install the CUDA toolkit 13.1 (NVIDIA's own archives; same list as upstream llama.cpp's CI)
+        if: ${{ matrix.backend == 'cuda' }}
+        shell: pwsh
+        run: |
+          $d = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\$env:CUDA_V"
+          mkdir -p $d
+          choco install unzip -y
+          $base = "https://developer.download.nvidia.com/compute/cuda/redist"
+          $parts = @(
+            "cuda_crt/windows-x86_64/cuda_crt-windows-x86_64-13.1.80-archive.zip",
+            "cuda_cudart/windows-x86_64/cuda_cudart-windows-x86_64-13.1.80-archive.zip",
+            "cuda_nvcc/windows-x86_64/cuda_nvcc-windows-x86_64-13.1.80-archive.zip",
+            "cuda_nvrtc/windows-x86_64/cuda_nvrtc-windows-x86_64-13.1.80-archive.zip",
+            "libcublas/windows-x86_64/libcublas-windows-x86_64-13.2.0.9-archive.zip",
+            "libnvvm/windows-x86_64/libnvvm-windows-x86_64-13.1.80-archive.zip",
+            "cuda_nvtx/windows-x86_64/cuda_nvtx-windows-x86_64-13.1.68-archive.zip",
+            "cuda_profiler_api/windows-x86_64/cuda_profiler_api-windows-x86_64-13.1.80-archive.zip",
+            "visual_studio_integration/windows-x86_64/visual_studio_integration-windows-x86_64-13.1.68-archive.zip",
+            "cuda_cccl/windows-x86_64/cuda_cccl-windows-x86_64-13.1.78-archive.zip"
+          )
+          foreach ($p in $parts) { curl.exe -sSL -O "$base/$p" }
+          unzip -q '*.zip' -d $d
+          Get-ChildItem $d -Directory -Filter '*-archive' | ForEach-Object { xcopy "$($_.FullName)\*" $d /E /I /H /Y | Out-Null }
+          "$d\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "CUDA_PATH=$d" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Install the Vulkan SDK
+        if: ${{ matrix.backend == 'vulkan' }}
+        shell: pwsh
+        run: |
+          curl.exe -sSL -o $env:RUNNER_TEMP/VulkanSDK-Installer.exe "https://sdk.lunarg.com/sdk/download/${env:VULKAN_VERSION}/windows/vulkansdk-windows-X64-${env:VULKAN_VERSION}.exe"
+          & "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" --accept-licenses --default-answer --confirm-command install
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK=C:\VulkanSDK\${env:VULKAN_VERSION}"
+          Add-Content $env:GITHUB_PATH "C:\VulkanSDK\${env:VULKAN_VERSION}\bin"
+      - name: Install Ninja
+        run: choco install ninja
+      - name: Build (CPU plus the card backend, one folder; 5070 Ti = sm_120)
+        shell: cmd
+        working-directory: krafton
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          if "${{ matrix.backend }}"=="cuda" (set BK=-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=120) else (set BK=-DGGML_VULKAN=ON)
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DLLAMA_BUILD_BORINGSSL=ON -DLLAMA_BUILD_UI=OFF -DLLAMA_USE_PREBUILT_UI=OFF %BK%
+          cmake --build build --target llama-server llama-bench llama-cli
+      - name: Pack
+        shell: bash
+        run: |
+          out=krafton-ref-${{ matrix.name }}
+          mkdir "$out"
+          cp krafton/build/bin/*.exe krafton/build/bin/*.dll "$out/" 2>/dev/null || true
+          if [ "${{ matrix.backend }}" = cuda ]; then cp "$CUDA_PATH"/bin/cudart64_*.dll "$CUDA_PATH"/bin/cublas64_*.dll "$CUDA_PATH"/bin/cublasLt64_*.dll "$out/" 2>/dev/null || true; cp "$CUDA_PATH"/bin/x64/cudart64_*.dll "$CUDA_PATH"/bin/x64/cublas64_*.dll "$CUDA_PATH"/bin/x64/cublasLt64_*.dll "$out/" 2>/dev/null || true; fi
+          cp krafton/LICENSE "$out/LICENSE-krafton-llama.cpp"
+          echo "Krafton's llama.cpp ${{ matrix.sha }} (${{ matrix.name }}), built by Bob's CI for timing only." > "$out/README.txt"
+          ls -la "$out"
+          test -f "$out/llama-server.exe" && test -f "$out/llama-bench.exe"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: krafton-ref-${{ matrix.name }}
+          path: krafton-ref-${{ matrix.name }}
+          retention-days: 30
