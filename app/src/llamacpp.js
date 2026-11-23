@@ -29,7 +29,7 @@ import { LinkLog } from './link-log.js'; // what the link to a lent card carried
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
 import { tuningArgs, doorbellEnv } from './engine-tuning.js';
-import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv } from './conductor.js'; // off unless picked
+import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor } from './conductor.js'; // off unless picked
 import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV } from './engine-extras.js'; // Turbo: stand-ins (0043, off unless switched on)
 import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
@@ -636,7 +636,7 @@ export class LlamaCpp {
     else if (!args.includes('-ngl')) args.push('-ngl', '999');
     // The Conductor (Engine tuning, off unless picked): the start step is the chat step, and the reading needs a
     // place on disk while the step changes. A step set by hand (flags, the config file) means no Conductor.
-    this.condChat = 0; this.condWinFull = 0;
+    this.condChat = 0; this.condWinFull = 0; this.condMax = 0; this.condLoad = 0;
     if (conductorOn(this.cfg) && !cpu && this.role !== BESIDE && !tunedStep && !handFlags.some((a) => ['-b', '-ub', '--batch-size', '--ubatch-size'].includes(a))) {
       if (!args.includes('--slot-save-path')) args.push('--slot-save-path', path.join(this.cfg.dataDir, 'conductor'));
       const ub = args.lastIndexOf('-ub');
@@ -646,7 +646,11 @@ export class LlamaCpp {
       // Nov 21, the window lever (off unless switched on): the whole context it loads with, cut to the chat later
       this.condWinFull = fitWindowOn(this.cfg) && this.condCacheBase > 0 ? Number(ctx || lc.ctx || DEFAULT_CTX) || 0 : 0;
       // Nov 23: the copy cache fills the card's free memory (Brain Engine 39 and newer), unless set by hand
-      const fill = fillEnv({ cacheMiB: this.condCacheBase, beNo: this.beNo(), env: this.tuneEnv });
+      // Nov 23: the biggest step it will read at is planned for at load, and the brain loads at it (see loadAtStep)
+      this.condMax = readStepFor(Number(ctx || lc.ctx || DEFAULT_CTX) || 0);
+      if (this.condMax > this.condChat) args.splice(0, args.length, ...loadAtStep(args, this.condMax));
+      this.condLoad = Math.max(this.condMax, this.condChat);
+      const fill = fillEnv({ cacheMiB: this.condCacheBase, beNo: this.beNo(), env: this.tuneEnv, step: this.condMax });
       if (fill.LLAMA_MOE_CACHE_FILL) {
         this.tuneEnv = { ...(this.tuneEnv || {}), ...fill };
         if (this.fillSaid !== model) this.log?.('engine', `${model}: Conductor: the copy cache fills the card's free memory, leaving room for reading`);
@@ -1259,7 +1263,7 @@ export class LlamaCpp {
     if (args.includes('--slot-save-path')) { try { fs.mkdirSync(args[args.indexOf('--slot-save-path') + 1] || startDir(this.cfg), { recursive: true }); } catch {} }
     this.slotDir = args.includes('--slot-save-path') ? args[args.indexOf('--slot-save-path') + 1] : ''; // where this engine run saves readings
     this.placeChat = null; // a fresh engine holds no chat's reading yet
-    this.condStep = this.condChat || 0; this.condOff = ''; this.condHeld = 0; this.condGrown = 0; this.condFree = null; this.condFreeAsked = false; this.condWin = this.condWinFull || 0; this.condWinExtra = 0; // the Conductor starts each engine run at the chat step, with the whole window
+    this.condStep = this.condLoad || this.condChat || 0; this.condOff = ''; this.condHeld = 0; this.condGrown = 0; this.condFree = null; this.condFreeAsked = false; this.condWin = this.condWinFull || 0; this.condWinExtra = 0; // the Conductor starts each engine run at the chat step, with the whole window
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
     if (args.includes('--moe-cache-mib') && turboStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...STANDIN_ENV }; this.log?.('engine', `${model}: Turbo stand-ins on (up to 2 missed experts a layer stood in for while writing; the words change)`); }
     else if (args.includes('--moe-cache-mib') && turboDriveStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...DRIVE_STANDIN_ENV }; this.log?.('engine', `${model}: Turbo: never wait on the drive (an expert no longer in RAM is stood in for while writing; the words change)`); }
@@ -1592,14 +1596,14 @@ export class LlamaCpp {
       this.condFreeAsked = true;
       await this.condSwitch(model, this.condStep, 0, { moe_cache_mib: this.condRead() });
     }
-    const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: (this.condSpeeds ||= {})[model], switchS: switchGuess(held, st?.ratio) });
+    const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: (this.condSpeeds ||= {})[model], switchS: switchGuess(held, st?.ratio), maxStep: this.condMax || 0 });
     // Nov 20: off unless engineTuning.growGuess is set (a test switch). Bob's 440 clean job lessons: replies with thinking
     // median 81 tokens, none over 1,500, so a guess made before the reply mostly misses; growing mid-reply is the way.
     const grow = this.condOff || this.cfg?.engineTuning?.growGuess !== true ? 0 : cacheGrow({ total, outTok, cacheMiB: this.condRead(), freeMiB: this.condFree, grown: this.condGrown });
     if (p.plan === 'stay' && !grow) return;
     if (p.plan !== 'stay') {
       this.log?.('engine', planLine(model, p));
-      if (!(await this.condSwitch(model, p.step, held))) return;
+      if (p.step !== this.condStep && !(await this.condSwitch(model, p.step, held))) return;
     }
     if ((p.plan !== 'readBig' && !grow) || signal?.aborted) return;
     // read now (one word, thrown away, the reading kept), then switch to the writing settings: the chat step, and a

@@ -54,9 +54,10 @@ export function speedAt(sp, kind, step) {
 //   readBig: switch to the read step, read, switch back to the chat step, write (two switches)
 //   big: switch to the read step and stay there for this reply (one switch)
 //   back: the step is big and this reply reads little, so go back to the chat step (one switch)
-export function conductorPlan({ newTok = 0, cachedTok = 0, outTok = 300, cur, chat = CHAT_STEP, speeds, switchS = SWITCH_GUESS_S }) {
-  // the read steps tried: 4096 and 6144 (the switch test found 6144 reads fastest even at 32K)
-  const bigs = [...new Set([READ_STEP, BIG_STEP, readStepFor(newTok + cachedTok)].filter((s) => s > chat))];
+export function conductorPlan({ newTok = 0, cachedTok = 0, outTok = 300, cur, chat = CHAT_STEP, speeds, switchS = SWITCH_GUESS_S, maxStep = 0 }) {
+  // the read steps tried: 4096 and 6144 (the switch test found 6144 reads fastest even at 32K); none past maxStep, the
+  // biggest step the card's budget was planned for at load (Nov 23: a step past it had no room and spilled)
+  const bigs = [...new Set([READ_STEP, BIG_STEP, readStepFor(newTok + cachedTok)].filter((s) => s > chat && !(maxStep > 0 && s > maxStep)))];
   const r = (s) => speedAt(speeds, 'read', s), w = (s) => speedAt(speeds, 'write', s);
   const time = (rs, ws) => (r(rs) > 0 && w(ws) > 0 ? newTok / r(rs) + outTok / w(ws) : Infinity);
   const stayEst = time(cur, cur);
@@ -64,6 +65,8 @@ export function conductorPlan({ newTok = 0, cachedTok = 0, outTok = 300, cur, ch
   if (!Number.isFinite(stayEst)) return { ...stay, why: 'no speeds known yet' };
   const options = [];
   if (cur !== chat && newTok < MIN_NEW) options.push({ plan: 'back', step: chat, est: switchS + time(cur, chat) });
+  // Nov 23: already at a big step (the Conductor loads at one): read here, then one switch down to write
+  if (cur > chat && newTok >= MIN_NEW) options.push({ plan: 'readBig', step: cur, est: switchS + newTok / r(cur) + outTok / w(chat) });
   if (newTok >= MIN_NEW) for (const big of bigs) {
     if (big === cur) continue;
     if (cur === chat) options.push({ plan: 'readBig', step: big, est: 2 * switchS + newTok / r(big) + outTok / w(chat) });
@@ -112,9 +115,24 @@ export const freeFrom = (answer) => { const d = Array.isArray(answer?.devices) ?
 // 512 MB, a 16 GB card spilled 1 GB into shared memory on Windows and read prompts at 1,223 t/s against 2,829). The
 // answers don't change. A fill set by hand (Engine tuning) wins, 0 included.
 export const FILL_FROM_BE = 39;
-export function fillEnv({ cacheMiB = 0, beNo = 0, env = {} } = {}) {
+// Nov 23 (the test PC: the Conductor's switch from the chat step to the read step spilled 308 MB and read at half speed,
+// because the fill was sized at the chat step): from Brain Engine 41 the fill is sized for the biggest step the Conductor
+// will use (LLAMA_MOE_CACHE_FILL_STEP, patch 0085), so every switch finds room and the cache keeps one size. Before
+// that build, no fill next to borrowed reading (0072 didn't check it there).
+export const FILL_STEP_FROM_BE = 42;
+export function fillEnv({ cacheMiB = 0, beNo = 0, env = {}, step = 0 } = {}) {
   if (!(cacheMiB > 0) || !(beNo >= FILL_FROM_BE) || (env && env.LLAMA_MOE_CACHE_FILL !== undefined && env.LLAMA_MOE_CACHE_FILL !== '')) return {};
-  return { LLAMA_MOE_CACHE_FILL: '1' };
+  const borrow = env && env.LLAMA_MOE_CACHE_BORROW !== undefined && env.LLAMA_MOE_CACHE_BORROW !== '' && Number(env.LLAMA_MOE_CACHE_BORROW) !== 0;
+  if (borrow && beNo < FILL_STEP_FROM_BE) return {};
+  return { LLAMA_MOE_CACHE_FILL: '1', ...(step > 0 && beNo >= FILL_STEP_FROM_BE ? { LLAMA_MOE_CACHE_FILL_STEP: String(step) } : {}) };
+}
+// Nov 23: the Conductor loads at its biggest read step and drops to the chat step after a read (the cheap direction,
+// about 1.3 s on the test PC against 15.5 s up), with -b at least that step. Returns the new args.
+export function loadAtStep(args, step) {
+  const a = [...args];
+  const set = (flag, v, atLeast) => { const i = a.lastIndexOf(flag); if (i >= 0) a[i + 1] = String(atLeast ? Math.max(Number(a[i + 1]) || 0, v) : v); else a.push(flag, String(v)); };
+  set('-ub', step, false); set('-b', step, true);
+  return a;
 }
 
 // in plain words, for the logbook
