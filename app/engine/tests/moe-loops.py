@@ -122,10 +122,32 @@ cases = [
     ('cache, look-ahead', ['--moe-cache-mib', '3', '--moe-cache-cpu-share', '0'], {'LLAMA_MOE_LOOKAHEAD': '4'}),
     ('cache, in-place reads off', ['--moe-cache-mib', '3', '--moe-cache-cpu-share', '0'], {'LLAMA_MOE_CACHE_READ_IN_PLACE': '0'}),
     ('cache, big', ['--moe-cache-mib', '12', '--moe-cache-cpu-share', '0'], None),
+    # Nov 23: the paths added since 0091 was first written (0072-0085), on the looped brain too
+    ('cache, read-ahead off', ['--moe-cache-mib', '3', '--moe-cache-cpu-share', '0'], {'LLAMA_MOE_CACHE_READ_AHEAD': '0'}),
+    ('cache, borrowed reading', ['--moe-cache-mib', '3', '--moe-cache-cpu-share', '0', '-ub', '64', '-b', '64'], {'LLAMA_MOE_CACHE_BORROW': '1'}),
+    ('cache, borrowed reading from every group', ['--moe-cache-mib', '3', '--moe-cache-cpu-share', '0.5', '-ub', '64', '-b', '64'],
+     {'LLAMA_MOE_CACHE_BORROW': '1', 'LLAMA_MOE_CACHE_BORROW_ALL_GROUPS': '1'}),
+    ('cache, borrowed writing', ['--moe-cache-mib', '20', '--moe-cache-cpu-share', '0', '-ub', '64', '-b', '64'],
+     {'LLAMA_MOE_CACHE_BORROW': '1', 'LLAMA_MOE_CACHE_BORROW_WRITE': '1'}),
+    ('cache, step fit', ['--moe-cache-mib', '3', '--moe-cache-cpu-share', '0', '-ub', '64', '-b', '64'],
+     {'LLAMA_MOE_CACHE_BORROW': '1', 'LLAMA_MOE_STEP_FIT': '1'}),
+    # (0076's tail in place says NOT USED on Inkling: it keeps no chat memory of that kind, so there is nothing to check)
+    ('cache, fills the card', ['--moe-cache-mib', '3', '--moe-cache-cpu-share', '0'],
+     {'LLAMA_MOE_CACHE_FILL': '1', 'LLAMA_MOE_CACHE_FILL_SPARE_MIB': '0'}),
+    ('cache, fill sized for a bigger step', ['--moe-cache-mib', '3', '--moe-cache-cpu-share', '0', '-ub', '16', '-b', '16'],
+     {'LLAMA_MOE_CACHE_FILL': '1', 'LLAMA_MOE_CACHE_FILL_SPARE_MIB': '0', 'LLAMA_MOE_CACHE_FILL_TEST_FREE_MIB': '0',
+      'LLAMA_MOE_CACHE_FILL_STEP': '64', 'LLAMA_MOE_CACHE_BORROW': '1'}),
+    ('cache, the doorbell', ['--moe-cache-mib', '3', '--moe-cache-cpu-share', '0.5'],
+     {'LLAMA_MOE_DOORBELL': '1', 'LLAMA_MOE_DOORBELL_CPU_RING': '1'}),
+    ('cache, processor reads', ['--moe-cache-mib', '12', '--moe-cache-cpu-share', '0'], {'LLAMA_MOE_CACHE_CPU_READ': '33'}),
+    ('cache, stream ahead', ['--moe-cache-mib', '3', '--moe-cache-cpu-share', '0'],
+     {'LLAMA_MOE_STREAM_AHEAD': '1', 'LLAMA_MOE_STREAM_AHEAD_MIB': '1', 'LLAMA_MOE_PINNED_UPLOAD': '1'}),
 ]
 for name, args, env in cases:
     out, log = run(re.sub(r'\W+', '-', name), CARD + args, env)
     check(f'same words and odds: {name}', out == ref, log[-400:] if out is None else '')
+    if env and name not in ('cache, stream ahead',):  # stream ahead turns in-place reads off by design, and RPC has no pinned memory
+        check(f'{name}: nothing it asked for says NOT USED', 'NOT USED' not in log, ' | '.join(l[-160:] for l in log.splitlines() if 'NOT USED' in l))
     if name == 'cache, misses on the card':
         m = re.search(r'MoE cache size =\s+[\d.]+ MiB for ([\d.]+) MiB of host experts', log)
         check('host experts counted once (8 layers)', m is not None and abs(float(m.group(1)) - 24.0) < 0.01, m.group(0) if m else 'no line')
