@@ -50,7 +50,7 @@ export const admitsTrouble = (t) => ADMITS.test(plain(t));
 
 // Each kind of "I did X", the words that say it in each language, and the tools that really do it.
 const FAMILIES = [
-  { id: 'edit', what: 'changed a file', en: 'edited|changed|updated|fixed|modified|patched|rewrote|rewritten', fr: 'modifié|changé|mis à jour|corrigé|réécrit', es: 'editado|cambiado|modificado|actualizado|corregido|arreglado|reescrito',
+  { id: 'edit', what: 'changed a file', en: 'edited|changed|updated|fixed|corrected|modified|patched|rewrote|rewritten', fr: 'modifié|changé|mis à jour|corrigé|réécrit', es: 'editado|cambiado|modificado|actualizado|corregido|arreglado|reescrito',
     obj: 'file|files|config|document|fichier|fichiers|archivo|archivos|fichero|[\\w-]+\\.[a-z0-9]{1,6}', inChat: true, tools: /^(edit_file|write_file|office_edit|file_hands|work_on_repo|run_command|edit_my_message)$/ },
   { id: 'run', what: 'ran something', en: 'ran(?! into| out| across)|executed|run(?! into| out| across)', fr: 'exécuté|lancé', es: 'ejecutado|corrido|lanzado',
     obj: 'tests?|command|script|build|program|npm|node|python|pip|git|cargo|make|tests|commande|programme|comando|programa|pruebas|[\\w-]+\\.(?:py|js|mjs|sh|ps1|bat|cmd|exe)', tools: /^(run_command|run_recipe|run_in_sandbox|work_on_repo|use_my_tool|use_pack_tool|mcp_use|calculate)$/ },

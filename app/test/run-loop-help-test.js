@@ -247,8 +247,9 @@ const reset = () => { ran.length = 0; events.length = 0; seen.length = 0; slow =
 }
 {
   reset();
-  // Eight steps: seven rounds of different searches, then the last step has no tools.
-  script = Array.from({ length: 7 }, (_, i) => call('web_search', { query: `topic ${['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf'][i]}` }));
+  // Eight steps, and 2 more because the searches keep finding new things (Nov 16, the owner: "a couple more steps"):
+  // nine rounds of different searches, then the last step has no tools.
+  script = Array.from({ length: 9 }, (_, i) => call('web_search', { query: `topic ${['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel', 'india'][i]}` }));
   script.push((o) => ({ role: 'assistant', content: o.tools?.length ? 'still had tools' : 'Here is what I found.' }));
   await run('research everything');
   check('turn: the last step has no tools, so he answers', brain.session('main').at(-1)?.content === 'Here is what I found.', brain.session('main').at(-1)?.content);

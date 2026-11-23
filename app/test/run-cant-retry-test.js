@@ -32,10 +32,14 @@ check('a plain "I can\'t" with nothing refused still gets its second go', cantRe
 check('with no nudge before, nothing changes', settleCant({}, { content: 'x' }, []) === '');
 check('the nudge asks for the whole answer, which replaces the last one', /replaces your last one/.test(CANT_NUDGE) && !/don't repeat yourself/.test(CANT_NUDGE));
 const run = read('src/brain-run-on.js');
-check('wired into the job loop', /settleCant\(ctx, reply, msgs\)/.test(run) && /cantReason\(this\.cfg, reply\.content, msgs\.slice\(turnStart\)\)/.test(run) && (run.match(/markCant\(ctx, reply, msgs\)/g) || []).length === 3);
+check('wired into the job loop', /settleCant\(ctx, reply, msgs\)/.test(run) && /cantReason\(this\.cfg, reply\.content, msgs\.slice\(turnStart\)\)/.test(run) && (run.match(/markCant\(ctx, reply, msgs\)/g) || []).length === 5); // 3 here, and 2 for Facts first and Read what you were given (facts-first.js)
 check('the "only 1 tool step ran" go keeps one answer too, but never a corrected claim', /if \(!reply\.correction && !ctx\.cantAt\) markCant\(ctx, reply, msgs\);\s*ctx\.retrying = true; nudged\(\); continue;/.test(run));
 const { stepsNudge } = await import('../src/job-steps.js');
 check('the steps nudge asks for the whole answer, and allows one tool doing two things', /replaces your last one/.test(stepsNudge(['draw it', 'save it'], [{ name: 'make_diagram', ok: true }])) && /If one tool already did more than one of them, say so/.test(stepsNudge(['draw it', 'save it'], [])));
 
+// Nov 16 (800-job run): the short way he names a Hand counts, a common word alone doesn't
+check('the Office Hand, said short', /Office documents/.test(cantReason({}, 'The **Office Hand is off**, so I can\'t write a .docx.')));
+check('the Run Hand by its first word', /Run programs/.test(cantReason({}, "I can't start it: the Run Hand is still off.")));
+check('"use the ... Hand" is not the browser Hand', !/browser/.test(cantReason({ hands: { files: true } }, "I can't: use the Files Hand first.")));
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -1,0 +1,54 @@
+{
+ "run": "lkt-sample2",
+ "note": "15 Nov: the same 26 ideas as lkt-sample1 (stock Qwen3.6-35B saved 2 of 10, then 0 of 10). Teacher: Qwen3.8-Flash-Next 125B (6B active), the owner's pick. The lesson writer and Bob's tools both come from this copy of Bob (--bob ..): main 1.5.242 plus step redo, TOOL_SHAPES 4, Qwen family, Bob's loop-help fix-ups; never an older kit. H200 141 GB (Secure $5.29/h); about 85 min of it is the 111 GB download. 2 slots x 32k, 10-idea gate. Caps 2.5 h / $13.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.8-Flash-Next",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H200",
+  "NVIDIA H200 NVL"
+ ],
+ "step_up": [],
+ "disk_gb": 170,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 2.5,
+ "dollars_max": 13,
+ "rent_minutes": 30,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one brain: Qwen3.8-Flash-Next as the lesson teacher. One command: a 10-idea gate, then the rest.",
+  "hours_each": 2.2,
+  "models": [
+   {
+    "name": "flashnext-teacher",
+    "nickname": "Qwen3.8-Flash-Next 125B, lesson teacher",
+    "file": "hf:unsloth/Qwen3.8-Flash-Next-GGUF:UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 2,
+    "ctx": 65536,
+    "extra": "",
+    "hours": 2.2,
+    "commands": [
+     "node write-lessons.mjs --url {{url}} --model teacher --dir lkt-sample2 --from-ideas --family qwen --real-tools --review --think half --step-thinking --parallel 2 --want-shapes 4 --bob .. --examples ../../bob-model-lab/out/lkt-sample2/examples.jsonl --drop-tools ask_specialist,pick_session --count 30 --hours 0.75 --gate 10:0.6"
+    ]
+   }
+  ]
+ },
+ "prep": [
+  "Inputs: bob-model-lab/out/lkt-sample2/ideas.jsonl (the same 26 ideas as lkt-sample1) and examples.jsonl (2 lessons Opus 5.5 kept; teacher-only, never trained), copied from lkt-sample1.",
+  "--bob .. is this copy's own app folder; --want-shapes 4 stops the run before renting if its tools are any other shape."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20
+}

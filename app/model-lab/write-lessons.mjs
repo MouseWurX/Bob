@@ -11,7 +11,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { opts, locate, checkFree, startServer, chat, appendJsonl, readJsonl, pauseGate } from './common.mjs';
 import { loadBob } from './bob-kit.mjs';
-import { homeScrub, WORK_RULES, standinBad, lessonFault } from './lesson-checks.mjs';
+import { homeScrub, WORK_RULES, standinBad, lessonFault, answerFault } from './lesson-checks.mjs';
+import { fixCalls } from '../src/loop-help.js';
 import { toolSetFor } from '../src/tool-sets.js';
 
 const o = opts({ count: 4000, hours: 0 });
@@ -442,7 +443,7 @@ const REAL_TOOLS = new Set(['make_diagram', 'list_folder', 'read_file', 'search_
   'forget_topic', 'calculate', 'check_spelling', 'query_data', 'my_howtos', 'save_howto', 'list_schedules', 'undo_files', 'sort_files']);
 async function realResult(sb, name, args, loaded) {
   try {
-    const r = await Promise.race([sb.brain.tools[name].run(sb.toReal(args), { loaded, cfg: sb.brain.cfg, emit: () => {}, signal: new AbortController().signal, sessionId: 'lab' }), new Promise((_, no) => setTimeout(() => no(new Error('the tool took too long')), 60000))]);
+    const r = await Promise.race([sb.runReal(name, args, { loaded, cfg: sb.brain.cfg, emit: () => {}, signal: new AbortController().signal, sessionId: 'lab' }), new Promise((_, no) => setTimeout(() => no(new Error('the tool took too long')), 60000))]);
     const t = typeof r === 'string' ? r : r && typeof r === 'object' && typeof r.text === 'string' ? r.text : JSON.stringify(r ?? '');
     return sb.neutral(t).slice(0, 6000) || '(no output)';
   } catch (e) { return `Error: ${sb.neutral(String(e.message || e)).slice(0, 600)}`; }
@@ -490,6 +491,25 @@ let n = done.size, i = 0, skipped = 0, rescued = 0, fixed = 0;
 const triedBefore = new Set(['rejected.jsonl', 'needs-review.jsonl', 'steps-out.jsonl'].flatMap((f) => readJsonl(path.join(dir, f)).map((r) => r.idea)));
 const queue = [...order.filter((x) => !done.has(x.id) && !triedBefore.has(x.id)), ...order.filter((x) => !done.has(x.id) && triedBefore.has(x.id))];
 if (triedBefore.size) console.log(`queue: ${queue.filter((x) => !triedBefore.has(x.id)).length} ideas never tried first, then ${queue.filter((x) => triedBefore.has(x.id)).length} tried before`);
+// A step's calls, checked as Bob checks them live (loop-help fixCalls): a call he would just fix (a tool name in another case,
+// a wrapped or mis-typed input) is saved fixed; one he would bounce, or a dropped tool, sends the step back with his own words.
+// A tool name is fixed only when the step's own words don't use the old name.
+function callFault(a, tools, mended) {
+  const tmap = Object.fromEntries((tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)).map((x) => [x.function?.name || x.name, { schema: x.function ? x : { type: 'function', function: x } }]));
+  const calls = a.tool_calls.map((c) => ({ ...c, function: { name: c.function.name, arguments: c.function.arguments } }));
+  for (const c of calls) if (dropTools.has(c.function.name)) return `there's no tool called ${c.function.name}: use one of the tools you were given`;
+  fixCalls(calls, tmap);
+  const bounce = calls.filter((c) => c.bounce).map((c) => c.bounce.replace(/^\(|\)$/g, ''));
+  if (bounce.length) return bounce.join(' ');
+  const words = `${a.content || ''} ${a.reasoning || ''}`;
+  for (const [i, c] of calls.entries()) if (c.fixed) {
+    const was = a.tool_calls[i].function.name;
+    if (was !== c.function.name && words.includes(was)) return `there's no tool called ${was}; the tool is ${c.function.name}`;
+    a.tool_calls[i] = { ...a.tool_calls[i], function: { name: c.function.name, arguments: JSON.stringify(c.function.arguments ?? {}) } };
+    mended.push(`${was}: ${c.fixed.join(', ')}`);
+  }
+  return '';
+}
 async function one(idea, think, room = 1, fix = '') {
   if (!realTools) return oneInner(idea, think, room, fix, null, null);
   const sb = await loadBob(L.bob, { allowOld: Boolean(o['allow-old-bob']), home: true, office: officeExe });
@@ -515,15 +535,23 @@ async function oneInner(idea, thinkTurn, room, fix, sb, tally) { // room 2 = a s
     if (m.role === 'assistant') { const { set, reasoning, train, ...a } = m; saved.push({ ...a, train: false }); live.push({ role: 'assistant', content: a.content || '', ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) }); }
     else if (m.role === 'tool') { const t = { role: 'tool', tool_call_id: m.tool_call_id, name: m.name, content: String(m.content || '') }; saved.push(t); live.push(t); }
   }
-  const maxSteps = idea.note || idea.prior || idea.failFirst ? 12 : 6; // 14 Nov trial: doctored lessons (earlier try, a failed first call, look, act) ran out of 6 steps
+  const maxSteps = idea.note || idea.prior || idea.failFirst ? 12 : 8; // 15 Nov sample: 2 of 10 fresh ideas ran out of 6 // 14 Nov trial: doctored lessons (earlier try, a failed first call, look, act) ran out of 6 steps
+  // 15 Nov (the owner: "ANY WAY TO FIX LESSONS FROM FAILING ANY MORE WHILE KEEPING QUALITY UP?"): a step with a call Bob
+  // couldn't run, or a final answer with a claim nothing backs, is written again by the teacher (told why, in its note only)
+  // instead of failing the whole lesson. Bob's own fix-ups (a near tool name, a wrapped or mis-typed input) are applied as Bob
+  // applies them live; the lesson row lists each one under mended. --no-step-redo turns this off.
+  let redoNote = '', redos = 0; const mended = [];
+  const redoMax = o['no-step-redo'] ? 0 : Number(o['step-redo'] ?? 3);
+  const stepTools = new Map(); // set key -> the tools offered at that step (the code checks read each call against its own step)
   let ranTool = false; // 15 Nov step thinking (Bob's step-thinking.js): plan with thinking, do each step after a tool result without it
   for (let step = 0; step < maxSteps; step++) {
     const think = stepThinking && ranTool ? false : thinkTurn;
     const t0 = toolsFor(loaded); const t = dropTools.size ? { ...t0, tools: (t0.tools || []).filter((x) => !dropTools.has(x.function?.name || x.name)), system: String(t0.system || '').split('\n').filter((ln) => ![...dropTools].some((d) => ln.includes(d))).join('\n') } : t0; // dropped tools leave the offer AND the prompt text
     const sys = tag ? `${t.system}\n\n${tag}` : t.system;
     const set = setKey(sys, t.tools);
+    stepTools.set(set, t.tools);
     // teacher-only additions (persona, act nudge) go to the server but never into the saved prompt or the set key
-    const teacherOnly = teacherNoteFor(idea, fix);
+    const teacherOnly = [teacherNoteFor(idea, fix), redoNote ? `Your last reply for this step was not used, because ${redoNote}. Write this step again.` : ''].filter(Boolean).join('\n\n');
     if (strict) ctx.add('work-rules'); if (exampleText) ctx.add('examples'); if (persona) ctx.add(stylePos === 'user' ? 'style-note' : 'style-system'); if (ACT_JOBS.has(idea.job)) ctx.add('act-nudge');
     if (toolNoteOn && TOOL_JOBS.has(idea.job)) ctx.add('tool-note'); if (fix) ctx.add('review-fix'); if (idea.note) ctx.add('doctor-note'); if (shortPrompt) ctx.add('short-prompt'); if (think && (step ? laterPrefix : thinkPrefix)) ctx.add('prefill');
     const pre = think ? (step ? laterPrefix : thinkPrefix) : '';
@@ -538,6 +566,11 @@ async function oneInner(idea, thinkTurn, room, fix, sb, tally) { // room 2 = a s
     if (pre) { const rc = String(msg.reasoning_content || ''); echoed = rc.startsWith(pre); if (!echoed) msg.reasoning_content = pre + rc; if (oddsK) odds.at(-1).given_echoed = echoed; }
     if (finish === 'length') throw new Error('ran out of room');
     const a = { role: 'assistant', content: msg.content || '', ...(msg.reasoning_content ? { reasoning: msg.reasoning_content } : {}), ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}), set, ...(stepThinking ? { think: Boolean(think) } : {}) };
+    if (strict && redos < redoMax) {
+      const why = a.tool_calls ? callFault(a, t.tools, mended) : answerFault(saved, a);
+      if (why) { redos++; redoNote = why; ctx.add('step-redo'); if (oddsK) odds.pop(); step--; continue; }
+    }
+    redoNote = '';
     saved.push(a); live.push({ role: 'assistant', content: a.content, ...(a.tool_calls ? { tool_calls: a.tool_calls } : {}) });
     if (!a.tool_calls) break;
     for (const c of a.tool_calls) if (dropTools.has(c.function.name)) throw new Error(`called the dropped tool ${c.function.name}`); // the lesson is skipped, not saved
@@ -557,7 +590,7 @@ async function oneInner(idea, thinkTurn, room, fix, sb, tally) { // room 2 = a s
   const [leaked, cleanAnswer] = leakCheck(last.content);
   if (leaked) { if (leakMode === 'strip' && cleanAnswer.trim()) last.content = cleanAnswer; else throw new Error('style leaked into the final answer'); }
   const thought = saved.filter((m) => m.role === 'assistant' && m.reasoning).map((m) => m.reasoning).join('\n');
-  if (strict) { const why = lessonFault(saved, idea, toolsFor(loaded).tools); if (why) { const e = new Error(`check: ${why}`); e.why = why; throw e; } }
+  if (strict) { const why = lessonFault(saved, idea, (m) => stepTools.get(m.set) || toolsFor(loaded).tools); if (why) { const e = new Error(`check: ${why}`); e.why = why; throw e; } }
   const score = think && styleMarkers.length ? styleScore(thought, styleMarkers) : null;
   if (score !== null && score < styleMin) throw new Error(`style score ${score.toFixed(2)} under ${styleMin}`);
   if (review) {
@@ -569,7 +602,7 @@ async function oneInner(idea, thinkTurn, room, fix, sb, tally) { // room 2 = a s
   }
   // a lesson fixed after a failed review carries retry: 'review'; its reject sits in rejected.jsonl under the same idea, so
   // make-pairs.mjs turns the two into a right-vs-wrong pair (the reviewer's reason goes along as why)
-  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, bob_src: kit.bobSrc, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), ...(score !== null ? { style_score: Math.round(score * 100) / 100 } : {}), ...(leaked ? { leak: 'stripped' } : {}), ...(think && thinkPrefix ? { think_prefix: thinkPrefix } : {}), messages: clean(saved), ...(tally ? { sandbox: { setup: tally.setup, real: tally.real, standin: [...tally.standin] } } : {}), ...(idea.route !== undefined ? { route: idea.route } : {}), ...(idea.seed ? { seed: idea.seed } : {}) });
+  appendJsonl(F.lessons, { idea: idea.id, job: idea.job, think, bob_src: kit.bobSrc, ...stamp, ...(mended.length ? { mended } : {}), ...(redos ? { step_redos: redos } : {}), ...(ctx.size ? { teacher_context: [...ctx] } : {}), ...(fix ? { retry: 'review' } : {}), ...(splitTag ? { split: splitTag } : {}), ...(score !== null ? { style_score: Math.round(score * 100) / 100 } : {}), ...(leaked ? { leak: 'stripped' } : {}), ...(think && thinkPrefix ? { think_prefix: thinkPrefix } : {}), messages: clean(saved), ...(tally ? { sandbox: { setup: tally.setup, real: tally.real, standin: [...tally.standin] } } : {}), ...(idea.route !== undefined ? { route: idea.route } : {}), ...(idea.seed ? { seed: idea.seed } : {}) });
   if (oddsK) appendJsonl(path.join(dir, 'odds.jsonl'), { idea: idea.id, job: idea.job, think, ...stamp, ...(ctx.size ? { teacher_context: [...ctx] } : {}), k: oddsK, turns: odds });
 }
 // The teacher as a strict reviewer: right tool or rightly none, exact arguments, results read, a final answer that does the job.

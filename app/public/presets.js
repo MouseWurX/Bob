@@ -5,7 +5,7 @@
 //    on and there's at least one preset. Picking one with a starting effort moves the Effort button to it.
 import { esc } from './util.js';
 
-const EFFORT_NAMES = { low: 'Low', medium: 'Medium', high: 'High', extreme: 'Extreme' };
+const EFFORT_NAMES = { low: 'Minimus (Low)', medium: 'Medius (Medium)', high: 'Magnus (High)', extreme: 'Maximus (Extreme)' }; // effort.js NAMES
 const post = async (url, data) => {
   const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify(data) });
   const j = await r.json().catch(() => ({}));

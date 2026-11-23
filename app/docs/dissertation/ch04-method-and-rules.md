@@ -99,6 +99,19 @@ The tool interview shows a model its own misses and asks why. The explanation is
 
 Lessons were reviewed by language models at two points. The lesson writer's own reviewer rejected lessons at write time, and a separate sort by Haiku, then Opus, labelled each lesson keep, fix, repair or discard (section 4.7). Both reviewers are models, so both carry the biases noted above. The sort was checked by sampling. Chapters 6 and 7 report what the reviews found, and this chapter states only how they were run. Chapter 12 turns this disclosure into an Engineering lesson, Auditing your reviewer, for learners who use the Lab's own reviewers (section 12.5.3).
 
+### 4.5.5 The agent's own checks are judges too (added 16 November)
+
+Bob's loop checks his replies as he writes them. If a reply says he will do something and no tool ran, if it seems to claim a picture that was never made, or if it says "I can't" while some tool groups are not loaded, the loop sends him back with a hidden note for one more go. These checks are judges in the sense of section 4.5, and they have faults of their own. In a recorded run they change what the brain does next, so their faults end up in the lessons.
+
+We counted them in the 800-job run of section 11.7.5, which ran before the fixes below.
+- **"You said you would do it, but no tool ran":** fired 42 times. By our own reading of the 42 replies, 40 were waiting on the user ("press Switch it on and I'll run it", "paste the link and I'll check it"), not promising a call.
+- **"You said you made a picture":** fired 9 times, and all 9 were false. Eight were "Here's the picture", "the full picture" or "the honest picture" used as a summary, and one was the Pictures folder in a path.
+- **"You now have every tool":** fired 136 times. In 70 of these the next reply called a tool, and in the rest it repeated or restated the answer.
+
+The Opus readers tagged 119 of the 800 runs with repeated_answer, and in all eight parts they named these nudges as its main cause. Before they were fixed, the second answer was added under the first, so the user saw both.
+
+The rule we take from this: **when an agent's runs become lessons, count every check that fired and read a sample of what set it off before blaming the brain.** The fixes keep each check and narrow what sets it off. Replies that wait on the user or ask a question are not promises. With no picture asked for, "the full picture" and a folder path are not picture claims. After a nudge only one answer stays. An honest "the Hand is off" answer is not sent back. Their effect on a fresh run is unproven in our lab, as we have yet to test it; a four-level run on the first part of these fixes was under way when this was written.
+
 ## 4.6 Held-out splits and the never-taught gate
 
 ### 4.6.1 The split

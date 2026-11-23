@@ -11,13 +11,13 @@ import { sameModel } from './brain-mode.js';
 import { isGuestId } from './guest-chat.js';
 import { personalityPrompt } from '../public/personality.js';
 import { LAST_ROUND_NOTE, onTrackNote, errorHint } from './loop-help.js';
-import { waitedFor, pastCeiling, ceilingMs } from './loop-guard.js';
+import { waitedFor, pastCeiling, ceilingMs, droppedNote } from './loop-guard.js';
 import { giveIds, toolMessage } from './tool-kinds.js';
 import { askTogether } from './together.js';
 import { compactMessages, charsFor } from './self-work-plan.js';
 import { sidePick, mootBesideOk, ggufGB } from './brain-lanes.js';
 import { PLAIN_HATS, CODING_HATS } from './brain-words.js';
-import { MAX_STEPS } from './brain.js';
+import { MAX_STEPS, MAX_CALLS_PER_REPLY } from './brain.js';
 
 // Methods of the Brain class, put on it in its main file with the same rules as the methods written inside it.
 export const hatParts = {
@@ -85,7 +85,7 @@ export const hatParts = {
     // The scouting copy only has web tools: with web search off there's nothing for it to do, so say where the switch is.
     if (hat === 'scout' && !webOn(this.cfg)) return WEB_OFF;
     // Extreme effort: coding goes research -> check -> plan -> check -> do it (moot.js).
-    if (hat === 'tinker' && !ctx.phased && cleanEffort(ctx.job?.effort) === 'extreme') return phasedWork(this, hat, task, ctx);
+    if (hat === 'tinker' && !ctx.phased && !ctx.job?.solo && cleanEffort(ctx.job?.effort) === 'extreme') return phasedWork(this, hat, task, ctx);
     // "One brain" mode: every hat runs on the main model, so there's no brain swap (about 20 s each) mid-chat.
     // Normal session: the hat's own brain (or the main one with "One brain"). Other sessions: the session's brain.
     // A moot (High/Extreme effort) passes force: the reviewer always runs on the Review slot brain.
@@ -95,10 +95,10 @@ export const hatParts = {
     // 1.5.51 (opt-in): the reviewer sits beside the main brain on the processor instead of swapping it out.
     // #30: a quick second look at Low or Medium effort comes with its Bob already picked (runMoot), and never runs here.
     const quick = hat === 'reviewer' ? ctx.reviewLender || null : null;
-    if (!quick && hat === 'reviewer' && force && !ctx.job?.side && mootBesideOk(this, model, brainCtx)) { beside = true; cpu = true; }
+    if (!quick && hat === 'reviewer' && force && !force.solo && !ctx.job?.side && mootBesideOk(this, model, brainCtx)) { beside = true; cpu = true; }
     // #30: no room beside it here, so a paired Bob with a good enough Review brain checks the work over Bob-Net. Failing that,
     // the reviewer swaps in as before, and the chat says why.
-    const lender = quick || (hat === 'reviewer' && force && !beside ? await this.reviewAway(model, ctx) : null);
+    const lender = quick || (hat === 'reviewer' && force && !force.solo && !beside ? await this.reviewAway(model, ctx) : null);
     const copy = copyName(this.cfg, hat, HATS[hat].label);
     // Settings sign-off (1.5.49): one moot line per review. If the review brain still has to load, the load line
     // ("🛰 Moot: ... checks the answer ...") says it all, so the chat skips the reviewer's own line.
@@ -123,7 +123,7 @@ export const hatParts = {
           ctx.emit({ type: 'announce', text: checkBackLine(via, e.why || e.message) });
         }
       }
-      return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, lender, noLocal: Boolean(quick), maxSteps: force?.maxSteps, compact: force?.longRun === true });
+      return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, lender, noLocal: Boolean(quick), maxSteps: force?.maxSteps, compact: force?.longRun === true, noTools: force?.noTools === true });
     }
     catch (e) { step.state = ctx.signal?.aborted ? 'cancelled' : 'failed'; throw e; }
     finally {
@@ -161,7 +161,7 @@ export const hatParts = {
     }
     return lender;
   },
-  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, maxSteps: steps, compact = false, lender, noLocal = false, via = null }) {
+  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, maxSteps: steps, compact = false, lender, noLocal = false, via = null, noTools = false }) {
     // via (1.5.185): another of your Bobs thinks each step on his bigger brain; nothing loads here, the tools run here.
     // Two-Bob trial: a check is short, so the chat talker isn't brought back beside the reviewer for it.
     const loadHere = async () => (await this.ensureModel(model, ctx.emit, ctx.signal, hat, { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}), ...(hat === 'reviewer' ? { noTalker: true } : {}) })) || model;
@@ -201,7 +201,7 @@ export const hatParts = {
       const late = step > 0 && Boolean(ctx.turnStartedAt) && (ctx.timeEnds ? Date.now() - waitedFor(ctx.signal) >= ctx.timeEnds : pastCeiling(ctx.turnStartedAt, ctx.signal, Date.now(), ceilingMs(this.cfg)));
       if (late && !ctx.hatLateSaid) { ctx.hatLateSaid = true; this.log('loop', `${hat}: the job reached its time limit (the safety net); this step is the last`); }
       const last = (step === maxSteps - 1 && step > 0 && !this.helpOff('last')) || late;
-      const stepTools = last ? [] : this.toolSchemas(hatTools);
+      const stepTools = last || noTools ? [] : this.toolSchemas(hatTools); // noTools: Max's plan check (solo-effort.js)
       if (!ctx.job?.side) this.readNotes(ctx, messages); // notes passed along by the Quick brain (meanwhile.js)
       if (via) reply = await this.lenders.chat(via, { messages: hatView(step), tools: stepTools, signal: ctx.signal, from: this.cfg.windowsName || 'Bob', kind: 'check', onToken: (t) => ctx.emit({ type: 'token', text: t }) });
       else if (lender) {
@@ -234,6 +234,13 @@ export const hatParts = {
       this.cutNote(reply, ctx.emit); // item 210
       final += reply.content;
       if (!reply.tool_calls || late) break;
+      // 16 Nov distill test (Max, job t65-0287): one review reply asked for 132 search_files calls, 3 of them different,
+      // and every one ran. A helper's reply runs each identical call once, and at most MAX_CALLS_PER_REPLY, like Bob's own.
+      const dropped = [];
+      { const keys = new Set();
+        reply.tool_calls = reply.tool_calls.filter((c) => { const k = `${c.function?.name}|${typeof c.function?.arguments === 'string' ? c.function.arguments : JSON.stringify(c.function?.arguments || {})}`; if (keys.has(k) || keys.size >= MAX_CALLS_PER_REPLY) { dropped.push(c); return false; } keys.add(k); return true; });
+        if (dropped.length) { this.log('tool', `${hat}: one reply asked for ${dropped.length + reply.tool_calls.length} tool calls; ran ${reply.tool_calls.length} (repeats and calls past ${MAX_CALLS_PER_REPLY} dropped)`); }
+        if (!reply.tool_calls.length) break; }
       giveIds(reply.tool_calls); // item 165
       this.mendCalls(reply.tool_calls, ctx); // Nov 11 (loop-help.js)
       this.notOffered(reply.tool_calls, stepTools, ctx, { hat: true }); // item 173
@@ -248,6 +255,7 @@ export const hatParts = {
         const where = a?.path || a?.url || a?.query || a?.name || '';
         did.push(`${call.function?.name}${where ? ` ${String(where).slice(0, 160)}` : ''}: ${String(res.text).replace(/\s+/g, ' ').slice(0, 240)}`);
       }
+      if (dropped.length) messages.push({ role: 'system', content: droppedNote(dropped, MAX_CALLS_PER_REPLY), hidden: true }); // after the results, as in Bob's own loop
 
       // A repository job (self-work.js) on a long memory: older tool results are cut down before it overflows.
       if (compact) compactMessages(messages, charsFor(brainCtx));

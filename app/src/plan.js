@@ -43,11 +43,22 @@ export async function showPlan(brain, { goal = '', time = '', steps = [] }, ctx,
   time = clip(time, 60);
   const text = goal ? `Bob's plan: ${goal}` : "Bob's plan for this job";
   brain.log('plan', `showing ${lines.length} steps${fromSystem ? ' (put together by the system: Bob started without one)' : ''}${steps.some((x) => x?.tool) ? `, tools: ${[...new Set(steps.slice(0, MAX_STEPS).map((x) => String(x?.tool || '')).filter(Boolean))].join(', ').slice(0, 300)}` : ''}`); // item 248: no chat words in the logbook
+  // Autonomy on ("Work without asking"): no card to wait on. The plan is printed in the chat and the job goes ahead
+  // (the owner, 16 Nov). With Autonomy off, the card waits for Go ahead.
+  if (!asking) {
+    const printed = `\n\n**${text}${time ? ` (about ${time})` : ''}:**\n${lines.map((l) => `${l.n}. ${l.text}`).join('\n')}\n\n`;
+    try { ctx.emit?.({ type: 'token', text: printed }); } catch {}
+    ctx.planShown = true;
+    brain.log('plan', 'printed in the chat; Autonomy is on, so no card to wait on');
+    if (fromSystem) return null;
+    return `Autonomy is on, so your plan is printed in the chat and there is no card to wait on. Do the steps in order now, one tool call each.`;
+  }
   const answer = await brain.approve({ text, planCard: { goal, time, steps: lines, fromSystem }, ...(items.length ? { together: items } : {}) }, ctx.emit, ctx.signal, null, { hand: true });
   const note = clip(answer?.note, 500);
   if (note) {
     brain.log('plan', `${who(brain)} asked for a change (${note.length} characters)`); // item 248
     ctx.planNudged = true;
+    ctx.planChange = note;
     return `${who(brain)} wants a change before you start: "${note}". Nothing has been done. Make a new plan with that change and call show_plan again (or ask one short question if the change isn't clear).`;
   }
   if (!answer?.allow) {
@@ -100,6 +111,8 @@ export function showPlanTool(brain) {
     },
     async run({ goal, time, steps }, ctx) {
       if (!planOn(brain.cfg)) return 'Plans are off, so just do the job.';
+      // Max effort on one brain (solo-effort.js): Bob's loop checks the plan first, then puts it on this card itself.
+      if (ctx?.job?.solo && ctx.job.soloPhase === 'plan') return 'Not now: just write the plan as a numbered list. It goes on the plan card once you have checked it.';
       const list = (Array.isArray(steps) ? steps : []).map((s) => (typeof s === 'string' ? { say: s } : s)).filter((s) => s && (s.say || s.tool));
       return showPlan(brain, { goal, time, steps: list }, ctx);
     },
