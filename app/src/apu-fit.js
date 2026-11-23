@@ -39,10 +39,15 @@ export function computeBytes(ubatch = 512) {
 }
 
 // What a brain needs: { card } wholly on the graphics, { cpu } on the processor alone (file mapped).
-export function apuNeed({ fileBytes = 0, kvBytes = 0, ubatch = 512 } = {}) {
+// Nov 22 (Legion Go test: gemma4-e2b was counted at ~3 GB and really took ~4.8 GB): only a brain with experts leaves
+// part of its file on the drive (most experts sit idle for each word); a dense brain reads every weight for every
+// word, so all of it stays in RAM. extraBytes: the picture reader (mmproj), loaded whole beside the brain.
+export function apuNeed({ fileBytes = 0, kvBytes = 0, ubatch = 512, extraBytes = 0, experts = 0 } = {}) {
   if (!(fileBytes > 0)) return null;
   const work = computeBytes(ubatch);
-  return { file: fileBytes, kv: kvBytes, work, card: fileBytes + kvBytes + work + APU_DRIVER_BYTES, cpu: Math.round(fileBytes * APU_MMAP_SHARE) + kvBytes + work };
+  const extra = Math.max(0, Number(extraBytes) || 0);
+  const mapped = experts > 1 ? Math.round(fileBytes * APU_MMAP_SHARE) : fileBytes;
+  return { file: fileBytes, kv: kvBytes, work, card: fileBytes + extra + kvBytes + work + APU_DRIVER_BYTES, cpu: mapped + extra + kvBytes + work };
 }
 
 // Where the brain goes. freeBytes: free RAM now (after the last brain was let go). carveBytes: the set-aside for the

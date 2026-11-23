@@ -45,9 +45,12 @@ check(apuHoldbackGB({}) === 2 && apuKeepBytes({ apuHoldbackGB: 0 }) === 1 * GB &
 const brainWith = (need, extra = {}) => ({ cfg: { sharedGraphics: true, reservedGraphicsGB: 0.5, ...extra }, gate: { brainBytes: () => 99 * GB }, engine: { loaded: async () => [], apuNeed: (m, c) => need(c) } });
 const kvAt = (c) => (2.4 * GB * c) / 32768;
 let r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(c) })), 'qwen3-4b', 32768, { freeMem: 6.6 * GB });
-check(r.ok && r.ctx === 32768 && !r.shortened, 'the Go, 6.6 GB free, 2 GB kept: Qwen3 4B keeps its 32K chat memory (it fits split or on the processor)', JSON.stringify(r));
+check(r.ok && r.ctx === 16384 && r.shortened, 'the Go, 6.6 GB free, 2 GB kept: Qwen3 4B (dense, its whole file in RAM) is shortened to 16K so Windows keeps its share', JSON.stringify(r));
+r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(c), experts: 128 })), 'moe', 32768, { freeMem: 6.6 * GB });
+check(r.ok && r.ctx === 32768 && !r.shortened, 'a brain with experts leaves half its file on the drive: it keeps 32K at the same free memory', JSON.stringify(r));
+check(apuNeed({ fileBytes: 2.5 * GB, extraBytes: 0.5 * GB }).cpu === apuNeed({ fileBytes: 2.5 * GB }).cpu + 0.5 * GB, 'the picture reader (mmproj) is counted');
 r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(c) })), 'qwen3-4b', 32768, { freeMem: 4.5 * GB });
-check(r.ok && r.shortened && r.ctx < 32768, 'tighter: the chat memory is shortened', JSON.stringify(r));
+check(!r.ok && r.needGB > r.roomGB, 'tighter (the friend\'s Go, 4.5 GB free): even 8K leaves Windows less than its share (fitCtx then tries 8K)', JSON.stringify(r));
 r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 20 * GB, kvBytes: kvAt(c) })), 'big', 32768, { freeMem: 6.6 * GB });
 check(!r.ok && typeof r.line === 'string', 'a brain that fits no way is refused with the plain line', JSON.stringify(r));
 
