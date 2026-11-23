@@ -281,6 +281,7 @@ const put = (rel, body = 'x', root = work) => { const f = path.join(root, rel); 
   check('…and ends with the job (a new job asks again)', events.filter((e) => e.type === 'approval').length === before + 1);
 
   // Run: the card shows the exact command; "allow the rest" only covers the same program in the same folder.
+  cfg.webSearch = true; // Nov 23 2026: commands follow the Web switch; this part is about cards, not the internet (run-command-offline-test.js is)
   onCard = () => 'all';
   const rc = ctx();
   const out1 = await fake.runTool('run_command', { cmd: node, args: ['-e', 'console.log("hi from run")'], cwd: work }, rc);
