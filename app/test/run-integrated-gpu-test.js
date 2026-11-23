@@ -149,7 +149,7 @@ check('borrow first: my own brain not fitting asks a paired Bob first; with none
 
 // ---- 1.5.181: "Memory kept for Windows" is a setting (two-Bob trial: the Legion Go on Auto, 6.6 of 15.2 GB free) ----
 const autoGo = (size, extra = {}) => ({ cfg: { sharedGraphics: true, reservedGraphicsGB: 0.5, ...extra }, gate: { brainBytes: (m, { ctx }) => size * GB + Math.min(ctx || 32768, 131072) * 60 * 1024 }, engine: { loaded: async () => [] } });
-check('holdback: 2 GB to start with (Nov 12, 4 before), the owner\'s 0 to 8 GB when set, anything else falls back to 2', apuHoldbackGB({}) === 2 && apuHoldbackGB({ apuHoldbackGB: 0 }) === 0 && apuHoldbackGB({ apuHoldbackGB: 2.5 }) === 2.5 && apuHoldbackGB({ apuHoldbackGB: 12 }) === 2 && apuHoldbackGB({ apuHoldbackGB: 'x' }) === 2);
+check('holdback: 0.5 GB to start with (Nov 23; 2 from Nov 12, 4 before), the owner\'s 0 to 8 GB when set, anything else falls back to 0.5', apuHoldbackGB({}) === 0.5 && apuHoldbackGB({ apuHoldbackGB: 0 }) === 0 && apuHoldbackGB({ apuHoldbackGB: 2.5 }) === 2.5 && apuHoldbackGB({ apuHoldbackGB: 12 }) === 0.5 && apuHoldbackGB({ apuHoldbackGB: 'x' }) === 0.5);
 r = await apuRoom(autoGo(2.5, { apuHoldbackGB: 4 }), 'qwen3-4b', 32768, { freeMem: 6.6 * GB });
 check('Auto, 6.6 GB free, 4 GB kept: a ~3 GB brain is refused (what the trial saw)', !r.ok, JSON.stringify(r));
 r = await apuRoom(autoGo(2.5, { apuHoldbackGB: 0 }), 'qwen3-4b', 32768, { freeMem: 6.6 * GB });

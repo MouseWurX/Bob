@@ -16,9 +16,11 @@
 // Nothing here adds words to what the brain reads.
 const GB = 1024 ** 3, MB = 1024 ** 2;
 
-// "Memory kept for Windows" (Settings, Brains, 0 to 8 GB). 2 GB to start with since this fix (4 before, when the need
-// was guessed low and the extra had to cover it); at least 1 GB is always left free whatever the setting.
-export const APU_HOLDBACK_DEFAULT_GB = 2;
+// "Memory kept for Windows" (Settings, Brains, 0 to 8 GB). 0.5 GB to start with since Nov 23 (the owner's pick after a
+// Legion Go test: with 4.4 GB free and Edge busy, 2 GB kept left Windows no better off than 0.5 GB, because Windows moves
+// idle memory to disk, and it pushed the brain onto the processor alone; 2 GB from Nov 12, 4 before that). At least
+// 1 GB is still left free when placing a brain on the graphics, whatever the setting.
+export const APU_HOLDBACK_DEFAULT_GB = 0.5;
 export const APU_KEEP_MIN_GB = 1;
 export const apuHoldbackGB = (cfg) => { const v = Number(cfg?.apuHoldbackGB); return Number.isFinite(v) && v >= 0 && v <= 8 ? v : APU_HOLDBACK_DEFAULT_GB; };
 export const apuKeepBytes = (cfg) => Math.max(apuHoldbackGB(cfg), APU_KEEP_MIN_GB) * GB;

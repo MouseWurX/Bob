@@ -40,7 +40,7 @@ export function sideBrainBytes(brain) {
 export const APU_MIN_CTX = 8192;
 // 1.5.181 (two-Bob trial, Legion Go on UMA Auto: 6.6 of 15.2 GB free, and even a 3 GB brain was refused): how much
 // free memory a load leaves for Windows is the owner's to set, Settings, Brains, "Memory kept for Windows" (0 to 8 GB).
-// Nov 12 (apu-fit.js): 2 GB to start with, now that a brain's need counts its working buffers and the driver too, and
+// Nov 12 (apu-fit.js): 2 GB to start with (0.5 GB since Nov 23), now that a brain's need counts its working buffers and the driver too, and
 // at least 1 GB is always kept. (The 4 GB in platform.js, for how much the graphics may borrow, is a different sum.)
 export { APU_HOLDBACK_DEFAULT_GB, apuHoldbackGB } from './apu-fit.js';
 export const APU_CARVE_MARGIN_GB = 0.5; // 1.5.133: kept free inside the set-aside for the picture reader and the driver
