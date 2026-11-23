@@ -105,6 +105,18 @@ try:
     check('a card with no room left shrinks the cache by the working memory', ms is not None and int(ms.group(3)) < int(ms.group(2))
           and int(ms.group(3)) >= 24 and int(ms.group(2)) - int(ms.group(3)) >= int(ms.group(1)) - 1, serr[-600:])
     check('the shrunk cache gives the words of a plain run', sh == plain, f'{sh} vs {plain}')
+    # Brain Engine 0085: borrowed reading is checked too (its own step's working memory), and a bigger fill step leaves room for it
+    bs, berr = serve('fill-borrow-shrink', {'LLAMA_MOE_CACHE_FILL': '1', 'LLAMA_MOE_CACHE_FILL_SPARE_MIB': '0', 'LLAMA_MOE_CACHE_FILL_TEST_FREE_MIB': '0',
+                                            'LLAMA_MOE_CACHE_BORROW': '1'}, ('-ub', '512'))
+    mb = re.search(r'the working memory \((\d+) MiB\) doesn.t fit beside the cache, so the cache shrinks from (\d+) to (\d+) MiB', berr)
+    check('with borrowed reading too: the cache shrinks, borrowing still runs, the same words as plain',
+          mb is not None and int(mb.group(3)) < int(mb.group(2)) and 'borrowed reading NOT USED' not in berr and bs == plain, berr[-600:])
+    w1 = re.search(r'the working memory \((\d+) MiB\)', serr)
+    st, sterr = serve('fill-step', {'LLAMA_MOE_CACHE_FILL': '1', 'LLAMA_MOE_CACHE_FILL_SPARE_MIB': '0', 'LLAMA_MOE_CACHE_FILL_TEST_FREE_MIB': '0',
+                                    'LLAMA_MOE_CACHE_FILL_STEP': '2048'}, ('-ub', '512'))
+    w2 = re.search(r'the working memory \((\d+) MiB\)', sterr)
+    check('LLAMA_MOE_CACHE_FILL_STEP=2048 at -ub 512 measures the bigger step, the same words', w1 is not None and w2 is not None and
+          int(w2.group(1)) > int(w1.group(1)) and st == plain, f'{w1 and w1.group(1)} vs {w2 and w2.group(1)}')
     kept, kerr = serve('fill-kept', {'LLAMA_MOE_CACHE_FILL': '1', 'LLAMA_MOE_CACHE_FILL_SPARE_MIB': '100000000'})
     check('a spare bigger than the card keeps the size asked for, same words', 'MoE cache fill: no more card memory free' in kerr and kept == plain, kerr[-400:])
 finally:
