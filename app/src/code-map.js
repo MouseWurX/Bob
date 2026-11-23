@@ -105,9 +105,9 @@ export function codeMap(root, { skip = () => false, maxChars = MAP_CHARS } = {})
   const cut = (x, k) => (x.length > k ? x.slice(0, k - 1) + '…' : x);
   // Shorter and shorter until it fits: full lines, then shorter notes, then names only, then one line per folder. A
   // patch keeps the files it changes while any names are shown: that's what a llama.cpp move needs to know.
-  const tiers = [[110, 8], [60, 3], [40, 2], [55, 0], [0, 4], [0, 0]];
-  for (const [w, k] of tiers) {
-    const body = items.map((x) => `${x.rel} (${x.n})${w && x.what ? `: ${cut(x.what, w)}` : ''}${(w || k) && x.touch ? x.touch : ''}${k && x.names.length ? ` [${x.names.slice(0, k).join(', ')}${x.names.length > k ? ', …' : ''}]` : ''}`).join('\n');
+  const tiers = [[110, 8], [60, 3], [40, 2], [55, 0], [0, 4], [0, 0, true], [0, 0]]; // Nov 23: [0, 0, true]: only the patches' changed files (the engine folder outgrew the rest)
+  for (const [w, k, touchOnly] of tiers) {
+    const body = items.map((x) => `${x.rel} (${x.n})${w && x.what ? `: ${cut(x.what, w)}` : ''}${(w || k || touchOnly) && x.touch ? x.touch : ''}${k && x.names.length ? ` [${x.names.slice(0, k).join(', ')}${x.names.length > k ? ', …' : ''}]` : ''}`).join('\n');
     if (head.length + body.length <= maxChars) return head + body;
   }
   const byDir = new Map();
