@@ -78,17 +78,23 @@ function cardSets(p) {
 }
 async function cardOptions(p) {
   const prices = {};
-  try { const d = await gql('{ gpuTypes { id securePrice memoryInGb } }'); for (const g of d?.gpuTypes || []) prices[g.id] = { price: Number(g.securePrice) || 0, mem: Number(g.memoryInGb) || 0 }; } catch (e) { return { error: String(e.message || e).slice(0, 200), options: [] }; }
+  // 23 Nov (the owner's rule: the RunPod key is REST pods read/write only, no GraphQL): when GraphQL is refused or lists
+  // nothing, the cards are priced from TABLE_PRICES (secure prices seen on our own rentals, 22-23 Nov) and said so. A card
+  // not in the table is left out. The dollar cap still holds: the pod deletes itself at hours_max and the PC at dollars_max.
+  let table = '';
+  try { const d = await gql('{ gpuTypes { id securePrice memoryInGb } }'); for (const g of d?.gpuTypes || []) prices[g.id] = { price: Number(g.securePrice) || 0, mem: Number(g.memoryInGb) || 0 }; } catch (e) { table = String(e.message || e).slice(0, 120); }
+  if (!Object.keys(prices).length) { Object.assign(prices, TABLE_PRICES); table = table || 'RunPod listed no card types (this key cannot read the card list)'; }
   const hours = Number(p.expected_hours) || Number(p.hours_max) || 1, cap = Number(p.dollars_max) || Infinity;
   const options = [];
   for (const s of cardSets(p)) for (const g of s.gpus) {
     const pr = prices[g], perHour = pr ? +(pr.price * s.count).toFixed(2) : null, expected = perHour != null ? +(perHour * hours).toFixed(2) : null;
     const vram = pr ? pr.mem * s.count : null, need = Number(s.vram_gb ?? p.vram_gb) || 0;
-    const why = !pr ? 'RunPod lists no such card' : !perHour ? 'RunPod lists no secure price for it' : expected > cap ? `expected $${expected} (${hours} h) is over the $${cap} cap` : need && vram < need ? `${vram} GB of VRAM, the brain needs ${need} GB` : '';
+    const why = !pr ? (table ? 'not in the Forge\'s price table (RunPod\'s live card list could not be read with this key)' : 'RunPod lists no such card') : !perHour ? 'RunPod lists no secure price for it' : expected > cap ? `expected $${expected} (${hours} h) is over the $${cap} cap` : need && vram < need ? `${vram} GB of VRAM, the brain needs ${need} GB` : '';
     options.push({ gpu: g, count: s.count, perHour, expected, vram, ok: !why, why });
   }
-  return { options, hours };
+  return { options, hours, table };
 }
+export const TABLE_PRICES = { 'NVIDIA H200 NVL': { price: 3.79, mem: 143 }, 'NVIDIA H200': { price: 5.29, mem: 141 }, 'NVIDIA RTX PRO 6000 Blackwell Server Edition': { price: 2.69, mem: 96 }, 'NVIDIA L40S': { price: 1.09, mem: 48 } };
 const optionLine = (o) => `${o.count} x ${o.gpu}${o.vram ? ` (${o.vram} GB)` : ''}${o.perHour != null ? `, $${o.perHour}/h, about $${o.expected} expected` : ''}${o.ok ? '' : `: LEFT OUT, ${o.why}`}`;
 // Where a wanted card is in stock, with storage for a network volume. Returns [{id, name, gpu, stock}] best first.
 async function placesFor(gpus) {
@@ -450,6 +456,7 @@ if (!podId || args.preflight) {
   if ((Array.isArray(plan.card_sets) && plan.card_sets.length) || args['rent-plan']) {
     const offer = await cardOptions(plan);
     if (offer.error) bad.push(`RunPod's card prices did not come back (${offer.error}); the card sets cannot be checked`);
+    if (offer.table) log(`pre-flight: card prices are from the Forge's table, not live (${offer.table})`);
     for (const o of offer.options) log(`pre-flight: card set ${optionLine(o)}`);
     if (!offer.error && !offer.options.some((o) => o.ok)) bad.push(`no card set fits: every one is left out (caps $${plan.dollars_max} / ${offer.hours} h expected)`);
     // --rent-plan: read-only, what each card set would post (the v2 body's card part), then stop

@@ -15,6 +15,7 @@ const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${o
 const lab = fileURLToPath(new URL('../model-lab', import.meta.url));
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-cardsets-'));
 const posts = [];
+let gqlDenied = false;
 const PRICES = [
   { id: 'NVIDIA H200 NVL', securePrice: 3.79, memoryInGb: 143 },
   { id: 'NVIDIA H200', securePrice: 5.29, memoryInGb: 141 },
@@ -23,7 +24,7 @@ const PRICES = [
 ];
 const srv = http.createServer((q, r) => { let body = ''; q.on('data', (d) => (body += d)); q.on('end', () => {
   r.setHeader('content-type', 'application/json');
-  if (q.url.startsWith('/graphql')) { r.end(JSON.stringify({ data: { gpuTypes: PRICES } })); return; }
+  if (q.url.startsWith('/graphql')) { r.end(JSON.stringify(gqlDenied ? { errors: [{ message: 'not allowed for this key' }] } : { data: { gpuTypes: PRICES } })); return; }
   if (q.method === 'GET' && q.url === '/v2/pods') { r.end(JSON.stringify({ pods: [] })); return; }
   if (q.method === 'POST' && q.url === '/v2/pods') { try { posts.push(JSON.parse(body)); } catch { posts.push({ bad: body }); } r.writeHead(400); r.end(JSON.stringify({ detail: 'There are no longer any instances available with the requested specifications.' })); return; }
   r.writeHead(404); r.end('{}');
@@ -66,6 +67,14 @@ check('every set over the cap: pre-flight fails and nothing is asked for', none.
 posts.length = 0;
 const rp = await run({ run: 'rentplan', ...sets }, ['--rent-plan']);
 check('--rent-plan shows what each set would post and posts nothing', rp.code === 0 && /would post: \{"gpu":\{"id":"NVIDIA H200 NVL","count":2\}/.test(rp.o) && posts.length === 0, rp.o.slice(-400));
+// 23 Nov (the owner's rule: the RunPod key is REST pods only, no GraphQL): a key that can't read the card list prices from
+// the Forge's table and says so; a card not in the table is left out, the cap still holds
+gqlDenied = true;
+const tb = await run({ run: 'table', ...sets }, ['--preflight']);
+check('GraphQL refused: the sets are priced from the table, said plainly, H100 (not in the table) left out', tb.code === 0 && /card prices are from the Forge's table, not live/.test(tb.o) && /card set 2 x NVIDIA H200 NVL \(286 GB\), \$7\.58\/h/.test(tb.o) && /NVIDIA H100 80GB HBM3: LEFT OUT, not in the Forge's price table/.test(tb.o), tb.o.slice(-600));
+const tb5 = await run({ run: 'table5', ...sets, dollars_max: 5 }, ['--preflight']);
+check('GraphQL refused: the dollar cap still leaves every set out', tb5.code === 1 && /PRE-FLIGHT FAIL: no card set fits/.test(tb5.o), tb5.o.slice(-300));
+gqlDenied = false;
 
 // 22 Nov 2026 (DeepSeek try 1: 395 GB at 40 MB/s ate the 3 h cap, $24, no job ran): the retry plan asks for H200 sets only
 // (the owner: "dont run it on a slow card"), waits for stock, and the pod stops a download that projects past the limit.
