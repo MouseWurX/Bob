@@ -4,6 +4,7 @@ import { brainEngineName } from './engine-name.js';
 import { progressHtml, animateWorkers } from './progress.js';
 import { createStylePage } from './style-page.js';
 import { createSampler, sampleButton, sampleHint } from './voice-samples.js';
+import { takesJob } from './brain-choices.js';
 import { allSlots, HELPERS, equipped, entryOf, packFor, starterTicks, starterPlan, enginesFor, readyPlan, slotValue, slotTakes, isActive, tipHtml, readyList, readyDefaults, readyToggle, readyOrder, SPLITS, splitPicks } from './equip.js';
 import { cleanFilters } from './cat-sort.js';
 import { cleanFind } from './cat-find.js';
@@ -206,7 +207,11 @@ export function createCellar({ popOut = null } = {}) {
   // Nov 16: in Bob's own window the page asks the window for the picker (window.bobApp, electron/preload.cjs), not Bob
   // over the web: with every connection to Bob busy, the web request used to wait and the picker never opened.
   async function viaWindow(kind) {
-    const file = String((await window.bobApp.pick(kind)) || '');
+    // Nov 18 2026: an empty answer in under half a second is no person pressing Cancel: the window turned the ask
+    // down (or has no picker). Ask Bob's own picker instead, so the file window still opens.
+    const t0 = Date.now();
+    let file = String((await window.bobApp.pick(kind).catch(() => '')) || '');
+    if (!file && Date.now() - t0 < 500) { const r = await api('/api/own-models/pick', { kind }); if (r.error) return r; file = String(r.file || ''); if (!file || kind !== 'gguf') return { file }; return r; }
     if (!file || kind !== 'gguf') return { file };
     return { file, ...(await api('/api/own-models/inspect', { file })) };
   }
@@ -785,6 +790,7 @@ export function createCellar({ popOut = null } = {}) {
   let eqSelected = 'bob', eqView = (() => { try { return localStorage.getItem('bob-brains-view') === 'list' ? 'list' : 'brains'; } catch { return 'brains'; } })(); // 1.5.210 a remembered paper doll view lands on the Brains page
   function eqCtx() {
     return { roles, models: shownModels(), brains: settings?.sessionBrains || {}, oneBrain: settings?.oneBrain === true, embed: roles?.current?.embed || '', selected: eqSelected, vramGB: hw?.vramGB || hw?.gpu?.vramGB || null, unified: Boolean(hw?.gpu?.unified), integrated: Boolean(hw?.gpu?.integrated), arm: hw?.board === 'arm', ramGB: hw?.ramGB || null, freeGB: hw?.freeGB ?? null, platform: settings?.platform, showUnsuited,
+      spec: hw?.spec || '', gpuName: hw?.gpu?.name || '', cpu: hw?.cpu || '', naughtyOn: naughtyOn(), ownForm, // Nov 18 2026: one rule for every brain menu (brain-choices.js)
       famOpen, packs: data?.packs || [], packId: starterPack, picks: starterPicks, engines: data?.engines || [], starterOpen,
       houseStyle: settings?.houseStyle || {}, active: settings?.activeModels || {}, saveDir: settings?.saveDir || {},
       rent }; // 1.5.127 the Rented brain slot
@@ -1080,7 +1086,7 @@ export function createCellar({ popOut = null } = {}) {
       if ('resetbob' in b.dataset) { const r = await api('/api/settings', { personality: DEFAULTS }); settings.personality = r.personality; draw(); return; }
       // 1.5.56 Brain catalogue: Get more (from a kit or a menu) opens it at that job; Active switches; Equip from a row.
       if ('recheck' in b.dataset) { b.disabled = true; const y = dlg.scrollTop; await load(); dlg.scrollTop = y; return; } // 1.5.56
-      if (b.dataset.catjob) { catFocus = b.dataset.catjob; setTab('catalogue'); draw(); dlg.querySelector('#catjob-' + CSS.escape(catFocus))?.scrollIntoView({ block: 'start' }); return; }
+      if (b.dataset.catjob) { catFocus = b.dataset.catjob; setTab('catalogue'); draw(); (dlg.querySelector('#catjob-' + CSS.escape(catFocus)) || dlg.querySelector('#catjob-brains'))?.scrollIntoView({ block: 'start' }); return; } // Nov 18 2026: a brain job opens the one Brains list, filtered to it
       if (b.dataset.famall) { const open = b.dataset.famall === 'open'; for (const d of dlg.querySelectorAll('details.cat-fam')) { d.open = open; if (open) famOpen[d.dataset.fam] = true; else delete famOpen[d.dataset.fam]; } saveFam(); return; } // 1.5.101
       if (b.dataset.catjump) { catFocus = b.dataset.catjump; dlg.querySelector('#catjob-' + CSS.escape(catFocus))?.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
       if (b.dataset.active) {
@@ -1103,6 +1109,23 @@ export function createCellar({ popOut = null } = {}) {
       // 1.5.205 setups on the Brains page: show the list of changes first; Apply saves them one job at a time.
       if ('setup' in b.dataset) { setupAsk = b.dataset.setup; draw(); dlg.querySelector('.setup-ask')?.scrollIntoView({ block: 'nearest' }); return; }
       if ('setupbobnet' in b.dataset) { setupAsk = ''; sampler.stop(); setTab('settings'); jumpTo = 'adv-bobnet'; draw(); return; }
+      // Nov 18 2026 + Add a brain: the brain picked takes the jobs ticked (One brain goes off: there are two brains now).
+      if ('addgo' in b.dataset) {
+        const box = b.closest('.add-brain-form'); const why = box?.querySelector('.add-why');
+        const value = box?.querySelector('[data-addbrain]')?.value || '';
+        const ids = [...(box?.querySelectorAll('[data-addjob]:checked') || [])].map((x) => x.dataset.addjob);
+        if (!value || !ids.length) { if (why) why.textContent = !value ? 'Pick a brain first.' : 'Tick at least one job.'; return; }
+        const opt = (roles?.options?.llm || []).find((o) => o.value === value);
+        const can = ids.filter((id) => takesJob(id, { entry: entryOf(data?.models || [], value), name: value, caps: opt?.caps }).ok);
+        const cant = ids.filter((id) => !can.includes(id)).map((id) => allSlots().find((s) => s.id === id)?.name || id);
+        if (!can.length) { if (why) why.textContent = `That brain can't do ${cant.join(', ')}.`; return; }
+        b.disabled = true;
+        if (settings.oneBrain) settings.oneBrain = (await api('/api/settings', { oneBrain: false })).oneBrain;
+        for (const id of can) { const sl = allSlots().find((s) => s.id === id); if (sl) await equipSlot(sl, value).catch(() => {}); }
+        await eqReload(); draw();
+        if (cant.length) flash(dlg.querySelector('.add-brain') || dlg, `Left out: ${cant.join(', ')} (that brain can't do ${cant.length === 1 ? 'it' : 'them'}).`);
+        return;
+      }
       if ('onebrainoff' in b.dataset) { b.disabled = true; settings.oneBrain = (await api('/api/settings', { oneBrain: false })).oneBrain; draw(); return; }
       if (b.dataset.setupapply) {
         const id = b.dataset.setupapply;
@@ -1356,6 +1379,7 @@ export function createCellar({ popOut = null } = {}) {
     ownForm = null;
     await ownRefresh();
     const row = dlg.querySelector('#own-' + CSS.escape(r.added?.id || ''));
+    if (!row) { const at = dlg.querySelector('.add-brain'); if (at) flash(at, `Added. ${esc(r.added?.name || 'Your brain')} is in the brain menus now.`); }
     if (row) { row.scrollIntoView({ block: 'center' }); flash(row, `Added. ${esc(r.added.name)} is on your list now: switch it Active and equip it like any other brain.`); }
   });
   const onChange = async (e) => {
@@ -1367,7 +1391,14 @@ export function createCellar({ popOut = null } = {}) {
       if (el.dataset.placemoe || el.dataset.placemoenum) { const max = Number(el.max) || 0; const n = Math.max(0, Math.min(max, Math.round(Number(el.value) || 0))); await placeSave(el.dataset.placemoe || el.dataset.placemoenum, { cpuMoe: n }); draw(); return; }
       // 1.5.205 the Brains page: give a brain another job, or pick a brain for an empty job.
       if (el.dataset.find) { const y = dlg.scrollTop; find = { ...find, q: dlg.querySelector('[data-findq]')?.value ?? find.q, [el.dataset.find]: el.value }; findKeep(); draw(); dlg.scrollTop = y; dlg.querySelector(`[data-find="${el.dataset.find}"]`)?.focus(); return; } // 1.5.209 Search is what asks the site; changing a menu alone does not
+      if ('catbrainjob' in el.dataset) { const y = dlg.scrollTop; catFocus = el.value; draw(); dlg.scrollTop = y; dlg.querySelector('[data-catbrainjob]')?.focus(); return; } // Nov 18 2026
       if (el.dataset.catfilter) { const y = dlg.scrollTop; setCatFilters({ ...catFilters, [el.dataset.catfilter]: el.value }); draw(); dlg.scrollTop = y; dlg.querySelector(`[data-catfilter="${el.dataset.catfilter}"]`)?.focus(); return; } // 1.5.208
+      // Nov 18 2026: a row's brain picker moves every job on that row to the brain picked.
+      if (el.dataset.rowbrain !== undefined && el.value && el.value !== el.dataset.rowbrain) {
+        const y = dlg.scrollTop; el.disabled = true;
+        for (const id of (el.dataset.rowjobs || '').split(',').filter(Boolean)) { const sl = allSlots().find((s) => s.id === id); if (sl) await equipSlot(sl, el.value).catch(() => {}); }
+        await eqReload(); draw(); dlg.scrollTop = y; return;
+      }
       if (el.dataset.brainjob && el.value) { const y = dlg.scrollTop; await equip(el.value, el.dataset.brainjob, { offer: false }); dlg.scrollTop = y; return; }
       if (el.dataset.jobbrain && el.value) { const y = dlg.scrollTop; await equip(el.dataset.jobbrain, el.value, { offer: false }); dlg.scrollTop = y; return; }
       if (el.dataset.proxy) { const side = $(el.dataset.proxy); if (side && (side.getAttribute('aria-pressed') === 'true') !== el.checked) side.click(); setTimeout(() => { el.checked = side?.getAttribute('aria-pressed') === 'true'; }, 300); return; }

@@ -74,7 +74,8 @@ const slot = (id) => allSlots().find((s) => s.id === id);
   const ctx = { roles, models, brains: {}, embed: '', selected: 'eyes', ...pc(16, 32) };
   const eyes = kitFor(slot('eyes'), ctx).map((k) => k.value);
   check('Eyes lists models that see, and not the text-only coder', eyes.includes('gemma4:26b') && eyes.includes('llava:13b') && !eyes.includes('qwen3-coder:30b') && !eyes.includes('qwen3-4b'));
-  check('Quick brain doesn\'t list the 26B', !kitFor(slot('small'), ctx).some((k) => k.value === 'gemma4:26b' || k.value === 'gemma4-26b'));
+  // Nov 18 2026 (the owner: "i want to select any brain i want"): a brain you have may take any thinking job; downloads stay the ones made for it.
+  check('Quick brain offers no 26B download, but the 26B you have can be picked', !kitFor(slot('small'), ctx).some((k) => !k.installed && k.value === 'gemma4-26b') && kitFor(slot('small'), ctx).some((k) => k.installed && k.value === 'gemma4:26b'));
   check('the slot\'s pick carries "★ Recommended", with why in its tip', kitFit({ entry: byId('qwen3.6-35b-a3b') }, slot('bob'), ctx).rec && /until one of his own brains beats it/.test(kitFit({ entry: byId('qwen3.6-35b-a3b') }, slot('bob'), ctx).recWhy) && /★ Recommended/.test(kitOf({ ...ctx, models: ctx.models.filter((m) => !m.madeByBob).map((m) => ({ ...m, bobPick: undefined })), selected: 'bob' })) && /Covers \d+ jobs/.test(kitOf({ ...ctx, models: ctx.models.filter((m) => !m.madeByBob).map((m) => ({ ...m, bobPick: undefined })), selected: 'bob' })));
   check('each kit row is one line; its size and licence sit in an "i" tip', /class="tip-i"[^>]*><span class="tip-src" hidden>[^<]*licence Apache 2\.0/.test(kitOf({ ...ctx, selected: 'tinker' })));
   check('a model not in Bob\'s list says Bob can\'t judge it', /can&#39;t say how well it runs/.test(kitOf(ctx)));

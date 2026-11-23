@@ -6,6 +6,8 @@ import { SLOTS, allSlots, equipped, entryOf, slotTakes, isActive, tipHtml, kitHt
 import { placeFor, sizeLine, placeWord, hasExperts } from './place.js';
 import { esc, gb } from './util.js';
 import { memTypeTrade } from './mem-types.js';
+import { brainChoices, choiceOptions, takesJob } from './brain-choices.js';
+import { OWN_BUTTONS, ownFormHtml } from './catalogue.js';
 
 // The jobs a brain can hold (every thinking slot; the rented brain is its own thing).
 export const brainJobs = () => allSlots().filter((s) => s.kind === 'llm');
@@ -32,7 +34,7 @@ export const emptyJobs = (ctx) => brainJobs().filter((s) => !equipped(s, ctx));
 export function spareBrains(ctx) {
   const used = new Set(brainsInUse(ctx).map((b) => b.value));
   return (ctx.roles?.options?.llm || []).filter((o) => !used.has(o.value)).map((o) => ({ value: o.value, name: o.label || o.value, entry: entryOf(ctx.models || [], o.value), caps: o.caps }))
-    .filter((b) => isActive({ entry: b.entry, value: b.value, installed: true }, ctx.active));
+    .filter((b) => isActive({ entry: b.entry, value: b.value, installed: true }, ctx.active) && (ctx.naughtyOn || b.entry?.naughty !== true));
 }
 // The jobs this brain could take that it doesn't hold yet.
 export const jobsFor = (value, ctx) => brainJobs().filter((s) => equipped(s, ctx) !== value && slotTakes(s, value, ctx));
@@ -321,26 +323,86 @@ export function listRowHtml(value, ctx) {
   return b ? `<div class="brain-place list-place" id="brain-${esc(b.value)}-${esc(ctx.rowId || '')}">${placeBarHtml(b.entry, ctx)}${actHtml(b, ctx)}</div>` : '';
 }
 
+// ---- Nov 18 2026 (the owner): "we dont need more than one picker for a single brain set up ... if you want a different
+// brain for other job types you can have it add a row that you assign a new brain to one or more jobs". The page is one
+// row per brain. The first row is the main brain, with its picker, and does every job no other row has. + Add a brain
+// makes a row: pick its brain, tick its jobs. Every menu uses one rule (brain-choices.js). ----
+
+// The brains a row can switch to: every brain you have that can take all of that row's jobs.
+export function rowChoices(jobs, ctx, current = '') {
+  const opts = ctx.roles?.options?.llm || [];
+  const ids = jobs.map((s) => s.id);
+  const list = brainChoices(ids[0] || 'bob', { options: opts, entryOf: (v) => entryOf(ctx.models || [], v), current, isActive: (k) => isActive(k, ctx.active), naughtyOn: ctx.naughtyOn === true });
+  return list.filter((c) => c.value === current || ids.every((id) => takesJob(id, { entry: c.entry, name: c.value, caps: opts.find((o) => o.value === c.value)?.caps }).ok))
+    .map((c) => ({ ...c, made: ids.every((id) => takesJob(id, { entry: c.entry, name: c.value, caps: opts.find((o) => o.value === c.value)?.caps }).made) }));
+}
+const rowPicker = (b, ctx, main) => {
+  const list = rowChoices(b.jobs, ctx, b.value);
+  return `<label class="row-pick"><span class="sr-only">${main ? 'Main brain' : `Brain for ${esc(b.jobs.map((s) => s.name).join(', '))}`}</span><select data-rowbrain="${esc(b.value)}" data-rowjobs="${esc(b.jobs.map((s) => s.id).join(','))}" aria-label="${esc(main ? 'Main brain' : `Brain for ${b.jobs.map((s) => s.name).join(', ')}`)}">${choiceOptions(list, b.value, esc)}</select></label>`;
+};
+// The main brain: the row with the Brain job. The others: every other brain with a job.
+export function brainRows(ctx) {
+  const used = brainsInUse(ctx);
+  const main = used.find((b) => b.jobs.some((s) => s.id === 'bob')) || null;
+  return { main, others: used.filter((b) => b !== main) };
+}
+function mainRowHtml(b, ctx) {
+  const chips = b.jobs.filter((s) => s.id !== 'bob').map((s) => chipHtml(s, b, ctx, false)).join('');
+  const trial = b.entry?.trial ? '<span class="tag">Not tried yet</span>' : '';
+  return `<li class="brain-row main-row" id="brain-${esc(b.value)}"><div class="brain-name"><span class="row-label">🧠 Main brain</span>${rowPicker(b, ctx, true)} ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
+    <div class="brain-jobs"><span class="muted">${ctx.oneBrain ? 'Every job.' : 'Every job no other brain has.'}</span>${chips}</div>
+    <div class="brain-place">${placeBarHtml(b.entry, ctx)}${actHtml(b, ctx)}</div></li>`;
+}
+function otherRowHtml(b, ctx) {
+  const chips = b.jobs.map((s) => chipHtml(s, b, ctx, false)).join('');
+  const trial = b.entry?.trial ? '<span class="tag">Not tried yet</span>' : '';
+  return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name">${rowPicker(b, ctx, false)} ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
+    <div class="brain-jobs">${chips}${jobSelect(b.value, jobsFor(b.value, ctx).filter((s) => s.id !== 'bob'), `Give ${b.name} another job`)}</div>
+    <div class="brain-place">${placeBarHtml(b.entry, ctx)}${actHtml(b, ctx)}</div></li>`;
+}
+// The jobs a new row can take: every thinking job but the main brain's own.
+export const addableJobs = () => brainJobs().filter((s) => s.id !== 'bob');
+function addRowHtml(ctx, main) {
+  const list = brainChoices('deep', { options: ctx.roles?.options?.llm || [], entryOf: (v) => entryOf(ctx.models || [], v), isActive: (k) => isActive(k, ctx.active), naughtyOn: ctx.naughtyOn === true })
+    .filter((c) => c.value !== main?.value);
+  const ticks = addableJobs().map((s) => `<label class="add-job"><input type="checkbox" data-addjob="${esc(s.id)}"> ${s.icon} ${esc(s.name)}</label>`).join('');
+  const off = ctx.oneBrain ? '<p class="muted">Adding a brain turns One brain off.</p>' : '';
+  return `<details class="add-brain"${ctx.addOpen || ctx.ownForm ? ' open' : ''}><summary><span class="get">+ Add a brain</span> <span class="muted">for one or more jobs</span></summary>
+    ${list.length ? `<div class="add-brain-form"><label>Brain <select data-addbrain aria-label="Brain to add"><option value="">Pick a brain</option>${list.map((c) => `<option value="${esc(c.value)}">${esc(c.label)}</option>`).join('')}</select></label>
+      <fieldset><legend>Its jobs</legend><div class="add-jobs">${ticks}</div></fieldset>${off}
+      <div class="row"><button type="button" class="get" data-addgo>Add</button></div><p class="muted add-why" role="status"></p></div>`
+    : '<p class="muted">No other brain on this replicant matrix yet. Get one from the catalogue, or add a file below.</p>'}
+    <div class="add-file">${ownFormHtml(ctx) || OWN_BUTTONS.replace('class="get" data-ownadd', 'class="mini" data-ownadd')}</div></details>`;
+}
+// What this replicant matrix has, read from the machine itself: card (make and size), processor, memory, free drive.
+// Shown to the owner only; Calibrate and where-a-brain-sits use the same numbers. Never sent anywhere.
+export function specHtml(ctx) {
+  const bits = [ctx.spec || [ctx.gpuName && `${ctx.gpuName}${ctx.vramGB ? ` (${gb(ctx.vramGB)})` : ''}`, ctx.cpu, ctx.ramGB && `${gb(ctx.ramGB)} memory`].filter(Boolean).join(' · '), ctx.freeGB != null && `${gb(ctx.freeGB)} free on the drive`].filter(Boolean);
+  return bits.length ? `<p class="muted spec">${esc(bits.join(' · '))}</p>` : '';
+}
+
 export function brainsHtml(ctx) {
-  const used = brainsInUse(ctx), empty = emptyJobs(ctx), spare = spareBrains(ctx);
-  const one = ctx.setUp ? used.find((b) => b.value === ctx.setUp) : null;
+  const { main, others } = brainRows(ctx);
+  const one = ctx.setUp ? brainsInUse(ctx).find((b) => b.value === ctx.setUp) : null;
   if (one) return setUpHtml(one, ctx);
   const sel = senseSlots().find((s) => s.id === ctx.selected) || null;
   const word = placeWord('card', hwOf(ctx));
-  return `<div class="equip-top"><p class="muted">Each brain, the jobs it does, and where it sits on this replicant matrix. ${tipHtml(`One brain doing several jobs is faster: I only swap brains when a job needs a different one. "${word}" is quickest; a brain that spills into memory or the drive still runs, slower.`, 'How the Brains page works')} <button type="button" class="mini help-link" data-help="brains-page" aria-label="Help: the Brains page">? Help</button></p>
+  const shownOthers = ctx.oneBrain ? [] : others;
+  const kept = ctx.oneBrain && others.length ? `<p class="muted one-brain-note" role="status">🧠 <strong>One brain is on.</strong> ${others.length === 1 ? 'One other brain keeps its jobs' : `${others.length} other brains keep their jobs`} for when it's off. <button type="button" class="mini" data-onebrainoff>Turn One brain off</button></p>` : '';
+  const noMain = '<p class="muted">No main brain yet. Pick one below, or get one from the catalogue.</p>' + (() => {
+    const list = rowChoices([allSlots().find((s) => s.id === 'bob')], ctx, '');
+    return list.length ? `<p><select data-jobbrain="bob" aria-label="Main brain"><option value="">Pick a brain</option>${choiceOptions(list, '', esc)}</select></p>` : '';
+  })();
+  return `<div class="equip-top"><p class="muted">One brain does every job. Add a brain only for jobs you want done by another. ${tipHtml(`Fewer brains is faster: I only swap (about 20 seconds) when a job needs a different one. "${word}" is quickest; a brain that spills into memory or the drive still runs, slower.`, 'How the Brains page works')} <button type="button" class="mini help-link" data-help="brains-page" aria-label="Help: the Brains page">? Help</button></p>
       <span><button type="button" class="link" data-eqview="list">Plain list</button></span></div>
     ${starterHtml(ctx)}
     <div class="brains-page">
+    <section class="brains-panel"><div class="panel-head"><h3>My brains</h3>${calAllHtml(ctx)}</div>
+      ${specHtml(ctx)}${calStatusHtml(ctx)}
+      ${main ? `<ul class="brain-list">${mainRowHtml(main, ctx)}${shownOthers.map((b) => otherRowHtml(b, ctx)).join('')}</ul>` : noMain}
+      ${kept}${main ? addRowHtml(ctx, main) : ''}
+      <p class="get-more"><button type="button" class="get-more-btn" data-tab="catalogue">📚 Brain catalogue</button> <span class="muted">Another Bob has it? <strong>Brain Copying</strong> sends it over Bob-Net instead: Settings, Bob-Net. <button type="button" class="mini help-link" data-help="net-files" aria-label="Help: Files and brains">? Help</button></span></p></section>
     ${budgetHtml(ctx)}
-    ${setupsHtml(ctx)}
-    <section class="brains-panel"><div class="panel-head"><h3>Brains in use</h3>${calAllHtml(ctx)}</div>
-      ${calStatusHtml(ctx)}
-      ${used.length ? `<ul class="brain-list">${used.map((b) => brainRowHtml(b, ctx)).join('')}</ul>` : '<p class="muted">No brain yet. Pick one for a job below, or get one from the catalogue.</p>'}
-      ${empty.length ? `<h4>Unassigned jobs</h4><ul class="brain-list">${empty.map((s) => emptyJobHtml(s, ctx)).join('')}</ul>` : ''}</section>
-    <section class="brains-panel"><h3>Add a brain</h3>
-      ${spare.length ? `<ul class="brain-list">${spare.map((b) => `<li class="brain-row spare"><div class="brain-name"><strong>${esc(b.name)}</strong><br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')} · on this replicant matrix, no job yet</span>${labLineHtml(b, ctx)}</div><div class="brain-jobs">${jobSelect(b.value, jobsFor(b.value, ctx), `Give ${b.name} a job`)}</div><div class="brain-place">${placeBarHtml(b.entry, ctx)}</div></li>`).join('')}</ul>` : ''}
-      <p class="get-more"><button type="button" class="get-more-btn" data-tab="catalogue">📚 Brain catalogue: every brain, by job and size</button></p>
-      <p class="muted">Another of your Bobs has the brain already? <strong>Brain Copying</strong> sends it over Bob-Net instead of downloading it again: Settings, Bob-Net, Files and brains. <button type="button" class="mini help-link" data-help="net-files" aria-label="Help: Files and brains">? Help</button></p></section>
     <section class="brains-panel"><h3>Senses and tools</h3>
       <ul class="brain-list">${senseSlots().map((s) => senseRowHtml(s, ctx)).join('')}</ul>
       ${sel ? `<section class="kit-panel" aria-live="polite">${kitHtml(sel, ctx)}</section>` : '<section class="kit-panel" aria-live="polite"></section>'}</section>

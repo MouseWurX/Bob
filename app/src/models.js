@@ -72,6 +72,8 @@ export function ownerOf(p) {
 export function fileNameOf(url) {
   return decodeURIComponent(new URL(url).pathname.split('/').pop());
 }
+// The other parts of a brain that comes in parts: role "gguf-part-2", "gguf-part-3" and so on, saved beside part 1.
+export const isPartRole = (role) => /^gguf-part-\d+$/.test(String(role || ''));
 // 1.5.56: the name a catalog file is saved under. Several repos call their picture reader "mmproj-F16.gguf", so those
 // entries give it a name of their own (saveAs, a plain file name only); everything else keeps the name in the link.
 export function saveNameOf(f) {
@@ -225,6 +227,13 @@ export class ModelShop {
     return [...new Set([this.dir, ...(this.cfg.modelSearchRoots || [])])].filter((r) => fs.existsSync(r));
   }
 
+  // Nov 18 2026: a scan older than ten minutes is run again in the background, so a brain copied into a model
+  // folder while Bob is open shows up on the next look without pressing Look again. Never waits for it.
+  freshen(maxAgeMs = 10 * 60e3) {
+    const at = Date.parse(this.found?.at || '') || 0;
+    if (!this.scanning && Date.now() - at > maxAgeMs) this.scan().catch(() => {});
+  }
+
   // Walk the model folders (Ollama, ComfyUI, Maestro, Pinokio) and remember every big model file.
   scan() {
     if (this.scanning) return this.scanning;
@@ -303,6 +312,9 @@ export class ModelShop {
       const hit = this.found.files.find((x) => alt.includes(x.name.toLowerCase()));
       if (hit && fs.existsSync(hit.path)) out[f.role] = hit.path; // the scan can be out of date
     }
+    // Nov 16 2026: a big brain can come in parts (role "gguf" is part 1, "gguf-part-2" and on the rest). The engine opens
+    // part 1 and finds the others beside it, so a part only counts when it sits in the same folder as part 1.
+    for (const role of Object.keys(out)) if (isPartRole(role) && (!out.gguf || path.dirname(out[role]) !== path.dirname(out.gguf))) delete out[role];
     return out;
   }
 
@@ -317,11 +329,12 @@ export class ModelShop {
     if (pulled || (need && have === need) || byHand) state = 'installed';
     else if (have) state = 'partial';
     const where = pulled ? ['Ollama'] : byHand ? ['config.json'] : [...new Set(Object.values(located).map(ownerOf))];
-    const canDownload = Boolean((entry.ollama && ollama) || need);
+    const canDownload = Boolean((this.viaOllama(entry) && ollama) || need);
     return { state, where, located, canDownload };
   }
 
   async list() {
+    this.freshen();
     const ollama = await this.ollamaNames();
     const models = [];
     for (const m of this.catalog.models) models.push({ ...m, files: (m.files || []).map((f) => ({ name: saveNameOf(f), role: f.role })), rentAs: rentAsOf(m), status: await this.statusOf(m, ollama) });
@@ -447,7 +460,7 @@ export class ModelShop {
     const entry = this.catalog.models.find((m) => m.id === id);
     if (!entry) throw new Error('No such model in the catalog.');
     if (entry.gated) throw new Error(`${entry.name} needs a Hugging Face account to download. ${entry.gatedWhy || ''}`.trim());
-    return { id, name: entry.name, kind: 'model', total: Math.round(entry.sizeGB * 1e9), viaOllama: Boolean(entry.ollama) };
+    return { id, name: entry.name, kind: 'model', total: Math.round(entry.sizeGB * 1e9), viaOllama: this.viaOllama(entry) };
   }
 
   // Put downloads on the list (the user already confirmed each one). Returns the first one's progress.
@@ -486,7 +499,7 @@ export class ModelShop {
     const entry = engine ? null : this.catalog.models.find((m) => m.id === d.id);
     const after = () => this.dl.filter((x) => x.state === 'queued' && x.id !== d.id).map((x) => x.id);
     const pub = { id: d.id, name: d.name, done: 0, total: d.total || 0, file: '', phase: engine ? 'finding' : 'starting', kind: d.kind, queue: after(),
-      steps: engine ? ['finding', 'downloading', 'checking', 'unpacking', 'done'] : entry?.ollama ? ['starting', 'downloading', 'checking', 'done'] : ['starting', 'links', 'downloading', 'checking', 'done'] };
+      steps: engine ? ['finding', 'downloading', 'checking', 'unpacking', 'done'] : this.viaOllama(entry) ? ['starting', 'downloading', 'checking', 'done'] : ['starting', 'links', 'downloading', 'checking', 'done'] };
     d.state = 'downloading'; d.error = undefined; d.note = undefined; d.startedAt = Date.now();
     this.active.set(d.id, { ac, pub, kind: d.kind });
     const { tick, stop } = ticker(pub, (e) => { pub.queue = after(); this.emit(e); });
@@ -525,9 +538,14 @@ export class ModelShop {
     return pub;
   }
 
+  // Native only by default: a brain with an Ollama name still downloads Bob's own pinned GGUF (checked against its
+  // sha256) for Brain Engine, even when Ollama happens to be running. Pulling through Ollama is the opt-in path,
+  // only while Ollama is the engine written by hand into config.json.
+  viaOllama(entry) { return Boolean(entry?.ollama) && this.cfg.engine === 'ollama'; }
+
   async runModel(entry, pub, signal, tick) {
-    const ollama = await this.ollamaNames();
-    if (entry.ollama && ollama) return this.pullOllama(entry, pub, signal, tick);
+    const ollama = this.viaOllama(entry) ? await this.ollamaNames() : null;
+    if (ollama) return this.pullOllama(entry, pub, signal, tick);
     if (entry.files?.length) return this.fetchFiles(entry, pub, signal, tick);
     throw new Error(ollamaOn(this.cfg) ? `${entry.name} comes through Ollama, and Ollama isn't running.` : `${entry.name} comes only through Ollama, and Ollama is off (Settings, Engines, Use Ollama too).`);
   }

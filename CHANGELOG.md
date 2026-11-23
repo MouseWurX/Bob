@@ -4,6 +4,53 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.251
+
+One way to pick brains, and I find your brain files every time I start.
+
+### New
+
+- **One brain picker.** Every brain menu follows the same rule: any brain you have can take any thinking job. Gaming and Seeing pictures still need a brain made for them. A brain that wasn't made for a job is marked, never hidden.
+- **Brains page.** The Main brain row has its own picker and does every job. "+ Add a brain" makes a row for the jobs you choose. With One brain on, you just see the main row. A line shows your card, processor, memory and free drive space.
+- **Catalogue.** Each brain is listed once in one Brains list, grouped by family, with the jobs it was made for.
+
+### Fixed
+
+- **I find brain files at every start,** and look again when my list is more than ten minutes old, so a brain you just copied in shows up.
+- **gpt-oss 120B is listed once.** It had two entries for the same file.
+- **Add a brain from a file is on the Brains page,** and if the window's picker comes back empty straight away, I open my own.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.250
+
+Amnesia mode lets go again.
+
+### Fixed
+
+- **"Turn off and forget" works again.** A cancelled or failed task left in the Tasks list (they stay for a week) made me refuse to turn Amnesia mode off, so nothing got forgotten. Now only a task I'm running right now holds it up. The banner also says the day when Amnesia mode started on another day, so "since 5:31 PM" can't read as later today.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.249
+
+A much bigger brain catalogue, Turbo-ready copies of stock Qwen, and big expert brains you can download.
+
+### New
+
+- **More brains to pick from.** 31 new brains across the Community, Naughty and Official lists. The Naughty list is other people's remixes of open brains with the refusals taken out, and it carries a warning.
+- **Turbo-ready stock Qwen.** Copies of stock Qwen 35B, 27B, 9B and 4B that carry the extra layer for drafting ahead (MTP), so they can answer faster on Brain Engine.
+- **Big expert brains as downloads.** GPT-OSS 120B, Qwen3-Next 80B, GLM-4.5 Air and Llama 4 Scout. A brain that comes in parts downloads every part, and its extra files sit beside part 1.
+- **One card for every brain.** Every (i) in the catalogue shows the same card. Room says how well the brain splits across cards, and Here says how it would split on your setup.
+
+### Fixed
+
+- **Catalogue brains download my own pinned files.** I only use Ollama when you set it as your engine yourself.
+
+None of the new brains has been tried in the Lab yet, so treat them as new.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android. The big expert brains need a big computer or several Bobs.
+
 ## 1.5.248
 
 I hear you on my own now, there's a log of what I did if you want one, and Gaming with One brain truly leaves your card alone.
@@ -117,56 +164,6 @@ Journey plays like a proper game now: every menu lives inside the game screen.
 - **Party size, one to four.** Pick how many travel together; rolled characters fill any empty seats.
 - **You can see each race.** Races now show on the sprite and the paper doll.
 - **A stat every level.** Each level up raises a stat.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.241
-
-The Lab Lessons tell the true story, and the CS Lab gets its write-up.
-
-### New
-
-- **The CS Lab on the front page.** The README has a CS Lab section, a picture of how SCUT compares with plain TCP, and the full write-up of the Lab's work in 13 chapters (docs/dissertation).
-
-### Fixed
-
-- **Lab Lessons: the Real result panels are fact-checked.** The coding race now reads v1 8, v2 6, re-cut 9 and full Qwen 12, with a note that the cut brains kept 208 experts and the re-cut 176. A panel with an unchecked overlap figure is gone.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.240
-
-Tool shapes are locked for GPT-OSS and Qwen, the Lab console is complete, and a security update underneath.
-
-### Fixed
-
-- **Security:** my window runs on Electron 44.10.1 (was 44.9.0), and an old file-matching library in the build tools is replaced with its fixed version. The security audit now finds nothing.
-- **Installing an engine into a folder with a space in its name** (like Program Files) works. The installer was given the path without quotes, so Windows refused it with error 1639.
-
-### New
-
-- **Tool shapes locked for GPT-OSS and Qwen.** GPT-OSS keeps my own tool names and wording, which beat every other wording in its tests; list_folder and search_files now say clearly which is which. Qwen brains no longer see tools they used wrongly (ask_specialist, pick_session), and nothing points them to a tool they can't see. The tool record starts fresh for the new shapes.
-- **run_command won't write files.** A command that only writes a file (like `echo > notes.txt`) is turned away before it runs, with a pointer to write_file. Programs that write their own output still run.
-- **The Lab console is complete.** Every Lab job is a form in Set up, plus Pipelines, the rented-run form (only the purchase card rents), Rented cards (Look, Take over, End it), Use Bob's brain, and Lab job logs in the Server panel.
-- **Lab:** a stricter lesson teacher and first filter, the lesson sandbox gets Bob's notice board, memory and logbook, an optional LibreOffice for office lessons, and step-by-step thinking for GPT-OSS heal lessons, and a fairer tool judge (looking first is fine when the action is right).
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.239
-
-I think where it helps: at the start to plan and at the end to check, not before every single step.
-
-### Fixed
-
-- **Think to plan and review, not on each step.** On a long job I now think at the start and when checking the result, and run the steps in between without stopping to think each time. It's on by default, and you can switch it off in Settings, How Bob works.
-- **Folders ticked for Hands can be read.** With the Files Hand on, list_folder, read_file and search work in the folders you ticked for Hands, not only the read folders. Before, I could move files there but was told I wasn't allowed to look.
-- **Lab: Professional mode** in Settings now stays on when you turn it on. Before, the switch was never saved.
-- **GPT-OSS brains with thinking off** now really think less (low effort). Before, they always thought at medium.
-
-### New
-
-- **Lab, Learn, Lessons:** a 42-lesson course that walks you through the Lab step by step, from the basics to advanced work. It's off until you switch on **Lab lessons** in Settings, How Bob works, Brains.
-- **Lab:** the tool tests take an effort level, and the Forge checks a plan's lessons against the lesson ledger before a heal is rented. The tool-wish test (the tools a brain reaches for when none are offered) is in the Lab kit too.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
 
