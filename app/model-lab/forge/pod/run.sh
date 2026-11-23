@@ -341,7 +341,10 @@ PY
         cut)
           CJ="['benchmark']['models'][$b]['cut']"; CD=$S/cut-$BN; mkdir -p $CD $W/bench/src-$BN $OUT/bench/cut-$BN
           SQ=$(plan "$CJ.get('serve','IQ2_XXS')")
-          BFILE=$(ls $CD/*-$SQ.gguf 2>/dev/null | head -1)
+          # 23 Nov (first Bobert run): a quant stopped part-way was taken as made, failed to load, and the run ended. A quant counts
+          # only when sizes.txt lists it (written after llama-quantize finished and the .part file was renamed); left-overs go.
+          rm -f $CD/*.gguf.part
+          BFILE=""; for f in $CD/*-$SQ.gguf; do [ -f "$f" ] && grep -q " $(basename "$f") bytes $(stat -c %s "$f") " $OUT/bench/cut-$BN/sizes.txt 2>/dev/null && BFILE=$f; done
           if [ -z "$BFILE" ]; then
             SPEC=$(plan "$CJ['src']"); REPO=$(echo "$SPEC" | cut -d: -f2); FP=$(echo "$SPEC" | cut -d: -f3)
             CUTQ8=$W/bench/cut-$BN.gguf
@@ -361,6 +364,10 @@ PY
             # the base model's own license, unchanged: no license, no upload
             LSPEC=$(plan "$CJ['license_from']"); hf_get "$(echo "$LSPEC" | cut -d: -f2)" "$(echo "$LSPEC" | cut -d: -f3)" $W/bench/lic-$BN && cp "$W/bench/lic-$BN/$(echo "$LSPEC" | cut -d: -f3)" $CD/LICENSE || { echo "bench $BN: could not fetch the base model's LICENSE; nothing is uploaded"; NOUP=1; }
             IMX=$CD/imatrix.gguf; IM=$S/llama.cpp/build-cuda/bin/llama-imatrix; QZ=$S/llama.cpp/build-cuda/bin/llama-quantize; [ -x $QZ ] || QZ=$S/llama.cpp/build/bin/llama-quantize
+            # an imatrix an earlier run of the same cut put on Hugging Face (plan cut.imatrix_from) saves ~30 min on the card
+            IMF=$(plan "$CJ.get('imatrix_from','')"); if [ ! -f $IMX ] && [ -n "$IMF" ]; then
+              hf_get "$(echo "$IMF" | cut -d: -f2)" "$(echo "$IMF" | cut -d: -f3)" $W/bench/imxhf-$BN && cp "$W/bench/imxhf-$BN/$(echo "$IMF" | cut -d: -f3)" $IMX && echo "$BN: imatrix taken from $IMF" || echo "$BN: couldn't fetch $IMF; making the imatrix here"
+            fi
             if [ ! -f $IMX ] && [ -f $IN/imatrix-$BN.tgz ]; then
               mkdir -p $W/bench/imx-$BN && tar xzf $IN/imatrix-$BN.tgz -C $W/bench/imx-$BN
               status bench "$BN: imatrix on the cut brain (training chats)"
@@ -377,7 +384,8 @@ PY
               QF=$CD/$CFILE-$q.gguf
               status bench "$BN: quantizing $q"
               grep -q "^$q " $OUT/bench/cut-$BN/published.txt 2>/dev/null && [ "$q" != "$SQ" ] && { echo "$q is already on Hugging Face; skipped"; continue; }   # a restarted run doesn't redo finished quants
-              [ "$q" = "$SQ" ] && [ -f $QF ] && grep -q "^$q " $OUT/bench/cut-$BN/sizes.txt 2>/dev/null && { echo "$q already made"; continue; }
+              [ -f $QF ] && grep -q " $(basename $QF) bytes $(stat -c %s $QF) " $OUT/bench/cut-$BN/sizes.txt 2>/dev/null && { echo "$q already made"; continue; }
+              rm -f $QF   # not listed as made: a left-over
               # 23 Nov (first Bobert run): IQ1/IQ2 refuse any tensor the imatrix doesn't fully cover (an expert the training chats never
               # reached). Those few tensors get q2_k instead (needs no imatrix); every other tensor keeps the asked type.
               # First an expert the chats never reached gets the average importance of its seen neighbours (imatrix_fill.py), so it can
@@ -389,7 +397,7 @@ PY
                 mapfile -t TT < <(PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/imatrix_gaps.py --model $CUTQ8 --imatrix $QIMX 2>>$OUT/bench/cut-$BN/gaps-$q.txt)
                 head -1 $OUT/bench/cut-$BN/gaps-$q.txt; fi ;; esac
               [ ${#TT[@]} -gt 0 ] && echo "$q: $(( ${#TT[@]} / 2 )) tensor(s) with no imatrix entry get their own type: q8_0, or q2_k for expert and embedding tensors (out/bench/cut-$BN/gaps-$q.txt)"
-              LD_LIBRARY_PATH="$(dirname $QZ):${LD_LIBRARY_PATH:-}" $QZ --allow-requantize $( [ -f $QIMX ] && echo --imatrix $QIMX ) "${TT[@]}" $CUTQ8 $QF $q $(nproc) > $OUT/bench/cut-$BN/quant-$q.log 2>&1 || { echo "bench $BN: $q failed (see out/bench/cut-$BN/quant-$q.log)"; tail -2 $OUT/bench/cut-$BN/quant-$q.log; rm -f $QF; continue; }
+              LD_LIBRARY_PATH="$(dirname $QZ):${LD_LIBRARY_PATH:-}" $QZ --allow-requantize $( [ -f $QIMX ] && echo --imatrix $QIMX ) "${TT[@]}" $CUTQ8 $QF.part $q $(nproc) > $OUT/bench/cut-$BN/quant-$q.log 2>&1 && mv -f $QF.part $QF || { echo "bench $BN: $q failed (see out/bench/cut-$BN/quant-$q.log)"; tail -2 $OUT/bench/cut-$BN/quant-$q.log; rm -f $QF $QF.part; continue; }
               echo "$q $(basename $QF) bytes $(stat -c %s $QF) sha256 $(sha256sum $QF | cut -d' ' -f1)" | tee -a $OUT/bench/cut-$BN/sizes.txt   # a home download is checked against these
               if [ -z "${NOUP:-}" ]; then
                 PYTHONPATH= python3 $POD/cut_card.py --dir $CD --cut $OUT/bench/cut-$BN/cut.json --name "$CNAME" --base "$(plan "$CJ['base']")" --base-params $BP --source "$(plan "$CJ['source_note']")" --license-name "$(plan "$CJ['license_name']")" --extra "$IN/$(basename "$(plan "$CJ.get('card_extra','none')")")" > /dev/null
@@ -486,7 +494,15 @@ PY
       LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" $LS -m "$BFILE" --host 0.0.0.0 --port 8001 --api-key "$FORGE_TOKEN" -c $CTX --jinja -fa on -ctk q8_0 -ctv q8_0 -np $SLOTS -ngl 999 $BEXTRA > $OUT/bench/$BN-server.log 2>&1 &
       BS=$!
       for i in $(seq 1 90); do curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8001/health 2>/dev/null | grep -q 200 && break; kill -0 $BS 2>/dev/null || break; sleep 10; done
-      kill -0 $BS 2>/dev/null || { echo "bench $BN: llama-server died (see out/bench/$BN-server.log)"; tail -3 $OUT/bench/$BN-server.log; continue; }
+      if ! kill -0 $BS 2>/dev/null; then
+        echo "bench $BN: llama-server died (see out/bench/$BN-server.log)"; tail -3 $OUT/bench/$BN-server.log
+        # a brain cut on this pod is costly to make again (the ~190 GB source is gone): the pod waits for a fix (--restart) instead
+        # of finishing, up to plan cut.hold_minutes (45), inside the time cap; then the run fails (not "done")
+        if [ "$BF" = cut ]; then HM=$(plan "['benchmark']['models'][$b]['cut'].get('hold_minutes',45)")
+          status hold "$BN didn't load: the cut files are kept; waiting $HM min for a fix (forge.mjs --restart), then failing"; sleep $((HM*60))
+          die "$BN didn't load and no fix came in $HM min"; fi
+        continue
+      fi
       rm -f $IN/bench-done-$BN
       status bench "$BN ready: the PC runs the tests now (port 8001, $SLOTS slot(s), ctx $CTX)"
       # 21 Nov 2026 (harness compare): plan.benchmark.pod_harness = other coding-agent harnesses run the repository jobs here on
