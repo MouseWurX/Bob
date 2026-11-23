@@ -8,6 +8,9 @@ export HF_HOME=$S/hf HF_HUB_ENABLE_HF_TRANSFER=0 HF_XET_HIGH_PERFORMANCE=1 PYTHO
 mkdir -p $OUT $S/hf
 cd $POD
 fetch() { python3 -c "import sys,urllib.request,shutil; r=urllib.request.Request(sys.argv[1], headers={'User-Agent':'bob-forge/1.0'}); shutil.copyfileobj(urllib.request.urlopen(r, timeout=120), open(sys.argv[2],'wb'))" "$1" "$2"; }
+# stop_bench_server <pid>: ask llama-server to stop, give it 20 s, then kill it hard (and reap it), so the next brain or "done" never waits
+stop_bench_server() { kill "$1" 2>/dev/null; for _ in $(seq 1 20); do kill -0 "$1" 2>/dev/null || break; sleep 1; done
+  kill -0 "$1" 2>/dev/null && { echo "bench: llama-server did not stop in 20 s; killed hard"; kill -9 "$1" 2>/dev/null; }; wait "$1" 2>/dev/null; sleep 3; }
 status() { python3 - "$@" <<'PY'
 import json,sys,time,os
 p=os.environ.get("FORGE_ROOT","/workspace")+"/out/status.json"; st={}
@@ -420,7 +423,9 @@ PY
       if [ -n "$(plan "['benchmark'].get('pod_harness','')")" ]; then mkdir -p $OUT/bench/harness; ( bash $POD/harness/harness.sh run "$BN" > $OUT/bench/harness/run.log 2>&1 ) & fi
       BH=$(plan "['benchmark']['models'][$b].get('hours', p['benchmark'].get('hours_each',2))")   # 13 Nov: a model can have its own hours
       for i in $(seq 1 $(python3 -c "print(int($BH*120))")); do [ -f $IN/bench-done-$BN ] && break; kill -0 $BS 2>/dev/null || { echo "bench $BN: the server died during the tests"; break; }; sleep 30; done
-      kill $BS 2>/dev/null; wait $BS 2>/dev/null; sleep 3
+      # 23 Nov 2026: office protect's pod sat an hour after the PC finished: llama-server took ~59 min to leave after a plain kill
+      # (15 slots, replies still running for jobs the PC had given up on). It now gets 20 s, then is killed hard.
+      stop_bench_server $BS
       if [ -f $IN/bench-done-$BN ]; then echo "bench $BN: the PC finished its tests"; else echo "bench $BN: time ran out (hours_each $BH)"; fi
     done
     status bench "finished: the reports are on the PC under out/bench"

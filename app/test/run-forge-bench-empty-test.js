@@ -32,6 +32,17 @@ const none = pf([say(['[a] pre-flight: 30 already run in this folder, 0 to go', 
 check('a benchmark-only plan with nothing left to run is refused: nothing is rented', none.code !== 0 && /PRE-FLIGHT FAIL: nothing to run: every job in the plan's 2 job folder\(s\) has already run/.test(none.out) && /Not renting/.test(none.out), none.out.slice(-400));
 const some = pf([say(['[a] pre-flight: 30 already run in this folder, 0 to go', '[b] pre-flight: 0 already run in this folder, 14 to go'])]);
 check('one job left to run is enough to rent', some.code === 0 && /pre-flight OK: nothing rented/.test(some.out), some.out.slice(-400));
+// 23 Nov 2026: office protect's pod sat an hour after the PC finished (a llama-server that wouldn't stop on a plain kill)
+const runSh = fs.readFileSync(path.join(forge, 'pod', 'run.sh'), 'utf8').replace(/\r\n/g, '\n');
+const fn = (runSh.match(/^stop_bench_server\(\) \{[\s\S]*?; \}\n/m) || [''])[0];
+check('the pod stops each benchmark brain with a time limit, then a hard kill', /kill -9/.test(fn) && /stop_bench_server \$BS/.test(runSh) && !/kill \$BS 2>\/dev\/null; wait \$BS/.test(runSh));
+if (process.platform !== 'win32' && fn) {
+  const t0 = Date.now();
+  const b = spawnSync('bash', ['-c', `${fn}\nsleep() { command sleep 0.05; }\nbash -c 'trap "" TERM; while :; do command sleep 1; done' & P=$!\ncommand sleep 0.5\nstop_bench_server $P\nkill -0 $P 2>/dev/null && echo ALIVE || echo GONE`], { encoding: 'utf8', timeout: 30000 });
+  check('a server that ignores the stop signal is killed hard, without the hour-long wait', /GONE/.test(b.stdout) && /killed hard/.test(b.stdout) && Date.now() - t0 < 20000, `${b.stdout}${b.stderr}`.slice(-200));
+}
+const fm = fs.readFileSync(path.join(forge, 'forge.mjs'), 'utf8');
+check('the PC deletes the pod itself when every brain is done here and the pod never says done', /bench-grace-minutes/.test(fm) && /the pod never said done/.test(fm) && /want\.every\(\(n\) => benchDone\.has\(n\)\)/.test(fm));
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -90,6 +90,10 @@ export const recordText = (t, max = 40000) => { const s = String(t ?? ''); retur
 // where Bob allows 32,768 (or half the context), and cut every job at 10 minutes. Now --max defaults to what Bob himself
 // allows on the slot, and --job-minutes to 0 = no limit (the rental's own hours and dollars caps are the outer net).
 const o = opts({ parallel: 2, max: 'bob', 'job-minutes': 0, hours: 0, 'search-gap': 2 });
+// 23 Nov (the laptop: LibreOffice looked for the Windows default printer, a Wi-Fi one, on every document it opened): the lab's
+// LibreOffice never prints, so it is told not to look for printers. Every soffice the jobs start inherits this; Bob's app
+// itself is unchanged (printing there stays as it was).
+for (const k of ['SAL_DISABLE_PRINTERLIST', 'SAL_DISABLE_DEFAULTPRINTER']) if (process.env[k] === undefined) process.env[k] = '1';
 const L = locate(o);
 const url = String(o.url || process.env.LAB_URL || '');
 const dir = path.join(L.out, String(o.dir || 'do-jobs'));

@@ -257,6 +257,7 @@ check('a second start picks up where it stopped (nothing run twice)', /nothing t
   const recordText = new Function(`${line.replace('export const recordText', 'const recordText')}; return recordText;`)();
   const long = 'x'.repeat(8500);
   check('the record keeps a long tool reply whole (8,500 of 8,500), and marks a cut past 40,000', recordText(long).length === 8500 && /record cut here: the brain saw 50000/.test(recordText('y'.repeat(50000))) && /call\.result = recordText\(/.test(dj) && !/call\.result = kit\.neutral\(t\)\.slice\(0, 6000\)/.test(dj));
+  check('the lab\'s LibreOffice never looks for printers (a Wi-Fi default printer was asked on every document open)', /for \(const k of \['SAL_DISABLE_PRINTERLIST', 'SAL_DISABLE_DEFAULTPRINTER'\]\) if \(process\.env\[k\] === undefined\) process\.env\[k\] = '1';/.test(dj));
   check('every job has the calculator on unless --no-calculator', /if \(String\(o\.calculator \?\? 'on'\)\.toLowerCase\(\) !== 'off' && !o\['no-calculator'\]\) kit\.cfg\.moreTools = \{ \.\.\.\(kit\.cfg\.moreTools \|\| \{\}\), calculator: true \}/.test(dj));
 }
 fs.rmSync(tmp, { recursive: true, force: true });

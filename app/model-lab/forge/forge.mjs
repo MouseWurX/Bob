@@ -698,6 +698,7 @@ async function answerTeacherKey() {
 // build 18: the pod serves one benchmark brain at a time; this PC runs the plan's commands against it ({{url}}, {{name}}, {{out}} are filled
 // in), saves what they print under out/bench/<run>/<name>/, then tells the pod to move on (in/bench-done-<name>).
 const benchDone = new Set();
+let allBenchAt = 0; const benchGraceMs = Number(args['bench-grace-minutes'] ?? 10) * 60000; // 23 Nov: see pass()
 // 13 Nov: --skip-bench a,b: a watcher started again on a running pod (--resume) leaves brains whose tests already ran alone
 // 13 Nov: --skip-cmds gpt-oss-120b:1,gpt-oss-120b:2 = those commands of that brain are not run by this watcher (one was swapped
 // for a fixed copy run by hand, which resumes where the old one stopped)
@@ -807,6 +808,15 @@ async function pass(st) {
     const benchOnly = plan.benchmark_only === true; // 10 Nov: a benchmark-only run ends when the pod says done; the reports are already on this PC
     const finished = plan.lessons_only ? lessonsSent : rebuildOnly || benchOnly ? true : gotTrained && (scoresOnly ? (noOdds ? true : done.has('teacher')) : [...done].filter((n) => n !== 'teacher' && n !== trained).length >= Math.max(1, plan.rungs.length));
     if (st.status?.phase === 'done' && plan.scan) await fetchScan();
+    // 23 Nov 2026: the PC is the backstop. Once every benchmark brain is done here and the pod still hasn't said done 10 minutes later
+    // (office protect's pod sat an hour on a llama-server that wouldn't stop), the PC deletes the pod itself; the reports are already here.
+    if (benchOnly && st.status?.phase !== 'done') {
+      const want = (plan.benchmark.models || []).map((m) => m.name).filter((n) => !skipBench.has(n));
+      if (want.length && want.every((n) => benchDone.has(n))) {
+        allBenchAt ||= Date.now();
+        if (Date.now() - allBenchAt > benchGraceMs) { await kill(`benchmark finished on this PC ${Math.round((Date.now() - allBenchAt) / 60000)} min ago and the pod never said done; the reports are in ${path.join(outDir, 'bench', plan.run || 'run')}`); return true; }
+      }
+    }
     if (st.status?.phase === 'done' && finished) { await kill(plan.lessons_only ? 'lessons written; they are on this PC' : rebuildOnly ? 'rebuild finished; the Bobs are on Hugging Face' : benchOnly ? `benchmark finished; the reports are in ${path.join(outDir, 'bench', plan.run || 'run')}` : noOdds ? 'the taught Bob is back; no odds were made (odds: false)' : plan.rungs.length ? 'all Bobs downloaded' : scoresOnly ? 'teacher scores downloaded' : 'counts downloaded'); return true; }
     if (st.status?.phase === 'failed' || (st.exit !== null && st.exit !== undefined && !st.running)) {
       log(`the pod run stopped (${st.status?.detail || 'exit ' + st.exit}). Last log lines:\n${st.log}`);
