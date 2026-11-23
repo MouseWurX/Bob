@@ -4,6 +4,17 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.252
+
+I can download brains that need a Hugging Face account.
+
+### New
+
+- **Brains that need a Hugging Face account.** Some brain makers only let a signed-in account that accepted their terms download their brain. Save a read-only Hugging Face key as HF_TOKEN in 🔐 Locked secrets and switch on **Download brains that need a Hugging Face account** (Settings, How Bob works, Going online), and those brains get a normal Download button. Off to start with.
+- **Your key stays put.** I send it only to huggingface.co, only for those brains, and drop it before Hugging Face hands the file to its storage. Every other download stays signed out. The key is locked like your other keys and never shown or logged.
+
+**Where it works:** Windows, Mac and Linux. Bob for Android doesn't download these brains yet.
+
 ## 1.5.251
 
 One way to pick brains, and I find your brain files every time I start.
@@ -151,21 +162,6 @@ Send a whole folder to your other Bob with one Yes, and Journey gets its laptop-
 - **Journey on a laptop.** A 720p window fits without scrolling, menus too. The talk box and choices are real windows with sharp words. Elf and pixie ears show with Bob's wide headset look, and the tab icons have an outline so they stand out (Pets is now 🐶).
 
 **Where it works:** Windows, Mac, Linux and Bob for Android. Folder sending works on Windows, Mac and Linux; both Bobs need 1.5.243.
-
-## 1.5.242
-
-Journey plays like a proper game now: every menu lives inside the game screen.
-
-### New
-
-- **Every Journey menu opens inside the game.** The menu, shops, crafting, the bag, the paper doll, quests, fights, choices and New adventure all show in the blue talk box, right on the game screen.
-- **A ⚙ System tab.** Save, load, sound, full screen, quit and the controls, all in one place.
-- **Play with a controller.** Plug in a gamepad and Journey answers it. You can also tap the game screen to read on or to pick a choice.
-- **Party size, one to four.** Pick how many travel together; rolled characters fill any empty seats.
-- **You can see each race.** Races now show on the sprite and the paper doll.
-- **A stat every level.** Each level up raises a stat.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
 
 ## Older versions
 
