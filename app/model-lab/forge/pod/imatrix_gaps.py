@@ -22,11 +22,14 @@ if legacy: sys.exit("imatrix is not in the GGUF format (no .in_sum2/.counts tens
 md = gguf.GGUFReader(a.model)
 gaps = []
 for t in md.tensors:
-    if not t.name.endswith(".weight") or len(t.shape) < 2 or "token_embd" in t.name or t.name.startswith("output") or "norm" in t.name: continue
+    # token_embd and output.weight get their own higher types from llama-quantize; everything else 2D/3D is checked
+    # (23 Nov: the first Bobert run failed on output_hc_down.weight, which an earlier version of this skipped)
+    if not t.name.endswith(".weight") or len(t.shape) < 2 or t.name in ("token_embd.weight", "output.weight") or "norm" in t.name: continue
     h = have.get(t.name)
     if not h or "sum" not in h: gaps.append((t.name, "no entry")); continue
     c = h.get("counts")
     if c is not None and c.size > 1 and (c <= 0).any(): gaps.append((t.name, f"{int((c <= 0).sum())} of {c.size} experts never seen"))
 for n, why in gaps:
-    print(f"--tensor-type\n^{n.replace('.', chr(92) + '.')}$={a.fallback}")
+    # an expert tensor is most of the file: the cheap fallback; any other tensor is small: q8_0 keeps it at full quality
+    print(f"--tensor-type\n^{n.replace('.', chr(92) + '.')}$={a.fallback if '_exps' in n else 'q8_0'}")
 print(f"{len(gaps)} tensor(s) not fully covered: " + "; ".join(f"{n} ({w})" for n, w in gaps[:20]) + (" ..." if len(gaps) > 20 else ""), file=sys.stderr)
