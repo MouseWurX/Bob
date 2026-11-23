@@ -106,6 +106,7 @@ export function loadDots() {
     return null;
   };
 }
+export const EYES_REST_MS = 5 * 60_000; // Nov 23: a picture reader brought back on tight memory goes out after this long without a picture
 export const idleFor = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ''}`; };
 export function keepAliveMs(cfg) {
   const k = String(cfg?.ollamaKeepAlive ?? '5m');
@@ -408,6 +409,7 @@ export class LlamaCpp {
       const now = await this.gamingCardPlan(this.current);
       if (now !== this.currentCard && this.active === 0) { this.cardFlip = { from: this.currentCard, to: now, at: this.now() }; await this.stopServer(); return true; }
     }
+    if (await this.restEyes()) return false; // Nov 23: a tight-memory lever (below); the brain stays loaded
     let hold = null;
     try { hold = this.holdModel(); } catch {}
     if (hold && hold === this.current) { this.lastUse = this.now(); return false; }
@@ -1277,12 +1279,38 @@ export class LlamaCpp {
     try { return this.cfg.sharedGraphics === true && Boolean(this.resolve(model).mmproj) && this.lc.vision !== false && !(this.lc.noEyes || []).includes(model) && !this.eyesShut?.has(model); } catch { return false; }
   }
   shutEyes(model) { (this.eyesShut ||= new Set()).add(model); }
+  // Nov 23 (the owner's pick): one of the Conductor's levers for tight memory. A reader that came back for a picture
+  // goes out again once no picture has come for EYES_REST_MS and memory is still tight (less free than Windows's share
+  // plus the reader), so Windows gets its share back. Only between replies, never mid-reply; the next picture brings it
+  // back again. Not after every picture: each swap reloads the brain (5-8 s on the Legion Go) and re-reads the chat.
+  eyesRestDue(model = this.current) {
+    const back = this.eyesBack?.get(model);
+    if (!back || model !== this.current || this.active > 0 || this.eyesShut?.has(model) || this.now() - back < EYES_REST_MS) return false;
+    let extra = 0;
+    try { extra = fs.statSync(this.resolve(model).mmproj).size; } catch { return false; }
+    const free = this.freeRam ? this.freeRam() : os.freemem();
+    return free < apuKeepBytes(this.cfg) + extra;
+  }
+  async restEyes() {
+    const model = this.current;
+    if (!this.eyesRestDue(model)) return false;
+    this.eyesBack.delete(model);
+    this.shutEyes(model);
+    this.reloadWanted.add(model);
+    try { this.log?.('engine', `${model}: no picture for ${idleFor(EYES_REST_MS)} and memory is still tight, so I'm loading it again without its picture reader; it comes back with the next picture`); } catch {}
+    try { await this.preload(model, undefined, { ctx: this.currentCtx || undefined, cpu: Boolean(this.currentCpu) }); }
+    catch (e) { try { this.log?.('engine', `${model}: couldn't load it again without its picture reader (${String(e.message || e).slice(0, 160)}); the next job tries again`); } catch {} }
+    return true;
+  }
   async chat(opts) {
     const b = this.route(opts);
     if (b) return b.chat({ ...opts, beside: false, cpu: true });
     // A picture for a brain loaded without its reader: load it again with the reader first.
-    if (this.eyesShut?.has(opts?.model) && (opts.messages || []).some((m) => m.images?.length)) {
+    const picture = (opts?.messages || []).some((m) => m.images?.length);
+    if (picture && this.eyesBack?.has(opts.model)) this.eyesBack.set(opts.model, this.now()); // the rest clock starts again
+    if (this.eyesShut?.has(opts?.model) && picture) {
       this.eyesShut.delete(opts.model);
+      (this.eyesBack ||= new Map()).set(opts.model, this.now());
       this.reloadWanted.add(opts.model);
       try { this.log?.('engine', `${opts.model}: a picture came in, so I'm loading its picture reader again (memory is tight, so this may be slow)`); } catch {}
       await this.preload(opts.model, opts.signal, { ctx: opts.ctx || this.currentCtx || undefined, cpu: Boolean(opts.cpu) });
