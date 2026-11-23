@@ -1,0 +1,94 @@
+{
+ "run": "games3-flashnext-iq3",
+ "note": "23 Nov 2026, the owner: \"Make it so it'll work\" (after 0 of 18 games started: scripts but no main scene, Godot 3 names, out of time) and \"stop only when truly stuck\". Flash-Next UD-IQ3_XXS (the sizes were a wash; IQ3 made the only game that ran) builds both games in two starts, side by side: scope (Bob asks first with ask_user, the test person answers from each job's brief, he writes PLAN.md and his own starter) and template (a small starter that already opens, game-starters/). Both: the Godot 4 sheet, the first goal is \"it opens and runs\", then the rest with the checker after each turn (\"fix this first\"). No build or fix clocks and no fix count: a turn stops only when no project file has changed for 15 minutes, a game when the same problems come back 3 times. 3 at a time. Held-out: never tuned on, never made into lessons. Every game is kept for the owner to play (out/giq3-games3/games). Nothing is uploaded.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.8-Flash-Next",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H100 80GB HBM3",
+  "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+ ],
+ "step_up": [],
+ "disk_gb": 140,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 9.0,
+ "dollars_max": 25,
+ "rent_minutes": 540,
+ "download_quants": [],
+ "llama_tag": "b12359",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one server: Qwen3.8-Flash-Next UD-IQ3_XXS; twelve game jobs (two games x three seeds x two starts), three at a time, then the tool-fault count.",
+  "hours_each": 8.5,
+  "models": [
+   {
+    "name": "giq3-games3",
+    "nickname": "Qwen3.8-Flash-Next UD-IQ3_XXS, game jobs",
+    "file": "hf:unsloth/Qwen3.8-Flash-Next-GGUF:UD-IQ3_XXS/Qwen3.8-Flash-Next-UD-IQ3_XXS-00001-of-00004.gguf",
+    "quant": "UD-IQ3_XXS",
+    "slots": 15,
+    "ctx": 737280,
+    "extra": "-ot per_layer_token_embd=CPU",
+    "hours": 8.5,
+    "commands": [
+     "node game-jobs.mjs --start scope,template --seeds 1,2,3 --out ../../bob-model-lab/out/game-jobs3/jobs.jsonl",
+     "node do-jobs.mjs --url {{url}} --bob .. --jobs ../../bob-model-lab/out/game-jobs3/jobs.jsonl --dir giq3-games3 --godot ../../../../lab-godot/Godot_v4.7.2-stable_win64_console.exe --effort medium --solo-effort --parallel 3 --want-shapes 4 --max bob --stuck-minutes 15 --hours 8.0",
+     "node tool-faults.mjs --runs \"flashnext iq3 games3=../../bob-model-lab/out/giq3-games3/runs.jsonl\" --out ../../bob-model-lab/out/giq3-games3-tool-faults"
+    ],
+    "download_gb": 84
+   }
+  ],
+  "brain_engine": {
+   "ref": "3fff3cf084e3def210b6e92c1d415280bfbb4e3a",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word",
+    "0014-rpc-any-version"
+   ],
+   "note": "Brain Engine b12359 + all 14 of Bob's engine patches at 3fff3cf (expert trace with mass for the expert-map phase)"
+  },
+  "download_max_minutes": 30
+ },
+ "prep": [
+  "Runs from Bob\\lab-kit-games, one level down from the kits folder (the branch at the game-jobs commit, no kit patch: TOOL_SHAPES 4, like the other Flash-Next runs).",
+  "Before pre-flight: node game-jobs.mjs --out ../../bob-model-lab/out/game-jobs3/jobs.jsonl --start scope,template (in lab-kit-games/app/model-lab).",
+  "Godot: ../../../../lab-godot/Godot_v4.7.2-stable_win64_console.exe (moved out of the kits to lab-godot beside them, so the kits' scan for personal data never reads it)."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20,
+ "card_sets": [
+  {
+   "gpus": [
+    "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+   ],
+   "count": 1
+  },
+  {
+   "gpus": [
+    "NVIDIA H100 80GB HBM3"
+   ],
+   "count": 1
+  }
+ ],
+ "vram_gb": 80
+}

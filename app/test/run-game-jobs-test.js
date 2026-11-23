@@ -64,7 +64,7 @@ const srv = http.createServer((req, res) => {
     const tools = msgs.slice(msgs.findLastIndex((m) => m.role === 'user')).filter((m) => m.role === 'tool').map((m) => String(m.content));
     let out;
     if (!/Lantern Run/.test(users[0] || '')) out = say('OK.');
-    else if (/check found these problems/.test(lastUser)) {
+    else if (/^I ran the game in Godot\. Fix this first: /.test(lastUser)) {
       if (!nudges.includes(lastUser)) nudges.push(lastUser);
       out = tools.length ? say('Fixed the typo; it runs now.') : call('write_file', { path: `${D}\\player.gd`, content: 'extends CharacterBody2D\n# fixed\nvar speed = 200\n' });
     } else if (!names.includes('write_file')) out = call('use_tools', { group: 'files' });
@@ -96,6 +96,24 @@ const kept = path.join(tmp, 'games-run', g?.kept || 'none');
 check('the game Bob made is kept for the owner to play (his files, not the checker\'s)', g?.files === 3 && fs.existsSync(path.join(kept, 'project.godot')) && /fixed/.test(fs.readFileSync(path.join(kept, 'player.gd'), 'utf8')) && !fs.existsSync(path.join(kept, '_bob_check.gd')));
 check('nothing the brain saw names the real folder', !JSON.stringify(row?.messages || []).includes(tmp) && !JSON.stringify(g || {}).includes(tmp));
 
+// ---- template start, end to end: the starter is planted, the first goal is "it runs", then the rest ----
+{ const fg2 = path.join(tmp, 'fake-godot-2.mjs'), cnt = path.join(tmp, 'runs.count');
+  fs.writeFileSync(fg2, `import fs from 'node:fs'; const a = process.argv.slice(2); if (a.includes('--import')) process.exit(0);
+let n = 0; try { n = Number(fs.readFileSync(${JSON.stringify(cnt)}, 'utf8')); } catch {} fs.writeFileSync(${JSON.stringify(cnt)}, String(n + 1));
+console.log('BOBCHECK ' + JSON.stringify({ main_scene: 'res://main.tscn', current_scene: 'res://main.tscn', nodes: n ? { CharacterBody2D: 3, Camera2D: 1 } : { CharacterBody2D: 1, Camera2D: 1 }, text: n ? ['Score 0', 'Lives 3'] : ['Score 0'], moved: 50 }));
+`);
+  const msgs2 = [];
+  const srv2 = http.createServer((req, res) => { if (req.url.startsWith('/props')) { res.end(JSON.stringify({ chat_template: '' })); return; }
+    let b = ''; req.on('data', (d) => (b += d)); req.on('end', () => { const j = JSON.parse(b || '{}'); const u = (j.messages || []).filter((m) => m.role === 'user').map((m) => String(m.content)).at(-1) || ''; if (!msgs2.includes(u)) msgs2.push(u);
+      res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(say('Done.'))); }); });
+  await new Promise((r) => srv2.listen(0, '127.0.0.1', r));
+  const jf = path.join(tmp, 'games-t.jsonl'); fs.writeFileSync(jf, JSON.stringify(G.gameJobs({ seeds: [3], start: 'template' }).find((r) => r.key === 'lantern-run')) + '\n');
+  const r2 = await new Promise((ok) => { const ch = spawn(process.execPath, ['do-jobs.mjs', '--url', `http://127.0.0.1:${srv2.address().port}`, '--bob', app, '--out', tmp, '--dir', 'games-t', '--jobs', jf, '--parallel', '1', '--godot', fg2, '--effort', 'low'], { cwd: path.join(app, 'model-lab'), env: { ...process.env, LAB_API_KEY: 'k', LAB_URL: '', LAB_TAVILY_KEY: '' } });
+    let log = ''; ch.stdout.on('data', (d) => (log += d)); ch.stderr.on('data', (d) => (log += d)); const t = setTimeout(() => { ch.kill(); ok({ code: -1, log }); }, 180000); ch.on('exit', (code) => { clearTimeout(t); ok({ code, log }); }); });
+  srv2.close();
+  let g2 = null; try { g2 = JSON.parse(fs.readFileSync(path.join(tmp, 'games-t', 'runs.jsonl'), 'utf8').trim().split('\n')[0]).game; } catch {}
+  check('template start: the starter is planted, the first check asks only that it runs, then Bob is asked for the rest and the game passes', g2?.start === 'template' && g2.starter?.includes('main.tscn') && g2.checks?.[0]?.phase === 'runs' && g2.checks[0].problems.length === 0 && g2.checks[0].later?.length > 0 && g2.ran_after === 0 && msgs2.some((m) => /it opens and runs now/.test(m)) && g2.checks.at(-1).phase === 'all' && g2.passed === true, JSON.stringify(g2 || r2.log.slice(-500)).slice(0, 600)); }
+
 // ---- blind labels ----
 const B = await imp('model-lab/game-blind.mjs');
 const fakeRuns = (lab, n) => { const d = path.join(tmp, `runs-${lab}`); fs.mkdirSync(path.join(d, 'games', 'x'), { recursive: true }); fs.writeFileSync(path.join(d, 'games', 'x', 'project.godot'), 'config_version=5\n'); fs.writeFileSync(path.join(d, 'runs.jsonl'), Array.from({ length: n }, (_, i) => JSON.stringify({ id: `game-${i % 2 ? 'emberfall' : 'lantern-run'}-s${i}`, key: i % 2 ? 'emberfall' : 'lantern-run', seed: i, secs: 600, game: { kept: 'games/x', files: 1, passed: i === 0, nudges: 1, checks: [{ problems: i ? ['The score is not on screen (no "Score" label).'] : [] }] } })).join('\n') + '\n'); return d; };
@@ -115,7 +133,19 @@ check('only the file differs between the sizes; nothing is uploaded; caps set', 
 
 // ---- wiring ----
 const dj = read('model-lab/do-jobs.mjs');
-check('do-jobs: a game job\'s folder is one of Bob\'s projects, and the nudges and minutes can be set', /kit\.cfg\.projects = \{ \.\.\.\(kit\.cfg\.projects \|\| \{\}\), \[path\.basename\(d\)\]: d \}/.test(dj) && /o\.nudges === undefined \? 3/.test(dj) && /o\['game-minutes'\] \?\? 30/.test(dj) && /o\['nudge-minutes'\] \?\? 10/.test(dj));
+check('do-jobs: a game job\'s folder is one of Bob\'s projects; no clocks or fix count unless asked, a stuck check instead', /kit\.cfg\.projects = \{ \.\.\.\(kit\.cfg\.projects \|\| \{\}\), \[path\.basename\(d\)\]: d \}/.test(dj) && /o\.nudges === undefined \? Infinity/.test(dj) && /o\['game-minutes'\] === undefined \? 0/.test(dj) && /o\['stuck-minutes'\] === undefined \? 15/.test(dj) && /the same problems came back 3 times in a row/.test(dj));
+// 23 Nov 2026 (the owner: "Make it so it'll work"): scope and template starts, a brief for the test person, the Godot 4 sheet
+{ const rows = G.gameJobs({ seeds: [1], start: ['plain', 'scope', 'template'] });
+  check('three starts: plain (the old request), scope (ask first, PLAN.md, run first) and template (a starter that opens)', rows.length === 6 && rows.filter((r) => r.game.start === 'scope').every((r) => /use ask_user/.test(r.text) && /PLAN\.md/.test(r.text) && /smallest version that opens and runs/.test(r.text)) && rows.filter((r) => r.game.start === 'template').every((r) => /already has a small starter/.test(r.text)) && rows.every((r) => r.game.start === 'plain' || /Godot 4 names/.test(r.text)) && rows.find((r) => r.game.start === 'plain').text === G.jobByKey(rows.find((r) => r.game.start === 'plain').key).text);
+  const ef = G.jobByKey('emberfall');
+  const a = G.briefAnswer(ef, 'Should the game be 2D or 3D?', ['2D', '3D']), b = G.briefAnswer(ef, 'Which colour theme?', ['red', 'blue']);
+  check('the test person answers a scoping question from the job\'s brief, and says "your call" to the rest', a.pick === '3D' && /follows the fight/.test(a.typed) && !b.pick && /Your call/.test(b.typed));
+  const d = path.join(tmp, 'starter'); fs.mkdirSync(d);
+  const put = G.plantStarter(G.jobByKey('lantern-run'), d);
+  const proj = fs.readFileSync(path.join(d, 'project.godot'), 'utf8').replace(/\r\n/g, '\n');
+  check('the starter goes into the empty project folder: project.godot with its main scene and input actions, the scene and its script', put.includes('project.godot') && put.includes('main.tscn') && /run\/main_scene="res:\/\/main\.tscn"/.test(proj) && /^move_right=\{/m.test(proj) && /^jump=\{/m.test(proj) && /Camera2D/.test(fs.readFileSync(path.join(d, 'main.tscn'), 'utf8')) && /move_and_slide\(\)/.test(fs.readFileSync(path.join(d, 'player.gd'), 'utf8')));
+  check('both starters exist, one per kind of game', ['arena-3d', 'platformer-2d'].every((k) => fs.existsSync(path.join(app, 'model-lab', 'game-starters', k, 'main.tscn'))) && G.jobByKey('emberfall').starter === 'arena-3d'); }
+
 const gd = read('model-lab/godot-check.gd');
 check('the helper presses start, then the game\'s own actions and keys, reads the screen and quits', /Input\.action_press\("ui_accept"\)/.test(gd) && /InputMap\.get_actions\(\)/.test(gd) && /print\("BOBCHECK " \+ JSON\.stringify\(out\)\)/.test(gd) && /get_tree\(\)\.quit\(\)/.test(gd));
 

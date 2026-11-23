@@ -18,7 +18,7 @@ const imp = (f) => import(pathToFileURL(path.join(app, f)).href);
 const { makeInbox, mailServer, HOST, USER, PASS } = await imp('model-lab/mail-world.mjs');
 const cat = await imp('src/mail-catalog.js');
 const { emailTool } = await imp('src/email-read.js');
-const { manageEmailTool, planBulk, undoFile, BULK_MAX, sortNamesFolders } = await imp('src/email-manage.js');
+const { manageEmailTool, planBulk, undoFile, BULK_MAX, sortNamesFolders, notAskedToMove } = await imp('src/email-manage.js');
 const vault = await imp('src/vault.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mail catalog '));
 const NOW = Date.now();
@@ -227,5 +227,9 @@ const g = setup('owner', { size: 300, seed: 11, flavour: 'gmail', kind: 'graded'
 check('sort: an ask that names folders needs his batches', sortNamesFolders('newsletters into a Newsletters folder') && sortNamesFolders('use the labels Bills and Kids') && !sortNamesFolders('tidy my inbox'));
 check('sort: wired in before the app makes its own plan', /if \(!given && sortNamesFolders\(ctx\?\.turnText\)\) return 'Error: not run/.test(fs.readFileSync(path.join(app, 'src', 'email-manage.js'), 'utf8')));
 fs.rmSync(tmp, { recursive: true, force: true });
+// 23 Nov 2026 (the owner: ask before moving or deleting anything): mail moves only when the ask is to tidy, or a yes to Bob's offer
+{ const no = (args, ask) => notAskedToMove(args, ask, 'Sam');
+  check('an ask that is not about tidying never moves, archives, trashes or sorts mail: Bob offers it and waits', /^Not run: Sam didn't ask/.test(no({ action: 'bulk', do: 'archive', org: 'x' }, 'Get me off the lists for the stuff I never open.')) && Boolean(no({ action: 'trash', ids: ['1'] }, 'Anything in the last fortnight that looks like phishing?')) && Boolean(no({ action: 'sort' }, 'Which emails are waiting on me?')));
+  check('a tidy ask, or a yes to the offer, goes on to the card as before; marking, drafts and other tools are never held back', ['Delete all the mail from Tallgrass Books.', 'Archive the Moonbay emails older than ten days.', 'Tidy my inbox', 'yes', 'Yes please, do it', 'go ahead', 'Put them in a folder named Reading'].every((t) => !no({ action: 'bulk', do: 'archive', org: 'x' }, t)) && !no({ action: 'mark_read', ids: ['1'] }, 'what is new?') && !no({ action: 'bulk', do: 'mark_read', org: 'x' }, 'what is new?') && !no({ action: 'draft' }, 'Write a reply to Juniper') && !no({ action: 'archive' }, '')); }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

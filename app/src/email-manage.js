@@ -413,6 +413,20 @@ export async function sortPlan(brain, cfg, args, ctx, opts = {}) {
   return fenced(`${done.join('\n')}${first}`, `${who} approved the plan, and the lines above are what was done.${bad ? ` ${bad} message${bad === 1 ? '' : 's'} looked dangerous (shown on the card).` : ''} Tell ${who} in a few lines what changed; every batch has its own undo id.`);
 }
 
+// 23 Nov 2026 (the owner: "For the mail moving and deleting he should ask for permission before doing anything"; a run
+// archived 25 newsletters when the ask was only to get off the lists): mail is moved, archived, trashed or sorted only when
+// the person's message asks for that kind of tidying, or says yes to Bob's offer. Otherwise Bob offers it in words and
+// waits. The card still comes after that, every time. Marking, flagging, drafts and undo are not held back here.
+const MOVES = new Set(['move', 'archive', 'trash', 'sort']);
+const TIDY_ASK = /\b(mov(e|es|ed|ing)|archiv\w*|trash\w*|delet\w*|remov\w*|clean\w*|tid(y|ies|ied|ying)|sort\w*|clear\w*|get rid|organi[sz]\w*|declutter\w*|put (them|it|these|those|all)|folders?|bin (them|it|these|those|all))\b/i;
+const SAYS_YES = /^\W*(y(es|ep|eah|up)|ok(ay)?|sure|go( ahead| for it)?|do (it|that|them|those|so)|please( do)?|sounds good|fine|alright|all right|yes please|that'?s fine|approved?)\b/i;
+export function notAskedToMove(args, ask, who = 'the user') {
+  const a = String(args?.action || ''), moves = MOVES.has(a) || (a === BULK && ['archive', 'trash', 'move'].includes(String(args?.do || '')));
+  const text = String(ask ?? '').trim();
+  if (!moves || !text || TIDY_ASK.test(text) || SAYS_YES.test(text)) return '';
+  return `Not run: ${who} didn't ask to move, archive or trash mail. Don't change the mailbox now. In your answer, say what you would move and where, and ask; do it only after ${who} says yes.`;
+}
+
 // ---------------------------------------------------------------- bulk acts (the mail catalog, mail-catalog.js; the owner,
 // 16 Nov 2026: "could bob do bulk delete? or bulk archive?"). A whole company, sender, kind or age at once, from the
 // catalog, never from the brain's own list of ids. Always a card first with the count, the dates, a few samples and
@@ -544,8 +558,10 @@ export function manageEmailTool(cfg, on = () => true, opts = {}, brain = null) {
     alwaysAsk: true, // a card even with "Work without asking" on: it's the person's mail
     ownCard: (args) => args?.action === 'sort', // the sort plan is its own card, so the mail lock adds none
     approvalGroup: 'email',
-    async check(args) {
+    async check(args, ctx) {
       if (!on()) throw new Error('Tidying email is off. It\'s in Settings, How Bob works, 🧰 More tools: "Let Bob tidy my email" (with "Let Bob read my email" on).');
+      const why = notAskedToMove(args, ctx?.turnText, cfg.userName || 'the user');
+      if (why) throw new Error(why);
       if (args?.action === 'sort') return false; // the sort plan is its own card (sortPlan)
       if (args?.action === BULK) {
         if (!catalogOn()) throw new Error('Bulk acts need the mail catalog: Settings, How Bob works, 🧰 More tools, "Let Bob catalog my email".');

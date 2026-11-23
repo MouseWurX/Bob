@@ -88,7 +88,9 @@ export const HELD_MAIL_JOBS = [
     score: { type: 'lists' }, opus: 'The mailing list posts found and summed up briefly, no newsletters mixed in.' },
   { key: 'h-big-triage', inboxes: HB, text: "There's far too much mail in here. Who's waiting on me from the last seven days?",
     score: { type: 'reply', within: 7 }, opus: 'Searches for recent mail from people instead of paging everything; says how much he looked at.' },
-  { key: 'h-big-warranty', inboxes: HB, text: 'When does the warranty on my Emberline dishwasher run out?',
+  // 23 Nov 2026: the old ask never said the answer was in the mail, so the brain searched the PC and the web instead (the
+  // same bad-question fix as office h-word-read); not tuned on, and runs before this are not comparable on this job
+  { key: 'h-big-warranty', inboxes: HB, text: 'The warranty for my Emberline dishwasher came by email at some point. When does it run out?',
     score: { type: 'find', tag: 'h-warranty', must: /14 March 2028|March 14,? 2028|2028-03-14|14\/03\/2028/i }, opus: 'Searched by sender or words far enough back; gives the date and the warranty number.' },
   { key: 'h-big-wifi', inboxes: HB, text: 'Marisol sent me the lake house wifi password ages ago, over a year back I think. What is it?',
     score: { type: 'find', tag: 'h-wifi', must: /heron-blue-58/i, honest: /\b(year|365 days|12 months|that far back|older)\b/i }, opus: "Searched Marisol's mail over more than a year and answered from the mail." },
@@ -101,7 +103,10 @@ export const HELD_MAIL_JOBS = [
 // catalog: the same jobs with the mail catalog on (mail-catalog.js: groups, bulk, needs_reply, lists, unsubscribe).
 export function mailJobs({ catalog = false, held = false } = {}) {
   const [jobs, boxes] = held ? [HELD_MAIL_JOBS, HELD_INBOXES] : [MAIL_JOBS, INBOXES];
-  return jobs.flatMap((j) => j.inboxes.map((ib) => ({ id: `mail-${j.key}-${ib}`, job: 'mail', key: j.key, text: j.text, ...(j.says_no ? { says_no: j.says_no } : {}), ...(held ? { held: true } : {}), mail: { inbox: ib, ...boxes[ib], ...(catalog ? { catalog: true } : {}) } })));
+  // 23 Nov 2026 (the owner: "he should ask for permission before doing anything"; 25 newsletters archived on an ask that
+  // only wanted to leave the lists): the test person says no to a card that moves, archives or trashes mail on every job
+  // that didn't ask for that (only sort and bulk jobs do)
+  return jobs.flatMap((j) => j.inboxes.map((ib) => ({ id: `mail-${j.key}-${ib}`, job: 'mail', key: j.key, text: j.text, ...(j.says_no || !['sort', 'bulk'].includes(j.score?.type) ? { says_no: j.says_no || 'moves' } : {}), ...(held ? { held: true } : {}), mail: { inbox: ib, ...boxes[ib], ...(catalog ? { catalog: true } : {}) } })));
 }
 export const jobByKey = (key) => MAIL_JOBS.find((j) => j.key === key) || HELD_MAIL_JOBS.find((j) => j.key === key);
 

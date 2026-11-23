@@ -1,0 +1,31 @@
+; Godot 4 project file. Starter: it opens and runs as it is; build the game on top of it.
+config_version=5
+
+[application]
+
+config/name="Starter 2D platformer"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.5")
+
+[input]
+
+move_left={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":65,"keycode":0,"unicode":97,"pressed":false,"echo":false), Object(InputEventKey,"device":-1,"physical_keycode":4194319,"keycode":0,"unicode":0,"pressed":false,"echo":false), Object(InputEventJoypadMotion,"device":-1,"axis":0,"axis_value":-1.0)]
+}
+move_right={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":68,"keycode":0,"unicode":100,"pressed":false,"echo":false), Object(InputEventKey,"device":-1,"physical_keycode":4194321,"keycode":0,"unicode":0,"pressed":false,"echo":false), Object(InputEventJoypadMotion,"device":-1,"axis":0,"axis_value":1.0)]
+}
+jump={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":32,"keycode":0,"unicode":32,"pressed":false,"echo":false), Object(InputEventKey,"device":-1,"physical_keycode":87,"keycode":0,"unicode":119,"pressed":false,"echo":false), Object(InputEventKey,"device":-1,"physical_keycode":4194320,"keycode":0,"unicode":0,"pressed":false,"echo":false), Object(InputEventJoypadButton,"device":-1,"button_index":0,"pressed":false)]
+}
+attack={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":74,"keycode":0,"unicode":106,"pressed":false,"echo":false), Object(InputEventJoypadButton,"device":-1,"button_index":2,"pressed":false)]
+}
+start={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":4194309,"keycode":0,"unicode":0,"pressed":false,"echo":false), Object(InputEventJoypadButton,"device":-1,"button_index":6,"pressed":false)]
+}

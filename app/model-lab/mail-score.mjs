@@ -40,6 +40,15 @@ export function named(said, inbox, raws = null, days = Infinity) {
     if (k.age_days > days) continue;
     const subj = lower(k.subject).replace(/^re:\s*/, '');
     if (subj.length >= 12 && t.includes(subj.slice(0, 30))) { hit.add(Number(uid)); continue; }
+    // 23 Nov 2026 (held-out h-danger scored 0/10 on an answer that named the fake PayPal, the fake bank and the .pdf.exe
+    // remittance by sender and reference, in its own words): a scam is also named by its sender's address or domain, or by
+    // a reference code from its subject (letters and 5+ digits), since an answer warning about it rarely copies the subject
+    if (k.kind === 'phish') {
+      const addr = lower((raws?.[uid] || '').match(/^From:[^\n<]*<([^>\s]+)>/m)?.[1] || '');
+      const dom = addr.split('@')[1] || '';
+      const code = (subj.match(/\b[a-z]{0,4}\d{5,}\b/g) || []);
+      if ((addr && t.includes(addr)) || (dom.includes('.') && dom.length >= 8 && t.includes(dom)) || code.some((c) => t.includes(c))) { hit.add(Number(uid)); continue; }
+    }
     if (k.kind === 'person') {
       const who = lower((raws?.[uid] || '').match(/^From: "([^"]+)"/m)?.[1] || '');
       if (who && t.includes(who) && subj.split(/\W+/).filter((w) => w.length > 4).some((w) => t.includes(w))) hit.add(Number(uid));

@@ -1,0 +1,69 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://fighter.gd" id="1_fighter"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
+size = Vector3(20, 1, 8)
+
+[sub_resource type="BoxMesh" id="BoxMesh_floor"]
+size = Vector3(20, 1, 8)
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_fighter"]
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_fighter"]
+
+[sub_resource type="StandardMaterial3D" id="Material_player"]
+albedo_color = Color(0.9, 0.35, 0.2, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_rival"]
+albedo_color = Color(0.25, 0.45, 0.9, 1)
+
+[node name="Main" type="Node3D"]
+
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.97, 0.24, 0, -0.24, 0.97, 0, 3, 9)
+current = true
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.7, 0.7, 0, -0.7, 0.7, 0, 8, 0)
+
+[node name="Floor" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+
+[node name="Shape" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("BoxShape3D_floor")
+
+[node name="Mesh" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("BoxMesh_floor")
+
+[node name="Player" type="CharacterBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 1, 0)
+script = ExtResource("1_fighter")
+
+[node name="Shape" type="CollisionShape3D" parent="Player"]
+shape = SubResource("CapsuleShape3D_fighter")
+
+[node name="Mesh" type="MeshInstance3D" parent="Player"]
+mesh = SubResource("CapsuleMesh_fighter")
+surface_material_override/0 = SubResource("Material_player")
+
+[node name="Rival" type="CharacterBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 1, 0)
+script = ExtResource("1_fighter")
+player_controlled = false
+
+[node name="Shape" type="CollisionShape3D" parent="Rival"]
+shape = SubResource("CapsuleShape3D_fighter")
+
+[node name="Mesh" type="MeshInstance3D" parent="Rival"]
+mesh = SubResource("CapsuleMesh_fighter")
+surface_material_override/0 = SubResource("Material_rival")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="Status" type="Label" parent="HUD"]
+offset_left = 16.0
+offset_top = 12.0
+offset_right = 400.0
+offset_bottom = 40.0
+text = "Round 1   60"

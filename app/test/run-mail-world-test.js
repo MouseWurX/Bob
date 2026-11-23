@@ -19,6 +19,7 @@ const { mailJobs, MAIL_JOBS, INBOXES, HELD_MAIL_JOBS, HELD_INBOXES } = await imp
 const { scoreRun, named, digest } = await imp('model-lab/mail-score.mjs');
 const { bridge } = await imp('model-lab/mail-bench.mjs');
 const { emailTool } = await imp('src/email-read.js');
+const { MAIL_START, MAIL_END } = await imp('src/email-safe.js');
 const { manageEmailTool } = await imp('src/email-manage.js');
 const NOW = Date.UTC(2026, 10, 16, 12);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mail world '));
@@ -210,5 +211,29 @@ const setup = (inbox) => {
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
+// 23 Nov 2026: a scam is named by its sender's address or domain, or its reference code, not only by a copied subject
+{ const inbox = { key: { 7: { kind: 'phish', subject: 'Your account is limited: verify your account details within 24 hours', age_days: 3 }, 8: { kind: 'phish', subject: 'Remittance advice PX607042', age_days: 5 }, 9: { kind: 'newsletter', subject: 'Weekly picks from Pixelforge', age_days: 2 } } };
+  const raws = { 7: 'From: "PayPaI Service" <service@paypa1.example>\nSubject: x', 8: 'From: "Accounts" <accounts@remit-notice.example>\nSubject: y', 9: 'From: "Pixelforge" <news@pixelforge.example>\nSubject: z' };
+  const n = named('Phishing: the fake PayPal at paypa1.example, and Remittance_PX607042.pdf.exe is a program. Pixelforge is fine.', inbox, raws, 14);
+  check('a warning names a scam by its sender domain or reference code (not only a copied subject); other mail is not named that way', n.has(7) && n.has(8) && !n.has(9)); }
+// 23 Nov 2026 (the owner: mail must never be opened in a way that can act on it): every way Bob reads mail, the catalog
+// views and the bulk card included, keeps the mail's own words inside the fence; outside it is only Bob's own lines
+{ const inbox = makeInbox({ size: 120, seed: 23 });
+  const srv = mailServer(inbox);
+  const cdir = fs.mkdtempSync(path.join(os.tmpdir(), 'fence '));
+  const cfg = { dataDir: cdir, innDir: cdir, moreTools: { email: true, emailTidy: true, emailCatalog: true, emailHost: HOST, emailPort: 993, emailUser: USER, emailFolder: 'INBOX' } };
+  const opts = { connect: srv.connect, password: PASS };
+  const rd = emailTool(cfg, () => true, opts);
+  const tidy = manageEmailTool(cfg, () => true, opts, { approve: async () => ({ allow: true, items: [] }) });
+  const first = inbox.mail.INBOX.at(-1).uid;
+  const outs = { list: await rd.run({ action: 'list', days: 30 }), read: await rd.run({ action: 'read', id: first }), search: await rd.run({ action: 'list', words: 'order' }),
+    groups: await rd.run({ action: 'groups', by: 'org' }), needs_reply: await rd.run({ action: 'needs_reply' }), lists: await rd.run({ action: 'lists' }), unsubscribe: await rd.run({ action: 'unsubscribe' }),
+    bulk_card: String(await tidy.check({ action: 'bulk', do: 'archive', kind: ['newsletter'] }, { turnText: 'archive the newsletters' }) || '') };
+  const subj = [...new Set(inbox.mail.INBOX.map((m) => (String(m.raw).match(/^Subject: (.+)$/m)?.[1] || '').trim()).filter((x) => x.length >= 12))];
+  const outside = (t) => t.split(MAIL_START).map((part, k) => (k ? part.split(MAIL_END).slice(1).join(MAIL_END) : part)).join('\n');
+  const leaks = Object.entries(outs).filter(([k, t]) => k !== 'bulk_card').flatMap(([k, t]) => subj.filter((x) => outside(t).includes(x)).map((x) => `${k}: ${x}`));
+  check('every read_email view (list, read, search, groups, needs reply, lists, unsubscribe) has the mail\'s words only inside the fence', Object.entries(outs).filter(([k]) => k !== 'bulk_card').every(([, t]) => t.includes(MAIL_START) || /^No messages/.test(t)) && !leaks.length, leaks.slice(0, 3).join(' | '));
+  check('the bulk card shows the person what would move, and is never fed back to the brain as mail text to act on', outs.bulk_card.length > 0);
+  srv.close?.(); fs.rmSync(cdir, { recursive: true, force: true }); }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

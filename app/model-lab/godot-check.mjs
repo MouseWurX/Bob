@@ -39,6 +39,7 @@ export function errorLines(out) {
     if (!/^(SCRIPT ERROR|ERROR|Parse Error|USER ERROR|USER SCRIPT ERROR)\b|^handle_crash|Failed to load script|Can't open file|Invalid call|Invalid access|Identifier ".*" not declared/.test(ln)) continue;
     if (/_bob_check\.gd/.test(ln) || /BobCheck/.test(ln)) continue;
     if (/^ERROR: (Condition "!?[^"]*" is true\. )?.*(audio|Audio|driver|ALSA|PulseAudio|display server|Vulkan|OpenGL|GLES|rendering device)/.test(ln)) continue; // the headless machine's own, not the game's
+    if (/servers\/rendering\/dummy\//.test(`${ln} ${lines[i + 1] || ''}`)) continue; // 23 Nov: headless Godot draws nothing (its dummy renderer), so a material it was asked about is "null" there only
     const at = (lines[i + 1] || '').trim();
     const full = /^at: /.test(at) ? `${ln} (${at.replace(/^at: /, '')})` : ln;
     const clean = full.replace(/res:\/\/_bob_check\.gd/g, '').replace(/\s+/g, ' ').slice(0, 300);
@@ -95,9 +96,7 @@ export function commonProblems(res) {
   return p;
 }
 
-const count = (f, ...k) => k.reduce((n, x) => n + (Number(f?.nodes?.[x]) || 0), 0);
-const said = (f, re) => (f?.text || []).some((t) => re.test(t));
-export { count, said };
+export { count, said } from './game-jobs.mjs';
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   const a = process.argv.slice(2), opt = (k) => { const i = a.indexOf(`--${k}`); return i >= 0 ? a[i + 1] : ''; };

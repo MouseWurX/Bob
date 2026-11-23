@@ -79,7 +79,7 @@ import { buildBytes } from './office-files.mjs';
 import { plantRepo, repoAfter, runGuard, repoReady, gitEnv } from './repo-jobs.mjs';
 import { worldGet } from './web-jobs.mjs';
 import { runGame, commonProblems } from './godot-check.mjs';
-import { jobByKey as gameJob } from './game-jobs.mjs';
+import { jobByKey as gameJob, briefAnswer, plantStarter } from './game-jobs.mjs';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -126,7 +126,7 @@ if (o.never && !neverFiles.length) fail(`--never ${o.never} holds no .jsonl file
 for (const f of neverFiles) {
   for (const r of readJsonl(f)) for (const t of [r.text, r.question, r.prompt, r.ask, (r.messages || []).find((m) => m.role === 'user')?.content]) if (typeof t === 'string' && t.trim()) never.add(norm(t));
 }
-let jobs = files.flatMap((f) => readJsonl(f)).filter((j) => j && typeof j.text === 'string' && j.text.trim()).map((j, i) => ({ id: String(j.id || `job-${i}`), job: j.job || '', text: j.text, setup: Array.isArray(j.setup) ? j.setup : [], ...(j.from && typeof j.from === 'object' ? { from: j.from } : {}), ...(j.mail && typeof j.mail === 'object' ? { mail: j.mail, key: String(j.key || '') } : {}), ...(j.office && typeof j.office === 'object' ? { office: j.office, key: String(j.key || '') } : {}), ...(j.repo && typeof j.repo === 'object' ? { repo: j.repo, key: String(j.key || ''), type: String(j.type || '') } : {}), ...(j.web && typeof j.web === 'object' && Array.isArray(j.web.pages) ? { web: j.web, key: String(j.key || ''), type: String(j.type || '') } : {}), ...(j.blender && typeof j.blender === 'object' && typeof j.blender.setup === 'string' ? { blender: j.blender, key: String(j.key || ''), type: String(j.type || '') } : {}), ...(j.game && typeof j.game === 'object' && typeof j.game.dir === 'string' && gameJob(String(j.key || '')) ? { game: j.game, key: String(j.key || '') } : {}), ...(Number(j.seed) >= 0 && j.seed !== null && j.seed !== '' ? { seed: Number(j.seed) } : {}) }));
+let jobs = files.flatMap((f) => readJsonl(f)).filter((j) => j && typeof j.text === 'string' && j.text.trim()).map((j, i) => ({ id: String(j.id || `job-${i}`), job: j.job || '', text: j.text, setup: Array.isArray(j.setup) ? j.setup : [], ...(j.from && typeof j.from === 'object' ? { from: j.from } : {}), ...(j.mail && typeof j.mail === 'object' ? { mail: j.mail, key: String(j.key || ''), ...(j.says_no ? { says_no: String(j.says_no) } : {}) } : {}), ...(j.office && typeof j.office === 'object' ? { office: j.office, key: String(j.key || '') } : {}), ...(j.repo && typeof j.repo === 'object' ? { repo: j.repo, key: String(j.key || ''), type: String(j.type || '') } : {}), ...(j.web && typeof j.web === 'object' && Array.isArray(j.web.pages) ? { web: j.web, key: String(j.key || ''), type: String(j.type || '') } : {}), ...(j.blender && typeof j.blender === 'object' && typeof j.blender.setup === 'string' ? { blender: j.blender, key: String(j.key || ''), type: String(j.type || '') } : {}), ...(j.game && typeof j.game === 'object' && typeof j.game.dir === 'string' && gameJob(String(j.key || '')) ? { game: j.game, key: String(j.key || '') } : {}), ...(Number(j.seed) >= 0 && j.seed !== null && j.seed !== '' ? { seed: Number(j.seed) } : {}) }));
 const held = jobs.filter((j) => never.has(norm(j.text)));
 jobs = jobs.filter((j) => !never.has(norm(j.text)));
 const seen = new Set(); jobs = jobs.filter((j) => (seen.has(j.id) ? false : seen.add(j.id)));
@@ -152,7 +152,16 @@ jobs = jobs.filter((j) => !noBlender.includes(j));
 const godotBin = o.godot && o.godot !== true ? path.resolve(String(o.godot)) : '';
 const noGodot = godotBin && fs.existsSync(godotBin) ? [] : jobs.filter((j) => j.game);
 jobs = jobs.filter((j) => !noGodot.includes(j));
-const nudgesMax = o.nudges === undefined ? 3 : Math.max(0, Number(o.nudges) || 0);
+const nudgesMax = o.nudges === undefined ? Infinity : Math.max(0, Number(o.nudges) || 0); // 23 Nov: no fixed number of fixes unless asked
+// 23 Nov (the owner: no time caps, stop only when stuck): game turns have no clock unless --game-minutes / --nudge-minutes are
+// given; --stuck-minutes (15) stops a turn in which no file of the project has changed for that long (0 = never)
+const gameMins = o['game-minutes'] === undefined ? 0 : Number(o['game-minutes']) || 0;
+const nudgeMins = o['nudge-minutes'] === undefined ? 0 : Number(o['nudge-minutes']) || 0;
+const stuckMs = (o['stuck-minutes'] === undefined ? 15 : Number(o['stuck-minutes']) || 0) * 60000;
+// the newest change time of any file in a game's project folder (the stuck check)
+function newest(d) { let t = 0; const walk = (x) => { let es = []; try { es = fs.readdirSync(x, { withFileTypes: true }); } catch { return; } for (const e of es) { if (e.name === '.godot') continue; const p = path.join(x, e.name); if (e.isDirectory()) walk(p); else { try { t = Math.max(t, fs.statSync(p).mtimeMs); } catch {} } } }; walk(d); return t; }
+// 23 Nov: the checker's problems as Bob sees them: the first one to fix on its own line, then the rest
+export function fixText(problems) { const [a, ...rest] = problems; return `I ran the game in Godot. Fix this first: ${a}${rest.length ? `\nAlso found:\n${rest.map((x) => `- ${x}`).join('\n')}` : ''}\nThen tell me, and I will run it again.`; }
 const seedAll = o.seed !== undefined && o.seed !== true && Number(o.seed) >= 0 ? Number(o.seed) : null;
 const done = new Set(readJsonl(F.runs).map((r) => r.id));
 const queue = jobs.filter((j) => !done.has(j.id)).slice(0, Number(o.count || 1e9));
@@ -408,7 +417,7 @@ const cacheGet = (k) => { if (!cachePath || !k) return null; try { for (const r 
 const cachePut = (k, text) => { if (cachePath && k && text && !BLOCKED.test(text) && !/^Error/.test(text)) try { appendJsonl(cachePath, JSON.parse(scrub(JSON.stringify({ k, text, at: new Date().toISOString() })))); } catch {} };
 let cacheHits = 0;
 // 16 Nov: the PC's IP was bot-blocked and every web_search came back with Bob's "No results" line
-let lastSearch = 0, noResultsInRow = 0, searchStop = false;
+let lastSearch = 0, noResultsInRow = 0, searchStop = false, searchSkipped = 0;
 // --search-stop off: keep going after 5 empty searches (a replay, jobs-recheck.mjs, is offline on purpose)
 async function searchTurn() { const gap = Number(o['search-gap']) * 1000; for (;;) { const w = lastSearch + gap - Date.now(); if (w <= 0) break; await wait(w); } lastSearch = Date.now(); }
 const ctxSize = Number(o['slot-ctx'] || o.ctx || 32768);
@@ -461,7 +470,7 @@ function gameAfter(kit, j, gw) {
   let files = 0;
   try { fs.rmSync(keep, { recursive: true, force: true }); const walk = (a, b) => { for (const e of fs.readdirSync(a, { withFileTypes: true })) { if (e.name === '.godot') continue; const x = path.join(a, e.name), y = path.join(b, e.name); if (e.isDirectory()) walk(x, y); else if (e.isFile()) { fs.mkdirSync(b, { recursive: true }); fs.copyFileSync(x, y); files++; } } }; walk(gw.dir, keep); } catch {}
   const last = gw.checks.at(-1);
-  return { dir: j.game.dir, kept: files ? path.relative(dir, keep).split(path.sep).join('/') : '', files, checks: gw.checks, nudges: Math.max(0, gw.checks.length - 1), passed: Boolean(last && !last.problems.length) };
+  return { dir: j.game.dir, start: gw.start, ...(gw.starter.length ? { starter: gw.starter } : {}), ...(gw.scoped.length ? { scoped: gw.scoped } : {}), ...(gw.ran_at !== undefined ? { ran_after: gw.ran_at } : {}), ...(gw.gave_up ? { gave_up: gw.gave_up } : {}), kept: files ? path.relative(dir, keep).split(path.sep).join('/') : '', files, checks: gw.checks, nudges: Math.max(0, gw.checks.length - 1), passed: Boolean(last && !last.problems.length && last.phase !== 'runs') };
 }
 async function blenderAfter(bw) {
   try { const m = await import(pathToFileURL(path.join(L.bob, 'src', 'mcp.js')).href); m.stopServer?.(bw.id); } catch {}
@@ -506,7 +515,7 @@ async function runJob(j) {
   // 21 Nov: a repository job's project, a git repository with one commit and a local "origin" (repo-jobs.mjs plantRepo)
   const rw = j.repo ? plantRepo(kit, j.repo) : null;
   // 23 Nov: a game job's empty project folder, one of Bob's projects (as a person making a game with him has)
-  const gw = j.game ? (() => { const d = kit.place(j.game.dir); if (!d) return null; fs.mkdirSync(d, { recursive: true }); kit.cfg.projects = { ...(kit.cfg.projects || {}), [path.basename(d)]: d }; return { dir: d, checks: [] }; })() : null;
+  const gw = j.game ? (() => { const d = kit.place(j.game.dir); if (!d) return null; fs.mkdirSync(d, { recursive: true }); kit.cfg.projects = { ...(kit.cfg.projects || {}), [path.basename(d)]: d }; const start = j.game.start || 'plain'; const starter = start === 'template' ? plantStarter(gameJob(j.key), d) : []; return { dir: d, checks: [], start, starter, scoped: [] }; })() : null;
   brain.cfg.loopHelpOff = false; brain.cfg.toolHelp = true;
   if (solo) brain.cfg.soloEffort = true;
   // 23 Nov (gq2-games: every nudge came back as a bare "[CHANGE]" or never ran): a lab job is one message at a time, so
@@ -549,6 +558,9 @@ async function runJob(j) {
   brain.askUser = async ({ question, choices } = {}) => {
     const list = [...new Set([].concat(choices || []).map((c) => String(c ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean))];
     if (!String(question || '').trim() || list.length < 2) throw new Error('ask_user needs a question and at least 2 choices.');
+    // 23 Nov (the owner: scope a job by asking first): a scoped game job's questions are answered from the job's brief,
+    // the same answers for every brain; what the brief doesn't cover is "your call"
+    if (gw?.start === 'scope') { const b = briefAnswer(gameJob(j.key), question, list); gw.scoped.push({ question: kit.neutral(String(question)).slice(0, 300), choices: list.slice(0, 8), answer: b.typed }); return `${who()} ${b.pick ? `picked: ${b.pick}\n${who()} ` : ''}typed: ${b.typed}`; }
     // 16 Nov: the first real choice; "I'll type it" or "something else" picked first gave the brain nothing to go on.
     // 800-job read: "here's the script path:" and "I'll type both" slipped past, so the wording list is shared with the
     // fault check (harness-faults.mjs). When every choice is a "let me type it" one, the test person has nothing to type
@@ -649,19 +661,42 @@ async function runJob(j) {
       const { jobId, answered } = brain.enqueue(session, text, [], effort);
       if (!jobId) { turns.push({ steps: 0, state: 'not queued', note: kit.neutral(String(answered || '')).slice(0, 200) }); error = 'the message was not queued as a job'; return; }
       const until = mins > 0 ? Date.now() + mins * 60000 : Infinity;
-      for (;;) { const s = brain.queue.find((x) => x.id === jobId); if (!s || ['done', 'failed', 'interrupted', 'cancelled'].includes(s.state)) { if (s && s.state !== 'done') error = `${s.state}: ${String(s.error || '')}`; break; } if (Date.now() > until) { error = 'took too long'; try { brain.cancel?.(jobId); } catch {} break; } await wait(200); }
+      // 23 Nov (the owner: no step, time or reply caps; stop only when truly stuck): a game turn has no clock unless one is
+      // asked for (--game-minutes); it is stopped only when no file in the project has changed for --stuck-minutes (15)
+      let lastChange = Date.now(), lastStamp = gw ? newest(gw.dir) : 0, lastLook = 0;
+      for (;;) { const s = brain.queue.find((x) => x.id === jobId); if (!s || ['done', 'failed', 'interrupted', 'cancelled'].includes(s.state)) { if (s && s.state !== 'done') error = `${s.state}: ${String(s.error || '')}`; break; } if (Date.now() > until) { error = 'took too long'; try { brain.cancel?.(jobId); } catch {} break; }
+        if (gw && stuckMs && Date.now() - lastLook > 5000) { lastLook = Date.now(); const st = newest(gw.dir); if (st !== lastStamp) { lastStamp = st; lastChange = Date.now(); } else if (Date.now() - lastChange > stuckMs) { error = `stuck: no file in the project changed for ${Math.round(stuckMs / 60000)} minutes`; try { brain.cancel?.(jobId); } catch {} break; } }
+        await wait(200); }
       const s = brain.queue.find((x) => x.id === jobId);
       turns.push({ steps: steps.length - s0, state: s?.state || 'gone', secs: Math.round((Date.now() - t1) / 1000), ...(error ? { error: kit.neutral(error).slice(0, 200) } : {}) });
     };
-    await turn(j.text, gw ? Number(o['game-minutes'] ?? 30) : Number(o['job-minutes']));
-    // 23 Nov: a game is run in Godot after each turn; its problems go back to Bob word for word, up to --nudges times
-    if (gw) for (let n = 0; ; n++) {
-      const t1 = Date.now(), res = await runGame(godotBin, gw.dir);
-      const problems = [...commonProblems(res), ...(res.ran && res.facts ? gameJob(j.key).check(res.facts) : [])].map((x) => kit.neutral(x));
-      gw.checks.push({ after: n ? `nudge ${n}` : 'build', problems, facts: res.facts || null, secs: (Date.now() - t1) / 1000, turn: turns.at(-1) || null, ...(error ? { error: kit.neutral(error).slice(0, 200) } : {}) });
-      if (!problems.length || n >= nudgesMax) break;
-      error = '';
-      await turn(`I ran the game in Godot and the check found these problems:\n${problems.map((x) => `- ${x}`).join('\n')}\nPlease fix them.`, Number(o['nudge-minutes'] ?? 10));
+    await turn(j.text, gw ? gameMins : Number(o['job-minutes']));
+    // 23 Nov: a game is run in Godot after each turn; its problems go back to Bob, the first one as "fix this first".
+    // 23 Nov (the owner: "Make it so it'll work"): in scope and template starts the first goal is a game that opens and
+    // runs (the checks every game shares); only then is Bob asked for the rest, and the job's own checks count.
+    // No fixed number of fixes (unless --nudges): it ends when the game passes, or the same problems come back 3 times
+    // in a row, or a turn was stopped as stuck.
+    if (gw) {
+      let phase = gw.start === 'plain' ? 'all' : 'runs', same = 0, prev = '';
+      for (let n = 0; ; n++) {
+        const t1 = Date.now(), res = await runGame(godotBin, gw.dir);
+        const common = commonProblems(res).map((x) => kit.neutral(x));
+        const own = res.ran && res.facts ? gameJob(j.key).check(res.facts).map((x) => kit.neutral(x)) : [];
+        const problems = phase === 'runs' ? common : [...common, ...own];
+        gw.checks.push({ after: n ? `nudge ${n}` : 'build', phase, problems, ...(phase === 'runs' ? { later: own } : {}), facts: res.facts || null, secs: (Date.now() - t1) / 1000, turn: turns.at(-1) || null, ...(error ? { error: kit.neutral(error).slice(0, 200) } : {}) });
+        const stuck = /^stuck:/.test(error);
+        if (phase === 'runs' && !common.length) {
+          gw.ran_at = n; phase = 'all'; error = ''; same = 0; prev = '';
+          if (!own.length) { gw.checks.at(-1).problems = []; break; }
+          await turn(`I ran it in Godot: it opens and runs now. Now build the rest of the game, must-haves first, one piece at a time, and keep it opening and running after each change. The game still needs:\n${own.map((x) => `- ${x}`).join('\n')}`, gameMins);
+          continue;
+        }
+        if (!problems.length || stuck || n >= nudgesMax) break;
+        const key = problems.join('\n'); same = key === prev ? same + 1 : 1; prev = key;
+        if (same >= 3) { gw.gave_up = 'the same problems came back 3 times in a row'; break; }
+        error = '';
+        await turn(fixText(problems), nudgeMins);
+      }
     }
   } catch (e) { error = String(e.message || e); }
   // said: what the user's window shows (16 Nov: Bob marks working text `step` and his reviews and minutes `moot`, so the
@@ -713,14 +748,16 @@ async function worker() {
     if (worldStopOn && !worldStop && ran >= 10 && worldRuns / ran >= 0.3 && next < queue.length) { worldStop = true; say(`${worldRuns} of ${ran} runs were decided by the test world, not the brain (${Object.entries(worldKinds).map(([k, v]) => `${k} ${v}`).join(', ')}): stopping, so no more of the rental goes on runs the read can't use. Fix the test world (npm run lab:selftest) and run again.`); next = queue.length; }
     say(`${String(ran).padStart(3)} ${row.error ? 'ERR ' : row.said ? 'done' : 'no words'} ${row.id} ${String(row.text).slice(0, 60)} -> ${(row.steps || []).flatMap((s) => s.calls || []).map((c) => c.name).join(',') || 'no tool'} (${row.asks || 0} steps, ${(row.secs || 0).toFixed(0)} s${row.standins?.length ? `, stand-ins: ${row.standins.join(',')}` : ''})`);
     if (/ECONNREFUSED|fetch failed/.test(row.error || '')) { say('the brain is gone (connection refused): stopping'); next = queue.length; }
-    if (searchStop && next < queue.length) { say('5 web searches in a row found nothing (the search pages may be blocking this PC): stopping, so no more of the rental goes on jobs whose searches fail'); next = queue.length; }
+    // 23 Nov (held1: the inbox set stopped at 22 of 28 because general jobs' web searches failed): only the jobs that
+    // search the live web are left out; mail, office, repository, made-up web, game and Blender jobs carry on
+    if (searchStop && next < queue.length) { const before = queue.length - next; const keep = queue.slice(next).filter((x) => x.mail || x.office || x.repo || x.web || x.game || x.blender); queue.splice(next, queue.length - next, ...keep); searchSkipped += before - keep.length; if (before - keep.length) say(`5 web searches in a row found nothing (the search pages may be blocking this PC): ${before - keep.length} job(s) that search the live web left out; ${keep.length} that don't carry on`); }
     if (!budgetStop && stopLeft() <= 0 && next < queue.length) { budgetStop = true; say(`${searches} Tavily searches made: the search budget is used (${runCap - capUsed() <= 0 ? `this run's cap of ${runCap}` : "this month's"}), so no new job starts; ${queue.length - next} wait for the next run`); next = queue.length; }
   }
 }
 await Promise.all(Array.from({ length: Math.max(1, Number(o.parallel)) }, worker));
 const all = readJsonl(F.runs);
 const n = all.length, by = (f) => all.filter(f).length;
-const lines = [`# Do jobs: ${path.basename(dir)}`, '', `${n} runs. Answered in words: ${by((r) => r.said)}. Errors: ${by((r) => r.error)}. Called a tool this test Bob hasn't got: ${by((r) => r.missing?.length)}. With a scene: ${by((r) => r.scene?.files?.length || r.scene?.folders?.length || r.scene?.board || r.scene?.memory)}. Effort: ${effort}${solo ? ' (one brain)' : ''}. Every run is read by Opus before any is kept. Decided by the test world, not the brain: ${by((r) => r.harness?.length)}${(() => { const k = {}; for (const r of all) for (const f of r.harness || []) k[f.kind] = (k[f.kind] || 0) + 1; return Object.keys(k).length ? ` (${Object.entries(k).map(([a, b]) => `${a} ${b}`).join(', ')})` : ''; })()}.${worldStop ? ' Stopped early: 3 in 10 runs or more were decided by the test world.' : ''}${searchStop ? ' Stopped early: web search found nothing 5 times in a row.' : ''}${budgetStop ? ` Stopped early: ${runCap - capUsed() <= 0 ? `this run's search cap (${runCap})` : "this month's search budget"} was used.` : ''}`, '', `Web searches this run: ${webSearches}${cachePath ? ` (+${cacheHits} answered from the shared cache)` : ''}; Tavily searches (the backup, and key checks): ${searches}${Number.isFinite(searchesLeft()) ? ` (about ${Math.max(0, searchesLeft())} more allowed)` : ''}. Jobs not started: ${Math.max(0, queue.length - ran)}.`];
+const lines = [`# Do jobs: ${path.basename(dir)}`, '', `${n} runs. Answered in words: ${by((r) => r.said)}. Errors: ${by((r) => r.error)}. Called a tool this test Bob hasn't got: ${by((r) => r.missing?.length)}. With a scene: ${by((r) => r.scene?.files?.length || r.scene?.folders?.length || r.scene?.board || r.scene?.memory)}. Effort: ${effort}${solo ? ' (one brain)' : ''}. Every run is read by Opus before any is kept. Decided by the test world, not the brain: ${by((r) => r.harness?.length)}${(() => { const k = {}; for (const r of all) for (const f of r.harness || []) k[f.kind] = (k[f.kind] || 0) + 1; return Object.keys(k).length ? ` (${Object.entries(k).map(([a, b]) => `${a} ${b}`).join(', ')})` : ''; })()}.${worldStop ? ' Stopped early: 3 in 10 runs or more were decided by the test world.' : ''}${searchSkipped ? ` Web search found nothing 5 times in a row: ${searchSkipped} job(s) that search the live web were left out.` : ''}${budgetStop ? ` Stopped early: ${runCap - capUsed() <= 0 ? `this run's search cap (${runCap})` : "this month's search budget"} was used.` : ''}`, '', `Web searches this run: ${webSearches}${cachePath ? ` (+${cacheHits} answered from the shared cache)` : ''}; Tavily searches (the backup, and key checks): ${searches}${Number.isFinite(searchesLeft()) ? ` (about ${Math.max(0, searchesLeft())} more allowed)` : ''}. Jobs not started: ${Math.max(0, queue.length - ran)}.`];
 fs.writeFileSync(F.summary, scrub(lines.join('\n') + '\n'));
 say(`\n${lines.slice(2).join('\n')}\nRuns: ${F.runs}`);
 process.exit(0);
