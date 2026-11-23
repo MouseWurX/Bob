@@ -45,9 +45,9 @@ export const PRIVACY_SERVICES = {
   },
   'web-search': {
     name: 'Web search',
-    sends: 'The search words, and the addresses of pages Bob reads. Commands Bob runs can go online too (downloads like npm install or git pull), and a command could send files.',
-    to: 'DuckDuckGo, the websites he opens, and whatever sites a command you OK talks to.',
-    sees: 'The search engine and each website see the words or page asked for, and this connection\'s internet address. While Web is on, commands aren\'t kept offline: each still shows its card first. Web off: nothing goes online, commands included.',
+    sends: 'The search words, and the addresses of pages Bob reads.',
+    to: 'DuckDuckGo, and the websites he opens.',
+    sees: 'The search engine and each website see the words or page asked for, and this connection\'s internet address.',
     tips: [
       tip('DuckDuckGo says it never tracks you. The websites Bob opens still see each visit.', 'https://duckduckgo.com/duckduckgo-help-pages/privacy/no-tracking')
     ],

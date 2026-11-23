@@ -92,7 +92,7 @@ export const WANTS = [
   { card: 'brains', key: 'memoryWhere', setting: 'Per-project memories', where: 'Speed & memory',
     label: 'Bring up project memories only in that project', note: 'Works with Relevant memories only on.' },
   { card: 'online', key: 'webSearch', setting: 'Web search', where: 'How Bob works',
-    label: 'Search the web when a question needs it', note: 'The search words and page addresses go online, and commands Bob runs can go online too.' },
+    label: 'Search the web when a question needs it', note: 'Only the search words and page addresses go online.' },
   { card: 'online', key: 'catalogUpdates', setting: 'Auto-update the brain list', where: 'How Bob works',
     label: 'Fetch my newest brain list once a day', note: 'From my own GitHub page. Nothing downloads by itself.' },
   { card: 'pc', key: 'autostart', setting: 'Launch at start-up', where: 'How Bob works',

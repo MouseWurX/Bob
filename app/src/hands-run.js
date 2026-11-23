@@ -250,8 +250,11 @@ export function offlinePlan(plan, way, { exe = '', cwd = '' } = {}) {
 }
 // The owner's pick (Nov 23 2026, card): commands follow the Web switch. Web on: Bob can search and commands can go online.
 // Web off: nothing goes online, commands included.
-export const commandNet = (cfg = {}) => (cfg.webSearch === true ? 'open' : 'off');
-export const NO_SANDBOX = 'Not run: Web is off, so Bob is cut off from the internet, and this computer can\'t run commands in a sandbox without internet yet (Windows gets one next). Turn on Web to run commands, and they can go online.';
+// Then (19:01): "it shouldnt change how it works with the pc". So the full cut-off is "Strict offline commands"
+// (hands.strictOffline, off unless switched on): only then do commands run sandboxed while Web is off. Off, they work
+// with the PC exactly as before (the "Don't send anything out" checks still apply).
+export const commandNet = (cfg = {}) => (cfg.hands?.strictOffline === true && cfg.webSearch !== true ? 'off' : 'open');
+export const NO_SANDBOX = 'Not run: "Strict offline commands" is on and Web is off, and this computer can\'t run commands in a sandbox without internet yet (Windows gets one next). Turn on Web, or switch Strict offline commands off in Settings, Hands.';
 export const OFFLINE_NOTE = 'This command can still reach the internet: this computer can\'t keep commands offline yet.';
 
 // Runs it. Resolves with { code, out, killed, why } and never throws for the program's own failure.

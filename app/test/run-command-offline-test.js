@@ -20,7 +20,9 @@ const { offlineWay, offlinePlan, runCommand, OFFLINE_NOTE, commandNet, NO_SANDBO
 const { LIMITS } = await imp('src/hands-settings.js');
 
 {
-  check('commands follow the Web switch (the owner\'s pick): offline unless Web is on', commandNet({}) === 'off' && commandNet({ webSearch: false }) === 'off' && commandNet({ webSearch: true }) === 'open' && !LIMITS.noNet);
+  const strict = { hands: { strictOffline: true } };
+  check('commands work with the PC as before unless Strict offline commands is on ("it shouldnt change how it works with the pc")', commandNet({}) === 'open' && commandNet({ webSearch: false }) === 'open' && !LIMITS.noNet && (await imp('src/hands-settings.js')).cleanHands({}).strictOffline === false);
+  check('with Strict on, commands follow the Web switch: offline unless Web is on', commandNet(strict) === 'off' && commandNet({ ...strict, webSearch: true }) === 'open');
   const yes = () => true, no = () => false, onlyR = (f, a) => a[0] === '-rn';
   check('Linux uses its own empty network, as your own user where it can', offlineWay({ os_: 'linux', probe: yes }) === 'unshare-c' && offlineWay({ os_: 'linux', probe: onlyR }) === 'unshare' && offlineWay({ os_: 'linux', probe: no }) === '');
   check('a Mac uses a no-network sandbox; Windows has no way yet', offlineWay({ os_: 'darwin', probe: yes }) === 'sandbox-exec' && offlineWay({ os_: 'win32', probe: yes }) === '');
@@ -31,10 +33,11 @@ const { LIMITS } = await imp('src/hands-settings.js');
   check('the Windows sandbox has no network capability and ends what it started when it ends', /CapabilityCount = 0/.test(fs.readFileSync(path.join(app, 'src/win-offline.cs'), 'utf8')) && /KILL_ON_JOB_CLOSE/.test(fs.readFileSync(path.join(app, 'src/win-offline.cs'), 'utf8')));
   check('where it can\'t be kept offline, the result says so plainly', /can still reach the internet/.test(OFFLINE_NOTE));
   const hands = fs.readFileSync(path.join(app, 'src/hands.js'), 'utf8').replace(/\r\n/g, '\n');
-  check('the Run hand runs commands by the Web switch, and says so when they ran offline', /net: commandNet\(cfg\)/.test(hands) && /Web is off, so commands are offline too/.test(hands));
-  check('with Web off and no sandbox here, a command doesn\'t run at all (cut off, never run unprotected)', /no_sandbox|NO_SANDBOX/i.test(hands) && /commandNet\(cfg\) === 'off' && !offlineWay\(\)\) throw new Error\(NO_SANDBOX\)/.test(hands) && /^Not run: Web is off/.test(NO_SANDBOX));
+  check('the Run hand runs commands by commandNet, and says so when they ran offline', /net: commandNet\(cfg\)/.test(hands) && /Strict offline commands is on and Web is off/.test(hands));
+  check('with Web off and no sandbox here, a command doesn\'t run at all (cut off, never run unprotected)', /no_sandbox|NO_SANDBOX/i.test(hands) && /commandNet\(cfg\) === 'off' && !offlineWay\(\)\) throw new Error\(NO_SANDBOX\)/.test(hands) && /^Not run: "Strict offline commands" is on and Web is off/.test(NO_SANDBOX));
+  check('Settings, Hands has the Strict offline commands switch, and it saves', /data-hstrict/.test(fs.readFileSync(path.join(app, 'public/hands.js'), 'utf8')) && /next\.strictOffline = b\.strictOffline === true/.test(fs.readFileSync(path.join(app, 'src/hands-routes.js'), 'utf8')));
   const card = (await imp('src/privacy-services.js')).PRIVACY_SERVICES['web-search'];
-  check('the Web card says commands go online too while it is on', /commands/i.test(card.sends) && /commands/i.test(card.sees));
+  check('the Web card no longer says commands go offline with it (they only do with Strict on)', !/commands included/.test(card.sees));
 }
 
 {
@@ -42,9 +45,9 @@ const { LIMITS } = await imp('src/hands-settings.js');
   const tmp0 = fs.mkdtempSync(path.join(os.tmpdir(), 'no sandbox '));
   process.env.BOB_NO_SANDBOX = '1';
   let err = '';
-  try { await runApproved({ dataDir: tmp0, innDir: tmp0, agentDir: tmp0 }, { cmd: process.execPath, args: ['-e', '1'], cwd: tmp0 }); } catch (e) { err = e.message; }
+  try { await runApproved({ dataDir: tmp0, innDir: tmp0, agentDir: tmp0, hands: { strictOffline: true } }, { cmd: process.execPath, args: ['-e', '1'], cwd: tmp0 }); } catch (e) { err = e.message; }
   delete process.env.BOB_NO_SANDBOX;
-  check('on a computer with no sandbox (Windows today), with Web off, the Run hand refuses and says why', /^Not run: Web is off/.test(err), err);
+  check('on a computer with no sandbox (Windows today), with Strict on and Web off, the Run hand refuses and says why', /^Not run: "Strict offline commands" is on/.test(err), err);
   fs.rmSync(tmp0, { recursive: true, force: true });
 }
 
