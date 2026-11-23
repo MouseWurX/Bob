@@ -130,6 +130,9 @@ The answers above cover the five research questions. The thesis also measured ho
 | Smaller Flash-Next files (cloud) | IQ3 and Q2 within a job or two of Q4 on Office and repo; inbox 82% against 86% | The smaller files lose little on pass rates; quality of work is still to be judged | Weak (one run each) | 11 |
 | Held-out jobs (held1) | Office 11 against 13 of 14, repo 8 against 12 of 12, web 4 against 8 of 11 (Qwen against Flash-Next Q4) | Flash-Next's lead holds on jobs nobody tuned on | Weak (few jobs) | 11 |
 | A first REAP cut of Flash-Next | 90% of experts kept: 13/14, 12/12, 9/11, inbox 93%, no harms, same as or above all experts | A light cut costs nothing measurable; deeper levels were still running | Weak (few jobs, no heal) | 11 |
+| Every REAP keep level (Flash-Next, masked) | 100 to 60% kept: Office 12 to 13 of 14, repo 10 to 12 of 12, web 8 to 9 of 11; one harm at 75%; inbox drops at 65 and 60%; Office 9 of 14 at 50% (Figure 11.5) | 80% is the floor; the cut keeps 410 of 512 experts per layer | Weak (one run per level, few jobs) | 11 |
+| Redirecting cut experts | Inbox finding 64 of 117 against 85 (mask) and 90 (all experts) | Dropped; cut experts are removed outright | Weak (one run) | 11 |
+| Bob Routines on the home PC | 18 of 18 live checks, 103 of 103 tests; n8n import on 361 workflows, no crashes, median 56% of steps converted | Clerk work can run without the brain; effect on jobs untested | Moderate (checks), none (jobs) | 13 |
 
 **Speed on the home PC** (every speed result in one table: section 4.3.4; method in section 4.3.3.1 and section 4.3.3.10; the tests of 22 November in section 4.3.3.11)
 
@@ -146,6 +149,9 @@ The answers above cover the five research questions. The thesis also measured ho
 | Lending from every bank, Brain Engine 31 | Wrote "3333…" on every borrow run | A layout bug, fixed in Brain Engine 32; all its borrow numbers void | Strong (every run) | 4 |
 | Flash-Next 125B on the home PC | Borrow: job 2,090 against 2,697 s, reading 36 against 22 t/s, writing 1.75 against 1.3 t/s; then a lock-up at 76 MB free RAM | Borrow helps reading; writing waits on RAM and the drive; Flash-Next stopped until a RAM floor is tested | Provisional (2 rounds) | 4 |
 | Brain Engine 32 and 33 word checks | BE32 borrow on matches borrow off at 32K and 128K; BE33 matches BE28 word for word | The lending garbage is fixed; Gate 1 rerun under way | Strong (word match) | 4 |
+| GUPPI release gate (Brain Engine 43) | 58.4 s, then 52 to 54 s, against plain 36.2 to 36.5 s; words match | A memory switch inside a job costs more than it buys; GUPPI now holds still within a job | Moderate (2 rounds) | 4 |
+| Registering expert RAM with the card (0109) | Writing 7% faster, reading 1% to 2%, same words, on a rented Linux card | A lossless gain; the Windows run is still to come | Weak (one rental, 3 rounds) | 4 |
+| Inkling 2 Mini on small machines | Laptop 11.9 and Legion Go 10.6 t/s writing at Q2 | A looped brain runs on a 6 GB laptop card and a handheld; job quality untested | Weak (single runs) | 4 |
 | Avalon's own Windows build | Crashed or hung at its own steps; 20 against 44 tokens a second with fusion off | Rebuild its ideas inside Brain Engine instead | Moderate (one session) | 4 |
 
 **What the table adds up to.** The lesson results (RQ1 to RQ3) are the best measured part of the thesis, and the decisive retrain is still missing. The speed results are many small, careful runs on one PC: they settle the defaults for that PC and say little about other machines. The harness results are new and single runs, but they changed the work: since 21 November the main task is making the stock brain finish real jobs reliably, before any more training or cutting.
@@ -279,6 +285,8 @@ The test is to fix the harness first, have the full brain pass its own jobs clea
 
 ## 13.7 Where the work is heading (added 22 November)
 
+<a id="direction"></a>
+
 The project's goal is a reliable personal assistant on one consumer PC: mail, research, small projects and code, without crashes or bad tool calls. The thesis's results point the work in five directions. None of the plans below has a result yet, and each will be reported in full however it comes out.
 
 **1. The harness first.** The 21 November runs (section 11.7.6) showed that the stock brain does most jobs right and loses passes on habits the harness can catch: not checking its own work, not finding files, writing calls as text. The fixes are made and tested in the suite, and the next run of the same jobs is their test. Each results report now ranks failures by count against the last round, with a fix for each. MouseWurX's aim is for Bob to work on his own code reliably; if he can't, a local harness that gates every change on the repository's own tests is the fallback.
@@ -306,6 +314,13 @@ Each step is off by default and must pass Gate 1 (section 4.3.3.10) or be droppe
 - set how many experts each layer uses; Brain Engine already takes one count per layer, live, while a cut file with a different count per layer needs a new patch
 - judge on jobs it never saw with the absolute real-jobs gate (section 4.3.3.10)
 - publish only what passes
+
+<a id="routines"></a>
+
+**6. Routines: less work for the brain (added 23 November).** The harness results say the brain fails most on clerk work it should not have to think about: finding files, following a fixed order, repeating the same steps. Bob Routines moves that work out of the brain. A routine is a trigger plus steps (tools, conditions, loops, and a brain step only where judgement is needed), built by hand in a node editor like Unreal's Blueprints, with execution wires and typed data wires. The person OKs a routine once, on a card that lists its exact steps and targets; after that it runs in plain code with no brain unless a step asks for one. Runs keep their state so they can resume, retry with time limits, take an error path and roll back to an earlier version. A brain may draft a routine into the editor, but only on a button that is off by default. Routines can also be brought in from n8n workflow files, by conversion and never by running n8n itself.
+
+- **Measured.** On the home PC (real Windows, headless): 18 of 18 live checks and 103 of 103 tests passed (23 November). Steps checked include a routine refused before its OK, run after it, a change needing a new OK, and going back to an older version. One mismatch was found: after a rollback, the logbook says the routine needs a new OK while the routine stayed OK'd. The n8n importer was tried on 361 community workflows: none crashed, a median of 56% of each one's steps converted, and 3 converted as they stood. Most of the rest need a code, web-post or online-service step replaced.
+- **Not measured.** The editor window on the home PC (screen control was refused), and whether routines cut harness failures on real jobs. Both are unproven in our lab, as we have yet to test. Routines ship in PR #320 with the next release.
 
 **5. Lessons wait.** Training is parked until the harness is clean. The decisive retrain of section 13.6.1 is still the test of the headline claim, and a new Bobert is to start from fresh stock Qwen. Stock Qwen stays the default unless a trained or cut brain beats it on held-out jobs.
 
