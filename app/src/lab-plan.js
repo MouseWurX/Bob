@@ -30,6 +30,8 @@ export function planRecipe(recipe, { brain, facts, tools, outDir, skillNamesFor 
   if (s.cut && facts.experts && !(s.cut.how === 'cover' && !s.cut.keep) && (s.cut.keep < facts.used || s.cut.keep >= facts.experts)) problems.push(`Keep between ${facts.used} and ${facts.experts - 1} experts per layer (this brain picks ${facts.used} for every word).`);
   if (s.files.length && !facts.fullSize) problems.push(`${brain.name}'s file is already a running file (${facts.fileType}). Making running files needs the full-size copy (F16 or BF16). Untick Make the running files, or start from a full-size copy.`);
   if (s.files.includes('Q3_K_M')) notes.push('Q3 is only worth it for brains meant for 8 GB or less.');
+  if (s.files.includes('MXFP4_MOE') && !facts.experts) problems.push(`FP4 experts packs a brain's experts, and ${brain.name} isn't a mixture-of-experts brain. Untick FP4 experts.`);
+  if (s.files.includes('MXFP4_MOE') && facts.experts) notes.push('FP4 experts is a test. Its reading is fastest on an RTX 50-series card\'s FP4 cores; on other cards it runs like an ordinary 4-bit file. Not yet checked on real jobs.');
   if (s.cut?.how === 'busiest' && r.lessons.kind === 'none') problems.push('Keeping the busiest experts needs lessons to count them on. Pick a lesson set in step 2, or use an expert list you have.');
   if (s.cut?.how === 'cover' && r.lessons.kind === 'none') problems.push('Keeping every skill covered needs lessons to count each skill on. Pick a lesson set in step 2.');
   const skills = s.cut?.how === 'cover' && r.lessons.kind !== 'none' ? lessonSkillNames(r.lessons, skillNamesFor) : [];

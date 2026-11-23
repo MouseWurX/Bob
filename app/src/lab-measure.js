@@ -20,7 +20,9 @@ export function labRoom(totalBytes = os.totalmem()) {
 }
 
 // Running files the Lab can make, best first. Q3 only for brains meant for 8 GB or less (the Q4-or-better rule).
-export const RUNNING_TYPES = ['Q4_K_M', 'Q5_K_M', 'Q6_K', 'Q8_0', 'Q3_K_M'];
+// MXFP4_MOE (Nov 23): the experts in 4-bit float (MXFP4), the rest as Q8_0, by the stock llama-quantize. Fastest reading
+// on an RTX 50-series card's FP4 cores; elsewhere an ordinary 4-bit file.
+export const RUNNING_TYPES = ['Q4_K_M', 'Q5_K_M', 'Q6_K', 'Q8_0', 'Q3_K_M', 'MXFP4_MOE'];
 export const exeName = (n) => (process.platform === 'win32' ? `${n}.exe` : n);
 export const isInsideDir = (f, root) => { const rel = path.relative(path.resolve(root), path.resolve(String(f || ''))); return Boolean(rel) && !rel.startsWith('..') && !path.isAbsolute(rel); };
 export const slugOf = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'lab-brain';

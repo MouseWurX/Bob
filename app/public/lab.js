@@ -53,7 +53,7 @@ const MODE_NOTES = {
   forge: 'Professional adds skills to protect, running files, teaching back and proper names.',
   mine: 'The same in both modes.',
 };
-const TYPE_NOTE = { Q4_K_M: 'Q4 (recommended)', Q5_K_M: 'Q5', Q6_K: 'Q6', Q8_0: 'Q8', Q3_K_M: 'Q3 (only for brains meant for 8 GB or less)' };
+const TYPE_NOTE = { Q4_K_M: 'Q4 (recommended)', Q5_K_M: 'Q5', Q6_K: 'Q6', Q8_0: 'Q8', Q3_K_M: 'Q3 (only for brains meant for 8 GB or less)', MXFP4_MOE: 'FP4 experts (for RTX 50-series cards, a test)' };
 // Show the wobble (Nov 11): "71 ± 4" when three runs were made, else just the score.
 const withWobble = (r, id) => (r.scores[id] == null ? '-' : id === 'jobspeed' && r.jobSec != null ? `${r.jobSec} s (${r.scores[id]} right)` : r.wobble?.[id] != null ? `${r.scores[id]} ± ${r.wobble[id]}` : r.scores[id]); // Job speed shows its seconds
 const PARTS = { general: 'General knowledge', tools: 'Picking the right tool', coding: 'Coding', following: 'Following instructions' };
@@ -350,7 +350,7 @@ export function createLab({ api, note, go, page = false }) {
       ${!hasPart('later') ? '' : later('Make it one file', 'Joins the retrained part into the brain file.')}
       ${!hasPart('files') ? '' : `<fieldset><legend>${nm('Make the running files')}</legend>
         ${f.fullSize ? '' : `<p class="muted">${esc(b?.name || 'This brain')} is already a running file (${esc(f.fileType || '?')}). Making running files needs the full-size copy (F16 or BF16).</p>`}
-        ${view.types.filter((t) => t !== 'Q3_K_M' || (f.sizeGB || 99) <= 16).map((t) => box(`file:${t}`, s.files.includes(t), TYPE_NOTE[t], f.sizeGB ? `About ${Math.round(f.sizeGB * ({ Q4_K_M: 0.3, Q5_K_M: 0.36, Q6_K: 0.41, Q8_0: 0.53, Q3_K_M: 0.25 }[t] || 0.3) * 10) / 10} GB from this brain${cut ? ' before the cut' : ''}.` : '', f.fullSize ? '' : 'Needs the full-size copy.')).join('')}
+        ${view.types.filter((t) => (t !== 'Q3_K_M' || (f.sizeGB || 99) <= 16) && (t !== 'MXFP4_MOE' || f.experts)).map((t) => box(`file:${t}`, s.files.includes(t), TYPE_NOTE[t], f.sizeGB ? `About ${Math.round(f.sizeGB * ({ Q4_K_M: 0.3, Q5_K_M: 0.36, Q6_K: 0.41, Q8_0: 0.53, Q3_K_M: 0.25, MXFP4_MOE: 0.29 }[t] || 0.3) * 10) / 10} GB from this brain${cut ? ' before the cut' : ''}.` : '', f.fullSize ? '' : 'Needs the full-size copy.')).join('')}
         ${s.files.length ? box('measure', s.measure, 'Measure before making the running files (recommended)', 'Finds which parts matter most for your lessons, so the running files lose less. A few extra minutes.', r.lessons.kind === 'none' ? 'Needs lessons to measure on: pick a lesson set in step 2.' : '') : ''}
       </fieldset>`}
     </fieldset>`;
