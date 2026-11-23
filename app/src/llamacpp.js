@@ -934,6 +934,12 @@ export class LlamaCpp {
     if (placeArgs(this.cfg, model, { cpu: false, layers: (gguf && ggufInfo(gguf)?.shape?.layers) || 0 }).length) return true;
     return hand.some((a) => ['-ngl', '--n-gpu-layers', '--gpu-layers', '--fit', '-ot', '--override-tensor', '--n-cpu-moe', '-ncmoe', '--cpu-moe', '-dev', '--device', '-ts', '--tensor-split'].includes(a));
   }
+  handLoadMode(model) {
+    const lc = this.lc;
+    let modelArgs = [];
+    try { modelArgs = this.resolve(model).args || lc.modelArgs?.[model] || []; } catch {}
+    return [...(lc.preArgs || []), ...(Array.isArray(lc.args) ? lc.args : []), ...modelArgs].some((a) => ['--load-mode', '-lm', '--mmap', '--no-mmap'].includes(a));
+  }
   // Where the brain goes on built-in graphics, right before the engine starts (after the last brain let go): wholly on
   // the graphics when it fits with room to spare, else as many layers as fit, else the processor alone. Changes args.
   apuFit(model, args, ctx) {
@@ -954,7 +960,14 @@ export class LlamaCpp {
       args.push('-ngl', String(plan.layers));
       if (plan.place === 'cpu' && this.buildNo() >= 5000) args.push('--device', 'none'); // nothing on the graphics at all
       // The processor's part is read from the drive as needed (memory-mapped), so Windows can let go of it.
-      if (this.lc.loadMode !== 'whole') { drop('--load-mode'); drop('--no-mmap', false); }
+      // Nov 23 (Legion Go): left to itself, llama.cpp turns memory-mapping off whenever a device can't map files, and
+      // Vulkan on built-in graphics says it can't, so the processor's part was copied into pinned RAM (gemma4-e2b at
+      // 12 of 35 layers: 2.3 GB of "shared GPU memory"). --load-mode mmap keeps it mapped: 3.5 -> 1.2 GB shared, 0.5-0.9 GB
+      // more free, same speed, same words (8 runs). A load mode set by hand in llamacpp.args is kept.
+      if (!this.handLoadMode(model)) {
+        drop('--load-mode'); drop('--no-mmap', false); drop('--mmap', false);
+        if (this.loadFlag() === 'load-mode') args.push('--load-mode', 'mmap');
+      }
     }
     const gb = (b) => Math.round((b / 1024 ** 3) * 10) / 10;
     const where = plan.place === 'card' ? 'wholly on the graphics' : plan.place === 'split' ? `${plan.layers} of ${layers} layers on the graphics, the rest on the processor` : 'on the processor alone';

@@ -129,6 +129,28 @@ try {
     check(args.join(' ').includes('-ngl 20') && !/ -ngl 0/.test(args.join(' ')), 'layers set by hand are never changed');
   }
   {
+    // Nov 23 (Legion Go): Vulkan on built-in graphics turns memory-mapping off by itself; a split brain asks for it back.
+    const e = make({}, 3 * GB);
+    e.loadFlag = () => 'load-mode';
+    const args = e.buildArgs('alpha', { ctx: 32768 });
+    const plan = e.apuFit('alpha', args, 32768);
+    const a = args.join(' ');
+    check(plan && plan.place !== 'card' && /--load-mode mmap/.test(a) && !/--load-mode none|--no-mmap/.test(a), 'part or all on the processor with built-in graphics: --load-mode mmap, so the processor\'s part is read from the file, not copied into pinned RAM', a);
+    const old = make({}, 3 * GB); old.loadFlag = () => 'no-mmap';
+    const oa = old.buildArgs('alpha', { ctx: 32768 }); old.apuFit('alpha', oa, 32768);
+    check(!/--load-mode|--no-mmap/.test(oa.join(' ')), 'an older engine without --load-mode: nothing added', oa.join(' '));
+    const hand = make({ llamacpp: { exe: process.execPath, preArgs: [path.join(here, 'mock-llama-server.js')], ollamaModelsDir: models, port: 19995, args: ['--load-mode', 'none'] } }, 3 * GB);
+    hand.loadFlag = () => 'load-mode';
+    const ha = hand.buildArgs('alpha', { ctx: 32768 }); hand.apuFit('alpha', ha, 32768);
+    check(/--load-mode none/.test(ha.join(' ')) && !/--load-mode mmap/.test(ha.join(' ')), 'a load mode set by hand is kept', ha.join(' '));
+    const card = make({}, 16 * GB); card.loadFlag = () => 'load-mode';
+    const ca = card.buildArgs('alpha', { ctx: 8192 }); const cp = card.apuFit('alpha', ca, 8192);
+    check(cp?.place !== 'card' || !/--load-mode mmap/.test(ca.join(' ')), 'wholly on the graphics: no change', ca.join(' '));
+    const real = make({ sharedGraphics: false }, 3 * GB); real.loadFlag = () => 'load-mode';
+    const ra = real.buildArgs('alpha', { ctx: 32768 }); real.apuFit('alpha', ra, 32768);
+    check(!/--load-mode mmap/.test(ra.join(' ')), 'a real graphics card: untouched', ra.join(' '));
+  }
+  {
     const e = make();
     e.noReuse.add('alpha');
     check(!e.buildArgs('alpha', { ctx: 8192 }).includes('--cache-reuse'), 'after "Invalid input batch" the brain loads without --cache-reuse');
