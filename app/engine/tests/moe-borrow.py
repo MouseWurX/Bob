@@ -123,6 +123,9 @@ try:
     mplain, _ = serve('plain-mixed', {}, mbig, cache='12', model=mixed)
     check('mixed block types: the same words as a plain run at that step', mbig > 64 and mon == mplain and len(mon) == 2 and not any(w.startswith('ERROR') for w in mon), f'{mon} vs {mplain}')
     w4, _ = serve('plain-own', {}, 64)
+    # 0066: no step bigger than the own one fits (here: not allowed past 64), so borrowing turns itself off, unstriped
+    w5, err5 = serve('borrow-nogrow', {'LLAMA_MOE_CACHE_BORROW': '1', 'LLAMA_MOE_CACHE_BORROW_UB': '64'}, 64)
+    check('0066: with no bigger step, borrowing turns itself off and the words are a plain -ub 64 run\'s', 'so borrowing is turned off' in err5 and 'borrowed reading off:' in err5 and 'borrowed reading: region' in err5 and w5 == w4, f'{w5} vs {w4} {err5[-500:]}')
     print(f'info: reading step {big}; borrowed words same as -ub 64 plain: {w4 == on}')
 finally:
     rpc.kill()
