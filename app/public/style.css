@@ -2933,3 +2933,8 @@ body.still .phone-menu { animation: none; }
 .info-card .ic-k { color: var(--accent); font-weight: 600; }
 .info-card .ic-v { overflow-wrap: anywhere; }
 .add-why:empty { display: none; }
+/* Nov 23 2026: Settings, Online services, Where Bob connected (net-log.js) */
+.net-log-box .table-wrap { max-height: 280px; overflow: auto; margin: 6px 0; }
+.net-log-box table.net-log { width: 100%; border-collapse: collapse; font-size: 13px; }
+.net-log-box table.net-log th, .net-log-box table.net-log td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.net-log-box table.net-log tr.warn td { color: var(--warn, var(--bad)); }

@@ -233,6 +233,7 @@ export function createSettingsParts(now) {
   }
   function onlineHtml() {
     return `<p class="muted">Each of these sends something over the internet, and says what.</p>
+      <div class="net-log-box"><strong>📡 Where Bob connected</strong> <span class="muted">Loading…</span></div>
       ${rentHtml()}
       <div><strong>Cloud helpers</strong> <span class="tag">off unless you turn one on</span>
         ${more('Paid cloud AIs Bob can hand one job to. He asks every time, with the rough cost and exactly what text would leave this replicant matrix. Bob never stores or sees your keys: you add a key as a Windows environment variable yourself (Settings, System, About, Advanced system settings, Environment Variables, under "User variables").')}
