@@ -402,7 +402,10 @@ A tabletop role-playing game with Bob as game master and a party of you, your fr
 ## Hire a bigger brain
 
 - **Rented brains** (Settings, Online services): hire a big brain for one job from a service you have an account with. Pay per answer (OpenRouter, Together AI, Lambda, or any address plus key), RunPod serverless, or a machine by the minute (RunPod, Vast.ai, Lambda), which Bob starts and stops. Set the **Spending limits** first; every one starts at $0. Every hire starts from a **Hire it (about $…)** card that says the cost and what leaves your computer. **Stop everything now** stops every machine. Bob's figures are estimates; the service's bill is the real one.
-- **Pick a brain from Bob's list** (top of Add a rental) has the really big brains no home computer can run.
+- **+ Add a rented brain** fills a rental in card by card: where to rent it, which brain (from Bob's list, with the right Hugging Face file filled in), card size, limits, and a name. Typing a model's name yourself is under Advanced.
+- **Each rented brain gets its own chat head** under Bob's picture, with its own saved chat. Its messages always go to that rented brain; Hands, tools and web search still run on your computer. While its machine runs, a ring counts down to Max rental time and the top of the chat shows the time left, the cost so far and the cost if it runs to the limit. **← Back to my chat** returns to your own chat.
+- **Keep warm** (Spending limits) keeps a hired machine waiting that many minutes for your next message, so a pause doesn't pay the start-up again. 0 to begin with.
+- **Pick a brain from Bob's list** (card 2 of Add a rented brain) has the really big brains no home computer can run.
 - **Cloud helpers:** hand a very big job to a paid online AI with your own key. Bob asks each time.
 
 ---

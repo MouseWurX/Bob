@@ -2,7 +2,9 @@
 // page's 🏗 switch and the Hire it card. Settings change only from this replicant matrix; the card can be answered
 // from the phone too (like the Set it up card). Nothing here ever returns a key.
 import { saveSettings } from './config.js';
-import { rentalsOf, cleanRental, machineModelProblem, cleanCaps, serviceOf, readPrice, findModel, keyEnvFor, money } from './rental.js';
+import { clearChat } from './fade-chat.js';
+import { chatFiles } from './chats.js';
+import { rentalsOf, rentChatId, cleanRental, machineModelProblem, cleanCaps, serviceOf, readPrice, findModel, keyEnvFor, money } from './rental.js';
 
 export async function rentRoute({ req, res, p, isLocal, brain, cfg, body, send }) {
   const rentals = brain.rentals;
@@ -90,19 +92,38 @@ export async function rentRoute({ req, res, p, isLocal, brain, cfg, body, send }
   if (p === '/api/rent/remove') {
     const r = st.list.find((x) => x.id === b.id);
     if (!r) return send(res, 404, { error: 'No such rental.' }), true;
+    // Nov 18 (the owner: "have it sort into memory or delete, user choice"): a rental with a saved chat of its own asks
+    // first. chat: 'memory' keeps it as an ordinary past chat, so Bob sorts it into Topics and memory like any other;
+    // 'delete' deletes it for good. Its chat head goes either way.
+    const chatId = rentChatId(r.id);
+    const hasChat = chatFiles(cfg, chatId).length > 0;
+    if (hasChat && !['memory', 'delete'].includes(b.chat)) return send(res, 409, { error: 'This rented brain has a chat of its own. Keep it in my memory, or delete it?', ask: 'chat', id: r.id, name: r.name }), true;
     const run = rentals.running.get(r.id);
     if (run) await rentals.stopRun(r, run, 'the rental was removed').catch(() => {});
+    if (hasChat && b.chat === 'delete') {
+      const gone = clearChat(cfg, brain, chatId, { forGood: true });
+      if (gone.error) return send(res, 409, { error: gone.error }), true;
+      try { brain.broadcast?.({ type: 'chat-cleared', sessionId: chatId }); } catch {}
+    }
     st.list = st.list.filter((x) => x.id !== b.id);
     const wasSlot = st.current === b.id;
     if (wasSlot) st.current = '';
     save(st);
     if (wasSlot) brain.broadcast?.({ type: 'rent', action: 'slot', rental: '' });
-    brain.log('settings', `rented brain removed: ${r.name}`);
+    brain.log('settings', `rented brain removed: ${r.name}${hasChat ? (b.chat === 'delete' ? ', its chat deleted' : ', its chat kept in memory') : ''}`);
     return view(), true;
   }
   if (p === '/api/rent/stop') {
     const out = await rentals.stopAll(b.why || 'you pressed Stop');
     return send(res, 200, { ...rentals.view(), stopped: out.filter(Boolean).length, failed: out.filter((x) => !x).length }), true;
+  }
+  // Nov 18: Stop the machine now, on a rented brain's own chat (that one only).
+  if (p === '/api/rent/stop-one') {
+    const r = st.list.find((x) => x.id === String(b.id || ''));
+    const run = r && rentals.running.get(r.id);
+    if (!run) return send(res, 200, { ...rentals.view(), stopped: false }), true;
+    const ok = await rentals.stopRun(r, run, 'you pressed Stop the machine now');
+    return send(res, ok ? 200 : 502, { ...rentals.view(), stopped: ok }), true;
   }
   if (p === '/api/rent/stop-leftover') {
     const m = rentals.leftover.find((x) => x.id === String(b.id));

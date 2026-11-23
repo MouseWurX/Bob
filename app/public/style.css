@@ -1715,6 +1715,12 @@ button.gm-sq:hover, button.gm-sq:focus-visible { background: #a9cdf0; outline: 2
 .rent-multi-warn { border: 3px solid #c33; background: var(--danger-bg); padding: 14px 16px; margin-top: 10px; }
 .rent-multi-warn p.big { font-size: 1.35em; margin-bottom: 8px; }
 .rent-multi-warn .row button { min-height: 44px; font-size: 1.05em; }
+/* Nov 18 Add a rented brain, card by card */
+.rent-draft { display: grid; gap: 10px; margin: 8px 0; }
+.rent-step { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+.rent-step[hidden] { display: none; }
+.rent-step h5 { margin: 0 0 6px; font-size: 14px; }
+.rent-remove-ask { margin-top: 8px; }
 
 /* 1.5.138: Now running sections can be put in any order (the grip), and Bob's thinking can sit in the panel (Show here). */
 .now-sections { display: flex; flex-direction: column; gap: 6px; }
@@ -2536,6 +2542,16 @@ body.now-mind-only #nowMind > .now-sec { display: none; }
 .guest-bar .g-who span { color: var(--muted); font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; overflow-wrap: anywhere; }
 .guest-bar .g-who p { margin: 4px 0 0; font-size: 12.5px; }
 .guest-bar .g-back { flex: none; border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); color: var(--accent); background: transparent; border-radius: 10px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+/* Nov 18 a rented brain's own chat: its countdown and costs (public/rent-head.js) */
+.guest-bar.rent-bar .g-stop { flex: none; border-radius: 10px; padding: 7px 12px; font-size: 13px; }
+.rent-facts { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 6px 0 0; }
+.rent-facts div { min-width: 7em; }
+.rent-facts dt { color: var(--muted); font-size: 11px; }
+.rent-facts dd { margin: 0; font-variant-numeric: tabular-nums; font-size: 14px; }
+.rent-steps { margin: 8px 0 0; padding-left: 1.3em; font-size: 13px; }
+.rent-steps li { margin: 2px 0; color: var(--muted); }
+.rent-steps li.now { color: var(--text, inherit); font-weight: 600; }
+.rent-steps small { font-variant-numeric: tabular-nums; font-weight: 400; }
 /* Guest mode: web search is the only switch; Hands and the rest stay with your own Bob. */
 body.net-guest .effort > :not(#webBtn):not(.net-help), body.net-guest #handsQuick, body.net-guest .chips { display: none !important; }
 .net-help { display: none; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; padding: 4px 8px; }

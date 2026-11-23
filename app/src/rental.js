@@ -85,11 +85,30 @@ export function scrubKey(text, keys = []) {
 }
 
 // ---------- settings ----------
-export const DEFAULT_CAPS = { month: 0, job: 0, minutes: 0 }; // every limit starts at 0 (the owner's rule): nothing is hired until each is set
+export const DEFAULT_CAPS = { month: 0, job: 0, minutes: 0, warm: 0 }; // every limit starts at 0 (the owner's rule): nothing is hired until each is set
+// Nov 18 keep-warm (warm, minutes): how long a hired machine waits for your next message after a job ends, so a pause
+// doesn't mean paying the 5 to 10 minute start-up again. 0 (the default) is the old way: it stops about 30 s after.
+// Never past Max rental time or the machine's own self-destruct timer, which still stop it whatever this says.
+export const WARM_MAX = 60;
+export const IDLE_GRACE_MS = 30000;
 export function cleanCaps(c = {}) {
   const num = (v, max) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.min(max, Math.round(n * 100) / 100) : 0; };
-  return { month: num(c.month, 10000), job: num(c.job, 10000), minutes: Math.round(num(c.minutes, 24 * 60)) };
+  return { month: num(c.month, 10000), job: num(c.job, 10000), minutes: Math.round(num(c.minutes, 24 * 60)), warm: Math.round(num(c.warm, WARM_MAX)) };
 }
+export const warmMs = (caps) => Math.max(IDLE_GRACE_MS, (Number(caps?.warm) || 0) * 60000);
+
+// Nov 18 (the owner): "a chat head that would link to a chat for it". Each rental has its own chat, saved like any
+// other, whose messages always go to that rented brain. Its id is rent- plus the rental's id.
+export const RENT_CHAT_PREFIX = 'rent-';
+export const rentChatId = (rentalId) => `${RENT_CHAT_PREFIX}${rentalId}`;
+export const isRentChat = (id) => typeof id === 'string' && /^rent-[a-z0-9]{6,12}$/.test(id);
+export function rentalOfChat(cfg, sessionId) {
+  if (!isRentChat(sessionId)) return null;
+  return rentalsOf(cfg).list.find((r) => rentChatId(r.id) === sessionId) || null;
+}
+// The rented brains' chat heads (the owner, Nov 18: "every rental brain you add ... i want to be a new chat head. and
+// if you remove it from the rentals list it removes it from the list on the left"): one for each rental whose service
+// is switched on. Nothing shows until you switch a service on and add a rental, both off to begin with.
 export const RENTAL_ID_RE = /^[a-z0-9]{6,12}$/;
 export function cleanRental(r = {}) {
   const service = serviceOf(r.service);
@@ -144,6 +163,8 @@ export function rentalReady(cfg, rental, env = rentKeyEnv()) {
 }
 
 // ---------- money ----------
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const round4 = (n) => Math.round((Number(n) || 0) * 10000) / 10000;
 export const money = (n) => (n == null ? '' : n < 0.01 && n > 0 ? 'under 1 cent' : `$${(Math.round(n * 100) / 100).toFixed(2)}`);
 export function priceLine(rental) {
   const s = serviceOf(rental.service);
@@ -302,6 +323,49 @@ export async function findModel(service, { hf, name, address = '' }, key, fetchI
   return matchModel(Array.isArray(j) ? j : j.data || j.models || [], { hf, name });
 }
 
+// ---------- start-up stages (Nov 18) ----------
+// The owner, from the first live try: "it can take time for a rental to be accepted ... you don't know what's happening
+// with the rental when you do it this way". Each step is shown on the head and at the top of its chat, with the time it
+// was reached and what had been spent by then. A step comes from what the service says where it says it (Vast.ai's
+// status line can carry a percentage); where it says nothing, from what Bob can see (no answer yet, then the brain loading).
+export const STAGES = {
+  asking: 'Asking for a machine',
+  waiting: 'Waiting for the service to give us a machine',
+  pulling: 'Getting the server program onto the machine',
+  loading: 'Downloading and loading the brain',
+  ready: 'Ready',
+  stopped: 'Stopped'
+};
+const pctOf = (text) => { const m = String(text || '').match(/(\d{1,3}(?:\.\d)?)\s?%/); const n = m ? Number(m[1]) : NaN; return Number.isFinite(n) && n >= 0 && n <= 100 ? n : null; };
+// What a service says about a machine it is starting, as one of the steps above (or '' when it says nothing useful).
+export function stageFrom(service, info = {}) {
+  const text = String(info.status_msg || info.lastStatusChange || info.statusMessage || info.status || '').slice(0, 200);
+  const pct = pctOf(text);
+  if (service === 'vast') {
+    const st = String(info.actual_status || info.cur_state || '').toLowerCase();
+    if (!st || st === 'created' || st === 'scheduling' || st === 'offline') return { step: 'waiting', detail: text, pct: null };
+    if (st === 'loading' || /pull|download|extract/i.test(text)) return { step: 'pulling', detail: text, pct };
+    if (st === 'running') return { step: 'loading', detail: '', pct: null };
+    return { step: '', detail: text, pct: null };
+  }
+  if (service === 'runpod') {
+    const desired = String(info.desiredStatus || '').toUpperCase();
+    const up = Number(info.runtime?.uptimeInSeconds ?? info.uptimeSeconds ?? 0);
+    if (/pull|download|extract/i.test(text) && !up) return { step: 'pulling', detail: text, pct };
+    if (desired && desired !== 'RUNNING') return { step: 'waiting', detail: text, pct: null };
+    if (desired === 'RUNNING' && !up && !info.publicIp && !info.runtime) return { step: 'pulling', detail: text, pct };
+    if (desired === 'RUNNING') return { step: 'loading', detail: '', pct: null };
+    return { step: '', detail: text, pct: null };
+  }
+  if (service === 'lambda-machine') {
+    const st = String(info.status || '').toLowerCase();
+    if (st === 'booting' || st === 'unhealthy') return { step: 'waiting', detail: '', pct: null };
+    if (st === 'active') return { step: 'pulling', detail: '', pct: null }; // the server program is fetched once it boots
+    return { step: '', detail: '', pct: null };
+  }
+  return { step: '', detail: '', pct: null };
+}
+
 // ---------- machines ----------
 // The server a hired machine runs: vLLM for a Hugging Face model at full size, llama.cpp for a GGUF file
 // ("hf:Owner/Repo/file.gguf"). Both answer the OpenAI-style API on port 8000. The command is wrapped in a timer (the
@@ -448,49 +512,64 @@ export class Machines {
   // Nov 18 (the first live RunPod try): the pod vanished within minutes and Bob went on saying "starting" for 20. Returns
   // why a machine that is starting can't come up (it's gone, or it stopped), or '' while it may still. A look that
   // fails for another reason (the network, a slow answer) is not taken as gone.
-  async gone(rental, m, key) {
-    if (!m?.id || m.kind !== 'machine') return '';
+  // look: one GET of the machine a round, for both why it's gone (if it is) and which start-up step it's on.
+  async look(rental, m, key) {
+    const out = { gone: '', stage: { step: '', detail: '', pct: null } };
+    if (!m?.id || m.kind !== 'machine') return out;
     const s = serviceOf(rental.service);
     const said = (t) => String(t || '').replace(/[\u0000-\u001f<>]/g, ' ').trim().slice(0, 200);
     try {
       if (s.id === 'runpod') {
         const p = await this.api(`${RUNPOD}/pods/${m.id}`, { key, timeout: 10000 });
-        if (!p || (Array.isArray(p) && !p.length)) return `RunPod has no machine ${m.id} any more: it was removed before the brain came up. RunPod's log page for it may say why.`;
-        const st = String(p.desiredStatus || p.status || '').toUpperCase();
-        if (['EXITED', 'TERMINATED', 'DEAD', 'FAILED'].includes(st)) return `The RunPod machine stopped before the brain came up (${st.toLowerCase()}${p.lastStatusChange ? `: ${said(p.lastStatusChange)}` : ''}).`;
+        if (!p || (Array.isArray(p) && !p.length)) out.gone = `RunPod has no machine ${m.id} any more: it was removed before the brain came up. RunPod's log page for it may say why.`;
+        else {
+          const st = String(p.desiredStatus || p.status || '').toUpperCase();
+          if (['EXITED', 'TERMINATED', 'DEAD', 'FAILED'].includes(st)) out.gone = `The RunPod machine stopped before the brain came up (${st.toLowerCase()}${p.lastStatusChange ? `: ${said(p.lastStatusChange)}` : ''}).`;
+          else out.stage = stageFrom('runpod', p);
+        }
       } else if (s.id === 'vast') {
         const j = await this.api(`${VAST}/instances/${m.id}/`, { key, timeout: 10000 });
         const inst = j?.instances === null ? null : j?.instances || j;
-        if (!inst || (typeof inst === 'object' && !Object.keys(inst).length)) return `Vast.ai has no machine ${m.id} any more: it was removed before the brain came up.`;
-        const st = String(inst.actual_status || '').toLowerCase();
-        if (['exited', 'stopped', 'offline'].includes(st) && String(inst.intended_status || '').toLowerCase() !== 'running') return `The Vast.ai machine stopped before the brain came up (${st}${inst.status_msg ? `: ${said(inst.status_msg)}` : ''}).`;
+        if (!inst || (typeof inst === 'object' && !Object.keys(inst).length)) out.gone = `Vast.ai has no machine ${m.id} any more: it was removed before the brain came up.`;
+        else {
+          const st = String(inst.actual_status || '').toLowerCase();
+          if (['exited', 'stopped'].includes(st) && String(inst.intended_status || '').toLowerCase() !== 'running') out.gone = `The Vast.ai machine stopped before the brain came up (${st}${inst.status_msg ? `: ${said(inst.status_msg)}` : ''}).`;
+          else out.stage = stageFrom('vast', inst);
+        }
       } else if (s.id === 'lambda-machine') {
         const j = await this.api(`${LAMBDA}/instances/${m.id}`, { key, timeout: 10000 });
         const st = String(j?.data?.status || '').toLowerCase();
-        if (['terminated', 'terminating'].includes(st)) return `The Lambda machine stopped before the brain came up (${st}).`;
+        if (['terminated', 'terminating'].includes(st)) out.gone = `The Lambda machine stopped before the brain came up (${st}).`;
+        else out.stage = stageFrom('lambda-machine', j?.data || {});
       }
     } catch (e) {
-      if (/answered 404\b/.test(e.message)) return `${s.name} has no machine ${m.id} any more: it was removed before the brain came up. ${s.id === 'runpod' ? 'RunPod\'s log page for it may say why.' : ''}`.trim();
+      if (/answered 404\b/.test(e.message)) out.gone = `${s.name} has no machine ${m.id} any more: it was removed before the brain came up. ${s.id === 'runpod' ? 'RunPod\'s log page for it may say why.' : ''}`.trim();
     }
-    return '';
+    return out;
   }
+  async gone(rental, m, key) { return (await this.look(rental, m, key)).gone; }
 
   // Waits until the model answers (the weights have to download onto the machine first: minutes).
-  async ready(rental, m, key, { signal, maxMs = 20 * 60000, everyMs = 10000, onNote = () => {} } = {}) {
+  // onStage(step, detail, pct): each step as it's seen (Nov 18). cancelled(): Stop was pressed meanwhile.
+  async ready(rental, m, key, { signal, maxMs = 20 * 60000, everyMs = 10000, onNote = () => {}, onStage = () => {}, cancelled = () => false } = {}) {
     const t0 = this.now();
     let told = 0;
     while (this.now() - t0 < maxMs) {
-      if (signal?.aborted) throw new Error('Stopped.');
+      if (signal?.aborted || cancelled()) throw new Error('Stopped.');
       const url = await this.address(rental, m, key).catch(() => '');
+      let answered = false;
       if (url) {
         try {
           const res = await this.fetch(`${url}/models`, { headers: m.kind === 'serverless' ? { authorization: `Bearer ${key}` } : {}, signal: AbortSignal.timeout(8000) });
           if (res.ok) return url;
+          answered = true; // something is listening: the brain is still loading
         } catch {}
       }
       // Nov 18: the machine is looked at on every round; gone or stopped, it fails at once with the service's reason.
-      const why = await this.gone(rental, m, key);
-      if (why) throw new Error(why);
+      const seen = await this.look(rental, m, key);
+      if (seen.gone) throw new Error(seen.gone);
+      if (m.kind === 'machine') { const st = seen.stage; onStage(answered && (!st.step || st.step === 'loading' || st.step === 'pulling') ? 'loading' : st.step || (url ? 'loading' : 'waiting'), st.detail, st.pct); }
+      else onStage(url ? 'loading' : 'waiting', '', null);
       const mins = Math.round((this.now() - t0) / 60000);
       if (mins >= told + 2) { told = mins; onNote(`Still starting the rented machine (${mins} min so far; the model has to download onto it).`); }
       await new Promise((r) => setTimeout(r, everyMs));
@@ -535,6 +614,7 @@ export class Rentals {
     this.offers = new Map(); // card id -> { rental, jobId, at }
     this.leftover = []; // machines found at start-up that Bob didn't expect
     this.timer = null;
+    this.lastStop = new Map(); // rental id -> { at, why, stages }: the last run's steps, so its chat can say what happened
   }
   env() { return this.envImpl || rentKeyEnv(); }
   settings() { return rentalsOf(this.cfg); }
@@ -562,6 +642,9 @@ export class Rentals {
     if (est > caps.job) return { ok: false, why: `That job could cost about ${money(est)}, more than the per-job cap (${money(caps.job)}).` };
     return { ok: true };
   }
+  byId(id) { return this.settings().list.find((r) => r.id === id) || null; }
+  // The rental a job thinks on: its own chat's rental (a rented brain's chat head), else the one in the slot.
+  forJob(job) { return (job?.rentId && this.byId(job.rentId)) || this.current(); }
   approved(rental, job) {
     if (job?.rentOk) return true;
     return Boolean(this.okUntil && this.okUntil.rental === rental.id && this.spent() < this.okUntil.usd);
@@ -634,17 +717,21 @@ export class Rentals {
     const { caps } = this.limits(rental);
     const s = serviceOf(rental.service);
     const note = (text) => emit({ type: 'announce', text });
-    run = { id: '', url: '', kind: s.kind, startedAt: this.now(), jobs: new Set(job ? [job.id] : []), usd: 0, perHour: rental.perHour ?? CARDS[rental.card || '48'].perHour * cardsOf(rental), rental: rental.id };
+    run = { id: '', url: '', kind: s.kind, startedAt: this.now(), jobs: new Set(job ? [job.id] : []), usd: 0, perHour: rental.perHour ?? CARDS[rental.card || '48'].perHour * cardsOf(rental), rental: rental.id, stages: [], askedAt: this.now() };
+    this.stage(rental, run, 'asking');
     run.starting = (async () => {
       const m = await this.machines.start(rental, { key, minutes: caps.minutes, onNote: note });
+      if (run.cancelled) { await this.machines.stop(rental, m, key).catch(() => {}); throw new Error('Stopped before it started (you pressed Stop).'); } // Nov 18: Stop works while it's being asked for too
       Object.assign(run, m, { startedAt: this.now() });
+      this.stage(rental, run, 'waiting');
       if (m.perHour) run.perHour = m.perHour;
       this.running.set(rental.id, run);
       if (m.newEndpoint && rental.service === 'runpod-serverless') this.rememberEndpoint?.(rental.id, m.id);
       emit({ type: 'rent', action: 'start', rental: rental.name, service: s.name, kind: s.kind, machine: m.id, minutes: caps.minutes });
       this.log('rent', `started ${s.name} ${m.id} for ${rental.name}, timer ${caps.minutes} min`);
-      try { run.url = await this.machines.ready(rental, run, key, { signal, onNote: note }); }
+      try { run.url = await this.machines.ready(rental, run, key, { signal, onNote: note, onStage: (step, detail, pct) => this.stage(rental, run, step, detail, pct), cancelled: () => run.cancelled === true }); }
       catch (e) { await this.stopRun(rental, run, 'didn\'t start').catch(() => {}); throw e; }
+      this.stage(rental, run, 'ready');
       note(`The rented brain is up (${s.name}). Working on it there now.`);
       this.armWatch();
     })();
@@ -653,27 +740,84 @@ export class Rentals {
     return run;
   }
 
+  // Nov 18: a start-up step reached (or its percentage moved): kept on the run and sent to the page, with the time
+  // and what had been spent by then. The same step again only updates its detail and percentage.
+  stage(rental, run, step, detail = '', pct = null) {
+    if (!STAGES[step] || !run) return;
+    const list = (run.stages ||= []);
+    const last = list.at(-1);
+    const at = this.now();
+    const usd = run.kind === 'machine' && run.id ? Math.round(this.machineCost(run) * 100) / 100 : 0;
+    const d = String(detail || '').replace(/[\u0000-\u001f<>]/g, '').slice(0, 160);
+    if (last?.step === step) { if (last.detail === d && last.pct === pct) return; last.detail = d; last.pct = pct; }
+    else list.push({ step, at, usd, detail: d, pct });
+    if (list.length > 12) list.splice(1, list.length - 12);
+    this.broadcast({ type: 'rent', action: 'stage', id: rental.id, rental: rental.name, step, label: STAGES[step], detail: d, pct, usd: money(usd) });
+  }
   // A job finished: the machine stops once no job is using it (a short grace, so a follow-up message keeps it).
+  // Nov 18: with Keep warm set, it waits that long for your next message first (never past Max rental time).
   turnDone(job) {
     if (!job) return;
-    for (const run of this.running.values()) run.jobs.delete(job.id);
+    for (const run of this.running.values()) { run.jobs.delete(job.id); if (!run.jobs.size) run.idleSince = this.now(); }
     this.armWatch(true);
   }
   armWatch(soon = false) {
     clearTimeout(this.timer);
     if (!this.running.size) return;
-    this.timer = setTimeout(() => this.watch().catch((e) => this.log('rent', `watch: ${e.message}`)), soon ? 30000 : 30000);
+    this.timer = setTimeout(() => this.watch().catch((e) => this.log('rent', `watch: ${e.message}`)), soon ? IDLE_GRACE_MS : IDLE_GRACE_MS);
     this.timer.unref?.();
+  }
+  // When an idle machine stops if no message comes (ms since 1970), or 0 while a job uses it.
+  warmUntil(run) {
+    if (!run || run.jobs.size || run.starting) return 0;
+    const caps = this.settings().caps;
+    const idle = run.idleSince || run.startedAt;
+    const end = idle + warmMs(caps);
+    return caps.minutes ? Math.min(end, run.startedAt + caps.minutes * 60000) : end;
   }
   async watch() {
     for (const [rid, run] of [...this.running]) {
       const rental = this.settings().list.find((r) => r.id === rid);
       if (!rental) { this.running.delete(rid); continue; }
-      if (!run.jobs.size && !run.starting) { await this.stopRun(rental, run, 'the job is done'); continue; }
+      const warm = this.settings().caps.warm || 0; // 0: as before, the look 30 s after the job ends stops it
+      if (!run.jobs.size && !run.starting && (!warm || this.now() >= this.warmUntil(run) - 1000)) { await this.stopRun(rental, run, warm > 0 ? `no new message in the ${warm} min you keep it warm` : 'the job is done'); continue; }
       this.checkCaps(rental, run);
-      this.broadcast({ type: 'rent', action: 'tick', rental: rental.name, usd: money(this.machineCost(run)), minutes: Math.round((this.now() - run.startedAt) / 60000) });
+      this.broadcast({ type: 'rent', action: 'tick', rental: rental.name, id: rental.id, usd: money(this.machineCost(run)), minutes: Math.round((this.now() - run.startedAt) / 60000) });
     }
     this.armWatch();
+  }
+  // Nov 18 (the owner): "a timer for the session, counting down to its session limit, and a continually updated cost
+  // projection". Times are ms since 1970 so the page can count down by itself between looks; money in dollars.
+  //   state: off (nothing hired), starting, working (a job is on it), warm (waiting for your next message), answer (pay per answer: no machine)
+  //   endsAt: when Max rental time (and the machine's own timer) stops it; warmUntil: when it stops if no message comes
+  //   usd: so far this session; atLimitUsd: if it ran to Max rental time; warmUsd: if it stops when Keep warm runs out
+  status(rental) {
+    const s = serviceOf(rental?.service);
+    if (!s) return null;
+    const caps = this.settings().caps;
+    const monthUsd = this.spent();
+    const base = { id: rental.id, name: rental.name, kind: s.kind, service: s.name, chat: rentChatId(rental.id), monthUsd: round2(monthUsd), monthCap: caps.month, jobCap: caps.job, maxMinutes: caps.minutes, warmMinutes: caps.warm || 0, ready: rentalReady(this.cfg, rental, this.env()).ok };
+    if (s.kind === 'answer') {
+      const from = this.now() - 24 * 3600000;
+      const today = this.ledger.load().filter((r) => r.rental === rental.id && r.at >= from).reduce((n, r) => n + (Number(r.usd) || 0), 0);
+      return { ...base, state: 'answer', usd: round2(today), perHour: 0 };
+    }
+    const run = this.running.get(rental.id);
+    const perHour = run?.perHour ?? rental.perHour ?? (CARDS[rental.card || '48']?.perHour ?? 2) * cardsOf(rental);
+    const stagesOut = (list) => (list || []).map((x) => ({ step: x.step, label: STAGES[x.step], at: x.at, usd: x.usd, detail: x.detail || '', pct: x.pct ?? null }));
+    if (!run) { const ls = this.lastStop.get(rental.id); return { ...base, state: 'off', perHour, usd: 0, ...(ls ? { stoppedAt: ls.at, stopWhy: ls.why, stages: stagesOut(ls.stages) } : {}) }; }
+    const endsAt = caps.minutes ? run.startedAt + caps.minutes * 60000 : 0;
+    const warmUntil = this.warmUntil(run);
+    const usd = run.kind === 'machine' ? this.machineCost(run) : run.usd;
+    const perMs = perHour / 3600000;
+    const atLimitUsd = run.kind === 'machine' && endsAt ? usd + perMs * Math.max(0, endsAt - this.now()) : null;
+    const warmUsd = run.kind === 'machine' && warmUntil ? usd + perMs * Math.max(0, warmUntil - this.now()) : null;
+    return { ...base, state: run.starting ? 'starting' : run.jobs.size ? 'working' : 'warm', stages: stagesOut(run.stages), askedAt: run.askedAt || run.startedAt, startedAt: run.startedAt, endsAt, warmUntil, perHour, usd: round4(usd), atLimitUsd: atLimitUsd == null ? null : round2(atLimitUsd), warmUsd: warmUsd == null ? null : round2(warmUsd), now: this.now() };
+  }
+  // One chat head per rental whose service is switched on.
+  heads() {
+    const st = this.settings();
+    return st.list.filter((r) => st.enabled[r.service] === true).map((r) => this.status(r)).filter(Boolean);
   }
   checkCaps(rental, run) {
     const { caps } = this.limits(rental);
@@ -683,7 +827,12 @@ export class Rentals {
     if (run && caps.minutes && this.now() - run.startedAt > (caps.minutes - 5) * 60000 && !run.warned) { run.warned = true; this.broadcast({ type: 'rent', action: 'warn', rental: rental.name, text: `The rented machine stops in about 5 minutes (the longest run you set is ${caps.minutes} min).` }); }
   }
   async stopRun(rental, run, why) {
+    if (run.stopped) return true; // already stopped (Stop pressed during start-up, then the start gave up)
+    run.stopped = true;
+    run.cancelled = true; // a start still under way stops too (ensureRunning, Machines.ready)
     this.running.delete(rental.id);
+    this.stage(rental, run, 'stopped', why);
+    this.lastStop.set(rental.id, { at: this.now(), why: String(why || '').slice(0, 160), stages: run.stages || [] });
     const key = this.keyFor(rental);
     const s = serviceOf(rental.service);
     const mins = Math.round((this.now() - run.startedAt) / 60000);
@@ -736,7 +885,8 @@ export class Rentals {
       cards: Object.entries(CARDS).map(([id, c]) => ({ id, name: c.name, say: c.say, perHour: c.perHour })),
       cardCounts: CARD_COUNTS,
       recent: this.ledger.recent(10).map((r) => ({ at: r.at, name: r.name, usd: money(r.usd), minutes: r.minutes || null, tokensIn: r.tokensIn || null, tokensOut: r.tokensOut || null, guessed: Boolean(r.guessed) })),
-      okUntil: this.okUntil ? { rental: this.okUntil.rental } : null
+      okUntil: this.okUntil ? { rental: this.okUntil.rental } : null,
+      warmMax: WARM_MAX
     };
   }
 }

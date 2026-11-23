@@ -136,6 +136,24 @@ export function createCellar({ popOut = null } = {}) {
     const cardName = (rent.cards || []).find((c) => c.id === p.card)?.name || `${p.card} GB card`;
     say(p.cards > 1 ? (s.kind === 'machine' ? `${p.name} needs ${p.cards} × ${cardName} on one machine. Set Cards on the machine to ${p.cards}: Bob shows what that costs first.` : `${p.name} needs ${p.cards} cards on one machine, so it wants a machine-by-the-minute service, not serverless.`) : `Card size set to ${cardName}.`);
   }
+  // Nov 18 Add a rented brain, card by card: each card shows once the one before it is done (cellar-pages.js draftHtml).
+  function rentStep(box) {
+    if (!box?.classList.contains('rent-draft')) return;
+    const val = (k) => box.querySelector(`[data-rentadd="${k}"]`)?.value?.trim() || '';
+    const s = (rent.services || []).find((x) => x.id === val('service'));
+    const caps = rent.caps || {};
+    const capsDone = caps.month > 0 && caps.job > 0 && (!s || s.kind === 'answer' || caps.minutes > 0);
+    const show = (k, on) => { const el = box.querySelector(`[data-rentstep="${k}"]`); if (el) el.hidden = !on; };
+    const brain = Boolean(s);
+    const model = brain && Boolean(val('model')) && (s.id !== 'other' || /^https?:\/\//.test(val('address')));
+    const card = model && s.kind !== 'answer';
+    const cardDone = !card || box.dataset.card === '1';
+    const limits = model && cardDone;
+    const named = limits && (box.dataset.limits === '1' || capsDone);
+    show('brain', brain); show('card', card); show('limits', limits); show('name', named);
+    box.querySelector('.rent-cards-pick')?.toggleAttribute('hidden', !s || s.kind !== 'machine');
+    if (s && !box.querySelector('[data-rentadd="pick"]')?.value) box.querySelector('.rent-advanced')?.setAttribute('open', '');
+  }
   let data = null, hw = null, settings = null, roles = null, cloud = [], caps = {}, bctx = { on: false, brains: [] }, tab = 'catalogue', job = null, mode = 'shop', voices = [];
   const sampler = createSampler();
   const live = new Map(); // downloads running now (one or two), by id
@@ -1141,13 +1159,31 @@ export function createCellar({ popOut = null } = {}) {
       if (b.dataset.slotpick) { eqSelected = b.dataset.slotpick; draw(); dlg.querySelector('.kit-panel')?.scrollIntoView({ block: 'nearest' }); return; }
       // 1.5.127 rented brains
       if ('rentuse' in b.dataset) { rent = await api('/api/rent/settings', { current: b.dataset.rentuse }); window.dispatchEvent(new CustomEvent('bob-rent-slot', { detail: { rental: (rent.rentals || []).find((x) => x.id === rent.current)?.name || '' } })); draw(); return; }
+      if ('rentnew' in b.dataset) { rentPickOpen = true; draw(); dlg.querySelector('.rent-draft')?.scrollIntoView?.({ block: 'nearest' }); return; } // Nov 18 + Add a rented brain
+      if ('rentcancel' in b.dataset) { rentPickOpen = false; draw(); return; }
+      if ('rentcardok' in b.dataset) { const box = b.closest('.rent-draft'); box.dataset.card = '1'; rentStep(box); return; }
+      if ('rentlimitsok' in b.dataset) { const box = b.closest('.rent-draft'); box.dataset.limits = '1'; rentStep(box); return; }
+      if (b.dataset.rentremovechat) { try { rent = await api('/api/rent/remove', { id: b.dataset.rentid, chat: b.dataset.rentremovechat }); draw(); window.dispatchEvent(new CustomEvent('bob-rent-slot', { detail: { rental: (rent.rentals || []).find((x) => x.id === rent.current)?.name || '' } })); } catch (e) { alertIn(b, e.message); } return; }
+      if ('rentremoveno' in b.dataset) { const box = b.closest('.rent-remove-ask'); if (box) box.hidden = true; return; }
       if ('rentsettings' in b.dataset) { rentPickOpen = Boolean(b.closest('.too-big-note')); sampler.stop(); setTab('settings'); jumpTo = 'adv-online'; draw(); return; }
       if (b.dataset.rentwarnok) { rent = await api('/api/rent/settings', { enabled: { [b.dataset.rentwarnok]: true }, warned: { [b.dataset.rentwarnok]: true } }); draw(); return; }
       if (b.dataset.rentwarnno) { const box = b.closest('.rent-warn'); if (box) box.hidden = true; return; }
       // Several cards at once: the warning card's answer. Yes keeps the count; no puts it back to 1 card.
       if (b.dataset.rentmultiok) { const box = b.closest('.rent-add'); box.querySelector('.rent-multi-warn').hidden = true; box.querySelector('[data-rentadd="cards"]').dataset.ok = b.dataset.rentmultiok; return; }
       if ('rentmultino' in b.dataset) { const box = b.closest('.rent-add'); box.querySelector('.rent-multi-warn').hidden = true; const sel = box.querySelector('[data-rentadd="cards"]'); sel.value = '1'; delete sel.dataset.ok; return; }
-      if (b.dataset.rentremove) { rent = await api('/api/rent/remove', { id: b.dataset.rentremove }); draw(); return; }
+      // Nov 18 (the owner): a rented brain's own chat is sorted into memory or deleted, your choice, when you remove it.
+      if (b.dataset.rentremove) {
+        const r = await fetch('/api/rent/remove', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bob': '1' }, body: JSON.stringify({ id: b.dataset.rentremove }) }).then(async (x) => ({ status: x.status, j: await x.json().catch(() => ({})) })).catch(() => ({ status: 0, j: {} }));
+        if (r.status === 409 && r.j.ask === 'chat') {
+          const row = b.closest('.rent-row'); let box = row.querySelector('.rent-remove-ask');
+          if (!box) { box = document.createElement('div'); box.className = 'confirm rent-remove-ask'; row.append(box); }
+          box.hidden = false;
+          box.innerHTML = `<p><strong>${esc(r.j.name || 'This rented brain')} has a chat of its own.</strong> Its chat head goes either way. What should happen to the chat?</p><div class="row"><button type="button" class="get" data-rentremovechat="memory" data-rentid="${esc(b.dataset.rentremove)}">Keep it in my memory</button><button type="button" class="danger" data-rentremovechat="delete" data-rentid="${esc(b.dataset.rentremove)}">Delete it for good</button><button type="button" data-rentremoveno>Keep the rented brain</button></div><p class="muted">Kept: it stays in Past chats as an ordinary chat with me, and I sort it into Topics and memory like any other.</p>`;
+          return;
+        }
+        if (r.status === 200) { rent = r.j; draw(); window.dispatchEvent(new CustomEvent('bob-rent-slot', { detail: { rental: (rent.rentals || []).find((x) => x.id === rent.current)?.name || '' } })); } else alertIn(b, r.j.error || 'That didn\'t work.');
+        return;
+      }
       if (b.dataset.rentprice) { try { rent = await api('/api/rent/price', { id: b.dataset.rentprice }); flash(b, 'Price read.'); } catch (e) { alertIn(b, e.message); } draw(); return; }
       if ('rentstop' in b.dataset) { b.disabled = true; b.textContent = 'Stopping…'; rent = await api('/api/rent/stop', {}); draw(); return; }
       if (b.dataset.rentstopone) { b.disabled = true; try { rent = await api('/api/rent/stop-leftover', { id: b.dataset.rentstopone }); } catch (e) { alertIn(b, e.message); } draw(); return; }
@@ -1184,9 +1220,9 @@ export function createCellar({ popOut = null } = {}) {
         if (missing) { alertIn(b, missing); if (noteEl) { noteEl.textContent = missing; noteEl.classList.remove('muted'); noteEl.classList.add('error'); } return; }
         try {
           const r = await api('/api/rent/add', { service: val('service'), model: val('model'), card: val('card'), cards: Number(val('cards')) || 1, address: val('address'), keyEnv: val('keyEnv'), name: val('name') });
-          rent = r; draw();
+          rentPickOpen = false; rent = r; draw();
           const added = (rent.rentals || []).find((x) => x.id === r.added);
-          dlg.querySelector('#sub-adv-online .rent-add-note')?.replaceChildren(document.createTextNode(`Added ${added?.name || ''}${rent.current === r.added ? ' and put it in the Rented brain slot' : ''}.${r.priceNote ? ' ' + r.priceNote : ''}`));
+          flashNote?.(`Added ${added?.name || ''}. Its chat head is under my picture now.${r.priceNote ? ' ' + r.priceNote : ''}`); window.dispatchEvent(new CustomEvent('bob-rent-slot', { detail: { rental: (rent.rentals || []).find((x) => x.id === rent.current)?.name || '' } }));
         } catch (e) { alertIn(b, e.message); if (noteEl) { noteEl.textContent = e.message; noteEl.classList.remove('muted'); noteEl.classList.add('error'); } }
         return;
       }
@@ -1345,7 +1381,7 @@ export function createCellar({ popOut = null } = {}) {
   const projAddState = () => { const b = dlg.querySelector('[data-projadd]'); if (b) b.disabled = !dlg.querySelector('#proj-path')?.value.trim(); };
   dlg.addEventListener('input', (e) => { const d = e.target.dataset || {}; if (d.placemoe) { const n = dlg.querySelector('[data-placemoenum]'); if (n) n.value = e.target.value; } else if (d.placemoenum) { const r = dlg.querySelector('[data-placemoe]'); if (r) r.value = e.target.value; } }); // 1.5.205 slider and number box stay in step
   dlg.addEventListener('input', (e) => { backup.onInput(e.target); if (e.target.id === 'proj-path') projAddState(); if (e.target.id === 'save-path') saveDirState(); });
-  dlg.addEventListener('input', (e) => { const k = e.target.dataset?.rentadd; if (k === 'model' || k === 'name') delete e.target.dataset.auto; }); // 1.5.137: what you type yourself stays
+  dlg.addEventListener('input', (e) => { const k = e.target.dataset?.rentadd; if (k === 'model' || k === 'name') delete e.target.dataset.auto; if (k === 'model' || k === 'address') rentStep(e.target.closest('.rent-draft')); }); // 1.5.137: what you type yourself stays
   dlg.addEventListener('input', (e) => { if (tab === 'style') stylePage.onInput(e.target); if (e.target.dataset?.ssearch !== undefined) { settingsQuery = e.target.value; if (settingsQuery.trim()) applyView(); else { draw(); const box = dlg.querySelector('[data-ssearch]'); box?.focus(); } } if (e.target.dataset?.dial) showDials(dialValues()); if (e.target.dataset?.holdback !== undefined) { const lab = dlg.querySelector('[data-holdbacklabel]'); if (lab) lab.textContent = `${e.target.value} GB`; } if (e.target.dataset?.textsize !== undefined) { const lab = dlg.querySelector('[data-textsizelabel]'); if (lab) lab.textContent = `${e.target.value}%`; } });
 
   // 1.5.135: ➕ Your own brains, the Add form.
@@ -1582,9 +1618,9 @@ export function createCellar({ popOut = null } = {}) {
         }
         rent = await api('/api/rent/settings', { enabled: { [id]: el.checked } }); flash(el.closest('.cloud'), el.checked ? 'On. Bob still asks before every hire.' : 'Off.'); draw(); return;
       }
-      else if (el.dataset.rentcap) { const v = Number(String(el.value).replace(/[^0-9.]/g, '')) || 0; rent = await api('/api/rent/settings', { caps: { [el.dataset.rentcap]: v } }); el.value = String(rent.caps[el.dataset.rentcap]); flash(el, v ? 'Saved.' : 'Saved: 0 means nothing can be hired.'); return; }
-      else if (el.dataset.rentadd === 'pick') { fillRentPick(el.closest('.rent-add')); return; } // 1.5.137
-      else if (el.dataset.rentadd === 'service') { const s = (rent.services || []).find((x) => x.id === el.value); const box = el.closest('.rent-add'); fillRentPick(box); box.querySelector('.rent-card-pick').hidden = !s || s.kind === 'answer'; box.querySelector('.rent-cards-pick').hidden = !s || s.kind !== 'machine'; box.querySelector('.rent-multi-warn').hidden = true; const sel = box.querySelector('[data-rentadd="cards"]'); sel.value = '1'; delete sel.dataset.ok; for (const o of box.querySelectorAll('.rent-other')) o.hidden = el.value !== 'other'; return; }
+      else if (el.dataset.rentcap) { const v = Number(String(el.value).replace(/[^0-9.]/g, '')) || 0; rent = await api('/api/rent/settings', { caps: { [el.dataset.rentcap]: v } }); el.value = String(rent.caps[el.dataset.rentcap]); flash(el, v ? 'Saved.' : el.dataset.rentcap === 'warm' ? 'Saved: it stops about 30 seconds after each job.' : 'Saved: 0 means nothing can be hired.'); rentStep(el.closest('.rent-draft')); return; }
+      else if (el.dataset.rentadd === 'pick') { const box = el.closest('.rent-add'); fillRentPick(box); rentStep(box); const find = box.querySelector('[data-rentfind]'); if (find && !find.hidden && box.classList.contains('rent-draft')) find.click(); return; } // 1.5.137; Nov 18 it looks it up by itself
+      else if (el.dataset.rentadd === 'service') { const s = (rent.services || []).find((x) => x.id === el.value); const box = el.closest('.rent-add'); fillRentPick(box); box.querySelector('.rent-card-pick').hidden = !s || s.kind === 'answer'; box.querySelector('.rent-cards-pick').hidden = !s || s.kind !== 'machine'; box.querySelector('.rent-multi-warn').hidden = true; const sel = box.querySelector('[data-rentadd="cards"]'); sel.value = '1'; delete sel.dataset.ok; for (const o of box.querySelectorAll('.rent-other')) o.hidden = el.value !== 'other'; rentStep(box); return; }
       // 1.5.127: more than one card on a hired machine: a big warning first (the owner's rule). It snaps back to 1 until "I understand" is pressed.
       else if (el.dataset.rentadd === 'cards') {
         const n = Number(el.value) || 1; const box = el.closest('.rent-add'); const warn = box.querySelector('.rent-multi-warn');
