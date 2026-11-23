@@ -134,6 +134,7 @@
     "test/run-bare-interpreter-test.js",
     "test/run-office-find-test.js",
     "test/run-forge-card-sets-test.js",
+    "test/run-forge-cut-test.js",
     "test/run-settings-page-test.js",
     "test/run-idle-unload-test.js",
     "test/run-brain-mode-test.js",

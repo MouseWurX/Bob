@@ -331,6 +331,63 @@ json.dump(j,open(p,"w"),indent=1)
 PY
             release_files $BN "$BN"
           fi ;;
+        # 23 Nov (the owner: "cut away", 80% kept): cut = make a smaller brain on the pod, put its quants on Hugging Face at once
+        # (card says unproven until the scores are in), then serve one of them for the tests. plan model "cut":
+        # {"src":"hf:<repo>:<first part>","keep_file":"<file in in/ or hf:...>","base_params":125,"name":"Bobert {N}Bob Flash Next",
+        #  "repo":"MouseWurX/Bobert-{N}Bob-Flash-Next-GGUF","license_from":"hf:<base repo>:LICENSE","license_name":"...","base":"<base repo>",
+        #  "quants":["IQ2_XXS",...],"serve":"IQ2_XXS","imatrix_chunks":200,"private":false}. {N} = billions left (base_params minus
+        # what the cut takes out of the main layers). imatrix texts: in/imatrix-<name>.tgz (all.txt), training chats only.
+        # Nothing is uploaded without the license file. Every quant but the served one is deleted once it is up.
+        cut)
+          CJ="['benchmark']['models'][$b]['cut']"; CD=$S/cut-$BN; mkdir -p $CD $W/bench/src-$BN $OUT/bench/cut-$BN
+          SQ=$(plan "$CJ.get('serve','IQ2_XXS')")
+          BFILE=$(ls $CD/*-$SQ.gguf 2>/dev/null | head -1)
+          if [ -z "$BFILE" ]; then
+            SPEC=$(plan "$CJ['src']"); REPO=$(echo "$SPEC" | cut -d: -f2); FP=$(echo "$SPEC" | cut -d: -f3)
+            CUTQ8=$W/bench/cut-$BN.gguf
+            if [ ! -f $CUTQ8 ]; then
+              status bench "$BN: downloading $FP to cut"
+              case "$FP" in *-00001-of-*.gguf) HF_TOKEN=$(cat $IN/hf-token 2>/dev/null) dl_watched $W/bench/src-$BN "$(plan "['benchmark']['models'][$b].get('download_gb','')")" "$(plan "['benchmark'].get('download_max_minutes','')")" hf download "$REPO" --include "${FP%%-00001-of-*}-*-of-*.gguf" --local-dir $W/bench/src-$BN > /dev/null 2>&1 ;; *) hf_get "$REPO" "$FP" $W/bench/src-$BN ;; esac
+              [ -f "$W/bench/src-$BN/$FP" ] || { echo "bench $BN: source download failed"; continue; }
+              KSPEC=$(plan "$CJ['keep_file']"); case "$KSPEC" in hf:*) ;; *) KSPEC=$(basename "$KSPEC") ;; esac; KFP=$(resolve_in "$KSPEC" $W/bench/in-$BN); [ -f "$KFP" ] || { echo "bench $BN: keep list missing"; continue; }
+              status bench "$BN: cutting the experts (keep list $(basename $KFP))"
+              PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/gguf_cut_experts.py --src "$W/bench/src-$BN/$FP" --keep-file "$KFP" --dst $CUTQ8 --report $OUT/bench/cut-$BN/cut.json > $OUT/bench/cut-$BN/cut.log 2>&1 || { echo "bench $BN: cut failed (see out/bench/cut-$BN/cut.log)"; tail -3 $OUT/bench/cut-$BN/cut.log; rm -f $CUTQ8; continue; }
+              cp "$KFP" $CD/keep.json; rm -rf "${W:?}"/bench/src-"${BN:?}"   # the source is ~190 GB: gone once the cut is written
+            fi
+            BP=$(plan "$CJ.get('base_params',0)")
+            N=$(python3 -c "import json; print(round($BP - json.load(open('$OUT/bench/cut-$BN/cut.json'))['removed_main_params']/1e9))")
+            CNAME=$(plan "$CJ['name']"); CNAME=${CNAME//\{N\}/$N}; CREPO=$(plan "$CJ['repo']"); CREPO=${CREPO//\{N\}/$N}; CFILE=$(echo "$CNAME" | tr ' ' '-')
+            echo "$CNAME: $N B left; repo $CREPO" | tee $OUT/bench/cut-$BN/name.txt
+            # the base model's own license, unchanged: no license, no upload
+            LSPEC=$(plan "$CJ['license_from']"); hf_get "$(echo "$LSPEC" | cut -d: -f2)" "$(echo "$LSPEC" | cut -d: -f3)" $W/bench/lic-$BN && cp "$W/bench/lic-$BN/$(echo "$LSPEC" | cut -d: -f3)" $CD/LICENSE || { echo "bench $BN: could not fetch the base model's LICENSE; nothing is uploaded"; NOUP=1; }
+            IMX=$CD/imatrix.gguf; IM=$S/llama.cpp/build-cuda/bin/llama-imatrix; QZ=$S/llama.cpp/build-cuda/bin/llama-quantize; [ -x $QZ ] || QZ=$S/llama.cpp/build/bin/llama-quantize
+            if [ ! -f $IMX ] && [ -f $IN/imatrix-$BN.tgz ]; then
+              mkdir -p $W/bench/imx-$BN && tar xzf $IN/imatrix-$BN.tgz -C $W/bench/imx-$BN
+              status bench "$BN: imatrix on the cut brain (training chats)"
+              # the cut Q8_0 (~150 GB) is bigger than the card: --fit puts what doesn't fit in RAM; if this build has no --fit, all experts go to RAM
+              for IMWAY in "--fit on" "--n-cpu-moe 999"; do
+                LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" timeout 7200 $IM -m $CUTQ8 -f $W/bench/imx-$BN/all.txt -o $IMX -c 2048 -ngl 999 $IMWAY --chunks $(plan "$CJ.get('imatrix_chunks',200)") >> $OUT/bench/cut-$BN/imatrix.log 2>&1 && break
+                echo "bench $BN: imatrix with $IMWAY failed (see out/bench/cut-$BN/imatrix.log)"; rm -f $IMX
+              done
+              [ -f $IMX ] || echo "bench $BN: no imatrix; the IQ2 quants need one and will fail, the others are made without it"
+            fi
+            PUB_PRIVATE=$(plan "$CJ.get('private',False)")
+            [ -z "${NOUP:-}" ] && { PYTHONPATH= python3 $POD/cut_card.py --dir $CD --cut $OUT/bench/cut-$BN/cut.json --name "$CNAME" --base "$(plan "$CJ['base']")" --base-params $BP --source "$(plan "$CJ['source_note']")" --license-name "$(plan "$CJ['license_name']")" && PUB_PRIVATE=$PUB_PRIVATE publish_dir $CD "$CREPO" "card, license, keep list, imatrix" model . "README.md" "LICENSE" "keep.json" "imatrix.gguf" || echo "bench $BN: first upload failed"; }
+            for q in $(plist "$CJ['quants']" | tr ',' ' '); do
+              QF=$CD/$CFILE-$q.gguf
+              status bench "$BN: quantizing $q"
+              LD_LIBRARY_PATH="$(dirname $QZ):${LD_LIBRARY_PATH:-}" $QZ --allow-requantize $( [ -f $IMX ] && echo --imatrix $IMX ) $CUTQ8 $QF $q $(nproc) > $OUT/bench/cut-$BN/quant-$q.log 2>&1 || { echo "bench $BN: $q failed (see out/bench/cut-$BN/quant-$q.log)"; rm -f $QF; continue; }
+              echo "$q $(basename $QF) bytes $(stat -c %s $QF) sha256 $(sha256sum $QF | cut -d' ' -f1)" | tee -a $OUT/bench/cut-$BN/sizes.txt   # a home download is checked against these
+              if [ -z "${NOUP:-}" ]; then
+                PYTHONPATH= python3 $POD/cut_card.py --dir $CD --cut $OUT/bench/cut-$BN/cut.json --name "$CNAME" --base "$(plan "$CJ['base']")" --base-params $BP --source "$(plan "$CJ['source_note']")" --license-name "$(plan "$CJ['license_name']")" > /dev/null
+                PUB_PRIVATE=$PUB_PRIVATE publish_dir $CD "$CREPO" "$q" model . "$(basename $QF)" "$(basename $QF .gguf)-*-of-*.gguf" "README.md" && echo "$q https://huggingface.co/$CREPO/resolve/$(HF_TOKEN=$(cat $IN/hf-token) python3 -c "import os,sys; from huggingface_hub import HfApi; print(HfApi(token=os.environ['HF_TOKEN']).model_info(sys.argv[1]).sha)" "$CREPO" 2>/dev/null || echo main)/$(basename $QF)" >> $OUT/bench/cut-$BN/published.txt
+              fi
+              # keep the served quant; the rest are on Hugging Face (or failed to go up: then kept for the PC to see in the log)
+              [ "$q" != "$SQ" ] && grep -q "^$q " $OUT/bench/cut-$BN/published.txt 2>/dev/null && rm -f $QF
+            done
+            rm -f $CUTQ8
+            BFILE=$(ls $CD/*-$SQ.gguf 2>/dev/null | head -1)
+          fi ;;
         hf:*) REPO=$(echo "$BF" | cut -d: -f2); FP=$(echo "$BF" | cut -d: -f3); status bench "$BN: downloading $FP from Hugging Face"
           # 12 Nov: a split GGUF (name-00001-of-0000N.gguf) brings all its parts; llama-server loads them from the first
           BGB=$(plan "['benchmark']['models'][$b].get('download_gb','')"); BDM=$(plan "['benchmark'].get('download_max_minutes','')"); mkdir -p $W/bench/hf-$BN

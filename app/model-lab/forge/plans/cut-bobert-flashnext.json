@@ -1,0 +1,122 @@
+{
+ "run": "cut-bobert-flashnext",
+ "note": "23 Nov, the owner: \"cut away\" (80% kept), \"Bobert NBob Flash Next\" (N = billions of parameters left), \"we should offer other quants, and have them on huggingface right away\". The pod downloads Unsloth's Q8_0 Flash-Next (188 GB, 6 parts), cuts 102 of 512 experts out of every layer by the REAP 80% keep list (all-keep-80.json from reap-flashnext-q4-jobs, read from the normal Nov 21 runs, never held-out), runs llama-imatrix on the cut brain with training chats only (calib-prep imatrix/all.txt), then makes IQ2_XXS, IQ2_M, Q3_K_M, IQ4_XS and Q4_K_M and puts each on Hugging Face (MouseWurX/Bobert-{N}Bob-Flash-Next-GGUF, PUBLIC) as soon as it is made, with the base model's LICENSE unchanged, the keep list, the imatrix and a card saying \"unproven in our lab, as we have yet to test\". Then it serves the IQ2_XXS (the size for a 16 GB card with 32 GB of RAM) and Bob's HELD-OUT jobs (inbox, office, repo, web) are scored, to compare with the Q4 rows of reap-flashnext-q4-jobs (all experts, and the 80% mask). Nothing is healed.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.8-Flash-Next",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H200 NVL",
+  "NVIDIA H200"
+ ],
+ "step_up": [],
+ "disk_gb": 450,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 8,
+ "dollars_max": 32,
+ "rent_minutes": 180,
+ "download_quants": [],
+ "llama_tag": "b12359",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one H200: the pod cuts Flash-Next (Q8_0 to REAP 80%), quantizes, uploads each quant, then serves the IQ2_XXS for the held-out jobs.",
+  "hours_each": 1.4,
+  "models": [
+   {
+    "name": "bnfn",
+    "nickname": "Bobert NBob Flash Next: Flash-Next with REAP 80% kept, cut on the pod",
+    "file": "cut",
+    "quant": "IQ2_XXS",
+    "slots": 15,
+    "ctx": 737280,
+    "extra": "",
+    "hours": 6.5,
+    "download_gb": 190,
+    "imatrix_from": "out/bnfn-calib/imatrix",
+    "cut": {
+     "src": "hf:unsloth/Qwen3.8-Flash-Next-GGUF:Q8_0/Qwen3.8-Flash-Next-Q8_0-00001-of-00006.gguf",
+     "source_note": "unsloth/Qwen3.8-Flash-Next-GGUF (Q8_0)",
+     "keep_file": "out/reap-flashnext-q4-jobs/keep/all-keep-80.json",
+     "base": "Qwen/Qwen3.8-Flash-Next",
+     "base_params": 125,
+     "name": "Bobert {N}Bob Flash Next",
+     "repo": "MouseWurX/Bobert-{N}Bob-Flash-Next-GGUF",
+     "license_from": "hf:Qwen/Qwen3.8-Flash-Next:LICENSE",
+     "license_name": "qwen-community-1.0",
+     "quants": [
+      "IQ2_XXS",
+      "IQ2_M",
+      "Q3_K_M",
+      "IQ4_XS",
+      "Q4_K_M"
+     ],
+     "serve": "IQ2_XXS",
+     "imatrix_chunks": 200,
+     "private": false
+    },
+    "commands": [
+     "node mail-jobs.mjs --catalog --held --out ../../bob-model-lab/out/mail-jobs-held/jobs.jsonl",
+     "node office-jobs.mjs --held --out ../../bob-model-lab/out/office-jobs-held/jobs.jsonl",
+     "node repo-jobs.mjs --held --check --out ../../bob-model-lab/out/repo-jobs-held/jobs.jsonl",
+     "node web-jobs.mjs --out ../../bob-model-lab/out/web-jobs/jobs.jsonl",
+     "node jobs-matrix.mjs --prefix bnfn-iq2 --no-scenes --variants \"inbox=--effort medium --solo-effort;office=--jobs ../../bob-model-lab/out/office-jobs-held/jobs.jsonl --parallel 2 --office ../../../lab-office/libreoffice/program/soffice.exe;repo=--effort medium --solo-effort --jobs ../../bob-model-lab/out/repo-jobs-held/jobs.jsonl --parallel 3;web=--effort medium --solo-effort --jobs ../../bob-model-lab/out/web-jobs/jobs.jsonl --parallel 3\" --url {{url}} --bob .. --jobs ../../bob-model-lab/out/mail-jobs-held/jobs.jsonl --parallel 2 --want-shapes 4 --max bob --hours 0.6",
+     "node mail-score.mjs --runs ../../bob-model-lab/out/bnfn-iq2-inbox/runs.jsonl --out ../../bob-model-lab/out/bnfn-iq2-mail-score",
+     "node office-score.mjs --runs ../../bob-model-lab/out/bnfn-iq2-office/runs.jsonl --out ../../bob-model-lab/out/bnfn-iq2-office-score",
+     "node repo-score.mjs --runs ../../bob-model-lab/out/bnfn-iq2-repo/runs.jsonl --out ../../bob-model-lab/out/bnfn-iq2-repo-score",
+     "node web-score.mjs --runs ../../bob-model-lab/out/bnfn-iq2-web/runs.jsonl --out ../../bob-model-lab/out/bnfn-iq2-web-score"
+    ]
+   }
+  ],
+  "brain_engine": {
+   "ref": "3fff3cf084e3def210b6e92c1d415280bfbb4e3a",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word",
+    "0014-rpc-any-version"
+   ],
+   "note": "Brain Engine b12359 + all 14 of Bob's engine patches at 3fff3cf (expert trace with mass for the expert-map phase)"
+  },
+  "download_max_minutes": 75
+ },
+ "prep": [
+  "Runs from a kit at this commit that has out/reap-flashnext-q4-jobs/keep/all-keep-80.json (the laptop copy is /mnt/project-files/laptop-rentals/keep/all-keep-80.json; SHA256SUMS.txt beside it).",
+  "Before renting: node calib-prep.mjs --sets <the training lesson sets, e.g. out/lessons> --out out/bnfn-calib (writes out/bnfn-calib/imatrix/all.txt from TRAINING lessons only; held-out never).",
+  "Pre-flight: node forge.mjs --plan plans/cut-bobert-flashnext.json --rent-plan (rents nothing); the HF token must have accepted the gated Qwen/Qwen3.8-Flash-Next (the pod copies its LICENSE).",
+  "The owner gives the yes before the rent."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": false,
+  "odds": false,
+  "models": [],
+  "note": "The pod uploads the cut brain's quants itself (benchmark model cut.repo, public), each as soon as it is made; no LICENSE, no upload."
+ },
+ "door_minutes": 20,
+ "card_sets": [
+  {
+   "gpus": [
+    "NVIDIA H200 NVL"
+   ],
+   "count": 1
+  },
+  {
+   "gpus": [
+    "NVIDIA H200"
+   ],
+   "count": 1
+  }
+ ]
+}
