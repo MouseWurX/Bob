@@ -12,10 +12,10 @@ index 242786b..e18362f 100644
              if (value < 0) {
                  throw std::invalid_argument("invalid value");
 diff --git a/src/llama-context.cpp b/src/llama-context.cpp
-index 4550687..d69d725 100644
+index b1a71b1..0d2a7d6 100644
 --- a/src/llama-context.cpp
 +++ b/src/llama-context.cpp
-@@ -4028,6 +4028,16 @@ uint32_t llama_context::graph_max_nodes() const {
+@@ -4069,6 +4069,16 @@ uint32_t llama_context::graph_max_nodes() const {
          res += model.hparams.n_layer() * n_parts * 40;
      }
  
@@ -33,24 +33,25 @@ index 4550687..d69d725 100644
      if (cparams.kq_mask_build) {
          res += 3*64*10;
 diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
-index 40b98be..751ac83 100644
+index 1b72e02..0b18c4b 100644
 --- a/src/llama-graph.cpp
 +++ b/src/llama-graph.cpp
-@@ -2771,13 +2771,33 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+@@ -2858,14 +2858,34 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
      // Brain Engine 0041 (LLAMA_MOE_LOOKAHEAD): guess the next layer's experts with its own router on this layer's expert
      // input, for the MoE cache to upload them ahead while this layer computes. Only the guess is new: the picks and
      // the experts used are the same, so the words are too
--    if (moe_cache != nullptr && il >= 0 && probs_in == nullptr && selected_experts_in == nullptr && (size_t) il + 1 < model.layers.size()) {
--        ggml_tensor * next_inp = model.layers[il + 1].ffn_gate_inp;
+-    const int32_t il_next = moe_cache != nullptr ? moe_cache->next_layer(il) : -1; // 0091: in run order
+-    if (moe_cache != nullptr && il >= 0 && probs_in == nullptr && selected_experts_in == nullptr && il_next >= 0) {
 +    // Brain Engine 0106: also la_depth layers ahead (LLAMA_MOE_LOOKAHEAD_DEPTH), each with the target layer's router, and
 +    // with HotRod's learned correction (LLAMA_MOE_LOOKAHEAD_LEARN) added to its scores. None of it feeds the picks.
 +    bool x_done = false; // the learner's copy of cur, once a layer
 +    for (int32_t di = 0; moe_cache != nullptr && il >= 0 && probs_in == nullptr && selected_experts_in == nullptr; ++di) {
 +        const int32_t depth = moe_cache->get_guess_depth(di);
-+        if (depth <= 0 || (size_t) il + depth >= model.layers.size()) {
++        const int32_t il_next = depth > 0 ? moe_cache->guess_target(il, di) : -1; // 0091: in run order
++        if (il_next < 0) {
 +            break;
 +        }
-+        ggml_tensor * next_inp = model.layers[il + depth].ffn_gate_inp;
+         ggml_tensor * next_inp = model.layers[il_next].ffn_gate_inp;
          int32_t k = 0;
          if (next_inp != nullptr && next_inp->ne[0] == cur->ne[0] && next_inp->ne[1] == n_expert && cur->ne[1] == n_tokens) {
 -            if (ggml_tensor * dst = moe_cache->get_guess(ctx0, il, n_tokens, &k)) {
@@ -76,10 +77,10 @@ index 40b98be..751ac83 100644
              }
          }
 diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
-index 80a2ed7..6f9bd47 100644
+index 81413fb..7f7d67c 100644
 --- a/src/llama-moe-cache.cpp
 +++ b/src/llama-moe-cache.cpp
-@@ -89,6 +89,10 @@ struct moe_cache_lru {
+@@ -95,6 +95,10 @@ struct moe_cache_lru {
      std::vector<int32_t> misses;
      std::vector<int32_t> learned; // Brain Engine 0031
      std::vector<uint64_t> token_zero; // [n_tokens] zero slots used by each token
@@ -90,7 +91,7 @@ index 80a2ed7..6f9bd47 100644
  
      void init(int32_t n_layer, int32_t n_expert, int32_t n_slots) {
          GGML_ASSERT(n_class == (int) std::log2(1.0f/(1.0f - std::exp2(-1.0f/crf_half_life))) + 1);
-@@ -114,6 +118,8 @@ struct moe_cache_lru {
+@@ -120,6 +124,8 @@ struct moe_cache_lru {
          last_use.assign((size_t) n_layer*n_expert, -1);
          clock.assign(n_layer, 0);
          seen.assign(n_expert, 0);
@@ -99,7 +100,7 @@ index 80a2ed7..6f9bd47 100644
      }
  
      // move slot s to the most recently used end of list c
-@@ -178,8 +184,10 @@ struct moe_cache_lru {
+@@ -184,8 +190,10 @@ struct moe_cache_lru {
      int32_t key_expert(int32_t key) const { return key % n_expert; }
  
      // for a key after use(): its CRF is >= 1, so log2 is >= 0 and the cast is the floor
@@ -111,7 +112,7 @@ index 80a2ed7..6f9bd47 100644
      }
  
      // the CRF of a key, decayed by the time since its last use
-@@ -210,6 +218,9 @@ struct moe_cache_lru {
+@@ -216,6 +224,9 @@ struct moe_cache_lru {
              if (s < lent_below) {
                  continue; // 0063: the graph running now keeps its working memory there
              }
@@ -121,7 +122,7 @@ index 80a2ed7..6f9bd47 100644
              if (!is_selected(il, key_of[s])) {
                  return s;
              }
-@@ -455,7 +466,16 @@ struct llama_moe_cache::impl {
+@@ -461,7 +472,16 @@ struct llama_moe_cache::impl {
          std::vector<int32_t> cpu_experts;   // experts set in cpu_map
          uint32_t cpu_acc = 0;               // fraction of a miss carried over to the next plan, in 1/65536
          int64_t  learn_tokens = 0;          // Brain Engine 0031: tokens since this layer last let a miss into the cache
@@ -139,7 +140,7 @@ index 80a2ed7..6f9bd47 100644
          ggml_tensor * db_map = nullptr;     // Brain Engine 0042: I32 [n_expert] on the device, the slot map as of the last word
          ggml_tensor * db_map_host = nullptr; // the same in host memory: what the processor's part and its own ring read
          // Brain Engine 0043: stand-ins (see sp_choose)
-@@ -595,6 +615,7 @@ struct llama_moe_cache::impl {
+@@ -634,6 +654,7 @@ struct llama_moe_cache::impl {
                  LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_LOOKAHEAD NOT USED: with --moe-cache-cpu-share above 0 the misses go to the CPU, not up\n", __func__);
              } else {
                  la_max = std::min(atoi(la), 64);
@@ -147,7 +148,7 @@ index 80a2ed7..6f9bd47 100644
                  la_k   = std::min<int32_t>(n_expert_used + la_max, (int32_t) model.hparams.n_expert);
                  const char * ls = getenv("LLAMA_MOE_LOOKAHEAD_INLINE");
                  la_inline = ls != nullptr && atoi(ls) > 0;
-@@ -602,6 +623,46 @@ struct llama_moe_cache::impl {
+@@ -641,6 +662,58 @@ struct llama_moe_cache::impl {
                  la_scramble = lw != nullptr && atoi(lw) > 0;
                  LLAMA_LOG_INFO("%s: the MoE cache looks ahead while writing: up to %d guessed experts a layer go up %s\n", __func__,
                      la_max, la_inline ? "inline (LLAMA_MOE_LOOKAHEAD_INLINE, for tests)" : "on a second stream, behind the compute");
@@ -191,13 +192,25 @@ index 80a2ed7..6f9bd47 100644
 +                    const char * rk = getenv("LLAMA_MOE_LOOKAHEAD_RANK");
 +                    ll_rank = rk != nullptr && atoi(rk) > 0 ? std::min(atoi(rk), 32) : 8;
 +                }
++                // Brain Engine 0106 with 0091: the deeper and learned guesses count layers in index order, and a looped brain
++                // runs its layers in its own order, so it keeps 0041's one layer ahead (in run order)
++                bool looped = false;
++                for (size_t il = 0; il < next_of.size(); ++il) {
++                    looped |= next_of[il] != (il + 1 < next_of.size() ? (int32_t) il + 1 : -1);
++                }
++                if (looped && (la_nd > 1 || la_depth[0] != 1 || ll_rank > 0)) {
++                    LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_LOOKAHEAD_DEPTH / _LEARN NOT USED: this brain runs its layers in a loop; the look-ahead guesses one layer ahead\n", __func__);
++                    la_nd = 1;
++                    la_depth[0] = 1; la_depth[1] = 0; la_depth[2] = 0;
++                    ll_rank = 0;
++                }
              }
          }
  
-@@ -704,7 +765,9 @@ struct llama_moe_cache::impl {
-             const int32_t n_expert  = g.ref[0]->ne[2];
-             const size_t  budget    = (size_t) ((double) size*d.split/split_sum*g.host_bytes/d.host_bytes);
-             const int32_t max_slots = g.layers.size()*n_expert;
+@@ -747,7 +820,9 @@ struct llama_moe_cache::impl {
+                 n_phys_layers += phys_of[il] == il;
+             }
+             const int32_t max_slots = n_phys_layers*n_expert;
 -            while (g.n_slots < max_slots && alloc_size(g, g.n_slots + 1) <= budget) {
 +            // Brain Engine 0106: the learned look-ahead's own tensors come out of the same budget, so the plan holds
 +            const size_t ll_need = ll_rank > 0 ? ll_bytes(model, g, devices[g.id].buft) : 0;
@@ -205,17 +218,17 @@ index 80a2ed7..6f9bd47 100644
                  g.n_slots++;
              }
              if (g.n_slots < n_expert_used) {
-@@ -713,7 +776,8 @@ struct llama_moe_cache::impl {
-                 continue;
+@@ -762,7 +837,8 @@ struct llama_moe_cache::impl {
+                 const int32_t p = phys_of[il];
+                 g.lru.phys[il] = p != (int32_t) il && std::find(g.layers.begin(), g.layers.end(), p) != g.layers.end() ? p : (int32_t) il;
              }
-             g.lru.init(model.layers.size(), n_expert, g.n_slots);
 -            n_tensors[g.id] += g.ref.size()*(1 + g.layers.size()) + (la_max > 0 ? g.layers.size() : 0) + (db_on ? g.layers.size() : 0) + (sp_mode != SP_OFF ? 2*g.layers.size() : 0);
 +            n_tensors[g.id] += g.ref.size()*(1 + g.layers.size()) + (la_max > 0 ? la_nd*g.layers.size() : 0) + (db_on ? g.layers.size() : 0) + (sp_mode != SP_OFF ? 2*g.layers.size() : 0)
 +                + (ll_rank > 0 ? (3*la_nd + 1)*g.layers.size() : 0); // Brain Engine 0106
              n_tensors_host  += g.layers.size()*(n_zero > 0 ? 3 : 1) + (db_on ? g.layers.size() : 0); // slot maps and CPU map
          }
          if (n_tensors_host == 0) {
-@@ -766,8 +830,28 @@ struct llama_moe_cache::impl {
+@@ -815,8 +891,28 @@ struct llama_moe_cache::impl {
                      bindings[l.experts[ip]] = { il, (int32_t) ip, cached };
                  }
                  if (la_max > 0) {
@@ -246,7 +259,7 @@ index 80a2ed7..6f9bd47 100644
                  }
                  if (db_on) {
                      l.db_map = ggml_new_tensor_1d(ctx, GGML_TYPE_I32, g.ref[0]->ne[2]);
-@@ -827,6 +911,9 @@ struct llama_moe_cache::impl {
+@@ -882,6 +978,9 @@ struct llama_moe_cache::impl {
                  }
              }
              sp_load(model);
@@ -256,7 +269,7 @@ index 80a2ed7..6f9bd47 100644
          }
  
          // as weights, the ops that read the banks run on the device and the slot maps are copied with the copy callback
-@@ -912,14 +999,47 @@ struct llama_moe_cache::impl {
+@@ -967,14 +1066,47 @@ struct llama_moe_cache::impl {
      int32_t la_k      = 0;     // guesses per token
      bool    la_inline = false;
      bool    la_scramble = false; // tests: guess wrong on purpose // upload on the compute stream (tests: the words and the bookkeeping, not the speed)
@@ -309,7 +322,7 @@ index 80a2ed7..6f9bd47 100644
      // the uploads ahead run in a thread: from pageable host memory a copy call returns only once its data is staged,
      // which would hold up the launch of the layer's own compute
      struct la_job { ggml_backend_t backend; ggml_tensor * bank; const void * src; size_t offset; size_t size; };
-@@ -931,6 +1051,13 @@ struct llama_moe_cache::impl {
+@@ -986,6 +1118,13 @@ struct llama_moe_cache::impl {
      ggml_backend_event_t la_job_event = nullptr;
      ggml_backend_t la_job_backend = nullptr;
  
@@ -323,7 +336,7 @@ index 80a2ed7..6f9bd47 100644
      void la_worker() {
          std::unique_lock<std::mutex> lock(la_mutex);
          for (;;) {
-@@ -975,82 +1102,163 @@ struct llama_moe_cache::impl {
+@@ -1030,84 +1169,176 @@ struct llama_moe_cache::impl {
                      return nullptr;
                  }
                  la_backends.push_back(b);
@@ -403,7 +416,7 @@ index 80a2ed7..6f9bd47 100644
 -            la_pending = -1;
 +        if (il < 0 || il >= (int32_t) la_tgt.size() || !la_tgt[il].pending || la_tgt[il].waited) {
 +            return;
-         }
++        }
 +        la_target & tg = la_tgt[il];
 +        if (!la_inline) {
 +            if (tg.ev != nullptr && devices[tg.dev].backend == backend) {
@@ -411,7 +424,7 @@ index 80a2ed7..6f9bd47 100644
 +            } else {
 +                ggml_backend_synchronize(la_backends[tg.dev]);
 +            }
-+        }
+         }
 +        // ordered on the compute stream from here: its own plan may read and fill these slots
 +        la_free(il);
 +        tg.waited = true;
@@ -457,36 +470,51 @@ index 80a2ed7..6f9bd47 100644
  
 -    // the next layer that layer il guesses for, -1 if none
 -    int32_t la_next(int32_t il, ggml_backend_t backend) const {
--        if (la_max <= 0 || il + 1 >= (int32_t) layers.size() || layers[il + 1].ig < 0 || layers[il + 1].guess == nullptr) {
+-        const int32_t nx = next_layer(il);
+-        if (la_max <= 0 || nx < 0 || layers[nx].ig < 0 || layers[nx].guess == nullptr) {
 +    // the layer that layer il guesses at depth di, -1 if none
 +    int32_t la_next(int32_t il, ggml_backend_t backend, int32_t di = 0) const {
 +        if (la_max <= 0 || di >= la_nd) {
-+            return -1;
-+        }
-+        const int32_t t = il + la_depth[di];
-+        if (t >= (int32_t) layers.size() || layers[t].ig < 0 || layers[t].guess[di] == nullptr) {
              return -1;
          }
--        return devices[groups[layers[il + 1].ig].id].backend == backend ? il + 1 : -1;
+-        return devices[groups[layers[nx].ig].id].backend == backend ? nx : -1;
++        const int32_t t = la_layer_at(il, di);
++        if (t < 0 || layers[t].ig < 0 || layers[t].guess[di] == nullptr) {
++            return -1;
++        }
 +        return devices[groups[layers[t].ig].id].backend == backend ? t : -1;
      }
  
 -    ggml_tensor * get_guess(ggml_context * ctx, int32_t il, int64_t n_tokens, int32_t * k) const {
--        if (la_max <= 0 || lent || filling || reading || il < 0 || il + 1 >= (int32_t) layers.size() || layers[il].ig < 0) {
+-        const int32_t nx = next_layer(il);
+-        if (la_max <= 0 || lent || filling || reading || il < 0 || nx < 0 || layers[il].ig < 0) {
 -            return nullptr;
++    // the layer that layer il guesses at depth di, -1 if none: depth 1 is 0091's next layer in run order (a looped brain
++    // runs its layers in its own order); deeper ones count in index order, which only brains that aren't looped use
++    int32_t la_layer_at(int32_t il, int32_t di) const {
++        if (la_max <= 0 || di < 0 || di >= la_nd || il < 0 || il >= (int32_t) layers.size()) {
++            return -1;
++        }
++        if (di == 0 && la_depth[0] == 1) {
++            return next_layer(il);
+         }
+-        const layer & ln = layers[nx];
+-        if (ln.ig < 0 || ln.guess == nullptr || n_tokens <= 0 || n_tokens > max_batch ||
+-                groups[ln.ig].id != groups[layers[il].ig].id) {
++        const int32_t t = il + la_depth[di];
++        return t < (int32_t) layers.size() ? t : -1;
++    }
++
 +    int32_t get_guess_depth(int32_t di) const {
 +        return la_max > 0 && di >= 0 && di < la_nd ? la_depth[di] : 0;
 +    }
 +
 +    // layer il may guess at depth di for a batch of n_tokens
 +    bool la_ok(int32_t il, int32_t di, int64_t n_tokens) const {
-+        if (la_max <= 0 || di < 0 || di >= la_nd || lent || filling || reading || il < 0 || il + la_depth[di] >= (int32_t) layers.size() || layers[il].ig < 0) {
++        if (la_max <= 0 || di < 0 || di >= la_nd || lent || filling || reading || il < 0 || la_layer_at(il, di) < 0 || layers[il].ig < 0) {
 +            return false;
-         }
--        const layer & ln = layers[il + 1];
--        if (ln.ig < 0 || ln.guess == nullptr || n_tokens <= 0 || n_tokens > max_batch ||
--                groups[ln.ig].id != groups[layers[il].ig].id) {
-+        const layer & ln = layers[il + la_depth[di]];
++        }
++        const layer & ln = layers[la_layer_at(il, di)];
 +        return ln.ig >= 0 && ln.guess[di] != nullptr && n_tokens > 0 && n_tokens <= max_batch && groups[ln.ig].id == groups[layers[il].ig].id;
 +    }
 +
@@ -494,15 +522,12 @@ index 80a2ed7..6f9bd47 100644
 +        if (!la_ok(il, di, n_tokens)) {
              return nullptr;
          }
-+        const layer & ln = layers[il + la_depth[di]];
++        const layer & ln = layers[la_layer_at(il, di)];
          *k = la_k;
 -        return ggml_view_2d(ctx, ln.guess, la_k, n_tokens, ln.guess->nb[1], 0);
 +        return ggml_view_2d(ctx, ln.guess[di], la_k, n_tokens, ln.guess[di]->nb[1], 0);
-     }
- 
--    // upload up to la_max of the guessed misses of layer il_next into free or cold slots; layer il computes meanwhile,
--    // so its own picks are kept
--    void la_prefetch(int32_t il, int32_t il_next, int64_t n_tokens) {
++    }
++
 +    // Brain Engine 0106: the learned correction of source il at depth di (with get_guess's conditions); x and plain only
 +    // for a one-word batch, where the processor learns from it
 +    bool get_guess_learn(int32_t il, int32_t di, int64_t n_tokens, llama_moe_cache::guess_learn * out) const {
@@ -514,15 +539,18 @@ index 80a2ed7..6f9bd47 100644
 +        out->plain = n_tokens == 1 ? layers[il].ll_plain[di] : nullptr;
 +        out->x     = n_tokens == 1 ? layers[il].ll_x : nullptr;
 +        return true;
-+    }
-+
+     }
+ 
+-    // upload up to la_max of the guessed misses of layer il_next into free or cold slots; layer il computes meanwhile,
+-    // so its own picks are kept
+-    void la_prefetch(int32_t il, int32_t il_next, int64_t n_tokens) {
 +    // up to la_max of layer il_next's guessed misses (guessed at depth di) go into free or cold slots; layer il computes
 +    // meanwhile, so its own picks are kept, and so are the slots still going up for other layers (busy)
 +    void la_prefetch(int32_t il, int32_t il_next, int32_t di, int64_t n_tokens, std::vector<la_job> & jobs) {
          layer & ln = layers[il_next];
          group & gn = groups[ln.ig];
          ggml_backend_t fb = la_backend(gn.id);
-@@ -1059,16 +1267,24 @@ struct llama_moe_cache::impl {
+@@ -1116,16 +1347,24 @@ struct llama_moe_cache::impl {
          }
          const int32_t protect = ln.ig == layers[il].ig ? il : -1;
          int32_t * slots = gn.lru.slot_map[il_next];
@@ -548,8 +576,8 @@ index 80a2ed7..6f9bd47 100644
                  const int32_t s = gn.lru.victim(protect);
                  if (gn.lru.key_of[s] >= 0) {
                      gn.lru.slot_map[gn.lru.key_layer(gn.lru.key_of[s])][gn.lru.key_expert(gn.lru.key_of[s])] = gn.lru.empty;
-@@ -1080,6 +1296,10 @@ struct llama_moe_cache::impl {
-                 gn.lru.last_use[key] = gn.lru.clock[il_next];
+@@ -1137,6 +1376,10 @@ struct llama_moe_cache::impl {
+                 gn.lru.last_use[key] = gn.lru.clock[gn.lru.P(il_next)];
                  slots[e] = s;
                  gn.lru.move(s, 0);
 +                if (la_nd > 1) {
@@ -559,7 +587,7 @@ index 80a2ed7..6f9bd47 100644
                  pf.push_back({ e, s });
              }
          }
-@@ -1087,7 +1307,6 @@ struct llama_moe_cache::impl {
+@@ -1144,7 +1387,6 @@ struct llama_moe_cache::impl {
              return;
          }
          std::sort(pf.begin(), pf.end(), [](const moe_cache_lru::fill & a, const moe_cache_lru::fill & b) { return a.expert < b.expert; });
@@ -567,7 +595,7 @@ index 80a2ed7..6f9bd47 100644
          for (size_t ip = 0; ip < ln.experts.size(); ++ip) {
              const ggml_tensor * w = ln.experts[ip];
              const size_t es = w->nb[2];
-@@ -1102,23 +1321,52 @@ struct llama_moe_cache::impl {
+@@ -1159,23 +1401,52 @@ struct llama_moe_cache::impl {
              }
          }
          la_n_up += pf.size();
@@ -626,7 +654,7 @@ index 80a2ed7..6f9bd47 100644
              la_has_work    = true;
          }
          la_cv.notify_all();
-@@ -2332,6 +2580,7 @@ struct llama_moe_cache::impl {
+@@ -2389,6 +2660,7 @@ struct llama_moe_cache::impl {
          if (filler.joinable()) {
              filler.join();
          }
@@ -634,7 +662,7 @@ index 80a2ed7..6f9bd47 100644
          if (la_thread.joinable()) {
              la_drain();
              {
-@@ -2353,6 +2602,7 @@ struct llama_moe_cache::impl {
+@@ -2410,6 +2682,7 @@ struct llama_moe_cache::impl {
              ggml_backend_free(f);
          }
          log_stats();
@@ -642,7 +670,7 @@ index 80a2ed7..6f9bd47 100644
          if (trace != nullptr) {
              fclose(trace);
          }
-@@ -3046,11 +3296,18 @@ struct llama_moe_cache::impl {
+@@ -3103,11 +3376,18 @@ struct llama_moe_cache::impl {
          ids.resize(ggml_nelements(sel));
          ggml_backend_tensor_get_async(backend, sel, ids.data(), 0, ggml_nbytes(sel));
          // Brain Engine 0041: the next layer's guess was made in the same split as this layer's picks
@@ -665,7 +693,7 @@ index 80a2ed7..6f9bd47 100644
          }
          // Brain Engine 0043: the router scores of a one-word batch, copied by its graph before the picks were made
          const bool sp_on = sp_mode != SP_OFF && n_tok == 1 && l.sp_hooked && (int64_t) l.sp_score.size() == l.slot_map->ne[1];
-@@ -3073,6 +3330,9 @@ struct llama_moe_cache::impl {
+@@ -3130,6 +3410,9 @@ struct llama_moe_cache::impl {
              bw_rewarm(backend); // Brain Engine 0056: the first small batch after a long read
          }
  
@@ -675,7 +703,7 @@ index 80a2ed7..6f9bd47 100644
          if (trace != nullptr) {
              write_trace(il, n_used);
          }
-@@ -3148,9 +3408,9 @@ struct llama_moe_cache::impl {
+@@ -3205,9 +3488,9 @@ struct llama_moe_cache::impl {
          const int32_t * sp_map = sp_on ? sp_apply(il, l, g, backend, n_used) : nullptr;
          ggml_backend_tensor_set_async(backend, dst, sp_map != nullptr ? (const void *) sp_map : l.slot_map->data, 0, ggml_nbytes(l.slot_map));
  
@@ -688,7 +716,7 @@ index 80a2ed7..6f9bd47 100644
          }
  
          return true;
-@@ -5214,6 +5474,16 @@ struct llama_moe_cache::impl {
+@@ -5276,6 +5559,16 @@ struct llama_moe_cache::impl {
          if (la_max > 0) {
              LLAMA_LOG_INFO("llama_moe_cache: looked ahead: %zu experts uploaded ahead (%.2f MiB), %zu of them used (%.1f%%)\n",
                  la_n_up, la_bytes/1024.0/1024.0, la_n_used, la_n_up > 0 ? 100.0*la_n_used/la_n_up : 0.0);
@@ -705,7 +733,7 @@ index 80a2ed7..6f9bd47 100644
          }
          if (sp_mode != SP_OFF) {
              LLAMA_LOG_INFO("llama_moe_cache: stood in (%s, at most %d a layer a word): %zu stand-ins in %zu of %lld words, %zu misses copied as before while writing, most %d in a layer for a word\n",
-@@ -5267,6 +5537,355 @@ struct llama_moe_cache::impl {
+@@ -5329,6 +5622,355 @@ struct llama_moe_cache::impl {
      }
  };
  
@@ -1061,12 +1089,16 @@ index 80a2ed7..6f9bd47 100644
  llama_moe_cache::llama_moe_cache(const llama_model & model, bool no_alloc, const std::vector<ggml_backend_t> & backends, const std::vector<ggml_backend_buffer_type_t> & bufts, size_t size, float cpu_share) :
      pimpl(new impl(model, no_alloc, backends, bufts, size, cpu_share)) {
  }
-@@ -5281,8 +5900,16 @@ ggml_tensor * llama_moe_cache::get_slot_map(int32_t il, int64_t n_tokens, int64_
-     return pimpl->get_slot_map(il, n_tokens, n_expert_used, cpu_part);
+@@ -5347,8 +5989,20 @@ int32_t llama_moe_cache::next_layer(int32_t il) const {
+     return pimpl->next_layer(il);
  }
  
 -ggml_tensor * llama_moe_cache::get_guess(ggml_context * ctx, int32_t il, int64_t n_tokens, int32_t * k) const {
 -    return pimpl->get_guess(ctx, il, n_tokens, k);
++int32_t llama_moe_cache::guess_target(int32_t il, int32_t di) const {
++    return pimpl->la_layer_at(il, di);
++}
++
 +ggml_tensor * llama_moe_cache::get_guess(ggml_context * ctx, int32_t il, int64_t n_tokens, int32_t * k, int32_t di) const {
 +    return pimpl->get_guess(ctx, il, n_tokens, k, di);
 +}
@@ -1081,10 +1113,10 @@ index 80a2ed7..6f9bd47 100644
  
  ggml_tensor * llama_moe_cache::get_standin_scores(int32_t il, int64_t n_tokens, bool sigmoid) const {
 diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
-index 986ef89..6facdb5 100644
+index c5509b0..f6551da 100644
 --- a/src/llama-moe-cache.h
 +++ b/src/llama-moe-cache.h
-@@ -27,7 +27,20 @@ public:
+@@ -27,7 +27,22 @@ public:
  
      // Brain Engine 0041 (LLAMA_MOE_LOOKAHEAD): where the graph of layer il writes its guess of layer il + 1's experts,
      // I32 [k, n_tokens] (top k of layer il + 1's router on layer il's expert input), nullptr if there is no look-ahead
@@ -1093,6 +1125,8 @@ index 986ef89..6facdb5 100644
 +    ggml_tensor * get_guess(ggml_context * ctx, int32_t il, int64_t n_tokens, int32_t * k, int32_t di = 0) const;
 +    // the di-th depth of the look-ahead (ascending, 1 for 0041's), 0 past the last
 +    int32_t get_guess_depth(int32_t di) const;
++    // the layer that layer il guesses at depth di: 0091's next layer in run order for depth 1, -1 if none
++    int32_t guess_target(int32_t il, int32_t di) const;
 +    // Brain Engine 0106 (LLAMA_MOE_LOOKAHEAD_LEARN): the guess of depth di is the target's router on cur plus
 +    // mul_mat(b, mul_mat(a, cur)); for a one-word batch the graph copies cur to x and the plain router's scores to plain
 +    // (both nullptr otherwise). False if the guess has no learned part.
@@ -1103,6 +1137,6 @@ index 986ef89..6facdb5 100644
 +        ggml_tensor * x     = nullptr; // F32 [n_embd]
 +    };
 +    bool get_guess_learn(int32_t il, int32_t di, int64_t n_tokens, guess_learn * out) const;
-     // Brain Engine 0043 (LLAMA_MOE_STANDIN): for a one-word batch of layer il, where the graph copies the router scores
-     // (F32 [n_expert, 1], what the gating reads; sigmoid: the gating is a sigmoid, else a softmax), nullptr if there are
-     // no stand-ins. A graph that takes it must multiply the picks' weights by get_rows(get_standin_scale(il), slots).
+     // Brain Engine 0091: the layer that runs after layer il (a looped brain runs some layers more than once and not in
+     // index order), -1 for the last
+     int32_t next_layer(int32_t il) const;

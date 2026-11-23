@@ -1,8 +1,8 @@
 diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
-index 6f9bd47..a0050ee 100644
+index 7f7d67c..c91699e 100644
 --- a/src/llama-moe-cache.cpp
 +++ b/src/llama-moe-cache.cpp
-@@ -94,6 +94,108 @@ struct moe_cache_lru {
+@@ -100,6 +100,108 @@ struct moe_cache_lru {
      std::vector<uint8_t> busy; // [n_slots]
      int32_t n_busy = 0;
  
@@ -111,7 +111,7 @@ index 6f9bd47..a0050ee 100644
      void init(int32_t n_layer, int32_t n_expert, int32_t n_slots) {
          GGML_ASSERT(n_class == (int) std::log2(1.0f/(1.0f - std::exp2(-1.0f/crf_half_life))) + 1);
          this->n_expert = n_expert;
-@@ -124,6 +226,9 @@ struct moe_cache_lru {
+@@ -130,6 +232,9 @@ struct moe_cache_lru {
  
      // move slot s to the most recently used end of list c
      void move(int32_t s, int c) {
@@ -121,7 +121,7 @@ index 6f9bd47..a0050ee 100644
          const int from = list_of[s];
          if (from == c && s == tail[from]) {
              return;
-@@ -156,6 +261,9 @@ struct moe_cache_lru {
+@@ -162,6 +267,9 @@ struct moe_cache_lru {
  
      // Brain Engine 0048: slot s, now empty, to the least recently used end of list c, so victim() takes it first
      void move_head(int32_t s, int c) {
@@ -131,7 +131,7 @@ index 6f9bd47..a0050ee 100644
          const int from = list_of[s];
          if (prev[s] >= 0) {
              next[prev[s]] = next[s];
-@@ -229,6 +337,11 @@ struct moe_cache_lru {
+@@ -235,6 +343,11 @@ struct moe_cache_lru {
      }
  
      int32_t victim(int32_t il) const {
@@ -143,7 +143,7 @@ index 6f9bd47..a0050ee 100644
          int32_t res = -1;
          double res_score = -1.0;
          for (int c = 0; c < n_class; ++c) {
-@@ -710,6 +823,22 @@ struct llama_moe_cache::impl {
+@@ -761,6 +874,22 @@ struct llama_moe_cache::impl {
                  LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_CACHE_CPU_READ=%s NOT USED: it must be %lld to 16384 tokens\n", __func__, cr, (long long) max_batch + 1);
              }
          }
@@ -166,17 +166,17 @@ index 6f9bd47..a0050ee 100644
          auto alloc_size = [&](const group & g, int32_t n_slots) {
              const size_t alignment = ggml_backend_buft_get_alignment(devices[g.id].buft);
              size_t res = 0;
-@@ -776,6 +905,9 @@ struct llama_moe_cache::impl {
-                 continue;
+@@ -837,6 +966,9 @@ struct llama_moe_cache::impl {
+                 const int32_t p = phys_of[il];
+                 g.lru.phys[il] = p != (int32_t) il && std::find(g.layers.begin(), g.layers.end(), p) != g.layers.end() ? p : (int32_t) il;
              }
-             g.lru.init(model.layers.size(), n_expert, g.n_slots);
 +            if (lf_mode) {
 +                g.lru.lf_init(lf_protect, lf_window); // Brain Engine 0107
 +            }
              n_tensors[g.id] += g.ref.size()*(1 + g.layers.size()) + (la_max > 0 ? la_nd*g.layers.size() : 0) + (db_on ? g.layers.size() : 0) + (sp_mode != SP_OFF ? 2*g.layers.size() : 0)
                  + (ll_rank > 0 ? (3*la_nd + 1)*g.layers.size() : 0); // Brain Engine 0106
              n_tensors_host  += g.layers.size()*(n_zero > 0 ? 3 : 1) + (db_on ? g.layers.size() : 0); // slot maps and CPU map
-@@ -987,6 +1119,10 @@ struct llama_moe_cache::impl {
+@@ -1054,6 +1186,10 @@ struct llama_moe_cache::impl {
      }
  
      uint64_t fingerprint  = 0;
@@ -187,7 +187,7 @@ index 6f9bd47..a0050ee 100644
      uint64_t log_every    = 0; // LLAMA_MOE_CACHE_LOG_EVERY
      int64_t  learn_every  = 0; // Brain Engine 0031: LLAMA_MOE_CACHE_LEARN, 0 = off
      int64_t  cpu_read     = 0; // Brain Engine 0032: LLAMA_MOE_CACHE_CPU_READ, 0 = off
-@@ -3877,6 +4013,10 @@ struct llama_moe_cache::impl {
+@@ -3957,6 +4093,10 @@ struct llama_moe_cache::impl {
          std::list<int32_t>     lru;     // front = most recent
          std::vector<std::list<int32_t>::iterator> pos;
          std::unordered_map<int64_t, int32_t> slot_of;
@@ -198,7 +198,7 @@ index 6f9bd47..a0050ee 100644
      };
      bool rc_on = false, rc_pinned = false;
      std::vector<rc_class> rc_classes;
-@@ -4016,8 +4156,58 @@ struct llama_moe_cache::impl {
+@@ -4096,8 +4236,58 @@ struct llama_moe_cache::impl {
          return ((int64_t) tid << 32) | (uint32_t) e;
      }
  
@@ -257,7 +257,7 @@ index 6f9bd47..a0050ee 100644
          for (auto it = c.lru.rbegin(); it != c.lru.rend(); ++it) {
              const int32_t s = *it;
              if (c.gen_of[s] != rc_gen && c.gen_of[s] != UINT64_MAX) {
-@@ -4031,6 +4221,16 @@ struct llama_moe_cache::impl {
+@@ -4111,6 +4301,16 @@ struct llama_moe_cache::impl {
          if (c.key_of[s] >= 0) {
              c.slot_of.erase(c.key_of[s]);
          }
@@ -274,7 +274,7 @@ index 6f9bd47..a0050ee 100644
          c.key_of[s] = key;
          if (key >= 0) {
              c.slot_of[key] = s;
-@@ -4057,6 +4257,7 @@ struct llama_moe_cache::impl {
+@@ -4137,6 +4337,7 @@ struct llama_moe_cache::impl {
                  s   = f->second;
                  hit = true;
                  c.lru.splice(c.lru.begin(), c.lru, c.pos[s]);
@@ -282,7 +282,7 @@ index 6f9bd47..a0050ee 100644
              } else {
                  s = rc_victim(c);
                  if (s < 0) {
-@@ -4106,6 +4307,7 @@ struct llama_moe_cache::impl {
+@@ -4186,6 +4387,7 @@ struct llama_moe_cache::impl {
              return nullptr;
          }
          c.lru.splice(c.lru.begin(), c.lru, c.pos[f->second]);
@@ -290,7 +290,7 @@ index 6f9bd47..a0050ee 100644
          c.gen_of[f->second] = rc_gen;
          rc_hits++;
          rc_hit_bytes += c.size;
-@@ -5471,6 +5673,15 @@ struct llama_moe_cache::impl {
+@@ -5556,6 +5758,15 @@ struct llama_moe_cache::impl {
                  name, st.hits, st.misses, st.cpu, 100.0*st.hits/n, st.bytes/1024.0/1024.0);
          };
          log("ubatch <= 8", stats_small);
