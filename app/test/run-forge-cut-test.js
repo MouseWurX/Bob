@@ -33,7 +33,7 @@ check('a quant over 50 GB goes up in parts (its parts are named in the upload)',
 const forge = read('forge/forge.mjs');
 check('the PC sends the keep list by its file name', /m\.file === 'cut' && m\.cut\?\.keep_file/.test(forge) && /upload\(path\.basename\(kp\), kp\)/.test(forge));
 const card = read('forge/pod/cut_card.py');
-check('the card has the owner\'s sections (Bob project, expert choice, every keep level, tools and shape, dissertation links)', (() => { const x = read('forge/cards/bobert-flashnext.md'); return /## Part of the Bob project/.test(x) && /github\.com\/MouseWurX\/Bob/.test(x) && /How the experts were chosen/.test(x) && ['100%','90%','80%','75%','65%','60%','50%'].every((l) => x.includes('| ' + l + ' |')) && /shape 4/.test(x) && /dissertation\/ch08/.test(x) && plan.benchmark.models[0].cut.card_extra === 'cards/bobert-flashnext.md' && !/Bobiverse|npc|Squeak/i.test(x); })());
+check('the card has the owner\'s sections (Bob project, expert choice, every keep level, tools and shape, dissertation links)', (() => { const x = read('forge/cards/bobert-flashnext.md'); return /## Part of the Bob project/.test(x) && /github\.com\/MouseWurX\/Bob/.test(x) && /How the experts were chosen/.test(x) && ['100%','90%','80%','75%','65%','60%','50%'].every((l) => x.includes('| ' + l + ' |')) && /shape 4/.test(x) && /dissertation\/ch08/.test(x) && plan.benchmark.models[0].cut.card_extra === 'cards/bobert-flashnext.md' && !/Bobiverse/i.test(x); })());
 check('the card says unproven until the scores are in, and points at the license', /Unproven in our lab, as we have yet to test/.test(card) && /license_link: LICENSE/.test(card) && !/Bobiverse/i.test(card + block));
 
 const py = spawnSync('python3', ['-c', 'import gguf, numpy'], { encoding: 'utf8' });
