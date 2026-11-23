@@ -276,7 +276,7 @@ new file mode 100644
 index 0000000..dee1e9c
 --- /dev/null
 +++ b/tools/expert-pair/expert-pair.cpp
-@@ -0,0 +1,161 @@
+@@ -0,0 +1,187 @@
 +// Brain Engine lab tool (pod patch 0016): how alike the experts of each layer are, judged by what they put out on the same
 +// words. Every expert of every layer is run on every token of the prompts (experts per word = all of them, the mask off),
 +// and for each token the cosine between each pair of experts' outputs is added up. Written per layer as
@@ -292,6 +292,7 @@ index 0000000..dee1e9c
 +
 +#include <cmath>
 +#include <cstdio>
++#include <algorithm>
 +#include <cstring>
 +#include <fstream>
 +#include <string>
@@ -332,6 +333,7 @@ index 0000000..dee1e9c
 +    }
 +    if (il_d < 0 || il_d >= cb->n_layer || t->type != GGML_TYPE_F32 || !ggml_is_contiguous(t)) return true;
 +    const int64_t n_embd = t->ne[0], n_used = t->ne[1], n_tok = t->ne[2];
++    if (n_tok < 1) return true; // the last layer runs only the words that give an output: a part of a prompt before its end has none there
 +    if (n_used != cb->n_expert || cb->ids_used[il_d] != n_used || (int64_t) cb->ids[il_d].size() != n_used * n_tok) { cb->skipped++; return true; }
 +    cb->buf.resize(ggml_nelements(t));
 +    ggml_backend_tensor_get(t, cb->buf.data(), 0, cb->buf.size() * sizeof(float));
@@ -407,34 +409,58 @@ index 0000000..dee1e9c
 +    const int32_t r = llama_set_expert_used(ctx, all.data(), all.size());
 +    if (r != 0) { fprintf(stderr, "could not run all %d experts per word (code %d); try a smaller -ub\n", cb.n_expert, r); return 1; }
 +
++    // 23 Nov 2026: every prompt gets an even share of --pair-max (the first run spent it all on the first 50 of 129 asks),
++    // and every word asks for an output, so the last layer (which runs only the words that give one) is measured on all of them
 +    std::ifstream in(prompts_file);
-+    std::string line; int p = 0; size_t total = 0;
-+    while (std::getline(in, line) && (int) total < max_tokens) {
++    std::vector<std::string> texts; std::string line;
++    while (std::getline(in, line)) {
 +        if (!line.empty() && line.back() == '\r') line.pop_back();
 +        if (line.empty()) continue;
 +        std::string text; for (size_t i = 0; i < line.size(); i++) { if (line[i] == '\\' && i + 1 < line.size() && line[i + 1] == 'n') { text += '\n'; i++; } else text += line[i]; }
++        texts.push_back(text);
++    }
++    if (texts.empty()) { fprintf(stderr, "no prompts in %s\n", prompts_file.c_str()); return 1; }
++    // what was measured so far goes to disk now and then (and info.json says "done": false), so a run cut off by the
++    // time limit still leaves pairs to use
++    auto save = [&](int p, size_t total, bool done) -> int {
++        int ok = 0;
++        for (int il = 0; il < cb.n_layer; il++) {
++            if (!cb.count[il]) continue;
++            std::vector<float> m((size_t) cb.n_expert * cb.n_expert);
++            for (size_t i = 0; i < m.size(); i++) m[i] = (float) (cb.sum[il][i] / cb.count[il]);
++            FILE * f = fopen((out_dir + "/sim-" + std::to_string(il) + ".f32").c_str(), "wb");
++            if (!f) { fprintf(stderr, "could not write to %s\n", out_dir.c_str()); return -1; }
++            fwrite(m.data(), sizeof(float), m.size(), f); fclose(f); ok++;
++        }
++        const std::string tmp = out_dir + "/info.json.part";
++        FILE * info = fopen(tmp.c_str(), "wb");
++        if (!info) { fprintf(stderr, "could not write to %s\n", out_dir.c_str()); return -1; }
++        fprintf(info, "{\"n_layer\":%d,\"n_expert\":%d,\"layers\":[", cb.n_layer, cb.n_expert);
++        for (int il = 0, k = 0; il < cb.n_layer; il++) if (cb.count[il]) fprintf(info, "%s%d", k++ ? "," : "", il);
++        fprintf(info, "],\"prompts\":%d,\"prompts_in_file\":%zu,\"tokens\":%zu,\"skipped\":%ld,\"done\":%s,\"measure\":\"mean cosine of the two experts' outputs on the same token\"}\n", p, texts.size(), total, cb.skipped, done ? "true" : "false");
++        fclose(info);
++        std::rename(tmp.c_str(), (out_dir + "/info.json").c_str());
++        return ok;
++    };
++    const int per = std::max(8, max_tokens / (int) texts.size());
++    int p = 0; size_t total = 0;
++    for (const auto & text : texts) {
++        if ((int) total >= max_tokens) break;
 +        std::vector<llama_token> toks = common_tokenize(ctx, text, true, true);
-+        if ((int) (total + toks.size()) > max_tokens) toks.resize(max_tokens - total);
-+        if (toks.empty()) continue;
++        const int n = std::min({ (int) toks.size(), per, max_tokens - (int) total });
++        if (n <= 0) continue;
 +        llama_memory_clear(llama_get_memory(ctx), true);
-+        if (llama_decode(ctx, llama_batch_get_one(toks.data(), (int) toks.size()))) { fprintf(stderr, "prompt %d failed to run\n", p); return 1; }
-+        total += toks.size(); p++;
-+        fprintf(stderr, "expert-pair: %d prompts, %zu tokens\n", p, total);
++        llama_batch batch = llama_batch_init(n, 0, 1);
++        for (int i = 0; i < n; i++) { batch.token[i] = toks[i]; batch.pos[i] = i; batch.n_seq_id[i] = 1; batch.seq_id[i][0] = 0; batch.logits[i] = 1; }
++        batch.n_tokens = n;
++        const int rc = llama_decode(ctx, batch);
++        llama_batch_free(batch);
++        if (rc) { fprintf(stderr, "prompt %d failed to run (code %d)\n", p, rc); return 1; }
++        total += n; p++;
++        if (p % 16 == 0) { fprintf(stderr, "expert-pair: %d of %zu prompts, %zu tokens\n", p, texts.size(), total); if (save(p, total, false) < 0) return 1; }
 +    }
-+    int ok_layers = 0;
-+    for (int il = 0; il < cb.n_layer; il++) {
-+        if (!cb.count[il]) continue;
-+        std::vector<float> m((size_t) cb.n_expert * cb.n_expert);
-+        for (size_t i = 0; i < m.size(); i++) m[i] = (float) (cb.sum[il][i] / cb.count[il]);
-+        FILE * f = fopen((out_dir + "/sim-" + std::to_string(il) + ".f32").c_str(), "wb");
-+        if (!f) { fprintf(stderr, "could not write to %s\n", out_dir.c_str()); return 1; }
-+        fwrite(m.data(), sizeof(float), m.size(), f); fclose(f); ok_layers++;
-+    }
-+    FILE * info = fopen((out_dir + "/info.json").c_str(), "wb");
-+    fprintf(info, "{\"n_layer\":%d,\"n_expert\":%d,\"layers\":[", cb.n_layer, cb.n_expert);
-+    for (int il = 0, k = 0; il < cb.n_layer; il++) if (cb.count[il]) fprintf(info, "%s%d", k++ ? "," : "", il);
-+    fprintf(info, "],\"prompts\":%d,\"tokens\":%zu,\"skipped\":%ld,\"measure\":\"mean cosine of the two experts' outputs on the same token\"}\n", p, total, cb.skipped);
-+    fclose(info);
++    const int ok_layers = save(p, total, true);
++    if (ok_layers < 0) return 1;
 +    printf("expert-pair: %d prompts, %zu tokens, %d MoE layers measured (%ld tensors skipped) -> %s\n", p, total, ok_layers, cb.skipped, out_dir.c_str());
 +    return ok_layers > 0 ? 0 : 1;
 +}

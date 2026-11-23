@@ -58,7 +58,7 @@
     "download_gb": 112,
     "expert_pair": true,
     "pair_from": "../../bob-model-lab/out/pair-prompts",
-    "pair_tokens": 1024,
+    "pair_tokens": 4096,
     "pair_minutes": 40
    }
   ],

@@ -383,7 +383,7 @@ PY
         EP=$S/llama.cpp/build-cuda/bin/llama-expert-pair; PD=$OUT/bench/pair-$BN; PW=$W/pair-$BN; mkdir -p $PD $PW
         if [ -x "$EP" ] && [ -f $IN/pair-$BN.tgz ] && tar xzf $IN/pair-$BN.tgz -C $PW; then
           status bench "$BN: measuring how alike the experts are (read only)"
-          LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" timeout $(plan "['benchmark']['models'][$b].get('pair_minutes',40)*60") $EP -m "$BFILE" --pair-prompts $PW/prompts.txt --pair-out $PD --pair-max $(plan "['benchmark']['models'][$b].get('pair_tokens',1024)") -ngl 999 -ub 16 -c 4096 > $PD/pair.log 2>&1 || echo "bench $BN: expert pairing failed (see out/bench/pair-$BN/pair.log)"
+          LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" timeout $(plan "['benchmark']['models'][$b].get('pair_minutes',40)*60") $EP -m "$BFILE" --pair-prompts $PW/prompts.txt --pair-out $PD --pair-max $(plan "['benchmark']['models'][$b].get('pair_tokens',1024)") -ngl 999 -ub 16 -c 4096 > $PD/pair.log 2>&1 || { [ -f $PD/info.json ] && echo "bench $BN: expert pairing stopped early; the asks measured so far are kept (see out/bench/pair-$BN/info.json)" || echo "bench $BN: expert pairing failed (see out/bench/pair-$BN/pair.log)"; }
           rm -rf $PW
         else echo "bench $BN: no llama-expert-pair or no in/pair-$BN.tgz; pairing skipped" | tee $PD/skipped.txt; fi
       fi

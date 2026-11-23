@@ -46,8 +46,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   let r;
   try { r = pairUp(keep, sims, n); } catch (e) { console.log(`GATE STOP: ${e.message}`); process.exit(86); }
   const m = r.layers.filter((l) => l.mean_cos !== null);
-  const out = { keep, to: r.to, from_keep: path.basename(opt('keep')), measured_on: { prompts: info.prompts, tokens: info.tokens, measure: info.measure }, rules: { gate_weight: 'kept share + paired off shares, before top-k', duplicates: 'none possible' }, layers: r.layers, mean_cos: m.length ? +(m.reduce((s, l) => s + l.mean_cos, 0) / m.length).toFixed(4) : null };
+  const out = { keep, to: r.to, from_keep: path.basename(opt('keep')), measured_on: { prompts: info.prompts, prompts_in_file: info.prompts_in_file ?? null, tokens: info.tokens, complete: info.done !== false, measure: info.measure }, rules: { gate_weight: 'kept share + paired off shares, before top-k', duplicates: 'none possible' }, layers: r.layers, mean_cos: m.length ? +(m.reduce((s, l) => s + l.mean_cos, 0) / m.length).toFixed(4) : null };
   fs.mkdirSync(path.dirname(path.resolve(opt('out'))), { recursive: true });
   fs.writeFileSync(opt('out'), JSON.stringify(out));
-  console.log(`${opt('out')}: ${m.reduce((s, l) => s + l.off, 0)} off experts paired over ${m.length} layers; mean output likeness ${out.mean_cos} (cosine), lowest layer mean ${Math.min(...m.map((l) => l.mean_cos))}; measured on ${info.tokens} tokens`);
+  console.log(`${opt('out')}: ${m.reduce((s, l) => s + l.off, 0)} off experts paired over ${m.length} layers; mean output likeness ${out.mean_cos} (cosine), lowest layer mean ${Math.min(...m.map((l) => l.mean_cos))}; measured on ${info.tokens} tokens${info.done === false ? ` (cut short by the time limit: ${info.prompts} of ${info.prompts_in_file} asks)` : ''}`);
 }

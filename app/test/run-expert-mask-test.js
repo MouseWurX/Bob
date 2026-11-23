@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 let pass = 0, fail = 0;
@@ -75,6 +75,19 @@ const before = (dir) => rc[rc.findIndex((x) => x.includes(`--dir ${dir} `)) - 1]
 check('the redirect plan: every expert, 80% mask and 80% redirect on the same keep list and the same held-out office and inbox sets, pairs from never-held-out words, nothing cut', rm.expert_pair === true && /pair-prompts/.test(rm.pair_from) && rp.benchmark.brain_engine.patches.includes('pod:0016-expert-redirect') && /--off/.test(before('rr100-office')) && before('rm80-office').endsWith('--keep out/reap-flashnext-q4-jobs/keep/all-keep-80.json') && before('rr80-office').endsWith('--keep out/reap-flashnext-q4-jobs/keep/all-keep-80.json --redirect out/reap-redirect/all-80-redirect.json') && rc.some((x) => /^node expert-redirect\.mjs --sim \{\{out\}\}\/pair --keep out\/reap-flashnext-q4-jobs\/keep\/all-keep-80\.json/.test(x)) && ['rr100', 'rm80', 'rr80'].every((k) => rc.some((x) => x.includes(`--dir ${k}-office `)) && rc.some((x) => x.includes(`--dir ${k}-inbox `))) && !rc.some((x) => /scut|heal|upload/i.test(x)) && rp.publish.models.length === 0 && rp.dollars_max <= 12);
 const pod = (f) => read(`model-lab/forge/pod/${f}`);
 check('pod patch 0016 adds the redirect to the mask and the expert-pair tool; the pod builds it and runs it before serving', /llama_set_expert_redirect/.test(pod('0016-expert-redirect.patch')) && /tools\/expert-pair\/expert-pair\.cpp/.test(pod('0016-expert-redirect.patch')) && /llama-expert-pair/.test(pod('llama-server-build.sh')) && /expert_pair/.test(pod('run.sh')) && /bench\/pair-\$\{name\}\//.test(read('model-lab/forge/forge.mjs')));
+// 23 Nov 2026 (first redirect rental): the pairing read 1 of 129 asks and crashed (the last layer has no words when a part of an
+// ask gives no output: 0 tokens, a divide by zero in ggml_mul_mat), and 1024 tokens would have covered only the first 50 asks
+{ const pt = pod('0016-expert-redirect.patch');
+  check('expert-pair skips a layer that has no words, shares the tokens over every ask, asks every word for an output, and saves as it goes', /if \(n_tok < 1\) return true;/.test(pt) && /max_tokens \/ \(int\) texts\.size\(\)/.test(pt) && /batch\.logits\[i\] = 1/.test(pt) && /save\(p, total, false\)/.test(pt) && /"done\\":%s/.test(pt));
+  check('the redirect plan measures 4096 tokens, and run.sh keeps what was measured when the time runs out', JSON.parse(read('model-lab/forge/plans/reap-redirect.json')).benchmark.models.every((m) => !m.expert_pair || m.pair_tokens >= 4096) && /expert pairing stopped early; the asks measured so far are kept/.test(pod('run.sh')));
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'pair cut '));
+  const sim = new Float32Array(16); for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) sim[a * 4 + b] = a === b ? 1 : 1 / (1 + Math.abs(a - b));
+  fs.writeFileSync(path.join(d, 'sim-0.f32'), Buffer.from(sim.buffer)); fs.writeFileSync(path.join(d, 'info.json'), JSON.stringify({ n_layer: 1, n_expert: 4, layers: [0], prompts: 16, prompts_in_file: 129, tokens: 512, done: false, measure: 'm' }));
+  fs.writeFileSync(path.join(d, 'keep.json'), JSON.stringify({ keep: [[0, 1]] }));
+  const x = spawnSync(process.execPath, [path.join(app, 'model-lab', 'expert-redirect.mjs'), '--sim', d, '--keep', path.join(d, 'keep.json'), '--out', path.join(d, 'rd.json')], { encoding: 'utf8' });
+  const rd = x.status === 0 ? JSON.parse(fs.readFileSync(path.join(d, 'rd.json'), 'utf8')) : {};
+  check('pairs from a pairing cut short are still made, and say so', x.status === 0 && rd.measured_on?.complete === false && /cut short by the time limit: 16 of 129 asks/.test(x.stdout) && JSON.stringify(rd.to?.[0]) === JSON.stringify([0, 1, 1, 1]), `${x.stdout}${x.stderr}`);
+  fs.rmSync(d, { recursive: true, force: true }); }
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
