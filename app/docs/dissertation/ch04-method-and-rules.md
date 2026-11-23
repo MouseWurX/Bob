@@ -53,7 +53,7 @@ The Bobert wording study ran on a rented 48 GB A40 with 8 slots of 8,192 tokens 
 
 ### 4.3.3 Speed settings measured on the home PC (updated 18 November)
 
-Before any setting that changes how the brain is served becomes a default, it is timed on MouseWurX's consumer PC against the default. This section gathers every speed result from 4 to 18 November in one place, oldest first. Section 2.10.1 turns the results into advice for a home machine. Section 3.4.3 covers the cost of the fNRI trace.
+Before any setting that changes how the brain is served becomes a default, it is timed on MouseWurX's consumer PC against the default. **For every speed result in one table, see section 4.3.4.** This section gathers every speed result from 4 to 18 November in one place, oldest first, with later tests in sections 4.3.3.8 to 4.3.3.11. Section 2.10.1 turns the results into advice for a home machine. Section 3.4.3 covers the cost of the fNRI trace.
 
 All speeds are tokens a second. "Read" is prompt reading speed and "write" is writing speed. "First word" is the wait before the first word appears, in seconds. Unless a row says otherwise, the brain is stock Qwen3.6 35B A3B at Q4 (unsloth UD-Q4_K_XL) on a 16 GB card with 32 GB of RAM and an 8-core processor.
 
@@ -1049,7 +1049,41 @@ Gate 1 needs writing no more than 2% slower, so it failed, and Bob kept Brain En
 
 **A rule for defaults (MouseWurX, 22 November).** Every result row now says "same words: yes/no" against plain settings at the same step. A trick that keeps the same words, with no crash and no spill on the home PC, becomes a default. A trick that changes the words goes behind the Turbo button, and must also pass the real-jobs gate of section 4.3.3.10. For those tricks (drive stand-ins, the older stand-ins, the step changes that come with borrowing, and 0055's rounding), the real-jobs check is the same 99 jobs (30 mail, 36 office, 33 repo) as plain settings, about 2 to 5 hours per setting on the home PC (Addendum 97). None has run yet.
 
-**Still to run on the home PC** (in order): the Brain Engine 32 word check and Gate 1 rerun, the reading copy-against-compute split at steps 4096 and 8192, the borrow spare of 512 against 1,024 MiB at 64K and 128K, the processor-share rerun with patch 0055, and the doorbell's first run on the card. Flash-Next waits for MouseWurX to lift the stop.
+**Brain Engine 32 and 33 word checks (22 November, evening).** Both builds installed on the home PC and passed the 2-minute word check. Brain Engine 32 with borrowing on now writes the same words as borrowing off at both 32K and 128K, so the "3333" garbage of Brain Engine 31 is gone (same words: yes). Brain Engine 33 matches Brain Engine 28 word for word (same words: yes). One caveat came later: Brain Engine 33's new rewarm (patch 0056) can write experts into lent slots while they are still in use, so on Brain Engine 33 to 35 every borrow-on row runs with rewarm off, and the fix is in Brain Engine 36. Brain Engine 32 has no rewarm, so its checks stand. The Brain Engine 32 Gate 1 rerun had reached round 4 of 5 at 64K with no breaks when this was written; its numbers are not in yet.
+
+**Still to run on the home PC** (in order): the rest of the Brain Engine 32 Gate 1 rerun, the reading copy-against-compute split at steps 4096 and 8192, the borrow spare of 512 against 1,024 MiB at 64K and 128K, the processor-share rerun with patch 0055, and the doorbell's first run on the card. Flash-Next waits for MouseWurX to lift the stop.
+
+### 4.3.4 Speed results in one table (updated 23 November)
+
+This is every main speed result on the home PC in one place, oldest first, with what it decided. The full runs, with their sources and limits, are in the sections named in the last column. "Same words" compares the words written against plain settings at the same step; "n/a" means the row changes nothing the words depend on, or was not checked.
+
+| Date | Build | What was tested | Result | Same words | What it decided | Section |
+|---|---|---|---|---|---|---|
+| 4 to 18 Nov | BE8 to BE15 | Bob's settings against stock llama.cpp defaults, 300-token job | Done 2.4 to 2.9 times sooner; writing 1.3 times faster on a short prompt, 1.2 times at 32K, level at 128K, 12% slower at 256K | n/a | Keep Bob's settings; most of the gain is settings any llama.cpp user can pass | 4.3.3.2 |
+| 4 to 18 Nov | BE8 to BE15 | Reading step | Only `-ub` drives reading speed; at 256K step 8192 leaves 30 of 41 layers on the card and writing collapses | n/a | Don't go past about 6144 at 256K | 4.3.3.2, Fig. 4.1 |
+| 17 Nov | BE11, BE12 | The fNRI trace, and engine features switched off | Trace 2% or less after its fix; features off cost nothing measurable | yes | Instruments stay in | 3.4.3 |
+| 18 Nov | BE15 | Fit margin on the card | 512 MB is the floor; at 256 MB a real spill starts | n/a | `--fit-target 512` | 4.3.3.3 |
+| 18 Nov | BE15 | Perplexity of the speed settings | Changes only in the last digits; q4_0 chat memory a borderline pass on mean KLD | yes (screens) | Speed settings may be used; q8_0 where memory allows | 4.3.3.4, Fig. 4.2 |
+| 18 Nov | BE15 to BE17 | The 128K and 256K "spill" | It is the attention mask in pinned RAM, matched to the MiB in every load | yes | Earlier speeds stand | 4.3.3.5 |
+| 18 Nov | BE15 | Context cache in RAM | Writing 73% to 76% slower | n/a | Out | 4.3.3.2 |
+| 18 Nov | BE15 | A busy desktop | Writing 10% to 18% slower, in 8 paired loads | n/a | Test on a quiet desktop, and say so | 4.3.3.2 |
+| 19 to 20 Nov | BE21 to BE22 | 3-bit chat memory (q3_0) | Passes perplexity and the needle; 2.9% slower than q4_0 at 128K; saves 22% of chat memory at 256K | no (small drift) | Allowed for long chats | 4.3.3.8 |
+| 19 to 20 Nov | BE21 to BE22 | Mixed 3/4/8-bit chat memory (0039) | Failed on speed | no | Out | 4.3.3.8 |
+| 19 to 20 Nov | BE21 to BE22 | Look-ahead (0041) | About 5% faster on 128K long prompts, 4% to 8% slower on 32K start chats | yes (6 of 6) | Opt-in for long contexts | 4.3.3.8 |
+| 19 to 20 Nov | BE21 to BE22 | Stand-ins (0043) | 16% to 23% faster on start chats and code edits | no | Turbo only; real-jobs check not run | 4.3.3.8 |
+| 19 to 20 Nov | BE21 to BE22 | Doorbell (0042) | Flat or worse against share 1 | n/a | Off; to be retried with 0055 | 4.3.3.8 |
+| 20 Nov | BE26 | 64K job: Bob's settings against stock defaults | 37.4 s (step 4096) against 70.2 s; first word 10.1 s against 36.8 s | n/a | Step 4096 throughout is the reference for Gate 1 | 4.3.3.8, Fig. 4.3 |
+| 21 Nov | Avalon test build | Avalon's own Windows build | Crashed or hung at its own steps; 20 against 44 tokens a second with fusion off | no (until fusion off) | Rebuild its ideas inside Brain Engine | 4.3.3.9 |
+| 22 Nov | BE29 | Gate 1, borrowed reading, 64K job | Job 42.1 against 44.5 s; writing 3.8% slower at 32K and 18% at 128K; step stuck at 4096 | no (word 109) | Fail; keep BE28's settings | 4.3.3.11 |
+| 22 Nov | BE29, BE31 | `-b 16384` against `-b 4096`, no borrow | 128K writing 44.9 and 47.1 against 56.4; a different answer whose experts hit the cache less | no | Compare writing only between runs with the same text | 4.3.3.11 |
+| 22 Nov | BE31 | Lending from every bank | Wrote "3333…" on every borrow run | no | Void; fixed in BE32 | 4.3.3.11 |
+| 22 Nov | BE29 | Flash-Next 125B Q4, 32K, borrow against none | Job 2,090 against 2,697 s; reading 36.1 against 22.0; writing 1.75 against 1.3 | no (word 7) | Borrow helps reading; the word change is unexplained | 4.3.3.11 |
+| 22 Nov | BE30 | Flash-Next drive tier | The PC locked up at 76 MB free RAM | n/a | Flash-Next stopped on the home PC; 512 MiB RAM floor built (unproven) | 4.3.3.11 |
+| 22 Nov | BE21 to BE28 | Processor share, patch 0040 on and off | Code prompt 23 to 24 t/s on, 82 to 88 off (BE21: 86.7) | off: yes; on: no | 0040 is the whole slowdown; fast rewrite 0055 (home-PC run to come) | 4.3.3.11, Fig. 4.5 |
+| 22 Nov | BE32 | Borrowing word check, 32K and 128K | Borrow on matches borrow off | yes | The garbage is fixed; Gate 1 rerun under way | 4.3.3.11 |
+| 22 Nov | BE33 | Word check against BE28 | Same words, word for word | yes | Passes; rewarm off on borrow rows until BE36 | 4.3.3.11 |
+
+**What it adds up to.** On this PC the settings matter more than the engine: the reading step, flash attention, the fit margin and the chat-memory type give most of the gain over stock defaults. The engine's own tricks so far give a few percent each, and the biggest single find of 22 November was a slowdown the engine had caused (patch 0040). Borrowing, the Avalon idea, has not yet passed Gate 1. Flash-Next runs on the home PC only slowly, and only reading gains from borrowing so far.
 
 ## 4.4 Benchmarks
 

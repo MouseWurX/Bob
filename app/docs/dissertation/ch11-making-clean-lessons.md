@@ -394,6 +394,47 @@ What still ends a job is being stuck: 3 rounds with nothing new, 4 rounds where 
 
 **Fixes made from these runs.** Checking code after an edit is on by default; the answer names the changed files; tests run on Windows; a bare `node` is refused with a hint; failing tests no longer get the tool set aside; Office tools find files the way `read_file` does; file search also matches file names; the text-call nudge asks for plain words when tools are off; and the Run tools load for project jobs. Each has a check in the test suite. Whether they lift Bob's passes towards his right work is unproven in our lab, as we have yet to test. The Flash-Next and DeepSeek runs of section 13.7 carry them.
 
+### 11.7.7 Flash-Next in Bob, smaller files, held-out jobs and a first cut (21 to 22 November)
+
+The bigger-brain rentals of section 13.7 ran on 21 and 22 November, on rented cards in the cloud, in Bob's own harness. Sources: the rentals thread's reports of 21 to 23 November, with plans in `app/model-lab/forge/plans/` (jobs-flashnext-iq3.json, jobs-flashnext-q2.json, reap-flashnext-q4-jobs.json, jobs-held1.json). None of these runs was on the home PC.
+
+**Flash-Next against stock Qwen (21 November, Q4_K_XL, one H200).** On the normal job sets Flash-Next passed 29, 31 and 32 of 33 repo jobs (Minimus, Medius, thinking on every step) against stock Qwen's 19 to 20, and covered 89% to 93% of the inbox against 57% to 73%, with no harms. Badly shaped tool calls fell from 21 in 937 to 2 in 1,254.
+
+**Smaller Flash-Next files (22 November).** The same jobs, run on the IQ3 and Q2 files (about 80 GB for Q2, against 111 GB for Q4):
+
+| Jobs | IQ3 | Q2 | Q4 |
+|---|---|---|---|
+| Office | 33/36 | 34/36 | 33/36 |
+| Repo, Minimus | 32/33 | 32/33 | 29/33 |
+| Repo, Medius | 31/33 | 31/33 | 31/33 |
+| Repo, thinking every step | 32/33 | 33/33 | 32/33 |
+| Inbox coverage | 82% | 82% | 86% |
+| Badly shaped tool calls | 0 to 1 per set | 0 to 1 per set | 0 to 1 per set |
+
+Going down to the smaller files cost about 4 points of inbox coverage and nearly nothing elsewhere, on one run each. The rentals cost $3.22 (IQ3) and $2.74 (Q2). The Q2 misses also found a real Bob bug: an edit with several changes at once reported the file as missing, which broke two repo jobs. It is fixed, with three smaller tool fixes. Pass rates do not say whether the smaller files make work as good; a game-building test (two small Godot games, three seeds per file, played blind by MouseWurX) is set up to show that, and has no result yet.
+
+**Held-out jobs (held1, 22 November).** The normal job sets have been tuned on, so a fresh set of each kind was written once and is never used for tuning or lessons (inbox 14 jobs on 4 new inboxes, Office 14, repo 12, web 11 on a made-up web; Blender 12, not run). held1 ran stock Qwen at Medius on them, for $0.61, against the Flash-Next Q4 baseline of the REAP run below:
+
+| Held-out set | Qwen3.6 35B | Flash-Next Q4 |
+|---|---|---|
+| Office | 11/14 | 13/14 |
+| Repo | 8/12 | 12/12 |
+| Web | 4/11 | 8/11 |
+| Inbox coverage | 76% (22 of 28 ran) | 85% |
+| Badly shaped tool calls | 8 in 360 | 0 to 1 |
+
+The gap on jobs nobody tuned on is as wide as on the normal sets, so Flash-Next's lead is not an artefact of tuning. Two causes are the test, not the brain: Qwen's inbox run stopped at 22 jobs because live web searches from the home PC came back empty (the fix is to give inbox runs the made-up web), and its repo run used a kit from before the edit fix above, so some of its 3 repo fails may be that bug. Web and badly shaped calls look like Qwen itself.
+
+**A first cut (REAP on Flash-Next Q4, 22 November, one H200 NVL).** Every expert in each layer was ranked by how much it is used on 153 clean Flash-Next runs of Bob's jobs. Each keep level was then scored on the held-out jobs with the other experts switched off, with no healing and no cut file saved:
+
+| Experts kept | Office | Repo | Web | Inbox coverage | Harms |
+|---|---|---|---|---|---|
+| All | 13/14 | 12/12 | 8/11 | 85% | 0 |
+| 90% | 13/14 | 12/12 | 9/11 | 93% | 0 |
+
+Keeping 90% of the experts lost nothing on these jobs. The jobs are few, so the small gains at 90% are probably noise. The deeper levels (80, 75, 65, 60 and 50%) were still running when this was written. Fitting Flash-Next on the home PC needs a much deeper cut than 90% (section 13.7), so whether a cut that fits still passes is unproven in our lab, as we have yet to test.
+
+
 ## 11.8 Discussion
 
 ### 11.8.1 What the method buys

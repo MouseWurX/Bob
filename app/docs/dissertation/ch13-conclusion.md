@@ -126,8 +126,12 @@ The answers above cover the five research questions. The thesis also measured ho
 | Other harnesses, same brain | Qwen Code 21 passed / 30 right; mini-swe-agent 21 / 29 (Figure 11.3) | Bob's extra rules did not buy right answers on coding; his lead is safety | Weak (one run) | 11 |
 | Steps per job | Median 2 everyday, 4 Office, 9 coding; longest 29; the old caps cost 5 of 96 runs (Figure 11.4) | Fixed step caps cut real work; they are removed | Moderate (518 runs) | 11 |
 | Broken tools | 1,650 calls read: none crashed or hung; Office file lookup failed 30% to 40% | The breakage was in finding files, not in the tools | Moderate | 11 |
+| Flash-Next 125B in Bob (cloud) | Repo 29 to 32 of 33 against Qwen's 19 to 20; inbox 89% to 93% against 57% to 73%; bad calls 2 in 1,254 against 21 in 937 | A bigger brain does far better in the same harness | Moderate (one run per set) | 11 |
+| Smaller Flash-Next files (cloud) | IQ3 and Q2 within a job or two of Q4 on Office and repo; inbox 82% against 86% | The smaller files lose little on pass rates; quality of work is still to be judged | Weak (one run each) | 11 |
+| Held-out jobs (held1) | Office 11 against 13 of 14, repo 8 against 12 of 12, web 4 against 8 of 11 (Qwen against Flash-Next Q4) | Flash-Next's lead holds on jobs nobody tuned on | Weak (few jobs) | 11 |
+| A first REAP cut of Flash-Next | 90% of experts kept: 13/14, 12/12, 9/11, inbox 93%, no harms, same as or above all experts | A light cut costs nothing measurable; deeper levels were still running | Weak (few jobs, no heal) | 11 |
 
-**Speed on the home PC** (method in section 4.3.3.1, with what was added since in section 4.3.3.10, and the tests of 22 November in section 4.3.3.11)
+**Speed on the home PC** (every speed result in one table: section 4.3.4; method in section 4.3.3.1 and section 4.3.3.10; the tests of 22 November in section 4.3.3.11)
 
 | Result | Measured | What it means | Strength | Ch. |
 |---|---|---|---|---|
@@ -141,6 +145,7 @@ The answers above cover the five research questions. The thesis also measured ho
 | Borrowed reading, Brain Engine 29 (Gate 1) | 64K job 42.1 against 44.5 s; writing 3.8% slower at 32K, 18% at 128K; step stuck at 4096 | Failed the gate; the 128K drop was a different answer from a bigger batch, not borrowing | Moderate (5 rounds) | 4 |
 | Lending from every bank, Brain Engine 31 | Wrote "3333…" on every borrow run | A layout bug, fixed in Brain Engine 32; all its borrow numbers void | Strong (every run) | 4 |
 | Flash-Next 125B on the home PC | Borrow: job 2,090 against 2,697 s, reading 36 against 22 t/s, writing 1.75 against 1.3 t/s; then a lock-up at 76 MB free RAM | Borrow helps reading; writing waits on RAM and the drive; Flash-Next stopped until a RAM floor is tested | Provisional (2 rounds) | 4 |
+| Brain Engine 32 and 33 word checks | BE32 borrow on matches borrow off at 32K and 128K; BE33 matches BE28 word for word | The lending garbage is fixed; Gate 1 rerun under way | Strong (word match) | 4 |
 | Avalon's own Windows build | Crashed or hung at its own steps; 20 against 44 tokens a second with fusion off | Rebuild its ideas inside Brain Engine instead | Moderate (one session) | 4 |
 
 **What the table adds up to.** The lesson results (RQ1 to RQ3) are the best measured part of the thesis, and the decisive retrain is still missing. The speed results are many small, careful runs on one PC: they settle the defaults for that PC and say little about other machines. The harness results are new and single runs, but they changed the work: since 21 November the main task is making the stock brain finish real jobs reliably, before any more training or cutting.
@@ -281,6 +286,7 @@ The project's goal is a reliable personal assistant on one consumer PC: mail, re
 **2. Bigger brains, tried in Bob before anything is built for them.** Two rentals were prepared and passed pre-flight on 21 November. Both wait for MouseWurX's go.
 
 - **Qwen3.8-Flash-Next** (125B, 512 experts, 10 used per word): one H200, capped at 2.1 hours and $11. It runs the inbox, Office and repo jobs at Minimus and Medius, plus a repo run with thinking on every step, and counts bad tool calls by type against stock Qwen.
+- **What came of it (added 23 November).** The Flash-Next rental ran on 21 November and did far better than the stock 35B in the same harness, and the smaller IQ3 and Q2 files scored close to Q4 the next day. On held-out jobs its lead held, and keeping 90% of its experts lost nothing (section 11.7.7). On the home PC it runs, but slowly, and one run locked the PC up (section 4.3.3.11).
 - **DeepSeek V4.1 Flash**: two H200 NVL cards, the 3-bit file (395 GB), capped at 3 hours and $25. The 4-bit file was skipped because its memory table gives wrong answers on current llama.cpp, with no error.
 - **Both map which experts each kind of job uses,** in a separate phase after the jobs so the trace can't skew the scores. That map is the starting data for any cut and for the engine's cache.
 - **GPT-OSS 120B is no longer the planned bigger brain** (MouseWurX, 21 November). It stays as a reference that every engine change must still run.

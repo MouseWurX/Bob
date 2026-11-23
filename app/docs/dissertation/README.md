@@ -2,7 +2,7 @@
 
 **How hidden faults in synthetic training data shape small local agent models**
 
-*Bob's computer science dissertation, written in the open. Draft of 22 November 2026: all 13 chapters, fact-checked against their run files, with the after1 round, the home-PC speed tests to 20 November, the fNRI trace test, the 21 November harness runs (after2, Bob's own code, other harnesses), every main result in one table (section 13.2.7), where the work is heading (section 13.7) and 10 figures.*
+*Bob's computer science dissertation, written in the open. Draft of 23 November 2026: all 13 chapters, fact-checked against their run files, with the after1 round, the home-PC speed tests to 22 November (every speed result in one table, section 4.3.4), the fNRI trace test, the 21 November harness runs (after2, Bob's own code, other harnesses), Flash-Next with held-out jobs and a first cut (section 11.7.7), every main result in one table (section 13.2.7), where the work is heading (section 13.7) and 11 figures.*
 
 > **Status.** The decisive test, training a fresh model on reviewed lessons and scoring it on a leak-free test, **has not been run yet**. Until it runs, the title is a claim the evidence points to, not a proven result. Each chapter ends with its limits and what is still to do.
 >
@@ -40,9 +40,10 @@ Small open models can run a useful agent on one consumer graphics card, but how 
 
 ## Where to find
 
+- **Every speed result in one table:** [section 4.3.4](ch04-method-and-rules.md#434-speed-results-in-one-table-updated-23-november).
 - **Every main result in one table, with what each means:** [section 13.2.7](ch13-conclusion.md#1327-every-result-in-one-table-and-what-each-means-added-22-november).
 - **How speed is tested:** [section 4.3.3.1](ch04-method-and-rules.md#43331-how-the-speed-tests-were-run), with what was added since in [section 4.3.3.10](ch04-method-and-rules.md#433310-how-the-speed-method-carries-forward-added-22-november).
-- **Speed results:** every setting in [section 4.3.3.2](ch04-method-and-rules.md#43332-every-setting-tried-oldest-first), engine features in [section 4.3.3.8](ch04-method-and-rules.md#43338-engine-features-tested-19-to-20-november-brain-engine-21-and-22), and the tests of 22 November in [section 4.3.3.11](ch04-method-and-rules.md#433311-engine-tests-of-22-november-brain-engine-29-to-31-and-the-patch-0040-check).
+- **Speed results:** every setting in [section 4.3.3.2](ch04-method-and-rules.md#43332-every-setting-tried-oldest-first), engine features in [section 4.3.3.8](ch04-method-and-rules.md#43338-engine-features-tested-19-to-20-november-brain-engine-21-and-22), the tests of 22 November in [section 4.3.3.11](ch04-method-and-rules.md#433311-engine-tests-of-22-november-brain-engine-29-to-31-and-the-patch-0040-check).
 - **Where the work is heading:** [section 13.7](ch13-conclusion.md#137-where-the-work-is-heading-added-22-november).
 
 ## Figures
