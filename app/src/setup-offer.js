@@ -42,7 +42,7 @@ export const HAND_CAN = {
   mcp: 'work inside apps like Unreal Engine or Blender through their MCP add-on'
 };
 export function switchFor(cfg, key) {
-  if (key === 'web') return cfg.webSearch === true ? null : { key, name: 'Web search', where: 'Settings, How Bob works', what: 'look things up on the internet', privacy: 'Only the search words and page addresses leave your replicant matrix (your computer).', patch: { webSearch: true } };
+  if (key === 'web') return cfg.webSearch === true ? null : { key, name: 'Web search', where: 'Settings, How Bob works', what: 'look things up on the internet', privacy: 'Only the search words and page addresses leave your replicant matrix (your computer), and commands Bob runs can go online too.', patch: { webSearch: true } };
   if (key === 'workshop') return cfg.workshop?.enabled === true ? null : { key, name: 'Advanced workshop (ComfyUI)', where: 'Settings, Other apps', what: 'run your ComfyUI workflows', patch: { workshop: { ...(cfg.workshop || {}), enabled: true } } };
   const m = /^hand:(\w+)$/.exec(key || '');
   if (m && HANDS[m[1]]) {

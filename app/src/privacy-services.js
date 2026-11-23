@@ -45,9 +45,9 @@ export const PRIVACY_SERVICES = {
   },
   'web-search': {
     name: 'Web search',
-    sends: 'The search words, and the addresses of pages Bob reads.',
-    to: 'DuckDuckGo, and the websites he opens.',
-    sees: 'The search engine and each website see the words or page asked for, and this connection\'s internet address.',
+    sends: 'The search words, and the addresses of pages Bob reads. Commands Bob runs can go online too (downloads like npm install or git pull), and a command could send files.',
+    to: 'DuckDuckGo, the websites he opens, and whatever sites a command you OK talks to.',
+    sees: 'The search engine and each website see the words or page asked for, and this connection\'s internet address. While Web is on, commands aren\'t kept offline: each still shows its card first. Web off: nothing goes online, commands included.',
     tips: [
       tip('DuckDuckGo says it never tracks you. The websites Bob opens still see each visit.', 'https://duckduckgo.com/duckduckgo-help-pages/privacy/no-tracking')
     ],
@@ -147,7 +147,8 @@ const remote = (url) => { try { return !LOOPBACK.test(new URL(url).hostname); } 
 const rentKind = (id) => { const k = serviceOf(id)?.kind; return k === 'machine' ? 'rent-machine' : k === 'serverless' ? 'rent-serverless' : 'rent-answer'; };
 
 // Which services this POST turns ON (off before, on after). Off -> off, on -> on and anything turned off: nothing.
-export function turningOn(p, b, cfg, { servers } = {}) {
+export function turningOn(p, b, cfg, deps = {}) {
+  const { servers } = deps;
   if (!b || typeof b !== 'object') return [];
   const out = new Set();
   if (p === '/api/telegram' && b.enabled === true && cfg.telegram?.enabled !== true) out.add('telegram');
@@ -164,6 +165,8 @@ export function turningOn(p, b, cfg, { servers } = {}) {
     for (const [id, on] of Object.entries(b.enabled)) if (on === true && serviceOf(id) && st.enabled?.[id] !== true) out.add(rentKind(id));
   }
   if (p === '/api/coding-agents' && b.add) out.add('coding-agents');
+  // a "Switch it on" card in the chat (setup-offer.js): Web search is turned on by its answer
+  if (p === '/api/setup/answer' && b.yes === true && deps.setupSwitch?.(String(b.id || '')) === 'web' && cfg.webSearch !== true) out.add('web-search');
   if (p === '/api/hands/mcp' && b.id && b.on === true) {
     let s; try { s = (servers || loadServers(cfg)).find((x) => x.id === String(b.id)); } catch {}
     if (s && !s.on && s.url && remote(s.url)) out.add('mcp-remote');
@@ -171,7 +174,7 @@ export function turningOn(p, b, cfg, { servers } = {}) {
   return [...out];
 }
 
-export const PRIVACY_PATHS = new Set(['/api/telegram', '/api/discord', '/api/settings', '/api/search-backup', '/api/talk', '/api/more-tools', '/api/rent/settings', '/api/coding-agents', '/api/hands/mcp']);
+export const PRIVACY_PATHS = new Set(['/api/telegram', '/api/discord', '/api/settings', '/api/search-backup', '/api/talk', '/api/more-tools', '/api/rent/settings', '/api/coding-agents', '/api/hands/mcp', '/api/setup/answer']);
 
 export const card = (id) => ({ id, ...PRIVACY_SERVICES[id] });
 
@@ -180,5 +183,5 @@ export function privacyGate(p, b, cfg, okHeader = '', deps = {}) {
   const ok = new Set(String(okHeader || '').split(',').map((s) => s.trim()).filter(Boolean));
   const need = turningOn(p, b, cfg, deps).filter((id) => !ok.has(id));
   if (!need.length) return null;
-  return { status: 428, body: { error: 'This sends data out of this replicant matrix. Confirm it on the privacy card first.', privacy: need.map(card) } };
+  return { status: 428, body: { error: 'This sends data out of this replicant matrix. Confirm it on the privacy card first.', ok: false, why: 'This sends data out. Turn it on at the replicant matrix itself (Settings), where its privacy card shows what it sends and where.', privacy: need.map(card) } };
 }

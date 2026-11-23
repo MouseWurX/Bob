@@ -53,6 +53,9 @@ const { PRIVACY_SERVICES, PRIVACY_PATHS, turningOn, privacyGate } = await imp('s
   check('turning something off, or another setting, never asks', offs.every(([p, b]) => !turningOn(p, b, on).length && !turningOn(p, b, off).length));
   const servers = [{ id: 'blender', on: false, url: '', cmd: 'uvx' }, { id: 'local', on: false, url: 'http://127.0.0.1:8000/mcp' }, { id: 'far', on: false, url: 'https://tools.example/mcp' }];
   check('a connected app asks only when it is on another computer', turningOn('/api/hands/mcp', { id: 'far', on: true }, off, { servers }).join() === 'mcp-remote' && !turningOn('/api/hands/mcp', { id: 'local', on: true }, off, { servers }).length && !turningOn('/api/hands/mcp', { id: 'blender', on: true }, off, { servers }).length);
+  const offer = { setupSwitch: (id) => (id === 'c1' ? 'web' : id === 'c2' ? 'hand:files' : undefined) };
+  check('a "Switch it on" card for Web search in the chat shows the privacy card too; other cards and No don\'t', turningOn('/api/setup/answer', { id: 'c1', yes: true }, off, offer).join() === 'web-search' && !turningOn('/api/setup/answer', { id: 'c1', yes: false }, off, offer).length && !turningOn('/api/setup/answer', { id: 'c2', yes: true }, off, offer).length && !turningOn('/api/setup/answer', { id: 'c1', yes: true }, { webSearch: true }, offer).length);
+  check('the phone, which can\'t show the card, is told to turn it on at the computer', /Turn it on at the replicant matrix itself/.test(privacyGate('/api/telegram', { enabled: true }, off).body.why));
   const g = privacyGate('/api/telegram', { enabled: true }, off);
   check('the gate answers 428 with the card until it is confirmed', g?.status === 428 && g.body.privacy?.[0]?.id === 'telegram' && /privacy card/.test(g.body.error));
   check('with the card confirmed (x-bob-privacy-ok) the change goes ahead', privacyGate('/api/telegram', { enabled: true }, off, 'telegram') === null);
@@ -85,7 +88,7 @@ const { PRIVACY_SERVICES, PRIVACY_PATHS, turningOn, privacyGate } = await imp('s
 // ---- wired in: the server gate runs before the routes, both pages load the card, Help explains it
 {
   const server = fs.readFileSync(path.join(app, 'src/server.js'), 'utf8').replace(/\r\n/g, '\n');
-  check('server.js runs the privacy gate on POSTs to the watched addresses, and reads the body once', /PRIVACY_PATHS\.has\(p\)/.test(server) && /privacyGate\(p, b, cfg, req\.headers\['x-bob-privacy-ok'\]\)/.test(server) && /req\.bobBody !== undefined/.test(server));
+  check('server.js runs the privacy gate on POSTs to the watched addresses, and reads the body once', /PRIVACY_PATHS\.has\(p\)/.test(server) && /privacyGate\(p, b, cfg, req\.headers\['x-bob-privacy-ok'\], \{ setupSwitch/.test(server) && /req\.bobBody !== undefined/.test(server));
   for (const f of ['public/app.js', 'public/settings-window.js']) check(`${f} loads the privacy card`, fs.readFileSync(path.join(app, f), 'utf8').includes("import './privacy-card.js'"));
   const help = fs.readFileSync(path.join(app, 'public/help-content.js'), 'utf8');
   check('Help has the privacy card, the glossary and the FAQ', /Privacy card/.test(help) && /only send your data out through services you switch on/.test(help));

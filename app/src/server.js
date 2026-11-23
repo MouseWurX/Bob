@@ -607,7 +607,7 @@ const server = http.createServer(async (req, res) => {
     // Nov 23 2026: turning on anything that sends data out shows its privacy card first (privacy-services.js).
     if (req.method === 'POST' && PRIVACY_PATHS.has(p)) {
       let b; try { b = await body(req); } catch { b = {}; }
-      const stop = privacyGate(p, b, cfg, req.headers['x-bob-privacy-ok']);
+      const stop = privacyGate(p, b, cfg, req.headers['x-bob-privacy-ok'], { setupSwitch: (id) => brain.offers?.map?.get(id)?.sw });
       if (stop) return send(res, stop.status, stop.body);
     }
     // Anything the user does in the window (a setting, a click, typing) counts as activity, so an update

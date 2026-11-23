@@ -79,7 +79,7 @@ const models = (here = []) => catalog.models.map((m) => ({ ...m, status: { state
 
 // ---------- Settings in the way ----------
 {
-  check('web search off: offered with its setting name and the privacy line', switchFor({}, 'web')?.name === 'Web search' && switchFor({}, 'web').where === 'Settings, How Bob works' && /Only the search words and page addresses leave your replicant matrix \(your computer\)\./.test(switchFor({}, 'web').privacy) && switchFor({ webSearch: true }, 'web') === null);
+  check('web search off: offered with its setting name and the privacy line', switchFor({}, 'web')?.name === 'Web search' && switchFor({}, 'web').where === 'Settings, How Bob works' && /Only the search words and page addresses leave your replicant matrix \(your computer\), and commands Bob runs can go online too\./.test(switchFor({}, 'web').privacy) && switchFor({ webSearch: true }, 'web') === null);
   check('every Hand has its own short line for the card', Object.keys(HAND_CAN).length === 8 && Object.values(HAND_CAN).every((t) => /^[a-z]/.test(t) && !/\.$/.test(t)) && switchFor({ hands: {} }, 'hand:files').what === HAND_CAN.files);
   const h = switchFor({ hands: { enabled: false } }, 'hand:files');
   check('a Hand that is off: the card turns on Hands and that Hand', h && /Let Bob use Hands, Files/.test(h.name) && h.hands.enabled && h.hands.files.on && h.folders);
