@@ -1,0 +1,139 @@
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 632935e..329daec 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -2850,7 +2850,37 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+         // the cached experts and the misses computed from the host experts, each reads the others as zero
+         // the cached experts come first in the graph, so that they are computed while the misses are
+         ggml_build_forward_expand(gf, experts);
+-        experts = ggml_add(ctx0, experts, build_experts(cur, selected_experts, cache.cpu_ids, false));
++        ggml_tensor * cpu_experts = build_experts(cur, selected_experts, cache.cpu_ids, false);
++        // Brain Engine 0032: the CPU part's expert products stay on the processor, so a card that offloads big batches
++        // from host weights doesn't copy the experts over for them (for small batches it never would)
++        // every expert product of the CPU part (gate, up and down), not just the last one: the walk goes on past each
++        // pinned product, or gate and up would be offloaded to the card with ids of -1 for experts not on the processor
++        {
++            std::vector<ggml_tensor *> todo = { cpu_experts };
++            int n_pinned = 0;
++            for (size_t i = 0; i < todo.size() && i < 256; ++i) {
++                ggml_tensor * t = todo[i];
++                if (t == nullptr || t == cur || t == selected_experts) {
++                    continue;
++                }
++                if (std::find(todo.begin(), todo.begin() + i, t) != todo.begin() + i) {
++                    continue;
++                }
++                if (t->op == GGML_OP_MUL_MAT_ID) {
++                    ggml_backend_sched_set_tensor_backend(sched, t, backend_cpu);
++                    n_pinned++;
++                }
++                for (ggml_tensor * src : t->src) {
++                    if (src != nullptr && src->op != GGML_OP_NONE) {
++                        todo.push_back(src);
++                    }
++                }
++            }
++            if (getenv("LLAMA_MOE_CACHE_LOG_EVERY") != nullptr) {
++                LLAMA_LOG_INFO("%s: layer %d: %d expert products of the CPU part pinned to the processor\n", __func__, il, n_pinned);
++            }
++        }
++        experts = ggml_add(ctx0, experts, cpu_experts);
+         cb(experts, "ffn_moe_down_merged", il);
+     }
+ 
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index f81fb1a..214db8f 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -510,6 +510,20 @@ struct llama_moe_cache::impl {
+         // with misses on the CPU, the n_zero slots after the cached ones stay zero: the device computes these misses as zero
+         // one extra slot at the end, CUDA MMQ can read past the last expert
+         n_zero = cpu_share > 0.0f ? std::min<int32_t>(n_expert_used, 64) : 0;
++        // Brain Engine 0032: LLAMA_MOE_CACHE_CPU_READ=N, prompts of 33 to N tokens read the cached experts in place and
++        // the processor computes every miss, so nothing crosses to the card for them. More misses meet in a token-heavy
++        // batch, so the zero slots go up to 64 (a miss that finds no free zero slot is copied in as usual).
++        if (const char * cr = getenv("LLAMA_MOE_CACHE_CPU_READ"); !no_alloc && cr != nullptr && *cr != '\0') {
++            const long long v = atoll(cr);
++            if (v > max_batch && v <= 16384 && n_expert_used <= 64) {
++                cpu_read = v;
++                n_zero   = 64;
++                LLAMA_LOG_INFO("%s: MoE cache: prompts of %lld to %lld tokens read the cached experts on the card and every miss on the processor\n",
++                    __func__, (long long) max_batch + 1, (long long) cpu_read);
++            } else {
++                LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_CACHE_CPU_READ=%s NOT USED: it must be %lld to 16384 tokens\n", __func__, cr, (long long) max_batch + 1);
++            }
++        }
+         auto alloc_size = [&](const group & g, int32_t n_slots) {
+             const size_t alignment = ggml_backend_buft_get_alignment(devices[g.id].buft);
+             size_t res = 0;
+@@ -730,6 +744,8 @@ struct llama_moe_cache::impl {
+     uint64_t fingerprint  = 0;
+     uint64_t log_every    = 0; // LLAMA_MOE_CACHE_LOG_EVERY
+     int64_t  learn_every  = 0; // Brain Engine 0031: LLAMA_MOE_CACHE_LEARN, 0 = off
++    int64_t  cpu_read     = 0; // Brain Engine 0032: LLAMA_MOE_CACHE_CPU_READ, 0 = off
++    stats    stats_read;       // Brain Engine 0032: batches of max_batch+1 to cpu_read tokens
+     float    learn_margin = 2.0f;
+     size_t   n_learned    = 0;
+     uint64_t n_updates    = 0;
+@@ -918,7 +934,9 @@ struct llama_moe_cache::impl {
+         }
+ 
+         // large batches use most experts of a layer, so they gain little from the cache and would evict the experts used in generation
+-        if (n_tokens == 0 || n_tokens > max_batch || std::min(n_tokens*n_expert_used, l.slot_map->ne[1]) > groups[l.ig].n_slots) {
++        // Brain Engine 0032: up to cpu_read tokens with the processor doing every miss
++        const int64_t max_tokens = cpu_part && cpu_read > 0 ? cpu_read : max_batch;
++        if (n_tokens == 0 || n_tokens > max_tokens || std::min(n_tokens*n_expert_used, l.slot_map->ne[1]) > groups[l.ig].n_slots) {
+             return nullptr;
+         }
+         GGML_ASSERT(!cpu_part || l.slot_map_cpu != nullptr);
+@@ -929,6 +947,13 @@ struct llama_moe_cache::impl {
+         if (il < 0 || il >= (int32_t) layers.size() || layers[il].cpu_map == nullptr) {
+             return nullptr;
+         }
++        // Brain Engine 0032: the graph pins the CPU part of these batches to the processor (see build_moe_ffn)
++        if (cpu_read > 0 && n_tokens > max_batch) {
++            return n_tokens <= cpu_read && !lent && !filling && !reading ? layers[il].cpu_map : nullptr;
++        }
++        if (cpu_share <= 0.0f) {
++            return nullptr; // the zero slots are only there for 0032's prompt batches
++        }
+         // the scheduler would run the CPU part on a device that offloads such batches from host weights
+         ggml_tensor probe = {};
+         probe.op    = GGML_OP_MUL_MAT_ID;
+@@ -1047,7 +1072,9 @@ struct llama_moe_cache::impl {
+         }
+ 
+         // part of the misses is computed on the CPU once the cache is full, the carry keeps the share right on average
+-        const uint32_t share_q = has_cpu && g.lru.n_filled == g.lru.n_slots ? cpu_share_q : 0;
++        // Brain Engine 0032: a prompt batch of more than max_batch tokens sends every miss to the CPU, full cache or not
++        const bool     read_cpu = has_cpu && sel->src[0]->ne[1] > max_batch;
++        const uint32_t share_q  = read_cpu ? 65536u : has_cpu && g.lru.n_filled == g.lru.n_slots ? cpu_share_q : 0;
+         auto n_cpu = [&](size_t n_miss) {
+             const uint64_t acc = (uint64_t) n_miss*share_q + l.cpu_acc;
+             l.cpu_acc = acc & 0xffff;
+@@ -1056,7 +1083,7 @@ struct llama_moe_cache::impl {
+         size_t n_hit = 0;
+         // Brain Engine 0031: one miss a layer may enter the cache every learn_every tokens, only when misses go to the CPU
+         size_t n_learn = 0;
+-        if (learn_every > 0 && share_q > 0) {
++        if (learn_every > 0 && share_q > 0 && !read_cpu) {
+             l.learn_tokens += sel->src[0]->ne[1];
+             if (l.learn_tokens >= learn_every) {
+                 n_learn = 1;
+@@ -1098,7 +1125,7 @@ struct llama_moe_cache::impl {
+             }
+         }
+ 
+-        stats & st = ids.size() <= (size_t) 8*n_expert_used ? stats_small : stats_large;
++        stats & st = read_cpu ? stats_read : ids.size() <= (size_t) 8*n_expert_used ? stats_small : stats_large;
+         st.hits   += n_hit;
+         st.misses += fills.size() + cpu.size();
+         st.cpu    += cpu.size();
+@@ -1348,6 +1375,7 @@ struct llama_moe_cache::impl {
+             LLAMA_LOG_INFO("llama_moe_cache: learned while writing: %zu experts came in\n", n_learned);
+         }
+         log("ubatch  > 8", stats_large);
++        log("prompts read with misses on the CPU", stats_read);
+         if (stats_copy.hits > 0) {
+             LLAMA_LOG_INFO("llama_moe_cache: large batches: %zu experts copied from the cache, %.2f MiB\n", stats_copy.hits, stats_copy.bytes/1024.0/1024.0);
+         }

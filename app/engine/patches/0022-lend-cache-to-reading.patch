@@ -1,0 +1,251 @@
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 33fc789..9a4d5a7 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -613,6 +613,23 @@ llama_context::llama_context(
+ 
+         if (cparams.moe_cache_size > 0) {
+             moe_cache = std::make_unique<llama_moe_cache>(model, model.no_alloc(), backend_ptrs, backend_buft, cparams.moe_cache_size, cparams.moe_cache_cpu_share);
++
++            // Brain Engine 0022: LLAMA_MOE_CACHE_LEND=<tokens> lends the cache to prompt reading. Up to that many tokens a
++            // decode reads with the cache in place, in working memory laid out for that step; a bigger decode frees the
++            // cache, reads in steps of -ub, and the cache comes back (the same experts, uploaded again) when writing starts.
++            // Off unless set; -ub must be bigger than it, and -b at least -ub, or nothing is ever lent. It is read in the
++            // measuring pass too (no_alloc, used by --fit), so the fit sees the smaller step with the cache, not both at once.
++            if (const char * lend = getenv("LLAMA_MOE_CACHE_LEND"); lend != nullptr && *lend != '\0') {
++                const long v = strtol(lend, nullptr, 10);
++                if (v > 32 && (uint32_t) v < cparams.n_ubatch) {
++                    cparams.moe_cache_lend_ub = (uint32_t) v;
++                    LLAMA_LOG_INFO("%s: MoE cache lent to prompt reading above %u tokens (reading step %u, %u with the cache)\n",
++                            __func__, cparams.moe_cache_lend_ub, cparams.n_ubatch, cparams.moe_cache_lend_ub);
++                } else if (v != 0) {
++                    LLAMA_LOG_WARN("%s: LLAMA_MOE_CACHE_LEND=%s NOT USED: it must be over 32 and under the reading step (-ub %u)\n",
++                            __func__, lend, cparams.n_ubatch);
++                }
++            }
+         }
+ 
+         if (!model.no_alloc()) {
+@@ -808,7 +825,9 @@ void llama_context::sched_reserve() {
+     const int64_t t_start_us = ggml_time_us();
+ 
+     const uint32_t n_seqs = cparams.n_seq_max;
+-    const uint32_t n_tokens = std::min(cparams.n_ctx, cparams.n_ubatch);
++    // Brain Engine 0022: with the cache in place, the working memory only needs the smaller step
++    const uint32_t n_tokens = std::min(cparams.n_ctx, cparams.moe_cache_lend_ub > 0 && !cparams.moe_cache_lent ?
++            std::min(cparams.n_ubatch, cparams.moe_cache_lend_ub) : cparams.n_ubatch);
+ 
+     const size_t max_nodes = this->graph_max_nodes();
+ 
+@@ -2697,6 +2716,37 @@ int llama_context::decode(const llama_batch_ext & batch_inp) {
+         ids_keep_room(n_tokens_all);
+     }
+ 
++    // Brain Engine 0022: lend the MoE cache to a big read, take it back when writing starts (or for a small tail)
++    if (cparams.moe_cache_lend_ub > 0 && moe_cache) {
++        const bool big   = (uint32_t) n_tokens_all > cparams.moe_cache_lend_ub;
++        const bool small = n_tokens_all <= 32;
++        if ((big && !cparams.moe_cache_lent) || (small && cparams.moe_cache_lent)) {
++            const int64_t t0 = ggml_time_us();
++            synchronize();
++            // the working memory goes first, so the card never holds both layouts at once
++            gf_res_prev_active = nullptr;
++            for (auto & r : gf_res_prev) {
++                r->reset();
++            }
++            gf_res_reserve->reset();
++            sched.reset();
++            sched_need_reserve = true;
++            try {
++                if (big) {
++                    moe_cache->lend();
++                } else {
++                    moe_cache->restore();
++                }
++                cparams.moe_cache_lent = big;
++                sched_reserve();
++            } catch (const std::exception & err) {
++                LLAMA_LOG_ERROR("%s: %s while %s the MoE cache\n", __func__, err.what(), big ? "lending" : "taking back");
++                return -2;
++            }
++            LLAMA_LOG_INFO("%s: MoE cache %s in %.1f ms\n", __func__, big ? "lent" : "back", (ggml_time_us() - t0)/1000.0);
++        }
++    }
++
+     sched_reserve();
+ 
+     bool did_optimize = false;
+diff --git a/src/llama-cparams.h b/src/llama-cparams.h
+index 1add3a0..a7bd9fc 100644
+--- a/src/llama-cparams.h
++++ b/src/llama-cparams.h
+@@ -70,6 +70,11 @@ struct llama_cparams {
+     size_t moe_cache_size;
+     float  moe_cache_cpu_share;
+ 
++    // Brain Engine 0022 (LLAMA_MOE_CACHE_LEND): a decode of more tokens than this lends the MoE cache's card memory to
++    // a bigger reading step (n_ubatch); 0 = off. The working memory is laid out for this many tokens while not lent.
++    uint32_t moe_cache_lend_ub = 0;
++    bool     moe_cache_lent    = false;
++
+     std::vector<bool> embeddings_layer_inp; // [n_layer()] extract input embeddings for layer
+     bool embeddings_layer_inp_dev; // write enabled layer inputs to a device buffer instead of host
+     bool embeddings_nextn_dev;     // write the unmasked h_nextn rows to a device buffer instead of host, see llama_set_embeddings_nextn_dev()
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index faf9a78..d2dd4f5 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -392,6 +392,10 @@ struct llama_moe_cache::impl {
+     llama_moe_cache::ids_sink_t ids_sink = nullptr;
+     void * ids_sink_ud = nullptr;
+ 
++    // Brain Engine 0022: while lent, the device banks are freed so a bigger prompt-reading step can use their memory;
++    // the LRU keeps what each slot held, and restore() uploads those experts again
++    bool lent = false;
++
+     // slot maps in host memory
+     ggml_context_ptr ctx_host;
+     ggml_backend_buffer_ptr buf_host;
+@@ -827,7 +831,7 @@ struct llama_moe_cache::impl {
+     }
+ 
+     ggml_tensor * get_slot_map(int32_t il, int64_t n_tokens, int64_t n_expert_used, bool cpu_part) const {
+-        if (il < 0 || il >= (int32_t) layers.size() || layers[il].ig < 0) {
++        if (lent || il < 0 || il >= (int32_t) layers.size() || layers[il].ig < 0) {
+             return nullptr;
+         }
+         const layer & l = layers[il];
+@@ -866,7 +870,7 @@ struct llama_moe_cache::impl {
+     }
+ 
+     int64_t copy_experts(ggml_backend_t backend, const ggml_tensor * w, ggml_tensor * dst, int64_t e, int64_t last) {
+-        const auto it = bindings.find(w);
++        const auto it = lent ? bindings.end() : bindings.find(w);
+         if (it == bindings.end()) {
+             return 0;
+         }
+@@ -911,6 +915,7 @@ struct llama_moe_cache::impl {
+         group & g = groups[l.ig];
+ 
+         GGML_ASSERT(backend == devices[g.id].backend);
++        GGML_ASSERT(!lent && "a graph read the MoE cache while it was lent");
+ 
+         // the get_rows that looks up the slots of the selected experts
+         const int n_nodes = ggml_graph_n_nodes(graph);
+@@ -1007,6 +1012,79 @@ struct llama_moe_cache::impl {
+         return true;
+     }
+ 
++    bool lend() {
++        if (lent) {
++            return false;
++        }
++        size_t bytes = 0;
++        for (device & d : devices) {
++            if (d.buf) {
++                ggml_backend_synchronize(d.backend);
++                bytes += d.buf_size;
++                d.buf.reset();
++            }
++        }
++        lent = true;
++        LLAMA_LOG_INFO("llama_moe_cache: lent %.2f MiB of the cache to prompt reading\n", bytes/1024.0/1024.0);
++        return true;
++    }
++
++    void restore() {
++        if (!lent) {
++            return;
++        }
++        const int64_t t0 = ggml_time_us();
++        for (device & d : devices) {
++            if (!d.ctx) {
++                continue;
++            }
++            for (ggml_tensor * t = ggml_get_first_tensor(d.ctx.get()); t != nullptr; t = ggml_get_next_tensor(d.ctx.get(), t)) {
++                t->data   = nullptr;
++                t->buffer = nullptr;
++            }
++            d.buf = llama_memory_bufs::alloc_buf(d.ctx.get(), d.buft, false, "MoE cache");
++            ggml_backend_buffer_clear(d.buf.get(), 0); // the zero slots and the padding
++            ggml_backend_buffer_set_usage(d.buf.get(), GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
++            d.buf_size = ggml_backend_buffer_get_size(d.buf.get());
++        }
++        lent = false;
++        // the same experts go back in the same slots, so the cache is as it was before the read
++        size_t bytes = 0;
++        size_t n = 0;
++        for (group & g : groups) {
++            ggml_backend_t backend = devices[g.id].backend;
++            for (int32_t s = 0; s < g.n_slots;) {
++                const int32_t key = g.lru.key_of[s];
++                if (key < 0) {
++                    s++;
++                    continue;
++                }
++                const int32_t kl = g.lru.key_layer(key);
++                const int32_t ke = g.lru.key_expert(key);
++                // consecutive experts of a layer in consecutive slots go up together
++                int32_t c = 1;
++                while (s + c < g.n_slots && g.lru.key_of[s + c] == key + c && g.lru.key_layer(key + c) == kl) {
++                    c++;
++                }
++                for (size_t ip = 0; ip < layers[kl].experts.size(); ++ip) {
++                    const ggml_tensor * w = layers[kl].experts[ip];
++                    const size_t expert_size = w->nb[2];
++                    ggml_backend_tensor_set_async(backend, g.banks[ip], (const uint8_t *) w->data + (size_t) ke*expert_size, (size_t) s*expert_size, (size_t) c*expert_size);
++                    bytes += (size_t) c*expert_size;
++                }
++                n += c;
++                s += c;
++            }
++        }
++        for (device & d : devices) {
++            if (d.buf) {
++                ggml_backend_synchronize(d.backend);
++            }
++        }
++        LLAMA_LOG_INFO("llama_moe_cache: cache back from prompt reading: %zu experts (%.2f MiB) uploaded again in %.1f ms\n",
++            n, bytes/1024.0/1024.0, (ggml_time_us() - t0)/1000.0);
++    }
++
+     void log_stats() const {
+         auto log = [](const char * name, const stats & st) {
+             const size_t n = st.hits + st.misses;
+@@ -1046,6 +1124,18 @@ ggml_tensor * llama_moe_cache::get_cpu_map(int32_t il, int64_t n_tokens) const {
+     return pimpl->get_cpu_map(il, n_tokens);
+ }
+ 
++bool llama_moe_cache::lend() {
++    return pimpl->lend();
++}
++
++void llama_moe_cache::restore() {
++    pimpl->restore();
++}
++
++bool llama_moe_cache::is_lent() const {
++    return pimpl->lent;
++}
++
+ void llama_moe_cache::set_ids_sink(ids_sink_t sink, void * user_data) {
+     pimpl->ids_sink    = sink;
+     pimpl->ids_sink_ud = user_data;
+diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
+index 0aed417..f4a5402 100644
+--- a/src/llama-moe-cache.h
++++ b/src/llama-moe-cache.h
+@@ -45,6 +45,13 @@ public:
+     using ids_sink_t = void (*)(void * user_data, int32_t il, const int32_t * ids, size_t n, int32_t n_used);
+     void set_ids_sink(ids_sink_t sink, void * user_data);
+ 
++    // Brain Engine 0022: lend() frees the device banks so prompt reading can use their memory (no graph may read the
++    // cache until restore()); restore() allocates them again and uploads the experts each slot held, so the cache is
++    // as it was. lend() returns false if the cache was already lent.
++    bool lend();
++    void restore();
++    bool is_lent() const;
++
+ private:
+     struct impl;
+     std::unique_ptr<impl> pimpl;

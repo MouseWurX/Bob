@@ -1,0 +1,25 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='760' height='470' viewBox='0 0 760 470' font-family='Helvetica, Arial, sans-serif'>
+<rect width='760' height='470' fill='#fcfcfb'/>
+<text x='24' y='36' font-size='19' font-weight='600' fill='#0b0b0b'>Where the 16 GB card goes with Bob's settings at 128K</text>
+<text x='24' y='60' font-size='14' fill='#52514e'>MiB of card memory. Step 4096, 4 GB copy cache, q4_0 chat memory, 512 MB fit margin.</text>
+<path d='M 200.00 115.00 A 140 140 0 0 1 340.00 255.00 L 278.00 255.00 A 78 78 0 0 0 200.00 177.00 Z' fill='#2a78d6' stroke='#fcfcfb' stroke-width='2'/>
+<path d='M 340.00 255.00 A 140 140 0 0 1 334.02 295.49 L 274.67 277.56 A 78 78 0 0 0 278.00 255.00 Z' fill='#eb6834' stroke='#fcfcfb' stroke-width='2'/>
+<path d='M 334.02 295.49 A 140 140 0 0 1 323.54 320.85 L 268.83 291.69 A 78 78 0 0 0 274.67 277.56 Z' fill='#a9a7a1' stroke='#fcfcfb' stroke-width='2'/>
+<path d='M 323.54 320.85 A 140 140 0 1 1 200.00 115.00 L 200.00 177.00 A 78 78 0 1 0 268.83 291.69 Z' fill='#94bdec' stroke='#fcfcfb' stroke-width='2'/>
+<text x='200.0' y='251.0' font-size='20' fill='#0b0b0b' text-anchor='middle' font-weight='600'>16 GB</text>
+<text x='200.0' y='273.0' font-size='13' fill='#52514e' text-anchor='middle'>card</text>
+<rect x='400.0' y='154.0' width='14.0' height='14.0' rx='2' fill='#2a78d6'/>
+<text x='422.0' y='166.0' font-size='14' fill='#0b0b0b' text-anchor='start'>Expert copy cache</text>
+<text x='422.0' y='185.0' font-size='13' fill='#52514e' text-anchor='start'>4,096 MiB  (25%)</text>
+<rect x='400.0' y='206.0' width='14.0' height='14.0' rx='2' fill='#eb6834'/>
+<text x='422.0' y='218.0' font-size='14' fill='#0b0b0b' text-anchor='start'>Chat memory, q4_0 at 128K</text>
+<text x='422.0' y='237.0' font-size='13' fill='#52514e' text-anchor='start'>765 MiB  (5%)</text>
+<rect x='400.0' y='258.0' width='14.0' height='14.0' rx='2' fill='#a9a7a1'/>
+<text x='422.0' y='270.0' font-size='14' fill='#0b0b0b' text-anchor='start'>Margin left free (fit target)</text>
+<text x='422.0' y='289.0' font-size='13' fill='#52514e' text-anchor='start'>512 MiB  (3%)</text>
+<rect x='400.0' y='310.0' width='14.0' height='14.0' rx='2' fill='#94bdec'/>
+<text x='422.0' y='322.0' font-size='14' fill='#0b0b0b' text-anchor='start'>Brain layers on the card and working memory</text>
+<text x='422.0' y='341.0' font-size='13' fill='#52514e' text-anchor='start'>11,011 MiB  (67%)</text>
+<text x='24.0' y='440.0' font-size='12' fill='#52514e' text-anchor='start'>The copy cache, chat memory and margin are set or measured values. The last slice is what is left; the engine</text>
+<text x='24.0' y='458.0' font-size='12' fill='#52514e' text-anchor='start'>did not log it split into layers and working memory. The attention mask sits in RAM, not on the card (4.3.3.5).</text>
+</svg>

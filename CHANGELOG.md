@@ -4,17 +4,64 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
-## 1.5.252
+## 1.5.254
 
-I can download brains that need a Hugging Face account.
+KRAFTON's Raon-1 brains are in the catalogue, and I can download brains that need a Hugging Face account.
 
 ### New
 
+- **KRAFTON's Raon-1 mini and nano in the Brain catalogue.** A 29B coder that works 4B at a time, and a 3B small brain. They need Brain Engine 37 or newer (this release has 43), and a card on an older engine says so. Their downloads don't need a Hugging Face account.
 - **Brains that need a Hugging Face account.** Some brain makers only let a signed-in account that accepted their terms download their brain. Save a read-only Hugging Face key as HF_TOKEN in 🔐 Locked secrets and switch on **Download brains that need a Hugging Face account** (Settings, How Bob works, Going online), and those brains get a normal Download button. Off to start with.
 - **Your key stays put.** I send it only to huggingface.co, only for those brains, and drop it before Hugging Face hands the file to its storage. Every other download stays signed out. The key is locked like your other keys and never shown or logged.
-- **KRAFTON's Raon-1 mini and nano in the Brain catalogue.** A 29B coder that works 4B at a time, and a 3B small brain. They need Brain Engine 37 or newer, and the card says so until it's here. Their downloads don't need a Hugging Face account.
 
 **Where it works:** Windows, Mac and Linux. Bob for Android doesn't download these brains yet, and its phone engine doesn't run Raon.
+
+## 1.5.253
+
+A new engine, Brain Engine 43, and Routines. Long reads are faster, and Bob fits better on built-in graphics.
+
+### New
+
+- **Brain Engine 43** (Settings, How Bob works, Engines). This is llama.cpp b12359 with our own patches, up from Brain Engine 8. Lossless speed-ups are on from the start. Long reads use the experts already on the card where they sit, and read ahead (on the test PC, long reads were 24% faster at 32K and 35% faster at 64K, with the same words). Everything that can change words stays behind Turbo, off.
+- **MTP for everyday brains** is on for brains that come with their own guess-ahead head. It guesses a few words ahead and checks them, so the words don't change.
+- **The Conductor** (Settings, How Bob works, Engine tuning; off to start). It plans the card's memory before loading: the brain, the chat memory, the expert copy cache and the reading step, inside the card with a 512 MB margin. It also picks the reading step for each prompt.
+- **Routines** (Settings, Hands, the Routines Hand; off to start). Build a job by wiring boxes together, like Blueprints, and bring in n8n workflows. While the Hand is on, Bob's menu has a Routines row.
+- **Raon-1 mini and nano** can run on Brain Engine 43. They come into the catalogue in a later release.
+
+### Fixed
+
+- **Built-in graphics (Legion Go and other shared-memory PCs).** I keep Windows' share: the chat memory shrinks to fit, a split brain's processor part stays memory-mapped, and the picture reader goes out when no size fits and comes back for a picture. Memory kept for Windows starts at 0.5 GB. On a Legion Go, gemma4-e2b at 32K went from 25 to 34 of 35 layers on the graphics, wrote 28.7 words a second instead of 17.5, and left 2.55 GB free instead of 1.68 GB, with the same words.
+- **A step switch with MTP on** no longer stops the engine.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
+## 1.5.252
+
+Rentals are safer, and you can pick a quant level or finish a robot check yourself.
+
+### New
+
+- **Pick a quant level** (Settings, How Bob works, Brains; off to start). A brain that comes in smaller files gets a Quant level menu. Every level is listed, with how it did in our tests and whether I recommend it. The choice is yours.
+- **Let me finish robot checks** (Settings, Connections, Private web; off to start). When a page wants a person, I ask first, open it in my browser window and wait while you finish it. I never click or type on the check myself.
+
+### Fixed
+
+- **Rentals.** Your account key no longer goes onto a rented pod. A pod that vanishes or stops fails at once with the service's reason. The pod's server log is kept, and an early exit waits for it. Stopping a pod that's already gone counts as stopped.
+- **Borrowing.** "Borrowing More Brains" goes away once a lending Bob takes his card back.
+- **Add a rental** shows the right boxes for the service the first time it opens, and refuses a bare `.gguf` name that would start a paid pod with nothing to load.
+- **A folder that isn't on my list.** When a Files or Office job needs a folder you haven't ticked, a card asks "Add it?" and I carry on once you press it.
+- **Hands switched off.** If a job needs a Hand that's off, I show the Switch it on card and say plainly that nothing was done.
+- **Pasted paths.** Quotes and invisible Windows marks are stripped from folder paths you paste, and Settings, Hands says why a folder wasn't added.
+- **Bob-Net engine check.** Before lending a card, a Bob checks that both sides run the same engine build. The logbook says why when they don't.
+- **Chat page.** The job time bar is a thin line along the bottom of the window. Clear chat is a plain button at the top right. The fade line only shows once something has faded. Gaming's unload plays the cube's letting-go animation.
+- **The newest message gets the answer,** not an old ask that was stopped earlier.
+- **Long jobs read faster.** I read the time once per turn, so a minute ticking over mid-job no longer makes the engine read every step again.
+
+### Docs
+
+- How we test brains (`docs/TESTING.md`), costs to 16 Nov, and the dissertation's new results table, direction chapter and 21 Nov harness runs.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
 
 ## 1.5.251
 
@@ -137,32 +184,6 @@ A new default brain, a backup search with or without a key, and Settings that co
 - **Unproven in our lab, as we have yet to test:** reading the code suggests the GPT-OSS router may have been learning at the fast rate. No GPT-OSS heal has run, so no past result changes. A gate now checks the router count before any training, and the first real heal will prove it either way.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android. Bringing windows to the front is for the desktop app.
-
-## 1.5.244
-
-The link log tells the same time as the logbook.
-
-### Fixed
-
-- **The link log no longer reads an hour behind.** The Link log (the notes kept while a brain runs over another Bob's card) stamped its lines with the computer's own clock, which on some Windows PCs is an hour off from the real zone. It now uses the same time zone as the logbook, so the two always agree.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.243
-
-Send a whole folder to your other Bob with one Yes, and Journey gets its laptop-test fixes.
-
-### New
-
-- **Send a whole folder over Bob-Net.** Settings, Bob-Net, Files and brains: **Pick a folder**, pick the Bob, **Send it**. He gets one Yes card for all of it (up to 2000 files) instead of one card per file, and it lands in a folder of its own with its folders inside kept as they are. Every file is checked at the end, like always. Links and empty files stay behind.
-- **Journey screenshots.** The README shows six new Journey pictures in a gallery, and every screen is on its own page: the world, towns, fights, every menu and every race.
-
-### Fixed
-
-- **One card per offer.** A send that got no answer and was asked again could leave a second, empty Yes card on the other Bob. Now a send with no answer is taken back, the same send asked again is the same offer, and a card still waiting is swapped for the new one, never two.
-- **Journey on a laptop.** A 720p window fits without scrolling, menus too. The talk box and choices are real windows with sharp words. Elf and pixie ears show with Bob's wide headset look, and the tab icons have an outline so they stand out (Pets is now 🐶).
-
-**Where it works:** Windows, Mac, Linux and Bob for Android. Folder sending works on Windows, Mac and Linux; both Bobs need 1.5.243.
 
 ## Older versions
 

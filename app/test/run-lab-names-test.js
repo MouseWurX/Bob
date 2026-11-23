@@ -25,9 +25,9 @@ check('a label with no proper name stays as it was, escaped', labName('Quick qui
 check('"(recommended)" stays on the label and still finds the name', /^Coverage-based expert pruning <span class="lab-plain">\(Keep every skill covered \(recommended\)\)<\/span>$/.test(labName('Keep every skill covered (recommended)', true)));
 check('quotes in a label are escaped', /Say &quot;I don&#39;t know&quot;/.test(labName('Say "I don\'t know"', true)));
 let pro = false; setLabMode(() => pro);
-check('the pages follow the Lab\'s switch', nameNow('Make it faster: Turbo') === 'Make it faster: Turbo' && ((pro = true), /^Speculative decoding /.test(nameNow('Make it faster: Turbo'))));
+check('the pages follow the Lab\'s switch', nameNow('Make it faster: MTP') === 'Make it faster: MTP' && ((pro = true), /^Speculative decoding /.test(nameNow('Make it faster: MTP'))));
 setLabMode(null);
-check('no mode set means plain words', nameNow('Make it faster: Turbo') === 'Make it faster: Turbo');
+check('no mode set means plain words', nameNow('Make it faster: MTP') === 'Make it faster: MTP');
 
 // Honest names: a test of Bob's own written like a benchmark says "-style"
 const benches = /\b(ARC|GSM8K|IFEval|HumanEval|BFCL|HellaSwag|WinoGrande|MMLU|XSTest|SQuAD)\b/;
@@ -39,7 +39,7 @@ check('the abliteration name is there, and nothing names a person or a tool of B
 const pub = (f) => read(dir('public') + f);
 check('lab.js tells the names which mode the Lab is in', /setLabMode\(\(\) => view\?\.mode === 'pro'\)/.test(pub('lab.js')));
 check('job cards, steps and challenges use the names', /<strong>\$\{nm\(j\.title\)\}<\/strong>/.test(pub('lab.js')) && /<strong>\$\{nm\(p\.title\)\}<\/strong>/.test(pub('lab.js')) && /<strong>\$\{nm\(label\)\}<\/strong>\$\{more\}/.test(pub('lab.js')));
-check('Forge ways, mixing, Turbo, Longer, Teach it, Best answers, Smaller, Peek, senses, diffusion and Guard rails use them', [['lab-forge.js', 'nameNow(m.title)'], ['lab-home-ways.js', 'nameNow(w.label)'], ['lab-turbo.js', "nameNow('Make it faster: Turbo')"], ['lab-context.js', "nameNow('Cache squeeze')"], ['lab-teach.js', "nameNow('From its lessons')"], ['lab-best.js', "nameNow('Teach only these parts')"], ['lab-playground.js', "nameNow('How small can a brain get?')"], ['lab-peek.js', 'nameNow('], ['lab-senses.js', 'nameNow('], ['lab-diffusion.js', 'nameNow('], ['lab-guard.js', 'nameNow(']].every(([f, s]) => pub(f).includes(s)));
+check('Forge ways, mixing, Turbo, Longer, Teach it, Best answers, Smaller, Peek, senses, diffusion and Guard rails use them', [['lab-forge.js', 'nameNow(m.title)'], ['lab-home-ways.js', 'nameNow(w.label)'], ['lab-turbo.js', "nameNow('Make it faster: MTP')"], ['lab-context.js', "nameNow('Cache squeeze')"], ['lab-teach.js', "nameNow('From its lessons')"], ['lab-best.js', "nameNow('Teach only these parts')"], ['lab-playground.js', "nameNow('How small can a brain get?')"], ['lab-peek.js', 'nameNow('], ['lab-senses.js', 'nameNow('], ['lab-diffusion.js', 'nameNow('], ['lab-guard.js', 'nameNow(']].every(([f, s]) => pub(f).includes(s)));
 check('the switch line says Professional gives the proper names', /proper name/.test(pub('lab.js').match(/const MODE_NOTES = \{[\s\S]*?\n\};/)[0]));
 check('the plain words after a name are styled', /\.lab-plain \{/.test(pub('style.css')));
 

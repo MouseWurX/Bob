@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1c1c1c">
+<title>Bob · Routines</title>
+<link rel="icon" href="/icons/bob-32.png">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/looks.css">
+<link rel="stylesheet" href="/routines.css">
+</head>
+<body class="rt-page">
+  <header class="rt-bar" role="toolbar" aria-label="Routine">
+    <strong class="rt-title">Routines</strong>
+    <select id="rtPick" aria-label="Which routine"></select>
+    <button type="button" id="rtNew">New</button>
+    <button type="button" id="rtBring" title="Bring in a workflow from n8n, or a routine saved from Bob">Bring in…</button>
+    <input type="text" id="rtName" aria-label="Routine name" maxlength="80" placeholder="Name">
+    <button type="button" id="rtSave" title="Save (Ctrl+S)">Save</button>
+    <button type="button" id="rtTest" title="A test run: things that would change something only say what they'd do">Test</button>
+    <button type="button" id="rtRun">Run now</button>
+    <button type="button" id="rtStop" hidden>Stop</button>
+    <button type="button" id="rtOn">Switch on…</button>
+    <span id="rtState" class="muted" role="status"></span>
+    <span class="rt-grow"></span>
+    <button type="button" id="rtUndo" class="mini" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+    <button type="button" id="rtRedo" class="mini" title="Redo (Ctrl+Y)" aria-label="Redo">↷</button>
+    <button type="button" id="rtFit" class="mini" title="Show the whole routine">Fit</button>
+    <button type="button" id="rtAdd" class="mini" title="Add a box (or right-click the grid)">＋ Add</button>
+  </header>
+  <p id="rtOff" class="warn-text rt-off" hidden></p>
+  <main class="rt-main">
+    <div id="rtCanvas" class="rt-canvas" tabindex="0" aria-label="The routine's boxes and wires. Right-click to add a box.">
+      <div id="rtWorld" class="rt-world">
+        <svg id="rtWires" class="rt-wires" aria-hidden="true"></svg>
+        <div id="rtNodes"></div>
+      </div>
+      <div id="rtMenu" class="rt-menu" hidden><input type="search" id="rtMenuFind" placeholder="Find a box…" aria-label="Find a box to add"><ul id="rtMenuList"></ul></div>
+      <div id="rtTip" class="rt-tip" hidden></div>
+    </div>
+    <aside id="rtSide" class="rt-side" aria-label="Details"></aside>
+  </main>
+  <div id="rtCard" class="rt-card-back" hidden><div class="rt-card" role="dialog" aria-modal="true" aria-labelledby="rtCardTitle"></div></div>
+  <script type="module" src="/routines.js"></script>
+</body>
+</html>

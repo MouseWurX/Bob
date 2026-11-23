@@ -1,0 +1,39 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='760' height='430' viewBox='0 0 760 430' font-family='Helvetica, Arial, sans-serif'>
+<rect width='760' height='430' fill='#fcfcfb'/>
+<text x='24' y='36' font-size='19' font-weight='600' fill='#0b0b0b'>Same brain, four harnesses: 33 jobs on Bob's own code</text>
+<text x='24' y='60' font-size='14' fill='#52514e'>Stock Qwen3.6 35B. "Work right" looks only at the code; a pass also needs a check run, files named, no push.</text>
+<rect x='24.0' y='75.0' width='12.0' height='12.0' rx='2' fill='#94bdec'/>
+<text x='42.0' y='85.0' font-size='12' fill='#52514e' text-anchor='start'>Work right</text>
+<rect x='126.0' y='75.0' width='12.0' height='12.0' rx='2' fill='#2a78d6'/>
+<text x='144.0' y='85.0' font-size='12' fill='#52514e' text-anchor='start'>Passed</text>
+<line x1='70.0' y1='340.0' x2='720.0' y2='340.0' stroke='#e4e3df' stroke-width='1'/>
+<text x='62.0' y='344.0' font-size='12' fill='#52514e' text-anchor='end'>0</text>
+<line x1='70.0' y1='263.3' x2='720.0' y2='263.3' stroke='#e4e3df' stroke-width='1'/>
+<text x='62.0' y='267.3' font-size='12' fill='#52514e' text-anchor='end'>11</text>
+<line x1='70.0' y1='186.7' x2='720.0' y2='186.7' stroke='#e4e3df' stroke-width='1'/>
+<text x='62.0' y='190.7' font-size='12' fill='#52514e' text-anchor='end'>22</text>
+<line x1='70.0' y1='110.0' x2='720.0' y2='110.0' stroke='#e4e3df' stroke-width='1'/>
+<text x='62.0' y='114.0' font-size='12' fill='#52514e' text-anchor='end'>33</text>
+<rect x='105.2' y='130.9' width='44.0' height='209.1' rx='3' fill='#94bdec'/>
+<text x='127.2' y='124.9' font-size='12' fill='#0b0b0b' text-anchor='middle'>30</text>
+<rect x='153.2' y='193.6' width='44.0' height='146.4' rx='3' fill='#2a78d6'/>
+<text x='175.2' y='187.6' font-size='12' fill='#0b0b0b' text-anchor='middle'>21</text>
+<text x='151.2' y='360.0' font-size='13' fill='#0b0b0b' text-anchor='middle'>Qwen Code</text>
+<rect x='267.8' y='137.9' width='44.0' height='202.1' rx='3' fill='#94bdec'/>
+<text x='289.8' y='131.9' font-size='12' fill='#0b0b0b' text-anchor='middle'>29</text>
+<rect x='315.8' y='193.6' width='44.0' height='146.4' rx='3' fill='#2a78d6'/>
+<text x='337.8' y='187.6' font-size='12' fill='#0b0b0b' text-anchor='middle'>21</text>
+<text x='313.8' y='360.0' font-size='13' fill='#0b0b0b' text-anchor='middle'>mini-swe-agent</text>
+<rect x='430.2' y='158.8' width='44.0' height='181.2' rx='3' fill='#94bdec'/>
+<text x='452.2' y='152.8' font-size='12' fill='#0b0b0b' text-anchor='middle'>26</text>
+<rect x='478.2' y='207.6' width='44.0' height='132.4' rx='3' fill='#2a78d6'/>
+<text x='500.2' y='201.6' font-size='12' fill='#0b0b0b' text-anchor='middle'>19</text>
+<text x='476.2' y='360.0' font-size='13' fill='#0b0b0b' text-anchor='middle'>Bob, Minimus</text>
+<rect x='592.8' y='144.8' width='44.0' height='195.2' rx='3' fill='#94bdec'/>
+<text x='614.8' y='138.8' font-size='12' fill='#0b0b0b' text-anchor='middle'>28</text>
+<rect x='640.8' y='200.6' width='44.0' height='139.4' rx='3' fill='#2a78d6'/>
+<text x='662.8' y='194.6' font-size='12' fill='#0b0b0b' text-anchor='middle'>20</text>
+<text x='638.8' y='360.0' font-size='13' fill='#0b0b0b' text-anchor='middle'>Bob, Medius</text>
+<text x='24.0' y='400.0' font-size='12' fill='#52514e' text-anchor='start'>Bob lost passes on never running a check (7 at Minimus, 8 at Medius). Qwen Code and mini-swe-agent lost them on not naming</text>
+<text x='24.0' y='418.0' font-size='12' fill='#52514e' text-anchor='start'>changed files and on pushing (2 and 1 pushes). Bob never pushed. One run per harness, 21 November.</text>
+</svg>

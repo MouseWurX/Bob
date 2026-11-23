@@ -461,6 +461,7 @@ function tuckAway(e) {
 let watchWin = null; // the Lab's fNRI viewer window (public/watch.html), one at a time
 let settingsWin = null; // the Settings window (public/settings.html), one at a time
 let labWin = null; // the Computer Science Lab window (public/lab.html), one at a time
+let routinesWin = null; // the Routines editor (public/routines.html), one at a time
 let mindWin = null; // 1.5.53: "Bob's thinking", opened from the chat page; nothing runs for it while it's closed
 
 // Small, in the bottom-right corner of the screen Bob is on, so it sits beside a game or an editor.
@@ -535,9 +536,25 @@ async function start() {
     const o = pickOptions(String(kind || ''));
     return String((await globalThis.bobPick({ title: o.title, filters: o.filters, from: BrowserWindow.fromWebContents(e.sender) })) || '');
   });
+  // The Routines editor: its own ordinary window, one at a time, opened from Bob's window or from Settings.
+  const routinesOpen = (url) => {
+    if (!(url === base + '/routines.html' || url.startsWith(base + '/routines.html?'))) return null;
+    if (routinesWin) { if (routinesWin.webContents.getURL() !== url) routinesWin.loadURL(url); raise(routinesWin); return { action: 'deny' }; }
+    return { action: 'allow', overrideBrowserWindowOptions: { frame: true, titleBarStyle: 'default', width: 1280, height: 820, minWidth: 360, minHeight: 480, title: 'Bob · Routines', icon: path.join(root, 'public', 'icons', process.platform === 'win32' ? 'bob.ico' : 'bob-512.png'), backgroundColor: '#121212', autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } } };
+  };
+  const adoptRoutines = (child) => {
+    routinesWin = child;
+    child.setMenu(null);
+    child.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url) && !url.startsWith(base)) shell.openExternal(url); return { action: 'deny' }; });
+    child.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(base + '/routines.html')) e.preventDefault(); });
+    contextMenu(child, base);
+    child.on('closed', () => { routinesWin = null; });
+  };
   // Links to the web open in the normal browser; Bob's window only ever shows Bob.
   // 1.5.53: the one exception is "Bob's thinking", his own small window that stays on top (one at a time).
   win.webContents.setWindowOpenHandler(({ url }) => {
+    const rt = routinesOpen(url);
+    if (rt) return rt;
     if (url === base + '/mind.html') {
       if (mindWin) { raise(mindWin); return { action: 'deny' }; }
       return { action: 'allow', overrideBrowserWindowOptions: mindOptions(win) };
@@ -588,10 +605,12 @@ async function start() {
       child.on('closed', () => { labWin = null; });
       return;
     }
+    if (String(details?.url || '').startsWith(base + '/routines.html')) { adoptRoutines(child); return; }
     if (String(details?.url || '').startsWith(base + '/settings.html')) {
       settingsWin = child;
       child.setMenu(null);
-      child.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+      child.webContents.setWindowOpenHandler(({ url }) => { const rt = routinesOpen(url); if (rt) return rt; if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+      child.webContents.on('did-create-window', (grand, d) => { if (String(d?.url || '').startsWith(base + '/routines.html')) adoptRoutines(grand); });
       child.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(base + '/settings.html')) e.preventDefault(); });
       contextMenu(child, base);
       child.on('closed', () => { settingsWin = null; });

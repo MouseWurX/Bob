@@ -66,7 +66,7 @@ Two rules run through all three layers: nothing is rented without typed approval
 
 ### 3.4.1 What it is and why it exists
 
-Brain Engine is llama.cpp at a pinned tag with fourteen patches applied in order (engine/README.md, ENGINE-MAP.md). At the time of writing the build is Brain Engine 8, on llama.cpp b12359. It is not an official llama.cpp build. The patches change only the model library and the server, with one exception: six patches touch the card-sharing backend of ggml, and no CUDA, Vulkan, Metal or CPU code is changed (ENGINE-MAP.md).
+Brain Engine is llama.cpp at a pinned tag with its patches applied in order (engine/README.md, ENGINE-MAP.md); there are 39 at the time of writing. The newest build tested on a real card is Brain Engine 19, on llama.cpp b12359. It is not an official llama.cpp build. Most patches change only the model library and the server, but some change ggml itself: the CUDA card code (0026, 0038, 0039), the CPU backend (0020, 0026, 0038, 0039), the scheduler (0017, 0029, 0033) and card sharing (the rpc patches). A build with those carries its own ggml files (ENGINE-MAP.md).
 
 The patches fall into four groups: change a model live (0001, 0003, 0013), watch which parts fire (0002, 0007, 0009, 0010), share a card across machines (0004, 0005, 0006, 0008, 0011, 0014), and one small helper (0012). Only the first two matter for the studies.
 
@@ -88,6 +88,63 @@ The patches fall into four groups: change a model live (0001, 0003, 0013), watch
 
 **0010, trace once.** With 0002 alone, a traced request stopped after every layer to copy the picks out, 40 to 48 stops a word. On a consumer card this cost about a fifth of word speed: 122.7 words a second fell to 99.2 (engine/README.md). The patch keeps each layer's picks on the card and fetches them together with one wait. The trace returned is the same, row for row.
 
+Together these patches feed Bob's **fNRI system**. It has two parts: brain scans, which map the experts each skill leans on, and a live view that lights up the experts Bob picks while he writes. Every expert map in this thesis that comes from a home scan rests on this trace.
+
+**0018, trace every N words.** This patch sends the live trace only every N words, to cut its cost. Measured on 16 November, it made no difference: tracing every word, every 4th word and every 14th word all wrote within 1% of each other (79.6, 78.9 and 79.2 words a second, against 88.4 with the trace off). The cost is in recording the picks, not in sending them, so 0018 is to be dropped.
+
+#### Does the fNRI trace change what the brain writes? (16 to 17 November)
+
+**Why we ran it.** The fNRI system is meant to watch the brain, not steer it. If tracing changes the words, a scan describes a slightly different brain from the one users talk to. The live view would then also change Bob's answers whenever it is switched on. Night 1 of the speed tests (section 4.3.3) found exactly that. With the live trace on, stock Qwen3.6 35B A3B wrote different words at temperature 0 than with it off, although every row wrote the same words in all 5 of its own runs. So we tested whether the trace itself alters the words, and which part of it does.
+
+**What we tested.** The trace path changes two things in the engine's graph. It marks the router's sort as an output (`ggml_set_output`), and it adds an eval callback that reads the picks. Three settings were run, 5 times each, on the start prompt and a 32K prompt, in the same engine, brain and settings:
+
+- the trace with the sort marked as an output
+- the trace with its mass (patch 0009), which takes a path without `ggml_set_output` but keeps the callback
+- the brain with CUDA graphs switched off, to rule the graphs in or out
+
+**What we found:**
+
+| Setting | Writing, start prompt | Writing, 32K | Words against no trace |
+|---|---|---|---|
+| No trace | 85.3 | 77.1 | (baseline) |
+| CUDA graphs off, no trace | 42% slower | 38% slower | the same |
+| Trace, sort marked as output | 8% slower | 9% slower | different |
+| Trace with mass, no `ggml_set_output`, callback kept | 27% slower | 24% slower | different, and different again from the row above |
+
+- **Graphs are not the cause.** Turning graphs off cost far more speed than the trace but kept the same words.
+- **The output mark is not the only cause.** Taking `ggml_set_output` away still changed the words, so the callback changes them too.
+- **One limit:** the mass trace also asks the callback for a second node per layer, so this run cannot say whether the pick callback alone changes the words. That doesn't change the decision.
+
+A likely common cause, which we have not confirmed: the card fuses the router's softmax, sort, top-k and weighting into one kernel only inside one graph piece, and both the output mark and a callback split that piece.
+
+**The fix.** Patch 0021 in Brain Engine 11 reads the picks from kept copies, with no eval callback and no `ggml_set_output`, so the router's fused kernel stays whole. An earlier build of the fix (Brain Engine 10) crashed when the trace and the hot-experts cache were on together, and Brain Engine 11 fixed that. Before the fix, the same pairing crashed in round 1.
+
+**Results after the fix (17 November).** Brain Engine 11 (llama.cpp b12359 with patches 0001 to 0021) ran on the same card and brain, 5 rounds, 25 loads, and all 25 ran clean. The settings were Normal and the step 2048 + 4 GB copy cache from section 4.3.3.
+
+- **Same words.** With the trace on, the brain wrote exactly the same words as with it off, on the start prompt and at 32K, in every run and at both settings.
+- **The fused kernel is no longer broken.** As a control, the fused kernel was switched off by hand (`GGML_CUDA_DISABLE_FUSION`), and that run wrote different words. So it was the broken fusion that changed the words, and the trace no longer breaks it.
+
+| Setting | Writing cost with the trace on, start / 32K | Before the fix | Rule set beforehand (2% or less) |
+|---|---|---|---|
+| Step 2048 + 4 GB copy cache | −1.8% / −1.0% | crashed | passes |
+| Normal (step 512, no cache) | −4.0% / −3.9% | −9% to −11% | misses |
+
+Reading speed stayed within about 1%. The fNRI trace now watched without changing what the brain writes, but on the plain engine it still cost about 4% of writing.
+
+**Second fix and its results (17 November).** In Brain Engine 12, patch 0021 (version 3) keeps one pinned copy per reading step. It was tested on the same card and brain.
+
+| Setting | Writing, trace off, start / 32K | Writing, trace on, start / 32K | Cost |
+|---|---|---|---|
+| Normal (step 512, no cache) | 92.2 / 81.2 | 90.4 / 81.2 | −1.95% / 0% |
+| Step 2048 + 4 GB copy cache | 110.6 / 95.7 | 111.6 / 96.7 | none measured (slightly faster) |
+
+- **The words were byte-identical** with the trace on and off, on the start prompt and at 32K, at both settings.
+- **Reading speed was equal**, and nothing crashed.
+- **It passes the 2% rule set beforehand.** The start-prompt row on the plain engine sits right at the line, at −1.95%.
+- **Over the three engines**, the trace went from about −11% with different words (Brain Engine 10's old trace), to −4% with the same words (Brain Engine 11), to −2% or less with the same words (Brain Engine 12).
+
+**Limits.** This run stopped after 3 rounds (16 loads) by MouseWurX's choice, not the 5 rounds set beforehand, so its medians rest on fewer runs. It was run only on the 35B brain. The trace on GPT-OSS 120B and on other cards is unproven in our lab, as we have yet to test.
+
 ### 3.4.4 Card sharing and the small helper
 
 Patches 0004, 0005, 0006, 0008, 0011 and 0014 let one model spread over the cards of several computers. Patch 0004 offers a hash for every weight over 1 MiB, so a lent card that already has a weight skips the copy. Patch 0005 is SCUT, an experimental UDP link. Over a simulated Wi-Fi of 3 ms delay and 1% loss it raised speed from about 9 to about 15 words a second, with byte-identical output (engine/README.md). Patches 0006, 0008, 0011 and 0014 add signed packets, a link log, one trip a word and a frozen wire numbering. None is used in the studies. A numbering clash should be noted: the Forge's pod patch `0014-live-control-vector` adds a live steering vector, and only the neuron sweep uses it (section 3.6.6).
@@ -100,6 +157,8 @@ The checks differ in strength, and the list is ordered from strongest to weakest
 - **Live steering equals loading.** Steering at x8 live matches loading the same vector at x8. Sending an empty setting restores the same words as before (PR #227; checked-numbers.md).
 - **Per-layer test for 0013.** `engine/tests/experts-per-word.py` builds a tiny model and compares the live setting with the engine's own override flag, layer by layer through the trace, and checks the refusals (ENGINE-MAP.md).
 - **Cross-build card sharing for 0014.** `engine/tests/rpc-any-version.sh` runs a model with every layer on a lent card in all four old and new pairings. All four matched a local run word for word, on a tiny llama model with CPU builds on Linux, 15 November 2026 (ENGINE-MAP.md).
+- **With-and-without timing (16 November).** On the home PC's 16 GB card with stock Qwen3.6 35B A3B at Q4, Brain Engine 8 and 9 with every feature off ran within 1% of plain llama.cpp with Bob's settings, and wrote the same words, word for word. Experts per word, the expert mask and the dials each cost under 1.5% more. The live trace cost about 9% of writing speed and nothing on reading. Each row was loaded 5 times at temperature 0 (docs/test-results, 2026-11-17 speed results).
+- **Prefetch (0019) measured, and dropped.** Prefetch was meant to load the next experts early. Instead it read prompts 5.6% to 12.7% slower and used half a gigabyte more of the card, so it is to be dropped from the next Brain Engine.
 - **Timing.** On the full Qwen, 8, 6 and 4 experts per word ran at 82.7, 92.1 and 102.5 tokens a second (docs/forge-runs/benchmarks/experts-per-word-full-qwen-2026-11-04.md). This describes the model, not the cost of the patch.
 
 ### 3.4.6 What Brain Engine does not have
@@ -109,6 +168,8 @@ No patch is tested automatically against a real engine build. Placement errors a
 Brain Engine has no choice of how the kept experts are weighed when fewer are used. llama.cpp's Qwen3 mixture-of-experts graph scales the chosen experts' weights to add up to 1 (src/models/qwen3moe.cpp, read on 16 November), so patch 0013 at 4 experts uses the weighting that Chen and Yao (2026) found cost 4.65 MMLU points on the same base model, against 0.35 when the four keep their share of the top 16. The project's own test at 4 experts held tools, facts and code level (section 3.4.5), but on far fewer questions and different tasks. The other weighting is not built; it is future work (section 13.6.9).
 
 There are no clean overhead numbers per patch. Only a few patches have any timing, and none was taken in the full study configuration. The dissertation therefore makes no claim about what the patches cost in speed: not measured.
+
+*Amended 17 November:* the overhead has now been measured on the home PC. With their features off, the patches cost nothing measurable, and the live trace costs about 9% of writing speed (section 3.4.5).
 
 A weekly workflow replays the patches on the newest llama.cpp tag and opens an issue when they apply and build (engine/README.md). It checks that the patches go on, not that they are correct.
 
@@ -224,7 +285,8 @@ The instruments were made because the questions demanded them: the mask, dials, 
 - **Small stand-ins.** The strongest Brain Engine checks used tiny models, CPU builds or one trial on a 35B model. They show the code does what it claims, not that the instruments are unbiased on a real large model.
 - **No automatic engine test.** A patch in the wrong place would be found only by the PC test.
 - **Dry runs prove running, not helping.** The self-tests say so themselves, and most Forge builds after build 14 had no card test when the README was written.
-- **Overhead not measured.** No clean with-and-without timing exists for the patches the studies use.
+- **Overhead measured on one machine only.** The with-and-without timings in section 3.4.5 (added 17 November) come from one consumer PC, one brain and one quant. Other cards and brains are unproven in our lab, as we have yet to test.
+- **Traces taken before Brain Engine 11 changed the words.** Before the fix in section 3.4.3, a traced answer could differ from an untraced one at temperature 0, so expert maps from those runs describe the traced brain. From Brain Engine 11 the words match, and from Brain Engine 12 the cost is 2% or less on the 35B.
 - **One builder.** The code was written and checked inside one project, with an AI assistant as a contributor (docs/COSTS.md). No outsider has reviewed it.
 - **Judge limits.** The tool judge measures agreement with the teacher, and is blind to a call that is right in a way the teacher did not record.
 - **Status.** The never-taught gate shipped in release 1.5.238. The decisive retrain on reviewed lessons has not been run, so no instrument here has yet been used on the lessons the dissertation finally recommends.

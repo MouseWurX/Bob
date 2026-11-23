@@ -1,0 +1,242 @@
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index a2b79fc..4461e2e 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -11,6 +11,7 @@
+ 
+ #include <algorithm>
+ #include <numeric>
++#include <set>
+ #include <array>
+ #include <atomic>
+ #include <chrono>
+@@ -1604,7 +1605,11 @@ struct llama_moe_cache::impl {
+     // The stand-in counts with its own router score, then the kept weights are scaled back to the word's total (for
+     // drop: the hits share the missed one's part). At most LLAMA_MOE_STANDIN_MAX (default 2) misses a layer a word get
+     // one, the lightest first, never the word's top pick; the others are copied in as before. Long reads never use it.
+-    enum sp_way { SP_OFF, SP_DROP, SP_NEAR, SP_RANK };
++    // Brain Engine 0053 (LLAMA_MOE_STANDIN=drive): a miss is stood in for only when it is on the drive alone (its pages
++    // are not in RAM), so the card never waits on the drive while writing. The stand-in is the best-scored unpicked
++    // expert on the card or in RAM (one in RAM is copied up as usual, fast), and the missed expert is read into RAM in
++    // the background (sd_warm), so a later word that picks it finds it there. Misses in RAM are copied as before.
++    enum sp_way { SP_OFF, SP_DROP, SP_NEAR, SP_RANK, SP_DRIVE };
+     int     sp_mode = SP_OFF;
+     int32_t sp_max  = 2;
+     int64_t sp_word = 0;       // one-word batches seen, for the log
+@@ -1615,7 +1620,7 @@ struct llama_moe_cache::impl {
+     std::vector<int32_t> sp_orig;  // the word's picks as the router made them
+ 
+     static const char * sp_name(int m) {
+-        return m == SP_DROP ? "drop" : m == SP_NEAR ? "near" : m == SP_RANK ? "rank" : "off";
++        return m == SP_DROP ? "drop" : m == SP_NEAR ? "near" : m == SP_RANK ? "rank" : m == SP_DRIVE ? "drive" : "off";
+     }
+ 
+     void sp_init(bool no_alloc) {
+@@ -1623,15 +1628,25 @@ struct llama_moe_cache::impl {
+         if (no_alloc || v == nullptr || *v == '\0' || strcmp(v, "0") == 0 || strcmp(v, "off") == 0) {
+             return;
+         }
+-        sp_mode = strcmp(v, "drop") == 0 ? SP_DROP : strcmp(v, "near") == 0 ? SP_NEAR : strcmp(v, "rank") == 0 ? SP_RANK : SP_OFF;
++        sp_mode = strcmp(v, "drop") == 0 ? SP_DROP : strcmp(v, "near") == 0 ? SP_NEAR : strcmp(v, "rank") == 0 ? SP_RANK : strcmp(v, "drive") == 0 ? SP_DRIVE : SP_OFF;
+         if (sp_mode == SP_OFF) {
+-            LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_STANDIN=%s NOT USED: it must be rank, near or drop\n", __func__, v);
++            LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_STANDIN=%s NOT USED: it must be rank, near, drop or drive\n", __func__, v);
+             return;
+         }
++        if (sp_mode == SP_DRIVE) {
++            sp_max = n_expert_used - 1; // every pick but the top one, when it is on the drive alone
++        }
+         if (const char * k = getenv("LLAMA_MOE_STANDIN_MAX"); k != nullptr && *k != '\0') {
+             sp_max = atoi(k);
+         }
+         sp_max = std::clamp<int32_t>(sp_max, 1, std::max<int32_t>(1, n_expert_used - 1));
++        if (sp_mode == SP_DRIVE) {
++            sd_test_none = getenv("LLAMA_MOE_STANDIN_TEST_NO_RAM") != nullptr && atoi(getenv("LLAMA_MOE_STANDIN_TEST_NO_RAM")) > 0;
++            sd_start();
++            LLAMA_LOG_WARN("%s: !!! MoE drive stand-ins ON (LLAMA_MOE_STANDIN=drive): while writing, up to %d picked experts a layer a word "
++                           "that are on the drive alone (not in RAM) are played by the best-scored expert on the card or in RAM, and read into "
++                           "RAM in the background. Misses in RAM are copied as before. The words change when it stands in.\n", __func__, sp_max);
++        } else
+         LLAMA_LOG_WARN("%s: !!! MoE stand-ins ON (LLAMA_MOE_STANDIN=%s): while writing, up to %d missed experts a layer a word "
+                        "are played by experts already on the card. The words change: this is an experiment.\n", __func__, sp_name(sp_mode), sp_max);
+         if (db_on) {
+@@ -1753,6 +1768,102 @@ struct llama_moe_cache::impl {
+     }
+ 
+     // the router weight of an expert, up to a factor shared by the word (enough for ratios)
++    // 0053: is every matrix of expert e of this layer in RAM (first and last page)? An expert not in a host buffer (on
++    // the card, or read in whole) counts as in RAM.
++    bool sd_in_ram(const layer & l, int32_t e) const {
++        if (sd_test_none) {
++            return false; // LLAMA_MOE_STANDIN_TEST_NO_RAM=1 (tests): as if no expert were in RAM
++        }
++        for (const ggml_tensor * w : l.experts) {
++            if (w->data == nullptr || w->buffer == nullptr || !ggml_backend_buffer_is_host(w->buffer)) {
++                return true;
++            }
++            if (!dr_resident((const uint8_t *) w->data + (size_t) e*w->nb[2], w->nb[2])) {
++                return false;
++            }
++        }
++        return true;
++    }
++    // the background reads: one thread touches each page of a missed expert, so the system reads it into RAM
++    struct sd_item { const layer * l; int32_t e; };
++    std::thread sd_thread;
++    mutable std::mutex sd_mutex;
++    std::condition_variable sd_cv;
++    std::deque<sd_item> sd_q;
++    std::set<std::pair<const layer *, int32_t>> sd_queued;
++    bool sd_stop = false;
++    size_t sd_drive_only = 0, sd_from_ram = 0, sd_warm_done = 0, sd_warm_dropped = 0;
++    std::atomic<size_t> sd_warm_bytes{0};
++    static constexpr size_t sd_q_max = 512;
++    bool sd_test_none = false;
++
++    void sd_start() {
++        sd_thread = std::thread([this] {
++            static const size_t page = dr_page();
++            for (;;) {
++                sd_item it;
++                {
++                    std::unique_lock<std::mutex> lock(sd_mutex);
++                    sd_cv.wait(lock, [&] { return sd_stop || !sd_q.empty(); });
++                    if (sd_stop) {
++                        return;
++                    }
++                    it = sd_q.front();
++                    sd_q.pop_front();
++                }
++                size_t got = 0;
++                for (const ggml_tensor * w : it.l->experts) {
++                    if (w->data == nullptr || w->buffer == nullptr || !ggml_backend_buffer_is_host(w->buffer)) {
++                        continue;
++                    }
++                    const volatile uint8_t * p = (const volatile uint8_t *) w->data + (size_t) it.e*w->nb[2];
++                    const size_t n = w->nb[2];
++#if defined(__linux__) || defined(__APPLE__)
++                    const uintptr_t a = (uintptr_t) p & ~(uintptr_t) (page - 1);
++                    madvise((void *) a, (uintptr_t) p + n - a, MADV_WILLNEED);
++#endif
++                    uint8_t sink = 0;
++                    for (size_t o = 0; o < n; o += page) {
++                        sink ^= p[o];
++                    }
++                    sink ^= p[n - 1];
++                    (void) sink;
++                    got += n;
++                }
++                sd_warm_bytes += got;
++                std::lock_guard<std::mutex> lock(sd_mutex);
++                sd_queued.erase({ it.l, it.e });
++                sd_warm_done++;
++            }
++        });
++    }
++    void sd_queue(const layer & l, int32_t e) {
++        const std::pair<const layer *, int32_t> key = { &l, e };
++        std::lock_guard<std::mutex> lock(sd_mutex);
++        if (sd_queued.count(key)) {
++            return;
++        }
++        if (sd_q.size() >= sd_q_max) {
++            sd_warm_dropped++;
++            return;
++        }
++        sd_queued.insert(key);
++        sd_q.push_back({ &l, e });
++        sd_cv.notify_one();
++    }
++    void sd_shutdown() {
++        if (!sd_thread.joinable()) {
++            return;
++        }
++        {
++            std::lock_guard<std::mutex> lock(sd_mutex);
++            sd_stop = true;
++            sd_q.clear();
++        }
++        sd_cv.notify_all();
++        sd_thread.join();
++    }
++
+     float sp_weight(const layer & l, int32_t e, float top) const {
+         const float x = l.sp_score[e];
+         return l.sp_sigmoid ? 1.0f/(1.0f + std::exp(-x)) : std::exp(x - top);
+@@ -1785,6 +1896,16 @@ struct llama_moe_cache::impl {
+         for (int32_t k = 0; k < n_used; ++k) {
+             n_miss += slots[ids[k]] >= g.n_slots;
+         }
++        // 0053: drive: by score, best first, for the stand-ins in RAM or on the card
++        std::vector<int32_t> by_score;
++        if (sp_mode == SP_DRIVE) {
++            by_score.resize(n_exp);
++            for (int32_t e = 0; e < n_exp; ++e) {
++                by_score[e] = e;
++            }
++            std::sort(by_score.begin(), by_score.end(), [&](int32_t a, int32_t b) { return l.sp_score[a] > l.sp_score[b]; });
++        }
++        std::vector<int32_t> taken; // drive: stand-ins chosen for this word, never two for one
+         for (int32_t oi = 0; oi + 1 < n_used && (int32_t) sp_pairs.size() < sp_max; ++oi) {
+             const int32_t k = order[oi];
+             const int32_t m = ids[k];
+@@ -1792,7 +1913,29 @@ struct llama_moe_cache::impl {
+                 continue; // a hit
+             }
+             int32_t r = -1;
+-            if (sp_mode == SP_NEAR) {
++            if (sp_mode == SP_DRIVE) {
++                if (sd_in_ram(l, m)) {
++                    continue; // in RAM: copied up as before
++                }
++                sd_drive_only++;
++                sd_queue(l, m);
++                for (int32_t e : by_score) {
++                    if (!(l.sp_score[e] > -INFINITY)) {
++                        break; // the rest are off
++                    }
++                    if (picked(e) || std::find(taken.begin(), taken.end(), e) != taken.end()) {
++                        continue;
++                    }
++                    if (slots[e] < g.n_slots || sd_in_ram(l, e)) {
++                        r = e;
++                        break;
++                    }
++                }
++                if (r >= 0) {
++                    taken.push_back(r);
++                    sd_from_ram += slots[r] >= g.n_slots;
++                }
++            } else if (sp_mode == SP_NEAR) {
+                 for (int32_t j = 0; j < l.sp_nn && r < 0; ++j) {
+                     const int32_t e = l.sp_near[(size_t) m*l.sp_nn + j];
+                     if (slots[e] < g.n_slots && !picked(e)) {
+@@ -2126,6 +2269,7 @@ struct llama_moe_cache::impl {
+         }
+         db_shutdown();
+         dr_shutdown(); // Brain Engine 0050
++        sd_shutdown(); // Brain Engine 0053
+         save_hot_set();
+         if (filler.joinable()) {
+             filler.join();
+@@ -3069,7 +3213,7 @@ struct llama_moe_cache::impl {
+             refuse("it needs --moe-cache-cpu-share 0 (the zero slots must stay zero)");
+             return;
+         }
+-        if (la_max > 0 || db_on || sp_mode != SP_OFF) {
++        if (la_max > 0 || db_on || (sp_mode != SP_OFF && sp_mode != SP_DRIVE)) { // 0053: drive stand-ins only touch one-word batches
+             refuse("not together with LLAMA_MOE_LOOKAHEAD, LLAMA_MOE_DOORBELL or LLAMA_MOE_STANDIN yet");
+             return;
+         }
+@@ -3619,6 +3763,11 @@ struct llama_moe_cache::impl {
+         if (sp_mode != SP_OFF) {
+             LLAMA_LOG_INFO("llama_moe_cache: stood in (%s, at most %d a layer a word): %zu stand-ins in %zu of %lld words, %zu misses copied as before while writing, most %d in a layer for a word\n",
+                 sp_name(sp_mode), sp_max, sp_n, sp_words + (sp_cur_n > 0), (long long) (sp_word + (sp_last >= 0)), sp_copied, std::max(sp_most_layer, sp_cur_layer));
++            if (sp_mode == SP_DRIVE) {
++                std::lock_guard<std::mutex> lock(sd_mutex);
++                LLAMA_LOG_INFO("llama_moe_cache: drive stand-ins: %zu misses on the drive alone, %zu stood in (%zu of them by an expert in RAM), %zu background reads done (%.2f MiB), %zu waiting, %zu not queued (queue full)\n",
++                    sd_drive_only, sp_n, sd_from_ram, sd_warm_done, sd_warm_bytes.load()/1048576.0, sd_q.size(), sd_warm_dropped);
++            }
+         }
+         if (learn_every > 0) {
+             LLAMA_LOG_INFO("llama_moe_cache: learned while writing: %zu experts came in\n", n_learned);

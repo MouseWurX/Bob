@@ -79,6 +79,7 @@ const HAND_WORDS = {
   files: /\b(move|copy|rename|zip|unzip|unpack|archive|extract|(?:clear|free) (?:up )?(?:some )?(?:disk )?space|biggest files|disk space|tidy|organi[sz]e|sort|clean ?up|downloads|undo|folder|folders)\b/i,
   sort: /\b(sort|rename|renam\w+|organi[sz]e|tidy|naming|name (?:them|these|my|all)|librar(?:y|ies)|music (?:folder|collection)|my (?:music|songs|albums|videos|movies|films|shows|tv|episodes|photos)|downloads|output folder|undo)\b/i,
   run: /\b(run|execute|command|script|terminal|powershell|cmd|install|build|npm|python|node|git|recipe|(?:start|fire|spin|boot) (?:up )?(?:the |my |a )?(?:dev |local |web )?(?:server|app|game|project|bot)|dev server|compile)\b/i,
+  routines: /\b(routines?|automations?|workflows?|n8n|blueprints?)\b/i,
   schedules: /\b(schedules?|scheduled|every (?:day|morning|afternoon|evening|night|week|weekday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|month|hour|\d+)|each (?:day|morning|evening|night|week|weekday|hour)|daily|nightly|weekly|hourly|on a timer|automatically|at \d{1,2}(?::\d\d)?\s*(?:am|pm)|(?:on |every )?weekdays|(?:on |every )?weekends)\b/i,
   office: /\b(convert\w*|shrink|compress\w*|make (?:it|this|that) smaller|turn (?:it|this|that|them|these) into|save (?:it |this |that )?as|export\w*|pdf|docx?|xlsx?|pptx?|odt|ods|odp|word (?:doc\w*|file)|excel|powerpoint|libre ?office|open ?office|writer|calc|impress|slides?|presentation|slideshow|deck|spreadsheet|sheet|cells?|template|mp3|mp4|wav|webm|webp|flac|ogg|mkv|gif|jpe?g|png)\b/i,
   security: /\b(secur\w*|virus\w*|malware|antivirus|defender|scan(?:s|ning)?|threats?|quarantin\w*|trojan|ransomware|spyware|adware|hack(?:s|ed|er|ers|ing)?|phish\w*|scam\w*|suspicious|dodgy|sketchy|legit\w*|genuine|fake|spoof\w*|firewall|start(?:s|ing)? (?:up )?with windows|startup (?:apps?|items?|programs?)|open ports?|breach\w*|pwned|leak(?:ed|s)?|password|2fa|two.?factor|privacy|op.?sec|metadata|exif|gps|location data|hidden (?:details|info)|osint|who owns|whois|is (?:this|that|it) (?:real|safe|legit)|look ?up (?:this|that|a) (?:site|website|link|sender|email|ip)|footprint|dork\w*|(?:is|are) (?:this|that|it|these|those) (?:\w+ )?safe|safe to (?:click|open|download|install|run|use)|infect\w*|feels? off with my (?:computer|pc|laptop)|location)\b/i,
@@ -91,6 +92,7 @@ const HAND_WHAT = {
   sort: 'sort and rename many files (music, videos, photos) to the user\'s naming rules, or from Downloads into their folders, undo',
   run: 'run commands, scripts, programs',
   schedules: 'repeat a job at set times (every morning...)',
+  routines: 'list or run the routines the user built in the Routines editor',
   apps: 'open apps and click, type or press keys in them, with a look at the screen through your eyes brain',
   browser: 'use Bob\'s own browser window: open a web page, read it, click links and buttons, type in fields, scroll, go back',
   office: 'convert files (documents, PDF, pictures, sound, video), read, make and change Word, Excel, PowerPoint and LibreOffice files',
@@ -151,7 +153,7 @@ export function guessGroups(brain, text) {
 }
 
 // The chat chip when a group is added (clarity reviewer's words; Hands match their names in Settings).
-const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', parts3d: 'Using his 3D part tools', documents: 'Using his document tools', files: 'Using his file tools', sort: 'Using Hands: sort and rename', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', apps: 'Using Hands: apps', browser: 'Using Hands: his browser', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', selfwork: 'Working on a repository', cloud: 'Using a cloud helper' };
+const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', parts3d: 'Using his 3D part tools', documents: 'Using his document tools', files: 'Using his file tools', sort: 'Using Hands: sort and rename', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', routines: 'Using Hands: routines', apps: 'Using Hands: apps', browser: 'Using Hands: his browser', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', selfwork: 'Working on a repository', cloud: 'Using a cloud helper' };
 
 export const allToolsOn = (cfg) => cfg.allTools === true;
 
@@ -180,7 +182,9 @@ export function useToolsTool(brain) {
         return `There is no group called ${group || '(none)'}. Groups you can add: ${Object.keys(groups).join(', ') || 'none'}.`;
       }
       ctx.loaded?.add(id);
-      return `Added ${id}: ${groups[id].tools.join(', ')}. Call the one you need now.`;
+      // Nov 18 (a 120B test): the Files Hand moves, copies and zips; it doesn't make new things. Say where those are.
+      const makeNew = id === 'files' && groups.documents && !ctx.loaded?.has('documents') ? ' It doesn\'t make new files or folders: write_file (add the documents group) makes a new text file and any folders on the way to it. A script to run goes through the Run Hand (run).' : '';
+      return `Added ${id}: ${groups[id].tools.join(', ')}. Call the one you need now.${makeNew}`;
     },
     summary: ({ group }) => CHIP[String(group || '').toLowerCase().trim()] || 'Using more of his tools'
   };

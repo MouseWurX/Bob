@@ -8,7 +8,9 @@ import { cleanPresetList } from './presets.js';
 import { cleanHousekeeping } from './hk-settings.js';
 import { cleanBrainCtx } from './model-ctx.js';
 import { cleanBrainPlace } from './brain-place.js';
-import { EXTRA_SWITCHES, cleanMemType } from './engine-extras.js'; // list items 94-100
+import { cleanTuning, savedTuning } from './engine-tuning.js';
+import { EXTRA_SWITCHES, cleanMemType, cleanReadingFor, READING_PICKS } from './engine-extras.js';
+import { cleanHotGB } from './hot-experts.js'; // list items 94-103
 import { cleanCheckins } from './checkin-settings.js';
 import { cleanHands } from './hands-settings.js';
 import { cleanPresets } from './model-family.js';
@@ -301,7 +303,7 @@ export const VERSION = (() => {
 // Languages Bob's screens come in (public/i18n.js has the names and words). English is the default.
 export const LANGUAGES = ['en', 'fr', 'es'];
 export const cleanRemoved = (v) => [...new Set((Array.isArray(v) ? v : []).filter((k) => typeof k === 'string' && /^[\w.:/-]{1,100}$/.test(k)))].slice(0, 500);
-export const SETTING_KEYS = ['hfGated', 'moreTools', 'answerMidJob', 'stopWords', 'copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'brainMemType', 'language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'toolHelp', 'toolSets', 'toolRecord', 'thinkBubble', 'statusJokes', 'patchesSteps', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'ownBar', 'chatHeads', 'netFiles', 'adventure', 'games', 'rentals', 'naughtyList', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labConsole', 'labRecheck', 'labExtras', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', ...HARNESS_KEYS, 'jobHelps', 'textSize', 'readableFont', 'profilesOn', 'todayCard', 'todayPlace', 'focusTimer', 'receipts', 'updateTour', 'tourSeen', 'trayDot', 'talkOver', 'readDocs', 'netVoices', 'netVoiceMap', 'carryIn', 'phoneGlance', 'netOverlay', 'memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'notesFolders', 'weeklyDigest', 'talkWithBob', 'talkCloud', 'talkCloudVoice', 'stepThinking', 'labLessons', 'searchBackup', 'privateWeb', 'traceLog', 'useOllama', 'apuHoldbackGB'];
+export const SETTING_KEYS = ['hfGated', 'moreTools', 'answerMidJob', 'stopWords', 'copyGuess', 'turboEveryday', 'lockBrainMemory', 'readingSpeed', 'readingFor', 'hotExperts', 'hotExpertsGB', 'hotExpertsCopy', 'turbo', 'turboMem', 'turboExperts', 'turboStandins', 'turboDriveStandins', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'brainMemType', 'engineTuning', 'language', 'catalogRemoved', 'catalogAdded', 'catalogAddedGot', 'brainPlace', 'smartNotes', 'toolLearning', 'toolHelp', 'toolSets', 'toolRecord', 'thinkBubble', 'statusJokes', 'patchesSteps', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'engine', 'models', 'painter', 'stt', 'llamacpp', 'autostart', 'setupDone', 'wantsAsked', 'gpuVramGB', 'maestro', 'look', 'cloudHelpers', 'tts', 'workshop', 'catName', 'oneBrain', 'ollamaKeepAlive', 'style', 'session', 'sessionBrains', 'sessionCtx', 'downloads', 'updates', 'housekeeping', 'personality', 'lookComments', 'lookChange', 'callMe', 'hands', 'scheduleTask', 'brainMode', 'allTools', 'quickOnCpu', 'chatWhileBusy', 'mootBeside', 'quarantine', 'resumeJobs', 'autoSession', 'gamingLock', 'sessionBy', 'pictureNoWait', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'gamingCard', 'houseStyle', 'memoryRecall', 'projectList', 'defaultProject', 'saveDir', 'saveDirsUsed', 'activeModels', 'checkins', 'brainCtxOn', 'brainCtxStretch', 'brainCtx', 'tray', 'lookIcon', 'ownBar', 'chatHeads', 'netFiles', 'adventure', 'games', 'rentals', 'naughtyList', 'quantPicker', 'ownModels', 'catalogUpdates', 'computerLab', 'qwenPresets', 'labForgeStart', 'labConsole', 'labRecheck', 'labExtras', 'labPro', 'labEngine', 'selfWork', 'engineUpdates', 'netReview', 'editOwn', 'quickSeesJob', 'string', 'docMeaning', 'chatPresets', 'presetList', 'chatRedo', 'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'backup', 'lockSecrets', ...HARNESS_KEYS, 'jobHelps', 'textSize', 'readableFont', 'profilesOn', 'todayCard', 'todayPlace', 'focusTimer', 'receipts', 'updateTour', 'tourSeen', 'trayDot', 'talkOver', 'readDocs', 'netVoices', 'netVoiceMap', 'carryIn', 'phoneGlance', 'netOverlay', 'memorySources', 'memoryExpiry', 'memoryWhere', 'docFresh', 'docPlaces', 'notesFolders', 'weeklyDigest', 'talkWithBob', 'talkCloud', 'talkCloudVoice', 'stepThinking', 'labLessons', 'searchBackup', 'privateWeb', 'traceLog', 'useOllama', 'apuHoldbackGB'];
 const LOCKED_LLAMACPP = ['exe', 'preArgs'];
 
 function deepMerge(into, from) {
@@ -345,6 +347,7 @@ function clean(patch) {
   if ('privateWeb' in out) out.privateWeb = cleanPrivateWeb(out.privateWeb); // Nov 16: { on, route, otherSources }, off and no route to start
   if ('searchBackup' in out) out.searchBackup = cleanSearchBackup(out.searchBackup); // Nov 16: never a key (keys.json), off unless turned on
   if ('backup' in out) out.backup = cleanBackup(out.backup); // Back up and move: the automatic backup, off unless switched on
+  if ('quantPicker' in out) out.quantPicker = out.quantPicker === true; // Nov 19 2026 "Pick a quant level", off unless switched on
   if ('naughtyList' in out) out.naughtyList = out.naughtyList === true; // 1.5.132 "Show the naughty list", off unless switched on
   if ('hfGated' in out) out.hfGated = out.hfGated === true; // Nov 22 2026 "Download brains that need a Hugging Face account", off unless switched on
   if ('catalogUpdates' in out) out.catalogUpdates = out.catalogUpdates === true; // 1.5.137 "Auto-update the brain list", off unless switched on
@@ -363,7 +366,16 @@ function clean(patch) {
   if ('wantsAsked' in out) out.wantsAsked = out.wantsAsked === true; // the chat's one-time "Do you want me to" offer (wants.js)
   // List items 94-100, engine and speed extras (engine-extras.js), each off unless switched on
   for (const k of EXTRA_SWITCHES) if (k in out) out[k] = out[k] === true;
+  if ('engineTuning' in out) out.engineTuning = savedTuning(cleanTuning(out.engineTuning)); // Engine tuning, set by hand
   if ('brainMemType' in out) out.brainMemType = cleanMemType(out.brainMemType); // 100 memory type per brain; Standard when not set
+  if ('readingSpeed' in out) out.readingSpeed = READING_PICKS.includes(out.readingSpeed) ? out.readingSpeed : 'normal'; // 101, Normal unless picked
+  if ('turboMem' in out && !['smallest', 'small', 'progressive', 'progressive2', 'progressive83', 'progressive84', 'progressive82'].includes(out.turboMem)) delete out.turboMem; // Turbo's chat memory
+  if ('turboExperts' in out && typeof out.turboExperts !== 'boolean') delete out.turboExperts;
+  if ('turboStandins' in out && typeof out.turboStandins !== 'boolean') delete out.turboStandins;
+  if ('turboDriveStandins' in out && typeof out.turboDriveStandins !== 'boolean') delete out.turboDriveStandins;
+  if ('hotExpertsGB' in out) out.hotExpertsGB = cleanHotGB(out.hotExpertsGB); // 104: null = a quarter of the card, at most 4 GB
+  if ('hotExpertsCopy' in out) out.hotExpertsCopy = Object.fromEntries(Object.entries(out.hotExpertsCopy && typeof out.hotExpertsCopy === 'object' ? out.hotExpertsCopy : {}).filter(([k, v]) => typeof k === 'string' && k.length <= 300 && typeof v === 'boolean').slice(0, 200)); // Nov 17: per brain, from Calibrate's Use recommended
+  if ('readingFor' in out) out.readingFor = cleanReadingFor(out.readingFor); // 101 per brain, from Calibrate's Use recommended
   if ('stopWords' in out) out.stopWords = out.stopWords !== false; // "Stop and wait words", on unless switched off (stop-words.js)
   if ('answerMidJob' in out) out.answerMidJob = out.answerMidJob !== false; // "Reply between steps", on unless switched off (mid-job.js)
   if ('quickSeesJob' in out) out.quickSeesJob = out.quickSeesJob === true; // "Quick brain sees the job", off by default (meanwhile.js)
@@ -523,7 +535,7 @@ function cleanLlamacpp(lc) {
       ngld: Number.isInteger(d.ngld) && d.ngld >= 0 && d.ngld <= 999 ? d.ngld : 99
     };
   }
-  // 1.5.16x Turbo, per brain (from the Lab's Turbo page or Settings): on/off, the draft brain by its model name (never
+  // 1.5.16x MTP, per brain (from the Lab's MTP page or Settings): on/off, the draft brain by its model name (never
   // a path), or the brain's own built-in guesser, and how many words it guesses ahead. null removes a brain's row.
   if ('turbo' in out) {
     const t = {};

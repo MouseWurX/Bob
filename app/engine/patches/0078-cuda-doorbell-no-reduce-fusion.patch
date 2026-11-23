@@ -1,0 +1,19 @@
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index 5ef0b01..b0af621 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -4057,6 +4057,14 @@ static bool ggml_cuda_match_moe_weighted_reduction(
+         return false;
+     }
+ 
++    // Brain Engine 0078: not for the doorbell's join (0042). The test PC (BE39) showed the doorbell's words match share
++    // 1's with this fusion off and drift with it on, while share 1 gives the same words either way; skipping it costs
++    // the doorbell about 4% of its writing speed. GGML_CUDA_DOORBELL_REDUCE_FUSION=1 fuses anyway.
++    static const bool db_reduce = ggml_cuda_env_flag("GGML_CUDA_DOORBELL_REDUCE_FUSION");
++    if (!db_reduce && ggml_cuda_ids_from_doorbell(experts)) {
++        return false;
++    }
++
+     const int     n_expert_used = (int) weighted->ne[1];
+     const int64_t n_tokens      = weighted->ne[2] * weighted->ne[3];
+     if (n_expert_used < 2 || n_expert_used > MOE_WEIGHTED_REDUCTION_MAX_EXPERTS) {

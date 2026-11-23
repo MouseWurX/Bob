@@ -15,7 +15,7 @@ export const PLACE_WORDS = { card: 'On your card', memory: 'Card + memory', stor
 export const placeWord = (where, hw = {}) => (where === 'card' && hw.unified ? 'In memory' : where === 'memory' && !hw.vramGB ? 'In memory, on the processor' : where === 'storage' && !hw.vramGB ? 'Memory + storage' : PLACE_WORDS[where] || '');
 
 // How hard the file is squeezed, from its file name (Q4_K_M, Q3_K_M, Q8_0, MXFP4, F16...), or '' when it doesn't say.
-const QUANT_RE = /(?:^|[-_.])((?:UD-)?I?Q\d(?:_[A-Z0-9]+)*|MXFP\d|BF16|F16|F32|FP8)(?=[-_.]|$)/i;
+const QUANT_RE = /(?:^|[-_.])((?:UD-)?I?Q\d(?:_[A-Z0-9]+)*|TQ\d_\d|MXFP\d|BF16|F16|F32|FP8)(?=[-_.]|$)/i; // Nov 19 2026: TQ1_0 (1-bit class) too
 export function quantOf(m) {
   if (m?.quant) return String(m.quant);
   const f = (m?.files || []).find((x) => x.role === 'gguf' || /\.gguf$/i.test(x.url || x.name || '')) || null;

@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { apuNeed, apuPlace, nextStep, lendRoom, computeBytes, apuHoldbackGB, apuKeepBytes, APU_DRIVER_BYTES, LEND_MIN_MB } from '../src/apu-fit.js';
 import { LlamaCpp, spreadArgs, SPREAD_FIT_TARGET_MIB } from '../src/llamacpp.js';
 import { apuRoom } from '../src/brain.js';
+import { memGrowCtx } from '../src/brain-lanes.js';
+import { tooLongError } from '../src/brain-asking.js';
 import { engineFailKind } from '../src/retry.js';
 import { CardLender, CardBorrower, LEND_NO } from '../src/share-card.js';
 import { readJson } from '../src/engine-care.js';
@@ -38,17 +40,40 @@ check(p.place === 'cpu', '...and after that, the processor alone');
 check(apuPlace({ need: go, layers: 0, freeBytes: 6.6 * GB, keepBytes: 2 * GB, budgetBytes: 7 * GB }).place === 'cpu', 'layers unknown and it won\'t all fit: the processor alone');
 check(JSON.stringify(nextStep({ share: 1, ctx: 32768 })) === '{"share":0.5}' && JSON.stringify(nextStep({ share: 0.5, ctx: 32768 })) === '{"share":0}' && JSON.stringify(nextStep({ share: 0, ctx: 32768 })) === '{"ctx":16384}' && nextStep({ share: 0, ctx: 8192 }) === null, 'steps down: half the graphics, the processor alone, then half the chat memory, never under 8K');
 check(JSON.stringify(nextStep({ share: 1, ctx: 32768, cpu: true })) === '{"ctx":16384}', 'a brain already on the processor goes straight to a shorter chat memory');
-check(apuHoldbackGB({}) === 2 && apuKeepBytes({ apuHoldbackGB: 0 }) === 1 * GB && apuKeepBytes({ apuHoldbackGB: 3 }) === 3 * GB, 'Memory kept for Windows starts at 2 GB, and at least 1 GB is always kept');
+check(apuHoldbackGB({}) === 0.5 && apuKeepBytes({ apuHoldbackGB: 0 }) === 1 * GB && apuKeepBytes({ apuHoldbackGB: 3 }) === 3 * GB, 'Memory kept for Windows starts at 0.5 GB (Nov 23), and at least 1 GB is always kept for placing');
 
 // ---------- the room check uses the engine's figure ----------
 const brainWith = (need, extra = {}) => ({ cfg: { sharedGraphics: true, reservedGraphicsGB: 0.5, ...extra }, gate: { brainBytes: () => 99 * GB }, engine: { loaded: async () => [], apuNeed: (m, c) => need(c) } });
 const kvAt = (c) => (2.4 * GB * c) / 32768;
-let r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(c) })), 'qwen3-4b', 32768, { freeMem: 6.6 * GB });
-check(r.ok && r.ctx === 32768 && !r.shortened, 'the Go, 6.6 GB free, 2 GB kept: Qwen3 4B keeps its 32K chat memory (it fits split or on the processor)', JSON.stringify(r));
+let r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(c) }), { apuHoldbackGB: 2 }), 'qwen3-4b', 32768, { freeMem: 6.6 * GB });
+check(r.ok && r.ctx === 16384 && r.shortened, 'the Go, 6.6 GB free, 2 GB kept: Qwen3 4B (dense, its whole file in RAM) is shortened to 16K so Windows keeps its share', JSON.stringify(r));
+r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(c), experts: 128 })), 'moe', 32768, { freeMem: 6.6 * GB });
+check(r.ok && r.ctx === 32768 && !r.shortened, 'a brain with experts leaves half its file on the drive: it keeps 32K at the same free memory', JSON.stringify(r));
+check(apuNeed({ fileBytes: 2.5 * GB, extraBytes: 0.5 * GB }).cpu === apuNeed({ fileBytes: 2.5 * GB }).cpu + 0.5 * GB, 'the picture reader (mmproj) is counted');
+r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(c) }), { apuHoldbackGB: 2 }), 'qwen3-4b', 32768, { freeMem: 4.5 * GB });
+check(!r.ok && r.needGB > r.roomGB, 'tighter (the friend\'s Go, 4.5 GB free): even 8K leaves Windows less than its share (fitCtx then tries 8K)', JSON.stringify(r));
 r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(c) })), 'qwen3-4b', 32768, { freeMem: 4.5 * GB });
-check(r.ok && r.shortened && r.ctx < 32768, 'tighter: the chat memory is shortened', JSON.stringify(r));
+check(r.ok && r.ctx === 8192, 'the same Go with the Nov 23 default (0.5 GB kept): it fits at 8K', JSON.stringify(r));
 r = await apuRoom(brainWith((c) => apuNeed({ fileBytes: 20 * GB, kvBytes: kvAt(c) })), 'big', 32768, { freeMem: 6.6 * GB });
 check(!r.ok && typeof r.line === 'string', 'a brain that fits no way is refused with the plain line', JSON.stringify(r));
+
+// ---------- Nov 22: a shortened chat memory grows as the chat does ----------
+{ const b = brainWith((c) => apuNeed({ fileBytes: 2.5 * GB, kvBytes: kvAt(c) }), { apuHoldbackGB: 2 });
+  const cut = { want: 32768, ctx: 8192 };
+  check(memGrowCtx(b, 'qwen3-4b', cut, 3000, { freeMem: 4.5 * GB }) === 0, 'a short chat in an 8K memory: no growing');
+  check(memGrowCtx(b, 'qwen3-4b', cut, 7000, { freeMem: 4.5 * GB }) === 16384, 'the chat passes three quarters of 8K and there is room: it grows to 16K');
+  check(memGrowCtx(b, 'qwen3-4b', cut, 20000, { freeMem: 6 * GB }) === 32768, 'a much longer chat with plenty free: straight to what was asked for (32K), never past it');
+  check(memGrowCtx(b, 'qwen3-4b', cut, 20000, { freeMem: 2.8 * GB }) === 16384, 'room for one step but not two: the biggest step that keeps Windows its share');
+  check(memGrowCtx(b, 'qwen3-4b', cut, 7000, { freeMem: 2.05 * GB }) === 0, 'no room past Windows\'s share: it stays, and the chat is fitted as before');
+  check(memGrowCtx(b, 'qwen3-4b', { want: 8192, ctx: 8192 }, 7000, { freeMem: 6 * GB }) === 0 && memGrowCtx(b, 'x', null, 7000) === 0, 'already at the size asked for, or never shortened: nothing to grow'); }
+{ const src = read('src/brain-asking.js');
+  check(/memCut \|\|= new Map\(\)\)\.set\(model/.test(src) && /cut\.want === fit && room\.ok && room\.needGB === undefined\) return cut\.ctx/.test(src), 'a brain loaded short stays short on the next reply (it never jumps back to the full size that ran out of memory)');
+  check(/memGrowCtx\(this, opts\.model, cut, tokens\)/.test(src) && src.indexOf('memGrowCtx(this') < src.indexOf('const fitted = fitContext(opts.messages'), 'the chat memory grows before the chat is trimmed to fit'); }
+
+{ const t = tooLongError(new Error('llama-server returned 400: request (12492 tokens) exceeds the available context size (8192 tokens)'), 8192);
+  check(t.code === 'too_long' && /about 12492 tokens, with room for 8192/.test(t.message) && /shorter paste/.test(t.message), 'a paste bigger than the chat memory says so in plain words (it used to be an empty reply)', t.message);
+  const src = read('src/brain-asking.js');
+  check(/didn't fit in its \$\{cut\.ctx\} chat memory, so it grows to/.test(src) && src.indexOf("didn't fit in its") < src.indexOf('const tighter = fitContext'), 'a shortened chat memory first grows to what the chat needs (up to the size picked), before the chat is cut harder'); }
 
 // ---------- retries ----------
 check(engineFailKind(new Error('llama-server: Invalid input batch.')) === 'state' && engineFailKind(new Error('Compute error.')) === 'state', '"Invalid input batch" and "Compute error": the engine is started fresh');
@@ -124,6 +149,28 @@ try {
     check(args.join(' ').includes('-ngl 20') && !/ -ngl 0/.test(args.join(' ')), 'layers set by hand are never changed');
   }
   {
+    // Nov 23 (Legion Go): Vulkan on built-in graphics turns memory-mapping off by itself; a split brain asks for it back.
+    const e = make({}, 3 * GB);
+    e.loadFlag = () => 'load-mode';
+    const args = e.buildArgs('alpha', { ctx: 32768 });
+    const plan = e.apuFit('alpha', args, 32768);
+    const a = args.join(' ');
+    check(plan && plan.place !== 'card' && /--load-mode mmap/.test(a) && !/--load-mode none|--no-mmap/.test(a), 'part or all on the processor with built-in graphics: --load-mode mmap, so the processor\'s part is read from the file, not copied into pinned RAM', a);
+    const old = make({}, 3 * GB); old.loadFlag = () => 'no-mmap';
+    const oa = old.buildArgs('alpha', { ctx: 32768 }); old.apuFit('alpha', oa, 32768);
+    check(!/--load-mode|--no-mmap/.test(oa.join(' ')), 'an older engine without --load-mode: nothing added', oa.join(' '));
+    const hand = make({ llamacpp: { exe: process.execPath, preArgs: [path.join(here, 'mock-llama-server.js')], ollamaModelsDir: models, port: 19995, args: ['--load-mode', 'none'] } }, 3 * GB);
+    hand.loadFlag = () => 'load-mode';
+    const ha = hand.buildArgs('alpha', { ctx: 32768 }); hand.apuFit('alpha', ha, 32768);
+    check(/--load-mode none/.test(ha.join(' ')) && !/--load-mode mmap/.test(ha.join(' ')), 'a load mode set by hand is kept', ha.join(' '));
+    const card = make({}, 16 * GB); card.loadFlag = () => 'load-mode';
+    const ca = card.buildArgs('alpha', { ctx: 8192 }); const cp = card.apuFit('alpha', ca, 8192);
+    check(cp?.place !== 'card' || !/--load-mode mmap/.test(ca.join(' ')), 'wholly on the graphics: no change', ca.join(' '));
+    const real = make({ sharedGraphics: false }, 3 * GB); real.loadFlag = () => 'load-mode';
+    const ra = real.buildArgs('alpha', { ctx: 32768 }); real.apuFit('alpha', ra, 32768);
+    check(!/--load-mode mmap/.test(ra.join(' ')), 'a real graphics card: untouched', ra.join(' '));
+  }
+  {
     const e = make();
     e.noReuse.add('alpha');
     check(!e.buildArgs('alpha', { ctx: 8192 }).includes('--cache-reuse'), 'after "Invalid input batch" the brain loads without --cache-reuse');
@@ -135,7 +182,7 @@ try {
 // ---------- lending ----------
 check(lendRoom({ sharedGraphics: false }, { freeBytes: 1 }) === null, 'a real card reports its memory truly: nothing added');
 const lr = lendRoom({ sharedGraphics: true, gpuVramGB: 7, reservedGraphicsGB: 0.5 }, { freeBytes: 6 * GB });
-check(lr.roomMB > 2000 && lr.roomMB < 4000 && lr.marginMB === 7 * 1024 - lr.roomMB, 'built-in graphics lend what the RAM really has, and tell the asker how much to leave free', JSON.stringify(lr));
+check(lr.roomMB > 2000 && lr.roomMB < 5000 && lr.marginMB === 7 * 1024 - lr.roomMB, 'built-in graphics lend what the RAM really has, and tell the asker how much to leave free', JSON.stringify(lr));
 check(spreadArgs(['--fit', 'on'], [4000, 0]).join(' ') === `--fit-target 4000,${SPREAD_FIT_TARGET_MIB},${SPREAD_FIT_TARGET_MIB} -ub 512` && spreadArgs(['--fit', 'on']).join(' ') === `--fit-target ${SPREAD_FIT_TARGET_MIB} -ub 512`, 'the asking engine leaves that much free on each lent card (lent cards first), the usual room elsewhere');
 {
   const cfg = { sharedGraphics: true, gpuVramGB: 7, reservedGraphicsGB: 0.5, share: { lendCard: true }, remote: { enabled: true, passcode: 'abcdefgh' } };

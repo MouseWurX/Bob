@@ -1,0 +1,437 @@
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 63b5d01..8d42b8d 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -30,6 +30,7 @@
+ #include <stdexcept>
+ #include <string>
+ #include <thread>
++#include <unordered_set>
+ #include <unordered_map>
+ #include <vector>
+ 
+@@ -4279,14 +4280,26 @@ struct llama_moe_cache::impl {
+     int32_t       bw_dev    = -1;
+     int32_t       bw_g      = -1;
+     size_t        bw_own    = 0;   // bytes of the region the working memory owns, from its start
+-    size_t        bw_lend   = 0;   // bytes after bw_own it may borrow: the slots of group bw_g's first bank
++    size_t        bw_lend   = 0;   // bytes after bw_own it may borrow: the slots of group bw_g (0074: of every lent group)
+     size_t        bw_step   = 0;   // the measured working memory of the reading step: a read lends that much at once
+     size_t        bw_cur_peak = 0; // 0063: the working memory of the graph about to run (rewarm waits while it is lent)
+     size_t        bw_small  = 0;   // 0065: graphs up to this much (the own step, borrowed) lend only what they need
+     bw_from_ptr_t bw_from_ptr = nullptr;
+     ggml_backend_buffer_type_t bw_buft = nullptr; // the card's buffer type, but its buffers come from bw_alloc
+-    ggml_context_ptr ctx_bw;       // a byte view of one slot, twice per bank of group bw_g, for the moves
+-    std::vector<std::pair<ggml_tensor *, ggml_tensor *>> bw_views;
++    ggml_context_ptr ctx_bw;       // a byte view of one slot, twice per bank of each lent group, for the moves
++    std::vector<std::vector<std::pair<ggml_tensor *, ggml_tensor *>>> bw_views; // per group
++    // Brain Engine 0074 (LLAMA_MOE_CACHE_BORROW_ALL_GROUPS=1, off unless set): a read lends from every group of the
++    // card, not just the first. The region holds the groups one after another, each laid out slot by slot (0051), the
++    // group of the last layer last, and the cache's other card tensors after them all; a read lends from the front, so
++    // the first group's slots go first, then the next's. A lent range that runs past a group's slots also covers its
++    // zero slots (the processor share's), which are set to zero again before the next graph that leaves them alone.
++    bool bw_all = false;
++    std::vector<int32_t> bw_order;      // the lent groups, in region order (bw_g alone without 0074)
++    std::vector<size_t>  bw_start;      // per group: where its slots start, from the end of the own part
++    std::vector<uint8_t> bw_zero_lost;  // per group: a graph ran over its zero slots
++    std::vector<ggml_tensor *> bw_zero_view; // per group: a byte view of its zero slots (and the one after)
++    size_t bw_zero_sets = 0;
++    bool   bw_zero_test_skip = getenv("LLAMA_MOE_CACHE_BORROW_ALL_GROUPS_TEST_NO_ZERO") != nullptr;
+     size_t        bw_moved = 0, bw_dropped = 0, bw_clears = 0;
+ 
+     // called at the end of the constructor; turns borrowing on if it is asked for and can work here
+@@ -4341,17 +4354,35 @@ struct llama_moe_cache::impl {
+             refuse("this card's backend can't lend memory (CUDA, or card sharing for tests)");
+             return;
+         }
+-        const group & g = groups[bw_g];
++        bw_order = { bw_g };
++        if (const char * ag = getenv("LLAMA_MOE_CACHE_BORROW_ALL_GROUPS"); ag != nullptr && atoi(ag) > 0) {
++            bw_all_init();
++        }
++        size_t n_views = 0;
++        for (int32_t ig : bw_order) {
++            n_views += 2*groups[ig].banks.size() + 1;
++        }
+         ggml_init_params params = {
+-            /*.mem_size   =*/ 2*g.banks.size()*ggml_tensor_overhead(),
++            /*.mem_size   =*/ n_views*ggml_tensor_overhead(),
+             /*.mem_buffer =*/ nullptr,
+             /*.no_alloc   =*/ true,
+         };
+         ctx_bw.reset(ggml_init(params));
+-        for (const ggml_tensor * bank : g.banks) {
+-            ggml_tensor * a = ggml_new_tensor_1d(ctx_bw.get(), GGML_TYPE_I8, (int64_t) bank->nb[2]);
+-            ggml_tensor * b = ggml_new_tensor_1d(ctx_bw.get(), GGML_TYPE_I8, (int64_t) bank->nb[2]);
+-            bw_views.emplace_back(a, b);
++        bw_views.assign(groups.size(), {});
++        bw_zero_view.assign(groups.size(), nullptr);
++        bw_zero_lost.assign(groups.size(), 0);
++        bw_start.assign(groups.size(), 0);
++        for (int32_t ig : bw_order) {
++            const group & g = groups[ig];
++            for (const ggml_tensor * bank : g.banks) {
++                ggml_tensor * a = ggml_new_tensor_1d(ctx_bw.get(), GGML_TYPE_I8, (int64_t) bank->nb[2]);
++                ggml_tensor * b = ggml_new_tensor_1d(ctx_bw.get(), GGML_TYPE_I8, (int64_t) bank->nb[2]);
++                bw_views[ig].emplace_back(a, b);
++            }
++            if (bw_all) {
++                // the zero slots and the one after them, laid out slot by slot
++                bw_zero_view[ig] = ggml_new_tensor_1d(ctx_bw.get(), GGML_TYPE_I8, (int64_t) (bw_slot_bytes(ig).first*(size_t) (n_zero + 1)));
++            }
+         }
+         bw_buft = ggml_backend_buft_new_alloc_from(d.buft, bw_alloc, this);
+         bw_on = true;
+@@ -4359,6 +4390,60 @@ struct llama_moe_cache::impl {
+             bw_rewarm_on = false;
+         }
+         LLAMA_LOG_INFO("llama_moe_cache: borrowed reading on: big reading steps borrow the cache's coldest slots, nothing is freed\n");
++        if (bw_all) {
++            LLAMA_LOG_INFO("llama_moe_cache: borrowed reading lends from all %zu groups of the cache, one after another (LLAMA_MOE_CACHE_BORROW_ALL_GROUPS)\n", bw_order.size());
++        }
++    }
++
++    // Brain Engine 0074: every group of the card, the one with the last cached layer last (a read's last row looks up
++    // the last layer alone, so its slots are lent last and its zero slots never)
++    void bw_all_init() {
++        auto no = [](const char * why) {
++            LLAMA_LOG_WARN("llama_moe_cache: !!! LLAMA_MOE_CACHE_BORROW_ALL_GROUPS NOT USED: %s; the first group alone is lent\n", why);
++        };
++        if (getenv("LLAMA_MOE_CACHE_BORROW_FIRST_BANK") != nullptr) {
++            no("LLAMA_MOE_CACHE_BORROW_FIRST_BANK is set");
++            return;
++        }
++        if (n_zero > 0 && cpu_read > 0) {
++            // prompts read with the processor doing the misses look up the zero slots while a read lends
++            no("not together with LLAMA_MOE_CACHE_CPU_READ yet");
++            return;
++        }
++        int32_t last = -1;
++        for (int32_t il = (int32_t) layers.size() - 1; il >= 0 && last < 0; --il) {
++            if (layers[il].ig >= 0 && groups[layers[il].ig].id == bw_dev && groups[layers[il].ig].n_slots > 0) {
++                last = layers[il].ig;
++            }
++        }
++        std::vector<int32_t> order;
++        for (size_t ig = 0; ig < groups.size(); ++ig) {
++            const group & g = groups[ig];
++            if (g.id != bw_dev || g.n_slots == 0 || g.banks.empty() || (int32_t) ig == last) {
++                continue;
++            }
++            order.push_back((int32_t) ig);
++        }
++        // the biggest first: a batch of up to 32 tokens that lends a little (0065) then stays inside it, as before
++        std::stable_sort(order.begin(), order.end(), [&](int32_t a, int32_t b) {
++            return (size_t) groups[a].n_slots*groups[a].host_bytes/groups[a].layers.size() > (size_t) groups[b].n_slots*groups[b].host_bytes/groups[b].layers.size();
++        });
++        if (last >= 0) {
++            order.push_back(last);
++        }
++        if (order.size() < 2) {
++            LLAMA_LOG_INFO("llama_moe_cache: LLAMA_MOE_CACHE_BORROW_ALL_GROUPS: the cache has one group, it is lent as before\n");
++            return;
++        }
++        for (int32_t ig : order) {
++            if (bw_slot_bytes(ig).first == 0) {
++                no("a group can't be laid out slot by slot");
++                return;
++            }
++        }
++        bw_order = order;
++        bw_g = order[0];
++        bw_all = true;
+     }
+ 
+     // the scheduler's working memory buffers for the card come from here: the front of the region (and past it, what is lent)
+@@ -4392,11 +4477,11 @@ struct llama_moe_cache::impl {
+     // size), so the slot must be a whole number of blocks of every bank's type: a brain with Q4_K gates and Q6_K downs
+     // (144 and 210 byte blocks) otherwise reads every expert but the first from the wrong place. Padded up to the
+     // least common multiple; if that wastes more than an eighth, the first bank alone is lent (the 0048 layout).
+-    std::pair<size_t, size_t> bw_slot_bytes() const {
+-        if (bw_g < 0 || getenv("LLAMA_MOE_CACHE_BORROW_FIRST_BANK") != nullptr) {
++    std::pair<size_t, size_t> bw_slot_bytes(int32_t ig) const {
++        if (ig < 0 || getenv("LLAMA_MOE_CACHE_BORROW_FIRST_BANK") != nullptr) {
+             return { 0, 0 };
+         }
+-        const group & g = groups[bw_g];
++        const group & g = groups[ig];
+         size_t slot = 0, unit = 256;
+         for (const ggml_tensor * bank : g.banks) {
+             if (bank->nb[2] % 256 != 0) {
+@@ -4423,12 +4508,12 @@ struct llama_moe_cache::impl {
+         bw_striped = false;
+     }
+ 
+-    void bw_stripe(ggml_backend_buffer_t buf) {
+-        const size_t slot = bw_slot_bytes().first;
++    void bw_stripe(ggml_backend_buffer_t buf, int32_t ig) {
++        const size_t slot = bw_slot_bytes(ig).first;
+         if (slot == 0) {
+             return; // the 0048 layout
+         }
+-        group & g = groups[bw_g];
++        group & g = groups[ig];
+         for (const ggml_tensor * bank : g.banks) {
+             GGML_ASSERT(slot % ggml_type_size(bank->type) == 0); // 0052: a whole number of blocks for every kernel
+         }
+@@ -4496,8 +4581,10 @@ struct llama_moe_cache::impl {
+                 bytes += GGML_PAD(ggml_backend_buft_get_alloc_size(d.buft, t), align);
+             }
+         }
+-        const ggml_tensor * last_bank = groups[bw_g].banks.back();
+-        const size_t pad = GGML_PAD(bw_slot_bytes().second, align); // 0052: room for the padded slots after the last bank
++        size_t pad = 0; // 0052: room for the padded slots after each lent group's last bank
++        for (int32_t ig : bw_order) {
++            pad += GGML_PAD(bw_slot_bytes(ig).second, align);
++        }
+         ggml_backend_buffer_t buf = ggml_backend_buft_alloc_buffer(d.buft, own + bytes + pad + align);
+         if (buf == nullptr) {
+             LLAMA_LOG_WARN("llama_moe_cache: !!! borrowed reading NOT USED: no room for a region of %.2f MiB, the cache goes back as it was\n",
+@@ -4511,15 +4598,26 @@ struct llama_moe_cache::impl {
+         ggml_backend_buffer_clear(buf, 0); // the padding of the banks
+         ggml_tallocr ta = ggml_tallocr_new(buf);
+         ta.offset += own;
++        // the lent groups' banks first, in order (0074), then everything else
++        std::unordered_set<const ggml_tensor *> placed;
++        for (int32_t ig : bw_order) {
++            for (ggml_tensor * bank : groups[ig].banks) {
++                GGML_ASSERT(ggml_tallocr_alloc(&ta, bank) == GGML_STATUS_SUCCESS);
++                placed.insert(bank);
++            }
++            ta.offset += GGML_PAD(bw_slot_bytes(ig).second, align);
++        }
+         for (ggml_tensor * t = ggml_get_first_tensor(d.ctx.get()); t != nullptr; t = ggml_get_next_tensor(d.ctx.get(), t)) {
+-            if (t->view_src == nullptr) {
++            if (t->view_src == nullptr && placed.count(t) == 0) {
+                 GGML_ASSERT(ggml_tallocr_alloc(&ta, t) == GGML_STATUS_SUCCESS);
+-                if (t == last_bank) {
+-                    ta.offset += pad;
+-                }
+             }
+         }
+-        bw_stripe(buf); // Brain Engine 0051
++        for (int32_t ig : bw_order) {
++            bw_stripe(buf, ig); // Brain Engine 0051
++        }
++        if (bw_all && !bw_striped) {
++            GGML_ABORT("MoE cache borrowed reading: LLAMA_MOE_CACHE_BORROW_ALL_GROUPS needs every group laid out slot by slot");
++        }
+         for (ggml_tensor * t = ggml_get_first_tensor(d.ctx.get()); t != nullptr; t = ggml_get_next_tensor(d.ctx.get(), t)) {
+             if (t->view_src != nullptr) {
+                 GGML_ASSERT(ggml_backend_view_init(t) == GGML_STATUS_SUCCESS);
+@@ -4529,12 +4627,22 @@ struct llama_moe_cache::impl {
+         d.buf.reset(buf);
+         d.buf_size = bytes;
+         const group & g = groups[bw_g];
+-        bw_own  = (size_t) ((const char *) g.banks[0]->data - (const char *) ggml_backend_buffer_get_base(buf));
++        const char * rbase = (const char *) ggml_backend_buffer_get_base(buf);
++        bw_own  = (size_t) ((const char *) g.banks[0]->data - rbase);
+         bw_lend = (size_t) g.n_slots*g.banks[0]->nb[2]; // striped: a slot of every bank
++        if (bw_all) {
++            for (int32_t ig : bw_order) {
++                const group & gg = groups[ig];
++                bw_start[ig] = (size_t) ((const char *) gg.banks[0]->data - rbase) - bw_own;
++                bw_zero_lost[ig] = 0;
++            }
++            const group & gl = groups[bw_order.back()];
++            bw_lend = bw_start[bw_order.back()] + (size_t) gl.n_slots*gl.banks[0]->nb[2];
++        }
+         const auto [up, n] = upload_slots([&](int32_t id) { return devices[id].backend; });
+         LLAMA_LOG_INFO("llama_moe_cache: borrowed reading: region %.2f MiB = working memory %.2f MiB + cache %.2f MiB, up to %.2f MiB lent "
+             "(%d slots%s); %zu experts put back in %.1f ms\n", ggml_backend_buffer_get_size(buf)/1024.0/1024.0,
+-            bw_own/1024.0/1024.0, bytes/1024.0/1024.0, bw_lend/1024.0/1024.0, g.n_slots, bw_striped ? (pad > 0 ? ", every bank, laid out slot by slot, padded to whole blocks" : ", every bank, laid out slot by slot") : " of the first bank", n, (ggml_time_us() - t0)/1000.0);
++            bw_own/1024.0/1024.0, bytes/1024.0/1024.0, bw_lend/1024.0/1024.0, bw_lent_slots_max(), bw_striped ? (pad > 0 ? ", every bank, laid out slot by slot, padded to whole blocks" : ", every bank, laid out slot by slot") : " of the first bank", n, (ggml_time_us() - t0)/1000.0);
+         GGML_UNUSED(up);
+         return true;
+     }
+@@ -4563,6 +4671,7 @@ struct llama_moe_cache::impl {
+         for (group & g : groups) {
+             g.lru.lent_below = 0;
+         }
++        std::fill(bw_zero_lost.begin(), bw_zero_lost.end(), 0);
+         alloc_banks();
+         const auto [up, n] = upload_slots([&](int32_t id) { return devices[id].backend; });
+         GGML_UNUSED(up);
+@@ -4574,7 +4683,7 @@ struct llama_moe_cache::impl {
+     // Brain Engine 0056: rewarm. The experts a long read dropped go back, hottest first, into the slots left empty, in one
+     // go when the first small batch (writing) comes, instead of one miss at a time over the next words. Lossless: the same
+     // experts, the same words. LLAMA_MOE_CACHE_REWARM=0 turns it off.
+-    std::vector<int32_t> bw_rewarm_keys;
++    std::vector<std::pair<int32_t, int32_t>> bw_rewarm_keys; // group, key
+     bool   bw_rewarm_on = true;
+     size_t bw_rewarmed = 0, bw_rewarm_bytes = 0, bw_rewarms = 0;
+     double bw_rewarm_ms = 0.0;
+@@ -4583,13 +4692,27 @@ struct llama_moe_cache::impl {
+         if (bw_rewarm_keys.empty()) {
+             return;
+         }
+-        std::vector<int32_t> keys;
+-        keys.swap(bw_rewarm_keys);
++        std::vector<std::pair<int32_t, int32_t>> all;
++        all.swap(bw_rewarm_keys);
+         if (!bw_rewarm_on || !bw_on || bw_g < 0) {
+             return;
+         }
++        for (int32_t ig : bw_order) {
++            std::vector<int32_t> keys;
++            for (const auto & [kg, key] : all) {
++                if (kg == ig) {
++                    keys.push_back(key);
++                }
++            }
++            if (!keys.empty()) {
++                bw_rewarm_group(backend, ig, keys);
++            }
++        }
++    }
++
++    void bw_rewarm_group(ggml_backend_t backend, int32_t ig, std::vector<int32_t> & keys) {
+         const int64_t t0 = ggml_time_us();
+-        group & g = groups[bw_g];
++        group & g = groups[ig];
+         moe_cache_lru & lru = g.lru;
+         auto heat = [&](int32_t key) { return lru.decayed_crf(lru.key_layer(key), key); };
+         std::sort(keys.begin(), keys.end(), [&](int32_t a, int32_t b) { return heat(a) > heat(b); });
+@@ -4642,8 +4765,12 @@ struct llama_moe_cache::impl {
+         // takes as a small batch: its misses and rewarm must not land in the slots this graph's working memory runs over
+         bw_cur_peak = peak;
+         if (bw_on && bw_g >= 0) {
+-            const size_t nb2 = groups[bw_g].banks[0]->nb[2];
+-            groups[bw_g].lru.lent_below = peak > bw_own ? (int32_t) std::min<size_t>(groups[bw_g].n_slots, (peak - bw_own + nb2 - 1)/nb2) : 0;
++            for (int32_t ig : bw_order) {
++                groups[ig].lru.lent_below = bw_lent_slots(ig, peak);
++            }
++        }
++        if (bw_all && bw_own > 0) {
++            bw_zero_restore(peak); // 0074: before this graph, if it leaves them alone
+         }
+         if (!bw_on || bw_own == 0 || peak <= bw_own) {
+             return;
+@@ -4658,10 +4785,83 @@ struct llama_moe_cache::impl {
+         if (peak > bw_own + bw_lend) {
+             GGML_ABORT("MoE cache borrowed reading: a graph needs %zu bytes of working memory, only %zu can be lent", peak, bw_own + bw_lend);
+         }
+-        group & g = groups[bw_g];
++        for (int32_t ig : bw_order) {
++            const int32_t dead = bw_lent_slots(ig, peak);
++            if (dead > 0) {
++                bw_clear_group(ig, dead, peak);
++            }
++            if (bw_all && ig != bw_order.back() && peak - bw_own > bw_start[ig] + (size_t) groups[ig].n_slots*groups[ig].banks[0]->nb[2]) {
++                bw_zero_lost[ig] = 1; // 0074: this graph runs over the group's zero slots
++                if (n_zero > 0 && bw_small > 0 && bw_cur_peak <= bw_small) {
++                    // a short graph may look up the cache (and its zero slots) while it lends: not expected (the first
++                    // group is the biggest), so say it
++                    LLAMA_LOG_WARN("llama_moe_cache: !!! borrowed reading: a short graph of %.2f MiB ran past group %d's slots\n", bw_cur_peak/1048576.0, ig);
++                }
++            }
++        }
++    }
++
++    // Brain Engine 0074: the slots of group ig a graph of peak bytes runs over
++    int32_t bw_lent_slots(int32_t ig, size_t peak) const {
++        if (peak <= bw_own) {
++            return 0;
++        }
++        const group & g = groups[ig];
++        const size_t nb2   = g.banks[0]->nb[2];
++        const size_t start = bw_all ? bw_start[ig] : 0;
++        const size_t over  = peak - bw_own;
++        if (over <= start) {
++            return 0;
++        }
++        return (int32_t) std::min<size_t>(g.n_slots, (over - start + nb2 - 1)/nb2);
++    }
++
++    int32_t bw_lent_slots_max() const {
++        int32_t n = 0;
++        for (int32_t ig : bw_order) {
++            n += groups[ig].n_slots;
++        }
++        return n;
++    }
++
++    // the zero slots a graph ran over are set to zero again, once a graph leaves them alone
++    void bw_zero_restore(size_t peak) {
++        device & d = devices[bw_dev];
++        bool synced = false;
++        for (int32_t ig : bw_order) {
++            if (!bw_zero_lost[ig]) {
++                continue;
++            }
++            const group & g = groups[ig];
++            const size_t nb2 = g.banks[0]->nb[2];
++            const size_t zero_end = bw_start[ig] + (size_t) (g.n_slots + n_zero + 1)*nb2;
++            if (peak > bw_own && peak - bw_own > bw_start[ig] + (size_t) g.n_slots*nb2) {
++                continue; // this graph runs over them too
++            }
++            if (!synced) {
++                ggml_backend_synchronize(d.backend); // the graph that ran over them is done
++                synced = true;
++            }
++            ggml_tensor * z = bw_zero_view[ig];
++            z->buffer = d.buf.get();
++            z->data   = (char *) g.banks[0]->data + (size_t) g.n_slots*nb2;
++            GGML_ASSERT((size_t) ((char *) z->data - (char *) ggml_backend_buffer_get_base(d.buf.get())) + ggml_nbytes(z) <= bw_own + zero_end);
++            if (!bw_zero_test_skip) { // the test's way to see that a lost zero slot shows in the words
++                ggml_backend_tensor_memset(z, 0, 0, ggml_nbytes(z));
++            }
++            bw_zero_lost[ig] = 0;
++            bw_zero_sets++;
++            LLAMA_LOG_INFO("llama_moe_cache: borrowed reading: the zero slots of group %d a read ran over are zero again (%zu times)\n", ig, bw_zero_sets);
++        }
++        if (synced) {
++            db_dirty = true; // 0058: the doorbell's mirrors are made again
++        }
++    }
++
++    // empty the first dead slots of group ig: their hot experts move card to card into colder slots further on
++    void bw_clear_group(int32_t ig, int32_t dead, size_t peak) {
++        group & g = groups[ig];
+         moe_cache_lru & lru = g.lru;
+-        const size_t  nb2  = g.banks[0]->nb[2];
+-        const int32_t dead = (int32_t) std::min<size_t>(g.n_slots, (peak - bw_own + nb2 - 1)/nb2);
+         std::vector<int32_t> src;
+         for (int32_t s = 0; s < dead; ++s) {
+             if (lru.key_of[s] >= 0) {
+@@ -4699,8 +4899,8 @@ struct llama_moe_cache::impl {
+                 it++;
+                 for (size_t ip = 0; ip < g.banks.size(); ++ip) {
+                     const ggml_tensor * bank = g.banks[ip];
+-                    ggml_tensor * a = bw_views[ip].first;
+-                    ggml_tensor * b = bw_views[ip].second;
++                    ggml_tensor * a = bw_views[ig][ip].first;
++                    ggml_tensor * b = bw_views[ig][ip].second;
+                     a->buffer = d.buf.get();
+                     b->buffer = d.buf.get();
+                     a->data   = (char *) bank->data + (size_t) s*bank->nb[2];
+@@ -4721,7 +4921,7 @@ struct llama_moe_cache::impl {
+                 lru.slot_map[lru.key_layer(key)][lru.key_expert(key)] = lru.empty;
+                 lru.n_filled--;
+                 dropped++;
+-                bw_rewarm_keys.push_back(key); // 0056: put back before the first written word
++                bw_rewarm_keys.push_back({ ig, key }); // 0056: put back before the first written word
+             }
+             lru.key_of[s] = -1;
+             lru.move_head(s, 0);
+@@ -4730,8 +4930,8 @@ struct llama_moe_cache::impl {
+         bw_moved   += moved;
+         bw_dropped += dropped;
+         bw_clears++;
+-        LLAMA_LOG_INFO("llama_moe_cache: borrowed reading: %.2f MiB lent (%d slots): %zu experts moved on the card, %zu dropped, in %.1f ms\n",
+-            (peak - bw_own)/1024.0/1024.0, dead, moved, dropped, (ggml_time_us() - t0)/1000.0);
++        LLAMA_LOG_INFO("llama_moe_cache: borrowed reading: %.2f MiB lent (%d slots%s): %zu experts moved on the card, %zu dropped, in %.1f ms\n",
++            (peak - bw_own)/1024.0/1024.0, dead, bw_all ? (std::string(" of group ") + std::to_string(ig)).c_str() : "", moved, dropped, (ggml_time_us() - t0)/1000.0);
+     }
+ 
+     bool lend() {
+@@ -5088,6 +5288,9 @@ ggml_backend_buffer_type_t llama_moe_cache::borrow_buft(ggml_backend_buffer_type
+ }
+ 
+ size_t llama_moe_cache::borrow_lendable() const {
++    if (pimpl->bw_on && pimpl->bw_all && pimpl->bw_own > 0) {
++        return pimpl->bw_lend; // Brain Engine 0074: every group, as laid out
++    }
+     return pimpl->bw_on ? (size_t) pimpl->groups[pimpl->bw_g].n_slots*pimpl->groups[pimpl->bw_g].banks[0]->nb[2] : 0;
+ }
+ 

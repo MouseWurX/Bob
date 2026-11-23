@@ -1,0 +1,33 @@
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 63b5d01..bf8d383 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -2521,18 +2521,25 @@ struct llama_moe_cache::impl {
+     }
+ 
+     void ia_init(bool no_alloc) {
++        // Brain Engine 0075: on unless LLAMA_MOE_CACHE_READ_AHEAD=0 (the test PC, BE38: the same words, long reads +24%
++        // at 32K and +35% at 64K). Unset, it steps aside quietly where it can't run; asked for, it says why.
+         const char * v = getenv("LLAMA_MOE_CACHE_READ_AHEAD");
+-        if (no_alloc || v == nullptr || atoi(v) <= 0) {
++        const bool asked = v != nullptr && *v != '\0';
++        if (no_alloc || (asked && atoi(v) <= 0)) {
+             return;
+         }
+         if (!ip_on) {
+-            LLAMA_LOG_WARN("llama_moe_cache: !!! LLAMA_MOE_CACHE_READ_AHEAD NOT USED: it needs in-place long reads (0069)\n");
++            if (asked) {
++                LLAMA_LOG_WARN("llama_moe_cache: !!! LLAMA_MOE_CACHE_READ_AHEAD NOT USED: it needs in-place long reads (0069)\n");
++            }
+             return;
+         }
+         if (dr_on) {
+             // the drive tier decides which experts are read how (and the RAM floor counts them); a second reader of
+             // the map would go around it. Not yet.
+-            LLAMA_LOG_WARN("llama_moe_cache: !!! LLAMA_MOE_CACHE_READ_AHEAD NOT USED: not together with the drive tier (LLAMA_MOE_DRIVE) yet\n");
++            if (asked) {
++                LLAMA_LOG_WARN("llama_moe_cache: !!! LLAMA_MOE_CACHE_READ_AHEAD NOT USED: not together with the drive tier (LLAMA_MOE_DRIVE) yet\n");
++            }
+             return;
+         }
+         ia_copier.assign(devices.size(), nullptr);

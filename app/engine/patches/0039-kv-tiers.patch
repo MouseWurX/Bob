@@ -1,0 +1,816 @@
+diff --git a/common/arg.cpp b/common/arg.cpp
+index 28d6e06..90fe8d5 100644
+--- a/common/arg.cpp
++++ b/common/arg.cpp
+@@ -2424,7 +2424,8 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
+         string_format(
+             "KV cache data type for V\n"
+             "allowed values: %s\n"
+-            "(default: %s)",
++            "(default: %s)\n"
++            "Progressive Memory (Brain Engine 0039): env LLAMA_KV_TIERS=type:window,... keeps the newest words again at sharper types",
+             get_all_kv_cache_types().c_str(),
+             ggml_type_name(params.cache_type_v)
+         ),
+diff --git a/ggml/src/ggml-cpu/ops.cpp b/ggml/src/ggml-cpu/ops.cpp
+index 710e230..3c711ed 100644
+--- a/ggml/src/ggml-cpu/ops.cpp
++++ b/ggml/src/ggml-cpu/ops.cpp
+@@ -517,9 +517,17 @@ static void ggml_compute_forward_dup_from_q(
+         const int64_t i10 = i - i13*ne10*ne11*ne12 - i12*ne10*ne11 - i11*ne10;
+         const int64_t dst_offset = i10*nb10 + i11*nb11 + i12*nb12 + i13*nb13;
+ 
+-        dequantize_row_q(
+-                (const void *) ((char *) src0->data + x_offset),
+-                     (float *) ((char *)  dst->data + dst_offset), qk);
++        if (dst->type == GGML_TYPE_F16) {
++            // Brain Engine 0039: a quantized cache read as f16 (Progressive Memory's batch overlay)
++            float tmp[256];
++            GGML_ASSERT(qk <= 256);
++            dequantize_row_q((const void *) ((char *) src0->data + x_offset), tmp, qk);
++            ggml_cpu_fp32_to_fp16(tmp, (ggml_fp16_t *) ((char *) dst->data + dst_offset), qk);
++        } else {
++            dequantize_row_q(
++                    (const void *) ((char *) src0->data + x_offset),
++                         (float *) ((char *)  dst->data + dst_offset), qk);
++        }
+     }
+ }
+ 
+@@ -574,7 +582,7 @@ void ggml_compute_forward_dup(
+             } break;
+         default:
+             {
+-                if (ggml_is_quantized(src0->type) && dst->type == GGML_TYPE_F32) {
++                if (ggml_is_quantized(src0->type) && (dst->type == GGML_TYPE_F32 || dst->type == GGML_TYPE_F16)) {
+                     ggml_compute_forward_dup_from_q(params, dst);
+                     break;
+                 }
+diff --git a/ggml/src/ggml-cuda/cpy.cu b/ggml/src/ggml-cuda/cpy.cu
+index f1f1bf2..406ecee 100644
+--- a/ggml/src/ggml-cuda/cpy.cu
++++ b/ggml/src/ggml-cuda/cpy.cu
+@@ -1,4 +1,5 @@
+ #include "cpy.cuh"
++#include "convert.cuh"
+ #include "dequantize.cuh"
+ #include "cpy-utils.cuh"
+ #if defined(GGML_USE_MUSA) && defined(GGML_MUSA_MUDNN_COPY)
+@@ -457,6 +458,15 @@ void ggml_cuda_cpy(ggml_backend_cuda_context & ctx, const ggml_tensor * src0, gg
+     char * src0_ddc = (char *) src0->data;
+     char * src1_ddc = (char *) src1->data;
+ 
++    // Brain Engine 0039: a quantized cache read as f16, through the converters the matrix products use
++    if (ggml_is_quantized(src0->type) && src1->type == GGML_TYPE_F16 && ggml_is_contiguous(src1)) {
++        const auto convert = ggml_get_to_fp16_nc_cuda(src0->type);
++        GGML_ASSERT(convert != nullptr);
++        const size_t ts = ggml_type_size(src0->type);
++        convert(src0->data, (half *) src1->data, ne00, ne01, ne02, src0->ne[3], nb01/ts, nb02/ts, nb03/ts, main_stream);
++        return;
++    }
++
+     const bool contiguous_srcs = ggml_is_contiguous(src0) && ggml_is_contiguous(src1);
+     const bool can_be_transposed = nb01 == (int64_t)ggml_element_size(src0) &&
+         src0->ne[3] == 1 && nb02 == ne00 * ne01 * (int64_t)ggml_element_size(src0) &&
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index 7f26440..bcf9c7b 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -6412,6 +6412,11 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
+                 ) {
+                     return true;
+                 }
++                // Brain Engine 0039: a quantized cache read as f16 (Progressive Memory's batch overlay)
++                if (ggml_is_quantized(src0_type) && src1_type == GGML_TYPE_F16 && ggml_is_contiguous(op->src[1]) &&
++                    ggml_get_to_fp16_nc_cuda(src0_type) != nullptr && op->src[0]->nb[0] == ggml_type_size(src0_type)) {
++                    return true;
++                }
+                 if (src0_type == GGML_TYPE_F32 && src1_type == GGML_TYPE_Q8_0) {
+                     return true;
+                 }
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index caf1a30..48adbec 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -407,7 +407,7 @@ llama_context::llama_context(
+         cparams.fused_kv_rows = false;
+ 
+         const char * LLAMA_KV_ROWS_DISABLE = getenv("LLAMA_KV_ROWS_DISABLE");
+-        if (!LLAMA_KV_ROWS_DISABLE) {
++        if (!LLAMA_KV_ROWS_DISABLE && getenv("LLAMA_KV_TIERS") == nullptr) { // Brain Engine 0039: Progressive Memory needs the plain mask
+             cparams.auto_fkvr = cparams.kv_unified;
+         } else {
+             LLAMA_LOG_INFO("%s: LLAMA_KV_ROWS_DISABLE set, disabling kv_rows\n", __func__);
+@@ -3573,6 +3573,12 @@ uint32_t llama_context::graph_max_nodes() const {
+         res += llama_sampler_backend_n_nodes(sampler) * cparams.n_outputs_max_per_seq;
+     }
+ 
++    // Brain Engine 0039: Progressive Memory adds about 40 tensors per attention layer for each part it reads
++    if (const char * ts = getenv("LLAMA_KV_TIERS"); ts != nullptr && *ts != '\0') {
++        const uint32_t n_parts = 2 + (uint32_t) std::count(ts, ts + strlen(ts), ',');
++        res += model.hparams.n_layer() * n_parts * 40;
++    }
++
+     // Brain Engine 0025: making a mask in the graph adds up to 64 blocks of at most 10 tensors, for up to 3 masks
+     if (cparams.kq_mask_build) {
+         res += 3*64*10;
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 3fddc5e..135127f 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -845,6 +845,58 @@ static void kv_split_tell(const llama_kv_cache_context * mctx, int used) {
+     }
+ }
+ 
++// Brain Engine 0039: how attention reads Progressive Memory for this batch
++static int kv_tiers_mode(const llama_kv_cache_context * mctx, uint32_t n_tokens, bool training) {
++    const auto * kv = mctx->get_kv();
++    if (kv == nullptr || kv->n_tiers() == 0 || training) {
++        return 0;
++    }
++    return n_tokens == 1 ? 1 : kv->tiers_fit(n_tokens) ? 2 : 3;
++}
++
++static void kv_tiers_tell(const llama_kv_cache_context * mctx, int used) {
++    const auto * kv = mctx->get_kv();
++    if (used > 0 && kv->tiers_first(used)) {
++        if (used == 1) {
++            LLAMA_LOG_INFO("%s: Progressive Memory: writing: each word attends to the sharpest copy of every word, merged\n", __func__);
++        } else if (used == 2) {
++            LLAMA_LOG_INFO("%s: Progressive Memory: reading: the newest words' sharp copies laid over the cache\n", __func__);
++        } else if (used == 3) {
++            LLAMA_LOG_INFO("%s: Progressive Memory: a batch bigger than LLAMA_KV_TIERS_SLACK reads the main cache only (its words are still kept sharp)\n", __func__);
++        } else {
++            LLAMA_LOG_WARN("%s: !!! Progressive Memory NOT USED for some layers: this attention can't merge (sinks, soft-capping, ALiBi or no flash attention); they read the main cache\n", __func__);
++        }
++    }
++}
++
++static void kv_tiers_set_input(llm_graph_input_attn_kv * inp, const llama_kv_cache_context * mctx, const llama_ubatch * ubatch) {
++    if (inp->tiers_mode == 0) {
++        return;
++    }
++    const auto * kv = mctx->get_kv();
++    for (uint32_t t = 0; t < inp->tier_idxs.size(); ++t) {
++        if (inp->tier_idxs[t] && inp->tier_idxs[t]->buffer) {
++            kv->set_input_tier_idxs(inp->tier_idxs[t], ubatch, t);
++        }
++        if (t < inp->tier_mask.size() && inp->tier_mask[t] && inp->tier_mask[t]->buffer) {
++            kv->set_input_tier_mask(inp->tier_mask[t], ubatch, t);
++        }
++        if (t < inp->tier_slots.size() && inp->tier_slots[t] && inp->tier_slots[t]->buffer) {
++            kv->set_input_tier_fill(inp->tier_slots[t], inp->tier_cells[t], ubatch, t, mctx->get_n_kv());
++        }
++    }
++    // one word: the main cache's mask without the cells a tier holds (a copy of the plain mask's row)
++    // (filled the plain way first: the plain mask itself may be left unallocated when no layer reads it)
++    if (inp->tier_main_mask && inp->tier_main_mask->buffer) {
++        llm_attn_mask m = inp->self_attn_mask;
++        m.raw  = inp->tier_main_mask;
++        m.rows = nullptr;
++        mctx->set_input_attn_mask(m, ubatch, inp->cparams.causal_attn);
++        kv->tiers_cut_main_mask(inp->tier_main_mask, ubatch, mctx->get_n_kv());
++    }
++    kv_tiers_tell(mctx, inp->tiers_used);
++}
++
+ void llm_graph_input_attn_kv::set_input(const llama_ubatch * ubatch) {
+     // the idxs are left unallocated when the KV cache is bypassed during training
+     if (self_k_idxs && self_k_idxs->buffer) {
+@@ -863,6 +915,8 @@ void llm_graph_input_attn_kv::set_input(const llama_ubatch * ubatch) {
+     if (self_attn_mask.raw && self_attn_mask.raw->buffer) {
+         mctx->set_input_attn_mask(self_attn_mask, ubatch, cparams.causal_attn);
+     }
++
++    kv_tiers_set_input(this, mctx, ubatch); // Brain Engine 0039
+ }
+ 
+ bool llm_graph_input_attn_kv::can_reuse(const llm_graph_params & params) {
+@@ -878,6 +932,7 @@ bool llm_graph_input_attn_kv::can_reuse(const llm_graph_params & params) {
+     res &= can_reuse_attn_mask(self_attn_mask, mctx, params.ubatch, params.cparams);
+ 
+     res &= split_mode == kv_split_mode(mctx, params.ubatch.n_tokens, params.cparams.training); // Brain Engine 0036
++    res &= tiers_mode == kv_tiers_mode(mctx, params.ubatch.n_tokens, params.cparams.training); // Brain Engine 0039
+ 
+     return res;
+ }
+@@ -1427,6 +1482,7 @@ void llm_graph_input_mem_hybrid::set_input(const llama_ubatch * ubatch) {
+ 
+     // kv_rows and the mask stay unallocated if all attention layers have their own (e.g. qwen4exp QSA)
+     mctx->get_attn()->set_input_attn_mask(inp_attn->self_attn_mask, ubatch, cparams.causal_attn);
++    kv_tiers_set_input(inp_attn.get(), mctx->get_attn(), ubatch); // Brain Engine 0039
+ 
+     const int64_t n_rs = mctx->get_recr()->get_n_rs();
+ 
+@@ -1454,6 +1510,7 @@ bool llm_graph_input_mem_hybrid::can_reuse(const llm_graph_params & params) {
+     res &= can_reuse_attn_mask(inp_attn->self_attn_mask, mctx->get_attn(), params.ubatch, params.cparams);
+ 
+     res &= inp_attn->split_mode == kv_split_mode(mctx->get_attn(), params.ubatch.n_tokens, params.cparams.training); // Brain Engine 0036
++    res &= inp_attn->tiers_mode == kv_tiers_mode(mctx->get_attn(), params.ubatch.n_tokens, params.cparams.training); // Brain Engine 0039
+ 
+     res &= inp_rs->s_copy->ne[0] == mctx->get_recr()->get_n_rs();
+ 
+@@ -3664,6 +3721,40 @@ static std::unique_ptr<llm_graph_input_attn_kv> build_attn_inp_kv_impl(
+         if (inp->split_mode > 0) {
+             inp->self_kv_idxs_hot = mctx_cur->build_input_idxs_hot(ctx0, ubatch);
+         }
++
++        // Brain Engine 0039: Progressive Memory's inputs
++        inp->tiers_mode = kv_tiers_mode(mctx_cur, ubatch.n_tokens, cparams.training);
++        if (inp->tiers_mode > 0) {
++            const auto * kv = mctx_cur->get_kv();
++            for (uint32_t t = 0; t < kv->n_tiers(); ++t) {
++                ggml_tensor * ix = ggml_new_tensor_1d(ctx0, GGML_TYPE_I64, ubatch.n_tokens);
++                ggml_set_input(ix);
++                ggml_format_name(ix, "attn_inp_tier%u_idxs", t);
++                inp->tier_idxs.push_back(ix);
++                if (inp->tiers_mode == 1 && t == 0 && inp->self_attn_mask.raw && inp->self_attn_mask.raw->type == GGML_TYPE_F16 &&
++                    inp->self_attn_mask.rows == nullptr && inp->self_attn_mask.raw->ne[1] == 1 && inp->self_attn_mask.raw->ne[3] == 1) {
++                    inp->tier_main_mask = ggml_new_tensor_2d(ctx0, GGML_TYPE_F16, inp->self_attn_mask.raw->ne[0], 1);
++                    ggml_set_input(inp->tier_main_mask);
++                    ggml_set_name(inp->tier_main_mask, "attn_inp_tier_main_mask");
++                }
++                if (inp->tiers_mode == 1) {
++                    ggml_tensor * m = ggml_new_tensor_2d(ctx0, GGML_TYPE_F16, kv->tier_ring(t), 1);
++                    ggml_set_input(m);
++                    ggml_format_name(m, "attn_inp_tier%u_mask", t);
++                    inp->tier_mask.push_back(m);
++                } else if (inp->tiers_mode == 2) {
++                    const uint32_t w = std::min(kv->tier_window(t), mctx_cur->get_n_kv());
++                    ggml_tensor * sl = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, w);
++                    ggml_tensor * ce = ggml_new_tensor_1d(ctx0, GGML_TYPE_I64, w);
++                    ggml_set_input(sl);
++                    ggml_set_input(ce);
++                    ggml_format_name(sl, "attn_inp_tier%u_slots", t);
++                    ggml_format_name(ce, "attn_inp_tier%u_cells", t);
++                    inp->tier_slots.push_back(sl);
++                    inp->tier_cells.push_back(ce);
++                }
++            }
++        }
+     }
+ 
+     inp->self_k_rot = mctx_cur->get_k_rot();
+@@ -3781,6 +3872,11 @@ ggml_tensor * llm_graph_context::build_attn(
+ 
+     // Brain Engine 0036 (LLAMA_KV_SPLIT): this layer's K and V are in RAM with a copy of the first cells on the card
+     const bool split = !cparams.training && inp->split_mode > 0 && inp->self_kv_idxs_hot != nullptr && mctx_cur->has_split(il);
++    // Brain Engine 0039 (LLAMA_KV_TIERS): Progressive Memory, sharper copies of the newest words in rings
++    const llama_kv_cache * kvt = mctx_cur->get_kv();
++    const bool tiered = !cparams.training && inp->tiers_mode > 0 && kvt->has_tiers(il) && inp->tier_idxs.size() == kvt->n_tiers();
++    const bool tiers_can = tiered && cparams.flash_attn && sinks == nullptr && kq_b == nullptr && kv_rows == nullptr &&
++            kq_mask != nullptr && kq_mask->type == GGML_TYPE_F16 && !hparams.attn_soft_cap && hparams.f_max_alibi_bias == 0.0f && v_mla == nullptr;
+ 
+     if (cparams.training) {
+         GGML_ASSERT(mctx_cur->get_n_kv() == n_tokens);
+@@ -3792,16 +3888,23 @@ ggml_tensor * llm_graph_context::build_attn(
+             const auto & k_idxs = inp->get_k_idxs();
+             const auto & v_idxs = inp->get_v_idxs();
+ 
+-            if (split) {
++            if (split || tiered) {
+                 mctx_cur->split_write_begin();
+             }
+             ggml_build_forward_expand(gf, mctx_cur->cpy_k(ctx0, k_cur, k_idxs, il));
+             ggml_build_forward_expand(gf, mctx_cur->cpy_v(ctx0, v_cur, v_idxs, il));
+-            if (split) {
++            if (split || tiered) {
+                 mctx_cur->split_write_end();
++            }
++            if (split) {
+                 ggml_build_forward_expand(gf, mctx_cur->cpy_k_hot(ctx0, k_cur, inp->self_kv_idxs_hot, il));
+                 ggml_build_forward_expand(gf, mctx_cur->cpy_v_hot(ctx0, v_cur, inp->self_kv_idxs_hot, il));
+             }
++            // Brain Engine 0039: every word also goes into each tier's ring, from the same full-precision K and V
++            for (uint32_t t = 0; tiered && t < kvt->n_tiers(); ++t) {
++                ggml_build_forward_expand(gf, kvt->cpy_k_tier(ctx0, k_cur, inp->tier_idxs[t], il, t));
++                ggml_build_forward_expand(gf, kvt->cpy_v_tier(ctx0, v_cur, inp->tier_idxs[t], il, t));
++            }
+         }
+ 
+         k = mctx_cur->get_k(ctx0, il);
+@@ -3812,7 +3915,75 @@ ggml_tensor * llm_graph_context::build_attn(
+     const uint32_t n_hot = split ? mctx_cur->get_split_hot() : 0;
+     ggml_backend_t be_card = split ? kv_split_backend_of(sched, mctx_cur->get_k_hot(ctx0, il, 1)->view_src) : nullptr;
+ 
+-    if (split && be_card != nullptr && inp->split_mode == 1) {
++    if (tiered && !tiers_can && inp->tiers_mode < 3) {
++        inp->tiers_used = 4; // said once: these layers read the main cache
++    }
++    if (tiers_can && inp->tiers_mode == 1 && inp->tier_main_mask != nullptr) {
++        // one word: attend to the main cache (without the cells a tier holds) and to each ring, each part on its own
++        // with a sink far below every score (so a part with nothing to read gives 0, not 0/0), then weight each part
++        // by its share: the softmax of the parts' log-sum-exps, worked out from the same scores
++        const uint32_t n_kv = mctx_cur->get_n_kv();
++        struct part { ggml_tensor * k, * v, * m; int64_t n; };
++        std::vector<part> parts;
++        parts.push_back({ k, v, inp->tier_main_mask, (int64_t) n_kv });
++        for (uint32_t t = 0; t < kvt->n_tiers(); ++t) {
++            parts.push_back({ kvt->get_k_tier(ctx0, il, t), kvt->get_v_tier(ctx0, il, t), inp->tier_mask[t], (int64_t) kvt->tier_ring(t) });
++        }
++        const int64_t n_head = q->ne[1];
++        ggml_tensor * floor_sink = ggml_fill(ctx0, ggml_new_tensor_1d(ctx0, GGML_TYPE_F32, n_head), -1e30f);
++        ggml_tensor * lses = nullptr;
++        std::vector<ggml_tensor *> outs;
++        for (const auto & pt : parts) {
++            ggml_tensor * qp = ggml_permute(ctx0, q, 0, 2, 1, 3);       // [d, n_tokens, n_head]
++            ggml_tensor * kt = ggml_permute(ctx0, pt.k, 0, 2, 1, 3);    // [d, n, n_head_kv]
++            ggml_tensor * x  = ggml_mul_mat(ctx0, kt, qp);              // [n, n_tokens, n_head]
++            ggml_prec_set_acc(x, GGML_PREC_F32);
++            x = ggml_scale(ctx0, x, kq_scale);
++            x = ggml_add(ctx0, x, ggml_cast(ctx0, ggml_view_2d(ctx0, pt.m, pt.n, 1, pt.m->nb[1], 0), GGML_TYPE_F32));
++            x = ggml_reshape_2d(ctx0, x, pt.n, x->ne[1]*x->ne[2]);
++            ggml_tensor * c = ggml_clamp(ctx0, ggml_pool_1d(ctx0, x, GGML_OP_POOL_MAX, pt.n, pt.n, 0), -1e30f, 1e30f);
++            ggml_tensor * e = ggml_exp(ctx0, ggml_sub(ctx0, x, c));
++            ggml_tensor * l = ggml_add(ctx0, ggml_log(ctx0, ggml_sum_rows(ctx0, e)), c); // [1, n_head]
++            l = ggml_reshape_2d(ctx0, l, 1, n_head);
++            lses = lses == nullptr ? l : ggml_concat(ctx0, lses, l, 0);   // [n_parts, n_head]
++            outs.push_back(build_attn_mha(q, pt.k, pt.v, nullptr, pt.m, nullptr, floor_sink, nullptr, 0, kq_scale, il));
++        }
++        cb(lses, "tiers_lse", il);
++        ggml_tensor * w = ggml_soft_max(ctx0, lses);                      // [n_parts, n_head]
++        for (size_t i = 0; i < outs.size(); ++i) {
++            ggml_tensor * wi = ggml_cont(ctx0, ggml_view_2d(ctx0, w, 1, n_head, w->nb[1], i*ggml_element_size(w)));
++            ggml_tensor * oi = ggml_reshape_3d(ctx0, outs[i], outs[i]->ne[0]/n_head, n_head, outs[i]->ne[1]);
++            oi = ggml_mul(ctx0, oi, ggml_reshape_3d(ctx0, wi, 1, n_head, 1));
++            cur = cur == nullptr ? oi : ggml_add(ctx0, cur, oi);
++        }
++        cur = ggml_reshape_2d(ctx0, cur, cur->ne[0]*cur->ne[1], cur->ne[2]);
++        cb(cur, "tiers_merged", il);
++        inp->tiers_used = std::max(inp->tiers_used, 1);
++    } else if (tiers_can && inp->tiers_mode == 2 && inp->tier_slots.size() == kvt->n_tiers()) {
++        // a batch: read the main cache as f16 and lay each tier's copies of the newest words over it, the widest
++        // tier first so the sharpest one wins; then one plain attention over it
++        const uint32_t n_kv = mctx_cur->get_n_kv();
++        auto overlay = [&](ggml_tensor * main, bool is_k) {
++            ggml_tensor * f = ggml_cast(ctx0, main, GGML_TYPE_F16);      // [d, n_head_kv, n_kv, 1]
++            f = ggml_reshape_2d(ctx0, f, f->ne[0]*f->ne[1], f->ne[2]);
++            for (int t = (int) kvt->n_tiers() - 1; t >= 0; --t) {
++                ggml_tensor * ring = is_k ? kvt->get_k_tier(ctx0, il, t) : kvt->get_v_tier(ctx0, il, t);
++                ring = ggml_reshape_2d(ctx0, ring, ring->ne[0]*ring->ne[1], ring->ne[2]);
++                ggml_tensor * rows = ggml_get_rows(ctx0, ring, inp->tier_slots[t]); // f32 [d*h, w]
++                f = ggml_set_rows(ctx0, f, rows, inp->tier_cells[t]);
++            }
++            return ggml_reshape_4d(ctx0, f, main->ne[0], main->ne[1], n_kv, 1);
++        };
++        ggml_tensor * kf = overlay(k, true);
++        ggml_tensor * vf = overlay(v, false);
++        cb(kf, "tiers_k", il);
++        cb(vf, "tiers_v", il);
++        cur = build_attn_mha(q, kf, vf, kq_b, kq_mask, kv_rows, sinks, v_mla, 0, kq_scale, il);
++        inp->tiers_used = std::max(inp->tiers_used, 2);
++    } else if (tiered && inp->tiers_mode == 3) {
++        inp->tiers_used = std::max(inp->tiers_used, 3);
++        cur = build_attn_mha(q, k, v, kq_b, kq_mask, kv_rows, sinks, v_mla, 0, kq_scale, il);
++    } else if (split && be_card != nullptr && inp->split_mode == 1) {
+         // the whole chat fits in the card's copy
+         inp->split_used = std::max(inp->split_used, 1);
+         cur = build_attn_mha(q, mctx_cur->get_k_hot(ctx0, il, n_kv), mctx_cur->get_v_hot(ctx0, il, n_kv),
+diff --git a/src/llama-graph.h b/src/llama-graph.h
+index 999eeb1..18752e9 100644
+--- a/src/llama-graph.h
++++ b/src/llama-graph.h
+@@ -395,6 +395,16 @@ public:
+     int split_mode = 0; // 0 no split, 1 card copy only, 2 card + processor merged (writing), 3 the RAM copy (prompts)
+     int split_used = 0; // the way the layers actually read it (a layer the merge can't take reads the RAM copy)
+ 
++    // Brain Engine 0039 (LLAMA_KV_TIERS): Progressive Memory. 0 none, 1 one word: each copy attended and merged,
++    // 2 a batch: the sharp copies laid over the main cache read as f16, 3 a batch too big: the rings written only
++    int tiers_mode = 0;
++    int tiers_used = 0;
++    std::vector<ggml_tensor *> tier_idxs;  // I64 [n_tokens]: each word's ring slot
++    std::vector<ggml_tensor *> tier_mask;  // mode 1: F16 [ring, 1]
++    ggml_tensor * tier_main_mask = nullptr; // mode 1: F16 [n_kv, 1], the main mask without the cells a tier holds
++    std::vector<ggml_tensor *> tier_slots; // mode 2: I32 [window]: ring slots of the newest words
++    std::vector<ggml_tensor *> tier_cells; // mode 2: I64 [window]: the cells they go over
++
+     llm_attn_mask self_attn_mask;
+ 
+     // note: assumes v_rot^2 == I
+diff --git a/src/llama-kv-cache.cpp b/src/llama-kv-cache.cpp
+index 9c9b1ca..2ee269e 100644
+--- a/src/llama-kv-cache.cpp
++++ b/src/llama-kv-cache.cpp
+@@ -114,7 +114,7 @@ llama_kv_cache::llama_kv_cache(
+         auto it = ctx_map.find(buft);
+         if (it == ctx_map.end()) {
+             ggml_init_params params = {
+-                /*.mem_size   =*/ size_t(2u*(1 + n_stream)*n_layer*ggml_tensor_overhead()),
++                /*.mem_size   =*/ size_t(2u*(1 + n_stream + 4)*n_layer*ggml_tensor_overhead()), // Brain Engine 0036, 0039: room for the card copy and up to 4 tier rings
+                 /*.mem_buffer =*/ NULL,
+                 /*.no_alloc   =*/ true,
+             };
+@@ -179,6 +179,56 @@ llama_kv_cache::llama_kv_cache(
+         }
+     }
+ 
++    // Brain Engine 0039: LLAMA_KV_TIERS="q8_0:8192,q4_0:65536" (type:words, sharpest first) keeps the newest words
++    // again at sharper types, in rings beside the cache; attention reads each word from the sharpest copy that has
++    // it. LLAMA_KV_TIERS_SLACK (default 8192, rounded up to 256) is the biggest batch the windows hold through.
++    if (const char * ts = getenv("LLAMA_KV_TIERS"); ts != nullptr && *ts != '\0') {
++        std::vector<kv_tier> want;
++        std::string spec = ts, bad;
++        uint32_t slack = 8192;
++        if (const char * sl = getenv("LLAMA_KV_TIERS_SLACK"); sl != nullptr && atoll(sl) > 0) {
++            slack = GGML_PAD((uint32_t) std::min<long long>(atoll(sl), 1 << 20), 256u);
++        }
++        for (size_t at = 0; at <= spec.size() && bad.empty(); ) {
++            const size_t end = std::min(spec.find(',', at), spec.size());
++            const std::string item = spec.substr(at, end - at);
++            const size_t colon = item.find(':');
++            ggml_type type = GGML_TYPE_COUNT;
++            for (int i = 0; colon != std::string::npos && i < GGML_TYPE_COUNT; ++i) {
++                const char * nm = ggml_type_name((ggml_type) i);
++                if (nm != nullptr && item.compare(0, colon, nm) == 0 && ggml_get_type_traits((ggml_type) i)->from_float_ref != nullptr) {
++                    type = (ggml_type) i;
++                }
++            }
++            const long long w = colon == std::string::npos ? 0 : atoll(item.c_str() + colon + 1);
++            if (type == GGML_TYPE_COUNT || w <= 0 || w > (1 << 22)) {
++                bad = "can't read \"" + item + "\" (type:words, for example q8_0:8192)";
++            } else if (want.size() == 4) {
++                bad = "at most 4 tiers";
++            } else if (!want.empty() && (uint32_t) w <= want.back().window) {
++                bad = "each window must be bigger than the one before it (sharpest first)";
++            } else {
++                want.push_back({ type, (uint32_t) w, GGML_PAD((uint32_t) w + slack, 256u), {} });
++            }
++            at = end + 1;
++        }
++        const char * why = !bad.empty() ? bad.c_str() : want.empty() ? "no tiers given" : v_trans ? "it needs flash attention" :
++            n_stream > 1 || n_seq_max > 1 ? "it works with one chat at a time (-np 1)" : is_mla ? "MLA brains keep a different cache" :
++            other != nullptr || share ? "this cache shares cells with another" : is_indexer ? "indexer caches stay as they are" :
++            swa_type != LLAMA_SWA_TYPE_NONE ? "sliding-window caches are small already" : split_req > 0 ? "it can't be used with LLAMA_KV_SPLIT" :
++            getenv("LLAMA_KQ_MASK_BUILD") || getenv("LLAMA_KQ_MASK_POS") ? "it needs the attention mask table (unset LLAMA_KQ_MASK_BUILD / _POS)" :
++            want.back().window >= kv_size ? "the context is not bigger than the biggest window" : nullptr;
++        if (why != nullptr) {
++            LLAMA_LOG_WARN("%s: !!! LLAMA_KV_TIERS=%s NOT USED%s%s: %s\n", __func__, ts, *name_tag ? " for the " : "", name_tag, why);
++        } else {
++            for (auto & t : want) {
++                t.tag.assign(t.ring, -1);
++            }
++            tiers = std::move(want);
++            tier_slack = slack;
++        }
++    }
++
+     for (uint32_t il = 0; il < n_layer; il++) {
+         if (!hparams.has_kv(il)) {
+             LLAMA_LOG_DEBUG("%s: layer %3d: does not have KV cache\n", __func__, il);
+@@ -286,6 +336,23 @@ llama_kv_cache::llama_kv_cache(
+             has_v && ggml_format_name(l.v_hot, "cache_%sv_hot_l%d", name_tag, il);
+             split_hot = split_req;
+         }
++
++        // Brain Engine 0039: the tiers' rings live beside the layer's K and V, on the same device
++        for (const auto & t : tiers) {
++            auto & l = layers.back();
++            l.k_tier.push_back(has_k ? ggml_new_tensor_2d(ctx, t.type, n_embd_k_gqa, t.ring) : nullptr);
++            l.v_tier.push_back(has_v ? ggml_new_tensor_2d(ctx, t.type, n_embd_v_gqa, t.ring) : nullptr);
++            has_k && ggml_format_name(l.k_tier.back(), "cache_%sk_tier%zu_l%d", name_tag, l.k_tier.size() - 1, il);
++            has_v && ggml_format_name(l.v_tier.back(), "cache_%sv_tier%zu_l%d", name_tag, l.v_tier.size() - 1, il);
++        }
++    }
++    if (!tiers.empty()) {
++        std::string list;
++        for (const auto & t : tiers) {
++            list += format("%s%s for the newest %u", list.empty() ? "" : ", ", ggml_type_name(t.type), t.window);
++        }
++        LLAMA_LOG_INFO("%s: Progressive Memory: every word at %s/%s, again at %s words (batches up to %u keep it; LLAMA_KV_TIERS)\n",
++            __func__, ggml_type_name(type_k), ggml_type_name(type_v), list.c_str(), tier_slack);
+     }
+     if (split_req > 0 && split_hot == 0) {
+         LLAMA_LOG_WARN("%s: !!! LLAMA_KV_SPLIT NOT USED%s%s: no layer of this cache is on a card\n", __func__, *name_tag ? " for the " : "", name_tag);
+@@ -471,6 +538,7 @@ void llama_kv_cache::init_rotation(const char * name_tag) {
+ }
+ 
+ void llama_kv_cache::clear(bool data) {
++    tiers_forget(0, -1); // Brain Engine 0039
+     for (uint32_t s = 0; s < n_stream; ++s) {
+         v_cells[s].reset();
+         v_heads[s] = 0;
+@@ -489,6 +557,8 @@ bool llama_kv_cache::seq_rm(llama_seq_id seq_id, llama_pos p0, llama_pos p1) {
+         return true;
+     }
+ 
++    tiers_forget(p0 < 0 ? 0 : p0, p1); // Brain Engine 0039: one chat only, so its positions are the tiers'
++
+     // TODO: fix incosistent handling of `seq_id < 0` and `seq_id == -1` in the codebase [TAG_LLAMA_SEQ_ID_NEG]
+     GGML_ASSERT(seq_id == -1 || (seq_id >= 0 && (size_t) seq_id < seq_to_stream.size()));
+ 
+@@ -677,6 +747,8 @@ void llama_kv_cache::seq_add(llama_seq_id seq_id, llama_pos p0, llama_pos p1, ll
+         return;
+     }
+ 
++    if (shift != 0) { tiers_forget(0, -1); } // Brain Engine 0039: moved words are read from the main cache until written again
++
+     GGML_ASSERT(seq_id >= 0 && (size_t) seq_id < seq_to_stream.size());
+     GGML_ASSERT(hparams.n_pos_per_embd() == 1 && "seq_add() is only supported for n_pos_per_embd() == 1");
+ 
+@@ -727,6 +799,8 @@ void llama_kv_cache::seq_div(llama_seq_id seq_id, llama_pos p0, llama_pos p1, in
+         return;
+     }
+ 
++    if (d != 1) { tiers_forget(0, -1); } // Brain Engine 0039
++
+     GGML_ASSERT(seq_id >= 0 && (size_t) seq_id < seq_to_stream.size());
+     GGML_ASSERT(hparams.n_pos_per_embd() == 1 && "seq_div() is only supported for n_pos_per_embd() == 1");
+ 
+@@ -857,6 +931,12 @@ llama_kv_cache::slot_info_vec_t llama_kv_cache::prepare(const std::vector<llama_
+     // remember the old state of the cells so we can restore it in the end
+     std::vector<state_t> states;
+ 
++    // Brain Engine 0039: apply_ubatch below also moves the tiers' tags; they come back with the cells
++    std::vector<std::vector<llama_pos>> tags_saved;
++    for (const auto & t : tiers) {
++        tags_saved.push_back(t.tag);
++    }
++
+     bool success = true;
+ 
+     for (const auto & ubatch : ubatches) {
+@@ -901,6 +981,9 @@ llama_kv_cache::slot_info_vec_t llama_kv_cache::prepare(const std::vector<llama_
+             head = it->v_heads_old[s];
+         }
+     }
++    for (size_t t = 0; t < tiers.size(); ++t) {
++        tiers[t].tag = std::move(tags_saved[t]);
++    }
+ 
+     if (!success) {
+         return {};
+@@ -1228,6 +1311,11 @@ void llama_kv_cache::apply_ubatch(const slot_info & sinfo, const llama_ubatch &
+ 
+             cells.pos_set(idx, ubatch.pos[i]);
+ 
++            // Brain Engine 0039: the graph writes this word into every tier's ring at pos % ring
++            for (auto & t : tiers) {
++                t.tag[ubatch.pos[i] % t.ring] = ubatch.pos[i];
++            }
++
+             if (ubatch.is_pos_2d() || ubatch.token || hparams.ple_n_heads > 0) {
+                 llama_kv_cell_ext ext;
+ 
+@@ -1555,7 +1643,8 @@ bool llama_kv_cache::has_split(int32_t il) const {
+ static void split_mark_write(const bool split_writing, const llama_kv_cache * kv, bool & stale, bool has_hot, int32_t il) {
+     if (has_hot && !split_writing && !stale) {
+         stale = true;
+-        LLAMA_LOG_WARN("%s: layer %d is stored outside the split-aware attention; it reads its whole K and V from RAM now\n", __func__, il);
++        LLAMA_LOG_WARN("%s: layer %d is stored outside the split-aware attention; it reads its whole K and V %s now\n", __func__, il,
++            kv->n_tiers() > 0 ? "from the main cache (no Progressive Memory)" : "from RAM");
+     }
+     GGML_UNUSED(kv);
+ }
+@@ -1611,6 +1700,146 @@ bool llama_kv_cache::split_hot_used(const slot_info & sinfo) const {
+     return false;
+ }
+ 
++// ---------- Brain Engine 0039 (LLAMA_KV_TIERS): Progressive Memory ----------
++
++bool llama_kv_cache::has_tiers(int32_t il) const {
++    const auto it = map_layer_ids.find(il);
++    return !tiers.empty() && it != map_layer_ids.end() && !layers[it->second].k_tier.empty() && !layers[it->second].hot_stale;
++}
++
++ggml_tensor * llama_kv_cache::get_k_tier(ggml_context * ctx, int32_t il, uint32_t t) const {
++    ggml_tensor * k = layers[map_layer_ids.at(il)].k_tier.at(t);
++    return ggml_view_4d(ctx, k, hparams.n_embd_head_k(il), hparams.n_head_kv(il), k->ne[1], 1,
++            ggml_row_size(k->type, hparams.n_embd_head_k(il)), k->nb[1], k->nb[1]*k->ne[1], 0);
++}
++
++ggml_tensor * llama_kv_cache::get_v_tier(ggml_context * ctx, int32_t il, uint32_t t) const {
++    ggml_tensor * v = layers[map_layer_ids.at(il)].v_tier.at(t);
++    GGML_ASSERT(!v_trans);
++    return ggml_view_4d(ctx, v, hparams.n_embd_head_v(il), hparams.n_head_kv(il), v->ne[1], 1,
++            ggml_row_size(v->type, hparams.n_embd_head_v(il)), v->nb[1], v->nb[1]*v->ne[1], 0);
++}
++
++ggml_tensor * llama_kv_cache::cpy_k_tier(ggml_context * ctx, ggml_tensor * k_cur, ggml_tensor * idxs, int32_t il, uint32_t t) const {
++    ggml_tensor * k = layers[map_layer_ids.at(il)].k_tier.at(t);
++    GGML_ASSERT(ggml_row_size(k_cur->type, k_cur->ne[0]) == k_cur->nb[1]);
++    k_cur = ggml_view_2d(ctx, k_cur, k_cur->ne[0]*k_cur->ne[1], k_cur->ne[2], k_cur->nb[2], 0);
++    return ggml_set_rows(ctx, k, k_cur, idxs);
++}
++
++ggml_tensor * llama_kv_cache::cpy_v_tier(ggml_context * ctx, ggml_tensor * v_cur, ggml_tensor * idxs, int32_t il, uint32_t t) const {
++    ggml_tensor * v = layers[map_layer_ids.at(il)].v_tier.at(t);
++    GGML_ASSERT(ggml_row_size(v_cur->type, v_cur->ne[0]) == v_cur->nb[1]);
++    v_cur = ggml_view_2d(ctx, v_cur, v_cur->ne[0]*v_cur->ne[1], v_cur->ne[2], v_cur->nb[2], 0);
++    return ggml_set_rows(ctx, v, v_cur, idxs);
++}
++
++void llama_kv_cache::set_input_tier_idxs(ggml_tensor * dst, const llama_ubatch * ubatch, uint32_t t) const {
++    GGML_ASSERT(ggml_backend_buffer_is_host(dst->buffer));
++    int64_t * data = (int64_t *) dst->data;
++    for (uint32_t i = 0; i < ubatch->n_tokens; ++i) {
++        data[i] = ubatch->pos[i] % tiers[t].ring;
++    }
++}
++
++// the tier that holds position p for a word at position p_cur, or -1 when only the main cache has it
++static int tier_of(const std::vector<llama_kv_cache_tier_view> & tv, llama_pos p, llama_pos p_cur) {
++    for (size_t t = 0; t < tv.size(); ++t) {
++        if (p <= p_cur && p_cur - p < (llama_pos) tv[t].window && (*tv[t].tag)[p % tv[t].ring] == p) {
++            return (int) t;
++        }
++    }
++    return -1;
++}
++
++void llama_kv_cache::set_input_tier_mask(ggml_tensor * dst, const llama_ubatch * ubatch, uint32_t t) const {
++    GGML_ASSERT(ggml_backend_buffer_is_host(dst->buffer) && dst->type == GGML_TYPE_F16 && ubatch->n_tokens == 1);
++    std::vector<llama_kv_cache_tier_view> tv;
++    for (const auto & x : tiers) {
++        tv.push_back({ x.window, x.ring, &x.tag });
++    }
++    const llama_pos p_cur = ubatch->pos[0];
++    ggml_fp16_t * data = (ggml_fp16_t *) dst->data;
++    const ggml_fp16_t keep = ggml_fp32_to_fp16(0.0f), drop = ggml_fp32_to_fp16(-INFINITY);
++    const int64_t n = dst->ne[0];
++    for (int64_t r = 0; r < dst->ne[1]; ++r) {
++        for (int64_t s = 0; s < n; ++s) {
++            const llama_pos q = s < (int64_t) tiers[t].ring ? tiers[t].tag[s] : -1;
++            data[r*n + s] = r == 0 && q >= 0 && tier_of(tv, q, p_cur) == (int) t ? keep : drop;
++        }
++    }
++}
++
++void llama_kv_cache::tiers_cut_main_mask(ggml_tensor * mask, const llama_ubatch * ubatch, uint32_t n_kv) const {
++    GGML_ASSERT(ggml_backend_buffer_is_host(mask->buffer) && mask->type == GGML_TYPE_F16 && ubatch->n_tokens == 1);
++    std::vector<llama_kv_cache_tier_view> tv;
++    for (const auto & x : tiers) {
++        tv.push_back({ x.window, x.ring, &x.tag });
++    }
++    const auto & cells = v_cells[0];
++    const llama_pos p_cur = ubatch->pos[0];
++    const ggml_fp16_t drop = ggml_fp32_to_fp16(-INFINITY);
++    ggml_fp16_t * data = (ggml_fp16_t *) mask->data;
++    for (uint32_t c = 0; c < std::min<uint32_t>(n_kv, mask->ne[0]); ++c) {
++        if (!cells.is_empty(c) && tier_of(tv, cells.pos_get(c), p_cur) >= 0) {
++            data[c] = drop;
++        }
++    }
++}
++
++void llama_kv_cache::set_input_tier_fill(ggml_tensor * slots, ggml_tensor * cells_dst, const llama_ubatch * ubatch, uint32_t t, uint32_t n_kv) const {
++    GGML_ASSERT(ggml_backend_buffer_is_host(slots->buffer) && ggml_backend_buffer_is_host(cells_dst->buffer));
++    GGML_ASSERT(slots->ne[0] == cells_dst->ne[0]);
++    const auto & cells = v_cells[0];
++    const auto & x = tiers[t];
++    llama_pos p_new = -1;
++    for (uint32_t i = 0; i < ubatch->n_tokens; ++i) {
++        p_new = std::max(p_new, ubatch->pos[i]);
++    }
++    // the newest `window` positions, each with the cell that holds it (the cells are in this batch's view, < n_kv)
++    std::vector<int32_t> cell_of(x.window, -1);
++    for (uint32_t c = 0; c < n_kv && c < cells.size(); ++c) {
++        if (cells.is_empty(c)) {
++            continue;
++        }
++        const llama_pos p = cells.pos_get(c);
++        if (p <= p_new && p_new - p < (llama_pos) x.window) {
++            cell_of[p_new - p] = (int32_t) c;
++        }
++    }
++    int32_t * sd = (int32_t *) slots->data;
++    int64_t * cd = (int64_t *) cells_dst->data;
++    const int64_t n = slots->ne[0];
++    int64_t k = 0;
++    for (uint32_t d = 0; d < x.window && k < n; ++d) {
++        const llama_pos p = p_new - (llama_pos) d;
++        if (p < 0) {
++            break;
++        }
++        if (cell_of[d] >= 0 && x.tag[p % x.ring] == p) {
++            sd[k] = (int32_t) (p % x.ring);
++            cd[k] = cell_of[d];
++            ++k;
++        }
++    }
++    // a fixed size, so the graph can be reused: the rest repeats the newest word (the batch always has one)
++    GGML_ASSERT(k > 0);
++    for (int64_t j = k; j < n; ++j) {
++        sd[j] = sd[0];
++        cd[j] = cd[0];
++    }
++}
++
++void llama_kv_cache::tiers_forget(llama_pos p0, llama_pos p1) {
++    for (auto & t : tiers) {
++        for (auto & q : t.tag) {
++            if (q >= 0 && q >= p0 && (p1 < 0 || q < p1)) {
++                q = -1;
++            }
++        }
++    }
++}
++
+ void llama_kv_cache::split_refresh() {
+     if (split_hot == 0) {
+         return;
+@@ -1634,7 +1863,7 @@ ggml_tensor * llama_kv_cache::cpy_k(ggml_context * ctx, ggml_tensor * k_cur, ggm
+ 
+     const int32_t ikv = map_layer_ids.at(il);
+ 
+-    split_mark_write(split_writing, this, layers[ikv].hot_stale, layers[ikv].k_hot != nullptr, il); // Brain Engine 0036
++    split_mark_write(split_writing, this, layers[ikv].hot_stale, layers[ikv].k_hot != nullptr || !layers[ikv].k_tier.empty(), il); // Brain Engine 0036, 0039
+ 
+     ggml_tensor * k = layers[ikv].k;
+ 
+@@ -1671,7 +1900,7 @@ ggml_tensor * llama_kv_cache::cpy_v(ggml_context * ctx, ggml_tensor * v_cur, ggm
+ 
+     const int32_t ikv = map_layer_ids.at(il);
+ 
+-    split_mark_write(split_writing, this, layers[ikv].hot_stale, layers[ikv].v_hot != nullptr, il); // Brain Engine 0036
++    split_mark_write(split_writing, this, layers[ikv].hot_stale, layers[ikv].v_hot != nullptr || !layers[ikv].v_tier.empty(), il); // Brain Engine 0036, 0039
+ 
+     auto * v = layers[ikv].v;
+ 
+@@ -2618,6 +2847,7 @@ const slot_info_vec_t *   sinfos_in) {
+     }
+ 
+     split_refresh(); // Brain Engine 0036
++    tiers_forget(0, -1); // Brain Engine 0039: a loaded chat is read from the main cache until new words are written
+ }
+ 
+ void llama_kv_cache::state_write_meta(llama_io_write_i & io, const cell_ranges_t & cr, llama_seq_id seq_id) const {
+diff --git a/src/llama-kv-cache.h b/src/llama-kv-cache.h
+index 8f14ad6..a98f6b3 100644
+--- a/src/llama-kv-cache.h
++++ b/src/llama-kv-cache.h
+@@ -17,6 +17,13 @@ struct llama_context;
+ // llama_kv_cache
+ //
+ 
++// Brain Engine 0039: what a tier looks like to the mask code
++struct llama_kv_cache_tier_view {
++    uint32_t window;
++    uint32_t ring;
++    const std::vector<llama_pos> * tag;
++};
++
+ class llama_kv_cache : public llama_memory_i {
+ public:
+     struct stream_copy_info {
+@@ -293,8 +300,26 @@ private:
+         ggml_tensor * k_hot = nullptr;
+         ggml_tensor * v_hot = nullptr;
+         mutable bool  hot_stale = false; // something other than the split-aware attention wrote this layer
++
++        // Brain Engine 0039 (LLAMA_KV_TIERS): rings with a sharper copy of the newest words, one per tier
++        std::vector<ggml_tensor *> k_tier;
++        std::vector<ggml_tensor *> v_tier;
+     };
+ 
++    // Brain Engine 0039 (LLAMA_KV_TIERS): Progressive Memory. The cache keeps every word at its own type (-ctk/-ctv);
++    // each tier keeps the newest `window` words again at a sharper type, in a ring of `ring` cells (slot = pos % ring).
++    // Each word is written to every tier straight from full precision, so nothing is rounded twice.
++    struct kv_tier {
++        ggml_type type;
++        uint32_t  window;
++        uint32_t  ring;
++        std::vector<llama_pos> tag; // the position each slot holds, -1 for none
++    };
++    std::vector<kv_tier> tiers;      // sharpest first (the smallest window)
++    uint32_t tier_slack = 0;         // the biggest batch whose words all keep their windows (ring - window)
++    mutable uint32_t tiers_told = 0;
++    void tiers_forget(llama_pos p0, llama_pos p1); // positions in [p0, p1) leave the tiers (p1 < 0: to the end)
++
+     mutable bool split_writing = false; // set while the split-aware attention stores K and V
+     mutable uint32_t split_told = 0;
+ 
+@@ -313,6 +338,24 @@ public:
+     bool split_first(int mode) const { const bool f = !(split_told & (1u << mode)); split_told |= 1u << mode; return f; }
+     void split_write_begin() const { split_writing = true; }
+     void split_write_end()   const { split_writing = false; }
++
++    // Brain Engine 0039 (LLAMA_KV_TIERS)
++    uint32_t n_tiers() const { return (uint32_t) tiers.size(); }
++    uint32_t tier_window(uint32_t t) const { return tiers[t].window; }
++    uint32_t tier_ring(uint32_t t) const { return tiers[t].ring; }
++    bool     tiers_fit(uint32_t n_tokens) const { return !tiers.empty() && n_tokens <= tier_slack; }
++    bool     tiers_first(int mode) const { const bool f = !(tiers_told & (1u << mode)); tiers_told |= 1u << mode; return f; }
++    bool     has_tiers(int32_t il) const;
++    ggml_tensor * get_k_tier(ggml_context * ctx, int32_t il, uint32_t t) const;
++    ggml_tensor * get_v_tier(ggml_context * ctx, int32_t il, uint32_t t) const;
++    ggml_tensor * cpy_k_tier(ggml_context * ctx, ggml_tensor * k_cur, ggml_tensor * idxs, int32_t il, uint32_t t) const;
++    ggml_tensor * cpy_v_tier(ggml_context * ctx, ggml_tensor * v_cur, ggml_tensor * idxs, int32_t il, uint32_t t) const;
++    void set_input_tier_idxs(ggml_tensor * dst, const llama_ubatch * ubatch, uint32_t t) const;
++    // one word (writing): the tier's own mask, and the main mask without the cells a tier holds
++    void set_input_tier_mask(ggml_tensor * dst, const llama_ubatch * ubatch, uint32_t t) const;
++    void tiers_cut_main_mask(ggml_tensor * mask, const llama_ubatch * ubatch, uint32_t n_kv) const;
++    // a batch (reading): for the newest `window` words, the tier slot and the cell it goes over
++    void set_input_tier_fill(ggml_tensor * slots, ggml_tensor * cells_dst, const llama_ubatch * ubatch, uint32_t t, uint32_t n_kv) const;
+ private:
+ 
+     bool v_trans = true;  // the value tensor is transposed
+@@ -468,6 +511,9 @@ public:
+     ggml_tensor * build_input_idxs_hot(ggml_context * ctx, const llama_ubatch & ubatch) const;
+     void          set_input_idxs_hot(ggml_tensor * dst, const llama_ubatch * ubatch) const;
+ 
++    // Brain Engine 0039
++    const llama_kv_cache * get_kv() const { return kv; }
++
+     uint32_t get_n_kv_rows() const;
+ 
+     ggml_type type_k() const;

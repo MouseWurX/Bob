@@ -21,6 +21,7 @@ export async function mountPrivateWeb(box) {
     box.innerHTML = `
       <label class="switch srow-switch"><input type="checkbox" data-pw-on ${v.on ? 'checked' : ''}><span><strong>Private web</strong><br><span class="muted">Search services you set up in <a href="#" data-pw-keys>Search API keys</a> go first (they get only the words). No cookies or Referer, the "do not sell or share" signal, tracking bits off links, and my browser window in a throwaway profile that blocks trackers. Signing in to sites doesn't work in it.</span></span></label>
       <label class="switch srow-switch"><input type="checkbox" data-pw-other ${v.otherSources ? 'checked' : ''}><span><strong>Try other sources when one blocks me</strong><br><span class="muted">I never get past a block. I skip that site for the job and read the same facts from up to 3 others, like another search result or a copy the Internet Archive already has.</span></span></label>
+      <label class="switch srow-switch"><input type="checkbox" data-pw-human ${v.humanCheck ? 'checked' : ''} aria-describedby="pw-human-help"><span><strong>Let me finish robot checks</strong><br><span class="muted" id="pw-human-help">When a page wants a person (a captcha or a "checking your browser" page), I ask you on a card, open it in my browser window for you to finish, and carry on when it's done. I never do the check myself, and only you at this computer get asked, never Discord, guests or other apps.${v.browser ? '' : ' This needs my browser window, so it works in the Bob desktop app, not here.'}</span></span></label>
       <div class="pw-route">
         <label for="pw-route-box"><strong>Route through</strong> <span class="muted">(optional: your own proxy or Tor)</span></label>
         <div class="row">
@@ -40,6 +41,7 @@ export async function mountPrivateWeb(box) {
   };
   box.addEventListener('change', (e) => {
     if (e.target.matches('[data-pw-on]')) return go({ on: e.target.checked }, e.target.checked ? 'Private web is on.' : 'Private web is off.');
+    if (e.target.matches('[data-pw-human]')) return go({ humanCheck: e.target.checked }, e.target.checked ? "I'll ask you on a card when a page wants a person." : "I'll skip pages that want a person, as before.");
     if (e.target.matches('[data-pw-other]')) return go({ otherSources: e.target.checked }, e.target.checked ? "I'll try other sources when one blocks me." : "I'll just say when a site blocks me.");
   });
   box.addEventListener('click', (e) => {

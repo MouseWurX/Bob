@@ -24,6 +24,7 @@ import { securityTools } from './hands-security.js';
 import { selfToolsTools } from './selftools.js';
 import { Made, showMadeTool } from './made.js';
 import { scheduleTools } from './hands-schedules.js';
+import { routineTools } from './hands-routines.js'; // Routines (off by default): run the routines you built in the editor
 import { HANDS, handsSettings } from './hands-settings.js';
 import { useToolsTool } from './toolbox.js';
 import { ErrorTally } from './retry.js'; // reliability items 193-207, always on
@@ -55,7 +56,7 @@ import { parts3dTool } from './parts3d.js';
 import { model3dTool } from './model3d.js';
 import { pickSessionTool } from './auto-session.js';
 import { Lenders, wantsBorrow } from './share-brains.js';
-import { CardLender, CardBorrower, powersOf, powersWords } from './share-card.js'; // Bob-Net: lend my graphics card / spread big brains
+import { CardLender, CardBorrower, powersOf, powersWords, engineStamp } from './share-card.js'; // Bob-Net: lend my graphics card / spread big brains
 import { NetCards, cardsOn } from './net-cards.js'; // OK cards on all your Bobs
 import { myName } from './bob-net-pair.js';
 import { Rentals, currentRental, saveEndpoint } from './rental.js'; // 1.5.127 rented brains
@@ -153,7 +154,7 @@ export class Brain {
     this.cardLender = new CardLender(cfg, { gaming: () => currentSession(this.cfg).id === 'light', linkKind: (a) => kindOfAddress(a, this.linksCache?.peek?.()), freeOwn: async () => { if (this.turns.size || !this.engine?.current) return false; await this.engine.unloadAll(); return true; }, holdsOwn: () => Boolean(this.engine?.current || this.engine?.beside?.current), log: (k, t) => this.log(k, t) });
     // the owner, Nov 13: a lent card shows when the brain it helps run has Hands, Autonomy or Screen use on over there.
     this.cardLender.onPowers = (p, to) => { this.broadcast({ type: 'lend-powers', powers: p, to: to || '' }); if (p) this.log('bob-net', `the brain my card helps ${to || 'another Bob'} run has ${powersWords(p).join(', ')} on`); };
-    if (this.engine instanceof LlamaCpp) this.engine.spread = new CardBorrower(cfg, this.lenders, { log: (k, t) => this.log(k, t), linkKind: (a) => kindOfAddress(a, this.linksCache?.peek?.()), powers: () => powersOf(handsSettings(this.cfg)) });
+    if (this.engine instanceof LlamaCpp) this.engine.spread = new CardBorrower(cfg, this.lenders, { log: (k, t) => this.log(k, t), linkKind: (a) => kindOfAddress(a, this.linksCache?.peek?.()), powers: () => powersOf(handsSettings(this.cfg)), engine: () => { try { return engineStamp(path.dirname(this.engine.exePath())); } catch { return ''; } } });
     if (this.engine?.spread) this.engine.spread.onLost = () => this.engine.cardTakenBack(); // 1.5.214: a lent card taken back mid-spread
     // 1.5.127 Rented brains: a big brain hired from an online service for one job, only after a card the owner pressed.
     this.errorTally = new ErrorTally(cfg.dataDir ? path.join(cfg.dataDir, 'tool-errors.json') : null); // item 206
@@ -209,7 +210,7 @@ export class Brain {
     this.watchTimer.unref?.();
     this.housekeeper = new Housekeeper(cfg, this);
     this.tools.forget_topic = forgetTopicTool(this);
-    Object.assign(this.tools, handsTools(this), scheduleTools(this), officeTools(this), securityTools(this), selfToolsTools(this), howtoTools(this)); // Hands: off until the user turns them on (see hands-settings.js)
+    Object.assign(this.tools, handsTools(this), scheduleTools(this), routineTools(this), officeTools(this), securityTools(this), selfToolsTools(this), howtoTools(this)); // Hands: off until the user turns them on (see hands-settings.js)
     this.tools.use_tools = useToolsTool(this);
     this.tools.show_plan = showPlanTool(this); // 1.5.78: the plan card before big jobs (plan.js), only with its setting on
     this.tools.ask_together = askTogetherTool(this); // 1.5.42: every OK a job needs on one card (together.js) // the toolbox (toolbox.js): groups added only when a job needs them

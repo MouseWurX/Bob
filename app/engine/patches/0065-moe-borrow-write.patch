@@ -1,0 +1,129 @@
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 69e209f..a306cdb 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -1052,8 +1052,23 @@ void llama_context::sched_reserve() {
+             }
+             return ib >= 0 ? sz[ib] : SIZE_MAX;
+         };
+-        const uint32_t own_ub = std::min(cparams.n_ctx, cparams.moe_cache_borrow_own_ub);
+-        const size_t   own    = std::max(measure(n_seqs), measure(own_ub));
++        const uint32_t own_ub   = std::min(cparams.n_ctx, cparams.moe_cache_borrow_own_ub);
++        const size_t   own_step = std::max(measure(n_seqs), measure(own_ub));
++        size_t         own      = own_step;
++        // Brain Engine 0065 (LLAMA_MOE_CACHE_BORROW_WRITE=1, off unless set): borrowed writing buffers. The card owns only
++        // what writing needs (a graph of up to 16 tokens, so drafts fit too; =N sets N); every reading step, the own
++        // one too, borrows the cache's coldest slots. The working memory the own step held all the time is free for the
++        // cache. Same steps and graphs, so the same words. From Avalon's borrowed compute buffers (freriadoc/Avalon, MIT).
++        uint32_t bw_write = 0;
++        if (const char * v = getenv("LLAMA_MOE_CACHE_BORROW_WRITE"); v != nullptr && atoi(v) > 0) {
++            bw_write = std::min<uint32_t>(own_ub, std::max<uint32_t>(n_seqs, atoi(v) > 1 ? (uint32_t) atoi(v) : 16u));
++        }
++        if (bw_write > 0 && bw_write < own_ub && own_step != SIZE_MAX) {
++            const size_t w = std::max(measure(n_seqs), measure(bw_write));
++            if (w != SIZE_MAX && w < own_step) {
++                own = w;
++            }
++        }
+         if (ib < 0 || own == SIZE_MAX || !moe_cache->borrow_setup(own)) {
+             LLAMA_LOG_WARN("%s: !!! borrowed reading NOT USED: reading at the own step %u\n", __func__, own_ub);
+             cparams.moe_cache_borrow = false;
+@@ -1071,10 +1086,25 @@ void llama_context::sched_reserve() {
+             });
+         } else {
+             const size_t room = moe_cache->borrow_own() + moe_cache->borrow_lendable();
++            if (own < own_step) {
++                if (own_step > room) {
++                    // 0065: the own step can't borrow its working memory here: the card owns it, as without the switch
++                    LLAMA_LOG_WARN("%s: !!! borrowed writing NOT USED: the own step %u needs %.2f MiB, the cache lends %.2f MiB\n",
++                            __func__, own_ub, own_step/1024.0/1024.0, room/1024.0/1024.0);
++                    own = own_step;
++                    moe_cache->borrow_setup(own);
++                } else {
++                    LLAMA_LOG_INFO("%s: borrowed writing: writing (up to %u tokens) owns %.2f MiB, the own step %u borrows its %.2f MiB: "
++                            "%.2f MiB of the card freed for the cache\n", __func__, bw_write, moe_cache->borrow_own()/1024.0/1024.0,
++                            own_ub, own_step/1024.0/1024.0, (own_step - std::min(own_step, moe_cache->borrow_own()))/1024.0/1024.0);
++                    moe_cache->borrow_set_small(own_step);
++                }
++            }
+             uint32_t best = own_ub;
+-            size_t   best_need = own;
++            size_t   best_need = own_step;
+             std::vector<std::pair<uint32_t, size_t>> needs;
+-            LLAMA_LOG_INFO("%s: borrowed reading: step %5u needs %8.2f MiB of working memory (owned)\n", __func__, own_ub, own/1024.0/1024.0);
++            LLAMA_LOG_INFO("%s: borrowed reading: step %5u needs %8.2f MiB of working memory (%s)\n", __func__, own_ub, own_step/1024.0/1024.0,
++                    own < own_step ? "borrowed" : "owned");
+             for (uint32_t ub = own_ub*2; ; ub *= 2) {
+                 const uint32_t u = std::min(ub, cparams.moe_cache_borrow_max_ub);
+                 if (u <= best) {
+@@ -1100,7 +1130,7 @@ void llama_context::sched_reserve() {
+             // The step it picks is measured again before it's used. From Avalon's ubatch_fit (freriadoc/Avalon, MIT).
+             const bool step_fit = [] { const char * v = getenv("LLAMA_MOE_STEP_FIT"); return v && atoi(v) > 0; }();
+             if (step_fit) {
+-                std::vector<std::pair<double, double>> pts = { { (double) own_ub, (double) own } };
++                std::vector<std::pair<double, double>> pts = { { (double) own_ub, (double) own_step } };
+                 for (const auto & [u, need] : needs) {
+                     pts.emplace_back((double) u, (double) need);
+                 }
+@@ -1164,10 +1194,10 @@ void llama_context::sched_reserve() {
+                 }
+             }
+             if (best_need == 0) {
+-                best_need = best == own_ub ? own : measure(best); // 0064: a grid step that wasn't measured yet
++                best_need = best == own_ub ? own_step : measure(best); // 0064: a grid step that wasn't measured yet
+                 if (best_need == SIZE_MAX) {
+                     best = own_ub;
+-                    best_need = own;
++                    best_need = own_step;
+                 }
+             }
+             moe_cache->borrow_set_step(best_need);
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index fd1d499..2aaee0e 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -3809,6 +3809,7 @@ struct llama_moe_cache::impl {
+     size_t        bw_lend   = 0;   // bytes after bw_own it may borrow: the slots of group bw_g's first bank
+     size_t        bw_step   = 0;   // the measured working memory of the reading step: a read lends that much at once
+     size_t        bw_cur_peak = 0; // 0063: the working memory of the graph about to run (rewarm waits while it is lent)
++    size_t        bw_small  = 0;   // 0065: graphs up to this much (the own step, borrowed) lend only what they need
+     bw_from_ptr_t bw_from_ptr = nullptr;
+     ggml_backend_buffer_type_t bw_buft = nullptr; // the card's buffer type, but its buffers come from bw_alloc
+     ggml_context_ptr ctx_bw;       // a byte view of one slot, twice per bank of group bw_g, for the moves
+@@ -4144,7 +4145,11 @@ struct llama_moe_cache::impl {
+         }
+         // lend what the reading step needs at its biggest right away (the attention grows as a read goes on), so the
+         // experts move once per read, not a few more with every step
+-        peak = std::max(peak, std::min(bw_step, bw_own + bw_lend));
++        // 0065: with borrowed writing, a short read (up to the own step) lends only what it needs, so a tool's answer of a
++        // few hundred tokens doesn't empty the slots of a whole reading step
++        if (bw_small == 0 || peak > bw_small) {
++            peak = std::max(peak, std::min(bw_step, bw_own + bw_lend));
++        }
+         if (peak > bw_own + bw_lend) {
+             GGML_ABORT("MoE cache borrowed reading: a graph needs %zu bytes of working memory, only %zu can be lent", peak, bw_own + bw_lend);
+         }
+@@ -4573,6 +4578,10 @@ void llama_moe_cache::borrow_set_step(size_t bytes) {
+     pimpl->bw_step = bytes;
+ }
+ 
++void llama_moe_cache::borrow_set_small(size_t bytes) {
++    pimpl->bw_small = bytes;
++}
++
+ void llama_moe_cache::borrow_before_graph(size_t peak) {
+     pimpl->bw_before_graph(peak);
+ }
+diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
+index 931092c..dadd551 100644
+--- a/src/llama-moe-cache.h
++++ b/src/llama-moe-cache.h
+@@ -112,6 +112,8 @@ public:
+     size_t borrow_own() const;
+     // the working memory the reading step needs at most (measured): a read lends that much at its first borrowed graph
+     void borrow_set_step(size_t bytes);
++    // Brain Engine 0065: with borrowed writing, a graph needing at most bytes (the own step) lends only what it needs
++    void borrow_set_small(size_t bytes);
+     // before a graph that uses peak bytes of the working memory (from its start): empties the slots it runs over
+     void borrow_before_graph(size_t peak);
+ 

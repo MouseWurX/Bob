@@ -16,9 +16,11 @@
 // Nothing here adds words to what the brain reads.
 const GB = 1024 ** 3, MB = 1024 ** 2;
 
-// "Memory kept for Windows" (Settings, Brains, 0 to 8 GB). 2 GB to start with since this fix (4 before, when the need
-// was guessed low and the extra had to cover it); at least 1 GB is always left free whatever the setting.
-export const APU_HOLDBACK_DEFAULT_GB = 2;
+// "Memory kept for Windows" (Settings, Brains, 0 to 8 GB). 0.5 GB to start with since Nov 23 (the owner's pick after a
+// Legion Go test: with 4.4 GB free and Edge busy, 2 GB kept left Windows no better off than 0.5 GB, because Windows moves
+// idle memory to disk, and it pushed the brain onto the processor alone; 2 GB from Nov 12, 4 before that). At least
+// 1 GB is still left free when placing a brain on the graphics, whatever the setting.
+export const APU_HOLDBACK_DEFAULT_GB = 0.5;
 export const APU_KEEP_MIN_GB = 1;
 export const apuHoldbackGB = (cfg) => { const v = Number(cfg?.apuHoldbackGB); return Number.isFinite(v) && v >= 0 && v <= 8 ? v : APU_HOLDBACK_DEFAULT_GB; };
 export const apuKeepBytes = (cfg) => Math.max(apuHoldbackGB(cfg), APU_KEEP_MIN_GB) * GB;
@@ -39,10 +41,15 @@ export function computeBytes(ubatch = 512) {
 }
 
 // What a brain needs: { card } wholly on the graphics, { cpu } on the processor alone (file mapped).
-export function apuNeed({ fileBytes = 0, kvBytes = 0, ubatch = 512 } = {}) {
+// Nov 22 (Legion Go test: gemma4-e2b was counted at ~3 GB and really took ~4.8 GB): only a brain with experts leaves
+// part of its file on the drive (most experts sit idle for each word); a dense brain reads every weight for every
+// word, so all of it stays in RAM. extraBytes: the picture reader (mmproj), loaded whole beside the brain.
+export function apuNeed({ fileBytes = 0, kvBytes = 0, ubatch = 512, extraBytes = 0, experts = 0 } = {}) {
   if (!(fileBytes > 0)) return null;
   const work = computeBytes(ubatch);
-  return { file: fileBytes, kv: kvBytes, work, card: fileBytes + kvBytes + work + APU_DRIVER_BYTES, cpu: Math.round(fileBytes * APU_MMAP_SHARE) + kvBytes + work };
+  const extra = Math.max(0, Number(extraBytes) || 0);
+  const mapped = experts > 1 ? Math.round(fileBytes * APU_MMAP_SHARE) : fileBytes;
+  return { file: fileBytes, kv: kvBytes, work, card: fileBytes + extra + kvBytes + work + APU_DRIVER_BYTES, cpu: mapped + extra + kvBytes + work };
 }
 
 // Where the brain goes. freeBytes: free RAM now (after the last brain was let go). carveBytes: the set-aside for the

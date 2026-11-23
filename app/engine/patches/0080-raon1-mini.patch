@@ -1,0 +1,2128 @@
+diff --git a/common/speculative.cpp b/common/speculative.cpp
+index a7bd22112..13d2b9b56 100644
+--- a/common/speculative.cpp
++++ b/common/speculative.cpp
+@@ -522,8 +522,8 @@ struct common_speculative_impl_draft_eagle3 : public common_speculative_impl {
+     std::vector<llama_sampler *> backend_chains;
+ 
+     int32_t n_embd_dec = 0;       // draft hidden size
+-    int32_t n_embd_enc = 0;       // target_layer_ids_n * target_hidden_size
+-    int32_t n_embd_tgt = 0;       // target model hidden size
++    int32_t n_embd_enc = 0;       // target_layer_ids_n * n_embd_tgt
++    int32_t n_embd_tgt = 0;       // per-token width of one extracted target layer
+     int32_t n_layer_tgt = 0;      // target model layer count
+ 
+     const int32_t * target_layer_ids   = nullptr; // model_dft's extract layer indices
+@@ -563,10 +563,22 @@ struct common_speculative_impl_draft_eagle3 : public common_speculative_impl {
+                                      std::to_string(target_layer_ids_n) + ")");
+         }
+ 
+-        n_embd_tgt = llama_model_n_embd(model_tgt);
++        n_embd_tgt = llama_model_n_embd_layer_inp(model_tgt);
+         n_embd_dec = llama_model_n_embd(model_dft);
+         n_embd_enc = (int32_t) target_layer_ids_n * n_embd_tgt;
++        if (n_embd_enc != llama_model_n_embd_inp_enc(model_dft)) {
++            throw std::runtime_error("EAGLE3 draft expects " + std::to_string(llama_model_n_embd_inp_enc(model_dft)) +
++                    " target features per token, but the target exports " + std::to_string(target_layer_ids_n) + " x " +
++                    std::to_string(n_embd_tgt) + " (incompatible draft/target pair)");
++        }
+         n_layer_tgt = llama_model_n_layer(model_tgt);
++        for (uint32_t k = 0; k < target_layer_ids_n; ++k) {
++            // a tap past the last layer reads the nextn embeddings, which are n_embd_out wide
++            if (target_layer_ids[k] >= n_layer_tgt && llama_model_n_embd_out(model_tgt) != n_embd_tgt) {
++                throw std::runtime_error("EAGLE3: the target's nextn embeddings are " + std::to_string(llama_model_n_embd_out(model_tgt)) +
++                        " wide, but its layer inputs are " + std::to_string(n_embd_tgt) + " (incompatible draft/target pair)");
++            }
++        }
+ 
+         batch     = common_batch(ctx_dft);
+         batch_enc = common_batch(ctx_dft);
+@@ -993,8 +1005,8 @@ struct common_speculative_impl_draft_dflash : public common_speculative_impl {
+     std::vector<llama_sampler *> backend_chains;
+ 
+     int32_t n_embd_dec = 0;  // draft hidden size
+-    int32_t n_embd_enc = 0;  // target_layer_ids_n * target_hidden_size
+-    int32_t n_embd_tgt = 0;  // target model hidden size
++    int32_t n_embd_enc = 0;  // target_layer_ids_n * n_embd_tgt
++    int32_t n_embd_tgt = 0;  // per-token width of one extracted target layer
+ 
+     int32_t     block_size    = 0;
+     llama_token mask_token_id = 0;
+@@ -1045,9 +1057,14 @@ struct common_speculative_impl_draft_dflash : public common_speculative_impl {
+         target_layer_ids_n = llama_model_target_layer_ids_n(model_dft);
+         GGML_ASSERT(target_layer_ids_n > 0 && "DFlash model has no target_layer_ids");
+ 
+-        n_embd_tgt    = llama_model_n_embd(model_tgt);
++        n_embd_tgt    = llama_model_n_embd_layer_inp(model_tgt);
+         n_embd_dec    = llama_model_n_embd(model_dft);
+         n_embd_enc    = (int32_t) target_layer_ids_n * n_embd_tgt;
++        if (n_embd_enc != llama_model_n_embd_inp_enc(model_dft)) {
++            throw std::runtime_error("DFlash draft expects " + std::to_string(llama_model_n_embd_inp_enc(model_dft)) +
++                    " target features per token, but the target exports " + std::to_string(target_layer_ids_n) + " x " +
++                    std::to_string(n_embd_tgt) + " (incompatible draft/target pair)");
++        }
+ 
+         // read the trained block size from the dflash.block_size metadata key
+         block_size = 16;
+diff --git a/conversion/__init__.py b/conversion/__init__.py
+index 6800093ae..d4c6172a6 100644
+--- a/conversion/__init__.py
++++ b/conversion/__init__.py
+@@ -292,6 +292,7 @@ TEXT_MODEL_MAP: dict[str, str] = {
+     "RWForCausalLM": "falcon",
+     "RWKV6Qwen2ForCausalLM": "rwkv",
+     "RWKV7ForCausalLM": "rwkv",
++    "Raon1MiniForCausalLM": "raon",
+     "RobertaForSequenceClassification": "bert",
+     "RobertaModel": "bert",
+     "RuGPT3XLForCausalLM": "gpt2",
+diff --git a/conversion/base.py b/conversion/base.py
+index 58ddb5def..bcb8ed6ea 100644
+--- a/conversion/base.py
++++ b/conversion/base.py
+@@ -2198,6 +2198,9 @@ class TextModel(ModelBase):
+         if chkhsh == "1f9825a388f700a6b591722f17d470cbbcf10973ece35d2fd14239a14110ae1a":
+             # ref: https://huggingface.co/IFM/K2-Horizon-0.9B
+             res = "k2-horizon"
++        if chkhsh == "ffdae2f611dc6903980be2fbb108467cb97376d7d03cd332bb7e2602f87fa1f1":
++            # ref: https://huggingface.co/KRAFTON/Raon-1-mini-preview
++            res = "raon"
+         if chkhsh == "0ef9807a4087ebef797fc749390439009c3b9eda9ad1a097abbe738f486c01e5":
+             # ref: https://huggingface.co/meta-llama/Meta-Llama-3-8B
+             res = "llama-bpe"
+diff --git a/conversion/qwen.py b/conversion/qwen.py
+index 376535460..30e8ceabf 100644
+--- a/conversion/qwen.py
++++ b/conversion/qwen.py
+@@ -945,6 +945,27 @@ class DFlashModel(Qwen3Model):
+             extract_layer_ids = [i + 1 for i in target_layer_ids]
+             self.gguf_writer.add_target_layers(extract_layer_ids)
+ 
++        # per-tap feature width, as for EAGLE3 (and vLLM: fc input = target_hidden_size x taps)
++        # hyper-connection targets feed every residual stream of a tap, tap-major then stream-major
++        hidden_size = self.hparams["hidden_size"]
++        stream_size = int(dflash_config.get("target_embedding_size", hidden_size))
++        n_streams = dflash_config.get("target_streams_per_layer")
++        if n_streams is not None and int(n_streams) < 1:
++            raise ValueError(f"target_streams_per_layer must be at least 1, got {n_streams}")
++        target_hidden_size = self.hparams.get("target_hidden_size")
++        if target_hidden_size is not None and n_streams is not None and int(target_hidden_size) != int(n_streams) * stream_size:
++            raise ValueError(f"target_hidden_size {target_hidden_size} does not match target_streams_per_layer {n_streams} "
++                             f"x target stream width {stream_size}")
++        if target_hidden_size is None:
++            target_hidden_size = int(n_streams or 1) * stream_size
++        target_hidden_size = int(target_hidden_size)
++        if (feature_size := dflash_config.get("target_feature_size")) is not None and target_layer_ids:
++            if int(feature_size) != len(target_layer_ids) * target_hidden_size:
++                raise ValueError(f"target_feature_size {feature_size} != {len(target_layer_ids)} layers x "
++                                 f"target_hidden_size {target_hidden_size}")
++        if target_hidden_size != hidden_size:
++            self.gguf_writer.add_target_hidden_size(target_hidden_size)
++
+         use_sliding_window = self.hparams.get("use_sliding_window", False) or dflash_config.get("use_swa", False)
+         sliding_window = dflash_config.get("swa_window_size") or self.hparams.get("sliding_window")
+         layer_types = self.hparams.get("layer_types")
+diff --git a/conversion/raon.py b/conversion/raon.py
+new file mode 100644
+index 000000000..ff392c56d
+--- /dev/null
++++ b/conversion/raon.py
+@@ -0,0 +1,201 @@
++from __future__ import annotations
++
++from typing import Any, Callable, Iterable
++
++import torch
++from torch import Tensor
++
++from .base import ModelBase, TextModel, gguf, logger
++
++
++def _with_default(config: dict[str, Any], key: str, default: Any) -> Any:
++    # as in the HF config class, an absent key and an explicit null both take the default
++    value = config.get(key)
++    return default if value is None else value
++
++
++def _dequant_mxfp8(weight: Tensor, scale: Tensor) -> Tensor:
++    # E4M3 [N, K] with one E8M0 byte per 1x32 block [N, K/32]: value * 2**(byte - 127),
++    # the fp32 product of dequantize_mxfp8 in the HF modeling code, so the result is exact
++    # a float8_e8m0fnu scale already decodes to the same power of two
++    factor = torch.exp2(scale.float() - 127) if scale.dtype == torch.uint8 else scale.float()
++    rows, cols = weight.shape
++    return (weight.float().reshape(rows, cols // 32, 32) * factor.unsqueeze(-1)).reshape(rows, cols)
++
++
++@ModelBase.register("Raon1MiniForCausalLM")
++@ModelBase.example("KRAFTON/Raon-1-mini-preview")
++class Raon1Model(TextModel):
++    model_arch = gguf.MODEL_ARCH.RAON1
++
++    # mHC sites: HF module name -> tensor prefix; each site has 10 parameters, packed into fn / base / scale
++    _MHC_SITES = (("self_attn_raon_mhc", "HC_ATTN"), ("mlp_raon_mhc", "HC_FFN"))
++    _MHC_PARTS = ("phi_pre", "phi_post", "res.phi_z", "b_pre", "b_post", "res.b_z",
++                  "alpha_pre", "alpha_post", "res.alpha_z", "res.eta")
++    # kept unquantized by llama-quantize (src/llama-quant.cpp); a quantized --outtype keeps them at F16 the same way
++    _KEEP_UNQUANTIZED = ("hc_attn_fn", "hc_ffn_fn", "ssm_f_a", "ssm_f_b", "ssm_beta", "ssm_rda")
++    _KEEP_UNQUANTIZED_Q8_0 = ("attn_kv_a_mqa", "attn_k_b", "attn_v_b")
++
++    def __init__(self, *args, **kwargs):
++        super().__init__(*args, **kwargs)
++        self._experts: dict[tuple[int, str], dict[int, Tensor]] = {}
++        self._mhc: dict[tuple[int, str], dict[str, Tensor]] = {}
++        self._rda_layers = set(self.hparams["rda_config"]["rda_layers"])
++
++    def index_tensors(self, remote_hf_model_id: str | None = None) -> dict[str, Callable[[], Tensor]]:
++        tensors = super().index_tensors(remote_hf_model_id=remote_hf_model_id)
++        # MTP is not supported: drop the nextn layers (model.layers.{num_hidden_layers}..) before any data is read
++        n_layer = self.hparams["num_hidden_layers"]
++        mtp = [name for name in tensors if name.startswith("model.layers.") and int(name.split(".")[2]) >= n_layer]
++        if mtp:
++            n_mtp = len({name.split(".")[2] for name in mtp})
++            logger.info(f"Skipping {len(mtp)} MTP tensors in {n_mtp} layer(s) from model.layers.{n_layer}; MTP is not supported")
++            for name in mtp:
++                del tensors[name]
++        return tensors
++
++    def dequant_model(self):
++        # the release stores the routed experts as MXFP8 (quant_method "mxfp8", weight + weight_scale_inv);
++        # every other tensor is in quantization_config.ignored_layers and stays BF16
++        quant_config = self.hparams.get("quantization_config") or {}
++        if quant_config.get("quant_method") != "mxfp8":
++            return super().dequant_model()
++        if list(quant_config.get("weight_block_size") or [1, 32]) != [1, 32]:
++            raise ValueError(f"Raon-1 MXFP8 needs weight_block_size [1, 32], got {quant_config['weight_block_size']}")
++        for name in [name for name in self.model_tensors if name.endswith(".weight_scale_inv")]:
++            weight_name = name.removesuffix("_scale_inv")
++            if ".moe.experts." not in weight_name:
++                raise ValueError(f"Unexpected MXFP8 tensor {weight_name}: only the routed experts are quantized")
++            weight, scale = self.model_tensors[weight_name], self.model_tensors.pop(name)
++            self.model_tensors[weight_name] = lambda w=weight, s=scale: _dequant_mxfp8(w(), s())
++
++    def set_gguf_parameters(self):
++        hp = self.hparams
++        rda_config = hp["rda_config"]
++        n_layer = hp["num_hidden_layers"]
++        # 1-based layer ids, as in the HF config (is_rda_layer: layer_idx + 1 in rda_layers)
++        rda = self._rda_layers
++        mla = set(rda_config["mla_layers"])
++        if rda & mla or rda | mla != set(range(1, n_layer + 1)):
++            raise ValueError("Raon-1 attention layer lists must partition all layers")
++        # the hybrid memory needs both layer kinds
++        if not rda or not mla:
++            raise ValueError("Raon-1 needs at least one RDA (rda_layers) and one MLA (mla_layers) layer")
++        if hp.get("tie_word_embeddings"):
++            raise ValueError("Raon-1 with tie_word_embeddings is not supported (the released model has a separate lm_head)")
++        if (not hp["mla_use_nope"] or not hp["mla_use_output_gate"]
++                or not rda_config["full_rank_gate"] or hp["hidden_act"] != "situ"
++                or hp["moe_router_activation_func"] != "sigmoid"
++                or hp.get("use_grouped_topk") or hp.get("routed_expert_hidden_size")
++                or hp.get("attn_res_block_size") or hp["moe_layer_freq"] != 1):
++            raise ValueError("Unsupported Raon-1 architecture variant")
++        if rda_config["num_heads"] != hp["num_attention_heads"]:
++            raise ValueError("Raon-1 RDA and MLA head counts must match")
++
++        super().set_gguf_parameters()
++        self.gguf_writer.add_vocab_size(hp["vocab_size"])
++        self.gguf_writer.add_head_count_kv([0 if i + 1 in rda else 1 for i in range(n_layer)])
++        self.gguf_writer.add_ssm_conv_kernel(rda_config["conv_kernel_size"])
++        # the .get() defaults below are the HF config defaults
++        self.gguf_writer.add_ssm_time_step_rank(hp.get("rda_decay_rank", 128))
++        self.gguf_writer.add_kda_head_dim(rda_config["head_dim"])
++        # HF uses -5.0 when the key is absent; an explicit null selects the unbounded gate
++        if (bound := rda_config.get("gate_lower_bound", -5.0)) is not None:
++            self.gguf_writer.add_kda_gate_lower_bound(bound)
++        self.gguf_writer.add_q_lora_rank(hp["q_lora_rank"])
++        self.gguf_writer.add_kv_lora_rank(hp["kv_lora_rank"])
++        self.gguf_writer.add_rope_dimension_count(hp["qk_rope_head_dim"])
++        self.gguf_writer.add_key_length(hp["kv_lora_rank"] + hp["qk_rope_head_dim"])
++        self.gguf_writer.add_value_length(hp["kv_lora_rank"])
++        self.gguf_writer.add_key_length_mla(hp["qk_nope_head_dim"] + hp["qk_rope_head_dim"])
++        self.gguf_writer.add_value_length_mla(hp["v_head_dim"])
++        self.gguf_writer.add_latent_norm_rms_eps(hp.get("mla_latent_norm_eps", 1e-6))
++        self.gguf_writer.add_expert_feed_forward_length(hp["moe_intermediate_size"])
++        self.gguf_writer.add_expert_shared_count(hp["num_shared_experts"])
++        self.gguf_writer.add_leading_dense_block_count(hp["first_k_dense_replace"])
++        self.gguf_writer.add_expert_weights_scale(hp["routed_scaling_factor"])
++        self.gguf_writer.add_expert_weights_norm(hp["moe_renormalize"])
++        self.gguf_writer.add_activation_situ_beta(hp["activation_situ_beta"])
++        self.gguf_writer.add_activation_situ_linear_beta(hp["activation_situ_linear_beta"])
++        self.gguf_writer.add_hyper_connection_count(_with_default(hp, "raon_mhc_streams", 4))
++        self.gguf_writer.add_hyper_connection_epsilon(_with_default(hp, "raon_mhc_selector_eps", 1e-5))
++        self.gguf_writer.add_hyper_connection_magnitude(_with_default(hp, "raon_mhc_post_factor", 2.0))
++
++    def prepare_tensors(self):
++        super().prepare_tensors()
++        if self._experts or self._mhc:
++            raise ValueError(f"Incomplete Raon-1 tensor groups: experts={list(self._experts)}, mHC={list(self._mhc)}")
++
++    def tensor_force_quant(self, name, new_name, bid, n_dims):
++        if ".hc_" in new_name and not new_name.endswith("_fn.weight"):
++            return gguf.GGMLQuantizationType.F32
++        quantized = (gguf.LlamaFileType.MOSTLY_Q8_0, gguf.LlamaFileType.MOSTLY_TQ1_0, gguf.LlamaFileType.MOSTLY_TQ2_0)
++        if self.ftype in quantized and new_name.startswith("blk."):
++            keep = self._KEEP_UNQUANTIZED
++            if self.ftype == gguf.LlamaFileType.MOSTLY_Q8_0:
++                keep += self._KEEP_UNQUANTIZED_Q8_0
++            if new_name.split(".")[2] in keep:
++                return gguf.GGMLQuantizationType.F16
++        return super().tensor_force_quant(name, new_name, bid, n_dims)
++
++    def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
++        for site, prefix in self._MHC_SITES:
++            marker = f".{site}."
++            if marker not in name:
++                continue
++            assert bid is not None
++            parts = self._mhc.setdefault((bid, site), {})
++            suffix = name.split(marker, 1)[1]
++            if suffix in parts:
++                raise ValueError(f"Duplicate tensor {name}")
++            parts[suffix] = data_torch
++            if len(parts) < len(self._MHC_PARTS):
++                return
++            fn = torch.cat([parts[k] for k in ("phi_pre", "phi_post", "res.phi_z")])
++            base = torch.cat([parts[k].float() for k in ("b_pre", "b_post", "res.b_z")])
++            scale = torch.stack([parts[k].float().reshape(()) for k in ("alpha_pre", "alpha_post", "res.alpha_z", "res.eta")])
++            for kind, tensor in (("FN", fn), ("BASE", base), ("SCALE", scale)):
++                yield self.format_tensor_name(getattr(gguf.MODEL_TENSOR, f"{prefix}_{kind}"), bid), tensor
++            del self._mhc[bid, site]
++            return
++
++        if ".moe.experts." in name:
++            assert bid is not None
++            tail = name.split(".experts.", 1)[1].split(".")
++            eid, wid = int(tail[0]), tail[1]
++            group = self._experts.setdefault((bid, wid), {})
++            if eid in group or not 0 <= eid < self.hparams["num_experts"]:
++                raise ValueError(f"Invalid expert tensor {name}")
++            group[eid] = data_torch
++            if len(group) == self.hparams["num_experts"]:
++                tid = {"gate_proj": gguf.MODEL_TENSOR.FFN_GATE_EXP, "down_proj": gguf.MODEL_TENSOR.FFN_DOWN_EXP,
++                       "up_proj": gguf.MODEL_TENSOR.FFN_UP_EXP}[wid]
++                yield self.format_tensor_name(tid, bid), torch.stack([group[i] for i in range(len(group))])
++                del self._experts[bid, wid]
++            return
++
++        # moe.gate / moe.shared_experts -> the block_sparse_moe names the tensor map already has
++        if ".moe." in name:
++            name = name.replace(".moe.", ".block_sparse_moe.")
++        if name.endswith("kv_b_proj.weight"):
++            heads = self.hparams["num_attention_heads"]
++            nk, nv = self.hparams["qk_nope_head_dim"], self.hparams["v_head_dim"]
++            kv = data_torch.reshape(heads, nk + nv, self.hparams["kv_lora_rank"])
++            k, v = torch.split(kv, [nk, nv], dim=1)
++            yield self.map_tensor_name(name.replace("kv_b_proj", "k_b_proj")), k.transpose(1, 2).contiguous()
++            yield self.map_tensor_name(name.replace("kv_b_proj", "v_b_proj")), v.contiguous()
++            return
++        if name.endswith(".self_attn.g_proj.weight"):
++            assert bid is not None
++            rda = bid + 1 in self._rda_layers
++            tid = gguf.MODEL_TENSOR.SSM_G if rda else gguf.MODEL_TENSOR.ATTN_GATE
++            yield self.format_tensor_name(tid, bid), data_torch
++            return
++        if name.endswith((".q_conv1d.weight", ".k_conv1d.weight", ".v_conv1d.weight")):
++            data_torch = data_torch.reshape(1, -1, 1, data_torch.shape[-1])
++        if name.endswith(".A_log"):
++            data_torch = -torch.exp(data_torch.float())
++        # dt_bias -> the name SSM_DT's mapping expects, as for qwen3next
++        if name.endswith(".dt_bias"):
++            name = name.removesuffix(".dt_bias") + ".dt_proj.bias"
++        yield from super().modify_tensors(data_torch, name, bid)
+diff --git a/convert_hf_to_gguf_update.py b/convert_hf_to_gguf_update.py
+index 4340a9fee..458c70e92 100755
+--- a/convert_hf_to_gguf_update.py
++++ b/convert_hf_to_gguf_update.py
+@@ -208,6 +208,8 @@ pre_computed_hashes = [
+     {"name": "spark2_5", "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/XHToken/Spark-X2.5-1.7B", "chkhsh": "0a766d034107bc736a3f2dc4968fd62e54a3570f1454443e0c5a4cc6bd7941ed"},
+     # k2-horizon variants
+     {"name": "k2-horizon", "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/IFM/K2-Horizon-0.9B", "chkhsh": "1f9825a388f700a6b591722f17d470cbbcf10973ece35d2fd14239a14110ae1a"},
++    # raon: NFC normalizer + CJK-aware split regex
++    {"name": "raon", "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/KRAFTON/Raon-1-mini-preview", "chkhsh": "ffdae2f611dc6903980be2fbb108467cb97376d7d03cd332bb7e2602f87fa1f1"},
+ ]
+ 
+ 
+diff --git a/gguf-py/gguf/constants.py b/gguf-py/gguf/constants.py
+index ad0bd8e67..01b1192d3 100644
+--- a/gguf-py/gguf/constants.py
++++ b/gguf-py/gguf/constants.py
+@@ -196,6 +196,7 @@ class Keys:
+         VALUE_LENGTH                 = "{arch}.attention.value_length"
+         LAYERNORM_EPS                = "{arch}.attention.layer_norm_epsilon"
+         LAYERNORM_RMS_EPS            = "{arch}.attention.layer_norm_rms_epsilon"
++        LATENT_NORM_RMS_EPS          = "{arch}.attention.latent_norm_rms_epsilon"
+         GROUPNORM_EPS                = "{arch}.attention.group_norm_epsilon"
+         GROUPNORM_GROUPS             = "{arch}.attention.group_norm_groups"
+         CAUSAL                       = "{arch}.attention.causal"
+@@ -753,6 +754,7 @@ class MODEL_ARCH(IntEnum):
+     KIMI_LINEAR      = auto()
+     KIMI_K3          = auto()
+     KIMI_K31         = auto()
++    RAON1            = auto()
+     TALKIE           = auto()
+     MELLUM           = auto()
+     NANBEIGE         = auto()
+@@ -918,6 +920,7 @@ class MODEL_TENSOR(IntEnum):
+     SSM_F_A              = auto() # Kimi Linear
+     SSM_F_B              = auto() # Kimi Linear
+     SSM_BETA             = auto() # Kimi Linear qwen3.5
++    SSM_RDA              = auto() # Raon-1
+     SSM_G_A              = auto() # Kimi Linear
+     SSM_G_B              = auto() # Kimi Linear
+     SSM_G                = auto() # Kimi K3 (full-rank KDA gate, replaces SSM_G_A/SSM_G_B)
+@@ -1672,6 +1675,7 @@ MODEL_ARCH_NAMES: dict[MODEL_ARCH, str] = {
+     MODEL_ARCH.KIMI_LINEAR:      "kimi-linear",
+     MODEL_ARCH.KIMI_K3:          "kimi-k3",
+     MODEL_ARCH.KIMI_K31:         "kimi-k31",
++    MODEL_ARCH.RAON1:            "raon1",
+     MODEL_ARCH.TALKIE:           "talkie",
+     MODEL_ARCH.MELLUM:           "mellum",
+     MODEL_ARCH.NANBEIGE:         "nanbeige",
+@@ -1835,6 +1839,7 @@ TENSOR_NAMES: dict[MODEL_TENSOR, str] = {
+     MODEL_TENSOR.SSM_F_A:                   "blk.{bid}.ssm_f_a",              # Kimi Linear
+     MODEL_TENSOR.SSM_F_B:                   "blk.{bid}.ssm_f_b",              # Kimi Linear
+     MODEL_TENSOR.SSM_BETA:                  "blk.{bid}.ssm_beta",             # Kimi Linear qwen3.5
++    MODEL_TENSOR.SSM_RDA:                   "blk.{bid}.ssm_rda",              # Raon-1
+     MODEL_TENSOR.SSM_G_A:                   "blk.{bid}.ssm_g_a",              # Kimi Linear
+     MODEL_TENSOR.SSM_G_B:                   "blk.{bid}.ssm_g_b",              # Kimi Linear
+     MODEL_TENSOR.SSM_G:                     "blk.{bid}.ssm_g",                # Kimi K3
+@@ -6597,6 +6602,56 @@ MODEL_TENSORS: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
+         MODEL_TENSOR.FFN_ROUTED_UP,
+         MODEL_TENSOR.FFN_ROUTED_NORM,
+     ],
++    MODEL_ARCH.RAON1: [
++        MODEL_TENSOR.TOKEN_EMBD,
++        MODEL_TENSOR.OUTPUT_NORM,
++        MODEL_TENSOR.OUTPUT,
++        MODEL_TENSOR.ATTN_NORM,
++        # MLA (full-attention layers)
++        MODEL_TENSOR.ATTN_Q,
++        MODEL_TENSOR.ATTN_K,
++        MODEL_TENSOR.ATTN_V,
++        MODEL_TENSOR.ATTN_OUT,
++        MODEL_TENSOR.ATTN_GATE,
++        MODEL_TENSOR.ATTN_Q_A,
++        MODEL_TENSOR.ATTN_Q_B,
++        MODEL_TENSOR.ATTN_KV_A_MQA,
++        MODEL_TENSOR.ATTN_K_B,
++        MODEL_TENSOR.ATTN_V_B,
++        MODEL_TENSOR.ATTN_Q_A_NORM,
++        MODEL_TENSOR.ATTN_KV_A_NORM,
++        # RDA (linear-attention layers)
++        MODEL_TENSOR.SSM_CONV1D_Q,
++        MODEL_TENSOR.SSM_CONV1D_K,
++        MODEL_TENSOR.SSM_CONV1D_V,
++        MODEL_TENSOR.SSM_F_A,
++        MODEL_TENSOR.SSM_F_B,
++        MODEL_TENSOR.SSM_BETA,
++        MODEL_TENSOR.SSM_RDA,
++        MODEL_TENSOR.SSM_A,
++        MODEL_TENSOR.SSM_G,
++        MODEL_TENSOR.SSM_DT,
++        MODEL_TENSOR.SSM_NORM,
++        MODEL_TENSOR.HC_ATTN_FN,
++        MODEL_TENSOR.HC_ATTN_BASE,
++        MODEL_TENSOR.HC_ATTN_SCALE,
++        MODEL_TENSOR.HC_FFN_FN,
++        MODEL_TENSOR.HC_FFN_BASE,
++        MODEL_TENSOR.HC_FFN_SCALE,
++        # FFN
++        MODEL_TENSOR.FFN_NORM,
++        MODEL_TENSOR.FFN_GATE,
++        MODEL_TENSOR.FFN_DOWN,
++        MODEL_TENSOR.FFN_UP,
++        MODEL_TENSOR.FFN_GATE_INP,
++        MODEL_TENSOR.FFN_EXP_PROBS_B,
++        MODEL_TENSOR.FFN_GATE_EXP,
++        MODEL_TENSOR.FFN_DOWN_EXP,
++        MODEL_TENSOR.FFN_UP_EXP,
++        MODEL_TENSOR.FFN_GATE_SHEXP,
++        MODEL_TENSOR.FFN_DOWN_SHEXP,
++        MODEL_TENSOR.FFN_UP_SHEXP,
++    ],
+     MODEL_ARCH.TALKIE: [
+         MODEL_TENSOR.TOKEN_EMBD,
+         MODEL_TENSOR.OUTPUT,
+diff --git a/gguf-py/gguf/gguf_writer.py b/gguf-py/gguf/gguf_writer.py
+index 364eeaa75..d8a076981 100644
+--- a/gguf-py/gguf/gguf_writer.py
++++ b/gguf-py/gguf/gguf_writer.py
+@@ -1031,6 +1031,9 @@ class GGUFWriter:
+     def add_layer_norm_rms_eps(self, value: float) -> None:
+         self.add_float32(Keys.Attention.LAYERNORM_RMS_EPS.format(arch=self.arch), value)
+ 
++    def add_latent_norm_rms_eps(self, value: float) -> None:
++        self.add_float32(Keys.Attention.LATENT_NORM_RMS_EPS.format(arch=self.arch), value)
++
+     def add_group_norm_eps(self, value: float) -> None:
+         self.add_float32(Keys.Attention.GROUPNORM_EPS.format(arch=self.arch), value)
+ 
+diff --git a/gguf-py/gguf/tensor_mapping.py b/gguf-py/gguf/tensor_mapping.py
+index bb7d6dcae..2c0f7e5a1 100644
+--- a/gguf-py/gguf/tensor_mapping.py
++++ b/gguf-py/gguf/tensor_mapping.py
+@@ -1121,6 +1121,9 @@ class TensorNameMap:
+             "model.layers.{bid}.self_attn.b_proj",       # Kimi Linear
+             "model.layers.{bid}.attention.b_proj",       # bailingmoe3
+         ),
++        MODEL_TENSOR.SSM_RDA: (
++            "model.layers.{bid}.self_attn.rda_w_proj",
++        ),
+         # Kimi K3 latent MoE: routed experts operate in a down-projected space
+         MODEL_TENSOR.FFN_ROUTED_DOWN: (
+             "model.layers.{bid}.block_sparse_moe.routed_expert_down_proj",
+diff --git a/include/llama.h b/include/llama.h
+index 45c22b887..09ac9ffea 100644
+--- a/include/llama.h
++++ b/include/llama.h
+@@ -580,6 +580,8 @@ extern "C" {
+     LLAMA_API int32_t llama_model_n_ctx_train  (const struct llama_model * model);
+     LLAMA_API int32_t llama_model_n_embd       (const struct llama_model * model);
+     LLAMA_API int32_t llama_model_n_embd_inp   (const struct llama_model * model);
++    // floats per token of llama_get_embeddings_layer_inp: n_embd, or wider for hyper-connection streams (Raon-1)
++    LLAMA_API int32_t llama_model_n_embd_layer_inp(const struct llama_model * model);
+     LLAMA_API int32_t llama_model_n_embd_out   (const struct llama_model * model);
+     LLAMA_API int32_t llama_model_n_layer      (const struct llama_model * model);
+     LLAMA_API int32_t llama_model_n_layer_nextn(const struct llama_model * model);
+@@ -674,6 +676,9 @@ extern "C" {
+     // (the packed lattice also holds the top_k x top_k pairwise transition scores); 0 if the model has no selector head
+     LLAMA_API int32_t llama_model_dflash_selector_top_k(const struct llama_model * model);
+ 
++    // width of the fused target features a draft encoder expects per token (EAGLE3 / DFlash)
++    LLAMA_API int32_t llama_model_n_embd_inp_enc(const struct llama_model * model);
++
+     // returns pointer to the target-model layer indices
+     LLAMA_API const int32_t * llama_model_target_layer_ids  (const struct llama_model * model);
+     // returns the number of extracted layers from target model
+diff --git a/models/templates/KRAFTON-Raon-1-mini-preview.jinja b/models/templates/KRAFTON-Raon-1-mini-preview.jinja
+new file mode 100644
+index 000000000..85a42e566
+--- /dev/null
++++ b/models/templates/KRAFTON-Raon-1-mini-preview.jinja
+@@ -0,0 +1,136 @@
++{#- Text-only ChatML SFT protocol for raon-1-mini. -#}
++{%- set truncate_history_thinking = truncate_history_thinking if truncate_history_thinking is defined else false %}
++{%- macro render_content(content, is_system_content=false) %}
++    {%- if content is string %}
++        {{- content }}
++    {%- elif content is iterable and content is not mapping %}
++        {%- for item in content %}
++            {%- if 'text' in item %}
++                {{- item.text }}
++            {%- else %}
++                {{- raise_exception('raon-1-mini supports text content only.') }}
++            {%- endif %}
++        {%- endfor %}
++    {%- elif content is none or content is undefined %}
++        {{- '' }}
++    {%- else %}
++        {{- raise_exception('Unexpected content type.') }}
++    {%- endif %}
++{%- endmacro %}
++{%- macro render_assistant_body(message, content, reasoning_content, preserve_reasoning) %}
++    {%- if preserve_reasoning and reasoning_content|trim %}
++        {{- '<think>\n' + reasoning_content|trim + '\n</think>\n\n' }}
++    {%- else %}
++        {{- '<think></think>\n\n' }}
++    {%- endif %}
++    {{- content }}
++    {%- if message.tool_calls and message.tool_calls is iterable and message.tool_calls is not mapping %}
++        {%- for tool_call in message.tool_calls %}
++            {%- if tool_call.function is defined %}
++                {%- set tool_call = tool_call.function %}
++            {%- endif %}
++            {%- if loop.first %}
++                {%- if content|trim %}
++                    {{- '\n\n<tool_call>\n<function=' + tool_call.name + '>\n' }}
++                {%- else %}
++                    {{- '<tool_call>\n<function=' + tool_call.name + '>\n' }}
++                {%- endif %}
++            {%- else %}
++                {{- '\n<tool_call>\n<function=' + tool_call.name + '>\n' }}
++            {%- endif %}
++            {%- if tool_call.arguments is defined %}
++                {%- for args_name, args_value in tool_call.arguments|items %}
++                    {{- '<parameter=' + args_name + '>\n' }}
++                    {%- set args_value = args_value | string if args_value is string else args_value | tojson | safe %}
++                    {{- args_value }}
++                    {{- '\n</parameter>\n' }}
++                {%- endfor %}
++            {%- endif %}
++            {{- '</function>\n</tool_call>' }}
++        {%- endfor %}
++    {%- endif %}
++    {{- '<|im_end|>' }}
++{%- endmacro %}
++{%- if not messages %}
++    {{- raise_exception('No messages provided.') }}
++{%- endif %}
++{%- if tools and tools is iterable and tools is not mapping %}
++    {{- '<|im_start|>system\n' }}
++    {{- '# Tools\n\nYou have access to the following functions:\n\n<tools>' }}
++    {%- for tool in tools %}
++        {{- '\n' }}
++        {{- tool | tojson }}
++    {%- endfor %}
++    {{- '\n</tools>' }}
++    {{- '\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT>' }}
++    {%- if messages[0].role == 'system' %}
++        {%- set content = render_content(messages[0].content, true)|trim %}
++        {%- if content %}
++            {{- '\n\n' + content }}
++        {%- endif %}
++    {%- endif %}
++    {{- '<|im_end|>\n' }}
++{%- elif messages[0].role == 'system' %}
++    {%- set content = render_content(messages[0].content, true)|trim %}
++    {{- '<|im_start|>system\n' + content + '<|im_end|>\n' }}
++{%- endif %}
++{%- set ns = namespace(multi_step_tool=true, last_query_index=messages|length - 1) %}
++{%- for message in messages[::-1] %}
++    {%- set index = (messages|length - 1) - loop.index0 %}
++    {%- if ns.multi_step_tool and message.role == 'user' %}
++        {%- set content = render_content(message.content)|trim %}
++        {%- if not(content.startswith('<tool_response>') and content.endswith('</tool_response>')) %}
++            {%- set ns.multi_step_tool = false %}
++            {%- set ns.last_query_index = index %}
++        {%- endif %}
++    {%- endif %}
++{%- endfor %}
++{%- if ns.multi_step_tool %}
++    {{- raise_exception('No user query found in messages.') }}
++{%- endif %}
++{%- for message in messages %}
++    {%- set content = render_content(message.content)|trim %}
++    {%- if message.role == 'system' %}
++        {%- if not loop.first %}
++            {{- raise_exception('System message must be at the beginning.') }}
++        {%- endif %}
++    {%- elif message.role == 'user' %}
++        {{- '<|im_start|>user\n' + content + '<|im_end|>\n' }}
++    {%- elif message.role == 'assistant' %}
++        {%- set reasoning_content = '' %}
++        {%- if message.reasoning_content is string %}
++            {%- set reasoning_content = message.reasoning_content %}
++        {%- elif '</think>' in content %}
++            {%- set reasoning_content = content.split('</think>')[0].rstrip('\n').split('<think>')[-1].lstrip('\n') %}
++            {%- set content = content.split('</think>')[-1].lstrip('\n') %}
++        {%- endif %}
++        {{- '<|im_start|>assistant\n' }}
++        {%- set preserve_reasoning = (not truncate_history_thinking) or (loop.index0 > ns.last_query_index) %}
++        {%- if message.loss is defined and message.loss is false %}
++            {{- render_assistant_body(message, content, reasoning_content, preserve_reasoning) }}
++        {%- else %}
++            {%- generation %}
++            {{- render_assistant_body(message, content, reasoning_content, preserve_reasoning) }}
++            {%- endgeneration %}
++        {%- endif %}
++        {{- '\n' }}
++    {%- elif message.role == 'tool' %}
++        {%- if loop.previtem and loop.previtem.role != 'tool' %}
++            {{- '<|im_start|>user' }}
++        {%- endif %}
++        {{- '\n<tool_response>\n' + content + '\n</tool_response>' }}
++        {%- if loop.last or loop.nextitem.role != 'tool' %}
++            {{- '<|im_end|>\n' }}
++        {%- endif %}
++    {%- else %}
++        {{- raise_exception('Unexpected message role.') }}
++    {%- endif %}
++{%- endfor %}
++{%- if add_generation_prompt %}
++    {{- '<|im_start|>assistant\n' }}
++    {%- if enable_thinking is defined and enable_thinking is false %}
++        {{- '<think></think>\n\n' }}
++    {%- else %}
++        {{- '<think>\n' }}
++    {%- endif %}
++{%- endif %}
+diff --git a/src/llama-arch.cpp b/src/llama-arch.cpp
+index 6dcf34e77..f7cdab50f 100644
+--- a/src/llama-arch.cpp
++++ b/src/llama-arch.cpp
+@@ -169,6 +169,7 @@ static const std::map<llm_arch, const char *> LLM_ARCH_NAMES = {
+     { LLM_ARCH_KIMI_LINEAR,      "kimi-linear"      },
+     { LLM_ARCH_KIMI_K3,          "kimi-k3"          },
+     { LLM_ARCH_KIMI_K31,         "kimi-k31"         },
++    { LLM_ARCH_RAON1,            "raon1"            },
+     { LLM_ARCH_GLM5_NEXT,        "glm5-next"        },
+     { LLM_ARCH_TALKIE,           "talkie"           },
+     { LLM_ARCH_MELLUM,           "mellum"           },
+@@ -293,6 +294,7 @@ static const std::map<llm_kv, const char *> LLM_KV_NAMES = {
+     { LLM_KV_ATTENTION_VALUE_LENGTH,                 "%s.attention.value_length"                 },
+     { LLM_KV_ATTENTION_LAYERNORM_EPS,                "%s.attention.layer_norm_epsilon"           },
+     { LLM_KV_ATTENTION_LAYERNORM_RMS_EPS,            "%s.attention.layer_norm_rms_epsilon"       },
++    { LLM_KV_ATTENTION_LATENT_NORM_RMS_EPS,          "%s.attention.latent_norm_rms_epsilon"      },
+     { LLM_KV_ATTENTION_GROUPNORM_EPS,                "%s.attention.group_norm_epsilon"           },
+     { LLM_KV_ATTENTION_GROUPNORM_GROUPS,             "%s.attention.group_norm_groups"            },
+     { LLM_KV_ATTENTION_CAUSAL,                       "%s.attention.causal"                       },
+@@ -649,6 +651,7 @@ static const std::map<llm_tensor, const char *> LLM_TENSOR_NAMES = {
+     { LLM_TENSOR_SSM_F_A,                                "blk.%d.ssm_f_a" },
+     { LLM_TENSOR_SSM_F_B,                                "blk.%d.ssm_f_b" },
+     { LLM_TENSOR_SSM_BETA,                               "blk.%d.ssm_beta" },
++    { LLM_TENSOR_SSM_RDA,                                "blk.%d.ssm_rda" },
+     { LLM_TENSOR_SSM_G_A,                                "blk.%d.ssm_g_a" },
+     { LLM_TENSOR_SSM_G,                                  "blk.%d.ssm_g" },
+     { LLM_TENSOR_ATTN_RES_SCORE,                         "blk.%d.attn_res_score" },
+@@ -990,8 +993,8 @@ static const std::map<llm_tensor, llm_tensor_info> LLM_TENSOR_INFOS = {
+     {LLM_TENSOR_ATTN_COMPRESSOR_WGATE,      {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
+     {LLM_TENSOR_ATTN_COMPRESSOR_APE,        {LLM_TENSOR_LAYER_REPEATING, GGML_OP_GET_ROWS}},
+     {LLM_TENSOR_ATTN_COMPRESSOR_NORM,       {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL}},
+-    {LLM_TENSOR_ATTN_K_B,                   {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
+-    {LLM_TENSOR_ATTN_V_B,                   {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_ATTN_K_B,                   {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT, true}},
++    {LLM_TENSOR_ATTN_V_B,                   {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT, true}},
+     {LLM_TENSOR_ATTN_SINKS,                 {LLM_TENSOR_LAYER_REPEATING, GGML_OP_SCALE}},
+     {LLM_TENSOR_ATTN_SSMAX,                 {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL}},
+     {LLM_TENSOR_DEC_ATTN_Q,                 {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
+@@ -1054,6 +1057,7 @@ static const std::map<llm_tensor, llm_tensor_info> LLM_TENSOR_INFOS = {
+     {LLM_TENSOR_SSM_F_A,                    {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
+     {LLM_TENSOR_SSM_F_B,                    {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
+     {LLM_TENSOR_SSM_BETA,                   {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_SSM_RDA,                    {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
+     {LLM_TENSOR_SSM_G_A,                    {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
+     {LLM_TENSOR_SSM_G,                      {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
+     {LLM_TENSOR_ATTN_RES_SCORE,             {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL}},
+@@ -1366,6 +1370,7 @@ bool llm_arch_is_hybrid(const llm_arch & arch) {
+         case LLM_ARCH_BAILINGMOE3:
+         case LLM_ARCH_KIMI_K3:
+         case LLM_ARCH_KIMI_K31:
++        case LLM_ARCH_RAON1:
+         case LLM_ARCH_GLM5_NEXT:
+         case LLM_ARCH_QWEN35:
+         case LLM_ARCH_QWEN35MOE:
+@@ -1396,6 +1401,7 @@ bool llm_arch_supports_rs_rollback(const llm_arch & arch) {
+     switch (arch) {
+         case LLM_ARCH_KIMI_K3:
+         case LLM_ARCH_KIMI_K31:
++        case LLM_ARCH_RAON1:
+         case LLM_ARCH_QWEN35:
+         case LLM_ARCH_QWEN35MOE:
+         case LLM_ARCH_CLOVER_MOE:
+@@ -1469,6 +1475,8 @@ bool llm_arch_supports_sm_tensor(const llm_arch & arch) {
+         case LLM_ARCH_BAILINGMOE3:
+         case LLM_ARCH_KIMI_K3:
+         case LLM_ARCH_KIMI_K31:
++        case LLM_ARCH_RAON1:
++        case LLM_ARCH_GLM5_NEXT:
+         case LLM_ARCH_QWEN3TTS:
+         case LLM_ARCH_LIMITE:
+             return false;
+diff --git a/src/llama-arch.h b/src/llama-arch.h
+index 3b8f45d26..f03be1ced 100644
+--- a/src/llama-arch.h
++++ b/src/llama-arch.h
+@@ -167,6 +167,7 @@ enum llm_arch {
+     LLM_ARCH_KIMI_LINEAR,
+     LLM_ARCH_KIMI_K3,
+     LLM_ARCH_KIMI_K31,
++    LLM_ARCH_RAON1,
+     LLM_ARCH_GLM5_NEXT,
+     LLM_ARCH_TALKIE,
+     LLM_ARCH_MELLUM,
+@@ -299,6 +300,7 @@ enum llm_kv {
+     LLM_KV_ATTENTION_VALUE_LENGTH,
+     LLM_KV_ATTENTION_LAYERNORM_EPS,
+     LLM_KV_ATTENTION_LAYERNORM_RMS_EPS,
++    LLM_KV_ATTENTION_LATENT_NORM_RMS_EPS,
+     LLM_KV_ATTENTION_GROUPNORM_EPS,
+     LLM_KV_ATTENTION_GROUPNORM_GROUPS,
+     LLM_KV_ATTENTION_CAUSAL,
+@@ -656,6 +658,7 @@ enum llm_tensor {
+     LLM_TENSOR_SSM_F_A,             // kimi: forget gate projection A
+     LLM_TENSOR_SSM_F_B,             // kimi: forget gate projection B
+     LLM_TENSOR_SSM_BETA,            // kimi: beta mixing coefficient and qwen3.5
++    LLM_TENSOR_SSM_RDA,             // raon1: write gate offset
+     LLM_TENSOR_SSM_G_A,             // kimi: output gate projection A
+     LLM_TENSOR_SSM_G_B,             // kimi: output gate projection B
+     LLM_TENSOR_SSM_G,               // kimi-k3: full-rank KDA gate
+@@ -959,6 +962,10 @@ struct LLM_TN {
+ struct llm_tensor_info {
+     llm_tensor_layer layer;
+     ggml_op op;
++    // the graph may use the weight with a non-contiguous src1: MLA attn_k_b (permuted q_nope view) and attn_v_b (permuted attention output
++    // on the flash-attention path; contiguous without FA). the loader probes with such a src1, so a buffer type that rejects it is skipped
++    // (CPU AMX; CANN, OpenCL and ET for some weight types)
++    bool src1_noncont = false;
+ };
+ 
+ std::vector<llm_arch> llm_arch_all();
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 235f87a13..d14a72d69 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -2127,7 +2127,7 @@ void llama_context::layer_inp_dev_alloc() {
+     };
+     ctx_layer_inp_dev.reset(ggml_init(params));
+ 
+-    layer_inp_dev = ggml_new_tensor_2d(ctx_layer_inp_dev.get(), GGML_TYPE_F32, n_layer_inp*model.hparams.n_embd, cparams.n_batch);
++    layer_inp_dev = ggml_new_tensor_2d(ctx_layer_inp_dev.get(), GGML_TYPE_F32, n_layer_inp*model.hparams.n_embd_layer_inp(), cparams.n_batch);
+     ggml_set_name(layer_inp_dev, "layer_inp_dev");
+ 
+     layer_inp_dev_dev = model.dev_output();
+@@ -3457,8 +3457,8 @@ uint32_t llama_context::output_reserve(int32_t n_outputs) {
+ 
+     const auto n_batch    = cparams.n_batch;
+     const auto n_vocab    = vocab.n_tokens();
+-    const auto n_embd     = hparams.n_embd;
+     const auto n_embd_out = hparams.n_embd_out();
++    const auto n_embd_layer_inp = hparams.n_embd_layer_inp();
+ 
+     bool has_logits     = !cparams.embeddings || graph_has_logits;
+     bool has_embd       = cparams.embeddings;
+@@ -3486,7 +3486,7 @@ uint32_t llama_context::output_reserve(int32_t n_outputs) {
+ 
+     for (bool enabled : cparams.embeddings_layer_inp) {
+         if (enabled && !cparams.embeddings_layer_inp_dev) {
+-            embd_layer_inp_float_count += (size_t) n_embd * n_batch;
++            embd_layer_inp_float_count += (size_t) n_embd_layer_inp * n_batch;
+         }
+     }
+ 
+@@ -3558,7 +3558,7 @@ uint32_t llama_context::output_reserve(int32_t n_outputs) {
+ 
+     for (uint32_t il = 0; il < embd_layer_inp.size(); ++il) {
+         if (cparams.embeddings_layer_inp[il] && !cparams.embeddings_layer_inp_dev) {
+-            embd_layer_inp[il] = buffer_view<float>{(float *) (base + offset), (size_t) n_embd * n_batch};
++            embd_layer_inp[il] = buffer_view<float>{(float *) (base + offset), (size_t) n_embd_layer_inp * n_batch};
+             offset += embd_layer_inp[il].size * sizeof(float);
+         } else {
+             embd_layer_inp[il] = buffer_view<float>{nullptr, 0};
+@@ -3634,7 +3634,7 @@ bool llama_context::extract_layer_inputs(const llm_graph_result * res, size_t to
+         GGML_ASSERT(nfloats % n_tokens == 0);
+ 
+         const size_t row_floats = nfloats / n_tokens;
+-        GGML_ASSERT(row_floats == model.hparams.n_embd);
++        GGML_ASSERT(row_floats == model.hparams.n_embd_layer_inp());
+         const size_t dst_offset = token_offset * row_floats;
+         GGML_ASSERT(dst_offset + nfloats <= embd_layer_inp[il].size);
+ 
+@@ -3649,8 +3649,8 @@ bool llama_context::extract_layer_inputs(const llm_graph_result * res, size_t to
+ 
+ void llama_context::output_reorder() {
+     const uint64_t n_vocab     = model.vocab.n_tokens();
+-    const uint64_t n_embd      = model.hparams.n_embd;
+     const uint64_t n_embd_out  = model.hparams.n_embd_out();
++    const uint64_t n_embd_layer_inp = model.hparams.n_embd_layer_inp();
+ 
+     for (size_t s = 0; s < output_swaps.size(); ++s) {
+         const uint64_t i0 = output_swaps[s].i0;
+@@ -3717,8 +3717,8 @@ void llama_context::output_reorder() {
+             }
+             for (auto & layer : embd_layer_inp) {
+                 if (layer.has_data()) {
+-                    for (size_t k = 0; k < n_embd; ++k) {
+-                        std::swap(layer.data[i*n_embd + k], layer.data[j*n_embd + k]);
++                    for (size_t k = 0; k < n_embd_layer_inp; ++k) {
++                        std::swap(layer.data[i*n_embd_layer_inp + k], layer.data[j*n_embd_layer_inp + k]);
+                     }
+                 }
+             }
+@@ -3734,7 +3734,10 @@ void llama_context::output_reorder() {
+ 
+ uint32_t llama_context::graph_max_nodes() const {
+     uint32_t res;
+-    if (model.arch == LLM_ARCH_KIMI_K3 || model.arch == LLM_ARCH_KIMI_K31 || model.arch == LLM_ARCH_GLM5_NEXT ||
++    if (model.arch == LLM_ARCH_RAON1) {
++        // Raon-1 (BE 0080, from Krafton's fork): the n_tokens*40 budget below is exhausted at ubatch 3840
++        res = std::max<uint32_t>(cparams.n_ubatch * 160u, 64u * model.n_tensors());
++    } else if (model.arch == LLM_ARCH_KIMI_K3 || model.arch == LLM_ARCH_KIMI_K31 || model.arch == LLM_ARCH_GLM5_NEXT ||
+         model.arch == LLM_ARCH_HRM_TEXT) {
+         res = std::max<uint32_t>(1024u, 64u * model.n_tensors());
+     } else if (model.arch == LLM_ARCH_QWEN3NEXT ||
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index c52c37b2b..0eb2602a2 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -2263,6 +2263,21 @@ llm_graph_qkv llm_graph_context::build_qkv(
+ }
+ 
+ 
++ggml_tensor * llm_graph_context::build_situ(
++         ggml_tensor * gate,
++         ggml_tensor * up) const {
++    const float beta = hparams.situ_beta;
++    const float lb   = hparams.situ_linear_beta;
++
++    ggml_tensor * act = ggml_scale(ctx0, ggml_tanh(ctx0, ggml_scale(ctx0, gate, 1.0f/beta)), beta);
++    act = ggml_mul(ctx0, act, ggml_sigmoid(ctx0, gate));
++
++    if (lb > 0.0f) {
++        up = ggml_scale(ctx0, ggml_tanh(ctx0, ggml_scale(ctx0, up, 1.0f/lb)), lb);
++    }
++    return ggml_mul(ctx0, act, up);
++}
++
+ ggml_tensor * llm_graph_context::build_ffn(
+          ggml_tensor * cur,
+          ggml_tensor * up,
+@@ -2454,7 +2469,12 @@ ggml_tensor * llm_graph_context::build_ffn(
+                 cb(cur, "ffn_reglu", il);
+             } break;
+         case LLM_FFN_SITU:
+-            GGML_ABORT("not yet supported");
++            {
++                GGML_ASSERT(gate && type_gate == LLM_FFN_PAR);
++                cur = build_situ(cur, tmp);
++                cb(cur, "ffn_situ", il);
++                type_gate = LLM_FFN_SEQ;
++            } break;
+         default:
+             GGML_ABORT("fatal error");
+     }
+@@ -5240,6 +5260,9 @@ void llm_graph_context::build_layer_inp_dev() const {
+         return;
+     }
+ 
++    // Raon (BE 0080): a model with a wider residual (hyper-connection streams) exports n_embd_layer_inp() per tap
++    const int64_t n_w = hparams.n_embd_layer_inp();
++
+     auto inp = std::make_unique<llm_graph_input_batch_idxs>();
+ 
+     inp->idxs = ggml_new_tensor_1d(ctx0, GGML_TYPE_I64, n_tokens);
+@@ -5254,13 +5277,13 @@ void llm_graph_context::build_layer_inp_dev() const {
+ 
+         ggml_tensor * src = res->t_layer_inp[il];
+         GGML_ASSERT(src != nullptr && "layer input tensor is null");
+-        GGML_ASSERT(src->ne[0] == n_embd);
++        GGML_ASSERT(src->ne[0] == n_w);
+ 
+-        ggml_tensor * dst = ggml_view_2d(ctx0, layer_inp_dev, n_embd, layer_inp_dev->ne[1], layer_inp_dev->nb[1], col*n_embd*ggml_element_size(layer_inp_dev));
+-        ggml_build_forward_expand(gf, ggml_set_rows(ctx0, dst, ggml_reshape_2d(ctx0, src, n_embd, n_tokens), inp->idxs));
++        ggml_tensor * dst = ggml_view_2d(ctx0, layer_inp_dev, n_w, layer_inp_dev->ne[1], layer_inp_dev->nb[1], col*n_w*ggml_element_size(layer_inp_dev));
++        ggml_build_forward_expand(gf, ggml_set_rows(ctx0, dst, ggml_reshape_2d(ctx0, src, n_w, n_tokens), inp->idxs));
+         col++;
+     }
+-    GGML_ASSERT(col*n_embd == layer_inp_dev->ne[0]);
++    GGML_ASSERT(col*n_w == layer_inp_dev->ne[0]);
+ 
+     res->add_input(std::move(inp));
+ }
+diff --git a/src/llama-graph.h b/src/llama-graph.h
+index 1131a4c4e..18e704423 100644
+--- a/src/llama-graph.h
++++ b/src/llama-graph.h
+@@ -1219,6 +1219,12 @@ struct llm_graph_context {
+                       int   il,
+                      bool   reshape = true) const;
+ 
++    // situ(gate, up) = beta*tanh(gate/beta)*sigmoid(gate) * linear_beta*tanh(up/linear_beta)
++    // linear_beta <= 0 disables the transform on the up branch
++    ggml_tensor * build_situ(
++             ggml_tensor * gate,
++             ggml_tensor * up) const;
++
+     ggml_tensor * build_ffn(
+              ggml_tensor * cur,
+              ggml_tensor * up,
+diff --git a/src/llama-hparams.cpp b/src/llama-hparams.cpp
+index f05b5d6bb..32e246812 100644
+--- a/src/llama-hparams.cpp
++++ b/src/llama-hparams.cpp
+@@ -137,6 +137,10 @@ uint32_t llama_hparams::n_embd_out() const {
+     return n_embd_out_impl > 0 ? n_embd_out_impl : n_embd;
+ }
+ 
++uint32_t llama_hparams::n_embd_layer_inp() const {
++    return n_embd_layer_inp_impl > 0 ? n_embd_layer_inp_impl : n_embd;
++}
++
+ uint32_t llama_hparams::n_embd_head_k(uint32_t il) const {
+     if (il < n_layer_all) {
+         return is_swa(il) ? n_embd_head_k_swa : n_embd_head_k_full;
+diff --git a/src/llama-hparams.h b/src/llama-hparams.h
+index 7b738407d..657ce0751 100644
+--- a/src/llama-hparams.h
++++ b/src/llama-hparams.h
+@@ -143,6 +143,7 @@ struct llama_hparams {
+     float f_norm_eps;
+     float f_norm_rms_eps;
+     float f_norm_group_eps;
++    float f_norm_rms_eps_latent = 0.0f; // RMS norm of the MLA q/kv latents (Raon-1)
+ 
+     // post norms use their own epsilon
+     float f_post_norm_eps = 0.0f;
+@@ -280,6 +281,10 @@ struct llama_hparams {
+     // output embedding dimension (0 = use n_embd)
+     uint32_t n_embd_out_impl = 0;
+ 
++    // per-token width of the extracted layer inputs (0 = use n_embd)
++    // e.g. hyper-connection models carry hc_mult * n_embd residual streams
++    uint32_t n_embd_layer_inp_impl = 0;
++
+     uint32_t dflash_block_size       = 0;
+     uint32_t dflash_conv_kernel_size = 0;
+     uint32_t dflash_conv_group_size  = 0;
+@@ -495,6 +500,9 @@ struct llama_hparams {
+     // dimension of output embeddings
+     uint32_t n_embd_out() const;
+ 
++    // dimension of the extracted layer inputs (see llama_get_embeddings_layer_inp)
++    uint32_t n_embd_layer_inp() const;
++
+     // dimension of key/value embeddings for each head (per layer)
+     uint32_t n_embd_head_k(uint32_t il = 0) const;
+     uint32_t n_embd_head_v(uint32_t il = 0) const;
+diff --git a/src/llama-memory-hybrid-iswa.cpp b/src/llama-memory-hybrid-iswa.cpp
+index 6d843c76e..f90c2a0cc 100644
+--- a/src/llama-memory-hybrid-iswa.cpp
++++ b/src/llama-memory-hybrid-iswa.cpp
+@@ -31,6 +31,7 @@ llama_memory_hybrid_iswa::llama_memory_hybrid_iswa(
+     const layer_filter_cb & filter_attn,
+     const layer_filter_cb & filter_recr) :
+     hparams(model.hparams),
++    shift_ok(model.arch != LLM_ARCH_RAON1),
+     mem_attn(new llama_kv_cache_iswa(
+         model,
+         no_alloc,
+@@ -137,8 +138,8 @@ llama_memory_context_ptr llama_memory_hybrid_iswa::init_update(llama_context * l
+ }
+ 
+ bool llama_memory_hybrid_iswa::get_can_shift() const {
+-    // Shifting is trivially supported for recurrent
+-    return mem_attn->get_can_shift();
++    // Shifting is trivially supported for recurrent, except on Raon-1 (see llama_memory_hybrid.h)
++    return shift_ok && mem_attn->get_can_shift();
+ }
+ 
+ void llama_memory_hybrid_iswa::clear(bool data) {
+diff --git a/src/llama-memory-hybrid-iswa.h b/src/llama-memory-hybrid-iswa.h
+index 52c885ac9..72548fc49 100644
+--- a/src/llama-memory-hybrid-iswa.h
++++ b/src/llama-memory-hybrid-iswa.h
+@@ -85,6 +85,8 @@ public:
+ 
+ private:
+     const llama_hparams & hparams;
++    // BE 0080: Raon-1 refuses a context shift (its recurrent half cannot drop tokens); other brains keep the old rule
++    const bool shift_ok;
+ 
+     const std::unique_ptr<llama_kv_cache_iswa> mem_attn;
+     const std::unique_ptr<llama_memory_recurrent> mem_recr;
+diff --git a/src/llama-memory-hybrid.cpp b/src/llama-memory-hybrid.cpp
+index 7d3b27908..df12d75f7 100644
+--- a/src/llama-memory-hybrid.cpp
++++ b/src/llama-memory-hybrid.cpp
+@@ -31,6 +31,7 @@ llama_memory_hybrid::llama_memory_hybrid(
+     const layer_filter_cb & filter_attn,
+     const layer_filter_cb & filter_recr) :
+     hparams(model.hparams),
++    shift_ok(model.arch != LLM_ARCH_RAON1),
+     mem_attn(new llama_kv_cache(
+         model,
+         no_alloc,
+@@ -132,8 +133,8 @@ llama_memory_context_ptr llama_memory_hybrid::init_update(llama_context * lctx,
+ }
+ 
+ bool llama_memory_hybrid::get_can_shift() const {
+-    // Shifting is trivially supported for recurrent
+-    return mem_attn->get_can_shift();
++    // Shifting is trivially supported for recurrent, except on Raon-1 (see llama_memory_hybrid.h)
++    return shift_ok && mem_attn->get_can_shift();
+ }
+ 
+ void llama_memory_hybrid::clear(bool data) {
+diff --git a/src/llama-memory-hybrid.h b/src/llama-memory-hybrid.h
+index 2b4d1269c..bbe224a5f 100644
+--- a/src/llama-memory-hybrid.h
++++ b/src/llama-memory-hybrid.h
+@@ -85,6 +85,8 @@ public:
+ 
+ private:
+     const llama_hparams & hparams;
++    // BE 0080: Raon-1 refuses a context shift (its recurrent half cannot drop tokens); other brains keep the old rule
++    const bool shift_ok;
+ 
+     const std::unique_ptr<llama_kv_cache> mem_attn;
+     const std::unique_ptr<llama_memory_recurrent> mem_recr;
+diff --git a/src/llama-model-loader.cpp b/src/llama-model-loader.cpp
+index c5c197e09..c7e85a42a 100644
+--- a/src/llama-model-loader.cpp
++++ b/src/llama-model-loader.cpp
+@@ -1015,7 +1015,9 @@ const struct ggml_tensor * llama_model_loader::check_tensor_dims(
+ }
+ 
+ // checks if the weight tensor can be used with the specified buffer type and device
+-static bool weight_buft_supported(const llama_hparams & hparams, ggml_tensor * w, ggml_op op, ggml_backend_buffer_type_t buft, ggml_backend_dev_t dev) {
++// src1_noncont: probe MUL_MAT with a non-contiguous src1, as the graph uses the weight (llm_tensor_info::src1_noncont)
++static bool weight_buft_supported(const llama_hparams & hparams, ggml_tensor * w, ggml_op op, bool src1_noncont,
++        ggml_backend_buffer_type_t buft, ggml_backend_dev_t dev) {
+     GGML_ASSERT(w != nullptr);
+ 
+     if (op == GGML_OP_NONE) {
+@@ -1050,7 +1052,15 @@ static bool weight_buft_supported(const llama_hparams & hparams, ggml_tensor * w
+             } break;
+         case GGML_OP_MUL_MAT:
+             {
+-                ggml_tensor * b = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, w->ne[0], 512, w->ne[2], w->ne[3]);
++                ggml_tensor * b;
++                if (src1_noncont) {
++                    // shaped like the MLA graph's strided src1: a head-major view of wider rows (q_nope out of q) permuted to [n_embd_head_qk_nope, n_tokens, n_head]
++                    ggml_tensor * q = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, 2*w->ne[0], w->ne[2], 512, w->ne[3]);
++                    b = ggml_view_4d(ctx, q, w->ne[0], w->ne[2], 512, w->ne[3], q->nb[1], q->nb[2], q->nb[3], 0);
++                    b = ggml_permute(ctx, b, 0, 2, 1, 3);
++                } else {
++                    b = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, w->ne[0], 512, w->ne[2], w->ne[3]);
++                }
+                 op_tensor = ggml_mul_mat(ctx, w, b);
+             } break;
+         case GGML_OP_MUL_MAT_ID:
+@@ -1162,12 +1172,12 @@ static bool weight_buft_supported(const llama_hparams & hparams, ggml_tensor * w
+ }
+ 
+ // find the first buffer type in the list that can use the tensor
+-static ggml_backend_buffer_type_t select_weight_buft(const llama_hparams & hparams, ggml_tensor * tensor, ggml_op op, const buft_list_t * buft_list) {
++static ggml_backend_buffer_type_t select_weight_buft(const llama_hparams & hparams, ggml_tensor * tensor, ggml_op op, bool src1_noncont, const buft_list_t * buft_list) {
+     GGML_ASSERT(!buft_list->empty());
+     for (const auto & cur : *buft_list) {
+         ggml_backend_dev_t cur_dev = cur.first;
+         ggml_backend_buffer_type_t cur_buft = cur.second;
+-        if (weight_buft_supported(hparams, tensor, op, cur_buft, cur_dev)) {
++        if (weight_buft_supported(hparams, tensor, op, src1_noncont, cur_buft, cur_dev)) {
+             return cur_buft;
+         }
+     }
+@@ -1329,6 +1339,9 @@ struct ggml_tensor * llama_model_loader::create_tensor(
+ 
+         ggml_backend_buffer_type_t buft = nullptr;
+ 
++        // BE 0080: the strided-src1 probe is used for Raon-1 only, so other MLA brains keep their buffer types
++        const bool src1_noncont = info.src1_noncont && get_arch() == LLM_ARCH_RAON1;
++
+         // check overrides
+         if (tensor_buft_overrides) {
+             std::string tensor_name = tn.str();
+@@ -1337,7 +1350,7 @@ struct ggml_tensor * llama_model_loader::create_tensor(
+                 if (std::regex_search(tensor_name, pattern)) {
+                     if (overrides->buft == ggml_backend_cpu_buffer_type()) {
+                         // when overriding to a CPU buffer, consider the extra buffer types
+-                        buft = select_weight_buft(hparams, t_meta, op, buft_list_cpu);
++                        buft = select_weight_buft(hparams, t_meta, op, src1_noncont, buft_list_cpu);
+                         if (use_mmap) {
+                             static std::once_flag once;
+                             std::call_once(once, [] {
+@@ -1358,7 +1371,7 @@ struct ggml_tensor * llama_model_loader::create_tensor(
+         }
+ 
+         if (!buft) {
+-            buft = select_weight_buft(hparams, t_meta, op, buft_list);
++            buft = select_weight_buft(hparams, t_meta, op, src1_noncont, buft_list);
+             if (!buft) {
+                 throw std::runtime_error(format("failed to find a compatible buffer type for tensor %s", tn.str().c_str()));
+             }
+diff --git a/src/llama-model-saver.cpp b/src/llama-model-saver.cpp
+index b667bc49f..f521503ab 100644
+--- a/src/llama-model-saver.cpp
++++ b/src/llama-model-saver.cpp
+@@ -276,6 +276,7 @@ void llama_model_saver::add_kv_from_model() {
+     add_kv(LLM_KV_ATTENTION_LAYERNORM_EPS,           hparams.f_norm_eps);
+     add_kv(LLM_KV_ATTENTION_LAYERNORM_RMS_EPS,       hparams.f_norm_rms_eps);
+     add_kv(LLM_KV_POST_NORM_EPS,                     hparams.f_post_norm_eps);
++    add_kv(LLM_KV_ATTENTION_LATENT_NORM_RMS_EPS,     hparams.f_norm_rms_eps_latent);
+     add_kv(LLM_KV_ATTENTION_GROUPNORM_EPS,           hparams.f_norm_group_eps);
+     add_kv(LLM_KV_ATTENTION_GROUPNORM_GROUPS,        hparams.n_norm_groups);
+     add_kv(LLM_KV_ATTENTION_VALUE_EXPERT_COUNT,      hparams.n_value_expert);
+diff --git a/src/llama-model.cpp b/src/llama-model.cpp
+index f20b9f785..c1a8fbba8 100644
+--- a/src/llama-model.cpp
++++ b/src/llama-model.cpp
+@@ -375,6 +375,8 @@ static llama_model * llama_model_mapping(llm_arch arch, const llama_model_params
+             return new llama_model_kimi_k3(params);
+         case LLM_ARCH_KIMI_K31:
+             return new llama_model_kimi_k31(params);
++        case LLM_ARCH_RAON1:
++            return new llama_model_raon1(params);
+         case LLM_ARCH_GLM5_NEXT:
+             return new llama_model_glm5_next(params);
+         case LLM_ARCH_STEP35:
+@@ -1124,6 +1126,7 @@ const char * llm_type_name(llm_type type) {
+         case LLM_TYPE_21B_A3B:       return "21B.A3B";
+         case LLM_TYPE_24B_A2B:       return "24B.A2B";
+         case LLM_TYPE_26B_A4B:       return "26B.A4B";
++        case LLM_TYPE_29B_A4B:       return "29B.A4B";
+         case LLM_TYPE_30B_A3B:       return "30B.A3B";
+         case LLM_TYPE_31B_A3_5B:     return "31B.A3.5B";
+         case LLM_TYPE_32B_A9B:       return "32B.A9B";
+@@ -3657,6 +3660,14 @@ int32_t llama_model_dflash_selector_top_k(const llama_model * model) {
+     return model->hparams.dflash_selector_top_k;
+ }
+ 
++int32_t llama_model_n_embd_inp_enc(const llama_model * model) {
++    return model->hparams.n_embd_inp_enc();
++}
++
++int32_t llama_model_n_embd_layer_inp(const llama_model * model) {
++    return model->hparams.n_embd_layer_inp();
++}
++
+ int32_t llama_model_n_head(const llama_model * model) {
+     return model->hparams.n_head();
+ }
+@@ -3722,6 +3733,7 @@ llama_rope_type llama_model_rope_type(const llama_model * model) {
+         case LLM_ARCH_KIMI_LINEAR:
+         case LLM_ARCH_KIMI_K3:
+         case LLM_ARCH_KIMI_K31:
++        case LLM_ARCH_RAON1:
+         case LLM_ARCH_GLM5_NEXT:
+         case LLM_ARCH_STARCODER:
+             return LLAMA_ROPE_TYPE_NONE;
+diff --git a/src/llama-model.h b/src/llama-model.h
+index 647e8a34f..7f8c95944 100644
+--- a/src/llama-model.h
++++ b/src/llama-model.h
+@@ -130,6 +130,7 @@ enum llm_type {
+     LLM_TYPE_21B_A3B, // Ernie MoE small
+     LLM_TYPE_24B_A2B, // lfm2moe
+     LLM_TYPE_26B_A4B, // Gemma4
++    LLM_TYPE_29B_A4B, // Raon-1
+     LLM_TYPE_30B_A3B,
+     LLM_TYPE_31B_A3_5B,
+     LLM_TYPE_32B_A9B, // Granite4 Hybrid
+@@ -588,6 +589,7 @@ struct llama_layer {
+     struct ggml_tensor * ssm_f_a    = nullptr;
+     struct ggml_tensor * ssm_f_b    = nullptr;
+     struct ggml_tensor * ssm_beta   = nullptr;
++    struct ggml_tensor * ssm_rda    = nullptr;
+     struct ggml_tensor * ssm_g_a    = nullptr;
+     struct ggml_tensor * ssm_g_b    = nullptr;
+     struct ggml_tensor * ssm_o_norm = nullptr;
+diff --git a/src/llama-quant.cpp b/src/llama-quant.cpp
+index 4ae396101..8889c5eae 100644
+--- a/src/llama-quant.cpp
++++ b/src/llama-quant.cpp
+@@ -402,6 +402,15 @@ static bool tensor_allows_quantization(const llama_model_quantize_params * param
+         quantize &= name.find("hc_") == std::string::npos;
+     }
+ 
++    // raon1: mHC selectors and small RDA gate projections
++    if (arch == LLM_ARCH_RAON1) {
++        quantize &= name.find("hc_")             == std::string::npos;
++        quantize &= name.find("ssm_f_a.weight")  == std::string::npos;
++        quantize &= name.find("ssm_f_b.weight")  == std::string::npos;
++        quantize &= name.find("ssm_beta.weight") == std::string::npos;
++        quantize &= name.find("ssm_rda.weight")  == std::string::npos;
++    }
++
+     // the decision head of vllm-decision2 is small and computed in F32
+     if (arch == LLM_ARCH_VLLM_DECISION2) {
+         quantize &= name.compare(0, 9, "decision.") != 0;
+@@ -503,6 +512,10 @@ static ggml_type tensor_type_fallback(quantize_state_impl & qs, const ggml_tenso
+     return return_type;
+ }
+ 
++static double bits_per_weight(ggml_type t) {
++    return 8.0 * ggml_type_size(t) / ggml_blck_size(t);
++}
++
+ // internal standard logic for selecting the target tensor type based on tensor category, ftype, and model arch
+ static ggml_type llama_tensor_get_type_impl(quantize_state_impl & qs, ggml_type new_type, const ggml_tensor * tensor, llama_ftype ftype, tensor_category category) {
+     const std::string name = ggml_get_name(tensor);
+@@ -546,14 +559,20 @@ static ggml_type llama_tensor_get_type_impl(quantize_state_impl & qs, ggml_type
+         }
+     }
+ 
++    // raon1: at Q6_K and Q8_0, where the floors below do not apply, keep the MLA latent projections at source precision:
++    // quantizing them costs +5.8% mean KL in Q8_0 for 44 MB. --pure and --tensor-type bypass this, as for the floors
++    if (arch == LLM_ARCH_RAON1 && (ftype == LLAMA_FTYPE_MOSTLY_Q6_K || ftype == LLAMA_FTYPE_MOSTLY_Q8_0) && (
++        name.find("attn_kv_a_mqa.weight") != std::string::npos ||
++        name.find("attn_k_b.weight")      != std::string::npos ||
++        name.find("attn_v_b.weight")      != std::string::npos)) {
++        return tensor->type;
++    }
++
+     // bumping to q8_0 is preferred since these tensors are not really big
+     // TODO: nemotron 3 super shares ffn_latent and afmoe, bailingmoe3, dots3note, hy-v4, kimi-k3 and laguna share attn_gate.
+     //       Widening the guard is likely a win there too, but it changes their files, so it wants a perplexity comparison per architecture first.
+     if (arch == LLM_ARCH_MUSE_SPARK &&
+         (category == tensor_category::FFN_LATENT || category == tensor_category::ATTENTION_GATE)) {
+-        auto bits_per_weight = [](ggml_type t) {
+-            return 8.0 * ggml_type_size(t) / ggml_blck_size(t);
+-        };
+         if (ggml_is_quantized(new_type) && bits_per_weight(new_type) < bits_per_weight(GGML_TYPE_Q8_0)) {
+             new_type = GGML_TYPE_Q8_0;
+         }
+@@ -779,6 +798,34 @@ static ggml_type llama_tensor_get_type_impl(quantize_state_impl & qs, ggml_type
+         ++qs.i_ffn_up;
+     }
+ 
++    // raon1: the dense attention projections and the shared expert carry most of the low-bit loss, attn_output and attn_gate most of all
++    // only raise to a floor, after the counters above are updated, so the rest of the mixture does not change
++    if (arch == LLM_ARCH_RAON1 && ggml_is_quantized(new_type)) {
++        const bool k_4_5 = ftype == LLAMA_FTYPE_MOSTLY_Q4_K_S || ftype == LLAMA_FTYPE_MOSTLY_Q4_K_M ||
++                           ftype == LLAMA_FTYPE_MOSTLY_Q5_K_S || ftype == LLAMA_FTYPE_MOSTLY_Q5_K_M;
++        // IQ4_XS/NL and the 1-3 bit K and IQ mixtures (not Q2_0, TQ1_0, TQ2_0 or Q1_0)
++        const bool low   = ftype == LLAMA_FTYPE_MOSTLY_IQ4_XS  || ftype == LLAMA_FTYPE_MOSTLY_IQ4_NL ||
++                           ftype == LLAMA_FTYPE_MOSTLY_Q3_K_S  || ftype == LLAMA_FTYPE_MOSTLY_Q3_K_M || ftype == LLAMA_FTYPE_MOSTLY_Q3_K_L ||
++                           ftype == LLAMA_FTYPE_MOSTLY_IQ3_XXS || ftype == LLAMA_FTYPE_MOSTLY_IQ3_XS || ftype == LLAMA_FTYPE_MOSTLY_IQ3_S  ||
++                           ftype == LLAMA_FTYPE_MOSTLY_IQ3_M   || ftype == LLAMA_FTYPE_MOSTLY_Q2_K   || ftype == LLAMA_FTYPE_MOSTLY_Q2_K_S ||
++                           ftype == LLAMA_FTYPE_MOSTLY_IQ2_XXS || ftype == LLAMA_FTYPE_MOSTLY_IQ2_XS || ftype == LLAMA_FTYPE_MOSTLY_IQ2_S  ||
++                           ftype == LLAMA_FTYPE_MOSTLY_IQ2_M   || ftype == LLAMA_FTYPE_MOSTLY_IQ1_S  || ftype == LLAMA_FTYPE_MOSTLY_IQ1_M;
++        ggml_type floor_type = GGML_TYPE_COUNT;
++        if (category == tensor_category::ATTENTION_OUTPUT || category == tensor_category::ATTENTION_GATE) {
++            floor_type = k_4_5 ? GGML_TYPE_Q8_0 : low ? GGML_TYPE_Q6_K : GGML_TYPE_COUNT;
++        } else if (name.find("attn_q_a.weight") != std::string::npos || name.find("attn_q_b.weight")      != std::string::npos ||
++                   name.find("attn_k_b.weight") != std::string::npos || name.find("attn_kv_a_mqa.weight") != std::string::npos ||
++                   name.find("attn_v_b.weight") != std::string::npos || name.find("_shexp.weight")        != std::string::npos) {
++            floor_type = k_4_5 || low ? GGML_TYPE_Q6_K : GGML_TYPE_COUNT;
++        } else if (category == tensor_category::ATTENTION_Q || category == tensor_category::ATTENTION_K ||
++                   category == tensor_category::ATTENTION_V || name.find("ssm_g.weight") != std::string::npos) {
++            floor_type = k_4_5 ? GGML_TYPE_Q6_K : GGML_TYPE_COUNT;
++        }
++        if (floor_type != GGML_TYPE_COUNT && bits_per_weight(new_type) < bits_per_weight(floor_type)) {
++            new_type = floor_type;
++        }
++    }
++
+     return new_type;
+ }
+ 
+diff --git a/src/llama-vocab.cpp b/src/llama-vocab.cpp
+index e90f1bd11..9f9cab66d 100644
+--- a/src/llama-vocab.cpp
++++ b/src/llama-vocab.cpp
+@@ -397,6 +397,9 @@ struct llm_tokenizer_bpe : llm_tokenizer {
+                     "(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])|[^\\r\\n\\p{L}\\p{N}]?\\p{L}+|\\p{N}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+",
+                 };
+                 break;
++            case LLAMA_VOCAB_PRE_TYPE_RAON:
++                regex_exprs = {" ?[\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff]+| ?(?:(?:(?![\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff])\\p{L})\\p{M}*)+(?: (?:(?:(?![\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff])\\p{L})\\p{M}*)+)*|\\p{N}{1,3}(?=(?:\\p{N}{3})*(?!\\p{N}))| ?[^\\s\\p{L}\\p{N}]+[\\r\\n/]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+"};
++                break;
+             case LLAMA_VOCAB_PRE_TYPE_QWEN35:
+                 regex_exprs = {
+                     // original regex from tokenizer.json
+@@ -675,6 +678,13 @@ struct llm_tokenizer_bpe_session {
+                 }
+             }
+             word_collection = unicode_regex_split(normalized_text, tokenizer.regex_exprs, tokenizer.byte_encode);
++        } else if (tok_pre == LLAMA_VOCAB_PRE_TYPE_RAON) {
++            // Raon-1's HF tokenizer applies an NFC normalizer before pre-tokenization.
++            std::string normalized;
++            for (const uint32_t cpt : unicode_cpts_normalize_nfc(unicode_cpts_from_utf8(text))) {
++                normalized += unicode_cpt_to_utf8(cpt);
++            }
++            word_collection = unicode_regex_split(normalized, tokenizer.regex_exprs, tokenizer.byte_encode);
+         } else {
+             word_collection = unicode_regex_split(text, tokenizer.regex_exprs, tokenizer.byte_encode);
+         }
+@@ -2579,6 +2589,9 @@ void llama_vocab::impl::load(llama_model_loader & ml, const LLM_KV & kv) {
+                     tokenizer_pre == "f2llmv2") {
+                 pre_type = LLAMA_VOCAB_PRE_TYPE_QWEN2;
+                 clean_spaces = false;
++            } else if (tokenizer_pre == "raon") {
++                pre_type = LLAMA_VOCAB_PRE_TYPE_RAON;
++                clean_spaces = false;
+             } else if (
+                     tokenizer_pre == "qwen35") {
+                 pre_type = LLAMA_VOCAB_PRE_TYPE_QWEN35;
+diff --git a/src/llama-vocab.h b/src/llama-vocab.h
+index 1ae5b65f6..562f895fe 100644
+--- a/src/llama-vocab.h
++++ b/src/llama-vocab.h
+@@ -75,6 +75,7 @@ enum llama_vocab_pre_type {
+     LLAMA_VOCAB_PRE_TYPE_NEMOTRON_3_5_EMBD = 64,
+     LLAMA_VOCAB_PRE_TYPE_SOPRANO           = 65,
+     LLAMA_VOCAB_PRE_TYPE_TEKKEN_NUM3       = 66,
++    LLAMA_VOCAB_PRE_TYPE_RAON              = 67, // Brain Engine 0080 (Krafton's fork numbers it 62)
+ };
+ 
+ // HF Metaspace pre-tokenizer prepend_scheme
+diff --git a/src/models/dflash.cpp b/src/models/dflash.cpp
+index 13020bb32..106e2f04b 100644
+--- a/src/models/dflash.cpp
++++ b/src/models/dflash.cpp
+@@ -51,7 +51,14 @@ void llama_model_dflash::load_arch_hparams(llama_model_loader & ml) {
+         throw std::runtime_error("DFlash model requires 'target_layers' in GGUF metadata");
+     }
+ 
+-    hparams.n_embd_inp_enc_impl = (uint32_t) target_layer_ids.size() * hparams.n_embd;
++    // per-tap width of the target features, as for EAGLE3: n_embd by default, n_streams*n_embd for a hyper-connection target
++    uint32_t n_embd_tgt = hparams.n_embd;
++    ml.get_key(LLM_KV_TARGET_HIDDEN_SIZE, n_embd_tgt, false);
++    if (n_embd_tgt == 0) {
++        throw std::runtime_error("DFlash 'target_hidden_size' must be positive");
++    }
++
++    hparams.n_embd_inp_enc_impl = (uint32_t) target_layer_ids.size() * n_embd_tgt;
+ 
+     std::string layers;
+     const char * sep = "";
+@@ -60,7 +67,7 @@ void llama_model_dflash::load_arch_hparams(llama_model_loader & ml) {
+         layers += std::to_string(id);
+         sep = ", ";
+     }
+-    LLAMA_LOG_INFO("%s: DFlash extract_layers = [%s]\n", __func__, layers.c_str());
++    LLAMA_LOG_INFO("%s: DFlash extract_layers = [%s], n_embd_tgt = %u\n", __func__, layers.c_str(), n_embd_tgt);
+ 
+     // DeepSeek-V4 DSpark backbone: stages are full DSV4 blocks, uniform sliding window (the draft KV ring)
+     ml.get_key(LLM_KV_HYPER_CONNECTION_COUNT, hparams.dsv4_hc_mult, false);
+@@ -401,6 +408,39 @@ void llama_model_dflash::load_arch_tensors(llama_model_loader &) {
+     }
+ }
+ 
++// target features wider than taps x draft n_embd (the raw residual streams of a hyper-connection target) are not normalized, so fc(x) can exceed the F16 range
++// build_lora_mm is mul_mat(fc, x), optionally followed by mul(., fc_s) and add(., lora): request F32 on every matmul of that chain, since each reads the raw features
++static void dflash_fc_prec_f32(ggml_tensor * t, int & n_set) {
++    if (t == nullptr) {
++        return;
++    }
++    switch (t->op) {
++        case GGML_OP_MUL_MAT:
++            n_set += ggml_prec_set_acc(t, GGML_PREC_F32);
++            dflash_fc_prec_f32(t->src[1], n_set); // lora: b * (a * x)
++            break;
++        case GGML_OP_MUL:
++        case GGML_OP_ADD:
++        case GGML_OP_SCALE:
++            dflash_fc_prec_f32(t->src[0], n_set);
++            dflash_fc_prec_f32(t->src[1], n_set);
++            break;
++        default:
++            break;
++    }
++}
++
++static ggml_tensor * build_dflash_fc(const llm_graph_context & g, const llama_model & model, ggml_tensor * inp) {
++    ggml_tensor * cur = g.build_lora_mm(model.fc, inp, model.fc_s);
++    // only when the fused target features are wider than taps x draft n_embd; n_embd-wide taps keep the default precision
++    if (g.hparams.n_embd_inp_enc() > model.target_layer_ids.size() * g.hparams.n_embd) {
++        int n_set = 0;
++        dflash_fc_prec_f32(cur, n_set);
++        GGML_ASSERT(n_set > 0 && "DFlash fc: no matmul found to request F32 accumulation");
++    }
++    return cur;
++}
++
+ template <>
+ ggml_tensor * llama_model_dflash::graph<true>::build_inp_embd_enc() const {
+     const int64_t n_embd_inp = hparams.n_embd_inp_enc();
+@@ -422,7 +462,7 @@ template <>
+ llama_model_dflash::graph<true>::graph(const llm_graph_params & params) : llm_graph_context(params) {
+     ggml_tensor * cur = build_inp_embd_enc();
+ 
+-    cur = build_lora_mm(model.fc, cur, model.fc_s);
++    cur = build_dflash_fc(*this, model, cur);
+     cb(cur, "fc_out", -1);
+ 
+     cur = build_norm(cur, model.output_norm_enc, NULL, LLM_NORM_RMS, -1);
+@@ -965,7 +1005,7 @@ llama_model_dflash::graph<false>::graph(const llm_graph_params & params) : llm_g
+         res->add_input(std::move(inp));
+ 
+         // fuse the target features through the encoder
+-        ggml_tensor * inp_g = build_lora_mm(model.fc, inp_target, model.fc_s);
++        ggml_tensor * inp_g = build_dflash_fc(*this, model, inp_target);
+         inp_g = build_norm(inp_g, model.output_norm_enc, NULL, LLM_NORM_RMS, -1);
+         cb(inp_g, "inp_g_embeddings", -1);
+ 
+@@ -1242,7 +1282,7 @@ llama_model_dflash::graph_dsv4::graph_dsv4(const llm_graph_params & params) :
+         res->add_input(std::move(inp));
+ 
+         // fuse the target features through the encoder
+-        ggml_tensor * inp_g = build_lora_mm(model.fc, inp_target, model.fc_s);
++        ggml_tensor * inp_g = build_dflash_fc(*this, model, inp_target);
+         inp_g = build_norm(inp_g, model.output_norm_enc, nullptr, LLM_NORM_RMS, -1);
+         cb(inp_g, "inp_g_embeddings", -1);
+ 
+diff --git a/src/models/models.h b/src/models/models.h
+index cfef363b6..243c1f71d 100644
+--- a/src/models/models.h
++++ b/src/models/models.h
+@@ -2977,6 +2977,38 @@ struct llama_model_kimi_k31 : public llama_model_base {
+     std::unique_ptr<llm_graph_context> build_arch_graph(const llm_graph_params & params) const override;
+ };
+ 
++struct llama_model_raon1 : public llama_model_base {
++    llama_model_raon1(const struct llama_model_params & params) : llama_model_base(params) {}
++    void load_arch_hparams(llama_model_loader & ml) override;
++    void load_arch_tensors(llama_model_loader & ml) override;
++    std::unique_ptr<llm_graph_context> build_arch_graph(const llm_graph_params & params) const override;
++
++    struct graph : public llm_build_delta_net_base {
++        graph(const llama_model & model, const llm_graph_params & params);
++
++        ggml_tensor * helmert    = nullptr;
++        ggml_tensor * identity   = nullptr;
++        ggml_tensor * chart_base = nullptr;
++
++        ggml_tensor * build_hc_pre(ggml_tensor * x, ggml_tensor * fn, ggml_tensor * scale,
++                                   ggml_tensor * base, ggml_tensor ** post, ggml_tensor ** comb, int il);
++
++        ggml_tensor * build_hc_post(ggml_tensor * x, ggml_tensor * branch,
++                                    ggml_tensor * post, ggml_tensor * comb, int il);
++
++        ggml_tensor * build_rda_conv(llm_graph_input_rs * inp_rs, ggml_tensor * conv_states_seq,
++                                     ggml_tensor * x_proj, ggml_tensor * conv_w, int64_t qkv, int il);
++
++        ggml_tensor * build_rda_gate(ggml_tensor * x, ggml_tensor * ssm_a);
++
++        ggml_tensor * build_rda_layer(ggml_tensor * cur, const llama_layer & layer,
++                                      llm_graph_input_rs * inp_rs, int il);
++
++        ggml_tensor * build_mla_layer(ggml_tensor * cur, const llama_layer & layer,
++                                      llm_graph_input_attn_k * inp_attn_k, int il);
++    };
++};
++
+ struct llama_model_glm5_next : public llama_model_base {
+     llama_model_glm5_next(const struct llama_model_params & params) : llama_model_base(params) {}
+     void load_arch_hparams(llama_model_loader & ml) override;
+diff --git a/src/models/raon1.cpp b/src/models/raon1.cpp
+new file mode 100644
+index 000000000..cd96ec6fb
+--- /dev/null
++++ b/src/models/raon1.cpp
+@@ -0,0 +1,507 @@
++#include "models.h"
++
++#include "llama-impl.h"
++
++#include "llama-memory-recurrent.h"
++
++void llama_model_raon1::load_arch_hparams(llama_model_loader & ml) {
++    ml.get_key(LLM_KV_ATTENTION_LAYERNORM_RMS_EPS, hparams.f_norm_rms_eps);
++    ml.get_key(LLM_KV_ATTENTION_KEY_LENGTH_MLA,    hparams.n_embd_head_k_mla_impl);
++    ml.get_key(LLM_KV_ATTENTION_VALUE_LENGTH_MLA,  hparams.n_embd_head_v_mla_impl);
++    ml.get_key(LLM_KV_ATTENTION_Q_LORA_RANK,       hparams.n_lora_q);
++    ml.get_key(LLM_KV_ATTENTION_KV_LORA_RANK,      hparams.n_lora_kv);
++    ml.get_key(LLM_KV_SSM_CONV_KERNEL,             hparams.ssm_d_conv);
++    ml.get_key(LLM_KV_KDA_HEAD_DIM,                hparams.n_embd_head_kda);
++    ml.get_key(LLM_KV_KDA_GATE_LOWER_BOUND,        hparams.kda_gate_lower_bound, false);
++
++    uint32_t n_rda = 0;
++    for (uint32_t i = 0; i < hparams.n_layer(); ++i) {
++        hparams.is_recr_impl[i] = hparams.n_head_kv(i) == 0;
++        n_rda += hparams.is_recr_impl[i];
++        if (!hparams.is_recr_impl[i] && hparams.n_head_kv(i) != 1) {
++            throw std::runtime_error(format("Raon-1 MLA layers must have one KV head, layer %u has %u", i, hparams.n_head_kv(i)));
++        }
++    }
++    // the hybrid memory needs both kinds: RDA layers (head_count_kv 0) and MLA layers (head_count_kv 1)
++    if (n_rda == 0 || n_rda == hparams.n_layer()) {
++        throw std::runtime_error(format("Raon-1 needs both RDA and MLA layers, got %u RDA of %u layers", n_rda, hparams.n_layer()));
++    }
++
++    ml.get_key_or_arr(LLM_KV_EXPERT_FEED_FORWARD_LENGTH, hparams.n_ff_exp_arr, hparams.n_layer_all);
++    ml.get_key(LLM_KV_EXPERT_SHARED_COUNT,        hparams.n_expert_shared);
++    ml.get_key(LLM_KV_LEADING_DENSE_BLOCK_COUNT,  hparams.n_layer_dense_lead);
++    ml.get_key(LLM_KV_EXPERT_WEIGHTS_SCALE,       hparams.expert_weights_scale);
++    ml.get_key(LLM_KV_EXPERT_WEIGHTS_NORM,        hparams.expert_weights_norm);
++    ml.get_key(LLM_KV_EXPERT_GATING_FUNC,         hparams.expert_gating_func);
++
++    ml.get_key(LLM_KV_ATTENTION_LATENT_NORM_RMS_EPS, hparams.f_norm_rms_eps_latent);
++    ml.get_key(LLM_KV_SSM_TIME_STEP_RANK,            hparams.ssm_dt_rank);
++    ml.get_key(LLM_KV_HYPER_CONNECTION_COUNT,        hparams.dsv4_hc_mult);
++    ml.get_key(LLM_KV_HYPER_CONNECTION_EPSILON,      hparams.dsv4_hc_eps);
++    ml.get_key(LLM_KV_HYPER_CONNECTION_MAGNITUDE,    hparams.hc_magnitude);
++    ml.get_key(LLM_KV_ACTIVATION_SITU_BETA,          hparams.situ_beta);
++    ml.get_key(LLM_KV_ACTIVATION_SITU_LINEAR_BETA,   hparams.situ_linear_beta);
++
++    auto require = [](bool ok, const std::string & what) {
++        if (!ok) {
++            throw std::runtime_error("invalid Raon-1 hyperparameters: " + what);
++        }
++    };
++    // accepted ranges; only 2-4 mHC streams and a conv width of 4 have been run (the released model uses 4 streams)
++    require(hparams.dsv4_hc_mult >= 2 && hparams.dsv4_hc_mult <= 8, format("hyper_connection.count %u is not in [2, 8]", hparams.dsv4_hc_mult));
++    require(hparams.ssm_d_conv == 4, format("ssm.conv_kernel %u is not 4", hparams.ssm_d_conv));
++    require(hparams.ssm_dt_rank > 0, "ssm.time_step_rank is 0");
++    require(hparams.n_lora_q > 0 && hparams.n_lora_kv > 0, "q_lora_rank or kv_lora_rank is 0");
++    // the absorbed MLA attends over the latent: V is the kv_lora_rank-wide latent
++    require(hparams.n_embd_head_v_full == hparams.n_lora_kv, format("the MLA value length %u is not kv_lora_rank %u", hparams.n_embd_head_v_full, hparams.n_lora_kv));
++    require(hparams.n_embd_head_k_mla() > hparams.n_rot(), format("the MLA key length %u is not larger than the RoPE dimension %u", hparams.n_embd_head_k_mla(), hparams.n_rot()));
++    require(hparams.f_norm_rms_eps_latent > 0 && hparams.dsv4_hc_eps > 0, "a normalization epsilon is not positive");
++    require(hparams.hc_magnitude > 0, "hyper_connection.magnitude is not positive");
++    require(hparams.situ_beta > 0 && hparams.situ_linear_beta > 0, "a SiTU beta is not positive");
++    require(hparams.n_layer_dense_lead <= hparams.n_layer(), format("leading_dense_block_count %u is larger than block_count %u", hparams.n_layer_dense_lead, hparams.n_layer()));
++    if (hparams.n_embd_head_kda != 16 && hparams.n_embd_head_kda != 32 &&
++        hparams.n_embd_head_kda != 64 && hparams.n_embd_head_kda != 128) {
++        throw std::runtime_error(format("unsupported Raon-1 RDA head dimension %u (16, 32, 64 or 128)", hparams.n_embd_head_kda));
++    }
++
++    // the extracted layer inputs are the full mHC residual: hc streams of n_embd each
++    hparams.n_embd_layer_inp_impl = hparams.dsv4_hc_mult * hparams.n_embd;
++
++    switch (hparams.n_layer()) {
++        case 25: type = LLM_TYPE_29B_A4B; break;
++        default: type = LLM_TYPE_UNKNOWN;
++    }
++}
++
++void llama_model_raon1::load_arch_tensors(llama_model_loader &) {
++    LLAMA_LOAD_LOCALS;
++
++    const int64_t hc = hparams.dsv4_hc_mult;
++    // selector width per mHC site: pre (hc) + post (hc) + combination ((hc-1)^2, Helmert coordinates)
++    const int64_t hc_mix_dim = 2*hc + (hc - 1)*(hc - 1);
++
++    tok_embd = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab}, 0);
++
++    output_norm = create_tensor(tn(LLM_TENSOR_OUTPUT_NORM, "weight"), {n_embd}, 0);
++    output      = create_tensor(tn(LLM_TENSOR_OUTPUT,      "weight"), {n_embd, n_vocab}, 0);
++
++    for (int i = 0; i < n_layer; ++i) {
++        auto & layer = layers[i];
++
++        layer.attn_norm = create_tensor(tn(LLM_TENSOR_ATTN_NORM, "weight", i), {n_embd}, 0);
++        layer.ffn_norm  = create_tensor(tn(LLM_TENSOR_FFN_NORM,  "weight", i), {n_embd}, 0);
++
++        layer.hc_attn_fn    = create_tensor(tn(LLM_TENSOR_HC_ATTN_FN,    "weight", i), {hc*n_embd, hc_mix_dim}, 0);
++        layer.hc_attn_base  = create_tensor(tn(LLM_TENSOR_HC_ATTN_BASE,  "weight", i), {hc_mix_dim}, 0);
++        // scale: alpha_pre, alpha_post, alpha_z, eta
++        layer.hc_attn_scale = create_tensor(tn(LLM_TENSOR_HC_ATTN_SCALE, "weight", i), {4}, 0);
++        layer.hc_ffn_fn     = create_tensor(tn(LLM_TENSOR_HC_FFN_FN,     "weight", i), {hc*n_embd, hc_mix_dim}, 0);
++        layer.hc_ffn_base   = create_tensor(tn(LLM_TENSOR_HC_FFN_BASE,   "weight", i), {hc_mix_dim}, 0);
++        layer.hc_ffn_scale  = create_tensor(tn(LLM_TENSOR_HC_FFN_SCALE,  "weight", i), {4}, 0);
++
++        const int64_t head_dim = hparams.n_embd_head_kda;
++        const int64_t d_conv   = hparams.ssm_d_conv;
++        const int64_t d_inner  = head_dim * n_head;
++
++        if (hparams.is_recr(i)) {
++            layer.ssm_q_conv = create_tensor(tn(LLM_TENSOR_SSM_CONV1D_Q, "weight", i), {d_conv, 1, d_inner, 1}, 0);
++            layer.ssm_k_conv = create_tensor(tn(LLM_TENSOR_SSM_CONV1D_K, "weight", i), {d_conv, 1, d_inner, 1}, 0);
++            layer.ssm_v_conv = create_tensor(tn(LLM_TENSOR_SSM_CONV1D_V, "weight", i), {d_conv, 1, d_inner, 1}, 0);
++
++            create_tensor_qkv(layer, i, n_embd, d_inner, d_inner, d_inner, 0);
++
++            layer.ssm_f_a  = create_tensor(tn(LLM_TENSOR_SSM_F_A,  "weight", i), {n_embd, hparams.ssm_dt_rank}, 0);
++            layer.ssm_f_b  = create_tensor(tn(LLM_TENSOR_SSM_F_B,  "weight", i), {hparams.ssm_dt_rank, d_inner}, 0);
++            layer.ssm_beta = create_tensor(tn(LLM_TENSOR_SSM_BETA, "weight", i), {n_embd, n_head}, 0);
++            layer.ssm_rda  = create_tensor(tn(LLM_TENSOR_SSM_RDA,  "weight", i), {n_embd, n_head}, 0);
++
++            layer.ssm_a = create_tensor(tn(LLM_TENSOR_SSM_A_NOSCAN, i), {n_head}, 0);
++            layer.ssm_dt_b = create_tensor(tn(LLM_TENSOR_SSM_DT, "bias", i), {d_inner}, 0);
++
++            layer.ssm_g      = create_tensor(tn(LLM_TENSOR_SSM_G,    "weight", i), {n_embd, d_inner}, 0);
++            layer.ssm_o_norm = create_tensor(tn(LLM_TENSOR_SSM_NORM, "weight", i), {head_dim}, 0);
++            layer.wo         = create_tensor(tn(LLM_TENSOR_ATTN_OUT, "weight", i), {d_inner, n_embd}, 0);
++        } else {
++            const int64_t q_lora_rank      = hparams.n_lora_q;
++            const int64_t kv_lora_rank     = hparams.n_lora_kv;
++            const int64_t n_embd_head_k    = hparams.n_embd_head_k_mla();
++            const int64_t n_embd_head_v    = hparams.n_embd_head_v_mla();
++            const int64_t qk_rope_head_dim = hparams.n_rot();
++            const int64_t qk_nope_head_dim = n_embd_head_k - qk_rope_head_dim;
++
++            layer.attn_q_a_norm  = create_tensor(tn(LLM_TENSOR_ATTN_Q_A_NORM,  "weight", i), {q_lora_rank}, 0);
++            layer.attn_kv_a_norm = create_tensor(tn(LLM_TENSOR_ATTN_KV_A_NORM, "weight", i), {kv_lora_rank}, 0);
++            layer.wq_a = create_tensor(tn(LLM_TENSOR_ATTN_Q_A, "weight", i), {n_embd, q_lora_rank}, 0);
++            layer.wq_b = create_tensor(tn(LLM_TENSOR_ATTN_Q_B, "weight", i), {q_lora_rank, n_head*n_embd_head_k}, 0);
++            layer.wkv_a_mqa = create_tensor(tn(LLM_TENSOR_ATTN_KV_A_MQA, "weight", i), {n_embd, kv_lora_rank + qk_rope_head_dim}, 0);
++            layer.wk_b = create_tensor(tn(LLM_TENSOR_ATTN_K_B, "weight", i), {qk_nope_head_dim, kv_lora_rank, n_head}, 0);
++            layer.wv_b = create_tensor(tn(LLM_TENSOR_ATTN_V_B, "weight", i), {kv_lora_rank, n_embd_head_v, n_head}, 0);
++            layer.wqkv_gate = create_tensor(tn(LLM_TENSOR_ATTN_GATE, "weight", i), {n_embd, n_head*n_embd_head_v}, 0);
++
++            layer.wo = create_tensor(tn(LLM_TENSOR_ATTN_OUT, "weight", i), {n_head * n_embd_head_v, n_embd}, 0);
++        }
++
++        if (i < (int) hparams.n_layer_dense_lead) {
++            layer.ffn_gate = create_tensor(tn(LLM_TENSOR_FFN_GATE, "weight", i), {n_embd, n_ff}, 0);
++            layer.ffn_down = create_tensor(tn(LLM_TENSOR_FFN_DOWN, "weight", i), {n_ff, n_embd}, 0);
++            layer.ffn_up   = create_tensor(tn(LLM_TENSOR_FFN_UP,   "weight", i), {n_embd, n_ff}, 0);
++        } else {
++            const int64_t n_ff_exp = hparams.n_ff_exp();
++
++            layer.ffn_gate_inp    = create_tensor(tn(LLM_TENSOR_FFN_GATE_INP,    "weight", i), {n_embd, n_expert}, 0);
++            layer.ffn_exp_probs_b = create_tensor(tn(LLM_TENSOR_FFN_EXP_PROBS_B, "bias",   i), {n_expert}, 0);
++
++            layer.ffn_gate_exps = create_tensor(tn(LLM_TENSOR_FFN_GATE_EXPS, "weight", i), {n_embd, n_ff_exp, n_expert}, 0);
++            layer.ffn_down_exps = create_tensor(tn(LLM_TENSOR_FFN_DOWN_EXPS, "weight", i), {n_ff_exp, n_embd, n_expert}, 0);
++            layer.ffn_up_exps   = create_tensor(tn(LLM_TENSOR_FFN_UP_EXPS,   "weight", i), {n_embd, n_ff_exp, n_expert}, 0);
++
++            if (hparams.n_expert_shared > 0) {
++                const int64_t n_ff_shexp = n_ff_exp * hparams.n_expert_shared;
++                layer.ffn_gate_shexp = create_tensor(tn(LLM_TENSOR_FFN_GATE_SHEXP, "weight", i), {n_embd, n_ff_shexp}, 0);
++                layer.ffn_down_shexp = create_tensor(tn(LLM_TENSOR_FFN_DOWN_SHEXP, "weight", i), {n_ff_shexp, n_embd}, 0);
++                layer.ffn_up_shexp   = create_tensor(tn(LLM_TENSOR_FFN_UP_SHEXP,   "weight", i), {n_embd, n_ff_shexp}, 0);
++            }
++        }
++    }
++}
++
++std::unique_ptr<llm_graph_context> llama_model_raon1::build_arch_graph(const llm_graph_params & params) const {
++    return std::make_unique<graph>(*this, params);
++}
++
++// causal conv1d over one third (qkv = 0, 1, 2) of the shared Q/K/V conv state, with the rollback snapshots
++// x_proj: (d_inner, n_tokens); returns (head_dim, n_head, n_seq_tokens, n_seqs)
++ggml_tensor * llama_model_raon1::graph::build_rda_conv(
++        llm_graph_input_rs * inp_rs, ggml_tensor * conv_states_seq, ggml_tensor * x_proj,
++        ggml_tensor * conv_w, int64_t qkv, int il) {
++    const auto * mctx_cur = inp_rs->mctx;
++
++    const int64_t kv_head  = mctx_cur->get_head();
++    const int64_t mem_size = mctx_cur->get_size();
++    const int64_t K_rs     = (int64_t) cparams.n_rs_seq + 1;
++
++    const int64_t n_seq_tokens = ubatch.n_seq_tokens;
++    const int64_t n_seqs       = ubatch.n_seqs;
++
++    const int64_t head_dim        = hparams.n_embd_head_kda;
++    const int64_t d_conv          = hparams.ssm_d_conv;
++    const int64_t d_inner         = head_dim * n_head;
++    const int64_t conv_state_size = (d_conv - 1) * d_inner;
++    const int64_t n_embd_r_total  = 3 * conv_state_size;
++
++    ggml_tensor * conv_states_mem = mctx_cur->get_r_l(il);
++
++    ggml_tensor * conv_state_x = ggml_view_3d(ctx0, conv_states_seq, d_conv - 1, d_inner, n_seqs,
++        (d_conv - 1)   * ggml_element_size(conv_states_seq),
++        n_embd_r_total * ggml_element_size(conv_states_seq),
++        qkv * conv_state_size * ggml_element_size(conv_states_seq));
++
++    ggml_tensor * x_3d   = ggml_reshape_3d(ctx0, x_proj, d_inner, n_seq_tokens, n_seqs);
++    ggml_tensor * conv_x = ggml_concat(ctx0, conv_state_x, ggml_transpose(ctx0, x_3d), 0);
++
++    // group s holds the conv window s tokens back.
++    // [TAG_RECURRENT_ROLLBACK_SPLITS]: the last K_rs tokens must share one ubatch.
++    for (int64_t s = 0; s < K_rs; ++s) {
++        const int64_t s_idx = std::max<int64_t>(0, n_seq_tokens - s);
++        ggml_tensor * conv_x_s = ggml_view_3d(ctx0, conv_x, d_conv - 1, d_inner, n_seqs,
++            conv_x->nb[1], conv_x->nb[2], s_idx * conv_x->nb[0]);
++        ggml_build_forward_expand(gf,
++            ggml_cpy(ctx0, conv_x_s,
++                ggml_view_3d(ctx0, conv_states_mem, d_conv - 1, d_inner, n_seqs,
++                    (d_conv - 1)   * ggml_element_size(conv_states_mem),
++                    n_embd_r_total * ggml_element_size(conv_states_mem),
++                    ((s * mem_size + kv_head) * n_embd_r_total + qkv * conv_state_size) * ggml_element_size(conv_states_mem))));
++    }
++
++    ggml_tensor * conv_weight = ggml_reshape_2d(ctx0, conv_w, d_conv, d_inner);
++    ggml_tensor * Xcur = ggml_ssm_conv(ctx0, conv_x, conv_weight);
++    Xcur = ggml_reshape_2d(ctx0, Xcur, d_inner, n_tokens);
++    Xcur = ggml_silu(ctx0, Xcur);
++
++    return ggml_reshape_4d(ctx0, Xcur, head_dim, n_head, n_seq_tokens, n_seqs);
++}
++
++// decay gate from x = f_b(f_a(cur)) + dt_bias; ssm_a holds -exp(A_log)
++// with gate_lower_bound: g = lower_bound * sigmoid(exp(A_log) * x), else g = -softplus(exp(A_log) * x)
++ggml_tensor * llama_model_raon1::graph::build_rda_gate(ggml_tensor * x, ggml_tensor * ssm_a) {
++    const int64_t head_dim = hparams.n_embd_head_kda;
++
++    ggml_tensor * A = ggml_reshape_3d(ctx0, ssm_a, 1, n_head, 1);
++
++    x = ggml_reshape_3d(ctx0, x, head_dim, n_head, n_tokens);
++    x = ggml_mul(ctx0, x, A);
++
++    // gate_lower_bound is not a clamp - when set, it swaps the decay gate activation
++    if (hparams.kda_gate_lower_bound > -INFINITY) {
++        x = ggml_sigmoid(ctx0, ggml_scale(ctx0, x, -1.0f));
++        return ggml_scale(ctx0, x, hparams.kda_gate_lower_bound);
++    }
++
++    return ggml_neg(ctx0, ggml_softplus(ctx0, ggml_neg(ctx0, x)));
++}
++
++// Raon delta attention: a gated delta-rule layer whose write gate differs from its erase gate
++ggml_tensor * llama_model_raon1::graph::build_rda_layer(
++        ggml_tensor * cur, const llama_layer & layer, llm_graph_input_rs * inp_rs, int il) {
++    const int64_t head_dim     = hparams.n_embd_head_kda;
++    const int64_t d_inner      = head_dim * n_head;
++    const int64_t n_seq_tokens = ubatch.n_seq_tokens;
++    const int64_t n_seqs       = ubatch.n_seqs;
++
++    ggml_tensor * conv_states_seq = build_rs(inp_rs, inp_rs->mctx->get_r_l(il), hparams.n_embd_r(), n_seqs);
++
++    ggml_tensor * Qcur = build_rda_conv(inp_rs, conv_states_seq, build_lora_mm(layer.wq, cur), layer.ssm_q_conv, 0, il);
++    ggml_tensor * Kcur = build_rda_conv(inp_rs, conv_states_seq, build_lora_mm(layer.wk, cur), layer.ssm_k_conv, 1, il);
++    ggml_tensor * Vcur = build_rda_conv(inp_rs, conv_states_seq, build_lora_mm(layer.wv, cur), layer.ssm_v_conv, 2, il);
++    cb(Qcur, "rda_q_conv", il);
++    cb(Kcur, "rda_k_conv", il);
++    cb(Vcur, "rda_v_conv", il);
++
++    ggml_tensor * f_a = build_lora_mm(layer.ssm_f_a, cur);
++    ggml_tensor * g1  = build_lora_mm(layer.ssm_f_b, f_a);
++    g1 = ggml_add(ctx0, g1, layer.ssm_dt_b);
++    g1 = build_rda_gate(g1, layer.ssm_a);
++    cb(g1, "rda_g1", il);
++
++    g1 = ggml_reshape_4d(ctx0, g1, head_dim, n_head, n_seq_tokens, n_seqs);
++
++    // erase gate sigmoid(beta), write gate sigmoid(beta + delta); the write/erase ratio is folded into V
++    ggml_tensor * beta = build_lora_mm(layer.ssm_beta, cur);
++    beta = ggml_reshape_4d(ctx0, beta, 1, n_head, n_seq_tokens, n_seqs);
++    ggml_tensor * delta = build_lora_mm(layer.ssm_rda, cur);
++    delta = ggml_reshape_4d(ctx0, delta, 1, n_head, n_seq_tokens, n_seqs);
++    ggml_tensor * erase = ggml_softplus(ctx0, ggml_neg(ctx0, beta));
++    ggml_tensor * write = ggml_softplus(ctx0, ggml_neg(ctx0, ggml_add(ctx0, beta, delta)));
++    Vcur = ggml_mul(ctx0, Vcur, ggml_exp(ctx0, ggml_sub(ctx0, erase, write)));
++    cb(Vcur, "rda_v_scaled", il);
++    beta = ggml_sigmoid(ctx0, beta);
++    cb(beta, "rda_beta", il);
++
++    // same as HF F.normalize(eps=1e-6): x / max(||x||, eps)
++    const float eps_norm = 1e-6f;
++    Qcur = ggml_l2_norm(ctx0, Qcur, eps_norm);
++    Kcur = ggml_l2_norm(ctx0, Kcur, eps_norm);
++
++    ggml_tensor * g2 = build_lora_mm(layer.ssm_g, cur);
++
++    // scan and state update
++    ggml_tensor * ssm_states_all = inp_rs->mctx->get_s_l(il);
++    ggml_tensor * state = build_rs(inp_rs, ssm_states_all, hparams.n_embd_s(), n_seqs);
++    state = ggml_reshape_4d(ctx0, state, head_dim, head_dim, n_head, n_seqs);
++
++    ggml_tensor * output = build_recurrent_attn(inp_rs, ssm_states_all, Qcur, Kcur, Vcur, g1, beta, state, il);
++    output = ggml_cont(ctx0, output);
++    cb(output, "rda_scan_out", il);
++
++    // output gate, then RMSNorm(o) * sigmoid(g2)
++    g2 = ggml_reshape_3d(ctx0, g2, head_dim, n_head, n_tokens);
++
++    ggml_tensor * o      = ggml_reshape_3d(ctx0, output, head_dim, n_head, n_tokens);
++    ggml_tensor * normed = build_norm(o, layer.ssm_o_norm, nullptr, LLM_NORM_RMS, il);
++    cb(g2, "rda_g2", il);
++    cb(normed, "rda_normed", il);
++    ggml_tensor * gated = ggml_mul(ctx0, normed, ggml_sigmoid(ctx0, g2));
++
++    gated = ggml_cont_2d(ctx0, gated, d_inner, n_tokens);
++    cur   = build_lora_mm(layer.wo, gated);
++    cb(cur, "rda_out", il);
++
++    return cur;
++}
++
++ggml_tensor * llama_model_raon1::graph::build_hc_pre(
++        ggml_tensor * x, ggml_tensor * fn, ggml_tensor * scale, ggml_tensor * base,
++        ggml_tensor ** post, ggml_tensor ** comb, int il) {
++    const int64_t hc = hparams.dsv4_hc_mult;
++    const int64_t nm = hc - 1;
++    const int64_t nt = x->ne[2];
++    ggml_tensor * flat = ggml_reshape_2d(ctx0, x, n_embd*hc, nt);
++    ggml_tensor * rms = ggml_sqrt(ctx0, ggml_scale_bias(ctx0, ggml_mean(ctx0, ggml_sqr(ctx0, flat)), 1.0f, hparams.dsv4_hc_eps));
++    ggml_tensor * mixes = ggml_div(ctx0, build_lora_mm(fn, flat), rms);
++    cb(mixes, "hc_mixes", il);
++
++    auto affine = [&](int64_t offset, int64_t width, int64_t si) {
++        ggml_tensor * z = ggml_view_2d(ctx0, mixes, width, nt, mixes->nb[1], offset*mixes->nb[0]);
++        ggml_tensor * a = ggml_view_1d(ctx0, scale, 1, si*scale->nb[0]);
++        ggml_tensor * b = ggml_view_1d(ctx0, base, width, offset*base->nb[0]);
++        return ggml_add(ctx0, ggml_mul(ctx0, z, a), b);
++    };
++    ggml_tensor * pre = ggml_sigmoid(ctx0, affine(0, hc, 0));
++    *post = ggml_scale(ctx0, ggml_sigmoid(ctx0, affine(hc, hc, 1)), hparams.hc_magnitude);
++    // combination: z ((hc-1)^2 Helmert coordinates) -> e = H z H^T, rho = 1 + max(0, max(-e / chart_base)),
++    // phi = chart_base + e / rho (doubly stochastic), comb = I + sigmoid(eta) * (phi - I)
++    ggml_tensor * z = ggml_cont_3d(ctx0, affine(2*hc, nm*nm, 2), nm, nm, nt);
++    ggml_tensor * e = ggml_mul_mat(ctx0, helmert, z);
++    e = ggml_mul_mat(ctx0, helmert, ggml_cont(ctx0, ggml_transpose(ctx0, e)));
++    ggml_tensor * ratio = ggml_neg(ctx0, ggml_div(ctx0, e, chart_base));
++    ratio = ggml_reshape_2d(ctx0, ratio, hc*hc, nt);
++    ggml_tensor * rho = ggml_pool_1d(ctx0, ratio, GGML_OP_POOL_MAX, hc*hc, hc*hc, 0);
++    rho = ggml_scale_bias(ctx0, ggml_clamp(ctx0, rho, 0.0f, INFINITY), 1.0f, 1.0f);
++    rho = ggml_reshape_3d(ctx0, rho, 1, 1, nt);
++    ggml_tensor * phi = ggml_add(ctx0, ggml_div(ctx0, e, rho), chart_base);
++    ggml_tensor * gamma = ggml_sigmoid(ctx0, ggml_view_1d(ctx0, scale, 1, 3*scale->nb[0]));
++    *comb = ggml_add(ctx0, ggml_mul(ctx0, ggml_sub(ctx0, phi, identity), gamma), identity);
++    cb(*comb, "hc_comb", il);
++    cb(pre, "hc_pre", il);
++    cb(*post, "hc_post", il);
++
++    if (cparams.fused_dsv4_hc_pre) {
++        ggml_tensor * result = ggml_dsv4_hc_pre(ctx0, x, pre);
++        res->add_fused_node({LLM_FUSED_OP_DSV4_HC_PRE, result, il});
++        return result;
++    }
++
++    ggml_tensor * result = nullptr;
++    for (int64_t i = 0; i < hc; ++i) {
++        ggml_tensor * xi = ggml_view_2d(ctx0, x, n_embd, nt, x->nb[2], i*x->nb[1]);
++        ggml_tensor * wi = ggml_view_2d(ctx0, pre, 1, nt, pre->nb[1], i*pre->nb[0]);
++        ggml_tensor * term = ggml_mul(ctx0, xi, wi);
++        result = result ? ggml_add(ctx0, result, term) : term;
++    }
++    return result;
++}
++
++ggml_tensor * llama_model_raon1::graph::build_hc_post(
++        ggml_tensor * x, ggml_tensor * branch, ggml_tensor * post, ggml_tensor * comb, int il) {
++    if (cparams.fused_dsv4_hc_post) {
++        ggml_tensor * result = ggml_dsv4_hc_post(ctx0, branch, x, post, comb);
++        res->add_fused_node({LLM_FUSED_OP_DSV4_HC_POST, result, il});
++        return result;
++    }
++
++    const int64_t hc = hparams.dsv4_hc_mult;
++    const int64_t nt = x->ne[2];
++    ggml_tensor * result = nullptr;
++    for (int64_t dst = 0; dst < hc; ++dst) {
++        ggml_tensor * sum = nullptr;
++        for (int64_t src = 0; src < hc; ++src) {
++            ggml_tensor * xi = ggml_view_2d(ctx0, x, n_embd, nt, x->nb[2], src*x->nb[1]);
++            ggml_tensor * wi = ggml_view_2d(ctx0, comb, 1, nt, comb->nb[2], dst*comb->nb[0] + src*comb->nb[1]);
++            ggml_tensor * term = ggml_mul(ctx0, xi, wi);
++            sum = sum ? ggml_add(ctx0, sum, term) : term;
++        }
++        ggml_tensor * wi = ggml_view_2d(ctx0, post, 1, nt, post->nb[1], dst*post->nb[0]);
++        sum = ggml_add(ctx0, sum, ggml_mul(ctx0, branch, wi));
++        sum = ggml_reshape_3d(ctx0, sum, n_embd, 1, nt);
++        result = result ? ggml_concat(ctx0, result, sum, 1) : sum;
++    }
++    return result;
++}
++
++ggml_tensor * llama_model_raon1::graph::build_mla_layer(
++        ggml_tensor * cur, const llama_layer & layer, llm_graph_input_attn_k * inp_attn_k, int il) {
++    const int64_t nr = hparams.n_rot();
++    const int64_t nk = hparams.n_embd_head_k_mla();
++    const int64_t nn = nk - nr;
++    const int64_t rank = hparams.n_lora_kv;
++    const float eps = hparams.f_norm_rms_eps_latent;
++    ggml_tensor * q = build_lora_mm(layer.wq_a, cur);
++    q = ggml_mul(ctx0, ggml_rms_norm(ctx0, q, eps), layer.attn_q_a_norm);
++    q = build_lora_mm(layer.wq_b, q);
++    ggml_tensor * kv = build_lora_mm(layer.wkv_a_mqa, cur);
++    ggml_tensor * latent = ggml_view_2d(ctx0, kv, rank, n_tokens, kv->nb[1], 0);
++    latent = ggml_mul(ctx0, ggml_rms_norm(ctx0, latent, eps), layer.attn_kv_a_norm);
++    // NoPE: the "rope" dims of q and k are concatenated as they are, without rotation
++    ggml_tensor * extra = ggml_view_3d(ctx0, kv, nr, 1, n_tokens, kv->nb[1], kv->nb[1], rank*kv->nb[0]);
++    ggml_tensor * q_nope = ggml_view_3d(ctx0, q, nn, n_head, n_tokens, nk*q->nb[0], q->nb[1], 0);
++    ggml_tensor * q_extra = ggml_view_3d(ctx0, q, nr, n_head, n_tokens, nk*q->nb[0], q->nb[1], nn*q->nb[0]);
++    q_nope = ggml_permute(ctx0, q_nope, 0, 2, 1, 3);
++    q_nope = build_lora_mm(layer.wk_b, q_nope);
++    q_nope = ggml_permute(ctx0, q_nope, 0, 2, 1, 3);
++    q = ggml_concat(ctx0, q_nope, q_extra, 0);
++    latent = ggml_reshape_3d(ctx0, latent, rank, 1, n_tokens);
++    ggml_tensor * k = ggml_concat(ctx0, latent, extra, 0);
++    ggml_tensor * out = build_attn(inp_attn_k, nullptr, nullptr, nullptr, q, k, latent,
++            nullptr, nullptr, layer.wv_b, 1.0f/sqrtf(nk), il);
++    out = ggml_mul(ctx0, out, ggml_sigmoid(ctx0, build_lora_mm(layer.wqkv_gate, cur)));
++    cb(out, "mla_gated", il);
++    return build_lora_mm(layer.wo, out);
++}
++
++llama_model_raon1::graph::graph(const llama_model & model, const llm_graph_params & params) : llm_build_delta_net_base(params) {
++    const int64_t hc = hparams.dsv4_hc_mult;
++    const int64_t nm = hc - 1;
++    helmert = nullptr;
++    for (int64_t i = 0; i < hc; ++i) {
++        ggml_tensor * row = nullptr;
++        for (int64_t j = 0; j < nm; ++j) {
++            const float v = (i <= j ? 1.0f : i == j + 1 ? -(float) (j + 1) : 0.0f)/sqrtf((j + 1)*(j + 2));
++            ggml_tensor * c = ggml_fill(ctx0, ggml_new_tensor_1d(ctx0, GGML_TYPE_F32, 1), v);
++            row = row ? ggml_concat(ctx0, row, c, 0) : c;
++        }
++        row = ggml_reshape_2d(ctx0, row, nm, 1);
++        helmert = helmert ? ggml_concat(ctx0, helmert, row, 1) : row;
++    }
++    identity = ggml_diag(ctx0, ggml_fill(ctx0, ggml_new_tensor_1d(ctx0, GGML_TYPE_F32, hc), 1.0f));
++    chart_base = ggml_scale_bias(ctx0, identity, 0.5f, 0.5f/hc);
++
++    ggml_tensor * inp = build_inp_embd(model.tok_embd);
++    inp = ggml_reshape_3d(ctx0, inp, n_embd, 1, n_tokens);
++    inp = ggml_repeat_4d(ctx0, inp, n_embd, hc, n_tokens, 1);
++    auto * inputs = build_inp_mem_hybrid_k();
++    auto * inp_rs = inputs->get_recr();
++    auto * inp_attn = inputs->get_attn();
++    auto * out_ids = build_inp_out_ids();
++    GGML_ASSERT(ubatch.n_seqs != 0 && ubatch.equal_seqs());
++    GGML_ASSERT(ubatch.n_tokens == ubatch.n_seq_tokens*ubatch.n_seqs);
++
++    for (int il = 0; il < n_layer; ++il) {
++        // [n_embd, hc, n_tokens]: the output of layer il-1 after its MLP hc_post, stream-major per token
++        res->t_layer_inp[il] = inp;
++
++        const auto & layer = model.layers[il];
++        ggml_tensor * post;
++        ggml_tensor * comb;
++        ggml_tensor * cur = build_hc_pre(inp, layer.hc_attn_fn, layer.hc_attn_scale, layer.hc_attn_base, &post, &comb, il);
++        cur = build_norm(cur, layer.attn_norm, nullptr, LLM_NORM_RMS, il);
++        cb(cur, "attn_norm", il);
++        if (hparams.is_recr(il)) {
++            cur = build_rda_layer(cur, layer, inp_rs, il);
++        } else {
++            cur = build_mla_layer(cur, layer, inp_attn, il);
++        }
++        inp = build_hc_post(inp, cur, post, comb, il);
++        cb(inp, "hc_attn_out", il);
++        cur = build_hc_pre(inp, layer.hc_ffn_fn, layer.hc_ffn_scale, layer.hc_ffn_base, &post, &comb, il);
++        cur = build_norm(cur, layer.ffn_norm, nullptr, LLM_NORM_RMS, il);
++        cb(cur, "ffn_norm", il);
++        if (il < (int) hparams.n_layer_dense_lead) {
++            cur = build_ffn(cur, layer.ffn_up, nullptr, nullptr, layer.ffn_gate, nullptr, nullptr,
++                    layer.ffn_down, nullptr, nullptr, nullptr, LLM_FFN_SITU, LLM_FFN_PAR, il);
++        } else {
++            ggml_tensor * moe = build_moe_ffn(cur, layer.ffn_gate_inp, layer.ffn_up_exps,
++                    layer.ffn_gate_exps, layer.ffn_down_exps, layer.ffn_exp_probs_b,
++                    hparams.n_expert, hparams.n_expert_used(), LLM_FFN_SITU,
++                    hparams.expert_weights_norm, hparams.expert_weights_scale,
++                    (llama_expert_gating_func_type) hparams.expert_gating_func, il);
++            if (layer.ffn_gate_shexp) {
++                ggml_tensor * shared = build_ffn(cur, layer.ffn_up_shexp, nullptr, nullptr,
++                        layer.ffn_gate_shexp, nullptr, nullptr, layer.ffn_down_shexp, nullptr,
++                        nullptr, nullptr, LLM_FFN_SITU, LLM_FFN_PAR, il);
++                moe = ggml_add(ctx0, moe, shared);
++            }
++            cur = moe;
++        }
++        inp = build_hc_post(inp, cur, post, comb, il);
++        inp = build_cvec(inp, il);
++        cb(inp, "l_out", il);
++    }
++    res->t_layer_inp[n_layer] = inp;
++
++    ggml_tensor * cur = nullptr;
++    for (int64_t i = 0; i < hc; ++i) {
++        ggml_tensor * x = ggml_view_2d(ctx0, inp, n_embd, n_tokens, inp->nb[2], i*inp->nb[1]);
++        cur = cur ? ggml_add(ctx0, cur, x) : x;
++    }
++    cur = ggml_scale(ctx0, cur, 1.0f/hc);
++    if (out_ids) {
++        cur = ggml_get_rows(ctx0, cur, out_ids);
++    }
++    cur = build_norm(cur, model.output_norm, nullptr, LLM_NORM_RMS, -1);
++    cb(cur, "result_norm", -1);
++    res->t_embd = cur;
++    cur = build_lora_mm(model.output, cur);
++    cb(cur, "result_output", -1);
++    res->t_logits = cur;
++    ggml_build_forward_expand(gf, cur);
++}
+diff --git a/src/unicode.cpp b/src/unicode.cpp
+index 796f8e8fb..5c16fea92 100644
+--- a/src/unicode.cpp
++++ b/src/unicode.cpp
+@@ -1216,7 +1216,74 @@ static std::vector<size_t> unicode_regex_split_custom_newlines(const std::string
+     return bpe_offsets;
+ }
+ 
++static std::vector<size_t> unicode_regex_split_custom_raon(const std::string & text, const std::vector<size_t> & offsets) {
++    const auto cpts = unicode_cpts_from_utf8(text);
++    std::vector<size_t> result;
++    size_t begin = 0;
++    for (size_t offset : offsets) {
++        const size_t end = begin + offset;
++        auto flags = [&](size_t p) { return p < end ? unicode_cpt_flags_from_cpt(cpts[p]) : unicode_cpt_flags{}; };
++        auto cjk = [&](size_t p) {
++            return p < end && ((cpts[p] >= 0x4e00 && cpts[p] <= 0x9fa5) || (cpts[p] >= 0x3040 && cpts[p] <= 0x30ff));
++        };
++        auto letter = [&](size_t p) { return flags(p).is_letter && !cjk(p); };
++        for (size_t pos = begin; pos < end;) {
++            const size_t start = pos;
++            size_t p = pos + (cpts[pos] == ' ');
++            if (cjk(p)) {
++                do { ++p; } while (cjk(p));
++                pos = p;
++            } else if (letter(p)) {
++                do {
++                    ++p;
++                    while (flags(p).is_accent_mark) { ++p; }
++                    if (letter(p)) { continue; }
++                    if (p < end && cpts[p] == ' ' && letter(p + 1)) { ++p; continue; }
++                    break;
++                } while (true);
++                pos = p;
++            } else if (flags(pos).is_number) {
++                p = pos;
++                while (flags(p).is_number) { ++p; }
++                const size_t first = (p - pos) % 3;
++                pos += first ? first : 3;
++            } else {
++                auto punct = [&](size_t q) {
++                    const auto f = flags(q);
++                    return q < end && !f.is_whitespace && !f.is_letter && !f.is_number;
++                };
++                if (punct(p)) {
++                    do { ++p; } while (punct(p));
++                    while (p < end && (cpts[p] == '\r' || cpts[p] == '\n' || cpts[p] == '/')) { ++p; }
++                    pos = p;
++                } else {
++                    p = pos;
++                    size_t last_newline = pos;
++                    while (flags(p).is_whitespace) {
++                        if (cpts[p] == '\r' || cpts[p] == '\n') { last_newline = p + 1; }
++                        ++p;
++                    }
++                    if (last_newline > pos) {
++                        pos = last_newline;
++                    } else if (p > pos) {
++                        pos = p < end && p - pos > 1 ? p - 1 : p;
++                    } else {
++                        ++pos;
++                    }
++                }
++            }
++            result.push_back(pos - start);
++        }
++        begin = end;
++    }
++    return result;
++}
++
+ static std::vector<size_t> unicode_regex_split_custom(const std::string & text, const std::string & regex_expr, const std::vector<size_t> & offsets) {
++    if (regex_expr == " ?[\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff]+| ?(?:(?:(?![\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff])\\p{L})\\p{M}*)+(?: (?:(?:(?![\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff])\\p{L})\\p{M}*)+)*|\\p{N}{1,3}(?=(?:\\p{N}{3})*(?!\\p{N}))| ?[^\\s\\p{L}\\p{N}]+[\\r\\n/]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+") {
++        return unicode_regex_split_custom_raon(text, offsets);
++    }
++
+     std::vector<size_t> bpe_offsets;
+ 
+     if (regex_expr == "'s|'t|'re|'ve|'m|'ll|'d| ?\\p{L}+| ?\\p{N}+| ?[^\\s\\p{L}\\p{N}]+|\\s+(?!\\S)") {
+diff --git a/tests/test-llama-archs.cpp b/tests/test-llama-archs.cpp
+index 1f4c8a46b..f93150a74 100644
+--- a/tests/test-llama-archs.cpp
++++ b/tests/test-llama-archs.cpp
+@@ -300,6 +300,7 @@ static gguf_context_ptr get_gguf_ctx(const llm_arch arch, const bool moe, const
+             || arch == LLM_ARCH_BAILINGMOE3
+             || arch == LLM_ARCH_KIMI_K3
+             || arch == LLM_ARCH_KIMI_K31
++            || arch == LLM_ARCH_RAON1
+             || arch == LLM_ARCH_MISTRAL4
+             || arch == LLM_ARCH_MISTRAL_LARGE4
+             || arch == LLM_ARCH_HY_V4
+@@ -375,7 +376,7 @@ static gguf_context_ptr get_gguf_ctx(const llm_arch arch, const bool moe, const
+ 
+     if (arch == LLM_ARCH_PLAMO2 || arch == LLM_ARCH_JAMBA || arch == LLM_ARCH_NEMOTRON_H || arch == LLM_ARCH_NEMOTRON_H_MOE ||
+             arch == LLM_ARCH_GRANITE_HYBRID || arch == LLM_ARCH_LFM2 || arch == LLM_ARCH_LFM2MOE || arch == LLM_ARCH_LFM3 ||
+-            arch == LLM_ARCH_KIMI_LINEAR || arch == LLM_ARCH_BAILINGMOE3 || arch == LLM_ARCH_KIMI_K3 || arch == LLM_ARCH_KIMI_K31 ||
++            arch == LLM_ARCH_KIMI_LINEAR || arch == LLM_ARCH_BAILINGMOE3 || arch == LLM_ARCH_KIMI_K3 || arch == LLM_ARCH_KIMI_K31 || arch == LLM_ARCH_RAON1 ||
+             arch == LLM_ARCH_GLM5_NEXT
+             ) {
+         GGML_ASSERT(n_layer >= 2);
+@@ -385,7 +386,7 @@ static gguf_context_ptr get_gguf_ctx(const llm_arch arch, const bool moe, const
+             n_head_per_layer.push_back(il == 1 ? 0 : n_head);
+         }
+         // GLM5 next KDA heads come from the uniform head count, only head_count_kv is per layer.
+-        if (arch == LLM_ARCH_GLM5_NEXT) {
++        if (arch == LLM_ARCH_GLM5_NEXT || arch == LLM_ARCH_RAON1) {
+             ms.add_kv(LLM_KV_ATTENTION_HEAD_COUNT, n_head);
+             // the MLA cache holds one latent head
+             for (uint32_t & n : n_head_per_layer) {
+@@ -422,6 +423,7 @@ static gguf_context_ptr get_gguf_ctx(const llm_arch arch, const bool moe, const
+             || arch == LLM_ARCH_BAILINGMOE3
+             || arch == LLM_ARCH_KIMI_K3
+             || arch == LLM_ARCH_KIMI_K31
++            || arch == LLM_ARCH_RAON1
+             || arch == LLM_ARCH_GLM5_NEXT
+             || arch == LLM_ARCH_HY_V4
+             || arch == LLM_ARCH_MISTRAL4
+@@ -466,6 +468,7 @@ static gguf_context_ptr get_gguf_ctx(const llm_arch arch, const bool moe, const
+     ms.add_kv(LLM_KV_ATTENTION_CLAMP_KQV,              1.0f);
+     ms.add_kv(LLM_KV_ATTENTION_LAYERNORM_EPS,          1e-5f);
+     ms.add_kv(LLM_KV_ATTENTION_LAYERNORM_RMS_EPS,      1e-5f);
++    ms.add_kv(LLM_KV_ATTENTION_LATENT_NORM_RMS_EPS,    1e-6f);
+     ms.add_kv(LLM_KV_ATTENTION_GROUPNORM_EPS,          1e-5f);
+     ms.add_kv(LLM_KV_ATTENTION_GROUPNORM_GROUPS,       uint32_t(8));
+     ms.add_kv(LLM_KV_ATTENTION_Q_LORA_RANK,            (arch == LLM_ARCH_DEEPSEEK4 || arch == LLM_ARCH_DEEPSEEK41) ? uint32_t(64) : uint32_t(512));
+@@ -520,6 +523,14 @@ static gguf_context_ptr get_gguf_ctx(const llm_arch arch, const bool moe, const
+         ms.add_kv(LLM_KV_EXPERT_WEIGHTS_NORM, false);
+     }
+ 
++    if (arch == LLM_ARCH_RAON1) {
++        ms.add_kv(LLM_KV_EXPERT_WEIGHTS_SCALE, 1.0f);
++        ms.add_kv(LLM_KV_EXPERT_WEIGHTS_NORM, true);
++        ms.add_kv(LLM_KV_HYPER_CONNECTION_COUNT, uint32_t(4));
++        ms.add_kv(LLM_KV_HYPER_CONNECTION_EPSILON, 1e-5f);
++        ms.add_kv(LLM_KV_HYPER_CONNECTION_MAGNITUDE, 2.0f);
++    }
++
+     // MSA requires one indexer head per GQA (KV) head, unlike the DSA archs where the
+     // indexer head count is independent of the main attention head count.
+     if (arch == LLM_ARCH_QWEN4EXP || arch == LLM_ARCH_GLM5_NEXT) {
+@@ -1037,6 +1048,7 @@ static bool moe_mandatory(const llm_arch arch) {
+         case LLM_ARCH_KIMI_LINEAR:
+         case LLM_ARCH_KIMI_K3:
+         case LLM_ARCH_KIMI_K31:
++        case LLM_ARCH_RAON1:
+         case LLM_ARCH_GLM5_NEXT:
+         case LLM_ARCH_STEP35:
+         case LLM_ARCH_MISTRAL4:

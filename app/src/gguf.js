@@ -91,10 +91,12 @@ export function ggufInfo(file) {
       // The chat memory's shape: layers, which of them keep a memory (hybrid brains like Qwen3.6 only keep one in
       // every few), and how big each token's memory is. Any of these may be missing (null).
       shape: shapeOf(kv, kv['general.architecture']),
-      // 1.5.16x Turbo: brains that carry their own guesser (a multi-token head, "nextn" in the file) need no draft brain.
+      // 1.5.16x MTP: brains that carry their own guesser (a multi-token head, "nextn" in the file) need no draft brain.
       // 1.5.16x Teach it: where the brain's full weights live, when the file says (its Hugging Face original).
       origin: kv['general.source.huggingface.repository'] || kv['general.base_model.0.repo_url'] || kv['general.source.url'] || '',
-      mtp: Number(kv[`${kv['general.architecture']}.nextn_predict_layers`]) || 0
+      mtp: Number(kv[`${kv['general.architecture']}.nextn_predict_layers`]) || 0,
+      // Nov 22: experts per layer (0 for a dense brain), for the memory estimate on built-in graphics (apu-fit.js)
+      experts: Number(kv[`${kv['general.architecture']}.expert_count`]) || 0
     };
     // 1.5.207 PC check: a cut Riker says nextn_predict_layers = 1 in its header but has no guesser tensors, and Brain
     // Engine 4 stopped with "MTP block missing nextn.eh_proj". The guesser counts only when its tensors are there.

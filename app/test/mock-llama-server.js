@@ -7,6 +7,7 @@ const arg = (f) => argv[argv.indexOf(f) + 1];
 const port = Number(arg('--port'));
 const modelFile = path.basename(arg('-m'));
 const readyAt = Date.now() + 800;
+let ctxNow = Number(arg('-c')) || 0, ctxChanges = 0; // Brain Engine 0035 tests
 // Reliability 218-228 tests: a setting the engine refuses, running out of memory above a chat memory size, a crash.
 if (argv.includes('--bad-flag')) { console.error('error: invalid argument: --bad-flag'); process.exit(1); }
 if (Number(process.env.MOCK_OOM_ABOVE) > 0 && Number(arg('-c')) > Number(process.env.MOCK_OOM_ABOVE)) { console.error('ggml_backend_cuda_buffer_type_alloc_buffer: allocating 9000 MiB on device 0: cudaMalloc failed: out of memory'); process.exit(1); }
@@ -31,6 +32,13 @@ http.createServer(async (req, res) => {
     if (action === 'restore') { const ok = fs.existsSync(path.join(dir, name)); res.writeHead(ok ? 200 : 400); return res.end(ok ? '{"n_restored":10}' : '{}'); }
   }
   // 1.5.72: the embedding server (--embedding): one short vector per input, from its length; and the flags it got.
+  // Brain Engine 0035: POST /context changes the chat memory in place, only when MOCK_CONTEXT=1 (else 404, as older engines)
+  if (req.url === '/context' && process.env.MOCK_CONTEXT === '1') {
+    const want = JSON.parse(body || '{}').n_ctx;
+    const old = ctxNow; ctxNow = Number(want) || ctxNow; ctxChanges++;
+    res.writeHead(200); return res.end(JSON.stringify({ n_ctx_old: old, n_ctx: ctxNow, n_ctx_slot: ctxNow, seconds: 0.02 }));
+  }
+  if (req.url === '/test-ctx') { res.writeHead(200); return res.end(JSON.stringify({ n_ctx: ctxNow, changes: ctxChanges, pid: process.pid })); }
   if (req.url === '/test-args') { res.writeHead(200); return res.end(JSON.stringify({ argv, cuda: process.env.CUDA_VISIBLE_DEVICES ?? null })); }
   if (req.url === '/v1/embeddings') {
     if (!argv.includes('--embedding')) { res.writeHead(501); return res.end('{}'); }

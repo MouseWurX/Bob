@@ -5,9 +5,10 @@
 import { SLOTS, allSlots, equipped, entryOf, slotTakes, isActive, tipHtml, kitHtml, starterHtml } from './equip.js';
 import { placeFor, sizeLine, placeWord, hasExperts } from './place.js';
 import { esc, gb } from './util.js';
-import { memTypeTrade } from './mem-types.js';
+import { memTypeTrade, MEM_TYPES } from './mem-types.js';
 import { brainChoices, choiceOptions, takesJob } from './brain-choices.js';
 import { OWN_BUTTONS, ownFormHtml } from './catalogue.js';
+import { stepChoices } from './quant-steps.js';
 
 // The jobs a brain can hold (every thinking slot; the rented brain is its own thing).
 export const brainJobs = () => allSlots().filter((s) => s.kind === 'llm');
@@ -193,7 +194,7 @@ function chipHtml(s, b, ctx, greyed) {
 function brainRowHtml(b, ctx) {
   const chips = b.jobs.map((s) => chipHtml(s, b, ctx, oneBrainCovers(s, ctx) && s.id !== 'bob' && b.value !== val('bob', ctx))).join('');
   const trial = b.entry?.trial ? '<span class="tag">Not tried yet</span>' : '';
-  return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name"><strong>${esc(b.name)}</strong> ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
+  return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name"><strong>${esc(b.name)}</strong> ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${quantPickHtml(b, ctx)}${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
     <div class="brain-jobs">${chips}${jobSelect(b.value, jobsFor(b.value, ctx), `Give ${b.name} another job`)}</div>
     <div class="brain-place">${placeBarHtml(b.entry, ctx)}${actHtml(b, ctx)}</div></li>`;
 }
@@ -245,7 +246,20 @@ function calibrateHtml(b, ctx) {
       <div class="row"><button type="button" class="mini" data-calibrate="${esc(b.value)}" ${lock || running ? 'disabled' : ''}>⏱ Calibrate</button><button type="button" class="mini" data-caluse="${esc(b.value)}" ${best && !inUse && !running ? '' : 'disabled'}>Use recommended</button>${best ? `<span class="tag ${inUse ? 'good' : ''}">★ recommended: ${best.mode === 'hand' ? `By hand, ${best.cpuMoe}` : 'Auto'}${inUse ? ' (in use)' : ''}</span>` : ''}</div>
       ${calStatusHtml(ctx)}
       <p class="muted">${lock ? `🔒 ${esc(lock)}` : cal ? `Last calibrated ${esc(cal.when || '')}. ${esc(best?.why || 'No try ran.')}` : 'Not calibrated yet. Auto is in charge until you say otherwise.'}</p>
-      ${rows ? `<table class="cal-rows"><caption class="sr-only">What each try measured</caption>${rows}</table>` : ''}</section>`;
+      ${rows ? `<table class="cal-rows"><caption class="sr-only">What each try measured</caption>${rows}</table>` : ''}
+      ${speedRowsHtml(cal)}</section>`;
+}
+// Nov 16: the speed options Calibrate timed on the best placement (Reading speed, and MTP for a brain with its own guesser).
+const READ_NAMES = { normal: 'Normal', faster: 'Faster', fastest: 'Fastest' };
+function speedRowsHtml(cal) {
+  const sp = cal?.speed || null;
+  const rows = (cal?.speedRows || []).map((r) => {
+    const star = sp && (r.turbo ? sp.turbo : r.reading === sp.reading);
+    const name = r.turbo ? 'MTP (own guesser)' : `Reading speed ${READ_NAMES[r.reading] || r.reading}`;
+    return `<tr${star ? ' class="best"' : ''}><td>${name}</td><td>${r.failed ? `<span class="muted">${esc(r.failed)}</span>` : `reads ${r.readTps} tokens a second, writes ${r.tps}${r.accepted != null ? `, ${r.accepted}% of guesses kept` : ''}`}</td><td>${r.failed || r.firstWordS == null ? '' : `first word ${r.firstWordS} s on a long prompt`}</td><td>${star ? '★ recommended' : ''}</td></tr>`;
+  }).join('');
+  if (!rows) return '';
+  return `<p class="muted">${esc(sp?.why || '')} Use recommended sets these for this brain too.</p><table class="cal-rows"><caption class="sr-only">What each speed option measured</caption>${rows}</table>`;
 }
 
 export function setUpHtml(b, ctx) {
@@ -280,11 +294,12 @@ export function memTypeHtml(b, ctx) {
   const p = placeOf(b.value, ctx);
   const cur = p?.memType || 'standard';
   const off = p ? p.memEngine === false : true;
-  const rows = memTypeTrade(p?.kv32);
+  const rows = memTypeTrade(p?.kv32, { q3: p?.memQ3 === true || cur === 'smallest' || /^progressive/.test(cur), tiers: p?.memTiers === true || /^progressive/.test(cur) });
   const seg = (r) => `<button type="button" class="seg-btn${r.id === cur ? ' on' : ''}" data-memtype="${r.id}" data-model="${esc(b.value)}" aria-pressed="${r.id === cur}" ${off ? 'disabled' : ''}>${esc(r.name)}</button>`;
-  return `<section class="brains-panel"><h3>Chat memory type ${tipHtml('The chat memory (KV cache) sits beside the brain on the card and grows as a chat gets longer. Standard is what I use unless you pick. Sharper keeps it at full detail: twice the room, a touch more exact on long code. Smaller packs it tighter: about half the room, so a longer chat fits, a little less exact. A change takes effect the next time this brain loads.', 'About the chat memory type')}</h3>
+  return `<section class="brains-panel"><h3>Chat memory type ${tipHtml('The chat memory (KV cache) sits beside the brain on the card and grows as a chat gets longer. Standard is what I use unless you pick. Sharper keeps it at full detail: twice the room, a touch more exact on long code. Smaller packs it tighter: about half the room, so a longer chat fits, a little less exact. Smallest (only with a Brain Engine that has it) packs it tighter still: about two fifths, for the longest chats, less exact again. Progressive (only with a Brain Engine that has it) keeps the newest words sharp and packs older ones tight: 3-step keeps the newest at 8-bit, then 4-bit; 2-step at 4-bit. A long chat takes less room than Standard and stays nearly as exact. A change takes effect the next time this brain loads.', 'About the chat memory type')}</h3>
       <div class="seg" role="group" aria-label="Chat memory type for ${esc(b.name)}">${rows.map(seg).join('')}</div>
       <ul class="mem-trade">${rows.map((r) => `<li${r.id === cur ? ' class="on"' : ''}><strong>${esc(r.name)}</strong>${r.gb != null ? ` · about ${r.gb} GB for a 32K chat` : ''} <span class="muted">${esc(r.about)}</span></li>`).join('')}</ul>
+      ${p?.turboMem ? `<p class="muted">⚡ Turbo is on, so this brain uses <strong>${esc(MEM_TYPES[p.turboMem]?.name || p.turboMem)}</strong> until Turbo is off (Settings, Engine extras).</p>` : ''}
       <p class="muted">${off ? '🔒 Only with Brain Engine or llama.cpp. Ollama sets its chat memory for every brain at once.' : cur === 'standard' ? 'Standard. Takes effect the next time this brain loads.' : 'In use. Takes effect the next time this brain loads.'}</p></section>`;
 }
 
@@ -340,6 +355,20 @@ const rowPicker = (b, ctx, main) => {
   const list = rowChoices(b.jobs, ctx, b.value);
   return `<label class="row-pick"><span class="sr-only">${main ? 'Main brain' : `Brain for ${esc(b.jobs.map((s) => s.name).join(', '))}`}</span><select data-rowbrain="${esc(b.value)}" data-rowjobs="${esc(b.jobs.map((s) => s.id).join(','))}" aria-label="${esc(main ? 'Main brain' : `Brain for ${b.jobs.map((s) => s.name).join(', ')}`)}">${choiceOptions(list, b.value, esc)}</select></label>`;
 };
+// Nov 19 2026 (the owner: "having the quantization level is a big one up"): a big brain's row (35B and up) gets a
+// Quant level menu once Settings, Brains, "Pick a quant level for big brains" is on. Picking a level you have moves
+// the row's jobs to it; one you don't have yet asks to download it first (with the size), like the catalogue's Get.
+export function quantPickHtml(b, ctx) {
+  const list = stepChoices(b.entry, ctx.models || [], { on: ctx.quantOn === true });
+  if (!list.length) return '';
+  const cur = b.entry?.id || '';
+  const opts = list.map((s) => {
+    const here = s.id === cur || s.entry.status?.state === 'installed';
+    return `<option value="${esc(s.id)}"${s.id === cur ? ' selected' : ''}>${esc(s.label)}${here ? '' : ' (get it first)'}</option>`;
+  }).join('');
+  const now = list.find((s) => s.id === cur);
+  return `<div class="model quant-pick"><label>Quant level <select data-rowquant="${esc(cur)}" data-rowjobs="${esc(b.jobs.map((s) => s.id).join(','))}" aria-label="${esc(`Quant level for ${b.name}`)}">${opts}</select></label> ${tipHtml(now?.why || 'Q4 is my usual. Lower levels are smaller and a little less sharp; each says how it did in my checks and whether I recommend it.', 'About quant levels')}<div class="confirm" hidden></div></div>`;
+}
 // The main brain: the row with the Brain job. The others: every other brain with a job.
 export function brainRows(ctx) {
   const used = brainsInUse(ctx);
@@ -349,14 +378,14 @@ export function brainRows(ctx) {
 function mainRowHtml(b, ctx) {
   const chips = b.jobs.filter((s) => s.id !== 'bob').map((s) => chipHtml(s, b, ctx, false)).join('');
   const trial = b.entry?.trial ? '<span class="tag">Not tried yet</span>' : '';
-  return `<li class="brain-row main-row" id="brain-${esc(b.value)}"><div class="brain-name"><span class="row-label">🧠 Main brain</span>${rowPicker(b, ctx, true)} ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
+  return `<li class="brain-row main-row" id="brain-${esc(b.value)}"><div class="brain-name"><span class="row-label">🧠 Main brain</span>${rowPicker(b, ctx, true)} ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${quantPickHtml(b, ctx)}${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
     <div class="brain-jobs"><span class="muted">${ctx.oneBrain ? 'Every job.' : 'Every job no other brain has.'}</span>${chips}</div>
     <div class="brain-place">${placeBarHtml(b.entry, ctx)}${actHtml(b, ctx)}</div></li>`;
 }
 function otherRowHtml(b, ctx) {
   const chips = b.jobs.map((s) => chipHtml(s, b, ctx, false)).join('');
   const trial = b.entry?.trial ? '<span class="tag">Not tried yet</span>' : '';
-  return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name">${rowPicker(b, ctx, false)} ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
+  return `<li class="brain-row" id="brain-${esc(b.value)}"><div class="brain-name">${rowPicker(b, ctx, false)} ${trial}<br><span class="muted">${esc(b.entry ? sizeLine(b.entry) : 'not in my list')}</span>${quantPickHtml(b, ctx)}${labLineHtml(b, ctx)}${honestyHtml(b, ctx)}</div>
     <div class="brain-jobs">${chips}${jobSelect(b.value, jobsFor(b.value, ctx).filter((s) => s.id !== 'bob'), `Give ${b.name} another job`)}</div>
     <div class="brain-place">${placeBarHtml(b.entry, ctx)}${actHtml(b, ctx)}</div></li>`;
 }
