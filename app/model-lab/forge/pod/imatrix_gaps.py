@@ -31,5 +31,7 @@ for t in md.tensors:
     if c is not None and c.size > 1 and (c <= 0).any(): gaps.append((t.name, f"{int((c <= 0).sum())} of {c.size} experts never seen"))
 for n, why in gaps:
     # an expert tensor is most of the file: the cheap fallback; any other tensor is small: q8_0 keeps it at full quality
-    print(f"--tensor-type\n^{n.replace('.', chr(92) + '.')}$={a.fallback if '_exps' in n else 'q8_0'}")
+    # embeddings are looked up a row at a time (no imatrix ever covers them) and Flash-Next's n-gram table is 51B: q2_k, as
+    # llama-quantize itself gives token_embd at the IQ2 types (q8_0 made the IQ2_XXS ~52 GB bigger on the first try)
+    print(f"--tensor-type\n^{n.replace('.', chr(92) + '.')}$={a.fallback if ('_exps' in n or 'token_embd' in n) else 'q8_0'}")
 print(f"{len(gaps)} tensor(s) not fully covered: " + "; ".join(f"{n} ({w})" for n, w in gaps[:20]) + (" ..." if len(gaps) > 20 else ""), file=sys.stderr)

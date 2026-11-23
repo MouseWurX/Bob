@@ -388,7 +388,7 @@ PY
                 [ -f $QIMX ] || PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/imatrix_fill.py --imatrix $IMX --out $QIMX >> $OUT/bench/cut-$BN/gaps-$q.txt 2>&1 || QIMX=$IMX
                 mapfile -t TT < <(PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/imatrix_gaps.py --model $CUTQ8 --imatrix $QIMX 2>>$OUT/bench/cut-$BN/gaps-$q.txt)
                 head -1 $OUT/bench/cut-$BN/gaps-$q.txt; fi ;; esac
-              [ ${#TT[@]} -gt 0 ] && echo "$q: $(( ${#TT[@]} / 2 )) tensor(s) with no imatrix entry go to q2_k (out/bench/cut-$BN/gaps-$q.txt)"
+              [ ${#TT[@]} -gt 0 ] && echo "$q: $(( ${#TT[@]} / 2 )) tensor(s) with no imatrix entry get their own type: q8_0, or q2_k for expert and embedding tensors (out/bench/cut-$BN/gaps-$q.txt)"
               LD_LIBRARY_PATH="$(dirname $QZ):${LD_LIBRARY_PATH:-}" $QZ --allow-requantize $( [ -f $QIMX ] && echo --imatrix $QIMX ) "${TT[@]}" $CUTQ8 $QF $q $(nproc) > $OUT/bench/cut-$BN/quant-$q.log 2>&1 || { echo "bench $BN: $q failed (see out/bench/cut-$BN/quant-$q.log)"; tail -2 $OUT/bench/cut-$BN/quant-$q.log; rm -f $QF; continue; }
               echo "$q $(basename $QF) bytes $(stat -c %s $QF) sha256 $(sha256sum $QF | cut -d' ' -f1)" | tee -a $OUT/bench/cut-$BN/sizes.txt   # a home download is checked against these
               if [ -z "${NOUP:-}" ]; then
