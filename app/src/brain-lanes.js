@@ -4,6 +4,7 @@ import { freeMemNow } from './platform.js';
 import { currentSession, sessionBrains, brainDefaults, laneOf } from './sessions.js';
 import fs from 'node:fs';
 import { apuHoldbackGB } from './apu-fit.js';
+import { raceTimeout } from './hang-guard.js';
 import { sameModel, chatBrain, bigSession } from './brain-mode.js';
 import { bigThinker } from './moot.js';
 import { midJobOn } from './mid-job.js';
@@ -44,7 +45,10 @@ export const APU_MIN_CTX = 8192;
 export { APU_HOLDBACK_DEFAULT_GB, apuHoldbackGB } from './apu-fit.js';
 export const APU_CARVE_MARGIN_GB = 0.5; // 1.5.133: kept free inside the set-aside for the picture reader and the driver
 export const APU_NO_ROOM = (needGB, freeGB, holdGB = 1) => `That brain needs about ${needGB} GB and only about ${freeGB} GB is free${holdGB > 0 ? ' once Windows keeps its share' : ''}, so I haven't loaded it. Close something or pick a smaller brain in Settings, Brains.`;
-export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loaded = null, minCtx = APU_MIN_CTX } = {}) {
+export async function apuRoom(brain, model, ctx, { freeMem, loaded = null, minCtx = APU_MIN_CTX } = {}) {
+  // Nov 22: in Bob's first seconds the hardware check may not have said yet whether the graphics are built in
+  if (brain?.cfg?.hardwareReady && !brain.cfg.sharedGraphics) await raceTimeout(brain.cfg.hardwareReady, 5000).catch(() => {});
+  if (freeMem === undefined) freeMem = freeMemNow();
   if (!brain?.cfg?.sharedGraphics || !model) return { ok: true, ctx };
   // Nov 12 (apu-fit.js): the engine's honest figure when it has one: { card } wholly on the graphics (file, chat memory,
   // working buffers, driver) and { cpu } on the processor alone, where the file is read from the drive as needed. The

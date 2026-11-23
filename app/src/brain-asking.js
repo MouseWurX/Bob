@@ -13,7 +13,7 @@ import { saveSettings } from './config.js';
 import { pickedCtx, GAMING_CTX } from './model-ctx.js';
 import { gaming } from './sessions.js';
 import { MORE_SECONDS, thinkStream, fitContext, TOO_LONG, APPROVAL_TIMEOUT_MS, UNCAUGHT_QUIET_MS } from './brain-words.js';
-import { apuRoom } from './brain-lanes.js';
+import { apuRoom, APU_MIN_CTX } from './brain-lanes.js';
 
 // Methods of the Brain class, put on it in its main file with the same rules as the methods written inside it.
 export const askingParts = {
@@ -349,6 +349,9 @@ export const askingParts = {
     const cut = this.memCut?.get(model);
     if (cut && cut.want === fit && room.ok && room.needGB === undefined) return cut.ctx;
     if (cut && room.needGB !== undefined) this.memCut.delete(model); // loading again and it all fits now
+    // Even the shortest leaves Windows less than its share: still tried (the estimate never stops a load), at the
+    // shortest, which leaves Windows the most.
+    if (!room.ok && fit > APU_MIN_CTX) { (this.memCut ||= new Map()).set(model, { want: fit, ctx: APU_MIN_CTX }); this.log('model', `${model}: ${APU_MIN_CTX} chat memory instead of ${fit}: the estimate says ~${room.needGB} GB against ~${room.roomGB} GB free even then, so I try the shortest; if it runs out, it loads again with less`); return APU_MIN_CTX; }
     if (!room.ok) this.log('model', `keeping ${model}'s ${fit} chat memory: the estimate says ~${room.needGB} GB against ~${room.roomGB} GB free; if it runs out, it loads again with less`);
     return fit;
   },

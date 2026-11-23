@@ -911,13 +911,13 @@ export class LlamaCpp {
   // ---------- Nov 12: brains on built-in graphics (apu-fit.js) ----------
   // What this brain needs at a chat memory size: { card, cpu } in bytes, or null when the file can't be read.
   apuNeed(model, ctx) {
-    let gguf, size = 0;
-    try { gguf = this.resolve(model).gguf; size = fs.statSync(gguf).size; } catch { return null; }
-    let shape = null;
-    try { shape = ggufInfo(gguf)?.shape; } catch {}
+    let gguf, size = 0, extra = 0;
+    try { const r = this.resolve(model); gguf = r.gguf; size = fs.statSync(gguf).size; if (r.mmproj && this.lc.vision !== false && !(this.lc.noEyes || []).includes(model)) { try { extra = fs.statSync(r.mmproj).size; } catch {} } } catch { return null; }
+    let shape = null, experts = 0;
+    try { const info = ggufInfo(gguf); shape = info?.shape; experts = info?.experts || 0; } catch {}
     const c = ctx || this.lc.ctx || DEFAULT_CTX;
     const kv = kvBytes(shape, c, memArgs(this.cfg, model, this.lc.args)) ?? Math.min(c, 131072) * 60 * 1024;
-    return apuNeed({ fileBytes: size, kvBytes: kv, ubatch: this.lc.ubatch || 512 });
+    return apuNeed({ fileBytes: size, kvBytes: kv, ubatch: this.lc.ubatch || 512, extraBytes: extra, experts });
   }
   apuMaxCtx(model) { return this.cfg.sharedGraphics === true ? Number(this.careData.apuFit?.[model]?.maxCtx) || 0 : 0; }
   // A placement set by hand (layers, experts, the Brains page, flags in the config file) is never changed.

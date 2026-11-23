@@ -359,7 +359,9 @@ setInterval(() => { if (listUpdates.due()) checkList().catch(() => {}); }, 3600_
 // aside for them, the same as the catalogue does here.
 let myRoom = null;
 shop.hardware().then((h) => { myRoom = { vramGB: h?.gpu?.integrated ? Number(h.gpu.reservedGraphicsGB) || 0 : Number(h?.vramGB) || 0, ramGB: Number(h?.ramGB) || 0 }; }).catch(() => {});
-if (!cfg.gpuVramGB) shop.hardware().then((h) => { if (h?.gpu?.vramGB && !h.gpu.integrated) cfg.cardGB = h.gpu.vramGB; /* 1.5.71: built-in graphics aren't a card for pictures */ if (h?.gpu?.integrated) { cfg.sharedGraphics = true; cfg.reservedGraphicsGB = Number(h.gpu.reservedGraphicsGB) || 0; /* 1.5.133: the set-aside counts as room (apuRoom) */ } /* 1.5.79: but they get their own picture settings */ }).catch(() => {});
+// Nov 22 (Legion Go test): a chat in the first seconds loaded before this answered, so built-in graphics were missed;
+// apuRoom waits for it (up to a few seconds). Not enumerable, so it's never saved or backed up.
+if (!cfg.gpuVramGB) Object.defineProperty(cfg, 'hardwareReady', { configurable: true, enumerable: false, value: shop.hardware().then((h) => { if (h?.gpu?.vramGB && !h.gpu.integrated) cfg.cardGB = h.gpu.vramGB; /* 1.5.71: built-in graphics aren't a card for pictures */ if (h?.gpu?.integrated) { cfg.sharedGraphics = true; cfg.reservedGraphicsGB = Number(h.gpu.reservedGraphicsGB) || 0; /* 1.5.133: the set-aside counts as room (apuRoom) */ } /* 1.5.79: but they get their own picture settings */ }).catch(() => {}) });
 brain.shop = shop; // so Bob can tell when a model is on this replicant matrix but not assigned to a job
 // 1.5.91: Bob fills a slot himself once its download is in (Get Bob ready, the chat's Set it up card): the same saves
 // the window's Equip makes.
