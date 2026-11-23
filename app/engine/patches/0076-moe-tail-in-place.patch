@@ -1,0 +1,79 @@
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 2652488..80a2ed7 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -2603,8 +2603,8 @@ struct llama_moe_cache::impl {
+         jb.slot_of.assign(n_exp, -1);
+         size_t k = 0;
+         for (int32_t e = 0; e < n_exp && k < half.size(); ++e) {
+-            if (slots[e] < g.n_slots) {
+-                continue;
++            if (slots[e] < g.n_slots || (tl_on && tl_of.count(g.lru.make_key(il_next, e)) > 0)) {
++                continue; // cached, or on the shelf (0076: its lookup takes it from there, on the card)
+             }
+             const int32_t s = half[k++];
+             jb.slot_of[e] = s;
+@@ -2842,6 +2842,17 @@ struct llama_moe_cache::impl {
+         if (ahead) {
+             ia_has_ready = false;
+         }
++        // Brain Engine 0076: a miss the shelf (0049) holds comes from it on the card, as a long read's copy did before
++        // 0069; the entry stays (the zone gives its slots back after the read)
++        if (tl_on && !ip_fills.empty()) {
++            size_t k = 0;
++            for (const auto & f : ip_fills) {
++                if (!tl_to_slot(backend, il, g, f.expert, f.slot)) {
++                    ip_fills[k++] = f;
++                }
++            }
++            ip_fills.resize(k);
++        }
+         const size_t bytes = upload_fills(backend, l, g, ip_fills);
+         ip_hits   += hits;
+         ip_misses += ip_fills.size();
+@@ -3988,7 +3999,7 @@ struct llama_moe_cache::impl {
+     ggml_context_ptr ctx_tl;
+     std::vector<moe_cache_lru::fill> tl_rest;
+     std::vector<int32_t> tl_from;
+-    size_t tl_saved = 0, tl_hits = 0, tl_hit_bytes = 0, tl_read_hits = 0, tl_forgot = 0, tl_takes = 0;
++    size_t tl_saved = 0, tl_hits = 0, tl_hit_bytes = 0, tl_read_hits = 0, tl_forgot = 0, tl_takes = 0, tl_ip_hits = 0;
+ 
+     void tl_init(bool no_alloc) {
+         const char * on = getenv("LLAMA_MOE_CACHE_TAIL");
+@@ -4203,6 +4214,25 @@ struct llama_moe_cache::impl {
+         return tl_rest;
+     }
+ 
++    // Brain Engine 0076: expert e of layer il from the shelf into slot s of its group's banks, if the shelf holds it
++    bool tl_to_slot(ggml_backend_t backend, int32_t il, const group & g, int32_t e, int32_t s) {
++        const auto it = tl_of.find(g.lru.make_key(il, e));
++        if (it == tl_of.end()) {
++            return false;
++        }
++        const tl_entry & en = tl_entries[it->second];
++        size_t at = 0;
++        for (size_t ip = 0; ip < g.banks.size(); ++ip) {
++            const ggml_tensor * bank = g.banks[ip];
++            const size_t n = g.ref[ip]->nb[2];
++            tl_copy(backend, en.t->buffer, (char *) en.t->data + en.off + at, bank->buffer, (char *) bank->data + (size_t) s*bank->nb[2], n);
++            at += n;
++        }
++        tl_read_hits++;
++        tl_ip_hits++;
++        return true;
++    }
++
+     // a large batch's copy of expert e of w: from the shelf if it is there
+     int64_t tl_copy_out(ggml_backend_t backend, const group & g, const binding & b, ggml_tensor * dst, int64_t e) {
+         const auto it = tl_of.find(g.lru.make_key(b.il, (int32_t) e));
+@@ -5218,8 +5248,8 @@ struct llama_moe_cache::impl {
+         }
+         if (tl_on) {
+             LLAMA_LOG_INFO("llama_moe_cache: the shelf: %zu experts put on it, %zu came back from it on the card (%.2f MiB not uploaded), "
+-                "%zu read from it by large batches, %zu forgotten in %zu take-backs\n", tl_saved, tl_hits, tl_hit_bytes/1024.0/1024.0,
+-                tl_read_hits, tl_forgot, tl_takes);
++                "%zu read from it by large batches (%zu by in-place long reads), %zu forgotten in %zu take-backs\n", tl_saved, tl_hits, tl_hit_bytes/1024.0/1024.0,
++                tl_read_hits, tl_ip_hits, tl_forgot, tl_takes);
+         }
+         if (stats_copy.hits > 0) {
+             LLAMA_LOG_INFO("llama_moe_cache: large batches: %zu experts copied from the cache, %.2f MiB\n", stats_copy.hits, stats_copy.bytes/1024.0/1024.0);
