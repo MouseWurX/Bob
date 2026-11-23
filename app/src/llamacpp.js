@@ -718,7 +718,9 @@ export class LlamaCpp {
       args.push('-md', draft, ...draftNumArgs(this.buildNo(), d.max ?? 16, d.min ?? 1), '-ngld', String(d.ngld ?? 99));
     }
     // 102 MTP for everyday brains (opt-in): a brain with its own guesser uses it, unless MTP or a draft is set.
-    { const ev = everydayTurboArgs(this.cfg, { build: this.buildNo(), args, guesser: cpu || this.role === BESIDE ? [] : mtpArgs(gguf), cpu: cpu || this.role === BESIDE });
+    // Nov 23 (the test PC's gate, twice): with the Conductor driving on a graphics card, MTP's own buffers (made after
+    // the fill) still pushed 200+ MB off the card at 32K and it ran 3% slower, so the Conductor runs without everyday MTP.
+    { const ev = everydayTurboArgs(this.cfg, { build: this.buildNo(), args, guesser: cpu || this.role === BESIDE || (this.condChat && !this.condApu) ? [] : mtpArgs(gguf), cpu: cpu || this.role === BESIDE });
       args.push(...ev);
       // Nov 23: MTP is on by default, so on a brain where its guesses rarely hold (a small brain, a slow card) Brain
       // Engine pauses drafting while under 30% of guesses are kept (patch 0034), and it never costs writing speed for
