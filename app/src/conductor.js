@@ -123,6 +123,19 @@ export const FILL_STEP_FROM_BE = 42;
 // Nov 23 (the test PC, BE39, 35B with MTP: the engine stopped on the Conductor's first step switch): before Brain Engine
 // 43 (patch 0086) a step switch freed the main context before the MTP draft that still pointed at it. So with the MTP
 // draft on an older engine, the Conductor keeps the step it loaded at and doesn't switch.
+// Nov 23 (the Legion Go's measured safe range, legion-go/go-safe-range.md): on built-in graphics every byte the engine
+// uses comes out of Windows' own memory. There the Conductor loads at the chat step (no big load step, no fill), reads
+// at most APU_MAX_STEP, and takes a bigger step only while the free memory left after it stays at or above APU_FLOOR
+// (1.5 GB, the Go's "safe" line). APU_STEP_BYTES is the extra working memory a step costs per token, a guess on the
+// high side until the Go run measures it.
+export const APU_MAX_STEP = 2048;
+export const APU_FLOOR = 1.5 * 1024 ** 3;
+export const APU_STEP_BYTES = 512 * 1024;
+export function apuStepOk({ from = 0, to = 0, freeBytes = 0, perToken = APU_STEP_BYTES } = {}) {
+  if (!(to > from)) return true;
+  if (to > APU_MAX_STEP) return false;
+  return freeBytes - (to - from) * perToken >= APU_FLOOR;
+}
 export const MTP_SWITCH_FROM_BE = 43;
 export function mtpBlocksSwitch(args = [], beNo = 0) {
   const a = Array.isArray(args) ? args : [];
@@ -134,6 +147,15 @@ export function fillEnv({ cacheMiB = 0, beNo = 0, env = {}, step = 0 } = {}) {
   const borrow = env && env.LLAMA_MOE_CACHE_BORROW !== undefined && env.LLAMA_MOE_CACHE_BORROW !== '' && Number(env.LLAMA_MOE_CACHE_BORROW) !== 0;
   if (borrow && beNo < FILL_STEP_FROM_BE) return {};
   return { LLAMA_MOE_CACHE_FILL: '1', ...(step > 0 && beNo >= FILL_STEP_FROM_BE ? { LLAMA_MOE_CACHE_FILL_STEP: String(step) } : {}) };
+}
+// Nov 23 (the test PC's BE43 gate, 35B with MTP at 32K: 0 MiB free and 670 MB spilled): the MTP draft makes its own
+// context after the fill has measured the card, so with MTP on the fill leaves the draft's room as well, sized by the
+// step (about 1.2 GB at 4096 on the test PC). A spare set by hand wins.
+export const MTP_SPARE_PER_TOKEN_MIB = 0.3125;
+export function mtpSpareEnv({ env = {}, step = 0 } = {}) {
+  if (!env || env.LLAMA_MOE_CACHE_FILL !== '1') return {};
+  if (env.LLAMA_MOE_CACHE_FILL_SPARE_MIB !== undefined && env.LLAMA_MOE_CACHE_FILL_SPARE_MIB !== '') return {};
+  return { LLAMA_MOE_CACHE_FILL_SPARE_MIB: String(512 + Math.ceil(Math.max(step, 512) * MTP_SPARE_PER_TOKEN_MIB)) };
 }
 // Nov 23: the Conductor loads at its biggest read step and drops to the chat step after a read (the cheap direction,
 // about 1.3 s on the test PC against 15.5 s up), with -b at least that step. Returns the new args.

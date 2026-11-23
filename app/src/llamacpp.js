@@ -29,7 +29,7 @@ import { LinkLog } from './link-log.js'; // what the link to a lent card carried
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
 import { tuningArgs, doorbellEnv } from './engine-tuning.js';
-import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch } from './conductor.js'; // off unless picked
+import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv } from './conductor.js'; // off unless picked
 import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV } from './engine-extras.js'; // Turbo: stand-ins (0043, off unless switched on)
 import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
@@ -650,9 +650,12 @@ export class LlamaCpp {
       // Nov 23: the copy cache fills the card's free memory (Brain Engine 39 and newer), unless set by hand
       // Nov 23: the biggest step it will read at is planned for at load, and the brain loads at it (see loadAtStep)
       this.condMax = readStepFor(Number(ctx || lc.ctx || DEFAULT_CTX) || 0);
-      if (this.condMax > this.condChat) args.splice(0, args.length, ...loadAtStep(args, this.condMax));
-      this.condLoad = Math.max(this.condMax, this.condChat);
-      const fill = fillEnv({ cacheMiB: this.condCacheBase, beNo: this.beNo(), env: this.tuneEnv, step: this.condMax });
+      // built-in graphics (the Go's safe range): load at the chat step, read at most APU_MAX_STEP, no fill
+      this.condApu = this.cfg.sharedGraphics === true;
+      if (this.condApu) this.condMax = Math.max(this.condChat, Math.min(this.condMax, APU_MAX_STEP));
+      else if (this.condMax > this.condChat) args.splice(0, args.length, ...loadAtStep(args, this.condMax));
+      this.condLoad = this.condApu ? this.condChat : Math.max(this.condMax, this.condChat);
+      const fill = this.condApu ? {} : fillEnv({ cacheMiB: this.condCacheBase, beNo: this.beNo(), env: this.tuneEnv, step: this.condMax });
       if (fill.LLAMA_MOE_CACHE_FILL) {
         this.tuneEnv = { ...(this.tuneEnv || {}), ...fill };
         if (this.fillSaid !== model) this.log?.('engine', `${model}: Conductor: the copy cache fills the card's free memory, leaving room for reading`);
@@ -719,7 +722,9 @@ export class LlamaCpp {
       // Nov 23: MTP is on by default, so on a brain where its guesses rarely hold (a small brain, a slow card) Brain
       // Engine pauses drafting while under 30% of guesses are kept (patch 0034), and it never costs writing speed for
       // long. A pause share set by hand wins; other engines ignore the key.
-      if (ev.length && this.beNo() > 0) this.tuneEnv = { ...(this.tuneEnv || {}), ...specGateEnv(this.tuneEnv) }; }
+      if (ev.length && this.beNo() > 0) this.tuneEnv = { ...(this.tuneEnv || {}), ...specGateEnv(this.tuneEnv) };
+      // Nov 23: with the Conductor's fill on, the MTP draft's own room is left free too (it is made after the fill)
+      if (args.some((x, i) => x === '--spec-type' && String(args[i + 1] || '').split(',').includes('draft-mtp'))) this.tuneEnv = { ...(this.tuneEnv || {}), ...mtpSpareEnv({ env: this.tuneEnv, step: this.condLoad || 0 }) }; }
     // 94 Guess-ahead from the chat (opt-in): with no draft brain, the engine guesses by copying what the chat holds.
     args.push(...copyGuessArgs(this.cfg, { build: this.buildNo(), args }));
     return args;
@@ -1645,6 +1650,10 @@ export class LlamaCpp {
       this.condFreeAsked = true;
       await this.condSwitch(model, this.condStep, 0, { moe_cache_mib: this.condRead() });
     }
+    // Nov 23 (the test PC's BE43 gate): with the fill sized for the read step, the chat step frees nothing the cache can
+    // use, and every switch back up cost about 15 s (14-15 s up against 1.2-1.5 s down), so the Conductor stays at the
+    // step it loaded at and reads and writes there. Built-in graphics still switch (they load at the chat step).
+    if (!this.condApu && this.tuneEnv?.LLAMA_MOE_CACHE_FILL_STEP) return;
     const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: (this.condSpeeds ||= {})[model], switchS: switchGuess(held, st?.ratio), maxStep: this.condMax || 0 });
     // Nov 20: off unless engineTuning.growGuess is set (a test switch). Bob's 440 clean job lessons: replies with thinking
     // median 81 tokens, none over 1,500, so a guess made before the reply mostly misses; growing mid-reply is the way.
@@ -1652,6 +1661,10 @@ export class LlamaCpp {
     if (p.plan === 'stay' && !grow) return;
     if (p.plan !== 'stay') {
       this.log?.('engine', planLine(model, p));
+      if (p.step > this.condStep && this.condApu && !apuStepOk({ from: this.condStep, to: p.step, freeBytes: this.freeRam ? this.freeRam() : os.freemem() })) {
+        this.log?.('engine', `${model}: Conductor: no step ${p.step} on built-in graphics now, it would leave Windows under 1.5 GB free`);
+        return;
+      }
       if (p.step !== this.condStep && !(await this.condSwitch(model, p.step, held))) return;
     }
     if ((p.plan !== 'readBig' && !grow) || signal?.aborted) return;
