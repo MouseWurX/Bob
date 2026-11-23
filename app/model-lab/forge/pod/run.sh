@@ -372,14 +372,14 @@ PY
               [ -f $IMX ] || echo "bench $BN: no imatrix; the IQ2 quants need one and will fail, the others are made without it"
             fi
             PUB_PRIVATE=$(plan "$CJ.get('private',False)")
-            [ -z "${NOUP:-}" ] && { PYTHONPATH= python3 $POD/cut_card.py --dir $CD --cut $OUT/bench/cut-$BN/cut.json --name "$CNAME" --base "$(plan "$CJ['base']")" --base-params $BP --source "$(plan "$CJ['source_note']")" --license-name "$(plan "$CJ['license_name']")" && PUB_PRIVATE=$PUB_PRIVATE publish_dir $CD "$CREPO" "card, license, keep list, imatrix" model . "README.md" "LICENSE" "keep.json" "imatrix.gguf" || echo "bench $BN: first upload failed"; }
+            [ -z "${NOUP:-}" ] && { PYTHONPATH= python3 $POD/cut_card.py --dir $CD --cut $OUT/bench/cut-$BN/cut.json --name "$CNAME" --base "$(plan "$CJ['base']")" --base-params $BP --source "$(plan "$CJ['source_note']")" --license-name "$(plan "$CJ['license_name']")" --extra "$IN/$(basename "$(plan "$CJ.get('card_extra','none')")")" && PUB_PRIVATE=$PUB_PRIVATE publish_dir $CD "$CREPO" "card, license, keep list, imatrix" model . "README.md" "LICENSE" "keep.json" "imatrix.gguf" || echo "bench $BN: first upload failed"; }
             for q in $(plist "$CJ['quants']" | tr ',' ' '); do
               QF=$CD/$CFILE-$q.gguf
               status bench "$BN: quantizing $q"
               LD_LIBRARY_PATH="$(dirname $QZ):${LD_LIBRARY_PATH:-}" $QZ --allow-requantize $( [ -f $IMX ] && echo --imatrix $IMX ) $CUTQ8 $QF $q $(nproc) > $OUT/bench/cut-$BN/quant-$q.log 2>&1 || { echo "bench $BN: $q failed (see out/bench/cut-$BN/quant-$q.log)"; rm -f $QF; continue; }
               echo "$q $(basename $QF) bytes $(stat -c %s $QF) sha256 $(sha256sum $QF | cut -d' ' -f1)" | tee -a $OUT/bench/cut-$BN/sizes.txt   # a home download is checked against these
               if [ -z "${NOUP:-}" ]; then
-                PYTHONPATH= python3 $POD/cut_card.py --dir $CD --cut $OUT/bench/cut-$BN/cut.json --name "$CNAME" --base "$(plan "$CJ['base']")" --base-params $BP --source "$(plan "$CJ['source_note']")" --license-name "$(plan "$CJ['license_name']")" > /dev/null
+                PYTHONPATH= python3 $POD/cut_card.py --dir $CD --cut $OUT/bench/cut-$BN/cut.json --name "$CNAME" --base "$(plan "$CJ['base']")" --base-params $BP --source "$(plan "$CJ['source_note']")" --license-name "$(plan "$CJ['license_name']")" --extra "$IN/$(basename "$(plan "$CJ.get('card_extra','none')")")" > /dev/null
                 PUB_PRIVATE=$PUB_PRIVATE publish_dir $CD "$CREPO" "$q" model . "$(basename $QF)" "$(basename $QF .gguf)-*-of-*.gguf" "README.md" && echo "$q https://huggingface.co/$CREPO/resolve/$(HF_TOKEN=$(cat $IN/hf-token) python3 -c "import os,sys; from huggingface_hub import HfApi; print(HfApi(token=os.environ['HF_TOKEN']).model_info(sys.argv[1]).sha)" "$CREPO" 2>/dev/null || echo main)/$(basename $QF)" >> $OUT/bench/cut-$BN/published.txt
               fi
               # keep the served quant; the rest are on Hugging Face (or failed to go up: then kept for the PC to see in the log)

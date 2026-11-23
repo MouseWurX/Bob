@@ -1,6 +1,6 @@
 {
  "run": "cut-bobert-flashnext",
- "note": "23 Nov, the owner: \"cut away\" (80% kept), \"Bobert NBob Flash Next\" (N = billions of parameters left), \"we should offer other quants, and have them on huggingface right away\". The pod downloads Unsloth's Q8_0 Flash-Next (188 GB, 6 parts), cuts 102 of 512 experts out of every layer by the REAP 80% keep list (all-keep-80.json from reap-flashnext-q4-jobs, read from the normal Nov 21 runs, never held-out), runs llama-imatrix on the cut brain with training chats only (calib-prep imatrix/all.txt), then makes IQ2_XXS, IQ2_M, Q3_K_M, IQ4_XS and Q4_K_M and puts each on Hugging Face (MouseWurX/Bobert-{N}Bob-Flash-Next-GGUF, PUBLIC) as soon as it is made, with the base model's LICENSE unchanged, the keep list, the imatrix and a card saying \"unproven in our lab, as we have yet to test\". Then it serves the IQ2_XXS (the size for a 16 GB card with 32 GB of RAM) and Bob's HELD-OUT jobs (inbox, office, repo, web) are scored, to compare with the Q4 rows of reap-flashnext-q4-jobs (all experts, and the 80% mask). Nothing is healed.",
+ "note": "23 Nov, the owner: \"cut away\" (80% kept), \"Bobert NBob Flash Next\" (N = billions of parameters left), final name \"Bobert 101Bob A6B Flash-Next REAP80\" (A6B = about 6B active per word, unchanged by the cut), \"we should offer other quants, and have them on huggingface right away\". The pod downloads Unsloth's Q8_0 Flash-Next (188 GB, 6 parts), cuts 102 of 512 experts out of every layer by the REAP 80% keep list (all-keep-80.json from reap-flashnext-q4-jobs, read from the normal Nov 21 runs, never held-out), runs llama-imatrix on the cut brain with training chats only (calib-prep imatrix/all.txt), then makes IQ2_XXS, IQ2_M, Q3_K_M, IQ4_XS and Q4_K_M and puts each on Hugging Face (MouseWurX/Bobert-{N}Bob-A6B-Flash-Next-REAP80-GGUF, PUBLIC) as soon as it is made, with the base model's LICENSE unchanged, the keep list, the imatrix and a card saying \"unproven in our lab, as we have yet to test\". Then it serves the IQ2_XXS (the size for a 16 GB card with 32 GB of RAM) and Bob's HELD-OUT jobs (inbox, office, repo, web) are scored, to compare with the Q4 rows of reap-flashnext-q4-jobs (all experts, and the 80% mask). Nothing is healed.",
  "benchmark_only": true,
  "teacher": "Qwen/Qwen3.8-Flash-Next",
  "counts": "expert-counts-2026-11-04T23-23-19.json",
@@ -26,7 +26,7 @@
   "models": [
    {
     "name": "bnfn",
-    "nickname": "Bobert NBob Flash Next: Flash-Next with REAP 80% kept, cut on the pod",
+    "nickname": "Bobert {N}Bob A6B Flash-Next REAP80: Flash-Next with 80% of experts kept, cut on the pod",
     "file": "cut",
     "quant": "IQ2_XXS",
     "slots": 15,
@@ -41,8 +41,8 @@
      "keep_file": "out/reap-flashnext-q4-jobs/keep/all-keep-80.json",
      "base": "Qwen/Qwen3.8-Flash-Next",
      "base_params": 125,
-     "name": "Bobert {N}Bob Flash Next",
-     "repo": "MouseWurX/Bobert-{N}Bob-Flash-Next-GGUF",
+     "name": "Bobert {N}Bob A6B Flash-Next REAP80",
+     "repo": "MouseWurX/Bobert-{N}Bob-A6B-Flash-Next-REAP80-GGUF",
      "license_from": "hf:Qwen/Qwen3.8-Flash-Next:LICENSE",
      "license_name": "qwen-community-1.0",
      "quants": [
@@ -54,7 +54,8 @@
      ],
      "serve": "IQ2_XXS",
      "imatrix_chunks": 200,
-     "private": false
+     "private": false,
+     "card_extra": "cards/bobert-flashnext.md"
     },
     "commands": [
      "node mail-jobs.mjs --catalog --held --out ../../bob-model-lab/out/mail-jobs-held/jobs.jsonl",

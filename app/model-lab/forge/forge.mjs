@@ -615,6 +615,7 @@ if (args.restart) {
   for (const m of plan.benchmark?.models || []) if (m.file === 'cut' && m.cut?.keep_file && !/^hf:/.test(m.cut.keep_file)) {
     const kp = path.resolve(here, '..', m.cut.keep_file); if (!fs.existsSync(kp)) { log(`${m.name}: keep list ${kp} is missing; nothing to cut by`); process.exit(1); }
     await upload(path.basename(kp), kp); log(`${m.name}: keep list ${path.basename(kp)} sent`);
+    if (m.cut.card_extra) { const cp = path.resolve(here, m.cut.card_extra); if (!fs.existsSync(cp)) { log(`${m.name}: card text ${cp} is missing`); process.exit(1); } await upload(path.basename(cp), cp); log(`${m.name}: card text ${path.basename(cp)} sent`); }
   }
   // 13 Nov: a benchmark brain with imatrix_from (a PC folder of .txt files, e.g. from calib-prep.mjs) gets in/imatrix-<name>.tgz;
   // the pod runs llama-imatrix on every file before serving him (overall and per job) and the PC fetches the results

@@ -15,7 +15,7 @@ const read = (f) => fs.readFileSync(path.join(lab, f), 'utf8').replace(/\r\n/g, 
 const plan = JSON.parse(read('forge/plans/cut-bobert-flashnext.json'));
 const m = plan.benchmark.models[0], c = m.cut;
 check('one brain, cut on the pod from the Q8_0, by the 80% keep list', plan.benchmark.models.length === 1 && m.file === 'cut' && /Q8_0-00001-of-00006\.gguf$/.test(c.src) && /all-keep-80\.json$/.test(c.keep_file));
-check('named as the owner said, N filled in from what the cut leaves', c.name === 'Bobert {N}Bob Flash Next' && c.repo === 'MouseWurX/Bobert-{N}Bob-Flash-Next-GGUF' && c.base_params === 125);
+check('named as the owner said, N filled in from what the cut leaves', c.name === 'Bobert {N}Bob A6B Flash-Next REAP80' && c.repo === 'MouseWurX/Bobert-{N}Bob-A6B-Flash-Next-REAP80-GGUF' && c.base_params === 125);
 check('several quants, the 16 GB-card size served for the tests', JSON.stringify(c.quants) === JSON.stringify(['IQ2_XXS', 'IQ2_M', 'Q3_K_M', 'IQ4_XS', 'Q4_K_M']) && c.serve === 'IQ2_XXS');
 check('the base model\'s own license goes with it', c.license_from === 'hf:Qwen/Qwen3.8-Flash-Next:LICENSE' && c.license_name === 'qwen-community-1.0');
 check('it is judged on the held-out jobs only, with no expert mask', m.commands.some((x) => /mail-jobs\.mjs --catalog --held/.test(x)) && m.commands.some((x) => /office-jobs\.mjs --held/.test(x)) && m.commands.some((x) => /repo-jobs\.mjs --held/.test(x)) && !m.commands.some((x) => /expert-mask/.test(x)));
@@ -33,6 +33,7 @@ check('a quant over 50 GB goes up in parts (its parts are named in the upload)',
 const forge = read('forge/forge.mjs');
 check('the PC sends the keep list by its file name', /m\.file === 'cut' && m\.cut\?\.keep_file/.test(forge) && /upload\(path\.basename\(kp\), kp\)/.test(forge));
 const card = read('forge/pod/cut_card.py');
+check('the card has the owner\'s sections (Bob project, expert choice, every keep level, tools and shape, dissertation links)', (() => { const x = read('forge/cards/bobert-flashnext.md'); return /## Part of the Bob project/.test(x) && /github\.com\/MouseWurX\/Bob/.test(x) && /How the experts were chosen/.test(x) && ['100%','90%','80%','75%','65%','60%','50%'].every((l) => x.includes('| ' + l + ' |')) && /shape 4/.test(x) && /dissertation\/ch08/.test(x) && plan.benchmark.models[0].cut.card_extra === 'cards/bobert-flashnext.md' && !/Bobiverse|npc|Squeak/i.test(x); })());
 check('the card says unproven until the scores are in, and points at the license', /Unproven in our lab, as we have yet to test/.test(card) && /license_link: LICENSE/.test(card) && !/Bobiverse/i.test(card + block));
 
 const py = spawnSync('python3', ['-c', 'import gguf, numpy'], { encoding: 'utf8' });

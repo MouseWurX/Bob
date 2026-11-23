@@ -11,6 +11,7 @@ ap = argparse.ArgumentParser()
 for a in ("--dir", "--cut", "--name", "--base", "--source", "--license-name"): ap.add_argument(a, required=True)
 ap.add_argument("--base-params", type=float, required=True)
 ap.add_argument("--scores", default="")
+ap.add_argument("--extra", default="", help="more card text (markdown), put after the scores")
 a = ap.parse_args()
 c = json.load(open(a.cut))
 left = a.base_params - c["removed_main_params"] / 1e9
@@ -24,7 +25,8 @@ json.dump(sizes, open(fj, "w"), indent=1)
 files = sorted(sizes)
 rows = "\n".join(f"| `{n}` | {sizes[n] / 1e9:.1f} GB |" for n in files) or "| (uploading) | |"
 scores = open(a.scores).read().strip() if a.scores and os.path.exists(a.scores) else ""
-proof = f"## Scores\n\n{scores}\n" if scores else "## Scores\n\nUnproven in our lab, as we have yet to test. The held-out job scores will be added here when they are in.\n"
+extra = open(a.extra).read().strip() + "\n" if a.extra and os.path.exists(a.extra) else ""
+proof = f"## Results\n\n{scores}\n" if scores else "## Results\n\nUnproven in our lab, as we have yet to test. Pending: the held-out job scores of the cut files, and speed (reading and writing, words a second) and memory on the test systems below. They will be added here when they are in.\n"
 md = f"""---
 license: other
 license_name: {a.license_name}
@@ -52,6 +54,7 @@ training chats, not the judging jobs). Because the cut started from Q8_0, these 
 
 Runs on llama.cpp builds that run {a.base}. The keep list is `keep.json` (expert ids kept, per layer).
 
+{extra}
 {proof}
 ## License
 
