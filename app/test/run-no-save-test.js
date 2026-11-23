@@ -8,7 +8,7 @@ let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
 
 const says = ['Open Notepad and type a poem. Do not save the file.', "type it in notepad, don't save it", 'Write a list in Notepad without saving', 'dont save anything', 'no need to create a file, just type it', 'Put it in Notepad. No file please.', 'leave it unsaved', 'do not make a new file', 'never save this'];
-const not = ['Save the file as notes.txt', 'Write a poem and save it', 'Can you save me some time?', "Don't forget to save the file", 'make a file called list.txt', 'Do not open my files folder', 'It does not save money'];
+const not = ['Make a game in Godot, GDScript only, no files downloaded from the internet', 'no files from outside: build it all in code', 'Save the file as notes.txt', 'Write a poem and save it', 'Can you save me some time?', "Don't forget to save the file", 'make a file called list.txt', 'Do not open my files folder', 'It does not save money'];
 check('asks that say not to save are seen', says.every(saysNoSave), says.filter((s) => !saysNoSave(s)).join(' | '));
 check('asks that want a file (or say "save me time") are not', !not.some(saysNoSave), not.filter(saysNoSave).join(' | '));
 check('the file-saving tools are covered; picture and music makers are not', ['write_file', 'edit_file', 'office_make', 'save_spreadsheet'].every((t) => SAVING_TOOLS.has(t)) && !SAVING_TOOLS.has('make_image') && !SAVING_TOOLS.has('make_music'));

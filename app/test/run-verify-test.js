@@ -99,6 +99,11 @@ check('afterTool: an empty result fails', (await afterTool('open_app', { name: '
   const r2 = await afterTool('write_file', { path: path.join(dir, 'never.txt'), content: 'x' }, `Saved ${path.join(dir, 'never.txt')}.`, L());
   check('afterTool: write_file with no file on disk fails', !r2.ok && /isn't there/.test(r2.text));
   check('afterTool: edit_file with the new text in the file is ok', (await afterTool('edit_file', { path: f, find: 'x', replace: 'ell' }, `Edited ${f}. (Backup kept in the inn.)`, L())).ok);
+  // 23 Nov (Flash-Next Q2 repo runs): with a "more" list the reply says "(2 changes)", which was read as part of the file name
+  fs.writeFileSync(f, 'one ell two bee');
+  const m2 = await afterTool('edit_file', { path: f, find: 'a', replace: 'ell', more: [{ find: 'b', replace: 'bee' }] }, `Edited ${f} (2 changes). (Backup kept in the inn.)`, L());
+  check('afterTool: edit_file with several changes finds the file (not "<file> (2 changes)")', m2.ok && !/isn't there/.test(String(m2.text || '')), JSON.stringify(m2));
+  fs.writeFileSync(f, 'hello');
   check('afterTool: edit_file without the new text fails, no blind retry', ((r) => !r.ok && !r.retry)(await afterTool('edit_file', { path: f, find: 'x', replace: 'zzz' }, `Edited ${f}. (Backup kept in the inn.)`, L())));
   const csv = put('bills-2026-11-02.csv', '\ufeffa,b\r\n');
   check('afterTool: save_spreadsheet on disk is ok', (await afterTool('save_spreadsheet', { name: 'bills' }, `Saved ${csv} (1 lines including the header). Double-click it.`, L())).ok);

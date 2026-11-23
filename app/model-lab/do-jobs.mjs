@@ -78,7 +78,10 @@ import { officeAfter } from './office-jobs.mjs';
 import { buildBytes } from './office-files.mjs';
 import { plantRepo, repoAfter, runGuard, repoReady, gitEnv } from './repo-jobs.mjs';
 import { worldGet } from './web-jobs.mjs';
+import { runGame, commonProblems } from './godot-check.mjs';
+import { jobByKey as gameJob } from './game-jobs.mjs';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 // What a run's record keeps of a tool reply: all of it up to 40,000 characters, then a plain cut mark.
@@ -119,7 +122,7 @@ if (o.never && !neverFiles.length) fail(`--never ${o.never} holds no .jsonl file
 for (const f of neverFiles) {
   for (const r of readJsonl(f)) for (const t of [r.text, r.question, r.prompt, r.ask, (r.messages || []).find((m) => m.role === 'user')?.content]) if (typeof t === 'string' && t.trim()) never.add(norm(t));
 }
-let jobs = files.flatMap((f) => readJsonl(f)).filter((j) => j && typeof j.text === 'string' && j.text.trim()).map((j, i) => ({ id: String(j.id || `job-${i}`), job: j.job || '', text: j.text, setup: Array.isArray(j.setup) ? j.setup : [], ...(j.from && typeof j.from === 'object' ? { from: j.from } : {}), ...(j.mail && typeof j.mail === 'object' ? { mail: j.mail, key: String(j.key || '') } : {}), ...(j.office && typeof j.office === 'object' ? { office: j.office, key: String(j.key || '') } : {}), ...(j.repo && typeof j.repo === 'object' ? { repo: j.repo, key: String(j.key || ''), type: String(j.type || '') } : {}), ...(j.web && typeof j.web === 'object' && Array.isArray(j.web.pages) ? { web: j.web, key: String(j.key || ''), type: String(j.type || '') } : {}), ...(j.blender && typeof j.blender === 'object' && typeof j.blender.setup === 'string' ? { blender: j.blender, key: String(j.key || ''), type: String(j.type || '') } : {}) }));
+let jobs = files.flatMap((f) => readJsonl(f)).filter((j) => j && typeof j.text === 'string' && j.text.trim()).map((j, i) => ({ id: String(j.id || `job-${i}`), job: j.job || '', text: j.text, setup: Array.isArray(j.setup) ? j.setup : [], ...(j.from && typeof j.from === 'object' ? { from: j.from } : {}), ...(j.mail && typeof j.mail === 'object' ? { mail: j.mail, key: String(j.key || '') } : {}), ...(j.office && typeof j.office === 'object' ? { office: j.office, key: String(j.key || '') } : {}), ...(j.repo && typeof j.repo === 'object' ? { repo: j.repo, key: String(j.key || ''), type: String(j.type || '') } : {}), ...(j.web && typeof j.web === 'object' && Array.isArray(j.web.pages) ? { web: j.web, key: String(j.key || ''), type: String(j.type || '') } : {}), ...(j.blender && typeof j.blender === 'object' && typeof j.blender.setup === 'string' ? { blender: j.blender, key: String(j.key || ''), type: String(j.type || '') } : {}), ...(j.game && typeof j.game === 'object' && typeof j.game.dir === 'string' && gameJob(String(j.key || '')) ? { game: j.game, key: String(j.key || '') } : {}), ...(Number(j.seed) >= 0 && j.seed !== null && j.seed !== '' ? { seed: Number(j.seed) } : {}) }));
 const held = jobs.filter((j) => never.has(norm(j.text)));
 jobs = jobs.filter((j) => !never.has(norm(j.text)));
 const seen = new Set(); jobs = jobs.filter((j) => (seen.has(j.id) ? false : seen.add(j.id)));
@@ -139,6 +142,14 @@ jobs = jobs.filter((j) => !noRepo.includes(j));
 const blenderPy = o['blender-python'] && o['blender-python'] !== true ? path.resolve(String(o['blender-python'])) : '';
 const noBlender = blenderPy && fs.existsSync(blenderPy) ? [] : jobs.filter((j) => j.blender);
 jobs = jobs.filter((j) => !noBlender.includes(j));
+// 23 Nov: a game job (game-jobs.mjs, held-out) is checked by running the game in Godot (godot-check.mjs); without --godot
+// those jobs are left out (and said so), never run as Bob failing. --nudges N: on a failed check Bob is sent the checker's
+// problems word for word, up to N times (default 3); --game-minutes (30) for the build, --nudge-minutes (10) for each fix
+const godotBin = o.godot && o.godot !== true ? path.resolve(String(o.godot)) : '';
+const noGodot = godotBin && fs.existsSync(godotBin) ? [] : jobs.filter((j) => j.game);
+jobs = jobs.filter((j) => !noGodot.includes(j));
+const nudgesMax = o.nudges === undefined ? 3 : Math.max(0, Number(o.nudges) || 0);
+const seedAll = o.seed !== undefined && o.seed !== true && Number(o.seed) >= 0 ? Number(o.seed) : null;
 const done = new Set(readJsonl(F.runs).map((r) => r.id));
 const queue = jobs.filter((j) => !done.has(j.id)).slice(0, Number(o.count || 1e9));
 say(`pre-flight: jobs file(s) ${files.join(', ')}: ${jobs.length + held.length} rows`);
@@ -146,6 +157,8 @@ if (leaveOut.size) say(`pre-flight: ${leftOut.length} job(s) of kind ${[...leave
 if (noOffice.length) say(`pre-flight: ${noOffice.length} office job(s) left out: they need LibreOffice (--office <soffice>)`);
 if (o.never) say(`pre-flight: ${held.length} held-out request(s) left out (--never: ${neverFiles.length} file(s), ${never.size} requests known)`);
 if (noBlender.length) say(`pre-flight: ${noBlender.length} Blender job(s) left out: they need --blender-python <a Python with bpy>${blenderPy ? ` (no ${blenderPy})` : ''}`);
+if (noGodot.length) say(`pre-flight: ${noGodot.length} game job(s) left out: they need --godot <Godot binary>${godotBin ? ` (no ${godotBin})` : ''}`);
+if (seedAll !== null) say(`pre-flight: every request is sent with seed ${seedAll} (a job's own seed wins)`);
 if (noRepo.length) say(`pre-flight: ${noRepo.length} repository job(s) left out: ${repoWhy}`);
 say(`pre-flight: ${done.size} already run in this folder, ${queue.length} to go`);
 const sceneMode = String(o.scene || '').toLowerCase();
@@ -270,11 +283,23 @@ if (!queue.length && !o.preflight) { say('nothing to run'); process.exit(0); }
 // 16 Nov (MouseWurX: "we need to close the gaps in the harness"): before any job, the harness checks itself with a
 // scripted brain on this computer (jobs-selftest.mjs: one job per way the 800-job run's test world went wrong). A
 // failure stops here, before a rented brain does a single job. --no-selftest skips it (the self-test's own runs use it).
+// 23 Nov (the owner: "why do i see pre flight between jobs on the rentals?"): a plan with several job commands ran the
+// self-test again before each one while the rented card waited. A pass is now kept (out/selftest-passed.json) with a
+// fingerprint of the lab's and Bob's code and the Office setting; a real run with the same fingerprint within 12 hours
+// says so and goes straight on. --preflight always runs it fresh (nothing is rented then).
+const stampFile = path.join(L.out, 'selftest-passed.json');
+const codePrint = () => { const h = crypto.createHash('sha256'); for (const d of [path.dirname(fileURLToPath(import.meta.url)), path.join(L.bob, 'src')]) { let names = []; try { names = fs.readdirSync(d).filter((n) => /\.(mjs|js|json)$/.test(n)).sort(); } catch {} for (const n of names) { h.update(n); try { h.update(fs.readFileSync(path.join(d, n))); } catch {} } } h.update(`office=${o.office ? String(o.office) : ''}`); return h.digest('hex').slice(0, 24); };
 if (o['no-selftest'] !== true && (queue.length || o.preflight)) {
-  const { selfTest } = await import('./jobs-selftest.mjs');
-  const st = await selfTest({ bob: L.bob, office: o.office ? String(o.office) : '', log: (t) => say(`pre-flight: ${t}`) });
-  if (!st.ok) fail('the test world failed its self-test (above); fix it before spending a rental on it');
-  say(`pre-flight: the test world passed its self-test (${st.results.length} checks)`);
+  const print = codePrint();
+  let stamp = null; try { stamp = JSON.parse(fs.readFileSync(stampFile, 'utf8')); } catch {}
+  if (!o.preflight && stamp?.print === print && Date.now() - Date.parse(stamp.at) < 12 * 3600000) say(`pre-flight: the test world passed its self-test at ${String(stamp.at).slice(11, 16)} UTC with this same code (${stamp.checks} checks); not run again`);
+  else {
+    const { selfTest } = await import('./jobs-selftest.mjs');
+    const st = await selfTest({ bob: L.bob, office: o.office ? String(o.office) : '', log: (t) => say(`pre-flight: ${t}`) });
+    if (!st.ok) { try { fs.rmSync(stampFile, { force: true }); } catch {} fail('the test world failed its self-test (above); fix it before spending a rental on it'); }
+    say(`pre-flight: the test world passed its self-test (${st.results.length} checks)`);
+    try { fs.mkdirSync(L.out, { recursive: true }); fs.writeFileSync(stampFile, JSON.stringify({ print, at: new Date().toISOString(), checks: st.results.length })); } catch {}
+  }
 }
 if (o.preflight) { say('pre-flight OK'); process.exit(0); }
 if (!url) fail('--url <llama-server> is needed');
@@ -354,6 +379,7 @@ async function sceneFor(j) {
   if (j.mail) return { scene: null, problems: [], made: 'none' }; // an inbox job's world is its mailbox (mail-world.mjs)
   if (j.office) return { scene: null, problems: [], made: 'none' }; // an office job brings its own files (office-jobs.mjs)
   if (j.web) return { scene: null, problems: [], made: 'none' }; // a web job's world is its made-up web (web-jobs.mjs)
+  if (j.game) return { scene: null, problems: [], made: 'none' }; // a game job starts from an empty project folder (game-jobs.mjs)
   if (j.blender) return { scene: null, problems: [], made: 'none' }; // a Blender job's world is its own test Blender (blender-jobs.mjs)
   const had = scenes.get(j.id, j.text);
   // 16 Nov (800-job read): a scene whose reply couldn't be read was saved and then reused as an empty home every time;
@@ -425,6 +451,14 @@ function fitBlender(kit, spec) {
   return { id, dir, dump };
 }
 // What Bob left in Blender: the scene as set up and as he left it (blender-world.mjs writes both). The app is stopped first.
+// 23 Nov: a game job keeps its checks and a copy of the project Bob made (out/<dir>/games/<id>), for the owner to play
+function gameAfter(kit, j, gw) {
+  const keep = path.join(dir, 'games', j.id.replace(/[^\w.-]/g, '_'));
+  let files = 0;
+  try { fs.rmSync(keep, { recursive: true, force: true }); const walk = (a, b) => { for (const e of fs.readdirSync(a, { withFileTypes: true })) { if (e.name === '.godot') continue; const x = path.join(a, e.name), y = path.join(b, e.name); if (e.isDirectory()) walk(x, y); else if (e.isFile()) { fs.mkdirSync(b, { recursive: true }); fs.copyFileSync(x, y); files++; } } }; walk(gw.dir, keep); } catch {}
+  const last = gw.checks.at(-1);
+  return { dir: j.game.dir, kept: files ? path.relative(dir, keep).split(path.sep).join('/') : '', files, checks: gw.checks, nudges: Math.max(0, gw.checks.length - 1), passed: Boolean(last && !last.problems.length) };
+}
 async function blenderAfter(bw) {
   try { const m = await import(pathToFileURL(path.join(L.bob, 'src', 'mcp.js')).href); m.stopServer?.(bw.id); } catch {}
   let got = null;
@@ -467,6 +501,8 @@ async function runJob(j) {
   }
   // 21 Nov: a repository job's project, a git repository with one commit and a local "origin" (repo-jobs.mjs plantRepo)
   const rw = j.repo ? plantRepo(kit, j.repo) : null;
+  // 23 Nov: a game job's empty project folder, one of Bob's projects (as a person making a game with him has)
+  const gw = j.game ? (() => { const d = kit.place(j.game.dir); if (!d) return null; fs.mkdirSync(d, { recursive: true }); kit.cfg.projects = { ...(kit.cfg.projects || {}), [path.basename(d)]: d }; return { dir: d, checks: [] }; })() : null;
   brain.cfg.loopHelpOff = false; brain.cfg.toolHelp = true;
   if (solo) brain.cfg.soloEffort = true;
   const steps = []; const missing = new Set(); let real = 0, asks = 0;
@@ -545,6 +581,7 @@ async function runJob(j) {
     call.result = recordText(kit.neutral(t));
     return { ...(res && typeof res === 'object' ? res : {}), text: kit.neutral(t) || '(no result)' };
   };
+  const seedOf = j.seed ?? seedAll; // 23 Nov: one seed for every request of the job (llama-server's own sampling seed)
   brain.ensureModel = async () => {}; brain.fitCtx = async () => ctxSize; brain.recall = async () => '';
   // 16 Nov (800-job read, fx-6152c4f84b): Bob checks "saved at C:\\Users\\you\\..." against the disk; here that path is in the
   // test world, so the check looks there (Bob's verify.js brain.fileExists), not for a C: drive this PC hasn't got.
@@ -560,7 +597,7 @@ async function runJob(j) {
       // on, the tool steps too (Bob's own rule thinks only to plan and to answer), to measure what that is worth
       const think = thinkAll ? true : asked === undefined ? true : asked === 'high' || asked === 'extreme' ? true : Boolean(asked);
       const body = { cache_prompt: true, messages: LlamaCpp.toOpenAI(msgs), ...(q.tools?.length ? { tools: deepNeutral(kit, q.tools) } : {}), max_tokens: replyMax, stream: false,
-        ...thinkBody(family === 'qwen' || family === 'deepseek' || thinkAll ? think : asked), ...sampling(Boolean(q.tools?.length), asked), ...loraBody };
+        ...thinkBody(family === 'qwen' || family === 'deepseek' || thinkAll ? think : asked), ...sampling(Boolean(q.tools?.length), asked), ...loraBody, ...(seedOf !== null ? { seed: seedOf } : {}) };
       const stepEffort = effortOf(asked); // GPT-OSS reasoning level of this step (the job's Effort is `effort`)
       const t0 = Date.now();
       const r = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth }, body: wholeBody(body), signal: q.signal });
@@ -590,9 +627,21 @@ async function runJob(j) {
   };
   const t0 = Date.now(); const session = `job-${j.id}`; let error = '';
   try {
-    const { jobId } = brain.enqueue(session, j.text, [], effort);
-    const until = Number(o['job-minutes']) > 0 ? Date.now() + Number(o['job-minutes']) * 60000 : Infinity;
-    for (;;) { const s = brain.queue.find((x) => x.id === jobId); if (!s || ['done', 'failed', 'interrupted', 'cancelled'].includes(s.state)) { if (s && s.state !== 'done') error = `${s.state}: ${String(s.error || '')}`; break; } if (Date.now() > until) { error = 'took too long'; try { brain.cancel?.(jobId); } catch {} break; } await wait(200); }
+    const turn = async (text, mins) => {
+      const { jobId } = brain.enqueue(session, text, [], effort);
+      const until = mins > 0 ? Date.now() + mins * 60000 : Infinity;
+      for (;;) { const s = brain.queue.find((x) => x.id === jobId); if (!s || ['done', 'failed', 'interrupted', 'cancelled'].includes(s.state)) { if (s && s.state !== 'done') error = `${s.state}: ${String(s.error || '')}`; break; } if (Date.now() > until) { error = 'took too long'; try { brain.cancel?.(jobId); } catch {} break; } await wait(200); }
+    };
+    await turn(j.text, gw ? Number(o['game-minutes'] ?? 30) : Number(o['job-minutes']));
+    // 23 Nov: a game is run in Godot after each turn; its problems go back to Bob word for word, up to --nudges times
+    if (gw) for (let n = 0; ; n++) {
+      const t1 = Date.now(), res = await runGame(godotBin, gw.dir);
+      const problems = [...commonProblems(res), ...(res.ran && res.facts ? gameJob(j.key).check(res.facts) : [])].map((x) => kit.neutral(x));
+      gw.checks.push({ after: n ? `nudge ${n}` : 'build', problems, facts: res.facts || null, secs: (Date.now() - t1) / 1000, ...(error ? { error: kit.neutral(error).slice(0, 200) } : {}) });
+      if (!problems.length || n >= nudgesMax) break;
+      error = '';
+      await turn(`I ran the game in Godot and the check found these problems:\n${problems.map((x) => `- ${x}`).join('\n')}\nPlease fix them.`, Number(o['nudge-minutes'] ?? 10));
+    }
   } catch (e) { error = String(e.message || e); }
   // said: what the user's window shows (16 Nov: Bob marks working text `step` and his reviews and minutes `moot`, so the
   // window shows only the answer); said_all: every plain reply joined, as before, for reading the whole run
@@ -610,6 +659,7 @@ async function runJob(j) {
     ...(ow ? { key: j.key, office: { lo: Boolean(j.office.lo), files: ow.files, missing: ow.missing, after: officeAfter(kit, docText) } } : {}),
     ...(ww ? { key: j.key, type: j.type, web: ww.log } : {}),
     ...(bw ? { key: j.key, type: j.type, blender: await blenderAfter(bw) } : {}),
+    ...(gw ? { key: j.key, ...(seedOf !== null ? { seed: seedOf } : {}), game: gameAfter(kit, j, gw) } : {}),
     ...(rw ? { key: j.key, type: j.type, repo: { name: j.repo.name, dir: j.repo.dir, ...(j.repo.passed ? { passed: j.repo.passed } : {}), files: rw.files.length, missing: rw.missing, ...(rw.missing.length ? {} : { after: repoAfter(kit, rw, j.repo, steps) }) } } : {}),
     ...(mw ? { key: j.key, mail: { spec: j.mail, ...(saidNo ? { said_no: saidNo } : {}), cards: sortCards.map((c) => ({ batches: (c.batches || []).map((b) => ({ name: b.name, action: b.action, folder: b.folder, ids: b.ids })), replyFirst: (c.replyFirst || []).map((x) => ({ id: x.id, why: x.why })) })), ...mw.server.after() } } : {})
   };

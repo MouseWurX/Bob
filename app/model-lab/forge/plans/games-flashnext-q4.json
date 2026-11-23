@@ -1,0 +1,94 @@
+{
+ "run": "games-flashnext-q4",
+ "note": "23 Nov 2026, the owner: \"could we have each version produce a game that we can try? same prompt? same seed ... same settings\", then the two games (a 3D fighter, \"Emberfall\", and a side-scroller, \"Lantern Run\") in Godot. Flash-Next UD-Q4_K_XL: the same Bob, prompts, settings and seeds (1, 2, 3) as the other two sizes; Bob builds each game with his own file tools at Effort medium, 30 minutes, then the game is run in Godot 4.7.2 (godot-check.mjs) and its problems sent back word for word up to 3 times (10 minutes each). Every game is kept (out/gq4-games/games) for the owner to play, labelled blind afterwards (game-blind.mjs). Held-out: never tuned on, never made into lessons. Nothing is uploaded.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.8-Flash-Next",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA H100 80GB HBM3",
+  "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+ ],
+ "step_up": [],
+ "disk_gb": 170,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 2.2,
+ "dollars_max": 12,
+ "rent_minutes": 120,
+ "download_quants": [],
+ "llama_tag": "b12359",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one server: Qwen3.8-Flash-Next UD-Q4_K_XL; six game jobs at once (two games x three seeds), then the tool-fault count.",
+  "hours_each": 1.3,
+  "models": [
+   {
+    "name": "gq4-flashnext",
+    "nickname": "Qwen3.8-Flash-Next UD-Q4_K_XL, game jobs",
+    "file": "hf:unsloth/Qwen3.8-Flash-Next-GGUF:UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 15,
+    "ctx": 737280,
+    "extra": "",
+    "hours": 1.3,
+    "commands": [
+     "node game-jobs.mjs --out ../../bob-model-lab/out/game-jobs/jobs.jsonl",
+     "node do-jobs.mjs --url {{url}} --bob .. --jobs ../../bob-model-lab/out/game-jobs/jobs.jsonl --dir gq4-games --godot ../../../../lab-godot/Godot_v4.7.2-stable_win64_console.exe --effort medium --solo-effort --parallel 6 --want-shapes 4 --max bob --nudges 3 --game-minutes 30 --nudge-minutes 10 --hours 1.2",
+     "node tool-faults.mjs --runs \"flashnext q4 games=../../bob-model-lab/out/gq4-games/runs.jsonl\" --out ../../bob-model-lab/out/gq4-tool-faults"
+    ],
+    "download_gb": 112
+   }
+  ],
+  "brain_engine": {
+   "ref": "3fff3cf084e3def210b6e92c1d415280bfbb4e3a",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word",
+    "0014-rpc-any-version"
+   ],
+   "note": "Brain Engine b12359 + all 14 of Bob's engine patches at 3fff3cf (expert trace with mass for the expert-map phase)"
+  },
+  "download_max_minutes": 30
+ },
+ "prep": [
+  "Runs from Bob\\lab-kit-games, one level down from the kits folder (the branch at the game-jobs commit, no kit patch: TOOL_SHAPES 4, like the other Flash-Next runs).",
+  "Before pre-flight: node game-jobs.mjs --out ../../bob-model-lab/out/game-jobs/jobs.jsonl (in lab-kit-games/app/model-lab).",
+  "Godot: ../../../../lab-godot/Godot_v4.7.2-stable_win64_console.exe (moved out of the kits to lab-godot beside them, so the kits' scan for personal data never reads it)."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "door_minutes": 20,
+ "card_sets": [
+  {
+   "gpus": [
+    "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+   ],
+   "count": 2
+  },
+  {
+   "gpus": [
+    "NVIDIA H100 80GB HBM3"
+   ],
+   "count": 2
+  }
+ ],
+ "vram_gb": 160
+}

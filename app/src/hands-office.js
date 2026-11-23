@@ -186,6 +186,8 @@ export function planEdit(cfg, args) {
     if (c.op === 'replace' && !String(c.find || '')) throw new Error('replace needs the text to find.');
     if (c.op === 'set_cells' && (!c.cells || typeof c.cells !== 'object' || !Object.keys(c.cells).length)) throw new Error('set_cells needs cells, like { "B2": 42 }.');
     if (c.op === 'set_cells') for (const k of Object.keys(c.cells)) if (!/^[A-Za-z]{1,3}\d{1,7}$/.test(k)) throw new Error(`${k} isn't a cell name like B2.`);
+    // 23 Nov (Flash-Next Q2 office runs): add_slide with no title or points saved a blank slide, four times over
+    if (c.op === 'add_slide' && !String(c.title || '').trim() && ![].concat(c.bullets || []).some((b) => String(b || '').trim())) throw new Error('add_slide needs its title and bullets (the points on it); no blank slide was added.');
     if (c.op === 'delete_slide' && !(Number(c.number) >= 1)) throw new Error('delete_slide needs the slide number.');
   }
   const saveAs = args.save_as ? canWrite(cfg, freeName(full(args.save_as))) : null;

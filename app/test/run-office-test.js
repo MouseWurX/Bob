@@ -161,6 +161,8 @@ const brain = { cfg, log: (k, t) => logs.push(`${k}: ${t}`) };
   const ed = t.office_edit.check({ path: path.join(work, 'budget.xlsx'), changes: [{ op: 'set_cells', cells: { B2: 1300 } }, { op: 'add_rows', rows: [['Gas', 80]] }] }, {});
   check('a change shows each change and says a backup is made', /Set 1 cell: B2 = 1300/.test(ed.plan[0].note) && /Add 1 row/.test(ed.plan[0].note) && /a backup is kept/.test(ed.plan[0].note));
   check('a change that doesn\'t fit the kind is refused', throws(() => t.office_edit.check({ path: path.join(work, 'budget.xlsx'), changes: [{ op: 'add_slide', title: 'x' }] }, {}), /doesn't work on a spreadsheet/));
+  fs.writeFileSync(path.join(work, 'talk.pptx'), 'x');
+  check('add_slide with no title or points is refused, not saved blank', throws(() => t.office_edit.check({ path: path.join(work, 'talk.pptx'), changes: [{ op: 'add_slide', at: 5, number: 5 }] }, {}), /add_slide needs its title and bullets/) && !throws(() => t.office_edit.check({ path: path.join(work, 'talk.pptx'), changes: [{ op: 'add_slide', title: 'Volunteers' }] }, {}), /./));
   check('a bad cell name is refused', throws(() => t.office_edit.check({ path: path.join(work, 'budget.xlsx'), changes: [{ op: 'set_cells', cells: { 'B2; x': 1 } }] }, {}), /isn't a cell name/));
   fs.writeFileSync(path.join(work, 'm.xlsm'), 'x');
   check('a file with macros is only changed into a new file', throws(() => t.office_edit.check({ path: path.join(work, 'm.xlsm'), changes: [{ op: 'replace', find: 'a', replace: 'b' }] }, {}), /only saved as a new copy/));

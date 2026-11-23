@@ -136,6 +136,8 @@ check('pre-flight: a --never folder with no .jsonl files stops it', pf4.code !==
 const r = await run([]);
 const s1 = await run(['--scene', 'make'], { jobsFile: jobs2, dir: 'scene1' });
 const asksAfterMake = sceneAsks;
+// 23 Nov (the owner: "why do i see pre flight between jobs on the rentals?"): one self-test per code, not one per job command
+check('the first real run self-tests the test world; the next one with the same code does not, and says so', /passed its self-test at \d\d:\d\d UTC with this same code \(\d+ checks\); not run again/.test(s1.log) && !/PASS self-test/.test(s1.log), s1.log.slice(0, 600));
 const s2 = await run(['--scene', 'reuse', '--scenes', path.join(tmp, 'scene1', 'scenes.jsonl')], { jobsFile: jobs2, dir: 'scene2' });
 const asksAfterReuse = sceneAsks;
 const pfs = await run(['--preflight', '--scene', 'maybe']);

@@ -206,6 +206,9 @@ export function isSensitive(cfg, file) {
   if (cfg.agentDir && isInside(path.join(cfg.agentDir, 'open-webui-data'), file)) return true;
   return false;
 }
+// 23 Nov 2026 (Flash-Next Q2 repo run): a write refused for its folder (a cut-off path, or a script in the inn) now names
+// the projects, so the brain can retry with the right folder instead of telling the person to save it by hand
+const projectsLine = (cfg) => { const p = Object.entries(cfg?.projects || {}).slice(0, 6); return p.length ? ` Projects you can write code in: ${p.map(([n, r]) => `${n} (${r})`).join('; ')}.` : ''; };
 const SECRET_MSG = "That file holds keys or passwords, so it stays off-limits to me. The user can open it directly if needed.";
 
 const fn = (name, description, properties, required = Object.keys(properties)) => ({
@@ -658,9 +661,9 @@ export function buildTools(cfg) {
       const file = resolveUserPath(p);
       if (isSensitive(cfg, file)) throw new Error(SECRET_MSG);
       // Nov 16 (Maximus rerun): after this refusal a brain tried to copy the file it thought was saved. It says nothing was.
-      if (BLOCKED_EXT.has(path.extname(file).toLowerCase()) && !projectOf(file)) throw new Error(`I don't write program or script files that could be run, so nothing was saved. Next: show the script in your answer as a code block for ${cfg.userName || 'the user'} to save, or write it inside a project's folder.`);
+      if (BLOCKED_EXT.has(path.extname(file).toLowerCase()) && !projectOf(file)) throw new Error(`I don't write program or script files that could be run, so nothing was saved. Next: show the script in your answer as a code block for ${cfg.userName || 'the user'} to save, or write it inside a project's folder.${projectsLine(cfg)}`);
       if (insideAny(readOnlyRoots(cfg), file)) throw new Error(`${file} is in a read-only project.`);
-      if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to write in that folder. Allowed: ${cfg.readRoots.join('; ')}`);
+      if (!insideAny(cfg.readRoots, file)) throw new Error(`I'm not allowed to write in ${file}. Allowed: ${cfg.readRoots.join('; ')}.${projectsLine(cfg)}`);
       const exists = fs.existsSync(file);
       // New files in the inn need no OK, except in the code copy of Bob's own code (self-work.js): every change there shows its card.
       if (isInside(cfg.innDir, file) && !exists && !isInside(codeCopyRoot(cfg), file)) return false;

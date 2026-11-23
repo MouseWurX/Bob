@@ -3,8 +3,9 @@
 // tools that write files say so and do nothing, and the long-typing note doesn't offer a file.
 const NO = String.raw`(?:do\s*n[o']?t|don[’']t|do not|never|no need to|without|not)`;
 const FILE = String.raw`(?:(?:a|any|the|it|this|that|to a|as a|it to a|it as a)\s+)?(?:new\s+)?(?:files?|documents?|copy|copies|txt|\.txt)`;
-const SAYS = new RegExp(String.raw`\b${NO}\s+(?:(?:to|be|bother(?:ing)?\s+to)\s+)?(?:sav(?:e|ing|ed)\b(?!\s+(?:me|you|us|time|money|space|energy))|creat(?:e|ing)\s+${FILE}|mak(?:e|ing)\s+${FILE}|writ(?:e|ing)\s+(?:it\s+)?(?:to|in|into)\s+${FILE}|keep(?:ing)?\s+${FILE})|\bno\s+(?:need\s+for\s+(?:a\s+)?)?(?:files?|saving)\b|\bunsaved\b`, 'i');
+const SAYS = new RegExp(String.raw`\b${NO}\s+(?:(?:to|be|bother(?:ing)?\s+to)\s+)?(?:sav(?:e|ing|ed)\b(?!\s+(?:me|you|us|time|money|space|energy))|creat(?:e|ing)\s+${FILE}|mak(?:e|ing)\s+${FILE}|writ(?:e|ing)\s+(?:it\s+)?(?:to|in|into)\s+${FILE}|keep(?:ing)?\s+${FILE})|\bno\s+(?:need\s+for\s+(?:a\s+)?)?(?:files?|saving)\b(?!\s+(?:downloaded|from|attached|needed|required|online|to\s+download))|\bunsaved\b`, 'i');
 
+// 23 Nov 2026 (game jobs): "no files downloaded" (use nothing from outside) is not "don't save"; it had refused every write.
 // True when the words of the ask say not to save (or not to make a file).
 export function saysNoSave(text) { return SAYS.test(String(text || '').replace(/\s+/g, ' ').slice(0, 4000)); }
 

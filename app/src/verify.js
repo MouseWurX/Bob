@@ -234,7 +234,7 @@ export async function afterTool(name, args, text, ctx = {}) {
     return { ok: true, why: `${path.basename(file)} saved and read back`, retry: false, files: [file] };
   }
   if (name === 'edit_file') {
-    const file = fileIn(s, /^Edited (.+?)\. \(/m) || args.path;
+    const file = fileIn(s, /^Edited (.+?)(?: \(\d+ changes\))?\. \(/m) || args.path; // 23 Nov (Flash-Next Q2 repo runs): "(2 changes)" was read as part of the name, so every edit with a "more" list was called missing
     let body;
     try { body = fs.readFileSync(file, 'utf8'); } catch { return fail(`${path.basename(String(file))} isn't there after the edit`, { text: `Error: the app looked for ${file} after the edit, and it isn't there.` }); }
     if (args.replace && !body.includes(args.replace)) return fail(`the change isn't in ${path.basename(file)}`, { text: `Error: the app read ${file} back and the new text isn't in it, so the edit didn't land. Read the file and try again.` });

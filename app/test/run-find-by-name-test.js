@@ -77,6 +77,13 @@ check('a new file with a new name says nothing more', w3 === `Saved ${path.join(
 let e4 = '';
 try { tools.write_file.check({ path: path.join(home, 'rename.py'), content: 'x' }); } catch (e) { e4 = e.message; }
 check('a refused script: nothing saved, show it instead', e4.includes('nothing was saved') && e4.includes('code block') && e4.includes('Sam'), e4);
+// 23 Nov (Flash-Next Q2 repo run): a refused write names the projects, so the brain retries in the right folder
+cfg.projects = { 'bob-tools': path.join(home, 'Projects', 'bob-tools') };
+let e4b = '', e4c = '';
+try { tools.write_file.check({ path: path.join(inn, 'speed.test.js'), content: 'x' }); } catch (e) { e4b = e.message; }
+try { tools.write_file.check({ path: path.parse(home).root + 'Users' + path.sep + 'y', content: 'x' }); } catch (e) { e4c = e.message; }
+check('a refused script or folder names the projects to write code in, and the path it was given', e4b.includes(`bob-tools (${path.join(home, 'Projects', 'bob-tools')})`) && e4c.includes(`bob-tools (${path.join(home, 'Projects', 'bob-tools')})`) && e4c.includes(`not allowed to write in ${path.parse(home).root}Users${path.sep}y`), `${e4b} | ${e4c}`);
+cfg.projects = {};
 
 // ---- fetch_page with a file:// link ----
 let e5 = '';
