@@ -106,6 +106,17 @@ export function cacheGrow({ total = 0, outTok = 0, cacheMiB = 0, freeMiB = null,
 // the most free memory left on any card after a change (POST /context's answer with 0047), or null
 export const freeFrom = (answer) => { const d = Array.isArray(answer?.devices) ? answer.devices.filter((x) => Number.isFinite(x?.free_mib)) : []; return d.length ? Math.min(...d.map((x) => x.free_mib)) : null; };
 
+// Nov 23 (the owner: "why isn't the Conductor taking over?"): with the Conductor driving and a copy cache on, the cache
+// fills the card's free memory at load (Brain Engine 0061). Only from Brain Engine 39: its 0072 measures the reading
+// step's working memory first and shrinks the filled cache to leave room for it (on Brain Engine 36 the fill left
+// 512 MB, a 16 GB card spilled 1 GB into shared memory on Windows and read prompts at 1,223 t/s against 2,829). The
+// answers don't change. A fill set by hand (Engine tuning) wins, 0 included.
+export const FILL_FROM_BE = 39;
+export function fillEnv({ cacheMiB = 0, beNo = 0, env = {} } = {}) {
+  if (!(cacheMiB > 0) || !(beNo >= FILL_FROM_BE) || (env && env.LLAMA_MOE_CACHE_FILL !== undefined && env.LLAMA_MOE_CACHE_FILL !== '')) return {};
+  return { LLAMA_MOE_CACHE_FILL: '1' };
+}
+
 // in plain words, for the logbook
 export function planLine(model, p) {
   const say = { readBig: `reading at step ${p.step}, then writing at the chat step`, big: `reading and writing at step ${p.step}`, back: `back to the chat step ${p.step}` }[p.plan];

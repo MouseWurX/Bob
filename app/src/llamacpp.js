@@ -29,7 +29,7 @@ import { LinkLog } from './link-log.js'; // what the link to a lent card carried
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
 import { tuningArgs, doorbellEnv } from './engine-tuning.js';
-import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB } from './conductor.js'; // off unless picked
+import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv } from './conductor.js'; // off unless picked
 import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV } from './engine-extras.js'; // Turbo: stand-ins (0043, off unless switched on)
 import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
@@ -482,6 +482,10 @@ export class LlamaCpp {
   // Nov 12 (the owner: "make sure it reads the right label, and that the label is the right model"): a Brain Engine
   // build named N1bN2 says which llama.cpp it is built on; the running engine says the same in /props build_info. If
   // they differ, the files in the folder aren't the build its marker names, so Bob says so once (Health logbook).
+  // Brain Engine's own build number from the marker next to the exe (0 when it isn't Brain Engine or is unknown)
+  beNo() {
+    try { return brainEngineBuild(JSON.parse(fs.readFileSync(path.join(path.dirname(this.exePath()), 'bob-brainengine.json'), 'utf8'))?.version)?.n || 0; } catch { return 0; }
+  }
   checkBuild(buildInfo) {
     let mark = null;
     try { mark = JSON.parse(fs.readFileSync(path.join(path.dirname(this.exePath()), 'bob-brainengine.json'), 'utf8')); } catch { return null; }
@@ -641,6 +645,13 @@ export class LlamaCpp {
       this.condCacheBase = mc >= 0 ? Number(args[mc + 1]) || 0 : 0; // the copy cache it reads with; writing may get more
       // Nov 21, the window lever (off unless switched on): the whole context it loads with, cut to the chat later
       this.condWinFull = fitWindowOn(this.cfg) && this.condCacheBase > 0 ? Number(ctx || lc.ctx || DEFAULT_CTX) || 0 : 0;
+      // Nov 23: the copy cache fills the card's free memory (Brain Engine 39 and newer), unless set by hand
+      const fill = fillEnv({ cacheMiB: this.condCacheBase, beNo: this.beNo(), env: this.tuneEnv });
+      if (fill.LLAMA_MOE_CACHE_FILL) {
+        this.tuneEnv = { ...(this.tuneEnv || {}), ...fill };
+        if (this.fillSaid !== model) this.log?.('engine', `${model}: Conductor: the copy cache fills the card's free memory, leaving room for reading`);
+        this.fillSaid = model;
+      }
     }
     // 101: what Auto chose and why, for Settings and the logbook (said once each time it changes).
     if (tune.said && tune.said !== this.tuneSaid) this.log?.('engine', `${model}: ${tune.said}`);

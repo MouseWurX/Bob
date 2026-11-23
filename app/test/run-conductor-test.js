@@ -8,7 +8,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { LlamaCpp } from '../src/llamacpp.js';
-import { conductorOn, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP } from '../src/conductor.js';
+import { conductorOn, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP, fillEnv, FILL_FROM_BE } from '../src/conductor.js';
 import { cleanTuning, mergeTuning } from '../src/engine-tuning.js';
 import { HELP } from '../public/help-content.js';
 
@@ -120,6 +120,9 @@ const longMsg = [{ role: 'user', content: 'x'.repeat(240000) }];
   check('never while spread over other Bobs\' cards', calls.length === 0); }
 // ---------- The cache grown for writing (Nov 20, the owner's idea) ----------
 check('long replies are expected with thinking or a code or file job', expectOut({ think: true }) === 2500 && expectOut({ task: 'code' }) === 1500 && expectOut({}) === 300);
+check('the Conductor fills the card with the copy cache from Brain Engine 39', FILL_FROM_BE === 39 && fillEnv({ cacheMiB: 4096, beNo: 39 }).LLAMA_MOE_CACHE_FILL === '1');
+check('no fill before Brain Engine 39, with no copy cache, or with the fill set by hand', !fillEnv({ cacheMiB: 4096, beNo: 38 }).LLAMA_MOE_CACHE_FILL &&
+  !fillEnv({ cacheMiB: 0, beNo: 40 }).LLAMA_MOE_CACHE_FILL && !fillEnv({ cacheMiB: 4096, beNo: 40, env: { LLAMA_MOE_CACHE_FILL: '0' } }).LLAMA_MOE_CACHE_FILL);
 check('the cache grows by what the card has free, up to 2 GB, keeping 768 MiB', cacheGrow({ total: 30000, outTok: 2500, cacheMiB: 4096, freeMiB: 5000 }) === 2048 && cacheGrow({ total: 30000, outTok: 2500, cacheMiB: 4096, freeMiB: 2000 }) === 1024);
 check('it doesn\'t grow for a short reply, a long chat, no cache, unknown free memory, little room or when already grown',
   [{ outTok: 300 }, { total: CACHE_FLIP_MAX }, { cacheMiB: 0 }, { freeMiB: null }, { freeMiB: 1200 }, { grown: 1024 }].every((o) => cacheGrow({ total: 30000, outTok: 2500, cacheMiB: 4096, freeMiB: 5000, ...o }) === 0));
