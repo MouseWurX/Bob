@@ -1,0 +1,106 @@
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 7a8ec5b..4798615 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -669,6 +669,9 @@ llama_context::llama_context(
+                 if (n_dev > 0 && free_all > cparams.moe_cache_size) {
+                     LLAMA_LOG_INFO("%s: MoE cache fills the card: %.0f MiB instead of %.0f (free card memory less a %.0f MiB spare per card)\n", __func__,
+                         free_all/1048576.0, cparams.moe_cache_size/1048576.0, spare/1048576.0);
++                    moe_cache_fill_asked = cparams.moe_cache_size; // Brain Engine 0072
++                    moe_cache_fill_spare = spare;
++                    moe_cache_fill_check = true;
+                     cparams.moe_cache_size = free_all;
+                 } else {
+                     LLAMA_LOG_INFO("%s: MoE cache fill: no more card memory free than the %.0f MiB asked for; kept\n", __func__, cparams.moe_cache_size/1048576.0);
+@@ -1252,6 +1255,76 @@ void llama_context::sched_reserve() {
+         }
+     }
+ 
++    // Brain Engine 0072: a filled cache (0061) was sized before the working memory existed, and the 512 MiB spare
++    // doesn't cover a big reading step's buffer; on Windows the card then quietly spills into shared memory (Calibrate,
++    // BE36: 1030 MB spilled, reading 2.3x slower). So the first reserve measures the working memory of the biggest step
++    // and of writing on each card, and if free memory less the spare can't hold it, makes the cache that much smaller
++    // (never under the size asked for). Same cache, same steps, so the same words; only the cache size changes.
++    if (moe_cache_fill_check && moe_cache && !model.no_alloc()) {
++        const size_t spare = moe_cache_fill_spare;
++        moe_cache_fill_check = false;
++        if (cparams.moe_cache_borrow || moe_cache->tail_wanted()) {
++            LLAMA_LOG_INFO("%s: MoE cache fill: working memory comes from the cache (borrow or tail), no size check\n", __func__);
++        } else {
++            std::vector<size_t> sz(backend_ptrs.size(), 0);
++            std::vector<size_t> need(backend_ptrs.size(), 0);
++            bool ok = true;
++            for (uint32_t nt : { n_tokens, n_seqs }) {
++                std::fill(sz.begin(), sz.end(), 0);
++                const uint32_t no = std::max<uint32_t>(1, std::min(nt, cparams.n_outputs_max));
++                if (!graph_reserve(nt, n_seqs, nt == n_seqs ? n_seqs : no, mctx.get(), true, sz.data())) {
++                    ok = false;
++                    break;
++                }
++                for (size_t i = 0; i < sz.size(); ++i) {
++                    need[i] = std::max(need[i], sz[i]);
++                }
++            }
++            size_t short_by = 0;
++            size_t work     = 0;
++            for (size_t i = 0; ok && i < backend_ptrs.size(); ++i) {
++                ggml_backend_dev_t dev = ggml_backend_get_device(backend_ptrs[i]);
++                if (dev == nullptr || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_CPU || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_ACCEL) {
++                    continue;
++                }
++                size_t fr = 0, tot = 0;
++                ggml_backend_dev_memory(dev, &fr, &tot);
++                if (const char * tf = getenv("LLAMA_MOE_CACHE_FILL_TEST_FREE_MIB"); tf != nullptr && atof(tf) >= 0) {
++                    fr = (size_t) (atof(tf)*1024*1024); // for the engine test only: the stand-in card's free memory doesn't move
++                }
++                work += need[i];
++                if (need[i] + spare > fr) {
++                    short_by += need[i] + spare - fr;
++                }
++            }
++            if (!ok) {
++                LLAMA_LOG_WARN("%s: !!! MoE cache fill: couldn't measure the working memory; the cache keeps %.0f MiB\n", __func__,
++                        cparams.moe_cache_size/1048576.0);
++            } else if (short_by == 0) {
++                LLAMA_LOG_INFO("%s: MoE cache fill: the working memory (%.0f MiB) fits beside the %.0f MiB cache\n", __func__,
++                        work/1048576.0, cparams.moe_cache_size/1048576.0);
++            } else {
++                const size_t asked = moe_cache_fill_asked;
++                const size_t now   = cparams.moe_cache_size;
++                const size_t size  = now > asked + short_by ? now - short_by : asked;
++                LLAMA_LOG_INFO("%s: MoE cache fill: the working memory (%.0f MiB) doesn't fit beside the cache, so the cache "
++                        "shrinks from %.0f to %.0f MiB\n", __func__, work/1048576.0, now/1048576.0, size/1048576.0);
++                if (size < now) {
++                    cparams.moe_cache_size = size;
++                    moe_cache.reset();
++                    moe_cache = std::make_unique<llama_moe_cache>(model, model.no_alloc(), backend_ptrs, backend_buft,
++                            cparams.moe_cache_size, cparams.moe_cache_cpu_share);
++                    sched.reset();
++                    sched_new({
++                        /*.max_nodes  =*/ max_nodes,
++                        /*.parallel   =*/ cparams.pipeline_parallel,
++                        /*.op_offload =*/ cparams.op_offload,
++                    });
++                }
++            }
++        }
++    }
++
+     LLAMA_LOG_DEBUG("%s: worst-case: n_tokens = %d, n_seqs = %d, n_outputs = %d\n", __func__, n_tokens, n_seqs, n_outputs);
+ 
+     resolve_fused_ops(mctx.get(), n_seqs);
+diff --git a/src/llama-context.h b/src/llama-context.h
+index 0f28185..6fdfe8d 100644
+--- a/src/llama-context.h
++++ b/src/llama-context.h
+@@ -367,6 +367,10 @@ private:
+ 
+     llama_memory_ptr memory;
+     llama_moe_cache_ptr moe_cache;
++    // Brain Engine 0072: set when LLAMA_MOE_CACHE_FILL grew the cache; the first reserve checks the working memory fits
++    size_t moe_cache_fill_asked = 0;
++    size_t moe_cache_fill_spare = 0;
++    bool   moe_cache_fill_check = false;
+ 
+     // decode output (2-dimensional array: [n_outputs][n_vocab])
+     buffer_view<float> logits = {nullptr, 0};

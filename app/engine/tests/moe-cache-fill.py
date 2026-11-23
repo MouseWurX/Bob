@@ -2,7 +2,8 @@
 # Brain Engine 0061 test: the cache fills the card (LLAMA_MOE_CACHE_FILL=1): the MoE cache grows into the card memory
 # still free after the weights and the chat memory, less a spare. The stand-in card (ggml-rpc-server) says it has this
 # machine's free memory, so a spare of 0 grows the cache and a spare bigger than any machine keeps the size asked for.
-# It checks that the cache grows, the words stay a plain run's, and a huge spare keeps the size.
+# It checks that the cache grows, the words stay a plain run's, and a huge spare keeps the size. 0072: the first
+# reserve measures the working memory and, on a card with no room left for it, shrinks the cache by that much.
 #   python3 engine/tests/moe-cache-fill.py <llama.cpp checkout with the patches, built with GGML_RPC=ON> [work folder]
 import json, os, re, subprocess, sys, tempfile, time, urllib.request
 SRC = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else sys.exit('usage: moe-cache-fill.py <llama.cpp checkout, built> [work folder]')
@@ -96,6 +97,14 @@ try:
     m = re.search(r'MoE cache fills the card: (\d+) MiB instead of (\d+)', err)
     check('the cache grows into the free card memory', m is not None and int(m.group(1)) > int(m.group(2)), err[-600:])
     check('the words of a plain run', on == plain, f'{on} vs {plain}')
+    # Brain Engine 0072: the first reserve measures the working memory and checks it fits beside the filled cache
+    check('the working memory is measured beside the filled cache', re.search(r'MoE cache fill: the working memory \((\d+) MiB\) (fits|doesn)', err) is not None, err[-600:])
+    # a card that turns out to have no room left for the working memory: the cache shrinks by that much, same words
+    sh, serr = serve('fill-shrink', {'LLAMA_MOE_CACHE_FILL': '1', 'LLAMA_MOE_CACHE_FILL_SPARE_MIB': '0', 'LLAMA_MOE_CACHE_FILL_TEST_FREE_MIB': '0'}, ('-ub', '512'))
+    ms = re.search(r'the working memory \((\d+) MiB\) doesn.t fit beside the cache, so the cache shrinks from (\d+) to (\d+) MiB', serr)
+    check('a card with no room left shrinks the cache by the working memory', ms is not None and int(ms.group(3)) < int(ms.group(2))
+          and int(ms.group(3)) >= 24 and int(ms.group(2)) - int(ms.group(3)) >= int(ms.group(1)) - 1, serr[-600:])
+    check('the shrunk cache gives the words of a plain run', sh == plain, f'{sh} vs {plain}')
     kept, kerr = serve('fill-kept', {'LLAMA_MOE_CACHE_FILL': '1', 'LLAMA_MOE_CACHE_FILL_SPARE_MIB': '100000000'})
     check('a spare bigger than the card keeps the size asked for, same words', 'MoE cache fill: no more card memory free' in kerr and kept == plain, kerr[-400:])
 finally:
