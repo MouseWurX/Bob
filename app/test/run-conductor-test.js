@@ -109,7 +109,7 @@ const longMsg = [{ role: 'user', content: 'x'.repeat(240000) }];
 { calls.length = 0; const e = live(); e.condChat = CHAT_STEP; e.condStep = e.condLoad;
   await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
   const ctx = calls.filter((c) => c.startsWith('POST /context')).map((c) => JSON.parse(c.slice(14)).n_ubatch);
-  check('loaded at the read step: reads there, then one switch down to write (no switch up)', e.condLoad === READ_STEP && JSON.stringify(ctx) === '[2048]' && e.condStep === CHAT_STEP, JSON.stringify(calls)); }
+  check('Nov 23 gate rerun: loaded at the read step it reads and writes there, no switch down either (BE43 reloads on the first switch)', e.condLoad === READ_STEP && ctx.length === 0 && e.condStep === READ_STEP, JSON.stringify(calls)); }
 { calls.length = 0; const e = live(); e.condChat = CHAT_STEP; e.condStep = e.condLoad; e.tuneEnv = { LLAMA_MOE_CACHE_FILL: '1', LLAMA_MOE_CACHE_FILL_STEP: '4096' };
   await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
   check('Nov 23 gate: with the fill sized for the read step it reads and writes there, no switch at all', calls.length === 0 && e.condStep === e.condLoad, JSON.stringify(calls)); }
@@ -137,7 +137,7 @@ check('with MTP on, no step switch before Brain Engine 43 (0086)', MTP_SWITCH_FR
 check('without MTP, or with another draft, the Conductor switches on any engine', !mtpBlocksSwitch(['-m', 'x'], 39) && !mtpBlocksSwitch(['--spec-type', 'ngram-simple'], 39) && !mtpBlocksSwitch(undefined, 0));
 check('built-in graphics: a bigger step only while 1.5 GB stays free, and never past 2048', APU_MAX_STEP === 2048 && APU_FLOOR === 1.5 * 1024 ** 3 &&
   apuStepOk({ from: 512, to: 2048, freeBytes: 4 * 1024 ** 3 }) && !apuStepOk({ from: 512, to: 2048, freeBytes: 1.8 * 1024 ** 3 }) && !apuStepOk({ from: 2048, to: 4096, freeBytes: 8 * 1024 ** 3 }) && apuStepOk({ from: 2048, to: 512, freeBytes: 0 }));
-check('with MTP and the fill on, the fill leaves the draft room too (512 + about 1.2 GB at 4096); a spare set by hand wins', mtpSpareEnv({ env: { LLAMA_MOE_CACHE_FILL: '1' }, step: 4096 }).LLAMA_MOE_CACHE_FILL_SPARE_MIB === '1792' && !mtpSpareEnv({ env: { LLAMA_MOE_CACHE_FILL: '1', LLAMA_MOE_CACHE_FILL_SPARE_MIB: '700' }, step: 4096 }).LLAMA_MOE_CACHE_FILL_SPARE_MIB && !mtpSpareEnv({ env: {}, step: 4096 }).LLAMA_MOE_CACHE_FILL_SPARE_MIB);
+check('with MTP and the fill on, the fill leaves the draft room too (512 + about 1.75 GB at 4096); a spare set by hand wins', mtpSpareEnv({ env: { LLAMA_MOE_CACHE_FILL: '1' }, step: 4096 }).LLAMA_MOE_CACHE_FILL_SPARE_MIB === '2304' && !mtpSpareEnv({ env: { LLAMA_MOE_CACHE_FILL: '1', LLAMA_MOE_CACHE_FILL_SPARE_MIB: '700' }, step: 4096 }).LLAMA_MOE_CACHE_FILL_SPARE_MIB && !mtpSpareEnv({ env: {}, step: 4096 }).LLAMA_MOE_CACHE_FILL_SPARE_MIB);
 check('the Conductor fills the card with the copy cache from Brain Engine 39', FILL_FROM_BE === 39 && fillEnv({ cacheMiB: 4096, beNo: 39 }).LLAMA_MOE_CACHE_FILL === '1');
 check('no fill before Brain Engine 39, with no copy cache, or with the fill set by hand', !fillEnv({ cacheMiB: 4096, beNo: 38 }).LLAMA_MOE_CACHE_FILL &&
   !fillEnv({ cacheMiB: 0, beNo: 40 }).LLAMA_MOE_CACHE_FILL && !fillEnv({ cacheMiB: 4096, beNo: 40, env: { LLAMA_MOE_CACHE_FILL: '0' } }).LLAMA_MOE_CACHE_FILL);

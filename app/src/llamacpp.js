@@ -1651,10 +1651,11 @@ export class LlamaCpp {
       this.condFreeAsked = true;
       await this.condSwitch(model, this.condStep, 0, { moe_cache_mib: this.condRead() });
     }
-    // Nov 23 (the test PC's BE43 gate): with the fill sized for the read step, the chat step frees nothing the cache can
-    // use, and every switch back up cost about 15 s (14-15 s up against 1.2-1.5 s down), so the Conductor stays at the
-    // step it loaded at and reads and writes there. Built-in graphics still switch (they load at the chat step).
-    if (!this.condApu && this.tuneEnv?.LLAMA_MOE_CACHE_FILL_STEP) return;
+    // Nov 23 (the test PC's BE43 gate, twice): the first step switch after a load reloads the whole brain on Brain
+    // Engine 43, about 15 s, up or down (0087 fixes it in Brain Engine 44), and the chat step frees nothing the sized
+    // fill can use. So a Conductor that loaded at the read step stays there and reads and writes at it, with no switch
+    // at all (the gate's fastest row). Built-in graphics still switch (they load at the chat step).
+    if (!this.condApu && (this.tuneEnv?.LLAMA_MOE_CACHE_FILL_STEP || (this.condLoad > this.condChat && this.condStep === this.condLoad))) return;
     const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: (this.condSpeeds ||= {})[model], switchS: switchGuess(held, st?.ratio), maxStep: this.condMax || 0 });
     // Nov 20: off unless engineTuning.growGuess is set (a test switch). Bob's 440 clean job lessons: replies with thinking
     // median 81 tokens, none over 1,500, so a guess made before the reply mostly misses; growing mid-reply is the way.
