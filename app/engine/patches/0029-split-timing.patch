@@ -1,0 +1,161 @@
+diff --git a/ggml/include/ggml-backend.h b/ggml/include/ggml-backend.h
+index afb8633..97d58c5 100644
+--- a/ggml/include/ggml-backend.h
++++ b/ggml/include/ggml-backend.h
+@@ -387,6 +387,9 @@ extern "C" {
+     // Set a callback to be called for each resulting node during graph compute
+     GGML_API void                 ggml_backend_sched_set_eval_callback(ggml_backend_sched_t sched, ggml_backend_sched_eval_callback callback, void * user_data);
+ 
++    // Brain Engine 0029: which kind of graph comes next, for the split timing (GGML_SCHED_TIMING); no effect when off
++    GGML_API void                 ggml_backend_sched_set_timing_kind(ggml_backend_sched_t sched, int n_tokens);
++
+     // Set a callback to be called when the inputs weights of a split are being copied
+     GGML_API void                 ggml_backend_sched_set_copy_callback(ggml_backend_sched_t sched, ggml_backend_sched_copy_callback callback, void * user_data);
+ 
+diff --git a/ggml/src/ggml-backend.cpp b/ggml/src/ggml-backend.cpp
+index b70d0d8..1855946 100644
+--- a/ggml/src/ggml-backend.cpp
++++ b/ggml/src/ggml-backend.cpp
+@@ -1255,6 +1255,15 @@ struct ggml_backend_sched {
+     int n_prefetched;
+     int prefetch_split;     // the split that reads the prefetched inputs
+     int prefetch_backend_id; // the backend that copies them
++
++    // Brain Engine 0029 (GGML_SCHED_TIMING=N): where the time of a graph goes - card pieces, processor pieces, copies
++    // into a piece (weights apart) - printed every N graphs of each kind. Waits for every piece to end, so it measures
++    // the turns as they are taken today (a little slower than without it); 0 = off.
++    int     timing_every;
++    int     timing_kind;            // 0 writing (1 token), 1 short batch (2-32), 2 reading (more); set by the caller
++    int64_t timing_n[3];
++    double  timing_card[3], timing_cpu[3], timing_copy[3], timing_wcopy[3], timing_turns[3], timing_wall[3];
++    int64_t timing_splits[3], timing_switches[3];
+ };
+ 
+ #define hash_id(tensor) ggml_hash_find_or_insert(&sched->hash_set, tensor)
+@@ -2213,6 +2222,13 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
+ 
+     int prev_backend_id = -1;
+ 
++    // Brain Engine 0029
++    const bool tm = sched->timing_every > 0;
++    const int  tk = tm ? std::min(2, std::max(0, sched->timing_kind)) : 0;
++    const int64_t tm_start = tm ? ggml_time_us() : 0;
++    double tm_prev = 0.0; // the previous piece's compute time
++    bool   tm_prev_cpu = false;
++
+     for (int split_id = 0; split_id < sched->n_splits; split_id++) {
+         struct ggml_backend_sched_split * split = &splits[split_id];
+         int split_backend_id = split->backend_id;
+@@ -2228,6 +2244,9 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
+             }
+         }
+ 
++        const bool    tm_cpu = tm && ggml_backend_dev_type(ggml_backend_get_device(split_backend)) == GGML_BACKEND_DEVICE_TYPE_CPU;
++        const int64_t tm_t0  = tm ? ggml_time_us() : 0;
++
+         // copy the input tensors to the split backend
+         // the weights in host memory are copied last, so that the copy callback can read the other inputs of the split
+         for (int input_id = 0; input_id < split->n_inputs; input_id++) {
+@@ -2239,12 +2258,22 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
+         // after the copies above, which may read host memory reused by the copies of the next split
+         // before the weights, whose copy callback may queue large uploads
+         ggml_backend_sched_prefetch_inputs(sched, split_id);
++        int64_t tm_t1 = 0;
++        if (tm) {
++            ggml_backend_synchronize(split_backend);
++            tm_t1 = ggml_time_us();
++        }
+         for (int input_id = 0; input_id < split->n_inputs; input_id++) {
+             struct ggml_tensor * input = split->inputs[input_id];
+             if (ggml_backend_sched_is_host_weight(input) && sched->hv_tensor_requires_copy[hash_id(input)]) {
+                 ggml_backend_sched_copy_input(sched, split, input);
+             }
+         }
++        int64_t tm_t2 = 0;
++        if (tm) {
++            ggml_backend_synchronize(split_backend);
++            tm_t2 = ggml_time_us();
++        }
+ 
+         if (!sched->callback_eval) {
+             enum ggml_status ec = ggml_backend_graph_compute_async(split_backend, &split->graph);
+@@ -2285,6 +2314,22 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
+             }
+         }
+ 
++        if (tm) {
++            ggml_backend_synchronize(split_backend);
++            const double c = (double) (ggml_time_us() - tm_t2);
++            sched->timing_copy[tk]  += (double) (tm_t1 - tm_t0);
++            sched->timing_wcopy[tk] += (double) (tm_t2 - tm_t1);
++            (tm_cpu ? sched->timing_cpu : sched->timing_card)[tk] += c;
++            sched->timing_splits[tk]++;
++            // two pieces in a row on different sides: at most the shorter of them could have run at the same time
++            if (split_id > 0 && tm_cpu != tm_prev_cpu) {
++                sched->timing_turns[tk] += std::min(c, tm_prev);
++                sched->timing_switches[tk]++;
++            }
++            tm_prev = c;
++            tm_prev_cpu = tm_cpu;
++        }
++
+         // record the event of this split
+         if (sched->events[split_backend_id][sched->cur_copy] != NULL) {
+             ggml_backend_event_record(sched->events[split_backend_id][sched->cur_copy], split_backend);
+@@ -2293,9 +2338,29 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
+         prev_backend_id = split_backend_id;
+     }
+ 
++    if (tm) {
++        sched->timing_wall[tk] += (double) (ggml_time_us() - tm_start);
++        if (++sched->timing_n[tk] % sched->timing_every == 0) {
++            static const char * names[3] = { "writing (1 token)", "short batches (2-32)", "reading (33+)" };
++            const double n = (double) sched->timing_n[tk];
++            GGML_LOG_WARN("split timing, %s: %lld graphs, per graph %.2f ms: card %.2f ms, processor %.2f ms, copies in %.2f ms, "
++                          "weights copied %.2f ms; %.1f pieces, %.1f card/processor turns; overlap ceiling %.2f ms (%.0f%%)\n",
++                          names[tk], (long long) sched->timing_n[tk], sched->timing_wall[tk]/n/1e3,
++                          sched->timing_card[tk]/n/1e3, sched->timing_cpu[tk]/n/1e3, sched->timing_copy[tk]/n/1e3,
++                          sched->timing_wcopy[tk]/n/1e3, (double) sched->timing_splits[tk]/n, (double) sched->timing_switches[tk]/n,
++                          sched->timing_turns[tk]/n/1e3,
++                          sched->timing_wall[tk] > 0 ? 100.0*sched->timing_turns[tk]/sched->timing_wall[tk] : 0.0);
++        }
++    }
++
+     return GGML_STATUS_SUCCESS;
+ }
+ 
++void ggml_backend_sched_set_timing_kind(ggml_backend_sched_t sched, int n_tokens) {
++    GGML_ASSERT(sched);
++    sched->timing_kind = n_tokens <= 1 ? 0 : n_tokens <= 32 ? 1 : 2;
++}
++
+ ggml_backend_sched_t ggml_backend_sched_new(
+         ggml_backend_t * backends,
+         ggml_backend_buffer_type_t * bufts,
+@@ -2319,6 +2384,14 @@ ggml_backend_sched_t ggml_backend_sched_new(
+     const char * GGML_SCHED_DEBUG_REALLOC = getenv("GGML_SCHED_DEBUG_REALLOC");
+     sched->debug_realloc = GGML_SCHED_DEBUG_REALLOC ? atoi(GGML_SCHED_DEBUG_REALLOC) : sched->debug_realloc;
+ 
++    // Brain Engine 0029
++    const char * GGML_SCHED_TIMING = getenv("GGML_SCHED_TIMING");
++    sched->timing_every = GGML_SCHED_TIMING ? std::max(0, atoi(GGML_SCHED_TIMING)) : 0;
++    if (sched->timing_every > 0) {
++        GGML_LOG_WARN("%s: split timing on (GGML_SCHED_TIMING=%d): every piece is waited for, so it runs a little slower\n",
++                __func__, sched->timing_every);
++    }
++
+     sched->n_backends = n_backends;
+     sched->n_copies = parallel ? GGML_SCHED_MAX_COPIES : 1;
+ 
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 16c1643..caf1a30 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -2427,6 +2427,7 @@ llm_graph_result * llama_context::process_ubatch(const llama_ubatch & ubatch, ll
+         //LLAMA_LOG_INFO("graph set inputs time: %.3f ms\n", (ggml_time_us() - t_start_us)/1000.0);
+     }
+ 
++    ggml_backend_sched_set_timing_kind(sched.get(), (int) ubatch.n_tokens); // Brain Engine 0029
+     const auto status = graph_compute(res->get_gf(), ubatch.n_tokens > 1);
+     if (status != GGML_STATUS_SUCCESS) {
+         LLAMA_LOG_ERROR("%s: failed to compute graph, compute status: %d\n", __func__, status);

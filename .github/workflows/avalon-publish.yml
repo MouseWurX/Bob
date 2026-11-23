@@ -1,0 +1,41 @@
+# Puts the Avalon test build (avalon-test.yml run 44871976222, artifact avalon-0019bc9-win-cuda-sm120) on a test
+# pre-release, so the test PC can download it from a public link like the Brain Engine builds. Owner's go: Nov 21.
+# Runs once when this file changes on a claude/ work branch.
+name: Avalon test build publish
+
+on:
+  push:
+    branches: ['claude/**']
+    paths: ['.github/workflows/avalon-publish.yml']
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  RUN_ID: '44871976222'
+  NAME: avalon-0019bc9-win-cuda-sm120
+  REL: avalon-test-0019bc9
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ env.NAME }}
+          path: out
+          run-id: ${{ env.RUN_ID }}
+          github-token: ${{ github.token }}
+      - name: Zip it with its sha256 and put it on the pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la out
+          test -f out/llama-server.exe
+          (cd out && zip -q -r "../$NAME.zip" .)
+          sha256sum "$NAME.zip" | tee "$NAME.zip.sha256"
+          notes="Plain Avalon (github freriadoc/Avalon, MIT) at 0019bc94, built for Windows x64 + NVIDIA sm_120 (CUDA 12.9) with build-only Windows fixes (WINDOWS-BUILD-FIXES.diff inside). A test build for one measurement; not part of Bob."
+          gh release view "$REL" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 || gh release create "$REL" --target "$GITHUB_SHA" --title "Avalon 0019bc9 Windows CUDA (test build)" --notes "$notes" --prerelease --latest=false -R "$GITHUB_REPOSITORY"
+          gh release upload "$REL" "$NAME.zip" "$NAME.zip.sha256" --clobber -R "$GITHUB_REPOSITORY"
+          echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$REL/$NAME.zip"

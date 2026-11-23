@@ -1,0 +1,90 @@
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index a78cba1..5ef0b01 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -158,6 +158,30 @@ static bool ggml_cuda_env_set(const char * name) {
+     return getenv(name) != nullptr;
+ }
+ 
++// Brain Engine 0073: GGML_CUDA_FUSION_OFF=<list> turns single fusion families off (comma list: shared, glu, topk,
++// reduce), to find which one changes words; GGML_CUDA_DISABLE_FUSION=1 still turns them all off
++static bool ggml_cuda_fusion_off(const char * name) {
++    static const std::string list = [] {
++        const char * e = getenv("GGML_CUDA_FUSION_OFF");
++        return std::string(",") + (e ? e : "") + ",";
++    }();
++    return list.find(std::string(",") + name + ",") != std::string::npos;
++}
++
++// Brain Engine 0073: the doorbell's (0042) expert products read their slots from the ring op, maybe through a view
++static bool ggml_cuda_ids_from_doorbell(const ggml_tensor * ids) {
++    for (int i = 0; ids != nullptr && i < 4; ++i) {
++        if (ids->op == GGML_OP_MOE_DOORBELL) {
++            return true;
++        }
++        if (ids->op != GGML_OP_VIEW && ids->op != GGML_OP_RESHAPE && ids->op != GGML_OP_CONT) {
++            return false;
++        }
++        ids = ids->src[0];
++    }
++    return false;
++}
++
+ static bool ggml_cuda_unified_memory_enabled() {
+     static const bool enabled = ggml_cuda_env_flag("GGML_CUDA_ENABLE_UNIFIED_MEMORY");
+     return enabled;
+@@ -2167,6 +2191,9 @@ static bool ggml_cuda_should_fuse_mul_mat(const ggml_tensor * ffn_up,
+                                           const ggml_tensor * ffn_gate_bias = nullptr,
+                                           const ggml_tensor * ffn_up_scale = nullptr,
+                                           const ggml_tensor * ffn_gate_scale = nullptr) {
++    if (ggml_cuda_fusion_off("glu")) {
++        return false;
++    }
+     const bool has_bias = ffn_up_bias != nullptr || ffn_gate_bias != nullptr;
+     const bool has_scale = ffn_up_scale != nullptr || ffn_gate_scale != nullptr;
+ 
+@@ -2317,6 +2344,9 @@ static bool ggml_cuda_should_fuse_mul_mat_vec_q(const ggml_tensor * tensor) {
+ }
+ 
+ static bool ggml_cuda_match_shared_expert(const ggml_cgraph * graph, int routed_idx, int shared_idx) {
++    if (ggml_cuda_fusion_off("shared")) {
++        return false;
++    }
+     if (routed_idx + 2 >= graph->n_nodes || shared_idx + 2 >= graph->n_nodes || shared_idx < routed_idx + 3) {
+         return false;
+     }
+@@ -2348,6 +2378,14 @@ static bool ggml_cuda_match_shared_expert(const ggml_cgraph * graph, int routed_
+             !ggml_is_quantized(up->src[0]->type)) {
+         return false;
+     }
++    // Brain Engine 0073: not for the doorbell's experts. Without the doorbell the processor's part splits the graph
++    // between the routed and the shared experts, so they never fuse; fused, the kernel adds up in another order and the
++    // words drift from the plain cache's (Calibrate, BE36: GGML_CUDA_DISABLE_FUSION=1 made them match). The same
++    // kernels as without the doorbell, so the same words. GGML_CUDA_DOORBELL_SHARED_FUSION=1 fuses them anyway.
++    static const bool db_fuse = ggml_cuda_env_flag("GGML_CUDA_DOORBELL_SHARED_FUSION");
++    if (!db_fuse && (ggml_cuda_ids_from_doorbell(up->src[2]) || ggml_cuda_ids_from_doorbell(gate->src[2]))) {
++        return false;
++    }
+     const ggml_tensor * input = up->src[1];
+     const ggml_tensor * weight = up->src[0];
+     const ggml_tensor * shared_weight = shared_up->src[0];
+@@ -3712,6 +3750,9 @@ static bool ggml_cuda_topk_moe_group_fusion(const struct ggml_cgraph * cgraph, i
+ }
+ 
+ static bool ggml_cuda_topk_moe_fusion(const struct ggml_cgraph * cgraph, int node_idx, ggml_cuda_topk_moe_args & args) {
++    if (ggml_cuda_fusion_off("topk")) {
++        return false;
++    }
+     args.sigmoid         = false;
+     args.sqrt_softplus   = false;
+     args.softmax         = false;
+@@ -3955,6 +3996,9 @@ static bool ggml_cuda_match_moe_weighted_reduction(
+         const ggml_cgraph * cgraph,
+         int node_idx,
+         ggml_cuda_moe_weighted_reduction_match & match) {
++    if (ggml_cuda_fusion_off("reduce")) {
++        return false;
++    }
+     const ggml_tensor * first = cgraph->nodes[node_idx];
+     if (first->op != GGML_OP_MUL || first->type != GGML_TYPE_F32 || !ggml_is_contiguous(first)) {
+         return false;

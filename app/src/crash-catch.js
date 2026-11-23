@@ -119,7 +119,7 @@ export const OPT_IN = [
   'smartNotes', 'toolLearning', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'oneBrain', 'allTools',
   'quickOnCpu', 'mootBeside', 'resumeJobs', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'memoryRecall', 'brainCtxOn',
   'brainCtxStretch', 'naughtyList', 'quantPicker', 'catalogUpdates', 'labForgeStart', 'labConsole', 'labLessons', 'netReview', 'editOwn', 'quickSeesJob', 'docMeaning', 'chatPresets',
-  'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'weeklyReport', 'chatPlaces', 'tryFromHere', 'pinMessages', 'guestChat', 'amnesiaOffer'
+  'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'weeklyReport', 'chatPlaces', 'contextNoReload', 'tryFromHere', 'pinMessages', 'guestChat', 'amnesiaOffer'
 ];
 // Switches kept inside a group: { key: [the part that switches it, its off value] }.
 export const OPT_IN_GROUPS = { hands: ['enabled', false], checkins: ['enabled', false], quietHours: ['on', false], globalAsk: ['on', false], fadeChat: ['on', false] };

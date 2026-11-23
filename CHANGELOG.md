@@ -4,6 +4,25 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.253
+
+A new engine, Brain Engine 43, and Routines. Long reads are faster, and Bob fits better on built-in graphics.
+
+### New
+
+- **Brain Engine 43** (Settings, How Bob works, Engines). This is llama.cpp b12359 with our own patches, up from Brain Engine 8. Lossless speed-ups are on from the start. Long reads use the experts already on the card where they sit, and read ahead (on the test PC, long reads were 24% faster at 32K and 35% faster at 64K, with the same words). Everything that can change words stays behind Turbo, off.
+- **MTP for everyday brains** is on for brains that come with their own guess-ahead head. It guesses a few words ahead and checks them, so the words don't change.
+- **The Conductor** (Settings, How Bob works, Engine tuning; off to start). It plans the card's memory before loading: the brain, the chat memory, the expert copy cache and the reading step, inside the card with a 512 MB margin. It also picks the reading step for each prompt.
+- **Routines** (Settings, Hands, the Routines Hand; off to start). Build a job by wiring boxes together, like Blueprints, and bring in n8n workflows. While the Hand is on, Bob's menu has a Routines row.
+- **Raon-1 mini and nano** can run on Brain Engine 43. They come into the catalogue in a later release.
+
+### Fixed
+
+- **Built-in graphics (Legion Go and other shared-memory PCs).** I keep Windows' share: the chat memory shrinks to fit, a split brain's processor part stays memory-mapped, and the picture reader goes out when no size fits and comes back for a picture. Memory kept for Windows starts at 0.5 GB. On a Legion Go, gemma4-e2b at 32K went from 25 to 34 of 35 layers on the graphics, wrote 28.7 words a second instead of 17.5, and left 2.55 GB free instead of 1.68 GB, with the same words.
+- **A step switch with MTP on** no longer stops the engine.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.252
 
 Rentals are safer, and you can pick a quant level or finish a robot check yourself.
@@ -163,22 +182,6 @@ The link log tells the same time as the logbook.
 - **The link log no longer reads an hour behind.** The Link log (the notes kept while a brain runs over another Bob's card) stamped its lines with the computer's own clock, which on some Windows PCs is an hour off from the real zone. It now uses the same time zone as the logbook, so the two always agree.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.243
-
-Send a whole folder to your other Bob with one Yes, and Journey gets its laptop-test fixes.
-
-### New
-
-- **Send a whole folder over Bob-Net.** Settings, Bob-Net, Files and brains: **Pick a folder**, pick the Bob, **Send it**. He gets one Yes card for all of it (up to 2000 files) instead of one card per file, and it lands in a folder of its own with its folders inside kept as they are. Every file is checked at the end, like always. Links and empty files stay behind.
-- **Journey screenshots.** The README shows six new Journey pictures in a gallery, and every screen is on its own page: the world, towns, fights, every menu and every race.
-
-### Fixed
-
-- **One card per offer.** A send that got no answer and was asked again could leave a second, empty Yes card on the other Bob. Now a send with no answer is taken back, the same send asked again is the same offer, and a card still waiting is swapped for the new one, never two.
-- **Journey on a laptop.** A 720p window fits without scrolling, menus too. The talk box and choices are real windows with sharp words. Elf and pixie ears show with Bob's wide headset look, and the tab icons have an outline so they stand out (Pets is now 🐶).
-
-**Where it works:** Windows, Mac, Linux and Bob for Android. Folder sending works on Windows, Mac and Linux; both Bobs need 1.5.243.
 
 ## Older versions
 

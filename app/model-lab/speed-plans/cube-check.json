@@ -1,0 +1,78 @@
+{
+ "name": "Cube check: does the trace change the words without ggml_set_output? Y0, G4 (trace, keep_expert_ids on), G2 (trace + mass, keep_expert_ids off) (stock Qwen3.6 35B A3B, 16 GB card)",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 18)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "be9": {
+   "exe": "${BE9_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "k32": "long-text.md"
+ },
+ "promptTokens": {
+  "k32": 32768
+ },
+ "question": {
+  "k32": "\n\nIn two sentences, what is this text about?"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "-ctk",
+  "q8_0",
+  "-ctv",
+  "q8_0",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "-c",
+  "49152",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 5,
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 600000,
+ "rows": [
+  {
+   "id": "Y0",
+   "engine": "be9",
+   "prompts": [
+    "start",
+    "k32"
+   ]
+  },
+  {
+   "id": "G4",
+   "engine": "be9",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "body": {
+    "expert_trace": true,
+    "expert_trace_stream": true
+   }
+  },
+  {
+   "id": "G2",
+   "engine": "be9",
+   "prompts": [
+    "start",
+    "k32"
+   ],
+   "body": {
+    "expert_trace": true,
+    "expert_trace_stream": true,
+    "expert_trace_mass": true
+   }
+  }
+ ]
+}

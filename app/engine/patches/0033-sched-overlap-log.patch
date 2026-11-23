@@ -1,0 +1,109 @@
+diff --git a/ggml/src/ggml-backend.cpp b/ggml/src/ggml-backend.cpp
+index 1855946..a54cd8a 100644
+--- a/ggml/src/ggml-backend.cpp
++++ b/ggml/src/ggml-backend.cpp
+@@ -1264,6 +1264,14 @@ struct ggml_backend_sched {
+     int64_t timing_n[3];
+     double  timing_card[3], timing_cpu[3], timing_copy[3], timing_wcopy[3], timing_turns[3], timing_wall[3];
+     int64_t timing_splits[3], timing_switches[3];
++
++    // Brain Engine 0033 (GGML_SCHED_OVERLAP_LOG=N): whether the processor's pieces run while the card works, measured
++    // on the host only (no extra waits): how long processor pieces compute and wait for the card's results, how often
++    // their inputs were fetched ahead (so they start while the card still works), and how long the card piece after a
++    // processor piece waits; printed every N graphs of each kind. 0 = off.
++    int     overlap_every;
++    int64_t ov_n[3], ov_cpu_pieces[3], ov_ahead[3];
++    double  ov_cpu_us[3], ov_cpu_wait_us[3], ov_card_wait_us[3], ov_wall_us[3];
+ };
+ 
+ #define hash_id(tensor) ggml_hash_find_or_insert(&sched->hash_set, tensor)
+@@ -2229,6 +2237,12 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
+     double tm_prev = 0.0; // the previous piece's compute time
+     bool   tm_prev_cpu = false;
+ 
++    // Brain Engine 0033
++    const bool ov  = !tm && sched->overlap_every > 0;
++    const int  ovk = ov ? std::min(2, std::max(0, sched->timing_kind)) : 0;
++    const int64_t ov_start = ov ? ggml_time_us() : 0;
++    bool ov_prev_cpu = false;
++
+     for (int split_id = 0; split_id < sched->n_splits; split_id++) {
+         struct ggml_backend_sched_split * split = &splits[split_id];
+         int split_backend_id = split->backend_id;
+@@ -2246,6 +2260,9 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
+ 
+         const bool    tm_cpu = tm && ggml_backend_dev_type(ggml_backend_get_device(split_backend)) == GGML_BACKEND_DEVICE_TYPE_CPU;
+         const int64_t tm_t0  = tm ? ggml_time_us() : 0;
++        const bool    ov_cpu = ov && ggml_backend_dev_type(ggml_backend_get_device(split_backend)) == GGML_BACKEND_DEVICE_TYPE_CPU;
++        const bool    ov_ahead_now = ov && sched->prefetch_split == split_id && sched->n_prefetched > 0;
++        const int64_t ov_t0  = ov ? ggml_time_us() : 0;
+ 
+         // copy the input tensors to the split backend
+         // the weights in host memory are copied last, so that the copy callback can read the other inputs of the split
+@@ -2275,6 +2292,17 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
+             tm_t2 = ggml_time_us();
+         }
+ 
++        const int64_t ov_t1 = ov ? ggml_time_us() : 0;
++        if (ov) {
++            if (ov_cpu) {
++                sched->ov_cpu_pieces[ovk]++;
++                sched->ov_ahead[ovk] += ov_ahead_now;
++                sched->ov_cpu_wait_us[ovk] += (double) (ov_t1 - ov_t0);
++            } else if (ov_prev_cpu) {
++                sched->ov_card_wait_us[ovk] += (double) (ov_t1 - ov_t0);
++            }
++        }
++
+         if (!sched->callback_eval) {
+             enum ggml_status ec = ggml_backend_graph_compute_async(split_backend, &split->graph);
+             if (ec != GGML_STATUS_SUCCESS) {
+@@ -2330,6 +2358,14 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
+             tm_prev_cpu = tm_cpu;
+         }
+ 
++        if (ov) {
++            // the processor computes in the call above, the card only queues its work
++            if (ov_cpu) {
++                sched->ov_cpu_us[ovk] += (double) (ggml_time_us() - ov_t1);
++            }
++            ov_prev_cpu = ov_cpu;
++        }
++
+         // record the event of this split
+         if (sched->events[split_backend_id][sched->cur_copy] != NULL) {
+             ggml_backend_event_record(sched->events[split_backend_id][sched->cur_copy], split_backend);
+@@ -2338,6 +2374,20 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
+         prev_backend_id = split_backend_id;
+     }
+ 
++    if (ov) {
++        sched->ov_wall_us[ovk] += (double) (ggml_time_us() - ov_start);
++        if (++sched->ov_n[ovk] % sched->overlap_every == 0) {
++            static const char * names[3] = { "writing (1 token)", "short batches (2-32)", "reading (33+)" };
++            const double n = (double) sched->ov_n[ovk];
++            GGML_LOG_WARN("overlap, %s: %lld graphs, per graph %.2f ms queued: %.1f processor pieces (%.1f with inputs fetched "
++                          "while the card worked), processor computing %.2f ms, processor waiting for the card %.2f ms, "
++                          "card waiting after the processor %.2f ms\n",
++                          names[ovk], (long long) sched->ov_n[ovk], sched->ov_wall_us[ovk]/n/1e3,
++                          (double) sched->ov_cpu_pieces[ovk]/n, (double) sched->ov_ahead[ovk]/n, sched->ov_cpu_us[ovk]/n/1e3,
++                          sched->ov_cpu_wait_us[ovk]/n/1e3, sched->ov_card_wait_us[ovk]/n/1e3);
++        }
++    }
++
+     if (tm) {
+         sched->timing_wall[tk] += (double) (ggml_time_us() - tm_start);
+         if (++sched->timing_n[tk] % sched->timing_every == 0) {
+@@ -2387,6 +2437,12 @@ ggml_backend_sched_t ggml_backend_sched_new(
+     // Brain Engine 0029
+     const char * GGML_SCHED_TIMING = getenv("GGML_SCHED_TIMING");
+     sched->timing_every = GGML_SCHED_TIMING ? std::max(0, atoi(GGML_SCHED_TIMING)) : 0;
++    // Brain Engine 0033
++    const char * GGML_SCHED_OVERLAP_LOG = getenv("GGML_SCHED_OVERLAP_LOG");
++    sched->overlap_every = GGML_SCHED_OVERLAP_LOG ? std::max(0, atoi(GGML_SCHED_OVERLAP_LOG)) : 0;
++    if (sched->overlap_every > 0 && sched->timing_every > 0) {
++        GGML_LOG_WARN("%s: !!! GGML_SCHED_OVERLAP_LOG NOT USED: GGML_SCHED_TIMING waits for every piece, so nothing overlaps\n", __func__);
++    }
+     if (sched->timing_every > 0) {
+         GGML_LOG_WARN("%s: split timing on (GGML_SCHED_TIMING=%d): every piece is waited for, so it runs a little slower\n",
+                 __func__, sched->timing_every);

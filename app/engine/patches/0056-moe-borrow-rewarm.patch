@@ -1,0 +1,118 @@
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 3ed2ec9..c168e15 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -1063,7 +1063,9 @@ void llama_context::sched_reserve() {
+                 ggml_backend_dev_t dev = ggml_backend_get_device(bb);
+                 size_t free = 0, total = 0;
+                 ggml_backend_dev_memory(dev, &free, &total);
+-                size_t spare = 512ull*1024*1024;
++                // Brain Engine 0056: 1024 MiB on NVIDIA cards (CUDA's own pool grows outside the scheduler; Avalon ran out of
++                // memory at 400 on a 4090), 512 elsewhere
++                size_t spare = (strstr(ggml_backend_dev_name(dev), "CUDA") != nullptr ? 1024ull : 512ull)*1024*1024;
+                 if (const char * sp = getenv("LLAMA_MOE_CACHE_BORROW_SPARE_MIB"); sp != nullptr && atol(sp) >= 0) {
+                     spare = (size_t) atol(sp)*1024*1024;
+                 }
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 27872b3..226fbdc 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -2475,6 +2475,9 @@ struct llama_moe_cache::impl {
+         if (rf_on) {
+             rf_tick(); // Brain Engine 0054: the uploads of the last call are done, so their pages may go
+         }
++        if (!bw_rewarm_keys.empty() && n_tok <= max_batch) {
++            bw_rewarm(backend); // Brain Engine 0056: the first small batch after a long read
++        }
+ 
+         if (trace != nullptr) {
+             write_trace(il, n_used);
+@@ -3420,6 +3423,9 @@ struct llama_moe_cache::impl {
+         }
+         bw_buft = ggml_backend_buft_new_alloc_from(d.buft, bw_alloc, this);
+         bw_on = true;
++        if (const char * rw = getenv("LLAMA_MOE_CACHE_REWARM"); rw != nullptr && atoi(rw) == 0) {
++            bw_rewarm_on = false;
++        }
+         LLAMA_LOG_INFO("llama_moe_cache: borrowed reading on: big reading steps borrow the cache's coldest slots, nothing is freed\n");
+     }
+ 
+@@ -3601,6 +3607,70 @@ struct llama_moe_cache::impl {
+         return true;
+     }
+ 
++    // Brain Engine 0056: rewarm. The experts a long read dropped go back, hottest first, into the slots left empty, in one
++    // go when the first small batch (writing) comes, instead of one miss at a time over the next words. Lossless: the same
++    // experts, the same words. LLAMA_MOE_CACHE_REWARM=0 turns it off.
++    std::vector<int32_t> bw_rewarm_keys;
++    bool   bw_rewarm_on = true;
++    size_t bw_rewarmed = 0, bw_rewarm_bytes = 0, bw_rewarms = 0;
++    double bw_rewarm_ms = 0.0;
++
++    void bw_rewarm(ggml_backend_t backend) {
++        if (bw_rewarm_keys.empty()) {
++            return;
++        }
++        std::vector<int32_t> keys;
++        keys.swap(bw_rewarm_keys);
++        if (!bw_rewarm_on || !bw_on || bw_g < 0) {
++            return;
++        }
++        const int64_t t0 = ggml_time_us();
++        group & g = groups[bw_g];
++        moe_cache_lru & lru = g.lru;
++        auto heat = [&](int32_t key) { return lru.decayed_crf(lru.key_layer(key), key); };
++        std::sort(keys.begin(), keys.end(), [&](int32_t a, int32_t b) { return heat(a) > heat(b); });
++        keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
++        std::vector<int32_t> free_slots;
++        for (int32_t s = 0; s < g.n_slots; ++s) {
++            if (lru.key_of[s] < 0) {
++                free_slots.push_back(s);
++            }
++        }
++        size_t n = 0, bytes = 0, fi = 0;
++        for (int32_t key : keys) {
++            if (fi >= free_slots.size()) {
++                break;
++            }
++            const int32_t kl = lru.key_layer(key);
++            const int32_t ke = lru.key_expert(key);
++            if (lru.slot_map[kl] == nullptr || lru.slot_map[kl][ke] < g.n_slots) {
++                continue; // already back, by a miss
++            }
++            const int32_t s = free_slots[fi++];
++            for (size_t ip = 0; ip < layers[kl].experts.size(); ++ip) {
++                const ggml_tensor * w = layers[kl].experts[ip];
++                const size_t expert_size = w->nb[2];
++                ggml_backend_tensor_set_async(backend, g.banks[ip], (const uint8_t *) w->data + (size_t) ke*expert_size, (size_t) s*g.banks[ip]->nb[2], expert_size);
++                if (rf_on) {
++                    rf_note(w, (const uint8_t *) w->data + (size_t) ke*expert_size, expert_size);
++                }
++                bytes += expert_size;
++            }
++            lru.slot_map[kl][ke] = s;
++            lru.key_of[s] = key;
++            lru.move(s, lru.class_of(key));
++            lru.n_filled++;
++            n++;
++        }
++        ggml_backend_synchronize(backend);
++        bw_rewarmed += n;
++        bw_rewarm_bytes += bytes;
++        bw_rewarms++;
++        bw_rewarm_ms += (ggml_time_us() - t0)/1000.0;
++        LLAMA_LOG_INFO("llama_moe_cache: borrowed reading: rewarm put back %zu of %zu dropped experts (%.2f MiB) in %.1f ms before writing\n",
++            n, keys.size(), bytes/1048576.0, (ggml_time_us() - t0)/1000.0);
++    }
++
+     // before a graph that uses peak bytes of the working memory: empty the slots it would run over
+     void bw_before_graph(size_t peak) {
+         if (!bw_on || bw_own == 0 || peak <= bw_own) {
+@@ -3675,6 +3745,7 @@ struct llama_moe_cache::impl {
+                 lru.slot_map[lru.key_layer(key)][lru.key_expert(key)] = lru.empty;
+                 lru.n_filled--;
+                 dropped++;
++                bw_rewarm_keys.push_back(key); // 0056: put back before the first written word
+             }
+             lru.key_of[s] = -1;
+             lru.move_head(s, 0);

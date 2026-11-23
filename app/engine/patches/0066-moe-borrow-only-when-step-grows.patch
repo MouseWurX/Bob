@@ -1,0 +1,112 @@
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index a306cdb..a3a7e0d 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -1079,6 +1079,7 @@ void llama_context::sched_reserve() {
+             }
+             cparams.n_ubatch = own_ub;
+             n_tokens = own_ub;
++            sched.reset(); // 0066: sched_new would reuse the scheduler made with the borrowing buffer type
+             sched_new({
+                 /*.max_nodes  =*/ max_nodes,
+                 /*.parallel   =*/ cparams.pipeline_parallel,
+@@ -1200,10 +1201,33 @@ void llama_context::sched_reserve() {
+                     best_need = own_step;
+                 }
+             }
++            // Brain Engine 0066: no bigger step and no borrowed writing: borrowing only costs here (lent slots, striped
++            // copies), so it's turned off and the card reads at the own step as without it. LLAMA_MOE_CACHE_BORROW_ALWAYS=1
++            // keeps it on anyway (tests).
++            const bool always = [] { const char * v = getenv("LLAMA_MOE_CACHE_BORROW_ALWAYS"); return v && atoi(v) > 0; }();
++            if (best <= own_ub && moe_cache->borrow_own() >= own_step && !always) {
++                LLAMA_LOG_WARN("%s: borrowed reading: no reading step bigger than the own %u fits here, so borrowing is turned off\n", __func__, own_ub);
++                moe_cache->borrow_off();
++                cparams.moe_cache_borrow = false;
++                for (size_t i = 0; i < backend_ptrs.size(); ++i) {
++                    if (backend_ptrs[i] == bb && cparams.moe_cache_borrow_real_buft) {
++                        backend_buft[i] = cparams.moe_cache_borrow_real_buft;
++                    }
++                }
++                cparams.n_ubatch = own_ub;
++                n_tokens = own_ub;
++                sched.reset(); // sched_new would reuse the scheduler made with the borrowing buffer type
++                sched_new({
++                    /*.max_nodes  =*/ max_nodes,
++                    /*.parallel   =*/ cparams.pipeline_parallel,
++                    /*.op_offload =*/ cparams.op_offload,
++                });
++            } else {
+             moe_cache->borrow_set_step(best_need);
+             cparams.n_ubatch = best;
+             n_tokens = std::min(cparams.n_ctx, best);
+             LLAMA_LOG_INFO("%s: borrowed reading: reading step %u (own %u)\n", __func__, best, own_ub);
++            }
+         }
+     }
+ 
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 2aaee0e..a607eed 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -4066,6 +4066,38 @@ struct llama_moe_cache::impl {
+         return true;
+     }
+ 
++    // Brain Engine 0066: borrowing turned off again after the steps were measured, when it gives no bigger reading step
++    // (and borrowed writing frees nothing): the region goes back to the plain banks, laid out as without borrowing (no
++    // stripes, so runs of experts copy in one go again), and the same experts go back in the same slots.
++    void bw_off() {
++        if (!bw_on) {
++            return;
++        }
++        const int64_t t0 = ggml_time_us();
++        device & d = devices[bw_dev];
++        finish_fill();
++        ggml_backend_synchronize(d.backend);
++        for (ggml_tensor * t = ggml_get_first_tensor(d.ctx.get()); t != nullptr; t = ggml_get_next_tensor(d.ctx.get(), t)) {
++            t->data   = nullptr;
++            t->buffer = nullptr;
++        }
++        d.buf.reset();
++        bw_unstripe();
++        bw_on   = false;
++        bw_own  = 0;
++        bw_lend = 0;
++        bw_rewarm_keys.clear();
++        for (group & g : groups) {
++            g.lru.lent_below = 0;
++        }
++        alloc_banks();
++        const auto [up, n] = upload_slots([&](int32_t id) { return devices[id].backend; });
++        GGML_UNUSED(up);
++        db_dirty = true;
++        LLAMA_LOG_INFO("llama_moe_cache: borrowed reading off: it gives no bigger reading step here, so the cache stays whole and unstriped (%zu experts put back in %.1f ms)\n",
++            n, (ggml_time_us() - t0)/1000.0);
++    }
++
+     // Brain Engine 0056: rewarm. The experts a long read dropped go back, hottest first, into the slots left empty, in one
+     // go when the first small batch (writing) comes, instead of one miss at a time over the next words. Lossless: the same
+     // experts, the same words. LLAMA_MOE_CACHE_REWARM=0 turns it off.
+@@ -4574,6 +4606,10 @@ size_t llama_moe_cache::borrow_own() const {
+     return pimpl->bw_own;
+ }
+ 
++void llama_moe_cache::borrow_off() {
++    pimpl->bw_off();
++}
++
+ void llama_moe_cache::borrow_set_step(size_t bytes) {
+     pimpl->bw_step = bytes;
+ }
+diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
+index dadd551..df0e711 100644
+--- a/src/llama-moe-cache.h
++++ b/src/llama-moe-cache.h
+@@ -112,6 +112,7 @@ public:
+     size_t borrow_own() const;
+     // the working memory the reading step needs at most (measured): a read lends that much at its first borrowed graph
+     void borrow_set_step(size_t bytes);
++    void borrow_off(); // Brain Engine 0066
+     // Brain Engine 0065: with borrowed writing, a graph needing at most bytes (the own step) lends only what it needs
+     void borrow_set_small(size_t bytes);
+     // before a graph that uses peak bytes of the working memory (from its start): empties the slots it runs over

@@ -1,0 +1,19 @@
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 0da2929..fa89ea3 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -3916,6 +3916,14 @@ private:
+                     const int32_t n_ctx_old = llama_n_ctx(ctx_tgt);
+                     const int64_t t0 = ggml_time_us();
+                     common_params prev = params_base;
++                    // Brain Engine 0086: the drafts go first, as in destroy(). An MTP draft still points at the main
++                    // context (its rows on the card) and lets go of them when it is freed; freeing it after
++                    // keep_model_for_next() has dropped the main context touched freed memory and stopped the engine
++                    // (GGML_ASSERT(backend) on the first step switch with draft-mtp on the card).
++                    spec.reset();
++                    spec_init.reset();
++                    ctx_dft   = nullptr;
++                    model_dft = nullptr;
+                     const bool kept = llama_init->keep_model_for_next();
+                     destroy();
+                     bool ok = load_model(next);

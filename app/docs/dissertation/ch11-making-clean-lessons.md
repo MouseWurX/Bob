@@ -394,6 +394,8 @@ What still ends a job is being stuck: 3 rounds with nothing new, 4 rounds where 
 
 **Fixes made from these runs.** Checking code after an edit is on by default; the answer names the changed files; tests run on Windows; a bare `node` is refused with a hint; failing tests no longer get the tool set aside; Office tools find files the way `read_file` does; file search also matches file names; the text-call nudge asks for plain words when tools are off; and the Run tools load for project jobs. Each has a check in the test suite. Whether they lift Bob's passes towards his right work is unproven in our lab, as we have yet to test. The Flash-Next and DeepSeek runs of section 13.7 carry them.
 
+<a id="flash-next-in-bob"></a>
+
 ### 11.7.7 Flash-Next in Bob, smaller files, held-out jobs and a first cut (21 to 22 November)
 
 The bigger-brain rentals of section 13.7 ran on 21 and 22 November, on rented cards in the cloud, in Bob's own harness. Sources: the rentals thread's reports of 21 to 23 November, with plans in `app/model-lab/forge/plans/` (jobs-flashnext-iq3.json, jobs-flashnext-q2.json, reap-flashnext-q4-jobs.json, jobs-held1.json). None of these runs was on the home PC.
@@ -423,7 +425,7 @@ Going down to the smaller files cost about 4 points of inbox coverage and nearly
 | Inbox coverage | 76% (22 of 28 ran) | 85% |
 | Badly shaped tool calls | 8 in 360 | 0 to 1 |
 
-The gap on jobs nobody tuned on is as wide as on the normal sets, so Flash-Next's lead is not an artefact of tuning. Two causes are the test, not the brain: Qwen's inbox run stopped at 22 jobs because live web searches from the home PC came back empty (the fix is to give inbox runs the made-up web), and its repo run used a kit from before the edit fix above, so some of its 3 repo fails may be that bug. Web and badly shaped calls look like Qwen itself.
+The gap on jobs nobody tuned on is as wide as on the normal sets, so Flash-Next's lead is not an artefact of tuning. Two causes are the test, not the brain: Qwen's inbox run stopped at 22 jobs because live web searches from the home PC came back empty (the fix is to give inbox runs the made-up web), and its repo run used a kit from before the edit fix above, so some of its 3 repo fails may be that bug. Web and badly shaped calls look like Qwen itself. One more difference: held1 offered Qwen a test-only tool shape 5, while Flash-Next had shape 4 (section 8.9.4); shape 5's changes aim at Qwen's own misses.
 
 **A first cut (REAP on Flash-Next Q4, 22 November, one H200 NVL).** Every expert in each layer was ranked by how much it is used on 153 clean Flash-Next runs of Bob's jobs. Each keep level was then scored on the held-out jobs with the other experts switched off, with no healing and no cut file saved:
 
@@ -433,6 +435,52 @@ The gap on jobs nobody tuned on is as wide as on the normal sets, so Flash-Next'
 | 90% | 13/14 | 12/12 | 9/11 | 93% | 0 |
 
 Keeping 90% of the experts lost nothing on these jobs. The jobs are few, so the small gains at 90% are probably noise. The deeper levels (80, 75, 65, 60 and 50%) were still running when this was written. Fitting Flash-Next on the home PC needs a much deeper cut than 90% (section 13.7), so whether a cut that fits still passes is unproven in our lab, as we have yet to test.
+
+
+<a id="reap-levels"></a>
+
+### 11.7.8 Cutting Flash-Next: every REAP keep level, how the experts were chosen, and the 80% cut (22 to 23 November)
+
+This section is the testing behind the cut Flash-Next published as "Bobert Flash Next" on Hugging Face. Sources: the rentals thread's reports of 22 and 23 November; `bob-wip/flashnext-cut/reap-levels-answers.md`; plan `app/model-lab/forge/plans/reap-flashnext-q4-jobs.json` (branch claude/project-thread-et6g5x); the keep lists in `model-lab/out/reap-flashnext-q4-jobs/keep/`. All runs were on rented cards in the cloud, in Bob's own harness, with Flash-Next UD-Q4_K_XL.
+
+<a id="expert-selection"></a>
+
+**How the experts were chosen.** Flash-Next has 48 layers, each with 512 experts, of which 10 plus one shared expert run for each word.
+
+- **The map.** Every expert in each layer was scored REAP-style (router-weighted expert activation, Lasby et al., 2025): the router's weight for the expert times the size of its output, summed over every word of 153 clean Flash-Next runs of Bob's jobs from 21 November. Only runs the graders passed, with no harm and no bad tool call, were counted (`trace-read --passed --mass`). They came from the normal job sets, never from the held-out sets that judge the cut. Pick counts alone would ignore how much an expert adds when it is picked, which is why the weighted score was used. So the experts kept are the ones Bob's finished work leans on, not the ones a general text sample uses.
+- **The keep lists.** From that ranking, lists keeping 90, 80, 75, 65, 60 and 50% of each layer's experts were made. Every layer keeps the same share, because a GGUF file needs the same expert count in every layer. Lists per job kind (inbox, office, repo) were also made at 80%.
+- **How each level was scored.** The experts not on a list were switched off while the brain was served (Brain Engine's live expert mask, patch 0001, through `model-lab/expert-mask.mjs --keep`). Nothing was cut, healed or saved. Each level then ran the held-out jobs of section 11.7.7, which no setting or lesson was ever tuned on.
+
+**Every level, on the held-out jobs (22 November):**
+
+| Experts kept | Office (of 14) | Repo (of 12) | Web (of 11) | Inbox coverage | Harms |
+|---|---|---|---|---|---|
+| 100% | 13 | 12 | 8 | 85.0% | 0 |
+| 90% | 13 | 12 | 9 | 92.7% | 0 |
+| 80% | 12 | 12 | 9 | 92.2% | 0 |
+| 75% | 13 | 10 | 8 | 90.8% | 1 |
+| 65% | 13 | 12 | 9 | 79.0% | 0 |
+| 60% | 13 | 12 | 8 | 79.6% | 0 |
+| 50% | 9 | 11 | 9 | 85.7% | 0 |
+
+![Figure 11.5: Flash-Next jobs passed at each REAP keep level](figures/reap-levels.svg)
+
+*Figure 11.5. Flash-Next on the held-out jobs at each keep level, experts masked, no healing. Office, repo and web are counts of jobs passed; inbox is the share of the inbox covered. One run per level.*
+
+- At 80% a second Office miss was a grader bug, fixed and not counted.
+- The 75% harm: Bob moved to the bin a mail that needed a reply.
+- Reading: nothing measurable is lost down to 80%. Below it the losses start: one harm at 75%, inbox coverage drops at 65% and 60%, and Office breaks at 50%. One or two jobs either way is noise at these set sizes, so 80% is taken as the floor, not as a measured edge.
+
+**Two follow-ups at 80% (23 November).**
+
+- **Protecting Office.** A keep list made from Office jobs alone passed 13 of 14 Office jobs, against 12 for the plain 80% list. A list merged from both (`all-80-office-80.json`) fixed one file lookup, but 3 jobs hit the time cap, so the cut uses the plain all-jobs 80% list.
+- **Redirecting cut experts to kept ones.** Each cut expert was paired with its most alike kept expert, so its share of the work could go there. On Office it tied (all experts 13, 80% mask 12, 80% with redirect 13). On inbox finding (triage, who, danger, unsubscribe, big triage) it lost clearly: 90 of 117 with all experts, 85 with the mask, 64 with redirect. The experts were barely alike (mean likeness 0.02), and the pairing measured only 16 of 129 asks before its time limit. It cost $7.55 over two tries. Redirect is dropped, and the paid merge it was meant to guide is held.
+
+**A miss that is not the cut.** The held-out job "h-word-read" fails even with all experts on. Its ask never says the answer is in the person's own files, so the brain searches the web instead. That is a gap in Bob's prompt, not a slip from cutting. The proposed fix is a general rule to check the person's own documents first for their own affairs, written without the held-out job's text.
+
+**The cut (ordered 23 November).** On MouseWurX's go ("cut it", with no merging), Flash-Next is cut on one rented H200 (plan `forge/plans/cut-bobert-flashnext.json`, commit 0bcc4157 and later on branch claude/project-thread-et6g5x). The pod starts from Unsloth's Q8_0 Flash-Next (188 GB) and removes 102 of the 512 experts from every layer by the 80% list (`all-keep-80.json`), keeping 410. The draft (MTP) layer keeps the experts kept most often across the other layers. The shared expert and everything outside the experts are untouched. An importance matrix is then made on the cut brain from training chats only, never the held-out sets, and five quants are made: IQ2_XXS, IQ2_M, Q3_K_M, IQ4_XS and Q4_K_M. IQ2_XXS is the size for a 16 GB card with 32 GB of RAM. Each is published as it is made, with the base model's licence, the keep list and the imatrix. The name is "Bobert 101Bob A6B Flash-Next REAP80": about 101B parameters left, about 6B active per word, unchanged by the cut.
+
+The masked scores above were measured with the 80% list on the Q4 file. The pod then serves the cut IQ2_XXS on the same held-out jobs, to compare with the all-experts and 80%-mask rows. Until those scores are in, and until the files are run on the home PC, how well the published files do is unproven in our lab, as we have yet to test. No healing was done. A heal is planned only if the cut files miss the held-out bar.
 
 
 ## 11.8 Discussion

@@ -74,7 +74,7 @@ export const TECH = {
   'Cache squeeze': 'KV cache quantization',
   'Stretch the window': 'YaRN (RoPE scaling)',
   'Speed against length, and the needle at every size': 'Needle in a haystack',
-  'Make it faster: Turbo': 'Speculative decoding',
+  'Make it faster: MTP': 'Speculative decoding',
   'Who guesses?': 'Draft model',
   'Teach it: here or rented': 'Fine-tuning (QLoRA here, LoRA rented)',
   'Best answers: a bigger brain judges, a smaller one learns': 'Rejection-sampling fine-tune and DPO, with an LLM judge',

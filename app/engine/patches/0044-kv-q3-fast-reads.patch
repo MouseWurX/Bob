@@ -1,0 +1,55 @@
+diff --git a/ggml/src/ggml-cuda/fattn-common.cuh b/ggml/src/ggml-cuda/fattn-common.cuh
+index ee22d43..8c8ce7e 100644
+--- a/ggml/src/ggml-cuda/fattn-common.cuh
++++ b/ggml/src/ggml-cuda/fattn-common.cuh
+@@ -232,6 +232,19 @@ static __device__ __forceinline__ float vec_dot_fattn_vec_KQ_q4_0(
+     return sum;
+ }
+ 
++// Brain Engine 0044: q3_0's 2-bit low parts and 1-bit high parts spread into bytes with a few masks and shifts, instead
++// of one value at a time (the same codes, checked for every input; writing long chats read the K/V cache this way)
++static __device__ __forceinline__ int q3_0_spread_lo(int x) {
++    x &= 0xFF;
++    x = (x | (x << 12)) & 0x000F000F;
++    return (x | (x << 6)) & 0x03030303;
++}
++static __device__ __forceinline__ int q3_0_spread_hi(int x) {
++    x &= 0xF;
++    x = (x | (x << 14)) & 0x00030003;
++    return (x | (x << 7)) & 0x01010101;
++}
++
+ // Brain Engine 0038: four values a thread, as q4_0, codes 0..7 for -4..3
+ template<int D, int nthreads>
+ static __device__ __forceinline__ float vec_dot_fattn_vec_KQ_q3_0(
+@@ -254,10 +267,7 @@ static __device__ __forceinline__ float vec_dot_fattn_vec_KQ_q3_0(
+         ggml_cuda_memcpy_1<sizeof(qh), 2>(&qh, K_q3_0[ib].qh);
+         const int hi = (qh >> (4*i4)) & 0xF;
+ 
+-        const int v = ((lo     ) & 3) | (((hi     ) & 1) << 2)
+-                    | ((lo >> 2) & 3) <<  8 | (((hi >> 1) & 1) << 10)
+-                    | ((lo >> 4) & 3) << 16 | (((hi >> 2) & 1) << 18)
+-                    | ((lo >> 6) & 3) << 24 | (((hi >> 3) & 1) << 26);
++        const int v = q3_0_spread_lo(lo) | (q3_0_spread_hi(hi) << 2); // 0044
+         const int u = Q_q8[k_KQ_0/nthreads];
+ 
+         const int sumi = ggml_cuda_dp4a(v, u, 0);
+@@ -568,13 +578,11 @@ static __device__ __forceinline__ void dequantize_V_q3_0(const void * __restrict
+     uint32_t qh;
+     ggml_cuda_memcpy_1<sizeof(qh), 2>(&qh, x[ib].qh);
+ 
+-    int8_t q8[ne];
+-#pragma unroll
+-    for (int l = 0; l < ne; ++l) {
+-        const int j = iqs + l;
+-        const int c = ((x[ib].qs[j/4] >> (2*(j%4))) & 3) | (((qh >> j) & 1) << 2);
+-        q8[l] = (int8_t) (c - 4);
+-    }
++    // 0044: the ne codes from iqs (a multiple of ne) at once, then -4 a byte
++    const int lo = x[ib].qs[iqs/4] >> (2*(iqs%4));
++    int q = q3_0_spread_lo(lo) | (q3_0_spread_hi((int) (qh >> iqs)) << 2);
++    q = __vsub4(q, 0x04040404);
++    const int8_t * q8 = (const int8_t *) &q;
+ 
+     if constexpr (std::is_same_v<T, half>) {
+ #ifdef FP16_AVAILABLE

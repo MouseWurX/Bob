@@ -73,7 +73,7 @@ export async function freePort() {
 }
 
 // Start a llama-server for one brain. Tries the card first (--fit on), then the processor.
-export async function startServer({ exe, gguf, mmproj, ctx = 8192, args = [], cpuOk = true, signal, log = () => {}, spawnFn = spawn, timeoutMs = 10 * 60e3, extra = [], place = null }) { // 1.5.164 `extra` and 1.5.167 `args`: more llama-server flags; cpuOk=false skips the processor-only try
+export async function startServer({ exe, gguf, mmproj, ctx = 8192, args = [], cpuOk = true, signal, log = () => {}, spawnFn = spawn, timeoutMs = 10 * 60e3, extra = [], place = null, env = null }) { // Nov 16 `env`: more environment (the hot-expert profile) // 1.5.164 `extra` and 1.5.167 `args`: more llama-server flags; cpuOk=false skips the processor-only try
   const more = [...args, ...extra];
   // 1.5.205 `place`: a placement set outright (calibration tries --n-cpu-moe N), in place of --fit and with no second try.
   const tries = place ? [place] : cpuOk ? [['--fit', 'on'], ['-ngl', '0']] : [['--fit', 'on']];
@@ -82,9 +82,10 @@ export async function startServer({ exe, gguf, mmproj, ctx = 8192, args = [], cp
     const port = await freePort();
     const args = ['-m', gguf, ...(mmproj ? ['--mmproj', mmproj] : []), '--host', '127.0.0.1', '--port', String(port), '-c', String(ctx), '--jinja', '--no-webui', ...more, ...extra]; // 1.5.177: no engine chat page (these always use a --fit build)
     log(`llama-server ${args.join(' ')}`);
-    const child = spawnFn(exe, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+    const child = spawnFn(exe, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true, ...(env ? { env: { ...process.env, ...env } } : {}) });
     let err = '';
-    child.stderr?.on('data', (d) => { err = (err + d).slice(-4000); });
+    let said = ''; // Nov 16: the engine's cache lines (fingerprint, ranked fill, refusals, totals), kept apart from the tail
+    child.stderr?.on('data', (d) => { err = (err + d).slice(-4000); for (const line of String(d).split('\n')) if (/MoE cache|ranked fill|llama_moe_cache:/.test(line)) said = (said + line + '\n').slice(-20000); });
     const url = `http://127.0.0.1:${port}`;
     const t0 = Date.now();
     let up = false;
@@ -94,7 +95,7 @@ export async function startServer({ exe, gguf, mmproj, ctx = 8192, args = [], cp
       try { if ((await fetch(url + '/health', { signal: AbortSignal.timeout(2000) })).ok) { up = true; break; } } catch {}
       await new Promise((r) => setTimeout(r, 1000));
     }
-    if (up) return { url, stop: () => { try { child.kill(); } catch {} }, where: extra[0] === '-ngl' ? 'processor' : 'card' };
+    if (up) return { url, stop: () => { try { child.kill(); } catch {} }, where: extra[0] === '-ngl' ? 'processor' : 'card', cacheLog: () => said };
     try { child.kill(); } catch {}
     last = err.split('\n').filter(Boolean).slice(-3).join(' | ');
   }

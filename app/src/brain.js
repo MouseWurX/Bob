@@ -24,6 +24,7 @@ import { securityTools } from './hands-security.js';
 import { selfToolsTools } from './selftools.js';
 import { Made, showMadeTool } from './made.js';
 import { scheduleTools } from './hands-schedules.js';
+import { routineTools } from './hands-routines.js'; // Routines (off by default): run the routines you built in the editor
 import { HANDS, handsSettings } from './hands-settings.js';
 import { useToolsTool } from './toolbox.js';
 import { ErrorTally } from './retry.js'; // reliability items 193-207, always on
@@ -209,7 +210,7 @@ export class Brain {
     this.watchTimer.unref?.();
     this.housekeeper = new Housekeeper(cfg, this);
     this.tools.forget_topic = forgetTopicTool(this);
-    Object.assign(this.tools, handsTools(this), scheduleTools(this), officeTools(this), securityTools(this), selfToolsTools(this), howtoTools(this)); // Hands: off until the user turns them on (see hands-settings.js)
+    Object.assign(this.tools, handsTools(this), scheduleTools(this), routineTools(this), officeTools(this), securityTools(this), selfToolsTools(this), howtoTools(this)); // Hands: off until the user turns them on (see hands-settings.js)
     this.tools.use_tools = useToolsTool(this);
     this.tools.show_plan = showPlanTool(this); // 1.5.78: the plan card before big jobs (plan.js), only with its setting on
     this.tools.ask_together = askTogetherTool(this); // 1.5.42: every OK a job needs on one card (together.js) // the toolbox (toolbox.js): groups added only when a job needs them

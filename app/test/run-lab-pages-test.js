@@ -145,7 +145,7 @@ check('Bob reads whether a brain carries its own guesser, and where its full wei
   await startTurbo(tlab, { brain: 'mtp', guesser: 'own', guess: [4] }); await wait(tlab);
   check('a brain with its own guesser runs with --spec-type draft-mtp and nothing else loaded', seen[1].args.join(' ') === '--spec-type draft-mtp --spec-draft-n-max 4');
   const u = useTurbo(tlab, { brain: 'big', draft: 'small', guess: 8 });
-  check('Use this in Bob saves that brain\'s Turbo row (a name, never a path)', cfg.llamacpp.turbo.big.on === true && cfg.llamacpp.turbo.big.draft === 'small' && cfg.llamacpp.turbo.big.max === 8 && /Turbo is on for Big/.test(u.line));
+  check('Use this in Bob saves that brain\'s Turbo row (a name, never a path)', cfg.llamacpp.turbo.big.on === true && cfg.llamacpp.turbo.big.draft === 'small' && cfg.llamacpp.turbo.big.max === 8 && /MTP is on for Big/.test(u.line));
   saveSettings(cfg, { llamacpp: { turbo: { evil: { on: true, draft: 'C:\\x\\y.gguf' }, self: { on: true, draft: 'self' } } } });
   check('Settings refuses a path or the brain itself as its draft', !cfg.llamacpp.turbo.evil && !cfg.llamacpp.turbo.self);
   const e = new LlamaCpp({ ...cfg, llamacpp: { ...cfg.llamacpp, turbo: { big: { on: true, draft: 'small', max: 8 }, mtp: { on: true, mtp: true, max: 4 }, off: { on: false, draft: 'small' } }, draft: { enabled: true, model: 'small', max: 16 } } });
