@@ -211,7 +211,7 @@ export function rentAsOf(m) {
   return hit ? `${hit[1]}/${hit[2]}` : '';
 }
 
-// Nov 23 2026: a brain that only a newer Brain Engine runs (catalogue engineMin, the build number, e.g. 36 for Raon-1).
+// Nov 23 2026: a brain that only a newer Brain Engine runs (catalogue engineMin, the build number, e.g. 37 for Raon-1).
 // Read from the installed Brain Engine's own marker. '' when it's new enough, else plain words. Download still works,
 // so the brain can come down while the engine update waits.
 export function engineShort(entry, { agentDir = '', read = fs.readFileSync } = {}) {

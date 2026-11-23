@@ -204,7 +204,7 @@ export function removedHtml(ctx) {
 export const FAMILIES = {
   Qwen: 'Made by the Qwen team at Alibaba. The biggest family here: quick little brains, big coders and thinkers, a picture reader and a picture editor.',
   Gemma: 'Made by Google. Brains that see pictures, from the phone-sized E2B to the 31B.',
-  Raon: 'Made by KRAFTON (the PUBG studio). A 29B coder and all-rounder that works 4B at a time, and a 3B small brain. Both need Brain Engine 36 or newer.',
+  Raon: 'Made by KRAFTON (the PUBG studio). A 29B coder and all-rounder that works 4B at a time, and a 3B small brain. Both need Brain Engine 37 or newer.',
   Granite: 'Made by IBM. Plain, steady brains for everyday work and office jobs, from a small 3B to a 30B.',
   Mistral: 'Made by Mistral AI in France. Ministral brains that see pictures, and Devstral for coding.',
   Nemotron: 'Made by NVIDIA. Quick brains built for tools and long jobs; some see pictures.',

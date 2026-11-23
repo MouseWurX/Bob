@@ -556,7 +556,7 @@
       "jobs": ["tinker", "bob", "reviewer", "deep", "office", "scout"],
       "name": "Raon-1 mini preview",
       "published": "2026-10-20",
-      "what": "KRAFTON's first big open brain: a coder and all-rounder that thinks before it answers and keeps up to 256K in mind. Only 4.3B of it works on each word, so on a 16 GB card the busy parts sit on the card and the rest waits in RAM. Text only. Needs Brain Engine 36 or newer.",
+      "what": "KRAFTON's first big open brain: a coder and all-rounder that thinks before it answers and keeps up to 256K in mind. Only 4.3B of it works on each word, so on a 16 GB card the busy parts sit on the card and the rest waits in RAM. Text only. Needs Brain Engine 37 or newer.",
       "sizeGB": 19.7,
       "vramGB": 16,
       "params": 28.8,
@@ -567,7 +567,7 @@
       "pick": "optional",
       "trial": true,
       "thinks": true,
-      "engineMin": 36,
+      "engineMin": 37,
       "files": [
         {
           "url": "https://huggingface.co/KRAFTON/Raon-1-mini-preview-gguf/resolve/cd61e81afcdfdf4b13cb345b3587c0ba4b918d00/raon-1-mini-preview-Q4_K_M.gguf",
@@ -590,7 +590,7 @@
       "jobs": ["small", "bob", "scout"],
       "name": "Raon-1 nano",
       "published": "2026-11-10",
-      "what": "KRAFTON's small brain: 3.2B, but half of that is a word table read one row at a time, so it runs like a much smaller one. Quick on a laptop or a handheld. Text only. Needs Brain Engine 36 or newer, so not on the phone app yet.",
+      "what": "KRAFTON's small brain: 3.2B, but half of that is a word table read one row at a time, so it runs like a much smaller one. Quick on a laptop or a handheld. Text only. Needs Brain Engine 37 or newer, so not on the phone app yet.",
       "sizeGB": 2.1,
       "vramGB": 3,
       "params": 3.2,
@@ -599,7 +599,7 @@
       "pick": "tiny",
       "trial": true,
       "thinks": true,
-      "engineMin": 36,
+      "engineMin": 37,
       "files": [
         {
           "url": "https://huggingface.co/KRAFTON/Raon-1-nano-gguf/resolve/67d566c2064079b67d0623c5a4acb981e13475cb/raon-1-nano-Q4_K_M.gguf",
