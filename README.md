@@ -411,7 +411,7 @@ Three cuts of [Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Nex
 | Cut | Experts kept | Files on Hugging Face (size) |
 |---|---|---|
 | [Bobert 101Bob A6B Flash-Next REAP80](https://huggingface.co/MouseWurX/Bobert-101Bob-A6B-Flash-Next-REAP80-GGUF) | 80% | IQ2_XXS 56.75 GB · IQ2_M 61.0 GB · Q3_K_M 81.65 GB |
-| [Riker 89Bob A6B Flash-Next REAP70](https://huggingface.co/MouseWurX/Riker-89Bob-A6B-Flash-Next-REAP70-GGUF) | 70% | IQ2_XXS 53.53 GB · more on the way |
+| [Riker 89Bob A6B Flash-Next REAP70](https://huggingface.co/MouseWurX/Riker-89Bob-A6B-Flash-Next-REAP70-GGUF) | 70% | IQ2_XXS 53.53 GB · IQ2_M 57.28 GB · more on the way |
 | [Bill 77Bob A6B Flash-Next REAP60](https://huggingface.co/MouseWurX/Bill-77Bob-A6B-Flash-Next-REAP60-GGUF) | 60% | IQ2_M 53.56 GB · Q3_K_M 69.16 GB · IQ4_XS 71.3 GB · Q4_K_M 86.96 GB (no IQ2_XXS: it failed the publish check) |
 
 **Rough system size.** About 29 GB of every file is the n-gram word table, which is read from the drive a few rows per word, so it needs no RAM or card memory. What has to fit in RAM and card memory together is roughly the file size minus 29 GB, plus room for the chat: about 28 GB for Bobert IQ2_XXS, 25 GB for Riker IQ2_XXS, 25 GB for Bill IQ2_M, 40 GB for Bill Q3_K_M, 58 GB for Bill Q4_K_M. Files over 50 GB come in two parts; point the engine at the first. The name counts the billions of parameters left, not counting the word table.
