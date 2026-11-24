@@ -54,6 +54,24 @@ Follow-ups at 80% (the Bobert cut), same held-out jobs, which decided how all th
 - The one office job every level missed (a file lookup) also fails with all experts: the question never says the answer is in
   the person's files, so the model searches the web. That is a prompt gap, not something the cut caused.
 
+## Sharing the word table between cuts
+
+All three Flash-Next cuts (Bobert 80%, Riker 70%, Bill 60%) carry the same 51B n-gram word table, about 29 GB of every file.
+llama.cpp (b12359 and later) can load it from a separate file with `--ple`, so one copy can serve every cut you keep.
+Our split script writes a file as numbered parts with the table alone in the last part. It only copies bytes: no graphics
+card, little memory, and the original is only read. Plain Node, nothing to install:
+[ple-split.mjs](https://github.com/MouseWurX/Bob/blob/main/app/model-lab/ple-split.mjs)
+(or the Python one, [ple_split.py](https://github.com/MouseWurX/Bob/blob/main/app/model-lab/forge/pod/ple_split.py)).
+
+```
+node ple-split.mjs --src <first cut>.gguf --out-dir first          # its parts plus the table part (keep this one)
+node ple-split.mjs --src <next cut>.gguf --out-dir next --no-table  # its own parts only
+llama-server -m next/<name>-00001-of-0000N.gguf --ple first/<name>-0000N-of-0000N.gguf
+```
+
+Check that a split brain loads and answers before you delete its original. One table part works for every cut and quant
+that stores the table at the same type: the IQ2 files all use q4_0; for the bigger quants, check the type first.
+
 ## The tools it was tested with
 
 The jobs ran through Bob's real tool loop with Bob's own tools, about 55 in all, offered to the model as function calls:
