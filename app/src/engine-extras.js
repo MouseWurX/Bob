@@ -224,6 +224,24 @@ export const STANDIN_ENV = { LLAMA_MOE_STANDIN: 'rank', LLAMA_MOE_STANDIN_MAX: '
 // sits behind Turbo; Turbo: stand-ins wins when both are on.
 export const turboDriveStandins = (cfg) => cfg?.turbo === true && cfg?.turboDriveStandins === true && !turboStandins(cfg);
 export const DRIVE_STANDIN_ENV = { LLAMA_MOE_STANDIN: 'drive' };
+// Turbo: keep more guesses (Brain Engine 0120, after llamAmpere's mb-MTP, MIT; off unless switched on, and only with
+// Turbo). A brain that already drafts (its own MTP head, the DSpark drafter or a draft brain) samples its guesses, and
+// the engine checks them by rejection; a guess that check throws away is kept anyway when the brain rates it at least
+// as likely as its replacement. More guesses kept, so faster writing, and the words lean to the brain's likeliest
+// tokens, so they change. Never at temperature 0, never for an end token, never while a grammar shapes the output
+// (tool calls). Copy guessing has no odds, so it's always checked exactly. Speed and drift are unproven in our lab.
+export const KEEP_GUESSES_FROM_BE = 46;
+export const turboKeepGuesses = (cfg) => cfg?.turbo === true && cfg?.turboKeepGuesses === true;
+export const KEEP_GUESSES_ENV = { LLAMA_SPEC_MB: '1' };
+const MODEL_GUESSERS = ['draft-mtp', 'draft-dspark', 'draft-simple', 'draft-eagle3', 'draft-dflash'];
+// the arguments it adds to a start: the sampling drafter, on Brain Engine 46 or newer, only where a model drafts
+export function keepGuessesArgs(cfg, { args = [], be = 0 } = {}) {
+  if (!turboKeepGuesses(cfg) || !(be >= KEEP_GUESSES_FROM_BE) || args.includes('--spec-draft-sampling')) return [];
+  const drafts = specTypes(args).some((t) => MODEL_GUESSERS.includes(t)) || args.some((a) => DRAFT_BRAIN.includes(a));
+  return drafts ? ['--spec-draft-sampling', 'probabilistic'] : [];
+}
+// the engine key goes with it, only when the start samples its guesses
+export const keepGuessesEnv = (cfg, { args = [], be = 0 } = {}) => (turboKeepGuesses(cfg) && be >= KEEP_GUESSES_FROM_BE && args.some((a, i) => a === '--spec-draft-sampling' && args[i + 1] === 'probabilistic') ? { ...KEEP_GUESSES_ENV } : {});
 // The experts per word Turbo asks of a brain whose own count is `own`: 4 when it has more, else nothing.
 export const turboPerWord = (cfg, own) => (turboExperts(cfg) && Number(own) > TURBO_EXPERTS ? TURBO_EXPERTS : null);
 // Progressive Memory (Brain Engine patch 0039): the engine names LLAMA_KV_TIERS under -ctv in --help.
