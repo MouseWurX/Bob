@@ -8,7 +8,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { LlamaCpp } from '../src/llamacpp.js';
-import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP, fillEnv, FILL_FROM_BE, loadAtStep, mtpBlocksSwitch, MTP_SWITCH_FROM_BE, apuStepOk, APU_MAX_STEP, APU_FLOOR, mtpSpareEnv } from '../src/conductor.js';
+import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP, fillEnv, FILL_FROM_BE, loadAtStep, mtpBlocksSwitch, MTP_SWITCH_FROM_BE, apuStepOk, APU_MAX_STEP, APU_FLOOR, mtpSpareEnv, loadStepBySpeed, cleanSpeeds, LOAD_PICK_MARGIN } from '../src/conductor.js';
 import { cleanTuning, mergeTuning } from '../src/engine-tuning.js';
 import { HELP } from '../public/help-content.js';
 
@@ -213,6 +213,21 @@ check('Settings Help names it', /Let the Conductor drive/.test(HELP.find((h) => 
 check('the FAQ answers it and says where it works', /Android app/.test(HELP.find((h) => h.id === 'faq-conductor' && h.group === 'FAQ')?.html || ''));
 check('the glossary explains it', /<dt>Conductor<\/dt>/.test(HELP.find((h) => h.id === 'glossary')?.html || ''));
 
+// Nov 24: the top step by measured speed, not the biggest that fits
+{ const sp = { read: { 2048: 3000, 4096: 3100 }, write: { 2048: 90, 4096: 70 } };
+  check('the top step stays until it has been measured', loadStepBySpeed({ speeds: { read: { 2048: 3000 }, write: { 2048: 90 } }, chat: 2048, max: 4096 }).step === 4096);
+  check('a smaller step measured faster wins, and says why', (() => { const r = loadStepBySpeed({ speeds: sp, chat: 2048, max: 4096, readTok: 16384 }); return r.step === 2048 && /measured faster/.test(r.why); })());
+  check('a bigger step measured faster keeps it', loadStepBySpeed({ speeds: { read: { 2048: 2000, 4096: 3400 }, write: { 2048: 90, 4096: 89 } }, chat: 2048, max: 4096 }).step === 4096);
+  check('a win inside the margin keeps the top step (no flip on noise)', loadStepBySpeed({ speeds: { read: { 2048: 3000, 4096: 3000 }, write: { 2048: 90, 4096: 90 * (1 - LOAD_PICK_MARGIN / 2) } }, chat: 2048, max: 4096, readTok: 0, outTok: 300 }).step === 4096);
+  check('a step only guessed from another (no measured write) never wins', loadStepBySpeed({ speeds: { read: { 2048: 9000, 4096: 3000 }, write: { 4096: 80 } }, chat: 2048, max: 4096 }).step === 4096);
+  check('saved speeds count only for the same Brain Engine and only clean numbers', cleanSpeeds({ be: 45, speeds: { big: { read: { 4096: 3000, x: 5, 2048: -1 }, write: { 4096: 'fast' } } } }, 45).big.read[4096] === 3000 && Object.keys(cleanSpeeds({ be: 45, speeds: { big: { read: { 4096: 3000, x: 5, 2048: -1 } } } }, 45).big.read).length === 1 && Object.keys(cleanSpeeds({ be: 44, speeds: { big: sp } }, 45)).length === 0 && Object.keys(cleanSpeeds(null, 45)).length === 0);
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-cond-speeds-'));
+  const a = new LlamaCpp({ agentDir: d, dataDir: d, llamacpp: { models: { big } } }); clearInterval(a.idleTimer); a.beNo = () => 45;
+  a.condSpeedsAll().big = sp; a.condSpeedsSave();
+  const b = new LlamaCpp({ agentDir: d, dataDir: d, llamacpp: { models: { big } } }); clearInterval(b.idleTimer); b.beNo = () => 45;
+  const c = new LlamaCpp({ agentDir: d, dataDir: d, llamacpp: { models: { big } } }); clearInterval(c.idleTimer); c.beNo = () => 46;
+  check('measured speeds come back on the next run of the same engine, not a new one', b.condSpeedsAll().big?.write?.[2048] === 90 && !c.condSpeedsAll().big);
+  fs.rmSync(d, { recursive: true, force: true }); }
 fs.rmSync(tmp, { recursive: true, force: true });
 { const e = engineOf({}, { testSeed: 7 }); let sent = null; const was = globalThis.fetch;
   globalThis.fetch = async (_u, o) => { sent = JSON.parse(o.body); return { ok: true }; };

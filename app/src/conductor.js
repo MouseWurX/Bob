@@ -56,6 +56,37 @@ export const SWITCH_IN_JOB_FROM_BE = 44;
 // the step to read a new part at, for a chat this long
 export const readStepFor = (totalTokens) => (totalTokens >= BIG_FROM ? BIG_STEP : READ_STEP);
 
+// Nov 24 (the owner: GUPPI's job is speed and a safety net, so he must beat "Let Bob pick"): the top step a brain loads
+// and reads at comes from its own measured speeds, not from the biggest step the card holds. A smaller top step also
+// leaves the copy cache fill more of the card. Only steps with both a read and a write speed measured on this machine
+// count (no shares guessed from another step); until the top step is measured it stays, which is how it gets measured.
+// A smaller step has to beat it by LOAD_PICK_MARGIN, so a brain doesn't flip between loads on noise.
+export const LOAD_PICK_MARGIN = 0.05;
+export function loadStepBySpeed({ speeds, chat = CHAT_STEP, max = 0, readTok = 16384, outTok = 300 } = {}) {
+  if (!(max > chat)) return { step: max > 0 ? max : chat, why: '' };
+  const measured = (s) => speeds?.read?.[s] > 0 && speeds?.write?.[s] > 0;
+  if (!measured(max)) return { step: max, why: '' };
+  const n = Math.max(MIN_NEW, Number(readTok) || 0), o = Math.max(0, Number(outTok) || 0);
+  const time = (s) => n / speeds.read[s] + o / speeds.write[s];
+  let best = max;
+  for (const s of [...new Set([BIG_STEP, READ_STEP, chat])].filter((x) => x < max && x >= chat).sort((a, b) => b - a)) {
+    if (measured(s) && time(s) < time(best) * (1 - LOAD_PICK_MARGIN)) best = s;
+  }
+  return best === max ? { step: max, why: '' } : { step: best, why: `step ${best} measured faster than ${max} here (about ${time(best).toFixed(1)} s against ${time(max).toFixed(1)} s for a ${n}-token read and ${o} written)` };
+}
+// learned speeds kept between runs (dataDir/conductor/speeds.json): only for the same Brain Engine build, and only
+// clean numbers, so an old or hand-edited file can't steer the step
+export function cleanSpeeds(saved, beNo = 0) {
+  if (!saved || typeof saved !== 'object' || saved.be !== beNo || !saved.speeds || typeof saved.speeds !== 'object') return {};
+  const out = {};
+  for (const [model, sp] of Object.entries(saved.speeds)) {
+    const kinds = {};
+    for (const kind of ['read', 'write']) kinds[kind] = Object.fromEntries(Object.entries(sp?.[kind] || {}).filter(([k, v]) => Number(k) > 0 && Number.isFinite(v) && v > 0).map(([k, v]) => [Number(k), v]));
+    out[model] = kinds;
+  }
+  return out;
+}
+
 // learned speeds: { read: { step: t/s }, write: { step: t/s } }, kept as a running mean (newest 30%)
 export function learnStep(sp, kind, step, tps) {
   const s = sp || { read: {}, write: {} };
