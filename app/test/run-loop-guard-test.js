@@ -16,8 +16,8 @@ const until = async (f, ms = 4000) => { for (let i = 0; i < ms / 20; i++) { if (
 {
   const ctx = {};
   check('152: the budget starts open', nudgeOk(ctx));
-  for (let i = 0; i < NUDGE_BUDGET; i++) spendNudge(ctx);
-  check(`152: after ${NUDGE_BUDGET} sends-back, no more`, !nudgeOk(ctx) && NUDGE_BUDGET === 4); // Nov 23: more generous (was 2)
+  for (let i = 0; i < 12; i++) spendNudge(ctx);
+  check('152: no shared count (as #275): every kind of nudge still gets its one go', nudgeOk(ctx) && NUDGE_BUDGET === Infinity && ctx.nudges === 12);
 }
 
 // ---------- 154-156: progress ----------
@@ -212,7 +212,7 @@ const hiddenNotes = () => brain.session('main').filter((m) => m.role === 'system
     { role: 'assistant', content: 'never reached' }
   ];
   await run('what is the weather?');
-  check(`152: no more than ${1 + NUDGE_BUDGET} asks (the first try and ${NUDGE_BUDGET} sends-back)`, asked <= 1 + NUDGE_BUDGET, String(asked));
+  check('152: no more than 3 asks (each kind of send-back once)', asked <= 3, String(asked));
 }
 { // 157, Nov 23: no calls-per-turn cap (was 40): 42 searches that keep finding new things all run
   reset();

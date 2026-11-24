@@ -87,14 +87,17 @@ export { SIDE_LANE, sideOk, APU_MIN_CTX, APU_CARVE_MARGIN_GB, APU_NO_ROOM, apuRo
 export { APU_HOLDBACK_DEFAULT_GB, apuHoldbackGB } from './brain-lanes.js';
 export { NOW_IN_NOTE, CUT_NOTE, fitContext, askWords, cutKeeping, MAX_TRACE, fileBefore, traceStep, TOO_LONG, staleHandErrors, claimsPcAction, claimsObservation, OBSERVE_CORRECTION, realState, meanwhileNear, engineLabel, linkKey, CLAIM_CORRECTION, realPcPrompt, ALT_ROUTE_NUDGE, ALT_ROUTE_DONE, askedCount, quickHandBack, EMPTY_NOTE, COMPACT_KEEP, HISTORY_PER, HISTORY_MAX, historyKeep, NO_ANSWER_NOTE, UNCAUGHT_QUIET_MS, NO_ANSWER_PARKED, editPrompt, loadMode, loadLine, thinkStream } from './brain-words.js';
 
-// Nov 23 (the owner's rule: no step, time, thinking or reply caps): no step count ends a reply. What stops a runaway
-// is lack of progress (loop-guard.js: nothing new, every call failing, going round in circles, refused reads in a
-// row) and Stop. A job may still ask for its own step count (a hat's maxSteps, the Lab's test runs).
+// Nov 23 (the owner's rule: no step, time, thinking or reply caps; then "be a bit more generous, but be loud"): no
+// everyday step count ends a reply (it was 8 at Low effort). What stops a job going nowhere is lack of progress
+// (loop-guard.js: nothing new, every call failing, going round in circles, refused reads in a row) and Stop.
+// Same as #275 (Nov 21, "NO STEP LIMITS"): chats from other people (Discord, Telegram, another Bob) keep GUEST_STEPS,
+// so a stranger can't keep your computer busy. cfg.stepCap is for tests only (an endless scripted brain); the app never sets it.
 export const MAX_STEPS = Infinity;
+export const GUEST_STEPS = 30;
 export const QUEUE_SAVE_MS = 1000; // item 230
 // Nov 11 (item 5): bigger jobs get more steps. Low effort (the usual chat) keeps 8; Medium, High and Extreme get more
 // room before the last step (no tools, answer with what he has). The "where we are" note keeps a long job on track.
-// Nov 23: effort no longer sets a step count (it was 8, 12, 16 and 24); every effort gets no cap.
+// Nov 23: effort no longer sets a step count (it was 8, 12, 16 and 24).
 export const STEPS_BY_EFFORT = { low: Infinity, medium: Infinity, high: Infinity, extreme: Infinity };
 export const loopSteps = (effort) => STEPS_BY_EFFORT[cleanEffort(effort)] || MAX_STEPS;
 // #57 stopgap (two-Bob trial, Test B); Bob's own #57 fix replaces these.

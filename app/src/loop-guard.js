@@ -6,9 +6,11 @@ import crypto from 'node:crypto';
 import { cleanJobHelps } from './job-helps.js';
 
 // Nov 23 (the owner: "be a bit more generous with them, but be loud when we detect it"): the retry limits below were
-// doubled or close to it (sends-back 2 -> 4, nothing-new rounds 3 -> 5, all-failed rounds 4 -> 6), and each one that
+// doubled or close to it (nothing-new rounds 3 -> 5, all-failed rounds 4 -> 6, a tool set aside after 5 fails, not 3), and each one that
 // fires now says so in the chat (LOUD_LINES), not only in the logbook.
-export const NUDGE_BUDGET = 4;          // 152: the honesty, empty, can't, promise and tests nudges share four sends-back per turn
+// 152, same as #275 (Nov 21, "nudges?"): no shared count. Each kind (claimChecked, cantRetried, promiseChecked,
+// testsNudged... flags) still sends him back at most once a turn, so they can't loop.
+export const NUDGE_BUDGET = Infinity;
 export const CALLS_PER_TURN = Infinity; // 157: was 40 tool calls per turn; Nov 23 no cap (the owner's rule), progress checks stop runaways
 // 161 (Nov 12): the safety net is always on and uses the job time limit's minutes (Settings, Jobs), whether
 // that switch is on or off, so no Bob runs away. Card waits don't count (163).

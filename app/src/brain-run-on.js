@@ -45,7 +45,7 @@ import { sidePick, apuRoom } from './brain-lanes.js';
 import { handOffPromise, HAND_OFF_LINE, HAND_OFF_LOG } from './hand-off-promise.js';
 import { switchFor } from './setup-offer.js';
 import { settleOld } from './stale-asks.js';
-import { MAX_STEPS, loopSteps, borrowedLine, MAX_CALLS_PER_REPLY, HAND_TOOLS, repeatCheck, repeatNote, trailOf, REPEAT_STOP_LINE, REPEATS_THEN_ANSWER, ANSWER_NOW_NUDGE } from './brain.js';
+import { MAX_STEPS, GUEST_STEPS, loopSteps, borrowedLine, MAX_CALLS_PER_REPLY, HAND_TOOLS, repeatCheck, repeatNote, trailOf, REPEAT_STOP_LINE, REPEATS_THEN_ANSWER, ANSWER_NOW_NUDGE } from './brain.js';
 
 // Methods of the Brain class, put on it in its main file with the same rules as the methods written inside it.
 export const runOnParts = {
@@ -253,7 +253,7 @@ export const runOnParts = {
     // long job a short "where we are" note last. The last step has no tools, so he answers instead of running out.
     // Reliability 164: a job that runs again (session switch, rented-brain card, Gaming, restart) carries on with the
     // steps, sends-back and calls it has left, instead of a whole new budget each time.
-    const carried = carriedBudget(job, this.plainLoop || job?.guest ? MAX_STEPS : loopSteps(job?.effort));
+    const carried = carriedBudget(job, job?.guest ? GUEST_STEPS : Number(this.cfg.stepCap) > 0 ? Number(this.cfg.stepCap) : this.plainLoop ? MAX_STEPS : loopSteps(job?.effort)); // stepCap: tests only, never set by the app
     const maxSteps = carried.maxSteps;
     Object.assign(ctx, { carriedSteps: carried.steps, nudges: carried.nudges, callsRun: carried.calls, turnStartedAt: Date.now(), progress: new Progress() });
     if (carried.steps) this.log('loop', `carrying on: ${carried.steps} steps used before, ${maxSteps} left`);
@@ -294,7 +294,7 @@ export const runOnParts = {
         if (job?.stopAfter && !ctx.softStopped) { ctx.softStopped = true; ctx.endWhy = 'stop-after'; ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: SOFT_STOP_NOTE(who, stepsRan(msgs, turnStart)), hidden: true }); emit({ type: 'announce', text: SOFT_STOP_LINE }); }
         else if (await timeCheck(this, ctx, { now: () => Date.now() - waitedFor(signal) }) === 'wrap') { ctx.endWhy = 'time'; ctx.noTools = true; ctx.lastRound = true; msgs.push({ role: 'system', content: TIME_UP_NOTE(who, cleanJobHelps(this.cfg.jobHelps).minutes), hidden: true }); }
       } else if (step === 0) await timeCheck(this, ctx, { now: () => Date.now() - waitedFor(signal) });
-      if (step === maxSteps - 1 && !this.helpOff('last') && !ctx.noTools && msgs.slice(turnStart).some((m) => m.role === 'tool')) { ctx.noTools = true; ctx.lastRound = true; ctx.endWhy ||= 'steps'; this.log('tool', 'the last step: no more tools, so he answers with what he has'); }
+      if (step === maxSteps - 1 && !this.helpOff('last') && !ctx.noTools && msgs.slice(turnStart).some((m) => m.role === 'tool')) { ctx.noTools = true; ctx.lastRound = true; ctx.endWhy ||= 'steps'; this.log('tool', 'the last step: no more tools, so he answers with what he has'); this.log('warn', `a guard stopped the tools: the ${maxSteps}-step limit (${model || 'brain'})`); emit({ type: 'announce', text: `(I stopped using tools: this chat's ${maxSteps}-step limit was reached. Here's what I have.)` }); }
       if (ctx.loaded) used.toolSet = ctx.loaded.toolSet = this.toolSetOf(model); // tool-sets.js: the family's wording
       const tools = ctx.noTools ? [] : guestTools(job, this.withWatchTools(this.frontDeskTools(ctx.loaded), job)); // #57 stopgap: after repeats, answer
       // The big brain reads notes passed along to it at the start of each step, and its chat says so.
