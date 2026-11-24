@@ -53,7 +53,7 @@
      ],
      "serve": "IQ2_XXS",
      "imatrix_chunks": 200,
-     "private": true,
+     "private": false,
      "card_extra": "cards/bill-flashnext.md",
      "hold_minutes": 45,
      "expect_gb": {
@@ -118,7 +118,7 @@
      ],
      "serve": "IQ2_XXS",
      "imatrix_chunks": 200,
-     "private": true,
+     "private": false,
      "card_extra": "cards/riker-flashnext.md",
      "hold_minutes": 45,
      "expect_gb": {
@@ -184,10 +184,10 @@
  ],
  "publish": {
   "user": "MouseWurX",
-  "private": true,
+  "private": false,
   "odds": false,
   "models": [],
-  "note": "Private until the owner says public (24 Nov). The pod uploads each quant that passes the publish gate."
+  "note": "24 Nov 2026: PUBLIC (the owner chose \"Go public now\": Hugging Face's private storage, about 100 GB, can't hold the cuts). Each quant still goes up only after the publish gate; the card says unproven until the held-out scores are in."
  },
  "door_minutes": 20,
  "card_sets": [
