@@ -8,9 +8,10 @@ expert scores are on this account too ([bob-lessons](https://huggingface.co/data
 The goal of this cut is the full Flash-Next's skill on a home computer with a 16 GB graphics card and 32 GB of RAM.
 
 **Why the files are bigger than their names suggest.** Two parts of Flash-Next have rows that aren't a multiple of 256 wide: each
-expert's down projection (640) and the 51B n-gram embedding (160). llama.cpp's 2- and 3-bit types need 256-wide rows, so llama-quantize
-gives those tensors a 32-wide 4- to 5-bit type at every quant. Only the experts' gate and up projections get the named type. The
-n-gram embedding (about 29 GB at IQ2) is looked up a few rows per word, so with memory mapping on it is read from the drive and needs
+expert's down projection (640) and the 51B n-gram embedding (160). llama.cpp's k- and i-quants need 256-wide rows. In the IQ2 files
+the down projections use Q2_0 (2.25 bits in groups of 64, which 640 fits); in the others llama-quantize gives them a 32-wide 4- to
+5-bit type. The n-gram embedding can only take a 32-wide type (about 4.5 bits, about 29 GB) in every file. It is looked up a few rows
+per word, so with memory mapping on it is read from the drive and needs
 no RAM or card memory; the rest of the file is what has to fit.
 
 ## How the experts were chosen

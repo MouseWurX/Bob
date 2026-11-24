@@ -54,18 +54,33 @@
      ],
      "serve": "IQ2_XXS",
      "imatrix_chunks": 200,
-     "private": false,
+     "private": true,
      "card_extra": "cards/bobert-flashnext.md",
      "imatrix_from": "hf:MouseWurX/Bobert-101Bob-A6B-Flash-Next-REAP80-GGUF:imatrix.gguf",
      "hold_minutes": 45,
      "expect_gb": {
-      "IQ2_XXS": "60-72",
-      "IQ2_M": "64-80",
-      "Q3_K_M": "72-92",
-      "IQ4_XS": "76-95",
-      "Q4_K_M": "90-112"
+      "IQ2_XXS": "51.1-62.5",
+      "IQ2_M": "55.7-68.1",
+      "Q3_K_M": "72.5-88.7",
+      "IQ4_XS": "75.1-91.7",
+      "Q4_K_M": "92.7-113.3"
      },
-     "expect_note": "24 Nov, measured on the first IQ2_XXS (65.8 GB): Flash-Next's expert down projections are 640 wide and the n-gram embedding 160 wide, neither a multiple of 256, so llama-quantize gives them a 32-wide type (iq4_nl / q4_0 / q5_0, about 4.5 to 5.5 bits) at every k- and i-quant; only gate/up experts take the low type. A file outside its range is not uploaded."
+     "expect_note": "24 Nov: predicted from the first IQ2_XXS (65.8 GB, down experts fell to iq4_nl). Flash-Next's down experts are 640 wide and the n-gram embedding 160 wide; at IQ2 the down experts are forced to q2_0 (2.25 bits, 64-wide groups, which 640 fits); the embedding can only take a 32-wide type (q4_0, ~29 GB, read from the drive). A file outside +-10% of its prediction is not uploaded. Unsloth's own full-size UD-Q2_0 is 70.5 GB, so ~63 GB at 80% kept.",
+     "down_type": {
+      "IQ2_XXS": "q2_0",
+      "IQ2_M": "q2_0"
+     },
+     "predict_gb": {
+      "IQ2_XXS": 56.8,
+      "IQ2_M": 61.9,
+      "Q3_K_M": 80.6,
+      "IQ4_XS": 83.4,
+      "Q4_K_M": 103
+     },
+     "redo": [
+      "IQ2_XXS",
+      "IQ2_M"
+     ]
     },
     "commands": [
      "node mail-jobs.mjs --catalog --held --out ../../bob-model-lab/out/mail-jobs-held/jobs.jsonl",
@@ -110,10 +125,10 @@
  ],
  "publish": {
   "user": "MouseWurX",
-  "private": false,
+  "private": true,
   "odds": false,
   "models": [],
-  "note": "The pod uploads the cut brain's quants itself (benchmark model cut.repo, public), each as soon as it is made; no LICENSE, no upload."
+  "note": "Private until the owner says public (24 Nov). The pod uploads each quant that passes the publish gate."
  },
  "door_minutes": 20,
  "card_sets": [

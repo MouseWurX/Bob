@@ -344,6 +344,11 @@ PY
           # 23 Nov (first Bobert run): a quant stopped part-way was taken as made, failed to load, and the run ended. A quant counts
           # only when sizes.txt lists it (written after llama-quantize finished and the .part file was renamed); left-overs go.
           rm -f $CD/*.gguf.part
+          # plan cut.redo: quants to make again (24 Nov: the IQ2s, with the down experts at q2_0); their old file and records go
+          for rq in $(plist "$CJ.get('redo',[])" | tr ',' ' '); do
+            rm -f $CD/*-$rq.gguf; sed -i "/^$rq /d" $OUT/bench/cut-$BN/sizes.txt $OUT/bench/cut-$BN/published.txt 2>/dev/null
+            [ -f $CD/gated.txt ] && sed -i "/-$rq\.gguf$/d" $CD/gated.txt; rm -f $OUT/bench/cut-$BN/gate-$rq.txt; echo "$rq will be made again (plan cut.redo)"
+          done
           BFILE=""; for f in $CD/*-$SQ.gguf; do [ -f "$f" ] && grep -q " $(basename "$f") bytes $(stat -c %s "$f") " $OUT/bench/cut-$BN/sizes.txt 2>/dev/null && BFILE=$f; done
           if [ -z "$BFILE" ]; then
             SPEC=$(plan "$CJ['src']"); REPO=$(echo "$SPEC" | cut -d: -f2); FP=$(echo "$SPEC" | cut -d: -f3)
@@ -379,6 +384,8 @@ PY
               [ -f $IMX ] || echo "bench $BN: no imatrix; the IQ2 quants need one and will fail, the others are made without it"
             fi
             PUB_PRIVATE=$(plan "$CJ.get('private',False)")
+            # 24 Nov: "hf upload --private" only counts when a repo is made; an existing repo is set to the plan's visibility first
+            [ -z "${NOUP:-}" ] && set_visibility "$CREPO" model "$PUB_PRIVATE"
             [ -z "${NOUP:-}" ] && { PYTHONPATH= python3 $POD/cut_card.py --dir $CD --cut $OUT/bench/cut-$BN/cut.json --name "$CNAME" --base "$(plan "$CJ['base']")" --base-params $BP --source "$(plan "$CJ['source_note']")" --license-name "$(plan "$CJ['license_name']")" --extra "$IN/$(basename "$(plan "$CJ.get('card_extra','none')")")" && PUB_PRIVATE=$PUB_PRIVATE publish_dir $CD "$CREPO" "card, license, keep list, imatrix" model . "README.md" "LICENSE" "keep.json" "imatrix.gguf" || echo "bench $BN: first upload failed"; }
             for q in $(plist "$CJ['quants']" | tr ',' ' '); do
               QF=$CD/$CFILE-$q.gguf
@@ -394,7 +401,7 @@ PY
               case "$q" in IQ1*|IQ2*) if [ -f $IMX ]; then
                 QIMX=$W/bench/imatrix-filled-$BN.gguf
                 [ -f $QIMX ] || PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/imatrix_fill.py --imatrix $IMX --out $QIMX >> $OUT/bench/cut-$BN/gaps-$q.txt 2>&1 || QIMX=$IMX
-                mapfile -t TT < <(PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/imatrix_gaps.py --model $CUTQ8 --imatrix $QIMX 2>>$OUT/bench/cut-$BN/gaps-$q.txt)
+                mapfile -t TT < <(PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/imatrix_gaps.py --model $CUTQ8 --imatrix $QIMX --down "$(plan "$CJ.get('down_type',{}).get('$q','')")" 2>>$OUT/bench/cut-$BN/gaps-$q.txt)
                 head -1 $OUT/bench/cut-$BN/gaps-$q.txt; fi ;; esac
               [ ${#TT[@]} -gt 0 ] && echo "$q: $(( ${#TT[@]} / 2 )) tensor(s) with no imatrix entry get their own type: q8_0, or q2_k for expert and embedding tensors (out/bench/cut-$BN/gaps-$q.txt)"
               LD_LIBRARY_PATH="$(dirname $QZ):${LD_LIBRARY_PATH:-}" $QZ --allow-requantize $( [ -f $QIMX ] && echo --imatrix $QIMX ) "${TT[@]}" $CUTQ8 $QF.part $q $(nproc) > $OUT/bench/cut-$BN/quant-$q.log 2>&1 && mv -f $QF.part $QF || { echo "bench $BN: $q failed (see out/bench/cut-$BN/quant-$q.log)"; tail -2 $OUT/bench/cut-$BN/quant-$q.log; rm -f $QF $QF.part; continue; }
