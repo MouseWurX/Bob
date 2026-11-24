@@ -23,7 +23,7 @@ no RAM or card memory; the rest of the file is what has to fit.
    actually contributes: the router's weight for it times the size of its output, summed over every word of the clean runs
    (REAP, Lasby et al. 2025: router-weighted expert activation pruning). Pick counts alone ignore how much an expert adds when
    picked, which is why we used the weighted score.
-3. **The same number kept in every layer.** In each of the 48 layers the 359 highest-scoring of the 512 experts are kept (70%).
+3. **The same number kept in every layer.** In each of the 48 layers the 359 highest-scoring of the 512 experts are kept (70%). The 70% list was made after the per-expert scores had been discarded: it is the 65% list plus, in each layer, the 26 experts of the band between the 65% and 75% lists that were picked most often. In the last layer (47) the trace saw only about 30 experts carry real weight, so the rest of that layer's list is filled in by expert number; the mask runs at the tested levels used the same lists.
    A GGUF holds one expert count, so every layer keeps the same number. The MTP (draft) layer keeps the experts kept most often
    across the other layers. The shared expert and everything outside the experts are untouched.
 4. **Judged on jobs it never saw.** Every score below is on Bob's HELD-OUT job sets, which were never used to score experts,
