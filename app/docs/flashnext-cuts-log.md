@@ -38,13 +38,22 @@ Rows are added as each file is made and scored. A measure not run yet is left ou
 | 60% Bill | IQ4_XS | 71.3 GB (2 parts on Hugging Face) | PASS: size inside 63.4-77.4 GB, loads, answered Paris and 42; public | | | | | | | | pod svcq7m3qy95uof out/bench/cut-blfn/gate-IQ4_XS.txt, reported 23 Nov 11:15 PM |
 | 80% Bobert | Q3_K_M | 81.65 GB (2 parts on Hugging Face) | PASS: size inside 72.5-88.7 GB, loads, answered Paris and 42; public | | | | | | | | pod 35un7hx2k2gdsd out/bench/cut-bnfn/gate-Q3_K_M.txt, reported 23 Nov 11:28 PM |
 | 60% Bill | Q4_K_M | 86.96 GB (2 parts on Hugging Face) | PASS: size inside 79.6-97.2 GB, loads, answered Paris and 42; public | | | | | | | | pod svcq7m3qy95uof out/bench/cut-blfn/gate-Q4_K_M.txt, reported 23 Nov 11:35 PM |
-| 80% Bobert | IQ4_XS | | PASS, then lost: the 450 GB pod disk filled before the upload; the pod deleted itself at 12:54 AM; not on Hugging Face | | | | | | | | laptop watcher, reported 24 Nov 12:55 AM |
+| 80% Bobert | IQ4_XS | 84.4 GB | PASS, then lost: the 450 GB pod disk filled before the upload; the pod deleted itself at 12:54 AM; not on Hugging Face | | | | | | | | laptop watcher, reported 24 Nov 12:55 AM |
 | 80% Bobert | Q4_K_M | | not made: pod disk full | | | | | | | | laptop watcher, reported 24 Nov 12:55 AM |
 | 70% Riker | IQ2_XXS | 53.53 GB (2 parts on Hugging Face) | PASS: size inside 48.2-59.0 GB, loads, answered Paris and 42; public | | | | | | | | pod svcq7m3qy95uof out/bench/cut-rkfn/gate-IQ2_XXS.txt, reported 24 Nov 1:17 AM |
 | 70% Riker | IQ2_M | 57.28 GB (2 parts on Hugging Face) | PASS: size inside 52.5-64.1 GB, loads, answered Paris and 42; public | | | | | | | | pod svcq7m3qy95uof out/bench/cut-rkfn/gate-IQ2_M.txt, reported 24 Nov 1:44 AM |
 | 70% Riker | Q3_K_M | 75.4 GB (2 parts on Hugging Face) | PASS: size inside 67.0-81.8 GB, loads, answered Paris and 42; public | | | | | | | | pod svcq7m3qy95uof out/bench/cut-rkfn/gate-Q3_K_M.txt, reported 24 Nov 1:58 AM |
 | 70% Riker | IQ4_XS | 77.85 GB (2 parts on Hugging Face) | PASS: size inside 69.2-84.6 GB, loads, answered Paris and 42; public | | | | | | | | pod svcq7m3qy95uof out/bench/cut-rkfn/gate-IQ4_XS.txt, reported 24 Nov 2:28 AM |
 | 70% Riker | Q4_K_M | 95.01 GB (3 parts on Hugging Face) | PASS: size inside 86.1-105.3 GB, loads, answered Paris and 42; public | | | | | | | | pod svcq7m3qy95uof out/bench/cut-rkfn/gate-Q4_K_M.txt, reported 24 Nov 2:52 AM |
+
+## Held-out jobs on the pods (24 Nov 2026): suspected test fault, not counted
+
+Each pod ran Bob's held-out jobs against its cut's IQ2_XXS after the quants (for Bill that is the file that failed the
+publish gate). All three scored 0: office 0 of 14, repo 0 of 12 (the watcher notes 3 had the work right), web 0 of 11
+(Riker 0 of 10), and the inbox jobs named nobody. Most runs never called a tool. The same zeros on all three, two of which
+passed the publish gate and answer plain questions correctly, point to a fault in how the pod served or called the brain for
+tool jobs, not only to 2-bit quality. That is not confirmed. These numbers are left out of the cut table until the cause is
+found; npc's held-out runs on the public files are the ones that will count. Source: laptop watcher summary, 24 Nov 3:37 AM.
 
 ## Bill 2-bit retest with mixed bits (24 Nov 2026, not published)
 
