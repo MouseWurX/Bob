@@ -89,7 +89,7 @@ jobs:
           $names = @($json.PSObject.Properties | Where-Object { $_.Value -is [psobject] } | ForEach-Object { $_.Name })
           "parts in ${ver}: $($names -join ', ')"
           # CCCL (CUB, Thrust) moved name over CUDA versions (cuda_cccl, then others): take whatever part carries it.
-          $want = @('cuda_nvcc','cuda_crt','libnvvm','cuda_cudart','cuda_nvrtc','cuda_nvtx','cuda_profiler_api','libcublas') + @($names | Where-Object { $_ -match 'cccl' })
+          $want = @('cuda_nvcc','cuda_crt','libnvvm','cuda_cudart','cuda_nvrtc','cuda_nvtx','cuda_profiler_api','libcublas','cuda_nvml_dev') + @($names | Where-Object { $_ -match 'cccl' })
           foreach ($n in $want) {
             $part = $json.$n
             if (-not $part) { "skip $n (not in $ver)"; continue }
