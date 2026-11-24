@@ -28,7 +28,7 @@
 4. **Get Bob ready:** he suggests a brain and engines for your graphics card. Nothing big downloads until you press it.
 5. **Say hello.**
 
-**What it needs:** tested on a 16 GB graphics card (RTX 5070 Ti) with 32 GB of memory, which runs stock Qwen3.6-35B-A3B, a 35B mixture-of-experts brain, with 256K context. Its smaller Q3 file runs on an 8 GB card.
+**What it needs:** tested on a 16 GB graphics card (RTX 5070 Ti) with 32 GB of memory, which runs stock Qwen3.6-35B-A3B, a 35B mixture-of-experts brain, with 256K context. A smaller Q3 file is made for 8 GB cards. [Every hardware tier](#set-up-for-your-hardware) has its own set.
 
 ## At a glance
 
@@ -488,6 +488,22 @@ Pictures and big jobs wait in Tasks while you play, and **Games first** has Bob 
 | **Raspberry Pi and ARM** | A 64-bit Pi 4 or 5 runs the arm64 AppImage the same way, with small brains on the processor. No pictures on ARM yet. |
 | **Android** | Open the .apk on the phone. It talks to your Bob over Tailscale. |
 | **iPhone and iPad** | Nothing to download. Turn on **Bob-Net access** in Bob's Settings, open his address with `/phone/` on the end in Safari over Tailscale, then tap Share and **Add to Home Screen**. A brain on the phone and the microphone button need the Android app. |
+
+### Set up for your hardware
+
+The same steps on every computer: install Bob, press **Get Bob ready** on the Welcome page, and tick the starter set Bob picks for your hardware. Bob sizes the brain, the chat memory and the engine settings himself, so leave them at his defaults: keep **Engine tuning** on Bob's own pick, and leave the Conductor, Turbo and the Lab switches off. If a brain won't load, close other apps or pick a smaller brain before changing any setting.
+
+| Hardware | Bob's everyday brain | Context | Tested? |
+|---|---|---|---|
+| **16 GB graphics card**, 32 GB of memory | Qwen3.6 35B-A3B (23.3 GB file; what doesn't fit on the card sits in memory) | 256K | **Yes**, on an RTX 5070 Ti: about 90 tokens a second in everyday chats. |
+| **12 GB card or bigger than 16 GB** | The same set as a 16 GB card | 256K | Unproven in our lab, as we have yet to test. |
+| **8 GB card** | Qwen3.6 35B-A3B, the smaller Q3 file made for 8 GB cards (17.7 GB) | 128K | Unproven in our lab, as we have yet to test. Only the download has been checked. |
+| **6 GB card** (most laptops) | Qwen3 4B Instruct, with Qwen2.5 Coder 7B for coding | Bob's pick | Unproven in our lab, as we have yet to test. |
+| **Built-in graphics** (handhelds, thin laptops) | Qwen3 4B Instruct, with Gemma 4 E4B for pictures | Shrinks to fit, down to 8K | **Yes**, on a 16 GB AMD handheld: Qwen3 4B wrote 22 to 28 tokens a second, Gemma 4 E2B 42 to 46, Qwen3.5 2B about 50. Steps for this kind of hardware are in the [handheld setup guide](app/docs/HANDHELD-AGENT-SETUP.md). |
+| **No graphics card** (processor only) | Gemma 4 E4B | Bob's pick | Unproven in our lab, as we have yet to test. |
+| **Raspberry Pi and ARM boards** | Gemma 4 E2B with 8 GB, Qwen3.5 2B with 4 GB | Bob's pick | Unproven in our lab, as we have yet to test on real boards. |
+
+**On built-in graphics,** the graphics and Windows share the same memory, so free memory decides what fits. Check **Available** in Task Manager with Bob open: with 6 GB or more, Qwen3 4B, Gemma 4 E2B and Qwen3.5 2B all fit; with 4 to 6 GB, pick Gemma 4 E2B or Qwen3.5 2B from the Brains page; under 4 GB, Qwen3.5 2B. Leave the BIOS graphics memory setting alone, and let Bob keep the whole brain on the graphics: splitting it with the processor is much slower there.
 
 Windows is the main platform. An NVIDIA card helps but isn't required. The Mac and Pi builds are tested on GitHub's machines but not yet on real hardware, so [tell us how they go](https://github.com/MouseWurX/Bob/issues). A few Windows-only parts are hidden elsewhere. To build from source, see [Building Bob](app/docs/BUILDING.md).
 
