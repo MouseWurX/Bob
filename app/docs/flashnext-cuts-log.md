@@ -30,6 +30,7 @@ Rows are added as each file is made and scored. A measure not run yet is left ou
 
 | Cut | Quant | Size | Publish gate | Office | Repo | Web | Inbox | Harm | Quiz (tools / facts / code) | KLD vs parent | Source |
 |---|---|---|---|---|---|---|---|---|---|---|---|
+| 60% Bill | IQ2_XXS | 50.3 GB | FAIL: size and load passed; answered "France." (capital of France) and "25" (17 plus 25); not uploaded | | | | | | | | pod svcq7m3qy95uof out/bench/cut-blfn/gate-IQ2_XXS.txt, 23 Nov 10:12 PM |
 
 ## What each measure is
 
@@ -38,4 +39,6 @@ Rows are added as each file is made and scored. A measure not run yet is left ou
   checked by running the code.
 - **KLD vs parent:** llama-perplexity's KL divergence of the cut file's next-word odds against the uncut model on the same
   text. It needs the uncut model's odds saved first, which takes a run of the full model; not run yet.
+- An IQ2 gaps line counting 88 overrides is 48 down-expert tensors set to the plan's down_type plus 40 tensors the imatrix doesn't
+  fully cover (those get more bits, not fewer).
 - There is no needle (long-context recall) test in the lab yet.
