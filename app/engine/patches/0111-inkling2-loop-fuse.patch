@@ -1,0 +1,418 @@
+diff --git a/src/llama-model.cpp b/src/llama-model.cpp
+index ef489f6..b56b453 100644
+--- a/src/llama-model.cpp
++++ b/src/llama-model.cpp
+@@ -2218,6 +2218,8 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
+         }
+     }
+ 
++    post_load_data(); // Brain Engine 0111
++
+     load_tensors_hadamard();
+ 
+     return true;
+diff --git a/src/llama-model.h b/src/llama-model.h
+index 9c165ec..88a9565 100644
+--- a/src/llama-model.h
++++ b/src/llama-model.h
+@@ -1055,6 +1055,9 @@ struct llama_model {
+     // optional, runs after the scale pass
+     virtual void post_arch_tensors(llama_model_loader &) {}
+ 
++    // Brain Engine 0111: optional, runs once the weights are in their buffers (not in a pass that only measures memory)
++    virtual void post_load_data() {}
++
+     // Brain Engine 0091: the order the graph runs its layers in (model.layers indices), empty if index order. A looped
+     // brain lists a shared layer once per pass; the MoE cache follows it for what it does for the next layer
+     virtual std::vector<int32_t> layer_run_order() const { return {}; }
+diff --git a/src/models/inkling2-loop.cpp b/src/models/inkling2-loop.cpp
+index d2e4249..5d4eeb5 100644
+--- a/src/models/inkling2-loop.cpp
++++ b/src/models/inkling2-loop.cpp
+@@ -54,8 +54,12 @@ void llama_model_inkling2_loop::load_arch_tensors(llama_model_loader & ml) {
+         auto & l = loop_layers[il - core_start];
+         // the q, k, v and ffn message queries
+         l.msg_query = create_tensor(tn(LLM_TENSOR_LOOP_MSG_QUERY, "weight", il), {n_embd, LOOP_CTRL_COUNT}, 0);
++        // Brain Engine 0111: made in this order so each group lies side by side in its buffer (post_load_data reads
++        // it as one): the downs (q, k, v, ffn), then the gain and forget of each controller
+         for (int c = 0; c < LOOP_CTRL_COUNT; ++c) {
+             l.ctrl_down[c]   = create_tensor(tn(down[c],   "weight", il), {2*n_embd, rank}, 0);
++        }
++        for (int c = 0; c < LOOP_CTRL_COUNT; ++c) {
+             l.ctrl_gain[c]   = create_tensor(tn(gain[c],   "weight", il), {rank, n_embd}, 0);
+             l.ctrl_forget[c] = create_tensor(tn(forget[c], "weight", il), {rank, n_embd}, 0);
+         }
+@@ -69,6 +73,79 @@ void llama_model_inkling2_loop::post_arch_tensors(llama_model_loader &) {
+     }
+ }
+ 
++// Brain Engine 0111: fused loop controllers. Where weights of one kind lie side by side in one buffer (same type, the
++// next one starting where the last one ends), one tensor reads them all: no copy, no extra memory, the same numbers.
++// Anything else (another device, a file order that differs under mmap, an adapter) keeps the separate weights.
++static bool loop_side_by_side(const std::vector<ggml_tensor *> & ts) {
++    for (size_t i = 0; i < ts.size(); ++i) {
++        const ggml_tensor * t = ts[i];
++        // (a tensor with extra data, a split over several cards or a repacked one, is left alone)
++        if (!t || !t->buffer || !t->data || t->view_src || t->extra || !ggml_is_contiguous(t) || t->type != ts[0]->type ||
++            t->buffer != ts[0]->buffer || !ggml_are_same_shape(t, ts[0])) {
++            return false;
++        }
++        if (i > 0 && (const char *) t->data != (const char *) ts[i - 1]->data + ggml_nbytes(ts[i - 1])) {
++            return false;
++        }
++    }
++    return !ts.empty();
++}
++
++void llama_model_inkling2_loop::post_load_data() {
++    fuse_loop = llama_inkling_fuse_bits();
++    if ((fuse_loop & 7) == 0) {
++        LLAMA_LOG_INFO("%s: inkling2_loop: fused loop controllers off (LLAMA_INKLING_FUSE=%d)\n", __func__, fuse_loop);
++        return;
++    }
++    const size_t n_core = core_end - core_start;
++    ggml_init_params params = {
++        /*.mem_size   =*/ n_core*(2 + LOOP_CTRL_COUNT)*ggml_tensor_overhead(),
++        /*.mem_buffer =*/ NULL,
++        /*.no_alloc   =*/ true,
++    };
++    ctx_fused.reset(ggml_init(params));
++    if (!ctx_fused) {
++        return;
++    }
++    // one tensor of shape ne over the memory of ts (side by side, checked first)
++    auto over = [&](const std::vector<ggml_tensor *> & ts, std::initializer_list<int64_t> ne, const std::string & name) -> ggml_tensor * {
++        if (!loop_side_by_side(ts)) {
++            return nullptr;
++        }
++        const int64_t * d = ne.begin();
++        ggml_tensor * t = ne.size() == 2 ? ggml_new_tensor_2d(ctx_fused.get(), ts[0]->type, d[0], d[1])
++                                         : ggml_new_tensor_3d(ctx_fused.get(), ts[0]->type, d[0], d[1], d[2]);
++        GGML_ASSERT(ggml_nbytes(t) == ts.size()*ggml_nbytes(ts[0]));
++        ggml_set_name(t, name.c_str());
++        // the memory is the weights' own: point at it, as a view would
++        t->buffer = ts[0]->buffer;
++        t->data   = ts[0]->data;
++        return t;
++    };
++    const int64_t n_embd = hparams.n_embd;
++    const int64_t rank   = gate_rank;
++    int n_gf = 0, n_qkv = 0;
++    for (size_t i = 0; i < n_core; ++i) {
++        auto & l = loop_layers[i];
++        const std::string pre = "blk." + std::to_string(core_start + i) + ".";
++        for (int c = 0; c < LOOP_CTRL_COUNT; ++c) {
++            l.ctrl_gf[c] = !(fuse_loop & 4) ? nullptr : over({ l.ctrl_gain[c], l.ctrl_forget[c] }, { rank, 2*n_embd }, pre + "loop_ctrl_gf_" + std::to_string(c));
++            n_gf += l.ctrl_gf[c] != nullptr;
++        }
++        l.ctrl_down_qkv = over({ l.ctrl_down[LOOP_CTRL_Q], l.ctrl_down[LOOP_CTRL_K], l.ctrl_down[LOOP_CTRL_V] },
++                { 2*n_embd, rank, 3 }, pre + "loop_ctrl_down_qkv");
++        l.ctrl_gf_qkv = over({ l.ctrl_gain[LOOP_CTRL_Q], l.ctrl_forget[LOOP_CTRL_Q], l.ctrl_gain[LOOP_CTRL_K],
++                l.ctrl_forget[LOOP_CTRL_K], l.ctrl_gain[LOOP_CTRL_V], l.ctrl_forget[LOOP_CTRL_V] },
++                { rank, 2*n_embd, 3 }, pre + "loop_ctrl_gf_qkv");
++        if (!l.ctrl_down_qkv || !l.ctrl_gf_qkv || !(fuse_loop & 2)) {
++            l.ctrl_down_qkv = l.ctrl_gf_qkv = nullptr;
++        }
++        n_qkv += l.ctrl_down_qkv != nullptr;
++    }
++    LLAMA_LOG_INFO("%s: inkling2_loop: fused loop controllers: q, k, v together in %d of %zu layers, gain and forget together in %d of %zu\n",
++            __func__, n_qkv, n_core, n_gf, n_core*LOOP_CTRL_COUNT);
++}
++
+ std::unique_ptr<llm_graph_context> llama_model_inkling2_loop::build_arch_graph(const llm_graph_params & params) const {
+     return std::make_unique<graph>(params);
+ }
+@@ -86,6 +163,35 @@ llama_model_inkling2_loop::graph::graph(const llm_graph_params & params) : llama
+         cur = build_layer(il, il, cur, blocks);
+     }
+ 
++    // Brain Engine 0111: the controllers fuse unless an adapter could touch their weights
++    const bool fuse     = (m.fuse_loop & 7) && !(loras && !loras->empty());
++    const bool fuse_msg = fuse && (m.fuse_loop & 1);
++
++    // the bank's messages for every core layer: the bank is the same for the whole pass, only the queries differ, so
++    // its states are put together, normalized and turned once per pass instead of once per layer. Each layer's scores
++    // stay their own product, as in mix() (one product over every layer's queries rounds some scores differently)
++    auto pass_messages = [&](const std::vector<ggml_tensor *> & bank, ggml_tensor * bank_out) {
++        ggml_tensor * states = ggml_reshape_3d(ctx0, bank_out, n_embd, 1, n_tokens);
++        if (fuse_mix && !bank.empty()) {
++            states = ggml_concat(ctx0, blocks_normed(bank, bank.size()), ggml_rms_norm(ctx0, states, 1e-6f), 1);
++        } else {
++            for (ggml_tensor * block : bank) {
++                states = ggml_concat(ctx0, ggml_reshape_3d(ctx0, block, n_embd, 1, n_tokens), states, 1);
++            }
++            states = ggml_rms_norm(ctx0, states, 1e-6f);
++        }
++        ggml_tensor * states_t = ggml_cont(ctx0, ggml_transpose(ctx0, states));
++
++        std::vector<ggml_tensor *> res;
++        for (int ip = start; ip < end; ++ip) {
++            ggml_tensor * query   = m.loop_layers[ip - start].msg_query;
++            ggml_tensor * queries = ggml_repeat(ctx0, query, ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, n_embd, query->ne[1], n_tokens));
++            ggml_tensor * scores  = ggml_soft_max_ext(ctx0, ggml_mul_mat(ctx0, states, queries), nullptr, 1.0f/sqrtf(n_embd), 0.0f);
++            res.push_back(ggml_mul_mat(ctx0, states_t, scores));
++        }
++        return res;
++    };
++
+     // every pass starts from the prelude output
+     auto * prelude = cur;
+     const auto prelude_blocks = blocks;
+@@ -99,6 +205,10 @@ llama_model_inkling2_loop::graph::graph(const llm_graph_params & params) : llama
+             cur = prelude;
+             blocks = prelude_blocks;
+         }
++        std::vector<ggml_tensor *> messages;
++        if (pass > 0 && fuse_msg) {
++            messages = pass_messages(bank, bank_out);
++        }
+         for (int ip = start; ip < end; ++ip) {
+             const int il = pass == 0 ? ip : m.n_phys + (pass - 1)*(end - start) + (ip - start);
+             res->t_layer_inp[visit++] = cur;
+@@ -107,7 +217,8 @@ llama_model_inkling2_loop::graph::graph(const llm_graph_params & params) : llama
+                 continue;
+             }
+             const auto & loop = m.loop_layers[ip - start];
+-            cur = build_layer(il, ip, cur, blocks, mix(bank, bank_out, loop.msg_query), &loop);
++            ggml_tensor * msg = fuse_msg ? messages[ip - start] : mix(bank, bank_out, loop.msg_query);
++            cur = build_layer(il, ip, cur, blocks, msg, &loop, fuse);
+         }
+     }
+ 
+diff --git a/src/models/inkling2.cpp b/src/models/inkling2.cpp
+index e035d1a..5f697a4 100644
+--- a/src/models/inkling2.cpp
++++ b/src/models/inkling2.cpp
+@@ -174,13 +174,36 @@ ggml_tensor * llama_model_inkling2::graph::clip(ggml_tensor * cur, ggml_tensor *
+     return ggml_mul(ctx0, cur, ggml_clamp(ctx0, factor, 0.0f, 1.0f));
+ }
+ 
++int llama_inkling_fuse_bits() {
++    const char * e = getenv("LLAMA_INKLING_FUSE");
++    return e ? atoi(e) & 15 : 15;
++}
++
++// Brain Engine 0111: the first n blocks, newest first, each row normalized: what mix() puts before cur. The norm works
++// row by row, so normalizing the blocks once and cur on its own gives the same numbers as normalizing them together
++ggml_tensor * llama_model_inkling2::graph::blocks_normed(const std::vector<ggml_tensor *> & blocks, size_t n) {
++    std::vector<ggml_tensor *> key(blocks.begin(), blocks.begin() + n);
++    auto it = normed.find(key);
++    if (it != normed.end()) {
++        return it->second;
++    }
++    ggml_tensor * last = ggml_rms_norm(ctx0, ggml_reshape_3d(ctx0, blocks[n - 1], n_embd, 1, n_tokens), 1e-6f);
++    ggml_tensor * res  = n == 1 ? last : ggml_concat(ctx0, last, blocks_normed(blocks, n - 1), 1);
++    normed[key] = res;
++    return res;
++}
++
+ // attention over the depth: mix the earlier block outputs and cur with learned queries
+ ggml_tensor * llama_model_inkling2::graph::mix(const std::vector<ggml_tensor *> & blocks, ggml_tensor * cur, ggml_tensor * query) {
+     ggml_tensor * states = ggml_reshape_3d(ctx0, cur, n_embd, 1, n_tokens);
+-    for (ggml_tensor * block : blocks) {
+-        states = ggml_concat(ctx0, ggml_reshape_3d(ctx0, block, n_embd, 1, n_tokens), states, 1);
++    if (fuse_mix && !blocks.empty()) {
++        states = ggml_concat(ctx0, blocks_normed(blocks, blocks.size()), ggml_rms_norm(ctx0, states, 1e-6f), 1);
++    } else {
++        for (ggml_tensor * block : blocks) {
++            states = ggml_concat(ctx0, ggml_reshape_3d(ctx0, block, n_embd, 1, n_tokens), states, 1);
++        }
++        states = ggml_rms_norm(ctx0, states, 1e-6f);
+     }
+-    states = ggml_rms_norm(ctx0, states, 1e-6f);
+ 
+     ggml_tensor * queries = ggml_repeat(ctx0, query, ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, n_embd, query->ne[1], n_tokens));
+ 
+@@ -237,16 +260,47 @@ ggml_tensor * llama_model_inkling2::graph::convolve(
+ }
+ 
+ // mix a cross-pass message into a looped layer input: (1 - forget)*cur + gain*message, both gated on cur and message
+-ggml_tensor * llama_model_inkling2::graph::control(ggml_tensor * cur, ggml_tensor * message, const loop_layer & loop, int ctrl) {
++ggml_tensor * llama_model_inkling2::graph::control(ggml_tensor * cur, ggml_tensor * message, const loop_layer & loop, int ctrl, bool fuse) {
+     ggml_tensor * gate = ggml_concat(ctx0, ggml_rms_norm(ctx0, cur, 1e-6f), ggml_rms_norm(ctx0, message, 1e-6f), 0);
+     gate = build_lora_mm(loop.ctrl_down[ctrl], gate);
+ 
+-    ggml_tensor * gain   = ggml_tanh(ctx0, build_lora_mm(loop.ctrl_gain[ctrl],   gate));
+-    ggml_tensor * forget = ggml_tanh(ctx0, build_lora_mm(loop.ctrl_forget[ctrl], gate));
++    ggml_tensor * gain   = nullptr;
++    ggml_tensor * forget = nullptr;
++    if (fuse && loop.ctrl_gf[ctrl]) {
++        // Brain Engine 0111: gain and forget from one product and one tanh, the same rows
++        ggml_tensor * gf = ggml_tanh(ctx0, ggml_mul_mat(ctx0, loop.ctrl_gf[ctrl], gate));
++        gain   = ggml_view_2d(ctx0, gf, n_embd, gf->ne[1], gf->nb[1], 0);
++        forget = ggml_view_2d(ctx0, gf, n_embd, gf->ne[1], gf->nb[1], n_embd*ggml_element_size(gf));
++    } else {
++        gain   = ggml_tanh(ctx0, build_lora_mm(loop.ctrl_gain[ctrl],   gate));
++        forget = ggml_tanh(ctx0, build_lora_mm(loop.ctrl_forget[ctrl], gate));
++    }
+ 
+     return ggml_add(ctx0, ggml_sub(ctx0, cur, ggml_mul(ctx0, forget, cur)), ggml_mul(ctx0, gain, message));
+ }
+ 
++// Brain Engine 0111: control() for the q, k and v inputs at once, as a batch of 3 (the same numbers, a third of the steps)
++ggml_tensor * llama_model_inkling2::graph::control_qkv(ggml_tensor * x, ggml_tensor * messages, const loop_layer & loop) {
++    const int64_t nt = x->ne[1];
++    // the q, k and v messages, [n_embd, n_tokens, 3]
++    ggml_tensor * msg = ggml_view_3d(ctx0, messages, n_embd, 3, nt, messages->nb[1], messages->nb[2], LOOP_CTRL_Q*messages->nb[1]);
++    msg = ggml_cont(ctx0, ggml_permute(ctx0, msg, 0, 2, 1, 3));
++
++    ggml_tensor * x3   = x->ne[2] == 3 ? x : ggml_repeat(ctx0, x, msg);
++    ggml_tensor * norm = ggml_rms_norm(ctx0, x, 1e-6f);
++    if (norm->ne[2] != 3) {
++        norm = ggml_repeat(ctx0, norm, msg);
++    }
++    ggml_tensor * gate = ggml_concat(ctx0, norm, ggml_rms_norm(ctx0, msg, 1e-6f), 0);
++    gate = ggml_mul_mat(ctx0, loop.ctrl_down_qkv, gate);
++
++    ggml_tensor * gf     = ggml_tanh(ctx0, ggml_mul_mat(ctx0, loop.ctrl_gf_qkv, gate));
++    ggml_tensor * gain   = ggml_view_3d(ctx0, gf, n_embd, nt, 3, gf->nb[1], gf->nb[2], 0);
++    ggml_tensor * forget = ggml_view_3d(ctx0, gf, n_embd, nt, 3, gf->nb[1], gf->nb[2], n_embd*ggml_element_size(gf));
++
++    return ggml_add(ctx0, ggml_sub(ctx0, x3, ggml_mul(ctx0, forget, x3)), ggml_mul(ctx0, gain, msg));
++}
++
+ ggml_tensor * llama_model_inkling2::graph::build_inputs() {
+     inp  = build_inp_mem_hybrid_iswa_rel(hparams.n_relative_extent, hparams.n_swa);
+     attn = inp->get_attn();
+@@ -271,7 +325,7 @@ ggml_tensor * llama_model_inkling2::graph::build_inputs() {
+ }
+ 
+ ggml_tensor * llama_model_inkling2::graph::build_layer(int il, int ip, ggml_tensor * cur, std::vector<ggml_tensor *> & blocks,
+-        ggml_tensor * messages, const loop_layer * loop) {
++        ggml_tensor * messages, const loop_layer * loop, bool fuse) {
+     GGML_ASSERT(!messages == !loop);
+ 
+     const auto & layer = model.layers[il];
+@@ -295,21 +349,41 @@ ggml_tensor * llama_model_inkling2::graph::build_layer(int il, int ip, ggml_tens
+ 
+     // attention inputs: SWA layers mix one, full-attention layers one each for Q, K and V
+     ggml_tensor * inputs[3] = {cur, cur, cur};
++    ggml_tensor * mix_out = nullptr;
++    bool fused_normed = false; // Brain Engine 0111
+     if (layer.attn_res_query) {
+-        ggml_tensor * mixed = mix(blocks, cur, layer.attn_res_query);
++        ggml_tensor * mixed = mix_out = mix(blocks, cur, layer.attn_res_query);
+         for (int j = 0; j < 3; ++j) {
+             inputs[j] = ggml_cont(ctx0, ggml_view_2d(ctx0, mixed, n_embd, n_tokens, mixed->nb[2], (is_swa ? 0 : j)*mixed->nb[1]));
+         }
+     }
+ 
+-    if (messages) {
++    if (messages && fuse && loop->ctrl_down_qkv) {
++        // Brain Engine 0111: one input (SWA, or no mix) or the three mixed ones, as [n_embd, n_tokens, 1 or 3]
++        ggml_tensor * x = inputs[0];
++        if (layer.attn_res_query && !is_swa) {
++            ggml_tensor * mixed = mix_out;
++            x = ggml_cont(ctx0, ggml_permute(ctx0, ggml_view_3d(ctx0, mixed, n_embd, 3, n_tokens, mixed->nb[1], mixed->nb[2], 0), 0, 2, 1, 3));
++        }
++        ggml_tensor * out = control_qkv(x, messages, *loop);
++        if (is_swa) {
++            // the three take the same norm: one step over the batch
++            out = build_norm(out, layer.attn_norm, nullptr, LLM_NORM_RMS, il);
++            fused_normed = true;
++        }
++        for (int j = 0; j < 3; ++j) {
++            inputs[j] = ggml_view_2d(ctx0, out, n_embd, n_tokens, out->nb[1], j*out->nb[2]);
++        }
++    } else if (messages) {
+         // the messages make the Q, K and V inputs of a SWA layer differ
+         for (int j = 0; j < 3; ++j) {
+-            inputs[j] = control(inputs[j], message(LOOP_CTRL_Q + j), *loop, LOOP_CTRL_Q + j);
++            inputs[j] = control(inputs[j], message(LOOP_CTRL_Q + j), *loop, LOOP_CTRL_Q + j, fuse);
+         }
+     }
+ 
+-    if (is_swa && messages) {
++    if (fused_normed) {
++        // already normalized above
++    } else if (is_swa && messages) {
+         for (int j = 0; j < 3; ++j) {
+             inputs[j] = build_norm(inputs[j], layer.attn_norm, nullptr, LLM_NORM_RMS, il);
+         }
+@@ -389,7 +463,7 @@ ggml_tensor * llama_model_inkling2::graph::build_layer(int il, int ip, ggml_tens
+     // MoE
+     cur = ggml_reshape_2d(ctx0, mix(blocks, cur, layer.ffn_res_query), n_embd, n_tokens);
+     if (messages) {
+-        cur = control(cur, message(LOOP_CTRL_FFN), *loop, LOOP_CTRL_FFN);
++        cur = control(cur, message(LOOP_CTRL_FFN), *loop, LOOP_CTRL_FFN, fuse);
+     }
+     cur = build_norm(cur, layer.ffn_norm, nullptr, LLM_NORM_RMS, il);
+ 
+diff --git a/src/models/models.h b/src/models/models.h
+index d3a48fa..661f0d2 100644
+--- a/src/models/models.h
++++ b/src/models/models.h
+@@ -3,6 +3,7 @@
+ #include "llama-model.h"
+ #include "llama-graph.h"
+ #include "llama-model-loader.h"
++#include "ggml-cpp.h"
+ 
+ // note: almost all graphs require at least sqrtf, so include cmath globally
+ #include <cmath>
+@@ -2356,6 +2357,9 @@ struct llama_model_falcon_h1 : public llama_model_base {
+     std::unique_ptr<llm_graph_context> build_arch_graph(const llm_graph_params & params) const override;
+ };
+ 
++// Brain Engine 0111: LLAMA_INKLING_FUSE (0 off, else a sum of 1, 2, 4 and 8; 15, all, unless set)
++int llama_inkling_fuse_bits();
++
+ struct llama_model_inkling2 : public llama_model_base {
+     llama_model_inkling2(const struct llama_model_params & params) : llama_model_base(params) {}
+     void load_arch_hparams(llama_model_loader & ml) override;
+@@ -2372,6 +2376,10 @@ struct llama_model_inkling2 : public llama_model_base {
+         ggml_tensor * ctrl_down[LOOP_CTRL_COUNT]   = {};
+         ggml_tensor * ctrl_gain[LOOP_CTRL_COUNT]   = {};
+         ggml_tensor * ctrl_forget[LOOP_CTRL_COUNT] = {};
++        // Brain Engine 0111, fused controllers: the same weights read as one tensor where they lie side by side in memory
++        ggml_tensor * ctrl_gf[LOOP_CTRL_COUNT] = {}; // [rank, 2*n_embd]: the gain rows, then the forget rows
++        ggml_tensor * ctrl_down_qkv = nullptr;       // [2*n_embd, rank, 3]: the q, k and v downs
++        ggml_tensor * ctrl_gf_qkv   = nullptr;       // [rank, 2*n_embd, 3]: the q, k and v gains and forgets
+     };
+ 
+     struct graph : public llm_graph_context {
+@@ -2386,7 +2394,7 @@ struct llama_model_inkling2 : public llama_model_base {
+                 ggml_tensor * history,
+                 llm_graph_input_rs * inp,
+                 int64_t offset);
+-        ggml_tensor * control(ggml_tensor * cur, ggml_tensor * message, const loop_layer & loop, int ctrl);
++        ggml_tensor * control(ggml_tensor * cur, ggml_tensor * message, const loop_layer & loop, int ctrl, bool fuse = false);
+ 
+     protected:
+         // the helpers alone, a derived graph builds its own body
+@@ -2397,7 +2405,9 @@ struct llama_model_inkling2 : public llama_model_base {
+         ggml_tensor * build_inputs();
+         // cache slot il of physical layer ip; messages [n_embd, LOOP_CTRL_COUNT, n_tokens] are mixed into its inputs
+         ggml_tensor * build_layer(int il, int ip, ggml_tensor * cur, std::vector<ggml_tensor *> & blocks,
+-                ggml_tensor * messages = nullptr, const loop_layer * loop = nullptr);
++                ggml_tensor * messages = nullptr, const loop_layer * loop = nullptr, bool fuse = false);
++        // Brain Engine 0111: the q, k and v controllers in one go; x [n_embd, n_tokens, 1 or 3], messages as above
++        ggml_tensor * control_qkv(ggml_tensor * x, ggml_tensor * messages, const loop_layer & loop);
+         void build_output(ggml_tensor * cur, const std::vector<ggml_tensor *> & blocks);
+ 
+         llm_graph_input_mem_hybrid_iswa_rel * inp  = nullptr;
+@@ -2406,6 +2416,11 @@ struct llama_model_inkling2 : public llama_model_base {
+ 
+         ggml_tensor * inp_out_ids = nullptr;
+         ggml_tensor * tau         = nullptr; // log-scaled positions
++
++        // Brain Engine 0111: each list of blocks normalized once (rows), for every mix over it; keyed by the list
++        ggml_tensor * blocks_normed(const std::vector<ggml_tensor *> & blocks, size_t n);
++        std::map<std::vector<ggml_tensor *>, ggml_tensor *> normed;
++        const bool fuse_mix = (llama_inkling_fuse_bits() & 8) != 0;
+     };
+ 
+     std::unique_ptr<llm_graph_context> build_arch_graph(const llm_graph_params & params) const override;
+@@ -2432,6 +2447,12 @@ struct llama_model_inkling2_loop : public llama_model_inkling2 {
+     // indexed by physical layer - core_start
+     std::vector<loop_layer> loop_layers;
+ 
++    // Brain Engine 0111: fused loop controllers, LLAMA_INKLING_FUSE: 0 off, else a sum of 1 (the pass's messages at once),
++    // 2 (q, k and v together), 4 (gain and forget together) and 8 (the blocks of every mix normalized once); 15 unless set
++    int fuse_loop = 15;
++    ggml_context_ptr ctx_fused;
++    void post_load_data() override;
++
+     struct graph : public llama_model_inkling2::graph {
+         graph(const llm_graph_params & params);
+     };
