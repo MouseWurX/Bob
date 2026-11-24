@@ -24,7 +24,7 @@ Speeds and brain sizes depend on total memory: a 24 GB handheld (like the Ally X
 > - Ask the user before every download or install.
 > - Never delete anything.
 > - Never open, read or print keys, passwords or passcodes.
-> - Don't change Windows or BIOS settings.
+> - Don't change Windows or BIOS settings yourself. Recommend the graphics memory setting in step 2 to the user instead.
 
 ## 1. Install or update Bob (1.5.253 or newer)
 
@@ -54,7 +54,17 @@ On a handheld, the graphics and Windows share the same memory, so free memory de
 | 4 to 6 GB | Gemma 4 E2B or Qwen3.5 2B |
 | Under 4 GB | Qwen3.5 2B. Close more apps first. |
 
-Tell the user the number. Don't change the BIOS graphics memory setting (UMA) to make room. That's the user's choice, and Bob works with the default.
+Tell the user the number.
+
+### Graphics memory setting: Auto (the user changes it, not the agent)
+
+Handhelds can lock a fixed slice of memory for the graphics (often called **UMA Frame Buffer Size** or **Memory assigned to GPU**). Locked memory is taken away from Windows before Bob starts, and Bob can't use it any better than shared memory. Set it to **Auto** (on some handhelds the smallest choice, about 0.5 GB). Then the graphics borrow memory only while they need it.
+
+- How to spot it: the total memory in Task Manager (Performance, Memory) is well under the memory the handheld is sold with. For example, a 16 GB handheld showing 12.7 GB has about 3 GB locked. On Auto, a 16 GB Legion Go shows 15.2 GB.
+- **Legion Go** (tested): in the BIOS setup, set the UMA graphics memory setting to **Auto**. To get there, start it with Volume Up held down and pick BIOS Setup. Save and restart.
+- **ROG Ally / Ally X, Legion Go S, MSI Claw and others**: unproven in our lab, as we have yet to test. The setting has the same idea but a different name and place (on the ROG Ally it's in Armoury Crate rather than the BIOS). Check the maker's own help for its name.
+
+This is a system setting, so **the agent doesn't change it**. Tell the user what it's on, recommend Auto, and let them change it and restart. Re-check Available in Task Manager after the restart.
 
 ## 3. Pick a brain (ask before downloading)
 
