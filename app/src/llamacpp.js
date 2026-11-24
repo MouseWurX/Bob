@@ -1789,7 +1789,7 @@ export class LlamaCpp {
         ...(Number.isFinite(temperature) ? { temperature } : {}),
         // Nov 24 (the Legion Go check couldn't tell drift from chance): llamacpp.testSeed in the config file, for test
         // runs only, makes every reply greedy and seeded so two runs can be compared word for word. Off unless set.
-        ...(Number.isInteger(this.lc?.testSeed) ? { seed: this.lc.testSeed, temperature: 0, top_k: 1 } : {}),
+        ...(Number.isInteger(this.cfg?.llamacpp?.testSeed) ? { seed: this.cfg.llamacpp.testSeed, temperature: 0, top_k: 1 } : {}),
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
         // 15 Nov 2026: GPT-OSS reads a reasoning level instead (model-family.js thinkKwargs: off = low).
         ...this.thinkArgs(model, think),
