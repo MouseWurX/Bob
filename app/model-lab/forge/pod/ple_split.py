@@ -30,6 +30,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', required=True); ap.add_argument('--out-dir', required=True)
     ap.add_argument('--max-gb', type=float, default=45)
+    # --no-table: write only the parts before the table, for a second brain that loads a table part already on the drive (--ple)
+    ap.add_argument('--no-table', action='store_true')
     a = ap.parse_args()
     r = gguf.GGUFReader(a.src)
     parts = plan_parts(r.tensors, int(a.max_gb * 1e9))
@@ -39,6 +41,7 @@ def main():
     os.makedirs(a.out_dir, exist_ok=True)
     n = len(parts); names = []
     for k, idx in enumerate(parts):
+        if a.no_table and k == n - 1: print(f'table part left out (--no-table): load with --ple <a table part>'); break
         path = os.path.join(a.out_dir, f'{stem}-{k + 1:05d}-of-{n:05d}.gguf')
         w = gguf.GGUFWriter(path, arch, endianess=r.endianess)
         if k == 0:
@@ -55,7 +58,7 @@ def main():
         for i in idx: w.write_tensor_data(r.tensors[i].data, tensor_endianess=r.endianess)
         w.close(); names.append(path)
         print(f'{os.path.basename(path)}: {len(idx)} tensor(s), {os.path.getsize(path)} bytes')
-    print(f'table part: {os.path.basename(names[-1])}')
+    if not a.no_table: print(f'table part: {os.path.basename(names[-1])}')
 
 
 if __name__ == '__main__':
