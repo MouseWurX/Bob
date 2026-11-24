@@ -1,6 +1,6 @@
 # Setting up Bob on a Legion Go: steps for a helper agent
 
-This page is for an AI agent (Claude, ChatGPT or another) helping someone set up Bob on a Lenovo Legion Go, or any handheld with AMD built-in graphics. It also works for a person. Follow the steps in order.
+Setting up Bob on a Lenovo Legion Go, or any handheld with AMD built-in graphics, written so an AI agent (Claude, ChatGPT or another) can follow it step by step. It works for a person too. Follow the steps in order.
 
 > **Read this first: don't set custom settings.**
 > Bob sizes everything on a handheld by itself: how much of the brain goes on the graphics, the chat memory, the reading step, and when the picture reader rests. Hand-set values can break that. As the agent:
@@ -8,10 +8,10 @@ This page is for an AI agent (Claude, ChatGPT or another) helping someone set up
 > - **Don't touch the engine.** That means no layer counts, batch or step sizes, engine flags, environment variables, edits to `settings.json`, BIOS or graphics-driver settings.
 > - **Only three things:** install or update Bob, pick a recommended brain from Bob's own catalogue, and check that it works.
 > - **If something fails, report it. Don't tweak it.** Save a help bundle (step 7) and hand it over.
-> - **If the owner changed settings earlier,** ask which ones, and with their OK set each back to the default shown in Bob's Help (F1).
+> - **If settings were changed by hand earlier,** ask the user which ones, and with their OK set each back to the default shown in Bob's Help (F1).
 >
-> **Stay safe on someone else's PC.**
-> - Ask the owner before every download or install.
+> **Stay safe on the PC.**
+> - Ask the user before every download or install.
 > - Never delete anything.
 > - Never open, read or print keys, passwords or passcodes.
 > - Don't change Windows or BIOS settings.
@@ -28,7 +28,7 @@ This page is for an AI agent (Claude, ChatGPT or another) helping someone set up
 - **New install (ask first):**
   1. Download `Bob-1.5.253-win-x64.zip` from the [1.5.253 release](https://github.com/MouseWurX/Bob/releases/tag/v1.5.253).
   2. Check it against the `.sha256` file next to it.
-  3. Right-click the zip, choose Properties, tick **Unblock**, and unzip it to a folder the owner will keep.
+  3. Right-click the zip, choose Properties, tick **Unblock**, and unzip it to a folder the user will keep.
   4. Start **Bob.exe** and follow Welcome's **Get Bob ready**.
 
 ## 2. Check the free memory
@@ -44,7 +44,7 @@ On a handheld, the graphics and Windows share the same memory, so free memory de
 | 4 to 6 GB | Gemma 4 E2B or Qwen3.5 2B |
 | Under 4 GB | Qwen3.5 2B. Close more apps first. |
 
-Tell the owner the number. Don't change the BIOS graphics memory setting (UMA) to make room. That's the owner's choice, and Bob works with the default.
+Tell the user the number. Don't change the BIOS graphics memory setting (UMA) to make room. That's the user's choice, and Bob works with the default.
 
 ## 3. Pick a brain (ask before downloading)
 
@@ -62,7 +62,7 @@ Splitting a brain between graphics and processor is much slower on a handheld (Q
 
 ## 4. Settings to check (look, don't change)
 
-These should already be at their defaults. If one isn't, ask the owner before you set it back.
+These should already be at their defaults. If one isn't, ask the user before you set it back.
 
 - Settings, Brains, **Memory kept for Windows**: **0.5 GB**.
 - **Engine tuning**: Bob's own pick, not hand-set values and not the Conductor.
@@ -74,7 +74,7 @@ These should already be at their defaults. If one isn't, ask the owner before yo
 2. The first load takes a while. After that, a short reply should start within a few seconds.
 3. Paste a page of text (about 2,000 words) and ask for a summary.
 4. Watch Task Manager while it runs. **Available should stay above about 1.5 GB.** "Shared GPU memory" rising is normal.
-5. Tell the owner the writing speed if Bob shows it, and roughly how long each reply took.
+5. Tell the user the writing speed if Bob shows it, and roughly how long each reply took.
 
 **Pass:** both replies make sense, nothing freezes, and Available stays above 1.5 GB.
 
@@ -95,11 +95,11 @@ Bob shrinking the chat memory (down to 8K) or loading without the picture reader
 ## 7. Collect logs and report back
 
 1. Go to Settings, **This replicant matrix and updates**, **Save a help bundle**. It makes one zip. `HANDOFF.md` inside is written for an agent to read first. Names, folders, passcodes, keys and addresses are taken out before it's saved, and nothing is sent anywhere.
-2. Ask the owner to look the zip over and attach it to the GitHub issue (for a Legion Go problem, [issue #31](https://github.com/MouseWurX/Bob/issues/31)).
+2. Ask the user to look the zip over and attach it to a new issue on [Bob's GitHub](https://github.com/MouseWurX/Bob/issues).
 3. Add, in plain words:
    - the Available number from step 2;
    - the brain picked;
    - what you did;
    - the exact message Bob showed.
 
-Don't paste keys, account names or folder paths from the PC into the issue.
+Don't paste keys, account names or folder paths from the PC into an issue.
