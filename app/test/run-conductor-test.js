@@ -194,6 +194,14 @@ check('cleanTuning keeps the switch only when it is on, and a change can turn it
 { calls.length = 0; const e = live(); e.condChat = CHAT_STEP; e.condStep = CHAT_STEP; e.condCacheBase = 4096; e.condHeld = 0; e.currentCtx = 131072;
   await e.conduct({ model: 'big', messages: [{ role: 'user', content: 'x'.repeat(3000) }] });
   check('switched off: the window is never touched', !calls.some((c) => /n_ctx/.test(c)), JSON.stringify(calls)); }
+{ calls.length = 0; const e = live(); e.beNo = () => 44; e.condChat = CHAT_STEP; e.condStep = CHAT_STEP; e.condMax = READ_STEP; e.condCacheBase = 0;
+  await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
+  await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
+  const ctx = calls.filter((c) => c.startsWith('POST /context'));
+  check('test PC, dense brain on BE44: one try of the read step, then no more switching', ctx.length === 1 && e.condStep === READ_STEP && e.logs.some((l) => /one try of step/.test(l)), JSON.stringify(calls)); }
+{ calls.length = 0; const e = live({ sharedGraphics: true }); e.condChat = CHAT_STEP; e.condStep = CHAT_STEP; e.condMax = READ_STEP;
+  await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
+  check('the Legion Go check: built-in graphics never switch inside a chat', !calls.some((c) => c.startsWith('POST /context')), JSON.stringify(calls)); }
 srv.close();
 
 // ---------- Settings, Help, FAQ, glossary ----------
@@ -205,9 +213,6 @@ check('the FAQ answers it and says where it works', /Android app/.test(HELP.find
 check('the glossary explains it', /<dt>Conductor<\/dt>/.test(HELP.find((h) => h.id === 'glossary')?.html || ''));
 
 fs.rmSync(tmp, { recursive: true, force: true });
-{ calls.length = 0; const e = live({ sharedGraphics: true }); e.condChat = CHAT_STEP; e.condStep = CHAT_STEP; e.condMax = READ_STEP;
-  await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
-  check('the Legion Go check: built-in graphics never switch inside a chat', !calls.some((c) => c.startsWith('POST /context')), JSON.stringify(calls)); }
 { const e = engineOf({}, { testSeed: 7 }); let sent = null; const was = globalThis.fetch;
   globalThis.fetch = async (_u, o) => { sent = JSON.parse(o.body); return { ok: true }; };
   try { await e.post('big', [{ role: 'user', content: 'hi' }], [], null, false, 'chat', 0.7); } finally { globalThis.fetch = was; }

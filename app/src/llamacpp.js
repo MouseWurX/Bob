@@ -1671,11 +1671,21 @@ export class LlamaCpp {
     // before 44 the first switch after a --fit load reloads the brain (0087 fixes it), so it stays at the load step
     if (this.condApu) return; // Nov 24 (the Legion Go check): built-in graphics stay at the step they loaded at
     if (this.beNo() < SWITCH_IN_JOB_FROM_BE && (this.tuneEnv?.LLAMA_MOE_CACHE_FILL_STEP || this.lastArgs?.includes('--fit') || (this.condLoad > this.condChat && this.condStep === this.condLoad))) return;
+    // Nov 24 (test PC, BE44, dense Qwen3-4B: saving the chat cost 1-6 s a switch, the job 42.0 s against 32.9 s): with
+    // no copy cache there is nothing to trade, so it measures once whether the read step fits (free card memory after
+    // the switch, the 512 MiB margin), then stays there, or back at the chat step if it didn't fit. No more switches.
+    if (!this.condCacheBase && this.beNo() >= SWITCH_IN_JOB_FROM_BE) {
+      if (this.condProbed?.[model] || !(this.condMax > this.condStep)) return;
+      (this.condProbed ||= {})[model] = true;
+      this.log?.('engine', `${model}: Conductor: no copy cache, so one try of step ${this.condMax}: it stays if the card keeps ${SPILL_MARGIN_MIB} MiB free`);
+      await this.condSwitch(model, this.condMax, held);
+      return;
+    }
     const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: (this.condSpeeds ||= {})[model], switchS: switchGuess(held, st?.ratio), maxStep: Math.min(this.condMax || 0, this.condCap?.[model] > 0 ? this.condCap[model] : Infinity) || 0 });
     // Nov 20: off unless engineTuning.growGuess is set (a test switch). Bob's 440 clean job lessons: replies with thinking
     // median 81 tokens, none over 1,500, so a guess made before the reply mostly misses; growing mid-reply is the way.
     const grow = this.condOff || this.cfg?.engineTuning?.growGuess !== true ? 0 : cacheGrow({ total, outTok, cacheMiB: this.condRead(), freeMiB: this.condFree, grown: this.condGrown });
-    if (p.plan === 'stay' && !grow) return;
+    if (p.plan === 'stay' && !grow) { if (newTok >= MIN_NEW && this.staySaid !== `${model}:${this.condStep}`) { this.staySaid = `${model}:${this.condStep}`; this.log?.('engine', `${model}: Conductor: a ${newTok}-token read stays at step ${this.condStep} (${p.why || 'no faster step after the switch cost'})`); } return; }
     if (p.plan !== 'stay') {
       this.log?.('engine', planLine(model, p));
       if (p.step > this.condStep && this.condApu && !apuStepOk({ from: this.condStep, to: p.step, freeBytes: this.freeRam ? this.freeRam() : os.freemem() })) {
