@@ -57,7 +57,15 @@
      "private": false,
      "card_extra": "cards/bobert-flashnext.md",
      "imatrix_from": "hf:MouseWurX/Bobert-101Bob-A6B-Flash-Next-REAP80-GGUF:imatrix.gguf",
-     "hold_minutes": 45
+     "hold_minutes": 45,
+     "expect_gb": {
+      "IQ2_XXS": "38-50",
+      "IQ2_M": "45-60",
+      "Q3_K_M": "64-84",
+      "IQ4_XS": "72-92",
+      "Q4_K_M": "82-104"
+     },
+     "expect_note": "~152B weights: 96.6B kept experts at the quant type, the 51.2B n-gram embedding (q2_k at IQ2, base type above), ~4B other tensors; a file outside its range is not uploaded"
     },
     "commands": [
      "node mail-jobs.mjs --catalog --held --out ../../bob-model-lab/out/mail-jobs-held/jobs.jsonl",

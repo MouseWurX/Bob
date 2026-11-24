@@ -399,7 +399,12 @@ PY
               [ ${#TT[@]} -gt 0 ] && echo "$q: $(( ${#TT[@]} / 2 )) tensor(s) with no imatrix entry get their own type: q8_0, or q2_k for expert and embedding tensors (out/bench/cut-$BN/gaps-$q.txt)"
               LD_LIBRARY_PATH="$(dirname $QZ):${LD_LIBRARY_PATH:-}" $QZ --allow-requantize $( [ -f $QIMX ] && echo --imatrix $QIMX ) "${TT[@]}" $CUTQ8 $QF.part $q $(nproc) > $OUT/bench/cut-$BN/quant-$q.log 2>&1 && mv -f $QF.part $QF || { echo "bench $BN: $q failed (see out/bench/cut-$BN/quant-$q.log)"; tail -2 $OUT/bench/cut-$BN/quant-$q.log; rm -f $QF $QF.part; continue; }
               echo "$q $(basename $QF) bytes $(stat -c %s $QF) sha256 $(sha256sum $QF | cut -d' ' -f1)" | tee -a $OUT/bench/cut-$BN/sizes.txt   # a home download is checked against these
-              if [ -z "${NOUP:-}" ]; then
+              # 24 Nov publish gate: size in range, loads, answers sensibly; a quant that fails stays on the pod, off Hugging Face
+              GATE=$OUT/bench/cut-$BN/gate-$q.txt; : > $GATE
+              if bash $POD/quant_gate.sh $QF $q "$(plan "$CJ.get('expect_gb',{}).get('$q','')")" $S/llama.cpp/build-cuda/bin/llama-server $GATE; then
+                echo "$(basename $QF)" >> $CD/gated.txt; echo "$q passed the publish gate"
+              else echo "bench $BN: $q FAILED the publish gate (out/bench/cut-$BN/gate-$q.txt); not uploaded"; tail -2 $GATE; continue; fi
+              if [ -z "${NOUP:-}" ] && [ "$(plan "$CJ.get('publish',True)")" = "True" ]; then
                 PYTHONPATH= python3 $POD/cut_card.py --dir $CD --cut $OUT/bench/cut-$BN/cut.json --name "$CNAME" --base "$(plan "$CJ['base']")" --base-params $BP --source "$(plan "$CJ['source_note']")" --license-name "$(plan "$CJ['license_name']")" --extra "$IN/$(basename "$(plan "$CJ.get('card_extra','none')")")" > /dev/null
                 PUB_PRIVATE=$PUB_PRIVATE publish_dir $CD "$CREPO" "$q" model . "$(basename $QF)" "$(basename $QF .gguf)-*-of-*.gguf" "README.md" && echo "$q https://huggingface.co/$CREPO/resolve/$(HF_TOKEN=$(cat $IN/hf-token) python3 -c "import os,sys; from huggingface_hub import HfApi; print(HfApi(token=os.environ['HF_TOKEN']).model_info(sys.argv[1]).sha)" "$CREPO" 2>/dev/null || echo main)/$(basename $QF)" >> $OUT/bench/cut-$BN/published.txt
               fi

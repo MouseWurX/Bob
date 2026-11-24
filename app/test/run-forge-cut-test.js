@@ -34,6 +34,7 @@ check('a quant counts only when finished: written as .part, renamed, listed in s
 check('a cut brain that fails to load holds the pod for a fix, then fails (never "done")', /status hold/.test(sh) && /die "\$BN didn't load/.test(sh));
 check('IQ2 gaps: small tensors q8_0, experts and embeddings q2_k; unseen experts filled', /'_exps' in n or 'token_embd' in n/.test(read('forge/pod/imatrix_gaps.py')) && /imatrix_fill\.py/.test(block));
 check('the second run reuses the imatrix from the repo', /imatrix_from/.test(block) && /imatrix\.gguf$/.test(c.imatrix_from));
+check('publish gate: size range per quant, a load, two sensible answers; only passed files are uploaded and listed on the card', Object.keys(c.expect_gb || {}).length === c.quants.length && /quant_gate\.sh/.test(block) && /FAILED the publish gate/.test(block) && /gated\.txt/.test(read('forge/pod/cut_card.py')) && /FAIL size/.test(read('forge/pod/quant_gate.sh')) && /FAIL load/.test(read('forge/pod/quant_gate.sh')) && /FAIL answers/.test(read('forge/pod/quant_gate.sh')));
 const forge = read('forge/forge.mjs');
 check('the PC sends the keep list by its file name', /m\.file === 'cut' && m\.cut\?\.keep_file/.test(forge) && /upload\(path\.basename\(kp\), kp\)/.test(forge));
 const card = read('forge/pod/cut_card.py');

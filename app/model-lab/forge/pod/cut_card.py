@@ -18,8 +18,11 @@ left = a.base_params - c["removed_main_params"] / 1e9
 # files.json remembers every quant made so far, so one deleted from the pod after its upload stays on the card
 fj = os.path.join(a.dir, "files.json")
 sizes = json.load(open(fj)) if os.path.exists(fj) else {}
+gated = set(open(os.path.join(a.dir, "gated.txt")).read().split()) if os.path.exists(os.path.join(a.dir, "gated.txt")) else set()
+sizes = {n: b for n, b in sizes.items() if n in gated}  # only files that passed the publish gate are listed
 for f in glob.glob(os.path.join(a.dir, "*.gguf")):
     n = os.path.basename(f)
+    if n not in gated: continue
     if not n.startswith("imatrix") and not __import__("re").search(r"-\d{5}-of-\d{5}\.gguf$", n): sizes[n] = os.path.getsize(f)
 json.dump(sizes, open(fj, "w"), indent=1)
 files = sorted(sizes)
