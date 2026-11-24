@@ -4,6 +4,32 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.255
+
+Brain Engine 45, GUPPI driving by default, and no caps on how long a job runs.
+
+### New
+
+- **Brain Engine 45.** llama.cpp b12359 with our own patches, up from Brain Engine 43: eleven fixes from upstream llama.cpp, upstream CUDA speed-ups, upstream Vulkan speed-ups and AMD driver fixes for handhelds, tool-call parser fixes, a cap on the deeper look-ahead guesses, Inkling's loop layers in fewer steps with the same words, and on Linux the experts in RAM registered with the card. Anything that can change a brain's answers stays behind Turbo, off.
+- **GUPPI drives by default** (Governor of Unified Placement, Paging, and Inference, the Conductor). With Brain Engine 43 or newer, GUPPI fits the engine to the machine he's on: a brain of experts bigger than the card gets the expert copy cache, a brain without experts keeps Bob's own reading step, and the top reading step comes from the speeds he measured on that computer, not the biggest that fits. If a step leaves the card under its 512 MB margin he steps straight back. "Let Bob pick" and "I'll set them myself" still win when picked.
+- **GUPPI's notes in the chat.** Each engine change gets its own small record in the chat, for you only, never sent to a brain.
+- **Bob's cube.** The live experts map in the porthole, with Help giving the measured cost of Real experts.
+- **Legion Go agent setup guide** (docs/HANDHELD-AGENT-SETUP.md), written for the hardware.
+
+### Fixed
+
+- **No step, call, reply or time caps.** A reply stuck repeating itself is stopped and said loudly instead.
+- **A long paste's job kind** comes from its ends, not its size.
+- **Tool results cut too early.** Before cutting anything to fit the chat memory, Bob asks the running engine for the exact token count. A 16K-token message in a 32K chat memory was cut on the first reply because of a guess.
+- **Thinking off reaches Inkling.**
+
+### Docs
+
+- README: set-up steps for every hardware tier, the Flash-Next cuts (unproven in our lab, as we have yet to test).
+- The dissertation: Flash-Next REAP levels and the 80% cut, tools tested, the engine work of 23 November, and GUPPI through Bob's own code path.
+
+**Where it works:** Windows, Mac and Linux. GUPPI needs Brain Engine on a graphics card (Windows or Linux); on a Mac or the Android app replies go ahead as before.
+
 ## 1.5.252
 
 Rentals are safer, and you can pick a quant level or finish a robot check yourself.
@@ -163,22 +189,6 @@ The link log tells the same time as the logbook.
 - **The link log no longer reads an hour behind.** The Link log (the notes kept while a brain runs over another Bob's card) stamped its lines with the computer's own clock, which on some Windows PCs is an hour off from the real zone. It now uses the same time zone as the logbook, so the two always agree.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.243
-
-Send a whole folder to your other Bob with one Yes, and Journey gets its laptop-test fixes.
-
-### New
-
-- **Send a whole folder over Bob-Net.** Settings, Bob-Net, Files and brains: **Pick a folder**, pick the Bob, **Send it**. He gets one Yes card for all of it (up to 2000 files) instead of one card per file, and it lands in a folder of its own with its folders inside kept as they are. Every file is checked at the end, like always. Links and empty files stay behind.
-- **Journey screenshots.** The README shows six new Journey pictures in a gallery, and every screen is on its own page: the world, towns, fights, every menu and every race.
-
-### Fixed
-
-- **One card per offer.** A send that got no answer and was asked again could leave a second, empty Yes card on the other Bob. Now a send with no answer is taken back, the same send asked again is the same offer, and a card still waiting is swapped for the new one, never two.
-- **Journey on a laptop.** A 720p window fits without scrolling, menus too. The talk box and choices are real windows with sharp words. Elf and pixie ears show with Bob's wide headset look, and the tab icons have an outline so they stand out (Pets is now 🐶).
-
-**Where it works:** Windows, Mac, Linux and Bob for Android. Folder sending works on Windows, Mac and Linux; both Bobs need 1.5.243.
 
 ## Older versions
 
