@@ -4,7 +4,7 @@ import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { repairJson, checkArgs, fixCalls, exampleCall, nearName, errorHint, promisesAction, PROMISE_NUDGE, nearKey, onTrackNote, LAST_ROUND_NOTE, tidyOld, togetherCalls, meaningPick, GroupVectors, GROUP_EXAMPLES } from '../src/loop-help.js';
+import { repairJson, checkArgs, fixCalls, exampleCall, nearName, errorHint, promisesAction, PROMISE_NUDGE, PROMISE_UNDONE_LINE, nearKey, onTrackNote, LAST_ROUND_NOTE, tidyOld, togetherCalls, meaningPick, GroupVectors, GROUP_EXAMPLES } from '../src/loop-help.js';
 import { asDoc, asQuery, vecKey, freshVec, EMBED_PREFIX_V } from '../src/embed-prefix.js';
 import { Brain } from '../src/brain.js';
 import { LlamaCpp } from '../src/llamacpp.js';
@@ -230,6 +230,13 @@ const reset = () => { ran.length = 0; events.length = 0; seen.length = 0; slow =
   await run('what is the weather like');
   check('turn: "let me look that up" with no call gets one nudge, and then he does it', ran.length === 1 && seen[1]?.messages.some((m) => m.content === PROMISE_NUDGE), JSON.stringify(ran));
   check('turn: the answer after the nudge is his reply', brain.session('main').at(-1)?.content === 'Sunny.');
+}
+{ // Nov 23 (Legion Go): sent back once, he promises again and calls nothing: he says plainly it isn't done
+  reset();
+  script = [{ role: 'assistant', content: 'Sure, let me look that up for you.' }, { role: 'assistant', content: "I'll check the files and let you know." }];
+  await run('what is in my notes folder');
+  const last = brain.session('main').at(-1)?.content || '';
+  check('turn: a second empty promise says it is not done', ran.length === 0 && last.endsWith(PROMISE_UNDONE_LINE), last);
 }
 {
   reset();

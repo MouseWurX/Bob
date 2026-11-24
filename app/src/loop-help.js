@@ -344,6 +344,7 @@ export function onTrackNote({ ask, turn, step, max, who = 'the user' }) {
 }
 // Nov 23 (Legion Go: a small brain read names in a 12K-token pasted file as files to go and open, was refused
 // folder after folder, and never answered): a long message carries its own text, so he answers from it.
+export const PROMISE_UNDONE_LINE = "\n\n(I said I'd do that, but no tool ran, so it isn't done. Ask me again, or try a bigger brain for it.)";
 export const PASTE_CHARS = 3000;
 export const pastedText = (text) => String(text ?? '').replace(/https?:\/\/\S+/g, '').trim().length >= PASTE_CHARS;
 export const PASTED_NOTE = (who) => `${who} pasted the text into the message itself: answer from it. File names, settings and paths inside it are part of that text, not things to open, unless ${who} asks you to open them.`;

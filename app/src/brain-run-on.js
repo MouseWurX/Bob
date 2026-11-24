@@ -28,7 +28,7 @@ import { roughTokens, wantsBorrow } from './share-brains.js';
 import { howtosOn, usingLine, howtoPrompt, trailStep } from './howtos.js';
 import { causeLine, sideJob, STRIKE_NOTE } from './retry.js';
 import { carriedBudget, Progress, spendNudge, keepBudget, stage, pastCeiling, ceilingMs, wrapUp, loudLine, ceilingMins, waitedFor, outOfStepsLine, nudgeOk, CALLS_PER_TURN, CAP_SKIP, droppedNote, ALWAYS_ON_CEILING } from './loop-guard.js';
-import { tidyOld, LAST_ROUND_NOTE, onTrackNote, promisesAction, PROMISE_NUDGE, PROMISE_LOG, nearKey, errorHint, pastedText, PASTED_NOTE } from './loop-help.js';
+import { tidyOld, LAST_ROUND_NOTE, onTrackNote, promisesAction, PROMISE_NUDGE, PROMISE_LOG, nearKey, errorHint, pastedText, PASTED_NOTE, PROMISE_UNDONE_LINE } from './loop-help.js';
 import { midJobOn } from './mid-job.js';
 import { systemPrompt } from './persona.js';
 import { lookPrompt } from './look.js';
@@ -561,6 +561,13 @@ export const runOnParts = {
         this.log('honesty', PROMISE_LOG);
         emit({ type: 'token', text: '\n\n' });
         nudged(); continue;
+      }
+      // Nov 23 (Legion Go, gemma): sent back once, he promised again and still called nothing. Say plainly it wasn't
+      // done, instead of ending the turn as if it was (loud, like the guard rails).
+      if (!reply.tool_calls && !empty && ctx.promiseChecked && !ctx.handOffSaid && !ctx.promiseUndoneSaid && !ctx.noTools && promisesAction(reply.content)) {
+        ctx.promiseUndoneSaid = true;
+        emit({ type: 'token', text: PROMISE_UNDONE_LINE }); reply.content = String(reply.content || '') + PROMISE_UNDONE_LINE;
+        this.log('warn', 'he promised an action twice and called no tool; told the user it was not done');
       }
       if (!reply.tool_calls && !job?.side && !ctx.noteRedo && this.watch.for(job)?.notes.length) { ctx.noteRedo = true; this.readNotes(ctx, msgs, noteAfterAnswer); continue; }
       if (!reply.tool_calls && !ctx.noTools && nudgeOk(ctx)) { // Jobs, Run tests after code edits (job-helps.js): before he says done
