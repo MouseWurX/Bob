@@ -497,7 +497,7 @@ The same steps on every computer: install Bob, press **Get Bob ready** on the We
 |---|---|---|---|
 | **16 GB graphics card**, 32 GB of memory | Qwen3.6 35B-A3B (23.3 GB file; what doesn't fit on the card sits in memory) | 256K | **Yes**, on an RTX 5070 Ti: about 90 tokens a second in everyday chats. |
 | **12 GB card or bigger than 16 GB** | The same set as a 16 GB card | 256K | Unproven in our lab, as we have yet to test. |
-| **8 GB card** | Qwen3.6 35B-A3B, the smaller Q3 file made for 8 GB cards (17.7 GB) | 128K | Unproven in our lab, as we have yet to test. Only the download has been checked. |
+| **8 GB card** | Gemma 4 E4B, with Qwen3.6 35B-A3B for coding (the smaller Q3 file made for 8 GB cards, 17.7 GB) | Bob's pick; 128K for the coding brain | Unproven in our lab, as we have yet to test. Only the download has been checked. |
 | **6 GB card** (most laptops) | Qwen3 4B Instruct, with Qwen2.5 Coder 7B for coding | Bob's pick | Unproven in our lab, as we have yet to test. |
 | **Built-in graphics** (handhelds, thin laptops) | Qwen3 4B Instruct, with Gemma 4 E4B for pictures | Shrinks to fit, down to 8K | **Yes**, on a 16 GB AMD handheld: Qwen3 4B wrote 22 to 28 tokens a second, Gemma 4 E2B 42 to 46, Qwen3.5 2B about 50. Steps for this kind of hardware are in the [handheld setup guide](app/docs/HANDHELD-AGENT-SETUP.md). |
 | **No graphics card** (processor only) | Gemma 4 E4B | Bob's pick | Unproven in our lab, as we have yet to test. |
