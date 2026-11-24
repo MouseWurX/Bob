@@ -1,0 +1,27 @@
+diff --git a/common/parsers/inkling.cpp b/common/parsers/inkling.cpp
+index 9c30cdb..6dd9f44 100644
+--- a/common/parsers/inkling.cpp
++++ b/common/parsers/inkling.cpp
+@@ -50,9 +50,21 @@ static void inkling_split_media(common_chat_prompt & prompt) {
+ //   <|message_model|><|content_text|>...<|end_message|>
+ //   <|message_model|>NAME<|content_invoke_tool_json|>{"name":"NAME","args":{...}}<|end_message|>
+ common_chat_params common_chat_params_init_inkling(const common_chat_template &          tmpl,
+-                                                   const autoparser::generation_params & inputs) {
++                                                   const autoparser::generation_params & inputs_in) {
+     common_chat_params data;
+ 
++    // Brain Engine 0093: the Inkling template has no enable_thinking switch; it reads reasoning_effort instead
++    // ("none" = no thinking). Map enable_thinking=false to reasoning_effort "none" unless the caller set an effort.
++    autoparser::generation_params inputs = inputs_in;
++    if (!inputs.enable_thinking && tmpl.source().find("reasoning_effort") != std::string::npos) {
++        if (!inputs.extra_context.is_object()) {
++            inputs.extra_context = json::object();
++        }
++        if (!inputs.extra_context.contains("reasoning_effort")) {
++            inputs.extra_context["reasoning_effort"] = "none";
++        }
++    }
++
+     data.prompt            = common_chat_template_direct_apply_impl(tmpl, inputs);
+     data.generation_prompt = common_chat_template_generation_prompt_impl(tmpl, inputs);
+     data.format            = COMMON_CHAT_FORMAT_PEG_NATIVE;
