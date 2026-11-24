@@ -205,5 +205,14 @@ check('the FAQ answers it and says where it works', /Android app/.test(HELP.find
 check('the glossary explains it', /<dt>Conductor<\/dt>/.test(HELP.find((h) => h.id === 'glossary')?.html || ''));
 
 fs.rmSync(tmp, { recursive: true, force: true });
+{ calls.length = 0; const e = live({ sharedGraphics: true }); e.condChat = CHAT_STEP; e.condStep = CHAT_STEP; e.condMax = READ_STEP;
+  await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
+  check('the Legion Go check: built-in graphics never switch inside a chat', !calls.some((c) => c.startsWith('POST /context')), JSON.stringify(calls)); }
+{ const e = engineOf({}, { testSeed: 7 }); let sent = null; const was = globalThis.fetch;
+  globalThis.fetch = async (_u, o) => { sent = JSON.parse(o.body); return { ok: true }; };
+  try { await e.post('big', [{ role: 'user', content: 'hi' }], [], null, false, 'chat', 0.7); } finally { globalThis.fetch = was; }
+  const e2 = engineOf(); let sent2 = null; globalThis.fetch = async (_u, o) => { sent2 = JSON.parse(o.body); return { ok: true }; };
+  try { await e2.post('big', [{ role: 'user', content: 'hi' }], [], null, false, 'chat'); } finally { globalThis.fetch = was; }
+  check('a test seed makes replies greedy and seeded, and only when set', sent?.seed === 7 && sent.temperature === 0 && sent.top_k === 1 && sent2 && !('seed' in sent2)); }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

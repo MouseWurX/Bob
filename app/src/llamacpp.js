@@ -652,13 +652,17 @@ export class LlamaCpp {
       // Nov 23: the copy cache fills the card's free memory (Brain Engine 39 and newer), unless set by hand
       // Nov 23: the biggest step it will read at is planned for at load, and the brain loads at it (see loadAtStep)
       this.condMax = readStepFor(Number(ctx || lc.ctx || DEFAULT_CTX) || 0);
-      // built-in graphics (the Go's safe range): load at the chat step, read at most APU_MAX_STEP, no fill
+      // built-in graphics (the Go's safe range): read at most APU_MAX_STEP, no fill, no switching (see below)
       this.condApu = this.cfg.sharedGraphics === true;
       if (this.condApu) this.condMax = Math.max(this.condChat, Math.min(this.condMax, APU_MAX_STEP));
       if ((this.condCap ||= {})[model] > 0) this.condMax = Math.max(this.condChat, Math.min(this.condMax, this.condCap[model])); // a step that left the card short before
       const fill = this.condApu ? {} : fillEnv({ cacheMiB: this.condCacheBase, beNo: this.beNo(), env: this.tuneEnv, step: this.condMax });
       // Nov 24 (the laptop check): load at the read step only where the engine sizes the card around it (the fill)
-      const atRead = !this.condApu && this.condMax > this.condChat && loadAtReadStep({ fills: Boolean(fill.LLAMA_MOE_CACHE_FILL) });
+      // Nov 24, the Legion Go check: switching steps inside a chat changed the words on built-in graphics, so there it
+      // loads at its read step and stays, when that still leaves Windows its 1.5 GB with the brain in (else the chat step)
+      let apuRoom = false;
+      if (this.condApu && this.condMax > this.condChat) { let size = 0; try { size = fs.statSync(gguf).size; } catch {} apuRoom = apuStepOk({ from: this.condChat, to: this.condMax, freeBytes: (this.freeRam ? this.freeRam() : os.freemem()) - size }); }
+      const atRead = this.condMax > this.condChat && (this.condApu ? apuRoom : loadAtReadStep({ fills: Boolean(fill.LLAMA_MOE_CACHE_FILL) }));
       if (atRead) args.splice(0, args.length, ...loadAtStep(args, this.condMax));
       this.condLoad = atRead ? Math.max(this.condMax, this.condChat) : this.condChat;
       // Nov 24 (the Legion Go check found no Conductor lines in the logbook): say once per load that it drives, and how
@@ -1665,7 +1669,8 @@ export class LlamaCpp {
     // at all (the gate's fastest row). Built-in graphics still switch (they load at the chat step).
     // Nov 24: from Brain Engine 44 the switch costs about 0.2 s, so it switches inside a job again (the owner's ask).
     // before 44 the first switch after a --fit load reloads the brain (0087 fixes it), so it stays at the load step
-    if (!this.condApu && this.beNo() < SWITCH_IN_JOB_FROM_BE && (this.tuneEnv?.LLAMA_MOE_CACHE_FILL_STEP || this.lastArgs?.includes('--fit') || (this.condLoad > this.condChat && this.condStep === this.condLoad))) return;
+    if (this.condApu) return; // Nov 24 (the Legion Go check): built-in graphics stay at the step they loaded at
+    if (this.beNo() < SWITCH_IN_JOB_FROM_BE && (this.tuneEnv?.LLAMA_MOE_CACHE_FILL_STEP || this.lastArgs?.includes('--fit') || (this.condLoad > this.condChat && this.condStep === this.condLoad))) return;
     const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: (this.condSpeeds ||= {})[model], switchS: switchGuess(held, st?.ratio), maxStep: Math.min(this.condMax || 0, this.condCap?.[model] > 0 ? this.condCap[model] : Infinity) || 0 });
     // Nov 20: off unless engineTuning.growGuess is set (a test switch). Bob's 440 clean job lessons: replies with thinking
     // median 81 tokens, none over 1,500, so a guess made before the reply mostly misses; growing mid-reply is the way.
@@ -1765,6 +1770,9 @@ export class LlamaCpp {
       body: JSON.stringify({ model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, max_tokens: replyTokens(this.current === model ? this.currentCtx : null, MAX_REPLY_TOKENS), // 1.5.148: less on a small context. 1.5.26: no empty enums (llama.cpp rejects them)
         ...this.sampling(model, { tools: !!tools?.length, think, task }),
         ...(Number.isFinite(temperature) ? { temperature } : {}),
+        // Nov 24 (the Legion Go check couldn't tell drift from chance): llamacpp.testSeed in the config file, for test
+        // runs only, makes every reply greedy and seeded so two runs can be compared word for word. Off unless set.
+        ...(Number.isInteger(this.lc?.testSeed) ? { seed: this.lc.testSeed, temperature: 0, top_k: 1 } : {}),
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
         // 15 Nov 2026: GPT-OSS reads a reasoning level instead (model-family.js thinkKwargs: off = low).
         ...this.thinkArgs(model, think),
