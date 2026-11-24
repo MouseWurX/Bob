@@ -1127,7 +1127,7 @@ How Inkling 2 Mini does on Bob's jobs, and its speed on the home PC, are unprove
 
 #### 4.3.3.14 GUPPI fixed per machine, the temperature bug and look-ahead 0108 (night of 23 November)
 
-After the release gate, GUPPI was set on by default for Brain Engine 43 and later on any graphics card, with MTP off, and checked on each machine. Brain Engine 44 adds patch 0087, which keeps the fit when only the context is remade (results: `bob-wip/engine-speed/be44-0087-switch-npc.md`).
+After the release gate, GUPPI was set on by default in the code (Brain Engine 43 and later, any graphics card, MTP off) for the next bundle, and checked on each machine before it ships. Brain Engine 44 adds patch 0087, which keeps the fit when only the context is remade (results: `bob-wip/engine-speed/be44-0087-switch-npc.md`).
 
 | Machine and brain | What was checked | Result | Verdict |
 |---|---|---|---|
@@ -1145,6 +1145,15 @@ After the release gate, GUPPI was set on by default for Brain Engine 43 and late
 | One try | 33.32 | 8,187 | 106.6 | 76 | 11,364 |
 
 The one-try rule took 33.3 s against 42.0 s before the fix, within about 2% of plain, with one 0.16 s switch, no reload, and the same words on all 7 turns of both rounds. The 76 to 78 MB spill is the same in every way, so it is the shared baseline, not GUPPI's.
+
+**Through Bob's own code path: NO-GO for default-on.** The switch tests above replay GUPPI's plan straight to the engine. A run of Bob itself, headless at commit 4bdc66a8 on BE44 with the test seed on, found GUPPI's default slower than "Let Bob pick" on a 16K read:
+
+| Brain | GUPPI default | Let Bob pick |
+|---|---|---|
+| 35B | 34.64 s, card peak 15,057 MB | 33.28 s, 15,057 MB |
+| Qwen3-4B | 9.44 s, 6,717 MB | 7.37 s, 6,007 MB |
+
+All runs stayed inside the 512 MB margin, but the words did not match pick. On the 35B the cause was found: Bob's own default settings did not turn on the copy cache, so GUPPI fell back to step 512. The tool job in this run is void because of a test bug (a wrong file path). The fixes and a rerun are to come, and GUPPI is not on by default until the rerun passes. This is why the real path is checked as well as the engine.
 
 **Borrowed reading on the 35B did not engage** on the 16 GB card, because there was not enough spare card room for it. With and without it gave the same speed within noise: 4,842 t/s reading and 90 writing at 16K, and 3,356 and 53 for a 120K read at 128K context. Whether it helps on a bigger card is unproven in our lab, as we have yet to test.
 
@@ -1198,6 +1207,7 @@ This is every main speed result on the home PC in one place, oldest first, with 
 | 23 Nov | BE90 | Inkling 2 Mini, laptop and Legion Go | Laptop Q2 11.9 write / 29 read t/s; Go Q2 on the processor 10.6 / 15.8 | n/a | Runs on both; home-PC runs queued | 4.3.3.13 |
 | 23 Nov | BE44 | GUPPI switching, 35B with copy cache (0087) | 45.9 against 46.2 s; long read 3,366 against 2,194 t/s; switch 0.7 s | yes | GO | 4.3.3.14 |
 | 23 Nov | BE44 | GUPPI switching, dense Qwen3-4B | 42.0 against 32.9 s (saving the chat costs 1 to 5 s a switch); with the one-try rule 33.3 against 32.7 to 32.9 s | yes | NO-GO, then GO with the one-try rule | 4.3.3.14 |
+| 23 Nov | BE44 | GUPPI through Bob's own code path, 16K read | 35B 34.6 against pick's 33.3 s; Qwen3-4B 9.4 against 7.4 s; words differ | yes (seeded) | NO-GO for default-on; Bob's defaults missed the copy cache; rerun to come | 4.3.3.14 |
 | 23 Nov | BE44 | GUPPI on the 6 GB laptop | 25.2 against 27.3 s; peak 5,607 of 5,632 MiB; no spill | n/a | PASS after the spill fix | 4.3.3.14 |
 | 23 Nov | 1.5.251 engine | Legion Go, `--load-mode mmap` (PR #315) | Shared graphics memory 3.49 to 1.22 GB; gemma4-e2b 17.5 to 28.7 t/s; 42 to 46 fully on graphics | yes | Default for built-in graphics | 4.3.3.13 |
 
