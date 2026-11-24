@@ -78,6 +78,19 @@ publish_dir() {   # <local dir> <repo> <what> <model|dataset> <path in repo> [in
   [ $OK = 0 ] && { echo "$WHAT is on Hugging Face ($VIS): https://huggingface.co/$( [ $TYPE = dataset ] && echo datasets/ )$REPO"; return 0; }
   return 1
 }
+# published_line <repo> <quant> <file name>: "<quant> <url of the file or its first part>[ parts: <part names>]" (24 Nov: a quant over
+# 50 GB goes up as name-00001-of-0000N.gguf, so the single name the line used to give didn't exist on the repo)
+published_line() {
+  HF_TOKEN=$(cat $IN/hf-token) python3 - "$@" <<'PY' 2>/dev/null || echo "$2 https://huggingface.co/$1/resolve/main/$3"
+import os,re,sys; from huggingface_hub import HfApi
+repo,q,name=sys.argv[1:4]; info=HfApi(token=os.environ["HF_TOKEN"]).model_info(repo, files_metadata=False)
+stem=name[:-5] if name.endswith(".gguf") else name
+files=sorted(s.rfilename for s in info.siblings if s.rfilename==name or re.fullmatch(re.escape(stem)+r"-\d{5}-of-\d{5}\.gguf", s.rfilename))
+parts=[f for f in files if f!=name]
+first=name if name in files or not parts else parts[0]
+print(f"{q} https://huggingface.co/{repo}/resolve/{info.sha}/{first}" + (f" parts: {' '.join(parts)}" if parts and first!=name else ""))
+PY
+}
 # set_visibility <repo> <model|dataset> <True|False = private>: "hf upload --private" only counts when a repo is CREATED, so a repo that
 # already exists (Riker's, with his recipe) is flipped here. Best effort: a failure is said, not fatal.
 set_visibility() {
@@ -408,7 +421,7 @@ PY
                 [ -f $QIMX ] || PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/imatrix_fill.py --imatrix $IMX --out $QIMX >> $OUT/bench/cut-$BN/gaps-$q.txt 2>&1 || QIMX=$IMX
                 mapfile -t TT < <(PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/imatrix_gaps.py --model $CUTQ8 --imatrix $QIMX --down "$(plan "$CJ.get('down_type',{}).get('$q','')")" 2>>$OUT/bench/cut-$BN/gaps-$q.txt)
                 head -1 $OUT/bench/cut-$BN/gaps-$q.txt; fi ;; esac
-              [ ${#TT[@]} -gt 0 ] && echo "$q: $(( ${#TT[@]} / 2 )) tensor(s) with no imatrix entry get their own type: q8_0, or q2_k for expert and embedding tensors (out/bench/cut-$BN/gaps-$q.txt)"
+              [ ${#TT[@]} -gt 0 ] && echo "$q: $(( ${#TT[@]} / 2 )) tensor type override(s): the down experts at the plan's down_type, tensors the imatrix doesn't fully cover at q8_0 (q4_0 for embeddings, q2_k for other experts) (out/bench/cut-$BN/gaps-$q.txt)"
               LD_LIBRARY_PATH="$(dirname $QZ):${LD_LIBRARY_PATH:-}" $QZ --allow-requantize $( [ -f $QIMX ] && echo --imatrix $QIMX ) "${TT[@]}" $CUTQ8 $QF.part $q $(nproc) > $OUT/bench/cut-$BN/quant-$q.log 2>&1 && mv -f $QF.part $QF || { echo "bench $BN: $q failed (see out/bench/cut-$BN/quant-$q.log)"; tail -2 $OUT/bench/cut-$BN/quant-$q.log; rm -f $QF $QF.part; continue; }
               echo "$q $(basename $QF) bytes $(stat -c %s $QF) sha256 $(sha256sum $QF | cut -d' ' -f1)" | tee -a $OUT/bench/cut-$BN/sizes.txt   # a home download is checked against these
               fi
@@ -420,7 +433,7 @@ PY
               else echo "bench $BN: $q FAILED the publish gate (out/bench/cut-$BN/gate-$q.txt); not uploaded"; tail -2 $GATE; continue; fi
               if [ -z "${NOUP:-}" ] && [ "$(plan "$CJ.get('publish',True)")" = "True" ]; then
                 PYTHONPATH= python3 $POD/cut_card.py --dir $CD --cut $OUT/bench/cut-$BN/cut.json --name "$CNAME" --base "$(plan "$CJ['base']")" --base-params $BP --source "$(plan "$CJ['source_note']")" --license-name "$(plan "$CJ['license_name']")" --extra "$IN/$(basename "$(plan "$CJ.get('card_extra','none')")")" > /dev/null
-                PUB_PRIVATE=$PUB_PRIVATE publish_dir $CD "$CREPO" "$q" model . "$(basename $QF)" "$(basename $QF .gguf)-*-of-*.gguf" "README.md" && echo "$q https://huggingface.co/$CREPO/resolve/$(HF_TOKEN=$(cat $IN/hf-token) python3 -c "import os,sys; from huggingface_hub import HfApi; print(HfApi(token=os.environ['HF_TOKEN']).model_info(sys.argv[1]).sha)" "$CREPO" 2>/dev/null || echo main)/$(basename $QF)" >> $OUT/bench/cut-$BN/published.txt
+                PUB_PRIVATE=$PUB_PRIVATE publish_dir $CD "$CREPO" "$q" model . "$(basename $QF)" "$(basename $QF .gguf)-*-of-*.gguf" "README.md" && published_line "$CREPO" "$q" "$(basename $QF)" >> $OUT/bench/cut-$BN/published.txt
               fi
               # keep the served quant; the rest are on Hugging Face (or failed to go up: then kept for the PC to see in the log)
               [ "$q" != "$SQ" ] && grep -q "^$q " $OUT/bench/cut-$BN/published.txt 2>/dev/null && rm -f $QF
