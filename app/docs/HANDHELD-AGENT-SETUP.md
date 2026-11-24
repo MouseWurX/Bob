@@ -1,6 +1,16 @@
-# Setting up Bob on a Legion Go: steps for a helper agent
+# Setting up Bob on a Windows handheld: steps for a helper agent
 
-Setting up Bob on a Lenovo Legion Go, or any handheld with AMD built-in graphics, written so an AI agent (Claude, ChatGPT or another) can follow it step by step. It works for a person too. Follow the steps in order.
+Setting up Bob on a Windows handheld whose graphics are built in and share memory with Windows, written so an AI agent (Claude, ChatGPT or another) can follow it step by step. It works for a person too. Follow the steps in order.
+
+## Which handhelds this covers
+
+| Handheld | Chip | Status |
+|---|---|---|
+| Lenovo Legion Go (16 GB) | AMD Z1 Extreme, Radeon 780M | **Tested** (Nov 23, 2026). The numbers below come from it. |
+| ASUS ROG Ally, Ally X; Lenovo Legion Go S; other AMD Z1/Z2 or Ryzen handhelds | AMD, Radeon built-in graphics | Unproven in our lab, as we have yet to test. Same kind of chip and memory as the Go, so the steps should hold; speeds will differ. |
+| MSI Claw and other Intel handhelds | Intel Arc built-in graphics | Unproven in our lab, as we have yet to test. The steps are the same, but we haven't checked how Bob sizes brains on Intel graphics. |
+
+Speeds and brain sizes depend on total memory: a 24 GB handheld (like the Ally X) has more room than a 16 GB one. Step 2's free-memory check is what decides, not the model name.
 
 > **Read this first: don't set custom settings.**
 > Bob sizes everything on a handheld by itself: how much of the brain goes on the graphics, the chat memory, the reading step, and when the picture reader rests. Hand-set values can break that. As the agent:
@@ -48,7 +58,7 @@ Tell the user the number. Don't change the BIOS graphics memory setting (UMA) to
 
 ## 3. Pick a brain (ask before downloading)
 
-Pick from Bob's own catalogue (the Brains page, or Welcome's starter set for built-in graphics), not a file from elsewhere. These were measured on a 16 GB Legion Go (Z1 Extreme, 780M graphics) on Nov 23, 2026, with the whole brain on the graphics:
+Pick from Bob's own catalogue (the Brains page, or Welcome's starter set for built-in graphics), not a file from elsewhere. These were measured on a 16 GB Legion Go (Z1 Extreme, 780M graphics) on Nov 23, 2026, with the whole brain on the graphics. Other handhelds are unproven in our lab, as we have yet to test, but the order of the brains should hold:
 
 | Brain (catalogue name) | Writes | Reads a 4K paste | Lowest Available seen | Notes |
 |---|---|---|---|---|

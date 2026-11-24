@@ -7,7 +7,7 @@ Everything written about Bob, in one list. New here? Start with the [user guide]
 | Page | What's in it |
 |---|---|
 | **[User guide](USER-GUIDE.md)** | Everything Bob does, in plain English: setup, models, sessions, memory, Hands, voice, the Lab. |
-| [Setting up Bob on a Legion Go](LEGION-GO-AGENT-SETUP.md) | Step by step for a helper agent (or a person) on a handheld: install, check memory, pick a brain, test, report. |
+| [Setting up Bob on a Windows handheld](HANDHELD-AGENT-SETUP.md) | Legion Go, ROG Ally and similar: step by step for a helper agent (or a person). Install, check memory, pick a brain, test, report. |
 | [How Bob stays fast and light](PERFORMANCE.md) | What Bob does to answer quickly and stay out of your game's way, with measurements. |
 | [Bob and similar projects](COMPARISON.md) | Bob next to other local AI apps, in their own words. |
 | [Journey screenshots](JOURNEY-GALLERY.md) | Every Journey screen at full size: the world, towns, fights, every menu and every race. |
