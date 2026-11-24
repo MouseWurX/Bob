@@ -294,7 +294,7 @@ run_bench() {
   [ -f $S/llama-server-cmake.log ] && cp -f $S/llama-server-cmake.log $OUT/ 2>/dev/null || true
   if [ -f $S/llama-server-ready ] && [ -x $LS ]; then
     declare -A GOT
-    NB=$(plan "['benchmark']['models']" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"); mkdir -p $W/bench $OUT/bench
+    NB=$(plan "['benchmark']['models']" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"); mkdir -p $W/bench $OUT/bench; rm -f $OUT/bench/not-uploaded.txt
     for b in $(seq 0 $((NB-1))); do
       BN=$(plan "['benchmark']['models'][$b]['name']"); BF=$(plan "['benchmark']['models'][$b].get('file','')"); BQ=$(plan "['benchmark']['models'][$b].get('quant','Q4_K_M')"); BNICK=$(plan "['benchmark']['models'][$b].get('nickname','')")
       case "$BF" in
@@ -391,7 +391,12 @@ PY
               QF=$CD/$CFILE-$q.gguf
               status bench "$BN: quantizing $q"
               grep -q "^$q " $OUT/bench/cut-$BN/published.txt 2>/dev/null && [ "$q" != "$SQ" ] && { echo "$q is already on Hugging Face; skipped"; continue; }   # a restarted run doesn't redo finished quants
-              [ -f $QF ] && grep -q " $(basename $QF) bytes $(stat -c %s $QF) " $OUT/bench/cut-$BN/sizes.txt 2>/dev/null && { echo "$q already made"; continue; }
+              # 24 Nov (Bobert's IQ2_XXS passed the gate, then Hugging Face refused it: private storage full): a quant already made
+              # but not on Hugging Face is not made again; a --restart takes it straight to the gate and the upload
+              MADE=""; [ -f $QF ] && grep -q " $(basename $QF) bytes $(stat -c %s $QF) " $OUT/bench/cut-$BN/sizes.txt 2>/dev/null && MADE=1
+              if [ -n "$MADE" ] && [ "$q" = "$SQ" ] && grep -q "^$q " $OUT/bench/cut-$BN/published.txt 2>/dev/null; then echo "$q already made and on Hugging Face"; continue; fi
+              [ -n "$MADE" ] && echo "$q already made, not on Hugging Face yet: gate and upload again"
+              if [ -z "$MADE" ]; then
               rm -f $QF   # not listed as made: a left-over
               # 23 Nov (first Bobert run): IQ1/IQ2 refuse any tensor the imatrix doesn't fully cover (an expert the training chats never
               # reached). Those few tensors get q2_k instead (needs no imatrix); every other tensor keeps the asked type.
@@ -406,8 +411,10 @@ PY
               [ ${#TT[@]} -gt 0 ] && echo "$q: $(( ${#TT[@]} / 2 )) tensor(s) with no imatrix entry get their own type: q8_0, or q2_k for expert and embedding tensors (out/bench/cut-$BN/gaps-$q.txt)"
               LD_LIBRARY_PATH="$(dirname $QZ):${LD_LIBRARY_PATH:-}" $QZ --allow-requantize $( [ -f $QIMX ] && echo --imatrix $QIMX ) "${TT[@]}" $CUTQ8 $QF.part $q $(nproc) > $OUT/bench/cut-$BN/quant-$q.log 2>&1 && mv -f $QF.part $QF || { echo "bench $BN: $q failed (see out/bench/cut-$BN/quant-$q.log)"; tail -2 $OUT/bench/cut-$BN/quant-$q.log; rm -f $QF $QF.part; continue; }
               echo "$q $(basename $QF) bytes $(stat -c %s $QF) sha256 $(sha256sum $QF | cut -d' ' -f1)" | tee -a $OUT/bench/cut-$BN/sizes.txt   # a home download is checked against these
+              fi
               # 24 Nov publish gate: size in range, loads, answers sensibly; a quant that fails stays on the pod, off Hugging Face
               GATE=$OUT/bench/cut-$BN/gate-$q.txt; : > $GATE
+              sed -i "/^$(basename $QF)$/d" $CD/gated.txt 2>/dev/null
               if bash $POD/quant_gate.sh $QF $q "$(plan "$CJ.get('expect_gb',{}).get('$q','')")" $S/llama.cpp/build-cuda/bin/llama-server $GATE; then
                 echo "$(basename $QF)" >> $CD/gated.txt; echo "$q passed the publish gate"
               else echo "bench $BN: $q FAILED the publish gate (out/bench/cut-$BN/gate-$q.txt); not uploaded"; tail -2 $GATE; continue; fi
@@ -418,6 +425,14 @@ PY
               # keep the served quant; the rest are on Hugging Face (or failed to go up: then kept for the PC to see in the log)
               [ "$q" != "$SQ" ] && grep -q "^$q " $OUT/bench/cut-$BN/published.txt 2>/dev/null && rm -f $QF
             done
+            # 24 Nov: a quant that passed the gate but didn't go up is only on this pod's disk, which goes when the pod does. The pod
+            # holds (inside the time cap) for plan cut.upload_hold_minutes (180) so the upload can be fixed (room on Hugging Face) and
+            # retried with forge.mjs --restart, which uploads it without making it again.
+            NOTUP=""; [ -z "${NOUP:-}" ] && [ "$(plan "$CJ.get('publish',True)")" = "True" ] && for g in $(cat $CD/gated.txt 2>/dev/null); do qq=${g%.gguf}; qq=${qq##*-}; grep -q "^$qq " $OUT/bench/cut-$BN/published.txt 2>/dev/null || NOTUP="$NOTUP $qq"; done
+            if [ -n "$NOTUP" ]; then UH=$(plan "$CJ.get('upload_hold_minutes',180)")
+              echo "bench $BN: passed the gate but NOT on Hugging Face:$NOTUP (see out/publish/); the files stay on the pod"
+              echo "$BN:$NOTUP $UH" >> $OUT/bench/not-uploaded.txt   # the hold comes after the tests (run end), so scoring isn't delayed
+            fi
             BFILE=$(ls $CD/*-$SQ.gguf 2>/dev/null | head -1)
             # the cut Q8_0 stays while the served quant is missing, so a fixed run (--restart) can make it without a new download
             [ -n "$BFILE" ] && rm -f $CUTQ8 || echo "bench $BN: $SQ wasn't made; the cut Q8_0 is kept on the pod for a retry"
@@ -545,6 +560,9 @@ if [ "$(plan ".get('benchmark_only',False)")" = "True" ]; then
   rm -f $IN/hf-token
   # 21 Nov 2026: after2 served nothing (no llama-server built) yet ended "finished"; a serve-only run without a server is a failure
   [ -f $S/llama-server-ready ] || die "benchmark_only: no CUDA llama-server was built, so no brain was served (see out/llama-server-build.log)"
+  if [ -s $OUT/bench/not-uploaded.txt ]; then UH=$(sort -k3 -n $OUT/bench/not-uploaded.txt | tail -1 | awk '{print $NF}')
+    status hold "passed the gate but not on Hugging Face: $(cut -d' ' -f1-3 $OUT/bench/not-uploaded.txt | tr '\n' ';'); the pod keeps them ${UH} min for a fix and forge.mjs --restart"; sleep $((UH*60))
+    die "gated quants never reached Hugging Face: $(tr '\n' ';' < $OUT/bench/not-uploaded.txt)"; fi
   run_done "benchmark finished: the reports are on the PC under out/bench"; exit 0
 fi
 TEACHER=$(plan "['teacher']")
