@@ -1,9 +1,9 @@
 diff --git a/src/llama-model.cpp b/src/llama-model.cpp
-index ef489f6..b56b453 100644
+index e2d4c35..a8b3433 100644
 --- a/src/llama-model.cpp
 +++ b/src/llama-model.cpp
-@@ -2218,6 +2218,8 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
-         }
+@@ -2222,6 +2222,8 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
+         ggml_backend_tensor_get(per_layer_tok_embd_s, &per_layer_tok_embd_scale, 0, sizeof(per_layer_tok_embd_scale));
      }
  
 +    post_load_data(); // Brain Engine 0111
@@ -12,10 +12,10 @@ index ef489f6..b56b453 100644
  
      return true;
 diff --git a/src/llama-model.h b/src/llama-model.h
-index 9c165ec..88a9565 100644
+index 6dfd533..b007f3a 100644
 --- a/src/llama-model.h
 +++ b/src/llama-model.h
-@@ -1055,6 +1055,9 @@ struct llama_model {
+@@ -1057,6 +1057,9 @@ struct llama_model {
      // optional, runs after the scale pass
      virtual void post_arch_tensors(llama_model_loader &) {}
  

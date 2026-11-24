@@ -43,6 +43,9 @@ export const conductorDefaultFits = ({ beNo = 0 } = {}) => beNo >= CONDUCTOR_DEF
 // Engine 44 steps up for a long read only while the card keeps SPILL_MARGIN_MIB free, stepping straight back down and
 // capping that brain's step when a switch leaves less.
 export const SPILL_MARGIN_MIB = 512;
+// Nov 24: the copy cache GUPPI turns on for a brain of experts bigger than the card (the fill grows it to the card)
+export const COND_CACHE_MIB = 4096;
+export const condCacheWanted = ({ experts = 0, fileBytes = 0, cardBytes = 0 } = {}) => experts > 0 && cardBytes > 0 && fileBytes > cardBytes * 0.9;
 export const loadAtReadStep = ({ fills = false } = {}) => fills === true;
 // after a step change: the step to fall back to, or 0 when the card still has its margin (free unknown: 0)
 export const stepBack = ({ from = 0, to = 0, freeMiB = null } = {}) => (to > from && Number.isFinite(freeMiB) && freeMiB < SPILL_MARGIN_MIB ? from : 0);

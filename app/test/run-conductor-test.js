@@ -8,7 +8,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { LlamaCpp } from '../src/llamacpp.js';
-import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP, fillEnv, FILL_FROM_BE, loadAtStep, mtpBlocksSwitch, MTP_SWITCH_FROM_BE, apuStepOk, APU_MAX_STEP, APU_FLOOR, mtpSpareEnv } from '../src/conductor.js';
+import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP, fillEnv, FILL_FROM_BE, loadAtStep, mtpBlocksSwitch, MTP_SWITCH_FROM_BE, apuStepOk, APU_MAX_STEP, APU_FLOOR, mtpSpareEnv } from '../src/conductor.js';
 import { cleanTuning, mergeTuning } from '../src/engine-tuning.js';
 import { HELP } from '../public/help-content.js';
 
@@ -21,6 +21,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-conductor-'));
 // ---------- Off by default ----------
 check('on in a fresh Bob, off when another way is picked', conductorOn({}) && !conductorOn({ engineTuning: { mode: 'bob' } }) && !conductorOn({ engineTuning: { mode: 'hand' } }) && conductorOn({ engineTuning: { mode: 'conductor' } }));
 check('switching inside a job comes back with Brain Engine 44', SWITCH_IN_JOB_FROM_BE === 44);
+check('faster: a brain of experts bigger than the card gets the copy cache; a dense one or one that fits does not', COND_CACHE_MIB === 4096 && condCacheWanted({ experts: 256, fileBytes: 21e9, cardBytes: 16e9 }) && !condCacheWanted({ experts: 0, fileBytes: 21e9, cardBytes: 16e9 }) && !condCacheWanted({ experts: 128, fileBytes: 4e9, cardBytes: 16e9 }) && !condCacheWanted({ experts: 128, fileBytes: 21e9, cardBytes: 0 }));
 check('the laptop check: it loads at the read step only where the engine sizes the card around it', loadAtReadStep({ fills: true }) && !loadAtReadStep({ fills: false }) && !loadAtReadStep());
 check('on the fly: a step up that leaves under 512 MiB free goes back down', stepBack({ from: 512, to: 4096, freeMiB: 300 }) === 512 && stepBack({ from: 512, to: 4096, freeMiB: 900 }) === 0 && stepBack({ from: 4096, to: 512, freeMiB: 100 }) === 0 && stepBack({ from: 512, to: 4096, freeMiB: null }) === 0 && SPILL_MARGIN_MIB === 512);
 check('the default needs Brain Engine 43, built-in graphics included; a pick covers older engines', conductorDefaultFits({ beNo: 43 }) && !conductorDefaultFits({ beNo: 42 }) && !conductorDefaultFits({ beNo: 0 }) && conductorDefaultFits({ beNo: 44, sharedGraphics: true }) && !conductorPicked({}) && conductorPicked({ engineTuning: { mode: 'conductor' } }));
