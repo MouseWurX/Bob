@@ -238,7 +238,7 @@ Nothing trains, rents a card or uploads without the owner's go, and every rental
 | **The Computer Science Lab**, where every step runs | [Below](#the-computer-science-lab), and the [Lab steps plan](app/docs/LAB-STEPS-PLAN.md) |
 | **The costs**, every rental and dollar, failures included | [What Bob costs to make](app/docs/COSTS.md) |
 | **How we test**, and how that changed | [How we test brains](app/docs/TESTING.md) · [the harness log](app/model-lab/harness-log.md) |
-| **The models**, each with a card that says what it is and how it scored | [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) · [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) · [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) (none is in Bob's catalogue since 1.5.245) · [gpt-oss-120b cut to 38B](https://huggingface.co/MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF) (cut, not yet healed) |
+| **The models**, each with a card that says what it is and how it scored | [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) · [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) · [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) (none is in Bob's catalogue since 1.5.245) · [gpt-oss-120b cut to 38B](https://huggingface.co/MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF) (cut, not yet healed) · Flash-Next cuts: [Bobert 101Bob](https://huggingface.co/MouseWurX/Bobert-101Bob-A6B-Flash-Next-REAP80-GGUF) · [Riker 89Bob](https://huggingface.co/MouseWurX/Riker-89Bob-A6B-Flash-Next-REAP70-GGUF) · [Bill 77Bob](https://huggingface.co/MouseWurX/Bill-77Bob-A6B-Flash-Next-REAP60-GGUF) (cut, no training after; [below](#flash-next-cuts-bobert-riker-and-bill)) |
 | **The data** | [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) (the lessons, clean, full and preference files) · [bob-studies](https://huggingface.co/datasets/MouseWurX/bob-studies) (surgery and interview studies, never used for training) |
 | **The dissertation** (draft, all 13 chapters) | [Clean lessons beat more lessons](app/docs/dissertation/README.md) |
 | **The record** | [Bob's own models](app/docs/BOBS-OWN-MODELS.md) (every score and what went wrong) · [the Forge journal](app/docs/FORGE-JOURNAL.md) (the lab notebook) |
@@ -403,6 +403,18 @@ Three models made from Qwen3.6-35B-A3B with the same tools that are in the Lab: 
 | Download | [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) | [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) | [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) |
 
 Same tests, same rented card, each Bob served from his public Q4 file. Riker matches Bobert at a size that suits a 16 GB card. Since 1.5.245 none of the three is in Bob's Brain catalogue: stock Qwen3.6-35B-A3B is the default, until a Bob beats it on a held-out test. Their files stay on Hugging Face. Bill is best at tool decisions and weakest at facts and code, and is published as he is.
+
+### Flash-Next cuts: Bobert, Riker and Bill
+
+Three cuts of [Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Next) (125B, about 6B active per word), made 23 Nov 2026 to bring the full Flash-Next to a home computer with a 16 GB card and 32 GB of RAM. Experts were removed by a REAP score read from Bob's passed training jobs (never the held-out jobs), with **no training after the cut**. Each file passed a publish check before upload (size as predicted, it loads, it answers two plain questions). They are **unproven in our lab, as we have yet to test**: held-out job scores go on each card as they land. Not in Bob's Brain catalogue yet.
+
+| Cut | Experts kept | Files on Hugging Face (size) |
+|---|---|---|
+| [Bobert 101Bob A6B Flash-Next REAP80](https://huggingface.co/MouseWurX/Bobert-101Bob-A6B-Flash-Next-REAP80-GGUF) | 80% | IQ2_XXS 56.75 GB · IQ2_M 61.0 GB · Q3_K_M 81.65 GB · more on the way |
+| [Riker 89Bob A6B Flash-Next REAP70](https://huggingface.co/MouseWurX/Riker-89Bob-A6B-Flash-Next-REAP70-GGUF) | 70% | being made |
+| [Bill 77Bob A6B Flash-Next REAP60](https://huggingface.co/MouseWurX/Bill-77Bob-A6B-Flash-Next-REAP60-GGUF) | 60% | IQ2_M 53.56 GB · Q3_K_M 69.16 GB · IQ4_XS 71.3 GB · Q4_K_M 86.96 GB (no IQ2_XXS: it failed the publish check) |
+
+**Rough system size.** About 29 GB of every file is the n-gram word table, which is read from the drive a few rows per word, so it needs no RAM or card memory. What has to fit in RAM and card memory together is roughly the file size minus 29 GB, plus room for the chat: about 28 GB for Bobert IQ2_XXS, 25 GB for Bill IQ2_M, 40 GB for Bill Q3_K_M, 58 GB for Bill Q4_K_M. Files over 50 GB come in two parts; point the engine at the first. The name counts the billions of parameters left, not counting the word table.
 
 **Riker against the model he was cut from**, at home on a 16 GB card:
 
