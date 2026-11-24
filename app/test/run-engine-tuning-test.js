@@ -23,8 +23,8 @@ check('levers: unknown keys, out of range, fractions where whole numbers go and 
 check('levers: not an object gives none', Object.keys(cleanLevers(null)).length === 0 && Object.keys(cleanLevers([1])).length === 0);
 
 // ---------- Off by default, saving ----------
-check('a fresh Bob lets Bob pick', !handTuningOn({}) && cleanTuning(undefined).mode === 'bob' && !handTuningOn(mergeSettings({}, {})));
-check('only "hand" turns it on', cleanTuning({ mode: 'yes' }).mode === 'bob' && cleanTuning({ mode: 'hand' }).mode === 'hand');
+check('a fresh Bob lets the Conductor drive', !handTuningOn({}) && cleanTuning(undefined).mode === 'conductor' && !handTuningOn(mergeSettings({}, {})));
+check('only "hand" turns it on', cleanTuning({ mode: 'yes' }).mode === 'conductor' && cleanTuning({ mode: 'hand' }).mode === 'hand');
 { let t = mergeTuning(undefined, { mode: 'hand' });
   t = mergeTuning(t, { model: 'big', levers: { step: 4096, cacheMB: 4096 } });
   t = mergeTuning(t, { model: 'small', levers: { lookahead: 4 } });

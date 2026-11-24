@@ -8,7 +8,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { LlamaCpp } from '../src/llamacpp.js';
-import { conductorOn, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP, fillEnv, FILL_FROM_BE, loadAtStep, mtpBlocksSwitch, MTP_SWITCH_FROM_BE, apuStepOk, APU_MAX_STEP, APU_FLOOR, mtpSpareEnv } from '../src/conductor.js';
+import { conductorOn, conductorPicked, conductorDefaultFits, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP, fillEnv, FILL_FROM_BE, loadAtStep, mtpBlocksSwitch, MTP_SWITCH_FROM_BE, apuStepOk, APU_MAX_STEP, APU_FLOOR, mtpSpareEnv } from '../src/conductor.js';
 import { cleanTuning, mergeTuning } from '../src/engine-tuning.js';
 import { HELP } from '../public/help-content.js';
 
@@ -19,8 +19,9 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-conductor-'));
 
 // ---------- Off by default ----------
-check('off in a fresh Bob, on only when picked', !conductorOn({}) && !conductorOn({ engineTuning: { mode: 'bob' } }) && conductorOn({ engineTuning: { mode: 'conductor' } }));
-check('the mode is kept when saved', cleanTuning(mergeTuning(undefined, { mode: 'conductor' })).mode === 'conductor' && cleanTuning({ mode: 'drive' }).mode === 'bob');
+check('on in a fresh Bob, off when another way is picked', conductorOn({}) && !conductorOn({ engineTuning: { mode: 'bob' } }) && !conductorOn({ engineTuning: { mode: 'hand' } }) && conductorOn({ engineTuning: { mode: 'conductor' } }));
+check('the default needs Brain Engine 43 and a card of its own; a pick covers the rest', conductorDefaultFits({ beNo: 43 }) && !conductorDefaultFits({ beNo: 42 }) && !conductorDefaultFits({ beNo: 0 }) && !conductorDefaultFits({ beNo: 44, sharedGraphics: true }) && !conductorPicked({}) && conductorPicked({ engineTuning: { mode: 'conductor' } }));
+check('the mode is kept when saved', cleanTuning(mergeTuning(undefined, { mode: 'conductor' })).mode === 'conductor' && cleanTuning({ mode: 'drive' }).mode === 'conductor');
 
 // ---------- Speeds ----------
 const sp = learnStep(learnStep(undefined, 'read', 2048, 2657), 'write', 2048, 109.8);

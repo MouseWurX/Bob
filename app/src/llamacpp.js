@@ -29,7 +29,7 @@ import { LinkLog } from './link-log.js'; // what the link to a lent card carried
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
 import { tuningArgs, doorbellEnv } from './engine-tuning.js';
-import { conductorOn, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv } from './conductor.js'; // off unless picked
+import { conductorOn, conductorPicked, conductorDefaultFits, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv } from './conductor.js'; // off unless picked
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV } from './engine-extras.js'; // Turbo: stand-ins (0043, off unless switched on)
 import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
@@ -640,7 +640,8 @@ export class LlamaCpp {
     // The Conductor (Engine tuning, off unless picked): the start step is the chat step, and the reading needs a
     // place on disk while the step changes. A step set by hand (flags, the config file) means no Conductor.
     this.condChat = 0; this.condWinFull = 0; this.condMax = 0; this.condLoad = 0;
-    if (conductorOn(this.cfg) && !cpu && this.role !== BESIDE && !tunedStep && !handFlags.some((a) => ['-b', '-ub', '--batch-size', '--ubatch-size'].includes(a))) {
+    // Nov 24: on unless another way is picked; the default only where it has passed (conductorDefaultFits)
+    if (conductorOn(this.cfg) && (conductorPicked(this.cfg) || conductorDefaultFits({ beNo: this.beNo(), sharedGraphics: this.cfg.sharedGraphics === true })) && !cpu && this.role !== BESIDE && !tunedStep && !handFlags.some((a) => ['-b', '-ub', '--batch-size', '--ubatch-size'].includes(a))) {
       if (!args.includes('--slot-save-path')) args.push('--slot-save-path', path.join(this.cfg.dataDir, 'conductor'));
       const ub = args.lastIndexOf('-ub');
       this.condChat = ub >= 0 ? Number(args[ub + 1]) || CHAT_STEP : 512; // llama-server's own step when none is given

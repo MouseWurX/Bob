@@ -67,7 +67,7 @@ export function cleanLevers(v) {
 // { mode: 'bob' | 'hand' | 'conductor', brains: { model: levers } } for use. Saved as { mode, list: [{ model, ...levers }] }: a list
 // is replaced whole when settings are saved (an object is merged, so a cleared box would come back).
 export function cleanTuning(t) {
-  const mode = MODES.includes(t?.mode) ? t.mode : 'bob';
+  const mode = MODES.includes(t?.mode) ? t.mode : 'conductor'; // Nov 24: the Conductor unless another is picked
   const brains = {};
   const add = (m, v) => {
     if (typeof m !== 'string' || !m || m.length > 300) return;

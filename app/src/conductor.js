@@ -25,7 +25,15 @@ export const SLOW_TRIES = 3;
 const READ_SHARE = { 2048: 1, 4096: 1.41, 6144: 1.73 };
 const WRITE_SHARE = { 2048: 1, 4096: 1, 6144: 0.96 };
 
-export const conductorOn = (cfg) => cfg?.engineTuning?.mode === 'conductor';
+// Nov 24 (the owner asked for it on): the Conductor drives unless another way is picked. A saved "Let Bob pick" or
+// "I'll set them myself" still wins. conductorPicked: picked by hand, which also covers the places the default skips.
+const TUNE_MODES = ['bob', 'hand', 'conductor'];
+export const conductorPicked = (cfg) => cfg?.engineTuning?.mode === 'conductor';
+export const conductorOn = (cfg) => (TUNE_MODES.includes(cfg?.engineTuning?.mode) ? cfg.engineTuning.mode : 'conductor') === 'conductor';
+// The default needs Brain Engine 43 or newer (the switch without a reload) on a graphics card of its own. Built-in
+// graphics (sharedGraphics) waits for its own check on the Legion Go; picking the Conductor there still works.
+export const CONDUCTOR_DEFAULT_MIN_BE = 43;
+export const conductorDefaultFits = ({ beNo = 0, sharedGraphics = false } = {}) => beNo >= CONDUCTOR_DEFAULT_MIN_BE && !sharedGraphics;
 
 // the step to read a new part at, for a chat this long
 export const readStepFor = (totalTokens) => (totalTokens >= BIG_FROM ? BIG_STEP : READ_STEP);
