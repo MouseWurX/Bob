@@ -1,0 +1,6 @@
+== MX3_S Bill-77Bob-A6B-Flash-Next-REAP60-MX3_S.gguf 58.68 GB
+PASS size: 58.68 GB inside 55.7-61.6 GB
+PASS load
+answer 1: Paris
+answer 2: 42
+PASS answers: 2 of 2 right

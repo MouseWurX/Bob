@@ -1,0 +1,6 @@
+== IQ2_M Bill-77Bob-A6B-Flash-Next-REAP60-IQ2_M.gguf 53.56 GB
+PASS size: 53.56 GB inside 50.9-56.2 GB
+PASS load
+answer 1: Paris
+answer 2: 42
+PASS answers: 2 of 2 right

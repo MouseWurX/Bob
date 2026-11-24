@@ -63,6 +63,7 @@ echo "building CUDA llama-server (tag $TAG, sm_$ARCH); nvcc: $(command -v nvcc |
 rm -rf $L/tools/ui/dist $L/build-cuda/tools/ui
 ( cd $L && cmake -B build-cuda -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=$ARCH -DLLAMA_CURL=OFF -DLLAMA_BUILD_UI=OFF -DLLAMA_USE_PREBUILT_UI=OFF > $CL 2>&1 \
   && cmake --build build-cuda --target llama-server -j $(nproc) >> $CL 2>&1 && { cmake --build build-cuda --target llama-cvector-generator llama-imatrix -j $(nproc) >> $CL 2>&1 || echo "llama-cvector-generator/llama-imatrix did not build (the evil check reads experts only, no imatrix)"; } \
+  && { cmake --build build-cuda --target llama-perplexity -j $(nproc) >> $CL 2>&1 || echo "llama-perplexity did not build (no KLD for the mixed-bit recipes)"; } \
   && { ! grep -q act-dump tools/CMakeLists.txt 2>/dev/null || cmake --build build-cuda --target llama-act-dump -j $(nproc) >> $CL 2>&1 || echo "llama-act-dump did not build (the interp step is skipped)"; } \
   && { ! grep -q expert-pair tools/CMakeLists.txt 2>/dev/null || cmake --build build-cuda --target llama-expert-pair -j $(nproc) >> $CL 2>&1 || echo "llama-expert-pair did not build (the redirect pairing is skipped)"; } )
 SERVE=$W/llama.cpp/build-cuda/bin   # where run.sh serves from
