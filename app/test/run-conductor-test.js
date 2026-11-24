@@ -94,7 +94,7 @@ const port = srv.address().port;
 const live = (extra = {}) => {
   const e = engineOf({ engineTuning: { mode: 'conductor' }, ...extra });
   e.buildArgs('big');
-  Object.assign(e, { url: `http://127.0.0.1:${port}`, current: 'big', child: { exitCode: null }, loadedOk: true, slotDir: tmp, active: 1, condStep: e.condChat, condHeld: 2000 });
+  Object.assign(e, { url: `http://127.0.0.1:${port}`, current: 'big', child: { exitCode: null }, loadedOk: true, slotDir: tmp, active: 1, condStep: e.condChat, condHeld: 2000, condCacheBase: e.condCacheBase || 4096 }); // a copy cache: the Conductor only switches with one (Nov 24)
   e.condSpeeds = { big: known };
   e.perToken = {};
   e.logs = []; e.log = (_k, m) => e.logs.push(m);
@@ -198,7 +198,7 @@ check('cleanTuning keeps the switch only when it is on, and a change can turn it
   await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
   await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
   const ctx = calls.filter((c) => c.startsWith('POST /context'));
-  check('test PC, dense brain on BE44: one try of the read step, then no more switching', ctx.length === 1 && e.condStep === READ_STEP && e.logs.some((l) => /one try of step/.test(l)), JSON.stringify(calls)); }
+  check('Bob\'s real path on the test PC: with no copy cache it keeps Bob\'s step and never switches', ctx.length === 0 && e.condStep === CHAT_STEP && e.logs.some((l) => /nothing to trade/.test(l)), JSON.stringify(calls)); }
 { calls.length = 0; const e = live({ sharedGraphics: true }); e.condChat = CHAT_STEP; e.condStep = CHAT_STEP; e.condMax = READ_STEP;
   await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
   check('the Legion Go check: built-in graphics never switch inside a chat', !calls.some((c) => c.startsWith('POST /context')), JSON.stringify(calls)); }

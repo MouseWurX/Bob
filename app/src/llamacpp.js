@@ -1678,14 +1678,12 @@ export class LlamaCpp {
     // before 44 the first switch after a --fit load reloads the brain (0087 fixes it), so it stays at the load step
     if (this.condApu) return; // Nov 24 (the Legion Go check): built-in graphics stay at the step they loaded at
     if (this.beNo() < SWITCH_IN_JOB_FROM_BE && (this.tuneEnv?.LLAMA_MOE_CACHE_FILL_STEP || this.lastArgs?.includes('--fit') || (this.condLoad > this.condChat && this.condStep === this.condLoad))) return;
-    // Nov 24 (test PC, BE44, dense Qwen3-4B: saving the chat cost 1-6 s a switch, the job 42.0 s against 32.9 s): with
-    // no copy cache there is nothing to trade, so it measures once whether the read step fits (free card memory after
-    // the switch, the 512 MiB margin), then stays there, or back at the chat step if it didn't fit. No more switches.
-    if (!this.condCacheBase && this.beNo() >= SWITCH_IN_JOB_FROM_BE) {
-      if (this.condProbed?.[model] || !(this.condMax > this.condStep)) return;
-      (this.condProbed ||= {})[model] = true;
-      this.log?.('engine', `${model}: Conductor: no copy cache, so one try of step ${this.condMax}: it stays if the card keeps ${SPILL_MARGIN_MIB} MiB free`);
-      await this.condSwitch(model, this.condMax, held);
+    // Nov 24 (test PC, BE44, dense Qwen3-4B: saving the chat cost 1-6 s a switch, the job 42.0 s against 32.9 s; then
+    // Bob's real path: a one-time try of the read step lost 1.3-2.1 s against "Let Bob pick" and changed the words,
+    // and plain 2048 beat 4096 on that brain): with no copy cache there is nothing to trade, so it keeps the step the
+    // brain loaded at, which is Bob's own pick, and never switches. Same words and speed as Let Bob pick.
+    if (!this.condCacheBase) {
+      if (this.noCacheSaid !== model) { this.noCacheSaid = model; this.log?.('engine', `${model}: Conductor: no expert copy cache, so nothing to trade: it keeps Bob's step ${this.condStep} and doesn't switch`); }
       return;
     }
     const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: (this.condSpeeds ||= {})[model], switchS: switchGuess(held, st?.ratio), maxStep: Math.min(this.condMax || 0, this.condCap?.[model] > 0 ? this.condCap[model] : Infinity) || 0 });
