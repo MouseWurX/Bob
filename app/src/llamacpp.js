@@ -657,6 +657,8 @@ export class LlamaCpp {
       if (this.condApu) this.condMax = Math.max(this.condChat, Math.min(this.condMax, APU_MAX_STEP));
       else if (this.condMax > this.condChat) args.splice(0, args.length, ...loadAtStep(args, this.condMax));
       this.condLoad = this.condApu ? this.condChat : Math.max(this.condMax, this.condChat);
+      // Nov 24 (the Legion Go check found no Conductor lines in the logbook): say once per load that it drives, and how
+      this.log?.('engine', `${model}: Conductor: on (${conductorPicked(this.cfg) ? 'picked' : 'the default'}), loads at step ${this.condLoad}, reads at up to ${this.condMax || this.condChat}${this.condApu ? ', built-in graphics' : ''}`);
       const fill = this.condApu ? {} : fillEnv({ cacheMiB: this.condCacheBase, beNo: this.beNo(), env: this.tuneEnv, step: this.condMax });
       if (fill.LLAMA_MOE_CACHE_FILL) {
         this.tuneEnv = { ...(this.tuneEnv || {}), ...fill };
