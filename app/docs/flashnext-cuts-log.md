@@ -32,7 +32,8 @@ Rows are added as each file is made and scored. A measure not run yet is left ou
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | 60% Bill | IQ2_XXS | 50.3 GB | FAIL: size and load passed; answered "France." (capital of France) and "25" (17 plus 25); not uploaded | | | | | | | | pod svcq7m3qy95uof out/bench/cut-blfn/gate-IQ2_XXS.txt, 23 Nov 10:12 PM |
 | 80% Bobert | IQ2_XXS | 56.75 GB (2 parts on Hugging Face) | PASS: size inside 51.1-62.5 GB, loads, answered Paris and 42; public | | | | | | | | pod 35un7hx2k2gdsd out/bench/cut-bnfn/gate-IQ2_XXS.txt, reported 23 Nov 10:34 PM |
-| 60% Bill | IQ2_M | 53.56 GB | PASS: size inside 49.1-60.1 GB, loads, answered Paris and 42; uploading | | | | | | | | pod svcq7m3qy95uof out/bench/cut-blfn/gate-IQ2_M.txt, reported 23 Nov 10:34 PM |
+| 60% Bill | IQ2_M | 53.56 GB | PASS: size inside 49.1-60.1 GB, loads, answered Paris and 42; public | | | | | | | | pod svcq7m3qy95uof out/bench/cut-blfn/gate-IQ2_M.txt, reported 23 Nov 10:34 PM |
+| 60% Bill | Q3_K_M | 69.16 GB (2 parts on Hugging Face) | PASS: size inside 61.5-75.1 GB, loads, answered Paris and 42; public | | | | | | | | pod svcq7m3qy95uof out/bench/cut-blfn/gate-Q3_K_M.txt, reported 23 Nov 10:48 PM |
 
 ## What each measure is
 
