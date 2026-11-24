@@ -30,7 +30,7 @@ check('the ~190 GB source is deleted once the cut is written, and the cut Q8_0 a
 check('a quant is deleted only after it is on Hugging Face, and never the served one', /\[ "\$q" != "\$SQ" \] && grep -q "\^\$q " .*published\.txt.* && rm -f \$QF/.test(block));
 check('the imatrix runs on the training chats the PC sent', /imatrix-\$BN\.tgz/.test(block) && /all\.txt/.test(block));
 check('a quant over 50 GB goes up in parts (its parts are named in the upload)', /-\*-of-\*\.gguf/.test(block));
-check('a quant counts only when finished: written as .part, renamed, listed in sizes.txt; left-overs removed', /\$QF\.part \$q/.test(block) && /mv -f \$QF\.part \$QF/.test(block) && /rm -f \$CD\/\*\.gguf\.part/.test(block) && /sizes\.txt/.test(block));
+check('a quant counts only when finished: written as .part, renamed, listed in sizes.txt; left-overs removed', /\$QF\.part \$FT /.test(block) && /mv -f \$QF\.part \$QF/.test(block) && /rm -f \$CD\/\*\.gguf\.part/.test(block) && /sizes\.txt/.test(block));
 check('a cut brain that fails to load holds the pod for a fix, then fails (never "done")', /status hold/.test(sh) && /die "\$BN didn't load/.test(sh));
 check('IQ2 gaps: small tensors q8_0, experts q2_k, embeddings q4_0, down experts by plan (q2_0); unseen experts filled', /'q4_0' if 'token_embd' in n/.test(read('forge/pod/imatrix_gaps.py')) && /--down/.test(block) && /'_exps' in n/.test(read('forge/pod/imatrix_gaps.py')) && /imatrix_fill\.py/.test(block));
 check('the second run reuses the imatrix from the repo', /imatrix_from/.test(block) && /imatrix\.gguf$/.test(c.imatrix_from));

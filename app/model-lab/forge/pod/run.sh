@@ -385,8 +385,23 @@ PY
             fi
             PUB_PRIVATE=$(plan "$CJ.get('private',False)")
             # 24 Nov: "hf upload --private" only counts when a repo is made; an existing repo is set to the plan's visibility first
-            [ -z "${NOUP:-}" ] && set_visibility "$CREPO" model "$PUB_PRIVATE"
-            [ -z "${NOUP:-}" ] && { PYTHONPATH= python3 $POD/cut_card.py --dir $CD --cut $OUT/bench/cut-$BN/cut.json --name "$CNAME" --base "$(plan "$CJ['base']")" --base-params $BP --source "$(plan "$CJ['source_note']")" --license-name "$(plan "$CJ['license_name']")" --extra "$IN/$(basename "$(plan "$CJ.get('card_extra','none')")")" && PUB_PRIVATE=$PUB_PRIVATE publish_dir $CD "$CREPO" "card, license, keep list, imatrix" model . "README.md" "LICENSE" "keep.json" "imatrix.gguf" || echo "bench $BN: first upload failed"; }
+            # 24 Nov (mixed-bit test, publish false): a measure-only run leaves the repo, its visibility and its card alone
+            CPUB=$(plan "$CJ.get('publish',True)"); [ "$CPUB" = "True" ] || echo "bench $BN: publish false: nothing goes to $CREPO (card, imatrix and quants stay as they are)"
+            [ -z "${NOUP:-}" ] && [ "$CPUB" = "True" ] && set_visibility "$CREPO" model "$PUB_PRIVATE"
+            [ -z "${NOUP:-}" ] && [ "$CPUB" = "True" ] && { PYTHONPATH= python3 $POD/cut_card.py --dir $CD --cut $OUT/bench/cut-$BN/cut.json --name "$CNAME" --base "$(plan "$CJ['base']")" --base-params $BP --source "$(plan "$CJ['source_note']")" --license-name "$(plan "$CJ['license_name']")" --extra "$IN/$(basename "$(plan "$CJ.get('card_extra','none')")")" && PUB_PRIVATE=$PUB_PRIVATE publish_dir $CD "$CREPO" "card, license, keep list, imatrix" model . "README.md" "LICENSE" "keep.json" "imatrix.gguf" || echo "bench $BN: first upload failed"; }
+            # 24 Nov (mixed-bit recipes): cut.kld true = every quant's next-word drift against this cut's own Q8_0 on neutral public
+            # text (wikitext-2 test), measured before the gate so a file that fails still gets its number (pod/kld_check.sh)
+            KLDT=""; if [ "$(plan "$CJ.get('kld',False)")" = "True" ]; then
+              KLDT=$W/bench/kld-text.txt; mkdir -p $W/bench/kldtext
+              [ -s $KLDT ] || { hf download Salesforce/wikitext --repo-type dataset --include "wikitext-2-raw-v1/test-*" --local-dir $W/bench/kldtext > /dev/null 2>&1 && python3 -c "import sys,glob,pyarrow.parquet as pq; fs=sorted(glob.glob(sys.argv[2]+'/wikitext-2-raw-v1/test-*.parquet')); open(sys.argv[1],'w').write(''.join(t for f in fs for t in pq.read_table(f).column('text').to_pylist())) if fs else sys.exit(1)" $KLDT $W/bench/kldtext && [ -s $KLDT ]; } || { echo "bench $BN: no KLD text; KLD skipped"; KLDT=""; }
+            fi
+            # 24 Nov (mixed-bit recipes): a recipe file with no layer order for this cut yet gets one from this cut's imatrix
+            # (pod/layer_rank.py, a proxy); an order already in the file (from npc, or a KLD block sweep) is kept
+            RCF=$(plan "$CJ.get('recipe_file','')"); RCC=$(plan "$CJ.get('recipe_cut','bill')")
+            if [ -n "$RCF" ] && [ -f $IMX ] && ! python3 -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get('layer_rank',{}).get(sys.argv[2]) else 1)" $POD/recipes/$RCF $RCC; then
+              PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/layer_rank.py --imatrix $IMX --cut $RCC --recipe $POD/recipes/$RCF --write | tee $OUT/bench/cut-$BN/layer-rank.txt || echo "bench $BN: layer rank failed; the recipes use the placeholder order"
+            fi
+            [ -n "$RCF" ] && cp $POD/recipes/$RCF $OUT/bench/cut-$BN/ 2>/dev/null
             for q in $(plist "$CJ['quants']" | tr ',' ' '); do
               QF=$CD/$CFILE-$q.gguf
               status bench "$BN: quantizing $q"
@@ -402,16 +417,25 @@ PY
               # reached). Those few tensors get q2_k instead (needs no imatrix); every other tensor keeps the asked type.
               # First an expert the chats never reached gets the average importance of its seen neighbours (imatrix_fill.py), so it can
               # stay at the low type; a tensor with no entry at all goes to q2_k (imatrix_gaps.py).
+              # 24 Nov (mixed-bit recipes, pod/recipes/<cut.recipe_file>): a quant named after a recipe (MX2_S ...) gets the recipe's
+              # base type and its --tensor-type rules (pod/quant_recipe.py, the same rules its dry run sized); the imatrix gap rules
+              # below come first, so an expert the chats never reached still gets a type that needs no imatrix
+              FT=$q; RT=()
+              if [ -n "$RCF" ] && FT2=$(python3 $POD/quant_recipe.py --recipe $POD/recipes/$RCF --name $q --ftype-of 2>/dev/null); then
+                FT=$FT2; mapfile -t RT < <(python3 $POD/quant_recipe.py --recipe $POD/recipes/$RCF --cut $RCC --name $q --args)
+                echo "$q: recipe $RCF, base $FT, $(( ${#RT[@]} / 2 )) rules" | tee $OUT/bench/cut-$BN/recipe-$q.txt; printf '%s\n' "${RT[@]}" >> $OUT/bench/cut-$BN/recipe-$q.txt
+              fi
               TT=(); QIMX=$IMX
-              case "$q" in IQ1*|IQ2*) if [ -f $IMX ]; then
+              case "$FT" in IQ1*|IQ2*) if [ -f $IMX ]; then
                 QIMX=$W/bench/imatrix-filled-$BN.gguf
                 [ -f $QIMX ] || PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/imatrix_fill.py --imatrix $IMX --out $QIMX >> $OUT/bench/cut-$BN/gaps-$q.txt 2>&1 || QIMX=$IMX
                 mapfile -t TT < <(PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/imatrix_gaps.py --model $CUTQ8 --imatrix $QIMX --down "$(plan "$CJ.get('down_type',{}).get('$q','')")" 2>>$OUT/bench/cut-$BN/gaps-$q.txt)
                 head -1 $OUT/bench/cut-$BN/gaps-$q.txt; fi ;; esac
               [ ${#TT[@]} -gt 0 ] && echo "$q: $(( ${#TT[@]} / 2 )) tensor(s) with no imatrix entry get their own type: q8_0, or q2_k for expert and embedding tensors (out/bench/cut-$BN/gaps-$q.txt)"
-              LD_LIBRARY_PATH="$(dirname $QZ):${LD_LIBRARY_PATH:-}" $QZ --allow-requantize $( [ -f $QIMX ] && echo --imatrix $QIMX ) "${TT[@]}" $CUTQ8 $QF.part $q $(nproc) > $OUT/bench/cut-$BN/quant-$q.log 2>&1 && mv -f $QF.part $QF || { echo "bench $BN: $q failed (see out/bench/cut-$BN/quant-$q.log)"; tail -2 $OUT/bench/cut-$BN/quant-$q.log; rm -f $QF $QF.part; continue; }
+              LD_LIBRARY_PATH="$(dirname $QZ):${LD_LIBRARY_PATH:-}" $QZ --allow-requantize $( [ -f $QIMX ] && echo --imatrix $QIMX ) "${TT[@]}" "${RT[@]}" $CUTQ8 $QF.part $FT $(nproc) > $OUT/bench/cut-$BN/quant-$q.log 2>&1 && mv -f $QF.part $QF || { echo "bench $BN: $q failed (see out/bench/cut-$BN/quant-$q.log)"; tail -2 $OUT/bench/cut-$BN/quant-$q.log; rm -f $QF $QF.part; continue; }
               echo "$q $(basename $QF) bytes $(stat -c %s $QF) sha256 $(sha256sum $QF | cut -d' ' -f1)" | tee -a $OUT/bench/cut-$BN/sizes.txt   # a home download is checked against these
               fi
+              [ -n "$KLDT" ] && bash $POD/kld_check.sh $CUTQ8 $KLDT $OUT/bench/cut-$BN/kld $S/llama.cpp/build-cuda/bin/llama-perplexity "$q=$QF"
               # 24 Nov publish gate: size in range, loads, answers sensibly; a quant that fails stays on the pod, off Hugging Face
               GATE=$OUT/bench/cut-$BN/gate-$q.txt; : > $GATE
               sed -i "/^$(basename $QF)$/d" $CD/gated.txt 2>/dev/null
