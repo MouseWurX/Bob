@@ -23,6 +23,10 @@ on:
         description: 'Build only our own ggml-vulkan.dll (test builds for AMD/Intel graphics) and add it to this test pre-release (brain-engine-<N>b<llama.cpp build>); empty = the usual build'
         type: string
         default: ''
+      vulkan_without:
+        description: 'With vulkan_release: leave out the patches whose names start with these numbers (space separated, e.g. "0102 0103"), for a before/after pair; the zip name then ends in -without-<numbers>'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -330,12 +334,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Fetch llama.cpp at the tested tag and apply the patches
         shell: bash
+        env:
+          VULKAN_WITHOUT: ${{ inputs.vulkan_without }}
         run: |
           tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
           echo "TAG=$tag" >> "$GITHUB_ENV"
           git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
           sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
-          for p in app/engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
+          skip="$VULKAN_WITHOUT"
+          for p in app/engine/patches/*.patch; do
+            n=$(basename "$p" | cut -c1-4)
+            case " $skip " in *" $n "*) echo "left out: $p"; continue;; esac
+            git -C llama.cpp apply --verbose "../$p"
+          done
       - name: Install the Vulkan SDK
         shell: pwsh
         run: |
@@ -373,9 +384,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REL: ${{ inputs.vulkan_release }}
+          WITHOUT: ${{ inputs.vulkan_without }}
         run: |
           case "$REL" in brain-engine-*) ;; *) echo "not a Brain Engine test release: $REL"; exit 1;; esac
           f="$REL-win-x64-vulkan.zip"
+          if [ -n "$WITHOUT" ]; then f="$REL-win-x64-vulkan-without-$(echo $WITHOUT | tr ' ' '-').zip"; fi
           mv brain-engine-vulkan-win-x64.zip "$f"
           sha256sum "$f" | awk '{print $1}' > "$f.sha256"
           gh release upload "$REL" "$f" "$f.sha256" --clobber -R "$GITHUB_REPOSITORY"
