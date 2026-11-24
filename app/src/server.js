@@ -429,7 +429,7 @@ const safeChatId = (id) => String(id || '').replace(/[^a-zA-Z0-9-]/g, '').slice(
 
 async function body(req) {
   let s = '';
-  for await (const c of req) { s += c; if (s.length > 1e6) throw new Error('too big'); }
+  for await (const c of req) { s += c; if (s.length > 16e6) throw new Error('too big'); } // Nov 24: 16 MB, past any brain's whole context (was 1 MB)
   return s ? JSON.parse(s) : {};
 }
 
@@ -679,7 +679,8 @@ const server = http.createServer(async (req, res) => {
       const attach = [].concat(refs).map(String).filter((id) => /^[0-9a-f]{8}$/.test(id) && brain.refs.list().some((r) => r.id === id));
       // redo: after /api/chat/redo, the message is already in the chat (Try again and Edit, redo.js): it isn't added twice.
       const extra = { ...(rent === true ? { rent: true } : {}), ...(redoOn(cfg) && (again === 'again' || again === 'edit') ? { redo: again } : {}) };
-      return send(res, 200, brain.enqueue(String(sessionId), String(text).slice(0, 20000), extra.redo ? [] : attach, String(effort), extra));
+      return send(res, 200, brain.enqueue(String(sessionId), String(text), // Nov 24: no 20,000-character cut (the owner's no-caps rule; a 16K-token paste was cut to 5.5K)
+         extra.redo ? [] : attach, String(effort), extra));
     }
     // Try again and Edit (redo.js): takes back the answer (or changes your message), keeps what was there as an earlier
     // version, and says what to send. { sessionId, id?, text? }: no text is Try again; text is Edit (by id, or last: true).
