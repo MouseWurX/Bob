@@ -5,7 +5,13 @@ web lookups and apps, with a local model as its brain and nothing sent out unles
 Code, releases and the full lab notes: [github.com/MouseWurX/Bob](https://github.com/MouseWurX/Bob). Bob's lessons and earlier
 expert scores are on this account too ([bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons)).
 
-The goal of this cut is the full Flash-Next's skill in a size that fits a 16 GB graphics card with 32 GB of RAM.
+The goal of this cut is the full Flash-Next's skill on a home computer with a 16 GB graphics card and 32 GB of RAM.
+
+**Why the files are bigger than their names suggest.** Two parts of Flash-Next have rows that aren't a multiple of 256 wide: each
+expert's down projection (640) and the 51B n-gram embedding (160). llama.cpp's 2- and 3-bit types need 256-wide rows, so llama-quantize
+gives those tensors a 32-wide 4- to 5-bit type at every quant. Only the experts' gate and up projections get the named type. The
+n-gram embedding (about 29 GB at IQ2) is looked up a few rows per word, so with memory mapping on it is read from the drive and needs
+no RAM or card memory; the rest of the file is what has to fit.
 
 ## How the experts were chosen
 
