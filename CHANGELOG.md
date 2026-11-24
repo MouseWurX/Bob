@@ -22,6 +22,7 @@ Brain Engine 45, GUPPI driving by default, and no caps on how long a job runs.
 - **A long paste's job kind** comes from its ends, not its size.
 - **Tool results cut too early.** Before cutting anything to fit the chat memory, Bob asks the running engine for the exact token count. A 16K-token message in a 32K chat memory was cut on the first reply because of a guess.
 - **Thinking off reaches Inkling.**
+- **A Brain Engine set up by hand on Windows.** A marker file saved by PowerShell starts with a hidden byte-order mark, and Bob read that engine as plain llama.cpp, so GUPPI never drove. It reads now, and a marker that can't be read says so in the logbook.
 
 ### Docs
 

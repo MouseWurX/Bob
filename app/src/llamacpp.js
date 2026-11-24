@@ -682,7 +682,7 @@ export class LlamaCpp {
       // GUPPI had nothing to trade and was slower than Let Bob pick; with one, 1a read 3,366 against 2,194 tokens a
       // second with the same words): a brain made of experts that is bigger than the card gets the expert copy cache
       // when GUPPI drives (Brain Engine 39+, which fills the card around the read step itself). Not on built-in graphics.
-      if (!args.includes('--moe-cache-mib') && !this.cfg.sharedGraphics && this.beNo() >= COND_FILL_FROM_BE && condCacheWanted({ experts: ggufInfo(gguf)?.shape?.experts || 0, fileBytes: (() => { try { return fs.statSync(gguf).size; } catch { return 0; } })(), cardBytes: cardGB(this.cfg) * 1024 ** 3 })) {
+      if (!args.includes('--moe-cache-mib') && !this.cfg.sharedGraphics && this.beNo() >= COND_FILL_FROM_BE && condCacheWanted({ experts: ggufInfo(gguf)?.experts || 0, fileBytes: (() => { try { return fs.statSync(gguf).size; } catch { return 0; } })(), cardBytes: cardGB(this.cfg) * 1024 ** 3 })) {
         args.push('--moe-cache-mib', String(COND_CACHE_MIB));
         this.log?.('engine', `${model}: Conductor: a brain of experts bigger than the card, so the expert copy cache is on (${COND_CACHE_MIB} MiB to start, filled to the card)`);
       }
@@ -1104,7 +1104,10 @@ export class LlamaCpp {
     let gguf, size = 0, extra = 0;
     try { const r = this.resolve(model); gguf = r.gguf; size = fs.statSync(gguf).size; if (r.mmproj && this.lc.vision !== false && !(this.lc.noEyes || []).includes(model) && !this.eyesShut?.has(model)) { try { extra = fs.statSync(r.mmproj).size; } catch {} } } catch { return null; }
     let shape = null, experts = 0;
-    try { const info = ggufInfo(gguf); shape = info?.shape; experts = info?.experts || 0; } catch {}
+    try { const info = ggufInfo(gguf); shape = info?.shape; } catch {}
+    // Nov 24: ggufInfo reads the expert count now, but built-in graphics keep counting every brain as dense (the whole
+    // file), which is what the Legion Go's measured safe range was found with, until a Go check of the smaller count
+    experts = 0;
     const c = ctx || this.lc.ctx || DEFAULT_CTX;
     const kv = kvBytes(shape, c, memArgs(this.cfg, model, this.lc.args, this.memCaps()), this.tiersFor(model, c)) ?? Math.min(c, 131072) * 60 * 1024;
     return apuNeed({ fileBytes: size, kvBytes: kv, ubatch: this.lc.ubatch || 512, extraBytes: extra, experts });
