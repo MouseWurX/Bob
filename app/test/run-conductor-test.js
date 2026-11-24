@@ -244,5 +244,14 @@ fs.rmSync(tmp, { recursive: true, force: true });
   fs.writeFileSync(path.join(d, 'bob-brainengine.json'), '{ not json');
   const b = mk(); check('an unreadable marker counts as plain llama.cpp and says so once', b.e.beNo() === 0 && b.e.beNo() === 0 && b.said.filter((t) => /marker .* can't be read/.test(t)).length === 1, b.said.join(' | '));
   fs.rmSync(d, { recursive: true, force: true }); }
+// Nov 24 (npc's BE45 real path: the 35B never got its copy cache): the expert count is read from the file itself
+{ const { writeGgufFrom } = await import('../src/lab-gguf.js');
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-moe-'));
+  const moe = path.join(d, 'moe.gguf'), buf = Buffer.alloc(4096);
+  await writeGgufFrom(moe, { kvs: [{ key: 'general.architecture', type: 8, value: 'qwen3moe' }, { key: 'qwen3moe.block_count', type: 4, value: 2 }, { key: 'qwen3moe.expert_count', type: 4, value: 8 }], tensors: [{ name: 'blk.0.ffn_up_exps.weight', dims: [32, 16, 2], type: 0, bytes: buf.length, data: async () => buf }] });
+  const e = new LlamaCpp({ agentDir: d, dataDir: d, gpuVramGB: 1e-6, llamacpp: { models: { moe } } }); clearInterval(e.idleTimer); e.beNo = () => 45;
+  const a = e.buildArgs('moe');
+  check('GUPPI by default turns the copy cache on for a brain of experts bigger than the card (read from its file)', a.includes('--moe-cache-mib'), a.join(' '));
+  fs.rmSync(d, { recursive: true, force: true }); }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
