@@ -34,6 +34,10 @@ Rows are added as each file is made and scored. A measure not run yet is left ou
 | 80% Bobert | IQ2_XXS | 56.75 GB (2 parts on Hugging Face) | PASS: size inside 51.1-62.5 GB, loads, answered Paris and 42; public | | | | | | | | pod 35un7hx2k2gdsd out/bench/cut-bnfn/gate-IQ2_XXS.txt, reported 23 Nov 10:34 PM |
 | 60% Bill | IQ2_M | 53.56 GB | PASS: size inside 49.1-60.1 GB, loads, answered Paris and 42; public | | | | | | | | pod svcq7m3qy95uof out/bench/cut-blfn/gate-IQ2_M.txt, reported 23 Nov 10:34 PM |
 | 60% Bill | Q3_K_M | 69.16 GB (2 parts on Hugging Face) | PASS: size inside 61.5-75.1 GB, loads, answered Paris and 42; public | | | | | | | | pod svcq7m3qy95uof out/bench/cut-blfn/gate-Q3_K_M.txt, reported 23 Nov 10:48 PM |
+| 80% Bobert | IQ2_M | 61.0 GB (2 parts on Hugging Face) | PASS: size inside 55.7-68.1 GB, loads, answered Paris and 42; public | | | | | | | | pod 35un7hx2k2gdsd out/bench/cut-bnfn/gate-IQ2_M.txt, reported 23 Nov 11:08 PM |
+| 60% Bill | IQ4_XS | 71.3 GB (2 parts on Hugging Face) | PASS: size inside 63.4-77.4 GB, loads, answered Paris and 42; public | | | | | | | | pod svcq7m3qy95uof out/bench/cut-blfn/gate-IQ4_XS.txt, reported 23 Nov 11:15 PM |
+| 80% Bobert | Q3_K_M | 81.65 GB (2 parts on Hugging Face) | PASS: size inside 72.5-88.7 GB, loads, answered Paris and 42; public | | | | | | | | pod 35un7hx2k2gdsd out/bench/cut-bnfn/gate-Q3_K_M.txt, reported 23 Nov 11:28 PM |
+| 60% Bill | Q4_K_M | 86.96 GB (2 parts on Hugging Face) | PASS: size inside 79.6-97.2 GB, loads, answered Paris and 42; public | | | | | | | | pod svcq7m3qy95uof out/bench/cut-blfn/gate-Q4_K_M.txt, reported 23 Nov 11:35 PM |
 
 ## What each measure is
 
@@ -44,4 +48,6 @@ Rows are added as each file is made and scored. A measure not run yet is left ou
   text. It needs the uncut model's odds saved first, which takes a run of the full model; not run yet.
 - An IQ2 gaps line counting 88 overrides is 48 down-expert tensors set to the plan's down_type plus 40 tensors the imatrix doesn't
   fully cover (those get more bits, not fewer).
+- Unproven lead (mixed-bit thread, 24 Nov): llama.cpp b12359 may put the hc_*_down and hc_*_inject mixers at iq2_xxs in the
+  IQ2_XXS files (no hc_ protection for qwen4exp). Not yet checked against a real file's tensor types.
 - There is no needle (long-context recall) test in the lab yet.
