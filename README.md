@@ -503,6 +503,8 @@ The same steps on every computer: install Bob, press **Get Bob ready** on the We
 | **No graphics card** (processor only) | Gemma 4 E4B | Bob's pick | Unproven in our lab, as we have yet to test. |
 | **Raspberry Pi and ARM boards** | Gemma 4 E2B with 8 GB, Qwen3.5 2B with 4 GB | Bob's pick | Unproven in our lab, as we have yet to test on real boards. |
 
+Speeds in the table were measured on earlier engines, by 23 Nov 2026. Brain Engine 45 hasn't been measured on these tiers yet, and the table will be updated once its tests are published.
+
 **On built-in graphics,** the graphics and Windows share the same memory, so free memory decides what fits. Check **Available** in Task Manager with Bob open: with 6 GB or more, Qwen3 4B, Gemma 4 E2B and Qwen3.5 2B all fit; with 4 to 6 GB, pick Gemma 4 E2B or Qwen3.5 2B from the Brains page; under 4 GB, Qwen3.5 2B. Leave the BIOS graphics memory setting alone, and let Bob keep the whole brain on the graphics: splitting it with the processor is much slower there.
 
 #### Tested on your hardware?
