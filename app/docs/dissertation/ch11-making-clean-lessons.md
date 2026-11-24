@@ -478,9 +478,48 @@ This section is the testing behind the cut Flash-Next published as "Bobert Flash
 
 **A miss that is not the cut.** The held-out job "h-word-read" fails even with all experts on. Its ask never says the answer is in the person's own files, so the brain searches the web instead. That is a gap in Bob's prompt, not a slip from cutting. The proposed fix is a general rule to check the person's own documents first for their own affairs, written without the held-out job's text.
 
-**The cut (ordered 23 November).** On MouseWurX's go ("cut it", with no merging), Flash-Next is cut on one rented H200 (plan `forge/plans/cut-bobert-flashnext.json`, commit 0bcc4157 and later on branch claude/project-thread-et6g5x). The pod starts from Unsloth's Q8_0 Flash-Next (188 GB) and removes 102 of the 512 experts from every layer by the 80% list (`all-keep-80.json`), keeping 410. The draft (MTP) layer keeps the experts kept most often across the other layers. The shared expert and everything outside the experts are untouched. An importance matrix is then made on the cut brain from training chats only, never the held-out sets, and five quants are made: IQ2_XXS, IQ2_M, Q3_K_M, IQ4_XS and Q4_K_M. IQ2_XXS is the size for a 16 GB card with 32 GB of RAM. Each is published as it is made, with the base model's licence, the keep list and the imatrix. The rental started on an H200 NVL on 23 November. The name is "Bobert 101Bob A6B Flash-Next REAP80": about 101B parameters left, about 6B active per word, unchanged by the cut.
+**The cut (ordered 23 November).** On MouseWurX's go ("cut it", with no merging), Flash-Next is cut on one rented H200 (plan `forge/plans/cut-bobert-flashnext.json`, commit 0bcc4157 and later on branch claude/project-thread-et6g5x). The pod starts from Unsloth's Q8_0 Flash-Next (188 GB) and removes 102 of the 512 experts from every layer by the 80% list (`all-keep-80.json`), keeping 410. The draft (MTP) layer keeps the experts kept most often across the other layers. The shared expert and everything outside the experts are untouched. An importance matrix is then made on the cut brain from training chats only, never the held-out sets, and five quants are made: IQ2_XXS, IQ2_M, Q3_K_M, IQ4_XS and Q4_K_M. IQ2_XXS is the size for a 16 GB card with 32 GB of RAM. Each is published, private, with the base model's licence, the keep list and the imatrix, once it passes the publish gate (section 11.7.9). The rental started on an H200 NVL on 23 November. The name is "Bobert 101Bob A6B Flash-Next REAP80": about 101B parameters left, about 6B active per word, unchanged by the cut.
 
 The masked scores above were measured with the 80% list on the Q4 file. The pod then serves the cut IQ2_XXS on the same held-out jobs, to compare with the all-experts and 80%-mask rows. Until those scores are in, and until the files are run on the home PC, how well the published files do is unproven in our lab, as we have yet to test. No healing was done. A heal is planned only if the cut files miss the held-out bar.
+
+<a id="flash-next-cuts"></a>
+
+### 11.7.9 Three cuts for one hardware class: Bobert, Riker and Bill, and the 2-bit size story (23 November)
+
+**Why cut at all.** In MouseWurX's words: "there was no perfect model for our hardware class, so we made the best fit we could." Flash-Next did Bob's jobs best in the harness (section 11.7.7), but no released file of it fits a 16 GB card with 32 GB of RAM comfortably. The 80% cut was the first try. On 23 November two deeper cuts were ordered, so the trade between size and job quality can be measured instead of guessed.
+
+| Cut | Name | Experts kept per layer | Keep list |
+|---|---|---|---|
+| 80% | Bobert 101Bob A6B Flash-Next REAP80 | 410 of 512 | `all-keep-80.json` |
+| 70% | Riker 89Bob A6B Flash-Next REAP70 | 359 of 512 | `all-keep-70.json` (below) |
+| 60% | Bill 77Bob A6B Flash-Next REAP60 | 308 of 512 | `all-keep-60.json` |
+
+The number in each name is the parameters left after the cut, about 125B less the experts removed. It leaves out the per-layer word-pattern table (about 51B), which the cut does not touch. All three keep about 6B active per word.
+
+**How the 70% list was made.** The per-expert REAP scores behind the saved lists were held in memory only and never written to disk, so no 70% list could be made the same way. It was built per layer from the saved lists: all 333 experts of the 65% list, plus the 26 experts in the 75% list but not the 65% one that Bob's inbox, Office and repo jobs routed to most often (ties to the lower expert number). The file says so (`by: "mass+counts"`). In the last layer (47), every saved list keeps an unbroken run of experts from 0 upward, which suggests only about 30 experts there carry real weight and the rest were filled by number. The masked runs at 60%, 65% and 75% used those same lists and scored as in the table above, so the lists are used as they are.
+
+**The 2-bit size story, told straight.** The first IQ2_XXS of Bobert came out at 65.8 GB, far above what a 2-bit file of a 101B brain should be. Two parts of Flash-Next have shapes llama.cpp's usual 2-bit types do not fit:
+
+- **The down experts are 640 numbers wide.** The IQ2 types work in blocks of 256, and 640 does not divide by 256, so these fell back to about 4.5 bits (about 17 GiB instead of about 8). llama.cpp b12359 also has Q2_0, 2.25 bits in blocks of 64, and 640 divides by 64. MouseWurX pointed out that the published Flash-Next files ship at 2 bits. The fix forces the down experts to Q2_0 in IQ2_XXS and IQ2_M (commit beaf0db5 on branch claude/project-thread-et6g5x). It was proven first on a tiny test file with the same widths, quantized with the real llama-quantize b12359: the down experts came out Q2_0, gate and up IQ2_XXS.
+- **The word-pattern table is 160 numbers wide.** Every 2- and 3-bit type needs rows of 64 or 256, so the smallest type that fits is Q4_0, about 4.5 bits, about 27 GiB. It was Q4_0 in the first file too. It had been said during the night that this table would be cut to 2 bits; that was said before it was checked, and it was wrong. Unsloth's files end in a 28.8 GB part, which matches the table's size, but their tensor types were not read, so whether they solve this differently is not known.
+
+The table costs drive space, not memory: Bob reads only a few rows of it per word, straight from the drive. Predicted sizes, and the memory each IQ2_XXS needs without the table:
+
+| Cut | IQ2_XXS | IQ2_M | Q3_K_M | IQ4_XS | Q4_K_M | Memory at IQ2_XXS |
+|---|---|---|---|---|---|---|
+| Bobert 80% | 56.8 GB | 61.9 | 80.6 | 83.4 | 103 | about 28 GB |
+| Riker 70% | 53.6 GB | 58.3 | 74.4 | 76.9 | 95.7 | about 25 GB |
+| Bill 60% | 50.4 GB | 54.6 | 68.3 | 70.4 | 88.4 | about 21 GB |
+
+For scale, Unsloth's full Flash-Next UD-Q2_0 is 70.5 GB. These are predictions; the measured sizes are added when the files are made.
+
+**The publish-gate lesson.** The 65.8 GB file had gone up before anyone checked its size against what it should be. It was taken down, its history cleared and the repo set to private. Since then every quant must pass a gate on the pod before it uploads: within 10% of its predicted size, it must load, and it must give two sensible answers. A file outside its range stays on the pod, and the run carries on with the others. Every upload is private until MouseWurX says public. The gate is now listed with the rental gates in section 4.8.1. The lesson: check a result against what it should be before anyone else can see it.
+
+**The rentals.** Bobert restarted on the same H200 NVL pod with the fix, reusing its cut Q8_0 and imatrix (cap $32). Riker and Bill run one after the other on one RTX PRO 6000 Blackwell (96 GB card, 180 GB RAM, 600 GB disk; caps 11 h and $40; plan `forge/plans/cut-riker-bill-flashnext.json`, commit 1c444633). The account allows only one H200-class card at a time, and at IQ2 each brain needs only 21 to 25 GB on the card, leaving room for the jobs. Each cut gets its own imatrix, since Bobert's measured other experts. Each pod then serves its IQ2_XXS on the held-out inbox, Office, repo and web jobs.
+
+**Others' cuts.** Other people have already published REAP cuts of Flash-Next, for example one keeping 288 of 512 experts (about 56%). What differs here is that Bob's own tool jobs chose the experts, every keep level was scored on held-out jobs, and the 2-bit files keep the down experts at a real 2 bits. Whether the others publish scores like these was not checked.
+
+**What is not yet known.** The measured sizes, the held-out scores of the cut files and their speed on the home PC are unproven in our lab, as we have yet to test. They are added here when they are in.
 
 
 ## 11.8 Discussion

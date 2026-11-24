@@ -1123,6 +1123,43 @@ Inkling 2 Mini is a looped mixture-of-experts brain: 26.4B parameters, 3.4B acti
 
 How Inkling 2 Mini does on Bob's jobs, and its speed on the home PC, are unproven in our lab, as we have yet to test.
 
+<a id="engine-nov23-night"></a>
+
+#### 4.3.3.14 GUPPI fixed per machine, the temperature bug and look-ahead 0108 (night of 23 November)
+
+After the release gate, GUPPI was set on by default for Brain Engine 43 and later on any graphics card, with MTP off, and checked on each machine. Brain Engine 44 adds patch 0087, which keeps the fit when only the context is remade (results: `bob-wip/engine-speed/be44-0087-switch-npc.md`).
+
+| Machine and brain | What was checked | Result | Verdict |
+|---|---|---|---|
+| Home PC, 35B with the copy cache filling the card (1a) | Step up for long reads and back down inside a job, on BE44 | Job 45.9 s against plain 4096's 46.2 s; long read 3,366 against 2,194 t/s; first word 3.68 against 7.04 s; switches 0.67 to 0.75 s (last one 1.08 to 1.33 s), brain never loaded again; spill 84 MB; same words every turn | **GO** |
+| Home PC, dense Qwen3-4B, no copy cache (1b) | The same switching | Job 42.0 s against plain 2048's 32.9 s. Remaking the context takes 0.38 to 0.49 s, but saving the chat around it costs 1.1 to 5.0 s a switch (6.1 s at worst). No spill | **NO-GO**, fixed: such a brain now tries the read step once, keeps it if 512 MiB stay free, otherwise steps back, and never switches again. Recheck below: **GO** |
+| Laptop (6 GB card), Qwen3-4B | First run, then after the fix | First run spilled for 347 s (a FAIL). After the fix, a 62,000-character paste at 32K: peak 5,607 MiB against a 5,632 MiB limit, no spill, tool job right, 25.2 s against pick's 27.3 s. GUPPI stayed at step 512 the whole time, so stepping up was not exercised | **PASS** on safety and speed |
+| Legion Go, gemma4-e2b and Qwen 2B | Pick against GUPPI | See the diagnosis below | Pick only for now |
+
+**The 1b recheck with the one-try rule** (Bob at commit 4bdc66a8, BE44, dense Qwen3-4B, 49K context, 2 rounds, card cooled before each run):
+
+| Way | Job (s) | Read (t/s) | Write (t/s) | Spill (MB) | Card peak (MB) |
+|---|---|---|---|---|---|
+| Plain step 4096 | 32.88 | 8,157 | 106.9 | 78 | 11,318 |
+| Plain step 2048 | 32.71 | 8,719 | 106.8 | 77 | 10,796 |
+| One try | 33.32 | 8,187 | 106.6 | 76 | 11,364 |
+
+The one-try rule took 33.3 s against 42.0 s before the fix, within about 2% of plain, with one 0.16 s switch, no reload, and the same words on all 7 turns of both rounds. The 76 to 78 MB spill is the same in every way, so it is the shared baseline, not GUPPI's.
+
+**Borrowed reading on the 35B did not engage** on the 16 GB card, because there was not enough spare card room for it. With and without it gave the same speed within noise: 4,842 t/s reading and 90 writing at 16K, and 3,356 and 53 for a 120K read at 128K context. Whether it helps on a bigger card is unproven in our lab, as we have yet to test.
+
+**The Legion Go diagnosis.** Logging every engine request on the Go showed:
+
+- **GUPPI never acted on the Go.** No switch, no "Conductor" line, one load per run. The earlier word changes there were not GUPPI's doing. GUPPI now picks one step for the whole chat on built-in graphics.
+- **A bug: the temperature 0 setting never reached the engine.** Chat requests went out at 0.6, and side calls at 0.7, 0.8 and 1.0. So every word-for-word comparison made through Bob's own chat path before this was not a fair test. (The home PC's switch tests replay the plan straight to the engine, so they are not affected by this; they also do not test Bob's own code path, so a run through Bob's real path is queued.) The fix plan: find where the setting is dropped and add a test that the request carries it. A new test switch (`testSeed`) makes every reply greedy and seeded, so pick and GUPPI can be compared word for word. The seeded reruns are to come.
+- **Tool jobs:** gemma passed 2 of 3 with pick and 0 of 3 with GUPPI, but in both modes it listed the home folder instead of the job's folder, so at temperature 0.6 the score is luck. Qwen passed 3 of 3 in both.
+- **Speed and memory were the same in both modes:** reading 820 to 1,070 t/s, writing 37 to 38 (gemma) and 40 to 46 (Qwen); lowest free memory 2.27 GB; peak 84 C.
+- **Two other finds.** A 10-minute "hang" was Bob waiting for an approval nobody gave. A 47,000-character paste was cut to 20,000 and filed as a video; the cut is gone (messages are no longer capped at 20,000 characters), and filing by content rather than size is planned.
+
+**Look-ahead 0108.** On the home PC, guesses two or more layers ahead had sent 72 GB of experts to the card with only 23% of them used. Patch 0108 sends at most one expert a layer (by default) for those deep guesses. It applies between 0107 and 0109 and its tests pass. MouseWurX's rule was "fix it then enable it", so look-ahead goes on by default once the home-PC rerun shows the gain. That rerun is to come, so its effect is unproven in our lab, as we have yet to test.
+
+**Still to come.** No run with every trick on has been measured; the only "all on" run, the first BE43 gate, was slower because it spilled. A three-way comparison on the home PC is queued: every trick on with Turbo, every lossless trick with Turbo off (the intended default), and stock llama.cpp b12359 with `--fit`, on the 35B first and then on other brains, with real held-out jobs. A sweep of Bob across rented card tiers also started. Both are unproven in our lab, as we have yet to test, and are added here when they are in.
+
 <a id="speed-table"></a>
 
 ### 4.3.4 Speed results in one table (updated 23 November)
@@ -1159,6 +1196,9 @@ This is every main speed result on the home PC in one place, oldest first, with 
 | 23 Nov | RTX 5090 rental | FP4 experts (MXFP4_MOE) on Qwen 35B | Read about 4% faster, write the same; KLD 0.063 against 0.011; 33/36 Office, 1 inbox harm | yes (fixed) | Fails the gate; dropped (PR #322 closed) | 4.3.3.12 |
 | 23 Nov | Test build 102 | Legion Go Vulkan picks (0102, 0103) | Reading about 6% faster when split | yes | Passes the Go's word check | 4.3.3.12 |
 | 23 Nov | BE90 | Inkling 2 Mini, laptop and Legion Go | Laptop Q2 11.9 write / 29 read t/s; Go Q2 on the processor 10.6 / 15.8 | n/a | Runs on both; home-PC runs queued | 4.3.3.13 |
+| 23 Nov | BE44 | GUPPI switching, 35B with copy cache (0087) | 45.9 against 46.2 s; long read 3,366 against 2,194 t/s; switch 0.7 s | yes | GO | 4.3.3.14 |
+| 23 Nov | BE44 | GUPPI switching, dense Qwen3-4B | 42.0 against 32.9 s (saving the chat costs 1 to 5 s a switch); with the one-try rule 33.3 against 32.7 to 32.9 s | yes | NO-GO, then GO with the one-try rule | 4.3.3.14 |
+| 23 Nov | BE44 | GUPPI on the 6 GB laptop | 25.2 against 27.3 s; peak 5,607 of 5,632 MiB; no spill | n/a | PASS after the spill fix | 4.3.3.14 |
 | 23 Nov | 1.5.251 engine | Legion Go, `--load-mode mmap` (PR #315) | Shared graphics memory 3.49 to 1.22 GB; gemma4-e2b 17.5 to 28.7 t/s; 42 to 46 fully on graphics | yes | Default for built-in graphics | 4.3.3.13 |
 
 **What it adds up to.** On this PC the settings matter more than the engine: the reading step, flash attention, the fit margin and the chat-memory type give most of the gain over stock defaults. The engine's own tricks so far give a few percent each, and the biggest single find of 22 November was a slowdown the engine had caused (patch 0040). Borrowing, the Avalon idea, has not yet passed Gate 1. Flash-Next runs on the home PC only slowly, and only reading gains from borrowing so far.
@@ -1263,6 +1303,7 @@ Before any model review, a cleaning script removed lessons by rule. The first cl
 - **Smoke gate.** A few lessons are made and checked: do the odds cover the thinking words, do the tool calls parse, does the trace work? A failure exits with code 86 (model-lab/smoke-gate.mjs).
 - **First minutes.** Every rental must prove each step in its first minutes (docs/ROADMAP-ONE-MODEL.md). The first paid run of new code is its test, so it is kept short.
 - **Caps and consent.** Every rental has an hours and a dollars cap, and nothing is rented without typed approval (model-lab/forge/README.md).
+- **Publish gate (added 23 November).** A file made on a rental uploads only if it is within 10% of its predicted size, loads, and gives two sensible answers, and every upload is private until MouseWurX says public. It was added after a 2-bit file came out 65.8 GB instead of about 57 GB and went up unchecked (section 11.7.9).
 - **Home-side dry runs.** Home-side commands run against a stand-in server before any rental. Three benchmark failures in a row came from home-side bugs, including a benchmark that quietly tested the full model on MouseWurX's own card instead of the rented one (docs/FORGE-JOURNAL.md, 10 to 11 November).
 
 ### 4.8.2 Full passes only
