@@ -2,34 +2,319 @@
  "note": "24 Nov 2026. Mixed-bit recipes for the Flash-Next REAP cuts (Bobert 80%, Riker 70%, Bill 60%), stock llama.cpp types only, so every file loads on any llama.cpp (CUDA, Vulkan, CPU, the Go). Idea credited to llamAmpere (MIT, v0.7.4: bulk at one type, structural tensors higher; its Flash-Next MTP head keeps hyper-connection and indexer tensors at high precision) and Unsloth's dynamic quants. pod/quant_recipe.py predicts sizes and writes the llama-quantize options; rules are tried in order, first match wins, as in llama-quantize. 'layers' picks layers from layer_rank (most sensitive first): top:N, or bottom:N for the least sensitive.",
  "header_bytes": 9000000,
  "layer_rank_note": "Until pod/layer_rank.py has read a cut's imatrix (tensor statistics), the rank is a placeholder: llama.cpp's own more-bits pattern (first and last eighth of the layers first, then every third layer). File sizes don't depend on which layers are picked, only how many, so the dry-run sizes hold either way.",
- "layer_rank": {"placeholder": [0,1,2,3,4,5,42,43,44,45,46,47,8,11,14,17,20,23,26,29,32,35,38,41,6,7,9,10,12,13,15,16,18,19,21,22,24,25,27,28,30,31,33,34,36,37,39,40]},
- "common": {"rules": [
-  {"match": "^per_layer_token_embd\\.weight$", "type": "q4_0", "why": "160 wide: no type under 4.5 bits fits (~29 GB, read from RAM/SSD, not the card)"},
-  {"match": "hc_", "type": "q8_0", "why": "hyper-connection mixers steer every layer; llama.cpp keeps hc_ unquantized for glm5-next and xing4_0 but not qwen4exp, so IQ2_XXS put hc_*_down/inject at 2 bits. ~0.35 GB at q8_0"},
-  {"match": "ssm_(alpha|beta)\\.weight", "type": "q8_0", "why": "gated delta net gates (llamAmpere's ATX recipe raises these); tiny"},
-  {"match": "_shexp\\.weight", "type": "q8_0", "why": "the shared expert runs for every token; ~0.25 GB at q8_0"},
-  {"match": "\\.ple_(key|value)\\.weight", "type": "q8_0", "why": "the word-table mixer of layer 1; tiny"},
-  {"match": "attn_(k|v)\\.weight", "type": "q8_0", "why": "full-attention K/V are 512 rows; tiny"}
- ]},
+ "layer_rank": {
+  "placeholder": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   42,
+   43,
+   44,
+   45,
+   46,
+   47,
+   8,
+   11,
+   14,
+   17,
+   20,
+   23,
+   26,
+   29,
+   32,
+   35,
+   38,
+   41,
+   6,
+   7,
+   9,
+   10,
+   12,
+   13,
+   15,
+   16,
+   18,
+   19,
+   21,
+   22,
+   24,
+   25,
+   27,
+   28,
+   30,
+   31,
+   33,
+   34,
+   36,
+   37,
+   39,
+   40
+  ],
+  "bill": [
+   47,
+   46,
+   45,
+   42,
+   39,
+   41,
+   44,
+   40,
+   36,
+   38,
+   43,
+   37,
+   23,
+   31,
+   20,
+   35,
+   32,
+   15,
+   21,
+   33,
+   22,
+   34,
+   30,
+   16,
+   19,
+   6,
+   18,
+   17,
+   4,
+   24,
+   9,
+   29,
+   8,
+   7,
+   25,
+   28,
+   14,
+   3,
+   12,
+   10,
+   26,
+   27,
+   11,
+   13,
+   0,
+   5,
+   2,
+   1
+  ]
+ },
+ "common": {
+  "rules": [
+   {
+    "match": "^per_layer_token_embd\\.weight$",
+    "type": "q4_0",
+    "why": "160 wide: no type under 4.5 bits fits (~29 GB, read from RAM/SSD, not the card)"
+   },
+   {
+    "match": "hc_",
+    "type": "q8_0",
+    "why": "hyper-connection mixers steer every layer; llama.cpp keeps hc_ unquantized for glm5-next and xing4_0 but not qwen4exp, so IQ2_XXS put hc_*_down/inject at 2 bits. ~0.35 GB at q8_0"
+   },
+   {
+    "match": "ssm_(alpha|beta)\\.weight",
+    "type": "q8_0",
+    "why": "gated delta net gates (llamAmpere's ATX recipe raises these); tiny"
+   },
+   {
+    "match": "_shexp\\.weight",
+    "type": "q8_0",
+    "why": "the shared expert runs for every token; ~0.25 GB at q8_0"
+   },
+   {
+    "match": "\\.ple_(key|value)\\.weight",
+    "type": "q8_0",
+    "why": "the word-table mixer of layer 1; tiny"
+   },
+   {
+    "match": "attn_(k|v)\\.weight",
+    "type": "q8_0",
+    "why": "full-attention K/V are 512 rows; tiny"
+   }
+  ]
+ },
  "recipes": [
-  {"name": "IQ2_XXS", "ftype": "IQ2_XXS", "baseline": true, "no_common": true, "why": "as made on the pods 23-24 Nov (down experts q2_0, output_hc_* q8_0 from imatrix_gaps, word table q4_0)",
-   "rules": [{"match": "^output_hc_(down|up)\\.weight$", "type": "q8_0"}, {"match": "ffn_down_exps", "type": "q2_0"}, {"match": "^per_layer_token_embd\\.weight$", "type": "q4_0"}]},
-  {"name": "IQ2_M", "ftype": "IQ2_M", "baseline": true, "no_common": true, "why": "as made on the pods",
-   "rules": [{"match": "^output_hc_(down|up)\\.weight$", "type": "q8_0"}, {"match": "ffn_down_exps", "type": "q2_0"}, {"match": "^per_layer_token_embd\\.weight$", "type": "q4_0"}]},
-  {"name": "Q3_K_M", "ftype": "Q3_K_M", "baseline": true, "no_common": true, "why": "as made on the pods (no imatrix_gaps step for K quants)", "rules": []},
-  {"name": "MX2_S", "ftype": "IQ2_XXS", "why": "IQ2_XXS experts, everything that steers the model raised: does guarding the small tensors alone fix Bill's failed IQ2_XXS?",
-   "rules": [{"match": "attn_(qkv|gate|q|output)\\.weight|ssm_out\\.weight", "type": "q5_k"}, {"match": "^token_embd\\.weight$", "type": "q4_k"},
-             {"match": "ffn_down_exps", "type": "q2_0"}, {"match": "ffn_(gate|up)_exps", "type": "iq2_xxs"}]},
-  {"name": "MX2_M", "ftype": "IQ2_XXS", "why": "MX2_S, plus the 16 most sensitive layers' gate/up experts at iq2_s and the 8 most sensitive layers' down experts at q4_0: about IQ2_M's size, bits where they matter",
-   "rules": [{"match": "attn_(qkv|gate|q|output)\\.weight|ssm_out\\.weight", "type": "q5_k"}, {"match": "^token_embd\\.weight$", "type": "q4_k"},
-             {"match": "ffn_down_exps", "layers": "top:8", "type": "q4_0"}, {"match": "ffn_down_exps", "type": "q2_0"},
-             {"match": "ffn_(gate|up)_exps", "layers": "top:16", "type": "iq2_s"}, {"match": "ffn_(gate|up)_exps", "type": "iq2_xxs"}]},
-  {"name": "MX3_S", "ftype": "IQ2_M", "why": "between IQ2_M and Q3_K_M: gate/up iq3_xxs in the 16 most sensitive layers and iq2_s elsewhere, down q4_0 in 16 layers, attention q6_k",
-   "rules": [{"match": "attn_(qkv|gate|q|output)\\.weight|ssm_out\\.weight", "type": "q6_k"}, {"match": "^token_embd\\.weight$", "type": "q4_k"}, {"match": "^output\\.weight$", "type": "q6_k"},
-             {"match": "ffn_down_exps", "layers": "top:16", "type": "q4_0"}, {"match": "ffn_down_exps", "type": "q2_0"},
-             {"match": "ffn_(gate|up)_exps", "layers": "top:16", "type": "iq3_xxs"}, {"match": "ffn_(gate|up)_exps", "type": "iq2_s"}]},
-  {"name": "MX1_S", "ftype": "IQ2_XXS", "cuts": ["bobert"], "why": "Bobert only (his IQ2_XXS passed): MX2_S with the 16 least sensitive layers' gate/up experts at iq1_m, to bring the most-kept cut down toward Riker's IQ2_XXS size. Not for Bill: his IQ2_XXS already failed",
-   "rules": [{"match": "attn_(qkv|gate|q|output)\\.weight|ssm_out\\.weight", "type": "q5_k"}, {"match": "^token_embd\\.weight$", "type": "q4_k"},
-             {"match": "ffn_down_exps", "type": "q2_0"}, {"match": "ffn_(gate|up)_exps", "layers": "bottom:16", "type": "iq1_m"}, {"match": "ffn_(gate|up)_exps", "type": "iq2_xxs"}]}
- ]
+  {
+   "name": "IQ2_XXS",
+   "ftype": "IQ2_XXS",
+   "baseline": true,
+   "no_common": true,
+   "why": "as made on the pods 23-24 Nov (down experts q2_0, output_hc_* q8_0 from imatrix_gaps, word table q4_0)",
+   "rules": [
+    {
+     "match": "^output_hc_(down|up)\\.weight$",
+     "type": "q8_0"
+    },
+    {
+     "match": "ffn_down_exps",
+     "type": "q2_0"
+    },
+    {
+     "match": "^per_layer_token_embd\\.weight$",
+     "type": "q4_0"
+    }
+   ]
+  },
+  {
+   "name": "IQ2_M",
+   "ftype": "IQ2_M",
+   "baseline": true,
+   "no_common": true,
+   "why": "as made on the pods",
+   "rules": [
+    {
+     "match": "^output_hc_(down|up)\\.weight$",
+     "type": "q8_0"
+    },
+    {
+     "match": "ffn_down_exps",
+     "type": "q2_0"
+    },
+    {
+     "match": "^per_layer_token_embd\\.weight$",
+     "type": "q4_0"
+    }
+   ]
+  },
+  {
+   "name": "Q3_K_M",
+   "ftype": "Q3_K_M",
+   "baseline": true,
+   "no_common": true,
+   "why": "as made on the pods (no imatrix_gaps step for K quants)",
+   "rules": []
+  },
+  {
+   "name": "MX2_S",
+   "ftype": "IQ2_XXS",
+   "why": "IQ2_XXS experts, everything that steers the model raised: does guarding the small tensors alone fix Bill's failed IQ2_XXS?",
+   "rules": [
+    {
+     "match": "attn_(qkv|gate|q|output)\\.weight|ssm_out\\.weight",
+     "type": "q5_k"
+    },
+    {
+     "match": "^token_embd\\.weight$",
+     "type": "q4_k"
+    },
+    {
+     "match": "ffn_down_exps",
+     "type": "q2_0"
+    },
+    {
+     "match": "ffn_(gate|up)_exps",
+     "type": "iq2_xxs"
+    }
+   ]
+  },
+  {
+   "name": "MX2_M",
+   "ftype": "IQ2_XXS",
+   "why": "MX2_S, plus the 16 most sensitive layers' gate/up experts at iq2_s and the 8 most sensitive layers' down experts at q4_0: about IQ2_M's size, bits where they matter",
+   "rules": [
+    {
+     "match": "attn_(qkv|gate|q|output)\\.weight|ssm_out\\.weight",
+     "type": "q5_k"
+    },
+    {
+     "match": "^token_embd\\.weight$",
+     "type": "q4_k"
+    },
+    {
+     "match": "ffn_down_exps",
+     "layers": "top:8",
+     "type": "q4_0"
+    },
+    {
+     "match": "ffn_down_exps",
+     "type": "q2_0"
+    },
+    {
+     "match": "ffn_(gate|up)_exps",
+     "layers": "top:16",
+     "type": "iq2_s"
+    },
+    {
+     "match": "ffn_(gate|up)_exps",
+     "type": "iq2_xxs"
+    }
+   ]
+  },
+  {
+   "name": "MX3_S",
+   "ftype": "IQ2_M",
+   "why": "between IQ2_M and Q3_K_M: gate/up iq3_xxs in the 16 most sensitive layers and iq2_s elsewhere, down q4_0 in 16 layers, attention q6_k",
+   "rules": [
+    {
+     "match": "attn_(qkv|gate|q|output)\\.weight|ssm_out\\.weight",
+     "type": "q6_k"
+    },
+    {
+     "match": "^token_embd\\.weight$",
+     "type": "q4_k"
+    },
+    {
+     "match": "^output\\.weight$",
+     "type": "q6_k"
+    },
+    {
+     "match": "ffn_down_exps",
+     "layers": "top:16",
+     "type": "q4_0"
+    },
+    {
+     "match": "ffn_down_exps",
+     "type": "q2_0"
+    },
+    {
+     "match": "ffn_(gate|up)_exps",
+     "layers": "top:16",
+     "type": "iq3_xxs"
+    },
+    {
+     "match": "ffn_(gate|up)_exps",
+     "type": "iq2_s"
+    }
+   ]
+  },
+  {
+   "name": "MX1_S",
+   "ftype": "IQ2_XXS",
+   "cuts": [
+    "bobert"
+   ],
+   "why": "Bobert only (his IQ2_XXS passed): MX2_S with the 16 least sensitive layers' gate/up experts at iq1_m, to bring the most-kept cut down toward Riker's IQ2_XXS size. Not for Bill: his IQ2_XXS already failed",
+   "rules": [
+    {
+     "match": "attn_(qkv|gate|q|output)\\.weight|ssm_out\\.weight",
+     "type": "q5_k"
+    },
+    {
+     "match": "^token_embd\\.weight$",
+     "type": "q4_k"
+    },
+    {
+     "match": "ffn_down_exps",
+     "type": "q2_0"
+    },
+    {
+     "match": "ffn_(gate|up)_exps",
+     "layers": "bottom:16",
+     "type": "iq1_m"
+    },
+    {
+     "match": "ffn_(gate|up)_exps",
+     "type": "iq2_xxs"
+    }
+   ]
+  }
+ ],
+ "layer_rank_source": {
+  "bill": "imatrix (Bill pod, 24 Nov 2026)"
+ }
 }

@@ -1,0 +1,6 @@
+== MX2_M Bill-77Bob-A6B-Flash-Next-REAP60-MX2_M.gguf 54.08 GB
+PASS size: 54.08 GB inside 51.4-56.8 GB
+PASS load
+answer 1: Paris
+answer 2: 42
+PASS answers: 2 of 2 right

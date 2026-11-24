@@ -1,0 +1,25 @@
+MX2_M: recipe flashnext-mixed.json, base IQ2_XXS, 12 rules
+--tensor-type
+attn_(qkv|gate|q|output)\.weight|ssm_out\.weight=q5_k
+--tensor-type
+^token_embd\.weight$=q4_k
+--tensor-type
+^blk\.(39|40|41|42|44|45|46|47)\..*(?:ffn_down_exps)=q4_0
+--tensor-type
+ffn_down_exps=q2_0
+--tensor-type
+^blk\.(20|23|31|35|36|37|38|39|40|41|42|43|44|45|46|47)\..*(?:ffn_(gate|up)_exps)=iq2_s
+--tensor-type
+ffn_(gate|up)_exps=iq2_xxs
+--tensor-type
+^per_layer_token_embd\.weight$=q4_0
+--tensor-type
+hc_=q8_0
+--tensor-type
+ssm_(alpha|beta)\.weight=q8_0
+--tensor-type
+_shexp\.weight=q8_0
+--tensor-type
+\.ple_(key|value)\.weight=q8_0
+--tensor-type
+attn_(k|v)\.weight=q8_0

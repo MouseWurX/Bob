@@ -1,8 +1,8 @@
 # Flash-Next cuts: mixed-bit files (scope and plan, 24 Nov 2026)
 
 The owner asked to integrate llamAmpere's tricks, "learn from it", and scope it properly. This is the scope for the mixed-bit
-trick on the three Flash-Next REAP cuts (Bobert 80%, Riker 70%, Bill 60%). Nothing here was rented or run on a pod; every
-size below is a dry run of `model-lab/forge/pod/quant_recipe.py`.
+trick on the three Flash-Next REAP cuts (Bobert 80%, Riker 70%, Bill 60%). Sizes are dry runs of
+`model-lab/forge/pod/quant_recipe.py`; the Bill rental of 24 Nov (results below) checked them against real files.
 
 ## What we learned from llamAmpere (read at the source, tag v0.7.4, MIT)
 
@@ -72,6 +72,29 @@ full-attention K/V q8_0, word table q4_0.
 | MX1_S (Bobert only) | MX2_S with 16 layers' gate/up at iq1_m | 57.53 | | |
 
 GB, including the 28.8 GB word table that stays in RAM or on disk. MX1_S saves only 0.84 GB, so it is not in the run plan.
+
+## Bill results (rental of 24 Nov 2026, one RTX PRO 6000, about $7.14, nothing uploaded)
+
+Raw files: [forge-runs/2026-11-24-mixed-bit-bill/](forge-runs/2026-11-24-mixed-bit-bill/). KLD is against Bill's own
+Q8_0 on wikitext-2 (24 chunks, context 512), same text and positions for every file. Lower is better.
+
+| File | Size | Mean KLD | Same top token | Perplexity ratio | Gate (Paris / 42) |
+|---|---|---|---|---|---|
+| IQ2_XXS (stock) | 50.30 GB | 2.437 ± 0.028 | 43.1% | 7.64 | FAIL ("France.", "25") |
+| IQ2_M (stock, public) | 53.56 GB | 1.336 ± 0.020 | 57.2% | 2.44 | pass |
+| **MX2_S** | **51.93 GB** | **1.016 ± 0.017** | **63.4%** | **1.84** | pass |
+| MX2_M | 54.08 GB | 0.818 ± 0.015 | 67.4% | 1.53 | pass |
+| MX3_S | 58.68 GB | 0.593 ± 0.011 | 72.5% | 1.27 | pass |
+
+- **MX2_S fixes the failed IQ2_XXS for +1.63 GB and beats the public IQ2_M while 1.6 GB smaller.**
+- **The predictor matched all five real quant logs tensor by tensor** (1224 tensors each, 0 differences) and to 0.002 GB
+  after one fix: b12359 sends every `ffn_down` tensor in layers 0-2 (down experts, shared expert and `hc_ffn_down`) to
+  q2_k (iq3_s for IQ2_M/IQ2_S).
+- **The hc_ finding is now seen in a real file:** stock IQ2_XXS turned `blk.N.hc_attn_down` / `hc_attn_inject` (and the
+  ffn twins) from q8_0 to iq2_xxs. Types per tensor: `real-types.json`.
+- **Layer rank** came from Bill's imatrix (top layers 47, 46, 45, 42, 39, 41, 44, 40); stored as `layer_rank.bill`.
+- **Limits:** absolute KLD values are high for all 2-bit files, so read the table as a ranking. The gate is two
+  questions; the held-out jobs on npc are still to run before any file is called good.
 
 ## Gate tests and done criteria
 

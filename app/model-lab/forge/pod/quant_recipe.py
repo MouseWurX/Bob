@@ -127,9 +127,9 @@ def choose(tensors, ftype, rules, n_layer=48):
                        "IQ3_XXS": "iq3_s"}.get(ftype, base)
             elif ftype in IQ2_GROUP:
                 if cat in ("ATTN_V", "ATTN_QKV"): new = "q4_k"; wv += 1   # n_expert >= 4
-                # b12359 counts ffn_down tensors (experts and shared) in file order against n_layer/8; the Bobert IQ2_XXS log
-                # shows layers 0 and 1 taking this branch, so that is what is copied here
-                elif cat == "FFN_DOWN" and il < 2: new = "iq3_s" if ftype in ("IQ2_S", "IQ2_M") else "q2_k"
+                # b12359 counts every "ffn_down" tensor (down experts, shared expert and hc_ffn_down) in file order against a
+                # per-layer count; Bill's full IQ2_XXS and IQ2_M logs (24 Nov) show all three in layers 0-2 taking this branch
+                elif cat == "FFN_DOWN" and il < 3: new = "iq3_s" if ftype in ("IQ2_S", "IQ2_M") else "q2_k"
                 elif cat == "ATTN_OUTPUT" and ftype in ("IQ2_S", "IQ2_M"): new = "iq3_s"
                 elif cat == "ATTN_OUTPUT" and ftype in ("IQ1_S", "IQ1_M"): new = "iq2_xxs"
             elif cat in ("ATTN_V", "ATTN_QKV"):
