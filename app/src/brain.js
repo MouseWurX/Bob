@@ -1,5 +1,6 @@
 // Bob's brain: runs a conversation turn, picks the right model, announces swaps,
 // calls tools, asks the user for approval when needed, and keeps a logbook.
+import { pastedText } from './loop-help.js'; // Nov 24: a long paste's kind comes from its ends
 import { kindOfAddress } from './links.js'; // 1.5.214: SCUT's Auto cap (a cable or Wi-Fi)
 import fs from 'node:fs';
 import path from 'node:path';
@@ -382,8 +383,11 @@ export class Brain {
   get plainLoop() { return this.cfg?.toolHelp === false || this.cfg?.loopHelpOff === true; }
 
   // A rough label so the list says what each job is about.
+  // Nov 24 (Go check): a long paste is guessed from its ends only. A 47K-character article that mentioned "video"
+  // was queued as a video job. The ask is at the start or the end; the middle is the pasted material.
   static guessKind(text, hasPics = false) {
-    const t = text.toLowerCase();
+    const raw = String(text ?? '');
+    const t = (pastedText(raw) ? `${raw.slice(0, 300)}\n${raw.slice(-300)}` : raw).toLowerCase();
     // A question about a picture the user attached is a chat, not a painting job.
     if ((hasPics || /\b(this|the|that|attached|my) (picture|image|photo|pic|screenshot)\b/.test(t)) && (/\?\s*$/.test(t) || /^(what|who|where|which|how|why|is|are|can|does|do|describe|tell me)\b/.test(t))) return 'chat';
     if (/\b(video|clip|film|animate)\b/.test(t)) return 'video';
