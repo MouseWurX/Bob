@@ -28,7 +28,7 @@
 4. **Get Bob ready:** he suggests a brain and engines for your graphics card. Nothing big downloads until you press it.
 5. **Say hello.**
 
-**What it needs:** tested on a 16 GB graphics card (RTX 5070 Ti) with 32 GB of memory, which runs stock Qwen3.6-35B-A3B, a 35B mixture-of-experts brain, with 256K context. A smaller Q3 file is made for 8 GB cards. [Every hardware tier](#set-up-for-your-hardware) has its own set.
+**What it needs:** tested on a 16 GB graphics card (RTX 5070 Ti) with 32 GB of memory, which runs stock Qwen3.6-35B-A3B, a 35B mixture-of-experts brain, with 256K context. A smaller Q3 file is made for 8 GB cards, unproven in our lab, as we have yet to test. [Every hardware tier](#set-up-for-your-hardware) has its own set.
 
 ## At a glance
 
@@ -293,7 +293,7 @@ Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 16 
 - **Make:** pictures painted and edited, short clips, songs and sound effects, 3D parts and models, and a voice (22 Kokoro voices and more).
 - **Hands (opt-in):** tidy files, sort and rename a music, video or photo collection, run scripts you approve, keep a schedule, click around other apps, use his own browser window, and work inside Blender or Unreal Engine through MCP. Every action shows a card first. Tool packs add tools other people made.
 - **Remember:** Topics, notes and memory banks keep what matters between chats. Exact sums are worked out in a locked sandbox, not guessed.
-- **Lots of context:** 256K tokens (about 195,000 words) on a 16 GB card, and up to 1M with Long memory.
+- **Lots of context:** 256K tokens (about 195,000 words) on a 16 GB card.
 - **A character:** eleven personality dials, 133 avatars, a cat named Patches, and opinions about your code.
 - **Play:** a tabletop adventure with enemies, a quest log, a world book and friends at the table, Journey on a tile map, and sixteen games from hangman to chess.
 - **Works with your other tools (opt-in):** other apps use Bob's brains through an OpenAI-style address, and Claude can use Bob's Hands.
@@ -425,7 +425,7 @@ Same tests, same rented card, each Bob served from his public Q4 file. Riker mat
 | [What they cost](app/docs/COSTS.md) | Every rental, itemized, failures included. |
 | [Brain races](app/docs/BRAIN-RACES.md) · [test results](app/docs/test-results/README.md) | How other brains score on the same tests and the same PC. |
 
-Bob's default is stock Qwen3.6-35B-A3B (its Q3 file codes on an 8 GB card). A Riker file already on a PC still runs from ➕ Your own brains.
+Bob's default is stock Qwen3.6-35B-A3B (its smaller Q3 file is made for 8 GB cards, unproven in our lab, as we have yet to test). A Riker file already on a PC still runs from ➕ Your own brains.
 
 ## Bob-Net: Bobs working together
 
@@ -453,7 +453,7 @@ Put Bob on your PC, laptop, handheld and phone, and they find each other on your
 |---|---|
 | Graphics memory Bob holds while idle | **None.** The brain unloads, and big models load only for the job that needs them. |
 | 🎮 Gaming session, first word of a reply | **0.1 seconds** with the brain loaded, on the processor, with the graphics card left to your game. |
-| Context on a 16 GB card | **256K tokens**, and up to 1M with Long memory. |
+| Context on a 16 GB card | **256K tokens**. |
 | 🧊 The cube's **Real experts** (live brain picks) | **Free when off** (the glow alone costs nothing). On Brain Engine 7 (Bob's own from 1.5.217): **about a tenth** shown live (Riker on a 5070 Ti, 115.1 down to 104.7 words a second) and about 4.5% read after the answer (109.9). Brain Engine 5 cost about a fifth (122.7 down to 99.2), because it stopped at every layer; from Brain Engine 6 the picks are read once per word; [the numbers](app/docs/test-results/2026-11-12-cube-real-experts-cost.md). |
 
 Pictures and big jobs wait in Tasks while you play, and **Games first** has Bob use fewer processor cores. The measurements are in [How Bob stays fast and light](app/docs/PERFORMANCE.md).
@@ -504,6 +504,10 @@ The same steps on every computer: install Bob, press **Get Bob ready** on the We
 | **Raspberry Pi and ARM boards** | Gemma 4 E2B with 8 GB, Qwen3.5 2B with 4 GB | Bob's pick | Unproven in our lab, as we have yet to test on real boards. |
 
 **On built-in graphics,** the graphics and Windows share the same memory, so free memory decides what fits. Check **Available** in Task Manager with Bob open: with 6 GB or more, Qwen3 4B, Gemma 4 E2B and Qwen3.5 2B all fit; with 4 to 6 GB, pick Gemma 4 E2B or Qwen3.5 2B from the Brains page; under 4 GB, Qwen3.5 2B. Leave the BIOS graphics memory setting alone, and let Bob keep the whole brain on the graphics: splitting it with the processor is much slower there.
+
+#### Tested on your hardware?
+
+Most tiers above are unproven in our lab, as we have yet to test them. If your computer is one of them, install Bob, keep his defaults, pick the brain he suggests, and tell us how it went with the [hardware report](https://github.com/MouseWurX/Bob/issues/new?template=hardware-report.md): your tier, the brain, the speeds the brain label shows, and anything that went wrong. Leave out serial numbers, computer names and anything personal. When reports confirm a tier, its row here changes from unproven to tested.
 
 Windows is the main platform. An NVIDIA card helps but isn't required. The Mac and Pi builds are tested on GitHub's machines but not yet on real hardware, so [tell us how they go](https://github.com/MouseWurX/Bob/issues). A few Windows-only parts are hidden elsewhere. To build from source, see [Building Bob](app/docs/BUILDING.md).
 
