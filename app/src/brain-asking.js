@@ -95,7 +95,12 @@ export const askingParts = {
         if (next) { this.log('model', `${opts.model}: the chat grew, so its chat memory grows from ${cut.ctx} to ${next} (there's room, and Windows keeps its share)`); cut.ctx = next; if (next >= cut.want) this.memCut.delete(opts.model); opts = { ...opts, ctx: next }; }
         else if (tokens > cut.ctx * 0.75 && cut.said !== cut.ctx) { cut.said = cut.ctx; this.log('model', `${opts.model}: the chat is long for its ${cut.ctx} chat memory, but there isn't room to grow it now, so older tool results are shortened`); }
       } }
-    const fitted = fitContext(opts.messages, opts.ctx, opts.tools, 0.75, per);
+    let fitted = fitContext(opts.messages, opts.ctx, opts.tools, 0.75, per);
+    // Nov 24: about to cut on a guess, so ask the running engine for the exact count first (countChars)
+    if (fitted !== opts.messages && !opts.beside && this.engine?.countChars) {
+      const exact = await this.engine.countChars(opts.model, opts.messages, opts.tools).catch(() => 0);
+      if (exact > 0) fitted = fitContext(opts.messages, opts.ctx, opts.tools, 0.75, exact);
+    }
     if (fitted !== opts.messages) { this.log('chat', `shortened tool results so the chat fits in ${opts.model}'s memory (${opts.ctx} tokens)`); opts = { ...opts, messages: fitted }; }
     { const t = turnNow(); if (t) t.asks++; } // item 246: steps per job
     // Nov 23: GUPPI's records (guppi-notes.js) go to the window and on the turn, never to a brain

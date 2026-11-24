@@ -362,6 +362,23 @@ export class LlamaCpp {
 
   // Item 3: how many characters make one token for this brain (3 until a reply has taught Bob better).
   charsPerToken(model) { return perFor(this.perToken, model); }
+  // Nov 24 (npc's real-path GUPPI run: a 16K-token message in a 32K chat memory had its tool results cut on the first
+  // reply, because the 3-characters-a-token guess counted it at over 21K): before Bob cuts anything he asks the running
+  // engine to count the chat exactly (llama-server's /tokenize) and learns the brain's figure from it. 0 when the brain
+  // isn't the one running, or the engine can't say; then the guess stands.
+  async countChars(model, messages, tools) {
+    if (this.current !== model || !this.loadedOk || !this.child || this.child.exitCode !== null) return 0;
+    const text = [...(messages || []).map((m) => String(m?.content ?? '') + (m?.tool_calls ? JSON.stringify(m.tool_calls) : '')), tools && (!Array.isArray(tools) || tools.length) ? JSON.stringify(tools) : ''].join('');
+    if (!text) return 0;
+    try {
+      const res = await fetch(this.url + '/tokenize', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: text }), signal: AbortSignal.timeout(5000) });
+      if (!res.ok) return 0;
+      const n = (await res.json().catch(() => ({})))?.tokens?.length || 0;
+      if (!(n > 0)) return 0;
+      const per = learnPer(this.perToken[model], text.length, n); if (per) this.perToken[model] = per;
+      return text.length / n;
+    } catch { return 0; }
+  }
 
   async health() {
     try { return (await fetch(this.url + '/health', { signal: AbortSignal.timeout(2000) })).ok; } catch { return false; }
