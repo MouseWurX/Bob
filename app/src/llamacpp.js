@@ -640,6 +640,13 @@ export class LlamaCpp {
     // The Conductor (Engine tuning, off unless picked): the start step is the chat step, and the reading needs a
     // place on disk while the step changes. A step set by hand (flags, the config file) means no Conductor.
     this.condChat = 0; this.condWinFull = 0; this.condMax = 0; this.condLoad = 0;
+    // Nov 24 (the Legion Go check: the Conductor never acted, and nothing said why): when it's on but can't drive this
+    // load, the logbook says why, once per brain and reason
+    if (conductorOn(this.cfg)) {
+      const why = cpu ? 'the brain runs on the processor' : this.role === BESIDE ? 'this is the helper engine' : tunedStep || handFlags.some((a) => ['-b', '-ub', '--batch-size', '--ubatch-size'].includes(a)) ? 'a reading step is set by hand (Engine tuning, the config file or engine flags)'
+        : !(conductorPicked(this.cfg) || conductorDefaultFits({ beNo: this.beNo(), sharedGraphics: this.cfg.sharedGraphics === true })) ? (this.cfg.sharedGraphics === true ? 'built-in graphics get it only when picked in Engine tuning' : `it needs Brain Engine ${43} or newer (this is ${this.beNo() || 'not Brain Engine'})`) : '';
+      if (why && this.condWhy !== `${model}:${why}`) { this.condWhy = `${model}:${why}`; this.log?.('engine', `${model}: Conductor: not driving this load: ${why}`); }
+    }
     // Nov 24: on unless another way is picked; the default only where it has passed (conductorDefaultFits)
     if (conductorOn(this.cfg) && (conductorPicked(this.cfg) || conductorDefaultFits({ beNo: this.beNo(), sharedGraphics: this.cfg.sharedGraphics === true })) && !cpu && this.role !== BESIDE && !tunedStep && !handFlags.some((a) => ['-b', '-ub', '--batch-size', '--ubatch-size'].includes(a))) {
       if (!args.includes('--slot-save-path')) args.push('--slot-save-path', path.join(this.cfg.dataDir, 'conductor'));
