@@ -29,7 +29,7 @@ import { LinkLog } from './link-log.js'; // what the link to a lent card carried
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
 import { tuningArgs, doorbellEnv } from './engine-tuning.js';
-import { conductorOn, conductorPicked, conductorDefaultFits, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv } from './conductor.js'; // off unless picked
+import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv } from './conductor.js'; // off unless picked
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV } from './engine-extras.js'; // Turbo: stand-ins (0043, off unless switched on)
 import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
@@ -655,11 +655,14 @@ export class LlamaCpp {
       // built-in graphics (the Go's safe range): load at the chat step, read at most APU_MAX_STEP, no fill
       this.condApu = this.cfg.sharedGraphics === true;
       if (this.condApu) this.condMax = Math.max(this.condChat, Math.min(this.condMax, APU_MAX_STEP));
-      else if (this.condMax > this.condChat) args.splice(0, args.length, ...loadAtStep(args, this.condMax));
-      this.condLoad = this.condApu ? this.condChat : Math.max(this.condMax, this.condChat);
+      if ((this.condCap ||= {})[model] > 0) this.condMax = Math.max(this.condChat, Math.min(this.condMax, this.condCap[model])); // a step that left the card short before
+      const fill = this.condApu ? {} : fillEnv({ cacheMiB: this.condCacheBase, beNo: this.beNo(), env: this.tuneEnv, step: this.condMax });
+      // Nov 24 (the laptop check): load at the read step only where the engine sizes the card around it (the fill)
+      const atRead = !this.condApu && this.condMax > this.condChat && loadAtReadStep({ fills: Boolean(fill.LLAMA_MOE_CACHE_FILL) });
+      if (atRead) args.splice(0, args.length, ...loadAtStep(args, this.condMax));
+      this.condLoad = atRead ? Math.max(this.condMax, this.condChat) : this.condChat;
       // Nov 24 (the Legion Go check found no Conductor lines in the logbook): say once per load that it drives, and how
       this.log?.('engine', `${model}: Conductor: on (${conductorPicked(this.cfg) ? 'picked' : 'the default'}), loads at step ${this.condLoad}, reads at up to ${this.condMax || this.condChat}${this.condApu ? ', built-in graphics' : ''}`);
-      const fill = this.condApu ? {} : fillEnv({ cacheMiB: this.condCacheBase, beNo: this.beNo(), env: this.tuneEnv, step: this.condMax });
       if (fill.LLAMA_MOE_CACHE_FILL) {
         this.tuneEnv = { ...(this.tuneEnv || {}), ...fill };
         if (this.fillSaid !== model) this.log?.('engine', `${model}: Conductor: the copy cache fills the card's free memory, leaving room for reading`);
@@ -1660,8 +1663,10 @@ export class LlamaCpp {
     // Engine 43, about 15 s, up or down (0087 fixes it in Brain Engine 44), and the chat step frees nothing the sized
     // fill can use. So a Conductor that loaded at the read step stays there and reads and writes at it, with no switch
     // at all (the gate's fastest row). Built-in graphics still switch (they load at the chat step).
-    if (!this.condApu && (this.tuneEnv?.LLAMA_MOE_CACHE_FILL_STEP || (this.condLoad > this.condChat && this.condStep === this.condLoad))) return;
-    const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: (this.condSpeeds ||= {})[model], switchS: switchGuess(held, st?.ratio), maxStep: this.condMax || 0 });
+    // Nov 24: from Brain Engine 44 the switch costs about 0.2 s, so it switches inside a job again (the owner's ask).
+    // before 44 the first switch after a --fit load reloads the brain (0087 fixes it), so it stays at the load step
+    if (!this.condApu && this.beNo() < SWITCH_IN_JOB_FROM_BE && (this.tuneEnv?.LLAMA_MOE_CACHE_FILL_STEP || this.lastArgs?.includes('--fit') || (this.condLoad > this.condChat && this.condStep === this.condLoad))) return;
+    const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: (this.condSpeeds ||= {})[model], switchS: switchGuess(held, st?.ratio), maxStep: Math.min(this.condMax || 0, this.condCap?.[model] > 0 ? this.condCap[model] : Infinity) || 0 });
     // Nov 20: off unless engineTuning.growGuess is set (a test switch). Bob's 440 clean job lessons: replies with thinking
     // median 81 tokens, none over 1,500, so a guess made before the reply mostly misses; growing mid-reply is the way.
     const grow = this.condOff || this.cfg?.engineTuning?.growGuess !== true ? 0 : cacheGrow({ total, outTok, cacheMiB: this.condRead(), freeMiB: this.condFree, grown: this.condGrown });
@@ -1702,7 +1707,7 @@ export class LlamaCpp {
 
   async condSwitch(model, step, held, more = {}) {
     const t0 = Date.now(), guess = switchGuess(held, this.condState?.[model]?.ratio);
-    const winExtra = more._winExtra;
+    const winExtra = more._winExtra, isBack = more._back === true;
     more = Object.fromEntries(Object.entries(more).filter(([k]) => !k.startsWith('_')));
     const file = `conductor-${this.port}.bin`;
     const was = { step: this.condStep, win: this.condWin, cache: this.condRead() + (this.condGrown || 0) }; // for GUPPI's record in the chat
@@ -1721,6 +1726,14 @@ export class LlamaCpp {
     const seconds = (Date.now() - t0) / 1000;
     const st = (this.condState[model] = noteSwitch(this.condState[model], { seconds, guess, held }));
     this.log?.('engine', `${model}: Conductor: step ${step} in ${seconds.toFixed(2)} s (guessed ${guess.toFixed(2)} s)${st.stopped ? '; slower than guessed three times in a row, so no more switching for this brain' : ''}`);
+    // Nov 24 (the owner: "GUPPI can correct on the fly"): a step up that left the card under its margin goes straight
+    // back down, and this brain's step is capped there for the rest of the run and its next loads
+    const back = stepBack({ from: was.step, to: step, freeMiB: this.condFree });
+    if (back && !isBack) {
+      (this.condCap ||= {})[model] = back;
+      this.log?.('engine', `${model}: Conductor: step ${step} left ${this.condFree} MiB free on the card, under the ${SPILL_MARGIN_MIB} MiB margin, so back to ${back} and no higher for this brain`);
+      return this.condSwitch(model, back, held, { _back: true });
+    }
     try { // Nov 23: GUPPI's record in the chat (guppi-notes.js; display only, never sent to a brain)
       const nowCache = 'moe_cache_mib' in more ? Number(more.moe_cache_mib) || 0 : this.condRead() + (this.condGrown || 0);
       this.guppiSay?.(guppiSwitch({ from: was.step, to: step, seconds, guess, held, stopped: st.stopped, win: 'n_ctx' in more ? { from: was.win, to: this.condWin } : null, cache: 'moe_cache_mib' in more || 'n_ctx' in more ? { from: was.cache, to: nowCache } : null }));

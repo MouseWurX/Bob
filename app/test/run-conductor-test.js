@@ -8,7 +8,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { LlamaCpp } from '../src/llamacpp.js';
-import { conductorOn, conductorPicked, conductorDefaultFits, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP, fillEnv, FILL_FROM_BE, loadAtStep, mtpBlocksSwitch, MTP_SWITCH_FROM_BE, apuStepOk, APU_MAX_STEP, APU_FLOOR, mtpSpareEnv } from '../src/conductor.js';
+import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP, fillEnv, FILL_FROM_BE, loadAtStep, mtpBlocksSwitch, MTP_SWITCH_FROM_BE, apuStepOk, APU_MAX_STEP, APU_FLOOR, mtpSpareEnv } from '../src/conductor.js';
 import { cleanTuning, mergeTuning } from '../src/engine-tuning.js';
 import { HELP } from '../public/help-content.js';
 
@@ -20,6 +20,9 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-conductor-'));
 
 // ---------- Off by default ----------
 check('on in a fresh Bob, off when another way is picked', conductorOn({}) && !conductorOn({ engineTuning: { mode: 'bob' } }) && !conductorOn({ engineTuning: { mode: 'hand' } }) && conductorOn({ engineTuning: { mode: 'conductor' } }));
+check('switching inside a job comes back with Brain Engine 44', SWITCH_IN_JOB_FROM_BE === 44);
+check('the laptop check: it loads at the read step only where the engine sizes the card around it', loadAtReadStep({ fills: true }) && !loadAtReadStep({ fills: false }) && !loadAtReadStep());
+check('on the fly: a step up that leaves under 512 MiB free goes back down', stepBack({ from: 512, to: 4096, freeMiB: 300 }) === 512 && stepBack({ from: 512, to: 4096, freeMiB: 900 }) === 0 && stepBack({ from: 4096, to: 512, freeMiB: 100 }) === 0 && stepBack({ from: 512, to: 4096, freeMiB: null }) === 0 && SPILL_MARGIN_MIB === 512);
 check('the default needs Brain Engine 43 and a card of its own; a pick covers the rest', conductorDefaultFits({ beNo: 43 }) && !conductorDefaultFits({ beNo: 42 }) && !conductorDefaultFits({ beNo: 0 }) && !conductorDefaultFits({ beNo: 44, sharedGraphics: true }) && !conductorPicked({}) && conductorPicked({ engineTuning: { mode: 'conductor' } }));
 check('the mode is kept when saved', cleanTuning(mergeTuning(undefined, { mode: 'conductor' })).mode === 'conductor' && cleanTuning({ mode: 'drive' }).mode === 'conductor');
 
@@ -107,7 +110,7 @@ const longMsg = [{ role: 'user', content: 'x'.repeat(240000) }];
     e.condMax === READ_STEP && JSON.stringify(seq) === JSON.stringify(['POST /slots/0?action=save', 'POST /context 4096', 'POST /slots/0?action=restore', 'POST /v1/chat/completions 1', 'POST /slots/0?action=save', 'POST /context 2048', 'POST /slots/0?action=restore']), JSON.stringify(calls));
   check('it ends at the chat step and says so in the logbook', e.condStep === CHAT_STEP && e.logs.some((l) => /Conductor: step 4096 in/.test(l)));
   check('the read-ahead taught it the big step\'s read speed', e.condSpeeds.big.read[4096] !== known.read[4096]); }
-{ calls.length = 0; const e = live(); e.condChat = CHAT_STEP; e.condStep = e.condLoad;
+{ calls.length = 0; const e = live(); check('the laptop check: no copy cache fill, so it loads at the chat step', e.condLoad === e.condChat && e.condLoad < READ_STEP, JSON.stringify([e.condLoad, e.condChat])); e.condChat = CHAT_STEP; e.condLoad = READ_STEP; e.condStep = e.condLoad;
   await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
   const ctx = calls.filter((c) => c.startsWith('POST /context')).map((c) => JSON.parse(c.slice(14)).n_ubatch);
   check('Nov 23 gate rerun: loaded at the read step it reads and writes there, no switch down either (BE43 reloads on the first switch)', e.condLoad === READ_STEP && ctx.length === 0 && e.condStep === READ_STEP, JSON.stringify(calls)); }

@@ -34,6 +34,19 @@ export const conductorOn = (cfg) => (TUNE_MODES.includes(cfg?.engineTuning?.mode
 // graphics (sharedGraphics) waits for its own check on the Legion Go; picking the Conductor there still works.
 export const CONDUCTOR_DEFAULT_MIN_BE = 43;
 export const conductorDefaultFits = ({ beNo = 0, sharedGraphics = false } = {}) => beNo >= CONDUCTOR_DEFAULT_MIN_BE && !sharedGraphics;
+// Nov 24, the laptop check (3060 6 GB, qwen3-4b, 32K, no copy cache): loaded at the read step, its working room spilled
+// off the card (5872 MiB peak against 5632) and a 20 s read took 347 s. The owner: GUPPI fits himself to the machine
+// he is on, and corrects on the fly. So the Conductor loads at its read step only when the engine sizes the card
+// around that step itself (the copy cache fill, Brain Engine 39+); otherwise it loads at the chat step, and from Brain
+// Engine 44 steps up for a long read only while the card keeps SPILL_MARGIN_MIB free, stepping straight back down and
+// capping that brain's step when a switch leaves less.
+export const SPILL_MARGIN_MIB = 512;
+export const loadAtReadStep = ({ fills = false } = {}) => fills === true;
+// after a step change: the step to fall back to, or 0 when the card still has its margin (free unknown: 0)
+export const stepBack = ({ from = 0, to = 0, freeMiB = null } = {}) => (to > from && Number.isFinite(freeMiB) && freeMiB < SPILL_MARGIN_MIB ? from : 0);
+// Nov 24: Brain Engine 44 (0087) switches the step in about 0.2 s with the brain kept, so from 44 the Conductor
+// switches inside a job again (read big, write at the chat step); before 44 it stays at the step it loaded at.
+export const SWITCH_IN_JOB_FROM_BE = 44;
 
 // the step to read a new part at, for a chat this long
 export const readStepFor = (totalTokens) => (totalTokens >= BIG_FROM ? BIG_STEP : READ_STEP);
