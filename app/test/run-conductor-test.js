@@ -235,5 +235,14 @@ fs.rmSync(tmp, { recursive: true, force: true });
   const e2 = engineOf(); let sent2 = null; globalThis.fetch = async (_u, o) => { sent2 = JSON.parse(o.body); return { ok: true }; };
   try { await e2.post('big', [{ role: 'user', content: 'hi' }], [], null, false, 'chat'); } finally { globalThis.fetch = was; }
   check('a test seed makes replies greedy and seeded, and only when set', sent?.seed === 7 && sent.temperature === 0 && sent.top_k === 1 && sent2 && !('seed' in sent2)); }
+// Nov 24 (the Legion Go's hand install): a marker written with a byte-order mark still reads, and one that can't be read says so
+{ const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-mark-'));
+  const exe = path.join(d, 'llama-server');
+  const mk = () => { const e = new LlamaCpp({ agentDir: d, dataDir: d, llamacpp: { exe, models: {} } }); clearInterval(e.idleTimer); const said = []; e.log = (_k, t) => said.push(t); return { e, said }; };
+  fs.writeFileSync(path.join(d, 'bob-brainengine.json'), '\uFEFF' + JSON.stringify({ version: 'brain-engine-45b12359', base: 'b12359' }));
+  const a = mk(); check('a Brain Engine marker with a byte-order mark still counts (PowerShell writes one)', a.e.beNo() === 45, String(a.e.beNo()));
+  fs.writeFileSync(path.join(d, 'bob-brainengine.json'), '{ not json');
+  const b = mk(); check('an unreadable marker counts as plain llama.cpp and says so once', b.e.beNo() === 0 && b.e.beNo() === 0 && b.said.filter((t) => /marker .* can't be read/.test(t)).length === 1, b.said.join(' | '));
+  fs.rmSync(d, { recursive: true, force: true }); }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

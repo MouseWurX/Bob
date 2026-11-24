@@ -503,12 +503,21 @@ export class LlamaCpp {
   // build named N1bN2 says which llama.cpp it is built on; the running engine says the same in /props build_info. If
   // they differ, the files in the folder aren't the build its marker names, so Bob says so once (Health logbook).
   // Brain Engine's own build number from the marker next to the exe (0 when it isn't Brain Engine or is unknown)
+  // Nov 24 (the Legion Go's hand install: PowerShell wrote the marker with a byte-order mark, JSON.parse failed, and GUPPI
+  // quietly read "not Brain Engine"): the engine's marker, read with a BOM stripped; a marker that's there but can't be
+  // read says so in the logbook once
+  engineMark() {
+    const f = path.join(path.dirname(this.exePath()), 'bob-brainengine.json');
+    let text; try { text = fs.readFileSync(f, 'utf8'); } catch { return null; }
+    try { return JSON.parse(text.replace(/^\uFEFF/, '')); }
+    catch (e) { if (this.markWarned !== f) { this.markWarned = f; this.log?.('engine', `WARNING: the Brain Engine marker ${f} can't be read (${e.message}), so the engine counts as plain llama.cpp`); } return null; }
+  }
   beNo() {
-    try { return brainEngineBuild(JSON.parse(fs.readFileSync(path.join(path.dirname(this.exePath()), 'bob-brainengine.json'), 'utf8'))?.version)?.n || 0; } catch { return 0; }
+    return brainEngineBuild(this.engineMark()?.version)?.n || 0;
   }
   checkBuild(buildInfo) {
     let mark = null;
-    try { mark = JSON.parse(fs.readFileSync(path.join(path.dirname(this.exePath()), 'bob-brainengine.json'), 'utf8')); } catch { return null; }
+    mark = this.engineMark(); if (!mark) return null;
     const ok = buildMatches(mark?.version, buildInfo);
     if (ok === false && this.buildWarned !== mark.version) {
       this.buildWarned = mark.version;
@@ -521,7 +530,7 @@ export class LlamaCpp {
     for (const dir of [path.dirname(this.exePath()), path.join(this.cfg.agentDir, 'llama.cpp')]) {
       try { const n = Number(String(JSON.parse(fs.readFileSync(path.join(dir, 'bob-llamacpp.json'), 'utf8')).version).replace(/^b/, '')); if (n) return n; } catch {}
       // 1.5.169: Brain Engine's marker names the llama.cpp build it sits on (base).
-      try { const n = Number(String(JSON.parse(fs.readFileSync(path.join(dir, 'bob-brainengine.json'), 'utf8')).base).replace(/^b/, '')); if (n) return n; } catch {}
+      try { const n = Number(String(JSON.parse(fs.readFileSync(path.join(dir, 'bob-brainengine.json'), 'utf8').replace(/^\uFEFF/, '')).base).replace(/^b/, '')); if (n) return n; } catch {}
     }
     return 0;
   }
