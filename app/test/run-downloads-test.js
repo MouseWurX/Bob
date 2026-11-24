@@ -168,7 +168,7 @@ check('403 counts as needing an account too', /Hugging Face account/.test(linkEr
   const ltx = cat.models.find((m) => m.id === 'ltx-2.3-22b');
   check('LTX-2.3: the text encoder comes from the qat repo, and every file has a pinned checksum', /^https:\/\/huggingface\.co\/unsloth\/gemma-3-12b-it-qat-GGUF\/resolve\/[0-9a-f]{40}\/gemma-3-12b-it-qat-UD-Q4_K_XL\.gguf$/.test(ltx.files.find((f) => f.role === 'llm').url) && ltx.files.every((f) => /^[0-9a-f]{64}$/.test(f.sha256)) && ltx.sizeGB === 28);
   const cel = publicText('cellar.js');
-  check('the shop shows "needs a Hugging Face account" instead of a Download button', /if \(m\.gated\) return/.test(cel));
+  check('the shop shows "needs a Hugging Face account" instead of a Download button (until signed in, Nov 22 2026)', /if \(m\.gated && s\.signIn !== 'ready'\) return/.test(cel));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

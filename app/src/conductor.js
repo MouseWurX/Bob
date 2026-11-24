@@ -151,7 +151,7 @@ export function fillEnv({ cacheMiB = 0, beNo = 0, env = {}, step = 0 } = {}) {
 // Nov 23 (the test PC's BE43 gate, 35B with MTP at 32K: 0 MiB free and 670 MB spilled): the MTP draft makes its own
 // context after the fill has measured the card, so with MTP on the fill leaves the draft's room as well, sized by the
 // step (about 1.2 GB at 4096 on the test PC). A spare set by hand wins.
-export const MTP_SPARE_PER_TOKEN_MIB = 0.3125;
+export const MTP_SPARE_PER_TOKEN_MIB = 0.4375; // Nov 23 gate: 0.3125 (1792 at 4096) still spilled 247 MB with MTP
 export function mtpSpareEnv({ env = {}, step = 0 } = {}) {
   if (!env || env.LLAMA_MOE_CACHE_FILL !== '1') return {};
   if (env.LLAMA_MOE_CACHE_FILL_SPARE_MIB !== undefined && env.LLAMA_MOE_CACHE_FILL_SPARE_MIB !== '') return {};
