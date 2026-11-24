@@ -644,7 +644,7 @@ export class LlamaCpp {
     // load, the logbook says why, once per brain and reason
     if (conductorOn(this.cfg)) {
       const why = cpu ? 'the brain runs on the processor' : this.role === BESIDE ? 'this is the helper engine' : tunedStep || handFlags.some((a) => ['-b', '-ub', '--batch-size', '--ubatch-size'].includes(a)) ? 'a reading step is set by hand (Engine tuning, the config file or engine flags)'
-        : !(conductorPicked(this.cfg) || conductorDefaultFits({ beNo: this.beNo(), sharedGraphics: this.cfg.sharedGraphics === true })) ? (this.cfg.sharedGraphics === true ? 'built-in graphics get it only when picked in Engine tuning' : `it needs Brain Engine ${43} or newer (this is ${this.beNo() || 'not Brain Engine'})`) : '';
+        : !(conductorPicked(this.cfg) || conductorDefaultFits({ beNo: this.beNo(), sharedGraphics: this.cfg.sharedGraphics === true })) ? `it needs Brain Engine 43 or newer (this is ${this.beNo() || 'not Brain Engine'})` : '';
       if (why && this.condWhy !== `${model}:${why}`) { this.condWhy = `${model}:${why}`; this.log?.('engine', `${model}: Conductor: not driving this load: ${why}`); }
     }
     // Nov 24: on unless another way is picked; the default only where it has passed (conductorDefaultFits)
@@ -666,9 +666,10 @@ export class LlamaCpp {
       const fill = this.condApu ? {} : fillEnv({ cacheMiB: this.condCacheBase, beNo: this.beNo(), env: this.tuneEnv, step: this.condMax });
       // Nov 24 (the laptop check): load at the read step only where the engine sizes the card around it (the fill)
       // Nov 24, the Legion Go check: switching steps inside a chat changed the words on built-in graphics, so there it
-      // loads at its read step and stays, when that still leaves Windows its 1.5 GB with the brain in (else the chat step)
+      // loads at its read step and stays, when that still leaves Windows its 1.5 GB with the brain in (else the chat step).
+      // Nov 24, the seeded Go rerun: without a copy cache step 2048 cost 0.5 GB for no faster reading, so then it keeps Bob's step.
       let apuRoom = false;
-      if (this.condApu && this.condMax > this.condChat) { let size = 0; try { size = fs.statSync(gguf).size; } catch {} apuRoom = apuStepOk({ from: this.condChat, to: this.condMax, freeBytes: (this.freeRam ? this.freeRam() : os.freemem()) - size }); }
+      if (this.condApu && this.condCacheBase > 0 && this.condMax > this.condChat) { let size = 0; try { size = fs.statSync(gguf).size; } catch {} apuRoom = apuStepOk({ from: this.condChat, to: this.condMax, freeBytes: (this.freeRam ? this.freeRam() : os.freemem()) - size }); }
       const atRead = this.condMax > this.condChat && (this.condApu ? apuRoom : loadAtReadStep({ fills: Boolean(fill.LLAMA_MOE_CACHE_FILL) }));
       if (atRead) args.splice(0, args.length, ...loadAtStep(args, this.condMax));
       this.condLoad = atRead ? Math.max(this.condMax, this.condChat) : this.condChat;

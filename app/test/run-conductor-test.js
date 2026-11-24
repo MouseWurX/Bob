@@ -23,7 +23,7 @@ check('on in a fresh Bob, off when another way is picked', conductorOn({}) && !c
 check('switching inside a job comes back with Brain Engine 44', SWITCH_IN_JOB_FROM_BE === 44);
 check('the laptop check: it loads at the read step only where the engine sizes the card around it', loadAtReadStep({ fills: true }) && !loadAtReadStep({ fills: false }) && !loadAtReadStep());
 check('on the fly: a step up that leaves under 512 MiB free goes back down', stepBack({ from: 512, to: 4096, freeMiB: 300 }) === 512 && stepBack({ from: 512, to: 4096, freeMiB: 900 }) === 0 && stepBack({ from: 4096, to: 512, freeMiB: 100 }) === 0 && stepBack({ from: 512, to: 4096, freeMiB: null }) === 0 && SPILL_MARGIN_MIB === 512);
-check('the default needs Brain Engine 43 and a card of its own; a pick covers the rest', conductorDefaultFits({ beNo: 43 }) && !conductorDefaultFits({ beNo: 42 }) && !conductorDefaultFits({ beNo: 0 }) && !conductorDefaultFits({ beNo: 44, sharedGraphics: true }) && !conductorPicked({}) && conductorPicked({ engineTuning: { mode: 'conductor' } }));
+check('the default needs Brain Engine 43, built-in graphics included; a pick covers older engines', conductorDefaultFits({ beNo: 43 }) && !conductorDefaultFits({ beNo: 42 }) && !conductorDefaultFits({ beNo: 0 }) && conductorDefaultFits({ beNo: 44, sharedGraphics: true }) && !conductorPicked({}) && conductorPicked({ engineTuning: { mode: 'conductor' } }));
 check('the mode is kept when saved', cleanTuning(mergeTuning(undefined, { mode: 'conductor' })).mode === 'conductor' && cleanTuning({ mode: 'drive' }).mode === 'conductor');
 
 // ---------- Speeds ----------

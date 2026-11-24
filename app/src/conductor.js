@@ -33,7 +33,9 @@ export const conductorOn = (cfg) => (TUNE_MODES.includes(cfg?.engineTuning?.mode
 // The default needs Brain Engine 43 or newer (the switch without a reload) on a graphics card of its own. Built-in
 // graphics (sharedGraphics) waits for its own check on the Legion Go; picking the Conductor there still works.
 export const CONDUCTOR_DEFAULT_MIN_BE = 43;
-export const conductorDefaultFits = ({ beNo = 0, sharedGraphics = false } = {}) => beNo >= CONDUCTOR_DEFAULT_MIN_BE && !sharedGraphics;
+// Nov 24, the seeded Legion Go rerun: on built-in graphics it now keeps Bob's own step (no copy cache there), so the
+// default is safe there too (the owner: GUPPI fits the machine he is in, everywhere).
+export const conductorDefaultFits = ({ beNo = 0 } = {}) => beNo >= CONDUCTOR_DEFAULT_MIN_BE;
 // Nov 24, the laptop check (3060 6 GB, qwen3-4b, 32K, no copy cache): loaded at the read step, its working room spilled
 // off the card (5872 MiB peak against 5632) and a 20 s read took 347 s. The owner: GUPPI fits himself to the machine
 // he is on, and corrects on the fly. So the Conductor loads at its read step only when the engine sizes the card
