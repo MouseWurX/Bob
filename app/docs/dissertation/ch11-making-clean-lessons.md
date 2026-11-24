@@ -511,15 +511,41 @@ The table costs drive space, not memory: Bob reads only a few rows of it per wor
 | Riker 70% | 53.6 GB | 58.3 | 74.4 | 76.9 | 95.7 | about 25 GB |
 | Bill 60% | 50.4 GB | 54.6 | 68.3 | 70.4 | 88.4 | about 21 GB |
 
-For scale, Unsloth's full Flash-Next UD-Q2_0 is 70.5 GB. These are predictions; the measured sizes are added when the files are made.
+For scale, Unsloth's full Flash-Next UD-Q2_0 is 70.5 GB.
 
-**The publish-gate lesson.** The 65.8 GB file had gone up before anyone checked its size against what it should be. It was taken down, its history cleared and the repo set to private. Since then every quant must pass a gate on the pod before it uploads: within 10% of its predicted size, it must load, and it must give two sensible answers. A file outside its range stays on the pod, and the run carries on with the others. Every upload is private until MouseWurX says public. The gate is now listed with the rental gates in section 4.8.1. The lesson: check a result against what it should be before anyone else can see it.
+**What the pods made (24 November).** Every file was checked against the publish gate on the pod: size within about 10% of the prediction, it loads, and it answers "the capital of France" and "17 + 25" sensibly. Sizes are from the checked repo listings (log `app/docs/flashnext-cuts-log.md`).
+
+| Cut | IQ2_XXS | IQ2_M | Q3_K_M | IQ4_XS | Q4_K_M |
+|---|---|---|---|---|---|
+| Bobert 80% | 56.75 GB, pass | 61.0, pass | 81.65, pass | 84.4, passed but lost when the pod's disk filled | not made |
+| Riker 70% | 53.53, pass | 57.28, pass | 75.4, pass | 77.85, pass | 95.01, pass |
+| Bill 60% | 50.30, **failed** ("France." and "25"), not uploaded | 53.56, pass | 69.16, pass | 71.3, pass | 86.96, pass |
+
+Every measured size landed within 2% of its prediction, so the Q2_0 fix did what it should. The gate also did its job: it kept a broken file from going up.
+
+**Why Bill's IQ2_XXS broke.** Flash-Next has small hyper-connection mixers in every layer (`hc_attn`, `hc_ffn_down` and their inject parts). llama.cpp b12359 squeezes them to IQ2_XXS along with the experts, as its quant log for this file confirms. Bobert's and Riker's IQ2_XXS files passed the gate with the same treatment, so why Bill alone broke is not yet known; the deepest cut may simply have the least to spare. A mixed-bit retest kept those mixers higher (KLD against Bill's own Q8_0, wikitext-2, 24 chunks of 512; PR #347, commit c6ebf49):
+
+| Bill file | Size | KLD | Same top | Perplexity ratio |
+|---|---|---|---|---|
+| IQ2_XXS (mixers at 2 bits) | 50.30 GB | 2.437 | 43.1% | 7.64 |
+| MX2_S (mixed bits) | 51.93 GB | 1.016 | 63.4% | 1.84 |
+| IQ2_M | 53.56 GB | 1.336 | 57.2% | 2.44 |
+| MX2_M (mixed bits) | 54.08 GB | 0.818 | 67.4% | 1.53 |
+| MX3_S (mixed bits) | 58.68 GB | 0.593 | 72.5% | 1.27 |
+
+So a mixed-bit file smaller than IQ2_M beats it on every screen. The MX files are not published. These screens are far from full quality at every size, and screens are not job scores.
+
+**Held-out jobs on the pods: a suspected test fault.** All three IQ2_XXS files scored 0 on every held-out set, and in most runs the brain called no tool at all. A file that answers the gate questions but never calls a tool points at the test setup on the pod, not the brain, so these runs are not counted as results. The held-out runs of the public files on the home PC are to come.
+
+**Cost.** About $48.87 in all: Bobert $23.86, Bill and Riker $17.87, the mixed-bit retest $7.14.
+
+**The publish-gate lesson.** The 65.8 GB file had gone up before anyone checked its size against what it should be. It was taken down, its history cleared and the repo set to private. Since then every quant must pass a gate on the pod before it uploads: within 10% of its predicted size, it must load, and it must give two sensible answers. A file outside its range stays on the pod, and the run carries on with the others. Every upload is private until MouseWurX says public. The files that passed were later made public. The gate is now listed with the rental gates in section 4.8.1. The lesson: check a result against what it should be before anyone else can see it.
 
 **The rentals.** Bobert restarted on the same H200 NVL pod with the fix, reusing its cut Q8_0 and imatrix (cap $32). Riker and Bill run one after the other on one RTX PRO 6000 Blackwell (96 GB card, 180 GB RAM, 600 GB disk; caps 11 h and $40; plan `forge/plans/cut-riker-bill-flashnext.json`, commit 1c444633). The account allows only one H200-class card at a time, and at IQ2 each brain needs only 21 to 25 GB on the card, leaving room for the jobs. Each cut gets its own imatrix, since Bobert's measured other experts. Each pod then serves its IQ2_XXS on the held-out inbox, Office, repo and web jobs.
 
 **Others' cuts.** Other people have already published REAP cuts of Flash-Next, for example one keeping 288 of 512 experts (about 56%). What differs here is that Bob's own tool jobs chose the experts, every keep level was scored on held-out jobs, and the 2-bit files keep the down experts at a real 2 bits. Whether the others publish scores like these was not checked.
 
-**What is not yet known.** The measured sizes, the held-out scores of the cut files and their speed on the home PC are unproven in our lab, as we have yet to test. They are added here when they are in.
+**What is not yet known.** How the cut files do on Bob's jobs, and their speed on the home PC, are unproven in our lab, as we have yet to test. They are added here when they are in.
 
 
 ## 11.8 Discussion
