@@ -4,7 +4,7 @@
 // b12359 loads the parts as one brain, and with --ple <a table part> it skips a brain's own table part, which then need not
 // be on the drive. So the first brain keeps its table part and every other cut keeps only its own parts (--no-table).
 // Only bytes are copied: no GPU, little memory, the source file is only read.
-//   node ple-split.mjs --src <brain.gguf> --out-dir <folder> [--max-gb 45] [--no-table]
+//   node ple-split.mjs --src <brain.gguf | brain-00001-of-0000N.gguf> --out-dir <folder> [--max-gb 45] [--no-table]
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -72,15 +72,30 @@ const kvBytes = (key, type, val) => {
   return Buffer.concat([h, v]);
 };
 
+// A source in numbered parts (name-00001-of-0000N.gguf, as Hugging Face holds files over 50 GB) is read part by part, with
+// no merge first: the key-values come from part 1, the tensors from every part.
+export function sourceParts(src) {
+  const m = path.basename(src).match(/^(.*)-00001-of-(\d{5})\.gguf$/i);
+  if (!m) return { stem: path.basename(src).replace(/\.gguf$/i, ''), files: [src] };
+  const n = Number(m[2]), files = [];
+  for (let i = 1; i <= n; i++) files.push(path.join(path.dirname(src), `${m[1]}-${String(i).padStart(5, '0')}-of-${m[2]}.gguf`));
+  const gone = files.filter((f) => !fs.existsSync(f)); if (gone.length) throw new Error(`missing part(s): ${gone.map((f) => path.basename(f)).join(', ')}`);
+  return { stem: m[1], files };
+}
+
 export function splitFile(src, outDir, { maxGb = 45, noTable = false, log = console.log } = {}) {
-  const fd = fs.openSync(src, 'r');
+  const sp = sourceParts(src), fds = sp.files.map((f) => fs.openSync(f, 'r'));
   try {
-    const h = readHeader(fd), total = fs.fstatSync(fd).size;
-    storedSizes(h.tensors, total - h.dataStart);
+    let h = null;
+    fds.forEach((fd, i) => {
+      const x = readHeader(fd); storedSizes(x.tensors, fs.fstatSync(fd).size - x.dataStart);
+      for (const t of x.tensors) { t.fd = fd; t.dataStart = x.dataStart; }
+      if (i === 0) h = x; else h.tensors.push(...x.tensors);
+    });
     const parts = planParts(h.tensors, Math.floor(maxGb * 1e9));
     if (!parts) throw new Error(`${path.basename(src)} has no ${TABLE}; nothing to split`);
     fs.mkdirSync(outDir, { recursive: true });
-    const n = parts.length, stem = path.basename(src).replace(/\.gguf$/i, ''), arch = h.kvs.find((k) => k.key === 'general.architecture');
+    const n = parts.length, stem = sp.stem, arch = h.kvs.find((k) => k.key === 'general.architecture');
     const written = [], buf = Buffer.alloc(64 << 20);
     for (let p = 0; p < n; p++) {
       const name = `${stem}-${String(p + 1).padStart(5, '0')}-of-${String(n).padStart(5, '0')}.gguf`;
@@ -102,8 +117,8 @@ export function splitFile(src, outDir, { maxGb = 45, noTable = false, log = cons
       try {
         let wpos = 0; fs.writeSync(wfd, header, 0, header.length, wpos); wpos += header.length;
         for (const t of parts[p]) {
-          let left = t.size, rpos = h.dataStart + t.offset;
-          while (left > 0) { const k = fs.readSync(fd, buf, 0, Math.min(buf.length, left), rpos); if (!k) throw new Error(`${t.name}: the file ended early`); fs.writeSync(wfd, buf, 0, k, wpos); left -= k; rpos += k; wpos += k; }
+          let left = t.size, rpos = t.dataStart + t.offset;
+          while (left > 0) { const k = fs.readSync(t.fd, buf, 0, Math.min(buf.length, left), rpos); if (!k) throw new Error(`${t.name}: the file ended early`); fs.writeSync(wfd, buf, 0, k, wpos); left -= k; rpos += k; wpos += k; }
           const pad = Math.ceil(t.size / h.align) * h.align - t.size; if (pad) { fs.writeSync(wfd, Buffer.alloc(pad), 0, pad, wpos); wpos += pad; }
         }
       } finally { fs.closeSync(wfd); }
@@ -111,7 +126,7 @@ export function splitFile(src, outDir, { maxGb = 45, noTable = false, log = cons
       log(`${name}: ${parts[p].length} tensor(s), ${fs.statSync(out).size} bytes${p === n - 1 ? ' (the word table)' : ''}`);
     }
     return written;
-  } finally { fs.closeSync(fd); }
+  } finally { for (const fd of fds) fs.closeSync(fd); }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

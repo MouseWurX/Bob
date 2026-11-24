@@ -33,6 +33,8 @@ check('the word table is alone in the last part', out.length >= 3 && Object.keys
 const got = back(out);
 check('every tensor comes back byte for byte (padding aside)', tensors.every((t) => got[t.name] && got[t.name].b.subarray(0, t.data.length).equals(t.data)));
 check('parts are numbered for llama.cpp and carry the split keys', out.every((f, i) => path.basename(f) === `tiny-${String(i + 1).padStart(5, '0')}-of-${String(out.length).padStart(5, '0')}.gguf`) && ['split.no', 'split.count', 'split.tensors.count'].every((k) => got['output.weight'].kv.includes(k)) && got['output.weight'].kv.includes('tiny.block_count') && !got['per_layer_token_embd.weight'].kv.includes('tiny.block_count'));
+const again = splitFile(out[0], path.join(tmp, 'm'), { log: quiet });   // a source in numbered parts, read with no merge
+check('a source in parts is read as one: the same parts as from the whole file', again.length === 2 && (() => { const w = splitFile(src, path.join(tmp, 'w'), { log: quiet }); return w.every((f, i) => fs.readFileSync(f).equals(fs.readFileSync(again[i]))); })());
 const nt = splitFile(src, path.join(tmp, 'b'), { noTable: true, log: quiet });
 check('--no-table leaves the table part out', nt.length === 1 && !fs.existsSync(path.join(tmp, 'b', 'tiny-00002-of-00002.gguf')) && fs.existsSync(path.join(tmp, 'b', 'tiny-00001-of-00002.gguf')));
 check('the source is only read', fs.readFileSync(src).length > 0 && fs.readdirSync(tmp).includes('tiny.gguf'));
