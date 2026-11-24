@@ -30,7 +30,7 @@ export const TUNING_FIELDS = [
   { k: 'readInPlace', label: 'Long reads use the cached experts in place (0 = off)', env: 'LLAMA_MOE_CACHE_READ_IN_PLACE', min: 0, max: 1, int: true, hint: 'on unless 0; with a copy cache; frees card working memory and skips copies; Brain Engine 38 or newer' },
   { k: 'readAhead', label: 'Long reads send the next layer ahead (0 = off)', env: 'LLAMA_MOE_CACHE_READ_AHEAD', min: 0, max: 1, int: true, hint: 'on unless 0 from Brain Engine 40; with in-place long reads; the next layer\'s missing experts go up while this one works; not with drive reading; Brain Engine 38 or newer' },
   { k: 'borrowAllGroups', label: 'Long reads borrow from every part of the cache (1 = on)', env: 'LLAMA_MOE_CACHE_BORROW_ALL_GROUPS', min: 0, max: 1, int: true, hint: 'with Long reads borrow the cache; for brains with mixed expert layouts (Flash-Next); Brain Engine 40 or newer' },
-  { k: 'registerRam', label: 'Lock the brain\'s experts in RAM for the card (1 = on)', env: 'LLAMA_MOE_REGISTER_RAM', min: 0, max: 1, int: true, hint: 'NVIDIA cards; the card copies missed experts from RAM at full speed; keeps 4 GB of RAM free; not with drive reading; Windows usually refuses it; Brain Engine 44 or newer' },
+  { k: 'registerRam', label: 'Lock the brain\'s experts in RAM for the card (1 = on)', env: 'LLAMA_MOE_REGISTER_RAM', min: 0, max: 1, int: true, hint: 'on by default on Linux (0 turns it off), off elsewhere; NVIDIA cards; the card copies missed experts from RAM at full speed; keeps 4 GB of RAM free; not with drive reading; Windows usually refuses it; Brain Engine 44 or newer' },
   { k: 'wddmBudget', label: 'Plan card memory by Windows\' budget (1 = on)', env: 'GGML_CUDA_WDDM_BUDGET', min: 0, max: 1, int: true, hint: 'Windows with an NVIDIA card; counts what Windows has promised other programs, like a game; Brain Engine 38 or newer' },
   { k: 'driveStandin', label: 'Experts on the drive: use the next best (1 = on)', env: 'LLAMA_MOE_STANDIN', value: 'drive', min: 0, max: 1, int: true, hint: 'with a copy cache; changes the words; Brain Engine 32 or newer' },
   { k: 'ramFloor', label: 'Keep RAM free for the computer (MB)', env: 'LLAMA_MOE_RAM_FLOOR_MIB', min: 0, max: 65536, int: true, hint: 'with the drive switches (or on its own from Brain Engine 36); empty is 512, 0 turns the guard off; Brain Engine 32 or newer' },
@@ -48,6 +48,19 @@ export function doorbellEnv(env = {}) {
   const on = env.LLAMA_MOE_DOORBELL !== undefined && env.LLAMA_MOE_DOORBELL !== '' && Number(env.LLAMA_MOE_DOORBELL) !== 0;
   if (!on) return {};
   return Object.fromEntries(Object.entries(DOORBELL_SAFE_ENV).filter(([k]) => env[k] === undefined || env[k] === ''));
+}
+
+// Nov 23 (Brain Engine 0109): on Linux, the brain's experts that stay in RAM are locked there for the card by default
+// (a rented A4000: writing about 7% faster, reading 1-2%, the same words in every round). Only when experts stay in RAM
+// (expert offload flags or the copy cache), never on the processor-only load, and a key already set (Engine tuning, 0
+// included, or the computer's own settings) wins. Windows and Mac stay off until npc's test. An engine without 0109
+// ignores the key; one without a card that can register says NOT USED and runs as before.
+export const REGISTER_RAM_FLAGS = ['--n-cpu-moe', '--cpu-moe', '--moe-cache-mib', '-ot', '--override-tensor'];
+export function registerRamEnv(env = {}, { platform = process.platform, args = [], cpu = false } = {}) {
+  if (platform !== 'linux' || cpu) return {};
+  if (env.LLAMA_MOE_REGISTER_RAM !== undefined && env.LLAMA_MOE_REGISTER_RAM !== '') return {};
+  if (!args.some((a) => REGISTER_RAM_FLAGS.includes(a))) return {};
+  return { LLAMA_MOE_REGISTER_RAM: '1' };
 }
 
 // one brain's levers: only known keys, numbers in range, the rest dropped
