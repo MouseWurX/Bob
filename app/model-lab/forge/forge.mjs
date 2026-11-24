@@ -305,6 +305,8 @@ async function rent({ again = false, avoidNow = new Set() } = {}) {
         pod = await createPod(rp, {
           name: `bob-forge-${plan.rungs[0]?.name || (plan.lessons_only ? 'lessons' : 'counts')}-${String(plan.run || '').replace(/[^\w.-]/g, '_').slice(0, 40)}`, imageName: plan.image || 'vllm/vllm-openai:v0.28.0', cloudType: 'SECURE',
           gpuTypeIds: ask.cards, gpuTypePriority: 'custom', gpuCount: ask.count, volumeMountPath: '/workspace',
+          // 24 Nov (Riker/Bill cuts: imatrix and quants of a ~140 GB brain on one 96 GB card): plan.min_ram_per_gpu asks RunPod for at least that much pod RAM per card
+          ...(Number(plan.min_ram_per_gpu) > 0 ? { minRAMPerGPU: Number(plan.min_ram_per_gpu) } : {}),
           ...(useVol ? { networkVolumeId: useVol.id, dataCenterIds: [useVol.dataCenterId], containerDiskInGb: plan.disk_gb || 350 } : { volumeInGb: plan.disk_gb || 350, containerDiskInGb: 40, ...(t.dc ? { dataCenterIds: [t.dc] } : {}) }),
           ports: directPorts() || ((plan.write_lessons || plan.benchmark) ? ['8000/http', '8001/http'] : ['8000/http']), supportPublicIp: Boolean(plan.direct),
           // the PC's RunPod key goes in as FORGE_RUNPOD_KEY (RunPod injects its own limited RUNPOD_API_KEY into every pod, which cannot delete) so the pod can delete itself near the time cap even if this PC falls asleep.

@@ -1,0 +1,203 @@
+{
+ "run": "cut-riker-bill-flashnext",
+ "note": "24 Nov, the owner: \"80% Bobert. 70% Riker. 60% Bill\", \"follow the naming convention\", \"use a new rental if needed\". Same as cut-bobert-flashnext (Unsloth Q8_0, REAP keep list from reap-flashnext-q4-jobs, read from the normal Nov 21 runs, never held-out) at 60% kept (Bill, 308 of 512 experts per layer, all-keep-60.json) and 70% kept (Riker, 359 per layer, all-keep-70.json), names \"Bill {N}Bob A6B Flash-Next REAP60\" and \"Riker {N}Bob A6B Flash-Next REAP70\", ONE pod, Bill first then Riker. Its own imatrix (training chats only; Bobert's imatrix is for other experts). IQ2s put the 640-wide down experts at q2_0. Each quant must pass the publish gate (size within 10% of the prediction, loads, two sensible answers) before it goes up, PRIVATE until the owner says public. Then it serves the IQ2_XXS for Bob's HELD-OUT jobs. Nothing is healed. Not an H200-class card (the account allows one at a time and Bobert holds it).",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.8-Flash-Next",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+ ],
+ "step_up": [],
+ "disk_gb": 600,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 11,
+ "dollars_max": 40,
+ "rent_minutes": 180,
+ "download_quants": [],
+ "llama_tag": "b12359",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one 96 GB card, two cuts in turn (Bill 60%, then Riker 70%): each downloads the Q8_0, cuts, makes its own imatrix, quantizes, uploads each gated quant privately, then serves its IQ2_XXS for the held-out jobs. Each cut's source and Q8 cut are deleted once its quants are made.",
+  "hours_each": 1.4,
+  "models": [
+   {
+    "name": "blfn",
+    "nickname": "Bill {N}Bob A6B Flash-Next REAP60: Flash-Next with 60% of experts kept, cut on the pod",
+    "file": "cut",
+    "quant": "IQ2_XXS",
+    "slots": 10,
+    "ctx": 491520,
+    "extra": "",
+    "hours": 6.5,
+    "download_gb": 190,
+    "imatrix_from": "out/bnfn-calib/imatrix",
+    "cut": {
+     "src": "hf:unsloth/Qwen3.8-Flash-Next-GGUF:Q8_0/Qwen3.8-Flash-Next-Q8_0-00001-of-00006.gguf",
+     "source_note": "unsloth/Qwen3.8-Flash-Next-GGUF (Q8_0)",
+     "keep_file": "out/reap-flashnext-q4-jobs/keep/all-keep-60.json",
+     "base": "Qwen/Qwen3.8-Flash-Next",
+     "base_params": 125,
+     "name": "Bill {N}Bob A6B Flash-Next REAP60",
+     "repo": "MouseWurX/Bill-{N}Bob-A6B-Flash-Next-REAP60-GGUF",
+     "license_from": "hf:Qwen/Qwen3.8-Flash-Next:LICENSE",
+     "license_name": "qwen-community-1.0",
+     "quants": [
+      "IQ2_XXS",
+      "IQ2_M",
+      "Q3_K_M",
+      "IQ4_XS",
+      "Q4_K_M"
+     ],
+     "serve": "IQ2_XXS",
+     "imatrix_chunks": 200,
+     "private": true,
+     "card_extra": "cards/bill-flashnext.md",
+     "hold_minutes": 45,
+     "expect_gb": {
+      "IQ2_XXS": "45.4-55.4",
+      "IQ2_M": "49.1-60.1",
+      "Q3_K_M": "61.5-75.1",
+      "IQ4_XS": "63.4-77.4",
+      "Q4_K_M": "79.6-97.2"
+     },
+     "expect_note": "24 Nov: scaled from Bobert's predictions by the -24.1B parameters fewer experts (236M per expert slot over 48 layers), at each quant's expert bits. The 29 GB n-gram embedding does not shrink with the cut. A file outside +-10% of its prediction is not uploaded.",
+     "down_type": {
+      "IQ2_XXS": "q2_0",
+      "IQ2_M": "q2_0"
+     },
+     "predict_gb": {
+      "IQ2_XXS": 50.4,
+      "IQ2_M": 54.6,
+      "Q3_K_M": 68.3,
+      "IQ4_XS": 70.4,
+      "Q4_K_M": 88.4
+     }
+    },
+    "commands": [
+     "node mail-jobs.mjs --catalog --held --out ../../bob-model-lab/out/mail-jobs-held/jobs.jsonl",
+     "node office-jobs.mjs --held --out ../../bob-model-lab/out/office-jobs-held/jobs.jsonl",
+     "node repo-jobs.mjs --held --check --out ../../bob-model-lab/out/repo-jobs-held/jobs.jsonl",
+     "node web-jobs.mjs --out ../../bob-model-lab/out/web-jobs/jobs.jsonl",
+     "node jobs-matrix.mjs --prefix blfn-iq2 --no-scenes --variants \"inbox=--effort medium --solo-effort;office=--jobs ../../bob-model-lab/out/office-jobs-held/jobs.jsonl --parallel 2 --office ../../../lab-office/libreoffice/program/soffice.exe;repo=--effort medium --solo-effort --jobs ../../bob-model-lab/out/repo-jobs-held/jobs.jsonl --parallel 3;web=--effort medium --solo-effort --jobs ../../bob-model-lab/out/web-jobs/jobs.jsonl --parallel 3\" --url {{url}} --bob .. --jobs ../../bob-model-lab/out/mail-jobs-held/jobs.jsonl --parallel 2 --want-shapes 4 --max bob --hours 0.6",
+     "node mail-score.mjs --runs ../../bob-model-lab/out/blfn-iq2-inbox/runs.jsonl --out ../../bob-model-lab/out/blfn-iq2-mail-score",
+     "node office-score.mjs --runs ../../bob-model-lab/out/blfn-iq2-office/runs.jsonl --out ../../bob-model-lab/out/blfn-iq2-office-score",
+     "node repo-score.mjs --runs ../../bob-model-lab/out/blfn-iq2-repo/runs.jsonl --out ../../bob-model-lab/out/blfn-iq2-repo-score",
+     "node web-score.mjs --runs ../../bob-model-lab/out/blfn-iq2-web/runs.jsonl --out ../../bob-model-lab/out/blfn-iq2-web-score"
+    ]
+   },
+   {
+    "name": "rkfn",
+    "nickname": "Riker {N}Bob A6B Flash-Next REAP70: Flash-Next with 70% of experts kept, cut on the pod",
+    "file": "cut",
+    "quant": "IQ2_XXS",
+    "slots": 10,
+    "ctx": 491520,
+    "extra": "",
+    "hours": 6.5,
+    "download_gb": 190,
+    "imatrix_from": "out/bnfn-calib/imatrix",
+    "cut": {
+     "src": "hf:unsloth/Qwen3.8-Flash-Next-GGUF:Q8_0/Qwen3.8-Flash-Next-Q8_0-00001-of-00006.gguf",
+     "source_note": "unsloth/Qwen3.8-Flash-Next-GGUF (Q8_0)",
+     "keep_file": "out/reap-flashnext-q4-jobs/keep/all-keep-70.json",
+     "base": "Qwen/Qwen3.8-Flash-Next",
+     "base_params": 125,
+     "name": "Riker {N}Bob A6B Flash-Next REAP70",
+     "repo": "MouseWurX/Riker-{N}Bob-A6B-Flash-Next-REAP70-GGUF",
+     "license_from": "hf:Qwen/Qwen3.8-Flash-Next:LICENSE",
+     "license_name": "qwen-community-1.0",
+     "quants": [
+      "IQ2_XXS",
+      "IQ2_M",
+      "Q3_K_M",
+      "IQ4_XS",
+      "Q4_K_M"
+     ],
+     "serve": "IQ2_XXS",
+     "imatrix_chunks": 200,
+     "private": true,
+     "card_extra": "cards/riker-flashnext.md",
+     "hold_minutes": 45,
+     "expect_gb": {
+      "IQ2_XXS": "48.2-59.0",
+      "IQ2_M": "52.5-64.1",
+      "Q3_K_M": "67.0-81.8",
+      "IQ4_XS": "69.2-84.6",
+      "Q4_K_M": "86.1-105.3"
+     },
+     "expect_note": "24 Nov: scaled from Bobert's predictions by the -12.0B parameters fewer experts (236M per expert slot over 48 layers), at each quant's expert bits. The 29 GB n-gram embedding does not shrink with the cut. A file outside +-10% of its prediction is not uploaded.",
+     "down_type": {
+      "IQ2_XXS": "q2_0",
+      "IQ2_M": "q2_0"
+     },
+     "predict_gb": {
+      "IQ2_XXS": 53.6,
+      "IQ2_M": 58.3,
+      "Q3_K_M": 74.4,
+      "IQ4_XS": 76.9,
+      "Q4_K_M": 95.7
+     }
+    },
+    "commands": [
+     "node mail-jobs.mjs --catalog --held --out ../../bob-model-lab/out/mail-jobs-held/jobs.jsonl",
+     "node office-jobs.mjs --held --out ../../bob-model-lab/out/office-jobs-held/jobs.jsonl",
+     "node repo-jobs.mjs --held --check --out ../../bob-model-lab/out/repo-jobs-held/jobs.jsonl",
+     "node web-jobs.mjs --out ../../bob-model-lab/out/web-jobs/jobs.jsonl",
+     "node jobs-matrix.mjs --prefix rkfn-iq2 --no-scenes --variants \"inbox=--effort medium --solo-effort;office=--jobs ../../bob-model-lab/out/office-jobs-held/jobs.jsonl --parallel 2 --office ../../../lab-office/libreoffice/program/soffice.exe;repo=--effort medium --solo-effort --jobs ../../bob-model-lab/out/repo-jobs-held/jobs.jsonl --parallel 3;web=--effort medium --solo-effort --jobs ../../bob-model-lab/out/web-jobs/jobs.jsonl --parallel 3\" --url {{url}} --bob .. --jobs ../../bob-model-lab/out/mail-jobs-held/jobs.jsonl --parallel 2 --want-shapes 4 --max bob --hours 0.6",
+     "node mail-score.mjs --runs ../../bob-model-lab/out/rkfn-iq2-inbox/runs.jsonl --out ../../bob-model-lab/out/rkfn-iq2-mail-score",
+     "node office-score.mjs --runs ../../bob-model-lab/out/rkfn-iq2-office/runs.jsonl --out ../../bob-model-lab/out/rkfn-iq2-office-score",
+     "node repo-score.mjs --runs ../../bob-model-lab/out/rkfn-iq2-repo/runs.jsonl --out ../../bob-model-lab/out/rkfn-iq2-repo-score",
+     "node web-score.mjs --runs ../../bob-model-lab/out/rkfn-iq2-web/runs.jsonl --out ../../bob-model-lab/out/rkfn-iq2-web-score"
+    ]
+   }
+  ],
+  "brain_engine": {
+   "ref": "3fff3cf084e3def210b6e92c1d415280bfbb4e3a",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word",
+    "0014-rpc-any-version"
+   ],
+   "note": "Brain Engine b12359 + all 14 of Bob's engine patches at 3fff3cf (expert trace with mass for the expert-map phase)"
+  },
+  "download_max_minutes": 75
+ },
+ "prep": [
+  "Runs from a kit at this commit that has out/reap-flashnext-q4-jobs/keep/all-keep-60.json and all-keep-70.json (the laptop copies are in /mnt/project-files/laptop-rentals/keep/; SHA256SUMS.txt beside them).",
+  "Before renting: node calib-prep.mjs --sets <the training lesson sets, e.g. out/lessons> --out out/bnfn-calib (writes out/bnfn-calib/imatrix/all.txt from TRAINING lessons only; held-out never).",
+  "Pre-flight: node forge.mjs --plan plans/cut-riker-bill-flashnext.json --rent-plan (rents nothing); the HF token must have accepted the gated Qwen/Qwen3.8-Flash-Next (the pod copies its LICENSE).",
+  "The owner gives the yes before the rent."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Private until the owner says public (24 Nov). The pod uploads each quant that passes the publish gate."
+ },
+ "door_minutes": 20,
+ "card_sets": [
+  {
+   "gpus": [
+    "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+   ],
+   "count": 1
+  }
+ ],
+ "min_ram_per_gpu": 180,
+ "expected_hours": 10
+}
