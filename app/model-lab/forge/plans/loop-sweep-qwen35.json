@@ -1,6 +1,6 @@
 {
  "run": "loop-sweep-qwen35",
- "note": "25 Nov 2026 (the owner: \"Could you optimize his weights?\", then the card \"Go straight to the 35B, cap $40\"). After MIT CSAIL's weight-space programming (Nov 2026). Stock Qwen3.6 35B A3B (Bob's default brain) served by Brain Engine with the expert trace and live dials. This PC runs loop-sweep.mjs: 200 practice problems (GSM8K train, never the held-out jobs) find the experts that fire more on looped answers; 100 more score each live dial setting against the brain as built. Nothing is trained, nothing is uploaded, nothing a brain writes is run. The winner comes home as surgery-edits.json, to bake into the weights later (forge/pod/surgery.py) only after the held-out jobs score it. If the brain hardly loops on these problems the sweep stops early (cheap). Caps 3 h / $3.50 on one A40 or A6000.",
+ "note": "25 Nov 2026 (the owner: \"Could you optimize his weights?\", then the card \"Go straight to the 35B, cap $40\"). After MIT CSAIL's weight-space programming (Nov 2026). Stock Qwen3.6 35B A3B (Bob's default brain) served by Brain Engine with the expert trace and live dials. This PC runs loop-sweep.mjs: 200 practice problems (GSM8K train, never the held-out jobs) find the experts that fire more on looped answers; 100 more score each live dial setting against the brain as built. Nothing is trained, nothing is uploaded, nothing a brain writes is run. The winner comes home as surgery-edits.json, to bake into the weights later (forge/pod/surgery.py) only after the held-out jobs score it. If the brain hardly loops on these problems the sweep stops early (cheap). 25 Nov (the owner: \"Why turning them down?\"): trials go both ways, the failure experts down (x0.5, 0.7, 0.85), the good-answer experts up (x1.15, 1.3), and both at once, for the top 16 and 64: 22 trials. Caps 5 h / $4 on one A40 or A6000.",
  "benchmark_only": true,
  "teacher": "Qwen/Qwen3.6-35B-A3B",
  "counts": "expert-counts-2026-11-04T23-23-19.json",
@@ -14,15 +14,15 @@
  "general_tokens": 0,
  "rungs": [],
  "direct": true,
- "hours_max": 3,
- "dollars_max": 3.5,
- "rent_minutes": 180,
+ "hours_max": 5,
+ "dollars_max": 4,
+ "rent_minutes": 300,
  "download_quants": [],
  "llama_tag": "b12282",
  "no_hands": true,
  "benchmark": {
   "note": "one brain: stock Qwen3.6 35B A3B, loop sweep with live expert dials.",
-  "hours_each": 2.8,
+  "hours_each": 4.8,
   "brain_engine": {
    "ref": "fcdf3955ed6966c102f43d49528174cabd52d825",
    "patches": [
@@ -51,11 +51,11 @@
     "slots": 6,
     "ctx": 65536,
     "extra": "",
-    "hours": 2.8,
+    "hours": 4.8,
     "commands": [
      "node set-live.mjs --reset",
      "node engine-check.mjs --url {{url}} --needs chat,think,dials,trace",
-     "node loop-sweep.mjs --url {{url}} --problems practice/gsm8k-train-600.jsonl --find 200 --check 100 --max-tokens 8192 --parallel 6 --experts 16,64,256 --scales 0.5,0.7,0.85 --out {{out}}/loop-sweep",
+     "node loop-sweep.mjs --url {{url}} --problems practice/gsm8k-train-600.jsonl --find 200 --check 100 --max-tokens 8192 --parallel 6 --experts 16,64 --scales 0.5,0.7,0.85 --up-scales 1.15,1.3 --out {{out}}/loop-sweep",
      "node set-live.mjs --reset"
     ]
    }

@@ -5,8 +5,11 @@
 // The winner is written as surgery.py edits, so it can be baked into the weights later. Unproven in our lab, as we have yet to test.
 //
 // node loop-sweep.mjs --url <server> --problems <practice.jsonl> [--find 200] [--check 100] [--max-tokens 8192]
-//      [--parallel 6] [--experts 16,64] [--scales 0.5,0.7,0.85] [--min-picks 20] [--fail loop|wrong] [--out <folder>]
+//      [--parallel 6] [--experts 16,64] [--scales 0.5,0.7,0.85] [--up-scales 1.15,1.3|none] [--min-picks 20] [--fail loop|wrong] [--out <folder>]
 //
+// --baseline (25 Nov, the owner: "a good baseline benchmark for Bill, for before and after posterity"): answers the find and
+//   check slices only, with the same seeds and settings, and keeps every answer (answers.jsonl: text, tokens, loop, right, and a
+//   sha256 of the words) so a later run can be compared word for word. No trace, no dials, nothing changed.
 // --fail wrong (25 Nov, for a squeezed brain that answers wrong rather than loops, such as Bill's IQ2_XXS): the experts are
 //   found on wrong answers against right ones, and a trial is kept if it gets MORE right without looping more.
 //
@@ -21,6 +24,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import crypto from 'node:crypto';
 
 export const readJsonl = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
 
@@ -73,12 +77,18 @@ export function addCounts(acc, layers) {
   return true;
 }
 
-// Trials: the top N lifted experts, each at one scale. A trial = one dials list for /dials.
-export function buildTrials(lifted, experts, scales) {
+// Trials (25 Nov, the owner: "Why turning them down?"): both ways. "down" turns the top N failure experts down to each scale
+// below 1; "up" turns up the N experts that lean most toward GOOD answers (the bottom of the lift list) to each scale above 1;
+// "both" does the two at once. A trial = one dials list for /dials.
+export function buildTrials(lifted, experts, scales, upScales = []) {
   const trials = [];
-  for (const n of experts) for (const s of scales) {
-    const pick = lifted.slice(0, n);
-    if (pick.length) trials.push({ name: `top ${pick.length} failure experts x${s}`, dials: pick.map((p) => ({ kind: 'expert', layer: p.layer, index: p.expert, scale: s })) });
+  const good = [...lifted].reverse();
+  const dial = (p, s) => ({ kind: 'expert', layer: p.layer, index: p.expert, scale: s });
+  for (const n of experts) {
+    const bad = lifted.slice(0, n), fine = good.slice(0, n).filter((p) => !bad.includes(p));
+    for (const s of scales) if (bad.length) trials.push({ name: `down: top ${bad.length} failure experts x${s}`, way: 'down', dials: bad.map((p) => dial(p, s)) });
+    for (const u of upScales) if (fine.length) trials.push({ name: `up: top ${fine.length} good-answer experts x${u}`, way: 'up', dials: fine.map((p) => dial(p, u)) });
+    for (const s of scales) for (const u of upScales) if (bad.length && fine.length) trials.push({ name: `both: ${bad.length} down x${s}, ${fine.length} up x${u}`, way: 'both', dials: [...bad.map((p) => dial(p, s)), ...fine.map((p) => dial(p, u))] });
   }
   return trials;
 }
@@ -107,6 +117,7 @@ async function main() {
   const failMode = o.fail === 'wrong' ? 'wrong' : 'loop';
   const failed = (r) => (failMode === 'wrong' ? !r.ok : r.loop);
   const experts = String(o.experts || '16,64').split(',').map(Number), scales = String(o.scales || '0.5,0.7,0.85').split(',').map(Number);
+  const upScales = o['up-scales'] === 'none' ? [] : String(o['up-scales'] || '1.15,1.3').split(',').map(Number);
   const headers = { 'content-type': 'application/json', ...(process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {}) };
   const post = async (p, body) => {
     const r = await fetch(`${url}${p}`, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(30 * 60_000) });
@@ -138,6 +149,16 @@ async function main() {
     await reset();
     log(`find: answering ${findSet.length} practice problems`);
     const found = await answerAll(findSet);
+    if (o.baseline) {
+      const checked = await answerAll(checkSet);
+      const keep = (set, rows, slice) => rows.map((r, i) => JSON.stringify({ slice, i, q: set[i].q, a: set[i].a, loop: r.loop, ok: r.ok, tokens: r.tokens,
+        sha256: crypto.createHash('sha256').update(`${r.reply.reasoning_content || ''}\n${r.reply.content || ''}`).digest('hex'), content: r.reply.content || '', reasoning: r.reply.reasoning_content || '' }));
+      fs.writeFileSync(path.join(out, 'answers.jsonl'), [...keep(findSet, found, 'find'), ...keep(checkSet, checked, 'check')].join('\n') + '\n');
+      const rep = { url, baseline: true, find: score(found), check: score(checked), max_tokens: maxTokens, sampling: { temperature: 0.6, top_p: 0.95, top_k: 20, seed: '1234 + index' }, minutes: +((Date.now() - t0) / 60000).toFixed(1) };
+      fs.writeFileSync(path.join(out, 'loop-sweep.json'), JSON.stringify(rep, null, 1));
+      log(`baseline: find ${JSON.stringify(rep.find)} check ${JSON.stringify(rep.check)}`);
+      return;
+    }
     const base = score(found);
     log(`find: ${JSON.stringify(base)}`);
     const loopRows = found.filter(failed), fineRows = found.filter((r) => !failed(r));
@@ -157,7 +178,7 @@ async function main() {
     if (noTrace > found.length / 2) throw new Error(`${noTrace} of ${found.length} replies had no expert trace: is this a Brain Engine with patch 0002?`);
     const lifted = lift(lc, fc, minPicks);
     fs.writeFileSync(path.join(out, 'lift.json'), JSON.stringify(lifted.slice(0, 500), null, 1));
-    const trials = buildTrials(lifted, experts, scales);
+    const trials = buildTrials(lifted, experts, scales, upScales);
     log(`check: as built, then ${trials.length} trials on ${checkSet.length} problems`);
     const before = score(await answerAll(checkSet));
     log(`as built: ${JSON.stringify(before)}`);
@@ -167,7 +188,7 @@ async function main() {
       await post('/dials', { dials: t.dials });
       const s = score(await answerAll(checkSet));
       await reset();
-      const r = { name: t.name, experts: t.dials.length, scale: t.dials[0].scale, ...s, seconds: Math.round((Date.now() - ts) / 1000) };
+      const r = { name: t.name, way: t.way, experts: t.dials.length, scale: t.dials[0].scale, ...s, seconds: Math.round((Date.now() - ts) / 1000) };
       results.push(r); log(JSON.stringify(r));
     }
     const best = pickBest(before, results, failMode);
