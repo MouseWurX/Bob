@@ -1179,10 +1179,12 @@ When the start of a chat is the same as last time, the engine can keep its memor
 |---|---|---|---|---|
 | Stock llama.cpp b12359 | 22.2 | 1.1 | 0.8 | 13 + 3.6 load |
 | Brain Engine 45 | 11.4 | 0.4 | 0.7 | 11.3 + 2 load |
-| Bob, its chat cache on | n/a | 0.8 to 1.6 | 1.8 | 4.8, load included |
+| Bob, its chat cache on | n/a | 0.8 to 1.6 (void, see below) | 1.8 | 4.8, load included |
 | Bob, its chat cache off | n/a | 14.7 | 13.5 | n/a |
 
-- Bob's own cache is the only setup that keeps the chat's memory across a restart.
+- **Correction from a rerun with every request logged.** The fast follow-up with Bob's cache on was a coincidence of the test: a twin chat shared the same 20K prompt. In a real chat with a long paste, Bob still reads everything again on the second turn, cache on or off, until the fix below is on. That cell is void.
+- **Going back to a chat after another one, cache off, loses it.** With one slot (`-np 1`), llama.cpp hands the slot to the other chat, which shares Bob's instructions (about 3,500 tokens), without first saving the first chat to its RAM prompt cache. Going back then reuses only 3,467 tokens and reads 19,045 again.
+- **Bob's per-chat cache fixes that**, because it restores the chat from the drive: 22,438 tokens reused and 145 read (0.18 s), and after a Bob restart 22,474 reused and 140 read. It is the only setup that keeps a chat's memory across a restart.
 - The stock and engine rows are single runs with each one's own settings, so they are not a claim that the engine is faster than llama.cpp.
 - **Why follow-ups were slow with Bob's cache off.** Bob changed the start of the prompt between messages, so the engine could not reuse it. First, the tool groups are guessed per message and drop out three messages later, and the tool list comes first in the prompt. Second, the time note sat before the latest message.
 - **What a fix keeps.** A probe on a cloud card measured the share of the previous request the engine could keep:
