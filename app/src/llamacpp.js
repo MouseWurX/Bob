@@ -15,7 +15,7 @@ import { templateFor, samplingFor, replyTokens, familyOf, thinkKwargs } from './
 import { gaming, LONG_CODER } from './sessions.js';
 import { gamingCard, decideCard, readCard, CARD_BUSY_PCT, CARD_MIN_FREE_MB } from './gaming-card.js';
 import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } from './tuning.js';
-import { chatPlacesOn, placesDir, placeFile, tidyPlaces } from './chat-places.js'; // Per-chat engine cache (off unless switched on)
+import { chatPlacesOn, placesDir, placeFile, tidyPlaces, tmpFile, placeKey, ownEnv, diskRoom, ramCacheMiB, PLACE_IDLE_MS } from './chat-places.js'; // Per-chat engine cache (on unless switched off)
 import { exeName } from './platform.js';
 import { buildMatches, brainEngineName, brainEngineBuild } from '../public/engine-name.js';
 import { hotArgs, RANKING_ENV, parseCacheLog } from './hot-experts.js'; // Nov 16: hot experts on the card (opt-in)
@@ -31,7 +31,7 @@ import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.
 import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, FILL_FROM_BE as COND_FILL_FROM_BE, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv, loadStepBySpeed, cleanSpeeds } from './conductor.js'; // off unless picked
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { tuningArgs, doorbellEnv, registerRamEnv } from './engine-tuning.js';
-import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV } from './engine-extras.js'; // Turbo: stand-ins (0043, off unless switched on)
+import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV, keepGuessesArgs, keepGuessesEnv, helpHasSink, sinkEnv } from './engine-extras.js'; // Turbo: stand-ins (0043), keep more guesses (0120), sharp start (0122); off unless switched on
 import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
@@ -561,7 +561,7 @@ export class LlamaCpp {
   kvCaps() {
     const exe = this.exePath();
     if (this._kvQ3 && this._kvQ3.exe === exe) return this._kvQ3;
-    let has = false, tiers = false, q2 = false;
+    let has = false, tiers = false, q2 = false, sink = false;
     if (/llama-server/i.test(path.basename(exe)) && fs.existsSync(exe)) {
       try {
         if (!q3CardOk(fs.readdirSync(path.dirname(exe)), process.platform)) throw new Error('no 3-bit kernels for this card');
@@ -570,16 +570,22 @@ export class LlamaCpp {
         has = helpHasQ3(text);
         tiers = has && helpHasTiers(text);
         q2 = has && helpHasQ2(text); // 0046: 2-bit, Turbo's Progressive 8+2 only
+        sink = helpHasSink(text); // 0122: Turbo: sharp start (Brain Engine 46 or newer)
       } catch {}
     }
-    this._kvQ3 = { exe, has, tiers, q2 };
+    this._kvQ3 = { exe, has, tiers, q2, sink };
     return this._kvQ3;
   }
   kvQ3() { return this.kvCaps().has; }
   kvTiers() { return this.kvCaps().tiers; }
   // The brain's chat memory flags and, for Progressive, its steps (both from the Brains page pick).
-  memCaps() { const c = this.kvCaps(); return { q3: c.has, q2: c.q2, tiers: c.tiers }; }
-  tiersFor(model, ctx) { return tiersEnv(this.cfg, model, ctx, { ...this.memCaps(), handArgs: this.lc.args }).LLAMA_KV_TIERS || ''; }
+  memCaps() { const c = this.kvCaps(); return { q3: c.has, q2: c.q2, tiers: c.tiers, sink: c.sink === true }; }
+  // The steps the room counter adds, and that a resize in place must keep: Progressive's rings, then the sharp start.
+  tiersFor(model, ctx) {
+    const caps = { ...this.memCaps(), handArgs: this.lc.args };
+    const s = sinkEnv(this.cfg, model, ctx, caps).LLAMA_KV_SINK;
+    return [tiersEnv(this.cfg, model, ctx, caps).LLAMA_KV_TIERS || '', s ? `sink:${s}` : ''].filter(Boolean).join(',');
+  }
 
   // 1.5.90: no memory-mapping when some of the brain is placed in RAM on the card route (see buildArgs).
   // 1.5.193: not when the brain is bigger than the card and RAM can hold together (gpt-oss 120B, about 63 GB, on a
@@ -754,6 +760,10 @@ export class LlamaCpp {
     // can't (some memory layouts, picture readers) are switched back by the engine itself, with a line in its log.
     // Nov 12: not for a brain whose engine said "Invalid input batch" this run (a reply's reading gone out of step).
     if (this.buildNo() >= 4500 && !args.includes('--cache-reuse') && !this.noReuse.has(model)) args.push('--cache-reuse', String(CACHE_REUSE));
+    // Nov 24: the engine's RAM cache of chats (llama.cpp's --cache-ram, 8 GB unless told) grows after GUPPI has placed the
+    // brain, so GUPPI sizes it here: half of the RAM left once the brain's part in RAM and his keep-free amount are set
+    // aside (src/chat-places.js ramCacheMiB). Brain Engine 46 (patch 0121) also watches the floor while it runs.
+    if (this.buildNo() >= 7000 && !args.some((a) => ['--cache-ram', '-cram'].includes(a))) args.push('--cache-ram', String(this.ramCacheSize(gguf, cpu)));
     args.push(...this.templateArgs(model, gguf, args));
     // Speculative decoding: a small "draft" model guesses ahead and the big one checks, often 1.5-2x faster.
     // 1.5.16x MTP per brain (the Lab's MTP page, Settings): wins over the one draft for every brain. The brain's own
@@ -767,6 +777,7 @@ export class LlamaCpp {
       if (tb.mtp && guess.includes('-md')) this.log?.('engine', `${model}: MTP's guesser comes from ${path.basename(guess[guess.indexOf('-md') + 1])} beside the brain`);
       if (tb.mtp) args.push(...guess, ...draftNumArgs(this.buildNo(), tb.max || 8));
       else { let dg = null; try { dg = this.resolve(tb.draft).gguf; } catch {} if (dg) args.push('-md', dg, ...draftNumArgs(this.buildNo(), tb.max || 8, 0), '-ngld', '99'); }
+      args.push(...keepGuessesArgs(this.cfg, { args, be: this.beNo() })); // Turbo: keep more guesses (0120)
       return args;
     }
     const d = lc.draft;
@@ -788,6 +799,8 @@ export class LlamaCpp {
       if (args.some((x, i) => x === '--spec-type' && String(args[i + 1] || '').split(',').includes('draft-mtp'))) this.tuneEnv = { ...(this.tuneEnv || {}), ...mtpSpareEnv({ env: this.tuneEnv, step: this.condLoad || 0 }) }; }
     // 94 Guess-ahead from the chat (opt-in): with no draft brain, the engine guesses by copying what the chat holds.
     args.push(...copyGuessArgs(this.cfg, { build: this.buildNo(), args }));
+    // Turbo: keep more guesses (Brain Engine 0120, off unless switched on): where a model drafts, it samples its guesses
+    if (this.role !== BESIDE) args.push(...keepGuessesArgs(this.cfg, { args, be: this.beNo() }));
     return args;
   }
 
@@ -828,28 +841,102 @@ export class LlamaCpp {
     return thinkKwargs(familyOf(model, info), think);
   }
 
+  // Nov 24: GUPPI's size for the engine's RAM cache of chats, in MiB (see buildArgs). On built-in graphics the whole brain
+  // is in RAM and GUPPI keeps his bigger amount free; on a card only what doesn't fit the card counts.
+  ramCacheSize(gguf, cpu) {
+    let fileBytes = 0;
+    try { fileBytes = fs.statSync(gguf).size; } catch {}
+    const shared = this.cfg.sharedGraphics === true;
+    const floorMiB = Number(this.tuneEnv?.LLAMA_MOE_RAM_FLOOR_MIB);
+    const keepBytes = shared ? apuKeepBytes(this.cfg) : (Number.isFinite(floorMiB) && floorMiB > 0 ? floorMiB : 512) * 1048576;
+    const brainRamBytes = cpu || shared || this.role === BESIDE ? fileBytes : Math.max(0, fileBytes - cardGB(this.cfg) * 1024 ** 3);
+    return ramCacheMiB({ freeBytes: this.freeRam ? this.freeRam() : os.freemem(), brainRamBytes, keepBytes });
+  }
+
   // ---------- Warm up while typing (1.5.24) ----------
   async slotAction(action, filename) {
     const res = await fetch(`${this.url}/slots/0?action=${action}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ filename }), signal: AbortSignal.timeout(60000) });
     if (!res.ok) throw new Error(`slot ${action}: ${res.status}`);
   }
 
-  // Per-chat engine cache (chat-places.js, off unless switched on): before another chat's reply, the
-  // reading the engine holds for the last chat is saved to disk, and the new chat's saved reading (if any) comes back.
+  // Per-chat engine cache (chat-places.js, on unless switched off): before another chat's reply, the reading the
+  // engine holds for the last chat is saved to disk, and the new chat's saved reading (if any) comes back.
   // The engine only reuses the part of a saved reading that still matches the chat, so an edited chat is safe.
+  // Nov 24: files are named with this engine run's key (placeKey), so a file from another engine, brain or setting is
+  // never loaded. placeOther: a request that wasn't a chat (a title, a summary, warming up) took the engine's one slot,
+  // so it no longer holds placeChat's reading (the engine's own RAM cache keeps that one): never saved under its name.
+  placeReady(model) {
+    return this.role !== BESIDE && Boolean(this.slotDir) && this.slotDir === placesDir(this.cfg) && this.current === model && this.loadedOk && Boolean(this.child) && this.child.exitCode === null;
+  }
+  placeName(chatId, model) { return placeFile(chatId, model, this.currentCtx || this.lc.ctx || DEFAULT_CTX, this.placeKeyNow || ''); }
   async switchPlace(chatId, model) {
-    if (this.role === BESIDE || !this.slotDir || this.slotDir !== placesDir(this.cfg) || this.current !== model || !this.loadedOk || !this.child || this.child.exitCode !== null) return 'none';
+    if (!this.placeReady(model)) return 'none';
     if (this.placeChat === chatId) return 'same';
+    if (this.placeSaving) await this.placeSaving; // the save after a reply finishes first
+    if (this.active > 0) return 'busy'; // another reply is running: its reading isn't whole yet, so nothing moves
     if (await this.hasVision(model)) return 'none';
-    const ctx = this.currentCtx || this.lc.ctx || DEFAULT_CTX;
     const was = this.placeChat;
+    const name = this.placeName(chatId, model);
+    if (was && !this.placeOther && this.placeDirty) await this.savePlace(was, model);
     this.placeChat = chatId;
-    const name = placeFile(chatId, model, ctx);
-    if (was) { await this.slotAction('save', placeFile(was, model, ctx)); tidyPlaces(this.slotDir, { keepName: [placeFile(was, model, ctx), name] }); }
+    this.placeOther = false;
+    this.placeDirty = false;
+    tidyPlaces(this.slotDir, { keepName: [name, ...(was ? [this.placeName(was, model)] : [])] });
     if (!fs.existsSync(path.join(this.slotDir, name))) return was ? 'saved' : 'new';
-    await this.slotAction('restore', name);
+    try {
+      await this.slotAction('restore', name);
+    } catch (e) {
+      // a file the engine won't take (cut short, another memory layout): it goes, and the chat is read again
+      try { fs.rmSync(path.join(this.slotDir, name), { force: true }); } catch {}
+      this.log?.('engine', `${model}: this chat's saved reading didn't load (${e.message}), so it is read again`);
+      return 'refused';
+    }
     try { const now = new Date(); fs.utimesSync(path.join(this.slotDir, name), now, now); } catch {}
     return 'restored';
+  }
+
+  // Saves what the engine holds for this chat: to a tmp- name first, renamed when whole. Not while the drive is low.
+  async savePlace(chatId, model) {
+    const name = this.placeName(chatId, model);
+    const file = path.join(this.slotDir, name);
+    let need = 0;
+    try { need = fs.statSync(file).size; } catch {}
+    const room = diskRoom(this.slotDir, need);
+    if (!room.ok) { this.log?.('engine', `${model}: the drive is low (${Math.round(room.free / 1e9)} GB free, ${Math.round(room.keep / 1e9)} GB kept free), so this chat's reading isn't saved`); return false; }
+    const tmp = tmpFile(name);
+    try {
+      await this.slotAction('save', tmp);
+      fs.renameSync(path.join(this.slotDir, tmp), file);
+      this.placeDirty = false;
+      return true;
+    } catch (e) {
+      try { fs.rmSync(path.join(this.slotDir, tmp), { force: true }); } catch {}
+      this.log?.('engine', `${model}: this chat's reading wasn't saved (${e.message})`);
+      return false;
+    }
+  }
+
+  // After a reply: a chat's reading goes to disk PLACE_IDLE_MS later, when nothing else is running, so a restart, a
+  // crash or quitting Bob costs at most the newest turn. A request in between pushes it back.
+  placeAfterReply(model) {
+    clearTimeout(this.placeTimer);
+    if (!chatPlacesOn(this.cfg) || !this.placeChat || !this.placeReady(model)) return;
+    const chatId = this.placeChat, child = this.child;
+    this.placeTimer = setTimeout(() => {
+      if (this.child !== child || this.placeChat !== chatId || this.active > 0 || this.placeOther || !this.placeDirty || !this.placeReady(model)) return;
+      this.active++;
+      this.placeSaving = this.savePlace(chatId, model).catch(() => {}).finally(() => { this.active--; this.placeSaving = null; });
+    }, PLACE_IDLE_MS);
+    this.placeTimer.unref?.();
+  }
+
+  // Before the engine stops (another brain, new settings, unload): the chat it holds goes to disk first, within 30 s.
+  async placeBeforeStop() {
+    clearTimeout(this.placeTimer);
+    if (this.placeSaving) await this.placeSaving;
+    const model = this.current;
+    if (!chatPlacesOn(this.cfg) || !this.placeChat || this.placeOther || !this.placeDirty || this.active > 0 || !this.placeReady(model)) return;
+    await Promise.race([this.savePlace(this.placeChat, model), new Promise((r) => setTimeout(r, 30000).unref?.())]).catch(() => {});
   }
 
   // Loads the saved reading for this brain, if there is one. Pictures-capable brains can't save one (llama-server).
@@ -871,6 +958,7 @@ export class LlamaCpp {
     if (this.current !== model || !this.child || this.child.exitCode !== null) return null;
     const hash = promptHash(messages, tools);
     if (this.primedHash === hash) return 'ready';
+    if (this.role !== BESIDE) this.placeOther = true; // Nov 24: the instructions alone now sit in the slot, not a chat
     this.active++;
     try {
       await this.sendPerWord(model); // before the reading, which a change of experts per word would throw away
@@ -953,6 +1041,7 @@ export class LlamaCpp {
   }
 
   async stopServer() {
+    await this.placeBeforeStop(); // Nov 24: the chat the engine holds is saved first (Per-chat engine cache)
     if (this.role !== BESIDE) this.spread?.close(); // lent cards go back with the brain
     const c = this.child;
     if (this.role === BESIDE && this.current) this.changed?.({ action: 'leave', model: this.current });
@@ -1354,16 +1443,21 @@ export class LlamaCpp {
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
     if (args.includes('--moe-cache-mib') && turboStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...STANDIN_ENV }; this.log?.('engine', `${model}: Turbo stand-ins on (up to 2 missed experts a layer stood in for while writing; the words change)`); }
     else if (args.includes('--moe-cache-mib') && turboDriveStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...DRIVE_STANDIN_ENV }; this.log?.('engine', `${model}: Turbo: never wait on the drive (an expert no longer in RAM is stood in for while writing; the words change)`); }
+    { const kg = keepGuessesEnv(this.cfg, { args, be: this.beNo() }); if (kg.LLAMA_SPEC_MB) { env = { ...env, ...kg }; this.log?.('engine', `${model}: Turbo: keep more guesses on (a guess the exact check throws away is kept when the brain rates it at least as likely; the words change)`); } }
     if (this.tuneEnv && Object.keys(this.tuneEnv).length) env = { ...env, ...this.tuneEnv }; // Engine tuning, set by hand
     if (this.tuneEnv?.LLAMA_MOE_CACHE_SAVE) { try { fs.mkdirSync(path.dirname(this.tuneEnv.LLAMA_MOE_CACHE_SAVE), { recursive: true }); } catch {} } // the engine writes the saved hot set there
     if (args.includes('--moe-cache-mib') && this.hotEnv?.[RANKING_ENV]) env = { ...env, ...this.hotEnv }; // Nov 16: the hot-expert profile (patch 0016)
     // Nov 20 (patch 0039, opt-in): Progressive chat memory, the newest words kept sharper. Its steps come from the
     // context it loads with (a resize in place that would need other steps starts the engine again instead).
     { const t = tiersEnv(this.cfg, model, ctx || this.lc.ctx || DEFAULT_CTX, { ...this.memCaps(), handArgs: args }); if (t.LLAMA_KV_TIERS) { env = { ...env, ...t }; this.log?.('engine', `${model}: Progressive chat memory, sharper copies of the newest words (${t.LLAMA_KV_TIERS})`); } }
+    // Nov 24 (patch 0122, Turbo only, off unless switched on): the sharp start, the chat's first tokens kept at 16-bit
+    { const s = sinkEnv(this.cfg, model, ctx || this.lc.ctx || DEFAULT_CTX, { ...this.memCaps(), handArgs: args }); if (s.LLAMA_KV_SINK) { env = { ...env, ...s }; this.log?.('engine', `${model}: Turbo: sharp start, the chat's first tokens kept at 16-bit (${s.LLAMA_KV_SINK}; the words change a little)`); } }
     if (helpers.length) env = { ...env, ...scutEnv(this.cfg, { wired: Boolean(this.spread?.allWired?.()) }), ...linkEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
     { const rr = registerRamEnv(env, { args, cpu: card === 'none' }); if (rr.LLAMA_MOE_REGISTER_RAM) { env = { ...env, ...rr }; this.log?.('engine', `${model}: the experts in RAM are locked there for the card (Linux default, Brain Engine 0109)`); } }
     { const db = doorbellEnv(env); if (Object.keys(db).length) { env = { ...env, ...db }; this.log?.('engine', `${model}: the doorbell is on, so ${Object.entries(db).map(([k, v]) => `${k}=${v}`).join(' and ')} (safe on Windows)`); } }
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
+    this.placeKeyNow = placeKey({ exe, engine: `${this.beNo()}-${this.buildNo()}`, args, env: ownEnv(env) }); // Nov 24: what a saved chat must match
+    this.placeOther = false; this.placeDirty = false;
     const child = safeSpawn(spawn, exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
     // 1.5.24 "Games first": on the processor, the engine yields to games (below normal priority).
     if (this.role === BESIDE || (cpu && cpuPlan(this.cfg)?.lowPriority)) { try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {} }
@@ -1551,12 +1645,23 @@ export class LlamaCpp {
       try { this.log?.('engine', `${opts.model}: a picture came in, so I'm loading its picture reader again (memory is tight, so this may be slow)`); } catch {}
       await this.preload(opts.model, opts.signal, { ctx: opts.ctx || this.currentCtx || undefined, cpu: Boolean(opts.cpu) });
     }
-    if (opts?.chatId && chatPlacesOn(this.cfg)) await this.switchPlace(opts.chatId, opts.model).catch((e) => { try { this.log?.('engine', `couldn't swap chat places (${e.message})`); } catch {} });
+    clearTimeout(this.placeTimer);
+    let placed = 'none';
+    if (opts?.chatId && chatPlacesOn(this.cfg)) placed = await this.switchPlace(opts.chatId, opts.model).catch((e) => { try { this.log?.('engine', `couldn't swap chat places (${e.message})`); } catch {} return 'none'; });
+    // Nov 24: anything else in the engine's one slot (a title, a summary, a reply while another chat's is running) means
+    // it no longer holds the chat's reading, so that is never saved under the chat's name.
+    const mineChat = placed !== 'none' && placed !== 'busy' && opts?.chatId === this.placeChat;
+    if (!mineChat && this.role !== BESIDE) this.placeOther = true;
     this.active++;
     this.lastUse = this.now();
     const mine = { signal: opts?.signal }; // item 213: a reply still here after its job was stopped is stuck
     (this.inflight ||= new Set()).add(mine);
-    try { return await this.chatOnce(opts); } finally { this.active--; this.lastUse = this.now(); this.inflight.delete(mine); if (this.cardBackPending && this.active === 0) this.reloadWithout(); }
+    try { return await this.chatOnce(opts); } finally {
+      this.active--; this.lastUse = this.now(); this.inflight.delete(mine);
+      // the slot holds this chat again, unless another request is still running in it
+      if (mineChat && this.placeChat === opts.chatId && this.active === 0) { this.placeOther = false; this.placeDirty = true; this.placeAfterReply(opts.model); }
+      if (this.cardBackPending && this.active === 0) this.reloadWithout();
+    }
   }
 
   // 1.5.214: a Bob lending a card to this spread needs it back (a game on it, or its memory ran low). The brain loads
