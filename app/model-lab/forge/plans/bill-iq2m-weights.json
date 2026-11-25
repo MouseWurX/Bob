@@ -22,6 +22,7 @@
  "no_hands": true,
  "prep": [
   "HELD: the owner's typed yes in the laptop thread, after the 35B loop sweep is read.",
+  "KNOWN RISK: on 24 Nov the cut pods' held-out jobs scored all 0 with most runs making no tool call (suspected test fault, not counted). Find and fix that fault, and prove the held-out commands on a cheap card or npc with a served brain, before this plan is rented; otherwise the before/after job scores mean nothing.",
   "Kit: the held-out kit (branch claude/project-thread-et6g5x, as for jobs-held1) plus loop-sweep.mjs, set-live.mjs and practice/ from claude/project-thread-ik98rx. Fix the ../../bob-model-lab paths to the laptop kit's layout.",
   "Pre-flight first: node forge.mjs --plan plans/bill-iq2m-weights.json --preflight."
  ],
