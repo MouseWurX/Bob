@@ -8,7 +8,7 @@
 
 ## Abstract
 
-In November 2026, MIT CSAIL showed that one strong model could improve a small open model by editing its weights directly, with no gradients and no training data (Takehi et al., 2026). On Qwen3.5-0.8B, MATH-500 rose from 7.9% to 48.1%. Most of the gain came from the model no longer looping: answers that ran out of room fell from 93.0% to 33.1%. We ask whether the same idea helps a much larger and healthier model: stock Qwen3.6 35B A3B, a mixture-of-experts model with 40 layers of 256 experts, which is Bob's default brain. Our edit is coarser and cheaper than MIT's. We find the experts the router picks more often on looped answers, turn them down live with the engine's dials, and keep a setting only if loops fall while right answers hold. The winner can then be written into the weights permanently. We register the practice and check sets, the trials, the decision rules and the cost cap (3 hours or $3.50 on one 48 GB card) before any run. We also say in advance what a null result would mean: a healthy 35B may simply not loop enough on grade-school problems to fix.
+In November 2026, MIT CSAIL showed that one strong model could improve a small open model by editing its weights directly, with no gradients and no training data (Takehi et al., 2026). On Qwen3.5-0.8B, MATH-500 rose from 7.9% to 48.1%. Most of the gain came from the model no longer looping: answers that ran out of room fell from 93.0% to 33.1%. We ask whether the same idea helps a much larger and healthier model: stock Qwen3.6 35B A3B, a mixture-of-experts model with 40 layers of 256 experts, which is Bob's default brain. Our edit is coarser and cheaper than MIT's. We find the experts the router picks more often on looped answers and on finished ones, turn them down or up live with the engine's dials, and keep a setting only if loops fall while right answers hold. The winner can then be written into the weights permanently. We register the practice and check sets, the trials, the decision rules and the cost cap (5 hours or $4 on one 48 GB card) before any run. We also say in advance what a null result would mean: a healthy 35B may simply not loop enough on grade-school problems to fix.
 
 ---
 
@@ -20,7 +20,7 @@ This matters for a local assistant. Bob runs on one consumer card and cannot ret
 
 Two facts make us cautious. First, MIT's gain came from repairing a broken model: the 0.8B looped on 85 of its first 96 practice answers. A follow-up on Gemma 3 270M found no clear gain (Takehi et al., 2026). Second, in our own earlier work an unwanted habit ran as a direction across many layers, held back by a brake, and not as one part a cut could remove ([chapter 10](ch10-evil-neuron.md)). Turning down 16 suspect experts made cruel answers harsher, not milder. An edit aimed at "the loop experts" could fail the same way.
 
-**Research question.** On stock Qwen3.6 35B A3B, can turning down the experts that fire more on looped answers cut loops on unseen practice problems without losing right answers?
+**Research question.** On stock Qwen3.6 35B A3B, can turning experts down or up, by how much more they fire on looped or finished answers, cut loops on unseen practice problems without losing right answers?
 
 **Contributions.** (1) A registered, cheap protocol for live expert-level edits on a 35B mixture-of-experts model, with the code and practice set published (`app/model-lab/loop-sweep.mjs`, `app/model-lab/practice/`). (2) Decision rules fixed before the data. (3) Results, positive or null, reported in the same chapter, with the cost.
 
@@ -76,18 +76,24 @@ Every find-set answer is read back with the trace on. For each layer *l* and exp
 
 ### 3.5 Trials
 
-A trial turns the top *N* experts down to scale *s*, with *N* ∈ {16, 64, 256} and *s* ∈ {0.5, 0.7, 0.85}: nine trials in all. Each trial answers the whole check set, and then the dials are reset. The check set is also answered once as built, which gives the baseline.
+Trials go both ways. MouseWurX asked why we only turned experts down, and nothing in MIT's work makes that a rule: their editor kept any change that won (Takehi et al., 2026).
+
+- **Down:** the top *N* experts by lift are turned down to scale *s* ∈ {0.5, 0.7, 0.85}.
+- **Up:** the *N* experts that lean most toward finished answers (the bottom of the lift list) are turned up to *u* ∈ {1.15, 1.3}.
+- **Both:** the two are done at once, for every pair of *s* and *u*.
+
+With *N* ∈ {16, 64}, that makes 22 trials. Each trial answers the whole check set, then the dials are reset. The check set is also answered once as built, which gives the baseline. *Amended 25 November 2026, before any run: down-only trials with N ∈ {16, 64, 256} became the 22 two-way trials above.*
 
 ### 3.6 Cost
 
-The run uses one A40 or A6000 (48 GB). The caps are 3 hours and $3.50. It is driven by the Forge (`forge/plans/loop-sweep-qwen35.json`), and the PC side is the sweep script.
+The run uses one A40 or A6000 (48 GB). The caps are 5 hours and $4. It is driven by the Forge (`forge/plans/loop-sweep-qwen35.json`), and the PC side is the sweep script.
 
 ---
 
 ## 4. Decision rules (fixed before the run)
 
 1. **Too little to fix.** If fewer than 8 find-set answers loop, or fewer than 8 finish, the sweep stops before any trial. We report this as a null result: this model does not loop enough on these problems for this method to act on.
-2. **Candidate.** A trial is a candidate only if its check-set loop rate is lower than the baseline's **and** its right-answer rate is at least the baseline's. Among candidates, the fewest loops wins, then the most right answers.
+2. **Candidate.** A trial is a candidate only if its check-set loop rate is lower than the baseline's **and** its right-answer rate is at least the baseline's. Among candidates, the fewest loops wins, then the most right answers. For Bill (section 6) the failure is wrong answers, so the rule flips: more right answers, and no more loops.
 3. **Noise.** With 100 check problems, one standard error on a rate near 20% is about 4 points. A candidate whose loop drop is under 8 points (two standard errors) is reported as **within noise**. It is not baked into the weights unless a fresh run on 100 new practice problems repeats the drop.
 4. **Ship gate.** No edit ships because of this sweep. A winner is baked, then scored once on Bob's held-out real jobs (no crashes, no bad tool calls, no broken files, same or better job scores). Even then it sits behind Turbo, off by default, because it changes the words the model writes.
 5. **What would change our view.** A clear loop drop with right answers held would support the idea that looping has a few expert carriers in this model. A loop drop paid for with right answers, or none at all, would match [chapter 10](ch10-evil-neuron.md): habits are spread out and expert dials are too coarse. The next step would then be MIT's direction edit on single layers, which is drafted but not yet run.
@@ -105,13 +111,32 @@ The run uses one A40 or A6000 (48 GB). The caps are 3 hours and $3.50. It is dri
 
 ---
 
-## 6. Results
+## 6. Second subject: Bill IQ2_XXS (registered, waiting on approval)
 
-*Pending.* The rental was approved on 25 November 2026 and handed to the Forge. This section will report the find-set loop rate, the lift table, the baseline, all nine trials, the noise verdict, the cost and the time, all measured, with the run files named.
+Bill is our 60% REAP cut of a Flash-Next model (77Bob A6B). Its 2-bit IQ2_XXS file (50.3 GB) failed our publish gate on 23 November 2026: it answered "France." where the answer was Paris, and "25" where it was 42. It was never uploaded. Its failure is wrong answers, not loops. Bill's sweep runs only after the 35B sweep shows the method works. It may replace a planned healing run, but a 2-bit squeeze removes detail from every weight, and no dial can put that back. We expect a smaller effect here than on the 35B.
+
+**Baseline for the record.** MouseWurX asked for a baseline taken before any sweep or healing, so the before and after can be compared later. The same measures run before and after, on the same file, engine build, card type, seeds and settings:
+
+| Measure | What | Kept |
+| --- | --- | --- |
+| Publish gate | The two gate questions the file failed | Both answers, word for word |
+| Practice answers | 200 find and 100 check problems from GSM8K train (`loop-sweep.mjs --baseline`) | Every answer, with a sha256 of its words, loop and right marks, tokens |
+| Held-out real jobs | Inbox (14), office (14), repository (12) and web (11) held-out sets, plus Blender (12) where bpy is installed, scored once each side | Scores and tool-fault counts |
+| Speed | Tokens per second on the same card | With card temperature and clocks, after a cool-down |
+
+The sweep itself uses `--fail wrong`: experts are found on wrong answers against right ones, and trials go both ways as in section 3.5.
+
+**Still to settle before renting.** Where the IQ2_XXS file is kept now, and whether the dials and trace patches load Flash-Next brains on the current engine build. The rental waits on approval.
 
 ---
 
-## 7. Conclusion
+## 7. Results
+
+*Pending.* The 35B rental was approved on 25 November 2026 and handed to the Forge. This section will report the find-set loop rate, the lift table, the baseline, all trials, the noise verdict, the cost and the time, all measured, with the run files named. Bill's baseline and sweep follow it.
+
+---
+
+## 8. Conclusion
 
 Weight editing without training is now shown on small models by a frontier editor, and claimed for a 27B model editing itself. It is not yet shown on a healthy mixture-of-experts model of the size people run at home. This chapter sets out a cheap, pre-registered test of the simplest version, and the rules for reading it. Whatever the result, it will be reported here with its cost.
 
