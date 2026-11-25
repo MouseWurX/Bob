@@ -25,6 +25,7 @@ check('trials are experts x scales', buildTrials(lifted, [1, 2], [0.5, 0.8]).len
 const before = { loop: 0.5, acc: 0.4 };
 check('a trial that loses right answers is not kept', pickBest(before, [{ name: 'x', loop: 0.1, acc: 0.3 }]) === null);
 check('the fewest loops wins among the safe trials', pickBest(before, [{ name: 'a', loop: 0.3, acc: 0.4 }, { name: 'b', loop: 0.2, acc: 0.5 }]).name === 'b');
+check('wrong mode keeps only a trial with more right answers and no more loops', pickBest(before, [{ name: 'a', loop: 0.6, acc: 0.6 }, { name: 'b', loop: 0.5, acc: 0.5 }, { name: 'c', loop: 0.4, acc: 0.4 }], 'wrong').name === 'b');
 check('score counts loops and right answers', score([{ loop: true, ok: false, tokens: 10 }, { loop: false, ok: true, tokens: 4 }]).loop === 0.5);
 
 // a made-up engine: question i loops when i is odd, unless expert 3 of layer 0 is turned down; looped answers lean on expert 3
