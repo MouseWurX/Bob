@@ -1045,6 +1045,11 @@ const server = http.createServer(async (req, res) => {
       const r = introductions.receive(await body(req).catch(() => ({})), req.socket.remoteAddress);
       return send(res, r.code, r);
     }
+    // Nov 25 Find my other Bobs on the phone: your Tailscale devices, for a phone signed in through the door.
+    if (req.method === 'GET' && p === '/api/bob-net/tailnet') {
+      if (!isRemote) return send(res, 403, { error: 'only from your phone or another of your Bobs' });
+      return send(res, 200, await pairing.tailnet());
+    }
     // Your Bobs on the phone (src/glance.js, item 141): how this Bob is doing, for the phone's Your Bobs page and its
     // widget. Signed in through the door, or here; only with "Share status with my phone" on.
     if (req.method === 'GET' && p === '/api/bob-net/glance') {

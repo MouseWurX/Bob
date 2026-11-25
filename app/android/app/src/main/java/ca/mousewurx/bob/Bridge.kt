@@ -123,6 +123,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                     }
                     // ---- Pair Bobs ----
                     "pair.with" -> answer(id, app.pair.pairWith(o.getString("address")))
+                    "pair.find" -> answer(id, app.pair.find(o.optJSONArray("paired")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList()))
                     "pair.answer" -> answer(id, app.pair.answer(o.getString("id"), o.getBoolean("yes")))
                     "pair.waiting" -> answer(id, JSONArray(app.pair.waiting() + app.pair.takeMissed()))
                     // ---- Save something Bob made on this phone (Pictures, Movies, Music or Download, in a Bob folder) ----
