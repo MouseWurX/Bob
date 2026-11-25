@@ -434,7 +434,7 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | Settings > How Bob works > 💬 Chat extras | Try from here (`tryFromHere`) | off | new, awaiting review |
 | same | Pin messages (`pinMessages`) | off | new, awaiting review |
 | same | Guest chats (`guestChat`) | off | new, awaiting review |
-| same | Per-chat engine cache (`chatPlaces`), Saved chat places count, Clear them | off | new, awaiting review |
+| same | Per-chat engine cache (`chatPlaces`), Saved chat places count, Clear them | on (Nov 24; off stays off) | new, awaiting review |
 | same | Fade old messages (`fadeChat.on`), Fade after (`fadeChat.minutes`: number + minutes/hours/days, quick picks 5 min to 30 days), When they fade (`fadeChat.mode`: Hide them / Delete them for good), 🧹 Clear this chat | off, 1 hour, Hide them | new, awaiting review |
 | same | Amnesia mode (`amnesiaOffer`), Things he made while it was on (`amnesiaMade`: Keep them / Delete them too), Auto-off after (`amnesiaAutoOff`: Never, 1 hour, 4 hours, 1 day) | off, Keep them, Never | new, awaiting review |
 | Chat, top line (with fading on or something faded) | ⌛ N older messages faded, Show them / Hide them again, 🧹 Clear chat (asks first, Delete it for good unticked) | n/a | new, awaiting review |

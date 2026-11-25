@@ -36,6 +36,7 @@ const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 export const cleanTime = (v, d) => (typeof v === 'string' && TIME.test(v.trim()) ? v.trim() : d);
 
 export function cleanHarness(key, v) {
+  if (key === 'chatPlaces') return v !== false; // Nov 24: on unless turned off (lossless)
   if (SWITCHES.includes(key)) return v === true;
   if (key === 'quietHours') {
     const q = v && typeof v === 'object' ? v : {};
