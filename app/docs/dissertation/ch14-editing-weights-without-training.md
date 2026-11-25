@@ -2,7 +2,7 @@
 
 **MouseWurX** · Draft, 25 November 2026 · Written to stand alone as a paper; it uses the instruments of [chapter 3](ch03-building-the-instruments.md) and the rules of [chapter 4](ch04-method-and-rules.md).
 
-> **Status: registered report, results pending.** This chapter fixes the question, the method and the decision rules **before** the first run. No rental has finished, so every claim about our own model below is unproven in our lab, as we have yet to test. Results will be added as a dated section, without changing the rules.
+> **Status: registered report.** This chapter fixed the question, the method and the decision rules **before** the first run. Run 1 (25 November 2026) is a null result under rule 1: the stock 35B hardly looped on grade-school maths, so nothing was tried (section 7.1). Run 2 on harder practice problems, and Bill's before and after, are waiting on approval. Every claim about an edit's effect is still unproven in our lab, as we have yet to test.
 
 ---
 
@@ -132,7 +132,29 @@ The sweep itself uses `--fail wrong`: experts are found on wrong answers against
 
 ## 7. Results
 
-*Pending.* The 35B rental was approved on 25 November 2026 and handed to the Forge. This section will report the find-set loop rate, the lift table, the baseline, all trials, the noise verdict, the cost and the time, all measured, with the run files named. Bill's baseline and sweep follow it.
+### 7.1 Run 1: stock 35B on GSM8K train (25 November 2026): null under rule 1
+
+| Measure | Value |
+| --- | --- |
+| Code | `loop-sweep.mjs` at c2c5f72, plan `loop-sweep-qwen35` |
+| Card | One A40 (48 GB), Brain Engine fcdf3955 on b12282 |
+| Find set | 200 GSM8K train problems, thinking on, 8,192-token limit, 6 at a time |
+| Looped | 3 of 200 (1.5%) |
+| Finished | 197 of 200 |
+| Right | 95.0% |
+| Tokens per answer | 1,765.6 on average |
+| Time answering | 23.8 minutes |
+| Cost | About $0.89, pod deleted at the end |
+
+Three looped answers is below rule 1's floor of 8, so the sweep stopped before tracing or trying any dial, exactly as registered. No `lift.json` or `surgery-edits.json` was written. Files: `loop-sweep-qwen35.json`, `loop-sweep-qwen35.log` and `loop-sweep-qwen35-forge.log` in the project library (the run's out/bench folder).
+
+**What it means.** On grade-school maths, the stock 35B as Bob runs it has almost no loop to fix. That fits the caution in section 1: MIT's 0.8B looped on 85 of its first 96 practice answers, and this model looped on 3 of 200. It does not show that dials cannot help. It shows that this problem set gives them nothing to act on. The fix is harder practice problems, not a lower floor: changing rule 1 after seeing the data would break the registration.
+
+**Fix plan.** Run 2 (`loop-sweep-qwen35-math`, waiting on approval) keeps the brain, engine, card and every rule. It swaps in 600 level-5 problems from the MATH **train** split with whole-number answers (`practice/math-train-l5-600.jsonl`; train ids only, never MATH-500), and allows longer answers (16,384 tokens). To fit the cap it uses fewer problems (150 find, 60 check) and 10 two-way trials. Our estimate of about 4.5 hours is not measured. If it also loops fewer than 8 times, that is a second null, and the loop target is dropped for this model in favour of wrong answers (`--fail wrong`).
+
+### 7.2 Bill IQ2_M
+
+*Pending.* Waiting on approval, after run 2.
 
 ---
 

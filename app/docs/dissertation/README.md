@@ -38,7 +38,7 @@ Small open models can run a useful agent on one consumer graphics card, but how 
 | 11 | [How we now make clean lessons](ch11-making-clean-lessons.md) | Fresh stock model, locked tool shapes, real tool results in a sandbox, every lesson read, and the decisive test still to run. |
 | 12 | [Teaching it](ch12-curriculum.md) | A curriculum from first concepts to engineering: the Lab's Lessons course, 45 lessons in 17 units. |
 | 13 | [Conclusion and future work](ch13-conclusion.md) | Answers to the research questions, what was not shown, contributions, and what comes next. |
-| 14 | [Editing the weights without training](ch14-editing-weights-without-training.md) | A registered loop sweep on stock Qwen3.6 35B A3B, after MIT's weight-space programming: turn down the experts that fire on looped answers, keep only what holds right answers. Results pending. |
+| 14 | [Editing the weights without training](ch14-editing-weights-without-training.md) | A registered loop sweep on stock Qwen3.6 35B A3B, after MIT's weight-space programming: turn down the experts that fire on looped answers, keep only what holds right answers. Run 1: null (3 of 200 looped on GSM8K, nothing to fix); a harder retry waits on approval. |
 
 ## Where to find
 

@@ -19,6 +19,7 @@ const rep = Array(10).fill('so the answer is maybe seven and then we check again
 check('a reply cut by the token limit loops', looped('short', true));
 check('a reply that repeats itself loops', looped(rep, false));
 check('a normal reply does not loop', !looped('First add 2 and 3 to get 5. The answer is 5.', false));
+check('a boxed answer wins over later numbers', correct('so \\boxed{12} (check: 3 times 4)', '12') && !correct('\\boxed{13} and 12', '12'));
 check('the last number is the answer', correct('2 plus 3 is 5, so 1,005', '1005') && !correct('it is 4', '5'));
 const lifted = lift([[50, 0, 0, 90]], [[50, 0, 0, 5]], 20);
 check('lift puts the expert used mostly on looped answers first', lifted[0].expert === 3 && lifted.length === 2);

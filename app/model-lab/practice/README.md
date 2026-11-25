@@ -4,3 +4,7 @@ Problems the Lab may tune on. Never Bob's held-out jobs: those only score a fini
 
 - `gsm8k-train-600.jsonl`: 600 problems from the GSM8K **train** split (shuffled, seed 7), as `{"q", "a"}`.
   Source: [openai/grade-school-math](https://github.com/openai/grade-school-math), MIT licence. Used by `loop-sweep.mjs`.
+- `math-train-l5-600.jsonl`: 600 level-5 problems from the MATH **train** split (ids `train/...` only, so never MATH-500 or other
+  test items) whose answer is a whole number, shuffled with seed 7. Source: [openai/prm800k](https://github.com/openai/prm800k)
+  (`prm800k/math_splits/train.jsonl`, MIT licence), which carries MATH (Hendrycks et al., 2021, MIT licence). Mix: number theory 130,
+  algebra 110, geometry 102, intermediate algebra 93, counting and probability 83, prealgebra 64, precalculus 18.

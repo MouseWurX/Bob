@@ -40,6 +40,9 @@ export function looped(text, cut) {
 
 const norm = (s) => { const t = String(s).replace(/,/g, '').trim(); return t.includes('.') ? t.replace(/0+$/, '').replace(/\.$/, '') : t; };
 export function correct(text, gold) {
+  // 25 Nov: a \boxed{...} answer (MATH style) wins over the last number in the text
+  const boxed = [...String(text || '').matchAll(/\\boxed\{([^{}]*)\}/g)].map((m) => m[1]).at(-1);
+  if (boxed !== undefined) return norm(boxed.replace(/[\s$]/g, '')) === norm(gold);
   const nums = String(text || '').replace(/,/g, '').match(/-?\d+(?:\.\d+)?/g);
   return Boolean(nums) && norm(nums.at(-1)) === norm(gold);
 }
