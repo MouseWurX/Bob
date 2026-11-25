@@ -301,6 +301,19 @@ export function tiersEnv(cfg, model, ctx, { q3 = false, q2 = false, tiers = fals
   const t = progressiveTiers(ctx, type);
   return t ? { LLAMA_KV_TIERS: t, LLAMA_KV_TIERS_SLACK: String(TIERS_SLACK) } : {};
 }
+// Turbo: sharp start (Nov 24, Brain Engine 0122, from llamAmpere's SJ-KVaRN sink; off unless switched on, and only
+// with Turbo): the chat's first 128 tokens kept again at 16-bit beside a 4-bit, 3-bit, 2-bit or Progressive chat
+// memory, read as Progressive Memory's sharpest step. About 5 MiB on Qwen3.6-35B-A3B. Changes the answer a little, so
+// it sits behind Turbo; npc measures whether it helps. The engine names LLAMA_KV_SINK in --help when it has it.
+export const helpHasSink = (text) => /\bLLAMA_KV_SINK\b/.test(String(text ?? ''));
+export const SINK_SPEC = 'f16:128';
+export const SINK_TYPES = ['small', 'smallest', 'progressive', 'progressive2', 'progressive83', 'progressive84', 'progressive82'];
+export function sinkEnv(cfg, model, ctx, { q3 = false, q2 = false, tiers = false, sink = false, handArgs } = {}) {
+  if (cfg?.turbo !== true || cfg?.turboSink !== true || !sink || !(Number(ctx) > 512)) return {};
+  if (!SINK_TYPES.includes(memTypeOf(cfg, model, { q3, q2, tiers }))) return {};
+  if (Array.isArray(handArgs) && handArgs.some((a) => ['-np', '--parallel'].includes(a) && Number(handArgs[handArgs.indexOf(a) + 1]) > 1)) return {};
+  return { LLAMA_KV_SINK: SINK_SPEC };
+}
 // ---------- 98 Laptop mode ----------
 // Is this computer running on its battery right now? true, false, or null when it has no battery or can't tell.
 export function parseWinBattery(out) {

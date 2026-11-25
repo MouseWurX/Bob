@@ -31,7 +31,7 @@ import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.
 import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, FILL_FROM_BE as COND_FILL_FROM_BE, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv, loadStepBySpeed, cleanSpeeds } from './conductor.js'; // off unless picked
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { tuningArgs, doorbellEnv, registerRamEnv } from './engine-tuning.js';
-import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV, keepGuessesArgs, keepGuessesEnv } from './engine-extras.js'; // Turbo: stand-ins (0043), keep more guesses (0120); off unless switched on
+import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV, keepGuessesArgs, keepGuessesEnv, helpHasSink, sinkEnv } from './engine-extras.js'; // Turbo: stand-ins (0043), keep more guesses (0120), sharp start (0122); off unless switched on
 import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
@@ -561,7 +561,7 @@ export class LlamaCpp {
   kvCaps() {
     const exe = this.exePath();
     if (this._kvQ3 && this._kvQ3.exe === exe) return this._kvQ3;
-    let has = false, tiers = false, q2 = false;
+    let has = false, tiers = false, q2 = false, sink = false;
     if (/llama-server/i.test(path.basename(exe)) && fs.existsSync(exe)) {
       try {
         if (!q3CardOk(fs.readdirSync(path.dirname(exe)), process.platform)) throw new Error('no 3-bit kernels for this card');
@@ -570,16 +570,22 @@ export class LlamaCpp {
         has = helpHasQ3(text);
         tiers = has && helpHasTiers(text);
         q2 = has && helpHasQ2(text); // 0046: 2-bit, Turbo's Progressive 8+2 only
+        sink = helpHasSink(text); // 0122: Turbo: sharp start (Brain Engine 46 or newer)
       } catch {}
     }
-    this._kvQ3 = { exe, has, tiers, q2 };
+    this._kvQ3 = { exe, has, tiers, q2, sink };
     return this._kvQ3;
   }
   kvQ3() { return this.kvCaps().has; }
   kvTiers() { return this.kvCaps().tiers; }
   // The brain's chat memory flags and, for Progressive, its steps (both from the Brains page pick).
-  memCaps() { const c = this.kvCaps(); return { q3: c.has, q2: c.q2, tiers: c.tiers }; }
-  tiersFor(model, ctx) { return tiersEnv(this.cfg, model, ctx, { ...this.memCaps(), handArgs: this.lc.args }).LLAMA_KV_TIERS || ''; }
+  memCaps() { const c = this.kvCaps(); return { q3: c.has, q2: c.q2, tiers: c.tiers, sink: c.sink === true }; }
+  // The steps the room counter adds, and that a resize in place must keep: Progressive's rings, then the sharp start.
+  tiersFor(model, ctx) {
+    const caps = { ...this.memCaps(), handArgs: this.lc.args };
+    const s = sinkEnv(this.cfg, model, ctx, caps).LLAMA_KV_SINK;
+    return [tiersEnv(this.cfg, model, ctx, caps).LLAMA_KV_TIERS || '', s ? `sink:${s}` : ''].filter(Boolean).join(',');
+  }
 
   // 1.5.90: no memory-mapping when some of the brain is placed in RAM on the card route (see buildArgs).
   // 1.5.193: not when the brain is bigger than the card and RAM can hold together (gpt-oss 120B, about 63 GB, on a
@@ -1444,6 +1450,8 @@ export class LlamaCpp {
     // Nov 20 (patch 0039, opt-in): Progressive chat memory, the newest words kept sharper. Its steps come from the
     // context it loads with (a resize in place that would need other steps starts the engine again instead).
     { const t = tiersEnv(this.cfg, model, ctx || this.lc.ctx || DEFAULT_CTX, { ...this.memCaps(), handArgs: args }); if (t.LLAMA_KV_TIERS) { env = { ...env, ...t }; this.log?.('engine', `${model}: Progressive chat memory, sharper copies of the newest words (${t.LLAMA_KV_TIERS})`); } }
+    // Nov 24 (patch 0122, Turbo only, off unless switched on): the sharp start, the chat's first tokens kept at 16-bit
+    { const s = sinkEnv(this.cfg, model, ctx || this.lc.ctx || DEFAULT_CTX, { ...this.memCaps(), handArgs: args }); if (s.LLAMA_KV_SINK) { env = { ...env, ...s }; this.log?.('engine', `${model}: Turbo: sharp start, the chat's first tokens kept at 16-bit (${s.LLAMA_KV_SINK}; the words change a little)`); } }
     if (helpers.length) env = { ...env, ...scutEnv(this.cfg, { wired: Boolean(this.spread?.allWired?.()) }), ...linkEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
     { const rr = registerRamEnv(env, { args, cpu: card === 'none' }); if (rr.LLAMA_MOE_REGISTER_RAM) { env = { ...env, ...rr }; this.log?.('engine', `${model}: the experts in RAM are locked there for the card (Linux default, Brain Engine 0109)`); } }
     { const db = doorbellEnv(env); if (Object.keys(db).length) { env = { ...env, ...db }; this.log?.('engine', `${model}: the doorbell is on, so ${Object.entries(db).map(([k, v]) => `${k}=${v}`).join(' and ')} (safe on Windows)`); } }
