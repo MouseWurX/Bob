@@ -127,7 +127,8 @@ export const OPT_IN_GROUPS = { hands: ['enabled', false], checkins: ['enabled', 
 // What safe start would change: only the switches that are on now.
 export function safeStartPlan(cfg) {
   const patch = {}, before = {};
-  for (const k of OPT_IN) if (cfg[k] === true) { patch[k] = false; before[k] = true; }
+  // 25 Nov: the Per-chat engine cache is on unless switched off, so safe start counts it on when it isn't set
+  for (const k of OPT_IN) if (cfg[k] === true || (k === 'chatPlaces' && cfg[k] !== false)) { patch[k] = false; before[k] = true; }
   for (const [k, [part, off]] of Object.entries(OPT_IN_GROUPS)) {
     const v = cfg[k];
     if (v && typeof v === 'object' && v[part] && v[part] !== off) { patch[k] = { ...v, [part]: off }; before[k] = JSON.parse(JSON.stringify(v)); }

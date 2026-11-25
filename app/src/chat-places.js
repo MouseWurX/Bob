@@ -1,4 +1,4 @@
-// "Per-chat engine cache" (Settings, How Bob works, 💬 Chat extras). Off unless turned on.
+// "Per-chat engine cache" (Settings, How Bob works, 💬 Chat extras). On unless switched off (25 Nov).
 // The engine (llama-server) keeps one chat's reading in its memory. Switching to another chat throws it away, so going
 // back means reading the whole chat again (a long chat on a big brain can take a minute). With this on, Bob's built-in
 // engine saves the old chat's reading to disk when you switch (inn\bob\chat-places) and loads it back when you return.
@@ -10,7 +10,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-export const chatPlacesOn = (cfg) => cfg?.chatPlaces === true;
+// 25 Nov (the owner's rule: lossless speed tricks are on by default): on unless switched off. Laptop check, 20K-token chat
+// on qwen3-4b: off, every question re-read the whole chat (14.7 s, 13.5 s back from another chat); on, 0.8-1.8 s, and
+// 4.8 s after a Bob restart (17.9 s cold), with the same words as a cold read. Each 20K place was 1.8 GB, so the cap below
+// (newest 4, 8 GB, oldest out first) stays; switching it off deletes them (harness-routes.js).
+export const chatPlacesOn = (cfg) => cfg?.chatPlaces !== false;
 export const placesDir = (cfg) => path.join(cfg.dataDir, 'chat-places');
 export const PLACES_KEEP = 4;
 export const PLACES_MAX_BYTES = 8e9;

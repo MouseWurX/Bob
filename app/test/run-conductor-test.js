@@ -62,7 +62,7 @@ check('a brain whose switches ran twice as long guesses twice as long', Math.abs
 const big = path.join(tmp, 'big.gguf');
 fs.writeFileSync(big, 'x');
 const engineOf = (extra = {}, lc = {}) => { const e = new LlamaCpp({ agentDir: tmp, dataDir: tmp, ...extra, llamacpp: { models: { big }, ...lc } }); clearInterval(e.idleTimer); return e; };
-{ const off = engineOf(); const a = off.buildArgs('big');
+{ const off = engineOf({ chatPlaces: false }); const a = off.buildArgs('big'); // 25 Nov: the Per-chat engine cache (on by default) has its own save place
   check('no Conductor and no save place while it is off', !off.condChat && !a.includes('--slot-save-path'));
   const on = engineOf({ engineTuning: { mode: 'conductor' }, readingSpeed: 'fastest' }); const b = on.buildArgs('big');
   check('on: a place to save the reading, and it loads at the read step (Nov 23), the chat step kept for writing', b.includes('--slot-save-path') && Number(b[b.lastIndexOf('-ub') + 1]) === READ_STEP && on.condChat > 0 && on.condChat <= READ_STEP, b.join(' '));

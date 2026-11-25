@@ -71,7 +71,7 @@ const add = (name, tag, hex) => {
   fs.writeFileSync(path.join(dir, tag), JSON.stringify({ layers: [{ mediaType: 'application/vnd.ollama.image.model', digest: `sha256:${hex}` }] }));
 };
 add('qwen3', '4b', 'ccc333');
-const lcCfg = (extra = {}) => ({ dataDir: path.join(tmp, 'data'), agentDir: tmp, llamacpp: { exe: process.execPath, preArgs: [path.join(here, 'mock-llama-server.js')], ollamaModelsDir: models, port: 18095, fit: false }, ...extra });
+const lcCfg = (extra = {}) => ({ dataDir: path.join(tmp, 'data'), agentDir: tmp, llamacpp: { exe: process.execPath, preArgs: [path.join(here, 'mock-llama-server.js')], ollamaModelsDir: models, port: 18095, fit: false }, chatPlaces: false, ...extra }); // 25 Nov: the Per-chat engine cache is on by default; these check the processor switches alone
 fs.mkdirSync(path.join(tmp, 'data'), { recursive: true });
 {
   const lc = new LlamaCpp(lcCfg());

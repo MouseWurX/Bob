@@ -35,8 +35,10 @@ export const QUIET_DEFAULT = { on: false, from: '22:00', to: '07:00' };
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 export const cleanTime = (v, d) => (typeof v === 'string' && TIME.test(v.trim()) ? v.trim() : d);
 
+// 25 Nov: switches that are on until the owner turns them off (lossless speed: the Per-chat engine cache)
+export const DEFAULT_ON = ['chatPlaces'];
 export function cleanHarness(key, v) {
-  if (SWITCHES.includes(key)) return v === true;
+  if (SWITCHES.includes(key)) return DEFAULT_ON.includes(key) ? v !== false : v === true;
   if (key === 'quietHours') {
     const q = v && typeof v === 'object' ? v : {};
     return { on: q.on === true, from: cleanTime(q.from, QUIET_DEFAULT.from), to: cleanTime(q.to, QUIET_DEFAULT.to) };

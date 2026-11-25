@@ -6,13 +6,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { HARNESS_KEYS, cleanHarness, harnessView, harnessNow, ASK_KEYS } from '../src/harness.js';
+import { HARNESS_KEYS, cleanHarness, harnessView, harnessNow, ASK_KEYS, DEFAULT_ON } from '../src/harness.js';
 import { SETTING_KEYS, mergeSettings } from '../src/config.js';
 import { safeLogLines, makeReport, saveReport, listReports, readReport, deleteReport, markSeen, startRun, endRun, safeStartPlan, applySafeStart, undoSafeStart, crashOffer, engineCrashed, OPT_IN, MAX_REPORTS } from '../src/crash-catch.js';
 import { record, undoView, putBack, clearUndo, UNDO_MAX } from '../src/settings-undo.js';
 import { isQuiet, minuteOfDay } from '../src/quiet-hours.js';
 import { Weekly } from '../src/weekly.js';
-import { tidyPlaces, placeFile, placesUsed, clearPlaces, placesDir } from '../src/chat-places.js';
+import { tidyPlaces, placeFile, placesUsed, clearPlaces, placesDir, chatPlacesOn } from '../src/chat-places.js';
 import { pin, unpin, readPins, pinsPrompt, MAX_PINS } from '../src/pins.js';
 import { tryFromHere } from '../src/try-from-here.js';
 import { isGuestId, GUEST_BLOCKED } from '../src/guest-chat.js';
@@ -38,7 +38,7 @@ check('apuHoldbackGB stays last', SETTING_KEYS[SETTING_KEYS.length - 1] === 'apu
 {
   const v = harnessView(mergeSettings({}, {}));
   const CHOICES = { amnesiaMade: 'keep', amnesiaAutoOff: 0 }; // Amnesia mode's two choices, not switches
-  check('all off on a new Bob', HARNESS_KEYS.every((k) => (k in CHOICES ? v[k] === CHOICES[k] : typeof v[k] === 'object' ? v[k].on === false : v[k] === false)), JSON.stringify(v));
+  check('all off on a new Bob, but the lossless ones on (25 Nov: the Per-chat engine cache)', HARNESS_KEYS.every((k) => (k in CHOICES ? v[k] === CHOICES[k] : DEFAULT_ON.includes(k) ? v[k] === true : typeof v[k] === 'object' ? v[k].on === false : v[k] === false)), JSON.stringify(v));
   check('quiet hours start 22:00 to 07:00', v.quietHours.from === '22:00' && v.quietHours.to === '07:00');
   check('the shortcut starts as Ctrl+Shift+Space', v.globalAsk.key === 'CommandOrControl+Shift+Space' && v.askKeys.length === ASK_KEYS.length);
 }
@@ -87,7 +87,7 @@ check('Bob\'s settings readout names them', /Quiet hours/.test(harnessNow({})) &
   const s2 = startRun(cfg);
   check('two in a row is a streak of two', s2.streak === 2);
   const offer = crashOffer(cfg, s2);
-  check('safe start is offered after two', offer.safeStart && offer.safeStart.count === 4, JSON.stringify(offer));
+  check('safe start is offered after two (4 switched on, plus the cache that is on by default)', offer.safeStart && offer.safeStart.count === 5, JSON.stringify(offer));
   check('not offered after one', !crashOffer(cfg, s1).safeStart);
   check('not offered with its switch off', !crashOffer({ ...cfg, safeStart: false }, s2).safeStart);
   const plan = safeStartPlan(cfg);
@@ -96,9 +96,9 @@ check('Bob\'s settings readout names them', /Quiet hours/.test(harnessNow({})) &
   check('every top-level harness switch that could get in the way is in the list', ['weeklyReport', 'chatPlaces', 'tryFromHere', 'pinMessages', 'guestChat'].every((k) => OPT_IN.includes(k)));
   const saved = [];
   const r = applySafeStart(cfg, (c, p) => { saved.push(p); Object.assign(c, p); });
-  check('switching off saves first, then turns them off', r.count === 4 && cfg.pinMessages === false && cfg.hands.enabled === false);
+  check('switching off saves first, then turns them off', r.count === 5 && cfg.pinMessages === false && cfg.hands.enabled === false && cfg.chatPlaces === false);
   const back = undoSafeStart(cfg, (c, p) => Object.assign(c, p));
-  check('Put my switches back turns exactly those on again', back.count === 4 && cfg.pinMessages === true && cfg.docTools === true && cfg.hands.enabled === true);
+  check('Put my switches back turns exactly those on again', back.count === 5 && cfg.pinMessages === true && cfg.docTools === true && cfg.hands.enabled === true && cfg.chatPlaces === true);
   check('nothing to put back twice', undoSafeStart(cfg, () => {}).count === 0);
   endRun(cfg);
   check('a normal quit ends the streak', startRun(cfg).crashed === false);
@@ -191,6 +191,13 @@ check('Bob\'s settings readout names them', /Quiet hours/.test(harnessNow({})) &
   const ll = read('src/llamacpp.js');
   check('the engine is started with a place folder only with the switch on', /--slot-save-path/.test(ll) && /chatPlacesOn\(/.test(ll));
   check('switching chats saves the old place and restores the new one', /slotAction\('save'/.test(ll) && /slotAction\('restore'/.test(ll) && /switchPlace\(/.test(ll));
+  // 25 Nov: on by default (lossless: the laptop check gave the same words), off only when switched off
+  check('the Per-chat engine cache is on when never set', chatPlacesOn({}) === true && chatPlacesOn({ chatPlaces: true }) === true);
+  check('and off only when switched off', chatPlacesOn({ chatPlaces: false }) === false);
+  check('Settings shows it on when never set, off when switched off', harnessView({}).chatPlaces === true && harnessView({ chatPlaces: false }).chatPlaces === false && cleanHarness('chatPlaces', undefined) === true);
+  check('other switches still start off', harnessView({}).tryFromHere === false && harnessView({}).pinMessages === false);
+  check('safe start switches the cache off when it was on by default', safeStartPlan({}).patch?.chatPlaces === false || JSON.stringify(safeStartPlan({})).includes('"chatPlaces":false'));
+  check('safe start leaves it alone once it is off', !JSON.stringify(safeStartPlan({ chatPlaces: false })).includes('"chatPlaces"'));
 }
 
 // ---------- Pin messages ----------
@@ -324,7 +331,7 @@ check('Bob\'s settings readout names them', /Quiet hours/.test(harnessNow({})) &
 {
   check('three panels, each in one group and on one card', ['adv-health', 'adv-quiet', 'adv-chatx'].every((id) => GROUPS.filter(([, ids]) => ids.includes(id)).length === 1 && CARDS.filter((c) => c.topics.includes(id)).length === 1));
   const panels = ['health', 'quiet', 'chats'].map((p) => harnessHtml(p, harnessView({}), []));
-  check('no switch is ticked on a new Bob', panels.every((h) => !/data-hx="\w+" checked/.test(h)));
+  check('no switch is ticked on a new Bob but the Per-chat engine cache', panels.every((h) => [...h.matchAll(/data-hx="(\w+)" checked/g)].every((m) => DEFAULT_ON.includes(m[1]))) && /data-hx="chatPlaces" checked/.test(panels.join('')));
   check('times and the key can be picked before switching on', /data-hx-time="from"/.test(panels[1]) && /data-hx-key/.test(panels[1]));
   const plain = (s) => String(s).replace(/<[^>]+>/g, ' ').replace(/\\'/g, "'").replace(/\s+/g, ' ').toLowerCase();
   const help = plain(HELP.map((e) => `${e.title} ${e.html}`).join(' '));
