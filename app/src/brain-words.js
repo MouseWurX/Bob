@@ -113,6 +113,16 @@ export function realState({ model, session, waiting = 0, cat, turn = 0, withCat 
   return `Right now (real, from the app): you're thinking on ${model || 'no brain'}${session ? ` in the ${session} session` : ''}; ${waiting ? `${waiting} more message${waiting === 1 ? '' : 's'} waiting` : 'nothing else waiting'}; the PC's RAM is ${gb(mem.total - mem.free)} of ${gb(mem.total)} GB in use${withCat ? `; ${catMoment(cat, turn)}` : ''}.`;
 }
 // The Meanwhile line again as a short note just before the latest message, where a small brain reads it last.
+// Quick follow-ups in long chats (toolbox.js quickFollowUpsOn, off unless switched on): the turn's note goes just AFTER
+// the latest message instead of before it. Before it, the note sat in front of the last message, so on the next turn
+// (note gone) everything from the last message on was new to the engine: a 19K-token pasted file was read again for a
+// one-line follow-up. After it, only Bob's last reply and the new message are new.
+export function noteAfterAsk(list, line) {
+  if (!line) return list;
+  const at = list.findLastIndex((m) => m.role === 'user');
+  const note = { role: 'system', content: line };
+  return at < 0 ? [...list, note] : [...list.slice(0, at + 1), note, ...list.slice(at + 1)];
+}
 export function meanwhileNear(list, line) {
   if (!line) return list;
   const at = list.findLastIndex((m) => m.role === 'user');

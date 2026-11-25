@@ -8,7 +8,7 @@ import { personalityPrompt } from '../public/personality.js';
 import { capabilities } from './capabilities.js';
 import { cloudHelpers } from './cloud.js';
 import { toolSetOfModel, inSet, stickyFor } from './tool-sets.js';
-import { allToolsOn, toolboxPrompt, tidySchema, onlyGroups, groupsFor, CORE, fillUseTools, guessGroups, groupOf, STICKY_TURNS } from './toolbox.js';
+import { allToolsOn, toolboxPrompt, tidySchema, onlyGroups, groupsFor, CORE, fillUseTools, guessGroups, groupOf, STICKY_TURNS, quickFollowUpsOn, inGroupOrder } from './toolbox.js';
 import { HANDS, freeOn, toolsOff } from './hands-settings.js';
 import { handsPrompt } from './hands.js';
 import { webPrompt, linkPrompt, webOn, WEB_TOOLS } from './web.js';
@@ -263,7 +263,7 @@ export const promptParts = {
     const groups = onlyGroups(groupsFor(this), loaded?.only);
     if (allToolsOn(this.cfg)) for (const g of Object.keys(groups)) loaded.add(g);
     const core = loaded?.only ? CORE.filter((n) => n !== 'ask_specialist') : CORE;
-    const names = [...core, ...[...loaded].flatMap((g) => groups[g]?.tools || [])];
+    const names = [...core, ...(quickFollowUpsOn(this.cfg) ? inGroupOrder(groups, loaded) : [...loaded]).flatMap((g) => groups[g]?.tools || [])]; // Quick follow-ups: one fixed order
     // 1.5.41: ask_together comes along once a group with tools that ask for an OK is added.
     if (names.some((n) => this.tools[n]?.check && this.usable(n))) names.push('ask_together');
     if (planOn(this.cfg)) names.push('show_plan'); // 1.5.78: always there while the setting is on (plan.js)
@@ -277,7 +277,17 @@ export const promptParts = {
     const loaded = new Set(guessGroups(this, text));
     const sticky = this.stickyGroups.get(sessionId);
     if (sticky) for (const [g, left] of sticky) { if (left > 0) loaded.add(g); }
+    if (quickFollowUpsOn(this.cfg)) for (const g of this.steadyGroups?.get(sessionId) || []) loaded.add(g); // Quick follow-ups in long chats
     return loaded;
+  },
+  // Quick follow-ups in long chats (toolbox.js quickFollowUpsOn): every group this chat has been offered stays for the rest of it.
+  // Kept in memory for the newest 50 chats; a Bob restart starts each chat's list again.
+  keepSteady(sessionId, loaded) {
+    if (!sessionId || !loaded || !quickFollowUpsOn(this.cfg)) return;
+    const had = (this.steadyGroups ||= new Map()).get(sessionId) || new Set();
+    for (const g of loaded) had.add(g);
+    this.steadyGroups.delete(sessionId); this.steadyGroups.set(sessionId, had); // newest last
+    if (this.steadyGroups.size > 50) this.steadyGroups.delete(this.steadyGroups.keys().next().value);
   },
   // Item 210: an answer that stopped at the length limit says so under it (the person's note, not the brain's), once.
   cutNote(reply, emit) {
