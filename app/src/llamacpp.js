@@ -31,7 +31,7 @@ import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.
 import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, FILL_FROM_BE as COND_FILL_FROM_BE, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv, loadStepBySpeed, cleanSpeeds } from './conductor.js'; // off unless picked
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { tuningArgs, doorbellEnv, registerRamEnv } from './engine-tuning.js';
-import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV } from './engine-extras.js'; // Turbo: stand-ins (0043, off unless switched on)
+import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV, keepGuessesArgs, keepGuessesEnv } from './engine-extras.js'; // Turbo: stand-ins (0043), keep more guesses (0120); off unless switched on
 import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
@@ -767,6 +767,7 @@ export class LlamaCpp {
       if (tb.mtp && guess.includes('-md')) this.log?.('engine', `${model}: MTP's guesser comes from ${path.basename(guess[guess.indexOf('-md') + 1])} beside the brain`);
       if (tb.mtp) args.push(...guess, ...draftNumArgs(this.buildNo(), tb.max || 8));
       else { let dg = null; try { dg = this.resolve(tb.draft).gguf; } catch {} if (dg) args.push('-md', dg, ...draftNumArgs(this.buildNo(), tb.max || 8, 0), '-ngld', '99'); }
+      args.push(...keepGuessesArgs(this.cfg, { args, be: this.beNo() })); // Turbo: keep more guesses (0120)
       return args;
     }
     const d = lc.draft;
@@ -788,6 +789,8 @@ export class LlamaCpp {
       if (args.some((x, i) => x === '--spec-type' && String(args[i + 1] || '').split(',').includes('draft-mtp'))) this.tuneEnv = { ...(this.tuneEnv || {}), ...mtpSpareEnv({ env: this.tuneEnv, step: this.condLoad || 0 }) }; }
     // 94 Guess-ahead from the chat (opt-in): with no draft brain, the engine guesses by copying what the chat holds.
     args.push(...copyGuessArgs(this.cfg, { build: this.buildNo(), args }));
+    // Turbo: keep more guesses (Brain Engine 0120, off unless switched on): where a model drafts, it samples its guesses
+    if (this.role !== BESIDE) args.push(...keepGuessesArgs(this.cfg, { args, be: this.beNo() }));
     return args;
   }
 
@@ -1354,6 +1357,7 @@ export class LlamaCpp {
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
     if (args.includes('--moe-cache-mib') && turboStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...STANDIN_ENV }; this.log?.('engine', `${model}: Turbo stand-ins on (up to 2 missed experts a layer stood in for while writing; the words change)`); }
     else if (args.includes('--moe-cache-mib') && turboDriveStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...DRIVE_STANDIN_ENV }; this.log?.('engine', `${model}: Turbo: never wait on the drive (an expert no longer in RAM is stood in for while writing; the words change)`); }
+    { const kg = keepGuessesEnv(this.cfg, { args, be: this.beNo() }); if (kg.LLAMA_SPEC_MB) { env = { ...env, ...kg }; this.log?.('engine', `${model}: Turbo: keep more guesses on (a guess the exact check throws away is kept when the brain rates it at least as likely; the words change)`); } }
     if (this.tuneEnv && Object.keys(this.tuneEnv).length) env = { ...env, ...this.tuneEnv }; // Engine tuning, set by hand
     if (this.tuneEnv?.LLAMA_MOE_CACHE_SAVE) { try { fs.mkdirSync(path.dirname(this.tuneEnv.LLAMA_MOE_CACHE_SAVE), { recursive: true }); } catch {} } // the engine writes the saved hot set there
     if (args.includes('--moe-cache-mib') && this.hotEnv?.[RANKING_ENV]) env = { ...env, ...this.hotEnv }; // Nov 16: the hot-expert profile (patch 0016)
