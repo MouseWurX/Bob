@@ -24,7 +24,7 @@ export const LABELS = {
   guestChat: ['Guest chats', '👤 Guest chat, beside New chat: nothing is saved, and memory is neither read nor written.'],
   fadeChat: ['Fade old messages', 'Your message, Bob\'s thinking and his reply leave the chat after the time you pick.'],
   amnesiaOffer: ['Amnesia mode', 'Adds 🫥 Amnesia beside Web search. When you turn it off, Bob forgets everything from that stretch: chats, thinking, notes, memory lines and Topics.'],
-  chatPlaces: ['Per-chat engine cache', 'Switching chats saves the engine\'s state for the old chat to disk, so going back is quick. Built-in engine only; not brains that see pictures. Up to 4 chats and 8 GB.'],
+  chatPlaces: ['Per-chat engine cache', 'Switching chats saves the engine\'s state for the old chat to disk, so going back is quick. Built-in engine only; not brains that see pictures. Up to 4 chats and 8 GB, oldest out first. Off deletes them.'],
   contextNoReload: ['Resize chat memory without reloading', 'When a job needs a bigger or smaller chat memory, the engine changes it in place and the brain stays loaded. Brain Engine 19 and newer; other engines restart as before. The chat is read again.']
 };
 

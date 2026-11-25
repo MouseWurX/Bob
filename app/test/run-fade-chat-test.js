@@ -59,7 +59,7 @@ const chat = () => [
   check('only hide or delete', cleanFade({ mode: 'shred' }).mode === 'hide' && cleanFade({ mode: 'delete' }).mode === 'delete');
   check('only the listed auto-off times', cleanAmnesiaAuto(240) === 240 && cleanAmnesiaAuto(7) === 0 && cleanHarness('amnesiaMade', 'burn') === 'keep');
   check('plain words for times', fadeWords(5) === '5 min' && fadeWords(60) === '1 hour' && fadeWords(90) === '1 hour 30 min' && fadeWords(1440) === '1 day' && fadeWords(10080) === '1 week' && fadeWords(43200) === '30 days');
-  check('safe start turns both off', OPT_IN.includes('amnesiaOffer') && OPT_IN_GROUPS.fadeChat?.[0] === 'on' && safeStartPlan({ fadeChat: { on: true, minutes: 5, mode: 'delete' }, amnesiaOffer: true }).count === 2);
+  check('safe start turns both off', OPT_IN.includes('amnesiaOffer') && OPT_IN_GROUPS.fadeChat?.[0] === 'on' && safeStartPlan({ fadeChat: { on: true, minutes: 5, mode: 'delete' }, amnesiaOffer: true, chatPlaces: false }).count === 2);
   const html = harnessHtml('chats', harnessView({}), []);
   check('nothing ticked on a new Bob', !/data-hx-fade="on"[^>]*checked/.test(html) && !/data-hx="amnesiaOffer" checked/.test(html));
   check('every value can be set before switching on', /data-hx-fade="num"/.test(html) && /data-hx-fade="unit"/.test(html) && /data-hx-fadepick="5"/.test(html) && /data-hx-fadepick="43200"/.test(html) && /value="delete" data-hx-radio="fadeMode"/.test(html) && /data-hx-amnesiaauto/.test(html) && /value="delete" data-hx-radio="amnesiaMade"/.test(html) && !/disabled/.test(html));
