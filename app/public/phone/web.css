@@ -4,6 +4,6 @@
 [data-web] header, [data-web] .panel > .top { padding-top: calc(8px + env(safe-area-inset-top)); }
 [data-web] header, [data-web] footer, [data-web] .panel > .top, [data-web] .panel > .body { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
 [data-web] [data-go="brain"], [data-web] [data-go="memory"], [data-web] #brain, [data-web] #memory { display: none !important; }
-[data-web] #bobs h3:not(:first-of-type), [data-web] #bobs .box:has(#add-name), [data-web] #bobs label.switch, [data-web] #lend-box, [data-web] #pass-along-msg { display: none !important; }
+[data-web] #bobs h3:not(:first-of-type), [data-web] #bobs .box:has(#add-name), [data-web] #bobs .box:has(#find-bobs), [data-web] #bobs label.switch, [data-web] #lend-box, [data-web] #pass-along-msg { display: none !important; }
 [data-web] #settings h3:first-of-type, [data-web] #settings label.choice, [data-web] #settings h3:last-of-type, [data-web] #settings label.switch:has(#resume) { display: none !important; }
 .web-offscreen { position: fixed; top: -1000px; left: 0; opacity: 0; }

@@ -131,7 +131,17 @@ export class Pairing {
   }
 
   // ---------- The Bob being asked ----------
-  hello() { return { bob: true, pair: PAIR, seal: 1, id: this.selfId, name: myName(), device: 'computer', version: this.version, door: doorOpen(this.cfg) }; }
+  // Nov 25 ts: this Bob's Tailscale address, so a phone that found him on the home Wi-Fi can pair over Tailscale.
+  hello() { return { bob: true, pair: PAIR, seal: 1, id: this.selfId, name: myName(), device: 'computer', version: this.version, door: doorOpen(this.cfg), ts: this.ownAddresses()[0] || '' }; }
+
+  // Nov 25 (the owner, on the phone: "Find my other Bobs" there too). An Android app can't read the Tailscale app's
+  // device list, so a phone signed in to this Bob asks him for it: names and Tailscale addresses of your devices
+  // that are online (at most 40). The phone then knocks on each itself. Nothing else (keys, routes, users) goes out.
+  async tailnet() {
+    const peers = await this.peers();
+    if (!peers) return { tailscale: false, peers: [] };
+    return { tailscale: true, peers: peers.filter((p) => p.online).slice(0, 40).map(({ name, ip, os: o }) => ({ name, ip, os: o })) };
+  }
   // A caller on one of our home networks, while "Home network access" is on here.
   homeCaller(ip) { return homeOn(this.cfg) && Boolean(cleanHomeAddress(ip, this.home())); }
   // Our own address on the home network the other Bob is on, or ''.

@@ -158,8 +158,24 @@ label.field { display: block; margin: 10px 0 4px; font-weight: 600; }
 .bar i { display: block; height: 100%; background: var(--accent); width: 0; }
 
 /* Menu */
-#menu .body button { width: 100%; text-align: left; margin-bottom: 8px; min-height: 52px; display: flex; gap: 12px; align-items: center; }
-#menu .body button .ico { width: 28px; text-align: center; font-size: 20px; }
+/* Nov 25 (the owner: "list too long. Grouping categories, cards"): New chat and Past chats up top, the rest as
+   small tiles in four named cards, so the whole menu fits one phone screen. */
+.mn-top { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.mn-top button { min-height: 52px; display: flex; gap: 10px; align-items: center; justify-content: center; font-weight: 700; }
+.mn-group { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 8px 10px 10px; margin-bottom: 10px; }
+#menu .mn-group h3 { margin: 0 2px 6px; font-size: 13px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; }
+.mn-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.mn-grid button { min-height: 68px; padding: 6px 2px; min-width: 0; overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 4px; align-items: center; justify-content: center; font-size: 13px; line-height: 1.15; text-align: center; }
+#menu .ico { font-size: 22px; line-height: 1; }
+button.wide { width: 100%; }
+.fold > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 8px; font-weight: 700; list-style: none; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before { content: '▸'; }
+.fold[open] > summary::before { content: '▾'; }
+.found { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.found > div { min-width: 0; }
+.found strong { display: block; overflow-wrap: anywhere; }
+.found button { flex: none; }
 
 /* Past chats */
 .chatrow { display: flex; gap: 8px; align-items: center; }
