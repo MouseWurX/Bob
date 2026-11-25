@@ -26,7 +26,7 @@ const pub = (f) => fs.readFileSync(path.join(here, '..', 'public', f), 'utf8').r
 {
   const b = brainText();
   check('1: the instructions say where the time is, not the time', /now: NOW_IN_NOTE, memory: (?:pub|hush) \? '' : this\.memory\(\)/.test(b) && NOW_IN_NOTE === 'given in the note just before the latest message');
-  check('1: the local brain gets the steady instructions and the turn note before the latest message', /\[steadySys, \.\.\.meanwhileNear\(meanwhileNear\(loopView\(/.test(b) && /const turnNote = `Current date and time for/.test(b));
+  check('1: the local brain gets the steady instructions and the turn note before the latest message', /\[steadySys, \.\.\.meanwhileNear\(\(quickFollowUpsOn\(this\.cfg\) \? noteAfterAsk : meanwhileNear\)\(loopView\(/.test(b) && /const turnNote = `Current date and time for/.test(b));
   check('1: a lender gets the same steady instructions', /const lentSys = steadySys;/.test(b));
   check('1: reading ahead uses the same steady instructions', /startPrompt\(\) \{[\s\S]{0,200}now: NOW_IN_NOTE/.test(b));
 }

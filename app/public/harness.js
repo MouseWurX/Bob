@@ -25,6 +25,7 @@ export const LABELS = {
   fadeChat: ['Fade old messages', 'Your message, Bob\'s thinking and his reply leave the chat after the time you pick.'],
   amnesiaOffer: ['Amnesia mode', 'Adds 🫥 Amnesia beside Web search. When you turn it off, Bob forgets everything from that stretch: chats, thinking, notes, memory lines and Topics.'],
   chatPlaces: ['Per-chat engine cache', 'Switching chats saves the engine\'s state for the old chat to disk, so going back is quick. Built-in engine only; not brains that see pictures. Up to 4 chats and 8 GB.'],
+  quickFollowUps: ['Quick follow-ups in long chats', 'Tools Bob has had in a chat stay, in one order, and his time note goes after your message, so the engine reads only what\'s new, not the whole chat. His words can differ a little.'],
   contextNoReload: ['Resize chat memory without reloading', 'When a job needs a bigger or smaller chat memory, the engine changes it in place and the brain stays loaded. Brain Engine 19 and newer; other engines restart as before. The chat is read again.']
 };
 
@@ -74,7 +75,7 @@ export function harnessHtml(part, v, crashes = []) {
       ${radio('amnesiaMade', 'delete', v.amnesiaMade || 'keep', 'Delete them too', 'New files he made in that stretch go as well. A file he only changed always stays.')}</div>
     <div class="srow"><label class="pick"><strong>Auto-off after</strong> <select data-hx-amnesiaauto aria-label="Turn Amnesia mode off by itself after">${(v.amnesiaAuto || []).map((q) => `<option value="${q.minutes}" ${q.minutes === (v.amnesiaAutoOff || 0) ? 'selected' : ''}>${esc(q.label)}</option>`).join('')}</select></label></div>
   </div>`;
-  return `${fade}${amnesia}${sw('tryFromHere', v.tryFromHere)}${sw('pinMessages', v.pinMessages)}${sw('guestChat', v.guestChat)}${sw('chatPlaces', v.chatPlaces)}${sw('contextNoReload', v.contextNoReload)}
+  return `${fade}${amnesia}${sw('tryFromHere', v.tryFromHere)}${sw('pinMessages', v.pinMessages)}${sw('guestChat', v.guestChat)}${sw('chatPlaces', v.chatPlaces)}${sw('contextNoReload', v.contextNoReload)}${sw('quickFollowUps', v.quickFollowUps)}
     <p class="muted">Saved chat places: ${v.places?.count || 0}, ${gb(v.places?.bytes)}. <button type="button" class="link" data-hx-clear="places">Clear them</button></p>
     <p class="muted" data-hx-msg role="status"></p>`;
 }

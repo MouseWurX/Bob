@@ -157,6 +157,19 @@ const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: '
 
 export const allToolsOn = (cfg) => cfg.allTools === true;
 
+// 25 Nov, "Quick follow-ups in long chats" (Settings, How Bob works, 💬 Chat extras; off unless switched on). Two parts:
+// the tools (here) and the turn note after the latest message (brain-words.js noteAfterAsk). The laptop's cache
+// check: with the Per-chat engine cache off, a plain follow-up in a 20K-token chat took 14.7 s, though the engine alone
+// answered it in 0.4 s. The tool list is the first thing the engine reads, and it changed between messages: "Here is a
+// long notes file" brought in the documents group, the next question didn't, so only the first 5% of the chat matched and
+// the engine read the whole chat again. With this on, a group a chat has had stays for the rest of that chat (until Bob
+// restarts), in one fixed order, so the start stays the same and the engine keeps its reading. A new group still means one
+// re-read, once. The brain sees a few more tools later in a chat and the note moves, so the words can differ: off until a
+// real-jobs check.
+export const quickFollowUpsOn = (cfg) => cfg?.quickFollowUps === true;
+// The groups in their fixed order (the order groupsFor lists them), whatever order they came in.
+export const inGroupOrder = (groups, loaded) => Object.keys(groups).filter((g) => loaded.has(g));
+
 // How many of the chat's next messages a used group stays for.
 export const STICKY_TURNS = 3;
 

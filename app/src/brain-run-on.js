@@ -13,7 +13,7 @@ import { traced, traceNow, replyText } from './trace-log.js'; // Nov 16 Monitori
 import { Ledger, doneBefore, doneBeforeNote } from './handoff.js';
 import { expectFrom } from './verify.js';
 import { presetFor, presetGroups, LimitedGroups, presetBrain, presetPrompt } from './presets.js';
-import { groupsFor, allToolsOn, saysCant, groupOf } from './toolbox.js';
+import { groupsFor, allToolsOn, saysCant, groupOf, quickFollowUpsOn } from './toolbox.js';
 import { bigThinker, draftBrain, effortPrompt, cleanEffort } from './moot.js';
 import { modelFor, currentSession, CTX_CHOICES, brainDefaults, quickOnCpu, LONG_CODER } from './sessions.js';
 import { webOn, linkTurn, findLinks, refersToLink } from './web.js';
@@ -40,7 +40,7 @@ import { planGate } from './plan.js';
 import { stepThink, toolRanThisTurn } from './step-thinking.js';
 import { cantReason, markCant, settleCant } from './cant-retry.js';
 import { askTogether } from './together.js';
-import { callKey, realState, linkKey, NOW_IN_NOTE, staleHandErrors, meanwhileNear, claimsPcAction, CLAIM_CORRECTION, CLAIM_NUDGE, claimsObservation, OBSERVE_CORRECTION, OBSERVE_NUDGE, LINK_NUDGE, EMPTY_NUDGE, CANT_NUDGE, EMPTY_NOTE, DOING_TOOLS, isLook, ALT_ROUTE_DONE, ALT_ROUTE_NUDGE, quickHandBack } from './brain-words.js';
+import { callKey, realState, linkKey, NOW_IN_NOTE, staleHandErrors, meanwhileNear, noteAfterAsk, claimsPcAction, CLAIM_CORRECTION, CLAIM_NUDGE, claimsObservation, OBSERVE_CORRECTION, OBSERVE_NUDGE, LINK_NUDGE, EMPTY_NUDGE, CANT_NUDGE, EMPTY_NOTE, DOING_TOOLS, isLook, ALT_ROUTE_DONE, ALT_ROUTE_NUDGE, quickHandBack } from './brain-words.js';
 import { sidePick, apuRoom } from './brain-lanes.js';
 import { handOffPromise, HAND_OFF_LINE, HAND_OFF_LOG } from './hand-off-promise.js';
 import { switchFor } from './setup-offer.js';
@@ -294,6 +294,7 @@ export const runOnParts = {
       if (step === maxSteps - 1 && !this.helpOff('last') && !ctx.noTools && msgs.slice(turnStart).some((m) => m.role === 'tool')) { ctx.noTools = true; ctx.lastRound = true; ctx.endWhy ||= 'steps'; this.log('tool', 'the last step: no more tools, so he answers with what he has'); }
       if (ctx.loaded) used.toolSet = ctx.loaded.toolSet = this.toolSetOf(model); // tool-sets.js: the family's wording
       const tools = ctx.noTools ? [] : guestTools(job, this.withWatchTools(this.frontDeskTools(ctx.loaded), job)); // #57 stopgap: after repeats, answer
+      if (!job?.guest && !job?.side) this.keepSteady(sessionId, ctx.loaded); // Quick follow-ups in long chats (off unless switched on)
       // The big brain reads notes passed along to it at the start of each step, and its chat says so.
       if (!job?.side) this.readNotes(ctx, msgs);
       // 1.5.66: Bob's own one-more-go after a reply that missed. On Qwen3.6 (everyday chat answers without thinking)
@@ -418,7 +419,7 @@ export const runOnParts = {
         model = (await this.ensureModel(model, emit, signal, 'bob', { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}), cardChecked: true })) || model;
         this.setState('thinking', '', model);
         reply = await this.chatSafe({
-          model, messages: this.plainLoop ? [sys, ...meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')] : [steadySys, ...meanwhileNear(meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), turnNote), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')], tools, signal, cpu, think: thinkNow, ctx: brainCtx, ...(beside ? { beside: true } : {}),
+          model, messages: this.plainLoop ? [sys, ...meanwhileNear(loopView(staleHandErrors(msgs, turnStart), step), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')] : [steadySys, ...meanwhileNear((quickFollowUpsOn(this.cfg) ? noteAfterAsk : meanwhileNear)(loopView(staleHandErrors(msgs, turnStart), step), turnNote), ctx.meanwhile ? meanwhileLine(this.watch.job) || ctx.meanwhile : '')], tools, signal, cpu, think: thinkNow, ctx: brainCtx, ...(beside ? { beside: true } : {}),
           ...(ctx.preset && ctx.preset.temperature !== null ? { temperature: ctx.preset.temperature } : {}), // a preset's own temperature
           ...(sessionId ? { chatId: sessionId } : {}), // Per-chat engine cache (chat-places.js, off unless switched on)
           onToken: (t) => emit({ type: 'token', text: t })
