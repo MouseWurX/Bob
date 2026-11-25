@@ -20,6 +20,7 @@ export const LAB_WORDS = {
   'fine-tuning': 'Teaching a brain more after it was made, from lessons.',
   abliteration: 'Taking out the direction in a brain that makes it refuse by reflex.',
   heal: 'A short teaching pass after a cut or squeeze, to mend what it broke.',
+  'scale healing': 'Mending a squeezed brain by nudging only the scales beside its rounded weights. Nothing new is taught.',
   harmony: 'GPT-OSS\'s chat layout: each message says who wrote it and whether it is thinking, a tool call or the answer.',
   'lesson set': 'A file of example chats a brain learns from (lessons.jsonl).',
   judge: 'A brain that scores other brains\' answers.',

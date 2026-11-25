@@ -60,6 +60,7 @@
     "test/run-lab-library-test.js",
     "test/run-lab-recipes-test.js",
     "test/run-forge-gptoss-test.js",
+    "test/run-heal-scales-test.js",
     "test/run-forge-runpod-v2-test.js",
     "test/run-step-thinking-test.js",
     "test/run-cant-retry-test.js",
