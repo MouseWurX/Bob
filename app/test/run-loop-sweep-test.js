@@ -7,6 +7,7 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { looped, correct, lift, buildTrials, pickBest, score } from '../model-lab/loop-sweep.mjs';
+import { dialsOf } from '../model-lab/set-live.mjs';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -28,6 +29,7 @@ const before = { loop: 0.5, acc: 0.4 };
 check('a trial that loses right answers is not kept', pickBest(before, [{ name: 'x', loop: 0.1, acc: 0.3 }]) === null);
 check('the fewest loops wins among the safe trials', pickBest(before, [{ name: 'a', loop: 0.3, acc: 0.4 }, { name: 'b', loop: 0.2, acc: 0.5 }]).name === 'b');
 check('wrong mode keeps only a trial with more right answers and no more loops', pickBest(before, [{ name: 'a', loop: 0.6, acc: 0.6 }, { name: 'b', loop: 0.5, acc: 0.5 }, { name: 'c', loop: 0.4, acc: 0.4 }], 'wrong').name === 'b');
+check('set-live turns surgery edits into live dials, skipping neuron and head edits', JSON.stringify(dialsOf({ edits: [{ layer: 2, expert: 5, scale: 1.3 }, { layer: 1, expert: 'shared', neuron: 4, scale: 0 }, { layer: 3, head: 1, scale: 1.2 }] })) === JSON.stringify([{ kind: 'expert', layer: 2, index: 5, scale: 1.3 }]));
 check('score counts loops and right answers', score([{ loop: true, ok: false, tokens: 10 }, { loop: false, ok: true, tokens: 4 }]).loop === 0.5);
 
 // a made-up engine: question i loops when i is odd, unless expert 3 of layer 0 is turned down; looped answers lean on expert 3
