@@ -43,6 +43,7 @@ Small open models can run a useful agent on one consumer graphics card, but how 
 - **Flash-Next cut to 80% (Bobert Flash-Next REAP80):** every keep level and how the experts were chosen in [section 11.7.8](ch11-making-clean-lessons.md#reap-levels); the tools and tool shape it was tested with in [section 8.9.4](ch08-study4-tool-shape.md#tool-shapes-tested); Flash-Next against stock Qwen on held-out jobs in [section 11.7.7](ch11-making-clean-lessons.md#flash-next-in-bob).
 - **The three Flash-Next cuts (Bobert 80%, Riker 70%, Bill 60%):** why they were made, the 2-bit size story and the publish gate in [section 11.7.9](ch11-making-clean-lessons.md#flash-next-cuts).
 - **GUPPI on each machine, the temperature bug and look-ahead 0108:** [section 4.3.3.14](ch04-method-and-rules.md#engine-nov23-night).
+- **Reusing chat memory between messages, and why Bob's follow-ups were slow:** [section 4.3.3.15](ch04-method-and-rules.md#prompt-cache).
 - **Every speed result in one table:** [section 4.3.4](ch04-method-and-rules.md#434-speed-results-in-one-table-updated-23-november).
 - **Every main result in one table, with what each means:** [section 13.2.7](ch13-conclusion.md#1327-every-result-in-one-table-and-what-each-means-added-22-november).
 - **How speed is tested:** [section 4.3.3.1](ch04-method-and-rules.md#43331-how-the-speed-tests-were-run), with what was added since in [section 4.3.3.10](ch04-method-and-rules.md#433310-how-the-speed-method-carries-forward-added-22-november).

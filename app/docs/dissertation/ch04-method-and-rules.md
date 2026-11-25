@@ -1169,9 +1169,31 @@ All runs stayed inside the 512 MB margin, but the words did not match pick. On t
 
 **Still to come.** No run with every trick on has been measured; the only "all on" run, the first BE43 gate, was slower because it spilled. A three-way comparison on the home PC is queued: every trick on with Turbo, every lossless trick with Turbo off (the intended default), and stock llama.cpp b12359 with `--fit`, on the 35B first and then on other brains, with real held-out jobs. A sweep of Bob across rented card tiers also started. Both are unproven in our lab, as we have yet to test, and are added here when they are in.
 
+<a id="prompt-cache"></a>
+
+#### 4.3.3.15 Reusing the chat memory between messages, on the laptop (25 November)
+
+When the start of a chat is the same as last time, the engine can keep its memory of that part and read only the new message. This was measured on the laptop (6 GB card) with one 20K-token chat and Qwen3-4B. Times are seconds to the first word; each cell is a single run.
+
+| Setup | First read (cold) | Follow-up | Back to this chat after another | After a restart |
+|---|---|---|---|---|
+| Stock llama.cpp b12359 | 22.2 | 1.1 | 0.8 | 13 + 3.6 load |
+| Brain Engine 45 | 11.4 | 0.4 | 0.7 | 11.3 + 2 load |
+| Bob, its chat cache on | n/a | 0.8 to 1.6 | 1.8 | 4.8, load included |
+| Bob, its chat cache off | n/a | 14.7 | 13.5 | n/a |
+
+- Bob's own cache is the only setup that keeps the chat's memory across a restart.
+- The stock and engine rows are single runs with each one's own settings, so they are not a claim that the engine is faster than llama.cpp.
+- **Why follow-ups were slow with Bob's cache off.** Bob changed the start of the prompt between messages, so the engine could not reuse it. First, the tool groups are guessed per message and drop out three messages later, and the tool list comes first in the prompt. Second, the time note sat before the latest message.
+- **What a fix keeps.** A probe on a cloud card measured the share of the previous request the engine could keep:
+  - a follow-up to a pasted file: 4.6% before the fix, 99.8% with it;
+  - the message after a tool group left: 28% to 38% before, 97% to 99% with it;
+  - plain follow-ups: 98% both ways.
+- The fix, "Quick follow-ups in long chats" (PR #356), changes what the brain sees, so it is off by default until it passes the real-jobs check. Turning Bob's chat cache on by default is PR #355. How the fix does on real jobs is unproven in our lab, as we have yet to test.
+
 <a id="speed-table"></a>
 
-### 4.3.4 Speed results in one table (updated 23 November)
+### 4.3.4 Speed results in one table (updated 25 November)
 
 This is every main speed result on the home PC in one place, oldest first, with what it decided. The full runs, with their sources and limits, are in the sections named in the last column. "Same words" compares the words written against plain settings at the same step; "n/a" means the row changes nothing the words depend on, or was not checked.
 
@@ -1210,6 +1232,7 @@ This is every main speed result on the home PC in one place, oldest first, with 
 | 23 Nov | BE44 | GUPPI through Bob's own code path, 16K read | 35B 34.6 against pick's 33.3 s; Qwen3-4B 9.4 against 7.4 s; words differ | yes (seeded) | NO-GO for default-on; Bob's defaults missed the copy cache; rerun to come | 4.3.3.14 |
 | 23 Nov | BE44 | GUPPI on the 6 GB laptop | 25.2 against 27.3 s; peak 5,607 of 5,632 MiB; no spill | n/a | PASS after the spill fix | 4.3.3.14 |
 | 23 Nov | 1.5.251 engine | Legion Go, `--load-mode mmap` (PR #315) | Shared graphics memory 3.49 to 1.22 GB; gemma4-e2b 17.5 to 28.7 t/s; 42 to 46 fully on graphics | yes | Default for built-in graphics | 4.3.3.13 |
+| 25 Nov | BE45 and stock b12359 | Reusing chat memory, laptop, 20K chat | Follow-up 0.4 s (BE45) and 1.1 s (stock); Bob with its cache off 14.7 s | n/a | Bob's prompt start changed between messages; fix PR #356 (off), cache on by default PR #355 | 4.3.3.15 |
 
 **What it adds up to.** On this PC the settings matter more than the engine: the reading step, flash attention, the fit margin and the chat-memory type give most of the gain over stock defaults. The engine's own tricks so far give a few percent each, and the biggest single find of 22 November was a slowdown the engine had caused (patch 0040). Borrowing, the Avalon idea, has not yet passed Gate 1. Flash-Next runs on the home PC only slowly, and only reading gains from borrowing so far.
 
