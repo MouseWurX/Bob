@@ -6,7 +6,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { looped, correct, lift, buildTrials, pickBest, score } from '../model-lab/loop-sweep.mjs';
+import { looped, correct, lift, buildTrials, pickBest, score, postJson } from '../model-lab/loop-sweep.mjs';
 import { dialsOf } from '../model-lab/set-live.mjs';
 
 let pass = 0, fail = 0;
@@ -32,6 +32,15 @@ check('the fewest loops wins among the safe trials', pickBest(before, [{ name: '
 check('wrong mode keeps only a trial with more right answers and no more loops', pickBest(before, [{ name: 'a', loop: 0.6, acc: 0.6 }, { name: 'b', loop: 0.5, acc: 0.5 }, { name: 'c', loop: 0.4, acc: 0.4 }], 'wrong').name === 'b');
 check('set-live turns surgery edits into live dials, skipping neuron and head edits', JSON.stringify(dialsOf({ edits: [{ layer: 2, expert: 5, scale: 1.3 }, { layer: 1, expert: 'shared', neuron: 4, scale: 0 }, { layer: 3, head: 1, scale: 1.2 }] })) === JSON.stringify([{ kind: 'expert', layer: 2, index: 5, scale: 1.3 }]));
 check('score counts loops and right answers', score([{ loop: true, ok: false, tokens: 10 }, { loop: false, ok: true, tokens: 4 }]).loop === 0.5);
+
+// postJson waits for a slow reply (fetch stops at 300 s with no headers), but still keeps its own whole-request limit
+const slow = http.createServer((req, res) => { req.resume(); setTimeout(() => res.end(req.url === '/bad' ? 'no' : '{"ok":1}'), 400).unref?.(); if (req.url === '/bad') res.statusCode = 500; });
+await new Promise((r) => slow.listen(0, '127.0.0.1', r));
+const sp = `http://127.0.0.1:${slow.address().port}`;
+check('postJson reads a slow reply', (await postJson(`${sp}/ok`, { a: 1 })).ok === 1);
+check('postJson stops at its own time limit', await postJson(`${sp}/ok`, {}, {}, 100).then(() => false, (e) => /timed out/.test(e.message)));
+check('postJson reports a server error', await postJson(`${sp}/bad`, {}).then(() => false, (e) => /500/.test(e.message)));
+slow.close();
 
 // a made-up engine: question i loops when i is odd, unless expert 3 of layer 0 is turned down; looped answers lean on expert 3
 let dials = [];

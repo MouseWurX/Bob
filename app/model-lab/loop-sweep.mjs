@@ -25,6 +25,27 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import crypto from 'node:crypto';
+import http from 'node:http';
+import https from 'node:https';
+
+// POST JSON with node:http, not fetch: fetch gives up after 300 s with no reply headers, and a long thinking answer takes longer.
+// Only the whole-request timeout applies (default 30 min).
+export function postJson(full, body, headers = {}, timeoutMs = 30 * 60_000) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(full); const data = Buffer.from(JSON.stringify(body));
+    const req = (u.protocol === 'https:' ? https : http).request(u, { method: 'POST', headers: { ...headers, 'content-length': data.length } }, (res) => {
+      const parts = []; res.on('data', (c) => parts.push(c)); res.on('error', reject);
+      res.on('end', () => {
+        clearTimeout(timer); const t = Buffer.concat(parts).toString('utf8');
+        if (res.statusCode < 200 || res.statusCode >= 300) { reject(new Error(`${u.pathname} ${res.statusCode}: ${t.slice(0, 200)}`)); return; }
+        try { resolve(t ? JSON.parse(t) : {}); } catch (e) { reject(e); }
+      });
+    });
+    const timer = setTimeout(() => req.destroy(new Error(`${u.pathname} timed out after ${Math.round(timeoutMs / 1000)} s`)), timeoutMs);
+    req.on('error', (e) => { clearTimeout(timer); reject(e); });
+    req.end(data);
+  });
+}
 
 export const readJsonl = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
 
@@ -122,10 +143,7 @@ async function main() {
   const experts = String(o.experts || '16,64').split(',').map(Number), scales = String(o.scales || '0.5,0.7,0.85').split(',').map(Number);
   const upScales = o['up-scales'] === 'none' ? [] : String(o['up-scales'] || '1.15,1.3').split(',').map(Number);
   const headers = { 'content-type': 'application/json', ...(process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {}) };
-  const post = async (p, body) => {
-    const r = await fetch(`${url}${p}`, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(30 * 60_000) });
-    const t = await r.text(); if (!r.ok) throw new Error(`${p} ${r.status}: ${t.slice(0, 200)}`); return t ? JSON.parse(t) : {};
-  };
+  const post = (p, body) => postJson(`${url}${p}`, body, headers);
   const reset = async () => { try { await post('/dials', { dials: [] }); } catch {} };
   const probs = readJsonl(String(o.problems));
   const findSet = probs.slice(0, nFind), checkSet = probs.slice(nFind, nFind + nCheck);
