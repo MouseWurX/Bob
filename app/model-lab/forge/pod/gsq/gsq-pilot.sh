@@ -27,7 +27,7 @@ step() { echo "=== $(date -u +%H:%M:%S) $*" | tee -a "$OUT/steps.log"; }
 step tools
 command -v cmake >/dev/null && command -v git >/dev/null || { apt-get update -qq && apt-get install -y -qq cmake git build-essential >"$OUT/apt.log" 2>&1; } || fail tools
 python3 -c 'import torch' 2>/dev/null || fail "torch missing (use a PyTorch image)"
-pip install -q numpy sentencepiece protobuf safetensors "transformers>=4.51" huggingface_hub hf_transfer pyarrow >"$OUT/pip.log" 2>&1 || fail pip
+pip install -q numpy sentencepiece protobuf safetensors "transformers>=4.51" huggingface_hub hf_transfer >"$OUT/pip.log" 2>&1 || fail pip
 nvidia-smi --query-gpu=name,memory.total,driver_version,temperature.gpu,clocks.sm --format=csv > "$OUT/gpu.txt" 2>&1 || true
 say "card: $(tail -n +2 "$OUT/gpu.txt" | head -1)"
 CMK=(-DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_UI=OFF -DLLAMA_USE_PREBUILT_UI=OFF -DLLAMA_CURL=OFF -DLLAMA_OPENSSL=OFF)
@@ -75,14 +75,27 @@ if [ -n "${TEXT_TRAIN:-}" ]; then TR=$TEXT_TRAIN; TE=${TEXT_TEST:-$TEXT_TRAIN}
 else
   TR=$W/wiki-train.txt; TE=$W/wiki-test.txt
   python3 - "$W/wiki" "$TR" "$TE" > "$OUT/texts.txt" 2>&1 <<'PY' || fail texts
-import glob, sys
-from huggingface_hub import snapshot_download
-import pyarrow.parquet as pq
-d = snapshot_download("Salesforce/wikitext", repo_type="dataset", allow_patterns=["wikitext-2-raw-v1/*"], local_dir=sys.argv[1])
+import os, subprocess, sys, zipfile
+from huggingface_hub import hf_hub_download
+# llama.cpp's own copy of wikitext-2 raw (scripts/get-wikitext-2.sh): a zip of plain text, so no pyarrow (pyarrow wants
+# NumPy 2, the PyTorch 2.4 image has 1.26; try 1 of 26 Nov stopped here). The parquet copy is the fallback, with a pyarrow
+# that still takes NumPy 1.
+os.makedirs(sys.argv[1], exist_ok=True)
+try:
+    z = zipfile.ZipFile(hf_hub_download("ggml-org/ci", "wikitext-2-raw-v1.zip", repo_type="dataset", local_dir=sys.argv[1]))
+    got = {s: z.read(f"wikitext-2-raw/wiki.{s}.raw").decode("utf-8") for s in ("train", "test")}
+    print("source: ggml-org/ci wikitext-2-raw-v1.zip")
+except Exception as e:
+    print("zip failed:", repr(e)[:300])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "pyarrow==14.0.2"])
+    import glob, pyarrow.parquet as pq
+    from huggingface_hub import snapshot_download
+    d = snapshot_download("Salesforce/wikitext", repo_type="dataset", allow_patterns=["wikitext-2-raw-v1/*"], local_dir=sys.argv[1])
+    got = {s: "".join(t for f in sorted(glob.glob(f"{d}/wikitext-2-raw-v1/{s}-*.parquet")) for t in pq.read_table(f).column("text").to_pylist()) for s in ("train", "test")}
+    print("source: Salesforce/wikitext parquet")
 for split, out in (("train", sys.argv[2]), ("test", sys.argv[3])):
-    fs = sorted(glob.glob(f"{d}/wikitext-2-raw-v1/{split}-*.parquet"))
-    open(out, "w").write("".join(t for f in fs for t in pq.read_table(f).column("text").to_pylist()))
-    print(split, len(open(out).read()))
+    if len(got[split]) < 100000: sys.exit(f"{split} text is only {len(got[split])} characters")
+    open(out, "w").write(got[split]); print(split, len(got[split]))
 PY
 fi
 NG=(); [ "$CUDA" = 1 ] && NG=(-ngl 99)

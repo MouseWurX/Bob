@@ -393,7 +393,9 @@ PY
             # text (wikitext-2 test), measured before the gate so a file that fails still gets its number (pod/kld_check.sh)
             KLDT=""; if [ "$(plan "$CJ.get('kld',False)")" = "True" ]; then
               KLDT=$W/bench/kld-text.txt; mkdir -p $W/bench/kldtext
-              [ -s $KLDT ] || { hf download Salesforce/wikitext --repo-type dataset --include "wikitext-2-raw-v1/test-*" --local-dir $W/bench/kldtext > /dev/null 2>&1 && python3 -c "import sys,glob,pyarrow.parquet as pq; fs=sorted(glob.glob(sys.argv[2]+'/wikitext-2-raw-v1/test-*.parquet')); open(sys.argv[1],'w').write(''.join(t for f in fs for t in pq.read_table(f).column('text').to_pylist())) if fs else sys.exit(1)" $KLDT $W/bench/kldtext && [ -s $KLDT ]; } || { echo "bench $BN: no KLD text; KLD skipped"; KLDT=""; }
+              # 26 Nov: llama.cpp's own zip of plain text first (no pyarrow, which wants NumPy 2 on some images), the parquet copy after
+              [ -s $KLDT ] || { hf download ggml-org/ci wikitext-2-raw-v1.zip --repo-type dataset --local-dir $W/bench/kldtext > /dev/null 2>&1 && python3 -c "import sys,zipfile; open(sys.argv[1],'wb').write(zipfile.ZipFile(sys.argv[2]).read('wikitext-2-raw/wiki.test.raw'))" $KLDT $W/bench/kldtext/wikitext-2-raw-v1.zip && [ -s $KLDT ]; } || \
+                { hf download Salesforce/wikitext --repo-type dataset --include "wikitext-2-raw-v1/test-*" --local-dir $W/bench/kldtext > /dev/null 2>&1 && python3 -c "import sys,glob,pyarrow.parquet as pq; fs=sorted(glob.glob(sys.argv[2]+'/wikitext-2-raw-v1/test-*.parquet')); open(sys.argv[1],'w').write(''.join(t for f in fs for t in pq.read_table(f).column('text').to_pylist())) if fs else sys.exit(1)" $KLDT $W/bench/kldtext && [ -s $KLDT ]; } || { echo "bench $BN: no KLD text; KLD skipped"; KLDT=""; }
             fi
             # 24 Nov (mixed-bit recipes): a recipe file with no layer order for this cut yet gets one from this cut's imatrix
             # (pod/layer_rank.py, a proxy); an order already in the file (from npc, or a KLD block sweep) is kept

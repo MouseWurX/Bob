@@ -1,6 +1,6 @@
 {
  "run": "rco-bill",
- "note": "HELD: not to be rented until the owner says so in their own words in the laptop thread (rentals need them). 26 Nov 2026, the owner: \"If their research can benefit us we should attempt to implement it\" (ISTA DASLab's GSQ-RCO quants). RCO (arXiv 2605.00649, no code published) picks a type per tensor so a file lands on an exact size with the least drift. This run tries our own version on Bill (Flash-Next REAP60, 308 of 512 experts), whose stock IQ2_XXS failed the gate: pod/tensor_err measures every tensor's error at every stock type from the cut's own Q8_0 and its imatrix (processor only, sampled rows), then pod/rco_pick.py picks types under an exact byte budget. RC2_A and RC2_B are the size of stock IQ2_XXS (abs and rel error), RC2_S is the size of MX2_S (the hand recipe that passed on 24 Nov). IQ2_XXS and MX2_S are made again so KLD compares like with like on the same reference run. Stock llama.cpp types only: the files load on stock llama.cpp and Lamplight. Nothing is uploaded (cut.publish false). Nothing is healed or trained. One RTX PRO 6000. Estimate 3.5-4.5 h at the forge table price $2.69/h, about $9-12 (24 Nov's five-file run cost $7.14; this adds the error measure, 15-40 min); caps 5 h / $14 (the live price is checked before renting).",
+ "note": "HELD: not to be rented until the owner says so in their own words in the laptop thread (rentals need them). 26 Nov 2026, the owner: \"If their research can benefit us we should attempt to implement it\" (ISTA DASLab's GSQ-RCO quants). RCO (arXiv 2605.00649, no code published) picks a type per tensor so a file lands on an exact size with the least drift. This run tries our own version on Bill (Flash-Next REAP60, 308 of 512 experts), whose stock IQ2_XXS failed the gate: pod/tensor_err measures every tensor's error at every stock type from the cut's own Q8_0 and its imatrix (processor only, sampled rows), then pod/rco_pick.py picks types under an exact byte budget. RC2_A is the size of stock IQ2_XXS (abs error; the rel variant was dropped 26 Nov to fit the money left, as it lost in the dry run), RC2_S is the size of MX2_S (the hand recipe that passed on 24 Nov). IQ2_XXS and MX2_S are made again so KLD compares like with like on the same reference run. Stock llama.cpp types only: the files load on stock llama.cpp and Lamplight. Nothing is uploaded (cut.publish false). Nothing is healed or trained. One RTX PRO 6000. Estimate 2.7-3.3 h at the forge table price $2.69/h, about $7-9 (24 Nov's five-file run cost $7.14; this makes four files and adds the error measure, 15-40 min); caps 3.5 h / $9.50, inside the $9.65 left of the owner's $14 go after the 26 Nov try that stopped on a missing keep list (the live price is checked before renting).",
  "benchmark_only": true,
  "teacher": "Qwen/Qwen3.8-Flash-Next",
  "counts": "expert-counts-2026-11-04T23-23-19.json",
@@ -13,17 +13,17 @@
  "general_tokens": 0,
  "rungs": [],
  "direct": true,
- "hours_max": 5,
- "dollars_max": 14,
+ "hours_max": 3.5,
+ "dollars_max": 9.5,
  "rent_minutes": 180,
  "download_quants": [],
  "llama_tag": "b12359",
  "no_hands": true,
  "prep": [
-  "Runs from a kit at this branch's commit (claude/project-thread-9my3wr) with out/reap-flashnext-q4-jobs/keep/all-keep-60.json (laptop copies in /mnt/project-files/laptop-rentals/keep/, SHA256SUMS.txt beside them).",
+  "Runs from a kit at this branch's commit (claude/project-thread-9my3wr). The keep list must be at out/reap-flashnext-q4-jobs/keep/all-keep-60.json under the Lab folder (model-lab): copy it from the project library laptop-rentals/keep/all-keep-60.json (sha256 1bc87adc...b6b2d2, checked before renting since 26 Nov).",
   "Dry run of the new steps on 26 Nov in the cloud: tiny made-up Flash-Next (qwen4exp) brain, b12359, processor only: tensor_err built from the pod path, three picks written, files within 64 bytes of the stock file they match, KLD measured (docs/forge-runs/2026-11-26-rco-dry-run/).",
   "Pre-flight: node forge.mjs --plan plans/rco-bill.json --rent-plan (rents nothing).",
-  "Needs the owner's own yes in the laptop thread, with the caps 5 h / $14."
+  "The owner's yes was given in the laptop thread on 26 Nov (cap $14); the first try stopped on a missing keep list, $9.65 is left, so the caps are 3.5 h / $9.50."
  ],
  "publish": {
   "user": "MouseWurX",
@@ -42,7 +42,7 @@
   }
  ],
  "min_ram_per_gpu": 180,
- "expected_hours": 4,
+ "expected_hours": 3.3,
  "benchmark": {
   "note": "one 96 GB card, Bill only: download, cut, imatrix from Hugging Face, per-tensor error measure, two baselines and three exact-size picks, KLD for each, gate. Measure only.",
   "hours_each": 1.4,
@@ -93,7 +93,6 @@
       "IQ2_XXS",
       "MX2_S",
       "RC2_A",
-      "RC2_B",
       "RC2_S"
      ],
      "serve": "MX2_S",
@@ -105,10 +104,9 @@
       "IQ2_XXS": "47.8-52.8",
       "MX2_S": "49.3-54.5",
       "RC2_A": "47.8-52.8",
-      "RC2_B": "47.8-52.8",
       "RC2_S": "49.3-54.5"
      },
-     "expect_note": "26 Nov: RC2_A/RC2_B are picked to the tensor bytes of stock IQ2_XXS and RC2_S to MX2_S's (pod/rco_pick.py; the predictor matched every real Bill file to 0.002 GB), +-5% as before. A file outside it is not uploaded (nothing is uploaded on this run anyway).",
+     "expect_note": "26 Nov: RC2_A is picked to the tensor bytes of stock IQ2_XXS and RC2_S to MX2_S's (pod/rco_pick.py; the predictor matched every real Bill file to 0.002 GB), +-5% as before. A file outside it is not uploaded (nothing is uploaded on this run anyway).",
      "down_type": {
       "IQ2_XXS": "q2_0"
      },
@@ -116,7 +114,6 @@
       "IQ2_XXS": 50.3,
       "MX2_S": 51.93,
       "RC2_A": 50.3,
-      "RC2_B": 50.3,
       "RC2_S": 51.93
      },
      "recipe_file": "flashnext-mixed.json",
@@ -131,18 +128,14 @@
        "target_recipe": "IQ2_XXS"
       },
       {
-       "name": "RC2_B",
-       "objective": "rel",
-       "target_recipe": "IQ2_XXS"
-      },
-      {
        "name": "RC2_S",
        "objective": "abs",
        "target_recipe": "MX2_S"
       }
      ],
      "rco_rows": 1536,
-     "rco_experts": 16
+     "rco_experts": 16,
+     "keep_sha256": "1bc87adc826d82207834c11a20aebcad54653fd7e690e88dc87fc3fd98b6b2d2"
     },
     "commands": []
    }

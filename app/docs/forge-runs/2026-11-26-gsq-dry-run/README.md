@@ -31,3 +31,13 @@ imatrix. Real numbers come only from the rental.
 
 Fixed on the way: `kld_check.sh` now runs a file once more when its log has no "Mean KLD" line (3 of 7 runs here ended
 before the closing statistics were written; each passed on the second run).
+
+## Second dry run, after rental try 1 (26 Nov 2026)
+
+Try 1 on a rented RTX 4090 built, downloaded and converted Qwen3-1.7B, then stopped at the text step ($0.19): the PyTorch
+2.4 image has NumPy 1.26 and the newest pyarrow wants NumPy 2. The kit now takes wikitext-2 from llama.cpp's own zip of
+plain text (`ggml-org/ci`, `wikitext-2-raw-v1.zip`, the file `scripts/get-wikitext-2.sh` uses), so it needs no pyarrow;
+the parquet copy stays as a fallback with pyarrow 14.0.2, which still takes NumPy 1. The forge's KLD text step
+(`pod/run.sh`) tries the same zip first. The cloud container cannot reach Hugging Face, so the zip step was run with a stand-in
+download that hands over a zip of the same layout; the whole kit then ran end to end to "GSQ DONE" (stock writer still
+byte for byte, every file loads). The pod tools did not change, so the kit's pinned Bob commit stays 2b2d24ce.

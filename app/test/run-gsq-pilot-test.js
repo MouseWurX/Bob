@@ -25,6 +25,7 @@ check('ISTA DASLab\'s paper and repo are credited, and the port says what differ
 check('GSQ\'s result is kept only when it beats its own GPTQ start', /keep GSQ's result only if it beats its own GPTQ start/.test(py));
 check('x_dump only reads the brain (credits imatrix.cpp for the routing ids)', /Read only: nothing is written to the brain/.test(read('forge/pod/gsq/x_dump.cpp')) && /imatrix\.cpp \(MIT\)/.test(read('forge/pod/gsq/x_dump.cpp')));
 check('no kit or script names the books', !/Bobiverse/i.test(kit + py + read('forge/pod/gsq/q2_0_patch.py')));
+check('the kit takes wikitext-2 from llama.cpp\'s plain-text zip (no pyarrow: NumPy 1 images, try 1 of 26 Nov), parquet only as the fallback', /ggml-org\/ci", "wikitext-2-raw-v1\.zip/.test(kit) && !/hf_transfer pyarrow/.test(kit) && kit.indexOf('wikitext-2-raw-v1.zip') < kit.indexOf('Salesforce/wikitext'));
 
 const torch = spawnSync('python3', ['-c', 'import torch, numpy'], { encoding: 'utf8' });
 if (torch.status === 0) {

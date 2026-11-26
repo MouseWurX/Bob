@@ -423,6 +423,15 @@ function lessonPreflight() {
   for (const w of plan.write_lessons ? (Array.isArray(plan.write_lessons) ? plan.write_lessons : [plan.write_lessons]) : []) if (w.from_ideas) bad.push(`plan.write_lessons (${w.dir}) has no pre-flight yet: use benchmark commands`);
   // 16 Nov: an add-on (llama-server --lora) for a served brain comes from Hugging Face
   for (const m of plan.benchmark?.models || []) if (m.lora !== undefined && !/^hf:[^:\s]+\/[^:\s]+:[^\s]+\.gguf$/.test(String(m.lora))) bad.push(`${m.name}: lora must be hf:<repo>:<file>.gguf`);
+  // 26 Nov (rco-bill): a cut plan whose keep list was not on this PC rented a card, stopped 30 s in, and the pod sat idle
+  // (about $4.35). The keep list and card text it sends are now checked before anything is rented, with the keep list's
+  // sha256 when the plan names one (cut.keep_sha256).
+  for (const m of plan.benchmark?.models || []) if (m.file === 'cut' && m.cut?.keep_file && !/^hf:/.test(m.cut.keep_file)) {
+    const kp = path.resolve(here, '..', m.cut.keep_file);
+    if (!fs.existsSync(kp)) bad.push(`${m.name}: keep list ${kp} is missing; nothing to cut by`);
+    else if (m.cut.keep_sha256 && crypto.createHash('sha256').update(fs.readFileSync(kp)).digest('hex') !== m.cut.keep_sha256) bad.push(`${m.name}: keep list ${kp} is not the one the plan names (sha256 ${m.cut.keep_sha256.slice(0, 12)}...)`);
+    if (m.cut.card_extra && !fs.existsSync(path.resolve(here, m.cut.card_extra))) bad.push(`${m.name}: card text ${path.resolve(here, m.cut.card_extra)} is missing`);
+  }
   if (!cmds.length) return bad;
   if (!(Number(plan.hours_max) > 0) || !(Number(plan.dollars_max) > 0) || !(Number(plan.rent_minutes) > 0)) bad.push('hours_max, dollars_max and rent_minutes must all be set (blank caps fall back to 9 h / $40)');
   let hoursSum = 0, toGoSeen = 0, toGoSum = 0;
