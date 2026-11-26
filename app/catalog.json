@@ -556,7 +556,7 @@
       "jobs": ["tinker", "bob", "reviewer", "deep", "office", "scout"],
       "name": "Raon-1 mini preview",
       "published": "2026-10-20",
-      "what": "KRAFTON's first big open brain: a coder and all-rounder that thinks before it answers and keeps up to 256K in mind. Only 4.3B of it works on each word, so on a 16 GB card the busy parts sit on the card and the rest waits in RAM. Text only. Needs Brain Engine 37 or newer.",
+      "what": "KRAFTON's first big open brain: a coder and all-rounder that thinks before it answers and keeps up to 256K in mind. Only 4.3B of it works on each word, so on a 16 GB card the busy parts sit on the card and the rest waits in RAM. Text only. On my held-out tool jobs (Nov 26) it did well with mail and the web but passed only 5 of 12 code jobs, with more tool-call slips than the others. Needs Brain Engine 37 or newer.",
       "sizeGB": 19.7,
       "vramGB": 16,
       "params": 28.8,
@@ -590,7 +590,7 @@
       "jobs": ["small", "bob", "scout"],
       "name": "Raon-1 nano",
       "published": "2026-11-10",
-      "what": "KRAFTON's small brain: 3.2B, but half of that is a word table read one row at a time, so it runs like a much smaller one. Quick on a laptop or a handheld. Text only. Needs Brain Engine 37 or newer, so not on the phone app yet.",
+      "what": "KRAFTON's small brain: 3.2B, but half of that is a word table read one row at a time, so it runs like a much smaller one. Quick on a laptop or a handheld. Text only. Fine for quick chat, but weak on my tool jobs: it passed 11 of 51 on the held-out run of Nov 26. Needs Brain Engine 37 or newer, so not on the phone app yet.",
       "sizeGB": 2.1,
       "vramGB": 3,
       "params": 3.2,
@@ -612,6 +612,41 @@
       "use": {
         "models": {
           "small": "$model"
+        }
+      }
+    },
+    {
+      "id": "inkling-2-mini",
+      "family": "Inkling",
+      "category": "chat",
+      "jobs": ["bob", "tinker", "reviewer", "office", "scout"],
+      "name": "Inkling 2 Mini",
+      "published": "2026-11-14",
+      "what": "Thinking Machines' 26B that works 3.4B at a time and runs its middle layers three times. Text only. On my held-out tool jobs (Nov 26, on a rented card) it passed 45 of 51, the best of the brains tried, against 36 for Qwen3.6 35B, but it writes at about half that brain's speed. On a 16 GB card a little of it sits in RAM. Needs Brain Engine 44 or newer.",
+      "sizeGB": 16.6,
+      "vramGB": 16,
+      "params": 26.4,
+      "activeParams": 3.4,
+      "experts": true,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "thinks": true,
+      "engineMin": 44,
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/Inkling-2-Mini-GGUF/resolve/8078d149286eec7193795413b9e0643da6d11fa1/Mainline_Support/Inkling-2-Mini-UD-Q4_K_M.gguf_file",
+          "role": "gguf",
+          "saveAs": "Inkling-2-Mini-UD-Q4_K_M.gguf",
+          "verify": true,
+          "bytes": 16610544608,
+          "sha256": "78fcedcf93c5d1bfe83e225513b71392bb52259be0eaa5f8899c856a2e5834ae"
+        }
+      ],
+      "use": {
+        "models": {
+          "tinker": "$model"
         }
       }
     },
