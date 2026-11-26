@@ -52,16 +52,25 @@ Logged every second: card memory used, temperature, clocks, power, free RAM, plu
 - Pod RAM varies (often more than 32 GB). Each row records it. A 12 GB row that only fits because the pod had 60 GB of RAM doesn't count as a 32 GB PC.
 - The Pi stays untested: RunPod has no ARM boards.
 
-## 4. What still has to be built (before the launch phrase does anything)
+## 4. The tier runner (Forge build 23, built 26 Nov)
 
-Forge build 23, on the rentals branch:
-- `pod/tier-run.sh`: install Node 20, fetch the release, start Bob headless, read his pick (`/api` hardware and set), run his download and equip, start his brain, sample the card.
-- `nvidia-smi` stand-in and card ballast for simulated sizes (test-only, on the pod, never in Bob).
-- CPU pods in `forge.mjs`, plus `tier_sweep` plans running one tier after another with per-run caps.
-- Prices: the laptop key can't read RunPod's live card list, so the plan carries the 12 Nov prices; the pod's own rate is what's logged.
-- Pre-flight on the laptop: `node forge.mjs --plan plans\tier-sweep.json --preflight` must end `pre-flight OK: nothing rented`.
-
-Plan file: `app/model-lab/forge/plans/tier-sweep.json`.
+- `forge/pod/tier-run.sh`: one pod runs its tiers one after another. Each gets a fresh Bob 1.5.254 (pinned by its full commit, an empty home, `node src/server.js`) on Node 22.23.5. Bob does his own hardware check and picks his own set. He gets ready the way his window builds the list (`public/equip.js`), cut to the brain in the set's `bob` slot and the programs it runs on. He downloads them himself, then starts his own engine with his own settings on the first "hi". Nothing is set by hand, and nothing is built on the pod.
+- `forge/pod/tier/drive.mjs`: the steps through Bob. Warm-up "hi" through his chat, then his engine's command line and `/props`. Then the first held-out repo job at Effort medium (`do-jobs.mjs`, Lab harness `ced02c1c`, scored by `repo-score.mjs` and `tool-faults.mjs`). Then the long read (32K, or 16K on a smaller context) and the everyday turn (3 rounds). Before each timed step, the card cools under 50 C and idles 60 s. Bob's idle clock is kept running, so he doesn't let go of his brain mid-step. Reloads and crashes are seen from the engine's process.
+- `forge/pod/tier/nvsmi-shim.py` and `ballast.py` (test-only, never in Bob): the ballast holds the card down to 8 or 12 GB through the driver's own library. The stand-in nvidia-smi on Bob's PATH reports that size. So Bob, and his engine's own fit, both see the smaller card.
+- The card is logged every second (memory, temperature, clocks, power, use, free RAM). Each tier writes `row.json` and `row.md`, and `tier/table.mjs` makes `tier-sweep.md` from all the pods' rows.
+- `forge.mjs --plan plans/tier-sweep.json --preflight` checks the plan and the kit and ends `pre-flight OK: nothing rented`. Forge itself does not rent for this plan.
+- Pods (`plans/tier-sweep.json` "pods"), one at a time:
+  - A: RTX A5000 or 3090, runs 8 sim, 12 sim and 24 older. Cap 4.75 h / $2.50.
+  - B: RTX 4090. Cap 1.75 h / $2.50.
+  - C: RTX 5090. Cap 1.75 h / $2.50.
+  - D: A40 or A6000. Cap 1.75 h / $2.50.
+  - E: CPU pod. Cap 1.75 h / $1.
+  - Caps add up to $11, inside the $12.
+- The pod script also has a backup delete: at its HOURS_MAX the pod packs its results and deletes itself.
+- Cloud dry run (26 Nov), with no card: a stand-in engine and a made-up A5000. All 7 tiers ran end to end on the real Bob 1.5.254 and the real harness. Bob picked `mid` (Gemma 4 E4B, 32K) for 8 GB, `big` (Qwen3.6 35B, 256K) for 12, 24, 32 and 48 GB, and `cpu` (Gemma 4 E4B) with no card. The rows, table and zip were written. Still unproven in our lab:
+  - the ballast on a real card;
+  - Bob's own downloads (huggingface.co and GitHub's API are blocked from the cloud);
+  - real speeds and tool-job results.
 
 ## 5. Launch
 
@@ -69,7 +78,7 @@ Rentals start only from the laptop thread, on the owner's own words typed there:
 
 > **go GPU tier sweep, cap $12**
 
-That phrase covers the whole sweep above (7 runs, one pod at a time, $12 total, $2.50 a run) once build 23 passes pre-flight. Nothing is uploaded.
+That phrase covers the whole sweep above (7 tiers on 5 pods, one pod at a time, $12 total) once build 23 passes pre-flight. The owner typed "go gpu tier" in the laptop thread on 26 Nov. Nothing is uploaded.
 
 ## 6. Afterwards
 

@@ -1,0 +1,222 @@
+{
+ "run": "tier-sweep",
+ "note": "HELD until the owner types the launch phrase in the laptop thread. 24 Nov 2026: Bob's hardware tiers tested on rented cards with Bob's DEFAULTS only. Each run: fresh Linux pod, the newest published Bob release (node src/server.js, a new empty home), Bob's own Get Bob ready pick for that card (the 'bob' slot of hw.suggestedPack), Bob's own engine download (Brain Engine of that release) and Bob's own engine arguments. Nothing hand-set: no Turbo, no Lab switches, GUPPI as the release ships it. The laptop then runs one short held-out tool job and one long read through Bob, while the pod logs the card every second. The tier runner is Forge build 23 (Nov 26): pod/tier-run.sh with pod/tier/ (drive.mjs, nvsmi-shim.py, ballast.py, table.mjs). Check it with node forge.mjs --plan plans/tier-sweep.json --preflight. Each pod gets the kit and runs TIERS=<its tiers> bash tier-run.sh; the laptop rents, copies, fetches the zip and deletes, one pod at a time.",
+ "benchmark_only": true,
+ "tier_sweep": true,
+ "bob_release": "v1.5.254",
+ "image": "runpod/base:0.6.2-cuda12.4.1",
+ "disk_gb": 60,
+ "direct": true,
+ "door_minutes": 25,
+ "rent_minutes": 30,
+ "hours_max": 9,
+ "dollars_max": 12,
+ "run_caps": {
+  "hours": 1.5,
+  "dollars": 2.5
+ },
+ "stop_after_failed_in_row": 2,
+ "never_cards": [
+  "NVIDIA H200",
+  "NVIDIA H200 NVL",
+  "NVIDIA B200",
+  "NVIDIA B300"
+ ],
+ "prices_seen": {
+  "note": "RunPod's public secure prices on 12 Nov 2026 (runpod.io/pricing). The laptop key cannot read the live list, so the Forge uses these; the pod's own costPerHr is what counts.",
+  "NVIDIA RTX A5000": {
+   "price": 0.27,
+   "mem": 24
+  },
+  "NVIDIA GeForce RTX 3090": {
+   "price": 0.5,
+   "mem": 24
+  },
+  "NVIDIA GeForce RTX 4090": {
+   "price": 0.89,
+   "mem": 24
+  },
+  "NVIDIA GeForce RTX 5090": {
+   "price": 1.39,
+   "mem": 32
+  },
+  "NVIDIA A40": {
+   "price": 0.59,
+   "mem": 48
+  },
+  "NVIDIA RTX A6000": {
+   "price": 0.69,
+   "mem": 48
+  }
+ },
+ "tiers": [
+  {
+   "id": "t08-sim",
+   "label": "8 GB card (simulated)",
+   "gpus": [
+    "NVIDIA RTX A5000",
+    "NVIDIA GeForce RTX 3090"
+   ],
+   "card_gb": 8,
+   "simulated": true,
+   "why": "RunPod rents no 8 GB card. The shim makes Bob see an 8 GB card and the ballast holds the rest of the card, so the engine has 8 GB too. Fit, pick and spill are real; speed is the bigger card's, so it is reported as fit only."
+  },
+  {
+   "id": "t12-sim",
+   "label": "12 GB card (simulated)",
+   "gpus": [
+    "NVIDIA RTX A5000",
+    "NVIDIA GeForce RTX 3090"
+   ],
+   "card_gb": 12,
+   "simulated": true,
+   "why": "RunPod rents no 12 GB card. Same shim and ballast; Bob gives a 12 GB card the 16 GB set, which is the thing to prove."
+  },
+  {
+   "id": "t24-ampere",
+   "label": "24 GB card, older (RTX A5000)",
+   "gpus": [
+    "NVIDIA RTX A5000",
+    "NVIDIA GeForce RTX 3090"
+   ]
+  },
+  {
+   "id": "t24-ada",
+   "label": "24 GB card, newer (RTX 4090)",
+   "gpus": [
+    "NVIDIA GeForce RTX 4090"
+   ]
+  },
+  {
+   "id": "t32",
+   "label": "32 GB card (RTX 5090)",
+   "gpus": [
+    "NVIDIA GeForce RTX 5090"
+   ]
+  },
+  {
+   "id": "t48",
+   "label": "48 GB card",
+   "gpus": [
+    "NVIDIA A40",
+    "NVIDIA RTX A6000"
+   ]
+  },
+  {
+   "id": "tcpu",
+   "label": "No graphics card (processor only)",
+   "cpu_pod": {
+    "vcpus": 8,
+    "ram_gb": 32
+   },
+   "max_dollars": 1,
+   "why": "A CPU pod: no nvidia-smi, so Bob picks his processor-only set. vCPU/RAM sizes and price are read from RunPod at launch (not on its public price page)."
+  }
+ ],
+ "each_run": {
+  "pod_logs": "nvidia-smi every 1 s (memory used, temperature, SM and memory clocks, power), free RAM every 1 s, Bob's logbook, the engine's own log (loads, reloads, exits, fit lines)",
+  "cool_down": "card under 50 C and idle 60 s before each timed step (the owner's speed-test rule)",
+  "jobs": [
+   "warm-up 'hi' (not timed)",
+   "one short held-out tool job: repo-jobs --held, the first job, Effort Medius, through Bob's real loop (do-jobs --bob, the pod's Bob address)",
+   "one long read: the 32K cut of long-text.md plus one question (16K on the processor-only and 8 GB runs if Bob's own context is smaller)",
+   "one everyday chat turn, 3 rounds, for writing speed"
+  ],
+  "records": [
+   "card",
+   "card_gb (real or simulated)",
+   "pod RAM GB",
+   "Bob release",
+   "Brain Engine build",
+   "pack Bob picked",
+   "brain + file",
+   "context Bob set",
+   "reading t/s",
+   "writing t/s",
+   "card peak MiB",
+   "card budget = card - 512 MiB, peak under it yes/no",
+   "spill yes/no (engine fit log + peak)",
+   "reloads",
+   "crashes",
+   "tool job pass/fail + bad calls",
+   "GPU temp/clocks min-max",
+   "minutes",
+   "dollars"
+  ],
+  "pass": "loads, peak under card - 512 MiB, no crash, no reload during a job, no broken tool call, tool job right"
+ },
+ "results": "../../bob-model-lab/out/tier-sweep/<tier id>/ on the laptop; summary table tier-sweep.md for the README and the dissertation",
+ "publish": {
+  "user": "MouseWurX",
+  "private": true,
+  "odds": false,
+  "models": [],
+  "note": "Nothing is uploaded from this run."
+ },
+ "bob_sha": "50647155313c08c4cad226206a39d54106d6ee04",
+ "pods": [
+  {
+   "id": "A",
+   "tiers": [
+    "t08-sim",
+    "t12-sim",
+    "t24-ampere"
+   ],
+   "gpus": [
+    "NVIDIA RTX A5000",
+    "NVIDIA GeForce RTX 3090"
+   ],
+   "hours": 4.75,
+   "dollars": 2.5,
+   "why": "three tiers on one 24 GB card: the two simulated sizes and the real A5000 run, one after another, each on a fresh Bob"
+  },
+  {
+   "id": "B",
+   "tiers": [
+    "t24-ada"
+   ],
+   "gpus": [
+    "NVIDIA GeForce RTX 4090"
+   ],
+   "hours": 1.75,
+   "dollars": 2.5
+  },
+  {
+   "id": "C",
+   "tiers": [
+    "t32"
+   ],
+   "gpus": [
+    "NVIDIA GeForce RTX 5090"
+   ],
+   "hours": 1.75,
+   "dollars": 2.5
+  },
+  {
+   "id": "D",
+   "tiers": [
+    "t48"
+   ],
+   "gpus": [
+    "NVIDIA A40",
+    "NVIDIA RTX A6000"
+   ],
+   "hours": 1.75,
+   "dollars": 2.5
+  },
+  {
+   "id": "E",
+   "tiers": [
+    "tcpu"
+   ],
+   "cpu_pod": {
+    "vcpus": 8,
+    "ram_gb": 32
+   },
+   "hours": 1.75,
+   "dollars": 1
+  }
+ ],
+ "image_cpu": "runpod/base:0.6.2-cuda12.4.1",
+ "image_cpu_note": "a CPU pod runs the same image (the CUDA files are just not used); if RunPod refuses it for a CPU pod, any Ubuntu 22.04 image with python3 and curl does"
+}

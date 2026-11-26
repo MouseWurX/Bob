@@ -7,6 +7,7 @@
 // node forge.mjs --restart <podId> --plan ...   stop the run on a pod, upload the current code + plan, start it again (finished steps are kept)
 // node forge.mjs --status | --kill               list pods / delete every forge pod
 // node forge.mjs --plan ... --preflight         check the plan's lesson commands on this PC and stop (nothing is rented)
+// node forge.mjs --plan plans/tier-sweep.json --preflight   build 23: check the GPU tier sweep kit and plan (nothing is rented)
 // node forge.mjs --places [cards]               where the wanted cards are in stock with storage (read-only), and your network volumes
 import fs from 'node:fs';
 import path from 'node:path';
@@ -141,6 +142,10 @@ if (args.status || args.kill) {
 }
 const planFile = args.plan; if (!planFile) { console.error('--plan <file> is needed'); process.exit(1); }
 const plan = JSON.parse(fs.readFileSync(planFile, 'utf8'));
+// Build 23 (26 Nov 2026): a tier sweep plan (plans/tier-sweep.json) is not a training run. Each pod gets the kit
+// (pod/tier-run.sh + pod/tier/) and runs its tiers itself on a fresh Bob; nothing here rents for it. --preflight checks
+// the kit and the plan and stops; without it this says how a tier pod is started.
+if (plan.tier_sweep) { const { tierPreflight } = await import('./tier-preflight.mjs'); process.exit(tierPreflight(plan, { here, preflight: args.preflight === true }) ? 0 : 1); }
 // 15 Nov 2026: a plan with "ledger_check" trains only on lessons that passed the lesson ledger (lesson-ledger.mjs): no
 // lesson already taught, and none that copies a held-out test, calib question or quiz item (519 of 534 held-out
 // questions were once found word for word in old lesson files). It runs here on the PC, before anything is rented.
