@@ -62,7 +62,6 @@ const llama = read(path.join(app, 'src', 'llamacpp.js'));
 check('the engine start reads the file beside the engine', /vk = vulkanFeatures\(path\.dirname\(exe\)\), vc = vulkanCaps\(files, vk\)/.test(llama) && /q3CardOk\(files, process\.platform, vk\)/.test(llama) && /tiers = [^\n]*vc\.lse/.test(llama) && /q2 = [^\n]*vc\.q2/.test(llama) && /sink = [^\n]*vc\.lse/.test(llama));
 const wf = read(path.join(app, '..', '.github', 'workflows', 'brain-engine.yml'));
 check('the build packs our Vulkan part and the file, on Windows and Linux', /ggml-vulkan\/ggml-vulkan\.dll/.test(wf) && /vulkan\/libggml-vulkan\.so/.test(wf) && (wf.match(/lamplight-vulkan\.json/g) || []).length >= 2);
-check('Linux packs our CUDA part when the CUDA job ran', /cuda-linux:/.test(wf) && /cp cuda\/libggml-cuda\.so/.test(wf) && /ubuntu-cuda/.test(wf));
 check('the patch is there', fs.existsSync(path.join(app, 'engine', 'patches', '0135-vulkan-lamplight.patch')));
 
 // Help, glossary, FAQ

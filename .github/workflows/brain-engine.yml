@@ -3,8 +3,7 @@
 # Pushes to work branches and draft pull requests run nothing, like build.yml, so a work-in-progress patch never
 # sends a failed-build e-mail: a thread checks its engine patch with its own build first (app/engine/README.md).
 # Windows x64: the llama.dll / llama-server.exe set, to put over a COPY of the official CUDA or Vulkan zip for the same tag (the card backends are separate DLLs; when a patch changes ggml, the zip also carries our own ggml, ggml-cpu and ggml-cuda DLLs, which replace the official ones).
-# Nov 26: both also carry our own Vulkan backend (ggml-vulkan.dll, libggml-vulkan.so) and lamplight-vulkan.json, and
-# Linux now carries our own libggml-cuda.so too (job cuda-linux), as Windows has carried ggml-cuda.dll.
+# Nov 26: both also carry our own Vulkan backend (ggml-vulkan.dll, libggml-vulkan.so) and lamplight-vulkan.json.
 # Linux x64: the same set for checking. Every action is pinned to a full commit SHA, like build.yml.
 name: Brain Engine
 
@@ -44,7 +43,6 @@ jobs:
       ggml: ${{ steps.d.outputs.ggml }}
       cuda: ${{ steps.d.outputs.cuda }}
       cudaver: ${{ steps.d.outputs.cudaver }}
-      cudaverlinux: ${{ steps.d.outputs.cudaverlinux }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: d
@@ -60,10 +58,8 @@ jobs:
           # The CUDA version of the official Windows CUDA zip for this tag (the newest, as Bob picks), so our
           # ggml-cuda.dll uses the same CUDA runtime as the cudart and cublas DLLs beside it.
           cudaver=$(gh release view "$tag" -R ggml-org/llama.cpp --json assets --jq '.assets[].name' | sed -n 's/^llama-.*-bin-win-cuda-\([0-9.]*\)-x64\.zip$/\1/p' | sort -V | tail -1)
-          # The same for the official Ubuntu CUDA download, for our libggml-cuda.so (Nov 26).
-          cudaverlinux=$(gh release view "$tag" -R ggml-org/llama.cpp --json assets --jq '.assets[].name' | sed -n 's/^llama-.*-bin-ubuntu-cuda-\{0,1\}\([0-9.]*\)-x64\.\(zip\|tar\.gz\)$/\1/p' | sort -V | tail -1)
-          echo "patches touch ggml: $ggml, CUDA: $cuda; official CUDA zip: $cudaver; official Ubuntu CUDA: $cudaverlinux"
-          { echo "ggml=$ggml"; echo "cuda=$cuda"; echo "cudaver=$cudaver"; echo "cudaverlinux=$cudaverlinux"; } >> "$GITHUB_OUTPUT"
+          echo "patches touch ggml: $ggml, CUDA: $cuda; official CUDA zip: $cudaver"
+          { echo "ggml=$ggml"; echo "cuda=$cuda"; echo "cudaver=$cudaver"; } >> "$GITHUB_OUTPUT"
 
   # Our own ggml-cuda.dll, only when a patch changes the CUDA backend. Built like upstream's windows-cuda job:
   # MSVC (VS 2022, which every CUDA 12 and 13 knows), the CUDA version of the official zip, upstream's default
@@ -289,9 +285,9 @@ jobs:
         run: bash app/engine/publish.sh "$BEV" "$TAG" brain-engine-*-win-x64.zip
 
   linux:
-    needs: [detect, vulkan-linux, cuda-linux]
-    # draft pull requests run nothing; cuda-linux is skipped when no patch changes the CUDA backend
-    if: ${{ always() && needs.detect.result == 'success' && needs.vulkan-linux.result == 'success' && (needs.cuda-linux.result == 'success' || needs.cuda-linux.result == 'skipped') }}
+    needs: [detect, vulkan-linux]
+    # draft pull requests run nothing
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # only used by the publish step, which runs only when asked for by hand
@@ -321,12 +317,6 @@ jobs:
         with:
           name: ggml-vulkan-linux-x64
           path: vulkan
-      - name: Get our libggml-cuda.so
-        if: ${{ needs.cuda-linux.result == 'success' }}
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: ggml-cuda-linux-x64
-          path: cuda
       - name: Pack
         run: |
           out=brain-engine-$BEV-linux-x64
@@ -336,8 +326,6 @@ jobs:
           # Nov 26: our own Vulkan backend (job vulkan-linux), like Windows; Bob leaves it out on an NVIDIA card
           cp vulkan/libggml-vulkan.so "$out/"
           cp app/engine/lamplight-vulkan.json "$out/"
-          # Nov 26: our own CUDA backend (job cuda-linux), like Windows; Bob leaves it out over a download that isn't CUDA
-          if [ -f cuda/libggml-cuda.so ]; then cp cuda/libggml-cuda.so "$out/"; fi
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
           cp app/engine/README.md "$out/README-Brain-Engine.md"
           tar czf "$out.tar.gz" "$out"
@@ -351,46 +339,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BE_GGML: ${{ needs.detect.outputs.ggml }}
         run: bash app/engine/publish.sh "$BEV" "$TAG" brain-engine-*-linux-x64.tar.gz
-
-  cuda-linux:
-    # Nov 26: our own libggml-cuda.so for the Linux Lamplight, as Windows has had: only when a patch changes the CUDA
-    # backend, with the CUDA version of the official Ubuntu CUDA download (so it matches the libcudart and libcublas
-    # Bob fetches beside it) and upstream's default architectures. NVIDIA's own apt packages, compiler and headers only.
-    needs: detect
-    if: ${{ needs.detect.outputs.cuda == 'true' && needs.detect.outputs.cudaverlinux != '' }}
-    runs-on: ubuntu-22.04
-    timeout-minutes: 300
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Fetch llama.cpp at the tested tag and apply the patches
-        run: |
-          tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
-          git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
-          sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
-          for p in app/engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
-      - name: Install CUDA ${{ needs.detect.outputs.cudaverlinux }}
-        run: |
-          want='${{ needs.detect.outputs.cudaverlinux }}'
-          [ -n "$want" ] || { echo 'No official Ubuntu CUDA download found for this tag'; exit 1; }
-          v=$(echo "$want" | awk -F. '{print $1"-"($2==""?0:$2)}')
-          wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
-          sudo dpkg -i cuda-keyring_1.1-1_all.deb
-          sudo apt-get update -y
-          sudo apt-get install -y ninja-build "cuda-nvcc-$v" "cuda-cudart-dev-$v" "libcublas-dev-$v" "cuda-nvml-dev-$v" "cuda-cccl-$v" "cuda-nvrtc-dev-$v" "cuda-nvtx-$v" "cuda-profiler-api-$v" || sudo apt-get install -y ninja-build "cuda-nvcc-$v" "cuda-cudart-dev-$v" "libcublas-dev-$v" "cuda-nvml-dev-$v"
-          d=/usr/local/cuda-${v/-/.}
-          echo "CUDA_PATH=$d" >> "$GITHUB_ENV"
-          echo "$d/bin" >> "$GITHUB_PATH"
-      - name: Build libggml-cuda.so (the Linux Lamplight's settings, plus CUDA)
-        working-directory: llama.cpp
-        run: |
-          nvcc --version
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_RPATH='$ORIGIN' -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_RPC=ON -DGGML_CUDA=ON -DCMAKE_CUDA_COMPILER="$CUDA_PATH/bin/nvcc" -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_TOOLS=OFF
-          cmake --build build -j $(nproc) --target ggml-cuda
-          ls -la build/bin/libggml-cuda.so
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ggml-cuda-linux-x64
-          path: llama.cpp/build/bin/libggml-cuda.so
 
   vulkan-linux:
     # Nov 26: our own libggml-vulkan.so for the Linux Lamplight, from the same patched tree. Built like upstream's
