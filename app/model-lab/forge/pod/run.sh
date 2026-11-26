@@ -401,6 +401,25 @@ PY
             if [ -n "$RCF" ] && [ -f $IMX ] && ! python3 -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get('layer_rank',{}).get(sys.argv[2]) else 1)" $POD/recipes/$RCF $RCC; then
               PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/layer_rank.py --imatrix $IMX --cut $RCC --recipe $POD/recipes/$RCF --write | tee $OUT/bench/cut-$BN/layer-rank.txt || echo "bench $BN: layer rank failed; the recipes use the placeholder order"
             fi
+            # 26 Nov (ISTA DASLab's RCO idea, our own code): cut.rco = [{name, objective, target_ftype | target_recipe}] measures
+            # every tensor's error at every type once (pod/tensor_err, from this cut's Q8_0 and its imatrix), then
+            # pod/rco_pick.py writes one exact-size recipe per entry into the recipe file, so the quant loop below makes and
+            # scores it like any MX recipe. A failed step leaves that name out ("no such recipe" in the loop).
+            RCOJ=$(plan "$CJ.get('rco',[])"); RCON=$(echo "${RCOJ:-[]}" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0)
+            if [ -n "$RCF" ] && [ "$RCON" != "0" ] && [ -f $IMX ]; then
+              RD=$OUT/bench/cut-$BN/rco; mkdir -p $RD; status bench "$BN: measuring tensor errors (rco)"
+              RQIMX=$W/bench/imatrix-filled-$BN.gguf
+              [ -f $RQIMX ] || PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/imatrix_fill.py --imatrix $IMX --out $RQIMX >> $RD/fill.txt 2>&1 || RQIMX=$IMX
+              PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/imatrix_gaps.py --model $CUTQ8 --imatrix $RQIMX > $RD/fixed.txt 2>> $RD/fill.txt || : > $RD/fixed.txt
+              TE=$(bash $POD/tensor_err/build.sh $S/llama.cpp $S/llama.cpp/build-cuda 2> $RD/build.txt | tail -1)
+              if [ -x "$TE" ] && { [ -s $RD/err.tsv ] || { LD_LIBRARY_PATH="$(dirname $TE):${LD_LIBRARY_PATH:-}" timeout 5400 $TE -m $CUTQ8 --imatrix $RQIMX --exclude '^per_layer_token_embd' --rows $(plan "$CJ.get('rco_rows',512)") --experts $(plan "$CJ.get('rco_experts',12)") > $RD/err.tsv.part 2> $RD/err.log && mv -f $RD/err.tsv.part $RD/err.tsv; }; }; then
+                for k in $(seq 0 $(( RCON - 1 ))); do
+                  read -r RN RO RTG < <(echo "$RCOJ" | python3 -c "import json,sys; e=json.load(sys.stdin)[$k]; print(e['name'], e.get('objective','abs'), ('--target-ftype '+e['target_ftype']) if 'target_ftype' in e else ('--target-recipe '+e['target_recipe']))")
+                  PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/rco_pick.py --err $RD/err.tsv --model $CUTQ8 --cut $RCC --name $RN --objective $RO $RTG \
+                    --fixed $RD/fixed.txt --recipe $POD/recipes/$RCF --write 2>&1 | tee $RD/pick-$RN.txt || echo "bench $BN: rco pick $RN failed"
+                done
+              else echo "bench $BN: tensor_err failed (see out/bench/cut-$BN/rco/); the rco recipes are skipped"; tail -3 $RD/build.txt $RD/err.log 2>/dev/null; fi
+            fi
             [ -n "$RCF" ] && cp $POD/recipes/$RCF $OUT/bench/cut-$BN/ 2>/dev/null
             for q in $(plist "$CJ['quants']" | tr ',' ' '); do
               QF=$CD/$CFILE-$q.gguf

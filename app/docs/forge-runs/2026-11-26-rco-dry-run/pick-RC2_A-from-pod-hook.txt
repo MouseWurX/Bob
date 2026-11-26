@@ -1,0 +1,11 @@
+RC2_A: 34 tensors picked, 68 kept; budget stock IQ2_XXS = 9,594,072 tensor bytes
+   picked 9,594,052 bytes (0.0 MB under), file ~0.02 GB; objective abs, total 0.6635
+   PLE mixer (blk.1.ple_*)                    3 q8_0, 1 iq4_xs, 1 q5_k
+   experts down                               2 q2_0
+   full attention                             3 iq2_xs, 1 iq1_m
+   hyper-connections (hc_*)                   6 q5_k, 2 q4_k
+   linear attention (attn_qkv/gate, ssm_*)    2 iq2_xs, 1 iq1_m, 1 q2_k, 1 iq2_s
+   other                                      2 iq2_xs
+   shared expert                              4 iq3_xxs, 2 q2_0
+   token_embd + output                        2 q8_0
+   written to pod/recipes/flashnext-mixed.json as recipe RC2_A (34 rules)

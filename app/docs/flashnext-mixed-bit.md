@@ -133,3 +133,52 @@ The KLD text is wikitext-2 (public, neutral). Never the held-out jobs, never tex
 
 Out of scope here: healing (scales and norms) is the study's separate item and needs its own yes; AI+ types; any change to
 Bob's defaults. The predictor knows qwen4exp only.
+
+## ISTA DASLab's GSQ-RCO ideas (26 Nov 2026)
+
+The owner (26 Nov): "If their research can benefit us we should attempt to implement it." ISTA DASLab published GSQ-RCO quants
+(their Qwen3.8-27B IQ2_XS is under the Saluki 27B brain). Two papers, two different ideas:
+
+- **RCO** (Helcig and Alistarh, arXiv 2605.00649): choose a type per tensor so the file lands on an **exact size** with the
+  least loss. No code is published. Their optimizer learns the choice end to end on the model's loss (Gumbel sampling, a
+  budget-constrained step); the simpler "measure each part, then solve the budget" methods are what it is compared with.
+- **GSQ** (Dadgarnia et al., arXiv 2604.18556, github.com/IST-DASLab/GSQ, Apache-2.0): **learn the rounding** of each
+  weight and the group scales from sample text, one linear layer at a time, so a 2-bit file loses less than rounding to the
+  nearest step does. Their public code writes vLLM INT files; it has no GGUF writer and no Flash-Next (qwen4exp) model code
+  (checked at commit 03fc1648). Its 2-bit grid is 4 levels times one scale per group.
+
+### Step 1: our own exact-size picker (built, dry-run passed, rental held)
+
+- `pod/tensor_err/` (C++, links llama.cpp b12359's ggml): for every tensor and every stock type, quantize a sample of rows
+  exactly as llama-quantize does (same imatrix row), turn them back into numbers and add up the imatrix-weighted squared
+  change. Experts are weighted by how often the router picks them. Reads the cut's Q8_0 through a read-only map.
+- `pod/rco_pick.py`: treats those errors as adding up and picks one type per tensor under a byte budget (each tensor's lower
+  convex hull, best gain per byte first, then fills what is left). The budget is "the same tensor bytes as" a stock file or
+  recipe, so a pick is the size of the file it is set against.
+- run.sh: `cut.rco` in a plan measures once and writes each pick into the recipe file before the quant loop; the loop then
+  makes, scores (KLD) and gates it like any MX recipe.
+- Dry run (cloud, tiny made-up Flash-Next): [forge-runs/2026-11-26-rco-dry-run/](forge-runs/2026-11-26-rco-dry-run/).
+- Rental plan `forge/plans/rco-bill.json` (HELD for the owner's yes, caps 5 h / $14, uploads nothing): IQ2_XXS and MX2_S made
+  again, plus RC2_A (abs error) and RC2_B (rel error) at IQ2_XXS's size, and RC2_S at MX2_S's size. Done criteria as above:
+  RC2_A or RC2_B must pass the gate where IQ2_XXS failed, and beat MX2_S's KLD at MX2_S's size (RC2_S) to count as a win.
+- Honest limit: this is the additive form, not RCO's learned optimizer. If the picks lose to the hand recipe, the next step is
+  a KLD-scored search around the pick (a few swaps scored by real KLD), which is closer to what RCO does.
+
+### Step 2: GSQ on one card (scoped, not built)
+
+- **Found while checking types:** stock `q2_0` stores 64 weights as 2-bit codes {-1, 0, 1, 2} times one f16 scale
+  (`ggml-quants.c`, `dequantize_row_q2_0`). That is GSQ's 2-bit grid ({-2, -1, 0, 1} times a scale; the same set with the
+  scale's sign flipped) at group 64. So GSQ's learned codes can be written straight into a stock `q2_0` tensor, with no
+  Lamplight change. Bill's 48 down-expert tensors are all `q2_0` (640 wide: no 2-bit K or IQ type fits), and plain `q2_0`
+  rounding is the weakest 2-bit type in the dry run.
+- **Why one card is enough:** GSQ's loss is per linear layer (the layer's output on sample inputs), so it needs only that
+  layer's inputs, not the whole model on cards. Their multi-card needs come from 4,096 samples x 4,096 tokens of stored
+  activations. Plan: 512 samples x 2,048 tokens, inputs held in system RAM.
+- **Pilot (small brain, ~$1-2):** a dense 2B to 4B Qwen: every linear layer at `q2_0` by stock rounding vs GSQ-learned
+  rounding at group 64, both written as GGUF, KLD against BF16 on wikitext-2, same positions. Needs: our exporter
+  (GSQ codes and scales into a llama-quantize `q2_0` file, tensor by tensor) and a group-64 GSQ config.
+- **Then Bill:** dump each down expert's routed inputs with Lamplight's activation dump (engine patch 0015), run GSQ's
+  quantizer per expert matrix (no Flash-Next model code needed), write the codes into Bill's `q2_0` down experts. Priced
+  after the pilot.
+- **Flag for the owner:** GSQ adjusts rounding and scales with sample text and gradients. That is light training on
+  rounding only (it changes which step each weight rounds to, and the scales; nothing else), the same open question as healing.

@@ -1,0 +1,151 @@
+{
+ "run": "rco-bill",
+ "note": "HELD: not to be rented until the owner says so in their own words in the laptop thread (rentals need them). 26 Nov 2026, the owner: \"If their research can benefit us we should attempt to implement it\" (ISTA DASLab's GSQ-RCO quants). RCO (arXiv 2605.00649, no code published) picks a type per tensor so a file lands on an exact size with the least drift. This run tries our own version on Bill (Flash-Next REAP60, 308 of 512 experts), whose stock IQ2_XXS failed the gate: pod/tensor_err measures every tensor's error at every stock type from the cut's own Q8_0 and its imatrix (processor only, sampled rows), then pod/rco_pick.py picks types under an exact byte budget. RC2_A and RC2_B are the size of stock IQ2_XXS (abs and rel error), RC2_S is the size of MX2_S (the hand recipe that passed on 24 Nov). IQ2_XXS and MX2_S are made again so KLD compares like with like on the same reference run. Stock llama.cpp types only: the files load on stock llama.cpp and Lamplight. Nothing is uploaded (cut.publish false). Nothing is healed or trained. One RTX PRO 6000. Estimate 3.5-4.5 h at the forge table price $2.69/h, about $9-12 (24 Nov's five-file run cost $7.14; this adds the error measure, 15-40 min); caps 5 h / $14 (the live price is checked before renting).",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.8-Flash-Next",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+ ],
+ "step_up": [],
+ "disk_gb": 600,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 5,
+ "dollars_max": 14,
+ "rent_minutes": 180,
+ "download_quants": [],
+ "llama_tag": "b12359",
+ "no_hands": true,
+ "prep": [
+  "Runs from a kit at this branch's commit (claude/project-thread-9my3wr) with out/reap-flashnext-q4-jobs/keep/all-keep-60.json (laptop copies in /mnt/project-files/laptop-rentals/keep/, SHA256SUMS.txt beside them).",
+  "Dry run of the new steps on 26 Nov in the cloud: tiny made-up Flash-Next (qwen4exp) brain, b12359, processor only: tensor_err built from the pod path, three picks written, files within 64 bytes of the stock file they match, KLD measured (docs/forge-runs/2026-11-26-rco-dry-run/).",
+  "Pre-flight: node forge.mjs --plan plans/rco-bill.json --rent-plan (rents nothing).",
+  "Needs the owner's own yes in the laptop thread, with the caps 5 h / $14."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": false,
+  "odds": false,
+  "models": [],
+  "note": "26 Nov 2026: this run uploads nothing (cut.publish false). A file that wins still needs npc's quiz and held-out jobs, and the owner's word on going public."
+ },
+ "door_minutes": 20,
+ "card_sets": [
+  {
+   "gpus": [
+    "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+   ],
+   "count": 1
+  }
+ ],
+ "min_ram_per_gpu": 180,
+ "expected_hours": 4,
+ "benchmark": {
+  "note": "one 96 GB card, Bill only: download, cut, imatrix from Hugging Face, per-tensor error measure, two baselines and three exact-size picks, KLD for each, gate. Measure only.",
+  "hours_each": 1.4,
+  "brain_engine": {
+   "ref": "3fff3cf084e3def210b6e92c1d415280bfbb4e3a",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word",
+    "0014-rpc-any-version"
+   ],
+   "note": "Brain Engine b12359 + all 14 of Bob's engine patches at 3fff3cf (expert trace with mass for the expert-map phase)"
+  },
+  "download_max_minutes": 75,
+  "models": [
+   {
+    "name": "blfn",
+    "nickname": "Bill {N}Bob A6B Flash-Next REAP60: Flash-Next with 60% of experts kept, cut on the pod",
+    "file": "cut",
+    "quant": "IQ2_XXS",
+    "slots": 10,
+    "ctx": 491520,
+    "extra": "",
+    "hours": 4,
+    "download_gb": 190,
+    "imatrix_from": "out/bnfn-calib/imatrix",
+    "cut": {
+     "src": "hf:unsloth/Qwen3.8-Flash-Next-GGUF:Q8_0/Qwen3.8-Flash-Next-Q8_0-00001-of-00006.gguf",
+     "source_note": "unsloth/Qwen3.8-Flash-Next-GGUF (Q8_0)",
+     "keep_file": "out/reap-flashnext-q4-jobs/keep/all-keep-60.json",
+     "base": "Qwen/Qwen3.8-Flash-Next",
+     "base_params": 125,
+     "name": "Bill {N}Bob A6B Flash-Next REAP60",
+     "repo": "MouseWurX/Bill-{N}Bob-A6B-Flash-Next-REAP60-GGUF",
+     "license_from": "hf:Qwen/Qwen3.8-Flash-Next:LICENSE",
+     "license_name": "qwen-community-1.0",
+     "quants": [
+      "IQ2_XXS",
+      "MX2_S",
+      "RC2_A",
+      "RC2_B",
+      "RC2_S"
+     ],
+     "serve": "MX2_S",
+     "imatrix_chunks": 200,
+     "private": false,
+     "card_extra": "cards/bill-flashnext.md",
+     "hold_minutes": 45,
+     "expect_gb": {
+      "IQ2_XXS": "47.8-52.8",
+      "MX2_S": "49.3-54.5",
+      "RC2_A": "47.8-52.8",
+      "RC2_B": "47.8-52.8",
+      "RC2_S": "49.3-54.5"
+     },
+     "expect_note": "26 Nov: RC2_A/RC2_B are picked to the tensor bytes of stock IQ2_XXS and RC2_S to MX2_S's (pod/rco_pick.py; the predictor matched every real Bill file to 0.002 GB), +-5% as before. A file outside it is not uploaded (nothing is uploaded on this run anyway).",
+     "down_type": {
+      "IQ2_XXS": "q2_0"
+     },
+     "predict_gb": {
+      "IQ2_XXS": 50.3,
+      "MX2_S": 51.93,
+      "RC2_A": 50.3,
+      "RC2_B": 50.3,
+      "RC2_S": 51.93
+     },
+     "recipe_file": "flashnext-mixed.json",
+     "recipe_cut": "bill",
+     "kld": true,
+     "imatrix_from": "hf:MouseWurX/Bill-77Bob-A6B-Flash-Next-REAP60-GGUF:imatrix.gguf",
+     "publish": false,
+     "rco": [
+      {
+       "name": "RC2_A",
+       "objective": "abs",
+       "target_recipe": "IQ2_XXS"
+      },
+      {
+       "name": "RC2_B",
+       "objective": "rel",
+       "target_recipe": "IQ2_XXS"
+      },
+      {
+       "name": "RC2_S",
+       "objective": "abs",
+       "target_recipe": "MX2_S"
+      }
+     ],
+     "rco_rows": 1536,
+     "rco_experts": 16
+    },
+    "commands": []
+   }
+  ]
+ }
+}
