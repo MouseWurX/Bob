@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Bob's model shop. Each entry says what it is for, how big it is, how much graphics memory it wants, and its licence. Every model has 'files', downloaded straight from a pinned link into models\\bob and checked against its sha256. An 'ollama' name as well is only for the opt-in Ollama engine (set by hand in config.json): by default Bob always downloads his own pinned files for Brain Engine, even when Ollama is running. Links marked verify:true are re-checked before a release (size and sha256 at the pinned commit, by the release checklist's pin check); Bob himself doesn't read the flag. 'community' marks a build made by someone other than the model's maker: by (one person) or team + members, base, baseBy, kind, files (who packed the files); 'naughty: true' marks an uncensored (heretic / abliterated) one, listed only while the Naughty list is switched on.",
+  "note": "Bob's model shop. Each entry says what it is for, how big it is, how much graphics memory it wants, and its licence. Every model has 'files', downloaded straight from a pinned link into models\\bob and checked against its sha256. An 'ollama' name as well is only for the opt-in Ollama engine (set by hand in config.json): by default Bob always downloads his own pinned files for Lamplight, even when Ollama is running. Links marked verify:true are re-checked before a release (size and sha256 at the pinned commit, by the release checklist's pin check); Bob himself doesn't read the flag. 'community' marks a build made by someone other than the model's maker: by (one person) or team + members, base, baseBy, kind, files (who packed the files); 'naughty: true' marks an uncensored (heretic / abliterated) one, listed only while the Naughty list is switched on.",
   "categories": [
     {
       "id": "chat",
@@ -556,7 +556,7 @@
       "jobs": ["tinker", "bob", "reviewer", "deep", "office", "scout"],
       "name": "Raon-1 mini preview",
       "published": "2026-10-20",
-      "what": "KRAFTON's first big open brain: a coder and all-rounder that thinks before it answers and keeps up to 256K in mind. Only 4.3B of it works on each word, so on a 16 GB card the busy parts sit on the card and the rest waits in RAM. Text only. Needs Brain Engine 37 or newer.",
+      "what": "KRAFTON's first big open brain: a coder and all-rounder that thinks before it answers and keeps up to 256K in mind. Only 4.3B of it works on each word, so on a 16 GB card the busy parts sit on the card and the rest waits in RAM. Text only. Needs Lamplight 37 or newer.",
       "sizeGB": 19.7,
       "vramGB": 16,
       "params": 28.8,
@@ -590,7 +590,7 @@
       "jobs": ["small", "bob", "scout"],
       "name": "Raon-1 nano",
       "published": "2026-11-10",
-      "what": "KRAFTON's small brain: 3.2B, but half of that is a word table read one row at a time, so it runs like a much smaller one. Quick on a laptop or a handheld. Text only. Needs Brain Engine 37 or newer, so not on the phone app yet.",
+      "what": "KRAFTON's small brain: 3.2B, but half of that is a word table read one row at a time, so it runs like a much smaller one. Quick on a laptop or a handheld. Text only. Needs Lamplight 37 or newer, so not on the phone app yet.",
       "sizeGB": 2.1,
       "vramGB": 3,
       "params": 3.2,

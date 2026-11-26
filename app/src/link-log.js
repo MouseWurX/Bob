@@ -1,4 +1,4 @@
-// The link log (Brain Engine patch 0008). When Bobs pool their cards, the engine on both ends says what the link
+// The link log (Lamplight patch 0008). When Bobs pool their cards, the engine on both ends says what the link
 // carried and where the time went: "[link] ..." lines every ten seconds the link is busy, and SCUT's own counters as
 // "[scut] ...". Bob keeps every one of those lines in bob-net-link.log in his data folder (about 1 MB, then the older
 // half moves to bob-net-link.log.1), and puts the short ones in the logbook under bob-net: which link each card is on

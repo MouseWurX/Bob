@@ -10,7 +10,7 @@ import { readGguf, f16ToF32 } from './lab-gguf.js';
 
 export const WEIGHTS_FORMAT = 'bob-weight-map';
 export const ROWS = 8;         // rows read from each matrix of each expert
-export const GROUPS = 256;     // neuron groups per floor in a brain without experts (as Brain Engine's trace, patch 0002)
+export const GROUPS = 256;     // neuron groups per floor in a brain without experts (as Lamplight's trace, patch 0002)
 
 const h = (b, o) => f16ToF32(b.readUInt16LE(o));
 const scaleMin = (j, q) => (j < 4 ? [q[j] & 63, q[j + 4] & 63] : [(q[j + 4] & 0xF) | ((q[j - 4] >> 6) << 4), (q[j + 4] >> 4) | ((q[j] >> 6) << 4)]);

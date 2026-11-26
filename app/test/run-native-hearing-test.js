@@ -32,9 +32,9 @@ check('the shipped config hears with whisper.cpp', example.stt?.provider === 'wh
 
 // --- Which way Bob hears ---
 check('no hearing set: whisper.cpp on Windows and Linux', sttProvider({}, 'win32') === 'whispercpp' && sttProvider({}, 'linux') === 'whispercpp');
-check('no hearing set on a Mac: Bob\'s own engine (no whisper.cpp build there)', sttProvider({}, 'darwin') === 'brainengine' && defaultStt('darwin') === 'brainengine');
-check('old Ollama hearing with Ollama off: the default', sttProvider({ stt: { provider: 'ollama' } }, 'win32') === 'whispercpp' && sttProvider({ stt: { provider: 'ollama' } }, 'darwin') === 'brainengine');
-check('Bob\'s engine stays when picked', sttProvider({ stt: { provider: 'brainengine' } }, 'win32') === 'brainengine');
+check('no hearing set on a Mac: Bob\'s own engine (no whisper.cpp build there)', sttProvider({}, 'darwin') === 'lamplight' && defaultStt('darwin') === 'lamplight');
+check('old Ollama hearing with Ollama off: the default', sttProvider({ stt: { provider: 'ollama' } }, 'win32') === 'whispercpp' && sttProvider({ stt: { provider: 'ollama' } }, 'darwin') === 'lamplight');
+check('Bob\'s engine stays when picked', sttProvider({ stt: { provider: 'lamplight' } }, 'win32') === 'lamplight');
 check('Ollama hearing with Ollama on stays Ollama', sttProvider({ useOllama: true, stt: { provider: 'ollama' } }) === 'ollama');
 check('whisper.cpp stays whisper.cpp', sttProvider({ stt: { provider: 'whispercpp' } }) === 'whispercpp');
 
@@ -42,10 +42,10 @@ check('whisper.cpp stays whisper.cpp', sttProvider({ stt: { provider: 'whispercp
 check('the move is a new default, once', NEW_DEFAULTS.some((d) => d.id === 'native-hearing'));
 const W = path.join(dir, 'ggml-base.en.bin');
 check('Ollama hearing moves to whisper.cpp with the Whisper model here', JSON.stringify(nativeHearing({ stt: { provider: 'ollama', model: 'gemma4:e4b' } }, { whisper: W, gemma: true })) === JSON.stringify({ provider: 'whispercpp', model: W }));
-check('no Whisper here but Gemma is: Bob\'s engine, so nobody goes deaf', JSON.stringify(nativeHearing({ stt: { provider: 'ollama' } }, { whisper: null, gemma: true })) === JSON.stringify({ provider: 'brainengine', model: 'gemma4-e4b' }));
+check('no Whisper here but Gemma is: Bob\'s engine, so nobody goes deaf', JSON.stringify(nativeHearing({ stt: { provider: 'ollama' } }, { whisper: null, gemma: true })) === JSON.stringify({ provider: 'lamplight', model: 'gemma4-e4b' }));
 check('neither here: whisper.cpp, and Get models offers Whisper base', JSON.stringify(nativeHearing({ stt: { provider: 'ollama' } }, { whisper: null, gemma: false })) === JSON.stringify({ provider: 'whispercpp' }));
 check('the move finds Whisper in Bob\'s models folder (fake files)', nativeHearing({ bobModelsDir: '/m', stt: { provider: 'ollama' } }, { exists: (f) => f === path.join('/m', 'voice', 'ggml-base.en.bin') }).model === path.join('/m', 'voice', 'ggml-base.en.bin'));
-check('Bob\'s engine, once picked, is left alone', nativeHearing({ stt: { provider: 'brainengine' } }) === null);
+check('Bob\'s engine, once picked, is left alone', nativeHearing({ stt: { provider: 'lamplight' } }) === null);
 check('whisper.cpp is left alone', nativeHearing({ stt: { provider: 'whispercpp' } }) === null);
 check('with Ollama switched on, nothing moves', nativeHearing({ useOllama: true, stt: { provider: 'ollama' } }) === null);
 
@@ -56,7 +56,7 @@ try { await transcribe({ session: 'light', stt: {} }, wav, { ears: fakeEars }); 
 catch (e) { check('Gaming mode: no listening', e.message === PAUSED_IN_GAMING && asked === 0); }
 try { await transcribe({ session: 'light', agentDir: dir, stt: { provider: 'whispercpp', model: path.join(dir, 'x.bin') } }, wav); check('Gaming mode pauses whisper.cpp too', false); }
 catch (e) { check('Gaming mode pauses whisper.cpp too', e.message === PAUSED_IN_GAMING); }
-const said = await transcribe({ session: 'normal', stt: { provider: 'brainengine' } }, wav, { ears: fakeEars });
+const said = await transcribe({ session: 'normal', stt: { provider: 'lamplight' } }, wav, { ears: fakeEars });
 check('Bob\'s own ears answer, cleaned up', said === 'Hey Bob, what\'s on my board?' && asked === 1, JSON.stringify(said));
 
 // --- The ears themselves: a fake engine on the processor ---

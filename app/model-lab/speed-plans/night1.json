@@ -1,5 +1,5 @@
 {
- "name": "Night 1: reading steps, Brain Engine cost, new features, expert cache (stock Qwen3.6 35B A3B, 16 GB card)",
+ "name": "Night 1: reading steps, Lamplight cost, new features, expert cache (stock Qwen3.6 35B A3B, 16 GB card)",
  "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addenda 1 to 5)",
  "brain": "${BRAIN}",
  "engines": {

@@ -23,7 +23,7 @@ import { allSlots, slotValue } from '../public/equip.js';
 import { mergeMadeBrains } from './lab.js'; // 1.5.141
 import { jitter } from './retry.js'; // item 194
 import { gatedBlock, gatedToken, withHfKey, signedFetch, refusedWords } from './hf-sign-in.js'; // Nov 22 2026 gated brains
-import { brainEngineBuild } from '../public/engine-name.js';
+import { lamplightBuild } from '../public/engine-name.js';
 
 const MODEL_EXT = new Set(['.gguf', '.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.sft']);
 const SKIP = new Set(['node_modules', '.git', '__pycache__', 'site-packages', 'venv', '.venv', 'env', 'cache', '.cache', 'Lib', 'include', 'temp', 'tmp', 'logs', 'blobs']);
@@ -211,16 +211,16 @@ export function rentAsOf(m) {
   return hit ? `${hit[1]}/${hit[2]}` : '';
 }
 
-// Nov 23 2026: a brain that only a newer Brain Engine runs (catalogue engineMin, the build number, e.g. 37 for Raon-1).
-// Read from the installed Brain Engine's own marker. '' when it's new enough, else plain words. Download still works,
+// Nov 23 2026: a brain that only a newer Lamplight runs (catalogue engineMin, the build number, e.g. 37 for Raon-1).
+// Read from the installed Lamplight's own marker. '' when it's new enough, else plain words. Download still works,
 // so the brain can come down while the engine update waits.
 export function engineShort(entry, { agentDir = '', read = fs.readFileSync } = {}) {
   const min = Number(entry?.engineMin) || 0;
   if (!min) return '';
   let n = 0;
-  try { n = brainEngineBuild(JSON.parse(read(path.join(agentDir, 'brain-engine', 'bob-brainengine.json'), 'utf8')).version)?.n || 0; } catch {}
+  try { n = lamplightBuild(JSON.parse(read(path.join(agentDir, 'brain-engine', 'bob-brainengine.json'), 'utf8')).version)?.n || 0; } catch {}
   if (n >= min) return '';
-  return `${entry.name} needs Brain Engine ${min} or newer${n ? ` (this replicant matrix has Brain Engine ${n})` : ' (this replicant matrix has none)'}. Settings, Engines, Brain Engine gets or updates it.`;
+  return `${entry.name} needs Lamplight ${min} or newer${n ? ` (this replicant matrix has Lamplight ${n})` : ' (this replicant matrix has none)'}. Settings, Engines, Lamplight gets or updates it.`;
 }
 
 export class ModelShop {
@@ -559,7 +559,7 @@ export class ModelShop {
   }
 
   // Native only by default: a brain with an Ollama name still downloads Bob's own pinned GGUF (checked against its
-  // sha256) for Brain Engine, even when Ollama happens to be running. Pulling through Ollama is the opt-in path,
+  // sha256) for Lamplight, even when Ollama happens to be running. Pulling through Ollama is the opt-in path,
   // only while Ollama is the engine written by hand into config.json.
   viaOllama(entry) { return Boolean(entry?.ollama) && this.cfg.engine === 'ollama'; }
 
@@ -577,7 +577,7 @@ export class ModelShop {
     const eid = eid0.replace(/@(?:newest|missing)$/, '');
     const hw = await this.hardware();
     // A newer llama.cpp can't overwrite files the running llama-server holds open: let go of it first.
-    if (['llamacpp', 'brainengine'].includes(eid) && this.engine?.stopServer) await this.engine.stopServer(); // 1.5.17x: Brain Engine too, now it runs the brains
+    if (['llamacpp', 'lamplight'].includes(eid) && this.engine?.stopServer) await this.engine.stopServer(); // 1.5.17x: Lamplight too, now it runs the brains
     const opts = { nvidia: /nvidia|geforce|rtx/i.test(hw.gpu?.name || ''), pub, signal, tick, newest };
     const r = missing ? await fetchMissing(this.cfg, eid, opts) : await installEngine(this.cfg, eid, opts);
     pub.note = `${r.asset} (${r.version})`;
@@ -848,14 +848,14 @@ export class ModelShop {
     for (const m of this.catalog.models) {
       if (!canHear(m)) continue;
       const loc = this.locate(m);
-      if (loc.gguf && loc.mmproj) opts.voice.unshift({ value: `be:${m.id}`, label: `${m.name} on Brain Engine (processor)` });
+      if (loc.gguf && loc.mmproj) opts.voice.unshift({ value: `be:${m.id}`, label: `${m.name} on Lamplight (processor)` });
     }
     if (ollamaOn(this.cfg) && (names.has(this.cfg.stt?.model || 'gemma4:e4b') || names.has('gemma4:e4b'))) opts.voice.push({ value: 'ollama:gemma4:e4b', label: 'Gemma 4 E4B through Ollama' });
     const p = this.cfg.painter || {};
     const imgNow = p.engine === 'comfy' ? (this.cfg.comfy?.workflowFile && fs.existsSync(this.cfg.comfy.workflowFile) ? 'comfy' : '') : this.catalog.models.find((m) => m.category === 'images' && m.use?.painter && p.sdcpp?.image?.diffusionModel && this.locate(m).diffusionModel === p.sdcpp.image.diffusionModel)?.id || '';
     const vidNow = this.catalog.models.find((m) => m.category === 'video' && p.sdcpp?.video?.diffusionModel && this.locate(m).diffusionModel === p.sdcpp.video.diffusionModel)?.id || '';
     const sp = sttProvider(this.cfg);
-    const sttNow = sp === 'whispercpp' ? this.catalog.models.find((m) => m.category === 'voice' && this.cfg.stt?.model && this.locate(m).model === this.cfg.stt.model)?.id || '' : sp === 'ollama' ? `ollama:${this.cfg.stt.model || 'gemma4:e4b'}` : sp === 'brainengine' ? (opts.voice.find((o) => o.value === `be:${this.cfg.stt?.provider === 'brainengine' && this.cfg.stt?.model || 'gemma4-e4b'}`)?.value || '') : '';
+    const sttNow = sp === 'whispercpp' ? this.catalog.models.find((m) => m.category === 'voice' && this.cfg.stt?.model && this.locate(m).model === this.cfg.stt.model)?.id || '' : sp === 'ollama' ? `ollama:${this.cfg.stt.model || 'gemma4:e4b'}` : sp === 'lamplight' ? (opts.voice.find((o) => o.value === `be:${this.cfg.stt?.provider === 'lamplight' && this.cfg.stt?.model || 'gemma4-e4b'}`)?.value || '') : '';
     const mz = this.cfg.maestro || {};
     const imgCur = p.engine === 'maestro' && mz.image ? `maestro:${mz.image}` : imgNow;
     const vidCur = mz.video ? `maestro:${mz.video}` : vidNow;
@@ -913,7 +913,7 @@ export class ModelShop {
     if (job === 'voice' && hearer) {
       const loc = this.locate(hearer);
       if (!loc.gguf || !loc.mmproj) throw new Error(`${hearer.name} isn't fully on this replicant matrix yet.`);
-      const patch = { stt: { provider: 'brainengine', model: hearer.id } }; saveSettings(this.cfg, patch); return patch;
+      const patch = { stt: { provider: 'lamplight', model: hearer.id } }; saveSettings(this.cfg, patch); return patch;
     }
     const entry = this.catalog.models.find((m) => m.id === value && (j.kind === 'edit' ? m.use?.painter?.sdcpp?.edit : m.category === j.kind && !m.use?.painter?.sdcpp?.edit));
     if (!entry) throw new Error('That model doesn\'t do this job.');

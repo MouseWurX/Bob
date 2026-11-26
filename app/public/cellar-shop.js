@@ -26,8 +26,8 @@ export function createShopParts(now) {
     if (eng.available === false) return `<p class="muted">${esc(what)}. ${esc(eng.note || `${eng.name} doesn't run on this replicant matrix yet.`)}</p>`;
     return `<div class="model engine-step"><p><strong>${esc(what)}. One more step:</strong> get the ${esc(eng.name)} engine${ENGINE_SIZE[eng.id] ? ` (${ENGINE_SIZE[eng.id]})` : ''}, which runs it.</p><button class="get" data-engine="${esc(eng.id)}">Get ${esc(eng.name)}</button><div class="confirm" hidden></div></div>`;
   }
-  // Nov 23 2026: a brain only a newer Brain Engine runs says so (models.js engineShort).
-  const newer = (s) => (s.engineWhy ? `<div class="muted"><span class="tag warn">needs a newer Brain Engine</span> ${esc(s.engineWhy)}</div>` : '');
+  // Nov 23 2026: a brain only a newer Lamplight runs says so (models.js engineShort).
+  const newer = (s) => (s.engineWhy ? `<div class="muted"><span class="tag warn">needs a newer Lamplight</span> ${esc(s.engineWhy)}</div>` : '');
   function action(m) {
     const s = m.status;
     if (live.has(m.id)) return progress(live.get(m.id));

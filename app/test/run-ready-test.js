@@ -174,21 +174,21 @@ const models = (here = []) => catalog.models.map((m) => ({ ...m, status: { state
   }
 }
 
-// ---------- 1.5.202: Brain Engine, not plain llama.cpp, where it has a build ----------
+// ---------- 1.5.202: Lamplight, not plain llama.cpp, where it has a build ----------
 {
-  const withBE = (be = {}) => [...engines(), { id: 'brainengine', name: 'Brain Engine', sizeGB: 0.7, installed: false, available: true, ...be }];
+  const withBE = (be = {}) => [...engines(), { id: 'lamplight', name: 'Lamplight', sizeGB: 0.7, installed: false, available: true, ...be }];
   const hw = { vramGB: 16, ramGB: 32, nvidia: true };
   const pack = packFor(catalog.packs, 16, false);
   const rows = readyList({ pack, models: models(), engines: withBE(), hw });
   const ids = rows.map((r) => r.id), picks = readyDefaults(rows);
-  check('Get me ready offers Brain Engine and ticks it', ids.includes('engine:brainengine') && picks.has('engine:brainengine'));
-  check('plain llama.cpp is not offered where Brain Engine has a build', !ids.includes('engine:llamacpp'), ids.join());
+  check('Get me ready offers Lamplight and ticks it', ids.includes('engine:lamplight') && picks.has('engine:lamplight'));
+  check('plain llama.cpp is not offered where Lamplight has a build', !ids.includes('engine:llamacpp'), ids.join());
   check('whisper.cpp (ears) and the picture engine stay', picks.has('engine:whispercpp') && picks.has('engine:sdcpp'));
   check('the bundled llama.cpp is not swapped for an NVIDIA one either', !rows.some((r) => r.swap) && !readyOrder(rows, picks).ids.includes('engine:llamacpp'));
   const mac = readyList({ pack, models: models(), engines: withBE({ available: false }), hw: { vramGB: 16, ramGB: 32 } });
-  check('no Brain Engine build (Mac, ARM): llama.cpp as before', mac.some((r) => r.id === 'engine:llamacpp') && !mac.some((r) => r.id === 'engine:brainengine'));
-  check('core list', coreEngines(withBE()).join() === 'brainengine,sdcpp,whispercpp' && coreEngines(engines()).join() === 'llamacpp,sdcpp,whispercpp');
-  check('the starter plan uses Brain Engine too', readyPlan(hw, models(), withBE({}).map((e) => (e.id === 'llamacpp' ? { ...e, installed: true, bundled: true } : e))).ids.every((id) => id !== 'engine:llamacpp'));
+  check('no Lamplight build (Mac, ARM): llama.cpp as before', mac.some((r) => r.id === 'engine:llamacpp') && !mac.some((r) => r.id === 'engine:lamplight'));
+  check('core list', coreEngines(withBE()).join() === 'lamplight,sdcpp,whispercpp' && coreEngines(engines()).join() === 'llamacpp,sdcpp,whispercpp');
+  check('the starter plan uses Lamplight too', readyPlan(hw, models(), withBE({}).map((e) => (e.id === 'llamacpp' ? { ...e, installed: true, bundled: true } : e))).ids.every((id) => id !== 'engine:llamacpp'));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

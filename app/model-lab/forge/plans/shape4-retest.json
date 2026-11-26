@@ -23,7 +23,7 @@
  "benchmark": {
   "note": "Riker then Bobert, stock, on Bob's tool shape 4 (TOOL_SHAPES 4, commit be54a8c or later): the same tool-wording (bob variant) and tool-coach jobs as riker-tools / bobert-tools, thinking off only, so the first-try and after-hints numbers compare with theirs. Run from the PC lab folder: tool-wording and tool-coach come from the shape-4 copy (bob-shape4-retest-src two folders up, 54c0860 or later) with --family, so each brain gets its family's tool set (Qwen: no ask_specialist or pick_session) as Bob does live; the lab's own bob-kit didn't pass the family before. Smoke steps first (--gate: a miss exits 86 and the pod is deleted).",
   "hours_each": 1.6,
-  "brain_engine": {
+  "lamplight": {
    "ref": "fcdf3955ed6966c102f43d49528174cabd52d825",
    "patches": [
     "0001-expert-mask",
@@ -40,7 +40,7 @@
     "0012-load-progress",
     "0013-experts-per-word"
    ],
-   "note": "Brain Engine 7b12282 (live experts per word, mask, dials, expert trace with mass)"
+   "note": "Lamplight 7b12282 (live experts per word, mask, dials, expert trace with mass)"
   },
   "models": [
    {

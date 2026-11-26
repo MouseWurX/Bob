@@ -247,7 +247,7 @@ export function cutEffect(rec, off) {
 // The cut as the engine takes it: the experts kept on each floor.
 export const keepList = (rec, off) => off.map((s) => { const k = []; for (let e = 0; e < rec.brain.experts; e++) if (!s.has(e)) k.push(e); return k; });
 
-// The small cube in Bob's thinking. liveTrace: one reply's trace from Brain Engine, cut down to what the cube plays
+// The small cube in Bob's thinking. liveTrace: one reply's trace from Lamplight, cut down to what the cube plays
 // (the end of what Bob read, then everything he wrote), so a long chat doesn't send megabytes to the page.
 export const LIVE_PROMPT = 32, LIVE_WORDS = 400, LIVE_CLIPS = 6;
 export function liveTrace(raw, { keepPrompt = LIVE_PROMPT, max = LIVE_WORDS } = {}) {
@@ -258,7 +258,7 @@ export function liveTrace(raw, { keepPrompt = LIVE_PROMPT, max = LIVE_WORDS } = 
   return { kind: raw.kind === 'neurons' ? 'neurons' : 'experts', experts: Number(raw.n_expert) || 0, layers: Number(raw.n_layer) || 0, used: Number(raw.n_expert_used) || 0, neurons: Number(raw.n_ff) || 0,
     prompt: Math.min(rows.length, P - from), words: rows.map((r) => String(r?.t ?? '').slice(0, 80)), e: rows.map((r) => (Array.isArray(r?.e) ? r.e : [])), last: String(raw.last ?? '').slice(0, 80) };
 }
-// 1.5.210 Real experts, live: a piece of the trace as Brain Engine streams it (Brain Engine 5 and later), the rows read
+// 1.5.210 Real experts, live: a piece of the trace as Lamplight streams it (Lamplight 5 and later), the rows read
 // since the last piece. A long prompt comes in one big piece; only its last LIVE_PROMPT rows are kept, as the cube
 // only has time to show those. null when the piece is empty or not a trace.
 export function liveTracePart(raw, { keep = LIVE_PROMPT } = {}) {
@@ -428,14 +428,14 @@ export function loadOrder(style, { W, D, floors, seed = 1 }) {
 // ---- Dials: turn a part of the brain up or down ----
 // A dial multiplies what one part adds: one expert or one attention head on a floor, a floor's whole attention, or a
 // floor's whole feed-forward block (its experts together). 1 is as built, 0 is silent, 2 is twice as loud. It's the
-// same as scaling that part's output weights, done live in Brain Engine: the brain's file is never changed.
+// same as scaling that part's output weights, done live in Lamplight: the brain's file is never changed.
 // A dial: { kind: 'expert' | 'head' | 'attn' | 'ffn', layer, index (expert or head number; 0 for the floor kinds), scale }.
 export const DIAL_KINDS = ['expert', 'head', 'attn', 'ffn'];
 export const DIAL_MAX = 4, MAX_DIALS = 20000;
 export const dialKey = (d) => `${d.kind}:${d.layer}:${d.kind === 'expert' || d.kind === 'head' ? d.index : 0}`;
 export const dialScale = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.round(Math.max(0, Math.min(DIAL_MAX, n)) * 100) / 100 : 1; };
 // Checked and tidied: known kinds, whole numbers in range, one dial for each part (the last one wins), nothing left
-// at 1. `experts` 0 = the brain has none, so expert dials are refused; head numbers are checked by Brain Engine,
+// at 1. `experts` 0 = the brain has none, so expert dials are refused; head numbers are checked by Lamplight,
 // which knows how many heads each layer has.
 export function cleanDials(list, { experts = 0, layers = 0 } = {}) {
   if (!Array.isArray(list)) throw new Error('Dials come as a list.');

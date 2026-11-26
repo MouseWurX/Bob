@@ -1,4 +1,4 @@
-// 1.5.203 (PC test): Windows Smart App Control blocked Brain Engine 3's unsigned files. spawn() threw at once
+// 1.5.203 (PC test): Windows Smart App Control blocked Lamplight 3's unsigned files. spawn() threw at once
 // (code UNKNOWN, errno -4094, syscall spawn), every brain failed to wake, and Bob didn't go back on his own. Now he
 // goes back to the build kept from before the update by himself, says so once, remembers it (no retry on every load,
 // no fetching the same build again) and offers Try again in Settings, Engines. Fake folders and a faked spawn error
@@ -19,7 +19,7 @@ const check = (ok, name) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`); i
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\r\n/g, '\n');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-blocked-'));
-const BE = engineFor(ENGINES.find((e) => e.id === 'brainengine'));
+const BE = engineFor(ENGINES.find((e) => e.id === 'lamplight'));
 const put = (dir, version, at = new Date().toISOString()) => { const d = path.join(tmp, dir); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, BE.exe), version); fs.writeFileSync(path.join(d, 'bob-brainengine.json'), JSON.stringify({ version, print: 'sha256:' + version, at })); };
 const cfg = { agentDir: tmp };
 const exe = path.join(tmp, 'brain-engine', BE.exe);
@@ -30,7 +30,7 @@ check(windowsBlocked(sac), 'spawn UNKNOWN (errno -4094) counts as Windows blocki
 check(windowsBlocked(new Error('An Application Control policy has blocked this file.')), 'so does "An Application Control policy has blocked this file"');
 check(windowsBlocked(Object.assign(new Error('x'), { errno: 4551 })), 'and error 4551');
 check(!windowsBlocked(Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT', syscall: 'spawn' })), 'a missing program is not "blocked"');
-check(engineOf(cfg, exe) === 'brainengine' && engineOf(cfg, path.join(tmp, 'elsewhere', 'x.exe')) === '', 'the program is told apart as Brain Engine\'s');
+check(engineOf(cfg, exe) === 'lamplight' && engineOf(cfg, path.join(tmp, 'elsewhere', 'x.exe')) === '', 'the program is told apart as Lamplight\'s');
 check(buildWords('brain-engine-v3') === 'version 3' && /llama\.cpp b12282/.test(buildWords('brain-engine-b12282')), 'builds are named in plain words');
 
 // safeSpawn: a throw comes back as an 'error' event, like a missing program.
@@ -51,9 +51,9 @@ const back = fallBackIfBlocked(cfg, exe, sac);
 check(back && back.windows && back.version === 'brain-engine-v3' && back.previous === 'brain-engine-b12282', 'Windows blocking the new engine: Bob goes back to the one before by himself');
 check(installedMarker(cfg, BE)?.version === 'brain-engine-b12282' && installedMarker(cfg, BE, path.join(tmp, 'brain-engine.previous'))?.version === 'brain-engine-v3', 'the old build is in use again, and the blocked one is kept for Try again');
 check(told.length === 1 && /Windows blocked my new engine \(version 3\)/.test(told[0]) && /Smart App Control/.test(told[0]) && /Try again in Settings, Engines/.test(told[0]), 'he says so once, in plain words, with why and where Try again is');
-check(engineBlocked(cfg, 'brainengine')?.version === 'brain-engine-v3', 'he remembers it');
+check(engineBlocked(cfg, 'lamplight')?.version === 'brain-engine-v3', 'he remembers it');
 check(fallBackIfBlocked(cfg, exe, sac) === null && installedMarker(cfg, BE)?.version === 'brain-engine-b12282' && told.length === 1, 'a second failure doesn\'t swap back again or say it twice');
-const st = engineStatus(cfg).find((e) => e.id === 'brainengine');
+const st = engineStatus(cfg).find((e) => e.id === 'lamplight');
 check(st.blocked && st.blocked.windows && st.blocked.version === 'brain-engine-v3', 'Settings, Engines sees the blocked build');
 
 // The update with Bob doesn't fetch the blocked build again.
@@ -65,7 +65,7 @@ check(st.blocked && st.blocked.windows && st.blocked.version === 'brain-engine-v
 }
 
 // Try again: Go back swaps them, and the record goes.
-goBackEngine(cfg, 'brainengine');
+goBackEngine(cfg, 'lamplight');
 check(installedMarker(cfg, BE)?.version === 'brain-engine-v3' && !engineBlocked(cfg), 'Try again puts the new build back in and forgets the block');
 off();
 
@@ -76,7 +76,7 @@ off();
   const other = Object.assign(new Error('spawn EACCES'), { code: 'EACCES', syscall: 'spawn' });
   const r = fallBackIfBlocked(cfg, exe, other);
   check(r && !r.windows && /wouldn't start \(spawn EACCES\)/.test(blockedSay(r)), 'a start that fails right after an update goes back too, and says why');
-  goBackEngine(cfg, 'brainengine');
+  goBackEngine(cfg, 'lamplight');
   fs.rmSync(path.join(tmp, 'brain-engine'), { recursive: true, force: true });
   put('brain-engine', 'brain-engine-v3', new Date(Date.now() - 5 * 864e5).toISOString());
   check(fallBackIfBlocked(cfg, exe, other) === null && installedMarker(cfg, BE)?.version === 'brain-engine-v3', 'an engine updated days ago that fails for another reason is left alone');
@@ -88,19 +88,19 @@ off();
 {
   fs.rmSync(path.join(tmp, 'brain-engine'), { recursive: true, force: true }); fs.rmSync(path.join(tmp, 'brain-engine.previous'), { recursive: true, force: true });
   put('brain-engine', 'brain-engine-v3'); put('brain-engine.previous', 'brain-engine-b12282');
-  goBackEngine(cfg, 'brainengine');
-  const rec = engineBlocked(cfg, 'brainengine');
+  goBackEngine(cfg, 'lamplight');
+  const rec = engineBlocked(cfg, 'lamplight');
   check(installedMarker(cfg, BE)?.version === 'brain-engine-b12282' && rec?.manual === true && rec.version === 'brain-engine-v3' && rec.windows === false, 'Go back by hand keeps a note of the build it left');
-  check(engineStatus(cfg).find((e) => e.id === 'brainengine').blocked?.manual === true, '...and Settings, Engines knows it was by hand');
+  check(engineStatus(cfg).find((e) => e.id === 'lamplight').blocked?.manual === true, '...and Settings, Engines knows it was by hand');
   let asked = 0;
   const same = new EngineKeeper(cfg, { pin: { tag: 'brain-engine-v3', print: 'sha256:brain-engine-v3' }, check: async () => { asked++; return { latest: 'brain-engine-v3', print: 'sha256:brain-engine-v3' }; } });
   check(await same.withBob() === null && asked === 0, 'the next start doesn\'t fetch the build you went back from');
   const newer = new EngineKeeper(cfg, { pin: { tag: 'brain-engine-v4', print: 'sha256:brain-engine-v4' }, check: async () => { asked++; return null; } });
   await newer.withBob();
-  // Brain Engine isn't kept up to date where it has no build (a Mac, ARM): nothing is checked there either way.
-  const beHere = keeperCandidates(cfg).some((x) => x.id === 'brainengine');
+  // Lamplight isn't kept up to date where it has no build (a Mac, ARM): nothing is checked there either way.
+  const beHere = keeperCandidates(cfg).some((x) => x.id === 'lamplight');
   check(asked === (beHere ? 1 : 0), 'a new Bob with a newer pin checks again');
-  goBackEngine(cfg, 'brainengine');
+  goBackEngine(cfg, 'lamplight');
   check(installedMarker(cfg, BE)?.version === 'brain-engine-v3' && !engineBlocked(cfg), 'Try again puts it back and ends the hold');
   check(/e\.blocked\?\.manual \? `<div class="engine-held" role="status"><p><strong>You went back to the previous build<\/strong>/.test(publicText('cellar.js')), 'Settings says you went back by hand, with Try again');
 }

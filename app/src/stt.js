@@ -2,7 +2,7 @@
 // Nov 16 2026 (the owner: "by default i want bob to only use the things that are native to him"):
 // Default ("whispercpp", the owner's pick on Nov 16): whisper.cpp's whisper-cli with a Whisper model from Get models
 // (Whisper base in every starter set), on the processor.
-// Also Bob's own: his engine hears you with Gemma 4 E4B on the processor (provider "brainengine", src/hearing.js). It's
+// Also Bob's own: his engine hears you with Gemma 4 E4B on the processor (provider "lamplight", src/hearing.js). It's
 // the default on a Mac, where whisper.cpp has no build.
 // Opt-in only: Ollama (provider "ollama", needs "Use Ollama too" in Settings, Engines; src/ollama-optin.js), and any
 // OpenAI-compatible /audio/transcriptions address written into config.json by hand (provider "http").
@@ -21,12 +21,12 @@ const PROMPT = 'Transcribe this audio exactly as spoken, in English. Reply with 
 const NO_EARS = 'I have no ears yet. Pick a "Hearing you" model in Get models (left menu).';
 
 // The way Bob hears when nothing else is picked: whisper.cpp, or his own engine on a Mac (no whisper.cpp build there).
-export const defaultStt = (platform = process.platform) => (platform === 'darwin' ? 'brainengine' : 'whispercpp');
+export const defaultStt = (platform = process.platform) => (platform === 'darwin' ? 'lamplight' : 'whispercpp');
 // The way Bob hears on this PC. Ollama counts only while it's switched on; otherwise the default.
 export function sttProvider(cfg, platform = process.platform) {
   const p = cfg?.stt?.provider || defaultStt(platform);
   if (p === 'ollama' && !ollamaOn(cfg)) return defaultStt(platform);
-  return ['brainengine', 'whispercpp', 'http', 'ollama'].includes(p) ? p : defaultStt(platform);
+  return ['lamplight', 'whispercpp', 'http', 'ollama'].includes(p) ? p : defaultStt(platform);
 }
 
 export async function transcribe(cfg, wav, { ears, platform } = {}) {
@@ -36,7 +36,7 @@ export async function transcribe(cfg, wav, { ears, platform } = {}) {
   if (gaming(cfg)) throw new Error(PAUSED_IN_GAMING);
   if (provider === 'whispercpp') return viaWhisperCpp(cfg, stt, wav);
   if (provider === 'ollama') return viaOllama(cfg, stt, wav);
-  const model = stt.provider === 'brainengine' && stt.model ? stt.model : HEAR_MODEL;
+  const model = stt.provider === 'lamplight' && stt.model ? stt.model : HEAR_MODEL;
   return clean(await (ears || earsFor(cfg)).hear(wav, { model, language: stt.language || 'en' }));
 }
 

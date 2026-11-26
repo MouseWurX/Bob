@@ -120,12 +120,12 @@ export function meanwhileNear(list, line) {
   return at < 0 ? [...list, note] : [...list.slice(0, at), note, ...list.slice(at)];
 }
 // The engine's name for Health and errors. 1.5.207 PC check: Health said "llama.cpp answers." while Bob ran his own
-// Brain Engine (the same rule as engines.js engineNameOf).
+// Lamplight (the same rule as engines.js engineNameOf).
 export function engineLabel(cfg) {
   if (cfg.engine !== 'llamacpp') return 'Ollama';
   if (!cfg.agentDir || !cfg.llamacpp?.exe) return 'llama.cpp';
   const r = path.relative(path.join(cfg.agentDir, 'brain-engine'), path.dirname(cfg.llamacpp.exe));
-  return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)) ? 'Brain Engine' : 'llama.cpp';
+  return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)) ? 'Lamplight' : 'llama.cpp';
 }
 // The same page, however it is written: no scheme or trailing slash, host in lower case, no #part.
 export function linkKey(u) {

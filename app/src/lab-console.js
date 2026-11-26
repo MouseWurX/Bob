@@ -405,14 +405,14 @@ export class LabConsole {
     this.saveSetup({ ctx: Number(ctx), cpuOk: cpuOk !== false });
     return this.load([b.id, '--ctx', String(this.setup.ctx), ...(unload ? ['--unload'] : [])], { engine: LAB_ENGINES.includes(engine) ? engine : '', cpuOk: this.setup.cpuOk });
   }
-  // Which engine a load uses: '' = the one Bob's brains use, brainengine, llamacpp (Settings > Engines has them).
+  // Which engine a load uses: '' = the one Bob's brains use, lamplight, llamacpp (Settings > Engines has them).
   engineExe(engine = '') {
     if (!engine) return this.lab.tools?.().server;
     const n = this.platform === 'win32' ? 'llama-server.exe' : 'llama-server';
     for (const d of labEngineDirs({ ...this.cfg, labEngine: engine })) { const p = path.join(d, n); if (fs.existsSync(p)) return { path: p, found: true }; }
     return { path: '', found: false };
   }
-  engines() { return [['', 'The one Bob\'s brains use'], ['brainengine', 'Brain Engine'], ['llamacpp', 'Plain llama.cpp']].map(([id, name]) => { let found = false; try { found = Boolean(this.engineExe(id)?.found); } catch {} return { id, name, found }; }); }
+  engines() { return [['', 'The one Bob\'s brains use'], ['lamplight', 'Lamplight'], ['llamacpp', 'Plain llama.cpp']].map(([id, name]) => { let found = false; try { found = Boolean(this.engineExe(id)?.found); } catch {} return { id, name, found }; }); }
   async load(words, { engine = '', cpuOk = true } = {}) {
     if (this.server || this.loading) throw new Error(`${(this.server || this.loading).brain} is loaded. Type unload first.`);
     const unload = words.includes('--unload');
@@ -734,11 +734,11 @@ export function rentalChoices(dir) {
     for (const m of plan.benchmark?.models || []) if (HF_GGUF.test(m.file || '') && !seen.has(m.file)) { seen.add(m.file); brains.push({ file: m.file, name: String(m.name || '').slice(0, 40), nickname: String(m.nickname || '').slice(0, 60) }); }
     for (const g of [...(plan.gpus || []), ...(plan.step_up || [])]) if (CARD_RE.test(g) && !cards.includes(g)) cards.push(g);
   }
-  const be = plans.filter((x) => x.plan.benchmark?.brain_engine?.ref).sort((a, b) => b.m - a.m)[0];
+  const be = plans.filter((x) => x.plan.benchmark?.lamplight?.ref).sort((a, b) => b.m - a.m)[0];
   const usual = (plans.find((x) => x.id === 'bench-bobert')?.plan.gpus || cards.slice(0, 4)).filter((g) => cards.includes(g));
   return {
     brains, cards, usual,
-    engines: [...(be ? [{ id: 'brainengine', name: 'Brain Engine (Bob\'s patches)', from: be.id }] : []), { id: 'plain', name: 'Plain llama.cpp' }],
+    engines: [...(be ? [{ id: 'lamplight', name: 'Lamplight (Bob\'s patches)', from: be.id }] : []), { id: 'plain', name: 'Plain llama.cpp' }],
     plans: plans.sort((a, b) => b.m - a.m).map(({ id, plan }) => ({ id, note: String(plan.note || '').slice(0, 300), hours: Number(plan.hours_max) || 0, dollars: Number(plan.dollars_max) || 0, cards: (plan.gpus || []).slice(0, 6) }))
   };
 }
@@ -782,7 +782,7 @@ export function makeRentalPlan(form = {}, { dir = '', door = '', labPlans = '' }
     benchmark: {
       hours_each: hours, models: [{ name, ...(known?.nickname ? { nickname: known.nickname } : {}), file, ctx, slots }],
       commands: [`node lab-door.mjs --file "${String(door).replace(/"/g, '')}" --hours ${hours}`],
-      ...(from ? { brain_engine: { ref: from.benchmark.brain_engine.ref, patches: (from.benchmark.brain_engine.patches || []).filter((x) => !String(x).startsWith('pod:')) } } : {})
+      ...(from ? { lamplight: { ref: from.benchmark.lamplight.ref, patches: (from.benchmark.lamplight.patches || []).filter((x) => !String(x).startsWith('pod:')) } } : {})
     }
   };
   fs.mkdirSync(labPlans, { recursive: true });

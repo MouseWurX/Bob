@@ -1,4 +1,4 @@
-// Turbo: stand-ins (Brain Engine 0043, src/engine-extras.js turboStandins; off unless switched on, and only with Turbo):
+// Turbo: stand-ins (Lamplight 0043, src/engine-extras.js turboStandins; off unless switched on, and only with Turbo):
 // the switch, the engine keys, where they're set, and the Settings, Help, FAQ and glossary. Nothing reads the computer.
 import fs from 'node:fs';
 import path from 'node:path';

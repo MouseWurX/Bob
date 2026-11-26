@@ -30,7 +30,7 @@ import { cleanBackup } from './backup-settings.js'; // Back up and move
 import { applyWaitingRestore } from './backup-apply.js';
 import { openBox, useBox, lockOn, mapSecrets, plainCount, writeSecretJson, openCopy, useKeysFile, memoryKeeper, IN_TEST, ensureBox } from './secret-box.js';
 import { HARNESS_KEYS, cleanHarness } from './harness.js'; // items 62 to 72
-import { cleanPerWordMap } from './experts-per-word.js'; // Brain Engine 0013
+import { cleanPerWordMap } from './experts-per-word.js'; // Lamplight 0013
 import { cleanPrivateWeb } from './private-web.js'; // Nov 16: Private web, off unless turned on
 import { cleanTraceLog } from './trace-log.js'; // Nov 16: Monitoring log, off unless turned on
 import { cleanSearchBackup } from './web-search.js'; // Nov 16: backup search with a key, off unless turned on
@@ -78,6 +78,7 @@ export function loadConfig() {
   if (!process.env.BOB_CONFIG && !fs.existsSync(file)) fs.copyFileSync(path.join(appDir, 'config.example.json'), file);
   const cfg = readJsonFile(file);
   const asRead = structuredClone(cfg); // config.json as it is on disk, for locking any plain secrets in it (below)
+  oldEngineNames(cfg); // Nov 26 2026: Brain Engine is called Lamplight now; a config.json from before still reads the same
   cfg.configFile = file;
   if (process.env.BOB_AGENT_DIR) cfg.agentDir = process.env.BOB_AGENT_DIR;
   if (process.env.BOB_OLLAMA_URL) cfg.ollamaUrl = process.env.BOB_OLLAMA_URL;
@@ -94,7 +95,7 @@ export function loadConfig() {
   // Engine programs: zips differ (some put them in bin\ or Release\), so look in each likely place.
   cfg.painter.sdcpp.exe = findExe(cfg.painter.sdcpp.exe, path.join(cfg.agentDir, 'sd.cpp'), [exeName('sd-cli'), exeName('sd')]);
   cfg.llamacpp = cfg.llamacpp || {};
-  cfg.llamacpp.exe = pickLlamaExe(cfg.llamacpp.exe, cfg.agentDir, { brainEngine: cfg.llamacpp.brainEngine });
+  cfg.llamacpp.exe = pickLlamaExe(cfg.llamacpp.exe, cfg.agentDir, { lamplight: cfg.llamacpp.lamplight });
   if (cfg.stt?.provider === 'whispercpp') cfg.stt.exe = findExe(cfg.stt.exe, path.join(cfg.agentDir, 'whisper.cpp'), [exeName('whisper-cli')]);
   cfg.tts = cfg.tts || {};
   cfg.tts.exe = findExe(cfg.tts.exe, path.join(cfg.agentDir, 'piper'), [exeName('piper')]);
@@ -151,13 +152,14 @@ export function loadConfig() {
     console.error(`config.json asks for a ${cfg.llamacpp.legacyCtx}-token context for every brain; using each session's own size instead (pick one in Settings, Brains to override).`);
   }
   cfg.settingsFile = path.join(cfg.dataDir, 'settings.json');
-  const hand = { engine: cfg.engine, brainEngine: cfg.llamacpp?.brainEngine }; // what config.json itself says
+  const hand = { engine: cfg.engine, lamplight: cfg.llamacpp?.lamplight }; // what config.json itself says
   // Items 233 and 234: a settings.json that won't read is kept aside (settings.json.broken-<time>) and Bob starts from
   // his defaults, instead of reading it as empty and writing over it at the next change. A saved value of the wrong
   // kind (words where a switch belongs) goes back to its default, and the logbook says which (cfg.settingsFixed).
   {
     const notes = (cfg.saveNotes ||= []);
     const saved = readSaved(cfg.settingsFile, {}, { check: (v) => v && typeof v === 'object' && !Array.isArray(v), log: (t) => notes.push(t) });
+    if (oldEngineNames(saved)) { try { writeJsonAtomic(cfg.settingsFile, saved, 2); } catch {} notes.push('Settings that named Brain Engine now name Lamplight, its new name'); }
     const { kept, fixed } = checkSettings(cfg, saved);
     cfg.settingsFixed = fixed;
     if (fixed.length) { try { writeJsonAtomic(cfg.settingsFile, kept, 2); } catch {} } // fixed once, not at every start
@@ -180,16 +182,16 @@ export function loadConfig() {
       let gemma = false;
       try { const f = catalogFileFor(cfg, 'gemma4-e4b'); gemma = Boolean(f?.gguf && f?.mmproj); } catch {}
       const stt = nativeHearing(cfg, { gemma });
-      if (stt) { saveSettings(cfg, { stt }); notes.push(`Hearing you moved from Ollama to ${stt.provider === 'brainengine' ? 'my own engine (Gemma 4 E4B on the processor)' : stt.model ? 'whisper.cpp (Whisper)' : 'whisper.cpp; get Whisper base in Get models, Hearing you'}. Ollama is off unless you switch on "Use Ollama too" in Settings, Engines`); }
+      if (stt) { saveSettings(cfg, { stt }); notes.push(`Hearing you moved from Ollama to ${stt.provider === 'lamplight' ? 'my own engine (Gemma 4 E4B on the processor)' : stt.model ? 'whisper.cpp (Whisper)' : 'whisper.cpp; get Whisper base in Get models, Hearing you'}. Ollama is off unless you switch on "Use Ollama too" in Settings, Engines`); }
     }
   }
   // Nov 14 2026 (the owner: "existing installs get converted"): Moondust, the old starting theme, becomes the Mercury
   // lamp once, on the first start after the update. Any other theme is left alone; Moondust can still be picked again.
   { const moved = lampMove(cfg.style); if (moved) { cfg.style = moved; try { saveSettings(cfg, { style: moved }); } catch {} } }
-  // 1.5.196: Brain Engine is the only engine for Bob's brains (onlyBrainEngine, below). An older pick of plain llama.cpp
+  // 1.5.196: Lamplight is the only engine for Bob's brains (onlyLamplight, below). An older pick of plain llama.cpp
   // or Ollama in Settings is set aside here, after settings.json, and the program is picked again with that.
-  cfg.engineMoved = onlyBrainEngine(cfg, { hand });
-  if (cfg.engineMoved.length) cfg.llamacpp.exe = pickLlamaExe(cfg.llamacpp.exe, cfg.agentDir, { brainEngine: cfg.llamacpp.brainEngine });
+  cfg.engineMoved = onlyLamplight(cfg, { hand });
+  if (cfg.engineMoved.length) cfg.llamacpp.exe = pickLlamaExe(cfg.llamacpp.exe, cfg.agentDir, { lamplight: cfg.llamacpp.lamplight });
   // "What should Bob call you?" (Attributes, first-run). Kept in inn\bob\settings.json, never in config.json.
   if (cfg.callMe) cfg.userName = cfg.callMe;
   cfg.autostart = cfg.autostart === true; // opt-in: off unless the user turned it on
@@ -222,17 +224,31 @@ export const readConfigFile = (cfg) => openCopy(readJsonFile(cfg.configFile), en
 export const writeConfigFile = (cfg, raw) => writeSecretJson(cfg, cfg.configFile, raw, 2);
 
 // The configured program if it exists; otherwise the first match in the engine folder, its bin\ or Release\ subfolder.
-// 1.5.169: Brain Engine (Bob's fork of llama.cpp, Settings > Engines) is the default engine for brains. When its
+// Nov 26 2026 (the owner): Brain Engine is called Lamplight now. Settings saved before then used the old names:
+// llamacpp.brainEngine (now llamacpp.lamplight), and the engine id 'brainengine' (now 'lamplight') as the Lab's engine
+// or the Hearing you provider. They move over once, in place; true when anything moved. The engine's folder
+// (brain-engine) and its marker (bob-brainengine.json) keep their names, so an installed engine isn't moved.
+export function oldEngineNames(c) {
+  if (!c || typeof c !== 'object') return false;
+  let moved = false;
+  const lc = c.llamacpp;
+  if (lc && typeof lc === 'object' && 'brainEngine' in lc) { if (!('lamplight' in lc)) lc.lamplight = lc.brainEngine; delete lc.brainEngine; moved = true; }
+  if (c.labEngine === 'brainengine') { c.labEngine = 'lamplight'; moved = true; }
+  if (c.stt && typeof c.stt === 'object' && c.stt.provider === 'brainengine') { c.stt.provider = 'lamplight'; moved = true; }
+  return moved;
+}
+
+// 1.5.169: Lamplight (Bob's fork of llama.cpp, Settings > Engines) is the default engine for brains. When its
 // folder holds llama-server, Bob runs his brains on it, unless Settings, Engines says plain llama.cpp
-// (llamacpp.brainEngine false). A llama-server set by hand somewhere else always wins; one set to Bob's own llama.cpp
-// folder counts as the default. No Brain Engine (a Mac, an ARM board, not downloaded): llama.cpp as before.
-export function pickLlamaExe(configured, agentDir, { brainEngine, platform = process.platform, exists = fs.existsSync } = {}) {
+// (llamacpp.lamplight false). A llama-server set by hand somewhere else always wins; one set to Bob's own llama.cpp
+// folder counts as the default. No Lamplight (a Mac, an ARM board, not downloaded): llama.cpp as before.
+export function pickLlamaExe(configured, agentDir, { lamplight, platform = process.platform, exists = fs.existsSync } = {}) {
   const everyday = path.join(agentDir, 'llama.cpp'), be = path.join(agentDir, 'brain-engine');
   const within = (dir, p) => { const r = path.relative(dir, p); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };
   if (configured && exists(configured) && !within(everyday, configured) && !within(be, configured)) return configured;
   const name = platform === 'win32' ? 'llama-server.exe' : 'llama-server';
   const look = (dir, subs) => { for (const sub of subs) { const p = path.join(dir, sub, name); if (exists(p)) return p; } return null; };
-  if (brainEngine !== false) { const p = look(be, ['', 'bin']); if (p) return p; }
+  if (lamplight !== false) { const p = look(be, ['', 'bin']); if (p) return p; }
   if (configured && exists(configured) && within(everyday, configured)) return configured;
   const p = look(everyday, ['', 'bin', 'Release', path.join('build', 'bin')]);
   if (p) return p;
@@ -240,18 +256,18 @@ export function pickLlamaExe(configured, agentDir, { brainEngine, platform = pro
   return configured && !within(be, configured) ? configured : path.join(everyday, name);
 }
 
-// 1.5.196 (the owner, Nov 10: "Bob's Brain Engine should be the only engine", the others don't fit him any more).
-// Where Brain Engine has a build (Windows, x64 Linux), it is the only engine for Bob's brains: an old pick of plain llama.cpp
+// 1.5.196 (the owner, Nov 10: "Bob's Lamplight should be the only engine", the others don't fit him any more).
+// Where Lamplight has a build (Windows, x64 Linux), it is the only engine for Bob's brains: an old pick of plain llama.cpp
 // or Ollama moves to it. Where it has none yet (a Mac, an ARM board), Bob's own llama.cpp runs them until it does.
-// Ollama is never the brains' engine now. Until Brain Engine is downloaded, the llama.cpp already here stands in.
+// Ollama is never the brains' engine now. Until Lamplight is downloaded, the llama.cpp already here stands in.
 // Returns the engines moved away from, for the logbook.
-export const brainEngineBuilt = (platform = process.platform, arch = process.arch) => platform === 'win32' || (platform === 'linux' && arch === 'x64');
+export const lamplightBuilt = (platform = process.platform, arch = process.arch) => platform === 'win32' || (platform === 'linux' && arch === 'x64');
 // As with a llama-server set by hand, an engine written by hand into config.json itself still wins (hand).
-export function onlyBrainEngine(cfg, { platform, arch, hand = {} } = {}) {
+export function onlyLamplight(cfg, { platform, arch, hand = {} } = {}) {
   const moved = [];
   if (cfg.engine === 'ollama' && hand.engine !== 'ollama') { cfg.engine = 'llamacpp'; moved.push('Ollama'); }
   cfg.llamacpp = cfg.llamacpp || {};
-  if (brainEngineBuilt(platform, arch) && cfg.llamacpp.brainEngine === false && hand.brainEngine !== false) { cfg.llamacpp.brainEngine = true; moved.push('llama.cpp'); }
+  if (lamplightBuilt(platform, arch) && cfg.llamacpp.lamplight === false && hand.lamplight !== false) { cfg.llamacpp.lamplight = true; moved.push('llama.cpp'); }
   return moved;
 }
 
@@ -268,7 +284,7 @@ export function nativeHearing(cfg, { whisper, gemma, exists = fs.existsSync } = 
   const dir = cfg.bobModelsDir || path.join(cfg.agentDir || '', 'models', 'bob');
   const found = whisper !== undefined ? whisper : WHISPER_FILES.map((f) => path.join(dir, 'voice', f)).find((f) => exists(f) && !exists(f + '.part'));
   if (found) return { provider: 'whispercpp', model: found };
-  if (gemma) return { provider: 'brainengine', model: 'gemma4-e4b' };
+  if (gemma) return { provider: 'lamplight', model: 'gemma4-e4b' };
   return { provider: 'whispercpp' };
 }
 
@@ -315,6 +331,7 @@ function deepMerge(into, from) {
 }
 
 function clean(patch) {
+  if (patch && typeof patch === 'object') { patch = { ...patch }; for (const k of ['llamacpp', 'stt']) if (patch[k] && typeof patch[k] === 'object') patch[k] = { ...patch[k] }; oldEngineNames(patch); } // an older page or phone app may still send the old names
   const out = {};
   for (const k of SETTING_KEYS) if (k in (patch || {})) out[k] = patch[k];
   if (out.llamacpp) { out.llamacpp = cleanLlamacpp(out.llamacpp); for (const k of LOCKED_LLAMACPP) delete out.llamacpp[k]; }
@@ -355,7 +372,7 @@ function clean(patch) {
   if ('computerLab' in out) out.computerLab = out.computerLab !== false; // 1.5.172 "Show the Lab", on unless switched off (was off until 1.5.171)
   if ('labConsole' in out) out.labConsole = out.labConsole === true; // 15 Nov "Let the Lab run commands here", off unless switched on
   if ('labForgeStart' in out) out.labForgeStart = out.labForgeStart === true; // 1.5.160 "Let the Lab start Forge runs", off unless switched on
-  if ('labEngine' in out) out.labEngine = ['brainengine', 'llamacpp'].includes(out.labEngine) ? out.labEngine : ''; // 1.5.17x the Lab's engine: '' = the same as Bob's brains
+  if ('labEngine' in out) out.labEngine = ['lamplight', 'llamacpp'].includes(out.labEngine) ? out.labEngine : ''; // 1.5.17x the Lab's engine: '' = the same as Bob's brains
   if ('labExtras' in out) out.labExtras = Object.fromEntries(['hoverWords', 'tellPhone', 'saveQuestions'].map((k) => [k, out.labExtras?.[k] === true])); // Lab items 109, 110, 102: the Lab's three small switches, each off unless switched on
   if ('labRecheck' in out) out.labRecheck = out.labRecheck === true; // Nov 11 "Check my main brain after engine updates", off unless switched on
   if ('labPro' in out) out.labPro = out.labPro === true; // 1.5.168 the Lab's Professional mode: more controls on every tab; off = Keep it simple
@@ -522,8 +539,8 @@ function cleanLlamacpp(lc) {
   for (const k of ['threads', 'batch', 'ubatch', 'ctx']) if (k in out) out[k] = Number.isInteger(out[k]) && out[k] > 0 && out[k] <= 1048576 ? out[k] : null;
   if ('fit' in out) out.fit = typeof out.fit === 'boolean' ? out.fit : null;
   if ('noEyes' in out) out.noEyes = Array.isArray(out.noEyes) ? [...new Set(out.noEyes.filter((x) => typeof x === 'string' && /^[\w.:/-]{1,100}$/.test(x)))].slice(0, 200) : []; // Lab: brains loaded without their reader
-  if ('expertsPerWord' in out) out.expertsPerWord = cleanPerWordMap(out.expertsPerWord); // Brain Engine 0013: experts per word, per brain
-  if ('brainEngine' in out) out.brainEngine = out.brainEngine !== false; // 1.5.169: run brains on Brain Engine when it's here
+  if ('expertsPerWord' in out) out.expertsPerWord = cleanPerWordMap(out.expertsPerWord); // Lamplight 0013: experts per word, per brain
+  if ('lamplight' in out) out.lamplight = out.lamplight !== false; // 1.5.169: run brains on Lamplight when it's here
   if ('loadMode' in out) out.loadMode = out.loadMode === 'mmap' ? 'mmap' : 'auto'; // 1.5.90
   if ('draft' in out) {
     const d = out.draft || {};

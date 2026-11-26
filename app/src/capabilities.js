@@ -44,7 +44,7 @@ export function capabilities(cfg) {
   if (provider === 'whispercpp') hearing = exists(stt.exe || path.join(cfg.agentDir, 'whisper.cpp', exeName('whisper-cli'))) && exists(stt.model);
   else if (provider === 'http') hearing = Boolean(stt.url);
   else if (provider === 'ollama') hearing = ollamaOn(cfg) && ollamaHas(cfg, stt.model || 'gemma4:e4b');
-  else hearing = earsReady(cfg, stt.provider === 'brainengine' && stt.model ? stt.model : HEAR_MODEL);
+  else hearing = earsReady(cfg, stt.provider === 'lamplight' && stt.model ? stt.model : HEAR_MODEL);
 
   const p = cfg.painter || {};
   let pictures = false;

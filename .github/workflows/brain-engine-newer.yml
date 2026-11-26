@@ -1,10 +1,10 @@
-# Once a week: is there a newer llama.cpp, and do Brain Engine's patches go on it and build? (app/engine/try-newer.sh)
+# Once a week: is there a newer llama.cpp, and do Lamplight's patches go on it and build? (app/engine/try-newer.sh)
 # It never builds a release and never changes Bob. When the patches go on and the Linux build passes, it opens one
-# issue, "New Brain Engine ready on llama.cpp bNNNN - rebuild it?", with the moved patches attached as a download.
+# issue, "New Lamplight ready on llama.cpp bNNNN - rebuild it?", with the moved patches attached as a download.
 # The owner answers there (or in chat); moving Bob onto it is a normal change (app/engine/README.md).
 # A later week edits that same open issue instead of opening another, and a week when a patch needs a hand says so in
 # the same issue. The run itself stays green either way, so it never sends a failed-build email.
-name: Brain Engine newer llama.cpp check
+name: Lamplight newer llama.cpp check
 
 on:
   schedule:
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      issues: write # the one "new Brain Engine ready" issue
+      issues: write # the one "new Lamplight ready" issue
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Try the patches on the newest llama.cpp
@@ -41,7 +41,7 @@ jobs:
           set -e
           grep '^result' try.log | sed 's/^result\.\{0,1\}\([a-z]*\)=/\1=/; s/^=/result=/' >> "$GITHUB_OUTPUT"
           if [ "$code" != 0 ] && [ "$code" != 3 ] && [ "$code" != 4 ]; then echo "result=broken" >> "$GITHUB_OUTPUT"; fi
-      - name: Build it (Linux, the same settings as the Brain Engine build)
+      - name: Build it (Linux, the same settings as the Lamplight build)
         id: build
         if: steps.try.outputs.result == 'applied'
         continue-on-error: true
@@ -54,7 +54,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.try.outputs.result == 'applied'
         with:
-          name: brain-engine-patches-${{ steps.try.outputs.new }}
+          name: lamplight-patches-${{ steps.try.outputs.new }}
           path: try-newer/patches/
       - name: Tell the owner (one open issue, edited each week)
         continue-on-error: true # GitHub being busy must not turn the run red
@@ -70,28 +70,28 @@ jobs:
           RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           label=brain-engine-newer
-          gh label create "$label" --color 5319e7 --description "Weekly check: Brain Engine on a newer llama.cpp" -R "$GITHUB_REPOSITORY" 2>/dev/null || true
+          gh label create "$label" --color 5319e7 --description "Weekly check: Lamplight on a newer llama.cpp" -R "$GITHUB_REPOSITORY" 2>/dev/null || true
           if [ "$RESULT" = applied ] && [ "$BUILT" = success ]; then
-            title="New Brain Engine ready on llama.cpp $NEW - rebuild it?"
-            body="Brain Engine's patches go onto llama.cpp **$NEW** (Bob is on $OLD now) and the Linux build passed.
+            title="New Lamplight ready on llama.cpp $NEW - rebuild it?"
+            body="Lamplight's patches go onto llama.cpp **$NEW** (Bob is on $OLD now) and the Linux build passed.
 
           The moved patches are in the run's downloads: $RUN
 
-          Say **rebuild it** and Bob moves onto $NEW: the patches and \`bundledLlamaTag\` change, the Brain Engine build runs on Windows and Linux, then the PC test, then a Bob release with the new engine pinned. Nothing changes until then."
+          Say **rebuild it** and Bob moves onto $NEW: the patches and \`bundledLlamaTag\` change, the Lamplight build runs on Windows and Linux, then the PC test, then a Bob release with the new engine pinned. Nothing changes until then."
           elif [ "$RESULT" = applied ]; then
-            title="Brain Engine on llama.cpp $NEW: patches go on, the build needs a hand"
-            body="Brain Engine's patches go onto llama.cpp **$NEW** (Bob is on $OLD now), but the Linux build stopped. What it said: $RUN
+            title="Lamplight on llama.cpp $NEW: patches go on, the build needs a hand"
+            body="Lamplight's patches go onto llama.cpp **$NEW** (Bob is on $OLD now), but the Linux build stopped. What it said: $RUN
 
           Nothing changes in Bob. Next week's check tries the newest llama.cpp again."
           else
-            title="Brain Engine on llama.cpp $NEW: $PATCH needs a hand"
+            title="Lamplight on llama.cpp $NEW: $PATCH needs a hand"
             body="\`$PATCH\` doesn't go onto llama.cpp **$NEW** on its own (Bob is on $OLD now). Details: $RUN
 
           Nothing changes in Bob. Moving it over by hand is in app/engine/README.md."
           fi
           body="$body
 
-          _This issue is kept up to date by the weekly Brain Engine check. Close it when you're done with it._"
+          _This issue is kept up to date by the weekly Lamplight check. Close it when you're done with it._"
           n=$(gh issue list -R "$GITHUB_REPOSITORY" --label "$label" --state open --json number --jq '.[0].number // empty')
           if [ -n "$n" ]; then
             gh issue edit "$n" -R "$GITHUB_REPOSITORY" --title "$title" --body "$body"
@@ -103,7 +103,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo "### Brain Engine newer llama.cpp check"
+            echo "### Lamplight newer llama.cpp check"
             echo "- Bob is on: ${{ steps.try.outputs.old }}"
             echo "- Newest tried: ${{ steps.try.outputs.new }}"
             echo "- Patches: ${{ steps.try.outputs.result }} ${{ steps.try.outputs.patch }}"

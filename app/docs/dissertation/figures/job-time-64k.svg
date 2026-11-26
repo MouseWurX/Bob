@@ -26,5 +26,5 @@
 <text x='565.1' y='290.0' font-size='13' fill='#52514e' text-anchor='start'>70.2 s  (first word 36.8 s)</text>
 <text x='425.0' y='352.0' font-size='13' fill='#52514e' text-anchor='middle'>Seconds (shorter is better)</text>
 <text x='24.0' y='380.0' font-size='12' fill='#52514e' text-anchor='start'>Most of the gap comes from settings stock llama.cpp also accepts (the step, flash attention, the context cache),</text>
-<text x='24.0' y='398.0' font-size='12' fill='#52514e' text-anchor='start'>so this compares settings, not engines. Brain Engine 26, stock Qwen3.6 35B at Q4, 16 GB card.</text>
+<text x='24.0' y='398.0' font-size='12' fill='#52514e' text-anchor='start'>so this compares settings, not engines. Lamplight 26, stock Qwen3.6 35B at Q4, 16 GB card.</text>
 </svg>

@@ -2,7 +2,7 @@
 // output, so with max_tokens 1 the trace sees one token per lesson there (gpt-oss-120b: 400 picks against ~1.07M in every other
 // layer). Here every lesson is cut before its last assistant turn and the brain writes that turn (--gen tokens, temperature 0):
 // each generated token runs the last layer, so it gets real counts. The other layers keep the old scores.
-//   node reap-lastlayer.mjs --url <Brain Engine> --scores <old scores.json> --out <folder> [--lessons out/lessons] [--score 100]
+//   node reap-lastlayer.mjs --url <Lamplight> --scores <old scores.json> --out <folder> [--lessons out/lessons] [--score 100]
 //        [--gen 256] [--share 0.32] [--by mass]
 //        [--reasoning medium]  (gpt-oss reasoning level for the written answers; recorded in scores-v2.json)
 // Writes <out>/scores-v2.json (old scores, last layer replaced, marked last_layer_rescored), keep-<share>-v2.json,

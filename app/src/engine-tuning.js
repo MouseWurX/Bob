@@ -3,7 +3,7 @@
 // engine flags. Off unless "I'll set them myself" is picked: then a box that's filled wins over what Bob picks (the
 // calibration's recommendations, and later the conductor), and an empty box leaves that lever to Bob. Engine flags
 // typed by hand (Extra settings for one brain, or llamacpp.args) win over both.
-// Each lever is a flag llama-server knows, or a key Brain Engine reads at start (an older engine ignores keys it
+// Each lever is a flag llama-server knows, or a key Lamplight reads at start (an older engine ignores keys it
 // doesn't know, so nothing breaks: the lever just does nothing there).
 
 import fs from 'node:fs';
@@ -17,23 +17,23 @@ export const TUNING_FIELDS = [
   { k: 'learn', label: 'Learning cache (every N words)', env: 'LLAMA_MOE_CACHE_LEARN', min: 1, max: 4096, int: true, hint: 'with a processor share above 0' },
   { k: 'learnMargin', label: 'Learning margin', env: 'LLAMA_MOE_CACHE_LEARN_MARGIN', min: 1, max: 16, hint: 'how much busier an expert must be to come in' },
   { k: 'lookahead', label: 'Look ahead (experts a layer)', env: 'LLAMA_MOE_LOOKAHEAD', min: 1, max: 64, int: true, hint: 'with a processor share of 0' },
-  { k: 'doorbell', label: 'Card and processor at once (1 = on)', env: 'LLAMA_MOE_DOORBELL', min: 0, max: 1, int: true, hint: 'with a processor share above 0; Brain Engine 0042, CUDA cards only' },
+  { k: 'doorbell', label: 'Card and processor at once (1 = on)', env: 'LLAMA_MOE_DOORBELL', min: 0, max: 1, int: true, hint: 'with a processor share above 0; Lamplight 0042, CUDA cards only' },
   { k: 'cpuRead', label: 'Processor reads short prompts (up to N words)', env: 'LLAMA_MOE_CACHE_CPU_READ', min: 33, max: 16384, int: true, hint: 'changes answers slightly' },
   { k: 'lend', label: 'Lend the cache to long reads (over N words)', env: 'LLAMA_MOE_CACHE_LEND', min: 33, max: 16384, int: true, hint: 'below the reading step' },
   { k: 'draftGate', label: 'Pause guessing below (share kept)', env: 'LLAMA_SPEC_GATE', min: 0.01, max: 1, hint: 'for drafting, 0.3 pauses when under 30% of guesses are kept' },
-  // Nov 22, Brain Engine 30/31 (patches 0048-0051): each does nothing without a copy cache
-  { k: 'borrow', label: 'Long reads borrow the cache (1 = on)', env: 'LLAMA_MOE_CACHE_BORROW', min: 0, max: 1, int: true, hint: 'with a copy cache; Brain Engine 30 or newer' },
-  { k: 'shelf', label: 'Empty chat memory holds experts (1 = on)', env: 'LLAMA_MOE_CACHE_TAIL', min: 0, max: 1, int: true, hint: 'with a copy cache; Brain Engine 30 or newer' },
-  { k: 'drive', label: 'Read missed experts straight from the drive (1 = on)', env: 'LLAMA_MOE_DRIVE', min: 0, max: 1, int: true, hint: 'with a copy cache, for a brain bigger than RAM; Brain Engine 30 or newer' },
-  { k: 'ramCache', label: 'Keep missed experts in my own RAM (MB)', env: 'LLAMA_MOE_RAM_CACHE_MIB', min: 0, max: 262144, int: true, hint: 'with drive reading on, for a brain bigger than RAM; leave room for the RAM floor; Brain Engine 36 or newer' },
-  { k: 'cacheFill', label: 'Copy cache fills the free card memory (1 = on)', env: 'LLAMA_MOE_CACHE_FILL', min: 0, max: 1, int: true, hint: 'with a copy cache; keeps 512 MB of the card free; Brain Engine 36 or newer' },
-  { k: 'readInPlace', label: 'Long reads use the cached experts in place (0 = off)', env: 'LLAMA_MOE_CACHE_READ_IN_PLACE', min: 0, max: 1, int: true, hint: 'on unless 0; with a copy cache; frees card working memory and skips copies; Brain Engine 38 or newer' },
-  { k: 'readAhead', label: 'Long reads send the next layer ahead (0 = off)', env: 'LLAMA_MOE_CACHE_READ_AHEAD', min: 0, max: 1, int: true, hint: 'on unless 0 from Brain Engine 40; with in-place long reads; the next layer\'s missing experts go up while this one works; not with drive reading; Brain Engine 38 or newer' },
-  { k: 'borrowAllGroups', label: 'Long reads borrow from every part of the cache (1 = on)', env: 'LLAMA_MOE_CACHE_BORROW_ALL_GROUPS', min: 0, max: 1, int: true, hint: 'with Long reads borrow the cache; for brains with mixed expert layouts (Flash-Next); Brain Engine 40 or newer' },
-  { k: 'wddmBudget', label: 'Plan card memory by Windows\' budget (1 = on)', env: 'GGML_CUDA_WDDM_BUDGET', min: 0, max: 1, int: true, hint: 'Windows with an NVIDIA card; counts what Windows has promised other programs, like a game; Brain Engine 38 or newer' },
-  { k: 'driveStandin', label: 'Experts on the drive: use the next best (1 = on)', env: 'LLAMA_MOE_STANDIN', value: 'drive', min: 0, max: 1, int: true, hint: 'with a copy cache; changes the words; Brain Engine 32 or newer' },
-  { k: 'ramFloor', label: 'Keep RAM free for the computer (MB)', env: 'LLAMA_MOE_RAM_FLOOR_MIB', min: 0, max: 65536, int: true, hint: 'with the drive switches (or on its own from Brain Engine 36); empty is 512, 0 turns the guard off; Brain Engine 32 or newer' },
-  { k: 'hotSave', label: 'Remember the busy experts for next time (1 = on)', env: 'LLAMA_MOE_CACHE_SAVE', path: true, min: 0, max: 1, int: true, hint: 'with a copy cache; Brain Engine 30 or newer' }
+  // Nov 22, Lamplight 30/31 (patches 0048-0051): each does nothing without a copy cache
+  { k: 'borrow', label: 'Long reads borrow the cache (1 = on)', env: 'LLAMA_MOE_CACHE_BORROW', min: 0, max: 1, int: true, hint: 'with a copy cache; Lamplight 30 or newer' },
+  { k: 'shelf', label: 'Empty chat memory holds experts (1 = on)', env: 'LLAMA_MOE_CACHE_TAIL', min: 0, max: 1, int: true, hint: 'with a copy cache; Lamplight 30 or newer' },
+  { k: 'drive', label: 'Read missed experts straight from the drive (1 = on)', env: 'LLAMA_MOE_DRIVE', min: 0, max: 1, int: true, hint: 'with a copy cache, for a brain bigger than RAM; Lamplight 30 or newer' },
+  { k: 'ramCache', label: 'Keep missed experts in my own RAM (MB)', env: 'LLAMA_MOE_RAM_CACHE_MIB', min: 0, max: 262144, int: true, hint: 'with drive reading on, for a brain bigger than RAM; leave room for the RAM floor; Lamplight 36 or newer' },
+  { k: 'cacheFill', label: 'Copy cache fills the free card memory (1 = on)', env: 'LLAMA_MOE_CACHE_FILL', min: 0, max: 1, int: true, hint: 'with a copy cache; keeps 512 MB of the card free; Lamplight 36 or newer' },
+  { k: 'readInPlace', label: 'Long reads use the cached experts in place (0 = off)', env: 'LLAMA_MOE_CACHE_READ_IN_PLACE', min: 0, max: 1, int: true, hint: 'on unless 0; with a copy cache; frees card working memory and skips copies; Lamplight 38 or newer' },
+  { k: 'readAhead', label: 'Long reads send the next layer ahead (0 = off)', env: 'LLAMA_MOE_CACHE_READ_AHEAD', min: 0, max: 1, int: true, hint: 'on unless 0 from Lamplight 40; with in-place long reads; the next layer\'s missing experts go up while this one works; not with drive reading; Lamplight 38 or newer' },
+  { k: 'borrowAllGroups', label: 'Long reads borrow from every part of the cache (1 = on)', env: 'LLAMA_MOE_CACHE_BORROW_ALL_GROUPS', min: 0, max: 1, int: true, hint: 'with Long reads borrow the cache; for brains with mixed expert layouts (Flash-Next); Lamplight 40 or newer' },
+  { k: 'wddmBudget', label: 'Plan card memory by Windows\' budget (1 = on)', env: 'GGML_CUDA_WDDM_BUDGET', min: 0, max: 1, int: true, hint: 'Windows with an NVIDIA card; counts what Windows has promised other programs, like a game; Lamplight 38 or newer' },
+  { k: 'driveStandin', label: 'Experts on the drive: use the next best (1 = on)', env: 'LLAMA_MOE_STANDIN', value: 'drive', min: 0, max: 1, int: true, hint: 'with a copy cache; changes the words; Lamplight 32 or newer' },
+  { k: 'ramFloor', label: 'Keep RAM free for the computer (MB)', env: 'LLAMA_MOE_RAM_FLOOR_MIB', min: 0, max: 65536, int: true, hint: 'with the drive switches (or on its own from Lamplight 36); empty is 512, 0 turns the guard off; Lamplight 32 or newer' },
+  { k: 'hotSave', label: 'Remember the busy experts for next time (1 = on)', env: 'LLAMA_MOE_CACHE_SAVE', path: true, min: 0, max: 1, int: true, hint: 'with a copy cache; Lamplight 30 or newer' }
 ];
 export const MODES = ['bob', 'hand', 'conductor'];
 const BY_KEY = Object.fromEntries(TUNING_FIELDS.map((f) => [f.k, f]));

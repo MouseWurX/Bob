@@ -43,7 +43,7 @@ check('Back, Next and the dots change page and focus its title', cellar.includes
 // ---------- Engines and Brains share one download ----------
 {
   const rows = [
-    { id: 'engine:brainengine', kind: 'engine', name: 'Brain Engine', sizeGB: 0.7 },
+    { id: 'engine:lamplight', kind: 'engine', name: 'Lamplight', sizeGB: 0.7 },
     { id: 'engine:sdcpp', kind: 'engine', name: 'stable-diffusion.cpp', sizeGB: 0.5 },
     { id: 'engine:whispercpp', kind: 'engine', name: 'whisper.cpp', sizeGB: 0.1 },
     { id: 'engine:kokoro', kind: 'engine', name: 'Kokoro voices', sizeGB: 0.1 },
@@ -60,7 +60,7 @@ check('Back, Next and the dots change page and focus its title', cellar.includes
   ];
   const { groups, brains } = splitWelcomeRows(rows);
   const ids = (g) => groups.find((x) => x.id === g).rows.map((r) => r.id);
-  check('Brains: the brain program, chat, coding, memory, and anything no group claims', brains.map((r) => r.id).join(',') === 'engine:brainengine,big,code,emb,odd');
+  check('Brains: the brain program, chat, coding, memory, and anything no group claims', brains.map((r) => r.id).join(',') === 'engine:lamplight,big,code,emb,odd');
   check('Engines: grouped by job', ids('pictures').join(',') === 'engine:sdcpp,pic' && ids('video').join(',') === 'clip' && ids('voice').join(',') === 'engine:kokoro,voice' && ids('hearing').join(',') === 'engine:whispercpp,ear' && ids('sound').join(',') === 'engine:audio,song');
   check('nothing dropped, nothing twice', groups.flatMap((g) => g.rows).length + brains.length === rows.length);
   check('Engines groups cover image, video, voice, hearing, sound and 3D', ['pictures', 'video', 'voice', 'hearing', 'sound', '3d'].every((id) => ENGINE_GROUPS.some((g) => g.id === id)));
@@ -69,13 +69,13 @@ check('Back, Next and the dots change page and focus its title', cellar.includes
   check('one set of picks: Get Bob ready on the Brains page gets both pages', (() => { const w = cellar.slice(cellar.indexOf("else if (step === 'engines')"), cellar.indexOf("else if (step === 'users')")); const e = w.slice(0, w.indexOf("else if (step === 'brains')")), b = w.slice(w.indexOf("else if (step === 'brains')")); return b.includes('${dlButtons}') && !e.includes('dlButtons') && /const dlButtons = [^;]*data-getready/.test(cellar); })());
 }
 
-// ---------- The owner: no other brain program named; Brain Engine is "a fork of llama.cpp" ----------
-check('Brain Engine keeps its name', welcomeRowName({ id: 'engine:brainengine', name: 'Brain Engine' }) === 'Brain Engine');
+// ---------- The owner: no other brain program named; Lamplight is "a fork of llama.cpp" ----------
+check('Lamplight keeps its name', welcomeRowName({ id: 'engine:lamplight', name: 'Lamplight' }) === 'Lamplight');
 check('the plain build is called what it does', welcomeRowName({ id: 'engine:llamacpp', name: 'llama.cpp' }) === 'Brain program');
 check('other rows keep their names', welcomeRowName({ id: 'engine:sdcpp', name: 'stable-diffusion.cpp' }) === 'stable-diffusion.cpp');
 {
   const w = cellar.slice(cellar.indexOf('  function welcomeHtml() {'), cellar.indexOf('  // Settings in its own window'));
-  check('the Welcome says Brain Engine is my fork of llama.cpp', w.includes('Brain Engine, my own fork of llama.cpp'));
+  check('the Welcome says Lamplight is my fork of llama.cpp', w.includes('Lamplight, my own fork of llama.cpp'));
   check('the Welcome names no other brain program and never Ollama', !/ollama/i.test(w) && (w.match(/llama\.cpp/g) || []).length === 2);
 }
 

@@ -1,5 +1,5 @@
 {
- "name": "Big brain tiers: GPT-OSS 120B (63 GB) on a 16 GB card and 32 GB RAM: baseline, 3 experts per word, prefetch, cold and warm expert tiers (Brain Engine 10, patch 0020)",
+ "name": "Big brain tiers: GPT-OSS 120B (63 GB) on a 16 GB card and 32 GB RAM: baseline, 3 experts per word, prefetch, cold and warm expert tiers (Lamplight 10, patch 0020)",
  "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 17)",
  "brain": "${BRAIN120}",
  "engines": {

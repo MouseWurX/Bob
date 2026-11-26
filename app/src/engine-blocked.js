@@ -1,4 +1,4 @@
-// 1.5.203 PC test: Windows Smart App Control (an Application Control policy) blocked Brain Engine 3's rebuilt files,
+// 1.5.203 PC test: Windows Smart App Control (an Application Control policy) blocked Lamplight 3's rebuilt files,
 // because they aren't signed yet. spawn() then throws at once (code UNKNOWN, errno -4094, no child, no 'error' event),
 // so every brain failed to wake and Bob was left without one. Now, when a thinking engine won't start because
 // Windows blocked it (or any start fails within two days of an engine update) and the build from before the update
@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import { brainEngineName } from '../public/engine-name.js';
+import { lamplightName } from '../public/engine-name.js';
 import { ENGINES, engineFor, installedMarker, previousDir, goBackEngine, engineBlocked, BLOCKED_FILE } from './engines.js';
 
 export const FRESH_MS = 2 * 864e5; // "right after an engine update"
@@ -21,7 +21,7 @@ export function windowsBlocked(err) {
 }
 // Which thinking engine a program belongs to ('' when none of Bob's own).
 export function engineOf(cfg, exe) {
-  for (const id of ['brainengine', 'llamacpp']) {
+  for (const id of ['lamplight', 'llamacpp']) {
     const e = ENGINES.find((x) => x.id === id);
     if (!e || !cfg?.agentDir || !exe) continue;
     const r = path.relative(path.join(cfg.agentDir, e.dir), exe);
@@ -29,15 +29,15 @@ export function engineOf(cfg, exe) {
   }
   return '';
 }
-// "Brain Engine 5b12282" / "version 3" / "built on llama.cpp b12282" / a plain tag, for the words Bob says.
+// "Lamplight 5b12282" / "version 3" / "built on llama.cpp b12282" / a plain tag, for the words Bob says.
 export function buildWords(v) {
   const s = String(v || '');
-  if (/^brain-engine-\d+b\d+$/.test(s)) return brainEngineName(s); // from build 5: "Brain Engine 5b12282"
+  if (/^(?:lamplight|brain-engine)-\d+b\d+$/.test(s)) return lamplightName(s); // from build 5: "Lamplight 5b12282"
   let m = /^brain-engine-v(\d+)$/.exec(s); if (m) return `version ${m[1]}`;
   m = /^brain-engine-(b\d+)$/.exec(s); if (m) return `the one built on llama.cpp ${m[1]}`;
   return s || 'the one before';
 }
-export function blockedSay(rec, name = 'Brain Engine') {
+export function blockedSay(rec, name = 'Lamplight') {
   const now = buildWords(rec.previous);
   const was = rec.version ? ` (${buildWords(rec.version)})` : '';
   return rec.windows

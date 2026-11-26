@@ -27,34 +27,34 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
 {
   const cfg = { agentDir: path.join(tmp, 'agent'), llamacpp: { exe: path.join(tmp, 'agent', 'llama.cpp', 'llama-server') } };
   const dirs = toolDirs(cfg);
-  ok(dirs.length === 2 && dirs[0].endsWith('llama.cpp') && dirs[1].endsWith('brain-engine'), 'tools: the built-in engine\'s folder first, then Brain Engine\'s');
+  ok(dirs.length === 2 && dirs[0].endsWith('llama.cpp') && dirs[1].endsWith('brain-engine'), 'tools: the built-in engine\'s folder first, then Lamplight\'s');
   const have = new Set([path.join(dirs[1], 'ggml-rpc-server'), path.join(dirs[0], 'llama-bench'), path.join(dirs[1], 'llama-bench')]);
   const o = { dirs, exists: (p) => have.has(p), platform: 'linux' };
   ok(findTool(cfg, 'bench', o).path === path.join(dirs[0], 'llama-bench'), 'tools: llama-bench from the built-in engine when both have it');
-  ok(findTool(cfg, 'rpc', o).found && findTool(cfg, 'rpc', o).dir === dirs[1], 'tools: ggml-rpc-server found in Brain Engine\'s folder');
+  ok(findTool(cfg, 'rpc', o).found && findTool(cfg, 'rpc', o).dir === dirs[1], 'tools: ggml-rpc-server found in Lamplight\'s folder');
   have.add(path.join(dirs[0], 'rpc-server'));
   ok(findTool(cfg, 'rpc', o).path === path.join(dirs[0], 'rpc-server'), 'tools: the older name rpc-server counts too');
   ok(!findTool(cfg, 'diffusion', o).found, 'tools: the diffusion runner missing is said');
-  ok(/Brain Engine/.test(missingWords('diffusion')) && /official/.test(missingWords('diffusion')), 'tools: the diffusion runner comes only with Brain Engine, in words');
+  ok(/Lamplight/.test(missingWords('diffusion')) && /official/.test(missingWords('diffusion')), 'tools: the diffusion runner comes only with Lamplight, in words');
   ok(exeFor('llama-bench', 'win32') === 'llama-bench.exe' && exeFor('llama-bench', 'linux') === 'llama-bench', 'tools: .exe on Windows only');
   ok(isDiffusion('LLaDA') && isDiffusion('dream') && !isDiffusion('qwen3moe'), 'tools: diffusion brains by their architecture');
 }
 
-// ---- the Brain Engine build ships them ----
+// ---- the Lamplight build ships them ----
 {
   const wf = read(path.join(here, '..', '..', '.github', 'workflows', 'brain-engine.yml'));
-  for (const t of ['llama-bench', 'llama-gguf-split', 'ggml-rpc-server', 'llama-diffusion-cli']) ok((wf.match(new RegExp(t, 'g')) || []).length >= 4, `Brain Engine build: builds and packs ${t} (Windows and Linux)`);
-  ok((wf.match(/-DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON/g) || []).length === 2, 'Brain Engine build: RPC and the examples (the diffusion runner) on, both systems');
-  ok((wf.match(/set\(BUILD_NUMBER \$\{tag#b\}\)/g) || []).length >= 2, 'Brain Engine build: --version says the tag\'s build number, not "build 1" from the one-commit clone, both systems');
-  ok((wf.match(/out=brain-engine-\$BEV-/g) || []).length === 2 && (wf.match(/publish\.sh "\$BEV" "\$TAG"/g) || []).length === 2 && /bob\.brainEngineVersion/.test(wf), 'Brain Engine build: files and release take its own name (brain-engine-<N>b<llama.cpp build>), built on the tested llama.cpp tag');
+  for (const t of ['llama-bench', 'llama-gguf-split', 'ggml-rpc-server', 'llama-diffusion-cli']) ok((wf.match(new RegExp(t, 'g')) || []).length >= 4, `Lamplight build: builds and packs ${t} (Windows and Linux)`);
+  ok((wf.match(/-DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON/g) || []).length === 2, 'Lamplight build: RPC and the examples (the diffusion runner) on, both systems');
+  ok((wf.match(/set\(BUILD_NUMBER \$\{tag#b\}\)/g) || []).length >= 2, 'Lamplight build: --version says the tag\'s build number, not "build 1" from the one-commit clone, both systems');
+  ok((wf.match(/out=lamplight-\$BEV-/g) || []).length === 2 && (wf.match(/publish\.sh "\$BEV" "\$TAG"/g) || []).length === 2 && /bob\.lamplightVersion/.test(wf), 'Lamplight build: files and release take its own name (lamplight-<N>b<llama.cpp build>), built on the tested llama.cpp tag');
   const pub = read(path.join(here, '..', 'engine', 'publish.sh'));
-  ok(/ver="\$1"; tag="\$2"; file="\$3"/.test(pub) && /rel="brain-engine-\$ver"/.test(pub) && /Brain Engine \$\{ver#v\} \(Brain Engine \$\{ver%%b\*\} on llama\.cpp \$tag/.test(pub), 'publish.sh names the release by Brain Engine\'s own version');
+  ok(/ver="\$1"; tag="\$2"; file="\$3"/.test(pub) && /rel="lamplight-\$ver"/.test(pub) && /Lamplight \$\{ver#v\} \(Lamplight \$\{ver%%b\*\} on llama\.cpp \$tag/.test(pub), 'publish.sh names the release by Lamplight\'s own version');
   const pkg = JSON.parse(read(path.join(here, '..', 'package.json')));
-  ok(Number.isInteger(pkg.bob.brainEngineVersion) && pkg.bob.brainEngineVersion >= 3, 'package.json carries Brain Engine\'s own version number');
+  ok(Number.isInteger(pkg.bob.lamplightVersion) && pkg.bob.lamplightVersion >= 3, 'package.json carries Lamplight\'s own version number');
   const cel = publicText('cellar.js');
   ok(/brain-engine-v\(\\d\+\)\$/.test(cel) && /built on llama\.cpp \$\{e\.basedOn\}/.test(cel), 'Settings, Engines says "version N, built on llama.cpp bNNNN", not the file tag');
   const readme = read(path.join(here, '..', 'engine', 'README.md'));
-  ok(/ggml-rpc-server/.test(readme) && /llama-diffusion-cli/.test(readme) && /Tailscale/.test(readme), 'Brain Engine README: lists the new tools and how the card server is kept to Tailscale');
+  ok(/ggml-rpc-server/.test(readme) && /llama-diffusion-cli/.test(readme) && /Tailscale/.test(readme), 'Lamplight README: lists the new tools and how the card server is kept to Tailscale');
 }
 
 // ---- brains in parts (llama-gguf-split) ----
@@ -211,7 +211,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     ok(await talk(g.port) === '', 'card gate: anyone else is turned away at the door');
     g.close(); echo.close();
   }
-  // SCUT: Bob's fast link (Brain Engine patch 0005), off unless switched on, on both Bobs.
+  // SCUT: Bob's fast link (Lamplight patch 0005), off unless switched on, on both Bobs.
   ok(!scutOn(cfg) && !Object.keys(scutEnv(cfg)).length && !('GGML_RPC_SCUT' in (spawned[0].env || {})), 'SCUT: off unless switched on, so the engines are started as before');
   ok(gates.every((g) => g.udp === false), 'SCUT: off, the gate opens no UDP side');
   {
@@ -226,7 +226,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
     l2.close();
   }
   {
-    // Send the brain early: the lender fills its card store from its own copy of the brain first (Brain Engine --seed).
+    // Send the brain early: the lender fills its card store from its own copy of the brain first (Lamplight --seed).
     const dir = path.join(tmp, 'seed'), models = path.join(dir, 'models', 'bob', 'chat');
     fs.mkdirSync(models, { recursive: true });
     const brainFile = path.join(models, 'big-brain-Q4.gguf'); fs.writeFileSync(brainFile, Buffer.alloc(4096, 1));

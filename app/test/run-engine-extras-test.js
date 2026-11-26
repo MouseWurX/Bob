@@ -13,7 +13,7 @@ import { modelFor } from '../src/sessions.js';
 import {
   EXTRA_SWITCHES, extraOn, newSpecFlags, draftNumArgs, copyGuessArgs, COPY_GUESS_ARGS, cleanMemType, memTypeOf, memArgs, MEM_TYPES, helpHasQ3, helpHasQ2, q3CardOk, helpHasTiers, progressiveTiers, tiersEnv, TIERS_SLACK, turboMem, turboPerWord, TURBO_MEMS,
   parseWinBattery, parseMacBattery, linuxBattery, onBattery, setOnBattery, batteryNow, laptopSaving, laptopThreads,
-  cardKey, cardChange, placesToAuto, handoffHat, warmRoom, warmFile, WARM_SPARE, plainEngineNotes, engineNoteLine, brainEngineNumber,
+  cardKey, cardChange, placesToAuto, handoffHat, warmRoom, warmFile, WARM_SPARE, plainEngineNotes, engineNoteLine, lamplightNumber,
   READING_PICKS, readingPick, readingSteps, readingChoice, readingArgs, dropReading, lockRoom, lockFloor, everydayTurboArgs, specGateEnv, TURBO_EVERYDAY_MAX, lockMemoryArgs, mtpSidecar, mtpArgs
 } from '../src/engine-extras.js';
 import { startEngineExtras, engineLabel } from '../src/engine-extras-run.js';
@@ -105,7 +105,7 @@ check('Standard keeps flags set by hand as they are', memArgs({}, 'big', ['-ctk'
   const on = memTypeHtml(b, { place: { brains: { big: { memType: 'small', kv32: 2, memEngine: true } } } });
   const oll = memTypeHtml(b, { place: { brains: { big: { memType: 'standard', kv32: null, memEngine: false } } } });
   check('the Brains page shows the three types, the pick pressed, and GB for a 32K chat', /data-memtype="small"[^>]*aria-pressed="true"/.test(on) && /about 1 GB for a 32K chat/.test(on) && /Sharper/.test(on));
-  check('with Ollama the choice is locked and says why', /disabled/.test(oll) && /Only with Brain Engine or llama\.cpp/.test(oll)); }
+  check('with Ollama the choice is locked and says why', /disabled/.test(oll) && /Only with Lamplight or llama\.cpp/.test(oll)); }
 
 // ---------- 100b Smallest (3-bit, q3_0) memory type ----------
 check('Smallest is 3-bit both ways, off unless picked', MEM_TYPES.smallest.k === 'q3_0' && MEM_TYPES.smallest.v === 'q3_0' && memTypeOf({}, 'big', { q3: true }) === 'standard');
@@ -124,7 +124,7 @@ check('3-bit only where it has kernels: CUDA or the processor, never Vulkan alon
 check('Progressive is kept when saved, off unless picked', JSON.stringify(cleanMemType({ a: 'progressive' })) === '{"a":"progressive"}' && memTypeOf({}, 'big', { q3: true, tiers: true }) === 'standard');
 check('Progressive needs 3-bit and Progressive Memory, else Smaller', memTypeOf({ brainMemType: { big: 'progressive' } }, 'big', { q3: true, tiers: true }) === 'progressive' && memTypeOf({ brainMemType: { big: 'progressive' } }, 'big', { q3: true }) === 'small' && memTypeOf({ brainMemType: { big: 'progressive' } }, 'big') === 'small');
 check('Progressive keeps every word in 3-bit', memArgs({ brainMemType: { big: 'progressive' } }, 'big', [], { q3: true, tiers: true }).join(' ') === '-fa on -ctk q3_0 -ctv q3_0');
-check('the engine\'s help is read for Progressive Memory', helpHasTiers('  Progressive Memory (Brain Engine 0039): env\n  LLAMA_KV_TIERS=type:window,...') && !helpHasTiers('LLAMA_KV_SPLIT') && !helpHasTiers(null));
+check('the engine\'s help is read for Progressive Memory', helpHasTiers('  Progressive Memory (Lamplight 0039): env\n  LLAMA_KV_TIERS=type:window,...') && !helpHasTiers('LLAMA_KV_SPLIT') && !helpHasTiers(null));
 check('3-step: 8-bit for the newest 8K, 4-bit for the newest 64K, shrunk to a quarter and a half of a short chat',
   progressiveTiers(262144) === 'q8_0:8192,q4_0:65536' && progressiveTiers(32768) === 'q8_0:8192,q4_0:16384' && progressiveTiers(8192) === 'q8_0:2048,q4_0:4096' && progressiveTiers(1000) === '');
 check('2-step: 4-bit for the newest 64K, or half the chat', progressiveTiers(262144, 'progressive2') === 'q4_0:65536' && progressiveTiers(32768, 'progressive2') === 'q4_0:16384');
@@ -133,7 +133,7 @@ check('8+3 is kept, falls back to Smaller without the engine, and goes to the en
   tiersEnv({ brainMemType: { b: 'progressive83' } }, 'b', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS === 'q8_0:2048' && tiersEnv({ turbo: true, turboMem: 'progressive83' }, 'b', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS === 'q8_0:2048');
 check('8+4: the 8-bit step over a 4-bit base, needs only Progressive Memory (not the 3-bit type)', JSON.stringify(cleanMemType({ a: 'progressive84' })) === '{"a":"progressive84"}' && memTypeOf({ brainMemType: { b: 'progressive84' } }, 'b') === 'small' && memTypeOf({ brainMemType: { b: 'progressive84' } }, 'b', { tiers: true }) === 'progressive84' &&
   memArgs({ brainMemType: { b: 'progressive84' } }, 'b', [], { q3: true, tiers: true }).join(' ') === '-fa on -ctk q4_0 -ctv q4_0' && tiersEnv({ brainMemType: { b: 'progressive84' } }, 'b', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS === 'q8_0:2048' && tiersEnv({ turbo: true, turboMem: 'progressive84' }, 'b', 32768, { tiers: true }).LLAMA_KV_TIERS === 'q8_0:2048');
-// 8+2 (Brain Engine 0046, Nov 20): Turbo only, a test. Needs the 2-bit type and Progressive Memory; never on the Brains page.
+// 8+2 (Lamplight 0046, Nov 20): Turbo only, a test. Needs the 2-bit type and Progressive Memory; never on the Brains page.
 { const help = '-ctv, --cache-type-v TYPE\n   allowed values: f32, f16, q8_0, q4_0, q3_0,\n   q2_kv\n(default: f16)\n';
   const on = { turbo: true, turboMem: 'progressive82' }, all = { q3: true, q2: true, tiers: true };
   check('8+2: the help names q2_kv, on a wrapped line too', helpHasQ2(help) && helpHasQ2(help.replace(/\n/g, '\r\n')) && !helpHasQ2('-ctv, --cache-type-v TYPE\n  allowed values: f32, q3_0\n') && helpHasQ3(help));
@@ -209,21 +209,21 @@ check('only with the brain plus 4 GB free', warmRoom(10e9, 10e9 + WARM_SPARE) &&
   check('the file is read once, not twice at the same time', first && !again && opened === 1 && done === true); }
 
 // ---------- 99 Engine updates in plain words ----------
-check('Brain Engine versions have their own lines', brainEngineNumber('brain-engine-v4') === 4 && /sealed/.test(plainEngineNotes('brainengine', { to: 'brain-engine-v4' })) && plainEngineNotes('brainengine', { to: 'brain-engine-v99' }) === '');
+check('Lamplight versions have their own lines', lamplightNumber('brain-engine-v4') === 4 && /sealed/.test(plainEngineNotes('lamplight', { to: 'brain-engine-v4' })) && plainEngineNotes('lamplight', { to: 'brain-engine-v99' }) === '');
 check('llama.cpp: picked out of programmer notes, two lines at most', plainEngineNotes('llamacpp', { body: 'CUDA: fix crash in mmq; vulkan: faster matmul' }).split('.').filter(Boolean).length <= 2 && /NVIDIA/.test(plainEngineNotes('llamacpp', { body: 'cuda tweak' })));
 check('llama.cpp moving to the tested build says so', /tested with/.test(plainEngineNotes('llamacpp', { to: 'b12282' })));
-check('the chat line only with the switch on', engineNoteLine({}, 'brainengine', 'brain-engine-v4') === '' && /What it changes for you: /.test(engineNoteLine({ engineNotes: true }, 'brainengine', 'brain-engine-v4')));
+check('the chat line only with the switch on', engineNoteLine({}, 'lamplight', 'brain-engine-v4') === '' && /What it changes for you: /.test(engineNoteLine({ engineNotes: true }, 'lamplight', 'brain-engine-v4')));
 check('the keeper adds it to the finished-update message', /is up to date[^\n]*engineNoteLine\(this\.cfg, id, p\.to\)/.test(read('src/engine-keeper.js')));
 
 // ---------- 96 Speed history ----------
 { const t0 = Date.parse('2026-11-01T12:00:00Z');
-  let rows = addReply([], { model: 'big', tokPerSec: 100, engine: 'Brain Engine brain-engine-v3', now: t0 });
-  rows = addReply(rows, { model: 'big', tokPerSec: 110, engine: 'Brain Engine brain-engine-v3', now: t0 + 1000 });
+  let rows = addReply([], { model: 'big', tokPerSec: 100, engine: 'Lamplight brain-engine-v3', now: t0 });
+  rows = addReply(rows, { model: 'big', tokPerSec: 110, engine: 'Lamplight brain-engine-v3', now: t0 + 1000 });
   check('one row per day, brain and engine', rows.length === 1 && rows[0].n === 2 && rows[0].sum === 210);
   check('a reply with no speed adds nothing', addReply(rows, { model: 'big', tokPerSec: 0 }) === null);
-  rows = addReply(rows, { model: 'big', tokPerSec: 70, engine: 'Brain Engine brain-engine-v4', now: t0 + 864e5 });
+  rows = addReply(rows, { model: 'big', tokPerSec: 70, engine: 'Lamplight brain-engine-v4', now: t0 + 864e5 });
   const s = speedSeries(rows);
-  check('the series marks the engine change', s[0].points.length === 2 && s[0].changes[0].engine === 'Brain Engine brain-engine-v4');
+  check('the series marks the engine change', s[0].points.length === 2 && s[0].changes[0].engine === 'Lamplight brain-engine-v4');
   check('15% slower after an engine change is called out', s[0].slower && s[0].slower.before === 105 && s[0].slower.after === 70);
   const old = addReply(rows, { model: 'big', tokPerSec: 90, engine: 'x', now: t0 + (KEEP_DAYS + 2) * 864e5 });
   check(`only ${KEEP_DAYS} days are kept`, old.length === 1); }
@@ -253,7 +253,7 @@ check('the keeper adds it to the finished-update message', /is up to date[^\n]*e
   cfg.speedLog = false; engine.onStats({ model: 'chat-brain', tokPerSec: 40 });
   check('speed history: off writes nothing', readSpeedLog(cfg).length === before);
   cfg.speedLog = true; engine.onStats({ model: 'chat-brain', tokPerSec: 40 });
-  check('speed history: on, the reply is counted with the engine\'s name', readSpeedLog(cfg).some((r) => r.model === 'chat-brain' && /llama\.cpp|Brain Engine/.test(r.engine)), JSON.stringify(readSpeedLog(cfg)));
+  check('speed history: on, the reply is counted with the engine\'s name', readSpeedLog(cfg).some((r) => r.model === 'chat-brain' && /llama\.cpp|Lamplight/.test(r.engine)), JSON.stringify(readSpeedLog(cfg)));
   check('the engine label for Ollama', engineLabel({ engine: 'ollama' }) === 'Ollama');
   cfg.laptopMode = true; run.laptopChanged(); await wait(10);
   check('Laptop mode: the battery is looked at once a minute', batteryNow() === true && timers.some((t) => t.ms === 60e3));

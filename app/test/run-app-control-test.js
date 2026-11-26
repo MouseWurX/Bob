@@ -55,13 +55,13 @@ check(!looksBlocked({ code: 1 }) && !looksBlocked({ code: 0 }) && !looksBlocked(
 check(countDevices('Available devices:\n  CUDA0: NVIDIA GeForce RTX 5070 Ti (16302 MiB, 15000 MiB free)\n') === 1 && countDevices('Available devices:\n') === 0, 'graphics cards counted from --list-devices');
 
 // Try before swap.
-const be = { ...ENGINES.find((e) => e.id === 'brainengine'), exe: 'llama-server.exe', name: 'Brain Engine' };
+const be = { ...ENGINES.find((e) => e.id === 'lamplight'), exe: 'llama-server.exe', name: 'Lamplight' };
 const oldDir = path.join(tmp, 'old'); fs.mkdirSync(oldDir); fs.writeFileSync(path.join(oldDir, 'llama-server.exe'), pe({ signed: false }));
 const card = 'Available devices:\n  CUDA0: NVIDIA GeForce RTX 5070 Ti (16302 MiB, 15000 MiB free)\n';
 const runs = [];
 const fake = (byDir) => async (exe, args) => { runs.push([exe, args]); return byDir[path.dirname(exe)]; };
 let r = await tryEngine(dir, be, { platform: 'win32', old: oldDir, run: fake({ [dir]: { ok: false, blocked: true, code: 'UNKNOWN', out: '' } }) });
-check(r.ok === false && r.why === 'blocked' && /Smart App Control/.test(r.words) && /kept the Brain Engine you have/.test(r.words), 'Windows stops the new engine: not ok, and the words say the old one stays');
+check(r.ok === false && r.why === 'blocked' && /Smart App Control/.test(r.words) && /kept the Lamplight you have/.test(r.words), 'Windows stops the new engine: not ok, and the words say the old one stays');
 check(runs[0][1].join(' ') === '--list-devices', 'the trial is --list-devices (it loads the card libraries, then exits)');
 r = await tryEngine(dir, be, { platform: 'win32', old: oldDir, run: fake({ [dir]: { ok: true, blocked: false, code: 0, out: 'Available devices:\n' }, [oldDir]: { ok: true, code: 0, out: card } }) });
 check(r.ok === false && r.why === 'lost-card' && /graphics card/.test(r.words), 'the new one runs but lost the card the old one sees (a stopped ggml-cuda.dll): not ok');
@@ -89,11 +89,11 @@ let err = null;
 try { await trialOrKeep(cfg, be, stage, folder, mark); } catch (e) { err = e; }
 check(err?.blocked === 'blocked' && err.message === 'stopped', 'blocked: the install stops with the plain reason');
 check(!fs.existsSync(stage) && fs.readFileSync(path.join(folder, 'llama-server.exe'), 'utf8') === 'old', 'the new folder is gone and the old engine is untouched');
-check(wasBlocked(cfg, 'brainengine', { print: 'sha256:abc' }) && !wasBlocked(cfg, 'brainengine', { print: 'sha256:new' }), 'the stopped build is remembered by its file, so a rebuilt (signed) one is still fetched');
+check(wasBlocked(cfg, 'lamplight', { print: 'sha256:abc' }) && !wasBlocked(cfg, 'lamplight', { print: 'sha256:new' }), 'the stopped build is remembered by its file, so a rebuilt (signed) one is still fetched');
 fs.mkdirSync(stage); fs.writeFileSync(path.join(stage, 'llama-server.exe'), 'new');
 setEngineTrial(async () => ({ ok: true }));
 await trialOrKeep(cfg, be, stage, folder, mark);
-check(fs.existsSync(stage) && !readBlocks(cfg).brainengine, 'a build that runs goes ahead, and the old note is cleared');
+check(fs.existsSync(stage) && !readBlocks(cfg).lamplight, 'a build that runs goes ahead, and the old note is cleared');
 setEngineTrial(null);
 noteBlocked(cfg, 'llamacpp', { version: 'b12300' }, 'blocked'); clearBlocked(cfg, 'llamacpp');
 check(!wasBlocked(cfg, 'llamacpp', { version: 'b12300' }), 'clearing a note works');

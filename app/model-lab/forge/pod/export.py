@@ -17,7 +17,7 @@ MTP_KEYS = ("num_nextn_predict_layers", "mtp_num_hidden_layers", "num_mtp_layers
 
 def no_ghost_guesser(model):
     """1.5.207 PC check: a cut brain kept "mtp_num_hidden_layers": 1 in its config.json after its guesser (MTP)
-    weights were left out, so the GGUF said nextn_predict_layers = 1 with no nextn tensors and Brain Engine 4 stopped
+    weights were left out, so the GGUF said nextn_predict_layers = 1 with no nextn tensors and Lamplight 4 stopped
     with "MTP block missing nextn.eh_proj". When the weights don't have it, the config says 0 before converting.
     Returns True when the brain has no guesser weights (newer converters then need --no-mtp, see convert_args)."""
     cp = os.path.join(model, "config.json")

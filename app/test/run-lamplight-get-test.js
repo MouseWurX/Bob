@@ -1,7 +1,7 @@
-// 1.5.157 Get Brain Engine (Settings, Engines). 1.5.169: listed for everyone and the default engine for brains. The official llama.cpp build of the tested
-// tag goes in its own brain-engine folder with Brain Engine's own files on top, both checked against GitHub's sha256;
+// 1.5.157 Get Lamplight (Settings, Engines). 1.5.169: listed for everyone and the default engine for brains. The official llama.cpp build of the tested
+// tag goes in its own brain-engine folder with Lamplight's own files on top, both checked against GitHub's sha256;
 // Bob's everyday llama.cpp folder is never touched. Fake GitHub, real archives.
-// Run: node test/run-brain-engine-get-test.js
+// Run: node test/run-lamplight-get-test.js
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,39 +18,39 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-be-'));
 const cfg = { agentDir: path.join(tmp, 'Agent'), computerLab: true };
 fs.mkdirSync(cfg.agentDir, { recursive: true });
 
-const st = engineStatus({ agentDir: cfg.agentDir }).find((e) => e.id === 'brainengine');
-check(st && st.name === 'Brain Engine' && /own engine for brains/.test(st.what) && /not an official llama\.cpp build/.test(st.what) && !st.pinned, 'it is listed with the Lab off too, as the default engine, not official llama.cpp, with a Check for updates (rebuilds keep the name)');
+const st = engineStatus({ agentDir: cfg.agentDir }).find((e) => e.id === 'lamplight');
+check(st && st.name === 'Lamplight' && /own engine for brains/.test(st.what) && /not an official llama\.cpp build/.test(st.what) && !st.pinned, 'it is listed with the Lab off too, as the default engine, not official llama.cpp, with a Check for updates (rebuilds keep the name)');
 { const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-  const be = ENGINES.find((e) => e.id === 'brainengine');
-  check(be.tag === pkg.bob.brainEngine.tag && be.linux.tag === pkg.bob.brainEngine.tag, 'Bob downloads the Brain Engine release his pin names (its own version, not one made from the llama.cpp tag)'); }
-check(/^brain-engine-(?:v\d+|\d+b\d+)$/.test(ENGINES.find((e) => e.id === 'brainengine').tag) && ENGINES.find((e) => e.id === 'brainengine').base === 'llamacpp' && ENGINES.find((e) => e.id === 'llamacpp').tested === TESTED_LLAMA, 'it is pinned to its own numbered pre-release, on top of the tested llama.cpp build');
+  const be = ENGINES.find((e) => e.id === 'lamplight');
+  check(be.tag === pkg.bob.lamplight.tag && be.linux.tag === pkg.bob.lamplight.tag, 'Bob downloads the Lamplight release his pin names (its own version, not one made from the llama.cpp tag)'); }
+check(/^brain-engine-(?:v\d+|\d+b\d+)$/.test(ENGINES.find((e) => e.id === 'lamplight').tag) && ENGINES.find((e) => e.id === 'lamplight').base === 'llamacpp' && ENGINES.find((e) => e.id === 'llamacpp').tested === TESTED_LLAMA, 'it is pinned to its own numbered pre-release, on top of the tested llama.cpp build');
 
 // 1.5.169: which llama-server Bob runs brains on (fake folders, no real computer).
 {
   const A = path.join('X', 'Agent'), win = (p) => p;
   const here = (...files) => (p) => files.includes(p);
   const be = path.join(A, 'brain-engine', 'llama-server.exe'), lc = path.join(A, 'llama.cpp', 'llama-server.exe'), mine = path.join('D', 'tools', 'llama-server.exe');
-  check(pickLlamaExe(lc, A, { platform: 'win32', exists: here(be, lc) }) === be, 'Brain Engine here: brains run on it, even when config names Bob\'s own llama.cpp folder');
-  check(pickLlamaExe(undefined, A, { platform: 'win32', exists: here(be, lc) }) === be, 'nothing set by hand: Brain Engine');
-  check(pickLlamaExe(lc, A, { brainEngine: false, platform: 'win32', exists: here(be, lc) }) === lc, 'switched off in Settings: plain llama.cpp');
-  check(pickLlamaExe(be, A, { brainEngine: false, platform: 'win32', exists: here(be, lc) }) === lc, 'switched off while config still names Brain Engine: plain llama.cpp');
+  check(pickLlamaExe(lc, A, { platform: 'win32', exists: here(be, lc) }) === be, 'Lamplight here: brains run on it, even when config names Bob\'s own llama.cpp folder');
+  check(pickLlamaExe(undefined, A, { platform: 'win32', exists: here(be, lc) }) === be, 'nothing set by hand: Lamplight');
+  check(pickLlamaExe(lc, A, { lamplight: false, platform: 'win32', exists: here(be, lc) }) === lc, 'switched off in Settings: plain llama.cpp');
+  check(pickLlamaExe(be, A, { lamplight: false, platform: 'win32', exists: here(be, lc) }) === lc, 'switched off while config still names Lamplight: plain llama.cpp');
   check(pickLlamaExe(mine, A, { platform: 'win32', exists: here(be, lc, mine) }) === mine, 'a llama-server set by hand somewhere else always wins');
-  check(pickLlamaExe(undefined, A, { platform: 'win32', exists: here(lc) }) === lc, 'no Brain Engine (a Mac, an ARM board, not downloaded): llama.cpp as before');
+  check(pickLlamaExe(undefined, A, { platform: 'win32', exists: here(lc) }) === lc, 'no Lamplight (a Mac, an ARM board, not downloaded): llama.cpp as before');
   check(win(pickLlamaExe(undefined, A, { platform: 'linux', exists: here(path.join(A, 'brain-engine', 'llama-server')) })) === path.join(A, 'brain-engine', 'llama-server'), 'Linux: the program has no .exe');
   const gguf = { files: [{ role: 'gguf' }] };
-  const beE = { id: 'brainengine', available: true, installed: false }, lcE = { id: 'llamacpp', available: true, installed: false };
-  check(enginesFor([gguf], [lcE, beE]).join() === 'engine:brainengine', 'Get Bob ready gets Brain Engine for brains');
-  check(enginesFor([gguf], [{ ...lcE, installed: true }, beE]).join() === 'engine:brainengine', '...even beside the llama.cpp that came with Bob');
-  check(enginesFor([gguf], [lcE, { ...beE, installed: true }]).length === 0, 'Brain Engine here: nothing more to get');
-  check(enginesFor([gguf], [lcE, { ...beE, available: false }]).join() === 'engine:llamacpp', 'no Brain Engine build for this computer: llama.cpp');
-  check(enginesFor([gguf], [lcE]).join() === 'engine:llamacpp', 'an engine list without Brain Engine: llama.cpp');
+  const beE = { id: 'lamplight', available: true, installed: false }, lcE = { id: 'llamacpp', available: true, installed: false };
+  check(enginesFor([gguf], [lcE, beE]).join() === 'engine:lamplight', 'Get Bob ready gets Lamplight for brains');
+  check(enginesFor([gguf], [{ ...lcE, installed: true }, beE]).join() === 'engine:lamplight', '...even beside the llama.cpp that came with Bob');
+  check(enginesFor([gguf], [lcE, { ...beE, installed: true }]).length === 0, 'Lamplight here: nothing more to get');
+  check(enginesFor([gguf], [lcE, { ...beE, available: false }]).join() === 'engine:llamacpp', 'no Lamplight build for this computer: llama.cpp');
+  check(enginesFor([gguf], [lcE]).join() === 'engine:llamacpp', 'an engine list without Lamplight: llama.cpp');
 }
 
-const e = engineFor(ENGINES.find((x) => x.id === 'brainengine'));
+const e = engineFor(ENGINES.find((x) => x.id === 'lamplight'));
 if (e.unavailable) {
   check(/no .*build yet/.test(e.unavailable), `on this replicant matrix it says why there's no build (${OS})`);
 } else {
-  // Two real archives: the "official" build and Brain Engine's own files (same names, different contents).
+  // Two real archives: the "official" build and Lamplight's own files (same names, different contents).
   const exe = OS === 'win' ? 'llama-server.exe' : 'llama-server';
   const lib = OS === 'win' ? 'llama.dll' : 'libllama.so';
   const mk = (name, files) => {
@@ -77,17 +77,17 @@ if (e.unavailable) {
     return { ok: true, url: u, body: (async function* () { yield body; })() };
   };
   const everyday = path.join(cfg.agentDir, 'llama.cpp'); fs.mkdirSync(everyday); fs.writeFileSync(path.join(everyday, exe), 'everyday');
-  const r = await installEngine(cfg, 'brainengine', { nvidia: false, pub: {}, tick: () => {} }).catch((err) => ({ error: err.message }));
+  const r = await installEngine(cfg, 'lamplight', { nvidia: false, pub: {}, tick: () => {} }).catch((err) => ({ error: err.message }));
   const dir = path.join(cfg.agentDir, 'brain-engine');
   const read = (f) => { try { return fs.readFileSync(path.join(dir, f), 'utf8'); } catch { return ''; } };
   check(!r.error && r.version === `brain-engine-${TESTED_LLAMA}`, `it installs (${r.error || r.version})`);
-  check(read(exe) === 'brain engine server' && read(lib) === 'brain engine llama', 'Brain Engine\'s own server and llama files sit on top');
+  check(read(exe) === 'brain engine server' && read(lib) === 'brain engine llama', 'Lamplight\'s own server and llama files sit on top');
   check(Boolean(read(OS === 'win' ? 'ggml-cuda.dll' : 'libggml-cuda.so')), 'the official build\'s card files are kept');
   check(Boolean(read('LICENSE-llama.cpp')), 'the llama.cpp licence comes with it');
   check(fs.readFileSync(path.join(everyday, exe), 'utf8') === 'everyday', 'Bob\'s everyday llama.cpp folder is not touched');
-  check(engineStatus(cfg).find((x) => x.id === 'brainengine').installed, 'Engines shows it as installed');
+  check(engineStatus(cfg).find((x) => x.id === 'lamplight').installed, 'Engines shows it as installed');
   corrupt = true;
-  const bad = await installEngine(cfg, 'brainengine', { nvidia: false, pub: {}, tick: () => {} }).then(() => '', (err) => err.message);
+  const bad = await installEngine(cfg, 'lamplight', { nvidia: false, pub: {}, tick: () => {} }).then(() => '', (err) => err.message);
   check(/damaged/.test(bad) && read(exe) === 'brain engine server' && !fs.existsSync(dir + '.new'), 'a damaged download is refused and the working copy stays');
   globalThis.fetch = realFetch;
 }
@@ -101,7 +101,7 @@ fs.rmSync(tmp, { recursive: true, force: true });
   check(W.runtime('llama-b12032-bin-win-cuda-12.4-x64.zip').test('cudart-llama-bin-win-cuda-12.4-x64.zip'), 'the runtime is still found beside it');
   check(pickAsset([{ name: 'cudart-llama-bin-win-cuda-12.4-x64.zip' }], W, true) === null, 'a release with only the runtime gives no engine at all');
   const src = fs.readFileSync(new URL('../src/engines.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
-  check(/if \(!fs\.existsSync\(path\.join\(stage, b\.exe\)\)\) throw new Error/.test(src) && src.indexOf('if (!fs.existsSync(path.join(stage, b.exe))) throw') < src.indexOf('try { swapIn(folder, stage); }\n  catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Wait for the Lab job'), 'Brain Engine is never swapped in unless the llama.cpp under it is whole');
+  check(/if \(!fs\.existsSync\(path\.join\(stage, b\.exe\)\)\) throw new Error/.test(src) && src.indexOf('if (!fs.existsSync(path.join(stage, b.exe))) throw') < src.indexOf('try { swapIn(folder, stage); }\n  catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Wait for the Lab job'), 'Lamplight is never swapped in unless the llama.cpp under it is whole');
 }
 
 console.log(failures ? `\n${failures} failed` : '\nAll passed');

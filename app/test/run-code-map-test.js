@@ -82,7 +82,7 @@ check('the code_map tool is in the documents group and on the workbench', /'code
   if (fs.existsSync(ymlFile)) check('a docs-only change in engine/ builds no engine', (fs.readFileSync(ymlFile, 'utf8').match(/'!app\/engine\/\*\*\/\*\.md'/g) || []).length === 2); // only in the repo, not in an installed Bob
 }
 const help = fs.readFileSync(new URL('../public/help-content.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
-check('Help, FAQ and glossary cover it', /Finding my way in big code/.test(help) && /A patch file \(like the ones my Brain Engine is made of/.test(help) && /for a patch file, which files it changes/.test(help) && /id: 'faq-code-map'/.test(help) && /<dt>Code map<\/dt>/.test(help));
+check('Help, FAQ and glossary cover it', /Finding my way in big code/.test(help) && /A patch file \(like the ones my Lamplight is made of/.test(help) && /for a patch file, which files it changes/.test(help) && /id: 'faq-code-map'/.test(help) && /<dt>Code map<\/dt>/.test(help));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

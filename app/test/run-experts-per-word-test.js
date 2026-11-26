@@ -1,4 +1,4 @@
-// Brain Engine 0013, experts per word (src/experts-per-word.js): cleaning a count, the speed guess, what Bob sends to
+// Lamplight 0013, experts per word (src/experts-per-word.js): cleaning a count, the speed guess, what Bob sends to
 // the engine and when. A fake fetch stands in for the engine; no real engine, card or settings are read.
 import os from 'node:os';
 import path from 'node:path';

@@ -1,6 +1,6 @@
 // 1.5.204 Smart App Control (the owner, Nov 11 2026: "we need to prevent these windows smart app controls issues before
 // they occur. plan for them to be an issue."). On the PC test of 1.5.203, Windows' Smart App Control stopped the new
-// Brain Engine's files: they were brand new and not signed, so Windows had never seen them. Bob installed the engine
+// Lamplight's files: they were brand new and not signed, so Windows had never seen them. Bob installed the engine
 // and then no brain could load.
 //
 // Smart App Control (Windows 11) lets a program or library run only when Microsoft's cloud already knows it as safe,

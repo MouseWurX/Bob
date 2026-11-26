@@ -22,7 +22,7 @@
  "benchmark": {
   "note": "one brain: Riker stock, the interp step before serving, then the live patching and feature tests.",
   "hours_each": 2,
-  "brain_engine": {
+  "lamplight": {
    "ref": "fcdf3955ed6966c102f43d49528174cabd52d825",
    "patches": [
     "0001-expert-mask",
@@ -41,7 +41,7 @@
     "pod:0014-live-control-vector",
     "pod:0015-act-dump"
    ],
-   "note": "Brain Engine 7b12282 (live experts per word, mask, dials, expert trace with mass); pod:0014-live-control-vector (lab-only, sent with the pod scripts): POST /control-vector, activation steering without reloads; pod:0015-act-dump (lab-only): llama-act-dump writes each layer's stream per word for the interp step"
+   "note": "Lamplight 7b12282 (live experts per word, mask, dials, expert trace with mass); pod:0014-live-control-vector (lab-only, sent with the pod scripts): POST /control-vector, activation steering without reloads; pod:0015-act-dump (lab-only): llama-act-dump writes each layer's stream per word for the interp step"
   },
   "models": [
    {

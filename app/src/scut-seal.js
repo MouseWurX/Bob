@@ -1,4 +1,4 @@
-// Sealed SCUT packets (Brain Engine patch 0006). With SCUT on, every packet between two Bobs sharing a card is signed
+// Sealed SCUT packets (Lamplight patch 0006). With SCUT on, every packet between two Bobs sharing a card is signed
 // and scrambled (ChaCha20-Poly1305), so nobody else on the network can read a lent card's numbers, change them, or
 // slip in packets of their own: anything that fails the check is dropped before it is read. On by default (the owner's
 // call, Nov 11); "Seal SCUT packets" in Settings, Bob-Net turns it off. With it on, a Bob only uses SCUT with another

@@ -14,7 +14,7 @@ const OFF = { [F32]: -1e30, [F16]: -65504 };
 
 export const sideFile = (file) => `${file}.experts-off.json`;
 
-// The router bias of every layer, or null when this brain has none (then the Lab's cut, or Brain Engine's live
+// The router bias of every layer, or null when this brain has none (then the Lab's cut, or Lamplight's live
 // switch, is the way). { layers: [{ layer, offset, type, experts }] }, offset = where its numbers start in the file.
 export function routerBias(g) {
   const out = [];
@@ -63,7 +63,7 @@ export function switchOff(file, keep, { used = 1, when = '' } = {}) {
   const fd = fs.openSync(file, 'r+');
   try {
     const bias = routerBias(g);
-    if (!bias) throw new Error('This brain\'s router has no bias, so experts can\'t be switched off in the file. Use Cut these out, or Brain Engine\'s live switch.');
+    if (!bias) throw new Error('This brain\'s router has no bias, so experts can\'t be switched off in the file. Use Cut these out, or Lamplight\'s live switch.');
     const { off, problem } = offFromKeep(bias, keep, { used });
     if (problem) throw new Error(problem);
     let saved = null; try { saved = JSON.parse(fs.readFileSync(sideFile(file), 'utf8')); } catch {}

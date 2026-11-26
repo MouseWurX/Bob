@@ -2,7 +2,7 @@
 // order every step goes in. The owner, 13 Nov: "we updated the lab with the things in our new training protocols? please".
 //
 // Here, free, one at a time: clean a lesson set into a new version (clean-lessons.mjs), make right-vs-wrong pairs from
-// it (make-pairs.mjs), and sweep a running Brain Engine's live switches per target (expert-sweep.mjs). The rented steps
+// it (make-pairs.mjs), and sweep a running Lamplight's live switches per target (expert-sweep.mjs). The rented steps
 // (preference training, on-policy teaching, the reward pass, targets, baking surgery edits) are keys in a Forge plan,
 // written on the Forge form, and only start on the owner's press of the purchase card with the caps they typed.
 // Methods of the Lab class. Nothing here rents, uploads or changes a brain file.
@@ -90,7 +90,7 @@ export function planProtocol(tool, form = {}, { dir = '', sets = [], root = '', 
   }
   if (tool === 'sweep') {
     const url = String(form.url || '').trim().replace(/\/$/, '');
-    if (!LOCAL_URL.test(url)) problems.push('The Brain Engine\'s address on this computer, like http://127.0.0.1:8090. The sweep only talks to a brain on this computer.');
+    if (!LOCAL_URL.test(url)) problems.push('The Lamplight\'s address on this computer, like http://127.0.0.1:8090. The sweep only talks to a brain on this computer.');
     const used = form.used === undefined ? '-2,+2,+4' : nums(form.used, /^([+-]?\d{1,2})(,[+-]?\d{1,2})*$/);
     const scales = form.scales === undefined ? '0.8,1.2' : nums(form.scales, /^\d(\.\d+)?(,\d(\.\d+)?)*$/);
     if (form.used && !used) problems.push('Experts per word: whole numbers with a sign, like -2,+2,+4.');
@@ -100,7 +100,7 @@ export function planProtocol(tool, form = {}, { dir = '', sets = [], root = '', 
     const out = path.join(root, 'sweeps');
     if (set) args.push('--url', url, '--lessons', path.dirname(set.file), '--sample', String(sample), '--out', out, ...(used ? ['--used', used] : []), ...(scales ? ['--layer-scale', scales, '--groups', '4'] : []));
     if (set) { const r = sweepReadiness(path.dirname(set.file)); if (r.problem) problems.push(r.problem); else notes.push(`${r.held} held-out chats to score, at most ${sample} per kind of lesson.`); }
-    notes.push('Nothing in the brain file changes: the sweep only turns the engine\'s live switches, and puts them back at the end. It needs a Brain Engine with the live switches (experts per word, dials, expert mask); an older one skips the trials it can\'t do.');
+    notes.push('Nothing in the brain file changes: the sweep only turns the engine\'s live switches, and puts them back at the end. It needs a Lamplight with the live switches (experts per word, dials, expert mask); an older one skips the trials it can\'t do.');
     notes.push('Its answers are kept apart, each marked with the setting it was made under: for checks and benchmarks only, never lessons or pairs.');
     notes.push('Only one card test at a time: don\'t sweep while a game, a benchmark or another test is using the card.');
     if (set) { const tf = path.join(out, `targets-${slugOf(set.id) || 'set'}.json`); args.push('--targets', tf); notes.push('Every kind of lesson in the set (its jobs) is scored on its own, so a setting that helps one and hurts another shows.'); return { problems, notes, args, out, set, targetsFile: tf }; }

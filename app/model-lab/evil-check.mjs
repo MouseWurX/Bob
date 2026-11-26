@@ -1,6 +1,6 @@
 // Evil check (13 Nov, the owner: "check him for the evil neuron and show me the results of that in plain text", and "make sure
 // he has no hands"). Measure only and live only: nothing is cut, baked or trained, every dial goes back at the end.
-// On a Brain Engine server (the Forge's card) serving one brain:
+// On a Lamplight server (the Forge's card) serving one brain:
 //   1. The direction (if the pod made it: out/bench/evil-<name>/direction-{all,a,b}.gguf from llama-cvector-generator on
 //      forge/pod/evil-pairs.json, the same ask with a cruel/deceptive persona vs a kind/honest one). cvector-generator writes
 //      unit vectors, so a layer's "strength" here is how steady the direction is: the agreement (cosine) of the two halves.
@@ -77,7 +77,7 @@ async function directions(dir) {
 async function main() {
   const a = Object.fromEntries(process.argv.slice(2).reduce((acc, x, i, arr) => (x.startsWith('--') ? [...acc, [x.slice(2), arr[i + 1] && !arr[i + 1].startsWith('--') ? arr[i + 1] : true]] : acc), []));
   const url = String(a.url || process.env.LAB_URL || ''), out = path.resolve(String(a.out || process.env.LAB_OUT || 'evil-check'));
-  if (!url) { console.error('--url <Brain Engine server> is needed'); process.exit(1); }
+  if (!url) { console.error('--url <Lamplight server> is needed'); process.exit(1); }
   fs.mkdirSync(out, { recursive: true });
   const name = process.env.LAB_MODEL_NAME || 'brain', eng = live(url);
   const pairs = JSON.parse(fs.readFileSync(path.resolve(String(a.pairs || path.join(here, 'forge', 'pod', 'evil-pairs.json'))), 'utf8'));

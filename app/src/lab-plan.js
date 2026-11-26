@@ -56,10 +56,10 @@ export function planRecipe(recipe, { brain, facts, tools, outDir, skillNamesFor 
     }
   }
   if (s.try) {
-    // Try it first: Brain Engine runs the whole brain with only the kept experts switched on, so the Lab test shows
+    // Try it first: Lamplight runs the whole brain with only the kept experts switched on, so the Lab test shows
     // what the cut will do before any file is written. The same run, with every expert on, is the "before" score.
-    if (!tools.brainEngine?.found) problems.push('Try it first needs Brain Engine, Bob\'s Lab engine, on this replicant matrix. Get it in Settings > Engines: Brain Engine, or untick Try it first.');
-    steps.push({ id: 'try', label: 'Try it first: test with only the kept experts switched on', cmd: `${q(tools.brainEngine?.path || 'brain-engine/llama-server')} -m ${q(brain.gguf)} -c 8192 --jinja --fit on\n# the Lab test with every expert on, then POST /expert-mask {"keep": <the keep list>} and the Lab test again${s.tryStop ? '\n# stop here if it scores more than 10 points lower on the Lab test' : ''}`, gguf: brain.gguf, card: true });
+    if (!tools.lamplight?.found) problems.push('Try it first needs Lamplight, Bob\'s Lab engine, on this replicant matrix. Get it in Settings > Engines: Lamplight, or untick Try it first.');
+    steps.push({ id: 'try', label: 'Try it first: test with only the kept experts switched on', cmd: `${q(tools.lamplight?.path || 'brain-engine/llama-server')} -m ${q(brain.gguf)} -c 8192 --jinja --fit on\n# the Lab test with every expert on, then POST /expert-mask {"keep": <the keep list>} and the Lab test again${s.tryStop ? '\n# stop here if it scores more than 10 points lower on the Lab test' : ''}`, gguf: brain.gguf, card: true });
   }
   if (s.cut) {
     const out = path.join(dir, `${slug}-${s.cut.keep || 'cover'}x.gguf`);
@@ -163,8 +163,8 @@ export function lessonSkillNames(lessons, fromFile = () => []) {
   return skillCache.get(key);
 }
 
-// Brain Engine's mask: one list per layer, null for a layer without experts (it keeps them all).
-// One entry per layer Brain Engine runs: the guesser's layer at the end (facts.mtp) isn't one of them, so it's left off.
+// Lamplight's mask: one list per layer, null for a layer without experts (it keeps them all).
+// One entry per layer Lamplight runs: the guesser's layer at the end (facts.mtp) isn't one of them, so it's left off.
 export function maskFor(keep, facts) {
   const n = facts.engineLayers > 0 ? facts.engineLayers : Math.max(facts.layers || 0, keep?.length || 0);
   return Array.from({ length: n }, (_, i) => (Array.isArray(keep?.[i]) ? keep[i] : null));

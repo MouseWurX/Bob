@@ -100,7 +100,7 @@ let threw = '';
 try { await runTry(brain, { id: 'finetune' }, opts); } catch (e) { threw = e.message; }
 check('a page lesson runs nothing', /opens a Lab page/.test(threw));
 try { await runTry({ cfg: { engine: 'ollama' }, engine: {} }, { id: 'tokens' }, opts); threw = ''; } catch (e) { threw = e.message; }
-check('without Brain Engine it says why', /Brain Engine/.test(threw));
+check('without Lamplight it says why', /Lamplight/.test(threw));
 check('the brain counts as in use only while trying', engine.active === 0);
 
 // ---- progress ----

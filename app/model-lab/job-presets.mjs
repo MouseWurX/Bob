@@ -1,9 +1,9 @@
 // Per-job live presets for one brain (13 Nov, the owner: "calibrate for riker for the live tuning too", "i want this to get us his
-// weights calibration", "be sure that we have a robust dataset"). On a Brain Engine server serving the brain, every job's judged
+// weights calibration", "be sure that we have a robust dataset"). On a Lamplight server serving the brain, every job's judged
 // questions (calib-prep.mjs: held-out + a reserved slice + probes, >= 40 per job) are asked under live settings, and each job gets
 // the setting that beats the as-built brain by more than the noise. Live only: every switch goes back at the end.
 //   base      the brain as built (own experts per word, all experts, no dials)
-//   N         experts per word in every layer, one pass over all jobs per N (Brain Engine 7b12282, patch 0013; skipped on older engines)
+//   N         experts per word in every layer, one pass over all jobs per N (Lamplight 7b12282, patch 0013; skipped on older engines)
 //   keep      the job's own keep list (trace-read --mass: keep/job-<job>-keep-75.json, -50) at the job's best N, the job's questions only
 //   dials     the job's leaning experts (trace-read lift.json, "up" side) scaled 0.8 and 1.2 at the job's best N and keep
 // Grading: first assistant turn of each lesson, same tool names and arguments as recorded, or rightly no tool (tool-judge.mjs).

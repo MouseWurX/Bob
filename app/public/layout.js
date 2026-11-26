@@ -218,7 +218,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   $('mindDockPop').onclick = () => { const w = window.open('/mind.html', 'bob-mind', 'popup,width=380,height=480'); try { w?.focus(); } catch {} bringToFront('mind'); };
   document.addEventListener('visibilitychange', mindListen);
   // fNRI's small cube: it only listens while the section is showing. Its glow is for show unless Real experts is on
-  // (off to begin with), which makes Bob ask Brain Engine for the experts each reply used, and that slows his replies.
+  // (off to begin with), which makes Bob ask Lamplight for the experts each reply used, and that slows his replies.
   const cubeBtn = $('mindDockCube'), liveBtn = $('mindCubeLive');
   let cubeLive = store.get('bob-cube-live', '0') === '1';
   const drawLive = () => { if (!liveBtn) return; liveBtn.setAttribute('aria-checked', String(cubeLive)); liveBtn.querySelector('.st').textContent = cubeLive ? 'On' : 'Off'; };

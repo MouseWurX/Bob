@@ -303,7 +303,7 @@ export async function planTeach(lab, c = {}) {
     let freeGB = null; try { const d = labModelsDir(lab.cfg); fs.mkdirSync(d, { recursive: true }); if (lab.freeGB) freeGB = lab.freeGB(d); else { const st = fs.statfsSync(d); freeGB = Math.round((st.bavail * st.bsize) / 1e9); } } catch {}
     if (freeGB !== null && brain.paramsB && freeGB < disk.work + 5) problems.push(`It needs about ${disk.work} GB of disk while it works and there's ${freeGB} GB free.`);
     for (const t of ['quantize', 'server']) if (!lab.tools()[t].found) problems.push(`${path.basename(lab.tools()[t].path)} isn't in Bob's engine folder. Settings > Engines: the built-in engine has it.`);
-    if (!direct && !fs.existsSync(exportLoraPath(lab))) problems.push(`${exeName('llama-export-lora')} isn't here; it folds the adapter into the new brain. It isn't in the built-in engine's download; it comes with Brain Engine, the Lab's engine (Settings > Engines: Brain Engine (test build)), from the build after this one.`);
+    if (!direct && !fs.existsSync(exportLoraPath(lab))) problems.push(`${exeName('llama-export-lora')} isn't here; it folds the adapter into the new brain. It isn't in the built-in engine's download; it comes with Lamplight, the Lab's engine (Settings > Engines: Lamplight (test build)), from the build after this one.`);
     if (way === 'squeeze') {
       notes.push(`Squeeze-aware: while it learns, every weight is rounded the way the ${squeeze} file rounds it, and the brain learns to say what its full-size self says on these lessons (their answers aren't needed). Then Bob makes the plain ${squeeze} and the squeeze-aware ${squeeze}, and compares both with the full-size brain.`);
       if (!lab.tools().perplexity?.found && !lab.stepFns?.perplexity) notes.push(`${exeName('llama-perplexity')} isn't in Bob's engine folder, so the comparison uses the Quick quiz alone.`);
@@ -318,7 +318,7 @@ export async function planTeach(lab, c = {}) {
   }
   return { name, slug: slugOf(name), brain, lessons, fit, where, epochs, hours, disk, trainer: tr.ok, way, squeeze, direct, problems, notes };
 }
-// Next to the engine's tools, or in Brain Engine's folder: the engine's own download doesn't carry it, Brain Engine's does.
+// Next to the engine's tools, or in Lamplight's folder: the engine's own download doesn't carry it, Lamplight's does.
 export const exportLoraPath = (lab) => { const own = path.join(path.dirname(lab.tools().quantize.path), exeName('llama-export-lora')); const be = path.join(lab.cfg.agentDir, 'brain-engine', exeName('llama-export-lora')); return !fs.existsSync(own) && fs.existsSync(be) ? be : own; };
 
 // ---- Teach it here ----

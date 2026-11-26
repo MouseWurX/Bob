@@ -16,7 +16,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { MEM_TYPES, memTypeTrade } from '../public/mem-types.js';
-import { brainEngineBuild } from '../public/engine-name.js';
+import { lamplightBuild } from '../public/engine-name.js';
 import { ggufInfo } from './gguf.js';
 
 export const EXTRA_SWITCHES = ['copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'turboEveryday', 'lockBrainMemory', 'hotExperts', 'turbo'];
@@ -132,7 +132,7 @@ export function mtpArgs(gguf, opts = {}) {
 export const TURBO_EVERYDAY_MAX = 3;
 // Nov 23 (the owner: "MTP typically doesn't hurt answers"; it's stock llama.cpp): on unless switched off
 export const turboEverydayOn = (cfg) => cfg?.turboEveryday !== false;
-// with it on by default, drafting pauses where it doesn't pay (Brain Engine 0034's gate); a share set by hand wins
+// with it on by default, drafting pauses where it doesn't pay (Lamplight 0034's gate); a share set by hand wins
 export const SPEC_GATE_DEFAULT = '0.3';
 export const specGateEnv = (env = {}) => (env && env.LLAMA_SPEC_GATE !== undefined && env.LLAMA_SPEC_GATE !== '' ? {} : { LLAMA_SPEC_GATE: SPEC_GATE_DEFAULT });
 export function everydayTurboArgs(cfg, { build = 0, args = [], mtp = 0, cpu = false, guesser = null } = {}) {
@@ -184,39 +184,39 @@ export function cleanMemType(v) {
 // 0038's 3-bit chat memory has kernels for CUDA cards and the processor only. A Mac (Metal) or an engine folder whose
 // card file is Vulkan without CUDA would run that attention on the processor, so Bob doesn't offer it there.
 export const q3CardOk = (files, platform) => platform !== 'darwin' && !((files || []).some((f) => /ggml-(vulkan|metal)/i.test(f)) && !(files || []).some((f) => /ggml-cuda/i.test(f)));
-// The engine lists its chat memory types under -ctv in --help (wrapped over lines); 3-bit is there only on a Brain Engine with 0038.
+// The engine lists its chat memory types under -ctv in --help (wrapped over lines); 3-bit is there only on a Lamplight with 0038.
 const helpHasKv = (text, type) => { const t = String(text ?? ''), at = t.indexOf('--cache-type-v'); const m = at < 0 ? null : t.slice(at).match(/allowed values:[^\n]*(?:\r?\n[ \t]+[^-\s][^\n]*)*/); return Boolean(m) && new RegExp(`\\b${type}\\b`).test(m[0]); };
 export const helpHasQ3 = (text) => helpHasKv(text, 'q3_0');
-// 2-bit (Brain Engine patch 0046, Nov 20): the same list names q2_kv. Turbo only (Progressive 8+2), same cards as 3-bit.
+// 2-bit (Lamplight patch 0046, Nov 20): the same list names q2_kv. Turbo only (Progressive 8+2), same cards as 3-bit.
 export const helpHasQ2 = (text) => helpHasKv(text, 'q2_kv');
 // ---------- Turbo (Nov 20, the owner's ask; off unless switched on) ----------
 // A show-off speed mode, not for real jobs: every speed trick that costs a little answer quality, at once. Its chat
 // memory is 4-bit (Smaller) for every brain unless picked otherwise (Smallest, or one of the Progressive kinds), and a
 // brain made of experts uses 4 per word when it has more (turboExperts, on unless switched off). The brain's own picks
-// come back when Turbo is off. Without a Brain Engine that has 3-bit, Smallest and Progressive fall back to Smaller.
+// come back when Turbo is off. Without a Lamplight that has 3-bit, Smallest and Progressive fall back to Smaller.
 export const TURBO_MEMS = ['smallest', 'small', 'progressive', 'progressive2', 'progressive83', 'progressive84', 'progressive82'];
 // Nov 20: Smaller (4-bit) unless picked. The speed test on a 16 GB card found 3-bit writing 5% slower at 32K and 18%
 // at 128K and 256K (its attention reads are slower), so Smallest only wins on room until that's fixed in the engine.
-// Patch 0044 (Brain Engine 25): 3-bit at 128K went from 54.2 to 56.1 tokens a second against 4-bit's 57.8 (-2.9%),
+// Patch 0044 (Lamplight 25): 3-bit at 128K went from 54.2 to 56.1 tokens a second against 4-bit's 57.8 (-2.9%),
 // so Smaller stays the pick for speed and Smallest costs little for its room.
 export const turboMem = (cfg) => (TURBO_MEMS.includes(cfg?.turboMem) ? cfg.turboMem : 'small');
 export const TURBO_EXPERTS = 4;
 export const turboExperts = (cfg) => cfg?.turbo === true && cfg?.turboExperts !== false;
-// Turbo: stand-ins (Brain Engine 0043, off unless switched on, and only with Turbo and the hot-experts cache): while
+// Turbo: stand-ins (Lamplight 0043, off unless switched on, and only with Turbo and the hot-experts cache): while
 // writing, up to 2 missed experts a layer are replaced by the best-scored expert already on the card instead of being
 // copied over. Faster, and the words change (lossy), so it's a show-off switch only.
 export const turboStandins = (cfg) => cfg?.turbo === true && cfg?.turboStandins === true;
 export const STANDIN_ENV = { LLAMA_MOE_STANDIN: 'rank', LLAMA_MOE_STANDIN_MAX: '2' };
-// Nov 22 (Brain Engine 32, patch 0053): Turbo: never wait on the drive. Only an expert that has dropped out of RAM is
+// Nov 22 (Lamplight 32, patch 0053): Turbo: never wait on the drive. Only an expert that has dropped out of RAM is
 // stood in for, by the next best on the card or in RAM, and read back in the background. Changes the words, so it
 // sits behind Turbo; Turbo: stand-ins wins when both are on.
 export const turboDriveStandins = (cfg) => cfg?.turbo === true && cfg?.turboDriveStandins === true && !turboStandins(cfg);
 export const DRIVE_STANDIN_ENV = { LLAMA_MOE_STANDIN: 'drive' };
 // The experts per word Turbo asks of a brain whose own count is `own`: 4 when it has more, else nothing.
 export const turboPerWord = (cfg, own) => (turboExperts(cfg) && Number(own) > TURBO_EXPERTS ? TURBO_EXPERTS : null);
-// Progressive Memory (Brain Engine patch 0039): the engine names LLAMA_KV_TIERS under -ctv in --help.
+// Progressive Memory (Lamplight patch 0039): the engine names LLAMA_KV_TIERS under -ctv in --help.
 export const helpHasTiers = (text) => /\bLLAMA_KV_TIERS\b/.test(String(text ?? ''));
-// Smallest (3-bit, Brain Engine patch 0038) needs an engine that has q3_0; without one it falls back to Smaller.
+// Smallest (3-bit, Lamplight patch 0038) needs an engine that has q3_0; without one it falls back to Smaller.
 // Progressive needs both; without them it falls back to Smaller too (the nearest in room).
 // Progressive 8+2 (Turbo only, Nov 20) needs the 2-bit type (patch 0046) and Progressive Memory.
 export function memTypeOf(cfg, model, { q3 = false, q2 = false, tiers = false } = {}) {
@@ -258,7 +258,7 @@ export function progressiveTiers(ctx, type = 'progressive') {
   if (c < 2048) return '';
   const fit = (most, part) => Math.min(most, Math.floor(c / part / 256) * 256);
   const q4 = `q4_0:${fit(65536, 2)}`;
-  // Nov 21 (npc, BE26, step 4096 / c4096): a 2K ring writes faster than 8K (8+3 at 32K 80.1 vs 74.9 t/s) and stays
+  // Nov 21 (npc, LL26, step 4096 / c4096): a 2K ring writes faster than 8K (8+3 at 32K 80.1 vs 74.9 t/s) and stays
   // sharper than q4 for 8+4 (KLD 0.0196 vs q4 0.0227; 8+3 0.0322, between q4 and q3 0.0484). 8+2 keeps its tested 8K.
   if (type === 'progressive83' || type === 'progressive84') return `q8_0:${fit(2048, 4)}`;
   if (type === 'progressive82') return `q8_0:${fit(8192, 4)}`;
@@ -366,15 +366,15 @@ export function warmFile(file, { open = fs.createReadStream, done = () => {} } =
 }
 
 // ---------- 99 Engine updates in plain words ----------
-// Brain Engine: one or two lines per version, written when each one ships.
-export const BRAIN_ENGINE_NOTES = {
+// Lamplight: one or two lines per version, written when each one ships.
+export const LAMPLIGHT_NOTES = {
   3: 'Built on a newer llama.cpp (b12282), with CUDA 13.5 on NVIDIA cards. Adds SCUT, a faster Wi-Fi link for sharing a card between Bobs, and the SUDDAR scan.',
   4: 'Every SCUT packet between your Bobs is sealed, so nobody else on the network can read or change it.',
-  8: 'Built on llama.cpp 1.0 (b12359). Faster NVIDIA cards on small batches and a tidier engine underneath; all of Bob\'s own changes carried over, and it still shares cards with Bobs on Brain Engine 7.',
+  8: 'Built on llama.cpp 1.0 (b12359). Faster NVIDIA cards on small batches and a tidier engine underneath; all of Bob\'s own changes carried over, and it still shares cards with Bobs on Lamplight 7.',
   14: 'The fNRI cube\'s expert trace no longer slows Bob or changes his words (it costs 0 to 2% now). Also carries new speed switches for the hot-experts cache, all off.'
 };
-// Brain Engine's own build number from its release name (brain-engine-5b12282 or the older brain-engine-v4; public/engine-name.js).
-export const brainEngineNumber = (tag) => brainEngineBuild(tag)?.n || 0;
+// Lamplight's own build number from its release name (brain-engine-5b12282 or the older brain-engine-v4; public/engine-name.js).
+export const lamplightNumber = (tag) => lamplightBuild(tag)?.n || 0;
 // llama.cpp: its release notes are written for programmers, so only the parts that matter to you are picked out.
 const PLAIN = [
   [/\b(cuda|nvidia|cublas)\b/i, 'Changes for NVIDIA graphics cards.'],
@@ -386,7 +386,7 @@ const PLAIN = [
   [/\b(server|tool call|chat template|jinja)\b/i, 'Changes to how the engine answers me.']
 ];
 export function plainEngineNotes(id, { to = '', body = '' } = {}) {
-  if (id === 'brainengine') { const n = brainEngineNumber(to); return BRAIN_ENGINE_NOTES[n] || ''; }
+  if (id === 'lamplight') { const n = lamplightNumber(to); return LAMPLIGHT_NOTES[n] || ''; }
   const hits = [];
   for (const [re, line] of PLAIN) if (re.test(String(body || '')) && !hits.includes(line)) hits.push(line);
   if (hits.length) return hits.slice(0, 2).join(' ');

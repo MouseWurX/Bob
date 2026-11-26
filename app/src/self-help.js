@@ -78,7 +78,7 @@ export function settingsNow(cfg) {
     `Plan before big jobs: ${onOff(cfg.planFirst === true)}`,
     jobHelpsNow(cfg),
     `Resume jobs after restart: ${onOff(cfg.resumeJobs === true)}; Carry on unfinished downloads when Bob starts: ${onOff(cfg.downloads?.resumeOnStart === true || cfg.resumeJobs === true)}`,
-    `Bob's engine: ${cfg.engine === 'ollama' ? 'Ollama' : "Brain Engine, Bob's own"}`,
+    `Bob's engine: ${cfg.engine === 'ollama' ? 'Ollama' : "Lamplight, Bob's own"}`,
     `Voice: ${cfg.tts?.provider || 'Windows voice'}`,
     `Hands: ${hands}${h.enabled ? `; Work without asking ${onOff(h.free)}` : ''}`,
     `Housekeeping: ${onOff(cfg.housekeeping?.enabled === true)}`,

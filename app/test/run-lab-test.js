@@ -208,8 +208,8 @@ check('chats are one skill, and the plan says so', plan({ name: 'x', lessons: { 
 check('a coverage cut needs lessons', plan({ name: 'x', smaller: { cut: { how: 'cover' } } }).problems.some((x) => /count each skill/.test(x)));
 
 // ---- Lab 1b: the measurement record and Compare ----
-const rec = measureRecord({ name: 'A', sha256: 'ab', facts: { fileType: 'Q4_K_M', experts: 192 }, sizeGB: 16.2, template: 'plain-cut', parent: 'Big', test: { parts: { general: { score: 100 }, tools: { score: 50 } }, score: 75, tps: 77.4, prefillTps: 900, where: 'card', engine: 'Brain Engine' }, cfg: { gpuVramGB: 16 }, when: Date.UTC(2026, 10, 8) });
-check('the record has the design\'s shape', rec.brain.sha256 === 'ab' && rec.brain.quant === 'Q4_K_M' && rec.brain.expertsKept === 192 && rec.brain.parent === 'Big' && rec.where.place === 'home' && rec.where.card === '16 GB card' && rec.where.engine === 'Brain Engine' && rec.when === '2026-11-08' && rec.scores['General knowledge'] === 100 && rec.scores['Lab test (all)'] === 75 && rec.speed.tps === 77.4 && rec.speed.prefillTps === 900);
+const rec = measureRecord({ name: 'A', sha256: 'ab', facts: { fileType: 'Q4_K_M', experts: 192 }, sizeGB: 16.2, template: 'plain-cut', parent: 'Big', test: { parts: { general: { score: 100 }, tools: { score: 50 } }, score: 75, tps: 77.4, prefillTps: 900, where: 'card', engine: 'Lamplight' }, cfg: { gpuVramGB: 16 }, when: Date.UTC(2026, 10, 8) });
+check('the record has the design\'s shape', rec.brain.sha256 === 'ab' && rec.brain.quant === 'Q4_K_M' && rec.brain.expertsKept === 192 && rec.brain.parent === 'Big' && rec.where.place === 'home' && rec.where.card === '16 GB card' && rec.where.engine === 'Lamplight' && rec.when === '2026-11-08' && rec.scores['General knowledge'] === 100 && rec.scores['Lab test (all)'] === 75 && rec.speed.tps === 77.4 && rec.speed.prefillTps === 900);
 check('missing parts are left out, not zeroed', (() => { const r = measureRecord({ name: 'B', test: { parts: {}, score: 0 } }); return !('speed' in r) && !('memory' in r) && !('sha256' in r.brain) && !('card' in r.where); })());
 const tbl = compareTable([rec, { ...rec, brain: { ...rec.brain, name: 'B', sizeGB: 20.8 }, speed: { tps: 65.7 } }]);
 check('Compare has a signed difference column with a percent', tbl.names.join() === 'A,B' && tbl.rows.find((x) => x.field === 'brain.sizeGB').diffText === '+4.6 (+28%)' && tbl.rows.find((x) => x.field === 'speed.tps').diffText === '-11.7 (-15%)');
@@ -335,14 +335,14 @@ teacher.close();
   check('a teacher that writes the real home folder anyway is scrubbed in the saved lesson', !/robin/i.test(leakText) && /Users\\\\you\\\\Documents/.test(leakText) && leakBodies.every((b) => !/robin/i.test(b)), leakText);
   check('the placeholder idea never became a lesson', !/code snippet/.test(leakText) && !/code snippet/.test(fs.readFileSync(path.join(tmp, 'leak', 'ideas.jsonl'), 'utf8')));
 }
-// ---- Lab 2a: Try it first on Brain Engine (fake engine steps) ----
-check('Brain Engine\'s mask has one entry per layer, null where a layer has no experts', JSON.stringify(maskFor([undefined, [1, 2]], { layers: 3 })) === '[null,[1,2],null]');
-check('a brain with its own guesser layer: the mask leaves that layer off, as Brain Engine counts (Riker: 41 in the file, 40 run)', maskFor([[1], [2], [3]], { layers: 3, mtp: 1, engineLayers: 2 }).length === 2 && JSON.stringify(maskFor([[1]], { layers: 3, mtp: 1, engineLayers: 2 })) === '[[1],null]');
+// ---- Lab 2a: Try it first on Lamplight (fake engine steps) ----
+check('Lamplight\'s mask has one entry per layer, null where a layer has no experts', JSON.stringify(maskFor([undefined, [1, 2]], { layers: 3 })) === '[null,[1,2],null]');
+check('a brain with its own guesser layer: the mask leaves that layer off, as Lamplight counts (Riker: 41 in the file, 40 run)', maskFor([[1], [2], [3]], { layers: 3, mtp: 1, engineLayers: 2 }).length === 2 && JSON.stringify(maskFor([[1]], { layers: 3, mtp: 1, engineLayers: 2 })) === '[[1],null]');
 const tryRecipe = (name, extra = {}) => ({ name, from: 'test-moe', lessons: { kind: 'chats' }, smaller: { cut: { how: 'busiest', keep: 4 }, try: true, ...extra }, test: { compare: true } });
-check('Try it first needs Brain Engine on this replicant matrix', lab.plan(tryRecipe('Try A')).problems.some((x) => /Brain Engine/.test(x)));
+check('Try it first needs Lamplight on this replicant matrix', lab.plan(tryRecipe('Try A')).problems.some((x) => /Lamplight/.test(x)));
 fs.mkdirSync(path.join(tmp, 'brain-engine'), { recursive: true }); fs.writeFileSync(path.join(tmp, 'brain-engine', exe('llama-server')), '');
 const tp = lab.plan(tryRecipe('Try A'));
-check('with Brain Engine, the try comes before the cut and replaces the separate compare test', !tp.problems.length && tp.steps.findIndex((x) => x.id === 'try') === tp.steps.findIndex((x) => x.id === 'cut') - 1 && !tp.steps.some((x) => x.id === 'compare'), JSON.stringify(tp.problems));
+check('with Lamplight, the try comes before the cut and replaces the separate compare test', !tp.problems.length && tp.steps.findIndex((x) => x.id === 'try') === tp.steps.findIndex((x) => x.id === 'cut') - 1 && !tp.steps.some((x) => x.id === 'compare'), JSON.stringify(tp.problems));
 let masks = [];
 const tryLab = (masked) => new Lab(cfg, { shop, room: big, steps: { count: async (s) => { fs.copyFileSync(countsFile, s.counts); }, try: async (s, { keep }) => { masks.push(keep); return { full: fakeQuiz(80), masked: fakeQuiz(masked) }; }, test: async () => fakeQuiz(72) } });
 const tl1 = tryLab(50); await tl1.start(tryRecipe('Try Worse')); while (tl1.job) await new Promise((r) => setTimeout(r, 20));
@@ -821,7 +821,7 @@ check('the old one-shot tool picks stay for the Pick the tool challenge', TOOLS.
   // which brain the cards may use
   const engine = { url: 'http://fake', current: 'qwen', child: { exitCode: null }, currentCtx: 8192, active: 0, now: () => 5, isBusy: () => false };
   const brainFor = (cfg, eng = engine) => ({ cfg, engine: eng, brainLabel: (m) => `Friendly ${m}` });
-  check('Learn needs Bob\'s own engine', !learnBrain(brainFor({ engine: 'ollama' })).ready && /my own engine, Brain Engine/.test(learnBrain(brainFor({ engine: 'ollama' })).why));
+  check('Learn needs Bob\'s own engine', !learnBrain(brainFor({ engine: 'ollama' })).ready && /my own engine, Lamplight/.test(learnBrain(brainFor({ engine: 'ollama' })).why));
   check('Learn with no brain loaded says to say something in the chat', (() => { const b = learnBrain(brainFor({ engine: 'llamacpp' }, { ...engine, current: '' })); return !b.ready && b.wake && /Say anything to me in the chat/.test(b.why); })());
   check('Learn waits while Bob is answering in the chat', (() => { const b = learnBrain(brainFor({ engine: 'llamacpp' }, { ...engine, isBusy: () => true })); return !b.ready && b.busy; })());
   check('Learn finds the loaded brain, its address and its window', JSON.stringify(learnBrain(brainFor({ engine: 'llamacpp' }))) === JSON.stringify({ ready: true, url: 'http://fake', model: 'qwen', ctx: 8192 }));
@@ -1111,10 +1111,10 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
     const peek = JSON.parse(fs.readFileSync(path.join(hcfg.dataDir, 'lab', 'usage', 'rel-a', 'peek-counts.json'), 'utf8'));
     check('the tally adds up across questions in the usage map\'s file, source peek, and rewrites the keep file', peek.things.length === 1 && peek.things[0].source === 'peek' && peek.things[0].tokens === 6 && peek.things[0].counts[1][2] === 6 && peek.brain.sha256 === 'abc' && fs.existsSync(path.join(hcfg.dataDir, 'lab', 'usage', 'rel-a', 'rel-a-keep.json')));
     const pv = hlab.peek('rel-a'); check('the peek view has the map, the cold count and the things counted', pv.have && pv.total[1][2] === 6 && pv.cold === 16 - 7 && pv.things[0].name === 'Peek inside');
-    const noEngine = PK.peekView(hcfg, pb, facts, { engineFound: false }); check('without Brain Engine the live view is greyed with the reason', !noEngine.ok && noEngine.live.ok === false && /Brain Engine/.test(noEngine.live.why) && noEngine.have);
+    const noEngine = PK.peekView(hcfg, pb, facts, { engineFound: false }); check('without Lamplight the live view is greyed with the reason', !noEngine.ok && noEngine.live.ok === false && /Lamplight/.test(noEngine.live.why) && noEngine.have);
     check('the Forge\'s keep-file list sees the tally', hlab.keepFiles().some((k) => /Rel A/.test(k.name)));
     check('Cut these out from a lit set writes a keep file; without one it uses the tally', hlab.peekKeep({ brain: 'rel-a', counts: t.counts }).experts === 4 && /rel-a-keep\.json$/.test(hlab.peekKeep({ brain: 'rel-a' }).file)); }
-  { // the live view with a fake Brain Engine: a server that takes the expert mask, and a fake traced answer
+  { // the live view with a fake Lamplight: a server that takes the expert mask, and a fake traced answer
     const masks = [];
     const srv = http.createServer((req, res) => { let b = ''; req.on('data', (d) => { b += d; }); req.on('end', () => { if (req.url === '/expert-mask') { masks.push(JSON.parse(b).keep); res.end('{}'); } else res.end('{}'); }); });
     await new Promise((r) => srv.listen(0, '127.0.0.1', r));
@@ -1308,14 +1308,14 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   check('get, stop and add are for this replicant matrix itself', (await hit('/api/lab/full/add', { file: aFile }, false)).code === 403 && (await hit('/api/lab/full/stop', {}, false)).code === 403);
   check('nothing happens while the Lab is off', (await hit('/api/lab/full/look', { input: aFile }, true, new Lab({ ...fcfg, computerLab: false }, { shop: fshop, room: big }))).code === 403);
   check('a bad path is refused in words', (await hit('/api/lab/full/add', { file: path.join(fdir, 'missing.gguf') }, true)).code === 400);
-  // the engine tools: found in Brain Engine's folder too, and the words say where they come from
+  // the engine tools: found in Lamplight's folder too, and the words say where they come from
   const bcfg = { ...fcfg, agentDir: path.join(fdir, 'agent'), llamacpp: { exe: path.join(fdir, 'agent', 'llama.cpp', 'llama-server') } };
   fs.mkdirSync(path.join(bcfg.agentDir, 'brain-engine'), { recursive: true }); fs.mkdirSync(path.join(bcfg.agentDir, 'llama.cpp'), { recursive: true });
   const blab = new Lab(bcfg, { shop: fshop, room: big });
   check('without the tools the Lab says so', blab.tools().cvector.found === false && !fs.existsSync(exportLoraPath(blab)));
   for (const n of ['llama-cvector-generator', 'llama-export-lora']) fs.writeFileSync(path.join(bcfg.agentDir, 'brain-engine', n + (process.platform === 'win32' ? '.exe' : '')), '');
-  check('the direction finder and the adapter folder are found in Brain Engine\'s folder', blab.tools().cvector.found === true && /brain-engine/.test(blab.tools().cvector.path) && fs.existsSync(exportLoraPath(blab)) && /brain-engine/.test(exportLoraPath(blab)));
-  check('the missing-tool words point at Brain Engine, not the engine\'s own download', /comes with Brain Engine/.test(read('src/lab-refusals.js')) && /comes with Brain Engine/.test(read('src/lab-teach.js')) && !/engine's full download/.test(read('src/lab-refusals.js')) && !/Download the built-in engine again/.test(read('src/lab-teach.js')));
+  check('the direction finder and the adapter folder are found in Lamplight\'s folder', blab.tools().cvector.found === true && /brain-engine/.test(blab.tools().cvector.path) && fs.existsSync(exportLoraPath(blab)) && /brain-engine/.test(exportLoraPath(blab)));
+  check('the missing-tool words point at Lamplight, not the engine\'s own download', /comes with Lamplight/.test(read('src/lab-refusals.js')) && /comes with Lamplight/.test(read('src/lab-teach.js')) && !/engine's full download/.test(read('src/lab-refusals.js')) && !/Download the built-in engine again/.test(read('src/lab-teach.js')));
   // the page and Help
   const hw = read('public/lab-home-ways.js'), fz = read('public/lab-fullsize.js'), pgj = read('public/lab-playground.js');
   check('the Bring in box is one shared module with Look, Get it, Stop and Pick a file here', /Bring in a full-size brain/.test(fz) && /data-fulllook/.test(fz) && /data-fullget/.test(fz) && /data-fullstop/.test(fz) && /data-fullpick/.test(fz) && /Nothing is uploaded/.test(fz));
@@ -1325,7 +1325,7 @@ check('the Lab test\'s weather question uses a neutral city', /weather like in L
   check('progress reaches the page', /case 'lab-full'/.test(publicText('app.js')) && /fullUpdate\(full\)/.test(read('public/lab.js')));
   const { HELP } = await import('../public/help-content.js');
   const fh = HELP.find((h) => h.id === 'lab-forge');
-  check('Help explains Bring in a full-size brain and where the engine tools come from', /Bring in a full-size brain/.test(fh.html) && /Your own brains/.test(fh.html) && /Brain Engine/.test(fh.html) && /full-size/.test(fh.words));
+  check('Help explains Bring in a full-size brain and where the engine tools come from', /Bring in a full-size brain/.test(fh.html) && /Your own brains/.test(fh.html) && /Lamplight/.test(fh.html) && /full-size/.test(fh.words));
   check('the release note is there', /Bring in a full-size brain/.test(read('docs/releases/v1.5.173.md')) && /Your own brains/.test(read('docs/releases/v1.5.173.md')));
   check('nothing new names a private brain', !/thoth|heretic/i.test(read('src/lab-fullsize.js') + hw));
 }

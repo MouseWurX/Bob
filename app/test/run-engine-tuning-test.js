@@ -47,7 +47,7 @@ check('a processor share alone does nothing', !tuningArgs(hand({ cpuShare: 1 }),
 check('flags typed by hand win', (() => { const r = tuningArgs(hand({ step: 4096, cacheMB: 4096 }), 'big', { handArgs: ['--ubatch-size', '512', '--moe-cache-mib', '2048'] }); return !r.args.includes('-ub') && !r.args.includes('--moe-cache-mib'); })());
 check('the processor-only load gets the step but no card levers', (() => { const r = tuningArgs(hand({ step: 1024, cacheMB: 4096, lookahead: 4 }), 'big', { cpu: true }); return r.args.join(' ') === '-b 1024 -ub 1024' && !Object.keys(r.env).length; })());
 
-// ---------- Brain Engine 30/31: borrow, shelf, drive, saved hot set (Nov 22, off by default) ----------
+// ---------- Lamplight 30/31: borrow, shelf, drive, saved hot set (Nov 22, off by default) ----------
 check('the new switches are off unless set, and only 0 or 1', JSON.stringify(cleanLevers({ borrow: 2, shelf: 0.5, drive: 1, hotSave: 1 })) === JSON.stringify({ drive: 1, hotSave: 1 }));
 { const cfg = { dataDir: tmp, ...hand({ borrow: 1, shelf: 1, drive: 1, hotSave: 1 }) };
   const r = tuningArgs(cfg, 'big', { exists: () => false });

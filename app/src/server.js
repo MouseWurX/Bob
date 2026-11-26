@@ -30,7 +30,7 @@ import { ModelShop, saveNameOf } from './models.js';
 import { CatalogUpdates } from './catalog-update.js';
 import { readPage, makeEntry, cleanAdded, mergeAdded, sweepAdded, ADDED_MAX } from './catalog-added.js';
 import { findModels } from './catalog-find.js';
-import { checkEngine, seedBundledEngine, goBackEngine, removeEngine, brainsEngineSettings, engineChoices, brainsEngineNow } from './engines.js';
+import { checkEngine, engineId, seedBundledEngine, goBackEngine, removeEngine, brainsEngineSettings, engineChoices, brainsEngineNow } from './engines.js';
 import { onEngineFallback } from './engine-blocked.js';
 import { sacNoticeOnce } from './app-control.js';
 import { liveTrace, liveTracePart } from '../public/lab-watch-math.js';
@@ -168,7 +168,7 @@ const publicDir = path.join(appDir, 'public');
 // llama.cpp speed settings, as the app shows them.
 function speedView() {
   const lc = cfg.llamacpp || {};
-  return { fit: typeof lc.fit === 'boolean' ? lc.fit : null, threads: lc.threads || null, batch: lc.batch || null, ubatch: lc.ubatch || null, ctx: lc.ctx || null, draft: lc.draft || { enabled: false, model: '', max: 16, min: 1, ngld: 99 }, modelArgs: lc.modelArgs || {}, args: lc.args || null, turbo: lc.turbo || {}, expertsPerWord: lc.expertsPerWord || {}, trainer: trainerState(cfg).ok, brainEngine: lc.brainEngine !== false, onBrainEngine: /[\\/]brain-engine[\\/]/.test(lc.exe || '') }; // 1.5.16x MTP per brain, the Lab's Trainer pack
+  return { fit: typeof lc.fit === 'boolean' ? lc.fit : null, threads: lc.threads || null, batch: lc.batch || null, ubatch: lc.ubatch || null, ctx: lc.ctx || null, draft: lc.draft || { enabled: false, model: '', max: 16, min: 1, ngld: 99 }, modelArgs: lc.modelArgs || {}, args: lc.args || null, turbo: lc.turbo || {}, expertsPerWord: lc.expertsPerWord || {}, trainer: trainerState(cfg).ok, lamplight: lc.lamplight !== false, onLamplight: /[\\/]brain-engine[\\/]/.test(lc.exe || '') }; // 1.5.16x MTP per brain, the Lab's Trainer pack
 }
 // 1.5.41 Save folder, as Settings shows it: the folder now, Bob's own, and whether a picked one has gone.
 // 1.5.79: the memory banks for Settings (general + one per project), and what the last message recalled.
@@ -187,7 +187,7 @@ const clients = new Set();
 // as it streams; while none is open, Bob doesn't even pass it along (brain.mindWatchers), so it costs nothing.
 const mindClients = new Set();
 const cubeClients = new Set(); // fNRI's small cube pages (see below)
-const liveCubes = new Set(); // the cube pages with Real experts on: only these make Bob ask Brain Engine for the trace
+const liveCubes = new Set(); // the cube pages with Real experts on: only these make Bob ask Lamplight for the trace
 
 let telegram = null; // Bob on Telegram (src/telegram.js), set once Bob's brain is ready
 let discord = null; // Bob on Discord (src/discord.js), set once Bob's brain is ready
@@ -260,7 +260,7 @@ const applyShortcut = (g) => { try { globalThis.bobGlobalAsk?.(g, cfg.port); } c
 setTimeout(() => applyShortcut(cfg.globalAsk), 1500).unref?.();
 const appsRoute = makeAppsRoute({ brain, cfg, version: VERSION.label || String(VERSION) });
 lockAtStart(cfg, (k, t) => brain.log(k, t)); // 🔐 Locked secrets: notes from opening the box, then any plain keys from an older Bob locked away
-if (cfg.engineMoved?.length) brain.log('settings', `brains now run on ${cfg.llamacpp.brainEngine !== false && brainsEngineNow(cfg) === 'brainengine' ? 'Brain Engine' : 'plain llama.cpp'} (was set to ${cfg.engineMoved.join(' and ')}; Brain Engine is the only engine for my brains now)`); // 1.5.196
+if (cfg.engineMoved?.length) brain.log('settings', `brains now run on ${cfg.llamacpp.lamplight !== false && brainsEngineNow(cfg) === 'lamplight' ? 'Lamplight' : 'plain llama.cpp'} (was set to ${cfg.engineMoved.join(' and ')}; Lamplight is the only engine for my brains now)`); // 1.5.196
 // 1.5.97 Pair Bobs (src/bob-net-pair.js): find them on Tailscale, a Yes card there, passcodes swapped.
 const pairing = new Pairing(cfg, { broadcast, log: (k, t) => brain.log(k, t), version: VERSION, ownAddresses: () => tailscaleIps().map((ip) => `${ip}:${cfg.port}`), home: () => (remoteHome ? doorIps() : []), vouched: (a, t) => introductions.vouched(a, t) });
 if (brain.lenders) brain.lenders.lookHome = () => (remoteHome ? pairing.find() : null); // 1.5.214: a paired Bob lost on Tailscale is looked for at home
@@ -278,11 +278,11 @@ setInterval(() => {
 setInterval(() => { if (clients.size) brain.cardWatch?.().catch(() => {}); }, 30_000).unref();
 brain.mindWatchers = () => mindClients.size;
 // fNRI's small cube in "Bob's thinking" listens with ?cube=1. On its own it glows for show while Bob thinks, which
-// costs the engine nothing. With Real experts on (?cube=1&live=1) Bob asks Brain Engine which experts each reply used
+// costs the engine nothing. With Real experts on (?cube=1&live=1) Bob asks Lamplight which experts each reply used
 // (that slows writing), and only while such a page is open. Off for everyone else.
-// An older Brain Engine build can't report them either: then the cube says so instead of staying dark (before Update under Engines).
-const cubeWhy = () => (brainsEngineNow(cfg) !== 'brainengine' ? 'The cube needs Brain Engine as the engine for Bob\'s brains (Settings > Engines). The engine in use now doesn\'t report which experts it picked.'
-  : lab.traceProbe?.()?.experts === false ? 'This Brain Engine build is too old to report which experts it picked. Press Update on Brain Engine in Settings > Engines, and the cube lights up with the next reply.' : '');
+// An older Lamplight build can't report them either: then the cube says so instead of staying dark (before Update under Engines).
+const cubeWhy = () => (brainsEngineNow(cfg) !== 'lamplight' ? 'The cube needs Lamplight as the engine for Bob\'s brains (Settings > Engines). The engine in use now doesn\'t report which experts it picked.'
+  : lab.traceProbe?.()?.experts === false ? 'This Lamplight build is too old to report which experts it picked. Press Update on Lamplight in Settings > Engines, and the cube lights up with the next reply.' : '');
 // Which brains are loaded right now, by the names the cube knows them by. Told to the cube pages only.
 // 1.5.215: only the newest look is told. Looking takes a moment (the engine asks the graphics card how much each brain
 // holds), so a look started while a brain was still loading could finish after the look that found it gone, and
@@ -304,7 +304,7 @@ if (brain.engine) {
   brain.engine.wantTrace = () => liveCubes.size > 0 && !cubeWhy();
   brain.engine.onTrace = (raw, model) => { const t = liveTrace(raw); if (!t) return; let map = null; try { map = cubeMap(lab, { model, label: friendlyName(model), experts: t.experts, layers: t.layers, kind: t.kind }); } catch {} // the colours, from this brain's newest scan
     const data = `data: ${JSON.stringify({ type: 'trace', label: friendlyName(model), ...t, ...(map ? { map } : {}) })}\n\n`; for (const res of liveCubes) res.write(data); }; // the real picks go to Real experts pages only
-  // 1.5.210: the picks as he goes, word by word (Brain Engine 5 and later streams them), to Real experts pages only
+  // 1.5.210: the picks as he goes, word by word (Lamplight 5 and later streams them), to Real experts pages only
   brain.engine.onTracePart = (raw, model) => { const t = liveTracePart(raw); if (!t || !liveCubes.size) return; const data = `data: ${JSON.stringify({ type: 'trace-part', label: friendlyName(model), ...t })}\n\n`; for (const res of liveCubes) res.write(data); };
 }
 // 1.5.38: when Downloads change, a job waiting for one (a song waiting for the music models) may be able to go.
@@ -758,7 +758,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { idle: !busy && !waiting && !downloading && quietFor >= 120, busy, waiting, downloading, quietForSeconds: quietFor, loaded, engine: cfg.engine });
     }
     if (req.method === 'GET' && p === '/api/engines/latest') {
-      try { return send(res, 200, await shop.engineLatest(String(url.searchParams.get('id') || ''))); }
+      try { return send(res, 200, await shop.engineLatest(engineId(String(url.searchParams.get('id') || '')))); }
       catch (e) { return send(res, 502, { error: e.message }); }
     }
     // 1.5.17x Engines rework: Go back (the build kept from before the last update) and Remove (Bob's own copy only).
@@ -766,11 +766,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && (p === '/api/engines/back' || p === '/api/engines/remove')) {
       if (!isLocal) return send(res, 403, { error: 'Engines can only be changed on this replicant matrix itself.' });
       const b = await body(req).catch(() => ({}));
-      const id = String(b.id || '');
+      const id = engineId(String(b.id || ''));
       try {
-        if (['llamacpp', 'brainengine'].includes(id) && brain.engine?.stopServer) await brain.engine.stopServer();
+        if (['llamacpp', 'lamplight'].includes(id) && brain.engine?.stopServer) await brain.engine.stopServer();
         const out = p.endsWith('/back') ? goBackEngine(cfg, id) : removeEngine(cfg, id);
-        return send(res, 200, { ...out, restart: ['llamacpp', 'brainengine'].includes(id) });
+        return send(res, 200, { ...out, restart: ['llamacpp', 'lamplight'].includes(id) });
       } catch (e) { return send(res, 409, { error: e.message }); }
     }
     if (req.method === 'GET' && p === '/api/capabilities') return send(res, 200, capabilities(cfg));
@@ -1249,7 +1249,7 @@ const server = http.createServer(async (req, res) => {
           if (typeof b.catalogPutBack === 'string') { cfg.catalogRemoved = (cfg.catalogRemoved || []).filter((x) => x !== b.catalogPutBack); saveSettings(cfg, { catalogRemoved: cfg.catalogRemoved }); out.catalogRemoved = cfg.catalogRemoved; }
           if (b.activeModels && typeof b.activeModels === 'object') { saveSettings(cfg, { activeModels: b.activeModels }); out.activeModels = cfg.activeModels || {}; } // 1.5.56 Brain catalogue
           if (b.tts && typeof b.tts === 'object') { saveSettings(cfg, { tts: { ...(typeof b.tts.voice === 'string' ? { voice: b.tts.voice } : {}), ...(typeof b.tts.speed === 'number' ? { speed: b.tts.speed } : {}), ...(typeof b.tts.windowsVoice === 'string' ? { windowsVoice: b.tts.windowsVoice } : {}) } }); out.tts = { provider: cfg.tts?.provider || '', voice: cfg.tts?.voice, speed: cfg.tts?.speed || 1, windowsVoice: cfg.tts?.windowsVoice || '' }; }
-          if (b.speed && typeof b.speed === 'object') { const sp = Object.fromEntries(Object.entries(b.speed).filter(([k]) => ['threads', 'batch', 'ubatch', 'ctx', 'draft', 'modelArgs', 'args', 'fit', 'turbo', 'brainEngine', 'expertsPerWord'].includes(k))); saveSettings(cfg, { llamacpp: sp }); out.speed = speedView(); if ('expertsPerWord' in sp && brain.engine) brain.engine.perWordSent = null; /* sent again before the next answer, no reload */ if ('brainEngine' in sp) out.restart = true; }
+          if (b.speed && typeof b.speed === 'object') { const sp = Object.fromEntries(Object.entries(b.speed).filter(([k]) => ['threads', 'batch', 'ubatch', 'ctx', 'draft', 'modelArgs', 'args', 'fit', 'turbo', 'lamplight', 'expertsPerWord'].includes(k))); saveSettings(cfg, { llamacpp: sp }); out.speed = speedView(); if ('expertsPerWord' in sp && brain.engine) brain.engine.perWordSent = null; /* sent again before the next answer, no reload */ if ('lamplight' in sp) out.restart = true; }
           if (b.sessionCtx && typeof b.sessionCtx === 'object') { saveSettings(cfg, { sessionCtx: b.sessionCtx }); out.sessionCtx = cfg.sessionCtx; }
           // 1.5.87: how much each brain keeps in mind, picked per brain (switch off unless turned on).
           if (typeof b.brainCtxOn === 'boolean') { saveSettings(cfg, { brainCtxOn: b.brainCtxOn }); out.brainCtxOn = cfg.brainCtxOn === true; }
@@ -1380,11 +1380,11 @@ const server = http.createServer(async (req, res) => {
           if (typeof b.language === 'string') { saveSettings(cfg, { language: b.language }); out.language = LANGUAGES.includes(cfg.language) ? cfg.language : 'en'; }
           if (typeof b.catName === 'string') { saveSettings(cfg, { catName: b.catName }); out.catName = cfg.catName || 'Patches'; }
           if (b.workshop && typeof b.workshop === 'object') { saveSettings(cfg, { workshop: b.workshop }); if (cfg.workshop?.enabled) ensureWorkshop(cfg); out.workshop = workshopView(); }
-          if (b.engine === 'llamacpp') { // 1.5.196: never Ollama now (Brain Engine is the only engine for brains)
+          if (b.engine === 'llamacpp') { // 1.5.196: never Ollama now (Lamplight is the only engine for brains)
             saveSettings(cfg, { engine: b.engine }); out.restart = true; }
           // 1.5.17x Settings > Engines' engine for brains. 1.5.196: only the one engine Bob may use here (brainsEngineSettings refuses the rest).
           if (typeof b.brainsEngine === 'string' && brainsEngineSettings(b.brainsEngine)) { saveSettings(cfg, brainsEngineSettings(b.brainsEngine)); out.restart = true; out.engineChoices = engineChoices(cfg); }
-          // The Lab's engine: '' (same as Bob's brains), Brain Engine or llama.cpp. Used from the Lab's next job.
+          // The Lab's engine: '' (same as Bob's brains), Lamplight or llama.cpp. Used from the Lab's next job.
           if (typeof b.labEngine === 'string') { saveSettings(cfg, { labEngine: b.labEngine }); out.engineChoices = engineChoices(cfg); }
           return send(res, 200, out);
         }

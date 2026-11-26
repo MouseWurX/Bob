@@ -1,5 +1,5 @@
 // The Conductor (Settings, Engine tuning, "Let the Conductor drive"; off unless picked): Bob changes his engine's
-// reading step for each reply with the brain still loaded, through Brain Engine's POST /context (patches 0035, 0037).
+// reading step for each reply with the brain still loaded, through Lamplight's POST /context (patches 0035, 0037).
 // A long new read (a file, a big paste) is read at a big step, which reads faster, then the step goes back to the
 // chat step, which writes faster. The engine empties its chat memory when the step changes, so the reading is saved
 // to disk first and put back after (llama-server's slot save and restore); the cells don't depend on the step.
@@ -92,7 +92,7 @@ export function noteSwitch(st, { seconds, guess, held = 32768 }) {
 // 133 s with 6 GB, against 8.4 s with 4 GB). Reading with 2 GB then writing with 6 GB wrote 89.4 tokens a second against
 // 82.8, the hit rate 94% against 88%; the switch paid from about 1,500 tokens written at 32K, and at 128K the gain was
 // 2%, too little for the switch. So the cache grows for writing only in a chat under CACHE_FLIP_MAX tokens when the reply
-// is expected to be long (thinking, coding, writing a file), and only by what the card has free (Brain Engine 0047
+// is expected to be long (thinking, coding, writing a file), and only by what the card has free (Lamplight 0047
 // reports it after each change), and shrinks back before the next long read.
 export const CACHE_FLIP_MAX = 65536;
 export const CACHE_FLIP_MIN_OUT = 1500;
@@ -110,17 +110,17 @@ export function cacheGrow({ total = 0, outTok = 0, cacheMiB = 0, freeMiB = null,
 export const freeFrom = (answer) => { const d = Array.isArray(answer?.devices) ? answer.devices.filter((x) => Number.isFinite(x?.free_mib)) : []; return d.length ? Math.min(...d.map((x) => x.free_mib)) : null; };
 
 // Nov 23 (the owner: "why isn't the Conductor taking over?"): with the Conductor driving and a copy cache on, the cache
-// fills the card's free memory at load (Brain Engine 0061). Only from Brain Engine 39: its 0072 measures the reading
-// step's working memory first and shrinks the filled cache to leave room for it (on Brain Engine 36 the fill left
+// fills the card's free memory at load (Lamplight 0061). Only from Lamplight 39: its 0072 measures the reading
+// step's working memory first and shrinks the filled cache to leave room for it (on Lamplight 36 the fill left
 // 512 MB, a 16 GB card spilled 1 GB into shared memory on Windows and read prompts at 1,223 t/s against 2,829). The
 // answers don't change. A fill set by hand (Engine tuning) wins, 0 included.
 export const FILL_FROM_BE = 39;
 // Nov 23 (the test PC: the Conductor's switch from the chat step to the read step spilled 308 MB and read at half speed,
-// because the fill was sized at the chat step): from Brain Engine 42 the fill is sized for the biggest step the Conductor
+// because the fill was sized at the chat step): from Lamplight 42 the fill is sized for the biggest step the Conductor
 // will use (LLAMA_MOE_CACHE_FILL_STEP, patch 0085), so every switch finds room and the cache keeps one size. Before
 // that build, no fill next to borrowed reading (0072 didn't check it there).
 export const FILL_STEP_FROM_BE = 42;
-// Nov 23 (the test PC, BE39, 35B with MTP: the engine stopped on the Conductor's first step switch): before Brain Engine
+// Nov 23 (the test PC, LL39, 35B with MTP: the engine stopped on the Conductor's first step switch): before Lamplight
 // 43 (patch 0086) a step switch freed the main context before the MTP draft that still pointed at it. So with the MTP
 // draft on an older engine, the Conductor keeps the step it loaded at and doesn't switch.
 // Nov 23 (the Legion Go's measured safe range, legion-go/go-safe-range.md): on built-in graphics every byte the engine
@@ -148,7 +148,7 @@ export function fillEnv({ cacheMiB = 0, beNo = 0, env = {}, step = 0 } = {}) {
   if (borrow && beNo < FILL_STEP_FROM_BE) return {};
   return { LLAMA_MOE_CACHE_FILL: '1', ...(step > 0 && beNo >= FILL_STEP_FROM_BE ? { LLAMA_MOE_CACHE_FILL_STEP: String(step) } : {}) };
 }
-// Nov 23 (the test PC's BE43 gate, 35B with MTP at 32K: 0 MiB free and 670 MB spilled): the MTP draft makes its own
+// Nov 23 (the test PC's LL43 gate, 35B with MTP at 32K: 0 MiB free and 670 MB spilled): the MTP draft makes its own
 // context after the fill has measured the card, so with MTP on the fill leaves the draft's room as well, sized by the
 // step (about 1.2 GB at 4096 on the test PC). A spare set by hand wins.
 export const MTP_SPARE_PER_TOKEN_MIB = 0.4375; // Nov 23 gate: 0.3125 (1792 at 4096) still spilled 247 MB with MTP
