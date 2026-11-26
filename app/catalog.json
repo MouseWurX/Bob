@@ -3655,6 +3655,42 @@
       }
     },
     {
+      "id": "ternary-bonsai-2.5-27b",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["deep", "reviewer", "bob", "tinker", "office"],
+      "name": "Ternary Bonsai 2.5 27B (PrismML)",
+      "published": "2026-11-24",
+      "what": "Qwen 3.8 27B retrained by PrismML so every weight is -1, 0 or +1. All 27B of it fits in 7.7 GB, so it runs on a 10 to 12 GB card. Thinks before it answers, 256K in mind. New: it gave the same answers as PrismML's own engine on a test card, but nobody has tried it with Bob on a real PC yet.",
+      "sizeGB": 7.7,
+      "vramGB": 10,
+      "params": 27,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "community": {
+        "by": "PrismML",
+        "base": "Qwen 3.8 27B",
+        "baseBy": "Alibaba",
+        "kind": "ternary"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/prism-ml/Ternary-Bonsai-2.5-27B-GGUF/resolve/28a7093cc25bc151cc2b284c5570f12ce343fdcf/Ternary-Bonsai-2.5-27B-Q2_0.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 7673194848,
+          "sha256": "84496171ca79d4d33fb45612a2afd8303ec494baf916281023b7dc9cb3b3b9fa"
+        }
+      ],
+      "use": {
+        "models": {
+          "reviewer": "$model"
+        }
+      }
+    },
+    {
       "id": "qwen3.5-9b-kimi-distilled",
       "family": "Qwen",
       "category": "coding",
@@ -4727,7 +4763,7 @@
       "cardGB": 0
     }
   ],
-  "updated": "2026-11-16",
+  "updated": "2026-11-26",
   "bigBrains": [
     {
       "id": "mistral-large-4",
