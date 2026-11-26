@@ -119,6 +119,8 @@ check('each machine answer is said once (grouped), and Active is explained once 
 
 // ---- 1.5.132: the naughty list (uncensored community builds) and the community marker ----
 {
+  // Nov 26 2026: Q5 to Q8 count as better than 4-bit; a Ternary Bonsai brain is trained as -1/0/+1, so its own ternary file (PTQ1_0, Q2_0) is its full quality.
+  const fourBitUp = (m) => /Q[4-8]_K|Q[4-8]_0|IQ4_XS|IQ4_NL|mxfp4/i.test(m.files[0].url) || (/^ternary-bonsai-/.test(m.id) && /PTQ1_0|Q2_0/.test(m.files[0].url));
   const NAUGHTY = ['qwen3.6-35b-a3b-heretic', 'qwen3.6-27b-heretic', 'qwen3.8-27b-heretic', 'gemma4-26b-heretic', 'gemma4-31b-heretic', 'qwen3.5-9b-heretic', 'gemma4-12b-heretic', 'gemma4-e4b-heretic', 'qwen3.5-4b-heretic'];
   check('the six uncensored remixes are in the list', NAUGHTY.every((id) => byId(id)), NAUGHTY.filter((id) => !byId(id)).join(','));
   check('each is marked naughty by an explicit field, not by its name', NAUGHTY.every((id) => byId(id).naughty === true && isNaughty(byId(id))) && !isNaughty({ name: 'Qwen Heretic Uncensored' }));
@@ -126,7 +128,7 @@ check('each machine answer is said once (grouped), and Active is explained once 
   check('no stock model is marked naughty or community', !['gemma4-26b', 'qwen3.6-35b-a3b', 'qwen3.6-27b', 'qwen3.8-27b', 'qwen3.5-9b'].some((id) => isNaughty(byId(id)) || isCommunity(byId(id))));
   check('naughty entries are never Bob\'s pick (trial) and sit under their base family (one with its own blurb), named after the base', models.filter(isNaughty).every((m) => m.trial && m.pick === 'optional' && FAMILIES[m.family]) && ['qwen3.6-35b-a3b', 'qwen3.6-27b', 'qwen3.8-27b', 'gemma4-26b', 'qwen3.5-9b'].every((id) => byId(`${id}-heretic`).name === `${byId(id).name} Heretic` && byId(`${id}-heretic`).family === byId(id).family));
   check('each naughty brain says what it is and warns in its blurb', models.filter(isNaughty).every((m) => /refusals cut out/.test(m.what) && /without refusing/.test(m.what)));
-  check('every naughty brain is a 4-bit file or better, and the ones that see pictures bring a picture reader', models.filter(isNaughty).every((m) => /Q4_K|Q4_0|IQ4_XS|mxfp4/i.test(m.files[0].url) && (!m.jobs.includes('eyes') || m.files.some((f) => f.role === 'mmproj'))), models.filter(isNaughty).filter((m) => !/Q4_K|Q4_0|IQ4_XS|mxfp4/i.test(m.files[0].url) || (m.jobs.includes('eyes') && !m.files.some((f) => f.role === 'mmproj'))).map((m) => m.id).join(','));
+  check('every naughty brain is a 4-bit file or better, and the ones that see pictures bring a picture reader', models.filter(isNaughty).every((m) => fourBitUp(m) && (!m.jobs.includes('eyes') || m.files.some((f) => f.role === 'mmproj'))), models.filter(isNaughty).filter((m) => !fourBitUp(m) || (m.jobs.includes('eyes') && !m.files.some((f) => f.role === 'mmproj'))).map((m) => m.id).join(','));
   check('a shared picture reader is the very same file as the stock one', byId('qwen3.6-35b-a3b-heretic').files[1].sha256 === byId('qwen3.6-35b-a3b').files[1].sha256 && byId('gemma4-26b-heretic').files[1].sha256 === byId('gemma4-26b').files[1].sha256 && byId('qwen3.5-9b-heretic').files[1].sha256 === byId('qwen3.5-9b').files[1].sha256);
   check('the credit line names the remixer, the base and its maker', /remix by llmfan46 from Alibaba's Qwen3.6 35B-A3B; files packed by mradermacher\. Not a release by Alibaba\./.test(communityLine(byId('qwen3.6-35b-a3b-heretic'))) && communityLine(byId('gemma4-26b')) === '');
   // Off (the default): nowhere.
