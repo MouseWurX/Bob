@@ -1,10 +1,10 @@
-# Builds Brain Engine (app/engine/README.md): llama.cpp at bundledLlamaTag with app/engine/patches/ applied.
+# Builds Lamplight (app/engine/README.md): llama.cpp at bundledLlamaTag with app/engine/patches/ applied.
 # Runs when app/engine/ or this file changes on main or in a pull request that is ready for review, and by hand.
 # Pushes to work branches and draft pull requests run nothing, like build.yml, so a work-in-progress patch never
 # sends a failed-build e-mail: a thread checks its engine patch with its own build first (app/engine/README.md).
 # Windows x64: the llama.dll / llama-server.exe set, to put over a COPY of the official CUDA or Vulkan zip for the same tag (the card backends are separate DLLs; when a patch changes ggml, the zip also carries our own ggml, ggml-cpu and ggml-cuda DLLs, which replace the official ones).
 # Linux x64: the same set for checking. Every action is pinned to a full commit SHA, like build.yml.
-name: Brain Engine
+name: Lamplight
 
 on:
   push:
@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Also put the two files on a test pre-release (brain-engine-<brainEngineVersion>b<llama.cpp build>), for Get models, Engines'
+        description: 'Also put the two files on a test pre-release (lamplight-<lamplightVersion>b<llama.cpp build>), for Get models, Engines'
         type: boolean
         default: false
 
@@ -24,7 +24,7 @@ permissions:
   contents: read
 
 jobs:
-  # Nov 18 (Brain Engine 17, patch 0026): a patch can change ggml itself (ggml-base, the CPU backend, the CUDA backend).
+  # Nov 18 (Lamplight 17, patch 0026): a patch can change ggml itself (ggml-base, the CPU backend, the CUDA backend).
   # Then the zip must carry our own ggml files too, built from the same patched tree: a mix with the official ones
   # crashes or quietly runs the stock kernels. This job says which parts the patches touch.
   detect:
@@ -148,9 +148,9 @@ jobs:
         run: |
           tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
           echo "TAG=$tag" >> "$GITHUB_ENV"
-          # The build's name, N1bN2: Brain Engine's own number, "b", the llama.cpp build it's built on (5b12282 names the
-          # release and the files, brain-engine-5b12282-win-x64.zip). TAG stays the llama.cpp tag. Builds 3 and 4 were vN.
-          echo "BEV=$(node -p "require('./app/package.json').bob.brainEngineVersion")b${tag#b}" >> "$GITHUB_ENV"
+          # The build's name, N1bN2: Lamplight's own number, "b", the llama.cpp build it's built on (5b12282 names the
+          # release and the files, lamplight-47b12359-win-x64.zip). TAG stays the llama.cpp tag. Builds 3 and 4 were vN.
+          echo "BEV=$(node -p "require('./app/package.json').bob.lamplightVersion")b${tag#b}" >> "$GITHUB_ENV"
           git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
           # A one-commit clone counts "build 1"; say the tag's number instead, so --version reads like llama.cpp's own builds.
           sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
@@ -205,7 +205,7 @@ jobs:
       - name: Pack (llama and server files, and the card-sharing backend; our own ggml set only when a patch changes ggml)
         shell: bash
         run: |
-          out=brain-engine-$BEV-win-x64
+          out=lamplight-$BEV-win-x64
           mkdir "$out"
           cd llama.cpp/build/bin/Release
           cp llama-server.exe $(ls *.dll | grep -v '^ggml') "../../../../$out/"
@@ -215,7 +215,7 @@ jobs:
           cd ../../../..
           cp llama.cpp/build-cv/bin/llama-cvector-generator.exe llama.cpp/build-cv/bin/llama-export-lora.exe "$out/"
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
-          cp app/engine/README.md "$out/README-Brain-Engine.md"
+          cp app/engine/README.md "$out/README-Lamplight.md"
           # Nov 18 (0026): a patch changes ggml, so our own ggml.dll, ggml-base.dll and every ggml-cpu variant go in too
           # (and ggml-cuda.dll from the CUDA job): never a mix with the official ones.
           if [ "${{ needs.detect.outputs.ggml }}" = "true" ]; then
@@ -241,28 +241,28 @@ jobs:
           endpoint: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
           signing-account-name: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
-          files-folder: ${{ github.workspace }}\brain-engine-${{ env.BEV }}-win-x64
+          files-folder: ${{ github.workspace }}\lamplight-${{ env.BEV }}-win-x64
           files-folder-filter: exe,dll
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
       - name: List unsigned files (Smart App Control; fails only once REQUIRE_SIGNED is "true")
         shell: bash
-        run: node app/installer/check-signed.js "brain-engine-$BEV-win-x64" --summary "$GITHUB_STEP_SUMMARY" ${{ vars.REQUIRE_SIGNED == 'true' && '--require' || '' }}
+        run: node app/installer/check-signed.js "lamplight-$BEV-win-x64" --summary "$GITHUB_STEP_SUMMARY" ${{ vars.REQUIRE_SIGNED == 'true' && '--require' || '' }}
       - name: Zip
         shell: bash
-        run: 7z a "brain-engine-$BEV-win-x64.zip" "./brain-engine-$BEV-win-x64/*"
+        run: 7z a "lamplight-$BEV-win-x64.zip" "./lamplight-$BEV-win-x64/*"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: brain-engine-win-x64
-          path: brain-engine-*-win-x64.zip
+          name: lamplight-win-x64
+          path: lamplight-*-win-x64.zip
       - name: Publish to the test pre-release (by hand only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           BE_GGML: ${{ needs.detect.outputs.ggml }}
-        run: bash app/engine/publish.sh "$BEV" "$TAG" brain-engine-*-win-x64.zip
+        run: bash app/engine/publish.sh "$BEV" "$TAG" lamplight-*-win-x64.zip
 
   linux:
     needs: detect
@@ -277,9 +277,9 @@ jobs:
         run: |
           tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
           echo "TAG=$tag" >> "$GITHUB_ENV"
-          # The build's name, N1bN2: Brain Engine's own number, "b", the llama.cpp build it's built on (5b12282 names the
-          # release and the files, brain-engine-5b12282-win-x64.zip). TAG stays the llama.cpp tag. Builds 3 and 4 were vN.
-          echo "BEV=$(node -p "require('./app/package.json').bob.brainEngineVersion")b${tag#b}" >> "$GITHUB_ENV"
+          # The build's name, N1bN2: Lamplight's own number, "b", the llama.cpp build it's built on (5b12282 names the
+          # release and the files, lamplight-47b12359-win-x64.zip). TAG stays the llama.cpp tag. Builds 3 and 4 were vN.
+          echo "BEV=$(node -p "require('./app/package.json').bob.lamplightVersion")b${tag#b}" >> "$GITHUB_ENV"
           git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
           # A one-commit clone counts "build 1"; say the tag's number instead, so --version reads like llama.cpp's own builds.
           sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
@@ -294,20 +294,20 @@ jobs:
           cmake --build build-cv -j4 --target llama-cvector-generator llama-export-lora
       - name: Pack
         run: |
-          out=brain-engine-$BEV-linux-x64
+          out=lamplight-$BEV-linux-x64
           mkdir "$out"
           cp llama.cpp/build/bin/llama-server llama.cpp/build/bin/llama-bench llama.cpp/build/bin/llama-gguf-split llama.cpp/build/bin/ggml-rpc-server llama.cpp/build/bin/llama-diffusion-cli llama.cpp/build/bin/test-llama-archs llama.cpp/build-cv/bin/llama-cvector-generator llama.cpp/build-cv/bin/llama-export-lora $(ls llama.cpp/build/bin/*.so* | grep -v '/libggml') llama.cpp/build/bin/libggml-rpc.so* "$out/"
           if [ "${{ needs.detect.outputs.ggml }}" = "true" ]; then cp -P llama.cpp/build/bin/libggml*.so* "$out/"; fi # Nov 18 (0026): our own ggml set
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
-          cp app/engine/README.md "$out/README-Brain-Engine.md"
+          cp app/engine/README.md "$out/README-Lamplight.md"
           tar czf "$out.tar.gz" "$out"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: brain-engine-linux-x64
-          path: brain-engine-*-linux-x64.tar.gz
+          name: lamplight-linux-x64
+          path: lamplight-*-linux-x64.tar.gz
       - name: Publish to the test pre-release (by hand only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
           BE_GGML: ${{ needs.detect.outputs.ggml }}
-        run: bash app/engine/publish.sh "$BEV" "$TAG" brain-engine-*-linux-x64.tar.gz
+        run: bash app/engine/publish.sh "$BEV" "$TAG" lamplight-*-linux-x64.tar.gz

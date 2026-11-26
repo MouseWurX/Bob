@@ -2,13 +2,13 @@
 // bob-design/cs-lab-learn-and-tinker.md section 5).
 //   Level 1, the map: layers across, experts down, one square per expert, shaded by how much of a thing's work it
 //     carries, drawn from the usage map's peek-counts.json (the things already counted with llama-imatrix).
-//   Level 2, the live view: type a question, Brain Engine answers it with "expert_trace": true on /completion and
+//   Level 2, the live view: type a question, Lamplight answers it with "expert_trace": true on /completion and
 //     reports, for every word it wrote, which experts each layer picked. The map lights up; a scrubber steps word by
 //     word; two questions can be compared, with the overlap in words. Keep only these applies the lit-up set as the
-//     expert mask and asks again. Until Brain Engine reports the trace, the live card is greyed with the reason.
+//     expert mask and asks again. Until Lamplight reports the trace, the live card is greyed with the reason.
 //   The tally: Keep count adds every traced word to peek-counts.json as the thing "Peek inside" (source "peek"), and
 //     rewrites the Lab's keep file, so Cut these out and Send to the Forge use the same file the usage map writes.
-// Brain Engine stays loaded between questions for a short while, so the second question is quick; any other Lab job
+// Lamplight stays loaded between questions for a short while, so the second question is quick; any other Lab job
 // unloads it first.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,17 +17,17 @@ import { readPeek, peekFile, keepFileOf, mergePeek, keepFromPeek, usageLists } f
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
 const writeJson = (f, v) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f + '.part', JSON.stringify(v)); fs.renameSync(f + '.part', f); };
 export const PEEK_THING = 'Peek inside';
-export const IDLE_MS = 3 * 60e3; // how long Brain Engine stays loaded after a question
+export const IDLE_MS = 3 * 60e3; // how long Lamplight stays loaded after a question
 export const MAX_WORDS = 240;
-export const NO_TRACE = 'This Brain Engine build doesn\'t report which experts it picked yet. The map still shows what the usage map counted; the live view comes with the next Brain Engine build.';
-// Does this Brain Engine build report its experts? The trace (engine/patches/0002-expert-trace.patch) adds the request
+export const NO_TRACE = 'This Lamplight build doesn\'t report which experts it picked yet. The map still shows what the usage map counted; the live view comes with the next Lamplight build.';
+// Does this Lamplight build report its experts? The trace (engine/patches/0002-expert-trace.patch) adds the request
 // fields "expert_trace" and "expert_trace_heads", and their names are in the server program as plain text, so a read of
 // the file answers it before any brain is loaded (the 1.5.184 PC test: an older build showed Start the scan as ready).
 // { experts, heads } or null when the file can't be read. Kept per file, size and time.
 const traceSeen = new Map();
 // 1.5.191: in newer llama.cpp builds (b12032 on) the server's code lives in a library beside the program
 // (llama-server-impl.dll / libllama-server-impl.so), not in llama-server.exe itself (PC test of 1.5.189: Scan stayed
-// grey on a Brain Engine that had the trace). So the program and the llama libraries beside it are all read.
+// grey on a Lamplight that had the trace). So the program and the llama libraries beside it are all read.
 export const TRACE_LIBS = /^(lib)?llama(-server-impl)?\.(dll|so|dylib)$/i;
 function scanFor(file, want, found) {
   let st; try { st = fs.statSync(file); } catch { return false; }
@@ -61,7 +61,7 @@ export function traceBuilt(exe) {
   for (const f of libs) { if (found[0] && found[1]) break; scanFor(path.join(path.dirname(exe), f), want, found); }
   return { experts: found[1], heads: found[0] };
 }
-export const NO_ENGINE = 'The live view needs Brain Engine, the Lab\'s engine. Get it in Settings, Engines: Brain Engine.';
+export const NO_ENGINE = 'The live view needs Lamplight, the Lab\'s engine. Get it in Settings, Engines: Lamplight.';
 
 // One brain's map data for the page: the things counted so far, the totals, per-layer lines, and whether live is possible.
 export function peekView(cfg, brain, facts, { engineFound = false, traceOk = null } = {}) {
@@ -79,7 +79,7 @@ export function peekView(cfg, brain, facts, { engineFound = false, traceOk = nul
   };
 }
 
-// A trace as Brain Engine returns it, in either of the two shapes we accept, as counts[layer][expert] and the per-word
+// A trace as Lamplight returns it, in either of the two shapes we accept, as counts[layer][expert] and the per-word
 // lists. tokens = [{ text, layers: [[ids]...] }].
 export function tallyTrace(trace, tokens = [], { experts = 0, layers = 0 } = {}) {
   const rows = Array.isArray(trace) ? trace : Array.isArray(trace?.tokens) ? trace.tokens : [];
@@ -110,7 +110,7 @@ export function overlap(litA, litB) {
 }
 
 // Add a traced answer to the tally in peek-counts.json (the thing "Peek inside", source "peek") and rewrite the keep file.
-export function addToTally(cfg, brain, { sha256, facts, counts, tokens, engine = 'Brain Engine', when }) {
+export function addToTally(cfg, brain, { sha256, facts, counts, tokens, engine = 'Lamplight', when }) {
   const old = readPeek(cfg, brain);
   const prev = old && old.brain?.sha256 === sha256 ? old.things.find((t) => t.name === PEEK_THING && t.source === 'peek') : null;
   const sum = counts.map((row, li) => (row ? row.map((v, e) => v + ((prev?.counts?.[li] || [])[e] || 0)) : (prev?.counts?.[li] || null)));
@@ -130,7 +130,7 @@ export function keepFromLit(counts, facts) {
   return rows.map((r) => (r ? r.sort((a, b) => b[0] - a[0] || a[1] - b[1]).slice(0, K).map(([, e]) => e).sort((a, b) => a - b) : null));
 }
 
-// The trace as Brain Engine gives it (engine/patches/0002-expert-trace.patch): rows = every word the brain read, in
+// The trace as Lamplight gives it (engine/patches/0002-expert-trace.patch): rows = every word the brain read, in
 // order, { t: its text, e: [[expert ids] per layer] }; the first n_prompt are the question, the rest its own answer
 // read back; last = the final word written. The experts lit while reading a word are the ones that wrote the next,
 // so the answer's rows start at the last word of the question. Older shapes (rows only) pass through as they were.
@@ -147,14 +147,14 @@ export function readTrace(raw, pieces = []) {
   return { trace: raw, tokens: pieces, read: null };
 }
 
-// Ask Brain Engine one question with the trace on. ask = the server's url; returns { answer, trace, tokens, read }
+// Ask Lamplight one question with the trace on. ask = the server's url; returns { answer, trace, tokens, read }
 // or throws NO_TRACE when the build has no trace. One question at a time: the engine only gives the trace to a
 // request that had the brain to itself.
 export async function askTraced(url, question, { signal, fetchImpl = fetch, maxWords = MAX_WORDS, think = false, heads = false } = {}) {
   const t = await fetchImpl(url + '/apply-template', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', content: question }], chat_template_kwargs: { enable_thinking: think === true } }), signal: AbortSignal.timeout(30e3) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   const prompt = t?.prompt || `<|im_start|>user\n${question}<|im_end|>\n<|im_start|>assistant\n`;
   const res = await fetchImpl(url + '/completion', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt, n_predict: maxWords, temperature: 0, expert_trace: true, ...(heads ? { expert_trace_heads: true } : {}), return_tokens: true, cache_prompt: false }), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(300e3)]) : AbortSignal.timeout(300e3) });
-  if (!res.ok) throw new Error(`Brain Engine answered ${res.status}.`);
+  if (!res.ok) throw new Error(`Lamplight answered ${res.status}.`);
   const j = await res.json();
   const raw = j.expert_trace ?? j.experts_trace ?? j.experts ?? null;
   if (!raw) throw new Error(NO_TRACE);

@@ -45,7 +45,7 @@ for (const wf of ['build.yml', 'linux.yml', 'android.yml']) {
   check(`${wf} runs its steps in app and uploads from app/dist`, /working-directory: app\n/.test(y) && !/^\s+dist\//m.test(y) && /app\/dist\/Bob-\*/.test(y));
 }
 check('a new version on main is noticed in app/package.json', /paths: \['app\/package\.json'\]/.test(read('.github/workflows/build.yml')));
-check('the Android and Brain Engine builds watch their folders in app', /'app\/android\/\*\*'/.test(read('.github/workflows/android.yml')) && /'app\/engine\/\*\*'/.test(read('.github/workflows/brain-engine.yml')) && /require\('\.\/app\/package\.json'\)/.test(read('.github/workflows/brain-engine.yml')));
+check('the Android and Lamplight builds watch their folders in app', /'app\/android\/\*\*'/.test(read('.github/workflows/android.yml')) && /'app\/engine\/\*\*'/.test(read('.github/workflows/brain-engine.yml')) && /require\('\.\/app\/package\.json'\)/.test(read('.github/workflows/brain-engine.yml')));
 check('git ignores the old top-level leftovers and the new ones in app', ['config.json', 'node_modules/', 'dist/', 'engines/', 'app/model-lab/out/'].every((g) => read('.gitignore').split('\n').includes(g)));
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -1,6 +1,6 @@
 {
   "run": "reap-riker-bobert",
-  "note": "12 Nov: REAP calibration of Riker (28Bob) and Bobert (35Bob) Q4 at 12 experts per word, served by Brain Engine (live expert switch + expert mass). For each: the quick quiz on Bob 1.5.208 and on 1.5.208 with the tool fixes (every tool group on, four seeded how-tos), then reap-calibrate: REAP scores on 100 training lessons, then 100/75/50/35% of each layer's experts kept, each step judged on the held-out chats. No file is cut. About 3.5 h on an A40, about $2-2.50; caps 4.5 h / $5.",
+  "note": "12 Nov: REAP calibration of Riker (28Bob) and Bobert (35Bob) Q4 at 12 experts per word, served by Lamplight (live expert switch + expert mass). For each: the quick quiz on Bob 1.5.208 and on 1.5.208 with the tool fixes (every tool group on, four seeded how-tos), then reap-calibrate: REAP scores on 100 training lessons, then 100/75/50/35% of each layer's experts kept, each step judged on the held-out chats. No file is cut. About 3.5 h on an A40, about $2-2.50; caps 4.5 h / $5.",
   "benchmark_only": true,
   "teacher": "Qwen/Qwen3.6-35B-A3B",
   "counts": "expert-counts-2026-11-04T23-23-19.json",
@@ -48,7 +48,7 @@
       "node experts-test.mjs --bob \"../../bob-test 208fix/app\" --howtos \"howtos-seed.json\" --url {{url}} --counts 12 --out {{out}}",
       "node reap-calibrate.mjs --url {{url}} --lessons {{lessons}} --out {{out}}/calibrate --score 100 --steps 1,0.75,0.5,0.35 --no-think"
     ],
-    "brain_engine": {
+    "lamplight": {
       "ref": "787c2b828a505bfd54710ce41065f4f750548e80",
       "patches": [
         "0001-expert-mask",
@@ -60,7 +60,7 @@
         "0007-expert-trace-stream",
         "0009-expert-mass"
       ],
-      "note": "Brain Engine as the next build will be (patches 0001-0007 plus 0009, expert mass), fetched from Bob's public repo at this commit and compiled on the card (10-15 min)"
+      "note": "Lamplight as the next build will be (patches 0001-0007 plus 0009, expert mass), fetched from Bob's public repo at this commit and compiled on the card (10-15 min)"
     }
   },
   "llama_tag": "b12282"

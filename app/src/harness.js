@@ -6,7 +6,7 @@
 //   (no switch)   the Health page                         src/health.js        (a page you open; it only looks)
 //   quietHours    "Quiet hours"                           src/quiet-hours.js   (no pop-ups, sounds or check-ins)
 //   chatPlaces    "Per-chat engine cache" src/chat-places.js (engine memory saved per chat)
-//   contextNoReload "Resize chat memory without reloading" src/llamacpp.js resizeInPlace (Brain Engine 0035)
+//   contextNoReload "Resize chat memory without reloading" src/llamacpp.js resizeInPlace (Lamplight 0035)
 //   weeklyReport  "Weekly stats"          src/weekly.js        (counts only, never words)
 //   globalAsk     "Global shortcut"              electron/main.cjs + public/ask.html
 //   tryFromHere   "Try from here"                         src/try-from-here.js (a copy of the chat up to a message)

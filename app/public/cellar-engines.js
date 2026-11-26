@@ -1,7 +1,7 @@
-// Settings: Brain Engines, speed, the speed log and test, Qwen and tuning pages. Split out of cellar.js.
+// Settings: Lamplight builds, speed, the speed log and test, Qwen and tuning pages. Split out of cellar.js.
 import { esc } from './util.js';
 import { tip, keep } from './tips.js';
-import { brainEngineName } from './engine-name.js';
+import { lamplightName } from './engine-name.js';
 
 // now() hands over createCellar's own values as they are at the moment of each call; fresh() copies them in.
 export function createEngineParts(now) {
@@ -26,7 +26,7 @@ export function createEngineParts(now) {
       ${sp.trainer ? `<p class="muted">The Lab's Trainer pack is here (for Teach it). <button type="button" class="link" data-trainerremove aria-expanded="false">Remove the Trainer pack</button></p>` : ''}
       <div class="row"><label class="pick"><span>Extra settings for one brain</span><select data-margsmodel>${models.map((m) => `<option ${m === speedModel ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>
         <label class="pick" style="flex:1"><span>Engine flags (for example <code>--n-cpu-moe 8</code>)</span><input type="text" data-margs value="${esc((sp.modelArgs?.[speedModel || models[0]] || []).join(' '))}" placeholder="none"></label>
-        <label class="pick"><span>Experts per word <span class="tag warn">experimental</span> ${tip('For a mixture-of-experts brain: experts used per token. Empty is the brain\'s own count. More is slower and can help or hurt; fewer is faster. One number, or one per layer with commas. Brain Engine applies it at the next answer with no reload, and the brain file never changes. Try counts first in the Lab, Peek inside.', 'Experts per word')}</span><input type="text" inputmode="numeric" data-perword value="${esc(pw == null ? '' : Array.isArray(pw) ? pw.join(',') : pw)}" placeholder="its own" style="width:9em" aria-label="Experts per word for this brain, empty for its own"></label></div>
+        <label class="pick"><span>Experts per word <span class="tag warn">experimental</span> ${tip('For a mixture-of-experts brain: experts used per token. Empty is the brain\'s own count. More is slower and can help or hurt; fewer is faster. One number, or one per layer with commas. Lamplight applies it at the next answer with no reload, and the brain file never changes. Try counts first in the Lab, Peek inside.', 'Experts per word')}</span><input type="text" inputmode="numeric" data-perword value="${esc(pw == null ? '' : Array.isArray(pw) ? pw.join(',') : pw)}" placeholder="its own" style="width:9em" aria-label="Experts per word for this brain, empty for its own"></label></div>
     </div>`;
   }
   // 1.5.16x MTP per brain: rows the Lab's MTP page wrote with "Use this in Bob". Each wins over the one draft above
@@ -77,7 +77,7 @@ export function createEngineParts(now) {
     return `<div class="tune engine-tuning"><strong>Engine tuning</strong> <span class="tag">Bob picks unless you choose to set them</span>
         ${tip('Every speed lever of my own engine in one place, per brain, instead of engine flags. "Let Bob pick" uses what the calibration found best for your card. "I\'ll set them myself" uses the boxes you fill; an empty box stays Bob\'s pick. "Let the Conductor drive" changes the reading step for each reply without loading the brain again. Engine flags typed under Extra settings for one brain still win. Changes apply the next time the brain loads.', 'Engine tuning')}
       <div class="row">${radio('bob', 'Let Bob pick')}${radio('conductor', 'Let the Conductor drive')}${radio('hand', 'I\'ll set them myself')}</div>
-      ${t.mode === 'conductor' ? '<p class="muted">For each reply I pick the reading step: a long new read at a big step, which reads faster, then back to the chat step, which writes faster, with the brain kept loaded. Brain Engine on a graphics card only. Every switch and its time is in the logbook.</p><label class="pick"><input type="checkbox" data-tunefit ' + (t.fitWindow === true ? 'checked' : '') + '> Fit the chat memory to the chat</label> ' + tip('Off unless ticked. My chat memory is kept only as big as the chat plus the longest reply, and the room that frees goes to the expert copy cache, which helps writing. It grows back before a reply that needs it. A test idea, from Avalon.', 'Fit the chat memory to the chat') : ''}
+      ${t.mode === 'conductor' ? '<p class="muted">For each reply I pick the reading step: a long new read at a big step, which reads faster, then back to the chat step, which writes faster, with the brain kept loaded. Lamplight on a graphics card only. Every switch and its time is in the logbook.</p><label class="pick"><input type="checkbox" data-tunefit ' + (t.fitWindow === true ? 'checked' : '') + '> Fit the chat memory to the chat</label> ' + tip('Off unless ticked. My chat memory is kept only as big as the chat plus the longest reply, and the room that frees goes to the expert copy cache, which helps writing. It grows back before a reply that needs it. A test idea, from Avalon.', 'Fit the chat memory to the chat') : ''}
       ${hand && models.length ? `<div class="row"><label class="pick"><span>Brain</span><select data-tunemodel aria-label="Brain to tune">${models.map((m) => `<option ${m === model ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label></div>
       <div class="row wrap">${fields.map((f) => `<label class="pick"><span>${esc(f.label)}</span><input type="text" inputmode="decimal" data-tune="${esc(f.k)}" data-model="${esc(model)}" value="${esc(l[f.k] ?? '')}" placeholder="Bob's pick" title="${esc(f.hint || '')}" aria-label="${esc(f.label)}" style="width:7em"></label>`).join('')}</div>
       <p class="muted">Empty is Bob's pick. Only for brains made of experts with part of them in RAM do the cache boxes do anything. <button type="button" class="link" data-tuneclear="${esc(model)}">Clear this brain</button></p>` : hand ? '<p class="muted">Add a brain first.</p>' : ''}
@@ -86,14 +86,14 @@ export function createEngineParts(now) {
   function engineExtrasHtml() {
     const bat = settings.onBattery === true ? 'On battery right now.' : settings.onBattery === false ? 'Plugged in right now.' : settings.laptopMode ? 'No battery found, so nothing changes here.' : '';
     return `<div class="tune engine-extras"><strong>Engine extras</strong> <span class="tag">off unless you turn it on</span>
-         ${tip('Each switch is separate. They work with Brain Engine and llama.cpp; Ollama runs its own way, so only the speed history and Laptop mode reach it. Bob\'s Android app runs its own small engine and isn\'t changed by these.', 'Engine extras')}
+         ${tip('Each switch is separate. They work with Lamplight and llama.cpp; Ollama runs its own way, so only the speed history and Laptop mode reach it. Bob\'s Android app runs its own small engine and isn\'t changed by these.', 'Engine extras')}
         ${sswitch('copyGuess', settings.copyGuess === true, 'Prompt-lookup decoding', 'Speeds up rewrites of code and documents by copying text already in the chat. Same answer, no second brain. Not used with MTP.')}
         ${readingSpeedHtml()}
         ${sswitch('turboEveryday', settings.turboEveryday !== false, 'MTP for everyday brains', 'Brains with their own built-in guesser use it for every reply, without the Lab. Same answer, written faster. Brains without one are unchanged.')}
         ${sswitch('turbo', settings.turbo === true, 'Turbo', 'Show-off speed: every speed trick that costs a little answer quality, at once. For showing how fast I can go, not for real jobs. Your brains\' own picks come back when it\'s off.')}
         ${settings.turbo === true ? turboHtml() : ''}
         ${sswitch('lockBrainMemory', settings.lockBrainMemory === true, 'Lock brain memory', 'When part of a brain sits in RAM, it stays there, so replies after a break don\'t wait on the drive. Uses that RAM until the brain unloads. Not used in Gaming.')}
-        ${sswitch('hotExperts', settings.hotExperts === true, 'Hot experts on the card', 'For a brain made of experts that doesn\'t fit the card: the experts it uses most sit on the card from the first word, and the rest are worked out on the processor, so nothing swaps while I write. Calibrate counts which ones. Helps writing, not reading long prompts. Brain Engine 9 or newer.')}
+        ${sswitch('hotExperts', settings.hotExperts === true, 'Hot experts on the card', 'For a brain made of experts that doesn\'t fit the card: the experts it uses most sit on the card from the first word, and the rest are worked out on the processor, so nothing swaps while I write. Calibrate counts which ones. Helps writing, not reading long prompts. Lamplight 9 or newer.')}
         ${settings.hotExperts === true ? hotRoomHtml() : ''}
         ${sswitch('preloadNext', settings.preloadNext === true, 'Preload the next brain', 'Reads the next brain\'s file into RAM during a hand-off, so the swap is quicker. Needs the brain\'s size plus 4 GB free.')}
         ${sswitch('laptopMode', settings.laptopMode === true, 'Laptop mode', `On battery, the Quick brain answers and the engine uses half the cores.${bat ? ' ' + keep(bat) : ''}`)}
@@ -106,11 +106,11 @@ export function createEngineParts(now) {
   function turboHtml() {
     const pick = settings.turboMem || 'small';
     const opts = [['smallest', 'Smallest (3-bit)'], ['small', 'Smaller (4-bit)'], ['progressive', 'Progressive 3-step'], ['progressive2', 'Progressive 2-step'], ['progressive83', 'Progressive 8+3'], ['progressive84', 'Progressive 8+4'], ['progressive82', 'Progressive 8+2 (2-bit, a test)']];
-    return `<label class="pick"><strong>Turbo chat memory</strong> ${tip('The chat memory type every brain uses while Turbo is on. Smaller (4-bit) is the fastest writer today. Smallest packs it tightest, for the most room; measured on a 16 GB card it writes a 128K chat about 2 to 4% slower than Smaller. The Progressive kinds keep the newest words sharper: 8+3 is the speed pick for long chats, 8+4 the most exact (measured on a 16 GB card: 8+4 more exact than Smaller, about 12% slower at 128K). Smallest and Progressive need a Brain Engine that has them; otherwise I use Smaller.', 'Turbo chat memory')}
+    return `<label class="pick"><strong>Turbo chat memory</strong> ${tip('The chat memory type every brain uses while Turbo is on. Smaller (4-bit) is the fastest writer today. Smallest packs it tightest, for the most room; measured on a 16 GB card it writes a 128K chat about 2 to 4% slower than Smaller. The Progressive kinds keep the newest words sharper: 8+3 is the speed pick for long chats, 8+4 the most exact (measured on a 16 GB card: 8+4 more exact than Smaller, about 12% slower at 128K). Smallest and Progressive need a Lamplight that has them; otherwise I use Smaller.', 'Turbo chat memory')}
         <select data-set="turboMem" aria-label="Turbo chat memory">${opts.map(([v, label]) => `<option value="${v}" ${v === pick ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
       ${sswitch('turboExperts', settings.turboExperts !== false, 'Turbo: 4 experts per word', 'A brain made of experts asks only 4 of them per word, when it has more. Faster writing, a little less exact. A count you saved for a brain wins.')}
       ${sswitch('turboStandins', settings.turboStandins === true, 'Turbo: stand-ins', 'An experiment. While writing, when an expert a word wants isn\'t on the graphics card, the best other expert already there stands in for it, up to 2 a layer, instead of copying it over. Faster where experts sit in RAM, and the answer changes. Needs Hot experts on the card. Off unless you switch it on.')}
-      ${sswitch('turboDriveStandins', settings.turboDriveStandins === true, 'Turbo: never wait on the drive', 'For a brain bigger than your RAM. While writing, when an expert a word wants has dropped out of RAM, the next best one on the card or in RAM plays it instead of waiting on the drive, and the missed one is read back in the background. Never for a word\'s top pick. The answer changes. Brain Engine 32 or newer. Turbo: stand-ins wins when both are on. Off unless you switch it on.')}
+      ${sswitch('turboDriveStandins', settings.turboDriveStandins === true, 'Turbo: never wait on the drive', 'For a brain bigger than your RAM. While writing, when an expert a word wants has dropped out of RAM, the next best one on the card or in RAM plays it instead of waiting on the drive, and the missed one is read back in the background. Never for a word\'s top pick. The answer changes. Lamplight 32 or newer. Turbo: stand-ins wins when both are on. Off unless you switch it on.')}
       <span class="muted">Applies the next time a brain loads.</span>`;
   }
   // 101 Reading speed: how big a piece of a prompt the engine reads at a time. Normal is what Bob always did.
@@ -150,40 +150,40 @@ export function createEngineParts(now) {
     return `<div class="speed-logs">${brains.map(chart).join('')}</div>`;
   }
   // 1.5.98: Engines (the rest of Engines & speed). The fine-tuning sits under More.
-  // 1.5.17x Engines rework: the engine for Bob's brains sits behind a ⚙ (Brain Engine, llama.cpp or Ollama), the Lab
+  // 1.5.17x Engines rework: the engine for Bob's brains sits behind a ⚙ (Lamplight, llama.cpp or Ollama), the Lab
   // has its own pick, and the engines are grouped and folded. Each engine shows one status with one main button:
   // Get, Update (swapped in place, the old build kept), Go back, Remove. Updates are told apart by the download's
-  // checksum, so a rebuilt Brain Engine shows as an update even though its name stays the same.
+  // checksum, so a rebuilt Lamplight shows as an update even though its name stays the same.
   const openGroups = new Set(['thinking']); // which engine groups are unfolded, kept across redraws
-  const ENGINE_NAMES = { brainengine: 'Brain Engine', llamacpp: 'llama.cpp', ollama: 'Ollama' };
+  const ENGINE_NAMES = { lamplight: 'Lamplight', llamacpp: 'llama.cpp', ollama: 'Ollama' };
   const ENGINE_GROUPS = [['thinking', 'Thinking', 'The engines that run Bob\'s brains.'], ['senses', 'Pictures, sound and hearing', 'Painting, music and sound effects, and turning your voice into text.'], ['voices', 'Voices', 'How Bob reads replies aloud.'], ['helpers', 'Helpers', 'Programs the Hands use for documents, converting and connected apps.']];
-  // 1.5.196: Brain Engine is the only engine for Bob's brains wherever it has a build (Windows, x64 Linux). Where it has
+  // 1.5.196: Lamplight is the only engine for Bob's brains wherever it has a build (Windows, x64 Linux). Where it has
   // none yet (a Mac, an ARM board), Bob's own llama.cpp runs them. No picker: there's nothing to pick.
   function engineGearHtml() {
     const ch = data.engineChoices || {};
-    const be = engineById('brainengine');
-    const only = ch.only || (be && be.available !== false ? 'brainengine' : 'llamacpp');
+    const be = engineById('lamplight');
+    const only = ch.only || (be && be.available !== false ? 'lamplight' : 'llamacpp');
     const now = ch.brainsNow || only;
-    const line = only === 'brainengine'
-      ? (now === 'brainengine' ? 'Bob\'s brains run on Brain Engine, the only engine that fits him now.' : 'Brain Engine is the only engine that fits Bob\'s brains now. It isn\'t here yet: Get it under Thinking, below. Until then the llama.cpp already here stands in.')
-      : `Bob's brains run on plain llama.cpp here. ${be?.note || 'There\'s no Brain Engine build for this replicant matrix yet.'} He moves to Brain Engine when there is one.`;
+    const line = only === 'lamplight'
+      ? (now === 'lamplight' ? 'Bob\'s brains run on Lamplight, the only engine that fits him now.' : 'Lamplight is the only engine that fits Bob\'s brains now. It isn\'t here yet: Get it under Thinking, below. Until then the llama.cpp already here stands in.')
+      : `Bob's brains run on plain llama.cpp here. ${be?.note || 'There\'s no Lamplight build for this replicant matrix yet.'} He moves to Lamplight when there is one.`;
     return `<p data-engine-now><strong>Engine for brains:</strong> ${esc(ENGINE_NAMES[only])} <span class="muted">${esc(line)}</span></p>`;
   }
   function labEngineHtml() {
     const lab = data.engineChoices?.lab || '';
     return `<label class="pick"><strong>Engine for the Lab</strong>
-        <select data-labengine aria-label="Engine for the Lab">${[['', 'Same as Bob\'s brains'], ['brainengine', 'Brain Engine'], ['llamacpp', 'llama.cpp']].map(([v, l]) => `<option value="${v}" ${v === lab ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <select data-labengine aria-label="Engine for the Lab">${[['', 'Same as Bob\'s brains'], ['lamplight', 'Lamplight'], ['llamacpp', 'llama.cpp']].map(([v, l]) => `<option value="${v}" ${v === lab ? 'selected' : ''}>${l}</option>`).join('')}</select>
         <span class="muted">Which engine the Computer Science Lab makes, tests and runs brains with, from its next job. If a tool is only in one engine's download (the direction finder, say), the Lab still finds it there. The Lab page shows the same choice at the top.</span></label>`;
   }
-  // Brain Engine is Bob's own engine. From build 5 a build is named N1bN2 (its own number, then the llama.cpp build
+  // Lamplight is Bob's own engine. From build 5 a build is named N1bN2 (its own number, then the llama.cpp build
   // under it: "5b12282"), read from the installed build's release name (public/engine-name.js); older ones as before.
-  const newName = (v) => (/^brain-engine-\d+b\d+$/.test(String(v || '')) ? brainEngineName(v) : '');
-  const verName = (e, v) => (e.id !== 'brainengine' ? v : newName(v) || String(v || '').replace(/^brain-engine-v(\d+)$/, (m, n) => `version ${n}${e.basedOn ? `, built on llama.cpp ${e.basedOn}` : ''}`).replace(/^brain-engine-(b\d+)$/, 'built on llama.cpp $1'));
+  const newName = (v) => (/^(?:lamplight|brain-engine)-\d+b\d+$/.test(String(v || '')) ? lamplightName(v) : '');
+  const verName = (e, v) => (e.id !== 'lamplight' ? v : newName(v) || String(v || '').replace(/^brain-engine-v(\d+)$/, (m, n) => `version ${n}${e.basedOn ? `, built on llama.cpp ${e.basedOn}` : ''}`).replace(/^brain-engine-(b\d+)$/, 'built on llama.cpp $1'));
   // 1.5.203: the Go back button names the build plainly: "the previous engine (llama.cpp b12282)" or "(version 3)".
   const prevName = (e, v) => newName(v) || String(v || '').replace(/^brain-engine-v(\d+)$/, 'version $1').replace(/^brain-engine-(b\d+)$/, 'llama.cpp $1');
   function engineCard(e) {
     const ch = data.engineChoices || {};
-    const inUse = [ch.brainsNow === e.id ? 'runs the brains' : '', e.id !== 'llamacpp' && e.id !== 'brainengine' ? '' : (ch.lab === e.id || (!ch.lab && ch.brainsNow === e.id)) ? 'the Lab uses it' : ''].filter(Boolean);
+    const inUse = [ch.brainsNow === e.id ? 'runs the brains' : '', e.id !== 'llamacpp' && e.id !== 'lamplight' ? '' : (ch.lab === e.id || (!ch.lab && ch.brainsNow === e.id)) ? 'the Lab uses it' : ''].filter(Boolean);
     const tags = inUse.length ? ` <span class="tag good">${esc(inUse.join(', '))}</span>` : '';
     let act;
     // 1.5.185 An update that came with files missing was kept aside, not put in: say so, and offer only those files.
@@ -205,19 +205,19 @@ export function createEngineParts(now) {
   function enginesHtml() {
     const all = data.engines || [];
     const groups = ENGINE_GROUPS.map(([id, label, hint]) => {
-      const only = data.engineChoices?.only || 'brainengine';
-      const list = all.filter((e) => (e.group || 'helpers') === id && !(id === 'thinking' && e.id !== only)).sort((a, b) => (a.id === 'brainengine' ? -1 : b.id === 'brainengine' ? 1 : 0));
+      const only = data.engineChoices?.only || 'lamplight';
+      const list = all.filter((e) => (e.group || 'helpers') === id && !(id === 'thinking' && e.id !== only)).sort((a, b) => (a.id === 'lamplight' ? -1 : b.id === 'lamplight' ? 1 : 0));
       const here = list.filter((e) => e.installed).length;
-      const cards = list.map(engineCard).join(''); // 1.5.196: no Ollama card, no llama.cpp card where Brain Engine has a build
+      const cards = list.map(engineCard).join(''); // 1.5.196: no Ollama card, no llama.cpp card where Lamplight has a build
       return `<details class="engine-group" data-egroup="${id}" ${openGroups.has(id) ? 'open' : ''}><summary><strong>${esc(label)}</strong> <span class="muted">${here} of ${list.length} here</span></summary><p class="muted">${esc(hint)}</p>${cards}</details>`;
     }).join('');
     return `${engineGearHtml()}
       ${labEngineHtml()}
-      <div><strong>Engine downloads</strong> ${tip('The programs that run the models, from their official GitHub pages (Brain Engine from Bob\'s own), matched to your GPU. Update keeps the previous build, so Go back needs no download. A rebuilt engine with the same name still shows as an update (by checksum).', 'Engine downloads')}
+      <div><strong>Engine downloads</strong> ${tip('The programs that run the models, from their official GitHub pages (Lamplight from Bob\'s own), matched to your GPU. Update keeps the previous build, so Go back needs no download. A rebuilt engine with the same name still shows as an update (by checksum).', 'Engine downloads')}
         <div class="row"><button type="button" data-checkall>Check all for updates</button></div>
         ${sswitch('engineNotes', settings.engineNotes === true, 'Engine update notes', `After an engine update, Bob adds a line or two in the chat on what changed.${settings.engineNotes && settings.engineNote ? ` The engine you have now: ${esc(settings.engineNote)}` : ''}`)}
         ${sswitch('useOllama', settings.useOllama === true, 'Use Ollama too', 'Off: Bob uses only his own parts, and never asks Ollama anything. On: Bob also lists the brains Ollama has, gets some through it, and can hear you through it (Get models, Hearing you). Ollama is a separate program you install yourself.')}
-        ${sswitch('engineAuto', settings.engineUpdates?.auto !== false, 'Auto-update engines', 'At start and about once a day, updates the plain llama.cpp that stands in for Brain Engine, while no brain is loaded on it. Brain Engine updates with Bob. Other engines wait for Check for updates.')}
+        ${sswitch('engineAuto', settings.engineUpdates?.auto !== false, 'Auto-update engines', 'At start and about once a day, updates the plain llama.cpp that stands in for Lamplight, while no brain is loaded on it. Lamplight updates with Bob. Other engines wait for Check for updates.')}
         ${groups}</div>
       ${qwenHtml()}
       <details class="more"><summary>More</summary>${speedHtml()}</details>`;

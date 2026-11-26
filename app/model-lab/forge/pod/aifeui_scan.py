@@ -3,7 +3,7 @@
 
   preflight  every dependency checked before anything is downloaded or built (exit 1 if any check fails)
   fetch      the brain file: "hf:<repo>:<path>" is downloaded, anything else is a file already here; prints its path
-  wait       until Brain Engine has the brain loaded
+  wait       until Lamplight has the brain loaded
   selftest   one word with the trace on: proves this engine build reports it
   scan       asks the plan's questions and writes the recording (format "bob-expert-recording", version 1)
 """
@@ -70,7 +70,7 @@ def preflight(a):
         check(f"Bob's viewer: {f}", os.path.isfile(os.path.join(a.viewer, f)))
     prebuilt = os.environ.get('AIFEUI_SERVER', '')
     if prebuilt:
-        check('the Brain Engine already here can be run', os.access(prebuilt, os.X_OK), prebuilt)
+        check('the Lamplight already here can be run', os.access(prebuilt, os.X_OK), prebuilt)
     else:
         for tool in ['git', 'tar']:
             check(f'tool: {tool}', shutil.which(tool))
@@ -232,7 +232,7 @@ def scan(a):
         return 1
     at = int(time.time() * 1000)
     name = str(plan.get('name') or os.path.basename(a.gguf))[:120]
-    rec = {'format': FORMAT, 'version': VERSION, 'id': f'rec-rented-{at}', 'name': f"{name}, {len(skills)} skill{'' if len(skills) == 1 else 's'}, on a rented card", 'when': time.strftime('%Y-%m-%d', time.gmtime()), 'engine': 'Brain Engine',
+    rec = {'format': FORMAT, 'version': VERSION, 'id': f'rec-rented-{at}', 'name': f"{name}, {len(skills)} skill{'' if len(skills) == 1 else 's'}, on a rented card", 'when': time.strftime('%Y-%m-%d', time.gmtime()), 'engine': 'Lamplight',
            'brain': {'name': name, 'experts': shape['experts'], 'layers': shape['layers'], 'used': shape['used'], 'kind': shape['kind'], 'neurons': shape['neurons']},
            'skills': [{'id': s['id'], 'label': s.get('label') or s['id']} for s in skills], 'clips': clips, 'at': at, 'parts': parts_of(a.gguf, a.gguf_py, shape['layers'], shape['kind'])}
     json.dump(rec, open(a.out + '.part', 'w'))

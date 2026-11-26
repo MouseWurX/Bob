@@ -1,11 +1,11 @@
-// REAP calibration's arithmetic, kept apart from the network so it can be tested: adding up Brain Engine expert
+// REAP calibration's arithmetic, kept apart from the network so it can be tested: adding up Lamplight expert
 // traces, ranking each layer's experts, and turning a share ("keep 50%") into the per-layer keep lists /expert-mask takes.
 // Nothing here cuts or changes a brain file.
 
 // A running total in the Forge's counts shape: { experts, layers: [[picks]], mass: [[sum of w*|f(x)|]] }.
 export function emptyScores() { return { experts: 0, used: 0, layers: [], mass: [], lessons: 0, tokens: 0, hasMass: true }; }
 
-// Adds one answer's expert_trace (Brain Engine 0002 plus the mass patch). A trace without mass still counts picks.
+// Adds one answer's expert_trace (Lamplight 0002 plus the mass patch). A trace without mass still counts picks.
 export function addTrace(s, tr) {
   if (!tr || tr.kind && tr.kind !== 'experts') return false;
   let layers = tr.layers;

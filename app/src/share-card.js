@@ -46,7 +46,7 @@ const DOWN_MS = 10 * 60000; // a Bob whose card failed a load isn't asked again 
 export const WATCH_MS = 5000, GRACE_MS = 20000, SQUEEZE_MB = 768, GAME_MB = 512, APU_FLOOR_MB = 1024;
 const CARD_PROGRAM = /^(rpc-server|llama-server)$/i; // the lend itself
 
-// SCUT (Brain Engine patch 0005): Bob's own fast link for the brain's numbers, off unless switched on. Both Bobs need it
+// SCUT (Lamplight patch 0005): Bob's own fast link for the brain's numbers, off unless switched on. Both Bobs need it
 // on; the engines agree on it when they connect and stay on the usual link (TCP) if either side doesn't, or if the
 // UDP path doesn't answer. It paces itself under a speed cap so the rest of the home network isn't crowded.
 export const SCUT_MBPS = [50, 100, 300, 400, 1000];
@@ -54,7 +54,7 @@ export const SCUT_MBPS = [50, 100, 300, 400, 1000];
 // (On a cable at both ends SCUT isn't used at all: scutOnLink.)
 export const SCUT_AUTO = 400;
 export const scutOn = (cfg) => cfg.share?.scut === true;
-// Sealed SCUT packets (Brain Engine 0006, src/scut-seal.js): on with SCUT unless "Seal SCUT packets" is switched off.
+// Sealed SCUT packets (Lamplight 0006, src/scut-seal.js): on with SCUT unless "Seal SCUT packets" is switched off.
 export const scutSealOn = (cfg) => scutOn(cfg) && sealOn(cfg);
 // Nov 14 (the owner: "they are definitely not going to try to share with wireless bob"): one brain is never spread over
 // cable Bobs and Wi-Fi or Tailscale Bobs together; the slow link would hold the whole brain back. Each kind can share
@@ -152,7 +152,7 @@ export const isWired = (kind) => kind === 'cable' || kind === 'usbnet' || kind =
 // next to nothing, so there the lent card uses the engine's usual link (plain TCP) even with SCUT on.
 export const scutOnLink = (cfg, { wired = false } = {}) => scutOn(cfg) && !wired;
 export const scutEnv = (cfg, { lend = false, wired = false } = {}) => (scutOnLink(cfg, { wired }) ? { GGML_RPC_SCUT: '1', GGML_RPC_SCUT_MBPS: String(scutMbps(cfg, { wired })), ...(lend ? { GGML_RPC_SCUT_PUBLIC_PORT: String(RPC_PORT) } : {}) } : {});
-// The link log (Brain Engine 0008, src/link-log.js): the engine says what the link carried every 10 seconds it's busy,
+// The link log (Lamplight 0008, src/link-log.js): the engine says what the link carried every 10 seconds it's busy,
 // or every 2 with "Watch the link live" on. For any lent card, with SCUT or on the usual link.
 export const linkLive = (cfg) => cfg.share?.linkDebug === true;
 export const linkEnv = (cfg) => ({ GGML_RPC_STATS: linkLive(cfg) ? '2' : '10' });

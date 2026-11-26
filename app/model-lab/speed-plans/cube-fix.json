@@ -1,5 +1,5 @@
 {
- "name": "Cube fix: does the trace read from kept copies (0021) keep the words and the speed? Y0 vs T1 at Normal (U0: fusion off, the check that T1 kept it), F4c vs FT at F4c (stock Qwen3.6 35B A3B, 16 GB card, Brain Engine 10)",
+ "name": "Cube fix: does the trace read from kept copies (0021) keep the words and the speed? Y0 vs T1 at Normal (U0: fusion off, the check that T1 kept it), F4c vs FT at F4c (stock Qwen3.6 35B A3B, 16 GB card, Lamplight 10)",
  "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 19)",
  "brain": "${BRAIN}",
  "engines": {

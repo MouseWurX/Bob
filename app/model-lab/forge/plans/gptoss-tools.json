@@ -26,7 +26,7 @@
  "benchmark": {
   "note": "three brains, one at a time; the PC's Bob source must be 1.5.223 or newer (--min-bob stops the run otherwise)",
   "hours_each": 3,
-  "brain_engine": {
+  "lamplight": {
    "ref": "fcdf3955ed6966c102f43d49528174cabd52d825",
    "patches": [
     "0001-expert-mask",
@@ -43,7 +43,7 @@
     "0012-load-progress",
     "0013-experts-per-word"
    ],
-   "note": "the same Brain Engine as the Riker and Bobert runs, without the lab-only steering patch (nothing is set live here)"
+   "note": "the same Lamplight as the Riker and Bobert runs, without the lab-only steering patch (nothing is set live here)"
   },
   "models": [
    {

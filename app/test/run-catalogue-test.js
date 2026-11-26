@@ -234,7 +234,7 @@ check('each machine answer is said once (grouped), and Active is explained once 
     await shop.runModel(named[0], {}, null, () => {});
     return took;
   };
-  check('with Brain Engine, a download is Bob\'s own pinned file even while Ollama runs', await run('llamacpp') === 'own');
+  check('with Lamplight, a download is Bob\'s own pinned file even while Ollama runs', await run('llamacpp') === 'own');
   check('pulling through Ollama only happens when Ollama is the engine set by hand', await run('ollama') === 'ollama');
 }
 

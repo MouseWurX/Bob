@@ -215,10 +215,10 @@ export function enginesFor(list, engines) {
   for (const m of list) {
     if (!m) continue;
     add(m.needs && engines.find((e) => e.name === m.needs));
-    // 1.5.169: Brain Engine is the default engine for brains, so it's offered even beside a llama.cpp that's already
+    // 1.5.169: Lamplight is the default engine for brains, so it's offered even beside a llama.cpp that's already
     // here (the bundled one). Where it has no build (a Mac, an ARM board), llama.cpp as before.
     if ((m.files || []).some((f) => f.role === 'gguf')) {
-      const be = engines.find((e) => e.id === 'brainengine'), lc = engines.find((e) => e.id === 'llamacpp');
+      const be = engines.find((e) => e.id === 'lamplight'), lc = engines.find((e) => e.id === 'llamacpp');
       if (!be?.installed && !(lc?.installed && !(be && be.available !== false))) add(be && be.available !== false ? be : lc);
     }
   }
@@ -260,12 +260,12 @@ export function starterHtml(ctx) {
 // Gemma 4 E4B with room for it (a card of 8 GB or more, or 16 GB of shared memory on a Mac or built-in graphics),
 // otherwise Gemma 4 E2B. An ARM board (Raspberry Pi 5): Qwen3.5 2B with 4 GB, Gemma 4 E2B with 8 GB, on the processor.
 export const CORE_ENGINES = ['llamacpp', 'sdcpp', 'whispercpp'];
-// The core programs on this replicant matrix. 1.5.202: where Brain Engine has a build it is the only engine for brains
+// The core programs on this replicant matrix. 1.5.202: where Lamplight has a build it is the only engine for brains
 // (1.5.196), so Get me ready offers it and not plain llama.cpp, which brains no longer run on there and which would
-// leave the Lab's and Brain Engine's features without their engine. Where it has no build (a Mac, an ARM board): llama.cpp.
+// leave the Lab's and Lamplight's features without their engine. Where it has no build (a Mac, an ARM board): llama.cpp.
 export function coreEngines(engines = []) {
-  const be = engines.find((e) => e.id === 'brainengine');
-  return CORE_ENGINES.map((id) => (id === 'llamacpp' && be && be.available !== false ? 'brainengine' : id));
+  const be = engines.find((e) => e.id === 'lamplight');
+  return CORE_ENGINES.map((id) => (id === 'llamacpp' && be && be.available !== false ? 'lamplight' : id));
 }
 export function starterBrain({ vramGB, ramGB, unified, integrated, arm } = {}) {
   if (arm) return (ramGB || 0) >= 6 ? 'gemma4-e2b' : 'qwen3.5-2b';

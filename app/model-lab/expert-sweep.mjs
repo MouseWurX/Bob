@@ -1,4 +1,4 @@
-// Expert sweep: what helps or hinders each target, measured live on a running Brain Engine (no file changed, no rental).
+// Expert sweep: what helps or hinders each target, measured live on a running Lamplight (no file changed, no rental).
 // Each trial sets the engine's live switches, replays every target's held-out chats (first turn, judged like tool-score),
 // and records the score per target next to the same chats with nothing changed. The owner (13 Nov): "not just + experts".
 //
@@ -20,7 +20,7 @@ import { opts, readJsonl, stamp } from './common.mjs';
 import { parseArgs, judgeTurn } from './tool-judge.mjs';
 
 const o = opts({ sample: 60, groups: 4 });
-if (!o.url || !o.lessons) { console.error('--url <Brain Engine> --lessons <lessons folder> are needed (--targets <file> to split by target)'); process.exit(1); }
+if (!o.url || !o.lessons) { console.error('--url <Lamplight> --lessons <lessons folder> are needed (--targets <file> to split by target)'); process.exit(1); }
 const url = String(o.url).replace(/\/$/, '');
 const lessonsDir = String(o.lessons);
 const isHoldout = (id) => parseInt(crypto.createHash('md5').update(String(id)).digest('hex').slice(0, 8), 16) / 0xFFFFFFFF < 0.05;
@@ -45,7 +45,7 @@ if (!Object.keys(byTarget).length) { console.error(`no held-out tool lessons in 
 
 const post = async (p, body) => {
   const r = await fetch(url + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
-  if (r.status === 404) throw new Error(`this Brain Engine has no ${p} (update the engine)`);
+  if (r.status === 404) throw new Error(`this Lamplight has no ${p} (update the engine)`);
   if (!r.ok) throw new Error(`${p}: ${(await r.text()).slice(0, 200)}`);
 };
 async function shape() { // the brain's layers and its own experts per word, from /experts-per-word (0013); older engines: from --layers/--used-own

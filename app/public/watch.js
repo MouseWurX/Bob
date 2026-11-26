@@ -125,7 +125,7 @@ const dialsNow = () => { try { return cleanDials(dialEntries.flatMap((x) => x.it
 function dialHtml() {
   if (!rec) return;
   const what = $('watchDialWhat'), was = what.value, blocks = rec.brain.kind !== 'neurons';
-  // a scan of neuron groups has no single parts Brain Engine can turn, only whole floors
+  // a scan of neuron groups has no single parts Lamplight can turn, only whole floors
   what.innerHTML = `${blocks ? `<option value="part">This ${partWord()} (floor ${floor + 1}, ${partWord()} ${expert})</option><option value="skill">Every ${partWord()} of one ${patternsOn ? 'pattern' : 'skill'}</option>` : ''}<option value="attn">Floor ${floor + 1}'s attention</option><option value="ffn">Floor ${floor + 1}'s feed-forward block${rec.brain.kind === 'experts' ? ' (all its experts together)' : ''}</option>`;
   if ([...what.options].some((o) => o.value === was)) what.value = was;
   $('watchDialSkillBox').hidden = what.value !== 'skill';
@@ -462,7 +462,7 @@ function cutHtml() {
   if (!off) { says.textContent = w(rec.cutOff ? `This scan was made with ${rec.cutOff.toLocaleString()} experts turned off.` : 'Untick skills or Never picked above, then switch this on: those experts go dark, and a crossed-out red ring shows each time the brain wanted one.'); again.hidden = true; return; }
   const fx = cutEffect(rec, off);
   const worst = fx.per.map((p, i) => [p.pct, rec.skills[i].label]).sort((a, b) => b[0] - a[0])[0];
-  says.textContent = w(fx.off ? `${covK ? `The Lab's cut that keeps what every skill needs (${Math.round(cutCover * 100)}% of each skill's picks) keeps ${covK} of ${rec.brain.experts} experts on each floor. ` : ''}${fx.off.toLocaleString()} of ${fx.total.toLocaleString()} experts turned off. ${fx.pct}% of the picks in this scan went to them${fx.lost && worst ? `; ${worst[1]} leaned on them most (${worst[0]}%)` : ''}. A real brain would pick its next best experts instead, so this shows how much it leaned on them, not how much worse it would get.` : 'Nothing is turned off yet. Untick something above, or set how many to keep on each floor.') + (rec.brain.kind === 'neurons' ? ' Neuron groups can\'t be switched off in Brain Engine, so this is a picture only.' : '');
+  says.textContent = w(fx.off ? `${covK ? `The Lab's cut that keeps what every skill needs (${Math.round(cutCover * 100)}% of each skill's picks) keeps ${covK} of ${rec.brain.experts} experts on each floor. ` : ''}${fx.off.toLocaleString()} of ${fx.total.toLocaleString()} experts turned off. ${fx.pct}% of the picks in this scan went to them${fx.lost && worst ? `; ${worst[1]} leaned on them most (${worst[0]}%)` : ''}. A real brain would pick its next best experts instead, so this shows how much it leaned on them, not how much worse it would get.` : 'Nothing is turned off yet. Untick something above, or set how many to keep on each floor.') + (rec.brain.kind === 'neurons' ? ' Neuron groups can\'t be switched off in Lamplight, so this is a picture only.' : '');
   again.hidden = !(fx.off && src && rec.brain.kind === 'experts' && !patternsOn);
 }
 $('watchCut').onclick = (ev) => { cutOn = !cutOn; flipSw(ev.currentTarget, cutOn); setAsk(false); cutHtml(); if (mode === 'floor') floorHtml(); };

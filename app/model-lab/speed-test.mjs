@@ -236,7 +236,7 @@ export async function runRow({ plan, prompts, row, round, fx }) {
     const up = await srv.ready();
     if (!up.ok) { out.notRun = up.why || 'the engine didn\'t start'; return out; }
     out.load = parseCacheLog(srv.log());
-    // live switches a row sets after load (Brain Engine: expert mask, dials, experts per word), each a POST
+    // live switches a row sets after load (Lamplight: expert mask, dials, experts per word), each a POST
     for (const c of row.setup || []) {
       let b = c.body;
       // {"allBut": N}: the expert mask keeping every expert but N, however many the brain has

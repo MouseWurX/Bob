@@ -39,7 +39,7 @@ export const challengeJobs = {
     const title = (id) => (PACKS.find((p) => p.id === id) || mine.find((m) => m.id === id)).title;
     // The standard speed test after the challenges, when ticked (off unless ticked) and the tool is here.
     const bench = c.bench === true;
-    if (bench && !this.benchTool().found && !this.stepFns.bench) throw new Error('The standard speed test (llama-bench) isn\'t here. It comes with the built-in engine and with Brain Engine (Settings > Engines). Untick it, or get one of them again.');
+    if (bench && !this.benchTool().found && !this.stepFns.bench) throw new Error('The standard speed test (llama-bench) isn\'t here. It comes with the built-in engine and with Lamplight (Settings > Engines). Untick it, or get one of them again.');
     const runRec = { id: `lab-${this.now().toString(36)}`, kind: 'challenge', name: `Challenges for ${brain.name}`, from: brain.id, fromName: brain.name, packs, gen, bench, ...(wobble ? { wobble: true } : {}), state: 'running', at: this.now(), steps: [{ id: 'serve', label: `Start ${brain.name}`, state: 'waiting' }, ...packs.map((id) => ({ id, label: title(id), state: 'waiting' })), ...(bench ? [{ id: 'bench', label: 'The standard speed test (llama-bench)', state: 'waiting' }] : [])], progress: 0 };
     this.runs.push(runRec); this.save();
     const ac = new AbortController();

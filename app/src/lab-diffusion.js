@@ -1,7 +1,7 @@
 // Computer Science Lab, Playground: Diffusion brains (llama-diffusion-cli). Most brains write one word after another.
 // A diffusion brain (Dream, LLaDA, LLaDA-MoE, RND1) starts from a block of blanks and fills them all in over a number
 // of steps, the way picture makers clear up noise. Bob's chat can't run them (llama-server doesn't), so they live
-// here: pick one, ask, and watch the block fill in. Only Brain Engine carries the runner (the official llama.cpp
+// here: pick one, ask, and watch the block fill in. Only Lamplight carries the runner (the official llama.cpp
 // downloads leave it out). One at a time, never while Gaming or a Lab job runs, and Bob's own brain leaves the card
 // first (asked, like the Challenges).
 import { labOn } from './lab.js';

@@ -1,5 +1,5 @@
 // Which experts each job and each style lights up (13 Nov, the owner: "use data while generating lessons to see if we can
-// recommend any neurons for surgery on the smaller model"). A Brain Engine server READS finished lessons (nothing is written:
+// recommend any neurons for surgery on the smaller model"). A Lamplight server READS finished lessons (nothing is written:
 // one word out, cache off) with the expert trace on, and every lesson's expert picks are added to its target: "job:<job>"
 // for a Bob set, "style:<name>" for a style set. What carries over to a brain is only what was measured ON that brain, so the
 // same lessons are read by the writer (GPT-OSS 120B), its cut (the 38B) and the student (a Qwen Bob), each in its own folder.
@@ -11,7 +11,7 @@
 //   14 Nov, 44 of 44 lost at --parallel 4)
 //   Every failed lesson is counted by why (no-set: its tool set isn't in toolsets.json; no-trace: the reply had no expert trace;
 //   http: the call failed) in fails.json, so a run that maps nothing says why (Nov 13: 135 of 160 failed with no reason).
-//   --mass: REAP scores per target too (Brain Engine 0009) and keep/<target>-keep-NN.json lists for live per-job presets
+//   --mass: REAP scores per target too (Lamplight 0009) and keep/<target>-keep-NN.json lists for live per-job presets
 //   A set named "bob" is split by job; any other name is one style target. Held-out lessons (the 5% split) are never read.
 // Writes in --out:
 //   counts.json   {target: {layer: {expert: picks}}}  (the shape the surgery tools read)
@@ -103,7 +103,7 @@ export const countsShape = (acc) => Object.fromEntries(Object.entries(acc).map((
 async function main() {
   const args = Object.fromEntries(process.argv.slice(2).reduce((a, x, i, arr) => (x.startsWith('--') ? [...a, [x.slice(2), arr[i + 1] && !arr[i + 1].startsWith('--') ? arr[i + 1] : true]] : a), []));
   const url = String(args.url || process.env.LAB_URL || '').replace(/\/+$/, '');
-  if (!url || !args.sets) { console.error('node trace-read.mjs --url <Brain Engine server> --sets bob=<dir>,sherlock=<dir> [--per 300] [--out <folder>]'); process.exit(1); }
+  if (!url || !args.sets) { console.error('node trace-read.mjs --url <Lamplight server> --sets bob=<dir>,sherlock=<dir> [--per 300] [--out <folder>]'); process.exit(1); }
   const setDirs = String(args.sets).split(',').filter(Boolean).map((x) => { const [n, ...d] = x.split('='); return [n.trim(), path.resolve(d.join('=').trim())]; });
   const out = path.resolve(String(args.out || process.env.LAB_OUT || 'trace-read')); fs.mkdirSync(out, { recursive: true });
   const per = Number(args.per) || 300, perStyle = Number(args['per-style']) || per, top = Number(args.top) || 4;
@@ -138,7 +138,7 @@ async function main() {
   fs.writeFileSync(path.join(out, 'fails.json'), JSON.stringify({ lessons: work.length, failed: fails, why }, null, 1));
   // --gate 0.2: a smoke run that loses more than this share of lessons stops the whole rental (exit 86, the Forge deletes the pod)
   if (args.gate !== undefined && fails > (Number(args.gate) || 0) * work.length) { console.log(`GATE STOP: expert maps lost ${fails} of ${work.length} lessons (${Object.entries(why).map(([k, v]) => `${k} ${v.n}: ${v.first[0] || ''}`).join('; ')})`); process.exit(86); }
-  if (!Object.keys(acc).length) { console.error('No expert traces came back. Is this a Brain Engine server with the expert trace, and a mixture-of-experts brain?'); process.exit(1); }
+  if (!Object.keys(acc).length) { console.error('No expert traces came back. Is this a Lamplight server with the expert trace, and a mixture-of-experts brain?'); process.exit(1); }
   const lift = lifts(acc, top);
   fs.writeFileSync(path.join(out, 'counts.json'), JSON.stringify(countsShape(acc)));
   fs.writeFileSync(path.join(out, 'lift.json'), JSON.stringify({ brain: process.env.LAB_MODEL_NAME || '', experts: E, used, targets: Object.fromEntries(Object.entries(acc).map(([n, t]) => [n, { lessons: t.lessons, tokens: t.tokens }])), lift }, null, 1));

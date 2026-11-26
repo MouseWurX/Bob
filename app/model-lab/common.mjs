@@ -154,7 +154,7 @@ export async function chat(url, { messages, tools, think = false, max = 2048, te
   // 13 Nov: a rented card sits behind RunPod's https proxy, which cuts a request that sends nothing for 100 s (error 524): long
   // thinking answers with many in flight hit it. Streaming sends words as they come, so the proxy never cuts it. On by default
   // for a rented server (LAB_REMOTE=1) or LAB_STREAM=1; LAB_STREAM=0 turns it off. The result is put back together exactly.
-  // Not with tools AND odds together: llama-server (Brain Engine 787c2b8 at least) answers 400 "logprobs is not supported with
+  // Not with tools AND odds together: llama-server (Lamplight 787c2b8 at least) answers 400 "logprobs is not supported with
   // tools + stream", so such a call goes unstreamed (tool turns are short; a 524 there is skipped and retried on the next resume).
   // Any other 400 that names streaming is tried once more unstreamed.
   // LAB_TOOL_ODDS=stream: such a call streams anyway and asks for the odds with llama.cpp's own n_probs instead of logprobs (the

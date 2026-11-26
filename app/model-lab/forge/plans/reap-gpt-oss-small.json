@@ -51,7 +51,7 @@
       }
     ],
     "commands": [],
-    "brain_engine": {
+    "lamplight": {
       "ref": "787c2b828a505bfd54710ce41065f4f750548e80",
       "patches": [
         "0001-expert-mask",
@@ -63,7 +63,7 @@
         "0007-expert-trace-stream",
         "0009-expert-mass"
       ],
-      "note": "Brain Engine as the next build will be (patches 0001-0007 plus 0009, expert mass), fetched from Bob's public repo at this commit and compiled on the card (10-15 min)"
+      "note": "Lamplight as the next build will be (patches 0001-0007 plus 0009, expert mass), fetched from Bob's public repo at this commit and compiled on the card (10-15 min)"
     }
   },
   "llama_tag": "b12282"

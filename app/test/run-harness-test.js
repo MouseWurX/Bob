@@ -254,9 +254,9 @@ check('Bob\'s settings readout names them', /Quiet hours/.test(harnessNow({})) &
   {
     const { engineLabel } = await import('../src/brain.js');
     const A = path.join(os.tmpdir(), 'agent'), mk = (exe) => engineLabel({ engine: 'llamacpp', agentDir: A, llamacpp: { exe } });
-    check('Health names Bob\'s own engine Brain Engine, not llama.cpp (PC check)', mk(path.join(A, 'brain-engine', 'llama-server')) === 'Brain Engine' && mk(path.join(A, 'brain-engine', 'bin', 'llama-server')) === 'Brain Engine' && mk(path.join(A, 'brain-engine.previous', 'llama-server')) === 'llama.cpp' && mk(path.join(os.tmpdir(), 'llama', 'llama-server')) === 'llama.cpp' && engineLabel({ engine: 'ollama' }) === 'Ollama');
+    check('Health names Bob\'s own engine Lamplight, not llama.cpp (PC check)', mk(path.join(A, 'brain-engine', 'llama-server')) === 'Lamplight' && mk(path.join(A, 'brain-engine', 'bin', 'llama-server')) === 'Lamplight' && mk(path.join(A, 'brain-engine.previous', 'llama-server')) === 'llama.cpp' && mk(path.join(os.tmpdir(), 'llama', 'llama-server')) === 'llama.cpp' && engineLabel({ engine: 'ollama' }) === 'Ollama');
   }
-  const all = healthChecks({ engineOk: true, engineName: 'Brain Engine', models: [{ name: 'Riker' }], card: { usedGB: 15.5, totalGB: 16 }, diskFreeGB: 1, peers: [{ name: 'Go', ok: false }], logText: '- 2026 | error | boom', crashes: 2 });
+  const all = healthChecks({ engineOk: true, engineName: 'Lamplight', models: [{ name: 'Riker' }], card: { usedGB: 15.5, totalGB: 16 }, diskFreeGB: 1, peers: [{ name: 'Go', ok: false }], logText: '- 2026 | error | boom', crashes: 2 });
   const by = Object.fromEntries(all.checks.map((c) => [c.id, c]));
   check('engine, brain, card, disk, Bob-Net, errors and crashes', ['engine', 'brain', 'card', 'disk', 'bobnet', 'errors', 'crashes'].every((k) => by[k]));
   check('a full card has Let my brains go', by.card.level === 'warn' && by.card.fix.id === 'free-card');

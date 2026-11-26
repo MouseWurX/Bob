@@ -40,7 +40,7 @@ export function namesIn(text) {
 
 const lineCount = (text) => String(text).split('\n').length;
 
-// 1.5.204 (the owner, Nov 11: map the engine code): a patch file (Brain Engine's engine/patches/*.patch, or any
+// 1.5.204 (the owner, Nov 11: map the engine code): a patch file (Lamplight's engine/patches/*.patch, or any
 // .patch/.diff) is mapped by what it changes: the files it touches upstream, lines added and taken out, what it says
 // it is for (a Subject: line, or the first comment it adds) and the main names it adds (API functions, functions,
 // server endpoints). Read-only, like the rest of the map.

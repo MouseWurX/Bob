@@ -1,5 +1,5 @@
 // 🧪 Computer Science Lab, Playground: fNRI (Functional Neural Response Imager). A scan of a mixture-of-experts
-// brain at work: Bob asks it a few simple questions for each skill on Brain Engine and records which experts every
+// brain at work: Bob asks it a few simple questions for each skill on Lamplight and records which experts every
 // layer picked for every word. The viewer (public/watch.html, its own window so it can sit beside the Lab or a chat)
 // plays the scan as a 3D block of voxels: a floor for each layer, experts coloured by the skill they lean to around
 // a grey core of the parts that are not experts, glowing as they are used. This page picks the brain and the
@@ -52,7 +52,7 @@ export function createWatchPage({ api }) {
       <details ${ownName || ownQs ? 'open' : ''}><summary>Add a skill of your own</summary>
         <label for="watch-own-name">Its name</label> <input type="text" id="watch-own-name" maxlength="40" value="${esc(ownName)}" placeholder="Cooking">
         <label for="watch-own-qs">Its questions, one on each line (up to ${v.ownMax})</label><textarea id="watch-own-qs" rows="3" maxlength="2000">${esc(ownQs)}</textarea></details>
-      <p class="muted">${n} question${n === 1 ? '' : 's'}, about ${think ? v.wordsThink : v.words} words of answer each. I load the brain once on Brain Engine and ask them one at a time, so it takes a few minutes. While it reports its experts the brain writes slower than usual. More questions give a steadier picture.</p>
+      <p class="muted">${n} question${n === 1 ? '' : 's'}, about ${think ? v.wordsThink : v.words} words of answer each. I load the brain once on Lamplight and ask them one at a time, so it takes a few minutes. While it reports its experts the brain writes slower than usual. More questions give a steadier picture.</p>
       ${askUnload ? `<div class="setup-offer" role="alert"><strong>Bob's brain is on the graphics card</strong><span>${esc(askUnload.join(', '))} is loaded. The scan needs the card, so Bob unloads it first; it loads again the next time you chat.</span><div class="row"><button type="button" class="get" data-watchgo="unload">Unload it and start</button><button type="button" class="link" data-watchnounload>Not now</button></div></div>` : ''}
       <div class="row"><button type="button" class="get" data-watchgo ${n && !over ? '' : 'disabled'} ${over ? 'aria-describedby="watch-over"' : ''}>Start the scan</button>${queueBtn('watch', Boolean(n && !over))}</div>${over ? `<p id="watch-over" class="error" role="alert">A scan holds up to ${v.maxSkills} skills, so each keeps its own colour. Untick ${over}.</p>` : ''}`
         : `<div class="lab-check" aria-disabled="true"><p><strong>Scan this brain</strong> <span class="lab-later">Not yet</span></p><p class="muted">${esc(bv.live?.why || '')}</p></div>`) : ''}

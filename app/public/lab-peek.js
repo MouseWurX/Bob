@@ -1,6 +1,6 @@
 // 1.5.164 🧪 Computer Science Lab, Playground: Peek inside. "Which experts did you use for that?" A map of a
 // mixture-of-experts brain, layers across and experts down, one square per expert: shaded by how much of a thing's
-// work it carries (from the usage map's counts), or lit up live as Brain Engine answers a question and reports which
+// work it carries (from the usage map's counts), or lit up live as Lamplight answers a question and reports which
 // experts it picked for every word. A scrubber steps word by word; two questions can be compared; Keep count adds every
 // traced word to the tally, which Cut these out and Send to the Forge use. Its own module; the Playground places it.
 // The map is a canvas with text under it (never colour alone): a line per layer, the totals, and the cold experts.
@@ -78,7 +78,7 @@ export function createPeek({ api, view, cutWith = () => {}, toForge = () => {} }
         <label for="peek-scrub">Word by word</label> <input id="peek-scrub" type="range" min="-1" max="${words.length - 1}" value="${scrub}" aria-valuetext="${scrub < 0 ? 'the whole answer' : `word ${scrub + 1}: ${esc(words[scrub]?.text || '')}`}"> <span id="peek-scrub-h" role="status" class="muted">${scrub < 0 ? 'The whole answer.' : `Word ${scrub + 1} of ${words.length}: "${esc(words[scrub]?.text || '')}", ${(words[scrub]?.layers || []).reduce((a, l) => a + l.length, 0)} experts.`}</span>` : ''}
       ${compare && asks.length >= 2 ? compareHtml() : ''}</div>`;
   }
-  // Brain Engine 0013: experts per word for the next question only. Empty = the brain's own count. The engine changes it
+  // Lamplight 0013: experts per word for the next question only. Empty = the brain's own count. The engine changes it
   // without reloading, and puts it back after the answer. Use this in Bob saves it for chats (Settings, Speed).
   function perWordHtml() {
     const b = brains().find((x) => x.id === brain), own = b?.facts?.used || '';
@@ -110,7 +110,7 @@ export function createPeek({ api, view, cutWith = () => {}, toForge = () => {} }
       <p class="muted">Shows which experts a brain uses: layers across, experts down. Darker squares do more work; outlined ones did nothing. Ask it a question below to light up the experts it picks, word by word.</p>
       <fieldset><legend>Which brain?</legend>${list.length ? `<select id="peek-brain" aria-label="Which brain"><option value="">(pick one)</option>${list.map((b) => `<option value="${esc(b.id)}" ${brain === b.id ? 'selected' : ''}>${esc(b.name)} · ${b.facts.experts} experts, ${b.facts.engineLayers || b.facts.layers} layers</option>`).join('')}</select>` : '<p>There\'s no mixture-of-experts brain here to peek inside. Get one in Get models (one with "experts" or "A3B" in its name).' + goBtn('models') + '</p>'}</fieldset>
       ${brain && d ? `${things.length ? `<label for="peek-thing">Show</label> <select id="peek-thing">${things.map(([id, l]) => `<option value="${esc(id)}" ${thing === id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>` : ''}
-        ${counts ? `<canvas id="peek-map" class="peek-map" aria-label="The expert map: layers across, experts down"></canvas>` : `<p class="muted">Nothing counted for this brain yet. Run the usage map (Make a brain, step 1, Open the usage map), or ask it a question below with Brain Engine.</p>`}
+        ${counts ? `<canvas id="peek-map" class="peek-map" aria-label="The expert map: layers across, experts down"></canvas>` : `<p class="muted">Nothing counted for this brain yet. Run the usage map (Make a brain, step 1, Open the usage map), or ask it a question below with Lamplight.</p>`}
         ${d.have ? `<p class="muted">Across everything counted: ${d.cold.toLocaleString()} of ${(d.experts * d.layers).toLocaleString()} experts were never used, about ${d.coldShare}% of the brain. That's only for what <em>you</em> tested, so test widely before you cut.</p>` : ''}
         ${layerLines(counts)}
         ${d.have ? `<button type="button" class="link" data-peekcold aria-expanded="${showCold}">Show unused experts</button>${showCold ? `<ul class="tlist peek-layers">${d.perLayer.map((l) => `<li>Layer ${l.layer}: ${l.cold ? l.coldIds.join(', ') : 'none'}</li>`).join('')}</ul>` : ''}` : ''}

@@ -76,7 +76,7 @@ check('the wobble is half the gap between the lowest and highest run', wobbleOf(
   check('no line when the Lab has no scores for that brain', labLine({ value: 'x', entry: { id: 'x' } }, { labScores: scores }) === '' && labLine({ value: 'x' }, {}) === '');
   check('the Brains page asks for them and passes them in', /api\('\/api\/lab\/brain-scores'\)/.test(publicText('cellar.js')) && /calAsk, labScores, \.\.\.more \}/.test(publicText('cellar.js')));
   // ---- 31 Check again after engine updates ----
-  check('a drop bigger than luck is said; a small one isn\'t', /went from 70 to 60/.test(dropLine('Riker', { score: 70, tps: 100 }, { score: 60, tps: 100 }, 'Brain Engine 4')) && dropLine('Riker', { score: 70, tps: 100 }, { score: 67, tps: 95 }) === '');
+  check('a drop bigger than luck is said; a small one isn\'t', /went from 70 to 60/.test(dropLine('Riker', { score: 70, tps: 100 }, { score: 60, tps: 100 }, 'Lamplight 4')) && dropLine('Riker', { score: 70, tps: 100 }, { score: 67, tps: 95 }) === '');
   check('the measured wobble widens what counts as luck', dropLine('Riker', { score: 70, wobble: 8 }, { score: 63 }) === '');
   check('a speed drop of more than a tenth is said', /speed went from 100 to 80/.test(dropLine('Riker', { score: 70, tps: 100 }, { score: 70, tps: 80 })));
   check('rowFor finds a brain by id first, then by name', rowFor([{ brainId: 'a', name: 'X' }, { name: 'Y' }], { id: 'a', name: 'Z' })?.brainId === 'a' && rowFor([{ name: 'Y' }], { id: 'q', name: 'Y' })?.name === 'Y');
@@ -139,22 +139,22 @@ check('the wobble is half the gap between the lowest and highest run', wobbleOf(
 
   // 31: the check after engine updates, through the queue.
   const rows = () => [{ brainId: 'main', name: 'Main Brain', scores: { quiz: 72 }, tps: 100, old: [], wobble: {} }];
-  check('off by default: nothing is queued', recheckTick({ lab, queue: q, mainId: 'main', version: 'Brain Engine b1', rows: rows() }) === 'off');
+  check('off by default: nothing is queued', recheckTick({ lab, queue: q, mainId: 'main', version: 'Lamplight b1', rows: rows() }) === 'off');
   cfg.labRecheck = true;
-  check('switched on, the build it sees first is the one to compare against', recheckTick({ lab, queue: q, mainId: 'main', version: 'Brain Engine b1', rows: rows() }) === 'baseline' && readRecheck(cfg).version === 'Brain Engine b1');
-  check('the same build again: nothing', recheckTick({ lab, queue: q, mainId: 'main', version: 'Brain Engine b1', rows: rows() }) === 'same');
-  check('a new build queues the Lab test on the main brain, waiting for Bob to be quiet', recheckTick({ lab, queue: q, mainId: 'main', version: 'Brain Engine b2', engine: 'Brain Engine b2', rows: rows() }) === 'queued' && q.items.at(-1).idle === true && q.items.at(-1).body.challenge.packs.join() === 'quiz');
+  check('switched on, the build it sees first is the one to compare against', recheckTick({ lab, queue: q, mainId: 'main', version: 'Lamplight b1', rows: rows() }) === 'baseline' && readRecheck(cfg).version === 'Lamplight b1');
+  check('the same build again: nothing', recheckTick({ lab, queue: q, mainId: 'main', version: 'Lamplight b1', rows: rows() }) === 'same');
+  check('a new build queues the Lab test on the main brain, waiting for Bob to be quiet', recheckTick({ lab, queue: q, mainId: 'main', version: 'Lamplight b2', engine: 'Lamplight b2', rows: rows() }) === 'queued' && q.items.at(-1).idle === true && q.items.at(-1).body.challenge.packs.join() === 'quiz');
   quiet = false;
   check('it waits while Bob isn\'t quiet yet', (await q.tick()) === 'wait');
   quiet = true;
   await q.tick();
   check('then it runs', q.items.at(-1).state === 'running');
-  check('and the check waits for it', recheckTick({ lab, queue: q, mainId: 'main', version: 'Brain Engine b2', rows: rows() }) === 'waiting');
+  check('and the check waits for it', recheckTick({ lab, queue: q, mainId: 'main', version: 'Lamplight b2', rows: rows() }) === 'waiting');
   lab.runs.at(-1).state = 'done'; lab.job = null;
   await q.tick();
   said.length = 0;
   const after = [{ brainId: 'main', name: 'Main Brain', scores: { quiz: 60 }, tps: 99, old: [], wobble: {} }];
-  check('when it\'s done a real drop is said in chat and kept', recheckTick({ lab, queue: q, mainId: 'main', version: 'Brain Engine b2', rows: after }) === 'checked' && said.some((e) => e.type === 'lab-recheck' && /72 to 60/.test(e.text)) && readRecheck(cfg).last.after.score === 60);
+  check('when it\'s done a real drop is said in chat and kept', recheckTick({ lab, queue: q, mainId: 'main', version: 'Lamplight b2', rows: after }) === 'checked' && said.some((e) => e.type === 'lab-recheck' && /72 to 60/.test(e.text)) && readRecheck(cfg).last.after.score === 60);
   check('the chat shows that line, and the switch is on the Challenges page', /case 'lab-recheck': note\(ev\.text\)/.test(publicText('app.js')) && /data-recheck/.test(read('public/lab.js')));
   check('the setting is saved off unless switched on', /'labRecheck' in out\) out\.labRecheck = out\.labRecheck === true/.test(read('src/config.js')));
 }

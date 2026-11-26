@@ -1,6 +1,6 @@
 // The rental's checks (13 Nov): the smoke gate (stop = exit 86, the Forge deletes the pod), the evil check (measure only, no
 // tools, live dials that go back), the live switches for the Riker sweep, and the plan that strings them together.
-// Nothing here reads the real computer: a made-up Brain Engine server answers on a local port.
+// Nothing here reads the real computer: a made-up Lamplight server answers on a local port.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -114,7 +114,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
   check('every make-datasets run never runs code', (c.match(/make-datasets\.mjs/g) || []).length === (c.match(/make-datasets\.mjs[^\n]*--no-run/g) || []).length);
   const q = JSON.parse(read(path.join(lab, 'forge', 'plans', 'riker-calib.json')));
   check('the second plan: evil checks first, then Riker with imatrix', q.benchmark.models.map((m) => m.name).join() === 'riker-evil,qwen36-evil,riker' && q.benchmark.models[0].evil_check && q.benchmark.models[2].imatrix && q.benchmark.models[2].file === 'same:riker-evil');
-  check('the second plan: Brain Engine 7b12282, drive-free, a 48 GB card, no step up', q.benchmark.brain_engine.patches.length === 13 && !q.volume && q.gpus.includes('NVIDIA L40S') && q.step_up.length === 0 && q.no_hands);
+  check('the second plan: Lamplight 7b12282, drive-free, a 48 GB card, no step up', q.benchmark.lamplight.patches.length === 13 && !q.volume && q.gpus.includes('NVIDIA L40S') && q.step_up.length === 0 && q.no_hands);
   const qc = q.benchmark.models.flatMap((m) => m.commands).join('\n');
   check('the second plan: live experts per word 3, 4, 6, 12 (8 ran in v5), keep-75 at 3 and the best N of both runs', [3, 4, 6, 12].every((n) => qc.includes(`--used ${n} &&`)) && /--used best --from \{\{out\}\},\{\{out\}\}\/\.\.\/\.\.\/gptoss-lessons-v5\/riker/.test(qc) && /--direction-only/.test(qc) && /--other-direction/.test(qc));
   const all = [...p.benchmark.models, ...q.benchmark.models].flatMap((m) => m.commands).join('\n');

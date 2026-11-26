@@ -1,5 +1,5 @@
 {
- "name": "Laptop: heat and throttling, reading steps, Brain Engine cost (Qwen3 4B, 6 GB card)",
+ "name": "Laptop: heat and throttling, reading steps, Lamplight cost (Qwen3 4B, 6 GB card)",
  "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 14)",
  "brain": "${BRAIN}",
  "engines": {

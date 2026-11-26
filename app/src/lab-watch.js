@@ -3,7 +3,7 @@
 // it as a 3D block of voxels, one floor per layer, coloured by the skill each expert leans to, glowing as it is used.
 //   The questions are plain data below, so anyone can read them. A few per skill is enough to see the pattern; it is
 //   a picture of these questions, not a measurement of the brain.
-//   The recording needs Brain Engine with the expert trace (engine/patches/0002-expert-trace.patch): one question at
+//   The recording needs Lamplight with the expert trace (engine/patches/0002-expert-trace.patch): one question at
 //   a time, `"expert_trace": true` on /completion. The file it writes (public/lab-watch-math.js has the format) can
 //   be played on any Bob, and anything else that writes the same shape (a rented card) can be opened in the viewer.
 // It's a Lab job like the others: free, on this replicant matrix, one at a time, never while Gaming is on.
@@ -270,7 +270,7 @@ export function watchView(lab, brainId = '') {
   const brain = lab.brains().find((b) => b.id === String(brainId || ''));
   if (!brain) return { ...base, brain: '', recordings: [], live: null };
   let facts = null; try { facts = inspect(brain); } catch {}
-  const engineFound = lab.tools().brainEngine.found || Boolean(lab.stepFns.peekServe);
+  const engineFound = lab.tools().lamplight.found || Boolean(lab.stepFns.peekServe);
   const live = !facts?.layers ? { ok: false, why: `Bob can't read how ${brain.name} is built, so there's nothing to scan.` }
     : !engineFound ? { ok: false, why: NO_ENGINE } : (lab.peekTraceOk ?? lab.traceProbe?.()?.experts) === false ? { ok: false, why: NO_TRACE } : { ok: true, why: '' };
   const probe = lab.traceProbe?.() || null; // heads need the newer build: { experts, heads } read from the program file
@@ -352,16 +352,16 @@ export function cleanKeep(keep, { experts, layers, used }) {
 }
 async function maskExperts(url, keep) {
   const res = await fetch(url + '/expert-mask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ keep }), signal: AbortSignal.timeout(30000) });
-  if (!res.ok) throw new Error(`Brain Engine wouldn't switch the experts: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) throw new Error(`Lamplight wouldn't switch the experts: ${(await res.text()).slice(0, 200)}`);
 }
 
-// Dials (public/lab-watch-math.js): set in Brain Engine for the length of one scan. An older Brain Engine has no
+// Dials (public/lab-watch-math.js): set in Lamplight for the length of one scan. An older Lamplight has no
 // dials and says 404.
-export const NO_DIALS = 'This Brain Engine can\'t turn parts up or down yet. Update it under Settings, Engines (Brain Engine), then try again.';
+export const NO_DIALS = 'This Lamplight can\'t turn parts up or down yet. Update it under Settings, Engines (Lamplight), then try again.';
 async function setDials(url, dials) {
   const res = await fetch(url + '/dials', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dials }), signal: AbortSignal.timeout(30000) });
   if (res.status === 404) throw new Error(NO_DIALS);
-  if (!res.ok) { let why = ''; try { why = (await res.json())?.error?.message || ''; } catch {} throw new Error(`Brain Engine wouldn't set the dials${why ? `: ${String(why).slice(0, 200)}` : '.'}`); }
+  if (!res.ok) { let why = ''; try { why = (await res.json())?.error?.message || ''; } catch {} throw new Error(`Lamplight wouldn't set the dials${why ? `: ${String(why).slice(0, 200)}` : '.'}`); }
 }
 
 // Use these for training: a list of the blocks a training run may change (everything else stays frozen), saved beside
@@ -405,7 +405,7 @@ export function deleteRecording(lab, { brain: brainId, id } = {}) {
 }
 
 // One traced answer as a clip of the recording: every word read, the question first, then the answer read back.
-export const NO_HEADS = 'This Brain Engine build can\'t report attention heads yet. Update it in Settings &gt; Engines: Brain Engine (test build), then scan again.';
+export const NO_HEADS = 'This Lamplight build can\'t report attention heads yet. Update it in Settings &gt; Engines: Lamplight (test build), then scan again.';
 
 export function clipOf(skill, question, got, { experts, layers }) {
   const read = got.read;
@@ -433,11 +433,11 @@ export async function startWatch(lab, c = {}, { unload = false } = {}) {
   const plain = !facts.experts; // no experts: the scan lights groups of neurons instead
   let shape = plain || heads ? null : { kind: 'experts', experts: facts.experts, layers: facts.layers, used: facts.used };
   const tools = lab.tools();
-  if (!tools.brainEngine.found && !lab.stepFns.peekServe) throw new Error(NO_ENGINE);
+  if (!tools.lamplight.found && !lab.stepFns.peekServe) throw new Error(NO_ENGINE);
   if (lab.peekTraceOk === false) throw new Error(NO_TRACE);
   { const pr = lab.traceProbe?.(); if (pr && !pr.experts) throw new Error(NO_TRACE); if (heads && pr && !pr.heads) throw new Error(NO_HEADS); } // before any brain is unloaded or loaded
   // "again": the same questions as an earlier scan, with some experts switched off (keep = the experts left on, a
-  // list for each layer). The brain isn't cut: Brain Engine just stops picking the others for this scan.
+  // list for each layer). The brain isn't cut: Lamplight just stops picking the others for this scan.
   // It can also be the same questions with dials set: parts turned up or down, again only for this scan.
   let again = null, keep = null, dials = null;
   if (c.again) {
@@ -457,10 +457,10 @@ export async function startWatch(lab, c = {}, { unload = false } = {}) {
   lab.freePeek();
   const ask = await makeRoom(lab, unload); if (ask) return ask;
   const log = pageLog(lab.cfg, 'watch');
-  const serve = lab.stepFns.peekServe || (({ gguf, signal }) => startServer({ exe: tools.brainEngine.path, gguf, ctx: 4096, signal, log }));
+  const serve = lab.stepFns.peekServe || (({ gguf, signal }) => startServer({ exe: tools.lamplight.path, gguf, ctx: 4096, signal, log }));
   const asker = lab.stepFns.peekAsk || askTraced;
   const total = skills.reduce((a, s) => a + s.questions.length, 0);
-  const steps = [['load', `Load ${brain.name} on Brain Engine`], ...skills.map((s) => [`s-${s.id}`, `Ask about ${s.label} (${s.questions.length} questions)`]), ['save', 'Work out the colours and save']];
+  const steps = [['load', `Load ${brain.name} on Lamplight`], ...skills.map((s) => [`s-${s.id}`, `Ask about ${s.label} (${s.questions.length} questions)`]), ['save', 'Work out the colours and save']];
   return runJob(lab, { kind: 'watch', name: `${NAME}: ${brain.name}`, from: brain.id, fromName: brain.name, steps }, async (r, { set, signal, progress }) => {
     set('load', 'running');
     const srv = await serve({ gguf: brain.gguf, signal });
@@ -492,7 +492,7 @@ export async function startWatch(lab, c = {}, { unload = false } = {}) {
     const at = lab.now(), when = new Date(at).toISOString().slice(0, 10);
     const id = `rec-${at.toString(36)}`;
     let parts = null; try { parts = partsOf(readGguf(brain.gguf), facts, { heads }); } catch {}
-    const rec = cleanRecording({ format: FORMAT, version: VERSION, id, name: `${brain.name}, ${heads ? 'attention heads, ' : ''}${skills.length} skill${skills.length === 1 ? '' : 's'}${offCount ? `, ${offCount.toLocaleString()} experts off` : ''}${dials ? `, ${dials.length.toLocaleString()} dial${dials.length === 1 ? '' : 's'}` : ''}`, when, engine: 'Brain Engine', brain: { name: brain.name, experts: shape.experts, layers: shape.layers, used: shape.used, kind: shape.kind, neurons: shape.neurons || 0 }, skills: skills.map(({ id: sid, label }) => ({ id: sid, label })), clips });
+    const rec = cleanRecording({ format: FORMAT, version: VERSION, id, name: `${brain.name}, ${heads ? 'attention heads, ' : ''}${skills.length} skill${skills.length === 1 ? '' : 's'}${offCount ? `, ${offCount.toLocaleString()} experts off` : ''}${dials ? `, ${dials.length.toLocaleString()} dial${dials.length === 1 ? '' : 's'}` : ''}`, when, engine: 'Lamplight', brain: { name: brain.name, experts: shape.experts, layers: shape.layers, used: shape.used, kind: shape.kind, neurons: shape.neurons || 0 }, skills: skills.map(({ id: sid, label }) => ({ id: sid, label })), clips });
     const saw = inWords(rec, specialise(rec)).slice(0, 2).join(' ');
     writeJson(recFile(lab.cfg, brain, id), { ...rec, at, parts, saw, ...(offCount ? { cut: { off: offCount, from: String(c.again).slice(0, 80) } } : {}), ...(dials ? { dials: { list: dials, from: String(c.again).slice(0, 80) } } : {}) });
     for (const old of listRecordings(lab.cfg, brain).slice(KEEP_RECORDINGS)) { try { fs.rmSync(recFile(lab.cfg, brain, old.id), { force: true }); } catch {} }
@@ -556,7 +556,7 @@ export async function watchRoute({ req, p, isLocal, lab, b, send, res }) {
 // The small cube: the brains loaded right now, by the names the cube shows (so it can take itself apart when its
 // brain is let go). `loaded` is the engine's own list; a brain held beside the main one counts too.
 // The cube's empty shape for each loaded (or loading) brain, from its file: floors and experts, or for a brain without
-// experts the neuron groups Brain Engine reports (up to 256 a floor, engine patch 0002). It is drawn in one colour as
+// experts the neuron groups Lamplight reports (up to 256 a floor, engine patch 0002). It is drawn in one colour as
 // soon as the brain loads, before any reply, and on an engine that can't report experts at all.
 export const CUBE_GROUPS = 256;
 // locate(model) -> the brain's file, from the engine: a loaded brain the Lab's list doesn't know (another

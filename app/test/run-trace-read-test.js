@@ -1,4 +1,4 @@
-// trace-read.mjs and trace-carryover.mjs: which experts each job and style leans on, read from a made-up Brain Engine server,
+// trace-read.mjs and trace-carryover.mjs: which experts each job and style leans on, read from a made-up Lamplight server,
 // and whether a big brain's map carries over to its cut (keep list maps the cut's experts back to the big brain's).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -55,7 +55,7 @@ check('a removed expert does not survive the cut', y.report['job:coding'].sugges
 check('the cut confirms the big brain\'s expert under its new number', y.report['job:coding'].confirmed === 1 && y.confirmedLift['job:coding'][0].up[0].expert === 1 && y.confirmedLift['job:coding'][0].up[0].from_big === 3);
 check('a guess the cut does not confirm is not offered', n.report['job:coding'].confirmed === 0 && n.confirmedLift['job:coding'][0].up.length === 0 && n.report['job:coding'].carry === 0);
 
-// a whole run against a made-up Brain Engine server
+// a whole run against a made-up Lamplight server
 const seen = [];
 const srv = http.createServer((req, res) => { let b = ''; req.on('data', (d) => (b += d)); req.on('end', () => {
   const j = JSON.parse(b); seen.push(j); const text = JSON.stringify(j.messages);

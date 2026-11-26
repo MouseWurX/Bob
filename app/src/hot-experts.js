@@ -5,7 +5,7 @@
 // those waits on the processor. llama.cpp 1.0 has its own expert cache on the card (--moe-cache-mib): it keeps the
 // experts it has seen most, and with --moe-cache-cpu-share 1 a missed expert is worked out on the processor instead
 // of copied over, so the cache doesn't churn. (1.5.193 used the cache with the share at 0, which copies every miss to
-// the card; that made writing 2.5 to 3 times slower, and 1.5.198 took it out.) Brain Engine patch 0016 fills the cache
+// the card; that made writing 2.5 to 3 times slower, and 1.5.198 took it out.) Lamplight patch 0016 fills the cache
 // at load from a ranking of the experts (the environment key LLAMA_MOE_CACHE_RANKING holds the PATH of a ranking file),
 // so the busiest sit on the card from the first word.
 //
@@ -61,7 +61,7 @@ export function kindFor(cfg, model) {
   return kinds.length === 1 ? kinds[0] : 'mixed'; // a brain doing several kinds of job gets the mixed profile
 }
 
-// Pick counts from one Brain Engine trace with the mass on (patch 0009): trace.layers[il] = picks per expert.
+// Pick counts from one Lamplight trace with the mass on (patch 0009): trace.layers[il] = picks per expert.
 // Added into acc (acc[il][e]). Rows that aren't lists of numbers are skipped.
 export function addMass(acc, trace) {
   const rows = trace?.layers;

@@ -1,4 +1,4 @@
-// The link log (src/link-log.js, Brain Engine patch 0008): the engine's [link] and [scut] lines are kept in a file in
+// The link log (src/link-log.js, Lamplight patch 0008): the engine's [link] and [scut] lines are kept in a file in
 // Bob's data folder and the short ones go to the logbook; nothing else does. Nothing here reads the real computer.
 import { brainText } from './source-text.js';
 import fs from 'node:fs';

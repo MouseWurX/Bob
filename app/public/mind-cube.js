@@ -1,8 +1,8 @@
 // fNRI in small: a cube of Bob's brain in "Bob's thinking" (Now running). It builds itself when a brain loads and
 // comes apart when it's let go. By default it glows for show while Bob thinks: made-up picks in the theme's colour,
 // drawn about 28 times a second (Nov 16: was 14), and the engine is never asked for anything, so replies are as fast as without it.
-// With Real experts on it listens to /api/events?cube=1&live=1, and only then does Bob ask Brain Engine for the trace
-// (public/lab-watch-math.js liveTrace has the shape), which slows his replies. On Brain Engine 5 and later the picks
+// With Real experts on it listens to /api/events?cube=1&live=1, and only then does Bob ask Lamplight for the trace
+// (public/lab-watch-math.js liveTrace has the shape), which slows his replies. On Lamplight 5 and later the picks
 // come word by word while he writes ('trace-part'); older engines send them when the reply is finished, and the cube
 // plays them back word by word. Nothing is saved. The same drawing as the big viewer (watch-view.js).
 import { createView } from './watch-view.js';
@@ -57,7 +57,7 @@ export function cubeState({ why = '', rec = null, leaving = false, shell = null,
   return `Bob's brain cube${name}: ready.`;
 }
 
-// 1.5.215: while a brain loads, the block fills like a progress bar as its weights come in (Brain Engine with patch
+// 1.5.215: while a brain loads, the block fills like a progress bar as its weights come in (Lamplight with patch
 // 0012 reports how far): from FILL_START to 1 - FILL_LAST, and the rest once the brain is ready to answer (the engine still
 // sets up its memory after the weights). An engine that reports nothing within FILL_WAIT_MS fills by how long this
 // brain took to load last time on this device (FILL_GUESS_MS the first time), and finishes when it's really loaded.
@@ -255,7 +255,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   }
   const showLit = () => show.map((w) => ({ e: w.e, age: Math.max(0, w.a) / SHOW_TRAIL })); // the made-up glow as it stands, for a frame drawn by the turning
   function stopShow() { clearTimeout(showTimer); showTimer = 0; show = []; clearTimeout(liveTimer); liveTimer = 0; liveQ = []; }
-  // 1.5.210 Real experts, live: Brain Engine 5 sends the picks with every word, so the cube lights up with the experts
+  // 1.5.210 Real experts, live: Lamplight 5 sends the picks with every word, so the cube lights up with the experts
   // he really uses as he reads and writes, not after. A long prompt arrives at once and plays fast; then a word at a time.
   let liveQ = [], liveTimer = 0, streamed = false;
   function part(p) {

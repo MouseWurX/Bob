@@ -69,7 +69,7 @@ export function applyRecipe(lab, r = {}, recipeId, deviceId, { isLocal = true, b
   }
   out.smaller.files = size.type ? [size.type] : [];
   out.smaller.measure = out.smaller.files.length > 0;
-  out.smaller.try = Boolean(out.smaller.cut) && lab.tools().brainEngine.found;
+  out.smaller.try = Boolean(out.smaller.cut) && lab.tools().lamplight.found;
   out.smaller.tryStop = out.smaller.try;
   out.test = { compare: true };
   if (!facts.fullSize && out.smaller.cut) notes.push(`${brain.name}'s file is already a running file (${facts.fileType}), so the cut brain stays at that type. Start from the full-size copy for the smallest file.`);

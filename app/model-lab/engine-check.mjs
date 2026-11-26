@@ -1,5 +1,5 @@
 // Before any card time is spent (14 Nov, the owner: "you keep costing me money"; Nov 13 a rental skipped its planned steps
-// because the engine lacked them): check that the served Brain Engine can do every step a plan needs, in about a minute,
+// because the engine lacked them): check that the served Lamplight can do every step a plan needs, in about a minute,
 // and stop with exit 1 if one can't. Every switch goes back at the end.
 //   node engine-check.mjs --url <server> [--needs chat,tools,odds,think,n,mask,dials,trace,mass] [--min-ctx 14000]
 import { live } from './engine-live.mjs';

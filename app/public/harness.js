@@ -25,7 +25,7 @@ export const LABELS = {
   fadeChat: ['Fade old messages', 'Your message, Bob\'s thinking and his reply leave the chat after the time you pick.'],
   amnesiaOffer: ['Amnesia mode', 'Adds 🫥 Amnesia beside Web search. When you turn it off, Bob forgets everything from that stretch: chats, thinking, notes, memory lines and Topics.'],
   chatPlaces: ['Per-chat engine cache', 'Switching chats saves the engine\'s state for the old chat to disk, so going back is quick. Built-in engine only; not brains that see pictures. Up to 4 chats and 8 GB.'],
-  contextNoReload: ['Resize chat memory without reloading', 'When a job needs a bigger or smaller chat memory, the engine changes it in place and the brain stays loaded. Brain Engine 19 and newer; other engines restart as before. The chat is read again.']
+  contextNoReload: ['Resize chat memory without reloading', 'When a job needs a bigger or smaller chat memory, the engine changes it in place and the brain stays loaded. Lamplight 19 and newer; other engines restart as before. The chat is read again.']
 };
 
 const sw = (key, on) => `<label class="switch srow-switch"><input type="checkbox" data-hx="${key}" ${on ? 'checked' : ''}><span><strong>${esc(LABELS[key][0])}</strong><br><span class="muted">${esc(LABELS[key][1])}</span></span></label>`;

@@ -1,5 +1,5 @@
 # Puts the Avalon test build (avalon-test.yml run 44871976222, artifact avalon-0019bc9-win-cuda-sm120) on a test
-# pre-release, so the test PC can download it from a public link like the Brain Engine builds. Owner's go: Nov 21.
+# pre-release, so the test PC can download it from a public link like the Lamplight builds. Owner's go: Nov 21.
 # Runs once when this file changes on a claude/ work branch.
 name: Avalon test build publish
 

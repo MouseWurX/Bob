@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// fNRI against a brain served somewhere else: a rented card's Brain Engine, reached over HTTP. It asks the same
+// fNRI against a brain served somewhere else: a rented card's Lamplight, reached over HTTP. It asks the same
 // questions the Lab's fNRI scan asks, one at a time with the trace on, and writes the same recording file, ready for
 // the viewer's "Open a recording file" or the Lab's fNRI folder.
 //   node model-lab/forge/fnri-remote.mjs --url <server> --name "Brain name" --out <folder> [--quant Q4_K_M]
 //        [--skills coding,maths] [--per 8] [--think] [--heads]
 // --url, --name and --out also come from LAB_URL, LAB_MODEL_NAME and LAB_OUT, and the server's key from LAB_API_KEY,
-// so it runs as a forge benchmark command. The server must be Brain Engine (engine patch 0002, the trace): a plain
+// so it runs as a forge benchmark command. The server must be Lamplight (engine patch 0002, the trace): a plain
 // llama.cpp is found out on the first question and the run stops there.
 // The file is <name>-fnri[-<quant>].json in --out. It rents nothing and uploads nothing.
 import fs from 'node:fs';
@@ -40,7 +40,7 @@ export async function remoteScan({ url, name, out, key = '', quant = '', skills 
     }
   }
   const at = now(), brainName = String(name || 'Brain').slice(0, 100);
-  const rec = cleanRecording({ format: FORMAT, version: VERSION, id: `rec-${at.toString(36)}`, name: `${brainName}${quant ? ` ${quant}` : ''}, ${heads ? 'attention heads, ' : ''}${picked.length} skill${picked.length === 1 ? '' : 's'}, on a rented card`, when: new Date(at).toISOString().slice(0, 10), engine: 'Brain Engine', brain: { name: brainName, ...shape }, skills: picked.map(({ id, label }) => ({ id, label })), clips });
+  const rec = cleanRecording({ format: FORMAT, version: VERSION, id: `rec-${at.toString(36)}`, name: `${brainName}${quant ? ` ${quant}` : ''}, ${heads ? 'attention heads, ' : ''}${picked.length} skill${picked.length === 1 ? '' : 's'}, on a rented card`, when: new Date(at).toISOString().slice(0, 10), engine: 'Lamplight', brain: { name: brainName, ...shape }, skills: picked.map(({ id, label }) => ({ id, label })), clips });
   const saw = inWords(rec, specialise(rec)).slice(0, 2).join(' ');
   fs.mkdirSync(out, { recursive: true });
   const file = path.join(out, `${slug(brainName)}-fnri${quant ? `-${slug(quant)}` : ''}${heads ? '-heads' : ''}.json`);

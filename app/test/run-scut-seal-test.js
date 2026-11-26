@@ -1,4 +1,4 @@
-// Sealed SCUT packets (src/scut-seal.js, Brain Engine patch 0006): keys made at pairing, a fresh key per lend, both
+// Sealed SCUT packets (src/scut-seal.js, Lamplight patch 0006): keys made at pairing, a fresh key per lend, both
 // Bobs end up with the same key, the switch is on unless turned off, and nothing reads the real computer.
 import fs from 'node:fs';
 import os from 'node:os';

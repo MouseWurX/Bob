@@ -1,9 +1,9 @@
 // llama.cpp's helper programs that Bob runs beside the server: the standard speed test (llama-bench), the split and
 // join tool (llama-gguf-split), the card-sharing server for Bob-Net (ggml-rpc-server) and the runner for diffusion
 // brains (llama-diffusion-cli). The official llama.cpp downloads carry the first three (not the diffusion runner);
-// Brain Engine's download carries all four, built from the same tag (engine/README.md).
+// Lamplight's download carries all four, built from the same tag (engine/README.md).
 //
-// Where they're looked for: the built-in engine's folder first, then Brain Engine's folder, like the direction finder
+// Where they're looked for: the built-in engine's folder first, then Lamplight's folder, like the direction finder
 // (src/lab.js tools()). `dirs` can be passed in (tests, or the Engines page's "Engine for the Lab" pick).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,7 +14,7 @@ export const TOOLS = {
   bench: { names: ['llama-bench'], what: 'the standard speed test (llama-bench)' },
   split: { names: ['llama-gguf-split'], what: 'the split and join tool (llama-gguf-split)' },
   rpc: { names: ['ggml-rpc-server', 'rpc-server'], what: 'the card-sharing server (ggml-rpc-server)' },
-  diffusion: { names: ['llama-diffusion-cli'], what: 'the diffusion brain runner (llama-diffusion-cli)', brainEngineOnly: true }
+  diffusion: { names: ['llama-diffusion-cli'], what: 'the diffusion brain runner (llama-diffusion-cli)', lamplightOnly: true }
 };
 
 // Brains that write a whole block at once (llama-diffusion-cli runs them; llama-server and Bob's chat can't).
@@ -23,7 +23,7 @@ export const isDiffusion = (arch) => DIFFUSION_ARCHS.includes(String(arch || '')
 
 export const exeFor = (n, platform = process.platform) => (platform === 'win32' ? `${n}.exe` : n);
 
-// The folders to look in, in order: the built-in engine's, then Brain Engine's.
+// The folders to look in, in order: the built-in engine's, then Lamplight's.
 export function toolDirs(cfg) {
   const server = cfg?.llamacpp?.exe || path.join(cfg?.agentDir || '.', 'llama.cpp', exeFor('llama-server'));
   const out = [path.dirname(server), path.join(cfg?.agentDir || '.', 'brain-engine')];
@@ -46,9 +46,9 @@ export const allTools = (cfg, o) => Object.fromEntries(Object.keys(TOOLS).map((i
 // What to say when a tool isn't here.
 export function missingWords(id) {
   const t = TOOLS[id];
-  return t.brainEngineOnly
-    ? `${t.what} isn't here. It comes with Brain Engine (Settings > Engines), from its next build. The official llama.cpp download doesn't have it.`
-    : `${t.what} isn't here. It comes with the built-in engine and with Brain Engine (Settings > Engines). Get either one again to have it.`;
+  return t.lamplightOnly
+    ? `${t.what} isn't here. It comes with Lamplight (Settings > Engines), from its next build. The official llama.cpp download doesn't have it.`
+    : `${t.what} isn't here. It comes with the built-in engine and with Lamplight (Settings > Engines). Get either one again to have it.`;
 }
 
 // Runs a tool to the end. Gives { code, out, err }. Lines go to onLine as they come (stdout and stderr both: llama.cpp

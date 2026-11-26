@@ -208,7 +208,7 @@
     "test/run-page-parts-test.js",
     "test/run-brain-card-test.js",
     "test/run-own-kit-test.js",
-    "test/run-brain-engine-get-test.js",
+    "test/run-lamplight-get-test.js",
     "test/run-app-folder-test.js",
     "test/run-bob-brains-test.js",
     "test/run-brain-move-test.js",
@@ -335,8 +335,8 @@
     "branch": "",
     "build": 306,
     "bundledLlamaTag": "b12359",
-    "brainEngineVersion": 43,
-    "brainEngine": {
+    "lamplightVersion": 43,
+    "lamplight": {
       "tag": "brain-engine-43b12359",
       "win-x64": "sha256:1a2e3ed27bc8e534259891bc4c6e11610775f9df1c18facd4c6f6cca3f6bfdc5",
       "linux-x64": "sha256:97d609f114924cb22f7db7c9931f78d79a6d34be59415cdf266b8c518400d52f"

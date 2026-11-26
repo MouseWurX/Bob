@@ -118,6 +118,6 @@ jobs:
           gh run download "$GITHUB_RUN_ID" -R "$REPO" -p 'krafton-ref-*'
           for d in krafton-ref-*/; do d=${d%/}; (cd "$d" && zip -qr "../$d.zip" .); sha256sum "$d.zip" | awk '{print $1}' > "$d.zip.sha256"; done
           ls -la *.zip *.sha256
-          notes="**Timing only, not part of Bob.** KRAFTON's own llama.cpp fork (https://github.com/krafton-ai/llama.cpp, MIT), built unchanged at its pinned commits by .github/workflows/krafton-ref.yml, so Raon-1 can be timed against Brain Engine on the same computer. KRAFTON publishes no builds of its own. Licence: LICENSE-krafton-llama.cpp in each zip."
+          notes="**Timing only, not part of Bob.** KRAFTON's own llama.cpp fork (https://github.com/krafton-ai/llama.cpp, MIT), built unchanged at its pinned commits by .github/workflows/krafton-ref.yml, so Raon-1 can be timed against Lamplight on the same computer. KRAFTON publishes no builds of its own. Licence: LICENSE-krafton-llama.cpp in each zip."
           gh release view "$rel" -R "$REPO" > /dev/null 2>&1 || gh release create "$rel" --target "$GITHUB_SHA" --title "Krafton reference engine for Raon timing (test build)" --notes "$notes" --prerelease --latest=false -R "$REPO"
           gh release upload "$rel" krafton-ref-*.zip krafton-ref-*.zip.sha256 --clobber -R "$REPO"

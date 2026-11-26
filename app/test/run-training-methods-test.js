@@ -141,7 +141,7 @@ check('surgery: single neurons, whole experts and heads, baked in from a list; d
 check('facts checks reward the facts, never learn from a fair test', /if "new" in str\(c\.get\("pack", ""\)\): continue/.test(grpo) && /if \(\/new\/\.test\(pack\)\) continue/.test(read('model-lab/make-checks.mjs')));
 check('the dry run covers targets', /--targets/.test(st) && /the mix follows the weights/.test(st));
 
-// ---- expert sweep: a made-up Brain Engine answers; more experts per word fixes tools, a scaled-down layer breaks plain chat ----
+// ---- expert sweep: a made-up Lamplight answers; more experts per word fixes tools, a scaled-down layer breaks plain chat ----
 {
   const http = await import('node:http');
   const state = { used: null, dials: [], keep: null }, calls = [];
@@ -168,7 +168,7 @@ check('the dry run covers targets', /--targets/.test(st) && /the mix follows the
   fs.writeFileSync(path.join(sw, 'targets.json'), JSON.stringify({ tools: { jobs: ['reminders'] }, restraint: { jobs: ['restraint'] } }));
   const r2 = await new Promise((resolve) => { const c = spawn(process.execPath, [path.join(app, 'model-lab', 'expert-sweep.mjs'), '--url', `http://127.0.0.1:${srv.address().port}`, '--lessons', path.join(sw, 'lessons'), '--targets', path.join(sw, 'targets.json'), '--used', '-2,+2', '--layer-scale', '0.5', '--groups', '2', '--out', path.join(sw, 'out')], { encoding: 'utf8' }); let e = ''; c.stderr.on('data', (d) => { e += d; }); c.on('close', (code) => resolve({ code, e })); });
   srv.close();
-  check('the sweep finishes against a Brain Engine', r2.code === 0, r2.e);
+  check('the sweep finishes against a Lamplight', r2.code === 0, r2.e);
   const f = fs.existsSync(path.join(sw, 'out')) ? fs.readdirSync(path.join(sw, 'out')).find((x) => x.endsWith('.json')) : null;
   const rep = f ? JSON.parse(fs.readFileSync(path.join(sw, 'out', f), 'utf8')) : { results: [] };
   const by = (name) => rep.results.find((x) => x.name === name);

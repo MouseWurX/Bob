@@ -7,7 +7,7 @@
 //   peek-counts.json    brain {name, sha256, experts, expertUsed, layers}, when, engine, total (layers x experts) and
 //                       things [{name, source, tokens, counts}], plain integers, the orientation keep.py reads
 // From those it lists, in words, the cold experts (no words at all), the faint ones (the last 5% of the work) and the
-// ones only one thing uses, and how much of each thing a cut to N experts keeps. With Brain Engine it can try the
+// ones only one thing uses, and how much of each thing a cut to N experts keeps. With Lamplight it can try the
 // brain with the cold and faint ones switched off and give the Lab test again, before any file is written.
 // It's a Lab job like a cut: free, on this replicant matrix, one at a time, never while Gaming is on.
 import fs from 'node:fs';
@@ -208,7 +208,7 @@ export async function startUsage(lab, req = {}, { unload = false, isLocal = true
   const tools = lab.tools();
   if (!tools.imatrix.found && !lab.stepFns.usageCount) throw new Error(`${path.basename(tools.imatrix.path)} isn't in the built-in engine's folder. Settings, Engines: the built-in engine has it; download the engine again if it's missing.`);
   const tryWithout = req.tryWithout === true;
-  if (tryWithout && !tools.brainEngine.found && !lab.stepFns.try) throw new Error('Trying without the cold and faint experts needs Brain Engine, Bob\'s Lab engine. Get it in Settings > Engines: Brain Engine (test build).');
+  if (tryWithout && !tools.lamplight.found && !lab.stepFns.try) throw new Error('Trying without the cold and faint experts needs Lamplight, Bob\'s Lab engine. Get it in Settings > Engines: Lamplight (test build).');
   const things = thingTexts(cfg, ids, { file: req.file });
   if (lab.brain?.engine?.loaded) {
     const loaded = (await lab.brain.engine.loaded().catch(() => [])).filter((m) => m.vram > 0 || m.onCard || m.usesCard);

@@ -109,7 +109,7 @@ const longMsg = [{ role: 'user', content: 'x'.repeat(240000) }];
 { calls.length = 0; const e = live(); e.condChat = CHAT_STEP; e.condStep = e.condLoad;
   await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
   const ctx = calls.filter((c) => c.startsWith('POST /context')).map((c) => JSON.parse(c.slice(14)).n_ubatch);
-  check('Nov 23 gate rerun: loaded at the read step it reads and writes there, no switch down either (BE43 reloads on the first switch)', e.condLoad === READ_STEP && ctx.length === 0 && e.condStep === READ_STEP, JSON.stringify(calls)); }
+  check('Nov 23 gate rerun: loaded at the read step it reads and writes there, no switch down either (LL43 reloads on the first switch)', e.condLoad === READ_STEP && ctx.length === 0 && e.condStep === READ_STEP, JSON.stringify(calls)); }
 { calls.length = 0; const e = live(); e.condChat = CHAT_STEP; e.condStep = e.condLoad; e.tuneEnv = { LLAMA_MOE_CACHE_FILL: '1', LLAMA_MOE_CACHE_FILL_STEP: '4096' };
   await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
   check('Nov 23 gate: with the fill sized for the read step it reads and writes there, no switch at all', calls.length === 0 && e.condStep === e.condLoad, JSON.stringify(calls)); }
@@ -128,18 +128,18 @@ const longMsg = [{ role: 'user', content: 'x'.repeat(240000) }];
   check('never while spread over other Bobs\' cards', calls.length === 0); }
 // ---------- The cache grown for writing (Nov 20, the owner's idea) ----------
 check('long replies are expected with thinking or a code or file job', expectOut({ think: true }) === 2500 && expectOut({ task: 'code' }) === 1500 && expectOut({}) === 300);
-check('from Brain Engine 42 the fill is sized for the biggest read step', fillEnv({ cacheMiB: 4096, beNo: 42, step: 4096 }).LLAMA_MOE_CACHE_FILL_STEP === '4096' && !fillEnv({ cacheMiB: 4096, beNo: 41, step: 4096 }).LLAMA_MOE_CACHE_FILL_STEP);
-check('before Brain Engine 42, no fill next to borrowed reading', !fillEnv({ cacheMiB: 4096, beNo: 41, env: { LLAMA_MOE_CACHE_BORROW: '1' } }).LLAMA_MOE_CACHE_FILL && fillEnv({ cacheMiB: 4096, beNo: 42, env: { LLAMA_MOE_CACHE_BORROW: '1' } }).LLAMA_MOE_CACHE_FILL === '1');
+check('from Lamplight 42 the fill is sized for the biggest read step', fillEnv({ cacheMiB: 4096, beNo: 42, step: 4096 }).LLAMA_MOE_CACHE_FILL_STEP === '4096' && !fillEnv({ cacheMiB: 4096, beNo: 41, step: 4096 }).LLAMA_MOE_CACHE_FILL_STEP);
+check('before Lamplight 42, no fill next to borrowed reading', !fillEnv({ cacheMiB: 4096, beNo: 41, env: { LLAMA_MOE_CACHE_BORROW: '1' } }).LLAMA_MOE_CACHE_FILL && fillEnv({ cacheMiB: 4096, beNo: 42, env: { LLAMA_MOE_CACHE_BORROW: '1' } }).LLAMA_MOE_CACHE_FILL === '1');
 check('the brain loads at the read step, -b at least that', loadAtStep(['-m', 'x', '-ub', '2048', '-b', '8192'], 4096).join(' ') === '-m x -ub 4096 -b 8192' && loadAtStep(['-m', 'x'], 4096).join(' ') === '-m x -ub 4096 -b 4096');
 check('no read step past the one planned for at load', conductorPlan({ newTok: 30000, outTok: 300, cur: 2048, chat: 2048, speeds: { read: { 2048: 1000, 4096: 1400, 6144: 1700 }, write: { 2048: 80, 4096: 80, 6144: 77 } }, switchS: 0.5, maxStep: 4096 }).step <= 4096);
 check('at a big step with a long read: read there, then one switch down to write', (() => { const p = conductorPlan({ newTok: 30000, outTok: 2000, cur: 4096, chat: 2048, speeds: { read: { 2048: 1000, 4096: 1400 }, write: { 2048: 90, 4096: 70 } }, switchS: 0.5, maxStep: 4096 }); return p.plan === 'readBig' && p.step === 4096; })());
-check('with MTP on, no step switch before Brain Engine 43 (0086)', MTP_SWITCH_FROM_BE === 43 && mtpBlocksSwitch(['-m', 'x', '--spec-type', 'draft-mtp'], 42) && !mtpBlocksSwitch(['--spec-type', 'draft-mtp'], 43));
+check('with MTP on, no step switch before Lamplight 43 (0086)', MTP_SWITCH_FROM_BE === 43 && mtpBlocksSwitch(['-m', 'x', '--spec-type', 'draft-mtp'], 42) && !mtpBlocksSwitch(['--spec-type', 'draft-mtp'], 43));
 check('without MTP, or with another draft, the Conductor switches on any engine', !mtpBlocksSwitch(['-m', 'x'], 39) && !mtpBlocksSwitch(['--spec-type', 'ngram-simple'], 39) && !mtpBlocksSwitch(undefined, 0));
 check('built-in graphics: a bigger step only while 1.5 GB stays free, and never past 2048', APU_MAX_STEP === 2048 && APU_FLOOR === 1.5 * 1024 ** 3 &&
   apuStepOk({ from: 512, to: 2048, freeBytes: 4 * 1024 ** 3 }) && !apuStepOk({ from: 512, to: 2048, freeBytes: 1.8 * 1024 ** 3 }) && !apuStepOk({ from: 2048, to: 4096, freeBytes: 8 * 1024 ** 3 }) && apuStepOk({ from: 2048, to: 512, freeBytes: 0 }));
 check('with MTP and the fill on, the fill leaves the draft room too (512 + about 1.75 GB at 4096); a spare set by hand wins', mtpSpareEnv({ env: { LLAMA_MOE_CACHE_FILL: '1' }, step: 4096 }).LLAMA_MOE_CACHE_FILL_SPARE_MIB === '2304' && !mtpSpareEnv({ env: { LLAMA_MOE_CACHE_FILL: '1', LLAMA_MOE_CACHE_FILL_SPARE_MIB: '700' }, step: 4096 }).LLAMA_MOE_CACHE_FILL_SPARE_MIB && !mtpSpareEnv({ env: {}, step: 4096 }).LLAMA_MOE_CACHE_FILL_SPARE_MIB);
-check('the Conductor fills the card with the copy cache from Brain Engine 39', FILL_FROM_BE === 39 && fillEnv({ cacheMiB: 4096, beNo: 39 }).LLAMA_MOE_CACHE_FILL === '1');
-check('no fill before Brain Engine 39, with no copy cache, or with the fill set by hand', !fillEnv({ cacheMiB: 4096, beNo: 38 }).LLAMA_MOE_CACHE_FILL &&
+check('the Conductor fills the card with the copy cache from Lamplight 39', FILL_FROM_BE === 39 && fillEnv({ cacheMiB: 4096, beNo: 39 }).LLAMA_MOE_CACHE_FILL === '1');
+check('no fill before Lamplight 39, with no copy cache, or with the fill set by hand', !fillEnv({ cacheMiB: 4096, beNo: 38 }).LLAMA_MOE_CACHE_FILL &&
   !fillEnv({ cacheMiB: 0, beNo: 40 }).LLAMA_MOE_CACHE_FILL && !fillEnv({ cacheMiB: 4096, beNo: 40, env: { LLAMA_MOE_CACHE_FILL: '0' } }).LLAMA_MOE_CACHE_FILL);
 check('the cache grows by what the card has free, up to 2 GB, keeping 768 MiB', cacheGrow({ total: 30000, outTok: 2500, cacheMiB: 4096, freeMiB: 5000 }) === 2048 && cacheGrow({ total: 30000, outTok: 2500, cacheMiB: 4096, freeMiB: 2000 }) === 1024);
 check('it doesn\'t grow for a short reply, a long chat, no cache, unknown free memory, little room or when already grown',

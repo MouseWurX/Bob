@@ -1,6 +1,6 @@
 // The cellar: Bob's model shop and settings. Every download starts from a click here, with its size shown first.
 import { setLook } from './bob-sprite.js';
-import { brainEngineName } from './engine-name.js';
+import { lamplightName } from './engine-name.js';
 import { progressHtml, animateWorkers } from './progress.js';
 import { createStylePage } from './style-page.js';
 import { createSampler, sampleButton, sampleHint } from './voice-samples.js';
@@ -439,7 +439,7 @@ export function createCellar({ popOut = null } = {}) {
     ['voice', '🔊 Voice details', 'kokoro chatterbox speed hey bob read aloud listen talk over interrupt stop barge in talk with bob hands-free hands free conversation xai grok online voice read documents aloud a voice per bob voices bob-net', () => voiceDetailsHtml()],
     ['look', '🌓 Look & feel', 'theme editor now running layout', () => lookExtrasHtml()],
     ['speed', '⚡ Speed & memory', 'speed memory free memory quiet keep alive unload idle graphics card quick answers processor pictures without waiting ready while you type games go first picture settings gaming graphics card borrow automatic never always remember only what fits memory banks recall speed test engine extras guess ahead copying load the next brain early laptop mode battery new graphics card speed history chart', () => speedMemoryHtml()],
-    ['engines', '⚙ Engines', 'engine engines brain engine lab engine gear update updates go back remove check all ollama llama.cpp downloads newer build tested build fit to free graphics memory speculative decoding draft flags threads batch tell me what engine updates change plain words', () => enginesHtml()],
+    ['engines', '⚙ Engines', 'engine engines lamplight brain engine lab engine gear update updates go back remove check all ollama llama.cpp downloads newer build tested build fit to free graphics memory speculative decoding draft flags threads batch tell me what engine updates change plain words', () => enginesHtml()],
     ['bobnet', '🌐 Bob-Net', 'bob-net bobnet phone android tailscale address passcode firewall let my phone in let my other replicant matrices in other bobs share brains lend borrow take jobs send jobs carry on take chats move chat phone see how doing your bobs widget card heat', () => bobNetHtml()],
     ['online', '☁ Online services', 'online internet cloud helpers api key openrouter rented brains rent hire runpod vast lambda together spending cap limit machine', () => onlineHtml()],
     // 1.5.228 Agents: a section per company and chat app (public/agent-companies.js), each with its chat head switch.
@@ -605,7 +605,7 @@ export function createCellar({ popOut = null } = {}) {
     };
     const { groups, brains } = splitWelcomeRows(rows);
     const engRows = groups.flatMap((g) => g.rows);
-    const brainEngine = rows.some((r) => r.id === 'engine:brainengine');
+    const lamplight = rows.some((r) => r.id === 'engine:lamplight');
     const dlButtons = moving ? '<button data-readypause>Pause</button><button data-readystop>Stop</button>' : paused ? '<button class="get" data-readyresume>Resume</button><button data-readystop>Stop</button>' : short ? '<button class="get" data-readyrecheck>Try again</button>' : order.ids.length ? `<button class="get" data-getready>Get Bob ready (about ${gb(order.sizeGB)})</button>` : '';
     const s = settings || {};
     const step = WSTEPS[wStep].id;
@@ -625,7 +625,7 @@ export function createCellar({ popOut = null } = {}) {
           ${ticks ? `<ul class="packlist wantlist">${ticks}</ul>` : ''}</section>`;
       }).join('')}
       <p class="muted">Ticked here: about <strong>${gb(tickedGB(engRows, wPicks))}</strong>. Nothing downloads until you press Get Bob ready on the next page.</p>`);
-    else if (step === 'brains') body = page('Brains', `The minds that chat, code and see. ${brainEngine ? 'They run on Brain Engine, my own fork of llama.cpp.' : 'Brain Engine, my own fork of llama.cpp, has no build for this replicant matrix yet, so the standard brain program runs them here.'}`, `
+    else if (step === 'brains') body = page('Brains', `The minds that chat, code and see. ${lamplight ? 'They run on Lamplight, my own fork of llama.cpp.' : 'Lamplight, my own fork of llama.cpp, has no build for this replicant matrix yet, so the standard brain program runs them here.'}`, `
       <label class="pick"><strong>Setup</strong><select data-pack>${packsFor(data.packs, hw?.board === 'arm').map((p) => `<option value="${p.id}" ${p.id === pack.id ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}</select></label>
       <fieldset class="split-pick"><legend><strong>How should I split my brains?</strong> <span class="muted">Changes which brains are ticked below.</span></legend>
         ${SPLITS.map((x) => `<label class="split-opt${x.lock ? ' locked' : ''}"><input type="radio" name="wsplit" data-wsplit="${x.id}" ${x.id === wSplit ? 'checked' : ''} ${x.lock ? 'disabled' : ''}> <span><strong>${esc(x.name)}</strong> <span class="muted">${esc(x.does)}${x.lock ? ` 🔒 ${esc(x.lock)}` : ''}</span></span></label>`).join('')}</fieldset>
@@ -1227,12 +1227,12 @@ export function createCellar({ popOut = null } = {}) {
           ? `<p>Download LibreOffice ${esc(eng?.pin || '')} (about 350 MB) from The Document Foundation, checked against its pinned checksum, and unpack it into Bob's own folder (about 1 GB). Nothing is installed in Windows and no admin rights are needed. You can also install LibreOffice yourself from <a href="https://www.libreoffice.org/download/" target="_blank" rel="noopener">libreoffice.org</a>, or use OpenOffice: Bob finds either by himself.</p>`
           : b.dataset.engine === 'ffmpeg'
           ? `<p>Download FFmpeg ${esc(eng?.pin || '')} (Gyan's essentials build, about 100 MB) from GitHub, checked against its pinned checksum, into Bob's own folder. It runs only while it converts.</p>`
-          : b.dataset.engine === 'brainengine'
-          ? `<p>Download Brain Engine from Bob's own GitHub, on top of the tested llama.cpp build (about 700 MB in all with NVIDIA runtime files), checked against GitHub's checksums. It has its own folder, so llama.cpp stays as it is.</p>`
+          : b.dataset.engine === 'lamplight'
+          ? `<p>Download Lamplight from Bob's own GitHub, on top of the tested llama.cpp build (about 700 MB in all with NVIDIA runtime files), checked against GitHub's checksums. It has its own folder, so llama.cpp stays as it is.</p>`
           : b.dataset.engine === 'model3d'
           ? `<p>Download the 3D workshop: its own Python, PyTorch for NVIDIA cards, the add-ons built for Bob (checked against their pinned checksums) and TRELLIS.2 with its models. About 28 GB in all, into Bob's own folder; it takes a while.</p>`
           : `<p>Download ${esc(({ llamacpp: 'llama.cpp', sdcpp: 'stable-diffusion.cpp', whispercpp: 'whisper.cpp', piper: 'Piper' })[b.dataset.engine] || b.dataset.engine)} from GitHub (usually 20 to 600 MB, more with NVIDIA runtime files).</p>`;
-        if (eng?.installed && eng.canSwap) box.innerHTML += `<p class="muted">The new build goes in beside the one you have and takes its place when it's ready. The one you have now is kept, so Go back puts it straight back.${['llamacpp', 'brainengine'].includes(b.dataset.engine) ? ' A brain that is loaded is let go first.' : ''}</p>`;
+        if (eng?.installed && eng.canSwap) box.innerHTML += `<p class="muted">The new build goes in beside the one you have and takes its place when it's ready. The one you have now is kept, so Go back puts it straight back.${['llamacpp', 'lamplight'].includes(b.dataset.engine) ? ' A brain that is loaded is let go first.' : ''}</p>`;
         if (b.dataset.missing) box.innerHTML = `<p>Download only the files the ${esc(eng?.name || b.dataset.engine)} update is missing (${esc(eng?.incomplete?.what || 'the missing files')}), from the same GitHub release, checked against GitHub's checksums. Files already there aren't touched. Once it's whole, it takes the old one's place, and Go back still puts the old one back.</p>`;
         box.innerHTML += `<div class="row"><button class="get" data-yes="engine:${esc(b.dataset.engine)}${b.dataset.missing ? '@missing' : b.dataset.newest ? '@newest' : ''}">Yes, download</button><button data-no>Cancel</button></div>`;
       }
@@ -1295,7 +1295,7 @@ export function createCellar({ popOut = null } = {}) {
       else if (b.dataset.checkengine) {
         b.textContent = 'Checking…';
         const r = await api(`/api/engines/latest?id=${encodeURIComponent(b.dataset.checkengine)}`);
-        // 1.5.17x: a rebuilt release keeps its name (Brain Engine), so it's fetched as the same release, not "the newest".
+        // 1.5.17x: a rebuilt release keeps its name (Lamplight), so it's fetched as the same release, not "the newest".
         b.outerHTML = r.newer ? (r.rebuilt ? `<button class="get" data-engine="${esc(r.id)}">Update: a rebuilt ${esc(r.latest)}</button>` : `<button class="get" data-engine="${esc(r.id)}"${r.tested ? ' data-newest="1"' : ''}>Update to ${esc(r.latest)}${r.installed ? ` (you have ${esc(r.installed)}${r.tested && r.installed === r.tested ? ', the tested one' : ''})` : ''}</button>${r.tested ? `<span class="muted">Newer builds haven't been through Bob's speed tests yet. If one gives trouble, <strong>Go back</strong> puts the one you have now back.</span>` : ''}`) : `<span class="muted">Up to date (${esc(r.latest)}).</span>`;
       }
       else if ('checkall' in b.dataset) { // 1.5.17x Check all for updates: one engine after another, so GitHub isn't asked all at once
@@ -1455,7 +1455,7 @@ export function createCellar({ popOut = null } = {}) {
         flash(el, el.value.trim() === '' && levers[el.dataset.tune] !== undefined ? 'Out of range, so left to Bob.' : 'Saved. Applies the next time this brain loads.');
         return;
       }
-      if ('perword' in el.dataset) { // Brain Engine 0013: experts per word, per brain; empty = the brain's own
+      if ('perword' in el.dataset) { // Lamplight 0013: experts per word, per brain; empty = the brain's own
         const model = speedModel || dlg.querySelector('[data-margsmodel]')?.value;
         if (!model) return;
         const typed = el.value.trim();
@@ -1676,7 +1676,7 @@ export function createCellar({ popOut = null } = {}) {
   function askEngine(where) {
     const box = document.createElement('div');
     box.className = 'confirm';
-    box.innerHTML = `<p>That model is a loose file Ollama can't run. It needs Bob's own engine, Brain Engine. Switch engines? Everything else keeps working; it takes effect when Bob restarts.</p><div class="row"><button class="get" data-switchengine="llamacpp">Switch to Bob's own engine</button><button data-no>Keep Ollama</button></div>`;
+    box.innerHTML = `<p>That model is a loose file Ollama can't run. It needs Bob's own engine, Lamplight. Switch engines? Everything else keeps working; it takes effect when Bob restarts.</p><div class="row"><button class="get" data-switchengine="llamacpp">Switch to Bob's own engine</button><button data-no>Keep Ollama</button></div>`;
     where.appendChild(box);
   }
 

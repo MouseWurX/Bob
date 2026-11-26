@@ -43,7 +43,7 @@ export const crashHoldLine = (label, n, reason, mins) => `My engine crashed ${n}
 // ---------- 226 The engine's own error, in plain words ----------
 const PLAIN = [
   [/out of memory|cudaMalloc failed|failed to allocate|ErrorOutOfDeviceMemory|unable to allocate|alloc.*(buffer|memory).*fail|not enough memory/i, 'there wasn\'t enough free memory for it'],
-  [/unknown model architecture/i, 'this engine is too old for this brain (update the Brain Engine)'],
+  [/unknown model architecture/i, 'this engine is too old for this brain (update the Lamplight)'],
   [/invalid magic|failed to read magic|not a gguf|gguf_init_from_file.*failed|failed to load model|tensor .* data is not within the file bounds|corrupted|unexpectedly reached end of file/i, 'the brain file looks damaged or unfinished'],
   [/(couldn't|could not|failed to) bind|address already in use|EADDRINUSE/i, 'something else is using its port'],
   [/(unknown|invalid|unrecognized) (argument|option)[:\s]+(\S+)/i, (m) => `the engine didn't accept a setting (${m[3].replace(/['"`]/g, '')})`],

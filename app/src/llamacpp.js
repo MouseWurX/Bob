@@ -2,7 +2,7 @@
 // Same interface as the Ollama client, so the brain doesn't care which engine is in use.
 // Models are found by Ollama name in Ollama's model folder (no duplicate downloads), or set by path in config.
 import { learnPer, promptChars, perFor } from './token-count.js';
-import { perWordFor, perWordWords, sendPerWord } from './experts-per-word.js'; // Brain Engine 0013
+import { perWordFor, perWordWords, sendPerWord } from './experts-per-word.js'; // Lamplight 0013
 import { replyStats } from './speed-stats.js';
 import fs from 'node:fs';
 import { commandLineOf } from './util.js';
@@ -17,7 +17,7 @@ import { gamingCard, decideCard, readCard, CARD_BUSY_PCT, CARD_MIN_FREE_MB } fro
 import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } from './tuning.js';
 import { chatPlacesOn, placesDir, placeFile, tidyPlaces } from './chat-places.js'; // Per-chat engine cache (off unless switched on)
 import { exeName } from './platform.js';
-import { buildMatches, brainEngineName, brainEngineBuild } from '../public/engine-name.js';
+import { buildMatches, lamplightName, lamplightBuild } from '../public/engine-name.js';
 import { hotArgs, RANKING_ENV, parseCacheLog } from './hot-experts.js'; // Nov 16: hot experts on the card (opt-in)
 import { Embedder } from './embedder.js';
 import { ggufInfo } from './gguf.js';
@@ -88,7 +88,7 @@ export function thinkBudget(model, think) {
 // How long a brain may sit unused in memory: the shared setting ollamaKeepAlive ("10m", "30m", "1h", or "-1" for never).
 // Both engines use it: Ollama through keep_alive, Bob's own engine through the idle check below (1.5.2).
 // 1.5.210 (208 PC check): the logbook said "2 min" for a 1 min keep-alive. Minutes and seconds, as it really was.
-// 1.5.215: a reader for the engine's load progress. Brain Engine with patch 0012 writes "load_progress:
+// 1.5.215: a reader for the engine's load progress. Lamplight with patch 0012 writes "load_progress:
 // text_model <percent>" about five times a second while the weights load. llama.cpp builds that print the old progress
 // dots (one per 1%, on their own) are read too; a dot inside words or numbers ("model.gguf", "1.5", "...") doesn't
 // count. Returns a new percentage (0-100) when it moved by at least 2, or reached 100; null otherwise.
@@ -195,7 +195,7 @@ export const withFlag = (args, flag, value) => { const a = [...args]; const i = 
 // Item 14: how long a reply may go quiet after its first words before the engine counts as hung (llamacpp.stallSeconds changes it).
 export const STALL_MS = 90_000;
 
-// Brain Engine 0035 ("Resize chat memory without reloading", off unless switched on): two engine starts that differ only
+// Lamplight 0035 ("Resize chat memory without reloading", off unless switched on): two engine starts that differ only
 // in the chat memory (-c) can be one change in place.
 export function sameExceptCtx(a, b) {
   const drop = (x) => { const out = []; for (let i = 0; i < x.length; i++) { if (x[i] === '-c') { i++; continue; } out.push(x[i]); } return out.join('\u0000'); };
@@ -481,12 +481,12 @@ export class LlamaCpp {
   exePath() { return this.lc.exe || path.join(this.cfg.agentDir, 'llama.cpp', exeName('llama-server')); }
   // llama.cpp build number (0 when unknown). 1.5.91: the marker next to the exe first (the bundled engine and an
   // engine set by hand carry their own), then the one in Bob's engine folder.
-  // Nov 12 (the owner: "make sure it reads the right label, and that the label is the right model"): a Brain Engine
+  // Nov 12 (the owner: "make sure it reads the right label, and that the label is the right model"): a Lamplight
   // build named N1bN2 says which llama.cpp it is built on; the running engine says the same in /props build_info. If
   // they differ, the files in the folder aren't the build its marker names, so Bob says so once (Health logbook).
-  // Brain Engine's own build number from the marker next to the exe (0 when it isn't Brain Engine or is unknown)
+  // Lamplight's own build number from the marker next to the exe (0 when it isn't Lamplight or is unknown)
   beNo() {
-    try { return brainEngineBuild(JSON.parse(fs.readFileSync(path.join(path.dirname(this.exePath()), 'bob-brainengine.json'), 'utf8'))?.version)?.n || 0; } catch { return 0; }
+    try { return lamplightBuild(JSON.parse(fs.readFileSync(path.join(path.dirname(this.exePath()), 'bob-brainengine.json'), 'utf8'))?.version)?.n || 0; } catch { return 0; }
   }
   checkBuild(buildInfo) {
     let mark = null;
@@ -494,7 +494,7 @@ export class LlamaCpp {
     const ok = buildMatches(mark?.version, buildInfo);
     if (ok === false && this.buildWarned !== mark.version) {
       this.buildWarned = mark.version;
-      this.log?.('engine', `${brainEngineName(mark.version)} is named for llama.cpp ${brainEngineBuild(mark.version).llama}, but the engine running says it is ${String(buildInfo).split('-')[0]}. The files in its folder may be from another build: Settings, Engines, Update puts the right one in.`);
+      this.log?.('engine', `${lamplightName(mark.version)} is named for llama.cpp ${lamplightBuild(mark.version).llama}, but the engine running says it is ${String(buildInfo).split('-')[0]}. The files in its folder may be from another build: Settings, Engines, Update puts the right one in.`);
     }
     this.buildOk = ok;
     return ok;
@@ -502,7 +502,7 @@ export class LlamaCpp {
   buildNo() {
     for (const dir of [path.dirname(this.exePath()), path.join(this.cfg.agentDir, 'llama.cpp')]) {
       try { const n = Number(String(JSON.parse(fs.readFileSync(path.join(dir, 'bob-llamacpp.json'), 'utf8')).version).replace(/^b/, '')); if (n) return n; } catch {}
-      // 1.5.169: Brain Engine's marker names the llama.cpp build it sits on (base).
+      // 1.5.169: Lamplight's marker names the llama.cpp build it sits on (base).
       try { const n = Number(String(JSON.parse(fs.readFileSync(path.join(dir, 'bob-brainengine.json'), 'utf8')).base).replace(/^b/, '')); if (n) return n; } catch {}
     }
     return 0;
@@ -526,7 +526,7 @@ export class LlamaCpp {
     return flag;
   }
 
-  // Nov 19 (Brain Engine patch 0038): does this engine have the 3-bit chat memory type (q3_0)? Asked once per exe from
+  // Nov 19 (Lamplight patch 0038): does this engine have the 3-bit chat memory type (q3_0)? Asked once per exe from
   // its --help, whose cache type list names it. Anything else, or no answer within 5 s, counts as no, so the
   // Smallest memory type falls back to Smaller and is not offered on the Brains page.
   // Nov 20 (patch 0039): the same --help names LLAMA_KV_TIERS when the engine has Progressive Memory (kvTiers).
@@ -647,7 +647,7 @@ export class LlamaCpp {
       this.condCacheBase = mc >= 0 ? Number(args[mc + 1]) || 0 : 0; // the copy cache it reads with; writing may get more
       // Nov 21, the window lever (off unless switched on): the whole context it loads with, cut to the chat later
       this.condWinFull = fitWindowOn(this.cfg) && this.condCacheBase > 0 ? Number(ctx || lc.ctx || DEFAULT_CTX) || 0 : 0;
-      // Nov 23: the copy cache fills the card's free memory (Brain Engine 39 and newer), unless set by hand
+      // Nov 23: the copy cache fills the card's free memory (Lamplight 39 and newer), unless set by hand
       // Nov 23: the biggest step it will read at is planned for at load, and the brain loads at it (see loadAtStep)
       this.condMax = readStepFor(Number(ctx || lc.ctx || DEFAULT_CTX) || 0);
       // built-in graphics (the Go's safe range): load at the chat step, read at most APU_MAX_STEP, no fill
@@ -991,7 +991,7 @@ export class LlamaCpp {
     }
   }
 
-  // Brain Engine 0035 ("Resize chat memory without reloading", Settings, How Bob works; off unless switched on): asks the
+  // Lamplight 0035 ("Resize chat memory without reloading", Settings, How Bob works; off unless switched on): asks the
   // running engine to change its chat memory and keep the brain loaded. Only for the main engine, the same brain, no
   // reply running, and settings that differ only in -c. Any refusal (an engine without it answers 404) means the usual
   // restart. The engine empties its reading, so the chat is read again.
@@ -1218,7 +1218,7 @@ export class LlamaCpp {
     const args = fixedArgs ? withFlag(fixedArgs, '-c', String(ctx || this.lc.ctx || DEFAULT_CTX)) : this.buildArgs(model, { ctx, cpu, card });
     const prevArgs = this.lastArgs;
     this.lastArgs = args;
-    // Brain Engine 0035: the same brain with only a new chat memory: changed in place, the brain stays loaded
+    // Lamplight 0035: the same brain with only a new chat memory: changed in place, the brain stays loaded
     if (await this.resizeInPlace(model, args, prevArgs, cpu)) {
       this.currentCtx = ctx || null;
       this.primedHash = null;
@@ -1529,9 +1529,9 @@ export class LlamaCpp {
     } finally { opts.signal?.removeEventListener?.('abort', onAbort); }
   }
 
-  // Brain Engine 0013: the experts per word saved for this brain (Settings, Speed), sent before its first answer on
+  // Lamplight 0013: the experts per word saved for this brain (Settings, Speed), sent before its first answer on
   // this engine and again after a change, with no reload. Nothing is sent for a brain without one. Only when this
-  // reply has the engine to itself (Brain Engine refuses while answering); otherwise the next reply sends it.
+  // reply has the engine to itself (Lamplight refuses while answering); otherwise the next reply sends it.
   async sendPerWord(model) {
     let want = perWordFor(this.lc, model);
     // Turbo (opt-in): 4 experts per word for a brain made of more, unless a count is saved for it
@@ -1627,7 +1627,7 @@ export class LlamaCpp {
     if (!this.condChat || this.condOff || this.role === BESIDE || this.spreadNow || this.currentCpu || this.active > 1 || this.current !== model || !this.slotDir || !this.child || this.child.exitCode !== null) return;
     const st = (this.condState ||= {})[model];
     if (st?.stopped) return;
-    if (mtpBlocksSwitch(this.lastArgs, this.beNo())) { this.condStop(model, 'MTP is on and this engine (before Brain Engine 43) can stop on a step switch with it'); return; }
+    if (mtpBlocksSwitch(this.lastArgs, this.beNo())) { this.condStop(model, 'MTP is on and this engine (before Lamplight 43) can stop on a step switch with it'); return; }
     const total = Math.round(promptChars(messages, tools) / (this.charsPerToken(model) || 3));
     // what the chat memory holds: the last reply's reading and writing (another chat's makes this a guess on the high
     // side, so the Conductor switches less, never wrongly)
@@ -1652,8 +1652,8 @@ export class LlamaCpp {
       this.condFreeAsked = true;
       await this.condSwitch(model, this.condStep, 0, { moe_cache_mib: this.condRead() });
     }
-    // Nov 23 (the test PC's BE43 gate, twice): the first step switch after a load reloads the whole brain on Brain
-    // Engine 43, about 15 s, up or down (0087 fixes it in Brain Engine 44), and the chat step frees nothing the sized
+    // Nov 23 (the test PC's LL43 gate, twice): the first step switch after a load reloads the whole brain on Brain
+    // Engine 43, about 15 s, up or down (0087 fixes it in Lamplight 44), and the chat step frees nothing the sized
     // fill can use. So a Conductor that loaded at the read step stays there and reads and writes at it, with no switch
     // at all (the gate's fastest row). Built-in graphics still switch (they load at the chat step).
     if (!this.condApu && (this.tuneEnv?.LLAMA_MOE_CACHE_FILL_STEP || (this.condLoad > this.condChat && this.condStep === this.condLoad))) return;
@@ -1706,7 +1706,7 @@ export class LlamaCpp {
     if (!res.ok) { this.condStop(model, `the engine can't change its step in place (${res.status})`); return false; }
     const answer = await res.json().catch(() => ({}));
     this.condStep = step;
-    this.condFree = freeFrom(answer); // Brain Engine 0047; null on an engine without it, and then the cache never grows
+    this.condFree = freeFrom(answer); // Lamplight 0047; null on an engine without it, and then the cache never grows
     if ('n_ctx' in more) { this.condWin = Number(answer?.n_ctx) || more.n_ctx; this.condWinExtra = Number(winExtra) || 0; }
     if ('moe_cache_mib' in more) this.condGrown = Math.max(0, more.moe_cache_mib - this.condRead());
     if (held > 0) {
@@ -1745,8 +1745,8 @@ export class LlamaCpp {
         // 1.5.16: a quick reply asks the chat template to skip thinking (templates that don't know the switch ignore it).
         // 15 Nov 2026: GPT-OSS reads a reasoning level instead (model-family.js thinkKwargs: off = low).
         ...this.thinkArgs(model, think),
-        // fNRI's small cube in Bob's thinking: only while someone has it open, and only Brain Engine answers it
-        ...(this.wantTrace?.() ? { expert_trace: true, expert_trace_stream: true } : {}), ...(over || {}) }), // 1.5.210: Brain Engine 5 also sends the picks with every word (older builds ignore the ask)
+        // fNRI's small cube in Bob's thinking: only while someone has it open, and only Lamplight answers it
+        ...(this.wantTrace?.() ? { expert_trace: true, expert_trace_stream: true } : {}), ...(over || {}) }), // 1.5.210: Lamplight 5 also sends the picks with every word (older builds ignore the ask)
       signal
     });
   }
@@ -1809,7 +1809,7 @@ export class LlamaCpp {
         }
       }
     }
-    if (asked && !traced) this.log?.('engine', `fNRI cube: ${model} answered without an expert trace (an older Brain Engine, or not Brain Engine)`);
+    if (asked && !traced) this.log?.('engine', `fNRI cube: ${model} answered without an expert trace (an older Lamplight, or not Lamplight)`);
     // Item 211: a stream that stopped with no end mark and no reason was cut short (a dropped connection, a crashed
     // engine): not a whole reply. "terminated" lets the loop load the brain again and ask once more.
     const end = replyEnd({ done, finish });

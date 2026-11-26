@@ -1,5 +1,5 @@
 // Nov 16 2026 (the owner: "isn't brain engine able to handle this? why are we offloading to another service?"):
-// Bob hears you with his own engine. Brain Engine (or, where it has no build yet, the plain llama.cpp that came with
+// Bob hears you with his own engine. Lamplight (or, where it has no build yet, the plain llama.cpp that came with
 // Bob) runs a brain that can hear, Gemma 4 E4B with its sound-and-picture reader (mmproj), in its own small
 // llama-server on the processor only: the card is hidden from it (CUDA_VISIBLE_DEVICES=-1, -ngl 0,
 // --no-mmproj-offload), below normal priority, with at most half the processor's threads. It starts on the first
@@ -28,7 +28,7 @@ export function hearArgs({ gguf, mmproj }, port, threads = hearThreads()) {
     '-c', String(HEAR_CTX), '-ngl', '0', '-t', String(threads), '-np', '1'];
 }
 
-// The request Brain Engine's llama-server takes: one WAV, sent as OpenAI-style input_audio, with the words asked for.
+// The request Lamplight's llama-server takes: one WAV, sent as OpenAI-style input_audio, with the words asked for.
 export function hearBody(wav, language = 'en') {
   return {
     messages: [{ role: 'user', content: [

@@ -1,6 +1,6 @@
 # A one-off test build (Nov 20, the owner's pick on the decision card): plain Avalon (github freriadoc/Avalon, MIT, a
 # llama.cpp fork by Frederic Belval) at a pinned commit, for Windows x64 and NVIDIA cards (sm_120, the 50 series), so
-# it can be measured once on the test PC against Brain Engine 28's best settings. Built here, never on the test PC.
+# it can be measured once on the test PC against Lamplight 28's best settings. Built here, never on the test PC.
 # Nothing of Bob's is applied. Avalon is written for GCC/Clang on Linux, and nvcc on Windows must use MSVC, which
 # rejects a few GCC-only spellings: .github/avalon-win/fix-windows-build.py makes build-only fixes (listed in its log and
 # in the zip's README), no engine changes. Runs when this file or the fixes change on a claude/ work branch, and by hand.

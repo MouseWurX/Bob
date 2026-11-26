@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tries Brain Engine's patches on a newer llama.cpp release (app/engine/README.md, "Moving to a newer llama.cpp").
+# Tries Lamplight's patches on a newer llama.cpp release (app/engine/README.md, "Moving to a newer llama.cpp").
 # Usage: bash app/engine/try-newer.sh [NEW_TAG] [OUT_DIR]
 #   NEW_TAG  the llama.cpp tag to try (default: the newest bNNNN tag on ggml-org/llama.cpp)
 #   OUT_DIR  where the work goes (default: ./try-newer)
@@ -24,7 +24,7 @@ src="$out/llama.cpp"
 git -c advice.detachedHead=false clone -q --branch "$new" --shallow-exclude="$old" "$url" "$src"
 git -C "$src" fetch -q --deepen=2 origin
 git -C "$src" fetch -q origin tag "$old"
-g() { git -C "$src" -c user.name="Brain Engine" -c user.email=brain-engine@localhost -c advice.detachedHead=false "$@"; }
+g() { git -C "$src" -c user.name="Lamplight" -c user.email=lamplight@localhost -c advice.detachedHead=false "$@"; }
 g checkout -q -b be-old "$old"
 for p in "$here"/patches/*.patch; do
   g apply "$p"; g add -A; g commit -q -m "$(basename "$p")"

@@ -14,7 +14,7 @@
 # an existing directory" before any compile. We detect a missing submodule dir and fill it from a complete recursive checkout
 # of the same tag (installing git if the image lacks it), leaving the rest of the archive tree untouched.
 W=$1; TAG=${2:-b11669}; PATCHES=${3:-}; L=$W/llama.cpp; B=$L/build-cuda/bin; CL=$W/llama-server-cmake.log
-# 12 Nov: $3 = Bob's engine patches as URLs (Brain Engine for the benchmark: live expert switch, expert trace, REAP mass)
+# 12 Nov: $3 = Bob's engine patches as URLs (Lamplight for the benchmark: live expert switch, expert trace, REAP mass)
 rm -f $W/llama-server-ready $W/llama-server-failed
 for i in $(seq 1 90); do [ -f $L/CMakeLists.txt ] && break; sleep 10; done
 [ -f $L/CMakeLists.txt ] || { echo "no llama.cpp source yet (llama-tools.sh fetches it)"; touch $W/llama-server-failed; exit 1; }
@@ -38,10 +38,10 @@ if [ ! -d $L/vendor ] || [ -z "$(ls -A $L/vendor 2>/dev/null)" ]; then
 fi
 if [ ! -d $L/vendor ]; then echo "still missing vendor/ for $TAG; the server source is incomplete, not building"; touch $W/llama-server-failed; exit 1; fi
 if [ -n "$PATCHES" ]; then
-  # A fresh copy of the source for Brain Engine, so the llama tools built from $L in the background are left alone
+  # A fresh copy of the source for Lamplight, so the llama tools built from $L in the background are left alone
   # 12 Nov: cp -r, not cp -a (a rented drive that refuses to keep permissions made cp -a fail, so the patches went on the shared tree)
   rm -rf $W/llama-be; cp -r --no-preserve=mode,ownership $L $W/llama-be 2>/dev/null || cp -r $L $W/llama-be
-  [ -f $W/llama-be/CMakeLists.txt ] || { echo "couldn't copy the llama.cpp source for Brain Engine"; touch $W/llama-server-failed; exit 1; }
+  [ -f $W/llama-be/CMakeLists.txt ] || { echo "couldn't copy the llama.cpp source for Lamplight"; touch $W/llama-server-failed; exit 1; }
   L=$W/llama-be; B=$L/build-cuda/bin; rm -rf $L/build-cuda
   command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; } >/dev/null 2>&1
   for u in $PATCHES; do
@@ -66,7 +66,7 @@ if [ -x $B/llama-server ] && run_ok && [ "$B" != "$SERVE" ]; then
 fi
 if [ -x $SERVE/llama-server ] && [ "$B" = "$SERVE" ] && run_ok; then
   echo "$PATCHES" > $W/llama.cpp/.bob-patches
-  echo "CUDA llama-server ready (sm_$ARCH)${PATCHES:+, Brain Engine}"; touch $W/llama-server-ready
+  echo "CUDA llama-server ready (sm_$ARCH)${PATCHES:+, Lamplight}"; touch $W/llama-server-ready
 else
   echo "CUDA llama-server build failed; last 80 lines of the cmake log:"; tail -80 $CL 2>/dev/null
   touch $W/llama-server-failed

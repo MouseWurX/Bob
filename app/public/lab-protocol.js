@@ -22,7 +22,7 @@ export function createProtocol({ api }) {
       ${f.tool === 'clean' ? `<label class="lab-opt"><input type="checkbox" id="proto-review" ${f.review !== 'none' ? 'checked' : ''}> <span>Use the hand review (lessons a person read and marked wrong)</span></label>
         ${field('proto-light', 'Weight of chat, languages and formats when training the full brain', f.lightWeight, 'The stock brain already does these well. 1 is the same as the rest; teaching back after a cut always uses 1.', 'type="number" min="0" max="2" step="0.1"')}` : ''}
       ${f.tool === 'pairs' ? `<label>Kind of set <select id="proto-kind">${[['bob', 'Bob\'s own lessons'], ['style', 'A style set (its own model)'], ['distill', 'Another model\'s answers (distillation)']].map(([v, l]) => `<option value="${v}" ${f.kind === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>` : ''}
-      ${f.tool === 'sweep' ? `${field('proto-url', 'Brain Engine address', f.url, 'The engine running the brain to test, on this computer.', 'maxlength="40"')}
+      ${f.tool === 'sweep' ? `${field('proto-url', 'Lamplight address', f.url, 'The engine running the brain to test, on this computer.', 'maxlength="40"')}
         ${field('proto-used', 'Experts per word to try', f.used, 'Changes from the brain\'s own count, like -2,+2,+4. Leave empty to skip.', 'maxlength="60"')}
         ${field('proto-scales', 'Turn layers up or down', f.scales, 'Each quarter of the layers, feed-forward and attention apart, like 0.8,1.2. Leave empty to skip.', 'maxlength="60"')}
         ${field('proto-sample', 'Held-out chats per kind of lesson', f.sample, 'More is steadier and slower.', 'type="number" min="10" max="200" step="10"')}` : ''}

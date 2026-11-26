@@ -336,7 +336,7 @@ Most AI apps are for talking to a model or for building one. Bob does both. **ðŸ
 | **My Lab** | Everything the Lab has made and measured: brains, scores, size ladders, lesson sets, recipes and recent jobs. |
 
 - **Keep it simple or Professional.** Simple fills in Bob's defaults. Professional shows every control and its proper name. **Show the recipe** prints every command the Lab runs.
-- **Lamplight** is Bob's own engine (called Brain Engine before 26 Nov 2026; builds are named like LL46b12359; it shares its name with the Lamplight look, and some screens still say Brain Engine until an app update). It switches a brain's experts on and off while it's loaded, so the Lab can try a cut before writing a file.
+- **Lamplight** is Bob's own engine (called Brain Engine before 26 Nov 2026; builds are named like LL46b12359; it shares its name with the Lamplight look). It switches a brain's experts on and off while it's loaded, so the Lab can try a cut before writing a file.
 - **fNRI** (functional Neural Response Imager) shows a brain as a 3D block: one floor per layer, every expert coloured by the skill that used it most. Its **weight map** colours the block by the brain's own weights instead: how strong each expert is, or how much it differs from another brain.
 
   ![fNRI's weight map of Riker, and the same block coloured by how much each expert differs from stock Qwen3.6-35B-A3B](app/docs/screens/fnri-weight-maps-riker.jpg)  

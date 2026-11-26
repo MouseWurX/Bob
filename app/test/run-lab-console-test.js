@@ -307,21 +307,21 @@ check('there is an FAQ on where a run\'s output went', /id: 'faq-lab-console'/.t
 {
   const pd = path.join(dir, 'forge', 'plans'); fs.mkdirSync(pd, { recursive: true });
   fs.writeFileSync(path.join(pd, 'bench-bobert.json'), JSON.stringify({ run: 'bench-bobert', benchmark_only: true, teacher: 'T', lessons: 'out/lessons', gpus: ['NVIDIA A40', 'NVIDIA RTX A6000'], step_up: ['NVIDIA H100 80GB HBM3'], disk_gb: 80, rungs: [], hours_max: 4, dollars_max: 12, benchmark: { models: [{ name: '35Bob', nickname: 'Bobert', file: 'hf:MouseWurX/35Bob-Bobert:35Bob-Q4_K_M.gguf' }], commands: ['node experts-test.mjs --url {{url}}'] } }));
-  fs.writeFileSync(path.join(pd, 'riker-x.json'), JSON.stringify({ run: 'riker-x', gpus: ['NVIDIA A40'], hours_max: 2, dollars_max: 1.5, llama_tag: 'b1', benchmark: { brain_engine: { ref: 'abc', patches: ['0001-expert-mask', 'pod:0015-act-dump'] }, models: [] } }));
+  fs.writeFileSync(path.join(pd, 'riker-x.json'), JSON.stringify({ run: 'riker-x', gpus: ['NVIDIA A40'], hours_max: 2, dollars_max: 1.5, llama_tag: 'b1', benchmark: { lamplight: { ref: 'abc', patches: ['0001-expert-mask', 'pod:0015-act-dump'] }, models: [] } }));
   const ch = rentalChoices(dir);
-  check('the window offers the brains, cards and engines the Forge already used', ch.brains[0]?.nickname === 'Bobert' && ch.cards.includes('NVIDIA H100 80GB HBM3') && ch.usual.join() === 'NVIDIA A40,NVIDIA RTX A6000' && ch.engines.map((x) => x.id).join() === 'brainengine,plain' && ch.plans.length === 2);
+  check('the window offers the brains, cards and engines the Forge already used', ch.brains[0]?.nickname === 'Bobert' && ch.cards.includes('NVIDIA H100 80GB HBM3') && ch.usual.join() === 'NVIDIA A40,NVIDIA RTX A6000' && ch.engines.map((x) => x.id).join() === 'lamplight,plain' && ch.plans.length === 2);
   const lp = path.join(tmp, 'lab-plans'), door = path.join(tmp, 'door dir', 'rental-door.json');
   const bad = makeRentalPlan({ brain: 'https://x', cards: [], hours: 0, dollars: 900 }, { dir, door, labPlans: lp });
   check('no brain, no card or no caps: no plan', bad.problems.length >= 3 && !fs.existsSync(path.join(lp, 'console-rental.json')) && bad.problems.some((x) => /lab-door\.mjs/.test(x)));
   fs.writeFileSync(path.join(dir, 'lab-door.mjs'), '// stand-in\n');
-  const ok = makeRentalPlan({ brain: 'hf:MouseWurX/35Bob-Bobert:35Bob-Q4_K_M.gguf', engine: 'brainengine', cards: ['NVIDIA A40', 'bad<card>'], ctx: 16384, slots: 2, hours: 1.5, dollars: 3 }, { dir, door, labPlans: lp });
+  const ok = makeRentalPlan({ brain: 'hf:MouseWurX/35Bob-Bobert:35Bob-Q4_K_M.gguf', engine: 'lamplight', cards: ['NVIDIA A40', 'bad<card>'], ctx: 16384, slots: 2, hours: 1.5, dollars: 3 }, { dir, door, labPlans: lp });
   const plan = JSON.parse(fs.readFileSync(path.join(lp, 'console-rental.json'), 'utf8'));
   check('a rental plan: one brain served, caps as typed, the door its one command', !ok.problems.length && plan.benchmark_only === true && plan.hours_max === 1.5 && plan.dollars_max === 3 && plan.gpus.join() === 'NVIDIA A40' && plan.benchmark.models[0].ctx === 16384 && plan.benchmark.commands.length === 1 && plan.benchmark.commands[0].startsWith('node lab-door.mjs --file "') && plan.benchmark.commands[0].includes('door dir'));
-  check('Brain Engine on the card comes from a plan that used it, without the lab-only patches', plan.benchmark.brain_engine.ref === 'abc' && plan.benchmark.brain_engine.patches.join() === '0001-expert-mask' && plan.llama_tag === 'b1');
+  check('Lamplight on the card comes from a plan that used it, without the lab-only patches', plan.benchmark.lamplight.ref === 'abc' && plan.benchmark.lamplight.patches.join() === '0001-expert-mask' && plan.llama_tag === 'b1');
   check('the card never names a key', !/RUNPOD|API_KEY|TOKEN|"rk"/.test(JSON.stringify(plan)));
   makeRentalPlan({ kind: 'plan', plan: 'riker-x', hours: 1, dollars: 1 }, { dir, door, labPlans: lp });
   const p2 = JSON.parse(fs.readFileSync(path.join(lp, 'console-rental.json'), 'utf8'));
-  check('one of the Forge\'s plans goes as it is, with the caps typed here', p2.run === 'riker-x' && p2.hours_max === 1 && p2.dollars_max === 1 && p2.benchmark.brain_engine.patches.length === 2);
+  check('one of the Forge\'s plans goes as it is, with the caps typed here', p2.run === 'riker-x' && p2.hours_max === 1 && p2.dollars_max === 1 && p2.benchmark.lamplight.patches.length === 2);
   check('a Forge plan that isn\'t there is refused', makeRentalPlan({ kind: 'plan', plan: 'nope', hours: 1, dollars: 1 }, { dir, door, labPlans: lp }).problems.some((x) => /Pick one/.test(x)));
 }
 // Load model locally: the window's brain, engine, context and processor choice

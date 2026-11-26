@@ -1,13 +1,13 @@
-// Experts per word (Brain Engine 0013). A mixture-of-experts brain asks a set number of its experts for every word
-// (gpt-oss 4, Qwen3 MoE 8). Brain Engine can change that number while the brain stays loaded: one count for every
+// Experts per word (Lamplight 0013). A mixture-of-experts brain asks a set number of its experts for every word
+// (gpt-oss 4, Qwen3 MoE 8). Lamplight can change that number while the brain stays loaded: one count for every
 // layer, or one per layer. Off unless set: nothing is sent for a brain with no count, so it runs as it was made.
 // The brain file never changes; a count of null (or the brain's own) puts it back exactly.
 //
 // Saved per brain in settings as llamacpp.expertsPerWord[model] = N | [N per layer] | null.
 // Sent to the running engine with POST /experts-per-word {"used": N | [..] | null} before the brain's next answer.
 
-export const NO_PER_WORD = 'This engine can\'t change experts per word while a brain is loaded. Update Brain Engine under Settings, Engines, then try again.';
-const MAX_EXPERTS = 1024; // the most any brain has (Brain Engine's own limit)
+export const NO_PER_WORD = 'This engine can\'t change experts per word while a brain is loaded. Update Lamplight under Settings, Engines, then try again.';
+const MAX_EXPERTS = 1024; // the most any brain has (Lamplight's own limit)
 const MAX_LAYERS = 512;
 
 // A count as typed or saved: a whole number, a list (one per layer, empty or 0 = the brain's own), or text such as
@@ -81,7 +81,7 @@ export async function sendPerWord(url, v, { fetchFn = fetch, timeoutMs = 30000 }
   if (res.status === 404) throw Object.assign(new Error(NO_PER_WORD), { old: true });
   if (!res.ok) {
     let why = ''; try { why = (await res.json())?.error?.message || ''; } catch {}
-    throw new Error(`Brain Engine wouldn't change experts per word${why ? `: ${String(why).slice(0, 200)}` : '.'}`);
+    throw new Error(`Lamplight wouldn't change experts per word${why ? `: ${String(why).slice(0, 200)}` : '.'}`);
   }
   return res.json();
 }

@@ -45,10 +45,10 @@ export function splitWelcomeRows(rows = []) {
   return { groups, brains };
 }
 
-// The brain program, by name. The owner (Nov 14): the setup names no other brain program; Brain Engine is described
+// The brain program, by name. The owner (Nov 14): the setup names no other brain program; Lamplight is described
 // as a fork of llama.cpp. Where it has no build yet (a Mac, an ARM board), the plain build is called what it does.
 export function welcomeRowName(r) {
-  if (r.id === 'engine:brainengine') return 'Brain Engine';
+  if (r.id === 'engine:lamplight') return 'Lamplight';
   if (r.id === 'engine:llamacpp') return 'Brain program';
   return r.name;
 }

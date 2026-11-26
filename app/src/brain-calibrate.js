@@ -12,7 +12,7 @@ import fs from 'node:fs';
 // placement tries, the best placement is timed again with each Reading speed (Normal, Faster, Fastest) and, for a
 // brain with its own guesser, with MTP. Each speed try reads one long prompt (about 8,000 tokens: reading speed and
 // time to the first word) and writes one short answer (writing speed, and for MTP how many guesses were kept).
-// Then, with Brain Engine on llama.cpp b12359 or newer, the hot-expert profiles: the brain reads the fixed mix of each
+// Then, with Lamplight on llama.cpp b12359 or newer, the hot-expert profiles: the brain reads the fixed mix of each
 // kind of work (src/hot-experts-mix.js) with the expert trace on, the picks are counted, and one profile per kind is
 // saved; then one more try times the cache filled from the mixed profile against Normal.
 // Lock brain memory isn't timed here: it helps the first reply after a long break, which a few minutes can't show.
@@ -21,7 +21,7 @@ import { labDir, slugOf } from './lab.js';
 import { startServer } from './lab-test.js';
 import { ggufInfo } from './gguf.js';
 import { draftNumArgs, TURBO_EVERYDAY_MAX, READING_STEPS, mtpArgs } from './engine-extras.js';
-import { BRAIN_ENGINE_PIN } from './engines.js';
+import { LAMPLIGHT_PIN } from './engines.js';
 import { HOT_KINDS, mixFor, addMass, saveProfile, profileStamp, rankingFile, hotCacheMB, parseCacheLog, RANKING_ENV } from './hot-experts.js';
 import { saveSettings } from './config.js';
 import { gaming } from './sessions.js';
@@ -99,7 +99,7 @@ export function calSpeedBest(rows) {
   return { reading: top.reading, cache, turbo, why: readWhy + turboWhy };
 }
 
-// The Brain Engine patches this Bob carries (engine/patches), for the profile stamp.
+// The Lamplight patches this Bob carries (engine/patches), for the profile stamp.
 export const enginePatches = (dir = new URL('../engine/patches/', import.meta.url)) => { try { return fs.readdirSync(dir).filter((f) => /^\d{4}-.*\.patch$/.test(f)).map((f) => f.replace(/\.patch$/, '')).sort(); } catch { return []; } };
 export const HOT_STEPS = [{ id: 'hot-count', label: 'Hot experts: count the picks on each kind of work' }, { id: 'hot-time', label: 'Hot experts: time the card cache filled from them' }];
 // One answer with the expert trace and its mass (patches 0002 and 0009): how many times each expert was picked.
@@ -203,18 +203,18 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
         const copy = pick?.cache === true; // the pair grid found the copy kind faster: time the ranked fill the same way
         const cacheArgs = ['--moe-cache-mib', String(mb), '--moe-cache-cpu-share', copy ? '0' : '1', '-lv', '4']; // -lv 4: the fingerprint is an info line
         let fingerprint = '';
-        const stamp = (kind) => profileStamp({ kind, gguf: p.gguf, fingerprint, engine: `b${lab.brain.engine.buildNo?.() || 0}${BRAIN_ENGINE_PIN?.tag ? ` (Bob pins ${BRAIN_ENGINE_PIN.tag})` : ''}`, patches: enginePatches() });
+        const stamp = (kind) => profileStamp({ kind, gguf: p.gguf, fingerprint, engine: `b${lab.brain.engine.buildNo?.() || 0}${LAMPLIGHT_PIN?.tag ? ` (Bob pins ${LAMPLIGHT_PIN.tag})` : ''}`, patches: enginePatches() });
         set(`${i}:hot-count`, 'running');
         let srv = null;
         try {
-          // Two loads: the engine prints the brain's fingerprint only with the cache on, and Brain Engine 9 sends back
+          // Two loads: the engine prints the brain's fingerprint only with the cache on, and Lamplight 9 sends back
           // no expert trace while the cache is on (found on the PC Nov 16). So one load with the cache for the
           // fingerprint, then the counting load without it (the cache doesn't change which experts are picked).
           srv = await fx.serve({ gguf: p.gguf, ctx: CAL_CTX, signal, cpuOk: false, extra: cacheArgs, ...(place ? { place } : {}) });
           fingerprint = parseCacheLog(srv.cacheLog?.() || '').fingerprint;
           try { srv.stop(); } catch {}
           srv = null;
-          if (!fingerprint) throw Object.assign(new Error('no fingerprint'), { why: 'The engine didn\'t print the brain\'s fingerprint (Brain Engine 9 or newer needed), so no profile was made.' });
+          if (!fingerprint) throw Object.assign(new Error('no fingerprint'), { why: 'The engine didn\'t print the brain\'s fingerprint (Lamplight 9 or newer needed), so no profile was made.' });
           srv = await fx.serve({ gguf: p.gguf, ctx: CAL_CTX, signal, cpuOk: false, ...(place ? { place } : {}) });
           for (const kind of HOT_KINDS.slice(1)) {
             const acc = [];

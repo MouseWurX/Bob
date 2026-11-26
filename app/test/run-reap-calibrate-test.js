@@ -1,5 +1,5 @@
 // REAP calibration (model-lab/reap-calibrate.mjs): the arithmetic on its own, then a whole run against a made-up
-// Brain Engine server (expert trace with mass, /expert-mask) whose answers go wrong once too few experts are kept.
+// Lamplight server (expert trace with mass, /expert-mask) whose answers go wrong once too few experts are kept.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -62,7 +62,7 @@ check('a tighter margin keeps more', smallestGood(steps, 1).share === 0.75);
   check('a step that lost most of its turns is never picked', smallestGood(g, 4).share === 0.32, String(smallestGood(g, 4)?.share));
   check('missing turns count as wrong (192 of 314, not of 312)', smallestGood(g, 3.6).share === 0.5, String(smallestGood(g, 3.6)?.share)); }
 
-// ---- a whole run against a made-up Brain Engine ----
+// ---- a whole run against a made-up Lamplight ----
 const isHoldout = (id) => parseInt(crypto.createHash('md5').update(String(id)).digest('hex').slice(0, 8), 16) / 0xFFFFFFFF < 0.05;
 const lessonsDir = path.join(tmp, 'lessons'); fs.mkdirSync(lessonsDir);
 fs.writeFileSync(path.join(lessonsDir, 'toolsets.json'), JSON.stringify({ s1: { system: 'You are Bob.', tools: [{ type: 'function', function: { name: 'list_folder', parameters: { type: 'object', properties: {} } } }] } }));

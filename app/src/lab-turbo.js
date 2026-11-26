@@ -46,7 +46,7 @@ export function turboView(lab) {
     return { id: b.id, name: b.name, family: b.family || '', mtp: Number(info?.mtp) > 0, perToken: info?.shape?.perToken || 0, fileBytes: bytes, sizeGB: f?.sizeGB || Math.round((bytes / GiB) * 10) / 10 };
   }).filter((b) => b.fileBytes > 0);
   const cardBytes = cardGB * GiB;
-  return { brains: brains.map((b) => ({ ...b, drafts: draftsFor(b, brains, { cardBytes }), saved: lab.cfg.llamacpp?.turbo?.[b.id] || null })), cardBytes, ramBytes: os.totalmem(), guess: GUESS, prompts: Object.keys(TURBO_PROMPTS), runs: readRuns(lab.cfg), engine: lab.tools().brainEngine.found ? 'Brain Engine' : 'llama.cpp' };
+  return { brains: brains.map((b) => ({ ...b, drafts: draftsFor(b, brains, { cardBytes }), saved: lab.cfg.llamacpp?.turbo?.[b.id] || null })), cardBytes, ramBytes: os.totalmem(), guess: GUESS, prompts: Object.keys(TURBO_PROMPTS), runs: readRuns(lab.cfg), engine: lab.tools().lamplight.found ? 'Lamplight' : 'llama.cpp' };
 }
 function readRuns(cfg) {
   const dir = turboDir(cfg);

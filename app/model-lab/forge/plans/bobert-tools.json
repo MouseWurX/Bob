@@ -23,7 +23,7 @@
  "benchmark": {
   "note": "one brain: Bobert stock. The PC's Bob source must be 1.5.223 (--min-bob stops the run otherwise). Model name bobert, run name bobert-tools: nothing shared with riker-tools.",
   "hours_each": 3.5,
-  "brain_engine": {
+  "lamplight": {
    "ref": "fcdf3955ed6966c102f43d49528174cabd52d825",
    "patches": [
     "0001-expert-mask",
@@ -40,7 +40,7 @@
     "0012-load-progress",
     "0013-experts-per-word"
    ],
-   "note": "Brain Engine 7b12282 (live experts per word, mask, dials, expert trace with mass)"
+   "note": "Lamplight 7b12282 (live experts per word, mask, dials, expert trace with mass)"
   },
   "models": [
    {

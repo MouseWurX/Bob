@@ -1,4 +1,4 @@
-// Brain Engine 0035: "Resize chat memory without reloading" (src/llamacpp.js resizeInPlace, off unless switched on).
+// Lamplight 0035: "Resize chat memory without reloading" (src/llamacpp.js resizeInPlace, off unless switched on).
 // Run: node test/run-context-no-reload-test.js. Uses the fake llama-server; never reads the real card, RAM or folders.
 import fs from 'node:fs';
 import os from 'node:os';

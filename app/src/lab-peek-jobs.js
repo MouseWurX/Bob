@@ -10,7 +10,7 @@ import { usageFolder, keepFileOf } from './lab-usage.js';
 import fs from 'node:fs';
 import { inspect, labOn, readJson, sha256File, slugOf, writeJson } from './lab-measure.js';
 import { maskFor } from './lab-plan.js';
-import { cleanPerWord, sendPerWord, speedGuessWords } from './experts-per-word.js'; // Brain Engine 0013
+import { cleanPerWord, sendPerWord, speedGuessWords } from './experts-per-word.js'; // Lamplight 0013
 
 // Methods of the Lab class (src/lab.js), put on it there with the same rules as the methods written inside it.
 export const peekJobs = {
@@ -19,7 +19,7 @@ export const peekJobs = {
     const brain = this.brains().find((b) => b.id === String(brainId || ''));
     if (!brain) throw new Error('Pick a brain to peek inside.');
     let facts = null; try { facts = inspect(brain); } catch {}
-    return { ...peekView(this.cfg, brain, facts, { engineFound: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), traceOk: this.peekTraceOk ?? this.traceProbe()?.experts ?? null }), switch: this.switchView(brain) };
+    return { ...peekView(this.cfg, brain, facts, { engineFound: this.tools().lamplight.found || Boolean(this.stepFns.peekServe), traceOk: this.peekTraceOk ?? this.traceProbe()?.experts ?? null }), switch: this.switchView(brain) };
   },
   // 1.5.20x Switch experts off in the file (brains whose router has a bias, like gpt-oss): see lab-switch.js.
   switchView(brain) {
@@ -55,11 +55,11 @@ export const peekJobs = {
     const facts = inspect(brain);
     if (!facts?.experts) throw new Error(`${brain.name} isn't a mixture-of-experts brain, so there's nothing to peek at.`);
     if (Array.isArray(maskCounts) && maskCounts.length) mask = keepFromLit(maskCounts, facts); // Keep only these: the lit-up set, padded to one size
-    // Experts per word for this question only (Brain Engine 0013): the brain's own when empty
+    // Experts per word for this question only (Lamplight 0013): the brain's own when empty
     perWord = cleanPerWord(perWord, { experts: facts.experts, layers: facts.engineLayers || facts.layers });
     if (perWord === facts.used) perWord = null;
     const tools = this.tools();
-    if (!tools.brainEngine.found && !this.stepFns.peekServe) throw new Error(NO_ENGINE);
+    if (!tools.lamplight.found && !this.stepFns.peekServe) throw new Error(NO_ENGINE);
     if (this.peekTraceOk === false) throw new Error(NO_TRACE);
     if (!labOn(this.cfg)) throw new Error('The Computer Science Lab is off. Turn it on in Settings, How Bob works, Brains.');
     if (this.job) throw new Error('The Lab is already busy with a job. Wait for it, or stop it.');
@@ -76,17 +76,17 @@ export const peekJobs = {
     const r = { id: `peek-${this.now().toString(36)}`, kind: 'peek', name: `Peek inside ${brain.name}`, state: 'running', steps: [] };
     this.job = { run: r, ac };
     try {
-      const serve = this.stepFns.peekServe || (({ gguf, signal }) => startServer({ exe: tools.brainEngine.path, gguf, ctx: 4096, signal, log: () => {} }));
+      const serve = this.stepFns.peekServe || (({ gguf, signal }) => startServer({ exe: tools.lamplight.path, gguf, ctx: 4096, signal, log: () => {} }));
       if (!this.peekSrv) { const srv = await serve({ gguf: brain.gguf, signal: ac.signal }); this.peekSrv = { gguf: brain.gguf, srv, timer: null, sha: '' }; }
       const s = this.peekSrv;
       clearTimeout(s.timer);
       const url = s.srv.url;
-      const post = async (body) => { const res = await fetch(url + '/expert-mask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }); if (!res.ok) throw new Error(`Brain Engine wouldn't switch the experts: ${(await res.text()).slice(0, 200)}`); };
+      const post = async (body) => { const res = await fetch(url + '/expert-mask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }); if (!res.ok) throw new Error(`Lamplight wouldn't switch the experts: ${(await res.text()).slice(0, 200)}`); };
       let masked = false, perWordSet = false;
       const perWordSend = this.stepFns.perWord || sendPerWord;
       let got;
       try {
-        // the count first, so a mask that keeps fewer than it is refused with Brain Engine's own reason
+        // the count first, so a mask that keeps fewer than it is refused with Lamplight's own reason
         if (perWord !== null) { await perWordSend(url, perWord); perWordSet = true; }
         if (Array.isArray(mask) && mask.length) { const why = checkKeep(readGguf(brain.gguf), mask); if (why) throw new Error(why); await post({ keep: maskFor(mask, facts) }); masked = true; }
         got = await (this.stepFns.peekAsk || askTraced)(url, q, { signal: ac.signal });

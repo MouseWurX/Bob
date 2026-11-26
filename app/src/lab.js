@@ -69,7 +69,7 @@ export class Lab {
   tools() {
     const dirs = labEngineDirs(this.cfg);
     const find = (name) => { const n = exeName(name); for (const d of dirs) { const p = path.join(d, n); if (fs.existsSync(p)) return p; } return path.join(dirs[0], n); };
-    const t = { server: find('llama-server'), imatrix: find('llama-imatrix'), quantize: find('llama-quantize'), perplexity: find('llama-perplexity'), cvector: find('llama-cvector-generator'), brainEngine: path.join(this.cfg.agentDir, 'brain-engine', exeName('llama-server')) };
+    const t = { server: find('llama-server'), imatrix: find('llama-imatrix'), quantize: find('llama-quantize'), perplexity: find('llama-perplexity'), cvector: find('llama-cvector-generator'), lamplight: path.join(this.cfg.agentDir, 'brain-engine', exeName('llama-server')) };
     return Object.fromEntries(Object.entries(t).map(([k, p]) => [k, { path: p, found: fs.existsSync(p) }]));
   }
 
@@ -79,7 +79,7 @@ export class Lab {
     const dir = path.dirname(server.path);
     let version = '';
     for (const f of ['bob-brainengine.json', 'bob-llamacpp.json']) { try { version = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')).version || ''; if (version) break; } catch {} }
-    return { pick: LAB_ENGINES.includes(this.cfg.labEngine) ? this.cfg.labEngine : '', name: engineNameOf(this.cfg, dir), version, found: server.found, brainEngineHere: this.tools().brainEngine.found };
+    return { pick: LAB_ENGINES.includes(this.cfg.labEngine) ? this.cfg.labEngine : '', name: engineNameOf(this.cfg, dir), version, found: server.found, lamplightHere: this.tools().lamplight.found };
   }
   setLabEngine(pick) { const v = LAB_ENGINES.includes(pick) ? pick : ''; saveSettings(this.cfg, { labEngine: v }); this.cfg.labEngine = v; return this.engineView(); }
 
@@ -116,7 +116,7 @@ export class Lab {
     const room = this.room();
     const cardGB = Number(this.cfg.gpuVramGB) || Number(this.cfg.cardGB) || 0; // the set size, or the card the hardware scan found
     const brains = this.brains().map((b) => { let f = null; try { f = inspect(b); } catch (e) { return { ...b, gguf: undefined, mmproj: undefined, error: e.message }; } return { id: b.id, name: b.name, family: b.family, community: b.community, naughty: b.naughty, madeInLab: b.madeInLab, license: b.license, facts: f && { arch: f.arch, experts: f.experts, used: f.used, groups: f.groups, layers: f.layers, engineLayers: f.engineLayers || f.layers, fileType: f.fileType, fullSize: f.fullSize, sizeGB: f.sizeGB, sight: f.sight, hearing: f.hearing, readerGB: f.readerGB }, cuts: f ? cutSizes(f).map((c) => ({ ...c, fit: fitWords(c.gb, cardGB) })) : [], fit: f ? fitWords(f.sizeGB, cardGB) : '' }; });
-    return { on: labOn(this.cfg), mode: this.cfg.labPro === true ? 'pro' : 'simple', lessons: this.cfg.labLessons === true, engine: this.engineView(), room, cardGB, sharedMemory: (this.platform?.() || { os: OS }).os === 'mac', brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, lessonKinds: KINDS, sampleCount: SAMPLE_COUNT, buildMax: BUILD_MAX, officeOk: Boolean(this.officeFor()), brainEngine: this.tools().brainEngine.found, packs: PACKS, myPacks: readMyPacks(labDir(this.cfg)).map(({ items, ...m }) => m), pro: { gen: { ...GEN_DEFAULT }, ctxChoices: CTX_CHOICES, maxRepeats: MAX_REPEATS, checks: MY_CHECKS, settings: GUARD_SETTINGS, styles: GUARD_STYLES }, scores: this.scores(), classes: CLASSES.map(([id, label, hint]) => ({ id, label, hint })), ladders: this.ladders(), playMaxGB: PLAY_MAX_GB, ladderSteps: LADDER.map(({ type, label }) => ({ type, label })), hardware: hardwareLine(this.cfg), version: this.version || '', mixWays: MIX_WAYS, layerChoices: LAYER_CHOICES.map(([id, label]) => ({ id, label })), kept: KEPT.map(({ id, label }) => ({ id, label })), homeMaxGB: PLAY_MAX_GB, cvector: this.tools().cvector.found || Boolean(this.stepFns.direction), benchHere: this.benchTool().found || Boolean(this.stepFns.bench), full: this.fullSize ? this.fullSize.view() : null, fullDir: fullSizeDirOf(this.cfg), peekLive: this.tools().brainEngine.found || Boolean(this.stepFns.peekServe), plainPrompts: PLAIN_PROMPTS, reluctantPrompts: RELUCTANT_PROMPTS, queue: this.queue ? this.queue.view() : { paused: false, items: [] }, recheck: { on: recheckOn(this.cfg), last: readRecheck(this.cfg).last || null }, scans: this.listScans ? this.listScans() : [] };
+    return { on: labOn(this.cfg), mode: this.cfg.labPro === true ? 'pro' : 'simple', lessons: this.cfg.labLessons === true, engine: this.engineView(), room, cardGB, sharedMemory: (this.platform?.() || { os: OS }).os === 'mac', brains, runs: this.runs.slice(-20).reverse().map((r) => this.runView(r)), recipes: readJson(this.recipesFile, []), made: madeBrains(this.cfg).map((m) => ({ id: m.id, name: m.name, sizeGB: m.sizeGB, from: m.fromName })), busy: Boolean(this.job), gaming: gaming(this.cfg), types: RUNNING_TYPES, lessonSkills: LESSON_SKILLS.map(({ id, label, hint }) => ({ id, label, hint })), lessonSets: lessonSets(this.cfg).map(({ file, ...x }) => x), secondsPerLesson: SECONDS_PER_LESSON, lessonKinds: KINDS, sampleCount: SAMPLE_COUNT, buildMax: BUILD_MAX, officeOk: Boolean(this.officeFor()), lamplight: this.tools().lamplight.found, packs: PACKS, myPacks: readMyPacks(labDir(this.cfg)).map(({ items, ...m }) => m), pro: { gen: { ...GEN_DEFAULT }, ctxChoices: CTX_CHOICES, maxRepeats: MAX_REPEATS, checks: MY_CHECKS, settings: GUARD_SETTINGS, styles: GUARD_STYLES }, scores: this.scores(), classes: CLASSES.map(([id, label, hint]) => ({ id, label, hint })), ladders: this.ladders(), playMaxGB: PLAY_MAX_GB, ladderSteps: LADDER.map(({ type, label }) => ({ type, label })), hardware: hardwareLine(this.cfg), version: this.version || '', mixWays: MIX_WAYS, layerChoices: LAYER_CHOICES.map(([id, label]) => ({ id, label })), kept: KEPT.map(({ id, label }) => ({ id, label })), homeMaxGB: PLAY_MAX_GB, cvector: this.tools().cvector.found || Boolean(this.stepFns.direction), benchHere: this.benchTool().found || Boolean(this.stepFns.bench), full: this.fullSize ? this.fullSize.view() : null, fullDir: fullSizeDirOf(this.cfg), peekLive: this.tools().lamplight.found || Boolean(this.stepFns.peekServe), plainPrompts: PLAIN_PROMPTS, reluctantPrompts: RELUCTANT_PROMPTS, queue: this.queue ? this.queue.view() : { paused: false, items: [] }, recheck: { on: recheckOn(this.cfg), last: readRecheck(this.cfg).last || null }, scans: this.listScans ? this.listScans() : [] };
   }
 
   runView(r) { return { id: r.id, kind: r.kind || 'make', name: r.name, from: r.fromName, naughty: r.naughty, refusalsOut: r.refusalsOut, state: r.state, step: r.step, stepLabel: r.stepLabel, progress: r.progress, steps: r.steps?.map((s) => ({ id: s.id, label: s.label, state: s.state })), error: r.error, notes: r.notes || [], report: r.report, at: r.at, used: Boolean(r.used), sizeGB: r.sizeGB }; }
@@ -289,7 +289,7 @@ export class Lab {
       const size = (f) => { try { return fs.statSync(f).size; } catch { return 0; } };
       r.files = { gguf: p.finals[0], mmproj: p.reader || null };
       r.sizeGB = round1(size(p.finals[0]) / GB);
-      if (tried && !tests.compare) tests.compare = { ...tried.full, engine: 'Brain Engine' };
+      if (tried && !tests.compare) tests.compare = { ...tried.full, engine: 'Lamplight' };
       r.report = { ...(tried ? { tried: { full: tried.full.score, masked: tried.masked.score } } : {}), made: tests.test, from: tests.compare || null, sizeGB: r.sizeGB, fromGB: round1(size(brain.gguf) / GB), at: this.now(), ...(coverage ? { coverage } : {}), ...(foldedInfo ? { folded: foldedInfo } : {}) };
       writeJson(path.join(p.dir, 'lab-report.json'), { name: r.name, from: brain.name, recipe: p.recipe, ...r.report });
       r.stepLabel = 'Write the measurement record'; this.tell(r);
@@ -367,13 +367,13 @@ export class Lab {
         c.once('exit', (code) => { signal?.removeEventListener('abort', stop); if (signal?.aborted) reject(new Error('Stopped.')); else if (code === 0) resolve({ n, held, dupes }); else { log(tail); reject(new Error(`The lesson builder stopped: ${tail.trim().split('\n').slice(-1)[0] || `code ${code}`}`)); } });
       }),
       try: async (s, { keep, signal, onProgress }) => {
-        const srv = await startServer({ exe: tools.brainEngine.path, gguf: s.gguf, signal, log });
+        const srv = await startServer({ exe: tools.lamplight.path, gguf: s.gguf, signal, log });
         try {
-          const post = async (body) => { const res = await fetch(srv.url + '/expert-mask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }); if (!res.ok) throw new Error(`Brain Engine wouldn't switch the experts: ${(await res.text()).slice(0, 200)}`); };
+          const post = async (body) => { const res = await fetch(srv.url + '/expert-mask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }); if (!res.ok) throw new Error(`Lamplight wouldn't switch the experts: ${(await res.text()).slice(0, 200)}`); };
           await post({ keep: null });
-          const full = { ...(await runQuiz(srv.url, { signal, onStep: (d, t) => onProgress(d / t / 2) })), where: srv.where, engine: 'Brain Engine' };
+          const full = { ...(await runQuiz(srv.url, { signal, onStep: (d, t) => onProgress(d / t / 2) })), where: srv.where, engine: 'Lamplight' };
           await post({ keep });
-          const masked = { ...(await runQuiz(srv.url, { signal, onStep: (d, t) => onProgress(0.5 + d / t / 2) })), where: srv.where, engine: 'Brain Engine' };
+          const masked = { ...(await runQuiz(srv.url, { signal, onStep: (d, t) => onProgress(0.5 + d / t / 2) })), where: srv.where, engine: 'Lamplight' };
           return { full, masked };
         } finally { srv.stop(); }
       },
@@ -381,7 +381,7 @@ export class Lab {
         const srv = await startServer({ exe: tools.server.path, gguf: s.gguf, mmproj: s.mmproj, signal, log });
         try {
           let engine = 'llama.cpp';
-          try { if ((await fetch(srv.url + '/expert-mask', { signal: AbortSignal.timeout(3000) })).ok) engine = 'Brain Engine'; } catch {}
+          try { if ((await fetch(srv.url + '/expert-mask', { signal: AbortSignal.timeout(3000) })).ok) engine = 'Lamplight'; } catch {}
           const sandbox = await (this.stepFns.sandbox || this.defaultSteps(tools, log).sandbox)({ signal }).catch(() => null); // Nov 11: coding answers run, when the sandbox holds
           return { ...(await runQuiz(srv.url, { signal, sandbox, onStep: (d, t) => onProgress(d / t) })), where: srv.where, engine };
         } finally { srv.stop(); }
@@ -406,10 +406,10 @@ export class Lab {
     return null;
   }
 
-  // Whether the Brain Engine here was built with the trace, read from the program file (null: can't tell, or a test's fake).
-  traceProbe() { if (this.stepFns.peekServe) return null; const be = this.tools().brainEngine; return be.found ? traceBuilt(be.path) : null; }
+  // Whether the Lamplight here was built with the trace, read from the program file (null: can't tell, or a test's fake).
+  traceProbe() { if (this.stepFns.peekServe) return null; const be = this.tools().lamplight; return be.found ? traceBuilt(be.path) : null; }
 
-  // Brain Engine stays loaded between questions; any other job, or a while idle, unloads it.
+  // Lamplight stays loaded between questions; any other job, or a while idle, unloads it.
   freePeek() { if (this.peekSrv) { try { this.peekSrv.srv.stop(); } catch {} clearTimeout(this.peekSrv.timer); this.peekSrv = null; } return { stopped: true }; }
 
   // Use in Bob: only after a test. Bob's engine runs it by id (lab-<name>), and it shows in Get models next to its family.

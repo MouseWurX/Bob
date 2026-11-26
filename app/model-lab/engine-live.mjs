@@ -1,4 +1,4 @@
-// The Brain Engine's live switches over HTTP, with the server's key (a rented card has one): experts per word (0013), the
+// The Lamplight's live switches over HTTP, with the server's key (a rented card has one): experts per word (0013), the
 // expert mask (0001), dials (0003), and one chat call with the expert trace (0002/0009). Every switch is live and goes back
 // with reset(); nothing is written to the brain.
 export function live(url, key = process.env.LAB_API_KEY) {
@@ -9,7 +9,7 @@ export function live(url, key = process.env.LAB_API_KEY) {
       try {
         const r = await fetch(url + p, { method: body === undefined ? 'GET' : 'POST', headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(timeout) });
         const t = await r.text();
-        if (r.status === 404) throw Object.assign(new Error(`this engine has no ${p} (it needs Brain Engine 7b12282)`), { fatal: true });
+        if (r.status === 404) throw Object.assign(new Error(`this engine has no ${p} (it needs Lamplight 7b12282)`), { fatal: true });
         if (!r.ok) throw new Error(`${p} ${r.status}: ${t.slice(0, 200)}`);
         return t ? JSON.parse(t) : {};
       } catch (e) { if (e.fatal || i >= tries) throw e; await new Promise((res) => setTimeout(res, 3000 * i)); }

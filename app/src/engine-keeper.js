@@ -1,6 +1,6 @@
 // 1.5.184 Auto-update engines (Settings > Engines, on unless switched off: the owner's call, Nov 10 2026).
 // Bob checks his thinking engines when he starts and about once a day after that, and updates them by himself:
-// Brain Engine whenever its release has a new file (a rebuilt Brain Engine keeps its name, so the checksum tells),
+// Lamplight whenever its release has a new file (a rebuilt Lamplight keeps its name, so the checksum tells),
 // and his own llama.cpp only when it's older than the build this Bob was tested with (never past it, never back
 // from a newer build you picked). Only engines with a build Bob names are kept up to date this way; the others
 // (pictures, hearing, voices, helpers) follow their projects' newest releases, so they stay on what you have until
@@ -12,14 +12,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { wasBlocked } from './app-control.js';
 import { engineNoteLine } from './engine-extras.js'; // 99 Engine updates in plain words (opt-in)
-import { ENGINES, engineFor, installedMarker, brainsEngineNow, sharedDir, TESTED_LLAMA, brainEnginePin, brainEngineStale, engineBlocked } from './engines.js';
+import { ENGINES, engineFor, installedMarker, brainsEngineNow, sharedDir, TESTED_LLAMA, lamplightPin, lamplightStale, engineBlocked } from './engines.js';
 
-export const KEEPER_ENGINES = ['brainengine', 'llamacpp'];
+export const KEEPER_ENGINES = ['lamplight', 'llamacpp'];
 export const FIRST_CHECK_MS = 2 * 60e3; // after start, so the window is open and the first brain has loaded
 export const DAY_MS = 23 * 3600e3; // "about daily": a little under a day, so a PC on at the same time each day still checks
 export const TICK_MS = 60 * 60e3; // look once an hour whether a check is due
 export const WAIT_MS = 10 * 60e3; // while an update waits for the engine to be free
-// 1.5.196: Brain Engine goes with Bob. Its first look is right after start, before the first brain loads on it.
+// 1.5.196: Lamplight goes with Bob. Its first look is right after start, before the first brain loads on it.
 export const WITH_BOB_MS = 5e3;
 
 export const keeperOn = (cfg) => cfg?.engineUpdates?.auto !== false;
@@ -38,7 +38,7 @@ export function keeperCandidates(cfg) {
   });
 }
 
-// Is a newer build due for this engine? check(id) is latestEngine (GitHub, by checksum) for Brain Engine.
+// Is a newer build due for this engine? check(id) is latestEngine (GitHub, by checksum) for Lamplight.
 // llama.cpp only moves up to the tested build, with no GitHub question at all.
 export async function dueUpdate(cfg, e, { check, tested = TESTED_LLAMA } = {}) {
   const mark = installedMarker(cfg, e);
@@ -69,28 +69,28 @@ export class EngineKeeper {
   start() { this.schedule(FIRST_CHECK_MS, true); this.d.setTimer(() => this.withBob().catch(() => {}), WITH_BOB_MS); return this; }
 
   // 1.5.196 (the owner, Nov 10: "it should update with Bob himself, not standalone"; fNRI on the PC found Bob on a new
-  // version with the old engine). Brain Engine updates with Bob: when the build here (its own marker) isn't the one this
-  // Bob names (package.json bob.brainEngine), the named build comes along at the next start, whatever the Keep engines
+  // version with the old engine). Lamplight updates with Bob: when the build here (its own marker) isn't the one this
+  // Bob names (package.json bob.lamplight), the named build comes along at the next start, whatever the Keep engines
   // up to date switch says, the same way Bob's own files do. GitHub is asked once, only to make sure the file there
   // differs from the one here (so a release rebuilt ahead of this Bob isn't fetched again and again).
-  // It no longer follows the newest Brain Engine on its own; the daily check is for llama.cpp.
+  // It no longer follows the newest Lamplight on its own; the daily check is for llama.cpp.
   async withBob() {
-    const pin = this.d.pin === undefined ? brainEnginePin() : this.d.pin;
-    if (!pin || this.pending.has('brainengine')) return null;
-    const e = keeperCandidates(this.cfg).find((x) => x.id === 'brainengine');
+    const pin = this.d.pin === undefined ? lamplightPin() : this.d.pin;
+    if (!pin || this.pending.has('lamplight')) return null;
+    const e = keeperCandidates(this.cfg).find((x) => x.id === 'lamplight');
     const mark = e && installedMarker(this.cfg, e);
-    if (!brainEngineStale(mark, pin)) return null;
+    if (!lamplightStale(mark, pin)) return null;
     // 1.5.203: Windows blocked this very build and Bob went back from it: don't fetch it again (Try again in Settings).
-    const blocked = engineBlocked(this.cfg, 'brainengine');
+    const blocked = engineBlocked(this.cfg, 'lamplight');
     if (blocked && blocked.version === pin.tag && (!blocked.print || blocked.print === pin.print)) return null;
     // 1.5.204: the trial before the swap (app-control.js) found Windows stops this build: don't fetch it at every start.
-    if (wasBlocked(this.cfg, 'brainengine', { version: pin.tag, print: pin.print || '' })) return null;
+    if (wasBlocked(this.cfg, 'lamplight', { version: pin.tag, print: pin.print || '' })) return null;
     let r = null;
-    try { r = await this.d.check('brainengine'); } catch (err) { this.state.lastError = `Brain Engine: ${err.message}`.slice(0, 300); this.write(); return null; }
+    try { r = await this.d.check('lamplight'); } catch (err) { this.state.lastError = `Lamplight: ${err.message}`.slice(0, 300); this.write(); return null; }
     if (!r || (r.print && r.print === mark.print && r.latest === mark.version)) return null;
-    this.pending.set('brainengine', { from: mark.version, to: r.latest || pin.tag, rebuilt: r.latest === mark.version, withBob: true, queued: false, saidWait: false });
+    this.pending.set('lamplight', { from: mark.version, to: r.latest || pin.tag, rebuilt: r.latest === mark.version, withBob: true, queued: false, saidWait: false });
     await this.tick({ bob: true });
-    return this.pending.get('brainengine') || null;
+    return this.pending.get('lamplight') || null;
   }
   stop() { if (this.timer) this.d.clearTimer(this.timer); this.timer = null; }
   schedule(ms, force = false) { this.stop(); this.timer = this.d.setTimer(() => { this.tick({ force }).catch(() => {}).finally(() => this.schedule(this.pending.size ? WAIT_MS : TICK_MS)); }, ms); }
@@ -111,7 +111,7 @@ export class EngineKeeper {
     this.running = true;
     try {
       this.follow();
-      if (!keeperOn(this.cfg)) { for (const [id, p] of this.pending) if (!p.withBob) this.pending.delete(id); } // Brain Engine with Bob still goes
+      if (!keeperOn(this.cfg)) { for (const [id, p] of this.pending) if (!p.withBob) this.pending.delete(id); } // Lamplight with Bob still goes
       else if (force || this.d.now() - this.state.lastCheck >= DAY_MS) await this.check();
       for (const [id, p] of this.pending) {
         if (p.queued) continue;
@@ -129,10 +129,10 @@ export class EngineKeeper {
 
   async check() {
     this.state.lastCheck = this.d.now(); this.state.lastError = '';
-    const pin = this.d.pin === undefined ? brainEnginePin() : this.d.pin;
+    const pin = this.d.pin === undefined ? lamplightPin() : this.d.pin;
     for (const e of keeperCandidates(this.cfg)) {
       if (this.pending.has(e.id)) continue;
-      if (e.id === 'brainengine' && pin) continue; // 1.5.196: Brain Engine goes with Bob (withBob), not on its own
+      if (e.id === 'lamplight' && pin) continue; // 1.5.196: Lamplight goes with Bob (withBob), not on its own
       if (engineBlocked(this.cfg, e.id)) continue; // 1.5.203: went back from a blocked build; Try again first
       try { const due = await dueUpdate(this.cfg, e, { check: this.d.check, tested: this.d.tested ?? TESTED_LLAMA }); if (due && !wasBlocked(this.cfg, e.id, { version: due.to })) this.pending.set(e.id, { ...due, queued: false, saidWait: false }); }
       catch (err) { this.state.lastError = `${e.name}: ${err.message}`.slice(0, 300); }

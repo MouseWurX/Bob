@@ -51,7 +51,7 @@ export async function traceCheck(eng, lesson, sets) {
   try {
     const j = await eng.trace(messages, { mass: true });
     const tr = j.expert_trace;
-    if (!tr) return { ok: false, why: 'the server answered without expert_trace (not Brain Engine, or the trace patch is missing)' };
+    if (!tr) return { ok: false, why: 'the server answered without expert_trace (not Lamplight, or the trace patch is missing)' };
     const layers = Array.isArray(tr.layers) ? tr.layers.filter(Array.isArray).length : 0, rows = Array.isArray(tr.rows) ? tr.rows.length : 0;
     if (!layers && !rows) return { ok: false, why: `expert_trace came back empty (kind ${tr.kind || '?'})` };
     return { ok: true, kind: tr.kind, experts: tr.n_expert, used: tr.n_expert_used, layers, rows, mass: Array.isArray(tr.mass) };
