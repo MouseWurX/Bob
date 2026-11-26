@@ -21,6 +21,13 @@
 //   4 the check slice once as built, then once per trial (top N lifted experts x scale), same seed each time; 5 reset.
 // Out: loop-sweep.json (every trial), loop-sweep.md, lift.json, and surgery-edits.json for forge/pod/surgery.py (winner only).
 // The engine is put back (no dials) at the end, even after an error. Set LAB_API_KEY for a server with a key.
+//
+// 26 Nov (the hard-maths run died 4.5 h in with "socket hang up" on its first trial, losing every trial): it now survives a lost
+// connection. Each request uses a fresh connection (no kept-alive socket the engine may have closed). Without dials, a dropped
+// request waits for the engine's /health and is asked again, up to --retries times (default 6, about 20 min of waiting in all).
+// A trial that loses a connection is run again from the start with its dials set again, since a restarted engine forgets them
+// and answers given in between would not count. Every finished stage is saved to progress.json in --out as it lands, and
+// --resume skips what is already there, so a rerun starts where the last one stopped instead of from the beginning.
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -30,10 +37,12 @@ import https from 'node:https';
 
 // POST JSON with node:http, not fetch: fetch gives up after 300 s with no reply headers, and a long thinking answer takes longer.
 // Only the whole-request timeout applies (default 30 min).
-export function postJson(full, body, headers = {}, timeoutMs = 30 * 60_000) {
+export function postJson(full, body, headers = {}, timeoutMs = 30 * 60_000, method = 'POST') {
   return new Promise((resolve, reject) => {
-    const u = new URL(full); const data = Buffer.from(JSON.stringify(body));
-    const req = (u.protocol === 'https:' ? https : http).request(u, { method: 'POST', headers: { ...headers, 'content-length': data.length } }, (res) => {
+    const u = new URL(full); const data = body === undefined ? Buffer.alloc(0) : Buffer.from(JSON.stringify(body));
+    const lib = u.protocol === 'https:' ? https : http;
+    // agent: false = a new connection per request, so a socket the engine closed while idle is never reused
+    const req = lib.request(u, { method, agent: false, headers: { ...headers, connection: 'close', 'content-length': data.length } }, (res) => {
       const parts = []; res.on('data', (c) => parts.push(c)); res.on('error', reject);
       res.on('end', () => {
         clearTimeout(timer); const t = Buffer.concat(parts).toString('utf8');
@@ -45,6 +54,70 @@ export function postJson(full, body, headers = {}, timeoutMs = 30 * 60_000) {
     req.on('error', (e) => { clearTimeout(timer); reject(e); });
     req.end(data);
   });
+}
+
+// Chat with stream:true (26 Nov): a long thinking answer sends words the whole time, so nothing between here and the card
+// (a pod's port forward, a router) sees a silent connection and cuts it, and an engine that stops sending for stallMs counts
+// as a lost connection. Gives back the same shape as a plain reply. A server that answers with plain JSON works too.
+export function postStream(full, body, headers = {}, timeoutMs = 30 * 60_000, stallMs = 10 * 60_000) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(full);
+    const data = Buffer.from(JSON.stringify({ ...body, stream: true, stream_options: { include_usage: true } }));
+    let content = '', reasoning = '', finish = null, usage = null, chunks = 0, buf = '', plain = '', isSse = false, settled = false;
+    const done = (f, v) => { if (settled) return; settled = true; clearTimeout(timer); clearTimeout(stall); f(v); };
+    let stall = null;
+    const poke = () => { clearTimeout(stall); stall = setTimeout(() => req.destroy(Object.assign(new Error(`${u.pathname} sent nothing for ${Math.round(stallMs / 1000)} s`), { code: 'ETIMEDOUT' })), stallMs); };
+    const line = (l) => {
+      if (!l.startsWith('data:')) return;
+      const d = l.slice(5).trim(); if (!d || d === '[DONE]') return;
+      let j; try { j = JSON.parse(d); } catch { return; }
+      if (j.error) { done(reject, new Error(`${u.pathname} error: ${JSON.stringify(j.error).slice(0, 200)}`)); return; }
+      if (j.usage) usage = j.usage;
+      const c = j.choices?.[0]; if (!c) return;
+      if (c.delta?.content) { content += c.delta.content; chunks++; }
+      if (c.delta?.reasoning_content) { reasoning += c.delta.reasoning_content; chunks++; }
+      if (c.finish_reason) finish = c.finish_reason;
+    };
+    const req = (u.protocol === 'https:' ? https : http).request(u, { method: 'POST', agent: false, headers: { ...headers, connection: 'close', 'content-length': data.length } }, (res) => {
+      isSse = /event-stream/.test(res.headers['content-type'] || '');
+      res.setEncoding('utf8'); poke();
+      res.on('data', (c) => {
+        poke();
+        if (!isSse || res.statusCode >= 300) { plain += c; return; }
+        buf += c; let k; while ((k = buf.indexOf('\n')) >= 0) { line(buf.slice(0, k).replace(/\r$/, '')); buf = buf.slice(k + 1); }
+      });
+      res.on('error', (e) => done(reject, e));
+      res.on('end', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) { done(reject, new Error(`${u.pathname} ${res.statusCode}: ${plain.slice(0, 200)}`)); return; }
+        if (!isSse) { try { done(resolve, plain ? JSON.parse(plain) : {}); } catch (e) { done(reject, e); } return; }
+        if (buf) line(buf.replace(/\r$/, ''));
+        if (!finish) { done(reject, Object.assign(new Error(`${u.pathname}: the stream ended before the answer did`), { code: 'ECONNRESET' })); return; }
+        const message = { role: 'assistant', content, ...(reasoning ? { reasoning_content: reasoning } : {}) };
+        done(resolve, { choices: [{ finish_reason: finish, message }], usage: usage || { completion_tokens: chunks } });
+      });
+    });
+    const timer = setTimeout(() => req.destroy(new Error(`${u.pathname} timed out after ${Math.round(timeoutMs / 1000)} s`)), timeoutMs);
+    req.on('error', (e) => done(reject, e));
+    req.end(data);
+  });
+}
+
+// Connection lost, refused or cut: worth waiting for the engine and asking again. A 4xx/5xx reply or our own time limit is not.
+export const dropped = (e) => /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|socket hang up|other side closed/i.test(`${e?.code || ''} ${e?.message || ''}`);
+
+// Ask again after a dropped connection: wait (10 s, 20 s, 40 s, then 4 min a time) until /health answers, run onBack (put the
+// dials back), and retry. Gives up after `retries` drops in a row.
+export async function withRetry(fn, { health, onBack, retries = 6, log = () => {}, waits = [10, 20, 40, 240, 240, 240, 240, 240] } = {}) {
+  for (let n = 0; ; n++) {
+    try { return await fn(); } catch (e) {
+      if (!dropped(e) || n >= retries) throw e;
+      const w = waits[Math.min(n, waits.length - 1)];
+      log(`connection lost (${e.code || e.message}), waiting ${w} s for the engine, then asking again (${n + 1} of ${retries})`);
+      await new Promise((r) => setTimeout(r, w * 1000));
+      if (health) { try { await health(); } catch { continue; } }
+      if (onBack) await onBack();
+    }
+  }
 }
 
 export const readJsonl = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
@@ -143,33 +216,69 @@ async function main() {
   const experts = String(o.experts || '16,64').split(',').map(Number), scales = String(o.scales || '0.5,0.7,0.85').split(',').map(Number);
   const upScales = o['up-scales'] === 'none' ? [] : String(o['up-scales'] || '1.15,1.3').split(',').map(Number);
   const headers = { 'content-type': 'application/json', ...(process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {}) };
-  const post = (p, body) => postJson(`${url}${p}`, body, headers);
-  const reset = async () => { try { await post('/dials', { dials: [] }); } catch {} };
+  const retries = Number(o.retries ?? 6);
+  const waits = o['retry-waits'] ? String(o['retry-waits']).split(',').map(Number) : undefined;
+  const raw = (p, body) => (p === '/v1/chat/completions' && !body.expert_trace && !o['no-stream'] ? postStream : postJson)(`${url}${p}`, body, headers);
+  const health = () => postJson(`${url}/health`, undefined, headers, 15_000, 'GET');
+  // Without dials a lost request is simply asked again. A trial is different: a restarted engine forgets its dials and other
+  // answers may land before they are back, so a trial that loses a connection is run again from the start (runTrial below).
+  const post = (p, body) => withRetry(() => raw(p, body), { health, retries, waits, log: (m) => log(m) });
+  const reset = async () => { try { await withRetry(() => raw('/dials', { dials: [] }), { health, retries: 2, waits }); } catch {} };
   const probs = readJsonl(String(o.problems));
   const findSet = probs.slice(0, nFind), checkSet = probs.slice(nFind, nFind + nCheck);
   if (checkSet.length < 10) throw new Error(`only ${checkSet.length} check problems after the find slice: give more problems`);
   const t0 = Date.now();
+  const progressFile = path.join(out, 'progress.json');
+  const prog = o.resume && fs.existsSync(progressFile) ? JSON.parse(fs.readFileSync(progressFile, 'utf8')) : {};
+  const saveProg = () => fs.writeFileSync(progressFile, JSON.stringify(prog, null, 1));
   const log = (m) => { const line = `${new Date().toISOString()} ${m}`; console.log(line); fs.appendFileSync(path.join(out, 'loop-sweep.log'), line + '\n'); };
 
-  const ask = async (p, i) => {
+  const ask = async (p, i, send = post) => {
     const messages = [{ role: 'user', content: `${p.q}\nPut the final number last.` }];
-    const j = await post('/v1/chat/completions', { messages, max_tokens: maxTokens, temperature: 0.6, top_p: 0.95, top_k: 20, seed: 1234 + i, chat_template_kwargs: { enable_thinking: true } });
+    const j = await send('/v1/chat/completions', { messages, max_tokens: maxTokens, temperature: 0.6, top_p: 0.95, top_k: 20, seed: 1234 + i, chat_template_kwargs: { enable_thinking: true } });
     const c = j.choices?.[0] || {};
     const text = `${c.message?.reasoning_content || ''}\n${c.message?.content || ''}`;
     const cut = c.finish_reason === 'length';
     return { messages, reply: c.message || {}, loop: looped(text, cut), ok: correct(String(c.message?.content || '').replace(/<think>[\s\S]*?<\/think>/g, ''), p.a), tokens: Number(j.usage?.completion_tokens) || 0 };
   };
-  const answerAll = async (set) => {
+  // once = no per-request retry: the first error stops new requests, waits for those in flight, then throws
+  const answerAll = async (set, once = false) => {
     const rows = new Array(set.length);
-    let next = 0;
-    await Promise.all(Array.from({ length: Math.min(parallel, set.length) }, async () => { while (next < set.length) { const i = next++; rows[i] = await ask(set[i], i); } }));
+    let next = 0, done = 0, err = null;
+    await Promise.all(Array.from({ length: Math.min(parallel, set.length) }, async () => {
+      while (next < set.length && !err) {
+        const i = next++;
+        try { rows[i] = await ask(set[i], i, once ? raw : post); } catch (e) { err ||= e; return; }
+        if (++done % 20 === 0) log(`  ${done} of ${set.length} answered`);
+      }
+    }));
+    if (err) throw err;
     return rows;
+  };
+  const runTrial = async (t) => {
+    for (let n = 0; ; n++) {
+      try {
+        await post('/dials', { dials: t.dials });
+        return score(await answerAll(checkSet, true));
+      } catch (e) {
+        if (!dropped(e) || n >= retries) throw e;
+        const ws = waits || [10, 20, 40, 240, 240, 240]; const w = ws[Math.min(n, ws.length - 1)];
+        log(`connection lost in the trial (${e.code || e.message}): waiting ${w} s, then running the trial again from the start (${n + 1} of ${retries})`);
+        await new Promise((r) => setTimeout(r, w * 1000));
+        try { await withRetry(health, { retries, waits }); } catch {}
+      }
+    }
   };
 
   try {
     await reset();
-    log(`find: answering ${findSet.length} practice problems`);
-    const found = await answerAll(findSet);
+    let found;
+    if (prog.found?.length === findSet.length && !o.baseline) { found = prog.found; log(`find: ${found.length} answers kept from the last run (--resume)`); }
+    else {
+      log(`find: answering ${findSet.length} practice problems`);
+      found = await answerAll(findSet);
+      if (!o.baseline) { prog.found = found; saveProg(); }
+    }
     if (o.baseline) {
       const checked = await answerAll(checkSet);
       const keep = (set, rows, slice) => rows.map((r, i) => JSON.stringify({ slice, i, q: set[i].q, a: set[i].a, loop: r.loop, ok: r.ok, tokens: r.tokens,
@@ -189,28 +298,35 @@ async function main() {
       finish({ stop: `fewer than 8 ${failMode === 'wrong' ? 'wrong or right' : 'looped or finished'} answers: no clear failure to fix, nothing tried` });
       log(report.stop); return;
     }
-    log(`trace: re-reading ${found.length} answers one at a time`);
-    const lc = [], fc = []; let noTrace = 0;
-    for (const r of found) {
-      const reply = { role: 'assistant', content: r.reply.content || '', ...(r.reply.reasoning_content ? { reasoning_content: r.reply.reasoning_content } : {}) };
-      const j = await post('/v1/chat/completions', { messages: [...r.messages, reply], max_tokens: 1, cache_prompt: false, expert_trace: true, temperature: 0 });
-      if (!addCounts(failed(r) ? lc : fc, j.expert_trace?.layers)) noTrace++;
+    let lifted, noTrace = 0;
+    if (prog.lifted) { lifted = prog.lifted; noTrace = prog.no_trace || 0; log('trace: lift kept from the last run (--resume)'); }
+    else {
+      log(`trace: re-reading ${found.length} answers one at a time`);
+      const lc = [], fc = [];
+      for (const r of found) {
+        const reply = { role: 'assistant', content: r.reply.content || '', ...(r.reply.reasoning_content ? { reasoning_content: r.reply.reasoning_content } : {}) };
+        const j = await post('/v1/chat/completions', { messages: [...r.messages, reply], max_tokens: 1, cache_prompt: false, expert_trace: true, temperature: 0 });
+        if (!addCounts(failed(r) ? lc : fc, j.expert_trace?.layers)) noTrace++;
+      }
+      if (noTrace > found.length / 2) throw new Error(`${noTrace} of ${found.length} replies had no expert trace: is this a Brain Engine with patch 0002?`);
+      lifted = lift(lc, fc, minPicks);
+      prog.lifted = lifted; prog.no_trace = noTrace; saveProg();
     }
-    if (noTrace > found.length / 2) throw new Error(`${noTrace} of ${found.length} replies had no expert trace: is this a Brain Engine with patch 0002?`);
-    const lifted = lift(lc, fc, minPicks);
     fs.writeFileSync(path.join(out, 'lift.json'), JSON.stringify(lifted.slice(0, 500), null, 1));
     const trials = buildTrials(lifted, experts, scales, upScales);
     log(`check: as built, then ${trials.length} trials on ${checkSet.length} problems`);
-    const before = score(await answerAll(checkSet));
-    log(`as built: ${JSON.stringify(before)}`);
-    const results = [];
+    let before = prog.before;
+    if (before) log(`as built: ${JSON.stringify(before)} (kept from the last run)`);
+    else { before = score(await answerAll(checkSet)); prog.before = before; saveProg(); log(`as built: ${JSON.stringify(before)}`); }
+    const results = prog.trials || (prog.trials = []);
     for (const t of trials) {
+      if (results.some((r) => r.name === t.name)) { log(`${t.name}: kept from the last run`); continue; }
       const ts = Date.now();
-      await post('/dials', { dials: t.dials });
-      const s = score(await answerAll(checkSet));
+      log(`trial: ${t.name}`);
+      const s = await runTrial(t);
       await reset();
       const r = { name: t.name, way: t.way, experts: t.dials.length, scale: t.dials[0].scale, ...s, seconds: Math.round((Date.now() - ts) / 1000) };
-      results.push(r); log(JSON.stringify(r));
+      results.push(r); saveProg(); log(JSON.stringify(r));
     }
     const best = pickBest(before, results, failMode);
     const bestTrial = best && trials.find((t) => t.name === best.name);

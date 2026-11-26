@@ -6,7 +6,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { looped, correct, lift, buildTrials, pickBest, score, postJson } from '../model-lab/loop-sweep.mjs';
+import { looped, correct, lift, buildTrials, pickBest, score, postJson, postStream, withRetry, dropped } from '../model-lab/loop-sweep.mjs';
 import { dialsOf } from '../model-lab/set-live.mjs';
 
 let pass = 0, fail = 0;
@@ -41,6 +41,31 @@ check('postJson reads a slow reply', (await postJson(`${sp}/ok`, { a: 1 })).ok =
 check('postJson stops at its own time limit', await postJson(`${sp}/ok`, {}, {}, 100).then(() => false, (e) => /timed out/.test(e.message)));
 check('postJson reports a server error', await postJson(`${sp}/bad`, {}).then(() => false, (e) => /500/.test(e.message)));
 slow.close();
+
+// postStream: a streamed reply comes back in the plain shape; a stream that stops sending or ends early counts as lost
+const sse = http.createServer((req, res) => {
+  let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
+    const j = JSON.parse(b);
+    if (req.url === '/plain') { res.setHeader('content-type', 'application/json'); res.end('{"choices":[{"message":{"content":"hi"}}]}'); return; }
+    res.setHeader('content-type', 'text/event-stream');
+    const send = (o) => res.write(`data: ${JSON.stringify(o)}\r\n\r\n`);
+    send({ choices: [{ delta: { reasoning_content: 'think ' } }] });
+    if (req.url === '/stall') return;
+    send({ choices: [{ delta: { content: 'The answer ' } }] });
+    if (req.url === '/cut') { res.end(); return; }
+    send({ choices: [{ delta: { content: 'is 5.' }, finish_reason: 'stop' }] });
+    if (j.stream_options?.include_usage) send({ choices: [], usage: { completion_tokens: 7 } });
+    res.end('data: [DONE]\r\n\r\n');
+  });
+});
+await new Promise((r) => sse.listen(0, '127.0.0.1', r));
+const su = `http://127.0.0.1:${sse.address().port}`;
+const sr = await postStream(`${su}/ok`, { messages: [] });
+check('a streamed answer is put back together, with thinking, reason and tokens', sr.choices[0].message.content === 'The answer is 5.' && sr.choices[0].message.reasoning_content === 'think ' && sr.choices[0].finish_reason === 'stop' && sr.usage.completion_tokens === 7);
+check('a plain JSON reply still works', (await postStream(`${su}/plain`, {})).choices[0].message.content === 'hi');
+check('a stream that goes quiet counts as a lost connection', await postStream(`${su}/stall`, {}, {}, 60_000, 200).then(() => false, (e) => dropped(e)));
+check('a stream that ends before the answer counts as a lost connection', await postStream(`${su}/cut`, {}).then(() => false, (e) => dropped(e)));
+sse.closeAllConnections?.(); sse.close();
 
 // a made-up engine: question i loops when i is odd, unless expert 3 of layer 0 is turned down; looped answers lean on expert 3
 let dials = [];
@@ -89,6 +114,60 @@ const ans = fs.readFileSync(path.join(out2, 'answers.jsonl'), 'utf8').replace(/\
 check('baseline ends cleanly and keeps all 60 answers with a hash', code2 === 0 && ans.length === 60 && ans.every((x) => /^[0-9a-f]{64}$/.test(x.sha256)));
 check('baseline traces nothing', seen.trace === before2.trace);
 check('baseline scores both slices', JSON.parse(fs.readFileSync(path.join(out2, 'loop-sweep.json'), 'utf8')).check.loop === 0.5);
+
+// 26 Nov: a lost connection. withRetry waits, checks health, puts things back and asks again; a real error is not retried
+check('a hang-up counts as a lost connection, a 500 does not', dropped(new Error('socket hang up')) && dropped({ code: 'ECONNRESET' }) && !dropped(new Error('/x 500: no')));
+let tries = 0, backs = 0;
+check('withRetry asks again after a hang-up and puts things back', await withRetry(async () => { if (++tries < 3) throw new Error('socket hang up'); return 'ok'; },
+  { onBack: () => { backs++; }, waits: [0] }) === 'ok' && tries === 3 && backs === 2);
+check('withRetry gives up after its retries', await withRetry(async () => { throw new Error('socket hang up'); }, { retries: 2, waits: [0] }).then(() => false, () => true));
+check('withRetry does not retry a server error', await withRetry(async () => { tries++; throw new Error('/x 500: no'); }, { waits: [0] }).then(() => false, () => tries === 4));
+
+// The whole sweep against an engine that drops the connection in the middle of the first trial and comes back having
+// forgotten its dials (a restart), then one that dies for good: the run must stop with its progress saved, and --resume
+// must carry on without answering the find slice again.
+const mk = (opts) => {
+  const st = { dials: [], chats: 0, trialChats: 0, dropped: false, dead: false, puts: [] };
+  const h = (req, res) => {
+    let body = ''; req.on('data', (c) => { body += c; }); req.on('end', () => {
+      if (st.dead) { req.socket.destroy(); return; }
+      if (req.url === '/health') { res.end('{"status":"ok"}'); return; }
+      const j = body ? JSON.parse(body) : {};
+      if (req.url === '/dials') { st.dials = j.dials || []; st.puts.push(st.dials.length); res.end('{}'); return; }
+      const i = Number(j.messages[0].content.match(/item (\d+)/)[1]);
+      if (j.expert_trace) { const l = j.messages[1].content.includes('again'); res.end(JSON.stringify({ choices: [{ message: { content: '' } }], expert_trace: { n_expert: 4, layers: [l ? [10, 10, 10, 90] : [40, 40, 30, 5]] } })); return; }
+      st.chats++;
+      if (st.dials.length) {
+        st.trialChats++;
+        if (opts.dropAt && st.trialChats === opts.dropAt && !st.dropped) { st.dropped = true; st.dials = []; req.socket.destroy(); return; }
+        if (opts.dieAt && st.trialChats === opts.dieAt) { st.dead = true; req.socket.destroy(); return; }
+      }
+      const down = st.dials.some((d) => d.layer === 0 && d.index === 3 && d.scale <= 0.7);
+      const l = i % 2 === 1 && !down;
+      res.end(JSON.stringify({ choices: [{ finish_reason: l ? 'length' : 'stop', message: { content: l ? rep.replace('seven', 'again') : `The answer is ${i}.` } }], usage: { completion_tokens: l ? 64 : 8 } }));
+    });
+  };
+  return { st, srv: http.createServer(h) };
+};
+const runSweep = async (port, dir, extra = []) => new Promise((r) => spawn(process.execPath, [path.join(here, '..', 'model-lab', 'loop-sweep.mjs'), '--url', `http://127.0.0.1:${port}`,
+  '--problems', probs, '--find', '30', '--check', '30', '--experts', '1', '--scales', '0.5', '--up-scales', 'none', '--min-picks', '1', '--parallel', '3',
+  '--retry-waits', '0', '--out', dir, ...extra], { stdio: process.env.SHOW ? 'inherit' : 'ignore' }).on('exit', r));
+const a1 = mk({ dropAt: 5 }); await new Promise((r) => a1.srv.listen(0, '127.0.0.1', r));
+const out3 = path.join(tmp, 'drop');
+const code3 = await runSweep(a1.srv.address().port, out3); a1.srv.close();
+const rep3 = JSON.parse(fs.readFileSync(path.join(out3, 'loop-sweep.json'), 'utf8'));
+check('a dropped connection mid-trial: the run still ends cleanly', code3 === 0 && a1.st.dropped);
+check('the trial runs again from the start with its dials set again, so it still wins', rep3.best?.scale === 0.5 && rep3.trials[0].loop === 0);
+
+const b1 = mk({ dieAt: 5 }); await new Promise((r) => b1.srv.listen(0, '127.0.0.1', r));
+const out4 = path.join(tmp, 'dead');
+const code4 = await runSweep(b1.srv.address().port, out4, ['--retries', '1']); b1.srv.close();
+const prog4 = JSON.parse(fs.readFileSync(path.join(out4, 'progress.json'), 'utf8'));
+check('an engine that dies for good: the run fails but keeps find, lift and as built', code4 !== 0 && prog4.found.length === 30 && prog4.lifted.length > 0 && prog4.before.n === 30 && !prog4.trials?.length);
+const c1 = mk({}); await new Promise((r) => c1.srv.listen(0, '127.0.0.1', r));
+const code5 = await runSweep(c1.srv.address().port, out4, ['--resume']); c1.srv.close();
+const rep5 = JSON.parse(fs.readFileSync(path.join(out4, 'loop-sweep.json'), 'utf8'));
+check('--resume runs only the trials, not the find slice or as built again', code5 === 0 && c1.st.chats === 30 && rep5.best?.scale === 0.5);
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -1,6 +1,6 @@
 {
  "run": "loop-sweep-qwen35-math",
- "note": "25 Nov 2026, retry of loop-sweep-qwen35 (null result: on 200 GSM8K train problems the stock 35B looped 3 times, 1.5%, and got 95% right, so no trial ran; about $0.89). Same brain, engine, card and rules (dissertation ch14), with HARDER practice problems: 600 MATH train-split level-5 problems with whole-number answers (practice/math-train-l5-600.jsonl, from openai/prm800k's copy of MATH, train/ ids only; never the held-out jobs, never MATH-500). Longer answers allowed (16,384 tokens, 4 slots), fewer problems and trials so it fits: find 150, check 60, top 16 and 64 experts, down x0.5 and x0.7, up x1.3, both: 10 trials. Estimate (not measured): ~5,000 tokens per answer at the 247 tokens/s the A40 managed, about 4.5 h. Stops after the find step if fewer than 8 answers loop. Caps 6 h / $4.",
+ "note": "26 Nov 2026, second try of the hard-maths sweep. Try 1 (25 Nov, 68f7134 then bccda8c, about $3.85 in all): the as-built brain looped on 63% of 150 MATH level-5 practice problems and got 37% right at about 13,500 tokens per answer (the same on the 60 check problems), so the failure is real here; the first trial then died 34 min in with 'socket hang up' and no trial finished. Now: answers stream (no silent connection to cut), a lost connection reruns the trial with its dials set again, and progress.json keeps every finished stage so --resume carries on. Smaller to fit: find 100, check 40, top 16 and 64 experts, down x0.5, up x1.3, both: 6 trials. Estimate from try 1's speed (about 1.07 min per answer per slot): find 107 min, trace 11, as built 41, trials 6 x 41 = about 6.8 h. Same practice set, never held-out. Caps 8 h / $5.",
  "benchmark_only": true,
  "teacher": "Qwen/Qwen3.6-35B-A3B",
  "counts": "expert-counts-2026-11-04T23-23-19.json",
@@ -14,15 +14,15 @@
  "general_tokens": 0,
  "rungs": [],
  "direct": true,
- "hours_max": 6,
- "dollars_max": 4,
- "rent_minutes": 360,
+ "hours_max": 8,
+ "dollars_max": 5,
+ "rent_minutes": 480,
  "download_quants": [],
  "llama_tag": "b12282",
  "no_hands": true,
  "benchmark": {
   "note": "one brain: stock Qwen3.6 35B A3B, loop sweep with live expert dials.",
-  "hours_each": 5.8,
+  "hours_each": 7.6,
   "brain_engine": {
    "ref": "fcdf3955ed6966c102f43d49528174cabd52d825",
    "patches": [
@@ -51,11 +51,11 @@
     "slots": 4,
     "ctx": 81920,
     "extra": "",
-    "hours": 5.8,
+    "hours": 7.6,
     "commands": [
      "node set-live.mjs --reset",
-     "node engine-check.mjs --url {{url}} --needs chat,think,dials,trace",
-     "node loop-sweep.mjs --url {{url}} --problems practice/math-train-l5-600.jsonl --find 150 --check 60 --max-tokens 16384 --parallel 4 --experts 16,64 --scales 0.5,0.7 --up-scales 1.3 --out {{out}}/loop-sweep",
+     "node engine-check.mjs --url {{url}} --needs chat,think,stream,dials,trace",
+     "node loop-sweep.mjs --url {{url}} --problems practice/math-train-l5-600.jsonl --find 100 --check 40 --max-tokens 16384 --parallel 4 --experts 16,64 --scales 0.5 --up-scales 1.3 --resume --out {{out}}/loop-sweep",
      "node set-live.mjs --reset"
     ]
    }

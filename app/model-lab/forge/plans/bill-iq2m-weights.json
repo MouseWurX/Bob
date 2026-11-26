@@ -145,7 +145,7 @@
     "hours": 4.8,
     "commands": [
      "node set-live.mjs --reset",
-     "node engine-check.mjs --url {{url}} --needs chat,think,dials,trace",
+     "node engine-check.mjs --url {{url}} --needs chat,think,stream,dials,trace",
      "node loop-sweep.mjs --url {{url}} --problems practice/gsm8k-train-600.jsonl --find 200 --check 100 --max-tokens 8192 --parallel 6 --baseline --out {{out}}/before-practice",
      "node mail-jobs.mjs --catalog --held --out ../../bob-model-lab/out/mail-jobs-held/jobs.jsonl",
      "node repo-jobs.mjs --held --check --out ../../bob-model-lab/out/repo-jobs-held/jobs.jsonl",

@@ -152,7 +152,36 @@ Three looped answers is below rule 1's floor of 8, so the sweep stopped before t
 
 **Fix plan.** Run 2 (`loop-sweep-qwen35-math`, waiting on approval) keeps the brain, engine, card and every rule. It swaps in 600 level-5 problems from the MATH **train** split with whole-number answers (`practice/math-train-l5-600.jsonl`; train ids only, never MATH-500), and allows longer answers (16,384 tokens). To fit the cap it uses fewer problems (150 find, 60 check) and 10 two-way trials. Our estimate of about 4.5 hours is not measured. If it also loops fewer than 8 times, that is a second null, and the loop target is dropped for this model in favour of wrong answers (`--fail wrong`).
 
-### 7.2 Bill IQ2_M
+### 7.2 Run 2, try 1: stock 35B on MATH level-5 train (25 to 26 November 2026): the loop is real; no trial finished
+
+| Measure | Value |
+| --- | --- |
+| Code | `loop-sweep.mjs` at bccda8c, plan `loop-sweep-qwen35-math` (150 find, 60 check, 10 trials) |
+| Card | One A40 (48 GB), Brain Engine fcdf3955 on b12282, 4 slots, 16,384-token limit |
+| Find set, as built | 150 problems: **63.3% looped, 36.7% right**, 13,540 tokens per answer, 161 minutes |
+| Check set, as built | 60 problems: 63.3% looped, 36.7% right, 13,207 tokens per answer, 62 minutes |
+| Trace | 150 answers re-read, `lift.json` written |
+| Top experts by lift | layer 24 expert 80 (27.3), layer 21 expert 76 (12.8), layer 20 expert 90 (10.1), layer 36 expert 78 (9.7) |
+| Trials finished | 0 of 10: the first died 34 minutes in with "socket hang up" |
+| Cost | About $3.41 for this try, plus $0.44 for an earlier try (see below), pods deleted |
+
+**What it means.** Hard maths gives the dials something to act on. As built, the 35B ran out of room or repeated itself on nearly two answers in three, and the 60 check problems told the same story as the 150 find problems. Rule 1 passed. This is the first measurement in this chapter where a fix *could* show. No trial finished, so there is still no result for the dials either way. Lift is a ratio of shares, not proof that an expert causes the loop. Only a trial can show that.
+
+**What went wrong, and the fix.** Two faults in our own harness, not in the brain:
+
+1. The earlier try (68f7134) stopped after 5 minutes. Node's built-in `fetch` gives up when no reply headers arrive within 300 seconds, and a long thinking answer takes longer than that. Fixed in bccda8c: requests go through `node:http`, which has no header wait. Tested against a fake engine that waits 310 seconds: `fetch` failed, and the new code got the answer.
+2. This try lost its connection 34 minutes into the first trial, with no answer finished. We could not tell from the run's files whether the engine stopped or the connection was cut on the way, since an answer sends nothing for many minutes until it is done. Fixed for try 2:
+   - answers now stream, so the connection is never silent;
+   - an engine that stops sending for 10 minutes counts as a lost connection;
+   - a lost connection waits for the engine and asks again;
+   - a trial that loses a connection runs again from the start with its dials set again, because a restarted engine forgets its dials and answers in between would not count;
+   - every finished stage is saved to `progress.json`, and `--resume` carries on from it.
+
+   These fixes are tested against fake engines that drop the connection mid-trial, restart without their dials, die for good, go quiet, or end a stream early.
+
+**Amendment before try 2 (no trial result seen).** The registered rules and the problem set stay the same. To fit about 7 hours at the speed this try measured (about 1.07 minutes per answer per slot), try 2 uses 100 find and 40 check problems, and 6 two-way trials: top 16 and top 64 experts, down ×0.5, up ×1.3, and both. Try 1's find answers were not saved, so its lift cannot be reused. Try 2 finds the experts again on its own 100 problems. Fewer check problems makes the result noisier: at 63% loops on 40 problems, the standard error is about 8 points, so only a large drop will count.
+
+### 7.3 Bill IQ2_M
 
 *Pending.* Waiting on approval, after run 2.
 
