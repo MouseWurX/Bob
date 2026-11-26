@@ -36,6 +36,8 @@ const PIPER_ARM64_SHA = 'fea0fd2d87c54dbc7078d0f878289f404bd4d6eea6e7444a77835d1
 // From build 5 a release is named N1bN2 (brain-engine-5b12282: build 5 on llama.cpp b12282; public/engine-name.js).
 const PIN_TAG = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.brainEngine?.tag || ''; } catch { return ''; } })();
 export const TESTED_LLAMA = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.bundledLlamaTag || ''; } catch { return ''; } })();
+// Where our saved copy of llama.cpp's tested release lives (app/docs/llama-cpp-map.md).
+export const LLAMA_COPY_REPO = 'MouseWurX/Bob';
 // LibreOffice comes from The Document Foundation's own archive, not GitHub.
 const TDF_HOSTS = [/^downloadarchive\.documentfoundation\.org$/, /^download\.documentfoundation\.org$/];
 const tdfAllowed = (u) => { try { const x = new URL(u); return x.protocol === 'https:' && TDF_HOSTS.some((r) => r.test(x.hostname)); } catch { return false; } };
@@ -513,7 +515,18 @@ export async function findRelease(e, nvidia, signal, fetchImpl = fetch) {
     return r.json();
   };
   if (e.tag) {
-    const rel = await get(`https://api.github.com/repos/${e.repo}/releases/tags/${e.tag}`);
+    // Nov 26: llama.cpp's tested release is also saved on Bob's own GitHub (pre-release llama.cpp-<tag>, the same
+    // files with the same checksums, .github/workflows/llama-copy.yml). If ggml-org doesn't answer for it (gone,
+    // moved, or down), Bob asks there instead. Only for the tested tag, and only after ggml-org failed.
+    const copy = e.id === 'llamacpp' && e.tag === e.tested && LLAMA_COPY_REPO;
+    let rel;
+    try { rel = await get(`https://api.github.com/repos/${e.repo}/releases/tags/${e.tag}`); }
+    catch (err) {
+      if (!copy || signal?.aborted) throw err;
+      try { rel = await get(`https://api.github.com/repos/${LLAMA_COPY_REPO}/releases/tags/llama.cpp-${e.tag}`); }
+      catch { throw err; }
+      rel = { ...rel, tag_name: e.tag, savedCopy: true }; // still "b12359" to the rest of Bob
+    }
     const asset = pickAsset(rel.assets || [], e, nvidia);
     if (!asset) throw new Error(`The pinned ${e.name} release (${e.tag}) has no build for this replicant matrix.`);
     return { rel, asset };

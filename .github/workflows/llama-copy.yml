@@ -1,0 +1,110 @@
+# Our own saved copy of llama.cpp (app/docs/llama-cpp-map.md, "Our saved copy"). Run by hand only.
+# Lamplight is llama.cpp at bob.bundledLlamaTag plus app/engine/patches, and Bob lays it over llama.cpp's official
+# zips for the same tag. Both came only from github.com/ggml-org/llama.cpp. This keeps them on our own repo too, as
+# the pre-release llama.cpp-<tag> (never "latest", so Bob's own updates never see it):
+#   llama.cpp-<tag>.bundle         the whole git history up to the tag (git clone it like the real repo)
+#   llama.cpp-<tag>-src.tar.gz     the source at the tag, no history (for rental pods)
+#   every file of ggml-org's <tag> release, same names, each checked against GitHub's own sha256 first
+#   LICENSE-llama.cpp, SHA256SUMS
+# Builds (app/engine/fetch-llama.sh) and rental pods try this copy first; Bob tries ggml-org first and this second.
+# Safe to run again: files already on the release are kept, missing ones are added.
+name: Save our llama.cpp copy
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'llama.cpp tag to save (empty = bob.bundledLlamaTag in app/package.json)'
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: llama-copy
+  cancel-in-progress: false
+
+jobs:
+  save:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+      UPSTREAM: ggml-org/llama.cpp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Which tag and commit
+        id: t
+        run: |
+          pin=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
+          tag="${{ inputs.tag }}"; tag=${tag:-$pin}
+          case "$tag" in b[0-9]*) ;; *) echo "not a llama.cpp build tag: $tag"; exit 1;; esac
+          want=''; [ "$tag" = "$pin" ] && want=$(node -p "require('./app/package.json').bob.bundledLlamaSha || ''")
+          echo "tag=$tag want=$want"
+          { echo "tag=$tag"; echo "want=$want"; echo "rel=llama.cpp-$tag"; } >> "$GITHUB_OUTPUT"
+      - name: Source, with its whole history up to the tag
+        run: |
+          tag=${{ steps.t.outputs.tag }}; want=${{ steps.t.outputs.want }}
+          mkdir -p out
+          git init -q --bare src.git
+          git -C src.git fetch -q "https://github.com/$UPSTREAM.git" "refs/tags/$tag:refs/tags/$tag"
+          sha=$(git -C src.git rev-parse "refs/tags/$tag^{commit}")
+          echo "llama.cpp $tag is $sha ($(git -C src.git rev-list --count "$sha") commits)"
+          if [ -n "$want" ] && [ "$sha" != "$want" ]; then echo "ggml-org's $tag is $sha, but Bob pins $want. Stopped."; exit 1; fi
+          git -C src.git bundle create "$PWD/out/llama.cpp-$tag.bundle" "refs/tags/$tag"
+          git -C src.git archive --format=tar.gz --prefix=llama.cpp/ -o "$PWD/out/llama.cpp-$tag-src.tar.gz" "$sha"
+          git -C src.git show "$sha:LICENSE" > out/LICENSE-llama.cpp
+          # prove the bundle stands on its own: a clone from it alone is the same commit
+          git -c advice.detachedHead=false clone -q --branch "$tag" "out/llama.cpp-$tag.bundle" check
+          [ "$(git -C check rev-parse HEAD)" = "$sha" ] || { echo "the bundle doesn't clone to $sha"; exit 1; }
+          rm -rf check src.git
+          echo "$sha" > out/COMMIT
+          ls -la out
+      - name: Make the pre-release if it isn't there yet
+        run: |
+          tag=${{ steps.t.outputs.tag }}; rel=${{ steps.t.outputs.rel }}; sha=$(cat out/COMMIT)
+          if gh release view "$rel" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then echo "$rel is there already"; exit 0; fi
+          notes="**Not a Bob release.** Our saved copy of [llama.cpp](https://github.com/$UPSTREAM) $tag (commit $sha) by the ggml authors, MIT licence (LICENSE-llama.cpp). Kept so Lamplight can still be built, and Bob can still fetch the llama.cpp files it lays Lamplight over, if ggml-org's copy is ever gone. The official files are byte for byte ggml-org's, each checked against GitHub's sha256 before upload. Made by .github/workflows/llama-copy.yml; see app/docs/llama-cpp-map.md."
+          gh release create "$rel" -R "$GITHUB_REPOSITORY" --prerelease --latest=false --target "$GITHUB_SHA" --title "llama.cpp $tag (saved copy, not a Bob release)" --notes "$notes"
+      - name: Upload the source, licence and every official file (one at a time, so the disk never fills)
+        run: |
+          tag=${{ steps.t.outputs.tag }}; rel=${{ steps.t.outputs.rel }}
+          have=$(gh release view "$rel" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          has() { printf '%s\n' "$have" | grep -qxF "$1"; }
+          : > sums
+          for f in "llama.cpp-$tag.bundle" "llama.cpp-$tag-src.tar.gz" LICENSE-llama.cpp; do
+            (cd out && sha256sum "$f") >> sums
+            has "$f" && echo "kept $f" || gh release upload "$rel" -R "$GITHUB_REPOSITORY" "out/$f"
+          done
+          # GitHub's own sha256 for each official file ("sha256:<hex>"), so a broken download is never saved
+          gh api "repos/$UPSTREAM/releases/tags/$tag" --jq '.assets[] | "\(.name)\t\(.digest // "")"' > official.tsv
+          echo "ggml-org's $tag release has $(wc -l < official.tsv) files"
+          mkdir -p dl
+          while IFS=$'\t' read -r name digest; do
+            [ -n "$name" ] || continue
+            gh release download "$tag" -R "$UPSTREAM" -p "$name" -D dl --clobber
+            got=$(sha256sum "dl/$name" | cut -d' ' -f1)
+            if [ -n "$digest" ] && [ "sha256:$got" != "$digest" ]; then echo "$name: got $got, GitHub says $digest. Stopped."; exit 1; fi
+            echo "$got  $name" >> sums
+            has "$name" && echo "kept $name" || gh release upload "$rel" -R "$GITHUB_REPOSITORY" "dl/$name"
+            rm -f "dl/$name"
+          done < official.tsv
+          sort -k2 sums > SHA256SUMS
+          gh release upload "$rel" -R "$GITHUB_REPOSITORY" SHA256SUMS --clobber
+          cat SHA256SUMS
+      - name: Prove the saved copy works without ggml-org
+        run: |
+          tag=${{ steps.t.outputs.tag }}; rel=${{ steps.t.outputs.rel }}
+          LLAMA_COPY_ONLY=1 LLAMA_COPY_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$rel" bash app/engine/fetch-llama.sh "$tag" proof
+          for p in app/engine/patches/*.patch; do git -C proof apply "../$p"; done
+          echo "all $(ls app/engine/patches/*.patch | wc -l) patches go on our copy"
+          # every official file is on our release, with the same sha256 GitHub gives ggml-org's
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$rel" --jq '.assets[] | "\(.name)\t\(.digest // "")"' > ours.tsv
+          while IFS=$'\t' read -r name digest; do
+            [ -n "$name" ] || continue
+            mine=$(awk -F'\t' -v n="$name" '$1 == n {print $2}' ours.tsv)
+            [ -n "$mine" ] || { echo "missing from our copy: $name"; exit 1; }
+            [ -z "$digest" ] || [ "$mine" = "$digest" ] || { echo "$name differs: ours $mine, ggml-org $digest"; exit 1; }
+          done < official.tsv
+          echo "our copy holds all $(wc -l < official.tsv) official files, same checksums"
