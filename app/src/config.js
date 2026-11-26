@@ -424,7 +424,7 @@ function clean(patch) {
   if ('tourSeen' in out) out.tourSeen = typeof out.tourSeen === 'string' && /^\d+\.\d+\.\d+$/.test(out.tourSeen) ? out.tourSeen : '';
   if ('promptMenu' in out) out.promptMenu = out.promptMenu === true; // "Saved prompts with /", off by default (prompts.js)
   if ('sandboxCode' in out) out.sandboxCode = out.sandboxCode === true; // "Code sandbox", off by default (sandbox-code.js)
-  if ('moreTools' in out) out.moreTools = cleanMoreTools(out.moreTools); // 🧰 More tools, every switch off by default (more-tools.js)
+  if ('moreTools' in out) out.moreTools = cleanMoreTools(out.moreTools); // 🧰 More tools, every switch off by default except the calculator (more-tools.js DEFAULT_ON)
   if ('parts3d' in out) out.parts3d = out.parts3d === true; // "3D parts", off by default (parts3d.js)
   if ('model3d' in out) out.model3d = out.model3d === true; // "Pictures to 3D models", off by default (model3d.js)
   if ('tray' in out) out.tray = out.tray !== false; // 1.5.94 "Minimise to tray"; on unless switched off since 1.5.134 (the owner asked for it)

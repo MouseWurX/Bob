@@ -17,7 +17,10 @@ let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra && !ok ? ' -> ' + extra : ''}`); };
 // Nov 23: the routines tool (Routines Hand, off by default, so the default start is unchanged) adds about 260 with
 // everything on; ALL_CAP moved from 48,500 to 48,800, still under 50,000.
-const DEFAULT_CAP = 15500, ALL_CAP = 48800;
+// Nov 26: the calculator is on by default now (the owner: "On by default"), so "everything on" also hands over
+// calculate (about 520 more on Windows: 49,315). The default start is unchanged (the calc group loads only when a
+// message needs it). ALL_CAP moved from 48,800 to 49,400: still under 50,000, but the room left is about 600, not 1,500.
+const DEFAULT_CAP = 15500, ALL_CAP = 49400;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-start-'));
 const conf = path.join(tmp, 'config.json');

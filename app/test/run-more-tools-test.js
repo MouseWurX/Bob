@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
-import { cleanMoreTools, moreToolsOff, MORE_TOOLS, SWITCHES, cleanBase, moreToolsLine, calendarKey, apiKeyName, EMAIL_KEY } from '../src/more-tools.js';
+import { cleanMoreTools, moreToolsOff, MORE_TOOLS, SWITCHES, cleanBase, moreToolsLine, calendarKey, apiKeyName, EMAIL_KEY, DEFAULT_ON, DEFAULTS_V, toolOn } from '../src/more-tools.js';
 import { evaluate, show, convert } from '../src/calc.js';
 import { makePassword, passwordTool } from '../src/passwords.js';
 import { nextRepeat, firstRepeat, moveOn } from '../src/tools.js';
@@ -35,11 +35,21 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
 // ---- off by default ----
 {
   const m = cleanMoreTools(undefined);
-  check('all fifteen switches start off', SWITCHES.length === 15 && SWITCHES.every((s) => m[s.key] === false));
-  check('only true turns a switch on', cleanMoreTools({ email: 'yes', calculator: true }).email === false && cleanMoreTools({ calculator: true }).calculator === true);
-  check('with everything off, every new tool is taken out', MORE_TOOLS.every((t) => moreToolsOff({}).includes(t)));
-  check('a switched-on tool stays in', !moreToolsOff({ moreTools: { calculator: true } }).includes('calculate'));
-  check('Bob can say what is on', moreToolsLine({}) === '🧰 More tools: all off' && /calculator/.test(moreToolsLine({ moreTools: { calculator: true } })));
+  check('fifteen switches: the calculator starts on, every other one off', SWITCHES.length === 15 && DEFAULT_ON.join() === 'calculator' && SWITCHES.every((s) => m[s.key] === (s.key === 'calculator')));
+  check('only true turns an off-by-default switch on', cleanMoreTools({ email: 'yes', charts: true }).email === false && cleanMoreTools({ charts: true }).charts === true);
+  check('with nothing saved, the calculator is in and every other new tool is out', !moreToolsOff({}).includes('calculate') && MORE_TOOLS.filter((t) => t !== 'calculate').every((t) => moreToolsOff({}).includes(t)));
+  check('a switched-on tool stays in', !moreToolsOff({ moreTools: { charts: true } }).includes('make_chart'));
+  check('Bob can say what is on', /^🧰 More tools: Let Bob use a calculator$/.test(moreToolsLine({})) && /charts/.test(moreToolsLine({ moreTools: { charts: true } })));
+  // 26 Nov (the owner: "On by default"): an old saved block has calculator false only because that was the old default,
+  // so it turns on once; turned off after that (defaultsV saved), it stays off, and every other switch is untouched.
+  const old = { calculator: false, charts: false, email: true };
+  const once = cleanMoreTools(old);
+  check('an old saved "off" turns the calculator on once, and keeps the other switches', once.calculator === true && once.defaultsV === DEFAULTS_V && once.charts === false && once.email === true);
+  check('Bob sees it on from an old saved block too', toolOn({ moreTools: old }, 'calculator') && !moreToolsOff({ moreTools: old }).includes('calculate'));
+  const offNow = cleanMoreTools({ ...once, calculator: false });
+  check('turned off after that, the calculator stays off', offNow.calculator === false && cleanMoreTools(offNow).calculator === false && !toolOn({ moreTools: offNow }, 'calculator') && moreToolsOff({ moreTools: offNow }).includes('calculate'));
+  check('a junk value is not "off": the calculator stays on', cleanMoreTools({ defaultsV: DEFAULTS_V, calculator: 'no' }).calculator === true);
+  check('settings keep the calculator choice', mergeSettings({}, { moreTools: offNow }).moreTools?.calculator === false && mergeSettings({}, { moreTools: {} }).moreTools?.calculator === true);
   check('defaults: IMAP port 993, INBOX, check every 6 hours', m.emailPort === 993 && m.emailFolder === 'INBOX' && m.watchHours === 6);
   check('service addresses: https, or http only for this machine, no sign-in in the link', cleanBase('https://api.example.com/v1') && !cleanBase('http://api.example.com') && cleanBase('http://localhost:8080') && !cleanBase('https://a:b@api.example.com'));
   check('settings keep the moreTools block', mergeSettings({}, { moreTools: { charts: true } }).moreTools?.charts === true && mergeSettings({}, { moreTools: { charts: 'on' } }).moreTools?.charts === false);
