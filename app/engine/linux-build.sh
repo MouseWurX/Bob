@@ -11,6 +11,9 @@ deps() {
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
   apt-get install -y -qq build-essential git curl ca-certificates python3 python3-pip libssl-dev xz-utils > /dev/null
+  # the folder belongs to the runner, not the container's root; without this, git refuses it, the build number reads 0,
+  # and the server's web page comes from llama.cpp's "latest" instead of the tag's own
+  git config --global --add safe.directory '*'
   # CUDA 13 needs a newer CMake than Ubuntu 22.04's 3.22
   python3 -m pip install -q 'cmake>=3.28,<4' ninja
   cmake --version | sed -n 1p
