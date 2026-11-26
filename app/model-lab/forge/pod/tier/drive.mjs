@@ -97,7 +97,7 @@ function cardSummary() {
   const n = (i) => rows.map((r) => (r[i] === undefined || r[i] === '' ? NaN : Number(r[i]))).filter(Number.isFinite);
   const held = Number(ballastInfo()?.held_mib) || 0;
   const used = n(1).map((v) => v - held), ram = n(8), temp = n(3), sm = n(4);
-  const total = row.simulated ? row.card_gb_sim * 1024 : Math.max(0, ...n(2));
+  const total = row.simulated ? row.card_gb_sim * 1024 : A['no-card'] ? 0 : Math.max(0, ...n(2));
   if (!used.length && !ram.length) return null;
   const peak = used.length ? Math.max(...used) : null, budget = total ? total - 512 : null;
   return { samples: rows.length, card_mib: total || null, ballast_mib: held || 0, peak_mib: peak, budget_mib: budget, peak_under_budget: peak === null || budget === null ? null : peak < budget,
@@ -127,7 +127,7 @@ function rowMd(r) {
 const t0 = Date.now();
 row.dollars_per_hour = Number(process.env.RUNPOD_COST_PER_HR || 0) || null;
 row.pod_ram_gb = Math.round(Number(fs.readFileSync('/proc/meminfo', 'utf8').match(/MemTotal:\s+(\d+)/)?.[1] || 0) / 1024 / 1024);
-{ const g = smi('name,memory.total,driver_version'); row.card = g ? { name: g[0], real_mib: Number(g[1]), driver: g[2] } : { name: 'none (processor only)' }; }
+{ const g = smi('name,memory.total,driver_version'); row.card = A['no-card'] ? { name: 'none (processor only)', hidden: g ? `${g[0]} on the pod, hidden from Bob and his engine; its log shows it stayed unused` : null } : g ? { name: g[0], real_mib: Number(g[1]), driver: g[2] } : { name: 'none (processor only)' }; }
 if (row.simulated) row.ballast = ballastInfo();
 
 // 1. Bob up, his hardware check and pick

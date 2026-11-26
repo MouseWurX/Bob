@@ -214,7 +214,12 @@
     "ram_gb": 32
    },
    "hours": 1.75,
-   "dollars": 1
+   "dollars": 1,
+   "or_gpus": [
+    "NVIDIA RTX A5000",
+    "NVIDIA GeForce RTX 3090"
+   ],
+   "why": "Nov 26: the laptop's driver rents GPU pods only, so tcpu may run on the cheapest GPU pod instead: tier-run.sh then hides the card from Bob and his engine (nvidia-smi fails, CUDA_VISIBLE_DEVICES=-1) and holds them to 8 cores. Pod RAM is the pod's and is recorded."
   }
  ],
  "image_cpu": "runpod/base:0.6.2-cuda12.4.1",

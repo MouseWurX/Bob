@@ -91,10 +91,10 @@ sampler() { # out.csv: the REAL card every second, and free RAM
 }
 
 for T in $(echo "$TIERS" | tr ',' ' '); do
-  read -r LABEL CARD_GB SIM < <(python3 - "$PLAN" "$T" <<'PY'
+  read -r LABEL CARD_GB SIM CPUT < <(python3 - "$PLAN" "$T" <<'PY'
 import json, sys
 p = json.load(open(sys.argv[1])); t = next((x for x in p['tiers'] if x['id'] == sys.argv[2]), None)
-print('MISSING 0 0' if not t else f"{t['label'].replace(' ', '_')} {t.get('card_gb', 0)} {1 if t.get('simulated') else 0}")
+print('MISSING 0 0 0' if not t else f"{t['label'].replace(' ', '_')} {t.get('card_gb', 0)} {1 if t.get('simulated') else 0} {1 if t.get('cpu_pod') else 0}")
 PY
 )
   [ "$LABEL" = MISSING ] && { say "$T: not a tier of $(basename "$PLAN"): skipped"; continue; }
@@ -118,8 +118,18 @@ PY
     BPATH="$W/shim:$PATH"; DRV=(--card-gb "$CARD_GB" --simulated --ballast-file "$BALLAST_FILE")
     say "$T: simulated $CARD_GB GB: $(cat "$BALLAST_FILE"); Bob's nvidia-smi says: $(PATH=$BPATH nvidia-smi --query-gpu=name,memory.total,memory.used --format=csv,noheader,nounits)"
   fi
+  BENV=(); PIN=()
+  if [ "$CPUT" = 1 ] && [ -n "$NVSMI_REAL" ]; then
+    # A processor-only tier on a pod that has a card (Nov 26: the laptop's driver rents GPU pods only): Bob's nvidia-smi
+    # fails as on a PC without an NVIDIA card, the engine is given no card (CUDA_VISIBLE_DEVICES=-1), and Bob and his
+    # engine are held to CPU_CORES cores (default 8, the plan's CPU pod). Pod RAM is still the pod's: the row records it.
+    mkdir -p "$W/nocard"; printf '#!/bin/sh\necho "NVIDIA-SMI has failed (hidden for a processor-only tier)" >&2\nexit 9\n' > "$W/nocard/nvidia-smi"; chmod +x "$W/nocard/nvidia-smi"
+    BPATH="$W/nocard:$PATH"; BENV=(CUDA_VISIBLE_DEVICES=-1); DRV=(--no-card); NC=${CPU_CORES:-8}
+    [ "$(nproc)" -gt "$NC" ] && command -v taskset >/dev/null && PIN=(taskset -c "0-$((NC - 1))")
+    say "$T: card hidden from Bob and his engine (processor only on a GPU pod), ${PIN:+cores 0-$((NC - 1)) of }$(nproc) cores"
+  fi
   sampler "$TO/card.csv" & SAMPLER=$!
-  ( cd "$W/rel/app" && exec env PATH="$BPATH" BOB_AGENT_DIR="$W/home" BOB_CONFIG="$W/home/config.json" BOB_PORT=$BOB_PORT node src/server.js ) > "$TO/bob.log" 2>&1 & BOBPID=$!
+  ( cd "$W/rel/app" && exec "${PIN[@]}" env "${BENV[@]}" PATH="$BPATH" BOB_AGENT_DIR="$W/home" BOB_CONFIG="$W/home/config.json" BOB_PORT=$BOB_PORT node src/server.js ) > "$TO/bob.log" 2>&1 & BOBPID=$!
   node "$HERE/tier/drive.mjs" --bob-url "http://127.0.0.1:$BOB_PORT" --rel "$W/rel/app" --harness "$W/harness/app" --jobs "$JD/repo-first.jsonl" \
     --long "$HERE/tier/long-text.md" --out "$TO" --tier "$T" --label "$LABEL" --data "$W/home/inn" "${DRV[@]}" $( [ "$MOCK" = 1 ] && echo --mock ) > "$TO/drive.out" 2>&1
   rc=$?
