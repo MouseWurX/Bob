@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { q3CardOk, vulkanFeatures, vulkanCaps } from '../src/engine-extras.js';
-import { dropVulkanOverCuda, VULKAN_OWN_FILES } from '../src/engines.js';
+import { dropVulkanOverCuda, VULKAN_OWN_FILES, CUDA_OWN_FILES } from '../src/engines.js';
 import { HELP } from '../public/help-content.js';
 
 let pass = 0, fail = 0;
@@ -44,7 +44,10 @@ let out = dropVulkanOverCuda(d, 'llama-b12359-bin-win-cuda-12.4-x64.zip');
 check('over the CUDA zip: both files go', out.sort().join(',') === 'ggml-vulkan.dll,lamplight-vulkan.json' && fs.readdirSync(d).sort().join(',') === 'ggml-base.dll,ggml-cuda.dll,llama-server.exe');
 d = folder(win);
 out = dropVulkanOverCuda(d, 'llama-b12359-bin-win-vulkan-x64.zip');
-check('over the Vulkan zip: kept', out.length === 0 && fs.readdirSync(d).length === win.length);
+check('over the Vulkan zip: ours kept, our CUDA file goes (no CUDA runtime there)', out.join(',') === 'ggml-cuda.dll' && fs.readdirSync(d).sort().join(',') === 'ggml-base.dll,ggml-vulkan.dll,lamplight-vulkan.json,llama-server.exe');
+d = folder(['llama-server', 'libggml-cuda.so', 'libggml-vulkan.so', 'libggml-base.so']);
+out = dropVulkanOverCuda(d, 'llama-b12359-bin-ubuntu-x64.tar.gz');
+check('over the processor-only Linux download: the CUDA file goes too', out.join(',') === 'libggml-cuda.so' && !CUDA_OWN_FILES.test('libggml-cpu.so') && !CUDA_OWN_FILES.test('cudart64_13.dll'));
 d = folder(['llama-server', 'libggml-vulkan.so', 'libggml-vulkan.so.0', 'lamplight-vulkan.json', 'libggml-cuda.so']);
 out = dropVulkanOverCuda(d, 'llama-b12359-bin-ubuntu-cuda-x64.tar.gz');
 check('Linux names too, with version endings', out.length === 3 && fs.readdirSync(d).sort().join(',') === 'libggml-cuda.so,llama-server');
@@ -59,6 +62,7 @@ const llama = read(path.join(app, 'src', 'llamacpp.js'));
 check('the engine start reads the file beside the engine', /vk = vulkanFeatures\(path\.dirname\(exe\)\), vc = vulkanCaps\(files, vk\)/.test(llama) && /q3CardOk\(files, process\.platform, vk\)/.test(llama) && /tiers = [^\n]*vc\.lse/.test(llama) && /q2 = [^\n]*vc\.q2/.test(llama) && /sink = [^\n]*vc\.lse/.test(llama));
 const wf = read(path.join(app, '..', '.github', 'workflows', 'brain-engine.yml'));
 check('the build packs our Vulkan part and the file, on Windows and Linux', /ggml-vulkan\/ggml-vulkan\.dll/.test(wf) && /vulkan\/libggml-vulkan\.so/.test(wf) && (wf.match(/lamplight-vulkan\.json/g) || []).length >= 2);
+check('Linux packs our CUDA part when the CUDA job ran', /cuda-linux:/.test(wf) && /cp cuda\/libggml-cuda\.so/.test(wf) && /ubuntu-cuda/.test(wf));
 check('the patch is there', fs.existsSync(path.join(app, 'engine', 'patches', '0135-vulkan-lamplight.patch')));
 
 // Help, glossary, FAQ

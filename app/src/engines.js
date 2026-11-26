@@ -674,11 +674,16 @@ async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
 // patch. Over the CUDA download (an NVIDIA card) it stays out: that download has no Vulkan file, and the same card
 // would show up twice (CUDA0 and Vulkan0).
 export const VULKAN_OWN_FILES = /^(ggml-vulkan\.dll|libggml-vulkan\.so(\.\d+)*|lamplight-vulkan\.json)$/i;
+// And the other way round: our CUDA backend (ggml-cuda.dll / libggml-cuda.so) stays out over a download that isn't
+// the CUDA one (AMD, Intel, no card). That download has no CUDA runtime beside it, so the CUDA file can't load, and
+// the install check would hold the whole update back for "the CUDA runtime files".
+export const CUDA_OWN_FILES = /^(ggml-cuda.*\.dll|libggml-cuda.*\.so(\.\d+)*)$/i;
 export function dropVulkanOverCuda(dir, baseName) {
-  if (!/cuda/i.test(String(baseName || ''))) return [];
+  const drop = /cuda/i.test(String(baseName || '')) ? VULKAN_OWN_FILES : baseName ? CUDA_OWN_FILES : null;
+  if (!drop) return [];
   let names = [];
   try { names = fs.readdirSync(dir); } catch {}
-  const out = names.filter((n) => VULKAN_OWN_FILES.test(n));
+  const out = names.filter((n) => drop.test(n));
   for (const n of out) fs.rmSync(path.join(dir, n), { force: true });
   return out;
 }
