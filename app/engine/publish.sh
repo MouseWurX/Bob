@@ -18,7 +18,7 @@ NOTES
 # Nov 18: a build whose patches change ggml carries our own ggml files too (and ggml-cuda on Windows), which replace the official ones.
 if [ "${BE_GGML:-}" = "true" ]; then notes="$notes
 
-**This build changes ggml too, including the card code.** Some patches change ggml itself (the CPU and CUDA backends, the scheduler, new number types), so its own ggml, ggml-base, every ggml-cpu variant (and on Windows ggml-cuda) are in the download and replace the official ones. The Vulkan backend is not rebuilt, so use it with NVIDIA's CUDA download only."
+**This build changes ggml too, including the card code.** Some patches change ggml itself (the CPU and CUDA backends, the scheduler, new number types), so its own ggml, ggml-base, every ggml-cpu variant (and on Windows ggml-cuda) are in the download and replace the official ones. From Lamplight's Nov 26 builds the download also carries our own Vulkan backend (ggml-vulkan.dll or libggml-vulkan.so, with lamplight-vulkan.json), built from the same patched tree, so AMD and Intel graphics get every patch too. Put it over the official Vulkan download; on an NVIDIA card (over the CUDA download) leave those two files out, as Bob does."
 else notes="$notes
 
 The patches in this build change only llama and the server; the ggml and card files are the official ones."; fi

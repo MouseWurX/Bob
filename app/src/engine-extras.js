@@ -195,7 +195,18 @@ export function cleanMemType(v) {
 // Does an engine's --help list q3_0 among its cache types ("allowed values: ..., q3_0, ...", which may wrap)?
 // 0038's 3-bit chat memory has kernels for CUDA cards and the processor only. A Mac (Metal) or an engine folder whose
 // card file is Vulkan without CUDA would run that attention on the processor, so Bob doesn't offer it there.
-export const q3CardOk = (files, platform) => platform !== 'darwin' && !((files || []).some((f) => /ggml-(vulkan|metal)/i.test(f)) && !(files || []).some((f) => /ggml-cuda/i.test(f)));
+// Nov 26: Lamplight's own Vulkan backend (lamplight-vulkan.json beside it, patch 0135) has the 3-bit and 2-bit kernels,
+// Progressive Memory's flash attention and the sharp start too, so AMD and Intel graphics get them as well; the official
+// Vulkan file still doesn't. vulkanFeatures reads what that file says our Vulkan backend can do.
+// Lamplight 0135: a Vulkan engine reads q3_0 only when our own Vulkan part says so in lamplight-vulkan.json (vk);
+// CUDA and the processor always can; Metal and Macs can't.
+const vulkanOnly = (files) => (files || []).some((f) => /ggml-vulkan/i.test(f)) && !(files || []).some((f) => /ggml-cuda/i.test(f));
+export const q3CardOk = (files, platform, vk = null) => platform !== 'darwin' && ((files || []).some((f) => /ggml-cuda/i.test(f)) || (!(files || []).some((f) => /ggml-metal/i.test(f)) && (!vulkanOnly(files) || (vk?.kv || []).includes('q3_0'))));
+// On a Vulkan-only engine, the 2-bit memory needs q2_kv in that file, and Progressive Memory and the sharp start its log-sum-exp.
+export const vulkanCaps = (files, vk = null) => vulkanOnly(files) ? { q2: (vk?.kv || []).includes('q2_kv'), lse: vk?.lse === true } : { q2: true, lse: true };
+export function vulkanFeatures(dir, read = (f) => fs.readFileSync(f, 'utf8')) {
+  try { const j = JSON.parse(String(read(path.join(dir, 'lamplight-vulkan.json'))).replace(/^\uFEFF/, '')); return j && typeof j === 'object' && !Array.isArray(j) ? j : null; } catch { return null; }
+}
 // The engine lists its chat memory types under -ctv in --help (wrapped over lines); 3-bit is there only on a Brain Engine with 0038.
 const helpHasKv = (text, type) => { const t = String(text ?? ''), at = t.indexOf('--cache-type-v'); const m = at < 0 ? null : t.slice(at).match(/allowed values:[^\n]*(?:\r?\n[ \t]+[^-\s][^\n]*)*/); return Boolean(m) && new RegExp(`\\b${type}\\b`).test(m[0]); };
 export const helpHasQ3 = (text) => helpHasKv(text, 'q3_0');

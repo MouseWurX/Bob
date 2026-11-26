@@ -3,6 +3,7 @@
 # Pushes to work branches and draft pull requests run nothing, like build.yml, so a work-in-progress patch never
 # sends a failed-build e-mail: a thread checks its engine patch with its own build first (app/engine/README.md).
 # Windows x64: the llama.dll / llama-server.exe set, to put over a COPY of the official CUDA or Vulkan zip for the same tag (the card backends are separate DLLs; when a patch changes ggml, the zip also carries our own ggml, ggml-cpu and ggml-cuda DLLs, which replace the official ones).
+# Nov 26: both also carry our own Vulkan backend (ggml-vulkan.dll, libggml-vulkan.so) and lamplight-vulkan.json.
 # Linux x64: the same set for checking. Every action is pinned to a full commit SHA, like build.yml.
 name: Brain Engine
 
@@ -143,9 +144,10 @@ jobs:
           path: out/ggml-cuda.dll
 
   windows:
-    needs: [detect, cuda]
-    # draft pull requests run nothing; waits for the CUDA job, which runs only when a patch changes the CUDA backend
-    if: ${{ always() && needs.detect.result == 'success' && (needs.cuda.result == 'success' || needs.cuda.result == 'skipped') }}
+    needs: [detect, cuda, vulkan]
+    # draft pull requests run nothing; waits for the CUDA job, which runs only when a patch changes the CUDA backend,
+    # and for the Vulkan job (Nov 26: every Lamplight release carries our own ggml-vulkan.dll)
+    if: ${{ always() && needs.detect.result == 'success' && (needs.cuda.result == 'success' || needs.cuda.result == 'skipped') && needs.vulkan.result == 'success' }}
     runs-on: windows-2025-vs2026
     permissions:
       contents: write # only used by the publish step, which runs only when asked for by hand
@@ -210,6 +212,11 @@ jobs:
         with:
           name: ggml-cuda-win-x64
           path: ggml-cuda
+      - name: Get our ggml-vulkan.dll (AMD and Intel graphics, built from the same patched tree)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ggml-vulkan-win-x64
+          path: ggml-vulkan
       - name: Pack (llama and server files, and the card-sharing backend; our own ggml set only when a patch changes ggml)
         shell: bash
         run: |
@@ -231,6 +238,11 @@ jobs:
             ls llama.cpp/build/bin/Release/ggml-cpu-*.dll | wc -l
           fi
           if [ "${{ needs.detect.outputs.cuda }}" = "true" ]; then cp ggml-cuda/ggml-cuda.dll "$out/"; fi
+          # Nov 26: our own Vulkan backend, always, so AMD and Intel graphics run every Lamplight patch (never the official
+          # ggml-vulkan.dll under our ggml). lamplight-vulkan.json tells Bob it's ours and what it can do; on an NVIDIA
+          # card Bob leaves both out (the CUDA download has no Vulkan file, and one card must not show up twice).
+          cp ggml-vulkan/ggml-vulkan.dll "$out/"
+          cp app/engine/lamplight-vulkan.json "$out/"
           if [ -f llama.cpp/build/bin/Release/mask-pos-check.exe ]; then cp llama.cpp/build/bin/Release/mask-pos-check.exe "$out/"; fi
           if [ -f llama.cpp/build/bin/Release/moe-round-check.exe ]; then cp llama.cpp/build/bin/Release/moe-round-check.exe "$out/"; fi
           if [ -f llama.cpp/build/bin/Release/kv-q2-check.exe ]; then cp llama.cpp/build/bin/Release/kv-q2-check.exe "$out/"; fi
@@ -273,7 +285,7 @@ jobs:
         run: bash app/engine/publish.sh "$BEV" "$TAG" brain-engine-*-win-x64.zip
 
   linux:
-    needs: detect
+    needs: [detect, vulkan-linux]
     # draft pull requests run nothing
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
@@ -300,12 +312,20 @@ jobs:
           # upstream skips cvector-generator and export-lora when the backends load at run time, so it gets its own CPU-only, static build
           cmake -B build-cv -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
           cmake --build build-cv -j4 --target llama-cvector-generator llama-export-lora
+      - name: Get our libggml-vulkan.so
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ggml-vulkan-linux-x64
+          path: vulkan
       - name: Pack
         run: |
           out=brain-engine-$BEV-linux-x64
           mkdir "$out"
           cp llama.cpp/build/bin/llama-server llama.cpp/build/bin/llama-bench llama.cpp/build/bin/llama-gguf-split llama.cpp/build/bin/ggml-rpc-server llama.cpp/build/bin/llama-diffusion-cli llama.cpp/build/bin/test-llama-archs llama.cpp/build-cv/bin/llama-cvector-generator llama.cpp/build-cv/bin/llama-export-lora $(ls llama.cpp/build/bin/*.so* | grep -v '/libggml') llama.cpp/build/bin/libggml-rpc.so* "$out/"
           if [ "${{ needs.detect.outputs.ggml }}" = "true" ]; then cp -P llama.cpp/build/bin/libggml*.so* "$out/"; fi # Nov 18 (0026): our own ggml set
+          # Nov 26: our own Vulkan backend (job vulkan-linux), like Windows; Bob leaves it out on an NVIDIA card
+          cp vulkan/libggml-vulkan.so "$out/"
+          cp app/engine/lamplight-vulkan.json "$out/"
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
           cp app/engine/README.md "$out/README-Brain-Engine.md"
           tar czf "$out.tar.gz" "$out"
@@ -320,16 +340,48 @@ jobs:
           BE_GGML: ${{ needs.detect.outputs.ggml }}
         run: bash app/engine/publish.sh "$BEV" "$TAG" brain-engine-*-linux-x64.tar.gz
 
+  vulkan-linux:
+    # Nov 26: our own libggml-vulkan.so for the Linux Lamplight, from the same patched tree. Built like upstream's
+    # ubuntu-vulkan release (Ubuntu 22.04 and LunarG's Vulkan SDK: the distro's glslc is too old for half the shaders).
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fetch llama.cpp at the tested tag and apply the patches
+        run: |
+          tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
+          git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
+          sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
+          for p in app/engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
+      - name: Install the Vulkan SDK (LunarG, as upstream)
+        run: |
+          wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential mesa-vulkan-drivers vulkan-sdk
+      - name: Build libggml-vulkan.so (the Linux Lamplight's settings, plus Vulkan)
+        working-directory: llama.cpp
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_RPATH='$ORIGIN' -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_RPC=ON -DGGML_VULKAN=ON -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF
+          cmake --build build -j $(nproc) --target ggml-vulkan
+          ls -la build/bin/libggml-vulkan.so
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ggml-vulkan-linux-x64
+          path: llama.cpp/build/bin/libggml-vulkan.so
+
   vulkan:
     # Nov 23: a Brain Engine whose patches change ggml ships its own ggml and ggml-base, so the official Vulkan DLL (built
-    # against the official ggml) can't sit beside it. This builds ggml-vulkan.dll from the same patched tree, by hand only,
-    # for a test build on AMD or Intel graphics (first for Brain Engine 90 on the Legion Go). Not part of a release.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.vulkan_release != '' }}
+    # against the official ggml) can't sit beside it. This builds ggml-vulkan.dll from the same patched tree.
+    # Nov 26: part of every Lamplight build now (the Windows job packs it), so AMD and Intel graphics get every patch.
+    # By hand with vulkan_release it also makes the old test zip for a named pre-release (with vulkan_without for a
+    # before/after pair). The Vulkan SDK is the one upstream's release uses at b12359.
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     runs-on: windows-2025-vs2026
     permissions:
       contents: write # only used by the upload to the test pre-release, when one is named
     env:
-      VULKAN_VERSION: 1.4.313.2
+      VULKAN_VERSION: 1.4.357.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Fetch llama.cpp at the tested tag and apply the patches
@@ -379,7 +431,12 @@ jobs:
         with:
           name: brain-engine-vulkan-win-x64
           path: brain-engine-vulkan-win-x64.zip
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ggml-vulkan-win-x64
+          path: llama.cpp/build/bin/Release/ggml-vulkan.dll
       - name: Add it to the test pre-release
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.vulkan_release != '' }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
