@@ -327,7 +327,8 @@
     "test/run-experts-per-word-test.js",
     "test/run-mind-only-test.js",
     "test/run-welcome-steps-test.js",
-    "test/run-lesson-kit-test.js"
+    "test/run-lesson-kit-test.js",
+    "test/run-model-list-test.js"
   ],
   "bob": {
     "release": "1.5",

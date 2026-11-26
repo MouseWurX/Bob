@@ -10,6 +10,7 @@
   <a href="#what-bob-does">What Bob does</a> ·
   <a href="#the-computer-science-lab">The Lab</a> ·
   <a href="#bobs-own-brains">Brains and scores</a> ·
+  <a href="#supported-brains">Supported brains</a> ·
   <a href="#bob-net-bobs-working-together">Bob-Net</a> ·
   <a href="#the-project">The project</a> ·
   <a href="#coming-next">Coming next</a> ·
@@ -438,6 +439,152 @@ Three cuts of [Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Nex
 | [Brain races](app/docs/BRAIN-RACES.md) · [test results](app/docs/test-results/README.md) | How other brains score on the same tests and the same PC. |
 
 Bob's default is stock Qwen3.6-35B-A3B (its smaller Q3 file is made for 8 GB cards, unproven in our lab, as we have yet to test). A Riker file already on a PC still runs from ➕ Your own brains.
+
+## Supported brains
+
+Every brain and helper Bob can download from his own catalogue, made from [app/catalog.json](app/catalog.json). They run on Bob's own engine, Lamplight, which is built on llama.cpp. Any other GGUF file can still be added from ➕ Your own brains.
+
+<!-- models:start -->
+<!-- Written by installer/make-model-list.js from app/catalog.json. Don't edit by hand: change the catalogue and run it again. -->
+
+Bob's catalogue has **89 brains** and **19 helpers** for pictures, video, music, voices and memory. Each one is a pinned file, checked against its sha256 when it downloads. **Fits** is the smallest hardware tier it's sized for ([the tiers](#set-up-for-your-hardware)). **Tried in our lab** (9 brains) means it ran on our own PCs before Bob would suggest it. Everything else is listed but never suggested until it's tried. **Size** is the download.
+
+<details>
+<summary><b>Brains</b> (63)</summary>
+
+| Brain | File | Size | Fits | Licence | Status |
+|---|---|---|---|---|---|
+| Qwen3.5 0.8B | Q8_0 | 1 GB | Any computer, even processor only | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| DeepSeek R1 Distill Qwen 1.5B | Q4_K_M | 1.1 GB | Any computer, even processor only | MIT (built on Qwen2.5, Apache 2.0) | Unproven in our lab, as we have yet to test |
+| LFM3 1.7B | Q4_K_M | 1.1 GB | Any computer, even processor only | LFM Open License v1.0 (limits commercial use: read it first) | Unproven in our lab, as we have yet to test |
+| Qwen3.5 2B | Q4_K_M | 1.9 GB | Any computer, even processor only | Apache 2.0 | Measured in our lab (on built-in graphics), not yet one of Bob's picks |
+| Granite 4.1 3B | Q4_K_M | 2.1 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Raon-1 nano | Q4_K_M | 2.1 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Granite 4.2 3B | Q4_K_M | 2.2 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Phi-4 mini 3.8B | Q4_K_M | 2.5 GB | 6 GB card or built-in graphics | MIT | Unproven in our lab, as we have yet to test |
+| Qwen3 4B Instruct 2507 | Q4_K_M | 2.5 GB | 6 GB card or built-in graphics | Apache 2.0 | Tried in our lab, measured on built-in graphics |
+| Ministral 3 3B | Q4_K_M | 3 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 E2B | Q4_0 | 3.4 GB | 6 GB card or built-in graphics | Apache 2.0 | Measured in our lab (on built-in graphics), not yet one of Bob's picks |
+| Qwen3.5 4B | Q4_K_M | 3.4 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.5 4B Turbo | Q4_K_M | 3.5 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| DeepSeek R1 Distill Qwen 7B | Q4_K_M | 4.7 GB | 6 GB card | MIT (built on Qwen2.5, Apache 2.0) | Unproven in our lab, as we have yet to test |
+| Qwen2.5 Coder 7B | Q4_K_M | 4.7 GB | 6 GB card | Apache 2.0 | Tried in our lab |
+| DeepSeek R1 Distill Llama 8B | Q4_K_M | 4.9 GB | 6 GB card | MIT, plus Meta's Llama 3.1 licence | Unproven in our lab, as we have yet to test |
+| Gemma 4 E4B | Q4_0 | 5.2 GB | 6 GB card | Apache 2.0 | Tried in our lab |
+| Nemotron 3.5 Bolt E4B | UD-Q4_K_XL | 5.6 GB | 6 GB card | OpenMDW 1.1 | Unproven in our lab, as we have yet to test |
+| DeepSeek R1 0528 Qwen3 8B | Q4_K_M | 5 GB | 8 GB card | MIT (built on Qwen3, Apache 2.0) | Unproven in our lab, as we have yet to test |
+| Granite 4.1 8B | Q4_K_M | 5.3 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Granite 4.2 8B | Q4_K_M | 5.3 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen2.5 VL 7B | Q4_K_M | 6 GB | 8 GB card | Apache 2.0 | Tried in our lab |
+| Ministral 3 8B | Q4_K_M | 6.1 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.5 9B Kimi K3 Distilled (khazarai) | Q4_K_M | 6.4 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| MiMo-V2.6 9B (Qwen3.5 9B distill) | Q4_K_M | 6.5 GB | 8 GB card | MIT | Unproven in our lab, as we have yet to test |
+| Qwen3.5 9B | Q4_K_M | 6.6 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.5 9B Turbo | Q4_K_M | 6.8 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 12B | Q4_0 | 7.4 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| DeepSeek R1 Distill Qwen 14B | Q4_K_M | 9 GB | 12 GB card | MIT (built on Qwen2.5, Apache 2.0) | Unproven in our lab, as we have yet to test |
+| Hermes 4 14B (Nous Research) | Q4_K_M | 9 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Ministral 3 14B | Q4_K_M | 9.1 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 35B-A3B Coding REAP50 | Q4_K_M | 11.4 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 35B-A3B (8 GB card version) | UD-Q3_K_XL | 17.7 GB | 12 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| gpt-oss 20B | MXFP4 | 13 GB | 16 GB card | Apache 2.0 | Tried in our lab |
+| GLM-4.7 Flash REAP 23B-A3B (Cerebras) | Q4_K_M | 14.1 GB | 16 GB card | MIT | Unproven in our lab, as we have yet to test |
+| LFM2.5 24B-A2B | Q4_K_M | 14.5 GB | 16 GB card | LFM Open License v1.0 (limits commercial use: read it first) | Unproven in our lab, as we have yet to test |
+| Devstral Small 2 24B | Q4_K_M | 15.2 GB | 16 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Mistral Small 3.2 24B | Q4_K_M | 15.2 GB | 16 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 26B | Q4_0 | 15.4 GB | 16 GB card | Apache 2.0 | Tried in our lab |
+| GLM-4.7 Flash 30B-A3B | Q4_K | 18.2 GB | 16 GB card, the rest in RAM | MIT | Unproven in our lab, as we have yet to test |
+| Nemotron 3.5 Lightning 30B-A3B | Q4_0 | 18.9 GB | 16 GB card, the rest in RAM | OpenMDW 1.1 | Unproven in our lab, as we have yet to test |
+| Qwen3 Coder 30B | Q4_K_M | 19 GB | 16 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| Raon-1 mini preview | Q4_K_M | 19.7 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Laguna XS 2.1 33B-A3B | Q4_K_M | 20.3 GB | 16 GB card, the rest in RAM | OpenMDW 1.1 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 35B-A3B Opus Reasoning Distilled | Q4_K_M | 22.1 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 35B-A3B | UD-Q4_K_XL | 23.3 GB | 16 GB card, the rest in RAM | Apache 2.0 | Tried in our lab, Bob's default brain, measured on a 16 GB card |
+| Qwen3.6 35B-A3B Distilled from Qwen 3.8 27B | UD-Q4_K_XL | 23.8 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 35B-A3B Turbo | UD-Q4_K_XL | 23.8 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen 3.8 27B Coding Distilled (khazarai) | Q4_K_M | 17.4 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen 3.8 27B | UD-Q4_K_XL | 17.6 GB | 24 GB card | Apache 2.0 | Tried in our lab |
+| Qwen3.6 27B | Q4_K_M | 17.7 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 27B Turbo | Q4_K_M | 18 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Muse Glimmer 30B | Q4_K_M | 18.2 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Granite 4.1 30B | Q4_K_M | 17.5 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Granite 4.2 30B | Q4_K_M | 17.7 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 31B | Q4_0 | 18.8 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| DeepSeek R1 Distill Qwen 32B | Q4_K_M | 19.9 GB | 24 GB card | MIT (built on Qwen2.5, Apache 2.0) | Unproven in our lab, as we have yet to test |
+| Nemotron 3.5 Bolt 74B-A9B |  | 23.8 GB | 24 GB card | OpenMDW 1.1 | Unproven in our lab, as we have yet to test |
+| DeepSeek R1 Distill Llama 70B | Q4_K_M | 42.5 GB | 46 GB of graphics memory (several cards or a rental) | MIT, plus Meta's Llama 3.3 licence | Unproven in our lab, as we have yet to test |
+| Qwen3-Next 80B-A3B | Q4_K_M | 48.5 GB | 51 GB of graphics memory (several cards or a rental) | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| gpt-oss 120B | MXFP4 | 63.4 GB | 66 GB of graphics memory (several cards or a rental) | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Llama 4 Scout 109B-A17B | Q4_K_M | 65.4 GB | 68 GB of graphics memory (several cards or a rental) | Llama 4 Community License | Unproven in our lab, as we have yet to test |
+| GLM-4.5 Air | UD-Q4_K_XL | 67.7 GB | 70 GB of graphics memory (several cards or a rental) | MIT | Unproven in our lab, as we have yet to test |
+
+</details>
+
+<details>
+<summary><b>Uncensored brains</b> (26), listed only while the Naughty list is on</summary>
+
+Community builds with the refusals taken out (heretic, abliterated and the like). Bob keeps them off his own picks.
+
+| Brain | File | Size | Fits | Licence | Status |
+|---|---|---|---|---|---|
+| LFM3 1.7B Uncensored (AtomicChat) | Q4_K_M | 1.1 GB | Any computer, even processor only | LFM Open License v1.0 (limits commercial use: read it first) | Unproven in our lab, as we have yet to test |
+| Qwen3.5 4B Heretic | Q4_K_M | 3.4 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 E4B Heretic | Q4_K_M | 5.9 GB | 6 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.5 9B Abliterated (huihui) | Q4_K_M | 6.3 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.5 9B Heretic | Q4_K_M | 6.5 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.5 9B Defiant Fable (DavidAU) | Q4_K_M | 7.9 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 12B Heretic | Q4_K_M | 7.5 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 12B Uncensored (HauhauCS Balanced) | Q4_K_M | 7.6 GB | 12 GB card | Gemma terms | Unproven in our lab, as we have yet to test |
+| Qwen3.6 14B-A3B FableVibes | Q4_K_M | 9.4 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| gpt-oss 20B Abliterated (huihui) | MXFP4 | 13.8 GB | 16 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Devstral Small 2 24B Abliterated | Q4_K_M | 15.2 GB | 16 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| LFM2.5 24B-A2B Uncensored (AtomicChat) | Q4_K_M | 15.4 GB | 16 GB card | LFM Open License v1.0 (limits commercial use: read it first) | Unproven in our lab, as we have yet to test |
+| Gemma 4 26B Heretic | Q4_K_M | 17.6 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 26B Uncensored (HauhauCS Balanced) | Q4_K_M | 18 GB | 16 GB card, the rest in RAM | Gemma terms | Unproven in our lab, as we have yet to test |
+| GLM-4.7 Flash 30B-A3B Abliterated (huihui) | Q4_K_M | 18.1 GB | 16 GB card, the rest in RAM | MIT | Unproven in our lab, as we have yet to test |
+| Qwen3.6 35B-A3B Heretic | Q4_K_M | 22.1 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 35B-A3B Uncensored (HauhauCS Aggressive) | Q4_K_M | 22.1 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 35B-A3B Abliterated (huihui) | Q4_K | 22.6 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen 3.8 27B Uncensored (HauhauCS Aggressive) | IQ4_XS | 16.6 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen 3.8 27B Heretic | Q4_K_M | 17.2 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen 3.8 27B Abliterated (huihui) | Q4_K | 17.7 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen 3.8 27B Uncensored (JonathanColetti) | Q4_K_M | 17.7 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 27B Abliterated (huihui) | Q4_K | 17.7 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 27B Heretic | Q4_K_M | 18.1 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Muse Glimmer 30B Abliterated | Q4_K_M | 18.3 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 31B Heretic | Q4_K_S | 18.6 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+
+</details>
+
+<details>
+<summary><b>Helpers</b> (19): pictures, video, music, voices and memory</summary>
+
+| Helper | Job | Size | Fits | Licence | Status |
+|---|---|---|---|---|---|
+| Nomic Embed Text | embed | 0.27 GB | Any computer, even processor only | Apache 2.0 | Tried in our lab |
+| FLUX.2 klein 4B (picture edits, 6 GB card version) | images | 5.3 GB | 6 GB card or built-in graphics, the rest in RAM | Apache 2.0 | Tried in our lab |
+| Z-Image Turbo (6 GB card version) | images | 6.7 GB | 6 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| FLUX.2 klein 4B (picture edits) | images | 7.1 GB | 6 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| Z-Image Turbo (8 GB card version) | images | 7.4 GB | 8 GB card | Apache 2.0 | Tried in our lab |
+| Z-Image Turbo (quick-load version) | images | 11.2 GB | 12 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| Z-Image Turbo | images | 20 GB | 12 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| Qwen Image Edit 2509 | images | 19 GB | 16 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| FLUX.1 schnell | images | 28 GB | 16 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| ACE-Step 1.5 music models | music | 10.1 GB | 8 GB card, the rest in RAM | MIT (ACE-Step 1.5); Apache-2.0 (Qwen3 Embedding) | Tried in our lab |
+| Alan (British English) | speech | 0.065 GB | Any computer, even processor only | MIT (Piper); voice data licence on its model card (limits commercial use: read it first) | Tried in our lab |
+| Lessac (US English, high quality) | speech | 0.12 GB | Any computer, even processor only | MIT (Piper); voice data licence on its model card (limits commercial use: read it first) | Tried in our lab |
+| Ryan (US English, high quality) | speech | 0.12 GB | Any computer, even processor only | MIT (Piper); voice data licence on its model card (limits commercial use: read it first) | Tried in our lab |
+| Kokoro voice pack (22 English voices) | speech | 0.354 GB | Any computer, even processor only | Apache 2.0 + MIT | Tried in our lab |
+| Wan 2.2 TI2V 5B (small card version) | video | 9 GB | 8 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| Wan 2.2 TI2V 5B | video | 21 GB | 12 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| LTX-2.3 22B | video | 28 GB | 16 GB card, the rest in RAM | LTX-2 Community License (free under $10M yearly revenue) | Tried in our lab |
+| Whisper base (English) | voice | 0.15 GB | Any computer, even processor only | MIT | Tried in our lab |
+| Whisper large v3 turbo | voice | 0.6 GB | Any computer, even processor only | MIT | Tried in our lab |
+
+</details>
+<!-- models:end -->
+
+**In testing, not in the catalogue yet:** the [Flash-Next cuts](#flash-next-cuts-bobert-riker-and-bill) (Bobert, Riker and Bill), Inkling 2 Mini, Ternary Bonsai 2.5 27B, and Saluki 27B, whose licence doesn't allow commercial use. They're all unproven in our lab, as we have yet to test them on real jobs. Each one joins the list when its catalogue entry ships.
 
 ## Bob-Net: Bobs working together
 
