@@ -27,6 +27,14 @@ on:
         description: 'With vulkan_release: leave out the patches whose names start with these numbers (space separated, e.g. "0102 0103"), for a before/after pair; the zip name then ends in -without-<numbers>'
         type: string
         default: ''
+      linux_release:
+        description: 'Build only the Linux files (processor + our own libggml-cuda.so, on Ubuntu 22.04 for glibc 2.35) and replace the Linux tar.gz on this test pre-release (brain-engine-<N>b<llama.cpp build>); empty = the usual build'
+        type: string
+        default: ''
+      linux_without:
+        description: 'With linux_release: leave out the patches whose names start with these numbers (space separated), so a rebuild matches the patch set the release was built from (e.g. "0123" for Brain Engine 46 on a later branch)'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -42,6 +50,8 @@ jobs:
       ggml: ${{ steps.d.outputs.ggml }}
       cuda: ${{ steps.d.outputs.cuda }}
       cudaver: ${{ steps.d.outputs.cudaver }}
+      cudaverlinux: ${{ steps.d.outputs.cudaverlinux }}
+      tag: ${{ steps.d.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: d
@@ -57,15 +67,19 @@ jobs:
           # The CUDA version of the official Windows CUDA zip for this tag (the newest, as Bob picks), so our
           # ggml-cuda.dll uses the same CUDA runtime as the cudart and cublas DLLs beside it.
           cudaver=$(gh release view "$tag" -R ggml-org/llama.cpp --json assets --jq '.assets[].name' | sed -n 's/^llama-.*-bin-win-cuda-\([0-9.]*\)-x64\.zip$/\1/p' | sort -V | tail -1)
-          echo "patches touch ggml: $ggml, CUDA: $cuda; official CUDA zip: $cudaver"
-          { echo "ggml=$ggml"; echo "cuda=$cuda"; echo "cudaver=$cudaver"; } >> "$GITHUB_OUTPUT"
+          # Nov 26: the same for Linux, from the official Ubuntu CUDA build (Bob puts its cudart beside our libggml-cuda.so);
+          # no official Ubuntu CUDA build = the Windows one's version.
+          cudaverlinux=$(gh release view "$tag" -R ggml-org/llama.cpp --json assets --jq '.assets[].name' | sed -n 's/^llama-.*-bin-ubuntu-cuda-\([0-9.]*\)-x64\.\(zip\|tar\.gz\)$/\1/p' | sort -V | tail -1)
+          [ -n "$cudaverlinux" ] || cudaverlinux="$cudaver"
+          echo "patches touch ggml: $ggml, CUDA: $cuda; official CUDA zip: $cudaver; official Ubuntu CUDA build: $cudaverlinux"
+          { echo "ggml=$ggml"; echo "cuda=$cuda"; echo "cudaver=$cudaver"; echo "cudaverlinux=$cudaverlinux"; echo "tag=$tag"; } >> "$GITHUB_OUTPUT"
 
   # Our own ggml-cuda.dll, only when a patch changes the CUDA backend. Built like upstream's windows-cuda job:
   # MSVC (VS 2022, which every CUDA 12 and 13 knows), the CUDA version of the official zip, upstream's default
   # architectures (75 and 80 as PTX, 86 and 89 as code, 90 as PTX, 120a as code from CUDA 12.8).
   cuda:
     needs: detect
-    if: ${{ needs.detect.outputs.cuda == 'true' }}
+    if: ${{ needs.detect.outputs.cuda == 'true' && (github.event_name != 'workflow_dispatch' || inputs.linux_release == '') }}
     runs-on: windows-2022
     timeout-minutes: 300
     steps:
@@ -145,7 +159,7 @@ jobs:
   windows:
     needs: [detect, cuda]
     # draft pull requests run nothing; waits for the CUDA job, which runs only when a patch changes the CUDA backend
-    if: ${{ always() && needs.detect.result == 'success' && (needs.cuda.result == 'success' || needs.cuda.result == 'skipped') }}
+    if: ${{ always() && needs.detect.result == 'success' && (needs.cuda.result == 'success' || needs.cuda.result == 'skipped') && (github.event_name != 'workflow_dispatch' || inputs.linux_release == '') }}
     runs-on: windows-2025-vs2026
     permissions:
       contents: write # only used by the publish step, which runs only when asked for by hand
@@ -272,53 +286,108 @@ jobs:
           BE_GGML: ${{ needs.detect.outputs.ggml }}
         run: bash app/engine/publish.sh "$BEV" "$TAG" brain-engine-*-win-x64.zip
 
-  linux:
+  # Nov 26: Linux is built inside Ubuntu 22.04 (glibc 2.35), as upstream builds its Ubuntu downloads. On the runner's own
+  # newer Ubuntu the files needed glibc 2.43 and llama-server wouldn't start on Ubuntu 22.04 or 24.04. And when a patch
+  # changes the CUDA backend, Linux gets our own libggml-cuda.so too (as Windows gets ggml-cuda.dll): the official one
+  # beside our ggml-base would mix two ggml builds.
+  linux-cuda:
     needs: detect
-    # draft pull requests run nothing
-    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    if: ${{ needs.detect.outputs.cuda == 'true' }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # only used by the publish step, which runs only when asked for by hand
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Fetch llama.cpp at the tested tag and apply the patches
+        env:
+          TAG: ${{ needs.detect.outputs.tag }}
+          WITHOUT: ${{ inputs.linux_without }}
+        run: bash app/engine/linux-build.sh fetch
+      - name: Build libggml-cuda.so in Ubuntu 22.04 with CUDA ${{ needs.detect.outputs.cudaverlinux }}
+        env:
+          CUDAVER: ${{ needs.detect.outputs.cudaverlinux }}
+        run: docker run --rm -e CUDAVER -v "$PWD:/w" -w /w ubuntu:22.04 bash app/engine/linux-build.sh cuda
+      - name: Keep libggml-cuda.so
         run: |
-          tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
+          mkdir out
+          cp -P llama.cpp/build-cuda/bin/libggml-cuda.so* out/
+          ls -la out
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ggml-cuda-linux-x64
+          path: out/
+
+  linux:
+    needs: [detect, linux-cuda]
+    # draft pull requests run nothing; waits for the Linux CUDA job, which runs only when a patch changes the CUDA backend
+    if: ${{ always() && needs.detect.result == 'success' && (needs.linux-cuda.result == 'success' || needs.linux-cuda.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # only used by the publish steps, which run only when asked for by hand
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fetch llama.cpp at the tested tag and apply the patches
+        env:
+          TAG: ${{ needs.detect.outputs.tag }}
+          WITHOUT: ${{ inputs.linux_without }}
+        run: |
+          tag="$TAG"
           echo "TAG=$tag" >> "$GITHUB_ENV"
           # The build's name, N1bN2: Brain Engine's own number, "b", the llama.cpp build it's built on (5b12282 names the
           # release and the files, brain-engine-5b12282-win-x64.zip). TAG stays the llama.cpp tag. Builds 3 and 4 were vN.
           echo "BEV=$(node -p "require('./app/package.json').bob.brainEngineVersion")b${tag#b}" >> "$GITHUB_ENV"
-          git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
-          # A one-commit clone counts "build 1"; say the tag's number instead, so --version reads like llama.cpp's own builds.
-          sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
-          for p in app/engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
-      - name: Build
-        working-directory: llama.cpp
-        run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_TESTS=ON
-          cmake --build build -j4 --target llama-server llama-bench llama-gguf-split ggml-rpc-server llama-diffusion-cli test-llama-archs
-          # upstream skips cvector-generator and export-lora when the backends load at run time, so it gets its own CPU-only, static build
-          cmake -B build-cv -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
-          cmake --build build-cv -j4 --target llama-cvector-generator llama-export-lora
+          bash app/engine/linux-build.sh fetch
+      - name: Build in Ubuntu 22.04
+        run: docker run --rm -v "$PWD:/w" -w /w ubuntu:22.04 bash app/engine/linux-build.sh cpu
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: ${{ needs.linux-cuda.result == 'success' }}
+        with:
+          name: ggml-cuda-linux-x64
+          path: cuda-out
       - name: Pack
         run: |
           out=brain-engine-$BEV-linux-x64
+          if [ -n "${{ inputs.linux_release }}" ]; then out="${{ inputs.linux_release }}-linux-x64"; fi
+          echo "OUT=$out" >> "$GITHUB_ENV"
+          sudo chown -R "$(id -u):$(id -g)" llama.cpp
           mkdir "$out"
           cp llama.cpp/build/bin/llama-server llama.cpp/build/bin/llama-bench llama.cpp/build/bin/llama-gguf-split llama.cpp/build/bin/ggml-rpc-server llama.cpp/build/bin/llama-diffusion-cli llama.cpp/build/bin/test-llama-archs llama.cpp/build-cv/bin/llama-cvector-generator llama.cpp/build-cv/bin/llama-export-lora $(ls llama.cpp/build/bin/*.so* | grep -v '/libggml') llama.cpp/build/bin/libggml-rpc.so* "$out/"
           if [ "${{ needs.detect.outputs.ggml }}" = "true" ]; then cp -P llama.cpp/build/bin/libggml*.so* "$out/"; fi # Nov 18 (0026): our own ggml set
+          if [ -d cuda-out ]; then cp -P cuda-out/libggml-cuda.so* "$out/"; fi # Nov 26: our own CUDA backend, built from the same tree
           cp llama.cpp/LICENSE "$out/LICENSE-llama.cpp"
           cp app/engine/README.md "$out/README-Brain-Engine.md"
+          # Nov 26: nothing in the download may need a glibc newer than Ubuntu 22.04's (2.35)
+          bad=0
+          for f in "$out"/*; do
+            [ -f "$f" ] && [ ! -L "$f" ] || continue
+            v=$(objdump -T "$f" 2>/dev/null | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)
+            [ -n "$v" ] || continue
+            echo "$(basename "$f"): glibc $v"
+            if [ "$(printf '%s\n2.35\n' "$v" | sort -V | tail -1)" != "2.35" ]; then echo "::error::$(basename "$f") needs glibc $v (more than 2.35)"; bad=1; fi
+          done
+          [ "$bad" = 0 ]
+          ls -la "$out"
           tar czf "$out.tar.gz" "$out"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: brain-engine-linux-x64
-          path: brain-engine-*-linux-x64.tar.gz
+          path: ${{ env.OUT }}.tar.gz
       - name: Publish to the test pre-release (by hand only)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish && inputs.linux_release == '' }}
         env:
           GH_TOKEN: ${{ github.token }}
           BE_GGML: ${{ needs.detect.outputs.ggml }}
-        run: bash app/engine/publish.sh "$BEV" "$TAG" brain-engine-*-linux-x64.tar.gz
+        run: bash app/engine/publish.sh "$BEV" "$TAG" "$OUT.tar.gz"
+      - name: Replace the Linux file on the named test pre-release (linux_release)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.linux_release != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REL: ${{ inputs.linux_release }}
+        run: |
+          case "$REL" in brain-engine-*) ;; *) echo "not a Brain Engine test release: $REL"; exit 1;; esac
+          f="$OUT.tar.gz"
+          sha256sum "$f" | awk '{print $1}' > "$f.sha256"
+          cat "$f.sha256"
+          gh release upload "$REL" "$f" "$f.sha256" --clobber -R "$GITHUB_REPOSITORY"
 
   vulkan:
     # Nov 23: a Brain Engine whose patches change ggml ships its own ggml and ggml-base, so the official Vulkan DLL (built

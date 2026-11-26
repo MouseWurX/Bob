@@ -125,6 +125,10 @@ The build turns on `-DGGML_RPC=ON` so the card server exists. Its `ggml-rpc` bac
 
 The **Brain Engine** workflow (`.github/workflows/brain-engine.yml`) builds them when `engine/` changes on main or in a pull request that is ready for review, and by hand. Pushes to work branches and draft pull requests build nothing, so a patch that is still being worked on never sends a failed-build e-mail. Check a new or changed patch with your own build first: `bash engine/try-newer.sh` for a move to a newer tag, or apply the patches to a clone of the tag and build the same targets as the workflow (on Windows too when the patch touches code that includes `windows.h`).
 
+## The Linux build
+
+From Nov 26 the Linux files are built inside Ubuntu 22.04 (`engine/linux-build.sh`, run by the Brain Engine workflow in an `ubuntu:22.04` container), so nothing in the download needs a glibc newer than 2.35: Ubuntu 22.04 and 24.04, Debian 12 and their kin can run it. Built on the runner's own newer Ubuntu, Brain Engine 43 to 46 needed glibc 2.43, and llama-server would not start on those. The Pack step fails the build if any file needs more than 2.35. When a patch changes the CUDA backend, the download also carries our own `libggml-cuda.so`, built from the same patched tree with the CUDA version of the official Ubuntu CUDA download (as Windows carries `ggml-cuda.dll`); it goes over a copy of that official download, whose CUDA runtime stays beside it. To rebuild only the Linux file of a published test build, start the workflow by hand with `linux_release` set to its release (and `linux_without` for any later patch numbers on the branch).
+
 ## Moving to a newer llama.cpp
 
 `engine/try-newer.sh [TAG]` puts the patches on the tag Bob is on now (one commit each), then replays them on `TAG` (default: the newest `bNNNN`) with git's three-way merge, so a patch whose surrounding lines only moved still goes on. The moved patches land in `try-newer/patches/` with the same names. When one needs a hand, `try-newer/conflict.txt` names it and its files.
