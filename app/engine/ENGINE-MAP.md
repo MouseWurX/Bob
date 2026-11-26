@@ -967,3 +967,38 @@ Written Nov 22 before the borrowing work (scope: rebuild Avalon's ideas inside B
 - **Upstream files:** `src/llama-grammar.{h,cpp}`, `common/jinja/` (runtime, string, value), `ggml/src/ggml-cpu/ggml-cpu.{c,cpp}`, `src/llama-context.cpp`, `ggml/src/ggml-cuda/convert.cu`, tests.
 - **Re-check on rebase:** drop with 0126.
 - **Tests (0126 + 0127):** `engine/tests/upstream-picks-2.py <new tree> <old tree>` (Nov 26, cloud, processor, against the same tree without 0126 and 0127): upstream's own unit tests that the picks touch (templates, JSON schemas, grammars, chat parsers, GGUF, saved chats on a plain and a recurrent brain, the server parts) all pass; tiny made-up brains of 8 families (qwen35moe, qwen35, qwen3next, qwen4exp, qwen3moe, qwen3, llama, gemma3) give the same perplexity, KLD 0 with the same top token everywhere, and the same greedy words on 1 and 4 threads (qwen3next's perplexity moves in the 7th digit only because #32393 now applies its ssm_out scale); llama-server with three tools offered (whole grammar on) gives the same prompt, words and calls with thinking on, off, tools required and no tools. 64 of 64. `tool-call-parsers.mjs` 128 of 128 with Bob's prompts byte-identical; `prompt-cache.py` all pass. The changed CUDA files (binbcast, concat, convert, ggml-cuda, mmf and its instances, mmvf, softmax) compile for the 5070 Ti (sm_120, CUDA 13.5); ggml-vulkan builds with its shaders. Speed and words on a real card or the Legion Go: unproven in our lab, as we have yet to test.
+
+### 0128-0134: the bigger upstream picks (to b12779), most behind keys
+- **Why:** the owner (Nov 26): bring in the bigger upstream wins too, including the ones that may change answers; different answers are fine as long as quality doesn't drop. So the word-changing ones wait behind engine keys (off unless set) until Bob's held-out real jobs pass on a card; the lossless ones are on.
+- **How:** upstream commits, applied over 0126/0127: 922cff9 (#32500) = 0128; c212d25 (#32828) and 82dd970 (#28992), hand ports = 0129; d35dc4d (#31669) and 72cda4a (#32721) = 0130; 7a4117e (#31045) = 0131; 2e2f5a0 (#33032) = 0132; 62d6c8c (#30685) = 0133; 5bd90fa (#31564) = 0134. Hand merges: 0129 onto b12359's `get_available_slot` and `server_prompt_cache::load` in `server-task.cpp`, since upstream's versions sit in the new `server-slot-sched.cpp` (#32154, not taken). 0130: our `llama_clear_tensor_data` kept with upstream's row size (a row now carries the replay columns), and the snapshot rollback that upstream removed from `build_recurrent_attn` put back for when the key is off. #32721 without the d96 `ssm_scan` pipeline (#32162, not taken). Test-file hunks that need upstream tests we don't carry are left out (#32500, #31669, #32721, #30685).
+- **Keys (all off unless set):**
+  - `GGML_CUDA_FUSE_MROPE=1` (0128): the M-RoPE fusion and the new block sizes. Unset, `ggml_cuda_should_fuse_rms_norm_mul_rope` refuses the M-RoPE modes, and the launch uses b12359's block sizes.
+  - `LLAMA_RS_REPLAY=1` (0130): sets `cparams.rs_replay` for the brains upstream picks (qwen35, qwen35moe, qwen4exp, clover-moe, the KDA brains, bailingmoe3) when guesses are kept (`n_rs_seq > 0`). The log says `rs_replay = true` and the recurrent size line says `replay`.
+  - `GGML_VK_MIXED_DOT=1` (0131): honours the mixed-sign integer dot in `ggml_vk_get_device` and the GPU info line.
+  - `LLAMA_YARN_KEYS=1` (0132): `llama_model_base::load_hparams` reads the four YaRN keys for every family.
+  - `GGML_CUDA_ASYNC_INPUTS=1` (0133): the CUDA device's `fast_async_host_input` cap.
+- **Words:** 0129 and 0134 are lossless. With every key off, the same numbers as before (see Tests). Each key on is what Bob's held-out jobs measure on a card before any becomes a Turbo switch or a default.
+- **Tests:** `engine/tests/upstream-picks-3.py` (cloud, processor): 8 of 8 pass. With every key off, `upstream-picks-2.py` gives 64 of 64, `tool-call-parsers` 128 of 128 and the prompt-cache tests all pass. MTP guess-ahead on a tiny Qwen 3.5 MoE brain gives the same words, calls and drafts as LL46 with the replay off and on, and the delta-net memory drops from 0.54 to 0.15 MiB with `LLAMA_RS_REPLAY=1`. Patches 0001-0134 apply and build together. The changed CUDA files compile for sm_120 and the Vulkan backend builds. The card keys are not run in the cloud: they wait for the quality check on Bob's held-out jobs.
+- **Upstream files:** `ggml/src/ggml-cuda/` (rope.cu(h), ggml-cuda.cu, gated_delta_net.cu(h), gated-delta-net-mma.cu(h)), `ggml/src/ggml-vulkan/` (ggml-vulkan.cpp, -types.h, -push-constants.h, -debug.cpp, gated_delta_net*.comp, mul_mmq*, fill.comp), `ggml/src/ggml-cpu/ops.cpp`, `ggml/src/ggml.c`, `ggml/include/ggml.h` (`ggml_gated_delta_net_ext`), `ggml/include/ggml-backend.h`, `ggml/src/ggml-backend.cpp`, `src/llama-memory-recurrent.{h,cpp}`, `src/llama-memory-hybrid*.{h,cpp}`, `src/llama-graph.{h,cpp}`, `src/models/delta-net-base.cpp` and the delta-net families, `src/llama-model.cpp`, `src/llama-context.cpp`, `src/llama-cparams.h`, `tools/server/server-task.{h,cpp}`, `tools/server/server-context.cpp`, `common/chat*.cpp`.
+- **Re-check on rebase:** drop each part once the base has it, and keep the key gates until the held-out jobs make a key a default. On a rebase past #32154, 0129 is upstream's.
+
+### 0128-cuda-fuse-mrope: the CUDA M-RoPE fusion for Qwen's picture-aware position step (`GGML_CUDA_FUSE_MROPE=1`)
+- Upstream #32500, in `ggml/src/ggml-cuda/rope.cu(h)` and `ggml-cuda.cu`. May change words a little on the card, so off until the held-out jobs pass. Why, keys, tests: see 0128-0134 above.
+
+### 0129-prompt-cache-fixes: the chat cache restores without a copy and picks the better saved chat (on)
+- Upstream #32828 and #28992, hand ported into `tools/server/server-task.{h,cpp}` and `server-context.cpp`. Lossless. See 0128-0134 above.
+
+### 0130-gdn-replay: delta-net MTP replay, less recurrent memory when guessing ahead (`LLAMA_RS_REPLAY=1`)
+- Upstream #31669 and the Vulkan #32721, in the delta-net graph, the recurrent memory and the CUDA and Vulkan gated delta-net kernels. With the key off, the snapshot path is ours as before. See 0128-0134 above.
+
+### 0131-vulkan-mixed-dot: the Vulkan mixed-sign integer dot (`GGML_VK_MIXED_DOT=1`)
+- Upstream #31045, in `ggml/src/ggml-vulkan/`. Matters on graphics without the signed dot. See 0128-0134 above.
+
+### 0132-yarn-keys: read the YaRN keys for every brain family (`LLAMA_YARN_KEYS=1`)
+- Upstream #33032, in `src/llama-model.cpp`. Off, the per-family reads are as in b12359. See 0128-0134 above.
+
+### 0133-cuda-async-inputs: CUDA copies its inputs without waiting (`GGML_CUDA_ASYNC_INPUTS=1`)
+- Upstream #30685, the `fast_async_host_input` device cap in `ggml-backend` and `ggml-cuda.cu`. See 0128-0134 above.
+
+### 0134-named-tool-choice: `tool_choice` can name one tool (on)
+- Upstream #31564, in `common/chat*.cpp`. Lossless: a request that names no tool is unchanged. See 0128-0134 above.
