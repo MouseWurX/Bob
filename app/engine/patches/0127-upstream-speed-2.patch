@@ -1,0 +1,1735 @@
+diff --git a/common/jinja/runtime.cpp b/common/jinja/runtime.cpp
+index df2bfd9f2..aae67cab0 100644
+--- a/common/jinja/runtime.cpp
++++ b/common/jinja/runtime.cpp
+@@ -89,21 +89,22 @@ value statement::execute(context & ctx) const {
+ }
+ 
+ value identifier::execute_impl(context & ctx) const {
+-    auto it = ctx.get_val(val);
+-    auto builtins = global_builtins();
+-    if (!it->is_undefined()) {
++    auto it = ctx.find_val(key);
++    if (it && !it->is_undefined()) {
+         if (ctx.is_get_stats) {
+             value_t::stats_t::mark_used(it);
+         }
+         JJ_DEBUG("Identifier '%s' found, type = %s", val.c_str(), it->type().c_str());
+         return it;
+-    } else if (builtins.find(val) != builtins.end()) {
++    }
++    const auto & builtins = global_builtins();
++    auto builtin = builtins.find(val);
++    if (builtin != builtins.end()) {
+         JJ_DEBUG("Identifier '%s' found in builtins", val.c_str());
+-        return mk_val<value_func>(val, builtins.at(val));
+-    } else {
+-        JJ_DEBUG("Identifier '%s' not found, returning undefined", val.c_str());
+-        return mk_val<value_undefined>(val);
++        return mk_val<value_func>(val, builtin->second);
+     }
++    JJ_DEBUG("Identifier '%s' not found, returning undefined", val.c_str());
++    return mk_val<value_undefined>(val);
+ }
+ 
+ value object_literal::execute_impl(context & ctx) const {
+@@ -717,7 +718,7 @@ value set_statement::execute_impl(context & ctx) const {
+         }
+         auto obj_ptr = cast_val<value_object>(object);
+         JJ_DEBUG("Setting object property '%s' with value type %s", prop_name.c_str(), rhs->type().c_str());
+-        obj_ptr->insert(prop_name, rhs);
++        obj_ptr->insert(cached_val<value_string>(ctx, member->static_property), rhs);
+ 
+     } else {
+         throw std::runtime_error("Invalid LHS inside assignment expression: " + assignee->type());
+@@ -837,6 +838,19 @@ value call_statement::execute_impl(context & ctx) const {
+     return callee_func->invoke(args);
+ }
+ 
++member_expression::member_expression(statement_ptr && object, statement_ptr && property, bool computed) :
++    object(std::move(object)),
++    property(std::move(property)),
++    computed(computed) {
++    chk_type<expression>(this->object);
++    chk_type<expression>(this->property);
++    if (!computed) {
++        if (const auto * id = cast_stmt<identifier>(this->property)) {
++            static_property = id->key;
++        }
++    }
++}
++
+ value member_expression::execute_impl(context & ctx) const {
+     value object = this->object->execute(ctx);
+ 
+@@ -845,14 +859,13 @@ value member_expression::execute_impl(context & ctx) const {
+         // syntax: obj[expr]
+         JJ_DEBUG("Member expression, computing property type %s", this->property->type().c_str());
+ 
+-        int64_t arr_size = 0;
+-        if (is_val<value_array>(object)) {
+-            arr_size = object->as_array().size();
+-        } else if (is_val<value_string>(object)) {
+-            arr_size = object->as_string().length();
+-        }
+-
+         if (is_stmt<slice_expression>(this->property)) {
++            int64_t arr_size = 0;
++            if (is_val<value_array>(object)) {
++                arr_size = static_cast<int64_t>(object->as_array().size());
++            } else if (is_val<value_string>(object)) {
++                arr_size = static_cast<int64_t>(cast_val<value_string>(object)->val_str.length());
++            }
+             auto s = cast_stmt<slice_expression>(this->property);
+             value step_val  = s->step_expr  ? s->step_expr->execute(ctx)  : mk_val<value_int>(1);
+             value start_val = s->start_expr ? s->start_expr->execute(ctx) : (step_val->as_int() < 0 ? mk_val<value_int>(arr_size - 1) : mk_val<value_int>(0));
+@@ -874,7 +887,7 @@ value member_expression::execute_impl(context & ctx) const {
+         }
+     } else if (is_stmt<integer_literal>(this->property)) {
+         // syntax: obj.index
+-        property = mk_val<value_int>(cast_stmt<integer_literal>(this->property)->val);
++        property = this->property->execute(ctx);
+         if (property->as_int() < 0) {
+             throw std::runtime_error("Static member property cannot be negative");
+         }
+@@ -883,8 +896,8 @@ value member_expression::execute_impl(context & ctx) const {
+         if (!is_stmt<identifier>(this->property)) {
+             throw std::runtime_error("Static member property must be an identifier");
+         }
+-        property = mk_val<value_string>(cast_stmt<identifier>(this->property)->val);
+-        std::string prop = property->as_string().str();
++        property = cached_val<value_string>(ctx, static_property);
++        const auto & prop = cast_stmt<identifier>(this->property)->val;
+         JJ_DEBUG("Member expression, object type %s, static property '%s'", object->type().c_str(), prop.c_str());
+ 
+         // behavior of jinja2: obj having prop as a built-in function AND 'prop', as an object key,
+@@ -892,51 +905,56 @@ value member_expression::execute_impl(context & ctx) const {
+         // while obj['prop'] returns the property value.
+         // example: {"obj": {"items": 123}} -> obj.items is the built-in function, obj['items'] is 123
+ 
+-        value val = try_builtin_func(ctx, prop, object, true);
+-        if (!is_val<value_undefined>(val)) {
++        value val = find_builtin_func(ctx, prop, object);
++        if (val) {
+             return val;
+         }
+         // else, fallthrough to normal property access below
+     }
+ 
+     JJ_DEBUG("Member expression on object type %s, property type %s", object->type().c_str(), property->type().c_str());
+-    value val = mk_val<value_undefined>("object_property");
++    value val;
+ 
+     if (property->is_undefined()) {
+         JJ_DEBUG("%s", "Member expression property is undefined, returning undefined");
+-        return val;
++        return mk_val<value_undefined>("object_property");
+     }
+ 
+     ensure_key_type_allowed(property);
+ 
+     if (is_val<value_undefined>(object)) {
+         JJ_DEBUG("%s", "Accessing property on undefined object, returning undefined");
+-        return val;
++        return mk_val<value_undefined>("object_property");
+ 
+     } else if (is_val<value_object>(object)) {
+-        auto key = property->as_string().str();
+-        val = object->at(property, val);
+-        if (is_val<value_undefined>(val)) {
+-            val = try_builtin_func(ctx, key, object, true);
++        val = object->find(property);
++        if (!val || is_val<value_undefined>(val)) {
++            val = try_builtin_func(ctx, property->as_string().str(), object, true);
+         }
+-        JJ_DEBUG("Accessed property '%s' value, got type: %s", key.c_str(), val->type().c_str());
++        JJ_DEBUG("Accessed property '%s' value, got type: %s", property->as_string().str().c_str(), val->type().c_str());
+ 
+     } else if (is_val<value_array>(object) || is_val<value_string>(object)) {
+         if (is_val<value_int>(property) || is_val<value_bool>(property)) {
+             int64_t index = property->as_int();
+             JJ_DEBUG("Accessing %s index %d", object->type().c_str(), (int)index);
+             if (is_val<value_array>(object)) {
+-                auto & arr = object->as_array();
++                const auto * arr = cast_val<value_array>(object);
++                const auto count = arr->as_array().size();
+                 if (index < 0) {
+-                    index += static_cast<int64_t>(arr.size());
+-                }
+-                if (index >= 0 && index < static_cast<int64_t>(arr.size())) {
+-                    val = arr[index];
++                    // Avoid negating INT64_MIN.
++                    const uint64_t distance = static_cast<uint64_t>(-(index + 1)) + 1;
++                    if (distance <= count) {
++                        val = arr->as_array().at(static_cast<size_t>(count - distance));
++                    }
++                } else if (static_cast<uint64_t>(index) < count) {
++                    val = arr->as_array().at(static_cast<size_t>(index));
+                 }
+             } else { // value_string
+-                auto str = object->as_string().str();
+-                if (index >= 0 && index < static_cast<int64_t>(str.size())) {
+-                    val = mk_val<value_string>(std::string(1, str[index]));
++                if (index >= 0) {
++                    const auto byte = cast_val<value_string>(object)->val_str.byte_at(static_cast<size_t>(index));
++                    if (byte) {
++                        val = mk_val<value_string>(std::string(1, *byte));
++                    }
+                 }
+             }
+ 
+@@ -954,7 +972,10 @@ value member_expression::execute_impl(context & ctx) const {
+         val = try_builtin_func(ctx, key, object, true);
+     }
+ 
+-    if (ctx.is_get_stats && val && object && property) {
++    if (!val) {
++        val = mk_val<value_undefined>("object_property");
++    }
++    if (ctx.is_get_stats && object && property) {
+         value_t::stats_t::mark_used(val);
+         value_t::stats_t::mark_used(object);
+         value_t::stats_t::mark_used(property);
+diff --git a/common/jinja/runtime.h b/common/jinja/runtime.h
+index 43e108551..97db5de33 100644
+--- a/common/jinja/runtime.h
++++ b/common/jinja/runtime.h
+@@ -84,9 +84,14 @@ struct context {
+         // inherit variables (for example, when entering a new scope)
+         env(mk_val<value_object>(*parent.env)) {}
+ 
++    // returns nullptr if not found
++    value find_val(const value & key) {
++        return env->find(key);
++    }
++
+     value get_val(const std::string & name) {
+-        value default_val = mk_val<value_undefined>(name);
+-        return env->at(name, default_val);
++        auto result = find_val(mk_val<value_string>(name));
++        return result ? result : mk_val<value_undefined>(name);
+     }
+ 
+     void set_val(const std::string & name, const value & val) {
+@@ -105,6 +110,12 @@ private:
+     value_object env;
+ };
+ 
++// values cached in the AST are shared across renders, but stats mutate values, so stats mode gets a fresh copy
++template<typename T>
++value cached_val(const context & ctx, const value & cached) {
++    return ctx.is_get_stats ? mk_val<T>(*cast_val<T>(cached)) : cached;
++}
++
+ // utils for visiting AST nodes
+ static std::vector<const statement *> stmts_to_ptr(const statements & stmts) {
+     std::vector<const statement *> children;
+@@ -328,11 +339,8 @@ struct member_expression : public expression {
+     statement_ptr property;
+     bool computed; // true if obj[expr] and false if obj.prop
+ 
+-    member_expression(statement_ptr && object, statement_ptr && property, bool computed)
+-        : object(std::move(object)), property(std::move(property)), computed(computed) {
+-        chk_type<expression>(this->object);
+-        chk_type<expression>(this->property);
+-    }
++    value static_property; // set if property is an identifier, see cached_val()
++    member_expression(statement_ptr && object, statement_ptr && property, bool computed);
+     std::string type() const override { return "MemberExpression"; }
+     value execute_impl(context & ctx) const override;
+     void visit(context & ctx) const override {
+@@ -367,7 +375,8 @@ struct call_expression : public expression {
+  */
+ struct identifier : public expression {
+     std::string val;
+-    explicit identifier(const std::string & val) : val(val) {}
++    const value key; // lookup key, safe to share across renders as lookups do not touch stats
++    explicit identifier(const std::string & val) : val(val), key(mk_val<value_string>(val)) {}
+     std::string type() const override { return "Identifier"; }
+     value execute_impl(context & ctx) const override;
+ };
+@@ -376,28 +385,31 @@ struct identifier : public expression {
+ 
+ struct integer_literal : public expression {
+     int64_t val;
+-    explicit integer_literal(int64_t val) : val(val) {}
++    const value constant; // see cached_val()
++    explicit integer_literal(int64_t val) : val(val), constant(mk_val<value_int>(val)) {}
+     std::string type() const override { return "IntegerLiteral"; }
+-    value execute_impl(context &) const override {
+-        return mk_val<value_int>(val);
++    value execute_impl(context & ctx) const override {
++        return cached_val<value_int>(ctx, constant);
+     }
+ };
+ 
+ struct float_literal : public expression {
+     double val;
+-    explicit float_literal(double val) : val(val) {}
++    const value constant; // see cached_val()
++    explicit float_literal(double val) : val(val), constant(mk_val<value_float>(val)) {}
+     std::string type() const override { return "FloatLiteral"; }
+-    value execute_impl(context &) const override {
+-        return mk_val<value_float>(val);
++    value execute_impl(context & ctx) const override {
++        return cached_val<value_float>(ctx, constant);
+     }
+ };
+ 
+ struct string_literal : public expression {
+     std::string val;
+-    explicit string_literal(const std::string & val) : val(val) {}
++    const value constant; // see cached_val()
++    explicit string_literal(const std::string & val) : val(val), constant(mk_val<value_string>(val)) {}
+     std::string type() const override { return "StringLiteral"; }
+-    value execute_impl(context &) const override {
+-        return mk_val<value_string>(val);
++    value execute_impl(context & ctx) const override {
++        return cached_val<value_string>(ctx, constant);
+     }
+ };
+ 
+@@ -748,7 +760,7 @@ static void gather_string_parts_recursive(const value & val, value_string & part
+     } else if (is_val<value_array>(val) && depth >= JINJA_RECURSIVE_LIMIT) {
+         throw std::runtime_error("value is nested more than " + std::to_string(JINJA_RECURSIVE_LIMIT) + " levels deep");
+     } else if (is_val<value_array>(val)) {
+-        auto items = cast_val<value_array>(val)->as_array();
++        const auto & items = cast_val<value_array>(val)->as_array();
+         for (const auto & item : items) {
+             gather_string_parts_recursive(item, parts, depth + 1);
+         }
+diff --git a/common/jinja/string.cpp b/common/jinja/string.cpp
+index bde679e4e..22189fa6f 100644
+--- a/common/jinja/string.cpp
++++ b/common/jinja/string.cpp
+@@ -43,14 +43,59 @@ void string::mark_input() {
+ }
+ 
+ std::string string::str() const {
+-    if (parts.size() == 1) {
+-        return parts[0].val;
++    std::string result;
++    result.reserve(length());
++    for (const auto & part : parts) {
++        result += part.val;
++    }
++    return result;
++}
++
++bool string::empty() const {
++    for (const auto & part : parts) {
++        if (!part.val.empty()) {
++            return false;
++        }
+     }
+-    std::ostringstream oss;
++    return true;
++}
++
++std::optional<char> string::byte_at(size_t index) const {
+     for (const auto & part : parts) {
+-        oss << part.val;
++        if (index < part.val.size()) {
++            return part.val[index];
++        }
++        index -= part.val.size();
++    }
++    return {};
++}
++
++bool string::equals(const string & other) const {
++    size_t part = 0, offset = 0;
++    for (const auto & left : parts) {
++        std::string_view text(left.val);
++        while (!text.empty()) {
++            while (part < other.parts.size() && offset == other.parts[part].val.size()) {
++                ++part;
++                offset = 0;
++            }
++            if (part == other.parts.size()) {
++                return false;
++            }
++            const auto & right = other.parts[part].val;
++            const auto count = std::min(text.size(), right.size() - offset);
++            if (text.substr(0, count) != std::string_view(right).substr(offset, count)) {
++                return false;
++            }
++            text.remove_prefix(count);
++            offset += count;
++        }
++    }
++    while (part < other.parts.size() && offset == other.parts[part].val.size()) {
++        ++part;
++        offset = 0;
+     }
+-    return oss.str();
++    return part == other.parts.size();
+ }
+ 
+ size_t string::length() const {
+diff --git a/common/jinja/string.h b/common/jinja/string.h
+index 669afb8f1..119ad11c2 100644
+--- a/common/jinja/string.h
++++ b/common/jinja/string.h
+@@ -39,6 +39,9 @@ struct string {
+ 
+     std::string str() const;
+     size_t length() const;
++    bool empty() const;
++    bool equals(const string & other) const;
++    std::optional<char> byte_at(size_t index) const;
+     void hash_update(hasher & hash) const noexcept;
+     bool all_parts_are_input() const;
+     bool is_uppercase() const;
+diff --git a/common/jinja/value.cpp b/common/jinja/value.cpp
+index e25846fd4..b3295edbe 100644
+--- a/common/jinja/value.cpp
++++ b/common/jinja/value.cpp
+@@ -276,7 +276,7 @@ static value tojson(const func_args & args) {
+     if (args.ctx.is_get_stats) {
+         // mark as used (recursively) for stats
+         auto val_input = args.get_pos(0);
+-        value_t::stats_t::mark_used(const_cast<value&>(val_input), true);
++        value_t::stats_t::mark_used(val_input, true);
+     }
+     if (is_val<value_int>(val_indent)) {
+         indent = static_cast<int>(val_indent->as_int());
+@@ -505,7 +505,12 @@ const func_builtins & global_builtins() {
+         }},
+         {"test_is_divisibleby", [](const func_args & args) -> value {
+             args.ensure_vals<value_int, value_int>();
+-            bool res = args.get_pos(0)->val_int % args.get_pos(1)->val_int == 0;
++            const int64_t a = args.get_pos(0)->as_int();
++            const int64_t b = args.get_pos(1)->as_int();
++            if (b == 0) {
++                throw std::runtime_error("divisibleby: division by zero");
++            }
++            bool res = b == -1 || a % b == 0; // avoid INT64_MIN % -1 overflow
+             return mk_val<value_bool>(res);
+         }},
+         {"test_is_string", test_type_fn<value_string>},
+@@ -517,11 +522,11 @@ const func_builtins & global_builtins() {
+         {"test_is_mapping", test_type_fn<value_object>},
+         {"test_is_lower", [](const func_args & args) -> value {
+             args.ensure_vals<value_string>();
+-            return mk_val<value_bool>(args.get_pos(0)->val_str.is_lowercase());
++            return mk_val<value_bool>(cast_val<value_string>(args.get_pos(0))->val_str.is_lowercase());
+         }},
+         {"test_is_upper", [](const func_args & args) -> value {
+             args.ensure_vals<value_string>();
+-            return mk_val<value_bool>(args.get_pos(0)->val_str.is_uppercase());
++            return mk_val<value_bool>(cast_val<value_string>(args.get_pos(0))->val_str.is_uppercase());
+         }},
+         {"test_is_none", test_type_fn<value_none>},
+         {"test_is_defined", [](const func_args & args) -> value {
+@@ -569,7 +574,7 @@ const func_builtins & global_builtins() {
+         {"test_is_test", [](const func_args & args) -> value {
+             args.ensure_vals<value_string>();
+             auto & builtins = global_builtins();
+-            std::string test_name = args.get_pos(0)->val_str.str();
++            std::string test_name = cast_val<value_string>(args.get_pos(0))->val_str.str();
+             auto it = builtins.find("test_is_" + test_name);
+             bool res = it != builtins.end();
+             return mk_val<value_bool>(res);
+@@ -611,18 +616,26 @@ const func_builtins & global_builtins() {
+     return builtins;
+ }
+ 
+-value try_builtin_func(context & ctx, const std::string & name, value & input, bool undef_on_missing) {
++value find_builtin_func(context & ctx, const std::string & name, value & input) {
+     JJ_DEBUG("Trying built-in function '%s' for type %s", name.c_str(), input->type().c_str());
+     if (ctx.is_get_stats) {
+         value_t::stats_t::mark_used(input);
+         input->stats.ops.insert(name);
+     }
+-    auto builtins = input->get_builtins();
++    const auto & builtins = input->get_builtins();
+     auto it = builtins.find(name);
+     if (it != builtins.end()) {
+         JJ_DEBUG("Binding built-in '%s'", name.c_str());
+         return mk_val<value_func>(name, it->second, input);
+     }
++    return nullptr;
++}
++
++value try_builtin_func(context & ctx, const std::string & name, value & input, bool undef_on_missing) {
++    value func = find_builtin_func(ctx, name, input);
++    if (func) {
++        return func;
++    }
+     if (undef_on_missing) {
+         return mk_val<value_undefined>(name);
+     }
+@@ -829,7 +842,7 @@ const func_builtins & value_string_t::get_builtins() const {
+                 --maxsplit;
+             }
+             auto res = mk_val<value_string>(str);
+-            res->val_str.mark_input_based_on(args.get_pos(0)->val_str);
++            res->val_str.mark_input_based_on(cast_val<value_string>(args.get_pos(0))->val_str);
+             result->push_back(std::move(res));
+             return result;
+         }},
+@@ -856,7 +869,7 @@ const func_builtins & value_string_t::get_builtins() const {
+                 --maxsplit;
+             }
+             auto res = mk_val<value_string>(str);
+-            res->val_str.mark_input_based_on(args.get_pos(0)->val_str);
++            res->val_str.mark_input_based_on(cast_val<value_string>(args.get_pos(0))->val_str);
+             result->push_back(std::move(res));
+             result->reverse();
+             return result;
+@@ -889,7 +902,7 @@ const func_builtins & value_string_t::get_builtins() const {
+                 }
+             }
+             auto res = mk_val<value_string>(str);
+-            res->val_str.mark_input_based_on(args.get_pos(0)->val_str);
++            res->val_str.mark_input_based_on(cast_val<value_string>(args.get_pos(0))->val_str);
+             return res;
+         }},
+         {"format", [](const func_args & args) -> value {
+@@ -1209,7 +1222,7 @@ const func_builtins & value_array_t::get_builtins() const {
+             if (args.ctx.is_get_stats) {
+                 // mark as used (recursively) for stats
+                 auto val_input = args.get_pos(0);
+-                value_t::stats_t::mark_used(const_cast<value&>(val_input), true);
++                value_t::stats_t::mark_used(val_input, true);
+             }
+             return mk_val<value_string>(args.get_pos(0)->as_string());
+         }},
+@@ -1457,7 +1470,7 @@ const func_builtins & value_object_t::get_builtins() const {
+             if (args.ctx.is_get_stats) {
+                 // mark as used (recursively) for stats
+                 auto val_input = args.get_pos(0);
+-                value_t::stats_t::mark_used(const_cast<value&>(val_input), true);
++                value_t::stats_t::mark_used(val_input, true);
+             }
+             return mk_val<value_string>(args.get_pos(0)->as_string());
+         }},
+@@ -1859,18 +1872,18 @@ std::string value_to_string_repr(const value & val) {
+ }
+ 
+ // stats utility
+-void value_t::stats_t::mark_used(value & val, bool deep, int depth) {
++void value_t::stats_t::mark_used(const value & val, bool deep, int depth) {
+     val->stats.used = true;
+     if (deep && (is_val<value_array>(val) || is_val<value_object>(val)) && depth >= JINJA_RECURSIVE_LIMIT) {
+         throw std::runtime_error("value is nested more than " + std::to_string(JINJA_RECURSIVE_LIMIT) + " levels deep");
+     }
+     if (deep) {
+         if (is_val<value_array>(val)) {
+-            for (auto & item : val->val_arr) {
++            for (auto & item : val->as_array()) {
+                 mark_used(item, deep, depth + 1);
+             }
+         } else if (is_val<value_object>(val)) {
+-            for (auto & pair : val->val_obj) {
++            for (auto & pair : val->as_ordered_object()) {
+                 mark_used(pair.first, deep, depth + 1);
+                 mark_used(pair.second, deep, depth + 1);
+             }
+diff --git a/common/jinja/value.h b/common/jinja/value.h
+index b78643b29..d39b41eac 100644
+--- a/common/jinja/value.h
++++ b/common/jinja/value.h
+@@ -21,6 +21,20 @@ namespace jinja {
+ struct value_t;
+ using value = std::shared_ptr<value_t>;
+ 
++enum class value_kind {
++    INTEGER,
++    REAL,
++    STRING,
++    BOOLEAN,
++    ARRAY,
++    TUPLE,
++    OBJECT,
++    NONE,
++    UNDEFINED,
++    FUNCTION,
++    KEYWORD
++};
++bool has_value_kind(const value_t * val, value_kind kind);
+ 
+ // Helper to check the type of a value
+ template<typename T>
+@@ -34,12 +48,12 @@ struct extract_pointee<std::shared_ptr<U>> {
+ template<typename T>
+ bool is_val(const value & ptr) {
+     using PointeeType = typename extract_pointee<T>::type;
+-    return dynamic_cast<const PointeeType*>(ptr.get()) != nullptr;
++    return has_value_kind(ptr.get(), PointeeType::kind_id);
+ }
+ template<typename T>
+ bool is_val(const value_t * ptr) {
+     using PointeeType = typename extract_pointee<T>::type;
+-    return dynamic_cast<const PointeeType*>(ptr) != nullptr;
++    return has_value_kind(ptr, PointeeType::kind_id);
+ }
+ template<typename T, typename... Args>
+ std::shared_ptr<typename extract_pointee<T>::type> mk_val(Args&&... args) {
+@@ -49,12 +63,12 @@ std::shared_ptr<typename extract_pointee<T>::type> mk_val(Args&&... args) {
+ template<typename T>
+ const typename extract_pointee<T>::type * cast_val(const value & ptr) {
+     using PointeeType = typename extract_pointee<T>::type;
+-    return dynamic_cast<const PointeeType*>(ptr.get());
++    return is_val<T>(ptr) ? static_cast<const PointeeType *>(ptr.get()) : nullptr;
+ }
+ template<typename T>
+ typename extract_pointee<T>::type * cast_val(value & ptr) {
+     using PointeeType = typename extract_pointee<T>::type;
+-    return dynamic_cast<PointeeType*>(ptr.get());
++    return is_val<T>(ptr) ? static_cast<PointeeType *>(ptr.get()) : nullptr;
+ }
+ // End Helper
+ 
+@@ -105,14 +119,7 @@ enum value_compare_op { eq, ge, gt, lt, ne };
+ bool value_compare(const value & a, const value & b, value_compare_op op);
+ 
+ struct value_t {
+-    int64_t val_int;
+-    double val_flt;
+-    string val_str;
+-
+-    std::vector<value> val_arr;
+-    std::vector<std::pair<value, value>> val_obj;
+-
+-    func_handler val_func;
++    const value_kind kind;
+ 
+     // only used if ctx.is_get_stats = true
+     struct stats_t {
+@@ -120,10 +127,10 @@ struct value_t {
+         // ops can be builtin calls or operators: "array_access", "object_access"
+         std::set<std::string> ops;
+         // utility to recursively mark value and its children as used
+-        static void mark_used(value & val, bool deep = false, int depth = 0);
++        static void mark_used(const value & val, bool deep = false, int depth = 0);
+     } stats;
+ 
+-    value_t() = default;
++    explicit value_t(value_kind kind) : kind(kind) {}
+     value_t(const value_t &) = default;
+     virtual ~value_t() = default;
+ 
+@@ -141,6 +148,10 @@ struct value_t {
+     virtual bool is_undefined() const { return false; }
+     virtual const func_builtins & get_builtins() const { throw_type_error("has no builtins"); }
+ 
++    virtual value find(const value & key) {
++        value missing;
++        return at(key, missing);
++    }
+     virtual bool has_key(const value &) { throw_type_error("is not an object value"); }
+     virtual void insert(const value & /* key */, const value & /* val */) { throw_type_error("is not an object value"); }
+     virtual value & at(const value & /* key */, value & /* default_val */) { throw_type_error("is not an object value"); }
+@@ -172,11 +183,19 @@ protected:
+     virtual bool nonequal(const value_t & other) const { return !equivalent(other); }
+ };
+ 
++inline bool has_value_kind(const value_t * val, value_kind kind) {
++    return val && (val->kind == kind ||
++                   (kind == value_kind::ARRAY && (val->kind == value_kind::TUPLE)));
++}
++
+ //
+ // utils
+ //
+ 
+ const func_builtins & global_builtins();
++// returns nullptr if input has no built-in named `name`
++value find_builtin_func(context & ctx, const std::string & name, value & input);
++// returns value_undefined(name) if not found and undef_on_missing is set, throws otherwise
+ value try_builtin_func(context & ctx, const std::string & name, value & input, bool undef_on_missing = false);
+ value apply_filter_by_name(context & ctx, std::string filter_id, value input, const func_args & args);
+ 
+@@ -215,7 +234,10 @@ struct value_equality {
+ //
+ 
+ struct value_int_t : public value_t {
+-    value_int_t(int64_t v) {
++    static constexpr auto kind_id = value_kind::INTEGER;
++    int64_t val_int;
++    double val_flt;
++    value_int_t(int64_t v) : value_t(kind_id) {
+         val_int = v;
+         val_flt = static_cast<double>(v);
+         if (static_cast<int64_t>(val_flt) != v) {
+@@ -239,21 +261,22 @@ struct value_int_t : public value_t {
+     }
+ protected:
+     virtual bool equivalent(const value_t & other) const override {
+-        return other.is_numeric() && val_int == other.val_int && val_flt == other.val_flt;
++        return other.is_numeric() && val_int == other.as_int() && val_flt == other.as_float();
+     }
+     virtual bool nonequal(const value_t & other) const override {
+-        return !(typeid(*this) == typeid(other) && val_int == other.val_int);
++        return !(kind == other.kind && val_int == other.as_int());
+     }
+ };
+ using value_int = std::shared_ptr<value_int_t>;
+ 
+ 
+ struct value_float_t : public value_t {
+-    value val;
+-    value_float_t(double v) {
++    static constexpr auto kind_id = value_kind::REAL;
++    int64_t val_int;
++    double val_flt;
++    value_float_t(double v) : value_t(kind_id) {
+         val_flt = v;
+         val_int = std::isfinite(v) ? static_cast<int64_t>(v) : 0;
+-        val = mk_val<value_int>(val_int);
+     }
+     virtual std::string type() const override { return "Float"; }
+     virtual double as_float() const override { return val_flt; }
+@@ -272,7 +295,7 @@ struct value_float_t : public value_t {
+     virtual bool is_hashable() const override { return true; }
+     virtual hasher unique_hash() const noexcept override {
+         if (static_cast<double>(val_int) == val_flt) {
+-            return val->unique_hash();
++            return value_int_t(val_int).unique_hash();
+         } else {
+             return hasher(typeid(*this))
+                 .update(&val_int, sizeof(val_int))
+@@ -281,19 +304,22 @@ struct value_float_t : public value_t {
+     }
+ protected:
+     virtual bool equivalent(const value_t & other) const override {
+-        return other.is_numeric() && val_int == other.val_int && val_flt == other.val_flt;
++        return other.is_numeric() && val_int == other.as_int() && val_flt == other.as_float();
+     }
+     virtual bool nonequal(const value_t & other) const override {
+-        return !(typeid(*this) == typeid(other) && val_flt == other.val_flt);
++        return !(kind == other.kind && val_flt == other.as_float());
+     }
+ };
+ using value_float = std::shared_ptr<value_float_t>;
+ 
+ 
+ struct value_string_t : public value_t {
+-    value_string_t() { val_str = string(); }
+-    value_string_t(const std::string & v) { val_str = string(v); }
+-    value_string_t(const string & v) { val_str = v; }
++    static constexpr auto kind_id = value_kind::STRING;
++    string val_str;
++    value_string_t() : value_t(kind_id) {}
++    value_string_t(const std::string & v) : value_t(kind_id), val_str(v) {}
++    value_string_t(const string & v) : value_t(kind_id), val_str(v) {}
++    value_string_t(string && v) : value_t(kind_id), val_str(std::move(v)) {}
+     virtual std::string type() const override { return "String"; }
+     virtual string as_string() const override { return val_str; }
+     virtual std::string as_repr() const override {
+@@ -304,7 +330,7 @@ struct value_string_t : public value_t {
+         return ss.str();
+     }
+     virtual bool as_bool() const override {
+-        return val_str.length() > 0;
++        return !val_str.empty();
+     }
+     virtual const func_builtins & get_builtins() const override;
+     virtual bool is_hashable() const override { return true; }
+@@ -320,51 +346,50 @@ struct value_string_t : public value_t {
+     }
+ protected:
+     virtual bool equivalent(const value_t & other) const override {
+-        return typeid(*this) == typeid(other) && val_str.str() == other.val_str.str();
++        return kind == other.kind && val_str.equals(static_cast<const value_string_t &>(other).val_str);
+     }
+ };
+ using value_string = std::shared_ptr<value_string_t>;
+ 
+ 
+ struct value_bool_t : public value_t {
+-    value val;
+-    value_bool_t(bool v) {
++    static constexpr auto kind_id = value_kind::BOOLEAN;
++    int64_t val_int;
++    double val_flt;
++    value_bool_t(bool v) : value_t(kind_id) {
+         val_int = static_cast<int64_t>(v);
+         val_flt = static_cast<double>(v);
+-        val = mk_val<value_int>(val_int);
+     }
+     virtual std::string type() const override { return "Boolean"; }
+     virtual int64_t as_int() const override { return val_int; }
++    virtual double as_float() const override { return val_flt; }
+     virtual bool as_bool() const override { return val_int; }
+     virtual string as_string() const override { return std::string(val_int ? "True" : "False"); }
+     virtual const func_builtins & get_builtins() const override;
+     virtual bool is_numeric() const override { return true; }
+     virtual bool is_hashable() const override { return true; }
+     virtual hasher unique_hash() const noexcept override {
+-        return val->unique_hash();
++        return value_int_t(val_int).unique_hash();
+     }
+ protected:
+     virtual bool equivalent(const value_t & other) const override {
+-        return other.is_numeric() && val_int == other.val_int && val_flt == other.val_flt;
++        return other.is_numeric() && val_int == other.as_int() && val_flt == other.as_float();
+     }
+     virtual bool nonequal(const value_t & other) const override {
+-        return !(typeid(*this) == typeid(other) && val_int == other.val_int);
++        return !(kind == other.kind && val_int == other.as_int());
+     }
+ };
+ using value_bool = std::shared_ptr<value_bool_t>;
+ 
+ 
+ struct value_array_t : public value_t {
+-    value_array_t() = default;
+-    value_array_t(value & v) {
+-        val_arr = v->val_arr;
+-    }
+-    value_array_t(std::vector<value> && arr) {
+-        val_arr = arr;
+-    }
+-    value_array_t(const std::vector<value> & arr) {
+-        val_arr = arr;
+-    }
++    static constexpr auto kind_id = value_kind::ARRAY;
++    std::vector<value> val_arr;
++
++    value_array_t() : value_t(kind_id) {}
++    value_array_t(value & v) : value_t(kind_id), val_arr(v->as_array()) {}
++    value_array_t(std::vector<value> && arr) : value_t(kind_id), val_arr(std::move(arr)) {}
++    value_array_t(const std::vector<value> & arr) : value_t(kind_id), val_arr(arr) {}
+     void reverse() {
+         if (is_immutable()) {
+             throw std::runtime_error("Attempting to modify immutable type");
+@@ -462,24 +487,27 @@ struct value_array_t : public value_t {
+         return hash;
+     }
+ protected:
++    explicit value_array_t(value_kind kind) : value_t(kind) {}
++
+     virtual bool equivalent(const value_t & other) const override {
+-        return typeid(*this) == typeid(other) && is_hashable() && other.is_hashable() && std::equal(val_arr.begin(), val_arr.end(), other.val_arr.begin(), other.val_arr.end(), value_equivalence());
++        return kind == other.kind && is_hashable() && other.is_hashable() && std::equal(val_arr.begin(), val_arr.end(), other.as_array().begin(), other.as_array().end(), value_equivalence());
+     }
+ };
+ using value_array = std::shared_ptr<value_array_t>;
+ 
+ 
+ struct value_tuple_t : public value_array_t {
+-    value_tuple_t(value & v) {
+-        val_arr = v->val_arr;
++    static constexpr auto kind_id = value_kind::TUPLE;
++    value_tuple_t(value & v) : value_array_t(kind_id) {
++        val_arr = v->as_array();
+     }
+-    value_tuple_t(std::vector<value> && arr) {
+-        val_arr = arr;
++    value_tuple_t(std::vector<value> && arr) : value_array_t(kind_id) {
++        val_arr = std::move(arr);
+     }
+-    value_tuple_t(const std::vector<value> & arr) {
++    value_tuple_t(const std::vector<value> & arr) : value_array_t(kind_id) {
+         val_arr = arr;
+     }
+-    value_tuple_t(const std::pair<value, value> & pair) {
++    value_tuple_t(const std::pair<value, value> & pair) : value_array_t(kind_id) {
+         val_arr.push_back(pair.first);
+         val_arr.push_back(pair.second);
+     }
+@@ -490,21 +518,23 @@ using value_tuple = std::shared_ptr<value_tuple_t>;
+ 
+ 
+ struct value_object_t : public value_t {
+-    std::unordered_map<value, value, value_hasher, value_equivalence> unordered;
++    static constexpr auto kind_id = value_kind::OBJECT;
++    std::vector<std::pair<value, value>> val_obj;
++    std::unordered_map<value, size_t, value_hasher, value_equivalence> key_index; // key -> index in val_obj
+     bool has_builtins = true; // context and loop objects do not have builtins
+-    value_object_t() = default;
+-    value_object_t(value & v) {
+-        val_obj = v->val_obj;
+-        for (const auto & pair : val_obj) {
+-            unordered[pair.first] = pair.second;
++    value_object_t() : value_t(kind_id) {}
++    value_object_t(value & v) : value_t(kind_id) {
++        val_obj = v->as_ordered_object();
++        for (size_t i = 0; i < val_obj.size(); i++) {
++            key_index[val_obj[i].first] = i;
+         }
+     }
+-    value_object_t(const std::map<value, value> & obj) {
++    value_object_t(const std::map<value, value> & obj) : value_t(kind_id) {
+         for (const auto & pair : obj) {
+             insert(pair.first, pair.second);
+         }
+     }
+-    value_object_t(const std::vector<std::pair<value, value>> & obj) {
++    value_object_t(const std::vector<std::pair<value, value>> & obj) : value_t(kind_id) {
+         for (const auto & pair : obj) {
+             insert(pair.first, pair.second);
+         }
+@@ -527,45 +557,40 @@ struct value_object_t : public value_t {
+         return ss.str();
+     }
+     virtual bool as_bool() const override {
+-        return !unordered.empty();
++        return !val_obj.empty();
+     }
+     virtual bool has_key(const value & key) override {
+         if (!key->is_immutable() || !key->is_hashable()) {
+             throw std::runtime_error("Object key of unhashable type: " + key->type());
+         }
+-        return unordered.find(key) != unordered.end();
++        return key_index.find(key) != key_index.end();
+     }
+     virtual void insert(const value & key, const value & val) override {
+-        bool replaced = false;
+         if (is_immutable()) {
+             throw std::runtime_error("Attempting to modify immutable type");
+         }
+-        if (has_key(key)) {
+-            // if key exists, replace value in ordered list instead of appending
+-            for (auto & pair : val_obj) {
+-                if (*(pair.first) == *key) {
+-                    pair.second = val;
+-                    replaced = true;
+-                    break;
+-                }
+-            }
+-        }
+-        unordered[key] = val;
+-        if (!replaced) {
++        if (!key->is_immutable() || !key->is_hashable()) {
++            throw std::runtime_error("Object key of unhashable type: " + key->type());
++        }
++        const auto entry = key_index.try_emplace(key, val_obj.size());
++        if (entry.second) {
+             val_obj.push_back({key, val});
++        } else {
++            val_obj[entry.first->second].second = val;
+         }
+     }
+     virtual value & at(const value & key, value & default_val) override {
+-        if (!has_key(key)) {
+-            return default_val;
++        if (!key->is_immutable() || !key->is_hashable()) {
++            throw std::runtime_error("Object key of unhashable type: " + key->type());
+         }
+-        return unordered.at(key);
++        const auto found = key_index.find(key);
++        return found == key_index.end() ? default_val : val_obj[found->second].second;
+     }
+     virtual value & at(const value & key) override {
+         if (!has_key(key)) {
+             throw std::runtime_error("Key '" + key->as_string().str() + "' not found in value of type " + type());
+         }
+-        return unordered.at(key);
++        return val_obj[key_index.at(key)].second;
+     }
+     virtual value & at(const std::string & key, value & default_val) override {
+         value key_val = mk_val<value_string>(key);
+@@ -599,7 +624,7 @@ struct value_object_t : public value_t {
+     }
+ protected:
+     virtual bool equivalent(const value_t & other) const override {
+-        return typeid(*this) == typeid(other) && is_hashable() && other.is_hashable() && std::equal(val_obj.begin(), val_obj.end(), other.val_obj.begin(), other.val_obj.end(), value_equivalence());
++        return kind == other.kind && is_hashable() && other.is_hashable() && std::equal(val_obj.begin(), val_obj.end(), other.as_ordered_object().begin(), other.as_ordered_object().end(), value_equivalence());
+     }
+ };
+ using value_object = std::shared_ptr<value_object_t>;
+@@ -609,6 +634,8 @@ using value_object = std::shared_ptr<value_object_t>;
+ //
+ 
+ struct value_none_t : public value_t {
++    static constexpr auto kind_id = value_kind::NONE;
++    value_none_t() : value_t(kind_id) {}
+     virtual std::string type() const override { return "None"; }
+     virtual bool is_none() const override { return true; }
+     virtual bool as_bool() const override { return false; }
+@@ -621,14 +648,15 @@ struct value_none_t : public value_t {
+     }
+ protected:
+     virtual bool equivalent(const value_t & other) const override {
+-        return typeid(*this) == typeid(other);
++        return kind == other.kind;
+     }
+ };
+ using value_none = std::shared_ptr<value_none_t>;
+ 
+ struct value_undefined_t : public value_t {
++    static constexpr auto kind_id = value_kind::UNDEFINED;
+     std::string hint; // for debugging, to indicate where undefined came from
+-    value_undefined_t(const std::string & h = "") : hint(h) {}
++    value_undefined_t(const std::string & h = "") : value_t(kind_id), hint(h) {}
+     virtual std::string type() const override { return hint.empty() ? "Undefined" : "Undefined (hint: '" + hint + "')"; }
+     virtual bool is_undefined() const override { return true; }
+     virtual bool as_bool() const override { return false; }
+@@ -705,12 +733,14 @@ private:
+ };
+ 
+ struct value_func_t : public value_t {
++    static constexpr auto kind_id = value_kind::FUNCTION;
++    func_handler val_func;
+     std::string name;
+     value arg0; // bound "this" argument, if any
+-    value_func_t(const std::string & name, const func_handler & func) : name(name) {
++    value_func_t(const std::string & name, const func_handler & func) : value_t(kind_id), name(name) {
+         val_func = func;
+     }
+-    value_func_t(const std::string & name, const func_handler & func, const value & arg_this) : name(name), arg0(arg_this) {
++    value_func_t(const std::string & name, const func_handler & func, const value & arg_this) : value_t(kind_id), name(name), arg0(arg_this) {
+         val_func = func;
+     }
+     virtual value invoke(const func_args & args) const override {
+@@ -735,18 +765,22 @@ protected:
+         // Note: this is unused for now, we don't support function as object keys
+         // compare function pointers
+         // (val_func == other.val_func does not work as std::function::operator== is only used for nullptr check)
++        if (kind != other.kind) {
++            return false;
++        }
+         const auto target_this  = this->val_func.target<func_hptr>();
+-        const auto target_other = other.val_func.target<func_hptr>();
+-        return typeid(*this) == typeid(other) && target_this == target_other;
++        const auto target_other = static_cast<const value_func_t &>(other).val_func.target<func_hptr>();
++        return target_this == target_other;
+     }
+ };
+ using value_func = std::shared_ptr<value_func_t>;
+ 
+ // special value for kwarg
+ struct value_kwarg_t : public value_t {
++    static constexpr auto kind_id = value_kind::KEYWORD;
+     std::string key;
+     value val;
+-    value_kwarg_t(const std::string & k, const value & v) : key(k), val(v) {}
++    value_kwarg_t(const std::string & k, const value & v) : value_t(kind_id), key(k), val(v) {}
+     virtual std::string type() const override { return "KwArg"; }
+     virtual std::string as_repr() const override { return type(); }
+     virtual bool is_hashable() const override { return true; }
+@@ -760,7 +794,7 @@ struct value_kwarg_t : public value_t {
+ protected:
+     virtual bool equivalent(const value_t & other) const override {
+         const value_kwarg_t & other_val = static_cast<const value_kwarg_t &>(other);
+-        return typeid(*this) == typeid(other) && key == other_val.key && val == other_val.val;
++        return kind == other.kind && key == other_val.key && val == other_val.val;
+     }
+ };
+ using value_kwarg = std::shared_ptr<value_kwarg_t>;
+diff --git a/ggml/src/ggml-cpu/ggml-cpu.c b/ggml/src/ggml-cpu/ggml-cpu.c
+index 70350cd26..fccd97b1b 100644
+--- a/ggml/src/ggml-cpu/ggml-cpu.c
++++ b/ggml/src/ggml-cpu/ggml-cpu.c
+@@ -1181,6 +1181,28 @@ void ggml_set_f32_nd(const struct ggml_tensor * tensor, int i0, int i1, int i2,
+ 
+ ////////////////////////////////////////////////////////////////////////////////
+ 
++static inline void ggml_deinterleave_f32(
++        float * GGML_RESTRICT dst0,
++        float * GGML_RESTRICT dst1,
++        const float * GGML_RESTRICT src,
++        int64_t n,
++        size_t bs,
++        int nrc) {
++    GGML_ASSERT(nrc >= 1 && nrc <= 2);
++
++    if (nrc == 1) {
++        memcpy(dst0, src, n * sizeof(float));
++        return;
++    }
++
++    for (int64_t i = 0; i < n; ++i) {
++        dst0[i     ] = src[2*i + 0     ];
++        dst1[i     ] = src[2*i + 1     ];
++        dst0[bs + i] = src[2*i + 0 + 16];
++        dst1[bs + i] = src[2*i + 1 + 16];
++    }
++}
++
+ // ggml_compute_forward_mul_mat
+ 
+ static void ggml_compute_forward_mul_mat_one_chunk(
+@@ -1230,8 +1252,12 @@ static void ggml_compute_forward_mul_mat_one_chunk(
+     // 16 * 2, accounting for mmla kernels
+     float tmp[32];
+ 
++    const int64_t nr0_split = (ir0_end - ir0_start) / num_rows_per_vec_dot; // rows per stream
++    const int64_t ir0_end_split = ir0_start + nr0_split;
++    const int64_t blck_0_split = blck_0 / num_rows_per_vec_dot;
++
+     for (int64_t iir1 = ir1_start; iir1 < ir1_end; iir1 += blck_1) {
+-        for (int64_t iir0 = ir0_start; iir0 < ir0_end; iir0 += blck_0) {
++        for (int64_t iir0 = ir0_start; iir0 < ir0_end_split; iir0 += blck_0_split) {
+             for (int64_t ir1 = iir1; ir1 < iir1 + blck_1 && ir1 < ir1_end; ir1 += num_rows_per_vec_dot) {
+                 const int64_t i13 = (ir1 / (ne12 * ne1));
+                 const int64_t i12 = (ir1 - i13 * ne12 * ne1) / ne1;
+@@ -1261,13 +1287,13 @@ static void ggml_compute_forward_mul_mat_one_chunk(
+                 //    vec_dot(ne00, &dst_col[ir0], src0_row + ir0*nb01, src1_col);
+                 //}
+ 
+-                for (int64_t ir0 = iir0; ir0 < iir0 + blck_0 && ir0 < ir0_end; ir0 += num_rows_per_vec_dot) {
+-                    vec_dot(ne00, &tmp[ir0 - iir0], (num_rows_per_vec_dot > 1 ? 16 : 0), src0_row + ir0 * nb01, (num_rows_per_vec_dot > 1 ? nb01 : 0), src1_col, (num_rows_per_vec_dot > 1 ? src1_col_stride : 0), num_rows_per_vec_dot);
++                for (int64_t ir0 = iir0; ir0 < iir0 + blck_0_split && ir0 < ir0_end_split; ++ir0) {
++                    vec_dot(ne00, &tmp[(ir0 - iir0) * num_rows_per_vec_dot], (num_rows_per_vec_dot > 1 ? 16 : 0), src0_row + ir0 * nb01, (num_rows_per_vec_dot > 1 ? nb01 * nr0_split : 0), src1_col, (num_rows_per_vec_dot > 1 ? src1_col_stride : 0), num_rows_per_vec_dot);
+                 }
+ 
+-                for (int cn = 0; cn < num_rows_per_vec_dot; ++cn) {
+-                    memcpy(&dst_col[iir0 + cn * nb1 / nb0], tmp + (cn * 16), (MIN(iir0 + blck_0, ir0_end) - iir0) * sizeof(float));
+-                }
++                const int64_t n = MIN(iir0 + blck_0_split, ir0_end_split) - iir0;
++                float * dst0 = dst_col + iir0;
++                ggml_deinterleave_f32(dst0, dst0 + nr0_split, tmp, n, nb1 / nb0, num_rows_per_vec_dot);
+             }
+         }
+     }
+@@ -2958,10 +2984,8 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
+             } break;
+         case GGML_OP_GET_ROWS:
+             {
+-                // FIXME: get_rows can use additional threads, but the cost of launching additional threads
+-                // decreases performance with GPU offloading
+-                //n_tasks = n_threads;
+-                n_tasks = 1;
++                // waking the other threads costs more than a small lookup, e.g. when this is the only CPU node of an offloaded model
++                n_tasks = ggml_nelements(node) >= 262144 ? n_threads : 1;
+             } break;
+         case GGML_OP_SCALE:
+         case GGML_OP_SET:
+diff --git a/ggml/src/ggml-cpu/ggml-cpu.cpp b/ggml/src/ggml-cpu/ggml-cpu.cpp
+index 297834001..fa4aa8670 100644
+--- a/ggml/src/ggml-cpu/ggml-cpu.cpp
++++ b/ggml/src/ggml-cpu/ggml-cpu.cpp
+@@ -688,6 +688,9 @@ static void * ggml_backend_cpu_get_proc_address(ggml_backend_reg_t reg, const ch
+     if (strcmp(name, "ggml_threadpool_free") == 0) {
+         return (void *)ggml_threadpool_free;
+     }
++    if (strcmp(name, "ggml_threadpool_pause") == 0) {
++        return (void *)ggml_threadpool_pause;
++    }
+     if (strcmp(name, "ggml_backend_cpu_set_threadpool") == 0) {
+         return (void *)ggml_backend_cpu_set_threadpool;
+     }
+diff --git a/ggml/src/ggml-cuda/convert.cu b/ggml/src/ggml-cuda/convert.cu
+index 2ab5484a5..9dd345abb 100644
+--- a/ggml/src/ggml-cuda/convert.cu
++++ b/ggml/src/ggml-cuda/convert.cu
+@@ -385,7 +385,7 @@ static __global__ void dequantize_block_nvfp4(
+         const void * __restrict__ vx,
+         dst_t * __restrict__ yy,
+         const int64_t ne) {
+-    const int64_t i = blockIdx.x;
++    const int64_t i = (int64_t) blockIdx.x*blockDim.y + threadIdx.y;
+     const int     tid = threadIdx.x;
+ 
+     const int64_t base = i * QK_NVFP4;
+@@ -417,7 +417,7 @@ static void dequantize_row_nvfp4_cuda(
+         cudaStream_t stream) {
+     GGML_ASSERT(k % QK_NVFP4 == 0);
+     const int nb = k / QK_NVFP4;
+-    dequantize_block_nvfp4<<<nb, 32, 0, stream>>>(vx, y, k);
++    dequantize_block_nvfp4<<<(nb + 7)/8, dim3(32, 8), 0, stream>>>(vx, y, k);
+ }
+ template <typename src_t, typename dst_t>
+ static __global__ void convert_unary(
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 52fefbe10..a78b0d473 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -4281,12 +4281,15 @@ ggml_status llama_context::graph_compute(
+     int n_threads        = batched ? cparams.n_threads_batch : cparams.n_threads;
+     ggml_threadpool_t tp = batched ? threadpool_batch        : threadpool;
+ 
++    decltype(ggml_threadpool_pause) * pause_fn = nullptr;
++
+     if (backend_cpu != nullptr) {
+         auto * reg = ggml_backend_dev_backend_reg(ggml_backend_get_device(backend_cpu));
+         auto * set_threadpool_fn = (decltype(ggml_backend_cpu_set_threadpool) *) ggml_backend_reg_get_proc_address(reg, "ggml_backend_cpu_set_threadpool");
+         if (set_threadpool_fn) {
+             set_threadpool_fn(backend_cpu, tp);
+         }
++        pause_fn = (decltype(ggml_threadpool_pause) *) ggml_backend_reg_get_proc_address(reg, "ggml_threadpool_pause");
+     }
+ 
+     // set the number of threads for all the backends
+@@ -4301,6 +4304,11 @@ ggml_status llama_context::graph_compute(
+         LLAMA_LOG_ERROR("%s: ggml_backend_sched_graph_compute_async failed with error %d\n", __func__, status);
+     }
+ 
++    // stop polling while the other backends wrap up
++    if (tp != nullptr && pause_fn != nullptr && ggml_backend_sched_get_n_splits(sched.get()) > 1) {
++        pause_fn(tp);
++    }
++
+     // fprintf(stderr, "splits: %d\n", ggml_backend_sched_get_n_splits(sched));
+ 
+     return status;
+diff --git a/src/llama-grammar.cpp b/src/llama-grammar.cpp
+index fdd8475cd..21a018c8c 100644
+--- a/src/llama-grammar.cpp
++++ b/src/llama-grammar.cpp
+@@ -1049,6 +1049,160 @@ static void llama_grammar_advance_stack(
+     }
+ }
+ 
++// Left-factor grammar rules to reduce redundant parallel stacks.
++//
++// When a rule has many alternates (e.g. tool-choice ::= tc0 | tc1 | ... | tc119)
++// and the referenced rules share a common element-content prefix, extract that
++// prefix so the parser processes it once instead of N times.
++//
++// Handles two cases:
++// 1. Inline common prefix: rule = "ab1" | "ab2" -> rule = "ab" rule', rule' = "1" | "2"
++// 2. Cross-rule prefix: rule = A | B | C where A,B,C start with same elements
++//    -> rule = common_prefix rule', rule' = A_suffix | B_suffix | C_suffix
++static void llama_grammar_left_factor(llama_grammar_rules & rules) {
++    auto elem_eq = [](const llama_grammar_element & a, const llama_grammar_element & b) {
++        return a.type == b.type && a.value == b.value;
++    };
++
++    // Keep the prefix boundary outside character classes.
++    auto trim_prefix = [](const llama_grammar_rule & rule, size_t start, size_t length) {
++        while (length > 0) {
++            const auto type = rule[start + length].type;
++            if (type != LLAMA_GRETYPE_CHAR_ALT && type != LLAMA_GRETYPE_CHAR_RNG_UPPER) {
++                break;
++            }
++            length--;
++        }
++        return length;
++    };
++
++    struct alt_info {
++        size_t rule_idx;
++        size_t start;
++        size_t end;
++    };
++
++    const size_t n_rules_original = rules.size();
++    // Original rules factor at most once; generated rules do not resolve references.
++    // Each new suffix removes a non-empty prefix.
++    bool changed = true;
++    while (changed) {
++        changed = false;
++        const size_t n_rules = rules.size();
++
++        for (size_t ri = 0; ri < n_rules; ri++) {
++            const auto & rule = rules[ri];
++
++            // Split rule into alternates
++            std::vector<std::pair<size_t, size_t>> alt_ranges;
++            size_t alt_start = 0;
++            for (size_t j = 0; j < rule.size(); j++) {
++                if (rule[j].type == LLAMA_GRETYPE_ALT || rule[j].type == LLAMA_GRETYPE_END) {
++                    alt_ranges.push_back({alt_start, j});
++                    alt_start = j + 1;
++                }
++            }
++
++            if (alt_ranges.size() < 4) {
++                continue;
++            }
++
++            // Resolve each alternate: if it's a single RULE_REF, follow it to get the
++            // actual element sequence from the referenced rule.
++            std::vector<alt_info> resolved;
++            resolved.reserve(alt_ranges.size());
++            bool all_single_refs = true;
++
++            for (const auto & [astart, aend] : alt_ranges) {
++                size_t len = aend - astart;
++                // Resolving references in generated suffixes can expand recursive rules forever.
++                if (ri < n_rules_original && len == 1 && rule[astart].type == LLAMA_GRETYPE_RULE_REF) {
++                    size_t ref_id = static_cast<size_t>(rule[astart].value);
++                    if (ref_id < rules.size()) {
++                        size_t ref_end = 0;
++                        for (size_t k = 0; k < rules[ref_id].size(); k++) {
++                            if (rules[ref_id][k].type == LLAMA_GRETYPE_ALT ||
++                                rules[ref_id][k].type == LLAMA_GRETYPE_END) {
++                                ref_end = k;
++                                break;
++                            }
++                        }
++                        bool single_alt = (rules[ref_id][ref_end].type == LLAMA_GRETYPE_END);
++                        if (single_alt) {
++                            resolved.push_back({ref_id, 0, ref_end});
++                            continue;
++                        }
++                    }
++                }
++                all_single_refs = false;
++                resolved.push_back({ri, astart, aend});
++            }
++
++            if (!all_single_refs) {
++                resolved.clear();
++                for (const auto & [astart, aend] : alt_ranges) {
++                    resolved.push_back({ri, astart, aend});
++                }
++            }
++
++            size_t prefix_len = 0;
++            bool prefix_match = true;
++            while (prefix_match) {
++                const auto & first = resolved[0];
++                if (first.start + prefix_len >= first.end) {
++                    break;
++                }
++                const auto & ref_elem = rules[first.rule_idx][first.start + prefix_len];
++
++                for (size_t ai = 1; ai < resolved.size(); ai++) {
++                    const auto & alt = resolved[ai];
++                    if (alt.start + prefix_len >= alt.end ||
++                        !elem_eq(rules[alt.rule_idx][alt.start + prefix_len], ref_elem)) {
++                        prefix_match = false;
++                        break;
++                    }
++                }
++                if (prefix_match) {
++                    prefix_len++;
++                }
++            }
++
++            for (const auto & alt : resolved) {
++                prefix_len = trim_prefix(rules[alt.rule_idx], alt.start, prefix_len);
++            }
++            if (prefix_len == 0) {
++                continue;
++            }
++
++            uint32_t suffix_choice_id = static_cast<uint32_t>(rules.size());
++            llama_grammar_rule suffix_choice;
++
++            for (size_t ai = 0; ai < resolved.size(); ai++) {
++                if (ai > 0) {
++                    suffix_choice.push_back({LLAMA_GRETYPE_ALT, 0});
++                }
++                const auto & alt = resolved[ai];
++                for (size_t j = alt.start + prefix_len; j < alt.end; j++) {
++                    suffix_choice.push_back(rules[alt.rule_idx][j]);
++                }
++            }
++            suffix_choice.push_back({LLAMA_GRETYPE_END, 0});
++
++            llama_grammar_rule new_rule;
++            const auto & first = resolved[0];
++            for (size_t j = 0; j < prefix_len; j++) {
++                new_rule.push_back(rules[first.rule_idx][first.start + j]);
++            }
++            new_rule.push_back({LLAMA_GRETYPE_RULE_REF, suffix_choice_id});
++            new_rule.push_back({LLAMA_GRETYPE_END, 0});
++
++            rules.push_back(std::move(suffix_choice));
++            rules[ri] = std::move(new_rule);
++            changed = true;
++        }
++    }
++}
++
+ static bool llama_grammar_detect_left_recursion(
+         const llama_grammar_rules & rules,
+         size_t rule_index,
+@@ -1107,7 +1261,7 @@ static bool llama_grammar_detect_left_recursion(
+ }
+ 
+ const llama_grammar_rules & llama_grammar_get_rules(const struct llama_grammar * grammar) {
+-    return grammar->rules;
++    return *grammar->rules;
+ }
+ 
+ llama_grammar_stacks & llama_grammar_get_stacks(struct llama_grammar * grammar) {
+@@ -1136,7 +1290,7 @@ static void llama_grammar_accept_chr(
+         if (!llama_grammar_is_end_of_sequence(match.second)) {
+             new_stack.push_back(match.second);
+         }
+-        llama_grammar_advance_stack(grammar.rules, new_stack, new_stacks);
++        llama_grammar_advance_stack(*grammar.rules, new_stack, new_stacks);
+     }
+ }
+ 
+@@ -1325,12 +1479,16 @@ struct llama_grammar * llama_grammar_init_impl(
+         }
+     }
+ 
+-    // Check for left recursion
+-    std::vector<bool> rules_visited(n_rules);
+-    std::vector<bool> rules_in_progress(n_rules);
+-    std::vector<bool> rules_may_be_empty(n_rules);
++    // Left-factor rules to reduce redundant parallel stacks
++    llama_grammar_left_factor(vec_rules);
++
++    // Check for left recursion (use post-factoring rule count)
++    const size_t n_rules_total = vec_rules.size();
++    std::vector<bool> rules_visited(n_rules_total);
++    std::vector<bool> rules_in_progress(n_rules_total);
++    std::vector<bool> rules_may_be_empty(n_rules_total);
+     try {
+-        for (size_t i = 0; i < n_rules; i++) {
++        for (size_t i = 0; i < n_rules_total; i++) {
+             if (rules_visited[i]) {
+                 continue;
+             }
+@@ -1373,7 +1531,7 @@ struct llama_grammar * llama_grammar_init_impl(
+     // then the pointers would be invalidated when the local vec_rules goes out of scope.
+     return new llama_grammar {
+         vocab,
+-        std::move(vec_rules),
++        std::make_shared<const llama_grammar_rules>(std::move(vec_rules)),
+         std::move(stacks),
+         /* .partial_utf8 = */             {},
+         /* .lazy = */                     false,
+@@ -1426,12 +1584,16 @@ struct llama_grammar * llama_grammar_init_impl(
+         vec_rules[i].push_back({LLAMA_GRETYPE_END, 0});
+     }
+ 
+-    // Check for left recursion
+-    std::vector<bool> rules_visited(n_rules);
+-    std::vector<bool> rules_in_progress(n_rules);
+-    std::vector<bool> rules_may_be_empty(n_rules);
++    // Left-factor rules to reduce redundant parallel stacks
++    llama_grammar_left_factor(vec_rules);
++
++    // Check for left recursion (use post-factoring rule count)
++    const size_t n_rules_total = vec_rules.size();
++    std::vector<bool> rules_visited(n_rules_total);
++    std::vector<bool> rules_in_progress(n_rules_total);
++    std::vector<bool> rules_may_be_empty(n_rules_total);
+     try {
+-        for (size_t i = 0; i < n_rules; i++) {
++        for (size_t i = 0; i < n_rules_total; i++) {
+             if (rules_visited[i]) {
+                 continue;
+             }
+@@ -1487,7 +1649,7 @@ struct llama_grammar * llama_grammar_init_impl(
+     // then the pointers would be invalidated when the local vec_rules goes out of scope.
+     return new llama_grammar {
+         vocab,
+-        std::move(vec_rules),
++        std::make_shared<const llama_grammar_rules>(std::move(vec_rules)),
+         std::move(stacks),
+         /* .partial_utf8 = */             {},
+         /* .lazy = */                     lazy,
+@@ -1509,33 +1671,7 @@ void llama_grammar_free_impl(struct llama_grammar * grammar) {
+ }
+ 
+ struct llama_grammar * llama_grammar_clone_impl(const struct llama_grammar & grammar) {
+-    auto * result = new llama_grammar {
+-        grammar.vocab,
+-        grammar.rules,
+-        grammar.stacks,
+-        grammar.partial_utf8,
+-        grammar.lazy,
+-        grammar.awaiting_trigger,
+-        grammar.trigger_buffer,
+-        grammar.trigger_buffer_positions,
+-        grammar.trigger_tokens,
+-        grammar.trigger_patterns,
+-    };
+-
+-    // redirect elements in stacks to point to new rules
+-    for (size_t is = 0; is < result->stacks.size(); is++) {
+-        for (size_t ie = 0; ie < result->stacks[is].size(); ie++) {
+-            for (size_t ir0 = 0; ir0 < grammar.rules.size(); ir0++) {
+-                for (size_t ir1 = 0; ir1 < grammar.rules[ir0].size(); ir1++) {
+-                    if (grammar.stacks[is][ie] == &grammar.rules[ir0][ir1]) {
+-                        result->stacks[is][ie] =  &result->rules[ir0][ir1];
+-                    }
+-                }
+-            }
+-        }
+-    }
+-
+-    return result;
++    return new llama_grammar(grammar);
+ }
+ 
+ void llama_grammar_apply_impl(const struct llama_grammar & grammar, llama_token_data_array * cur_p) {
+@@ -1576,7 +1712,7 @@ void llama_grammar_apply_impl(const struct llama_grammar & grammar, llama_token_
+         }
+     }
+ 
+-    const auto rejects = llama_grammar_reject_candidates(grammar.rules, grammar.stacks, candidates_grammar);
++    const auto rejects = llama_grammar_reject_candidates(*grammar.rules, grammar.stacks, candidates_grammar);
+     for (const auto & reject : rejects) {
+         cur_p->data[reject.index].logit = -INFINITY;
+     }
+@@ -1685,7 +1821,7 @@ void llama_grammar_accept_token(struct llama_grammar & grammar, llama_token toke
+                 if (!llama_grammar_is_end_of_sequence(match.second)) {
+                     new_stack.push_back(match.second);
+                 }
+-                llama_grammar_advance_stack(grammar.rules, new_stack, stacks_new);
++                llama_grammar_advance_stack(*grammar.rules, new_stack, stacks_new);
+             }
+         } else if (!opaque) {
+             llama_grammar_stacks current_stacks = {stack};
+diff --git a/src/llama-grammar.h b/src/llama-grammar.h
+index dace79e82..fedc70969 100644
+--- a/src/llama-grammar.h
++++ b/src/llama-grammar.h
+@@ -3,6 +3,7 @@
+ #include "llama.h"
+ 
+ #include <map>
++#include <memory>
+ #include <regex>
+ #include <string>
+ #include <vector>
+@@ -143,8 +144,8 @@ struct llama_grammar {
+     // note: allow null vocab for testing (not great)
+     const llama_vocab * vocab;
+ 
+-    const llama_grammar_rules  rules;  // TODO: shared ptr
+-          llama_grammar_stacks stacks;
++    const std::shared_ptr<const llama_grammar_rules> rules;
++    llama_grammar_stacks stacks;
+ 
+     // buffer for partially generated UTF-8 sequence from accepted tokens
+     llama_partial_utf8 partial_utf8;
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index f5f7ce0ef..eae0c0bb4 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -10768,6 +10768,8 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+     for (int n : {1, 3, 257}) {
+         test_cases.emplace_back(new test_get_rows(GGML_TYPE_F8_E4M3, n, 5, 3, 1, 1, false));
+     }
++    // many rows of a wide table, as a per-layer embedding lookup does
++    test_cases.emplace_back(new test_get_rows(GGML_TYPE_F8_E4M3, 160, 100000, 32768, 1, 1, false));
+     for (ggml_type type : all_types) {
+         for (int b : {1, 7}) {
+             for (bool v : {false, true}) {
+@@ -13520,6 +13522,14 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
+         test_cases.emplace_back(new test_arange(GGML_TYPE_F32, 0.0f, n, 1.0f));
+     }
+ 
++    // embedding lookups: one token (decode) and one batch of 2048 tokens (prefill)
++    for (int r : {16, 32768}) {
++        test_cases.emplace_back(new test_get_rows(GGML_TYPE_F8_E4M3, 160, 2000000, r, 1, 1, false)); // Qwen4-Exp n-gram table, 16 rows per token
++    }
++    for (int r : {1, 2048}) {
++        test_cases.emplace_back(new test_get_rows(GGML_TYPE_F16, 2560, 65536, r, 1, 1, false));
++    }
++
+     // LoRA at prefill: B is [rank, n_out], so K = rank
+     for (int64_t k : {16, 32, 48, 64}) {
+         test_cases.emplace_back(new test_mul_mat(GGML_TYPE_F16, GGML_TYPE_F32, 2048, 512, k, {1, 1}, {1, 1}));
+diff --git a/tests/test-grammar-integration.cpp b/tests/test-grammar-integration.cpp
+index 2eb6de309..ec2b1b784 100644
+--- a/tests/test-grammar-integration.cpp
++++ b/tests/test-grammar-integration.cpp
+@@ -224,6 +224,19 @@ static void test_schema(const std::string & test_desc, const std::string & schem
+ }
+ 
+ static void test_simple_grammar() {
++    test_grammar(
++        "left factor leading empty suffix",
++        "root ::= \"ab\" | \"abc\" | \"abd\" | \"abe\"",
++        {"ab", "abc", "abd", "abe"}, {"", "a", "abb", "abcc"});
++    test_grammar(
++        "left factor middle empty suffix",
++        "root ::= \"abc\" | \"ab\" | \"abd\" | \"abe\"",
++        {"ab", "abc", "abd", "abe"}, {"", "a", "abb", "abcc"});
++    test_grammar(
++        "left factor recursive references",
++        "root ::= \"ok\" | choice\nchoice ::= a | b | c | d\na ::= \"x\" a\nb ::= \"x\" b\nc ::= \"x\" c\nd ::= \"x\" d",
++        {"ok"}, {"", "x", "xx", "okx"});
++
+     test_schema(
+         "min 0",
+         R"""({
+@@ -785,6 +798,19 @@ static void test_special_chars() {
+             "🔵🟠abc🟠🔵"
+         }
+     );
++
++    test_grammar(
++        "skip left factoring inside character classes",
++        "root ::= [ab] \"x\" | [ac] \"x\" | [ad] \"x\" | [ae] \"x\"",
++        {"ax", "bx", "cx", "dx", "ex"}, {"", "a", "fx", "axx"});
++    test_grammar(
++        "skip left factoring inside character ranges",
++        "root ::= [a-b] \"x\" | [a-c] \"x\" | [a-d] \"x\" | [a-e] \"x\"",
++        {"ax", "bx", "cx", "dx", "ex"}, {"", "a", "fx", "axx"});
++    test_grammar(
++        "left factor referenced character alternatives",
++        "root ::= a | b | c | d\na ::= \"p\" [a] \"x\"\nb ::= \"p\" [ab] \"x\"\nc ::= \"p\" [ac] \"x\"\nd ::= \"p\" [ad] \"x\"",
++        {"pax", "pbx", "pcx", "pdx"}, {"", "px", "pex", "paxx"});
+ }
+ 
+ static void test_quantifiers() {
+diff --git a/tests/test-jinja.cpp b/tests/test-jinja.cpp
+index 87f48405c..01217290b 100644
+--- a/tests/test-jinja.cpp
++++ b/tests/test-jinja.cpp
+@@ -2,6 +2,7 @@
+ #include <iostream>
+ #include <random>
+ #include <cstdlib>
++#include <future>
+ 
+ #include "chat-tts-norm.h"
+ #include "json.h"
+@@ -42,6 +43,8 @@ static void test_string_parts(testing & t);
+ static void test_fuzzing(testing & t);
+ static void test_tts_norm_patterns(testing & t);
+ 
++static void test_shared_render(testing & t);
++
+ static bool g_python_mode = false;
+ 
+ int main(int argc, char *argv[]) {
+@@ -79,6 +82,7 @@ int main(int argc, char *argv[]) {
+     t.test("object methods", test_object_methods);
+     t.test("tts norm patterns", test_tts_norm_patterns);
+     if (!g_python_mode) {
++        t.test("shared render", test_shared_render);
+         t.test("hasher", test_hasher);
+         t.test("stats", test_stats);
+         t.test("caps", test_caps);
+@@ -89,6 +93,45 @@ int main(int argc, char *argv[]) {
+     return t.summary();
+ }
+ 
++static void test_shared_render(testing & t) {
++    t.test("shared AST with stats and input marking", [](testing & t) {
++        const std::string source = "{% macro emit(x) %}{{ x }}{% endmacro %}{% for i in range(2) %}{{ emit(prefix) }}{{ i }}{% endfor %}{% filter upper %}{{ body }}{% endfilter %}|{{ 'literal' is string }}|{{ obj.value }}";
++        const auto program = jinja::parse_from_tokens(jinja::lexer().tokenize(source));
++        std::vector<std::future<bool>> workers;
++        for (int worker = 0; worker < 8; ++worker) {
++            workers.push_back(std::async(std::launch::async, [&, worker] {
++                const auto prefix = "p" + std::to_string(worker);
++                for (int i = 0; i < 25; ++i) {
++                    jinja::context ctx(source);
++                    ctx.is_get_stats = i % 2 != 0;
++                    const json input = {
++                        { "prefix", prefix },
++                        { "body", "hi" },
++                        { "obj", { { "value", "V" } } }
++                    };
++                    jinja::global_from_json(ctx, input, true);
++                    const auto result = jinja::runtime::gather_string_parts(jinja::runtime(ctx).execute(program));
++                    if (result->as_string().str() != prefix + "0" + prefix + "1HI|True|V") {
++                        return false;
++                    }
++                    if (ctx.get_val("obj")->at("value")->stats.used != ctx.is_get_stats) {
++                        return false;
++                    }
++                    if (result->val_str.parts.empty() || !result->val_str.parts.front().is_input ||
++                        !result->val_str.parts.back().is_input) {
++                        return false;
++                    }
++                }
++                return true;
++            }));
++        }
++        for (auto & worker : workers) {
++            t.assert_true("request-local state", worker.get());
++        }
++    });
++
++}
++
+ static void test_whitespace_control(testing & t) {
+     test_template(t, "trim_blocks removes newline after tag",
+         "{% if true %}\n"
+@@ -502,6 +545,13 @@ static void test_expressions(testing & t) {
+         "c"
+     );
+ 
++    test_template(t, "array index boundaries",
++        "{% for items in arrays %}{% for i in indices %}{{ items[i] | default('_') }}|{% endfor %};{% endfor %}",
++        {{"arrays", json::array({json::array({"a", "b", "c"}), json::array()})},
++         {"indices", json::array({INT64_MIN, -4, -3, -1, 0, 2, 3, INT64_MAX})}},
++        "_|_|a|c|a|c|_|_|;_|_|_|_|_|_|_|_|;"
++    );
++
+     test_template(t, "array bool access",
+         "{{ items[true] }}",
+         {{"items", json::array({"a", "b", "c"})}},
+@@ -575,6 +625,14 @@ static void test_expressions(testing & t) {
+         "('c', 'b', 'a')"
+     );
+ 
++    test_template(t, "multipart string comparison and access",
++        "{% set left = a + 'bc' %}{% set right = 'ab' + c %}{{ left == right }}|"
++        "{{ left[0] }}{{ left[1] }}{{ left[2] }}|{{ right[1:3] }}|"
++        "{{ left[3] is undefined }}|{{ empty[0] is undefined }}",
++        {{"a", "a"}, {"c", "c"}, {"empty", ""}},
++        "True|abc|bc|True|True"
++    );
++
+     test_template(t, "string slice negative step",
+         "{{ 'abcdef'[::-2] }}",
+         json::object(),
+@@ -669,6 +727,31 @@ static void test_expressions(testing & t) {
+         "{{ " + std::string(1000, '(') + "1" + std::string(1000, ')') + " }}",
+         "template is nested more than 128 levels deep"
+     );
++
++    test_template_error(t, "undefined hint: missing object key (attr)",
++        "{% set m = {'a': 1} %}{{ m.missing_key() }}",
++        "Callee is not a function: got Undefined (hint: 'missing_key')"
++    );
++
++    test_template_error(t, "undefined hint: missing object key (subscript)",
++        "{% set m = {'a': 1} %}{{ m['missing_key']() }}",
++        "Callee is not a function: got Undefined (hint: 'missing_key')"
++    );
++
++    test_template_error(t, "undefined hint: unknown array attribute",
++        "{% set a = [1] %}{{ a.missing_key() }}",
++        "Callee is not a function: got Undefined (hint: 'missing_key')"
++    );
++
++    test_template_error(t, "undefined hint: unknown string attribute",
++        "{% set s = 'x' %}{{ s.missing_key() }}",
++        "Callee is not a function: got Undefined (hint: 'missing_key')"
++    );
++
++    test_template_error(t, "undefined hint: unknown int attribute",
++        "{% set n = 1 %}{{ n.missing_key() }}",
++        "Callee is not a function: got Undefined (hint: 'missing_key')"
++    );
+ }
+ 
+ static void test_set_statement(testing & t) {
+@@ -1476,6 +1559,17 @@ static void test_tests(testing & t) {
+         "yes"
+     );
+ 
++    test_template(t, "is divisibleby -1 with INT64_MIN",
++        "{{ x is divisibleby(-1) }}",
++        {{"x", INT64_MIN}},
++        "True"
++    );
++
++    test_template_error(t, "is divisibleby zero",
++        "{{ 10 is divisibleby(0) }}",
++        "divisibleby: division by zero"
++    );
++
+     test_template(t, "is eq",
+         "{{ 'yes' if 3 is eq(3) }}",
+         json::object(),
+@@ -2772,6 +2866,27 @@ static void test_string_parts(testing & t) {
+         return runtime.gather_string_parts(runtime.execute(ast))->as_string();
+     };
+ 
++    t.test("comparison across part boundaries", [](testing & t) {
++        jinja::string left, right;
++        left.parts = {{true, "a"}, {false, "bc"}};
++        right.parts = {{false, "ab"}, {true, "c"}};
++        t.assert_true("equal text with different partitions", left.equals(right) && right.equals(left));
++
++        right.parts = {{false, ""}, {false, "ab"}, {true, ""}, {true, "c"}, {false, ""}};
++        t.assert_true("empty parts do not change equality", left.equals(right) && right.equals(left));
++        t.assert_true("different bytes are unequal", !left.equals(jinja::string("abd")));
++        t.assert_true("prefixes are unequal", !left.equals(jinja::string("ab")) && !jinja::string("ab").equals(left));
++
++        jinja::string empty;
++        empty.parts = {{true, ""}, {false, ""}};
++        t.assert_true("empty partitions equal an empty string", empty.equals(jinja::string()) && jinja::string().equals(empty));
++
++        auto object = jinja::mk_val<jinja::value_object>();
++        object->insert(jinja::mk_val<jinja::value_string>(left), jinja::mk_val<jinja::value_int>(7));
++        const auto found = object->find(jinja::mk_val<jinja::value_string>(right));
++        t.assert_true("object keys ignore partition boundaries", found && found->as_int() == 7);
++    });
++
+     t.test("merge joins only the neighbours with the same type", [](testing & t) {
+         // "AB" comes from the input and merges, "-" comes from the template and must not
+         jinja::string res = render("{{ val.a }}{{ val.b }}-{{ val.c }}",
