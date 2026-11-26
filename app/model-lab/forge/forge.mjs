@@ -643,6 +643,9 @@ async function benchOnPod(name) {
     log(`  ${cmd}`);
     const code = await new Promise((res) => { const ch = spawn(cmd, { cwd: path.join(here, '..'), shell: true, windowsHide: true, env: { ...process.env, LAB_URL: url, LAB_API_KEY: hdr['X-Forge-Token'], LAB_MODEL_NAME: name, LAB_REMOTE: '1', LAB_OUT: dir, ...(plan.no_hands ? { LAB_NO_HANDS: '1' } : {}) } }); const w = (d) => { fs.appendFileSync(lf, d); process.stdout.write(d); }; ch.stdout.on('data', w); ch.stderr.on('data', w); ch.on('exit', res); ch.on('error', (e) => { w(`${e.message}\n`); res(1); }); });
     fs.appendFileSync(lf, `\n[exit ${code}]\n`); if (code) log(`  command ${i + 1} ended with code ${code} (see ${lf})`);
+    // 26 Nov: the hard-maths sweep died with "socket hang up" and the pod was then deleted by hand, so its engine log was lost;
+    // a failed command now saves the pod's logs at once, while the pod is still up
+    if (code && code !== 86) await salvage();
     // 13 Nov: exit 86 = a gate said stop (smoke-gate.mjs): no more commands, and the run ends so the pod is deleted
     if (code === 86) { const why = (fs.readFileSync(lf, 'utf8').match(/GATE STOP: ([^\r\n]+)/) || [])[1] || `command ${i + 1} stopped the run`; log(`  gate: ${why}`); return `gate stopped the run: ${why}`; }
   }

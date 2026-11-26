@@ -258,7 +258,14 @@ async function main() {
   const runTrial = async (t) => {
     for (let n = 0; ; n++) {
       try {
-        await post('/dials', { dials: t.dials });
+        // the engine refuses dials while a slot is busy (an answer cut off on our side may still be finishing there): wait for it
+        for (let b = 0; ; b++) {
+          try { await post('/dials', { dials: t.dials }); break; } catch (e) {
+            if (!/slot is busy/.test(e.message) || b >= 40) throw e;
+            if (b === 0) log('the engine is still busy with an earlier answer; waiting for it before setting the dials');
+            await new Promise((r) => setTimeout(r, (waits ? 0 : 15) * 1000));
+          }
+        }
         return score(await answerAll(checkSet, true));
       } catch (e) {
         if (!dropped(e) || n >= retries) throw e;
