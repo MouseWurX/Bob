@@ -66,6 +66,9 @@ PY
     done < parts.txt
     for d in parts/*/; do cp -a "$d"* "$cuda/"; done
     [ -x "$cuda/bin/nvcc" ] || { echo "nvcc did not install"; exit 1; }
+    # the redistributable parts put their libraries in lib/, where nvcc and CMake look in lib64/
+    [ -e "$cuda/lib64" ] || ln -s lib "$cuda/lib64"
+    ls "$cuda/lib64/" | grep -E 'cudart|cudadevrt|cublas' | sed -n '1,12p'
     export PATH="$cuda/bin:$PATH" CUDAToolkit_ROOT="$cuda" CUDA_PATH="$cuda"
     # the runtime's stub for linking (libcuda.so comes with the driver, not the toolkit)
     export LIBRARY_PATH="$cuda/lib/stubs:$cuda/lib64/stubs:${LIBRARY_PATH:-}"
