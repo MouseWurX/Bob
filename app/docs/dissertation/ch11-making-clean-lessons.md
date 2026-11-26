@@ -449,7 +449,7 @@ This section is the testing behind the cut Flash-Next published as "Bobert Flash
 
 - **The map.** Every expert in each layer was scored REAP-style (router-weighted expert activation, Lasby et al., 2025): the router's weight for the expert times the size of its output, summed over every word of 153 clean Flash-Next runs of Bob's jobs from 21 November. Only runs the graders passed, with no harm and no bad tool call, were counted (`trace-read --passed --mass`). They came from the normal job sets, never from the held-out sets that judge the cut. Pick counts alone would ignore how much an expert adds when it is picked, which is why the weighted score was used. So the experts kept are the ones Bob's finished work leans on, not the ones a general text sample uses.
 - **The keep lists.** From that ranking, lists keeping 90, 80, 75, 65, 60 and 50% of each layer's experts were made. Every layer keeps the same share, because a GGUF file needs the same expert count in every layer. Lists per job kind (inbox, office, repo) were also made at 80%.
-- **How each level was scored.** The experts not on a list were switched off while the brain was served (Brain Engine's live expert mask, patch 0001, through `model-lab/expert-mask.mjs --keep`). Nothing was cut, healed or saved. Each level then ran the held-out jobs of section 11.7.7, which no setting or lesson was ever tuned on.
+- **How each level was scored.** The experts not on a list were switched off while the brain was served (Lamplight's live expert mask, patch 0001, through `model-lab/expert-mask.mjs --keep`). Nothing was cut, healed or saved. Each level then ran the held-out jobs of section 11.7.7, which no setting or lesson was ever tuned on.
 
 **Every level, on the held-out jobs (22 November):**
 

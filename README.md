@@ -77,15 +77,15 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 
 | | |
 |---|---|
-| 🧠 **Raon-1 mini and nano** | KRAFTON's 29B coder that works 4B at a time, and a 3B small brain, in the Brain catalogue. They run on Brain Engine 37 or newer. |
+| 🧠 **Raon-1 mini and nano** | KRAFTON's 29B coder that works 4B at a time, and a 3B small brain, in the Brain catalogue. They run on Lamplight 37 or newer. |
 | 🔑 **Brains that need a Hugging Face account** | Off to start with. Save a read-only Hugging Face key in 🔐 Locked secrets and those brains get a normal Download button. The key goes only to huggingface.co, only for those brains, and is never shown or logged. |
 | 📄 **The dissertation** | New results: the FP4 test that failed its gate, the Conductor's release gate, handheld results, and faster expert reads on Linux. |
 
-**In 1.5.253, with Brain Engine 43** (23 Nov 2026):
+**In 1.5.253, with Lamplight 43** (23 Nov 2026):
 
 | | |
 |---|---|
-| ⚡ **Brain Engine 43** | llama.cpp b12359 with our own patches, up from Brain Engine 8. Lossless speed-ups are on: long reads use the experts already on the card and read ahead (24% faster at 32K and 35% at 64K on our test PC, same tokens). MTP is on for brains that come with their own guesser. Anything that can change a brain's answers stays behind Turbo, off. |
+| ⚡ **Lamplight 43** | llama.cpp b12359 with our own patches, up from Lamplight 8. Lossless speed-ups are on: long reads use the experts already on the card and read ahead (24% faster at 32K and 35% at 64K on our test PC, same tokens). MTP is on for brains that come with their own guesser. Anything that can change a brain's answers stays behind Turbo, off. |
 | 🔁 **Routines** | Off to start with. Build a job by wiring boxes together, like Blueprints, or bring in n8n workflows. You OK a routine once, on a card that lists its steps, and then it runs in plain code with no brain unless a step asks for one. While the Routines Hand is on, Bob's menu has a Routines row. |
 | 🎮 **More memory free on a handheld** | On built-in graphics, the processor's part of a brain is now read straight from its file instead of copied into memory: 0.5 to 0.9 GB more free, at the same speed and with the same answers. Bob also shortens the chat memory so Windows keeps its share (**Memory kept for Windows** now starts at 0.5 GB), counts what a small brain really uses, and loads without the picture reader first when nothing else fits. |
 | 🎼 **The Conductor** | Off to start with. When you let it drive, it plans the card's memory before loading (the brain, the chat memory, the expert copy cache and the reading step) with a 512 MB margin, and never switches the reading step inside a job: each switch cost about 15 seconds on our test PC. A step switch with MTP on no longer stops the engine. |
@@ -106,7 +106,7 @@ Every build has a `.sha256` checksum on the [Releases page](https://github.com/M
 | 🧊 **The cube is Bob** | The cube is his picture everywhere outside games, and every Bob on Bob-Net shows his cube head. Pixel looks live on in games. |
 | 🎮 **A busy card is respected** | Bob won't load a brain onto a graphics card a game or another app is using, and a lent card comes back when a game wants it. |
 | 🧪 **Lab** | The training protocol, experts per word without a reload, Straight facts round two, and a privacy scrub that catches a name split across tokens before anything is published. |
-| 🛑 **Stop means stop** | "Stop" and "wait" act at once, One brain really uses one brain, picture to 3D works on RTX 50 cards, and Brain Engine 7 is on. |
+| 🛑 **Stop means stop** | "Stop" and "wait" act at once, One brain really uses one brain, picture to 3D works on RTX 50 cards, and Lamplight 7 is on. |
 
 **In 1.5.211:**
 
@@ -208,7 +208,7 @@ Every new switch is off until you turn it on.
 | 🔎 **Search by meaning** | Bob finds documents, memories and topics that are close in meaning, not only by exact words. |
 | 🔌 **Doors for other apps** | VS Code, Open WebUI and scripts use Bob's brains at `localhost:7777/v1`. The Claude app and Claude Code use Bob's Hands, every call on a card. Tool packs add other people's tools, in the sandbox. |
 | 🔒 **Lock, back up, move** | Every password and key Bob saves is locked on disk by your computer's own key store. A passcode lock scrambles chats and memory. One zip backs Bob up and restores him on another computer. |
-| ⚡ **Brain Engine 4** | SCUT packets between your Bobs are signed and scrambled, and a lost packet is rebuilt at once. SCUT is still experimental. |
+| ⚡ **Lamplight 4** | SCUT packets between your Bobs are signed and scrambled, and a lost packet is rebuilt at once. SCUT is still experimental. |
 | 🌍 **More places, more languages** | Screens in French and Spanish. Bob on the iPhone Home Screen. A .deb and a Flatpak for Linux. |
 
 Housekeeping is now on: it touches only Bob's own files unless you add folders, and it always asks first.
@@ -269,7 +269,7 @@ Brains are tested on **real jobs** in Bob's real loop, with his real tools, in a
 | 🪜 **Every Lab method as a step** | Each advanced method (tool interviews, expert maps, the evil check, steering, cuts, teaching) as a step you can run on its own or as part of a whole pipeline, with run records, comparisons and costs per run. [Plan](app/docs/LAB-STEPS-PLAN.md) |
 | 🔬 **Where a behaviour lives** | Research on Riker: layer-by-layer patching and sparse-autoencoder features, to find where a behaviour sits in the brain. Kept as a study record; it never trains anything. |
 
-**In Brain Engine 44**, in a later release. Built and in testing; unproven in our lab, as we have yet to test them on real jobs. Anything that could change a brain's answers stays off.
+**In Lamplight 44**, in a later release. Built and in testing; unproven in our lab, as we have yet to test them on real jobs. Anything that could change a brain's answers stays off.
 
 | | |
 |---|---|
@@ -336,7 +336,7 @@ Most AI apps are for talking to a model or for building one. Bob does both. **�
 | **My Lab** | Everything the Lab has made and measured: brains, scores, size ladders, lesson sets, recipes and recent jobs. |
 
 - **Keep it simple or Professional.** Simple fills in Bob's defaults. Professional shows every control and its proper name. **Show the recipe** prints every command the Lab runs.
-- **Brain Engine** is Bob's own engine. It switches a brain's experts on and off while it's loaded, so the Lab can try a cut before writing a file.
+- **Lamplight** is Bob's own engine (called Brain Engine before 26 Nov 2026; builds are named like LL46b12359; it shares its name with the Lamplight look, and some screens still say Brain Engine until an app update). It switches a brain's experts on and off while it's loaded, so the Lab can try a cut before writing a file.
 - **fNRI** (functional Neural Response Imager) shows a brain as a 3D block: one floor per layer, every expert coloured by the skill that used it most. Its **weight map** colours the block by the brain's own weights instead: how strong each expert is, or how much it differs from another brain.
 
   ![fNRI's weight map of Riker, and the same block coloured by how much each expert differs from stock Qwen3.6-35B-A3B](app/docs/screens/fnri-weight-maps-riker.jpg)  
@@ -357,7 +357,7 @@ Most AI apps are for talking to a model or for building one. Bob does both. **�
 
 </details>
 
-Lab jobs need at least 12 GB of memory; a smaller computer can start them on a bigger Bob on your Bob-Net. Making an fNRI scan needs Brain Engine, on Windows or Linux. More in the [user guide](app/docs/USER-GUIDE.md#11-the-computer-science-lab).
+Lab jobs need at least 12 GB of memory; a smaller computer can start them on a bigger Bob on your Bob-Net. Making an fNRI scan needs the Lamplight engine, on Windows or Linux. More in the [user guide](app/docs/USER-GUIDE.md#11-the-computer-science-lab).
 
 ### Lessons: a course on how brains work
 
@@ -439,7 +439,7 @@ Put Bob on your PC, laptop, handheld and phone, and they find each other on your
 - **Pool graphics cards and memory.** A brain too big for one computer is spread over your Bobs' cards and memory. One bigger than all of that can still run from a fast SSD.
 - **Fast where it counts.** The first load sends the brain once; later loads send only what's missing. A brain that fits on one computer stays there, because that beats any network. With **SCUT** turned on (experimental), a brain spread over two Bobs on weak home Wi-Fi wrote 17.5 tokens a second against 3.5 to 4.8 over plain TCP: [the measurements](app/docs/test-results/2026-11-12-scut-vs-tcp-over-wifi.md). Over a cable it isn't measured yet: the first try lost its lender partway through copying the brain, and Bob carried on alone ([what ran and what didn't](app/docs/test-results/2026-11-12-bob-net-card-share-over-cable.md)).
 
-  <img src="app/docs/screens/scut-vs-tcp.svg" alt="SCUT and TCP side by side, SCUT marked experimental. Both carry the same Brain Engine messages. Plain TCP: one ordered byte stream, and a lost last packet waits for the timeout of about 200 to 300 ms. SCUT: numbered UDP packets with a 20-byte header, selective acks, resends after a few ms, its own pace under a speed cap, every packet sealed, and a repair packet that rebuilds one lost packet at once; the TCP line stays open. Measured once on weak Wi-Fi: TCP 3.5 to 4.8 words a second, SCUT 17.0 to 17.7.">
+  <img src="app/docs/screens/scut-vs-tcp.svg" alt="SCUT and TCP side by side, SCUT marked experimental. Both carry the same Lamplight messages. Plain TCP: one ordered byte stream, and a lost last packet waits for the timeout of about 200 to 300 ms. SCUT: numbered UDP packets with a 20-byte header, selective acks, resends after a few ms, its own pace under a speed cap, every packet sealed, and a repair packet that rebuilds one lost packet at once; the TCP line stays open. Measured once on weak Wi-Fi: TCP 3.5 to 4.8 words a second, SCUT 17.0 to 17.7.">
 - **Bobs working in concert.** Borrow a bigger Bob's brain for a reply, send a job to whichever Bob is free, or have a bigger Bob check a handheld's harder work.
 - **The phone app** talks to the Bob on your PC, and can run a small brain on the phone itself.
 - **Adventures together:** your other Bobs join the party in the tabletop game.
@@ -457,7 +457,7 @@ Put Bob on your PC, laptop, handheld and phone, and they find each other on your
 | Graphics memory Bob holds while idle | **None.** The brain unloads, and big models load only for the job that needs them. |
 | 🎮 Gaming session, first word of a reply | **0.1 seconds** with the brain loaded, on the processor, with the graphics card left to your game. |
 | Context on a 16 GB card | **256K tokens**, and up to 1M with Long memory. |
-| 🧊 The cube's **Real experts** (live brain picks) | **Free when off** (the glow alone costs nothing). On Brain Engine 7 (Bob's own from 1.5.217): **about a tenth** shown live (Riker on a 5070 Ti, 115.1 down to 104.7 words a second) and about 4.5% read after the answer (109.9). Brain Engine 5 cost about a fifth (122.7 down to 99.2), because it stopped at every layer; from Brain Engine 6 the picks are read once per word; [the numbers](app/docs/test-results/2026-11-12-cube-real-experts-cost.md). |
+| 🧊 The cube's **Real experts** (live brain picks) | **Free when off** (the glow alone costs nothing). On Lamplight 7 (Bob's own from 1.5.217): **about a tenth** shown live (Riker on a 5070 Ti, 115.1 down to 104.7 words a second) and about 4.5% read after the answer (109.9). Lamplight 5 cost about a fifth (122.7 down to 99.2), because it stopped at every layer; from Lamplight 6 the picks are read once per word; [the numbers](app/docs/test-results/2026-11-12-cube-real-experts-cost.md). |
 
 Pictures and big jobs wait in Tasks while you play, and **Games first** has Bob use fewer processor cores. The measurements are in [How Bob stays fast and light](app/docs/PERFORMANCE.md).
 
@@ -520,7 +520,7 @@ Bob installs no services or drivers and needs no admin rights.
 
 Bob is inspired by the wonderful books of Dennis E. Taylor. Bob is an independent, fan-made project. It is not affiliated with, sponsored by or endorsed by Dennis E. Taylor or by his publishers, distributors or licensees. All characters, names, titles, stories and other rights in those books remain the property of their respective owners. Bob contains no text from the books; any similar names or ideas are used only as a tribute. The licences below cover only MouseWurX's own original work in this repository, not anything that belongs to the author or his publishers. If you hold rights in those books and have a concern, please [open an issue](https://github.com/MouseWurX/Bob/issues) and we'll respond promptly.
 
-Bob's own brains are made from [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) by Alibaba's Qwen team (Apache 2.0). Brain Engine is built on [llama.cpp](https://github.com/ggml-org/llama.cpp) by the ggml authors (MIT).
+Bob's own brains are made from [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) by Alibaba's Qwen team (Apache 2.0). Lamplight is built on [llama.cpp](https://github.com/ggml-org/llama.cpp) by the ggml authors (MIT).
 
 Testing and releases: **Porter**, a Claude assistant made by Anthropic, carried Bob's builds through testing on real hardware and out the door as releases. Thanks, Porter.
 

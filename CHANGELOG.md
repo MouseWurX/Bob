@@ -10,7 +10,7 @@ KRAFTON's Raon-1 brains are in the catalogue, and I can download brains that nee
 
 ### New
 
-- **KRAFTON's Raon-1 mini and nano in the Brain catalogue.** A 29B coder that works 4B at a time, and a 3B small brain. They need Brain Engine 37 or newer (this release has 43), and a card on an older engine says so. Their downloads don't need a Hugging Face account.
+- **KRAFTON's Raon-1 mini and nano in the Brain catalogue.** A 29B coder that works 4B at a time, and a 3B small brain. They need Lamplight 37 or newer (this release has 43), and a card on an older engine says so. Their downloads don't need a Hugging Face account.
 - **Brains that need a Hugging Face account.** Some brain makers only let a signed-in account that accepted their terms download their brain. Save a read-only Hugging Face key as HF_TOKEN in 🔐 Locked secrets and switch on **Download brains that need a Hugging Face account** (Settings, How Bob works, Going online), and those brains get a normal Download button. Off to start with.
 - **Your key stays put.** I send it only to huggingface.co, only for those brains, and drop it before Hugging Face hands the file to its storage. Every other download stays signed out. The key is locked like your other keys and never shown or logged.
 
@@ -26,15 +26,15 @@ KRAFTON's Raon-1 brains are in the catalogue, and I can download brains that nee
 
 ## 1.5.253
 
-A new engine, Brain Engine 43, and Routines. Long reads are faster, and Bob fits better on built-in graphics.
+A new engine, Lamplight 43, and Routines. Long reads are faster, and Bob fits better on built-in graphics.
 
 ### New
 
-- **Brain Engine 43** (Settings, How Bob works, Engines). This is llama.cpp b12359 with our own patches, up from Brain Engine 8. Lossless speed-ups are on from the start. Long reads use the experts already on the card where they sit, and read ahead (on the test PC, long reads were 24% faster at 32K and 35% faster at 64K, with the same words). Everything that can change words stays behind Turbo, off.
+- **Lamplight 43** (Settings, How Bob works, Engines). This is llama.cpp b12359 with our own patches, up from Lamplight 8. Lossless speed-ups are on from the start. Long reads use the experts already on the card where they sit, and read ahead (on the test PC, long reads were 24% faster at 32K and 35% faster at 64K, with the same words). Everything that can change words stays behind Turbo, off.
 - **MTP for everyday brains** is on for brains that come with their own guess-ahead head. It guesses a few words ahead and checks them, so the words don't change.
 - **The Conductor** (Settings, How Bob works, Engine tuning; off to start). It plans the card's memory before loading: the brain, the chat memory, the expert copy cache and the reading step, inside the card with a 512 MB margin. It also picks the reading step for each prompt.
 - **Routines** (Settings, Hands, the Routines Hand; off to start). Build a job by wiring boxes together, like Blueprints, and bring in n8n workflows. While the Hand is on, Bob's menu has a Routines row.
-- **Raon-1 mini and nano** can run on Brain Engine 43. They come into the catalogue in a later release.
+- **Raon-1 mini and nano** can run on Lamplight 43. They come into the catalogue in a later release.
 
 ### Fixed
 
@@ -106,7 +106,7 @@ A much bigger brain catalogue, Turbo-ready copies of stock Qwen, and big expert 
 ### New
 
 - **More brains to pick from.** 31 new brains across the Community, Naughty and Official lists. The Naughty list is other people's remixes of open brains with the refusals taken out, and it carries a warning.
-- **Turbo-ready stock Qwen.** Copies of stock Qwen 35B, 27B, 9B and 4B that carry the extra layer for drafting ahead (MTP), so they can answer faster on Brain Engine.
+- **Turbo-ready stock Qwen.** Copies of stock Qwen 35B, 27B, 9B and 4B that carry the extra layer for drafting ahead (MTP), so they can answer faster on Lamplight.
 - **Big expert brains as downloads.** GPT-OSS 120B, Qwen3-Next 80B, GLM-4.5 Air and Llama 4 Scout. A brain that comes in parts downloads every part, and its extra files sit beside part 1.
 - **One card for every brain.** Every (i) in the catalogue shows the same card. Room says how well the brain splits across cards, and Here says how it would split on your setup.
 
@@ -124,7 +124,7 @@ I hear you on my own now, there's a log of what I did if you want one, and Gamin
 
 ### New
 
-- **I hear you without Ollama.** "Hearing you" uses whisper.cpp with Whisper base to start, and it's in every desktop starter set. On a Mac I hear through Gemma 4 E4B on my own engine. Gemma on Brain Engine is still a pick in Get models. If you were hearing through Ollama, I move you over once, when the new files are here. Ollama is now off unless you turn on "Use Ollama too" in Settings, Engines. With it off, I never knock on Ollama's door. Hearing pauses in Gaming mode. (Not tried on a real PC yet.)
+- **I hear you without Ollama.** "Hearing you" uses whisper.cpp with Whisper base to start, and it's in every desktop starter set. On a Mac I hear through Gemma 4 E4B on my own engine. Gemma on Lamplight is still a pick in Get models. If you were hearing through Ollama, I move you over once, when the new files are here. Ollama is now off unless you turn on "Use Ollama too" in Settings, Engines. With it off, I never knock on Ollama's door. Hearing pauses in Gaming mode. (Not tried on a real PC yet.)
 - **Monitoring log.** Off to start. Settings, This replicant matrix. I write each turn's steps to a plain text file as each step finishes, so a crash loses at most the step that was running. "Include details" adds the tool inputs and results too, with keys and passcodes hidden and email left out. Keep this turn and Keep the current file hold on to what matters. Only the size limit drops old files, and the Lab and lessons never read them.
 - **Better checks at the end of a turn.** I catch the slips I made most often in the Lab's runs: asking where a file is without looking, saying something was done when nothing did it, answers cut off mid-list, research after only one search, mail jobs done with the wrong tools, and pointing you back at something I never showed you. I get one more go to fix it, never a loop. I also won't move my own working folder, I tidy up a garbled link before reading it, and stray citation marks no longer reach you.
 

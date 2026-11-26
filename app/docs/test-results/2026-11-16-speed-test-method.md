@@ -1,11 +1,11 @@
-# Speed test method: reading steps, Brain Engine cost, job finish times (pre-registered)
+# Speed test method: reading steps, Lamplight cost, job finish times (pre-registered)
 
 Written 16 November 2026, **before any timed run**. This page fixes the method in advance. The results page will link back here, publish every raw number next to it, and list anything that ran differently from this plan, and why.
 
 ## Questions
 
 1. **Reading steps.** How much faster does the brain read a prompt with bigger batches (`-b`/`-ub` 2048 and 4096 instead of Bob's 512), and what does it cost in writing speed and graphics memory?
-2. **Brain Engine cost.** What does Brain Engine (llama.cpp plus Bob's patches) cost against plain llama.cpp of the same build, with every feature off, and with each feature on by itself?
+2. **Lamplight cost.** What does Lamplight (llama.cpp plus Bob's patches) cost against plain llama.cpp of the same build, with every feature off, and with each feature on by itself?
 3. **Job finish.** How long do real multi-step jobs take from start to finish at each reading step?
 4. **Effort.** The same jobs at each effort level. This one runs only after the effort test on rentals reports, and on a separate night.
 
@@ -14,8 +14,8 @@ Written 16 November 2026, **before any timed run**. This page fixes the method i
 - The replicant matrix ([index](README.md)): Ryzen 7 9800X3D, RTX 5070 Ti 16 GB, 32 GB DDR5-6000, NVMe, Windows 11.
 - Brain: stock Qwen3.6 35B A3B, the file Bob picks by default on a 16 GB card. Its file name and sha256 go on the results page before the first timed run.
 - Engines:
-  - **Plain:** the official llama.cpp **b12359** Windows CUDA release, which is the same base as Brain Engine 8. It is downloaded, not compiled.
-  - **Brain Engine 8** (8b12359): b12359 plus patches 0001 to 0014, the build Bob ships.
+  - **Plain:** the official llama.cpp **b12359** Windows CUDA release, which is the same base as Lamplight 8. It is downloaded, not compiled.
+  - **Lamplight 8** (8b12359): b12359 plus patches 0001 to 0014, the build Bob ships.
   - Both sha256 prints are recorded.
 - The NVIDIA driver version, Windows build and Bob version (1.5.244 or newer) are recorded.
 
@@ -34,20 +34,20 @@ Written 16 November 2026, **before any timed run**. This page fixes the method i
 
 ## Runs
 
-**Question 1, reading steps:** `-b`/`-ub` at 512/512 (Bob now), 2048/2048 and 4096/4096, each on Brain Engine 8 with every feature off.
+**Question 1, reading steps:** `-b`/`-ub` at 512/512 (Bob now), 2048/2048 and 4096/4096, each on Lamplight 8 with every feature off.
 
-**Question 2, Brain Engine cost:**
+**Question 2, Lamplight cost:**
 
 | Run | Engine | Features |
 |---|---|---|
 | P0 | Plain | llama.cpp's default flags and sampling |
 | P1 | Plain | Bob's exact flags and sampling |
-| E0 | Brain Engine 8 | everything off |
-| E1 | Brain Engine 8 | experts per word set to the brain's own count (0013) |
-| E2 | Brain Engine 8 | expert switch-off with one expert masked (0001) |
-| E3 | Brain Engine 8 | one dial set (0003) |
-| E4 | Brain Engine 8 | live expert trace with a reader attached, as the cube does (0002, 0007, 0009, 0010) |
-| E5 | Brain Engine 8 | everything above on together |
+| E0 | Lamplight 8 | everything off |
+| E1 | Lamplight 8 | experts per word set to the brain's own count (0013) |
+| E2 | Lamplight 8 | expert switch-off with one expert masked (0001) |
+| E3 | Lamplight 8 | one dial set (0003) |
+| E4 | Lamplight 8 | live expert trace with a reader attached, as the cube does (0002, 0007, 0009, 0010) |
+| E5 | Lamplight 8 | everything above on together |
 
 P1 against E0 gives the cost of carrying the patches. E1 to E4 against E0 give each feature's cost. P0 against P1 shows how much is down to Bob's settings rather than the patches. SCUT and card sharing (0004, 0005, 0006, 0008, 0011, 0014) only act over a network link, so they are measured in the Bob-Net tests, not here.
 
@@ -83,13 +83,13 @@ P1 against E0 gives the cost of carrying the patches. E1 to E4 against E0 give e
 
 - The results page goes beside this one with the median, min and max tables, and a raw CSV with every run, every sample and every command line.
 - Anything skipped or changed from this page is listed at the top of the results page, with the reason.
-- Dissertation chapter 3 is updated from the results. It will also cite the 12 November trace cost ([cube Real experts](2026-11-12-cube-real-experts-cost.md)), which was measured on Brain Engine 5.
+- Dissertation chapter 3 is updated from the results. It will also cite the 12 November trace cost ([cube Real experts](2026-11-12-cube-real-experts-cost.md)), which was measured on Lamplight 5.
 
 ## Addendum 1: the new speed features (added 16 November 2026, before any timed run)
 
 The same rules as above apply: warm-up, 5 runs in turn, median with min and max, and conditions logged with every run.
 
-**Question 5, each new feature alone, then one combination,** all on Brain Engine with every expert feature off, at Reading speed Normal unless the row says otherwise:
+**Question 5, each new feature alone, then one combination,** all on Lamplight with every expert feature off, at Reading speed Normal unless the row says otherwise:
 
 | Run | What is on |
 |---|---|
@@ -116,7 +116,7 @@ The same rules as above apply: warm-up, 5 runs in turn, median with min and max,
 
 ## Addendum 2: hot experts as a ranked fill of llama.cpp's own cache (added 16 November 2026, before any timed run)
 
-Addendum 1 described hot experts as a split of each expert tensor into a card half and a RAM half. That design was dropped before any run: llama.cpp b12359 already has an expert cache on the card (`--moe-cache-mib`, `--moe-cache-cpu-share`), so Brain Engine patch 0016 only fills that cache at load from a ranking. Addendum 1 stays as written; where they differ, this one replaces it.
+Addendum 1 described hot experts as a split of each expert tensor into a card half and a RAM half. That design was dropped before any run: llama.cpp b12359 already has an expert cache on the card (`--moe-cache-mib`, `--moe-cache-cpu-share`), so Lamplight patch 0016 only fills that cache at load from a ranking. Addendum 1 stays as written; where they differ, this one replaces it.
 
 **What changes in Addendum 1:**
 
@@ -141,7 +141,7 @@ Addendum 1 described hot experts as a split of each expert tensor into a card ha
 - The engine's own totals (`LLAMA_MOE_CACHE_LOG_EVERY` set, so they print while the server runs; a stopped server on Windows never prints them): hits, misses, misses worked out on the processor, **MB copied to the card**, for batches up to 8 tokens and for 9 to 32 apart.
 - **The processor's share** of the expert picks (misses on the processor / all picks), per profile.
 - **The first 1,000 written tokens apart from the rest**, so the stock cache's warm-up is visible next to the ranked fill, which has none.
-- **The profile stamp** for every ranked row: the mix fingerprint, the brain file (name, size, date), the brain fingerprint the engine printed, the engine build and the list of Brain Engine patches.
+- **The profile stamp** for every ranked row: the mix fingerprint, the brain file (name, size, date), the brain fingerprint the engine printed, the engine build and the list of Lamplight patches.
 
 **The "nothing moves" check (about 10 minutes, before the timed rows).** Until now "a ranked cache at share 1 never changes while writing" is read from the code (`plan()`), not measured. The check turns it into a measurement:
 
@@ -158,7 +158,7 @@ The effort test on rentals has reported (100 jobs per setting, graded blind). On
 
 ## Addendum 4: the cube's live view, data against drawing (added 16 November 2026, before any timed run)
 
-The 12 November test measured Real experts on Brain Engine 5 (writing 17 to 25% slower, reading 2%) and showed the cost was in collecting the picks, not in sending them live. It didn't separate collecting from drawing, and Brain Engine 6's once-a-word read (patch 0010) was never timed. Same rules as above (warm-up, 5 runs in turn, median with min and max), Brain Engine 8, the 300-token and 16K prompts:
+The 12 November test measured Real experts on Lamplight 5 (writing 17 to 25% slower, reading 2%) and showed the cost was in collecting the picks, not in sending them live. It didn't separate collecting from drawing, and Lamplight 6's once-a-word read (patch 0010) was never timed. Same rules as above (warm-up, 5 runs in turn, median with min and max), Lamplight 8, the 300-token and 16K prompts:
 
 | Run | What is on |
 |---|---|
@@ -173,7 +173,7 @@ C1 minus C0 is the drawing on the card; C2 minus C0 the collecting and sending; 
 
 **Addendum 4, more (added the same day, before any run):**
 
-- **Does copying dominate at fast writing?** Brain Engine 6 and later already copy each word's picks out once instead of once per layer (40 times on the 12 November brain), but the live view still waits for the card once per word to send that word's piece. C2 is run at three writing rates: Qwen3 4B (no experts, about 200 words a second), the 35B on the 300-token prompt (fast), and the 35B with a 32K chat behind it (slow). The cost is reported as a percent and as milliseconds per word. If the milliseconds per word stay the same across rates, the cost is per word, and the fix is to send the picks every N words or every screen tick instead of every word. That change (an engine request field for N) is then proposed and measured as its own row.
+- **Does copying dominate at fast writing?** Lamplight 6 and later already copy each word's picks out once instead of once per layer (40 times on the 12 November brain), but the live view still waits for the card once per word to send that word's piece. C2 is run at three writing rates: Qwen3 4B (no experts, about 200 words a second), the 35B on the 300-token prompt (fast), and the 35B with a 32K chat behind it (slow). The cost is reported as a percent and as milliseconds per word. If the milliseconds per word stay the same across rates, the cost is per word, and the fix is to send the picks every N words or every screen tick instead of every word. That change (an engine request field for N) is then proposed and measured as its own row.
 - **Low against high rates** come from the same three cases, with C3 too, so drawing (fixed per screen frame) and copying (per word) can be told apart: drawing should cost the same milliseconds a second at any rate, copying the same milliseconds a word.
 - **The "off" check stays in every run night,** not only this one: C5 (Real experts switched off after use, cube still showing) must match C1, or the run is reported as a leak.
 - **Stalls, not only averages.** Every C run streams its answer and logs the arrival time of each word, so the gaps between words are kept one by one. Reported with each row: the median gap and the 95th and 99th percentile and the longest gap, beside the words-a-second figure. A row whose average looks fine but whose 99th percentile jumps is reported as a stall problem.
@@ -182,7 +182,7 @@ C1 minus C0 is the drawing on the card; C2 minus C0 the collecting and sending; 
 
 ## Addendum 5: prefetch is built after all (added 16 November 2026, before any timed run)
 
-Addendum 2 said N5 (prefetch for prompt reading) would not run as its own patch. The owner chose to build it before testing: Brain Engine patch 0019 copies the next layer's experts while this one works (`LLAMA_PREFETCH_EXPERTS=1`). **N5 runs again** as written in Addendum 1, at Reading speed Normal and Fastest, on the 16K and 32K prompts, with the engine's closing count of tensors copied ahead and used, and peak card memory (it needs about one layer of experts more). If it can't set up on the card it says so and the rows are marked not run. Patch 0018 (live trace every N words) gets rows C2 and C3 at N = 1, 4 and 14.
+Addendum 2 said N5 (prefetch for prompt reading) would not run as its own patch. The owner chose to build it before testing: Lamplight patch 0019 copies the next layer's experts while this one works (`LLAMA_PREFETCH_EXPERTS=1`). **N5 runs again** as written in Addendum 1, at Reading speed Normal and Fastest, on the 16K and 32K prompts, with the engine's closing count of tensors copied ahead and used, and peak card memory (it needs about one layer of experts more). If it can't set up on the card it says so and the rows are marked not run. Patch 0018 (live trace every N words) gets rows C2 and C3 at N = 1, 4 and 14.
 
 ## Addendum 6: the long prompts' text (added 16 November 2026, before any timed run)
 
@@ -194,14 +194,14 @@ The first setup run on the PC stopped at the ranking step: the engine printed no
 
 ## Addendum 8 (Nov 16, before any timed run): Turbo with Bob's own sampling
 
-Every other row samples at temperature 0. Bob's everyday Qwen3.5/3.6 setting sends temperature 0.7, top_p 0.8, top_k 20, min_p 0, presence_penalty 1.5 and repeat_penalty 1.0. A distill's model page warns that some other engines (Strata) switch MTP drafting off unless the request is at temperature 0 with no penalties. llama.cpp's `--spec-type draft-mtp` doesn't do that: it drafts at any temperature (above 0 it checks drafts by rejection sampling), and no Brain Engine patch touches sampling. To show what Turbo gives with the setting Bob really sends, two rows are added: **N0S** (Brain Engine 9, no Turbo) and **N2S** (Turbo, as N2), both with Bob's sampling in the request. The drafts-kept share is reported for every Turbo row. Night 1 is now 33 rows, 165 loads.
+Every other row samples at temperature 0. Bob's everyday Qwen3.5/3.6 setting sends temperature 0.7, top_p 0.8, top_k 20, min_p 0, presence_penalty 1.5 and repeat_penalty 1.0. A distill's model page warns that some other engines (Strata) switch MTP drafting off unless the request is at temperature 0 with no penalties. llama.cpp's `--spec-type draft-mtp` doesn't do that: it drafts at any temperature (above 0 it checks drafts by rejection sampling), and no Lamplight patch touches sampling. To show what Turbo gives with the setting Bob really sends, two rows are added: **N0S** (Lamplight 9, no Turbo) and **N2S** (Turbo, as N2), both with Bob's sampling in the request. The drafts-kept share is reported for every Turbo row. Night 1 is now 33 rows, 165 loads.
 
 ## Addendum 9 (Nov 16, before any timed run): what the first setup found
 
-- **Rankings load twice.** With its expert cache on, Brain Engine 9 sent back no expert trace, so the first rankings counted 0 picks. They were set aside and not used. `hot-rank.mjs` now reads the brain's fingerprint on one load with the cache on, then counts the picks on a second load without it. The cache doesn't change which experts are picked. It now stops with a reason if any kind counts no picks.
+- **Rankings load twice.** With its expert cache on, Lamplight 9 sent back no expert trace, so the first rankings counted 0 picks. They were set aside and not used. `hot-rank.mjs` now reads the brain's fingerprint on one load with the cache on, then counts the picks on a second load without it. The cache doesn't change which experts are picked. It now stops with a reason if any kind counts no picks.
 - **The runner starts from a folder with a space.** `speed-test.mjs` compared its own path in a way that turned each space in a folder name into %20, so it did nothing and said nothing. Fixed and tested.
 - **The setup's own health check now has a time limit.** b12359 opens its port before the brain has loaded. One check without a limit hung for about 50 minutes. No measured number came from that run.
-- **Not affected:** the H rows time the cache and ask for no trace. The C rows ask for the trace but run without the cache. The trace-with-cache bug is noted in the engine README for the next Brain Engine.
+- **Not affected:** the H rows time the cache and ask for no trace. The C rows ask for the trace but run without the cache. The trace-with-cache bug is noted in the engine README for the next Lamplight.
 
 ## Addendum 10 (Nov 16, before any timed run): no Turbo rows on this brain
 
@@ -211,7 +211,7 @@ Quick checks, all before any timed run: the ranked fill loaded 2,220 experts (4,
 
 ## Addendum 11 (Nov 16, before any timed run): a Turbo plan of its own
 
-Turbo needs a copy of the brain that keeps its MTP layers: unsloth's `Qwen3.6-35B-A3B-MTP-GGUF`, in the same UD-Q4_K_XL quant as night 1's brain (22.9 GB against 20.8 GB). It is a different file, so its rows are compared only with each other. `speed-plans/turbo.json` has 5 rows, 25 loads, all on Brain Engine 9:
+Turbo needs a copy of the brain that keeps its MTP layers: unsloth's `Qwen3.6-35B-A3B-MTP-GGUF`, in the same UD-Q4_K_XL quant as night 1's brain (22.9 GB against 20.8 GB). It is a different file, so its rows are compared only with each other. `speed-plans/turbo.json` has 5 rows, 25 loads, all on Lamplight 9:
 - **T0:** no Turbo.
 - **T2 and T3:** Turbo with 2 and 3 drafted words.
 - **T0S and T3S:** the same, with Bob's everyday sampling (addendum 8).
@@ -243,10 +243,10 @@ Columns are found by name, and a comma decimal is read too. If the log is missin
 ## Addendum 14 (Nov 16, before any laptop run): the laptop plan, heat and throttling
 
 The owner expects the laptop (6 GB card) to throttle from heat. `speed-plans/laptop.json` has 6 rows, 30 loads, on the brain Bob picks for a 6 GB card (Qwen3 4B, which fits on the card whole, so the card works hardest):
-- P1 (plain llama.cpp, Bob's settings) and N0 (Brain Engine 9, nothing new).
+- P1 (plain llama.cpp, Bob's settings) and N0 (Lamplight 9, nothing new).
 - R2048 and R4096: Reading speed Faster and Fastest.
 - N3: brain locked in memory.
-- SOAK: Brain Engine 9 writing 6,000 words in one go on the short prompt, to show what sustained heat does to writing speed.
+- SOAK: Lamplight 9 writing 6,000 words in one go on the short prompt, to show what sustained heat does to writing speed.
 
 Every row reads the short prompt, 16K and 32K (context 36,864), except SOAK. Two things are added to the runner for this, and work on any machine:
 - **Cool-down before each load** (`coolDown` in the plan): the runner waits until the card is at or below 60 °C, checking every 5 seconds, for at most 5 minutes. Without it, a hot row hands its heat to the next one and the rows aren't compared fairly. The wait, the start temperature and any load that started above 60 °C after the longest wait are recorded and shown in the summary.
@@ -261,11 +261,11 @@ The owner asked what to expect. These predictions are written down while night 1
 | Rows | Prediction | Why |
 |---|---|---|
 | R2048, R4096 vs R512 | Reading 16K and 32K: 1.5x to 2.5x faster at 4096, less at 2048. First word at 32K falls by about the same share. Writing within 3%. Peak card memory up 1 to 2 GB. | Bigger batches copy each expert to the card fewer times; a 3060 report showed 2.5x to 2.9x on a dense brain. |
-| E0 vs P1 | Within 2% on every number. | Brain Engine with everything off runs upstream's code paths. |
+| E0 vs P1 | Within 2% on every number. | Lamplight with everything off runs upstream's code paths. |
 | E1, E2, E3 vs E0 | Each within 2%. | They change a few numbers per word, not the work. |
-| E4 vs E0 | Writing 5% to 18% slower. Reading within 3%. | Brain Engine 5 cost 18% writing short; 6 and later copy the picks once per word, not once per layer. |
+| E4 vs E0 | Writing 5% to 18% slower. Reading within 3%. | Lamplight 5 cost 18% writing short; 6 and later copy the picks once per word, not once per layer. |
 | E5 vs E4 | Within 3% of E4. | The trace is the only costly one. |
-| N0 vs E0 | Within 2%. | Brain Engine 9's new parts are all off. |
+| N0 vs E0 | Within 2%. | Lamplight 9's new parts are all off. |
 | N3 | Medians within 2%, but fewer long word gaps (lower max gap). It may be refused if Windows won't lock that much RAM. | Locking stops paging, which shows in the worst gaps, not the median. |
 | N4 (hot experts 4 GB, ranked) | Writing 0% to 15% faster. Reading and first word unchanged. | Stated limit: prompt reading skips the cache. The cache takes room that --fit would give to layers. |
 | H4, H5, H6 vs H1, H2, H3 | Ranked at least as fast as stock at the same size, most gain at 2 GB. 6 GB may be slower than 4 GB. | The stock cache learns its experts during the first answers; a short run leaves it half learned. Too big a cache squeezes layers off the card. |
@@ -280,7 +280,7 @@ The owner asked what to expect. These predictions are written down while night 1
 
 ## Addendum 16 (Nov 17, after night 1's results, before this run): the calibration run
 
-Night 1 measured reading steps and hot experts apart. They compete for the card: the cache takes room that `--fit` would give to layers, and bigger reading steps need bigger work buffers. `speed-plans/calibrate.json` measures them together to find the best pair, on the same brain and engine (Brain Engine 9), 18 rows, **5 rounds** (90 loads), as the method asks, so its numbers can be reported as final.
+Night 1 measured reading steps and hot experts apart. They compete for the card: the cache takes room that `--fit` would give to layers, and bigger reading steps need bigger work buffers. `speed-plans/calibrate.json` measures them together to find the best pair, on the same brain and engine (Lamplight 9), 18 rows, **5 rounds** (90 loads), as the method asks, so its numbers can be reported as final.
 
 - **Y0:** Normal reading, no cache, as the same-night yardstick.
 - **F0, X0:** Faster (2048) and Fastest (4096), no cache.
@@ -288,7 +288,7 @@ Night 1 measured reading steps and hot experts apart. They compete for the card:
 - **F1c, F2c, F4c / X1c, X2c, X4c:** the same, missed experts copied to the card (`--moe-cache-cpu-share 0`, night 1's fastest writer).
 - **G0:** no trace, CUDA graphs turned off (`GGML_CUDA_DISABLE_GRAPHS=1`).
 - **G4:** the live trace on, as E4.
-- **G2:** the live trace with `expert_trace_mass` on. Brain Engine 9 then takes 0002's old path: it stops at every layer and never marks the expert picks as graph outputs (0010's `keep_expert_ids` is off with mass). It is slower by design. It is here only for its words.
+- **G2:** the live trace with `expert_trace_mass` on. Lamplight 9 then takes 0002's old path: it stops at every layer and never marks the expert picks as graph outputs (0010's `keep_expert_ids` is off with mass). It is slower by design. It is here only for its words.
 
 Every row reads the short prompt, 16K and 32K, except G0 and G4 (short and 32K). The cache is filled the stock way: night 1 found the ranking no faster. 6 GB is left out: it read slowest and wrote no faster than 4 GB.
 
@@ -305,7 +305,7 @@ The runner now joins split nvidia-smi lines, so the card conditions are read fro
 
 The owner asked for hot, warm and cold experts to be built and tested. Hot is the card (the expert cache). Warm pins the busiest RAM experts so the operating system can't drop them to the disk. Cold asks for a whole expert at once from the disk when one that hasn't been used lately is picked. That is patch 0020 (`app/engine/README.md`), off unless asked. Neither tier changes a number, and the words are checked identical on a tiny brain. They can only matter when the brain doesn't fit in RAM. So the test brain is GPT-OSS 120B (63 GB) on the same PC (16 GB card, 32 GB RAM), with about 15 GB that can't fit.
 
-`speed-plans/big-brain-tiers.json`: Brain Engine 10 (with 0020), the Nov 10 best placement (`--n-cpu-moe 28`, reading step 2048), a 2,048-token prompt, 300 words out, 6 rows × **5 rounds** (30 loads), interleaved, with a warm-up per load as before. New: each timed run also records how many MB the disks read (`"diskReads": true`), and MB per written word.
+`speed-plans/big-brain-tiers.json`: Lamplight 10 (with 0020), the Nov 10 best placement (`--n-cpu-moe 28`, reading step 2048), a 2,048-token prompt, 300 words out, 6 rows × **5 rounds** (30 loads), interleaved, with a warm-up per load as before. New: each timed run also records how many MB the disks read (`"diskReads": true`), and MB per written word.
 
 | Row | What | Why |
 |---|---|---|
@@ -320,11 +320,11 @@ The owner asked for hot, warm and cold experts to be built and tested. Hot is th
 
 Turbo isn't in this plan. GPT-OSS has no built-in guesser, and a gpt-oss-20b guesser (about 12 GB) would push more of 120B onto the disk. It belongs with Flash-Next, which ships its own small guesser head.
 
-**Rule:** a tier is worth offering only if it writes at least 5% faster than B0 on the median, with no run slower than B0's slowest. Gaming, the stop file and the test lock work as before. It needs the owner's card, and Brain Engine 10 built.
+**Rule:** a tier is worth offering only if it writes at least 5% faster than B0 on the median, with no run slower than B0's slowest. Gaming, the stop file and the test lock work as before. It needs the owner's card, and Lamplight 10 built.
 
 ## Addendum 18 (Nov 17, after the calibration results, before this run): the cube check
 
-The calibration showed that CUDA graphs alone don't change the words (G0) and that the live trace does (G4). The trace path does two things: it marks the router's sort as an output (`ggml_set_output`, when `keep_expert_ids` is on) and it adds the eval callback. The owner's programmer friend pointed out that the run can't tell those apart. In Brain Engine 9 the trace with its mass (`expert_trace_mass`) runs with `keep_expert_ids` off: no `ggml_set_output`, callback still on (and it stops at every layer, so it's slower).
+The calibration showed that CUDA graphs alone don't change the words (G0) and that the live trace does (G4). The trace path does two things: it marks the router's sort as an output (`ggml_set_output`, when `keep_expert_ids` is on) and it adds the eval callback. The owner's programmer friend pointed out that the run can't tell those apart. In Lamplight 9 the trace with its mass (`expert_trace_mass`) runs with `keep_expert_ids` off: no `ggml_set_output`, callback still on (and it stops at every layer, so it's slower).
 
 `speed-plans/cube-check.json`: Y0, G4 and G2 on the start prompt and 32K, 5 rounds (15 loads), same engine, brain and settings as the calibration.
 
@@ -337,7 +337,7 @@ both: patch 0021 copies each layer's picks into a small kept tensor after the ro
 after each micro-batch, with no eval callback and no `ggml_set_output`. It passes on the processor with the tiny
 made-up brain (`engine/tests/trace-kept.py`). The card is the open question.
 
-`speed-plans/cube-fix.json`, on Brain Engine 10: Y0 (no trace) and T1 (trace) at Normal, F4c and FT (trace) at F4c's
+`speed-plans/cube-fix.json`, on Lamplight 10: Y0 (no trace) and T1 (trace) at Normal, F4c and FT (trace) at F4c's
 settings, on the start prompt and 32K, 5 rounds (20 loads), same brain and base settings as the calibration.
 
 **Decided in advance:** the fix works when T1 writes the same words as Y0 and FT the same as F4c, on both prompts

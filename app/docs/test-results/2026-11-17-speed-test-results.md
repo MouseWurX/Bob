@@ -9,8 +9,8 @@ The method was written down before any timed run: [2026-11-16-speed-test-method.
   - The two files differ, so Turbo rows are compared only with each other.
 - **Engines:**
   - plain llama.cpp b12359 (official release).
-  - Brain Engine 8 (rows R, E).
-  - Brain Engine 9 (rows N, H, C, T).
+  - Lamplight 8 (rows R, E).
+  - Lamplight 9 (rows N, H, C, T).
   - sha256s are in the environment files.
 - **What ran:** night 1 started at 6:42 PM Mountain and finished at 9:09 PM (140 loads). Turbo ran after it and finished at 9:42 PM (25 loads).
 - **How each row ran:**
@@ -49,7 +49,7 @@ The power-cap flag is nvidia-smi's "software power cap" reason, seen while the c
 
 ## Results
 
-### Reading speed (Brain Engine 8, same settings otherwise)
+### Reading speed (Lamplight 8, same settings otherwise)
 
 | | Normal (512) | Faster (2048) | Fastest (4096) |
 |---|---|---|---|
@@ -64,28 +64,28 @@ The power-cap flag is nvidia-smi's "software power cap" reason, seen while the c
 | Writing 32K | 78.1 | 76.1 (-2.6%) | 73.8 (-5.5%) |
 | Peak card memory | 14,975 MB | 14,899 MB | 15,071 MB |
 
-Brain Engine 9's N1 (Fastest) matches R4096 within 4% on every number, with the same words. The words change with the reading step: bigger steps add the numbers up in a different order. Within each step, all 5 runs wrote the same words.
+Lamplight 9's N1 (Fastest) matches R4096 within 4% on every number, with the same words. The words change with the reading step: bigger steps add the numbers up in a different order. Within each step, all 5 runs wrote the same words.
 
-### What Bob's settings and the Brain Engine patches cost
+### What Bob's settings and the Lamplight patches cost
 
 | Row | Writing short / 16K / 32K | Reading short | Same words as plain? |
 |---|---|---|---|
 | P0 plain, its own defaults | 82.9 / 79.3 / 77.8 | 1,065 | (baseline for P1) |
 | P1 plain, Bob's settings | 87.7 / 81.2 / 77.7 | 1,161 | yes |
-| E0 Brain Engine 8, all off | 87.9 / 82.7 / 78.2 | 1,168 | yes, word for word |
+| E0 Lamplight 8, all off | 87.9 / 82.7 / 78.2 | 1,168 | yes, word for word |
 | E1 experts per word (8) | 89.2 / 84.0 / 78.6 | 1,175 | yes |
 | E2 expert mask (one expert off) | 87.8 / 83.2 / 78.8 | 1,183 | changed, as it should |
 | E3 dials (one expert at 0.9) | 88.4 / 82.4 / 78.1 | 1,171 | changed, as it should |
 | E4 live expert trace (the cube) | 80.1 / 75.5 / 71.8 | 1,162 | **changed** |
 | E5 all of them | 79.2 / 75.3 / 71.7 | 1,168 | changed |
-| N0 Brain Engine 9, all off | 88.4 / 83.3 / 78.8 | 1,171 | yes, word for word |
+| N0 Lamplight 9, all off | 88.4 / 83.3 / 78.8 | 1,171 | yes, word for word |
 
 - **Bob's settings beat plain llama.cpp's defaults.** Compared with P0, P1 writes 6% faster on the short prompt, reads 9% faster, and gives the first word on 32K two seconds sooner.
 - **The patches cost nothing while their features are off.** E0 and N0 are within 1% of P1 and write the same words.
 - **The live trace costs about 9% of writing speed,** and nothing on reading.
-- **The live trace also changes the words** at temperature 0. Watching shouldn't change what's written, so this is reported as a fault to find in the next Brain Engine.
+- **The live trace also changes the words** at temperature 0. Watching shouldn't change what's written, so this is reported as a fault to find in the next Lamplight.
 
-### Live trace every N words (Brain Engine 9, patch 0018)
+### Live trace every N words (Lamplight 9, patch 0018)
 
 | Row | Writing short | Writing 32K |
 |---|---|---|
@@ -96,7 +96,7 @@ Brain Engine 9's N1 (Fastest) matches R4096 within 4% on every number, with the 
 
 Sending less often makes no difference, so the cost is in recording the picks, not in sending them. 0018 doesn't help.
 
-### Hot experts (Brain Engine 9, expert cache on the card)
+### Hot experts (Lamplight 9, expert cache on the card)
 
 Short prompt only for H rows. Writing and reading are tokens per second, and "copied" is the total copied to the card during a load.
 
@@ -119,7 +119,7 @@ N4 on the long prompts: writing 78.7 at 16K (-5.5% against N0) and 87.6 at 32K (
 - **Prompt reading gets 24% to 43% slower,** more as the cache grows. The cache takes card memory, so `--fit` moves more of the brain to RAM, and reading works on that brain.
 - **Our ranking is no faster than the cache learning on its own.** It fills the cache at once and copies nothing, but at 2 and 4 GB the learned cache wrote 3% to 4% faster.
 
-### Prefetch (Brain Engine 9, patch 0019)
+### Prefetch (Lamplight 9, patch 0019)
 
 | | Reading 16K | Reading 32K | Writing 16K | Peak card |
 |---|---|---|---|---|
@@ -130,7 +130,7 @@ N4 on the long prompts: writing 78.7 at 16K (-5.5% against N0) and 87.6 at 32K (
 
 Prefetch makes reading slower and uses half a gigabyte more of the card. It writes the same words.
 
-### Turbo (Brain Engine 9, MTP brain)
+### Turbo (Lamplight 9, MTP brain)
 
 | Row | Writing short / 16K / 32K | Kept guesses | Reading 32K | First word 32K |
 |---|---|---|---|---|
@@ -172,17 +172,17 @@ Prefetch makes reading slower and uses half a gigabyte more of the card. It writ
    - Faster meets the reading part (2.5x) and is within 3% on the long prompts, but not on the short one (4.2%).
    - Reading speed stays an opt-in setting, as planned, with these numbers beside each step.
    - It's the biggest win in the test. A long paste or a big file answers 2.5x to 3.4x sooner.
-2. **Brain Engine patches (rule: more than 2% with their feature off is a bug).** None. Dissertation chapter 3's "overhead not measured" can now cite this page.
+2. **Lamplight patches (rule: more than 2% with their feature off is a bug).** None. Dissertation chapter 3's "overhead not measured" can now cite this page.
 3. **The live trace** costs about 9% of writing while it's on, whatever the send rate, and it changes the words.
    - The Real experts tooltip should say about 9%.
-   - The word change is a fault for the next Brain Engine.
+   - The word change is a fault for the next Lamplight.
    - Patch 0018 can go.
 4. **Hot experts (rule: offered as a setting only if N4 or H5 is at least 5% faster writing with no copying).**
    - N4 is 17% faster on the short prompt and copied 5 MB, so the rule is met.
    - It slows reading 30%, so it should be offered only with that trade said plainly.
    - It should be tested together with Faster reading before anything ships.
    - The ranking adds nothing over the cache learning, so Bob can use the stock cache and skip Calibrate's ranking for speed.
-5. **Prefetch (0019)** is slower everywhere it was meant to help. It stays off and is dropped from the next Brain Engine.
+5. **Prefetch (0019)** is slower everywhere it was meant to help. It stays off and is dropped from the next Lamplight.
 6. **Turbo (rule: offered if T3S is at least 10% faster).** It isn't: -17% to +3%. Not offered on this brain and card.
 7. **N3** needs the right option name for this engine build, and runs again on the next PC night.
 
@@ -192,7 +192,7 @@ Prefetch makes reading slower and uses half a gigabyte more of the card. It writ
 - N3 with the right option.
 - Every row again with the fixed runner, for the card conditions.
 - The laptop plan (addendum 14).
-- Brain Engine 10:
+- Lamplight 10:
   - Find why the trace changes the words.
   - Find why the trace comes back empty with the cache on.
   - Drop 0018 and 0019.

@@ -2,7 +2,7 @@
 
 **Borrowing Bob:** replicant matrix (AMD Ryzen 7 9800X3D, NVIDIA RTX 5070 Ti 16 GB, 32 GB DDR5-6000, Windows 11), Bob 1.5.210.
 **Lending Bob:** a handheld (AMD Ryzen Z1 Extreme, Radeon 780M, 16 GB shared memory, Windows 11), Bob 1.5.210, graphics card lent.
-**Engine:** Brain Engine 5 on both (llama.cpp b12282 with Bob's patches 0001 to 0008). SCUT sealed (signed and scrambled), self-tuning on, 100 Mbit/s cap.
+**Engine:** Lamplight 5 on both (llama.cpp b12282 with Bob's patches 0001 to 0008). SCUT sealed (signed and scrambled), self-tuning on, 100 Mbit/s cap.
 **Brain:** Riker, Q4_K_M (17.5 GB), spread over both graphics cards with `--fit on`, 32K context.
 **Link:** home Wi-Fi only, no cable on either machine. The router is two floors away.
 
@@ -71,7 +71,7 @@ With the temperature at 0, runs A and C gave the same text as each other, charac
 
 With SCUT the link is no longer the slow part: a round trip is about 4 ms. But the engine made three round trips to the lent card for every token (one to run the work, then separate ones to fetch each result), and the borrower spent about 90% of its time waiting on them.
 
-Brain Engine 6 (patch 0011) asks for those results together with the work, so it is one round trip a token. Measured on a test bench only so far (a tiny brain, two processes, a pretend Wi-Fi with delay and loss, three results a token): 17.7 to 30.0 tokens a second over SCUT, with identical answers. The real run on these two machines will be added here when Engine 6 is on both.
+Lamplight 6 (patch 0011) asks for those results together with the work, so it is one round trip a token. Measured on a test bench only so far (a tiny brain, two processes, a pretend Wi-Fi with delay and loss, three results a token): 17.7 to 30.0 tokens a second over SCUT, with identical answers. The real run on these two machines will be added here when Engine 6 is on both.
 
 ## What this does not show
 

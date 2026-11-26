@@ -30,11 +30,11 @@ We make three contributions.
 2. **A verification ladder.** We order the checks a self-built inference toolchain can run by how much each one proves. We show that the observer effect slipped past a check on a lower rung, which compared the trace's rows rather than the model's words. We also list the rungs our own toolchain still skips (Section 4).
 3. **A failure inventory as a design method.** We logged every failed paid rental with its cost and cause. Turning each failure into a guard shaped the training pipeline more than any up-front design did (Section 5).
 
-The tooling is a patched llama.cpp ("Brain Engine") and a rental training pipeline ("the Forge"). Appendix A says what they are in one sentence each; the dissertation describes them in full.
+The tooling is a patched llama.cpp ("Lamplight") and a rental training pipeline ("the Forge"). Appendix A says what they are in one sentence each; the dissertation describes them in full.
 
 ## 2. Setting
 
-**Engine.** Brain Engine is llama.cpp at the pinned tag b12359, with the project's patches applied in order (ENGINE-MAP.md). The patches that matter here are:
+**Engine.** Lamplight is llama.cpp at the pinned tag b12359, with the project's patches applied in order (ENGINE-MAP.md). The patches that matter here are:
 
 - **0002** returns the experts picked in every layer for every token when a request asks for it.
 - **0010** keeps each layer's picks on the card and fetches them with one wait. Before it, the trace stopped after every layer.
@@ -61,7 +61,7 @@ The trace path changes two things in the compute graph:
 1. **An output mark.** Patch 0010 marks the router's sorted list as a graph output (`ggml_set_output`), so all layers can be read at once.
 2. **An evaluation callback.** The scheduler calls it at each traced node, which splits each step's graph at that node.
 
-The calibration could not separate the two. A third row was planned for that: the trace with its mass (patch 0009, row G2). In Brain Engine 9, G2 takes a path without `ggml_set_output` but keeps the callback.
+The calibration could not separate the two. A third row was planned for that: the trace with its mass (patch 0009, row G2). In Lamplight 9, G2 takes a path without `ggml_set_output` but keeps the callback.
 
 **Rule written in advance:** if G2 writes the same words as Y0, the output mark is the cause. If not, the callback changes the words too, and the fix must drop both (docs/test-results/2026-11-16-speed-test-method.md, Addendum 18).
 
@@ -98,9 +98,9 @@ On the processor, a tiny made-up model passed 16 checks (`engine/tests/trace-kep
 
 **Rule written in advance** (Addendum 19): the fix works when each traced row writes the same words as its untraced pair, on both prompts, in all runs, and its median writing speed is within 2% of the pair. If the words differ, the fix fails whatever the speed. An amendment added a control row, U0: no trace, with fusion switched off by hand (`GGML_CUDA_DISABLE_FUSION=1`), to check that the fused kernel still runs.
 
-The build history matters here. The first build of the fix (Brain Engine 10) crashed when the trace and the hot-experts cache were on together. Brain Engine 11 fixed the crash.
+The build history matters here. The first build of the fix (Lamplight 10) crashed when the trace and the hot-experts cache were on together. Lamplight 11 fixed the crash.
 
-**Brain Engine 11 (17 November):** 5 rounds, 25 loads, all clean.
+**Lamplight 11 (17 November):** 5 rounds, 25 loads, all clean.
 
 - With the trace on, the words were the same as with it off, on both prompts, at both settings below, in every run.
 - The control U0 wrote *different* words. So broken fusion is what changes the words, and the fixed trace no longer breaks it.
@@ -110,22 +110,22 @@ The build history matters here. The first build of the fix (Brain Engine 10) cra
 | Reading step 2048 + 4 GB copy cache | −1.8% / −1.0% | crashed | passes |
 | Normal (reading step 512, no cache) | −4.0% / −3.9% | −9% to −11% | misses |
 
-*Table 2. Brain Engine 11. Reading speed stayed within about 1%.*
+*Table 2. Lamplight 11. Reading speed stayed within about 1%.*
 
-**Brain Engine 12 (17 November):** patch 0021, version 3, keeps one pinned copy per reading step instead of one copy per layer per token.
+**Lamplight 12 (17 November):** patch 0021, version 3, keeps one pinned copy per reading step instead of one copy per layer per token.
 
 | Setting | Writing, trace off, short / 32K | Writing, trace on, short / 32K | Cost |
 |---|---|---|---|
 | Normal (reading step 512, no cache) | 92.2 / 81.2 | 90.4 / 81.2 | −1.95% / 0% |
 | Reading step 2048 + 4 GB copy cache | 110.6 / 95.7 | 111.6 / 96.7 | none measured (slightly faster) |
 
-*Table 3. Brain Engine 12. The words were byte-identical with the trace on and off, on both prompts, at both settings. Reading speed was equal, and nothing crashed.*
+*Table 3. Lamplight 12. The words were byte-identical with the trace on and off, on both prompts, at both settings. Reading speed was equal, and nothing crashed.*
 
 | Engine | Trace cost on writing (Normal) | Words |
 |---|---|---|
-| Brain Engine 9/10, old trace | about −8% to −11% | different |
-| Brain Engine 11, kept copies | about −4% | identical |
-| Brain Engine 12, one pinned copy per step | −2% or less | byte-identical |
+| Lamplight 9/10, old trace | about −8% to −11% | different |
+| Lamplight 11, kept copies | about −4% | identical |
+| Lamplight 12, one pinned copy per step | −2% or less | byte-identical |
 
 *Table 4. The cost across three engines.*
 
@@ -139,7 +139,7 @@ The perturbation was invisible to the observation by construction. Only a with-a
 
 ### 3.7 Consequences
 
-Expert maps and live views made with a trace from before Brain Engine 11 describe the traced model. From Brain Engine 11 on the words match, and from Brain Engine 12 the cost on the 35B is 2% or less. We have not re-taken the earlier maps, and the dissertation marks them as made under the old trace (chapter 3, section 3.8).
+Expert maps and live views made with a trace from before Lamplight 11 describe the traced model. From Lamplight 11 on the words match, and from Lamplight 12 the cost on the 35B is 2% or less. We have not re-taken the earlier maps, and the dissertation marks them as made under the old trace (chapter 3, section 3.8).
 
 ## 4. Verification is a ladder
 
@@ -191,9 +191,9 @@ The method is simple. Log every failure with its cost, find the default that hid
 ## 6. Limitations
 
 - **One machine, one brain, one quant.** All card results come from one 16 GB consumer card with Qwen3.6 35B A3B at Q4. The trace on GPT-OSS 120B, on other cards and on other backends is unproven in our lab, as we have yet to test.
-- **A shortened final run.** The Brain Engine 12 run stopped after 3 rounds (16 loads), not the 5 set beforehand, by MouseWurX's choice. Its medians rest on fewer runs, and its short-prompt cost (−1.95%) sits right at the 2% line.
+- **A shortened final run.** The Lamplight 12 run stopped after 3 rounds (16 loads), not the 5 set beforehand, by MouseWurX's choice. Its medians rest on fewer runs, and its short-prompt cost (−1.95%) sits right at the 2% line.
 - **The mechanism is supported, not proven.** The fused-kernel explanation rests on the ablation and on the fusion-off control, not on inspecting the kernels. G2 confounds the top-k callback with a second callback node.
-- **Raw data for the fix runs.** The night-1, calibration and cube-check runs are published with raw data (docs/test-results/data/2026-11-16-speed/). The Brain Engine 11 and 12 summaries behind Tables 2 to 4 are reported in the dissertation, but their raw files are not yet in the repository's test-results folder. They should be published before submission.
+- **Raw data for the fix runs.** The night-1, calibration and cube-check runs are published with raw data (docs/test-results/data/2026-11-16-speed/). The Lamplight 11 and 12 summaries behind Tables 2 to 4 are reported in the dissertation, but their raw files are not yet in the repository's test-results folder. They should be published before submission.
 - **The experts-per-word patch uses a weighting known to be worse.** Patch 0013 changes how many experts each token uses, live. llama.cpp's Qwen3 MoE graph rescales the kept experts' weights to add up to 1. On the same base model, Chen and Yao (2026) report that going from 8 to 4 experts costs 4.65 MMLU points under that standard renormalization, but only 0.35 points when the kept weights are normalized against the top 16 instead. So the patch's default is measurably suboptimal at reduced counts. Our own 4-expert test held tools, facts and code level, but on far fewer questions and different tasks. The other weighting is not built.
 - **Small stand-ins.** The strongest engine checks below rung 5 used tiny models and CPU builds. They show the code does what it claims, not that the instruments are unbiased on a large model.
 - **One builder.** The code was written and checked inside one project, with an AI assistant as a contributor. No outsider has reviewed it.
@@ -215,7 +215,7 @@ A trace that only reads changed what the model wrote, because reading from the m
 ## Appendix A. Out of scope, in one sentence each
 
 - **The Forge** is the project's rental training pipeline: it cuts and heals MoE models on hourly cards under hard hour and dollar caps, with a pre-flight, a sample gate, a cached teacher-odds pass and a card that deletes itself (dissertation 3.5).
-- **The patch catalogue**: beyond the trace patches, Brain Engine adds a live expert mask, per-part dials, live experts per token, and card sharing across machines; only the first two and the trace are relevant to the studies (dissertation 3.4).
+- **The patch catalogue**: beyond the trace patches, Lamplight adds a live expert mask, per-part dials, live experts per token, and card sharing across machines; only the first two and the trace are relevant to the studies (dissertation 3.4).
 - **GPT-OSS**: the pipeline was extended to a second MoE family with its own chat format and router layout, and its heal rules are checked only on a tiny stand-in so far (dissertation 3.5.7).
 
 ## Appendix B. Where each number comes from
@@ -227,7 +227,7 @@ A trace that only reads changed what the model wrote, because reading from the m
 | Decision rules for G2 and for the fix, U0 control | docs/test-results/2026-11-16-speed-test-method.md (Addenda 18, 19) | yes |
 | 0021 design, 640 KB kept tensor, 16 processor checks | engine/README.md; ENGINE-MAP.md | yes |
 | 0010 check "same, row for row" | engine/README.md | yes |
-| Brain Engine 11 and 12 results (Tables 2 to 4) | dissertation chapter 3, section 3.4.3 | **raw summaries not in the repository yet** |
+| Lamplight 11 and 12 results (Tables 2 to 4) | dissertation chapter 3, section 3.4.3 | **raw summaries not in the repository yet** |
 | Brain model and file size | calibration results | yes |
 | Twenty failures, $24.97, $549.26, about 149 h | docs/COSTS.md (23 Nov) | yes; the row costs add to $24.63, and the ledger's total is from the rental statement |
 | 45% template skip; 195 and 163 of 456 steps; 10.3 h vs about 16 h; $11 idle | docs/FORGE-JOURNAL.md; docs/COSTS.md | yes; COSTS.md gives the second heal's stop as step 155, the journal 163 |
