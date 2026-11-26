@@ -20,13 +20,13 @@ Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf and its mmproj under `<parent>/models` (found by
    stand-in tools that touch nothing, plus 8 jobs that take several steps. Add `--plain` for a second run without the loop helps
    (src/loop-help.js) to compare. `--quick` runs a quarter of the quiz. Report: out\loop-test-*.md.
 
-5. `node reap-calibrate.mjs --url <Brain Engine server>`: tune a stock mixture-of-experts brain down without cutting a file.
+5. `node reap-calibrate.mjs --url <Lamplight server>`: tune a stock mixture-of-experts brain down without cutting a file.
    It scores every expert of every layer on the training lessons (REAP: router weight times the size of what the expert adds,
-   from Brain Engine's expert trace with mass), then switches the weakest off live (`/expert-mask`) at 100, 75, 50 and 35%
+   from Lamplight's expert trace with mass), then switches the weakest off live (`/expert-mask`) at 100, 75, 50 and 35%
    of each layer (`--steps`) and runs the held-out tool score at each step. It keeps the smallest share within `--margin`
    points (default 2) of the full brain. Output in out\calibrate\: `keep-NN.json` (POST it to /expert-mask),
    `priority.json` (each layer's experts, strongest first, for keeping the best on the card and the rest in RAM) and
-   calibration.md. Works for any family Brain Engine runs (Qwen, gpt-oss, GLM, DeepSeek, Mixtral). An engine without the
+   calibration.md. Works for any family Lamplight runs (Qwen, gpt-oss, GLM, DeepSeek, Mixtral). An engine without the
    mass patch gives pick counts only, and the script says so. Switching experts off saves no memory by itself. For a big
    brain, run it on a rented card through the Forge (`--url` and `LAB_API_KEY`). The mask is put back to all-on at the end.
 

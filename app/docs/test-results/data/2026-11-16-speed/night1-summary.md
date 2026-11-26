@@ -1,4 +1,4 @@
-# Speed test results: Night 1: reading steps, Brain Engine cost, new features, expert cache (stock Qwen3.6 35B A3B, 16 GB card)
+# Speed test results: Night 1: reading steps, Lamplight cost, new features, expert cache (stock Qwen3.6 35B A3B, 16 GB card)
 
 Median, with min and max in brackets, over the timed runs. Throttled runs are kept and counted. Raw numbers: runs.jsonl.
 

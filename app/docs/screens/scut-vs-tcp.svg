@@ -29,7 +29,7 @@
 
   <!-- shared top: the engine's messages -->
   <rect x="40" y="108" width="1200" height="64" rx="14" class="same" stroke-width="1.5"/>
-  <text x="640" y="136" font-size="16" font-weight="600" text-anchor="middle" class="t">Brain Engine on each Bob: the same card-sharing messages either way</text>
+  <text x="640" y="136" font-size="16" font-weight="600" text-anchor="middle" class="t">Lamplight on each Bob: the same card-sharing messages either way</text>
   <text x="640" y="158" font-size="13" text-anchor="middle" class="m">Send a piece of the brain, run this graph, read this result. Only how the bytes travel changes; the answer is the same word for word.</text>
   <line x1="340" y1="172" x2="340" y2="204" class="tcpS" stroke-width="2" marker-end="url(#aG)"/>
   <line x1="940" y1="172" x2="940" y2="204" class="scutS" stroke-width="2" marker-end="url(#aT)"/>
@@ -76,7 +76,7 @@
   <rect x="650" y="208" width="590" height="572" rx="18" class="panel" stroke-width="1.5"/>
   <text x="674" y="242" font-size="20" font-weight="700" class="teal">SCUT</text>
   <text x="736" y="242" font-size="13" class="m">Signals and Communications - Universal Transceiver</text>
-  <text x="674" y="264" font-size="13" class="m">Bob's own link (Brain Engine patches 0005, 0006 and 0008).</text>
+  <text x="674" y="264" font-size="13" class="m">Bob's own link (Lamplight patches 0005, 0006 and 0008).</text>
 
   <rect x="674" y="282" width="542" height="76" rx="10" class="box" stroke-width="1.2"/>
   <text x="690" y="306" font-size="14" font-weight="600" class="t">Numbered packets, acked and resent by Bob</text>

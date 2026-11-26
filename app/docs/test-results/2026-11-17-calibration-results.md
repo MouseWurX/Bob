@@ -3,7 +3,7 @@
 The plan and the rule for "best" were written before the run: [2026-11-16-speed-test-method.md](2026-11-16-speed-test-method.md), addendum 16. Night 1's results are in [2026-11-17-speed-test-results.md](2026-11-17-speed-test-results.md).
 
 - **Machine:** the replicant matrix (Ryzen 7 9800X3D, RTX 5070 Ti 16 GB, driver 621.01, 32 GB RAM, Windows 11 Home 26200).
-- **Brain:** stock Qwen3.6 35B A3B, unsloth UD-Q4_K_XL (22,360,456,160 bytes). **Engine:** Brain Engine 9 (sha256 in the environment file).
+- **Brain:** stock Qwen3.6 35B A3B, unsloth UD-Q4_K_XL (22,360,456,160 bytes). **Engine:** Lamplight 9 (sha256 in the environment file).
 - **What ran:** 4:51 to 6:04 AM Mountain, 17 rows × 5 rounds = **85 loads**, rows taking turns, an untimed warm-up after each load, each prompt timed once per load at temperature 0 with 300 words written.
 - **Not run:** G2 (the trace with its mass). npc picked up the plan from before G2 was added, so the plan had 17 rows, not 18.
 - **Owner's conditions:** no games. The Claude app was open (about 1 GB of RAM). HWiNFO was off, so there is no processor temperature.
@@ -49,7 +49,7 @@ The rule (addendum 16): writing on the short prompt within 3% of the best row, t
 - **G0, CUDA graphs off:** writing −42% short and −38% at 32K, and **the same words as Y0**. So CUDA graphs don't change the words.
 - **G4, the live trace:** writing −11% short and −8% at 32K, and **different words**. The card's core clock also dropped to 457 to 630 MHz during G4's 32K runs, which fits the card sitting idle while it waits on the processor between pieces.
 - **What it means:** the trace's cost is far smaller than turning graphs off, so the trace doesn't simply switch graphs off, and graphs alone don't change the words. The word change comes from the trace path itself. That path changes two things, and this run can't tell them apart: it marks the router's sort as an output (`ggml_set_output`, which likely stops the fused top-k kernel), and it adds the eval callback, which splits each step's graph. (Review note from the owner's programmer friend, Nov 17.)
-- **The deciding test:** trace on with `keep_expert_ids` off, so there's no `ggml_set_output` but the callback stays. In Brain Engine 9 the trace with its mass (`expert_trace_mass`) takes exactly that path, which is what row G2 was for. If G2 writes the same words as Y0, the fusion break is the cause and the planned fix is enough. If not, the callback split changes the words too, and the fix must also drop the callback (which the planned fix already does). G2 is short to run: G2 and G4 with Y0, 5 rounds, 15 loads.
+- **The deciding test:** trace on with `keep_expert_ids` off, so there's no `ggml_set_output` but the callback stays. In Lamplight 9 the trace with its mass (`expert_trace_mass`) takes exactly that path, which is what row G2 was for. If G2 writes the same words as Y0, the fusion break is the cause and the planned fix is enough. If not, the callback split changes the words too, and the fix must also drop the callback (which the planned fix already does). G2 is short to run: G2 and G4 with Y0, 5 rounds, 15 loads.
 
 ## The cube check (6:30 to 6:48 AM, addendum 18)
 

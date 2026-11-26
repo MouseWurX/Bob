@@ -40,7 +40,7 @@ The questions are ordered from the data, through the model, to the instruments t
 
 The thesis makes six contributions. Some are measurements and some are tools. We separate them because a tool is only as good as the use it has been put to.
 
-**1. Instruments to change and measure a model live.** The project forked llama.cpp into an inference engine called Brain Engine. It can switch experts on and off, steer activations and trace routing while a model runs. A rental pipeline, called the Forge, trains and heals models on rented cards under hard limits on hours and dollars. A set of Lab scripts runs the judged tests. The engine's expert switch with nothing switched off gives byte-identical output, and live steering at 8 times strength matches loading the same vector at 8 times strength (PR #227). Chapter 3 describes these tools and Chapter 4 describes the rules for using them.
+**1. Instruments to change and measure a model live.** The project forked llama.cpp into an inference engine called Lamplight. It can switch experts on and off, steer activations and trace routing while a model runs. A rental pipeline, called the Forge, trains and heals models on rented cards under hard limits on hours and dollars. A set of Lab scripts runs the judged tests. The engine's expert switch with nothing switched off gives byte-identical output, and live steering at 8 times strength matches loading the same vector at 8 times strength (PR #227). Chapter 3 describes these tools and Chapter 4 describes the rules for using them.
 
 **2. A measured count of faults in a synthetic tool lesson set.** Opus read all 5,788 non-held-out tool lessons. It kept 189 as written, marked 1,381 as small fixes, 4,208 as rewrites and 10 as discards. It changed 1,922 of the verdicts that a cheaper reader, Haiku, had given first (checked-numbers.md). Only about 3% of the lessons were fit to teach as written. Chapter 6 reports this.
 
@@ -121,7 +121,7 @@ The thesis has 13 chapters. This one is the first.
 
 **Chapter 2, Background and related work,** reviews the literature the thesis stands on. It covers transformers and mixture-of-experts models, model compression, distillation and parameter-efficient fine-tuning, synthetic data and its quality, test contamination, tool use, reasoning, preference training, interpretability and local inference. It ends with the gaps this thesis addresses.
 
-**Chapter 3, Building the instruments,** describes Brain Engine, the Forge and the Lab scripts, and what is still missing from them.
+**Chapter 3, Building the instruments,** describes Lamplight, the Forge and the Lab scripts, and what is still missing from them.
 
 **Chapter 4, Method and rules,** sets out the rules that make the later measurements trustworthy: the held-out split, gates before and during a paid rental, full passes only, measured-only reporting, a ledger of cost and failures, and the quiz-noise level.
 
@@ -414,7 +414,7 @@ An autoencoder feature is a candidate for a "single readable part". Our fifth pr
 
 Turner et al. (2023) proposed Activation Addition (ActAdd). It takes the difference between the activations produced by a pair of contrasting prompts, such as "Love" and "Hate", to form a steering vector. Adding the vector during the forward pass shifts the output. The authors report state-of-the-art results on sentiment shifting and detoxification, while largely keeping performance on unrelated tasks. The method needs no optimization and works from a single pair.
 
-Zou et al. (2023) proposed representation engineering. It focuses on patterns across populations of neurons and not on single neurons or circuits, and lets researchers monitor and steer high-level concepts such as honesty, harmlessness and power-seeking. The "difference between two sets of activations" idea is the basis of the project's cruel-minus-kind direction. Brain Engine's live steering at 8 times strength matches loading the same vector at 8 times strength (PR #227), which gives the steering tool a basic check.
+Zou et al. (2023) proposed representation engineering. It focuses on patterns across populations of neurons and not on single neurons or circuits, and lets researchers monitor and steer high-level concepts such as honesty, harmlessness and power-seeking. The "difference between two sets of activations" idea is the basis of the project's cruel-minus-kind direction. Lamplight's live steering at 8 times strength matches loading the same vector at 8 times strength (PR #227), which gives the steering tool a basic check.
 
 ### 2.9.4 Refusal as a single direction
 
@@ -448,7 +448,7 @@ llama.cpp is an open-source project for language model inference in plain C and 
 
 GGUF is the binary file format used with ggml-based tools. It succeeded the older GGML, GGMF and GGJT formats. It stores a header, metadata as typed key and value pairs (architecture, hyperparameters, tokenizer and general details), tensor information and the tensor data, aligned for memory mapping. The documented goals are single-file deployment, extensibility, mmap compatibility, ease of use and full information in one file (ggml project, n.d.). Models are usually trained in a framework such as PyTorch and then converted to GGUF.
 
-These two pieces matter for the thesis in two ways. First, they set the deployment target. A model that the project makes must be convertible to GGUF and run at useful speed on a 16 GB card. The measured speeds of 82.7, 92.1 and 102.5 tokens per second at 8, 6 and 4 experts per word for full Qwen (experts-per-word-full-qwen-2026-11-04.md) are measured on this kind of stack. Second, the project's Brain Engine is a fork of llama.cpp. It adds an expert switch, steering and tracing to a stack that was built to run models, not to take them apart. Chapter 3 describes what was changed, and what its tests show.
+These two pieces matter for the thesis in two ways. First, they set the deployment target. A model that the project makes must be convertible to GGUF and run at useful speed on a 16 GB card. The measured speeds of 82.7, 92.1 and 102.5 tokens per second at 8, 6 and 4 experts per word for full Qwen (experts-per-word-full-qwen-2026-11-04.md) are measured on this kind of stack. Second, the project's Lamplight is a fork of llama.cpp. It adds an expert switch, steering and tracing to a stack that was built to run models, not to take them apart. Chapter 3 describes what was changed, and what its tests show.
 
 We did not find a peer-reviewed paper for llama.cpp or GGUF among the sources we opened. The two cited pages are project documentation, and we treat them as such. They describe the software as it is, and not as a result that has been independently evaluated.
 
@@ -577,7 +577,7 @@ Zou, A., Phan, L., Chen, S., et al. (2023). Representation Engineering: A Top-Do
 
 A claim about training data is only as good as the tools that change a model and the tools that measure it. The studies in this dissertation ask how many faults a lesson set holds, whether those faults become habits in a trained model, and where such a habit sits inside the network (chapter 1). Each question needs a machine that can do something stock software does not. The project built three layers of its own, and this chapter describes them.
 
-The layers are Brain Engine (a patched llama.cpp that can change and watch a mixture-of-experts model while it runs), the Forge (which cuts and teaches models on rented cards under hard caps on hours and dollars) and the Lab scripts (which write lessons, grade answers, sort and clean data).
+The layers are Lamplight (a patched llama.cpp that can change and watch a mixture-of-experts model while it runs), the Forge (which cuts and teaches models on rented cards under hard caps on hours and dollars) and the Lab scripts (which write lessons, grade answers, sort and clean data).
 
 This chapter asks what each instrument had to do, how it is built, and how far its output can be trusted. Chapter 4 sets the rules for using them.
 
@@ -587,9 +587,9 @@ Three points about status should be clear from the start. First, most checks des
 
 ### 3.2.1 Serving and running models
 
-llama.cpp is an open-source C and C++ project for running language models locally on CPUs and on NVIDIA, AMD, Intel and Apple hardware. It supports integer quantization from 1.5 to 8 bits and is released under the MIT licence (llama.cpp project page, ggml-org). Brain Engine is built on it. vLLM is a different kind of server, built for high-throughput serving on data-centre cards. Its PagedAttention method stores the attention cache in pages in the way an operating system manages memory (Kwon et al., 2023). The Forge uses it to write lessons on a rented card, where many requests run in parallel.
+llama.cpp is an open-source C and C++ project for running language models locally on CPUs and on NVIDIA, AMD, Intel and Apple hardware. It supports integer quantization from 1.5 to 8 bits and is released under the MIT licence (llama.cpp project page, ggml-org). Lamplight is built on it. vLLM is a different kind of server, built for high-throughput serving on data-centre cards. Its PagedAttention method stores the attention cache in pages in the way an operating system manages memory (Kwon et al., 2023). The Forge uses it to write lessons on a rented card, where many requests run in parallel.
 
-Neither project was built to change a mixture-of-experts model live. In such a model a learned router sends each word to a few of many expert sub-networks (Shazeer et al., 2017). Mixtral sends each word to two of eight (Jiang et al., 2024), and Qwen3 and gpt-oss use the same family of designs (Yang et al., 2025; OpenAI, 2025). Brain Engine exists because the studies needed to switch experts off, count which fire, and scale them without reloading a 20 GB file.
+Neither project was built to change a mixture-of-experts model live. In such a model a learned router sends each word to a few of many expert sub-networks (Shazeer et al., 2017). Mixtral sends each word to two of eight (Jiang et al., 2024), and Qwen3 and gpt-oss use the same family of designs (Yang et al., 2025; OpenAI, 2025). Lamplight exists because the studies needed to switch experts off, count which fire, and scale them without reloading a 20 GB file.
 
 ### 3.2.2 Training and adaptation pipelines
 
@@ -621,25 +621,25 @@ The layers are used in a fixed order for a new lesson set. The table lists the s
 | 12. Score | PC or card | Tool score, quiz, coding race, needle test, routing race (`tool-score.mjs` and others). |
 | 13. Delete | Card | The card deletes itself when the PC has the files, or at the cap. |
 
-Figure 3.1 is the same flow as a simple diagram. Brain Engine is used in steps 3, 4 and 12 and in the surgery studies. The Forge covers steps 2 to 13. The Lab scripts cover steps 1, 5, 6 and 12.
+Figure 3.1 is the same flow as a simple diagram. Lamplight is used in steps 3, 4 and 12 and in the surgery studies. The Forge covers steps 2 to 13. The Lab scripts cover steps 1, 5, 6 and 12.
 
 ```
  idea list --> pre-flight --> sample gate --> write + review --> clean
                                                                    |
  score <-- export <-- heal <-- cut <-- teacher odds <-- render <-- never-taught gate
    |
- Brain Engine (live masks, dials, traces) serves the model while it is scored
+ Lamplight (live masks, dials, traces) serves the model while it is scored
 ```
 
 *Figure 3.1. A lesson from idea to scored model.*
 
 Two rules run through all three layers: nothing is rented without the owner's typed yes, under an hours cap and a dollars cap, and every new function is off unless the plan asks (model-lab/forge/README.md).
 
-## 3.4 Brain Engine: a patched llama.cpp
+## 3.4 Lamplight: a patched llama.cpp
 
 ### 3.4.1 What it is and why it exists
 
-Brain Engine is llama.cpp at a pinned tag with fourteen patches applied in order (engine/README.md, ENGINE-MAP.md). At the time of writing the build is Brain Engine 8, on llama.cpp b12359. It is not an official llama.cpp build. The patches change only the model library and the server, with one exception: six patches touch the card-sharing backend of ggml, and no CUDA, Vulkan, Metal or CPU code is changed (ENGINE-MAP.md).
+Lamplight is llama.cpp at a pinned tag with fourteen patches applied in order (engine/README.md, ENGINE-MAP.md). At the time of writing the build is Lamplight 8, on llama.cpp b12359. It is not an official llama.cpp build. The patches change only the model library and the server, with one exception: six patches touch the card-sharing backend of ggml, and no CUDA, Vulkan, Metal or CPU code is changed (ENGINE-MAP.md).
 
 The patches fall into four groups: change a model live (0001, 0003, 0013), watch which parts fire (0002, 0007, 0009, 0010), share a card across machines (0004, 0005, 0006, 0008, 0011, 0014), and one small helper (0012). Only the first two matter for the studies.
 
@@ -665,17 +665,17 @@ The patches fall into four groups: change a model live (0001, 0003, 0013), watch
 
 Patches 0004, 0005, 0006, 0008, 0011 and 0014 let one model spread over the cards of several computers. Patch 0004 offers a hash for every weight over 1 MiB, so a lent card that already has a weight skips the copy. Patch 0005 is SCUT, an experimental UDP link. Over a simulated Wi-Fi of 3 ms delay and 1% loss it raised speed from about 9 to about 15 words a second, with byte-identical output (engine/README.md). Patches 0006, 0008, 0011 and 0014 add signed packets, a link log, one trip a word and a frozen wire numbering. None is used in the studies. A numbering clash should be noted: the Forge's pod patch `0014-live-control-vector` adds a live steering vector, and only the neuron sweep uses it (section 3.6.6).
 
-### 3.4.5 How Brain Engine was verified
+### 3.4.5 How Lamplight was verified
 
 The checks differ in strength, and the list is ordered from strongest to weakest.
 
-- **Byte-identical output.** With no expert switched off, the expert-mask build gives the same bytes as the normal engine (Brain Engine PC trial, 8 November, on the 35B model; checked-numbers.md).
+- **Byte-identical output.** With no expert switched off, the expert-mask build gives the same bytes as the normal engine (Lamplight PC trial, 8 November, on the 35B model; checked-numbers.md).
 - **Live steering equals loading.** Steering at x8 live matches loading the same vector at x8. Sending an empty setting restores the same words as before (PR #227; checked-numbers.md).
 - **Per-layer test for 0013.** `engine/tests/experts-per-word.py` builds a tiny model and compares the live setting with the engine's own override flag, layer by layer through the trace, and checks the refusals (ENGINE-MAP.md).
 - **Cross-build card sharing for 0014.** `engine/tests/rpc-any-version.sh` runs a model with every layer on a lent card in all four old and new pairings. All four matched a local run word for word, on a tiny llama model with CPU builds on Linux, 15 November 2026 (ENGINE-MAP.md).
 - **Timing.** On the full Qwen, 8, 6 and 4 experts per word ran at 82.7, 92.1 and 102.5 tokens a second (docs/forge-runs/benchmarks/experts-per-word-full-qwen-2026-11-04.md). This describes the model, not the cost of the patch.
 
-### 3.4.6 What Brain Engine does not have
+### 3.4.6 What Lamplight does not have
 
 No patch is tested automatically against a real engine build. Placement errors are the dangerous kind: a mask after the top-k pick, or a dial on the wrong head slice, still builds and gives wrong answers without an error, and would show up only in the PC test (ENGINE-MAP.md). The map proposes a short engine test on a tiny mixture-of-experts file (mask, trace rows, dials against mask, card handshake, SCUT off). It is proposed and not built.
 
@@ -792,7 +792,7 @@ The instruments were made because the questions demanded them: the mask, dials, 
 
 ## 3.8 Threats to validity and limits
 
-- **Small stand-ins.** The strongest Brain Engine checks used tiny models, CPU builds or one trial on a 35B model. They show the code does what it claims, not that the instruments are unbiased on a real large model.
+- **Small stand-ins.** The strongest Lamplight checks used tiny models, CPU builds or one trial on a 35B model. They show the code does what it claims, not that the instruments are unbiased on a real large model.
 - **No automatic engine test.** A patch in the wrong place would be found only by the PC test.
 - **Dry runs prove running, not helping.** The self-tests say so themselves, and most Forge builds after build 14 had no card test when the README was written.
 - **Overhead not measured.** No clean with-and-without timing exists for the patches the studies use.
@@ -802,7 +802,7 @@ The instruments were made because the questions demanded them: the mask, dials, 
 
 ## 3.9 Summary
 
-Three layers of instruments were built. Brain Engine adds live masks, dials, experts-per-word and traces to llama.cpp with fourteen patches. The Forge cuts and teaches models on rented cards under caps, with a pre-flight, a sample gate, a teacher-odds cache and a self-delete. The Lab scripts write, judge, clean and probe. Each was verified on a small stand-in, and the chapter lists what is not verified. The costliest lessons of the build were quiet defaults, including a silent slow kernel: with the fast kernels, Bobert's full pass took about 10.3 hours instead of about 16. The rules that came from them are the subject of chapter 4.
+Three layers of instruments were built. Lamplight adds live masks, dials, experts-per-word and traces to llama.cpp with fourteen patches. The Forge cuts and teaches models on rented cards under caps, with a pre-flight, a sample gate, a teacher-odds cache and a self-delete. The Lab scripts write, judge, clean and probe. Each was verified on a small stand-in, and the chapter lists what is not verified. The costliest lessons of the build were quiet defaults, including a silent slow kernel: with the fast kernels, Bobert's full pass took about 10.3 hours instead of about 16. The rules that came from them are the subject of chapter 4.
 
 ## References
 
@@ -874,7 +874,7 @@ The Qwen family is described in Yang et al. (2025). The cut models were made by 
 
 ### 4.3.2 Serving settings
 
-Home benchmarks run on the owner's 16 GB card with Q4 files and 8 experts per word, with the same settings for every model in a comparison (docs/FORGE-JOURNAL.md, 8 November entry). Rented-card benchmarks serve the same Q4 files through Brain Engine with the same test scripts, so that home and rented numbers come from identical tests (model-lab/forge/README.md, Build 18). Where a study changed a setting, such as experts per word, a mask, or a dial, the saved answers carry the condition (section 4.9).
+Home benchmarks run on the owner's 16 GB card with Q4 files and 8 experts per word, with the same settings for every model in a comparison (docs/FORGE-JOURNAL.md, 8 November entry). Rented-card benchmarks serve the same Q4 files through Lamplight with the same test scripts, so that home and rented numbers come from identical tests (model-lab/forge/README.md, Build 18). Where a study changed a setting, such as experts per word, a mask, or a dial, the saved answers carry the condition (section 4.9).
 
 The Bobert wording study ran on a rented 48 GB A40 with 8 slots of 8,192 tokens each. The planned switch to 4 slots of 16k never happened, so 11 to 13 long turns per round overflowed their slot, and 11 to 31 answers per round were cut off at the length limit. Both kinds were scored as wrong, and the same turns were affected in every condition, so comparisons between conditions stay fair, but absolute scores are lower than they would otherwise be (bobert-35bob-tool-study.md).
 

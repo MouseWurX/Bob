@@ -39,7 +39,7 @@ Everything written about Bob, in one list. New here? Start with the [user guide]
 | [Building Bob](BUILDING.md) | Run from source, the install window, how updates and versions work. |
 | [Contributing](../../.github/CONTRIBUTING.md) | House rules, and ways to help that need no code. |
 | [Making a tool pack](TOOL-PACKS.md) | Give Bob new tools and jobs without changing his code. |
-| [Brain Engine](../engine/README.md) · [engine map](../engine/ENGINE-MAP.md) | Bob's own engine: what it adds to llama.cpp, how it's built, and where each patch hooks in. |
+| [Lamplight](../engine/README.md) · [engine map](../engine/ENGINE-MAP.md) | Bob's own engine (called Brain Engine before 26 Nov 2026; some screens still use that name): what it adds to llama.cpp, how it's built, and where each patch hooks in. |
 | [Signing and Smart App Control](SIGNING.md) · [Mac signing](SIGNING-MAC.md) | What is signed, what isn't, and what Windows and macOS do about it. |
 | [The model lab and the Forge](../model-lab/README.md) | The code that counts experts, writes lessons, and cuts and teaches a brain. |
 | [Settings inventory](SETTINGS-INVENTORY.md) · [settings style](SETTINGS-STYLE.md) | Every setting with its wording, and the rules that wording follows. |
