@@ -147,7 +147,7 @@ const wait = async (lab) => { for (let i = 0; i < 800 && lab.job; i++) await new
 // ---------- the matrix's starts ----------
 {
   const ids = MATRIX_ROWS.map((r) => r.id);
-  check('the matrix: stock, lossless, each Turbo trick alone, every trick on', ids[0] === 'stock' && ids[1] === 'lossless' && ids.includes('all-on') && ['t-mem-small', 't-mem-smallest', 't-mem-p83', 't-mem-p84', 't-mem-p82', 't-experts4', 't-standins', 't-drive', 't-mtp', 't-keep', 't-sink', 't-sealed'].every((x) => ids.includes(x)), ids.join());
+  check('the matrix: stock, lossless, each Turbo trick alone, every trick on', ids[0] === 'stock' && ids[1] === 'lossless' && ids.includes('all-on') && ids.includes('up-keys') && ['t-mem-small', 't-mem-smallest', 't-mem-p83', 't-mem-p84', 't-mem-p82', 't-experts4', 't-standins', 't-drive', 't-mtp', 't-keep', 't-sink', 't-sealed'].every((x) => ids.includes(x)), ids.join());
   check('rows are made of Bob\'s own settings', rowCfg('t-sink').turboSink === true && rowCfg('t-sink').turbo === true && rowCfg('lossless').turbo !== true && rowCfg('t-mem-small').turboExperts === false);
   const cfg = { dataDir: tmp, agentDir: tmp, gpuVramGB: 16 };
   const s = rowStart('t-sink', { cfg, gguf: moe, ctx: 65536, be: 47, build: 12359, caps, exe: path.join(tmp, 'llama-server') });

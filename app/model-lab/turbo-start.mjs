@@ -40,6 +40,10 @@ export const MATRIX_ROWS = [
   { id: 't-keep', what: 'Keep more guesses (mb-MTP, 0120)', cfg: { ...T, turboKeepGuesses: true }, mtp: MTP, base: 't-mtp' },
   { id: 't-sink', what: 'Sharp start: the first 128 tokens at 16-bit (0122)', cfg: { ...T, turboSink: true }, base: 't-mem-small' },
   { id: 't-sealed', what: 'Sealed blocks 3/3 over Progressive 8+3 (0123, engine key only)', cfg: { ...T, turboMem: 'progressive83' }, env: { LLAMA_KV_BODY: '3/3' }, base: 't-mem-p83' },
+  // Nov 26 (the upstream ports thread): Lamplight 0128-0134's upstream keys, off unless set: CUDA M-RoPE fusion, MTP
+  // replay (needs draft-mtp), async input copies, YaRN keys. GGML_VK_MIXED_DOT is Vulkan only, so not on this card.
+  // Its row A is lossless-mtp; this is its row B. Needs an engine built with 0126-0134.
+  { id: 'up-keys', what: 'Upstream keys 0128-0134 on (M-RoPE fusion, MTP replay, async inputs, YaRN keys)', cfg: {}, mtp: MTP, env: { GGML_CUDA_FUSE_MROPE: '1', LLAMA_RS_REPLAY: '1', GGML_CUDA_ASYNC_INPUTS: '1', LLAMA_YARN_KEYS: '1' }, base: 'lossless-mtp' },
   { id: 'all-on', what: 'Every Turbo trick on (4-bit memory, 4 experts, stand-ins, keep more guesses with MTP, sharp start)', cfg: { turbo: true, turboStandins: true, turboKeepGuesses: true, turboSink: true }, mtp: MTP, base: 'lossless-mtp' }
 ];
 export const rowOf = (id) => MATRIX_ROWS.find((r) => r.id === id) || null;

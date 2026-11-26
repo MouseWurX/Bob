@@ -25,6 +25,7 @@ what Bob would really start. `starts.md` in the results lists each row's exact f
 | t-keep | keep more guesses (0120, mb-MTP) | t-mtp |
 | t-sink | sharp start (0122) | t-mem-small |
 | t-sealed | sealed blocks 3/3 (0123, engine key only, no Bob setting yet) | t-mem-p83 |
+| up-keys | lossless-mtp plus the upstream keys from 0128-0134 (CUDA M-RoPE fusion, MTP replay, async inputs, YaRN keys), for the upstream ports thread | lossless-mtp |
 | all-on | every Turbo trick: 4-bit memory, 4 experts, stand-ins, keep more guesses with MTP, sharp start | lossless-mtp |
 
 Each lone trick sits on the smallest Turbo base it needs, so its own effect is what is measured.
