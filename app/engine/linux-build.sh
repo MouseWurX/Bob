@@ -13,8 +13,8 @@ deps() {
   apt-get install -y -qq build-essential git curl ca-certificates python3 python3-pip libssl-dev xz-utils > /dev/null
   # CUDA 13 needs a newer CMake than Ubuntu 22.04's 3.22
   python3 -m pip install -q 'cmake>=3.28,<4' ninja
-  cmake --version | head -1
-  ldd --version | head -1
+  cmake --version | sed -n 1p
+  ldd --version | sed -n 1p
 }
 
 case "$mode" in
