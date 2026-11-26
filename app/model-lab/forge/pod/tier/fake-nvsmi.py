@@ -9,7 +9,7 @@ total = int(total)
 try: used = int(float(open(os.environ.get('FAKE_USED_FILE', '/nonexistent')).read().strip() or 0))
 except Exception: used = 0
 vals = {'name': name, 'memory.total': total, 'memory.used': used, 'memory.free': total - used, 'temperature.gpu': 38, 'clocks.sm': 1695,
-        'clocks.mem': 7600, 'power.draw': 61.5, 'utilization.gpu': 0, 'driver_version': '570.00', 'compute_cap': '8.6', 'pstate': 'P8'}
+        'clocks.mem': 7600, 'power.draw': 61.5, 'utilization.gpu': 0, 'driver_version': '570.00', 'compute_cap': '8.6', 'pstate': 'P8', 'clocks_event_reasons.active': '0x0000000000000001'}
 args = sys.argv[1:]
 units = 'nounits' not in ','.join(a for a in args if a.startswith('--format'))
 q = next((a for a in args if a.startswith('--query-gpu=')), None)

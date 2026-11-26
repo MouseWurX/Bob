@@ -82,11 +82,21 @@ LAB=$W/harness/app/model-lab; JD=$W/jobs; mkdir -p "$JD"
 head -1 "$JD/repo.jsonl" > "$JD/repo-first.jsonl"
 say "tool job: $(node -e "console.log(JSON.parse(require('fs').readFileSync('$JD/repo-first.jsonl','utf8')).id)") (first of $(wc -l < "$JD/repo.jsonl") held-out repo jobs)"
 
-sampler() { # out.csv: the REAL card every second, and free RAM
-  echo "time,used_mib,total_mib,temp_c,sm_mhz,mem_mhz,power_w,util_pct,ram_free_mib" > "$1"
+# The driver's throttle reasons (the owner, Nov 26: "to all of our runs"): newer drivers call the field
+# clocks_event_reasons.active, older ones clocks_throttle_reasons.active; whichever this driver answers is logged.
+RFIELD=""
+if [ -n "$NVSMI_REAL" ]; then
+  for f in clocks_event_reasons.active clocks_throttle_reasons.active; do
+    v=$("$NVSMI_REAL" --query-gpu=$f --format=csv,noheader 2>/dev/null | head -1); [[ "$v" =~ 0x ]] && { RFIELD=$f; break; }
+  done
+  say "throttle reasons field: ${RFIELD:-none answered (not logged)}"
+fi
+sampler() { # out.csv: the REAL card every second, free RAM, and the throttle reasons (hex mask)
+  echo "time,used_mib,total_mib,temp_c,sm_mhz,mem_mhz,power_w,util_pct,ram_free_mib,throttle_mask" > "$1"
   while :; do
     g=$([ -n "$NVSMI_REAL" ] && "$NVSMI_REAL" --query-gpu=memory.used,memory.total,temperature.gpu,clocks.sm,clocks.mem,power.draw,utilization.gpu --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ' || echo ",,,,,,")
-    echo "$(date -u +%H:%M:%S),$g,$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)" >> "$1"; sleep 1
+    r=$([ -n "$RFIELD" ] && "$NVSMI_REAL" --query-gpu=$RFIELD --format=csv,noheader 2>/dev/null | head -1 | tr -d ' ')
+    echo "$(date -u +%H:%M:%S),$g,$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo),$r" >> "$1"; sleep 1
   done
 }
 
@@ -131,7 +141,7 @@ PY
   sampler "$TO/card.csv" & SAMPLER=$!
   ( cd "$W/rel/app" && exec "${PIN[@]}" env "${BENV[@]}" PATH="$BPATH" BOB_AGENT_DIR="$W/home" BOB_CONFIG="$W/home/config.json" BOB_PORT=$BOB_PORT node src/server.js ) > "$TO/bob.log" 2>&1 & BOBPID=$!
   node "$HERE/tier/drive.mjs" --bob-url "http://127.0.0.1:$BOB_PORT" --rel "$W/rel/app" --harness "$W/harness/app" --jobs "$JD/repo-first.jsonl" \
-    --long "$HERE/tier/long-text.md" --out "$TO" --tier "$T" --label "$LABEL" --data "$W/home/inn" "${DRV[@]}" $( [ "$MOCK" = 1 ] && echo --mock ) > "$TO/drive.out" 2>&1
+    --long "$HERE/tier/long-text.md" --out "$TO" --reasons-field "$RFIELD" --tier "$T" --label "$LABEL" --data "$W/home/inn" "${DRV[@]}" $( [ "$MOCK" = 1 ] && echo --mock ) > "$TO/drive.out" 2>&1
   rc=$?
   # Bob's logbook and any engine failure he saved, for the row
   find "$W/home" -maxdepth 4 \( -name '*load-failed*.txt' -o -name 'logbook*' -o -name '*.log' \) -size -20M -exec cp {} "$TO/" \; 2>/dev/null

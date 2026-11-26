@@ -66,8 +66,8 @@ async function coolDown(what) {
   const t0 = Date.now(); let t = Number(smi('temperature.gpu')?.[0]);
   while (t >= 50 && Date.now() - t0 < 240000) { await sleep(5000); t = Number(smi('temperature.gpu')?.[0]); }
   await sleep(60000);
-  const g = smi('temperature.gpu,clocks.sm,memory.used');
-  row.steps[what] = { ...(row.steps[what] || {}), start_temp_c: Number(g?.[0]), start_sm_mhz: Number(g?.[1]), waited_s: Math.round((Date.now() - t0) / 1000) };
+  const g = smi('temperature.gpu,clocks.sm,memory.used'), rs = reasonsNow();
+  row.steps[what] = { ...(row.steps[what] || {}), start_temp_c: Number(g?.[0]), start_sm_mhz: Number(g?.[1]), start_throttle: rs, waited_s: Math.round((Date.now() - t0) / 1000) };
   say(`${what}: card ${g?.[0]} C, ${g?.[1]} MHz after ${Math.round((Date.now() - t0) / 1000)} s cool-down`);
 }
 async function engine(port, body, ms = 900000) {
@@ -90,7 +90,12 @@ function finish() {
   save(); fs.writeFileSync(path.join(OUT, 'row.md'), rowMd(row));
   say(`row: ${row.result}${row.failed_at ? ` (${row.failed_at})` : ''} -> ${path.join(OUT, 'row.json')}`);
 }
-// card.csv (tier-run.sh, every second, REAL card): time,used_mib,total_mib,temp_c,sm_mhz,mem_mhz,power_w,util_pct,ram_free_mib
+// card.csv (tier-run.sh, every second, REAL card): time,used_mib,total_mib,temp_c,sm_mhz,mem_mhz,power_w,util_pct,ram_free_mib,throttle_mask
+// The driver's clock event (throttle) reasons, nvidia-smi's bit mask: idle and app clocks are normal; the rest slow the card.
+export const REASONS = [[0x1, 'idle'], [0x2, 'app clocks'], [0x4, 'power cap'], [0x8, 'hardware slowdown'], [0x10, 'sync boost'], [0x20, 'software thermal'], [0x40, 'hardware thermal'], [0x80, 'power brake'], [0x100, 'display clocks']];
+const SLOWING = 0x4 | 0x8 | 0x20 | 0x40 | 0x80;
+export function reasonNames(mask) { const m = Number(mask); return Number.isFinite(m) ? REASONS.filter(([b]) => m & b).map(([, n]) => n) : []; }
+function reasonsNow() { const r = A['reasons-field'] && A['reasons-field'] !== true ? smi(A['reasons-field'])?.[0] : null; return r ? { mask: r, names: reasonNames(parseInt(r, 16)) } : null; }
 function cardSummary() {
   const f = path.join(OUT, 'card.csv'); if (!fs.existsSync(f)) return null;
   const rows = fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n').split('\n').slice(1).filter(Boolean).map((l) => l.split(',').map((s) => s.trim()));
@@ -99,9 +104,13 @@ function cardSummary() {
   const used = n(1).map((v) => v - held), ram = n(8), temp = n(3), sm = n(4);
   const total = row.simulated ? row.card_gb_sim * 1024 : A['no-card'] ? 0 : Math.max(0, ...n(2));
   if (!used.length && !ram.length) return null;
+  const masks = rows.map((r) => r[9]).filter((x) => x && /^0x[0-9a-f]+$/i.test(x)).map((x) => parseInt(x, 16));
+  const throttle = masks.length ? Object.fromEntries(REASONS.map(([b, nm]) => [nm, masks.filter((m) => m & b).length]).filter(([, k]) => k)) : null;
+  const slowed = masks.filter((m) => m & SLOWING).length;
   const peak = used.length ? Math.max(...used) : null, budget = total ? total - 512 : null;
   return { samples: rows.length, card_mib: total || null, ballast_mib: held || 0, peak_mib: peak, budget_mib: budget, peak_under_budget: peak === null || budget === null ? null : peak < budget,
-    temp_c: temp.length ? [Math.min(...temp), Math.max(...temp)] : null, sm_mhz: sm.length ? [Math.min(...sm), Math.max(...sm)] : null, ram_free_min_mib: ram.length ? Math.min(...ram) : null };
+    temp_c: temp.length ? [Math.min(...temp), Math.max(...temp)] : null, sm_mhz: sm.length ? [Math.min(...sm), Math.max(...sm)] : null, ram_free_min_mib: ram.length ? Math.min(...ram) : null,
+    throttle_field: A['reasons-field'] && A['reasons-field'] !== true ? A['reasons-field'] : null, throttle_seconds: throttle, slowed_seconds: masks.length ? slowed : null };
 }
 function ballastInfo() { try { return JSON.parse(fs.readFileSync(A['ballast-file'], 'utf8')); } catch { return null; } }
 function rowMd(r) {
@@ -118,6 +127,7 @@ function rowMd(r) {
       ['Spill', t(e.spill)], ['Reloads / crashes', `${r.engine_reloads || 0} / ${r.engine_crashes || 0}`],
       ['Tool job', `${s.tool_job?.pass === true ? 'pass' : s.tool_job?.pass === false ? 'fail' : '-'} (${t(s.tool_job?.calls)} calls, ${t(s.tool_job?.bad_calls)} bad)`],
       ['Card C / MHz', `${(c.temp_c || []).join('-') || '-'} C, ${(c.sm_mhz || []).join('-') || '-'} MHz`],
+      ['Throttle reasons (seconds)', c.throttle_seconds ? `${Object.entries(c.throttle_seconds).map(([k, v]) => `${k} ${v}`).join(', ') || 'none'}; slowed ${c.slowed_seconds} s of ${c.samples}` : 'not logged'],
       ['Minutes', t(r.minutes)], ['Dollars', r.dollars_per_hour ? (r.dollars_per_hour * (r.minutes || 0) / 60).toFixed(2) : '-']]
       .map(([a, b]) => `| ${a} | ${b} |`).join('\n') + '\n' + (r.simulated ? '\nSimulated card: fit, pick, spill and crashes are real; speed is the bigger card\'s, so it is not a result for this tier.\n' : '') +
     (r.why ? `\nWhy: ${r.why}\n` : '') + (r.notes.length ? `\nNotes:\n${r.notes.map((n) => `- ${n}`).join('\n')}\n` : '');
