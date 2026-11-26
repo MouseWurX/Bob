@@ -28,6 +28,7 @@ import { scutEnv, linkEnv, linkLive } from './share-card.js'; // SCUT, the fast 
 import { LinkLog } from './link-log.js'; // what the link to a lent card carried, kept in a file and the logbook
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
+import { readThrottle, heatStep, READ_EVERY_MS as HEAT_EVERY_MS } from './guppi-heat.js'; // Nov 26 GUPPI adjusts for the card's throttling
 import { profileFor as guppiProfileFor, pcNow as guppiPcNow } from './guppi-profile.js'; // Nov 26 GUPPI calibrates this PC (Settings, Engine tuning)
 import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, FILL_FROM_BE as COND_FILL_FROM_BE, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv, loadStepBySpeed, cleanSpeeds } from './conductor.js'; // off unless picked
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
@@ -1808,6 +1809,12 @@ export class LlamaCpp {
     const held = Math.min(this.condHeld || 0, total);
     const newTok = total - held;
     const outTok = expectOut({ think, task });
+    // Nov 26 (the owner: GUPPI adjusts for throttling to help the system): while the driver slows the card for heat or
+    // by the power brake, he goes back to the chat step and takes no bigger one, until it has stayed clear for a minute
+    if (await this.guppiHot(model)) {
+      if (this.condStep > this.condChat && !this.condApu && this.beNo() >= SWITCH_IN_JOB_FROM_BE) await this.condSwitch(model, this.condChat, held, { _back: true });
+      return;
+    }
     // the window lever (off unless switched on): the chat memory cut to this chat and its longest reply, the rest lent
     // to the copy cache. Rides on a step switch when there is one, else switches by itself.
     let win = null;
@@ -1932,6 +1939,20 @@ export class LlamaCpp {
     const said = p.stale ? `this PC's GUPPI calibration isn't used: ${p.stale}. Calibrate again in Settings, Engine tuning` : `this PC's GUPPI calibration: ${p.keepBob ? 'he keeps Bob\'s step for this brain' : `reading step at most ${p.cap}`}`;
     if (this.guppiProfSaid !== `${model}:${said}`) { this.guppiProfSaid = `${model}:${said}`; this.log?.('engine', `${model}: ${said}`); }
     return p.stale ? null : p;
+  }
+  // the card's throttle reasons, read at most every 10 s (guppi-heat.js); true while GUPPI should hold back. The
+  // logbook says when he backs off and when he carries on again.
+  async guppiHot(model) {
+    const now = Date.now();
+    if (!(now - (this.heatAt || 0) < HEAT_EVERY_MS)) {
+      this.heatAt = now;
+      const was = this.heat?.hot === true;
+      let r = null; try { r = await (this.throttleRead ? this.throttleRead() : readThrottle()); } catch {}
+      this.heat = heatStep(this.heat, r, now);
+      if (this.heat.hot && !was) this.log?.('engine', `${model}: GUPPI: the card is slowed (${this.heat.why}), so he backs off to the chat step ${this.condChat} and takes no bigger step until it clears`);
+      if (!this.heat.hot && was) this.log?.('engine', `${model}: GUPPI: the card has been clear of heat and power limits for a minute, so he carries on as before`);
+    }
+    return this.heat?.hot === true;
   }
   // a new or forgotten profile: the speeds and the profile are read again at the next load
   guppiReload() { this.condSpeeds = null; this.guppiProfSaid = ''; }

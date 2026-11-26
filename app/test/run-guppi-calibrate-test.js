@@ -9,6 +9,7 @@ import { pcNow, pcChanged, profileFor, readProfile, seedSpeeds, profileFile, spe
 import { guppiCalHtml } from '../public/guppi-cal.js';
 import { writeGgufFrom } from '../src/lab-gguf.js';
 import { LlamaCpp } from '../src/llamacpp.js';
+import { parseThrottle, readThrottle, heatStep, CLEAR_MS } from '../src/guppi-heat.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ' ' + extra}`); };
@@ -86,7 +87,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob guppi '));
 const moe = path.join(tmp, 'moe.gguf');
 { const buf = Buffer.alloc(4096); await writeGgufFrom(moe, { kvs: [{ key: 'general.architecture', type: 8, value: 'qwen3moe' }, { key: 'qwen3moe.block_count', type: 4, value: 2 }, { key: 'qwen3moe.expert_count', type: 4, value: 8 }], tensors: [{ name: 'blk.0.ffn_up_exps.weight', dims: [32, 16, 2], type: 0, bytes: buf.length, data: async () => buf }] }); }
 // speeds: { tryKey: { read, write } }, cardFree: { tryKey: MiB }, plus temp/ram/shared scripts. tryKey = `${step}:${cache}`
-const mkLab = ({ speeds = {}, cardFree = {}, temp = () => 40, ram = () => 12000, shared = () => null, loaded = [], other = null, over = {} } = {}) => {
+const mkLab = ({ speeds = {}, cardFree = {}, throttle = () => '0x0000000000000004', temp = () => 40, ram = () => 12000, shared = () => null, loaded = [], other = null, over = {} } = {}) => {
   let cur = null;
   const served = [], slept = [];
   const lab = {
@@ -106,7 +107,7 @@ const mkLab = ({ speeds = {}, cardFree = {}, temp = () => 40, ram = () => 12000,
       chat: async (url, msgs, { maxTokens }) => { const s = speeds[url.slice(5)]; return { text: s.text || 'same', timings: maxTokens === 24 ? { prompt_per_second: s.read, prompt_ms: 4000 } : { predicted_per_second: s.write } }; },
       health: async () => ({ gpu: 'Test card', tempC: temp(cur), smMHz: 2800, memMHz: 14000, freeMiB: null, totalMiB: 16303 }),
       card: async () => (other ? { freeMB: 1000, totalMB: 16303, others: [other] } : { freeMB: cur ? cardFree[cur] ?? 900 : 15000, totalMB: 16303, others: [] }),
-      ram: () => ram(cur), shared: async () => shared(cur), sleep: async (ms) => { slept.push(ms); }, watchMs: 0
+      throttle: async () => parseThrottle(throttle(cur)), ram: () => ram(cur), shared: async () => shared(cur), sleep: async (ms) => { slept.push(ms); }, watchMs: 0
     },
     ...over.lab
   };
@@ -201,6 +202,53 @@ const fast = { '512:false': { read: 1000, write: 60, text: 'bob words' }, '512:t
   fs.rmSync(d, { recursive: true, force: true });
 }
 
+
+// ---------- throttle reasons (Nov 26, the owner: logged with every run, and GUPPI adjusts for them) ----------
+{
+  const t = parseThrottle('0x0000000000000024\r\n');
+  check('throttle reasons: the driver\'s bit mask in plain names', t.mask === 0x24 && t.ids.join() === 'power-cap,sw-thermal' && t.hot === true && t.hard === false);
+  check('the power cap alone or an idle card isn\'t heat; the hardware brakes are hard', parseThrottle('0x4').hot === false && parseThrottle('0x1').hot === false && parseThrottle('0x40').hard && parseThrottle('0x80').hard && parseThrottle('0x8').hard);
+  check('nothing or [N/A] read is null', parseThrottle('') === null && parseThrottle('[N/A]') === null && parseThrottle(null) === null);
+  const asked = [];
+  const r = await readThrottle(async (args) => { asked.push(args[0]); return args[0].includes('event') ? '[N/A]' : '0x20'; });
+  check('the newer field name first, the older one on older drivers', r.ids.join() === 'sw-thermal' && asked.join() === '--query-gpu=clocks_event_reasons.active,--query-gpu=clocks_throttle_reasons.active');
+  let st = heatStep(null, parseThrottle('0x20'), 1000);
+  check('hot as soon as a heat reason shows, with why', st.hot && st.since === 1000 && /driver thermal slowdown/.test(st.why));
+  st = heatStep(st, parseThrottle('0x4'), 2000);
+  check('a clear reading doesn\'t end it at once', st.hot && st.clearSince === 2000);
+  check('an unknown reading changes nothing', heatStep(st, null, 99999).hot === true);
+  check('heat again restarts the clear clock', heatStep(st, parseThrottle('0x40'), 3000).clearSince === 0);
+  check('clear for a minute: carries on as before', heatStep(st, parseThrottle('0x0'), 2000 + CLEAR_MS).hot === false);
+  check('calibrating: a hardware brake stops the try like 90 C', /^heat: the driver slowed the card \(hardware thermal slowdown\)/.test(tripWhy({ throttle: parseThrottle('0x40') })) && tripWhy({ throttle: parseThrottle('0x24') }) === '');
+}
+{
+  const lab = mkLab({ speeds: fast, throttle: (cur) => (cur === '4096:true' ? '0x24' : cur === '6144:true' ? '0x44' : '0x4') });
+  await startGuppiCalibrate(lab, { model: 'slowed', osKey: 'windows' }); await wait(lab);
+  const b = readProfile(lab.cfg).brains.slowed;
+  check('each try logs the driver\'s throttle reasons beside temperature and clocks', b.rows.find((x) => x.id === 'g4096').throttle.join() === 'power-cap,sw-thermal' && b.rows.find((x) => x.id === 'bob').throttle.join() === 'power-cap' && Array.isArray(readProfile(lab.cfg).pc.idleThrottle));
+  check('a hardware thermal brake stops that try as heat, and nothing after it runs', /^heat: the driver slowed/.test(b.rows.find((x) => x.id === 'g6144').trip) && b.cap === 4096);
+  const html = guppiCalHtml(guppiCalView(lab.cfg, lab, readProfile(lab.cfg).pc), { models: ['slowed'], pick: 'slowed' });
+  check('Settings shows when the driver slowed the card (not for the normal power cap)', /the driver slowed the card \(sw-thermal\)/.test(html) && !/slowed the card \(power-cap\)/.test(html));
+}
+{
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-guppi-heat-'));
+  const e = new LlamaCpp({ agentDir: d, dataDir: d, llamacpp: { models: { moe } } }); clearInterval(e.idleTimer); e.beNo = () => 46;
+  const said = []; e.log = (_k, t) => said.push(t);
+  let reading = '0x24'; e.throttleRead = async () => parseThrottle(reading);
+  const switched = []; e.condSwitch = async (_m, step) => { switched.push(step); e.condStep = step; return true; };
+  Object.assign(e, { condChat: 2048, condStep: 4096, condMax: 4096, condCacheBase: 4096, current: 'moe', slotDir: d, child: { exitCode: null }, active: 1, condHeld: 0 });
+  const msgs = [{ role: 'user', content: 'x'.repeat(60000) }];
+  await e.conduct({ model: 'moe', messages: msgs, tools: [], task: 'chat' });
+  check('GUPPI live: the card slowed for heat, so he steps back to the chat step and says why', switched.join() === '2048' && said.some((t) => /GUPPI: the card is slowed \(driver thermal slowdown\), so he backs off to the chat step 2048/.test(t)), said.join(' | '));
+  switched.length = 0; e.heatAt = 0;
+  await e.conduct({ model: 'moe', messages: msgs, tools: [], task: 'chat' });
+  check('while it stays slowed he takes no bigger step for a long read', switched.length === 0);
+  reading = '0x4'; e.heatAt = 0; await e.guppiHot('moe');
+  e.heatAt = 0; e.heat.clearSince = Date.now() - CLEAR_MS - 1; await e.guppiHot('moe');
+  check('clear for a minute: he carries on as before, and says so', e.heat.hot === false && said.some((t) => /clear of heat and power limits for a minute/.test(t)));
+  check('he reads the card at most every 10 s', await (async () => { let n = 0; e.throttleRead = async () => { n++; return null; }; e.heatAt = 0; await e.guppiHot('moe'); await e.guppiHot('moe'); return n === 1; })());
+  fs.rmSync(d, { recursive: true, force: true });
+}
 // ---------- wiring, Help ----------
 {
   const srv = read('src/server.js'), help = read('public/help-content.js'), eng = read('public/cellar-engines.js'), cel = read('public/cellar.js');

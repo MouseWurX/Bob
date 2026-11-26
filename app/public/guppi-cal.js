@@ -14,7 +14,8 @@ const rowLine = (r) => {
   if (r.trip) return `${what}: stopped, ${esc(r.trip)}`;
   if (r.failed) return `${what}: ${esc(r.failed)}`;
   const heat = r.peakC != null ? `, card up to ${r.peakC} C${r.smMedMHz ? ` at ${r.smMedMHz} MHz` : ''}` : '';
-  const words = r.sameWords === false ? ', different words' : r.sameWords === true ? ', same words' : '';
+  const slowed = (r.throttle || []).filter((x) => x !== 'power-cap');
+  const words = (slowed.length ? `, the driver slowed the card (${esc(slowed.join(', '))})` : '') + (r.sameWords === false ? ', different words' : r.sameWords === true ? ', same words' : '');
   return `${what}: reads ${r.readTps} and writes ${r.tps} tokens a second, first word in ${r.firstWordS} s${heat}${r.minFreeMiB != null ? `, ${(r.minFreeMiB / 1024).toFixed(1)} GB left on the card` : ''}${words}`;
 };
 

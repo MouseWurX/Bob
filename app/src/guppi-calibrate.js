@@ -34,6 +34,7 @@ import { ggufInfo } from './gguf.js';
 import { cardGB } from './tuning.js';
 import { profileFile, readProfile, saveProfile, pcNow, pcChanged, seedSpeeds } from './guppi-profile.js';
 import { OS } from './platform.js';
+import { readThrottle } from './guppi-heat.js';
 
 export const RAM_FLOOR_MIB = 512; // free RAM never under this (the owner's floor); built-in graphics: APU_FLOOR (1.5 GB)
 export const HEAT_STOP_C = 90; // a graphics card this hot stops the try (built-in graphics: 95, the Legion Go's line)
@@ -99,6 +100,7 @@ export function tripWhy(s = {}, { apu = false, step = 0, card = true } = {}) {
   const floor = apu ? APU_FLOOR / MiB : RAM_FLOOR_MIB;
   const heat = apu ? APU_HEAT_STOP_C : HEAT_STOP_C;
   if (Number.isFinite(s.tempC) && s.tempC >= heat) return `heat: the card reached ${s.tempC} C (stop at ${heat} C)`;
+  if (s.throttle?.hard) return `heat: the driver slowed the card (${s.throttle.names.join(', ')})`;
   if (Number.isFinite(s.ramMiB) && s.ramMiB < floor) return `ram: free RAM fell to ${Math.round(s.ramMiB)} MB, under the ${Math.round(floor)} MB floor`;
   if (card && !apu && Number.isFinite(s.freeMiB) && s.freeMiB < SPILL_MARGIN_MIB) return `card: only ${Math.round(s.freeMiB)} MB left free on the card, under the ${SPILL_MARGIN_MIB} MB margin`;
   if (Number.isFinite(s.sharedRiseMiB) && s.sharedRiseMiB > spillLimitMiB(step)) return `spill: the card spilled about ${Math.round(s.sharedRiseMiB)} MB into shared memory`;
@@ -169,7 +171,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
   const log = pageLog(lab.cfg, 'guppi-calibrate');
   const exe = lab.tools().server.path;
   const fx = {
-    serve: (o) => startServer({ exe, log, ...o }), chat: chatOnce, health: () => readHealth(), card,
+    serve: (o) => startServer({ exe, log, ...o }), chat: chatOnce, health: () => readHealth(), throttle: () => readThrottle(), card,
     ram: () => (eng.freeRam ? eng.freeRam() : os.freemem()) / MiB, shared: winShared,
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)), watchMs: WATCH_MS, ...fxs
   };
@@ -180,7 +182,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
     const tick = () => progress((100 * ++done) / total);
     set('pc', 'running');
     const h0 = await fx.health().catch(() => null);
-    const pc = { ...pcNow(lab.cfg, { beNo, osKey }), gpu: h0?.gpu || '', cardMiB: h0?.totalMiB ?? before?.totalMB ?? null, idleC: h0?.tempC ?? null, idleSmMHz: h0?.smMHz ?? null, freeRamMiB: Math.round(await fx.ram()) };
+    const pc = { ...pcNow(lab.cfg, { beNo, osKey }), gpu: h0?.gpu || '', cardMiB: h0?.totalMiB ?? before?.totalMB ?? null, idleC: h0?.tempC ?? null, idleSmMHz: h0?.smMHz ?? null, idleThrottle: (await Promise.resolve(fx.throttle?.()).catch(() => null))?.ids || null, freeRamMiB: Math.round(await fx.ram()) };
     log(`GUPPI calibrate: ${show}, ${JSON.stringify(pc)}, tries ${tries.map((t) => t.id).join(' ')}`);
     set('pc', 'done'); tick();
     const rows = [];
@@ -198,8 +200,8 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       let srv = null, trip = '';
       const samples = [];
       const sample = async () => {
-        const [h, c, ram, sh] = await Promise.all([fx.health().catch(() => null), fx.card().catch(() => null), Promise.resolve(fx.ram()).catch(() => null), fx.shared().catch(() => null)]);
-        const s = { tempC: h?.tempC ?? null, smMHz: h?.smMHz ?? null, memMHz: h?.memMHz ?? null, powerW: h?.powerW ?? null, freeMiB: c?.freeMB ?? h?.freeMiB ?? null, ramMiB: Number.isFinite(ram) ? ram : null, sharedRiseMiB: Number.isFinite(sh) && Number.isFinite(sharedBase) ? sh - sharedBase : null };
+        const [h, c, ram, sh, th] = await Promise.all([fx.health().catch(() => null), fx.card().catch(() => null), Promise.resolve(fx.ram()).catch(() => null), fx.shared().catch(() => null), Promise.resolve(fx.throttle?.()).catch(() => null)]);
+        const s = { tempC: h?.tempC ?? null, smMHz: h?.smMHz ?? null, memMHz: h?.memMHz ?? null, powerW: h?.powerW ?? null, freeMiB: c?.freeMB ?? h?.freeMiB ?? null, ramMiB: Number.isFinite(ram) ? ram : null, sharedRiseMiB: Number.isFinite(sh) && Number.isFinite(sharedBase) ? sh - sharedBase : null, throttle: th || null };
         samples.push(s);
         const why = tripWhy(s, { apu, step: t.step, card: Boolean(srv) });
         if (why && !trip) { trip = why; try { srv?.stop(); } catch {} }
@@ -262,13 +264,13 @@ export async function coolDown(fx, { idleC = null, signal, rule = COOL } = {}) {
 export function heatOf(samples = []) {
   const vals = (k) => samples.map((s) => s[k]).filter((x) => Number.isFinite(x));
   const max = (k) => (vals(k).length ? Math.max(...vals(k)) : null), min = (k) => (vals(k).length ? Math.min(...vals(k)) : null);
-  return { peakC: max('tempC'), smMedMHz: vals('smMHz').length ? median(vals('smMHz')) : null, smMinMHz: min('smMHz'), minFreeMiB: min('freeMiB'), minRamMiB: min('ramMiB') == null ? null : Math.round(min('ramMiB')), spillMiB: max('sharedRiseMiB') };
+  return { peakC: max('tempC'), smMedMHz: vals('smMHz').length ? median(vals('smMHz')) : null, smMinMHz: min('smMHz'), minFreeMiB: min('freeMiB'), minRamMiB: min('ramMiB') == null ? null : Math.round(min('ramMiB')), spillMiB: max('sharedRiseMiB'), throttle: [...new Set(samples.flatMap((s) => s.throttle?.ids || []))].filter((i) => i !== 'idle') };
 }
 
 // For Settings: this PC's profile, short, and the job while it runs.
 export function guppiCalView(cfg, lab, now) {
   const p = readProfile(cfg);
-  const brains = p ? Object.entries(p.brains).slice(0, 32).map(([model, b]) => ({ model, name: b.name || model, when: b.when || '', cap: b.cap || 0, beatsBob: b.beatsBob === true, why: b.why || '', rows: (b.rows || []).map(({ id, step, cache, readTps, tps, firstWordS, failed, trip, peakC, smMedMHz, minFreeMiB, sameWords }) => ({ id, step, cache, readTps, tps, firstWordS, failed, trip, peakC, smMedMHz, minFreeMiB, sameWords })) })) : [];
+  const brains = p ? Object.entries(p.brains).slice(0, 32).map(([model, b]) => ({ model, name: b.name || model, when: b.when || '', cap: b.cap || 0, beatsBob: b.beatsBob === true, why: b.why || '', rows: (b.rows || []).map(({ id, step, cache, readTps, tps, firstWordS, failed, trip, peakC, smMedMHz, minFreeMiB, sameWords, throttle }) => ({ id, step, cache, readTps, tps, firstWordS, failed, trip, peakC, smMedMHz, minFreeMiB, sameWords, throttle })) })) : [];
   const run = lab?.job?.run?.kind === 'guppi-calibrate' ? lab.runView(lab.job.run) : null;
   return { brains, stale: p && now ? pcChanged(p.pc, now) : '', gpu: p?.pc?.gpu || '', run };
 }
