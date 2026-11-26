@@ -1,5 +1,8 @@
 <h1 align="center">Bob</h1>
 
+> [!NOTE]
+> **Work on Bob is slowed, not stopped.** The maintainer is away on a work trip, so releases and replies will be slower for a while.
+
 <p align="center"><b>A local AI agent with a personality. He runs on your own computer, and nothing goes online unless you turn it on.</b></p>
 
 > *"This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it."*  

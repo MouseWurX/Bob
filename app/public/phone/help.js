@@ -47,8 +47,8 @@ globalThis.BobHelp = {
     },
     {
       id: 'bobs', title: 'Bob-Net',
-      html: `<p>Menu, <strong>Bob-Net</strong>. Everything about your other Bobs is on this one page: the Bobs this phone can ask (<strong>My other Bobs</strong>), adding and pairing them, and <strong>Lend my brain</strong>. Add a Bob with a name and his Tailscale address: either the name ending in <code>.ts.net</code> or the number starting <code>100.</code>, as your other replicant matrix's <strong>Bob-Net access</strong> setting shows it. Then type his passcode and tap <strong>Log in</strong>.</p>
-<p>I only connect to Tailscale addresses. Tailscale scrambles everything between your phone and your other replicant matrix, so the passcode never crosses the café Wi-Fi in the open. The passcode is used once to log in and isn't kept on the phone; your other replicant matrix hands back a key I keep instead.</p>
+      html: `<p>Menu, <strong>Bob-Net</strong>. Everything about your other Bobs is on this one page: the Bobs this phone can ask (<strong>My other Bobs</strong>), adding and pairing them, and <strong>Lend my brain</strong>. The quickest way in is <strong>Find my other Bobs</strong>, then <strong>Pair</strong> (see Pair Bobs). Or, under <strong>Add by address</strong>, add a Bob with a name and his Tailscale address: either the name ending in <code>.ts.net</code> or the number starting <code>100.</code>, as your other replicant matrix's <strong>Bob-Net access</strong> setting shows it. Then type his passcode and tap <strong>Log in</strong>.</p>
+<p>I only connect to Tailscale addresses. (<strong>Find my other Bobs</strong> also knocks on your home Wi-Fi, but only to ask "are you a Bob?": no passcode or chat goes that way.) Tailscale scrambles everything between your phone and your other replicant matrix, so the passcode never crosses the café Wi-Fi in the open. The passcode is used once to log in and isn't kept on the phone; your other replicant matrix hands back a key I keep instead.</p>
 <p>With more than one Bob, the one at the top is the <strong>First choice</strong>. <strong>Make first choice</strong> moves another one up. <strong>Remove</strong> forgets him and his key (tap twice).</p>
 <p>When he needs your OK for something (a file to move, a program to run), the card shows up here too, with <strong>Allow</strong> and <strong>Deny</strong>. If a job needs several OKs, the phone has <strong>Allow all</strong> and <strong>Deny all</strong>; to tick some and not others, use the card on your other replicant matrix.</p>`
     },
@@ -92,7 +92,7 @@ globalThis.BobHelp = {
     },
     {
       id: 'memory', title: 'What Bob remembers',
-      html: `<p>Menu, <strong>What Bob remembers</strong>: lasting facts for the phone brain, one per line, yours to edit. It's used from the next new chat. It stays on this phone; your other replicant matrix's Bob keeps his own memory file. Don't put passwords in it.</p><p>If <strong>Relevant memories only</strong> is on in your other replicant matrix's Settings (Speed &amp; memory), then while I can reach your other replicant matrix, the Bob there hands me the few lines of his memory that fit what you just asked, for that one reply. I keep none of them. With your other replicant matrix out of reach, I make do with this phone's list.</p>`
+      html: `<p>Menu, <strong>Memory</strong> (What Bob remembers): lasting facts for the phone brain, one per line, yours to edit. It's used from the next new chat. It stays on this phone; your other replicant matrix's Bob keeps his own memory file. Don't put passwords in it.</p><p>If <strong>Relevant memories only</strong> is on in your other replicant matrix's Settings (Speed &amp; memory), then while I can reach your other replicant matrix, the Bob there hands me the few lines of his memory that fit what you just asked, for that one reply. I keep none of them. With your other replicant matrix out of reach, I make do with this phone's list.</p>`
     },
     {
       id: 'past-chats', title: 'Past chats',
@@ -145,7 +145,8 @@ globalThis.BobHelp = {
     {
       id: 'pair', title: 'Pair Bobs',
       html: `<p>The quick way to join this phone to a Bob on your other replicant matrix, with no passcode to type.</p>
-<ul><li>From the phone: Menu, <strong>Bob-Net</strong>, type that Bob's Tailscale address and tap <strong>Pair with this Bob</strong>. He shows a card with a number; if it matches the one here, press <strong>Yes, pair us</strong> there.</li>
+<ul><li>Easiest: Menu, <strong>Bob-Net</strong>, <strong>Find my other Bobs</strong>. I look on your home Wi-Fi and ask the Bobs you've already paired which of your devices are on Tailscale, then list each Bob I find once. Tap <strong>Pair</strong> next to one (or <strong>Pair with all</strong>). He shows a card with a number; if it matches the one here, press <strong>Yes, pair us</strong> there. A Bob on your Wi-Fi answers only while his <strong>Home network access</strong> is on (his Settings, Bob-Net); the pairing itself still goes over Tailscale, so Tailscale needs to be on here and there. Nothing is switched on by looking.</li>
+<li>Or by address: <strong>Add by address</strong>, type that Bob's Tailscale address and tap <strong>Pair with this Bob</strong>. He shows a card with a number; if it matches the one here, press <strong>Yes, pair us</strong> there.</li>
 <li>From the other Bob: press <strong>Pair</strong> there (he finds this phone on Tailscale while <strong>Lend my brain</strong> is on). A card shows up here; check the number and tap <strong>Yes, pair us</strong>.</li></ul>
 <p>We swap passcodes over Tailscale and each of us adds the other. Nothing else switches on. For the other Bob to ask this phone too, <strong>Lend my brain</strong> has to be on here; for this phone to ask him, <strong>Bob-Net access</strong> has to be on there. Each pairing gets a passcode of its own; <strong>Make a new passcode</strong> signs them all out.</p>`
     },
@@ -266,7 +267,7 @@ globalThis.BobHelp = {
     },
     {
       id: 'carry', title: 'Carry on on another Bob',
-      html: `<p>Menu, <strong>Carry on on another Bob</strong>. Started a chat with the phone brain on the bus and want the big brain at home? Tap <strong>Carry on with</strong> one of your Bobs: he gets everything you and I said in this chat, it shows up in his Past chats, and from then on he answers this chat while he's reachable. Keep typing here, or open it there.</p>
+      html: `<p>Menu, <strong>Carry on</strong> (on another Bob). Started a chat with the phone brain on the bus and want the big brain at home? Tap <strong>Carry on with</strong> one of your Bobs: he gets everything you and I said in this chat, it shows up in his Past chats, and from then on he answers this chat while he's reachable. Keep typing here, or open it there.</p>
 <p>That Bob has to have Settings, Bob-Net, <strong>Accept chats</strong> on (off to start with). Only the words travel, over Tailscale: no files, pictures or memory. <strong>Let Settings pick who answers again</strong> undoes the pairing for this chat. On your other replicant matrix, Past chats has <strong>Carry on on…</strong> under each chat to hand it to another computer.</p>`
     },
     {
@@ -303,6 +304,7 @@ globalThis.BobHelp = {
 <dt>Effort</dt><dd>How hard a Bob on your network works on an answer: bigger brains and checking at higher levels.</dd>
 <dt>Pinned download</dt><dd>A download from one exact version of a file, checked against its fingerprint (checksum), so nobody can swap it.</dd>
 <dt>Free memory when idle</dt><dd>The phone brain unloads after a quiet spell, so the phone stays quick.</dd>
+<dt>Find my other Bobs</dt><dd>The button on the Bob-Net page that looks for your Bobs on your home Wi-Fi and, through Bobs you've paired already, on Tailscale. It only knocks and lists; you still tap Pair and say yes over there.</dd>
 <dt>Introduced</dt><dd>Paired through a third Bob of yours that has Pass my Bob-Net along on: he tells this phone and another Bob each other's name and address, and they pair with no card.</dd>
 <dt>Game master</dt><dd>Your other Bob, when he runs an Adventure: he sets the scenes, plays everyone who isn't at the table, and says what the dice mean. The phone brain can't be one.</dd>
 <dt>Hearts</dt><dd>A character's health in an Adventure: five to start, up to eight as they earn more. Enemies have them too. A miss can cost one; at zero hearts you choose Go out in style or Wake up captured.</dd>
@@ -342,6 +344,7 @@ globalThis.BobHelp = {
 <tr><td>"That isn't a Tailscale address"</td><td>Use the address your other replicant matrix's Bob-Net access setting shows: a name ending in .ts.net, or a number starting 100.</td></tr>
 <tr><td>Your other replicant matrix says the phone didn't answer in time</td><td>The first borrowed reply is the slow one: the phone reads my whole instructions and tool list once. After that it only reads what's new. If it keeps happening, check Bob-Net, Lend my brain for a reason (warm, low battery, in use), and tap Open battery settings there.</td></tr>
 <tr><td>Can your other replicant matrix borrow the phone while I game?</td><td>Yes: that's what Lend my brain is for. Turn it on here, then on your other replicant matrix: Settings, Bob-Net, Borrow a brain. Keep the phone on its charger with the screen off.</td></tr>
+<tr><td>Why doesn't Find my other Bobs list my computer?</td><td>Bob has to be open there with Bob-Net access on. On Wi-Fi he answers only with Home network access on too (his Settings, Bob-Net). Over Tailscale, the phone can't read the Tailscale app's list, so it asks a Bob you've already paired: pair one by address once, and Find asks him for the rest.</td></tr>
 <tr><td>Can my Bobs introduce each other?</td><td>Yes, if you ask them to. Turn on Pass my Bob-Net along under Bob-Net here, and the same switch on the Bobs on your other replicant matrices (Settings, Bob-Net, What they share). A Bob paired with two of them tells each the other's name and address, and those two pair with no card. The phone only answers; Lend my brain has to be on here for the introduction to get in.</td></tr>
 <tr><td>Can I save prompts I use a lot?</td><td>Yes. Turn on Saved prompts with / in Settings, add them under Saved prompts, then type / in the message box and tap one.</td></tr>
 <tr><td>It asks for the passcode again</td><td>The passcode was changed on your other replicant matrix. Type the new one under Bob-Net.</td></tr>
@@ -361,7 +364,7 @@ globalThis.BobHelp = {
 <tr><td>Bob isn't in the Share menu</td><td>Settings, Sharing and the widget, Accept shares. Some apps only show the apps you used last: look under More.</td></tr>
 <tr><td>The widget says "Tap to ask Bob" and no reminder</td><td>Turn on Reminder on widget here, and Share status with my phone on your other Bob (Settings, Bob-Net). It updates while I'm open.</td></tr>
 <tr><td>Your Bobs says a Bob isn't sharing</td><td>On that replicant matrix: Settings, Bob-Net, Share status with my phone.</td></tr>
-<tr><td>Can I move a chat from the phone to my computer?</td><td>Yes: Menu, Carry on on another Bob. That Bob needs Accept chats on (his Settings, Bob-Net).</td></tr>
+<tr><td>Can I move a chat from the phone to my computer?</td><td>Yes: Menu, Carry on. That Bob needs Accept chats on (his Settings, Bob-Net).</td></tr>
 <tr><td>Pictures don't load on mobile data</td><td>That's Low-data mode: tap the button to load one, or set it to Off in Settings, Data.</td></tr>
 <tr><td>Can I use the phone away from home?</td><td>Yes, as long as your other replicant matrix is on and Tailscale is on at both ends. Without that, the phone brain can still chat.</td></tr>
 </table>`
