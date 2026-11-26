@@ -34,6 +34,8 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false, home = fa
   const { systemPrompt } = await import(src('persona.js'));
   const tb = await import(src('toolbox.js'));
   let toolShapes = null; try { toolShapes = (await import(src('tool-sets.js'))).TOOL_SHAPES ?? null; } catch {} // the tool-shape version this Bob's lessons are written for
+  // 21 Nov (Lumo's review): the exact tool list as a short hash, switches included (tool-sets.js shapeSchemas); null on an older Bob
+  let shapeOf = null; try { const ts = await import(src('tool-sets.js')); if (ts.shapeSchemas && ts.toolListHash) shapeOf = (b, set) => ts.toolListHash(ts.shapeSchemas(b, set)); } catch {}
   let phrasings = [];
   try { phrasings = (await import(pathToFileURL(path.join(bobDir, 'test', 'phrasings.js')).href)).PHRASINGS; } catch {}
 
@@ -163,6 +165,8 @@ export async function loadBob(bobDir, { howtos = '', allowOld = false, home = fa
       return { system: neutral(sys), tools: JSON.parse(neutral(JSON.stringify(brain.frontDeskTools(loaded)))) };
     },
     allTools: () => brain.toolSchemas(Object.keys(brain.tools), toolSet),
+    // the hash of every tool this Bob can offer right now, with the switches as they are (null on an older Bob)
+    toolHash: () => { try { return shapeOf ? shapeOf(brain, toolSet) : null; } catch { return null; } },
     // Runs use_tools the way Bob does (adds the group), so a lesson can go on to the real tool.
     useTools(args, loaded) { return brain.tools.use_tools.run(args, { loaded }); },
     done() { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} }

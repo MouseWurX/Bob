@@ -8,6 +8,7 @@
 // A family's tool list is never longer in all than Bob's own (test/run-tool-sets-test.js): the examples are paid for
 // by shorter lines elsewhere, so the start of a job stays inside its budget (test/run-start-budget-test.js). A family is picked by itself only after tool-score shows it
 // fails less with its own wording (docs/TOOL-SETS.md has the numbers); until then it's `proven: false` and only used when named.
+import crypto from 'node:crypto';
 import { familyOf } from './model-family.js';
 import { ggufInfo } from './gguf.js';
 
@@ -44,11 +45,25 @@ export const SETS = {
 // Which tool shapes are live, as a short stamp. The tool record (tool-record.js) starts a fresh history when this
 // changes, and moves the old one to an archive folder (Nov 14, the owner: "if i have a history in it we restart that
 // history new when we try the new tool shapes"). Bump TOOL_SHAPES when tool wording or inputs change for every brain.
-export const TOOL_SHAPES = 4; // 2 (Nov 15): save_to on the save tools and make_diagram, a new name on convert_file. 3: GPT-OSS shape locked. 4: Qwen hides 2 helpers; run_command sends file writes to write_file
+export const TOOL_SHAPES = 5; // 2 (Nov 15): save_to on the save tools and make_diagram, a new name on convert_file. 3: GPT-OSS shape locked. 4: Qwen hides 2 helpers; run_command sends file writes to write_file. 5 (Nov 22): search_files by name, save_spreadsheet folder + no date, office_make wording
+// 4 was kept on purpose on 21 Nov (the stock-Qwen comparisons pinned it); search_files' file-name wording (3fff3cf0) waited
+// for this bump. test/tool-shapes-lock.json holds the exact lists each number stands for.
 export function shapeStamp(cfg) {
   const live = toolSetsOn(cfg) ? Object.keys(SETS).filter((k) => SETS[k].proven !== false && cfg?.toolSets?.[k] !== false).sort() : [];
   return `${TOOL_SHAPES}-${live.join('+') || 'bob'}`;
 }
+
+// The exact shape of every tool a brain can be offered with these settings: names, wording (the {{USER}} and {{HOME}}
+// placeholders left in, so it never depends on who or where) and inputs, in order. Anything Settings turns on or off
+// changes it: a More tools switch, a Hand, the mail catalog. Lumo's review (Nov 21) of the after1 tools: the mail catalog
+// added read_email and manage_email inputs while TOOL_SHAPES stayed 4, and one counter can't say which tools a brain saw.
+// A run or lesson can now carry this hash beside TOOL_SHAPES, and test/run-tool-shapes-lock-test.js fails when the tool
+// list changes without a TOOL_SHAPES bump. brain: a Brain (its tools, offTools and usable); set: a family's tool set.
+export function shapeSchemas(brain, set = null) {
+  const off = brain.offTools();
+  return Object.keys(brain.tools).filter((n) => brain.tools[n]?.schema && brain.usable(n, off) && !set?.hide?.includes(n)).map((n) => inSet(brain.tools[n].schema, set));
+}
+export const toolListHash = (schemas) => crypto.createHash('sha256').update(JSON.stringify(schemas ?? [])).digest('hex').slice(0, 12);
 
 // The tool set a brain uses: { id, ...set } or null for Bob's own wording.
 export function toolSetFor(cfg, model, { info, family } = {}) {

@@ -56,6 +56,31 @@ Keep a family's wording only when right-tool plus right-arguments goes up. Score
 
 Lesson writing picks the teacher's family by itself once that family is proven. Use `--tool-set off` for Bob's own wording, or `--tool-set gpt-oss` to name an unproven one.
 
+## The tool-shape lock (`test/run-tool-shapes-lock-test.js`)
+
+Every tool list a brain can be offered (Bob's wording and each family, all More tools off, each switch on alone, and
+all the mail ones together) is kept as a short hash in `test/tool-shapes-lock.json`, beside the `TOOL_SHAPES` it was
+taken at. The hash is of the exact tool JSON sent (`shapeSchemas` and `toolListHash` in `src/tool-sets.js`), so a
+changed name, wording or input changes it. If the hashes change while `TOOL_SHAPES` stays the same, `npm test` fails:
+bump `TOOL_SHAPES`, tell the tool lessons thread, then run `node test/run-tool-shapes-lock-test.js --write`. Lab job
+rows and lesson stamps carry `tool_hash` too, so a lesson can be matched to the exact list it was made with.
+
+The mail catalog's new inputs (16 Nov) went in with `TOOL_SHAPES` still 4, and nothing noticed. Shape 5 (22 Nov)
+covers search_files matching file names, save_spreadsheet's folder (and no date), and office_make's wording.
+
+## Languages the end-of-turn checks read
+
+- The honesty check (`src/honest.js`: claims, numbers, quotes, links, switches) reads English, French and Spanish.
+  Its made-up number check gives one more go (`src/verify.js`, 2e) in any language, since it reads numbers.
+- The other end-of-turn send-backs (`src/answer-checks.js`) are English only. A French or Spanish answer gets the
+  honesty note but not always one more go. Translating the top checks is open work.
+
+## Tool list size
+
+`src/toolbox.js` says the start list is "~4,000 tokens". That was never measured. On 21 Nov all 52 tools came to about
+32 KB of JSON, and the start list about 6 KB (roughly 1,500 tokens). Measure with `kit.allTools()` in
+`model-lab/bob-kit.mjs` before quoting a number.
+
 ## Making new tools with this in mind
 
 The whole guide is [WRITING-TOOLS.md](WRITING-TOOLS.md). In short:

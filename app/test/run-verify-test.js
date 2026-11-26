@@ -202,6 +202,17 @@ check('afterTurn: Apps hand off and an empty reply: the switch to turn on', afte
 check('afterTurn: he claimed the picture he didn\'t make: the correction, not "didn\'t make"', afterTurn(T({ expect: expectFrom('make me a picture'), nudged: 1 }), 'Here is your picture!')?.note === 'Nothing was actually made in that reply. Bob said he made a picture, but no picture was made.');
 check('afterTurn: plain chat: nothing to do', afterTurn(T({ expect: expectFrom('hi bob') }), 'Hey Sam!') === null);
 check('afterTurn: one nudge only per turn', afterTurn(T({ nudged: 1 }), 'Here\'s your picture!')?.nudge === undefined);
+// 21 Nov (Lumo's review): a number no tool result holds gets one more go asking for the tool line, not just a note.
+{
+  const csv = 'item,price\nbread,12.50\nmilk,30.00\njam,7.25';
+  const made = afterTurn({ ...T({ actions: [{ name: 'read_file', ok: true }] }), seen: [csv] }, 'The total is $52.10.');
+  check('afterTurn: a made-up total gets one more go', /quote the tool line/.test(made?.nudge || ''));
+  check('afterTurn: the go names the number', /\$52\.10/.test(made?.nudge || ''));
+  check('afterTurn: a total that sums the column gets no go', !afterTurn({ ...T({ actions: [{ name: 'read_file', ok: true }] }), seen: [csv] }, 'The total is $49.75.')?.nudge);
+  check('afterTurn: no tool results, no number go', !/quote the tool line/.test(afterTurn(T(), 'The total is $52.10.')?.nudge || ''));
+  check('afterTurn: the number go is once per turn', !afterTurn({ ...T({ nudged: 1, actions: [{ name: 'read_file', ok: true }] }), seen: [csv] }, 'The total is $52.10.')?.nudge);
+  check('afterTurn: tool help off, no number go', !afterTurn({ ...T({ actions: [{ name: 'read_file', ok: true }] }), cfg: { ...cfg, toolHelp: false }, seen: [csv] }, 'The total is $52.10.')?.nudge);
+}
 
 fs.rmSync(dir, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
