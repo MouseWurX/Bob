@@ -18,6 +18,14 @@ const rowLine = (r) => {
   return `${what}: reads ${r.readTps} and writes ${r.tps} tokens a second, first word in ${r.firstWordS} s${heat}${r.minFreeMiB != null ? `, ${(r.minFreeMiB / 1024).toFixed(1)} GB left on the card` : ''}${words}`;
 };
 
+const TRICK = { mem: 'Turbo chat memory', experts: '4 experts per word', standins: 'stand-ins', driveStandins: 'never wait on the drive', keepGuesses: 'keep more guesses', sink: 'sharp start' };
+const turboLine = (r) => {
+  const k = String(r.id || '').replace(/^turbo-no-/, '');
+  const what = r.id === 'turbo-all' ? 'Turbo, every trick on' : `Turbo without ${TRICK[k] || k}`;
+  if (r.same) return `${what}: the same start, so it does nothing here`;
+  return rowLine({ ...r, id: 'x' }).replace(/^GUPPI, step \d+( with the copy cache)?/, what);
+};
+
 // v: GET /api/guppi-cal. models: the brains to offer. pick: the one picked. ask/said: the page's own state.
 export function guppiCalHtml(v, { models = [], pick = '', ask = null, said = null } = {}) {
   const m = models.includes(pick) ? pick : models[0] || '';
@@ -31,7 +39,9 @@ export function guppiCalHtml(v, { models = [], pick = '', ask = null, said = nul
   const askRow = ask?.needUnload ? `<div class="setup-ask" role="group" aria-label="Calibrate GUPPI"><p>${esc((ask.names || []).join(', '))} ${ask.names?.length === 1 ? 'is' : 'are'} loaded. Calibrating unloads ${ask.names?.length === 1 ? 'it' : 'them'} first.</p><div class="row"><button type="button" class="get" data-gcgo data-unload="1">Unload and calibrate</button><button type="button" class="mini" data-gccancel>Cancel</button></div></div>` : '';
   const runRow = run ? `<p role="status">${esc(run.stepLabel || 'Starting')}${run.progress ? ` (${Math.round(run.progress)}%)` : ''}</p>` : '';
   const stale = v?.stale ? `<p class="refused">My calibration isn't used: ${esc(v.stale)}. Calibrate again.</p>` : '';
-  const found = mine ? `<details class="guppi-found" open><summary>Found ${esc(mine.when)}${mine.cap ? `: reading step at most ${mine.cap}` : ''}${mine.beatsBob ? ', beats Bob\'s pick' : ', Bob\'s pick kept'}</summary><p>${esc(mine.why)}</p><ul>${mine.rows.map((r) => `<li>${rowLine(r)}</li>`).join('')}</ul></details>` : '';
+  // Nov 26, the Turbo pass (only when Turbo is on): each trick with and without, and what GUPPI leaves out here
+  const turbo = mine?.turbo ? `<p><strong>Turbo:</strong> ${esc(mine.turbo.why)}</p><ul>${(mine.turbo.rows || []).map((r) => `<li>${turboLine(r)}</li>`).join('')}</ul>` : '';
+  const found = mine ? `<details class="guppi-found" open><summary>Found ${esc(mine.when)}${mine.cap ? `: reading step at most ${mine.cap}` : ''}${mine.beatsBob ? ', beats Bob\'s pick' : ', Bob\'s pick kept'}</summary><p>${esc(mine.why)}</p><ul>${mine.rows.map((r) => `<li>${rowLine(r)}</li>`).join('')}</ul>${turbo}</details>` : '';
   const forget = (v?.brains || []).length ? `<button type="button" class="link" data-gcforget>Forget this PC's calibration</button>` : '';
   return `${top}${pickRow}${askRow}${runRow}${said ? `<p role="status" class="${said.bad ? 'refused' : ''}">${esc(said.text)}</p>` : ''}${stale}${found}${forget}`;
 }

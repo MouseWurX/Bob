@@ -225,8 +225,12 @@ export async function runRow({ plan, prompts, row, round, fx }) {
   // never hands its heat to the next one. The wait and the start temperature are recorded, never hidden.
   if (plan.coolDown && fx.cardTempC) {
     const want = plan.coolDown.cardC ?? 60, most = plan.coolDown.maxWaitS ?? 300, step = plan.coolDown.everyS ?? 5;
-    let t = await fx.cardTempC(), waited = 0;
-    const startC = t;
+    // minS (Nov 26, the Turbo matrix): always wait at least this long first (0 unless the plan says)
+    const least = Math.max(0, Number(plan.coolDown.minS) || 0);
+    let waited = 0;
+    const startC = await fx.cardTempC();
+    if (least && !fx.shouldStop()) { await fx.sleep(least * 1000); waited = least; }
+    let t = least ? await fx.cardTempC() : startC;
     while (Number.isFinite(t) && t > want && waited < most && !fx.shouldStop()) { await fx.sleep(step * 1000); waited += step; t = await fx.cardTempC(); }
     out.coolDown = { startC, endC: t, waitedS: waited, hitLimit: Number.isFinite(t) && t > want };
   }

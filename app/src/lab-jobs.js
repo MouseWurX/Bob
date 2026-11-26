@@ -76,8 +76,9 @@ export function pageLog(cfg, page) {
 }
 
 // One chat request to a Lab server at temperature 0, thinking off. Returns the text and llama-server's timings.
-export async function chatOnce(url, messages, { maxTokens = 200, signal, cache = false, timeoutMs = 600e3 } = {}) {
-  const res = await fetch(url + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages, temperature: 0, max_tokens: maxTokens, cache_prompt: cache, chat_template_kwargs: { enable_thinking: false } }), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs) });
+// Nov 26: temperature and seed for GUPPI's Turbo pass (keep more guesses only works above temperature 0); 0 and none by default
+export async function chatOnce(url, messages, { maxTokens = 200, signal, cache = false, timeoutMs = 600e3, temperature = 0, seed = null } = {}) {
+  const res = await fetch(url + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages, temperature, ...(Number.isInteger(seed) ? { seed } : {}), max_tokens: maxTokens, cache_prompt: cache, chat_template_kwargs: { enable_thinking: false } }), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error(`The brain answered ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const j = await res.json();
   const text = String(j.choices?.[0]?.message?.content || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();

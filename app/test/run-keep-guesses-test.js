@@ -31,9 +31,9 @@ check('nothing with the switch off or Turbo off', !keepGuessesArgs({ turboKeepGu
 check('the engine key goes only with a sampling drafter', same(keepGuessesEnv(ON, { args: [...MTP, ...PROB], be: 46 }), KEEP_GUESSES_ENV) && KEEP_GUESSES_ENV.LLAMA_SPEC_MB === '1' && !Object.keys(keepGuessesEnv(ON, { args: MTP, be: 46 })).length && !Object.keys(keepGuessesEnv(ON, { args: [...MTP, '--spec-draft-sampling', 'greedy'], be: 46 })).length);
 check('no key on an older engine or with the switch off', !Object.keys(keepGuessesEnv(ON, { args: [...MTP, ...PROB], be: 45 })).length && !Object.keys(keepGuessesEnv({ turbo: true }, { args: [...MTP, ...PROB], be: 46 })).length);
 { const src = read('src/llamacpp.js');
-  check('added to both guesser paths (a brain\'s own Lab pick, and everyday MTP or a draft brain)', (src.match(/keepGuessesArgs\(this\.cfg, \{ args, be: this\.beNo\(\) \}\)/g) || []).length === 2);
+  check('added to both guesser paths (a brain\'s own Lab pick, and everyday MTP or a draft brain)', (src.match(/keepGuessesArgs\(this\.turboCfg\(model\), \{ args, be: this\.beNo\(\) \}\)/g) || []).length === 2);
   check('never for the helper beside', /this\.role !== BESIDE\) args\.push\(\.\.\.keepGuessesArgs/.test(src));
-  check('Engine tuning keys typed by hand come after, so they win', src.indexOf('keepGuessesEnv(this.cfg') < src.indexOf('env = { ...env, ...this.tuneEnv }')); }
+  check('Engine tuning keys typed by hand come after, so they win', src.indexOf('keepGuessesEnv(tc,') > 0 && src.indexOf('keepGuessesEnv(tc,') < src.indexOf('env = { ...env, ...this.tuneEnv }')); }
 check('the engine has the patch and its test', fs.existsSync(path.join(here, '..', 'engine', 'patches', '0120-spec-mode-biased-accept.patch')) && fs.existsSync(path.join(here, '..', 'engine', 'tests', 'spec-mb.py')));
 check('the patch credits llamAmpere and its licence', /llamAmpere \(github\.com\/JakeATX\/llamAmpere, MIT/.test(read('engine/patches/0120-spec-mode-biased-accept.patch')));
 check('Settings has the switch under Turbo', /sswitch\('turboKeepGuesses'/.test(read('public/cellar-engines.js')) && /dataset\.set === 'turboKeepGuesses'/.test(read('public/cellar.js')) && /turboKeepGuesses: cfg\.turboKeepGuesses === true/.test(read('src/server.js')));
