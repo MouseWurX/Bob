@@ -28,6 +28,7 @@ import { scutEnv, linkEnv, linkLive } from './share-card.js'; // SCUT, the fast 
 import { LinkLog } from './link-log.js'; // what the link to a lent card carried, kept in a file and the logbook
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
+import { profileFor as guppiProfileFor, pcNow as guppiPcNow } from './guppi-profile.js'; // Nov 26 GUPPI calibrates this PC (Settings, Engine tuning)
 import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, FILL_FROM_BE as COND_FILL_FROM_BE, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv, loadStepBySpeed, cleanSpeeds } from './conductor.js'; // off unless picked
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { tuningArgs, doorbellEnv, registerRamEnv } from './engine-tuning.js';
@@ -688,7 +689,10 @@ export class LlamaCpp {
       // GUPPI had nothing to trade and was slower than Let Bob pick; with one, 1a read 3,366 against 2,194 tokens a
       // second with the same words): a brain made of experts that is bigger than the card gets the expert copy cache
       // when GUPPI drives (Brain Engine 39+, which fills the card around the read step itself). Not on built-in graphics.
-      if (!args.includes('--moe-cache-mib') && !this.cfg.sharedGraphics && this.beNo() >= COND_FILL_FROM_BE && condCacheWanted({ experts: ggufInfo(gguf)?.experts || 0, fileBytes: (() => { try { return fs.statSync(gguf).size; } catch { return 0; } })(), cardBytes: cardGB(this.cfg) * 1024 ** 3 })) {
+      // Nov 26, GUPPI calibrates this PC (a button, nothing until pressed): this PC's measured edge for this brain, and
+      // whether GUPPI beat Let Bob pick here. When he didn't, he keeps Bob's step and adds no copy cache for it.
+      const prof = this.guppiProfile(model);
+      if (!args.includes('--moe-cache-mib') && !prof?.keepBob && !this.cfg.sharedGraphics && this.beNo() >= COND_FILL_FROM_BE && condCacheWanted({ experts: ggufInfo(gguf)?.experts || 0, fileBytes: (() => { try { return fs.statSync(gguf).size; } catch { return 0; } })(), cardBytes: cardGB(this.cfg) * 1024 ** 3 })) {
         args.push('--moe-cache-mib', String(COND_CACHE_MIB));
         this.log?.('engine', `${model}: Conductor: a brain of experts bigger than the card, so the expert copy cache is on (${COND_CACHE_MIB} MiB to start, filled to the card)`);
       }
@@ -703,6 +707,8 @@ export class LlamaCpp {
       this.condApu = this.cfg.sharedGraphics === true;
       if (this.condApu) this.condMax = Math.max(this.condChat, Math.min(this.condMax, APU_MAX_STEP));
       if ((this.condCap ||= {})[model] > 0) this.condMax = Math.max(this.condChat, Math.min(this.condMax, this.condCap[model])); // a step that left the card short before
+      if (prof?.cap > 0) this.condMax = Math.max(this.condChat, Math.min(this.condMax, prof.cap)); // this PC's measured edge
+      if (prof?.keepBob) this.condMax = this.condChat; // GUPPI didn't beat Bob's pick here: Bob's step, no switching
       // Nov 24: the top step by this brain's measured speeds on this machine, not the biggest that fits (loadStepBySpeed)
       if (!this.condApu) {
         const recent = (this.recentPrompts || []).filter((x) => x > 0);
@@ -1917,6 +1923,18 @@ export class LlamaCpp {
     this.log?.('engine', `${model}: Conductor off for this engine run: ${this.condOff}. Replies go ahead as usual.`);
     try { this.guppiSay?.(guppiStop(this.condOff)); } catch {} // Nov 23: GUPPI's record in the chat
   }
+
+  // Nov 26: this PC's GUPPI profile for a brain (guppi-calibrate.js), read once per load; the logbook says what it does
+  guppiProfile(model) {
+    let p = null;
+    try { p = guppiProfileFor(this.cfg, model, guppiPcNow(this.cfg, { beNo: this.beNo(), ramBytes: this.totalRam ? this.totalRam() : os.totalmem() })); } catch { return null; }
+    if (!p) return null;
+    const said = p.stale ? `this PC's GUPPI calibration isn't used: ${p.stale}. Calibrate again in Settings, Engine tuning` : `this PC's GUPPI calibration: ${p.keepBob ? 'he keeps Bob\'s step for this brain' : `reading step at most ${p.cap}`}`;
+    if (this.guppiProfSaid !== `${model}:${said}`) { this.guppiProfSaid = `${model}:${said}`; this.log?.('engine', `${model}: ${said}`); }
+    return p.stale ? null : p;
+  }
+  // a new or forgotten profile: the speeds and the profile are read again at the next load
+  guppiReload() { this.condSpeeds = null; this.guppiProfSaid = ''; }
 
   // Nov 24: GUPPI's measured speeds per brain, kept between runs for the same Brain Engine (dataDir/conductor/speeds.json)
   condSpeedsFile() { return this.cfg?.dataDir ? path.join(this.cfg.dataDir, 'conductor', 'speeds.json') : ''; }

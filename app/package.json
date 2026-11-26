@@ -291,6 +291,7 @@
     "test/run-engine-extras-test.js",
     "test/run-engine-tuning-test.js",
     "test/run-conductor-test.js",
+    "test/run-guppi-calibrate-test.js",
     "test/run-kv-sink-test.js",
     "test/run-standins-test.js",
     "test/run-keep-guesses-test.js",

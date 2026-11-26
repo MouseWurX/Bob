@@ -1,0 +1,48 @@
+// This PC's GUPPI profile (guppi-calibrate.js makes it; llamacpp.js reads it at each load). Kept apart from the
+// calibration job so the engine reads it without loading the Lab. <data>/conductor/pc-profile.json:
+//   { v: 1, at, pc: { os, cardGB, ramGB, sharedGraphics, be, gpu, cardMiB, idleC, ... }, brains: { [model]: { cap,
+//     keepBob, beatsBob, speeds, rows, why, ... } } }
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { cleanSpeeds } from './conductor.js';
+import { cardGB } from './tuning.js';
+import { OS } from './platform.js';
+
+const round1 = (n) => Math.round(n * 10) / 10;
+const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^﻿/, '')); } catch { return d; } };
+const writeJson = (f, v) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f + '.part', JSON.stringify(v, null, 1)); fs.renameSync(f + '.part', f); };
+
+export const profileFile = (cfg) => (cfg?.dataDir ? path.join(cfg.dataDir, 'conductor', 'pc-profile.json') : '');
+export const speedsFile = (cfg) => (cfg?.dataDir ? path.join(cfg.dataDir, 'conductor', 'speeds.json') : '');
+export const readProfile = (cfg) => { const f = profileFile(cfg); const p = f ? readJson(f, null) : null; return p && typeof p === 'object' && p.v === 1 && p.brains && typeof p.brains === 'object' ? p : null; };
+export const saveProfile = (cfg, p) => writeJson(profileFile(cfg), p);
+
+// this PC as a profile is matched against it: the card's size, the RAM, built-in graphics or not, the engine build
+export const pcNow = (cfg, { beNo = 0, ramBytes = os.totalmem(), osKey = OS } = {}) => ({ os: osKey, cardGB: cardGB(cfg), ramGB: round1(ramBytes / 2 ** 30), sharedGraphics: cfg?.sharedGraphics === true, be: Number(beNo) || 0 });
+// '' when the profile was made on this PC as it is now, else why not
+export function pcChanged(saved, now) {
+  if (!saved || !now) return 'no profile';
+  if (saved.be !== now.be) return `it was made with Brain Engine ${saved.be || '?'} and this is ${now.be || 'not Brain Engine'}`;
+  if (Math.abs((saved.cardGB || 0) - (now.cardGB || 0)) >= 0.5) return `it was made on a ${saved.cardGB} GB card and this one has ${now.cardGB} GB`;
+  if (Math.abs((saved.ramGB || 0) - (now.ramGB || 0)) >= 1) return `it was made with ${saved.ramGB} GB of RAM and this computer has ${now.ramGB} GB`;
+  if (Boolean(saved.sharedGraphics) !== Boolean(now.sharedGraphics)) return 'the graphics changed';
+  return '';
+}
+// For GUPPI at load: { cap, keepBob, why } for this brain, { stale } when the profile doesn't fit this PC, or null.
+export function profileFor(cfg, model, now, { profile = readProfile(cfg) } = {}) {
+  const b = profile?.brains?.[model];
+  if (!b) return null;
+  const changed = pcChanged(profile.pc, now);
+  if (changed) return { stale: changed };
+  return { cap: Number(b.cap) > 0 ? Number(b.cap) : 0, keepBob: b.keepBob === true, why: String(b.why || '') };
+}
+// The speeds GUPPI measured go into his own speeds file (conductor.js cleanSpeeds), replacing what he had for those
+// steps, so his load step is picked from this PC's numbers from the first reply. Another build's file starts over.
+export function seedSpeeds(cfg, model, speeds, beNo) {
+  const f = speedsFile(cfg); if (!f) return false;
+  const all = cleanSpeeds(readJson(f, null), beNo);
+  const had = all[model] || { read: {}, write: {} };
+  all[model] = { read: { ...had.read, ...speeds.read }, write: { ...had.write, ...speeds.write } };
+  try { writeJson(f, { be: beNo, speeds: all }); return true; } catch { return false; }
+}
