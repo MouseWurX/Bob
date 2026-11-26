@@ -164,21 +164,29 @@ The owner (26 Nov): "If their research can benefit us we should attempt to imple
 - Honest limit: this is the additive form, not RCO's learned optimizer. If the picks lose to the hand recipe, the next step is
   a KLD-scored search around the pick (a few swaps scored by real KLD), which is closer to what RCO does.
 
-### Step 2: GSQ on one card (scoped, not built)
+### Step 2: GSQ on one card (built, dry-run passed, pilot rental held)
+
+The owner, 26 Nov: "Healing is not training" (the OK for light tuning of rounding).
 
 - **Found while checking types:** stock `q2_0` stores 64 weights as 2-bit codes {-1, 0, 1, 2} times one f16 scale
   (`ggml-quants.c`, `dequantize_row_q2_0`). That is GSQ's 2-bit grid ({-2, -1, 0, 1} times a scale; the same set with the
-  scale's sign flipped) at group 64. So GSQ's learned codes can be written straight into a stock `q2_0` tensor, with no
-  Lamplight change. Bill's 48 down-expert tensors are all `q2_0` (640 wide: no 2-bit K or IQ type fits), and plain `q2_0`
-  rounding is the weakest 2-bit type in the dry run.
-- **Why one card is enough:** GSQ's loss is per linear layer (the layer's output on sample inputs), so it needs only that
-  layer's inputs, not the whole model on cards. Their multi-card needs come from 4,096 samples x 4,096 tokens of stored
-  activations. Plan: 512 samples x 2,048 tokens, inputs held in system RAM.
-- **Pilot (small brain, ~$1-2):** a dense 2B to 4B Qwen: every linear layer at `q2_0` by stock rounding vs GSQ-learned
-  rounding at group 64, both written as GGUF, KLD against BF16 on wikitext-2, same positions. Needs: our exporter
-  (GSQ codes and scales into a llama-quantize `q2_0` file, tensor by tensor) and a group-64 GSQ config.
-- **Then Bill:** dump each down expert's routed inputs with Lamplight's activation dump (engine patch 0015), run GSQ's
-  quantizer per expert matrix (no Flash-Next model code needed), write the codes into Bill's `q2_0` down experts. Priced
-  after the pilot.
-- **Flag for the owner:** GSQ adjusts rounding and scales with sample text and gradients. That is light training on
-  rounding only (it changes which step each weight rounds to, and the scales; nothing else), the same open question as healing.
+  scale's sign flipped) at group 64. So GSQ's learned codes are written straight into a stock `q2_0` tensor (q = 1 - v,
+  d = -s), with no Lamplight change. Bill's 48 down-expert tensors are all `q2_0` (640 wide: no 2-bit K or IQ type fits).
+- **And stock q2_0 rounding is weak by construction:** b12359's `quantize_row_q2_0_ref` sets the scale to the group's
+  largest |w|, so `round(w / d)` stays in -1..1: the +2 level is never used (in effect 3 levels), and `quantize_q2_0`
+  ignores the imatrix. Any better rounding of the same format is free in size.
+- **Tools** (`model-lab/forge/pod/gsq/`): `x_dump` (llama.cpp tool: records the input rows each chosen weight sees, per
+  expert for MoE, from the GGUF itself), `gsq_q2.py` (three roundings to q2_0: stock, GPTQ with searched scales, and GSQ's own
+  2-bit quantizer, same init and anneal, Lion, on the per-layer loss trace((Wq - W) H (Wq - W)^T) with H = X^T X / n),
+  `q2_0_patch.py` (writes the codes into a copy of a llama-quantize file: same size, same header).
+- **Why one card is enough:** the loss needs only each layer's H, not stored activations or the model's Python code (their
+  repo has none for Flash-Next). This differs from their repo, which scores whole MLP blocks; ours is the per-layer form
+  their README states.
+- **Dry run** (cloud, tiny made-up Qwen3): our stock writer equals llama-quantize byte for byte; KLD stock 1.67, GPTQ 0.069,
+  GSQ 0.054 with ffn_down at q2_0 ([forge-runs/2026-11-26-gsq-dry-run/](forge-runs/2026-11-26-gsq-dry-run/)). Mechanics
+  only: the brain is random.
+- **Pilot kit** `pod/gsq/gsq-pilot.sh` (HELD for the owner's yes, cap $2 / 2 h): Qwen3-1.7B (Apache-2.0), one 24 GB+ card,
+  wikitext-2 train for inputs and test for KLD, settings A (ffn_down at q2_0) and B (all ffn at q2_0), STOCK vs GPTQ vs GSQ at
+  identical sizes, one greedy answer each. Uploads nothing.
+- **Then Bill:** the same tools on Bill's down experts (x_dump on the Q8_0 cut, per-expert H from routed tokens, GSQ per
+  expert), written into the MX2_S or RC pick's q2_0 down experts, then KLD and the publish gate. Priced after the pilot.
