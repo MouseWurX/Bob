@@ -61,6 +61,7 @@
     "test/run-lab-recipes-test.js",
     "test/run-forge-gptoss-test.js",
     "test/run-forge-runpod-v2-test.js",
+    "test/run-forge-tier-sweep-test.js",
     "test/run-step-thinking-test.js",
     "test/run-cant-retry-test.js",
     "test/run-natural-tools-test.js",
