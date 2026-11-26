@@ -144,19 +144,19 @@ The answers above cover the five research questions. The thesis also measured ho
 | The 256K cliff | Step 8192 leaves only 30 of 41 layers on the card; writing collapses (Figure 4.1) | Don't go past about 6144 at 256K | Strong (mechanism) | 4 |
 | The "spill" | It is the attention mask in pinned RAM, matched to the MiB in every load | No card memory went to RAM; the earlier speeds stand | Strong | 4 |
 | 3-bit and Progressive chat memory | q3_0 saves 22% of chat memory at 256K and passes perplexity; Progressive 8+4 beats q4_0 on every drift measure | Long chats can use less card memory at a measured speed cost | Provisional | 4 |
-| Sharing misses with the processor | 24 against 82 to 88 t/s with patch 0040 on and off, Brain Engine 22 to 28 (Figure 4.5) | 0040 is the whole slowdown; a fast rewrite (0055) awaits its home-PC run | Moderate (one round per row) | 4 |
-| Borrowed reading, Brain Engine 29 (Gate 1) | 64K job 42.1 against 44.5 s; writing 3.8% slower at 32K, 18% at 128K; step stuck at 4096 | Failed the gate; the 128K drop was a different answer from a bigger batch, not borrowing | Moderate (5 rounds) | 4 |
-| Lending from every bank, Brain Engine 31 | Wrote "3333…" on every borrow run | A layout bug, fixed in Brain Engine 32; all its borrow numbers void | Strong (every run) | 4 |
+| Sharing misses with the processor | 24 against 82 to 88 t/s with patch 0040 on and off, Lamplight 22 to 28 (Figure 4.5) | 0040 is the whole slowdown; a fast rewrite (0055) awaits its home-PC run | Moderate (one round per row) | 4 |
+| Borrowed reading, Lamplight 29 (Gate 1) | 64K job 42.1 against 44.5 s; writing 3.8% slower at 32K, 18% at 128K; step stuck at 4096 | Failed the gate; the 128K drop was a different answer from a bigger batch, not borrowing | Moderate (5 rounds) | 4 |
+| Lending from every bank, Lamplight 31 | Wrote "3333…" on every borrow run | A layout bug, fixed in Lamplight 32; all its borrow numbers void | Strong (every run) | 4 |
 | Flash-Next 125B on the home PC | Borrow: job 2,090 against 2,697 s, reading 36 against 22 t/s, writing 1.75 against 1.3 t/s; then a lock-up at 76 MB free RAM | Borrow helps reading; writing waits on RAM and the drive; Flash-Next stopped until a RAM floor is tested | Provisional (2 rounds) | 4 |
-| Brain Engine 32 and 33 word checks | BE32 borrow on matches borrow off at 32K and 128K; BE33 matches BE28 word for word | The lending garbage is fixed; Gate 1 rerun under way | Strong (word match) | 4 |
-| GUPPI release gate (Brain Engine 43) | 58.4 s, then 52 to 54 s, against plain 36.2 to 36.5 s; third try 36.3 against 37.0 s; words match | GO: GUPPI holds still within a job and shipped; MTP stays off (247 MB spill) | Moderate (2 rounds) | 4 |
-| GUPPI per machine (Brain Engine 44) | Home PC 35B 45.9 against 46.2 s; dense 4B 42.0 against 32.9 s, then 33.3 s with the one-try rule; laptop 25.2 against 27.3 s with no spill | Switching pays only where the brain stays loaded and the chat is cheap to save; small brains try once and stay. Through Bob's own code it was still slower than pick (34.6 against 33.3 s on the 35B), so default-on waits on a rerun | Moderate | 4 |
+| Lamplight 32 and 33 word checks | LL32 borrow on matches borrow off at 32K and 128K; LL33 matches LL28 word for word | The lending garbage is fixed; Gate 1 rerun under way | Strong (word match) | 4 |
+| GUPPI release gate (Lamplight 43) | 58.4 s, then 52 to 54 s, against plain 36.2 to 36.5 s; third try 36.3 against 37.0 s; words match | GO: GUPPI holds still within a job and shipped; MTP stays off (247 MB spill) | Moderate (2 rounds) | 4 |
+| GUPPI per machine (Lamplight 44) | Home PC 35B 45.9 against 46.2 s; dense 4B 42.0 against 32.9 s, then 33.3 s with the one-try rule; laptop 25.2 against 27.3 s with no spill | Switching pays only where the brain stays loaded and the chat is cheap to save; small brains try once and stay. Through Bob's own code it was still slower than pick (34.6 against 33.3 s on the 35B), so default-on waits on a rerun | Moderate | 4 |
 | Flash-Next cuts (Bobert, Riker, Bill) | First 2-bit file 65.8 GB (down experts fell back to 4.5 bits); with Q2_0, IQ2_XXS 56.75 / 53.53 / 50.30 GB, all within 2% of prediction; Bill's IQ2_XXS failed the gate (mixers squeezed to 2 bits); mixed bits fix the screens | Check sizes and answers before publishing; job scores of the cut files to come (the pod runs were a test fault) | Weak (screens only) | 11 |
 | Reusing chat memory (laptop, 20K chat) | Follow-ups read the whole 20K chat again (14.7 s) because Bob's prompt start changes; the fix keeps 97% to 99.8% of the prompt, against 4.6% to 38% before, and cut a 23.5K follow-up from 17.5 to 4.0 s; the per-chat cache restores a chat in 0.18 s, even after a restart | A changing prompt start wasted most of the speed; the fix waits on the real-jobs check | Weak (single runs) | 4 |
 | FP4 experts on Qwen 35B | Read about 4% faster, write the same, KLD 0.063 against 0.011; 33/36 Office, 1 inbox harm | Fails the gate; dropped for squeezed brains | Moderate (one rental) | 4 |
 | Registering expert RAM with the card (0109) | Writing 7% faster, reading 1% to 2%, same words, on a rented Linux card | A lossless gain, on by default on Linux; the Windows run is still to come | Weak (one rental, 3 rounds) | 4 |
 | Inkling 2 Mini on small machines | Laptop 11.9 and Legion Go 10.6 t/s writing at Q2 | Fits the 6 GB laptop; not a fit for the Go (processor only, under 1 GB spare); job quality untested | Weak (single runs) | 4 |
-| Avalon's own Windows build | Crashed or hung at its own steps; 20 against 44 tokens a second with fusion off | Rebuild its ideas inside Brain Engine instead | Moderate (one session) | 4 |
+| Avalon's own Windows build | Crashed or hung at its own steps; 20 against 44 tokens a second with fusion off | Rebuild its ideas inside Lamplight instead | Moderate (one session) | 4 |
 
 **What the table adds up to.** The lesson results (RQ1 to RQ3) are the best measured part of the thesis, and the decisive retrain is still missing. The speed results are many small, careful runs on one PC: they settle the defaults for that PC and say little about other machines. The harness results are new and single runs, but they changed the work: since 21 November the main task is making the stock brain finish real jobs reliably, before any more training or cutting.
 
@@ -180,7 +180,7 @@ This list is deliberately plain. Each item is a claim a reader might assume the 
 
 The thesis makes five contributions. Each is stated with the strength given above, and none is larger than its evidence.
 
-1. **Instruments.** Brain Engine with a switch for experts that gives byte-identical output when nothing is switched off, and live steering at x8 that matches loading the vector at x8 (PR #227; Chapter 3). These let the project change and read a model without guessing whether the tool itself had altered it.
+1. **Instruments.** Lamplight with a switch for experts that gives byte-identical output when nothing is switched off, and live steering at x8 that matches loading the vector at x8 (PR #227; Chapter 3). These let the project change and read a model without guessing whether the tool itself had altered it.
 2. **A measurement discipline.** Held-out splits, a never-taught gate, smoke gates before paid steps, full passes only, measured-only reporting, and a count of every failure including the failed paid attempts (Chapter 4). The discipline caught problems that the numbers alone would have hidden, notably the leak.
 3. **A count of faults and of leaks.** A full read of 5,788 tool lessons and 534 held-out items, with the verdict tallies of sections 13.2.1 and 13.2.3 (Chapters 6 and 7).
 4. **A set of negative and partial results.** Wording is not the lever on GPT-OSS 120B; thinking costs tool accuracy; a heal trains toward the teacher, so by design it would copy the teacher's faults (not measured separately); an already-cut model has little slack; the habit pattern looks like a brake (Chapters 8 to 10). Negative results are reported at the same length as positive ones.
@@ -259,7 +259,7 @@ Several smaller tasks follow from the limits above: repeat the key benchmarks fo
 
 ### 13.6.9 The router rules on a real heal
 
-The router rules of section 4.12.1 come from reading, not from a run. So does the finding that the GPT-OSS router sat outside the heal's low-rate group: it is unproven in our lab, as we have yet to test it on a real brain, and the router gate in the first minutes of the first GPT-OSS heal is that test. Three more tests would settle the rules. First, one heal with the routing record on, so that the share of picks a heal changes is known for the first time. Second, the same cut healed with the router learning and with it frozen, scored on the same held-out lessons. Third, a Brain Engine option that keeps fewer experts at their share of a wider group, as Chen and Yao (2026) propose, tested against today's weighting at 4 and 6 experts per word on the tool score, the quiz and the coding race. None of these has been run, and each rental is waiting on approval.
+The router rules of section 4.12.1 come from reading, not from a run. So does the finding that the GPT-OSS router sat outside the heal's low-rate group: it is unproven in our lab, as we have yet to test it on a real brain, and the router gate in the first minutes of the first GPT-OSS heal is that test. Three more tests would settle the rules. First, one heal with the routing record on, so that the share of picks a heal changes is known for the first time. Second, the same cut healed with the router learning and with it frozen, scored on the same held-out lessons. Third, a Lamplight option that keeps fewer experts at their share of a wider group, as Chen and Yao (2026) propose, tested against today's weighting at 4 and 6 experts per word on the tool score, the quiz and the coding race. None of these has been run, and each rental is waiting on approval.
 
 ### 13.6.10 Gaps left open by the after1 round (added 17 November)
 
@@ -277,7 +277,7 @@ The fixes made after the round have checks and pass the suite. Whether they rais
 
 ### 13.6.11 The fNRI trace fix, and quality checks for the faster settings (added 17 November)
 
-Before Brain Engine 11, tracing for the fNRI system changed the words the brain writes (Chapter 3, section 3.4.3). The fix keeps the router's fused kernel whole, and on 17 November traced and untraced words matched in every run. Brain Engine 12 brought the cost to 2% or less on the 35B, over 3 rounds rather than the planned 5. A full 5-round run, and the same test on GPT-OSS 120B and other cards, are unproven in our lab, as we have yet to test. The expert readings in Chapter 10 can now be rerun with the fixed trace.
+Before Lamplight 11, tracing for the fNRI system changed the words the brain writes (Chapter 3, section 3.4.3). The fix keeps the router's fused kernel whole, and on 17 November traced and untraced words matched in every run. Lamplight 12 brought the cost to 2% or less on the 35B, over 3 rounds rather than the planned 5. A full 5-round run, and the same test on GPT-OSS 120B and other cards, are unproven in our lab, as we have yet to test. The expert readings in Chapter 10 can now be rerun with the fixed trace.
 
 The faster serving settings in Chapter 4 (section 4.3.3), a bigger reading step with a 4 GB hot-experts cache, also write different words from the default. They need a quality check on Bob's jobs, and timing on other cards, other brains and a bigger cache.
 
@@ -303,7 +303,7 @@ The project's goal is a reliable personal assistant on one consumer PC: mail, re
 - **Both map which experts each kind of job uses,** in a separate phase after the jobs so the trace can't skew the scores. That map is the starting data for any cut and for the engine's cache.
 - **GPT-OSS 120B is no longer the planned bigger brain** (MouseWurX, 21 November). It stays as a reference that every engine change must still run.
 
-**3. The engine: borrowing, inside Brain Engine.** Avalon's own build was not usable on this PC (section 4.3.3.9), so its ideas are to be rebuilt as Brain Engine patches on Brain Engine 28, with credit:
+**3. The engine: borrowing, inside Lamplight.** Avalon's own build was not usable on this PC (section 4.3.3.9), so its ideas are to be rebuilt as Lamplight patches on Lamplight 28, with credit:
 
 - the expert copy cache owns all the card's spare memory
 - each reading step borrows the cache's coldest slots and fits its step to what can be lent, with no restart
@@ -315,7 +315,7 @@ Each step is off by default and must pass Gate 1 (section 4.3.3.10) or be droppe
 **4. Fitting a big brain on 16 GB of card and 32 GB of RAM.** By the engine work's estimate, not a measurement, Windows, the chat memory and working memory leave about 35 to 38 GB of the 48 GB for the brain file. So Flash-Next would need to keep a bit under half its experts to fit, and DeepSeek V4.1 Flash, 233 GB even at 1 bit, would keep about 15%, far deeper than any cut tested in this thesis. The method is to be proved on Flash-Next first:
 
 - score experts with REAP over clean real jobs of every kind (13.6.12)
-- set how many experts each layer uses; Brain Engine already takes one count per layer, live, while a cut file with a different count per layer needs a new patch
+- set how many experts each layer uses; Lamplight already takes one count per layer, live, while a cut file with a different count per layer needs a new patch
 - judge on jobs it never saw with the absolute real-jobs gate (section 4.3.3.10)
 - publish only what passes
 

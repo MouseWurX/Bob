@@ -26,7 +26,7 @@ Small open models can run a useful agent on one consumer graphics card, but how 
 |---|---|---|
 | 1 | [Introduction](ch01-introduction.md) | Why small local agents, the research questions, the rules the thesis keeps, and a summary of the findings. |
 | 2 | [Background and related work](ch02-background-and-related-work.md) | Mixture-of-experts and pruning, quantization, synthetic data and distillation, test contamination, tool use, preference training, interpretability, local inference. |
-| 3 | [Building the instruments](ch03-building-the-instruments.md) | Brain Engine's patches to llama.cpp, the Forge rental pipeline, the Lab scripts, and the bugs they caught. |
+| 3 | [Building the instruments](ch03-building-the-instruments.md) | Lamplight's patches to llama.cpp, the Forge rental pipeline, the Lab scripts, and the bugs they caught. |
 | 4 | [Method and rules](ch04-method-and-rules.md) | Held-out splits, the never-taught gate, smoke gates, full passes only, measured-only reporting, and every failure counted. |
 | 5 | [Study 1: the hand-off habit](ch05-study1-hand-off-habit.md) | A fault in the coding lessons became a habit, and clean lessons fixed it. |
 | 6 | [Study 2: what a full read finds](ch06-study2-full-read.md) | Scripts and a cheaper reviewer miss most faults; a full read keeps very few lessons. |
@@ -47,7 +47,7 @@ Small open models can run a useful agent on one consumer graphics card, but how 
 - **Every speed result in one table:** [section 4.3.4](ch04-method-and-rules.md#434-speed-results-in-one-table-updated-23-november).
 - **Every main result in one table, with what each means:** [section 13.2.7](ch13-conclusion.md#1327-every-result-in-one-table-and-what-each-means-added-22-november).
 - **How speed is tested:** [section 4.3.3.1](ch04-method-and-rules.md#43331-how-the-speed-tests-were-run), with what was added since in [section 4.3.3.10](ch04-method-and-rules.md#433310-how-the-speed-method-carries-forward-added-22-november).
-- **Speed results:** every setting in [section 4.3.3.2](ch04-method-and-rules.md#43332-every-setting-tried-oldest-first), engine features in [section 4.3.3.8](ch04-method-and-rules.md#43338-engine-features-tested-19-to-20-november-brain-engine-21-and-22), the tests of 22 November in [section 4.3.3.11](ch04-method-and-rules.md#433311-engine-tests-of-22-november-brain-engine-29-to-31-and-the-patch-0040-check).
+- **Speed results:** every setting in [section 4.3.3.2](ch04-method-and-rules.md#43332-every-setting-tried-oldest-first), engine features in [section 4.3.3.8](ch04-method-and-rules.md#43338-engine-features-tested-19-to-20-november-lamplight-21-and-22), the tests of 22 November in [section 4.3.3.11](ch04-method-and-rules.md#433311-engine-tests-of-22-november-lamplight-29-to-31-and-the-patch-0040-check).
 - **Where the work is heading:** [section 13.7](ch13-conclusion.md#137-where-the-work-is-heading-added-22-november).
 
 ## Figures
