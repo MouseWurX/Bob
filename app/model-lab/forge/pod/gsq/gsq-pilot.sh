@@ -17,7 +17,7 @@ set -uo pipefail
 OUT=${OUT:-/workspace/gsq-results}; W=${W:-/workspace/gsq}; CUDA=${CUDA:-1}; JOBS=${JOBS:-$(nproc)}
 HF_MODEL=${HF_MODEL:-Qwen/Qwen3-1.7B}; CHUNKS=${CHUNKS:-128}; CTX=${CTX:-512}; STEPS=${STEPS:-640}
 export KLD_CHUNKS=${KLD_CHUNKS:-32} KLD_CTX=${KLD_CTX:-512}
-BOB_SHA=${BOB_SHA:-2b2d24ce68f68715066630935029216d37eb3ea3}   # MouseWurX/Bob commit with pod/gsq (branch claude/project-thread-9my3wr)
+BOB_SHA=${BOB_SHA:-44076c696097583e17b07bbcc0455aa286f66b00}   # MouseWurX/Bob commit with pod/gsq (branch claude/project-thread-9my3wr)
 TAG=b12359
 mkdir -p "$OUT" "$W"; S="$OUT/summary.txt"; : > "$S"
 say() { echo "$*" | tee -a "$S"; }
