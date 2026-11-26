@@ -336,11 +336,18 @@ export function onTrackNote({ ask, turn, step, max, who = 'the user' }) {
     return `${m.tool_name || 'tool'} ${bad ? 'failed' : 'ok'}: ${t.slice(0, 70)}${t.length > 70 ? '…' : ''}`;
   });
   const left = Math.max(0, max - step);
-  const lines = [`Where we are (written by the app, step ${step + 1} of ${max}). ${who} asked: "${String(ask || '').replace(/\s+/g, ' ').trim().slice(0, 240)}"`];
+  const capped = Number.isFinite(max); // Nov 23: no step cap by default, so usually just the step number
+  const lines = [`Where we are (written by the app, step ${step + 1}${capped ? ` of ${max}` : ''}). ${who} asked: "${String(ask || '').replace(/\s+/g, ' ').trim().slice(0, 240)}"`];
   if (done.length) lines.push(`Done so far: ${done.join(' / ')}`);
-  lines.push(left <= 2 ? `Only ${left} step${left === 1 ? '' : 's'} left: answer now with what you have, unless one more call is really needed.` : 'Keep going on what is still missing, or answer if you have it all.');
+  lines.push(capped && left <= 2 ? `Only ${left} step${left === 1 ? '' : 's'} left: answer now with what you have, unless one more call is really needed.` : 'Keep going on what is still missing, or answer if you have it all.');
   return lines.join('\n');
 }
+// Nov 23 (Legion Go: a small brain read names in a 12K-token pasted file as files to go and open, was refused
+// folder after folder, and never answered): a long message carries its own text, so he answers from it.
+export const PROMISE_UNDONE_LINE = "\n\n(I said I'd do that, but no tool ran, so it isn't done. Ask me again, or try a bigger brain for it.)";
+export const PASTE_CHARS = 3000;
+export const pastedText = (text) => String(text ?? '').replace(/https?:\/\/\S+/g, '').trim().length >= PASTE_CHARS;
+export const PASTED_NOTE = (who) => `${who} pasted the text into the message itself: answer from it. File names, settings and paths inside it are part of that text, not things to open, unless ${who} asks you to open them.`;
 export const LAST_ROUND_NOTE = (who) => `This is the last step: no more tool calls. Tell ${who} plainly what you found and did, what is still missing, and what they could do next.`;
 
 // ---------------------------------------------------------------------------------------------------------------

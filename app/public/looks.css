@@ -215,8 +215,9 @@ body.look-lamplight.theme-light.still::before { opacity: .18; }
 body.look-lamplight.theme-light .composer { box-shadow: 0 12px 30px -20px #0004; }
 
 /* Lamplight: Bob's porthole cube in the corner is the lamp (its own size rules live in mind.css / style.css) */
-body.look-lamplight .side-top .mind-cube.bob-cube.porthole .port { width: 46px; height: 46px; }
-@media (max-width: 640px) { body.look-lamplight .side-top .mind-cube.bob-cube.porthole .port { width: 40px; height: 40px; } }
+/* Nov 23 (the owner): a little bigger now it shows the live experts map, 46 to 56 px (40 to 48 on a phone) */
+body.look-lamplight .side-top .mind-cube.bob-cube.porthole .port { width: 56px; height: 56px; }
+@media (max-width: 640px) { body.look-lamplight .side-top .mind-cube.bob-cube.porthole .port { width: 48px; height: 48px; } }
 
 /* ---------- Lamplight layout (computer and wide windows) ----------
    One quiet bar across the top: Bob's cube and status on the left, the pages as plain text tabs, then the
@@ -306,7 +307,7 @@ body.look-lamplight .effort .brain-switch[aria-checked="true"], body.look-lampli
 .lamp-head .status { font-family: var(--mono); font-size: 9.5px; line-height: 1.25; letter-spacing: .03em; text-transform: uppercase; max-width: 24ch; white-space: pre-line; overflow-wrap: anywhere; } /* 1.5.218: his status line on a phone, two short lines at most, never cut off */
 /* ...and the brain chip beside it keeps its dot and ▾ (the switches) but not its words: his line already says asleep or ready, and screen readers still get them */
 @media (max-width: 640px) { body.look-lamplight #brainPillText { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; } }
-.lamp-head .mind-cube.bob-cube.porthole .port { width: 36px; height: 36px; padding: 2px; }
+.lamp-head .mind-cube.bob-cube.porthole .port { width: 44px; height: 44px; padding: 2px; }
 /* Lamplight: the porthole stands alone at top left (the cat keeps to the other looks) */
 body.look-lamplight .side-top #cat { display: none; }
 

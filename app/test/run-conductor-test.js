@@ -8,7 +8,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { LlamaCpp } from '../src/llamacpp.js';
-import { conductorOn, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP, fillEnv, FILL_FROM_BE, loadAtStep, mtpBlocksSwitch, MTP_SWITCH_FROM_BE, apuStepOk, APU_MAX_STEP, APU_FLOOR, mtpSpareEnv } from '../src/conductor.js';
+import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP, fillEnv, FILL_FROM_BE, loadAtStep, mtpBlocksSwitch, MTP_SWITCH_FROM_BE, apuStepOk, APU_MAX_STEP, APU_FLOOR, mtpSpareEnv, loadStepBySpeed, cleanSpeeds, LOAD_PICK_MARGIN } from '../src/conductor.js';
 import { cleanTuning, mergeTuning } from '../src/engine-tuning.js';
 import { HELP } from '../public/help-content.js';
 
@@ -19,8 +19,13 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-conductor-'));
 
 // ---------- Off by default ----------
-check('off in a fresh Bob, on only when picked', !conductorOn({}) && !conductorOn({ engineTuning: { mode: 'bob' } }) && conductorOn({ engineTuning: { mode: 'conductor' } }));
-check('the mode is kept when saved', cleanTuning(mergeTuning(undefined, { mode: 'conductor' })).mode === 'conductor' && cleanTuning({ mode: 'drive' }).mode === 'bob');
+check('on in a fresh Bob, off when another way is picked', conductorOn({}) && !conductorOn({ engineTuning: { mode: 'bob' } }) && !conductorOn({ engineTuning: { mode: 'hand' } }) && conductorOn({ engineTuning: { mode: 'conductor' } }));
+check('switching inside a job comes back with Brain Engine 44', SWITCH_IN_JOB_FROM_BE === 44);
+check('faster: a brain of experts bigger than the card gets the copy cache; a dense one or one that fits does not', COND_CACHE_MIB === 4096 && condCacheWanted({ experts: 256, fileBytes: 21e9, cardBytes: 16e9 }) && !condCacheWanted({ experts: 0, fileBytes: 21e9, cardBytes: 16e9 }) && !condCacheWanted({ experts: 128, fileBytes: 4e9, cardBytes: 16e9 }) && !condCacheWanted({ experts: 128, fileBytes: 21e9, cardBytes: 0 }));
+check('the laptop check: it loads at the read step only where the engine sizes the card around it', loadAtReadStep({ fills: true }) && !loadAtReadStep({ fills: false }) && !loadAtReadStep());
+check('on the fly: a step up that leaves under 512 MiB free goes back down', stepBack({ from: 512, to: 4096, freeMiB: 300 }) === 512 && stepBack({ from: 512, to: 4096, freeMiB: 900 }) === 0 && stepBack({ from: 4096, to: 512, freeMiB: 100 }) === 0 && stepBack({ from: 512, to: 4096, freeMiB: null }) === 0 && SPILL_MARGIN_MIB === 512);
+check('the default needs Brain Engine 43, built-in graphics included; a pick covers older engines', conductorDefaultFits({ beNo: 43 }) && !conductorDefaultFits({ beNo: 42 }) && !conductorDefaultFits({ beNo: 0 }) && conductorDefaultFits({ beNo: 44, sharedGraphics: true }) && !conductorPicked({}) && conductorPicked({ engineTuning: { mode: 'conductor' } }));
+check('the mode is kept when saved', cleanTuning(mergeTuning(undefined, { mode: 'conductor' })).mode === 'conductor' && cleanTuning({ mode: 'drive' }).mode === 'conductor');
 
 // ---------- Speeds ----------
 const sp = learnStep(learnStep(undefined, 'read', 2048, 2657), 'write', 2048, 109.8);
@@ -62,7 +67,7 @@ check('a brain whose switches ran twice as long guesses twice as long', Math.abs
 const big = path.join(tmp, 'big.gguf');
 fs.writeFileSync(big, 'x');
 const engineOf = (extra = {}, lc = {}) => { const e = new LlamaCpp({ agentDir: tmp, dataDir: tmp, ...extra, llamacpp: { models: { big }, ...lc } }); clearInterval(e.idleTimer); return e; };
-{ const off = engineOf(); const a = off.buildArgs('big');
+{ const off = engineOf({ chatPlaces: false }); const a = off.buildArgs('big'); // Nov 24: the Per-chat engine cache is on unless turned off
   check('no Conductor and no save place while it is off', !off.condChat && !a.includes('--slot-save-path'));
   const on = engineOf({ engineTuning: { mode: 'conductor' }, readingSpeed: 'fastest' }); const b = on.buildArgs('big');
   check('on: a place to save the reading, and it loads at the read step (Nov 23), the chat step kept for writing', b.includes('--slot-save-path') && Number(b[b.lastIndexOf('-ub') + 1]) === READ_STEP && on.condChat > 0 && on.condChat <= READ_STEP, b.join(' '));
@@ -90,7 +95,7 @@ const port = srv.address().port;
 const live = (extra = {}) => {
   const e = engineOf({ engineTuning: { mode: 'conductor' }, ...extra });
   e.buildArgs('big');
-  Object.assign(e, { url: `http://127.0.0.1:${port}`, current: 'big', child: { exitCode: null }, loadedOk: true, slotDir: tmp, active: 1, condStep: e.condChat, condHeld: 2000 });
+  Object.assign(e, { url: `http://127.0.0.1:${port}`, current: 'big', child: { exitCode: null }, loadedOk: true, slotDir: tmp, active: 1, condStep: e.condChat, condHeld: 2000, condCacheBase: e.condCacheBase || 4096 }); // a copy cache: the Conductor only switches with one (Nov 24)
   e.condSpeeds = { big: known };
   e.perToken = {};
   e.logs = []; e.log = (_k, m) => e.logs.push(m);
@@ -106,7 +111,7 @@ const longMsg = [{ role: 'user', content: 'x'.repeat(240000) }];
     e.condMax === READ_STEP && JSON.stringify(seq) === JSON.stringify(['POST /slots/0?action=save', 'POST /context 4096', 'POST /slots/0?action=restore', 'POST /v1/chat/completions 1', 'POST /slots/0?action=save', 'POST /context 2048', 'POST /slots/0?action=restore']), JSON.stringify(calls));
   check('it ends at the chat step and says so in the logbook', e.condStep === CHAT_STEP && e.logs.some((l) => /Conductor: step 4096 in/.test(l)));
   check('the read-ahead taught it the big step\'s read speed', e.condSpeeds.big.read[4096] !== known.read[4096]); }
-{ calls.length = 0; const e = live(); e.condChat = CHAT_STEP; e.condStep = e.condLoad;
+{ calls.length = 0; const e = live(); check('the laptop check: no copy cache fill, so it loads at the chat step', e.condLoad === e.condChat && e.condLoad < READ_STEP, JSON.stringify([e.condLoad, e.condChat])); e.condChat = CHAT_STEP; e.condLoad = READ_STEP; e.condStep = e.condLoad;
   await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
   const ctx = calls.filter((c) => c.startsWith('POST /context')).map((c) => JSON.parse(c.slice(14)).n_ubatch);
   check('Nov 23 gate rerun: loaded at the read step it reads and writes there, no switch down either (BE43 reloads on the first switch)', e.condLoad === READ_STEP && ctx.length === 0 && e.condStep === READ_STEP, JSON.stringify(calls)); }
@@ -190,6 +195,14 @@ check('cleanTuning keeps the switch only when it is on, and a change can turn it
 { calls.length = 0; const e = live(); e.condChat = CHAT_STEP; e.condStep = CHAT_STEP; e.condCacheBase = 4096; e.condHeld = 0; e.currentCtx = 131072;
   await e.conduct({ model: 'big', messages: [{ role: 'user', content: 'x'.repeat(3000) }] });
   check('switched off: the window is never touched', !calls.some((c) => /n_ctx/.test(c)), JSON.stringify(calls)); }
+{ calls.length = 0; const e = live(); e.beNo = () => 44; e.condChat = CHAT_STEP; e.condStep = CHAT_STEP; e.condMax = READ_STEP; e.condCacheBase = 0;
+  await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
+  await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
+  const ctx = calls.filter((c) => c.startsWith('POST /context'));
+  check('Bob\'s real path on the test PC: with no copy cache it keeps Bob\'s step and never switches', ctx.length === 0 && e.condStep === CHAT_STEP && e.logs.some((l) => /nothing to trade/.test(l)), JSON.stringify(calls)); }
+{ calls.length = 0; const e = live({ sharedGraphics: true }); e.condChat = CHAT_STEP; e.condStep = CHAT_STEP; e.condMax = READ_STEP;
+  await e.conduct({ model: 'big', messages: longMsg, tools: [], task: 'code' });
+  check('the Legion Go check: built-in graphics never switch inside a chat', !calls.some((c) => c.startsWith('POST /context')), JSON.stringify(calls)); }
 srv.close();
 
 // ---------- Settings, Help, FAQ, glossary ----------
@@ -200,6 +213,45 @@ check('Settings Help names it', /Let the Conductor drive/.test(HELP.find((h) => 
 check('the FAQ answers it and says where it works', /Android app/.test(HELP.find((h) => h.id === 'faq-conductor' && h.group === 'FAQ')?.html || ''));
 check('the glossary explains it', /<dt>Conductor<\/dt>/.test(HELP.find((h) => h.id === 'glossary')?.html || ''));
 
+// Nov 24: the top step by measured speed, not the biggest that fits
+{ const sp = { read: { 2048: 3000, 4096: 3100 }, write: { 2048: 90, 4096: 70 } };
+  check('the top step stays until it has been measured', loadStepBySpeed({ speeds: { read: { 2048: 3000 }, write: { 2048: 90 } }, chat: 2048, max: 4096 }).step === 4096);
+  check('a smaller step measured faster wins, and says why', (() => { const r = loadStepBySpeed({ speeds: sp, chat: 2048, max: 4096, readTok: 16384 }); return r.step === 2048 && /measured faster/.test(r.why); })());
+  check('a bigger step measured faster keeps it', loadStepBySpeed({ speeds: { read: { 2048: 2000, 4096: 3400 }, write: { 2048: 90, 4096: 89 } }, chat: 2048, max: 4096 }).step === 4096);
+  check('a win inside the margin keeps the top step (no flip on noise)', loadStepBySpeed({ speeds: { read: { 2048: 3000, 4096: 3000 }, write: { 2048: 90, 4096: 90 * (1 - LOAD_PICK_MARGIN / 2) } }, chat: 2048, max: 4096, readTok: 0, outTok: 300 }).step === 4096);
+  check('a step only guessed from another (no measured write) never wins', loadStepBySpeed({ speeds: { read: { 2048: 9000, 4096: 3000 }, write: { 4096: 80 } }, chat: 2048, max: 4096 }).step === 4096);
+  check('saved speeds count only for the same Brain Engine and only clean numbers', cleanSpeeds({ be: 45, speeds: { big: { read: { 4096: 3000, x: 5, 2048: -1 }, write: { 4096: 'fast' } } } }, 45).big.read[4096] === 3000 && Object.keys(cleanSpeeds({ be: 45, speeds: { big: { read: { 4096: 3000, x: 5, 2048: -1 } } } }, 45).big.read).length === 1 && Object.keys(cleanSpeeds({ be: 44, speeds: { big: sp } }, 45)).length === 0 && Object.keys(cleanSpeeds(null, 45)).length === 0);
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-cond-speeds-'));
+  const a = new LlamaCpp({ agentDir: d, dataDir: d, llamacpp: { models: { big } } }); clearInterval(a.idleTimer); a.beNo = () => 45;
+  a.condSpeedsAll().big = sp; a.condSpeedsSave();
+  const b = new LlamaCpp({ agentDir: d, dataDir: d, llamacpp: { models: { big } } }); clearInterval(b.idleTimer); b.beNo = () => 45;
+  const c = new LlamaCpp({ agentDir: d, dataDir: d, llamacpp: { models: { big } } }); clearInterval(c.idleTimer); c.beNo = () => 46;
+  check('measured speeds come back on the next run of the same engine, not a new one', b.condSpeedsAll().big?.write?.[2048] === 90 && !c.condSpeedsAll().big);
+  fs.rmSync(d, { recursive: true, force: true }); }
 fs.rmSync(tmp, { recursive: true, force: true });
+{ const e = engineOf({}, { testSeed: 7 }); let sent = null; const was = globalThis.fetch;
+  globalThis.fetch = async (_u, o) => { sent = JSON.parse(o.body); return { ok: true }; };
+  try { await e.post('big', [{ role: 'user', content: 'hi' }], [], null, false, 'chat', 0.7); } finally { globalThis.fetch = was; }
+  const e2 = engineOf(); let sent2 = null; globalThis.fetch = async (_u, o) => { sent2 = JSON.parse(o.body); return { ok: true }; };
+  try { await e2.post('big', [{ role: 'user', content: 'hi' }], [], null, false, 'chat'); } finally { globalThis.fetch = was; }
+  check('a test seed makes replies greedy and seeded, and only when set', sent?.seed === 7 && sent.temperature === 0 && sent.top_k === 1 && sent2 && !('seed' in sent2)); }
+// Nov 24 (the Legion Go's hand install): a marker written with a byte-order mark still reads, and one that can't be read says so
+{ const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-mark-'));
+  const exe = path.join(d, 'llama-server');
+  const mk = () => { const e = new LlamaCpp({ agentDir: d, dataDir: d, llamacpp: { exe, models: {} } }); clearInterval(e.idleTimer); const said = []; e.log = (_k, t) => said.push(t); return { e, said }; };
+  fs.writeFileSync(path.join(d, 'bob-brainengine.json'), '\uFEFF' + JSON.stringify({ version: 'brain-engine-45b12359', base: 'b12359' }));
+  const a = mk(); check('a Brain Engine marker with a byte-order mark still counts (PowerShell writes one)', a.e.beNo() === 45, String(a.e.beNo()));
+  fs.writeFileSync(path.join(d, 'bob-brainengine.json'), '{ not json');
+  const b = mk(); check('an unreadable marker counts as plain llama.cpp and says so once', b.e.beNo() === 0 && b.e.beNo() === 0 && b.said.filter((t) => /marker .* can't be read/.test(t)).length === 1, b.said.join(' | '));
+  fs.rmSync(d, { recursive: true, force: true }); }
+// Nov 24 (npc's BE45 real path: the 35B never got its copy cache): the expert count is read from the file itself
+{ const { writeGgufFrom } = await import('../src/lab-gguf.js');
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-moe-'));
+  const moe = path.join(d, 'moe.gguf'), buf = Buffer.alloc(4096);
+  await writeGgufFrom(moe, { kvs: [{ key: 'general.architecture', type: 8, value: 'qwen3moe' }, { key: 'qwen3moe.block_count', type: 4, value: 2 }, { key: 'qwen3moe.expert_count', type: 4, value: 8 }], tensors: [{ name: 'blk.0.ffn_up_exps.weight', dims: [32, 16, 2], type: 0, bytes: buf.length, data: async () => buf }] });
+  const e = new LlamaCpp({ agentDir: d, dataDir: d, gpuVramGB: 1e-6, llamacpp: { models: { moe } } }); clearInterval(e.idleTimer); e.beNo = () => 45;
+  const a = e.buildArgs('moe');
+  check('GUPPI by default turns the copy cache on for a brain of experts bigger than the card (read from its file)', a.includes('--moe-cache-mib'), a.join(' '));
+  fs.rmSync(d, { recursive: true, force: true }); }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

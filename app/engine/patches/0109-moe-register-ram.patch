@@ -1,0 +1,400 @@
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index b0af621..4b6b107 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -1767,6 +1767,35 @@ static void ggml_backend_cuda_pinned_free(void * ptr) {
+     }
+ }
+ 
++// Brain Engine 0109: register host memory the brain's map already holds (read-only, for every card), so uploads from it
++// are asynchronous at the link's speed. Not behind GGML_CUDA_REGISTER_HOST (that is upstream's own, unused, switch).
++// 0: registered, 1: the driver had it registered already, -1: refused (the error is cleared).
++static int ggml_backend_cuda_host_register(void * ptr, size_t size) {
++#if CUDART_VERSION >= 11010 || defined(GGML_USE_MUSA) || defined(GGML_USE_HIP)
++    cudaError_t err = cudaHostRegister(ptr, size, cudaHostRegisterPortable | cudaHostRegisterReadOnly);
++    if (err == cudaErrorHostMemoryAlreadyRegistered) {
++        (void) cudaGetLastError();
++        return 1;
++    }
++    if (err != cudaSuccess) {
++        (void) cudaGetLastError();
++        GGML_LOG_WARN("%s: the driver refused to register %.2f MiB: %s\n", __func__, size/1048576.0, cudaGetErrorString(err));
++        return -1;
++    }
++    return 0;
++#else
++    GGML_UNUSED(ptr);
++    GGML_UNUSED(size);
++    return -1;
++#endif
++}
++
++static void ggml_backend_cuda_host_unregister(void * ptr) {
++    if (cudaHostUnregister(ptr) != cudaSuccess) {
++        (void) cudaGetLastError();
++    }
++}
++
+ static ggml_backend_buffer_t ggml_backend_cuda_host_buffer_type_alloc_buffer(ggml_backend_buffer_type_t buft, size_t size) {
+     void * ptr = ggml_cuda_host_malloc(size);
+ 
+@@ -7046,6 +7075,13 @@ static void * ggml_backend_cuda_reg_get_proc_address(ggml_backend_reg_t reg, con
+     if (strcmp(name, "ggml_backend_cuda_pinned_free") == 0) {
+         return (void *)ggml_backend_cuda_pinned_free;
+     }
++    // Brain Engine 0109: the brain map's experts registered in place
++    if (strcmp(name, "ggml_backend_cuda_host_register") == 0) {
++        return (void *)ggml_backend_cuda_host_register;
++    }
++    if (strcmp(name, "ggml_backend_cuda_host_unregister") == 0) {
++        return (void *)ggml_backend_cuda_host_unregister;
++    }
+     // Brain Engine 0042: mapped pinned memory for the MoE doorbell
+     if (strcmp(name, "ggml_backend_cuda_moe_doorbell_alloc") == 0) {
+         return (void *)ggml_cuda_moe_doorbell_alloc;
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 4550687..27ef8ed 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -700,6 +700,8 @@ llama_context::llama_context(
+                         __func__, take/1048576.0, cparams.moe_cache_size/1048576.0);
+             }
+         }
++        llama_ram_register_open(model, backend_ptrs); // Brain Engine 0109 (off unless LLAMA_MOE_REGISTER_RAM=1)
++        ram_registered_open = true;
+         if (cparams.moe_cache_size > 0) {
+             moe_cache = std::make_unique<llama_moe_cache>(model, model.no_alloc(), backend_ptrs, backend_buft, cparams.moe_cache_size, cparams.moe_cache_cpu_share);
+ 
+@@ -856,6 +858,9 @@ llama_context::llama_context(
+ llama_context::~llama_context() {
+     // wait for any pending asynchronous copies into the output buffers before they are freed
+     synchronize();
++    if (ram_registered_open) {
++        llama_ram_register_close(model, backend_ptrs); // Brain Engine 0109: after the cards finished
++    }
+ 
+     // when training, ggml_opt allocates extra buffers through the scheduler, so the sizes no longer match the expectation
+     if (!model.no_alloc() && !opt_ctx) {
+@@ -4300,6 +4305,7 @@ struct llama_pinned_upload {
+ 
+     uint64_t n_bytes = 0, n_pieces = 0, n_waits = 0, n_direct = 0;
+     int64_t  t_copy_us = 0, t_wait_us = 0;
++    uint64_t n_registered = 0, n_registered_reported = 0; // Brain Engine 0109: bytes that went straight up from registered RAM
+ 
+     ~llama_pinned_upload() {
+         if (last) {
+@@ -4323,6 +4329,10 @@ struct llama_pinned_upload {
+     // the totals so far, printed only when something new went through the ring
+     uint64_t n_reported = 0;
+     void report() {
++        if (n_registered != n_registered_reported) {
++            n_registered_reported = n_registered;
++            LLAMA_LOG_INFO("%s: %.2f MiB went straight up from RAM registered with the card (0109), past the ring\n", who, n_registered/1048576.0);
++        }
+         if (n_pieces == n_reported) {
+             return;
+         }
+@@ -4453,6 +4463,12 @@ struct llama_pinned_upload {
+ 
+     // dst[offset .. offset + size) = src[0 .. size), queued on backend's stream like ggml_backend_tensor_set_async
+     void upload(ggml_backend_t backend, ggml_tensor * dst, const uint8_t * src, size_t offset, size_t size) {
++        if (llama_ram_registered(src, size)) {
++            // Brain Engine 0109: registered with the card already, so it goes straight up at the link's speed
++            ggml_backend_tensor_set_async(backend, dst, src, offset, size);
++            n_registered += size;
++            return;
++        }
+         if (size < ((size_t) 256 << 10)) {
+             ggml_backend_tensor_set_async(backend, dst, src, offset, size);   // a small copy isn't worth a slot
+             n_direct++;
+diff --git a/src/llama-context.h b/src/llama-context.h
+index 6fdfe8d..6748f0c 100644
+--- a/src/llama-context.h
++++ b/src/llama-context.h
+@@ -459,6 +459,7 @@ private:
+     // Brain Engine 0057: long reads' uploads from RAM through a pinned ring, copied by threads (LLAMA_MOE_PINNED_UPLOAD=1)
+     std::unique_ptr<llama_pinned_upload> pinned_upload;
+     bool pinned_upload_tried = false;
++    bool ram_registered_open = false; // Brain Engine 0109
+     // Brain Engine 0059: on a long read, the layer's other expert weights go up on a second stream while this one computes
+     std::unique_ptr<llama_stream_ahead> stream_ahead;
+     bool stream_ahead_tried = false;
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 80a2ed7..6851851 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -5461,3 +5461,257 @@ void llama_moe_cache::tail_take(uint32_t from, uint32_t to) {
+ void llama_moe_cache::tail_lost() {
+     pimpl->tl_lost();
+ }
++
++// Brain Engine 0109: the brain map's experts in RAM registered with the card (LLAMA_MOE_REGISTER_RAM=1, off unless set).
++// The experts the card doesn't keep are uploaded from the brain's memory map, plain pageable memory: the driver copies
++// each upload through its own small pinned buffer and returns once the bytes are staged, so the copy is neither
++// asynchronous nor at the link's speed. 0057's ring stages long reads through pinned slots by hand. Avalon (freriadoc/
++// Avalon, MIT) registers the expert memory itself with the driver on Linux; this is our version of that, for every
++// upload from the map (the cache's fills, long reads, stream ahead, op offload). Registering pins the pages: they are
++// read in and stay in RAM, so only up to a budget is registered (half of free RAM at start, and at least
++// LLAMA_MOE_REGISTER_RAM_KEEP_MIB, default 4096, left free; or LLAMA_MOE_REGISTER_RAM_MIB), layer by layer from the first, and it is refused next to the drive tier
++// (0050), whose RAM floor (0054) has to give pages back. The driver refuses read-only file maps on Windows (Avalon #47):
++// then it says NOT USED and uploads go as before. Lossless: the map never changes, the same bytes go up.
++// LLAMA_MOE_REGISTER_RAM_TEST=1 (tests, the stand-in card has nothing to register with) runs the same bookkeeping
++// without the driver; LLAMA_MOE_REGISTER_RAM_TEST_FREE_MIB=N pretends N MiB of free RAM.
++namespace {
++struct rr_run {
++    uintptr_t begin, end;
++    bool own; // registered here (else the driver already had it: not unregistered here)
++};
++struct rr_brain {
++    int users = 0;
++    std::vector<rr_run> runs; // sorted, not overlapping
++    void (*unreg)(void *) = nullptr;
++};
++std::mutex rr_mutex;
++std::map<const llama_model *, rr_brain> rr_brains;
++std::atomic<int> rr_count{0};
++
++double rr_avail_mib() {
++#ifdef _WIN32
++    MEMORYSTATUSEX ms = {};
++    ms.dwLength = sizeof(ms);
++    return GlobalMemoryStatusEx(&ms) ? ms.ullAvailPhys/1048576.0 : -1.0;
++#elif defined(__linux__)
++    FILE * f = fopen("/proc/meminfo", "r");
++    if (f == nullptr) {
++        return -1.0;
++    }
++    char line[256];
++    double kb = -1.0;
++    while (fgets(line, sizeof(line), f)) {
++        if (strncmp(line, "MemAvailable:", 13) == 0) {
++            kb = atof(line + 13);
++            break;
++        }
++    }
++    fclose(f);
++    return kb >= 0 ? kb/1024.0 : -1.0;
++#elif defined(__APPLE__)
++    vm_statistics64_data_t vs;
++    mach_msg_type_number_t cnt = HOST_VM_INFO64_COUNT;
++    if (host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t) &vs, &cnt) != KERN_SUCCESS) {
++        return -1.0;
++    }
++    return ((double) vs.free_count + vs.inactive_count + vs.purgeable_count)*(double) vm_page_size/1048576.0;
++#else
++    return -1.0;
++#endif
++}
++
++size_t rr_page() {
++#ifdef _WIN32
++    SYSTEM_INFO si;
++    GetSystemInfo(&si);
++    return si.dwPageSize;
++#else
++    const long p = sysconf(_SC_PAGESIZE);
++    return p > 0 ? (size_t) p : 4096;
++#endif
++}
++
++bool rr_flag(const char * name) {
++    const char * v = getenv(name);
++    return v != nullptr && atoi(v) > 0;
++}
++} // namespace
++
++void llama_ram_register_open(const llama_model & model, const std::vector<ggml_backend_t> & backends) {
++    if (!rr_flag("LLAMA_MOE_REGISTER_RAM") || model.no_alloc()) {
++        return;
++    }
++    const char * who = "llama_ram_register";
++    std::lock_guard<std::mutex> lock(rr_mutex);
++    if (auto it = rr_brains.find(&model); it != rr_brains.end()) {
++        it->second.users++; // another context of the same brain: the same registry
++        return;
++    }
++    if (rr_flag("LLAMA_MOE_DRIVE")) {
++        LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_REGISTER_RAM NOT USED: not together with the drive tier (LLAMA_MOE_DRIVE), whose RAM floor gives pages back; registered pages can't go\n", who);
++        return;
++    }
++    const bool test = rr_flag("LLAMA_MOE_REGISTER_RAM_TEST");
++    using reg_t   = int  (*)(void *, size_t);
++    using unreg_t = void (*)(void *);
++    reg_t   reg   = nullptr;
++    unreg_t unreg = nullptr;
++    const char * card = nullptr;
++    for (ggml_backend_t be : backends) {
++        ggml_backend_dev_t dev = ggml_backend_get_device(be);
++        if (dev == nullptr || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_CPU) {
++            continue;
++        }
++        card = card ? card : ggml_backend_dev_name(dev);
++        ggml_backend_reg_t breg = ggml_backend_dev_backend_reg(dev);
++        reg   = breg ? (reg_t)   ggml_backend_reg_get_proc_address(breg, "ggml_backend_cuda_host_register")   : nullptr;
++        unreg = breg ? (unreg_t) ggml_backend_reg_get_proc_address(breg, "ggml_backend_cuda_host_unregister") : nullptr;
++        if (reg && unreg) {
++            card = ggml_backend_dev_name(dev);
++            break;
++        }
++    }
++    if (card == nullptr) {
++        return; // no card: nothing is uploaded
++    }
++    if (!(reg && unreg) && !test) {
++        LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_REGISTER_RAM NOT USED: %s can't register host memory\n", who, card);
++        return;
++    }
++    if (!(reg && unreg)) {
++        reg = nullptr; unreg = nullptr; // test mode on the stand-in card: the bookkeeping only
++    }
++
++    // the expert tensors left in RAM, in the brain's memory map, in the order of the file (about layer order)
++    const uintptr_t page = rr_page();
++    std::vector<rr_run> want;
++    size_t n_tensors = 0, n_bytes = 0;
++    for (const auto & [name, t] : model.tensors_by_name) {
++        if (t == nullptr || t->data == nullptr || t->buffer == nullptr || name.find("_exps") == std::string::npos ||
++                !ggml_backend_buffer_is_host(t->buffer) || strstr(ggml_backend_buffer_name(t->buffer), "Mapped") == nullptr) {
++            continue;
++        }
++        const uintptr_t b = (uintptr_t) t->data;
++        want.push_back({ b & ~(page - 1), (b + ggml_nbytes(t) + page - 1) & ~(page - 1), true });
++        n_tensors++;
++        n_bytes += ggml_nbytes(t);
++    }
++    if (want.empty()) {
++        LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_REGISTER_RAM NOT USED: no expert tensor is read through the brain's memory map in RAM "
++            "(with --load-mode none they sit in the card's pinned host memory already)\n", who);
++        return;
++    }
++    std::sort(want.begin(), want.end(), [](const rr_run & a, const rr_run & b) { return a.begin < b.begin; });
++    std::vector<rr_run> merged;
++    for (const rr_run & r : want) {
++        if (!merged.empty() && r.begin <= merged.back().end) {
++            merged.back().end = std::max(merged.back().end, r.end); // touching or sharing a page: one run
++        } else {
++            merged.push_back(r);
++        }
++    }
++
++    // the budget
++    size_t budget = SIZE_MAX;
++    const char * cap = getenv("LLAMA_MOE_REGISTER_RAM_MIB");
++    if (cap != nullptr && atoll(cap) > 0) {
++        budget = (size_t) atoll(cap) << 20;
++    } else {
++        const char * tf = getenv("LLAMA_MOE_REGISTER_RAM_TEST_FREE_MIB");
++        const double avail = tf != nullptr ? atof(tf) : rr_avail_mib();
++        const char * kv = getenv("LLAMA_MOE_REGISTER_RAM_KEEP_MIB");
++        const double keep = kv != nullptr && atof(kv) >= 0 ? atof(kv) : 4096.0;
++        if (avail < 0) {
++            LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_REGISTER_RAM NOT USED: free RAM is unknown here; set LLAMA_MOE_REGISTER_RAM_MIB\n", who);
++            return;
++        }
++        const double mib = std::min(avail/2.0, avail - keep); // half of free RAM at most, and at least keep stays free
++        budget = mib > 0 ? (size_t) (mib*1048576.0) & ~(page - 1) : 0;
++    }
++
++    const int64_t t0 = ggml_time_us();
++    rr_brain br;
++    br.users = 1;
++    br.unreg = unreg;
++    size_t done = 0, already = 0;
++    bool refused = false, capped = false;
++    for (rr_run r : merged) {
++        if (done >= budget) {
++            capped = true;
++            break;
++        }
++        if (r.end - r.begin > budget - done) {
++            r.end = r.begin + ((budget - done) & ~(page - 1)); // the part that fits
++            capped = true;
++            if (r.end <= r.begin) {
++                break;
++            }
++        }
++        const int rc = reg ? reg((void *) r.begin, r.end - r.begin) : 0;
++        if (rc < 0) {
++            refused = true;
++            break;
++        }
++        r.own = rc == 0;
++        already += rc == 1 ? r.end - r.begin : 0;
++        br.runs.push_back(r);
++        done += r.end - r.begin;
++        if (capped) {
++            break;
++        }
++    }
++    const double secs = (ggml_time_us() - t0)/1e6;
++    if (br.runs.empty()) {
++        if (refused) {
++            LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_REGISTER_RAM NOT USED: the driver refused to register the brain's memory map"
++#ifdef _WIN32
++                " (Windows refuses read-only file maps; --load-mode none puts the experts in pinned memory instead, if RAM holds them)"
++#endif
++                "\n", who);
++        } else {
++            LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_REGISTER_RAM NOT USED: no room in its RAM budget (%.0f MiB)\n", who, budget/1048576.0);
++        }
++        return;
++    }
++    LLAMA_LOG_INFO("%s: %.0f of %.0f MiB of experts in RAM (%zu tensors) registered with %s%s in %zu runs, %.1f s%s%s%s\n",
++        who, done/1048576.0, n_bytes/1048576.0, n_tensors, card, reg ? "" : " (test: bookkeeping only)", br.runs.size(), secs,
++        capped ? ", the rest is over the RAM budget" : "", refused ? ", the driver refused the rest" : "",
++        already ? " (some were registered already)" : "");
++    rr_brains.emplace(&model, std::move(br));
++    rr_count++;
++}
++
++void llama_ram_register_close(const llama_model & model, const std::vector<ggml_backend_t> & backends) {
++    std::lock_guard<std::mutex> lock(rr_mutex);
++    auto it = rr_brains.find(&model);
++    if (it == rr_brains.end() || --it->second.users > 0) {
++        return;
++    }
++    for (ggml_backend_t be : backends) {
++        ggml_backend_synchronize(be); // no copy from these pages is still running
++    }
++    if (it->second.unreg) {
++        for (const rr_run & r : it->second.runs) {
++            if (r.own) {
++                it->second.unreg((void *) r.begin);
++            }
++        }
++    }
++    rr_brains.erase(it);
++    rr_count--;
++}
++
++bool llama_ram_registered(const void * p, size_t n) {
++    if (rr_count.load(std::memory_order_relaxed) == 0) {
++        return false;
++    }
++    const uintptr_t b = (uintptr_t) p, e = b + n;
++    std::lock_guard<std::mutex> lock(rr_mutex);
++    for (const auto & [m, br] : rr_brains) {
++        auto it = std::upper_bound(br.runs.begin(), br.runs.end(), b, [](uintptr_t x, const rr_run & r) { return x < r.begin; });
++        if (it != br.runs.begin() && b >= std::prev(it)->begin && e <= std::prev(it)->end) {
++            return true;
++        }
++    }
++    return false;
++}
+diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
+index 986ef89..8862f0e 100644
+--- a/src/llama-moe-cache.h
++++ b/src/llama-moe-cache.h
+@@ -134,3 +134,12 @@ private:
+ };
+ 
+ using llama_moe_cache_ptr = std::unique_ptr<llama_moe_cache>;
++
++// Brain Engine 0109 (LLAMA_MOE_REGISTER_RAM=1, off unless set): the brain map's expert tensors that stay in RAM are
++// registered with the card (pinned in place), up to a RAM budget, so every upload from them is a real asynchronous copy
++// at the link's speed instead of one staged through the driver's small buffer. Lossless: the same bytes go up.
++// open() at context start, close() when it goes (after the cards finished); registered() says whether [p, p + n) lies
++// wholly in registered memory (any thread). The registry is shared by every context of the same brain.
++void llama_ram_register_open(const llama_model & model, const std::vector<ggml_backend_t> & backends);
++void llama_ram_register_close(const llama_model & model, const std::vector<ggml_backend_t> & backends);
++bool llama_ram_registered(const void * p, size_t n);
