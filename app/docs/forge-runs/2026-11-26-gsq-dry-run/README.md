@@ -41,3 +41,18 @@ the parquet copy stays as a fallback with pyarrow 14.0.2, which still takes NumP
 (`pod/run.sh`) tries the same zip first. The cloud container cannot reach Hugging Face, so the zip step was run with a stand-in
 download that hands over a zip of the same layout; the whole kit then ran end to end to "GSQ DONE" (stock writer still
 byte for byte, every file loads). The pod tools did not change, so the kit's pinned Bob commit stays 2b2d24ce.
+
+## Third dry run, after rental try 2 (26 Nov 2026)
+
+Try 2 (RTX A5000, $0.10) recorded inputs and made setting A, then stopped at the kit's own check: our stock q2_0 writer
+did not match llama-quantize. Cause: `gsq_q2.py`'s copy of C `roundf` was `floor(|x| + 0.5)`, which in float32 turns
+0.49999997 into 1 (the sum rounds up to 1.0). With BF16 weights a value of exactly half the group's largest, times a
+rounded-down 1/amax, lands there all the time; the F32 random brain of the first dry run never did. The new copy
+compares `|x| - floor(|x|)` (exact) with 0.5, and matches libm's `roundf` on 600,027 test values, including every value
+just below and at each half. Repeated with a BF16 copy of the tiny brain (the rental's reference is BF16): the old code
+failed the same check, the fixed code matched llama-quantize byte for byte in both settings and ran to "GSQ DONE".
+
+| Setting | File | Mean KLD (BF16 tiny brain) |
+|---|---|---|
+| A | STOCK / GPTQ / GSQ | 1.694 / 0.0653 / 0.0548 |
+| B | STOCK / GPTQ / GSQ | 5.114 / 0.1451 / 0.1299 |

@@ -69,7 +69,11 @@ def hessians(xs, n_exp, ne0, dev, damp, min_rows):
 
 
 def rnd(x):  # C roundf: half away from zero (torch.round is half to even)
-    return torch.sign(x) * torch.floor(x.abs() + 0.5)
+    # 26 Nov (pilot try 2): floor(|x| + 0.5) is wrong just below a half, since 0.49999997 + 0.5 rounds up to 1.0 in float32;
+    # with BF16 weights w = amax/2 exactly and 1/amax rounded down, w * (1/amax) lands there all the time. |x| - floor(|x|)
+    # is exact, so compare that with 0.5 instead.
+    a = x.abs(); f = torch.floor(a)
+    return torch.sign(x) * (f + (a - f >= 0.5).to(x.dtype))
 
 
 def stock(W):

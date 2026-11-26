@@ -24,6 +24,7 @@ const py = read('forge/pod/gsq/gsq_q2.py');
 check('ISTA DASLab\'s paper and repo are credited, and the port says what differs from their code', /arXiv 2604\.18556/.test(py) && /github\.com\/IST-DASLab\/GSQ, Apache-2\.0/.test(py) && /differs from their code/.test(py));
 check('GSQ\'s result is kept only when it beats its own GPTQ start', /keep GSQ's result only if it beats its own GPTQ start/.test(py));
 check('x_dump only reads the brain (credits imatrix.cpp for the routing ids)', /Read only: nothing is written to the brain/.test(read('forge/pod/gsq/x_dump.cpp')) && /imatrix\.cpp \(MIT\)/.test(read('forge/pod/gsq/x_dump.cpp')));
+check('the stock writer rounds like C roundf, also just below a half (pilot try 2: 0.49999997 + 0.5 is 1.0 in float32)', /a - f >= 0\.5/.test(py) && !/torch\.floor\(x\.abs\(\) \+ 0\.5\)/.test(py));
 check('no kit or script names the books', !/Bobiverse/i.test(kit + py + read('forge/pod/gsq/q2_0_patch.py')));
 check('the kit takes wikitext-2 from llama.cpp\'s plain-text zip (no pyarrow: NumPy 1 images, try 1 of 26 Nov), parquet only as the fallback', /ggml-org\/ci", "wikitext-2-raw-v1\.zip/.test(kit) && !/hf_transfer pyarrow/.test(kit) && kit.indexOf('wikitext-2-raw-v1.zip') < kit.indexOf('Salesforce/wikitext'));
 
