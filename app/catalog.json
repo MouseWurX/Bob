@@ -315,14 +315,13 @@
       "jobs": ["bob", "small", "eyes", "phone"],
       "name": "Qwen3.5 2B",
       "published": "2026-03-02",
-      "what": "The smallest brain here. Quick on a phone or an old laptop, and it sees pictures; keep the questions simple.",
+      "what": "The smallest brain here. Quick on a phone or an old laptop, and it sees pictures; keep the questions simple. Tried on a handheld PC (Nov 23): about 52 tokens a second with all of it on the graphics, but it once stuck for 10 minutes on a tool step. Not yet run on my held-out tool jobs.",
       "sizeGB": 1.9,
       "vramGB": 2,
       "params": 2,
       "license": "Apache 2.0",
       "commercial": true,
       "pick": "tiny",
-      "trial": true,
       "phoneFit": "Fits an 8 GB phone easily; the lightest choice.",
       "files": [
         {
@@ -354,14 +353,13 @@
       "jobs": ["bob", "small", "eyes", "phone", "scout", "painter"],
       "name": "Gemma 4 E2B",
       "published": "2026-03-31",
-      "what": "Gemma 4's smallest brain. The phone app's brain, and a light Quick brain on a PC; it sees pictures.",
+      "what": "Gemma 4's smallest brain. The phone app's brain, and a light Quick brain on a PC; it sees pictures. Tried on a handheld PC (Nov 23): about 42 to 46 tokens a second with all of it on the graphics. Not yet run on my held-out tool jobs.",
       "sizeGB": 3.4,
       "vramGB": 4,
       "params": 2,
       "license": "Apache 2.0",
       "commercial": true,
       "pick": "tiny",
-      "trial": true,
       "phoneFit": "The phone app's pick for an 8 GB phone (about 11 words a second on a Galaxy S22, from others' tests).",
       "files": [
         {
@@ -565,7 +563,6 @@
       "license": "Apache 2.0",
       "commercial": true,
       "pick": "optional",
-      "trial": true,
       "thinks": true,
       "engineMin": 37,
       "files": [
@@ -587,7 +584,7 @@
       "id": "raon-1-nano",
       "family": "Raon",
       "category": "chat",
-      "jobs": ["small", "bob", "scout"],
+      "jobs": ["small"],
       "name": "Raon-1 nano",
       "published": "2026-11-10",
       "what": "KRAFTON's small brain: 3.2B, but half of that is a word table read one row at a time, so it runs like a much smaller one. Quick on a laptop or a handheld. Text only. Fine for quick chat, but weak on my tool jobs: it passed 15 of 65 on the held-out run of Nov 26. Needs Brain Engine 37 or newer, so not on the phone app yet.",
@@ -597,7 +594,6 @@
       "license": "Apache 2.0",
       "commercial": true,
       "pick": "tiny",
-      "trial": true,
       "thinks": true,
       "engineMin": 37,
       "files": [
@@ -631,7 +627,6 @@
       "license": "Apache 2.0",
       "commercial": true,
       "pick": "optional",
-      "trial": true,
       "thinks": true,
       "engineMin": 44,
       "files": [
