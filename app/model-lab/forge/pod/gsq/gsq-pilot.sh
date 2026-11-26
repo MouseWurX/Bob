@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # GSQ pilot rental (26 Nov 2026): does ISTA DASLab's learned rounding (GSQ, arXiv 2604.18556), ported to stock q2_0 GGUF and
-# one card, beat llama.cpp's own q2_0 rounding on a small dense brain? Squeak: "If their research can benefit us we should
+# one card, beat llama.cpp's own q2_0 rounding on a small dense brain? the owner: "If their research can benefit us we should
 # attempt to implement it"; "Healing is not training" (26 Nov, the OK for light tuning of rounding).
 # Two settings, each as three files of the same size that differ only in how the q2_0 tensors are rounded:
 #   A: ffn_down at q2_0, the rest Q8_0 (like Bill, whose down experts are all q2_0)      B: all of ffn (gate, up, down) at q2_0
