@@ -17,6 +17,11 @@
 // on another card, another amount of RAM or another Brain Engine build isn't used, and the logbook says so.
 // Brain Engine on Windows and Linux with a graphics card (temperatures and clocks need an NVIDIA card; built-in
 // graphics are measured by free RAM). Not on a Mac (plain llama.cpp, where GUPPI doesn't drive) or the Android app.
+// Nov 26, the Turbo pass (only when Turbo is on): after the steps above, GUPPI times Turbo with every trick that is
+// switched on, at the step he'll use, then once with each trick left out. A trick that doesn't make a typical job at
+// least 3% faster here, or that does nothing on this start (stand-ins with no copy cache, keep more guesses on a brain
+// that doesn't guess ahead), is left out for this brain on this PC (pc-profile turbo.drop). A trick whose start trips a
+// safety line is left out too. Speed only: whether a trick keeps the answers right is the real-jobs test's call.
 // Nothing is downloaded and nothing leaves this computer.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -34,6 +39,9 @@ import { ggufInfo } from './gguf.js';
 import { cardGB } from './tuning.js';
 import { profileFile, readProfile, saveProfile, pcNow, pcChanged, seedSpeeds } from './guppi-profile.js';
 import { OS } from './platform.js';
+import { turboParts, sameStart, turboTricksOn, withTurboDrop, TURBO_TRICK_NAMES } from './turbo-parts.js';
+import { mtpArgs, turboPerWord } from './engine-extras.js';
+import { sendPerWord } from './experts-per-word.js';
 
 export const RAM_FLOOR_MIB = 512; // free RAM never under this (the owner's floor); built-in graphics: APU_FLOOR (1.5 GB)
 export const HEAT_STOP_C = 90; // a graphics card this hot stops the try (built-in graphics: 95, the Legion Go's line)
@@ -43,6 +51,8 @@ export const ROUNDS = 3; // reads and writes per try; the median counts
 export const JOB = { readTok: 16384, outTok: 300 }; // the typical job a step is judged on (GUPPI's own default read)
 export const BEAT_MARGIN = LOAD_PICK_MARGIN; // GUPPI has to beat Bob's pick by this much (5%)
 export const WATCH_MS = 1000;
+export const TRICK_MARGIN = 0.03; // a Turbo trick has to make a typical job this much faster to stay on here
+export const TURBO_SAMPLING = { temperature: 0.7, seed: 42 }; // keep more guesses works only above temperature 0
 const round1 = (n) => Math.round(n * 10) / 10;
 const MiB = 2 ** 20;
 export { profileFile, readProfile, pcNow, pcChanged, profileFor, seedSpeeds, speedsFile } from './guppi-profile.js';
@@ -133,6 +143,37 @@ export function guppiVerdict(rows = [], { readTok = JOB.readTok, outTok = JOB.ou
   return { cap, guppiStep: beatsBob && best ? best.step : 0, speeds, bobS: s1(bobS), guppiS: s1(guppiS), beatsBob, keepBob: !beatsBob, why };
 }
 
+// The Turbo pass's tries: every trick on, then each left out. tricks: turboTricksOn(cfg).
+export function turboTries(tricks = [], { step = 512, cache = false } = {}) {
+  if (!tricks.length) return [];
+  return [{ id: 'turbo-all', step, cache, drop: [], label: `Turbo: every trick that's on (${tricks.map((k) => TURBO_TRICK_NAMES[k]).join(', ')})` },
+    ...tricks.map((k) => ({ id: `turbo-no-${k}`, step, cache, drop: [k], trick: k, label: `Turbo without ${TURBO_TRICK_NAMES[k]}` }))];
+}
+// rows: the Turbo tries that ran; noEffect: tricks whose start is the same without them.
+// -> { on, drop, keep, gains: { [trick]: share }, why }
+export function turboVerdict(rows = [], tricks = [], { noEffect = [], margin = TRICK_MARGIN, readTok = JOB.readTok, outTok = JOB.outTok } = {}) {
+  const ok = (r) => r && !r.failed && !r.trip && r.tps > 0 && r.readTps > 0;
+  const all = rows.find((r) => r.id === 'turbo-all');
+  const drop = [], keep = [], gains = {}, said = [];
+  const nm = (k) => TURBO_TRICK_NAMES[k] || k;
+  for (const k of tricks) {
+    const no = rows.find((r) => r.id === `turbo-no-${k}`);
+    if (noEffect.includes(k)) { drop.push(k); said.push(`${nm(k)} does nothing on this start`); continue; }
+    if (!ok(all)) {
+      if (ok(no)) { drop.push(k); said.push(`Turbo ran safely only without ${nm(k)}`); } else keep.push(k);
+      continue;
+    }
+    if (!ok(no)) { keep.push(k); said.push(`without ${nm(k)} it didn't run here, so it stays`); continue; }
+    const g = jobSeconds(no, { readTok, outTok }) / jobSeconds(all, { readTok, outTok }) - 1;
+    gains[k] = Math.round(g * 1000) / 1000;
+    if (g >= margin) { keep.push(k); said.push(`${nm(k)} made a typical job ${Math.round(g * 100)}% faster`); }
+    else { drop.push(k); said.push(`${nm(k)} ${g >= 0 ? `added only ${Math.round(g * 100)}%` : `cost ${Math.round(-g * 100)}%`}, under the ${Math.round(margin * 100)}% it needs`); }
+  }
+  if (!ok(all) && keep.length === tricks.length && tricks.length) { drop.push(...keep.splice(0)); said.push('Turbo didn\'t run safely here with any trick left out, so every trick is left out for this brain'); }
+  const why = !tricks.length ? '' : `Turbo here: ${said.join('; ')}.${drop.length ? ` GUPPI leaves out ${drop.map(nm).join(', ')} for this brain on this PC.` : ' Every trick stays on.'} Speed only: the real-jobs test decides whether a trick keeps the answers right.`;
+  return { on: tricks, drop, keep, gains, why };
+}
+
 // Why GUPPI can't calibrate here, or ''.
 export function guppiCalLock(lab, model, { osKey = OS } = {}) {
   if (osKey === 'mac') return 'GUPPI drives my own engine on Windows and Linux. A Mac runs plain llama.cpp, so there is nothing for him to calibrate there.';
@@ -145,6 +186,7 @@ export function guppiCalLock(lab, model, { osKey = OS } = {}) {
 }
 
 // ---- the job ----
+const fx0 = (lab) => lab.guppiFns || {};
 // fx (tests swap any of these): serve, chat, health, card, ram (free MiB), shared (MiB or null), sleep(ms), watchMs
 export async function startGuppiCalibrate(lab, { model = '', name = '', unload = false, osKey = OS } = {}) {
   if (lab.job) throw new Error('I\'m already busy with a Lab job. Wait for it, or stop it.');
@@ -152,7 +194,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
   const lock = guppiCalLock(lab, model, { osKey });
   if (lock) throw new Error(lock);
   const eng = lab.brain.engine;
-  const fxs = lab.guppiFns || {};
+  const fxs = fx0(lab);
   const card = fxs.card || (() => readCardUse(undefined, undefined, { ownPids: eng.ownPids?.() || null }));
   // another program holding the card: no calibration (its numbers would be wrong, and the card could fill)
   const before = await card().catch(() => null);
@@ -166,6 +208,8 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
   const bobStep = readingChoice(lab.cfg, { recent: eng.recentPrompts, model }).steps || 0;
   const cache = !apu && beNo >= 39 && condCacheWanted({ experts: info.experts || 0, fileBytes, cardBytes: cardGB(lab.cfg) * 2 ** 30 });
   const tries = guppiTries({ bobStep, cache, apu });
+  const tricks = apu ? [] : turboTricksOn(lab.cfg); // the Turbo pass: only when Turbo is on (not on built-in graphics, where GUPPI doesn't trade)
+  const tTries = turboTries(tricks); // their step and cache are set once GUPPI's own verdict is in
   const log = pageLog(lab.cfg, 'guppi-calibrate');
   const exe = lab.tools().server.path;
   const fx = {
@@ -174,7 +218,15 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)), watchMs: WATCH_MS, ...fxs
   };
   const show = name || model;
-  const steps = [['pc', 'Measure this PC: card, RAM, temperature'], ...tries.map((t) => [t.id, t.label]), ['save', 'Save this PC\'s profile for GUPPI']];
+  const steps = [['pc', 'Measure this PC: card, RAM, temperature'], ...tries.map((t) => [t.id, t.label]), ...tTries.map((t) => [t.id, t.label]), ['save', 'Save this PC\'s profile for GUPPI']];
+  const caps = eng.memCaps ? eng.memCaps() : {};
+  const build = Number(eng.buildNo?.() || 0) || 0;
+  const tb = lab.cfg.llamacpp?.turbo?.[model];
+  const mtp = tricks.includes('keepGuesses') && tb?.on && tb.mtp ? mtpArgs(gguf) : []; // GUPPI drives without everyday MTP; only the Lab's own MTP pick drafts
+  const perWordFx = fx0(lab).perWord || (async (url) => { // 4 experts per word, as Bob sends it after a load
+    let own = 0; try { const r = await fetch(`${url}/experts-per-word`, { signal: AbortSignal.timeout(15000) }); own = r.ok ? Number((await r.json())?.n_expert_used) || 0 : 0; } catch {}
+    const want = turboPerWord({ turbo: true }, own); if (want) await sendPerWord(url, want, { timeoutMs: 15000 });
+    return want; });
   return runJob(lab, { kind: 'guppi-calibrate', name: `GUPPI calibrates this PC: ${show}`, from: model, fromName: show, steps }, async (r, { set, signal, progress }) => {
     let done = 0; const total = steps.length;
     const tick = () => progress((100 * ++done) / total);
@@ -185,16 +237,12 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
     set('pc', 'done'); tick();
     const rows = [];
     let edge = false, hot = false, refText = null;
-    for (const t of tries) {
-      if (signal.aborted) throw new Error('Stopped.');
-      if (edge || hot) { rows.push({ id: t.id, step: t.step, cache: t.cache, failed: hot ? 'Skipped: the card got too hot.' : 'Skipped: past the edge found at a smaller step.' }); set(t.id, 'failed'); tick(); continue; }
-      set(t.id, 'running');
+    // one timed try: cooled first, watched while it runs, stopped at once on a safety line. -> the row
+    const timeTry = async (t, { extra, env, perWord = false, sampling = null, sameAs = null }) => {
       const row = { id: t.id, step: t.step, cache: t.cache };
       // cool down first (the owner: speed runs start cool, with temperature and clocks logged)
-      const cool = await coolDown(fx, { idleC: pc.idleC, signal });
-      row.cool = cool;
+      row.cool = await coolDown(fx, { idleC: pc.idleC, signal });
       const sharedBase = await fx.shared().catch(() => null);
-      const { extra, env } = tryArgs(t, { beNo });
       let srv = null, trip = '';
       const samples = [];
       const sample = async () => {
@@ -206,18 +254,20 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
         return why;
       };
       let timer = null;
+      const how = sampling ? { temperature: sampling.temperature, seed: sampling.seed } : {};
       try {
-        srv = await fx.serve({ gguf, ctx: CAL_CTX, signal, cpuOk: false, extra, ...(env ? { env } : {}) });
+        srv = await fx.serve({ gguf, ctx: CAL_CTX, signal, cpuOk: false, extra, ...(env && Object.keys(env).length ? { env } : {}) });
         if (fx.watchMs > 0) timer = setInterval(() => { sample().catch(() => {}); }, fx.watchMs);
         if (await sample()) throw Object.assign(new Error('trip'), { trip: true });
+        if (perWord) row.perWord = await perWordFx(srv.url).catch(() => null);
         const reads = [], writes = [], firsts = [];
         for (let i = 0; i < ROUNDS; i++) {
-          const long = await fx.chat(srv.url, [{ role: 'user', content: CAL_LONG }], { maxTokens: 24, signal });
+          const long = await fx.chat(srv.url, [{ role: 'user', content: CAL_LONG }], { maxTokens: 24, signal, ...how });
           if (await sample()) throw Object.assign(new Error('trip'), { trip: true });
-          const short = await fx.chat(srv.url, [{ role: 'user', content: CAL_PROMPT }], { maxTokens: 200, signal });
+          const short = await fx.chat(srv.url, [{ role: 'user', content: CAL_PROMPT }], { maxTokens: 200, signal, ...how });
           if (await sample()) throw Object.assign(new Error('trip'), { trip: true });
           reads.push(Number(long.timings?.prompt_per_second) || 0); firsts.push(long.timings?.prompt_ms ? long.timings.prompt_ms / 1000 : 0); writes.push(Number(short.timings?.predicted_per_second) || 0);
-          if (i === 0) { if (refText == null) refText = short.text; else row.sameWords = short.text === refText; }
+          if (i === 0) { if (sameAs) { if (sameAs.text == null) sameAs.text = short.text; else row.sameWords = short.text === sameAs.text; } }
         }
         Object.assign(row, { readTps: round1(median(reads)), tps: round1(median(writes)), firstWordS: round1(median(firsts)) });
         if (!(row.tps > 0)) row.failed = 'It answered, but gave no speed.';
@@ -227,15 +277,45 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       } finally { if (timer) clearInterval(timer); try { srv?.stop(); } catch {} }
       if (trip) row.trip = trip;
       Object.assign(row, heatOf(samples));
+      log(`GUPPI calibrate: ${t.id} ${JSON.stringify(row)}`);
+      return row;
+    };
+    const ref = { text: refText };
+    for (const t of tries) {
+      if (signal.aborted) throw new Error('Stopped.');
+      if (edge || hot) { rows.push({ id: t.id, step: t.step, cache: t.cache, failed: hot ? 'Skipped: the card got too hot.' : 'Skipped: past the edge found at a smaller step.' }); set(t.id, 'failed'); tick(); continue; }
+      set(t.id, 'running');
+      const row = await timeTry(t, { ...tryArgs(t, { beNo }), sameAs: ref });
       if (row.trip?.startsWith('heat')) hot = true;
       else if (t.id !== 'bob' && (row.trip || row.failed)) edge = true; // the edge: nothing bigger
-      log(`GUPPI calibrate: ${t.id} ${JSON.stringify(row)}`);
       rows.push(row);
       set(t.id, row.failed || row.trip ? 'failed' : 'done'); tick();
     }
-    set('save', 'running');
     const v = guppiVerdict(rows);
-    const rec = { name: show, at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), bobStep, cache, ctx: CAL_CTX, rows, ...v };
+    // the Turbo pass: at the step GUPPI will use here (Bob's step and no copy cache when he keeps Bob's pick)
+    let turbo = null;
+    if (tTries.length) {
+      const base = v.beatsBob ? { step: v.guppiStep, cache: true } : { step: tries[0].step, cache: false };
+      const tRows = [], noEffect = [];
+      const sampling = tricks.includes('keepGuesses') ? TURBO_SAMPLING : null;
+      const partsOf = (drop) => { const ba = tryArgs({ ...base }, { beNo }); const p = turboParts(withTurboDrop(lab.cfg, drop), model, { caps, ctx: CAL_CTX, args: ba.extra, be: beNo, build, mtp }); return { extra: [...ba.extra, ...p.extra], env: { ...(ba.env || {}), ...p.env }, perWord: p.perWord, parts: p }; };
+      const allParts = partsOf([]);
+      for (const t of tTries) {
+        const tt = { ...t, ...base };
+        if (signal.aborted) throw new Error('Stopped.');
+        if (hot) { tRows.push({ id: t.id, step: tt.step, cache: tt.cache, failed: 'Skipped: the card got too hot.' }); set(t.id, 'failed'); tick(); continue; }
+        const mine = t.drop.length ? partsOf(t.drop) : allParts;
+        if (t.trick && sameStart(mine.parts, allParts.parts)) { noEffect.push(t.trick); tRows.push({ id: t.id, step: tt.step, cache: tt.cache, same: true }); log(`GUPPI calibrate: ${t.id} is the same start as every trick on, so ${t.trick} does nothing here`); set(t.id, 'done'); tick(); continue; }
+        set(t.id, 'running');
+        const row = await timeTry(tt, { extra: mine.extra, env: mine.env, perWord: mine.perWord, sampling });
+        if (row.trip?.startsWith('heat')) hot = true;
+        tRows.push(row);
+        set(t.id, row.failed || row.trip ? 'failed' : 'done'); tick();
+      }
+      turbo = { step: base.step, cache: base.cache, rows: tRows, ...turboVerdict(tRows, tricks, { noEffect }), sampling };
+    }
+    set('save', 'running');
+    const rec = { name: show, at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), bobStep, cache, ctx: CAL_CTX, rows, ...v, ...(turbo ? { turbo } : {}) };
     const prof = readProfile(lab.cfg);
     const keep = prof && !pcChanged(prof.pc, pc) ? prof.brains : {}; // another PC's profile starts over
     const next = { v: 1, at: lab.now(), pc, brains: { ...keep, [model]: rec } };
@@ -243,7 +323,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
     if (Object.keys(v.speeds.write).length && beNo) seedSpeeds(lab.cfg, model, v.speeds, beNo);
     try { eng.guppiReload?.(); } catch {} // the running engine reads the new profile and speeds at its next load
     set('save', 'done'); tick();
-    return { guppi: rec, saw: `${show}: ${v.why}` };
+    return { guppi: rec, saw: `${show}: ${v.why}${turbo ? ` ${turbo.why}` : ''}` };
   });
 }
 
@@ -268,7 +348,8 @@ export function heatOf(samples = []) {
 // For Settings: this PC's profile, short, and the job while it runs.
 export function guppiCalView(cfg, lab, now) {
   const p = readProfile(cfg);
-  const brains = p ? Object.entries(p.brains).slice(0, 32).map(([model, b]) => ({ model, name: b.name || model, when: b.when || '', cap: b.cap || 0, beatsBob: b.beatsBob === true, why: b.why || '', rows: (b.rows || []).map(({ id, step, cache, readTps, tps, firstWordS, failed, trip, peakC, smMedMHz, minFreeMiB, sameWords }) => ({ id, step, cache, readTps, tps, firstWordS, failed, trip, peakC, smMedMHz, minFreeMiB, sameWords })) })) : [];
+  const tRow = ({ id, step, cache, readTps, tps, firstWordS, failed, trip, peakC, smMedMHz, minFreeMiB, same }) => ({ id, step, cache, readTps, tps, firstWordS, failed, trip, peakC, smMedMHz, minFreeMiB, same });
+  const brains = p ? Object.entries(p.brains).slice(0, 32).map(([model, b]) => ({ model, name: b.name || model, when: b.when || '', cap: b.cap || 0, beatsBob: b.beatsBob === true, why: b.why || '', turbo: b.turbo ? { why: String(b.turbo.why || ''), drop: b.turbo.drop || [], rows: (b.turbo.rows || []).map(tRow) } : null, rows: (b.rows || []).map(({ id, step, cache, readTps, tps, firstWordS, failed, trip, peakC, smMedMHz, minFreeMiB, sameWords }) => ({ id, step, cache, readTps, tps, firstWordS, failed, trip, peakC, smMedMHz, minFreeMiB, sameWords })) })) : [];
   const run = lab?.job?.run?.kind === 'guppi-calibrate' ? lab.runView(lab.job.run) : null;
   return { brains, stale: p && now ? pcChanged(p.pc, now) : '', gpu: p?.pc?.gpu || '', run };
 }

@@ -32,7 +32,7 @@ import { profileFor as guppiProfileFor, pcNow as guppiPcNow } from './guppi-prof
 import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, FILL_FROM_BE as COND_FILL_FROM_BE, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv, loadStepBySpeed, cleanSpeeds } from './conductor.js'; // off unless picked
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { tuningArgs, doorbellEnv, registerRamEnv } from './engine-tuning.js';
-import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV, keepGuessesArgs, keepGuessesEnv, helpHasSink, sinkEnv } from './engine-extras.js'; // Turbo: stand-ins (0043), keep more guesses (0120), sharp start (0122); off unless switched on
+import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV, keepGuessesArgs, keepGuessesEnv, helpHasSink, sinkEnv, withTurboDrop, TURBO_TRICK_NAMES } from './engine-extras.js'; // Turbo: stand-ins (0043), keep more guesses (0120), sharp start (0122); off unless switched on
 import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
@@ -329,7 +329,7 @@ export class LlamaCpp {
     const gb = (b) => Math.round((b / 1024 ** 3) * 10) / 10;
     try {
       const f = this.resolve(model).gguf;
-      const need = needBytes(fs.statSync(f).size, ggufInfo(f)?.shape, ctx, memArgs(this.cfg, model, this.lc.args, this.memCaps()), this.tiersFor(model, ctx)); // 100: the brain's memory type
+      const need = needBytes(fs.statSync(f).size, ggufInfo(f)?.shape, ctx, memArgs(this.turboCfg(model), model, this.lc.args, this.memCaps()), this.tiersFor(model, ctx)); // 100: the brain's memory type
       if (!need) return { fits: null };
       const room = roomBytes(ramBytes, cardBytes);
       return { fits: need <= room, needGB: gb(need), roomGB: gb(room) };
@@ -583,9 +583,9 @@ export class LlamaCpp {
   memCaps() { const c = this.kvCaps(); return { q3: c.has, q2: c.q2, tiers: c.tiers, sink: c.sink === true }; }
   // The steps the room counter adds, and that a resize in place must keep: Progressive's rings, then the sharp start.
   tiersFor(model, ctx) {
-    const caps = { ...this.memCaps(), handArgs: this.lc.args };
-    const s = sinkEnv(this.cfg, model, ctx, caps).LLAMA_KV_SINK;
-    return [tiersEnv(this.cfg, model, ctx, caps).LLAMA_KV_TIERS || '', s ? `sink:${s}` : ''].filter(Boolean).join(',');
+    const caps = { ...this.memCaps(), handArgs: this.lc.args }, tc = this.turboCfg(model);
+    const s = sinkEnv(tc, model, ctx, caps).LLAMA_KV_SINK;
+    return [tiersEnv(tc, model, ctx, caps).LLAMA_KV_TIERS || '', s ? `sink:${s}` : ''].filter(Boolean).join(',');
   }
 
   // 1.5.90: no memory-mapping when some of the brain is placed in RAM on the card route (see buildArgs).
@@ -649,7 +649,7 @@ export class LlamaCpp {
       ...this.stretchArgs(gguf, ctx || lc.ctx || DEFAULT_CTX),
       ...(mmproj && lc.vision !== false && !(lc.noEyes || []).includes(model) && !this.eyesShut?.has(model) ? ['--mmproj', mmproj] : []), // Lab: "Load without eyes and ears" for one brain; eyesShut: no room (below)
       // 100 (opt-in, the Brains page): the brain's chat memory type, Standard (8-bit) unless picked. Flags set by hand win.
-      ...memArgs(this.cfg, model, lc.args, this.memCaps()),
+      ...memArgs(this.turboCfg(model), model, lc.args, this.memCaps()),
       // 98 Laptop mode (opt-in): on battery, half the cores. Games-first and threads set by hand win.
       ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : laptopThreads(this.cfg) ? ['-t', String(laptopThreads(this.cfg))] : num(lc.threads, '-t')),
       ...num(lc.batch, '-b'), ...num(lc.ubatch, '-ub'),
@@ -783,7 +783,10 @@ export class LlamaCpp {
       if (tb.mtp && guess.includes('-md')) this.log?.('engine', `${model}: MTP's guesser comes from ${path.basename(guess[guess.indexOf('-md') + 1])} beside the brain`);
       if (tb.mtp) args.push(...guess, ...draftNumArgs(this.buildNo(), tb.max || 8));
       else { let dg = null; try { dg = this.resolve(tb.draft).gguf; } catch {} if (dg) args.push('-md', dg, ...draftNumArgs(this.buildNo(), tb.max || 8, 0), '-ngld', '99'); }
-      args.push(...keepGuessesArgs(this.cfg, { args, be: this.beNo() })); // Turbo: keep more guesses (0120)
+      args.push(...keepGuessesArgs(this.turboCfg(model), { args, be: this.beNo() })); // Turbo: keep more guesses (0120)
+      // Nov 26 (the Turbo matrix's start check): the Lab's own MTP pick with GUPPI's fill on leaves the guesser's room free
+      // too, as everyday MTP does below (its buffers are made after the fill; without room they pushed 200+ MB off the card)
+      if (tb.mtp) this.tuneEnv = { ...(this.tuneEnv || {}), ...mtpSpareEnv({ env: this.tuneEnv, step: this.condLoad || 0 }) };
       return args;
     }
     const d = lc.draft;
@@ -806,7 +809,7 @@ export class LlamaCpp {
     // 94 Guess-ahead from the chat (opt-in): with no draft brain, the engine guesses by copying what the chat holds.
     args.push(...copyGuessArgs(this.cfg, { build: this.buildNo(), args }));
     // Turbo: keep more guesses (Brain Engine 0120, off unless switched on): where a model drafts, it samples its guesses
-    if (this.role !== BESIDE) args.push(...keepGuessesArgs(this.cfg, { args, be: this.beNo() }));
+    if (this.role !== BESIDE) args.push(...keepGuessesArgs(this.turboCfg(model), { args, be: this.beNo() }));
     return args;
   }
 
@@ -1357,6 +1360,37 @@ export class LlamaCpp {
     return all.length > 0 || b;
   }
 
+  // The engine's environment for a start (its keys: Turbo's tricks, Engine tuning, the hot-expert profile, Progressive
+  // memory, the sharp start, SCUT, locked RAM, the doorbell). Nov 26: its own step, so the Turbo test matrix
+  // (model-lab/turbo-start.mjs) starts the engine with exactly what Bob would give it.
+  startEnv(model, args, { ctx, card, helpers = [] } = {}) {
+    const tc = this.turboCfg(model);
+    let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
+    if (args.includes('--moe-cache-mib') && turboStandins(tc) && this.role !== BESIDE) { env = { ...env, ...STANDIN_ENV }; this.log?.('engine', `${model}: Turbo stand-ins on (up to 2 missed experts a layer stood in for while writing; the words change)`); }
+    else if (args.includes('--moe-cache-mib') && turboDriveStandins(tc) && this.role !== BESIDE) { env = { ...env, ...DRIVE_STANDIN_ENV }; this.log?.('engine', `${model}: Turbo: never wait on the drive (an expert no longer in RAM is stood in for while writing; the words change)`); }
+    { const kg = keepGuessesEnv(tc, { args, be: this.beNo() }); if (kg.LLAMA_SPEC_MB) { env = { ...env, ...kg }; this.log?.('engine', `${model}: Turbo: keep more guesses on (a guess the exact check throws away is kept when the brain rates it at least as likely; the words change)`); } }
+    if (this.tuneEnv && Object.keys(this.tuneEnv).length) env = { ...env, ...this.tuneEnv }; // Engine tuning, set by hand
+    if (this.tuneEnv?.LLAMA_MOE_CACHE_SAVE) { try { fs.mkdirSync(path.dirname(this.tuneEnv.LLAMA_MOE_CACHE_SAVE), { recursive: true }); } catch {} } // the engine writes the saved hot set there
+    if (args.includes('--moe-cache-mib') && this.hotEnv?.[RANKING_ENV]) env = { ...env, ...this.hotEnv }; // Nov 16: the hot-expert profile (patch 0016)
+    // Nov 20 (patch 0039, opt-in): Progressive chat memory, the newest words kept sharper. Its steps come from the
+    // context it loads with (a resize in place that would need other steps starts the engine again instead).
+    { const t = tiersEnv(tc, model, ctx || this.lc.ctx || DEFAULT_CTX, { ...this.memCaps(), handArgs: args }); if (t.LLAMA_KV_TIERS) { env = { ...env, ...t }; this.log?.('engine', `${model}: Progressive chat memory, sharper copies of the newest words (${t.LLAMA_KV_TIERS})`); } }
+    // Nov 24 (patch 0122, Turbo only, off unless switched on): the sharp start, the chat's first tokens kept at 16-bit
+    { const s = sinkEnv(tc, model, ctx || this.lc.ctx || DEFAULT_CTX, { ...this.memCaps(), handArgs: args }); if (s.LLAMA_KV_SINK) { env = { ...env, ...s }; this.log?.('engine', `${model}: Turbo: sharp start, the chat's first tokens kept at 16-bit (${s.LLAMA_KV_SINK}; the words change a little)`); } }
+    if (helpers.length) env = { ...env, ...scutEnv(this.cfg, { wired: Boolean(this.spread?.allWired?.()) }), ...linkEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
+    { const rr = registerRamEnv(env, { args, cpu: card === 'none' }); if (rr.LLAMA_MOE_REGISTER_RAM) { env = { ...env, ...rr }; this.log?.('engine', `${model}: the experts in RAM are locked there for the card (Linux default, Brain Engine 0109)`); } }
+    { const db = doorbellEnv(env); if (Object.keys(db).length) { env = { ...env, ...db }; this.log?.('engine', `${model}: the doorbell is on, so ${Object.entries(db).map(([k, v]) => `${k}=${v}`).join(' and ')} (safe on Windows)`); } }
+    return env;
+  }
+  // Nov 26: the settings this brain's start uses: this PC's GUPPI profile can leave out Turbo tricks that didn't add
+  // speed here (guppi-calibrate.js, Turbo pass). Turbo stays on; only the named tricks are left out.
+  turboCfg(model) {
+    if (this.cfg?.turbo !== true) return this.cfg;
+    const drop = this.guppiProfile?.(model)?.turboDrop || [];
+    if (drop.length && this.turboDropSaid !== `${model}:${drop}`) { this.turboDropSaid = `${model}:${drop}`; this.log?.('engine', `${model}: GUPPI leaves out ${drop.map((k) => TURBO_TRICK_NAMES[k] || k).join(', ')} here: it didn't add speed on this PC when he calibrated`); }
+    return withTurboDrop(this.cfg, drop);
+  }
+
   async startEngineNow(model, signal, { ctx, cpu = false, beside = false, reserveMB = 0, place = null, noSpread = false, args: fixedArgs = null, roomChecked = false, retried = false } = {}) {
     if (this.role === BESIDE) cpu = true;
     this.lastLoadOut = '';
@@ -1446,21 +1480,7 @@ export class LlamaCpp {
     this.slotDir = args.includes('--slot-save-path') ? args[args.indexOf('--slot-save-path') + 1] : ''; // where this engine run saves readings
     this.placeChat = null; // a fresh engine holds no chat's reading yet
     this.condStep = this.condLoad || this.condChat || 0; this.condOff = ''; this.condHeld = 0; this.condGrown = 0; this.condFree = null; this.condFreeAsked = false; this.condWin = this.condWinFull || 0; this.condWinExtra = 0; // the Conductor starts each engine run at the chat step, with the whole window
-    let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
-    if (args.includes('--moe-cache-mib') && turboStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...STANDIN_ENV }; this.log?.('engine', `${model}: Turbo stand-ins on (up to 2 missed experts a layer stood in for while writing; the words change)`); }
-    else if (args.includes('--moe-cache-mib') && turboDriveStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...DRIVE_STANDIN_ENV }; this.log?.('engine', `${model}: Turbo: never wait on the drive (an expert no longer in RAM is stood in for while writing; the words change)`); }
-    { const kg = keepGuessesEnv(this.cfg, { args, be: this.beNo() }); if (kg.LLAMA_SPEC_MB) { env = { ...env, ...kg }; this.log?.('engine', `${model}: Turbo: keep more guesses on (a guess the exact check throws away is kept when the brain rates it at least as likely; the words change)`); } }
-    if (this.tuneEnv && Object.keys(this.tuneEnv).length) env = { ...env, ...this.tuneEnv }; // Engine tuning, set by hand
-    if (this.tuneEnv?.LLAMA_MOE_CACHE_SAVE) { try { fs.mkdirSync(path.dirname(this.tuneEnv.LLAMA_MOE_CACHE_SAVE), { recursive: true }); } catch {} } // the engine writes the saved hot set there
-    if (args.includes('--moe-cache-mib') && this.hotEnv?.[RANKING_ENV]) env = { ...env, ...this.hotEnv }; // Nov 16: the hot-expert profile (patch 0016)
-    // Nov 20 (patch 0039, opt-in): Progressive chat memory, the newest words kept sharper. Its steps come from the
-    // context it loads with (a resize in place that would need other steps starts the engine again instead).
-    { const t = tiersEnv(this.cfg, model, ctx || this.lc.ctx || DEFAULT_CTX, { ...this.memCaps(), handArgs: args }); if (t.LLAMA_KV_TIERS) { env = { ...env, ...t }; this.log?.('engine', `${model}: Progressive chat memory, sharper copies of the newest words (${t.LLAMA_KV_TIERS})`); } }
-    // Nov 24 (patch 0122, Turbo only, off unless switched on): the sharp start, the chat's first tokens kept at 16-bit
-    { const s = sinkEnv(this.cfg, model, ctx || this.lc.ctx || DEFAULT_CTX, { ...this.memCaps(), handArgs: args }); if (s.LLAMA_KV_SINK) { env = { ...env, ...s }; this.log?.('engine', `${model}: Turbo: sharp start, the chat's first tokens kept at 16-bit (${s.LLAMA_KV_SINK}; the words change a little)`); } }
-    if (helpers.length) env = { ...env, ...scutEnv(this.cfg, { wired: Boolean(this.spread?.allWired?.()) }), ...linkEnv(this.cfg), ...(this.spread?.sealEnv?.() || {}) }; // SCUT (off unless switched on): the fast link to the lent cards, sealed unless that's switched off
-    { const rr = registerRamEnv(env, { args, cpu: card === 'none' }); if (rr.LLAMA_MOE_REGISTER_RAM) { env = { ...env, ...rr }; this.log?.('engine', `${model}: the experts in RAM are locked there for the card (Linux default, Brain Engine 0109)`); } }
-    { const db = doorbellEnv(env); if (Object.keys(db).length) { env = { ...env, ...db }; this.log?.('engine', `${model}: the doorbell is on, so ${Object.entries(db).map(([k, v]) => `${k}=${v}`).join(' and ')} (safe on Windows)`); } }
+    const env = this.startEnv(model, args, { ctx, card, helpers });
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
     this.placeKeyNow = placeKey({ exe, engine: `${this.beNo()}-${this.buildNo()}`, args, env: ownEnv(env) }); // Nov 24: what a saved chat must match
     this.placeOther = false; this.placeDirty = false;
@@ -1709,12 +1729,13 @@ export class LlamaCpp {
   async sendPerWord(model) {
     let want = perWordFor(this.lc, model);
     // Turbo (opt-in): 4 experts per word for a brain made of more, unless a count is saved for it
-    if (want === null && turboExperts(this.cfg) && this.current === model && this.active <= 1) {
+    const tc = this.turboCfg(model);
+    if (want === null && turboExperts(tc) && this.current === model && this.active <= 1) {
       this.ownPerWord ||= {};
       if (!(model in this.ownPerWord)) {
         try { const r = await fetch(`${this.url}/experts-per-word`, { signal: AbortSignal.timeout(15000) }); this.ownPerWord[model] = r.ok ? Number((await r.json())?.n_expert_used) || 0 : 0; } catch { this.ownPerWord[model] = 0; }
       }
-      want = turboPerWord(this.cfg, this.ownPerWord[model]);
+      want = turboPerWord(tc, this.ownPerWord[model]);
     }
     const key = `${model}|${JSON.stringify(want)}`;
     if (this.perWordSent === key || this.current !== model || this.active > 1) return;

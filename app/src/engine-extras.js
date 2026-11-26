@@ -212,17 +212,35 @@ export const TURBO_MEMS = ['smallest', 'small', 'progressive', 'progressive2', '
 // Patch 0044 (Brain Engine 25): 3-bit at 128K went from 54.2 to 56.1 tokens a second against 4-bit's 57.8 (-2.9%),
 // so Smaller stays the pick for speed and Smallest costs little for its room.
 export const turboMem = (cfg) => (TURBO_MEMS.includes(cfg?.turboMem) ? cfg.turboMem : 'small');
+// Nov 26 (the owner: "test all the turbo features to make sure they still add speed with the other tricks, and that
+// GUPPI can compensate and optimize those tricks too"): each Turbo trick by name. GUPPI calibrates this PC times every
+// trick that is switched on, with and without it, and one that doesn't add speed on this PC is left out here
+// (cfg.turboDrop, set only from this PC's GUPPI profile at load, never a setting). Turbo itself stays on.
+export const TURBO_TRICKS = ['mem', 'experts', 'standins', 'driveStandins', 'keepGuesses', 'sink'];
+export const TURBO_TRICK_NAMES = { mem: 'Turbo chat memory', experts: '4 experts per word', standins: 'stand-ins', driveStandins: 'never wait on the drive', keepGuesses: 'keep more guesses', sink: 'sharp start' };
+const turboHas = (cfg, k) => cfg?.turbo === true && !(Array.isArray(cfg?.turboDrop) && cfg.turboDrop.includes(k));
+// the tricks this config switches on (Turbo's chat memory and 4 experts per word come with Turbo itself)
+export function turboTricksOn(cfg) {
+  if (cfg?.turbo !== true) return [];
+  const on = { mem: true, experts: cfg.turboExperts !== false, standins: cfg.turboStandins === true, driveStandins: cfg.turboDriveStandins === true && cfg.turboStandins !== true, keepGuesses: cfg.turboKeepGuesses === true, sink: cfg.turboSink === true };
+  return TURBO_TRICKS.filter((k) => on[k]);
+}
+// cfg with these tricks left out (unknown names ignored); the same cfg when there is nothing to leave out
+export function withTurboDrop(cfg, drop = []) {
+  const d = [...new Set((Array.isArray(drop) ? drop : []).filter((k) => TURBO_TRICKS.includes(k)))];
+  return d.length && cfg?.turbo === true ? { ...cfg, turboDrop: d } : cfg;
+}
 export const TURBO_EXPERTS = 4;
-export const turboExperts = (cfg) => cfg?.turbo === true && cfg?.turboExperts !== false;
+export const turboExperts = (cfg) => turboHas(cfg, 'experts') && cfg?.turboExperts !== false;
 // Turbo: stand-ins (Brain Engine 0043, off unless switched on, and only with Turbo and the hot-experts cache): while
 // writing, up to 2 missed experts a layer are replaced by the best-scored expert already on the card instead of being
 // copied over. Faster, and the words change (lossy), so it's a show-off switch only.
-export const turboStandins = (cfg) => cfg?.turbo === true && cfg?.turboStandins === true;
+export const turboStandins = (cfg) => turboHas(cfg, 'standins') && cfg?.turboStandins === true;
 export const STANDIN_ENV = { LLAMA_MOE_STANDIN: 'rank', LLAMA_MOE_STANDIN_MAX: '2' };
 // Nov 22 (Brain Engine 32, patch 0053): Turbo: never wait on the drive. Only an expert that has dropped out of RAM is
 // stood in for, by the next best on the card or in RAM, and read back in the background. Changes the words, so it
 // sits behind Turbo; Turbo: stand-ins wins when both are on.
-export const turboDriveStandins = (cfg) => cfg?.turbo === true && cfg?.turboDriveStandins === true && !turboStandins(cfg);
+export const turboDriveStandins = (cfg) => turboHas(cfg, 'driveStandins') && cfg?.turboDriveStandins === true && cfg?.turboStandins !== true; // stand-ins switched on win, even where GUPPI left them out
 export const DRIVE_STANDIN_ENV = { LLAMA_MOE_STANDIN: 'drive' };
 // Turbo: keep more guesses (Brain Engine 0120, after llamAmpere's mb-MTP, MIT; off unless switched on, and only with
 // Turbo). A brain that already drafts (its own MTP head, the DSpark drafter or a draft brain) samples its guesses, and
@@ -231,7 +249,7 @@ export const DRIVE_STANDIN_ENV = { LLAMA_MOE_STANDIN: 'drive' };
 // tokens, so they change. Never at temperature 0, never for an end token, never while a grammar shapes the output
 // (tool calls). Copy guessing has no odds, so it's always checked exactly. Speed and drift are unproven in our lab.
 export const KEEP_GUESSES_FROM_BE = 46;
-export const turboKeepGuesses = (cfg) => cfg?.turbo === true && cfg?.turboKeepGuesses === true;
+export const turboKeepGuesses = (cfg) => turboHas(cfg, 'keepGuesses') && cfg?.turboKeepGuesses === true;
 export const KEEP_GUESSES_ENV = { LLAMA_SPEC_MB: '1' };
 const MODEL_GUESSERS = ['draft-mtp', 'draft-dspark', 'draft-simple', 'draft-eagle3', 'draft-dflash'];
 // the arguments it adds to a start: the sampling drafter, on Brain Engine 46 or newer, only where a model drafts
@@ -250,11 +268,11 @@ export const helpHasTiers = (text) => /\bLLAMA_KV_TIERS\b/.test(String(text ?? '
 // Progressive needs both; without them it falls back to Smaller too (the nearest in room).
 // Progressive 8+2 (Turbo only, Nov 20) needs the 2-bit type (patch 0046) and Progressive Memory.
 export function memTypeOf(cfg, model, { q3 = false, q2 = false, tiers = false } = {}) {
-  const t = cfg?.turbo === true ? turboMem(cfg) : cfg?.brainMemType?.[model];
+  const t = turboHas(cfg, 'mem') ? turboMem(cfg) : cfg?.brainMemType?.[model];
   if (t === 'smallest') return q3 ? 'smallest' : 'small';
   if (t === 'progressive' || t === 'progressive2' || t === 'progressive83') return q3 && tiers ? t : 'small';
   if (t === 'progressive84') return tiers ? t : 'small'; // 4-bit base: needs Progressive Memory, not the 3-bit type
-  if (t === 'progressive82') return cfg?.turbo !== true ? 'standard' : q2 && tiers ? t : 'small'; // 2-bit base: Turbo only
+  if (t === 'progressive82') return !turboHas(cfg, 'mem') ? 'standard' : q2 && tiers ? t : 'small'; // 2-bit base: Turbo only
   return t === 'sharp' || t === 'small' ? t : 'standard';
 }
 // The engine's own flags for this brain. Flags set by hand (llamacpp.args in config.json) are kept, but a memory
@@ -309,7 +327,7 @@ export const helpHasSink = (text) => /\bLLAMA_KV_SINK\b/.test(String(text ?? '')
 export const SINK_SPEC = 'f16:128';
 export const SINK_TYPES = ['small', 'smallest', 'progressive', 'progressive2', 'progressive83', 'progressive84', 'progressive82'];
 export function sinkEnv(cfg, model, ctx, { q3 = false, q2 = false, tiers = false, sink = false, handArgs } = {}) {
-  if (cfg?.turbo !== true || cfg?.turboSink !== true || !sink || !(Number(ctx) > 512)) return {};
+  if (!turboHas(cfg, 'sink') || cfg?.turboSink !== true || !sink || !(Number(ctx) > 512)) return {};
   if (!SINK_TYPES.includes(memTypeOf(cfg, model, { q3, q2, tiers }))) return {};
   if (Array.isArray(handArgs) && handArgs.some((a) => ['-np', '--parallel'].includes(a) && Number(handArgs[handArgs.indexOf(a) + 1]) > 1)) return {};
   return { LLAMA_KV_SINK: SINK_SPEC };

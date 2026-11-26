@@ -35,7 +35,7 @@ check('only true is kept when saved', mergeSettings({}, { turboSink: 'yes' }).tu
   const both = kvBytes(shape, 131072, args, 'q8_0:2048,sink:f16:128'), ring = kvBytes(shape, 131072, args, 'q8_0:2048');
   check('with a Progressive ring, both are counted', both - ring === 256 * 10240 * 2); }
 { const src = read('src/llamacpp.js');
-  check('the engine start sets it, right after Progressive\'s steps', src.indexOf('sinkEnv(this.cfg, model, ctx || this.lc.ctx') > src.indexOf('LLAMA_KV_TIERS) { env = { ...env, ...t }') &&
+  check('the engine start sets it, right after Progressive\'s steps', src.indexOf('sinkEnv(tc, model, ctx || this.lc.ctx') > src.indexOf('LLAMA_KV_TIERS) { env = { ...env, ...t }') &&
     src.indexOf('LLAMA_KV_TIERS) { env = { ...env, ...t }') > 0);
   check('the room counter and a resize in place see it (tiersFor)', /tiersFor\(model, ctx\) \{[\s\S]{0,300}sinkEnv\(/.test(src));
   check('the engine\'s --help is read for it', /sink = helpHasSink\(text\)/.test(src)); }

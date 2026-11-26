@@ -1,13 +1,14 @@
 // This PC's GUPPI profile (guppi-calibrate.js makes it; llamacpp.js reads it at each load). Kept apart from the
 // calibration job so the engine reads it without loading the Lab. <data>/conductor/pc-profile.json:
 //   { v: 1, at, pc: { os, cardGB, ramGB, sharedGraphics, be, gpu, cardMiB, idleC, ... }, brains: { [model]: { cap,
-//     keepBob, beatsBob, speeds, rows, why, ... } } }
+//     keepBob, beatsBob, speeds, rows, why, turbo: { on, drop, rows, why }, ... } } }
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { cleanSpeeds } from './conductor.js';
 import { cardGB } from './tuning.js';
 import { OS } from './platform.js';
+import { TURBO_TRICKS } from './engine-extras.js';
 
 const round1 = (n) => Math.round(n * 10) / 10;
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^﻿/, '')); } catch { return d; } };
@@ -35,7 +36,9 @@ export function profileFor(cfg, model, now, { profile = readProfile(cfg) } = {})
   if (!b) return null;
   const changed = pcChanged(profile.pc, now);
   if (changed) return { stale: changed };
-  return { cap: Number(b.cap) > 0 ? Number(b.cap) : 0, keepBob: b.keepBob === true, why: String(b.why || '') };
+  // Nov 26: Turbo tricks that didn't add speed on this PC (the Turbo pass), left out at load while Turbo is on
+  const turboDrop = Array.isArray(b.turbo?.drop) ? b.turbo.drop.filter((k) => TURBO_TRICKS.includes(k)) : [];
+  return { cap: Number(b.cap) > 0 ? Number(b.cap) : 0, keepBob: b.keepBob === true, why: String(b.why || ''), turboDrop };
 }
 // The speeds GUPPI measured go into his own speeds file (conductor.js cleanSpeeds), replacing what he had for those
 // steps, so his load step is picked from this PC's numbers from the first reply. Another build's file starts over.
