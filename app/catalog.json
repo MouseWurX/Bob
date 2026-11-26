@@ -3734,8 +3734,8 @@
       "license": "CC BY-NC 4.0",
       "commercial": false,
       "pick": "optional",
-      "trial": true,
       "thinks": true,
+      "raced": "Bob's own held-out jobs on a rented card (2026-11-26, Lamplight): 56 of 65 passed (inbox 23 of 28, office 14 of 14, repo 9 of 12, web 10 of 11), where stock Qwen3.6 35B-A3B passed 49, with 5 tool-call slips and nothing harmful; about 67 tok/s on an L40S. On a rented L4 it held 128K of chat memory at q8_0 in 12.7 GB of graphics memory and found a code word hidden 103K tokens in.",
       "community": {
         "by": "Underdog (Conway Research)",
         "base": "Qwen 3.8 27B",
