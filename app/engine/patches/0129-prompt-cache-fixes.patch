@@ -1,0 +1,109 @@
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index cf0a85699..29e006dd8 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -2344,7 +2344,8 @@ private:
+             }
+ 
+             if (ret != nullptr) {
+-                const float f_keep = (f_sim_best*task.tokens.size()) / ret->prompt.tokens.size();
++                // empty slot: nothing to keep, avoid 0/0 (upstream #28992)
++                const float f_keep = ret->prompt.tokens.size() > 0 ? (f_sim_best*task.tokens.size()) / ret->prompt.tokens.size() : 0.0f;
+ 
+                 if (task.id_slot == -1) {
+                     SLT_INF(*ret, "selected slot by LCP similarity, f_sim_best = %.3f (> %.3f thold), f_keep = %.3f\n",
+@@ -2377,6 +2378,10 @@ private:
+             // cache prompts only for the tasks that reuse them
+             update_cache = update_cache && !task.is_stateless();
+ 
++            // upstream #28992 (Lamplight 0129): the checks above only say whether the slot's chat is worth saving;
++            // the cache can still hold a better start for this task (another chat that shares the system prompt)
++            update_cache = update_cache || (prompt_cache && !task.is_stateless() && prompt_cache->has_better(ret->prompt, task.tokens));
++
+             if (update_cache) {
+                 SRV_TRC("%s", "updating prompt cache\n");
+ 
+diff --git a/tools/server/server-task.cpp b/tools/server/server-task.cpp
+index 1fb63420e..e88ef686f 100644
+--- a/tools/server/server-task.cpp
++++ b/tools/server/server-task.cpp
+@@ -1954,8 +1954,10 @@ server_prompt_cache_state * server_prompt_cache::alloc(const server_prompt & pro
+     return &states.back();
+ }
+ 
+-bool server_prompt_cache::load(server_prompt & prompt, const server_tokens & tokens_new, llama_context * ctx_tgt, llama_context * ctx_dft, int32_t id_slot) {
+-    int lcp_best = prompt.tokens.get_common_prefix(tokens_new);
++// upstream #28992 (Lamplight 0129): the search is its own step, so a slot picked by similarity can ask whether the
++// cache holds a better start for the new prompt
++std::list<server_prompt_cache_state>::iterator server_prompt_cache::find_better(const server_prompt & prompt, const server_tokens & tokens_new, int & lcp_best) {
++    lcp_best = prompt.tokens.get_common_prefix(tokens_new);
+ 
+     float f_keep_best = prompt.tokens.size() > 0 ? float(lcp_best) / prompt.tokens.size() : -1.0f; // empty slot: any cache entry wins
+     float f_sim_best  = float(lcp_best) / tokens_new.size();
+@@ -1987,11 +1989,26 @@ bool server_prompt_cache::load(server_prompt & prompt, const server_tokens & tok
+         }
+     }
+ 
++    return it_best;
++}
++
++bool server_prompt_cache::has_better(const server_prompt & prompt, const server_tokens & tokens_new) {
++    int lcp = 0;
++
++    return find_better(prompt, tokens_new, lcp) != states.end();
++}
++
++bool server_prompt_cache::load(server_prompt & prompt, const server_tokens & tokens_new, llama_context * ctx_tgt, llama_context * ctx_dft, int32_t id_slot) {
++    int lcp_best = 0;
++
++    const auto it_best = find_better(prompt, tokens_new, lcp_best);
++
+     if (it_best != states.end()) {
+-        SRV_TRC(" - found better prompt with f_keep = %.3f, f_sim = %.3f\n", f_keep_best, f_sim_best);
++        SRV_TRC(" - found better prompt, lcp = %d\n", lcp_best);
+ 
+         {
+-            auto & data = it_best->data.main;
++            // upstream #32828 (Lamplight 0129): keep the entry's data until every restore worked
++            const auto & data = it_best->data.main;
+ 
+             const size_t size = data.size();
+             const size_t n = llama_state_seq_set_data_ext(ctx_tgt, data.data(), size, id_slot, 0);
+@@ -2000,13 +2017,10 @@ bool server_prompt_cache::load(server_prompt & prompt, const server_tokens & tok
+ 
+                 return false;
+             }
+-
+-            data.clear();
+-            data.shrink_to_fit();
+         }
+ 
+         {
+-            auto & data = it_best->data.drft;
++            const auto & data = it_best->data.drft;
+ 
+             if (!data.empty()) {
+                 GGML_ASSERT(ctx_dft);
+@@ -2018,9 +2032,6 @@ bool server_prompt_cache::load(server_prompt & prompt, const server_tokens & tok
+ 
+                     return false;
+                 }
+-
+-                data.clear();
+-                data.shrink_to_fit();
+             }
+         }
+ 
+diff --git a/tools/server/server-task.h b/tools/server/server-task.h
+index 747aca6e4..5d04ecd40 100644
+--- a/tools/server/server-task.h
++++ b/tools/server/server-task.h
+@@ -785,6 +785,8 @@ struct server_prompt_cache {
+     server_prompt_cache_state * alloc(const server_prompt & prompt, size_t state_size_main, size_t state_size_drft);
+ 
+     bool load(server_prompt & prompt, const server_tokens & tokens_new, llama_context * ctx_tgt, llama_context * ctx_dft, int32_t id_slot);
++    std::list<server_prompt_cache_state>::iterator find_better(const server_prompt & prompt, const server_tokens & tokens_new, int & lcp_best);
++    bool has_better(const server_prompt & prompt, const server_tokens & tokens_new);
+ 
+     void update();
+ };

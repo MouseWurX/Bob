@@ -90,8 +90,18 @@ for arch in ARCHS:
             k = subprocess.run(k.args, capture_output=True, text=True, errors='replace', timeout=900)
         mean = [l for l in lines if l.startswith('Mean    KLD')]
         same = [l for l in lines if l.startswith('Same top')]
-        ok = bool(mean) and float(mean[0].split()[2]) == 0.0 and bool(same) and same[0].split()[3].startswith('100.000')
-        check(f'{arch} t{th}: same odds (KLD 0, same top token 100%)', ok, lines or (k.stderr or '')[-300:])
+        # a made-up brain can have exact ties for the top token, where "same top" is under 100% even for one tree against
+        # itself: so the new tree must match what the old tree gets against its own saved logits
+        def top_line(tree):
+            for _ in range(3):
+                r = subprocess.run([bin_(tree, 'llama-perplexity'), '-m', brain, '-f', TEXT, '-c', '256', '-b', '256', '-t', th,
+                                    '--kl-divergence-base', kb, '--kl-divergence'], capture_output=True, text=True, errors='replace', timeout=900)
+                t = [l for l in (r.stdout + r.stderr).splitlines() if l.startswith('Same top')]
+                if t: return t[0]
+            return None
+        self_top = top_line(OLD)
+        ok = bool(mean) and abs(float(mean[0].split()[2])) == 0.0 and bool(same) and self_top is not None and same[0] == self_top
+        check(f'{arch} t{th}: same odds (KLD 0, same top token as the old tree against itself)', ok, (lines, self_top) if lines else (k.stderr or '')[-300:])
         wo, wn = outs['old'][1].strip(), outs['new'][1].strip()
         for _ in range(2):  # stdout can lose its tail at exit (seen on both trees): run both again before calling it different
             if wo == wn: break
