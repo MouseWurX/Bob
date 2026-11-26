@@ -32,6 +32,13 @@ check('a tensor must line up with its HF twin before it is touched', /cos < a\.m
 check('the idea is credited and the rules are stated', /llamAmpere/.test(heal) && /JakeATX/.test(heal) && /never the\nheld-out job sets, and never text written by Claude/.test(heal) && /adds no personality/.test(heal));
 check('the report says what to run next with stock llama.cpp, and that drift alone never decides', /--kl-divergence-base base\.kld --kl-divergence/.test(heal) && /real-jobs run; drift numbers alone never decide/.test(heal));
 
+// ---- gguf_layout.py: merged and reordered tensors (Qwen3.5 gated-delta layers) ----
+const lay = read('model-lab/forge/pod/gguf_layout.py');
+check('the layout comes from llama.cpp\'s own converter, fed values that are their own addresses', /m\.modify_tensors\(ids, name, bid\)/.test(lay) && /float\(number\[name\] \* SHIFT\)/.test(lay) && /dry_run=True/.test(lay));
+check('a tensor the converter changes by arithmetic is left out, not guessed', /flat == np\.round\(flat\)/.test(lay) && /isfinite/.test(lay));
+check('heal_scales follows the layout when given a llama.cpp checkout, and builds the HF tensors from the file\'s values', /if a\.llama_cpp:/.test(heal) && /trace_layout\(a\.llama_cpp, a\.teacher/.test(heal) && /flat\.index_put\(\(hp,\), w\(s_\)\.reshape\(-1\)\[gp\]\)/.test(heal));
+check('an HF tensor only partly built from the file is listed in the report', /'partly_from_teacher': partial/.test(heal));
+
 // ---- mixed_bits.py ----
 check('mixed_bits writes anchored names, so blk.1 never catches blk.10', /lines\.append\(f"\^\{re\.escape\(t\['name'\]\)\}\$=\{typ\}"\)/.test(mix));
 check('mixed_bits upgrades the best error drop per byte inside the budget', /gain = \(cur\['err'\] - nxt\['err'\]\) \/ extra/.test(mix) && /if extra > room: continue/.test(mix));

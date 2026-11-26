@@ -35,3 +35,24 @@ Cloud check of `model-lab/forge/pod/heal_scales.py` and `mixed_bits.py`. They're
 - **Together, no extra gain here:** after healing, the mix and Q2_K landed in the same place.
 - **Not yet tested:** Qwen3.5 (gated-delta layers) and fused MoE experts. Tensors whose layout the converter changes are counted as "not lined up" and left alone.
 - **Next:** a real small brain (Qwen3.5-2B at IQ2) on the laptop or a rental. Then a check that Bill also fails at Q4, before healing Bill.
+
+## Qwen3.5 layout (26 Nov 2026)
+
+Qwen3.5's converter merges and reorders the gated-delta tensors on the way to GGUF: `in_proj_qkv` with `in_proj_z` (and the V heads reordered), `in_proj_b` with `in_proj_a`, and `out_proj`'s columns. Matching by name missed all of them, so the student kept them at full precision. That made its numbers look better than the real file.
+
+**Fix:**
+- `gguf_layout.py` runs llama.cpp's own converter (`--llama-cpp <checkout>`) on stand-in tensors whose values are their own addresses, then reads back where every value landed.
+- Any tensor the converter changes by arithmetic is left out. The norms already line up by value.
+- Now every squeezed tensor lines up: 26 healable, 0 left out (before the fix, 17 lined up).
+
+**Stand-in brain:** Qwen3.5 text layout, 3 gated-delta layers and 1 full-attention layer, 256 wide, heads of 128. It was trained 8 minutes on Bob's docs. Each run takes 200 steps of 4 x 256 tokens, on the processor.
+
+| File | KLD | Same top token |
+|---|---:|---:|
+| IQ2_XXS | 0.0797 | 79.5% |
+| IQ2_XXS, healed by name only (old) | 0.0570 | 83.9% |
+| IQ2_XXS, healed with the converter's layout | **0.0533** | **84.8%** |
+| Q2_K | 0.0493 | 85.5% |
+| Q2_K, healed with the converter's layout | **0.0299** | **89.0%** |
+
+Every number above is stock `llama-perplexity --kl-divergence` on the written file, against the f32 file, over 150 chunks of 256. **On a real Qwen3.5 brain: unproven in our lab, as we have yet to test.**

@@ -24,12 +24,18 @@ Rules (Bob project): calibration text must be public, neutral text (for example 
 held-out job sets, and never text written by Claude. This adds no personality and no new behaviour: the only target is
 the brain's own full-precision self. Measure after with stock llama-perplexity --kl-divergence (commands in the report).
 
-Limits (v1): tensors whose GGUF layout differs from the HF layout (merged, split or reordered by the converter, for
-example some gated-delta and fused-expert tensors) cannot be lined up; they stay frozen at their dequantized values when
-the shapes match, or at the HF values when they do not, and the report counts them. IQ1_M, MXFP4, NVFP4 and TQ types
+Merged and reordered tensors: with --llama-cpp <checkout> (the one whose converter made the GGUF), every GGUF tensor
+is traced back to its HF values by running that converter on stand-in values (gguf_layout.py), so tensors the converter
+merges, splits or reorders (Qwen3.5's gated-delta layers) heal too. Without it, only tensors with the same name and
+order line up; the rest stay at the HF values in the student, and the report lists them. IQ1_M, MXFP4, NVFP4 and TQ types
 are not healable (no plain per-block scale) and stay frozen.
 """
 import argparse, json, math, os, random, shutil, sys, time
+
+# With --llama-cpp, read and trace the GGUF with that checkout's own gguf-py (newer brains need its newer tensor names).
+_lc = next((sys.argv[i + 1] for i, x in enumerate(sys.argv[:-1]) if x == '--llama-cpp'), None) or \
+      next((x.split('=', 1)[1] for x in sys.argv if x.startswith('--llama-cpp=')), None)
+if _lc: sys.path.insert(0, os.path.join(os.path.abspath(_lc), 'gguf-py'))
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -122,6 +128,15 @@ class Healed:
         return sum(t.numel() for t in self.t)
 
 
+class Frozen:
+    """A squeezed tensor that can't learn (no plain block scale, or its split check failed): its file values, fixed."""
+    def __init__(self, gname, value):
+        self.gname, self.value = gname, value
+
+    def weight(self):
+        return self.value
+
+
 class Norm:
     """A norm weight that learns a per-channel factor. mode 'same': file holds the HF value; 'plus1': file holds 1 + HF."""
     def __init__(self, name, gname, base, mode, dev, dtype):
@@ -188,6 +203,9 @@ def main():
     ap.add_argument('--no-norms', action='store_true'); ap.add_argument('--heal-embd', action='store_true')
     ap.add_argument('--min-cos', type=float, default=0.6, help='a file tensor must look like its HF tensor this much to line up')
     ap.add_argument('--seed', type=int, default=1); ap.add_argument('--report', default='')
+    ap.add_argument('--llama-cpp', default='', help='llama.cpp checkout whose converter made the GGUF: lines up merged and '
+                    'reordered tensors (Qwen3.5 gated-delta layers) by running its own conversion on stand-in values')
+    ap.add_argument('--keep-mtp', action='store_true', help='with --llama-cpp: the GGUF kept the MTP layers')
     a = ap.parse_args()
 
     if any(w in os.path.basename(a.calib).lower() for w in ('held-out', 'heldout', 'held_out')):
@@ -210,10 +228,51 @@ def main():
     gt = {t.name: t for t in r.tensors}
 
     healed, frozen, norms, skipped = [], {}, [], []
+    params = dict(model.named_parameters())
+    sources = {}     # HF param -> 'whole' source (same order) or [(source, gguf_pos, hf_pos)]: how the student builds it
+    traced = set()   # GGUF tensors already handled through the converter's layout
+    if a.llama_cpp:
+        from gguf_layout import trace_layout
+        layout = trace_layout(a.llama_cpp, a.teacher, no_mtp=not a.keep_mtp)
+        norm = lambda n: n.replace('language_model.', '').removeprefix('model.')
+        by_norm = {norm(n): n for n in params}
+        for gname, e in layout.items():
+            t = gt.get(gname)
+            if t is None or t.tensor_type in FLOAT_TYPES: continue
+            shape = logical_shape(t)
+            if shape != tuple(e['shape']):
+                skipped.append({'name': gname, 'why': f'traced shape {tuple(e["shape"])} vs file {shape}'}); continue
+            parts = [(e['same'], None, None)] if 'same' in e else e['parts']
+            if any(norm(hn) not in by_norm for hn, _, _ in parts):
+                skipped.append({'name': gname, 'why': 'its HF tensor is not in the loaded model'}); continue
+            hf_in_g = np.zeros(int(np.prod(shape)), np.float32)
+            for hn, gpos, hpos in parts:
+                hv = params[by_norm[norm(hn)]].detach().float().cpu().numpy().reshape(-1)
+                if gpos is None: hf_in_g[:] = hv
+                else: hf_in_g[gpos] = hv[hpos]
+            healable = t.tensor_type in SCALE_OFFSETS and (a.heal_embd or 'token_embd' not in gname)
+            if healable: terms, sc, err, full = split_terms(t)
+            else: full = dequantize(np.asarray(t.data), t.tensor_type).astype(np.float32); err = 0.0
+            cos = cosine(full, hf_in_g)
+            if cos < a.min_cos:
+                skipped.append({'name': gname, 'why': f'does not line up with HF through the converter (cosine {cos:.3f})'}); continue
+            if healable and err < 1e-3:
+                src = Healed(gname, gname, t.tensor_type, shape, terms, sc, dev, dtype); healed.append(src)
+            else:
+                if healable: skipped.append({'name': gname, 'why': f'scale split check failed (error {err:.2e}); frozen'})
+                src = Frozen(gname, torch.from_numpy(full.reshape(shape)).to(dev, dtype)); frozen[gname] = src
+            for hn, gpos, hpos in parts:
+                pn = by_norm[norm(hn)]
+                if gpos is None: sources[pn] = src
+                else:
+                    lst = sources.setdefault(pn, [])
+                    lst.append((src, torch.from_numpy(gpos).to(dev), torch.from_numpy(hpos).to(dev)))
+            traced.add(gname)
     for name, p in model.named_parameters():
+        if name in sources: continue
         gname = tmap.get_name(name, try_suffixes=('.weight', '.bias'))
         t = gt.get(gname) if gname else None
-        if t is None: continue
+        if t is None or gname in traced: continue
         shape = logical_shape(t)
         if t.tensor_type in FLOAT_TYPES:
             if a.no_norms or len(shape) != 1 or 'norm' not in gname or shape != tuple(p.shape): continue
@@ -235,13 +294,14 @@ def main():
         if cos < a.min_cos:
             skipped.append({'name': gname, 'why': f'does not line up with HF (cosine {cos:.3f}); kept HF values'}); continue
         if healable and err < 1e-3:
-            healed.append(Healed(name, gname, t.tensor_type, shape, terms, scales, dev, dtype))
+            src = Healed(name, gname, t.tensor_type, shape, terms, scales, dev, dtype); healed.append(src)
         else:
             if healable: skipped.append({'name': gname, 'why': f'scale split check failed (error {err:.2e}); frozen'})
-            frozen[name] = torch.from_numpy(full.reshape(shape)).to(dev, dtype)
+            src = Frozen(gname, torch.from_numpy(full.reshape(shape)).to(dev, dtype)); frozen[gname] = src
+        sources[name] = src
     n_scale = sum(h.n_values() for h in healed); n_norm = sum(n.n_values() for n in norms)
     print(f'healable tensors {len(healed)} ({n_scale:,} scales), norms {len(norms)} ({n_norm:,}), '
-          f'frozen squeezed {len(frozen)}, not lined up {len(skipped)}', flush=True)
+          f'frozen squeezed {len(frozen)}, not lined up {len(skipped)}, traced through the converter {len(traced)}', flush=True)
     if not healed: sys.exit('nothing to heal: no tensor lined up with the teacher')
 
     calib = chunks_from_text(tok, a.calib, a.ctx, a.chunks + (0 if a.eval_text else a.eval_chunks))
@@ -254,18 +314,29 @@ def main():
     tgt_train = teacher_targets(model, calib, a.topk, dev, a.batch)
     tgt_eval = teacher_targets(model, evalc, a.topk, dev, a.batch)
 
+    # An HF tensor only partly built from the file keeps the teacher's values for the rest (counted in the report).
+    partial = []
+    for pn, src in sources.items():
+        if isinstance(src, list) and sum(int(hp.numel()) for _, _, hp in src) != params[pn].numel(): partial.append(pn)
+    shapes = {pn: tuple(params[pn].shape) for pn in sources}
     # The teacher's own copies of the replaced tensors are no longer needed.
-    replaced = {h.name for h in healed} | set(frozen) | {n.name for n in norms}
+    replaced = (set(sources) - set(partial)) | {n.name for n in norms}
+    keep = {pn: params[pn].detach().reshape(-1) for pn in partial}
     for name, p in model.named_parameters():
         if name in replaced: p.data = torch.empty(0, device=dev, dtype=p.dtype)
 
     from torch.func import functional_call
 
     def student(x):
-        params = dict(frozen)
-        for h in healed: params[h.name] = h.weight()
-        for n in norms: params[n.name] = n.weight()
-        return functional_call(model, params, (), {'input_ids': x}).logits
+        built, cache = {}, {}
+        w = lambda s: cache.setdefault(id(s), s.weight())
+        for pn, src in sources.items():
+            if not isinstance(src, list): built[pn] = w(src).reshape(shapes[pn]); continue
+            flat = keep[pn].clone() if pn in keep else torch.zeros(int(np.prod(shapes[pn])), device=dev, dtype=dtype)
+            for s_, gp, hp in src: flat = flat.index_put((hp,), w(s_).reshape(-1)[gp])
+            built[pn] = flat.reshape(shapes[pn])
+        for n in norms: built[n.name] = n.weight()
+        return functional_call(model, built, (), {'input_ids': x}).logits
 
     @torch.no_grad()
     def evaluate():
@@ -317,7 +388,8 @@ def main():
 
     rep = {'when': time.strftime('%Y-%m-%d %H:%M'), 'args': vars(a), 'steps': step, 'seconds': round(time.time() - t_start),
            'healed_tensors': len(healed), 'scales_tuned': n_scale, 'norms_tuned': len(norms), 'norm_values': n_norm,
-           'frozen_squeezed_tensors': len(frozen), 'not_lined_up': skipped, 'before': before, 'after': after,
+           'frozen_squeezed_tensors': len(frozen), 'not_lined_up': skipped, 'partly_from_teacher': partial,
+           'traced_through_converter': len(traced), 'before': before, 'after': after,
            'written': a.out if kept else None,
            'next': ['llama-perplexity -m <full-precision.gguf> -f <eval text> --kl-divergence-base base.kld',
                     f'llama-perplexity -m {a.gguf} -f <eval text> --kl-divergence-base base.kld --kl-divergence',
