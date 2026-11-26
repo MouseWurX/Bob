@@ -55,7 +55,7 @@ Three lessons from this work shape our design.
 
 The subject is stock Qwen3.6 35B A3B as published (Unsloth's UD-Q4_K_XL file), with nothing inherited from our own cuts or heals. It has 40 layers of 256 experts, 8 of which the router picks per token, plus one shared expert per layer.
 
-It is served by Bob's Brain Engine at build fcdf3955 on llama.cpp b12282, with two of its patches ([chapter 3](ch03-building-the-instruments.md)):
+It is served by Bob's Lamplight at build fcdf3955 on llama.cpp b12282, with two of its patches ([chapter 3](ch03-building-the-instruments.md)):
 
 - **Expert trace (patch 0002)** reports, per request, how often each expert was picked in each layer. It is given only to a request that ran alone, so traces are read one at a time.
 - **Dials (patch 0003)** multiply what one expert adds to the stream, after routing. A dial of 1 is the model as built and 0 is silent. A dial is the same as scaling that expert's output weights, so a winning dial can be written into the weights with Bob's surgery tool (`forge/pod/surgery.py`) and behave the same.
@@ -137,7 +137,7 @@ The sweep itself uses `--fail wrong`: experts are found on wrong answers against
 | Measure | Value |
 | --- | --- |
 | Code | `loop-sweep.mjs` at c2c5f72, plan `loop-sweep-qwen35` |
-| Card | One A40 (48 GB), Brain Engine fcdf3955 on b12282 |
+| Card | One A40 (48 GB), Lamplight fcdf3955 on b12282 |
 | Find set | 200 GSM8K train problems, thinking on, 8,192-token limit, 6 at a time |
 | Looped | 3 of 200 (1.5%) |
 | Finished | 197 of 200 |
@@ -157,7 +157,7 @@ Three looped answers is below rule 1's floor of 8, so the sweep stopped before t
 | Measure | Value |
 | --- | --- |
 | Code | `loop-sweep.mjs` at bccda8c, plan `loop-sweep-qwen35-math` (150 find, 60 check, 10 trials) |
-| Card | One A40 (48 GB), Brain Engine fcdf3955 on b12282, 4 slots, 16,384-token limit |
+| Card | One A40 (48 GB), Lamplight fcdf3955 on b12282, 4 slots, 16,384-token limit |
 | Find set, as built | 150 problems: **63.3% looped, 36.7% right**, 13,540 tokens per answer, 161 minutes |
 | Check set, as built | 60 problems: 63.3% looped, 36.7% right, 13,207 tokens per answer, 62 minutes |
 | Trace | 150 answers re-read, `lift.json` written |
