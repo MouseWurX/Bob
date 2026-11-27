@@ -38,7 +38,7 @@ export const TOOL_KINDS = {
   defender_scan: { risk: 'change', min: 120 }, forget_topic: { risk: 'change' }, remember: { risk: 'change' },
   reminders: { risk: 'change' }, notice_board: { risk: 'change' }, take_note: { risk: 'change' },
   spending_sheet: { risk: 'change' }, edit_my_message: { risk: 'change' }, pick_session: { risk: 'change' },
-  schedule_job: { risk: 'change', half: true }, change_schedule: { risk: 'change', half: true }, make_tool: { risk: 'change' },
+  schedule_job: { risk: 'change', half: true }, routines: { risk: 'change', half: true }, change_schedule: { risk: 'change', half: true }, make_tool: { risk: 'change' },
   my_tools: { risk: 'change' }, use_my_tool: { risk: 'change', own: true }, use_pack_tool: { risk: 'change', own: true },
   run_command: { risk: 'change', half: true, own: true }, run_recipe: { risk: 'change', half: true, own: true },
   open_app: { risk: 'change', own: true }, app_act: { risk: 'change', half: true, own: true },

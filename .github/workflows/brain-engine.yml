@@ -385,6 +385,12 @@ jobs:
             echo "$(basename "$f"): glibc $v"
             if [ "$(printf '%s\n2.35\n' "$v" | sort -V | tail -1)" != "2.35" ]; then echo "::error::$(basename "$f") needs glibc $v (more than 2.35)"; bad=1; fi
           done
+          # Nov 27: every file finds its neighbours in its own folder ($ORIGIN), never in the build machine's folders
+          for f in "$out"/*; do
+            [ -f "$f" ] && [ ! -L "$f" ] || continue
+            rp=$(objdump -p "$f" 2>/dev/null | awk '/RUNPATH|RPATH/ {print $2}')
+            [ -z "$rp" ] || [ "$rp" = '$ORIGIN' ] || { echo "::error::$(basename "$f") looks for its libraries in $rp, not \$ORIGIN"; bad=1; }
+          done
           [ "$bad" = 0 ]
           ls -la "$out"
           tar czf "$out.tar.gz" "$out"

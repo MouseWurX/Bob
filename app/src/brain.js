@@ -1,5 +1,6 @@
 // Bob's brain: runs a conversation turn, picks the right model, announces swaps,
 // calls tools, asks the user for approval when needed, and keeps a logbook.
+import { pastedText } from './loop-help.js'; // Nov 24: a long paste's kind comes from its ends
 import { kindOfAddress } from './links.js'; // 1.5.214: SCUT's Auto cap (a cable or Wi-Fi)
 import fs from 'node:fs';
 import path from 'node:path';
@@ -24,6 +25,7 @@ import { securityTools } from './hands-security.js';
 import { selfToolsTools } from './selftools.js';
 import { Made, showMadeTool } from './made.js';
 import { scheduleTools } from './hands-schedules.js';
+import { routineTools } from './hands-routines.js'; // Routines (off by default): run the routines you built in the editor
 import { HANDS, handsSettings } from './hands-settings.js';
 import { useToolsTool } from './toolbox.js';
 import { ErrorTally } from './retry.js'; // reliability items 193-207, always on
@@ -86,11 +88,18 @@ export { SIDE_LANE, sideOk, APU_MIN_CTX, APU_CARVE_MARGIN_GB, APU_NO_ROOM, apuRo
 export { APU_HOLDBACK_DEFAULT_GB, apuHoldbackGB } from './brain-lanes.js';
 export { NOW_IN_NOTE, CUT_NOTE, fitContext, askWords, cutKeeping, MAX_TRACE, fileBefore, traceStep, TOO_LONG, staleHandErrors, claimsPcAction, claimsObservation, OBSERVE_CORRECTION, realState, meanwhileNear, engineLabel, linkKey, CLAIM_CORRECTION, realPcPrompt, ALT_ROUTE_NUDGE, ALT_ROUTE_DONE, askedCount, quickHandBack, EMPTY_NOTE, COMPACT_KEEP, HISTORY_PER, HISTORY_MAX, historyKeep, NO_ANSWER_NOTE, UNCAUGHT_QUIET_MS, NO_ANSWER_PARKED, editPrompt, loadMode, loadLine, thinkStream } from './brain-words.js';
 
-export const MAX_STEPS = 8;
+// Nov 23 (the owner's rule: no step, time, thinking or reply caps; then "be a bit more generous, but be loud"): no
+// everyday step count ends a reply (it was 8 at Low effort). What stops a job going nowhere is lack of progress
+// (loop-guard.js: nothing new, every call failing, going round in circles, refused reads in a row) and Stop.
+// Same as #275 (Nov 21, "NO STEP LIMITS"): chats from other people (Discord, Telegram, another Bob) keep GUEST_STEPS,
+// so a stranger can't keep your computer busy. cfg.stepCap is for tests only (an endless scripted brain); the app never sets it.
+export const MAX_STEPS = Infinity;
+export const GUEST_STEPS = 30;
 export const QUEUE_SAVE_MS = 1000; // item 230
 // Nov 11 (item 5): bigger jobs get more steps. Low effort (the usual chat) keeps 8; Medium, High and Extreme get more
 // room before the last step (no tools, answer with what he has). The "where we are" note keeps a long job on track.
-export const STEPS_BY_EFFORT = { low: 8, medium: 12, high: 16, extreme: 24 };
+// Nov 23: effort no longer sets a step count (it was 8, 12, 16 and 24).
+export const STEPS_BY_EFFORT = { low: Infinity, medium: Infinity, high: Infinity, extreme: Infinity };
 export const loopSteps = (effort) => STEPS_BY_EFFORT[cleanEffort(effort)] || MAX_STEPS;
 // #57 stopgap (two-Bob trial, Test B); Bob's own #57 fix replaces these.
 export const MAX_CALLS_PER_REPLY = 6;
@@ -209,7 +218,7 @@ export class Brain {
     this.watchTimer.unref?.();
     this.housekeeper = new Housekeeper(cfg, this);
     this.tools.forget_topic = forgetTopicTool(this);
-    Object.assign(this.tools, handsTools(this), scheduleTools(this), officeTools(this), securityTools(this), selfToolsTools(this), howtoTools(this)); // Hands: off until the user turns them on (see hands-settings.js)
+    Object.assign(this.tools, handsTools(this), scheduleTools(this), routineTools(this), officeTools(this), securityTools(this), selfToolsTools(this), howtoTools(this)); // Hands: off until the user turns them on (see hands-settings.js)
     this.tools.use_tools = useToolsTool(this);
     this.tools.show_plan = showPlanTool(this); // 1.5.78: the plan card before big jobs (plan.js), only with its setting on
     this.tools.ask_together = askTogetherTool(this); // 1.5.42: every OK a job needs on one card (together.js) // the toolbox (toolbox.js): groups added only when a job needs them
@@ -374,8 +383,11 @@ export class Brain {
   get plainLoop() { return this.cfg?.toolHelp === false || this.cfg?.loopHelpOff === true; }
 
   // A rough label so the list says what each job is about.
+  // Nov 24 (Go check): a long paste is guessed from its ends only. A 47K-character article that mentioned "video"
+  // was queued as a video job. The ask is at the start or the end; the middle is the pasted material.
   static guessKind(text, hasPics = false) {
-    const t = text.toLowerCase();
+    const raw = String(text ?? '');
+    const t = (pastedText(raw) ? `${raw.slice(0, 300)}\n${raw.slice(-300)}` : raw).toLowerCase();
     // A question about a picture the user attached is a chat, not a painting job.
     if ((hasPics || /\b(this|the|that|attached|my) (picture|image|photo|pic|screenshot)\b/.test(t)) && (/\?\s*$/.test(t) || /^(what|who|where|which|how|why|is|are|can|does|do|describe|tell me)\b/.test(t))) return 'chat';
     if (/\b(video|clip|film|animate)\b/.test(t)) return 'video';

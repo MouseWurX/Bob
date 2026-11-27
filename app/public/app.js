@@ -582,7 +582,9 @@ const bobMenu = createBobMenu({
   getSession: () => (lamp() && sessionSel.options.length ? { value: sessionSel.value, options: [...sessionSel.options].map((o) => ({ value: o.value, label: o.textContent })) } : null),
   pickSession: (v) => { sessionSel.value = v; sessionSel.dispatchEvent(new Event('change', { bubbles: true })); },
   getUsers: () => usersSwitch.state(), // 👥 Users: Switch user, under Get models
-  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'catalogue'), users: () => usersSwitch.open(), signout: () => usersSwitch.signOut() },
+  // 🔁 Routines (Nov 23): a row when the Routines Hand is on, on the PC itself (the editor only works there)
+  getRoutines: async () => ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname) && (await (await fetch('/api/routines?brief=1')).json()).on === true,
+  doors: { brains: () => cellar.open('settings', null, { jump: 'adv-brains' }), style: () => cellar.open('shop', 'style'), models: () => cellar.open('shop', 'catalogue'), users: () => usersSwitch.open(), signout: () => usersSwitch.signOut(), routines: () => { const w = window.open('/routines.html', 'bob-routines'); try { w?.focus(); } catch {} } },
   getStatus: async () => (await fetch('/api/status')).json(),
   getNames: async () => Object.fromEntries((((await (await fetch('/api/roles')).json()).options || {}).llm || []).map((o) => [o.value, o.label])),
   saidNow: () => statusEl.title || statusEl.textContent

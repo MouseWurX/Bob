@@ -1,6 +1,6 @@
 {
   "name": "bob",
-  "version": "1.5.252",
+  "version": "1.5.255",
   "description": "Bob, a local AI who lives on your PC: chat, pictures, video, voice and more, all on your own hardware.",
   "type": "module",
   "private": true,
@@ -20,6 +20,9 @@
     "dist:linux": "electron-builder --linux AppImage --publish never"
   },
   "testSuites": [
+    "test/run-install-guides-test.js",
+    "test/run-hf-sign-in-test.js",
+    "test/run-engine-min-test.js",
     "test/run-brain-choices-test.js",
     "test/run-quant-steps-test.js",
     "test/run-syntax-test.js",
@@ -240,6 +243,7 @@
     "test/run-code-map-test.js",
     "test/run-doc-view-test.js",
     "test/run-engine-blocked-test.js",
+    "test/run-engine-libdir-test.js",
     "test/run-meanwhile-test.js",
     "test/run-mid-job-test.js",
     "test/run-stop-words-test.js",
@@ -272,6 +276,7 @@
     "test/run-lock-reset-test.js",
     "test/run-iphone-test.js",
     "test/run-toolpacks-test.js",
+    "test/run-routines-test.js",
     "test/run-backup-test.js",
     "test/run-parts3d-test.js",
     "test/run-model3d-test.js",
@@ -329,19 +334,20 @@
     "test/run-experts-per-word-test.js",
     "test/run-mind-only-test.js",
     "test/run-welcome-steps-test.js",
-    "test/run-lesson-kit-test.js"
+    "test/run-lesson-kit-test.js",
+    "test/run-model-list-test.js"
   ],
   "bob": {
     "release": "1.5",
-    "patch": 252,
+    "patch": 255,
     "branch": "",
-    "build": 304,
+    "build": 307,
     "bundledLlamaTag": "b12359",
-    "brainEngineVersion": 8,
+    "brainEngineVersion": 46,
     "brainEngine": {
-      "tag": "brain-engine-8b12359",
-      "win-x64": "sha256:712f87908fb8b3fa01cb5051d992c9e4e02901a1cbd973be76f6150e75f042ac",
-      "linux-x64": "sha256:fccf9181f1b3e7c981819150b333821627d00ede406d8af32bfe7ec89d928cbd"
+      "tag": "brain-engine-46b12359",
+      "win-x64": "sha256:894723d807ba552886bcb294bb6c0a7fba61f396b81f71ee3f6bbe83b0e6652f",
+      "linux-x64": "sha256:ea9d7027343122ce66dba80fabc052ddad16df3a53822bf7456bd5223a9cf2ca"
     },
     "electronSha256": "5099bdc11c6a78edff35851491c1f8228a1c2e844e1b376eee219402c42c6011",
     "layout": "From 0.9.32 Bob app\\Bob.exe is Electron's official electron.exe (devDependencies.electron), only renamed, and Bob's files sit in Bob app\\resources\\app. Updates never build an exe. electronSha256 (optional) pins the official zip's checksum; otherwise it is checked against Electron's SHASUMS256.txt. electron-builder (dist scripts) is only for making a portable exe by hand.",
