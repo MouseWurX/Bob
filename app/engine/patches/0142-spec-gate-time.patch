@@ -1,0 +1,113 @@
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index cf0a856..58b0490 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -615,6 +615,53 @@ struct server_slot {
+     int32_t spec_gate_skip    = 0;     // words left to write without drafts
+     int32_t spec_gate_backoff = 8;
+     int32_t spec_gate_steps   = 0;     // drafts checked since the last pause
++
++    // Brain Engine 0142 (LLAMA_SPEC_GATE_TIME=1): drafting goes on only while it writes faster. The time and the words
++    // of each round are kept apart for rounds that asked the drafter and rounds that didn't (words per millisecond,
++    // averaged). While drafting is behind, the slot writes without drafts (8 words, doubling up to 256), then asks
++    // again; while it is ahead, one round in 32 goes without, so both figures follow the reply. Idea from PolyStrata (MIT).
++    int64_t spt_t_last       = -1;    // when the last round started (us), -1 before the reply's first
++    int32_t spt_n_last       = 0;     // words written when it started
++    bool    spt_last_drafted = false; // whether that round asked the drafter
++    double  spt_rate[2]      = { -1.0, -1.0 }; // words per ms: [0] rounds without drafts, [1] rounds with
++    int32_t spt_n[2]         = { 0, 0 };
++    int32_t spt_rounds       = 0;
++
++    // Brain Engine 0142: called once a round, before the drafter is asked; true when it paused drafting
++    bool spec_time_step() {
++        const int64_t now = ggml_time_us();
++        if (spt_t_last >= 0) {
++            const double ms    = (now - spt_t_last)/1000.0;
++            const int    words = stats.n_gen - spt_n_last;
++            if (ms > 0.0 && words > 0) {
++                const int k = spt_last_drafted ? 1 : 0;
++                const double r = words/ms;
++                spt_rate[k] = spt_rate[k] < 0.0 ? r : 0.8*spt_rate[k] + 0.2*r;
++                spt_n[k]++;
++            }
++        }
++        spt_t_last = now;
++        spt_n_last = stats.n_gen;
++        spt_rounds++;
++        if (spec_gate_skip > 0 || spt_n[1] < 2) {
++            return false; // writing without drafts already, or drafting not measured yet
++        }
++        if (spt_n[0] < 2) {
++            spec_gate_skip = 1; // a round without drafts, to have something to compare with
++            return false;
++        }
++        if (spt_rate[1] < spt_rate[0]) {
++            spec_gate_skip    = spec_gate_backoff;
++            spec_gate_backoff = std::min(256, spec_gate_backoff*2);
++            spt_n[1]          = 0; // the next try decides on its own rounds
++            return true;
++        }
++        spec_gate_backoff = 8;
++        if (spt_rounds % 32 == 0) {
++            spec_gate_skip = 1;
++        }
++        return false;
++    }
+     std::mt19937 spec_synth_rng;
+ 
+     // TODO: move members that belong to the task (such as `generated`, `has_new_line`) to task_results_state
+@@ -761,6 +808,11 @@ struct server_slot {
+         spec_gate_skip    = 0;
+         spec_gate_backoff = 8;
+         spec_gate_steps   = 0;
++        spt_t_last        = -1; // Brain Engine 0142
++        spt_last_drafted  = false;
++        spt_rate[0] = spt_rate[1] = -1.0;
++        spt_n[0]    = spt_n[1]    = 0;
++        spt_rounds        = 0;
+ 
+         last_nl_pos    = 0;
+         generated      = {};
+@@ -1382,6 +1434,8 @@ public:
+     // Brain Engine 0034: LLAMA_SPEC_GATE, the share of drafted words that must be kept for drafting to go on (0 = off)
+     float  spec_gate_rate   = 0.0f;
+     size_t spec_gate_pauses = 0;
++    bool   spec_gate_time   = false; // Brain Engine 0142: LLAMA_SPEC_GATE_TIME=1
++    size_t spec_time_pauses = 0;
+ 
+     mtmd_context * mctx = nullptr;
+     mtmd_helper_cap mtmd_cap = {};
+@@ -1671,6 +1725,11 @@ private:
+     // this may also be called to resume from sleeping state
+     bool load_model(common_params & params) {
+         spec_gate_rate = 0.0f; // Brain Engine 0017: a context change may have turned the key off
++        spec_gate_time = false;
++        if (const char * gt = getenv("LLAMA_SPEC_GATE_TIME"); gt != nullptr && strcmp(gt, "1") == 0) {
++            spec_gate_time = true; // Brain Engine 0142
++            SRV_INF("%s", "drafts go on only while they write faster (LLAMA_SPEC_GATE_TIME=1)\n");
++        }
+         if (const char * g = getenv("LLAMA_SPEC_GATE"); g != nullptr && *g != '\0') {
+             const float v = (float) atof(g);
+             if (v > 0.0f && v < 1.0f) {
+@@ -4786,7 +4845,21 @@ private:
+                 const bool use_ckpt_tgt = ctx_tgt_seq_rm_type == COMMON_CONTEXT_SEQ_RM_TYPE_FULL;
+                 const bool use_ckpt_dft = ctx_dft_seq_rm_type == COMMON_CONTEXT_SEQ_RM_TYPE_FULL;
+ 
++                // Brain Engine 0142: the last round's time, and a pause while drafting writes slower
++                if (spec_gate_time && !slot.spec_is_replay && slot.spec_draft.empty() && slot.spec_time_step()) {
++                    spec_time_pauses++;
++                    SLT_INF(slot, "drafts paused for %d words: %.3f words/ms with drafts, %.3f without (time pause %zu)\n",
++                            slot.spec_gate_skip, slot.spt_rate[1], slot.spt_rate[0], spec_time_pauses);
++                }
+                 const int n_draft_max = slot.get_n_draft_max();
++                if (spec_gate_time && !slot.spec_is_replay && slot.spec_draft.empty()) {
++                    slot.spt_last_drafted = n_draft_max > 0;
++                    // tests only: a drafter that costs this many ms a round, so the gate's choice can be checked
++                    static const int test_ms = getenv("LLAMA_SPEC_GATE_TIME_TEST_DRAFT_MS") ? atoi(getenv("LLAMA_SPEC_GATE_TIME_TEST_DRAFT_MS")) : 0;
++                    if (test_ms > 0 && n_draft_max > 0) {
++                        std::this_thread::sleep_for(std::chrono::milliseconds(test_ms));
++                    }
++                }
+                 if (slot.spec_gate_skip > 0) {
+                     slot.spec_gate_skip--; // Brain Engine 0034: one word written without a draft
+                 }
