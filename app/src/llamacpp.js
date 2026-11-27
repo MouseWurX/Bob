@@ -32,7 +32,7 @@ import { readerSpareEnv, conductorOn, conductorPicked, conductorDefaultFits, SWI
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { tuningArgs, doorbellEnv, registerRamEnv } from './engine-tuning.js';
 import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV, keepGuessesArgs, keepGuessesEnv, helpHasSink, sinkEnv } from './engine-extras.js'; // Turbo: stand-ins (0043), keep more guesses (0120), sharp start (0122); off unless switched on
-import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
+import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, vulkanFeatures, vulkanCaps, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
 
@@ -569,20 +569,21 @@ export class LlamaCpp {
   // its --help, whose cache type list names it. Anything else, or no answer within 5 s, counts as no, so the
   // Smallest memory type falls back to Smaller and is not offered on the Brains page.
   // Nov 20 (patch 0039): the same --help names LLAMA_KV_TIERS when the engine has Progressive Memory (kvTiers).
-  // Only for CUDA cards and the processor (q3CardOk): Vulkan and Metal have no 3-bit kernels.
+  // Only for CUDA cards, the processor and Lamplight's own Vulkan file (q3CardOk): official Vulkan and Metal have no 3-bit kernels.
   kvCaps() {
     const exe = this.exePath();
     if (this._kvQ3 && this._kvQ3.exe === exe) return this._kvQ3;
     let has = false, tiers = false, q2 = false, sink = false;
     if (/llama-server/i.test(path.basename(exe)) && fs.existsSync(exe)) {
       try {
-        if (!q3CardOk(fs.readdirSync(path.dirname(exe)), process.platform)) throw new Error('no 3-bit kernels for this card');
+        const files = fs.readdirSync(path.dirname(exe)), vk = vulkanFeatures(path.dirname(exe)), vc = vulkanCaps(files, vk);
+        if (!q3CardOk(files, process.platform, vk)) throw new Error('no 3-bit kernels for this card');
         const r = spawnSync(exe, ['--help'], { timeout: 5000, encoding: 'utf8', windowsHide: true, env: libDirEnv(exe) });
         const text = `${r.stdout || ''}${r.stderr || ''}`;
         has = helpHasQ3(text);
-        tiers = has && helpHasTiers(text);
-        q2 = has && helpHasQ2(text); // 0046: 2-bit, Turbo's Progressive 8+2 only
-        sink = helpHasSink(text); // 0122: Turbo: sharp start (Brain Engine 46 or newer)
+        tiers = has && helpHasTiers(text) && vc.lse;
+        q2 = has && helpHasQ2(text) && vc.q2; // 0046: 2-bit, Turbo's Progressive 8+2 only
+        sink = helpHasSink(text) && vc.lse; // 0122: Turbo: sharp start (Brain Engine 46 or newer); 0135 on Vulkan
       } catch {}
     }
     this._kvQ3 = { exe, has, tiers, q2, sink };

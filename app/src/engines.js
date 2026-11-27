@@ -669,6 +669,7 @@ async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
     fs.rmSync(over, { recursive: true, force: true }); fs.mkdirSync(over, { recursive: true });
     await grab(own.asset, over, pub, signal, tick);
     flatten(over, [e.exe]);
+    dropVulkanOverCuda(over, base.asset.name);
     copyTree(over, stage); // Nov 27: keeps Linux library links (fs.cpSync pointed them at this side folder, deleted next)
     fs.rmSync(over, { recursive: true, force: true });
     if (e.os !== 'win') makeRunnable(stage);
@@ -683,6 +684,25 @@ async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
   try { swapIn(folder, stage); }
   catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Wait for the Lab job to finish (or press Unload everything), then try again.`); }
   return { version: own.rel.tag_name, asset: own.asset.name };
+}
+
+// Nov 26: Lamplight carries its own Vulkan backend (ggml-vulkan.dll / libggml-vulkan.so, with lamplight-vulkan.json),
+// for AMD and Intel graphics: over the official Vulkan download it replaces the official one, so those cards run every
+// patch. Over the CUDA download (an NVIDIA card) it stays out: that download has no Vulkan file, and the same card
+// would show up twice (CUDA0 and Vulkan0).
+export const VULKAN_OWN_FILES = /^(ggml-vulkan\.dll|libggml-vulkan\.so(\.\d+)*|lamplight-vulkan\.json)$/i;
+// And the other way round: our CUDA backend (ggml-cuda.dll / libggml-cuda.so) stays out over a download that isn't
+// the CUDA one (AMD, Intel, no card). That download has no CUDA runtime beside it, so the CUDA file can't load, and
+// the install check would hold the whole update back for "the CUDA runtime files".
+export const CUDA_OWN_FILES = /^(ggml-cuda.*\.dll|libggml-cuda.*\.so(\.\d+)*)$/i;
+export function dropVulkanOverCuda(dir, baseName) {
+  const drop = /cuda/i.test(String(baseName || '')) ? VULKAN_OWN_FILES : baseName ? CUDA_OWN_FILES : null;
+  if (!drop) return [];
+  let names = [];
+  try { names = fs.readdirSync(dir); } catch {}
+  const out = names.filter((n) => drop.test(n));
+  for (const n of out) fs.rmSync(path.join(dir, n), { force: true });
+  return out;
 }
 
 // 1.5.185 Download the missing files: only the parts the kept, incomplete update lacks, from the same releases (the

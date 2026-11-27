@@ -4,13 +4,16 @@ import fs from 'node:fs';
 import readline from 'node:readline';
 const log = (m) => { if (process.env.MOCK_APPS_LOG) fs.appendFileSync(process.env.MOCK_APPS_LOG, JSON.stringify(m) + '\n'); };
 const own = Number(process.env.MOCK_BOB_PID || 0);
+// Made-up windows get process ids far above any real one, so none can be the test's own process or its parent
+// (Bob refuses those as his own window; the old small numbers, 4242 to 5300, can be a real runner's parent pid).
+const FAKE = 2000000000;
 const windows = [
-  { hwnd: 101, title: 'Untitled - Notepad', process: 'notepad', pid: 4242 },
-  { hwnd: 102, title: 'Command Prompt', process: 'cmd', pid: 4243 },
+  { hwnd: 101, title: 'Untitled - Notepad', process: 'notepad', pid: FAKE + 4242 },
+  { hwnd: 102, title: 'Command Prompt', process: 'cmd', pid: FAKE + 4243 },
   { hwnd: 103, title: 'Bob', process: 'Bob', pid: own },
-  { hwnd: 104, title: 'Vault - KeePassXC', process: 'KeePassXC', pid: 4244 },
-  { hwnd: 105, title: 'Windows Security', process: 'svchost', pid: 4245 },
-  { hwnd: 106, title: 'Sketch - Paint', process: 'mspaint', pid: 4246 }
+  { hwnd: 104, title: 'Vault - KeePassXC', process: 'KeePassXC', pid: FAKE + 4244 },
+  { hwnd: 105, title: 'Windows Security', process: 'svchost', pid: FAKE + 4245 },
+  { hwnd: 106, title: 'Sketch - Paint', process: 'mspaint', pid: FAKE + 4246 }
 ];
 const apps = [{ name: 'Notepad', appId: 'Microsoft.WindowsNotepad_8wekyb3d8bbwe!App' }, { name: 'Paint', appId: 'Microsoft.Paint_8wekyb3d8bbwe!App' }, { name: 'Command Prompt', appId: 'cmd' }, { name: 'Registry Editor', appId: 'regedit' }, { name: 'Calculator', appId: 'Microsoft.WindowsCalculator_8wekyb3d8bbwe!App' }];
 let driving = false;
@@ -24,9 +27,9 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   else if (m.op === 'open') {
     if (!apps.some((a) => a.appId === m.appId)) { r.ok = false; r.error = 'not in the Start menu'; }
     else if (/Paint/.test(m.appId)) { /* Paint "opens" but no window shows up */ }
-    else if (/Calculator/.test(m.appId)) windows.push({ hwnd: 300, title: 'Calculator', process: 'CalculatorApp', pid: 5300 });
+    else if (/Calculator/.test(m.appId)) windows.push({ hwnd: 300, title: 'Calculator', process: 'CalculatorApp', pid: FAKE + 5300 });
     // MOCK_APPS_LOG.oldtab there: like Windows 11 Notepad coming back on last time's unsaved note
-    else windows.push({ hwnd: 200 + windows.length, title: process.env.MOCK_APPS_LOG && fs.existsSync(process.env.MOCK_APPS_LOG + '.oldtab') ? '*Dear diary - Notepad' : 'Untitled - Notepad', process: 'notepad', pid: 5000 + windows.length });
+    else windows.push({ hwnd: 200 + windows.length, title: process.env.MOCK_APPS_LOG && fs.existsSync(process.env.MOCK_APPS_LOG + '.oldtab') ? '*Dear diary - Notepad' : 'Untitled - Notepad', process: 'notepad', pid: FAKE + 5000 + windows.length });
   }
   else if (m.op === 'look') r.items = [{ type: 'Text', name: 'Untitled', id: 'ContentTextBlock', enabled: true }, { type: 'Document', name: 'Text editor', id: '15', enabled: true, password: false, typable: true, value: 'hello' }, { type: 'MenuItem', name: 'File', id: '', enabled: true }, { type: 'Button', name: 'Save', id: 'save', enabled: true }, { type: 'Edit', name: 'Password', id: 'pw', password: true }];
   else if (m.op === 'picture') { fs.writeFileSync(m.file, Buffer.from('89504e470d0a1a0a', 'hex')); r.file = m.file; }
