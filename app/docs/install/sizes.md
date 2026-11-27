@@ -9,11 +9,11 @@ Graphics memory is what the card has (Task Manager, Performance, GPU, "Dedicated
 | Your device | Starter set | Main brain (where it lives) | Coding | Pictures |
 |---|---|---|---|---|
 | No graphics card | No graphics card (processor only) | Gemma 4 E4B (5.2 GB, in memory, on the processor) | - | none |
-| 4 GB card | No graphics card (processor only) | Gemma 4 E4B (5.2 GB, card + memory) | - | none |
+| 4 GB card | No graphics card (processor only) | Qwen3 4B Instruct 2507 (2.5 GB, on your card, from the Brains page) | - | none |
 | 6 GB card | 6 GB card (most laptops) | Qwen3 4B Instruct 2507 (2.5 GB, on your card) | Qwen2.5 Coder 7B | Z-Image Turbo (6 GB card version) |
 | 8 GB card | 8 GB card | Gemma 4 E4B (5.2 GB, on your card) | Qwen3.6 35B-A3B (8 GB card version) | Z-Image Turbo (8 GB card version) |
 | 10 GB card | 8 GB card | Gemma 4 E4B (5.2 GB, on your card) | Qwen3.6 35B-A3B (8 GB card version) | Z-Image Turbo (8 GB card version) |
-| 12 GB card | 16 GB card or more | Qwen3.6 35B-A3B (23 GB, card + memory) | same brain | Z-Image Turbo |
+| 12 GB card | 16 GB card or more | Underdog Saluki 27B (7.9 GB, on your card, from the Brains page) | same brain | Z-Image Turbo |
 | 16 GB card | 16 GB card or more | Qwen3.6 35B-A3B (23 GB, card + memory) | same brain | Z-Image Turbo |
 | 24 GB card or more | 16 GB card or more | Qwen3.6 35B-A3B (23 GB, on your card) | same brain | Z-Image Turbo |
 | Built-in graphics, 16 GB memory | Built-in graphics (handhelds and thin laptops) | Qwen3 4B Instruct 2507 (2.5 GB, shared memory) | Qwen2.5 Coder 7B | Z-Image Turbo (6 GB card version) |
@@ -27,7 +27,7 @@ Graphics memory is what the card has (Task Manager, Performance, GPU, "Dedicated
 | Android, 6 GB | Phone brain | Gemma 4 E2B (2.8 GB, on the phone) | - | none |
 | Android, 8 GB or more | Phone brain | Gemma 4 E2B (2.8 GB, on the phone) | - | none |
 
-Rows assume 32 GB of memory with a card of 6 to 16 GB, 16 GB with a smaller card or none, and 64 GB with 24 GB or more. A 12 GB card gets the 16 GB set, with more of the brain kept in memory. Cards of 24 GB and more get the 16 GB set too; bigger brains are on the Brains page.
+Rows assume 32 GB of memory with a card of 6 to 16 GB, 16 GB with a smaller card or none, and 64 GB with 24 GB or more. A 12 GB card gets the 16 GB set, and Bob's pick on the Brains page is Underdog Saluki 27B (7.9 GB, all on the card, not for commercial use), which leaves Qwen3.6 35B-A3B unticked. Cards of 24 GB and more get the 16 GB set too; bigger brains are on the Brains page.
 
 Only the 16 GB card, the 6 GB laptop card, the 16 GB handheld and the 8 GB Android phone have run in our lab. Every other row is unproven in our lab, as we have yet to test.
 

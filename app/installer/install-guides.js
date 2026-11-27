@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { packFor } from '../public/fit.js';
+import { packFor, pickFor } from '../public/fit.js';
 import { placeFor } from '../public/place.js';
 import { gb } from '../public/util.js';
 import { starterTicks } from '../public/equip.js';
@@ -147,6 +147,16 @@ export function adviceFor(input, catalog, phone) {
       rent: place?.where === 'rent'
     };
   }).filter(Boolean);
+  // Bob's own pick for the main brain (the Brains page's Recommended), when the starter set doesn't hold it: on 12 to
+  // 15 GB cards that's Underdog Saluki 27B, while Get Bob ready still offers the 16 GB set.
+  const platform = classOf(cls)?.os === 'mac' ? 'darwin' : classOf(cls)?.os === 'win' ? 'win32' : 'linux';
+  const bestPick = hw.arm ? null : pickFor('bob', catalog.models || [], { vramGB: hw.integrated ? 0 : hw.vramGB, ramGB, unified: hw.unified, platform });
+  const best = bestPick ? byId[bestPick.id] : null;
+  if (best && !ids.includes(best.id)) {
+    const place = ramGB ? placeFor(best, hw) : null;
+    const licence = best.commercial === false ? ` Not for commercial use (${best.license}).` : '';
+    models.unshift({ name: best.name, jobs: 'Brain (Bob\'s pick on the Brains page)', size: gb(best.sizeGB), where: place ? (hw.integrated ? 'Shared memory' : place.word) : '', why: plain(`Bob recommends it for this size; it isn't in the starter set, so get it from the Brains page.${licence}`), ticked: false, pick: true, codes: (best.jobs || []).includes('tinker') });
+  }
   const warn = [];
   const main = models.find((m) => /Brain/.test(m.jobs.split(', ')[0] || ''));
   if (main?.rent) warn.push(`${main.name} is too big for ${ramGB} GB of memory with this card. Pick a smaller brain on the Brains page.`);
@@ -178,10 +188,10 @@ const TIERS = [
 export const tierRows = (catalog, phone) => TIERS.map((t) => {
   const a = adviceFor(t, catalog, phone);
   const pick = (job) => a.models.find((m) => m.jobs.split(', ').includes(job));
-  const brain = pick('Brain') || a.models[0];
+  const brain = a.models.find((m) => m.pick) || pick('Brain') || a.models[0];
   const coder = pick('Coding');
   const painter = pick('Painter');
-  return { ...t, set: a.pack.label, brain: brain ? `${brain.name} (${brain.size}${brain.where ? `, ${brain.where.toLowerCase()}` : ''})` : '', coder: coder && coder.name !== brain?.name ? coder.name : coder ? 'same brain' : '', painter: painter ? painter.name : 'none' };
+  return { ...t, set: a.pack.label, brain: brain ? `${brain.name} (${brain.size}${brain.where ? `, ${brain.where.toLowerCase()}` : ''}${brain.pick ? ', from the Brains page' : ''})` : '', coder: brain?.codes ? 'same brain' : coder && coder.name !== brain?.name ? coder.name : coder ? 'same brain' : '', painter: painter ? painter.name : 'none' };
 });
 
 export function sizesMd(catalog, phone) {
@@ -200,7 +210,7 @@ export function sizesMd(catalog, phone) {
     '|---|---|---|---|---|',
     ...rows.map((r) => `| ${cell(r.label)} | ${cell(r.set)} | ${cell(r.brain)} | ${cell(r.coder || '-')} | ${cell(r.painter)} |`),
     '',
-    'Rows assume 32 GB of memory with a card of 6 to 16 GB, 16 GB with a smaller card or none, and 64 GB with 24 GB or more. A 12 GB card gets the 16 GB set, with more of the brain kept in memory. Cards of 24 GB and more get the 16 GB set too; bigger brains are on the Brains page.',
+    'Rows assume 32 GB of memory with a card of 6 to 16 GB, 16 GB with a smaller card or none, and 64 GB with 24 GB or more. A 12 GB card gets the 16 GB set, and Bob\'s pick on the Brains page is Underdog Saluki 27B (7.9 GB, all on the card, not for commercial use), which leaves Qwen3.6 35B-A3B unticked. Cards of 24 GB and more get the 16 GB set too; bigger brains are on the Brains page.',
     '',
     'Only the 16 GB card, the 6 GB laptop card, the 16 GB handheld and the 8 GB Android phone have run in our lab. Every other row is ' + UNPROVEN + '.',
     '',

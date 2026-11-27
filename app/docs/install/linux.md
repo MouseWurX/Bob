@@ -27,7 +27,7 @@ Only NVIDIA has run in our lab, on rented machines. Vulkan, built-in graphics an
 
 ## By size
 
-The same picks as on Windows: under 5 GB or no card gets the processor set (Gemma 4 E4B), 5 to 6 GB the 6 GB set (Qwen3 4B Instruct), 7 to 11 GB the 8 GB set (Gemma 4 E4B, plus the 8 GB card version of Qwen3.6 35B-A3B for coding), and 12 GB or more the 16 GB set (Qwen3.6 35B-A3B). Every row: [Which brain for which size](sizes.md).
+The same picks as on Windows: under 5 GB or no card gets the processor set (Gemma 4 E4B), 5 to 6 GB the 6 GB set (Qwen3 4B Instruct), 7 to 11 GB the 8 GB set (Gemma 4 E4B, plus the 8 GB card version of Qwen3.6 35B-A3B for coding), and 12 GB or more the 16 GB set (Qwen3.6 35B-A3B). On 12 to 15 GB Bob's pick on the Brains page is Underdog Saluki 27B, which fits the card (not for commercial use). Every row: [Which brain for which size](sizes.md).
 
 ## Jobs and their engines
 

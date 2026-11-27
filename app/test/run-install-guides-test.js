@@ -19,6 +19,8 @@ const brain = (a) => a.models.find((m) => m.jobs.split(', ').includes('Brain'))?
 const pc = (vramGB, ramGB = 32, gpu = 'nvidia') => adviceFor({ cls: 'windows', gpu, vramGB, ramGB }, catalog, phone);
 check('16 GB card: the 16 GB set, Qwen3.6 35B-A3B', pc(16).pack.id === 'big' && brain(pc(16)) === 'Qwen3.6 35B-A3B', brain(pc(16)));
 check('12 GB card: the 16 GB set too', pc(12).pack.id === 'big');
+check('12 GB card: Bob\'s Brains page pick (Saluki) is shown, unticked, with its licence', pc(12).models[0].pick && /Saluki/.test(pc(12).models[0].name) && !pc(12).models[0].ticked && /commercial/.test(pc(12).models[0].why));
+check('16 GB card: no extra pick, the set\'s brain is the pick', !pc(16).models.some((m) => m.pick));
 check('8 GB card: the 8 GB set, Gemma 4 E4B', pc(8).pack.id === 'mid' && brain(pc(8)) === 'Gemma 4 E4B');
 check('6 GB card: the 6 GB set, Qwen3 4B', pc(6).pack.id === 'small' && /Qwen3 4B/.test(brain(pc(6))));
 check('4 GB card and no card: the processor set', pc(4).pack.id === 'cpu' && adviceFor({ cls: 'windows', gpu: 'none', ramGB: 16 }, catalog, phone).pack.id === 'cpu');
