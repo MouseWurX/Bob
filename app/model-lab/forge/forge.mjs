@@ -10,6 +10,7 @@
 // node forge.mjs --places [cards]               where the wanted cards are in stock with storage (read-only), and your network volumes
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import readline from 'node:readline';
@@ -19,6 +20,7 @@ import { STARTUP_LOG, readStartups, recordStartup, freezingCards, orderCards, st
 import { gate as neverGate, trains as planTrains, loadNever, neverFilesFor, findLeaks } from '../never-gate.mjs';
 import { V2, createPod, podV1, listOf, volumeV1, volumeBodyV2, podBodyV2 } from './runpod-v2.mjs';
 import { slotsUsed } from './slots.mjs';
+import { locate as locateLab } from '../common.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -431,6 +433,18 @@ function lessonPreflight() {
     if (!fs.existsSync(kp)) bad.push(`${m.name}: keep list ${kp} is missing; nothing to cut by`);
     else if (m.cut.keep_sha256 && crypto.createHash('sha256').update(fs.readFileSync(kp)).digest('hex') !== m.cut.keep_sha256) bad.push(`${m.name}: keep list ${kp} is not the one the plan names (sha256 ${m.cut.keep_sha256.slice(0, 12)}...)`);
     if (m.cut.card_extra && !fs.existsSync(path.resolve(here, m.cut.card_extra))) bad.push(`${m.name}: card text ${path.resolve(here, m.cut.card_extra)} is missing`);
+  }
+  // 27 Nov (Bill rental 2: the benches finished, then experts-test stopped on "No Bob source tree"): a PC-side bench test that
+  // loads Bob (bob-kit.mjs) needs a Bob source tree on this PC; check it before renting, not after
+  if (plan.benchmark?.models?.length) {
+    const bcmds = plan.benchmark.models.flatMap((m) => m.commands?.length ? m.commands : plan.benchmark.commands?.length ? plan.benchmark.commands : ['node experts-test.mjs --url {{url}} --counts 8 --out {{out}}']);
+    for (const c of new Set(bcmds)) {
+      const script = (String(c).match(/^node\s+(\S+\.mjs)/) || [])[1]; if (!script) continue;
+      const sp = path.resolve(here, '..', script); if (!fs.existsSync(sp) || !/from '\.\/bob-kit\.mjs'/.test(fs.readFileSync(sp, 'utf8'))) continue;
+      const bobArg = (String(c).match(/--bob\s+("[^"]+"|\S+)/) || [])[1];
+      const bdir = locateLab({ bob: bobArg ? bobArg.replace(/"/g, '') : undefined, out: path.join(os.tmpdir(), 'forge-preflight-out') }).bob;
+      if (!fs.existsSync(path.join(bdir, 'src', 'brain.js'))) bad.push(`bench test "${script}" loads Bob, and there is no Bob source tree at ${bdir} (src/brain.js); pass --bob in the plan's command`);
+    }
   }
   if (!cmds.length) return bad;
   if (!(Number(plan.hours_max) > 0) || !(Number(plan.dollars_max) > 0) || !(Number(plan.rent_minutes) > 0)) bad.push('hours_max, dollars_max and rent_minutes must all be set (blank caps fall back to 9 h / $40)');

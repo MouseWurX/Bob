@@ -147,7 +147,7 @@ The owner (26 Nov): "If their research can benefit us we should attempt to imple
   nearest step does. Their public code writes vLLM INT files; it has no GGUF writer and no Flash-Next (qwen4exp) model code
   (checked at commit 03fc1648). Its 2-bit grid is 4 levels times one scale per group.
 
-### Step 1: our own exact-size picker (built, dry-run passed, rental held)
+### Step 1: our own exact-size picker (built, rented 26-27 Nov: LOST to the hand recipe)
 
 - `pod/tensor_err/` (C++, links llama.cpp b12359's ggml): for every tensor and every stock type, quantize a sample of rows
   exactly as llama-quantize does (same imatrix row), turn them back into numbers and add up the imatrix-weighted squared
@@ -161,10 +161,14 @@ The owner (26 Nov): "If their research can benefit us we should attempt to imple
 - Rental plan `forge/plans/rco-bill.json` (HELD for the owner's yes, caps 5 h / $14, uploads nothing): IQ2_XXS and MX2_S made
   again, plus RC2_A (abs error) and RC2_B (rel error) at IQ2_XXS's size, and RC2_S at MX2_S's size. Done criteria as above:
   RC2_A or RC2_B must pass the gate where IQ2_XXS failed, and beat MX2_S's KLD at MX2_S's size (RC2_S) to count as a win.
+- **Result (27 Nov, [forge-runs/2026-11-27-rco-bill/](forge-runs/2026-11-27-rco-bill/)):** sizes exact, but KLD RC2_A 4.22 vs
+  stock IQ2_XXS 2.43, and RC2_S 3.56 vs MX2_S 1.01. Raw per-tensor errors are not on one scale (`hc_*` tensors hold 57% of the
+  sum, attention 0.2%), so the picker starved attention (41 of 48 at iq1_m). MX2_S stays the recipe. Fix plan in that record:
+  keep MX2_S's floors, pick only inside one family of like tensors, weigh families by measured KLD.
 - Honest limit: this is the additive form, not RCO's learned optimizer. If the picks lose to the hand recipe, the next step is
   a KLD-scored search around the pick (a few swaps scored by real KLD), which is closer to what RCO does.
 
-### Step 2: GSQ on one card (built, dry-run passed, pilot rental held)
+### Step 2: GSQ on one card (built; pilot rented 26-27 Nov: GSQ beats GPTQ, both far beat stock)
 
 The owner, 26 Nov: "Healing is not training" (the OK for light tuning of rounding).
 
@@ -188,5 +192,8 @@ The owner, 26 Nov: "Healing is not training" (the OK for light tuning of roundin
 - **Pilot kit** `pod/gsq/gsq-pilot.sh` (HELD for the owner's yes, cap $2 / 2 h): Qwen3-1.7B (Apache-2.0), one 24 GB+ card,
   wikitext-2 train for inputs and test for KLD, settings A (ffn_down at q2_0) and B (all ffn at q2_0), STOCK vs GPTQ vs GSQ at
   identical sizes, one greedy answer each. Uploads nothing.
+- **Pilot result (27 Nov, [forge-runs/2026-11-27-gsq-pilot/](forge-runs/2026-11-27-gsq-pilot/), about $0.97):** KLD with
+  ffn_down at q2_0: stock 3.357, GPTQ 0.382, GSQ 0.320; all ffn at q2_0: stock 12.33, GPTQ 0.881, GSQ 0.669. Same sizes.
+  One small dense brain: unproven on Bill.
 - **Then Bill:** the same tools on Bill's down experts (x_dump on the Q8_0 cut, per-expert H from routed tokens, GSQ per
   expert), written into the MX2_S or RC pick's q2_0 down experts, then KLD and the publish gate. Priced after the pilot.
