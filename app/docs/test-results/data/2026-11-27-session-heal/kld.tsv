@@ -1,0 +1,4 @@
+file	bytes	mean_kld	same_top_pct
+STOCK	2194688	0.039811	88.039
+TEXT-healed	2194688	0.028361	89.683
+SESSION-healed	2194688	0.032413	89.125

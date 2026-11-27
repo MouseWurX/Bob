@@ -1,0 +1,17 @@
+card: 
+Bob from <bob> (dry run) at 96cdc0e5c7faf6d915ba95060a7fa39df45e8154
+engine: 104 patches on b12359, build logged in build.log
+brain from <dry-run>/hf (no download)
+reference: 6873664 bytes
+STOCK: wikitext KLD 0.039811, same top 88.039%, 2194688 bytes   [GPU ]
+sessions: 300 rows, 210 agent, 0 tool tasks answered with a call, 18 s
+TEXT-healed: wikitext KLD 0.028361, same top 89.683%, 2194688 bytes   [GPU ]
+SESSION-healed: wikitext KLD 0.032413, same top 89.125%, 2194688 bytes   [GPU ]
+STOCK sessions/wiki-valid: 0.02304	0.02362	0.02119	90.40	0.02677
+TEXT-healed sessions/wiki-valid: 0.01863	0.01889	0.01780	91.00	0.01870
+SESSION-healed sessions/wiki-valid: 0.01734	0.01778	0.01596	91.70	0.02140
+tool calls: 8 tasks, BF16 called 0; STOCK 0 well formed, 0 known tool, 0 same as BF16; TEXT-healed 0 well formed, 0 known tool, 0 same as BF16; SESSION-healed 0 well formed, 0 known tool, 0 same as BF16
+STOCK: The capital of France is detane that any other numbered to use and  
+TEXT-healed: The capital of France is
+SESSION-healed: The capital of France is detane that any other numbered in the Library  
+HEAL DONE

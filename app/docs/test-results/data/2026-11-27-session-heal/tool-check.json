@@ -1,0 +1,21 @@
+{
+ "tasks": 8,
+ "ref_calls": 0,
+ "files": {
+  "STOCK": {
+   "well_formed": 0,
+   "known_tool": 0,
+   "same_call_as_full_size": 0
+  },
+  "TEXT-healed": {
+   "well_formed": 0,
+   "known_tool": 0,
+   "same_call_as_full_size": 0
+  },
+  "SESSION-healed": {
+   "well_formed": 0,
+   "known_tool": 0,
+   "same_call_as_full_size": 0
+  }
+ }
+}

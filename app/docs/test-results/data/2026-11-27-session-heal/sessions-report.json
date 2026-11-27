@@ -1,0 +1,52 @@
+{
+ "when": "2026-11-27 18:58",
+ "teacher": "<dry-run>/hf",
+ "rows": 300,
+ "skipped_too_long_or_empty": 0,
+ "never_dropped": 1,
+ "agent_rows": 210,
+ "tool_call_rows_with_a_call": 0,
+ "seconds": 18,
+ "by_source_split": {
+  "dolly/eval": {
+   "rows": 6,
+   "reply_tokens": 960,
+   "cut_at_max": 6
+  },
+  "dolly/train": {
+   "rows": 84,
+   "reply_tokens": 13440,
+   "cut_at_max": 84
+  },
+  "hermes-multiturn/eval": {
+   "rows": 7,
+   "reply_tokens": 1120,
+   "cut_at_max": 7
+  },
+  "hermes-multiturn/train": {
+   "rows": 63,
+   "reply_tokens": 10080,
+   "cut_at_max": 63
+  },
+  "hermes-singleturn/eval": {
+   "rows": 8,
+   "reply_tokens": 1280,
+   "cut_at_max": 8
+  },
+  "hermes-singleturn/train": {
+   "rows": 62,
+   "reply_tokens": 9920,
+   "cut_at_max": 62
+  },
+  "mbpp/eval": {
+   "rows": 4,
+   "reply_tokens": 640,
+   "cut_at_max": 4
+  },
+  "mbpp/train": {
+   "rows": 66,
+   "reply_tokens": 10560,
+   "cut_at_max": 66
+  }
+ }
+}

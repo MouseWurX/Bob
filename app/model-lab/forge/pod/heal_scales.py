@@ -2,6 +2,7 @@
 """Heal a squeezed (2-bit, 3-bit...) GGUF brain WITHOUT changing a single stored code.
 
   heal_scales.py --teacher <full-precision HF dir> --gguf <squeezed.gguf> --calib <neutral text> --out <healed.gguf>
+  heal_scales.py --teacher <dir> --gguf <file> --sessions sessions.jsonl --eval-text <neutral text> --out <healed.gguf>
   Options: --steps 400 --hours 2 --lr 1e-3 --ctx 512 --batch 4 --chunks 400 --eval-chunks 40 --topk 64
            --device cuda|cpu --dtype bf16|fp32 --no-norms --heal-embd --seed 1 --report heal-scales-report.json
 
@@ -23,6 +24,12 @@ How:
 Rules (Bob project): calibration text must be public, neutral text (for example the imatrix text or wikitext), never the
 held-out job sets, and never text written by Claude. This adds no personality and no new behaviour: the only target is
 the brain's own full-precision self. Measure after with stock llama-perplexity --kl-divergence (commands in the report).
+
+Agent sessions (--sessions, 27 Nov 2026, the owner: "healing on agent sessions is fine"): instead of plain text, heal on
+replies the full-size brain wrote itself to public tool, coding and general tasks (agent_sessions.py). Only the tokens the
+brain wrote are scored; the task text, tool lists and tool results are read but never scored. Training batches draw
+agent sessions and general replies at --agent-share (0.7 = 70:30). The file is kept only if drift drops on the held-apart
+sessions and, with --eval-text, does not rise more than --max-text-rise on plain text. Off by default, not in Turbo.
 
 Merged and reordered tensors: with --llama-cpp <checkout> (the one whose converter made the GGUF), every GGUF tensor
 is traced back to its HF values by running that converter on stand-in values (gguf_layout.py), so tensors the converter
@@ -186,13 +193,73 @@ def kl_topk(student_logits, tid, tlp):
     return kl.mean()
 
 
+def load_sessions(path, n_train, n_eval):
+    """agent_sessions.py rows: ids (task + reply) and start (first token the brain wrote)."""
+    tr, ev = [], []
+    for line in open(path, encoding='utf-8'):
+        if not line.strip(): continue
+        r = json.loads(line)
+        ids, start = r['ids'], int(r['start'])
+        if not (0 < start < len(ids)): continue
+        s = {'ids': torch.tensor(ids, dtype=torch.long), 'start': start, 'kind': r.get('kind', 'general')}
+        (ev if r.get('split') == 'eval' else tr).append(s)
+    return tr[:n_train], ev[:n_eval]
+
+
+def session_batch(items, batch, agent_share):
+    """Draw a batch with about agent_share agent sessions and the rest general replies."""
+    agent = [i for i, s in enumerate(items) if s['kind'] == 'agent']; gen = [i for i, s in enumerate(items) if s['kind'] != 'agent']
+    out = []
+    for _ in range(batch):
+        pool = agent if (agent and (not gen or random.random() < agent_share)) else gen
+        out.append(random.choice(pool))
+    return out
+
+
+@torch.no_grad()
+def session_targets(model, items, topk, dev):
+    """The teacher's top-K at every position whose NEXT token the brain wrote (positions start-1 .. end-2)."""
+    out = []
+    for s in items:
+        x = s['ids'][None].to(dev); keep = len(s['ids']) - s['start'] + 1
+        lp = torch.log_softmax(model(input_ids=x, logits_to_keep=keep).logits[0, :-1].float(), dim=-1)
+        v, ix = lp.topk(topk, dim=-1)
+        out.append((ix.to(torch.int32).cpu(), v.cpu()))
+    return out
+
+
+def session_kl(student, s, tgt, dev):
+    keep = len(s['ids']) - s['start'] + 1
+    logits = student(s['ids'][None].to(dev), keep)[0, :-1]
+    return kl_topk(logits, tgt[0].to(dev), tgt[1].to(dev))
+
+
+@torch.no_grad()
+def eval_sessions(student, items, tgts, dev):
+    kl, same, n, by = 0.0, 0, 0, {}
+    for s, (tid, tlp) in zip(items, tgts):
+        keep = len(s['ids']) - s['start'] + 1
+        logits = student(s['ids'][None].to(dev), keep)[0, :-1]
+        m = tid.shape[0]; k = kl_topk(logits, tid.to(dev), tlp.to(dev)).item() * m
+        kl += k; n += m
+        same += int((logits.argmax(-1).cpu() == tid[:, 0].long()).sum())
+        b = by.setdefault(s['kind'], [0.0, 0]); b[0] += k; b[1] += m
+    return {'kl_topk': kl / n, 'same_top': same / n, 'tokens': n, 'by_kind': {k: v[0] / v[1] for k, v in by.items()}}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     ap.add_argument('--teacher', required=True, help='full-precision HF model dir (the brain the GGUF was made from)')
     ap.add_argument('--gguf', required=True, help='the squeezed GGUF to heal')
-    ap.add_argument('--calib', required=True, help='public neutral text, never held-out jobs, never Claude-written')
+    ap.add_argument('--calib', default='', help='public neutral text, never held-out jobs, never Claude-written')
     ap.add_argument('--eval-text', default='', help='separate text for before/after numbers (default: last chunks of --calib)')
-    ap.add_argument('--out', required=True)
+    ap.add_argument('--sessions', default='', help='agent_sessions.py output instead of --calib: score only what the brain wrote')
+    ap.add_argument('--agent-share', type=float, default=0.7, help='with --sessions: share of agent sessions in each batch')
+    ap.add_argument('--measure', action='store_true', help='only measure the file (no tuning, nothing written): drift on '
+                    'the sessions and --eval-text, with the file\'s own norms even when healing moved them')
+    ap.add_argument('--max-text-rise', type=float, default=0.02,
+                    help='with --sessions and --eval-text: keep only if plain-text drift rises no more than this share')
+    ap.add_argument('--out', default='', help='the healed GGUF to write (not with --measure)')
     ap.add_argument('--steps', type=int, default=400); ap.add_argument('--hours', type=float, default=2.0)
     ap.add_argument('--lr', type=float, default=1e-3); ap.add_argument('--norm-lr', type=float, default=1e-3)
     ap.add_argument('--ctx', type=int, default=512); ap.add_argument('--batch', type=int, default=4)
@@ -208,8 +275,11 @@ def main():
     ap.add_argument('--keep-mtp', action='store_true', help='with --llama-cpp: the GGUF kept the MTP layers')
     a = ap.parse_args()
 
-    if any(w in os.path.basename(a.calib).lower() for w in ('held-out', 'heldout', 'held_out')):
-        sys.exit('refusing: --calib looks like a held-out set. Held-out jobs are never used to tune a brain.')
+    if not a.out and not a.measure: sys.exit('--out is needed (or --measure to only measure)')
+    if bool(a.calib) == bool(a.sessions): sys.exit('give --calib (plain text) or --sessions (agent_sessions.py), one of them')
+    for f in (a.calib, a.sessions, a.eval_text):
+        if f and any(w in os.path.basename(f).lower() for w in ('held-out', 'heldout', 'held_out')):
+            sys.exit('refusing: that file looks like a held-out set. Held-out jobs are never used to tune a brain.')
     random.seed(a.seed); np.random.seed(a.seed); torch.manual_seed(a.seed)
     dev = torch.device(a.device)
     dtype = {'bf16': torch.bfloat16, 'fp32': torch.float32}[a.dtype or ('bf16' if dev.type == 'cuda' else 'fp32')]
@@ -279,6 +349,8 @@ def main():
             base = np.asarray(t.data, dtype=np.float32).reshape(-1); hf = p.detach().float().cpu().numpy().reshape(-1)
             tol = 1e-2 * max(1.0, float(np.abs(hf).max()))
             mode = 'same' if np.abs(base - hf).max() < tol else 'plus1' if np.abs(base - (hf + 1)).max() < tol else None
+            if mode is None and a.measure:   # a healed file's norms moved away from the teacher's: use the file's own
+                mode = 'same' if np.abs(base - hf).mean() <= np.abs(base - (hf + 1)).mean() else 'plus1'
             if mode: norms.append(Norm(name, gname, base, mode, dev, dtype))
             else: skipped.append({'name': gname, 'why': 'norm does not line up'})
             continue
@@ -304,15 +376,25 @@ def main():
           f'frozen squeezed {len(frozen)}, not lined up {len(skipped)}, traced through the converter {len(traced)}', flush=True)
     if not healed: sys.exit('nothing to heal: no tensor lined up with the teacher')
 
-    calib = chunks_from_text(tok, a.calib, a.ctx, a.chunks + (0 if a.eval_text else a.eval_chunks))
-    if a.eval_text:
-        evalc = chunks_from_text(tok, a.eval_text, a.ctx, a.eval_chunks)
+    sess_train, sess_eval, calib, evalc = [], [], [], []
+    if a.sessions:
+        sess_train, sess_eval = load_sessions(a.sessions, a.chunks, a.eval_chunks)
+        if not sess_train or not sess_eval: sys.exit('not enough sessions: need some in the train and the eval split')
+        if a.eval_text: evalc = chunks_from_text(tok, a.eval_text, a.ctx, a.eval_chunks)
+        print(f'teacher reads {len(sess_train)} + {len(sess_eval)} sessions '
+              f'({sum(1 for s in sess_train if s["kind"] == "agent")} agent in train), {len(evalc)} text chunks', flush=True)
+        tgt_sess_train = session_targets(model, sess_train, a.topk, dev)
+        tgt_sess_eval = session_targets(model, sess_eval, a.topk, dev)
     else:
-        evalc, calib = calib[-a.eval_chunks:], calib[:-a.eval_chunks]
-    if len(calib) < 1 or len(evalc) < 1: sys.exit('not enough calibration text for --ctx')
-    print(f'teacher reads {len(calib)} + {len(evalc)} chunks of {a.ctx} tokens', flush=True)
-    tgt_train = teacher_targets(model, calib, a.topk, dev, a.batch)
-    tgt_eval = teacher_targets(model, evalc, a.topk, dev, a.batch)
+        calib = chunks_from_text(tok, a.calib, a.ctx, a.chunks + (0 if a.eval_text else a.eval_chunks))
+        if a.eval_text:
+            evalc = chunks_from_text(tok, a.eval_text, a.ctx, a.eval_chunks)
+        else:
+            evalc, calib = calib[-a.eval_chunks:], calib[:-a.eval_chunks]
+        if len(calib) < 1 or len(evalc) < 1: sys.exit('not enough calibration text for --ctx')
+        print(f'teacher reads {len(calib)} + {len(evalc)} chunks of {a.ctx} tokens', flush=True)
+        tgt_train = teacher_targets(model, calib, a.topk, dev, a.batch)
+    tgt_eval = teacher_targets(model, evalc, a.topk, dev, a.batch) if evalc else []
 
     # An HF tensor only partly built from the file keeps the teacher's values for the rest (counted in the report).
     partial = []
@@ -327,7 +409,7 @@ def main():
 
     from torch.func import functional_call
 
-    def student(x):
+    def student(x, last=0):
         built, cache = {}, {}
         w = lambda s: cache.setdefault(id(s), s.weight())
         for pn, src in sources.items():
@@ -336,10 +418,20 @@ def main():
             for s_, gp, hp in src: flat = flat.index_put((hp,), w(s_).reshape(-1)[gp])
             built[pn] = flat.reshape(shapes[pn])
         for n in norms: built[n.name] = n.weight()
-        return functional_call(model, built, (), {'input_ids': x}).logits
+        kw = {'input_ids': x}
+        if last: kw['logits_to_keep'] = last
+        return functional_call(model, built, (), kw).logits
 
     @torch.no_grad()
     def evaluate():
+        if sess_eval:
+            r = eval_sessions(student, sess_eval, tgt_sess_eval, dev)
+            if evalc: r['text'] = evaluate_text()
+            return r
+        return evaluate_text()
+
+    @torch.no_grad()
+    def evaluate_text():
         kl, same, n = 0.0, 0, 0
         for i in range(0, len(evalc), a.batch):
             x = torch.stack(evalc[i:i + a.batch]).to(dev); logits = student(x)
@@ -350,22 +442,38 @@ def main():
         return {'kl_topk': kl / n, 'same_top': same / n, 'tokens': n}
 
     before = evaluate(); print('before', before, flush=True)
+    if a.measure:
+        path = a.report or os.path.splitext(a.gguf)[0] + '-measure.json'
+        json.dump({'gguf': a.gguf, 'sessions': a.sessions, 'eval_text': a.eval_text, 'calib': a.calib, 'drift': before},
+                  open(path, 'w'), indent=1)
+        print('measured', path); return
     groups = [{'params': [t for h in healed for t in h.t], 'lr': a.lr}]
     if norms: groups.append({'params': [n.u for n in norms], 'lr': a.norm_lr})
     opt = torch.optim.Adam(groups)
     step, deadline = 0, t_start + a.hours * 3600
     while step < a.steps and time.time() < deadline:
-        idx = random.sample(range(len(calib)), min(a.batch, len(calib)))
-        x = torch.stack([calib[i] for i in idx]).to(dev); logits = student(x)
-        loss = sum(kl_topk(logits[j], tgt_train[i][0].to(dev), tgt_train[i][1].to(dev)) for j, i in enumerate(idx)) / len(idx)
-        opt.zero_grad(); loss.backward(); opt.step(); step += 1
+        opt.zero_grad()
+        if sess_train:   # one session at a time (lengths differ); gradients add up over the batch
+            loss = 0.0
+            for i in session_batch(sess_train, a.batch, a.agent_share):
+                l = session_kl(student, sess_train[i], tgt_sess_train[i], dev) / a.batch
+                l.backward(); loss += l.detach()
+        else:
+            idx = random.sample(range(len(calib)), min(a.batch, len(calib)))
+            x = torch.stack([calib[i] for i in idx]).to(dev); logits = student(x)
+            loss = sum(kl_topk(logits[j], tgt_train[i][0].to(dev), tgt_train[i][1].to(dev)) for j, i in enumerate(idx)) / len(idx)
+            loss.backward()
+        opt.step(); step += 1
         if step % 25 == 0 or step == 1: print(f'step {step} kl {loss.item():.5f} ({time.time()-t_start:.0f}s)', flush=True)
 
     s16 = {h.gname: h.round_fp16() for h in healed}
     after = evaluate(); print('after (fp16 scales)', after, flush=True)
     kept = after['kl_topk'] < before['kl_topk']
-    if not kept:
-        print('healing did not lower drift on the eval text: writing nothing', flush=True)
+    if kept and 'text' in after and after['text']['kl_topk'] > before['text']['kl_topk'] * (1 + a.max_text_rise):
+        kept = False
+        print(f'drift on the sessions dropped but plain-text drift rose more than {a.max_text_rise:.0%}: writing nothing', flush=True)
+    elif not kept:
+        print('healing did not lower drift on the eval ' + ('sessions' if sess_eval else 'text') + ': writing nothing', flush=True)
     else:
         shutil.copyfile(a.gguf, a.out)
         w = GGUFReader(a.out, 'r+'); wt = {t.name: t for t in w.tensors}

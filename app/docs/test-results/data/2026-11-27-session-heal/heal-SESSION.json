@@ -1,0 +1,77 @@
+{
+ "when": "2026-11-27 18:59",
+ "args": {
+  "teacher": "<dry-run>/hf",
+  "gguf": "<dry-run>/Q4_K_M-imat.gguf",
+  "calib": "",
+  "eval_text": "<dry-run>/eval.txt",
+  "sessions": "<dry-run>/sessions.jsonl",
+  "agent_share": 0.7,
+  "measure": false,
+  "max_text_rise": 0.02,
+  "out": "<dry-run>/Q4_K_M-SESSION-healed.gguf",
+  "steps": 200,
+  "hours": 0.5,
+  "lr": 0.001,
+  "norm_lr": 0.001,
+  "ctx": 512,
+  "batch": 4,
+  "chunks": 400,
+  "eval_chunks": 40,
+  "topk": 64,
+  "device": "cpu",
+  "dtype": "",
+  "no_norms": false,
+  "heal_embd": false,
+  "min_cos": 0.6,
+  "seed": 1,
+  "report": "<dry-run>/heal-SESSION.json",
+  "llama_cpp": "<dry-run>/ll",
+  "keep_mtp": false
+ },
+ "steps": 200,
+ "seconds": 45,
+ "healed_tensors": 29,
+ "scales_tuned": 19200,
+ "norms_tuned": 9,
+ "norm_values": 2304,
+ "frozen_squeezed_tensors": 1,
+ "not_lined_up": [],
+ "partly_from_teacher": [],
+ "traced_through_converter": 30,
+ "before": {
+  "kl_topk": 0.023037780970335008,
+  "same_top": 0.904,
+  "tokens": 4000,
+  "by_kind": {
+   "agent": 0.023622579823591207,
+   "general": 0.021185917935023706
+  },
+  "text": {
+   "kl_topk": 0.026766952843620226,
+   "same_top": 0.8970853365384616,
+   "tokens": 13312
+  }
+ },
+ "after": {
+  "kl_topk": 0.01734387256205082,
+  "same_top": 0.917,
+  "tokens": 4000,
+  "by_kind": {
+   "agent": 0.017781339585781097,
+   "general": 0.015958560320238274
+  },
+  "text": {
+   "kl_topk": 0.021397661346082505,
+   "same_top": 0.9088792067307693,
+   "tokens": 13312
+  }
+ },
+ "written": "<dry-run>/Q4_K_M-SESSION-healed.gguf",
+ "next": [
+  "llama-perplexity -m <full-precision.gguf> -f <eval text> --kl-divergence-base base.kld",
+  "llama-perplexity -m <dry-run>/Q4_K_M-imat.gguf -f <eval text> --kl-divergence-base base.kld --kl-divergence",
+  "llama-perplexity -m <dry-run>/Q4_K_M-SESSION-healed.gguf -f <eval text> --kl-divergence-base base.kld --kl-divergence",
+  "then the publish gate and the real-jobs run; drift numbers alone never decide"
+ ]
+}
