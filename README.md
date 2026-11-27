@@ -68,7 +68,8 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 | **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.255-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.255-linux-x86_64.flatpak) | [Linux](app/docs/install/linux.md) |
 | **Raspberry Pi and ARM** | [`Bob-1.5.255-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.255-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) | [Raspberry Pi](app/docs/install/raspberry-pi.md) |
 | **Android phone** | [`Bob-1.5.255-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.255-android.apk) | [Android](app/docs/install/android.md) |
-| **iPhone and iPad** | Nothing to download: the phone screen from your computer's Bob (an app is coming) | [iPhone and iPad](app/docs/install/iphone.md) |
+| **iPhone app** (new, unproven on a real iPhone) | [`Bob-1.5.255-iphone.ipa`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.255-iphone.ipa), signed with your own free Apple ID | [iPhone and iPad](app/docs/install/iphone.md) |
+| **iPhone and iPad, no app** | Nothing to download: the phone screen from your computer's Bob | [iPhone and iPad](app/docs/install/iphone.md) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob), and there's [a guide for every device](app/docs/install/README.md), with [which brain for which size](app/docs/install/sizes.md).
 
@@ -683,6 +684,7 @@ Pictures and big jobs wait in Tasks while you play, and **Games first** has Bob 
 | **Raspberry Pi and ARM** | A 64-bit Pi 4 or 5 runs the arm64 AppImage the same way, with small brains on the processor. No pictures on ARM yet. [Raspberry Pi guide](app/docs/install/raspberry-pi.md) |
 | **Android** | Open the .apk on the phone. It talks to your Bob over Tailscale. [Android guide](app/docs/install/android.md) |
 | **iPhone and iPad** | Nothing to download. Turn on **Bob-Net access** in Bob's Settings, open his address with `/phone/` on the end in Safari over Tailscale, then tap Share and **Add to Home Screen**. A brain on the phone and the microphone button need the Android app. [iPhone guide](app/docs/install/iphone.md) |
+| **iPhone app** (new) | Sign the `.ipa` with your own Apple ID in Sideloadly or AltStore on a Windows PC or Mac (free, again every 7 days). It has its own phone brain. Unproven on a real iPhone, as we have yet to test one. [iPhone guide](app/docs/install/iphone.md) |
 
 ### Set up for your hardware
 
