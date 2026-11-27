@@ -301,6 +301,7 @@
     "test/run-users-test.js",
     "test/run-job-helps-test.js",
     "test/run-engine-extras-test.js",
+    "test/run-polystrata-tricks-test.js",
     "test/run-engine-tuning-test.js",
     "test/run-conductor-test.js",
     "test/run-kv-sink-test.js",
