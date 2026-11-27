@@ -195,5 +195,11 @@ The owner, 26 Nov: "Healing is not training" (the OK for light tuning of roundin
 - **Pilot result (27 Nov, [forge-runs/2026-11-27-gsq-pilot/](forge-runs/2026-11-27-gsq-pilot/), about $0.97):** KLD with
   ffn_down at q2_0: stock 3.357, GPTQ 0.382, GSQ 0.320; all ffn at q2_0: stock 12.33, GPTQ 0.881, GSQ 0.669. Same sizes.
   One small dense brain: unproven on Bill.
+- **Bill kit (27 Nov, built, dry-run passed, rental HELD):** `cut.gsq` in a forge plan makes a file from an already-made base
+  by rounding only its q2_0 down experts again (x_dump on the base itself, so the inputs are the ones the served file really
+  sees; weights from the cut's Q8_0; experts in batches on the card). `forge/plans/gsq-bill.json`: MX2_S, MG2_S (GPTQ downs),
+  MQ2_S (GSQ downs), same size to the byte, KLD and the gate, uploads nothing; estimate 4-5 h, $11-14, caps 6 h / $17. If GSQ
+  runs out of its 150 minutes, the tensors it finished keep GSQ's rounding and the rest take GPTQ's. Dry run:
+  [forge-runs/2026-11-27-gsq-bill-dry-run/](forge-runs/2026-11-27-gsq-bill-dry-run/).
 - **Then Bill:** the same tools on Bill's down experts (x_dump on the Q8_0 cut, per-expert H from routed tokens, GSQ per
   expert), written into the MX2_S or RC pick's q2_0 down experts, then KLD and the publish gate. Priced after the pilot.

@@ -432,6 +432,49 @@ PY
               MADE=""; [ -f $QF ] && grep -q " $(basename $QF) bytes $(stat -c %s $QF) " $OUT/bench/cut-$BN/sizes.txt 2>/dev/null && MADE=1
               if [ -n "$MADE" ] && [ "$q" = "$SQ" ] && grep -q "^$q " $OUT/bench/cut-$BN/published.txt 2>/dev/null; then echo "$q already made and on Hugging Face"; continue; fi
               [ -n "$MADE" ] && echo "$q already made, not on Hugging Face yet: gate and upload again"
+              # 27 Nov (GSQ port, pilot: stock q2_0 rounding drifts 9-14x more than GPTQ at the same size): cut.gsq =
+              # {"<name>": {"base": "MX2_S", "mode": "gptq"|"gsq"}} makes <name> from the already-made base file by rounding its
+              # q2_0 down experts again (pod/gsq/gsq_q2.py, weights from this cut's Q8_0, inputs recorded by pod/gsq/x_dump on the
+              # base file itself, the inputs the served file's down experts really see, from wikitext-2 train). Same size and
+              # header as the base; only those tensors' bytes change. Then KLD and the gate as for any quant. A failed step skips it.
+              GQE=$(plan "$CJ.get('gsq',{}).get('$q','')")
+              if [ -z "$MADE" ] && [ -n "$GQE" ]; then
+                read -r GQB GQM < <(echo "$GQE" | python3 -c "import json,sys; e=json.load(sys.stdin); print(e['base'], e.get('mode','gsq'))")
+                GQF=$CD/$CFILE-$GQB.gguf; GD=$OUT/bench/cut-$BN/gsq; mkdir -p $GD
+                [ -f $GQF ] || { echo "bench $BN: $q is made from $GQB, which was not made; skipped"; continue; }
+                GTR=$W/bench/gsq-train.txt
+                [ -s $GTR ] || { [ -s $W/bench/kldtext/wikitext-2-raw-v1.zip ] || hf download ggml-org/ci wikitext-2-raw-v1.zip --repo-type dataset --local-dir $W/bench/kldtext > /dev/null 2>&1
+                  python3 -c "import sys,zipfile; open(sys.argv[1],'wb').write(zipfile.ZipFile(sys.argv[2]).read('wikitext-2-raw/wiki.train.raw'))" $GTR $W/bench/kldtext/wikitext-2-raw-v1.zip 2>> $GD/text.txt; } \
+                  || { echo "bench $BN: no wikitext-2 train text; $q skipped"; continue; }
+                XB=$(bash $POD/gsq/build.sh $S/llama.cpp $S/llama.cpp/build-cuda 2> $GD/build.txt | tail -1)
+                [ -x "$XB" ] || { echo "bench $BN: x_dump did not build (out/bench/cut-$BN/gsq/build.txt); $q skipped"; continue; }
+                XD=$W/bench/gsqx-$BN-$GQB
+                if [ ! -s $XD/info.json ]; then status bench "$BN: recording the down experts' inputs on $GQB (x_dump)"
+                  rm -rf $XD; mkdir -p $XD
+                  LD_LIBRARY_PATH="$(dirname $XB):${LD_LIBRARY_PATH:-}" timeout 3600 $XB -m $GQF --x-text $GTR --x-match 'ffn_down_exps' --x-out $XD \
+                    --x-chunks $(plan "$CJ.get('gsq_chunks',256)") --x-rows $(plan "$CJ.get('gsq_rows',4096)") -c 512 -ngl 99 > $GD/x_dump.log 2>&1 && [ -s $XD/info.json ] \
+                    || { echo "bench $BN: x_dump failed (out/bench/cut-$BN/gsq/x_dump.log); $q skipped"; tail -3 $GD/x_dump.log; rm -rf $XD; continue; }
+                  cp $XD/info.json $GD/x-info-$GQB.json
+                fi
+                status bench "$BN: rounding $GQB's down experts again ($GQM) for $q"
+                GC=$W/bench/gsq-$BN-$GQB-$GQM
+                PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} timeout $(( $(plan "$CJ.get('gsq_minutes',150)") * 60 )) python3 $POD/gsq/gsq_q2.py --model $CUTQ8 --x $XD \
+                  --match 'ffn_down_exps\.weight' --mode $GQM --out $GC --batch $(plan "$CJ.get('gsq_batch',64)") --steps $(plan "$CJ.get('gsq_steps',640)") > $GD/gsq-$q.log 2>&1 \
+                  || { GPC=$W/bench/gsq-$BN-$GQB-gptq; NGD=$(ls $GC/*.q2_0 2>/dev/null | wc -l)
+                       # GSQ out of time: the tensors it finished keep its rounding, the rest take GPTQ's (from the gptq file made before), so
+                       # the file still says something; the count goes in the record
+                       if [ "$GQM" = gsq ] && [ "$NGD" -gt 0 ] && ls $GPC/*.q2_0 > /dev/null 2>&1; then
+                         for g in $GPC/*.q2_0; do [ -f $GC/$(basename $g) ] || cp $g $GC/; done
+                         echo "bench $BN: GSQ finished $NGD of $(ls $GPC/*.q2_0 | wc -l) down-expert tensors in time; $q has GPTQ's rounding for the rest" | tee $GD/partial-$q.txt
+                       else echo "bench $BN: $GQM rounding failed or ran out of time (out/bench/cut-$BN/gsq/gsq-$q.log); $q skipped"; tail -3 $GD/gsq-$q.log; continue; fi; }
+                cp $GC/report.tsv $GD/report-$q.tsv
+                PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/gsq/q2_0_patch.py --base $GQF --codes $GC --out $QF.part >> $GD/patch.log 2>&1 && mv -f $QF.part $QF \
+                  || { echo "bench $BN: writing $q failed (out/bench/cut-$BN/gsq/patch.log)"; rm -f $QF.part; continue; }
+                [ "$(stat -c %s $QF)" = "$(stat -c %s $GQF)" ] || { echo "bench $BN: $q is not $GQB's size; skipped"; rm -f $QF; continue; }
+                echo "$q: $GQB with its down experts rounded by $GQM ($(tail -1 $GD/patch.log | sed 's/ -> .*//'))" | tee $OUT/bench/cut-$BN/recipe-$q.txt
+                echo "$q $(basename $QF) bytes $(stat -c %s $QF) sha256 $(sha256sum $QF | cut -d' ' -f1)" | tee -a $OUT/bench/cut-$BN/sizes.txt
+                MADE=1
+              fi
               if [ -z "$MADE" ]; then
               rm -f $QF   # not listed as made: a left-over
               # 23 Nov (first Bobert run): IQ1/IQ2 refuse any tensor the imatrix doesn't fully cover (an expert the training chats never
