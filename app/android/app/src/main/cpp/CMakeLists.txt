@@ -26,7 +26,7 @@ endif()
 set(LLAMA_SRC ${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/llama.cpp)
 add_subdirectory(${LLAMA_SRC} build-llama)
 
-add_library(${CMAKE_PROJECT_NAME} SHARED bob_llama.cpp)
+add_library(${CMAKE_PROJECT_NAME} SHARED bob_llama.cpp bob_brain.cpp)
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
         ${LLAMA_SRC}
