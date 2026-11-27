@@ -35,7 +35,7 @@ export function profileFor(cfg, model, now, { profile = readProfile(cfg) } = {})
   if (!b) return null;
   const changed = pcChanged(profile.pc, now);
   if (changed) return { stale: changed };
-  return { cap: Number(b.cap) > 0 ? Number(b.cap) : 0, keepBob: b.keepBob === true, why: String(b.why || ''), ...(Number(b.fitTargetMiB) > 0 ? { fitTargetMiB: Number(b.fitTargetMiB) } : {}), ...(b.wddmBudget === true ? { wddmBudget: true } : {}) };
+  return { cap: Number(b.cap) > 0 ? Number(b.cap) : 0, keepBob: b.keepBob === true, why: String(b.why || ''), ...(Number(b.fitTargetMiB) > 0 ? { fitTargetMiB: Number(b.fitTargetMiB) } : {}), ...(b.wddmBudget === true ? { wddmBudget: true } : {}), ...(Number.isInteger(b.cpuMoe) && b.cpuMoe >= 0 ? { cpuMoe: b.cpuMoe } : {}) };
 }
 // The speeds GUPPI measured go into his own speeds file (conductor.js cleanSpeeds), replacing what he had for those
 // steps, so his load step is picked from this PC's numbers from the first reply. Another build's file starts over.
@@ -71,4 +71,17 @@ export function calibrateSpeeds(cfg, model) {
   if (!Object.keys(out.write).length) return null;
   out.old = { read: Object.keys(out.read).map(Number), write: Object.keys(out.write).map(Number) };
   return out;
+}
+
+// Nov 27, the laptop's third run: the engine's own fit kept Inkling 2 Mini at 300 MB free and 2.8 GB spilled whatever
+// room it was told to leave, so GUPPI times the brain where Bob really runs it: the number of layers whose experts sit
+// in RAM set on the Brains page (By hand), else the fastest one the Brains page's Calibrate found by hand. null: the fit.
+export function placeFor(cfg, model) {
+  const pin = cfg?.llamacpp?.nCpuMoe?.[model];
+  if (Number.isInteger(pin) && pin >= 0) return { cpuMoe: pin, from: 'the Brains page (By hand)' };
+  if (!cfg?.dataDir || !model) return null;
+  const rec = readJson(path.join(cfg.dataDir, 'lab', 'calibrate', `${calSlug(model)}.json`), [])?.[0];
+  if (!rec || rec.model !== model) return null;
+  if (rec.best?.mode === 'hand' && Number.isInteger(rec.best.cpuMoe)) return { cpuMoe: rec.best.cpuMoe, from: 'the Brains page\'s Calibrate' };
+  return null;
 }

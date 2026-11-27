@@ -73,7 +73,7 @@ export async function freePort() {
 }
 
 // Start a llama-server for one brain. Tries the card first (--fit on), then the processor.
-export async function startServer({ exe, gguf, mmproj, ctx = 8192, args = [], cpuOk = true, signal, log = () => {}, spawnFn = spawn, timeoutMs = 10 * 60e3, extra = [], place = null, env = null }) { // Nov 16 `env`: more environment (the hot-expert profile) // 1.5.164 `extra` and 1.5.167 `args`: more llama-server flags; cpuOk=false skips the processor-only try
+export async function startServer({ exe, gguf, mmproj, ctx = 8192, args = [], cpuOk = true, signal, log = () => {}, spawnFn = spawn, timeoutMs = 10 * 60e3, extra = [], place = null, env = null, logAll = false }) { // Nov 16 `env`: more environment (the hot-expert profile) // 1.5.164 `extra` and 1.5.167 `args`: more llama-server flags; cpuOk=false skips the processor-only try
   const more = [...args, ...extra];
   // 1.5.205 `place`: a placement set outright (calibration tries --n-cpu-moe N), in place of --fit and with no second try.
   const tries = place ? [place] : cpuOk ? [['--fit', 'on'], ['-ngl', '0']] : [['--fit', 'on']];
@@ -86,7 +86,7 @@ export async function startServer({ exe, gguf, mmproj, ctx = 8192, args = [], cp
     let err = '';
     let said = ''; // Nov 16: the engine's cache lines (fingerprint, ranked fill, refusals, totals), kept apart from the tail
     let mem = ''; // Nov 27 (the laptop's spill): how the engine placed the brain: its fit, Windows' budget, each buffer's size
-    child.stderr?.on('data', (d) => { err = (err + d).slice(-4000); for (const line of String(d).split('\n')) { if (/MoE cache|ranked fill|llama_moe_cache:/.test(line)) said = (said + line + '\n').slice(-20000); if (/fit|WDDM|buffer size|offloaded|projected|device memory|free/i.test(line) && !/llama_moe_cache:/.test(line)) mem = (mem + line.trim() + '\n').slice(-6000); } });
+    child.stderr?.on('data', (d) => { err = (err + d).slice(-4000); for (const line of String(d).split('\n')) { if (/MoE cache|ranked fill|llama_moe_cache:/.test(line)) said = (said + line + '\n').slice(-20000); if (/fit|WDDM|buffer size|offloaded|projected|device memory|free/i.test(line) && !/llama_moe_cache:/.test(line)) mem = (mem + line.trim() + '\n').slice(-6000); if (logAll && line.trim()) log(`  engine: ${line.replace(/\x1b\[[0-9;]*m/g, '').trim().slice(0, 400)}`); } });
     const url = `http://127.0.0.1:${port}`;
     const t0 = Date.now();
     let up = false;

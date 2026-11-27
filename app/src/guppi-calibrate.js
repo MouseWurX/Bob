@@ -32,7 +32,7 @@ import { readingChoice } from './engine-extras.js';
 import { CHAT_STEP, READ_STEP, BIG_STEP, SPILL_MARGIN_MIB, COND_CACHE_MIB, condCacheWanted, fillEnv, APU_MAX_STEP, APU_FLOOR, LOAD_PICK_MARGIN } from './conductor.js';
 import { ggufInfo } from './gguf.js';
 import { cardGB } from './tuning.js';
-import { profileFile, readProfile, saveProfile, pcNow, pcChanged, seedSpeeds } from './guppi-profile.js';
+import { profileFile, readProfile, saveProfile, pcNow, pcChanged, seedSpeeds, placeFor } from './guppi-profile.js';
 import { OS } from './platform.js';
 import { readThrottle } from './guppi-heat.js';
 import { append as measuredAdd, rowFromTry } from './measured-db.js';
@@ -204,6 +204,11 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
     const rows = [];
     let edge = false, hot = false, refText = null;
     let fitTargetMiB = 0, roomTries = 0, wddm = false, srvMem = '';
+    // where the brain sits: Bob's own placement for it when he has one, else the engine's fit
+    const layers = Number(info.shape?.layers || info.layers || 0) || 0;
+    const known = placeFor(lab.cfg, model);
+    let cpuMoe = known ? known.cpuMoe : null;
+    if (known) log(`GUPPI calibrate: ${show} is placed as Bob runs it: ${cpuMoe} layers' experts in RAM (from ${known.from})`);
     for (let ti = 0; ti < tries.length; ti++) {
       const t = tries[ti];
       if (signal.aborted) throw new Error('Stopped.');
@@ -228,7 +233,8 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       };
       let timer = null;
       try {
-        srv = await fx.serve({ gguf, ctx: CAL_CTX, signal, cpuOk: false, extra, ...(env ? { env } : {}) });
+        const place = cpuMoe != null ? ['--n-cpu-moe', String(cpuMoe), '-ngl', '999'] : null;
+        srv = await fx.serve({ gguf, ctx: CAL_CTX, signal, cpuOk: false, extra: place ? extra.filter((x, i, a) => x !== '--fit-target' && a[i - 1] !== '--fit-target') : extra, logAll: true, ...(place ? { place } : {}), ...(env ? { env } : {}) });
         if (fx.watchMs > 0) timer = setInterval(() => { sample().catch(() => {}); }, fx.watchMs);
         if (await sample()) throw Object.assign(new Error('trip'), { trip: true });
         const reads = [], writes = [], firsts = [], readNs = [];
@@ -257,14 +263,21 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       const over = Number.isFinite(row.spillMiB) ? Math.max(0, row.spillMiB - spillLimitMiB(t.step) + SPILL_MARGIN_MIB) : 0;
       if (/^(card|spill):/.test(row.trip || '') && roomTries < 2 && (short > 0 || over > 0 || (osKey === 'windows' && !wddm))) {
         roomTries++;
-        fitTargetMiB = (fitTargetMiB || FIT_DEFAULT_MIB) + short + over + ROOM_EXTRA_MIB;
+        // Nov 27, run 3: the fit kept the card full whatever room it was told to leave. So the room comes from moving
+        // experts to RAM instead: placed by hand, more layers' experts each time (enough for what was missing, judged
+        // by a layer's share of the file); with no placement yet, the second retry puts every layer's experts in RAM.
+        const perLayerMiB = layers > 0 && fileBytes > 0 ? fileBytes / MiB / layers : 0;
+        if (cpuMoe != null && layers > 0) cpuMoe = Math.min(layers, cpuMoe + Math.max(1, Math.ceil((short + over + ROOM_EXTRA_MIB) / (perLayerMiB || 512))));
+        else if (roomTries >= 2 && cache && layers > 0) cpuMoe = layers;
+        else fitTargetMiB = (fitTargetMiB || FIT_DEFAULT_MIB) + short + over + ROOM_EXTRA_MIB;
         if (osKey === 'windows' && beNo >= WDDM_FROM_BE) wddm = true;
         if (srvMem) log(`GUPPI calibrate: ${t.id}, how the engine placed it: ${srvMem.split('\n').slice(-12).join(' | ')}`);
-        log(`GUPPI calibrate: ${t.id} ${row.trip}, so it runs again with the fit leaving ${fitTargetMiB} MiB${wddm ? ' and the engine planning by Windows\' budget for the card' : ''}`);
+        log(`GUPPI calibrate: ${t.id} ${row.trip}, so it runs again ${cpuMoe != null ? `with ${cpuMoe} layers' experts in RAM` : `with the fit leaving ${fitTargetMiB} MiB`}${wddm ? ' and the engine planning by Windows\' budget for the card' : ''}`);
         ti--; continue;
       }
       if (fitTargetMiB) row.fitTargetMiB = fitTargetMiB;
       if (wddm) row.wddmBudget = true;
+      if (cpuMoe != null) row.cpuMoe = cpuMoe;
       if (row.trip?.startsWith('heat')) hot = true;
       else if (t.id !== 'bob' && (row.trip || row.failed)) edge = true; // the edge: nothing bigger
       log(`GUPPI calibrate: ${t.id} ${JSON.stringify(row)}`);
@@ -276,7 +289,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
     }
     set('save', 'running');
     const v = guppiVerdict(rows);
-    const rec = { name: show, at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), bobStep, cache, ctx: CAL_CTX, rows, ...v, ...(fitTargetMiB ? { fitTargetMiB } : {}), ...(wddm ? { wddmBudget: true } : {}) };
+    const rec = { name: show, at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), bobStep, cache, ctx: CAL_CTX, rows, ...v, ...(fitTargetMiB ? { fitTargetMiB } : {}), ...(wddm ? { wddmBudget: true } : {}), ...(cpuMoe != null ? { cpuMoe } : {}) };
     const prof = readProfile(lab.cfg);
     const keep = prof && !pcChanged(prof.pc, pc) ? prof.brains : {}; // another PC's profile starts over
     const next = { v: 1, at: lab.now(), pc, brains: { ...keep, [model]: rec } };

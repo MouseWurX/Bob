@@ -85,7 +85,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob guppi '));
 
 // ---------- the job, with a made-up engine and card ----------
 const moe = path.join(tmp, 'moe.gguf');
-{ const buf = Buffer.alloc(4096); await writeGgufFrom(moe, { kvs: [{ key: 'general.architecture', type: 8, value: 'qwen3moe' }, { key: 'qwen3moe.block_count', type: 4, value: 2 }, { key: 'qwen3moe.expert_count', type: 4, value: 8 }], tensors: [{ name: 'blk.0.ffn_up_exps.weight', dims: [32, 16, 2], type: 0, bytes: buf.length, data: async () => buf }] }); }
+{ const buf = Buffer.alloc(4096); await writeGgufFrom(moe, { kvs: [{ key: 'general.architecture', type: 8, value: 'qwen3moe' }, { key: 'qwen3moe.block_count', type: 4, value: 2 }, { key: 'qwen3moe.expert_count', type: 4, value: 8 }, { key: 'qwen3moe.attention.key_length', type: 4, value: 128 }, { key: 'qwen3moe.attention.head_count_kv', type: 4, value: 4 }], tensors: [{ name: 'blk.0.ffn_up_exps.weight', dims: [32, 16, 2], type: 0, bytes: buf.length, data: async () => buf }] }); }
 // speeds: { tryKey: { read, write } }, cardFree: { tryKey: MiB }, plus temp/ram/shared scripts. tryKey = `${step}:${cache}`
 const mkLab = ({ speeds = {}, cardFree = {}, fitHelps = false, throttle = () => '0x0000000000000004', temp = () => 40, ram = () => 12000, shared = () => null, loaded = [], other = null, over = {} } = {}) => {
   let cur = null;
@@ -126,7 +126,7 @@ const fast = { '512:false': { read: 1000, write: 60, text: 'bob words' }, '512:t
   check('the step that left the card under 512 MB is the edge: GUPPI is capped below it', b.cap === 4096 && b.beatsBob === true && b.keepBob === false && /^card/.test(b.rows.find((x) => x.id === 'g6144').trip));
   check('Bob\'s pick ran with no cache at his own step; GUPPI\'s with the cache and the fill', lab.served[0].extra.length === 0 && !lab.served[0].env && lab.served[2].extra.join(' ') === '-b 4096 -ub 4096 --moe-cache-mib 4096' && lab.served[2].env.LLAMA_MOE_CACHE_FILL_STEP === '4096');
   check('every try cooled down first (35 s at least) and every trial engine was stopped', lab.slept.filter((ms) => ms === 35000).length === 6 && lab.served.stopped >= 6);
-  check('a try that left the card short runs again with the fit leaving more, twice at most, then it is the edge', lab.served.filter((o) => o.extra.includes('-ub') && o.extra[o.extra.indexOf('-ub') + 1] === '6144').map((o) => o.extra.includes('--fit-target') ? o.extra[o.extra.indexOf('--fit-target') + 1] : '-').join() === '-,1492,1960');
+  check('a try that left the card short runs again with the fit leaving more, twice at most, then it is the edge', lab.served.filter((o) => o.extra.includes('-ub') && o.extra[o.extra.indexOf('-ub') + 1] === '6144').map((o) => o.extra.includes('--fit-target') ? o.extra[o.extra.indexOf('--fit-target') + 1] : '-').join() === '-,1492,-' && lab.served.filter((o) => o.place).map((o) => o.place.join(' ')).join() === '--n-cpu-moe 2 -ngl 999');
   check('three reads and writes per try, the median kept; the words checked against Bob\'s pick', b.rows.find((x) => x.id === 'g4096').readTps === 3000 && b.rows.find((x) => x.id === 'g512').sameWords === true && b.rows.find((x) => x.id === 'g4096').sameWords === false);
   check('temperature and clocks are logged with each try', b.rows.every((x) => x.peakC === 40) && b.rows.find((x) => x.id === 'g4096').smMedMHz === 2800 && p.pc.gpu === 'Test card' && p.pc.idleC === 40);
   const sp = JSON.parse(fs.readFileSync(speedsFile(lab.cfg), 'utf8'));
@@ -211,6 +211,19 @@ const fast = { '512:false': { read: 1000, write: 60, text: 'bob words' }, '512:t
   const b = readProfile(lab.cfg).brains.own;
   check('the spill counts the trial engine\'s own shared memory, by its process', b.rows.every((x) => !x.trip) && b.rows[0].spillMiB === 100, JSON.stringify(b.rows.map((x) => x.trip || x.spillMiB)));
 }
+// ---------- the laptop's third run: the fit kept the card full whatever room it was told; place it as Bob does ----------
+{
+  const lab = mkLab({ speeds: fast, over: { cfg: { llamacpp: { nCpuMoe: { pinned: 1 } } } } });
+  await startGuppiCalibrate(lab, { model: 'pinned', osKey: 'linux' }); await wait(lab);
+  check('a brain placed by hand on the Brains page is timed where Bob runs it, not by the fit', lab.served.length === 4 && lab.served.every((o) => o.place?.join(' ') === '--n-cpu-moe 1 -ngl 999' && !o.extra.includes('--fit-target')) && readProfile(lab.cfg).brains.pinned.cpuMoe === 1);
+  const lab2 = mkLab({ speeds: fast, cardFree: { '512:false': 266 }, over: { cfg: { llamacpp: { nCpuMoe: { tight: 0 } } } } });
+  await startGuppiCalibrate(lab2, { model: 'tight', osKey: 'linux' }); await wait(lab2);
+  check('short of room when placed by hand: more layers\' experts go to RAM, not a bigger fit room', lab2.served.slice(0, 2).map((o) => o.place?.[1]).join() === '0,2' && readProfile(lab2.cfg).brains.tight.cpuMoe >= 1, JSON.stringify(lab2.served.map((o) => o.place)) + JSON.stringify(readProfile(lab2.cfg).brains.tight.rows.map((x) => x.trip)));
+  const lines = []; const { startServer } = await import('../src/lab-test.js');
+  const fakeChild = () => { const h = {}; return { exitCode: null, pid: 7, kill() {}, stderr: { on: (_e, f) => { h.f = f; setTimeout(() => f('\x1b[32mload_tensors: CUDA0 model buffer size = 3000 MiB\n'), 1); } } }; };
+  await startServer({ exe: 'x', gguf: 'g', cpuOk: false, logAll: true, log: (t) => lines.push(t), spawnFn: fakeChild, timeoutMs: 1500 }).catch(() => {});
+  check('the engine\'s own lines go in the calibration log, colour codes stripped', lines.some((t) => t === '  engine: load_tensors: CUDA0 model buffer size = 3000 MiB'), lines.join(' | '));
+}
 // ---------- GUPPI at load ----------
 {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-guppi-load-'));
@@ -227,6 +240,9 @@ const fast = { '512:false': { read: 1000, write: 60, text: 'bob words' }, '512:t
   saveProfile({ dataDir: d }, { v: 1, pc, brains: { moe: { cap: 4096, keepBob: false, fitTargetMiB: 1526 } } });
   const roomy = mk(); roomy.fitsItself = () => true; const a4 = roomy.buildArgs('moe');
   check('the calibrated room is passed to the fit at load, and the logbook says so', a4.join(' ').includes('--fit on') && a4.join(' ').includes('--fit-target 1526') && roomy.said.some((t) => /the fit leaves 1526 MiB free/.test(t)), a4.join(' '));
+  saveProfile({ dataDir: d }, { v: 1, pc, brains: { moe: { cap: 4096, keepBob: false, cpuMoe: 3 } } });
+  const placed = mk(); placed.fitsItself = () => true; const a5 = placed.buildArgs('moe');
+  check('at load the calibrated placement replaces the fit, and the logbook says so', !a5.includes('--fit') && a5.join(' ').includes('--n-cpu-moe 3 -ngl 999') && placed.said.some((t) => /3 layers' experts in RAM, as calibrated/.test(t)), a5.join(' '));
   saveProfile({ dataDir: d }, { v: 1, pc: { ...pc, be: 45 }, brains: { moe: { cap: 2048, keepBob: true } } });
   const stale = mk(); const a3 = stale.buildArgs('moe');
   check('a profile from another engine build isn\'t used, and the logbook says to calibrate again', a3.includes('--moe-cache-mib') && stale.said.some((t) => /isn't used: it was made with Brain Engine 45.*Calibrate again/.test(t)));

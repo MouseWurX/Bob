@@ -709,6 +709,12 @@ export class LlamaCpp {
       const prof = this.guppiProfile(model);
       // Nov 27, the laptop: calibrating found the fit's default left the card under GUPPI's 512 MB, so it leaves more
       if (prof?.fitTargetMiB > 0 && args.includes('--fit') && !args.some((a) => ['--fit-target', '-fitt'].includes(a))) { args.push('--fit-target', String(prof.fitTargetMiB)); this.log?.('engine', `${model}: this PC's GUPPI calibration: the fit leaves ${prof.fitTargetMiB} MiB free on the card`); }
+      // Nov 27, the laptop: where the fit kept the card full, calibrating placed the experts by hand instead
+      if (Number.isInteger(prof?.cpuMoe) && args.includes('--fit') && !Number.isInteger(this.lc.nCpuMoe?.[model])) {
+        for (const f of ['--fit', '--fit-target', '-fitt', '-ngl', '--n-gpu-layers']) { const i = args.indexOf(f); if (i >= 0) args.splice(i, 2); }
+        args.push('--n-cpu-moe', String(prof.cpuMoe), '-ngl', '999');
+        this.log?.('engine', `${model}: this PC's GUPPI calibration: ${prof.cpuMoe} layers' experts in RAM, as calibrated (the engine's own fit left the card too full here)`);
+      }
       if (prof?.wddmBudget && process.platform === 'win32' && !(this.tuneEnv && 'GGML_CUDA_WDDM_BUDGET' in this.tuneEnv)) { this.tuneEnv = { ...(this.tuneEnv || {}), GGML_CUDA_WDDM_BUDGET: '1' }; this.log?.('engine', `${model}: this PC's GUPPI calibration: the engine plans card memory by Windows' budget`); }
       if (!args.includes('--moe-cache-mib') && !prof?.keepBob && !this.cfg.sharedGraphics && this.beNo() >= COND_FILL_FROM_BE && condCacheWanted({ experts: ggufInfo(gguf)?.experts || 0, fileBytes: (() => { try { return fs.statSync(gguf).size; } catch { return 0; } })(), cardBytes: cardGB(this.cfg) * 1024 ** 3 })) {
         args.push('--moe-cache-mib', String(COND_CACHE_MIB));
