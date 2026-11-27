@@ -2023,6 +2023,42 @@
       }
     },
     {
+      "id": "nemotron-dory-4b",
+      "family": "Nemotron",
+      "category": "chat",
+      "jobs": [
+        "small",
+        "bob",
+        "office",
+        "phone"
+      ],
+      "name": "Dory 1.0 4B (NVIDIA)",
+      "published": "2026-10-16",
+      "what": "NVIDIA's looped 4B: a middle block of layers runs twice per word, so it thinks harder than its size. Thinks before it answers, 256K in mind; no pictures. Tried Nov 27 on Bob's held-out jobs on a rented card: 39 of 65 passed (inbox 16 of 28, office 12 of 14, code 3 of 12, web 8 of 11), the best of the phone-sized brains (Gemma 4 E2B 10, Qwen3.5 2B 22).",
+      "sizeGB": 3.7,
+      "vramGB": 5,
+      "params": 4,
+      "license": "OpenMDW 1.1",
+      "commercial": true,
+      "pick": "optional",
+      "thinks": true,
+      "phoneFit": "Fits an 8 GB phone; the best phone brain at Bob's jobs, but slower than Gemma 4 E2B (about 8 words a second on 4 processor cores in our test) and no pictures.",
+      "files": [
+        {
+          "url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF/resolve/df53755cb8741843af8e019e088819fbef17e29b/NVIDIA-Nemotron-Labs-Dory1.0-4B-Q5_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 3673288864,
+          "sha256": "96080be49ffd67b916018b7bdef8c484762576fb52780e10ab98ac4978a660e0"
+        }
+      ],
+      "use": {
+        "models": {
+          "small": "$model"
+        }
+      }
+    },
+    {
       "id": "granite-4.1-3b",
       "family": "Granite",
       "category": "chat",
@@ -4762,7 +4798,7 @@
       "cardGB": 0
     }
   ],
-  "updated": "2026-11-26",
+  "updated": "2026-11-27",
   "bigBrains": [
     {
       "id": "mistral-large-4",

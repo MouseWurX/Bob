@@ -32,6 +32,21 @@ globalThis.BobShared = {
     "bytes": 2497281120,
     "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597"
    }
+  },
+  {
+   "id": "nemotron-dory-4b",
+   "name": "Dory 1.0 4B (NVIDIA)",
+   "family": "Nemotron",
+   "pick": "optional",
+   "what": "Best of the phone brains at real jobs (39 of 65 of Bob's held-out jobs, against 10 for Gemma 4 E2B), but slower and bigger: about 3.7 GB, and no pictures. Thinks before it answers.",
+   "license": "OpenMDW 1.1",
+   "maxTokens": 1024,
+   "file": {
+    "name": "NVIDIA-Nemotron-Labs-Dory1.0-4B-Q5_K_M.gguf",
+    "url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF/resolve/df53755cb8741843af8e019e088819fbef17e29b/NVIDIA-Nemotron-Labs-Dory1.0-4B-Q5_K_M.gguf",
+    "bytes": 3673288864,
+    "sha256": "96080be49ffd67b916018b7bdef8c484762576fb52780e10ab98ac4978a660e0"
+   }
   }
  ]
 };
