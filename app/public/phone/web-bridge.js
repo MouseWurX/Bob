@@ -165,6 +165,15 @@
     'brain.status': () => ({ files: {}, loaded: null, busy: false }),
     'lend.status': () => ({}),
     'pair.waiting': () => [],
+    // 🧰 Bob's documents and Look things up online belong to the phone brain, which is Bob for Android's.
+    'docs.list': () => [],
+    'docs.read': () => null,
+    'docs.write': () => { throw new Error(NOT_HERE); },
+    'docs.save': () => { throw new Error(NOT_HERE); },
+    'docs.delete': () => false,
+    'docs.undo': () => false,
+    'docs.add': () => { throw new Error(NOT_HERE); },
+    'web.get': () => { throw new Error(NOT_HERE); },
     // Voice, phone and Bob-Net (2026-11-11): Bob's ears, the Share menu and the home-screen widget are Bob for Android's.
     // Hands-free and Talk over Bob need the ears; on an iPhone the keyboard's own microphone types what you say.
     'ears.start': () => { throw new Error('listening by himself needs Bob for Android. On an iPhone, use the keyboard\'s microphone'); },

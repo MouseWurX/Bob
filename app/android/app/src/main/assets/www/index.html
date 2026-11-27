@@ -56,6 +56,7 @@
   <section class="mn-group" aria-labelledby="mn-bob"><h3 id="mn-bob">This phone</h3><div class="mn-grid">
     <button data-go="brain"><span class="ico">📱</span>Phone brain</button>
     <button data-go="memory"><span class="ico">📝</span>Memory</button>
+    <button data-go="voicelog" id="voicelog-tile" class="hidden"><span class="ico">🎙</span>Voice log</button>
     <button data-go="settings"><span class="ico">⚙</span>Settings</button>
     <button data-go="help"><span class="ico">❔</span>Help</button>
   </div></section>
@@ -94,6 +95,13 @@
 <section class="panel hidden" id="brain"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Phone brain</h2></div><div class="body">
   <label class="switch"><div class="words"><strong>On-device brain</strong><p class="help-line">A small brain on this phone answers when no Bob on your network can. It needs a one-time download of about 3 GB.</p></div><span class="pill"><input type="checkbox" id="phone-on"><span></span></span></label>
   <div id="brain-models"></div>
+  <h3>Tools</h3>
+  <label class="switch"><div class="words"><strong>Let the phone brain use tools</strong><p class="help-line">The phone brain can make and fill in Excel spreadsheets and Word documents in Bob's documents (below), work sums out with the calculator, tell the date and keep notes. Every change keeps the version before it. Works best with LFM3 1.7B or Qwen3.5 4B.</p></div><span class="pill"><input type="checkbox" id="phone-tools"><span></span></span></label>
+  <label class="switch"><div class="words"><strong>Look things up online</strong><p class="help-line">With tools on, the phone brain can search the web (DuckDuckGo) and read a page when it isn't sure. Only the search words and the page address leave the phone. After it reads the web, changes to your files wait for your OK.</p></div><span class="pill"><input type="checkbox" id="phone-online"><span></span></span></label>
+  <label class="switch"><div class="words"><strong>Voice log</strong><p class="help-line">Say a name and a value ("water 52", "400 rate", "next stage") and it goes in a spreadsheet for the job, with the time, and is read back to you. It can keep count of what's on hand and work out your own formulas. No brain needed. Adds 🎙 Voice log to the menu.</p></div><span class="pill"><input type="checkbox" id="voice-log-on"><span></span></span></label>
+  <h3>Bob's documents</h3>
+  <div id="phone-docs"></div>
+  <div class="btns"><button id="docs-add">Add a file</button></div>
   <h3>Memory</h3>
   <label class="switch"><div class="words"><strong>Free memory when Bob is idle</strong><p class="help-line">The phone brain lets go of its memory after a quiet spell, so your other apps stay quick. The next message takes a few seconds longer.</p></div><span class="pill"><input type="checkbox" id="free-idle"><span></span></span></label>
   <label class="field" for="idle-min">Let go after</label>
@@ -220,6 +228,31 @@
   <label class="switch"><div class="words"><strong>Short answers out loud</strong><p class="help-line">I say the first sentence or two, and the rest is in the chat.</p></div><span class="pill"><input type="checkbox" id="hf-short"><span></span></span></label>
 </div></section>
 
+<section class="panel hidden" id="voicelog"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>🎙 Voice log</h2></div><div class="body">
+  <p class="help-line">Say a name and a value: "water 52" is the water's total for this stage, "feed rate 0.15" the feed's rate, and "400 rate" the rate of the name marked "(measure default)". "Next stage", "stage 4", "undo" and "repeat" work too. For what's on hand: "count shed feed 4", "reload barn fuel 2" and "drawing fuel from shed". Each one goes in the job's spreadsheet with the time, and I read it back. The names here are examples: put in your own below.</p>
+  <p class="help-line" id="vl-file" role="status"></p>
+  <div class="btns"><button class="main" id="vl-talk">🎙 Talk</button><button id="vl-undo">Undo last</button></div>
+  <label class="switch"><div class="words"><strong>Keep listening</strong><p class="help-line">After each read-back I listen again, until you tap Talk or leave this page.</p></div><span class="pill"><input type="checkbox" id="vl-keep"><span></span></span></label>
+  <label class="field" for="vl-text">Or type it</label>
+  <div class="btns"><input type="text" id="vl-text" placeholder="400 rate" autocomplete="off"><button id="vl-send">Log</button></div>
+  <div id="vl-last"></div>
+  <div class="btns"><button id="vl-new">New job</button><button id="vl-save">Save to phone</button></div>
+  <h3>Names I listen for</h3>
+  <p class="help-line">One per line: the name, then other ways the phone may hear it ("Feed: feed, feet"). "(0-500)" says which totals make sense, "(measure 25-1600)" which measures, "(unit L/min)" the measure's unit, "(measure default)" whose measure a bare "400 rate" is, and "(draws per 1000)" that a stage total of 1000 takes 1 off the count. A line "measure: rate, flow" sets the measure words, and "stock unit: L" the unit counts are in. They stay on this phone.</p>
+  <textarea id="vl-names" rows="6" aria-label="Names I listen for"></textarea>
+  <div class="btns"><button id="vl-names-save">Save names</button><button id="vl-names-reset">Back to the starting names</button></div>
+  <h3>Your formulas</h3>
+  <p class="help-line">One per line, like "Mix = Water / (Feed * 1000) + 1". A formula can use another by its name; any other name is something you give. "Pump size = 45.6" is a fixed number. Only + − × ÷ ^ and brackets. Say "work out Mix with Water 40 Feed 2.5", or pick one here. They stay on this phone.</p>
+  <textarea id="vl-formulas" rows="5" aria-label="Your formulas" placeholder="Mix = Water / (Feed * 1000) + 1"></textarea>
+  <div class="btns"><button id="vl-formulas-save">Save formulas</button></div>
+  <div id="vl-f-box" class="hidden">
+    <label class="field" for="vl-f-pick">Work out</label>
+    <select id="vl-f-pick"></select>
+    <div id="vl-f-inputs"></div>
+    <div class="btns"><button class="main" id="vl-f-go">Work it out</button></div>
+  </div>
+</div></section>
+
 <section class="panel hidden" id="reader"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Read aloud</h2></div><div class="body">
   <p class="help-line">Bob reads a document to you in your phone's voice, with play, pause and speed, and remembers where you stopped.</p>
   <div class="btns"><button id="reader-file">Pick a text file</button><button id="reader-last">Bob's last reply</button></div>
@@ -246,6 +279,9 @@
 <script src="journey-sides.js"></script>
 <script src="journey-play.js"></script>
 <script src="logic.js"></script>
+<script src="calc.js"></script>
+<script src="phone-tools.js"></script>
+<script src="voice-log.js"></script>
 <script src="help.js"></script>
 <script src="diagram-core.js"></script>
 <script src="math-core.js"></script>

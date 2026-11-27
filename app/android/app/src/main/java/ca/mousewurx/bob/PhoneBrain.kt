@@ -216,8 +216,10 @@ class PhoneBrain(private val context: Context) {
     /**
      * One reply on the phone, for the phone page. `system` is Bob's phone persona (it stays the same, so the phone
      * doesn't re-read it), `history` the chat so far ({role, content}), `note` the time and such, folded into your turn.
+     * With "Let the phone brain use tools" on, `tools` are the phone's tools and `after` this turn's tool steps so far
+     * (the brain's calls and their results, which the page ran); the done event then carries any new tool calls.
      */
-    fun chat(file: String, system: String, history: JSONArray, text: String, note: String, maxTokens: Int) {
+    fun chat(file: String, system: String, history: JSONArray, text: String, note: String, maxTokens: Int, tools: JSONArray = JSONArray(), after: JSONArray = JSONArray()) {
         val name = safeName(file)
         if (!working.compareAndSet(null, "chat")) {
             emit(mapOf("type" to "error", "text" to if (working.get() == "lend") "the phone brain is thinking for another Bob right now; try again in a moment" else "busy"))
@@ -225,6 +227,8 @@ class PhoneBrain(private val context: Context) {
         }
         stopAsked = false
         reply = scope.launch {
+            // The done event goes out after the brain is free again, so the page can start its next tool round at once.
+            var done: Map<String, Any?>? = null
             try {
                 val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", system))
                 for (j in 0 until history.length()) history.optJSONObject(j)?.let { m ->
@@ -233,13 +237,17 @@ class PhoneBrain(private val context: Context) {
                 }
                 if (note.isNotBlank()) msgs.put(JSONObject().put("role", "system").put("content", note))
                 msgs.put(JSONObject().put("role", "user").put("content", text))
+                for (j in 0 until minOf(after.length(), 200)) after.optJSONObject(j)?.let { m ->
+                    if (m.optString("role") == "assistant" || m.optString("role") == "tool") msgs.put(m)
+                }
+                val toolList = ChatShape.tools(tools)
                 lock.withLock {
                     ensureLoaded(name) {}
                     lastUse = System.currentTimeMillis()
                     emit(mapOf("type" to "brain", "state" to "thinking"))
                     val t0 = System.currentTimeMillis()
                     var first = 0L; var n = 0
-                    val r = think(msgs, JSONArray(), maxTokens.coerceIn(64, 2048), reading = { _, _ -> }) { w ->
+                    val r = think(msgs, toolList, maxTokens.coerceIn(64, 2048), reading = { _, _ -> }) { w ->
                         if (n == 0) first = System.currentTimeMillis() - t0
                         n++
                         emit(mapOf("type" to "token", "text" to w))
@@ -248,8 +256,9 @@ class PhoneBrain(private val context: Context) {
                     val secs = (System.currentTimeMillis() - t0 - first).coerceAtLeast(1) / 1000.0
                     if (r.tokens > 8) lastSpeed = (r.tokens - 1) / secs
                     lastUse = System.currentTimeMillis()
-                    if (stopAsked || r.stop == "stopped") emit(mapOf("type" to "done", "stopped" to true))
-                    else emit(mapOf("type" to "done", "tokens" to r.tokens, "firstMs" to first, "tokPerSec" to if (r.tokens > 1) (r.tokens - 1) / secs else 0.0))
+                    done = if (stopAsked || r.stop == "stopped") mapOf("type" to "done", "stopped" to true)
+                    else (mapOf("type" to "done", "tokens" to r.tokens, "firstMs" to first, "tokPerSec" to if (r.tokens > 1) (r.tokens - 1) / secs else 0.0,
+                        "content" to r.content, "calls" to ChatShape.callsOut(r.toolCalls)))
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 emit(mapOf("type" to "done", "stopped" to true))
@@ -259,6 +268,7 @@ class PhoneBrain(private val context: Context) {
                 emit(mapOf("type" to "error", "text" to (e.message ?: e.javaClass.simpleName)))
             } finally {
                 working.compareAndSet("chat", null)
+                done?.let { emit(it) }
             }
         }
     }

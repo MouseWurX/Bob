@@ -37,9 +37,12 @@
     { id: 'security', what: 'check your other replicant matrix for viruses and threats', words: /\b(scan|check)\b[^.?!]{0,30}\b(pc|computer|laptop)\b[^.?!]{0,30}\b(virus|viruses|malware|threats?)\b|\b(scan|check) (my|the) (pc|computer|laptop)\b|\b(defender|antivirus) scan\b/i }
   ];
 
-  function bigJob(text) {
+  function bigJob(text, { phoneTools = false } = {}) {
     const t = String(text || '');
     const hit = BIG_JOBS.find((j) => j.words.test(t));
+    // 🧰 With "Let the phone brain use tools" on, the phone makes and fills in Word and Excel files itself
+    // (PDFs, slides and converting still need a bigger Bob).
+    if (hit?.id === 'office' && phoneTools && /\b(docx?|word|spreadsheets?|xlsx|excel|sheets?|documents?|letters?)\b/i.test(t) && !/\b(pdf|powerpoint|pptx|slides?|presentation|convert|export)\b/i.test(t)) return null;
     return hit ? { id: hit.id, what: hit.what } : null;
   }
 
@@ -77,11 +80,15 @@
   // The phone brain's instructions: Bob's shared persona, what the phone can't do and his memory file. They stay the
   // same from reply to reply, so the phone brain reads them once; the time goes with each message instead (phone.js).
   // (`now` and `recap` are still accepted, for a brain that can't keep the chat.)
-  function phoneSystem({ persona, user, cat, now, memory = '', recap = [], bigBob = '' }) {
+  function phoneSystem({ persona, user, cat, now, memory = '', recap = [], bigBob = '', tools = false, online = false }) {
     const who = (user || '').trim() || 'the user';
+    const bigger = bigBob ? ` and that ${bigBob} on their network can do it: the app shows a button to send it there` : ' and that a bigger Bob on their network could do it';
     const parts = [
       String(persona || '').replace('{{ABOUT}}', ''),
-      `Right now you're running on ${who}'s phone with a small brain, so keep replies short. On the phone you can chat, remember things and help think things through. You can't make pictures, video, music or sound, touch files, run programs or convert documents here. When ${who} asks for one of those, say so in one line${bigBob ? ` and that ${bigBob} on their network can do it: the app shows a button to send it there` : ' and that a bigger Bob on their network could do it'}. Never pretend you made something.`,
+      tools
+        // 🧰 Let the phone brain use tools: the same short rules as the PC (use the tool, say what it really did).
+        ? `Right now you're running on ${who}'s phone with a small brain, so keep replies short. On the phone you have tools: make, read and fill in Excel spreadsheets and Word documents in Bob's documents, the calculator for any sum, the date and time, and notes${online ? ', and looking things up on the web' : ''}. Use a tool instead of guessing, read a file before changing it, and say what the tool really did. You can't make pictures, video, music or sound, run programs, make PDFs or slides, or convert documents here${online ? '' : ', and you can\'t go online'}. When ${who} asks for one of those, say so in one line${bigger}. Never pretend you made or changed something.`
+        : `Right now you're running on ${who}'s phone with a small brain, so keep replies short. On the phone you can chat, remember things and help think things through. You can't make pictures, video, music or sound, touch files, run programs or convert documents here. When ${who} asks for one of those, say so in one line${bigger}. Never pretend you made something.`,
     ];
     if (now) parts.push(`Current date and time for ${who}: ${now}.`);
     if (memory.trim()) parts.push(`Things you remember about ${who} (from your memory file):\n${memory.trim().slice(0, 3000)}`);

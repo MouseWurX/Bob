@@ -60,10 +60,22 @@ globalThis.BobHelp = {
       id: 'phone-brain', title: 'The phone brain',
       html: `<p>Menu, <strong>Phone brain</strong>, <strong>On-device brain</strong> (off to start with). It needs a one-time download:</p>
 <ul><li><strong>Gemma 4 E2B</strong> (recommended, about 2.8 GB): quick and light, from the same family as my brains on your other replicant matrix.</li>
-<li><strong>Qwen3 4B Instruct</strong> (about 2.5 GB): a little better at step-by-step thinking, but slower, and the phone runs warmer.</li></ul>
+<li><strong>Qwen3 4B Instruct</strong> (about 2.5 GB): a little better at step-by-step thinking, but slower, and the phone runs warmer.</li>
+<li><strong>LFM3 1.7B</strong> (about 1.1 GB) and <strong>Qwen3.5 4B</strong> (about 2.7 GB): the best at using tools (below). LFM3 is Liquid AI's own licence: free for personal use. Neither is proven on a phone yet in our lab, as we have yet to test.</li></ul>
 <p>Each download asks first, shows its size, comes from an exact pinned version, and is checked against its checksum before I use it. If the check fails, the file is deleted. Pause keeps what's downloaded; Resume carries on. A network hiccup is retried twice by itself.</p>
 <p><strong>Use this one</strong> picks which downloaded brain answers. <strong>Delete</strong> frees its space (tap twice).</p>
-<p>What the phone brain can't do: pictures, music, files, programs, web search. It's honest about that and points you to a bigger Bob.</p>`
+<p>What the phone brain can't do: pictures, music, programs, PDFs or slides. Files and web search only with <strong>Let the phone brain use tools</strong> on. It's honest about that and points you to a bigger Bob.</p>`
+    },
+    {
+      id: 'phone-tools', title: 'Let the phone brain use tools',
+      html: `<p>Phone brain page, <strong>Tools</strong>, <strong>Let the phone brain use tools</strong> (off to start with). With it on, the brain on this phone does real work, not just chat:</p>
+<ul><li><strong>Excel spreadsheets</strong> (.xlsx): "make a budget sheet with Item and Price", "put 12.50 in B3 of Budget", "add Milk, 3.49 to my groceries sheet", "what's in Budget.xlsx?". Numbers go in as numbers and formulas (=SUM(B2:B9)) as formulas; Excel works formulas out when you open the file.</li>
+<li><strong>Word documents</strong> (.docx): "write a letter to my landlord", "add a paragraph after the one about rent", "change Sam to Alex in the letter". Headings, bullets, bold and simple tables.</li>
+<li><strong>The calculator</strong> for every sum (the same one as on your other replicant matrix), <strong>the date</strong> ("how many days until the 25th?") and <strong>notes</strong> ("note that the plumber comes Tuesday").</li>
+<li><strong>Look things up online</strong> (its own switch, off to start with): a DuckDuckGo search and reading one page. Only the search words and the page address leave the phone.</li></ul>
+<p>The files live in <strong>Bob's documents</strong>, on the same page. <strong>Add a file</strong> brings one in from your phone (Android's file picker: I only see the file you pick). <strong>Save to phone</strong> puts a copy in Download/Bob, so Excel, Word or Google Drive can open it. Every change keeps the version before it (the last 5), and <strong>Put back the version before</strong> undoes the last change.</p>
+<p>Two safety rules live in my code, not in my head: after I read a web page in a reply, changes to your files wait for your <strong>OK</strong> (a page can't talk me into overwriting your budget), and the same tool call three times in a row makes me stop and answer. Small brains slip: check a file before you send it to anyone. This is new and not yet proven on a real phone.</p>
+<p>Not here yet: .xls, .csv, .odt or PDF files, charts, and phone actions like alarms (those will come later, each behind an OK card). iPhone: not yet, as there's no phone brain there.</p>`
     },
     {
       id: 'speed', title: 'Test speed',
@@ -280,6 +292,25 @@ globalThis.BobHelp = {
       html: `<p>Settings, Data, <strong>Low-data mode</strong>: <strong>Off</strong> (to start with), <strong>Only on mobile data</strong> or <strong>Always</strong>. With it on, chats are text only: pictures, clips, songs, diagrams and 3D models from your other Bob wait as a <strong>tap to load</strong> button instead of coming down by themselves. Only on mobile data goes by what Android says about the connection (a metered one), checked each time I come to the front.</p>`
     },
     {
+      id: 'voice-log', title: 'Voice log',
+      html: `<p>Phone brain page, Tools, <strong>Voice log</strong> (off to start with). It adds <strong>🎙 Voice log</strong> to the menu. Tap <strong>🎙 Talk</strong> and say a name and a value, and I write it in the job's spreadsheet with the time and read it back. Made for logging work with your hands full. The names it starts with (water, feed, fuel, seed) are only examples: put in your own under <strong>Names I listen for</strong>, and they stay on this phone.</p>
+<ul><li><strong>"Feed 52.5"</strong>: the feed's total, in this stage's row.</li>
+<li><strong>"Feed rate 0.15"</strong> or <strong>"0.15 feed rate"</strong>: a second measure for a name, like a rate or a mix. You choose the word ("measure: rate, flow") and each name's unit ("(unit L/min)").</li>
+<li><strong>"400 rate"</strong>: a measure with no name is the one marked "(measure default)". I say "Water rate 400" back, so you know which one I took.</li>
+<li><strong>"Next stage"</strong>, <strong>"stage 4"</strong>, <strong>"undo"</strong> (takes back the last change) and <strong>"repeat"</strong>.</li>
+<li>Several at once work too: "feed 52.5 fuel 26.1".</li></ul>
+<p>The workbook (one per job, "Voice log" and the date, in Bob's documents) has two sheets to start with. <strong>Stages</strong>: one row per stage, one column per name, with the last value said in that stage, so the totals you say at the end of a stage are its totals. <strong>Log</strong>: every value you said, with the time, the stage, and how much it went up or down from the one before ("+100 (up)").</p>
+<p><strong>What's on hand.</strong> Counts and deliveries go in an <strong>Inventory</strong> sheet: one row per item, one column per place it's kept, then the total.</p>
+<ul><li><strong>"Count shed feed 4 fuel 2"</strong>: what's in the shed now. A new place gets its own column.</li>
+<li><strong>"Reload barn fuel 2"</strong>: a delivery, added to what's in the barn.</li>
+<li><strong>"Drawing fuel from shed"</strong>: which place fuel's stage totals come off. With no place named, they come off the item's total, in the "Drawn, no place" column, until its next count.</li>
+<li><strong>"Seed 2 pallets 5 bags"</strong>: things counted in pallets and bags, in a Bagged sheet.</li></ul>
+<p>Once an item is counted, each stage total you say comes off what's left, and I read back how much is left. Say a stage total again and only the difference comes off. If you say totals in one unit and count in another (litres said, cubic metres counted), put "(draws per 1000)" after the name. Every count, reload and draw is in the <strong>Inventory log</strong> sheet. If something goes below zero I say so: count it again.</p>
+<p><strong>Your formulas.</strong> Type them in once, one per line: "Mix = Water / (Feed * 1000) + 1". A formula can use another by its name; any other name is something you give it, and "Pump size = 45.6" is a fixed number. Say <strong>"work out Mix with Water 40 Feed 2.5"</strong>, or pick it under Work out and fill in the boxes. I say the answer and the numbers I used. Numbers you gave before are kept, so next time "work out Mix" is enough. Only + − × ÷ ^ and brackets work: nothing else runs. The formulas stay on this phone.</p>
+<p>Plain code reads what you say, not the brain: it's instant, needs no brain download, and never guesses. If a name or a number is missing, or a value is outside its range, I say so and write nothing. <strong>Keep listening</strong> listens again after each read-back. Your phone's own speech recognition does the listening; on most phones, a Galaxy S22 too, it works without internet.</p>
+<p>Not proven on a real phone yet.</p>`
+    },
+    {
       id: 'glossary', title: 'Glossary',
       html: `<dl>
 <dt>Talk over</dt><dd>Speaking while I read aloud, so I stop and listen. Settings, Voice, Talk over Bob.</dd>
@@ -329,6 +360,14 @@ globalThis.BobHelp = {
 <dt>Earlier version</dt><dd>Under your message: what was there before you tapped Try again or Edit.</dd>
 <dt>Saved prompt</dt><dd>Words you ask me often, saved with a short name. Type / at the start of the message box to pull one up. Blanks in {curly brackets} are what you fill in.</dd>
 <dt>OK card</dt><dd>A Bob on your network asking before he does something outside his own folder.</dd>
+<dt>Tool</dt><dd>Something I can use instead of guessing, like the calculator or a spreadsheet. On the phone: Let the phone brain use tools.</dd>
+<dt>Bob's documents</dt><dd>The spreadsheets, Word documents and notes the phone brain works on, kept inside my app on this phone. Phone brain page.</dd>
+<dt>Measure (Voice log)</dt><dd>A second number for a name, like a rate or a mix, said with your measure word: "feed rate 0.15". Names I listen for sets the word and the unit.</dd>
+<dt>Place (Voice log)</dt><dd>Where an item is kept, like a shed or a tank. The Inventory sheet has a column for each one.</dd>
+<dt>Reload</dt><dd>A delivery added to a place: "reload barn fuel 2".</dd>
+<dt>Stage total</dt><dd>How much of something was used in one stage of a job. The Voice log's Stages sheet keeps one row per stage.</dd>
+<dt>Your formulas</dt><dd>Sums you type into the Voice log once ("Mix = Water / Feed"), then work out by saying "work out Mix with Water 40 Feed 2.5".</dd>
+<dt>.xlsx and .docx</dt><dd>The file types Excel and Word save. The phone brain reads and writes these two, not the old .xls and .doc.</dd>
 </dl>`
     },
     {
@@ -367,6 +406,15 @@ globalThis.BobHelp = {
 <tr><td>Can I move a chat from the phone to my computer?</td><td>Yes: Menu, Carry on. That Bob needs Accept chats on (his Settings, Bob-Net).</td></tr>
 <tr><td>Pictures don't load on mobile data</td><td>That's Low-data mode: tap the button to load one, or set it to Off in Settings, Data.</td></tr>
 <tr><td>Can I use the phone away from home?</td><td>Yes, as long as your other replicant matrix is on and Tailscale is on at both ends. Without that, the phone brain can still chat.</td></tr>
+<tr><td>The phone brain says it can't change files</td><td>Phone brain page, Tools: turn on Let the phone brain use tools. A brain made for tools (LFM3 1.7B or Qwen3.5 4B) gets it right more often.</td></tr>
+<tr><td>Where's the spreadsheet the phone brain made?</td><td>Phone brain page, Bob's documents. Tap Save to phone to copy it to Download/Bob, then open it in Excel or Word.</td></tr>
+<tr><td>A total shows a formula, not a number</td><td>I write the formula; Excel (or Google Sheets) works it out when you open the file. Ask me to use the calculator if you want the number now.</td></tr>
+<tr><td>The Voice log wrote the wrong value</td><td>Say "undo" (or tap Undo last). Each undo takes back one more change.</td></tr>
+<tr><td>The Voice log's "left" doesn't match what's there</td><td>Count again ("count shed fuel 3.5"): a count sets what's in that place. Say "drawing fuel from shed" so its stage totals come off the right place.</td></tr>
+<tr><td>"Work out" says it needs something</td><td>Give the numbers it names: "work out Mix with Water 40 Feed 2.5". It never fills one in by guessing.</td></tr>
+<tr><td>The Voice log keeps saying "no name I know"</td><td>Add the way your phone hears it to Names I listen for, after the name: "Feed: feed, feet". The line under each entry shows what the phone heard.</td></tr>
+<tr><td>The phone brain changed the wrong cell</td><td>Bob's documents, Put back the version before (tap twice). The last 5 versions of each file are kept.</td></tr>
+<tr><td>"That file wouldn't open" or it isn't an .xlsx</td><td>I only read Excel's .xlsx and Word's .docx. Save it as one of those first (in Excel or Word: Save as).</td></tr>
 </table>`
     }
   ]

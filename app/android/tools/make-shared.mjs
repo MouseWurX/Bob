@@ -21,6 +21,7 @@ export const OUT_AVATARS = path.join(root, 'android/app/src/main/assets/www/avat
 export const OUT_PROMPTS = path.join(root, 'android/app/src/main/assets/www/prompt-words.js');
 export const OUT_TABLE_FX = path.join(root, 'android/app/src/main/assets/www/table-fx.js');
 export const OUT_ADV_TABLE = path.join(root, 'android/app/src/main/assets/www/adv-table.js');
+export const OUT_CALC = path.join(root, 'android/app/src/main/assets/www/calc.js');
 
 // One section of CORE, from its heading line up to the next blank-line-separated heading.
 function section(heading) {
@@ -88,7 +89,7 @@ export function buildPromptWords() {
 // Icons, fonts, Mermaid and diagram-core.js aren't copied: the server hands /phone/shared/, /phone/vendor/ and
 // /phone/diagram-core.js out of public/ (they're the same files).
 export const WEB_DIR = path.join(root, 'public/phone');
-export const WEB_COPIED = ['phone.js', 'phone.css', 'logic.js', 'help.js', 'shared.js', 'avatars.js', 'prompt-words.js', 'table-fx.js', 'math-core.js', 'model-core.js', 'lock.js', 'adv-table.js', 'journey-rules.js', 'journey-world.js', 'journey-sides.js', 'journey-play.js', 'journey.css']; // every script www/index.html loads except diagram-core.js (served from desktop Bob). lock.js too: the phone screen keeps its chats in the browser, so it gets the same passcode lock (it says so when the browser can't scramble)
+export const WEB_COPIED = ['phone.js', 'phone.css', 'logic.js', 'help.js', 'shared.js', 'avatars.js', 'prompt-words.js', 'table-fx.js', 'math-core.js', 'model-core.js', 'lock.js', 'adv-table.js', 'journey-rules.js', 'journey-world.js', 'journey-sides.js', 'journey-play.js', 'journey.css', 'calc.js', 'phone-tools.js', 'voice-log.js']; // every script www/index.html loads except diagram-core.js (served from desktop Bob). lock.js too: the phone screen keeps its chats in the browser, so it gets the same passcode lock (it says so when the browser can't scramble)
 export function buildWebPhone() {
   const www = path.join(root, 'android/app/src/main/assets/www');
   const read = (f) => fs.readFileSync(path.join(www, f), 'utf8').replace(/\r\n/g, '\n');
@@ -137,6 +138,16 @@ export function buildAdvTable() {
   return `// Made by android/tools/make-shared.mjs from public/adventure-table.js. Don't edit.\n(function () {\n${body}\nglobalThis.BobAdvTable = { ${names.join(', ')} };\n})();\n`;
 }
 
+// 🧰 The phone brain's calculator: src/calc.js (the PC's own calculate tool), word for word, as globalThis.BobCalc.
+export function buildCalc() {
+  const src = fs.readFileSync(path.join(root, 'src/calc.js'), 'utf8').replace(/\r\n/g, '\n');
+  if (/^import\s/m.test(src)) throw new Error('src/calc.js imports something now: update make-shared.mjs');
+  const names = [...src.matchAll(/^export (?:const|function) ([A-Za-z_]\w*)/gm)].map((m) => m[1]);
+  if (!names.includes('calculatorTool') || !names.includes('evaluate')) throw new Error('src/calc.js no longer exports calculatorTool/evaluate: update make-shared.mjs');
+  const body = src.replace(/^export (const|function) /gm, '$1 ');
+  return `// Made by android/tools/make-shared.mjs from src/calc.js. Don't edit.\n(function () {\n${body}\nglobalThis.BobCalc = { ${names.join(', ')} };\n})();\n`;
+}
+
 // 1.5.206 🧭 Journey: the rules, the places (v1.1), the four-sided figures and the screen, each word for word as one global, and the CSS.
 export const JOURNEY = { 'journey-rules.js': ['BobJourneyRules', 'newJourney'], 'journey-world.js': ['BobJourneyWorld', 'makeWorld'], 'journey-sides.js': ['BobJourneySides', 'drawFigure'], 'journey-play.js': ['BobJourneyPlay', 'mountJourney'] };
 export function buildJourney() {
@@ -164,6 +175,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   console.log(`wrote ${path.relative(root, OUT_AVATARS)}`);
   fs.writeFileSync(OUT_PROMPTS, buildPromptWords());
   console.log(`wrote ${path.relative(root, OUT_PROMPTS)}`);
+  fs.writeFileSync(OUT_CALC, buildCalc());
+  console.log(`wrote ${path.relative(root, OUT_CALC)}`);
   fs.mkdirSync(WEB_DIR, { recursive: true });
   for (const [f, text] of Object.entries(buildWebPhone())) fs.writeFileSync(path.join(WEB_DIR, f), text);
   console.log(`wrote ${path.relative(root, WEB_DIR)}/ (the phone screen for iPhone)`);

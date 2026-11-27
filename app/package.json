@@ -154,6 +154,7 @@
     "test/run-bob-life-test.js",
     "test/run-phone-access-test.js",
     "test/run-android-test.js",
+    "test/run-phone-tools-test.js",
     "test/run-share-brains-test.js",
     "test/run-job-pick-test.js",
     "test/run-mac-test.js",
