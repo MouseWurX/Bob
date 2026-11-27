@@ -201,5 +201,8 @@ The owner, 26 Nov: "Healing is not training" (the OK for light tuning of roundin
   MQ2_S (GSQ downs), same size to the byte, KLD and the gate, uploads nothing; estimate 4-5 h, $11-14, caps 6 h / $17. If GSQ
   runs out of its 150 minutes, the tensors it finished keep GSQ's rounding and the rest take GPTQ's. Dry run:
   [forge-runs/2026-11-27-gsq-bill-dry-run/](forge-runs/2026-11-27-gsq-bill-dry-run/).
+- **Bill result (27 Nov rerun, $16.14, [forge-runs/2026-11-27-gsq-bill/](forge-runs/2026-11-27-gsq-bill/)):** same size
+  (51.93 GB), KLD vs Q8_0: MX2_S 1.00, MG2_S (GPTQ downs) 0.590, MQ2_S (GSQ on 33 of 48 downs) 0.595; both passed the gate.
+  GPTQ is the win (41% less KLD, 24 min); GSQ tied it here, with too few input rows (processor x_dump bug) and 15 tensors short.
 - **Then Bill:** the same tools on Bill's down experts (x_dump on the Q8_0 cut, per-expert H from routed tokens, GSQ per
   expert), written into the MX2_S or RC pick's q2_0 down experts, then KLD and the publish gate. Priced after the pilot.

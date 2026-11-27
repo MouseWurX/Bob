@@ -518,8 +518,13 @@ const cost = () => price * (Date.now() - t0) / 3.6e6;
 // answered 403 to Python's default User-Agent), so the gpt-oss-small pod ran 1.3 h past its 5 h cap. Now the PC deletes
 // the pod at the cap whatever it is waiting on, and exits.
 if (!args.local) {
+  // 27 Nov (gsq-bill rerun): the pod deletes itself 8 min before the time cap, so the PC's salvage at the cap found no pod and
+  // every log of a $16 run was lost. Now the PC keeps the pod's logs every 30 min and once more 15 min before either cap.
+  let lastSalvage = Date.now(), lateSalvage = false;
   const capTimer = setInterval(async () => {
     rereadCaps();
+    const left = Math.min(hoursMax * 60 - (Date.now() - t0) / 6e4, price > 0 ? (dollarsMax - cost()) / price * 60 : Infinity);
+    if ((left <= 15 && !lateSalvage) || Date.now() - lastSalvage > 30 * 6e4) { if (left <= 15) lateSalvage = true; lastSalvage = Date.now(); salvage().catch(() => {}); }
     if ((Date.now() - t0) / 3.6e6 > hoursMax || cost() > dollarsMax) {
       clearInterval(capTimer); log(`cap reached on the timer ($${cost().toFixed(2)}, ${((Date.now() - t0) / 3.6e6).toFixed(1)} h); deleting the pod`);
       try { await kill('cap (timer)'); } finally { process.exit(3); }
