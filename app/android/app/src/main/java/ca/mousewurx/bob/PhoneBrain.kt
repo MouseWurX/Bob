@@ -6,6 +6,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -20,12 +24,15 @@ import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 // The phone brain (opt-in): a small model run on the phone with llama.cpp (Llama.kt). It loads only when a message
 // needs it and, with "Free memory when Bob is idle" on (the starting position), unloads after a quiet spell.
 // It thinks for one thing at a time: your chat on the phone, or (with "Lend my brain" on) one reply for another Bob.
 // One per app (BobApp), so lending carries on when Bob's screen is closed.
+private const val PIECE_MIN_BYTES = 256L * 1024 * 1024 // smaller files gain little from pieces
+
 class PhoneBrain(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lock = Mutex()
@@ -104,7 +111,14 @@ class PhoneBrain(private val context: Context) {
                 if (modelsDir.usableSpace + part.length() < bytes + 200_000_000L) {
                     emit(mapOf("type" to "download", "state" to "error", "text" to "not enough space")); return@launch
                 }
+                // Nov 27 2026: a big file comes down in pieces at once (like the PC's "Pieces at once"); a website that
+                // can't send parts gets one stream below, as before. A half file from one stream carries on as one stream.
+                val note = File(modelsDir, "$name.pieces.part")
+                if (piecesAtOnce > 1 && bytes >= PIECE_MIN_BYTES && (note.exists() || part.length() == 0L)) {
+                    if (!fetchPieces(url, part, note, bytes, piecesAtOnce, name)) { part.delete(); note.delete() }
+                }
                 var have = part.length().coerceAtMost(bytes)
+                if (note.exists()) have = 0 // pieces didn't finish cleanly: never trust a gappy file as a run from 0
                 var tries = 0
                 while (have < bytes) {
                     try {
@@ -158,9 +172,86 @@ class PhoneBrain(private val context: Context) {
 
     fun pauseDownload() { download?.cancel() }
 
+    /** Pieces at once for a big file (4, as the PC starts); 1 = one stream. */
+    @Volatile var piecesAtOnce = 4
+
+    private class Piece(val start: Long, val end: Long, @Volatile var got: Long)
+    private class NoRanges : Exception("the website can't send parts")
+
+    private fun readNote(note: File, bytes: Long): List<Piece>? = try {
+        val lines = note.readText().replace("\r\n", "\n").trim().lines()
+        if (lines.firstOrNull() != "size $bytes") null
+        else lines.drop(1).map { l -> val (a, b, c) = l.trim().split(" ").map { it.toLong() }; Piece(a, b, c) }
+            .takeIf { ps -> ps.isNotEmpty() && ps.all { it.got >= 0 && it.start + it.got <= it.end } }
+    } catch (e: Exception) { null }
+
+    private fun saveNote(note: File, bytes: Long, ps: List<Piece>) {
+        try { note.writeText("size $bytes\n" + ps.joinToString("\n") { "${it.start} ${it.end} ${it.got}" }) } catch (e: Exception) {}
+    }
+
+    /** Fetches part in n Range requests at the same time, each writing its own stretch. A note (name.pieces.part) keeps
+     *  how far each piece got, so Pause and Resume carry on per piece. False: the website ignored ranges (caller falls back). */
+    private suspend fun fetchPieces(url: String, part: File, note: File, bytes: Long, n: Int, name: String): Boolean {
+        val ps = readNote(note, bytes)?.takeIf { part.exists() } ?: run {
+            part.delete()
+            val each = (bytes + n - 1) / n
+            (0 until n).map { i -> Piece(i * each, minOf(bytes, (i + 1) * each), 0) }.filter { it.start < it.end }
+        }
+        saveNote(note, bytes, ps)
+        RandomAccessFile(part, "rw").use { it.setLength(maxOf(it.length(), 0L)) }
+        val lastEmit = AtomicLong(0); val lastSave = AtomicLong(System.currentTimeMillis())
+        fun progress() {
+            val now = System.currentTimeMillis()
+            if (now - lastSave.get() > 2000) { lastSave.set(now); saveNote(note, bytes, ps) }
+            if (now - lastEmit.get() > 500) { lastEmit.set(now); emit(mapOf("type" to "download", "state" to "going", "file" to name, "have" to ps.sumOf { it.got }, "bytes" to bytes)) }
+        }
+        try {
+            coroutineScope {
+                ps.map { p -> async(Dispatchers.IO) {
+                    var tries = 0
+                    while (p.got < p.end - p.start) {
+                        ensureActive()
+                        val from = p.start + p.got
+                        try {
+                            val c = URL(url).openConnection() as HttpURLConnection
+                            c.connectTimeout = 15000; c.readTimeout = 30000
+                            c.setRequestProperty("Range", "bytes=$from-${p.end - 1}")
+                            val code = c.responseCode
+                            if (code == 200 && from != 0L) { c.disconnect(); throw NoRanges() }
+                            if (code != 200 && code != 206) throw Exception("the website said $code")
+                            RandomAccessFile(part, "rw").use { out ->
+                                c.inputStream.use { inp ->
+                                    val buf = ByteArray(1 shl 20)
+                                    while (p.got < p.end - p.start) {
+                                        ensureActive()
+                                        val want = minOf(buf.size.toLong(), p.end - p.start - p.got).toInt()
+                                        val k = inp.read(buf, 0, want)
+                                        if (k < 0) break
+                                        out.seek(p.start + p.got); out.write(buf, 0, k); p.got += k
+                                        progress()
+                                    }
+                                }
+                            }
+                            c.disconnect()
+                        } catch (e: NoRanges) { throw e } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+                            if (++tries > 2) throw e // a network hiccup is retried twice, like one stream
+                            delay(3000)
+                        }
+                    }
+                } }.awaitAll()
+            }
+        } catch (e: NoRanges) {
+            return false
+        } finally {
+            saveNote(note, bytes, ps)
+        }
+        note.delete()
+        return true
+    }
+
     fun cancelDownload(file: String) {
         val name = safeName(file)
-        scope.launch { download?.cancelAndJoin(); File(modelsDir, "$name.part").delete() }
+        scope.launch { download?.cancelAndJoin(); File(modelsDir, "$name.part").delete(); File(modelsDir, "$name.pieces.part").delete() }
     }
 
     fun delete(file: String): Boolean {

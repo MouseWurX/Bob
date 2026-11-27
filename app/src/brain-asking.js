@@ -3,6 +3,7 @@
 import crypto from 'node:crypto';
 import { bigSession, chatBrain, sameModel } from './brain-mode.js';
 import { turnNow } from './turn-log.js';
+import { guppiNotesOn, guppiListener } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { traced, engineAttrs, lastAsked } from './trace-log.js'; // Nov 16 Monitoring log
 import { carryOnTokens, engineFailKind, backoffMs, causeLine, pause } from './retry.js';
 import { memoryFailure } from './engine-care.js';
@@ -94,9 +95,17 @@ export const askingParts = {
         if (next) { this.log('model', `${opts.model}: the chat grew, so its chat memory grows from ${cut.ctx} to ${next} (there's room, and Windows keeps its share)`); cut.ctx = next; if (next >= cut.want) this.memCut.delete(opts.model); opts = { ...opts, ctx: next }; }
         else if (tokens > cut.ctx * 0.75 && cut.said !== cut.ctx) { cut.said = cut.ctx; this.log('model', `${opts.model}: the chat is long for its ${cut.ctx} chat memory, but there isn't room to grow it now, so older tool results are shortened`); }
       } }
-    const fitted = fitContext(opts.messages, opts.ctx, opts.tools, 0.75, per);
+    let fitted = fitContext(opts.messages, opts.ctx, opts.tools, 0.75, per);
+    // Nov 24: about to cut on a guess, so ask the running engine for the exact count first (countChars)
+    if (fitted !== opts.messages && !opts.beside && this.engine?.countChars) {
+      const exact = await this.engine.countChars(opts.model, opts.messages, opts.tools).catch(() => 0);
+      if (exact > 0) fitted = fitContext(opts.messages, opts.ctx, opts.tools, 0.75, exact);
+    }
     if (fitted !== opts.messages) { this.log('chat', `shortened tool results so the chat fits in ${opts.model}'s memory (${opts.ctx} tokens)`); opts = { ...opts, messages: fitted }; }
     { const t = turnNow(); if (t) t.asks++; } // item 246: steps per job
+    // Nov 23: GUPPI's records (guppi-notes.js) go to the window and on the turn, never to a brain
+    const guppiBy = !opts.beside && emit && this.engine && guppiNotesOn(this.cfg) ? guppiListener(emit, turnNow()) : null;
+    if (guppiBy) this.engine.guppiSay = guppiBy;
     try { const r = await this.chatRetry(opts, { emit, who }); this.engineNotes(emit); return r; }
     catch (e) {
       // Still too long (the guess at token counts was low): once more, with every tool result cut harder.
@@ -123,7 +132,7 @@ export const askingParts = {
       try { return await this.chatRetry({ ...opts, messages: tighter }, { emit, who }); }
       catch (e3) { if (opts.signal?.aborted || !TOO_LONG.test(String(e3?.message))) throw e3; throw tooLongError(e3, opts.ctx); }
     }
-    finally { mind?.flush(); }
+    finally { mind?.flush(); if (guppiBy && this.engine.guppiSay === guppiBy) this.engine.guppiSay = null; }
   },
   // Items 193-195, 201 (retry.js): a call that fails for a reason a second try can fix goes again.
   //   busy (503, "loading model"): wait a little longer each time, with a bit of randomness, and ask again (3 tries)

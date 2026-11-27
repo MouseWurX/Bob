@@ -78,7 +78,7 @@ export class Lab {
     const server = this.tools().server;
     const dir = path.dirname(server.path);
     let version = '';
-    for (const f of ['bob-brainengine.json', 'bob-llamacpp.json']) { try { version = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')).version || ''; if (version) break; } catch {} }
+    for (const f of ['bob-brainengine.json', 'bob-llamacpp.json']) { try { version = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8').replace(/^\uFEFF/, '')).version || ''; if (version) break; } catch {} }
     return { pick: LAB_ENGINES.includes(this.cfg.labEngine) ? this.cfg.labEngine : '', name: engineNameOf(this.cfg, dir), version, found: server.found, brainEngineHere: this.tools().brainEngine.found };
   }
   setLabEngine(pick) { const v = LAB_ENGINES.includes(pick) ? pick : ''; saveSettings(this.cfg, { labEngine: v }); this.cfg.labEngine = v; return this.engineView(); }

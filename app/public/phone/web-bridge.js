@@ -47,7 +47,27 @@
     };
   }
   function unlisten() { clearTimeout(retry); events?.close(); events = null; }
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') send({ event: 'app', visible: true }); });
+  // An iPhone stops a page's connections while it's in the background, and may hand the old one back looking open
+  // but deaf. So coming back to the screen always opens a fresh line to the PC Bob (phone.js then refreshes).
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (events) { unlisten(); listen(); }
+    send({ event: 'app', visible: true });
+  });
+  // iPhone Safari only reads aloud once the screen has been tapped: say nothing on the first tap, so later
+  // replies (Hands-free, Read aloud after a wait) can be heard.
+  document.addEventListener('pointerdown', () => {
+    try { if ('speechSynthesis' in window && !speechSynthesis.speaking) speechSynthesis.speak(new SpeechSynthesisUtterance('')); } catch { /* no voice here */ }
+  }, { once: true, capture: true });
+  // iPhone Safari can drop the answer from a file picker that isn't on the page, so it's kept on (out of sight) while open.
+  function pickFile(input) {
+    input.className = 'web-offscreen';
+    document.body.append(input);
+    const gone = () => setTimeout(() => input.remove(), 0);
+    input.addEventListener('change', gone, { once: true });
+    input.addEventListener('cancel', gone, { once: true });
+    input.click();
+  }
 
   // A photo to work on: picked here, made smaller (longest side 2048) as a JPEG, sent only when the message goes.
   let photo = null, photoWait = null;
@@ -62,14 +82,14 @@
         const file = input.files?.[0];
         if (!file) return w?.resolve(null);
         try {
-          const img = await createImageBitmap(file);
+          const img = await createImageBitmap(file, { imageOrientation: 'from-image' }); // photos stay the right way up
           const shrink = (max) => { const k = Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k)); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); return c; };
           photo = await new Promise((ok) => shrink(2048).toBlob(ok, 'image/jpeg', 0.9));
           w?.resolve({ preview: shrink(256).toDataURL('image/jpeg', 0.8) });
         } catch (e) { w?.reject(new Error(`that picture didn't open (${e.message})`)); }
       });
       input.addEventListener('cancel', () => { const w = photoWait; photoWait = null; w?.resolve(null); });
-      input.click();
+      pickFile(input);
     });
   }
 
@@ -158,7 +178,7 @@
         file.text().then(resolve, reject);
       }, { once: true });
       input.addEventListener('cancel', () => resolve(null), { once: true });
-      input.click();
+      pickFile(input);
     }),
     device: () => ({ about: "Bob's phone screen, served by the Bob on your PC. On an iPhone: Safari, Share, Add to Home Screen.", model: '', version: '' }),
     // Bob for Android only: answered so the page draws, refused when asked to do something.

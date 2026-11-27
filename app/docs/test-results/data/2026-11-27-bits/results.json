@@ -1,0 +1,75 @@
+{
+ "plain q3_k": {
+  "kld": 0.08074,
+  "same_top": 85.954,
+  "bytes": 1522240
+ },
+ "plain q4_k": {
+  "kld": 0.019113,
+  "same_top": 92.932,
+  "bytes": 1974848
+ },
+ "mixed_bits (imatrix rounding, old greedy)": {
+  "kld": 0.055261,
+  "same_top": 88.634,
+  "bytes": 1726272,
+  "est": null
+ },
+ "part_bits imatrix (same measure, hull pick)": {
+  "kld": 0.049498,
+  "same_top": 88.799,
+  "bytes": 1727040,
+  "est": 88.0724404156208
+ },
+ "part_bits fisher (bits by part)": {
+  "kld": 0.043549,
+  "same_top": 89.248,
+  "bytes": 1727040,
+  "est": 0.03900448621425312
+ },
+ "part_bits fisher + 8 bands (part + word)": {
+  "kld": 0.037223,
+  "same_top": 90.581,
+  "bytes": 1727616,
+  "est": 0.030560601302568102
+ },
+ "plain q3_k, head in 8 bands same size (word counts)": {
+  "kld": 0.073579,
+  "same_top": 86.987,
+  "bytes": 1521888,
+  "bands": [
+   [
+    64,
+    "q5_k"
+   ],
+   [
+    41,
+    "q4_k"
+   ],
+   [
+    67,
+    "q4_k"
+   ],
+   [
+    111,
+    "q4_k"
+   ],
+   [
+    181,
+    "q3_k"
+   ],
+   [
+    297,
+    "q3_k"
+   ],
+   [
+    487,
+    "q3_k"
+   ],
+   [
+    800,
+    "q2_k"
+   ]
+  ]
+ }
+}

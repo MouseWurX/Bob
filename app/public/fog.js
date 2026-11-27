@@ -82,6 +82,7 @@ export function createFog(canvas, { colour = () => '#1fa7b2', room: roomColour =
     stop() { on = false; clearTimeout(timer); timer = 0; },
     // the firing lights the fog: a colour, a strength 0..1 and where (0..1 across and down the porthole)
     light(c, strength = 0.5, x = 0.5, y = 0.5) { const rgb = hex(c); if (rgb) glowRgb = rgb; glow = Math.min(0.9, Math.max(glow, strength)); gx = x; gy = y; try { onLight?.(c, glow); } catch {} if (on && !timer) { last = 0; tick(); } },
+    redraw() { if (on) paint(); }, // one frame now (a theme change), for a fog that holds still
     get running() { return Boolean(timer); }
   };
 }

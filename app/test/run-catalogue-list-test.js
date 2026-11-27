@@ -82,7 +82,9 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
   check('on the laptop the catalogue leaves it out and says where it went', !/id="cat-[a-z]+-deepseek-r1-distill-llama-70b"/.test(lap) && /id="cat-[a-z]+-nemotron-3\.5-bolt-74b"/.test(lap) && /class="muted too-big-note">\d+ more (is|are) too big for this replicant matrix\. [^<]*<button type="button" class="link" data-rentsettings>Rented brains<\/button>/.test(lap));
   const lapNet = catalogueHtml({ ...ctx, vramGB: 6, ramGB: 16, showUnsuited: true, bobNet: [{ name: 'big-pc', vramGB: 16, ramGB: 32 }] });
   check('with the big computer on the Bob-Net it stays, and the i says which Bob it fits', /id="cat-[a-z]+-nemotron-3\.5-bolt-74b"/.test(lapNet) && /Fits big-pc on your Bob-Net\./.test(lapNet));
-  const big16 = models.filter((m) => tooBigEverywhere(m, { vramGB: 16, ramGB: 32 }, [])).map((m) => m.id);
+  // Nov 26 2026: the abliterated Flash Next (naughty list, 111 GB) is too big too, but it's hidden while the naughty list is off.
+  const big16 = models.filter((m) => m.naughty !== true && tooBigEverywhere(m, { vramGB: 16, ramGB: 32 }, [])).map((m) => m.id);
+  check('the abliterated Flash Next is the naughty list\'s only too-big brain on the 16 GB computer (Rented brains only)', models.filter((m) => m.naughty === true && tooBigEverywhere(m, { vramGB: 16, ramGB: 32 }, [])).map((m) => m.id).join() === 'qwen3.8-flash-next-abliterated');
   check('on the 16 GB computer only the DeepSeek R1 70B is too big, and the footer says one more', big16.join() === 'deepseek-r1-distill-llama-70b' && /class="muted too-big-note">1 more is too big/.test(catalogueHtml({ ...ctx, showUnsuited: true })), big16.join());
 }
 

@@ -98,7 +98,8 @@ const seq = (...xs) => { let i = 0; return () => xs[Math.min(i++, xs.length - 1)
   check('200 one failure: not set aside', s.record('read_file', false) === 1 && !s.blocked('read_file'));
   check('200 a success clears it', s.record('read_file', true) === 0 && s.record('read_file', false) === 1);
   check('200 two in a row: still not set aside', s.record('read_file', false) === 2 && !s.blocked('read_file'));
-  check('200 three in a row: set aside', STRIKES === 3 && s.record('read_file', false) === 3 && s.blocked('read_file'));
+  for (let i = 3; i < STRIKES; i++) check(`200 ${i} in a row: still not set aside`, s.record('read_file', false) === i && !s.blocked('read_file'));
+  check(`200 ${STRIKES} in a row: set aside (Nov 23: five, was three)`, STRIKES === 5 && s.record('read_file', false) === STRIKES && s.blocked('read_file'));
   check('200 asking the user never counts', s.record('ask_user', false) === 0 && s.record('ask_user', false) === 0 && !s.blocked('ask_user'));
   check('200 the notes are one line each', !/\n/.test(STRIKE_NOTE('x', 'Sam')) && !/\n/.test(STRUCK_OUT('x', 'Sam')));
   check('200 the offer after the job is one line, naming the tools', fixOffer(['read_file']) === '🔧 read_file kept failing on this job, so I set it aside. I kept a record of each miss. Want me to look at it harder and try to fix it?' && /web_search and read_file .* set them aside/.test(fixOffer(['web_search', 'read_file'])) && fixOffer([]) === '');
@@ -225,7 +226,7 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
 // 198 / 200 / 206 / 207 through a real tool (read_file on a missing file)
 {
   const missing = path.join(innDir, 'nope.txt');
-  let script = [call('read_file', { path: missing }), call('read_file', { path: missing + '2' }), call('read_file', { path: missing + '3' }), call('read_file', { path: missing + '4' }), { role: 'assistant', content: 'It is not there.' }];
+  let script = [...Array.from({ length: STRIKES + 1 }, (_, i) => call('read_file', { path: i ? missing + (i + 1) : missing })), { role: 'assistant', content: 'It is not there.' }];
   chatImpl = async () => script.shift() || { role: 'assistant', content: 'Done.' };
   const msgs = [];
   logs.length = 0;
@@ -235,11 +236,11 @@ const call = (name, args = {}) => ({ role: 'assistant', content: '', tool_calls:
   check('198 the tool\'s error is plain words with what to try next', /^Error: ".*nope\.txt" isn't there\. Next: check the name and folder with list_files/.test(results[0] || ''), results[0]);
   check('198 ...and the guessed hint isn\'t added on top', !/\(Hint:/.test(results[0] || ''));
   check('200 the second failure isn\'t set aside yet', !/set aside/.test(results[1] || ''), results[1]);
-  check('200 the third failure in a row says it is set aside', results[2]?.includes('failed three times in this job, so it\'s set aside'), results[2]);
-  check('200 the fourth call isn\'t run', results[3]?.startsWith('Error: not run. read_file failed three times in this job'), results[3]);
+  check(`200 failure ${STRIKES} in a row says it is set aside`, results[STRIKES - 1]?.includes(`failed ${STRIKES} times in a row in this job, so it's set aside`), results[STRIKES - 1]);
+  check('200 the next call isn\'t run', results[STRIKES]?.startsWith(`Error: not run. read_file failed ${STRIKES} times in this job`), results[STRIKES]);
   const last = msgs.at(-1)?.content || '';
   check('200 after the job, one line offers to look at the tool harder and fix it', last.startsWith('It is not there.') && last.endsWith(fixOffer(['read_file'])) && logs.some((l) => /offered to look at read_file after the job/.test(l)), last);
-  check('206 each error is counted for its tool today (not the one that wasn\'t run)', (brain.errorTally.today().read_file || 0) - before === 3);
+  check('206 each error is counted for its tool today (not the one that wasn\'t run)', (brain.errorTally.today().read_file || 0) - before === STRIKES);
   check('207 the logbook keeps the first error (ENOENT) under the plain words', logs.some((l) => /^error: read_file: ENOENT/.test(l)), logs.join(' | '));
 }
 
