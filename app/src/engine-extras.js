@@ -147,7 +147,7 @@ export const turboEverydayOn = (cfg) => cfg?.turboEveryday !== false;
 // with it on by default, drafting pauses where it doesn't pay (Brain Engine 0034's gate); a share set by hand wins
 export const SPEC_GATE_DEFAULT = '0.3';
 export const specGateEnv = (env = {}) => (env && env.LLAMA_SPEC_GATE !== undefined && env.LLAMA_SPEC_GATE !== '' ? {} : { LLAMA_SPEC_GATE: SPEC_GATE_DEFAULT });
-// Nov 27 (Brain Engine 0140-0142, after PolyStrata). Squeak: off by default, and not in Turbo, until a test shows a
+// Nov 27 (Brain Engine 0140-0142, after PolyStrata). The owner: off by default, and not in Turbo, until a test shows a
 // speed or quality gain. Each is a box under Engine tuning (set by hand): Guess only while it writes faster
 // (LLAMA_SPEC_GATE_TIME), Warm up the brain file after loading (LLAMA_PAGE_WARM), Stop Windows slowing the engine
 // (LLAMA_POWER_THROTTLING_OFF). Bob sends none of them by himself.

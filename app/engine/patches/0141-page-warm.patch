@@ -11,7 +11,7 @@ index b8d9e7b..cc5b976 100644
      llama-model-saver.cpp
      llama-model.cpp
 diff --git a/src/llama-model.cpp b/src/llama-model.cpp
-index a8b3433..7c151fc 100644
+index a8b3433..33c17b6 100644
 --- a/src/llama-model.cpp
 +++ b/src/llama-model.cpp
 @@ -1,4 +1,5 @@
@@ -72,18 +72,18 @@ index a8b3433..7c151fc 100644
 +    if (!warm_on) {
 +        // off unless LLAMA_PAGE_WARM=1: nothing to say
 +    } else if (drive_on) {
-+        LLAMA_LOG_INFO("%s: page warm-up (0141): NOT USED, the drive tier keeps the experts on the drive\n", __func__);
++        LLAMA_LOG_WARN("%s: page warm-up (0141): NOT USED, the drive tier keeps the experts on the drive\n", __func__);
 +    } else if (!(use_mmap_buffer && ml.use_mmap)) {
-+        LLAMA_LOG_INFO("%s: page warm-up (0141): NOT USED, the brain was read into RAM, not mapped\n", __func__);
++        LLAMA_LOG_WARN("%s: page warm-up (0141): NOT USED, the brain was read into RAM, not mapped\n", __func__);
 +    } else {
 +        const char * fl = getenv("LLAMA_MOE_RAM_FLOOR_MIB");
 +        const double floor_mib = fl && atof(fl) >= 0 ? atof(fl) : 512.0;
 +        const double avail = llama_page_warm_avail_mib();
 +        if (const char * why = llama_page_warm_refuse(warm_mib, avail, floor_mib)) {
-+            LLAMA_LOG_INFO("%s: page warm-up (0141): NOT USED, %s (%.0f MiB to read, %.0f MiB free, floor %.0f MiB)\n",
++            LLAMA_LOG_WARN("%s: page warm-up (0141): NOT USED, %s (%.0f MiB to read, %.0f MiB free, floor %.0f MiB)\n",
 +                    __func__, why, warm_mib, avail, floor_mib);
 +        } else {
-+            LLAMA_LOG_INFO("%s: page warm-up (0141): reading %.0f MiB of the brain file in the background\n", __func__, warm_mib);
++            LLAMA_LOG_WARN("%s: page warm-up (0141): reading %.0f MiB of the brain file in the background\n", __func__, warm_mib);
 +            pimpl->page_warm.w = llama_page_warm_start(std::move(warm_ranges));
 +        }
 +    }
@@ -93,7 +93,7 @@ index a8b3433..7c151fc 100644
          for (const auto & [name, w] : ml.weights_map) {
 diff --git a/src/llama-page-warm.cpp b/src/llama-page-warm.cpp
 new file mode 100644
-index 0000000..1abe8a8
+index 0000000..ca58606
 --- /dev/null
 +++ b/src/llama-page-warm.cpp
 @@ -0,0 +1,126 @@
@@ -145,14 +145,14 @@ index 0000000..1abe8a8
 +            sink ^= *(const volatile uint8_t *) p;
 +            done += page;
 +            if ((done & ((64u << 20) - 1)) == 0 && w->stop.load(std::memory_order_relaxed)) {
-+                LLAMA_LOG_INFO("page warm-up (0141): stopped after %.0f MiB\n", done/1048576.0);
++                LLAMA_LOG_WARN("page warm-up (0141): stopped after %.0f MiB\n", done/1048576.0);
 +                return;
 +            }
 +        }
 +    }
 +    (void) sink;
 +    const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-+    LLAMA_LOG_INFO("page warm-up (0141): %.0f MiB of the brain file mapped in %.2f s\n", done/1048576.0, s);
++    LLAMA_LOG_WARN("page warm-up (0141): %.0f MiB of the brain file mapped in %.2f s\n", done/1048576.0, s);
 +}
 +
 +const char * llama_page_warm_refuse(double need_mib, double avail_mib, double floor_mib) {

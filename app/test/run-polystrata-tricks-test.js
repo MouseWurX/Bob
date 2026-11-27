@@ -1,5 +1,5 @@
 // Nov 27: the engine speed-ups taken from PolyStrata (Brain Engine 0140-0142, and the container's processor limit):
-// off by default (Squeak) until a test shows a gain, same words, each with a way to turn it on, and Help, glossary and FAQ. Nothing here reads the real
+// off by default until a test shows a gain, same words, each with a way to turn it on, and Help, glossary and FAQ. Nothing here reads the real
 // computer: the container's limit files, the processor count and the platform are fakes.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,7 +13,7 @@ const check = (name, ok, why = '') => { if (ok) pass++; else fail++; console.log
 const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (f) => fs.readFileSync(path.join(app, f), 'utf8').replace(/\r\n/g, '\n');
 
-// ---------- Off by default (Squeak, Nov 27: not on, and not in Turbo, until a test shows a gain) ----------
+// ---------- Off by default (Nov 27: not on, and not in Turbo, until a test shows a gain) ----------
 const lc = read('src/llamacpp.js');
 check('Bob sends no time gate, page warm-up or power key by himself', !/LLAMA_SPEC_GATE_TIME|LLAMA_PAGE_WARM|LLAMA_POWER_THROTTLING/.test(lc) && !/specGateTimeEnv|powerThrottleEnv/.test(lc));
 { const srcDir = path.join(app, 'src');
