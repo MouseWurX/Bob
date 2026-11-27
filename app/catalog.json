@@ -3721,6 +3721,50 @@
       }
     },
     {
+      "id": "saluki-27b",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["bob", "tinker", "office", "scout", "deep", "eyes"],
+      "name": "Underdog Saluki 27B",
+      "published": "2026-10-07",
+      "what": "Qwen 3.8 27B squeezed to 7.9 GB (ISTA's 2-bit GSQ-RCO cut) and tuned by Underdog to keep tool calling intact. All of it fits on a 16 GB card, with room for about 128K of chat memory at q8_0. Good with tools; weaker than the full 27B at competition maths and letter puzzles, and with thinking on it thinks at length. Sees pictures with its add-on. Non-commercial licence: personal use only.",
+      "sizeGB": 7.9,
+      "vramGB": 12,
+      "params": 27,
+      "license": "CC BY-NC 4.0",
+      "commercial": false,
+      "pick": "optional",
+      "thinks": true,
+      "raced": "Bob's own held-out jobs on a rented card (2026-11-26, Lamplight): 56 of 65 passed (inbox 23 of 28, office 14 of 14, repo 9 of 12, web 10 of 11), where stock Qwen3.6 35B-A3B passed 49, with 5 tool-call slips and nothing harmful; about 67 tok/s on an L40S. On a rented L4 it held 128K of chat memory at q8_0 in 12.7 GB of graphics memory and found a code word hidden 103K tokens in.",
+      "community": {
+        "by": "Underdog (Conway Research)",
+        "base": "Qwen 3.8 27B",
+        "baseBy": "Alibaba",
+        "kind": "fine-tuned"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/ConwayResearch/Underdog-Saluki-27B-1.0/resolve/442e28ec9d89d9e732ddea2f0b9e017db20730a8/Underdog-Saluki-27B-1.0-IQ2-mix.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 7898369152,
+          "sha256": "4a673518b11b1c4445f9b9a9d3c40356f5ba39f6a6260dcb25f3fbfd475d9efb"
+        },
+        {
+          "url": "https://huggingface.co/ConwayResearch/Underdog-Saluki-27B-1.0/resolve/442e28ec9d89d9e732ddea2f0b9e017db20730a8/mmproj-Underdog-Saluki-27B-1.0-Q8_0.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 629246976,
+          "sha256": "2e0b88b680a45a58eea666b9776a89601b16f4ef575b871a686d82ee65938756"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
+        }
+      }
+    },
+    {
       "id": "qwen3.5-9b-kimi-distilled",
       "family": "Qwen",
       "category": "coding",
