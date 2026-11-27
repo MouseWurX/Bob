@@ -44,5 +44,31 @@ export function seedSpeeds(cfg, model, speeds, beNo) {
   const all = cleanSpeeds(readJson(f, null), beNo);
   const had = all[model] || { read: {}, write: {} };
   all[model] = { read: { ...had.read, ...speeds.read }, write: { ...had.write, ...speeds.write } };
+  if (had.old) { // measured now: no longer old
+    const old = { read: (had.old.read || []).filter((x) => !(x in speeds.read)), write: (had.old.write || []).filter((x) => !(x in speeds.write)) };
+    if (old.read.length || old.write.length) all[model].old = old;
+  }
   try { writeJson(f, { be: beNo, speeds: all }); return true; } catch { return false; }
+}
+
+// Nov 27 (the owner: "didn't we do that already?"): the Brains page's Calibrate (brain-calibrate.js) timed each reading
+// step on this PC, with and without the copy cache, but GUPPI never read it. Now, for a brain GUPPI has no speeds for,
+// its copy-cache rows are his starting point (marked old, so his first real measurement of a step replaces it). Only
+// the rows with the cache count: that's how GUPPI runs a brain he drives with one. -> { read, write, old } or null
+const CAL_STEPS = { normal: 512, faster: 2048, fastest: 4096 };
+const calSlug = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'lab-brain'; // lab-measure.js slugOf
+export function calibrateSpeeds(cfg, model) {
+  if (!cfg?.dataDir || !model) return null;
+  const rec = readJson(path.join(cfg.dataDir, 'lab', 'calibrate', `${calSlug(model)}.json`), [])?.[0];
+  if (!rec || rec.model !== model || !Array.isArray(rec.speedRows)) return null;
+  const out = { read: {}, write: {} };
+  for (const r of rec.speedRows) {
+    const step = CAL_STEPS[r?.reading];
+    if (!step || r.cache !== true || r.failed || r.turbo) continue;
+    if (Number(r.readTps) > 0) out.read[step] = Number(r.readTps);
+    if (Number(r.tps) > 0) out.write[step] = Number(r.tps);
+  }
+  if (!Object.keys(out.write).length) return null;
+  out.old = { read: Object.keys(out.read).map(Number), write: Object.keys(out.write).map(Number) };
+  return out;
 }

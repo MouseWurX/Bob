@@ -74,25 +74,39 @@ export function loadStepBySpeed({ speeds, chat = CHAT_STEP, max = 0, readTok = 1
   }
   return best === max ? { step: max, why: '' } : { step: best, why: `step ${best} measured faster than ${max} here (about ${time(best).toFixed(1)} s against ${time(max).toFixed(1)} s for a ${n}-token read and ${o} written)` };
 }
-// learned speeds kept between runs (dataDir/conductor/speeds.json): only for the same Brain Engine build, and only
-// clean numbers, so an old or hand-edited file can't steer the step
+// learned speeds kept between runs (dataDir/conductor/speeds.json): only clean numbers, so an old or hand-edited file
+// can't steer the step. Nov 27 (the owner: "we do the testing to give it values"): speeds from another Brain Engine
+// build are no longer thrown away. They are kept as a starting point and marked old ({ old: { read: [steps], write:
+// [steps] } }); the first measurement of a step on this build replaces its old number outright (learnStep).
+const cleanTable = (t) => Object.fromEntries(Object.entries(t || {}).filter(([k, v]) => Number(k) > 0 && Number.isFinite(v) && v > 0).map(([k, v]) => [Number(k), v]));
 export function cleanSpeeds(saved, beNo = 0) {
-  if (!saved || typeof saved !== 'object' || saved.be !== beNo || !saved.speeds || typeof saved.speeds !== 'object') return {};
+  if (!saved || typeof saved !== 'object' || !saved.speeds || typeof saved.speeds !== 'object') return {};
+  const carried = saved.be !== beNo;
   const out = {};
   for (const [model, sp] of Object.entries(saved.speeds)) {
-    const kinds = {};
-    for (const kind of ['read', 'write']) kinds[kind] = Object.fromEntries(Object.entries(sp?.[kind] || {}).filter(([k, v]) => Number(k) > 0 && Number.isFinite(v) && v > 0).map(([k, v]) => [Number(k), v]));
+    const kinds = { read: cleanTable(sp?.read), write: cleanTable(sp?.write) };
+    const old = {};
+    for (const kind of ['read', 'write']) {
+      const steps = Object.keys(kinds[kind]).map(Number);
+      old[kind] = carried ? steps : (Array.isArray(sp?.old?.[kind]) ? sp.old[kind].map(Number).filter((x) => steps.includes(x)) : []);
+    }
+    if (old.read.length || old.write.length) kinds.old = old;
     out[model] = kinds;
   }
   return out;
 }
+export const isOld = (sp, kind, step) => Array.isArray(sp?.old?.[kind]) && sp.old[kind].includes(Number(step));
 
 // learned speeds: { read: { step: t/s }, write: { step: t/s } }, kept as a running mean (newest 30%)
 export function learnStep(sp, kind, step, tps) {
   const s = sp || { read: {}, write: {} };
   if (!(tps > 0) || !Number.isFinite(tps) || !(step > 0)) return s;
-  const old = s[kind]?.[step];
-  return { ...s, [kind]: { ...s[kind], [step]: old > 0 ? old * 0.7 + tps * 0.3 : tps } };
+  const was = s[kind]?.[step];
+  if (isOld(s, kind, step)) { // Nov 27: an old build's number (or a Brains-page Calibrate one): this build's first measurement replaces it
+    const left = { ...s.old, [kind]: s.old[kind].filter((x) => x !== Number(step)) };
+    return { ...s, [kind]: { ...s[kind], [step]: tps }, old: left };
+  }
+  return { ...s, [kind]: { ...s[kind], [step]: was > 0 ? was * 0.7 + tps * 0.3 : tps } };
 }
 
 // a speed at a step: learned, or worked out from another step's learned speed, or 0 when nothing is known

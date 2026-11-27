@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseHealth, guppiTries, tryArgs, tripWhy, guppiVerdict, spillLimitMiB, coolDown, heatOf, startGuppiCalibrate, guppiCalLock, guppiCalView, forgetProfile, COOL, RAM_FLOOR_MIB, HEAT_STOP_C } from '../src/guppi-calibrate.js';
-import { pcNow, pcChanged, profileFor, readProfile, seedSpeeds, profileFile, speedsFile, saveProfile } from '../src/guppi-profile.js';
+import { pcNow, pcChanged, profileFor, readProfile, seedSpeeds, profileFile, speedsFile, saveProfile, calibrateSpeeds } from '../src/guppi-profile.js';
 import { guppiCalHtml } from '../public/guppi-cal.js';
 import { writeGgufFrom } from '../src/lab-gguf.js';
 import { LlamaCpp } from '../src/llamacpp.js';
@@ -64,7 +64,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob guppi '));
   check('measured speeds replace GUPPI\'s learned ones for those steps, and keep the rest', s.be === 46 && s.speeds.big.read[2048] === 2100 && s.speeds.big.write[6144] === 9 && s.speeds.other.read[2048] === 5);
   seedSpeeds(cfg, 'big', { read: { 2048: 7 }, write: { 2048: 7 } }, 47);
   const s2 = JSON.parse(fs.readFileSync(speedsFile(cfg), 'utf8'));
-  check('another engine build\'s speeds file starts over', s2.be === 47 && !s2.speeds.other && s2.speeds.big.read[2048] === 7);
+  check('another engine build\'s speeds are carried over as old, and the calibrated steps are fresh', s2.be === 47 && s2.speeds.other.read[2048] === 5 && s2.speeds.other.old.read.includes(2048) && s2.speeds.big.read[2048] === 7 && !s2.speeds.big.old.read.includes(2048) && s2.speeds.big.old.read.includes(4096));
   fs.rmSync(path.join(tmp, 'conductor'), { recursive: true, force: true });
 }
 
@@ -247,6 +247,26 @@ const fast = { '512:false': { read: 1000, write: 60, text: 'bob words' }, '512:t
   e.heatAt = 0; e.heat.clearSince = Date.now() - CLEAR_MS - 1; await e.guppiHot('moe');
   check('clear for a minute: he carries on as before, and says so', e.heat.hot === false && said.some((t) => /clear of heat and power limits for a minute/.test(t)));
   check('he reads the card at most every 10 s', await (async () => { let n = 0; e.throttleRead = async () => { n++; return null; }; e.heatAt = 0; await e.guppiHot('moe'); await e.guppiHot('moe'); return n === 1; })());
+  fs.rmSync(d, { recursive: true, force: true });
+}
+
+// ---------- measurements we already have (Nov 27, the owner: "didn't we do that already?") ----------
+{
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-guppi-old-'));
+  const cfg = { dataDir: d };
+  fs.mkdirSync(path.join(d, 'lab', 'calibrate'), { recursive: true });
+  const rows = [{ id: 'read-normal', reading: 'normal', tps: 87.7, readTps: 1232 }, { id: 'read-faster-hot', reading: 'faster', cache: true, tps: 109.2, readTps: 2290 }, { id: 'read-fastest-hot', reading: 'fastest', cache: true, tps: 102, readTps: 3276 }, { id: 'read-normal-hot', reading: 'normal', cache: true, failed: 'x' }, { id: 'turbo', turbo: true, tps: 120 }];
+  fs.writeFileSync(path.join(d, 'lab', 'calibrate', 'qwen3-6-35b.json'), JSON.stringify([{ model: 'Qwen3.6 35B', speedRows: rows }]));
+  const c = calibrateSpeeds(cfg, 'Qwen3.6 35B');
+  check('the Brains page\'s Calibrate rows with the copy cache become GUPPI\'s starting speeds, marked old', JSON.stringify(c.read) === JSON.stringify({ 2048: 2290, 4096: 3276 }) && c.write[2048] === 109.2 && c.old.write.join() === '2048,4096' && calibrateSpeeds(cfg, 'Other') === null && calibrateSpeeds({}, 'x') === null);
+  const e = new LlamaCpp({ agentDir: d, dataDir: d, llamacpp: { models: {} } }); clearInterval(e.idleTimer); e.beNo = () => 46;
+  const said = []; e.log = (_k, t) => said.push(t);
+  check('GUPPI starts from them for a brain he has no speeds for, and says so once', e.condSpeedsFor('Qwen3.6 35B').write[4096] === 102 && said.filter((t) => /starts from the Brains page's Calibrate numbers/.test(t)).length === 1 && (e.condSpeedsFor('Qwen3.6 35B'), said.length === 1));
+  fs.mkdirSync(path.join(d, 'conductor'), { recursive: true });
+  fs.writeFileSync(speedsFile(cfg), JSON.stringify({ be: 46, speeds: { m: { read: { 2048: 1, 4096: 2 }, write: { 2048: 1, 4096: 2 }, old: { read: [2048, 4096], write: [2048, 4096] } } } }));
+  seedSpeeds(cfg, 'm', { read: { 4096: 3000 }, write: { 4096: 80 } }, 46);
+  const m = JSON.parse(fs.readFileSync(speedsFile(cfg), 'utf8')).speeds.m;
+  check('a calibrated step is no longer old; the rest stay old', m.old.read.join() === '2048' && m.old.write.join() === '2048' && m.read[4096] === 3000);
   fs.rmSync(d, { recursive: true, force: true });
 }
 // ---------- wiring, Help ----------

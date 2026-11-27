@@ -29,7 +29,7 @@ import { LinkLog } from './link-log.js'; // what the link to a lent card carried
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
 import { readThrottle, heatStep, READ_EVERY_MS as HEAT_EVERY_MS } from './guppi-heat.js'; // Nov 26 GUPPI adjusts for the card's throttling
-import { profileFor as guppiProfileFor, pcNow as guppiPcNow } from './guppi-profile.js'; // Nov 26 GUPPI calibrates this PC (Settings, Engine tuning)
+import { profileFor as guppiProfileFor, pcNow as guppiPcNow, calibrateSpeeds as guppiCalSpeeds } from './guppi-profile.js'; // Nov 26 GUPPI calibrates this PC (Settings, Engine tuning)
 import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, FILL_FROM_BE as COND_FILL_FROM_BE, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv, loadStepBySpeed, cleanSpeeds } from './conductor.js'; // off unless picked
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { tuningArgs, doorbellEnv, registerRamEnv } from './engine-tuning.js';
@@ -713,7 +713,7 @@ export class LlamaCpp {
       // Nov 24: the top step by this brain's measured speeds on this machine, not the biggest that fits (loadStepBySpeed)
       if (!this.condApu) {
         const recent = (this.recentPrompts || []).filter((x) => x > 0);
-        const pick = loadStepBySpeed({ speeds: this.condSpeedsAll()[model], chat: this.condChat, max: this.condMax, readTok: recent.length ? recent.reduce((a, b) => a + b, 0) / recent.length : 16384 });
+        const pick = loadStepBySpeed({ speeds: this.condSpeedsFor(model), chat: this.condChat, max: this.condMax, readTok: recent.length ? recent.reduce((a, b) => a + b, 0) / recent.length : 16384 });
         if (pick.step !== this.condMax) { this.condMax = pick.step; if (this.speedPickSaid !== `${model}:${pick.step}`) { this.speedPickSaid = `${model}:${pick.step}`; this.log?.('engine', `${model}: Conductor: ${pick.why}, so it reads at up to ${pick.step}`); } }
       }
       const fill = this.condApu ? {} : fillEnv({ cacheMiB: this.condCacheBase, beNo: this.beNo(), env: this.tuneEnv, step: this.condMax });
@@ -1849,7 +1849,7 @@ export class LlamaCpp {
       if (this.noCacheSaid !== model) { this.noCacheSaid = model; this.log?.('engine', `${model}: Conductor: no expert copy cache, so nothing to trade: it keeps Bob's step ${this.condStep} and doesn't switch`); }
       return;
     }
-    const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: this.condSpeedsAll()[model], switchS: switchGuess(held, st?.ratio), maxStep: Math.min(this.condMax || 0, this.condCap?.[model] > 0 ? this.condCap[model] : Infinity) || 0 });
+    const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: this.condSpeedsFor(model), switchS: switchGuess(held, st?.ratio), maxStep: Math.min(this.condMax || 0, this.condCap?.[model] > 0 ? this.condCap[model] : Infinity) || 0 });
     // Nov 20: off unless engineTuning.growGuess is set (a test switch). Bob's 440 clean job lessons: replies with thinking
     // median 81 tokens, none over 1,500, so a guess made before the reply mostly misses; growing mid-reply is the way.
     const grow = this.condOff || this.cfg?.engineTuning?.growGuess !== true ? 0 : cacheGrow({ total, outTok, cacheMiB: this.condRead(), freeMiB: this.condFree, grown: this.condGrown });
@@ -1965,6 +1965,15 @@ export class LlamaCpp {
     if (f) { try { saved = JSON.parse(fs.readFileSync(f, 'utf8')); } catch {} }
     return (this.condSpeeds = cleanSpeeds(saved, this.beNo()));
   }
+  // Nov 27: a brain's speeds, or, when GUPPI has none for it, the Brains page's Calibrate numbers as a starting point
+  condSpeedsFor(model) {
+    const all = this.condSpeedsAll();
+    if (!all[model]) {
+      let c = null; try { c = guppiCalSpeeds(this.cfg, model); } catch {}
+      if (c) { all[model] = c; this.log?.('engine', `${model}: GUPPI: no speeds of his own yet, so he starts from the Brains page's Calibrate numbers (steps ${Object.keys(c.write).join(', ')}) and replaces each with his first real measurement`); }
+    }
+    return all[model];
+  }
   condSpeedsSave() {
     const f = this.condSpeedsFile(); if (!f) return;
     try { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify({ be: this.beNo(), speeds: this.condSpeeds || {} })); } catch {}
@@ -1973,7 +1982,7 @@ export class LlamaCpp {
   // what each reply teaches: read and write speed at the step it ran at, and what the chat memory now holds
   condLearn(model, t) {
     if (!this.condChat || !this.condStep) return;
-    const sp = this.condSpeedsAll(), was = JSON.stringify(sp[model] || null);
+    const sp = this.condSpeedsAll(); this.condSpeedsFor(model); const was = JSON.stringify(sp[model] || null);
     if ((t.prompt_n || 0) >= 512) sp[model] = learnStep(sp[model], 'read', this.condStep, Number(t.prompt_per_second));
     if ((t.predicted_n || 0) >= 32) sp[model] = learnStep(sp[model], 'write', this.condStep, Number(t.predicted_per_second));
     if (JSON.stringify(sp[model] || null) !== was) this.condSpeedsSave();
