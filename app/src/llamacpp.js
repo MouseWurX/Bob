@@ -32,7 +32,7 @@ import { readerSpareEnv, conductorOn, conductorPicked, conductorDefaultFits, SWI
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { tuningArgs, doorbellEnv, registerRamEnv } from './engine-tuning.js';
 import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV, keepGuessesArgs, keepGuessesEnv, helpHasSink, sinkEnv } from './engine-extras.js'; // Turbo: stand-ins (0043), keep more guesses (0120), sharp start (0122); off unless switched on
-import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, specGateTimeEnv, powerThrottleEnv, containerThreads, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
+import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, containerThreads, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
 
@@ -662,7 +662,7 @@ export class LlamaCpp {
       // 100 (opt-in, the Brains page): the brain's chat memory type, Standard (8-bit) unless picked. Flags set by hand win.
       ...memArgs(this.cfg, model, lc.args, this.memCaps()),
       // 98 Laptop mode (opt-in): on battery, half the cores. Games-first and threads set by hand win.
-      ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : laptopThreads(this.cfg) ? ['-t', String(laptopThreads(this.cfg))] : num(lc.threads, '-t').length ? num(lc.threads, '-t') : containerThreads() ? ['-t', String(containerThreads())] : []), // Nov 27: a container's processor limit
+      ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : laptopThreads(this.cfg) ? ['-t', String(laptopThreads(this.cfg))] : num(lc.threads, '-t').length ? num(lc.threads, '-t') : containerThreads(this.cfg) ? ['-t', String(containerThreads(this.cfg))] : []), // Nov 27: a container's processor limit (off unless switched on)
       ...num(lc.batch, '-b'), ...num(lc.ubatch, '-ub'),
       // 101 Reading speed (opt-in): bigger reading steps on the card. A batch set by hand wins.
       ...(this.role === BESIDE ? [] : readingArgs(this.cfg, { cpu, hand: tune.taken.includes('-ub') ? { ...lc, batch: 1 } : lc, recent: this.recentPrompts, model })),
@@ -806,7 +806,7 @@ export class LlamaCpp {
       // Nov 23: MTP is on by default, so on a brain where its guesses rarely hold (a small brain, a slow card) Brain
       // Engine pauses drafting while under 30% of guesses are kept (patch 0034), and it never costs writing speed for
       // long. A pause share set by hand wins; other engines ignore the key.
-      if (ev.length && this.beNo() > 0) this.tuneEnv = { ...(this.tuneEnv || {}), ...specGateEnv(this.tuneEnv), ...specGateTimeEnv(this.tuneEnv) }; // Nov 27: and only while guessing writes faster (0142)
+      if (ev.length && this.beNo() > 0) this.tuneEnv = { ...(this.tuneEnv || {}), ...specGateEnv(this.tuneEnv) };
       // Nov 23: with the Conductor's fill on, the MTP draft's own room is left free too (it is made after the fill)
       if (args.some((x, i) => x === '--spec-type' && String(args[i + 1] || '').split(',').includes('draft-mtp'))) this.tuneEnv = { ...(this.tuneEnv || {}), ...mtpSpareEnv({ env: this.tuneEnv, step: this.condLoad || 0 }) }; }
     // Nov 27: with the fill on, the picture reader's room is left free too (it loads after the fill)
@@ -1463,7 +1463,6 @@ export class LlamaCpp {
     if (args.includes('--moe-cache-mib') && turboStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...STANDIN_ENV }; this.log?.('engine', `${model}: Turbo stand-ins on (up to 2 missed experts a layer stood in for while writing; the words change)`); }
     else if (args.includes('--moe-cache-mib') && turboDriveStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...DRIVE_STANDIN_ENV }; this.log?.('engine', `${model}: Turbo: never wait on the drive (an expert no longer in RAM is stood in for while writing; the words change)`); }
     { const kg = keepGuessesEnv(this.cfg, { args, be: this.beNo() }); if (kg.LLAMA_SPEC_MB) { env = { ...env, ...kg }; this.log?.('engine', `${model}: Turbo: keep more guesses on (a guess the exact check throws away is kept when the brain rates it at least as likely; the words change)`); } }
-    env = { ...env, ...powerThrottleEnv({ yieldToGames: this.role === BESIDE || Boolean(cpu && cpuPlan(this.cfg)?.lowPriority) }) }; // Nov 27 (0140): Windows may slow the engine unless it should yield
     if (this.tuneEnv && Object.keys(this.tuneEnv).length) env = { ...env, ...this.tuneEnv }; // Engine tuning, set by hand
     if (this.tuneEnv?.LLAMA_MOE_CACHE_SAVE) { try { fs.mkdirSync(path.dirname(this.tuneEnv.LLAMA_MOE_CACHE_SAVE), { recursive: true }); } catch {} } // the engine writes the saved hot set there
     if (args.includes('--moe-cache-mib') && this.hotEnv?.[RANKING_ENV]) env = { ...env, ...this.hotEnv }; // Nov 16: the hot-expert profile (patch 0016)

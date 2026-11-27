@@ -1,5 +1,5 @@
 diff --git a/tools/server/server.cpp b/tools/server/server.cpp
-index 567c14f..eb1f6fb 100644
+index 567c14f..f90813b 100644
 --- a/tools/server/server.cpp
 +++ b/tools/server/server.cpp
 @@ -16,6 +16,7 @@
@@ -10,20 +10,19 @@ index 567c14f..eb1f6fb 100644
  #include <exception>
  #include <mutex>
  #include <signal.h>
-@@ -820,6 +821,36 @@ static int server_run(common_params & params, int argc, char ** argv, server_rol
+@@ -820,6 +821,35 @@ static int server_run(common_params & params, int argc, char ** argv, server_rol
      GGML_ABORT("invalid server role");
  }
  
-+// Brain Engine 0140: Windows' power throttling (EcoQoS) off for the whole engine. ggml already asks it for its own
-+// processor threads, but not for the main thread that hands the card its work, nor the HTTP threads, and Windows
-+// throttles a process it thinks is in the background (Bob starts the engine with no window). Same words: it only
-+// changes how fast the processor may run. LLAMA_POWER_THROTTLING=1 leaves it to Windows (Bob sets that in Games
-+// first). Idea from PolyStrata (MIT). Nothing happens on other systems.
++// Brain Engine 0140: Windows' power throttling (EcoQoS) off for the whole engine, with LLAMA_POWER_THROTTLING_OFF=1
++// (off unless set, until a test shows it pays). ggml already asks it for its own processor threads, but not for the
++// main thread that hands the card its work, nor the HTTP threads, and Windows may throttle a process it thinks is in
++// the background (Bob starts the engine with no window). Same words: it only changes how fast the processor may run.
++// Idea from PolyStrata (MIT). Nothing happens on other systems.
 +static void llama_power_throttling_off() {
-+    const char * keep = getenv("LLAMA_POWER_THROTTLING");
-+    if (keep && strcmp(keep, "1") == 0) {
-+        SRV_INF("%s", "power throttling: left to Windows (LLAMA_POWER_THROTTLING=1)\n");
-+        return;
++    const char * on = getenv("LLAMA_POWER_THROTTLING_OFF");
++    if (!(on && strcmp(on, "1") == 0)) {
++        return; // left to Windows
 +    }
 +#if defined(_WIN32) && defined(PROCESS_POWER_THROTTLING_CURRENT_VERSION)
 +    PROCESS_POWER_THROTTLING_STATE st;
@@ -47,7 +46,7 @@ index 567c14f..eb1f6fb 100644
  int llama_server(int argc, char ** argv) {
      server_role role;
  
-@@ -845,6 +876,8 @@ int llama_server(int argc, char ** argv) {
+@@ -845,6 +875,8 @@ int llama_server(int argc, char ** argv) {
  
      SRV_INF("%s", "initializing ...\n");
  

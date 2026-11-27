@@ -11,7 +11,7 @@ index b8d9e7b..cc5b976 100644
      llama-model-saver.cpp
      llama-model.cpp
 diff --git a/src/llama-model.cpp b/src/llama-model.cpp
-index a8b3433..75054f7 100644
+index a8b3433..7c151fc 100644
 --- a/src/llama-model.cpp
 +++ b/src/llama-model.cpp
 @@ -1,4 +1,5 @@
@@ -39,12 +39,12 @@ index a8b3433..75054f7 100644
      }
  
 +    // Brain Engine 0141: the parts of the mapped file that stay in RAM, read once by a helper so the first answer
-+    // finds their pages mapped (LLAMA_PAGE_WARM=0 turns it off)
++    // finds their pages mapped (off unless LLAMA_PAGE_WARM=1)
 +    std::vector<std::pair<const uint8_t *, size_t>> warm_ranges;
 +    double warm_mib = 0.0;
 +    const char * warm_env  = getenv("LLAMA_PAGE_WARM");
 +    const char * drive_env = getenv("LLAMA_MOE_DRIVE");
-+    const bool warm_on = !(warm_env && strcmp(warm_env, "0") == 0);
++    const bool warm_on = warm_env && strcmp(warm_env, "1") == 0;
 +    const bool drive_on = drive_env && atoi(drive_env) > 0;
 +    if (warm_on && use_mmap_buffer && ml.use_mmap && !drive_on) {
 +        for (const auto & [name, t] : tensors_by_name) {
@@ -70,7 +70,7 @@ index a8b3433..75054f7 100644
      }
  
 +    if (!warm_on) {
-+        LLAMA_LOG_INFO("%s: page warm-up (0141): off (LLAMA_PAGE_WARM=0)\n", __func__);
++        // off unless LLAMA_PAGE_WARM=1: nothing to say
 +    } else if (drive_on) {
 +        LLAMA_LOG_INFO("%s: page warm-up (0141): NOT USED, the drive tier keeps the experts on the drive\n", __func__);
 +    } else if (!(use_mmap_buffer && ml.use_mmap)) {
@@ -93,7 +93,7 @@ index a8b3433..75054f7 100644
          for (const auto & [name, w] : ml.weights_map) {
 diff --git a/src/llama-page-warm.cpp b/src/llama-page-warm.cpp
 new file mode 100644
-index 0000000..53d0554
+index 0000000..1abe8a8
 --- /dev/null
 +++ b/src/llama-page-warm.cpp
 @@ -0,0 +1,126 @@
@@ -101,7 +101,7 @@ index 0000000..53d0554
 +// engine's page table only when a word first needs them, one page fault at a time: the first answers after a load
 +// are slower than the later ones (on Windows the whole file can still be on the drive). A helper thread now reads
 +// one byte of each such page right after load, while nobody is waiting on it, so the first answer finds them mapped.
-+// Nothing is changed or copied: same words. LLAMA_PAGE_WARM=0 turns it off. Skipped when the drive tier
++// Nothing is changed or copied: same words. Off unless LLAMA_PAGE_WARM=1, until a test shows it pays. Skipped when the drive tier
 +// (LLAMA_MOE_DRIVE) keeps the experts on the drive, or when the pages to read don't fit in free RAM above the floor
 +// (LLAMA_MOE_RAM_FLOOR_MIB, 512 unless set), so it never pushes the computer into swapping. Idea from PolyStrata (MIT).
 +

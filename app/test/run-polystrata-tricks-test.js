@@ -1,10 +1,10 @@
 // Nov 27: the engine speed-ups taken from PolyStrata (Brain Engine 0140-0142, and the container's processor limit):
-// on by default, same words, each with a way to turn it off, and Help, glossary and FAQ. Nothing here reads the real
+// off by default (Squeak) until a test shows a gain, same words, each with a way to turn it on, and Help, glossary and FAQ. Nothing here reads the real
 // computer: the container's limit files, the processor count and the platform are fakes.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { specGateTimeEnv, powerThrottleEnv, containerCpus, containerThreads, specGateEnv } from '../src/engine-extras.js';
+import { containerCpus, containerThreads, specGateEnv } from '../src/engine-extras.js';
 import { TUNING_FIELDS, tuningArgs } from '../src/engine-tuning.js';
 import { HELP } from '../public/help-content.js';
 
@@ -13,17 +13,17 @@ const check = (name, ok, why = '') => { if (ok) pass++; else fail++; console.log
 const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (f) => fs.readFileSync(path.join(app, f), 'utf8').replace(/\r\n/g, '\n');
 
-// ---------- 0142 Guess only while it writes faster ----------
-check('the time gate is on unless set by hand', specGateTimeEnv({}).LLAMA_SPEC_GATE_TIME === '1' && !specGateTimeEnv({ LLAMA_SPEC_GATE_TIME: '0' }).LLAMA_SPEC_GATE_TIME);
-check('it sits next to the share-kept gate', specGateEnv({}).LLAMA_SPEC_GATE === '0.3' && specGateTimeEnv(undefined).LLAMA_SPEC_GATE_TIME === '1');
+// ---------- Off by default (Squeak, Nov 27: not on, and not in Turbo, until a test shows a gain) ----------
 const lc = read('src/llamacpp.js');
-check('Bob sends both gates where guessing is on', /specGateEnv\(this\.tuneEnv\), \.\.\.specGateTimeEnv\(this\.tuneEnv\)/.test(lc));
-
-// ---------- 0140 Power throttling ----------
-check('power throttling: the engine turns it off itself, so Bob sends nothing', Object.keys(powerThrottleEnv()).length === 0);
-check('power throttling: left to Windows when the engine should yield (Games first, a helper engine)', powerThrottleEnv({ yieldToGames: true }).LLAMA_POWER_THROTTLING === '1');
-check('Bob passes Games first and the helper engine to it, before Engine tuning (set by hand wins)',
-  /powerThrottleEnv\(\{ yieldToGames: this\.role === BESIDE \|\| Boolean\(cpu && cpuPlan\(this\.cfg\)\?\.lowPriority\) \}\) \};[^\n]*\n\s*if \(this\.tuneEnv/.test(lc));
+check('Bob sends no time gate, page warm-up or power key by himself', !/LLAMA_SPEC_GATE_TIME|LLAMA_PAGE_WARM|LLAMA_POWER_THROTTLING/.test(lc) && !/specGateTimeEnv|powerThrottleEnv/.test(lc));
+{ const srcDir = path.join(app, 'src');
+  const users = fs.readdirSync(srcDir).filter((f) => f.endsWith('.js') && f !== 'engine-tuning.js' && /LLAMA_SPEC_GATE_TIME|LLAMA_PAGE_WARM|LLAMA_POWER_THROTTLING/.test(read(`src/${f}`).replace(/\/\/.*$/gm, '')));
+  check('nor Turbo, nor any other part of Bob: only the Engine tuning boxes set them', users.length === 0, users.join(', ')); }
+check('the share-kept gate is as before', specGateEnv({}).LLAMA_SPEC_GATE === '0.3');
+const p140 = fs.readFileSync(path.join(app, 'engine', 'patches', '0140-power-throttling-off.patch'), 'utf8');
+const p141 = fs.readFileSync(path.join(app, 'engine', 'patches', '0141-page-warm.patch'), 'utf8');
+check('the engine itself leaves throttling to Windows unless LLAMA_POWER_THROTTLING_OFF=1', /getenv\("LLAMA_POWER_THROTTLING_OFF"\)/.test(p140) && /strcmp\(on, "1"\) == 0/.test(p140));
+check('and warms pages only with LLAMA_PAGE_WARM=1', /warm_env && strcmp\(warm_env, "1"\) == 0/.test(p141));
 
 // ---------- A container's processor limit ----------
 const fake = (files) => (f) => { if (f in files) return files[f]; throw new Error('missing'); };
@@ -33,16 +33,18 @@ check('cgroup v2: "max" is no limit', containerCpus(fake({ '/sys/fs/cgroup/cpu.m
 check('cgroup v1: quota and period', containerCpus(fake({ '/sys/fs/cgroup/cpu/cpu.cfs_quota_us': '600000', '/sys/fs/cgroup/cpu/cpu.cfs_period_us': '100000' }), 'linux') === 6);
 check('cgroup v1: -1 is no limit', containerCpus(fake({ '/sys/fs/cgroup/cpu/cpu.cfs_quota_us': '-1', '/sys/fs/cgroup/cpu/cpu.cfs_period_us': '100000' }), 'linux') === null);
 check('no files, or not Linux: no limit', containerCpus(fake({}), 'linux') === null && containerCpus(fake({ '/sys/fs/cgroup/cpu.max': '400000 100000' }), 'win32') === null);
-check('threads: the limit when it is below the processors seen', containerThreads({ cpus: 64, limit: 4 }) === 4);
-check('threads: nothing when there is no limit, or it is not below', containerThreads({ cpus: 16, limit: null }) === null && containerThreads({ cpus: 8, limit: 8 }) === null && containerThreads({ cpus: 8, limit: 16 }) === null);
-check('Bob uses it only when no other thread rule or hand setting gave threads', /num\(lc\.threads, '-t'\)\.length \? num\(lc\.threads, '-t'\) : containerThreads\(\) \? \['-t', String\(containerThreads\(\)\)\] : \[\]/.test(lc));
+const ON = { llamacpp: { containerThreads: true } };
+check('threads: off by default, even under a limit', containerThreads({}, { cpus: 64, limit: 4 }) === null && containerThreads({ llamacpp: { containerThreads: 'yes' } }, { cpus: 64, limit: 4 }) === null);
+check('threads: switched on, the limit when it is below the processors seen', containerThreads(ON, { cpus: 64, limit: 4 }) === 4);
+check('threads: nothing when there is no limit, or it is not below', containerThreads(ON, { cpus: 16, limit: null }) === null && containerThreads(ON, { cpus: 8, limit: 8 }) === null && containerThreads(ON, { cpus: 8, limit: 16 }) === null);
+check('Bob uses it only when no other thread rule or hand setting gave threads', /num\(lc\.threads, '-t'\)\.length \? num\(lc\.threads, '-t'\) : containerThreads\(this\.cfg\) \? \['-t', String\(containerThreads\(this\.cfg\)\)\] : \[\]/.test(lc));
 
 // ---------- Engine tuning boxes ----------
 const by = Object.fromEntries(TUNING_FIELDS.map((f) => [f.k, f]));
-check('three boxes: the time gate, page warm-up, power throttling', by.draftTimeGate?.env === 'LLAMA_SPEC_GATE_TIME' && by.pageWarm?.env === 'LLAMA_PAGE_WARM' && by.powerThrottle?.env === 'LLAMA_POWER_THROTTLING');
+check('three boxes: the time gate, page warm-up, power throttling', by.draftTimeGate?.env === 'LLAMA_SPEC_GATE_TIME' && by.pageWarm?.env === 'LLAMA_PAGE_WARM' && by.powerThrottle?.env === 'LLAMA_POWER_THROTTLING_OFF');
 const hand = (levers) => ({ engineTuning: { mode: 'hand', list: [{ model: 'big', ...levers }] } });
-{ const t = tuningArgs(hand({ draftTimeGate: 0, pageWarm: 0, powerThrottle: 1 }), 'big', { cpu: true });
-  check('set by hand they reach the engine, on the processor too', t.env.LLAMA_SPEC_GATE_TIME === '0' && t.env.LLAMA_PAGE_WARM === '0' && t.env.LLAMA_POWER_THROTTLING === '1', JSON.stringify(t.env)); }
+{ const t = tuningArgs(hand({ draftTimeGate: 1, pageWarm: 1, powerThrottle: 1 }), 'big', { cpu: true });
+  check('turned on by hand they reach the engine, on the processor too', t.env.LLAMA_SPEC_GATE_TIME === '1' && t.env.LLAMA_PAGE_WARM === '1' && t.env.LLAMA_POWER_THROTTLING_OFF === '1', JSON.stringify(t.env)); }
 check('the card-only keys still stay off the processor', !('LLAMA_MOE_DOORBELL' in tuningArgs(hand({ doorbell: 1 }), 'big', { cpu: true }).env));
 
 // ---------- The engine patches ----------
@@ -59,7 +61,8 @@ check('their tests are there', ['page-warm.py', 'spec-gate-time.py'].every((n) =
 const page = HELP.find((h) => h.id === 'engine-always-on');
 check('Help page in Bob\'s voice, naming the platforms and the Android app', !!page && /my engine/.test(page.html) && /Windows/.test(page.html) && /Linux/.test(page.html) && /Android app/.test(page.html));
 check('Help says the speed is unproven until we test', /unproven in our lab, as we have yet to test/.test(page?.html || ''));
-check('Help names the Engine tuning boxes as shown', ['Guess only while it writes faster', 'Warm up the brain file after loading', 'Let Windows slow the engine to save power'].every((t) => (page?.html || '').includes(t) && TUNING_FIELDS.some((f) => f.label.startsWith(t))));
+check('Help says they are off by default', /off by default/.test(page?.html || ''));
+check('Help names the Engine tuning boxes as shown', ['Guess only while it writes faster', 'Warm up the brain file after loading', 'Stop Windows slowing the engine'].every((t) => (page?.html || '').includes(t) && TUNING_FIELDS.some((f) => f.label.startsWith(t))));
 check('FAQ', HELP.some((h) => h.id === 'faq-polystrata' && h.group === 'FAQ'));
 const gl = HELP.find((h) => h.id === 'glossary')?.html || '';
 check('glossary', ['Power throttling', 'Page warm-up', 'Time gate for guessing'].every((t) => gl.includes(`<dt>${t}</dt>`)));

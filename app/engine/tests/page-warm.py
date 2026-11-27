@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-# Brain Engine 0141 test: page warm-up (on unless LLAMA_PAGE_WARM=0). After load, a helper thread reads one byte of each
+# Brain Engine 0141 test: page warm-up (off unless LLAMA_PAGE_WARM=1). After load, a helper thread reads one byte of each
 # page of the mapped brain file that stays in RAM, so the first answer finds the pages mapped. The card is a stand-in
 # (ggml-rpc-server; build the checkout with GGML_RPC=ON) with the experts left on the processor (--n-cpu-moe), and
 # free RAM is pretended (LLAMA_PAGE_WARM_TEST_AVAIL_MIB), never read from this machine. It checks that:
-#   - on by default it says how much it read, and the words are those with LLAMA_PAGE_WARM=0
-#   - LLAMA_PAGE_WARM=0 says off; the drive tier, --load-mode none and too little free RAM each say NOT USED
+#   - off by default it says nothing and reads nothing
+#   - with LLAMA_PAGE_WARM=1 it says how much it read, and the words are those with it off
+#   - the drive tier, --load-mode none and too little free RAM each say NOT USED
 #   - the experts on the processor are among what it reads (more MiB with --n-cpu-moe than with all on the card)
 #   - a load that ends at once (the engine stopped while it reads) does not crash
 #   python3 engine/tests/page-warm.py <llama.cpp checkout with the patches, built with GGML_RPC=ON> [work folder]
@@ -66,7 +67,7 @@ def check(name, ok, why=''):
     global fails
     print(('PASS ' if ok else 'FAIL ') + name + (f' ({why})' if why and not ok else ''))
     fails += not ok
-FREE = {'LLAMA_PAGE_WARM_TEST_AVAIL_MIB': '65536'}
+FREE = {'LLAMA_PAGE_WARM_TEST_AVAIL_MIB': '65536', 'LLAMA_PAGE_WARM': '1'}
 def serve(tag, env, cpu_moe='4', port=50272, extra=(), ask=True):
     log = os.path.join(WORK, f'{tag}.log')
     args = [os.path.join(BIN, 'llama-server'), '-m', brain, '--rpc', f'127.0.0.1:{RPORT}', '-ngl', '99', '--n-cpu-moe', cpu_moe,
@@ -95,10 +96,10 @@ def warmed(err):
     m = re.search(r'page warm-up \(0141\): (\d+) MiB of the brain file mapped', err)
     return int(m.group(1)) if m else -1
 try:
-    off, offerr, _ = serve('off', {'LLAMA_PAGE_WARM': '0'})
-    check('LLAMA_PAGE_WARM=0 says off and answers', 'page warm-up (0141): off' in offerr and len(off) == 2 and not any(w.startswith('ERROR') for w in off), offerr[-300:])
+    off, offerr, _ = serve('off', {'LLAMA_PAGE_WARM': ''})
+    check('off by default: no warm-up, and it answers', '0141' not in offerr and len(off) == 2 and not any(w.startswith('ERROR') for w in off), offerr[-300:])
     on, err, _ = serve('on', {})
-    check('on by default: it reads the pages and says so', 'reading' in err and warmed(err) > 0, err[-400:])
+    check('with LLAMA_PAGE_WARM=1: it reads the pages and says so', 'reading' in err and warmed(err) > 0, err[-400:])
     check('the same words as with it off', on == off, f'{on} vs {off}')
     _, allerr, _ = serve('all-on-card', {}, cpu_moe='0')
     check('the experts left on the processor are read (more than with all on the card)', warmed(err) > warmed(allerr) >= 0 or (warmed(err) > 0 and 'NOT USED, nothing of the file' in allerr),
