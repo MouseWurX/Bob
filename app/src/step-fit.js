@@ -126,3 +126,11 @@ export function withStep(args, ub) {
   return out;
 }
 export const stepFitLine = (label, ub, ctx, wasCtx) => `The ${label}'s working memory didn't fit the graphics card at the usual reading step, so I read in smaller steps now (${ub} tokens at a time${ctx && wasCtx && ctx < wasCtx ? `, and a ${Math.round(ctx / 1024)}K chat memory` : ''}). Long prompts read slower, but nothing spills into slow shared memory.`;
+
+// The owner (Nov 27): "Fix the 4gbb fixed working memory". Kit v4 found it: with experts in RAM, a long read copies each
+// layer's experts to the card (op offload), and a looped brain's passes share their weights, so the engine kept the copy of
+// every looped layer from the first pass to the last (Inkling 2 Mini: about 4 GB at any step). Brain Engine 0151 gives each
+// pass its own copy, freed when the pass is done, holding only the experts that pass picked. Same words. Comes with the
+// same switch, from the first engine that has it; brains without a loop are not changed by it.
+export const COPY_PER_PASS_FROM_BE = 47;
+export const copyPerPassEnv = (cfg, be) => (stepFitOn(cfg) && Number(be) >= COPY_PER_PASS_FROM_BE ? { GGML_SCHED_WEIGHT_COPY_PER_SPLIT: '1' } : {});

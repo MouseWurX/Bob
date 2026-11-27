@@ -166,7 +166,7 @@ export function besideThreads(cpus = os.cpus()) {
 
 // 1.5.52 / 1.5.61: the mid-chat system note fold lives in system-notes.js, so Ollama uses it too.
 import { MID_SYSTEM_REFUSED, foldSystem } from './system-notes.js';
-import { stepFitOn, stepFitPlan, fitPlanEarly, growCap, ubOf, withStep, stepFitLine } from './step-fit.js'; // Nov 27: a smaller step when the working memory doesn't fit the card
+import { stepFitOn, copyPerPassEnv, stepFitPlan, fitPlanEarly, growCap, ubOf, withStep, stepFitLine } from './step-fit.js'; // Nov 27: a smaller step when the working memory doesn't fit the card
 export { MID_SYSTEM_REFUSED, foldSystem };
 
 // 1.5.35 (a function since 1.5.72, so the housekeeper can find the embedding file too): see catalogFile below.
@@ -1560,6 +1560,7 @@ export class LlamaCpp {
     if (args.includes('--moe-cache-mib') && turboStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...STANDIN_ENV }; this.log?.('engine', `${model}: Turbo stand-ins on (up to 2 missed experts a layer stood in for while writing; the words change)`); }
     else if (args.includes('--moe-cache-mib') && turboDriveStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...DRIVE_STANDIN_ENV }; this.log?.('engine', `${model}: Turbo: never wait on the drive (an expert no longer in RAM is stood in for while writing; the words change)`); }
     { const kg = keepGuessesEnv(this.cfg, { args, be: this.beNo() }); if (kg.LLAMA_SPEC_MB) { env = { ...env, ...kg }; this.log?.('engine', `${model}: Turbo: keep more guesses on (a guess the exact check throws away is kept when the brain rates it at least as likely; the words change)`); } }
+    if (card !== 'none' && this.role !== BESIDE) { const cp = copyPerPassEnv(this.cfg, this.beNo()); if (cp.GGML_SCHED_WEIGHT_COPY_PER_SPLIT) env = { ...env, ...cp }; } // 0151: a looped brain's passes each get their own copy of the experts
     if (this.tuneEnv && Object.keys(this.tuneEnv).length) env = { ...env, ...this.tuneEnv }; // Engine tuning, set by hand
     if (this.tuneEnv?.LLAMA_MOE_CACHE_SAVE) { try { fs.mkdirSync(path.dirname(this.tuneEnv.LLAMA_MOE_CACHE_SAVE), { recursive: true }); } catch {} } // the engine writes the saved hot set there
     if (args.includes('--moe-cache-mib') && this.hotEnv?.[RANKING_ENV]) env = { ...env, ...this.hotEnv }; // Nov 16: the hot-expert profile (patch 0016)

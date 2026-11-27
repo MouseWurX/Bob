@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cardUse, fitDeficitMiB, shortest, stepFitPlan, fitPlanEarly, growCap, withStep, ubOf, stepFitOn, stepFitLine, STEP_FIT_MIN_UB, STEP_FIT_MIN_CTX } from '../src/step-fit.js';
+import { cardUse, fitDeficitMiB, shortest, stepFitPlan, fitPlanEarly, growCap, withStep, ubOf, stepFitOn, stepFitLine, copyPerPassEnv, COPY_PER_PASS_FROM_BE, STEP_FIT_MIN_UB, STEP_FIT_MIN_CTX } from '../src/step-fit.js';
 import { LlamaCpp } from '../src/llamacpp.js';
 import { EXTRA_SWITCHES } from '../src/engine-extras.js';
 import { mergeSettings } from '../src/config.js';
@@ -202,6 +202,16 @@ try {
   setEnv({ MOCK_COMPUTE_MIB: null, MOCK_FREE_MIB: null, MOCK_MODEL_MIB: null, MOCK_KV_MIB: null, MOCK_CARD_OOM: null, MOCK_CONTEXT: null });
   for (const e of all) { try { await e.stopServer(); } catch {} clearInterval(e.idleTimer); }
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
+}
+
+// ---------- 0151: a looped brain's passes each get their own copy of the experts (kit v4: the fixed 4 GB) ----------
+{
+  check(COPY_PER_PASS_FROM_BE === 47 && copyPerPassEnv({ smallStepFit: true }, 47).GGML_SCHED_WEIGHT_COPY_PER_SPLIT === '1', 'with the switch on and Brain Engine 47, the engine gets its copy per pass');
+  check(Object.keys(copyPerPassEnv({ smallStepFit: true }, 46)).length === 0 && Object.keys(copyPerPassEnv({}, 47)).length === 0 && Object.keys(copyPerPassEnv({ smallStepFit: false }, 99)).length === 0, 'not before Brain Engine 47, and off unless the switch is on');
+  const src = read('src/llamacpp.js');
+  check(/card !== 'none' && this\.role !== BESIDE\) \{ const cp = copyPerPassEnv\(this\.cfg, this\.beNo\(\)\)/.test(src), 'Bob passes it to the engine for a brain on the card (not the helper beside it)');
+  check(fs.existsSync(path.join(here, '..', 'engine', 'patches', '0151-loop-copy-per-pass.patch')) && /GGML_SCHED_WEIGHT_COPY_PER_SPLIT/.test(read('engine/patches/0151-loop-copy-per-pass.patch')) && /### 0151-loop-copy-per-pass/.test(read('engine/ENGINE-MAP.md')), 'the engine patch is there and in the engine map');
+  check(/Brain Engine 47/.test(HELP.find((h) => h.id === 'faq-step-fit')?.html || ''), 'the FAQ says what the copy per pass does and from which engine');
 }
 
 // ---------- Help, glossary, FAQ, Settings ----------
