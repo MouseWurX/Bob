@@ -4,6 +4,14 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.256
+
+Ling 3.2 Air is under Rented brains.
+
+### New
+
+- **inclusionAI's Ling 3.2 Air under Rented brains.** A 124B that works 5.5B at a time, with a 256K memory, tools and a thinking switch, MIT licence. Its smallest good file (4-bit, 71 GB or more) is too big for any home computer we have, so it's listed with the really big brains. Brain Engine already has its brain type (Ling 3, from llama.cpp b12359), so no new engine is needed; `engine/tests/ling-real.sh` checks it on a rented card against upstream llama.cpp. On a rented 80 GB card (IQ3_XXS, Nov 27) it answers, makes the right tool call, runs with its experts in RAM and through the MoE cache, and its own guess-ahead head (MTP) gives the same words. With half the cache's misses on the processor the words parted from the card's after a while: the processor matches the card up to the last bits, and on a stand-in card (`engine/tests/ling-cpu-share.py`, a tiny made-up Ling with its SwiGLU limits set to bite) every share gives the same words, so it isn't a Ling bug; the next run checks its perplexity instead. On a 16 GB card: unproven in our lab, as we have yet to test (the first run's 16 GB check used the whole 80 GB card, now fixed).
+
 ## 1.5.255
 
 Brain Engine 46, GUPPI driving by default, the Per-chat engine cache on, and no caps on how long a job runs.
@@ -183,27 +191,6 @@ Rentals work again, Patches tells the steps, and the cable always wins on Bob-Ne
 - **Cable always wins.** When Bobs on a cable and Bobs on Wi-Fi both offer their graphics cards, the cable Bobs share the brain. Wi-Fi and Tailscale are for when a cable isn't possible, and those Bobs still take chats and web searches.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android. Rentals and Bob-Net sharing are for computers.
-
-## 1.5.246
-
-Private web, one answer instead of two, and more Lab lessons.
-
-### New
-
-- **Private web.** In Settings, Connections, 🕶 Private web. It's off until you turn it on. Then I send only the search words, keep no cookies, take tracking bits off links, and my browser window uses a throwaway profile that blocks trackers. You can also send my web search and pages through your own proxy or Tor; if it's down, I stop instead of going direct. Gaming mode, the Lab, Bob-Net and downloads aren't touched.
-- **Try other sources when one blocks me.** When a site turns me away with a block or a robot check, I never try to get past it. I skip that site for the rest of the job and read the same facts from up to 3 others, like another search result or a copy the Internet Archive already has, and I say what I skipped.
-- **Lab Lessons.** Two new Engineering lessons (a held-out leak, and auditing your reviewer), a How strong line on every Real result, and a page showing where every Real result comes from.
-
-### Fixed
-
-- **One answer, not two.** After I said "I can't" and had one more go, or after the check that only some tool steps ran, my second answer was stacked under the first. Now only one stays: the new one if it used a tool, otherwise the first.
-
-### Also
-
-- The README has a privacy note under the title, a Quick start, and a table of where everything is.
-- The dissertation now follows the locked tool shapes (Qwen shape 4, GPT-OSS shape 3), with new findings in chapter 8 and the rule in chapter 4.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android. Routing and the private browser window are for the desktop app.
 
 ## Older versions
 
