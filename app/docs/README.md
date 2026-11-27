@@ -1,11 +1,12 @@
 # Bob's docs
 
-Everything written about Bob, in one list. New here? Start with the [user guide](USER-GUIDE.md). Inside Bob, **Help** (F1) covers every setting in his own words.
+Everything written about Bob, in one list. New here? Start with the [install guides](install/README.md) and the [user guide](USER-GUIDE.md). Inside Bob, **Help** (F1) covers every setting in his own words.
 
 ## Using Bob
 
 | Page | What's in it |
 |---|---|
+| **[Install guides](install/README.md)** | Installing and setting up Bob on every kind of device: Windows, Linux, Mac, laptops, handhelds, Raspberry Pi, Android and iPhone, with [which brain for which size](install/sizes.md) and the [setup picker](https://mousewurx.github.io/Bob/). |
 | **[User guide](USER-GUIDE.md)** | Everything Bob does, in plain English: setup, models, sessions, memory, Hands, voice, the Lab. |
 | [How Bob stays fast and light](PERFORMANCE.md) | What Bob does to answer quickly and stay out of your game's way, with measurements. |
 | [Bob and similar projects](COMPARISON.md) | Bob next to other local AI apps, in their own words. |

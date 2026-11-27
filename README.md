@@ -57,17 +57,18 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 **Latest release ([what's new](CHANGELOG.md)):**
 
-| | Download |
-|---|---|
-| **Windows 10 / 11** | [`Bob-1.5.254-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.254-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.254-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.254-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.254-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.254-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.254-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-android.apk) |
+| | Download | Install guide |
+|---|---|---|
+| **Windows 10 / 11** | [`Bob-1.5.254-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-win-x64.zip) | [Windows](app/docs/install/windows.md) · [laptops](app/docs/install/laptop.md) · [handhelds](app/docs/install/handheld.md) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.254-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-mac-arm64.zip) | [Mac](app/docs/install/mac.md) |
+| **Linux (64-bit)** | [`Bob-1.5.254-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-linux-x86_64.AppImage) | [Linux](app/docs/install/linux.md) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.254-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-linux-amd64.deb) | [Linux](app/docs/install/linux.md) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.254-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-linux-x86_64.flatpak) | [Linux](app/docs/install/linux.md) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.254-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) | [Raspberry Pi](app/docs/install/raspberry-pi.md) |
+| **Android phone** | [`Bob-1.5.254-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-android.apk) | [Android](app/docs/install/android.md) |
+| **iPhone and iPad** | Nothing to download: the phone screen from your computer's Bob (an app is coming) | [iPhone and iPad](app/docs/install/iphone.md) |
 
-Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
+Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob), and there's [a guide for every device](app/docs/install/README.md), with [which brain for which size](app/docs/install/sizes.md).
 
 **On Windows 11?** Bob isn't code signed yet, so Smart App Control may stop him from running. [Read this first](#windows-11-smart-app-control).
 
@@ -463,6 +464,8 @@ Pictures and big jobs wait in Tasks while you play, and **Games first** has Bob 
 
 ## Getting Bob
 
+**[Install guides for every device](app/docs/install/README.md):** Windows, Linux, Mac, laptops, handhelds, Raspberry Pi, Android and iPhone, each with the brains and engines for every size. The [setup picker](https://mousewurx.github.io/Bob/) works it out for one device.
+
 ### Windows 10 or 11, in five steps
 
 1. **Download** `Bob-<version>-win-x64.zip` from the [latest release](https://github.com/MouseWurX/Bob/releases/latest).
@@ -486,11 +489,11 @@ Pictures and big jobs wait in Tasks while you play, and **Games first** has Bob 
 
 | | |
 |---|---|
-| **Mac (M1 or newer)** | Drag Bob into Applications. The first time, click **Open Anyway** in System Settings > Privacy & Security. Builds are ad-hoc signed ([why](.github/CONTRIBUTING.md#signed-mac-builds)). |
-| **Linux** | Mark the AppImage as executable and double-click it; nothing is installed, and an older distro may need `libfuse2`. Or install the .deb (`sudo apt install ./Bob-<version>-linux-amd64.deb`) or the Flatpak (`flatpak install --user ./Bob-<version>-linux-x86_64.flatpak`; it's sandboxed, so a few Hands do less). **Update Bob** fetches the same kind. |
-| **Raspberry Pi and ARM** | A 64-bit Pi 4 or 5 runs the arm64 AppImage the same way, with small brains on the processor. No pictures on ARM yet. |
-| **Android** | Open the .apk on the phone. It talks to your Bob over Tailscale. |
-| **iPhone and iPad** | Nothing to download. Turn on **Bob-Net access** in Bob's Settings, open his address with `/phone/` on the end in Safari over Tailscale, then tap Share and **Add to Home Screen**. A brain on the phone and the microphone button need the Android app. |
+| **Mac (M1 or newer)** | Drag Bob into Applications. The first time, click **Open Anyway** in System Settings > Privacy & Security. Builds are ad-hoc signed ([why](.github/CONTRIBUTING.md#signed-mac-builds)). [Mac guide](app/docs/install/mac.md) |
+| **Linux** | Mark the AppImage as executable and double-click it; nothing is installed, and an older distro may need `libfuse2`. Or install the .deb (`sudo apt install ./Bob-<version>-linux-amd64.deb`) or the Flatpak (`flatpak install --user ./Bob-<version>-linux-x86_64.flatpak`; it's sandboxed, so a few Hands do less). **Update Bob** fetches the same kind. [Linux guide](app/docs/install/linux.md) |
+| **Raspberry Pi and ARM** | A 64-bit Pi 4 or 5 runs the arm64 AppImage the same way, with small brains on the processor. No pictures on ARM yet. [Raspberry Pi guide](app/docs/install/raspberry-pi.md) |
+| **Android** | Open the .apk on the phone. It talks to your Bob over Tailscale. [Android guide](app/docs/install/android.md) |
+| **iPhone and iPad** | Nothing to download. Turn on **Bob-Net access** in Bob's Settings, open his address with `/phone/` on the end in Safari over Tailscale, then tap Share and **Add to Home Screen**. A brain on the phone and the microphone button need the Android app. [iPhone guide](app/docs/install/iphone.md) |
 
 Windows is the main platform. An NVIDIA card helps but isn't required. The Mac and Pi builds are tested on GitHub's machines but not yet on real hardware, so [tell us how they go](https://github.com/MouseWurX/Bob/issues). A few Windows-only parts are hidden elsewhere. To build from source, see [Building Bob](app/docs/BUILDING.md).
 

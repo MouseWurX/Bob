@@ -20,6 +20,7 @@
     "dist:linux": "electron-builder --linux AppImage --publish never"
   },
   "testSuites": [
+    "test/run-install-guides-test.js",
     "test/run-hf-sign-in-test.js",
     "test/run-engine-min-test.js",
     "test/run-brain-choices-test.js",
