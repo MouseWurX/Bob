@@ -9537,10 +9537,10 @@ index 0000000..5befb84
 +}
 diff --git a/tests/test-trellis.cpp b/tests/test-trellis.cpp
 new file mode 100644
-index 0000000..9e165f0
+index 0000000..05f564e
 --- /dev/null
 +++ b/tests/test-trellis.cpp
-@@ -0,0 +1,381 @@
+@@ -0,0 +1,403 @@
 +#include "ggml.h"
 +#include "ggml-backend.h"
 +
@@ -9748,9 +9748,14 @@ index 0000000..9e165f0
 +    ggml_backend_tensor_get(y, result.data(), 0, result.size()*sizeof(float));
 +    check(ggml_trellis_dequantize(type, codes.data(), K, N, scales.data(), a.data(), b.data(),
 +        permute ? ip.data() : nullptr, permute ? op.data() : nullptr, desc, nd, dense.data()), "reference decode failed");
-+    // Lamplight 0136: Vulkan's long batches use its f16 matrix multiply (f16 inputs, as for every quantized weight there),
-+    // so they are held to the error of the whole product instead of value by value
-+    const bool vk_mm = std::string(ggml_backend_name(backend)).find("Vulkan") == 0 && columns >= 32;
++    // Lamplight 0136: products that round the inputs to f16 are held to the error of the whole product (normalized,
++    // 1e-6; test-backend-ops holds CUDA to 1e-5) instead of value by value: Vulkan's and our CUDA kernels' long batches
++    // (f16 matrix multiply), and every libtrellis product (it rounds the inputs to f16 in 128-blocks for its mma.sync)
++    const std::string bname = ggml_backend_name(backend);
++    const char * cuda_env = std::getenv("LAMPLIGHT_TRELLIS_CUDA");
++    const bool cuda_own = cuda_env != nullptr && std::string(cuda_env) == "own";
++    const bool vk_mm = (bname.find("Vulkan") == 0 && columns >= 32) ||
++        (bname.find("CUDA") == 0 && (!cuda_own || columns >= 32));
 +    double err2 = 0, ref2 = 0;
 +    for (int c = 0; c < columns; ++c) {
 +        for (int n = 0; n < N; ++n) {
@@ -9766,7 +9771,7 @@ index 0000000..9e165f0
 +        }
 +    }
 +    if (verbose || vk_mm) {
-+        if (verbose) { std::printf("  nmse %.3g\n", err2/(ref2 + 1e-30)); }
++        if (verbose) { std::printf("  %s TRL%d mode=%d tokens=%d nmse %.3g\n", bname.c_str(), bits, mode, columns, err2/(ref2 + 1e-30)); }
 +        check(err2 <= 1e-6*ref2, "device product error too large");
 +    }
 +    ggml_backend_buffer_free(buffer);
@@ -9915,7 +9920,24 @@ index 0000000..9e165f0
 +        for (int columns : {1, 7, 35}) {
 +            auto expected = run_hybrid(cpu, cpu, columns, bands);
 +            auto actual = run_hybrid(device, cpu, columns, bands);
-+            for (size_t i = 0; i < actual.size(); ++i) { check_close(actual[i], expected[i]); }
++            // Lamplight 0136: an f16-input device product (see run_device) is held to the normalized error
++            const std::string dname = ggml_backend_name(device);
++            const char * cuda_env = std::getenv("LAMPLIGHT_TRELLIS_CUDA");
++            const bool cuda_own = cuda_env != nullptr && std::string(cuda_env) == "own";
++            const bool f16_in = (dname.find("Vulkan") == 0 && columns >= 32) ||
++                (dname.find("CUDA") == 0 && (!cuda_own || columns >= 32));
++            if (f16_in) {
++                double err2 = 0, ref2 = 0;
++                for (size_t i = 0; i < actual.size(); ++i) {
++                    check(std::isfinite(actual[i]), "hybrid product not finite");
++                    err2 += double(actual[i] - expected[i])*(actual[i] - expected[i]);
++                    ref2 += double(expected[i])*expected[i];
++                }
++                if (verbose) { std::printf("  hybrid %s bands=%d tokens=%d nmse %.3g\n", dname.c_str(), int(bands), columns, err2/(ref2 + 1e-30)); }
++                check(err2 <= 1e-6*ref2, "hybrid product error too large");
++            } else {
++                for (size_t i = 0; i < actual.size(); ++i) { check_close(actual[i], expected[i]); }
++            }
 +        }
 +    }
 +    if (device != cpu) { ggml_backend_free(device); }
