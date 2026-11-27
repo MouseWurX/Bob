@@ -228,6 +228,17 @@ export function mtpSpareEnv({ env = {}, step = 0 } = {}) {
   if (env.LLAMA_MOE_CACHE_FILL_SPARE_MIB !== undefined && env.LLAMA_MOE_CACHE_FILL_SPARE_MIB !== '') return {};
   return { LLAMA_MOE_CACHE_FILL_SPARE_MIB: String(512 + Math.ceil(Math.max(step, 512) * MTP_SPARE_PER_TOKEN_MIB)) };
 }
+// Nov 27 (1.5.255, 35B rental try 4 on a 16 GB A4000): the picture reader (--mmproj) loads after the fill has measured
+// the card, so the fill took its room and the reader's 858 MiB found none: "cudaMalloc failed: out of memory", then
+// GGML_ASSERT, on every load. With the fill on, the fill now leaves the reader's file size plus room for its working
+// memory free as well (on top of the MTP spare when that is set). A spare set by hand wins.
+export const READER_SPARE_EXTRA_MIB = 512;
+export function readerSpareEnv({ env = {}, hand = {}, readerBytes = 0 } = {}) {
+  if (!env || env.LLAMA_MOE_CACHE_FILL !== '1' || !(Number(readerBytes) > 0)) return {};
+  if (hand && hand.LLAMA_MOE_CACHE_FILL_SPARE_MIB !== undefined && hand.LLAMA_MOE_CACHE_FILL_SPARE_MIB !== '') return {};
+  const base = Number(env.LLAMA_MOE_CACHE_FILL_SPARE_MIB) > 0 ? Number(env.LLAMA_MOE_CACHE_FILL_SPARE_MIB) : 512;
+  return { LLAMA_MOE_CACHE_FILL_SPARE_MIB: String(base + Math.ceil(Number(readerBytes) / 1048576) + READER_SPARE_EXTRA_MIB) };
+}
 // Nov 23: the Conductor loads at its biggest read step and drops to the chat step after a read (the cheap direction,
 // about 1.3 s on the test PC against 15.5 s up), with -b at least that step. Returns the new args.
 export function loadAtStep(args, step) {

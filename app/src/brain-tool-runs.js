@@ -111,8 +111,8 @@ export const toolRunParts = {
       const hand = Object.entries(HANDS).find(([, h]) => h.tools.includes(name))?.[0];
       return { text: hand ? handOffWhy(this.cfg, hand) : `Error: ${name} can't be used on this replicant matrix right now.` };
     }
-    // Item 200: this tool failed three times in a row in this job, so it's set aside (no card, no run).
-    if (ctx && ctx.strikes?.blocked(name)) { this.log('tool', `${name} not run: it failed three times in this job`); return { text: STRUCK_OUT(name, this.cfg.userName || 'the user', ctx.strikes.lastError(name)), hinted: true, struck: true }; }
+    // Item 200: this tool failed STRIKES times in a row in this job, so it's set aside (no card, no run).
+    if (ctx && ctx.strikes?.blocked(name)) { this.log('tool', `${name} not run: it failed ${STRIKES} times in this job`); return { text: STRUCK_OUT(name, this.cfg.userName || 'the user', ctx.strikes.lastError(name)), hinted: true, struck: true }; }
     // 1.5.34 House style: what the call left out comes from the defaults set in Settings, House style, and the chat says so.
     const house = applyHouseStyle(name, args, this.cfg.houseStyle);
     args = house.args;
@@ -136,7 +136,13 @@ export const toolRunParts = {
         // "Work without asking" (Settings, Hands; off by default): no card, but the hard limits in check()
         // still apply, every action still goes in the logbook and the chat, and ✋ Hands turns it off at once.
         // Tools marked alwaysAsk (cloud helpers: they cost money) still show their card.
-        if (need && !tool.alwaysAsk && !ctx.alwaysAsk && !afterOutside && freeOn(this.cfg)) { // a call from another app always shows its card
+        // Routines (routines.js): a step of a routine you switched on with your OK on its card, which listed this step
+        // and its target. No second card, but check() above still ran, so the hard limits and the Hand's folders hold.
+        if (need && ctx.routineOk && !tool.alwaysAsk && !mailGo?.card) {
+          const text = typeof need === 'string' ? need : need.text;
+          this.log('approval', `routine step, OK'd on the routine's card: ${text}${need.command ? ` [${need.command}]` : ''}`);
+          ctx.emit({ type: 'auto-approved', text, command: need.command || '' });
+        } else if (need && !tool.alwaysAsk && !ctx.alwaysAsk && !afterOutside && freeOn(this.cfg)) { // a call from another app always shows its card
           const text = typeof need === 'string' ? need : need.text;
           this.log('approval', `done without asking: ${text}${need.command ? ` [${need.command}]` : ''}`);
           ctx.emit({ type: 'auto-approved', text, command: need.command || '', rows: Array.isArray(need.plan) ? need.plan.filter((r) => !r.blocked).length : null });
@@ -220,7 +226,7 @@ export const toolRunParts = {
       if (!v.declined && !(!ok && badAddress(text))) { // 1.5.210: a made-up or missing address isn't the tool's fault
         if (!ok) this.noteToolError(name); // item 206
         // Item 200: the third failure in a row of this tool in this job: it's set aside, and offered for fixing after.
-        if ((ctx.strikes ||= new ToolStrikes()).record(name, ok, text) === STRIKES) { strikeNote = STRIKE_NOTE(name, this.cfg.userName || 'the user'); this.log('tool', `${name} failed three times in this job; set aside for the rest of it`); }
+        if ((ctx.strikes ||= new ToolStrikes()).record(name, ok, text) === STRIKES) { strikeNote = STRIKE_NOTE(name, this.cfg.userName || 'the user'); this.log('tool', `${name} failed ${STRIKES} times in this job; set aside for the rest of it`); }
       }
       const hinted = Boolean(ctx.toolError?.hinted) || Boolean(strikeNote);
       ctx.toolError = null;

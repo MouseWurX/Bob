@@ -40,7 +40,7 @@ The questions are ordered from the data, through the model, to the instruments t
 
 The thesis makes six contributions. Some are measurements and some are tools. We separate them because a tool is only as good as the use it has been put to.
 
-**1. Instruments to change and measure a model live.** The project forked llama.cpp into an inference engine called Brain Engine. It can switch experts on and off, steer activations and trace routing while a model runs. A rental pipeline, called the Forge, trains and heals models on rented cards under hard limits on hours and dollars. A set of Lab scripts runs the judged tests. The engine's expert switch with nothing switched off gives byte-identical output, and live steering at 8 times strength matches loading the same vector at 8 times strength (PR #227). Chapter 3 describes these tools and Chapter 4 describes the rules for using them.
+**1. Instruments to change and measure a model live.** The project forked llama.cpp into an inference engine called Lamplight. It can switch experts on and off, steer activations and trace routing while a model runs. A rental pipeline, called the Forge, trains and heals models on rented cards under hard limits on hours and dollars. A set of Lab scripts runs the judged tests. The engine's expert switch with nothing switched off gives byte-identical output, and live steering at 8 times strength matches loading the same vector at 8 times strength (PR #227). Chapter 3 describes these tools and Chapter 4 describes the rules for using them.
 
 **2. A measured count of faults in a synthetic tool lesson set.** Opus read all 5,788 non-held-out tool lessons. It kept 189 as written, marked 1,381 as small fixes, 4,208 as rewrites and 10 as discards. It changed 1,922 of the verdicts that a cheaper reader, Haiku, had given first (checked-numbers.md). Only about 3% of the lessons were fit to teach as written. Chapter 6 reports this.
 
@@ -121,7 +121,7 @@ The thesis has 13 chapters. This one is the first.
 
 **Chapter 2, Background and related work,** reviews the literature the thesis stands on. It covers transformers and mixture-of-experts models, model compression, distillation and parameter-efficient fine-tuning, synthetic data and its quality, test contamination, tool use, reasoning, preference training, interpretability and local inference. It ends with the gaps this thesis addresses.
 
-**Chapter 3, Building the instruments,** describes Brain Engine, the Forge and the Lab scripts, and what is still missing from them.
+**Chapter 3, Building the instruments,** describes Lamplight, the Forge and the Lab scripts, and what is still missing from them.
 
 **Chapter 4, Method and rules,** sets out the rules that make the later measurements trustworthy: the held-out split, gates before and during a paid rental, full passes only, measured-only reporting, a ledger of cost and failures, and the quiz-noise level.
 

@@ -36,7 +36,9 @@ await lc.chatOnce({ model: 'gemma4:e4b', messages: [{ role: 'user', content: 'x'
 check('llama.cpp sends nothing extra otherwise', !('chat_template_kwargs' in bodies.at(-1)));
 // 1.5.19: Medium's thinking budget. A brain that thinks past it is stopped and asked to answer with thinking off.
 {
-  const think = (n) => Array.from({ length: n }, () => 'data: {"choices":[{"delta":{"reasoning_content":"hm"}}]}\n\n').join('');
+  // Nov 24: varied thinking, so this tests the budget, not the repeat stop (a reply repeating itself is stopped sooner)
+  let said = 0;
+  const think = (n) => Array.from({ length: n }, () => `data: {"choices":[{"delta":{"reasoning_content":"step ${++said} "}}]}\n\n`).join('');
   globalThis.fetch = async (url, init) => {
     const b = JSON.parse(init.body); bodies.push(b);
     if (b.chat_template_kwargs?.enable_thinking === false) return new Response('data: {"choices":[{"delta":{"content":"answer"}}]}\n\ndata: [DONE]\n\n');

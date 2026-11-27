@@ -11,7 +11,7 @@ import { sameModel } from './brain-mode.js';
 import { isGuestId } from './guest-chat.js';
 import { personalityPrompt } from '../public/personality.js';
 import { LAST_ROUND_NOTE, onTrackNote, errorHint } from './loop-help.js';
-import { waitedFor, pastCeiling, ceilingMs } from './loop-guard.js';
+import { waitedFor, pastCeiling, ceilingMs, ALWAYS_ON_CEILING } from './loop-guard.js';
 import { giveIds, toolMessage } from './tool-kinds.js';
 import { askTogether } from './together.js';
 import { compactMessages, charsFor } from './self-work-plan.js';
@@ -175,7 +175,7 @@ export const hatParts = {
       tinker: ['list_folder', 'code_map', 'read_file', 'search_files', 'edit_file', 'write_file', 'web_search', 'fetch_page', 'run_command', 'run_recipe'],
       reviewer: ['list_folder', 'read_file', 'search_files']
     }[hat] || [];
-    const maxSteps = Number(steps) > 0 ? Math.min(Number(steps), 100) : hat === 'tinker' ? 30 : hat === 'reviewer' ? 15 : MAX_STEPS;
+    const maxSteps = Number(steps) > 0 ? Math.min(Number(steps), 100) : MAX_STEPS; // Nov 23: no cap by hat either (was tinker 30, reviewer 15)
     const packet = this.handoff(ctx, via?.check?.ctx ? Math.min(brainCtx || via.check.ctx, via.check.ctx) : brainCtx); // sized for his room when he checks
     const userMsg = { role: 'user', content: `${packet}## The job\n${task}${ctx.picNote ? `\n\n${ctx.picNote}` : ''}` };
     // Raw pictures only go to a brain that can see; any brain still gets the Eyes descriptions above.
@@ -198,7 +198,7 @@ export const hatParts = {
       // Reliability 161: the safety net covers a helper's steps too (the turn's clock, card waits aside): past the job
       // time limit, this step is his last, with no tools.
       // With the job time limit switched on, its own end (which its card can push back) is the line instead.
-      const late = step > 0 && Boolean(ctx.turnStartedAt) && (ctx.timeEnds ? Date.now() - waitedFor(ctx.signal) >= ctx.timeEnds : pastCeiling(ctx.turnStartedAt, ctx.signal, Date.now(), ceilingMs(this.cfg)));
+      const late = step > 0 && Boolean(ctx.turnStartedAt) && (ctx.timeEnds ? Date.now() - waitedFor(ctx.signal) >= ctx.timeEnds : ALWAYS_ON_CEILING && pastCeiling(ctx.turnStartedAt, ctx.signal, Date.now(), ceilingMs(this.cfg)));
       if (late && !ctx.hatLateSaid) { ctx.hatLateSaid = true; this.log('loop', `${hat}: the job reached its time limit (the safety net); this step is the last`); }
       const last = (step === maxSteps - 1 && step > 0 && !this.helpOff('last')) || late;
       const stepTools = last ? [] : this.toolSchemas(hatTools);

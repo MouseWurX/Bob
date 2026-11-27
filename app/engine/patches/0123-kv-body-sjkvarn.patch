@@ -1,0 +1,2636 @@
+diff --git a/common/arg.cpp b/common/arg.cpp
+index 9aaa86c..851b3b9 100644
+--- a/common/arg.cpp
++++ b/common/arg.cpp
+@@ -2428,7 +2428,8 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
+             "(default: %s)\n"
+             "Progressive Memory (Brain Engine 0039): env LLAMA_KV_TIERS=type:window,... keeps the newest words again at sharper types\n"
+             "(Brain Engine 0045: env LLAMA_KV_TIERS_EXPLICIT=1 forces the old two-pass way of writing, for tests)\n"
+-            "Sharp start (Brain Engine 0122): env LLAMA_KV_SINK=type:tokens (e.g. f16:128) keeps the chat's first tokens again at a sharp type",
++            "Sharp start (Brain Engine 0122): env LLAMA_KV_SINK=type:tokens (e.g. f16:128) keeps the chat's first tokens again at a sharp type\n"
++            "Sealed blocks (Brain Engine 0123): env LLAMA_KV_BODY=4/4|3/3|3/2 seals words older than the rings into SJ-KVaRN records (needs LLAMA_KV_TIERS)",
+             get_all_kv_cache_types().c_str(),
+             ggml_type_name(params.cache_type_v)
+         ),
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index b8d9e7b..2eac7da 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -22,6 +22,7 @@ set(LLAMA_CORE_SOURCES
+     llama-impl.cpp
+     llama-io.cpp
+     llama-kv-cache.cpp
++    sj-kvarn.c
+     llama-kv-cache-iswa.cpp
+     llama-kv-cache-dsa.cpp
+     llama-kv-cache-dsa-iswa.cpp
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 4a54f97..eea1994 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -2781,6 +2781,20 @@ bool llama_context::set_dials(const struct llama_dial * d, size_t n) {
+ }
+ 
+ llm_graph_result * llama_context::process_ubatch(const llama_ubatch & ubatch, llm_graph_type gtype, llama_memory_context_i * mctx, ggml_status & ret) {
++    // Brain Engine 0123 (LLAMA_KV_BODY): before a batch, the whole groups of words before it are sealed from a ring, on
++    // the processor, once the back ends are done writing them (before apply, so no slot they sit in is reused yet)
++    if (mctx && memory) {
++        llama_kv_cache * kv = dynamic_cast<llama_kv_cache *>(memory.get());
++        if (auto * h = dynamic_cast<llama_memory_hybrid *>(memory.get())) {
++            kv = h->get_mem_attn();
++        } else if (auto * w = dynamic_cast<llama_kv_cache_iswa *>(memory.get())) {
++            kv = w->get_base();
++        }
++        if (kv != nullptr && kv->body_due(ubatch)) {
++            ggml_backend_sched_synchronize(sched.get());
++            kv->body_seal(ubatch, cparams.n_threads_batch);
++        }
++    }
+     if (mctx && !mctx->apply()) {
+         LLAMA_LOG_ERROR("%s: failed to apply memory context\n", __func__);
+         ret = GGML_STATUS_FAILED;
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 14d7149..ebdad21 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -851,7 +851,8 @@ static int kv_tiers_mode(const llama_kv_cache_context * mctx, uint32_t n_tokens,
+     if (kv == nullptr || kv->n_tiers() == 0 || training) {
+         return 0;
+     }
+-    return n_tokens == 1 ? 1 : kv->tiers_fit(n_tokens) ? 2 : 3;
++    // Brain Engine 0123: with sealed blocks one word reads like a batch too (the records are laid over the main cache)
++    return n_tokens == 1 && !kv->body_on() ? 1 : kv->tiers_fit(n_tokens) ? 2 : 3;
+ }
+ 
+ static void kv_tiers_tell(const llama_kv_cache_context * mctx, int used) {
+@@ -885,6 +886,12 @@ static void kv_tiers_set_input(llm_graph_input_attn_kv * inp, const llama_kv_cac
+             kv->set_input_tier_fill(inp->tier_slots[t], inp->tier_cells[t], ubatch, t, mctx->get_n_kv());
+         }
+     }
++    if (inp->body_pos && inp->body_pos->buffer) {
++        kv->set_input_body_pos(inp->body_pos, mctx->get_n_kv()); // Brain Engine 0123
++    }
++    if (inp->body_used && kv->tiers_first(7)) {
++        LLAMA_LOG_INFO("%s: sealed blocks: words older than the rings are read from their sealed records (LLAMA_KV_BODY)\n", __func__);
++    }
+     // one word: the main cache's mask without the cells a tier holds (a copy of the plain mask's row)
+     // (filled the plain way first: the plain mask itself may be left unallocated when no layer reads it)
+     if (inp->tier_main_mask && inp->tier_main_mask->buffer) {
+@@ -4021,6 +4028,11 @@ static std::unique_ptr<llm_graph_input_attn_kv> build_attn_inp_kv_impl(
+                     inp->tier_cells.push_back(ce);
+                 }
+             }
++            if (inp->tiers_mode == 2 && kv->body_on()) {
++                inp->body_pos = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, mctx_cur->get_n_kv()); // Brain Engine 0123
++                ggml_set_input(inp->body_pos);
++                ggml_set_name(inp->body_pos, "attn_inp_body_pos");
++            }
+         }
+     }
+ 
+@@ -4279,11 +4291,24 @@ ggml_tensor * llm_graph_context::build_attn(
+         auto overlay = [&](ggml_tensor * main, bool is_k) {
+             ggml_tensor * f = ggml_cast(ctx0, main, GGML_TYPE_F16);      // [d, n_head_kv, n_kv, 1]
+             f = ggml_reshape_2d(ctx0, f, f->ne[0]*f->ne[1], f->ne[2]);
++            // Brain Engine 0123: the sealed words, from their records. The decode is processor code, so it and the overlay
++            // that writes into its result stay on the processor (a card can't write into the processor's memory)
++            const bool on_cpu = inp->body_pos != nullptr && kvt->has_body(il) && backend_cpu != nullptr;
++            if (inp->body_pos != nullptr && kvt->has_body(il)) {
++                f = kvt->body_read(ctx0, f, inp->body_pos, il, !is_k);
++                if (on_cpu) {
++                    ggml_backend_sched_set_tensor_backend(sched, f, backend_cpu);
++                }
++                inp->body_used = 1;
++            }
+             for (int t = (int) kvt->n_tiers() - 1; t >= 0; --t) {
+                 ggml_tensor * ring = is_k ? kvt->get_k_tier(ctx0, il, t) : kvt->get_v_tier(ctx0, il, t);
+                 ring = ggml_reshape_2d(ctx0, ring, ring->ne[0]*ring->ne[1], ring->ne[2]);
+                 ggml_tensor * rows = ggml_get_rows(ctx0, ring, inp->tier_slots[t]); // f32 [d*h, w]
+                 f = ggml_set_rows(ctx0, f, rows, inp->tier_cells[t]);
++                if (on_cpu) {
++                    ggml_backend_sched_set_tensor_backend(sched, f, backend_cpu);
++                }
+             }
+             return ggml_reshape_4d(ctx0, f, main->ne[0], main->ne[1], n_kv, 1);
+         };
+diff --git a/src/llama-graph.h b/src/llama-graph.h
+index 95e8e27..43654fe 100644
+--- a/src/llama-graph.h
++++ b/src/llama-graph.h
+@@ -405,6 +405,8 @@ public:
+     ggml_tensor * tier_main_mask = nullptr; // mode 1: F16 [n_kv, 1], the main mask without the cells a tier holds
+     std::vector<ggml_tensor *> tier_slots; // mode 2: I32 [window]: ring slots of the newest words
+     std::vector<ggml_tensor *> tier_cells; // mode 2: I64 [window]: the cells they go over
++    ggml_tensor * body_pos = nullptr;      // Brain Engine 0123, mode 2: I32 [n_kv]: each cell's position (sealed words)
++    int body_used = 0;
+ 
+     llm_attn_mask self_attn_mask;
+ 
+diff --git a/src/llama-kv-cache.cpp b/src/llama-kv-cache.cpp
+index 2f846e7..2c855e7 100644
+--- a/src/llama-kv-cache.cpp
++++ b/src/llama-kv-cache.cpp
+@@ -1,11 +1,16 @@
+ #include "llama-kv-cache.h"
+ 
++#include "sj_kvarn.h" // Brain Engine 0123
++
+ #include "llama-impl.h"
+ #include "llama-io.h"
+ #include "llama-model.h"
+ #include "llama-context.h"
+ 
+ #include <algorithm>
++#include <atomic>
++#include <memory>
++#include <thread>
+ #include <cassert>
+ #include <cmath>
+ #include <cstring>
+@@ -140,7 +145,7 @@ llama_kv_cache::llama_kv_cache(
+         auto it = ctx_map.find(buft);
+         if (it == ctx_map.end()) {
+             ggml_init_params params = {
+-                /*.mem_size   =*/ size_t(2u*(1 + n_stream + 4)*n_layer*ggml_tensor_overhead()), // Brain Engine 0036, 0039: room for the card copy and up to 4 tier rings
++                /*.mem_size   =*/ size_t(2u*(1 + n_stream + 5)*n_layer*ggml_tensor_overhead()), // Brain Engine 0036, 0039, 0123: room for the card copy, up to 4 tier rings and the sealed records
+                 /*.mem_buffer =*/ NULL,
+                 /*.no_alloc   =*/ true,
+             };
+@@ -301,6 +306,61 @@ llama_kv_cache::llama_kv_cache(
+         }
+     }
+ 
++    // Brain Engine 0123: LLAMA_KV_BODY="4/4" (or "3/3", "3/2": K bits / V bits) seals the words older than the rings into
++    // SJ-KVaRN records (JakeATX's codec, sj_kvarn.h, MIT; the method is Huawei's KVarN): 128 words of one KV head per
++    // record, Hadamard-turned, balanced and rounded to 4.28 (4/4), 3.28 (3/3) or 2.78 (3/2) bits a value, with trellis
++    // codes at 3 bits and under. It needs a ring to seal from (LLAMA_KV_TIERS); the sharp start (LLAMA_KV_SINK) stays
++    // out of the records. Word-changing: Turbo only. LLAMA_KV_BODY_ITERS (default 16) sets the balancing steps.
++    if (const char * kb = getenv("LLAMA_KV_BODY"); kb != nullptr && *kb != '\0') {
++        int bk = 0, bv = 0;
++        const bool read_ok = sscanf(kb, "%d/%d", &bk, &bv) == 2;
++        int src = -1;
++        uint32_t start = 0;
++        for (size_t t = 0; t < tiers.size(); ++t) {
++            if (tiers[t].sink) {
++                start = tiers[t].window;
++            } else {
++                src = (int) t; // the widest ring keeps each word longest
++            }
++        }
++        uint32_t D = 0, H = 0;
++        bool same = true;
++        for (uint32_t il = 0; il < n_layer; ++il) {
++            if (!hparams.has_kv(il) || (filter && !filter(il))) {
++                continue;
++            }
++            const uint32_t dk = hparams.n_embd_head_k(il), dv = hparams.n_embd_head_v(il), h = hparams.n_head_kv(il);
++            same = same && dk == dv && (D == 0 || (dk == D && h == H));
++            D = dk;
++            H = h;
++        }
++        sj_kvarn_layout lay = {};
++        const int kind = read_ok ? sj_kvarn_body_resolve(SJKVARN_BODY_AUTO, bk, bv) : 0;
++        const bool lay_ok = read_ok && D > 0 && sj_kvarn_layout_init(&lay, (int) D, 128, bk, bv, kind) == 0;
++        const char * why = !read_ok ? "can't read it (K bits/V bits, for example 4/4, 3/3 or 3/2)" :
++            tiers.empty() || src < 0 ? "it needs a ring to seal from (LLAMA_KV_TIERS, for example f16:1024)" :
++            !same ? "K and V heads differ in size, or the layers do" :
++            D % 128 != 0 || (D & (D - 1)) != 0 ? "the head size must be 128, 256 or 512" :
++            !lay_ok ? "the codec has no such pair (4/4, 4/3, 4/2, 3/3, 3/2, 2/2 work)" :
++            kv_size <= start + 128 ? "the context is too short" : nullptr;
++        if (why != nullptr) {
++            LLAMA_LOG_WARN("%s: !!! LLAMA_KV_BODY=%s NOT USED%s%s: %s\n", __func__, kb, *name_tag ? " for the " : "", name_tag, why);
++        } else {
++            body.bits_k   = bk;
++            body.bits_v   = bv;
++            body.kind     = kind;
++            body.start    = start;
++            body.src      = (uint32_t) src;
++            body.D        = D;
++            body.n_head_kv = H;
++            body.rec      = lay.bytes;
++            body.n_groups = (kv_size - start + 127) / 128;
++            if (const char * it = getenv("LLAMA_KV_BODY_ITERS"); it != nullptr && atoi(it) > 0) {
++                body.iters = std::min(atoi(it), 64);
++            }
++        }
++    }
++
+     for (uint32_t il = 0; il < n_layer; il++) {
+         if (!hparams.has_kv(il)) {
+             LLAMA_LOG_DEBUG("%s: layer %3d: does not have KV cache\n", __func__, il);
+@@ -417,6 +477,12 @@ llama_kv_cache::llama_kv_cache(
+             has_k && ggml_format_name(l.k_tier.back(), "cache_%sk_tier%zu_l%d", name_tag, l.k_tier.size() - 1, il);
+             has_v && ggml_format_name(l.v_tier.back(), "cache_%sv_tier%zu_l%d", name_tag, l.v_tier.size() - 1, il);
+         }
++        // Brain Engine 0123: the sealed records, beside the layer's K and V
++        if (body_on() && has_k && has_v) {
++            auto & l = layers.back();
++            l.body = ggml_new_tensor_1d(ctx, GGML_TYPE_I8, (int64_t) body.rec * body.n_head_kv * body.n_groups);
++            ggml_format_name(l.body, "cache_%sbody_l%d", name_tag, il);
++        }
+     }
+     if (!tiers.empty()) {
+         std::string list;
+@@ -426,6 +492,16 @@ llama_kv_cache::llama_kv_cache(
+         LLAMA_LOG_INFO("%s: Progressive Memory: every word at %s/%s, again at %s words (batches up to %u keep it; LLAMA_KV_TIERS)\n",
+             __func__, ggml_type_name(type_k), ggml_type_name(type_v), list.c_str(), tier_slack);
+     }
++    if (body_on()) {
++        body_args.resize(layers.size()*2);
++        size_t n = 0;
++        for (const auto & l : layers) {
++            n += l.body ? ggml_nbytes(l.body) : 0;
++        }
++        LLAMA_LOG_INFO("%s: sealed blocks: words from %u on, older than the %s ring's %u, sealed 128 at a time at %d/%d bits (%s, %.2f bits a value), %.2f MiB (LLAMA_KV_BODY, SJ-KVaRN)\n",
++            __func__, body.start, ggml_type_name(tiers[body.src].type), tiers[body.src].window, body.bits_k, body.bits_v,
++            body.kind == SJKVARN_BODY_TRELLIS ? "trellis" : "scalar", 8.0 * body.rec / (2.0 * body.D * 128), n / (1024.0 * 1024.0));
++    }
+     if (split_req > 0 && split_hot == 0) {
+         LLAMA_LOG_WARN("%s: !!! LLAMA_KV_SPLIT NOT USED%s%s: no layer of this cache is on a card\n", __func__, *name_tag ? " for the " : "", name_tag);
+     }
+@@ -507,7 +583,7 @@ llama_kv_cache::llama_kv_cache(
+         bool attn_rot_k =
+             !attn_rot_disable &&
+             n_embd_head_k_all > 0 &&
+-            ggml_is_quantized(type_k) &&
++            (ggml_is_quantized(type_k) || body_on()) && // Brain Engine 0123: the records want Hadamard-turned words
+             hparams.n_embd_head_k() % 64 == 0;
+ 
+         // always create Hadamard rotation tensors for DeepSeek lightning indexers
+@@ -521,7 +597,7 @@ llama_kv_cache::llama_kv_cache(
+         const bool attn_rot_v =
+             !attn_rot_disable &&
+             n_embd_head_v_all > 0 &&
+-            ggml_is_quantized(type_v) &&
++            (ggml_is_quantized(type_v) || body_on()) &&
+             hparams.n_embd_head_v() % 64 == 0;
+ 
+         if (attn_rot_k) {
+@@ -541,6 +617,9 @@ llama_kv_cache::llama_kv_cache(
+             //while (hparams.n_embd_head_v() % (2*n_rot_v) == 0) {
+             //    n_rot_v *= 2;
+             //}
++            if (body_on()) {
++                n_rot_v = (uint32_t) body.D; // Brain Engine 0123: the codec's balancing assumes the whole head turned (as K)
++            }
+             n_rot_v = rot_size_env("LLAMA_ATTN_ROT_V_NROT", n_rot_v, n_embd_head_v_all); // Brain Engine 0122
+         }
+     }
+@@ -1991,6 +2070,7 @@ void llama_kv_cache::set_input_tier_fill(ggml_tensor * slots, ggml_tensor * cell
+ // the sharp start keeps the words before both the moved range and where it lands (Bob's cut of old tool results)
+ void llama_kv_cache::tiers_forget_moved(llama_pos p0, llama_pos shift) {
+     const llama_pos from = std::max<llama_pos>(0, std::min(p0, p0 + shift));
++    body_forget(from); // Brain Engine 0123
+     for (auto & t : tiers) {
+         for (auto & q : t.tag) {
+             if (q >= 0 && (!t.sink || q >= from)) {
+@@ -2001,6 +2081,7 @@ void llama_kv_cache::tiers_forget_moved(llama_pos p0, llama_pos shift) {
+ }
+ 
+ void llama_kv_cache::tiers_forget(llama_pos p0, llama_pos p1) {
++    body_forget(p0); // Brain Engine 0123: a group with a word gone (or about to change) is read from the main cache again
+     for (auto & t : tiers) {
+         for (auto & q : t.tag) {
+             if (q >= 0 && q >= p0 && (p1 < 0 || q < p1)) {
+@@ -2010,6 +2091,196 @@ void llama_kv_cache::tiers_forget(llama_pos p0, llama_pos p1) {
+     }
+ }
+ 
++// ---------- Brain Engine 0123 (LLAMA_KV_BODY): sealed blocks ----------
++
++void llama_kv_cache::body_forget(llama_pos p0) {
++    if (!body_on()) {
++        return;
++    }
++    const uint32_t keep = p0 <= (llama_pos) body.start ? 0 : ((uint32_t) p0 - body.start) / body.G;
++    body.sealed = std::min(body.sealed, keep);
++}
++
++bool llama_kv_cache::has_body(int32_t il) const {
++    const auto it = map_layer_ids.find(il);
++    return body_on() && it != map_layer_ids.end() && layers[it->second].body != nullptr;
++}
++
++namespace {
++struct kv_body_read_args {
++    sj_kvarn_layout lay;
++    uint32_t start, G, H;
++    const uint32_t * sealed; // read when the graph runs: the seal before each batch moves it
++    bool is_v;
++};
++
++// dst f16 [d*h, n_kv] = src[0] (the main cache as f16), with every sealed word's rows decoded from its records (src[1])
++void kv_body_read_op(ggml_tensor * dst, int ith, int nth, void * userdata) {
++    const auto * a = (const kv_body_read_args *) userdata;
++    const ggml_tensor * main = dst->src[0];
++    const ggml_tensor * pool = dst->src[1];
++    const ggml_tensor * pos  = dst->src[2];
++    const int64_t n_kv = dst->ne[1];
++    const int D = a->lay.D;
++    const uint32_t sealed = *a->sealed;
++    std::vector<float> row(D);
++    for (int64_t c = ith; c < n_kv; c += nth) {
++        ggml_fp16_t * out = (ggml_fp16_t *) ((char *) dst->data + c*dst->nb[1]);
++        const int32_t p = ((const int32_t *) pos->data)[c];
++        const bool in = p >= (int32_t) a->start && ((uint32_t) p - a->start) / a->G < sealed;
++        if (!in) {
++            memcpy(out, (const char *) main->data + c*main->nb[1], dst->nb[1]);
++            continue;
++        }
++        const uint32_t g = ((uint32_t) p - a->start) / a->G, t = ((uint32_t) p - a->start) % a->G;
++        for (uint32_t h = 0; h < a->H; ++h) {
++            const uint8_t * rec = (const uint8_t *) pool->data + ((size_t) g*a->H + h)*a->lay.bytes;
++            if (a->is_v) {
++                sj_kvarn_decode_v_row(&a->lay, rec, (int) t, row.data());
++            } else {
++                sj_kvarn_decode_k_row(&a->lay, rec, (int) t, row.data());
++            }
++            ggml_fp32_to_fp16_row(row.data(), out + (size_t) h*D, D);
++        }
++    }
++}
++} // namespace
++
++ggml_tensor * llama_kv_cache::body_read(ggml_context * ctx, ggml_tensor * main_f16, ggml_tensor * cell_pos, int32_t il, bool is_v) const {
++    const auto & l = layers[map_layer_ids.at(il)];
++    GGML_ASSERT(l.body != nullptr && main_f16->type == GGML_TYPE_F16 && ggml_is_contiguous(main_f16));
++    // the op's settings live as long as the cache (the graph keeps only the pointer); one per layer and side
++    static_assert(sizeof(kv_body_read_args) < 256, "kv_body_read_args");
++    auto & slot = body_args[(size_t) map_layer_ids.at(il)*2 + (is_v ? 1 : 0)];
++    if (!slot) {
++        auto * a = new kv_body_read_args;
++        sj_kvarn_layout_init(&a->lay, (int) body.D, (int) body.G, body.bits_k, body.bits_v, body.kind);
++        a->start  = body.start;
++        a->G      = body.G;
++        a->H      = body.n_head_kv;
++        a->sealed = &body.sealed;
++        a->is_v   = is_v;
++        slot = std::shared_ptr<void>(a, [](void * p) { delete (kv_body_read_args *) p; });
++    }
++    ggml_tensor * args[3] = { main_f16, l.body, cell_pos };
++    return ggml_custom_4d(ctx, GGML_TYPE_F16, main_f16->ne[0], main_f16->ne[1], 1, 1, args, 3, kv_body_read_op, GGML_N_TASKS_MAX, slot.get());
++}
++
++void llama_kv_cache::set_input_body_pos(ggml_tensor * dst, uint32_t n_kv) const {
++    GGML_ASSERT(ggml_backend_buffer_is_host(dst->buffer) && dst->type == GGML_TYPE_I32);
++    const auto & cells = v_cells[0];
++    int32_t * data = (int32_t *) dst->data;
++    for (int64_t c = 0; c < dst->ne[0]; ++c) {
++        data[c] = c < (int64_t) n_kv && c < (int64_t) cells.size() && !cells.is_empty((uint32_t) c) ? cells.pos_get((uint32_t) c) : -1;
++    }
++}
++
++// the groups that can be sealed before a batch starting at p0: whole groups below p0 whose words the ring still has
++struct kv_body_span { uint32_t start, G, n_groups, sealed; };
++static uint32_t body_target(const kv_body_span & b, const std::vector<llama_pos> & tag, uint32_t ring, llama_pos p0) {
++    if (p0 <= (llama_pos) b.start) {
++        return b.sealed;
++    }
++    uint32_t want = std::min(b.n_groups, ((uint32_t) p0 - b.start) / b.G);
++    uint32_t g = b.sealed;
++    for (; g < want; ++g) {
++        const llama_pos first = (llama_pos) (b.start + g*b.G);
++        if (tag[first % ring] != first || tag[(first + b.G - 1) % ring] != first + (llama_pos) b.G - 1) {
++            break; // gone from the ring: those words stay read from the main cache
++        }
++    }
++    return g;
++}
++
++bool llama_kv_cache::body_due(const llama_ubatch & ubatch) const {
++    if (!body_on() || ubatch.n_tokens == 0) {
++        return false;
++    }
++    llama_pos p0 = ubatch.pos[0];
++    for (uint32_t i = 1; i < ubatch.n_tokens; ++i) {
++        p0 = std::min(p0, ubatch.pos[i]);
++    }
++    const auto & r = tiers[body.src];
++    return body_target({ body.start, body.G, body.n_groups, body.sealed }, r.tag, r.ring, p0) > body.sealed;
++}
++
++void llama_kv_cache::body_seal(const llama_ubatch & ubatch, int n_threads) {
++    if (!body_due(ubatch)) {
++        return;
++    }
++    const int64_t t0 = ggml_time_us();
++    llama_pos p0 = ubatch.pos[0];
++    for (uint32_t i = 1; i < ubatch.n_tokens; ++i) {
++        p0 = std::min(p0, ubatch.pos[i]);
++    }
++    const auto & r = tiers[body.src];
++    const uint32_t g0 = body.sealed, g1 = body_target({ body.start, body.G, body.n_groups, body.sealed }, r.tag, r.ring, p0);
++    const uint32_t G = body.G, H = body.n_head_kv, D = body.D, ng = g1 - g0;
++    sj_kvarn_layout lay;
++    sj_kvarn_layout_init(&lay, (int) D, (int) G, body.bits_k, body.bits_v, body.kind);
++    const size_t ws = sj_kvarn_seal_workspace_bytes(&lay);
++    n_threads = std::max(1, std::min<int>(n_threads, (int) (ng*H)));
++    std::vector<std::vector<uint64_t>> work(n_threads, std::vector<uint64_t>((ws + 7) / 8));
++    std::vector<uint8_t> raw;
++    std::vector<float> f32;
++    std::vector<ggml_fp16_t> kh, vh; // [ng*G][H*D]
++    std::vector<uint8_t> recs;       // [ng][H][rec]
++    for (auto & l : layers) {
++        if (l.body == nullptr) {
++            continue;
++        }
++        // the group's rows from the ring, as f16 (they wrap around the ring's end at most once a group)
++        for (int side = 0; side < 2; ++side) {
++            ggml_tensor * ring = side == 0 ? l.k_tier[body.src] : l.v_tier[body.src];
++            auto & out = side == 0 ? kh : vh;
++            const size_t rb = ring->nb[1];
++            const int64_t n_el = ring->ne[0];
++            GGML_ASSERT(n_el == (int64_t) H*D);
++            out.resize((size_t) ng*G*n_el);
++            raw.resize(rb);
++            f32.resize(n_el);
++            const auto * tt = ggml_get_type_traits(ring->type);
++            for (uint32_t j = 0; j < ng*G; ++j) {
++                const llama_pos p = (llama_pos) (body.start + g0*G + j);
++                ggml_backend_tensor_get(ring, raw.data(), (size_t) (p % r.ring)*rb, rb);
++                if (ring->type == GGML_TYPE_F16) {
++                    memcpy(out.data() + (size_t) j*n_el, raw.data(), rb);
++                } else {
++                    GGML_ASSERT(tt->to_float != nullptr);
++                    tt->to_float(raw.data(), f32.data(), n_el);
++                    ggml_fp32_to_fp16_row(f32.data(), out.data() + (size_t) j*n_el, n_el);
++                }
++            }
++        }
++        recs.resize((size_t) ng*H*lay.bytes);
++        std::atomic<uint32_t> next { 0 };
++        auto run = [&](int ti) {
++            for (uint32_t job; (job = next.fetch_add(1)) < ng*H; ) {
++                const uint32_t g = job / H, h = job % H;
++                const size_t off = (size_t) g*G*H*D + (size_t) h*D;
++                sj_kvarn_seal_group(&lay, (const uint16_t *) kh.data() + off, (const uint16_t *) vh.data() + off, (size_t) H*D,
++                        body.iters, recs.data() + (size_t) job*lay.bytes, work[ti].data());
++            }
++        };
++        std::vector<std::thread> th;
++        for (int ti = 1; ti < n_threads; ++ti) {
++            th.emplace_back(run, ti);
++        }
++        run(0);
++        for (auto & x : th) {
++            x.join();
++        }
++        ggml_backend_tensor_set(l.body, recs.data(), (size_t) g0*H*lay.bytes, recs.size());
++    }
++    body.sealed = g1;
++    body.n_sealed += ng;
++    body.seal_ms += (ggml_time_us() - t0) / 1000.0;
++    if (body.n_sealed == ng || (body.n_sealed / 64) != ((body.n_sealed - ng) / 64)) {
++        LLAMA_LOG_INFO("%s: sealed blocks: %u groups sealed (words %u to %u), %.1f ms a group so far\n", __func__,
++            body.sealed, body.start, body.start + body.sealed*G - 1, body.seal_ms / body.n_sealed);
++    }
++}
++
+ void llama_kv_cache::split_refresh() {
+     if (split_hot == 0) {
+         return;
+diff --git a/src/llama-kv-cache.h b/src/llama-kv-cache.h
+index d7f0fbb..0f6781f 100644
+--- a/src/llama-kv-cache.h
++++ b/src/llama-kv-cache.h
+@@ -6,6 +6,7 @@
+ #include "llama-memory.h"
+ 
+ #include <functional>
++#include <memory>
+ #include <unordered_map>
+ #include <vector>
+ 
+@@ -307,6 +308,9 @@ private:
+         // Brain Engine 0039 (LLAMA_KV_TIERS): rings with a sharper copy of the newest words, one per tier
+         std::vector<ggml_tensor *> k_tier;
+         std::vector<ggml_tensor *> v_tier;
++
++        // Brain Engine 0123 (LLAMA_KV_BODY): the sealed blocks, one record per (group of 128 words, KV head)
++        ggml_tensor * body = nullptr;
+     };
+ 
+     // Brain Engine 0039 (LLAMA_KV_TIERS): Progressive Memory. The cache keeps every word at its own type (-ctk/-ctv);
+@@ -328,6 +332,25 @@ private:
+     void tiers_forget(llama_pos p0, llama_pos p1); // positions in [p0, p1) leave the tiers (p1 < 0: to the end)
+     void tiers_forget_moved(llama_pos p0, llama_pos shift); // Brain Engine 0122: words from p0 on moved by shift
+ 
++    // Brain Engine 0123 (LLAMA_KV_BODY): sealed blocks (SJ-KVaRN by JakeATX, after Huawei's KVarN). Words older than the
++    // rings are sealed, 128 at a time, into records of 3 to 4 bits from a ring's copy; attention reads them from there.
++    // The main cache is still written, so every word can always be read back from it (shifts, loads, cuts)
++    struct kv_body_cfg {
++        int      bits_k = 0, bits_v = 0, kind = 0, iters = 16;
++        uint32_t G = 128;        // words per group
++        uint32_t start = 0;      // the first position sealed (the sharp start keeps the ones before it)
++        uint32_t src = 0;        // the ring the seal reads
++        uint32_t n_groups = 0;   // room, in groups
++        uint32_t D = 0, n_head_kv = 0;
++        size_t   rec = 0;        // bytes per record
++        uint32_t sealed = 0;     // groups [0, sealed) hold their words
++        double   seal_ms = 0.0;  // time spent sealing, for the log
++        uint64_t n_sealed = 0;
++    };
++    kv_body_cfg body;
++    mutable std::vector<std::shared_ptr<void>> body_args; // the read op's settings, one per layer and side
++    void body_forget(llama_pos p0); // groups holding positions from p0 on are dropped
++
+     mutable bool split_writing = false; // set while the split-aware attention stores K and V
+     mutable uint32_t split_told = 0;
+ 
+@@ -347,6 +370,15 @@ public:
+     void split_write_begin() const { split_writing = true; }
+     void split_write_end()   const { split_writing = false; }
+ 
++    // Brain Engine 0123 (LLAMA_KV_BODY)
++    bool body_on() const { return body.bits_k > 0; }
++    bool has_body(int32_t il) const;
++    // main_f16 [d*h, n_kv]: the cells whose words are sealed are replaced by the sealed copy
++    ggml_tensor * body_read(ggml_context * ctx, ggml_tensor * main_f16, ggml_tensor * cell_pos, int32_t il, bool is_v) const;
++    void set_input_body_pos(ggml_tensor * dst, uint32_t n_kv) const;
++    bool body_due(const llama_ubatch & ubatch) const;      // groups to seal before this batch
++    void body_seal(const llama_ubatch & ubatch, int n_threads); // the back ends must be done (synchronized)
++
+     // Brain Engine 0039 (LLAMA_KV_TIERS)
+     uint32_t n_tiers() const { return (uint32_t) tiers.size(); }
+     uint32_t tier_window(uint32_t t) const { return tiers[t].window; }
+diff --git a/src/sj-kvarn.c b/src/sj-kvarn.c
+new file mode 100644
+index 0000000..71b0468
+--- /dev/null
++++ b/src/sj-kvarn.c
+@@ -0,0 +1,5 @@
++// Brain Engine 0123 (LLAMA_KV_BODY): the SJ-KVaRN codec, built once. sj_kvarn.h is JakeATX's MIT library, unchanged
++// (https://github.com/JakeATX/sj-kvarn-codec; its sealed-body method follows Huawei's KVarN, Apache-2.0). It must not be
++// built with -ffast-math: its stored bytes rely on exact rounding.
++#define SJ_KVARN_IMPLEMENTATION
++#include "sj_kvarn.h"
+diff --git a/src/sj_kvarn.h b/src/sj_kvarn.h
+new file mode 100644
+index 0000000..b412c82
+--- /dev/null
++++ b/src/sj_kvarn.h
+@@ -0,0 +1,2064 @@
++/*
++ * sj_kvarn.h - SJ-KVaRN KV-cache codec, single-header C99 reference library.
++ *
++ * SJ-KVaRN = "Staged, Journaled KVarN".
++ *
++ *   Staged:    every new K/V row first enters an intermediate-precision staging
++ *              ring (tq6_0: 6-bit codes + one fp16 norm per 128 values,
++ *              6.125 bits per element). The staging ring is the exact tail that
++ *              attention reads for recent tokens.
++ *   Journaled: like a write-ahead log, recent tokens live in that exact tail and
++ *              are committed ("sealed") in batches of whole groups into the
++ *              compact body. With the default adaptive tail, the tail grows from
++ *              4096 to 8192 positions and is then committed back down to 4096 in
++ *              one batch, so sealing happens rarely and in large chunks.
++ *
++ * The sealed body is the KVarN method of huawei-csl/KVarN
++ * (https://github.com/huawei-csl/KVarN, Apache-2.0): Hadamard-rotated K/V,
++ * log-domain variance balancing of each (head, group) tile, asymmetric per-row
++ * quantization and scale absorption. This file is an independent
++ * implementation; it contains no code from that repository. Differences from
++ * the KVarN reference are listed in README.md ("Format notes").
++ *
++ * Body codecs in this file:
++ *   4/4 scalar   4-bit K, 4-bit V, round-to-nearest codes          4.28125 bits/element
++ *   3/3 trellis  3-bit K, 3-bit V, trellis-coded (Viterbi) codes    3.28125 bits/element
++ *   3/2 trellis  3-bit K, 2-bit V, trellis-coded codes              2.78125 bits/element
++ *   (scalar bodies at any of 2/3/4 bits per side, and the 2/2 trellis, also work)
++ *
++ * Usage (stb style): in exactly one C or C++ file
++ *     #define SJ_KVARN_IMPLEMENTATION
++ *     #include "sj_kvarn.h"
++ * and include it without the define everywhere else. Define SJ_KVARN_STATIC
++ * as well to make every function static to that file. CUDA translation units
++ * include sj_kvarn_cuda.cuh instead (it compiles the codec for host and device).
++ * Link with the C math library (-lm). No other dependencies.
++ *
++ * Numerics: every operation whose rounding affects the stored bytes goes
++ * through explicit single-rounding helpers, so the record bytes do not depend
++ * on -ffp-contract or FMA availability. Requirements: IEEE-754 binary32 and
++ * binary64 with round-to-nearest-even, no flush-to-zero, FLT_EVAL_METHOD 0
++ * (any x86-64, AArch64 or CUDA target; not 32-bit x87). Do not build the
++ * implementation with -ffast-math.
++ *
++ * ---------------------------------------------------------------------------
++ * Integration API (what an engine calls, and when). See README.md for a guide.
++ *
++ *   setup     sj_kvarn_config_default(), sj_kvarn_layer_init() per attention
++ *             layer, sj_kvarn_policy_init() once per sequence/cache.
++ *   append    rotate the new K/V rows (sj_kvarn_rotate_heads) and store them:
++ *             sj_kvarn_layer_store(layer, pos, k_rot, v_rot). Positions below
++ *             the sink go to the fp16 sink, the rest to the tq6_0 staging ring.
++ *   seal      before computing a ubatch that starts at position pos0:
++ *               sj_kvarn_policy_begin_ubatch(&pol, pos0, n_tokens);
++ *               for each layer: sj_kvarn_layer_seal(layer, pol.B, pol.B_pending);
++ *               sj_kvarn_policy_commit(&pol);
++ *             (sealing reads only positions below pos0, which were written by
++ *             earlier ubatches, so it can run before this ubatch is stored).
++ *   attend    rotate Q with the same Hadamard, attend over positions [0, N)
++ *             (sj_kvarn_layer_attend_row: sink -> fp16, [sink, B) -> body,
++ *             [B, N) -> staging ring), and un-rotate the output with the same
++ *             Hadamard (it is its own inverse).
++ *   idle      optional: sj_kvarn_policy_idle(&pol, end, keep_recent) + seal +
++ *             commit compresses a grown adaptive tail while the engine is idle,
++ *             never sealing the last max(keep_recent, tail) positions.
++ *   truncate  prompt caching: sj_kvarn_policy_truncate(&pol, p, &dropped) drops
++ *             the sealed groups at and after the group boundary at or below p
++ *             (only when p < B) and returns the position to re-prefill from
++ *             (p itself, or at most G-1 positions before it). No re-quantisation.
++ *   state     sj_kvarn_seq_state_size/_write/_read: versioned save and restore of
++ *             one sequence (sink, sealed records, tail rows, policy state).
++ *
++ * Every cache and policy object is PER SEQUENCE. sj_kvarn_seq bundles the
++ * layers, the policy and the stored end of one sequence; several sequences can
++ * share one paged record pool (sj_kvarn_pool) through per-sequence block tables.
++ * ---------------------------------------------------------------------------
++ *
++ * MIT License. Copyright (c) 2026 Jake K. Full text at the end of this file.
++ */
++#ifndef SJ_KVARN_H
++#define SJ_KVARN_H
++
++#include <stddef.h>
++#include <stdint.h>
++
++#define SJKVARN_VERSION_MAJOR 2  /* 2.0: policy_idle takes keep_recent; truncation, state, sequences, pool */
++#define SJKVARN_VERSION_MINOR 0
++#define SJKVARN_FORMAT_VERSION 1 /* bumps whenever stored bytes (records, staging rows) change */
++#define SJKVARN_STATE_VERSION  1 /* bumps whenever the serialized sequence-state layout changes */
++
++#ifndef SJ_KVARN_HD
++#if defined(__CUDACC__)
++#define SJ_KVARN_HD __host__ __device__
++#else
++#define SJ_KVARN_HD
++#endif
++#endif
++
++#ifndef SJKVARN_DEF
++#ifdef SJ_KVARN_STATIC
++#define SJKVARN_DEF static
++#else
++#define SJKVARN_DEF extern
++#endif
++#endif
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/* ------------------------------------------------------------------------- */
++/* Format constants                                                          */
++/* ------------------------------------------------------------------------- */
++
++#define SJKVARN_GROUP_DEFAULT     128   /* tokens per sealed group (G)                    */
++#define SJKVARN_SINK_DEFAULT      128   /* leading positions kept exact (fp16)            */
++#define SJKVARN_TAIL_DEFAULT      4096  /* exact tail kept after a commit                 */
++#define SJKVARN_TAIL_MAX_DEFAULT  8192  /* tail length that triggers a commit (adaptive)  */
++#define SJKVARN_ITERS_DEFAULT     16    /* variance-balancing iterations                  */
++#define SJKVARN_RED_LANES         8     /* reduction contract, see sj_kvarn__sample_std   */
++
++#define SJKVARN_TQ6_QK            128   /* values per tq6_0 staging block                 */
++#define SJKVARN_TQ6_BLOCK_BYTES   98    /* fp16 norm + 64 B low nibbles + 32 B high bits  */
++
++/* trellis bodies (3-bit and 2-bit sides): one Viterbi sequence per channel along
++ * the 128 tokens of a group; window = current code over the 6 history bits */
++#define SJKVARN_TRELLIS_SEQ       128
++#define SJKVARN_TRELLIS_HIST_BITS 6
++#define SJKVARN_TRELLIS_NSTATE    64    /* 2^6 */
++
++typedef enum sj_kvarn_body {
++    SJKVARN_BODY_SCALAR  = 0,  /* round-to-nearest codes                     */
++    SJKVARN_BODY_TRELLIS = 1,  /* trellis-coded codes (3/3, 3/2, 2/2 pairs)  */
++    SJKVARN_BODY_AUTO    = 2   /* trellis for 3/3, 3/2, 2/2; scalar otherwise */
++} sj_kvarn_body;
++
++typedef enum sj_kvarn_staging {
++    SJKVARN_STAGING_TQ6_0 = 0, /* default: 6.125 bits per element                    */
++    SJKVARN_STAGING_F16   = 1  /* opt-in comparison arm: exact fp16 tail             */
++} sj_kvarn_staging;
++
++typedef enum sj_kvarn_sink_type {
++    SJKVARN_SINK_F16     = 0,  /* default: separate fp16 sink                         */
++    SJKVARN_SINK_INHERIT = 1   /* sink rows use the staging type                      */
++} sj_kvarn_sink_type;
++
++/* tq6_0 staging block: 128 values in the rotated basis.
++ * value[i] = TQ6_CENTROID[code_i] * norm, code_i = (qs nibble i) | (qh 2-bit field i) << 4
++ * qs[i/2] holds code bits 0..3 of value i at bit 4*(i%2); qh[i/4] holds bits 4..5 at bit 2*(i%4).
++ * norm = ||x|| / ||centroid vector|| (norm-corrected), fp16. */
++typedef struct sj_kvarn_tq6_block {
++    uint16_t norm;     /* fp16 bits */
++    uint8_t  qs[64];
++    uint8_t  qh[32];
++} sj_kvarn_tq6_block;
++
++/* One sealed record = one (group of G tokens, KV head). Byte layout, in order:
++ *   K payload   G*D*bits_k/8 bytes
++ *   V payload   G*D*bits_v/8 bytes
++ *   Kscale[D]   fp16  (per channel, in K channel order, see sj_kvarn_k_ch_idx)
++ *   Kzero[D]    fp16
++ *   Ktok[G]     fp16  (per token)
++ *   Vch[D]      fp16  (per channel, in V channel order, see sj_kvarn_v_ch_idx)
++ *   Vscale[G]   fp16  (per token)
++ *   Vzero[G]    fp16
++ * Reconstruction (rotated basis):
++ *   K[t,d] = (qK[t,d] * Kscale[d] + Kzero[d]) * Ktok[t]
++ *   V[t,d] = (qV[t,d] * Vscale[t] + Vzero[t]) * Vch[d]
++ * where q is the integer code (scalar body) or the codebook value of the code's
++ * trellis window (trellis body). Payload bit order: see sj_kvarn_code_bit. */
++typedef struct sj_kvarn_layout {
++    int D, G, bits_k, bits_v, body;
++    uint32_t k_payload, v_payload;   /* byte offsets */
++    uint32_t k_scale, k_zero, k_tok, v_ch, v_scale, v_zero;
++    uint32_t bytes;                  /* record size */
++} sj_kvarn_layout;
++
++/* ---- fp16 ---- */
++SJKVARN_DEF SJ_KVARN_HD uint16_t sj_kvarn_f32_to_f16(float f);    /* round to nearest even */
++SJKVARN_DEF SJ_KVARN_HD float    sj_kvarn_f16_to_f32(uint16_t h);
++
++/* ---- rotation ---- */
++/* Orthonormal Sylvester-Hadamard transform in place (n a power of two). It is
++ * its own inverse. The codec rotates every head of Q, K and V with n = head_dim. */
++SJKVARN_DEF SJ_KVARN_HD void sj_kvarn_hadamard(float * x, int n);
++SJKVARN_DEF void sj_kvarn_rotate_heads(float * x, int n_heads, int head_dim);
++
++/* ---- record layout ---- */
++SJKVARN_DEF int      sj_kvarn_body_resolve(int body, int bits_k, int bits_v); /* AUTO -> SCALAR/TRELLIS */
++SJKVARN_DEF SJ_KVARN_HD int sj_kvarn_layout_init(sj_kvarn_layout * l, int D, int G, int bits_k, int bits_v, int body);
++SJKVARN_DEF size_t   sj_kvarn_record_bytes(int D, int G, int bits_k, int bits_v);
++SJKVARN_DEF double   sj_kvarn_body_bits_per_element(const sj_kvarn_layout * l);
++/* bit offset of code (token t, channel d) inside the K (is_v = 0) or V payload */
++SJKVARN_DEF SJ_KVARN_HD uint32_t sj_kvarn_code_bit(const sj_kvarn_layout * l, int t, int d, int is_v);
++SJKVARN_DEF SJ_KVARN_HD int sj_kvarn_k_ch_idx(const sj_kvarn_layout * l, int d);
++SJKVARN_DEF SJ_KVARN_HD int sj_kvarn_v_ch_idx(const sj_kvarn_layout * l, int d);
++
++/* ---- seal (encode) ---- */
++/* Scratch needed by sj_kvarn_seal_group (no allocation inside the codec). */
++SJKVARN_DEF SJ_KVARN_HD size_t sj_kvarn_seal_workspace_bytes(const sj_kvarn_layout * l);
++/* Seal one (group, head). K and V are G rotated fp16 rows of D values; row t starts
++ * at K + t*row_stride (in elements). Writes l->bytes bytes to rec. work must hold
++ * sj_kvarn_seal_workspace_bytes(l) bytes, aligned to 8. iters = 16 by default. */
++SJKVARN_DEF SJ_KVARN_HD void sj_kvarn_seal_group(const sj_kvarn_layout * l, const uint16_t * K, const uint16_t * V,
++                                                 size_t row_stride, int iters, uint8_t * rec, void * work);
++
++/* ---- decode ---- */
++SJKVARN_DEF SJ_KVARN_HD void sj_kvarn_decode_k_row(const sj_kvarn_layout * l, const uint8_t * rec, int t, float * out);
++SJKVARN_DEF SJ_KVARN_HD void sj_kvarn_decode_v_row(const sj_kvarn_layout * l, const uint8_t * rec, int t, float * out);
++
++/* ---- staging (tq6_0) ---- */
++/* x is already rotated; n % 128 == 0; writes n/128 blocks */
++SJKVARN_DEF SJ_KVARN_HD void sj_kvarn_tq6_quantize_row(const float * x, sj_kvarn_tq6_block * y, int n);
++SJKVARN_DEF SJ_KVARN_HD void sj_kvarn_tq6_dequantize_row(const sj_kvarn_tq6_block * y, float * x, int n);
++SJKVARN_DEF size_t sj_kvarn_stage_row_bytes(int staging, int D); /* bytes for one head row */
++SJKVARN_DEF SJ_KVARN_HD void sj_kvarn_stage_row(int staging, const float * x_rot, void * dst, int D);
++SJKVARN_DEF SJ_KVARN_HD void sj_kvarn_unstage_row(int staging, const void * src, float * x_rot, int D);
++
++/* ---- reference attention helpers (rotated basis) ---- */
++/* scores[t] = dot(q, K[t]) for the first n tokens of a record */
++SJKVARN_DEF void sj_kvarn_record_scores(const sj_kvarn_layout * l, const uint8_t * rec, const float * q, int n, float * scores);
++/* acc[d] += sum_t w[t] * V[t,d] for the first n tokens of a record */
++SJKVARN_DEF void sj_kvarn_record_accum_v(const sj_kvarn_layout * l, const uint8_t * rec, const float * w, int n, float * acc);
++
++/* ---- adaptive tail / journal policy ---- */
++/* One policy per SEQUENCE: B, B_prev, B_pending and draining describe that
++ * sequence's own positions. A cache that holds several sequences keeps one
++ * policy per sequence (see sj_kvarn_seq). */
++typedef struct sj_kvarn_policy {
++    uint32_t sink, tail, tail_max, group, flush_chunk; /* tail_max 0 = fixed tail */
++    uint32_t B;          /* sealed end: positions [sink, B) are in the body           */
++    uint32_t B_prev;     /* B before the last commit                                  */
++    uint32_t B_pending;  /* seal target of the current ubatch, B <= B_pending          */
++    int      draining;   /* a chunked flush is still in progress (flush_chunk > 0)    */
++} sj_kvarn_policy;
++
++SJKVARN_DEF void     sj_kvarn_policy_init(sj_kvarn_policy * p, uint32_t sink, uint32_t tail, uint32_t tail_max,
++                                          uint32_t group, uint32_t flush_chunk);
++SJKVARN_DEF void     sj_kvarn_policy_reset(sj_kvarn_policy * p);
++/* Call before a ubatch whose first position is pos0 (all positions below pos0 are
++ * stored). Returns B_pending; seal [B, B_pending) and then call commit. */
++SJKVARN_DEF uint32_t sj_kvarn_policy_begin_ubatch(sj_kvarn_policy * p, uint32_t pos0, uint32_t n_tokens);
++SJKVARN_DEF void     sj_kvarn_policy_commit(sj_kvarn_policy * p);
++/* Idle compression: end = number of stored positions. The target is the group
++ * boundary at or below end - max(keep_recent, tail), so the last
++ * max(keep_recent, tail) positions are never sealed by an idle step (pass 0 for
++ * "the configured tail"; pass end - k to keep everything from position k on, e.g.
++ * the end of the last prompt, so a re-rendered last turn stays in the exact tail).
++ * Returns the new target (B_pending) or B when there is nothing to seal. Seal
++ * [B, B_pending), commit. Only acts with an adaptive tail (tail_max > 0). */
++SJKVARN_DEF uint32_t sj_kvarn_policy_idle(sj_kvarn_policy * p, uint32_t end, uint32_t keep_recent);
++
++/* ---- truncation (prompt caching) ---- */
++#define SJKVARN_NO_POS UINT32_MAX
++/* Group boundary at or below pos: pos itself when pos <= sink, else
++ * sink + group*floor((pos - sink)/group). Take recurrent/SSM checkpoints of hybrid
++ * models at such positions (see INTEGRATION_LLAMACPP.md, "Prompt caching"). */
++SJKVARN_DEF SJ_KVARN_HD uint32_t sj_kvarn_group_floor(uint32_t sink, uint32_t group, uint32_t pos);
++/* Position a truncation at pos resumes from, without changing anything: pos when
++ * pos >= B (a tail cut) or pos <= sink, else sj_kvarn_group_floor(pos). The result
++ * r satisfies pos - r <= group - 1. */
++SJKVARN_DEF uint32_t sj_kvarn_policy_trunc_floor(const sj_kvarn_policy * p, uint32_t pos);
++/* Truncate the sequence so that only positions below pos are wanted.
++ *   pos >= B: a tail cut. B is unchanged; the caller drops cells [pos, end).
++ *   pos <  B: every sealed group at or after r = trunc_floor(pos) is dropped
++ *             (B = max(sink, r)); the kept records are untouched and stay
++ *             bit-identical, because each record is a function of its own G rows.
++ * Returns r: the caller keeps positions [0, r) and re-prefills from r (r <= pos,
++ * pos - r <= group - 1, nothing is re-quantised). *n_dropped (may be NULL) gets the
++ * number of sealed groups dropped. Returns SJKVARN_NO_POS and changes nothing
++ * while a seal is pending (begin_ubatch/idle without commit). */
++SJKVARN_DEF uint32_t sj_kvarn_policy_truncate(sj_kvarn_policy * p, uint32_t pos, uint32_t * n_dropped);
++/* staging ring rows needed so that no unsealed row is overwritten */
++SJKVARN_DEF uint32_t sj_kvarn_ring_capacity(uint32_t tail, uint32_t tail_max, uint32_t group, uint32_t n_ubatch);
++SJKVARN_DEF SJ_KVARN_HD uint32_t sj_kvarn_ring_slot(uint32_t sink, uint32_t cap, uint32_t pos); /* pos >= sink */
++
++/* ---- reference per-layer cache (CPU, allocates) ---- */
++/* A layer object holds ONE sequence's rows of one attention layer (sink, staging
++ * ring, sealed records or a block-table view of a shared pool). */
++typedef struct sj_kvarn_config {
++    int      head_dim;      /* D: power of two, multiple of 128 (256 is the tested size) */
++    int      n_head_kv;
++    int      group;         /* G = 128                                                   */
++    int      bits_k, bits_v;
++    int      body;          /* sj_kvarn_body                                             */
++    int      iters;
++    int      staging;       /* sj_kvarn_staging                                          */
++    int      sink_type;     /* sj_kvarn_sink_type                                        */
++    uint32_t sink, tail, tail_max, flush_chunk;
++    uint32_t n_ubatch;      /* largest ubatch the engine will submit                     */
++    uint32_t n_ctx;         /* maximum positions                                         */
++} sj_kvarn_config;
++
++typedef struct sj_kvarn_layer {
++    sj_kvarn_config cfg;
++    sj_kvarn_layout lay;
++    uint32_t cap;           /* staging ring rows */
++    uint32_t n_groups;      /* body capacity in groups */
++    size_t   stage_bytes;   /* bytes of one head row in the ring */
++    uint8_t * ring;         /* [cap][n_head_kv][stage_bytes] */
++    uint8_t * sink;         /* f16: [sink][n_head_kv][D] fp16; inherit: [sink][n_head_kv][stage_bytes] */
++    uint8_t * body;         /* [n_groups][n_head_kv][lay.bytes] */
++    void    * work;
++    uint16_t * kstage, * vstage; /* [G][D] fp16 seal inputs */
++    /* paged mode (sj_kvarn_seq with a pool): record (g, h) lives in block blocks[g]
++     * of this layer's pool slab, body + (blocks[g]*n_head_kv + h)*lay.bytes. NULL =
++     * contiguous own body, record (g, h) at body + (g*n_head_kv + h)*lay.bytes. */
++    const uint32_t * blocks;
++    int       owns_body;
++} sj_kvarn_layer;
++
++SJKVARN_DEF sj_kvarn_config sj_kvarn_config_default(int head_dim, int n_head_kv, uint32_t n_ctx, uint32_t n_ubatch);
++SJKVARN_DEF int  sj_kvarn_layer_init(sj_kvarn_layer * L, const sj_kvarn_config * cfg);
++SJKVARN_DEF void sj_kvarn_layer_free(sj_kvarn_layer * L);
++/* store one position (all KV heads, rotated, n_head_kv*D floats each) */
++SJKVARN_DEF void sj_kvarn_layer_store(sj_kvarn_layer * L, uint32_t pos, const float * k_rot, const float * v_rot);
++/* seal positions [B_from, B_to) (multiples of G past the sink) out of the ring */
++SJKVARN_DEF void sj_kvarn_layer_seal(sj_kvarn_layer * L, uint32_t B_from, uint32_t B_to);
++/* resolve position pos of KV head h to rotated K/V rows given the sealed end B */
++SJKVARN_DEF void sj_kvarn_layer_kv_row(const sj_kvarn_layer * L, uint32_t B, uint32_t pos, int h, float * k, float * v);
++/* one query row of one query head mapped to KV head h: causal over [0, min(N, qpos+1)).
++ * q_rot and out_rot are in the rotated basis; scale is usually 1/sqrt(D). */
++SJKVARN_DEF void sj_kvarn_layer_attend_row(const sj_kvarn_layer * L, uint32_t B, uint32_t N, const float * q_rot,
++                                           int h, uint32_t qpos, float scale, float * out_rot);
++/* address of the sealed record of group g (0-based, past the sink), KV head h */
++SJKVARN_DEF uint8_t * sj_kvarn_layer_record(const sj_kvarn_layer * L, uint32_t g, int h);
++/* Optional scrub after sj_kvarn_policy_truncate: zeroes the records of groups
++ * [(B_new-sink)/G, (B_old-sink)/G) and the sink/ring rows of positions [resume, n_old)
++ * so that nothing stale can be read. Correctness does not need it (B and the stored
++ * end already exclude those bytes); the reference tests use it to prove that. */
++SJKVARN_DEF void sj_kvarn_layer_truncate(sj_kvarn_layer * L, uint32_t B_old, uint32_t B_new, uint32_t n_old, uint32_t resume);
++
++/* ---- status codes (sequences, pool, state) ---- */
++enum {
++    SJKVARN_OK                = 0,
++    SJKVARN_ERR_ARG           = -100, /* bad argument                                      */
++    SJKVARN_ERR_NOMEM         = -101,
++    SJKVARN_ERR_BUFFER        = -102, /* destination buffer too small (see state_size)      */
++    SJKVARN_ERR_TRUNCATED     = -103, /* source shorter than the stream it describes         */
++    SJKVARN_ERR_MAGIC         = -104, /* not an SJ-KVaRN sequence state                      */
++    SJKVARN_ERR_VERSION       = -105, /* state layout version not supported                  */
++    SJKVARN_ERR_FORMAT        = -106, /* record/staging byte format version differs          */
++    SJKVARN_ERR_CORRUPT       = -107, /* checksum or internal consistency failure            */
++    SJKVARN_ERR_PENDING       = -108, /* a seal is pending (B_pending != B)                   */
++    SJKVARN_ERR_CAPACITY      = -109, /* state does not fit this cache (n_ctx, ring, groups)  */
++    SJKVARN_ERR_POOL_FULL     = -110, /* no free pool block for a seal or a restore          */
++    /* configuration mismatch between a state and the restoring sequence */
++    SJKVARN_ERR_HEAD_DIM      = -120,
++    SJKVARN_ERR_N_HEAD_KV     = -121,
++    SJKVARN_ERR_GROUP         = -122,
++    SJKVARN_ERR_SINK          = -123, /* sink length or sink type                            */
++    SJKVARN_ERR_BITS          = -124,
++    SJKVARN_ERR_BODY          = -125, /* scalar vs trellis (resolved)                        */
++    SJKVARN_ERR_ITERS         = -126,
++    SJKVARN_ERR_STAGING       = -127,
++    SJKVARN_ERR_TAIL          = -128, /* tail, tail_max or flush_chunk                       */
++    SJKVARN_ERR_ROTATION      = -129,
++    SJKVARN_ERR_CODEBOOK      = -130,
++    SJKVARN_ERR_N_LAYERS      = -131
++};
++/* message for any code returned by this library (layer_init codes included) */
++SJKVARN_DEF const char * sj_kvarn_strerror(int code);
++
++/* ---- paged record pool shared by several sequences (reference) ---- */
++#define SJKVARN_NO_BLOCK UINT32_MAX
++/* A block is one sealed group (G positions) of every KV head; block b of layer il
++ * is at body + ((il*n_blocks + b)*n_head_kv + h)*lay.bytes. Sequences map their
++ * group index to a block through their own block table. */
++typedef struct sj_kvarn_pool {
++    sj_kvarn_config cfg;     /* body resolved */
++    sj_kvarn_layout lay;
++    int       n_layers;
++    uint32_t  n_blocks;
++    uint8_t * body;          /* [n_layers][n_blocks][n_head_kv][lay.bytes] */
++    uint32_t * free_ids;     /* stack of free block ids */
++    uint32_t  n_free;
++} sj_kvarn_pool;
++
++SJKVARN_DEF int      sj_kvarn_pool_init(sj_kvarn_pool * pool, const sj_kvarn_config * cfg, int n_layers, uint32_t n_blocks);
++SJKVARN_DEF void     sj_kvarn_pool_free(sj_kvarn_pool * pool);
++SJKVARN_DEF uint32_t sj_kvarn_pool_alloc(sj_kvarn_pool * pool);              /* SJKVARN_NO_BLOCK when empty */
++SJKVARN_DEF void     sj_kvarn_pool_release(sj_kvarn_pool * pool, uint32_t id);
++
++/* ---- one sequence: layers + policy + stored end (reference) ---- */
++/* pool == NULL: per-slot stream, every layer owns a contiguous body.
++ * pool != NULL: unified paged pool, records live in pool blocks named by the
++ * sequence's block table (one table for all of its layers). The ring and the sink
++ * are per sequence in both modes. Results are bit-identical between the modes. */
++typedef struct sj_kvarn_seq {
++    sj_kvarn_config  cfg;      /* body resolved */
++    int              n_layers;
++    sj_kvarn_layer * layers;   /* [n_layers] */
++    sj_kvarn_policy  pol;
++    uint32_t         n;        /* stored end: positions [0, n) are stored in every layer */
++    sj_kvarn_pool  * pool;     /* NULL = per-slot stream */
++    uint32_t       * blocks;   /* pool mode: [layers[0].n_groups] group -> block, SJKVARN_NO_BLOCK if unset */
++} sj_kvarn_seq;
++
++SJKVARN_DEF int  sj_kvarn_seq_init(sj_kvarn_seq * s, const sj_kvarn_config * cfg, int n_layers, sj_kvarn_pool * pool);
++SJKVARN_DEF void sj_kvarn_seq_free(sj_kvarn_seq * s);        /* returns its blocks to the pool */
++SJKVARN_DEF void sj_kvarn_seq_reset(sj_kvarn_seq * s);       /* empty sequence (n = 0, B = sink) */
++/* begin_ubatch + seal [B, B_pending) in every layer + commit. Call before storing
++ * the ubatch that starts at pos0 (pos0 <= n). SJKVARN_ERR_POOL_FULL leaves the
++ * sequence unchanged. */
++SJKVARN_DEF int  sj_kvarn_seq_begin_ubatch(sj_kvarn_seq * s, uint32_t pos0, uint32_t n_tokens);
++/* store position pos in every layer: k_rot/v_rot are [n_layers][n_head_kv][D] rotated
++ * floats. Positions are stored in order (pos <= n). */
++SJKVARN_DEF void sj_kvarn_seq_store(sj_kvarn_seq * s, uint32_t pos, const float * k_rot, const float * v_rot);
++/* idle step with a keep-recent margin (policy_idle + seal + commit) */
++SJKVARN_DEF int  sj_kvarn_seq_idle(sj_kvarn_seq * s, uint32_t keep_recent);
++/* policy_truncate + drop the stored end to the resume position + free dropped pool
++ * blocks + scrub. Returns the resume position or SJKVARN_NO_POS (seal pending). */
++SJKVARN_DEF uint32_t sj_kvarn_seq_truncate(sj_kvarn_seq * s, uint32_t pos);
++/* one query row of layer il, attending over [0, min(n, qpos + 1)) with the sequence's B */
++SJKVARN_DEF void sj_kvarn_seq_attend_row(const sj_kvarn_seq * s, int il, const float * q_rot, int h, uint32_t qpos,
++                                         float scale, float * out_rot);
++
++/* ---- sequence state serialization ----
++ * Stream (integers little-endian; row and record bytes exactly as stored):
++ *   header (SJKVARN_STATE_HEADER_BYTES): magic "SJKVSEQ\0", state version, format
++ *     version, header bytes, head_dim, n_head_kv, group, sink, sink_type, bits_k,
++ *     bits_v, body, iters, staging, tail, tail_max, flush_chunk, rotation id,
++ *     rotation size, codebook id (u64), n_layers, n, B, B_prev, draining,
++ *     payload bytes (u64)
++ *   payload, per layer in order:
++ *     sink rows of positions [0, min(sink, n)), [head][K | V] in the sink type
++ *     sealed records of groups [0, (B - sink)/G), [group][head], lay.bytes each
++ *     tail rows of positions [B, n), in position order, [head][K | V] staging rows
++ *   checksum: FNV-1a 64 of every byte before it (u64)
++ * The ring offset, n_ubatch and n_ctx are not stored: the restoring cache may have
++ * a different ring capacity or context as long as the state fits. */
++#define SJKVARN_STATE_HEADER_BYTES 128
++#define SJKVARN_ROTATION_HADAMARD  1   /* orthonormal Sylvester-Hadamard per head, size head_dim */
++
++typedef struct sj_kvarn_state_info {
++    uint32_t state_version, format_version;
++    sj_kvarn_config cfg;           /* stored fields; n_ctx and n_ubatch are 0 */
++    uint32_t rotation, rotation_n;
++    uint64_t codebook_id;
++    int      n_layers;
++    uint32_t n, B, B_prev, draining;
++    size_t   total_bytes;          /* header + payload + checksum */
++} sj_kvarn_state_info;
++
++/* exact bytes sj_kvarn_seq_state_write produces for the sequence as it is now */
++SJKVARN_DEF size_t sj_kvarn_seq_state_size(const sj_kvarn_seq * s);
++/* upper bound for any state of a sequence with this config (n up to n_ctx) */
++SJKVARN_DEF size_t sj_kvarn_state_size_max(const sj_kvarn_config * cfg, int n_layers);
++SJKVARN_DEF int    sj_kvarn_seq_state_write(const sj_kvarn_seq * s, void * dst, size_t dst_size, size_t * written);
++/* parse and verify a stream (magic, versions, length, checksum) without a sequence */
++SJKVARN_DEF int    sj_kvarn_state_peek(const void * src, size_t size, sj_kvarn_state_info * info);
++/* restore into s (initialised with the same config). Any config mismatch returns
++ * its SJKVARN_ERR_* code; on every error s is left unchanged. */
++SJKVARN_DEF int    sj_kvarn_seq_state_read(sj_kvarn_seq * s, const void * src, size_t size);
++
++#ifdef __cplusplus
++}
++#endif
++#endif /* SJ_KVARN_H */
++
++/* ========================================================================= */
++/* Implementation                                                            */
++/* ========================================================================= */
++#if defined(SJ_KVARN_IMPLEMENTATION) && !defined(SJ_KVARN_IMPLEMENTATION_DONE)
++#define SJ_KVARN_IMPLEMENTATION_DONE
++
++#include <math.h>
++#include <string.h>
++#include <stdlib.h>
++#if defined(__CUDACC__)
++#include <cuda_fp16.h>
++#endif
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/* ---- built-in tables ------------------------------------------------------ */
++
++/* trained trellis codebooks (fp16 bits, value in units of the row step):
++ * index = trellis window (current code in the top bits over 6 history bits) */
++/* ---- BEGIN GENERATED CODEBOOKS (tools/gen_codebooks.py) ---- */
++#define SJKVARN_CB3_SHA256 "0d6e6d63309612d0df48ec6ea2bacd00c56e97fe35a67848c53892eafa1ac078" /* sha256 of the uint16 K[] then V[] table file */
++#define SJKVARN_CB2_SHA256 "c7a63f25c47604af04a5be15d4704204d2fd8c7235ce441b88fb4a2da692dba8" /* sha256 of the uint16 K[] then V[] table file */
++#define SJKVARN_CB3_K_INIT { \
++    0x37b0, 0x30bc, 0x3934, 0x30b8, 0x3a53, 0x322f, 0x3aa3, 0x349c, 0x3425, 0x32e0, 0x3c01, 0x34c8, 0x3c3f, 0x3259, 0x39af, 0x3cba, \
++    0x3b63, 0x3a3a, 0x32de, 0x3c40, 0x34c2, 0x3c52, 0x3dac, 0x3628, 0x3458, 0x3bf3, 0x3dec, 0x3603, 0x3d74, 0x3b80, 0x338c, 0x3d09, \
++    0x3c54, 0x3263, 0x3b94, 0x3d9b, 0x3351, 0x3eaf, 0x3c7a, 0x3514, 0x3549, 0x3afa, 0x3e57, 0x39c5, 0x3d36, 0x36a0, 0x3f1d, 0x3c7e, \
++    0x3ce7, 0x3d48, 0x3335, 0x3dac, 0x36eb, 0x3d9e, 0x35a2, 0x3efb, 0x392c, 0x37c2, 0x3dce, 0x3989, 0x3f5f, 0x3b88, 0x3ede, 0x3a5a, \
++    0x3d8f, 0x3afc, 0x3ddd, 0x3bd6, 0x3e58, 0x3ccb, 0x3e86, 0x3d65, 0x3c4d, 0x3ce8, 0x3ede, 0x3d55, 0x3f99, 0x3d63, 0x3ee0, 0x4014, \
++    0x3eb6, 0x3e15, 0x3e56, 0x4030, 0x3e68, 0x3f98, 0x4087, 0x3ec2, 0x3df5, 0x3f77, 0x4057, 0x3f09, 0x4061, 0x4038, 0x3ee6, 0x4090, \
++    0x3ffa, 0x3ddd, 0x3ffb, 0x40c5, 0x3f8f, 0x40f6, 0x40a0, 0x3f4a, 0x3e8e, 0x3f72, 0x40e7, 0x3fd0, 0x411c, 0x401a, 0x417c, 0x4096, \
++    0x405e, 0x405e, 0x3ffa, 0x411a, 0x4012, 0x414a, 0x4072, 0x4177, 0x3f81, 0x3eca, 0x40ec, 0x4000, 0x418a, 0x4066, 0x41a4, 0x4086, \
++    0x4044, 0x3dff, 0x404c, 0x3ea1, 0x4054, 0x3ff9, 0x406b, 0x4048, 0x3ebf, 0x3f95, 0x4052, 0x3fef, 0x40f3, 0x4023, 0x40b0, 0x4170, \
++    0x4072, 0x4042, 0x4074, 0x415f, 0x409d, 0x4105, 0x41bc, 0x40bc, 0x407f, 0x4106, 0x4132, 0x4119, 0x415f, 0x41c3, 0x40e1, 0x41f5, \
++    0x414e, 0x4055, 0x414e, 0x4213, 0x4100, 0x4205, 0x4234, 0x4142, 0x40ea, 0x4110, 0x422a, 0x4146, 0x427b, 0x4199, 0x42c4, 0x4217, \
++    0x41e1, 0x417f, 0x4196, 0x42a0, 0x419b, 0x42d8, 0x4207, 0x42f2, 0x4189, 0x40fc, 0x4276, 0x4196, 0x42ff, 0x41fe, 0x4339, 0x4244, \
++    0x419c, 0x4022, 0x4178, 0x40ae, 0x4110, 0x41a5, 0x4117, 0x41ca, 0x4095, 0x412c, 0x40de, 0x4172, 0x41c1, 0x41b0, 0x41aa, 0x42b1, \
++    0x418a, 0x413f, 0x4185, 0x424d, 0x4216, 0x41ee, 0x42e1, 0x41f2, 0x41ba, 0x423d, 0x41cf, 0x4290, 0x41f7, 0x42f8, 0x4201, 0x431a, \
++    0x4266, 0x418b, 0x4259, 0x4332, 0x4227, 0x42df, 0x437a, 0x428e, 0x425a, 0x4256, 0x4341, 0x4268, 0x43a9, 0x42e3, 0x43da, 0x436f, \
++    0x432f, 0x4272, 0x42ed, 0x43e3, 0x42c3, 0x440c, 0x435b, 0x4419, 0x431f, 0x4277, 0x43da, 0x42f7, 0x4428, 0x435a, 0x444a, 0x43ba, \
++    0x42fd, 0x4152, 0x4287, 0x423c, 0x41f6, 0x4322, 0x423d, 0x4336, 0x41c6, 0x4296, 0x41c7, 0x42f2, 0x426a, 0x4359, 0x42a6, 0x43f3, \
++    0x42aa, 0x4232, 0x4280, 0x432a, 0x437f, 0x42c9, 0x43ff, 0x4329, 0x42f2, 0x4359, 0x42b0, 0x43b5, 0x42dc, 0x4405, 0x4323, 0x441e, \
++    0x4372, 0x42ae, 0x435b, 0x4424, 0x433f, 0x43c1, 0x4446, 0x43be, 0x43a5, 0x4382, 0x4413, 0x4383, 0x445e, 0x440a, 0x445a, 0x4457, \
++    0x4437, 0x4379, 0x4412, 0x4487, 0x43df, 0x449f, 0x4450, 0x44aa, 0x444e, 0x43e2, 0x4495, 0x441d, 0x44c5, 0x444a, 0x44e6, 0x4487, \
++    0x4442, 0x4298, 0x4395, 0x43fb, 0x431b, 0x444d, 0x4391, 0x445c, 0x4310, 0x4400, 0x42df, 0x4424, 0x436b, 0x445c, 0x43de, 0x44a3, \
++    0x43e6, 0x434d, 0x43a0, 0x441d, 0x4468, 0x43e9, 0x4495, 0x4436, 0x4427, 0x443c, 0x43b4, 0x446d, 0x43e8, 0x4490, 0x442a, 0x44b6, \
++    0x4445, 0x43d9, 0x4436, 0x44b1, 0x4428, 0x4462, 0x44cc, 0x4478, 0x4473, 0x4468, 0x4473, 0x445a, 0x44e6, 0x44a3, 0x44b9, 0x44f4, \
++    0x44da, 0x4449, 0x44ac, 0x4520, 0x447d, 0x4533, 0x44f9, 0x4532, 0x4502, 0x44a4, 0x4539, 0x44bf, 0x455e, 0x44e3, 0x4579, 0x452a, \
++    0x4521, 0x43ff, 0x447b, 0x44e8, 0x4447, 0x4507, 0x4483, 0x452b, 0x4448, 0x44cc, 0x441c, 0x44de, 0x4460, 0x4514, 0x44ac, 0x4568, \
++    0x44b0, 0x4456, 0x447f, 0x44d1, 0x451c, 0x44a0, 0x4546, 0x44ec, 0x4503, 0x44ef, 0x4473, 0x4517, 0x4488, 0x4539, 0x44d8, 0x456d, \
++    0x44e1, 0x4499, 0x44e4, 0x456d, 0x44d0, 0x44f5, 0x4570, 0x4521, 0x4523, 0x452f, 0x44cd, 0x4509, 0x457b, 0x4547, 0x4534, 0x45a2, \
++    0x4598, 0x44eb, 0x4551, 0x45c4, 0x4515, 0x45cd, 0x45ae, 0x45ab, 0x45c0, 0x4569, 0x45ee, 0x456f, 0x4608, 0x4587, 0x461a, 0x45dc, \
++    0x464e, 0x44f9, 0x45aa, 0x46a4, 0x4564, 0x4642, 0x457a, 0x4650, 0x4546, 0x4683, 0x4507, 0x45f0, 0x455c, 0x46b7, 0x45b5, 0x46a6, \
++    0x45cf, 0x4568, 0x45b4, 0x46c5, 0x4607, 0x45a0, 0x4679, 0x45d9, 0x46b1, 0x4684, 0x453a, 0x45dd, 0x4549, 0x46b5, 0x45db, 0x46ac, \
++    0x45b2, 0x4597, 0x4614, 0x46c8, 0x4606, 0x45aa, 0x46b6, 0x4600, 0x4621, 0x46c2, 0x4577, 0x45f3, 0x46c7, 0x462a, 0x45f1, 0x46bf, \
++    0x46ac, 0x45c5, 0x462f, 0x46cb, 0x45de, 0x46c0, 0x46b6, 0x464b, 0x46a0, 0x467c, 0x46d4, 0x464b, 0x46d9, 0x464b, 0x46d7, 0x46b1 \
++}
++#define SJKVARN_CB3_V_INIT { \
++    0x3526, 0x3046, 0x3501, 0x3a83, 0x3382, 0x3bb3, 0x34a6, 0x39f2, 0x33ca, 0x3868, 0x3cb6, 0x3478, 0x3cf8, 0x35dc, 0x3d95, 0x3b96, \
++    0x3816, 0x3cfc, 0x3a95, 0x3dc1, 0x3b5e, 0x3e00, 0x3b57, 0x3e41, 0x3c6a, 0x34a9, 0x3dc6, 0x346b, 0x3e67, 0x35e5, 0x3e55, 0x37d5, \
++    0x352d, 0x3cee, 0x3b17, 0x3e19, 0x3c44, 0x3f6e, 0x3c80, 0x3f12, 0x3bda, 0x3dda, 0x3f57, 0x37db, 0x3e63, 0x3613, 0x3f18, 0x3bdc, \
++    0x3e0d, 0x3647, 0x3d24, 0x3ff2, 0x3c43, 0x3ec6, 0x4091, 0x3ef2, 0x3a47, 0x3eae, 0x39b4, 0x400b, 0x3dcb, 0x405e, 0x3b85, 0x4089, \
++    0x3d61, 0x3b4e, 0x3d42, 0x3eab, 0x3ccf, 0x3f6c, 0x3d4b, 0x3ef5, 0x3c66, 0x3e0c, 0x3f60, 0x3e46, 0x401a, 0x3e8d, 0x404f, 0x3fb6, \
++    0x3de4, 0x3fde, 0x3eda, 0x4072, 0x3f44, 0x40b2, 0x3fa1, 0x40ba, 0x3f7e, 0x3ed6, 0x409f, 0x3f94, 0x40fc, 0x3fef, 0x4116, 0x4064, \
++    0x3e82, 0x4027, 0x3fd7, 0x40f1, 0x4033, 0x4150, 0x4068, 0x4150, 0x3ff1, 0x4071, 0x4119, 0x4030, 0x4157, 0x4073, 0x417d, 0x40c5, \
++    0x40bc, 0x3f9d, 0x40b7, 0x417f, 0x4092, 0x417c, 0x41d6, 0x41a1, 0x4015, 0x4135, 0x4012, 0x41b5, 0x40d7, 0x4241, 0x4107, 0x425b, \
++    0x4041, 0x3e41, 0x3ff7, 0x4070, 0x3f75, 0x4106, 0x4007, 0x40e2, 0x3f06, 0x404c, 0x4081, 0x4075, 0x412a, 0x4087, 0x415c, 0x4135, \
++    0x403f, 0x4107, 0x406b, 0x418d, 0x4098, 0x41d6, 0x40e5, 0x41e2, 0x40d3, 0x40b6, 0x41b3, 0x40d6, 0x4208, 0x410a, 0x4236, 0x41d7, \
++    0x40ba, 0x414c, 0x4130, 0x4226, 0x414c, 0x4278, 0x419b, 0x4284, 0x414a, 0x4188, 0x4217, 0x4182, 0x4285, 0x41c1, 0x42bb, 0x4261, \
++    0x4205, 0x4127, 0x4214, 0x427e, 0x41eb, 0x4300, 0x4297, 0x4312, 0x41a6, 0x428b, 0x417b, 0x42fc, 0x4228, 0x4389, 0x4278, 0x43af, \
++    0x419a, 0x4035, 0x4141, 0x4135, 0x40f6, 0x4237, 0x413a, 0x422d, 0x408f, 0x4180, 0x40f7, 0x41d7, 0x41a8, 0x41ec, 0x4226, 0x425a, \
++    0x4158, 0x41d0, 0x4164, 0x4285, 0x418c, 0x42d1, 0x41ec, 0x42db, 0x41af, 0x41dd, 0x42a0, 0x41cf, 0x4300, 0x4211, 0x432e, 0x430d, \
++    0x41fd, 0x4214, 0x4252, 0x4318, 0x4241, 0x4373, 0x4299, 0x4384, 0x4257, 0x429c, 0x42de, 0x42b6, 0x437d, 0x42bd, 0x43ba, 0x43b8, \
++    0x4317, 0x4243, 0x435c, 0x430e, 0x431c, 0x440e, 0x436e, 0x4423, 0x42fa, 0x43b1, 0x42af, 0x440f, 0x434b, 0x4457, 0x43af, 0x4469, \
++    0x42df, 0x4146, 0x427b, 0x41d4, 0x4235, 0x435b, 0x425b, 0x436f, 0x419d, 0x42a0, 0x41d0, 0x42fa, 0x424e, 0x4339, 0x42aa, 0x436c, \
++    0x427b, 0x4262, 0x4271, 0x438e, 0x428c, 0x43dd, 0x42f7, 0x43e4, 0x429a, 0x4308, 0x437c, 0x42c0, 0x43f8, 0x4306, 0x4411, 0x440d, \
++    0x432d, 0x42d2, 0x436b, 0x43ef, 0x4332, 0x4436, 0x438d, 0x4441, 0x4356, 0x43d5, 0x436f, 0x4406, 0x4421, 0x43b6, 0x4450, 0x447c, \
++    0x4410, 0x434a, 0x4444, 0x43b7, 0x4421, 0x4496, 0x442e, 0x44b2, 0x4423, 0x4462, 0x43d4, 0x4496, 0x442d, 0x44de, 0x4467, 0x44f4, \
++    0x441b, 0x4264, 0x4398, 0x42ae, 0x4364, 0x4442, 0x4385, 0x445b, 0x42d3, 0x43d3, 0x42d1, 0x440c, 0x4328, 0x442e, 0x4392, 0x4441, \
++    0x43bb, 0x432e, 0x438b, 0x444b, 0x4393, 0x4473, 0x4401, 0x448a, 0x437f, 0x441c, 0x441d, 0x439e, 0x4477, 0x43ea, 0x4489, 0x4477, \
++    0x442b, 0x43b6, 0x4448, 0x445f, 0x440a, 0x44ba, 0x443f, 0x44be, 0x4428, 0x4488, 0x441b, 0x44b2, 0x4474, 0x4459, 0x44cb, 0x4512, \
++    0x4496, 0x442c, 0x44cb, 0x444d, 0x44a7, 0x4519, 0x44ad, 0x453d, 0x44d2, 0x44f1, 0x447a, 0x4522, 0x44b0, 0x456b, 0x44f4, 0x4583, \
++    0x44e3, 0x43c0, 0x4479, 0x43d6, 0x4461, 0x44f9, 0x4475, 0x4529, 0x4413, 0x4489, 0x43ff, 0x44a5, 0x441f, 0x44c6, 0x4451, 0x44e1, \
++    0x4498, 0x4422, 0x446c, 0x44f5, 0x446a, 0x4512, 0x44a1, 0x4543, 0x4457, 0x44c8, 0x4499, 0x4461, 0x44ef, 0x4486, 0x4518, 0x44fb, \
++    0x44de, 0x4461, 0x44f9, 0x44dd, 0x4486, 0x453b, 0x44c7, 0x455c, 0x44ae, 0x4514, 0x4499, 0x454d, 0x44ef, 0x44cf, 0x4542, 0x45b8, \
++    0x4531, 0x44c7, 0x4551, 0x44d8, 0x4541, 0x45bb, 0x453e, 0x45d6, 0x458f, 0x4596, 0x451f, 0x45bc, 0x454a, 0x4603, 0x4592, 0x4615, \
++    0x45fc, 0x44d1, 0x4591, 0x44b5, 0x4556, 0x466f, 0x4568, 0x4672, 0x450f, 0x4675, 0x4502, 0x45d6, 0x44f7, 0x45d5, 0x4513, 0x45d4, \
++    0x45be, 0x4512, 0x459f, 0x46a9, 0x4570, 0x46a3, 0x4598, 0x46ac, 0x4535, 0x463c, 0x4518, 0x4553, 0x460c, 0x4579, 0x4628, 0x45bb, \
++    0x462c, 0x4578, 0x4611, 0x45ba, 0x453c, 0x46b0, 0x459d, 0x465b, 0x4577, 0x46ac, 0x456e, 0x46bb, 0x45e8, 0x4577, 0x4625, 0x46d5, \
++    0x4620, 0x4598, 0x4622, 0x458a, 0x4625, 0x46c4, 0x45de, 0x4683, 0x4686, 0x46ae, 0x4607, 0x46c4, 0x4613, 0x46d6, 0x4666, 0x46da \
++}
++#define SJKVARN_CB2_K_INIT { \
++    0x3809, 0x30d9, 0x39a5, 0x358b, 0x3488, 0x317c, 0x3845, 0x3412, 0x39eb, 0x336d, 0x3a72, 0x3772, 0x3498, 0x3874, 0x3b98, 0x37ec, \
++    0x32df, 0x3967, 0x3246, 0x3a29, 0x3981, 0x3892, 0x3ba0, 0x3a1d, 0x344e, 0x3a50, 0x3215, 0x3bcd, 0x3a52, 0x3ce3, 0x38c4, 0x3ca2, \
++    0x38a3, 0x3bee, 0x37eb, 0x3c2d, 0x39f1, 0x3bc1, 0x3d0c, 0x38f7, 0x3b8c, 0x3c99, 0x3c0f, 0x3d9e, 0x357d, 0x3a71, 0x3cf5, 0x37af, \
++    0x3ae4, 0x3537, 0x3b8b, 0x368f, 0x35e8, 0x3cb5, 0x3818, 0x3c55, 0x39bb, 0x3c37, 0x3deb, 0x3aeb, 0x3c3d, 0x3820, 0x3e25, 0x3c82, \
++    0x3c30, 0x386f, 0x3cc8, 0x3b4a, 0x3a99, 0x38ed, 0x3c12, 0x3b69, 0x3cee, 0x3a96, 0x3cea, 0x3c90, 0x3ae0, 0x3cc2, 0x3da4, 0x3cd4, \
++    0x39fd, 0x3c6d, 0x3a74, 0x3d53, 0x3c9b, 0x3c5e, 0x3d50, 0x3d72, 0x3afc, 0x3d43, 0x3aa2, 0x3dc4, 0x3cae, 0x3e9c, 0x3c67, 0x3e97, \
++    0x3c69, 0x3dd3, 0x3bf1, 0x3e26, 0x3cd9, 0x3df8, 0x3ebb, 0x3cb9, 0x3d83, 0x3e98, 0x3dd7, 0x3f62, 0x3d35, 0x3d37, 0x3f28, 0x3d76, \
++    0x3e0f, 0x3c0e, 0x3e33, 0x3d16, 0x3c97, 0x3ed8, 0x3d53, 0x3ebc, 0x3dba, 0x3e6f, 0x3fed, 0x3e4e, 0x3ea1, 0x3d87, 0x4015, 0x3f2f, \
++    0x3e5f, 0x3c11, 0x3f09, 0x3d65, 0x3d0c, 0x3bfe, 0x3d7e, 0x3dad, 0x3f0f, 0x3d52, 0x3e34, 0x3eca, 0x3d81, 0x3f44, 0x3e8a, 0x3f75, \
++    0x3cc5, 0x3e26, 0x3d4d, 0x3f6e, 0x3e36, 0x3ca4, 0x3e6b, 0x3f50, 0x3d46, 0x3ee6, 0x3d59, 0x3f43, 0x3e67, 0x4039, 0x3e62, 0x401a, \
++    0x3e24, 0x3fb1, 0x3d89, 0x3f5b, 0x3e4d, 0x3f94, 0x4051, 0x3e77, 0x3f41, 0x3e48, 0x3f58, 0x4069, 0x3f9d, 0x3eb6, 0x4076, 0x3f51, \
++    0x3ffd, 0x3de4, 0x3f84, 0x3fad, 0x3e9f, 0x407c, 0x3f70, 0x4048, 0x400e, 0x3fa4, 0x40c5, 0x3ff3, 0x400d, 0x3fea, 0x40d7, 0x4077, \
++    0x409c, 0x3e28, 0x410d, 0x3fc8, 0x3f5a, 0x3dcf, 0x3f66, 0x4022, 0x412f, 0x3fdb, 0x3f80, 0x40b9, 0x4005, 0x4141, 0x404a, 0x412b, \
++    0x3eca, 0x4064, 0x3f45, 0x410f, 0x4026, 0x3e6c, 0x4055, 0x4140, 0x3f0d, 0x4078, 0x3f28, 0x4078, 0x404b, 0x416d, 0x4036, 0x4145, \
++    0x4048, 0x416e, 0x3f6b, 0x40a2, 0x4043, 0x40cb, 0x4199, 0x403a, 0x40b1, 0x4005, 0x4086, 0x417c, 0x4139, 0x4047, 0x4174, 0x4099, \
++    0x413a, 0x3fc3, 0x4084, 0x4143, 0x4063, 0x41a3, 0x40db, 0x4158, 0x417e, 0x40b4, 0x41be, 0x40e5, 0x40dd, 0x4143, 0x41a5, 0x4173 \
++}
++#define SJKVARN_CB2_V_INIT { \
++    0x389b, 0x3071, 0x3840, 0x398d, 0x3282, 0x38b4, 0x3987, 0x352b, 0x3a99, 0x3331, 0x39ad, 0x3bb4, 0x36b9, 0x3aac, 0x3c92, 0x38ad, \
++    0x33c0, 0x3ab3, 0x349e, 0x3c67, 0x38bf, 0x3be3, 0x3993, 0x39dc, 0x353a, 0x3a54, 0x346e, 0x3c46, 0x3b49, 0x3d1b, 0x3951, 0x3d6b, \
++    0x3b19, 0x383e, 0x3c3d, 0x38c0, 0x39e8, 0x3d13, 0x3c1f, 0x3c2e, 0x3bc4, 0x3d98, 0x3a64, 0x3d85, 0x3815, 0x3c3c, 0x3d0a, 0x3b37, \
++    0x3c14, 0x34c3, 0x39ea, 0x3cfc, 0x389c, 0x3caa, 0x3cd3, 0x39de, 0x3c82, 0x3a1e, 0x3e1c, 0x3ccb, 0x3d85, 0x3a8f, 0x3d75, 0x3e56, \
++    0x3c3f, 0x37fc, 0x3c5e, 0x3c75, 0x3984, 0x3b1f, 0x3c6e, 0x3c4c, 0x3d0f, 0x3a0b, 0x3cad, 0x3db0, 0x3bd3, 0x3d21, 0x3e5b, 0x3c85, \
++    0x39e7, 0x3ccd, 0x3acc, 0x3deb, 0x3c2c, 0x3d90, 0x3c74, 0x3d13, 0x3b46, 0x3cf3, 0x3b30, 0x3dda, 0x3d81, 0x3e36, 0x3ce6, 0x3ed9, \
++    0x3d57, 0x3bb0, 0x3dc7, 0x3c67, 0x3cc2, 0x3e7c, 0x3d81, 0x3e54, 0x3d7a, 0x3f15, 0x3d51, 0x3efe, 0x3c85, 0x3e65, 0x3e82, 0x3e68, \
++    0x3e2b, 0x3b5d, 0x3d33, 0x3ed8, 0x3cbc, 0x3eb1, 0x3e51, 0x3d7f, 0x3e56, 0x3d1a, 0x3fef, 0x3eef, 0x3f53, 0x3d85, 0x3f57, 0x4007, \
++    0x3e2d, 0x3bc9, 0x3e79, 0x3d41, 0x3c81, 0x3cef, 0x3df6, 0x3ea7, 0x3ea7, 0x3cbd, 0x3de1, 0x3f11, 0x3d92, 0x3ec2, 0x4019, 0x3e2a, \
++    0x3cae, 0x3e44, 0x3d7f, 0x3f8d, 0x3dbb, 0x3c37, 0x3dd6, 0x3df2, 0x3d53, 0x3ea2, 0x3d50, 0x3f45, 0x3f5e, 0x3efe, 0x3ecf, 0x4024, \
++    0x3ef3, 0x3d4f, 0x3efa, 0x3e2f, 0x3de2, 0x3ff1, 0x3e95, 0x3fda, 0x3eb8, 0x4013, 0x3ea8, 0x4005, 0x3e53, 0x4025, 0x3f7a, 0x402b, \
++    0x3fe0, 0x3daf, 0x3f00, 0x4040, 0x3e50, 0x4036, 0x3f2d, 0x3f5c, 0x3fab, 0x3f04, 0x40b2, 0x4033, 0x4086, 0x3f3a, 0x406d, 0x40ca, \
++    0x4057, 0x3dae, 0x40b3, 0x3f25, 0x3e8b, 0x3ec7, 0x3ff8, 0x40bd, 0x4082, 0x3e5a, 0x3f76, 0x4078, 0x3f77, 0x406b, 0x4157, 0x4006, \
++    0x3e6e, 0x3fea, 0x3fde, 0x4113, 0x403a, 0x3e4e, 0x3fb8, 0x401c, 0x3f2f, 0x4066, 0x3f0b, 0x40ab, 0x40fc, 0x4012, 0x406e, 0x4170, \
++    0x4075, 0x3edc, 0x4042, 0x3ff9, 0x3f63, 0x4147, 0x4062, 0x4144, 0x4004, 0x40e9, 0x3fbc, 0x408e, 0x4016, 0x414b, 0x4076, 0x4100, \
++    0x410a, 0x3f7d, 0x408d, 0x4157, 0x4049, 0x4163, 0x4034, 0x40bd, 0x40cb, 0x4093, 0x41ab, 0x4127, 0x4188, 0x407d, 0x415f, 0x41b1 \
++}
++/* ---- END GENERATED CODEBOOKS ---- */
++
++/* tq6_0: 64 Lloyd-Max centroids for N(0, 1/128) and the 63 decision midpoints */
++#define SJKVARN_TQ6_CENTROIDS_INIT { \
++    -0.330935f, -0.286417f, -0.257865f, -0.236198f, -0.218435f, -0.203203f, -0.189753f, -0.177626f, \
++    -0.166522f, -0.156230f, -0.146600f, -0.137517f, -0.128895f, -0.120663f, -0.112765f, -0.105157f, \
++    -0.097801f, -0.090663f, -0.083717f, -0.076940f, -0.070310f, -0.063809f, -0.057422f, -0.051133f, \
++    -0.044929f, -0.038798f, -0.032729f, -0.026710f, -0.020733f, -0.014787f, -0.008863f, -0.002953f, \
++     0.002953f,  0.008863f,  0.014787f,  0.020733f,  0.026710f,  0.032729f,  0.038798f,  0.044929f, \
++     0.051133f,  0.057422f,  0.063809f,  0.070310f,  0.076940f,  0.083717f,  0.090663f,  0.097801f, \
++     0.105157f,  0.112765f,  0.120663f,  0.128895f,  0.137517f,  0.146600f,  0.156230f,  0.166522f, \
++     0.177626f,  0.189753f,  0.203203f,  0.218435f,  0.236198f,  0.257865f,  0.286417f,  0.330935f }
++#define SJKVARN_TQ6_MID_INIT { \
++    -0.308676f, -0.272141f, -0.247031f, -0.227316f, -0.210819f, -0.196478f, -0.183690f, -0.172074f, \
++    -0.161376f, -0.151415f, -0.142059f, -0.133206f, -0.124779f, -0.116714f, -0.108961f, -0.101479f, \
++    -0.094232f, -0.087190f, -0.080329f, -0.073625f, -0.067060f, -0.060616f, -0.054277f, -0.048031f, \
++    -0.041864f, -0.035763f, -0.029719f, -0.023722f, -0.017760f, -0.011825f, -0.005908f,  0.000000f, \
++     0.005908f,  0.011825f,  0.017760f,  0.023722f,  0.029719f,  0.035763f,  0.041864f,  0.048031f, \
++     0.054277f,  0.060616f,  0.067060f,  0.073625f,  0.080329f,  0.087190f,  0.094232f,  0.101479f, \
++     0.108961f,  0.116714f,  0.124779f,  0.133206f,  0.142059f,  0.151415f,  0.161376f,  0.172074f, \
++     0.183690f,  0.196478f,  0.210819f,  0.227316f,  0.247031f,  0.272141f,  0.308676f }
++
++static const uint16_t sj_kvarn__cb3_k_h[512] = SJKVARN_CB3_K_INIT;
++static const uint16_t sj_kvarn__cb3_v_h[512] = SJKVARN_CB3_V_INIT;
++static const uint16_t sj_kvarn__cb2_k_h[256] = SJKVARN_CB2_K_INIT;
++static const uint16_t sj_kvarn__cb2_v_h[256] = SJKVARN_CB2_V_INIT;
++static const float    sj_kvarn__tq6_c_h[64]  = SJKVARN_TQ6_CENTROIDS_INIT;
++static const float    sj_kvarn__tq6_m_h[63]  = SJKVARN_TQ6_MID_INIT;
++#if defined(__CUDACC__)
++static __device__ const uint16_t sj_kvarn__cb3_k_d[512] = SJKVARN_CB3_K_INIT;
++static __device__ const uint16_t sj_kvarn__cb3_v_d[512] = SJKVARN_CB3_V_INIT;
++static __device__ const uint16_t sj_kvarn__cb2_k_d[256] = SJKVARN_CB2_K_INIT;
++static __device__ const uint16_t sj_kvarn__cb2_v_d[256] = SJKVARN_CB2_V_INIT;
++static __device__ const float    sj_kvarn__tq6_c_d[64]  = SJKVARN_TQ6_CENTROIDS_INIT;
++static __device__ const float    sj_kvarn__tq6_m_d[63]  = SJKVARN_TQ6_MID_INIT;
++#endif
++
++static SJ_KVARN_HD const uint16_t * sj_kvarn__cb(int bits, int is_v) {
++#if defined(__CUDA_ARCH__)
++    return bits == 3 ? (is_v ? sj_kvarn__cb3_v_d : sj_kvarn__cb3_k_d) : (is_v ? sj_kvarn__cb2_v_d : sj_kvarn__cb2_k_d);
++#else
++    return bits == 3 ? (is_v ? sj_kvarn__cb3_v_h : sj_kvarn__cb3_k_h) : (is_v ? sj_kvarn__cb2_v_h : sj_kvarn__cb2_k_h);
++#endif
++}
++static SJ_KVARN_HD const float * sj_kvarn__tq6_c(void) {
++#if defined(__CUDA_ARCH__)
++    return sj_kvarn__tq6_c_d;
++#else
++    return sj_kvarn__tq6_c_h;
++#endif
++}
++static SJ_KVARN_HD const float * sj_kvarn__tq6_m(void) {
++#if defined(__CUDA_ARCH__)
++    return sj_kvarn__tq6_m_d;
++#else
++    return sj_kvarn__tq6_m_h;
++#endif
++}
++
++/* ---- single-rounding arithmetic (no contraction on any compiler) ---------- */
++
++#if defined(__CUDA_ARCH__)
++#define SJ__FADD(a, b) __fadd_rn((a), (b))
++#define SJ__FSUB(a, b) __fsub_rn((a), (b))
++#define SJ__FMUL(a, b) __fmul_rn((a), (b))
++#define SJ__FDIV(a, b) __fdiv_rn((a), (b))
++#define SJ__DADD(a, b) __dadd_rn((a), (b))
++#define SJ__DSUB(a, b) __dsub_rn((a), (b))
++#define SJ__DMUL(a, b) __dmul_rn((a), (b))
++#define SJ__DDIV(a, b) __ddiv_rn((a), (b))
++#define SJ__RINT(x)    rintf(x)
++#else
++static float  sj_kvarn__fadd(float a, float b)   { volatile float  r = a + b; return r; }
++static float  sj_kvarn__fsub(float a, float b)   { volatile float  r = a - b; return r; }
++static float  sj_kvarn__fmul(float a, float b)   { volatile float  r = a * b; return r; }
++static float  sj_kvarn__fdiv(float a, float b)   { volatile float  r = a / b; return r; }
++static double sj_kvarn__dadd(double a, double b) { volatile double r = a + b; return r; }
++static double sj_kvarn__dsub(double a, double b) { volatile double r = a - b; return r; }
++static double sj_kvarn__dmul(double a, double b) { volatile double r = a * b; return r; }
++static double sj_kvarn__ddiv(double a, double b) { volatile double r = a / b; return r; }
++#define SJ__FADD(a, b) sj_kvarn__fadd((a), (b))
++#define SJ__FSUB(a, b) sj_kvarn__fsub((a), (b))
++#define SJ__FMUL(a, b) sj_kvarn__fmul((a), (b))
++#define SJ__FDIV(a, b) sj_kvarn__fdiv((a), (b))
++#define SJ__DADD(a, b) sj_kvarn__dadd((a), (b))
++#define SJ__DSUB(a, b) sj_kvarn__dsub((a), (b))
++#define SJ__DMUL(a, b) sj_kvarn__dmul((a), (b))
++#define SJ__DDIV(a, b) sj_kvarn__ddiv((a), (b))
++#define SJ__RINT(x)    nearbyintf(x) /* ties to even in the default rounding mode */
++#endif
++
++static SJ_KVARN_HD float sj_kvarn__minf(float a, float b) { return b < a ? b : a; }
++static SJ_KVARN_HD float sj_kvarn__maxf(float a, float b) { return a < b ? b : a; }
++static SJ_KVARN_HD double sj_kvarn__mind(double a, double b) { return b < a ? b : a; }
++static SJ_KVARN_HD double sj_kvarn__maxd(double a, double b) { return a < b ? b : a; }
++
++/* ---- fp16 ------------------------------------------------------------------ */
++
++static SJ_KVARN_HD float sj_kvarn__bits_f(uint32_t w) { float f; memcpy(&f, &w, 4); return f; }
++static SJ_KVARN_HD uint32_t sj_kvarn__f_bits(float f) { uint32_t w; memcpy(&w, &f, 4); return w; }
++
++/* The same integer/float code runs on host and device. The device intrinsic
++ * __float2half_rn gives the same value, but with CUDA 12.4 ptxas, a byte-wise
++ * memcpy of its result was compiled as a numeric conversion (F2I.U8.F16), so the
++ * low byte of every stored half was wrong. */
++SJKVARN_DEF SJ_KVARN_HD uint16_t sj_kvarn_f32_to_f16(float f) {
++    /* exact round-to-nearest-even conversion (subnormals, overflow to inf) */
++    const float scale_to_inf  = sj_kvarn__bits_f(UINT32_C(0x77800000));
++    const float scale_to_zero = sj_kvarn__bits_f(UINT32_C(0x08800000));
++    volatile float base = SJ__FMUL(SJ__FMUL(fabsf(f), scale_to_inf), scale_to_zero);
++    const uint32_t w      = sj_kvarn__f_bits(f);
++    const uint32_t shl1_w = w + w;
++    const uint32_t sign   = w & UINT32_C(0x80000000);
++    uint32_t bias = shl1_w & UINT32_C(0xFF000000);
++    if (bias < UINT32_C(0x71000000)) {
++        bias = UINT32_C(0x71000000);
++    }
++    const float b2 = SJ__FADD(sj_kvarn__bits_f((bias >> 1) + UINT32_C(0x07800000)), base);
++    const uint32_t bits     = sj_kvarn__f_bits(b2);
++    const uint32_t exp_bits = (bits >> 13) & UINT32_C(0x00007C00);
++    const uint32_t man_bits = bits & UINT32_C(0x00000FFF);
++    const uint32_t nonsign  = exp_bits + man_bits;
++    return (uint16_t) ((sign >> 16) | (shl1_w > UINT32_C(0xFF000000) ? UINT32_C(0x7E00) : nonsign));
++}
++
++SJKVARN_DEF SJ_KVARN_HD float sj_kvarn_f16_to_f32(uint16_t h) {
++    const uint32_t sign = (uint32_t) (h & 0x8000u) << 16;
++    uint32_t exp = (h >> 10) & 0x1fu;
++    uint32_t man = h & 0x3ffu;
++    uint32_t w;
++    if (exp == 0x1fu) {
++        w = sign | 0x7f800000u | (man << 13);
++    } else if (exp != 0) {
++        w = sign | ((exp + 112u) << 23) | (man << 13);
++    } else if (man == 0) {
++        w = sign;
++    } else {
++        /* subnormal: normalize */
++        int e = -1;
++        do { ++e; man <<= 1; } while ((man & 0x400u) == 0);
++        w = sign | ((uint32_t) (112 - e) << 23) | ((man & 0x3ffu) << 13);
++    }
++    return sj_kvarn__bits_f(w);
++}
++
++/* ---- rotation -------------------------------------------------------------- */
++
++SJKVARN_DEF SJ_KVARN_HD void sj_kvarn_hadamard(float * x, int n) {
++    int h, i, j;
++    for (h = 1; h < n; h <<= 1) {
++        for (i = 0; i < n; i += 2*h) {
++            for (j = i; j < i + h; ++j) {
++                const float a = x[j], b = x[j + h];
++                x[j]     = SJ__FADD(a, b);
++                x[j + h] = SJ__FSUB(a, b);
++            }
++        }
++    }
++    {
++        const float s = SJ__FDIV(1.0f, sqrtf((float) n));
++        for (i = 0; i < n; ++i) {
++            x[i] = SJ__FMUL(x[i], s);
++        }
++    }
++}
++
++SJKVARN_DEF void sj_kvarn_rotate_heads(float * x, int n_heads, int head_dim) {
++    int h;
++    for (h = 0; h < n_heads; ++h) {
++        sj_kvarn_hadamard(x + (size_t) h*head_dim, head_dim);
++    }
++}
++
++/* ---- layout ---------------------------------------------------------------- */
++
++SJKVARN_DEF int sj_kvarn_body_resolve(int body, int bits_k, int bits_v) {
++    if (body == SJKVARN_BODY_AUTO) {
++        const int lowk = bits_k == 2 || bits_k == 3, lowv = bits_v == 2 || bits_v == 3;
++        return (lowk && lowv && bits_v <= bits_k) ? SJKVARN_BODY_TRELLIS : SJKVARN_BODY_SCALAR;
++    }
++    return body;
++}
++
++SJKVARN_DEF SJ_KVARN_HD int sj_kvarn_layout_init(sj_kvarn_layout * l, int D, int G, int bits_k, int bits_v, int body) {
++    if (D < 32 || (D & (D - 1)) != 0 || G <= 0 || G % 16 != 0) return -1;
++    if (bits_k < 2 || bits_k > 4 || bits_v < 2 || bits_v > 4) return -2;
++    if (body != SJKVARN_BODY_SCALAR && body != SJKVARN_BODY_TRELLIS) return -3;
++    if (body == SJKVARN_BODY_TRELLIS) {
++        /* trellis bodies: the 3/3, 3/2 and 2/2 pairs, token-axis sequences of exactly G = 128 */
++        if (bits_k == 4 || bits_v == 4 || bits_v > bits_k || G != SJKVARN_TRELLIS_SEQ || D % SJKVARN_TRELLIS_SEQ != 0) return -4;
++    }
++    l->D = D; l->G = G; l->bits_k = bits_k; l->bits_v = bits_v; l->body = body;
++    l->k_payload = 0;
++    l->v_payload = l->k_payload + (uint32_t) (D*bits_k/8) * (uint32_t) G;
++    l->k_scale   = l->v_payload + (uint32_t) (D*bits_v/8) * (uint32_t) G;
++    l->k_zero    = l->k_scale + 2u*(uint32_t) D;
++    l->k_tok     = l->k_zero  + 2u*(uint32_t) D;
++    l->v_ch      = l->k_tok   + 2u*(uint32_t) G;
++    l->v_scale   = l->v_ch    + 2u*(uint32_t) D;
++    l->v_zero    = l->v_scale + 2u*(uint32_t) G;
++    l->bytes     = l->v_zero  + 2u*(uint32_t) G;
++    return 0;
++}
++
++SJKVARN_DEF size_t sj_kvarn_record_bytes(int D, int G, int bits_k, int bits_v) {
++    return (size_t) G*D*bits_k/8 + (size_t) G*D*bits_v/8 + 2*(3*(size_t) D + 3*(size_t) G);
++}
++
++SJKVARN_DEF double sj_kvarn_body_bits_per_element(const sj_kvarn_layout * l) {
++    return 8.0 * (double) l->bytes / (2.0 * (double) l->D * (double) l->G);
++}
++
++/* 4-bit scalar payloads use "fragment order" (the tensor-core operand order of a
++ * 16x16 tile; see README "Payload order"); every other width, and every trellis
++ * payload, uses a plain bit stream. */
++static SJ_KVARN_HD int sj_kvarn__frag(const sj_kvarn_layout * l, int bits) {
++    return l->body == SJKVARN_BODY_SCALAR && bits == 4 && l->D % 16 == 0 && l->G % 16 == 0;
++}
++
++SJKVARN_DEF SJ_KVARN_HD uint32_t sj_kvarn_code_bit(const sj_kvarn_layout * l, int t, int d, int is_v) {
++    const int D = l->D, G = l->G, bits = is_v ? l->bits_v : l->bits_k;
++    if (l->body == SJKVARN_BODY_TRELLIS) {
++        /* channel-major stream: the 128-token sequence of channel d is contiguous */
++        return ((uint32_t) d*(uint32_t) G + (uint32_t) t)*(uint32_t) bits;
++    }
++    if (!sj_kvarn__frag(l, bits)) {
++        /* token-major stream */
++        return (uint32_t) t*(uint32_t) (D*bits) + (uint32_t) d*(uint32_t) bits;
++    }
++    {
++        const int s = t >> 4, tt = t & 15, c = d >> 4, dd = d & 15;
++        int lane, r, e;
++        uint32_t word;
++        if (!is_v) {
++            lane = 4*(tt & 7) + ((dd >> 1) & 3);
++            r    = (tt >> 3) + 2*(dd >> 3);
++            e    = dd & 1;
++        } else {
++            lane = 4*(dd & 7) + ((tt >> 1) & 3);
++            r    = (dd >> 3) + 2*(tt >> 3);
++            e    = tt & 1;
++        }
++        word = (uint32_t) (s*(D/16) + c)*32u + (uint32_t) lane;
++        return word*32u + (uint32_t) (r + 4*e)*4u;
++    }
++}
++
++SJKVARN_DEF SJ_KVARN_HD int sj_kvarn_k_ch_idx(const sj_kvarn_layout * l, int d) {
++    if (!sj_kvarn__frag(l, l->bits_k)) return d;
++    {
++        const int c = d >> 4, dd = d & 15, jj = dd >> 1, e = dd & 1;
++        return (jj & 3)*(l->D/4) + c*4 + (jj >> 2)*2 + e;
++    }
++}
++
++SJKVARN_DEF SJ_KVARN_HD int sj_kvarn_v_ch_idx(const sj_kvarn_layout * l, int d) {
++    if (!sj_kvarn__frag(l, l->bits_v)) return d;
++    {
++        const int c = d >> 4, dd = d & 15;
++        return (dd & 7)*(l->D/8) + c*2 + (dd >> 3);
++    }
++}
++
++static SJ_KVARN_HD void sj_kvarn__pack(uint8_t * p, uint32_t bit, int bits, uint32_t v) {
++    const uint32_t byte = bit >> 3, shift = bit & 7;
++    const uint32_t w = (v & ((1u << bits) - 1u)) << shift;
++    p[byte] |= (uint8_t) w;
++    if (shift + (uint32_t) bits > 8) {
++        p[byte + 1] |= (uint8_t) (w >> 8);
++    }
++}
++
++static SJ_KVARN_HD uint32_t sj_kvarn__unpack(const uint8_t * p, uint32_t bit, int bits) {
++    const uint32_t byte = bit >> 3, shift = bit & 7;
++    uint32_t w = p[byte];
++    if (shift + (uint32_t) bits > 8) {
++        w |= (uint32_t) p[byte + 1] << 8;
++    }
++    return (w >> shift) & ((1u << bits) - 1u);
++}
++
++static SJ_KVARN_HD void sj_kvarn__put_half(uint8_t * rec, uint32_t off, float v) {
++    const uint16_t h = sj_kvarn_f32_to_f16(v);
++    memcpy(rec + off, &h, 2);
++}
++static SJ_KVARN_HD float sj_kvarn__get_half(const uint8_t * rec, uint32_t off) {
++    uint16_t h;
++    memcpy(&h, rec + off, 2);
++    return sj_kvarn_f16_to_f32(h);
++}
++
++/* Trellis window (codebook index) of the code at stream position (seq, i): the
++ * code in the top `bits` bits over the 6 stream bits before it (older codes
++ * lower); history that would cross the start of the sequence reads as zero. */
++static SJ_KVARN_HD uint32_t sj_kvarn__window(const uint8_t * payload, int bits, int seq, int i, int seq_len) {
++    const uint32_t bit  = ((uint32_t) seq*(uint32_t) seq_len + (uint32_t) i)*(uint32_t) bits;
++    const uint32_t mask = (1u << (SJKVARN_TRELLIS_HIST_BITS + bits)) - 1u;
++    const int hist = (SJKVARN_TRELLIS_HIST_BITS + bits - 1)/bits;
++    const int h = i & (SJKVARN_TRELLIS_SEQ - 1);
++    if (h >= hist) {
++        const uint32_t bs = bit - SJKVARN_TRELLIS_HIST_BITS, byte = bs >> 3, shift = bs & 7;
++        const uint32_t v = (uint32_t) payload[byte] | ((uint32_t) payload[byte + 1] << 8);
++        return (v >> shift) & mask;
++    }
++    {
++        uint32_t w = sj_kvarn__unpack(payload, bit, bits) << SJKVARN_TRELLIS_HIST_BITS;
++        int k;
++        for (k = 1; k <= h; ++k) {
++            w |= sj_kvarn__unpack(payload, bit - (uint32_t) (k*bits), bits) << (SJKVARN_TRELLIS_HIST_BITS - k*bits);
++        }
++        return w;
++    }
++}
++
++/* ---- seal ------------------------------------------------------------------ */
++
++static SJ_KVARN_HD size_t sj_kvarn__align8(size_t x) { return (x + 7) & ~(size_t) 7; }
++
++typedef struct sj_kvarn__ws {
++    float * tile, * bal, * s_row, * s_col, * q_lo, * q_step, * y, * cbf, * M, * Mn;
++    double * log_a, * log_b;
++    uint8_t * codes, * arg;
++} sj_kvarn__ws;
++
++static SJ_KVARN_HD size_t sj_kvarn__ws_carve(const sj_kvarn_layout * l, void * base, sj_kvarn__ws * w) {
++    const size_t DG = (size_t) l->D*l->G, R = (size_t) (l->D > l->G ? l->D : l->G);
++    uint8_t * p = (uint8_t *) base;
++    size_t off = 0;
++#define SJ__CARVE(field, type, n) do { if (w) w->field = (type *) (p + off); off = sj_kvarn__align8(off + sizeof(type)*(n)); } while (0)
++    SJ__CARVE(tile,   float,  DG);
++    SJ__CARVE(bal,    float,  DG);
++    SJ__CARVE(s_row,  float,  R);
++    SJ__CARVE(s_col,  float,  R);
++    SJ__CARVE(q_lo,   float,  R);
++    SJ__CARVE(q_step, float,  R);
++    SJ__CARVE(log_a,  double, R);
++    SJ__CARVE(log_b,  double, R);
++    SJ__CARVE(y,      float,  SJKVARN_TRELLIS_SEQ);
++    SJ__CARVE(cbf,    float,  512);
++    SJ__CARVE(M,      float,  SJKVARN_TRELLIS_NSTATE);
++    SJ__CARVE(Mn,     float,  SJKVARN_TRELLIS_NSTATE);
++    SJ__CARVE(codes,  uint8_t, SJKVARN_TRELLIS_SEQ);
++    SJ__CARVE(arg,    uint8_t, (size_t) SJKVARN_TRELLIS_SEQ*SJKVARN_TRELLIS_NSTATE);
++#undef SJ__CARVE
++    return off;
++}
++
++SJKVARN_DEF SJ_KVARN_HD size_t sj_kvarn_seal_workspace_bytes(const sj_kvarn_layout * l) {
++    return sj_kvarn__ws_carve(l, NULL, NULL);
++}
++
++/* Reduction contract: a vector of n values (n % 8 == 0) is split into 8
++ * contiguous chunks, each chunk is summed sequentially in double, and the chunk
++ * partials are combined as ((p0+p1)+(p2+p3))+((p4+p5)+(p6+p7)). The second
++ * moment uses an explicit double fma. GPU sealers must follow the same order. */
++static SJ_KVARN_HD double sj_kvarn__reduce8(const double * p) {
++    double q[SJKVARN_RED_LANES];
++    int i, w;
++    for (i = 0; i < SJKVARN_RED_LANES; ++i) q[i] = p[i];
++    for (w = 1; w < SJKVARN_RED_LANES; w <<= 1) {
++        for (i = 0; i < SJKVARN_RED_LANES; i += 2*w) {
++            q[i] = SJ__DADD(q[i], q[i + w]);
++        }
++    }
++    return q[0];
++}
++
++/* sample standard deviation (n - 1) of a strided sequence */
++static SJ_KVARN_HD float sj_kvarn__sample_std(const float * x, int n, size_t stride) {
++    const int chunk = n / SJKVARN_RED_LANES;
++    double p[SJKVARN_RED_LANES], mean, m2;
++    int l, i;
++    for (l = 0; l < SJKVARN_RED_LANES; ++l) {
++        double acc = 0.0;
++        for (i = 0; i < chunk; ++i) {
++            acc = SJ__DADD(acc, (double) x[(size_t) (l*chunk + i)*stride]);
++        }
++        p[l] = acc;
++    }
++    mean = SJ__DDIV(sj_kvarn__reduce8(p), (double) n);
++    for (l = 0; l < SJKVARN_RED_LANES; ++l) {
++        double acc = 0.0;
++        for (i = 0; i < chunk; ++i) {
++            const double d = SJ__DSUB((double) x[(size_t) (l*chunk + i)*stride], mean);
++            acc = fma(d, d, acc);
++        }
++        p[l] = acc;
++    }
++    m2 = sj_kvarn__reduce8(p);
++    return (float) sqrt(SJ__DDIV(m2, (double) (n > 1 ? n - 1 : 1)));
++}
++
++static SJ_KVARN_HD void sj_kvarn__recompute(const float * M, int R, int C, const float * s_row, const float * s_col, float * cur) {
++    int r, c;
++    for (r = 0; r < R; ++r) {
++        for (c = 0; c < C; ++c) {
++            cur[(size_t) r*C + c] = SJ__FDIV(SJ__FDIV(M[(size_t) r*C + c], s_col[c]), s_row[r]);
++        }
++    }
++}
++
++/* Log-domain variance balancing of a row-major [R][C] tile: exactly `iters`
++ * alternating column/row passes. Afterwards cur = M / s_col / s_row. The final
++ * scales are kept (the KVarN reference keeps the best iteration instead). */
++static SJ_KVARN_HD void sj_kvarn__balance(const float * M, int R, int C, int iters, float * s_row, float * s_col,
++                                         float * cur, double * log_r, double * log_c) {
++    int it, r, c;
++    for (c = 0; c < C; ++c) { s_col[c] = 1.0f; log_c[c] = 0.0; }
++    for (r = 0; r < R; ++r) { s_row[r] = 1.0f; log_r[r] = 0.0; }
++    sj_kvarn__recompute(M, R, C, s_row, s_col, cur);
++    for (it = 0; it < iters; ++it) {
++        for (c = 0; c < C; ++c) {
++            const float sd = sj_kvarn__minf(sj_kvarn__maxf(sj_kvarn__sample_std(cur + c, R, (size_t) C), 1e-3f), 1e3f);
++            log_c[c] = sj_kvarn__mind(sj_kvarn__maxd(SJ__DADD(log_c[c], log((double) sd)), -0.3), 10.0);
++            s_col[c] = (float) exp(log_c[c]);
++        }
++        sj_kvarn__recompute(M, R, C, s_row, s_col, cur);
++        for (r = 0; r < R; ++r) {
++            const float sd = sj_kvarn__minf(sj_kvarn__maxf(sj_kvarn__sample_std(cur + (size_t) r*C, C, 1), 1e-3f), 1e3f);
++            log_r[r] = sj_kvarn__mind(sj_kvarn__maxd(SJ__DADD(log_r[r], log((double) sd)), -0.3), 10.0);
++            s_row[r] = (float) exp(log_r[r]);
++        }
++        sj_kvarn__recompute(M, R, C, s_row, s_col, cur);
++    }
++}
++
++static SJ_KVARN_HD uint32_t sj_kvarn__rtn(float x, float lo, float step, uint32_t qmax) {
++    float r = SJ__RINT(SJ__FDIV(SJ__FSUB(x, lo), step));
++    if (r < 0.0f) r = 0.0f;
++    if (r > (float) qmax) r = (float) qmax;
++    return (uint32_t) r;
++}
++
++/* Viterbi search of one trellis sequence. y[n] are row-normalized targets, cbf
++ * the codebook as float. Cost = sum of (y - cb[window])^2 with IEEE single
++ * rounding per op, per-state minima with strict < over ascending branches (ties
++ * pick the smaller code), start state 0, no termination. */
++static SJ_KVARN_HD void sj_kvarn__viterbi(const float * y, int n, int bits, const float * cbf, uint8_t * codes,
++                                         float * M, float * Mn, uint8_t * arg) {
++    const int NS = SJKVARN_TRELLIS_NSTATE, NB = 1 << bits;
++    int i, s, j;
++    for (s = 0; s < NS; ++s) M[s] = 0.0f;
++    for (i = n - 1; i >= 0; --i) {
++        float * t;
++        for (s = 0; s < NS; ++s) {
++            float best = INFINITY;
++            int bj = 0;
++            for (j = 0; j < NB; ++j) {
++                const int w = s + NS*j;
++                const float d = SJ__FSUB(y[i], cbf[w]);
++                const float e = SJ__FMUL(d, d);
++                const float c = SJ__FADD(e, M[w >> bits]);
++                if (c < best) { best = c; bj = j; }
++            }
++            Mn[s] = best;
++            arg[(size_t) i*NS + s] = (uint8_t) bj;
++        }
++        t = M; M = Mn; Mn = t;
++    }
++    s = 0;
++    for (i = 0; i < n; ++i) {
++        j = arg[(size_t) i*NS + s];
++        codes[i] = (uint8_t) j;
++        s = (s + NS*j) >> bits;
++    }
++}
++
++/* Trellis-code one side. bal is the balanced tile [R][C] (K: rows = channels,
++ * V: rows = tokens); lo/step the per-row affine; one sequence per channel. */
++static SJ_KVARN_HD void sj_kvarn__trellis_code(const sj_kvarn_layout * l, const float * bal, int C, const float * lo,
++                                              const float * step, int is_v, uint8_t * payload, sj_kvarn__ws * w) {
++    const int D = l->D, G = l->G, bits = is_v ? l->bits_v : l->bits_k, nwin = 1 << (SJKVARN_TRELLIS_HIST_BITS + bits);
++    const uint16_t * cb = sj_kvarn__cb(bits, is_v);
++    int d, t;
++    for (d = 0; d < nwin; ++d) w->cbf[d] = sj_kvarn_f16_to_f32(cb[d]);
++    for (d = 0; d < D; ++d) {
++        for (t = 0; t < G; ++t) {
++            const int r = is_v ? t : d, col = is_v ? d : t;
++            w->y[t] = SJ__FDIV(SJ__FSUB(bal[(size_t) r*C + col], lo[r]), step[r]);
++        }
++        sj_kvarn__viterbi(w->y, G, bits, w->cbf, w->codes, w->M, w->Mn, w->arg);
++        for (t = 0; t < G; ++t) {
++            sj_kvarn__pack(payload, ((uint32_t) d*(uint32_t) G + (uint32_t) t)*(uint32_t) bits, bits, w->codes[t]);
++        }
++    }
++}
++
++/* Refit each row's affine after trellis coding by moment matching (mean and
++ * standard deviation of the reconstruction equal those of the row). Sequential
++ * double sums in column order. Degenerate rows keep the RTN affine. */
++static SJ_KVARN_HD void sj_kvarn__trellis_refit(const sj_kvarn_layout * l, const float * bal, int R, int C,
++                                               const float * s_row, int is_v, const uint8_t * payload, uint8_t * rec) {
++    const int G = l->G, bits = is_v ? l->bits_v : l->bits_k;
++    const uint16_t * cb = sj_kvarn__cb(bits, is_v);
++    int r, c;
++    for (r = 0; r < R; ++r) {
++        double Sx = 0.0, Sy = 0.0, Sxx = 0.0, Syy = 0.0, vy, vx, ad, bd, n = (double) C;
++        for (c = 0; c < C; ++c) {
++            const int t = is_v ? r : c, d = is_v ? c : r;
++            const double x  = (double) bal[(size_t) r*C + c];
++            const double yh = (double) sj_kvarn_f16_to_f32(cb[sj_kvarn__window(payload, bits, d, t, G)]);
++            Sx  = SJ__DADD(Sx, x);
++            Sy  = SJ__DADD(Sy, yh);
++            Sxx = SJ__DADD(Sxx, SJ__DMUL(x, x));
++            Syy = SJ__DADD(Syy, SJ__DMUL(yh, yh));
++            /* (the least-squares variant also needs Sxy; moment matching does not) */
++        }
++        vy = SJ__DSUB(SJ__DMUL(n, Syy), SJ__DMUL(Sy, Sy));
++        if (!(vy > 0.0)) continue;
++        vx = SJ__DSUB(SJ__DMUL(n, Sxx), SJ__DMUL(Sx, Sx));
++        if (!(vx > 0.0)) continue;
++        ad = sqrt(SJ__DDIV(vx, vy));
++        bd = SJ__DDIV(SJ__DSUB(Sx, SJ__DMUL(ad, Sy)), n);
++        if (!(ad > 0.0) || !(bd == bd) || ad > 1e30 || fabs(bd) > 1e30) continue;
++        {
++            const float a = (float) ad, b = (float) bd;
++            const int ri = is_v ? r : sj_kvarn_k_ch_idx(l, r);
++            sj_kvarn__put_half(rec, (is_v ? l->v_scale : l->k_scale) + 2u*(uint32_t) ri, SJ__FMUL(s_row[r], a));
++            sj_kvarn__put_half(rec, (is_v ? l->v_zero  : l->k_zero)  + 2u*(uint32_t) ri, SJ__FMUL(s_row[r], b));
++        }
++    }
++}
++
++/* Quantize one balanced side. K: bal [D][G], rows = channels. V: bal [G][D], rows = tokens. */
++static SJ_KVARN_HD void sj_kvarn__quantize_side(const sj_kvarn_layout * l, int is_v, uint8_t * rec, sj_kvarn__ws * w) {
++    const int D = l->D, G = l->G;
++    const int R = is_v ? G : D, C = is_v ? D : G;
++    const int bits = is_v ? l->bits_v : l->bits_k;
++    const uint32_t qmax = (1u << bits) - 1u;
++    const int trellis = l->body == SJKVARN_BODY_TRELLIS;
++    uint8_t * payload = rec + (is_v ? l->v_payload : l->k_payload);
++    int r, c;
++    for (r = 0; r < R; ++r) {
++        const float * row = w->bal + (size_t) r*C;
++        float lo = row[0], hi = row[0], step;
++        uint32_t ri;
++        for (c = 1; c < C; ++c) { lo = sj_kvarn__minf(lo, row[c]); hi = sj_kvarn__maxf(hi, row[c]); }
++        step = sj_kvarn__maxf(SJ__FDIV(SJ__FSUB(hi, lo), (float) qmax), 1e-10f);
++        ri = (uint32_t) (is_v ? r : sj_kvarn_k_ch_idx(l, r));
++        sj_kvarn__put_half(rec, (is_v ? l->v_scale : l->k_scale) + 2u*ri, SJ__FMUL(w->s_row[r], step));
++        sj_kvarn__put_half(rec, (is_v ? l->v_zero  : l->k_zero)  + 2u*ri, SJ__FMUL(w->s_row[r], lo));
++        if (trellis) {
++            w->q_lo[r] = lo; w->q_step[r] = step;
++            continue;
++        }
++        for (c = 0; c < C; ++c) {
++            const int t = is_v ? r : c, d = is_v ? c : r;
++            sj_kvarn__pack(payload, sj_kvarn_code_bit(l, t, d, is_v), bits, sj_kvarn__rtn(row[c], lo, step, qmax));
++        }
++    }
++    if (trellis) {
++        sj_kvarn__trellis_code(l, w->bal, C, w->q_lo, w->q_step, is_v, payload, w);
++        sj_kvarn__trellis_refit(l, w->bal, R, C, w->s_row, is_v, payload, rec);
++    }
++    /* column scales: Ktok[t] (K columns = tokens), Vch[d] (V columns = channels) */
++    for (c = 0; c < C; ++c) {
++        const uint32_t off = is_v ? l->v_ch + 2u*(uint32_t) sj_kvarn_v_ch_idx(l, c) : l->k_tok + 2u*(uint32_t) c;
++        sj_kvarn__put_half(rec, off, w->s_col[c]);
++    }
++}
++
++SJKVARN_DEF SJ_KVARN_HD void sj_kvarn_seal_group(const sj_kvarn_layout * l, const uint16_t * K, const uint16_t * V,
++                                                 size_t row_stride, int iters, uint8_t * rec, void * work) {
++    const int D = l->D, G = l->G;
++    sj_kvarn__ws w;
++    int t, d;
++    sj_kvarn__ws_carve(l, work, &w);
++    memset(rec, 0, l->bytes);
++
++    /* K: tile [D][G] (rows = channels, cols = tokens) */
++    for (t = 0; t < G; ++t) {
++        for (d = 0; d < D; ++d) {
++            w.tile[(size_t) d*G + t] = sj_kvarn_f16_to_f32(K[(size_t) t*row_stride + d]);
++        }
++    }
++    sj_kvarn__balance(w.tile, D, G, iters, w.s_row, w.s_col, w.bal, w.log_a, w.log_b);
++    sj_kvarn__quantize_side(l, 0, rec, &w);
++
++    /* V: tile [G][D] (rows = tokens, cols = channels) */
++    for (t = 0; t < G; ++t) {
++        for (d = 0; d < D; ++d) {
++            w.tile[(size_t) t*D + d] = sj_kvarn_f16_to_f32(V[(size_t) t*row_stride + d]);
++        }
++    }
++    sj_kvarn__balance(w.tile, G, D, iters, w.s_row, w.s_col, w.bal, w.log_a, w.log_b);
++    sj_kvarn__quantize_side(l, 1, rec, &w);
++}
++
++/* ---- decode ---------------------------------------------------------------- */
++
++static SJ_KVARN_HD float sj_kvarn__q(const sj_kvarn_layout * l, const uint8_t * rec, int t, int d, int is_v) {
++    const int bits = is_v ? l->bits_v : l->bits_k;
++    const uint8_t * payload = rec + (is_v ? l->v_payload : l->k_payload);
++    if (l->body == SJKVARN_BODY_TRELLIS) {
++        return sj_kvarn_f16_to_f32(sj_kvarn__cb(bits, is_v)[sj_kvarn__window(payload, bits, d, t, l->G)]);
++    }
++    return (float) sj_kvarn__unpack(payload, sj_kvarn_code_bit(l, t, d, is_v), bits);
++}
++
++SJKVARN_DEF SJ_KVARN_HD void sj_kvarn_decode_k_row(const sj_kvarn_layout * l, const uint8_t * rec, int t, float * out) {
++    const float tok = sj_kvarn__get_half(rec, l->k_tok + 2u*(uint32_t) t);
++    int d;
++    for (d = 0; d < l->D; ++d) {
++        const uint32_t di = (uint32_t) sj_kvarn_k_ch_idx(l, d);
++        const float q = sj_kvarn__q(l, rec, t, d, 0);
++        out[d] = SJ__FMUL(SJ__FADD(SJ__FMUL(q, sj_kvarn__get_half(rec, l->k_scale + 2u*di)),
++                                   sj_kvarn__get_half(rec, l->k_zero + 2u*di)), tok);
++    }
++}
++
++SJKVARN_DEF SJ_KVARN_HD void sj_kvarn_decode_v_row(const sj_kvarn_layout * l, const uint8_t * rec, int t, float * out) {
++    const float sc = sj_kvarn__get_half(rec, l->v_scale + 2u*(uint32_t) t);
++    const float zp = sj_kvarn__get_half(rec, l->v_zero  + 2u*(uint32_t) t);
++    int d;
++    for (d = 0; d < l->D; ++d) {
++        const float q = sj_kvarn__q(l, rec, t, d, 1);
++        out[d] = SJ__FMUL(SJ__FADD(SJ__FMUL(q, sc), zp),
++                          sj_kvarn__get_half(rec, l->v_ch + 2u*(uint32_t) sj_kvarn_v_ch_idx(l, d)));
++    }
++}
++
++/* ---- staging --------------------------------------------------------------- */
++
++static SJ_KVARN_HD int sj_kvarn__tq6_nearest(float v) {
++    const float * mid = sj_kvarn__tq6_m();
++    int lo = 0, hi = 63;
++    while (lo < hi) {
++        const int m = (lo + hi) / 2;
++        if (v < mid[m]) hi = m; else lo = m + 1;
++    }
++    return lo;
++}
++
++SJKVARN_DEF SJ_KVARN_HD void sj_kvarn_tq6_quantize_row(const float * x, sj_kvarn_tq6_block * y, int n) {
++    const float * cent = sj_kvarn__tq6_c();
++    int b, i;
++    for (b = 0; b < n / SJKVARN_TQ6_QK; ++b) {
++        const float * src = x + (size_t) b*SJKVARN_TQ6_QK;
++        sj_kvarn_tq6_block * blk = y + b;
++        float norm_sq = 0.0f, norm, rn_sq = 0.0f, rn, inv = 0.0f;
++        uint8_t idx[SJKVARN_TQ6_QK];
++        for (i = 0; i < SJKVARN_TQ6_QK; ++i) norm_sq = SJ__FADD(norm_sq, SJ__FMUL(src[i], src[i]));
++        norm = sqrtf(norm_sq);
++        if (norm > 1e-10f) inv = SJ__FDIV(1.0f, norm);
++        for (i = 0; i < SJKVARN_TQ6_QK; ++i) {
++            const float v = norm > 1e-10f ? SJ__FMUL(src[i], inv) : 0.0f;
++            idx[i] = (uint8_t) sj_kvarn__tq6_nearest(v);
++        }
++        for (i = 0; i < SJKVARN_TQ6_QK; ++i) rn_sq = SJ__FADD(rn_sq, SJ__FMUL(cent[idx[i]], cent[idx[i]]));
++        rn = sqrtf(rn_sq);
++        blk->norm = sj_kvarn_f32_to_f16(rn > 1e-10f ? SJ__FDIV(norm, rn) : norm);
++        memset(blk->qs, 0, sizeof(blk->qs));
++        memset(blk->qh, 0, sizeof(blk->qh));
++        for (i = 0; i < SJKVARN_TQ6_QK; ++i) {
++            const uint8_t c = idx[i] & 0x3F;
++            blk->qs[i / 2] |= (uint8_t) ((c & 0xF) << ((i % 2) * 4));
++            blk->qh[i / 4] |= (uint8_t) (((c >> 4) & 0x3) << ((i % 4) * 2));
++        }
++    }
++}
++
++SJKVARN_DEF SJ_KVARN_HD void sj_kvarn_tq6_dequantize_row(const sj_kvarn_tq6_block * y, float * x, int n) {
++    const float * cent = sj_kvarn__tq6_c();
++    int b, i;
++    for (b = 0; b < n / SJKVARN_TQ6_QK; ++b) {
++        const float norm = sj_kvarn_f16_to_f32(y[b].norm);
++        for (i = 0; i < SJKVARN_TQ6_QK; ++i) {
++            const uint8_t lo = (y[b].qs[i / 2] >> ((i % 2) * 4)) & 0xF;
++            const uint8_t hi = (y[b].qh[i / 4] >> ((i % 4) * 2)) & 0x3;
++            x[(size_t) b*SJKVARN_TQ6_QK + i] = SJ__FMUL(cent[lo | (hi << 4)], norm);
++        }
++    }
++}
++
++SJKVARN_DEF size_t sj_kvarn_stage_row_bytes(int staging, int D) {
++    return staging == SJKVARN_STAGING_F16 ? (size_t) D*2 : (size_t) (D / SJKVARN_TQ6_QK)*SJKVARN_TQ6_BLOCK_BYTES;
++}
++
++SJKVARN_DEF SJ_KVARN_HD void sj_kvarn_stage_row(int staging, const float * x_rot, void * dst, int D) {
++    int i;
++    if (staging == SJKVARN_STAGING_F16) {
++        uint16_t * h = (uint16_t *) dst;
++        for (i = 0; i < D; ++i) h[i] = sj_kvarn_f32_to_f16(x_rot[i]);
++        return;
++    }
++    sj_kvarn_tq6_quantize_row(x_rot, (sj_kvarn_tq6_block *) dst, D);
++}
++
++SJKVARN_DEF SJ_KVARN_HD void sj_kvarn_unstage_row(int staging, const void * src, float * x_rot, int D) {
++    int i;
++    if (staging == SJKVARN_STAGING_F16) {
++        const uint16_t * h = (const uint16_t *) src;
++        for (i = 0; i < D; ++i) x_rot[i] = sj_kvarn_f16_to_f32(h[i]);
++        return;
++    }
++    sj_kvarn_tq6_dequantize_row((const sj_kvarn_tq6_block *) src, x_rot, D);
++}
++
++/* ---- reference attention helpers -------------------------------------------- */
++
++static float sj_kvarn__dot(const float * a, const float * b, int n) {
++    float s = 0.0f;
++    int i;
++    for (i = 0; i < n; ++i) s = SJ__FADD(s, SJ__FMUL(a[i], b[i]));
++    return s;
++}
++
++SJKVARN_DEF void sj_kvarn_record_scores(const sj_kvarn_layout * l, const uint8_t * rec, const float * q, int n, float * scores) {
++    float row[1024];
++    int t;
++    for (t = 0; t < n; ++t) {
++        sj_kvarn_decode_k_row(l, rec, t, row);
++        scores[t] = sj_kvarn__dot(q, row, l->D);
++    }
++}
++
++SJKVARN_DEF void sj_kvarn_record_accum_v(const sj_kvarn_layout * l, const uint8_t * rec, const float * w, int n, float * acc) {
++    float row[1024];
++    int t, d;
++    for (t = 0; t < n; ++t) {
++        sj_kvarn_decode_v_row(l, rec, t, row);
++        for (d = 0; d < l->D; ++d) acc[d] = SJ__FADD(acc[d], SJ__FMUL(w[t], row[d]));
++    }
++}
++
++/* ---- policy ------------------------------------------------------------------ */
++
++SJKVARN_DEF void sj_kvarn_policy_init(sj_kvarn_policy * p, uint32_t sink, uint32_t tail, uint32_t tail_max,
++                                      uint32_t group, uint32_t flush_chunk) {
++    p->sink = sink; p->tail = tail; p->tail_max = tail_max; p->group = group; p->flush_chunk = flush_chunk;
++    sj_kvarn_policy_reset(p);
++}
++
++SJKVARN_DEF void sj_kvarn_policy_reset(sj_kvarn_policy * p) {
++    p->B = p->B_prev = p->B_pending = p->sink;
++    p->draining = 0;
++}
++
++/* The sealed end advances from the ubatch START, so every query row keeps at
++ * least `tail` exact positions behind it. Adaptive tail (tail_max > 0): a commit
++ * becomes due when the unsealed span reaches tail_max and runs down to `tail`.
++ * With flush_chunk > 0 a decode-sized ubatch (fewer than G tokens) seals at most
++ * flush_chunk groups and leaves the rest "draining" for the next ubatches;
++ * prefill-sized ubatches take the whole commit at once. */
++SJKVARN_DEF uint32_t sj_kvarn_policy_begin_ubatch(sj_kvarn_policy * p, uint32_t pos0, uint32_t n_tokens) {
++    int due;
++    p->B_pending = p->B;
++    due = p->tail_max == 0 || p->draining || (pos0 > p->B && pos0 - p->B >= p->tail_max);
++    p->draining = 0;
++    if (due && pos0 > p->sink + p->tail) {
++        uint32_t target = p->sink + p->group*((pos0 - p->tail - p->sink)/p->group);
++        if (target < p->B) target = p->B;
++        if (p->tail_max > 0 && p->flush_chunk > 0 && n_tokens < p->group) {
++            const uint32_t limit = p->B + p->group*p->flush_chunk;
++            if (target > limit) {
++                target = limit;
++                p->draining = 1;
++            }
++        }
++        p->B_pending = target;
++    }
++    return p->B_pending;
++}
++
++SJKVARN_DEF void sj_kvarn_policy_commit(sj_kvarn_policy * p) {
++    p->B_prev = p->B;
++    p->B = p->B_pending;
++}
++
++/* keep_recent <= tail gives the 1.x behaviour (seal to the full flush target).
++ * A larger margin can stop short of that target; a chunked drain then stays
++ * pending, so begin_ubatch still finishes it once the margin allows. */
++SJKVARN_DEF uint32_t sj_kvarn_policy_idle(sj_kvarn_policy * p, uint32_t end, uint32_t keep_recent) {
++    uint32_t target, full;
++    int clamped = 0;
++    p->B_pending = p->B;
++    if (p->tail_max == 0 || end <= p->sink + p->tail) return p->B;
++    full = target = p->sink + p->group*((end - p->tail - p->sink)/p->group);
++    if (keep_recent > p->tail) {
++        const uint32_t keep_from = end > keep_recent ? end - keep_recent : 0;
++        const uint32_t lim = keep_from <= p->sink ? p->sink : sj_kvarn_group_floor(p->sink, p->group, keep_from);
++        if (lim < full) { target = lim; clamped = 1; }
++    }
++    if (!clamped) p->draining = 0;
++    if (target <= p->B) return p->B;
++    p->B_pending = target;
++    return target;
++}
++
++SJKVARN_DEF SJ_KVARN_HD uint32_t sj_kvarn_group_floor(uint32_t sink, uint32_t group, uint32_t pos) {
++    return pos <= sink ? pos : sink + group*((pos - sink)/group);
++}
++
++SJKVARN_DEF uint32_t sj_kvarn_policy_trunc_floor(const sj_kvarn_policy * p, uint32_t pos) {
++    if (pos >= p->B || pos <= p->sink) return pos;
++    return sj_kvarn_group_floor(p->sink, p->group, pos);
++}
++
++SJKVARN_DEF uint32_t sj_kvarn_policy_truncate(sj_kvarn_policy * p, uint32_t pos, uint32_t * n_dropped) {
++    uint32_t r, nb;
++    if (n_dropped) *n_dropped = 0;
++    if (p->B_pending != p->B) return SJKVARN_NO_POS;
++    r = sj_kvarn_policy_trunc_floor(p, pos);
++    if (r < p->B) {
++        nb = r > p->sink ? r : p->sink;
++        if (n_dropped) *n_dropped = (p->B - nb)/p->group;
++        p->B = p->B_prev = p->B_pending = nb;
++        p->draining = 0;
++    }
++    return r;
++}
++
++SJKVARN_DEF uint32_t sj_kvarn_ring_capacity(uint32_t tail, uint32_t tail_max, uint32_t group, uint32_t n_ubatch) {
++    const uint32_t need = (tail > tail_max ? tail : tail_max) + group + 2u*n_ubatch;
++    return (need + 127u) / 128u * 128u;
++}
++
++SJKVARN_DEF SJ_KVARN_HD uint32_t sj_kvarn_ring_slot(uint32_t sink, uint32_t cap, uint32_t pos) {
++    return (pos - sink) % cap;
++}
++
++/* ---- reference per-layer cache ----------------------------------------------- */
++
++SJKVARN_DEF sj_kvarn_config sj_kvarn_config_default(int head_dim, int n_head_kv, uint32_t n_ctx, uint32_t n_ubatch) {
++    sj_kvarn_config c;
++    c.head_dim = head_dim; c.n_head_kv = n_head_kv;
++    c.group = SJKVARN_GROUP_DEFAULT;
++    c.bits_k = 4; c.bits_v = 4;
++    c.body = SJKVARN_BODY_AUTO;
++    c.iters = SJKVARN_ITERS_DEFAULT;
++    c.staging = SJKVARN_STAGING_TQ6_0;
++    c.sink_type = SJKVARN_SINK_F16;
++    c.sink = SJKVARN_SINK_DEFAULT;
++    c.tail = SJKVARN_TAIL_DEFAULT;
++    c.tail_max = SJKVARN_TAIL_MAX_DEFAULT;
++    c.flush_chunk = 0;
++    c.n_ubatch = n_ubatch;
++    c.n_ctx = n_ctx;
++    return c;
++}
++
++SJKVARN_DEF uint8_t * sj_kvarn_layer_record(const sj_kvarn_layer * L, uint32_t g, int h) {
++    const uint32_t blk = L->blocks ? L->blocks[g] : g;
++    return L->body + ((size_t) blk*(size_t) L->cfg.n_head_kv + (size_t) h)*L->lay.bytes;
++}
++
++static int sj_kvarn__layer_init(sj_kvarn_layer * L, const sj_kvarn_config * cfg, int own_body);
++
++SJKVARN_DEF int sj_kvarn_layer_init(sj_kvarn_layer * L, const sj_kvarn_config * cfg) {
++    return sj_kvarn__layer_init(L, cfg, 1);
++}
++
++static int sj_kvarn__layer_init(sj_kvarn_layer * L, const sj_kvarn_config * cfg, int own_body) {
++    const int D = cfg->head_dim, H = cfg->n_head_kv;
++    int body, rc;
++    memset(L, 0, sizeof(*L));
++    L->cfg = *cfg;
++    body = sj_kvarn_body_resolve(cfg->body, cfg->bits_k, cfg->bits_v);
++    L->cfg.body = body;
++    if (D % SJKVARN_TQ6_QK != 0 || cfg->group % 16 != 0 || cfg->sink == 0 || cfg->sink % 64 != 0 ||
++        cfg->tail % (uint32_t) cfg->group != 0 || (cfg->tail_max != 0 && (cfg->tail_max < cfg->tail || cfg->tail_max % 128 != 0))) {
++        return -10;
++    }
++    rc = sj_kvarn_layout_init(&L->lay, D, cfg->group, cfg->bits_k, cfg->bits_v, body);
++    if (rc != 0) return rc;
++    L->cap = sj_kvarn_ring_capacity(cfg->tail, cfg->tail_max, (uint32_t) cfg->group, cfg->n_ubatch);
++    L->n_groups = cfg->n_ctx > cfg->sink ? (cfg->n_ctx - cfg->sink + (uint32_t) cfg->group - 1)/(uint32_t) cfg->group : 1;
++    L->stage_bytes = sj_kvarn_stage_row_bytes(cfg->staging, D);
++    L->ring = (uint8_t *) calloc((size_t) L->cap*H, 2*L->stage_bytes);
++    L->sink = (uint8_t *) calloc((size_t) cfg->sink*H, 2*(cfg->sink_type == SJKVARN_SINK_F16 ? (size_t) D*2 : L->stage_bytes));
++    L->owns_body = own_body;
++    L->body = own_body ? (uint8_t *) calloc((size_t) L->n_groups*H, L->lay.bytes) : NULL;
++    L->work = malloc(sj_kvarn_seal_workspace_bytes(&L->lay));
++    L->kstage = (uint16_t *) malloc((size_t) cfg->group*D*2);
++    L->vstage = (uint16_t *) malloc((size_t) cfg->group*D*2);
++    if (!L->ring || !L->sink || (own_body && !L->body) || !L->work || !L->kstage || !L->vstage) {
++        sj_kvarn_layer_free(L);
++        return -11;
++    }
++    return 0;
++}
++
++SJKVARN_DEF void sj_kvarn_layer_free(sj_kvarn_layer * L) {
++    free(L->ring); free(L->sink); if (L->owns_body) free(L->body); free(L->work); free(L->kstage); free(L->vstage);
++    L->ring = L->sink = L->body = NULL; L->blocks = NULL; L->owns_body = 0; L->work = NULL; L->kstage = L->vstage = NULL;
++}
++
++SJKVARN_DEF void sj_kvarn_layer_store(sj_kvarn_layer * L, uint32_t pos, const float * k_rot, const float * v_rot) {
++    const int D = L->cfg.head_dim, H = L->cfg.n_head_kv;
++    int h, i;
++    for (h = 0; h < H; ++h) {
++        const float * kr = k_rot + (size_t) h*D, * vr = v_rot + (size_t) h*D;
++        if (pos < L->cfg.sink && L->cfg.sink_type == SJKVARN_SINK_F16) {
++            /* sink layout: [pos][head][K D | V D] fp16 */
++            uint16_t * kd = (uint16_t *) L->sink + ((size_t) pos*H + h)*2*D;
++            uint16_t * vd = kd + D;
++            for (i = 0; i < D; ++i) { kd[i] = sj_kvarn_f32_to_f16(kr[i]); vd[i] = sj_kvarn_f32_to_f16(vr[i]); }
++        } else {
++            uint8_t * row = pos < L->cfg.sink ? L->sink + ((size_t) pos*H + h)*2*L->stage_bytes
++                                              : L->ring + ((size_t) sj_kvarn_ring_slot(L->cfg.sink, L->cap, pos)*H + h)*2*L->stage_bytes;
++            sj_kvarn_stage_row(L->cfg.staging, kr, row, D);
++            sj_kvarn_stage_row(L->cfg.staging, vr, row + L->stage_bytes, D);
++        }
++    }
++}
++
++SJKVARN_DEF void sj_kvarn_layer_seal(sj_kvarn_layer * L, uint32_t B_from, uint32_t B_to) {
++    const int D = L->cfg.head_dim, H = L->cfg.n_head_kv, G = L->cfg.group;
++    float row[1024];
++    uint32_t p0;
++    int h, t, i;
++    for (p0 = B_from; p0 < B_to; p0 += (uint32_t) G) {
++        const uint32_t g = (p0 - L->cfg.sink)/(uint32_t) G;
++        for (h = 0; h < H; ++h) {
++            for (t = 0; t < G; ++t) {
++                const uint8_t * src = L->ring + ((size_t) sj_kvarn_ring_slot(L->cfg.sink, L->cap, p0 + (uint32_t) t)*H + h)*2*L->stage_bytes;
++                /* seal input = staged row widened to float, rounded to fp16 */
++                sj_kvarn_unstage_row(L->cfg.staging, src, row, D);
++                for (i = 0; i < D; ++i) L->kstage[(size_t) t*D + i] = sj_kvarn_f32_to_f16(row[i]);
++                sj_kvarn_unstage_row(L->cfg.staging, src + L->stage_bytes, row, D);
++                for (i = 0; i < D; ++i) L->vstage[(size_t) t*D + i] = sj_kvarn_f32_to_f16(row[i]);
++            }
++            sj_kvarn_seal_group(&L->lay, L->kstage, L->vstage, (size_t) D, L->cfg.iters,
++                                sj_kvarn_layer_record(L, g, h), L->work);
++        }
++    }
++}
++
++SJKVARN_DEF void sj_kvarn_layer_kv_row(const sj_kvarn_layer * L, uint32_t B, uint32_t pos, int h, float * k, float * v) {
++    const int D = L->cfg.head_dim, H = L->cfg.n_head_kv, G = L->cfg.group;
++    int i;
++    if (pos >= L->cfg.sink && pos < B) {
++        const uint32_t g = (pos - L->cfg.sink)/(uint32_t) G, t = (pos - L->cfg.sink)%(uint32_t) G;
++        const uint8_t * rec = sj_kvarn_layer_record(L, g, h);
++        sj_kvarn_decode_k_row(&L->lay, rec, (int) t, k);
++        sj_kvarn_decode_v_row(&L->lay, rec, (int) t, v);
++    } else if (pos < L->cfg.sink && L->cfg.sink_type == SJKVARN_SINK_F16) {
++        const uint16_t * kd = (const uint16_t *) L->sink + ((size_t) pos*H + h)*2*D;
++        for (i = 0; i < D; ++i) { k[i] = sj_kvarn_f16_to_f32(kd[i]); v[i] = sj_kvarn_f16_to_f32(kd[D + i]); }
++    } else {
++        const uint8_t * row = pos < L->cfg.sink ? L->sink + ((size_t) pos*H + h)*2*L->stage_bytes
++                                                : L->ring + ((size_t) sj_kvarn_ring_slot(L->cfg.sink, L->cap, pos)*H + h)*2*L->stage_bytes;
++        sj_kvarn_unstage_row(L->cfg.staging, row, k, D);
++        sj_kvarn_unstage_row(L->cfg.staging, row + L->stage_bytes, v, D);
++    }
++}
++
++SJKVARN_DEF void sj_kvarn_layer_attend_row(const sj_kvarn_layer * L, uint32_t B, uint32_t N, const float * q_rot,
++                                           int h, uint32_t qpos, float scale, float * out_rot) {
++    const int D = L->cfg.head_dim;
++    const uint32_t end = N < qpos + 1 ? N : qpos + 1;
++    float krow[1024], vrow[1024], acc[1024];
++    float M = -INFINITY, S = 0.0f;
++    uint32_t p;
++    int d;
++    for (d = 0; d < D; ++d) acc[d] = 0.0f;
++    /* single-pass online softmax over positions in order */
++    for (p = 0; p < end; ++p) {
++        float s, ms = 1.0f, vs = 1.0f;
++        sj_kvarn_layer_kv_row(L, B, p, h, krow, vrow);
++        s = SJ__FMUL(sj_kvarn__dot(q_rot, krow, D), scale);
++        if (s > M) {
++            const float Mold = M;
++            M = s;
++            ms = expf(SJ__FSUB(Mold, M));
++            for (d = 0; d < D; ++d) acc[d] = SJ__FMUL(acc[d], ms);
++        } else {
++            vs = expf(SJ__FSUB(s, M));
++        }
++        for (d = 0; d < D; ++d) acc[d] = SJ__FADD(acc[d], SJ__FMUL(vrow[d], vs));
++        S = SJ__FADD(SJ__FMUL(S, ms), vs);
++    }
++    {
++        const float inv = S == 0.0f ? 0.0f : SJ__FDIV(1.0f, S);
++        for (d = 0; d < D; ++d) out_rot[d] = SJ__FMUL(acc[d], inv);
++    }
++}
++
++/* ---- truncation scrub ---------------------------------------------------------- */
++
++static size_t sj_kvarn__sink_row_bytes(const sj_kvarn_layer * L) {
++    /* bytes of one (position, head) sink entry: K then V */
++    return L->cfg.sink_type == SJKVARN_SINK_F16 ? (size_t) L->cfg.head_dim*4 : 2*L->stage_bytes;
++}
++
++static uint8_t * sj_kvarn__sink_row(const sj_kvarn_layer * L, uint32_t pos, int h) {
++    return L->sink + ((size_t) pos*(size_t) L->cfg.n_head_kv + (size_t) h)*sj_kvarn__sink_row_bytes(L);
++}
++
++static uint8_t * sj_kvarn__ring_row(const sj_kvarn_layer * L, uint32_t pos, int h) {
++    return L->ring + ((size_t) sj_kvarn_ring_slot(L->cfg.sink, L->cap, pos)*(size_t) L->cfg.n_head_kv + (size_t) h)*2*L->stage_bytes;
++}
++
++SJKVARN_DEF void sj_kvarn_layer_truncate(sj_kvarn_layer * L, uint32_t B_old, uint32_t B_new, uint32_t n_old, uint32_t resume) {
++    const uint32_t S = L->cfg.sink, G = (uint32_t) L->cfg.group;
++    const int H = L->cfg.n_head_kv;
++    uint32_t g, pos, from;
++    int h;
++    if (B_new < B_old) {
++        for (g = (B_new - S)/G; g < (B_old - S)/G; ++g) {
++            if (L->blocks && L->blocks[g] == SJKVARN_NO_BLOCK) continue;
++            for (h = 0; h < H; ++h) memset(sj_kvarn_layer_record(L, g, h), 0, L->lay.bytes);
++        }
++    }
++    for (pos = resume; pos < n_old && pos < S; ++pos) {
++        for (h = 0; h < H; ++h) memset(sj_kvarn__sink_row(L, pos, h), 0, sj_kvarn__sink_row_bytes(L));
++    }
++    /* ring rows of positions >= resume; only the last cap of them can still be resident.
++     * Rows the sequence keeps ([B_new, resume)) never share a slot with these: the
++     * unsealed span never exceeds the ring capacity. */
++    from = resume > S ? resume : S;
++    if (n_old > from && n_old - from > L->cap) from = n_old - L->cap;
++    for (pos = from; pos < n_old; ++pos) {
++        for (h = 0; h < H; ++h) memset(sj_kvarn__ring_row(L, pos, h), 0, 2*L->stage_bytes);
++    }
++}
++
++/* ---- status strings ------------------------------------------------------------- */
++
++SJKVARN_DEF const char * sj_kvarn_strerror(int code) {
++    switch (code) {
++        case SJKVARN_OK:              return "ok";
++        case -1:                      return "layout: head_dim must be a power of two >= 32 and group a multiple of 16";
++        case -2:                      return "layout: bits_k and bits_v must be 2, 3 or 4";
++        case -3:                      return "layout: unknown body type";
++        case -4:                      return "layout: trellis bodies need 3/3, 3/2 or 2/2 bits, group 128 and head_dim a multiple of 128";
++        case -10:                     return "config: head_dim % 128, group % 16, sink (non-zero, % 64), tail % group or tail_max invalid";
++        case -11:                     return "out of memory";
++        case SJKVARN_ERR_ARG:         return "invalid argument";
++        case SJKVARN_ERR_NOMEM:       return "out of memory";
++        case SJKVARN_ERR_BUFFER:      return "destination buffer too small for the sequence state";
++        case SJKVARN_ERR_TRUNCATED:   return "state stream is shorter than its header says";
++        case SJKVARN_ERR_MAGIC:       return "not an SJ-KVaRN sequence state (bad magic)";
++        case SJKVARN_ERR_VERSION:     return "unsupported SJ-KVaRN state version";
++        case SJKVARN_ERR_FORMAT:      return "state was written with a different record/staging byte format";
++        case SJKVARN_ERR_CORRUPT:     return "state checksum or consistency check failed";
++        case SJKVARN_ERR_PENDING:     return "a seal is pending (call commit first)";
++        case SJKVARN_ERR_CAPACITY:    return "state does not fit this cache (context, ring or group capacity)";
++        case SJKVARN_ERR_POOL_FULL:   return "record pool has no free block";
++        case SJKVARN_ERR_HEAD_DIM:    return "config mismatch: head_dim";
++        case SJKVARN_ERR_N_HEAD_KV:   return "config mismatch: n_head_kv";
++        case SJKVARN_ERR_GROUP:       return "config mismatch: group size";
++        case SJKVARN_ERR_SINK:        return "config mismatch: sink length or sink type";
++        case SJKVARN_ERR_BITS:        return "config mismatch: bits_k/bits_v";
++        case SJKVARN_ERR_BODY:        return "config mismatch: body type (scalar/trellis)";
++        case SJKVARN_ERR_ITERS:       return "config mismatch: variance-balancing iterations";
++        case SJKVARN_ERR_STAGING:     return "config mismatch: staging type";
++        case SJKVARN_ERR_TAIL:        return "config mismatch: tail, tail_max or flush_chunk";
++        case SJKVARN_ERR_ROTATION:    return "config mismatch: rotation";
++        case SJKVARN_ERR_CODEBOOK:    return "config mismatch: trellis codebook";
++        case SJKVARN_ERR_N_LAYERS:    return "config mismatch: number of layers";
++        default:                      return "unknown SJ-KVaRN status code";
++    }
++}
++
++/* ---- pool ------------------------------------------------------------------------ */
++
++SJKVARN_DEF int sj_kvarn_pool_init(sj_kvarn_pool * pool, const sj_kvarn_config * cfg, int n_layers, uint32_t n_blocks) {
++    uint32_t i;
++    int rc;
++    memset(pool, 0, sizeof(*pool));
++    if (n_layers <= 0 || n_blocks == 0 || cfg->n_head_kv <= 0) return SJKVARN_ERR_ARG;
++    pool->cfg = *cfg;
++    pool->cfg.body = sj_kvarn_body_resolve(cfg->body, cfg->bits_k, cfg->bits_v);
++    rc = sj_kvarn_layout_init(&pool->lay, cfg->head_dim, cfg->group, cfg->bits_k, cfg->bits_v, pool->cfg.body);
++    if (rc != 0) return rc;
++    pool->n_layers = n_layers;
++    pool->n_blocks = n_blocks;
++    pool->body = (uint8_t *) calloc((size_t) n_layers*n_blocks*(size_t) cfg->n_head_kv, pool->lay.bytes);
++    pool->free_ids = (uint32_t *) malloc((size_t) n_blocks*sizeof(uint32_t));
++    if (!pool->body || !pool->free_ids) { sj_kvarn_pool_free(pool); return SJKVARN_ERR_NOMEM; }
++    for (i = 0; i < n_blocks; ++i) pool->free_ids[i] = n_blocks - 1u - i; /* block 0 is handed out first */
++    pool->n_free = n_blocks;
++    return SJKVARN_OK;
++}
++
++SJKVARN_DEF void sj_kvarn_pool_free(sj_kvarn_pool * pool) {
++    free(pool->body); free(pool->free_ids);
++    pool->body = NULL; pool->free_ids = NULL; pool->n_free = 0;
++}
++
++SJKVARN_DEF uint32_t sj_kvarn_pool_alloc(sj_kvarn_pool * pool) {
++    return pool->n_free ? pool->free_ids[--pool->n_free] : SJKVARN_NO_BLOCK;
++}
++
++SJKVARN_DEF void sj_kvarn_pool_release(sj_kvarn_pool * pool, uint32_t id) {
++    if (id != SJKVARN_NO_BLOCK && pool->n_free < pool->n_blocks) pool->free_ids[pool->n_free++] = id;
++}
++
++/* ---- sequence ---------------------------------------------------------------------- */
++
++SJKVARN_DEF int sj_kvarn_seq_init(sj_kvarn_seq * s, const sj_kvarn_config * cfg, int n_layers, sj_kvarn_pool * pool) {
++    int il, rc;
++    uint32_t g;
++    memset(s, 0, sizeof(*s));
++    if (n_layers <= 0) return SJKVARN_ERR_ARG;
++    s->cfg = *cfg;
++    s->cfg.body = sj_kvarn_body_resolve(cfg->body, cfg->bits_k, cfg->bits_v);
++    if (pool) {
++        const sj_kvarn_config * pc = &pool->cfg;
++        if (pool->n_layers != n_layers || pc->head_dim != cfg->head_dim || pc->n_head_kv != cfg->n_head_kv ||
++            pc->group != cfg->group || pc->bits_k != cfg->bits_k || pc->bits_v != cfg->bits_v || pc->body != s->cfg.body) {
++            return SJKVARN_ERR_ARG;
++        }
++    }
++    s->n_layers = n_layers;
++    s->pool = pool;
++    s->layers = (sj_kvarn_layer *) calloc((size_t) n_layers, sizeof(sj_kvarn_layer));
++    if (!s->layers) return SJKVARN_ERR_NOMEM;
++    for (il = 0; il < n_layers; ++il) {
++        rc = sj_kvarn__layer_init(&s->layers[il], cfg, pool == NULL);
++        if (rc != 0) { s->n_layers = il; sj_kvarn_seq_free(s); return rc; }
++    }
++    if (pool) {
++        s->blocks = (uint32_t *) malloc((size_t) s->layers[0].n_groups*sizeof(uint32_t));
++        if (!s->blocks) { sj_kvarn_seq_free(s); return SJKVARN_ERR_NOMEM; }
++        for (g = 0; g < s->layers[0].n_groups; ++g) s->blocks[g] = SJKVARN_NO_BLOCK;
++        for (il = 0; il < n_layers; ++il) {
++            s->layers[il].body   = pool->body + (size_t) il*pool->n_blocks*(size_t) cfg->n_head_kv*pool->lay.bytes;
++            s->layers[il].blocks = s->blocks;
++        }
++    }
++    sj_kvarn_policy_init(&s->pol, cfg->sink, cfg->tail, cfg->tail_max, (uint32_t) cfg->group, cfg->flush_chunk);
++    s->n = 0;
++    return SJKVARN_OK;
++}
++
++/* pool mode: release the blocks of groups [g0, g1) */
++static void sj_kvarn__seq_release(sj_kvarn_seq * s, uint32_t g0, uint32_t g1) {
++    uint32_t g;
++    if (!s->pool || !s->blocks) return;
++    for (g = g0; g < g1 && g < s->layers[0].n_groups; ++g) {
++        sj_kvarn_pool_release(s->pool, s->blocks[g]);
++        s->blocks[g] = SJKVARN_NO_BLOCK;
++    }
++}
++
++/* pool mode: make sure groups [g0, g1) have blocks; on failure release what this call took */
++static int sj_kvarn__seq_reserve(sj_kvarn_seq * s, uint32_t g0, uint32_t g1) {
++    uint32_t g;
++    if (!s->pool) return SJKVARN_OK;
++    if (g1 > s->layers[0].n_groups) return SJKVARN_ERR_CAPACITY;
++    for (g = g0; g < g1; ++g) {
++        if (s->blocks[g] != SJKVARN_NO_BLOCK) continue;
++        s->blocks[g] = sj_kvarn_pool_alloc(s->pool);
++        if (s->blocks[g] == SJKVARN_NO_BLOCK) {
++            while (g-- > g0) { sj_kvarn_pool_release(s->pool, s->blocks[g]); s->blocks[g] = SJKVARN_NO_BLOCK; }
++            return SJKVARN_ERR_POOL_FULL;
++        }
++    }
++    return SJKVARN_OK;
++}
++
++SJKVARN_DEF void sj_kvarn_seq_free(sj_kvarn_seq * s) {
++    int il;
++    if (s->layers) {
++        if (s->pool && s->blocks) sj_kvarn__seq_release(s, 0, s->layers[0].n_groups);
++        for (il = 0; il < s->n_layers; ++il) sj_kvarn_layer_free(&s->layers[il]);
++    }
++    free(s->layers); free(s->blocks);
++    s->layers = NULL; s->blocks = NULL; s->n_layers = 0; s->n = 0;
++}
++
++SJKVARN_DEF void sj_kvarn_seq_reset(sj_kvarn_seq * s) {
++    int il;
++    for (il = 0; il < s->n_layers; ++il) sj_kvarn_layer_truncate(&s->layers[il], s->pol.B, s->cfg.sink, s->n, 0);
++    sj_kvarn__seq_release(s, 0, s->layers[0].n_groups);
++    sj_kvarn_policy_reset(&s->pol);
++    s->n = 0;
++}
++
++/* seal [B, B_pending) in every layer and commit, or undo the policy step */
++static int sj_kvarn__seq_seal_commit(sj_kvarn_seq * s, const sj_kvarn_policy * before) {
++    const uint32_t S = s->cfg.sink, G = (uint32_t) s->cfg.group;
++    int il, rc;
++    if (s->pol.B_pending > s->pol.B) {
++        rc = sj_kvarn__seq_reserve(s, (s->pol.B - S)/G, (s->pol.B_pending - S)/G);
++        if (rc != SJKVARN_OK) { s->pol = *before; return rc; }
++        for (il = 0; il < s->n_layers; ++il) sj_kvarn_layer_seal(&s->layers[il], s->pol.B, s->pol.B_pending);
++    }
++    sj_kvarn_policy_commit(&s->pol);
++    return SJKVARN_OK;
++}
++
++SJKVARN_DEF int sj_kvarn_seq_begin_ubatch(sj_kvarn_seq * s, uint32_t pos0, uint32_t n_tokens) {
++    const sj_kvarn_policy before = s->pol;
++    if (pos0 > s->n) return SJKVARN_ERR_ARG;
++    sj_kvarn_policy_begin_ubatch(&s->pol, pos0, n_tokens);
++    return sj_kvarn__seq_seal_commit(s, &before);
++}
++
++SJKVARN_DEF void sj_kvarn_seq_store(sj_kvarn_seq * s, uint32_t pos, const float * k_rot, const float * v_rot) {
++    const size_t stride = (size_t) s->cfg.n_head_kv*(size_t) s->cfg.head_dim;
++    int il;
++    for (il = 0; il < s->n_layers; ++il) {
++        sj_kvarn_layer_store(&s->layers[il], pos, k_rot + (size_t) il*stride, v_rot + (size_t) il*stride);
++    }
++    if (pos + 1u > s->n) s->n = pos + 1u;
++}
++
++SJKVARN_DEF int sj_kvarn_seq_idle(sj_kvarn_seq * s, uint32_t keep_recent) {
++    const sj_kvarn_policy before = s->pol;
++    sj_kvarn_policy_idle(&s->pol, s->n, keep_recent);
++    return sj_kvarn__seq_seal_commit(s, &before);
++}
++
++SJKVARN_DEF uint32_t sj_kvarn_seq_truncate(sj_kvarn_seq * s, uint32_t pos) {
++    const uint32_t S = s->cfg.sink, G = (uint32_t) s->cfg.group, B_old = s->pol.B, n_old = s->n;
++    uint32_t r;
++    int il;
++    r = sj_kvarn_policy_truncate(&s->pol, pos, NULL);
++    if (r == SJKVARN_NO_POS) return r;
++    for (il = 0; il < s->n_layers; ++il) sj_kvarn_layer_truncate(&s->layers[il], B_old, s->pol.B, n_old, r);
++    if (s->pol.B < B_old) sj_kvarn__seq_release(s, (s->pol.B - S)/G, (B_old - S)/G);
++    if (r < s->n) s->n = r;
++    return r;
++}
++
++SJKVARN_DEF void sj_kvarn_seq_attend_row(const sj_kvarn_seq * s, int il, const float * q_rot, int h, uint32_t qpos,
++                                         float scale, float * out_rot) {
++    sj_kvarn_layer_attend_row(&s->layers[il], s->pol.B, s->n, q_rot, h, qpos, scale, out_rot);
++}
++
++/* ---- sequence state ------------------------------------------------------------------ */
++
++static const uint8_t sj_kvarn__state_magic[8] = { 'S', 'J', 'K', 'V', 'S', 'E', 'Q', 0 };
++
++static uint64_t sj_kvarn__fnv(const uint8_t * p, size_t n, uint64_t h) {
++    size_t i;
++    for (i = 0; i < n; ++i) { h ^= p[i]; h *= UINT64_C(1099511628211); }
++    return h;
++}
++#define SJKVARN__FNV0 UINT64_C(1469598103934665603)
++
++static void sj_kvarn__put32(uint8_t * p, uint32_t v) {
++    p[0] = (uint8_t) v; p[1] = (uint8_t) (v >> 8); p[2] = (uint8_t) (v >> 16); p[3] = (uint8_t) (v >> 24);
++}
++static void sj_kvarn__put64(uint8_t * p, uint64_t v) {
++    sj_kvarn__put32(p, (uint32_t) v); sj_kvarn__put32(p + 4, (uint32_t) (v >> 32));
++}
++static uint32_t sj_kvarn__get32(const uint8_t * p) {
++    return (uint32_t) p[0] | (uint32_t) p[1] << 8 | (uint32_t) p[2] << 16 | (uint32_t) p[3] << 24;
++}
++static uint64_t sj_kvarn__get64(const uint8_t * p) {
++    return (uint64_t) sj_kvarn__get32(p) | (uint64_t) sj_kvarn__get32(p + 4) << 32;
++}
++
++/* identity of the trellis codebooks a body uses (FNV-1a 64 of the K and V tables); 0 for scalar bodies */
++static uint64_t sj_kvarn__codebook_id(int body, int bits_k, int bits_v) {
++    uint64_t h = SJKVARN__FNV0;
++    if (body != SJKVARN_BODY_TRELLIS) return 0;
++    h = sj_kvarn__fnv((const uint8_t *) sj_kvarn__cb(bits_k, 0), (size_t) (bits_k == 3 ? 512 : 256)*2, h);
++    h = sj_kvarn__fnv((const uint8_t *) sj_kvarn__cb(bits_v, 1), (size_t) (bits_v == 3 ? 512 : 256)*2, h);
++    return h;
++}
++
++/* payload bytes of one layer for a state with stored end n and sealed end B */
++static size_t sj_kvarn__layer_payload(const sj_kvarn_config * c, const sj_kvarn_layout * lay, uint32_t n, uint32_t B) {
++    const size_t H = (size_t) c->n_head_kv;
++    const size_t sink_row = c->sink_type == SJKVARN_SINK_F16 ? (size_t) c->head_dim*4 : 2*sj_kvarn_stage_row_bytes(c->staging, c->head_dim);
++    const size_t ring_row = 2*sj_kvarn_stage_row_bytes(c->staging, c->head_dim);
++    const uint32_t n_sink = n < c->sink ? n : c->sink;
++    const uint32_t n_rec  = (B - c->sink)/(uint32_t) c->group;
++    const uint32_t n_tail = n > B ? n - B : 0;
++    return (size_t) n_sink*H*sink_row + (size_t) n_rec*H*lay->bytes + (size_t) n_tail*H*ring_row;
++}
++
++SJKVARN_DEF size_t sj_kvarn_seq_state_size(const sj_kvarn_seq * s) {
++    return SJKVARN_STATE_HEADER_BYTES + (size_t) s->n_layers*sj_kvarn__layer_payload(&s->cfg, &s->layers[0].lay, s->n, s->pol.B) + 8;
++}
++
++SJKVARN_DEF size_t sj_kvarn_state_size_max(const sj_kvarn_config * cfg, int n_layers) {
++    sj_kvarn_config c = *cfg;
++    sj_kvarn_layout lay;
++    size_t a, b;
++    uint32_t B_all;
++    c.body = sj_kvarn_body_resolve(cfg->body, cfg->bits_k, cfg->bits_v);
++    if (n_layers <= 0 || sj_kvarn_layout_init(&lay, c.head_dim, c.group, c.bits_k, c.bits_v, c.body) != 0) return 0;
++    /* the payload is linear in the number of sealed groups, so one of the two extremes is the maximum */
++    B_all = c.n_ctx > c.sink ? c.sink + (uint32_t) c.group*((c.n_ctx - c.sink + (uint32_t) c.group - 1u)/(uint32_t) c.group) : c.sink;
++    a = sj_kvarn__layer_payload(&c, &lay, c.n_ctx, c.sink);
++    b = sj_kvarn__layer_payload(&c, &lay, c.n_ctx, B_all);
++    return SJKVARN_STATE_HEADER_BYTES + (size_t) n_layers*(a > b ? a : b) + 8;
++}
++
++SJKVARN_DEF int sj_kvarn_seq_state_write(const sj_kvarn_seq * s, void * dst, size_t dst_size, size_t * written) {
++    const sj_kvarn_config * c = &s->cfg;
++    const size_t total = sj_kvarn_seq_state_size(s);
++    const uint32_t S = c->sink, G = (uint32_t) c->group, B = s->pol.B, n = s->n;
++    const int H = c->n_head_kv;
++    uint8_t * o = (uint8_t *) dst, * w;
++    uint32_t pos, g;
++    int il, h;
++    if (written) *written = 0;
++    if (!s->layers || (!dst && dst_size)) return SJKVARN_ERR_ARG;
++    if (s->pol.B_pending != s->pol.B) return SJKVARN_ERR_PENDING;
++    if (dst_size < total) return SJKVARN_ERR_BUFFER;
++    memset(o, 0, SJKVARN_STATE_HEADER_BYTES);
++    memcpy(o, sj_kvarn__state_magic, 8);
++    sj_kvarn__put32(o +   8, SJKVARN_STATE_VERSION);
++    sj_kvarn__put32(o +  12, SJKVARN_FORMAT_VERSION);
++    sj_kvarn__put32(o +  16, SJKVARN_STATE_HEADER_BYTES);
++    sj_kvarn__put32(o +  20, (uint32_t) c->head_dim);
++    sj_kvarn__put32(o +  24, (uint32_t) c->n_head_kv);
++    sj_kvarn__put32(o +  28, (uint32_t) c->group);
++    sj_kvarn__put32(o +  32, c->sink);
++    sj_kvarn__put32(o +  36, (uint32_t) c->sink_type);
++    sj_kvarn__put32(o +  40, (uint32_t) c->bits_k);
++    sj_kvarn__put32(o +  44, (uint32_t) c->bits_v);
++    sj_kvarn__put32(o +  48, (uint32_t) c->body);
++    sj_kvarn__put32(o +  52, (uint32_t) c->iters);
++    sj_kvarn__put32(o +  56, (uint32_t) c->staging);
++    sj_kvarn__put32(o +  60, c->tail);
++    sj_kvarn__put32(o +  64, c->tail_max);
++    sj_kvarn__put32(o +  68, c->flush_chunk);
++    sj_kvarn__put32(o +  72, SJKVARN_ROTATION_HADAMARD);
++    sj_kvarn__put32(o +  76, (uint32_t) c->head_dim);
++    sj_kvarn__put64(o +  80, sj_kvarn__codebook_id(c->body, c->bits_k, c->bits_v));
++    sj_kvarn__put32(o +  88, (uint32_t) s->n_layers);
++    sj_kvarn__put32(o +  92, n);
++    sj_kvarn__put32(o +  96, B);
++    sj_kvarn__put32(o + 100, s->pol.B_prev);
++    sj_kvarn__put32(o + 104, (uint32_t) s->pol.draining);
++    sj_kvarn__put64(o + 108, (uint64_t) (total - SJKVARN_STATE_HEADER_BYTES - 8));
++    w = o + SJKVARN_STATE_HEADER_BYTES;
++    for (il = 0; il < s->n_layers; ++il) {
++        const sj_kvarn_layer * L = &s->layers[il];
++        const size_t srb = sj_kvarn__sink_row_bytes(L), rrb = 2*L->stage_bytes;
++        for (pos = 0; pos < n && pos < S; ++pos) {
++            for (h = 0; h < H; ++h) { memcpy(w, sj_kvarn__sink_row(L, pos, h), srb); w += srb; }
++        }
++        for (g = 0; g < (B - S)/G; ++g) {
++            for (h = 0; h < H; ++h) { memcpy(w, sj_kvarn_layer_record(L, g, h), L->lay.bytes); w += L->lay.bytes; }
++        }
++        for (pos = B; pos < n; ++pos) {
++            for (h = 0; h < H; ++h) { memcpy(w, sj_kvarn__ring_row(L, pos, h), rrb); w += rrb; }
++        }
++    }
++    sj_kvarn__put64(w, sj_kvarn__fnv(o, (size_t) (w - o), SJKVARN__FNV0));
++    if (written) *written = total;
++    return SJKVARN_OK;
++}
++
++SJKVARN_DEF int sj_kvarn_state_peek(const void * src, size_t size, sj_kvarn_state_info * info) {
++    const uint8_t * p = (const uint8_t *) src;
++    sj_kvarn_state_info t;
++    uint64_t payload;
++    if (!src || !info) return SJKVARN_ERR_ARG;
++    memset(&t, 0, sizeof(t));
++    if (size < 8 || memcmp(p, sj_kvarn__state_magic, 8) != 0) return size < 8 ? SJKVARN_ERR_TRUNCATED : SJKVARN_ERR_MAGIC;
++    if (size < 16) return SJKVARN_ERR_TRUNCATED;
++    t.state_version  = sj_kvarn__get32(p + 8);
++    t.format_version = sj_kvarn__get32(p + 12);
++    if (t.state_version != SJKVARN_STATE_VERSION) return SJKVARN_ERR_VERSION;
++    if (size < SJKVARN_STATE_HEADER_BYTES + 8) return SJKVARN_ERR_TRUNCATED;
++    if (sj_kvarn__get32(p + 16) != SJKVARN_STATE_HEADER_BYTES) return SJKVARN_ERR_CORRUPT;
++    payload = sj_kvarn__get64(p + 108);
++    if (payload > (uint64_t) (size - SJKVARN_STATE_HEADER_BYTES - 8)) return SJKVARN_ERR_TRUNCATED;
++    t.total_bytes = SJKVARN_STATE_HEADER_BYTES + (size_t) payload + 8;
++    if (sj_kvarn__fnv(p, t.total_bytes - 8, SJKVARN__FNV0) != sj_kvarn__get64(p + t.total_bytes - 8)) return SJKVARN_ERR_CORRUPT;
++    if (t.format_version != SJKVARN_FORMAT_VERSION) return SJKVARN_ERR_FORMAT;
++    t.cfg.head_dim    = (int) sj_kvarn__get32(p + 20);
++    t.cfg.n_head_kv   = (int) sj_kvarn__get32(p + 24);
++    t.cfg.group       = (int) sj_kvarn__get32(p + 28);
++    t.cfg.sink        = sj_kvarn__get32(p + 32);
++    t.cfg.sink_type   = (int) sj_kvarn__get32(p + 36);
++    t.cfg.bits_k      = (int) sj_kvarn__get32(p + 40);
++    t.cfg.bits_v      = (int) sj_kvarn__get32(p + 44);
++    t.cfg.body        = (int) sj_kvarn__get32(p + 48);
++    t.cfg.iters       = (int) sj_kvarn__get32(p + 52);
++    t.cfg.staging     = (int) sj_kvarn__get32(p + 56);
++    t.cfg.tail        = sj_kvarn__get32(p + 60);
++    t.cfg.tail_max    = sj_kvarn__get32(p + 64);
++    t.cfg.flush_chunk = sj_kvarn__get32(p + 68);
++    t.rotation        = sj_kvarn__get32(p + 72);
++    t.rotation_n      = sj_kvarn__get32(p + 76);
++    t.codebook_id     = sj_kvarn__get64(p + 80);
++    t.n_layers        = (int) sj_kvarn__get32(p + 88);
++    t.n               = sj_kvarn__get32(p + 92);
++    t.B               = sj_kvarn__get32(p + 96);
++    t.B_prev          = sj_kvarn__get32(p + 100);
++    t.draining        = sj_kvarn__get32(p + 104);
++    *info = t;
++    return SJKVARN_OK;
++}
++
++SJKVARN_DEF int sj_kvarn_seq_state_read(sj_kvarn_seq * s, const void * src, size_t size) {
++    const sj_kvarn_config * c = &s->cfg;
++    const uint8_t * r;
++    sj_kvarn_state_info t;
++    uint32_t S, G, n_rec, pos, g, held = 0;
++    int il, h, rc;
++    if (!s->layers) return SJKVARN_ERR_ARG;
++    rc = sj_kvarn_state_peek(src, size, &t);
++    if (rc != SJKVARN_OK) return rc;
++    /* configuration: everything that changes stored bytes or the policy must match */
++    if (t.cfg.head_dim != c->head_dim)                                   return SJKVARN_ERR_HEAD_DIM;
++    if (t.cfg.n_head_kv != c->n_head_kv)                                 return SJKVARN_ERR_N_HEAD_KV;
++    if (t.cfg.group != c->group)                                         return SJKVARN_ERR_GROUP;
++    if (t.cfg.sink != c->sink || t.cfg.sink_type != c->sink_type)        return SJKVARN_ERR_SINK;
++    if (t.cfg.bits_k != c->bits_k || t.cfg.bits_v != c->bits_v)          return SJKVARN_ERR_BITS;
++    if (t.cfg.body != c->body)                                           return SJKVARN_ERR_BODY;
++    if (t.cfg.iters != c->iters)                                         return SJKVARN_ERR_ITERS;
++    if (t.cfg.staging != c->staging)                                     return SJKVARN_ERR_STAGING;
++    if (t.cfg.tail != c->tail || t.cfg.tail_max != c->tail_max || t.cfg.flush_chunk != c->flush_chunk) return SJKVARN_ERR_TAIL;
++    if (t.rotation != SJKVARN_ROTATION_HADAMARD || t.rotation_n != (uint32_t) c->head_dim) return SJKVARN_ERR_ROTATION;
++    if (t.codebook_id != sj_kvarn__codebook_id(c->body, c->bits_k, c->bits_v)) return SJKVARN_ERR_CODEBOOK;
++    if (t.n_layers != s->n_layers)                                       return SJKVARN_ERR_N_LAYERS;
++    /* internal consistency of the policy state */
++    S = c->sink; G = (uint32_t) c->group;
++    if (t.B < S || (t.B - S) % G != 0 || t.B_prev < S || t.B_prev > t.B || (t.B_prev - S) % G != 0 ||
++        t.draining > 1 || (t.B > S && t.B > t.n)) {
++        return SJKVARN_ERR_CORRUPT;
++    }
++    if (t.total_bytes != SJKVARN_STATE_HEADER_BYTES + (size_t) s->n_layers*sj_kvarn__layer_payload(c, &s->layers[0].lay, t.n, t.B) + 8) {
++        return SJKVARN_ERR_CORRUPT;
++    }
++    /* capacity of this cache */
++    n_rec = (t.B - S)/G;
++    if (t.n > c->n_ctx || n_rec > s->layers[0].n_groups || (t.n > t.B && t.n - t.B > s->layers[0].cap)) return SJKVARN_ERR_CAPACITY;
++    if (s->pool) {
++        for (g = 0; g < s->layers[0].n_groups; ++g) held += s->blocks[g] != SJKVARN_NO_BLOCK;
++        if (s->pool->n_free + held < n_rec) return SJKVARN_ERR_POOL_FULL;
++    }
++    /* accepted: replace the sequence */
++    sj_kvarn_seq_reset(s);
++    if (sj_kvarn__seq_reserve(s, 0, n_rec) != SJKVARN_OK) return SJKVARN_ERR_POOL_FULL; /* not reached: checked above */
++    r = (const uint8_t *) src + SJKVARN_STATE_HEADER_BYTES;
++    for (il = 0; il < s->n_layers; ++il) {
++        sj_kvarn_layer * L = &s->layers[il];
++        const size_t srb = sj_kvarn__sink_row_bytes(L), rrb = 2*L->stage_bytes;
++        for (pos = 0; pos < t.n && pos < S; ++pos) {
++            for (h = 0; h < c->n_head_kv; ++h) { memcpy(sj_kvarn__sink_row(L, pos, h), r, srb); r += srb; }
++        }
++        for (g = 0; g < n_rec; ++g) {
++            for (h = 0; h < c->n_head_kv; ++h) { memcpy(sj_kvarn_layer_record(L, g, h), r, L->lay.bytes); r += L->lay.bytes; }
++        }
++        for (pos = t.B; pos < t.n; ++pos) {
++            for (h = 0; h < c->n_head_kv; ++h) { memcpy(sj_kvarn__ring_row(L, pos, h), r, rrb); r += rrb; }
++        }
++    }
++    s->pol.B = s->pol.B_pending = t.B;
++    s->pol.B_prev = t.B_prev;
++    s->pol.draining = (int) t.draining;
++    s->n = t.n;
++    return SJKVARN_OK;
++}
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* SJ_KVARN_IMPLEMENTATION */
++
++/*
++ * MIT License
++ *
++ * Copyright (c) 2026 Jake K
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a copy
++ * of this software and associated documentation files (the "Software"), to deal
++ * in the Software without restriction, including without limitation the rights
++ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++ * copies of the Software, and to permit persons to whom the Software is
++ * furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in all
++ * copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++ * SOFTWARE.
++ */

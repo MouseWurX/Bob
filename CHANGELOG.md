@@ -4,6 +4,78 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.255
+
+Brain Engine 46, GUPPI driving by default, the Per-chat engine cache on, and no caps on how long a job runs.
+
+### New
+
+- **Brain Engine 46.** llama.cpp b12359 with our own patches, up from Brain Engine 43: eleven fixes from upstream llama.cpp, upstream CUDA speed-ups, upstream Vulkan speed-ups and AMD driver fixes for handhelds, tool-call parser fixes, a cap on the deeper look-ahead guesses, Inkling's loop layers in fewer steps with the same words, and on Linux the experts in RAM registered with the card. Anything that can change a brain's answers stays behind Turbo, off. New in 46, both Turbo tests from llamAmpere (MIT), off unless switched on: **Turbo: keep more guesses** and **Turbo: sharp start** (the chat's first 128 tokens kept at 16-bit).
+- **Per-chat engine cache, on by default.** Each chat's reading is saved to disk, so going back to a long chat or restarting Bob is quick, with the same words. The engine keeps a few chats in RAM too, and gives them back before the computer runs short (GUPPI's 512 MB floor), and a chat file cut short by a crash is refused instead of stopping the engine. Built-in engine only; not brains that see pictures.
+- **Find my other Bobs on the phone.** The phone finds your other Bobs on home Wi-Fi and over Tailscale through paired Bobs, and its menu is now in groups.
+- **GUPPI drives by default** (Governor of Unified Placement, Paging, and Inference, the Conductor). With Brain Engine 43 or newer, GUPPI fits the engine to the machine he's on: a brain of experts bigger than the card gets the expert copy cache, a brain without experts keeps Bob's own reading step, and the top reading step comes from the speeds he measured on that computer, not the biggest that fits. If a step leaves the card under its 512 MB margin he steps straight back. "Let Bob pick" and "I'll set them myself" still win when picked.
+- **GUPPI's notes in the chat.** Each engine change gets its own small record in the chat, for you only, never sent to a brain.
+- **Bob's cube.** The live experts map in the porthole, with Help giving the measured cost of Real experts.
+- **Legion Go agent setup guide** (docs/HANDHELD-AGENT-SETUP.md), written for the hardware.
+
+### Fixed
+
+- **The chat cache in RAM no longer runs the computer out of memory.** With the expert copy cache every expert stays in RAM, but the engine's RAM cache of chats was sized as if only the part off the card was there, so with Qwen3.6 35B on a 32 GB computer it could grow past the RAM and the engine was killed. It now counts the whole brain, and in a container (Docker, a rented machine) it counts the container's own memory limit. Found on a rented 16 GB card.
+- **A brain with a picture reader loads on a 16 GB card with the copy cache.** The copy cache filled the card before the picture reader loaded, so the reader found no room and the engine stopped at every load ("cudaMalloc failed: out of memory"). The copy cache now leaves the reader's room free (its file size plus 512 MB). Found on a rented 16 GB card with Qwen3.6 35B.
+- **Brain Engine on Linux runs on older systems and uses its own CUDA part.** The Linux engine is now built on Ubuntu 22.04, so it runs on glibc 2.34 or newer instead of needing 2.43, and it carries our own libggml-cuda.so, built from the same patched source, instead of borrowing the stock one. Its CUDA part needs an NVIDIA driver for CUDA 13 (580 or newer) and the CUDA 13 runtime files; without them the engine runs on the processor. Bob now also puts the engine's own folder on LD_LIBRARY_PATH when he starts it, so the engine finds its own libraries from any folder (before, it stopped at once with "cannot open shared object file"), and when he installs or updates an engine he keeps its library links as they are (before, they pointed at a folder he then deleted, so the same stop came back).
+- **No step, call, reply or time caps.** A reply stuck repeating itself is stopped and said loudly instead.
+- **A long paste's job kind** comes from its ends, not its size.
+- **Tool results cut too early.** Before cutting anything to fit the chat memory, Bob asks the running engine for the exact token count. A 16K-token message in a 32K chat memory was cut on the first reply because of a guess.
+- **GUPPI and brains of experts.** The brain file reader missed the expert count, so a brain of experts bigger than the card never got its expert copy cache. It does now.
+- **Thinking off reaches Inkling.**
+- **A Brain Engine set up by hand on Windows.** A marker file saved by PowerShell starts with a hidden byte-order mark, and Bob read that engine as plain llama.cpp, so GUPPI never drove. It reads now, and a marker that can't be read says so in the logbook.
+
+### Docs
+
+- README: set-up steps for every hardware tier, a Supported brains list made from the catalogue, the Flash-Next cuts (unproven in our lab, as we have yet to test).
+- The dissertation: Flash-Next REAP levels and the 80% cut, tools tested, the engine work of 23 November, GUPPI through Bob's own code path, and reusing chat memory.
+
+**Where it works:** Windows, Mac and Linux. GUPPI needs Brain Engine on a graphics card (Windows or Linux); on a Mac or the Android app replies go ahead as before.
+
+## 1.5.254
+
+KRAFTON's Raon-1 brains are in the catalogue, and I can download brains that need a Hugging Face account.
+
+### New
+
+- **KRAFTON's Raon-1 mini and nano in the Brain catalogue.** A 29B coder that works 4B at a time, and a 3B small brain. They need Brain Engine 37 or newer (this release has 43), and a card on an older engine says so. Their downloads don't need a Hugging Face account.
+- **Brains that need a Hugging Face account.** Some brain makers only let a signed-in account that accepted their terms download their brain. Save a read-only Hugging Face key as HF_TOKEN in 🔐 Locked secrets and switch on **Download brains that need a Hugging Face account** (Settings, How Bob works, Going online), and those brains get a normal Download button. Off to start with.
+- **Your key stays put.** I send it only to huggingface.co, only for those brains, and drop it before Hugging Face hands the file to its storage. Every other download stays signed out. The key is locked like your other keys and never shown or logged.
+
+### Fixed
+
+- **The Conductor and MTP.** While the Conductor drives on a graphics card, MTP stays off. On the test PC, MTP's own working memory still pushed about 200 MB off the card and the job ran 3% slower. Without MTP, the Conductor's job took 36.3 s against plain's 37.0 s, with the same words.
+
+### Docs
+
+- The dissertation's 23 November results: the release gate, the Legion Go runs and the expert RAM test on Linux.
+
+**Where it works:** Windows, Mac and Linux. Bob for Android doesn't download these brains yet, and its phone engine doesn't run Raon.
+
+## 1.5.253
+
+A new engine, Brain Engine 43, and Routines. Long reads are faster, and Bob fits better on built-in graphics.
+
+### New
+
+- **Brain Engine 43** (Settings, How Bob works, Engines). This is llama.cpp b12359 with our own patches, up from Brain Engine 8. Lossless speed-ups are on from the start. Long reads use the experts already on the card where they sit, and read ahead (on the test PC, long reads were 24% faster at 32K and 35% faster at 64K, with the same words). Everything that can change words stays behind Turbo, off.
+- **MTP for everyday brains** is on for brains that come with their own guess-ahead head. It guesses a few words ahead and checks them, so the words don't change.
+- **The Conductor** (Settings, How Bob works, Engine tuning; off to start). It plans the card's memory before loading: the brain, the chat memory, the expert copy cache and the reading step, inside the card with a 512 MB margin. It also picks the reading step for each prompt.
+- **Routines** (Settings, Hands, the Routines Hand; off to start). Build a job by wiring boxes together, like Blueprints, and bring in n8n workflows. While the Hand is on, Bob's menu has a Routines row.
+- **Raon-1 mini and nano** can run on Brain Engine 43. They come into the catalogue in a later release.
+
+### Fixed
+
+- **Built-in graphics (Legion Go and other shared-memory PCs).** I keep Windows' share: the chat memory shrinks to fit, a split brain's processor part stays memory-mapped, and the picture reader goes out when no size fits and comes back for a picture. Memory kept for Windows starts at 0.5 GB. On a Legion Go, gemma4-e2b at 32K went from 25 to 34 of 35 layers on the graphics, wrote 28.7 words a second instead of 17.5, and left 2.55 GB free instead of 1.68 GB, with the same words.
+- **A step switch with MTP on** no longer stops the engine.
+
+**Where it works:** Windows, Mac, Linux and Bob for Android.
+
 ## 1.5.252
 
 Rentals are safer, and you can pick a quant level or finish a robot check yourself.
@@ -132,53 +204,6 @@ Private web, one answer instead of two, and more Lab lessons.
 - The dissertation now follows the locked tool shapes (Qwen shape 4, GPT-OSS shape 3), with new findings in chapter 8 and the rule in chapter 4.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android. Routing and the private browser window are for the desktop app.
-
-## 1.5.245
-
-A new default brain, a backup search with or without a key, and Settings that comes to the front.
-
-### New
-
-- **Bob's default brain is now stock Qwen3.6 35B-A3B; Riker and Bobert are out of the Brain catalogue (files already on a PC still run from Your own brains).** On a 16 GB card it does Brain, Coding and Deep thinking; on an 8 GB card its smaller file does the coding. On the first start after this update, a job set to Riker or Bobert moves to Qwen once, but only if Qwen's file is already on your computer.
-- **Search API keys.** When the free search pages block your computer, I can ask a backup search instead: Brave Search, Marginalia, Mojeek or Tavily with your own key, or Firecrawl with no key at all. No key comes with me, and each one is off until you switch it on. Each has a monthly cap and a Test button, and a saved key is never shown again. Firecrawl gets a small free allowance a day, so I keep to 50 a day and leave it alone for the day if it says that's enough. Find it all in Settings, Connections, Search API keys.
-- **Watching the router.** A new Lab lesson, and a From the research panel that cites other people's papers apart from my own results.
-
-### Fixed
-
-- **Pressing Settings again brings it to the front.** If Settings, the Lab, the fNRI viewer or my thinking window was already open behind other windows or minimised, pressing its button now raises it.
-
-### In the Lab
-
-- The heal keeps the router learning slowly, always in full precision, and can freeze it or record which experts it picks before and after.
-- **Unproven in our lab, as we have yet to test:** reading the code suggests the GPT-OSS router may have been learning at the fast rate. No GPT-OSS heal has run, so no past result changes. A gate now checks the router count before any training, and the first real heal will prove it either way.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android. Bringing windows to the front is for the desktop app.
-
-## 1.5.244
-
-The link log tells the same time as the logbook.
-
-### Fixed
-
-- **The link log no longer reads an hour behind.** The Link log (the notes kept while a brain runs over another Bob's card) stamped its lines with the computer's own clock, which on some Windows PCs is an hour off from the real zone. It now uses the same time zone as the logbook, so the two always agree.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android.
-
-## 1.5.243
-
-Send a whole folder to your other Bob with one Yes, and Journey gets its laptop-test fixes.
-
-### New
-
-- **Send a whole folder over Bob-Net.** Settings, Bob-Net, Files and brains: **Pick a folder**, pick the Bob, **Send it**. He gets one Yes card for all of it (up to 2000 files) instead of one card per file, and it lands in a folder of its own with its folders inside kept as they are. Every file is checked at the end, like always. Links and empty files stay behind.
-- **Journey screenshots.** The README shows six new Journey pictures in a gallery, and every screen is on its own page: the world, towns, fights, every menu and every race.
-
-### Fixed
-
-- **One card per offer.** A send that got no answer and was asked again could leave a second, empty Yes card on the other Bob. Now a send with no answer is taken back, the same send asked again is the same offer, and a card still waiting is swapped for the new one, never two.
-- **Journey on a laptop.** A 720p window fits without scrolling, menus too. The talk box and choices are real windows with sharp words. Elf and pixie ears show with Bob's wide headset look, and the tab icons have an outline so they stand out (Pets is now 🐶).
-
-**Where it works:** Windows, Mac, Linux and Bob for Android. Folder sending works on Windows, Mac and Linux; both Bobs need 1.5.243.
 
 ## Older versions
 
