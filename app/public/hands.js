@@ -367,6 +367,18 @@ function schedHtml(sched, s) {
   </div>`;
 }
 
+// Routines (src/hands-routines.js): the list, a switch each (switching on needs the OK card in the editor), Run now,
+// and the button that opens the Routines editor (public/routines.html), where they are made.
+function routinesHtml(rt, s) {
+  if (!rt) return '';
+  const live = s.enabled && s.routines?.on;
+  return `<div class="hands-routines"><strong>Routines</strong>${live ? '' : ' <span class="muted">(the Routines Hand is off, so none of these run by themselves)</span>'}
+    <p class="muted">Jobs you build yourself by wiring boxes together, like Blueprints. Bob never makes or changes them. Each needs your OK on its card before it runs.</p>
+    ${rt.list.length ? `<ul>${rt.list.map((r) => `<li><label class="switch small"><input type="checkbox" data-hrt="${esc(r.id)}" ${r.on ? 'checked' : ''} ${r.approved && !r.problems.length ? '' : 'disabled'}><span><strong>${esc(r.name)}</strong> <span class="muted">starts ${esc(r.starts)}${r.lastRun ? ` · last run ${esc(r.lastRun.status)}` : ''}</span>${r.paused ? `<br><span class="warn-text">${esc(r.paused)}</span>` : ''}${!r.approved ? '<br><span class="muted">Needs your OK: open it in the editor and press Switch on.</span>' : ''}${r.problems.length ? `<br><span class="warn-text">${r.problems.length} problem${r.problems.length === 1 ? '' : 's'} to fix in the editor</span>` : ''}</span></label> <button type="button" class="link" data-hrtrun="${esc(r.id)}" ${live && r.approved ? '' : 'disabled'}>Run now</button> <button type="button" class="link" data-hrtopen="${esc(r.id)}">Edit</button></li>`).join('')}</ul>` : '<p class="muted">None yet.</p>'}
+    <div class="row"><button type="button" data-hrtopen="">Open the Routines editor</button></div>
+  </div>`;
+}
+
 export function handsSettingsHtml() {
   return '<div class="hands-box"><span class="tag">off unless you turn them on</span><p class="muted">Loading…</p></div>';
 }
@@ -408,6 +420,7 @@ export async function mountHandsSettings(box) {
           <label class="pick"><span>In folder</span><input data-hr="cwd" placeholder="C:\\Users\\you\\Projects\\app"></label>
           <button type="button" data-hsaverecipe>Save recipe</button><span class="muted hr-out"></span></div></details>`}${s.enabled && s.run?.on ? '' : '<p class="muted">Recipes run once the Run programs Hand above is on.</p>'}</div>
       ${schedHtml(sched, s)}
+      ${routinesHtml(rt, s)}
       <div class="hands-journal"><strong>Recent file jobs</strong>
         ${v.journal.length ? `<ul>${v.journal.map((j) => `<li>${esc(when(j.at))}: ${esc(j.label)} ${j.undone ? '<span class="muted">(undone)</span>' : `<button type="button" data-hundo="${esc(j.id)}">Undo</button>`}</li>`).join('')}</ul>` : '<p class="muted">None yet.</p>'}
         <strong>Recent commands</strong>
@@ -435,9 +448,10 @@ export async function mountHandsSettings(box) {
   };
   const say = (t) => { const o = box.querySelector('.hands-out'); if (o) o.textContent = t; };
   const set = async (patch, msg) => { v = await post('/api/hands/settings', patch); draw(); say(msg || 'Saved.'); showStopAll(v.settings.enabled); };
-  let sched = null, selftest = null;
+  let sched = null, selftest = null, rt = null;
   const loadSched = async () => { try { sched = await (await fetch('/api/hands/schedules')).json(); } catch { sched = null; } };
-  await loadSched();
+  const loadRt = async () => { try { const r = await fetch('/api/routines'); rt = r.ok ? await r.json() : null; } catch { rt = null; } };
+  await Promise.all([loadSched(), loadRt()]);
   try { v = await (await fetch('/api/hands')).json(); draw(); } catch (e) { box.innerHTML = `<strong>Hands</strong><p class="muted">Couldn't load: ${esc(e.message)}</p>`; return; }
 
   box.addEventListener('change', async (e) => {
@@ -459,6 +473,7 @@ export async function mountHandsSettings(box) {
       if (el.dataset.hpack) { const r = await post('/api/hands/packs', { id: el.dataset.hpack, on: el.checked }); v = r; draw(); return say(r.note); }
       if (el.dataset.hmcp) { const r = await post('/api/hands/mcp', { id: el.dataset.hmcp, on: el.checked }); v = r; draw(); return say(r.note); }
       if (el.dataset.hsched) { sched = await post('/api/hands/schedules', { id: el.dataset.hsched, on: el.checked }); draw(); return say(el.checked ? 'Schedule on.' : 'Schedule off.'); }
+      if (el.dataset.hrt) { try { await post('/api/routines', { id: el.dataset.hrt, on: el.checked }); await loadRt(); draw(); say(el.checked ? 'Routine on.' : 'Routine off.'); } catch (err) { el.checked = !el.checked; say(err.message); } return; }
       if ('hschedtask' in el.dataset) { try { sched = await post('/api/hands/schedules', { windowsTask: el.checked }); draw(); say(el.checked ? 'Added the "Bob schedules" task: Windows wakes Bob (hidden) when a schedule is due. Remove Bob takes it away too.' : 'Removed the Windows task.'); } catch (err) { el.checked = !el.checked; say(err.message); } return; }
     } catch (err) { say(err.message); }
   });
@@ -540,6 +555,8 @@ export async function mountHandsSettings(box) {
       if ('hmcpimport' in b.dataset) { const r = await post('/api/hands/mcp', { paste: box.querySelector('[data-hmcppaste]').value }); v = r; draw(); return say(r.note); }
       if ('hselftest' in b.dataset) { b.disabled = true; say('Running the self-test (about 10 seconds)…'); selftest = await post('/api/hands/selftest'); draw(); say(`Self-test: ${selftest.passed} of ${selftest.total} passed.`); return; }
       if (b.dataset.hscheddel) { sched = await post('/api/hands/schedules', { remove: b.dataset.hscheddel }); draw(); say('Schedule removed.'); return; }
+      if (b.dataset.hrtopen !== undefined) { const w = window.open(`/routines.html${b.dataset.hrtopen ? `?id=${encodeURIComponent(b.dataset.hrtopen)}` : ''}`, 'bob-routines'); try { w?.focus(); } catch {} return; }
+      if (b.dataset.hrtrun) { try { await post('/api/routines', { runNow: b.dataset.hrtrun }); say('Running. Its results go where its boxes say; the editor shows each step.'); await loadRt(); draw(); } catch (err) { say(err.message); } return; }
       if (b.dataset.hundo) { const r = await post('/api/hands/undo', { id: b.dataset.hundo }); v = r; draw(); say(`Undone.${r.manual?.length ? ` ${r.manual.length} thing(s) are in the Recycle Bin: restore from there.` : ''}${r.failed?.length ? ` Couldn't undo: ${r.failed.join('; ')}` : ''}`); return; }
       if (b.dataset.hrun) { await post('/api/hands/run-recipe', { name: b.dataset.hrun }); say('Running. The output is in the chat.'); return; }
       if (b.dataset.hdelrecipe) { const r = await post('/api/hands/recipes', { remove: b.dataset.hdelrecipe }); v.recipes = r.recipes; draw(); say('Removed.'); return; }

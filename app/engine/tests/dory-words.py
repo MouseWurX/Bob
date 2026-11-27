@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Brain Engine 0126 test: NVIDIA's Dory (looped "latent-recurrent" nGPT, upstream PR #30306), on the processor.
+# Brain Engine 0138 test: NVIDIA's Dory (looped "latent-recurrent" nGPT, upstream PR #30306), on the processor.
 # One thread, because a near-tie between two words on a random brain can flip with the summing order of 4 threads.
 # Makes tiny random Dory brains with the checkout's own gguf-py (1, 2 and 4 loops; per_loop and last_loop key/value memory;
 # a made-up 128-word vocabulary like test-llama-archs uses), so nothing is downloaded. Checks:
@@ -7,7 +7,7 @@
 #   - the loop count changes the words (1 loop vs 2), and the sliding layers' own RoPE base is used (theta_2 changed -> words change)
 #   - with a second checkout built (the PR's own head, or the phone engine with android/patches), the same greedy words
 #   python3 engine/tests/dory-words.py <llama.cpp checkout with the patches, built> [reference checkout, built] [work folder]
-# Nov 27 2026 (cloud, CPU, AVX2): Lamplight b12359 + 0126 and the phone engine (pin 37b0f9c3 + android/patches/0001-dory)
+# Nov 27 2026 (cloud, CPU, AVX2): Lamplight b12359 + 0138 and the phone engine (pin 37b0f9c3 + android/patches/0001-dory)
 # both gave PR #30306 head 8481bd0's words on 24 of 24 (6 brains x 2 prompts x 2 batch sizes).
 import os, subprocess, sys, tempfile, hashlib
 SRC = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else sys.exit('usage: dory-words.py <checkout, built> [reference, built] [work folder]')

@@ -1,0 +1,1015 @@
+diff --git a/ggml/src/ggml-backend.cpp b/ggml/src/ggml-backend.cpp
+index 600a211..b63d1f6 100644
+--- a/ggml/src/ggml-backend.cpp
++++ b/ggml/src/ggml-backend.cpp
+@@ -1031,10 +1031,11 @@ ggml_backend_buffer_t ggml_backend_dev_buffer_from_host_ptr(ggml_backend_dev_t d
+ bool ggml_backend_dev_supports_op(ggml_backend_dev_t device, const struct ggml_tensor * op) {
+     GGML_ASSERT(device);
+     // Brain Engine 0045: flash attention that also writes each row's log-sum-exp is known only to the processor,
+-    // CUDA and card sharing (whose far side checks again); every other back end would leave that slice unwritten
++    // CUDA, Vulkan (Lamplight 0135) and card sharing (whose far side checks again); every other back end would leave that
++    // slice unwritten
+     if (ggml_flash_attn_ext_has_lse(op)) {
+         const char * reg = device->reg ? ggml_backend_reg_name(device->reg) : "";
+-        if (strcmp(reg, "CPU") != 0 && strcmp(reg, "CUDA") != 0 && strncmp(reg, "RPC", 3) != 0) {
++        if (strcmp(reg, "CPU") != 0 && strcmp(reg, "CUDA") != 0 && strcmp(reg, "Vulkan") != 0 && strncmp(reg, "RPC", 3) != 0) {
+             return false;
+         }
+     }
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan-common.h b/ggml/src/ggml-vulkan/ggml-vulkan-common.h
+index b14e0c5..ae7427e 100644
+--- a/ggml/src/ggml-vulkan/ggml-vulkan-common.h
++++ b/ggml/src/ggml-vulkan/ggml-vulkan-common.h
+@@ -34,7 +34,7 @@ bool ggml_vk_intel_windows_driver_in_range(uint32_t driver_version, uint32_t low
+ 
+ // shaders
+ void ggml_vk_destroy_pipeline(vk::Device& device, vk_pipeline& pipeline);
+-vk_fa_tuning_params get_fa_tuning_params(const vk_device& device, uint32_t hsk, uint32_t hsv, uint32_t n_rows, uint32_t n_kv, ggml_type k_type, ggml_type v_type, bool f32acc, uint32_t qk_ratio, bool allow_flip = true);
++vk_fa_tuning_params get_fa_tuning_params(const vk_device& device, uint32_t hsk, uint32_t hsv, uint32_t n_rows, uint32_t n_kv, ggml_type k_type, ggml_type v_type, bool f32acc, uint32_t qk_ratio, bool allow_flip = true, bool force_scalar = false);
+ vk_fa_pipeline_state get_fa_pipeline_state(const vk_device& device, const vk_fa_tuning_params& params, uint32_t hsk, uint32_t hsv, bool aligned, bool f32acc, bool use_mask, bool use_mask_opt, bool use_logit_softcap, bool use_sparse, ggml_type k_type, ggml_type v_type);
+ uint32_t get_subgroup_size(const std::string &pipeline_name, const vk_device_architecture &arch);
+ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested = nullptr);
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan-types.h b/ggml/src/ggml-vulkan/ggml-vulkan-types.h
+index a01e701..1b717c8 100644
+--- a/ggml/src/ggml-vulkan/ggml-vulkan-types.h
++++ b/ggml/src/ggml-vulkan/ggml-vulkan-types.h
+@@ -905,6 +905,7 @@ struct vk_device_struct {
+     vk_pipeline pipeline_contig_cpy_32, pipeline_contig_cpy_f32_f16, pipeline_contig_cpy_16, pipeline_contig_cpy_f16_f32, pipeline_contig_cpy_f32_bf16, pipeline_contig_cpy_bf16_f32, pipeline_contig_cpy_bf16_f16, pipeline_contig_cpy_f32_i32, pipeline_contig_cpy_i32_f32;
+     vk_pipeline pipeline_cpy_f32_quant[GGML_TYPE_COUNT];
+     vk_pipeline pipeline_cpy_quant_f32[GGML_TYPE_COUNT];
++    vk_pipeline pipeline_cpy_quant_f16[GGML_TYPE_COUNT]; // Lamplight 0135
+     vk_pipeline pipeline_cpy_transpose_16, pipeline_cpy_transpose_32;
+     vk_pipeline pipeline_cpy_transpose_02_16, pipeline_cpy_transpose_02_32;
+     // [src0 0=fp32,1=fp16][dst]
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+index e87c022..3c63a1f 100644
+--- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
++++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+@@ -1391,13 +1391,19 @@ static vk_fa_tuning_params get_fa_tuning_params_coopmat2(const vk_device& device
+     return result;
+ }
+ 
+-vk_fa_tuning_params get_fa_tuning_params(const vk_device& device, uint32_t hsk, uint32_t hsv, uint32_t n_rows, uint32_t n_kv, ggml_type k_type, ggml_type v_type, bool f32acc, uint32_t qk_ratio, bool allow_flip) {
+-    FaCodePath path = device->coopmat2 ? FA_COOPMAT2 :
++vk_fa_tuning_params get_fa_tuning_params(const vk_device& device, uint32_t hsk, uint32_t hsv, uint32_t n_rows, uint32_t n_kv, ggml_type k_type, ggml_type v_type, bool f32acc, uint32_t qk_ratio, bool allow_flip, bool force_scalar) {
++    // Lamplight 0135: force_scalar for flash attention that hands back its log-sum-exp (only the scalar shader writes it)
++    FaCodePath path = force_scalar ? FA_SCALAR :
++                      device->coopmat2 ? FA_COOPMAT2 :
+                       device->coopmat1_fa_support ? FA_COOPMAT1 : FA_SCALAR;
+ 
+     if (path == FA_COOPMAT2 && k_type == GGML_TYPE_BF16 && !device->coopmat2_bf16_support) {
+         path = FA_COOPMAT1;
+     }
++    // Lamplight 0135: the coopmat2 shader has no decode for the 3-bit and 2-bit chat memory, so those use coopmat1 or scalar
++    if (path == FA_COOPMAT2 && (k_type == GGML_TYPE_Q3_0 || k_type == GGML_TYPE_Q2_KV || v_type == GGML_TYPE_Q3_0 || v_type == GGML_TYPE_Q2_KV)) {
++        path = device->coopmat1_fa_support ? FA_COOPMAT1 : FA_SCALAR;
++    }
+     if (path == FA_COOPMAT1 && k_type == GGML_TYPE_BF16 && !device->coopmat_bf16_support) {
+         path = FA_SCALAR;
+     }
+@@ -3519,6 +3525,9 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_IQ4_XS],  "get_rows_iq4_xs",  get_rows_iq4_xs_len,  get_rows_iq4_xs_data,  "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_IQ4_NL],  "get_rows_iq4_nl",  get_rows_iq4_nl_len,  get_rows_iq4_nl_data,  "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_MXFP4],   "get_rows_mxfp4",   get_rows_mxfp4_len,   get_rows_mxfp4_data,   "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
++    // Lamplight 0135: the 3-bit and 2-bit chat memory types
++    ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_Q3_0], "get_rows_q3_0", get_rows_q3_0_len, get_rows_q3_0_data, "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
++    ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_Q2_KV], "get_rows_q2_kv", get_rows_q2_kv_len, get_rows_q2_kv_data, "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_NVFP4],   "get_rows_nvfp4",   get_rows_nvfp4_len,   get_rows_nvfp4_data,   "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_I32],     "get_rows_i32",     get_rows_i32_len,     get_rows_i32_data,     "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+ 
+@@ -3549,6 +3558,8 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows_f32[GGML_TYPE_IQ4_XS],  "get_rows_iq4_xs_f32",  get_rows_iq4_xs_f32_len,  get_rows_iq4_xs_f32_data,  "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows_f32[GGML_TYPE_IQ4_NL],  "get_rows_iq4_nl_f32",  get_rows_iq4_nl_f32_len,  get_rows_iq4_nl_f32_data,  "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows_f32[GGML_TYPE_MXFP4],   "get_rows_mxfp4_f32",   get_rows_mxfp4_f32_len,   get_rows_mxfp4_f32_data,   "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
++    ggml_vk_create_pipeline(device, device->pipeline_get_rows_f32[GGML_TYPE_Q3_0], "get_rows_q3_0_f32", get_rows_q3_0_f32_len, get_rows_q3_0_f32_data, "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1); // Lamplight 0135
++    ggml_vk_create_pipeline(device, device->pipeline_get_rows_f32[GGML_TYPE_Q2_KV], "get_rows_q2_kv_f32", get_rows_q2_kv_f32_len, get_rows_q2_kv_f32_data, "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows_f32[GGML_TYPE_NVFP4],   "get_rows_nvfp4_f32",   get_rows_nvfp4_f32_len,   get_rows_nvfp4_f32_data,   "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows_back_f32, "get_rows_back_f32", get_rows_back_f32_len, get_rows_back_f32_data, "main", 3, sizeof(vk_op_binary_push_constants), {256, 1, 1}, {}, 1, true);
+ 
+@@ -3693,6 +3704,8 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+     ggml_vk_create_pipeline(device, device->pipeline_cpy_f32_quant[GGML_TYPE_Q5_0], "cpy_f32_q5_0", cpy_f32_q5_0_len, cpy_f32_q5_0_data, "main", 2, sizeof(vk_op_unary_push_constants), {32, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_cpy_f32_quant[GGML_TYPE_Q5_1], "cpy_f32_q5_1", cpy_f32_q5_1_len, cpy_f32_q5_1_data, "main", 2, sizeof(vk_op_unary_push_constants), {32, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_cpy_f32_quant[GGML_TYPE_Q8_0], "cpy_f32_q8_0", cpy_f32_q8_0_len, cpy_f32_q8_0_data, "main", 2, sizeof(vk_op_unary_push_constants), {32, 1, 1}, {}, 1);
++    ggml_vk_create_pipeline(device, device->pipeline_cpy_f32_quant[GGML_TYPE_Q3_0], "cpy_f32_q3_0", cpy_f32_q3_0_len, cpy_f32_q3_0_data, "main", 2, sizeof(vk_op_unary_push_constants), {32, 1, 1}, {}, 1); // Lamplight 0135
++    ggml_vk_create_pipeline(device, device->pipeline_cpy_f32_quant[GGML_TYPE_Q2_KV], "cpy_f32_q2_kv", cpy_f32_q2_kv_len, cpy_f32_q2_kv_data, "main", 2, sizeof(vk_op_unary_push_constants), {32, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_cpy_f32_quant[GGML_TYPE_IQ4_NL], "cpy_f32_iq4_nl", cpy_f32_iq4_nl_len, cpy_f32_iq4_nl_data, "main", 2, sizeof(vk_op_unary_push_constants), {32, 1, 1}, {}, 1);
+ 
+ #define SET_ROWS(src_idx, src, itype) \
+@@ -3706,7 +3719,9 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+         ggml_vk_create_pipeline(device, device->pipeline_set_rows ## itype [src_idx][GGML_TYPE_Q5_0], "set_rows_" #src "_q5_0" #itype, set_rows_ ## src ## _q5_0 ## itype ## _len, set_rows_ ## src ## _q5_0 ## itype ## _data, "main", 3, sizeof(vk_op_binary_push_constants), {1, 1, 1}, {1}, 1, true); \
+         ggml_vk_create_pipeline(device, device->pipeline_set_rows ## itype [src_idx][GGML_TYPE_Q5_1], "set_rows_" #src "_q5_1" #itype, set_rows_ ## src ## _q5_1 ## itype ## _len, set_rows_ ## src ## _q5_1 ## itype ## _data, "main", 3, sizeof(vk_op_binary_push_constants), {1, 1, 1}, {1}, 1, true); \
+         ggml_vk_create_pipeline(device, device->pipeline_set_rows ## itype [src_idx][GGML_TYPE_Q8_0], "set_rows_" #src "_q8_0" #itype, set_rows_ ## src ## _q8_0 ## itype ## _len, set_rows_ ## src ## _q8_0 ## itype ## _data, "main", 3, sizeof(vk_op_binary_push_constants), {1, 1, 1}, {1}, 1, true); \
+-        ggml_vk_create_pipeline(device, device->pipeline_set_rows ## itype [src_idx][GGML_TYPE_IQ4_NL], "set_rows_" #src "_iq4_nl" #itype, set_rows_ ## src ## _iq4_nl ## itype ## _len, set_rows_ ## src ## _iq4_nl ## itype ## _data, "main", 3, sizeof(vk_op_binary_push_constants), {1, 1, 1}, {1}, 1, true);
++        ggml_vk_create_pipeline(device, device->pipeline_set_rows ## itype [src_idx][GGML_TYPE_IQ4_NL], "set_rows_" #src "_iq4_nl" #itype, set_rows_ ## src ## _iq4_nl ## itype ## _len, set_rows_ ## src ## _iq4_nl ## itype ## _data, "main", 3, sizeof(vk_op_binary_push_constants), {1, 1, 1}, {1}, 1, true); \
++        ggml_vk_create_pipeline(device, device->pipeline_set_rows ## itype [src_idx][GGML_TYPE_Q3_0], "set_rows_" #src "_q3_0" #itype, set_rows_ ## src ## _q3_0 ## itype ## _len, set_rows_ ## src ## _q3_0 ## itype ## _data, "main", 3, sizeof(vk_op_binary_push_constants), {1, 1, 1}, {1}, 1, true); \
++        ggml_vk_create_pipeline(device, device->pipeline_set_rows ## itype [src_idx][GGML_TYPE_Q2_KV], "set_rows_" #src "_q2_kv" #itype, set_rows_ ## src ## _q2_kv ## itype ## _len, set_rows_ ## src ## _q2_kv ## itype ## _data, "main", 3, sizeof(vk_op_binary_push_constants), {1, 1, 1}, {1}, 1, true);
+ 
+     SET_ROWS(0, f32, _i32)
+     SET_ROWS(0, f32, _i64)
+@@ -3716,6 +3731,8 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+ 
+ 
+     ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f32[GGML_TYPE_Q1_0], "cpy_q1_0_f32", cpy_q1_0_f32_len, cpy_q1_0_f32_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q1_0), 1, 1}, {}, 1);
++    ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f32[GGML_TYPE_Q3_0], "cpy_q3_0_f32", cpy_q3_0_f32_len, cpy_q3_0_f32_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q3_0), 1, 1}, {}, 1); // Lamplight 0135
++    ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f32[GGML_TYPE_Q2_KV], "cpy_q2_kv_f32", cpy_q2_kv_f32_len, cpy_q2_kv_f32_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q2_KV), 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f32[GGML_TYPE_Q2_0], "cpy_q2_0_f32", cpy_q2_0_f32_len, cpy_q2_0_f32_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q2_0), 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f32[GGML_TYPE_Q4_0], "cpy_q4_0_f32", cpy_q4_0_f32_len, cpy_q4_0_f32_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q4_0), 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f32[GGML_TYPE_Q4_1], "cpy_q4_1_f32", cpy_q4_1_f32_len, cpy_q4_1_f32_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q4_1), 1, 1}, {}, 1);
+@@ -3723,6 +3740,17 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+     ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f32[GGML_TYPE_Q5_1], "cpy_q5_1_f32", cpy_q5_1_f32_len, cpy_q5_1_f32_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q5_1), 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f32[GGML_TYPE_Q8_0], "cpy_q8_0_f32", cpy_q8_0_f32_len, cpy_q8_0_f32_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q8_0), 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f32[GGML_TYPE_IQ4_NL], "cpy_iq4_nl_f32", cpy_iq4_nl_f32_len, cpy_iq4_nl_f32_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_IQ4_NL), 1, 1}, {}, 1);
++    // Lamplight 0135: a quantized cache read as f16 (Progressive Memory overlay, 0039)
++    ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f16[GGML_TYPE_Q1_0], "cpy_q1_0_f16", cpy_q1_0_f16_len, cpy_q1_0_f16_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q1_0), 1, 1}, {}, 1);
++    ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f16[GGML_TYPE_Q2_0], "cpy_q2_0_f16", cpy_q2_0_f16_len, cpy_q2_0_f16_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q2_0), 1, 1}, {}, 1);
++    ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f16[GGML_TYPE_Q4_0], "cpy_q4_0_f16", cpy_q4_0_f16_len, cpy_q4_0_f16_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q4_0), 1, 1}, {}, 1);
++    ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f16[GGML_TYPE_Q4_1], "cpy_q4_1_f16", cpy_q4_1_f16_len, cpy_q4_1_f16_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q4_1), 1, 1}, {}, 1);
++    ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f16[GGML_TYPE_Q5_0], "cpy_q5_0_f16", cpy_q5_0_f16_len, cpy_q5_0_f16_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q5_0), 1, 1}, {}, 1);
++    ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f16[GGML_TYPE_Q5_1], "cpy_q5_1_f16", cpy_q5_1_f16_len, cpy_q5_1_f16_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q5_1), 1, 1}, {}, 1);
++    ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f16[GGML_TYPE_Q8_0], "cpy_q8_0_f16", cpy_q8_0_f16_len, cpy_q8_0_f16_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q8_0), 1, 1}, {}, 1);
++    ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f16[GGML_TYPE_IQ4_NL], "cpy_iq4_nl_f16", cpy_iq4_nl_f16_len, cpy_iq4_nl_f16_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_IQ4_NL), 1, 1}, {}, 1);
++    ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f16[GGML_TYPE_Q3_0], "cpy_q3_0_f16", cpy_q3_0_f16_len, cpy_q3_0_f16_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q3_0), 1, 1}, {}, 1);
++    ggml_vk_create_pipeline(device, device->pipeline_cpy_quant_f16[GGML_TYPE_Q2_KV], "cpy_q2_kv_f16", cpy_q2_kv_f16_len, cpy_q2_kv_f16_data, "main", 2, sizeof(vk_op_unary_push_constants), {(uint32_t)ggml_blck_size(GGML_TYPE_Q2_KV), 1, 1}, {}, 1);
+ 
+     auto get_suffix = [](bool src0_f16, bool src1_f16, bool dst_f16) {
+         std::string s;
+@@ -6806,6 +6834,8 @@ vk_pipeline ggml_vk_get_cpy_pipeline(ggml_backend_vk_context * ctx, const ggml_t
+         case GGML_TYPE_Q5_1:
+         case GGML_TYPE_Q8_0:
+         case GGML_TYPE_IQ4_NL:
++        case GGML_TYPE_Q3_0:  // Lamplight 0135
++        case GGML_TYPE_Q2_KV: // Lamplight 0135
+             return ctx->device->pipeline_cpy_f32_quant[to];
+         default:
+             break;
+@@ -6822,12 +6852,32 @@ vk_pipeline ggml_vk_get_cpy_pipeline(ggml_backend_vk_context * ctx, const ggml_t
+         case GGML_TYPE_Q5_1:
+         case GGML_TYPE_Q8_0:
+         case GGML_TYPE_IQ4_NL:
++        case GGML_TYPE_Q3_0:  // Lamplight 0135
++        case GGML_TYPE_Q2_KV: // Lamplight 0135
+             return ctx->device->pipeline_cpy_quant_f32[src->type];
+         default:
+             break;
+         }
+     }
+ 
++    if (to == GGML_TYPE_F16) { // Lamplight 0135: quantized cache read as f16 (0039)
++        switch (src->type) {
++        case GGML_TYPE_Q1_0:
++        case GGML_TYPE_Q2_0:
++        case GGML_TYPE_Q4_0:
++        case GGML_TYPE_Q4_1:
++        case GGML_TYPE_Q5_0:
++        case GGML_TYPE_Q5_1:
++        case GGML_TYPE_Q8_0:
++        case GGML_TYPE_IQ4_NL:
++        case GGML_TYPE_Q3_0:
++        case GGML_TYPE_Q2_KV:
++            return ctx->device->pipeline_cpy_quant_f16[src->type];
++        default:
++            break;
++        }
++    }
++
+     if (src->type == to) {
+         // Copy two or four bytes at a time, depending on block size.
+         // For quantized types, we scale by block size/type size. But
+@@ -8835,7 +8885,9 @@ void ggml_vk_flash_attn(ggml_backend_vk_context * ctx, vk_context& subctx, const
+     const ggml_type v_type_eff = (use_dequant_kv && !kv_raw_strided) ? GGML_TYPE_F16 : v->type;
+ 
+     // N=32 avoids the cm1 prefill block_rows doubling
+-    vk_fa_tuning_params tuning_params = get_fa_tuning_params(ctx->device, HSK, HSV, 32, KV, k_type_eff, v_type_eff, f32acc, qk_ratio);
++    // Lamplight 0135: Progressive Memory's flash attention with its log-sum-exp (0045) runs the scalar shader, which writes it
++    const bool with_lse = ggml_flash_attn_ext_has_lse(dst);
++    vk_fa_tuning_params tuning_params = get_fa_tuning_params(ctx->device, HSK, HSV, 32, KV, k_type_eff, v_type_eff, f32acc, qk_ratio, true, with_lse);
+     const uint32_t max_gqa = std::min(tuning_params.block_rows, 32u);
+ 
+     if (N <= 8 && qk_ratio > 1 && qk_ratio <= max_gqa &&
+@@ -8848,7 +8900,7 @@ void ggml_vk_flash_attn(ggml_backend_vk_context * ctx, vk_context& subctx, const
+         workgroups_y /= gqa_ratio;
+     }
+ 
+-    tuning_params = get_fa_tuning_params(ctx->device, HSK, HSV, N, KV, k_type_eff, v_type_eff, f32acc, qk_ratio);
++    tuning_params = get_fa_tuning_params(ctx->device, HSK, HSV, N, KV, k_type_eff, v_type_eff, f32acc, qk_ratio, true, with_lse);
+ 
+     float scale         = 1.0f;
+     float max_bias      = 0.0f;
+@@ -8874,7 +8926,7 @@ void ggml_vk_flash_attn(ggml_backend_vk_context * ctx, vk_context& subctx, const
+         return (t->type != GGML_TYPE_F16 && t->type != GGML_TYPE_BF16) ||
+                (t->nb[1] | t->nb[2] | t->nb[3]) % (4 * sizeof(ggml_fp16_t)) == 0;
+     };
+-    const bool use_sparse = !disable_sparse && n_kv_max > 0 && mask &&
++    const bool use_sparse = !disable_sparse && !with_lse && n_kv_max > 0 && mask &&
+                             max_bias == 0.0f && logit_softcap == 0.0f &&
+                             (tuning_params.path != FA_COOPMAT2 || (sparse_gather_aligned(k) && sparse_gather_aligned(v))) &&
+                             nem0 == KV &&
+@@ -8921,7 +8973,7 @@ void ggml_vk_flash_attn(ggml_backend_vk_context * ctx, vk_context& subctx, const
+         const bool kv_16b = use_dequant_kv ||
+             (((uintptr_t)k->data | (uintptr_t)v->data | nbk2_eff | nbk3_eff | nbv2_eff | nbv3_eff) % 16) == 0;
+         if (!aligned || use_sparse || gqa_ratio != 1 || !kv_16b) {
+-            tuning_params = get_fa_tuning_params(ctx->device, HSK, HSV, N, KV, k_type_eff, v_type_eff, f32acc, qk_ratio, false);
++            tuning_params = get_fa_tuning_params(ctx->device, HSK, HSV, N, KV, k_type_eff, v_type_eff, f32acc, qk_ratio, false, with_lse);
+             alignment = tuning_params.block_cols;
+             aligned = fa_aligned(tuning_params);
+         }
+@@ -8952,7 +9004,7 @@ void ggml_vk_flash_attn(ggml_backend_vk_context * ctx, vk_context& subctx, const
+                                  tensor_aligned_with(k, 16u) && tensor_aligned_with(v, 16u);
+     bool xe_fa_supported_dtype = q->type == GGML_TYPE_F32 && k->type == GGML_TYPE_F16 && v->type == GGML_TYPE_F16 &&
+                                  mask != nullptr && mask->type == GGML_TYPE_F16;
+-    xe_fa_opt = xe_fa_supported_platform && xe_fa_supported_usage && xe_fa_supported_dtype;
++    xe_fa_opt = xe_fa_supported_platform && xe_fa_supported_usage && xe_fa_supported_dtype && !with_lse; // Lamplight 0135
+     std::pair<vk_pipeline, vk_pipeline> xe_fa_pipeline_dual_phases = { nullptr , nullptr };
+     vk_pipeline xe_fa_pipeline = nullptr;
+     size_t size_q_staging = 0;
+@@ -9228,7 +9280,7 @@ void ggml_vk_flash_attn(ggml_backend_vk_context * ctx, vk_context& subctx, const
+         v_buf = v_dst;
+     }
+ 
+-    uint32_t mask_n_head_log2 = ((sinks != nullptr) << 24) | n_head_log2;
++    uint32_t mask_n_head_log2 = ((uint32_t) with_lse << 25) | ((sinks != nullptr) << 24) | n_head_log2; // Lamplight 0135: bit 25, write the log-sum-exp
+ 
+     if (use_mask_opt)
+     {
+@@ -9357,10 +9409,11 @@ void ggml_vk_flash_attn(ggml_backend_vk_context * ctx, vk_context& subctx, const
+                                     pc, { dispatch_x, workgroups_y, workgroups_z });
+ 
+         ggml_vk_sync_buffers(ctx, subctx);
+-        const vk_op_flash_attn_split_k_reduce_push_constants pc2 = { HSV, (uint32_t)ne1, (uint32_t)ne2, (uint32_t)ne3, split_k, (sinks != nullptr) };
++        // Lamplight 0135: bit 1 of sinks: write the log-sum-exp too, into dst's last slice of dim 3, which holds no output
++        const vk_op_flash_attn_split_k_reduce_push_constants pc2 = { HSV, (uint32_t)ne1, (uint32_t)ne2, (uint32_t)ne3, split_k, (uint32_t)(sinks != nullptr) | ((uint32_t) with_lse << 1) };
+         ggml_vk_dispatch_pipeline(ctx, subctx, ctx->device->pipeline_flash_attn_split_k_reduce,
+                                     {split_k_buf, sinks_buf, dst_buf},
+-                                    pc2, { (uint32_t)ne1, HSV, (uint32_t)(ne2 * ne3) });
++                                    pc2, { (uint32_t)ne1, HSV, (uint32_t)(ne2 * (ne3 - (with_lse ? 1 : 0))) });
+         ctx->prealloc_split_k_need_sync = true;
+     } else {
+         if (gqa_ratio > 1) {
+@@ -16514,6 +16567,8 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+                     case GGML_TYPE_Q4_1:
+                     case GGML_TYPE_Q4_0:
+                     case GGML_TYPE_IQ4_NL:
++                    case GGML_TYPE_Q3_0:  // Lamplight 0135: the 3-bit and 2-bit chat memory (scalar and coopmat1 paths)
++                    case GGML_TYPE_Q2_KV:
+                         return true;
+                     default:
+                         return false;
+@@ -16563,6 +16618,8 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+                     case GGML_TYPE_TQ1_0:
+                     case GGML_TYPE_TQ2_0:
+                     case GGML_TYPE_I32:
++                    case GGML_TYPE_Q3_0:  // Lamplight 0135
++                    case GGML_TYPE_Q2_KV: // Lamplight 0135
+                         return true;
+                     default:
+                         return false;
+@@ -16588,6 +16645,8 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+                     case GGML_TYPE_Q5_1:
+                     case GGML_TYPE_Q8_0:
+                     case GGML_TYPE_IQ4_NL:
++                    case GGML_TYPE_Q3_0:  // Lamplight 0135
++                    case GGML_TYPE_Q2_KV: // Lamplight 0135
+                         return true;
+                     default:
+                         return false;
+@@ -16613,6 +16672,8 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+                     case GGML_TYPE_Q5_1:
+                     case GGML_TYPE_Q8_0:
+                     case GGML_TYPE_IQ4_NL:
++                    case GGML_TYPE_Q3_0:  // Lamplight 0135
++                    case GGML_TYPE_Q2_KV: // Lamplight 0135
+                         return true;
+                     default:
+                         break;
+@@ -16630,12 +16691,31 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+                     case GGML_TYPE_Q5_1:
+                     case GGML_TYPE_Q8_0:
+                     case GGML_TYPE_IQ4_NL:
++                    case GGML_TYPE_Q3_0:  // Lamplight 0135
++                    case GGML_TYPE_Q2_KV: // Lamplight 0135
+                         return true;
+                     default:
+                         break;
+                     }
+                 }
+ 
++                if (src1_type == GGML_TYPE_F16) { // Lamplight 0135: quantized cache read as f16 (0039)
++                    switch (src0_type) {
++                    case GGML_TYPE_Q1_0:
++                    case GGML_TYPE_Q2_0:
++                    case GGML_TYPE_Q4_0:
++                    case GGML_TYPE_Q4_1:
++                    case GGML_TYPE_Q5_0:
++                    case GGML_TYPE_Q5_1:
++                    case GGML_TYPE_Q8_0:
++                    case GGML_TYPE_IQ4_NL:
++                    case GGML_TYPE_Q3_0:
++                    case GGML_TYPE_Q2_KV:
++                        return true;
++                    default:
++                        break;
++                    }
++                }
+                 if (src0_type == GGML_TYPE_F16 && src1_type == GGML_TYPE_F16) {
+                     return true;
+                 }
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/copy_from_quant.comp b/ggml/src/ggml-vulkan/vulkan-shaders/copy_from_quant.comp
+index 6a69214..19c9538 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/copy_from_quant.comp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/copy_from_quant.comp
+@@ -37,15 +37,15 @@ void main() {
+         v = v * dm.x + vec4(dm.y);
+ 
+ #if QUANT_R == 2
+-        data_d[dst_idx + j/2 +             0] = v[0];
+-        data_d[dst_idx + j/2 + QUANT_K/2 + 0] = v[1];
+-        data_d[dst_idx + j/2 +             1] = v[2];
+-        data_d[dst_idx + j/2 + QUANT_K/2 + 1] = v[3];
++        data_d[dst_idx + j/2 +             0] = D_TYPE(v[0]);
++        data_d[dst_idx + j/2 + QUANT_K/2 + 0] = D_TYPE(v[1]);
++        data_d[dst_idx + j/2 +             1] = D_TYPE(v[2]);
++        data_d[dst_idx + j/2 + QUANT_K/2 + 1] = D_TYPE(v[3]);
+ #else
+-        data_d[dst_idx + j + 0] = v[0];
+-        data_d[dst_idx + j + 1] = v[1];
+-        data_d[dst_idx + j + 2] = v[2];
+-        data_d[dst_idx + j + 3] = v[3];
++        data_d[dst_idx + j + 0] = D_TYPE(v[0]);
++        data_d[dst_idx + j + 1] = D_TYPE(v[1]);
++        data_d[dst_idx + j + 2] = D_TYPE(v[2]);
++        data_d[dst_idx + j + 3] = D_TYPE(v[3]);
+ #endif
+     }
+ }
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/copy_to_quant.comp b/ggml/src/ggml-vulkan/vulkan-shaders/copy_to_quant.comp
+index 776e9b8..1faf61a 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/copy_to_quant.comp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/copy_to_quant.comp
+@@ -238,6 +238,132 @@ void quantize(uint dst_idx, uint src_idx)
+ }
+ #endif
+ 
++// Lamplight 0135: the 3-bit chat memory (0038), as quantize_row_q3_0_ref: d = the value of largest size / -4,
++// codes 0..7 for -4..3
++#if defined(DATA_A_Q3_0)
++void quantize(uint dst_idx, uint src_idx)
++{
++    float amax = 0.0;
++    float vmax = 0.0;
++
++    [[unroll]] for (int j = 0; j < QUANT_K_Q3_0; ++j) {
++        const float v = float(data_s[src_idx + j]);
++        if (amax < abs(v)) {
++            amax = abs(v);
++            vmax = v;
++        }
++    }
++
++    const float d  = vmax / -4;
++    const float id = (d != 0.0) ? 1.0/d : 0.0;
++
++    data_q[dst_idx].d = float16_t(d);
++
++    uint qs = 0u, qh = 0u;
++    [[unroll]] for (int j = 0; j < QUANT_K_Q3_0; ++j) {
++        precise float x = float(data_s[src_idx + j])*id;
++        const uint c = uint(clamp(int(floor(x + 4.5)), 0, 7));
++        if (j % 4 == 0) { qs = 0u; }
++        qs |= (c & 3u) << (2u*uint(j % 4));
++        qh |= ((c >> 2u) & 1u) << uint(j);
++        if (j % 4 == 3) { data_q[dst_idx].qs[j/4] = uint8_t(qs); }
++    }
++    [[unroll]] for (int j = 0; j < QUANT_K_Q3_0/8; ++j) {
++        data_q[dst_idx].qh[j] = uint8_t((qh >> (8u*uint(j))) & 0xFFu);
++    }
++}
++#endif
++
++// Lamplight 0135: the 2-bit chat memory (0046), as quantize_row_q2_kv_ref: d = the largest size / each divisor, the one
++// with the least squared error kept (the first on a tie); values rounded to the nearest of -1.5, -0.5, 0.5, 1.5 times d.
++// Every product is rounded on its own (precise), like the processor's and CUDA's writers, so all pick the same d.
++#if defined(DATA_A_Q2_KV)
++// a/b for positive a, b, rounded to nearest like the processor's division: GLSL's own division may be a few ulp off,
++// so the nearest of the quotient and its neighbours is taken by the exact remainder a - q*b (one fused multiply-add)
++float q2_kv_div_rn(float a, float b)
++{
++    precise float q = a / b;
++    precise float r0 = fma(-q, b, a);
++    precise float y = 1.0 / b;
++    q = fma(r0, y, q);
++    float best = q;
++    precise float best_r = abs(fma(-q, b, a));
++    [[unroll]] for (int k = -2; k <= 2; ++k) {
++        if (k == 0) { continue; }
++        const float c = uintBitsToFloat(uint(int(floatBitsToUint(q)) + k));
++        precise float rc = abs(fma(-c, b, a));
++        if (rc < best_r || (rc == best_r && (floatBitsToUint(c) & 1u) == 0u)) {
++            best = c;
++            best_r = rc;
++        }
++    }
++    return best;
++}
++
++// x (0 or more) rounded to the nearest f16 value, ties to even, as the processor's GGML_FP32_TO_FP16, done on the bits:
++// a plain float(float16_t(x)) may be folded away by the shader compiler (lavapipe does), and then d isn't d as stored
++float q2_kv_round_f16(float x)
++{
++    const uint b = floatBitsToUint(x);
++    const int  e = int((b >> 23) & 0xFFu) - 127;
++    if (e < -25) { return 0.0; }
++    if (e >= 16) { return 65504.0; }
++    if (e == -25) { return x > uintBitsToFloat(0x33000000u) ? uintBitsToFloat(0x33800000u) : 0.0; } // 2^-25: half of 2^-24
++    const uint shift = e >= -14 ? 13u : uint(13 + (-14 - e));
++    const uint unit  = 1u << shift;
++    const uint rem   = b & (unit - 1u);
++    uint r = b & ~(unit - 1u);
++    if (rem > (unit >> 1) || (rem == (unit >> 1) && (r & unit) != 0u)) { r += unit; }
++    return min(uintBitsToFloat(r), 65504.0);
++}
++
++void quantize(uint dst_idx, uint src_idx)
++{
++    const float ks[4] = { 1.5f, 1.7f, 1.9f, 2.2f };
++    float amax = 0.0;
++
++    [[unroll]] for (int j = 0; j < QUANT_K_Q2_KV; ++j) {
++        amax = max(amax, abs(float(data_s[src_idx + j])));
++    }
++
++    float best_err = 0.0;
++    float best_d   = 0.0;
++    uint  best_qs  = 0u, best_qs2 = 0u;
++
++    [[unroll]] for (int s = 0; s < 4; ++s) {
++        // d as stored (f16, rounded on the bits)
++        precise float d  = q2_kv_round_f16(q2_kv_div_rn(amax, ks[s]));
++        precise float id = d != 0.0 ? q2_kv_div_rn(1.0, d) : 0.0;
++        precise float hd = 0.5*d;
++
++        uint q0 = 0u, q1 = 0u;
++        precise float err = 0.0;
++        [[unroll]] for (int j = 0; j < QUANT_K_Q2_KV; ++j) {
++            const float xj = float(data_s[src_idx + j]);
++            precise float p = xj*id;
++            precise float t = p + 2.0;
++            const uint c = uint(clamp(int(floor(t)), 0, 3));
++            if (j < 16) { q0 |= c << (2u*uint(j)); } else { q1 |= c << (2u*uint(j - 16)); }
++            precise float e = xj - float(2*int(c) - 3)*hd;
++            precise float ee = e*e;
++            err += ee;
++        }
++        if (s == 0 || err < best_err) {
++            best_err = err;
++            best_d   = d;
++            best_qs  = q0;
++            best_qs2 = q1;
++        }
++    }
++
++    data_q[dst_idx].d = float16_t(best_d);
++    [[unroll]] for (int j = 0; j < 4; ++j) {
++        data_q[dst_idx].qs[j]     = uint8_t((best_qs  >> (8u*uint(j))) & 0xFFu);
++        data_q[dst_idx].qs[j + 4] = uint8_t((best_qs2 >> (8u*uint(j))) & 0xFFu);
++    }
++}
++#endif
++
+ #if defined(DATA_A_IQ4_NL)
+ uint best_index(float x) {
+     if (x <= kvalues_iq4nl[0]) return 0;
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/dequant_funcs.glsl b/ggml/src/ggml-vulkan/vulkan-shaders/dequant_funcs.glsl
+index 911ceac..736c23d 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/dequant_funcs.glsl
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/dequant_funcs.glsl
+@@ -155,6 +155,38 @@ vec4 dequantize4(uint ib, uint iqs, uint a_offset) {
+ }
+ #endif
+ 
++// Lamplight 0135: q3_0 codes c = 0..7 for (c - 4) * d; q2_kv codes c = 0..3 for (2c - 3) * d/2 (get_dm gives d/2)
++#if defined(DATA_A_Q3_0)
++uint q3_0_code(uint ib, uint j, uint a_offset) {
++    return ((uint(data_a[a_offset + ib].qs[j / 4u]) >> (2u * (j % 4u))) & 3u) |
++           (((uint(data_a[a_offset + ib].qh[j / 8u]) >> (j % 8u)) & 1u) << 2u);
++}
++vec2 dequantize(uint ib, uint iqs, uint a_offset) {
++    return vec2(q3_0_code(ib, iqs, a_offset), q3_0_code(ib, iqs + 1u, a_offset)) - 4.0f;
++}
++vec4 dequantize4(uint ib, uint iqs, uint a_offset) {
++    return vec4(q3_0_code(ib, iqs, a_offset), q3_0_code(ib, iqs + 1u, a_offset),
++                q3_0_code(ib, iqs + 2u, a_offset), q3_0_code(ib, iqs + 3u, a_offset)) - 4.0f;
++}
++vec2 get_dm(uint ib, uint a_offset) {
++    return vec2(float(data_a[a_offset + ib].d), 0);
++}
++#endif
++
++#if defined(DATA_A_Q2_KV)
++vec2 dequantize(uint ib, uint iqs, uint a_offset) {
++    const uint bits = uint(data_a[a_offset + ib].qs[iqs / 4u]) >> (2u * (iqs % 4u));
++    return 2.0f * vec2(bits & 3u, (bits >> 2u) & 3u) - 3.0f;
++}
++vec4 dequantize4(uint ib, uint iqs, uint a_offset) {
++    const uint bits = uint(data_a[a_offset + ib].qs[iqs / 4u]);
++    return 2.0f * vec4(bits & 3u, (bits >> 2u) & 3u, (bits >> 4u) & 3u, bits >> 6u) - 3.0f;
++}
++vec2 get_dm(uint ib, uint a_offset) {
++    return vec2(0.5f * float(data_a[a_offset + ib].d), 0);
++}
++#endif
++
+ #if defined(DATA_A_IQ1_S)
+ vec2 dequantize(uint ib, uint iqs, uint a_offset) {
+     const uint ib32 = iqs / 32;
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/fa_types.glsl b/ggml/src/ggml-vulkan/vulkan-shaders/fa_types.glsl
+index 1e732a9..95ca90b 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/fa_types.glsl
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/fa_types.glsl
+@@ -16,6 +16,8 @@ uint fa_block_elems(uint ty) {
+         case GGML_TYPE_Q5_1: return uint(QUANT_K_Q5_1);
+         case GGML_TYPE_Q8_0: return uint(QUANT_K_Q8_0);
+         case GGML_TYPE_IQ4_NL: return uint(QUANT_K_IQ4_NL);
++        case GGML_TYPE_Q3_0: return uint(QUANT_K_Q3_0);   // Lamplight 0135
++        case GGML_TYPE_Q2_KV: return uint(QUANT_K_Q2_KV); // Lamplight 0135
+         case GGML_TYPE_BF16: return 1u;
+         default:           return 1u;
+     }
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn.comp b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn.comp
+index c1e4606..dd9c4d9 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn.comp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn.comp
+@@ -731,6 +731,27 @@ void main() {
+         }
+     }
+ 
++    // Lamplight 0135 (0045 on Vulkan): each row's log-sum-exp, ln of the softmax's sum (sink included) in the units of
++    // scale*KQ + mask, into dst's last slice of dim 3: head h, batch row b at h + ne1*(b + ne2*iq3)
++    if ((p.mask_n_head_log2 & LSE_ENABLE_BIT) != 0 && d_tid == 0 && col_tid == 0) {
++        const uint32_t lse_base = HSV * p.ne1 * p.ne2 * p.neq3;
++        [[unroll]] for (uint32_t r = 0; r < rows_per_thread; ++r) {
++            float mfin = Mf[r];
++            if ((p.mask_n_head_log2 & SINK_ENABLE_BIT) != 0) {
++                mfin = max(mfin, float(perElemOpGetSink(tile_row(r), 0u, ACC_TYPE(0), iq2)));
++            }
++            const float lse = mfin + log(Lf[r]);
++            const uint row = tile_row(r);
++            if (p.gqa_ratio > 1) {
++                if (row < N) {
++                    data_o[lse_base + (iq2 + row) + p.ne1 * (gqa_iq1 + p.ne2 * iq3)] = D_TYPE(lse);
++                }
++            } else if (i * Br + row < N) {
++                data_o[lse_base + iq2 + p.ne1 * ((i * Br + row) + p.ne2 * iq3)] = D_TYPE(lse);
++            }
++        }
++    }
++
+     float Lfrcp[rows_per_thread];
+     [[unroll]] for (uint32_t r = 0; r < rows_per_thread; ++r) {
+         Lfrcp[r] = (Lf[r] == 0.0) ? 0.0 : (1.0 / Lf[r]);
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_base.glsl b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_base.glsl
+index 072edfa..73bff7a 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_base.glsl
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_base.glsl
+@@ -79,6 +79,7 @@ layout (push_constant) uniform parameter {
+ } p;
+ 
+ #define SINK_ENABLE_BIT (1<<24)
++#define LSE_ENABLE_BIT (1<<25) // Lamplight 0135: also write each row's log-sum-exp (ggml_flash_attn_ext_with_lse, scalar shader)
+ #define N_LOG2_MASK 0xFFFF
+ 
+ layout (binding = 4) readonly buffer S {float data_s[];};
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_dequant.glsl b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_dequant.glsl
+index 4fcf7c1..256747a 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_dequant.glsl
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_dequant.glsl
+@@ -30,6 +30,12 @@ layout (binding = 2) readonly buffer V_PACKED_Q8_0 { block_q8_0_packed16 data[];
+ layout (binding = 1) readonly buffer K_PACKED_IQ4_NL { block_iq4_nl_packed16 data[]; } k_packed_iq4_nl;
+ layout (binding = 2) readonly buffer V_PACKED_IQ4_NL { block_iq4_nl_packed16 data[]; } v_packed_iq4_nl;
+ 
++// Lamplight 0135: the 3-bit and 2-bit chat memory types (0038, 0046)
++layout (binding = 1) readonly buffer K_PACKED_Q3_0 { block_q3_0_packed16 data[]; } k_packed_q3_0;
++layout (binding = 2) readonly buffer V_PACKED_Q3_0 { block_q3_0_packed16 data[]; } v_packed_q3_0;
++layout (binding = 1) readonly buffer K_PACKED_Q2_KV { block_q2_kv_packed16 data[]; } k_packed_q2_kv;
++layout (binding = 2) readonly buffer V_PACKED_Q2_KV { block_q2_kv_packed16 data[]; } v_packed_q2_kv;
++
+ layout (binding = 1) readonly buffer K_PACKED_BF16 { u16vec4 data[]; } k_packed_bf16;
+ layout (binding = 2) readonly buffer V_PACKED_BF16 { u16vec4 data[]; } v_packed_bf16;
+ 
+@@ -115,6 +121,23 @@ layout (binding = 1) readonly buffer K_PACKED_Q5_1_P32 { block_q5_1_packed32 dat
+                             kvalues_iq4nl[q.z], kvalues_iq4nl[q.w]);                              \
+ }
+ 
++// Lamplight 0135: four values from iqs on (a multiple of 4): their low bits are one byte of qs, their high bits (q3_0)
++// four bits of qh. q3_0 is (c - 4) * d, q2_kv (2c - 3) * d/2.
++#define FA_DEQUANT4_Q3_0(BUF) {                                                                   \
++    const uint lo = (uint(BUF.data[a_offset + ib].qs[iqs / 8]) >> (8 * ((iqs / 4) & 1))) & 0xFF;  \
++    const uint hi = (uint(BUF.data[a_offset + ib].qh[iqs / 16]) >> (iqs & 0xF)) & 0xF;             \
++    FLOAT_TYPEV4 c = FLOAT_TYPEV4((lo & 3) | ((hi & 1) << 2), ((lo >> 2) & 3) | (hi & 2) << 1,     \
++                                  ((lo >> 4) & 3) | (hi & 4), ((lo >> 6) & 3) | ((hi & 8) >> 1));  \
++    return FLOAT_TYPE(BUF.data[a_offset + ib].d) * (c - FLOAT_TYPE(4.0f));                        \
++}
++
++#define FA_DEQUANT4_Q2_KV(BUF) {                                                                  \
++    const uint lo = (uint(BUF.data[a_offset + ib].qs[iqs / 8]) >> (8 * ((iqs / 4) & 1))) & 0xFF;  \
++    FLOAT_TYPEV4 c = FLOAT_TYPEV4(lo & 3, (lo >> 2) & 3, (lo >> 4) & 3, lo >> 6);                  \
++    return FLOAT_TYPE(0.5f) * FLOAT_TYPE(BUF.data[a_offset + ib].d)                                \
++         * (FLOAT_TYPE(2.0f) * c - FLOAT_TYPE(3.0f));                                              \
++}
++
+ #define FA_DEQUANT4_BF16(BUF) \
+     return FLOAT_TYPEV4(bf16_to_fp32(uvec4(BUF.data[(a_offset + ib) / 4])));
+ 
+@@ -128,6 +151,8 @@ FLOAT_TYPEV4 dequantize4(uint ib, uint iqs, uint a_offset, uint binding_idx) {
+             case GGML_TYPE_Q5_1: FA_DEQUANT4_Q5_1(k_packed_q5_1)
+             case GGML_TYPE_Q8_0: FA_DEQUANT4_Q8_0(k_packed_q8_0)
+             case GGML_TYPE_IQ4_NL: FA_DEQUANT4_IQ4_NL(k_packed_iq4_nl)
++            case GGML_TYPE_Q3_0: FA_DEQUANT4_Q3_0(k_packed_q3_0)
++            case GGML_TYPE_Q2_KV: FA_DEQUANT4_Q2_KV(k_packed_q2_kv)
+             case GGML_TYPE_BF16: FA_DEQUANT4_BF16(k_packed_bf16)
+         }
+     } else {
+@@ -139,6 +164,8 @@ FLOAT_TYPEV4 dequantize4(uint ib, uint iqs, uint a_offset, uint binding_idx) {
+             case GGML_TYPE_Q5_1: FA_DEQUANT4_Q5_1(v_packed_q5_1)
+             case GGML_TYPE_Q8_0: FA_DEQUANT4_Q8_0(v_packed_q8_0)
+             case GGML_TYPE_IQ4_NL: FA_DEQUANT4_IQ4_NL(v_packed_iq4_nl)
++            case GGML_TYPE_Q3_0: FA_DEQUANT4_Q3_0(v_packed_q3_0)
++            case GGML_TYPE_Q2_KV: FA_DEQUANT4_Q2_KV(v_packed_q2_kv)
+             case GGML_TYPE_BF16: FA_DEQUANT4_BF16(v_packed_bf16)
+         }
+     }
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_split_k_reduce.comp b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_split_k_reduce.comp
+index 68917fc..e19a0aa 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_split_k_reduce.comp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_split_k_reduce.comp
+@@ -77,7 +77,8 @@ void main() {
+     L = tmpsh[0];
+ 
+     float sink;
+-    if (p.sinks != 0) {
++    float m_fin = m_max;
++    if ((p.sinks & 1u) != 0) {
+         sink = data_s[n];
+ 
+         float ms = 1.0f;
+@@ -85,6 +86,7 @@ void main() {
+ 
+         if (sink > m_max) {
+             ms = exp(m_max - sink);
++            m_fin = sink;
+         } else {
+             vs = exp(sink - m_max);
+         }
+@@ -92,6 +94,11 @@ void main() {
+         L = L*ms + vs;
+     }
+ 
++    // Lamplight 0135 (0045 on Vulkan): bit 1 of sinks, also write the row's log-sum-exp into dst's last slice of dim 3
++    if ((p.sinks & 2u) != 0 && tid == 0 && gl_WorkGroupID.y == 0) {
++        data_d[D * p.ne1 * p.ne2 * (p.ne3 - 1) + n + p.ne1 * (i2 + p.ne2 * i3)] = m_fin + log(L);
++    }
++
+     L = (L == 0.0) ? 0.0 : 1.0 / L;
+ 
+     // D dimension is split across workgroups in the y dimension
+@@ -104,7 +111,7 @@ void main() {
+             float m = data_a[m_offset + k * lm_stride];
+             O += exp(m - m_max) * data_a[o_offset];
+         }
+-        if (p.sinks != 0) {
++        if ((p.sinks & 1u) != 0) {
+             if (sink > m_max) {
+                 float ms = 1.0f;
+                 ms = exp(m_max - sink);
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/ggml_type_ids.glsl b/ggml/src/ggml-vulkan/vulkan-shaders/ggml_type_ids.glsl
+index 0f10c73..e97b50c 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/ggml_type_ids.glsl
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/ggml_type_ids.glsl
+@@ -30,5 +30,7 @@
+ #define GGML_TYPE_NVFP4   40u
+ #define GGML_TYPE_Q1_0    41u
+ #define GGML_TYPE_Q2_0    42u
++#define GGML_TYPE_Q3_0    44u // Lamplight 0038 (Vulkan: 0135)
++#define GGML_TYPE_Q2_KV   45u // Lamplight 0046 (Vulkan: 0135)
+ 
+ #endif // !defined(GGML_TYPE_IDS_COMP)
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/types.glsl b/ggml/src/ggml-vulkan/vulkan-shaders/types.glsl
+index 99ce145..7c0e6ad 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/types.glsl
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/types.glsl
+@@ -236,6 +236,55 @@ struct block_q2_0_packed16
+ #define DATA_A_QUANT_LEGACY
+ #endif
+ 
++// Lamplight 0135: the 3-bit and 2-bit chat memory types (0038 q3_0, 0046 q2_kv) for Vulkan, laid out as in ggml-common.h
++#define QUANT_K_Q3_0 32
++#define QUANT_R_Q3_0 1
++
++struct block_q3_0
++{
++    float16_t d;
++    uint8_t qs[QUANT_K_Q3_0 / 4]; // low two bits, value j at bits 2*(j%4) of qs[j/4]
++    uint8_t qh[QUANT_K_Q3_0 / 8]; // high bit, value j at bit j%8 of qh[j/8]
++};
++
++struct block_q3_0_packed16
++{
++    float16_t d;
++    uint16_t qs[QUANT_K_Q3_0 / 8];
++    uint16_t qh[QUANT_K_Q3_0 / 16];
++};
++
++#if defined(DATA_A_Q3_0)
++#define QUANT_K QUANT_K_Q3_0
++#define QUANT_R QUANT_R_Q3_0
++#define QUANT_AUXF 1
++#define A_TYPE block_q3_0
++#define A_TYPE_PACKED16 block_q3_0_packed16
++#endif
++
++#define QUANT_K_Q2_KV 32
++#define QUANT_R_Q2_KV 1
++
++struct block_q2_kv
++{
++    float16_t d;                   // two steps: values are (2c - 3) * d/2
++    uint8_t qs[QUANT_K_Q2_KV / 4]; // 2-bit codes, value j at bits 2*(j%4) of qs[j/4]
++};
++
++struct block_q2_kv_packed16
++{
++    float16_t d;
++    uint16_t qs[QUANT_K_Q2_KV / 8];
++};
++
++#if defined(DATA_A_Q2_KV)
++#define QUANT_K QUANT_K_Q2_KV
++#define QUANT_R QUANT_R_Q2_KV
++#define QUANT_AUXF 1
++#define A_TYPE block_q2_kv
++#define A_TYPE_PACKED16 block_q2_kv_packed16
++#endif
++
+ #define QUANT_K_Q8_1 32
+ #define QUANT_R_Q8_1 1
+ 
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp b/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
+index 8873142..34a047b 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
+@@ -855,6 +855,13 @@ void process_shaders() {
+         string_to_spv("get_rows_" + tname + "_f32", shader, merge_maps(base_dict, {{"TEMP_TYPE", "FLOAT_TYPE"}, {data_a_key, "1"}, {"B_TYPE", "int"}, {"D_TYPE", "float"}}));
+     }
+ 
++    // Lamplight 0135: the chat memory types q3_0 and q2_kv (0038, 0046) for get_rows; they aren't brain-file types, so
++    // they stay out of type_names and its matrix products
++    for (std::string t : {"q3_0", "q2_kv"}) {
++        const std::string key = "DATA_A_" + to_uppercase(t);
++        string_to_spv("get_rows_" + t, "get_rows_quant.comp", {{"TEMP_TYPE", "FLOAT_TYPE"}, {key, "1"}, {"B_TYPE", "int"}, {"D_TYPE", "float16_t"}, {"FLOAT_TYPE", "float"}});
++        string_to_spv("get_rows_" + t + "_f32", "get_rows_quant.comp", {{"TEMP_TYPE", "FLOAT_TYPE"}, {key, "1"}, {"B_TYPE", "int"}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}});
++    }
+     string_to_spv("get_rows_i32", "get_rows.comp", {{"TEMP_TYPE", "uint"}, {"A_TYPE", "uint"}, {"B_TYPE", "int"}, {"D_TYPE", "uint"}});
+ 
+     string_to_spv("mul_mat_vec_p021_f16_f32_subgroup_add", "mul_mat_vec_p021.comp", {{"A_TYPE", "float16_t"}, {"A_TYPEV4", "f16vec4"}, {"B_TYPE", "float"}, {"B_TYPEV4", "vec4"}, {"D_TYPE", "float"}, {"USE_SUBGROUP_ADD", "1"}});
+@@ -903,13 +910,14 @@ void process_shaders() {
+     string_to_spv("cpy_transpose_02_16", "copy_transpose_02.comp", {{"A_TYPE", "uint16_t"}, {"D_TYPE", "uint16_t"}});
+     string_to_spv("cpy_transpose_02_32", "copy_transpose_02.comp", {{"A_TYPE", "uint"}, {"D_TYPE", "uint"}});
+ 
+-    for (std::string t : {"q1_0", "q2_0", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "iq4_nl"}) {
++    for (std::string t : {"q1_0", "q2_0", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "iq4_nl", "q3_0", "q2_kv"}) { // Lamplight 0135: q3_0, q2_kv
+         string_to_spv("cpy_f32_" + t, "copy_to_quant.comp", {{"DATA_A_" + to_uppercase(t), "1"}, {"S_TYPE", "float"}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}});
+         string_to_spv("cpy_" + t + "_f32", "copy_from_quant.comp", {{"DATA_A_" + to_uppercase(t), "1"}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}});
++        string_to_spv("cpy_" + t + "_f16", "copy_from_quant.comp", {{"DATA_A_" + to_uppercase(t), "1"}, {"D_TYPE", "float16_t"}, {"FLOAT_TYPE", "float"}}); // Lamplight 0135: quantized cache read as f16 (0039)
+     }
+ 
+     for (auto src : {std::pair{"f32", "float"}, std::pair{"f16", "float16_t"}}) {
+-        for (std::string dst : {"f32", "f16", "bf16", "q1_0", "q2_0", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "iq4_nl"}) {
++        for (std::string dst : {"f32", "f16", "bf16", "q1_0", "q2_0", "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "iq4_nl", "q3_0", "q2_kv"}) { // Lamplight 0135
+             string_to_spv("set_rows_" + std::string(src.first) + "_" + dst + "_i32", "copy_to_quant.comp", {{"SET_ROWS", "1"}, {"DATA_A_" + to_uppercase(dst), "1"}, {"B_TYPE", "uint"}, {"B_SIZE", "32"}, {"S_TYPE", src.second}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}});
+             string_to_spv("set_rows_" + std::string(src.first) + "_" + dst + "_i64", "copy_to_quant.comp", {{"SET_ROWS", "1"}, {"DATA_A_" + to_uppercase(dst), "1"}, {"B_TYPE", "uvec2"}, {"B_SIZE", "64"}, {"S_TYPE", src.second}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}});
+         }
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index eae0c0b..31c4205 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -5293,6 +5293,93 @@ struct test_gated_delta_net : public test_case {
+     }
+ };
+ 
++// Lamplight 0135: GGML_OP_GATED_DELTA_NET with replay (ggml_gated_delta_net_ext, 0130): the pending tokens of the
++// last ubatch run first, n_rep[s] of them for sequence s, and the state out is after the replay when keep is set
++struct test_gated_delta_net_replay : public test_case {
++    const int64_t head_count;
++    const int64_t head_size;
++    const int64_t n_seq_tokens;
++    const int64_t n_seqs;
++    const int64_t n_pend;
++    const int     v_repeat;
++    const bool    kda;
++    const bool    keep;
++
++    std::string vars() override {
++        return VARS_TO_STR8(head_count, head_size, n_seq_tokens, n_seqs, n_pend, v_repeat, kda, keep);
++    }
++
++    test_gated_delta_net_replay(int64_t head_count = 4, int64_t head_size = 64, int64_t n_seq_tokens = 1, int64_t n_seqs = 1,
++            int64_t n_pend = 3, int v_repeat = 1, bool kda = false, bool keep = false)
++        : head_count(head_count), head_size(head_size), n_seq_tokens(n_seq_tokens), n_seqs(n_seqs), n_pend(n_pend),
++          v_repeat(v_repeat), kda(kda), keep(keep) {}
++
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        const int64_t H = head_count * v_repeat;
++        ggml_tensor * q = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, head_size, head_count, n_seq_tokens, n_seqs);
++        ggml_tensor * k = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, head_size, head_count, n_seq_tokens, n_seqs);
++        ggml_tensor * v = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, head_size, H, n_seq_tokens, n_seqs);
++        ggml_set_name(q, "q");
++        ggml_set_name(k, "k");
++        ggml_set_name(v, "v");
++        const int64_t g_ne0 = kda ? head_size : 1;
++        ggml_tensor * g     = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, g_ne0, H, n_seq_tokens, n_seqs);
++        ggml_tensor * beta  = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, 1, H, n_seq_tokens, n_seqs);
++        ggml_tensor * state = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, head_size, head_size, H, n_seqs);
++        ggml_set_name(g,     "g");
++        ggml_set_name(beta,  "beta");
++        ggml_set_name(state, "state");
++        ggml_tensor * pend_k  = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, head_size, head_count, n_pend, n_seqs);
++        ggml_tensor * pend_v  = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, head_size, H, n_pend, n_seqs);
++        ggml_tensor * pend_gb = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, g_ne0, H, 2*n_pend, n_seqs);
++        ggml_tensor * n_rep   = ggml_new_tensor_1d(ctx, GGML_TYPE_I32, n_seqs);
++        ggml_set_name(pend_k,  "pend_k");
++        ggml_set_name(pend_v,  "v_pend");
++        ggml_set_name(pend_gb, "pend_gb");
++        ggml_set_name(n_rep,   "n_rep");
++        q      = ggml_l2_norm(ctx, q, 1e-6f);
++        k      = ggml_l2_norm(ctx, k, 1e-6f);
++        pend_k = ggml_l2_norm(ctx, pend_k, 1e-6f);
++        return ggml_gated_delta_net_ext(ctx, q, k, v, g, beta, state, pend_k, pend_v, pend_gb, n_rep, keep);
++    }
++
++    void initialize_tensors(ggml_context * ctx) override {
++        for (ggml_tensor * t = ggml_get_first_tensor(ctx); t != nullptr; t = ggml_get_next_tensor(ctx, t)) {
++            if (ggml_is_view_op(t->op)) { continue; }
++            if (strcmp(t->name, "g") == 0) {
++                init_tensor_uniform(t, -20.0f, -1e-4f);
++            } else if (strcmp(t->name, "beta") == 0) {
++                init_tensor_uniform(t, 0.0f, 1.0f);
++            } else if (strcmp(t->name, "v") == 0 || strcmp(t->name, "v_pend") == 0) {
++                init_tensor_uniform(t, -0.3f, 5.0f);
++            } else if (strcmp(t->name, "pend_gb") == 0) {
++                // the gates of the n_pend tokens (negative), then their betas (0..1), for each sequence
++                std::vector<float> data(ggml_nelements(t));
++                std::uniform_real_distribution<float> gd(-20.0f, -1e-4f), bd(0.0f, 1.0f);
++                std::mt19937 rng(1234);
++                const int64_t per = t->ne[0] * t->ne[1];
++                for (int64_t s = 0; s < t->ne[3]; ++s) {
++                    for (int64_t i2 = 0; i2 < t->ne[2]; ++i2) {
++                        for (int64_t j = 0; j < per; ++j) {
++                            data[(s*t->ne[2] + i2)*per + j] = i2 < n_pend ? gd(rng) : bd(rng);
++                        }
++                    }
++                }
++                ggml_backend_tensor_set(t, data.data(), 0, data.size() * sizeof(float));
++            } else if (strcmp(t->name, "n_rep") == 0) {
++                // every count from none to all of them across the sequences
++                std::vector<int32_t> data(n_seqs);
++                for (int64_t s = 0; s < n_seqs; ++s) {
++                    data[s] = (int32_t) ((s*2 + n_pend) % (n_pend + 1));
++                }
++                ggml_backend_tensor_set(t, data.data(), 0, data.size() * sizeof(int32_t));
++            } else {
++                init_tensor_uniform(t);
++            }
++        }
++    }
++};
++
+ // GGML_OP_GATED_DELTA_NET + GGML_OP_CPY (recurrent cache fusion)
+ struct test_gated_delta_net_cache_fusion : public test_case {
+     const ggml_type type;
+@@ -9145,6 +9232,30 @@ struct test_flash_attn_ext : public test_case {
+     }
+ };
+ 
++// Lamplight 0135: flash attention that also hands back each row's log-sum-exp (0045, ggml_flash_attn_ext_with_lse),
++// Progressive Memory's way of joining its parts; the last slice of dim 3 holds the log-sum-exps
++struct test_flash_attn_ext_lse : public test_flash_attn_ext {
++    using test_flash_attn_ext::test_flash_attn_ext;
++
++    std::string vars() override {
++        return test_flash_attn_ext::vars() + ",lse=1";
++    }
++
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        test_flash_attn_ext::build_graph(ctx);
++        ggml_tensor * q = ggml_get_tensor(ctx, "q");
++        ggml_tensor * k = ggml_get_tensor(ctx, "k");
++        ggml_tensor * v = ggml_get_tensor(ctx, "v");
++        ggml_tensor * m = mask  ? ggml_get_tensor(ctx, "m") : nullptr;
++        ggml_tensor * s = sinks ? ggml_get_tensor(ctx, "s") : nullptr;
++        ggml_tensor * out = ggml_flash_attn_ext_with_lse(ctx, q, k, v, m, 1.0f/sqrtf(hsk), 0.0f, 0.0f);
++        ggml_flash_attn_ext_add_sinks(out, s);
++        ggml_prec_set_acc(out, prec);
++        ggml_set_name(out, "out_lse");
++        return out;
++    }
++};
++
+ // large Q values, so the online softmax has to rescale the partial results
+ struct test_flash_attn_ext_large_logits : public test_flash_attn_ext {
+     static constexpr int q_range = 20;
+@@ -10802,6 +10913,16 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+     test_cases.emplace_back(new test_set_rows(GGML_TYPE_F32, GGML_TYPE_F32, GGML_TYPE_I64, { 1, 8, 1, 3 }, { 1, 1 }, 2, false));
+     test_cases.emplace_back(new test_set_rows(GGML_TYPE_F32, GGML_TYPE_F32, GGML_TYPE_I32, { 1, 8, 1, 3 }, { 1, 1 }, 2, false));
+     test_cases.emplace_back(new test_set_rows(GGML_TYPE_F32, GGML_TYPE_Q8_0, GGML_TYPE_I32, { 256, 5, 1, 3 }, { 1, 1, }, 1, false));
++    for (ggml_type src_type : {GGML_TYPE_F16, GGML_TYPE_F32}) {
++        for (ggml_type type : {GGML_TYPE_Q3_0, GGML_TYPE_Q2_KV}) { // Lamplight 0135: the chat memory writes
++            for (int b : {1, 7}) {
++                for (bool v : {false, true}) {
++                    test_cases.emplace_back(new test_set_rows(src_type, type, GGML_TYPE_I64, { 256, 5,  b, 3 }, { 1, 1, }, 1, v));
++                    test_cases.emplace_back(new test_set_rows(src_type, type, GGML_TYPE_I32, { 256, 11, 1, b }, { 2, 3, }, 7, v));
++                }
++            }
++        }
++    }
+     for (ggml_type src_type : {GGML_TYPE_F16, GGML_TYPE_F32}) {
+         for (ggml_type type : all_types) {
+             for (int b : {1, 7}) {
+@@ -11296,6 +11417,20 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+         }
+     }
+ 
++    for (ggml_type type_q : {GGML_TYPE_Q3_0, GGML_TYPE_Q2_KV}) { // Lamplight 0135: chat memory copies both ways
++        test_cases.emplace_back(new test_cpy(GGML_TYPE_F32, type_q, {256, 4, 4, 4}));
++        test_cases.emplace_back(new test_cpy(GGML_TYPE_F32, type_q, {256, 2, 3, 4}, {-1,-1,-1,-1}, {0, 2, 1, 3}));
++        test_cases.emplace_back(new test_cpy(type_q, GGML_TYPE_F32, {256, 4, 4, 4}));
++        test_cases.emplace_back(new test_cpy(type_q, GGML_TYPE_F32, {256, 2, 3, 4}, {-1,-1,-1,-1}, {0, 2, 1, 3}));
++        test_cases.emplace_back(new test_cpy(type_q, type_q, {256, 4, 4, 4}));
++        test_cases.emplace_back(new test_get_rows(type_q, 256, 5, 4, 1, 1, false));
++        test_cases.emplace_back(new test_get_rows(type_q, 256, 5, 4, 7, 1, true));
++    }
++    // Lamplight 0135: a quantized cache read as f16 (0039, Progressive Memory's batch overlay)
++    for (ggml_type type_q : {GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, GGML_TYPE_IQ4_NL, GGML_TYPE_Q3_0, GGML_TYPE_Q2_KV}) {
++        test_cases.emplace_back(new test_cpy(type_q, GGML_TYPE_F16, {256, 4, 4, 4}));
++        test_cases.emplace_back(new test_cpy(type_q, GGML_TYPE_F16, {256, 2, 3, 4}, {-1,-1,-1,-1}, {0, 2, 1, 3}));
++    }
+     for (ggml_type type_src : {GGML_TYPE_F16, GGML_TYPE_BF16, GGML_TYPE_F32}) {
+         for (ggml_type type_dst : all_types) {
+             test_cases.emplace_back(new test_cpy(type_src, type_dst, {256, 4, 4, 4}));
+@@ -13014,6 +13149,39 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+         }
+     }
+ 
++    // Lamplight 0135: Progressive Memory's flash attention with its log-sum-exp (0045): one word (its use), a few, a
++    // batch; GQA; a long cache (split into parts on the card); with and without a sink
++    for (ggml_type t : { GGML_TYPE_F16, GGML_TYPE_Q8_0, GGML_TYPE_Q3_0, GGML_TYPE_Q2_KV }) {
++        for (int hs : { 64, 128 }) {
++            for (int nr2 : { 1, 4 }) {
++                for (int kv : { 113, 512, 8192 }) {
++                    for (int nb : { 1, 2, 40 }) {
++                        for (bool sinks : { false, true }) {
++                            test_cases.emplace_back(new test_flash_attn_ext_lse(hs, hs, 4, {nr2, 1}, kv, nb, true, sinks, 0.0f, 0.0f, GGML_PREC_F32, t, t));
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++    // Lamplight 0135: the 3-bit and 2-bit chat memory types (0038 q3_0, 0046 q2_kv), alone and under a sharper K
++    for (auto kv_types : std::vector<std::pair<ggml_type, ggml_type>>{
++            {GGML_TYPE_Q3_0, GGML_TYPE_Q3_0}, {GGML_TYPE_Q4_0, GGML_TYPE_Q3_0}, {GGML_TYPE_Q8_0, GGML_TYPE_Q3_0},
++            {GGML_TYPE_Q2_KV, GGML_TYPE_Q2_KV}, {GGML_TYPE_Q4_0, GGML_TYPE_Q2_KV}, {GGML_TYPE_Q3_0, GGML_TYPE_Q2_KV}, {GGML_TYPE_F16, GGML_TYPE_Q3_0}}) {
++        for (int hs : { 64, 128 }) {
++            for (int nr2 : { 1, 4 }) {
++                for (int kv : { 113, 512 }) {
++                    for (int nb : { 1, 3, 32, 75 }) {
++                        for (ggml_prec prec : { GGML_PREC_F32, GGML_PREC_UNDEFINED }) {
++                            test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 4, {nr2, 1}, kv, nb, true, false, 0.0f, 0.0f, prec, kv_types.first, kv_types.second));
++                        }
++                    }
++                }
++            }
++        }
++    }
++
+     // asymmetric head_dim (hsk != hsv) with one or both sides not 64-aligned
+     test_cases.emplace_back(new test_flash_attn_ext(72, 64, 4, {1, 1}, 256, 2, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
+     test_cases.emplace_back(new test_flash_attn_ext(64, 72, 4, {1, 1}, 256, 2, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
+@@ -13389,6 +13557,18 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+ 
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 32, 128, 1, 1));
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 32, 16, 1, 1));
++    // Lamplight 0135: replay of pending tokens (MTP on Qwen 3.5 / 3.6), every count 0..n_pend across sequences
++    for (bool keep : { false, true }) {
++        for (bool kda : { false, true }) {
++            for (int64_t T : { 1, 2, 4, 17, 64, 100 }) {
++                test_cases.emplace_back(new test_gated_delta_net_replay(4, 64,  T, 1, 3, 1, kda, keep));
++                test_cases.emplace_back(new test_gated_delta_net_replay(4, 64,  T, 4, 3, 1, kda, keep));
++                test_cases.emplace_back(new test_gated_delta_net_replay(2, 128, T, 3, 4, 2, kda, keep));
++            }
++            test_cases.emplace_back(new test_gated_delta_net_replay(4, 32,  4, 2, 1, 1, kda, keep));
++            test_cases.emplace_back(new test_gated_delta_net_replay(4, 16,  4, 5, 4, 1, kda, keep));
++        }
++    }
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 32, 16, 1, 1, 1, true, true));
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 32, 16, 1, 1, 1, false, true));
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 64, 1, 2));

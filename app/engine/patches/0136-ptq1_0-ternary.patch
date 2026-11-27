@@ -119,7 +119,7 @@ index 6efe41e..5c5cfe0 100644
      GGML_ABORT("ggml_be_card_round_iq_dot: type not covered");
  }
 +
-+// Brain Engine 0124: PTQ1_0 x Q8_0 for AVX-512 VNNI and AVX2, from PrismML-Eng/llama.cpp (prism branch, MIT)
++// Brain Engine 0136: PTQ1_0 x Q8_0 for AVX-512 VNNI and AVX2, from PrismML-Eng/llama.cpp (prism branch, MIT)
 +
 +#if defined(__AVX512BW__) && defined(__AVX512VNNI__)
 +// per-byte x*c mod 256, c is the same for both bytes of each 16-bit lane

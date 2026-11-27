@@ -41,6 +41,9 @@ check('web bridge: only the Bob that served it (no other addresses)', !/https?:\
 check('web bridge: changes carry the x-bob header and a JSON or picture type', /'x-bob': '1'/.test(bridge) && /'image\/jpeg'/.test(bridge) && /'application\/json'/.test(bridge));
 check('web bridge: the phone brain stays off and the PC Bob is the only one listed', /mode: 'net', phoneOn: false/.test(bridge) && /name: 'Bob on your PC'/.test(bridge));
 check('web bridge: no style attributes (the page allows style-src self only)', !/\.style\s*=|setAttribute\('style'/.test(bridge));
+check('web bridge (iPhone): coming back to the screen opens a fresh line to the PC Bob', /visibilityState !== 'visible'\) return;\s*if \(events\) \{ unlisten\(\); listen\(\); \}/.test(bridge));
+check('web bridge (iPhone): the first tap wakes read-aloud', /addEventListener\('pointerdown'[\s\S]{0,200}SpeechSynthesisUtterance\(''\)[\s\S]{0,80}once: true/.test(bridge));
+check('web bridge (iPhone): file pickers are on the page while open, photos the right way up', /function pickFile\(input\)[\s\S]{0,120}document\.body\.append\(input\)/.test(bridge) && !/input\.click\(\);\s*\}\);/.test(bridge.replace(/function pickFile[\s\S]*?input\.click\(\);/, '')) && /imageOrientation: 'from-image'/.test(bridge));
 const css = read('public/phone/web.css');
 check('web.css hides the phone brain, lending, pairing and adding Bobs', /\[data-go="brain"\]/.test(css) && /#lend-box/.test(css) && /:has\(#add-name\)/.test(css) && /safe-area-inset-top/.test(css));
 const man = JSON.parse(read('public/phone/manifest.webmanifest'));

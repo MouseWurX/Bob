@@ -1,0 +1,395 @@
+diff --git a/common/chat-auto-parser-generator.cpp b/common/chat-auto-parser-generator.cpp
+index 220889367..d3e0a7f11 100644
+--- a/common/chat-auto-parser-generator.cpp
++++ b/common/chat-auto-parser-generator.cpp
+@@ -225,13 +225,13 @@ common_peg_parser analyze_tools::build_tool_parser_json_native(parser_build_cont
+         auto single_tool_parser = p.standard_json_tools(
+             format.per_call_start, format.per_call_end, inputs.tools, inputs.parallel_tool_calls,
+             inputs.tool_choice == COMMON_CHAT_TOOL_CHOICE_REQUIRED, name_field, args_field, format.tools_array_wrapped,
+-            format.fun_name_is_key, format.id_field, format.gen_id_field, format.parameter_order, format.openai_wrapper_trigger);
++            format.fun_name_is_key, format.id_field, format.gen_id_field, format.parameter_order, format.openai_wrapper_trigger, inputs.tool_choice);
+         tools_parser = p.trigger_rule("tool-calls", p.one_or_more(single_tool_parser + p.space()));
+     } else {
+         tools_parser = p.standard_json_tools(
+             format.section_start, format.section_end, inputs.tools, inputs.parallel_tool_calls,
+             inputs.tool_choice == COMMON_CHAT_TOOL_CHOICE_REQUIRED, name_field, args_field, format.tools_array_wrapped,
+-            format.fun_name_is_key, format.id_field, format.gen_id_field, format.parameter_order, format.openai_wrapper_trigger);
++            format.fun_name_is_key, format.id_field, format.gen_id_field, format.parameter_order, format.openai_wrapper_trigger, inputs.tool_choice);
+     }
+ 
+     // Handle content wrappers if present
+@@ -304,7 +304,7 @@ common_peg_parser analyze_tools::build_tool_parser_tag_json(parser_build_context
+ 
+     common_peg_parser tool_choice = p.choice();
+ 
+-    foreach_function(inputs.tools, [&](size_t tool_index, const json & tool) {
++    common_chat_foreach_tool(inputs.tools, inputs.tool_choice, [&](size_t tool_index, const json & tool) {
+         const auto & func   = tool.at("function");
+         std::string  name   = func.at("name");
+         const auto   schema = common_chat_tool_parameters(func);
+@@ -379,7 +379,7 @@ common_peg_parser analyze_tools::build_tool_parser_tag_tagged(parser_build_conte
+ 
+     common_peg_parser tool_choice = p.choice();
+ 
+-    foreach_function(inputs.tools, [&](size_t tool_index, const json & tool) {
++    common_chat_foreach_tool(inputs.tools, inputs.tool_choice, [&](size_t tool_index, const json & tool) {
+         const auto & func = tool.at("function");
+         std::string  name = func.at("name");
+ 
+diff --git a/common/chat-peg-parser.cpp b/common/chat-peg-parser.cpp
+index 968cbfa98..2699fcd4a 100644
+--- a/common/chat-peg-parser.cpp
++++ b/common/chat-peg-parser.cpp
+@@ -637,19 +637,16 @@ static std::pair<std::string, std::string> parse_key_spec(const std::string & ke
+ 
+ // Mode 1: function_is_key — parse {"function_name": {...}}
+ common_peg_parser common_chat_peg_builder::build_json_tools_function_is_key(
+-    const ordered_json & tools,
+-    const std::string &  args_key,
+-    const std::string &  effective_args_key,
+-    const std::string &  call_id_key,
+-    const std::string &  gen_call_id_key) {
++    const ordered_json &            tools,
++    const common_chat_tool_choice & tool_choice,
++    const std::string &             args_key,
++    const std::string &             effective_args_key,
++    const std::string &             call_id_key,
++    const std::string &             gen_call_id_key) {
+ 
+     auto tool_choices = choice();
+ 
+-    for (size_t i = 0; i < tools.size(); i++) {
+-        const auto & tool_def = tools[i];
+-        if (!tool_def.contains("function")) {
+-            continue;
+-        }
++    common_chat_foreach_tool(tools, tool_choice, [&](size_t i, const ordered_json & tool_def) {
+         const auto &   function = tool_def.at("function");
+         std::string    name     = function.at("name");
+         ordered_json   params   = common_chat_tool_parameters(function);
+@@ -710,18 +707,19 @@ common_peg_parser common_chat_peg_builder::build_json_tools_function_is_key(
+         );
+ 
+         tool_choices |= rule("tool-" + std::to_string(i), tool_parser);
+-    }
++    });
+ 
+     return tool_choices;
+ }
+ 
+ // Mode 2: Nested keys (dot notation like "function.name")
+ common_peg_parser common_chat_peg_builder::build_json_tools_nested_keys(
+-    const ordered_json & tools,
+-    const std::string &  effective_name_key,
+-    const std::string &  effective_args_key,
+-    const std::string &  call_id_key,
+-    const std::string &  gen_call_id_key) {
++    const ordered_json &            tools,
++    const common_chat_tool_choice & tool_choice,
++    const std::string &             effective_name_key,
++    const std::string &             effective_args_key,
++    const std::string &             call_id_key,
++    const std::string &             gen_call_id_key) {
+ 
+     auto tool_choices = choice();
+ 
+@@ -732,11 +730,7 @@ common_peg_parser common_chat_peg_builder::build_json_tools_nested_keys(
+     std::string nested_name_field = !name_spec.first.empty() ? name_spec.second  : effective_name_key;
+     std::string nested_args_field = !args_spec.first.empty() ? args_spec.second  : effective_args_key;
+ 
+-    for (size_t i = 0; i < tools.size(); i++) {
+-        const auto & tool_def = tools[i];
+-        if (!tool_def.contains("function")) {
+-            continue;
+-        }
++    common_chat_foreach_tool(tools, tool_choice, [&](size_t i, const ordered_json & tool_def) {
+         const auto &   function = tool_def.at("function");
+         std::string    name     = function.at("name");
+         ordered_json   params   = common_chat_tool_parameters(function);
+@@ -783,7 +777,7 @@ common_peg_parser common_chat_peg_builder::build_json_tools_nested_keys(
+         tool_parser_body = tool_parser_body + nested_field + space() + tool_close(literal("}"));
+ 
+         tool_choices |= rule("tool-" + std::to_string(i), tool(tool_parser_body));
+-    }
++    });
+ 
+     return tool_choices;
+ }
+@@ -791,6 +785,7 @@ common_peg_parser common_chat_peg_builder::build_json_tools_nested_keys(
+ // Mode 3: Flat keys with optional ID fields and parameter ordering
+ common_peg_parser common_chat_peg_builder::build_json_tools_flat_keys(
+     const ordered_json &             tools,
++    const common_chat_tool_choice &  tool_choice,
+     const std::string &              effective_name_key,
+     const std::string &              effective_args_key,
+     const std::string &              call_id_key,
+@@ -802,11 +797,7 @@ common_peg_parser common_chat_peg_builder::build_json_tools_flat_keys(
+     auto name_key_parser = literal("\"" + effective_name_key + "\"");
+     auto args_key_parser = literal("\"" + effective_args_key + "\"");
+ 
+-    for (size_t i = 0; i < tools.size(); i++) {
+-        const auto & tool_def = tools[i];
+-        if (!tool_def.contains("function")) {
+-            continue;
+-        }
++    common_chat_foreach_tool(tools, tool_choice, [&](size_t i, const ordered_json & tool_def) {
+         const auto &   function = tool_def.at("function");
+         std::string    name     = function.at("name");
+         ordered_json   params   = common_chat_tool_parameters(function);
+@@ -875,7 +866,7 @@ common_peg_parser common_chat_peg_builder::build_json_tools_flat_keys(
+         ordered_body = ordered_body + space() + tool_close(literal("}"));
+ 
+         tool_choices |= rule("tool-" + std::to_string(i), tool(ordered_body));
+-    }
++    });
+ 
+     return tool_choices;
+ }
+@@ -929,7 +920,8 @@ common_peg_parser common_chat_peg_builder::standard_json_tools(
+                                                        const std::string &              call_id_key,
+                                                        const std::string &              gen_call_id_key,
+                                                        const std::vector<std::string> & parameters_order,
+-                                                       bool                             accept_openai_wrapper) {
++                                                       bool                             accept_openai_wrapper,
++                                                       const common_chat_tool_choice &  tool_choice) {
+     if (!tools.is_array() || tools.empty()) {
+         return eps();
+     }
+@@ -940,14 +932,14 @@ common_peg_parser common_chat_peg_builder::standard_json_tools(
+     // Dispatch to the appropriate builder based on the JSON layout mode
+     common_peg_parser tool_choices = eps();
+     if (function_is_key) {
+-        tool_choices = build_json_tools_function_is_key(tools, args_key, effective_args_key, call_id_key, gen_call_id_key);
++        tool_choices = build_json_tools_function_is_key(tools, tool_choice, args_key, effective_args_key, call_id_key, gen_call_id_key);
+     } else {
+         auto name_spec = parse_key_spec(effective_name_key);
+         auto args_spec = parse_key_spec(effective_args_key);
+         if (!name_spec.first.empty() || !args_spec.first.empty()) {
+-            tool_choices = build_json_tools_nested_keys(tools, effective_name_key, effective_args_key, call_id_key, gen_call_id_key);
++            tool_choices = build_json_tools_nested_keys(tools, tool_choice, effective_name_key, effective_args_key, call_id_key, gen_call_id_key);
+         } else {
+-            tool_choices = build_json_tools_flat_keys(tools, effective_name_key, effective_args_key, call_id_key, gen_call_id_key, parameters_order, accept_openai_wrapper);
++            tool_choices = build_json_tools_flat_keys(tools, tool_choice, effective_name_key, effective_args_key, call_id_key, gen_call_id_key, parameters_order, accept_openai_wrapper);
+         }
+     }
+ 
+diff --git a/common/chat-peg-parser.h b/common/chat-peg-parser.h
+index 750e09327..a5417a53b 100644
+--- a/common/chat-peg-parser.h
++++ b/common/chat-peg-parser.h
+@@ -143,7 +143,7 @@ class common_chat_peg_builder : public common_peg_parser_builder {
+     // parameters_order: order in which JSON fields should be parsed
+     common_peg_parser standard_json_tools(const std::string &              section_start,
+                                           const std::string &              section_end,
+-                                          const common_json &   tools,
++                                          const common_json &              tools,
+                                           bool                             parallel_tool_calls,
+                                           bool                             force_tool_calls,
+                                           const std::string &              name_key = "",
+@@ -153,7 +153,8 @@ class common_chat_peg_builder : public common_peg_parser_builder {
+                                           const std::string &              call_id_key = "",
+                                           const std::string &              gen_call_id_key = "",
+                                           const std::vector<std::string> & parameters_order = {},
+-                                          bool                             accept_openai_wrapper = false);
++                                          bool                             accept_openai_wrapper = false,
++                                          const common_chat_tool_choice &  tool_choice = {});
+ 
+     // Legacy-compatible helper for building XML/tagged style tool calls
+     // Used by tests and manual parsers
+@@ -174,18 +175,21 @@ class common_chat_peg_builder : public common_peg_parser_builder {
+ 
+     // Implementation helpers for standard_json_tools — one per JSON tool call layout mode
+     common_peg_parser build_json_tools_function_is_key(const common_json & tools,
+-                                                       const std::string &            args_key,
+-                                                       const std::string &            effective_args_key,
+-                                                       const std::string &            call_id_key,
+-                                                       const std::string &            gen_call_id_key);
++                                                       const common_chat_tool_choice & tool_choice,
++                                                       const std::string &             args_key,
++                                                       const std::string &             effective_args_key,
++                                                       const std::string &             call_id_key,
++                                                       const std::string &             gen_call_id_key);
+ 
+     common_peg_parser build_json_tools_nested_keys(const common_json & tools,
+-                                                   const std::string &            effective_name_key,
+-                                                   const std::string &            effective_args_key,
+-                                                   const std::string &            call_id_key,
+-                                                   const std::string &            gen_call_id_key);
++                                                   const common_chat_tool_choice & tool_choice,
++                                                   const std::string &             effective_name_key,
++                                                   const std::string &             effective_args_key,
++                                                   const std::string &             call_id_key,
++                                                   const std::string &             gen_call_id_key);
+ 
+     common_peg_parser build_json_tools_flat_keys(const common_json &   tools,
++                                                 const common_chat_tool_choice &  tool_choice,
+                                                  const std::string &              effective_name_key,
+                                                  const std::string &              effective_args_key,
+                                                  const std::string &              call_id_key,
+diff --git a/common/chat.cpp b/common/chat.cpp
+index f8c415333..2cb0ac9be 100644
+--- a/common/chat.cpp
++++ b/common/chat.cpp
+@@ -321,7 +321,21 @@ struct common_chat_templates {
+     std::unique_ptr<common_chat_template> template_tts;  // the prompt of a text to speak
+ };
+ 
+-common_chat_tool_choice common_chat_tool_choice_parse_oaicompat(const std::string & tool_choice) {
++bool common_chat_tool_choice::allows(const std::string & name) const {
++    return !is_none() && (allowed.empty() || std::find(allowed.begin(), allowed.end(), name) != allowed.end());
++}
++
++void common_chat_foreach_tool(const common_json & tools, const common_chat_tool_choice & tool_choice,
++                              const std::function<void(size_t, const common_json &)> & fn) {
++    for (size_t i = 0; i < tools.size(); i++) {
++        const auto & tool = tools[i];
++        if (tool_choice.allows(tool.at("function").at("name").get<std::string>())) {
++            fn(i, tool);
++        }
++    }
++}
++
++common_chat_tool_choice common_chat_tool_choice_parse_oaicompat(const common_json & tool_choice, const std::vector<common_chat_tool> & tools) {
+     if (tool_choice == "auto") {
+         return COMMON_CHAT_TOOL_CHOICE_AUTO;
+     }
+@@ -331,7 +345,44 @@ common_chat_tool_choice common_chat_tool_choice_parse_oaicompat(const std::strin
+     if (tool_choice == "required") {
+         return COMMON_CHAT_TOOL_CHOICE_REQUIRED;
+     }
+-    throw std::invalid_argument("Invalid tool_choice: " + tool_choice);
++    common_chat_tool_choice choice;
++    const auto type = tool_choice.value("type", json());
++    if (type == "function") {
++        choice.mode = COMMON_CHAT_TOOL_CHOICE_REQUIRED;
++        choice.allowed.push_back(tool_choice.at("function").at("name").get<std::string>());
++    } else if (type == "allowed_tools") {
++        const auto & allowed = tool_choice.at("allowed_tools");
++        const auto & mode = allowed.at("mode");
++        const auto & allowed_tools = allowed.at("tools");
++        if ((mode != "auto" && mode != "required") || !allowed_tools.is_array()) {
++            throw std::invalid_argument("allowed_tools requires mode auto or required and a tools array");
++        }
++        choice.mode = mode == "required" ? COMMON_CHAT_TOOL_CHOICE_REQUIRED : COMMON_CHAT_TOOL_CHOICE_AUTO;
++        for (const auto & tool : allowed_tools) {
++            if (tool.value("type", json()) != "function") {
++                throw std::invalid_argument("allowed_tools entries must have type function");
++            }
++            choice.allowed.push_back(tool.at("function").at("name").get<std::string>());
++        }
++        if (choice.allowed.empty()) {
++            if (choice == COMMON_CHAT_TOOL_CHOICE_REQUIRED) {
++                throw std::invalid_argument("Required allowed_tools must contain at least one function");
++            }
++            choice.mode = COMMON_CHAT_TOOL_CHOICE_NONE;
++        }
++    } else {
++        throw std::invalid_argument("Invalid tool_choice: " + tool_choice.dump());
++    }
++
++    for (const auto & name : choice.allowed) {
++        const auto n_matching = std::count_if(tools.begin(), tools.end(), [&](const common_chat_tool & tool) {
++            return tool.name == name;
++        });
++        if (name.empty() || n_matching != 1) {
++            throw std::invalid_argument("tool_choice function name must match exactly one supplied tool: " + name);
++        }
++    }
++    return choice;
+ }
+ 
+ bool common_chat_templates_support_enable_thinking(const common_chat_templates * chat_templates) {
+diff --git a/common/chat.h b/common/chat.h
+index 9e0dc7c66..dd4d3e605 100644
+--- a/common/chat.h
++++ b/common/chat.h
+@@ -232,12 +232,35 @@ struct common_chat_tool {
+     bool defer_loading = false;
+ };
+ 
+-enum common_chat_tool_choice {
++enum common_chat_tool_choice_mode {
+     COMMON_CHAT_TOOL_CHOICE_AUTO,
+     COMMON_CHAT_TOOL_CHOICE_REQUIRED,
+     COMMON_CHAT_TOOL_CHOICE_NONE,
+ };
+ 
++struct common_chat_tool_choice {
++    common_chat_tool_choice_mode mode = COMMON_CHAT_TOOL_CHOICE_AUTO;
++
++    // Names of the tools the model may call, every tool when empty.
++    std::vector<std::string> allowed;
++
++    common_chat_tool_choice() = default;
++    common_chat_tool_choice(common_chat_tool_choice_mode mode) : mode(mode) {}
++
++    bool operator==(common_chat_tool_choice_mode other) const { return mode == other; }
++    bool operator!=(common_chat_tool_choice_mode other) const { return mode != other; }
++
++    bool allows(const std::string & name) const;
++
++    bool is_auto() const { return mode == COMMON_CHAT_TOOL_CHOICE_AUTO; }
++    bool is_required() const { return mode == COMMON_CHAT_TOOL_CHOICE_REQUIRED; }
++    bool is_none() const { return mode == COMMON_CHAT_TOOL_CHOICE_NONE; }
++};
++
++// Keep the original tool indices when restricting the parser's tool set.
++void common_chat_foreach_tool(const common_json & tools, const common_chat_tool_choice & tool_choice,
++                              const std::function<void(size_t, const common_json &)> & fn);
++
+ enum common_chat_format {
+     COMMON_CHAT_FORMAT_CONTENT_ONLY,
+ 
+@@ -458,7 +481,7 @@ class common_chat_session {
+ const char *            common_reasoning_format_name(common_reasoning_format format);
+ common_reasoning_format common_reasoning_format_from_name(const std::string & format);
+ 
+-common_chat_tool_choice common_chat_tool_choice_parse_oaicompat(const std::string & tool_choice);
++common_chat_tool_choice common_chat_tool_choice_parse_oaicompat(const common_json & tool_choice, const std::vector<common_chat_tool> & tools);
+ 
+ bool common_chat_templates_support_enable_thinking(const common_chat_templates * chat_templates);
+ 
+diff --git a/tools/server/server-common.cpp b/tools/server/server-common.cpp
+index 632771415..b37a40c3e 100644
+--- a/tools/server/server-common.cpp
++++ b/tools/server/server-common.cpp
+@@ -1432,7 +1432,7 @@ json oaicompat_chat_params_parse(
+     auto tools = json_value(body, "tools", json());
+     auto has_tools = tools.is_array() && !tools.empty();
+     auto stream = json_value(body, "stream", false);
+-    auto tool_choice = json_value(body, "tool_choice", std::string("auto"));
++    auto tool_choice = json_value(body, "tool_choice", json("auto"));
+ 
+     if (!opt.use_jinja) {
+         if (has_tools) {
+@@ -1519,7 +1519,7 @@ json oaicompat_chat_params_parse(
+     common_chat_templates_inputs inputs;
+     inputs.messages               = common_chat_msgs_parse_oaicompat(messages);
+     inputs.tools                  = common_chat_tools_parse_oaicompat(tools);
+-    inputs.tool_choice            = common_chat_tool_choice_parse_oaicompat(tool_choice);
++    inputs.tool_choice            = common_chat_tool_choice_parse_oaicompat(tool_choice, inputs.tools);
+     inputs.json_schema            = json_schema.is_null() ? "" : json_schema.dump();
+     inputs.grammar                = grammar;
+     inputs.use_jinja              = opt.use_jinja;
+diff --git a/tools/server/server-realtime.cpp b/tools/server/server-realtime.cpp
+index 8ed3dd535..bf1c188bf 100644
+--- a/tools/server/server-realtime.cpp
++++ b/tools/server/server-realtime.cpp
+@@ -95,7 +95,7 @@ bool parse_tool_choice(const json & j, common_chat_tool_choice & choice, std::st
+         return false;
+     }
+     try {
+-        choice = common_chat_tool_choice_parse_oaicompat(j.get<std::string>());
++        choice = common_chat_tool_choice_parse_oaicompat(j, {});
+     } catch (const std::exception & e) {
+         err = e.what();
+         return false;
+@@ -104,7 +104,7 @@ bool parse_tool_choice(const json & j, common_chat_tool_choice & choice, std::st
+ }
+ 
+ const char * tool_choice_str(common_chat_tool_choice choice) {
+-    switch (choice) {
++    switch (choice.mode) {
+         case COMMON_CHAT_TOOL_CHOICE_NONE:     return "none";
+         case COMMON_CHAT_TOOL_CHOICE_REQUIRED: return "required";
+         default:                               return "auto";

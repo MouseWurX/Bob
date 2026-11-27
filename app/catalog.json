@@ -550,6 +550,72 @@
       }
     },
     {
+      "id": "raon-1-mini-preview",
+      "family": "Raon",
+      "category": "coding",
+      "jobs": ["tinker", "bob", "reviewer", "deep", "office", "scout"],
+      "name": "Raon-1 mini preview",
+      "published": "2026-10-20",
+      "what": "KRAFTON's first big open brain: a coder and all-rounder that thinks before it answers and keeps up to 256K in mind. Only 4.3B of it works on each word, so on a 16 GB card the busy parts sit on the card and the rest waits in RAM. Text only. Needs Brain Engine 37 or newer.",
+      "sizeGB": 19.7,
+      "vramGB": 16,
+      "params": 28.8,
+      "activeParams": 4.3,
+      "experts": true,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "thinks": true,
+      "engineMin": 37,
+      "files": [
+        {
+          "url": "https://huggingface.co/KRAFTON/Raon-1-mini-preview-gguf/resolve/cd61e81afcdfdf4b13cb345b3587c0ba4b918d00/raon-1-mini-preview-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 19686434240,
+          "sha256": "ba56ad4bd6d15f8c4255876ff252890143074a5d3835fccfc656cee915999ee8"
+        }
+      ],
+      "use": {
+        "models": {
+          "tinker": "$model"
+        }
+      }
+    },
+    {
+      "id": "raon-1-nano",
+      "family": "Raon",
+      "category": "chat",
+      "jobs": ["small", "bob", "scout"],
+      "name": "Raon-1 nano",
+      "published": "2026-11-10",
+      "what": "KRAFTON's small brain: 3.2B, but half of that is a word table read one row at a time, so it runs like a much smaller one. Quick on a laptop or a handheld. Text only. Needs Brain Engine 37 or newer, so not on the phone app yet.",
+      "sizeGB": 2.1,
+      "vramGB": 3,
+      "params": 3.2,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "tiny",
+      "trial": true,
+      "thinks": true,
+      "engineMin": 37,
+      "files": [
+        {
+          "url": "https://huggingface.co/KRAFTON/Raon-1-nano-gguf/resolve/67d566c2064079b67d0623c5a4acb981e13475cb/raon-1-nano-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 2082677632,
+          "sha256": "90e9ea83613626457c1249bb85e8d8471dd8874e62b4fa707d40c96737d764b6"
+        }
+      ],
+      "use": {
+        "models": {
+          "small": "$model"
+        }
+      }
+    },
+    {
       "id": "qwen3.6-35b-a3b-q3",
       "family": "Qwen",
       "category": "coding",
@@ -3722,6 +3788,50 @@
       "use": {
         "models": {
           "reviewer": "$model"
+        }
+      }
+    },
+    {
+      "id": "saluki-27b",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["bob", "tinker", "office", "scout", "deep", "eyes"],
+      "name": "Underdog Saluki 27B",
+      "published": "2026-10-07",
+      "what": "Qwen 3.8 27B squeezed to 7.9 GB (ISTA's 2-bit GSQ-RCO cut) and tuned by Underdog to keep tool calling intact. All of it fits on a 16 GB card, with room for about 128K of chat memory at q8_0. Good with tools; weaker than the full 27B at competition maths and letter puzzles, and with thinking on it thinks at length. Sees pictures with its add-on. Non-commercial licence: personal use only.",
+      "sizeGB": 7.9,
+      "vramGB": 12,
+      "params": 27,
+      "license": "CC BY-NC 4.0",
+      "commercial": false,
+      "pick": "optional",
+      "thinks": true,
+      "raced": "Bob's own held-out jobs on a rented card (2026-11-26, Lamplight): 56 of 65 passed (inbox 23 of 28, office 14 of 14, repo 9 of 12, web 10 of 11), where stock Qwen3.6 35B-A3B passed 49, with 5 tool-call slips and nothing harmful; about 67 tok/s on an L40S. On a rented L4 it held 128K of chat memory at q8_0 in 12.7 GB of graphics memory and found a code word hidden 103K tokens in.",
+      "community": {
+        "by": "Underdog (Conway Research)",
+        "base": "Qwen 3.8 27B",
+        "baseBy": "Alibaba",
+        "kind": "fine-tuned"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/ConwayResearch/Underdog-Saluki-27B-1.0/resolve/442e28ec9d89d9e732ddea2f0b9e017db20730a8/Underdog-Saluki-27B-1.0-IQ2-mix.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 7898369152,
+          "sha256": "4a673518b11b1c4445f9b9a9d3c40356f5ba39f6a6260dcb25f3fbfd475d9efb"
+        },
+        {
+          "url": "https://huggingface.co/ConwayResearch/Underdog-Saluki-27B-1.0/resolve/442e28ec9d89d9e732ddea2f0b9e017db20730a8/mmproj-Underdog-Saluki-27B-1.0-Q8_0.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 629246976,
+          "sha256": "2e0b88b680a45a58eea666b9776a89601b16f4ef575b871a686d82ee65938756"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
         }
       }
     },

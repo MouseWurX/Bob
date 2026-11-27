@@ -6,7 +6,7 @@ index cd06b51..686086f 100644
  #define FOR_EACH_LUT_FP4_TYPE(X) \
      X(GGML_TYPE_MXFP4,   mxfp4)   \
      X(GGML_TYPE_NVFP4,   nvfp4)
-+// Brain Engine 0125: PTQ1_0 is compiled per type like the LUT quants; it has no coopmat2 decoder, so it stays out of the cm2 list (NONFP4)
++// Brain Engine 0137: PTQ1_0 is compiled per type like the LUT quants; it has no coopmat2 decoder, so it stays out of the cm2 list (NONFP4)
 +#define FOR_EACH_PRISM_TYPE(X) \
 +    X(GGML_TYPE_PTQ1_0,  ptq1_0)
  #define FOR_EACH_LUT_TYPE(X) \
@@ -934,7 +934,7 @@ index 99ce145..1ccc4f7 100644
  #define A_TYPE block_q1_0
  #endif
  
-+// Brain Engine 0125: PTQ1_0, ternary at group 128 (from PrismML's fork). Field order is block_ptq1_0's: qs, qh, then d.
++// Brain Engine 0137: PTQ1_0, ternary at group 128 (from PrismML's fork). Field order is block_ptq1_0's: qs, qh, then d.
 +#define QUANT_K_PTQ1_0 128
 +#define QUANT_R_PTQ1_0 1
 +
@@ -963,7 +963,7 @@ index ef3d06f..468bba0 100644
      "f32",
      "f16",
      "q1_0",
-+    "ptq1_0", // Brain Engine 0125
++    "ptq1_0", // Brain Engine 0137
      "q2_0",
      "q4_0",
      "q4_1",
@@ -971,7 +971,7 @@ index ef3d06f..468bba0 100644
      return is_iq_quant(type_name) || type_name == "mxfp4" || type_name == "nvfp4";
  }
  
-+// Brain Engine 0125: PTQ1_0 keeps per-type matmul shaders like the LUT quants (from PrismML's fork)
++// Brain Engine 0137: PTQ1_0 keeps per-type matmul shaders like the LUT quants (from PrismML's fork)
 +bool is_prism_quant(const std::string& type_name) {
 +    return type_name == "ptq1_0";
 +}

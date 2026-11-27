@@ -15,7 +15,7 @@ import { templateFor, samplingFor, replyTokens, familyOf, thinkKwargs } from './
 import { gaming, LONG_CODER } from './sessions.js';
 import { gamingCard, decideCard, readCard, CARD_BUSY_PCT, CARD_MIN_FREE_MB } from './gaming-card.js';
 import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } from './tuning.js';
-import { chatPlacesOn, placesDir, placeFile, tidyPlaces, tmpFile, placeKey, ownEnv, diskRoom, ramCacheMiB, PLACE_IDLE_MS } from './chat-places.js'; // Per-chat engine cache (on unless switched off)
+import { chatPlacesOn, placesDir, placeFile, tidyPlaces, tmpFile, placeKey, ownEnv, diskRoom, ramCacheMiB, containerFreeBytes, PLACE_IDLE_MS } from './chat-places.js'; // Per-chat engine cache (on unless switched off)
 import { exeName } from './platform.js';
 import { buildMatches, brainEngineName, brainEngineBuild } from '../public/engine-name.js';
 import { hotArgs, RANKING_ENV, parseCacheLog } from './hot-experts.js'; // Nov 16: hot experts on the card (opt-in)
@@ -26,13 +26,13 @@ import { selfWorkOn } from './self-work.js';
 import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes, kvBytes } from './model-ctx.js';
 import { scutEnv, linkEnv, linkLive } from './share-card.js'; // SCUT, the fast link to lent cards
 import { LinkLog } from './link-log.js'; // what the link to a lent card carried, kept in a file and the logbook
-import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
+import { safeSpawn, fallBackIfBlocked, libDirEnv } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
-import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, FILL_FROM_BE as COND_FILL_FROM_BE, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv, loadStepBySpeed, cleanSpeeds } from './conductor.js'; // off unless picked
+import { readerSpareEnv, conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, FILL_FROM_BE as COND_FILL_FROM_BE, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv, loadStepBySpeed, cleanSpeeds } from './conductor.js'; // off unless picked
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { tuningArgs, doorbellEnv, registerRamEnv } from './engine-tuning.js';
 import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV, keepGuessesArgs, keepGuessesEnv, helpHasSink, sinkEnv } from './engine-extras.js'; // Turbo: stand-ins (0043), keep more guesses (0120), sharp start (0122); off unless switched on
-import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
+import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, vulkanFeatures, vulkanCaps, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
 
@@ -80,7 +80,19 @@ export const THINK_BUDGET = { medium: 1536 };
 // 6,400 tokens. Medium keeps its shorter budget above.
 export const LONG_THINK_BUDGET = 12288;
 // And every request has a ceiling on how much it may write (thinking plus answer), so no single reply runs forever.
-export const MAX_REPLY_TOKENS = 32768;
+export const MAX_REPLY_TOKENS = 32768; // the Conductor's room plan and rentals; Bob's own engine sends no reply size
+// Nov 24 (the owner's no-caps rule): what ends a runaway reply is the reply repeating itself, not a count. On the Go a
+// Qwen reply wrote "notice_board" over and over for 7 minutes until the half-memory reply cap stopped it. Every
+// REPEAT_EVERY characters the last REPEAT_TAIL are checked for one piece written 8+ times running at its end (1,500+
+// characters), and the reply is stopped there. Ported from the Nov 21 no-limits draft.
+export const REPEAT_EVERY = 2000, REPEAT_TAIL = 6000;
+export function repeating(text) {
+  const t = String(text || '');
+  if (t.length < 400) return false;
+  // At least 1,500 characters of the same piece over and over, so a ruled line or a short repeated row isn't a loop.
+  const m = t.trimEnd().match(/([\s\S]{8,400}?)\1{7,}$/);
+  return Boolean(m && m[0].length >= 1500);
+}
 export function thinkBudget(model, think) {
   if (think === false) return 0;
   return THINK_BUDGET[think] || (LONG_CODER.test(String(model || '')) ? LONG_THINK_BUDGET : 0);
@@ -544,7 +556,7 @@ export class LlamaCpp {
     let flag = null;
     if (/llama-server/i.test(path.basename(exe)) && fs.existsSync(exe)) {
       try {
-        const r = spawnSync(exe, ['--help'], { timeout: 5000, encoding: 'utf8', windowsHide: true });
+        const r = spawnSync(exe, ['--help'], { timeout: 5000, encoding: 'utf8', windowsHide: true, env: libDirEnv(exe) });
         const text = `${r.stdout || ''}${r.stderr || ''}`;
         flag = /--load-mode\b/.test(text) ? 'load-mode' : /--no-mmap\b/.test(text) ? 'no-mmap' : null;
       } catch {}
@@ -557,20 +569,21 @@ export class LlamaCpp {
   // its --help, whose cache type list names it. Anything else, or no answer within 5 s, counts as no, so the
   // Smallest memory type falls back to Smaller and is not offered on the Brains page.
   // Nov 20 (patch 0039): the same --help names LLAMA_KV_TIERS when the engine has Progressive Memory (kvTiers).
-  // Only for CUDA cards and the processor (q3CardOk): Vulkan and Metal have no 3-bit kernels.
+  // Only for CUDA cards, the processor and Lamplight's own Vulkan file (q3CardOk): official Vulkan and Metal have no 3-bit kernels.
   kvCaps() {
     const exe = this.exePath();
     if (this._kvQ3 && this._kvQ3.exe === exe) return this._kvQ3;
     let has = false, tiers = false, q2 = false, sink = false;
     if (/llama-server/i.test(path.basename(exe)) && fs.existsSync(exe)) {
       try {
-        if (!q3CardOk(fs.readdirSync(path.dirname(exe)), process.platform)) throw new Error('no 3-bit kernels for this card');
-        const r = spawnSync(exe, ['--help'], { timeout: 5000, encoding: 'utf8', windowsHide: true });
+        const files = fs.readdirSync(path.dirname(exe)), vk = vulkanFeatures(path.dirname(exe)), vc = vulkanCaps(files, vk);
+        if (!q3CardOk(files, process.platform, vk)) throw new Error('no 3-bit kernels for this card');
+        const r = spawnSync(exe, ['--help'], { timeout: 5000, encoding: 'utf8', windowsHide: true, env: libDirEnv(exe) });
         const text = `${r.stdout || ''}${r.stderr || ''}`;
         has = helpHasQ3(text);
-        tiers = has && helpHasTiers(text);
-        q2 = has && helpHasQ2(text); // 0046: 2-bit, Turbo's Progressive 8+2 only
-        sink = helpHasSink(text); // 0122: Turbo: sharp start (Brain Engine 46 or newer)
+        tiers = has && helpHasTiers(text) && vc.lse;
+        q2 = has && helpHasQ2(text) && vc.q2; // 0046: 2-bit, Turbo's Progressive 8+2 only
+        sink = helpHasSink(text) && vc.lse; // 0122: Turbo: sharp start (Brain Engine 46 or newer); 0135 on Vulkan
       } catch {}
     }
     this._kvQ3 = { exe, has, tiers, q2, sink };
@@ -763,7 +776,7 @@ export class LlamaCpp {
     // Nov 24: the engine's RAM cache of chats (llama.cpp's --cache-ram, 8 GB unless told) grows after GUPPI has placed the
     // brain, so GUPPI sizes it here: half of the RAM left once the brain's part in RAM and his keep-free amount are set
     // aside (src/chat-places.js ramCacheMiB). Brain Engine 46 (patch 0121) also watches the floor while it runs.
-    if (this.buildNo() >= 7000 && !args.some((a) => ['--cache-ram', '-cram'].includes(a))) args.push('--cache-ram', String(this.ramCacheSize(gguf, cpu)));
+    if (this.buildNo() >= 7000 && !args.some((a) => ['--cache-ram', '-cram'].includes(a))) args.push('--cache-ram', String(this.ramCacheSize(gguf, cpu, args)));
     args.push(...this.templateArgs(model, gguf, args));
     // Speculative decoding: a small "draft" model guesses ahead and the big one checks, often 1.5-2x faster.
     // 1.5.16x MTP per brain (the Lab's MTP page, Settings): wins over the one draft for every brain. The brain's own
@@ -797,6 +810,10 @@ export class LlamaCpp {
       if (ev.length && this.beNo() > 0) this.tuneEnv = { ...(this.tuneEnv || {}), ...specGateEnv(this.tuneEnv) };
       // Nov 23: with the Conductor's fill on, the MTP draft's own room is left free too (it is made after the fill)
       if (args.some((x, i) => x === '--spec-type' && String(args[i + 1] || '').split(',').includes('draft-mtp'))) this.tuneEnv = { ...(this.tuneEnv || {}), ...mtpSpareEnv({ env: this.tuneEnv, step: this.condLoad || 0 }) }; }
+    // Nov 27: with the fill on, the picture reader's room is left free too (it loads after the fill)
+    { const mi = args.indexOf('--mmproj'); let rb = 0; if (mi >= 0) { try { rb = fs.statSync(args[mi + 1]).size; } catch {} }
+      const rs = readerSpareEnv({ env: this.tuneEnv, hand: tune.env, readerBytes: rb });
+      if (rs.LLAMA_MOE_CACHE_FILL_SPARE_MIB) { this.tuneEnv = { ...(this.tuneEnv || {}), ...rs }; this.log?.('engine', `${model}: Conductor: the copy cache leaves ${rs.LLAMA_MOE_CACHE_FILL_SPARE_MIB} MiB of the card free, so the picture reader fits too`); } }
     // 94 Guess-ahead from the chat (opt-in): with no draft brain, the engine guesses by copying what the chat holds.
     args.push(...copyGuessArgs(this.cfg, { build: this.buildNo(), args }));
     // Turbo: keep more guesses (Brain Engine 0120, off unless switched on): where a model drafts, it samples its guesses
@@ -843,14 +860,17 @@ export class LlamaCpp {
 
   // Nov 24: GUPPI's size for the engine's RAM cache of chats, in MiB (see buildArgs). On built-in graphics the whole brain
   // is in RAM and GUPPI keeps his bigger amount free; on a card only what doesn't fit the card counts.
-  ramCacheSize(gguf, cpu) {
+  // Nov 27 (35B rental try 6): with the expert copy cache (--moe-cache-mib) every expert stays in RAM and the card holds
+  // copies, so the whole brain counts as in RAM (it was file minus card: 6 GB counted, 21 GB used, and the 8 GB cache
+  // on top went past a 32 GB machine's RAM).
+  ramCacheSize(gguf, cpu, args = []) {
     let fileBytes = 0;
     try { fileBytes = fs.statSync(gguf).size; } catch {}
     const shared = this.cfg.sharedGraphics === true;
     const floorMiB = Number(this.tuneEnv?.LLAMA_MOE_RAM_FLOOR_MIB);
     const keepBytes = shared ? apuKeepBytes(this.cfg) : (Number.isFinite(floorMiB) && floorMiB > 0 ? floorMiB : 512) * 1048576;
-    const brainRamBytes = cpu || shared || this.role === BESIDE ? fileBytes : Math.max(0, fileBytes - cardGB(this.cfg) * 1024 ** 3);
-    return ramCacheMiB({ freeBytes: this.freeRam ? this.freeRam() : os.freemem(), brainRamBytes, keepBytes });
+    const brainRamBytes = cpu || shared || this.role === BESIDE || (args || []).includes('--moe-cache-mib') ? fileBytes : Math.max(0, fileBytes - cardGB(this.cfg) * 1024 ** 3);
+    return ramCacheMiB({ freeBytes: this.freeRam ? this.freeRam() : Math.min(os.freemem(), containerFreeBytes()), brainRamBytes, keepBytes });
   }
 
   // ---------- Warm up while typing (1.5.24) ----------
@@ -1458,7 +1478,7 @@ export class LlamaCpp {
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
     this.placeKeyNow = placeKey({ exe, engine: `${this.beNo()}-${this.buildNo()}`, args, env: ownEnv(env) }); // Nov 24: what a saved chat must match
     this.placeOther = false; this.placeDirty = false;
-    const child = safeSpawn(spawn, exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
+    const child = safeSpawn(spawn, exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: libDirEnv(exe, env) }); // Nov 27: Linux finds the engine's own libraries
     // 1.5.24 "Games first": on the processor, the engine yields to games (below normal priority).
     if (this.role === BESIDE || (cpu && cpuPlan(this.cfg)?.lowPriority)) { try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {} }
     // The link log: with a lent card in use, the engine's [link] and [scut] lines go to bob-net-link.log and the logbook.
@@ -1683,6 +1703,17 @@ export class LlamaCpp {
   // 1.5.19: Medium has a thinking budget (1.5.68: so does Qwen3.6 at every effort, see thinkBudget). Once the brain has thought that long, the request stops and is asked again
   // with thinking off and a note to answer now (llama-server keeps the prompt cached, so the retry starts quickly).
   async chatOnce(opts) {
+    const r = await this.chatBudgeted(opts);
+    // Nov 24: thinking that went round in circles (stopped by repeating(), no answer, no call) is asked again with
+    // thinking off, the same way an over-budget think is. The person still sees the loud note if it loops again.
+    if (r?.cut === 'repeat' && !String(r.content || '').trim() && !r.tool_calls?.length && opts.think !== false && !opts.signal?.aborted) {
+      this.log?.('warn', `${opts.model}'s thinking kept repeating the same words; asked again with thinking off`);
+      const messages = [...opts.messages, { role: 'system', content: 'Your thinking was going round in circles. Answer now, using what you have worked out so far.' }];
+      return this.chatStream({ ...opts, messages, think: false });
+    }
+    return r;
+  }
+  async chatBudgeted(opts) {
     const budget = thinkBudget(opts.model, opts.think);
     if (!budget) return this.chatStream(opts);
     const stop = new AbortController();
@@ -1946,7 +1977,7 @@ export class LlamaCpp {
     return fetch(this.url + '/v1/chat/completions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, max_tokens: replyTokens(this.current === model ? this.currentCtx : null, MAX_REPLY_TOKENS), // 1.5.148: less on a small context. 1.5.26: no empty enums (llama.cpp rejects them)
+      body: JSON.stringify({ model, messages: LlamaCpp.toOpenAI(messages), tools: tools && tools.length ? tidySchema(tools) : undefined, stream: true, max_tokens: this.current === model && this.currentCtx > 0 ? this.currentCtx : undefined, // Nov 24: no reply cap, only the memory (a repeating reply is stopped below). 1.5.148 had half the memory. 1.5.26: no empty enums (llama.cpp rejects them)
         ...this.sampling(model, { tools: !!tools?.length, think, task }),
         ...(Number.isFinite(temperature) ? { temperature } : {}),
         // Nov 24 (the Legion Go check couldn't tell drift from chance): llamacpp.testSeed in the config file, for test
@@ -1972,7 +2003,8 @@ export class LlamaCpp {
     let buf = '';
     let done = false, finish = ''; // items 210, 211: how the reply ended
     const decoder = new TextDecoder();
-    for await (const chunk of res.body) {
+    let tail = '', sinceCheck = 0, looping = false; // Nov 24: a reply stuck repeating itself is what ends it
+    read: for await (const chunk of res.body) {
       onChunk(); // item 14: words are coming; the stall timer starts again
       buf += decoder.decode(chunk, { stream: true });
       let nl;
@@ -1997,6 +2029,11 @@ export class LlamaCpp {
         if (ev.timings) this.readSpeed[this.current || model] = learnReadSpeed(this.readSpeed[this.current || model], ev.timings); // item 208
         if (ev.timings) this.condLearn(this.current || model, ev.timings); // the Conductor's speeds per step
         const d = ev.choices?.[0]?.delta || {};
+        const more = String(d.reasoning_content || '') + String(d.content || '');
+        if (more) {
+          tail = (tail + more).slice(-REPEAT_TAIL); sinceCheck += more.length;
+          if (sinceCheck >= REPEAT_EVERY) { sinceCheck = 0; if (repeating(tail)) { looping = true; done = true; finish = 'length'; break read; } }
+        }
         if (budget && d.reasoning_content && ++thought > budget && !content) onOver(); // stop.over marks it, so real errors aren't retried
         if (d.reasoning_content && onThink) onThink(d.reasoning_content); // 1.5.53: only while the thinking window is open
         if (d.content) {
@@ -2033,7 +2070,8 @@ export class LlamaCpp {
       // Nov 11: broken JSON is kept as written, so the call can be mended before it runs (loop-help.js).
       return { ...(c.id ? { id: c.id } : {}), function: { name: c.name, arguments: args, ...(raw !== undefined ? { raw } : {}) } };
     });
-    if (end === 'length') this.log?.('engine', `${model}'s reply hit the length limit${tool_calls.some((c) => c.cut) ? ' in the middle of a tool call' : ''}`);
+    if (looping) this.log?.('warn', `${model}'s reply kept repeating the same words, so it was stopped there (${content.length.toLocaleString()} characters)`);
+    if (end === 'length' && !looping) this.log?.('engine', `${model}'s reply hit the length limit${tool_calls.some((c) => c.cut) ? ' in the middle of a tool call' : ''}`);
     if (!tool_calls.length && tools?.length) {
       const names = new Set(tools.map((t) => t.function?.name).filter(Boolean));
       const rescued = textCalls(content, names);
@@ -2042,6 +2080,6 @@ export class LlamaCpp {
     } else if (tool_calls.length) this.textCallNote(model, { offered: true, real: true });
     if (held) onToken && onToken(cleanHarmony(held)); // it wasn't a call after all: show it now
     if (held && /<\|(channel|message|start|end)\|>/.test(content)) content = cleanHarmony(content);
-    return { role: 'assistant', content, tool_calls: tool_calls.length ? tool_calls : undefined, ...(end === 'length' ? { cut: 'length' } : {}) };
+    return { role: 'assistant', content, tool_calls: tool_calls.length ? tool_calls : undefined, ...(end === 'length' ? { cut: looping ? 'repeat' : 'length' } : {}) };
   }
 }

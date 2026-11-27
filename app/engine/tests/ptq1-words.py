@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-# Brain Engine 0124 test: PTQ1_0 (ternary at group 128, PrismML's Ternary Bonsai files), on the processor.
+# Brain Engine 0136 test: PTQ1_0 (ternary at group 128, PrismML's Ternary Bonsai files), on the processor.
 # A tiny random Qwen 3.5 dense brain is made with the checkout's own test-llama-archs, so nothing is downloaded. It checks:
 #   - the codec's element order matches the processor codec (test-ptq1_0-element-map) and the processor's
 #     dot products match the reference (test-quantize-fns, which covers the AVX2 / AVX-512 path the build picked)
 #   - llama-quantize makes a PTQ1_0 file, and it loads and answers (greedy, the same tokens on 1 and 4 threads)
 #   - its perplexity is a finite number, the same on 1 and 4 threads
 #   - with a second checkout (PrismML's fork, built), that fork gives the same greedy tokens on the same file
-#   - with a Vulkan build in <checkout>/build-vk (0125), the card's PTQ1_0 products pass test-backend-ops, it gives the
+#   - with a Vulkan build in <checkout>/build-vk (0137), the card's PTQ1_0 products pass test-backend-ops, it gives the
 #     processor's greedy tokens, and its perplexity is within 2e-3 of the same brain unpacked to F32 (the exact weights;
 #     the processor path rounds its inputs to q8_0 first, so it sits about 1% away). GGML_VK_VISIBLE_DEVICES=0 lets a
 #     software Vulkan device (lavapipe) count.
@@ -64,6 +64,9 @@ def ppl(bin_dir, threads):
     rc, out, err = run([os.path.join(bin_dir, 'llama-perplexity'), '-m', ptq, '-f', text, '-c', '128', '-b', '128',
                         '--chunks', '20', '-t', str(threads)])
     m = re.search(r'Final estimate: PPL = ([0-9.]+)', out + err)
+    if m: return float(m.group(1))
+    # the logger can drop its last line at exit; the 20th chunk's running value is the same number
+    m = re.search(r'\[20\]([0-9.]+)', out + err)
     return float(m.group(1)) if m else float('nan')
 p1, p4 = ppl(BIN, 1), ppl(BIN, 4)
 check('perplexity is a finite number', math.isfinite(p1), str(p1))
@@ -91,7 +94,7 @@ if os.path.isdir(VK):
     def ppl_of(bin_dir, model, extra=(), e=None):
         r = subprocess.run([os.path.join(bin_dir, 'llama-perplexity'), '-m', model, '-f', text, '-c', '128', '-b', '128',
                             '--chunks', '20', '-t', '4', *extra], capture_output=True, text=True, env=e)
-        m = re.search(r'Final estimate: PPL = ([0-9.]+)', r.stdout + r.stderr)
+        m = re.search(r'Final estimate: PPL = ([0-9.]+)', r.stdout + r.stderr) or re.search(r'\[20\]([0-9.]+)', r.stdout + r.stderr)
         return float(m.group(1)) if m else float('nan')
     ref, vk = ppl_of(BIN, f32), ppl_of(VK, ptq, ('-ngl', '99'), env)
     check('Vulkan perplexity is within 2e-3 of the exact (F32) weights', math.isfinite(vk) and abs(vk - ref) / ref < 2e-3, f'{vk} vs {ref}')

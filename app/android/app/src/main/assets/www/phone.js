@@ -973,7 +973,7 @@
     drawLend();
     const list = $('bob-list');
     list.textContent = '';
-    if (!bobs.length) list.append(el('p', { class: 'dim', text: 'None yet. Add your other replicant matrix\'s Bob below.' }));
+    if (!bobs.length) list.append(el('p', { class: 'dim', text: 'None yet. Tap Find my other Bobs.' }));
     else list.append(el('p', { class: 'help-line', text: bobs.length > 1 ? 'The First choice answers when more than one Bob is reachable. Make first choice on another Bob moves him to the top.' : 'The First choice answers when more than one Bob is reachable. Add another Bob to choose between them.' }));
     bobs.forEach((b, i) => {
       const st = live[b.base] || {};
@@ -1032,6 +1032,48 @@
     }).catch((e) => { $('add-msg').textContent = `Couldn't ask: ${e.message}.`; });
   });
 
+  // ---------- Find my other Bobs (Nov 25) ----------
+  // Home Wi-Fi plus your Tailscale devices as your paired Bobs see them (Pairing.kt find). Each Bob found shows once,
+  // with Pair (over Tailscale, the same card and 4-digit number as above) or what to do first.
+  function pairFound(f, btn) {
+    if (btn) btn.disabled = true;
+    $('add-msg').textContent = `Asking ${f.name}…`;
+    phone('pair.with', { address: f.ts }).then((r) => {
+      if (btn) btn.disabled = false;
+      if (r.error) { $('add-msg').textContent = r.error; return; }
+      $('add-msg').replaceChildren(`Waiting for a yes on ${r.name || f.name}. Its card shows the number `, el('strong', { text: String(r.number) }), ': check it matches, then tap Yes, pair us over there.');
+    }).catch((e) => { if (btn) btn.disabled = false; $('add-msg').textContent = `Couldn't ask: ${e.message}.`; });
+  }
+  $('find-bobs').addEventListener('click', async () => {
+    const btn = $('find-bobs'), list = $('find-list');
+    btn.disabled = true; btn.textContent = '🔍 Looking…';
+    list.replaceChildren(el('p', { class: 'dim', text: 'Knocking on your Wi-Fi and your Tailscale devices. A few seconds.' }));
+    try {
+      const r = await phone('pair.find', { paired: bobs.map((b) => b.address) });
+      const known = (f) => [f.ts, f.wifi].some((a) => a && bobs.some((b) => b.address === a || b.base === L.netAddress(a)));
+      const found = (r.bobs || []).map((f) => ({ ...f, paired: known(f) }));
+      list.textContent = '';
+      if (!found.length) {
+        list.append(el('p', { class: 'help-line', text: `No Bob answered${r.wifi ? ' on this Wi-Fi' : ''}${r.asked ? ' or on Tailscale' : ''}. Is Bob open on your other replicant matrix, with "Bob-Net access" on?${r.wifi ? '' : ' This phone is not on Wi-Fi, so only Tailscale was asked.'}${r.asked ? '' : ' Pair one Bob by address once, and Find asks him for the rest.'}` }));
+        return;
+      }
+      for (const f of found) {
+        const where = [f.wifi && 'Wi-Fi', f.ts && 'Tailscale'].filter(Boolean).join(' and ');
+        let act, why = '';
+        if (f.paired) act = el('span', { class: 'dim', text: '✓ Paired' });
+        else if (f.shut) why = 'Turn on "Home network access" there (Settings, Bob-Net), then Find again.';
+        else if (!f.ts) why = 'Found on Wi-Fi. Pairing goes over Tailscale: switch Tailscale on there (or update that Bob), then Find again.';
+        if (!act && !why) { const b = el('button', { class: 'main', text: 'Pair' }); b.addEventListener('click', () => pairFound(f, b)); act = b; }
+        list.append(el('div', { class: 'box found' },
+          el('div', {}, el('strong', { text: f.name || 'Bob' }), el('p', { class: 'help-line', text: [f.kind === 'phone' ? 'Phone' : f.kind ? 'Computer' : '', where ? `on ${where}` : '', f.version].filter(Boolean).join(' · ') }), why ? el('p', { class: 'help-line', text: why }) : null),
+          act || null));
+      }
+      const ready = found.filter((f) => !f.paired && !f.shut && f.ts);
+      if (ready.length > 1) list.append(el('button', { class: 'wide', text: `Pair with all ${ready.length}`, onclick: () => ready.forEach((f) => pairFound(f)) }));
+    } catch (e) { list.replaceChildren(el('p', { class: 'help-line', text: `Couldn't look: ${e.message}.` })); }
+    finally { btn.disabled = false; btn.textContent = '🔍 Find my other Bobs'; }
+  });
+
   function addPaired(name, address) {
     const base = L.netAddress(address);
     if (!base) return;
@@ -1072,7 +1114,7 @@
       return;
     }
     if (ev.type === 'pair-state' && ev.state !== 'paired') {
-      const t = { no: 'That Bob said no.', timeout: 'Nobody answered in time. Tap Pair with this Bob to try again.', failed: `Couldn't pair${ev.why ? `: ${ev.why}` : ''}.` }[ev.state];
+      const t = { no: 'That Bob said no.', timeout: 'Nobody answered in time. Tap Pair to try again.', failed: `Couldn't pair${ev.why ? `: ${ev.why}` : ''}.` }[ev.state];
       if (t) { $('add-msg').textContent = t; toast(t); }
     }
   }

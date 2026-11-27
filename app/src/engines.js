@@ -411,7 +411,7 @@ export async function grab(asset, folder, pub, signal, tick, { allowed = hostAll
     const tmp = folder + '.unzip';
     fs.rmSync(tmp, { recursive: true, force: true });
     unzip(zip, tmp);
-    fs.cpSync(tmp, folder, { recursive: true, force: true });
+    copyTree(tmp, folder);
     fs.rmSync(tmp, { recursive: true, force: true });
     fs.rmSync(zip, { force: true });
     return;
@@ -438,6 +438,23 @@ export function makeRunnable(folder) {
 }
 
 // Linux: the CUDA runtime file may keep its libraries in a subfolder; llama.cpp looks for them next to itself.
+// Nov 27 (1.5.255, rental try 3): an engine folder copied onto another, keeping library links exactly as they are
+// (libggml.so.1 -> libggml.so.1.0.0). fs.cpSync turned them into links to the folder it copied from, which Bob deletes
+// next, so on Linux the engine stopped with "libggml.so.1: cannot open shared object file"; and with verbatimSymlinks
+// it refuses a link that is already there (EEXIST). overwrite false: what's already there stays.
+export function copyTree(from, to, { overwrite = true } = {}) {
+  fs.mkdirSync(to, { recursive: true });
+  for (const ent of fs.readdirSync(from, { withFileTypes: true })) {
+    const a = path.join(from, ent.name), b = path.join(to, ent.name);
+    let there = null; try { there = fs.lstatSync(b); } catch {}
+    if (ent.isDirectory()) { if (there && !there.isDirectory()) { if (!overwrite) continue; fs.rmSync(b, { force: true }); } copyTree(a, b, { overwrite }); continue; }
+    if (there && !overwrite) continue;
+    if (there) fs.rmSync(b, { recursive: true, force: true });
+    if (ent.isSymbolicLink()) fs.symlinkSync(fs.readlinkSync(a), b);
+    else fs.copyFileSync(a, b);
+  }
+}
+
 export function liftLibraries(folder) {
   const walk = (d, depth) => {
     for (const ent of fs.readdirSync(d, { withFileTypes: true })) {
@@ -564,7 +581,7 @@ export function seedBundledEngine(cfg, from = BUNDLE_DIR) {
   if (engineExe(cfg, e) || !fs.existsSync(path.join(from, 'bob-llamacpp.json'))) return false;
   const to = path.join(cfg.agentDir, e.dir);
   fs.mkdirSync(to, { recursive: true });
-  fs.cpSync(from, to, { recursive: true });
+  copyTree(from, to);
   if (OS !== 'win') { try { makeRunnable(to); } catch {} }
   return Boolean(engineExe(cfg, e));
 }
@@ -652,7 +669,8 @@ async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
     fs.rmSync(over, { recursive: true, force: true }); fs.mkdirSync(over, { recursive: true });
     await grab(own.asset, over, pub, signal, tick);
     flatten(over, [e.exe]);
-    fs.cpSync(over, stage, { recursive: true, force: true });
+    dropVulkanOverCuda(over, base.asset.name);
+    copyTree(over, stage); // Nov 27: keeps Linux library links (fs.cpSync pointed them at this side folder, deleted next)
     fs.rmSync(over, { recursive: true, force: true });
     if (e.os !== 'win') makeRunnable(stage);
     if (!fs.existsSync(path.join(stage, e.exe))) throw new Error(`${e.name} unpacked, but ${e.exe} isn't in it. The release layout may have changed.`);
@@ -666,6 +684,25 @@ async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
   try { swapIn(folder, stage); }
   catch (err) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error(`${e.name} is in use right now (${err.code || err.message}). Wait for the Lab job to finish (or press Unload everything), then try again.`); }
   return { version: own.rel.tag_name, asset: own.asset.name };
+}
+
+// Nov 26: Lamplight carries its own Vulkan backend (ggml-vulkan.dll / libggml-vulkan.so, with lamplight-vulkan.json),
+// for AMD and Intel graphics: over the official Vulkan download it replaces the official one, so those cards run every
+// patch. Over the CUDA download (an NVIDIA card) it stays out: that download has no Vulkan file, and the same card
+// would show up twice (CUDA0 and Vulkan0).
+export const VULKAN_OWN_FILES = /^(ggml-vulkan\.dll|libggml-vulkan\.so(\.\d+)*|lamplight-vulkan\.json)$/i;
+// And the other way round: our CUDA backend (ggml-cuda.dll / libggml-cuda.so) stays out over a download that isn't
+// the CUDA one (AMD, Intel, no card). That download has no CUDA runtime beside it, so the CUDA file can't load, and
+// the install check would hold the whole update back for "the CUDA runtime files".
+export const CUDA_OWN_FILES = /^(ggml-cuda.*\.dll|libggml-cuda.*\.so(\.\d+)*)$/i;
+export function dropVulkanOverCuda(dir, baseName) {
+  const drop = /cuda/i.test(String(baseName || '')) ? VULKAN_OWN_FILES : baseName ? CUDA_OWN_FILES : null;
+  if (!drop) return [];
+  let names = [];
+  try { names = fs.readdirSync(dir); } catch {}
+  const out = names.filter((n) => drop.test(n));
+  for (const n of out) fs.rmSync(path.join(dir, n), { force: true });
+  return out;
 }
 
 // 1.5.185 Download the missing files: only the parts the kept, incomplete update lacks, from the same releases (the
@@ -691,7 +728,7 @@ export async function fetchMissing(cfg, id, { nvidia, pub, signal, tick, find = 
       await get(a, tmp, pub, signal, tick);
       flatten(tmp, [b.exe]);
       if (e.os === 'linux') liftLibraries(tmp);
-      fs.cpSync(tmp, dir, { recursive: true, force: false, errorOnExist: false }); // what's there stays
+      copyTree(tmp, dir, { overwrite: false }); // what's there stays
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   };
   pub.done = 0; pub.total = (held.missing.includes('llama') ? asset.size || 0 : 0) + (rt?.size || 0);
