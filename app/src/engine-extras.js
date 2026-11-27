@@ -11,7 +11,7 @@
 //   turboEveryday 102 MTP for everyday brains: a brain's own built-in guesser (MTP) on, without the Lab (ON unless switched off, Nov 23)
 //   hotExperts   104 Hot experts on the card: llama.cpp's expert cache, filled from a profile (src/hot-experts.js)
 //   lockBrainMemory 103 Lock brain memory: the part of a brain in RAM stays there (--mlock), so Windows can't page it out
-//   smallStepFit Nov 27 Fit my working memory to the card: a smaller reading step when the engine's working memory doesn't fit (step-fit.js)
+//   smallStepFit Nov 27 GUPPI fits his working memory to the card: a smaller reading step when the engine's working memory doesn't fit (step-fit.js)
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

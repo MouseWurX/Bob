@@ -1,11 +1,11 @@
-// Nov 27: "Fit my working memory to the card" (src/step-fit.js, wired into llamacpp.js), off unless switched on.
+// Nov 27: "GUPPI fits his working memory to the card" (src/step-fit.js, wired into llamacpp.js), off unless switched on.
 // The laptop's GUPPI probe found Inkling 2 Mini wanting 7.4 GB of working memory on a 6 GB card at step 512 and 32K.
 // Run: node test/run-step-fit-test.js. Uses the fake llama-server; never reads the real card, RAM or folders.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cardUse, fitDeficitMiB, shortest, stepFitPlan, withStep, ubOf, stepFitOn, stepFitLine, STEP_FIT_MIN_UB, STEP_FIT_MIN_CTX } from '../src/step-fit.js';
+import { cardUse, fitDeficitMiB, shortest, stepFitPlan, fitPlanEarly, growCap, withStep, ubOf, stepFitOn, stepFitLine, STEP_FIT_MIN_UB, STEP_FIT_MIN_CTX } from '../src/step-fit.js';
 import { LlamaCpp } from '../src/llamacpp.js';
 import { EXTRA_SWITCHES } from '../src/engine-extras.js';
 import { mergeSettings } from '../src/config.js';
@@ -61,6 +61,17 @@ const probe = [
   const oom = 'using device CUDA0 (X) (0000:01:00.0) - 5130 MiB free\nCUDA0 model buffer size = 946.00 MiB\nggml_backend_cuda_buffer_type_alloc_buffer: allocating 7434.90 MiB on device 0: cudaMalloc failed: out of memory';
   check(stepFitPlan({ log: oom, ub: 512, ctx: 32768 })?.ub === 128, 'a load that failed allocating its working memory (Linux) is read the same way');
 }
+{
+  const plan = ['common_memory_breakdown_print: |   - CUDA0 (NVIDIA GeForce RTX 3060 Laptop GPU) |  6143 = 5130 + (13618 =  8469 +    1758 +    3390) +      -12605 |',
+    'common_params_fit_impl: cannot meet free memory target of 1024 MiB, need to reduce device memory by 9512 MiB',
+    'common_params_fit_impl: getting device memory data with all MoE tensors moved to system memory:',
+    'common_memory_breakdown_print: |   - CUDA0 (NVIDIA GeForce RTX 3060 Laptop GPU) |  6143 = 5130 + (10139 =   946 +    1758 +    7434) +       -9126 |',
+    'common_params_fit_impl: with only dense weights in device memory there is still a total deficit of 6033 MiB'].join('\r\n');
+  const p = fitPlanEarly({ log: plan, ub: 512, ctx: 32768 });
+  check(p?.ub === 128 && p.ctx === 32768 && /7434 MiB at step 512/.test(p.why), 'the fit\'s plan (the probe\'s own lines, before any weights load): open at step 128', JSON.stringify(p));
+  check(fitPlanEarly({ log: plan.split('\r\n').slice(0, 4).join('\n'), ub: 512 }) === null, 'until the fit says even every expert in RAM is short, nothing is decided');
+  check(growCap({ ub: 128, perUbMiB: 14.52 }) === 128 && growCap({ ub: 256, perUbMiB: 1.5 }) === 512 && growCap({ ub: 512 }) === 512, 'how far GUPPI may raise the step: the 512 MB the fit leaves over our margin, at the brain\'s own cost per token of step');
+}
 check(withStep(['-m', 'x', '-b', '2048', '-ub', '2048', '--fit', 'on'], 128).join(' ') === '-m x -b 2048 --fit on -ub 128' && withStep(['-b', '64'], 128).join(' ') === '-b 128 -ub 128' && ubOf(['-ub', '256']) === 256 && ubOf([]) === 512, 'the step goes in once, and the batch is never smaller than it');
 check(/didn't fit the graphics card/.test(stepFitLine('Inkling', 128, 32768, 32768)) && !/chat memory/.test(stepFitLine('Inkling', 128, 32768, 32768)) && /16K chat memory/.test(stepFitLine('Inkling', 64, 16384, 32768)), 'the chat line says what changed, in plain words');
 
@@ -97,43 +108,84 @@ const env = { MOCK_COMPUTE_MIB: '7434.9', MOCK_FREE_MIB: '5130', MOCK_MODEL_MIB:
 const setEnv = (o) => { for (const [k, v] of Object.entries(o)) { if (v === null) delete process.env[k]; else process.env[k] = v; } };
 try {
   setEnv(env);
+  // GUPPI's way (the owner, Nov 27): no reloads. With the fit on, its plan is read as the engine starts and the brain opens at
+  // a step that fits; the first start is stopped before any weights load.
+  let saved = null;
   {
-    const e = make();
+    const e = make({}, { fit: true });
+    let spawns = 0; const spawnLog = e.log; e.log = (k, t) => { spawnLog(k, t); };
+    const t0 = Date.now();
     await e.preload('inkling', undefined, { ctx: 32768 });
-    const saved = JSON.parse(fs.readFileSync(path.join(e.cfg.dataDir, 'engine-care.json'), 'utf8'));
-    check(await e.isLoaded('inkling', { ctx: 32768 }) && ubNow(e) === 128 && e.currentCtx === 32768, 'Windows-style spill (the load works, the card is short): it loads again at step 128 with the 32K chat memory', argsOf(e));
-    check(saved.stepFit?.['inkling|32768']?.ub === 128 && e.logs.some((t) => /working memory was 7435 MiB at step 512 .* loads again at step 128/.test(t)), 'the step is remembered for this brain and chat memory, and the logbook says why', JSON.stringify(saved.stepFit));
+    saved = JSON.parse(fs.readFileSync(path.join(e.cfg.dataDir, 'engine-care.json'), 'utf8'));
+    check(await e.isLoaded('inkling', { ctx: 32768 }) && ubNow(e) === 128 && e.currentCtx === 32768 && /--fit on/.test(argsOf(e)), 'the fit\'s plan said the working memory won\'t fit: the brain opens at step 128, the 32K chat memory kept', argsOf(e));
+    check(e.logs.some((t) => /read the engine's plan before any weights loaded: the working memory was 743\d MiB at step 512 .*opens it at step 128/.test(t)) && !e.logs.some((t) => /load-failed|stopped while loading/.test(t)) && !fs.existsSync(path.join(e.cfg.dataDir, 'llama-server-load-failed.txt')), 'the logbook says why, and the stopped start isn\'t counted as a failed load', e.logs.join(' | '));
+    check(saved.stepFit?.['inkling|32768']?.ub === 128 && saved.stepFit['inkling|32768'].perUbMiB > 14, 'the step and the working memory per token of step are remembered', JSON.stringify(saved.stepFit));
     check(e.takeNotes().some((t) => /working memory didn't fit the graphics card/.test(t)), 'the chat is told once');
+    check(Date.now() - t0 < 8000, 'no second full load: the first start stops as soon as the plan is printed', String(Date.now() - t0));
     await e.stopServer();
-    const e2 = new LlamaCpp(e.cfg); e2.logs = []; e2.log = (k, t) => e2.logs.push(t); e2.cardReaders = { card: async () => null }; clearInterval(e2.idleTimer); all.push(e2);
+    void spawns;
+  }
+  {
+    const e2 = make(); e2.careData.stepFit = saved.stepFit;
     const a = e2.buildArgs('inkling', { ctx: 32768 });
-    check(ubOf(a) === 128 && a.filter((x) => x === '-ub').length === 1 && e2.logs.some((t) => /reading step 128, because/.test(t)), 'after a restart the next load goes straight in at step 128, with no extra load', a.join(' '));
+    const first = make({}, { fit: true }).buildArgs('inkling', { ctx: 32768 });
+    check(first.join(' ').includes('-lv 4') && !a.includes('-lv') && !make({ smallStepFit: false }).buildArgs('inkling', { ctx: 32768 }).includes('-lv'), 'the first load of a brain asks the engine for its plan and buffer sizes (log level 4, the usual level prints none); once the step is known, or with the switch off, it doesn\'t', first.join(' '));
+    check(ubOf(a) === 128 && a.filter((x) => x === '-ub').length === 1 && e2.logs.some((t) => /reading step 128, because/.test(t)) && !e2.stepFitEarly, 'the next load (after a restart too) opens straight at step 128', a.join(' '));
     const off = make({ smallStepFit: false }); off.careData.stepFit = saved.stepFit;
     check(ubOf(off.buildArgs('inkling', { ctx: 32768 })) === 512, 'switched off: the remembered step isn\'t used');
     const other = make(); other.careData.stepFit = { 'inkling|32768': { ...saved.stepFit['inkling|32768'], be: 99 } };
     check(ubOf(other.buildArgs('inkling', { ctx: 32768 })) === 512, 'a step found on another engine build isn\'t used (a newer engine may need less)');
   }
   {
+    // GUPPI driving on Brain Engine 46: the step is raised for long reads only as far as the room the fit leaves
+    const g = make({ engineTuning: { mode: 'conductor' } }); g.beNo = () => 46; g.buildNo = () => 12359; g.careData.stepFit = { 'inkling|32768': { ub: 128, ctx: 32768, perUbMiB: 14.52, be: 46 } };
+    g.buildArgs('inkling', { ctx: 32768 });
+    check(g.condChat === 128 && g.condMax === 128, 'GUPPI reads at up to the step there\'s room for (Inkling: 512 MB at 14.5 MB a token keeps it at 128)', JSON.stringify({ chat: g.condChat, max: g.condMax }));
+    const h = make({ engineTuning: { mode: 'conductor' } }); h.beNo = () => 46; h.buildNo = () => 12359; h.careData.stepFit = { 'inkling|32768': { ub: 256, ctx: 32768, perUbMiB: 1.5, be: 46 } };
+    h.buildArgs('inkling', { ctx: 32768 });
+    check(h.condChat === 256 && h.condMax === 512, 'a brain with a lighter working memory gets room to read at a bigger step, and GUPPI steps back if the card says it\'s short', JSON.stringify({ chat: h.condChat, max: h.condMax }));
+  }
+  {
+    // no fit (a placement pinned), the load spills anyway: on Brain Engine the step goes down in place, no reload
+    setEnv({ MOCK_CONTEXT: '1' });
+    const e = make({}, { fit: false }); e.beNo = () => 46;
+    await e.preload('inkling', undefined, { ctx: 32768 });
+    const pid1 = e.child?.pid;
+    const live = await (await fetch(`${e.url}/test-ctx`)).json();
+    check(live.n_ubatch === 128 && live.pid === pid1 && ubOf(e.lastArgs) === 128 && e.logs.some((t) => /switched it to step 128 in place, the brain kept loaded/.test(t)), 'a brain that loaded short switches to step 128 in place: same engine, no reload', JSON.stringify(live));
+    await e.stopServer();
+    setEnv({ MOCK_CONTEXT: null });
+    const old = make({}, { fit: false });
+    await old.preload('inkling', undefined, { ctx: 32768 });
+    check(ubNow(old) === 512 && old.logs.some((t) => /next load opens at step 128/.test(t)) && old.careData.stepFit?.['inkling|32768']?.ub === 128, 'an engine that can\'t change the step in place: no reload either, the next load opens at it', argsOf(old));
+    await old.stopServer();
+  }
+  {
     const e = make({ smallStepFit: false });
     await e.preload('inkling', undefined, { ctx: 32768 });
-    check(ubNow(e) === 512 && !e.logs.some((t) => /loads again at step/.test(t)), 'off (the default): the brain loads as before, at step 512', argsOf(e));
+    check(ubNow(e) === 512 && !e.logs.some((t) => /opens it at step|switched it to step|next load opens/.test(t)), 'off (the default): the brain loads as before, at step 512', argsOf(e));
     await e.stopServer();
   }
   {
-    const e = make({}, { ubatch: 256 });
+    const e = make(); e.guppiProfile = () => ({ cap: 512, keepBob: true, ubCap: 256 });
+    const a = e.buildArgs('inkling', { ctx: 32768 });
+    check(e.stepFitHand === true && !e.stepFitCan(), 'a step Calibrate found for this brain wins: GUPPI\'s load-time fit stands back', a.join(' '));
+  }
+  {
+    const e = make({}, { ubatch: 256, fit: true });
     await e.preload('inkling', undefined, { ctx: 32768 });
-    check(ubNow(e) === 256 && !e.logs.some((t) => /loads again at step/.test(t)), 'a reading step set by hand wins', argsOf(e));
+    check(ubNow(e) === 256 && !e.logs.some((t) => /opens it at step|switched it to step|next load opens/.test(t)), 'a reading step set by hand wins', argsOf(e));
     await e.stopServer();
   }
   {
     const e = make({ sharedGraphics: true, gpuVramGB: 7, reservedGraphicsGB: 0.5 });
     await e.preload('inkling', undefined, { ctx: 32768 });
-    check(!e.logs.some((t) => /loads again at step/.test(t)), 'built-in graphics keep their own fitting (apu-fit.js)');
+    check(!e.logs.some((t) => /opens it at step|switched it to step|next load opens/.test(t)), 'built-in graphics keep their own fitting (apu-fit.js)');
     await e.stopServer();
   }
   {
     setEnv({ MOCK_CARD_OOM: '1' });
-    const e = make();
+    const e = make({}, { fit: false });
     await e.preload('inkling', undefined, { ctx: 32768 });
     check(await e.isLoaded('inkling', { ctx: 32768 }) && ubNow(e) === 128 && e.currentCtx === 32768 && e.logs.some((t) => /ran out of card memory while loading; .* step 128/.test(t)), 'Linux-style failure (out of card memory while loading): a smaller step first, the 32K chat memory kept', argsOf(e));
     await e.stopServer();
@@ -141,13 +193,13 @@ try {
   }
   {
     setEnv({ MOCK_COMPUTE_MIB: '3000', MOCK_FREE_MIB: '9000' });
-    const e = make();
+    const e = make({}, { fit: true });
     await e.preload('inkling', undefined, { ctx: 32768 });
-    check(ubNow(e) === 512 && !e.logs.some((t) => /loads again at step/.test(t)), 'a card with room: one load, step unchanged', argsOf(e));
+    check(ubNow(e) === 512 && !e.logs.some((t) => /opens it at step|switched it to step|next load opens/.test(t)), 'a card with room: one load, step unchanged', argsOf(e));
     await e.stopServer();
   }
 } finally {
-  setEnv({ MOCK_COMPUTE_MIB: null, MOCK_FREE_MIB: null, MOCK_MODEL_MIB: null, MOCK_KV_MIB: null, MOCK_CARD_OOM: null });
+  setEnv({ MOCK_COMPUTE_MIB: null, MOCK_FREE_MIB: null, MOCK_MODEL_MIB: null, MOCK_KV_MIB: null, MOCK_CARD_OOM: null, MOCK_CONTEXT: null });
   for (const e of all) { try { await e.stopServer(); } catch {} clearInterval(e.idleTimer); }
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
 }
@@ -157,10 +209,10 @@ try {
   const ex = HELP.find((h) => h.id === 'engine-extras')?.html || '';
   const faq = HELP.find((h) => h.id === 'faq-step-fit')?.html || '';
   const all = HELP.map((h) => h.html).join('\n');
-  check(/Fit my working memory to the card/.test(ex) && /'Fit my working memory to the card', 'Off'/.test(read('public/help-content.js')), 'Engine extras Help names it, off');
-  check(/smaller steps/.test(faq) && /Windows and Linux/.test(faq) && /Android app/.test(faq) && /unproven in our lab/.test(faq), 'an FAQ in Bob\'s voice says what it does, where it works and that it\'s untested');
+  check(/GUPPI fits his working memory to the card/.test(all) && !/GUPPI fits his working memory/.test(ex) && /'GUPPI fits his working memory to the card', 'Off'/.test(read('public/help-content.js')), 'Settings Help names it under Engine tuning, off, and Engine extras no longer lists it');
+  check(/smaller step/.test(faq) && /Nothing loads twice/.test(faq) && /Windows and Linux/.test(faq) && /Android app/.test(faq) && /unproven in our lab/.test(faq), 'an FAQ in Bob\'s voice says what it does, where it works and that it\'s untested');
   check(/<dt>Working memory \(compute buffer\)<\/dt>/.test(all), 'a glossary entry');
-  check(read('public/cellar-engines.js').includes("sswitch('smallStepFit'") && read('public/cellar.js').includes("'smallStepFit'"), 'the switch is in Settings, Speed & memory');
+  check(read('public/cellar-engines.js').indexOf("sswitch('smallStepFit'") > read('public/cellar-engines.js').indexOf('<strong>Engine tuning</strong>') && read('public/cellar-engines.js').indexOf("sswitch('smallStepFit'") < read('public/cellar-engines.js').indexOf('function engineExtrasHtml') && read('public/cellar.js').includes("'smallStepFit'"), 'the switch is in Settings, Engine tuning (GUPPI\'s), not Engine extras');
 }
 
 console.log(`\n${passes} passed, ${failures} failed`);

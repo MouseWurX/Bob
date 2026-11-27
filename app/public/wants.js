@@ -71,7 +71,7 @@ export const WANTS = [
     label: 'Write faster with a brain\'s own guesser', note: 'Only brains that have one. The answer is the same.' },
   { card: 'brains', key: 'lockBrainMemory', setting: 'Lock brain memory', where: 'Speed & memory',
     label: 'Keep my brain in RAM between replies', note: 'Uses that RAM until the brain unloads.' },
-  { card: 'brains', key: 'smallStepFit', setting: 'Fit my working memory to the card', where: 'Speed & memory',
+  { card: 'brains', key: 'smallStepFit', setting: 'GUPPI fits his working memory to the card', where: 'Speed & memory',
     label: 'Stop spilling into shared memory on a small card', note: 'Reads long prompts in smaller steps when the card is short.' },
   { card: 'brains', key: 'hotExperts', setting: 'Hot experts on the card', where: 'Speed & memory',
     label: 'Keep my busiest experts on the graphics card', note: 'For brains too big for the card. Helps writing, not reading.' },

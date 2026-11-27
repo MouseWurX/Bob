@@ -3,19 +3,20 @@
 // wherever its weights went: -ngl 0 still took 5.56 GB and spilled 2.7 GB into slow shared memory, and the fit said
 // "with only dense weights in device memory there is still a total deficit of 6033 MiB". That working memory grows with
 // the reading step (-ub), so the lever is a smaller step. GUPPI's calibration found this (PR #361); this is the same
-// fix for Bob's own loads, off unless "Fit my working memory to the card" is on (Settings, Speed & memory).
+// fix for Bob's own loads, off unless "GUPPI fits his working memory to the card" is on (Settings, Speed & memory).
 //
 // After a load, the engine's own lines say what it put on each card: the card's free memory before the load, the
 // brain's part, the chat memory and the working memory. When they add up to more than the card had (keeping
 // STEP_FIT_MARGIN_MIB spare), and the working memory is what's crowding it, the step is cut to the biggest power of two
-// that fits, the brain loads again at it, and the step is remembered for that brain. Only when the step is already at
-// STEP_FIT_MIN_UB and still doesn't fit does the chat memory halve (never under STEP_FIT_MIN_CTX). Pure functions, so
-// the tests pass the engine's words in.
+// that fits, and the step is remembered for that brain. GUPPI's way (the owner, Nov 27: no reloads): the fit's plan is read
+// before the weights load and the brain opens at a step that fits; a brain that loaded short anyway switches to the
+// smaller step in place (Brain Engine's POST /context), and from there GUPPI raises the step only while there's room.
+// Only when the step is already at STEP_FIT_MIN_UB and still doesn't fit does the chat memory halve (never under
+// STEP_FIT_MIN_CTX). Pure functions, so the tests pass the engine's words in.
 export const STEP_FIT_MARGIN_MIB = 512; // the same spare room GUPPI keeps on the card (conductor.js SPILL_MARGIN_MIB)
 export const STEP_FIT_MIN_UB = 64; // under this, long prompts read too slowly to be worth it
 export const STEP_FIT_MIN_CTX = 16384; // a fresh Bob chat is ~6K tokens (instructions and tools)
 export const STEP_FIT_BIG_MIB = 1024; // working memory under this isn't what fills a card: the fit moves the weights
-export const STEP_FIT_TRIES = 3; // loads again at most this many times for one load
 export const DEFAULT_UB = 512; // llama-server's own step when none is given
 export const stepFitOn = (cfg) => cfg?.smallStepFit === true;
 
@@ -69,19 +70,48 @@ export function shortest(log, { margin = STEP_FIT_MARGIN_MIB } = {}) {
   if (deficit > 0 && best && deficit > best.short) best = { ...best, short: deficit, fromFit: true };
   return best;
 }
-// The plan: { ub, ctx, why } or null when nothing should change.
-export function stepFitPlan({ log = '', ub = DEFAULT_UB, ctx = 0, minUb = STEP_FIT_MIN_UB, minCtx = STEP_FIT_MIN_CTX } = {}) {
-  const s = shortest(log);
-  if (!s || !(s.short > 0) || s.compute < STEP_FIT_BIG_MIB) return null;
-  const want = s.compute - s.short; // the working memory that would fit
+// The plan: { ub, ctx, why, perUbMiB } or null when nothing should change. perUbMiB: working memory per token of step,
+// so GUPPI knows how far the step can grow again once the brain is in.
+export function planFrom({ dev = 'the card', compute = 0, short = 0, ub = DEFAULT_UB, ctx = 0, minUb = STEP_FIT_MIN_UB, minCtx = STEP_FIT_MIN_CTX } = {}) {
+  if (!(short > 0) || compute < STEP_FIT_BIG_MIB) return null;
+  const want = compute - short; // the working memory that would fit
+  const perUbMiB = Math.round((compute / ub) * 100) / 100;
   let next = ub;
-  while (next > minUb && s.compute * (next / ub) > want) next = Math.max(minUb, Math.floor(next / 2));
-  if (next < ub && s.compute * (next / ub) <= want) return { ub: next, ctx, why: `the working memory was ${Math.round(s.compute)} MiB at step ${ub} on ${s.dev}, ${s.short} MiB more than the card had` };
+  while (next > minUb && compute * (next / ub) > want) next = Math.max(minUb, Math.floor(next / 2));
+  const said = `the working memory was ${Math.round(compute)} MiB at step ${ub} on ${dev}, ${Math.round(short)} MiB more than the card had`;
+  if (next < ub && compute * (next / ub) <= want) return { ub: next, ctx, perUbMiB, why: said };
   // the step at its floor and still short: a smaller chat memory too
   const half = ctx >= minCtx * 2 ? ctx / 2 : 0;
-  if (half) return { ub: next, ctx: half, why: `the working memory was ${Math.round(s.compute)} MiB at step ${ub} on ${s.dev}, ${s.short} MiB more than the card had, even at step ${next}` };
-  if (next < ub) return { ub: next, ctx, why: `the working memory was ${Math.round(s.compute)} MiB at step ${ub} on ${s.dev}, ${s.short} MiB more than the card had; step ${next} is the smallest I go` };
+  if (half) return { ub: next, ctx: half, perUbMiB, why: `${said}, even at step ${next}` };
+  if (next < ub) return { ub: next, ctx, perUbMiB, why: `${said}; step ${next} is the smallest I go` };
   return null;
+}
+export function stepFitPlan({ log = '', ub = DEFAULT_UB, ctx = 0, minUb, minCtx } = {}) {
+  const s = shortest(log);
+  return s ? planFrom({ ...s, ub, ctx, minUb, minCtx }) : null;
+}
+// the owner (Nov 27): "open it up at a smaller step", no reload. The engine's fit prints its plan within about a second,
+// before a single weight is read: a memory line per card (total = free + (self = model + context + compute) + other)
+// and, when moving every expert to RAM still isn't enough, "still a total deficit of N MiB". Read from those, GUPPI
+// stops that start at once and opens the brain at a step that fits. null until the fit has said it can't.
+const BREAKDOWN = /\|\s*-\s*((?:CUDA|ROCm|HIP|Vulkan|SYCL)\d+)[^|]*\|\s*\d+\s*=\s*\d+\s*\+\s*\(\s*\d+\s*=\s*[\d.]+\s*\+\s*[\d.]+\s*\+\s*([\d.]+)\s*\)/g;
+export function fitPlanEarly({ log = '', ub = DEFAULT_UB, ctx = 0 } = {}) {
+  const text = String(log || '');
+  const at = text.search(/still a total deficit of \d+ MiB/);
+  if (at < 0) return null;
+  const lines = [...text.slice(0, at).matchAll(BREAKDOWN)];
+  if (!lines.length) return null;
+  const last = lines.at(-1);
+  return planFrom({ dev: last[1], compute: Number(last[2]) || 0, short: fitDeficitMiB(text.slice(0, text.indexOf('\n', at) < 0 ? text.length : text.indexOf('\n', at))), ub, ctx });
+}
+// How far GUPPI may raise the step again for a long read: the room the fit leaves over our margin, at the brain's own
+// working memory per token of step. GUPPI still steps back the moment the engine says the card is short.
+export const STEP_FIT_GROW_MIB = 512;
+export function growCap({ ub = DEFAULT_UB, perUbMiB = 0, roomMiB = STEP_FIT_GROW_MIB } = {}) {
+  if (!(perUbMiB > 0)) return ub;
+  let cap = ub;
+  while ((cap * 2 - ub) * perUbMiB <= roomMiB) cap *= 2;
+  return cap;
 }
 // Swap the step in a load line: -ub set to the new step, and -b never under it.
 export function withStep(args, ub) {
