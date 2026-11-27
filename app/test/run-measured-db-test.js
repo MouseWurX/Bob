@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { cleanRow, readSeed, readLocal, readAll, append, localFile, speedsFor, settingsFromCmd, beOf, pcFromEnv, rowsFromRuns, rowFromTry, samePc } from '../src/measured-db.js';
 import { LlamaCpp } from '../src/llamacpp.js';
 import { holdout, pcKey } from '../src/measured-holdout.js';
+import { shapePoints, guessAt, shapeHtml } from '../src/measured-shape.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -108,6 +109,20 @@ const mk = (pc, be, step, read, write, extra = {}) => cleanRow({ brain: { file: 
   check('leave one PC out: GUPPI from the rest picks the step that PC measured fastest, scored with its own speeds', b && b.without.step === 4096 && b.with.step === 2048 && b.gainS > 0 && b.best.step === 2048 && b.errPct < 10, JSON.stringify(b));
   check('it says how many checks the baseline made faster, the same or slower', /2 held-out checks: the baseline made GUPPI's pick faster in 2, the same in 0, slower in 0/.test(h.summary), h.summary);
   check('one PC alone can\'t be checked, and it says so plainly', /no other PC has the same brain measured.*Unproven in our lab, as we have yet to test/.test(holdout(rows.slice(0, 2)).summary) && /nothing can be checked yet/.test(holdout([]).summary));
+}
+
+// ---------- the shape across machines (the owner: "look at it 3 dimensionally or more") ----------
+{
+  const A = { card: 'Card A', cardMiB: 6144, ramMB: 32768, hw: { cc: 8.6, memClockMHz: 7001, pcieGen: 4, pcieWidth: 8, threads: 16 } }, B = { card: 'Card B', cardMiB: 16303, ramMB: 31862 };
+  const rows = [mk(A, 46, 2048, 600, 20), mk(A, 46, 4096, 700, 18), mk(B, 46, 2048, 2000, 100), mk(B, 46, 4096, 3000, 90)];
+  const pts = shapePoints(rows, 'B.gguf');
+  check('one point a machine, by card memory, with its other measures and its fastest measured step', pts.length === 2 && pts[0].hw.memClockMHz === 7001 && pts[0].best === 4096 && pts[1].steps[2048].write === 100);
+  const g = guessAt(pts, 12288);
+  check('between two measured cards a guess, marked as one, straight-line along card memory', g.guess === true && g.steps[2048].write > 20 && g.steps[2048].write < 100 && guessAt(pts, 40000) === null);
+  const html = shapeHtml(rows);
+  check('the page: a chart, the table of measures, guesses marked as never used by GUPPI, light and dark', /<svg/.test(html) && /Memory MHz/.test(html) && /GUPPI never uses these/.test(html) && /prefers-color-scheme:dark/.test(html));
+  const hw = cleanRow({ ...rows[0], pc: { ...A, hw: { ...A.hw, secret: 'x', driver: 'd'.repeat(99) } } }).pc.hw;
+  check('a row keeps only the known hardware measures', !('secret' in hw) && hw.driver.length === 40 && hw.threads === 16);
 }
 
 // ---------- wiring, Help ----------

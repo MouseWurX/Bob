@@ -85,7 +85,8 @@ export async function startServer({ exe, gguf, mmproj, ctx = 8192, args = [], cp
     const child = spawnFn(exe, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true, ...(env ? { env: { ...process.env, ...env } } : {}) });
     let err = '';
     let said = ''; // Nov 16: the engine's cache lines (fingerprint, ranked fill, refusals, totals), kept apart from the tail
-    child.stderr?.on('data', (d) => { err = (err + d).slice(-4000); for (const line of String(d).split('\n')) if (/MoE cache|ranked fill|llama_moe_cache:/.test(line)) said = (said + line + '\n').slice(-20000); });
+    let mem = ''; // Nov 27 (the laptop's spill): how the engine placed the brain: its fit, Windows' budget, each buffer's size
+    child.stderr?.on('data', (d) => { err = (err + d).slice(-4000); for (const line of String(d).split('\n')) { if (/MoE cache|ranked fill|llama_moe_cache:/.test(line)) said = (said + line + '\n').slice(-20000); if (/fit|WDDM|buffer size|offloaded|projected|device memory|free/i.test(line) && !/llama_moe_cache:/.test(line)) mem = (mem + line.trim() + '\n').slice(-6000); } });
     const url = `http://127.0.0.1:${port}`;
     const t0 = Date.now();
     let up = false;
@@ -95,7 +96,7 @@ export async function startServer({ exe, gguf, mmproj, ctx = 8192, args = [], cp
       try { if ((await fetch(url + '/health', { signal: AbortSignal.timeout(2000) })).ok) { up = true; break; } } catch {}
       await new Promise((r) => setTimeout(r, 1000));
     }
-    if (up) return { url, stop: () => { try { child.kill(); } catch {} }, where: extra[0] === '-ngl' ? 'processor' : 'card', cacheLog: () => said };
+    if (up) return { url, pid: child.pid, stop: () => { try { child.kill(); } catch {} }, where: extra[0] === '-ngl' ? 'processor' : 'card', cacheLog: () => said, memLog: () => mem };
     try { child.kill(); } catch {}
     last = err.split('\n').filter(Boolean).slice(-3).join(' | ');
   }

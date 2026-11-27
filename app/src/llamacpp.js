@@ -696,6 +696,7 @@ export class LlamaCpp {
       const prof = this.guppiProfile(model);
       // Nov 27, the laptop: calibrating found the fit's default left the card under GUPPI's 512 MB, so it leaves more
       if (prof?.fitTargetMiB > 0 && args.includes('--fit') && !args.some((a) => ['--fit-target', '-fitt'].includes(a))) { args.push('--fit-target', String(prof.fitTargetMiB)); this.log?.('engine', `${model}: this PC's GUPPI calibration: the fit leaves ${prof.fitTargetMiB} MiB free on the card`); }
+      if (prof?.wddmBudget && process.platform === 'win32' && !(this.tuneEnv && 'GGML_CUDA_WDDM_BUDGET' in this.tuneEnv)) { this.tuneEnv = { ...(this.tuneEnv || {}), GGML_CUDA_WDDM_BUDGET: '1' }; this.log?.('engine', `${model}: this PC's GUPPI calibration: the engine plans card memory by Windows' budget`); }
       if (!args.includes('--moe-cache-mib') && !prof?.keepBob && !this.cfg.sharedGraphics && this.beNo() >= COND_FILL_FROM_BE && condCacheWanted({ experts: ggufInfo(gguf)?.experts || 0, fileBytes: (() => { try { return fs.statSync(gguf).size; } catch { return 0; } })(), cardBytes: cardGB(this.cfg) * 1024 ** 3 })) {
         args.push('--moe-cache-mib', String(COND_CACHE_MIB));
         this.log?.('engine', `${model}: Conductor: a brain of experts bigger than the card, so the expert copy cache is on (${COND_CACHE_MIB} MiB to start, filled to the card)`);

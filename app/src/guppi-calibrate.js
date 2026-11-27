@@ -67,6 +67,13 @@ function smi(args) {
 export const readHealth = async (run = smi) => parseHealth(await run(HEALTH_QUERY));
 // Windows: the card's use of shared (ordinary) memory, MiB, or null. A rise means the card spilled.
 const SHARED_PS = "$ErrorActionPreference='SilentlyContinue'; [math]::Round(((Get-Counter '\\GPU Adapter Memory(*)\\Shared Usage').CounterSamples | Measure-Object -Property CookedValue -Sum).Sum/1MB)";
+// Nov 27, the laptop: the sum over every adapter counted the built-in graphics and other programs too (a 1 GB "spill"
+// with 1.6 GB of the card still free). Now only the trial engine's own shared use counts, by its process id.
+const procShared = (pid) => `$ErrorActionPreference='SilentlyContinue'; [math]::Round(((Get-Counter '\\GPU Process Memory(pid_${Number(pid)}_*)\\Shared Usage').CounterSamples | Measure-Object -Property CookedValue -Sum).Sum/1MB)`;
+function winSharedOf(pid) {
+  if (IN_TEST || process.platform !== 'win32' || !(Number(pid) > 0)) return Promise.resolve(null);
+  return new Promise((resolve) => { try { execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', procShared(pid)], { timeout: 8000, windowsHide: true }, (err, out) => resolve(err ? null : num(out))); } catch { resolve(null); } });
+}
 function winShared() {
   if (IN_TEST || process.platform !== 'win32') return Promise.resolve(null);
   return new Promise((resolve) => { try { execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', SHARED_PS], { timeout: 8000, windowsHide: true }, (err, out) => resolve(err ? null : num(out))); } catch { resolve(null); } });
@@ -92,12 +99,14 @@ export const FIT_DEFAULT_MIB = 1024; // llama.cpp's own --fit-target
 export const ROOM_EXTRA_MIB = 256;
 // fitTargetMiB: room the engine's own fit leaves free on the card, when the first try showed its default leaves too
 // little (the laptop, Nov 27: Bob's pick left 266 MB free on the 6 GB card)
-export function tryArgs(t, { beNo = 0, fitTargetMiB = 0 } = {}) {
+export const WDDM_FROM_BE = 38; // GGML_CUDA_WDDM_BUDGET (patch 0068)
+export function tryArgs(t, { beNo = 0, fitTargetMiB = 0, wddm = false } = {}) {
   const extra = t.step > 512 ? ['-b', String(t.step), '-ub', String(t.step)] : [];
   if (fitTargetMiB > 0) extra.push('--fit-target', String(fitTargetMiB));
-  if (!t.cache) return { extra, env: null };
+  const base = wddm ? { GGML_CUDA_WDDM_BUDGET: '1' } : {};
+  if (!t.cache) return { extra, env: Object.keys(base).length ? base : null };
   extra.push('--moe-cache-mib', String(COND_CACHE_MIB));
-  const env = fillEnv({ cacheMiB: COND_CACHE_MIB, beNo, env: {}, step: t.step });
+  const env = { ...base, ...fillEnv({ cacheMiB: COND_CACHE_MIB, beNo, env: {}, step: t.step }) };
   return { extra, env: Object.keys(env).length ? env : null };
 }
 
@@ -179,7 +188,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
   const exe = lab.tools().server.path;
   const fx = {
     serve: (o) => startServer({ exe, log, ...o }), chat: chatOnce, health: () => readHealth(), throttle: () => readThrottle(), card,
-    ram: () => (eng.freeRam ? eng.freeRam() : os.freemem()) / MiB, shared: winShared,
+    ram: () => (eng.freeRam ? eng.freeRam() : os.freemem()) / MiB, shared: winShared, sharedOf: winSharedOf,
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)), watchMs: WATCH_MS, ...fxs
   };
   const show = name || model;
@@ -194,7 +203,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
     set('pc', 'done'); tick();
     const rows = [];
     let edge = false, hot = false, refText = null;
-    let fitTargetMiB = 0, roomTries = 0;
+    let fitTargetMiB = 0, roomTries = 0, wddm = false, srvMem = '';
     for (let ti = 0; ti < tries.length; ti++) {
       const t = tries[ti];
       if (signal.aborted) throw new Error('Stopped.');
@@ -205,11 +214,12 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       const cool = await coolDown(fx, { idleC: pc.idleC, signal });
       row.cool = cool;
       const sharedBase = await fx.shared().catch(() => null);
-      const { extra, env } = tryArgs(t, { beNo, fitTargetMiB });
+      const { extra, env } = tryArgs(t, { beNo, fitTargetMiB, wddm });
       let srv = null, trip = '';
       const samples = [];
       const sample = async () => {
-        const [h, c, ram, sh, th] = await Promise.all([fx.health().catch(() => null), fx.card().catch(() => null), Promise.resolve(fx.ram()).catch(() => null), fx.shared().catch(() => null), Promise.resolve(fx.throttle?.()).catch(() => null)]);
+        const own = srv?.pid && fx.sharedOf ? await Promise.resolve(fx.sharedOf(srv.pid)).catch(() => null) : null;
+        const [h, c, ram, sh, th] = await Promise.all([fx.health().catch(() => null), fx.card().catch(() => null), Promise.resolve(fx.ram()).catch(() => null), Number.isFinite(own) ? own + (sharedBase || 0) : fx.shared().catch(() => null), Promise.resolve(fx.throttle?.()).catch(() => null)]);
         const s = { tempC: h?.tempC ?? null, smMHz: h?.smMHz ?? null, memMHz: h?.memMHz ?? null, powerW: h?.powerW ?? null, freeMiB: c?.freeMB ?? h?.freeMiB ?? null, ramMiB: Number.isFinite(ram) ? ram : null, sharedRiseMiB: Number.isFinite(sh) && Number.isFinite(sharedBase) ? sh - sharedBase : null, throttle: th || null };
         samples.push(s);
         const why = tripWhy(s, { apu, step: t.step, card: Boolean(srv) });
@@ -235,18 +245,26 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       } catch (e) {
         if (signal.aborted) throw e;
         if (!trip) row.failed = 'Didn\'t start: too much for this PC this way.';
-      } finally { if (timer) clearInterval(timer); try { srv?.stop(); } catch {} }
+      } finally { if (timer) clearInterval(timer); try { srvMem = srv?.memLog?.() || ''; } catch {} try { srv?.stop(); } catch {} }
       if (trip) row.trip = trip;
       Object.assign(row, heatOf(samples));
       // Nov 27, the laptop: the engine's own fit (its default 1 GB target) left only 266 MB free. Then the same try
       // runs once more with the fit told to leave the shortfall too (and a little over), and later tries keep that.
-      if (row.trip?.startsWith('card:') && roomTries < 2 && Number.isFinite(row.minFreeMiB)) {
+      // Nov 27, the laptop again: raising the fit's room alone changed nothing (266 MB free and 2.75 GB spilled each
+      // time), so a retry now also counts the spill as overshoot and, on Windows, has the engine plan by Windows' own
+      // budget for the card (GGML_CUDA_WDDM_BUDGET, Lamplight 38+), which the card's free figure there can overstate.
+      const short = Number.isFinite(row.minFreeMiB) ? Math.max(0, SPILL_MARGIN_MIB - row.minFreeMiB) : 0;
+      const over = Number.isFinite(row.spillMiB) ? Math.max(0, row.spillMiB - spillLimitMiB(t.step) + SPILL_MARGIN_MIB) : 0;
+      if (/^(card|spill):/.test(row.trip || '') && roomTries < 2 && (short > 0 || over > 0 || (osKey === 'windows' && !wddm))) {
         roomTries++;
-        fitTargetMiB = (fitTargetMiB || FIT_DEFAULT_MIB) + Math.max(0, SPILL_MARGIN_MIB - row.minFreeMiB) + ROOM_EXTRA_MIB;
-        log(`GUPPI calibrate: ${t.id} left only ${row.minFreeMiB} MB free, so it runs again with the fit leaving ${fitTargetMiB} MiB`);
+        fitTargetMiB = (fitTargetMiB || FIT_DEFAULT_MIB) + short + over + ROOM_EXTRA_MIB;
+        if (osKey === 'windows' && beNo >= WDDM_FROM_BE) wddm = true;
+        if (srvMem) log(`GUPPI calibrate: ${t.id}, how the engine placed it: ${srvMem.split('\n').slice(-12).join(' | ')}`);
+        log(`GUPPI calibrate: ${t.id} ${row.trip}, so it runs again with the fit leaving ${fitTargetMiB} MiB${wddm ? ' and the engine planning by Windows\' budget for the card' : ''}`);
         ti--; continue;
       }
       if (fitTargetMiB) row.fitTargetMiB = fitTargetMiB;
+      if (wddm) row.wddmBudget = true;
       if (row.trip?.startsWith('heat')) hot = true;
       else if (t.id !== 'bob' && (row.trip || row.failed)) edge = true; // the edge: nothing bigger
       log(`GUPPI calibrate: ${t.id} ${JSON.stringify(row)}`);
@@ -258,7 +276,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
     }
     set('save', 'running');
     const v = guppiVerdict(rows);
-    const rec = { name: show, at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), bobStep, cache, ctx: CAL_CTX, rows, ...v, ...(fitTargetMiB ? { fitTargetMiB } : {}) };
+    const rec = { name: show, at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), bobStep, cache, ctx: CAL_CTX, rows, ...v, ...(fitTargetMiB ? { fitTargetMiB } : {}), ...(wddm ? { wddmBudget: true } : {}) };
     const prof = readProfile(lab.cfg);
     const keep = prof && !pcChanged(prof.pc, pc) ? prof.brains : {}; // another PC's profile starts over
     const next = { v: 1, at: lab.now(), pc, brains: { ...keep, [model]: rec } };

@@ -192,6 +192,25 @@ const fast = { '512:false': { read: 1000, write: 60, text: 'bob words' }, '512:t
   check('the laptop: Bob\'s pick runs again with the fit leaving room, and every later try keeps it', b.rows.every((x) => !x.trip && x.readTps > 0) && b.fitTargetMiB === 1526 && lab.served.slice(1).every((o) => o.extra.join(' ').includes('--fit-target 1526')), JSON.stringify(b.rows.map((x) => x.trip || x.readTps)));
   check('GUPPI at load gets the room the fit should leave', profileFor(lab.cfg, 'tight', readProfile(lab.cfg).pc).fitTargetMiB === 1526);
 }
+// ---------- the laptop's second run: the fit's room alone changed nothing; a spill counts, Windows' budget is used ----------
+{
+  const lab = mkLab({ speeds: fast, shared: (cur) => (cur ? 2756 + 0 : 0) });
+  lab.guppiFns.sharedOf = null;
+  await startGuppiCalibrate(lab, { model: 'spilly', osKey: 'windows' }); await wait(lab);
+  const bob = lab.served.filter((o) => o.extra.length === 0 || (o.extra.includes('--fit-target') && !o.extra.includes('--moe-cache-mib') && !o.extra.includes('-ub')));
+  check('a spill reruns the try with the spill counted in the fit\'s room, and the engine planning by Windows\' budget', bob.length === 3 && bob[1].env?.GGML_CUDA_WDDM_BUDGET === '1' && Number(bob[1].extra[bob[1].extra.indexOf('--fit-target') + 1]) >= 1024 + 2756 - 656 + 512, JSON.stringify(bob.map((o) => [o.extra.join(' '), o.env])));
+  const b = readProfile(lab.cfg).brains.spilly;
+  check('Windows\' budget is kept for loading this brain', profileFor(lab.cfg, 'spilly', readProfile(lab.cfg).pc).wddmBudget === true, JSON.stringify(b.rows[0]));
+}
+{
+  // only the trial engine's own shared memory counts (not the built-in graphics or other programs)
+  const lab = mkLab({ speeds: fast, shared: () => 5000 });
+  lab.guppiFns.sharedOf = async () => 100;
+  lab.guppiFns.serve = ((orig) => async (o) => ({ ...(await orig(o)), pid: 4242 }))(lab.guppiFns.serve);
+  await startGuppiCalibrate(lab, { model: 'own', osKey: 'windows' }); await wait(lab);
+  const b = readProfile(lab.cfg).brains.own;
+  check('the spill counts the trial engine\'s own shared memory, by its process', b.rows.every((x) => !x.trip) && b.rows[0].spillMiB === 100, JSON.stringify(b.rows.map((x) => x.trip || x.spillMiB)));
+}
 // ---------- GUPPI at load ----------
 {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-guppi-load-'));

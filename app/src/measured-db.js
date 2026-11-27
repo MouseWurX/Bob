@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 export const SEED_FILE = fileURLToPath(new URL('./measured-seed.json', import.meta.url));
 export const localFile = (cfg) => (cfg?.dataDir ? path.join(cfg.dataDir, 'conductor', 'measured.jsonl') : '');
 const MAX_LOCAL = 20000; // rows kept on this PC (newest), about 5 MB
-const num = (x) => { const n = Number(x); return Number.isFinite(n) ? n : null; };
+const num = (x) => { if (x === null || x === undefined || x === "") return null; const n = Number(x); return Number.isFinite(n) ? n : null; };
 const BENIGN_ENV = new Set(['LLAMA_MOE_CACHE_LOG_EVERY', 'LLAMA_MOE_CACHE_FILL', 'LLAMA_MOE_CACHE_FILL_STEP', 'LLAMA_MOE_CACHE_FILL_SPARE_MIB']);
 
 // One row. Fields (all but brain, pc and one result optional):
@@ -28,13 +28,17 @@ const BENIGN_ENV = new Set(['LLAMA_MOE_CACHE_LOG_EVERY', 'LLAMA_MOE_CACHE_FILL',
 //   unknown), settings: { step, batch, cacheMiB, cacheShare, fill, kv, ctx, cpuMoe, fit, mtp, env: [] },
 //   prompt: { kind, n }, result: { readTps, writeTps, firstWordS, writtenN, textSha, peakC, smMHz, throttle },
 //   fit: { ok, why } (a try that didn't fit, spilled or tripped: ok false)
+// the hardware's other measures, for comparing machines along more than card size (the owner, Nov 27: "look at it 3
+// dimensionally or more"): compute capability, top memory clock, PCIe link, processor threads, driver
+const HW_KEYS = { cc: 'n', memClockMHz: 'n', pcieGen: 'n', pcieWidth: 'n', threads: 'n', cpuQuota: 'n', ramMHz: 'n', driver: 's', sim: 'n' };
+const cleanHw = (h) => Object.fromEntries(Object.entries(HW_KEYS).map(([k, t]) => [k, t === 'n' ? num(h[k]) : h[k] ? String(h[k]).slice(0, 40) : null]).filter(([, v]) => v != null));
 export function cleanRow(r) {
   if (!r || typeof r !== 'object' || !r.brain?.file || !r.pc) return null;
   const s = r.settings || {}, res = r.result || {};
   const out = {
     at: String(r.at || '').slice(0, 24), source: String(r.source || '').slice(0, 200),
     brain: { file: path.basename(String(r.brain.file)).slice(0, 200), ...(num(r.brain.bytes) ? { bytes: num(r.brain.bytes) } : {}) },
-    pc: { card: String(r.pc.card || '').slice(0, 80), cardMiB: num(r.pc.cardMiB), ramMB: num(r.pc.ramMB), ...(r.pc.cpu ? { cpu: String(r.pc.cpu).trim().slice(0, 80) } : {}), ...(r.pc.os ? { os: String(r.pc.os).slice(0, 60) } : {}), ...(r.pc.apu ? { apu: true } : {}) },
+    pc: { card: String(r.pc.card || '').slice(0, 80), cardMiB: num(r.pc.cardMiB), ramMB: num(r.pc.ramMB), ...(r.pc.cpu ? { cpu: String(r.pc.cpu).trim().slice(0, 80) } : {}), ...(r.pc.os ? { os: String(r.pc.os).slice(0, 60) } : {}), ...(r.pc.apu ? { apu: true } : {}), ...(r.pc.hw && typeof r.pc.hw === 'object' ? { hw: cleanHw(r.pc.hw) } : {}) },
     be: r.be === null || r.be === undefined ? null : num(r.be),
     settings: { step: num(s.step) || 512, ...(num(s.batch) ? { batch: num(s.batch) } : {}), cacheMiB: num(s.cacheMiB) || 0, ...(s.cacheShare != null ? { cacheShare: num(s.cacheShare) } : {}), ...(s.fill ? { fill: true } : {}), ...(s.kv ? { kv: String(s.kv) } : {}), ...(num(s.ctx) ? { ctx: num(s.ctx) } : {}), ...(s.cpuMoe != null ? { cpuMoe: num(s.cpuMoe) } : {}), ...(s.fit ? { fit: true } : {}), ...(s.mtp ? { mtp: true } : {}), ...(Array.isArray(s.env) && s.env.length ? { env: s.env.map(String).slice(0, 12) } : {}), ...(s.code ? { code: String(s.code).slice(0, 40) } : {}) },
     ...(r.prompt ? { prompt: { ...(r.prompt.kind ? { kind: String(r.prompt.kind).slice(0, 40) } : {}), ...(num(r.prompt.n) ? { n: num(r.prompt.n) } : {}) } } : {}),
