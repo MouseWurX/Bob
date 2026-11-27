@@ -88,8 +88,13 @@ export function guppiTries({ bobStep = 0, cache = false, apu = false } = {}) {
   return out;
 }
 // llama-server flags and environment for a try. beNo: the Brain Engine build.
-export function tryArgs(t, { beNo = 0 } = {}) {
+export const FIT_DEFAULT_MIB = 1024; // llama.cpp's own --fit-target
+export const ROOM_EXTRA_MIB = 256;
+// fitTargetMiB: room the engine's own fit leaves free on the card, when the first try showed its default leaves too
+// little (the laptop, Nov 27: Bob's pick left 266 MB free on the 6 GB card)
+export function tryArgs(t, { beNo = 0, fitTargetMiB = 0 } = {}) {
   const extra = t.step > 512 ? ['-b', String(t.step), '-ub', String(t.step)] : [];
+  if (fitTargetMiB > 0) extra.push('--fit-target', String(fitTargetMiB));
   if (!t.cache) return { extra, env: null };
   extra.push('--moe-cache-mib', String(COND_CACHE_MIB));
   const env = fillEnv({ cacheMiB: COND_CACHE_MIB, beNo, env: {}, step: t.step });
@@ -101,7 +106,8 @@ export function tripWhy(s = {}, { apu = false, step = 0, card = true } = {}) {
   const floor = apu ? APU_FLOOR / MiB : RAM_FLOOR_MIB;
   const heat = apu ? APU_HEAT_STOP_C : HEAT_STOP_C;
   if (Number.isFinite(s.tempC) && s.tempC >= heat) return `heat: the card reached ${s.tempC} C (stop at ${heat} C)`;
-  if (s.throttle?.hard) return `heat: the driver slowed the card (${s.throttle.names.join(', ')})`;
+  // Nov 27 (the laptop: hardware slowdown with the power cap at 67 C): the driver slowing the card is logged with the
+  // try, not a stop. Laptops do it all the time and it protects the card itself; only the temperature line stops a try.
   if (Number.isFinite(s.ramMiB) && s.ramMiB < floor) return `ram: free RAM fell to ${Math.round(s.ramMiB)} MB, under the ${Math.round(floor)} MB floor`;
   if (card && !apu && Number.isFinite(s.freeMiB) && s.freeMiB < SPILL_MARGIN_MIB) return `card: only ${Math.round(s.freeMiB)} MB left free on the card, under the ${SPILL_MARGIN_MIB} MB margin`;
   if (Number.isFinite(s.sharedRiseMiB) && s.sharedRiseMiB > spillLimitMiB(step)) return `spill: the card spilled about ${Math.round(s.sharedRiseMiB)} MB into shared memory`;
@@ -188,7 +194,9 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
     set('pc', 'done'); tick();
     const rows = [];
     let edge = false, hot = false, refText = null;
-    for (const t of tries) {
+    let fitTargetMiB = 0, roomTries = 0;
+    for (let ti = 0; ti < tries.length; ti++) {
+      const t = tries[ti];
       if (signal.aborted) throw new Error('Stopped.');
       if (edge || hot) { rows.push({ id: t.id, step: t.step, cache: t.cache, failed: hot ? 'Skipped: the card got too hot.' : 'Skipped: past the edge found at a smaller step.' }); set(t.id, 'failed'); tick(); continue; }
       set(t.id, 'running');
@@ -197,7 +205,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       const cool = await coolDown(fx, { idleC: pc.idleC, signal });
       row.cool = cool;
       const sharedBase = await fx.shared().catch(() => null);
-      const { extra, env } = tryArgs(t, { beNo });
+      const { extra, env } = tryArgs(t, { beNo, fitTargetMiB });
       let srv = null, trip = '';
       const samples = [];
       const sample = async () => {
@@ -230,6 +238,15 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       } finally { if (timer) clearInterval(timer); try { srv?.stop(); } catch {} }
       if (trip) row.trip = trip;
       Object.assign(row, heatOf(samples));
+      // Nov 27, the laptop: the engine's own fit (its default 1 GB target) left only 266 MB free. Then the same try
+      // runs once more with the fit told to leave the shortfall too (and a little over), and later tries keep that.
+      if (row.trip?.startsWith('card:') && roomTries < 2 && Number.isFinite(row.minFreeMiB)) {
+        roomTries++;
+        fitTargetMiB = (fitTargetMiB || FIT_DEFAULT_MIB) + Math.max(0, SPILL_MARGIN_MIB - row.minFreeMiB) + ROOM_EXTRA_MIB;
+        log(`GUPPI calibrate: ${t.id} left only ${row.minFreeMiB} MB free, so it runs again with the fit leaving ${fitTargetMiB} MiB`);
+        ti--; continue;
+      }
+      if (fitTargetMiB) row.fitTargetMiB = fitTargetMiB;
       if (row.trip?.startsWith('heat')) hot = true;
       else if (t.id !== 'bob' && (row.trip || row.failed)) edge = true; // the edge: nothing bigger
       log(`GUPPI calibrate: ${t.id} ${JSON.stringify(row)}`);
@@ -241,7 +258,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
     }
     set('save', 'running');
     const v = guppiVerdict(rows);
-    const rec = { name: show, at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), bobStep, cache, ctx: CAL_CTX, rows, ...v };
+    const rec = { name: show, at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), bobStep, cache, ctx: CAL_CTX, rows, ...v, ...(fitTargetMiB ? { fitTargetMiB } : {}) };
     const prof = readProfile(lab.cfg);
     const keep = prof && !pcChanged(prof.pc, pc) ? prof.brains : {}; // another PC's profile starts over
     const next = { v: 1, at: lab.now(), pc, brains: { ...keep, [model]: rec } };

@@ -9,6 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { cleanRow, readSeed, readLocal, readAll, append, localFile, speedsFor, settingsFromCmd, beOf, pcFromEnv, rowsFromRuns, rowFromTry, samePc } from '../src/measured-db.js';
 import { LlamaCpp } from '../src/llamacpp.js';
+import { holdout, pcKey } from '../src/measured-holdout.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -97,13 +98,25 @@ const mk = (pc, be, step, read, write, extra = {}) => cleanRow({ brain: { file: 
   fs.rmSync(d, { recursive: true, force: true });
 }
 
+// ---------- the held-out check (the owner: "will doing this make guppi better? Is it a certainty?") ----------
+{
+  // on PC A and PC B (a similar card), step 4096 reads faster but writes so slowly that 2048 wins the job
+  const A = { card: 'Card A', cardMiB: 16303, ramMB: 31862 }, B = { card: 'Card B', cardMiB: 14336, ramMB: 65536 };
+  const rows = [mk(A, 46, 2048, 2000, 100), mk(A, 46, 4096, 2100, 40), mk(B, 46, 2048, 1900, 95), mk(B, 46, 4096, 2000, 38)];
+  const h = holdout(rows, { cache: true });
+  const b = h.checks.find((x) => x.pc === pcKey(B));
+  check('leave one PC out: GUPPI from the rest picks the step that PC measured fastest, scored with its own speeds', b && b.without.step === 4096 && b.with.step === 2048 && b.gainS > 0 && b.best.step === 2048 && b.errPct < 10, JSON.stringify(b));
+  check('it says how many checks the baseline made faster, the same or slower', /2 held-out checks: the baseline made GUPPI's pick faster in 2, the same in 0, slower in 0/.test(h.summary), h.summary);
+  check('one PC alone can\'t be checked, and it says so plainly', /no other PC has the same brain measured.*Unproven in our lab, as we have yet to test/.test(holdout(rows.slice(0, 2)).summary) && /nothing can be checked yet/.test(holdout([]).summary));
+}
+
 // ---------- wiring, Help ----------
 {
   const g = read('src/guppi-calibrate.js'), b = read('src/brain-calibrate.js'), l = read('src/llamacpp.js'), help = read('public/help-content.js');
   check('GUPPI calibrates this PC and the Brains page\'s Calibrate add their measurements', /measuredAdd\(lab\.cfg, rowFromTry\(/.test(g) && /measuredAdd\(lab\.cfg, rowFromTry\(/.test(b));
   check('nothing is sent anywhere: no network in the database', !/fetch\(|https?:\/\//.test(read('src/measured-db.js').replace(/^\/\/.*$/gm, '')));
   check('the order at load: his own, this PC\'s rows, the Brains page\'s Calibrate, then the baseline', /startsWith\('this PC'\)/.test(l) && /guppiCalSpeeds/.test(l));
-  check('Help: the glossary entry, the FAQ and the speeds paragraph', /Test-results database/.test(help) && /faq-test-results-db/.test(help));
+  check('Help: the glossary entry, the FAQ and the speeds paragraph', /Test-results database/.test(help) && /faq-test-results-db/.test(help) && /held-out check/.test(help));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

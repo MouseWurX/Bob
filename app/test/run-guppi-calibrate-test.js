@@ -87,7 +87,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob guppi '));
 const moe = path.join(tmp, 'moe.gguf');
 { const buf = Buffer.alloc(4096); await writeGgufFrom(moe, { kvs: [{ key: 'general.architecture', type: 8, value: 'qwen3moe' }, { key: 'qwen3moe.block_count', type: 4, value: 2 }, { key: 'qwen3moe.expert_count', type: 4, value: 8 }], tensors: [{ name: 'blk.0.ffn_up_exps.weight', dims: [32, 16, 2], type: 0, bytes: buf.length, data: async () => buf }] }); }
 // speeds: { tryKey: { read, write } }, cardFree: { tryKey: MiB }, plus temp/ram/shared scripts. tryKey = `${step}:${cache}`
-const mkLab = ({ speeds = {}, cardFree = {}, throttle = () => '0x0000000000000004', temp = () => 40, ram = () => 12000, shared = () => null, loaded = [], other = null, over = {} } = {}) => {
+const mkLab = ({ speeds = {}, cardFree = {}, fitHelps = false, throttle = () => '0x0000000000000004', temp = () => 40, ram = () => 12000, shared = () => null, loaded = [], other = null, over = {} } = {}) => {
   let cur = null;
   const served = [], slept = [];
   const lab = {
@@ -101,12 +101,12 @@ const mkLab = ({ speeds = {}, cardFree = {}, throttle = () => '0x000000000000000
         const ub = o.extra.lastIndexOf('-ub'); const step = ub >= 0 ? Number(o.extra[ub + 1]) : 512; const cache = o.extra.includes('--moe-cache-mib');
         const key = `${step}:${cache}`;
         if (!speeds[key]) throw new Error('out of memory');
-        cur = key;
+        cur = key; const ft = o.extra.indexOf('--fit-target'); lab.fitRoom = fitHelps && ft >= 0 ? Number(o.extra[ft + 1]) - 1024 : 0;
         return { url: `fake:${key}`, stop() { served.stopped = (served.stopped || 0) + 1; cur = null; } };
       },
       chat: async (url, msgs, { maxTokens }) => { const s = speeds[url.slice(5)]; return { text: s.text || 'same', timings: maxTokens === 24 ? { prompt_per_second: s.read, prompt_ms: 4000 } : { predicted_per_second: s.write } }; },
       health: async () => ({ gpu: 'Test card', tempC: temp(cur), smMHz: 2800, memMHz: 14000, freeMiB: null, totalMiB: 16303 }),
-      card: async () => (other ? { freeMB: 1000, totalMB: 16303, others: [other] } : { freeMB: cur ? cardFree[cur] ?? 900 : 15000, totalMB: 16303, others: [] }),
+      card: async () => (other ? { freeMB: 1000, totalMB: 16303, others: [other] } : { freeMB: cur ? (cardFree[cur] ?? 900) + (lab.fitRoom || 0) : 15000, totalMB: 16303, others: [] }),
       throttle: async () => parseThrottle(throttle(cur)), ram: () => ram(cur), shared: async () => shared(cur), sleep: async (ms) => { slept.push(ms); }, watchMs: 0
     },
     ...over.lab
@@ -125,7 +125,8 @@ const fast = { '512:false': { read: 1000, write: 60, text: 'bob words' }, '512:t
   check('the job ends done and says what it found', lab.runs[0].state === 'done' && /Big Brain: GUPPI at step 4096 beat Bob's pick/.test(lab.runs[0].report?.saw || ''), lab.runs[0].report?.saw || lab.runs[0].error);
   check('the step that left the card under 512 MB is the edge: GUPPI is capped below it', b.cap === 4096 && b.beatsBob === true && b.keepBob === false && /^card/.test(b.rows.find((x) => x.id === 'g6144').trip));
   check('Bob\'s pick ran with no cache at his own step; GUPPI\'s with the cache and the fill', lab.served[0].extra.length === 0 && !lab.served[0].env && lab.served[2].extra.join(' ') === '-b 4096 -ub 4096 --moe-cache-mib 4096' && lab.served[2].env.LLAMA_MOE_CACHE_FILL_STEP === '4096');
-  check('every try cooled down first (35 s at least) and every trial engine was stopped', lab.slept.filter((ms) => ms === 35000).length === 4 && lab.served.stopped >= 4);
+  check('every try cooled down first (35 s at least) and every trial engine was stopped', lab.slept.filter((ms) => ms === 35000).length === 6 && lab.served.stopped >= 6);
+  check('a try that left the card short runs again with the fit leaving more, twice at most, then it is the edge', lab.served.filter((o) => o.extra.includes('-ub') && o.extra[o.extra.indexOf('-ub') + 1] === '6144').map((o) => o.extra.includes('--fit-target') ? o.extra[o.extra.indexOf('--fit-target') + 1] : '-').join() === '-,1492,1960');
   check('three reads and writes per try, the median kept; the words checked against Bob\'s pick', b.rows.find((x) => x.id === 'g4096').readTps === 3000 && b.rows.find((x) => x.id === 'g512').sameWords === true && b.rows.find((x) => x.id === 'g4096').sameWords === false);
   check('temperature and clocks are logged with each try', b.rows.every((x) => x.peakC === 40) && b.rows.find((x) => x.id === 'g4096').smMedMHz === 2800 && p.pc.gpu === 'Test card' && p.pc.idleC === 40);
   const sp = JSON.parse(fs.readFileSync(speedsFile(lab.cfg), 'utf8'));
@@ -183,6 +184,14 @@ const fast = { '512:false': { read: 1000, write: 60, text: 'bob words' }, '512:t
   check('Forget deletes this PC\'s profile and the engine reads again', f.forgotten && readProfile(brainOnly.cfg) === null && brainOnly.reloaded >= 2);
 }
 
+// ---------- the laptop, Nov 27: the fit's default left 266 MB free on the 6 GB card ----------
+{
+  const lab = mkLab({ speeds: fast, fitHelps: true, cardFree: { '512:false': 266, '512:true': 266, '4096:true': 266, '6144:true': 266 } });
+  await startGuppiCalibrate(lab, { model: 'tight', osKey: 'windows' }); await wait(lab);
+  const b = readProfile(lab.cfg).brains.tight;
+  check('the laptop: Bob\'s pick runs again with the fit leaving room, and every later try keeps it', b.rows.every((x) => !x.trip && x.readTps > 0) && b.fitTargetMiB === 1526 && lab.served.slice(1).every((o) => o.extra.join(' ').includes('--fit-target 1526')), JSON.stringify(b.rows.map((x) => x.trip || x.readTps)));
+  check('GUPPI at load gets the room the fit should leave', profileFor(lab.cfg, 'tight', readProfile(lab.cfg).pc).fitTargetMiB === 1526);
+}
 // ---------- GUPPI at load ----------
 {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-guppi-load-'));
@@ -196,6 +205,9 @@ const fast = { '512:false': { read: 1000, write: 60, text: 'bob words' }, '512:t
   saveProfile({ dataDir: d }, { v: 1, pc, brains: { moe: { cap: 6144, keepBob: true } } });
   const keep = mk(); const a2 = keep.buildArgs('moe');
   check('GUPPI didn\'t beat Bob\'s pick here: no copy cache and no step past Bob\'s', !a2.includes('--moe-cache-mib') && keep.condMax === keep.condChat && keep.said.some((t) => /keeps Bob's step/.test(t)), a2.join(' '));
+  saveProfile({ dataDir: d }, { v: 1, pc, brains: { moe: { cap: 4096, keepBob: false, fitTargetMiB: 1526 } } });
+  const roomy = mk(); roomy.fitsItself = () => true; const a4 = roomy.buildArgs('moe');
+  check('the calibrated room is passed to the fit at load, and the logbook says so', a4.join(' ').includes('--fit on') && a4.join(' ').includes('--fit-target 1526') && roomy.said.some((t) => /the fit leaves 1526 MiB free/.test(t)), a4.join(' '));
   saveProfile({ dataDir: d }, { v: 1, pc: { ...pc, be: 45 }, brains: { moe: { cap: 2048, keepBob: true } } });
   const stale = mk(); const a3 = stale.buildArgs('moe');
   check('a profile from another engine build isn\'t used, and the logbook says to calibrate again', a3.includes('--moe-cache-mib') && stale.said.some((t) => /isn't used: it was made with Brain Engine 45.*Calibrate again/.test(t)));
@@ -219,14 +231,14 @@ const fast = { '512:false': { read: 1000, write: 60, text: 'bob words' }, '512:t
   check('an unknown reading changes nothing', heatStep(st, null, 99999).hot === true);
   check('heat again restarts the clear clock', heatStep(st, parseThrottle('0x40'), 3000).clearSince === 0);
   check('clear for a minute: carries on as before', heatStep(st, parseThrottle('0x0'), 2000 + CLEAR_MS).hot === false);
-  check('calibrating: a hardware brake stops the try like 90 C', /^heat: the driver slowed the card \(hardware thermal slowdown\)/.test(tripWhy({ throttle: parseThrottle('0x40') })) && tripWhy({ throttle: parseThrottle('0x24') }) === '');
+  check('calibrating: the driver slowing the card is logged, not a stop (only 90 C stops a try)', tripWhy({ throttle: parseThrottle('0x40') }) === '' && tripWhy({ throttle: parseThrottle('0x24') }) === '' && /^heat/.test(tripWhy({ tempC: 90, throttle: parseThrottle('0x40') })));
 }
 {
   const lab = mkLab({ speeds: fast, throttle: (cur) => (cur === '4096:true' ? '0x24' : cur === '6144:true' ? '0x44' : '0x4') });
   await startGuppiCalibrate(lab, { model: 'slowed', osKey: 'windows' }); await wait(lab);
   const b = readProfile(lab.cfg).brains.slowed;
   check('each try logs the driver\'s throttle reasons beside temperature and clocks', b.rows.find((x) => x.id === 'g4096').throttle.join() === 'power-cap,sw-thermal' && b.rows.find((x) => x.id === 'bob').throttle.join() === 'power-cap' && Array.isArray(readProfile(lab.cfg).pc.idleThrottle));
-  check('a hardware thermal brake stops that try as heat, and nothing after it runs', /^heat: the driver slowed/.test(b.rows.find((x) => x.id === 'g6144').trip) && b.cap === 4096);
+  check('a hardware thermal slowdown (the laptop at 67 C) is logged with the try and it carries on', !b.rows.find((x) => x.id === 'g6144').trip && b.rows.find((x) => x.id === 'g6144').throttle.includes('hw-thermal') && b.cap === 6144);
   const html = guppiCalHtml(guppiCalView(lab.cfg, lab, readProfile(lab.cfg).pc), { models: ['slowed'], pick: 'slowed' });
   check('Settings shows when the driver slowed the card (not for the normal power cap)', /the driver slowed the card \(sw-thermal\)/.test(html) && !/slowed the card \(power-cap\)/.test(html));
 }
