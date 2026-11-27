@@ -8,7 +8,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { LlamaCpp } from '../src/llamacpp.js';
-import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP, fillEnv, FILL_FROM_BE, loadAtStep, mtpBlocksSwitch, MTP_SWITCH_FROM_BE, apuStepOk, APU_MAX_STEP, APU_FLOOR, mtpSpareEnv, loadStepBySpeed, cleanSpeeds, LOAD_PICK_MARGIN } from '../src/conductor.js';
+import { readerSpareEnv, READER_SPARE_EXTRA_MIB, conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, speedAt, noteSwitch, switchGuess, planLine, readStepFor, CHAT_STEP, READ_STEP, BIG_STEP, expectOut, cacheGrow, freeFrom, CACHE_FLIP_MAX, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, WIN_STEP, fillEnv, FILL_FROM_BE, loadAtStep, mtpBlocksSwitch, MTP_SWITCH_FROM_BE, apuStepOk, APU_MAX_STEP, APU_FLOOR, mtpSpareEnv, loadStepBySpeed, cleanSpeeds, LOAD_PICK_MARGIN } from '../src/conductor.js';
 import { cleanTuning, mergeTuning } from '../src/engine-tuning.js';
 import { HELP } from '../public/help-content.js';
 
@@ -143,6 +143,14 @@ check('without MTP, or with another draft, the Conductor switches on any engine'
 check('built-in graphics: a bigger step only while 1.5 GB stays free, and never past 2048', APU_MAX_STEP === 2048 && APU_FLOOR === 1.5 * 1024 ** 3 &&
   apuStepOk({ from: 512, to: 2048, freeBytes: 4 * 1024 ** 3 }) && !apuStepOk({ from: 512, to: 2048, freeBytes: 1.8 * 1024 ** 3 }) && !apuStepOk({ from: 2048, to: 4096, freeBytes: 8 * 1024 ** 3 }) && apuStepOk({ from: 2048, to: 512, freeBytes: 0 }));
 check('with MTP and the fill on, the fill leaves the draft room too (512 + about 1.75 GB at 4096); a spare set by hand wins', mtpSpareEnv({ env: { LLAMA_MOE_CACHE_FILL: '1' }, step: 4096 }).LLAMA_MOE_CACHE_FILL_SPARE_MIB === '2304' && !mtpSpareEnv({ env: { LLAMA_MOE_CACHE_FILL: '1', LLAMA_MOE_CACHE_FILL_SPARE_MIB: '700' }, step: 4096 }).LLAMA_MOE_CACHE_FILL_SPARE_MIB && !mtpSpareEnv({ env: {}, step: 4096 }).LLAMA_MOE_CACHE_FILL_SPARE_MIB);
+// Nov 27 (35B rental try 4, 16 GB A4000): the picture reader loads after the fill, so the fill leaves its room too.
+{ const MiB = 1048576, reader = 858 * MiB;
+  check(readerSpareEnv({ env: { LLAMA_MOE_CACHE_FILL: '1' }, readerBytes: reader }).LLAMA_MOE_CACHE_FILL_SPARE_MIB === String(512 + 858 + READER_SPARE_EXTRA_MIB), 'with the fill on and a picture reader, the fill leaves 512 + the reader + its working room free');
+  check(readerSpareEnv({ env: { LLAMA_MOE_CACHE_FILL: '1', LLAMA_MOE_CACHE_FILL_SPARE_MIB: '2304' }, readerBytes: reader }).LLAMA_MOE_CACHE_FILL_SPARE_MIB === String(2304 + 858 + READER_SPARE_EXTRA_MIB), '...on top of the MTP draft\'s spare');
+  check(Object.keys(readerSpareEnv({ env: { LLAMA_MOE_CACHE_FILL: '1', LLAMA_MOE_CACHE_FILL_SPARE_MIB: '700' }, hand: { LLAMA_MOE_CACHE_FILL_SPARE_MIB: '700' }, readerBytes: reader })).length === 0, 'a spare set by hand wins');
+  check(Object.keys(readerSpareEnv({ env: {}, readerBytes: reader })).length === 0 && Object.keys(readerSpareEnv({ env: { LLAMA_MOE_CACHE_FILL: '1' }, readerBytes: 0 })).length === 0, 'no fill, or no picture reader: nothing changes');
+  const lc = fs.readFileSync(new URL('../src/llamacpp.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  check(/const mi = args\.indexOf\('--mmproj'\);[\s\S]{0,200}readerSpareEnv\(\{ env: this\.tuneEnv, hand: tune\.env, readerBytes: rb \}\)/.test(lc), 'the engine start sizes it from the picture reader file it passes'); }
 check('the Conductor fills the card with the copy cache from Brain Engine 39', FILL_FROM_BE === 39 && fillEnv({ cacheMiB: 4096, beNo: 39 }).LLAMA_MOE_CACHE_FILL === '1');
 check('no fill before Brain Engine 39, with no copy cache, or with the fill set by hand', !fillEnv({ cacheMiB: 4096, beNo: 38 }).LLAMA_MOE_CACHE_FILL &&
   !fillEnv({ cacheMiB: 0, beNo: 40 }).LLAMA_MOE_CACHE_FILL && !fillEnv({ cacheMiB: 4096, beNo: 40, env: { LLAMA_MOE_CACHE_FILL: '0' } }).LLAMA_MOE_CACHE_FILL);
