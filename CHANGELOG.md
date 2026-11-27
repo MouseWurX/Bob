@@ -20,7 +20,7 @@ Brain Engine 46, GUPPI driving by default, the Per-chat engine cache on, and no 
 
 ### Fixed
 
-- **Brain Engine on Linux runs on older systems and uses its own CUDA part.** The Linux engine is now built on Ubuntu 22.04, so it needs glibc 2.35 or older instead of 2.43, and it carries our own libggml-cuda.so, built from the same patched source, instead of borrowing the stock one. Unproven in our lab on a Linux card, as we have yet to test.
+- **Brain Engine on Linux runs on older systems and uses its own CUDA part.** The Linux engine is now built on Ubuntu 22.04, so it runs on glibc 2.34 or newer instead of needing 2.43, and it carries our own libggml-cuda.so, built from the same patched source, instead of borrowing the stock one. Its CUDA part needs an NVIDIA driver for CUDA 13 (580 or newer) and the CUDA 13 runtime files; without them the engine runs on the processor. Bob now also puts the engine's own folder on LD_LIBRARY_PATH when he starts it, so the engine finds its own libraries from any folder (before, it stopped at once with "cannot open shared object file").
 - **No step, call, reply or time caps.** A reply stuck repeating itself is stopped and said loudly instead.
 - **A long paste's job kind** comes from its ends, not its size.
 - **Tool results cut too early.** Before cutting anything to fit the chat memory, Bob asks the running engine for the exact token count. A 16K-token message in a 32K chat memory was cut on the first reply because of a guess.

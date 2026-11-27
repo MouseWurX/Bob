@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { safeSpawn } from './engine-blocked.js';
+import { safeSpawn, libDirEnv } from './engine-blocked.js';
 import { exeName } from './platform.js';
 import { gaming } from './sessions.js';
 import { catalogFileFor } from './llamacpp.js';
@@ -77,7 +77,7 @@ export class Ears {
     if (!f) throw new Error('I have no ears yet. Pick a "Hearing you" model in Get models (left menu).');
     this.stop();
     let log = '';
-    const child = safeSpawn(this.spawnFn, this.exe(), [...(this.cfg.llamacpp?.preArgs || []), ...hearArgs(f, this.port, this.cfg.stt?.threads || hearThreads())], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } });
+    const child = safeSpawn(this.spawnFn, this.exe(), [...(this.cfg.llamacpp?.preArgs || []), ...hearArgs(f, this.port, this.cfg.stt?.threads || hearThreads())], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: libDirEnv(this.exe(), { ...process.env, CUDA_VISIBLE_DEVICES: '-1' }) });
     try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {}
     child.stdout?.on('data', (d) => { log = (log + d).slice(-2000); });
     child.stderr?.on('data', (d) => { log = (log + d).slice(-2000); });

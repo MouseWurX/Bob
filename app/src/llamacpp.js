@@ -26,7 +26,7 @@ import { selfWorkOn } from './self-work.js';
 import { stretchOn, stretchMax as stretchMost, stretchPlan, yarnArgs, needBytes, roomBytes, kvBytes } from './model-ctx.js';
 import { scutEnv, linkEnv, linkLive } from './share-card.js'; // SCUT, the fast link to lent cards
 import { LinkLog } from './link-log.js'; // what the link to a lent card carried, kept in a file and the logbook
-import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
+import { safeSpawn, fallBackIfBlocked, libDirEnv } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
 import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, FILL_FROM_BE as COND_FILL_FROM_BE, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv, loadStepBySpeed, cleanSpeeds } from './conductor.js'; // off unless picked
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
@@ -556,7 +556,7 @@ export class LlamaCpp {
     let flag = null;
     if (/llama-server/i.test(path.basename(exe)) && fs.existsSync(exe)) {
       try {
-        const r = spawnSync(exe, ['--help'], { timeout: 5000, encoding: 'utf8', windowsHide: true });
+        const r = spawnSync(exe, ['--help'], { timeout: 5000, encoding: 'utf8', windowsHide: true, env: libDirEnv(exe) });
         const text = `${r.stdout || ''}${r.stderr || ''}`;
         flag = /--load-mode\b/.test(text) ? 'load-mode' : /--no-mmap\b/.test(text) ? 'no-mmap' : null;
       } catch {}
@@ -577,7 +577,7 @@ export class LlamaCpp {
     if (/llama-server/i.test(path.basename(exe)) && fs.existsSync(exe)) {
       try {
         if (!q3CardOk(fs.readdirSync(path.dirname(exe)), process.platform)) throw new Error('no 3-bit kernels for this card');
-        const r = spawnSync(exe, ['--help'], { timeout: 5000, encoding: 'utf8', windowsHide: true });
+        const r = spawnSync(exe, ['--help'], { timeout: 5000, encoding: 'utf8', windowsHide: true, env: libDirEnv(exe) });
         const text = `${r.stdout || ''}${r.stderr || ''}`;
         has = helpHasQ3(text);
         tiers = has && helpHasTiers(text);
@@ -1470,7 +1470,7 @@ export class LlamaCpp {
     // 1.5.203: spawn throws when Windows blocks the program (Smart App Control); safeSpawn turns that into 'error'.
     this.placeKeyNow = placeKey({ exe, engine: `${this.beNo()}-${this.buildNo()}`, args, env: ownEnv(env) }); // Nov 24: what a saved chat must match
     this.placeOther = false; this.placeDirty = false;
-    const child = safeSpawn(spawn, exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
+    const child = safeSpawn(spawn, exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: libDirEnv(exe, env) }); // Nov 27: Linux finds the engine's own libraries
     // 1.5.24 "Games first": on the processor, the engine yields to games (below normal priority).
     if (this.role === BESIDE || (cpu && cpuPlan(this.cfg)?.lowPriority)) { try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {} }
     // The link log: with a lent card in use, the engine's [link] and [scut] lines go to bob-net-link.log and the logbook.
