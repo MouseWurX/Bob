@@ -35,7 +35,7 @@ export function profileFor(cfg, model, now, { profile = readProfile(cfg) } = {})
   if (!b) return null;
   const changed = pcChanged(profile.pc, now);
   if (changed) return { stale: changed };
-  return { cap: Number(b.cap) > 0 ? Number(b.cap) : 0, keepBob: b.keepBob === true, why: String(b.why || ''), ...(Number(b.fitTargetMiB) > 0 ? { fitTargetMiB: Number(b.fitTargetMiB) } : {}), ...(b.wddmBudget === true ? { wddmBudget: true } : {}), ...(Number.isInteger(b.cpuMoe) && b.cpuMoe >= 0 ? { cpuMoe: b.cpuMoe } : {}) };
+  return { cap: Number(b.cap) > 0 ? Number(b.cap) : 0, keepBob: b.keepBob === true, why: String(b.why || ''), ...(Number(b.fitTargetMiB) > 0 ? { fitTargetMiB: Number(b.fitTargetMiB) } : {}), ...(b.wddmBudget === true ? { wddmBudget: true } : {}), ...(Number.isInteger(b.cpuMoe) && b.cpuMoe >= 0 ? { cpuMoe: b.cpuMoe } : {}), ...(Number(b.ubCap) >= 32 && Number(b.ubCap) < 512 ? { ubCap: Number(b.ubCap) } : {}) };
 }
 // The speeds GUPPI measured go into his own speeds file (conductor.js cleanSpeeds), replacing what he had for those
 // steps, so his load step is picked from this PC's numbers from the first reply. Another build's file starts over.

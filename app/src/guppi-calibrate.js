@@ -100,8 +100,13 @@ export const ROOM_EXTRA_MIB = 256;
 // fitTargetMiB: room the engine's own fit leaves free on the card, when the first try showed its default leaves too
 // little (the laptop, Nov 27: Bob's pick left 266 MB free on the 6 GB card)
 export const WDDM_FROM_BE = 38; // GGML_CUDA_WDDM_BUDGET (patch 0068)
-export function tryArgs(t, { beNo = 0, fitTargetMiB = 0, wddm = false } = {}) {
-  const extra = t.step > 512 ? ['-b', String(t.step), '-ub', String(t.step)] : [];
+// Nov 27, the laptop's probe: Inkling 2 Mini's working memory on the card (its compute buffer) was 7.4 GB at the
+// default 512-token step and a 32K context, more than the whole 6 GB card, wherever its weights were. It grows with the
+// step, so the lever there is a smaller step. ub: that step, below 512 (0 = as the try says).
+export const computeMiBOf = (log) => Math.max(0, ...[...String(log || '').matchAll(/CUDA\d*\s+compute buffer size\s*=\s*([\d.]+)\s*MiB/g)].map((m) => Number(m[1]) || 0));
+export const MIN_UB = 32;
+export function tryArgs(t, { beNo = 0, fitTargetMiB = 0, wddm = false, ub = 0 } = {}) {
+  const extra = ub > 0 && ub < Math.max(512, t.step) ? ['-b', String(Math.max(ub, 512)), '-ub', String(ub)] : t.step > 512 ? ['-b', String(t.step), '-ub', String(t.step)] : [];
   if (fitTargetMiB > 0) extra.push('--fit-target', String(fitTargetMiB));
   const base = wddm ? { GGML_CUDA_WDDM_BUDGET: '1' } : {};
   if (!t.cache) return { extra, env: Object.keys(base).length ? base : null };
@@ -203,7 +208,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
     set('pc', 'done'); tick();
     const rows = [];
     let edge = false, hot = false, refText = null;
-    let fitTargetMiB = 0, roomTries = 0, wddm = false, srvMem = '';
+    let fitTargetMiB = 0, roomTries = 0, wddm = false, srvMem = '', ubCap = 0;
     // where the brain sits: Bob's own placement for it when he has one, else the engine's fit
     const layers = Number(info.shape?.layers || info.layers || 0) || 0;
     const known = placeFor(lab.cfg, model);
@@ -219,7 +224,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       const cool = await coolDown(fx, { idleC: pc.idleC, signal });
       row.cool = cool;
       const sharedBase = await fx.shared().catch(() => null);
-      const { extra, env } = tryArgs(t, { beNo, fitTargetMiB, wddm });
+      const { extra, env } = tryArgs(t, { beNo, fitTargetMiB, wddm, ub: ubCap && ubCap < t.step ? ubCap : ubCap && t.step <= 512 ? ubCap : 0 });
       let srv = null, trip = '';
       const samples = [];
       const sample = async () => {
@@ -234,7 +239,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       let timer = null;
       try {
         const place = cpuMoe != null ? ['--n-cpu-moe', String(cpuMoe), '-ngl', '999'] : null;
-        srv = await fx.serve({ gguf, ctx: CAL_CTX, signal, cpuOk: false, extra: place ? extra.filter((x, i, a) => x !== '--fit-target' && a[i - 1] !== '--fit-target') : extra, logAll: true, ...(place ? { place } : {}), ...(env ? { env } : {}) });
+        srv = await fx.serve({ gguf, ctx: CAL_CTX, signal, cpuOk: false, extra: place ? extra.filter((x, i, a) => x !== '--fit-target' && a[i - 1] !== '--fit-target') : extra, logAll: true, args: ['-lv', '4'], ...(place ? { place } : {}), ...(env ? { env } : {}) });
         if (fx.watchMs > 0) timer = setInterval(() => { sample().catch(() => {}); }, fx.watchMs);
         if (await sample()) throw Object.assign(new Error('trip'), { trip: true });
         const reads = [], writes = [], firsts = [], readNs = [];
@@ -261,6 +266,16 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       // budget for the card (GGML_CUDA_WDDM_BUDGET, Lamplight 38+), which the card's free figure there can overstate.
       const short = Number.isFinite(row.minFreeMiB) ? Math.max(0, SPILL_MARGIN_MIB - row.minFreeMiB) : 0;
       const over = Number.isFinite(row.spillMiB) ? Math.max(0, row.spillMiB - spillLimitMiB(t.step) + SPILL_MARGIN_MIB) : 0;
+      const compute = computeMiBOf(srvMem), need = short + over + ROOM_EXTRA_MIB;
+      const stepNow = ubCap || Math.max(512, t.step);
+      // the working memory is a big part of the card and a smaller step frees enough: halve the step (or more), first
+      if (/^(card|spill):/.test(row.trip || '') && roomTries < 3 && compute > 0 && compute >= need && stepNow > MIN_UB && (short > 0 || over > 0)) {
+        roomTries++;
+        let next = stepNow; while (next > MIN_UB && compute * (next / stepNow) > compute - need) next /= 2;
+        ubCap = Math.max(MIN_UB, next);
+        log(`GUPPI calibrate: ${t.id} ${row.trip}; the engine's working memory on the card was ${Math.round(compute)} MiB at step ${stepNow}, so it runs again at step ${ubCap}`);
+        ti--; continue;
+      }
       if (/^(card|spill):/.test(row.trip || '') && roomTries < 2 && (short > 0 || over > 0 || (osKey === 'windows' && !wddm))) {
         roomTries++;
         // Nov 27, run 3: the fit kept the card full whatever room it was told to leave. So the room comes from moving
@@ -278,6 +293,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       if (fitTargetMiB) row.fitTargetMiB = fitTargetMiB;
       if (wddm) row.wddmBudget = true;
       if (cpuMoe != null) row.cpuMoe = cpuMoe;
+      if (ubCap) row.ub = ubCap;
       if (row.trip?.startsWith('heat')) hot = true;
       else if (t.id !== 'bob' && (row.trip || row.failed)) edge = true; // the edge: nothing bigger
       log(`GUPPI calibrate: ${t.id} ${JSON.stringify(row)}`);
@@ -289,7 +305,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
     }
     set('save', 'running');
     const v = guppiVerdict(rows);
-    const rec = { name: show, at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), bobStep, cache, ctx: CAL_CTX, rows, ...v, ...(fitTargetMiB ? { fitTargetMiB } : {}), ...(wddm ? { wddmBudget: true } : {}), ...(cpuMoe != null ? { cpuMoe } : {}) };
+    const rec = { name: show, at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), bobStep, cache, ctx: CAL_CTX, rows, ...v, ...(fitTargetMiB ? { fitTargetMiB } : {}), ...(wddm ? { wddmBudget: true } : {}), ...(cpuMoe != null ? { cpuMoe } : {}), ...(ubCap ? { ubCap } : {}) };
     const prof = readProfile(lab.cfg);
     const keep = prof && !pcChanged(prof.pc, pc) ? prof.brains : {}; // another PC's profile starts over
     const next = { v: 1, at: lab.now(), pc, brains: { ...keep, [model]: rec } };

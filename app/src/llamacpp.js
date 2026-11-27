@@ -709,6 +709,13 @@ export class LlamaCpp {
       const prof = this.guppiProfile(model);
       // Nov 27, the laptop: calibrating found the fit's default left the card under GUPPI's 512 MB, so it leaves more
       if (prof?.fitTargetMiB > 0 && args.includes('--fit') && !args.some((a) => ['--fit-target', '-fitt'].includes(a))) { args.push('--fit-target', String(prof.fitTargetMiB)); this.log?.('engine', `${model}: this PC's GUPPI calibration: the fit leaves ${prof.fitTargetMiB} MiB free on the card`); }
+      // Nov 27, the laptop's probe: this brain's working memory at the 512 step didn't fit the card, so a smaller step
+      if (prof?.ubCap > 0) {
+        for (const f of ['-ub', '--ubatch-size', '-b', '--batch-size']) { let i; while ((i = args.indexOf(f)) >= 0) args.splice(i, 2); }
+        args.push('-b', '512', '-ub', String(prof.ubCap));
+        this.condChat = prof.ubCap;
+        this.log?.('engine', `${model}: this PC's GUPPI calibration: reading step ${prof.ubCap}, because at 512 this brain's working memory doesn't fit the card`);
+      }
       // Nov 27, the laptop: where the fit kept the card full, calibrating placed the experts by hand instead
       if (Number.isInteger(prof?.cpuMoe) && args.includes('--fit') && !Number.isInteger(this.lc.nCpuMoe?.[model])) {
         for (const f of ['--fit', '--fit-target', '-fitt', '-ngl', '--n-gpu-layers']) { const i = args.indexOf(f); if (i >= 0) args.splice(i, 2); }

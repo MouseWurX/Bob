@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseHealth, guppiTries, tryArgs, tripWhy, guppiVerdict, spillLimitMiB, coolDown, heatOf, startGuppiCalibrate, guppiCalLock, guppiCalView, forgetProfile, COOL, RAM_FLOOR_MIB, HEAT_STOP_C } from '../src/guppi-calibrate.js';
+import { computeMiBOf, parseHealth, guppiTries, tryArgs, tripWhy, guppiVerdict, spillLimitMiB, coolDown, heatOf, startGuppiCalibrate, guppiCalLock, guppiCalView, forgetProfile, COOL, RAM_FLOOR_MIB, HEAT_STOP_C } from '../src/guppi-calibrate.js';
 import { pcNow, pcChanged, profileFor, readProfile, seedSpeeds, profileFile, speedsFile, saveProfile, calibrateSpeeds } from '../src/guppi-profile.js';
 import { guppiCalHtml } from '../public/guppi-cal.js';
 import { writeGgufFrom } from '../src/lab-gguf.js';
@@ -224,6 +224,18 @@ const fast = { '512:false': { read: 1000, write: 60, text: 'bob words' }, '512:t
   await startServer({ exe: 'x', gguf: 'g', cpuOk: false, logAll: true, log: (t) => lines.push(t), spawnFn: fakeChild, timeoutMs: 1500 }).catch(() => {});
   check('the engine\'s own lines go in the calibration log, colour codes stripped', lines.some((t) => t === '  engine: load_tensors: CUDA0 model buffer size = 3000 MiB'), lines.join(' | '));
 }
+// ---------- the laptop's probe: Inkling's working memory (7.4 GB at step 512, 32K) is the fill; a smaller step ----------
+{
+  const ubOf = (o) => { const i = o.extra.lastIndexOf('-ub'); return i >= 0 ? Number(o.extra[i + 1]) : 512; };
+  const lab = mkLab({ speeds: fast });
+  let ubNow = 512;
+  lab.guppiFns.serve = async (o) => { lab.served.push(o); ubNow = ubOf(o); return { url: 'fake:512:false', memLog: () => `sched_reserve:      CUDA0 compute buffer size =  ${(7434.9 * ubNow / 512).toFixed(2)} MiB`, stop() {} }; };
+  lab.guppiFns.card = async () => ({ freeMB: Math.round(5130 - 946 - 1758 - 7434.9 * ubNow / 512 + 2000), totalMB: 6144, others: [] });
+  await startGuppiCalibrate(lab, { model: 'inkling', osKey: 'linux' }); await wait(lab);
+  const b = readProfile(lab.cfg).brains.inkling;
+  check('the engine\'s working memory filled the card: the try runs again at a smaller step, enough to leave the margin', b.rows[0].ub > 0 && b.rows[0].ub < 512 && !b.rows[0].trip && b.ubCap === b.rows[0].ub && lab.served.map(ubOf).slice(0, 2).join() === `512,${b.ubCap}`, JSON.stringify({ ub: b.ubCap, trips: b.rows.map((x) => x.trip), served: lab.served.map(ubOf) }));
+  check('it reads the working memory from the engine\'s own line', computeMiBOf('x\nsched_reserve:      CUDA0 compute buffer size =  7425.59 MiB\nsched_reserve:  CUDA_Host compute buffer size =    46.52 MiB') === 7425.59 && computeMiBOf('') === 0);
+}
 // ---------- GUPPI at load ----------
 {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-guppi-load-'));
@@ -243,6 +255,9 @@ const fast = { '512:false': { read: 1000, write: 60, text: 'bob words' }, '512:t
   saveProfile({ dataDir: d }, { v: 1, pc, brains: { moe: { cap: 4096, keepBob: false, cpuMoe: 3 } } });
   const placed = mk(); placed.fitsItself = () => true; const a5 = placed.buildArgs('moe');
   check('at load the calibrated placement replaces the fit, and the logbook says so', !a5.includes('--fit') && a5.join(' ').includes('--n-cpu-moe 3 -ngl 999') && placed.said.some((t) => /3 layers' experts in RAM, as calibrated/.test(t)), a5.join(' '));
+  saveProfile({ dataDir: d }, { v: 1, pc, brains: { moe: { cap: 512, keepBob: true, ubCap: 128 } } });
+  const small = mk(); const a6 = small.buildArgs('moe');
+  check('at load a calibrated smaller step replaces the 512 one, and the logbook says why', a6.join(' ').includes('-b 512 -ub 128') && a6.filter((x) => x === '-ub').length === 1 && small.condChat === 128 && small.said.some((t) => /reading step 128, because at 512/.test(t)), a6.join(' '));
   saveProfile({ dataDir: d }, { v: 1, pc: { ...pc, be: 45 }, brains: { moe: { cap: 2048, keepBob: true } } });
   const stale = mk(); const a3 = stale.buildArgs('moe');
   check('a profile from another engine build isn\'t used, and the logbook says to calibrate again', a3.includes('--moe-cache-mib') && stale.said.some((t) => /isn't used: it was made with Brain Engine 45.*Calibrate again/.test(t)));
