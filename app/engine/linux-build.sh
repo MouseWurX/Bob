@@ -3,9 +3,10 @@
 #   fetch: clone llama.cpp at $TAG and apply app/engine/patches (leaving out the numbers in $WITHOUT, space separated)
 #   cpu:   inside ubuntu:22.04 (glibc 2.35, as upstream's Ubuntu downloads): the processor build and the static tools
 #   cuda:  inside ubuntu:22.04: our own libggml-cuda.so with CUDA $CUDAVER (NVIDIA's redistributable parts only)
+#   vulkan: inside ubuntu:22.04: our own libggml-vulkan.so (Lamplight 0135) with LunarG's Vulkan SDK
 # Run from the repository's top folder.
 set -euo pipefail
-mode="${1:?fetch, cpu or cuda}"
+mode="${1:?fetch, cpu, cuda or vulkan}"
 
 deps() {
   export DEBIAN_FRONTEND=noninteractive
@@ -80,6 +81,20 @@ PY
     cmake -S . -B build-cuda -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU=OFF -DGGML_CUDA=ON -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DCMAKE_CUDA_COMPILER="$cuda/bin/nvcc"
     cmake --build build-cuda -j4 --target ggml-cuda
     ls -la build-cuda/bin/
+    ;;
+  vulkan)
+    deps
+    # LunarG's packages, as upstream's Ubuntu Vulkan download: Ubuntu 22.04's own glslc is too old for half the shaders
+    apt-get install -y -qq gnupg wget > /dev/null
+    wget -qO /etc/apt/trusted.gpg.d/lunarg.asc https://packages.lunarg.com/lunarg-signing-key-pub.asc
+    wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+    apt-get update -qq
+    apt-get install -y -qq vulkan-sdk > /dev/null
+    glslc --version | sed -n 1p
+    cd llama.cpp
+    cmake -B build-vulkan -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_RPATH='$ORIGIN' -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_RPC=ON -DGGML_VULKAN=ON -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF
+    cmake --build build-vulkan -j4 --target ggml-vulkan
+    ls -la build-vulkan/bin/
     ;;
   *) echo "unknown mode: $mode"; exit 1 ;;
 esac

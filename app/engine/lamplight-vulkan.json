@@ -1,0 +1,7 @@
+{
+  "patch": "0135",
+  "kv": ["q3_0", "q2_kv"],
+  "lse": true,
+  "replay": true,
+  "kvToF16": true
+}
