@@ -29,11 +29,14 @@ try {
   const ctx = await browser.newContext({ ...phone, viewport: { width: 402, height: 874 }, screen: { width: 402, height: 874 } }); // 16 Pro size
   const page = await ctx.newPage();
   page.on('pageerror', (e) => problems.push(`page error: ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource.*(401|404)|EventSource/.test(m.text())) problems.push(`console: ${m.text()}`); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource.*(401|404)|EventSource/.test(m.text())) problems.push(`console: ${m.text()} (at ${m.location()?.url || '?'}:${m.location()?.lineNumber ?? '?'})`); });
   page.on('requestfailed', (r) => { if (!/\/api\/events/.test(r.url())) problems.push(`failed: ${r.url()} ${r.failure()?.errorText || ''}`); });
   await page.goto(`http://127.0.0.1:${PORT}/phone/`, { waitUntil: 'load' });
   await page.waitForTimeout(2500);
   await page.screenshot({ path: path.join(out, '1-chat.png') });
+  // What a style rule (style-src 'self') would block: <style> blocks and style="" attributes on the page.
+  const inline = await page.evaluate(() => [...document.querySelectorAll('style, [style]')].map((e) => e.outerHTML.slice(0, 160)));
+  for (const h of inline) console.log(`inline style on the page: ${h}`);
   const bridge = await page.evaluate(() => Boolean(globalThis.BobPhone?.web));
   if (!bridge) problems.push('the web bridge did not load');
   await page.click('#open-menu');
