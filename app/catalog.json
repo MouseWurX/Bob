@@ -5157,6 +5157,23 @@
       "what": "GPT-OSS 20B's big brother: a careful thinker that fits one 80 GB card."
     },
     {
+      "id": "ling-3.2-air",
+      "name": "Ling 3.2 Air",
+      "family": "Ling",
+      "by": "inclusionAI (Ant Group)",
+      "published": "2026-11-23",
+      "params": 124,
+      "active": 5.5,
+      "sees": true,
+      "license": "MIT",
+      "hf": "inclusionAI/Ling-3.2-air",
+      "rent": {
+        "card": "141",
+        "cards": 2
+      },
+      "what": "A 124B that works 5.5B at a time, with a 256K memory, tools and a thinking switch. Built a different way inside (mostly linear attention), so long chats stay cheap."
+    },
+    {
       "id": "llama-4-scout",
       "name": "Llama 4 Scout",
       "family": "Llama",
