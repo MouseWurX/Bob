@@ -1,0 +1,355 @@
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 14d7149..7bd9a2c 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -2052,10 +2052,60 @@ ggml_tensor * llm_graph_context::build_rope_indexer(ggml_tensor * cur, ggml_tens
+     return rp.n_rot > 0 && rp.n_offs > 0 ? ggml_rope_set_offset(res, rp.n_offs) : res;
+ }
+ 
++ggml_tensor * llm_graph_context::build_output_bands(
++          ggml_tensor * w,
++          ggml_tensor * cur) const {
++    if (model.output_bands.empty() || w != model.output_bands[0]) {
++        return nullptr;
++    }
++    GGML_ASSERT(cur->ne[2] == 1 && cur->ne[3] == 1 && "banded output head: cur must be 2D");
++    // each band times cur, the bands laid end to end (a balanced tree of concats: fewer copies than one by one)
++    std::vector<ggml_tensor *> parts;
++    for (ggml_tensor * band : model.output_bands) {
++        ggml_tensor * r = ggml_mul_mat(ctx0, band, cur);
++        if (prec_policy) {
++            prec_policy->apply(r);
++        }
++        parts.push_back(r);
++    }
++    while (parts.size() > 1) {
++        std::vector<ggml_tensor *> next;
++        for (size_t i = 0; i + 1 < parts.size(); i += 2) {
++            next.push_back(ggml_concat(ctx0, parts[i], parts[i + 1], 0));
++        }
++        if (parts.size() % 2 == 1) {
++            next.push_back(parts.back());
++        }
++        parts.swap(next);
++    }
++    ggml_tensor * sorted = parts[0];                                  // [n_vocab, n_tokens], band order
++    ggml_tensor * pos = ggml_cast(ctx0, model.output_band_pos, GGML_TYPE_I32);
++    const int64_t n_vocab_head = sorted->ne[0];
++    const int64_t n_tok        = sorted->ne[1];
++    if (n_tok == 1) {
++        ggml_tensor * col = ggml_reshape_2d(ctx0, sorted, 1, n_vocab_head);
++        return ggml_reshape_2d(ctx0, ggml_get_rows(ctx0, col, pos), n_vocab_head, 1);
++    }
++    ggml_tensor * by_row = ggml_cont(ctx0, ggml_transpose(ctx0, sorted));  // [n_tokens, n_vocab]
++    return ggml_cont(ctx0, ggml_transpose(ctx0, ggml_get_rows(ctx0, by_row, pos)));
++}
++
++ggml_tensor * llm_graph_context::build_output_mm(
++          ggml_tensor * w,
++          ggml_tensor * cur) const {
++    if (ggml_tensor * res = build_output_bands(w, cur)) {
++        return res;
++    }
++    return ggml_mul_mat(ctx0, w, cur);
++}
++
+ ggml_tensor * llm_graph_context::build_lora_mm(
+           ggml_tensor * w,
+           ggml_tensor * cur,
+           ggml_tensor * w_s) const {
++    if (ggml_tensor * res = build_output_bands(w, cur)) {
++        return w_s ? ggml_mul(ctx0, res, w_s) : res;
++    }
+     // a Hadamard-folded weight reads the transformed input; a LoRA delta lives in the primal basis and reads `cur`
+     ggml_tensor * cur_mm = build_hadamard_input(w, cur);
+     ggml_tensor * res = ggml_mul_mat(ctx0, w, cur_mm);
+diff --git a/src/llama-graph.h b/src/llama-graph.h
+index 95e8e27..01df4e1 100644
+--- a/src/llama-graph.h
++++ b/src/llama-graph.h
+@@ -1209,6 +1209,16 @@ struct llm_graph_context {
+               ggml_tensor * w,
+               ggml_tensor * cur) const;
+ 
++    // BE 0150: the output head times cur when the head is in bands (bits by word), else nullptr
++    ggml_tensor * build_output_bands(
++              ggml_tensor * w,
++              ggml_tensor * cur) const;
++
++    // BE 0150: the plain ggml_mul_mat some brains use for their output head, band-aware
++    ggml_tensor * build_output_mm(
++              ggml_tensor * w,
++              ggml_tensor * cur) const;
++
+     // do mat_mul, while optionally apply lora and per-tensor scale
+     ggml_tensor * build_lora_mm(
+               ggml_tensor * w,
+diff --git a/src/llama-model.cpp b/src/llama-model.cpp
+index a8b3433..247b56e 100644
+--- a/src/llama-model.cpp
++++ b/src/llama-model.cpp
+@@ -2561,6 +2561,48 @@ void llama_model_base::load_tensors_hadamard() {
+ }
+ 
+ ggml_tensor * llama_model_base::create_tensor(llama_model_loader & ml, const LLM_TN_IMPL & tn, const std::initializer_list<int64_t> & ne, int flags) {
++    // BE 0150: a file whose output head is in bands (output.band0.weight, output.band1.weight, ... and
++    // output.band_pos) has no output.weight. The arch asks for the head here; it gets band 0, and every band
++    // and the positions are created with it. The graph sees model.output == band 0 and multiplies by every band.
++    if (tn.tensor == LLM_TENSOR_OUTPUT && tn.bid == -1 && tn.suffix != nullptr && strcmp(tn.suffix, "weight") == 0 &&
++            ne.size() == 2 && !(flags & TENSOR_SKIP) && ml.get_tensor_meta("output.band0.weight") != nullptr) {
++        if (!model->output_bands.empty()) {
++            return model->output_bands[0];
++        }
++        static const char * band_suffix[] = {
++            "band0.weight",  "band1.weight",  "band2.weight",  "band3.weight",  "band4.weight",  "band5.weight",
++            "band6.weight",  "band7.weight",  "band8.weight",  "band9.weight",  "band10.weight", "band11.weight",
++            "band12.weight", "band13.weight", "band14.weight", "band15.weight", "band16.weight", "band17.weight",
++            "band18.weight", "band19.weight", "band20.weight", "band21.weight", "band22.weight", "band23.weight",
++            "band24.weight", "band25.weight", "band26.weight", "band27.weight", "band28.weight", "band29.weight",
++            "band30.weight", "band31.weight",
++        };
++        const int64_t n_embd_head = ne.begin()[0];
++        const int64_t n_vocab_head = ne.begin()[1];
++        int64_t rows = 0;
++        for (const char * suf : band_suffix) {
++            const std::string name = std::string("output.") + suf;
++            const ggml_tensor * meta = ml.get_tensor_meta(name.c_str());
++            if (meta == nullptr) {
++                break;
++            }
++            if (meta->ne[0] != n_embd_head || meta->ne[2] != 1 || meta->ne[3] != 1) {
++                throw std::runtime_error(format("%s: wrong shape for a band of the output head", name.c_str()));
++            }
++            model->output_bands.push_back(create_tensor(ml, this->tn(LLM_TENSOR_OUTPUT, suf), {n_embd_head, meta->ne[1]}, 0));
++            rows += meta->ne[1];
++        }
++        if (ml.get_tensor_meta("output.band32.weight") != nullptr) {
++            throw std::runtime_error("the output head has more than 32 bands");
++        }
++        if (rows != n_vocab_head) {
++            throw std::runtime_error(format("the output head's bands hold %lld rows, the vocabulary has %lld",
++                    (long long) rows, (long long) n_vocab_head));
++        }
++        model->output_band_pos = create_tensor(ml, this->tn(LLM_TENSOR_OUTPUT, "band_pos"), {n_vocab_head}, 0);
++        LLAMA_LOG_INFO("%s: output head in %zu bands (bits by word)\n", __func__, model->output_bands.size());
++        return model->output_bands[0];
++    }
+     const buft_list_t * buft_list_layer = nullptr;
+     if (tn.bid != -1) {
+         // blocks that are not model layers (e.g. the blocks of a head) go with the output
+diff --git a/src/llama-model.h b/src/llama-model.h
+index b007f3a..9e9e274 100644
+--- a/src/llama-model.h
++++ b/src/llama-model.h
+@@ -836,6 +836,11 @@ struct llama_model {
+     struct ggml_tensor * output_s    = nullptr;
+     struct ggml_tensor * output_in_s = nullptr;
+ 
++    // BE 0150: banded output head (bits by word). The vocabulary is split into bands, each its own tensor and its own
++    // stock type; output points at band 0, output_band_pos[id] is the row of token id in the bands laid end to end.
++    std::vector<struct ggml_tensor *> output_bands;
++    struct ggml_tensor * output_band_pos = nullptr;
++
+     // NextN/MTP model-level projections
+     struct ggml_tensor * nextn_proj_pre  = nullptr;
+     struct ggml_tensor * nextn_proj_post = nullptr;
+diff --git a/src/models/bailingmoe3.cpp b/src/models/bailingmoe3.cpp
+index ad1f0ee..09a3260 100644
+--- a/src/models/bailingmoe3.cpp
++++ b/src/models/bailingmoe3.cpp
+@@ -371,7 +371,7 @@ llama_model_bailingmoe3::graph::graph(const llm_graph_params & params) :
+     cb(cur, "result_norm", -1);
+     res->t_embd = cur;
+ 
+-    cur = ggml_mul_mat(ctx0, model.output, cur);
++    cur = build_output_mm(model.output, cur);
+     cb(cur, "result_output", -1);
+     res->t_logits = cur;
+ }
+@@ -498,7 +498,7 @@ llama_model_bailingmoe3::graph_mtp::graph_mtp(const llm_graph_params & params) :
+     res->t_h_nextn = cur;
+ 
+     cur = ggml_get_rows(ctx0, cur, inp_out_ids);
+-    cur = ggml_mul_mat(ctx0, model.output, cur);
++    cur = build_output_mm(model.output, cur);
+     cb(cur, "result_output", -1);
+     res->t_logits = cur;
+ }
+diff --git a/src/models/deepseek2.cpp b/src/models/deepseek2.cpp
+index 96c628f..22cd574 100644
+--- a/src/models/deepseek2.cpp
++++ b/src/models/deepseek2.cpp
+@@ -688,7 +688,7 @@ llama_model_deepseek2::graph::graph(const llm_graph_params & params) :
+     res->t_embd = cur;
+ 
+     // lm_head
+-    cur = ggml_mul_mat(ctx0, model.output, cur);
++    cur = build_output_mm(model.output, cur);
+ 
+     cb(cur, "result_output", -1);
+     res->t_logits = cur;
+diff --git a/src/models/deepseek32.cpp b/src/models/deepseek32.cpp
+index fc6207f..a52cc3c 100644
+--- a/src/models/deepseek32.cpp
++++ b/src/models/deepseek32.cpp
+@@ -465,7 +465,7 @@ llama_model_deepseek32::graph::graph(const llm_graph_params & params) :
+     res->t_embd = cur;
+ 
+     // lm_head
+-    cur = ggml_mul_mat(ctx0, model.output, cur);
++    cur = build_output_mm(model.output, cur);
+ 
+     cb(cur, "result_output", -1);
+     res->t_logits = cur;
+diff --git a/src/models/deepseek4.cpp b/src/models/deepseek4.cpp
+index 69ebe5a..e85f12f 100644
+--- a/src/models/deepseek4.cpp
++++ b/src/models/deepseek4.cpp
+@@ -1353,7 +1353,7 @@ llama_model_deepseek4::graph::graph(const llm_graph_params & params) :
+     cb(cur, "result_norm", -1);
+     res->t_embd = cur;
+ 
+-    cur = ggml_mul_mat(ctx0, model.output, cur);
++    cur = build_output_mm(model.output, cur);
+     cb(cur, "result_output", -1);
+     res->t_logits = cur;
+ }
+@@ -1496,7 +1496,7 @@ llama_model_deepseek4::graph_mtp::graph_mtp(const llm_graph_params & params) :
+ 
+     ggml_tensor * head_w = layer.nextn.shared_head_head ? layer.nextn.shared_head_head : model.output;
+     GGML_ASSERT(head_w && "DEEPSEEK4 MTP missing LM head");
+-    cur = ggml_mul_mat(ctx0, head_w, cur);
++    cur = build_output_mm(head_w, cur);
+     cb(cur, "result_output", -1);
+ 
+     res->t_logits = cur;
+diff --git a/src/models/deepseek41.cpp b/src/models/deepseek41.cpp
+index 96de904..1ffe768 100644
+--- a/src/models/deepseek41.cpp
++++ b/src/models/deepseek41.cpp
+@@ -927,7 +927,7 @@ llama_model_deepseek41::graph::graph(const llm_graph_params & params) :
+     cb(cur, "result_norm", -1);
+     res->t_embd = cur;
+ 
+-    cur = ggml_mul_mat(ctx0, model.output, cur);
++    cur = build_output_mm(model.output, cur);
+     cb(cur, "result_output", -1);
+     res->t_logits = cur;
+ }
+diff --git a/src/models/dots3note.cpp b/src/models/dots3note.cpp
+index a6fccd5..17c29ad 100644
+--- a/src/models/dots3note.cpp
++++ b/src/models/dots3note.cpp
+@@ -468,7 +468,7 @@ llama_model_dots3note::graph::graph(const llm_graph_params & params) :
+     cb(cur, "result_norm", -1);
+     res->t_embd = cur;
+ 
+-    cur = ggml_mul_mat(ctx0, model.output, cur);
++    cur = build_output_mm(model.output, cur);
+ 
+     cb(cur, "result_output", -1);
+     res->t_logits = cur;
+diff --git a/src/models/glm-dsa.cpp b/src/models/glm-dsa.cpp
+index 7007f42..3038b4e 100644
+--- a/src/models/glm-dsa.cpp
++++ b/src/models/glm-dsa.cpp
+@@ -513,7 +513,7 @@ llama_model_glm_dsa::graph::graph(const llm_graph_params & params) :
+     res->t_embd = cur;
+ 
+     // lm_head
+-    cur = ggml_mul_mat(ctx0, model.output, cur);
++    cur = build_output_mm(model.output, cur);
+ 
+     cb(cur, "result_output", -1);
+     res->t_logits = cur;
+diff --git a/src/models/glm5-next.cpp b/src/models/glm5-next.cpp
+index 844a327..2e36dbf 100644
+--- a/src/models/glm5-next.cpp
++++ b/src/models/glm5-next.cpp
+@@ -784,7 +784,7 @@ llama_model_glm5_next::graph::graph(const llm_graph_params & params) :
+     cb(cur, "result_norm", -1);
+     res->t_embd = cur;
+ 
+-    cur = ggml_mul_mat(ctx0, model.output, cur);
++    cur = build_output_mm(model.output, cur);
+     cb(cur, "result_output", -1);
+     res->t_logits = cur;
+ }
+diff --git a/src/models/hy-v4.cpp b/src/models/hy-v4.cpp
+index 386d504..8bc7cf9 100644
+--- a/src/models/hy-v4.cpp
++++ b/src/models/hy-v4.cpp
+@@ -595,7 +595,7 @@ llama_model_hy_v4::graph::graph(const llm_graph_params & params) :
+     cb(cur, "result_norm", -1);
+     res->t_embd = cur;
+ 
+-    cur = ggml_mul_mat(ctx0, model.output, cur);
++    cur = build_output_mm(model.output, cur);
+     cb(cur, "result_output", -1);
+     res->t_logits = cur;
+ }
+diff --git a/src/models/kimi-k3.cpp b/src/models/kimi-k3.cpp
+index 2e91c52..b8ba487 100644
+--- a/src/models/kimi-k3.cpp
++++ b/src/models/kimi-k3.cpp
+@@ -342,7 +342,7 @@ llama_model_kimi_k3::graph::graph(const llm_graph_params & params) :
+     cb(cur, "result_norm", -1);
+     res->t_embd = cur;
+ 
+-    cur = ggml_mul_mat(ctx0, model.output, cur);
++    cur = build_output_mm(model.output, cur);
+     cb(cur, "result_output", -1);
+     res->t_logits = cur;
+ }
+diff --git a/src/models/kimi-k31.cpp b/src/models/kimi-k31.cpp
+index 0c0ca2a..17ca66b 100644
+--- a/src/models/kimi-k31.cpp
++++ b/src/models/kimi-k31.cpp
+@@ -378,7 +378,7 @@ llama_model_kimi_k31::graph::graph(const llm_graph_params & params) :
+     cb(cur, "result_norm", -1);
+     res->t_embd = cur;
+ 
+-    cur = ggml_mul_mat(ctx0, model.output, cur);
++    cur = build_output_mm(model.output, cur);
+     cb(cur, "result_output", -1);
+     res->t_logits = cur;
+ }
+diff --git a/src/models/kimi-linear.cpp b/src/models/kimi-linear.cpp
+index 2190df8..963c139 100644
+--- a/src/models/kimi-linear.cpp
++++ b/src/models/kimi-linear.cpp
+@@ -553,7 +553,7 @@ llama_model_kimi_linear::graph::graph(const llm_graph_params & params) :
+     res->t_embd = cur;
+ 
+     // Output
+-    cur = ggml_mul_mat(ctx0, model.output, cur);
++    cur = build_output_mm(model.output, cur);
+     cb(cur, "result_output", -1);
+     res->t_logits = cur;
+ }
+diff --git a/src/models/mistral-large4.cpp b/src/models/mistral-large4.cpp
+index a4315a9..a5f6fda 100644
+--- a/src/models/mistral-large4.cpp
++++ b/src/models/mistral-large4.cpp
+@@ -495,7 +495,7 @@ llama_model_mistral_large4::graph::graph(const llm_graph_params & params) :
+     cb(cur, "result_norm", -1);
+     res->t_embd = cur;
+ 
+-    cur = ggml_mul_mat(ctx0, model.output, cur);
++    cur = build_output_mm(model.output, cur);
+ 
+     if (hparams.f_final_logit_softcapping) {
+         cur = ggml_scale(ctx0, cur, 1.0f / hparams.f_final_logit_softcapping);
+diff --git a/src/models/xing4-0.cpp b/src/models/xing4-0.cpp
+index f405fcc..00dc731 100644
+--- a/src/models/xing4-0.cpp
++++ b/src/models/xing4-0.cpp
+@@ -813,7 +813,7 @@ llama_model_xing4_0::graph::graph(const llama_model & model, const llm_graph_par
+     res->t_embd = cur;
+ 
+     // lm_head
+-    cur = ggml_mul_mat(ctx0, model.output, cur);
++    cur = build_output_mm(model.output, cur);
+ 
+     cb(cur, "result_output", -1);
+     res->t_logits = cur;

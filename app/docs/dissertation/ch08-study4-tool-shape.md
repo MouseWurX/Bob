@@ -32,8 +32,8 @@ The short answer is that rewording the tools did not help, thinking did not help
 
 | Model | What it is | Engine and card | Slots |
 |---|---|---|---|
-| Bobert (35Bob) | Qwen3.6-35B-A3B trained on all of Bob's lessons, Q4_K_M | Brain Engine, rented 48 GB A40 | 8 slots of 8,192 tokens |
-| Riker (28Bob) | Qwen3.6-35B-A3B cut to 208 of 256 experts per layer and healed, Q4_K_M | Brain Engine, rented 48 GB A40 | 4 slots of 16K tokens (after a first set-up with 8 slots of 8,192 failed) |
+| Bobert (35Bob) | Qwen3.6-35B-A3B trained on all of Bob's lessons, Q4_K_M | Lamplight, rented 48 GB A40 | 8 slots of 8,192 tokens |
+| Riker (28Bob) | Qwen3.6-35B-A3B cut to 208 of 256 experts per layer and healed, Q4_K_M | Lamplight, rented 48 GB A40 | 4 slots of 16K tokens (after a first set-up with 8 slots of 8,192 failed) |
 | GPT-OSS 120B | OpenAI model, native weights, thinking on and off | Rented card, lab bench | Not recorded in the lab files |
 | GPT-OSS 38B cut | REAP cut of GPT-OSS 120B, not healed | Lab bench | Not recorded in the lab files |
 
@@ -308,7 +308,7 @@ The real-job runs of sections 11.7.6 to 11.7.8 all went through Bob's own tool l
 
 **What the shape did on Flash-Next.** Badly shaped tool calls were 2 in 1,254 on 21 November, and 0 to 1 per set for IQ3, Q2, Q4 and every keep level (sections 11.7.7 and 11.7.8). Stock Qwen on the same shape made 21 in 937. So shape 4 works for Flash-Next with no change. Whether shapes 4 and 5 raise stock Qwen's scores over the older lists is still unproven in our lab, as we have yet to test (section 8.9.3).
 
-**The engine's call reader (patch 0104, 23 November).** Brain Engine reads a brain's calls with llama.cpp's own parsers. Patch 0104 brings four upstream parser fixes. A cloud test of every Bob chat template found the prompts byte-identical before and after, so the tool shapes are unchanged, and a small-model A/B wrote the same words with thinking and the draft head on or off (128 of 128 checks). The one change seen is that a Gemma 4 call written before its thinking closes is now read as a call. Two known faults remain: a plain-text `<tool_call>` inside a Qwen answer still ends the answer there, and Gemma's call grammar wants inputs in A to Z order. Its run on the home PC is still to come.
+**The engine's call reader (patch 0104, 23 November).** Lamplight reads a brain's calls with llama.cpp's own parsers. Patch 0104 brings four upstream parser fixes. A cloud test of every Bob chat template found the prompts byte-identical before and after, so the tool shapes are unchanged, and a small-model A/B wrote the same words with thinking and the draft head on or off (128 of 128 checks). The one change seen is that a Gemma 4 call written before its thinking closes is now read as a call. Two known faults remain: a plain-text `<tool_call>` inside a Qwen answer still ends the answer there, and Gemma's call grammar wants inputs in A to Z order. Its run on the home PC is still to come.
 
 <a id="tool-shape-findings"></a>
 

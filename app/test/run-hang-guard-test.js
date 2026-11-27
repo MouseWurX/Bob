@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import {
-  firstWordMs, learnReadSpeed, FIRST_WORD_MIN_MS, FIRST_WORD_MAX_MS, replyEnd, CUT_CALL, CUT_REPLY_NOTE, EARLY_END,
+  firstWordMs, learnReadSpeed, FIRST_WORD_MIN_MS, FIRST_WORD_MAX_MS, replyEnd, CUT_CALL, CUT_REPLY_NOTE, REPEAT_REPLY_NOTE, EARLY_END,
   trackChild, survivors, afterStop, _resetTracked, TimerBag, timersFor, raceTimeout, loadDeadline, awakeTimeout,
   startWatchdog, frozeLine, deadline, quietGuard
 } from '../src/hang-guard.js';
@@ -227,6 +227,9 @@ globalThis.fetch = realFetch;
   const plain = { role: 'assistant', content: 'Fine' };
   Brain.prototype.cutNote.call(fake, plain, (e) => evs.push(e));
   check('210 a whole answer gets nothing', evs.length === 1 && !plain.correction);
+  const looped = { role: 'assistant', content: 'notice_board notice_board', cut: 'repeat' };
+  Brain.prototype.cutNote.call(fake, looped, (e) => evs.push(e));
+  check('Nov 24 an answer stopped for repeating itself says so loudly, in its own words', evs[1]?.type === 'correction' && evs[1].text === REPEAT_REPLY_NOTE && looped.correction === REPEAT_REPLY_NOTE && !('cut' in looped));
 }
 
 // ---------- nothing added to what the brain reads at the start ----------

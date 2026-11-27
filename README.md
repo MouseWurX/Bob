@@ -13,9 +13,11 @@
   <a href="#what-bob-does">What Bob does</a> ·
   <a href="#the-computer-science-lab">The Lab</a> ·
   <a href="#bobs-own-brains">Brains and scores</a> ·
+  <a href="#supported-brains">Supported brains</a> ·
   <a href="#bob-net-bobs-working-together">Bob-Net</a> ·
   <a href="#the-project">The project</a> ·
   <a href="#coming-next">Coming next</a> ·
+  <a href="app/docs/BUG-BUSTER.md">Bug Buster</a> ·
   <a href="app/docs/README.md">All the docs</a>
 </p>
 
@@ -31,7 +33,7 @@
 4. **Get Bob ready:** he suggests a brain and engines for your graphics card. Nothing big downloads until you press it.
 5. **Say hello.**
 
-**What it needs:** tested on a 16 GB graphics card (RTX 5070 Ti) with 32 GB of memory, which runs stock Qwen3.6-35B-A3B, a 35B mixture-of-experts brain, with 256K context. Its smaller Q3 file runs on an 8 GB card.
+**What it needs:** tested on a 16 GB graphics card (RTX 5070 Ti) with 32 GB of memory, which runs stock Qwen3.6-35B-A3B, a 35B mixture-of-experts brain, with 256K context. A smaller Q3 file is made for 8 GB cards, unproven in our lab, as we have yet to test. [Every hardware tier](#set-up-for-your-hardware) has its own set.
 
 ## At a glance
 
@@ -57,21 +59,33 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 
 **Latest release ([what's new](CHANGELOG.md)):**
 
-| | Download |
-|---|---|
-| **Windows 10 / 11** | [`Bob-1.5.254-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-win-x64.zip) |
-| **Mac (Apple Silicon)** | [`Bob-1.5.254-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-mac-arm64.zip) |
-| **Linux (64-bit)** | [`Bob-1.5.254-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-linux-x86_64.AppImage) |
-| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.254-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-linux-amd64.deb) |
-| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.254-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-linux-x86_64.flatpak) |
-| **Raspberry Pi and ARM** | [`Bob-1.5.254-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
-| **Android phone** | [`Bob-1.5.254-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-android.apk) |
+| | Download | Install guide |
+|---|---|---|
+| **Windows 10 / 11** | [`Bob-1.5.255-win-x64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.255-win-x64.zip) | [Windows](app/docs/install/windows.md) · [laptops](app/docs/install/laptop.md) · [handhelds](app/docs/install/handheld.md) |
+| **Mac (Apple Silicon)** | [`Bob-1.5.255-mac-arm64.zip`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.255-mac-arm64.zip) | [Mac](app/docs/install/mac.md) |
+| **Linux (64-bit)** | [`Bob-1.5.255-linux-x86_64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.255-linux-x86_64.AppImage) | [Linux](app/docs/install/linux.md) |
+| **Linux .deb** (Ubuntu, Debian, Mint, Pop!_OS) | [`Bob-1.5.255-linux-amd64.deb`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.255-linux-amd64.deb) | [Linux](app/docs/install/linux.md) |
+| **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.255-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.255-linux-x86_64.flatpak) | [Linux](app/docs/install/linux.md) |
+| **Raspberry Pi and ARM** | [`Bob-1.5.255-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.255-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) | [Raspberry Pi](app/docs/install/raspberry-pi.md) |
+| **Android phone** | [`Bob-1.5.255-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.255-android.apk) | [Android](app/docs/install/android.md) |
+| **iPhone app** (new, unproven on a real iPhone) | [`Bob-1.5.255-iphone.ipa`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.255-iphone.ipa), signed with your own free Apple ID | [iPhone and iPad](app/docs/install/iphone.md) |
+| **iPhone and iPad, no app** | Nothing to download: the phone screen from your computer's Bob | [iPhone and iPad](app/docs/install/iphone.md) |
 
-Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
+Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob), and there's [a guide for every device](app/docs/install/README.md), with [which brain for which size](app/docs/install/sizes.md).
 
 **On Windows 11?** Bob isn't code signed yet, so Smart App Control may stop him from running. [Read this first](#windows-11-smart-app-control).
 
 ## What's new
+
+**In 1.5.255, with Brain Engine 46** (26 Nov 2026):
+
+| | |
+|---|---|
+| ⚡ **Brain Engine 46** | Up from 43: fixes and speed-ups from newer upstream llama.cpp, faster expert reads, and two new Turbo tests from llamAmpere (keep more guesses, sharp start), off unless switched on. |
+| 🎼 **GUPPI drives by default** | He fits the engine to the machine he's on, picks the reading step by the speeds he measured there, and gives a brain of experts bigger than the card its expert copy cache, with a 512 MB margin on the card. |
+| 💬 **Per-chat engine cache, on** | Going back to a long chat or restarting Bob is quick, with the same words. It gives RAM back before the computer runs short. |
+| ⏱️ **No caps** | No step, call, reply or time caps; a reply stuck repeating itself is stopped and said loudly. |
+| 📱 **Find my other Bobs** | The phone finds your other Bobs on home Wi-Fi and over Tailscale, and its menu is in groups. |
 
 **In 1.5.254** (23 Nov 2026):
 
@@ -241,10 +255,11 @@ Nothing trains, rents a card or uploads without the owner's go, and every rental
 | **The Computer Science Lab**, where every step runs | [Below](#the-computer-science-lab), and the [Lab steps plan](app/docs/LAB-STEPS-PLAN.md) |
 | **The costs**, every rental and dollar, failures included | [What Bob costs to make](app/docs/COSTS.md) |
 | **How we test**, and how that changed | [How we test brains](app/docs/TESTING.md) · [the harness log](app/model-lab/harness-log.md) |
-| **The models**, each with a card that says what it is and how it scored | [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) · [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) · [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) (none is in Bob's catalogue since 1.5.245) · [gpt-oss-120b cut to 38B](https://huggingface.co/MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF) (cut, not yet healed) |
+| **The models**, each with a card that says what it is and how it scored | [28Bob-Riker](https://huggingface.co/MouseWurX/28Bob-Riker) · [35Bob-Bobert](https://huggingface.co/MouseWurX/35Bob-Bobert) · [20Bob-Bill](https://huggingface.co/MouseWurX/20Bob-Bill) (none is in Bob's catalogue since 1.5.245) · [gpt-oss-120b cut to 38B](https://huggingface.co/MouseWurX/gpt-oss-120b-REAP-38B-UNHEALED-GGUF) (cut, not yet healed) · Flash-Next cuts: [Bobert 101Bob](https://huggingface.co/MouseWurX/Bobert-101Bob-A6B-Flash-Next-REAP80-GGUF) · [Riker 89Bob](https://huggingface.co/MouseWurX/Riker-89Bob-A6B-Flash-Next-REAP70-GGUF) · [Bill 77Bob](https://huggingface.co/MouseWurX/Bill-77Bob-A6B-Flash-Next-REAP60-GGUF) (cut, no training after; [below](#flash-next-cuts-bobert-riker-and-bill)) |
 | **The data** | [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) (the lessons, clean, full and preference files) · [bob-studies](https://huggingface.co/datasets/MouseWurX/bob-studies) (surgery and interview studies, never used for training) |
 | **The dissertation** (draft, all 13 chapters) | [Clean lessons beat more lessons](app/docs/dissertation/README.md) |
 | **The record** | [Bob's own models](app/docs/BOBS-OWN-MODELS.md) (every score and what went wrong) · [the Forge journal](app/docs/FORGE-JOURNAL.md) (the lab notebook) |
+| **Bug Buster**, our worst bugs and how we fixed them | [Bug Buster](app/docs/BUG-BUSTER.md) |
 
 ## How we test
 
@@ -255,7 +270,24 @@ Brains are tested on **real jobs** in Bob's real loop, with his real tools, in a
 - **Checks from real mistakes.** Slips that kept coming back are now code checks at the end of Bob's turn (shipped in 1.5.248).
 - **Effort levels, Minimus to Maximus,** tested on the same 100 jobs. More effort isn't better yet.
 - **One untested category at a time,** starting with Office files.
+- **Every release on a rented card first.** Since 1.5.255, a release is installed with Bob's own installer on a rented 16 GB Linux card and runs every held-out job set with Bob's defaults before it ships. 1.5.255 took seven tries (about $1.29) and four real Linux bugs were fixed on the way.
 - **Code does the clerk work.** On mail, the brain writes the rule and code does the paging, counting and moving (built, off by default, untested on a rental).
+
+### Held-out jobs per brain
+
+The same 65 held-out jobs for every brain (inbox 28, Office 14, repo 12, web 11), written once and never used for tuning or lessons, in Bob's real loop on rented cards, 26 Nov 2026. One run per brain, so a gap of a few jobs may be chance.
+
+| Brain | Inbox | Office | Repo | Web | **Out of 65** |
+|---|---|---|---|---|---|
+| Inkling 2 Mini | 24 | 14 | 12 | 9 | **59** |
+| ISTA 27B (IQ2_XS) | 25 | 14 | 11 | 8 | **58** |
+| Ternary Bonsai 2.5 27B (PTQ1_0 / Q2_0 file) | 25 / 23 | 14 | 10 / 12 | 8 | **57** each |
+| Underdog Saluki 27B | 23 | 14 | 9 | 10 | **56** |
+| Qwen3.6 35B-A3B (Bob's default) | 22 | 13 | 8 | 6 | **49** |
+| Raon-1 mini | 21 | 10 | 5 | 9 | **45** |
+| Raon-1 nano | 7 | 4 | 1 | 3 | **15** |
+
+**Phone brains**, on the same 65 jobs with the phone's prompt and tools, 27 Nov 2026: Dory 4B 39, Bonsai 2 4B 25 to 29, Qwen3.5 2B 22, Gemma 4 E2B (today's phone pick) 10, Bonsai 2 2B 6 to 7. A photo-to-spreadsheet test is being rerun: the first run scored 0 because of a fault in the test (it gave each brain only its first step), not the brains.
 
 ## Coming next
 
@@ -281,7 +313,7 @@ Brains are tested on **real jobs** in Bob's real loop, with his real tools, in a
 
 ## What it costs
 
-Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 16 Nov 2026: about **$2,757** spent in all, of which $549 is rented GPU time (failures included), and about $3,262 to $3,340 projected for the planned family of models. Most test rentals cost under $2.50; the 800-job run cost $19.42. The page lists every rental and what came of it.
+Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 27 Nov 2026: about **$2,940** spent in all, of which about $732 is rented GPU time (failures included; $549 of it billed to 16 Nov, the rest estimated from run records and rental logs until it's checked against the bill), and about $3,445 to $3,523 projected for the planned family of models. Most test rentals cost under $2.50; the biggest since 16 Nov was the H200 run of Flash-Next and its cuts, about $24.73. The page lists every rental and what came of it.
 
 ## What Bob does
 
@@ -296,7 +328,7 @@ Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 16 
 - **Make:** pictures painted and edited, short clips, songs and sound effects, 3D parts and models, and a voice (22 Kokoro voices and more).
 - **Hands (opt-in):** tidy files, sort and rename a music, video or photo collection, run scripts you approve, keep a schedule, click around other apps, use his own browser window, and work inside Blender or Unreal Engine through MCP. Every action shows a card first. Tool packs add tools other people made.
 - **Remember:** Topics, notes and memory banks keep what matters between chats. Exact sums are worked out in a locked sandbox, not guessed.
-- **Lots of context:** 256K tokens (about 195,000 words) on a 16 GB card, and up to 1M with Long memory.
+- **Lots of context:** 256K tokens (about 195,000 words) on a 16 GB card.
 - **A character:** eleven personality dials, 133 avatars, a cat named Patches, and opinions about your code.
 - **Play:** a tabletop adventure with enemies, a quest log, a world book and friends at the table, Journey on a tile map, and sixteen games from hangman to chess.
 - **Works with your other tools (opt-in):** other apps use Bob's brains through an OpenAI-style address, and Claude can use Bob's Hands.
@@ -407,6 +439,18 @@ Three models made from Qwen3.6-35B-A3B with the same tools that are in the Lab: 
 
 Same tests, same rented card, each Bob served from his public Q4 file. Riker matches Bobert at a size that suits a 16 GB card. Since 1.5.245 none of the three is in Bob's Brain catalogue: stock Qwen3.6-35B-A3B is the default, until a Bob beats it on a held-out test. Their files stay on Hugging Face. Bill is best at tool decisions and weakest at facts and code, and is published as he is.
 
+### Flash-Next cuts: Bobert, Riker and Bill
+
+Three cuts of [Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Next) (125B, about 6B active per word), made 23 Nov 2026 to bring the full Flash-Next to a home computer with a 16 GB card and 32 GB of RAM. Experts were removed by a REAP score read from Bob's passed training jobs (never the held-out jobs), with **no training after the cut**. Each file passed a publish check before upload (size as predicted, it loads, it answers two plain questions). They are **unproven in our lab, as we have yet to test**: held-out job scores go on each card as they land. Not in Bob's Brain catalogue yet.
+
+| Cut | Experts kept | Files on Hugging Face (size) |
+|---|---|---|
+| [Bobert 101Bob A6B Flash-Next REAP80](https://huggingface.co/MouseWurX/Bobert-101Bob-A6B-Flash-Next-REAP80-GGUF) | 80% | IQ2_XXS 56.75 GB · IQ2_M 61.0 GB · Q3_K_M 81.65 GB |
+| [Riker 89Bob A6B Flash-Next REAP70](https://huggingface.co/MouseWurX/Riker-89Bob-A6B-Flash-Next-REAP70-GGUF) | 70% | IQ2_XXS 53.53 GB · IQ2_M 57.28 GB · Q3_K_M 75.4 GB · IQ4_XS 77.85 GB · Q4_K_M 95.01 GB |
+| [Bill 77Bob A6B Flash-Next REAP60](https://huggingface.co/MouseWurX/Bill-77Bob-A6B-Flash-Next-REAP60-GGUF) | 60% | IQ2_M 53.56 GB · Q3_K_M 69.16 GB · IQ4_XS 71.3 GB · Q4_K_M 86.96 GB (no IQ2_XXS: it failed the publish check) |
+
+**Rough system size.** About 29 GB of every file is the n-gram word table, which is read from the drive a few rows per word, so it needs no RAM or card memory. What has to fit in RAM and card memory together is roughly the file size minus 29 GB, plus room for the chat: about 28 GB for Bobert IQ2_XXS, 25 GB for Riker IQ2_XXS, 25 GB for Bill IQ2_M, 40 GB for Bill Q3_K_M, 58 GB for Bill Q4_K_M. Files over 50 GB come in parts (two, or three for Riker Q4_K_M); point the engine at the first. The name counts the billions of parameters left, not counting the word table.
+
 **Riker against the model he was cut from**, at home on a 16 GB card:
 
 | Test | Riker | Full Qwen3.6-35B-A3B |
@@ -428,7 +472,154 @@ Same tests, same rented card, each Bob served from his public Q4 file. Riker mat
 | [What they cost](app/docs/COSTS.md) | Every rental, itemized, failures included. |
 | [Brain races](app/docs/BRAIN-RACES.md) · [test results](app/docs/test-results/README.md) | How other brains score on the same tests and the same PC. |
 
-Bob's default is stock Qwen3.6-35B-A3B (its Q3 file codes on an 8 GB card). A Riker file already on a PC still runs from ➕ Your own brains.
+Bob's default is stock Qwen3.6-35B-A3B (its smaller Q3 file is made for 8 GB cards, unproven in our lab, as we have yet to test). A Riker file already on a PC still runs from ➕ Your own brains.
+
+## Supported brains
+
+Every brain and helper Bob can download from his own catalogue, made from [app/catalog.json](app/catalog.json). They run on Bob's own engine, Lamplight, which is built on llama.cpp. Any other GGUF file can still be added from ➕ Your own brains.
+
+<!-- models:start -->
+<!-- Written by installer/make-model-list.js from app/catalog.json. Don't edit by hand: change the catalogue and run it again. -->
+
+Bob's catalogue has **90 brains** and **19 helpers** for pictures, video, music, voices and memory. Each one is a pinned file, checked against its sha256 when it downloads. **Fits** is the smallest hardware tier it's sized for ([the tiers](#set-up-for-your-hardware)). **Tried in our lab** (10 brains) means it ran on our own PCs before Bob would suggest it. Everything else is listed but never suggested until it's tried. **Size** is the download.
+
+<details>
+<summary><b>Brains</b> (64)</summary>
+
+| Brain | File | Size | Fits | Licence | Status |
+|---|---|---|---|---|---|
+| Qwen3.5 0.8B | Q8_0 | 1 GB | Any computer, even processor only | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| DeepSeek R1 Distill Qwen 1.5B | Q4_K_M | 1.1 GB | Any computer, even processor only | MIT (built on Qwen2.5, Apache 2.0) | Unproven in our lab, as we have yet to test |
+| LFM3 1.7B | Q4_K_M | 1.1 GB | Any computer, even processor only | LFM Open License v1.0 (limits commercial use: read it first) | Unproven in our lab, as we have yet to test |
+| Qwen3.5 2B | Q4_K_M | 1.9 GB | Any computer, even processor only | Apache 2.0 | Measured in our lab (on built-in graphics), not yet one of Bob's picks |
+| Granite 4.1 3B | Q4_K_M | 2.1 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Raon-1 nano | Q4_K_M | 2.1 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Granite 4.2 3B | Q4_K_M | 2.2 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Phi-4 mini 3.8B | Q4_K_M | 2.5 GB | 6 GB card or built-in graphics | MIT | Unproven in our lab, as we have yet to test |
+| Qwen3 4B Instruct 2507 | Q4_K_M | 2.5 GB | 6 GB card or built-in graphics | Apache 2.0 | Tried in our lab, measured on built-in graphics |
+| Ministral 3 3B | Q4_K_M | 3 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 E2B | Q4_0 | 3.4 GB | 6 GB card or built-in graphics | Apache 2.0 | Measured in our lab (on built-in graphics), not yet one of Bob's picks |
+| Qwen3.5 4B | Q4_K_M | 3.4 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.5 4B Turbo | Q4_K_M | 3.5 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| DeepSeek R1 Distill Qwen 7B | Q4_K_M | 4.7 GB | 6 GB card | MIT (built on Qwen2.5, Apache 2.0) | Unproven in our lab, as we have yet to test |
+| Qwen2.5 Coder 7B | Q4_K_M | 4.7 GB | 6 GB card | Apache 2.0 | Tried in our lab |
+| DeepSeek R1 Distill Llama 8B | Q4_K_M | 4.9 GB | 6 GB card | MIT, plus Meta's Llama 3.1 licence | Unproven in our lab, as we have yet to test |
+| Gemma 4 E4B | Q4_0 | 5.2 GB | 6 GB card | Apache 2.0 | Tried in our lab |
+| Nemotron 3.5 Bolt E4B | UD-Q4_K_XL | 5.6 GB | 6 GB card | OpenMDW 1.1 | Unproven in our lab, as we have yet to test |
+| DeepSeek R1 0528 Qwen3 8B | Q4_K_M | 5 GB | 8 GB card | MIT (built on Qwen3, Apache 2.0) | Unproven in our lab, as we have yet to test |
+| Granite 4.1 8B | Q4_K_M | 5.3 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Granite 4.2 8B | Q4_K_M | 5.3 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen2.5 VL 7B | Q4_K_M | 6 GB | 8 GB card | Apache 2.0 | Tried in our lab |
+| Ministral 3 8B | Q4_K_M | 6.1 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.5 9B Kimi K3 Distilled (khazarai) | Q4_K_M | 6.4 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| MiMo-V2.6 9B (Qwen3.5 9B distill) | Q4_K_M | 6.5 GB | 8 GB card | MIT | Unproven in our lab, as we have yet to test |
+| Qwen3.5 9B | Q4_K_M | 6.6 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.5 9B Turbo | Q4_K_M | 6.8 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 12B | Q4_0 | 7.4 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| DeepSeek R1 Distill Qwen 14B | Q4_K_M | 9 GB | 12 GB card | MIT (built on Qwen2.5, Apache 2.0) | Unproven in our lab, as we have yet to test |
+| Hermes 4 14B (Nous Research) | Q4_K_M | 9 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Ministral 3 14B | Q4_K_M | 9.1 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Underdog Saluki 27B | Q2 | 7.9 GB | 12 GB card | CC BY-NC 4.0 (limits commercial use: read it first) | Tried in our lab |
+| Qwen3.6 35B-A3B Coding REAP50 | Q4_K_M | 11.4 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 35B-A3B (8 GB card version) | UD-Q3_K_XL | 17.7 GB | 12 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| gpt-oss 20B | MXFP4 | 13 GB | 16 GB card | Apache 2.0 | Tried in our lab |
+| GLM-4.7 Flash REAP 23B-A3B (Cerebras) | Q4_K_M | 14.1 GB | 16 GB card | MIT | Unproven in our lab, as we have yet to test |
+| LFM2.5 24B-A2B | Q4_K_M | 14.5 GB | 16 GB card | LFM Open License v1.0 (limits commercial use: read it first) | Unproven in our lab, as we have yet to test |
+| Devstral Small 2 24B | Q4_K_M | 15.2 GB | 16 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Mistral Small 3.2 24B | Q4_K_M | 15.2 GB | 16 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 26B | Q4_0 | 15.4 GB | 16 GB card | Apache 2.0 | Tried in our lab |
+| GLM-4.7 Flash 30B-A3B | Q4_K | 18.2 GB | 16 GB card, the rest in RAM | MIT | Unproven in our lab, as we have yet to test |
+| Nemotron 3.5 Lightning 30B-A3B | Q4_0 | 18.9 GB | 16 GB card, the rest in RAM | OpenMDW 1.1 | Unproven in our lab, as we have yet to test |
+| Qwen3 Coder 30B | Q4_K_M | 19 GB | 16 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| Raon-1 mini preview | Q4_K_M | 19.7 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Laguna XS 2.1 33B-A3B | Q4_K_M | 20.3 GB | 16 GB card, the rest in RAM | OpenMDW 1.1 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 35B-A3B Opus Reasoning Distilled | Q4_K_M | 22.1 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 35B-A3B | UD-Q4_K_XL | 23.3 GB | 16 GB card, the rest in RAM | Apache 2.0 | Tried in our lab, Bob's default brain, measured on a 16 GB card |
+| Qwen3.6 35B-A3B Distilled from Qwen 3.8 27B | UD-Q4_K_XL | 23.8 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 35B-A3B Turbo | UD-Q4_K_XL | 23.8 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen 3.8 27B Coding Distilled (khazarai) | Q4_K_M | 17.4 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen 3.8 27B | UD-Q4_K_XL | 17.6 GB | 24 GB card | Apache 2.0 | Tried in our lab |
+| Qwen3.6 27B | Q4_K_M | 17.7 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 27B Turbo | Q4_K_M | 18 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Muse Glimmer 30B | Q4_K_M | 18.2 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Granite 4.1 30B | Q4_K_M | 17.5 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Granite 4.2 30B | Q4_K_M | 17.7 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 31B | Q4_0 | 18.8 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| DeepSeek R1 Distill Qwen 32B | Q4_K_M | 19.9 GB | 24 GB card | MIT (built on Qwen2.5, Apache 2.0) | Unproven in our lab, as we have yet to test |
+| Nemotron 3.5 Bolt 74B-A9B |  | 23.8 GB | 24 GB card | OpenMDW 1.1 | Unproven in our lab, as we have yet to test |
+| DeepSeek R1 Distill Llama 70B | Q4_K_M | 42.5 GB | 46 GB of graphics memory (several cards or a rental) | MIT, plus Meta's Llama 3.3 licence | Unproven in our lab, as we have yet to test |
+| Qwen3-Next 80B-A3B | Q4_K_M | 48.5 GB | 51 GB of graphics memory (several cards or a rental) | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| gpt-oss 120B | MXFP4 | 63.4 GB | 66 GB of graphics memory (several cards or a rental) | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Llama 4 Scout 109B-A17B | Q4_K_M | 65.4 GB | 68 GB of graphics memory (several cards or a rental) | Llama 4 Community License | Unproven in our lab, as we have yet to test |
+| GLM-4.5 Air | UD-Q4_K_XL | 67.7 GB | 70 GB of graphics memory (several cards or a rental) | MIT | Unproven in our lab, as we have yet to test |
+
+</details>
+
+<details>
+<summary><b>Uncensored brains</b> (26), listed only while the Naughty list is on</summary>
+
+Community builds with the refusals taken out (heretic, abliterated and the like). Bob keeps them off his own picks.
+
+| Brain | File | Size | Fits | Licence | Status |
+|---|---|---|---|---|---|
+| LFM3 1.7B Uncensored (AtomicChat) | Q4_K_M | 1.1 GB | Any computer, even processor only | LFM Open License v1.0 (limits commercial use: read it first) | Unproven in our lab, as we have yet to test |
+| Qwen3.5 4B Heretic | Q4_K_M | 3.4 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 E4B Heretic | Q4_K_M | 5.9 GB | 6 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.5 9B Abliterated (huihui) | Q4_K_M | 6.3 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.5 9B Heretic | Q4_K_M | 6.5 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.5 9B Defiant Fable (DavidAU) | Q4_K_M | 7.9 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 12B Heretic | Q4_K_M | 7.5 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 12B Uncensored (HauhauCS Balanced) | Q4_K_M | 7.6 GB | 12 GB card | Gemma terms | Unproven in our lab, as we have yet to test |
+| Qwen3.6 14B-A3B FableVibes | Q4_K_M | 9.4 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| gpt-oss 20B Abliterated (huihui) | MXFP4 | 13.8 GB | 16 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Devstral Small 2 24B Abliterated | Q4_K_M | 15.2 GB | 16 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| LFM2.5 24B-A2B Uncensored (AtomicChat) | Q4_K_M | 15.4 GB | 16 GB card | LFM Open License v1.0 (limits commercial use: read it first) | Unproven in our lab, as we have yet to test |
+| Gemma 4 26B Heretic | Q4_K_M | 17.6 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 26B Uncensored (HauhauCS Balanced) | Q4_K_M | 18 GB | 16 GB card, the rest in RAM | Gemma terms | Unproven in our lab, as we have yet to test |
+| GLM-4.7 Flash 30B-A3B Abliterated (huihui) | Q4_K_M | 18.1 GB | 16 GB card, the rest in RAM | MIT | Unproven in our lab, as we have yet to test |
+| Qwen3.6 35B-A3B Heretic | Q4_K_M | 22.1 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 35B-A3B Uncensored (HauhauCS Aggressive) | Q4_K_M | 22.1 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 35B-A3B Abliterated (huihui) | Q4_K | 22.6 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen 3.8 27B Uncensored (HauhauCS Aggressive) | IQ4_XS | 16.6 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen 3.8 27B Heretic | Q4_K_M | 17.2 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen 3.8 27B Abliterated (huihui) | Q4_K | 17.7 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen 3.8 27B Uncensored (JonathanColetti) | Q4_K_M | 17.7 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 27B Abliterated (huihui) | Q4_K | 17.7 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 27B Heretic | Q4_K_M | 18.1 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Muse Glimmer 30B Abliterated | Q4_K_M | 18.3 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Gemma 4 31B Heretic | Q4_K_S | 18.6 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+
+</details>
+
+<details>
+<summary><b>Helpers</b> (19): pictures, video, music, voices and memory</summary>
+
+| Helper | Job | Size | Fits | Licence | Status |
+|---|---|---|---|---|---|
+| Nomic Embed Text | embed | 0.27 GB | Any computer, even processor only | Apache 2.0 | Tried in our lab |
+| FLUX.2 klein 4B (picture edits, 6 GB card version) | images | 5.3 GB | 6 GB card or built-in graphics, the rest in RAM | Apache 2.0 | Tried in our lab |
+| Z-Image Turbo (6 GB card version) | images | 6.7 GB | 6 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| FLUX.2 klein 4B (picture edits) | images | 7.1 GB | 6 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| Z-Image Turbo (8 GB card version) | images | 7.4 GB | 8 GB card | Apache 2.0 | Tried in our lab |
+| Z-Image Turbo (quick-load version) | images | 11.2 GB | 12 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| Z-Image Turbo | images | 20 GB | 12 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| Qwen Image Edit 2509 | images | 19 GB | 16 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| FLUX.1 schnell | images | 28 GB | 16 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| ACE-Step 1.5 music models | music | 10.1 GB | 8 GB card, the rest in RAM | MIT (ACE-Step 1.5); Apache-2.0 (Qwen3 Embedding) | Tried in our lab |
+| Alan (British English) | speech | 0.065 GB | Any computer, even processor only | MIT (Piper); voice data licence on its model card (limits commercial use: read it first) | Tried in our lab |
+| Lessac (US English, high quality) | speech | 0.12 GB | Any computer, even processor only | MIT (Piper); voice data licence on its model card (limits commercial use: read it first) | Tried in our lab |
+| Ryan (US English, high quality) | speech | 0.12 GB | Any computer, even processor only | MIT (Piper); voice data licence on its model card (limits commercial use: read it first) | Tried in our lab |
+| Kokoro voice pack (22 English voices) | speech | 0.354 GB | Any computer, even processor only | Apache 2.0 + MIT | Tried in our lab |
+| Wan 2.2 TI2V 5B (small card version) | video | 9 GB | 8 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| Wan 2.2 TI2V 5B | video | 21 GB | 12 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
+| LTX-2.3 22B | video | 28 GB | 16 GB card, the rest in RAM | LTX-2 Community License (free under $10M yearly revenue) | Tried in our lab |
+| Whisper base (English) | voice | 0.15 GB | Any computer, even processor only | MIT | Tried in our lab |
+| Whisper large v3 turbo | voice | 0.6 GB | Any computer, even processor only | MIT | Tried in our lab |
+
+</details>
+<!-- models:end -->
+
+**In testing, not in the catalogue yet:** the [Flash-Next cuts](#flash-next-cuts-bobert-riker-and-bill) (Bobert, Riker and Bill), Inkling 2 Mini, Ternary Bonsai 2.5 27B and ISTA 27B. Inkling, Bonsai and ISTA have [held-out job scores](#held-out-jobs-per-brain) from one rental each; the Flash-Next cuts are unproven in our lab, as we have yet to test them on real jobs. Each one joins the list when its catalogue entry ships.
 
 ## Bob-Net: Bobs working together
 
@@ -456,12 +647,14 @@ Put Bob on your PC, laptop, handheld and phone, and they find each other on your
 |---|---|
 | Graphics memory Bob holds while idle | **None.** The brain unloads, and big models load only for the job that needs them. |
 | 🎮 Gaming session, first word of a reply | **0.1 seconds** with the brain loaded, on the processor, with the graphics card left to your game. |
-| Context on a 16 GB card | **256K tokens**, and up to 1M with Long memory. |
+| Context on a 16 GB card | **256K tokens**. |
 | 🧊 The cube's **Real experts** (live brain picks) | **Free when off** (the glow alone costs nothing). On Brain Engine 7 (Bob's own from 1.5.217): **about a tenth** shown live (Riker on a 5070 Ti, 115.1 down to 104.7 words a second) and about 4.5% read after the answer (109.9). Brain Engine 5 cost about a fifth (122.7 down to 99.2), because it stopped at every layer; from Brain Engine 6 the picks are read once per word; [the numbers](app/docs/test-results/2026-11-12-cube-real-experts-cost.md). |
 
 Pictures and big jobs wait in Tasks while you play, and **Games first** has Bob use fewer processor cores. The measurements are in [How Bob stays fast and light](app/docs/PERFORMANCE.md).
 
 ## Getting Bob
+
+**[Install guides for every device](app/docs/install/README.md):** Windows, Linux, Mac, laptops, handhelds, Raspberry Pi, Android and iPhone, each with the brains and engines for every size. The [setup picker](https://mousewurx.github.io/Bob/) works it out for one device.
 
 ### Windows 10 or 11, in five steps
 
@@ -486,11 +679,35 @@ Pictures and big jobs wait in Tasks while you play, and **Games first** has Bob 
 
 | | |
 |---|---|
-| **Mac (M1 or newer)** | Drag Bob into Applications. The first time, click **Open Anyway** in System Settings > Privacy & Security. Builds are ad-hoc signed ([why](.github/CONTRIBUTING.md#signed-mac-builds)). |
-| **Linux** | Mark the AppImage as executable and double-click it; nothing is installed, and an older distro may need `libfuse2`. Or install the .deb (`sudo apt install ./Bob-<version>-linux-amd64.deb`) or the Flatpak (`flatpak install --user ./Bob-<version>-linux-x86_64.flatpak`; it's sandboxed, so a few Hands do less). **Update Bob** fetches the same kind. |
-| **Raspberry Pi and ARM** | A 64-bit Pi 4 or 5 runs the arm64 AppImage the same way, with small brains on the processor. No pictures on ARM yet. |
-| **Android** | Open the .apk on the phone. It talks to your Bob over Tailscale. |
-| **iPhone and iPad** | Nothing to download. Turn on **Bob-Net access** in Bob's Settings, open his address with `/phone/` on the end in Safari over Tailscale, then tap Share and **Add to Home Screen**. A brain on the phone and the microphone button need the Android app. |
+| **Mac (M1 or newer)** | Drag Bob into Applications. The first time, click **Open Anyway** in System Settings > Privacy & Security. Builds are ad-hoc signed ([why](.github/CONTRIBUTING.md#signed-mac-builds)). [Mac guide](app/docs/install/mac.md) |
+| **Linux** | Mark the AppImage as executable and double-click it; nothing is installed, and an older distro may need `libfuse2`. Or install the .deb (`sudo apt install ./Bob-<version>-linux-amd64.deb`) or the Flatpak (`flatpak install --user ./Bob-<version>-linux-x86_64.flatpak`; it's sandboxed, so a few Hands do less). **Update Bob** fetches the same kind. [Linux guide](app/docs/install/linux.md) |
+| **Raspberry Pi and ARM** | A 64-bit Pi 4 or 5 runs the arm64 AppImage the same way, with small brains on the processor. No pictures on ARM yet. [Raspberry Pi guide](app/docs/install/raspberry-pi.md) |
+| **Android** | Open the .apk on the phone. It talks to your Bob over Tailscale. [Android guide](app/docs/install/android.md) |
+| **iPhone and iPad** | Nothing to download. Turn on **Bob-Net access** in Bob's Settings, open his address with `/phone/` on the end in Safari over Tailscale, then tap Share and **Add to Home Screen**. A brain on the phone and the microphone button need the Android app. [iPhone guide](app/docs/install/iphone.md) |
+| **iPhone app** (new) | Sign the `.ipa` with your own Apple ID in Sideloadly or AltStore on a Windows PC or Mac (free, again every 7 days). It has its own phone brain. Unproven on a real iPhone, as we have yet to test one. [iPhone guide](app/docs/install/iphone.md) |
+
+### Set up for your hardware
+
+The same steps on every computer: install Bob, press **Get Bob ready** on the Welcome page, and tick the starter set Bob picks for your hardware. Bob sizes the brain, the chat memory and the engine settings himself, so leave them at his defaults: keep **Engine tuning** on Bob's own pick, and leave the Conductor, Turbo and the Lab switches off. If a brain won't load, close other apps or pick a smaller brain before changing any setting.
+
+| Hardware | Bob's everyday brain | Context | Tested? |
+|---|---|---|---|
+| **16 GB graphics card**, 32 GB of memory | Qwen3.6 35B-A3B (23.3 GB file; what doesn't fit on the card sits in memory) | 256K | **Yes**, on an RTX 5070 Ti: about 90 tokens a second in everyday chats. |
+| **12 GB card** | The 16 GB set, and Bob's pick on the Brains page is Underdog Saluki 27B (7.9 GB, all on the card; its licence limits commercial use) | Bob's pick | Unproven in our lab on a real 12 GB card, as we have yet to test. On a rented card, Saluki passed 56 of the 65 [held-out jobs](#held-out-jobs-per-brain). |
+| **Bigger than 16 GB** | The same set as a 16 GB card; bigger brains are on the Brains page | 256K | Unproven in our lab, as we have yet to test. |
+| **8 GB card** | Gemma 4 E4B, with Qwen3.6 35B-A3B for coding (the smaller Q3 file made for 8 GB cards, 17.7 GB) | Bob's pick; 128K for the coding brain | Unproven in our lab, as we have yet to test. Only the download has been checked. |
+| **6 GB card** (most laptops) | Qwen3 4B Instruct, with Qwen2.5 Coder 7B for coding | Bob's pick | Unproven in our lab, as we have yet to test. |
+| **Built-in graphics** (handhelds, thin laptops) | Qwen3 4B Instruct, with Gemma 4 E4B for pictures | Shrinks to fit, down to 8K | **Yes**, on a 16 GB AMD handheld: Qwen3 4B wrote 22 to 28 tokens a second, Gemma 4 E2B 42 to 46, Qwen3.5 2B about 50. Steps for this kind of hardware are in the [handheld setup guide](app/docs/HANDHELD-AGENT-SETUP.md). |
+| **No graphics card** (processor only) | Gemma 4 E4B | Bob's pick | Unproven in our lab, as we have yet to test. |
+| **Raspberry Pi and ARM boards** | Gemma 4 E2B with 8 GB, Qwen3.5 2B with 4 GB | Bob's pick | Unproven in our lab, as we have yet to test on real boards. |
+
+Speeds in the table were measured on earlier engines, by 23 Nov 2026. Lamplight 46 (the engine in 1.5.255) hasn't been measured on these tiers yet, and the table will be updated once its tests are published. Before 1.5.255 shipped it was run through Bob's own Linux installer on a rented 16 GB card with Qwen3.6 35B-A3B: every held-out job set ran with no engine crash.
+
+**On built-in graphics,** the graphics and Windows share the same memory, so free memory decides what fits. Check **Available** in Task Manager with Bob open: with 6 GB or more, Qwen3 4B, Gemma 4 E2B and Qwen3.5 2B all fit; with 4 to 6 GB, pick Gemma 4 E2B or Qwen3.5 2B from the Brains page; under 4 GB, Qwen3.5 2B. Leave the BIOS graphics memory setting alone, and let Bob keep the whole brain on the graphics: splitting it with the processor is much slower there.
+
+#### Tested on your hardware?
+
+Most tiers above are unproven in our lab, as we have yet to test them. If your computer is one of them, install Bob, keep his defaults, pick the brain he suggests, and tell us how it went with the [hardware report](https://github.com/MouseWurX/Bob/issues/new?template=hardware-report.md): your tier, the brain, the speeds the brain label shows, and anything that went wrong. Leave out serial numbers, computer names and anything personal. When reports confirm a tier, its row here changes from unproven to tested.
 
 Windows is the main platform. An NVIDIA card helps but isn't required. The Mac and Pi builds are tested on GitHub's machines but not yet on real hardware, so [tell us how they go](https://github.com/MouseWurX/Bob/issues). A few Windows-only parts are hidden elsewhere. To build from source, see [Building Bob](app/docs/BUILDING.md).
 

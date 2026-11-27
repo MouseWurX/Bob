@@ -1,0 +1,345 @@
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index bb88497..1b72e02 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -2858,8 +2858,9 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+     // Brain Engine 0041 (LLAMA_MOE_LOOKAHEAD): guess the next layer's experts with its own router on this layer's expert
+     // input, for the MoE cache to upload them ahead while this layer computes. Only the guess is new: the picks and
+     // the experts used are the same, so the words are too
+-    if (moe_cache != nullptr && il >= 0 && probs_in == nullptr && selected_experts_in == nullptr && (size_t) il + 1 < model.layers.size()) {
+-        ggml_tensor * next_inp = model.layers[il + 1].ffn_gate_inp;
++    const int32_t il_next = moe_cache != nullptr ? moe_cache->next_layer(il) : -1; // 0091: in run order
++    if (moe_cache != nullptr && il >= 0 && probs_in == nullptr && selected_experts_in == nullptr && il_next >= 0) {
++        ggml_tensor * next_inp = model.layers[il_next].ffn_gate_inp;
+         int32_t k = 0;
+         if (next_inp != nullptr && next_inp->ne[0] == cur->ne[0] && next_inp->ne[1] == n_expert && cur->ne[1] == n_tokens) {
+             if (ggml_tensor * dst = moe_cache->get_guess(ctx0, il, n_tokens, &k)) {
+diff --git a/src/llama-model.h b/src/llama-model.h
+index 6dcf978..4886803 100644
+--- a/src/llama-model.h
++++ b/src/llama-model.h
+@@ -1045,6 +1045,10 @@ struct llama_model {
+     // optional, runs after the scale pass
+     virtual void post_arch_tensors(llama_model_loader &) {}
+ 
++    // Brain Engine 0091: the order the graph runs its layers in (model.layers indices), empty if index order. A looped
++    // brain lists a shared layer once per pass; the MoE cache follows it for what it does for the next layer
++    virtual std::vector<int32_t> layer_run_order() const { return {}; }
++
+ protected:
+     llama_model_params params;
+ 
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 80a2ed7..81413fb 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -83,6 +83,12 @@ struct moe_cache_lru {
+     std::vector<int64_t> last_use; // [n_layer*n_expert] layer clock at the last use, -1 if not used
+     std::vector<int64_t> clock;    // [n_layer] tokens seen by the layer (as added by plan() for each ubatch)
+ 
++    // Brain Engine 0091: a layer that runs the same experts as an earlier layer (a looped brain such as Inkling 2 Mini
++    // runs its middle layers several times with one set of weights) is keyed by that earlier layer, its physical
++    // layer: one slot, one slot map and one clock per physical expert, shared by every pass. Empty: each layer is its own
++    std::vector<int32_t> phys;
++    int32_t P(int32_t il) const { return il >= 0 && il < (int32_t) phys.size() ? phys[il] : il; }
++
+     std::vector<uint32_t> seen; // [n_expert] seen[e] == seen_gen if expert e is selected by the current plan()
+     uint32_t seen_gen = 0;
+     std::vector<int32_t> uniq;  // the distinct selected experts
+@@ -173,7 +179,7 @@ struct moe_cache_lru {
+     }
+ 
+     // key = index of an expert of a layer in crf and last_use
+-    int32_t make_key(int32_t il, int32_t e) const { return il*n_expert + e; }
++    int32_t make_key(int32_t il, int32_t e) const { return P(il)*n_expert + e; }
+     int32_t key_layer (int32_t key) const { return key / n_expert; }
+     int32_t key_expert(int32_t key) const { return key % n_expert; }
+ 
+@@ -184,13 +190,13 @@ struct moe_cache_lru {
+ 
+     // the CRF of a key, decayed by the time since its last use
+     float decayed_crf(int32_t il, int32_t key) const {
+-        return crf[key]*std::exp2(-(clock[il] - last_use[key])/crf_half_life);
++        return crf[key]*std::exp2(-(clock[P(il)] - last_use[key])/crf_half_life);
+     }
+ 
+     // an unused key gets 1 because crf[key] is 0 prior to first use
+     void use(int32_t il, int32_t key) {
+         crf[key]      = decayed_crf(il, key) + 1.0f;
+-        last_use[key] = clock[il];
++        last_use[key] = clock[P(il)];
+     }
+ 
+     // the experts selected by this plan() must not be evicted, nor the slots this plan() filled already
+@@ -198,7 +204,7 @@ struct moe_cache_lru {
+         if (key < 0) {
+             return false; // unused slot
+         }
+-        if (key_layer(key) != il) {
++        if (key_layer(key) != P(il)) {
+             return false; // seen is per expert index, an expert of another layer can have the same index
+         }
+         return seen[key_expert(key)] == seen_gen;
+@@ -386,7 +392,7 @@ struct moe_cache_lru {
+             move(s, class_of(key));
+             fills.push_back({ e, s, old });
+         }
+-        clock[il] += n_tokens;
++        clock[P(il)] += n_tokens;
+         return true;
+     }
+ };
+@@ -496,6 +502,9 @@ struct llama_moe_cache::impl {
+     std::vector<device> devices;
+     std::vector<group> groups;
+     std::vector<layer> layers;
++    std::vector<int32_t> phys_of; // Brain Engine 0091: the first layer with the same expert tensors
++    std::vector<int32_t> next_of; // the layer that runs after each layer, -1 for the last
++    int32_t next_layer(int32_t il) const { return il >= 0 && il < (int32_t) next_of.size() ? next_of[il] : -1; }
+     std::unordered_map<const ggml_tensor *, binding> bindings; // host experts -> cached experts
+     std::unordered_map<const ggml_tensor *, std::pair<int32_t, bool>> layer_of; // slot map -> layer, and if the graph that looks it up has a CPU part
+ 
+@@ -559,6 +568,33 @@ struct llama_moe_cache::impl {
+             throw std::runtime_error("MoE cache requires a MoE model");
+         }
+ 
++        // Brain Engine 0091: the physical layer of each layer (the first layer with the same expert tensors), and the
++        // layer that runs after each one (a looped brain doesn't run its layers in index order)
++        phys_of.resize(model.layers.size());
++        for (size_t il = 0; il < model.layers.size(); ++il) {
++            phys_of[il] = (int32_t) il;
++            const ggml_tensor * d = model.layers[il].ffn_down_exps;
++            for (size_t ip = 0; d != nullptr && ip < il; ++ip) {
++                if (model.layers[ip].ffn_down_exps == d) {
++                    phys_of[il] = (int32_t) ip;
++                    break;
++                }
++            }
++        }
++        next_of.assign(model.layers.size(), -1);
++        {
++            std::vector<int32_t> order = model.layer_run_order();
++            if (order.size() != model.layers.size()) {
++                order.resize(model.layers.size());
++                for (size_t il = 0; il < order.size(); ++il) {
++                    order[il] = (int32_t) il;
++                }
++            }
++            for (size_t i = 0; i + 1 < order.size(); ++i) {
++                next_of[order[i]] = order[i + 1];
++            }
++        }
++
+         // only cache layers that keep all of their experts in host memory, on the device the layer is assigned to
+         for (size_t il = 0; il < model.layers.size(); ++il) {
+             auto experts = llama_moe_cache_layer_experts(model.layers[il]);
+@@ -578,6 +614,9 @@ struct llama_moe_cache::impl {
+                 it->ref = experts;
+             }
+             it->layers.push_back(il);
++            if (phys_of[il] != (int32_t) il) {
++                continue; // 0091: the same experts as an earlier layer, counted there
++            }
+             for (const ggml_tensor * t : experts) {
+                 it->host_bytes         += ggml_nbytes(t);
+                 devices[id].host_bytes += ggml_nbytes(t);
+@@ -703,7 +742,11 @@ struct llama_moe_cache::impl {
+             const device & d = devices[g.id];
+             const int32_t n_expert  = g.ref[0]->ne[2];
+             const size_t  budget    = (size_t) ((double) size*d.split/split_sum*g.host_bytes/d.host_bytes);
+-            const int32_t max_slots = g.layers.size()*n_expert;
++            int32_t n_phys_layers = 0;
++            for (int32_t il : g.layers) {
++                n_phys_layers += phys_of[il] == il;
++            }
++            const int32_t max_slots = n_phys_layers*n_expert;
+             while (g.n_slots < max_slots && alloc_size(g, g.n_slots + 1) <= budget) {
+                 g.n_slots++;
+             }
+@@ -713,6 +756,12 @@ struct llama_moe_cache::impl {
+                 continue;
+             }
+             g.lru.init(model.layers.size(), n_expert, g.n_slots);
++            // 0091: a layer shares its physical layer's keys only when both are in this group (same device and layout)
++            g.lru.phys.resize(model.layers.size());
++            for (size_t il = 0; il < model.layers.size(); ++il) {
++                const int32_t p = phys_of[il];
++                g.lru.phys[il] = p != (int32_t) il && std::find(g.layers.begin(), g.layers.end(), p) != g.layers.end() ? p : (int32_t) il;
++            }
+             n_tensors[g.id] += g.ref.size()*(1 + g.layers.size()) + (la_max > 0 ? g.layers.size() : 0) + (db_on ? g.layers.size() : 0) + (sp_mode != SP_OFF ? 2*g.layers.size() : 0);
+             n_tensors_host  += g.layers.size()*(n_zero > 0 ? 3 : 1) + (db_on ? g.layers.size() : 0); // slot maps and CPU map
+         }
+@@ -782,12 +831,18 @@ struct llama_moe_cache::impl {
+                     l.sp_scale = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, 1, g.n_slots + n_zero);
+                     ggml_format_name(l.sp_scale, "moe_cache.standin_scale-%d", il);
+                 }
+-                l.slot_map = ggml_new_tensor_2d(ctx_host.get(), GGML_TYPE_I32, 1, g.ref[0]->ne[2]);
++                if (g.lru.P(il) != il && layers[g.lru.P(il)].slot_map != nullptr) {
++                    // 0091: its own tensor (the scheduler copies it at this layer's lookup), on its physical layer's entries
++                    l.slot_map = ggml_view_2d(ctx_host.get(), layers[g.lru.P(il)].slot_map, 1, g.ref[0]->ne[2],
++                        layers[g.lru.P(il)].slot_map->nb[1], 0);
++                } else {
++                    l.slot_map = ggml_new_tensor_2d(ctx_host.get(), GGML_TYPE_I32, 1, g.ref[0]->ne[2]);
++                    buf_host_size += GGML_PAD(ggml_nbytes(l.slot_map), alignment_host);
++                }
+                 ggml_format_name(l.slot_map, "moe_cache.slot_map-%d", il);
+                 // Brain Engine 0038: its lookup starts a split, so the selected experts are always computed in an earlier one
+                 l.slot_map->flags |= GGML_TENSOR_FLAG_SPLIT;
+                 layer_of[l.slot_map] = { il, false };
+-                buf_host_size += GGML_PAD(ggml_nbytes(l.slot_map), alignment_host);
+                 if (n_zero > 0) {
+                     l.slot_map_cpu = ggml_new_tensor_2d(ctx_host.get(), GGML_TYPE_I32, 1, g.ref[0]->ne[2]);
+                     ggml_format_name(l.slot_map_cpu, "moe_cache.slot_map_cpu-%d", il);
+@@ -1029,17 +1084,19 @@ struct llama_moe_cache::impl {
+ 
+     // the next layer that layer il guesses for, -1 if none
+     int32_t la_next(int32_t il, ggml_backend_t backend) const {
+-        if (la_max <= 0 || il + 1 >= (int32_t) layers.size() || layers[il + 1].ig < 0 || layers[il + 1].guess == nullptr) {
++        const int32_t nx = next_layer(il);
++        if (la_max <= 0 || nx < 0 || layers[nx].ig < 0 || layers[nx].guess == nullptr) {
+             return -1;
+         }
+-        return devices[groups[layers[il + 1].ig].id].backend == backend ? il + 1 : -1;
++        return devices[groups[layers[nx].ig].id].backend == backend ? nx : -1;
+     }
+ 
+     ggml_tensor * get_guess(ggml_context * ctx, int32_t il, int64_t n_tokens, int32_t * k) const {
+-        if (la_max <= 0 || lent || filling || reading || il < 0 || il + 1 >= (int32_t) layers.size() || layers[il].ig < 0) {
++        const int32_t nx = next_layer(il);
++        if (la_max <= 0 || lent || filling || reading || il < 0 || nx < 0 || layers[il].ig < 0) {
+             return nullptr;
+         }
+-        const layer & ln = layers[il + 1];
++        const layer & ln = layers[nx];
+         if (ln.ig < 0 || ln.guess == nullptr || n_tokens <= 0 || n_tokens > max_batch ||
+                 groups[ln.ig].id != groups[layers[il].ig].id) {
+             return nullptr;
+@@ -1077,7 +1134,7 @@ struct llama_moe_cache::impl {
+                 }
+                 const int32_t key = gn.lru.make_key(il_next, e);
+                 gn.lru.key_of[s] = key;
+-                gn.lru.last_use[key] = gn.lru.clock[il_next];
++                gn.lru.last_use[key] = gn.lru.clock[gn.lru.P(il_next)];
+                 slots[e] = s;
+                 gn.lru.move(s, 0);
+                 pf.push_back({ e, s });
+@@ -2579,7 +2636,7 @@ struct llama_moe_cache::impl {
+ 
+     // the layer after il that reads in place, or -1
+     int32_t ia_next(int32_t il) const {
+-        for (int32_t k = il + 1; k < (int32_t) layers.size(); ++k) {
++        for (int32_t k = next_layer(il); k >= 0; k = next_layer(k)) {
+             if (layers[k].ig >= 0) {
+                 return ip_group_ok(groups[layers[k].ig]) && !ip_half[layers[k].ig][0].empty() ? k : -1;
+             }
+@@ -5146,6 +5203,11 @@ struct llama_moe_cache::impl {
+                 if (l.slot_map == nullptr) {
+                     continue;
+                 }
++                if (g.lru.P(il) != il) {
++                    // 0091: the same entries as its physical layer, saved, placed and put back there
++                    resident[il] = resident[g.lru.P(il)];
++                    continue;
++                }
+                 int32_t * map = (int32_t *) l.slot_map->data;
+                 saved_slot_map[il].assign(map, map + l.slot_map->ne[1]);
+                 if (base + n_exp > g.n_slots) {
+@@ -5281,6 +5343,10 @@ ggml_tensor * llama_moe_cache::get_slot_map(int32_t il, int64_t n_tokens, int64_
+     return pimpl->get_slot_map(il, n_tokens, n_expert_used, cpu_part);
+ }
+ 
++int32_t llama_moe_cache::next_layer(int32_t il) const {
++    return pimpl->next_layer(il);
++}
++
+ ggml_tensor * llama_moe_cache::get_guess(ggml_context * ctx, int32_t il, int64_t n_tokens, int32_t * k) const {
+     return pimpl->get_guess(ctx, il, n_tokens, k);
+ }
+diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
+index 986ef89..c5509b0 100644
+--- a/src/llama-moe-cache.h
++++ b/src/llama-moe-cache.h
+@@ -28,6 +28,9 @@ public:
+     // Brain Engine 0041 (LLAMA_MOE_LOOKAHEAD): where the graph of layer il writes its guess of layer il + 1's experts,
+     // I32 [k, n_tokens] (top k of layer il + 1's router on layer il's expert input), nullptr if there is no look-ahead
+     ggml_tensor * get_guess(ggml_context * ctx, int32_t il, int64_t n_tokens, int32_t * k) const;
++    // Brain Engine 0091: the layer that runs after layer il (a looped brain runs some layers more than once and not in
++    // index order), -1 for the last
++    int32_t next_layer(int32_t il) const;
+     // Brain Engine 0043 (LLAMA_MOE_STANDIN): for a one-word batch of layer il, where the graph copies the router scores
+     // (F32 [n_expert, 1], what the gating reads; sigmoid: the gating is a sigmoid, else a softmax), nullptr if there are
+     // no stand-ins. A graph that takes it must multiply the picks' weights by get_rows(get_standin_scale(il), slots).
+diff --git a/src/models/inkling2-loop.cpp b/src/models/inkling2-loop.cpp
+index 8366a11..5293962 100644
+--- a/src/models/inkling2-loop.cpp
++++ b/src/models/inkling2-loop.cpp
+@@ -113,3 +113,20 @@ llama_model_inkling2_loop::graph::graph(const llm_graph_params & params) : llama
+     }
+     build_output(cur, blocks);
+ }
++
++// Brain Engine 0091: the prelude, each pass over the core (pass 0 in the physical layers, then the cache slots), the coda
++std::vector<int32_t> llama_model_inkling2_loop::layer_run_order() const {
++    std::vector<int32_t> res;
++    for (int il = 0; il < (int) core_start; ++il) {
++        res.push_back(il);
++    }
++    for (uint32_t pass = 0; pass < n_passes; ++pass) {
++        for (int ip = core_start; ip < (int) core_end; ++ip) {
++            res.push_back(pass == 0 ? ip : n_phys + (pass - 1)*(core_end - core_start) + (ip - core_start));
++        }
++    }
++    for (int il = core_end; il < n_phys; ++il) {
++        res.push_back(il);
++    }
++    return res;
++}
+diff --git a/src/models/models.h b/src/models/models.h
+index 5b16dd5..0e958f5 100644
+--- a/src/models/models.h
++++ b/src/models/models.h
+@@ -2413,6 +2413,7 @@ struct llama_model_inkling2_loop : public llama_model_inkling2 {
+ 
+     int n_layer_phys() const override { return n_phys; }
+     int layer_phys(int il) const;
++    std::vector<int32_t> layer_run_order() const override; // Brain Engine 0091
+ 
+     int      n_phys     = 0;
+     uint32_t core_start = 0;
+diff --git a/tests/test-llama-archs.cpp b/tests/test-llama-archs.cpp
+index 53e54d1..cfd84de 100644
+--- a/tests/test-llama-archs.cpp
++++ b/tests/test-llama-archs.cpp
+@@ -340,8 +340,8 @@ static gguf_context_ptr get_gguf_ctx(const llm_arch arch, const bool moe, const
+     } else if (arch == LLM_ARCH_INKLING2 || arch == LLM_ARCH_INKLING2_LOOP) {
+         n_embd  = 128;
+         n_head  = 4;
+-        n_ff    = 24;
+-        n_layer = 3;
++        n_ff    = getenv("TLA_FF") ? atoi(getenv("TLA_FF")) : 24;
++        n_layer = getenv("TLA_LAYERS") ? atoi(getenv("TLA_LAYERS")) : 3;
+     }
+ 
+     uint32_t n_head_kv = n_head;
+@@ -759,8 +759,8 @@ static gguf_context_ptr get_gguf_ctx(const llm_arch arch, const bool moe, const
+         ms.add_kv(LLM_KV_ACTIVATION_SITU_LINEAR_BETA, 0.3f);
+         ms.add_kv(LLM_KV_EXPERT_WEIGHTS_SCALE,        8.0f);
+         ms.add_kv(LLM_KV_FINAL_LOGIT_SOFTCAPPING,     30.0f);
+-        ms.add_kv(LLM_KV_EXPERT_COUNT,                uint32_t(4));
+-        ms.add_kv(LLM_KV_EXPERT_USED_COUNT,           uint32_t(2));
++        ms.add_kv(LLM_KV_EXPERT_COUNT,                uint32_t(getenv("TLA_EXPERTS") ? atoi(getenv("TLA_EXPERTS")) : 4));
++        ms.add_kv(LLM_KV_EXPERT_USED_COUNT,           uint32_t(getenv("TLA_USED") ? atoi(getenv("TLA_USED")) : 2));
+         std::vector<bool> pattern(n_layer);
+         for (uint32_t i = 0; i < n_layer; ++i) {
+             pattern[i] = i % 2 == 0;
+@@ -791,8 +791,8 @@ static gguf_context_ptr get_gguf_ctx(const llm_arch arch, const bool moe, const
+         ms.add_kv(LLM_KV_EXPERT_LATENT_LENGTH,       n_ff);
+         ms.add_kv(LLM_KV_INTERLEAVE_MOE_LAYER_STEP,  uint32_t(2));
+         // with more experts than a ubatch uses, the copy of the used experts in host memory skips some of them
+-        ms.add_kv(LLM_KV_EXPERT_COUNT,               uint32_t(host_experts_test(arch) ? 64 : arch == LLM_ARCH_CLOVER_MOE ? 4 : 2));
+-        ms.add_kv(LLM_KV_EXPERT_USED_COUNT,          uint32_t(2));
++        ms.add_kv(LLM_KV_EXPERT_COUNT,               uint32_t(getenv("TLA_EXPERTS") ? atoi(getenv("TLA_EXPERTS")) : host_experts_test(arch) ? 64 : arch == LLM_ARCH_CLOVER_MOE ? 4 : 2));
++        ms.add_kv(LLM_KV_EXPERT_USED_COUNT,          uint32_t(getenv("TLA_USED") ? atoi(getenv("TLA_USED")) : 2));
+         ms.add_kv(LLM_KV_EXPERT_SHARED_COUNT,        uint32_t(1));
+ 
+         uint32_t gating_func = 2;

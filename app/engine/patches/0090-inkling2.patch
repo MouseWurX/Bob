@@ -1,0 +1,2543 @@
+diff --git a/common/chat.cpp b/common/chat.cpp
+index da29cd6..1f45ac1 100644
+--- a/common/chat.cpp
++++ b/common/chat.cpp
+@@ -1439,6 +1439,12 @@ static common_chat_params_init_fn common_chat_template_detect_params_init(const
+         return common_chat_params_init_qwen3_coder;
+     }
+ 
++    // Inkling 1 and 2
++    if (is_inkling_template(src)) {
++        LOG_DBG("Using specialized template: Inkling\n");
++        return common_chat_params_init_inkling;
++    }
++
+     return nullptr;
+ }
+ 
+diff --git a/common/jinja/value.cpp b/common/jinja/value.cpp
+index 333241d..771b0f1 100644
+--- a/common/jinja/value.cpp
++++ b/common/jinja/value.cpp
+@@ -281,14 +281,12 @@ static value tojson(const func_args & args) {
+     if (is_val<value_int>(val_indent)) {
+         indent = static_cast<int>(val_indent->as_int());
+     }
+-    if (val_sort->as_bool()) { // undefined == false
+-        throw not_implemented_exception("tojson sort_keys=true not implemented");
+-    }
++    const bool sort_keys = val_sort->as_bool(); // undefined == false
+     const bool ensure_ascii = val_ascii->as_bool(); // undefined == false
+     auto separators = (is_val<value_array>(val_separators) ? val_separators : mk_val<value_array>())->as_array();
+     std::string item_sep = separators.size() > 0 ? separators[0]->as_string().str() : (indent < 0 ? ", " : ",");
+     std::string key_sep = separators.size() > 1 ? separators[1]->as_string().str() : ": ";
+-    std::string json_str = value_to_json(args.get_pos(0), indent, item_sep, key_sep);
++    std::string json_str = value_to_json(args.get_pos(0), indent, item_sep, key_sep, sort_keys);
+     if (ensure_ascii) {
+         json_str = json_ensure_ascii_preserving_format(json_str);
+     }
+@@ -1728,7 +1726,7 @@ static std::string float_json(double val) {
+ 
+ // recursively convert value to JSON string
+ // TODO: avoid circular references
+-static void value_to_json_internal(std::ostringstream & oss, const value & val, int curr_lvl, int indent, const std::string_view item_sep, const std::string_view key_sep) {
++static void value_to_json_internal(std::ostringstream & oss, const value & val, int curr_lvl, int indent, const std::string_view item_sep, const std::string_view key_sep, bool sort_keys) {
+     auto indent_str = [indent, curr_lvl]() -> std::string {
+         return (indent > 0) ? std::string(curr_lvl * indent, ' ') : "";
+     };
+@@ -1775,7 +1773,7 @@ static void value_to_json_internal(std::ostringstream & oss, const value & val,
+             oss << newline();
+             for (size_t i = 0; i < arr.size(); ++i) {
+                 oss << indent_str() << (indent > 0 ? std::string(indent, ' ') : "");
+-                value_to_json_internal(oss, arr[i], curr_lvl + 1, indent, item_sep, key_sep);
++                value_to_json_internal(oss, arr[i], curr_lvl + 1, indent, item_sep, key_sep, sort_keys);
+                 if (i < arr.size() - 1) {
+                     oss << item_sep;
+                 }
+@@ -1786,17 +1784,25 @@ static void value_to_json_internal(std::ostringstream & oss, const value & val,
+         oss << "]";
+     } else if (is_val<value_object>(val)) {
+         const auto & obj = val->as_ordered_object(); // IMPORTANT: need to keep exact order
++        std::vector<std::pair<std::string, value>> items;
++        items.reserve(obj.size());
++        for (const auto & pair : obj) {
++            items.emplace_back(is_val<value_float>(pair.first) ? float_json(pair.first->as_float()) : pair.first->as_string().str(), pair.second);
++        }
++        if (sort_keys) {
++            // same order as python json.dumps(sort_keys=True): utf-8 byte order is code point order
++            std::stable_sort(items.begin(), items.end(), [](const auto & a, const auto & b) { return a.first < b.first; });
++        }
+         oss << "{";
+-        if (!obj.empty()) {
++        if (!items.empty()) {
+             oss << newline();
+             size_t i = 0;
+-            for (const auto & pair : obj) {
++            for (const auto & [key, item] : items) {
+                 oss << indent_str() << (indent > 0 ? std::string(indent, ' ') : "");
+-                const std::string key = is_val<value_float>(pair.first) ? float_json(pair.first->as_float()) : pair.first->as_string().str();
+-                value_to_json_internal(oss, mk_val<value_string>(key), curr_lvl + 1, indent, item_sep, key_sep);
++                value_to_json_internal(oss, mk_val<value_string>(key), curr_lvl + 1, indent, item_sep, key_sep, sort_keys);
+                 oss << key_sep;
+-                value_to_json_internal(oss, pair.second, curr_lvl + 1, indent, item_sep, key_sep);
+-                if (i < obj.size() - 1) {
++                value_to_json_internal(oss, item, curr_lvl + 1, indent, item_sep, key_sep, sort_keys);
++                if (i < items.size() - 1) {
+                     oss << item_sep;
+                 }
+                 oss << newline();
+@@ -1810,9 +1816,9 @@ static void value_to_json_internal(std::ostringstream & oss, const value & val,
+     }
+ }
+ 
+-std::string value_to_json(const value & val, int indent, const std::string_view item_sep, const std::string_view key_sep) {
++std::string value_to_json(const value & val, int indent, const std::string_view item_sep, const std::string_view key_sep, bool sort_keys) {
+     std::ostringstream oss;
+-    value_to_json_internal(oss, val, 0, indent, item_sep, key_sep);
++    value_to_json_internal(oss, val, 0, indent, item_sep, key_sep, sort_keys);
+     JJ_DEBUG("value_to_json: result=%s", oss.str().c_str());
+     return oss.str();
+ }
+diff --git a/common/jinja/value.h b/common/jinja/value.h
+index 8fdff88..b78643b 100644
+--- a/common/jinja/value.h
++++ b/common/jinja/value.h
+@@ -180,7 +180,7 @@ const func_builtins & global_builtins();
+ value try_builtin_func(context & ctx, const std::string & name, value & input, bool undef_on_missing = false);
+ value apply_filter_by_name(context & ctx, std::string filter_id, value input, const func_args & args);
+ 
+-std::string value_to_json(const value & val, int indent = -1, const std::string_view item_sep = ", ", const std::string_view key_sep = ": ");
++std::string value_to_json(const value & val, int indent = -1, const std::string_view item_sep = ", ", const std::string_view key_sep = ": ", bool sort_keys = false);
+ 
+ // Note: only used for debugging purposes
+ std::string value_to_string_repr(const value & val);
+diff --git a/common/parsers/inkling.cpp b/common/parsers/inkling.cpp
+new file mode 100644
+index 0000000..9c30cdb
+--- /dev/null
++++ b/common/parsers/inkling.cpp
+@@ -0,0 +1,165 @@
++#include "parsers.h"
++
++bool is_inkling_template(const std::string & src) {
++    return src.find("<|message_user|>") != std::string::npos &&
++           src.find("<|content_image|>") != std::string::npos;
++}
++
++// the template makes one message block per content part, but a media marker comes inside the text of a message
++// <header><|content_text|>{media}text<|end_message|> --> <header>{media}<|end_message|><header><|content_text|>text<|end_message|>
++static void inkling_split_media(common_chat_prompt & prompt) {
++    const std::string TEXT      = "<|content_text|>";
++    const std::string END       = "<|end_message|>";
++    const std::string MEDIA_BEG = "<__media_";
++    const std::string MEDIA_END = "__>";
++
++    std::vector<common_chat_prompt_part> out;
++    for (size_t i = 0; i < prompt.parts.size(); i++) {
++        const auto & part = prompt.parts[i];
++        const bool in_text_block = part.is_input && part.text.find(MEDIA_BEG) != std::string::npos &&
++            !out.empty() && !out.back().is_input && string_ends_with(out.back().text, TEXT) &&
++            i + 1 < prompt.parts.size() && !prompt.parts[i + 1].is_input && string_starts_with(prompt.parts[i + 1].text, END);
++        const size_t header_pos = in_text_block ? out.back().text.rfind("<|message_") : std::string::npos;
++        if (header_pos == std::string::npos) {
++            out.push_back(part);
++            continue;
++        }
++        const std::string header = out.back().text.substr(header_pos, out.back().text.size() - TEXT.size() - header_pos);
++
++        std::string rest = part.text;
++        for (bool first = true; !rest.empty(); first = false) {
++            const size_t beg      = rest.find(MEDIA_BEG);
++            const size_t end      = beg == std::string::npos ? beg : rest.find(MEDIA_END, beg);
++            const bool   is_media = beg == 0 && end != std::string::npos;
++            const size_t len      = is_media ? end + MEDIA_END.size() : (end == std::string::npos ? rest.size() : beg);
++            if (!first) {
++                out.push_back({ END + header + (is_media ? "" : TEXT), false });
++            } else if (is_media) {
++                // mtmd opens the media block
++                out.back().text.resize(out.back().text.size() - TEXT.size());
++            }
++            out.push_back({ rest.substr(0, len), true });
++            rest.erase(0, len);
++        }
++    }
++    prompt.parts = std::move(out);
++}
++
++// Inkling 1 and 2 - the assistant turn is a list of blocks, all closed by <|end_message|>:
++//   <|message_model|><|content_thinking|>...<|end_message|>
++//   <|message_model|><|content_text|>...<|end_message|>
++//   <|message_model|>NAME<|content_invoke_tool_json|>{"name":"NAME","args":{...}}<|end_message|>
++common_chat_params common_chat_params_init_inkling(const common_chat_template &          tmpl,
++                                                   const autoparser::generation_params & inputs) {
++    common_chat_params data;
++
++    data.prompt            = common_chat_template_direct_apply_impl(tmpl, inputs);
++    data.generation_prompt = common_chat_template_generation_prompt_impl(tmpl, inputs);
++    data.format            = COMMON_CHAT_FORMAT_PEG_NATIVE;
++    data.supports_thinking = true;
++
++    inkling_split_media(data.prompt);
++
++    const std::string HEADER    = "<|message_model|>";
++    const std::string THINK     = "<|content_thinking|>";
++    const std::string TEXT      = "<|content_text|>";
++    const std::string TOOL_JSON = "<|content_invoke_tool_json|>";
++    const std::string END       = "<|end_message|>";
++
++    data.preserved_tokens = { HEADER, THINK, TEXT, TOOL_JSON, END };
++
++    data.thinking_start_tag = THINK;
++    data.thinking_end_tags  = { END };
++
++    data.message_delimiters = {
++        { COMMON_CHAT_ROLE_ASSISTANT, HEADER               },
++        { COMMON_CHAT_ROLE_USER,      "<|message_user|>"   },
++        { COMMON_CHAT_ROLE_SYSTEM,    "<|message_system|>" },
++        { COMMON_CHAT_ROLE_TOOL,      "<|message_tool|>"   },
++    };
++
++    if (inputs.has_continuation()) {
++        const auto & msg = inputs.continue_msg;
++
++        data.generation_prompt.clear();
++        if (!msg.reasoning_content.empty()) {
++            data.generation_prompt = HEADER + THINK + msg.reasoning_content;
++        }
++        if (inputs.continue_final_message == COMMON_CHAT_CONTINUATION_CONTENT) {
++            if (!data.generation_prompt.empty()) {
++                data.generation_prompt += END;
++            }
++            data.generation_prompt += HEADER + TEXT + msg.render_content();
++        }
++
++        data.prompt.append(data.generation_prompt);
++    }
++
++    auto has_tools           = inputs.tools.is_array() && !inputs.tools.empty();
++    auto has_response_format = !inputs.json_schema.is_null() && inputs.json_schema.is_object();
++    auto use_tools           = has_tools && inputs.tool_choice != COMMON_CHAT_TOOL_CHOICE_NONE;
++    auto extract_reasoning   = inputs.reasoning_format != COMMON_REASONING_FORMAT_NONE;
++
++    data.parser = build_chat_peg_parser([&](common_chat_peg_builder & p) {
++        auto header = p.literal(HEADER);
++        auto end    = p.literal(END);
++
++        auto think    = p.literal(THINK);
++        auto thinking = p.rule("thinking", extract_reasoning ? think + p.reasoning(p.until(END)) + end :
++                                                               p.atomic(p.content(think)) + p.content(p.until(END) + end));
++        auto text     = p.rule("text", p.literal(TEXT) + p.content(p.until(END)) + end);
++
++        if (has_response_format) {
++            auto response_format = p.rule("response-format", p.content(p.schema(p.json(), "response-format-schema", inputs.json_schema)));
++            return p.zero_or_more(header + thinking) + header + p.literal(TEXT) + response_format + end;
++        }
++
++        auto blocks = p.zero_or_more(header + (thinking | text));
++
++        if (!use_tools) {
++            return blocks;
++        }
++
++        auto tool_choice = p.choice();
++        foreach_function(inputs.tools, [&](size_t tool_index, const json & tool) {
++            const auto & function = tool.at("function");
++            std::string  name     = function.at("name");
++
++            auto open = p.tool_name(p.literal(name)) + p.literal(TOOL_JSON) + p.literal("{\"name\":" + json(name).dump() + ",\"args\":");
++            auto args = p.tool_args(p.json());
++
++            tool_choice |= p.rule("tool-" + std::to_string(tool_index), p.tool(p.tool_open(open) + args + p.tool_close(p.literal("}")) + end));
++        });
++
++        // tool calls are the last blocks of the turn
++        auto calls      = inputs.parallel_tool_calls ? tool_choice + p.zero_or_more(header + tool_choice) : tool_choice;
++        auto tool_calls = header + p.trigger_rule("tool-calls", calls);
++
++        if (inputs.tool_choice == COMMON_CHAT_TOOL_CHOICE_REQUIRED) {
++            return blocks + tool_calls;
++        }
++
++        return blocks + p.optional(tool_calls);
++    });
++
++    if (has_response_format || use_tools) {
++        data.grammar_lazy = !has_response_format && inputs.tool_choice != COMMON_CHAT_TOOL_CHOICE_REQUIRED;
++        data.grammar      = build_grammar([&](const common_grammar_builder & builder) {
++            data.parser.build_grammar(builder, data.grammar_lazy);
++        });
++
++        if (data.grammar_lazy) {
++            // a header followed by text and not by a content token is a tool call, the grammar starts at the name
++            data.grammar_triggers = {
++                { COMMON_GRAMMAR_TRIGGER_TYPE_PATTERN, "<\\|message_model\\|>([^<])" },
++            };
++            // Inkling 1: the first header is in the generation prompt, and a lazy grammar does not get the prompt.
++            // an output that starts with no content token is a tool call. not for a continuation, it starts with text
++            if (!inputs.has_continuation()) {
++                data.grammar_triggers.push_back({ COMMON_GRAMMAR_TRIGGER_TYPE_PATTERN_FULL, "[^<]+" });
++            }
++        }
++    }
++
++    return data;
++}
+diff --git a/common/parsers/parsers.h b/common/parsers/parsers.h
+index b1b6d16..8674033 100644
+--- a/common/parsers/parsers.h
++++ b/common/parsers/parsers.h
+@@ -41,6 +41,8 @@ std::string common_chat_template_generation_prompt_impl(
+ 
+ bool is_lfm2_template(const std::string & src);
+ 
++bool is_inkling_template(const std::string & src);
++
+ common_chat_params common_chat_params_init_cohere2moe(const common_chat_template & tmpl, const autoparser::generation_params & inputs);
+ 
+ common_chat_params common_chat_params_init_deepseek_v3_2(const common_chat_template & tmpl, const autoparser::generation_params & inputs);
+@@ -55,6 +57,8 @@ common_chat_params common_chat_params_init_gpt_oss(const common_chat_template &
+ 
+ common_chat_params common_chat_params_init_harmony_xml(const common_chat_template & tmpl, const autoparser::generation_params & inputs);
+ 
++common_chat_params common_chat_params_init_inkling(const common_chat_template & tmpl, const autoparser::generation_params & inputs);
++
+ common_chat_params common_chat_params_init_k2_horizon(const common_chat_template & tmpl, const autoparser::generation_params & inputs);
+ 
+ common_chat_params common_chat_params_init_kimi_k2(const common_chat_template & tmpl, const autoparser::generation_params & inputs);
+diff --git a/common/parsers/sources.cmake b/common/parsers/sources.cmake
+index 2174f45..934e226 100644
+--- a/common/parsers/sources.cmake
++++ b/common/parsers/sources.cmake
+@@ -10,6 +10,7 @@ set(LLAMA_CHAT_PARSERS_SOURCES
+     ${CMAKE_CURRENT_LIST_DIR}/gigachat-v3.cpp
+     ${CMAKE_CURRENT_LIST_DIR}/gpt-oss.cpp
+     ${CMAKE_CURRENT_LIST_DIR}/harmony-xml.cpp
++    ${CMAKE_CURRENT_LIST_DIR}/inkling.cpp
+     ${CMAKE_CURRENT_LIST_DIR}/k2-horizon.cpp
+     ${CMAKE_CURRENT_LIST_DIR}/kimi-k2.cpp
+     ${CMAKE_CURRENT_LIST_DIR}/kimi-k3.cpp
+diff --git a/ggml/src/ggml-cuda/fattn-common.cuh b/ggml/src/ggml-cuda/fattn-common.cuh
+index 60115dd..83508d9 100644
+--- a/ggml/src/ggml-cuda/fattn-common.cuh
++++ b/ggml/src/ggml-cuda/fattn-common.cuh
+@@ -40,7 +40,7 @@ typedef void (* fattn_kernel_t)(
+                             const int32_t nb11, const int32_t nb12, const int64_t nb13,
+                             const int32_t nb21, const int32_t nb22, const int64_t nb23,
+                             const int32_t ne31, const int32_t ne32, const int32_t ne33,
+-                            const int32_t nb31, const int32_t nb32, const int64_t nb33);
++                            const int32_t nb31, const int64_t nb32, const int64_t nb33);
+ 
+ // Brain Engine 0026: a position mask (ggml_flash_attn_ext_pos_mask_init) instead of the F16 table. The kernels get
+ // nb31 < 0 for it: n_swa = -nb31 - 1; per stream (nb33 apart) the query rows' positions come first, then the K/V
+@@ -1446,7 +1446,7 @@ void launch_fattn(
+     // Optional optimization where the mask is scanned to determine whether part of the calculation can be skipped.
+     // Only worth the overhead if there is at lease one FATTN_KQ_STRIDE x FATTN_KQ_STRIDE square to be skipped or
+     //     multiple sequences of possibly different lengths, or kv_rows lists that end with padding.
+-    const bool scan_mask = !use_sparse && mask && n_kv_cols % FATTN_KQ_STRIDE == 0 && (Q->ne[1] >= 1024 || Q->ne[3] > 1 || kv_rows);
++    const bool scan_mask = !use_sparse && mask && (pmask || mask->ne[2] == 1) && n_kv_cols % FATTN_KQ_STRIDE == 0 && (Q->ne[1] >= 1024 || Q->ne[3] > 1 || kv_rows);
+     if (scan_mask && pmask) {
+         // Brain Engine 0026
+         const dim3 blocks_num_KV_max(ntiles_x, Q->ne[3], 1);
+diff --git a/ggml/src/ggml-cuda/fattn-mma-f16.cuh b/ggml/src/ggml-cuda/fattn-mma-f16.cuh
+index 653ef1d..e9083d9 100644
+--- a/ggml/src/ggml-cuda/fattn-mma-f16.cuh
++++ b/ggml/src/ggml-cuda/fattn-mma-f16.cuh
+@@ -1958,7 +1958,7 @@ static __global__ void flash_attn_ext_f16(
+                             const int32_t nb11, const int32_t nb12, const int64_t nb13,
+                             const int32_t nb21, const int32_t nb22, const int64_t nb23,
+                             const int32_t ne31, const int32_t ne32, const int32_t ne33,
+-                            const int32_t nb31, const int32_t nb32, const int64_t nb33) {
++                            const int32_t nb31, const int64_t nb32, const int64_t nb33) {
+     ggml_cuda_pdl_sync(); // TODO optimize placement
+ #if defined(FLASH_ATTN_AVAILABLE) && (defined(VOLTA_MMA_AVAILABLE) || defined(TURING_MMA_AVAILABLE) || defined(AMD_WMMA_AVAILABLE) || defined(AMD_MFMA_AVAILABLE))
+     const char * GGML_CUDA_RESTRICT Q              = Q_ptr;
+@@ -2061,7 +2061,7 @@ static __global__ void flash_attn_ext_f16(
+         const float2 * Q_f2   = (const float2 *) (Q + nb03*sequence + nb02*zt_Q);
+         const half2  * K_h2   = (const half2  *) (K + nb13*sequence + nb12*z_KV);
+         const half   * mask_h = ncols2 == 1 && !mask ? nullptr :
+-            (const half *) (mask + nb33*(sequence % ne33));
++            (const half *) (mask + nb33*(sequence % ne33) + nb32*(zt_Q % ne32));
+         float2       * dstk   = ((float2 *) dst) + (sequence*ne01.z*ne02 + zt_Q) * (DV/2);
+ 
+         const half2 * V_h2 = V_is_K_view ? K_h2 : (const half2 *) (V + nb23*sequence + nb22*z_KV);
+@@ -2111,7 +2111,7 @@ static __global__ void flash_attn_ext_f16(
+     const float2 * Q_f2   = (const float2 *) (Q + nb03*sequence + nb02*zt_Q);
+     const half2  * K_h2   = (const half2  *) (K + nb13*sequence + nb12*z_KV);
+     const half   * mask_h = ncols2 == 1 && !mask ? nullptr :
+-        (const half *) (mask + nb33*(sequence % ne33));
++        (const half *) (mask + nb33*(sequence % ne33) + nb32*(zt_Q % ne32));
+     float2       * dstk   = ((float2 *) dst) + (sequence*ne01.z*ne02 + zt_Q) * (DV/2);
+ 
+     const half2 * V_h2 = V_is_K_view ? K_h2 : (const half2 *) (V + nb23*sequence + nb22*z_KV);
+diff --git a/ggml/src/ggml-cuda/fattn-tile.cuh b/ggml/src/ggml-cuda/fattn-tile.cuh
+index 10ced6f..447d350 100644
+--- a/ggml/src/ggml-cuda/fattn-tile.cuh
++++ b/ggml/src/ggml-cuda/fattn-tile.cuh
+@@ -814,7 +814,7 @@ static __global__ void flash_attn_tile(
+                             const int32_t nb11, const int32_t nb12, const int64_t nb13,
+                             const int32_t nb21, const int32_t nb22, const int64_t nb23,
+                             const int32_t ne31, const int32_t ne32, const int32_t ne33,
+-                            const int32_t nb31, const int32_t nb32, const int64_t nb33) {
++                            const int32_t nb31, const int64_t nb32, const int64_t nb33) {
+ #ifdef FLASH_ATTN_AVAILABLE
+     const char * GGML_CUDA_RESTRICT Q        = Q_ptr;
+     const char * GGML_CUDA_RESTRICT K        = K_ptr;
+@@ -861,7 +861,7 @@ static __global__ void flash_attn_tile(
+     const half2 * K_h2 = (const half2 *) (K + nb13*sequence + nb12*(head0 / gqa_ratio));
+     const half2 * V_h2 = (const half2 *) (V + nb23*sequence + nb22*(head0 / gqa_ratio)); // K and V have same shape
+ 
+-    const half * maskh = mask ? (const half *) (mask + nb33*(sequence % ne33)) : nullptr;
++    const half * maskh = mask ? (const half *) (mask + nb33*(sequence % ne33) + nb32*(head0 % ne32)) : nullptr;
+ 
+     const int stride_K2   = nb11 / sizeof(half2);
+     const int stride_V2   = nb21 / sizeof(half2);
+@@ -1255,7 +1255,8 @@ static void launch_fattn_tile_switch_ncols2(ggml_backend_cuda_context & ctx, ggm
+     // However, for DKQ == 576, DV == 512 only the kernel variant with GQA optimizations is implemented.
+     const bool nvidia = GGML_CUDA_CC_IS_NVIDIA(ggml_cuda_info().devices[ggml_cuda_get_device()].cc);
+     const int gqa_limit = nvidia && gqa_ratio <= 4 && DV <= 256 ? 16 : INT_MAX;
+-    const bool use_gqa_opt = mask && max_bias == 0.0f && Q->ne[1] <= gqa_limit && K->ne[1] % FATTN_KQ_STRIDE == 0;
++    // a mask with a head dimension is not shared by the Q heads of a K/V head
++    const bool use_gqa_opt = mask && mask->ne[2] == 1 && max_bias == 0.0f && Q->ne[1] <= gqa_limit && K->ne[1] % FATTN_KQ_STRIDE == 0;
+ 
+     if constexpr (DKQ == 320) {
+         // This branch is only used for Mistral Small 4 which has a GQA ratio of 32.
+diff --git a/ggml/src/ggml-cuda/fattn-vec.cuh b/ggml/src/ggml-cuda/fattn-vec.cuh
+index fd9b807..a3891c0 100644
+--- a/ggml/src/ggml-cuda/fattn-vec.cuh
++++ b/ggml/src/ggml-cuda/fattn-vec.cuh
+@@ -40,7 +40,7 @@ static __global__ void flash_attn_ext_vec(
+                             const int32_t nb11, const int32_t nb12, const int64_t nb13,
+                             const int32_t nb21, const int32_t nb22, const int64_t nb23,
+                             const int32_t ne31, const int32_t ne32, const int32_t ne33,
+-                            const int32_t nb31, const int32_t nb32, const int64_t nb33) {
++                            const int32_t nb31, const int64_t nb32, const int64_t nb33) {
+     ggml_cuda_pdl_lc();
+ #ifdef FLASH_ATTN_AVAILABLE
+     const char * GGML_CUDA_RESTRICT Q        = Q_ptr;
+@@ -117,7 +117,7 @@ static __global__ void flash_attn_ext_vec(
+     const int * mpos_q   = (const int *) (mask + nb33*(sequence % ne33)) + ic0;
+     const int * mpos_k   = (const int *) (mask + nb33*(sequence % ne33)) + ne01.z;
+     const int   mpos_swa = -nb31 - 1;
+-    const half * maskh  = (const half  *) (mask + nb33*(sequence % ne33) + (mpos ? 0 : nb31*ic0));
++    const half * maskh  = mask ? (const half  *) (mask + nb33*(sequence % ne33) + (mpos ? 0 : nb32*(head % ne32) + nb31*ic0)) : nullptr;
+ 
+     const float slope = get_alibi_slope(max_bias, head, n_head_log2, m0, m1);
+ 
+diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
+index 9b4aaf8..81f5a2f 100644
+--- a/ggml/src/ggml-cuda/fattn.cu
++++ b/ggml/src/ggml-cuda/fattn.cu
+@@ -226,7 +226,8 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols2(ggml_backend_cuda_con
+ 
+     // Edge cases like no mask, ALiBi, unpadded K/V, or misaligned addresses for large data transfers
+     //     are put into the template specialization without GQA optimizations.
+-    bool use_gqa_opt = mask && max_bias == 0.0f && n_kv % FATTN_KQ_STRIDE == 0;
++    // a mask with a head dimension is not shared by the Q heads of a K/V head
++    bool use_gqa_opt = mask && mask->ne[2] == 1 && max_bias == 0.0f && n_kv % FATTN_KQ_STRIDE == 0;
+     for (const ggml_tensor * t : {Q, K, V, mask}) {
+         if (t == nullptr || ggml_is_quantized(t->type)) {
+             continue;
+@@ -652,8 +653,9 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel_any(const int device, c
+     memcpy(&max_bias, (const float *) KQV->op_params + 1, sizeof(float));
+ 
+     // The effective batch size for the kernel can be increased by gqa_ratio.
+-    // The kernel versions without this optimization are also used for ALiBi, if there is no mask, or if the KV cache is not padded,
+-    bool gqa_opt_applies = gqa_ratio >= 2 && mask && max_bias == 0.0f && n_kv % FATTN_KQ_STRIDE == 0;
++    // The kernel versions without this optimization are also used for ALiBi, if there is no mask, if the mask has a head dimension,
++    //     or if the KV cache is not padded,
++    bool gqa_opt_applies = gqa_ratio >= 2 && mask && mask->ne[2] == 1 && max_bias == 0.0f && n_kv % FATTN_KQ_STRIDE == 0;
+     for (const ggml_tensor * t : {Q, K, V, mask}) {
+         if (t == nullptr || ggml_is_quantized(t->type)) {
+             continue;
+@@ -722,7 +724,16 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel_any(const int device, c
+     }
+ 
+     if (mask && mask->ne[2] != 1) {
+-        return BEST_FATTN_KERNEL_NONE;
++        // the kv_rows mask is compacted per sequence, it has no head dimension
++        if (kv_rows) {
++            return BEST_FATTN_KERNEL_NONE;
++        }
++        // the logit softcap kernels are compiled for these head sizes only
++        float logit_softcap;
++        memcpy(&logit_softcap, (const float *) KQV->op_params + 2, sizeof(float));
++        if (logit_softcap != 0.0f && Q->ne[0] != 128 && Q->ne[0] != 256) {
++            return BEST_FATTN_KERNEL_NONE;
++        }
+     }
+ 
+     // only the MMA kernel reads K/V through kv_rows
+@@ -767,7 +778,7 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel_any(const int device, c
+ 
+     const int ncols2_max = Q->ne[0] == 320 ? 32 : ((Q->ne[0] == 576 || Q->ne[0] == 192) ? 16 : 8);
+     int gqa_ratio_eff = 1;
+-    while (max_bias == 0.0f && gqa_ratio % (2*gqa_ratio_eff) == 0 && gqa_ratio_eff < ncols2_max) {
++    while (max_bias == 0.0f && (!mask || mask->ne[2] == 1) && gqa_ratio % (2*gqa_ratio_eff) == 0 && gqa_ratio_eff < ncols2_max) {
+         gqa_ratio_eff *= 2;
+     }
+ 
+diff --git a/src/llama-arch.cpp b/src/llama-arch.cpp
+index faa9cf3..0f734d2 100644
+--- a/src/llama-arch.cpp
++++ b/src/llama-arch.cpp
+@@ -181,6 +181,8 @@ static const std::map<llm_arch, const char *> LLM_ARCH_NAMES = {
+     { LLM_ARCH_BEAM,             "beam"             },
+     { LLM_ARCH_KOLIBRI1,         "kolibri1"         },
+     { LLM_ARCH_RICURSIVE,        "ricursive"        },
++    { LLM_ARCH_INKLING2,         "inkling2"         },
++    { LLM_ARCH_INKLING2_LOOP,    "inkling2_loop"    },
+     { LLM_ARCH_UNKNOWN,          "(unknown)"        },
+ };
+ 
+@@ -214,6 +216,7 @@ static const std::map<llm_kv, const char *> LLM_KV_NAMES = {
+     { LLM_KV_GENERAL_TENSOR_EXTRA_PREC_A4,           "general.tensor_extra.prec_a4"          },
+ 
+     { LLM_KV_VOCAB_SIZE,                        "%s.vocab_size"                        },
++    { LLM_KV_VOCAB_SIZE_UNPADDED,               "%s.vocab_size_unpadded"               },
+     { LLM_KV_CONTEXT_LENGTH,                    "%s.context_length"                    },
+     { LLM_KV_EMBEDDING_LENGTH,                  "%s.embedding_length"                  },
+     { LLM_KV_EMBEDDING_LENGTH_OUT,              "%s.embedding_length_out"              },
+@@ -279,6 +282,11 @@ static const std::map<llm_kv, const char *> LLM_KV_NAMES = {
+     { LLM_KV_HRM_H_CYCLES,                      "%s.hrm.h_cycles"                      },
+     { LLM_KV_HRM_L_CYCLES,                      "%s.hrm.l_cycles"                      },
+     { LLM_KV_HRM_PREFIX_LM,                     "%s.hrm.prefix_lm"                     },
++    { LLM_KV_LOOP_START,                        "%s.loop.start"                        },
++    { LLM_KV_LOOP_END,                          "%s.loop.end"                          },
++    { LLM_KV_LOOP_COUNT,                        "%s.loop.count"                        },
++    { LLM_KV_LOOP_GATE_RANK,                    "%s.loop.gate_rank"                    },
++    { LLM_KV_LOOP_VARYING,                      "%s.loop.varying"                      },
+     { LLM_KV_METIS_PASS_COUNT,                  "%s.metis.pass_count"                  },
+     { LLM_KV_METIS_MEMORY_LENGTH,               "%s.metis.memory_length"               },
+     { LLM_KV_METIS_ROUTE_LENGTH,                "%s.metis.route_length"                },
+@@ -348,6 +356,12 @@ static const std::map<llm_kv, const char *> LLM_KV_NAMES = {
+     { LLM_KV_ATTENTION_SHARED_KV_LAYERS,             "%s.attention.shared_kv_layers"             },
+     { LLM_KV_ATTENTION_KV_SOURCE_MAP,                "%s.attention.kv_source_map"                },
+     { LLM_KV_ATTENTION_RECURRENT_LAYERS,             "%s.attention.recurrent_layers"             },
++    { LLM_KV_ATTENTION_RELATIVE_LENGTH,              "%s.attention.relative_length"              },
++    { LLM_KV_ATTENTION_RELATIVE_EXTENT,              "%s.attention.relative_extent"              },
++    { LLM_KV_ATTENTION_QK_CLIP,                      "%s.attention.qk_clip"                      },
++    { LLM_KV_ATTENTION_RELATIVE_CLIP,                "%s.attention.relative_clip"                },
++    { LLM_KV_ATTENTION_LOG_SCALE_FLOOR,              "%s.attention.log_scale_floor"              },
++    { LLM_KV_ATTENTION_LOG_SCALE_ALPHA,              "%s.attention.log_scale_alpha"              },
+ 
+     { LLM_KV_HYPER_CONNECTION_COUNT,                 "%s.hyper_connection.count"                 },
+     { LLM_KV_HYPER_CONNECTION_SINKHORN_ITERATIONS,   "%s.hyper_connection.sinkhorn_iterations"   },
+@@ -524,6 +538,7 @@ static const std::map<llm_tensor, const char *> LLM_TENSOR_NAMES = {
+     { LLM_TENSOR_OUTPUT_NORM,                            "output_norm" },
+     { LLM_TENSOR_OUTPUT_NORM_LFM2,                       "token_embd_norm" }, // fix for wrong tensor name
+     { LLM_TENSOR_OUTPUT,                                 "output" },
++    { LLM_TENSOR_OUTPUT_RES_QUERY,                       "output_res_query" },
+     { LLM_TENSOR_ROPE_FREQS,                             "rope_freqs" },
+     { LLM_TENSOR_HRM_Z_L_INIT,                           "hrm.z_l_init" },
+     { LLM_TENSOR_ATTN_NORM,                              "blk.%d.attn_norm" },
+@@ -550,6 +565,20 @@ static const std::map<llm_tensor, const char *> LLM_TENSOR_NAMES = {
+     { LLM_TENSOR_ATTN_GATE,                              "blk.%d.attn_gate" },
+     { LLM_TENSOR_ATTN_RESID_ALPHA,                       "blk.%d.attn_resid_alpha" },
+     { LLM_TENSOR_ATTN_RESID_BETA,                        "blk.%d.attn_resid_beta" },
++    { LLM_TENSOR_ATTN_REL,                               "blk.%d.attn_rel" },
++    { LLM_TENSOR_ATTN_REL_BIAS,                          "blk.%d.attn_rel_bias" },
++    { LLM_TENSOR_ATTN_Q_CLIP,                            "blk.%d.attn_q_clip" },
++    { LLM_TENSOR_ATTN_REL_CLIP,                          "blk.%d.attn_rel_clip" },
++    { LLM_TENSOR_ATTN_SINK_PROJ,                         "blk.%d.attn_sink_proj" },
++    { LLM_TENSOR_ATTN_Q_INP_NORM,                        "blk.%d.attn_q_inp_norm" },
++    { LLM_TENSOR_ATTN_K_INP_NORM,                        "blk.%d.attn_k_inp_norm" },
++    { LLM_TENSOR_ATTN_V_INP_NORM,                        "blk.%d.attn_v_inp_norm" },
++    { LLM_TENSOR_ATTN_K_CONV,                            "blk.%d.attn_k_conv" },
++    { LLM_TENSOR_ATTN_V_CONV,                            "blk.%d.attn_v_conv" },
++    { LLM_TENSOR_ATTN_K_CONV_PROJ,                       "blk.%d.attn_k_conv_proj" },
++    { LLM_TENSOR_ATTN_V_CONV_PROJ,                       "blk.%d.attn_v_conv_proj" },
++    { LLM_TENSOR_ATTN_POST_CONV,                         "blk.%d.attn_post_conv" },
++    { LLM_TENSOR_ATTN_RES_QUERY,                         "blk.%d.attn_res_query" },
+     { LLM_TENSOR_FFN_POST_NORM,                          "blk.%d.post_ffw_norm" },
+     { LLM_TENSOR_FFN_POST_NORM_1,                        "blk.%d.post_ffw_norm_1" },
+     { LLM_TENSOR_FFN_POST_NORM_2,                        "blk.%d.post_ffw_norm_2" },
+@@ -563,6 +592,21 @@ static const std::map<llm_tensor, const char *> LLM_TENSOR_NAMES = {
+     { LLM_TENSOR_FFN_EXP_PROBS_B_VL,                     "blk.%d.exp_probs_b_vl" },
+     { LLM_TENSOR_FFN_LATENT_DOWN,                        "blk.%d.ffn_latent_down" },
+     { LLM_TENSOR_FFN_LATENT_UP,                          "blk.%d.ffn_latent_up" },
++    { LLM_TENSOR_FFN_POST_CONV,                          "blk.%d.ffn_post_conv" },
++    { LLM_TENSOR_FFN_RES_QUERY,                          "blk.%d.ffn_res_query" },
++    { LLM_TENSOR_LOOP_MSG_QUERY,                         "blk.%d.loop_msg_query" },
++    { LLM_TENSOR_LOOP_Q_CTRL_DOWN,                       "blk.%d.loop_q_ctrl_down" },
++    { LLM_TENSOR_LOOP_Q_CTRL_GAIN,                       "blk.%d.loop_q_ctrl_gain" },
++    { LLM_TENSOR_LOOP_Q_CTRL_FORGET,                     "blk.%d.loop_q_ctrl_forget" },
++    { LLM_TENSOR_LOOP_K_CTRL_DOWN,                       "blk.%d.loop_k_ctrl_down" },
++    { LLM_TENSOR_LOOP_K_CTRL_GAIN,                       "blk.%d.loop_k_ctrl_gain" },
++    { LLM_TENSOR_LOOP_K_CTRL_FORGET,                     "blk.%d.loop_k_ctrl_forget" },
++    { LLM_TENSOR_LOOP_V_CTRL_DOWN,                       "blk.%d.loop_v_ctrl_down" },
++    { LLM_TENSOR_LOOP_V_CTRL_GAIN,                       "blk.%d.loop_v_ctrl_gain" },
++    { LLM_TENSOR_LOOP_V_CTRL_FORGET,                     "blk.%d.loop_v_ctrl_forget" },
++    { LLM_TENSOR_LOOP_FFN_CTRL_DOWN,                     "blk.%d.loop_ffn_ctrl_down" },
++    { LLM_TENSOR_LOOP_FFN_CTRL_GAIN,                     "blk.%d.loop_ffn_ctrl_gain" },
++    { LLM_TENSOR_LOOP_FFN_CTRL_FORGET,                   "blk.%d.loop_ffn_ctrl_forget" },
+     { LLM_TENSOR_STREAM_EMBD,                            "stream_embd" },
+     { LLM_TENSOR_DEPTH_MEM_STATE_WRITE,                  "depth_mem_state_write" },
+     { LLM_TENSOR_DEPTH_MEM_META_WRITE,                   "depth_mem_meta_write" },
+@@ -935,6 +979,7 @@ static const std::map<llm_tensor, llm_tensor_info> LLM_TENSOR_INFOS = {
+     {LLM_TENSOR_DENSE_3_OUT,                {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_MUL_MAT}}, // Dense layer output
+     {LLM_TENSOR_OUTPUT_NORM,                {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_MUL}},
+     {LLM_TENSOR_OUTPUT_NORM_LFM2,           {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_MUL}},
++    {LLM_TENSOR_OUTPUT_RES_QUERY,           {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_MUL_MAT}},
+     {LLM_TENSOR_DEC_OUTPUT_NORM,            {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_MUL}},
+     {LLM_TENSOR_ENC_OUTPUT_NORM,            {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_MUL}},
+     {LLM_TENSOR_ROPE_FREQS,                 {LLM_TENSOR_LAYER_REPEATING, GGML_OP_ROPE}},
+@@ -948,6 +993,20 @@ static const std::map<llm_tensor, llm_tensor_info> LLM_TENSOR_INFOS = {
+     {LLM_TENSOR_ATTN_GATE,                  {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
+     {LLM_TENSOR_ATTN_RESID_ALPHA,           {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL}},
+     {LLM_TENSOR_ATTN_RESID_BETA,            {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL}},
++    {LLM_TENSOR_ATTN_REL,                   {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_ATTN_REL_BIAS,              {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_ATTN_Q_CLIP,                {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL}},
++    {LLM_TENSOR_ATTN_REL_CLIP,              {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL}},
++    {LLM_TENSOR_ATTN_SINK_PROJ,             {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_ATTN_Q_INP_NORM,            {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL}},
++    {LLM_TENSOR_ATTN_K_INP_NORM,            {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL}},
++    {LLM_TENSOR_ATTN_V_INP_NORM,            {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL}},
++    {LLM_TENSOR_ATTN_K_CONV,                {LLM_TENSOR_LAYER_REPEATING, GGML_OP_SSM_CONV}},
++    {LLM_TENSOR_ATTN_V_CONV,                {LLM_TENSOR_LAYER_REPEATING, GGML_OP_SSM_CONV}},
++    {LLM_TENSOR_ATTN_K_CONV_PROJ,           {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_ATTN_V_CONV_PROJ,           {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_ATTN_POST_CONV,             {LLM_TENSOR_LAYER_REPEATING, GGML_OP_SSM_CONV}},
++    {LLM_TENSOR_ATTN_RES_QUERY,             {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
+     {LLM_TENSOR_FFN_GATE,                   {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
+     {LLM_TENSOR_FFN_DOWN,                   {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
+     {LLM_TENSOR_FFN_UP,                     {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
+@@ -1211,6 +1270,21 @@ static const std::map<llm_tensor, llm_tensor_info> LLM_TENSOR_INFOS = {
+     // latent projections feed ggml_mul_mat, the buft probe must use MUL_MAT to keep them on GPU
+     {LLM_TENSOR_FFN_LATENT_DOWN,            {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
+     {LLM_TENSOR_FFN_LATENT_UP,              {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_FFN_POST_CONV,              {LLM_TENSOR_LAYER_REPEATING, GGML_OP_SSM_CONV}},
++    {LLM_TENSOR_FFN_RES_QUERY,              {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_LOOP_MSG_QUERY,             {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_LOOP_Q_CTRL_DOWN,           {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_LOOP_Q_CTRL_GAIN,           {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_LOOP_Q_CTRL_FORGET,         {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_LOOP_K_CTRL_DOWN,           {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_LOOP_K_CTRL_GAIN,           {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_LOOP_K_CTRL_FORGET,         {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_LOOP_V_CTRL_DOWN,           {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_LOOP_V_CTRL_GAIN,           {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_LOOP_V_CTRL_FORGET,         {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_LOOP_FFN_CTRL_DOWN,         {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_LOOP_FFN_CTRL_GAIN,         {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
++    {LLM_TENSOR_LOOP_FFN_CTRL_FORGET,       {LLM_TENSOR_LAYER_REPEATING, GGML_OP_MUL_MAT}},
+     {LLM_TENSOR_STREAM_EMBD,                {LLM_TENSOR_LAYER_OUTPUT, GGML_OP_ADD}},
+     {LLM_TENSOR_DEPTH_MEM_STATE_WRITE,      {LLM_TENSOR_LAYER_OUTPUT, GGML_OP_MUL_MAT}},
+     {LLM_TENSOR_DEPTH_MEM_META_WRITE,       {LLM_TENSOR_LAYER_OUTPUT, GGML_OP_MUL_MAT}},
+@@ -1385,6 +1459,8 @@ bool llm_arch_is_hybrid(const llm_arch & arch) {
+         case LLM_ARCH_DEEPSEEK4:
+         case LLM_ARCH_DEEPSEEK41:
+         case LLM_ARCH_MINIMAX_01:
++        case LLM_ARCH_INKLING2:
++        case LLM_ARCH_INKLING2_LOOP:
+             return true;
+         default:
+             return false;
+@@ -1422,6 +1498,8 @@ bool llm_arch_supports_rs_rollback(const llm_arch & arch) {
+         case LLM_ARCH_LFM2MOE:
+         case LLM_ARCH_LFM3:
+         case LLM_ARCH_BAILINGMOE3:
++        case LLM_ARCH_INKLING2:
++        case LLM_ARCH_INKLING2_LOOP:
+             return true;
+         default:
+             return false;
+@@ -1439,6 +1517,8 @@ bool llm_arch_supports_mixed_batch(const llm_arch & arch) {
+         case LLM_ARCH_DFLASH:
+         case LLM_ARCH_GEMMA4_ASSISTANT:
+         case LLM_ARCH_LIMITE:
++        case LLM_ARCH_INKLING2:
++        case LLM_ARCH_INKLING2_LOOP:
+             return false;
+         default:
+             return true;
+@@ -1457,6 +1537,8 @@ bool llm_arch_supports_sm_tensor(const llm_arch & arch) {
+         case LLM_ARCH_MAMBA2:
+         case LLM_ARCH_JAMBA:
+         case LLM_ARCH_FALCON_H1:
++        case LLM_ARCH_INKLING2:
++        case LLM_ARCH_INKLING2_LOOP:
+         case LLM_ARCH_OLMO2:
+         case LLM_ARCH_OLMOE:
+         case LLM_ARCH_DEEPSEEK2:
+@@ -1502,6 +1584,7 @@ bool llama_arch_supports_save(llm_arch arch) {
+         case LLM_ARCH_APERTUS:
+         case LLM_ARCH_STEP35:
+         case LLM_ARCH_CLEF: // the head tensors are not saved
++        case LLM_ARCH_INKLING2_LOOP: // the loop tensors are not saved and the cache slots are expanded at load
+         case LLM_ARCH_VLLM_DECISION2:
+             return false;
+         default:
+diff --git a/src/llama-arch.h b/src/llama-arch.h
+index c72d98b..e246814 100644
+--- a/src/llama-arch.h
++++ b/src/llama-arch.h
+@@ -185,6 +185,8 @@ enum llm_arch {
+     LLM_ARCH_KOLIBRI1,
+     LLM_ARCH_LIMITE,
+     LLM_ARCH_RICURSIVE,
++    LLM_ARCH_INKLING2,
++    LLM_ARCH_INKLING2_LOOP,
+     LLM_ARCH_UNKNOWN,
+ };
+ 
+@@ -218,6 +220,7 @@ enum llm_kv {
+     LLM_KV_GENERAL_TENSOR_EXTRA_PREC_A4,
+ 
+     LLM_KV_VOCAB_SIZE,
++    LLM_KV_VOCAB_SIZE_UNPADDED,
+     LLM_KV_CONTEXT_LENGTH,
+     LLM_KV_EMBEDDING_LENGTH,
+     LLM_KV_EMBEDDING_LENGTH_OUT,
+@@ -283,6 +286,11 @@ enum llm_kv {
+     LLM_KV_HRM_H_CYCLES,
+     LLM_KV_HRM_L_CYCLES,
+     LLM_KV_HRM_PREFIX_LM,
++    LLM_KV_LOOP_START,
++    LLM_KV_LOOP_END,
++    LLM_KV_LOOP_COUNT,
++    LLM_KV_LOOP_GATE_RANK,
++    LLM_KV_LOOP_VARYING,
+     LLM_KV_METIS_PASS_COUNT,
+     LLM_KV_METIS_MEMORY_LENGTH,
+     LLM_KV_METIS_ROUTE_LENGTH,
+@@ -352,6 +360,12 @@ enum llm_kv {
+     LLM_KV_ATTENTION_SHARED_KV_LAYERS,
+     LLM_KV_ATTENTION_KV_SOURCE_MAP,
+     LLM_KV_ATTENTION_RECURRENT_LAYERS,
++    LLM_KV_ATTENTION_RELATIVE_LENGTH,
++    LLM_KV_ATTENTION_RELATIVE_EXTENT,
++    LLM_KV_ATTENTION_QK_CLIP,
++    LLM_KV_ATTENTION_RELATIVE_CLIP,
++    LLM_KV_ATTENTION_LOG_SCALE_FLOOR,
++    LLM_KV_ATTENTION_LOG_SCALE_ALPHA,
+ 
+     LLM_KV_HYPER_CONNECTION_COUNT,
+     LLM_KV_HYPER_CONNECTION_SINKHORN_ITERATIONS,
+@@ -532,6 +546,7 @@ enum llm_tensor {
+     LLM_TENSOR_OUTPUT,
+     LLM_TENSOR_OUTPUT_NORM,
+     LLM_TENSOR_OUTPUT_NORM_LFM2, // fix for wrong tensor name
++    LLM_TENSOR_OUTPUT_RES_QUERY,
+     LLM_TENSOR_ROPE_FREQS,
+     LLM_TENSOR_ROPE_FACTORS_LONG,
+     LLM_TENSOR_ROPE_FACTORS_SHORT,
+@@ -550,6 +565,20 @@ enum llm_tensor {
+     LLM_TENSOR_ATTN_GATE,
+     LLM_TENSOR_ATTN_RESID_ALPHA,
+     LLM_TENSOR_ATTN_RESID_BETA,
++    LLM_TENSOR_ATTN_REL,
++    LLM_TENSOR_ATTN_REL_BIAS,
++    LLM_TENSOR_ATTN_Q_CLIP,
++    LLM_TENSOR_ATTN_REL_CLIP,
++    LLM_TENSOR_ATTN_SINK_PROJ,
++    LLM_TENSOR_ATTN_Q_INP_NORM,
++    LLM_TENSOR_ATTN_K_INP_NORM,
++    LLM_TENSOR_ATTN_V_INP_NORM,
++    LLM_TENSOR_ATTN_K_CONV,
++    LLM_TENSOR_ATTN_V_CONV,
++    LLM_TENSOR_ATTN_K_CONV_PROJ,
++    LLM_TENSOR_ATTN_V_CONV_PROJ,
++    LLM_TENSOR_ATTN_POST_CONV,
++    LLM_TENSOR_ATTN_RES_QUERY,
+     LLM_TENSOR_FFN_GATE_INP,
+     LLM_TENSOR_FFN_GATE_INP_SHEXP,
+     LLM_TENSOR_FFN_NORM,
+@@ -581,6 +610,21 @@ enum llm_tensor {
+     LLM_TENSOR_FFN_EXP_PROBS_B_VL,
+     LLM_TENSOR_FFN_LATENT_DOWN,
+     LLM_TENSOR_FFN_LATENT_UP,
++    LLM_TENSOR_FFN_POST_CONV,
++    LLM_TENSOR_FFN_RES_QUERY,
++    LLM_TENSOR_LOOP_MSG_QUERY,
++    LLM_TENSOR_LOOP_Q_CTRL_DOWN,
++    LLM_TENSOR_LOOP_Q_CTRL_GAIN,
++    LLM_TENSOR_LOOP_Q_CTRL_FORGET,
++    LLM_TENSOR_LOOP_K_CTRL_DOWN,
++    LLM_TENSOR_LOOP_K_CTRL_GAIN,
++    LLM_TENSOR_LOOP_K_CTRL_FORGET,
++    LLM_TENSOR_LOOP_V_CTRL_DOWN,
++    LLM_TENSOR_LOOP_V_CTRL_GAIN,
++    LLM_TENSOR_LOOP_V_CTRL_FORGET,
++    LLM_TENSOR_LOOP_FFN_CTRL_DOWN,
++    LLM_TENSOR_LOOP_FFN_CTRL_GAIN,
++    LLM_TENSOR_LOOP_FFN_CTRL_FORGET,
+     LLM_TENSOR_STREAM_EMBD,
+     LLM_TENSOR_DEPTH_MEM_STATE_WRITE,
+     LLM_TENSOR_DEPTH_MEM_META_WRITE,
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 4798615..46aa31b 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -3973,7 +3973,9 @@ uint32_t llama_context::graph_max_nodes() const {
+         model.arch == LLM_ARCH_NANBEIGE ||
+         model.arch == LLM_ARCH_MINIMAX_01 ||
+         model.arch == LLM_ARCH_MINIMAX_M3 ||
+-        model.arch == LLM_ARCH_HY_V4) {
++        model.arch == LLM_ARCH_HY_V4 ||
++        model.arch == LLM_ARCH_INKLING2 ||
++        model.arch == LLM_ARCH_INKLING2_LOOP) {
+         res = std::max<uint32_t>(1024u, 32u * model.n_tensors());
+     } else if (model.arch == LLM_ARCH_DFLASH && model.hparams.dflash_selector_rank > 0) {
+         // DFlash2's convolutions and selector are shape work rather than matmuls,
+@@ -5233,6 +5235,12 @@ bool llama_context::sched_copy_experts(ggml_backend_t backend, const ggml_tensor
+         return false;
+     }
+ 
++    // Later loop passes can select different experts from the same device copy.
++    // TODO: copy only the experts needed by each pass (see #32807 and #32809).
++    if (lctx->model.arch == LLM_ARCH_INKLING2_LOOP) {
++        return false;
++    }
++
+     const ggml_tensor * ids = node->src[2];
+     if (ggml_nelements(ids) == 0) {
+         return true;
+diff --git a/src/llama-grammar.cpp b/src/llama-grammar.cpp
+index 4e096a3..3ebd288 100644
+--- a/src/llama-grammar.cpp
++++ b/src/llama-grammar.cpp
+@@ -403,6 +403,8 @@ size_t llama_grammar_trigger_pattern::find(const std::string & input) const {
+         if (std::regex_match(input, match, regex)) {
+             return find_start_pos(match);
+         }
++        // some regex implementations match ^/$ at line breaks
++        return std::string::npos;
+     }
+ 
+     // search anywhere
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 40b98be..bb88497 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -1645,6 +1645,91 @@ bool llm_graph_input_mem_hybrid_iswa::can_reuse(const llm_graph_params & params)
+     return res;
+ }
+ 
++void llm_graph_input_mem_hybrid_iswa_rel::set_input(const llama_ubatch * ubatch) {
++    const auto * attn_ctx = mctx->get_attn();
++
++    // base tensors may not be allocated if there are no non-SWA attention layers
++    if (inp_attn->self_k_idxs && inp_attn->self_k_idxs->buffer) {
++        attn_ctx->get_base()->set_input_k_idxs(inp_attn->self_k_idxs, ubatch);
++        attn_ctx->get_base()->set_input_v_idxs(inp_attn->self_v_idxs, ubatch);
++    }
++
++    if (inp_attn->self_attn_mask.raw && inp_attn->self_attn_mask.raw->buffer) {
++        attn_ctx->get_base()->set_input_attn_mask(inp_attn->self_attn_mask, ubatch, cparams.causal_attn);
++    }
++
++    if (self_rel_pos->buffer) {
++        attn_ctx->get_base()->set_input_relative_pos(self_rel_pos, ubatch, extent);
++    }
++
++    // swa tensors may not be allocated if there are no SWA attention layers
++    if (inp_attn->self_k_idxs_swa && inp_attn->self_k_idxs_swa->buffer) {
++        attn_ctx->get_swa()->set_input_k_idxs(inp_attn->self_k_idxs_swa, ubatch);
++        attn_ctx->get_swa()->set_input_v_idxs(inp_attn->self_v_idxs_swa, ubatch);
++    }
++
++    if (inp_attn->self_attn_mask_swa.raw && inp_attn->self_attn_mask_swa.raw->buffer) {
++        attn_ctx->get_swa()->set_input_attn_mask(inp_attn->self_attn_mask_swa, ubatch, cparams.causal_attn);
++    }
++
++    if (self_rel_pos_swa->buffer) {
++        attn_ctx->get_swa()->set_input_relative_pos(self_rel_pos_swa, ubatch, extent_swa);
++    }
++
++    const int64_t n_rs = mctx->get_recr()->get_n_rs();
++
++    if (inp_rs->s_copy) {
++        GGML_ASSERT(ggml_backend_buffer_is_host(inp_rs->s_copy->buffer));
++        int32_t * data = (int32_t *) inp_rs->s_copy->data;
++
++        // assuming copy destinations ALWAYS happen ONLY on the cells between head and head+n
++        for (uint32_t i = 0; i < n_rs; ++i) {
++            data[i] = mctx->get_recr()->s_copy(i);
++        }
++    }
++}
++
++bool llm_graph_input_mem_hybrid_iswa_rel::can_reuse(const llm_graph_params & params) {
++    const auto * mctx = static_cast<const llama_memory_hybrid_iswa_context *>(params.mctx);
++
++    this->mctx = mctx;
++
++    bool res = true;
++
++    const auto * attn_ctx = mctx->get_attn();
++
++    // the masks are always dense, see build_inp_mem_hybrid_iswa_rel()
++
++    // base tensors may not be allocated if there are no non-SWA attention layers
++    if (inp_attn->self_k_idxs && inp_attn->self_k_idxs->buffer) {
++        res &= inp_attn->self_k_idxs->ne[0] == params.ubatch.n_tokens;
++    }
++
++    res &= can_reuse_kq_mask(inp_attn->self_attn_mask.raw, attn_ctx->get_base(), params.ubatch, params.cparams);
++
++    res &= self_rel_pos->ne[0] == attn_ctx->get_base()->get_n_kv();
++    res &= self_rel_pos->ne[1] == params.ubatch.n_tokens;
++
++    // swa tensors may not be allocated if there are no SWA attention layers
++    if (inp_attn->self_k_idxs_swa && inp_attn->self_k_idxs_swa->buffer) {
++        res &= inp_attn->self_k_idxs_swa->ne[0] == params.ubatch.n_tokens;
++    }
++
++    res &= can_reuse_kq_mask(inp_attn->self_attn_mask_swa.raw, attn_ctx->get_swa(), params.ubatch, params.cparams);
++
++    res &= self_rel_pos_swa->ne[0] == attn_ctx->get_swa()->get_n_kv();
++    res &= self_rel_pos_swa->ne[1] == params.ubatch.n_tokens;
++
++    res &= inp_rs->s_copy->ne[0] == mctx->get_recr()->get_n_rs();
++
++    res &= inp_rs->s_copy_main->ne[0] == params.ubatch.n_seqs;
++
++    res &= inp_rs->head == mctx->get_recr()->get_head();
++    res &= inp_rs->rs_z == mctx->get_recr()->get_rs_z();
++
++    return res;
++}
++
+ void llm_graph_input_sampling::set_input(const llama_ubatch * ubatch) {
+     // set the inputs only for the active samplers in the current ubatch
+     std::unordered_set<llama_seq_id> active_samplers;
+@@ -2610,7 +2695,7 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+ 
+     if (probs_in == nullptr) {
+         logits = build_lora_mm(gate_inp, cur); // [n_expert, n_tokens]
+-        if (gating_op == LLAMA_EXPERT_GATING_FUNC_TYPE_SQRT_SOFTPLUS) {
++        if (gating_op == LLAMA_EXPERT_GATING_FUNC_TYPE_SQRT_SOFTPLUS || hparams.expert_router_f32) {
+             // the reference computes the router in F32: https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/60d8d70770c6776ff598c94bb586a859a38244f1/inference/model.py#L565
+             ggml_prec_set_acc(logits, GGML_PREC_F32);
+         }
+@@ -2741,6 +2826,8 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+         if (arch == LLM_ARCH_DEEPSEEK41) {
+             // model.py Gate.forward: weights / (sum + 1e-20); the sum can fall below the F16 clamp below
+             weights_sum = ggml_scale_bias(ctx0, weights_sum, 1.0f, 1e-20f);
++        } else if (hparams.expert_weights_norm_eps > 0.0f) {
++            weights_sum = ggml_scale_bias(ctx0, weights_sum, 1.0f, hparams.expert_weights_norm_eps);
+         } else {
+             // Avoid division by zero, clamp to smallest number representable by F16
+             weights_sum = ggml_clamp(ctx0, weights_sum, 6.103515625e-5, INFINITY);
+@@ -4476,7 +4563,9 @@ ggml_tensor * llm_graph_context::build_attn(
+     return cur;
+ }
+ 
+-ggml_tensor * llm_graph_context::build_attn(
++// the iswa build_attn with the KQ mask and kv_rows given by the caller, which has to keep them in sync
++static ggml_tensor * build_attn_iswa_impl(
++        const llm_graph_context & gctx,
+         llm_graph_input_attn_kv_iswa * inp,
+         ggml_tensor * wo,
+         ggml_tensor * wo_b,
+@@ -4485,10 +4574,18 @@ ggml_tensor * llm_graph_context::build_attn(
+         ggml_tensor * k_cur,
+         ggml_tensor * v_cur,
+         ggml_tensor * kq_b,
++        ggml_tensor * kq_mask,
++        ggml_tensor * kv_rows,
+         ggml_tensor * sinks,
+         ggml_tensor * v_mla,
+             float     kq_scale,
+-            int       il) const {
++            int       il) {
++    ggml_context * ctx0 = gctx.ctx0;
++    ggml_cgraph  * gf   = gctx.gf;
++
++    const auto & hparams = gctx.hparams;
++    const auto & cparams = gctx.cparams;
++
+     const bool is_swa = hparams.is_swa(il);
+ 
+     auto * k_rot = is_swa ? inp->self_k_rot_swa[il] : inp->self_k_rot[il];
+@@ -4526,7 +4623,7 @@ ggml_tensor * llm_graph_context::build_attn(
+     // whole seq fits into batch in training mode
+     const bool use_kv_cur = cparams.training && k_cur && v_cur;
+     if (use_kv_cur) {
+-        GGML_ASSERT(mctx_cur->get_n_kv() == n_tokens);
++        GGML_ASSERT(mctx_cur->get_n_kv() == gctx.n_tokens);
+     }
+ 
+     const bool store_kv = !use_kv_cur || hparams.n_layer_kv_from_start >= 0;
+@@ -4544,23 +4641,20 @@ ggml_tensor * llm_graph_context::build_attn(
+         ggml_build_forward_expand(gf, mctx_cur->cpy_v(ctx0, v_cur, v_idxs, il));
+     }
+ 
+-    const auto & kq_mask = is_swa ? inp->self_attn_mask_swa.raw : inp->self_attn_mask.raw;
+-    const auto & kv_rows = is_swa ? inp->self_attn_mask_swa.rows : inp->self_attn_mask.rows;
+-
+     ggml_tensor * q = q_cur;
+     ggml_tensor * k = use_kv_cur ? k_cur : mctx_cur->get_k(ctx0, il);
+     ggml_tensor * v = use_kv_cur ? v_cur : mctx_cur->get_v(ctx0, il);
+ 
+-    ggml_tensor * cur = build_attn_mha(q, k, v, kq_b, kq_mask, kv_rows, sinks, v_mla, 0, kq_scale, il);
++    ggml_tensor * cur = gctx.build_attn_mha(q, k, v, kq_b, kq_mask, kv_rows, sinks, v_mla, 0, kq_scale, il);
+     cur = build_attn_scale_kv_output(ctx0, mctx_cur, cur, il);
+-    cb(cur, "kqv_out", il);
++    gctx.cb(cur, "kqv_out", il);
+ 
+     if (v_rot) {
+         cur = llama_mul_mat_hadamard(ctx0, cur, v_rot);
+     }
+ 
+     if (wo) {
+-        cur = build_lora_mm(wo, cur, wo_s);
++        cur = gctx.build_lora_mm(wo, cur, wo_s);
+     }
+ 
+     if (wo_b) {
+@@ -4574,6 +4668,27 @@ ggml_tensor * llm_graph_context::build_attn(
+     return cur;
+ }
+ 
++ggml_tensor * llm_graph_context::build_attn(
++        llm_graph_input_attn_kv_iswa * inp,
++        ggml_tensor * wo,
++        ggml_tensor * wo_b,
++        ggml_tensor * wo_s,
++        ggml_tensor * q_cur,
++        ggml_tensor * k_cur,
++        ggml_tensor * v_cur,
++        ggml_tensor * kq_b,
++        ggml_tensor * sinks,
++        ggml_tensor * v_mla,
++            float     kq_scale,
++            int       il) const {
++    const bool is_swa = hparams.is_swa(il);
++
++    const auto & kq_mask = is_swa ? inp->self_attn_mask_swa.raw  : inp->self_attn_mask.raw;
++    const auto & kv_rows = is_swa ? inp->self_attn_mask_swa.rows : inp->self_attn_mask.rows;
++
++    return build_attn_iswa_impl(*this, inp, wo, wo_b, wo_s, q_cur, k_cur, v_cur, kq_b, kq_mask, kv_rows, sinks, v_mla, kq_scale, il);
++}
++
+ ggml_tensor * llm_graph_context::build_attn(
+         llm_graph_input_attn_k_iswa * inp,
+         ggml_tensor * wo,
+@@ -5099,14 +5214,14 @@ llm_graph_input_mem_hybrid_iswa * llm_graph_context::build_inp_mem_hybrid_iswa()
+         inp_attn->self_k_idxs = attn_ctx->get_base()->build_input_k_idxs(ctx0, ubatch);
+         inp_attn->self_v_idxs = attn_ctx->get_base()->build_input_v_idxs(ctx0, ubatch);
+ 
+-        inp_attn->self_attn_mask.raw = build_attn_inp_kq_mask(ctx0, attn_ctx->get_base(), ubatch, cparams);
++        inp_attn->self_attn_mask = build_attn_inp_attn_mask(ctx0, attn_ctx->get_base(), ubatch, cparams);
+     }
+ 
+     {
+         inp_attn->self_k_idxs_swa = attn_ctx->get_swa()->build_input_k_idxs(ctx0, ubatch);
+         inp_attn->self_v_idxs_swa = attn_ctx->get_swa()->build_input_v_idxs(ctx0, ubatch);
+ 
+-        inp_attn->self_attn_mask_swa.raw = build_attn_inp_kq_mask(ctx0, attn_ctx->get_swa(), ubatch, cparams);
++        inp_attn->self_attn_mask_swa = build_attn_inp_attn_mask(ctx0, attn_ctx->get_swa(), ubatch, cparams);
+     }
+ 
+     inp_attn->self_k_rot = attn_ctx->get_base()->get_k_rot();
+@@ -5120,6 +5235,87 @@ llm_graph_input_mem_hybrid_iswa * llm_graph_context::build_inp_mem_hybrid_iswa()
+     return (llm_graph_input_mem_hybrid_iswa *) res->add_input(std::move(inp));
+ }
+ 
++llm_graph_input_mem_hybrid_iswa_rel * llm_graph_context::build_inp_mem_hybrid_iswa_rel(
++        uint32_t extent,
++        uint32_t extent_swa) const {
++    const auto * mctx_cur = static_cast<const llama_memory_hybrid_iswa_context *>(mctx);
++
++    auto inp_rs = build_rs_inp_impl(ctx0, ubatch, mctx_cur->get_recr());
++
++    const auto * attn_ctx = mctx_cur->get_attn();
++
++    auto inp_attn = std::make_unique<llm_graph_input_attn_kv_iswa>(hparams, cparams, attn_ctx);
++
++    // dense masks: the bias is gathered by the distance to each cell of the K/V view
++    {
++        inp_attn->self_k_idxs = attn_ctx->get_base()->build_input_k_idxs(ctx0, ubatch);
++        inp_attn->self_v_idxs = attn_ctx->get_base()->build_input_v_idxs(ctx0, ubatch);
++
++        inp_attn->self_attn_mask.raw = build_attn_inp_kq_mask(ctx0, attn_ctx->get_base(), ubatch, cparams);
++    }
++
++    {
++        inp_attn->self_k_idxs_swa = attn_ctx->get_swa()->build_input_k_idxs(ctx0, ubatch);
++        inp_attn->self_v_idxs_swa = attn_ctx->get_swa()->build_input_v_idxs(ctx0, ubatch);
++
++        inp_attn->self_attn_mask_swa.raw = build_attn_inp_kq_mask(ctx0, attn_ctx->get_swa(), ubatch, cparams);
++    }
++
++    inp_attn->self_k_rot = attn_ctx->get_base()->get_k_rot();
++    inp_attn->self_v_rot = attn_ctx->get_base()->get_v_rot();
++
++    inp_attn->self_k_rot_swa = attn_ctx->get_swa()->get_k_rot();
++    inp_attn->self_v_rot_swa = attn_ctx->get_swa()->get_v_rot();
++
++    auto inp = std::make_unique<llm_graph_input_mem_hybrid_iswa_rel>(cparams, std::move(inp_attn), std::move(inp_rs), mctx_cur, extent, extent_swa);
++
++    inp->self_rel_pos = ggml_new_tensor_2d(ctx0, GGML_TYPE_I32, attn_ctx->get_base()->get_n_kv(), ubatch.n_tokens);
++    ggml_set_input(inp->self_rel_pos);
++    ggml_set_name(inp->self_rel_pos, "attn_inp_rel_pos");
++
++    inp->self_rel_pos_swa = ggml_new_tensor_2d(ctx0, GGML_TYPE_I32, attn_ctx->get_swa()->get_n_kv(), ubatch.n_tokens);
++    ggml_set_input(inp->self_rel_pos_swa);
++    ggml_set_name(inp->self_rel_pos_swa, "attn_inp_rel_pos_swa");
++
++    return (llm_graph_input_mem_hybrid_iswa_rel *) res->add_input(std::move(inp));
++}
++
++ggml_tensor * llm_graph_context::build_attn(
++        llm_graph_input_mem_hybrid_iswa_rel * inp,
++        ggml_tensor * wo,
++        ggml_tensor * wo_b,
++        ggml_tensor * wo_s,
++        ggml_tensor * q_cur,
++        ggml_tensor * k_cur,
++        ggml_tensor * v_cur,
++        ggml_tensor * kq_b,
++        ggml_tensor * sinks,
++            float     kq_scale,
++            int       il) const {
++    const bool is_swa = hparams.is_swa(il);
++
++    auto * inp_attn = inp->get_attn();
++
++    const auto & attn_mask = is_swa ? inp_attn->self_attn_mask_swa : inp_attn->self_attn_mask;
++
++    // TODO: support kv_rows - fill the distances over the kv_rows cell lists and pass the rows to build_attn_mha,
++    //       needs a kv_rows flash attention with a per-head mask (CUDA has none)
++    GGML_ASSERT(attn_mask.rows == nullptr);
++
++    // a mask per head, in the dense layout of the input mask, which flash attention takes in F16
++    ggml_tensor * kq_mask = attn_mask.raw;
++    if (kq_mask->type != GGML_TYPE_F32) {
++        kq_mask = ggml_cast(ctx0, kq_mask, GGML_TYPE_F32);
++    }
++    kq_mask = ggml_add(ctx0, kq_b, kq_mask);
++    if (cparams.flash_attn) {
++        kq_mask = ggml_cast(ctx0, kq_mask, GGML_TYPE_F16);
++    }
++    cb(kq_mask, "kq_mask_rel_pos", il);
++
++    return build_attn_iswa_impl(*this, inp_attn, wo, wo_b, wo_s, q_cur, k_cur, v_cur, nullptr, kq_mask, nullptr, sinks, nullptr, kq_scale, il);
++}
++
+ void llm_graph_context::build_dense_out(
+     ggml_tensor * dense_2,
+     ggml_tensor * dense_2_b,
+diff --git a/src/llama-graph.h b/src/llama-graph.h
+index 18e7044..95e8e27 100644
+--- a/src/llama-graph.h
++++ b/src/llama-graph.h
+@@ -783,6 +783,48 @@ public:
+     const llama_memory_hybrid_iswa_context * mctx;
+ };
+ 
++// hybrid iswa memory with a per-head attention bias that depends on the distance from the query to the cell (Inkling)
++// the KQ masks are always dense (rows == nullptr) and are filled from the same cells as the distances, so that the bias
++// gathered by distance lines up with the mask
++class llm_graph_input_mem_hybrid_iswa_rel : public llm_graph_input_i {
++public:
++    llm_graph_input_mem_hybrid_iswa_rel(
++            const llama_cparams & cparams,
++            std::unique_ptr<llm_graph_input_attn_kv_iswa> inp_attn,
++            std::unique_ptr<llm_graph_input_rs>          inp_rs,
++            const llama_memory_hybrid_iswa_context *     mctx,
++            uint32_t extent,
++            uint32_t extent_swa) :
++        inp_attn(std::move(inp_attn)),
++        inp_rs(std::move(inp_rs)),
++        extent(extent),
++        extent_swa(extent_swa),
++        cparams(cparams),
++        mctx(mctx) { }
++    virtual ~llm_graph_input_mem_hybrid_iswa_rel() = default;
++
++    void set_input(const llama_ubatch * ubatch) override;
++
++    bool can_reuse(const llm_graph_params & params) override;
++
++    std::unique_ptr<llm_graph_input_attn_kv_iswa> inp_attn;
++    std::unique_ptr<llm_graph_input_rs>          inp_rs;
++
++    llm_graph_input_attn_kv_iswa * get_attn() const { return inp_attn.get(); }
++    llm_graph_input_rs           * get_recr() const { return inp_rs.get(); }
++
++    // distance from the token to the cell, extent for the empty, future and more distant cells
++    ggml_tensor * self_rel_pos     = nullptr; // I32 [n_kv,     n_batch]
++    ggml_tensor * self_rel_pos_swa = nullptr; // I32 [n_kv_swa, n_batch]
++
++    const uint32_t extent;
++    const uint32_t extent_swa;
++
++    const llama_cparams cparams;
++
++    const llama_memory_hybrid_iswa_context * mctx;
++};
++
+ class llm_graph_input_sampling : public llm_graph_input_i {
+ public:
+     llm_graph_input_sampling(std::map<llama_seq_id, llama_sampler *> samplers) :
+@@ -1544,6 +1586,25 @@ struct llm_graph_context {
+ 
+     llm_graph_input_mem_hybrid_iswa * build_inp_mem_hybrid_iswa() const;
+ 
++    // extent, extent_swa: the distance that the bias tables of the full and the SWA layers stop at
++    llm_graph_input_mem_hybrid_iswa_rel * build_inp_mem_hybrid_iswa_rel(
++            uint32_t extent,
++            uint32_t extent_swa) const;
++
++    // kq_b is added to the KQ mask, after the KQ scale
++    ggml_tensor * build_attn(
++            llm_graph_input_mem_hybrid_iswa_rel * inp,
++            ggml_tensor * wo,
++            ggml_tensor * wo_b,
++            ggml_tensor * wo_s,
++            ggml_tensor * q_cur, // [n_embd_head_q, n_head_q, n_tokens]
++            ggml_tensor * k_cur, // [n_embd_head_k, n_head_k, n_tokens]
++            ggml_tensor * v_cur, // [n_embd_head_v, n_head_v, n_tokens]
++            ggml_tensor * kq_b,  // [n_kv, n_tokens/n_stream, n_head_q, n_stream]
++            ggml_tensor * sinks, // [n_head_q]
++                  float   kq_scale,
++                    int   il) const;
++
+     //
+     // pooling
+     //
+diff --git a/src/llama-hparams.cpp b/src/llama-hparams.cpp
+index 32e2468..51989a1 100644
+--- a/src/llama-hparams.cpp
++++ b/src/llama-hparams.cpp
+@@ -215,6 +215,11 @@ uint32_t llama_hparams::n_embd_r() const {
+         return token_shift_count * n_embd;
+     }
+ 
++    if (n_sconv_channels != 0) {
++        // for Inkling2 models, checked before LFM2 as they set n_shortconv_l_cache too
++        return n_sconv_channels * (n_shortconv_l_cache - 1);
++    }
++
+     if (n_shortconv_l_cache != 0) {
+         // for LFM2 models
+         return n_embd * (n_shortconv_l_cache - 1);
+diff --git a/src/llama-hparams.h b/src/llama-hparams.h
+index 657ce07..8bd03d9 100644
+--- a/src/llama-hparams.h
++++ b/src/llama-hparams.h
+@@ -107,6 +107,7 @@ struct llama_hparams {
+     struct llama_hparams_convnext convnext;
+ 
+     uint32_t n_shortconv_l_cache  = 0;
++    uint32_t n_sconv_channels     = 0;
+ 
+     std::array<uint32_t, LLAMA_MAX_LAYERS> n_head_arr;
+     std::array<uint32_t, LLAMA_MAX_LAYERS> n_head_kv_arr;
+@@ -136,6 +137,8 @@ struct llama_hparams {
+     float    expert_group_scale   = 0.05f;
+     float    expert_weights_scale = 0.0f;
+     bool     expert_weights_norm  = false;
++    float    expert_weights_norm_eps = 0.0f; // > 0: weights / (sum + eps), else the sum is clamped
++    bool     expert_router_f32    = false;   // compute the router logits in F32
+     uint32_t expert_gating_func   = LLAMA_EXPERT_GATING_FUNC_TYPE_NONE;
+     uint32_t moe_every_n_layers   = 0;
+     uint32_t moe_latent_size      = 0;
+@@ -246,6 +249,16 @@ struct llama_hparams {
+     uint32_t n_mudd_taps = 0;
+     std::array<int32_t, LLAMA_MAX_LAYERS> mudd_tap_idx; // [n_layer][n_mudd_taps], -1 = no mixing
+ 
++    // inkling2
++    uint32_t n_relative        = 0;
++    uint32_t n_relative_extent = 0;
++    uint32_t n_vocab_unpadded  = 0;
++    uint32_t n_vocab_padded    = 0;
++    uint32_t n_log_scale_floor = 0;
++    float    f_log_scale_alpha = 0.0f;
++    float    f_qk_clip         = 0.0f;
++    float    f_relative_clip   = 0.0f;
++
+     bool ssm_dt_b_c_rms = false;
+ 
+     float f_clamp_kqv      = 0.0f;
+diff --git a/src/llama-kv-cache.cpp b/src/llama-kv-cache.cpp
+index 5e6eb6b..56f6c21 100644
+--- a/src/llama-kv-cache.cpp
++++ b/src/llama-kv-cache.cpp
+@@ -2520,6 +2520,20 @@ bool llama_kv_cache::has_cell_ext() const {
+     return hparams.n_pos_per_embd() > 1 || hparams.ple_n_heads > 0;
+ }
+ 
++void llama_kv_cache::set_input_relative_pos(ggml_tensor * dst, const llama_ubatch * ubatch, uint32_t extent) const {
++    GGML_ASSERT(dst->type == GGML_TYPE_I32);
++    const int64_t n_kv = dst->ne[0];
++    std::vector<int32_t> data(n_kv * ubatch->n_tokens);
++    for (uint32_t i = 0; i < ubatch->n_tokens; ++i) {
++        const auto & cells = v_cells.at(seq_to_stream.at(ubatch->seq_id[i][0]));
++        for (int64_t j = 0; j < n_kv; ++j) {
++            const int64_t distance = cells.is_empty(j) ? -1 : int64_t(ubatch->pos[i]) - cells.pos_get(j);
++            data[i*n_kv + j] = distance >= 0 && distance < extent ? distance : extent;
++        }
++    }
++    ggml_backend_tensor_set(dst, data.data(), 0, ggml_nbytes(dst));
++}
++
+ void llama_kv_cache::get_prev_tokens(const llama_ubatch & ubatch, uint32_t n, std::vector<llama_token> & res) const {
+     const uint32_t n_tokens = ubatch.n_tokens;
+ 
+@@ -3740,6 +3754,10 @@ void llama_kv_cache_context::set_input_pos_bucket(ggml_tensor * dst, const llama
+     kv->set_input_pos_bucket(dst, ubatch);
+ }
+ 
++void llama_kv_cache_context::set_input_relative_pos(ggml_tensor * dst, const llama_ubatch * ubatch, uint32_t extent) const {
++    kv->set_input_relative_pos(dst, ubatch, extent);
++}
++
+ void llama_kv_cache_context::get_prev_tokens(const llama_ubatch & ubatch, uint32_t n, std::vector<llama_token> & res) const {
+     kv->get_prev_tokens(ubatch, n, res);
+ }
+diff --git a/src/llama-kv-cache.h b/src/llama-kv-cache.h
+index cf9cce1..a9b5af7 100644
+--- a/src/llama-kv-cache.h
++++ b/src/llama-kv-cache.h
+@@ -263,6 +263,7 @@ public:
+ 
+     void set_input_attn_mask (const llm_attn_mask & attn_mask, const llama_ubatch * ubatch, bool causal_attn) const;
+     void set_input_pos_bucket(ggml_tensor * dst, const llama_ubatch * ubatch) const;
++    void set_input_relative_pos(ggml_tensor * dst, const llama_ubatch * ubatch, uint32_t extent) const;
+ 
+     // true if llama_kv_cell_ext holds information that has to survive a state save/restore
+     bool has_cell_ext() const;
+@@ -569,6 +570,7 @@ public:
+     void set_input_k_shift   (ggml_tensor * dst) const;
+     void set_input_attn_mask (const llm_attn_mask & attn_mask, const llama_ubatch * ubatch, bool causal_attn) const;
+     void set_input_pos_bucket(ggml_tensor * dst, const llama_ubatch * ubatch) const;
++    void set_input_relative_pos(ggml_tensor * dst, const llama_ubatch * ubatch, uint32_t extent) const;
+ 
+     // see llama_kv_cache::get_prev_tokens()
+     void get_prev_tokens(const llama_ubatch & ubatch, uint32_t n, std::vector<llama_token> & res) const;
+diff --git a/src/llama-model-saver.cpp b/src/llama-model-saver.cpp
+index f521503..a00f0d7 100644
+--- a/src/llama-model-saver.cpp
++++ b/src/llama-model-saver.cpp
+@@ -193,7 +193,10 @@ void llama_model_saver::add_kv_from_model() {
+     // add_kv(LLM_KV_GENERAL_SOURCE_URL,                ???);
+     // add_kv(LLM_KV_GENERAL_SOURCE_HF_REPO,            ???);
+ 
+-    add_kv(LLM_KV_VOCAB_SIZE,                        vocab.n_tokens());
++    add_kv(LLM_KV_VOCAB_SIZE,                        hparams.n_vocab_padded ? hparams.n_vocab_padded : vocab.n_tokens());
++    if (hparams.n_vocab_unpadded > 0) {
++        add_kv(LLM_KV_VOCAB_SIZE_UNPADDED,           hparams.n_vocab_unpadded);
++    }
+     add_kv(LLM_KV_CONTEXT_LENGTH,                    hparams.n_ctx_train);
+     add_kv(LLM_KV_EMBEDDING_LENGTH,                  hparams.n_embd);
+     if (hparams.n_embd_out_impl > 0) {
+@@ -328,6 +331,14 @@ void llama_model_saver::add_kv_from_model() {
+         }
+     }
+     add_kv(LLM_KV_ATTENTION_RECURRENT_LAYERS,        hparams.is_recr_impl, true);
++    if (hparams.n_relative > 0) {
++        add_kv(LLM_KV_ATTENTION_RELATIVE_LENGTH,     hparams.n_relative);
++        add_kv(LLM_KV_ATTENTION_RELATIVE_EXTENT,     hparams.n_relative_extent);
++        add_kv(LLM_KV_ATTENTION_QK_CLIP,             hparams.f_qk_clip);
++        add_kv(LLM_KV_ATTENTION_RELATIVE_CLIP,       hparams.f_relative_clip);
++        add_kv(LLM_KV_ATTENTION_LOG_SCALE_FLOOR,     hparams.n_log_scale_floor);
++        add_kv(LLM_KV_ATTENTION_LOG_SCALE_ALPHA,     hparams.f_log_scale_alpha);
++    }
+     add_kv(LLM_KV_ATTENTION_OUTPUT_GROUP_COUNT,      hparams.dsv4_o_group_count);
+     add_kv(LLM_KV_ATTENTION_OUTPUT_LORA_RANK,        hparams.dsv4_o_lora_rank);
+     add_kv(LLM_KV_ATTENTION_PASS_LORA_RANK,          hparams.metis_pass_lora_rank);
+@@ -522,6 +533,7 @@ void llama_model_saver::add_tensors_from_model() {
+     add_tensor(model->output_s);
+     add_tensor(model->output_in_s);
+     add_tensor(model->output_res_score);
++    add_tensor(model->output_res_query);
+     add_tensor(model->nextn_proj_pre);
+     add_tensor(model->nextn_proj_post);
+     add_tensor(model->cls);
+diff --git a/src/llama-model.cpp b/src/llama-model.cpp
+index 46046aa..ef489f6 100644
+--- a/src/llama-model.cpp
++++ b/src/llama-model.cpp
+@@ -319,6 +319,10 @@ static llama_model * llama_model_mapping(llm_arch arch, const llama_model_params
+             return new llama_model_openai_moe(params);
+         case LLM_ARCH_FALCON_H1:
+             return new llama_model_falcon_h1(params);
++        case LLM_ARCH_INKLING2:
++            return new llama_model_inkling2(params);
++        case LLM_ARCH_INKLING2_LOOP:
++            return new llama_model_inkling2_loop(params);
+         case LLM_ARCH_LFM2:
+             return new llama_model_lfm2(params);
+         case LLM_ARCH_LFM2MOE:
+@@ -1896,6 +1900,12 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
+             }
+             if (!layer.ffn_up_exps_s && layer.ffn_up_exps) {
+                 layer.ffn_up_exps_s = create_tensor(tn(LLM_TENSOR_FFN_UP_EXPS, "scale", i), {n_expert}, TENSOR_NOT_REQUIRED);
++                if (layer.ffn_up_exps_s && layer.ffn_gate_up_exps) {
++                    throw std::runtime_error(format("ffn_up_exps.scale and ffn_gate_up_exps.weight both exist for layer %d", i));
++                }
++            }
++            if (!layer.ffn_up_exps_s && layer.ffn_gate_up_exps) {
++                layer.ffn_up_exps_s = create_tensor(tn(LLM_TENSOR_FFN_GATE_UP_EXPS, "scale", i), {n_expert}, TENSOR_NOT_REQUIRED);
+             }
+ 
+             // recurrent / linear-attention weight scales (per-tensor, shape {1})
+@@ -1996,6 +2006,7 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
+                 output_in_s = create_tensor(tn(LLM_TENSOR_OUTPUT, "input_scale"), {1}, TENSOR_NOT_REQUIRED);
+             }
+         }
++        post_arch_tensors(ml);
+     }
+ 
+     ml.done_getting_tensors();
+@@ -3360,7 +3371,7 @@ llama_memory_i * llama_model::create_memory(const llama_memory_params & params,
+                         filter_idx = [&](uint32_t il) {
+                             return il < hparams.n_layer() && !hparams.is_recr(il) && hparams.is_indexer_full(il);
+                         };
+-                    } else if (arch == LLM_ARCH_FALCON_H1) {
++                    } else if (arch == LLM_ARCH_FALCON_H1 || arch == LLM_ARCH_INKLING2 || arch == LLM_ARCH_INKLING2_LOOP) {
+                         filter_attn = [&](uint32_t) { return true; };
+                         filter_recr = [&](uint32_t) { return true; };
+                     } else if (arch == LLM_ARCH_NEMOTRON_H || arch == LLM_ARCH_NEMOTRON_H_MOE) {
+@@ -3740,6 +3751,8 @@ llama_rope_type llama_model_rope_type(const llama_model * model) {
+         case LLM_ARCH_RAON1_NANO:
+         case LLM_ARCH_GLM5_NEXT:
+         case LLM_ARCH_STARCODER:
++        case LLM_ARCH_INKLING2:
++        case LLM_ARCH_INKLING2_LOOP:
+             return LLAMA_ROPE_TYPE_NONE;
+ 
+         // use what we call a normal RoPE, operating on pairs of consecutive head values
+diff --git a/src/llama-model.h b/src/llama-model.h
+index 942a3a3..6dcf978 100644
+--- a/src/llama-model.h
++++ b/src/llama-model.h
+@@ -677,6 +677,24 @@ struct llama_layer {
+     struct ggml_tensor * mudd_up          = nullptr;
+     struct ggml_tensor * mudd_up_b        = nullptr;
+ 
++    // inkling2
++    struct ggml_tensor * attn_rel         = nullptr;
++    struct ggml_tensor * attn_rel_bias    = nullptr;
++    struct ggml_tensor * attn_q_clip      = nullptr;
++    struct ggml_tensor * attn_rel_clip    = nullptr;
++    struct ggml_tensor * attn_sink_proj   = nullptr;
++    struct ggml_tensor * attn_q_inp_norm  = nullptr;
++    struct ggml_tensor * attn_k_inp_norm  = nullptr;
++    struct ggml_tensor * attn_v_inp_norm  = nullptr;
++    struct ggml_tensor * attn_k_conv      = nullptr;
++    struct ggml_tensor * attn_v_conv      = nullptr;
++    struct ggml_tensor * attn_k_conv_proj = nullptr;
++    struct ggml_tensor * attn_v_conv_proj = nullptr;
++    struct ggml_tensor * attn_post_conv   = nullptr;
++    struct ggml_tensor * attn_res_query   = nullptr;
++    struct ggml_tensor * ffn_post_conv    = nullptr;
++    struct ggml_tensor * ffn_res_query    = nullptr;
++
+     struct llama_layer_posnet posnet;
+ 
+     struct llama_layer_convnext convnext;
+@@ -801,6 +819,7 @@ struct llama_model {
+ 
+     struct ggml_tensor * output_norm     = nullptr;
+     struct ggml_tensor * output_res_score = nullptr; // kimi-k3: final cross-layer residual mix
++    struct ggml_tensor * output_res_query = nullptr; // inkling2: query of the final attention-residual mix
+     struct ggml_tensor * output_norm_b   = nullptr;
+     struct ggml_tensor * output          = nullptr;
+     struct ggml_tensor * output_b        = nullptr;
+@@ -1023,6 +1042,9 @@ struct llama_model {
+     virtual void load_arch_tensors(llama_model_loader & ml) = 0;
+     virtual std::unique_ptr<llm_graph_context> build_arch_graph(const llm_graph_params & params) const = 0;
+ 
++    // optional, runs after the scale pass
++    virtual void post_arch_tensors(llama_model_loader &) {}
++
+ protected:
+     llama_model_params params;
+ 
+diff --git a/src/llama-quant.cpp b/src/llama-quant.cpp
+index af39e73..e75bc17 100644
+--- a/src/llama-quant.cpp
++++ b/src/llama-quant.cpp
+@@ -340,6 +340,15 @@ static bool tensor_allows_quantization(const llama_model_quantize_params * param
+         quantize &= name.find("mudd_")               == std::string::npos;
+     }
+ 
++    // inkling2: short conv kernels, clip scales, residual mix queries, the relative bias projection and the loop tensors
++    if (arch == LLM_ARCH_INKLING2 || arch == LLM_ARCH_INKLING2_LOOP) {
++        quantize &= name.find("_conv.weight")         == std::string::npos;
++        quantize &= name.find("_clip.weight")         == std::string::npos;
++        quantize &= name.find("_res_query.weight")    == std::string::npos;
++        quantize &= name.find("attn_rel_bias.weight") == std::string::npos;
++        quantize &= name.find(".loop_")               == std::string::npos;
++    }
++
+     // do not quantize positional embeddings and token types (BERT)
+     quantize &= name != LLM_TN(arch)(LLM_TENSOR_POS_EMBD,    "weight");
+     quantize &= name != LLM_TN(arch)(LLM_TENSOR_TOKEN_TYPES, "weight");
+diff --git a/src/llama-vocab.cpp b/src/llama-vocab.cpp
+index 9f9cab6..cdd3b82 100644
+--- a/src/llama-vocab.cpp
++++ b/src/llama-vocab.cpp
+@@ -2690,6 +2690,12 @@ void llama_vocab::impl::load(llama_model_loader & ml, const LLM_KV & kv) {
+                 tokenizer_pre == "talkie") {
+                 pre_type = LLAMA_VOCAB_PRE_TYPE_GPT4O;
+                 clean_spaces = false;
++            } else if (
++                tokenizer_pre == "inkling2") {
++                pre_type = LLAMA_VOCAB_PRE_TYPE_GPT4O;
++                special_bos_id = LLAMA_TOKEN_NULL;
++                clean_spaces = false;
++                ignore_merges = true;
+             } else if (
+                 tokenizer_pre == "granite-embed-multi-97m") {
+                 pre_type = LLAMA_VOCAB_PRE_TYPE_GRANITE_EMB_MULTI;
+diff --git a/src/models/inkling2-loop.cpp b/src/models/inkling2-loop.cpp
+new file mode 100644
+index 0000000..8366a11
+--- /dev/null
++++ b/src/models/inkling2-loop.cpp
+@@ -0,0 +1,115 @@
++#include "models.h"
++
++int llama_model_inkling2_loop::layer_phys(int il) const {
++    return il < n_phys ? il : core_start + (il - n_phys) % (core_end - core_start);
++}
++
++void llama_model_inkling2_loop::load_arch_hparams(llama_model_loader & ml) {
++    llama_model_inkling2::load_arch_hparams(ml);
++
++    ml.get_key(LLM_KV_LOOP_START,     core_start);
++    ml.get_key(LLM_KV_LOOP_END,       core_end);
++    ml.get_key(LLM_KV_LOOP_COUNT,     n_passes);
++    ml.get_key(LLM_KV_LOOP_GATE_RANK, gate_rank);
++    ml.get_key(LLM_KV_LOOP_VARYING,   varying, false);
++
++    n_phys = hparams.n_layer();
++    const uint32_t block = hparams.attn_res_block_size;
++    // a fixed loop needs at least 2 passes, a variable loop at least 1
++    if (n_passes < (varying ? 1u : 2u) || !gate_rank || !core_start || core_start >= core_end || core_end > (uint32_t) n_phys ||
++        core_start % block || core_end % block || hparams.n_layer_nextn) {
++        throw std::runtime_error(format("inkling2_loop: invalid loop core [%u, %u) with block size %u, %u passes or gate rank %u for %d layers",
++                core_start, core_end, block, n_passes, gate_rank, n_phys));
++    }
++    const size_t n_slot = n_phys + (size_t) (n_passes - 1)*(core_end - core_start);
++    if (n_slot > LLAMA_MAX_LAYERS) {
++        throw std::runtime_error(format("inkling2_loop: %zu cache slots exceed the maximum of %d", n_slot, LLAMA_MAX_LAYERS));
++    }
++
++    // expand to the cache slots before load_tensors() allocates the layers and the memory
++    hparams.n_layer_all = n_slot;
++    for (int il = n_phys; il < (int) n_slot; ++il) {
++        const int p = layer_phys(il);
++        hparams.n_head_arr[il]        = hparams.n_head_arr[p];
++        hparams.n_head_kv_arr[il]     = hparams.n_head_kv_arr[p];
++        hparams.n_ff_arr[il]          = hparams.n_ff_arr[p];
++        hparams.n_ff_exp_arr[il]      = hparams.n_ff_exp_arr[p];
++        hparams.n_expert_used_arr[il] = hparams.n_expert_used_arr[p];
++        hparams.is_swa_impl[il]       = hparams.is_swa_impl[p];
++        hparams.is_recr_impl[il]      = hparams.is_recr_impl[p];
++    }
++}
++
++void llama_model_inkling2_loop::load_arch_tensors(llama_model_loader & ml) {
++    llama_model_inkling2::load_arch_tensors(ml);
++
++    const int64_t n_embd = hparams.n_embd;
++    const int64_t rank   = gate_rank;
++    const llm_tensor down[LOOP_CTRL_COUNT]   = { LLM_TENSOR_LOOP_Q_CTRL_DOWN,   LLM_TENSOR_LOOP_K_CTRL_DOWN,   LLM_TENSOR_LOOP_V_CTRL_DOWN,   LLM_TENSOR_LOOP_FFN_CTRL_DOWN   };
++    const llm_tensor gain[LOOP_CTRL_COUNT]   = { LLM_TENSOR_LOOP_Q_CTRL_GAIN,   LLM_TENSOR_LOOP_K_CTRL_GAIN,   LLM_TENSOR_LOOP_V_CTRL_GAIN,   LLM_TENSOR_LOOP_FFN_CTRL_GAIN   };
++    const llm_tensor forget[LOOP_CTRL_COUNT] = { LLM_TENSOR_LOOP_Q_CTRL_FORGET, LLM_TENSOR_LOOP_K_CTRL_FORGET, LLM_TENSOR_LOOP_V_CTRL_FORGET, LLM_TENSOR_LOOP_FFN_CTRL_FORGET };
++
++    loop_layers.resize(core_end - core_start);
++    for (uint32_t il = core_start; il < core_end; ++il) {
++        auto & l = loop_layers[il - core_start];
++        // the q, k, v and ffn message queries
++        l.msg_query = create_tensor(tn(LLM_TENSOR_LOOP_MSG_QUERY, "weight", il), {n_embd, LOOP_CTRL_COUNT}, 0);
++        for (int c = 0; c < LOOP_CTRL_COUNT; ++c) {
++            l.ctrl_down[c]   = create_tensor(tn(down[c],   "weight", il), {2*n_embd, rank}, 0);
++            l.ctrl_gain[c]   = create_tensor(tn(gain[c],   "weight", il), {rank, n_embd}, 0);
++            l.ctrl_forget[c] = create_tensor(tn(forget[c], "weight", il), {rank, n_embd}, 0);
++        }
++    }
++}
++
++void llama_model_inkling2_loop::post_arch_tensors(llama_model_loader &) {
++    // share the physical weights, each cache slot keeps its own KV and conv state
++    for (int il = n_phys; il < (int) hparams.n_layer(); ++il) {
++        layers[il] = layers[layer_phys(il)];
++    }
++}
++
++std::unique_ptr<llm_graph_context> llama_model_inkling2_loop::build_arch_graph(const llm_graph_params & params) const {
++    return std::make_unique<graph>(params);
++}
++
++llama_model_inkling2_loop::graph::graph(const llm_graph_params & params) : llama_model_inkling2::graph(params, no_build{}) {
++    const auto & m = static_cast<const llama_model_inkling2_loop &>(model);
++    const int start = m.core_start;
++    const int end   = m.core_end;
++
++    auto * cur = build_inputs();
++    std::vector<ggml_tensor *> blocks;
++    for (int il = 0; il < start; ++il) {
++        cur = build_layer(il, il, cur, blocks);
++    }
++
++    // every pass starts from the prelude output
++    auto * prelude = cur;
++    const auto prelude_blocks = blocks;
++    for (uint32_t pass = 0; pass < m.n_passes; ++pass) {
++        // the bank of the previous pass: its blocks after the first core block, and its output
++        std::vector<ggml_tensor *> bank;
++        ggml_tensor * bank_out = nullptr;
++        if (pass > 0) {
++            bank.assign(blocks.begin() + prelude_blocks.size() + 1, blocks.end());
++            bank_out = cur;
++            cur = prelude;
++            blocks = prelude_blocks;
++        }
++        for (int ip = start; ip < end; ++ip) {
++            const int il = pass == 0 ? ip : m.n_phys + (pass - 1)*(end - start) + (ip - start);
++            if (pass == 0) {
++                cur = build_layer(il, ip, cur, blocks);
++                continue;
++            }
++            const auto & loop = m.loop_layers[ip - start];
++            cur = build_layer(il, ip, cur, blocks, mix(bank, bank_out, loop.msg_query), &loop);
++        }
++    }
++
++    for (int il = end; il < m.n_phys; ++il) {
++        cur = build_layer(il, il, cur, blocks);
++    }
++    build_output(cur, blocks);
++}
+diff --git a/src/models/inkling2.cpp b/src/models/inkling2.cpp
+new file mode 100644
+index 0000000..3e43ef4
+--- /dev/null
++++ b/src/models/inkling2.cpp
+@@ -0,0 +1,460 @@
++#include "models.h"
++#include "../llama-memory-hybrid-iswa.h"
++
++void llama_model_inkling2::load_arch_hparams(llama_model_loader & ml) {
++    ml.get_key(LLM_KV_ATTENTION_LAYERNORM_RMS_EPS, hparams.f_norm_rms_eps);
++    ml.get_key(LLM_KV_ATTENTION_QK_CLIP,           hparams.f_qk_clip);
++    ml.get_key(LLM_KV_ATTN_RES_BLOCK_SIZE,         hparams.attn_res_block_size);
++    ml.get_key(LLM_KV_SHORTCONV_L_CACHE,           hparams.n_shortconv_l_cache);
++
++    // relative-position bias, and the log-scaled positions of the full-attention layers
++    ml.get_key(LLM_KV_ATTENTION_RELATIVE_LENGTH, hparams.n_relative);
++    ml.get_key(LLM_KV_ATTENTION_RELATIVE_EXTENT, hparams.n_relative_extent);
++    ml.get_key(LLM_KV_ATTENTION_RELATIVE_CLIP,   hparams.f_relative_clip);
++    ml.get_key(LLM_KV_ATTENTION_LOG_SCALE_FLOOR, hparams.n_log_scale_floor);
++    ml.get_key(LLM_KV_ATTENTION_LOG_SCALE_ALPHA, hparams.f_log_scale_alpha);
++
++    // the embedding and output tensors are padded past the vocabulary
++    ml.get_key(LLM_KV_VOCAB_SIZE,          hparams.n_vocab_padded);
++    ml.get_key(LLM_KV_VOCAB_SIZE_UNPADDED, hparams.n_vocab_unpadded);
++
++    // MoE
++    ml.get_key_or_arr(LLM_KV_EXPERT_FEED_FORWARD_LENGTH, hparams.n_ff_exp_arr, hparams.n_layer_all);
++
++    ml.get_key(LLM_KV_ACTIVATION_SITU_BETA,        hparams.situ_beta);
++    ml.get_key(LLM_KV_ACTIVATION_SITU_LINEAR_BETA, hparams.situ_linear_beta);
++    ml.get_key(LLM_KV_EXPERT_WEIGHTS_SCALE,        hparams.expert_weights_scale, false);
++
++    hparams.f_final_logit_softcapping = 0.0f;
++    ml.get_key(LLM_KV_FINAL_LOGIT_SOFTCAPPING, hparams.f_final_logit_softcapping, false);
++
++    // sliding window
++    ml.get_key(LLM_KV_ATTENTION_SLIDING_WINDOW,         hparams.n_swa);
++    ml.get_arr(LLM_KV_ATTENTION_SLIDING_WINDOW_PATTERN, hparams.is_swa_impl);
++
++    uint32_t n_pattern = 0;
++    ml.get_arr_n(LLM_KV_ATTENTION_SLIDING_WINDOW_PATTERN, n_pattern);
++
++    if (n_pattern != hparams.n_layer() || !hparams.n_relative || !hparams.n_relative_extent || !hparams.n_swa ||
++        !hparams.attn_res_block_size || !hparams.n_log_scale_floor || hparams.n_shortconv_l_cache < 2 ||
++        hparams.n_shortconv_l_cache > 64 || hparams.n_relative_extent > INT32_MAX || hparams.n_swa > INT32_MAX ||
++        !hparams.n_vocab_unpadded || hparams.n_vocab_unpadded > hparams.n_vocab_padded) {
++        throw std::runtime_error("inkling2: invalid dimensions, vocabulary, or layer pattern");
++    }
++
++    for (float value : {hparams.f_norm_rms_eps, hparams.f_qk_clip, hparams.f_relative_clip, hparams.situ_beta, hparams.situ_linear_beta}) {
++        if (!std::isfinite(value) || value <= 0.0f) {
++            throw std::runtime_error("inkling2: normalization, clipping and scaling parameters must be finite and positive");
++        }
++    }
++
++    if (!std::isfinite(hparams.f_log_scale_alpha) || hparams.f_log_scale_alpha < 0.0f) {
++        throw std::runtime_error("inkling2: invalid logarithmic scale");
++    }
++
++    hparams.swa_type                = LLAMA_SWA_TYPE_STANDARD;
++    hparams.expert_router_f32       = true;
++    hparams.expert_weights_norm_eps = 1e-20f;
++
++    // no RoPE, the relative-position bias carries the positions
++    hparams.rope_pattern.fill(false);
++
++    // the convolution state keeps K, V, the attention output and the FFN output of the widest layer
++    uint64_t n_channels_max = 0;
++
++    for (uint32_t il = 0; il < hparams.n_layer(); ++il) {
++        if (!hparams.n_head_kv(il) || hparams.n_head(il) % hparams.n_head_kv(il) ||
++            hparams.n_embd_head_k(il) != hparams.n_embd_head_v(il) || !hparams.n_expert_used(il) ||
++            hparams.n_expert_used(il) > hparams.n_expert || !hparams.n_ff_exp(il)) {
++            throw std::runtime_error("inkling2: invalid attention or expert dimensions");
++        }
++
++        n_channels_max = std::max<uint64_t>(n_channels_max, 2ull * hparams.n_embd_k_gqa(il) + 2ull * hparams.n_embd);
++    }
++
++    if (n_channels_max * (hparams.n_shortconv_l_cache - 1) > UINT32_MAX) {
++        throw std::runtime_error("inkling2: convolution state is too large");
++    }
++
++    hparams.n_sconv_channels = n_channels_max;
++
++    type = LLM_TYPE_UNKNOWN;
++}
++
++void llama_model_inkling2::load_arch_tensors(llama_model_loader &) {
++    LLAMA_LOAD_LOCALS;
++
++    if (hparams.n_vocab_unpadded != vocab.n_tokens()) {
++        throw std::runtime_error("inkling2: tokenizer size must equal the unpadded vocabulary size");
++    }
++
++    const int64_t n_vocab_padded = hparams.n_vocab_padded;
++    const int64_t n_rel          = hparams.n_relative;
++    const int64_t n_conv         = hparams.n_shortconv_l_cache;
++
++    tok_embd = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD,      "weight"),    {n_embd, n_vocab_padded}, 0);
++    tok_norm = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD_NORM, "weight", 0), {n_embd}, 0);
++
++    // output
++    output           = create_tensor(tn(LLM_TENSOR_OUTPUT,           "weight"), {n_embd, n_vocab_padded}, 0);
++    output_norm      = create_tensor(tn(LLM_TENSOR_OUTPUT_NORM,      "weight"), {n_embd}, 0);
++    output_res_query = create_tensor(tn(LLM_TENSOR_OUTPUT_RES_QUERY, "weight"), {n_embd}, 0);
++
++    for (int i = 0; i < n_layer_phys(); ++i) {
++        auto & layer = layers[i];
++
++        const int64_t n_head      = hparams.n_head(i);
++        const int64_t n_head_kv   = hparams.n_head_kv(i);
++        const int64_t n_embd_head = hparams.n_embd_head_k(i);
++        const int64_t n_ff_exp    = hparams.n_ff_exp(i);
++        const int64_t n_extent    = hparams.is_swa(i) ? hparams.n_swa : hparams.n_relative_extent;
++
++        // attention
++        layer.wq        = create_tensor(tn(LLM_TENSOR_ATTN_Q,    "weight", i), {n_embd, n_embd_head*n_head}, 0);
++        layer.wk        = create_tensor(tn(LLM_TENSOR_ATTN_K,    "weight", i), {n_embd, n_embd_head*n_head_kv}, 0);
++        layer.wv        = create_tensor(tn(LLM_TENSOR_ATTN_V,    "weight", i), {n_embd, n_embd_head*n_head_kv}, 0);
++        layer.wo        = create_tensor(tn(LLM_TENSOR_ATTN_OUT,  "weight", i), {n_embd_head*n_head, n_embd}, 0);
++        layer.wqkv_gate = create_tensor(tn(LLM_TENSOR_ATTN_GATE, "weight", i), {n_embd, n_embd_head*n_head}, 0);
++
++        layer.attn_q_clip    = create_tensor(tn(LLM_TENSOR_ATTN_Q_CLIP,    "weight", i), {n_embd_head, n_head}, 0);
++        layer.attn_sink_proj = create_tensor(tn(LLM_TENSOR_ATTN_SINK_PROJ, "weight", i), {n_embd, n_head}, 0);
++
++        // relative-position bias
++        layer.attn_rel      = create_tensor(tn(LLM_TENSOR_ATTN_REL,      "weight", i), {n_embd, n_rel*n_head}, 0);
++        layer.attn_rel_bias = create_tensor(tn(LLM_TENSOR_ATTN_REL_BIAS, "weight", i), {n_rel, n_extent}, 0);
++        layer.attn_rel_clip = create_tensor(tn(LLM_TENSOR_ATTN_REL_CLIP, "weight", i), {n_rel, n_head}, 0);
++
++        // short convolutions
++        layer.attn_k_conv    = create_tensor(tn(LLM_TENSOR_ATTN_K_CONV,    "weight", i), {n_conv, n_embd_head*n_head_kv}, 0);
++        layer.attn_v_conv    = create_tensor(tn(LLM_TENSOR_ATTN_V_CONV,    "weight", i), {n_conv, n_embd_head*n_head_kv}, 0);
++        layer.attn_post_conv = create_tensor(tn(LLM_TENSOR_ATTN_POST_CONV, "weight", i), {n_conv, n_embd}, 0);
++        layer.ffn_post_conv  = create_tensor(tn(LLM_TENSOR_FFN_POST_CONV,  "weight", i), {n_conv, n_embd}, 0);
++
++        if (hparams.is_swa(i)) {
++            layer.attn_norm = create_tensor(tn(LLM_TENSOR_ATTN_NORM, "weight", i), {n_embd}, 0);
++        } else {
++            // full-attention layers: separate Q, K and V input norms, and input-dependent taps for the K and V convolutions
++            layer.attn_q_inp_norm  = create_tensor(tn(LLM_TENSOR_ATTN_Q_INP_NORM,  "weight", i), {n_embd}, 0);
++            layer.attn_k_inp_norm  = create_tensor(tn(LLM_TENSOR_ATTN_K_INP_NORM,  "weight", i), {n_embd}, 0);
++            layer.attn_v_inp_norm  = create_tensor(tn(LLM_TENSOR_ATTN_V_INP_NORM,  "weight", i), {n_embd}, 0);
++            layer.attn_k_conv_proj = create_tensor(tn(LLM_TENSOR_ATTN_K_CONV_PROJ, "weight", i), {n_embd, n_conv*n_head_kv}, 0);
++            layer.attn_v_conv_proj = create_tensor(tn(LLM_TENSOR_ATTN_V_CONV_PROJ, "weight", i), {n_embd, n_conv*n_head_kv}, 0);
++        }
++
++        // block attention residuals
++        if (i > 0) {
++            layer.attn_res_query = create_tensor(tn(LLM_TENSOR_ATTN_RES_QUERY, "weight", i), {n_embd, hparams.is_swa(i) ? 1 : 3}, 0);
++        }
++        layer.ffn_res_query = create_tensor(tn(LLM_TENSOR_FFN_RES_QUERY, "weight", i), {n_embd}, 0);
++
++        // MoE
++        layer.ffn_norm         = create_tensor(tn(LLM_TENSOR_FFN_NORM,         "weight", i), {n_embd}, 0);
++        layer.ffn_gate_inp     = create_tensor(tn(LLM_TENSOR_FFN_GATE_INP,     "weight", i), {n_embd, n_expert}, 0);
++        layer.ffn_exp_probs_b  = create_tensor(tn(LLM_TENSOR_FFN_EXP_PROBS_B,  "bias",   i), {n_expert}, TENSOR_NOT_REQUIRED);
++        layer.ffn_gate_up_exps = create_tensor(tn(LLM_TENSOR_FFN_GATE_UP_EXPS, "weight", i), {n_embd, 2*n_ff_exp, n_expert}, 0);
++        layer.ffn_down_exps    = create_tensor(tn(LLM_TENSOR_FFN_DOWN_EXPS,    "weight", i), {n_ff_exp, n_embd, n_expert}, 0);
++    }
++}
++
++std::unique_ptr<llm_graph_context> llama_model_inkling2::build_arch_graph(const llm_graph_params & params) const {
++    return std::make_unique<graph>(params);
++}
++
++// scale each row down to an L2 norm of at most threshold, after the optional per-channel scale
++ggml_tensor * llama_model_inkling2::graph::clip(ggml_tensor * cur, ggml_tensor * scale, float threshold) {
++    if (scale) {
++        cur = ggml_mul(ctx0, cur, scale);
++    }
++
++    ggml_tensor * norm = ggml_sqrt(ctx0, ggml_sum_rows(ctx0, ggml_sqr(ctx0, cur)));
++    norm = ggml_scale_bias(ctx0, norm, 1.0f, 1e-6f);
++
++    ggml_tensor * factor = ggml_div(ctx0, ggml_fill(ctx0, norm, threshold), norm);
++
++    return ggml_mul(ctx0, cur, ggml_clamp(ctx0, factor, 0.0f, 1.0f));
++}
++
++// attention over the depth: mix the earlier block outputs and cur with learned queries
++ggml_tensor * llama_model_inkling2::graph::mix(const std::vector<ggml_tensor *> & blocks, ggml_tensor * cur, ggml_tensor * query) {
++    ggml_tensor * states = ggml_reshape_3d(ctx0, cur, n_embd, 1, n_tokens);
++    for (ggml_tensor * block : blocks) {
++        states = ggml_concat(ctx0, ggml_reshape_3d(ctx0, block, n_embd, 1, n_tokens), states, 1);
++    }
++    states = ggml_rms_norm(ctx0, states, 1e-6f);
++
++    ggml_tensor * queries = ggml_repeat(ctx0, query, ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, n_embd, query->ne[1], n_tokens));
++
++    ggml_tensor * scores = ggml_mul_mat(ctx0, states, queries);
++    scores = ggml_soft_max_ext(ctx0, scores, nullptr, 1.0f/sqrtf(n_embd), 0.0f);
++
++    return ggml_mul_mat(ctx0, ggml_cont(ctx0, ggml_transpose(ctx0, states)), scores);
++}
++
++// causal short convolution with a residual; dynamic adds input-dependent taps per head
++// the last n_conv - 1 inputs of each sequence live in the recurrent state at channel offset `offset`
++ggml_tensor * llama_model_inkling2::graph::convolve(
++        ggml_tensor * cur,
++        ggml_tensor * weight,
++        ggml_tensor * dynamic,
++        ggml_tensor * state,
++        ggml_tensor * history,
++        llm_graph_input_rs * inp,
++        int64_t offset) {
++    const int64_t n_conv       = hparams.n_shortconv_l_cache;
++    const int64_t n_channels   = cur->ne[0];
++    const int64_t n_seq_tokens = ubatch.n_seq_tokens;
++    const int64_t n_seqs       = ubatch.n_seqs;
++
++    ggml_tensor * past = ggml_view_3d(ctx0, history, n_conv - 1, n_channels, n_seqs, history->nb[1], history->nb[2], offset*history->nb[1]);
++
++    ggml_tensor * x = ggml_transpose(ctx0, ggml_reshape_3d(ctx0, cur, n_channels, n_seq_tokens, n_seqs));
++    x = ggml_concat(ctx0, past, x, 0);
++
++    build_conv_state_store(inp, state, x, n_conv - 1, offset*(n_conv - 1)*ggml_element_size(state));
++
++    ggml_tensor * out = ggml_ssm_conv(ctx0, x, weight);
++    out = ggml_reshape_2d(ctx0, out, n_channels, n_tokens);
++
++    if (dynamic) {
++        const int64_t n_heads = dynamic->ne[0]/n_conv;
++
++        dynamic = ggml_reshape_3d(ctx0, dynamic, n_conv, n_heads, n_tokens);
++
++        for (int64_t lag = 0; lag < n_conv; ++lag) {
++            ggml_tensor * tap    = ggml_view_3d(ctx0, dynamic, 1, n_heads, n_tokens, dynamic->nb[1], dynamic->nb[2], lag*dynamic->nb[0]);
++            ggml_tensor * window = ggml_view_3d(ctx0, x, n_seq_tokens, n_channels, n_seqs, x->nb[1], x->nb[2], (n_conv - 1 - lag)*x->nb[0]);
++
++            window = ggml_cont(ctx0, ggml_transpose(ctx0, window));
++            window = ggml_reshape_3d(ctx0, window, n_channels/n_heads, n_heads, n_tokens);
++
++            ggml_tensor * term = ggml_reshape_2d(ctx0, ggml_mul(ctx0, window, tap), n_channels, n_tokens);
++
++            out = ggml_add(ctx0, out, term);
++        }
++    }
++
++    return ggml_scale(ctx0, ggml_add(ctx0, cur, out), 1.0f/sqrtf((dynamic ? 2 : 1)*n_conv + 1));
++}
++
++// mix a cross-pass message into a looped layer input: (1 - forget)*cur + gain*message, both gated on cur and message
++ggml_tensor * llama_model_inkling2::graph::control(ggml_tensor * cur, ggml_tensor * message, const loop_layer & loop, int ctrl) {
++    ggml_tensor * gate = ggml_concat(ctx0, ggml_rms_norm(ctx0, cur, 1e-6f), ggml_rms_norm(ctx0, message, 1e-6f), 0);
++    gate = build_lora_mm(loop.ctrl_down[ctrl], gate);
++
++    ggml_tensor * gain   = ggml_tanh(ctx0, build_lora_mm(loop.ctrl_gain[ctrl],   gate));
++    ggml_tensor * forget = ggml_tanh(ctx0, build_lora_mm(loop.ctrl_forget[ctrl], gate));
++
++    return ggml_add(ctx0, ggml_sub(ctx0, cur, ggml_mul(ctx0, forget, cur)), ggml_mul(ctx0, gain, message));
++}
++
++ggml_tensor * llama_model_inkling2::graph::build_inputs() {
++    inp  = build_inp_mem_hybrid_iswa_rel(hparams.n_relative_extent, hparams.n_swa);
++    attn = inp->get_attn();
++    recr = inp->get_recr();
++
++    ggml_tensor * inp_pos = build_inp_pos();
++    inp_out_ids = build_inp_out_ids();
++
++    // log-scaled positions: 1 + alpha*log(max(1, (pos + 1)/floor)), multiplies q and r of the full-attention layers
++    tau = ggml_scale_bias(ctx0, ggml_cast(ctx0, inp_pos, GGML_TYPE_F32), 1.0f, 1.0f);
++    tau = ggml_log(ctx0, ggml_clamp(ctx0, ggml_scale(ctx0, tau, 1.0f/hparams.n_log_scale_floor), 1.0f, INFINITY));
++    tau = ggml_reshape_3d(ctx0, ggml_scale_bias(ctx0, tau, hparams.f_log_scale_alpha, 1.0f), 1, 1, n_tokens);
++
++    ggml_tensor * cur = build_inp_embd(model.tok_embd);
++
++    // important: do not normalize raw embeddings input (i.e. encoded image embeddings)
++    if (ubatch.token) {
++        cur = build_norm(cur, model.tok_norm, nullptr, LLM_NORM_RMS, -1);
++    }
++
++    return cur;
++}
++
++ggml_tensor * llama_model_inkling2::graph::build_layer(int il, int ip, ggml_tensor * cur, std::vector<ggml_tensor *> & blocks,
++        ggml_tensor * messages, const loop_layer * loop) {
++    GGML_ASSERT(!messages == !loop);
++
++    const auto & layer = model.layers[il];
++
++    const bool    is_swa       = hparams.is_swa(il);
++    const int64_t n_head       = hparams.n_head(il);
++    const int64_t n_head_kv    = hparams.n_head_kv(il);
++    const int64_t n_embd_head  = hparams.n_embd_head_k(il);
++    const int64_t n_embd_k_gqa = n_embd_head*n_head_kv;
++
++    // the message of controller ctrl, [n_embd, n_tokens]
++    auto message = [&](int ctrl) {
++        return ggml_cont(ctx0, ggml_view_2d(ctx0, messages, n_embd, n_tokens, messages->nb[2], ctrl*messages->nb[1]));
++    };
++
++    ggml_tensor * state   = recr->mctx->get_r_l(il);
++    ggml_tensor * history = build_rs(recr, state, hparams.n_embd_r(), ubatch.n_seqs);
++    history = ggml_reshape_3d(ctx0, history, hparams.n_shortconv_l_cache - 1, hparams.n_sconv_channels, ubatch.n_seqs);
++
++    ggml_tensor * inpSA = cur;
++
++    // attention inputs: SWA layers mix one, full-attention layers one each for Q, K and V
++    ggml_tensor * inputs[3] = {cur, cur, cur};
++    if (layer.attn_res_query) {
++        ggml_tensor * mixed = mix(blocks, cur, layer.attn_res_query);
++        for (int j = 0; j < 3; ++j) {
++            inputs[j] = ggml_cont(ctx0, ggml_view_2d(ctx0, mixed, n_embd, n_tokens, mixed->nb[2], (is_swa ? 0 : j)*mixed->nb[1]));
++        }
++    }
++
++    if (messages) {
++        // the messages make the Q, K and V inputs of a SWA layer differ
++        for (int j = 0; j < 3; ++j) {
++            inputs[j] = control(inputs[j], message(LOOP_CTRL_Q + j), *loop, LOOP_CTRL_Q + j);
++        }
++    }
++
++    if (is_swa && messages) {
++        for (int j = 0; j < 3; ++j) {
++            inputs[j] = build_norm(inputs[j], layer.attn_norm, nullptr, LLM_NORM_RMS, il);
++        }
++    } else if (is_swa) {
++        inputs[0] = build_norm(inputs[0], layer.attn_norm, nullptr, LLM_NORM_RMS, il);
++        inputs[1] = inputs[2] = inputs[0];
++    } else {
++        inputs[0] = build_norm(inputs[0], layer.attn_q_inp_norm, nullptr, LLM_NORM_RMS, il);
++        inputs[1] = build_norm(inputs[1], layer.attn_k_inp_norm, nullptr, LLM_NORM_RMS, il);
++        inputs[2] = build_norm(inputs[2], layer.attn_v_inp_norm, nullptr, LLM_NORM_RMS, il);
++    }
++
++    // self-attention
++    {
++        ggml_tensor * Qcur = build_lora_mm(layer.wq, inputs[0]);
++        ggml_tensor * Kcur = convolve(build_lora_mm(layer.wk, inputs[1]), layer.attn_k_conv,
++                is_swa ? nullptr : build_lora_mm(layer.attn_k_conv_proj, inputs[1]), state, history, recr, 0);
++        ggml_tensor * Vcur = convolve(build_lora_mm(layer.wv, inputs[2]), layer.attn_v_conv,
++                is_swa ? nullptr : build_lora_mm(layer.attn_v_conv_proj, inputs[2]), state, history, recr, n_embd_k_gqa);
++        ggml_tensor * Rcur = build_lora_mm(layer.attn_rel, inputs[0]);
++
++        Qcur = clip(ggml_reshape_3d(ctx0, Qcur, n_embd_head, n_head,    n_tokens), layer.attn_q_clip, hparams.f_qk_clip);
++        Kcur = clip(ggml_reshape_3d(ctx0, Kcur, n_embd_head, n_head_kv, n_tokens), nullptr,           hparams.f_qk_clip);
++        Vcur = ggml_rms_norm(ctx0, ggml_reshape_3d(ctx0, Vcur, n_embd_head, n_head_kv, n_tokens), hparams.f_norm_rms_eps);
++        Rcur = clip(ggml_reshape_3d(ctx0, Rcur, hparams.n_relative, n_head, n_tokens), layer.attn_rel_clip, hparams.f_relative_clip);
++
++        if (!is_swa) {
++            Qcur = ggml_mul(ctx0, Qcur, tau);
++            Rcur = ggml_mul(ctx0, Rcur, tau);
++        }
++
++        cb(Qcur, "Qcur", il);
++        cb(Kcur, "Kcur", il);
++        cb(Vcur, "Vcur", il);
++        cb(Rcur, "Rcur", il);
++
++        ggml_tensor * rel_pos = is_swa ? inp->self_rel_pos_swa : inp->self_rel_pos;
++
++        const int64_t n_stream = (is_swa ? attn->self_attn_mask_swa.raw : attn->self_attn_mask.raw)->ne[3];
++        const int64_t n_kv     = rel_pos->ne[0];
++
++        ggml_tensor * sinks = build_lora_mm(layer.attn_sink_proj, inputs[0]);
++
++        // project r on the bias table first, then gather by distance: only the gathered bias is n_kv x n_tokens x n_head
++        ggml_tensor * table = ggml_mul_mat(ctx0, ggml_pad(ctx0, layer.attn_rel_bias, 0, 1, 0, 0), Rcur);
++
++        // the sink logit t is per query: exp(s - t)/(1 + sum(exp(s - t))) = exp(s)/(exp(t) + sum(exp(s))), with a zero sink
++        table = ggml_sub(ctx0, table, ggml_reshape_3d(ctx0, sinks, 1, n_head, n_tokens));
++        table = ggml_cont(ctx0, ggml_permute(ctx0, table, 1, 0, 2, 3));
++
++        ggml_tensor * kq_b = ggml_get_rows(ctx0, table, rel_pos);
++        kq_b = ggml_reshape_4d(ctx0, kq_b, n_head, n_kv, n_tokens/n_stream, n_stream);
++        kq_b = ggml_cont(ctx0, ggml_permute(ctx0, kq_b, 2, 0, 1, 3));
++        cb(kq_b, "kq_b", il);
++
++        sinks = ggml_fill(ctx0, ggml_new_tensor_1d(ctx0, GGML_TYPE_F32, n_head), 0.0f);
++
++        cur = build_attn(inp,
++                nullptr, nullptr, nullptr,
++                Qcur, Kcur, Vcur, kq_b, sinks, 1.0f/sqrtf(n_embd_head), il);
++
++        cur = ggml_mul(ctx0, cur, ggml_sigmoid(ctx0, build_lora_mm(layer.wqkv_gate, inputs[0])));
++        cur = convolve(build_lora_mm(layer.wo, cur), layer.attn_post_conv, nullptr, state, history, recr, 2*n_embd_k_gqa);
++        cb(cur, "attn_out", il);
++    }
++
++    // the first layer of each block starts a new residual stream, the earlier one joins the mixed blocks
++    if (ip % hparams.attn_res_block_size == 0) {
++        blocks.push_back(inpSA);
++    } else {
++        cur = ggml_add(ctx0, inpSA, cur);
++    }
++
++    ggml_tensor * ffn_inp = cur;
++    cb(ffn_inp, "ffn_inp", il);
++
++    // MoE
++    cur = ggml_reshape_2d(ctx0, mix(blocks, cur, layer.ffn_res_query), n_embd, n_tokens);
++    if (messages) {
++        cur = control(cur, message(LOOP_CTRL_FFN), *loop, LOOP_CTRL_FFN);
++    }
++    cur = build_norm(cur, layer.ffn_norm, nullptr, LLM_NORM_RMS, il);
++
++    cur = build_moe_ffn(cur,
++            layer.ffn_gate_inp,
++            nullptr,
++            nullptr,
++            layer.ffn_down_exps,
++            layer.ffn_exp_probs_b,
++            hparams.n_expert,
++            hparams.n_expert_used(il),
++            LLM_FFN_SITU, true,
++            hparams.expert_weights_scale,
++            LLAMA_EXPERT_GATING_FUNC_TYPE_SIGMOID,
++            il,
++            nullptr,
++            layer.ffn_gate_up_exps,
++            layer.ffn_up_exps_s,
++            layer.ffn_gate_exps_s,
++            layer.ffn_down_exps_s);
++
++    cur = convolve(cur, layer.ffn_post_conv, nullptr, state, history, recr, 2*n_embd_k_gqa + n_embd);
++    cb(cur, "ffn_out", il);
++
++    cur = ggml_add(ctx0, ffn_inp, cur);
++    cb(cur, "l_out", il);
++
++    return cur;
++}
++
++void llama_model_inkling2::graph::build_output(ggml_tensor * cur, const std::vector<ggml_tensor *> & blocks) {
++    cur = ggml_reshape_2d(ctx0, mix(blocks, cur, model.output_res_query), n_embd, n_tokens);
++    cur = build_norm(cur, model.output_norm, nullptr, LLM_NORM_RMS, -1);
++
++    if (inp_out_ids) {
++        cur = ggml_get_rows(ctx0, cur, inp_out_ids);
++    }
++
++    cb(cur, "result_norm", -1);
++    res->t_embd = cur;
++
++    // lm_head
++    cur = build_lora_mm(model.output, cur);
++    ggml_prec_set_acc(cur, GGML_PREC_F32);
++
++    if (hparams.f_final_logit_softcapping != 0.0f) {
++        const float cap = hparams.f_final_logit_softcapping;
++
++        cur = ggml_scale(ctx0, ggml_tanh(ctx0, ggml_scale(ctx0, cur, 1.0f/cap)), cap);
++    }
++
++    // drop the padded vocabulary
++    cur = ggml_cont(ctx0, ggml_view_2d(ctx0, cur, hparams.n_vocab_unpadded, cur->ne[1], cur->nb[1], 0));
++
++    cb(cur, "result_output", -1);
++    res->t_logits = cur;
++}
++
++llama_model_inkling2::graph::graph(const llm_graph_params & params) : llm_graph_context(params) {
++    ggml_tensor * cur = build_inputs();
++
++    std::vector<ggml_tensor *> blocks;
++    for (int il = 0; il < n_layer; ++il) {
++        cur = build_layer(il, il, cur, blocks);
++    }
++
++    build_output(cur, blocks);
++}
+diff --git a/src/models/models.h b/src/models/models.h
+index 0d65a19..5b16dd5 100644
+--- a/src/models/models.h
++++ b/src/models/models.h
+@@ -2349,6 +2349,88 @@ struct llama_model_falcon_h1 : public llama_model_base {
+     std::unique_ptr<llm_graph_context> build_arch_graph(const llm_graph_params & params) const override;
+ };
+ 
++struct llama_model_inkling2 : public llama_model_base {
++    llama_model_inkling2(const struct llama_model_params & params) : llama_model_base(params) {}
++    void load_arch_hparams(llama_model_loader & ml) override;
++    void load_arch_tensors(llama_model_loader & ml) override;
++
++    // the layers stored in the file
++    virtual int n_layer_phys() const { return hparams.n_layer(); }
++
++    // message controllers of the q, k, v and ffn inputs of a looped layer (inkling2_loop)
++    enum { LOOP_CTRL_Q, LOOP_CTRL_K, LOOP_CTRL_V, LOOP_CTRL_FFN, LOOP_CTRL_COUNT };
++
++    struct loop_layer {
++        ggml_tensor * msg_query = nullptr;
++        ggml_tensor * ctrl_down[LOOP_CTRL_COUNT]   = {};
++        ggml_tensor * ctrl_gain[LOOP_CTRL_COUNT]   = {};
++        ggml_tensor * ctrl_forget[LOOP_CTRL_COUNT] = {};
++    };
++
++    struct graph : public llm_graph_context {
++        graph(const llm_graph_params & params);
++        ggml_tensor * mix(const std::vector<ggml_tensor *> & blocks, ggml_tensor * cur, ggml_tensor * query);
++        ggml_tensor * clip(ggml_tensor * cur, ggml_tensor * scale, float threshold);
++        ggml_tensor * convolve(
++                ggml_tensor * cur,
++                ggml_tensor * weight,
++                ggml_tensor * dynamic,
++                ggml_tensor * state,
++                ggml_tensor * history,
++                llm_graph_input_rs * inp,
++                int64_t offset);
++        ggml_tensor * control(ggml_tensor * cur, ggml_tensor * message, const loop_layer & loop, int ctrl);
++
++    protected:
++        // the helpers alone, a derived graph builds its own body
++        struct no_build {};
++        graph(const llm_graph_params & params, no_build) : llm_graph_context(params) {}
++
++        // the inputs and the token embeddings
++        ggml_tensor * build_inputs();
++        // cache slot il of physical layer ip; messages [n_embd, LOOP_CTRL_COUNT, n_tokens] are mixed into its inputs
++        ggml_tensor * build_layer(int il, int ip, ggml_tensor * cur, std::vector<ggml_tensor *> & blocks,
++                ggml_tensor * messages = nullptr, const loop_layer * loop = nullptr);
++        void build_output(ggml_tensor * cur, const std::vector<ggml_tensor *> & blocks);
++
++        llm_graph_input_mem_hybrid_iswa_rel * inp  = nullptr;
++        llm_graph_input_attn_kv_iswa        * attn = nullptr;
++        llm_graph_input_rs                  * recr = nullptr;
++
++        ggml_tensor * inp_out_ids = nullptr;
++        ggml_tensor * tau         = nullptr; // log-scaled positions
++    };
++
++    std::unique_ptr<llm_graph_context> build_arch_graph(const llm_graph_params & params) const override;
++};
++
++// the cache slots after the physical layers repeat the core [core_start, core_end) for each later pass
++struct llama_model_inkling2_loop : public llama_model_inkling2 {
++    llama_model_inkling2_loop(const struct llama_model_params & params) : llama_model_inkling2(params) {}
++    void load_arch_hparams(llama_model_loader & ml) override;
++    void load_arch_tensors(llama_model_loader & ml) override;
++    void post_arch_tensors(llama_model_loader & ml) override;
++
++    int n_layer_phys() const override { return n_phys; }
++    int layer_phys(int il) const;
++
++    int      n_phys     = 0;
++    uint32_t core_start = 0;
++    uint32_t core_end   = 0;
++    uint32_t n_passes   = 0;
++    uint32_t gate_rank  = 0;
++    bool     varying    = false; // trained for a varying number of passes
++
++    // indexed by physical layer - core_start
++    std::vector<loop_layer> loop_layers;
++
++    struct graph : public llama_model_inkling2::graph {
++        graph(const llm_graph_params & params);
++    };
++
++    std::unique_ptr<llm_graph_context> build_arch_graph(const llm_graph_params & params) const override;
++};
++
+ struct llama_model_lfm2 : public llama_model_base {
+     llama_model_lfm2(const struct llama_model_params & params) : llama_model_base(params) {}
+     void load_arch_hparams(llama_model_loader & ml) override;
+diff --git a/tools/mtmd/CMakeLists.txt b/tools/mtmd/CMakeLists.txt
+index c19815d..7b04ccf 100644
+--- a/tools/mtmd/CMakeLists.txt
++++ b/tools/mtmd/CMakeLists.txt
+@@ -50,6 +50,7 @@ add_library(mtmd
+             models/granite-speech.cpp
+             models/granite4-vision.cpp
+             models/hunyuanvl.cpp
++            models/inkling2v.cpp
+             models/internvl.cpp
+             models/kimivl.cpp
+             models/kimik25.cpp
+diff --git a/tools/mtmd/models/inkling2v.cpp b/tools/mtmd/models/inkling2v.cpp
+new file mode 100644
+index 0000000..d5bab6f
+--- /dev/null
++++ b/tools/mtmd/models/inkling2v.cpp
+@@ -0,0 +1,33 @@
++#include "models.h"
++
++// ViT with a CLS token, learned position embeddings and 2D RoPE; the patches are merged before the projector
++ggml_cgraph * mtmd_graph_inkling2v::build() {
++    const int n_pos = n_patches + 1;
++    auto * pos_w = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, n_pos);
++    ggml_set_name(pos_w, "pos_w");
++    ggml_set_input(pos_w);
++    auto * pos_h = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, n_pos);
++    ggml_set_name(pos_h, "pos_h");
++    ggml_set_input(pos_h);
++
++    auto * cur = build_inp();
++    cb(cur, "patch_embd", -1);
++    cur = ggml_add(ctx0, cur, resize_position_embeddings(GGML_SCALE_MODE_BILINEAR));
++    auto * cls = ggml_add(ctx0, model.class_embedding, model.class_position_embedding);
++    cur = ggml_concat(ctx0, cls, cur, 1);
++    cb(cur, "embeddings", -1);
++
++    auto add_pos = [&](ggml_tensor * x, const mtmd_layer &) {
++        return build_rope_2d(ctx0, x, pos_w, pos_h, hparams.rope_theta, false);
++    };
++    cur = build_vit(cur, n_pos, NORM_TYPE_NORMAL, hparams.ffn_op, nullptr, add_pos);
++    cb(cur, "encoder_out", -1);
++
++    // remove CLS token
++    cur = ggml_view_2d(ctx0, cur, n_embd, n_patches, cur->nb[1], cur->nb[1]);
++    cur = build_patch_merge_permute(cur, hparams.n_merge);
++    cur = build_ffn(cur, model.mm_1_w, model.mm_1_b, nullptr, nullptr, model.mm_2_w, model.mm_2_b, FFN_GELU_ERF, -1);
++    cb(cur, "projected", -1);
++    ggml_build_forward_expand(gf, cur);
++    return gf;
++}
+diff --git a/tools/mtmd/models/models.h b/tools/mtmd/models/models.h
+index 4f68462..58a8337 100644
+--- a/tools/mtmd/models/models.h
++++ b/tools/mtmd/models/models.h
+@@ -628,3 +628,8 @@ struct mtmd_graph_muse_glimmer : mtmd_graph {
+     mtmd_graph_muse_glimmer(mtmd_subcontext * ctx, const mtmd_image_f32 & img) : mtmd_graph(ctx, img) {}
+     ggml_cgraph * build() override;
+ };
++
++struct mtmd_graph_inkling2v : mtmd_graph {
++    using mtmd_graph::mtmd_graph;
++    ggml_cgraph * build() override;
++};
+diff --git a/tools/mtmd/mtmd-graph.cpp b/tools/mtmd/mtmd-graph.cpp
+index 7388371..01c4c0a 100644
+--- a/tools/mtmd/mtmd-graph.cpp
++++ b/tools/mtmd/mtmd-graph.cpp
+@@ -825,6 +825,10 @@ std::unique_ptr<mtmd_graph> mtmd_get_graph_builder(mtmd_subcontext * ctx, const
+             {
+                 builder = std::make_unique<mtmd_graph_minimax_m3>(ctx, img);
+             } break;
++        case PROJECTOR_TYPE_INKLING2V:
++            {
++                builder = std::make_unique<mtmd_graph_inkling2v>(ctx, img);
++            } break;
+         case PROJECTOR_TYPE_MUSE_GLIMMER:
+             {
+                 builder = std::make_unique<mtmd_graph_muse_glimmer>(ctx, img);
+diff --git a/tools/mtmd/mtmd-image.cpp b/tools/mtmd/mtmd-image.cpp
+index 33ce243..c69930f 100644
+--- a/tools/mtmd/mtmd-image.cpp
++++ b/tools/mtmd/mtmd-image.cpp
+@@ -2145,6 +2145,49 @@ mtmd_image_preproc_out mtmd_image_preprocessor_muse_glimmer::preprocess(const mt
+     return output;
+ }
+ 
++//
++// mtmd_image_preprocessor_inkling2v
++//
++
++mtmd_image_preproc_out mtmd_image_preprocessor_inkling2v::preprocess(const mtmd_image_u8 & input) const {
++    const int align = hparams.patch_size * hparams.n_merge;
++    auto size = input.get_size();
++    mtmd_image_u8 resized;
++    const bool too_large = hparams.image_max_pixels > 0 &&
++        int64_t(MTMD_ALIGN(size.width, align)) * MTMD_ALIGN(size.height, align) > hparams.image_max_pixels;
++    if (too_large) {
++        // the reference does not resize; this only bounds the number of image tokens
++        img_tool::calc_size_opt opts;
++        opts.align_size = align;
++        opts.max_pixels = hparams.image_max_pixels;
++        size = img_tool::calc_size_preserved_ratio(size, opts);
++        img_tool::resize(input, resized, size, hparams.image_resize_algo, PAD_NONE);
++    }
++    const mtmd_image_u8 & img = too_large ? resized : input;
++    const int width  = MTMD_ALIGN(size.width,  align);
++    const int height = MTMD_ALIGN(size.height, align);
++    mtmd_image_f32 padded;
++    padded.set_size({width, height}, img.is_placeholder(), false);
++    if (!img.is_placeholder()) {
++        std::vector<float> pixels(size_t(width) * height * 3, -1.0f);
++        const auto & src = img.get_ro_buf();
++        for (int y = 0; y < size.height; ++y) {
++            std::copy_n(src.begin() + size_t(y) * size.width * 3, size_t(size.width) * 3, pixels.begin() + size_t(y) * width * 3);
++        }
++        padded.cpy_buf(pixels);
++        // Match the reference's fused rescale and normalization, including negative padding.
++        float mean[3], std[3];
++        for (int c = 0; c < 3; ++c) {
++            mean[c] = hparams.image_mean[c] * 255.0f;
++            std[c] = hparams.image_std[c] * 255.0f;
++        }
++        padded.normalize(mean, std);
++    }
++    mtmd_image_preproc_out result;
++    result.append(hparams, padded, false);
++    return result;
++}
++
+ //#define MTMD_DEBUG_FUNCTIONS
+ 
+ #ifdef MTMD_DEBUG_FUNCTIONS
+diff --git a/tools/mtmd/mtmd-image.h b/tools/mtmd/mtmd-image.h
+index 3e0b127..b11f001 100644
+--- a/tools/mtmd/mtmd-image.h
++++ b/tools/mtmd/mtmd-image.h
+@@ -352,3 +352,9 @@ struct mtmd_image_preprocessor_muse_glimmer : mtmd_image_preprocessor {
+     mtmd_image_preprocessor_muse_glimmer(const mtmd_model * model) : mtmd_image_preprocessor(model) {}
+     mtmd_image_preproc_out preprocess(const mtmd_image_u8 & img) const override;
+ };
++
++// pad bottom-right to a multiple of patch_size*n_merge; resize only if the image is above image_max_pixels
++struct mtmd_image_preprocessor_inkling2v : mtmd_image_preprocessor {
++    using mtmd_image_preprocessor::mtmd_image_preprocessor;
++    mtmd_image_preproc_out preprocess(const mtmd_image_u8 & img) const override;
++};
+diff --git a/tools/mtmd/mtmd-impl.h b/tools/mtmd/mtmd-impl.h
+index 9d447a0..e2157f7 100644
+--- a/tools/mtmd/mtmd-impl.h
++++ b/tools/mtmd/mtmd-impl.h
+@@ -124,6 +124,7 @@
+ 
+ #define TN_POS_EMBD        "%s.position_embd.weight"
+ #define TN_CLASS_EMBD      "v.class_embd"
++#define TN_CLASS_POS_EMBD  "v.class_position_embd.weight"
+ #define TN_PATCH_EMBD      "v.patch_embd.weight"  // not rename tensor with ".0" postfix for backward compat
+ #define TN_PATCH_EMBD_1    "v.patch_embd.weight.1"
+ #define TN_PATCH_BIAS      "v.patch_embd.bias"
+@@ -577,6 +578,7 @@ enum projector_type {
+     PROJECTOR_TYPE_MUSE_SPARK_AUDIO,
+     PROJECTOR_TYPE_CHATTERBOX,
+     PROJECTOR_TYPE_CHATTERBOX_SPKENC,
++    PROJECTOR_TYPE_INKLING2V,
+     PROJECTOR_TYPE_UNKNOWN,
+ };
+ 
+@@ -664,6 +666,7 @@ static std::map<projector_type, std::string> PROJECTOR_TYPE_NAMES = {
+     { PROJECTOR_TYPE_MUSE_SPARK_AUDIO,  "muse-spark-audio"},
+     { PROJECTOR_TYPE_CHATTERBOX,        "chatterbox"},
+     { PROJECTOR_TYPE_CHATTERBOX_SPKENC, "chatterbox_spkenc"},
++    { PROJECTOR_TYPE_INKLING2V,         "inkling2v"},
+ };
+ 
+ static projector_type projector_type_from_string(const std::string & str) {
+diff --git a/tools/mtmd/mtmd-model.cpp b/tools/mtmd/mtmd-model.cpp
+index da74ed3..c4e5bbd 100644
+--- a/tools/mtmd/mtmd-model.cpp
++++ b/tools/mtmd/mtmd-model.cpp
+@@ -784,6 +784,15 @@ struct mtmd_model_loader {
+                         }
+                         hparams.warmup_audio_size = hparams.audio_samples_per_token();
+                     } break;
++                case PROJECTOR_TYPE_INKLING2V:
++                    {
++                        hparams.ffn_op = FFN_GELU_ERF;
++                        log_ffn_op = "gelu_erf";
++                        get_u32(KEY_SPATIAL_MERGE_SIZE, hparams.n_merge);
++                        hparams.rope_theta = 10000.0f;
++                        hparams.set_limit_image_tokens(1, 4096);
++                        hparams.set_warmup_n_tokens(32*32); // avoid OOM on warmup
++                    } break;
+                 case PROJECTOR_TYPE_MUSE_GLIMMER:
+                     {
+                         hparams.n_merge = 2; // pixel-shuffle downsample after the ViT
+@@ -1904,6 +1913,18 @@ struct mtmd_model_loader {
+                     model.mm_fc_w   = get_tensor(mtmd_format(TN_MM_AUDIO_FC, "weight"));
+                     model.mm_fc_b   = get_tensor(mtmd_format(TN_MM_AUDIO_FC, "bias"));
+                 } break;
++            case PROJECTOR_TYPE_INKLING2V:
++                {
++                    // these come from the generic path above, where they are optional
++                    if (!model.class_embedding || !model.position_embeddings || !model.pre_ln_w || !model.pre_ln_b) {
++                        throw std::runtime_error(mtmd_format("%s: missing class_embd, position_embd or pre_ln\n", __func__));
++                    }
++                    model.class_position_embedding = get_tensor(TN_CLASS_POS_EMBD);
++                    model.mm_1_w = get_tensor(mtmd_format(TN_LLAVA_PROJ, 1, "weight"));
++                    model.mm_1_b = get_tensor(mtmd_format(TN_LLAVA_PROJ, 1, "bias"), false);
++                    model.mm_2_w = get_tensor(mtmd_format(TN_LLAVA_PROJ, 2, "weight"));
++                    model.mm_2_b = get_tensor(mtmd_format(TN_LLAVA_PROJ, 2, "bias"), false);
++                } break;
+             case PROJECTOR_TYPE_MUSE_GLIMMER:
+                 {
+                     // 3-linear MLP: fc -> erf-GELU -> proj -> erf-GELU -> vision_proj (into LLM residual dim)
+@@ -3806,6 +3827,7 @@ int mtmd_model::n_output_tokens_x(const mtmd_image_f32 * img) const {
+         case PROJECTOR_TYPE_MINICPMV4_6:
+         case PROJECTOR_TYPE_MINICPMV4_7:
+         case PROJECTOR_TYPE_MINICPM_OCR_1_0:
++        case PROJECTOR_TYPE_INKLING2V:
+             return img->nx() / (params.patch_size * params.n_merge);
+         case PROJECTOR_TYPE_DEEPSEEKOCR:
+         case PROJECTOR_TYPE_DEEPSEEKOCR2:
+@@ -3840,6 +3862,7 @@ int mtmd_model::n_output_tokens_y(const mtmd_image_f32 * img) const {
+         case PROJECTOR_TYPE_MINICPMV4_6:
+         case PROJECTOR_TYPE_MINICPMV4_7:
+         case PROJECTOR_TYPE_MINICPM_OCR_1_0:
++        case PROJECTOR_TYPE_INKLING2V:
+             return img->ny() / (params.patch_size * params.n_merge);
+         default:
+             break;
+@@ -3931,6 +3954,7 @@ int mtmd_model::n_output_tokens(const mtmd_image_f32 * img) const {
+                 n_patches = x_patch * y_patch;
+             } break;
+         case PROJECTOR_TYPE_STEP3VL:
++        case PROJECTOR_TYPE_INKLING2V:
+             {
+                 int x_patch = img->nx() / (params.patch_size * params.n_merge);
+                 int y_patch = img->ny() / (params.patch_size * params.n_merge);
+@@ -4247,6 +4271,7 @@ int mtmd_model::n_mmproj_embd() const {
+         case PROJECTOR_TYPE_MINIMAX_M3:
+             return mm_merger_fc2_b->ne[0];
+         case PROJECTOR_TYPE_MUSE_GLIMMER:
++        case PROJECTOR_TYPE_INKLING2V:
+             return mm_2_w->ne[1];
+         case PROJECTOR_TYPE_QWEN2VL:
+         case PROJECTOR_TYPE_QWEN25VL:
+diff --git a/tools/mtmd/mtmd-model.h b/tools/mtmd/mtmd-model.h
+index 0d975ba..b27b1c0 100644
+--- a/tools/mtmd/mtmd-model.h
++++ b/tools/mtmd/mtmd-model.h
+@@ -898,6 +898,7 @@ struct mtmd_model {
+ 
+     // embeddings
+     ggml_tensor * class_embedding = nullptr;
++    ggml_tensor * class_position_embedding = nullptr;
+     ggml_tensor * patch_embeddings_0 = nullptr;
+     ggml_tensor * patch_embeddings_1 = nullptr;  // additional patch kernel; interpretation is model-specific (Qwen2VL, Nemotron Omni)
+     ggml_tensor * patch_bias = nullptr;
+diff --git a/tools/mtmd/mtmd-subcontext.cpp b/tools/mtmd/mtmd-subcontext.cpp
+index 7f13b7f..798d875 100644
+--- a/tools/mtmd/mtmd-subcontext.cpp
++++ b/tools/mtmd/mtmd-subcontext.cpp
+@@ -800,6 +800,19 @@ bool mtmd_subcontext::encode(mtmd_subctx_encode_params * params) {
+                 tail.resize(hparams.n_embd, 0.0f);
+                 set_input_f32("inp_stem_tail", tail);
+             } break;
++        case PROJECTOR_TYPE_INKLING2V:
++            {
++                // CLS is at position 0, the patches are 1-indexed
++                std::vector<int32_t> positions_w{0}, positions_h{0};
++                for (int y = 0; y < pos_h; ++y) {
++                    for (int x = 0; x < pos_w; ++x) {
++                        positions_w.push_back(x + 1);
++                        positions_h.push_back(y + 1);
++                    }
++                }
++                set_input_i32("pos_w", positions_w);
++                set_input_i32("pos_h", positions_h);
++            } break;
+         case PROJECTOR_TYPE_MUSE_GLIMMER:
+             {
+                 const int grid_w = pos_w;            // image_size_width  / patch_size
+diff --git a/tools/mtmd/mtmd.cpp b/tools/mtmd/mtmd.cpp
+index 9b45d3d..63a8e39 100644
+--- a/tools/mtmd/mtmd.cpp
++++ b/tools/mtmd/mtmd.cpp
+@@ -905,6 +905,12 @@ struct mtmd_context {
+                     img_end = "</img>";
+                     image_preproc = std::make_unique<mtmd_image_preprocessor_dyn_size>(models.v.get());
+                 } break;
++            case PROJECTOR_TYPE_INKLING2V:
++                {
++                    // the chat template code gives the image its own message block
++                    img_beg = "<|content_image|>";
++                    image_preproc = std::make_unique<mtmd_image_preprocessor_inkling2v>(models.v.get());
++                } break;
+             case PROJECTOR_TYPE_MUSE_GLIMMER:
+                 {
+                     img_beg = "<|image_start|>";
+diff --git a/tests/test-llama-archs.cpp b/tests/test-llama-archs.cpp
+index 4366f7e..53e54d1 100644
+--- a/tests/test-llama-archs.cpp
++++ b/tests/test-llama-archs.cpp
+@@ -337,6 +337,11 @@ static gguf_context_ptr get_gguf_ctx(const llm_arch arch, const bool moe, const
+         n_vocab = 3072; // TODO: should be 4096, but user code cannot get `n_vocab_out` yet [TAG_LLAMA_N_VOCAB_OUT]
+     } else if (arch == LLM_ARCH_HRM_TEXT) {
+         n_layer = 6; // 1 layer per stack x 2 h-cycles x (2 l-cycles + 1) cache slots
++    } else if (arch == LLM_ARCH_INKLING2 || arch == LLM_ARCH_INKLING2_LOOP) {
++        n_embd  = 128;
++        n_head  = 4;
++        n_ff    = 24;
++        n_layer = 3;
+     }
+ 
+     uint32_t n_head_kv = n_head;
+@@ -730,6 +735,40 @@ static gguf_context_ptr get_gguf_ctx(const llm_arch arch, const bool moe, const
+         ms.add_kv(LLM_KV_MUDD_TAP_INDICES,            std::vector<int32_t>({-1, -1, -1, -1, 0, 2, 1, 3}));
+     }
+ 
++    if (arch == LLM_ARCH_INKLING2 || arch == LLM_ARCH_INKLING2_LOOP) {
++        const bool loop = arch == LLM_ARCH_INKLING2_LOOP;
++        ms.add_kv(LLM_KV_ATTENTION_RELATIVE_LENGTH,   uint32_t(4));
++        ms.add_kv(LLM_KV_ATTENTION_RELATIVE_EXTENT,   uint32_t(16));
++        ms.add_kv(LLM_KV_ATTENTION_QK_CLIP,           0.25f);
++        ms.add_kv(LLM_KV_ATTENTION_RELATIVE_CLIP,     0.1f);
++        ms.add_kv(LLM_KV_ATTENTION_LOG_SCALE_FLOOR,   uint32_t(4));
++        ms.add_kv(LLM_KV_ATTENTION_LOG_SCALE_ALPHA,   0.1f);
++        ms.add_kv(LLM_KV_ATTN_RES_BLOCK_SIZE,         uint32_t(2));
++        if (loop) {
++            // prelude 0, core 1, coda 2; the loader adds slot 3 for the second pass over the core
++            ms.add_kv(LLM_KV_LOOP_START,     uint32_t(1));
++            ms.add_kv(LLM_KV_LOOP_END,       uint32_t(2));
++            ms.add_kv(LLM_KV_LOOP_COUNT,     uint32_t(2));
++            ms.add_kv(LLM_KV_LOOP_GATE_RANK, uint32_t(8));
++            ms.add_kv(LLM_KV_LOOP_VARYING,   false);
++        }
++        ms.add_kv(LLM_KV_SHORTCONV_L_CACHE,           uint32_t(4));
++        ms.add_kv(LLM_KV_VOCAB_SIZE,                  n_vocab + 2);
++        ms.add_kv(LLM_KV_VOCAB_SIZE_UNPADDED,         n_vocab);
++        ms.add_kv(LLM_KV_ACTIVATION_SITU_BETA,        0.2f);
++        ms.add_kv(LLM_KV_ACTIVATION_SITU_LINEAR_BETA, 0.3f);
++        ms.add_kv(LLM_KV_EXPERT_WEIGHTS_SCALE,        8.0f);
++        ms.add_kv(LLM_KV_FINAL_LOGIT_SOFTCAPPING,     30.0f);
++        ms.add_kv(LLM_KV_EXPERT_COUNT,                uint32_t(4));
++        ms.add_kv(LLM_KV_EXPERT_USED_COUNT,           uint32_t(2));
++        std::vector<bool> pattern(n_layer);
++        for (uint32_t i = 0; i < n_layer; ++i) {
++            pattern[i] = i % 2 == 0;
++        }
++        std::vector<uint8_t> values(pattern.begin(), pattern.end());
++        gguf_set_arr_data(ret.get(), llama_arch_kv_name(arch, LLM_KV_ATTENTION_SLIDING_WINDOW_PATTERN).c_str(), GGUF_TYPE_BOOL, values.data(), values.size());
++    }
++
+     // dummy tokenizer: token ids are derived from fixed-size chunks and detokenized as hex ids
+     {
+         std::vector<std::string> tokenizer_list(n_vocab);
+@@ -823,7 +862,8 @@ static gguf_context_ptr get_gguf_ctx(const llm_arch arch, const bool moe, const
+     ms.add_kv(LLM_KV_WKV_HEAD_SIZE,               n_embd/n_head);
+     ms.add_kv(LLM_KV_SHORTCONV_L_CACHE,           uint32_t(3));
+     ms.add_kv(LLM_KV_RESIDUAL_SCALE,              3.5565588200778455f);
+-    ms.add_kv(LLM_KV_ATTN_RES_BLOCK_SIZE,         uint32_t(12));
++    // the inkling2_loop core boundaries must be multiples of the block size
++    ms.add_kv(LLM_KV_ATTN_RES_BLOCK_SIZE,         uint32_t(arch == LLM_ARCH_INKLING2_LOOP ? 1 : 12));
+     ms.add_kv(LLM_KV_ACTIVATION_SITU_BETA,        4.0f);
+     ms.add_kv(LLM_KV_ACTIVATION_SITU_LINEAR_BETA, 25.0f);
+     ms.add_kv(LLM_KV_KDA_GATE_LOWER_BOUND,        -5.0f);
+@@ -1087,6 +1127,8 @@ static bool moe_mandatory(const llm_arch arch) {
+         case LLM_ARCH_MUSE_SPARK:
+         case LLM_ARCH_KOLIBRI1:
+         case LLM_ARCH_METIS16:
++        case LLM_ARCH_INKLING2:
++        case LLM_ARCH_INKLING2_LOOP:
+             return true;
+         default:
+             return false;
