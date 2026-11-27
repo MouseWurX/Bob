@@ -94,7 +94,9 @@ check "MoE cache, half the misses on the processor: same words" "$(cmp -s be-car
 grep -h "MoE cache size\|slots (\|hit rate" be-cache0.log | sed 's/^/    /'
 
 log "5: a 16 GB card"
-run be be-16g -ngl 99 --fit on --fit-target 512 -c 32768
+# a 16 GB card on a bigger one: --fit leaves --fit-target MiB free, so leave all but 15.5 GB (less what's in use now)
+read -r FREE USED <<< "$(nvidia-smi --query-gpu=memory.free,memory.used --format=csv,noheader,nounits | head -1 | tr -d ',')"
+run be be-16g -ngl 99 --fit on --fit-target $(( FREE - (15872 - USED) )) -c 32768
 check "fits 15.5 GB (peak $(cat be-16g.peak) MiB)" "$( [ "$(cat be-16g.peak)" -le 15872 ] && echo 1 )"
 
 log "6: DSpark guess-ahead"
@@ -110,7 +112,19 @@ done
 
 log "perplexity (wikitext-2 test, 32 chunks of 512)"
 if [ ! -f wiki.test.raw ]; then
-  python3 -c "from huggingface_hub import hf_hub_download as d; import shutil; shutil.copy(d('ggml-org/ci', 'wikitext-2-raw/wiki.test.raw', repo_type='dataset'), 'wiki.test.raw')" || true
+  # ggml-org/ci keeps it in a zip now (the loose file is gone, 404); Salesforce/wikitext's parquet is the fallback
+  python3 - <<'EOF2' || true
+import io, zipfile
+from huggingface_hub import hf_hub_download as d
+try:
+    z = zipfile.ZipFile(d('ggml-org/ci', 'wikitext-2-raw-v1.zip', repo_type='dataset'))
+    open('wiki.test.raw', 'wb').write(z.read('wikitext-2-raw/wiki.test.raw'))
+except Exception as e:
+    print('ggml-org/ci zip failed:', e)
+    import pyarrow.parquet as pq
+    t = pq.read_table(d('Salesforce/wikitext', 'wikitext-2-raw-v1/test-00000-of-00001.parquet', repo_type='dataset'))
+    open('wiki.test.raw', 'w', encoding='utf-8').write(''.join(t.column('text').to_pylist()))
+EOF2
 fi
 if [ -f wiki.test.raw ]; then
   for eng in up be; do
