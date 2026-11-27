@@ -51,6 +51,8 @@ export function replyEnd({ done = false, finish = '' } = {}) {
 export const CUT_CALL = (name) => `(Not run: your reply hit the length limit and this ${name || 'tool'} call was cut off part way. Send it again, shorter; split big text into smaller pieces.)`;
 // What the person sees under a reply that stopped at the length limit (never sent to the brain).
 export const CUT_REPLY_NOTE = 'This answer hit the length limit and stopped there. Say "go on" for the rest.';
+// Nov 24: what the person sees under a reply that was stopped because it kept writing the same words over and over.
+export const REPEAT_REPLY_NOTE = 'I got stuck writing the same words over and over, so I stopped there. Ask again, or try a bigger brain for it.';
 export const EARLY_END = 'terminated: the reply stopped before its end mark';
 
 // ---------------------------------------------------------------------------------------------------------------

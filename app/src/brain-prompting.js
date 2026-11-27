@@ -33,7 +33,7 @@ import { stopWordsOn, LINES as STOP_LINES } from './stop-words.js';
 import { waitingFor, sortMessage, WAITS_LINE, QUEUED_LINE, quickPrompt, jobLine, quickHistory, maybeTag, replyTag } from './mid-job.js';
 import { noteWait } from './loop-guard.js';
 import { newMsgId } from './chats.js';
-import { CUT_REPLY_NOTE, CUT_CALL, raceTimeout } from './hang-guard.js';
+import { CUT_REPLY_NOTE, REPEAT_REPLY_NOTE, CUT_CALL, raceTimeout } from './hang-guard.js';
 import { fixCalls, togetherCalls, nearKey, GroupVectors, meaningPick } from './loop-help.js';
 import { riskOf, NOT_FOR_JOB, NOT_OFFERED } from './tool-kinds.js';
 import { gaming } from './sessions.js';
@@ -281,12 +281,14 @@ export const promptParts = {
   },
   // Item 210: an answer that stopped at the length limit says so under it (the person's note, not the brain's), once.
   cutNote(reply, emit) {
-    if (reply?.cut !== 'length') return;
+    if (reply?.cut !== 'length' && reply?.cut !== 'repeat') return;
+    const looped = reply.cut === 'repeat'; // Nov 24: stopped for repeating itself (llamacpp.js repeating), said loudly
     delete reply.cut;
-    if (reply.tool_calls?.length) return; // a cut call gets its own line back (mendCalls)
-    this.log('chat', 'the answer hit the length limit');
-    emit?.({ type: 'correction', text: CUT_REPLY_NOTE });
-    reply.correction = reply.correction ? `${reply.correction}\n${CUT_REPLY_NOTE}` : CUT_REPLY_NOTE;
+    if (reply.tool_calls?.length && !looped) return; // a cut call gets its own line back (mendCalls)
+    const note = looped ? REPEAT_REPLY_NOTE : CUT_REPLY_NOTE;
+    this.log(looped ? 'warn' : 'chat', looped ? 'the answer kept repeating the same words and was stopped' : 'the answer hit the length limit');
+    emit?.({ type: 'correction', text: note });
+    reply.correction = reply.correction ? `${reply.correction}\n${note}` : note;
   },
   helpOff(name) { const o = this.cfg?.loopHelpOff; return this.cfg?.toolHelp === false || o === true || (Array.isArray(o) && o.includes(name)); },
   // Nov 11 (loop-help.js): check each call against its tool before it runs. Sure fixes are made (mended JSON, a field

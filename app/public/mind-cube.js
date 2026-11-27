@@ -11,6 +11,10 @@ import { createFog } from './fog.js';
 import { specialise, liveRecording, partOf, PART_LABEL, say, NAME, mapLook, litSkills, lookOf, LOAD_STYLES, loadStyle, UNLOAD_STYLES, unloadStyle } from './lab-watch-math.js';
 
 const SPECIAL = /<\|[^|>]*\|>|<\/?think>/gi;
+// Nov 23 2026 (the owner: "lose the animation, let the live experts fNRI voxel cube map be in the porthole"): Real
+// experts is on to begin with, so Bob's picture shows the experts he really uses. Switch it off in Bob's thinking or
+// Bob's menu. The corner cube stops listening while Bob's window is hidden or minimised, so nothing is traced then.
+export const CUBE_LIVE_DEFAULT = '1';
 export const CUBE_SPEED = 28; // words a second (Nov 16 2026, the owner: at least broadcast rate; was 14)
 export const SHOW_MS = 35; // the made-up glow and the live picks: a new frame about every 35 ms (28 a second; was 70), and nothing drawn while Bob is idle
 export const SHOW_TRAIL = 12; // words of fading trail: twice as many at twice the rate, so it fades over the same time
@@ -71,9 +75,11 @@ export const CUBE_IN_MS = 1600, CUBE_OUT_MS = 1100, VASE_IN_MS = 3200, DRAIN_OUT
 // The colours: when this brain has an fNRI scan, Bob sends that scan's map along and every expert gets its skill's
 // colour (all-rounders a dashed white outline); with no scan the cube is one colour and says how to get the rest.
 // els: { box, canvas, says, open, key, mono, colour, colourBox, details, load, unload, loadBox, spin, lines, linesBox }. still() = animations are off (the last word is shown, nothing moves).
-export function createMindCube({ box, canvas, says, open, key = null, mono = null, colour = null, colourBox = null, details = null, load = null, unload = null, loadBox = null, spin = null, lines = null, linesBox = null }, { still = () => false, onWhy = null, live = () => false, EventSourceImpl = globalThis.EventSource, avatar = false, lamp = () => false } = {}) { // lamp(): this cube drives the room's lamplight (--cube-light)
-  // avatar: Bob's picture in the corner is this cube (Style, Bob's look). Drawn small and never turning, so it costs
-  // less than the pixel Bob it stands in for; the same life (builds on load, sparks, glows while he thinks, drains).
+export function createMindCube({ box, canvas, says, open, key = null, mono = null, colour = null, colourBox = null, details = null, load = null, unload = null, loadBox = null, spin = null, lines = null, linesBox = null }, { still = () => false, onWhy = null, live = () => false, EventSourceImpl = globalThis.EventSource, avatar = false, lamp = () => false, plain = avatar } = {}) { // lamp(): this cube drives the room's lamplight (--cube-light)
+  // avatar: Bob's picture in the corner is this cube (Style, Bob's look). Drawn small (and since Nov 23 turning slowly,
+  // redrawn 10 times a second). plain (Nov 23, the corner cube): no made-up animation at all, no drifting
+  // fog, sparks, pulse, ripple or glow for show. It builds as a brain loads, drains as it goes, and lights up only with
+  // the experts he really uses (Real experts); with that off it rests as the brain's still shape.
   const view = createView(canvas, { min: [32, 32] }); // square: the porthole is round
   let es = null, traces = [], rec = null, sp = null, clip = -1, t = 0, raf = 0, last = 0, why = '', look = null;
   // Before the first reply (and on an engine that can't report experts) the cube is the brain's empty shape in one
@@ -87,7 +93,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   let phase = 'idle', busy = false, show = [], showTimer = 0, sparkTimer = 0, showing = false;
   const pulse = (on) => box.classList.toggle('pulse', on);
   const loadingHere = () => Boolean(shell && loadingNow && loadingNow === shell.label);
-  const repulse = () => pulse(cubePulse({ phase, live: live(), rec: Boolean(rec), loading: loadingHere() }));
+  const repulse = () => pulse(!plain && cubePulse({ phase, live: live(), rec: Boolean(rec), loading: loadingHere() }));
   // 1.5.210 The porthole: the cube is seen through a round window into a foggy room. The fog (public/fog.js) has its own
   // canvas behind the cube's and moves all the time the porthole shows, brain or no brain; the cube only moves while a
   // brain is loaded. The experts as they fire light the fog in their colour.
@@ -97,7 +103,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   // Light effects, all cheap (CSS, or the frames already drawn): a ripple across the glass when a message arrives, the
   // rim catching the colour of the experts firing, the fog brightening as a brain loads and dimming as it goes.
   let glintTimer = 0;
-  const glint = (c, s) => { if (still()) return; port.style.setProperty('--glint', c); port.style.setProperty('--glint-a', String(Math.min(1, s))); clearTimeout(glintTimer); glintTimer = setTimeout(() => port.style.setProperty('--glint-a', '0'), 600); };
+  const glint = (c, s) => { if (still() || plain) return; port.style.setProperty('--glint', c); port.style.setProperty('--glint-a', String(Math.min(1, s))); clearTimeout(glintTimer); glintTimer = setTimeout(() => port.style.setProperty('--glint-a', '0'), 600); };
   // The lamplight (1.5.210): the soft glow the porthole throws on the room around it, as --cube-light (0..1) on the page,
   // for the look's CSS to read. It rests low with a very slow pulse and the odd spark, follows how much of the cube is
   // lit while he thinks (more lit, brighter, never past a soft glow, with a candle's flicker), sinks almost to nothing
@@ -118,8 +124,8 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     if (st !== lampState) { lampState = st; try { globalThis.dispatchEvent?.(new CustomEvent('bob-cube-state', { detail: { state: st } })); } catch {} }
     litSmooth += (litShare - litSmooth) * Math.min(1, dt * 4);
     let want = st === 'none' || st === 'unloading' ? LAMP.none : st === 'loading' ? LAMP.rest * Math.max(0.3, view.reveal?.() ?? 1)
-      : LAMP.rest + 0.025 * Math.sin(lampT * 0.6) + (LAMP.top - LAMP.rest) * litSmooth;
-    if (st === 'thinking' && !still()) want += (Math.random() - 0.5) * 0.06 * (0.3 + litSmooth); // the flicker
+      : LAMP.rest + (plain ? 0 : 0.025 * Math.sin(lampT * 0.6)) + (LAMP.top - LAMP.rest) * litSmooth; // plain: no slow pulse, no flicker, only the real firing
+    if (st === 'thinking' && !still() && !plain) want += (Math.random() - 0.5) * 0.06 * (0.3 + litSmooth); // the flicker
     want = Math.min(LAMP.top, want);
     lampNow += (want - lampNow) * Math.min(1, dt * (st === 'unloading' ? 1.5 : 3)); // eases, never jumps
     try { document.documentElement.style.setProperty('--cube-light', lampNow.toFixed(3)); } catch {}
@@ -127,21 +133,32 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   const toHex = (c) => { const m = /rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i.exec(c || ''); return m ? '#' + [m[1], m[2], m[3]].map((v) => (+v).toString(16).padStart(2, '0')).join('') : String(c || '').trim(); };
   let roomAt = 0, roomNow = '';
   const room = () => { const t = performance.now(); if (t - roomAt > 1000) { roomAt = t; try { roomNow = toHex(getComputedStyle(document.body).getPropertyValue('--bg')); } catch {} } return roomNow; }; // the theme's background, read once a second
-  const fog = createFog(fogCanvas, { colour: () => view.oneColour(), room, still, onLight: glint, onFrame: lampTick });
-  const ripple = () => { if (still()) return; port.classList.remove('ripple'); void port.offsetWidth; port.classList.add('ripple'); setTimeout(() => port.classList.remove('ripple'), 1300); };
+  const fogStill = createFog(fogCanvas, { colour: () => view.oneColour(), room, still: plain ? () => true : still, onLight: plain ? null : glint, onFrame: plain ? null : lampTick });
+  // plain: the fog is one still frame (drawn on connect and on a theme change), never lit by the firing; the
+  // lamplight gets its own slow tick instead of riding on the fog's frames
+  const fog = plain ? { start: () => fogStill.start(), stop: () => fogStill.stop(), light() {}, redraw: () => fogStill.redraw() } : fogStill;
+  let lampIv = 0;
+  const LAMP_MS = 100;
+  const lampGo = () => { if (plain && !lampIv && lamp()) lampIv = setInterval(() => { if (!globalThis.document?.hidden) lampTick(LAMP_MS / 1000); }, LAMP_MS); };
+  const lampStop = () => { clearInterval(lampIv); lampIv = 0; };
+  const ripple = () => { if (still() || plain) return; port.classList.remove('ripple'); void port.offsetWidth; port.classList.add('ripple'); setTimeout(() => port.classList.remove('ripple'), 1300); };
   view.set({ glow: 0.6, glass: 0.3, edges: true }); // edges: a faint outline, so it reads as a cube. Glow: bright enough to see the experts in use, still short of the white flash (above 0.6)
-  view.set({ fog: true, fogLight: (c, s, x, y) => fog.light(c, s, x, y) }); // see-through, so the fog shows behind; the firing lights it
+  view.set({ fog: true, fogLight: plain ? null : (c, s, x, y) => fog.light(c, s, x, y) }); // see-through, so the fog shows behind; the firing lights it
   // Turning: on to begin with, at the big viewer's slowest speed (0.05 a second, about two minutes a turn). Remembered.
   // Never while animations are off.
   const SPIN = 0.05;
-  let turning = !avatar; try { if (!avatar) turning = localStorage.getItem('bob-cube-spin') !== '0'; } catch {}
+  // Nov 23 (the owner: "please?"): the corner cube turns too, at the same slow speed, redrawn only 10 times a second
+  // (SPIN_AVATAR_MS), which is plenty at that speed. One switch for both: Stop turning in Bob's thinking.
+  const SPIN_AVATAR_MS = 100;
+  let turning = true; try { turning = localStorage.getItem('bob-cube-spin') !== '0'; } catch {}
   let connected = false, spinRaf = 0, spinLast = 0;
   function spinTick(now) {
     spinRaf = 0;
     if (!connected || !turning || still() || (!rec && !shell)) { spinLast = 0; return; }
-    const dt = spinLast ? Math.min(0.1, Math.max(0, (now - spinLast) / 1000)) : 0; spinLast = now;
+    if (avatar && spinLast && now - spinLast < SPIN_AVATAR_MS) { spinRaf = requestAnimationFrame(spinTick); return; }
+    const dt = spinLast ? Math.min(0.25, Math.max(0, (now - spinLast) / 1000)) : 0; spinLast = now;
     view.set({ yaw: view.get().yaw + dt * SPIN });
-    if (!raf && !view.loading()) view.draw(rec ? lit() : showLit()); // while a reply plays, or the block builds, those frames draw it
+    if (!raf && !liveTimer && !view.loading()) view.draw(rec ? lit() : showLit()); // while a reply plays, or the block builds, those frames draw it
     spinRaf = requestAnimationFrame(spinTick);
   }
   const spinGo = () => { if (!spinRaf && connected && turning && !still() && (rec || shell) && globalThis.requestAnimationFrame) { spinLast = 0; spinRaf = requestAnimationFrame(spinTick); } };
@@ -174,7 +191,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   const tint = () => { if (ownColour) return; if (colour) colour.value = view.oneColour(); };
   tint();
   // The theme changed: the cube takes its new colour (and the new background) at once, resting or not
-  const retint = () => { tint(); view.set({}); if (rec) view.draw(lit()); else if (shell && !showTimer) view.draw([]); };
+  const retint = () => { tint(); fog.redraw?.(); view.set({}); if (rec) view.draw(lit()); else if (shell && !showTimer) view.draw([]); };
   try { if (globalThis.MutationObserver && document.documentElement) new MutationObserver(retint).observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class', 'data-theme'] }); } catch {}
   if (colour) colour.oninput = () => { if (keepC(colour.value)) { ownColour = true; try { localStorage.setItem('bob-cube-colour', colour.value); } catch {} if (rec) view.draw(lit()); } };
   // Hide details: only the picture stays (the colour choices go with the details). The words are still there for a screen reader.
@@ -195,6 +212,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
     if (!rec) {
       open.hidden = true; if (key) key.hidden = true;
       if (leaving && shell) { says.textContent = `Letting go of the brain.${shape} The cube takes itself apart.`; return; }
+      if (!live() && plain) { says.textContent = !shell && empty ? 'No brain is loaded right now: the porthole is empty. The cube builds itself when Bob loads one.' : shell ? (loadingNow === shell.label ? `Loading${shape}${loadPct >= 0 ? ` ${loadPct}% of it is in.` : ''}` : `${phase === 'wait' ? 'Thinking it over.' : busy ? 'Answering.' : 'Ready.'}${shape} Real experts is off, so the cube rests as the brain's shape. Switch it on in Bob's menu to see the experts he uses.`) : known && anyLoaded ? 'A brain is loaded, but Bob can\'t read its shape, so the cube has nothing to build.' : 'Waiting for Bob to load a brain. The cube builds itself when he does.'; return; }
       if (!live()) { says.textContent = !shell && empty ? 'No brain is loaded right now: only fog in the porthole. The cube builds itself when Bob loads one.' : shell ? (loadingNow === shell.label ? `Loading${shape}${loadPct >= 0 ? ` ${loadPct}% of it is in.` : ''} ${phase === 'wait' ? 'Your message waits until it is in.' : 'The cube glows while he thinks.'}` : phase === 'wait' ? `Thinking it over.${shape} The cube pulses until he starts to answer.` : busy ? `Answering.${shape} The glow is for show, not the experts he really uses (Real experts shows those).` : `Ready.${shape} The cube glows while he thinks.`) : known && anyLoaded ? 'A brain is loaded, but Bob can\'t read its shape, so the cube has nothing to build.' : 'Waiting for Bob to load a brain. The cube builds itself when he does, and glows while he thinks.'; return; }
       says.textContent = !shell && empty ? 'No brain is loaded right now: only fog in the porthole. The cube builds itself when Bob loads one.' : shell ? (loadingNow === shell.label ? `Loading${shape}${loadPct >= 0 ? ` ${loadPct}% of it is in.` : ''} The cube lights up with the experts he used when he finishes a reply.` : `Ready.${shape} The cube lights up with the experts he used when he finishes a reply.`) : 'Waiting for Bob\'s next reply. The cube lights up with the experts he used when he finishes it. Replies come slower while Real experts is on.'; return;
     }
@@ -236,7 +254,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   // Resting: mostly still, and every few seconds a few neurons fire and fade, for effect. Only while the section shows.
   function sparkSoon() {
     clearTimeout(sparkTimer); sparkTimer = 0;
-    if (!showing || phase !== 'idle' || live() || rec || still()) return;
+    if (plain || !showing || phase !== 'idle' || live() || rec || still()) return;
     sparkTimer = setTimeout(() => { sparkTimer = 0; if (!showing || phase !== 'idle' || rec || !shell || showTimer || still() || live()) { sparkSoon(); return; } show = [{ e: sparkWord(shell.layers, shell.experts), a: -1 }]; showTimer = setTimeout(showTick, 0); sparkSoon(); }, SPARK_MS[0] + Math.random() * (SPARK_MS[1] - SPARK_MS[0]));
   }
   function setPhase(p) {
@@ -247,7 +265,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   }
   function setBusy(on) {
     if (on === busy) { words(); return; } busy = on;
-    if (live() || rec || !shell) { words(); return; }
+    if (plain || live() || rec || !shell) { words(); return; }
     if (on) tint();
     if (still()) { show = []; view.draw(on ? [{ e: showWord(null, shell.layers, shell.experts, shell.used), age: 0 }] : []); words(); return; } // animations off: one still glow, nothing moves
     if (!showTimer) showTimer = setTimeout(showTick, 0);
@@ -331,7 +349,7 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
         fillWait = setTimeout(() => { if (filling === f && !f.got) view.sweep(1 - FILL_LAST, Math.max(FILL_STEP_MS, lastLoadMs(f.label) - (performance.now() - f.t0))); }, FILL_WAIT_MS); // this engine says nothing: fill by this brain's last load time
       } else view.sweep(1, inMs()).then(done); // found already loaded
     }
-    if (busy && !live() && !still() && !showTimer) showTimer = setTimeout(showTick, inMs()); // already thinking: the glow starts once the block is built
+    if (busy && !plain && !live() && !still() && !showTimer) showTimer = setTimeout(showTick, inMs()); // already thinking: the glow starts once the block is built
     words(); spinGo(); return true;
   }
   function gone(labels, shapes = null, loading = '') {
@@ -375,8 +393,8 @@ export function createMindCube({ box, canvas, says, open, key = null, mono = nul
   };
   return {
     name: NAME,
-    connect() { connected = true; showing = true; fog.start(); sparkSoon(); spinGo(); box.hidden = false; if (!es && EventSourceImpl) { es = new EventSourceImpl(live() ? '/api/events?cube=1&live=1' : '/api/events?cube=1'); es.onmessage = on; } words(); if (rec) view.draw(lit()); },
-    disconnect() { connected = false; fog.stop(); if (es) { es.close(); es = null; } cancelAnimationFrame(raf); raf = 0; cancelAnimationFrame(spinRaf); spinRaf = 0; stopShow(); busy = false; phase = 'idle'; pulse(false); showing = false; clearTimeout(sparkTimer); sparkTimer = 0; },
+    connect() { connected = true; showing = true; fog.start(); lampGo(); sparkSoon(); spinGo(); box.hidden = false; if (!es && EventSourceImpl) { es = new EventSourceImpl(live() ? '/api/events?cube=1&live=1' : '/api/events?cube=1'); es.onmessage = on; } words(); if (rec) view.draw(lit()); },
+    disconnect() { connected = false; fog.stop(); lampStop(); if (es) { es.close(); es = null; } cancelAnimationFrame(raf); raf = 0; cancelAnimationFrame(spinRaf); spinRaf = 0; stopShow(); busy = false; phase = 'idle'; pulse(false); showing = false; clearTimeout(sparkTimer); sparkTimer = 0; },
     // Real experts switched on or off: the real picture (if any) goes, and the brain's shape stays up for the next mode
     relive() { const had = Boolean(es); if (es) { es.close(); es = null; } cancelAnimationFrame(raf); raf = 0; stopShow(); busy = false; phase = 'idle'; pulse(false); why = '';
       if (rec) { gen++; rec = null; sp = null; look = null; traces = []; whose = ''; view.set({ reveal: 1 }); const c = canvas.getContext('2d'); c.clearRect(0, 0, canvas.width, canvas.height); showOne(); ready(lastShapes, lastLoading); } else if (shell) view.draw([]);

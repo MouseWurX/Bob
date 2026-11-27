@@ -109,6 +109,9 @@ try:
     n = ipl(err)
     check('on by default and says so', 'use the cached experts in place' in err, err[-400:])
     check('long reads read hits in place and upload misses', n[0] >= 2 and n[1] > 0 and n[2] > 0, f'{n}')
+    st = re.search(r"long reads' stops: (\d+) layer stops, the card waited for the host ([\d.]+) ms .*?of ([\d.]+) ms read\), uploads queued in line ([\d.]+) ms", err)
+    check('0110: the stop meter counts a stop for each cached layer of each read, inside the read\'s time',
+          st is not None and int(st.group(1)) >= n[0] and float(st.group(2)) < float(st.group(3)) and float(st.group(4)) > 0, st.group(0) if st else err[-300:])
     check('the zone\'s experts go back before writing', n[3] > 0 and n[4] > 0, f'{n}')
     check('the same words as with it off and without the cache', on == off == nocache and ok(on), f'{on} vs {off}')
     con, coff = cbuf(err), cbuf(oerr)

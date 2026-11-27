@@ -1,0 +1,340 @@
+diff --git a/common/sampling.cpp b/common/sampling.cpp
+index 0c66b37..e5b39ff 100644
+--- a/common/sampling.cpp
++++ b/common/sampling.cpp
+@@ -730,6 +730,86 @@ static float prob_of(const llama_token_data * data, size_t n, llama_token id) {
+     return 0.0f;
+ }
+ 
++// Brain Engine 0120: mode-biased accept (mb-MTP), after llamAmpere (github.com/JakeATX/llamAmpere, MIT,
++// common_sampler_verify_pq_impl): a draft token the exact rule rejects is kept anyway when the target rates it at
++// least as likely as the replacement drawn for it, never for an end-of-generation token on either side and never while
++// a grammar shapes the output. Off unless LLAMA_SPEC_MB=1. LLAMA_SPEC_MB_KL=N audits the first N drafted positions of
++// each process: KL(p || the mb law) per position, the drift meter. The audit draws no random numbers.
++bool common_sampler_mb_enabled() {
++    static const bool on = [] {
++        const char * e = getenv("LLAMA_SPEC_MB");
++        return e != nullptr && atoi(e) == 1;
++    }();
++    return on;
++}
++
++static thread_local common_sampler_mb_stats mb_stats_cur;
++
++common_sampler_mb_stats common_sampler_mb_take() {
++    const common_sampler_mb_stats out = mb_stats_cur;
++    mb_stats_cur = {};
++    return out;
++}
++
++static int32_t mb_kl_left() {
++    static int32_t left = [] {
++        const char * e = getenv("LLAMA_SPEC_MB_KL");
++        return e ? std::max(0, std::min(1000000, atoi(e))) : 0;
++    }();
++    return left > 0 ? left-- : 0;
++}
++
++// the law mb draws from at one drafted position (llamAmpere's common_sampler_pq_mode_distribution, kappa = alpha = 1):
++// exact emits p; mb moves each rejected-draft/replacement pair's joint mass excess[d] * residual[y] / total from y to d
++// when p(d) >= p(y). Adds KL(p || law) to the stats. Skipped on candidate lists over 4096 (it is quadratic).
++static void mb_audit(const std::vector<float> & p, const std::vector<float> & q, const std::vector<bool> & ends) {
++    const size_t n = p.size();
++    if (n == 0 || n > 4096) {
++        return;
++    }
++    std::vector<double> law(n), residual(n), excess(n);
++    double total = 0.0;
++    for (size_t k = 0; k < n; ++k) {
++        law[k]      = p[k];
++        residual[k] = std::max(0.0, (double) p[k] - q[k]);
++        excess[k]   = std::max(0.0, (double) q[k] - p[k]);
++        total      += residual[k];
++    }
++    if (total > 0.0) {
++        for (size_t d = 0; d < n; ++d) {
++            if (excess[d] <= 0.0 || p[d] <= 0.0f || ends[d]) {
++                continue;
++            }
++            for (size_t y = 0; y < n; ++y) {
++                if (residual[y] <= 0.0 || p[d] < p[y] || ends[y]) {
++                    continue;
++                }
++                const double moved = excess[d]*residual[y]/total;
++                law[d] += moved;
++                law[y] -= moved;
++            }
++        }
++    }
++    double kl = 0.0;
++    bool   inf = false;
++    for (size_t k = 0; k < n; ++k) {
++        if (p[k] <= 0.0f) {
++            continue;
++        }
++        if (law[k] <= 1e-12) {
++            inf = true;
++            break;
++        }
++        kl += p[k]*std::log(p[k]/law[k]);
++    }
++    mb_stats_cur.kl_n++;
++    if (inf) {
++        mb_stats_cur.kl_inf++;
++    } else {
++        mb_stats_cur.kl_sum += std::max(0.0, kl);
++    }
++}
++
+ // Accept a drafted token with probability min(1, p/q), else draw from norm(max(0, p - q)).
+ // Preserves the target distribution exactly, and accepts more often than matching does when the
+ // draft samples instead of taking its argmax.
+@@ -747,6 +827,10 @@ std::vector<llama_token> common_sampler_sample_and_accept_n_rejection(struct com
+ 
+     std::vector<llama_token_data> cand; // candidate array masked by the grammar, if there is one
+ 
++    // Brain Engine 0120
++    const bool          mb    = common_sampler_mb_enabled();
++    const llama_vocab * vocab = llama_model_get_vocab(llama_get_model(ctx));
++
+     size_t i = 0;
+     for (; i < draft.size(); i++) {
+         // leaves the target distribution in the candidate array
+@@ -792,6 +876,24 @@ std::vector<llama_token> common_sampler_sample_and_accept_n_rejection(struct com
+             }
+         }
+ 
++        // Brain Engine 0120: the drift audit, before any draw and drawing none, so it changes nothing
++        // (DSpark's q is dense, one entry per token, as below)
++        if (mb && mb_kl_left() > 0) {
++            bool qd = q.size() == (size_t) llama_vocab_n_tokens(vocab);
++            for (size_t k = 0; qd && k < q.size(); ++k) {
++                qd = q[k].id == (llama_token) k;
++            }
++            std::vector<float> pa(cur_p->size), qa(cur_p->size);
++            std::vector<bool>  ea(cur_p->size);
++            for (size_t k = 0; k < cur_p->size; ++k) {
++                const llama_token t = cur_p->data[k].id;
++                pa[k] = p_of(k);
++                qa[k] = qd && (size_t) t < q.size() ? q[t].p : prob_of(q.data(), q.size(), t);
++                ea[k] = llama_vocab_is_eog(vocab, t);
++            }
++            mb_audit(pa, qa, ea);
++        }
++
+         if (q_x > 0.0f && (p_x >= q_x || uni(gsmpl->rng) < p_x / q_x)) {
+             common_sampler_accept(gsmpl, draft[i], true);
+             result.push_back(draft[i]);
+@@ -803,30 +905,55 @@ std::vector<llama_token> common_sampler_sample_and_accept_n_rejection(struct com
+         for (size_t k = 0; dense && k < q.size(); ++k) {
+             dense = q[k].id == (llama_token) k;
+         }
++        // (Brain Engine 0120: the logit field carries each entry's p, for the mode-biased accept below)
+         residual.clear();
+         float sum = 0.0f;
+         for (size_t k = 0; k < cur_p->size; ++k) {
+             const llama_token id = cur_p->data[k].id;
+             const float r = p_of(k) - (dense && (size_t) id < q.size() ? q[id].p : prob_of(q.data(), q.size(), id));
+             if (r > 0.0f) {
+-                residual.push_back({ cur_p->data[k].id, 0.0f, r });
++                residual.push_back({ cur_p->data[k].id, p_of(k), r });
+                 sum += r;
+             }
+         }
+ 
+         llama_token id = id_tgt;
++        float p_id = -1.0f; // Brain Engine 0120: the replacement's p
+         if (sum > 0.0f) {
+             float u = uni(gsmpl->rng) * sum;
+-            id = residual.back().id;
++            id   = residual.back().id;
++            p_id = residual.back().logit;
+             for (const auto & e : residual) {
+                 u -= e.p;
+                 if (u <= 0.0f) {
+-                    id = e.id;
++                    id   = e.id;
++                    p_id = e.logit;
+                     break;
+                 }
+             }
+         }
+ 
++        // Brain Engine 0120: mode-biased accept. Keep the draft token when the target rates it at least as likely as
++        // the replacement, and go on checking the next one, as an accepted token would. Never for an end token on
++        // either side, never while a grammar shapes the output (tool calls, JSON answers stay exact).
++        if (mb && id != draft[i] && p_x > 0.0f && !llama_vocab_is_eog(vocab, draft[i]) && !llama_vocab_is_eog(vocab, id) &&
++                (gsmpl->grmr == nullptr || !grammar_should_apply(gsmpl) || llama_sampler_grammar_awaiting_trigger(gsmpl->grmr))) {
++            if (p_id < 0.0f) {
++                for (size_t k = 0; k < cur_p->size; ++k) {
++                    if (cur_p->data[k].id == id) {
++                        p_id = p_of(k);
++                        break;
++                    }
++                }
++            }
++            if (p_id >= 0.0f && p_x >= p_id) {
++                mb_stats_cur.n_rescued++;
++                common_sampler_accept(gsmpl, draft[i], true);
++                result.push_back(draft[i]);
++                continue;
++            }
++        }
++
+         common_sampler_accept(gsmpl, id, true);
+         result.push_back(id);
+ 
+diff --git a/common/sampling.h b/common/sampling.h
+index f19bd27..ef52309 100644
+--- a/common/sampling.h
++++ b/common/sampling.h
+@@ -86,6 +86,18 @@ llama_token common_sampler_sample(struct common_sampler * gsmpl, struct llama_co
+ std::vector<llama_token> common_sampler_sample_and_accept_n(struct common_sampler * gsmpl, struct llama_context * ctx, const std::vector<int> & idxs, const llama_tokens & draft, bool grammar_first = false);
+ 
+ // as above, but verifies by rejection sampling; draft_q holds the draft's candidates per token
++// Brain Engine 0120 (LLAMA_SPEC_MB=1, off unless set): the rejection path below also keeps a rejected draft token
++// when the target rates it at least as likely as its replacement (llamAmpere's mb-MTP). Changes words; Turbo only.
++// The counts since the last call (rescued tokens, and the LLAMA_SPEC_MB_KL drift audit), then zeroed.
++struct common_sampler_mb_stats {
++    int32_t n_rescued = 0;
++    int32_t kl_n      = 0;   // positions audited
++    int32_t kl_inf    = 0;   // of those, positions where mb makes a token p allows impossible
++    double  kl_sum    = 0.0; // sum of KL(p || mb law) over the finite ones, in nats
++};
++bool common_sampler_mb_enabled();
++common_sampler_mb_stats common_sampler_mb_take();
++
+ std::vector<llama_token> common_sampler_sample_and_accept_n_rejection(struct common_sampler * gsmpl, struct llama_context * ctx, const std::vector<int> & idxs, const llama_tokens & draft, const std::vector<std::vector<llama_token_data>> & draft_q, bool grammar_first = false);
+ 
+ // assume idxs == [ 0, 1, 2, ..., draft.size() ]
+diff --git a/include/llama.h b/include/llama.h
+index 09ac9ff..f996114 100644
+--- a/include/llama.h
++++ b/include/llama.h
+@@ -1623,6 +1623,10 @@ extern "C" {
+                const llama_token * trigger_tokens,
+                             size_t num_trigger_tokens);
+ 
++    /// Brain Engine 0120: true while this grammar sampler constrains nothing yet (a lazy grammar still waiting for its
++    /// trigger, or an empty grammar). False for a live grammar and for any other sampler (llguidance included).
++    LLAMA_API bool llama_sampler_grammar_awaiting_trigger(const struct llama_sampler * smpl);
++
+ 
+     /// NOTE: Avoid using on the full vocabulary as searching for repeated tokens can become slow. For example, apply top-k or top-p sampling first.
+     LLAMA_API struct llama_sampler * llama_sampler_init_penalties(
+diff --git a/src/llama-sampler.cpp b/src/llama-sampler.cpp
+index d8cd441..42793e9 100644
+--- a/src/llama-sampler.cpp
++++ b/src/llama-sampler.cpp
+@@ -2768,6 +2768,15 @@ static struct llama_sampler_i llama_sampler_grammar_i = {
+     /* .copy_state        = */ nullptr,
+ };
+ 
++// Brain Engine 0120: lets the mode-biased accept stay out of anything a grammar shapes (tool calls, JSON answers)
++bool llama_sampler_grammar_awaiting_trigger(const struct llama_sampler * smpl) {
++    if (smpl == nullptr || smpl->iface != &llama_sampler_grammar_i) {
++        return false;
++    }
++    const auto * ctx = (const llama_sampler_grammar *) smpl->ctx;
++    return ctx->grammar == nullptr || ctx->grammar->awaiting_trigger;
++}
++
+ static struct llama_sampler * llama_sampler_init_grammar_impl(
+         const struct llama_vocab * vocab,
+                       const char * grammar_str,
+diff --git a/tools/server/server-common.cpp b/tools/server/server-common.cpp
+index 0013c09..6327714 100644
+--- a/tools/server/server-common.cpp
++++ b/tools/server/server-common.cpp
+@@ -1,4 +1,5 @@
+ #include "common.h"
++#include "sampling.h" // Brain Engine 0120
+ #include "download.h"
+ #include "log.h"
+ #include "llama.h"
+@@ -160,6 +161,15 @@ json server_slot_stats::to_json() const {
+     if (n_draft_tokens > 0) {
+         base["draft_n"]          = n_draft_tokens;
+         base["draft_n_accepted"] = n_draft_accepted;
++        // Brain Engine 0120: only with the mode-biased accept on
++        if (common_sampler_mb_enabled()) {
++            base["draft_n_rescued"] = n_draft_rescued;
++        }
++        if (mb_kl_n > 0) {
++            base["mb_kl_n"]   = mb_kl_n;
++            base["mb_kl_inf"] = mb_kl_inf;
++            base["mb_kl_sum"] = mb_kl_sum;
++        }
+     }
+ 
+     return base;
+diff --git a/tools/server/server-common.h b/tools/server/server-common.h
+index 0562284..b949b31 100644
+--- a/tools/server/server-common.h
++++ b/tools/server/server-common.h
+@@ -430,6 +430,13 @@ struct server_slot_stats {
+     uint64_t n_draft_accepted    = 0;
+     uint64_t n_draft_verif_steps = 0;
+ 
++    // Brain Engine 0120 (LLAMA_SPEC_MB=1): accepted draft tokens the exact rule would have thrown away, and the
++    // LLAMA_SPEC_MB_KL drift audit (positions, positions with a token made impossible, summed KL in nats)
++    uint64_t n_draft_rescued = 0;
++    uint64_t mb_kl_n         = 0;
++    uint64_t mb_kl_inf       = 0;
++    double   mb_kl_sum       = 0.0;
++
+     // these are absolute timestamps (in us)
+     // note: must be signed - they are subtracted before the later ones are set
+     int64_t t_start       = 0;
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 75b7c2d..a330c2b 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -1141,6 +1141,16 @@ struct server_slot {
+             SLT_INF(*this,
+                     "draft acceptance = %0.5f (%5d accepted / %5d generated), mean len = %5.2f\n",
+                     draft_ratio, n_draft_accepted, n_draft_total, mean_acc_len);
++            // Brain Engine 0120
++            if (common_sampler_mb_enabled()) {
++                SLT_INF(*this, "mode-biased accept (LLAMA_SPEC_MB): %d of the %d accepted were kept past the exact rule\n",
++                        (int) stats.n_draft_rescued, n_draft_accepted);
++            }
++            if (stats.mb_kl_n > 0) {
++                const uint64_t fin = stats.mb_kl_n - stats.mb_kl_inf;
++                SLT_INF(*this, "mode-biased drift (LLAMA_SPEC_MB_KL): mean KL %.6f nats over %d positions, %d with a token made impossible\n",
++                        fin > 0 ? stats.mb_kl_sum / fin : 0.0, (int) stats.mb_kl_n, (int) stats.mb_kl_inf);
++            }
+             SLT_TRC(*this,
+                     "     acc per pos = (%s)\n", acceptance_rates_per_pos.c_str());
+         }
+@@ -1666,6 +1676,17 @@ private:
+                 SRV_WRN("!!! LLAMA_SPEC_GATE=%s NOT USED: it must be between 0 and 1\n", g);
+             }
+         }
++        // Brain Engine 0120: the mode-biased accept works where drafts are checked by rejection: a drafter that
++        // samples (--spec-draft-sampling probabilistic) and a temperature above 0
++        if (const char * m = getenv("LLAMA_SPEC_MB"); m != nullptr && *m != '\0') {
++            if (!common_sampler_mb_enabled()) {
++                SRV_WRN("!!! LLAMA_SPEC_MB=%s NOT USED: it must be 1\n", m);
++            } else if (!params.speculative.draft.probabilistic) {
++                SRV_WRN("%s", "!!! LLAMA_SPEC_MB=1 NOT USED: it needs --spec-draft-sampling probabilistic\n");
++            } else {
++                SRV_INF("%s", "mode-biased accept on (LLAMA_SPEC_MB): a rejected draft token is kept when the brain rates it at least as likely as its replacement; this changes words\n");
++            }
++        }
+         load_progress_data load_progress_text  (this, "text_model");
+         load_progress_data load_progress_mmproj(this, "mmproj_model");
+         load_progress_data load_progress_spec  (this, "spec_model");
+@@ -6344,6 +6365,12 @@ private:
+                     accepted = server_accept_replay(slot.smpl.get(), slot.ctx_tgt, spec_i_batch, slot.spec_draft);
+                 } else if (use_rejection) {
+                     accepted = common_sampler_sample_and_accept_n_rejection(slot.smpl.get(), slot.ctx_tgt, spec_i_batch, slot.spec_draft, slot.spec_draft_q);
++                    // Brain Engine 0120: the mode-biased accept's counts for this check
++                    const auto mbs = common_sampler_mb_take();
++                    slot.stats.n_draft_rescued += mbs.n_rescued;
++                    slot.stats.mb_kl_n         += mbs.kl_n;
++                    slot.stats.mb_kl_inf       += mbs.kl_inf;
++                    slot.stats.mb_kl_sum       += mbs.kl_sum;
+                 } else {
+                     accepted = common_sampler_sample_and_accept_n(slot.smpl.get(), slot.ctx_tgt, spec_i_batch, slot.spec_draft);
+                 }

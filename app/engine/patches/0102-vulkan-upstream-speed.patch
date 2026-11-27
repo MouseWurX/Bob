@@ -1,0 +1,3079 @@
+diff --git a/ggml/src/ggml-vulkan/CMakeLists.txt b/ggml/src/ggml-vulkan/CMakeLists.txt
+index 682b90e16..7d1e02a16 100644
+--- a/ggml/src/ggml-vulkan/CMakeLists.txt
++++ b/ggml/src/ggml-vulkan/CMakeLists.txt
+@@ -96,6 +96,12 @@ if (Vulkan_FOUND)
+         "GGML_VULKAN_COOPMAT2_DECODE_VECTOR_GLSLC_SUPPORT"
+     )
+ 
++    test_shader_extension_support(
++        "GL_EXT_cooperative_matrix_maintenance1"
++        "${CMAKE_CURRENT_SOURCE_DIR}/vulkan-shaders/feature-tests/coopmat_maintenance1.comp"
++        "GGML_VULKAN_COOPMAT_MAINTENANCE1_GLSLC_SUPPORT"
++    )
++
+     test_shader_extension_support(
+         "GL_EXT_integer_dot_product"
+         "${CMAKE_CURRENT_SOURCE_DIR}/vulkan-shaders/feature-tests/integer_dot.comp"
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan-common.h b/ggml/src/ggml-vulkan/ggml-vulkan-common.h
+index 4e05fb818..b14e0c584 100644
+--- a/ggml/src/ggml-vulkan/ggml-vulkan-common.h
++++ b/ggml/src/ggml-vulkan/ggml-vulkan-common.h
+@@ -34,7 +34,7 @@ bool ggml_vk_intel_windows_driver_in_range(uint32_t driver_version, uint32_t low
+ 
+ // shaders
+ void ggml_vk_destroy_pipeline(vk::Device& device, vk_pipeline& pipeline);
+-vk_fa_tuning_params get_fa_tuning_params(const vk_device& device, uint32_t hsk, uint32_t hsv, uint32_t n_rows, uint32_t n_kv, ggml_type k_type, ggml_type v_type, bool f32acc);
++vk_fa_tuning_params get_fa_tuning_params(const vk_device& device, uint32_t hsk, uint32_t hsv, uint32_t n_rows, uint32_t n_kv, ggml_type k_type, ggml_type v_type, bool f32acc, uint32_t qk_ratio, bool allow_flip = true);
+ vk_fa_pipeline_state get_fa_pipeline_state(const vk_device& device, const vk_fa_tuning_params& params, uint32_t hsk, uint32_t hsv, bool aligned, bool f32acc, bool use_mask, bool use_mask_opt, bool use_logit_softcap, bool use_sparse, ggml_type k_type, ggml_type v_type);
+ uint32_t get_subgroup_size(const std::string &pipeline_name, const vk_device_architecture &arch);
+ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested = nullptr);
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan-push-constants.h b/ggml/src/ggml-vulkan/ggml-vulkan-push-constants.h
+index 1ef00477b..781f5b1a8 100644
+--- a/ggml/src/ggml-vulkan/ggml-vulkan-push-constants.h
++++ b/ggml/src/ggml-vulkan/ggml-vulkan-push-constants.h
+@@ -702,6 +702,7 @@ struct vk_op_gated_delta_net_push_constants {
+     uint32_t n_seqs;
+     uint32_t s_off;
+     uint32_t sq1, sq2, sq3;
++    uint32_t sk1, sk2, sk3;
+     uint32_t sv1, sv2, sv3;
+     uint32_t sb1, sb2, sb3;
+     uint32_t neq1, rq3;
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan-types.h b/ggml/src/ggml-vulkan/ggml-vulkan-types.h
+index 81fd5b8a8..b323c5c44 100644
+--- a/ggml/src/ggml-vulkan/ggml-vulkan-types.h
++++ b/ggml/src/ggml-vulkan/ggml-vulkan-types.h
+@@ -36,6 +36,21 @@ typedef struct VkPhysicalDeviceCooperativeMatrixDecodeVectorFeaturesNV {
+ } VkPhysicalDeviceCooperativeMatrixDecodeVectorFeaturesNV;
+ #endif
+ 
++#ifndef VK_EXT_cooperative_matrix_maintenance1
++#define VK_EXT_cooperative_matrix_maintenance1 1
++#define VK_EXT_COOPERATIVE_MATRIX_MAINTENANCE_1_EXTENSION_NAME "VK_EXT_cooperative_matrix_maintenance1"
++#define VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_MAINTENANCE_1_FEATURES_EXT ((VkStructureType)1000659000)
++typedef struct VkPhysicalDeviceCooperativeMatrixMaintenance1FeaturesEXT {
++    VkStructureType    sType;
++    void*              pNext;
++    VkBool32           cooperativeMatrixProperties2;
++    VkBool32           cooperativeMatrixReductions;
++    VkBool32           cooperativeMatrixConversions;
++    VkBool32           cooperativeMatrixPerElementOperations;
++    VkBool32           cooperativeMatrixGetCoordinate;
++} VkPhysicalDeviceCooperativeMatrixMaintenance1FeaturesEXT;
++#endif
++
+ #if __has_include(<spirv/unified1/spirv.hpp>)
+ #    include <spirv/unified1/spirv.hpp>
+ #elif __has_include(<spirv-headers/spirv.hpp>)
+@@ -221,6 +236,12 @@ static bool is_pow2(uint32_t x) { return x > 1 && (x & (x-1)) == 0; }
+ 
+ #define MAX_FUSED_ADDS (MAX_PARAMETER_COUNT - 3)
+ 
++#define GGML_VK_GDN_CM_V 64u
++#define GGML_VK_GDN_CM2_V 32u
++#define GGML_VK_GDN_CM_D 128u
++#define GGML_VK_GDN_CM_PAD 8u
++#define GGML_VK_GDN_CM_LDP (GGML_VK_GDN_CM_D + GGML_VK_GDN_CM_PAD)
++
+ struct vk_pipeline_struct;
+ 
+ typedef std::shared_ptr<struct vk_pipeline_struct> vk_pipeline;
+@@ -270,12 +291,14 @@ struct vk_matmul_pipeline_pair {
+     vk_pipeline unaligned;
+     vk_pipeline aligned;
+     uint32_t align;
++    uint32_t narrow_n_max = 0;
+ };
+ 
+ struct vk_tile_config {
+     std::vector<uint32_t> warptile;
+     std::array<uint32_t, 3> wg_denoms;
+     uint32_t align;
++    uint32_t narrow_n_max = 0;
+ };
+ 
+ using matmul_tile_selector_t = std::function<uint32_t(
+@@ -759,6 +782,12 @@ struct vk_device_struct {
+     bool coopmat_acc_f32_support {};
+     bool coopmat_acc_f16_support {};
+     bool coopmat_bf16_support {};
++    bool coopmat_bf16_acc_support {};
++    bool coopmat_maintenance1 {};
++    bool coopmat_m1_reductions {};
++    bool coopmat_m1_conversions {};
++    bool coopmat_m1_per_element_ops {};
++    bool coopmat_m1_get_coordinate {};
+     bool coopmat_support_16x16x16_f16acc {};
+     bool coopmat_support_16x16x16_f32acc {};
+     bool coopmat1_fa_support {};
+@@ -773,6 +802,7 @@ struct vk_device_struct {
+ 
+     bool coopmat2;
+     bool coopmat2_bf16_support {};
++    bool coopmat2_gdn_support {};
+     bool coopmat2_decode_vector;
+ 
+     bool dot2_f16 {};
+@@ -998,6 +1028,9 @@ struct vk_device_struct {
+     vk_pipeline pipeline_lightning_indexer_f32[GGML_TYPE_COUNT];
+     // [size_idx][kda] where size_idx: 0=d16, 1=d32, 2=d64, 3=d128
+     vk_pipeline pipeline_gated_delta_net[4][2];
++    vk_pipeline pipeline_gated_delta_net_cm;
++    vk_pipeline pipeline_gated_delta_net_cm_v32;
++    vk_pipeline pipeline_gated_delta_net_cm_v128;
+     vk_pipeline pipeline_ssm_scan_f32_d128;
+     vk_pipeline pipeline_ssm_scan_f32_d256;
+     vk_pipeline pipeline_ssm_conv_f32;
+@@ -1047,6 +1080,7 @@ struct vk_device_struct {
+     bool allow_sysmem_fallback;
+     bool disable_graph_optimize;
+     bool xe_fa_support {};
++    bool disable_narrow_mul_mat;
+ 
+     std::unique_ptr<vk_memory_logger> memory_logger;
+ 
+@@ -1235,6 +1269,7 @@ inline std::mutex vk_memory_logger::log_mutex;
+ 
+ class vk_perf_logger {
+   public:
++    explicit vk_perf_logger(const vk_device & device) : device(device) {}
+     void print_timings(bool force = false);
+ 
+ 
+@@ -1269,6 +1304,7 @@ class vk_perf_logger {
+     }
+ 
+   private:
++    vk_device device;
+     std::map<std::string, std::vector<uint64_t>> timings;
+     std::map<std::string, std::vector<uint64_t>> flops;
+     uint32_t print_count {};
+@@ -1416,13 +1452,16 @@ struct vk_fa_tuning_params {
+     uint32_t row_split;
+     bool shmem_staging;
+     bool disable_subgroups;
++    bool q_in_regs;
++    bool flip;
++    bool flip_direct;
+     uint32_t limit_occupancy_shmem;
+ 
+     void print() const {
+         std::cerr << "path=" << path << " workgroup_size=" << workgroup_size << " subgroup_size=" << subgroup_size <<
+                      " block_rows=" << block_rows << " block_cols=" << block_cols << " d_split=" << d_split <<
+                      " row_split=" << row_split << " shmem_staging=" << shmem_staging << " disable_subgroups=" << disable_subgroups <<
+-                     " limit_occupancy_shmem=" << limit_occupancy_shmem << std::endl;
++                     " q_in_regs=" << q_in_regs << " flip=" << flip << " flip_direct=" << flip_direct << " limit_occupancy_shmem=" << limit_occupancy_shmem << std::endl;
+     }
+ };
+ 
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+index 22641f5fb..e0357b396 100644
+--- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
++++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+@@ -1287,12 +1287,8 @@ static vk_fa_tuning_params get_fa_tuning_params_scalar(const vk_device& device,
+     return result;
+ }
+ 
+-static vk_fa_tuning_params get_fa_tuning_params_coopmat1(const vk_device& device, uint32_t hsk, uint32_t hsv, uint32_t n_rows, uint32_t n_kv, ggml_type k_type, ggml_type v_type, bool f32acc) {
+-    GGML_UNUSED(n_rows);
++static vk_fa_tuning_params get_fa_tuning_params_coopmat1(const vk_device& device, uint32_t hsk, uint32_t hsv, uint32_t n_rows, uint32_t n_kv, ggml_type k_type, ggml_type v_type, bool f32acc, uint32_t qk_ratio, bool allow_flip) {
+     GGML_UNUSED(n_kv);
+-    GGML_UNUSED(k_type);
+-    GGML_UNUSED(v_type);
+-    GGML_UNUSED(f32acc);
+ 
+     vk_fa_tuning_params result{};
+     result.path = FA_COOPMAT1;
+@@ -1304,7 +1300,10 @@ static vk_fa_tuning_params get_fa_tuning_params_coopmat1(const vk_device& device
+ 
+     const uint32_t num_subgroups = 4;
+ 
+-    result.block_rows = coopmat_block_rows;
++    // Halves K/V re-reads; only wins on UMA, regresses on discrete RDNA4
++    const bool double_block_rows = device->uma &&
++        (device->architecture == AMD_RDNA3 || device->architecture == AMD_RDNA4) && n_rows >= 64;
++    result.block_rows = double_block_rows ? 2 * coopmat_block_rows : coopmat_block_rows;
+     result.block_cols = coopmat_block_cols * num_subgroups;
+     result.row_split = num_subgroups;
+     result.subgroup_size = device->subgroup_size;
+@@ -1315,6 +1314,41 @@ static vk_fa_tuning_params get_fa_tuning_params_coopmat1(const vk_device& device
+ 
+     result.shmem_staging = (device->vendor_id == VK_VENDOR_ID_NVIDIA && hsk < 256 && hsv < 256) ? 1 : 0;
+ 
++    if (double_block_rows && !ggml_vk_flash_attn_coopmat_shmem_support(device, result, hsk, hsv, f32acc, k_type, v_type)) {
++        result.block_rows = coopmat_block_rows;
++    }
++
++    // Br=32 spills registers, only prefill benefits
++    result.q_in_regs = result.block_rows == coopmat_block_rows && device->vendor_id == VK_VENDOR_ID_AMD && n_rows >= 64;
++
++    // Flipped ownership: each subgroup owns 16 Q rows.
++    // uma, nvidia: K/V tiles staged in separate LDS buffers; discrete AMD GQA: K/V loaded directly from global memory.
++    static const bool disable_flip = getenv("GGML_VK_DISABLE_FA_FLIP") != nullptr;
++    static const char * force_flip = getenv("GGML_VK_FORCE_FA_FLIP");
++    const bool flip_arch = force_flip != nullptr || device->vendor_id == VK_VENDOR_ID_NVIDIA ||
++        (device->vendor_id == VK_VENDOR_ID_AMD && (device->architecture == AMD_RDNA3 || device->architecture == AMD_RDNA4));
++    if (allow_flip && !disable_flip && flip_arch && n_rows >= 64 &&
++        (result.subgroup_size == 32 || result.subgroup_size == 64) &&
++        hsk % 16 == 0 && hsv % 16 == 0 && hsk <= 256 && hsv <= 256 &&
++        k_type == v_type && (k_type == GGML_TYPE_F16 || k_type == GGML_TYPE_BF16)) {
++        result.flip = true;
++        result.flip_direct = !device->uma && qk_ratio > 1 && device->vendor_id != VK_VENDOR_ID_NVIDIA;
++        if (force_flip != nullptr && strcmp(force_flip, "kvsep") == 0) {
++            result.flip_direct = false;
++        } else if (force_flip != nullptr && strcmp(force_flip, "direct") == 0) {
++            result.flip_direct = true;
++        }
++        result.block_rows = num_subgroups * coopmat_block_rows;
++        result.block_cols = (device->uma && (hsk >= 256 || hsv >= 256)) ? 16 : 32;
++        result.q_in_regs = false;
++        result.shmem_staging = 0;
++    }
++
++    // q_in_regs LDS lands in the 12-wave band, ACO caps VGPRs at 128 and serializes K loads; pad into the 8-wave band
++    if (device->architecture == AMD_RDNA4 && result.q_in_regs && hsk > 256) {
++        result.limit_occupancy_shmem = 14 * 1024 / 16;
++    }
++
+     return result;
+ }
+ 
+@@ -1346,7 +1380,7 @@ static vk_fa_tuning_params get_fa_tuning_params_coopmat2(const vk_device& device
+     return result;
+ }
+ 
+-vk_fa_tuning_params get_fa_tuning_params(const vk_device& device, uint32_t hsk, uint32_t hsv, uint32_t n_rows, uint32_t n_kv, ggml_type k_type, ggml_type v_type, bool f32acc) {
++vk_fa_tuning_params get_fa_tuning_params(const vk_device& device, uint32_t hsk, uint32_t hsv, uint32_t n_rows, uint32_t n_kv, ggml_type k_type, ggml_type v_type, bool f32acc, uint32_t qk_ratio, bool allow_flip) {
+     FaCodePath path = device->coopmat2 ? FA_COOPMAT2 :
+                       device->coopmat1_fa_support ? FA_COOPMAT1 : FA_SCALAR;
+ 
+@@ -1365,8 +1399,13 @@ vk_fa_tuning_params get_fa_tuning_params(const vk_device& device, uint32_t hsk,
+     if (path == FA_COOPMAT1) {
+         bool shape_ok = (f32acc && device->coopmat_support_16x16x16_f32acc) ||
+                         (!f32acc && device->coopmat_support_16x16x16_f16acc);
+-        const vk_fa_tuning_params params = get_fa_tuning_params_coopmat1(device, hsk, hsv, n_rows, n_kv, k_type, v_type, f32acc);
++        vk_fa_tuning_params params = get_fa_tuning_params_coopmat1(device, hsk, hsv, n_rows, n_kv, k_type, v_type, f32acc, qk_ratio, allow_flip);
+         bool shmem_ok = ggml_vk_flash_attn_coopmat_shmem_support(device, params, hsk, hsv, f32acc, k_type, v_type);
++        if (!shmem_ok && params.flip) {
++            allow_flip = false;
++            params = get_fa_tuning_params_coopmat1(device, hsk, hsv, n_rows, n_kv, k_type, v_type, f32acc, qk_ratio, allow_flip);
++            shmem_ok = ggml_vk_flash_attn_coopmat_shmem_support(device, params, hsk, hsv, f32acc, k_type, v_type);
++        }
+ 
+         if (!shape_ok || !shmem_ok) {
+             path = FA_SCALAR;
+@@ -1382,7 +1421,7 @@ vk_fa_tuning_params get_fa_tuning_params(const vk_device& device, uint32_t hsk,
+     case FA_SCALAR:
+         return get_fa_tuning_params_scalar(device, hsk, hsv, n_rows, n_kv, k_type, v_type, f32acc);
+     case FA_COOPMAT1:
+-        return get_fa_tuning_params_coopmat1(device, hsk, hsv, n_rows, n_kv, k_type, v_type, f32acc);
++        return get_fa_tuning_params_coopmat1(device, hsk, hsv, n_rows, n_kv, k_type, v_type, f32acc, qk_ratio, allow_flip);
+     case FA_COOPMAT2:
+         return get_fa_tuning_params_coopmat2(device, hsk, hsv, n_rows, n_kv, k_type, v_type, f32acc);
+     default:
+@@ -1399,7 +1438,10 @@ vk_fa_pipeline_state get_fa_pipeline_state(const vk_device& device, const vk_fa_
+                      (use_mask          ? 2 : 0) |
+                      (use_logit_softcap ? 4 : 0) |
+                      (old_amd_windows   ? 8 : 0) |
+-                     (use_sparse        ? 16 : 0);
++                     (use_sparse        ? 16 : 0) |
++                     (params.q_in_regs  ? 32 : 0) |
++                     (params.flip       ? 64 : 0) |
++                     (params.flip_direct ? 128 : 0);
+ 
+     const uint32_t subgroup_size = params.disable_subgroups ? 0 : params.subgroup_size;
+ 
+@@ -1614,6 +1656,27 @@ static vk_xe_fa_tuning_params get_xe_fa_tuning_params(const vk_device_struct * d
+     return params;
+ }
+ 
++// CM2 uses narrow tiles for 5 <= N <= 32; CM1 uses them for 9 <= N <= 32.
++static uint32_t ggml_vk_mul_mat_vec_max_cols(const vk_device & device) {
++    return device->coopmat2 && !device->disable_narrow_mul_mat ? 4u : mul_mat_vec_max_cols;
++}
++
++static uint32_t ggml_vk_gated_delta_net_shmem_size(uint32_t v, bool coopmat2) {
++    const uint32_t C = 16;
++    const uint32_t LDP = GGML_VK_GDN_CM_LDP;
++    const uint32_t bf16_size = sizeof(ggml_bf16_t);
++    const bool gmem_mirror = !coopmat2 && v == 128;
++
++    const uint32_t qk = 4 * C * LDP * bf16_size;
++    const uint32_t state = gmem_mirror ? 0 : 2 * v * LDP * bf16_size;
++    const uint32_t p_inv = 4 * C * C * bf16_size;
++    const uint32_t delta_solved = coopmat2 ? 2 * C * (v + GGML_VK_GDN_CM_PAD) * bf16_size : 4 * C * v * bf16_size;
++    const uint32_t lower = (coopmat2 ? C * (C - 1) / 2 : C * C) * sizeof(float);
++    const uint32_t scan = 4 * C * sizeof(float);
++
++    return qk + state + p_inv + delta_solved + lower + scan;
++}
++
+ static bool ggml_vk_matmul_shmem_support(const vk_device& device, const std::vector<uint32_t>& warptile, bool mul_mat_id, ggml_type src0_type) {
+ 
+     uint32_t lut_size = 0;
+@@ -1662,7 +1725,7 @@ static bool ggml_vk_matmul_shmem_support(const vk_device& device, const std::vec
+ 
+     const uint32_t load_bufs = (warptile[1] + warptile[2]) * (warptile[3] + bank_conflict_offset) * type_size;
+     const uint32_t mmid_row_ids = mul_mat_id ? (warptile[2] * 2 * sizeof(uint16_t)) : 0;
+-    const uint32_t coopmat_stage = device->coopmat_support ? warptile[7] * warptile[8] / warps * sizeof(float) : 0;
++    const uint32_t coopmat_stage = device->coopmat_support ? warptile[7] * warptile[8] * warps * sizeof(float) : 0;
+ 
+     const uint32_t total_size = load_bufs + mmid_row_ids + coopmat_stage + lut_size;
+     const bool supported = total_size <= device->properties.limits.maxComputeSharedMemorySize;
+@@ -2232,7 +2295,7 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+                                        align, disable_robustness, require_full_subgroups, required_subgroup_size);
+     };
+ 
+-    // FA scalar has two SPIR-V modules (MMQ vs non-MMQ); FA cm1 has one. K/V
++    // FA scalar has two SPIR-V modules (MMQ vs non-MMQ); FA cm1 has two (flip vs non-flip). K/V
+     // quant type is selected at runtime via the FaTypeK / FaTypeV spec constants.
+ 
+     for (auto &fa : device->pipeline_flash_attn_f32_f16) {
+@@ -2297,6 +2360,7 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+             const bool fa_ds = fa.first.subgroup_size == 0;
+ 
+             const bool bf16_kv = fa.first.k_type == GGML_TYPE_BF16;
++            const bool flip = (fa.first.flags & 64) != 0;
+ 
+             const void * spv_data;
+             size_t spv_size;
+@@ -2304,12 +2368,22 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+             if (bf16_kv) {
+ #if defined(VK_KHR_shader_bfloat16) && defined(GGML_VULKAN_BFLOAT16_GLSLC_SUPPORT)
+                 if (!device->coopmat_bf16_support) continue;
+-                spv_data = flash_attn_f32_f16_bf16_cm1_data;
+-                spv_size = flash_attn_f32_f16_bf16_cm1_len;
+-                name = aligned ? "flash_attn_f32_bf16_aligned_cm1" : "flash_attn_f32_bf16_cm1";
++                if (flip) {
++                    spv_data = flash_attn_f32_f16_bf16_flip_cm1_data;
++                    spv_size = flash_attn_f32_f16_bf16_flip_cm1_len;
++                    name = aligned ? "flash_attn_f32_bf16_aligned_flip_cm1" : "flash_attn_f32_bf16_flip_cm1";
++                } else {
++                    spv_data = flash_attn_f32_f16_bf16_cm1_data;
++                    spv_size = flash_attn_f32_f16_bf16_cm1_len;
++                    name = aligned ? "flash_attn_f32_bf16_aligned_cm1" : "flash_attn_f32_bf16_cm1";
++                }
+ #else
+                 continue;
+ #endif
++            } else if (flip) {
++                if (f32acc) { spv_data = flash_attn_f32_f16_flip_cm1_data;        spv_size = flash_attn_f32_f16_flip_cm1_len; }
++                else        { spv_data = flash_attn_f32_f16_flip_f16acc_cm1_data; spv_size = flash_attn_f32_f16_flip_f16acc_cm1_len; }
++                name = aligned ? "flash_attn_f32_f16_aligned_flip_cm1" : "flash_attn_f32_f16_flip_cm1";
+             } else {
+                 if (f32acc) { spv_data = flash_attn_f32_f16_cm1_data;        spv_size = flash_attn_f32_f16_cm1_len; }
+                 else        { spv_data = flash_attn_f32_f16_f16acc_cm1_data; spv_size = flash_attn_f32_f16_f16acc_cm1_len; }
+@@ -2418,14 +2492,19 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+         const bool first_call = vec.empty();
+         for (size_t i = 0; i < tile_configs.size(); i++) {
+             const auto& tc = tile_configs[i];
++            if (tc.narrow_n_max != 0 && (key.mul_mat_id || device->disable_narrow_mul_mat)) {
++                continue;
++            }
+ 
+             // Intel coopmat1 pins the required subgroup size to each warptile's WARP element.
+-            const uint32_t rsgs = pin_subgroup_to_warp ? tc.warptile[WARP_SIZE_IDX] : required_subgroup_size;
+-            const bool     rfs  = require_full_subgroups || pin_subgroup_to_warp;
++            const bool pin_sg = pin_subgroup_to_warp || (!device->coopmat2 && tc.narrow_n_max != 0);
++            const uint32_t rsgs = pin_sg ? tc.warptile[WARP_SIZE_IDX] : required_subgroup_size;
++            const bool     rfs  = require_full_subgroups || pin_sg;
+ 
+             if (first_call) {
+                 vk_matmul_pipeline_pair pair{};
+                 pair.align = tc.align;
++                pair.narrow_n_max = tc.narrow_n_max;
+                 std::string suffix = "_" + std::to_string(i);
+                 pair.unaligned = std::make_shared<vk_pipeline_struct>();
+                 if (create_aligned) {
+@@ -2462,12 +2541,60 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+             enabled[1] = is_id ? device->mul_mat_id_m[type] : device->mul_mat_m[type];
+             enabled[2] = is_id ? device->mul_mat_id_l[type] : device->mul_mat_l[type];
+         }
+-        for (size_t i = 0; i < configs.size() && i < 3; i++) {
+-            if (enabled[i]) result.push_back(configs[i]);
++        for (size_t i = 0; i < configs.size(); i++) {
++            if (configs[i].narrow_n_max != 0 || (i < 3 && enabled[i])) result.push_back(configs[i]);
+         }
+         return result;
+     };
+ 
++    auto add_narrow_n_cm1_tile = [&](std::vector<vk_tile_config>& configs, ggml_type type, uint32_t bn) {
++        constexpr uint32_t bm = 32, bk = 32;
++        const uint32_t tm = device->coopmat_m, tn = device->coopmat_n, tk = device->coopmat_k;
++
++        const bool rdna = device->architecture == AMD_RDNA3 || device->architecture == AMD_RDNA4;
++        const uint32_t base_subgroup_size = rdna && device->subgroup_size_control ? device->subgroup_min_size : mul_mat_subgroup_size;
++        const uint32_t subgroup_size = std::max(base_subgroup_size, tm);
++
++        const uint32_t wm = subgroup_size > 32 ? 32 : 16;
++        const uint32_t wn = std::min(bn, subgroup_size > 64 ? 32u : 16u);
++        const uint32_t subgroup_count = (bm / wm) * (bn / wn);
++        const uint32_t workgroup_size = subgroup_count * subgroup_size;
++
++        // Two-element loads need at least BK/2 invocations; eight-element loads must fit both tiles.
++        if (workgroup_size < bk / 2 || workgroup_size > std::min(bm, bn) * bk / 8) {
++            return;
++        }
++
++        // Native matrices must tile each subgroup's output region and the K tile.
++        if (tm == 0 || tn == 0 || tk == 0 || wm % tm != 0 || wn % tn != 0 || bk % tk != 0) {
++            return;
++        }
++        const bool subgroup_size_supported = device->subgroup_size_control ?
++            subgroup_size >= device->subgroup_min_size && subgroup_size <= device->subgroup_max_size :
++            subgroup_size == device->subgroup_size;
++
++        // Tail stores use lane%TM for rows and lane/TM for columns of one native matrix.
++        if (!subgroup_size_supported || subgroup_size % tm != 0 || subgroup_size > tm * tn) {
++            return;
++        }
++        if (subgroup_size > device->properties.limits.maxComputeWorkGroupInvocations / subgroup_count ||
++            subgroup_size > device->properties.limits.maxComputeWorkGroupSize[0] / subgroup_count) {
++            return;
++        }
++
++        const std::vector<uint32_t> wt = {workgroup_size, bm, bn, bk, wm, wn, 2, tm, tn, tk, subgroup_size};
++        if (ggml_vk_matmul_shmem_support(device, wt, false, type)) {
++            configs.push_back({wt, {bm, bn, 1}, bk, bn});
++        }
++    };
++    auto add_narrow_n_cm1 = [&](std::vector<vk_tile_config>& configs, ggml_type type, bool is_id) {
++        if (is_id || configs.empty()) {
++            return;
++        }
++        add_narrow_n_cm1_tile(configs, type, 16);
++        add_narrow_n_cm1_tile(configs, type, 32);
++    };
++
+     std::vector<vk_tile_config> tc_mm = {{s_warptile, s_wg_denoms, s_align}, {m_warptile, m_wg_denoms, m_align}, {l_warptile, l_wg_denoms, l_align}};
+     std::vector<vk_tile_config> tc_mmq = {{s_warptile_mmq, s_mmq_wg_denoms, s_align}, {m_warptile_mmq, m_mmq_wg_denoms, m_align}, {l_warptile_mmq, l_mmq_wg_denoms, l_align}};
+ 
+@@ -2486,6 +2613,13 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+         std::vector<vk_tile_config> tc_mmq_k = {{s_warptile_mmq_k, s_mmq_wg_denoms_k, s_align}, {m_warptile_mmq_k, m_mmq_wg_denoms_k, m_align}, {l_warptile_mmq_k, l_mmq_wg_denoms_k, l_align}};
+         std::vector<vk_tile_config> tc_mmqid = {{s_warptile_mmqid, s_mmqid_wg_denoms, s_align}, {m_warptile_mmqid, m_mmqid_wg_denoms, m_align}, {l_warptile_mmqid, l_mmqid_wg_denoms, l_align}};
+ 
++        const vk_tile_config narrow_n16 = {{128, 32, 16, 64, 0}, {32, 16, 1}, 64, 16};
++        const vk_tile_config narrow_n32 = {{128, 32, 32, 128, 0}, {32, 32, 1}, 128, 32};
++        for (auto * tc : {&tc_mm, &tc_mmq, &tc_mmq_k}) {
++            tc->push_back(narrow_n16);
++            tc->push_back(narrow_n32);
++        }
++
+         spec_fn_t cm2_spec = [&](const std::vector<uint32_t>& wt, bool a) { return ggml_vk_mul_mm_cm2_spec(wt, a); };
+ 
+         // F16 x F16
+@@ -2596,12 +2730,14 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+         auto cm1_create = [&](vk_matmul_pipeline_key key, const std::vector<vk_tile_config>& tc_base,
+                               const std::string& name, size_t len, const void* data, uint32_t pc_size, uint32_t pc) {
+             auto tc = filter_tc(tc_base, key.type_a, key.mul_mat_id);
++            add_narrow_n_cm1(tc, key.type_a, key.mul_mat_id);
+             if (!tc.empty()) create_mm_pipelines(key, tc, name, len, data, pc_size, pc, cm1_spec, false, true, 0, true, cm1_pin);
+         };
+         auto cm1_create_quant = [&](vk_matmul_pipeline_key key, const std::vector<vk_tile_config>& tc_base,
+                                     const std::string& name, size_t len, const void* data, uint32_t pc_size, uint32_t pc) {
+             spec_fn_t qs = [&, type_a=key.type_a](const std::vector<uint32_t>& wt, bool a) { return ggml_vk_mul_mm_spec_quant(wt, a, (uint32_t)type_a); };
+             auto tc = filter_tc(tc_base, key.type_a, key.mul_mat_id);
++            add_narrow_n_cm1(tc, key.type_a, key.mul_mat_id);
+             if (!tc.empty()) create_mm_pipelines(key, tc, name, len, data, pc_size, pc, qs, false, true, 0, true, cm1_pin);
+         };
+         // int8 MMQ helper: per-type cm1 shader, warptile passed as-is (carries DEVICE_ARCH in
+@@ -3023,8 +3159,13 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+         device->matmul_tile_selector = [](uint32_t m, uint32_t n, uint32_t /*k*/, uint32_t shader_core_count,
+                                           const std::vector<vk_matmul_pipeline_pair>& configs) -> uint32_t {
+             if (configs.size() <= 1) return 0;
++            for (uint32_t i = 0; i < configs.size(); ++i) {
++                if (configs[i].narrow_n_max != 0 && n <= configs[i].narrow_n_max) return i;
++            }
+             uint32_t last = (uint32_t)configs.size() - 1;
+-            if (configs.size() == 2) {
++            while (last > 0 && configs[last].narrow_n_max != 0) --last;
++            if (last == 0) return 0;
++            if (last == 1) {
+                 uint32_t crossover = configs[0].unaligned->wg_denoms[1];
+                 return (n > crossover) ? 1 : 0;
+             }
+@@ -3058,10 +3199,15 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+         device->matmul_tile_selector = [](uint32_t m, uint32_t n, uint32_t /*k*/, uint32_t /*shader_core_count*/,
+                                           const std::vector<vk_matmul_pipeline_pair>& configs) -> uint32_t {
+             if (configs.size() <= 1) return 0;
+-            if (m <= 32 || n <= 32) return 0;
+-            if (configs.size() == 2) return 1;
++            for (uint32_t i = 0; i < configs.size(); ++i) {
++                if (configs[i].narrow_n_max != 0 && n <= configs[i].narrow_n_max) return i;
++            }
++            uint32_t last = (uint32_t)configs.size() - 1;
++            while (last > 0 && configs[last].narrow_n_max != 0) --last;
++            if (last == 0 || m <= 32 || n <= 32) return 0;
++            if (last == 1) return 1;
+             if (m <= 64 || n <= 64) return 1;
+-            return (uint32_t)configs.size() - 1;
++            return last;
+         };
+         device->matmul_id_tile_selector = device->matmul_tile_selector;
+     }
+@@ -3896,13 +4042,14 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+                 device->subgroup_min_size <= 16u && device->subgroup_max_size >= 16u) {
+                 gdn_subgroup_size = 16u;
+             }
++            const bool gdn_packed_rows = S_V == 128u && device->vendor_id == VK_VENDOR_ID_NVIDIA &&
++                gdn_subgroup_size == 32u && device->subgroup_arithmetic && device->subgroup_clustered;
+             uint32_t lanes_per_column;
+             if (device->vendor_id == VK_VENDOR_ID_INTEL) {
+                 // Intel Xe: full-width reduction (min rows/lane) ~10x over the COLS_PER_WG=8 rule.
+                 lanes_per_column = std::min(gdn_subgroup_size, S_V);
+             } else if (S_V >= 128u && device->subgroup_clustered) {
+-                // COLS_PER_WG=8: measured optimum (Ampere sg32->4, Vega20 sg64->8).
+-                lanes_per_column = std::max(1u, gdn_subgroup_size / 8u);
++                lanes_per_column = gdn_packed_rows ? 8u : std::max(1u, gdn_subgroup_size / 8u);
+             } else {
+                 // Use largest power-of-two that divides both S_V and subgroup_size so that
+                 // (1) S_V % lanes_per_column == 0 and (2) S_V % (subgroup_size / lanes_per_column) == 0.
+@@ -3949,9 +4096,60 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+             for (uint32_t kda = 0; kda < 2; kda++) {
+                 ggml_vk_create_pipeline(device, device->pipeline_gated_delta_net[si][kda],
+                     gdn_names[si][kda], gdn_len, gdn_data, "main", 7, sizeof(vk_op_gated_delta_net_push_constants),
+-                    wg_denoms, {S_V, kda, gdn_subgroup_size, lanes_per_column}, 1, true, use_subgroup_ops, gdn_subgroup_size);
++                    wg_denoms, {S_V, kda, gdn_subgroup_size, lanes_per_column, uint32_t(gdn_packed_rows)}, 1, true, use_subgroup_ops, gdn_subgroup_size);
+             }
+         }
++
++        // Chunked GDN prefill uses workgroup matrices on CM2 and subgroup matrices on CM1.
++        const bool gdn_chunked = getenv("GGML_VK_DISABLE_GDN_CHUNKED") == nullptr;
++        const uint32_t gdn_shmem = device->properties.limits.maxComputeSharedMemorySize;
++#if defined(VK_NV_cooperative_matrix2) && defined(GGML_VULKAN_COOPMAT2_GLSLC_SUPPORT) && defined(GGML_VULKAN_BFLOAT16_GLSLC_SUPPORT)
++        if (gdn_chunked && device->coopmat2 && device->coopmat2_gdn_support) {
++            ggml_vk_create_pipeline(device, device->pipeline_gated_delta_net_cm,
++                "gated_delta_net_f32_cm2", gated_delta_net_f32_cm2_len, gated_delta_net_f32_cm2_data,
++                "main", 7, sizeof(vk_op_gated_delta_net_push_constants), {1, 1, 1}, {}, 1, true, true, 32);
++        }
++#endif
++#if defined(GGML_VULKAN_COOPMAT_GLSLC_SUPPORT) && defined(GGML_VULKAN_COOPMAT_MAINTENANCE1_GLSLC_SUPPORT) && defined(GGML_VULKAN_BFLOAT16_GLSLC_SUPPORT)
++        // shader needs >= 16 lanes and 16 subgroups per WG; prefer wave64
++        auto gdn_sg_ok = [&](uint32_t sg) {
++            const bool reachable = device->subgroup_size_control ? device->subgroup_min_size <= sg && sg <= device->subgroup_max_size
++                                                                 : device->subgroup_size == sg;
++            return reachable && 16u * sg <= device->properties.limits.maxComputeWorkGroupInvocations &&
++                   16u * sg <= device->properties.limits.maxComputeWorkGroupSize[0];
++        };
++        const uint32_t gdn_sg = gdn_sg_ok(64) ? 64u : device->subgroup_size;
++        if (gdn_chunked && !device->coopmat2 && device->coopmat_support && device->coopmat_bf16_support && device->coopmat_m1_per_element_ops &&
++            gdn_sg >= 16 && gdn_sg_ok(gdn_sg)) {
++            const bool bf16acc = device->coopmat_bf16_acc_support;
++            const std::vector<uint32_t> gdn_spec = { 16u * gdn_sg };
++            // V=64: state mirror in shared, 7 bindings
++            if (gdn_shmem >= ggml_vk_gated_delta_net_shmem_size(GGML_VK_GDN_CM_V, false)) {
++                ggml_vk_create_pipeline(device, device->pipeline_gated_delta_net_cm,
++                    bf16acc ? "gated_delta_net_f32_cm1_bf16acc" : "gated_delta_net_f32_cm1",
++                    bf16acc ? gated_delta_net_f32_cm1_bf16acc_len : gated_delta_net_f32_cm1_len,
++                    bf16acc ? (const void *)gated_delta_net_f32_cm1_bf16acc_data : (const void *)gated_delta_net_f32_cm1_data,
++                    "main", 7, sizeof(vk_op_gated_delta_net_push_constants), {1, 1, 1}, gdn_spec, 1, true, true, gdn_sg);
++            }
++            if (gdn_shmem >= ggml_vk_gated_delta_net_shmem_size(32u, false)) {
++                ggml_vk_create_pipeline(device, device->pipeline_gated_delta_net_cm_v32,
++                    bf16acc ? "gated_delta_net_f32_cm1_bf16acc_v32" : "gated_delta_net_f32_cm1_v32",
++                    bf16acc ? gated_delta_net_f32_cm1_bf16acc_v32_len : gated_delta_net_f32_cm1_v32_len,
++                    bf16acc ? (const void *)gated_delta_net_f32_cm1_bf16acc_v32_data : (const void *)gated_delta_net_f32_cm1_v32_data,
++                    "main", 7, sizeof(vk_op_gated_delta_net_push_constants), {1, 1, 1}, gdn_spec, 1, true, true, gdn_sg);
++            }
++            // V=128: state mirror in a gmem scratch buffer, 8 bindings
++            if (gdn_shmem >= ggml_vk_gated_delta_net_shmem_size(128u, false)) {
++                ggml_vk_create_pipeline(device, device->pipeline_gated_delta_net_cm_v128,
++                    bf16acc ? "gated_delta_net_f32_cm1_bf16acc_v128" : "gated_delta_net_f32_cm1_v128",
++                    bf16acc ? gated_delta_net_f32_cm1_bf16acc_v128_len : gated_delta_net_f32_cm1_v128_len,
++                    bf16acc ? (const void *)gated_delta_net_f32_cm1_bf16acc_v128_data : (const void *)gated_delta_net_f32_cm1_v128_data,
++                    "main", 8, sizeof(vk_op_gated_delta_net_push_constants), {1, 1, 1}, gdn_spec, 1, true, true, gdn_sg);
++            }
++        }
++#endif
++        GGML_UNUSED(gdn_chunked);
++        GGML_UNUSED(gdn_shmem);
+     }
+ 
+     if (device->subgroup_arithmetic && device->subgroup_require_full_support) {
+@@ -4274,6 +4472,7 @@ vk_device ggml_vk_get_device(size_t idx) {
+ 
+         const char* GGML_VK_DISABLE_GRAPH_OPTIMIZE = getenv("GGML_VK_DISABLE_GRAPH_OPTIMIZE");
+         device->disable_graph_optimize = GGML_VK_DISABLE_GRAPH_OPTIMIZE != nullptr;
++        device->disable_narrow_mul_mat = getenv("GGML_VK_DISABLE_NARROW_MUL_MAT") != nullptr;
+ 
+         bool fp16_storage = false;
+         bool fp16_compute = false;
+@@ -4321,6 +4520,11 @@ vk_device ggml_vk_get_device(size_t idx) {
+             } else if (strcmp("VK_NV_cooperative_matrix2", properties.extensionName) == 0 &&
+                        !getenv("GGML_VK_DISABLE_COOPMAT2")) {
+                 coopmat2_support = true;
++#endif
++#if defined(GGML_VULKAN_COOPMAT_MAINTENANCE1_GLSLC_SUPPORT)
++            } else if (strcmp("VK_EXT_cooperative_matrix_maintenance1", properties.extensionName) == 0 &&
++                       !getenv("GGML_VK_DISABLE_COOPMAT_MAINTENANCE1")) {
++                device->coopmat_maintenance1 = true;
+ #endif
+             } else if (strcmp(VK_NV_COOPERATIVE_MATRIX_DECODE_VECTOR_EXTENSION_NAME, properties.extensionName) == 0 &&
+                        !getenv("GGML_VK_DISABLE_COOPMAT2_DECODE_VECTOR")) {
+@@ -4637,6 +4841,15 @@ vk_device ggml_vk_get_device(size_t idx) {
+         }
+ #endif
+ 
++#if defined(GGML_VULKAN_COOPMAT_MAINTENANCE1_GLSLC_SUPPORT)
++        VkPhysicalDeviceCooperativeMatrixMaintenance1FeaturesEXT coopmat_m1_features {};
++        coopmat_m1_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_MAINTENANCE_1_FEATURES_EXT;
++        if (device->coopmat_support && device->coopmat_maintenance1) {
++            last_struct->pNext = (VkBaseOutStructure *)&coopmat_m1_features;
++            last_struct = (VkBaseOutStructure *)&coopmat_m1_features;
++        }
++#endif
++
+         VkPhysicalDeviceCooperativeMatrixDecodeVectorFeaturesNV coopmat2_decode_vector_features {};
+         coopmat2_decode_vector_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_DECODE_VECTOR_FEATURES_NV;
+         if (coopmat2_decode_vector_support) {
+@@ -4812,6 +5025,17 @@ vk_device ggml_vk_get_device(size_t idx) {
+         device->coopmat1_fa_support = device->coopmat_support && device->subgroup_require_full_support;
+ #endif
+ 
++#if defined(GGML_VULKAN_COOPMAT_MAINTENANCE1_GLSLC_SUPPORT)
++        device->coopmat_maintenance1 = device->coopmat_support && device->coopmat_maintenance1;
++        if (device->coopmat_maintenance1) {
++            device->coopmat_m1_reductions      = coopmat_m1_features.cooperativeMatrixReductions;
++            device->coopmat_m1_conversions     = coopmat_m1_features.cooperativeMatrixConversions;
++            device->coopmat_m1_per_element_ops = coopmat_m1_features.cooperativeMatrixPerElementOperations;
++            device->coopmat_m1_get_coordinate  = coopmat_m1_features.cooperativeMatrixGetCoordinate;
++            device_extensions.push_back(VK_EXT_COOPERATIVE_MATRIX_MAINTENANCE_1_EXTENSION_NAME);
++        }
++#endif
++
+         if (coopmat2_support) {
+ #if defined(VK_NV_cooperative_matrix2) && defined(GGML_VULKAN_COOPMAT2_GLSLC_SUPPORT)
+             if (coopmat2_features.cooperativeMatrixWorkgroupScope &&
+@@ -4895,6 +5119,13 @@ vk_device ggml_vk_get_device(size_t idx) {
+                                 prop.KGranularity <= 16) {
+                                 found_bf16_128 = true;
+                             }
++                            // GDN uses M=32, with N/K dimensions that are multiples of 16.
++                            if (prop.workgroupInvocations == 128 &&
++                                prop.MGranularity != 0 && 32 % prop.MGranularity == 0 &&
++                                prop.NGranularity != 0 && 16 % prop.NGranularity == 0 &&
++                                prop.KGranularity != 0 && 16 % prop.KGranularity == 0) {
++                                device->coopmat2_gdn_support = true;
++                            }
+                             if (prop.workgroupInvocations == 256 &&
+                                 prop.MGranularity <= 32 &&
+                                 prop.NGranularity <= 32 &&
+@@ -4905,6 +5136,12 @@ vk_device ggml_vk_get_device(size_t idx) {
+ #endif
+                     }
+                 }
++                device->coopmat2_gdn_support = device->coopmat2_gdn_support &&
++                    coopmat2_props.cooperativeMatrixWorkgroupScopeMaxWorkgroupSize >= 128 &&
++                    device->properties.limits.maxComputeWorkGroupInvocations >= 128 &&
++                    device->properties.limits.maxComputeWorkGroupSize[0] >= 128 &&
++                    uint64_t(ggml_vk_gated_delta_net_shmem_size(GGML_VK_GDN_CM2_V, true)) + coopmat2_props.cooperativeMatrixWorkgroupScopeReservedSharedMemory <=
++                        device->properties.limits.maxComputeSharedMemorySize;
+                 if (found_fp16_128 && found_fp16_256 &&
+                     found_fp32_128 && found_fp32_256 &&
+                     coopmat2_props.cooperativeMatrixFlexibleDimensionsMaxDimension >= 512) {
+@@ -5022,6 +5259,18 @@ vk_device ggml_vk_get_device(size_t idx) {
+                         device->coopmat_bf16_support = true;
+                     }
+                 }
++                // bf16 accumulator (bf16/bf16/bf16/bf16) at the shader's fixed 16x16x16
++                // shape lets the GDN coopmat1 path keep the hi/lo split as accumulators.
++                if (bfloat16_support &&
++                    prop.AType == VK_COMPONENT_TYPE_BFLOAT16_KHR &&
++                    prop.BType == VK_COMPONENT_TYPE_BFLOAT16_KHR &&
++                    prop.CType == VK_COMPONENT_TYPE_BFLOAT16_KHR &&
++                    prop.ResultType == VK_COMPONENT_TYPE_BFLOAT16_KHR &&
++                    (vk::ScopeKHR)prop.scope == vk::ScopeKHR::eSubgroup &&
++                    prop.MSize == 16 && prop.NSize == 16 && prop.KSize == 16
++                ) {
++                    device->coopmat_bf16_acc_support = true;
++                }
+ #endif
+             }
+ 
+@@ -5235,6 +5484,7 @@ static void ggml_vk_print_gpu_info(size_t idx) {
+     bool coopmat_support = false;
+     bool coopmat2_support = false;
+     bool coopmat2_decode_vector_support = false;
++    bool coopmat_maintenance1_support = false;
+     bool integer_dot_product = false;
+     bool bfloat16_support = false;
+     bool dot2_f16_support = false;
+@@ -5255,6 +5505,11 @@ static void ggml_vk_print_gpu_info(size_t idx) {
+         } else if (strcmp("VK_NV_cooperative_matrix2", properties.extensionName) == 0 &&
+                    !getenv("GGML_VK_DISABLE_COOPMAT2")) {
+             coopmat2_support = true;
++#endif
++#if defined(GGML_VULKAN_COOPMAT_MAINTENANCE1_GLSLC_SUPPORT)
++        } else if (strcmp("VK_EXT_cooperative_matrix_maintenance1", properties.extensionName) == 0 &&
++                   !getenv("GGML_VK_DISABLE_COOPMAT_MAINTENANCE1")) {
++            coopmat_maintenance1_support = true;
+ #endif
+         } else if (strcmp(VK_NV_COOPERATIVE_MATRIX_DECODE_VECTOR_EXTENSION_NAME, properties.extensionName) == 0 &&
+                    !getenv("GGML_VK_DISABLE_COOPMAT2_DECODE_VECTOR")) {
+@@ -5338,6 +5593,15 @@ static void ggml_vk_print_gpu_info(size_t idx) {
+     }
+ #endif
+ 
++#if defined(GGML_VULKAN_COOPMAT_MAINTENANCE1_GLSLC_SUPPORT)
++    VkPhysicalDeviceCooperativeMatrixMaintenance1FeaturesEXT coopmat_m1_features {};
++    coopmat_m1_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_MAINTENANCE_1_FEATURES_EXT;
++    if (coopmat_support && coopmat_maintenance1_support) {
++        last_struct->pNext = (VkBaseOutStructure *)&coopmat_m1_features;
++        last_struct = (VkBaseOutStructure *)&coopmat_m1_features;
++    }
++#endif
++
+     VkPhysicalDeviceShaderIntegerDotProductFeaturesKHR shader_integer_dot_product_features {};
+     shader_integer_dot_product_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_FEATURES_KHR;
+     if (integer_dot_product) {
+@@ -5430,13 +5694,17 @@ static void ggml_vk_print_gpu_info(size_t idx) {
+     coopmat2_support = false;
+ #endif
+ 
++#if defined(GGML_VULKAN_COOPMAT_MAINTENANCE1_GLSLC_SUPPORT)
++    coopmat_maintenance1_support = coopmat_maintenance1_support && coopmat_m1_features.cooperativeMatrixPerElementOperations;
++#endif
++
+     coopmat2_decode_vector_support = coopmat2_decode_vector_support && coopmat2_decode_vector_features.cooperativeMatrixDecodeVector;
+ #if !defined(GGML_VULKAN_COOPMAT2_DECODE_VECTOR_GLSLC_SUPPORT)
+     coopmat2_decode_vector_support = false;
+ #endif
+ 
+     std::string matrix_cores = coopmat2_support ? (coopmat2_decode_vector_support ? "NV_coopmat2v" : "NV_coopmat2")
+-                             : coopmat_support  ? "KHR_coopmat"
++                             : coopmat_support  ? (coopmat_maintenance1_support ? "KHR_coopmat_m1" : "KHR_coopmat")
+                              : "none";
+ 
+     bool dot2_f16 = dot2_f16_support && dot2_features.shaderMixedFloatDotProductFloat16AccFloat32;
+@@ -5780,7 +6048,7 @@ void ggml_vk_init(ggml_backend_vk_context * ctx, size_t idx) {
+     }
+ 
+     if (vk_perf_logger_enabled) {
+-        ctx->perf_logger = std::unique_ptr<vk_perf_logger>(new vk_perf_logger());
++        ctx->perf_logger = std::unique_ptr<vk_perf_logger>(new vk_perf_logger(ctx->device));
+     }
+ 
+ #ifdef GGML_VULKAN_CHECK_RESULTS
+@@ -6177,7 +6445,7 @@ void deferred_memset(void * dst, uint32_t val, size_t size, std::vector<vk_stagi
+     }
+ }
+ 
+-static uint32_t ggml_vk_guess_split_k(ggml_backend_vk_context * ctx, uint32_t m, uint32_t n, uint32_t k, bool disable_split_k, const vk_pipeline& pipeline) {
++static uint32_t ggml_vk_guess_split_k(ggml_backend_vk_context * ctx, uint32_t m, uint32_t n, uint32_t k, bool disable_split_k, const vk_pipeline& pipeline, bool narrow_n) {
+     VK_LOG_DEBUG("ggml_vk_guess_split_k(" << m << ", " << n << ", " << k << ", " << disable_split_k << ")");
+ 
+     if (disable_split_k) {
+@@ -6185,9 +6453,9 @@ static uint32_t ggml_vk_guess_split_k(ggml_backend_vk_context * ctx, uint32_t m,
+     }
+ 
+     const bool rdna = ctx->device->architecture == AMD_RDNA3 || ctx->device->architecture == AMD_RDNA4;
+-    uint32_t split_k = 1;
+-    if (rdna && ctx->device->shader_core_count != 0 && k >= 2048 && n <= 32) {
+-        // Small n gives too few workgroups to hide latency, aim for 8 per CU. Small tiles are one subgroup each.
++    uint32_t split_k = narrow_n && ctx->device->shader_core_count == 0 ? 8u : 1u;
++    if ((narrow_n || rdna) && ctx->device->shader_core_count != 0 && k >= 2048 && n <= 32) {
++        // Small n gives too few workgroups to hide latency, aim for 8 per CU.
+         const uint32_t tiles = CEIL_DIV(m, pipeline->wg_denoms[0]) * CEIL_DIV(n, pipeline->wg_denoms[1]);
+         if (tiles < 4 * ctx->device->shader_core_count) {
+             split_k = std::min(8u, CEIL_DIV(8 * ctx->device->shader_core_count, tiles));
+@@ -6195,7 +6463,7 @@ static uint32_t ggml_vk_guess_split_k(ggml_backend_vk_context * ctx, uint32_t m,
+     }
+ 
+     // On RDNA, also split when n <= 64 only partly fills one tile column.
+-    if (split_k == 1 && ctx->device->shader_core_count != 0 && (n >= pipeline->wg_denoms[1] || (rdna && n <= 64))) {
++    if (!narrow_n && split_k == 1 && ctx->device->shader_core_count != 0 && (n >= pipeline->wg_denoms[1] || (rdna && n <= 64))) {
+         // If k is 'large' and the SMs will fill less than halfway, use split_k.
+         uint32_t m_tiles = CEIL_DIV(m, pipeline->wg_denoms[0]);
+         uint32_t n_tiles = CEIL_DIV(n, pipeline->wg_denoms[1]);
+@@ -6216,21 +6484,10 @@ static uint32_t ggml_vk_guess_split_k(ggml_backend_vk_context * ctx, uint32_t m,
+         }
+     }
+ 
+-    // ggml_vk_matmul will align the splits to be a multiple of 256.
+-    // If this rounded up size would cause the last split to be empty,
+-    // then reduce the split count.
+-    while (true) {
+-        if (split_k == 1) {
+-            break;
+-        }
+-        uint32_t k_split = CEIL_DIV(k, split_k);
+-        k_split = ROUNDUP_POW2(k_split, 256);
+-        if (k_split * (split_k - 1) < k) {
+-            break;
+-        }
+-        split_k--;
++    // Each split starts on a 256-value boundary; keep the last split nonempty.
++    while (split_k > 1 && ROUNDUP_POW2(CEIL_DIV(uint64_t(k), split_k), 256) * (split_k - 1) >= k) {
++        --split_k;
+     }
+-
+     return split_k;
+ }
+ 
+@@ -6749,7 +7006,8 @@ static void ggml_vk_mul_mat_q_f16(ggml_backend_vk_context * ctx, vk_context& sub
+     const uint64_t y_ne = padded_n * ne10 * ne12 * ne13;
+     const uint64_t d_ne = ggml_nelements(dst);
+ 
+-    const uint32_t split_k = ggml_vk_guess_split_k(ctx, ne01, ne11, ne10, disable_split_k, pipeline);
++    const bool narrow_n = mmp_map->back().narrow_n_max != 0 && ne11 <= mmp_map->back().narrow_n_max;
++    const uint32_t split_k = ggml_vk_guess_split_k(ctx, ne01, ne11, ne10, disable_split_k, pipeline, narrow_n);
+ 
+     const uint64_t qx_sz = ggml_type_size(src0->type) * x_ne / ggml_blck_size(src0->type);
+     const uint64_t qy_sz = ggml_type_size(src1->type) * y_ne / ggml_blck_size(src1->type);
+@@ -7689,7 +7947,7 @@ void ggml_vk_mul_mat(ggml_backend_vk_context * ctx, vk_context& subctx, const st
+         ggml_vk_mul_mat_vec_q_f16(ctx, subctx, cgraph, node_idx, true);
+     // mul_mat_vec supports batching ne12*ne13 when ne11==1, or treating ne11 as the batch size (up to four)
+     // when ne12 and ne13 are one.
+-    } else if ((dst->ne[1] == 1 || (dst->ne[1] <= mul_mat_vec_max_cols && src1->ne[2] * src1->ne[3] == 1)) &&
++    } else if ((dst->ne[1] == 1 || (dst->ne[1] <= ggml_vk_mul_mat_vec_max_cols(ctx->device) && src1->ne[2] * src1->ne[3] == 1)) &&
+                (src0->type == GGML_TYPE_F32 || src0->type == GGML_TYPE_F16 || src0->type == GGML_TYPE_BF16 || ggml_is_quantized(src0->type))) {
+         ggml_vk_mul_mat_vec_q_f16(ctx, subctx, cgraph, node_idx);
+     } else {
+@@ -8382,10 +8640,11 @@ bool ggml_vk_flash_attn_coopmat_shmem_support(const vk_device& device, const vk_
+     const uint32_t iq_shmem = 16 * sizeof(ggml_fp16_t);
+ 
+     const uint32_t qstride = hsk_pad / 4 + 2;
+-    const uint32_t Qf = Br * qstride * f16vec4;
++    const uint32_t Qf = (params.q_in_regs ? 1 : Br * qstride) * f16vec4;
+ 
+     const uint32_t psh_stride = Br / 4 + 2;
+-    const uint32_t Psh = Bc * psh_stride * f16vec4;
++    const uint32_t qchunk_stride = 4 * 16 / 4 + 2;
++    const uint32_t Psh = std::max(Bc * psh_stride, params.q_in_regs ? Br * qchunk_stride : 0) * f16vec4;
+ 
+     const uint32_t sfshstride = (hsk <= 128) ? (Br + 8) : Br;
+     const uint32_t sfsh = Bc * sfshstride * acctype;
+@@ -8394,14 +8653,30 @@ bool ggml_vk_flash_attn_coopmat_shmem_support(const vk_device& device, const vk_
+     const uint32_t vsh_stride = MatBc / 4 * row_split;
+     const uint32_t ksh = ((kvshstride >= vsh_stride) ? (Bc * kvshstride) : (Bc * vsh_stride)) * f16vec4;
+ 
+-    // BF16 PVMat accumulator is f32 (no bf16 accumulator support), so pvsh is vec4 (16 bytes)
+-    const uint32_t pvsh_elem_size = (k_type == GGML_TYPE_BF16) ? 16u : f16vec4;
+-    const uint32_t osh_stride = params.row_split * MatBr / 4;
+-    const uint32_t pvsh = MatBc * osh_stride * pvsh_elem_size;
+-
+     const uint32_t slope = Br * acctype;
+ 
+-    const uint32_t total_size = tmpsh + iq_shmem + Qf + Psh + sfsh + ksh + pvsh + slope;
++    uint32_t pvsh = 0;
++    if (Br <= MatBr) {
++        const uint32_t pvsh_elem_size = (k_type == GGML_TYPE_BF16) ? 16u : f16vec4;
++        const uint32_t osh_stride = params.row_split * MatBr / 4;
++        pvsh = Br * osh_stride * pvsh_elem_size;
++    }
++
++    uint32_t total_size = tmpsh + iq_shmem + Qf + Psh + sfsh + ksh + pvsh + slope + params.limit_occupancy_shmem * 16;
++
++    if (params.flip) {
++        const uint32_t d_pad = std::max(hsk_pad, hsv_pad);
++        const uint32_t wg = params.workgroup_size;
++        const uint32_t vld = CEIL_DIV(Bc * hsv_pad / 8, wg);
++        const bool vt = vld % 4 == 0 && wg % (hsv_pad / 8) == 0 && vld * (wg / (hsv_pad / 8)) == Bc;
++        const uint32_t kvbuf = std::max(Bc * (d_pad / 4 + 2), vt ? hsv_pad * (Bc / 4 + 2) : 0u) * 8;
++        const uint32_t kvshf = params.flip_direct ? 16 : 2 * kvbuf;
++        const uint32_t sshf = params.row_split * 16 * (Bc / 4 + (f32acc ? 1 : 2)) * 4 * acctype;
++        // f16/quant K/V stage P and Q through the S slab; only bf16 keeps a separate pshf.
++        const bool p_in_sshf = k_type != GGML_TYPE_BF16;
++        const uint32_t pshf = p_in_sshf ? 0 : params.row_split * 16 * (Bc / 4 + 2) * f16vec4;
++        total_size = kvshf + sshf + pshf;
++    }
+     const bool supported = total_size <= device->properties.limits.maxComputeSharedMemorySize;
+ 
+     VK_LOG_DEBUG("ggml_vk_flash_attn_coopmat_shmem_support(HSK=" << hsk << ", HSV=" << hsv << ", f32acc=" << f32acc << ", total_size=" << total_size << ", supported=" << supported);
+@@ -8509,9 +8784,8 @@ void ggml_vk_flash_attn(ggml_backend_vk_context * ctx, vk_context& subctx, const
+     const ggml_type k_type_eff = (use_dequant_kv && !kv_raw_strided) ? GGML_TYPE_F16 : k->type;
+     const ggml_type v_type_eff = (use_dequant_kv && !kv_raw_strided) ? GGML_TYPE_F16 : v->type;
+ 
+-    // For scalar/coopmat1 FA, we can use the "large" size to accommodate qga.
+-    // For coopmat2 FA, we always use the small size (which is still pretty large for gqa).
+-    vk_fa_tuning_params tuning_params = get_fa_tuning_params(ctx->device, HSK, HSV, 512, KV, k_type_eff, v_type_eff, f32acc);
++    // N=32 avoids the cm1 prefill block_rows doubling
++    vk_fa_tuning_params tuning_params = get_fa_tuning_params(ctx->device, HSK, HSV, 32, KV, k_type_eff, v_type_eff, f32acc, qk_ratio);
+     const uint32_t max_gqa = std::min(tuning_params.block_rows, 32u);
+ 
+     if (N <= 8 && qk_ratio > 1 && qk_ratio <= max_gqa &&
+@@ -8524,7 +8798,7 @@ void ggml_vk_flash_attn(ggml_backend_vk_context * ctx, vk_context& subctx, const
+         workgroups_y /= gqa_ratio;
+     }
+ 
+-    tuning_params = get_fa_tuning_params(ctx->device, HSK, HSV, N, KV, k_type_eff, v_type_eff, f32acc);
++    tuning_params = get_fa_tuning_params(ctx->device, HSK, HSV, N, KV, k_type_eff, v_type_eff, f32acc, qk_ratio);
+ 
+     float scale         = 1.0f;
+     float max_bias      = 0.0f;
+@@ -8580,14 +8854,28 @@ void ggml_vk_flash_attn(ggml_backend_vk_context * ctx, vk_context& subctx, const
+         nbv2_eff = (uint32_t)((uint64_t)HSV * KV * sizeof(ggml_fp16_t));
+         nbv3_eff = (uint32_t)((uint64_t)HSV * KV * nev2 * sizeof(ggml_fp16_t));
+     }
+-    const uint32_t alignment = tuning_params.block_cols;
+-    // CM2 decoded K/V strides count whole blocks and do not need to be multiples of eight blocks.
+-    const bool cm2_decode_k = tuning_params.path == FA_COOPMAT2 &&
+-                             k_type_eff != GGML_TYPE_F16 && k_type_eff != GGML_TYPE_BF16;
+-    const bool cm2_decode_v = tuning_params.path == FA_COOPMAT2 &&
+-                             v_type_eff != GGML_TYPE_F16 && v_type_eff != GGML_TYPE_BF16;
+-    bool aligned = (KV % alignment) == 0 && (q_stride_eff & 7) == 0 &&
+-                   (cm2_decode_k || (k_stride & 7) == 0) && (cm2_decode_v || (v_stride & 7) == 0);
++    auto fa_aligned = [&](const vk_fa_tuning_params & tp) {
++        // CM2 decoded K/V strides count whole blocks and do not need to be multiples of eight blocks.
++        const bool cm2_decode_k = tp.path == FA_COOPMAT2 &&
++                                 k_type_eff != GGML_TYPE_F16 && k_type_eff != GGML_TYPE_BF16;
++        const bool cm2_decode_v = tp.path == FA_COOPMAT2 &&
++                                 v_type_eff != GGML_TYPE_F16 && v_type_eff != GGML_TYPE_BF16;
++        return (KV % tp.block_cols) == 0 && (q_stride_eff & 7) == 0 &&
++               (cm2_decode_k || (k_stride & 7) == 0) && (cm2_decode_v || (v_stride & 7) == 0);
++    };
++    uint32_t alignment = tuning_params.block_cols;
++    bool aligned = fa_aligned(tuning_params);
++
++    if (tuning_params.flip) {
++        // flipped coopmat1 path reads K/V rows with 16-byte loads
++        const bool kv_16b = use_dequant_kv ||
++            (((uintptr_t)k->data | (uintptr_t)v->data | nbk2_eff | nbk3_eff | nbv2_eff | nbv3_eff) % 16) == 0;
++        if (!aligned || use_sparse || gqa_ratio != 1 || !kv_16b) {
++            tuning_params = get_fa_tuning_params(ctx->device, HSK, HSV, N, KV, k_type_eff, v_type_eff, f32acc, qk_ratio, false);
++            alignment = tuning_params.block_cols;
++            aligned = fa_aligned(tuning_params);
++        }
++    }
+ 
+     // Need to use the coopmat2 variant that clamps loads when HSK/HSV aren't sufficiently aligned.
+     if (((HSK | HSV) % 16) != 0 && tuning_params.path == FA_COOPMAT2) {
+@@ -10743,6 +11031,7 @@ void ggml_vk_lightning_indexer(ggml_backend_vk_context * ctx, vk_context& subctx
+ 
+ void ggml_vk_gated_delta_net(ggml_backend_vk_context * ctx, vk_context& subctx, ggml_tensor * dst) {
+     const ggml_tensor * src_q     = dst->src[0];
++    const ggml_tensor * src_k     = dst->src[1];
+     const ggml_tensor * src_v     = dst->src[2];
+     const ggml_tensor * src_beta  = dst->src[4];
+ 
+@@ -10758,7 +11047,39 @@ void ggml_vk_gated_delta_net(ggml_backend_vk_context * ctx, vk_context& subctx,
+ 
+     const uint32_t s_off = S_v * H * n_tokens * n_seqs;
+ 
+-    vk_pipeline pipeline = ggml_vk_op_get_pipeline(ctx, dst->src[0], dst->src[1], dst->src[2], dst, dst->op);
++    const ggml_tensor * src_g = dst->src[3];
++    // RDNA3: the scan is faster below ~4k tokens
++    const uint32_t cm_min_tokens = ctx->device->architecture == AMD_RDNA3 ? 4096u : 64u;
++    const bool use_cm = (ctx->device->pipeline_gated_delta_net_cm != nullptr ||
++                         ctx->device->pipeline_gated_delta_net_cm_v32 != nullptr ||
++                         ctx->device->pipeline_gated_delta_net_cm_v128 != nullptr) &&
++        src_g->ne[0] == 1 && S_v == 128 && dst->src[0]->ne[0] == 128 && K == 1 && n_tokens >= cm_min_tokens;
++
++    const bool use_cm2 = use_cm && ctx->device->coopmat2;
++    const bool have_v64 = ctx->device->pipeline_gated_delta_net_cm != nullptr;
++    bool use_v32  = use_cm && !use_cm2 && !have_v64 && ctx->device->pipeline_gated_delta_net_cm_v32 != nullptr;
++    bool use_v128 = use_cm && !use_cm2 && !have_v64 && !use_v32;
++    const uint32_t nsm = ctx->device->shader_core_count;
++    if (use_cm && !use_cm2 && have_v64 && nsm != 0) {
++        const uint32_t wg64 = 2u * H * n_seqs;
++        // V=32 only pays off while V=64 leaves at least half the cores idle
++        use_v32 = ctx->device->pipeline_gated_delta_net_cm_v32 != nullptr && 2u * wg64 <= nsm;
++        if (!use_v32 && ctx->device->pipeline_gated_delta_net_cm_v128 != nullptr) {
++            const uint32_t wg128 = H * n_seqs;
++            const uint32_t waves64  = (wg64  + nsm - 1) / nsm;
++            const uint32_t waves128 = (wg128 + nsm - 1) / nsm;
++            // prefer v128 when occupancy (wgs / (waves * nsm)) is at least as good
++            use_v128 = (uint64_t)wg128 * waves64 >= (uint64_t)wg64 * waves128;
++        }
++    }
++
++    const uint32_t cm_V = use_cm2 ? GGML_VK_GDN_CM2_V : (use_v128 ? 128u : (use_v32 ? 32u : GGML_VK_GDN_CM_V));
++
++    vk_pipeline pipeline = use_v128
++        ? ctx->device->pipeline_gated_delta_net_cm_v128
++        : use_v32 ? ctx->device->pipeline_gated_delta_net_cm_v32
++        : (use_cm ? ctx->device->pipeline_gated_delta_net_cm
++                   : ggml_vk_op_get_pipeline(ctx, dst->src[0], dst->src[1], dst->src[2], dst, dst->op));
+     GGML_ASSERT(pipeline != nullptr);
+ 
+     ggml_pipeline_request_descriptor_sets(ctx, pipeline, 1);
+@@ -10769,9 +11090,27 @@ void ggml_vk_gated_delta_net(ggml_backend_vk_context * ctx, vk_context& subctx,
+         src_buf[i] = ggml_vk_tensor_subbuffer(ctx, dst->src[i]);
+     }
+ 
++    vk_subbuffer mirror_buf{};
++    if (use_v128) {
++        const uint32_t LDP = GGML_VK_GDN_CM_LDP;
++        const uint32_t blocks = (S_v / cm_V) * n_seqs * H;
++        const size_t scratch_size = (size_t)blocks * LDP * cm_V * 2u * sizeof(uint16_t);
++        if (ctx->prealloc_size_x < scratch_size) {
++            ctx->prealloc_size_x = scratch_size;
++            ggml_vk_preallocate_buffers(ctx, subctx);
++        }
++        if (ctx->prealloc_x_need_sync) {
++            ggml_vk_sync_buffers(ctx, subctx);
++        }
++        mirror_buf = vk_subbuffer{ ctx->prealloc_x, 0, ctx->prealloc_x->size };
++    }
++
+     const uint32_t sq1 = (uint32_t)(src_q->nb[1] / sizeof(float));
+     const uint32_t sq2 = (uint32_t)(src_q->nb[2] / sizeof(float));
+     const uint32_t sq3 = (uint32_t)(src_q->nb[3] / sizeof(float));
++    const uint32_t sk1 = (uint32_t)(src_k->nb[1] / sizeof(float));
++    const uint32_t sk2 = (uint32_t)(src_k->nb[2] / sizeof(float));
++    const uint32_t sk3 = (uint32_t)(src_k->nb[3] / sizeof(float));
+     const uint32_t sv1 = (uint32_t)(src_v->nb[1] / sizeof(float));
+     const uint32_t sv2 = (uint32_t)(src_v->nb[2] / sizeof(float));
+     const uint32_t sv3 = (uint32_t)(src_v->nb[3] / sizeof(float));
+@@ -10786,6 +11125,7 @@ void ggml_vk_gated_delta_net(ggml_backend_vk_context * ctx, vk_context& subctx,
+     const vk_op_gated_delta_net_push_constants pc = {
+         H, n_tokens, n_seqs, s_off,
+         sq1, sq2, sq3,
++        sk1, sk2, sk3,
+         sv1, sv2, sv3,
+         sb1, sb2, sb3,
+         neq1, rq3,
+@@ -10793,9 +11133,16 @@ void ggml_vk_gated_delta_net(ggml_backend_vk_context * ctx, vk_context& subctx,
+         K
+     };
+ 
+-    ggml_vk_dispatch_pipeline(ctx, subctx, pipeline,
+-        {src_buf[0], src_buf[1], src_buf[2], src_buf[3], src_buf[4], src_buf[5], dst_buf},
+-        pc, { H, n_seqs, S_v });
++    if (use_v128) {
++        ggml_vk_dispatch_pipeline(ctx, subctx, pipeline,
++            {src_buf[0], src_buf[1], src_buf[2], src_buf[3], src_buf[4], src_buf[5], dst_buf, mirror_buf},
++            pc, std::array<uint32_t, 3>{ S_v / cm_V, n_seqs, H });
++        ctx->prealloc_x_need_sync = true;
++    } else {
++        ggml_vk_dispatch_pipeline(ctx, subctx, pipeline,
++            {src_buf[0], src_buf[1], src_buf[2], src_buf[3], src_buf[4], src_buf[5], dst_buf},
++            pc, use_cm ? std::array<uint32_t, 3>{ S_v / cm_V, n_seqs, H } : std::array<uint32_t, 3>{ H, n_seqs, S_v });
++    }
+ }
+ 
+ void ggml_vk_ssm_scan(ggml_backend_vk_context * ctx, vk_context& subctx, ggml_tensor * dst) {
+@@ -17068,7 +17415,7 @@ std::string vk_perf_logger::get_node_fusion_name(const ggml_tensor * node, const
+         const uint64_t k     = node->src[1]->ne[0];
+         const uint64_t batch = node->ne[2] * node->ne[3];
+         std::string    name  = ggml_op_name(node->op);
+-        if ((node->op == GGML_OP_MUL_MAT && n <= mul_mat_vec_max_cols) ||
++        if ((node->op == GGML_OP_MUL_MAT && n <= ggml_vk_mul_mat_vec_max_cols(device)) ||
+             (node->op == GGML_OP_MUL_MAT_ID && node->src[2]->ne[1] == 1)) {
+             name += "_VEC";
+         }
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/CMakeLists.txt b/ggml/src/ggml-vulkan/vulkan-shaders/CMakeLists.txt
+index cbe7a68bf..273a80233 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/CMakeLists.txt
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/CMakeLists.txt
+@@ -15,6 +15,10 @@ if (GGML_VULKAN_COOPMAT2_DECODE_VECTOR_GLSLC_SUPPORT)
+     add_compile_definitions(GGML_VULKAN_COOPMAT2_DECODE_VECTOR_GLSLC_SUPPORT)
+     message(STATUS "Enabling coopmat2 decode_vector glslc support")
+ endif()
++if (GGML_VULKAN_COOPMAT_MAINTENANCE1_GLSLC_SUPPORT)
++    add_compile_definitions(GGML_VULKAN_COOPMAT_MAINTENANCE1_GLSLC_SUPPORT)
++    message(STATUS "Enabling coopmat maintenance1 glslc support")
++endif()
+ if (GGML_VULKAN_INTEGER_DOT_GLSLC_SUPPORT)
+     add_compile_definitions(GGML_VULKAN_INTEGER_DOT_GLSLC_SUPPORT)
+     message(STATUS "Enabling dot glslc support")
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/feature-tests/coopmat_maintenance1.comp b/ggml/src/ggml-vulkan/vulkan-shaders/feature-tests/coopmat_maintenance1.comp
+new file mode 100644
+index 000000000..049ca2867
+--- /dev/null
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/feature-tests/coopmat_maintenance1.comp
+@@ -0,0 +1,8 @@
++#version 460
++
++#extension GL_KHR_cooperative_matrix : require
++#extension GL_EXT_cooperative_matrix_maintenance1 : require
++
++void main()
++{
++}
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn.comp b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn.comp
+index 2c5e85908..c1e4606cd 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn.comp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn.comp
+@@ -95,13 +95,13 @@ void main() {
+     const uint32_t col_tid = (gl_LocalInvocationIndex % threads_per_rowgroup) / D_split;
+ 
+     if (LIMIT_OCCUPANCY_SHMEM > 0) {
+-        // This just exists to avoid the occupancy_limiter array getting optimized out
+-        occupancy_limiter[tid] = vec4(tid);
+-
++        // Runtime-dependent index, otherwise RADV forwards the store and drops the array
++        const uint32_t li = (gl_WorkGroupID.x * gl_WorkGroupSize.x + tid) % LIMIT_OCCUPANCY_SHMEM;
++        occupancy_limiter[li] = vec4(tid);
+         barrier();
+-
+-        if (occupancy_limiter[tid] == vec4(99999.0)) {
+-            data_ov4[0] = D_TYPEV4(occupancy_limiter[tid]);
++        const uint32_t lr = (li + 1) % LIMIT_OCCUPANCY_SHMEM;
++        if (occupancy_limiter[lr] == vec4(99999.0)) {
++            data_ov4[0] = D_TYPEV4(occupancy_limiter[lr]);
+         }
+     }
+ 
+@@ -154,8 +154,6 @@ void main() {
+ 
+     float Lf[rows_per_thread], Mf[rows_per_thread];
+ 
+-    // Use -FLT_MAX/2 rather than -inf to reduce the possibility of NaNs, e.g. when computing Mold-M.
+-    const float NEG_FLT_MAX_OVER_2 = uintBitsToFloat(0xFEFFFFFF);
+ 
+     [[unroll]] for (uint32_t r = 0; r < rows_per_thread; ++r) {
+         Lf[r] = 0;
+@@ -220,7 +218,11 @@ void main() {
+                             masksh[c * masksh_stride + r] = m;
+                             max_mask = max(max_mask, float(m));
+                         } else {
++#if defined(FLOAT16)
++                            masksh[c * masksh_stride + r] = USE_SPARSE ? FLOAT_TYPE(NEG_FLT16_MAX) : FLOAT_TYPE(0);
++#else
+                             masksh[c * masksh_stride + r] = USE_SPARSE ? FLOAT_TYPE(NEG_FLT_MAX_OVER_2) : FLOAT_TYPE(0);
++#endif
+                         }
+                     }
+                 }
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_base.glsl b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_base.glsl
+index 2e0e23bc1..072edfa68 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_base.glsl
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_base.glsl
+@@ -26,6 +26,10 @@ const bool LOGIT_SOFTCAP   = (Flags & 4) != 0;
+ const bool OLD_AMD_WINDOWS = (Flags & 8) != 0;
+ // Sparse: gather binding-7 indices instead of scanning [0,KV); p.split_kv = n_kv_max.
+ const bool USE_SPARSE      = (Flags & 16) != 0;
++const bool Q_IN_REGS       = (Flags & 32) != 0;
++// coopmat1: subgroups own Q rows, O in coopmat accumulators. K/V staged in LDS, or loaded from global memory with FLIP_DIRECT.
++const bool FLIP            = (Flags & 64) != 0;
++const bool FLIP_DIRECT     = (Flags & 128) != 0;
+ 
+ // Round up head sizes to a multiple of 16, for coopmat1/coopmat2 paths
+ const uint32_t HSK_pad = (HSK + 15) & ~15;
+@@ -86,6 +90,11 @@ layout (binding = 6) readonly buffer MO {uint32_t data_mask_opt[];};
+ 
+ layout (binding = 7) readonly buffer SP {int32_t data_sparse[];};
+ 
++// Use -FLT_MAX/2 rather than -inf to reduce the possibility of NaNs, e.g. when computing Mold-M.
++#define NEG_FLT_MAX_OVER_2 uintBitsToFloat(0xFEFFFFFF)
++// Lowest finite f16, mask value for inactive sparse KV slots
++#define NEG_FLT16_MAX -65504.0
++
+ #define MASK_OPT_ALL_NEG_INF 1
+ #define MASK_OPT_ALL_ZERO 2
+ 
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp
+index aa9dd624b..bb9755ab8 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp
+@@ -42,10 +42,14 @@ layout (binding = 3) readonly buffer M {float16_t data_m[];};
+ shared float tmpsh[row_split];
+ 
+ const uint32_t qstride = HSK_pad / 4 + 2;
+-shared FLOAT_TYPEV4 Qf[Br * qstride];
++shared FLOAT_TYPEV4 Qf[Q_IN_REGS ? 1 : (Br * qstride)];
+ 
+ const uint psh_stride = Br / 4 + 2;
+-shared FLOAT_TYPEV4 Psh[Bc * psh_stride];
++const uint32_t qchunk_dtiles = 4;
++const uint32_t qchunk_stride = qchunk_dtiles * 16 / 4 + 2;
++const uint32_t psh_size = Bc * psh_stride;
++const uint32_t qchunk_size = Q_IN_REGS ? Br * qchunk_stride : 0;
++shared FLOAT_TYPEV4 Psh[psh_size >= qchunk_size ? psh_size : qchunk_size];
+ 
+ // Avoid padding for hsk==256 to make it fit in 48KB shmem.
+ const uint32_t sfshstride = (HSK <= 128) ? (Br / 4 + 2) : Br / 4;
+@@ -57,11 +61,33 @@ const uint v_cols = MatBc / 4 * row_split; // total cols, 4 vec4s per MatBc * nu
+ const uint vsh_stride = v_cols;
+ shared FLOAT_TYPEV4 kvsh[(kvsh_stride >= vsh_stride) ? (Bc * kvsh_stride) : (Bc * vsh_stride)];
+ 
+-const uint32_t osh_stride = row_split * MatBr / 4;
+-shared O_TYPEV4 pvsh[MatBc * osh_stride];
+-
+ shared ACC_TYPE slope[Br];
+ 
++// row-tiled builds stage the PV result through sfsh
++const bool PV_IN_SFSH = Br > MatBr;
++const uint32_t osh_stride = row_split * MatBr / 4;
++shared O_TYPEV4 pvsh[PV_IN_SFSH ? 2 : Br * osh_stride];
++
++shared vec4 occupancy_limiter[LIMIT_OCCUPANCY_SHMEM > 0 ? LIMIT_OCCUPANCY_SHMEM : 1];
++#if defined(FLOAT16) && !defined(ACC_TYPE_MAX)
++const uint32_t pv_per_acc = 2;
++O_TYPEV4 pvsh_load(const uint32_t i) {
++    if (!PV_IN_SFSH) {
++        return pvsh[i];
++    }
++    const uvec2 u = floatBitsToUint(vec2(sfsh[i / 2][(i % 2) * 2], sfsh[i / 2][(i % 2) * 2 + 1]));
++    return O_TYPEV4(unpackFloat2x16(u.x), unpackFloat2x16(u.y));
++}
++#else
++const uint32_t pv_per_acc = 1;
++O_TYPEV4 pvsh_load(const uint32_t i) {
++    if (!PV_IN_SFSH) {
++        return pvsh[i];
++    }
++    return O_TYPEV4(sfsh[i]);
++}
++#endif
++
+ void main() {
+ #ifdef NEEDS_INIT_IQ_SHMEM
+     if (fa_type_needs_shmem(FaTypeK) || fa_type_needs_shmem(FaTypeV)) {
+@@ -78,29 +104,69 @@ void main() {
+     const uint32_t row_tid = gl_LocalInvocationIndex / threads_per_rowgroup;
+     const uint32_t col_tid = gl_LocalInvocationIndex % threads_per_rowgroup;
+ 
+-#define tile_row(r) (row_tid * rows_per_thread + (r))
+-
+-    // Zero-initialize shared memory for Q/K when HSK is not a multiple of 16 (HSK_pad > HSK).
+-    if ((HSK % 16) != 0) {
+-        [[unroll]] for (uint i = 0; i < Br * qstride; i += gl_WorkGroupSize.x) {
+-            if (i + tid < Br * qstride) {
+-                Qf[i + tid] = FLOAT_TYPEV4(0);
+-            }
+-        }
++    if (LIMIT_OCCUPANCY_SHMEM > 0) {
++        // Runtime-dependent index, otherwise RADV forwards the store and drops the array
++        const uint32_t li = (gl_WorkGroupID.x * gl_WorkGroupSize.x + tid) % LIMIT_OCCUPANCY_SHMEM;
++        occupancy_limiter[li] = vec4(tid);
+         barrier();
++        const uint32_t lr = (li + 1) % LIMIT_OCCUPANCY_SHMEM;
++        if (occupancy_limiter[lr] == vec4(99999.0)) {
++            data_ov4[0] = D_TYPEV4(occupancy_limiter[lr]);
++        }
+     }
+ 
++#define tile_row(r) (row_tid * rows_per_thread + (r))
++
++    const uint32_t q_tiles = Br / MatBr;
++    const uint32_t d_tiles = HSK_pad / 16;
++
+     uint32_t q_offset = gqa_iq1*p.nb01 + (iq2*p.nb02+iq3*p.nb03) / 4;
+ 
+-    [[unroll]] for (uint32_t idx = 0; idx < Br * HSK / 4; idx += gl_WorkGroupSize.x) {
+-        uint32_t d = (idx + tid) % (HSK / 4);
+-        uint32_t r = (idx + tid) / (HSK / 4);
+-        if (r < Br && d < HSK / 4 &&
+-            i * Br + r < N) {
+-            Qf[r * qstride + d] = FLOAT_TYPEV4(data_qv4[q_offset / 4 + (i * Br + r) * q_stride / 4 + d] * p.scale);
++    coopmat<FLOAT_TYPE, gl_ScopeSubgroup, 16, MatBr, gl_MatrixUseB> Qreg[Q_IN_REGS ? (d_tiles * q_tiles) : 1];
++
++    if (Q_IN_REGS) {
++        [[unroll]] for (uint32_t dbase = 0; dbase < d_tiles; dbase += qchunk_dtiles) {
++            [[unroll]] for (uint32_t idx = 0; idx < Br * qchunk_dtiles * 16 / 4; idx += gl_WorkGroupSize.x) {
++                uint32_t dvec = (idx + tid) % (qchunk_dtiles * 16 / 4);
++                uint32_t r = (idx + tid) / (qchunk_dtiles * 16 / 4);
++                if (r < Br) {
++                    uint32_t d = dbase * 4 + dvec;
++                    FLOAT_TYPEV4 val = FLOAT_TYPEV4(0);
++                    if (d < HSK / 4 && i * Br + r < N) {
++                        val = FLOAT_TYPEV4(data_qv4[q_offset / 4 + (i * Br + r) * q_stride / 4 + d] * p.scale);
++                    }
++                    Psh[r * qchunk_stride + dvec] = val;
++                }
++            }
++            barrier();
++            [[unroll]] for (uint32_t dd = 0; dd < qchunk_dtiles && dbase + dd < d_tiles; ++dd) {
++                [[unroll]] for (uint32_t q = 0; q < q_tiles; ++q) {
++                    coopMatLoad(Qreg[(dbase + dd) * q_tiles + q], Psh, dd * 16 / 4 + q * MatBr * qchunk_stride, qchunk_stride, gl_CooperativeMatrixLayoutColumnMajor);
++                }
++            }
++            barrier();
++        }
++    } else {
++        // Zero-initialize Qf when HSK is not a multiple of 16 (HSK_pad > HSK).
++        if ((HSK % 16) != 0) {
++            [[unroll]] for (uint ii = 0; ii < Br * qstride; ii += gl_WorkGroupSize.x) {
++                if (ii + tid < Br * qstride) {
++                    Qf[ii + tid] = FLOAT_TYPEV4(0);
++                }
++            }
++            barrier();
+         }
++
++        [[unroll]] for (uint32_t idx = 0; idx < Br * HSK / 4; idx += gl_WorkGroupSize.x) {
++            uint32_t d = (idx + tid) % (HSK / 4);
++            uint32_t r = (idx + tid) / (HSK / 4);
++            if (r < Br && d < HSK / 4 &&
++                i * Br + r < N) {
++                Qf[r * qstride + d] = FLOAT_TYPEV4(data_qv4[q_offset / 4 + (i * Br + r) * q_stride / 4 + d] * p.scale);
++            }
++        }
++        barrier();
+     }
+-    barrier();
+ 
+     O_TYPEV4 Of[rows_per_thread][d_per_thread];
+     [[unroll]] for (uint32_t r = 0; r < rows_per_thread; ++r) {
+@@ -111,8 +177,6 @@ void main() {
+ 
+     float Lf[rows_per_thread], Mf[rows_per_thread];
+ 
+-    // Use -FLT_MAX/2 rather than -inf to reduce the possibility of NaNs, e.g. when computing Mold-M.
+-    const float NEG_FLT_MAX_OVER_2 = uintBitsToFloat(0xFEFFFFFF);
+ 
+     [[unroll]] for (uint32_t r = 0; r < rows_per_thread; ++r) {
+         Lf[r] = 0;
+@@ -214,7 +278,7 @@ void main() {
+                             }
+                             mask_cache[idx / WorkGroupSize] = m;
+                         } else if (USE_SPARSE) {
+-                            mask_cache[idx / WorkGroupSize] = f16vec4(NEG_FLT_MAX_OVER_2);
++                            mask_cache[idx / WorkGroupSize] = f16vec4(NEG_FLT16_MAX);
+                         }
+                     }
+                 }
+@@ -265,11 +329,14 @@ void main() {
+         // K * Q^T -> S^T: Bc x HSK_pad * HSK_pad x Br -> Bc x Br
+         // Bc split across workgroup (four subgroups), loop over HSK in chunks of 16: 16 x 16 * 16 x 16 -> 16 x 16
+         // This is written transposed in order to allow for N being 8 if implementations need it
+-        coopmat<ACC_TYPE, gl_ScopeSubgroup, MatBc, MatBr, gl_MatrixUseAccumulator> SfMat = coopmat<ACC_TYPE, gl_ScopeSubgroup, MatBc, MatBr, gl_MatrixUseAccumulator>(0);
++        coopmat<ACC_TYPE, gl_ScopeSubgroup, MatBc, MatBr, gl_MatrixUseAccumulator> SfMat[q_tiles];
++        [[unroll]] for (uint32_t q = 0; q < q_tiles; ++q) {
++            SfMat[q] = coopmat<ACC_TYPE, gl_ScopeSubgroup, MatBc, MatBr, gl_MatrixUseAccumulator>(0);
++        }
+         coopmat<FLOAT_TYPE, gl_ScopeSubgroup, MatBc, 16, gl_MatrixUseA> KMat;
+         coopmat<FLOAT_TYPE, gl_ScopeSubgroup, 16, MatBr, gl_MatrixUseB> QMat;
+ 
+-        [[unroll]] for (uint32_t d = 0; d < HSK_pad / 16; ++d) {
++        [[unroll]] for (uint32_t d = 0; d < d_tiles; ++d) {
+             // If SHMEM_STAGING is set, a Bc * HSK_pad size tile of K is loaded to shmem
+             // If not, K is loaded directly from global memory if aligned, otherwise
+             // staged through a Bc * MatBr size staging buffer.
+@@ -319,13 +386,20 @@ void main() {
+                 coopMatLoad(KMat, kvsh, coord, kvsh_stride, gl_CooperativeMatrixLayoutRowMajor);
+             }
+ 
+-            coopMatLoad(QMat, Qf, d * 16 / 4, qstride, gl_CooperativeMatrixLayoutColumnMajor);
+-
+-            SfMat = coopMatMulAdd(KMat, QMat, SfMat);
++            [[unroll]] for (uint32_t q = 0; q < q_tiles; ++q) {
++                if (Q_IN_REGS) {
++                    SfMat[q] = coopMatMulAdd(KMat, Qreg[d * q_tiles + q], SfMat[q]);
++                } else {
++                    coopMatLoad(QMat, Qf, d * 16 / 4 + q * MatBr * qstride, qstride, gl_CooperativeMatrixLayoutColumnMajor);
++                    SfMat[q] = coopMatMulAdd(KMat, QMat, SfMat[q]);
++                }
++            }
+         }
+ 
+-        uint coord = gl_SubgroupID * MatBc * sfshstride;
+-        coopMatStore(SfMat, sfsh, coord, sfshstride, gl_CooperativeMatrixLayoutRowMajor);
++        [[unroll]] for (uint32_t q = 0; q < q_tiles; ++q) {
++            uint coord = gl_SubgroupID * MatBc * sfshstride + q * (MatBr / 4);
++            coopMatStore(SfMat[q], sfsh, coord, sfshstride, gl_CooperativeMatrixLayoutRowMajor);
++        }
+         barrier();
+ 
+         if (LOGIT_SOFTCAP) {
+@@ -442,7 +516,10 @@ void main() {
+         [[unroll]] for (uint32_t hsv_tile = 0; hsv_tile < num_hsv_tiles; ++hsv_tile) {
+             const uint hsv_offset = (hsv_tile * row_split + gl_SubgroupID) * 16;
+ 
+-            coopmat<O_TYPE, gl_ScopeSubgroup, MatBc, MatBr, gl_MatrixUseAccumulator> PVMat = coopmat<O_TYPE, gl_ScopeSubgroup, MatBc, MatBr, gl_MatrixUseAccumulator>(0);
++            coopmat<O_TYPE, gl_ScopeSubgroup, MatBc, MatBr, gl_MatrixUseAccumulator> PVMat[q_tiles];
++            [[unroll]] for (uint32_t q = 0; q < q_tiles; ++q) {
++                PVMat[q] = coopmat<O_TYPE, gl_ScopeSubgroup, MatBc, MatBr, gl_MatrixUseAccumulator>(0);
++            }
+ 
+             // Preload V tiles for [Bc, 16 * num subgroups]
+             const uint v_rows = Bc;
+@@ -492,8 +569,6 @@ void main() {
+ 
+             if (hsv_offset < HSV_pad) {
+                 [[unroll]] for (uint32_t bc_chunk = 0; bc_chunk < Bc / MatBc; ++bc_chunk) {
+-                    coopMatLoad(KMat, Psh, bc_chunk * MatBc * psh_stride, psh_stride, gl_CooperativeMatrixLayoutColumnMajor);
+-
+                     if (SHMEM_STAGING == 0) {
+                     if (!USE_DECODE_V && !KV_bounds_check && !USE_SPARSE) {
+                         // F16/BF16 values can be loaded directly from global memory
+@@ -509,11 +584,19 @@ void main() {
+                         coopMatLoad(QMat, kvsh, v_tile_offset, kvsh_stride, gl_CooperativeMatrixLayoutRowMajor);
+                     }
+ 
+-                    PVMat = coopMatMulAdd(KMat, QMat, PVMat);
++                    [[unroll]] for (uint32_t q = 0; q < q_tiles; ++q) {
++                        coopMatLoad(KMat, Psh, bc_chunk * MatBc * psh_stride + q * (MatBc / 4), psh_stride, gl_CooperativeMatrixLayoutColumnMajor);
++                        PVMat[q] = coopMatMulAdd(KMat, QMat, PVMat[q]);
++                    }
+                 }
+ 
+-                // Store PVMat to pvsh and load into Of
+-                coopMatStore(PVMat, pvsh, o_offset, osh_stride, gl_CooperativeMatrixLayoutRowMajor);
++                [[unroll]] for (uint32_t q = 0; q < q_tiles; ++q) {
++                    if (PV_IN_SFSH) {
++                        coopMatStore(PVMat[q], sfsh, (o_offset + q * MatBc * osh_stride) / pv_per_acc, osh_stride / pv_per_acc, gl_CooperativeMatrixLayoutRowMajor);
++                    } else {
++                        coopMatStore(PVMat[q], pvsh, o_offset + q * MatBc * osh_stride, osh_stride, gl_CooperativeMatrixLayoutRowMajor);
++                    }
++                }
+             }
+ 
+             barrier();
+@@ -534,7 +617,7 @@ void main() {
+ 
+                     if (hsv_col >= hsv_base && hsv_col < hsv_base + hsv_per_tile && hsv_col < HSV) {
+                         const uint local_hsv = (hsv_col - hsv_base) / 4;
+-                        Of[r][d_local] += pvsh[row * osh_stride + local_hsv];
++                        Of[r][d_local] += pvsh_load(row * osh_stride + local_hsv);
+                     }
+                 }
+             }
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1_flip.comp b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1_flip.comp
+new file mode 100644
+index 000000000..6d8641a91
+--- /dev/null
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1_flip.comp
+@@ -0,0 +1,441 @@
++#version 450
++
++#extension GL_EXT_control_flow_attributes : enable
++#extension GL_EXT_shader_16bit_storage : require
++
++#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
++#extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
++
++#if defined(BFLOAT16)
++#extension GL_EXT_bfloat16 : enable
++#endif
++
++#extension GL_KHR_shader_subgroup_basic : enable
++#extension GL_KHR_shader_subgroup_vote : enable
++#extension GL_KHR_shader_subgroup_shuffle : enable
++#extension GL_KHR_memory_scope_semantics : enable
++#extension GL_KHR_cooperative_matrix : enable
++
++#include "types.glsl"
++#include "flash_attn_base.glsl"
++
++layout (binding = 0) readonly buffer QV4 {vec4 data_qv4[];};
++layout (binding = 1) readonly buffer KU {uvec4 data_ku[];};
++layout (binding = 1) readonly buffer KF4 {FLOAT_TYPEV4 data_kf4[];};
++layout (binding = 2) readonly buffer VU {uvec4 data_vu[];};
++layout (binding = 2) readonly buffer VF4 {FLOAT_TYPEV4 data_vf4[];};
++layout (binding = 3) readonly buffer M {float16_t data_m[];};
++
++const uint32_t D_pad = HSK_pad > HSV_pad ? HSK_pad : HSV_pad;
++
++// Flipped coopmat1 FA: each subgroup owns 16 Q rows and the full head dim. K/V tiles are either
++// staged once per workgroup in LDS or, with FLIP_DIRECT, loaded by each subgroup from global memory.
++// Requires gqa_ratio == 1, aligned KV, f16/bf16 K/V, HSK/HSV multiples of 16, Br == row_split * 16.
++
++const uint32_t FL_LPR = SubGroupSize / 16;
++const uint32_t FL_CPL = Bc / FL_LPR;
++const uint32_t FL_OCPL = 16 / FL_LPR;
++
++const uint32_t FL_KLD = CEIL_DIV(Bc * HSK_pad / 8, WorkGroupSize);
++const uint32_t FL_VLD = CEIL_DIV(Bc * HSV_pad / 8, WorkGroupSize);
++
++// V^T staging: each thread packs FL_VLD consecutive KV rows (multiple of 4) of 8 d values
++const bool FL_VT = (uint32_t((FL_VLD % 4) == 0) * uint32_t((WorkGroupSize % (HSV_pad / 8)) == 0) *
++                    uint32_t(FL_VLD * (WorkGroupSize / (HSV_pad / 8)) == Bc)) != 0;
++
++// LDS in uvec2 (4 halfs) units
++const uint32_t fl_kstride = D_pad / 4 + 2;
++const uint32_t fl_vtstride = Bc / 4 + 2;
++const uint32_t fl_vtsize = FL_VT ? HSV_pad * fl_vtstride : 0;
++const uint32_t fl_kvbuf = fl_vtsize > Bc * fl_kstride ? fl_vtsize : Bc * fl_kstride;
++// 16 B keeps the following shared arrays 16-B aligned for coopmat load/store
++shared uvec2 kvshf[FLIP_DIRECT ? 2 : 2 * fl_kvbuf];
++
++#if defined(ACC_TYPE_MAX)
++const uint32_t fl_sstride = Bc / 4 + 2;
++#else
++const uint32_t fl_sstride = Bc / 4 + 1;
++#endif
++shared ACC_TYPEV4 sshf[row_split * 16 * fl_sstride];
++
++// P and Q (the coopmat A operands) are staged through the S slab, which is idle
++// between the S read and the PV matmul. f16 K/V aliases into sshf (f32acc packs two
++// f16 rows per element, FL_PACK==2; f16acc stores natively, FL_PACK==1); bf16 keeps pshf.
++#if !defined(BFLOAT16)
++#define FL_P_IN_SSHF 1
++#endif
++#if !defined(BFLOAT16) && !defined(ACC_TYPE_MAX)
++#define FL_PACK 2
++#else
++#define FL_PACK 1
++#endif
++
++#if defined(FL_P_IN_SSHF)
++const uint32_t fl_astride = fl_sstride;
++#else
++const uint32_t fl_astride = Bc / 4 + 2;
++shared FLOAT_TYPEV4 pshf[row_split * 16 * fl_astride];
++#endif
++
++// Store one vec4 (column group cfv) of the A slab.
++void fl_store_a(const uint32_t e_base, const uint32_t cfv, const FLOAT_TYPEV4 val) {
++#if FL_PACK == 2
++    const uint32_t e = e_base + cfv / 2;
++    const uint32_t h = (cfv & 1u) * 2u;
++    sshf[e][h]     = uintBitsToFloat(packFloat2x16(f16vec2(val.xy)));
++    sshf[e][h + 1] = uintBitsToFloat(packFloat2x16(f16vec2(val.zw)));
++#elif defined(FL_P_IN_SSHF)
++    sshf[e_base + cfv] = ACC_TYPEV4(val);
++#else
++    pshf[e_base + cfv] = val;
++#endif
++}
++
++void fl_load_a(out coopmat<FLOAT_TYPE, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA> a, const uint32_t e) {
++#if defined(FL_P_IN_SSHF)
++    coopMatLoad(a, sshf, e, fl_sstride, gl_CooperativeMatrixLayoutRowMajor);
++#else
++    coopMatLoad(a, pshf, e, fl_astride, gl_CooperativeMatrixLayoutRowMajor);
++#endif
++}
++
++#if defined(ACC_TYPE_MAX)
++const float FL_TAU = 0.0;
++#else
++const float FL_TAU = 8.0;
++#endif
++
++uvec4 fl_kr[FL_KLD];
++uvec4 fl_vr[FL_VLD];
++
++uint32_t fl_mo_offset, fl_mo_idx, fl_mo_word;
++
++uint32_t fl_mask_bits(const uint32_t j) {
++    if (!MASK_ENABLE || !USE_MASK_OPT) {
++        return 0;
++    }
++    if (fl_mo_idx != j / 16) {
++        fl_mo_idx = j / 16;
++        fl_mo_word = data_mask_opt[fl_mo_offset + fl_mo_idx];
++    }
++    return (fl_mo_word >> ((j % 16) * 2)) & 0x3;
++}
++
++uint32_t fl_next_tile(uint32_t j) {
++    while (j < end_j && fl_mask_bits(j) == MASK_OPT_ALL_NEG_INF) {
++        ++j;
++    }
++    return j;
++}
++
++void fl_load_k(const uint32_t j, const uint32_t k_offset) {
++    [[unroll]] for (uint32_t l = 0; l < FL_KLD; ++l) {
++        const uint32_t idx = l * WorkGroupSize + gl_LocalInvocationIndex;
++        if (idx < Bc * HSK_pad / 8) {
++            const uint32_t c = idx / (HSK_pad / 8);
++            const uint32_t d = idx % (HSK_pad / 8);
++            fl_kr[l] = data_ku[(k_offset + (j * Bc + c) * k_stride) / 8 + d];
++        }
++    }
++}
++
++void fl_load_v(const uint32_t j, const uint32_t v_offset) {
++    [[unroll]] for (uint32_t l = 0; l < FL_VLD; ++l) {
++        const uint32_t idx = l * WorkGroupSize + gl_LocalInvocationIndex;
++        if (idx < Bc * HSV_pad / 8) {
++            uint32_t c = idx / (HSV_pad / 8);
++            const uint32_t d = idx % (HSV_pad / 8);
++            if (FL_VT) {
++                c = (gl_LocalInvocationIndex / (HSV_pad / 8)) * FL_VLD + l;
++            }
++            fl_vr[l] = data_vu[(v_offset + (j * Bc + c) * v_stride) / 8 + d];
++        }
++    }
++}
++
++void fl_store_k() {
++    [[unroll]] for (uint32_t l = 0; l < FL_KLD; ++l) {
++        const uint32_t idx = l * WorkGroupSize + gl_LocalInvocationIndex;
++        if (idx < Bc * HSK_pad / 8) {
++            const uint32_t a = (idx / (HSK_pad / 8)) * fl_kstride + 2 * (idx % (HSK_pad / 8));
++            kvshf[a] = fl_kr[l].xy;
++            kvshf[a + 1] = fl_kr[l].zw;
++        }
++    }
++}
++
++void fl_store_v(const uint32_t base) {
++    if (FL_VT) {
++        const uint32_t d0 = (gl_LocalInvocationIndex % (HSV_pad / 8)) * 8;
++        const uint32_t c0 = (gl_LocalInvocationIndex / (HSV_pad / 8)) * FL_VLD;
++        [[unroll]] for (uint32_t dd = 0; dd < 8; ++dd) {
++            const uint32_t ddv = (dd + gl_LocalInvocationIndex) & 7u;   // rotate store order to spread banks
++            const uint32_t sh = (ddv % 2) * 16;
++            [[unroll]] for (uint32_t l = 0; l < FL_VLD; l += 4) {
++                const uvec2 w = uvec2(((fl_vr[l    ][ddv / 2] >> sh) & 0xFFFF) | (((fl_vr[l + 1][ddv / 2] >> sh) & 0xFFFF) << 16),
++                                      ((fl_vr[l + 2][ddv / 2] >> sh) & 0xFFFF) | (((fl_vr[l + 3][ddv / 2] >> sh) & 0xFFFF) << 16));
++                kvshf[base + (d0 + ddv) * fl_vtstride + (c0 + l) / 4] = w;
++            }
++        }
++        return;
++    }
++    [[unroll]] for (uint32_t l = 0; l < FL_VLD; ++l) {
++        const uint32_t idx = l * WorkGroupSize + gl_LocalInvocationIndex;
++        if (idx < Bc * HSV_pad / 8) {
++            const uint32_t a = base + (idx / (HSV_pad / 8)) * fl_kstride + 2 * (idx % (HSV_pad / 8));
++            kvshf[a] = fl_vr[l].xy;
++            kvshf[a + 1] = fl_vr[l].zw;
++        }
++    }
++}
++
++void fl_sg_barrier() {
++    controlBarrier(gl_ScopeSubgroup, gl_ScopeSubgroup, gl_StorageSemanticsShared, gl_SemanticsAcquireRelease);
++}
++
++float fl_row_max(float v) {
++    [[unroll]] for (uint32_t o = 1; o < FL_LPR; o *= 2) {
++        v = max(v, subgroupShuffleXor(v, o));
++    }
++    return v;
++}
++
++float fl_row_sum(float v) {
++    [[unroll]] for (uint32_t o = 1; o < FL_LPR; o *= 2) {
++        v += subgroupShuffleXor(v, o);
++    }
++    return v;
++}
++
++void fl_rescale(inout coopmat<ACC_TYPE, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> o, const uint32_t ss_base, const uint32_t lr, const uint32_t lc, const float alpha) {
++    fl_sg_barrier();
++    coopMatStore(o, sshf, ss_base, fl_sstride, gl_CooperativeMatrixLayoutRowMajor);
++    fl_sg_barrier();
++    [[unroll]] for (uint32_t v = 0; v < FL_OCPL / 4; ++v) {
++        const uint32_t a = ss_base + lr * fl_sstride + lc * (FL_OCPL / 4) + v;
++        sshf[a] = sshf[a] * ACC_TYPE(alpha);
++    }
++    fl_sg_barrier();
++    coopMatLoad(o, sshf, ss_base, fl_sstride, gl_CooperativeMatrixLayoutRowMajor);
++}
++
++void main() {
++    init_indices();
++
++    const uint32_t sg = gl_SubgroupID;
++    const uint32_t lane = gl_SubgroupInvocationID;
++    const uint32_t lr = lane / FL_LPR;
++    const uint32_t lc = lane % FL_LPR;
++    const uint32_t row0 = i * Br + sg * 16;
++    const uint32_t myrow = row0 + lr;
++
++    const uint32_t ss_base = sg * 16 * fl_sstride;
++    const uint32_t a_base = sg * 16 * fl_astride;
++
++    const uint32_t q_offset = (iq2 * p.nb02 + iq3 * p.nb03) / 4;
++
++    // Q (scaled) -> coopmat A registers, staged through this subgroup's A slab
++    coopmat<FLOAT_TYPE, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA> Qa[HSK_pad / 16];
++    const uint32_t qdt = fl_astride * FL_PACK / 4;
++    [[unroll]] for (uint32_t dbase = 0; dbase < HSK_pad / 16; dbase += qdt) {
++        [[unroll]] for (uint32_t idx0 = 0; idx0 < 16 * qdt * 4; idx0 += SubGroupSize) {
++            const uint32_t idx = idx0 + lane;
++            const uint32_t r = idx / (qdt * 4);
++            const uint32_t dv = idx % (qdt * 4);
++            const uint32_t d = dbase * 4 + dv;
++            if (r < 16) {
++                FLOAT_TYPEV4 val = FLOAT_TYPEV4(0);
++                if (d < HSK / 4 && row0 + r < N) {
++                    val = FLOAT_TYPEV4(data_qv4[q_offset / 4 + (row0 + r) * p.nb01 / 4 + d] * p.scale);
++                }
++                fl_store_a(a_base + r * fl_astride, dv, val);
++            }
++        }
++        fl_sg_barrier();
++        [[unroll]] for (uint32_t dd = 0; dd < qdt; ++dd) {
++            if (dbase + dd < HSK_pad / 16) {
++                fl_load_a(Qa[dbase + dd], a_base + dd * (4 / FL_PACK));
++            }
++        }
++        fl_sg_barrier();
++    }
++
++    coopmat<ACC_TYPE, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> Oacc[HSV_pad / 16];
++    [[unroll]] for (uint32_t t = 0; t < HSV_pad / 16; ++t) {
++        Oacc[t] = coopmat<ACC_TYPE, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator>(0);
++    }
++
++    float M = NEG_FLT_MAX_OVER_2;
++    float L = 0;
++
++    float slope_v = 1.0;
++    if (p.max_bias > 0.0f) {
++        slope_v = float(perElemOpComputeSlope(0, 0, ACC_TYPE(0), iq2));
++    }
++
++    const uint32_t k_offset = (ik2 * p.nb12 + ik3 * p.nb13) / FaBlockBytesK;
++    const uint32_t v_offset = (iv2 * p.nb22 + iv3 * p.nb23) / FaBlockBytesV;
++    uint32_t m_offset = 0;
++    const uint32_t mo_stride = CEIL_DIV(KV, 16 * Bc);
++    fl_mo_offset = mo_stride * i;
++    fl_mo_idx = ~0u;
++    fl_mo_word = 0;
++    if (p.nem2 != 1 || p.nem3 != 1) {
++        m_offset += ((iq3 % p.nem3) * p.nem2 + (iq2 % p.nem2)) * p.nem1 * KV;
++        fl_mo_offset += ((iq3 % p.nem3) * p.nem2 + (iq2 % p.nem2)) * CEIL_DIV(p.nem1, Br) * mo_stride;
++    }
++
++    uint32_t j = (FLIP_DIRECT && row0 >= N) ? end_j : fl_next_tile(start_j);
++    if (!FLIP_DIRECT && j < end_j) {
++        fl_load_k(j, k_offset);
++        fl_load_v(j, v_offset);
++    }
++
++    [[dont_unroll]]
++    while (j < end_j) {
++        const uint32_t jn = fl_next_tile(j + 1);
++        const uint32_t mask_bits = fl_mask_bits(j);
++
++        if (!FLIP_DIRECT) {
++            barrier();
++            fl_store_k();
++            fl_store_v(fl_kvbuf);
++            barrier();
++            if (jn < end_j) {
++                fl_load_k(jn, k_offset);
++                fl_load_v(jn, v_offset);
++            }
++        }
++
++        coopmat<ACC_TYPE, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> Sacc[Bc / 16];
++        [[unroll]] for (uint32_t c = 0; c < Bc / 16; ++c) {
++            Sacc[c] = coopmat<ACC_TYPE, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator>(0);
++        }
++        [[unroll]] for (uint32_t d = 0; d < HSK_pad / 16; ++d) {
++            [[unroll]] for (uint32_t c = 0; c < Bc / 16; ++c) {
++                coopmat<FLOAT_TYPE, gl_ScopeSubgroup, 16, 16, gl_MatrixUseB> Kb;
++                if (FLIP_DIRECT) {
++                    coopMatLoad(Kb, data_kf4, (k_offset + (j * Bc + c * 16) * k_stride) / 4 + d * 4, k_stride / 4, gl_CooperativeMatrixLayoutColumnMajor);
++                } else {
++                    coopMatLoad(Kb, kvshf, c * 16 * fl_kstride + d * 4, fl_kstride, gl_CooperativeMatrixLayoutColumnMajor);
++                }
++                Sacc[c] = coopMatMulAdd(Qa[d], Kb, Sacc[c]);
++            }
++        }
++
++        fl_sg_barrier();
++        [[unroll]] for (uint32_t c = 0; c < Bc / 16; ++c) {
++            coopMatStore(Sacc[c], sshf, ss_base + c * 4, fl_sstride, gl_CooperativeMatrixLayoutRowMajor);
++        }
++        fl_sg_barrier();
++        float s[FL_CPL];
++        [[unroll]] for (uint32_t v = 0; v < FL_CPL / 4; ++v) {
++            const vec4 sv = vec4(sshf[ss_base + lr * fl_sstride + lc * (FL_CPL / 4) + v]);
++            [[unroll]] for (uint32_t k = 0; k < 4; ++k) {
++                s[v * 4 + k] = sv[k];
++            }
++        }
++
++        if (LOGIT_SOFTCAP) {
++            [[unroll]] for (uint32_t k = 0; k < FL_CPL; ++k) {
++                s[k] = p.logit_softcap * tanh(s[k]);
++            }
++        }
++
++        if (MASK_ENABLE && mask_bits != MASK_OPT_ALL_ZERO && myrow < p.nem1) {
++            const uint32_t moff = m_offset + myrow * KV + j * Bc + lc * FL_CPL;
++            [[unroll]] for (uint32_t k = 0; k < FL_CPL; ++k) {
++                s[k] += slope_v * float(data_m[moff + k]);
++            }
++        }
++
++        float mx = s[0];
++        [[unroll]] for (uint32_t k = 1; k < FL_CPL; ++k) {
++            mx = max(mx, s[k]);
++        }
++        mx = fl_row_max(mx) + FATTN_KQ_MAX_OFFSET;
++
++        if (subgroupAny(mx > M + FL_TAU)) {
++            const float Mn = max(M, mx);
++            const float alpha = exp(M - Mn);
++            const bool o_empty = subgroupAll(M == NEG_FLT_MAX_OVER_2);
++            M = Mn;
++            L *= alpha;
++            if (!o_empty) {
++                [[unroll]] for (uint32_t t = 0; t < HSV_pad / 16; ++t) {
++                    fl_rescale(Oacc[t], ss_base, lr, lc, alpha);
++                }
++            }
++        }
++
++        fl_sg_barrier();
++        [[unroll]] for (uint32_t v = 0; v < FL_CPL / 4; ++v) {
++            const vec4 pv = exp(vec4(s[v * 4], s[v * 4 + 1], s[v * 4 + 2], s[v * 4 + 3]) - M);
++            L += pv.x + pv.y + pv.z + pv.w;
++            fl_store_a(a_base + lr * fl_astride, lc * (FL_CPL / 4) + v, FLOAT_TYPEV4(pv));
++        }
++        fl_sg_barrier();
++
++        coopmat<FLOAT_TYPE, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA> Pa[Bc / 16];
++        [[unroll]] for (uint32_t c = 0; c < Bc / 16; ++c) {
++            fl_load_a(Pa[c], a_base + c * (4 / FL_PACK));
++        }
++
++        [[unroll]] for (uint32_t t = 0; t < HSV_pad / 16; ++t) {
++            [[unroll]] for (uint32_t c = 0; c < Bc / 16; ++c) {
++                coopmat<FLOAT_TYPE, gl_ScopeSubgroup, 16, 16, gl_MatrixUseB> Vb;
++                if (FLIP_DIRECT) {
++                    coopMatLoad(Vb, data_vf4, (v_offset + (j * Bc + c * 16) * v_stride) / 4 + t * 4, v_stride / 4, gl_CooperativeMatrixLayoutRowMajor);
++                } else if (FL_VT) {
++                    coopMatLoad(Vb, kvshf, fl_kvbuf + t * 16 * fl_vtstride + c * 4, fl_vtstride, gl_CooperativeMatrixLayoutColumnMajor);
++                } else {
++                    coopMatLoad(Vb, kvshf, fl_kvbuf + c * 16 * fl_kstride + t * 4, fl_kstride, gl_CooperativeMatrixLayoutRowMajor);
++                }
++                Oacc[t] = coopMatMulAdd(Pa[c], Vb, Oacc[t]);
++            }
++        }
++
++        j = jn;
++    }
++
++    L = fl_row_sum(L);
++
++    float oscale = 1.0;
++    uint32_t o_row_offset;
++    if (p.k_num > 1) {
++        o_row_offset = HSV * p.ne1 * (split_k_index + p.k_num * (myrow + p.ne2 * iq3)) / 4 + iq2 * HSV / 4;
++        if (myrow < N && lc == 0) {
++            const uint32_t lm_offset = HSV * p.ne1 * p.k_num * p.ne2 * p.ne3 + p.ne1 * 2 * (split_k_index + p.k_num * (myrow + p.ne2 * iq3));
++            data_o[lm_offset + iq2] = D_TYPE(L);
++            data_o[lm_offset + p.ne1 + iq2] = D_TYPE(M);
++        }
++    } else {
++        if ((p.mask_n_head_log2 & SINK_ENABLE_BIT) != 0) {
++            const float sink = float(perElemOpGetSink(0, 0u, ACC_TYPE(0), iq2));
++            float ms = 1.0f;
++            float vs = 1.0f;
++            if (sink > M) {
++                ms = exp(M - sink);
++            } else {
++                vs = exp(sink - M);
++            }
++            L = L * ms + vs;
++            oscale = ms;
++        }
++        oscale *= (L == 0.0) ? 0.0 : (1.0 / L);
++        o_row_offset = (iq3 * p.ne2 * p.ne1 * HSV + iq2 * HSV + myrow * p.ne1 * HSV) / 4;
++    }
++
++    [[unroll]] for (uint32_t t = 0; t < HSV_pad / 16; ++t) {
++        fl_sg_barrier();
++        coopMatStore(Oacc[t], sshf, ss_base, fl_sstride, gl_CooperativeMatrixLayoutRowMajor);
++        fl_sg_barrier();
++        [[unroll]] for (uint32_t v = 0; v < FL_OCPL / 4; ++v) {
++            const uint32_t d4 = t * 4 + lc * (FL_OCPL / 4) + v;
++            const vec4 o = vec4(sshf[ss_base + lr * fl_sstride + lc * (FL_OCPL / 4) + v]) * oscale;
++            if (myrow < N && d4 < HSV / 4) {
++                data_ov4[o_row_offset + d4] = D_TYPEV4(o);
++            }
++        }
++    }
++}
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm2.comp b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm2.comp
+index c7253784c..9ddb4eb82 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm2.comp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm2.comp
+@@ -193,12 +193,17 @@ FLOAT_TYPEV4 faGatherVVector(const decodeBufFA_V bl_in, const uint32_t blockCoor
+ #endif
+ 
+ // Add gathered mask to S (slope==1 since sparse requires max_bias==0). col = slot in block jblk.
++#if defined(ACC_TYPE_MAX)
++#define ACC_TYPE_NEG (-ACC_TYPE_MAX)
++#else
++#define ACC_TYPE_NEG ACC_TYPE(NEG_FLT_MAX_OVER_2)
++#endif
++
+ ACC_TYPE faAddSparseMask(const uint32_t row, const uint32_t col, const ACC_TYPE elem, const uint32_t jblk) {
+-    const float NEG = uintBitsToFloat(0xFEFFFFFF);
+     const uint32_t kvslot = jblk * Bc + col;
+-    if (kvslot >= p.split_kv) { return ACC_TYPE(NEG); }
++    if (kvslot >= p.split_kv) { return ACC_TYPE_NEG; }
+     const int r = data_sparse[sparse_base + kvslot];
+-    return r < 0 ? ACC_TYPE(NEG) : elem + ACC_TYPE(data_mf16[g_m_off_elem + row * m_stride + uint(r)]);
++    return r < 0 ? ACC_TYPE_NEG : elem + ACC_TYPE(data_mf16[g_m_off_elem + row * m_stride + uint(r)]);
+ }
+ 
+ ACC_TYPE maxReduce(const in ACC_TYPE x, const in ACC_TYPE y) {
+@@ -319,8 +324,6 @@ void main() {
+ 
+     coopmat<ACC_TYPE, gl_ScopeWorkgroup, Br, Bc, gl_MatrixUseAccumulator> L, M;
+ 
+-    // Use -FLT_MAX/2 rather than -inf to reduce the possibility of NaNs, e.g. when computing Mold-M.
+-    const float NEG_FLT_MAX_OVER_2 = uintBitsToFloat(0xFEFFFFFF);
+ 
+     L = coopmat<ACC_TYPE, gl_ScopeWorkgroup, Br, Bc, gl_MatrixUseAccumulator>(0);
+ #if defined(ACC_TYPE_MAX)
+@@ -443,7 +446,7 @@ void main() {
+             uint R = ((i + 1) * Br >  N) ?  (N % Br) : Br;
+             uint C = ((j + 1) * Bc > KV) ? (KV % Bc) : Bc;
+ 
+-            coopMatPerElementNV(S, S, replacePadding, ACC_TYPE(NEG_FLT_MAX_OVER_2), R, C);
++            coopMatPerElementNV(S, S, replacePadding, ACC_TYPE_NEG, R, C);
+         }
+ 
+         coopmat<ACC_TYPE, gl_ScopeWorkgroup, Br, Bc, gl_MatrixUseAccumulator> rowmax, P, rowsum, eM;
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/gated_delta_net.comp b/ggml/src/ggml-vulkan/vulkan-shaders/gated_delta_net.comp
+index 0e384330b..ad2ced78a 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/gated_delta_net.comp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/gated_delta_net.comp
+@@ -15,10 +15,19 @@ layout(constant_id = 0) const uint S_V = 128;
+ layout(constant_id = 1) const uint KDA = 0;
+ layout(constant_id = 2) const uint SUBGROUP_SIZE = 32;
+ layout(constant_id = 3) const uint LANES_PER_COLUMN = 32;
++layout(constant_id = 4) const bool PACKED_ROWS = false;
+ 
+ const uint COLS_PER_WG = SUBGROUP_SIZE / LANES_PER_COLUMN;
+ const uint ROWS_PER_LANE = S_V / LANES_PER_COLUMN;
+ 
++uint row_index(uint r, uint lane) {
++    // Keep four adjacent rows together in each lane.
++    if (PACKED_ROWS) {
++        return (r / 4u * LANES_PER_COLUMN + lane) * 4u + r % 4u;
++    }
++    return r * LANES_PER_COLUMN + lane;
++}
++
+ layout(local_size_x_id = 2, local_size_y = 1, local_size_z = 1) in;
+ 
+ layout(push_constant) uniform Parameters {
+@@ -27,6 +36,7 @@ layout(push_constant) uniform Parameters {
+     uint n_seqs;
+     uint s_off;
+     uint sq1, sq2, sq3;
++    uint sk1, sk2, sk3;
+     uint sv1, sv2, sv3;
+     uint sb1, sb2, sb3;
+     uint neq1, rq3;
+@@ -110,7 +120,7 @@ void main() {
+ 
+     FLOAT_TYPE s_shard[ROWS_PER_LANE];
+     [[unroll]] for (uint r = 0; r < ROWS_PER_LANE; r++) {
+-        s_shard[r] = FLOAT_TYPE(data_state[state_in_base + col * S_V + r * LANES_PER_COLUMN + lane]);
++        s_shard[r] = FLOAT_TYPE(data_state[state_in_base + col * S_V + row_index(r, lane)]);
+     }
+ 
+     // snapshot slot mapping: slot 0 = most recent state, slot s = s tokens back.
+@@ -120,7 +130,7 @@ void main() {
+ 
+     for (uint t = 0; t < n_tokens; t++) {
+         const uint q_off = iq3 * sq3 + t * sq2 + iq1 * sq1;
+-        const uint k_off = q_off;
++        const uint k_off = iq3 * sk3 + t * sk2 + iq1 * sk1;
+         const uint v_off = seq_id * sv3 + t * sv2 + head_id * sv1;
+         const uint gb_off = seq_id * sb3 + t * sb2 + head_id * sb1;
+         const FLOAT_TYPE beta_val = FLOAT_TYPE(data_beta[gb_off]);
+@@ -128,7 +138,7 @@ void main() {
+         FLOAT_TYPE k_reg[ROWS_PER_LANE];
+         FLOAT_TYPE q_reg[ROWS_PER_LANE];
+         [[unroll]] for (uint r = 0; r < ROWS_PER_LANE; r++) {
+-            const uint i = r * LANES_PER_COLUMN + lane;
++            const uint i = row_index(r, lane);
+             k_reg[r] = FLOAT_TYPE(data_k[k_off + i]);
+             q_reg[r] = FLOAT_TYPE(data_q[q_off + i]);
+         }
+@@ -142,7 +152,7 @@ void main() {
+         } else {
+             const uint g_base = gb_off * S_V;
+             [[unroll]] for (uint r = 0; r < ROWS_PER_LANE; r++) {
+-                const uint i = r * LANES_PER_COLUMN + lane;
++                const uint i = row_index(r, lane);
+                 g_exp[r] = exp(FLOAT_TYPE(data_g[g_base + i]));
+             }
+         }
+@@ -175,7 +185,7 @@ void main() {
+             if (target_slot >= 0 && target_slot < int(K)) {
+                 const uint slot_base = s_off + uint(target_slot) * state_size_per_snap + state_out_base;
+                 [[unroll]] for (uint r = 0; r < ROWS_PER_LANE; r++) {
+-                    data_dst[slot_base + col * S_V + r * LANES_PER_COLUMN + lane] = s_shard[r];
++                    data_dst[slot_base + col * S_V + row_index(r, lane)] = s_shard[r];
+                 }
+             }
+         }
+@@ -183,7 +193,7 @@ void main() {
+ 
+     if (K == 1u) {
+         [[unroll]] for (uint r = 0; r < ROWS_PER_LANE; r++) {
+-            data_dst[s_off + state_out_base + col * S_V + r * LANES_PER_COLUMN + lane] = s_shard[r];
++            data_dst[s_off + state_out_base + col * S_V + row_index(r, lane)] = s_shard[r];
+         }
+     }
+ }
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/gated_delta_net_cm.comp b/ggml/src/ggml-vulkan/vulkan-shaders/gated_delta_net_cm.comp
+new file mode 100644
+index 000000000..c5b4e4084
+--- /dev/null
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/gated_delta_net_cm.comp
+@@ -0,0 +1,437 @@
++#version 450
++
++#extension GL_EXT_control_flow_attributes : enable
++#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
++#extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
++#extension GL_EXT_bfloat16 : require
++#extension GL_KHR_memory_scope_semantics : enable
++#extension GL_KHR_shader_subgroup_basic : enable
++#extension GL_KHR_shader_subgroup_arithmetic : enable
++#extension GL_KHR_shader_subgroup_shuffle : enable
++#extension GL_KHR_cooperative_matrix : enable
++#extension GL_EXT_cooperative_matrix_maintenance1 : enable
++
++// Chunked gated-delta-net prefill (non-KDA, S_v == D == 128, K == 1), port of CUDA PR 29353.
++// State in register tiles, mirrored ([D x V]) for the projections.
++// bf16 hi/lo 3x products for ~fp32 accuracy.
++#define OPD bfloat16_t
++
++#define C  16          // chunk size (tokens per step)
++#define D  128         // head dim / value dim
++#define TM 16          // tile rows
++#define TN 16          // tile cols (bf16 cm has only m16n16k16; n8 would pad)
++#ifndef V
++#define V  64          // value columns per workgroup block (V=128 = whole head)
++#endif
++#define NSUB 16        // subgroups per workgroup
++layout(constant_id = 0) const uint WGS = NSUB * 32;   // NSUB * subgroup size
++#define KT 16          // K-tile width for deep (K=D) matmuls (bf16 cm: m16n16k16 only)
++#define PAD 8          // shared padding to break COL-load bank conflicts (keep LDP*2 a multiple of 16B)
++#define LDP (D + PAD)
++
++// GMEM_MIRROR: state mirror in a gmem scratch buffer (too big for shared)
++
++#define STATE_TILES ((D / TM) * (V / TN))
++#define PER_WARP    (STATE_TILES / NSUB)
++#define VT          (V / TN)   // value tiles
++#define CT          (C / TN)   // C-column tiles (gram/pmat halves)
++const uint NQK = C * D / WGS;
++
++#define TILE_R(ti) (((ti) / VT) * TM)
++#define TILE_C(ti) (((ti) % VT) * TN)
++
++layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
++
++layout(push_constant) uniform Parameters {
++    uint H;
++    uint n_tokens;
++    uint n_seqs;
++    uint s_off;
++    uint sq1, sq2, sq3;
++    uint sk1, sk2, sk3;
++    uint sv1, sv2, sv3;
++    uint sb1, sb2, sb3;
++    uint neq1, rq3;
++    float scale;
++    uint K;
++} p;
++
++layout(binding = 0) readonly  buffer QBuf     { float data_q[];     };
++layout(binding = 1) readonly  buffer KBuf     { float data_k[];     };
++layout(binding = 2) readonly  buffer VBuf     { float data_v[];     };
++layout(binding = 3) readonly  buffer GBuf     { float data_g[];     };
++layout(binding = 4) readonly  buffer BetaBuf  { float data_beta[];  };
++layout(binding = 5) readonly  buffer StateBuf { float data_state[]; };
++layout(binding = 6)           buffer DstBuf   { float data_dst[];   };
++#ifdef GMEM_MIRROR
++layout(binding = 7) coherent  buffer MirrorBuf { OPD data_mirror[]; };
++#endif
++
++shared OPD sh_qh[C * LDP], sh_ql[C * LDP];   // q*scale hi/lo (D padded)
++shared OPD sh_kh[C * LDP], sh_kl[C * LDP];   // k hi/lo (D padded)
++#ifndef GMEM_MIRROR
++shared OPD sh_sh[LDP * V], sh_sl[LDP * V];   // state mirror [D x V] column-major (D padded)
++#endif
++shared OPD sh_dh[C * V], sh_dl[C * V];   // delta (pre-inv) / delta2 [C x V] row-major
++shared OPD sh_soh[C * V], sh_sol[C * V]; // solved [C x V] row-major
++shared OPD sh_ph[C * C], sh_pl[C * C];   // decayed P
++shared OPD sh_ih[C * C], sh_il[C * C];   // (I + L)^-1
++shared float sh_lower[C * C];            // strictly-lower decayed L
++
++shared float sh_prefix[C], sh_beta[C], sh_ep[C], sh_carry[C];
++
++#define SG   gl_ScopeSubgroup
++#define MUA  gl_MatrixUseA
++#define MUB  gl_MatrixUseB
++#define MACC gl_MatrixUseAccumulator
++#define ROW  gl_CooperativeMatrixLayoutRowMajor
++#define COL  gl_CooperativeMatrixLayoutColumnMajor
++
++
++// 3x bf16 product accumulated into acc (hi/lo split for ~fp32 accuracy).
++#define PRODUCT(acc, ah, al, bh, bl) \
++    acc = coopMatMulAdd(al, bh, acc); \
++    acc = coopMatMulAdd(ah, bl, acc); \
++    acc = coopMatMulAdd(ah, bh, acc);
++
++void split(const float x, out OPD h, out OPD l) {
++    h = OPD(x);
++    l = OPD(x - float(h));
++}
++
++#ifdef BF16ACC
++// split through a bf16 accumulator
++#define SPLIT_STORE(m, arr_h, off_h, arr_l, off_l, ld, layout) { \
++    const coopmat<OPD, SG, TM, TN, MACC> h_ = coopmat<OPD, SG, TM, TN, MACC>(m); \
++    const coopmat<OPD, SG, TM, TN, MACC> l_ = coopmat<OPD, SG, TM, TN, MACC>(m - coopmat<float, SG, TM, TN, MACC>(h_)); \
++    coopMatStore(h_, arr_h, off_h, ld, layout); \
++    coopMatStore(l_, arr_l, off_l, ld, layout); \
++}
++
++#ifdef GMEM_MIRROR
++#define STORE_MIRROR(m, off) SPLIT_STORE(m, data_mirror, mir_h + off, data_mirror, mir_l + off, LDP, COL)
++#else
++#define STORE_MIRROR(m, off) SPLIT_STORE(m, sh_sh, off, sh_sl, off, LDP, COL)
++#endif
++#define STORE_DELTA(m, off)  SPLIT_STORE(m, sh_dh, off, sh_dl, off, V, ROW)
++#define STORE_SOLVED(m, off) SPLIT_STORE(m, sh_soh, off, sh_sol, off, V, ROW)
++#else
++// split per element
++#ifdef GMEM_MIRROR
++float SplitColS(const in uint32_t r, const in uint32_t c, const in float elem, const in uint32_t off) {
++    const uint idx = off + c * LDP + r;
++    split(elem, data_mirror[idx], data_mirror[idx + LDP * V]);
++    return elem;
++}
++#define STORE_MIRROR(m, off) coopMatPerElementEXT(m, m, SplitColS, mir_h + off)
++#else
++float SplitColS(const in uint32_t r, const in uint32_t c, const in float elem, const in uint32_t off) {
++    const uint idx = off + c * LDP + r;
++    split(elem, sh_sh[idx], sh_sl[idx]);
++    return elem;
++}
++#define STORE_MIRROR(m, off) coopMatPerElementEXT(m, m, SplitColS, off)
++#endif
++
++float SplitRowD(const in uint32_t r, const in uint32_t c, const in float elem, const in uint32_t off) {
++    const uint idx = off + r * V + c;
++    split(elem, sh_dh[idx], sh_dl[idx]);
++    return elem;
++}
++
++float SplitRowSO(const in uint32_t r, const in uint32_t c, const in float elem, const in uint32_t off) {
++    const uint idx = off + r * V + c;
++    split(elem, sh_soh[idx], sh_sol[idx]);
++    return elem;
++}
++
++#define STORE_DELTA(m, off)  coopMatPerElementEXT(m, m, SplitRowD, off)
++#define STORE_SOLVED(m, off) coopMatPerElementEXT(m, m, SplitRowSO, off)
++#endif
++
++#ifdef GMEM_MIRROR
++#define LOAD_S(h, l, off) \
++    coopMatLoad(h, data_mirror, mir_h + off, LDP, COL); \
++    coopMatLoad(l, data_mirror, mir_l + off, LDP, COL);
++// mirror is workgroup-private
++#define MIRROR_BARRIER() controlBarrier(gl_ScopeWorkgroup, gl_ScopeWorkgroup, \
++                                        gl_StorageSemanticsBuffer | gl_StorageSemanticsShared, \
++                                        gl_SemanticsAcquireRelease)
++#else
++#define LOAD_S(h, l, off) \
++    coopMatLoad(h, sh_sh, off, LDP, COL); \
++    coopMatLoad(l, sh_sl, off, LDP, COL);
++#define MIRROR_BARRIER() barrier()
++#endif
++
++float StoreOut(const in uint32_t r, const in uint32_t c, const in float elem,
++               const in uint32_t out_base, const in uint32_t valid) {
++    if (r < valid) {
++        data_dst[out_base + r * (D * p.H) + c] = elem;
++    }
++    return elem;
++}
++
++float StoreState(const in uint32_t r, const in uint32_t c, const in float elem,
++                 const in uint32_t base) {
++    data_dst[base + c * D + r] = elem;
++    return elem;
++}
++
++float LoadV(const in uint32_t r, const in uint32_t c, const in float elem,
++            const in uint32_t v_base, const in uint32_t sv2, const in uint32_t valid) {
++    return r < valid ? data_v[v_base + r * sv2 + c] : 0.0;
++}
++
++// sh_beta[r] == 0 for r >= valid
++float ComputeDeltaV(const in uint32_t r, const in uint32_t c, const in float ks,
++                    const in float vv) {
++    return sh_beta[r] * (vv - sh_ep[r] * ks);
++}
++
++float ApplyExpPrefix(const in uint32_t r, const in uint32_t c, const in float qs) {
++    return sh_ep[r] * qs;
++}
++
++float StoreLower(const in uint32_t r, const in uint32_t c, const in float elem,
++                 const in uint32_t c_o) {
++    const uint cc = c_o + c;
++    if (cc < r) {
++        sh_lower[r * C + cc] = elem * exp(sh_prefix[r] - sh_prefix[cc]) * sh_beta[r];
++    }
++    return elem;
++}
++
++float StorePmat(const in uint32_t r, const in uint32_t c, const in float elem,
++                const in uint32_t c_o) {
++    const uint cc = c_o + c;
++    float v = 0.0;
++    if (cc <= r) {
++        v = elem * exp(sh_prefix[r] - sh_prefix[cc]);
++    }
++    split(v, sh_ph[r * C + cc], sh_pl[r * C + cc]);
++    return elem;
++}
++
++void prefetch(const uint t0, const uint iq1, const uint iq3, const uint seq_id, const uint head_id,
++              out float q[NQK], out float k[NQK], out float g, out float b) {
++    const uint n = t0 < p.n_tokens ? min(C, p.n_tokens - t0) : 0u;
++    [[unroll]] for (uint j = 0; j < NQK; j++) {
++        const uint i = gl_LocalInvocationID.x + j * WGS;
++        const uint t = i / D;
++        q[j] = 0.0;
++        k[j] = 0.0;
++        if (t < n) {
++            const uint q_off = iq3 * p.sq3 + (t0 + t) * p.sq2 + iq1 * p.sq1 + i % D;
++            const uint k_off = iq3 * p.sk3 + (t0 + t) * p.sk2 + iq1 * p.sk1 + i % D;
++            q[j] = data_q[q_off] * p.scale;
++            k[j] = data_k[k_off];
++        }
++    }
++    g = 0.0;
++    b = 0.0;
++    const uint t = gl_SubgroupInvocationID;
++    if (gl_SubgroupID == 0 && t < n) {
++        const uint gb = seq_id * p.sb3 + (t0 + t) * p.sb2 + head_id * p.sb1;
++        g = data_g[gb];
++        b = data_beta[gb];
++    }
++}
++
++// sg0: gram K@K^T -> L, sg1: pmat Q@K^T -> P
++void gram_pmat(const uint sg) {
++    const bool gram = sg < CT;
++    const uint c_o  = (sg % CT) * TN;
++    coopmat<float, SG, C, TN, MACC> x = coopmat<float, SG, C, TN, MACC>(0);
++    [[unroll]] for (uint kk = 0; kk < D; kk += KT) {
++        coopmat<OPD, SG, C, KT, MUA> ah, al;
++        if (gram) {
++            coopMatLoad(ah, sh_kh, kk, LDP, ROW);
++            coopMatLoad(al, sh_kl, kk, LDP, ROW);
++        } else {
++            coopMatLoad(ah, sh_qh, kk, LDP, ROW);
++            coopMatLoad(al, sh_ql, kk, LDP, ROW);
++        }
++        coopmat<OPD, SG, KT, TN, MUB> bh, bl;
++        coopMatLoad(bh, sh_kh, c_o * LDP + kk, LDP, COL);
++        coopMatLoad(bl, sh_kl, c_o * LDP + kk, LDP, COL);
++        PRODUCT(x, ah, al, bh, bl);
++    }
++    if (gram) {
++        coopMatPerElementEXT(x, x, StoreLower, c_o);
++    } else {
++        coopMatPerElementEXT(x, x, StorePmat, c_o);
++    }
++}
++
++// (I + L)^-1, forward substitution: subgroup per row, lane per column
++void invert(const uint sg) {
++    const uint col = gl_SubgroupInvocationID;
++    [[unroll]] for (uint row = sg; row < C; row += NSUB) {
++        float x = col < C ? (col == row ? 1.0 : (col < row ? -sh_lower[row * C + col] : 0.0)) : 0.0;
++        for (int pivot = int(row) - 1; pivot > 0; pivot--) {
++            const float xp = subgroupShuffle(x, uint(pivot));
++            if (col < uint(pivot)) {
++                x -= xp * sh_lower[uint(pivot) * C + col];
++            }
++        }
++        if (col < C) {
++            split(x, sh_ih[row * C + col], sh_il[row * C + col]);
++        }
++    }
++}
++
++float carry_decay(const uint valid) {
++    const float plast = sh_prefix[valid - 1];
++    if (gl_LocalInvocationID.x < C) {
++        sh_carry[gl_LocalInvocationID.x] = exp(plast - sh_prefix[gl_LocalInvocationID.x]);
++    }
++    return exp(plast);
++}
++
++void main() {
++    const uint head_id = gl_WorkGroupID.z;
++    const uint seq_id  = gl_WorkGroupID.y;
++    const uint sg      = gl_SubgroupID;
++    const uint tid     = gl_LocalInvocationID.x;
++    const uint v0      = gl_WorkGroupID.x * V;
++
++    const uint iq1 = head_id % p.neq1;
++    const uint iq3 = seq_id / p.rq3;
++
++    const uint state_base = (seq_id * p.H + head_id) * (D * D);
++
++#ifdef GMEM_MIRROR
++    const uint mir_stride = uint(LDP) * V;
++    const uint mir_block  = (head_id * p.n_seqs + seq_id) * gl_NumWorkGroups.x + gl_WorkGroupID.x;
++    const uint mir_h      = mir_block * mir_stride * 2u;
++    const uint mir_l      = mir_h + mir_stride;
++#endif
++
++    coopmat<float, SG, TM, TN, MACC> state[PER_WARP];
++    [[unroll]] for (uint j = 0; j < PER_WARP; j++) {
++        const uint ti = sg + j * NSUB;
++        coopMatLoad(state[j], data_state, state_base + (v0 + TILE_C(ti)) * D + TILE_R(ti), D, COL);
++    }
++
++    float qreg[NQK], kreg[NQK], greg, breg;
++    prefetch(0u, iq1, iq3, seq_id, head_id, qreg, kreg, greg, breg);
++
++    for (uint t0 = 0; t0 < p.n_tokens; t0 += C) {
++        const uint valid = min(C, p.n_tokens - t0);
++
++        barrier();
++        if (sg == 0) {
++            const uint t = gl_SubgroupInvocationID;
++            const float acc = subgroupInclusiveAdd(greg);
++            if (t < C) {
++                sh_prefix[t] = acc;
++                sh_ep[t] = exp(acc);
++                sh_beta[t] = breg;
++            }
++        }
++        [[unroll]] for (uint j = 0; j < NQK; j++) {
++            const uint i = tid + j * WGS;
++            const uint pi = (i / D) * LDP + (i % D);
++            split(qreg[j], sh_qh[pi], sh_ql[pi]);
++            split(kreg[j], sh_kh[pi], sh_kl[pi]);
++        }
++
++        [[unroll]] for (uint j = 0; j < PER_WARP; j++) {
++            const uint ti = sg + j * NSUB;
++            STORE_MIRROR(state[j], TILE_C(ti) * LDP + TILE_R(ti));
++        }
++        MIRROR_BARRIER();
++
++        prefetch(t0 + C, iq1, iq3, seq_id, head_id, qreg, kreg, greg, breg);
++        const float cdecay = carry_decay(valid);
++
++        // qs -> base_r and ks -> delta on sg2..2+VT-1
++        coopmat<float, SG, C, TN, MACC> base_r = coopmat<float, SG, C, TN, MACC>(0);
++        if (sg < 2 * CT) {
++            gram_pmat(sg);
++        } else if (sg - 2 * CT < VT) {
++            const uint c_o = (sg - 2 * CT) * TN;
++            const uint v_base = seq_id * p.sv3 + head_id * p.sv1 + v0 + c_o + t0 * p.sv2;
++            coopmat<float, SG, C, TN, MACC> vmat = coopmat<float, SG, C, TN, MACC>(0);
++            coopMatPerElementEXT(vmat, vmat, LoadV, v_base, p.sv2, valid);
++            coopmat<float, SG, C, TN, MACC> qs = coopmat<float, SG, C, TN, MACC>(0);
++            coopmat<float, SG, C, TN, MACC> ks = coopmat<float, SG, C, TN, MACC>(0);
++            [[unroll]] for (uint kk = 0; kk < D; kk += KT) {
++                coopmat<OPD, SG, C, KT, MUA> qh, ql, kh, kl;
++                coopMatLoad(qh, sh_qh, kk, LDP, ROW);
++                coopMatLoad(ql, sh_ql, kk, LDP, ROW);
++                coopMatLoad(kh, sh_kh, kk, LDP, ROW);
++                coopMatLoad(kl, sh_kl, kk, LDP, ROW);
++                coopmat<OPD, SG, KT, TN, MUB> sbh, sbl;
++                LOAD_S(sbh, sbl, c_o * LDP + kk);
++                PRODUCT(qs, qh, ql, sbh, sbl);
++                PRODUCT(ks, kh, kl, sbh, sbl);
++            }
++            coopMatPerElementEXT(base_r, qs, ApplyExpPrefix);
++            coopmat<float, SG, C, TN, MACC> delta;
++            coopMatPerElementEXT(delta, ks, ComputeDeltaV, vmat);
++            STORE_DELTA(delta, c_o);
++        }
++        barrier();
++
++        invert(sg);
++        barrier();
++
++        // solved = (I+L)^-1 @ delta  (sg0..VT-1)
++        if (sg < VT) {
++            const uint c_o = sg * TN;
++            coopmat<float, SG, C, TN, MACC> solved = coopmat<float, SG, C, TN, MACC>(0);
++            coopmat<OPD, SG, C, C, MUA> ih, il;
++            coopMatLoad(ih, sh_ih, 0, C, ROW);
++            coopMatLoad(il, sh_il, 0, C, ROW);
++            coopmat<OPD, SG, C, TN, MUB> dh, dl;
++            coopMatLoad(dh, sh_dh, c_o, V, ROW);
++            coopMatLoad(dl, sh_dl, c_o, V, ROW);
++            PRODUCT(solved, ih, il, dh, dl);
++            STORE_SOLVED(solved, c_o);
++        }
++        barrier();
++
++        // out = base + P@solved  (sg2..2+VT-1)
++        if (sg >= 2 * CT && sg - 2 * CT < VT) {
++            const uint c_o = (sg - 2 * CT) * TN;
++            coopmat<float, SG, C, TN, MACC> O = base_r;
++            coopmat<OPD, SG, C, C, MUA> ph, pl;
++            coopMatLoad(ph, sh_ph, 0, C, ROW);
++            coopMatLoad(pl, sh_pl, 0, C, ROW);
++            coopmat<OPD, SG, C, TN, MUB> svh, svl;
++            coopMatLoad(svh, sh_soh, c_o, V, ROW);
++            coopMatLoad(svl, sh_sol, c_o, V, ROW);
++            PRODUCT(O, ph, pl, svh, svl);
++            const uint out_base = (seq_id * p.n_tokens * p.H + head_id) * D + v0 + c_o + t0 * (D * p.H);
++            coopMatPerElementEXT(O, O, StoreOut, out_base, valid);
++        }
++        // delta2 = solved * carry -> sh_dh/dl (all threads)
++        for (uint i = tid; i < C * V; i += WGS) {
++            const float sv = float(sh_soh[i]) + float(sh_sol[i]);
++            split(sv * sh_carry[i / V], sh_dh[i], sh_dl[i]);
++        }
++        barrier();
++
++        // state = cdecay*state + K^T @ delta2
++        [[unroll]] for (uint j = 0; j < PER_WARP; j++) {
++            const uint ti = sg + j * NSUB;
++            coopmat<OPD, SG, TM, C, MUA> kth, ktl;
++            coopMatLoad(kth, sh_kh, TILE_R(ti), LDP, COL);
++            coopMatLoad(ktl, sh_kl, TILE_R(ti), LDP, COL);
++            coopmat<OPD, SG, C, TN, MUB> dh, dl;
++            coopMatLoad(dh, sh_dh, TILE_C(ti), V, ROW);
++            coopMatLoad(dl, sh_dl, TILE_C(ti), V, ROW);
++            state[j] = state[j] * cdecay;
++            PRODUCT(state[j], kth, ktl, dh, dl);
++        }
++        // no end-of-chunk barrier: covered by the chunk-top barrier
++    }
++
++    [[unroll]] for (uint j = 0; j < PER_WARP; j++) {
++        const uint ti = sg + j * NSUB;
++        coopMatPerElementEXT(state[j], state[j], StoreState,
++                            p.s_off + state_base + (v0 + TILE_C(ti)) * D + TILE_R(ti));
++    }
++}
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/gated_delta_net_cm2.comp b/ggml/src/ggml-vulkan/vulkan-shaders/gated_delta_net_cm2.comp
+new file mode 100644
+index 000000000..270ef35db
+--- /dev/null
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/gated_delta_net_cm2.comp
+@@ -0,0 +1,320 @@
++#version 450
++
++#extension GL_EXT_control_flow_attributes : require
++#extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
++#extension GL_EXT_bfloat16 : require
++#extension GL_KHR_memory_scope_semantics : require
++#extension GL_KHR_shader_subgroup_basic : require
++#extension GL_KHR_shader_subgroup_arithmetic : require
++#extension GL_KHR_shader_subgroup_shuffle : require
++#extension GL_KHR_shader_subgroup_shuffle_relative : require
++#extension GL_KHR_cooperative_matrix : require
++#extension GL_NV_cooperative_matrix2 : require
++
++// Chunked gated-delta-net prefill (non-KDA, S_v == D == 128, K == 1).
++// BF16 hi/lo products use FP32 accumulators.
++#define OPD bfloat16_t
++
++#define C  16          // chunk size (tokens per step)
++#define D  128         // head dim / value dim
++#define V  32          // value columns per workgroup block
++#define WGS 128
++#define NSUB (WGS / 32)
++#define KT 32          // K-tile width for deep (K=D) matmuls
++#define PAD 8
++#define LDP (D + PAD)
++#define LDV (V + PAD)
++#define KQ_ROWS (2 * C)
++#define NQK (C * D / WGS)
++
++layout(local_size_x = WGS, local_size_y = 1, local_size_z = 1) in;
++
++layout(push_constant) uniform Parameters {
++    uint H;
++    uint n_tokens;
++    uint n_seqs;
++    uint s_off;
++    uint sq1, sq2, sq3;
++    uint sk1, sk2, sk3;
++    uint sv1, sv2, sv3;
++    uint sb1, sb2, sb3;
++    uint neq1, rq3;
++    float scale;
++    uint K;
++} p;
++
++layout(binding = 0) readonly  buffer QBuf     { float data_q[];     };
++layout(binding = 1) readonly  buffer KBuf     { float data_k[];     };
++layout(binding = 2) readonly  buffer VBuf     { float data_v[];     };
++layout(binding = 3) readonly  buffer GBuf     { float data_g[];     };
++layout(binding = 4) readonly  buffer BetaBuf  { float data_beta[];  };
++layout(binding = 5) readonly  buffer StateBuf { float data_state[]; };
++layout(binding = 6)           buffer DstBuf   { float data_dst[];   };
++
++// K and scaled Q occupy the two row blocks of one 32-row operand.
++shared OPD sh_kqh[2 * C * LDP], sh_kql[2 * C * LDP];
++shared OPD sh_sh[V * LDP], sh_sl[V * LDP]; // state mirror [V x D] row-major (D padded)
++shared OPD sh_ph[C * C], sh_pl[C * C];
++shared OPD sh_ih[C * C], sh_il[C * C];
++shared OPD sh_dh[C * LDV], sh_dl[C * LDV]; // delta / solved [C x V] row-major (V padded)
++shared float sh_lower[C * (C - 1) / 2]; // packed strictly-lower Gram entries
++shared float sh_prefix[C], sh_ep[C], sh_beta[C], sh_carry[C];
++
++#define WG   gl_ScopeWorkgroup
++#define MUA  gl_MatrixUseA
++#define MUB  gl_MatrixUseB
++#define MACC gl_MatrixUseAccumulator
++#define ROW  gl_CooperativeMatrixLayoutRowMajor
++#define COL  gl_CooperativeMatrixLayoutColumnMajor
++
++#define PRODUCT(acc, ah, al, bh, bl) \
++    acc = coopMatMulAdd(ah, bh, acc); \
++    acc = coopMatMulAdd(al, bh, acc); \
++    acc = coopMatMulAdd(ah, bl, acc);
++
++void split(const float x, out OPD h, out OPD l) {
++    h = OPD(x);
++    l = OPD(x - float(h));
++}
++
++float StoreGramPmat(const in uint32_t r, const in uint32_t c, const in float elem) {
++    if (r < C) {
++        if (c < r) {
++            sh_lower[r * (r - 1) / 2 + c] = elem * exp(sh_prefix[r] - sh_prefix[c]) * sh_beta[r];
++        }
++    } else {
++        const uint row = r - C;
++        const float y = c <= row ? elem * exp(sh_prefix[row] - sh_prefix[c]) : 0.0;
++        split(y, sh_ph[row * C + c], sh_pl[row * C + c]);
++    }
++    return elem;
++}
++
++float SplitRowS(const in uint32_t r, const in uint32_t c, const in float elem) {
++    const uint i = r * LDP + c;
++    split(elem, sh_sh[i], sh_sl[i]);
++    return elem;
++}
++
++float ApplyExpPrefix(const in uint32_t r, const in uint32_t c, const in float qs) {
++    return sh_ep[c] * qs;
++}
++
++float LoadV(const in uint32_t r, const in uint32_t c, const in float elem,
++            const in uint32_t v_base, const in uint32_t sv2, const in uint32_t valid) {
++    return c < valid ? data_v[v_base + c * sv2 + r] : 0.0;
++}
++
++float StoreDeltaV(const in uint32_t r, const in uint32_t c, const in float ks, const in float vv) {
++    const float x = sh_beta[c] * (vv - sh_ep[c] * ks);
++    const uint i = c * LDV + r;
++    split(x, sh_dh[i], sh_dl[i]);
++    return ks;
++}
++
++float StoreSolved(const in uint32_t r, const in uint32_t c, const in float elem) {
++    const uint i = c * LDV + r;
++    split(elem, sh_dh[i], sh_dl[i]);
++    // The state mirror is no longer needed after KS/QS.
++    const uint j = r * LDP + c;
++    split(sh_carry[c] * elem, sh_sh[j], sh_sl[j]);
++    return elem;
++}
++
++float StoreOut(const in uint32_t r, const in uint32_t c, const in float elem,
++               const in uint32_t out_base, const in uint32_t valid) {
++    if (c < valid) {
++        data_dst[out_base + c * (p.H * D) + r] = elem;
++    }
++    return elem;
++}
++
++void prefetch(const uint t0, const uint q_base, const uint k_base, const uint gb_base,
++              out float q[NQK], out float k[NQK], out float g, out float b) {
++    const uint valid = t0 < p.n_tokens ? min(C, p.n_tokens - t0) : 0u;
++    const uint r = gl_SubgroupInvocationID;
++    g = 0.0;
++    b = 0.0;
++    if (gl_SubgroupID == 0 && r < valid) {
++        const uint off = gb_base + (t0 + r) * p.sb2;
++        g = data_g[off];
++        b = data_beta[off];
++    }
++    [[unroll]] for (uint j = 0; j < NQK; ++j) {
++        const uint i = gl_LocalInvocationID.x + j * WGS;
++        const uint token = i / D;
++        q[j] = 0.0;
++        k[j] = 0.0;
++        if (token < valid) {
++            const uint q_off = q_base + (t0 + token) * p.sq2 + i % D;
++            const uint k_off = k_base + (t0 + token) * p.sk2 + i % D;
++            q[j] = data_q[q_off];
++            k[j] = data_k[k_off];
++        }
++    }
++}
++
++void stage_inputs(const in float q[NQK], const in float k[NQK]) {
++    [[unroll]] for (uint j = 0; j < NQK; ++j) {
++        const uint i = gl_LocalInvocationID.x + j * WGS;
++        const uint token = i / D;
++        const uint key = i % D;
++        const uint ki = token * LDP + key;
++        const uint qi = (C + token) * LDP + key;
++        split(k[j], sh_kqh[ki], sh_kql[ki]);
++        split(p.scale * q[j], sh_kqh[qi], sh_kql[qi]);
++    }
++}
++
++// [K; Q] * K^T computes Gram and P in one 32-row matrix.
++void gram_pmat() {
++    coopmat<float, WG, KQ_ROWS, C, MACC> x = coopmat<float, WG, KQ_ROWS, C, MACC>(0.0);
++    [[unroll]] for (uint kk = 0; kk < D; kk += KT) {
++        coopmat<OPD, WG, KQ_ROWS, KT, MUA> ah, al;
++        coopmat<OPD, WG, KT, C, MUB> bh, bl;
++        coopMatLoad(ah, sh_kqh, kk, LDP, ROW);
++        coopMatLoad(al, sh_kql, kk, LDP, ROW);
++        coopMatLoad(bh, sh_kqh, kk, LDP, COL);
++        coopMatLoad(bl, sh_kql, kk, LDP, COL);
++        PRODUCT(x, ah, al, bh, bl);
++    }
++    coopMatPerElementNV(x, x, StoreGramPmat);
++}
++
++void invert() {
++    const uint col = gl_SubgroupInvocationID % C;
++    // Each half-subgroup covers all columns of its assigned rows.
++    const uint section = gl_SubgroupInvocationID / C;
++    const uint row_base = (gl_SubgroupID * 2u + section) * (C / (2 * NSUB));
++    // Keep the diagonal zero so pivots at or above the row do nothing.
++    float x[C / (2 * NSUB)];
++    [[unroll]] for (uint j = 0; j < C / (2 * NSUB); ++j) {
++        const uint row = row_base + j;
++        x[j] = col < row ? -sh_lower[row * (row - 1) / 2 + col] : 0.0;
++    }
++    [[dont_unroll]] for (int pivot = C - 2; pivot > 0; --pivot) {
++        const float lower = col < uint(pivot) ? sh_lower[uint(pivot) * uint(pivot - 1) / 2 + col] : 0.0;
++        [[unroll]] for (uint j = 0; j < C / (2 * NSUB); ++j) {
++            const float xp = subgroupShuffle(x[j], uint(pivot) + section * C);
++            x[j] -= xp * lower;
++        }
++    }
++    [[unroll]] for (uint j = 0; j < C / (2 * NSUB); ++j) {
++        const uint row = row_base + j;
++        split(col == row ? 1.0 : x[j], sh_ih[row * C + col], sh_il[row * C + col]);
++    }
++}
++
++void main() {
++    const uint head_id = gl_WorkGroupID.z;
++    const uint seq_id = gl_WorkGroupID.y;
++    const uint v0 = gl_WorkGroupID.x * V;
++    const uint iq1 = head_id % p.neq1;
++    const uint iq3 = seq_id / p.rq3;
++    const uint q_base = iq3 * p.sq3 + iq1 * p.sq1;
++    const uint k_base = iq3 * p.sk3 + iq1 * p.sk1;
++    const uint v_base = seq_id * p.sv3 + head_id * p.sv1 + v0;
++    const uint gb_base = seq_id * p.sb3 + head_id * p.sb1;
++    const uint state_base = (seq_id * p.H + head_id) * (D * D) + v0 * D;
++    const uint out_base = (seq_id * p.n_tokens * p.H + head_id) * D + v0;
++
++    // Transposing the state-side products gives them V=32 rows with C=16 columns.
++    coopmat<float, WG, V, D, MACC> state;
++    coopMatLoad(state, data_state, state_base, D, ROW);
++
++    float qreg[NQK], kreg[NQK], greg, breg;
++    prefetch(0u, q_base, k_base, gb_base, qreg, kreg, greg, breg);
++
++    [[dont_unroll]] for (uint t0 = 0; t0 < p.n_tokens; t0 += C) {
++        const uint valid = min(C, p.n_tokens - t0);
++        barrier();
++        if (gl_SubgroupID == 0) {
++            const uint r = gl_SubgroupInvocationID;
++            // shuffle scan instead of subgroupInclusiveAdd: works around an NVIDIA r620 shader compiler crash
++            float sum = greg;
++            [[unroll]] for (uint d = 1; d < C; d <<= 1) {
++                const float t = subgroupShuffleUp(sum, d);
++                if (r >= d) {
++                    sum += t;
++                }
++            }
++            const float last = subgroupShuffle(sum, valid - 1);
++            if (r < C) {
++                sh_prefix[r] = sum;
++                sh_ep[r] = exp(sum);
++                sh_beta[r] = breg;
++                sh_carry[r] = exp(last - sum);
++            }
++        }
++        stage_inputs(qreg, kreg);
++        coopmat<float, WG, V, C, MACC> vmat;
++        if (valid == C && (v_base % 4u) == 0 && (p.sv2 % 4u) == 0) {
++            coopMatLoad(vmat, data_v, v_base + t0 * p.sv2, p.sv2, COL);
++        } else {
++            vmat = coopmat<float, WG, V, C, MACC>(0.0);
++            coopMatPerElementNV(vmat, vmat, LoadV, v_base + t0 * p.sv2, p.sv2, valid);
++        }
++        barrier();
++        // Current inputs are in shared memory; keep the next chunk in registers.
++        prefetch(t0 + C, q_base, k_base, gb_base, qreg, kreg, greg, breg);
++
++        gram_pmat();
++        barrier();
++        invert();
++        coopMatPerElementNV(state, state, SplitRowS);
++        barrier();
++
++        coopmat<float, WG, V, C, MACC> ks = coopmat<float, WG, V, C, MACC>(0.0), base_r = coopmat<float, WG, V, C, MACC>(0.0);
++        [[unroll]] for (uint kk = 0; kk < D; kk += KT) {
++            coopmat<OPD, WG, V, KT, MUA> ah, al;
++            coopmat<OPD, WG, KT, C, MUB> kh, kl, qh, ql;
++            coopMatLoad(ah, sh_sh, kk, LDP, ROW);
++            coopMatLoad(al, sh_sl, kk, LDP, ROW);
++            coopMatLoad(kh, sh_kqh, kk, LDP, COL);
++            coopMatLoad(kl, sh_kql, kk, LDP, COL);
++            coopMatLoad(qh, sh_kqh, C * LDP + kk, LDP, COL);
++            coopMatLoad(ql, sh_kql, C * LDP + kk, LDP, COL);
++            PRODUCT(ks, ah, al, kh, kl);
++            PRODUCT(base_r, ah, al, qh, ql);
++        }
++        coopMatPerElementNV(base_r, base_r, ApplyExpPrefix);
++        coopMatPerElementNV(ks, ks, StoreDeltaV, vmat);
++        barrier();
++
++        coopmat<float, WG, V, C, MACC> solved = coopmat<float, WG, V, C, MACC>(0.0);
++        {
++            coopmat<OPD, WG, V, C, MUA> rh, rl;
++            coopmat<OPD, WG, C, C, MUB> ih, il;
++            coopMatLoad(rh, sh_dh, 0, LDV, COL);
++            coopMatLoad(rl, sh_dl, 0, LDV, COL);
++            coopMatLoad(ih, sh_ih, 0, C, COL);
++            coopMatLoad(il, sh_il, 0, C, COL);
++            PRODUCT(solved, rh, rl, ih, il);
++        }
++        barrier();
++        coopMatPerElementNV(solved, solved, StoreSolved);
++        barrier();
++
++        {
++            coopmat<OPD, WG, V, C, MUA> xh, xl;
++            coopmat<OPD, WG, C, C, MUB> ph, pl;
++            coopMatLoad(xh, sh_dh, 0, LDV, COL);
++            coopMatLoad(xl, sh_dl, 0, LDV, COL);
++            coopMatLoad(ph, sh_ph, 0, C, COL);
++            coopMatLoad(pl, sh_pl, 0, C, COL);
++            PRODUCT(base_r, xh, xl, ph, pl);
++        }
++        coopMatPerElementNV(base_r, base_r, StoreOut, out_base + t0 * (p.H * D), valid);
++
++        coopmat<OPD, WG, V, C, MUA> xh, xl;
++        coopmat<OPD, WG, C, D, MUB> kh, kl;
++        coopMatLoad(xh, sh_sh, 0, LDP, ROW);
++        coopMatLoad(xl, sh_sl, 0, LDP, ROW);
++        coopMatLoad(kh, sh_kqh, 0, LDP, ROW);
++        coopMatLoad(kl, sh_kql, 0, LDP, ROW);
++        state *= sh_ep[valid - 1];
++        PRODUCT(state, xh, xl, kh, kl);
++    }
++
++    coopMatStore(state, data_dst, p.s_off + state_base, D, ROW);
++}
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/mul_mm_cm2.comp b/ggml/src/ggml-vulkan/vulkan-shaders/mul_mm_cm2.comp
+index 10dda7768..dad9260b9 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/mul_mm_cm2.comp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/mul_mm_cm2.comp
+@@ -41,8 +41,10 @@ layout (constant_id = 2) const uint BN = 64;
+ layout (constant_id = 3) const uint BK = 16;  // Assumed to be 32 if working with a quant
+ 
+ layout (constant_id = 4) const bool enable_smaller_matrices = false;
+-const uint BNover2 = BN / 2;
+-const uint BNover4 = enable_smaller_matrices ? (BN / 4) : (BN / 2);
++// Keep tail matrix types valid for each workgroup size.
++const uint BNmin = BLOCK_SIZE <= 128 ? 16 : 32;
++const uint BNover2 = BN / 2 >= BNmin ? BN / 2 : BNmin;
++const uint BNover4 = enable_smaller_matrices ? (BN / 4 >= BNmin ? BN / 4 : BNmin) : BNover2;
+ layout (constant_id = 5) const uint ALIGNED = 0;
+ layout (constant_id = 6) const uint subgroup_size = 32;
+ #define GROUP_A_BUDGET (8u * 1024u * 1024u)
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/rms_norm.comp b/ggml/src/ggml-vulkan/vulkan-shaders/rms_norm.comp
+index 6a2525849..08c728fee 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/rms_norm.comp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/rms_norm.comp
+@@ -85,6 +85,12 @@ void rms_norm(uint num_iters) {
+ #endif
+             FLOAT_TYPE sum = FLOAT_TYPE(0.0f); // partial sum for thread in warp
+ 
++#if RMS_NORM_ROPE_FUSION
++            for (uint col = tid; col < ncols; col += BLOCK_SIZE) {
++                const FLOAT_TYPE xi = FLOAT_TYPE(data_a[a_offset + col]);
++                sum += xi * xi;
++            }
++#else
+             [[unroll]] for (uint col = tid, idx = 0; idx < num_iters; col += BLOCK_SIZE, ++idx) {
+                 FLOAT_TYPE xi = FLOAT_TYPE(0);
+                 if (col < ncols) {
+@@ -92,6 +98,7 @@ void rms_norm(uint num_iters) {
+                 }
+                 sum += xi * xi;
+             }
++#endif
+ 
+             #if USE_SUBGROUP_ADD
+                 sum = subgroupAdd(sum);
+@@ -129,6 +136,15 @@ void rms_norm(uint num_iters) {
+             const FLOAT_TYPE mean = sum / FLOAT_TYPE(ncols);
+             const FLOAT_TYPE scale = inversesqrt(mean + FLOAT_TYPE(p.param1));
+ 
++#if RMS_NORM_ROPE_FUSION
++            for (uint col = tid; col < ncols; col += BLOCK_SIZE) {
++                FLOAT_TYPE value = scale * FLOAT_TYPE(data_a[a_offset + col]);
++                if (do_multiply) {
++                    value *= FLOAT_TYPE(data_b[b_offset + fastmod(col, p.ne10)]);
++                }
++                data_d[d_offset + col] = D_TYPE(value);
++            }
++#else
+             if (do_multiply) {
+                 if (ncols > p.ne10) {
+                     [[unroll]] for (uint col = tid, idx = 0; idx < num_iters; col += BLOCK_SIZE, ++idx) {
+@@ -167,6 +183,7 @@ void rms_norm(uint num_iters) {
+                     data_d[d_offset + col] = D_TYPE(scale * FLOAT_TYPE(data_a[a_offset + col]));
+                 }
+             }
++#endif
+ #if RMS_NORM_ROPE_FUSION
+             barrier();
+             rope_params rp = p.rope;
+@@ -183,6 +200,10 @@ void rms_norm(uint num_iters) {
+ }
+ 
+ void main() {
++#if RMS_NORM_ROPE_FUSION
++    const uint num_blocks = (p.ne00 + BLOCK_SIZE - 1) / BLOCK_SIZE;
++    rms_norm(num_blocks);
++#else
+     // instantiate the rms_norm function for several different
+     // dimensions, to allow loop unrolling
+     uint num_blocks = (p.ne00 + BLOCK_SIZE - 1) / BLOCK_SIZE;
+@@ -207,4 +228,5 @@ void main() {
+     } else if (num_blocks == 1) {
+         rms_norm(1);
+     }
++#endif
+ }
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp b/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
+index 7ccccfa1d..ef3d06f71 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
+@@ -348,7 +348,10 @@ compile_count_guard acquire_compile_slot() {
+ }
+ 
+ void string_to_spv_func(std::string name, std::string in_path, std::string out_path, std::map<std::string, std::string> defines, bool coopmat, bool dep_file, compile_count_guard slot) {
+-    std::string target_env = (name.find("_cm2") != std::string::npos) ? "--target-env=vulkan1.3" : "--target-env=vulkan1.2";
++    // coopmat2 and the maintenance1 GDN coopmat1 variants need SPIR-V 1.6 (vulkan1.3)
++    const bool needs_spv16 = name.find("_cm2") != std::string::npos ||
++                             name.find("gated_delta_net_f32_cm1") != std::string::npos;
++    std::string target_env = needs_spv16 ? "--target-env=vulkan1.3" : "--target-env=vulkan1.2";
+ 
+     #ifdef _WIN32
+         std::vector<std::string> cmd = {GLSLC, "-fshader-stage=compute", target_env, "\"" + in_path + "\"", "-o", "\"" + out_path + "\""};
+@@ -738,6 +741,11 @@ void process_shaders() {
+ #if defined(GGML_VULKAN_COOPMAT_GLSLC_SUPPORT)
+                 string_to_spv("flash_attn_f32_f16", "flash_attn_cm1.comp",
+                     merge_maps(fa_base_dict, {{"Q_TYPE", "float"}, {"D_TYPE", "float"}, {"D_TYPEV4", "vec4"}, {"COOPMAT", "1"}}), fp16, true, false, f16acc);
++
++                std::map<std::string, std::string> fa_flip_dict = fa_base_dict;
++                fa_flip_dict.erase("DATA_A_IQ4_NL");
++                string_to_spv("flash_attn_f32_f16_flip", "flash_attn_cm1_flip.comp",
++                    merge_maps(fa_flip_dict, {{"Q_TYPE", "float"}, {"D_TYPE", "float"}, {"D_TYPEV4", "vec4"}, {"COOPMAT", "1"}}), fp16, true, false, f16acc);
+ #endif
+             }
+ 
+@@ -770,6 +778,9 @@ void process_shaders() {
+     string_to_spv("flash_attn_f32_f16_bf16", "flash_attn_cm1.comp",
+         merge_maps(fa_bf16_dict, {{"Q_TYPE", "float"}, {"D_TYPE", "float"}, {"D_TYPEV4", "vec4"}, {"COOPMAT", "1"}}),
+         true, true, false, false);
++    string_to_spv("flash_attn_f32_f16_bf16_flip", "flash_attn_cm1_flip.comp",
++        merge_maps(fa_bf16_dict, {{"Q_TYPE", "float"}, {"D_TYPE", "float"}, {"D_TYPEV4", "vec4"}, {"COOPMAT", "1"}}),
++        true, true, false, false);
+ #endif
+ 
+ #if defined(GGML_VULKAN_BFLOAT16_GLSLC_SUPPORT) && defined(GGML_VULKAN_COOPMAT2_GLSLC_SUPPORT)
+@@ -1168,6 +1179,20 @@ void process_shaders() {
+     string_to_spv("gated_delta_net_f32_nocluster", "gated_delta_net.comp", merge_maps(base_dict, {{"FLOAT_TYPE", "float"}, {"USE_SUBGROUP_ADD", "1"}, {"USE_SUBGROUP_CLUSTERED", "0"}}));
+     string_to_spv("gated_delta_net_f32_shmem", "gated_delta_net.comp", merge_maps(base_dict, {{"FLOAT_TYPE", "float"}, {"USE_SUBGROUP_ADD", "0"}, {"USE_SUBGROUP_CLUSTERED", "0"}}));
+ 
++#if defined(GGML_VULKAN_BFLOAT16_GLSLC_SUPPORT) && defined(GGML_VULKAN_COOPMAT2_GLSLC_SUPPORT)
++    string_to_spv("gated_delta_net_f32", "gated_delta_net_cm2.comp", base_dict, true, false, true);
++#endif
++#if defined(GGML_VULKAN_BFLOAT16_GLSLC_SUPPORT) && defined(GGML_VULKAN_COOPMAT_GLSLC_SUPPORT) && defined(GGML_VULKAN_COOPMAT_MAINTENANCE1_GLSLC_SUPPORT)
++    string_to_spv("gated_delta_net_f32", "gated_delta_net_cm.comp", merge_maps(base_dict, {{"BF16ACC", "1"}}), true, true, false, false, "_bf16acc");
++    string_to_spv("gated_delta_net_f32", "gated_delta_net_cm.comp", base_dict, true, true);
++    string_to_spv("gated_delta_net_f32", "gated_delta_net_cm.comp", merge_maps(base_dict, {{"BF16ACC", "1"}, {"V", "32"}}), true, true, false, false, "_bf16acc_v32");
++    string_to_spv("gated_delta_net_f32", "gated_delta_net_cm.comp", merge_maps(base_dict, {{"V", "32"}}), true, true, false, false, "_v32");
++    // whole-head V=128 variant: state mirror in a gmem scratch buffer (won't fit LDS).
++    // For head counts that tail the CU grid at V=64 (e.g. 48-head 27B on 64 CUs).
++    string_to_spv("gated_delta_net_f32", "gated_delta_net_cm.comp", merge_maps(base_dict, {{"BF16ACC", "1"}, {"GMEM_MIRROR", "1"}, {"V", "128"}}), true, true, false, false, "_bf16acc_v128");
++    string_to_spv("gated_delta_net_f32", "gated_delta_net_cm.comp", merge_maps(base_dict, {{"GMEM_MIRROR", "1"}, {"V", "128"}}), true, true, false, false, "_v128");
++#endif
++
+     string_to_spv("opt_step_adamw_f32", "opt_step_adamw.comp", merge_maps(base_dict, {{"A_TYPE", "float"}}));
+     string_to_spv("opt_step_sgd_f32", "opt_step_sgd.comp", merge_maps(base_dict, {{"A_TYPE", "float"}}));
+ 
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index 3abdff5fd..53eab9d9b 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -5200,16 +5200,20 @@ struct test_gated_delta_net : public test_case {
+     const bool    permuted;
+     const bool    kda;
+     const int64_t K; // snapshot slot count: 1 = final-only, >1 = last K states
++    const bool    correlated;
++    const bool    padded_v;
++    const bool    padded_q;
++    const bool    permuted_k;
+ 
+     std::string vars() override {
+-        return VARS_TO_STR9(type, head_count, head_size, n_seq_tokens, n_seqs, v_repeat, permuted, kda, K);
++        return VARS_TO_STR13(type, head_count, head_size, n_seq_tokens, n_seqs, v_repeat, permuted, kda, K, correlated, padded_v, padded_q, permuted_k);
+     }
+ 
+     test_gated_delta_net(ggml_type type = GGML_TYPE_F32,
+             int64_t head_count = 4, int64_t head_size = 16, int64_t n_seq_tokens = 1, int64_t n_seqs = 1,
+-            int v_repeat = 1, bool permuted = false, bool kda = false, int64_t K = 1)
++            int v_repeat = 1, bool permuted = false, bool kda = false, int64_t K = 1, bool correlated = false, bool padded_v = false, bool padded_q = false, bool permuted_k = false)
+         : type(type), head_count(head_count), head_size(head_size), n_seq_tokens(n_seq_tokens), n_seqs(n_seqs),
+-          v_repeat(v_repeat), permuted(permuted), kda(kda), K(K) {}
++          v_repeat(v_repeat), permuted(permuted), kda(kda), K(K), correlated(correlated), padded_v(padded_v), padded_q(padded_q), permuted_k(permuted_k) {}
+ 
+     ggml_tensor * build_graph(ggml_context * ctx) override {
+         ggml_tensor * q;
+@@ -5219,11 +5223,15 @@ struct test_gated_delta_net : public test_case {
+             // create with dims 1 and 2 swapped, then permute back to get non-contiguous layout
+             q = ggml_permute(ctx, ggml_new_tensor_4d(ctx, type, head_size, n_seq_tokens, head_count, n_seqs), 0, 2, 1, 3);
+             k = ggml_permute(ctx, ggml_new_tensor_4d(ctx, type, head_size, n_seq_tokens, head_count, n_seqs), 0, 2, 1, 3);
+-            v = ggml_permute(ctx, ggml_new_tensor_4d(ctx, type, head_size, n_seq_tokens, head_count * v_repeat, n_seqs), 0, 2, 1, 3);
++            v = ggml_permute(ctx, ggml_new_tensor_4d(ctx, type, head_size + padded_v, n_seq_tokens, head_count * v_repeat, n_seqs), 0, 2, 1, 3);
+         } else {
+             q = ggml_new_tensor_4d(ctx, type, head_size, head_count, n_seq_tokens, n_seqs);
+             k = ggml_new_tensor_4d(ctx, type, head_size, head_count, n_seq_tokens, n_seqs);
+-            v = ggml_new_tensor_4d(ctx, type, head_size, head_count * v_repeat, n_seq_tokens, n_seqs);
++            v = ggml_new_tensor_4d(ctx, type, head_size + padded_v, head_count * v_repeat, n_seq_tokens, n_seqs);
++        }
++        if (padded_v) {
++            ggml_set_name(v, "v");
++            v = ggml_view_4d(ctx, v, head_size, head_count * v_repeat, n_seq_tokens, n_seqs, v->nb[1], v->nb[2], v->nb[3], 0);
+         }
+         ggml_set_name(q, "q");
+         ggml_set_name(k, "k");
+@@ -5238,6 +5246,17 @@ struct test_gated_delta_net : public test_case {
+         // q/k are L2-normalised in qwen35/kimi-linear before delta_net
+         q = ggml_l2_norm(ctx, q, 1e-6f);
+         k = ggml_l2_norm(ctx, k, 1e-6f);
++        // Set layouts after normalization, which produces contiguous tensors.
++        if (padded_q) {
++            ggml_tensor * q_padded = ggml_new_tensor_4d(ctx, type, head_size + 1, head_count, n_seq_tokens, n_seqs);
++            q_padded = ggml_view_4d(ctx, q_padded, head_size, head_count, n_seq_tokens, n_seqs, q_padded->nb[1], q_padded->nb[2], q_padded->nb[3], 0);
++            q = ggml_cpy(ctx, q, q_padded);
++        }
++        if (permuted_k) {
++            ggml_tensor * k_permuted = ggml_new_tensor_4d(ctx, type, head_size, n_seq_tokens, head_count, n_seqs);
++            k_permuted = ggml_permute(ctx, k_permuted, 0, 2, 1, 3);
++            k = ggml_cpy(ctx, k, k_permuted);
++        }
+         ggml_tensor * out   = ggml_gated_delta_net(ctx, q, k, v, g, beta, state, K);
+         return out;
+     }
+@@ -5246,9 +5265,17 @@ struct test_gated_delta_net : public test_case {
+         for (ggml_tensor * t = ggml_get_first_tensor(ctx); t != nullptr; t = ggml_get_next_tensor(ctx, t)) {
+             if (ggml_is_view_op(t->op)) { continue; }
+             if (strcmp(t->name, "g") == 0) {
+-                init_tensor_uniform(t, -20.0f, -1e-4f);
++                init_tensor_uniform(t, correlated ? -1e-4f : -20.0f, -1e-4f);
+             } else if (strcmp(t->name, "beta") == 0) {
+-                init_tensor_uniform(t, 0.0f, 1.0f);
++                init_tensor_uniform(t, correlated ? 0.9f : 0.0f, correlated ? 0.9f : 1.0f);
++            } else if (correlated && strcmp(t->name, "k") == 0) {
++                // Identical unit keys and weak decay stress cancellation in the triangular solve.
++                GGML_ASSERT(t->type == GGML_TYPE_F32);
++                std::vector<float> data(ggml_nelements(t), 0.0f);
++                for (size_t i = 0; i < data.size(); i += size_t(t->ne[0])) {
++                    data[i] = 1.0f;
++                }
++                ggml_backend_tensor_set(t, data.data(), 0, data.size() * sizeof(float));
+             } else if (strcmp(t->name, "v") == 0) {
+                 init_tensor_uniform(t, -0.3f, 5.0f);
+             } else {
+@@ -13360,6 +13387,15 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 4, 64,  33, 1, 1, false, true));
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 4, 64, 100, 1, 1, false, true));
+ 
++    // KDA at D=128: decode, prefill, tails, strides, and snapshots.
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 32, 128,   1, 1, 1, false, true));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32,  4, 128,  64, 1, 1, false, true));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32,  4, 128,  65, 2, 2, true,  true));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32,  4, 128, 257, 1, 1, false, true));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32,  4, 128,  65, 1, 1, false, true, 1, true));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32,  4, 128, 257, 1, 1, true,  true, 1, true, true));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32,  4, 128,   4, 2, 2, false, true, 4));
++
+     // MMA-eligible GDN shapes: whole heads, value slices, tails, and the HIP prefill threshold.
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128,   65, 1, 1));
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128,   65, 3, 4));
+@@ -13371,6 +13407,30 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128, 2048, 1, 2));
+     // Keep the WebGPU dispatch below 65535 workgroups (32 per token for this shape).
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128, 2047, 2, 3));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 4, 128, 4097, 1, 2));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128,  127, 2));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128,  256, 1, 2));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128,  256, 1, 3));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128,  513, 1, 2));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128,  512, 2, 2));
++
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 4, 128, 257, 2, 2, true));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 3, 128, 129, 1, 1, false, false, 1, false, true));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 4, 128, 4095, 1, 2));
++
++    // Correlated keys, high beta, and weak decay stress the chunked triangular solve.
++    for (int64_t n_tokens : {64, 65, 257}) {
++        test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 4, 128, n_tokens, 1, 1, false, false, 1, true));
++    }
++
++    // Odd V strides require element loads instead of aligned matrix loads.
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 3, 128, 65, 1, 1, false, false, 1, false, true));
++
++    // Q and K can have different strides in both scalar and chunked paths.
++    for (int64_t n_tokens : {4, 65}) {
++        test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 2, 128, n_tokens, 2, 2, false, false, 1, false, false, true));
++        test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 2, 128, n_tokens, 2, 2, false, false, 1, false, false, false, true));
++    }
+ 
+     // K > 1: output keeps the last min(n_tokens, K) per-token snapshots, ordered most-recent-first
+     // (slot 0 = final state, slot s = state s tokens back).
+@@ -13697,6 +13757,11 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
+         }
+     }
+ 
++    for (int n : {1, 2, 3, 4, 5, 6, 7, 8, 9, 16, 17, 24, 25, 32, 33}) {
++        test_cases.emplace_back(new test_mul_mat(GGML_TYPE_Q4_K, GGML_TYPE_F32, 4096, n, 14336, {1, 1}, {1, 1}));
++        test_cases.emplace_back(new test_mul_mat(GGML_TYPE_Q4_K, GGML_TYPE_F32, 14336, n, 4096, {1, 1}, {1, 1}));
++    }
++
+     // Q4_K multi-column mat-vec
+     for (int64_t m : {4096, 6144, 6272, 14336}) {
+         for (int bs : {1, 2, 3, 4, 8}) {
+@@ -13986,12 +14051,34 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 32, 128, 256, 1)); // PP-256
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 32, 128, 512, 1)); // PP-512
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 32, 128, 1024, 1)); // PP-1024
++    // MMA-eligible prefill sweep (16 heads, d=128, K=1): Vulkan cm2 vs CUDA MMA
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128, 64, 1));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128, 128, 1));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128, 256, 1));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128, 512, 1));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128, 1024, 1));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128, 2048, 1));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128, 4096, 1));
+     // Small model configs (fewer heads = less GPU occupancy for autoregressive)
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 4, 128, 64, 1));   // 4h PP-64
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 4, 128, 256, 1));  // 4h PP-256
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 4, 128, 512, 1));  // 4h PP-512
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 4, 128, 1024, 1)); // 4h PP-1024
+     test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 32, 128, 64, 1, 1, false, true)); // KDA PP-64
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 4, 128, 64, 1, 1, false, true));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128, 256, 1, 1, false, true));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 4, 128, 1024, 1, 1, false, true));
++    // GDN model shapes: 35B (v_repeat=2), 27B (v_repeat=3), batch sweep
++    for (int T : { 2048, 4096, 8192, 16384, 32768 }) {
++        test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128, T, 1, 2));
++        test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 16, 128, T, 1, 3));
++    }
++
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 4, 128, 2048, 1));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 4, 128, 4096, 1));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 4, 128, 8192, 1));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 20, 128, 1536, 1));
++    test_cases.emplace_back(new test_gated_delta_net(GGML_TYPE_F32, 20, 128, 2048, 1));
+ 
+     // lightning_indexer
+     for (int kv : { 256, 4096, 65536 }) {

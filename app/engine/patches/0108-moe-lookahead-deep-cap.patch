@@ -1,0 +1,59 @@
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index a0050ee..0b3ff2a 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -769,6 +769,20 @@ struct llama_moe_cache::impl {
+                             list += (i ? ", " : "") + std::to_string(la_depth[i]);
+                         }
+                         LLAMA_LOG_INFO("%s: the look-ahead guesses %s layer(s) ahead; slots still going up are kept until their layer waits\n", __func__, list.c_str());
++                        // Brain Engine 0108: LLAMA_MOE_LOOKAHEAD_DEEP_MAX=N (0 to M, default 1), uploads a layer for the deeper guesses
++                        if (const char * dm = getenv("LLAMA_MOE_LOOKAHEAD_DEEP_MAX"); dm != nullptr && *dm != '\0') {
++                            char * end = nullptr;
++                            const long v = strtol(dm, &end, 10);
++                            if (end == dm || *end != '\0' || v < 0 || v > la_max) {
++                                LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_LOOKAHEAD_DEEP_MAX=%s NOT USED: give 0 to %d (1 as default)\n", __func__, dm, la_max);
++                            } else {
++                                la_deep_max = (int32_t) v;
++                            }
++                        }
++                        la_deep_max = std::min(la_deep_max, la_max);
++                        if (la_depth[la_nd - 1] > 1) {
++                            LLAMA_LOG_INFO("%s: guesses 2 or more layers ahead upload at most %d expert(s) a layer, from their surest %d\n", __func__, la_deep_max, (int) std::min(la_k, n_expert_used));
++                        }
+                     }
+                 }
+                 // Brain Engine 0106: LLAMA_MOE_LOOKAHEAD_LEARN=1, HotRod's learned correction (rank LLAMA_MOE_LOOKAHEAD_RANK, default 8)
+@@ -1133,6 +1147,7 @@ struct llama_moe_cache::impl {
+     // Brain Engine 0041: the look-ahead
+     int32_t la_max    = 0;     // most uploads ahead per layer, 0 = off
+     int32_t la_k      = 0;     // guesses per token
++    int32_t la_deep_max = 1;   // Brain Engine 0108: most uploads ahead per layer for a guess 2 or more layers deep
+     bool    la_inline = false;
+     bool    la_scramble = false; // tests: guess wrong on purpose // upload on the compute stream (tests: the words and the bookkeeping, not the speed)
+     // Brain Engine 0106 (LLAMA_MOE_LOOKAHEAD_DEPTH): each layer guesses the layers la_depth[0..la_nd) ahead (0041: 1)
+@@ -1406,9 +1421,14 @@ struct llama_moe_cache::impl {
+         const std::vector<int32_t> & guess = la_guess[di];
+         // 0106: a quarter of the group's slots at most going up at once, so a plan always finds a victim
+         const int32_t busy_cap = la_nd > 1 ? std::max<int32_t>(1, gn.lru.n_slots/4) : INT32_MAX;
++        // Brain Engine 0108: a deeper guess is right less often (npc: 15-25% used) and its copies queue in front of the
++        // ones the next layer needs, so it uploads at most la_deep_max of its surest guesses (the first n_expert_used)
++        const bool deep = la_depth[di] > 1;
++        const int32_t cap = deep ? std::min(la_max, la_deep_max) : la_max;
++        const int32_t r_end = deep ? std::min(la_k, n_expert_used) : la_k;
+         std::vector<moe_cache_lru::fill> pf;
+-        for (int32_t r = 0; r < la_k && (int32_t) pf.size() < la_max; ++r) {
+-            for (int64_t t = 0; t < n_tokens && (int32_t) pf.size() < la_max; ++t) {
++        for (int32_t r = 0; r < r_end && (int32_t) pf.size() < cap; ++r) {
++            for (int64_t t = 0; t < n_tokens && (int32_t) pf.size() < cap; ++t) {
+                 int32_t e = guess[t*la_k + r];
+                 if (la_scramble && e >= 0) {
+                     e = (int32_t) ((7*(int64_t) e + 3) % gn.lru.n_expert); // tests: a wrong guess must give the same words
+@@ -1418,7 +1438,7 @@ struct llama_moe_cache::impl {
+                 }
+                 if (gn.lru.n_busy >= busy_cap) {
+                     la_n_skipped_busy++;
+-                    r = la_k;
++                    r = r_end;
+                     break;
+                 }
+                 const int32_t s = gn.lru.victim(protect);
