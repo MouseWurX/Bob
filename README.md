@@ -461,10 +461,10 @@ Every brain and helper Bob can download from his own catalogue, made from [app/c
 <!-- models:start -->
 <!-- Written by installer/make-model-list.js from app/catalog.json. Don't edit by hand: change the catalogue and run it again. -->
 
-Bob's catalogue has **89 brains** and **19 helpers** for pictures, video, music, voices and memory. Each one is a pinned file, checked against its sha256 when it downloads. **Fits** is the smallest hardware tier it's sized for ([the tiers](#set-up-for-your-hardware)). **Tried in our lab** (9 brains) means it ran on our own PCs before Bob would suggest it. Everything else is listed but never suggested until it's tried. **Size** is the download.
+Bob's catalogue has **90 brains** and **19 helpers** for pictures, video, music, voices and memory. Each one is a pinned file, checked against its sha256 when it downloads. **Fits** is the smallest hardware tier it's sized for ([the tiers](#set-up-for-your-hardware)). **Tried in our lab** (10 brains) means it ran on our own PCs before Bob would suggest it. Everything else is listed but never suggested until it's tried. **Size** is the download.
 
 <details>
-<summary><b>Brains</b> (63)</summary>
+<summary><b>Brains</b> (64)</summary>
 
 | Brain | File | Size | Fits | Licence | Status |
 |---|---|---|---|---|---|
@@ -499,6 +499,7 @@ Bob's catalogue has **89 brains** and **19 helpers** for pictures, video, music,
 | DeepSeek R1 Distill Qwen 14B | Q4_K_M | 9 GB | 12 GB card | MIT (built on Qwen2.5, Apache 2.0) | Unproven in our lab, as we have yet to test |
 | Hermes 4 14B (Nous Research) | Q4_K_M | 9 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Ministral 3 14B | Q4_K_M | 9.1 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Underdog Saluki 27B | Q2 | 7.9 GB | 12 GB card | CC BY-NC 4.0 (limits commercial use: read it first) | Tried in our lab |
 | Qwen3.6 35B-A3B Coding REAP50 | Q4_K_M | 11.4 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Qwen3.6 35B-A3B (8 GB card version) | UD-Q3_K_XL | 17.7 GB | 12 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | gpt-oss 20B | MXFP4 | 13 GB | 16 GB card | Apache 2.0 | Tried in our lab |
