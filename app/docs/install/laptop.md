@@ -17,7 +17,8 @@ For laptops with a 4 to 8 GB graphics card, the kind most gaming and creator lap
 | 4 GB (RTX 3050 Laptop and the like) | Processor only | Gemma 4 E4B, partly on the card | (the same brain) | none |
 | 6 GB (RTX 3060 Laptop, RTX 2060) | 6 GB card | Qwen3 4B Instruct, all on the card | Qwen2.5 Coder 7B | Z-Image Turbo (6 GB card version) |
 | 8 GB (RTX 4060, 4070, 5070 Laptop) | 8 GB card | Gemma 4 E4B, all on the card | Qwen3.6 35B-A3B (8 GB card version), mostly in memory | Z-Image Turbo (8 GB card version) |
-| 12 GB or more (RTX 4080 Laptop and up) | 16 GB card or more | Qwen3.6 35B-A3B, card and memory | (the same brain) | Z-Image Turbo |
+| 12 GB (RTX 4080 Laptop) | 16 GB card or more | Underdog Saluki 27B from the Brains page, all on the card (not for commercial use) | (the same brain) | Z-Image Turbo |
+| 16 GB (RTX 4090 Laptop and up) | 16 GB card or more | Qwen3.6 35B-A3B, card and memory | (the same brain) | Z-Image Turbo |
 
 On 6 GB, Qwen3 4B leaves room on the card for longer chats. Pictures take about 1 to 2 minutes and clips a long time (rough guesses, not measured on a 6 GB card yet); the clip maker is left unticked. Bob puts his brain away while he paints, so chat waits until the picture is done.
 

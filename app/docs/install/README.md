@@ -22,7 +22,8 @@ Downloads are on the [latest release](https://github.com/MouseWurX/Bob/releases/
 | No card, or under 5 GB | Processor only | Gemma 4 E4B |
 | 5 or 6 GB | 6 GB card | Qwen3 4B Instruct |
 | 7 to 11 GB | 8 GB card | Gemma 4 E4B, with Qwen3.6 35B-A3B (8 GB card version) for coding |
-| 12 GB or more | 16 GB card or more | Qwen3.6 35B-A3B |
+| 12 to 15 GB | 16 GB card or more | Underdog Saluki 27B (Bob's pick on the Brains page, not for commercial use) |
+| 16 GB or more | 16 GB card or more | Qwen3.6 35B-A3B |
 | Built-in graphics | Built-in graphics | Qwen3 4B Instruct (plus Gemma 4 26B to pick with 32 GB of memory) |
 
 Every row, with Macs, boards and phones, is in [Which brain for which size](sizes.md).

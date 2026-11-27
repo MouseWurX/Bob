@@ -20,10 +20,11 @@ A Mac shares one pool of memory between the processor and the graphics. Bob coun
 |---|---|---|---|---|
 | 8 GB | 5 GB | 6 GB card | Qwen3 4B Instruct | Z-Image Turbo (6 GB card version) |
 | 16 GB | 10 GB | 8 GB card | Gemma 4 E4B, plus Qwen3.6 35B-A3B (8 GB card version) for coding | Z-Image Turbo (8 GB card version) |
-| 18 or 24 GB | 12 or 16 GB | 16 GB card or more | Qwen3.6 35B-A3B | Z-Image Turbo |
+| 18 GB | 12 GB | 16 GB card or more | Underdog Saluki 27B from the Brains page (not for commercial use) | Z-Image Turbo |
+| 24 GB | 16 GB | 16 GB card or more | Qwen3.6 35B-A3B | Z-Image Turbo |
 | 32 GB or more | 21 GB or more | 16 GB card or more | Qwen3.6 35B-A3B | Z-Image Turbo |
 
-On 18 and 24 GB Macs the 23 GB Qwen3.6 35B-A3B doesn't fit in the graphics share, so part of it is read from the drive and replies are slower; Gemma 4 E4B is the quicker everyday pick there. How well each size runs on a real Mac is unproven in our lab, as we have yet to test.
+On 24 GB Macs the 23 GB Qwen3.6 35B-A3B doesn't fit in the graphics share, so part of it is read from the drive and replies are slower; Gemma 4 E4B is the quicker everyday pick there. How well each size runs on a real Mac is unproven in our lab, as we have yet to test.
 
 ## Jobs and their engines
 
