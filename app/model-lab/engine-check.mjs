@@ -1,9 +1,10 @@
 // Before any card time is spent (14 Nov, the owner: "you keep costing me money"; Nov 13 a rental skipped its planned steps
 // because the engine lacked them): check that the served Brain Engine can do every step a plan needs, in about a minute,
 // and stop with exit 1 if one can't. Every switch goes back at the end.
-//   node engine-check.mjs --url <server> [--needs chat,tools,odds,think,n,mask,dials,trace,mass] [--min-ctx 14000]
+//   node engine-check.mjs --url <server> [--needs chat,tools,odds,think,stream,n,mask,dials,trace,mass] [--min-ctx 14000]
 import { live } from './engine-live.mjs';
 import { pathToFileURL } from 'node:url';
+import { postStream } from './loop-sweep.mjs';
 
 export async function checkEngine(eng, needs, { minCtx = 0 } = {}) {
   if (minCtx) needs = new Set([...needs, 'room']);
@@ -15,6 +16,8 @@ export async function checkEngine(eng, needs, { minCtx = 0 } = {}) {
   await t('tools', async () => { const j = await eng.chat({ messages: [{ role: 'user', content: 'List C:\\Users\\you\\Documents.' }], tools: tool, max_tokens: 80, temperature: 0, chat_template_kwargs: { enable_thinking: false } }); return j.choices?.[0]?.message?.tool_calls?.length ? 'called a tool' : 'no tool call (still served)'; });
   await t('odds', async () => { const j = await eng.chat({ messages: msg, tools: tool, max_tokens: 8, temperature: 0, logprobs: true, top_logprobs: 8, chat_template_kwargs: { enable_thinking: false } }); if (!j.choices?.[0]?.logprobs?.content?.length) throw new Error('no top-K odds with tools on'); });
   await t('think', async () => { const j = await eng.chat({ messages: msg, max_tokens: 200, temperature: 0, chat_template_kwargs: { enable_thinking: true } }); const m = j.choices?.[0]?.message || {}; if (!m.reasoning_content && !/<think>/.test(m.content || '')) throw new Error('no thinking came back'); });
+  // 26 Nov: loop-sweep streams its answers (a silent 15-minute answer was cut); check a streamed thinking answer comes back whole
+  await t('stream', async () => { const j = await postStream(`${eng.url}/v1/chat/completions`, { messages: msg, max_tokens: 200, temperature: 0, chat_template_kwargs: { enable_thinking: true } }, { 'content-type': 'application/json', ...(process.env.LAB_API_KEY ? { authorization: `Bearer ${process.env.LAB_API_KEY}` } : {}) }, 120_000); const c = j.choices?.[0] || {}; if (!c.finish_reason || !(c.message?.content || c.message?.reasoning_content)) throw new Error('the streamed answer came back empty'); return `streamed ok (${j.usage?.completion_tokens ?? '?'} tokens, thinking ${c.message?.reasoning_content ? 'apart' : 'inline'})`; });
   await t('n', async () => { await eng.setUsed(10); const g = await eng.getUsed(); await eng.setUsed(null); return `experts per word switch ok (${JSON.stringify(g).slice(0, 60)})`; });
   await t('mask', async () => { await eng.setMask(null); });
   await t('dials', async () => { await eng.setDials([{ kind: 'expert', layer: 0, index: 0, scale: 1.5 }]); await eng.setDials([]); });

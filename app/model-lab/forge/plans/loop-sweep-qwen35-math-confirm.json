@@ -1,0 +1,64 @@
+{
+ "run": "loop-sweep-qwen35-math-confirm",
+ "note": "27 Nov 2026: confirm run for the hard-maths sweep (ch14 section 7.3). Try 2's nominal winner (up: top 16 good-answer experts x1.3; check set 80% -> 62.5% loops, 20% -> 37.5% right on 40 problems) is checked on 100 FRESH MATH level-5 train problems (ids 210-309 of practice/math-train-l5-600.jsonl; neither run used them): as built, edit, as built again, same seeds. Confirmed only if it loops 8+ points less than both as-built passes, gets no fewer right, and the answer-by-answer test gives p < 0.05 against each (registered before the run). Edits file = try 2's surgery-edits.json, copied unchanged to practice/edits/qwen35-math-up16-x1.3.json. Estimate: 3 passes x ~112 min = about 5.6 h, about $3.60. Caps 7 h / $4.50.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA A40",
+  "NVIDIA RTX A6000"
+ ],
+ "step_up": [],
+ "disk_gb": 80,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 7,
+ "dollars_max": 4.5,
+ "rent_minutes": 420,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one brain: stock Qwen3.6 35B A3B, loop sweep with live expert dials.",
+  "hours_each": 6.5,
+  "brain_engine": {
+   "ref": "fcdf3955ed6966c102f43d49528174cabd52d825",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word"
+   ],
+   "note": "Brain Engine 7b12282 (live experts per word, mask, dials, expert trace with mass)"
+  },
+  "models": [
+   {
+    "name": "qwen35-math-confirm",
+    "nickname": "Qwen3.6 35B, confirm the hard-maths dial winner",
+    "file": "hf:unsloth/Qwen3.6-35B-A3B-GGUF:Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 4,
+    "ctx": 81920,
+    "extra": "",
+    "hours": 6.5,
+    "commands": [
+     "node set-live.mjs --reset",
+     "node engine-check.mjs --url {{url}} --needs chat,think,stream,dials",
+     "node loop-sweep.mjs --url {{url}} --problems practice/math-train-l5-600.jsonl --confirm practice/edits/qwen35-math-up16-x1.3.json --offset 210 --check 100 --max-tokens 16384 --parallel 4 --resume --out {{out}}/confirm",
+     "node set-live.mjs --reset"
+    ]
+   }
+  ]
+ }
+}

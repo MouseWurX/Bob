@@ -57,7 +57,7 @@ echo "building CUDA llama-server (tag $TAG, sm_$ARCH); nvcc: $(command -v nvcc |
 # Upstream's documented CUDA server build: GGML_CUDA on, CURL off, nothing else forced. Building only the llama-server target
 # means the examples/tests that configure still scans are never compiled, so leaving them enabled costs no compile time but
 # avoids both the static-lib configure bug and any tag where the server lives under examples/ rather than tools/.
-( cd $L && cmake -B build-cuda -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=$ARCH -DLLAMA_CURL=OFF > $CL 2>&1 \
+( cd $L && cmake -B build-cuda -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=$ARCH -DLLAMA_CURL=OFF -DLLAMA_BUILD_UI=OFF -DLLAMA_USE_PREBUILT_UI=OFF > $CL 2>&1 \
   && cmake --build build-cuda --target llama-server -j $(nproc) >> $CL 2>&1 && { cmake --build build-cuda --target llama-cvector-generator llama-imatrix -j $(nproc) >> $CL 2>&1 || echo "llama-cvector-generator/llama-imatrix did not build (the evil check reads experts only, no imatrix)"; } \
   && { ! grep -q act-dump tools/CMakeLists.txt 2>/dev/null || cmake --build build-cuda --target llama-act-dump -j $(nproc) >> $CL 2>&1 || echo "llama-act-dump did not build (the interp step is skipped)"; } )
 SERVE=$W/llama.cpp/build-cuda/bin   # where run.sh serves from

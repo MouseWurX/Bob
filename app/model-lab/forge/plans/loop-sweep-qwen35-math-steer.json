@@ -1,0 +1,66 @@
+{
+ "run": "loop-sweep-qwen35-math-steer",
+ "note": "27 Nov 2026, the owner: \"can we continue with dials and also do mit's direction edit simultaneously?\". MIT-style direction edit, done live first (no weights changed): before serving, the pod finds a direction in the 35B's stream by the difference of means (llama-cvector-generator --method mean) between the start of 40 practice answers that ran out of room and 40 that finished right (try 2's find answers, MATH level-5 train ids 0-99; practice/directions/qwen35-math-cut-vs-finished, made by direction-prep.mjs). Then the live control vector (pod patch 0014, used on Riker with this same engine) steers AWAY from it: x-2, x-5, x-10 over layers 10-29, on 60 FRESH problems (ids 310-369), between two as-built passes, same seeds, judged answer by answer like --confirm. Estimate: 5 passes x ~67 min + direction ~10 min + setup ~30 min = about 6.3 h, about $3.70 on an A40. Caps 7.5 h / $4.50.",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.6-35B-A3B",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA A40",
+  "NVIDIA RTX A6000"
+ ],
+ "step_up": [],
+ "disk_gb": 80,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 7.5,
+ "dollars_max": 4.5,
+ "rent_minutes": 450,
+ "download_quants": [],
+ "llama_tag": "b12282",
+ "no_hands": true,
+ "benchmark": {
+  "note": "one brain: stock Qwen3.6 35B A3B, loop sweep with live expert dials.",
+  "hours_each": 7,
+  "brain_engine": {
+   "ref": "fcdf3955ed6966c102f43d49528174cabd52d825",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word",
+    "pod:0014-live-control-vector"
+   ],
+   "note": "Lamplight 7b12282 (dials, expert trace) plus the lab-only live control vector (pod patch 0014)"
+  },
+  "models": [
+   {
+    "name": "qwen35-math-steer",
+    "nickname": "Qwen3.6 35B, MIT-style direction steering on hard maths (live)",
+    "file": "hf:unsloth/Qwen3.6-35B-A3B-GGUF:Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+    "quant": "UD-Q4_K_XL",
+    "slots": 4,
+    "ctx": 81920,
+    "extra": "",
+    "hours": 7,
+    "commands": [
+     "node set-live.mjs --reset",
+     "node engine-check.mjs --url {{url}} --needs chat,think,stream",
+     "node loop-sweep.mjs --url {{url}} --problems practice/math-train-l5-600.jsonl --steer {{out}}/direction/where.json --steer-scales -2,-5,-10 --steer-layers 10-29 --offset 310 --check 60 --max-tokens 16384 --parallel 4 --resume --out {{out}}/steer",
+     "node set-live.mjs --reset"
+    ],
+    "direction_from": "practice/directions/qwen35-math-cut-vs-finished"
+   }
+  ]
+ }
+}

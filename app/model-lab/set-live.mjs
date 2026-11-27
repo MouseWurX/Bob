@@ -4,6 +4,8 @@
 //   node set-live.mjs --used 6                       experts per word in every layer (Brain Engine 7b12282, patch 0013)
 //   node set-live.mjs --used best --from <folder>[,<folder>]   the N whose tool-score in <folder>/n<N>/ was best (ties: the smaller N)
 //   node set-live.mjs --keep <keep.json> [--used N]  the expert mask from a keep list ({keep: [[ids] per layer]} or [[ids]])
+//   node set-live.mjs --dials <surgery-edits.json> [--none-stops]  the winning dials of a loop sweep ({edits: [{layer, expert, scale}]});
+//        with --none-stops and no winner file, exit 86 so a Forge run ends instead of re-scoring an unchanged brain (25 Nov)
 // Writes the setting it made to <LAB_OUT>/live-<stamp>.json. --url or LAB_URL, and LAB_API_KEY, as the Forge sets them.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,6 +24,8 @@ export function bestN(from) {
   if (!got.length) return null;
   return got.sort((a, b) => b.total / Math.max(b.of, 1) - a.total / Math.max(a.of, 1) || a.n - b.n)[0];
 }
+// surgery.py edits (expert dials only) -> /dials entries
+export const dialsOf = (j) => (Array.isArray(j?.edits) ? j.edits : []).filter((e) => Number.isInteger(e.layer) && Number.isInteger(e.expert) && Number.isFinite(e.scale)).map((e) => ({ kind: 'expert', layer: e.layer, index: e.expert, scale: e.scale }));
 export const keepOf = (j) => (Array.isArray(j) ? j : Array.isArray(j?.keep) ? j.keep : null);
 
 async function main() {
@@ -37,6 +41,13 @@ async function main() {
     if (Array.isArray(own) && keep.length !== own.length) { console.error(`${f} has ${keep.length} layers, the brain has ${own.length}: not this brain's keep list`); process.exit(3); }
     try { await eng.setUsed(null); } catch {} // an engine without 0013 has only the count it was started with
     await eng.setMask(keep); did.keep = { file: path.basename(f), layers: keep.length, kept: keep.filter(Array.isArray).reduce((s, x) => s + x.length, 0) };
+  }
+  if (a.dials) {
+    const f = path.resolve(String(a.dials));
+    if (!fs.existsSync(f)) { console.log(a['none-stops'] ? `GATE STOP: no winning dials (${f}); nothing to score after` : `no dials file ${f}; nothing set`); process.exit(a['none-stops'] ? 86 : 3); }
+    const edits = dialsOf(JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')));
+    if (!edits.length) { console.error(`${f} has no dials`); process.exit(3); }
+    await eng.setDials(edits); did.dials = { file: path.basename(f), n: edits.length };
   }
   if (a.used !== undefined && a.used !== true) {
     let n = a.used === 'best' ? bestN(String(a.from || process.env.LAB_OUT || '.').split(',').map((x) => path.resolve(x)).join(','))?.n : Number(a.used);

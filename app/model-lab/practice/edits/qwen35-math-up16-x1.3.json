@@ -1,0 +1,84 @@
+{
+ "edits": [
+  {
+   "layer": 22,
+   "expert": 171,
+   "scale": 1.3
+  },
+  {
+   "layer": 16,
+   "expert": 80,
+   "scale": 1.3
+  },
+  {
+   "layer": 28,
+   "expert": 80,
+   "scale": 1.3
+  },
+  {
+   "layer": 15,
+   "expert": 250,
+   "scale": 1.3
+  },
+  {
+   "layer": 29,
+   "expert": 103,
+   "scale": 1.3
+  },
+  {
+   "layer": 26,
+   "expert": 189,
+   "scale": 1.3
+  },
+  {
+   "layer": 20,
+   "expert": 52,
+   "scale": 1.3
+  },
+  {
+   "layer": 19,
+   "expert": 226,
+   "scale": 1.3
+  },
+  {
+   "layer": 20,
+   "expert": 224,
+   "scale": 1.3
+  },
+  {
+   "layer": 15,
+   "expert": 148,
+   "scale": 1.3
+  },
+  {
+   "layer": 17,
+   "expert": 176,
+   "scale": 1.3
+  },
+  {
+   "layer": 31,
+   "expert": 201,
+   "scale": 1.3
+  },
+  {
+   "layer": 21,
+   "expert": 197,
+   "scale": 1.3
+  },
+  {
+   "layer": 14,
+   "expert": 37,
+   "scale": 1.3
+  },
+  {
+   "layer": 24,
+   "expert": 209,
+   "scale": 1.3
+  },
+  {
+   "layer": 28,
+   "expert": 205,
+   "scale": 1.3
+  }
+ ]
+}
