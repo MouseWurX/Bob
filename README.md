@@ -481,7 +481,7 @@ Every brain and helper Bob can download from his own catalogue, made from [app/c
 <!-- models:start -->
 <!-- Written by installer/make-model-list.js from app/catalog.json. Don't edit by hand: change the catalogue and run it again. -->
 
-Bob's catalogue has **90 brains** and **19 helpers** for pictures, video, music, voices and memory. Each one is a pinned file, checked against its sha256 when it downloads. **Fits** is the smallest hardware tier it's sized for ([the tiers](#set-up-for-your-hardware)). **Tried in our lab** (10 brains) means it ran on our own PCs before Bob would suggest it. Everything else is listed but never suggested until it's tried. **Size** is the download.
+Bob's catalogue has **97 brains** and **19 helpers** for pictures, video, music, voices and memory. Each one is a pinned file, checked against its sha256 when it downloads. **Fits** is the smallest hardware tier it's sized for ([the tiers](#set-up-for-your-hardware)). **Tried in our lab** (14 brains) means it ran on our own PCs before Bob would suggest it. Everything else is listed but never suggested until it's tried. **Size** is the download.
 
 <details>
 <summary><b>Brains</b> (64)</summary>
@@ -556,15 +556,20 @@ Bob's catalogue has **90 brains** and **19 helpers** for pictures, video, music,
 </details>
 
 <details>
-<summary><b>Uncensored brains</b> (26), listed only while the Naughty list is on</summary>
+<summary><b>Uncensored brains</b> (33), listed only while the Naughty list is on</summary>
 
 Community builds with the refusals taken out (heretic, abliterated and the like). Bob keeps them off his own picks.
 
 | Brain | File | Size | Fits | Licence | Status |
 |---|---|---|---|---|---|
+| Qwen3.5 0.8B Abliterated (huihui) | Q8_0 | 0.9 GB | Any computer, even processor only | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | LFM3 1.7B Uncensored (AtomicChat) | Q4_K_M | 1.1 GB | Any computer, even processor only | LFM Open License v1.0 (limits commercial use: read it first) | Unproven in our lab, as we have yet to test |
+| Qwen3.5 2B Abliterated (huihui) | Q4_K_M | 1.6 GB | Any computer, even processor only | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Raon-1 nano Abliterated (alexwkleung) | Q4_K_M | 2.1 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.5 4B Abliterated (huihui) | Q4_K_M | 3.1 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Qwen3.5 4B Heretic | Q4_K_M | 3.4 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Gemma 4 E4B Heretic | Q4_K_M | 5.9 GB | 6 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Ternary Bonsai 2.5 27B Uncensored (AtomicChat) | Q1_0 | 6 GB | 8 GB card | Apache 2.0 | Tried in our lab |
 | Qwen3.5 9B Abliterated (huihui) | Q4_K_M | 6.3 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Qwen3.5 9B Heretic | Q4_K_M | 6.5 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Qwen3.5 9B Defiant Fable (DavidAU) | Q4_K_M | 7.9 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
@@ -575,19 +580,21 @@ Community builds with the refusals taken out (heretic, abliterated and the like)
 | Devstral Small 2 24B Abliterated | Q4_K_M | 15.2 GB | 16 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | LFM2.5 24B-A2B Uncensored (AtomicChat) | Q4_K_M | 15.4 GB | 16 GB card | LFM Open License v1.0 (limits commercial use: read it first) | Unproven in our lab, as we have yet to test |
 | Gemma 4 26B Heretic | Q4_K_M | 17.6 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Inkling 2 Mini Abliterated (mrfakename) | UD-Q4_K_XL | 17.6 GB | 16 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
 | Gemma 4 26B Uncensored (HauhauCS Balanced) | Q4_K_M | 18 GB | 16 GB card, the rest in RAM | Gemma terms | Unproven in our lab, as we have yet to test |
 | GLM-4.7 Flash 30B-A3B Abliterated (huihui) | Q4_K_M | 18.1 GB | 16 GB card, the rest in RAM | MIT | Unproven in our lab, as we have yet to test |
 | Qwen3.6 35B-A3B Heretic | Q4_K_M | 22.1 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Qwen3.6 35B-A3B Uncensored (HauhauCS Aggressive) | Q4_K_M | 22.1 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
-| Qwen3.6 35B-A3B Abliterated (huihui) | Q4_K | 22.6 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.6 35B-A3B Abliterated (huihui) | Q4_K | 22.6 GB | 16 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
 | Qwen 3.8 27B Uncensored (HauhauCS Aggressive) | IQ4_XS | 16.6 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Qwen 3.8 27B Heretic | Q4_K_M | 17.2 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
-| Qwen 3.8 27B Abliterated (huihui) | Q4_K | 17.7 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen 3.8 27B Abliterated (huihui) | Q4_K | 17.7 GB | 24 GB card | Apache 2.0 | Tried in our lab |
 | Qwen 3.8 27B Uncensored (JonathanColetti) | Q4_K_M | 17.7 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Qwen3.6 27B Abliterated (huihui) | Q4_K | 17.7 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Qwen3.6 27B Heretic | Q4_K_M | 18.1 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Muse Glimmer 30B Abliterated | Q4_K_M | 18.3 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Gemma 4 31B Heretic | Q4_K_S | 18.6 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Qwen3.8 Flash Next Abliterated (huihui) | UD-Q4_K_XL | 111.3 GB | 112 GB of graphics memory (several cards or a rental) | Qwen community licence (a business that sells AI as a service or an AI work assistant needs its own licence from Qwen) (limits commercial use: read it first) | Unproven in our lab, as we have yet to test |
 
 </details>
 
