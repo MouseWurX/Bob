@@ -198,9 +198,12 @@ These are quality runs on files we make, not speed runs.
 - **What it tests:** Bob 1.5.255 on a clean machine, with its own default settings, starting Lamplight LL46 on Qwen3.6 35B UD-Q4_K_XL.
   Bob's chosen settings were: 256K context, q8_0 chat memory, `--fit on`, `-b 6144 -ub 6144`, a 4 GB copy cache, 1 slot, an 8 GB RAM prompt cache.
 - **Result: failed, twice.** The engine stopped while loading (exit code 127), and no jobs ran.
-  On the second try the engine said a library file it needs (`libllama-server-impl.so`) was missing. That fits our test kit copying the engine without its library files,
-  but that's unproven until the next try. No memory kill was logged. Turning off patch 0109 didn't change it.
-- This is not a brain crash, but the 1.5.255 release waits until this test passes.
+  The engine said a library file it needs (`libllama-server-impl.so`) was missing. No memory kill was logged, and turning off patch 0109 didn't change it.
+- **Cause, found Nov 27:** a real Linux bug. LL46's Linux engine looked for its libraries only in the folder it was built in,
+  and Bob started it without pointing it at its own folder. The shipped engine fails the same way from any other folder.
+- **Fix:** in the 1.5.255 release, Bob puts the engine's own folder first on `LD_LIBRARY_PATH` for every engine start on Linux and Android.
+  The third try installs the engine through Bob's own installer, exactly as a Linux user gets it.
+- The 1.5.255 release waits until the third try passes.
 
 ---
 
