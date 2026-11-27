@@ -166,6 +166,7 @@ export function besideThreads(cpus = os.cpus()) {
 
 // 1.5.52 / 1.5.61: the mid-chat system note fold lives in system-notes.js, so Ollama uses it too.
 import { MID_SYSTEM_REFUSED, foldSystem } from './system-notes.js';
+import { stepFitOn, stepFitPlan, ubOf, withStep, stepFitLine, STEP_FIT_TRIES } from './step-fit.js'; // Nov 27: a smaller step when the working memory doesn't fit the card
 export { MID_SYSTEM_REFUSED, foldSystem };
 
 // 1.5.35 (a function since 1.5.72, so the housekeeper can find the embedding file too): see catalogFile below.
@@ -681,6 +682,14 @@ export class LlamaCpp {
     // Without fit, every layer goes on the card as before.
     if (this.fitsItself(args, cpu)) args.push('--fit', 'on');
     else if (!args.includes('-ngl')) args.push('-ngl', '999');
+    // Nov 27 (step-fit.js, off unless "Fit my working memory to the card" is on): the smaller reading step this brain
+    // needed before, because its working memory didn't fit the card at the usual one. A step set by hand wins.
+    this.stepFitHand = tunedStep || handFlags.some((a) => ['-b', '-ub', '--batch-size', '--ubatch-size'].includes(a));
+    const sf = !cpu && this.role !== BESIDE && !this.stepFitHand ? this.stepFitFor(model, Number(ctx || lc.ctx || DEFAULT_CTX) || 0) : null;
+    if (sf) {
+      args.splice(0, args.length, ...withStep(args, sf.ub));
+      if (this.stepFitSaid !== `${model}:${sf.ub}`) { this.stepFitSaid = `${model}:${sf.ub}`; this.log?.('engine', `${model}: reading step ${sf.ub}, because at a bigger step this brain's working memory didn't fit the card (Fit my working memory to the card)`); }
+    }
     // The Conductor (Engine tuning, off unless picked): the start step is the chat step, and the reading needs a
     // place on disk while the step changes. A step set by hand (flags, the config file) means no Conductor.
     this.condChat = 0; this.condWinFull = 0; this.condMax = 0; this.condLoad = 0;
@@ -715,6 +724,7 @@ export class LlamaCpp {
       this.condApu = this.cfg.sharedGraphics === true;
       if (this.condApu) this.condMax = Math.max(this.condChat, Math.min(this.condMax, APU_MAX_STEP));
       if ((this.condCap ||= {})[model] > 0) this.condMax = Math.max(this.condChat, Math.min(this.condMax, this.condCap[model])); // a step that left the card short before
+      if (sf) this.condMax = this.condChat; // Nov 27: a bigger step is what didn't fit
       // Nov 24: the top step by this brain's measured speeds on this machine, not the biggest that fits (loadStepBySpeed)
       if (!this.condApu) {
         const recent = (this.recentPrompts || []).filter((x) => x > 0);
@@ -1115,11 +1125,26 @@ export class LlamaCpp {
     const asked = opts.ctx || this.lc.ctx || DEFAULT_CTX;
     const sk = `${model}|${cpu ? 1 : 0}|${asked}`;
     const most = this.apuMaxCtx(model);
-    const o = { ...opts, ...(this.shrunk[sk] ? { ctx: this.shrunk[sk].got } : most && asked > most ? { ctx: most } : {}) };
-    try { return await this.startEngine(model, signal, o); }
+    const fitted = cpu ? null : this.stepFitFor(model, asked, { exact: true }); // Nov 27 (step-fit.js): a smaller chat memory too, found before
+    const o = { ...opts, ...(this.shrunk[sk] ? { ctx: this.shrunk[sk].got } : most && asked > most ? { ctx: most } : fitted?.ctx > 0 && fitted.ctx < asked ? { ctx: fitted.ctx } : {}) };
+    try { return await this.stepFitAfter(model, signal, o, asked, await this.startEngine(model, signal, o)); }
     catch (e) {
       if (signal?.aborted || /^Stopped\.$/.test(e.message) || e.fellBack) throw e;
       let out = `${this.lastLoadOut || ''}\n${e.message}`;
+      // Nov 27 (step-fit.js, off unless switched on): ran out of card memory, and the working memory is what filled it
+      // (on Linux a load fails where Windows spills): a smaller reading step first, before a smaller chat memory.
+      if (!cpu && e.code !== 'no_room' && memoryFailure(out) && this.stepFitCan()) {
+        const plan = stepFitPlan({ log: this.lastLoadOut || '', ub: ubOf(this.lastArgs || []), ctx: o.ctx || asked });
+        if (plan) {
+          const was = this.stepFitSave(model, asked, plan);
+          this.log?.('engine', `${model}: ran out of card memory while loading; ${plan.why}, so it loads again at step ${plan.ub}${plan.ctx < (o.ctx || asked) ? ` with a ${plan.ctx} chat memory` : ''} (Fit my working memory to the card)`);
+          try {
+            const secs = await this.startEngine(model, signal, { ...o, ctx: plan.ctx, roomChecked: true });
+            if (!was) this.note(stepFitLine(label, plan.ub, plan.ctx, asked));
+            return await this.stepFitAfter(model, signal, { ...o, ctx: plan.ctx }, asked, secs, { said: true });
+          } catch (e2) { if (signal?.aborted || /^Stopped\.$/.test(e2.message) || e2.fellBack) throw e2; this.stepFitForget(model, asked, was); e = e2; out = `${this.lastLoadOut || ''}\n${e2.message}`; }
+        }
+      }
       // Nov 12 (apu-fit.js): on built-in graphics a load that ran out of memory first puts less on the graphics (half,
       // then the processor alone) at the chat memory asked for, and that is remembered for this brain.
       for (let i = 0; i < 2 && this.cfg.sharedGraphics === true && !cpu && e.code !== 'no_room' && memoryFailure(out); i++) {
@@ -1192,6 +1217,52 @@ export class LlamaCpp {
   // 220: is there room for this brain right now? Read from the card and the RAM free at this moment, after the last
   // brain was let go. Only decides when the brain is read in whole (card plus RAM) or must sit on the card alone; a
   // brain read from the drive as needed (bigger than memory) can't be judged this way. null: no reading.
+  // ---------- Nov 27: the working memory doesn't fit the card (step-fit.js), off unless switched on ----------
+  // Remembered per brain and chat memory asked for, for this engine build (a newer engine may need less).
+  stepFitCan() { return stepFitOn(this.cfg) && this.cfg.sharedGraphics !== true && this.role !== BESIDE && !this.currentCpu && !this.spreadNow && !this.stepFitHand; }
+  stepFitFor(model, ctx, { exact = false } = {}) {
+    if (!stepFitOn(this.cfg) || this.cfg.sharedGraphics === true || this.role === BESIDE || !(ctx > 0)) return null;
+    const be = this.beNo();
+    for (const [k, r] of Object.entries(this.careData.stepFit || {})) {
+      if (!k.startsWith(`${model}|`) || !(Number(r?.ub) > 0) || r.be !== be) continue;
+      const asked = Number(k.slice(model.length + 1));
+      if (asked === ctx || (!exact && Number(r.ctx) === ctx)) return r;
+    }
+    return null;
+  }
+  stepFitSave(model, asked, plan) {
+    const key = `${model}|${asked}`;
+    const was = this.careData.stepFit?.[key] || null;
+    (this.careData.stepFit ||= {})[key] = { ub: plan.ub, ctx: plan.ctx, be: this.beNo(), at: new Date(this.now()).toISOString().slice(0, 16).replace('T', ' '), why: String(plan.why || '').slice(0, 160) };
+    this.saveCare();
+    return was;
+  }
+  stepFitForget(model, asked, was) {
+    const key = `${model}|${asked}`;
+    if (was) this.careData.stepFit[key] = was; else delete this.careData.stepFit?.[key];
+    this.saveCare();
+    this.log?.('engine', `${model}: it didn't load at the smaller step either, so that step isn't kept`);
+  }
+  // After a load that worked: when the engine's own lines show the card was short and its working memory is what
+  // filled it, load again at a smaller step (at most STEP_FIT_TRIES times), and tell the chat once.
+  async stepFitAfter(model, signal, o, asked, secs, { said = false } = {}) {
+    let told = said;
+    for (let i = 0; i < STEP_FIT_TRIES && this.stepFitCan() && !signal?.aborted; i++) {
+      const ctx = this.currentCtx || o.ctx || asked;
+      const plan = stepFitPlan({ log: this.lastLoadFull || '', ub: ubOf(this.lastArgs || []), ctx });
+      if (!plan) break;
+      const was = this.stepFitSave(model, asked, plan);
+      this.log?.('engine', `${model}: ${plan.why}, so it loads again at step ${plan.ub}${plan.ctx < ctx ? ` with a ${plan.ctx} chat memory` : ''} (Fit my working memory to the card)`);
+      try { secs += await this.startEngine(model, signal, { ...o, ctx: plan.ctx, roomChecked: true }); }
+      catch (e) {
+        if (signal?.aborted || /^Stopped\.$/.test(e.message) || e.fellBack) throw e;
+        this.stepFitForget(model, asked, was);
+        return secs + await this.startEngine(model, signal, { ...o, ctx, roomChecked: true });
+      }
+      if (!told && !was) { told = true; this.note(stepFitLine(this.label(model), plan.ub, plan.ctx, asked)); }
+    }
+    return secs;
+  }
   async roomNow(model, ctx, args, cpu) {
     let gguf, size = 0;
     try { gguf = this.resolve(model).gguf; size = fs.statSync(gguf).size; } catch { return null; }
@@ -1373,6 +1444,7 @@ export class LlamaCpp {
   async startEngineNow(model, signal, { ctx, cpu = false, beside = false, reserveMB = 0, place = null, noSpread = false, args: fixedArgs = null, roomChecked = false, retried = false } = {}) {
     if (this.role === BESIDE) cpu = true;
     this.lastLoadOut = '';
+    this.lastLoadFull = ''; // Nov 27 (step-fit.js): the engine's words from a load that worked
     if (this.reloadWanted.delete(model)) this.log?.('engine', `${model}: loading it fresh, as planned`);
     const t0 = Date.now();
     this.lastUse = this.now();
@@ -1566,6 +1638,7 @@ export class LlamaCpp {
     }
     started.catch(() => {}); // later exits are handled by isLoaded()
     this.loadedOk = true;
+    this.lastLoadFull = full;
     // Nov 16: hot experts. The engine's own words about the cache go in the logbook, a refused ranking loudly.
     if (args.includes('--moe-cache-mib')) { const c = parseCacheLog(full); this.hotLoad = c;
       if (c.refused) this.log?.('engine', `${model}: WARNING: the engine refused the hot-expert profile (${c.refused}), so the cache fills as words come. Calibrate again.`);

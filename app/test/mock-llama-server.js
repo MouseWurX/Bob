@@ -14,6 +14,20 @@ if (Number(process.env.MOCK_OOM_ABOVE) > 0 && Number(arg('-c')) > Number(process
 // Nov 12 (apu-fit): built-in graphics that run out of memory when more than this many layers go on them.
 if (process.env.MOCK_VK_OOM_NGL !== undefined && (argv.includes('-ngl') ? Number(arg('-ngl')) : 999) > Number(process.env.MOCK_VK_OOM_NGL)) { console.error('ggml_vulkan: Device memory allocation of size 1001 MiB failed.\nvk::Device::allocateMemory: ErrorOutOfDeviceMemory'); process.exit(1); }
 
+// Nov 27 (step-fit.js): what the engine says it put on the card, with the working memory growing with -ub; the load fails
+// instead (as on Linux) with MOCK_CARD_OOM=1 when it doesn't fit.
+if (Number(process.env.MOCK_COMPUTE_MIB) > 0) {
+  const ub = argv.includes('-ub') ? Number(argv[argv.lastIndexOf('-ub') + 1]) : 512;
+  const ctxScale = (Number(arg('-c')) || 32768) / 32768;
+  const free = Number(process.env.MOCK_FREE_MIB) || 5130, model = Number(process.env.MOCK_MODEL_MIB) || 0, kv = (Number(process.env.MOCK_KV_MIB) || 0) * ctxScale;
+  const compute = Number(process.env.MOCK_COMPUTE_MIB) * (ub / 512) * (0.5 + 0.5 * ctxScale);
+  console.log(`llama_prepare_model_devices: using device CUDA0 (Fake Card) (0000:01:00.0) - ${free} MiB free`);
+  if (model) console.log(`load_tensors:        CUDA0 model buffer size =  ${model.toFixed(2)} MiB`);
+  if (kv) console.log(`llama_kv_cache:      CUDA0 KV buffer size =  ${kv.toFixed(2)} MiB`);
+  if (process.env.MOCK_CARD_OOM === '1' && model + kv + compute > free) { console.error(`ggml_backend_cuda_buffer_type_alloc_buffer: allocating ${compute.toFixed(2)} MiB on device 0: cudaMalloc failed: out of memory`); process.exit(1); }
+  console.log(`sched_reserve:      CUDA0 compute buffer size =  ${compute.toFixed(2)} MiB\nsched_reserve:  CUDA_Host compute buffer size =    46.52 MiB`);
+}
+
 http.createServer(async (req, res) => {
   let body = '';
   for await (const c of req) body += c;
