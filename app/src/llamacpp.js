@@ -29,6 +29,7 @@ import { LinkLog } from './link-log.js'; // what the link to a lent card carried
 import { safeSpawn, fallBackIfBlocked } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
 import { readThrottle, heatStep, READ_EVERY_MS as HEAT_EVERY_MS } from './guppi-heat.js'; // Nov 26 GUPPI adjusts for the card's throttling
+import { readAll as measuredReadAll, speedsFor as measuredSpeedsFor } from './measured-db.js'; // Nov 27 the test-results database
 import { profileFor as guppiProfileFor, pcNow as guppiPcNow, calibrateSpeeds as guppiCalSpeeds } from './guppi-profile.js'; // Nov 26 GUPPI calibrates this PC (Settings, Engine tuning)
 import { conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, FILL_FROM_BE as COND_FILL_FROM_BE, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv, loadStepBySpeed, cleanSpeeds } from './conductor.js'; // off unless picked
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
@@ -699,6 +700,8 @@ export class LlamaCpp {
       }
       const mc = args.lastIndexOf('--moe-cache-mib');
       this.condCacheBase = mc >= 0 ? Number(args[mc + 1]) || 0 : 0; // the copy cache it reads with; writing may get more
+      this.condLoadCtx = Number(ctx || lc.ctx || DEFAULT_CTX) || 0; // for the test-results database (measured-db.js)
+      this.condKv = args.includes('-ctk') ? args[args.indexOf('-ctk') + 1] : 'f16';
       // Nov 21, the window lever (off unless switched on): the whole context it loads with, cut to the chat later
       this.condWinFull = fitWindowOn(this.cfg) && this.condCacheBase > 0 ? Number(ctx || lc.ctx || DEFAULT_CTX) || 0 : 0;
       // Nov 23: the copy cache fills the card's free memory (Brain Engine 39 and newer), unless set by hand
@@ -1966,11 +1969,25 @@ export class LlamaCpp {
     return (this.condSpeeds = cleanSpeeds(saved, this.beNo()));
   }
   // Nov 27: a brain's speeds, or, when GUPPI has none for it, the Brains page's Calibrate numbers as a starting point
+  // Nov 27, the test-results database (measured-db.js): the owner, "a baseline for people, and their own calibration
+  // step (if they choose to do it) would align all the features to their setup". So, in order: his own speeds on this
+  // PC; the database's rows measured on this PC (GUPPI calibrates this PC, rentals added by hand); the Brains page's
+  // Calibrate numbers; the shipped baseline, the same brain file on the nearest card of a similar size. Taken numbers
+  // are marked old, so each is replaced by his first real measurement of that step.
   condSpeedsFor(model) {
     const all = this.condSpeedsAll();
     if (!all[model]) {
-      let c = null; try { c = guppiCalSpeeds(this.cfg, model); } catch {}
-      if (c) { all[model] = c; this.log?.('engine', `${model}: GUPPI: no speeds of his own yet, so he starts from the Brains page's Calibrate numbers (steps ${Object.keys(c.write).join(', ')}) and replaces each with his first real measurement`); }
+      const steps = (c) => Object.keys(c.write).join(', ');
+      let db = null;
+      try {
+        const gguf = this.resolve(model)?.gguf;
+        const pc = guppiPcNow(this.cfg, { beNo: this.beNo(), ramBytes: this.totalRam ? this.totalRam() : os.totalmem() });
+        if (gguf) db = measuredSpeedsFor(this.measuredRows ? this.measuredRows() : measuredReadAll(this.cfg), { file: gguf, pc: { cardMiB: (pc.cardGB || 0) * 1024, ramMB: (pc.ramGB || 0) * 1024, apu: pc.sharedGraphics }, be: this.beNo(), cache: (this.condCacheBase || 0) > 0, ctx: this.condLoadCtx || DEFAULT_CTX, kv: this.condKv || 'f16' });
+      } catch {}
+      const here = db && db.from.level.startsWith('this PC');
+      let c = null; if (!here) { try { c = guppiCalSpeeds(this.cfg, model); } catch {} }
+      if (c) { all[model] = c; this.log?.('engine', `${model}: GUPPI: no speeds of his own yet, so he starts from the Brains page's Calibrate numbers (steps ${steps(c)}) and replaces each with his first real measurement`); }
+      else if (db) { const { from, ...sp } = db; all[model] = sp; this.log?.('engine', `${model}: GUPPI: no speeds of his own yet, so he starts from the test-results database (${from.level}, ${from.rows} measured runs, steps ${steps(sp)}) and replaces each with his first real measurement`); }
     }
     return all[model];
   }

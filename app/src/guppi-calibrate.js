@@ -35,6 +35,7 @@ import { cardGB } from './tuning.js';
 import { profileFile, readProfile, saveProfile, pcNow, pcChanged, seedSpeeds } from './guppi-profile.js';
 import { OS } from './platform.js';
 import { readThrottle } from './guppi-heat.js';
+import { append as measuredAdd, rowFromTry } from './measured-db.js';
 
 export const RAM_FLOOR_MIB = 512; // free RAM never under this (the owner's floor); built-in graphics: APU_FLOOR (1.5 GB)
 export const HEAT_STOP_C = 90; // a graphics card this hot stops the try (built-in graphics: 95, the Legion Go's line)
@@ -212,16 +213,16 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
         srv = await fx.serve({ gguf, ctx: CAL_CTX, signal, cpuOk: false, extra, ...(env ? { env } : {}) });
         if (fx.watchMs > 0) timer = setInterval(() => { sample().catch(() => {}); }, fx.watchMs);
         if (await sample()) throw Object.assign(new Error('trip'), { trip: true });
-        const reads = [], writes = [], firsts = [];
+        const reads = [], writes = [], firsts = [], readNs = [];
         for (let i = 0; i < ROUNDS; i++) {
           const long = await fx.chat(srv.url, [{ role: 'user', content: CAL_LONG }], { maxTokens: 24, signal });
           if (await sample()) throw Object.assign(new Error('trip'), { trip: true });
           const short = await fx.chat(srv.url, [{ role: 'user', content: CAL_PROMPT }], { maxTokens: 200, signal });
           if (await sample()) throw Object.assign(new Error('trip'), { trip: true });
-          reads.push(Number(long.timings?.prompt_per_second) || 0); firsts.push(long.timings?.prompt_ms ? long.timings.prompt_ms / 1000 : 0); writes.push(Number(short.timings?.predicted_per_second) || 0);
+          readNs.push(Number(long.timings?.prompt_n) || 0); reads.push(Number(long.timings?.prompt_per_second) || 0); firsts.push(long.timings?.prompt_ms ? long.timings.prompt_ms / 1000 : 0); writes.push(Number(short.timings?.predicted_per_second) || 0);
           if (i === 0) { if (refText == null) refText = short.text; else row.sameWords = short.text === refText; }
         }
-        Object.assign(row, { readTps: round1(median(reads)), tps: round1(median(writes)), firstWordS: round1(median(firsts)) });
+        Object.assign(row, { readTps: round1(median(reads)), tps: round1(median(writes)), firstWordS: round1(median(firsts)), readN: median(readNs) || null });
         if (!(row.tps > 0)) row.failed = 'It answered, but gave no speed.';
       } catch (e) {
         if (signal.aborted) throw e;
@@ -233,6 +234,9 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       else if (t.id !== 'bob' && (row.trip || row.failed)) edge = true; // the edge: nothing bigger
       log(`GUPPI calibrate: ${t.id} ${JSON.stringify(row)}`);
       rows.push(row);
+      // Nov 27: every try goes into the test-results database, measured speeds or the reason it didn't fit
+      const bad = row.trip || row.failed;
+      measuredAdd(lab.cfg, rowFromTry({ at: lab.now(), source: 'guppi-calibrate', gguf, fileBytes, pc, be: beNo || null, extra, env, ctx: CAL_CTX, promptN: row.readN, result: bad ? {} : { readTps: row.readTps, writeTps: row.tps, firstWordS: row.firstWordS, peakC: row.peakC, smMHz: row.smMedMHz, throttle: row.throttle }, fit: bad ? { ok: false, why: bad } : { ok: true } }));
       set(t.id, row.failed || row.trip ? 'failed' : 'done'); tick();
     }
     set('save', 'running');
