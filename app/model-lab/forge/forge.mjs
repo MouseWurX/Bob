@@ -436,7 +436,7 @@ function lessonPreflight() {
   }
   // 27 Nov (Bill rental 2: the benches finished, then experts-test stopped on "No Bob source tree"): a PC-side bench test that
   // loads Bob (bob-kit.mjs) needs a Bob source tree on this PC; check it before renting, not after
-  if (plan.benchmark?.models?.length) {
+  if (plan.benchmark?.models?.length && plan.benchmark.pc_tests !== false) {
     const bcmds = plan.benchmark.models.flatMap((m) => m.commands?.length ? m.commands : plan.benchmark.commands?.length ? plan.benchmark.commands : ['node experts-test.mjs --url {{url}} --counts 8 --out {{out}}']);
     for (const c of new Set(bcmds)) {
       const script = (String(c).match(/^node\s+(\S+\.mjs)/) || [])[1]; if (!script) continue;
@@ -742,7 +742,9 @@ async function benchOnPod(name) {
   const dir = path.join(outDir, 'bench', plan.run || 'run', name); fs.mkdirSync(dir, { recursive: true });
   // 12 Nov: a model can carry its own commands (one brain reuses earlier REAP scores, another is calibrated from the start)
   const own = (plan.benchmark.models || []).find((m) => m.name === name)?.commands;
-  const cmds = own?.length ? own : plan.benchmark.commands?.length ? plan.benchmark.commands : ['node experts-test.mjs --url {{url}} --counts 8 --out {{out}}'];
+  // 27 Nov (Bill GSQ rental 1: the default experts test took 2.4 h over the network on a measure-only run): plan.benchmark.pc_tests
+  // false = no PC-side tests; the pod's own KLD and gate are the result
+  const cmds = plan.benchmark.pc_tests === false ? [] : own?.length ? own : plan.benchmark.commands?.length ? plan.benchmark.commands : ['node experts-test.mjs --url {{url}} --counts 8 --out {{out}}'];
   log(`benchmark: ${name} is served by the card; running ${cmds.length} test command(s) on this PC`);
   // 13 Nov: files the pod made for this brain before serving it (the evil check's directions, out/bench/evil-<name>/) come home
   // first, so the PC's commands can read them and the report doesn't wait for the end of the run

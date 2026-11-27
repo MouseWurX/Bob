@@ -1,6 +1,6 @@
 {
  "run": "gsq-bill",
- "note": "HELD: not to be rented until the owner says so in their own words in the laptop thread (rentals need them). 26 Nov 2026, the owner: \"If their research can benefit us we should attempt to implement it\" (ISTA DASLab's GSQ-RCO), and \"Healing is not training\" (the OK for GSQ's light tuning of rounding). The GSQ pilot (27 Nov, Qwen3-1.7B, docs/forge-runs/2026-11-27-gsq-pilot/) showed llama.cpp's stock q2_0 rounding drifts 9-14 times more than GPTQ at the same size, and GSQ another 16-24% less than GPTQ. Bill's best file, MX2_S (KLD 1.01), keeps all 48 down-expert tensors at stock q2_0. This run makes MX2_S again, then MG2_S (its down experts rounded by GPTQ, no learning) and MQ2_S (by GSQ), same size to the byte, and scores all three by KLD against Bill's own Q8_0 and the publish gate. Inputs are recorded on MX2_S itself with wikitext-2 train (never Bob's held-out jobs, never text Claude wrote); weights come from the Q8_0. Stock llama.cpp types only: the files load on stock llama.cpp and Lamplight. Nothing is uploaded (cut.publish false). Only the rounding of those 48 tensors changes; nothing else is tuned. One RTX PRO 6000. Estimate 4-5 h at the forge table price $2.69/h, about $11-14 (the 26 Nov run's download, cut and one quant with KLD took about 1.2 h; GPTQ about 25 min and GSQ 1-1.5 h on 14,784 experts are estimates from the pilot's speed, not yet measured on this card; GSQ stops at 150 min and MG2_S stands either way); caps 6 h / $17 (the live price is checked before renting).",
+ "note": "HELD: not to be rented until the owner says so in their own words in the laptop thread (rentals need them). 26 Nov 2026, the owner: \"If their research can benefit us we should attempt to implement it\" (ISTA DASLab's GSQ-RCO), and \"Healing is not training\" (the OK for GSQ's light tuning of rounding). The GSQ pilot (27 Nov, Qwen3-1.7B, docs/forge-runs/2026-11-27-gsq-pilot/) showed llama.cpp's stock q2_0 rounding drifts 9-14 times more than GPTQ at the same size, and GSQ another 16-24% less than GPTQ. Bill's best file, MX2_S (KLD 1.01), keeps all 48 down-expert tensors at stock q2_0. This run makes MX2_S again, then MG2_S (its down experts rounded by GPTQ, no learning) and MQ2_S (by GSQ), same size to the byte, and scores all three by KLD against Bill's own Q8_0 and the publish gate. Inputs are recorded on MX2_S itself with wikitext-2 train (never Bob's held-out jobs, never text Claude wrote); weights come from the Q8_0. Stock llama.cpp types only: the files load on stock llama.cpp and Lamplight. Nothing is uploaded (cut.publish false). Only the rounding of those 48 tensors changes; nothing else is tuned. One RTX PRO 6000. Rental 1 (27 Nov, $14.49) made MX2_S (KLD 1.00, gate passed) but no MG2_S/MQ2_S: x_dump wrote too slowly and hit its limit, and a PC test took 2.4 h; both fixed (docs/forge-runs/2026-11-27-gsq-bill-dry-run/). Estimate 4-5 h at the forge table price $2.69/h, about $11-14 (the 26 Nov run's download, cut and one quant with KLD took about 1.2 h; GPTQ about 25 min and GSQ 1-1.5 h on 14,784 experts are estimates from the pilot's speed, not yet measured on this card; GSQ stops at 150 min and MG2_S stands either way); caps 6 h / $17 (the live price is checked before renting).",
  "benchmark_only": true,
  "teacher": "Qwen/Qwen3.8-Flash-Next",
  "counts": "expert-counts-2026-11-04T23-23-19.json",
@@ -23,7 +23,7 @@
   "Runs from a kit at this branch's commit (claude/project-thread-9my3wr). The keep list must be at out/reap-flashnext-q4-jobs/keep/all-keep-60.json under the Lab folder (model-lab): copy it from the project library laptop-rentals/keep/all-keep-60.json (sha256 1bc87adc...b6b2d2, checked before renting since 26 Nov).",
   "Dry run of the new step on 27 Nov in the cloud: tiny made-up MoE brain (qwen3moe from llama.cpp's test-llama-archs), b12359, processor only: the forge's gsq step run from the pod path, stock writer equal to llama-quantize byte for byte on the experts, GPTQ in batches equal to one expert at a time byte for byte, KLD measured (docs/forge-runs/2026-11-27-gsq-bill-dry-run/).",
   "Pre-flight: node forge.mjs --plan plans/gsq-bill.json --rent-plan (rents nothing).",
-  "Needs the owner's own yes in the laptop thread, with this cap."
+  "Needs the owner's own yes in the laptop thread, with this cap (rental 1's yes is used up)."
  ],
  "publish": {
   "user": "MouseWurX",
@@ -127,14 +127,16 @@
        "mode": "gsq"
       }
      },
-     "gsq_chunks": 256,
-     "gsq_rows": 4096,
+     "gsq_chunks": 128,
+     "gsq_rows": 2048,
      "gsq_batch": 64,
      "gsq_steps": 640,
-     "gsq_minutes": 150
+     "gsq_minutes": 150,
+     "gsq_x_minutes": 30
     },
     "commands": []
    }
-  ]
+  ],
+  "pc_tests": false
  }
 }

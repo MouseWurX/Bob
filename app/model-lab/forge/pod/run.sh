@@ -449,11 +449,16 @@ PY
                 XB=$(bash $POD/gsq/build.sh $S/llama.cpp $S/llama.cpp/build-cuda 2> $GD/build.txt | tail -1)
                 [ -x "$XB" ] || { echo "bench $BN: x_dump did not build (out/bench/cut-$BN/gsq/build.txt); $q skipped"; continue; }
                 XD=$W/bench/gsqx-$BN-$GQB
+                # 27 Nov (Bill GSQ rental 1: x_dump wrote at 13 MB/s, hit the 1 h limit at 192 of 256 chunks, and the second name
+                # ran it again for another hour): big write buffers now, a soft time limit that keeps what was recorded, and a
+                # failure is not retried by the next name
+                [ -f $XD.failed ] && { echo "bench $BN: x_dump already failed on this pod; $q skipped"; continue; }
                 if [ ! -s $XD/info.json ]; then status bench "$BN: recording the down experts' inputs on $GQB (x_dump)"
-                  rm -rf $XD; mkdir -p $XD
-                  LD_LIBRARY_PATH="$(dirname $XB):${LD_LIBRARY_PATH:-}" timeout 3600 $XB -m $GQF --x-text $GTR --x-match 'ffn_down_exps' --x-out $XD \
-                    --x-chunks $(plan "$CJ.get('gsq_chunks',256)") --x-rows $(plan "$CJ.get('gsq_rows',4096)") -c 512 -ngl 99 > $GD/x_dump.log 2>&1 && [ -s $XD/info.json ] \
-                    || { echo "bench $BN: x_dump failed (out/bench/cut-$BN/gsq/x_dump.log); $q skipped"; tail -3 $GD/x_dump.log; rm -rf $XD; continue; }
+                  rm -rf $XD; mkdir -p $XD; XS=$(( $(plan "$CJ.get('gsq_x_minutes',30)") * 60 ))
+                  LD_LIBRARY_PATH="$(dirname $XB):${LD_LIBRARY_PATH:-}" timeout $(( XS + 900 )) $XB -m $GQF --x-text $GTR --x-match 'ffn_down_exps' --x-out $XD \
+                    --x-chunks $(plan "$CJ.get('gsq_chunks',128)") --x-rows $(plan "$CJ.get('gsq_rows',2048)") --x-seconds $XS -c 512 -ngl 99 > $GD/x_dump.log 2>&1 && [ -s $XD/info.json ] \
+                    || { echo "bench $BN: x_dump failed (out/bench/cut-$BN/gsq/x_dump.log); $q skipped"; tail -3 $GD/x_dump.log; rm -rf $XD; touch $XD.failed; continue; }
+                  grep -h "time limit\|chunks of" $GD/x_dump.log | tail -2
                   cp $XD/info.json $GD/x-info-$GQB.json
                 fi
                 status bench "$BN: rounding $GQB's down experts again ($GQM) for $q"

@@ -26,3 +26,15 @@ Checked:
 5. The gate refused all three files on answers: the brain is random, so that is expected.
 
 Read this as "the steps work", not as a result. Real numbers come only from the rental (`forge/plans/gsq-bill.json`).
+
+## Rental 1 and the fix (27 Nov 2026)
+
+Rental 1 (RTX PRO 6000, about $14.49) made MX2_S again (KLD 1.00, same top token 63.7%, passed the gate), but MG2_S and
+MQ2_S never came: `x_dump` reached 192 of 256 chunks in its one-hour limit and was stopped, and MQ2_S then ran it again for
+another hour. Cause: each input row went out through stdio's small default buffer (4 KB writes), about 13 MB/s on the pod's
+network drive. Then the PC-side experts test took 2.4 h over the network (1.2 tokens/s; not needed on a measure-only run).
+
+Fixed: each x_dump file writes through its own 32 MB buffer (on the tiny MoE: 3,088 writes became 2, same bytes);
+`--x-seconds` stops recording on time and keeps what it has; a failed x_dump is marked so the next name skips at once; the
+plan records fewer rows (128 chunks, at most 2,048 rows an expert, about 20 GB instead of 65 GB); and `benchmark.pc_tests:
+false` skips the PC tests. The step ran again here end to end: MX2_S, MG2_S, MQ2_S all made, same size.

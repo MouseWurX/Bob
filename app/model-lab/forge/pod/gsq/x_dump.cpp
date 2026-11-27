@@ -8,7 +8,7 @@
 //
 // Output: <out>/<tensor name>.x, records of { int32 expert (0 for a plain tensor), ne0 x fp16 }, at most --x-rows rows per
 // tensor and expert, then <out>/info.json. Read only: nothing is written to the brain.
-//   x_dump -m brain.gguf --x-text train.txt --x-match 'ffn_(up|down)' --x-out dir [--x-chunks 64] [--x-rows 16384] -c 512 [llama args]
+//   x_dump -m brain.gguf --x-text train.txt --x-match 'ffn_(up|down)' --x-out dir [--x-chunks 64] [--x-rows 16384] [--x-seconds N] -c 512 [llama args]
 #include "arg.h"
 #include "common.h"
 #include "llama.h"
@@ -25,7 +25,7 @@
 #include <string>
 #include <vector>
 
-struct xfile { FILE * fp = nullptr; int64_t ne0 = 0; std::vector<int64_t> rows; int64_t total = 0; };
+struct xfile { FILE * fp = nullptr; int64_t ne0 = 0; std::vector<int64_t> rows; int64_t total = 0; std::vector<char> buf; };
 
 struct xstate {
     std::regex match;
@@ -51,6 +51,9 @@ static void put(xstate & s, const std::string & name, int64_t ne0, int64_t n_exp
         std::string path = s.out + "/" + name + ".x";
         f.fp = fopen(path.c_str(), "wb"); f.ne0 = ne0; f.rows.assign(std::max<int64_t>(1, n_exp), 0);
         if (!f.fp) { fprintf(stderr, "x_dump: can't write %s\n", path.c_str()); exit(1); }
+        // 27 Nov (Bill rental): stdio's 8 KB writes ran at 13 MB/s on the pod's network drive (192 of 256 chunks in an hour);
+        // one 32 MB buffer a file turns them into a few big writes
+        f.buf.resize(32u << 20); setvbuf(f.fp, f.buf.data(), _IOFBF, f.buf.size());   // glibc ignores the size without a buffer
     }
     if (f.ne0 != ne0) { fprintf(stderr, "x_dump: %s: row length changed (%lld vs %lld)\n", name.c_str(), (long long) f.ne0, (long long) ne0); exit(1); }
     if (f.rows[ex] >= s.max_rows) return;
@@ -90,7 +93,7 @@ static bool cb_eval(struct ggml_tensor * t, bool ask, void * user_data) {
 }
 
 int main(int argc, char ** argv) {
-    std::string text_file, match = "ffn_down", out_dir; int chunks = 64; int64_t max_rows = 16384;
+    std::string text_file, match = "ffn_down", out_dir; int chunks = 64; int64_t max_rows = 16384; double max_seconds = 0;
     std::vector<char *> rest = { argv[0] };
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
@@ -99,10 +102,11 @@ int main(int argc, char ** argv) {
         else if (a == "--x-out" && i + 1 < argc) out_dir = argv[++i];
         else if (a == "--x-chunks" && i + 1 < argc) chunks = atoi(argv[++i]);
         else if (a == "--x-rows" && i + 1 < argc) max_rows = atoll(argv[++i]);
+        else if (a == "--x-seconds" && i + 1 < argc) max_seconds = atof(argv[++i]);
         else rest.push_back(argv[i]);
     }
     if (text_file.empty() || out_dir.empty()) {
-        fprintf(stderr, "usage: %s -m brain.gguf --x-text file --x-out dir [--x-match REGEX] [--x-chunks 64] [--x-rows 16384] [-c 512]\n", argv[0]);
+        fprintf(stderr, "usage: %s -m brain.gguf --x-text file --x-out dir [--x-match REGEX] [--x-chunks 64] [--x-rows 16384] [--x-seconds 0] [-c 512]\n", argv[0]);
         return 2;
     }
     common_params params; common_init();
@@ -122,14 +126,17 @@ int main(int argc, char ** argv) {
     // every token asks for its logits, so the last layer works on every row (with only the last token's logits asked,
     // llama.cpp drops the other rows before the last layer, and that layer's tensors would see one row per chunk)
     llama_batch batch = llama_batch_init(n_ctx, 0, 1);
+    const int64_t t_start = ggml_time_us();
     for (size_t at = 0; at + n_ctx <= toks.size() && done < chunks; at += n_ctx, done++) {
+        // --x-seconds: stop early but still write what was recorded (info.json says how many chunks)
+        if (max_seconds > 0 && (ggml_time_us() - t_start) / 1e6 > max_seconds) { fprintf(stderr, "x_dump: time limit, stopping after %d chunks\n", done); break; }
         llama_memory_clear(llama_get_memory(ctx), true);
         batch.n_tokens = n_ctx;
         for (int k = 0; k < n_ctx; k++) {
             batch.token[k] = toks[at + k]; batch.pos[k] = k; batch.n_seq_id[k] = 1; batch.seq_id[k][0] = 0; batch.logits[k] = 1;
         }
         if (llama_decode(ctx, batch)) { fprintf(stderr, "x_dump: chunk %d failed\n", done); return 1; }
-        if ((done + 1) % 8 == 0) fprintf(stderr, "x_dump: %d chunks\n", done + 1);
+        if ((done + 1) % 8 == 0) fprintf(stderr, "x_dump: %d chunks, %.0f s\n", done + 1, (ggml_time_us() - t_start) / 1e6);
     }
     llama_batch_free(batch);
     FILE * info = fopen((out_dir + "/info.json").c_str(), "wb");
