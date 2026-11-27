@@ -1,0 +1,1047 @@
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+index cd06b51..686086f 100644
+--- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
++++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+@@ -2479,9 +2479,13 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+ #define FOR_EACH_LUT_FP4_TYPE(X) \
+     X(GGML_TYPE_MXFP4,   mxfp4)   \
+     X(GGML_TYPE_NVFP4,   nvfp4)
++// Brain Engine 0137: PTQ1_0 is compiled per type like the LUT quants; it has no coopmat2 decoder, so it stays out of the cm2 list (NONFP4)
++#define FOR_EACH_PRISM_TYPE(X) \
++    X(GGML_TYPE_PTQ1_0,  ptq1_0)
+ #define FOR_EACH_LUT_TYPE(X) \
+     FOR_EACH_LUT_TYPE_NONFP4(X)  \
+-    FOR_EACH_LUT_FP4_TYPE(X)
++    FOR_EACH_LUT_FP4_TYPE(X)     \
++    FOR_EACH_PRISM_TYPE(X)
+ 
+     const int mul_mat_id_param_count = 5;
+ 
+@@ -3291,6 +3295,7 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f32_f32[w][GGML_TYPE_F16 ][i], "mul_mat_vec_f16_f32_f32",  arr_dmmv_f16_f32_f32_len[reduc],  arr_dmmv_f16_f32_f32_data[reduc],  "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2, 1, 1}, {wg_size_subgroup, 2, i+1}, 1, false, use_subgroups, force_subgroup_size);
+             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f32_f32[w][GGML_TYPE_BF16][i], "mul_mat_vec_bf16_f32_f32", arr_dmmv_bf16_f32_f32_len[reduc], arr_dmmv_bf16_f32_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2, 1, 1}, {wg_size_subgroup, 2, i+1}, 1, false, use_subgroups, force_subgroup_size);
+             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f32_f32[w][GGML_TYPE_Q1_0][i], "mul_mat_vec_q1_0_f32_f32", arr_dmmv_q1_0_f32_f32_len[reduc], arr_dmmv_q1_0_f32_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq, i+1}, 1, true, use_subgroups, force_subgroup_size);
++            ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f32_f32[w][GGML_TYPE_PTQ1_0][i], "mul_mat_vec_ptq1_0_f32_f32", arr_dmmv_ptq1_0_f32_f32_len[reduc], arr_dmmv_ptq1_0_f32_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq, i+1}, 1, true, use_subgroups, force_subgroup_size);
+             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f32_f32[w][GGML_TYPE_Q2_0][i], "mul_mat_vec_q2_0_f32_f32", arr_dmmv_q2_0_f32_f32_len[reduc], arr_dmmv_q2_0_f32_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq, i+1}, 1, true, use_subgroups, force_subgroup_size);
+             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f32_f32[w][GGML_TYPE_Q4_0][i], "mul_mat_vec_q4_0_f32_f32", arr_dmmv_q4_0_f32_f32_len[reduc], arr_dmmv_q4_0_f32_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq, i+1}, 1, true, use_subgroups, force_subgroup_size);
+             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f32_f32[w][GGML_TYPE_Q4_1][i], "mul_mat_vec_q4_1_f32_f32", arr_dmmv_q4_1_f32_f32_len[reduc], arr_dmmv_q4_1_f32_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq, i+1}, 1, true, use_subgroups, force_subgroup_size);
+@@ -3320,6 +3325,7 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f16_f32[w][GGML_TYPE_F16 ][i], "mul_mat_vec_f16_f16_f32",  arr_dmmv_f16_f16_f32_len[reduc],  arr_dmmv_f16_f16_f32_data[reduc],  "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2, 1, 1}, {wg_size_subgroup, 2, i+1}, 1, false, use_subgroups, force_subgroup_size);
+             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f16_f32[w][GGML_TYPE_BF16][i], "mul_mat_vec_bf16_f16_f32", arr_dmmv_bf16_f16_f32_len[reduc], arr_dmmv_bf16_f16_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2, 1, 1}, {wg_size_subgroup, 2, i+1}, 1, false, use_subgroups, force_subgroup_size);
+             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f16_f32[w][GGML_TYPE_Q1_0][i], "mul_mat_vec_q1_0_f16_f32", arr_dmmv_q1_0_f16_f32_len[reduc], arr_dmmv_q1_0_f16_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq, i+1}, 1, true, use_subgroups, force_subgroup_size);
++            ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f16_f32[w][GGML_TYPE_PTQ1_0][i], "mul_mat_vec_ptq1_0_f16_f32", arr_dmmv_ptq1_0_f16_f32_len[reduc], arr_dmmv_ptq1_0_f16_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq, i+1}, 1, true, use_subgroups, force_subgroup_size);
+             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f16_f32[w][GGML_TYPE_Q2_0][i], "mul_mat_vec_q2_0_f16_f32", arr_dmmv_q2_0_f16_f32_len[reduc], arr_dmmv_q2_0_f16_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq, i+1}, 1, true, use_subgroups, force_subgroup_size);
+             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f16_f32[w][GGML_TYPE_Q4_0][i], "mul_mat_vec_q4_0_f16_f32", arr_dmmv_q4_0_f16_f32_len[reduc], arr_dmmv_q4_0_f16_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq, i+1}, 1, true, use_subgroups, force_subgroup_size);
+             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_f16_f32[w][GGML_TYPE_Q4_1][i], "mul_mat_vec_q4_1_f16_f32", arr_dmmv_q4_1_f16_f32_len[reduc], arr_dmmv_q4_1_f16_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq, i+1}, 1, true, use_subgroups, force_subgroup_size);
+@@ -3351,6 +3357,7 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+                 const uint32_t wg_size_subgroup_int = (w == DMMV_WG_SIZE_SUBGROUP) ? subgroup_size_int : (subgroup_size_int * 4);
+ 
+                 ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_Q2_0][i], "mul_mat_vec_q2_0_q8_1_f32", arr_dmmv_q2_0_q8_1_f32_len[reduc], arr_dmmv_q2_0_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {rm_int_n(2*rm_kq_int, i), 1, 1}, {wg_size_subgroup_int, rm_int_n(2*rm_kq_int, i), i+1}, 1, true, use_subgroups, subgroup_size_int);
++                ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_PTQ1_0][i], "mul_mat_vec_ptq1_0_q8_1_f32", arr_dmmv_ptq1_0_q8_1_f32_len[reduc], arr_dmmv_ptq1_0_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {4*rm_kq_int, 1, 1}, {wg_size_subgroup_int, 4*rm_kq_int, i+1, 3}, 1, true, use_subgroups, subgroup_size_int);
+                 ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_Q4_0][i], "mul_mat_vec_q4_0_q8_1_f32", arr_dmmv_q4_0_q8_1_f32_len[reduc], arr_dmmv_q4_0_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {rm_int_n(1*rm_stdq_int, i), 1, 1}, {wg_size_subgroup_int, rm_int_n(1*rm_stdq_int, i), i+1}, 1, true, use_subgroups, subgroup_size_int);
+                 ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_Q4_1][i], "mul_mat_vec_q4_1_q8_1_f32", arr_dmmv_q4_1_q8_1_f32_len[reduc], arr_dmmv_q4_1_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {rm_int_n(1*rm_stdq_int, i), 1, 1}, {wg_size_subgroup_int, rm_int_n(1*rm_stdq_int, i), i+1}, 1, true, use_subgroups, subgroup_size_int);
+                 ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_Q5_0][i], "mul_mat_vec_q5_0_q8_1_f32", arr_dmmv_q5_0_q8_1_f32_len[reduc], arr_dmmv_q5_0_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {rm_int_n(1*rm_stdq_int, i), 1, 1}, {wg_size_subgroup_int, rm_int_n(1*rm_stdq_int, i), i+1}, 1, true, use_subgroups, subgroup_size_int);
+@@ -3377,6 +3384,7 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+         ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_id_f32[w][GGML_TYPE_F16 ], "mul_mat_vec_id_f16_f32",        arr_dmmv_id_f16_f32_f32_len[reduc],     arr_dmmv_id_f16_f32_f32_data[reduc],     "main", mul_mat_vec_id_num_bindings, sizeof(vk_mat_vec_id_push_constants), {2, 1, 1}, {wg_size_subgroup, 2}, 1, false, use_subgroups, force_subgroup_size);
+         ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_id_f32[w][GGML_TYPE_BF16], "mul_mat_vec_id_bf16_f32",       arr_dmmv_id_bf16_f32_f32_len[reduc],    arr_dmmv_id_bf16_f32_f32_data[reduc],    "main", mul_mat_vec_id_num_bindings, sizeof(vk_mat_vec_id_push_constants), {2, 1, 1}, {wg_size_subgroup, 2}, 1, false, use_subgroups, force_subgroup_size);
+         ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_id_f32[w][GGML_TYPE_Q1_0], "mul_mat_vec_id_q1_0_f32",       arr_dmmv_id_q1_0_f32_f32_len[reduc],    arr_dmmv_id_q1_0_f32_f32_data[reduc],    "main", mul_mat_vec_id_num_bindings, sizeof(vk_mat_vec_id_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq}, 1, true, use_subgroups, force_subgroup_size);
++        ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_id_f32[w][GGML_TYPE_PTQ1_0], "mul_mat_vec_id_ptq1_0_f32",       arr_dmmv_id_ptq1_0_f32_f32_len[reduc],    arr_dmmv_id_ptq1_0_f32_f32_data[reduc],    "main", mul_mat_vec_id_num_bindings, sizeof(vk_mat_vec_id_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq}, 1, true, use_subgroups, force_subgroup_size);
+         ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_id_f32[w][GGML_TYPE_Q2_0], "mul_mat_vec_id_q2_0_f32",       arr_dmmv_id_q2_0_f32_f32_len[reduc],    arr_dmmv_id_q2_0_f32_f32_data[reduc],    "main", mul_mat_vec_id_num_bindings, sizeof(vk_mat_vec_id_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq}, 1, true, use_subgroups, force_subgroup_size);
+         ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_id_f32[w][GGML_TYPE_Q4_0], "mul_mat_vec_id_q4_0_f32",       arr_dmmv_id_q4_0_f32_f32_len[reduc],    arr_dmmv_id_q4_0_f32_f32_data[reduc],    "main", mul_mat_vec_id_num_bindings, sizeof(vk_mat_vec_id_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq}, 1, true, use_subgroups, force_subgroup_size);
+         ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_id_f32[w][GGML_TYPE_Q4_1], "mul_mat_vec_id_q4_1_f32",       arr_dmmv_id_q4_1_f32_f32_len[reduc],    arr_dmmv_id_q4_1_f32_f32_data[reduc],    "main", mul_mat_vec_id_num_bindings, sizeof(vk_mat_vec_id_push_constants), {2*rm_stdq, 1, 1}, {wg_size_subgroup, 2*rm_stdq}, 1, true, use_subgroups, force_subgroup_size);
+@@ -3408,6 +3416,7 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+             const uint32_t wg_size_subgroup_int = (w == DMMV_WG_SIZE_SUBGROUP) ? subgroup_size_int : (subgroup_size_int * 4);
+ 
+             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_id_q8_1_f32[w][GGML_TYPE_Q2_0], "mul_mat_vec_id_q2_0_q8_1_f32", arr_dmmv_id_q2_0_q8_1_f32_len[reduc], arr_dmmv_id_q2_0_q8_1_f32_data[reduc], "main", mul_mat_vec_id_num_bindings, sizeof(vk_mat_vec_id_push_constants), {rm_id(2*rm_kq_int), 1, 1}, {wg_size_subgroup_int, rm_id(2*rm_kq_int)}, 1, true, use_subgroups, subgroup_size_int);
++            ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_id_q8_1_f32[w][GGML_TYPE_PTQ1_0], "mul_mat_vec_id_ptq1_0_q8_1_f32", arr_dmmv_id_ptq1_0_q8_1_f32_len[reduc], arr_dmmv_id_ptq1_0_q8_1_f32_data[reduc], "main", mul_mat_vec_id_num_bindings, sizeof(vk_mat_vec_id_push_constants), {2*rm_kq_int, 1, 1}, {wg_size_subgroup_int, 2*rm_kq_int}, 1, true, use_subgroups, subgroup_size_int);
+             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_id_q8_1_f32[w][GGML_TYPE_Q4_0], "mul_mat_vec_id_q4_0_q8_1_f32", arr_dmmv_id_q4_0_q8_1_f32_len[reduc], arr_dmmv_id_q4_0_q8_1_f32_data[reduc], "main", mul_mat_vec_id_num_bindings, sizeof(vk_mat_vec_id_push_constants), {rm_id(1*rm_stdq_int), 1, 1}, {wg_size_subgroup_int, rm_id(1*rm_stdq_int)}, 1, true, use_subgroups, subgroup_size_int);
+             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_id_q8_1_f32[w][GGML_TYPE_Q4_1], "mul_mat_vec_id_q4_1_q8_1_f32", arr_dmmv_id_q4_1_q8_1_f32_len[reduc], arr_dmmv_id_q4_1_q8_1_f32_data[reduc], "main", mul_mat_vec_id_num_bindings, sizeof(vk_mat_vec_id_push_constants), {rm_id(1*rm_stdq_int), 1, 1}, {wg_size_subgroup_int, rm_id(1*rm_stdq_int)}, 1, true, use_subgroups, subgroup_size_int);
+             ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_id_q8_1_f32[w][GGML_TYPE_Q5_0], "mul_mat_vec_id_q5_0_q8_1_f32", arr_dmmv_id_q5_0_q8_1_f32_len[reduc], arr_dmmv_id_q5_0_q8_1_f32_data[reduc], "main", mul_mat_vec_id_num_bindings, sizeof(vk_mat_vec_id_push_constants), {rm_id(1*rm_stdq_int), 1, 1}, {wg_size_subgroup_int, rm_id(1*rm_stdq_int)}, 1, true, use_subgroups, subgroup_size_int);
+@@ -3444,6 +3453,7 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+     // dequant shaders
+     ggml_vk_create_pipeline(device, device->pipeline_dequant[GGML_TYPE_F32 ], "f32_to_f16",   dequant_f32_len,  dequant_f32_data,  "main", 2, 5 * sizeof(uint32_t), {256 * 16, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_dequant[GGML_TYPE_Q1_0], "dequant_q1_0", dequant_q1_0_len, dequant_q1_0_data, "main", 2, 5 * sizeof(uint32_t), {256 * 8, 1, 1}, {}, 1);
++    ggml_vk_create_pipeline(device, device->pipeline_dequant[GGML_TYPE_PTQ1_0], "dequant_ptq1_0", dequant_ptq1_0_len, dequant_ptq1_0_data, "main", 2, 5 * sizeof(uint32_t), {256 * 8, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_dequant[GGML_TYPE_Q2_0], "dequant_q2_0", dequant_q2_0_len, dequant_q2_0_data, "main", 2, 5 * sizeof(uint32_t), {256 * 4, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_dequant[GGML_TYPE_Q4_0], "dequant_q4_0", dequant_q4_0_len, dequant_q4_0_data, "main", 2, 5 * sizeof(uint32_t), {256 * 16, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_dequant[GGML_TYPE_Q4_1], "dequant_q4_1", dequant_q4_1_len, dequant_q4_1_data, "main", 2, 5 * sizeof(uint32_t), {256 * 16, 1, 1}, {}, 1);
+@@ -3475,6 +3485,7 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_F16 ], "get_rows_f16",  get_rows_f16_len,  get_rows_f16_data,  "main", 3, sizeof(vk_op_binary_push_constants), { 512, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_BF16], "get_rows_bf16", get_rows_bf16_len, get_rows_bf16_data, "main", 3, sizeof(vk_op_binary_push_constants), { 512, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_Q1_0], "get_rows_q1_0", get_rows_q1_0_len, get_rows_q1_0_data, "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
++    ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_PTQ1_0], "get_rows_ptq1_0", get_rows_ptq1_0_len, get_rows_ptq1_0_data, "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_Q2_0], "get_rows_q2_0", get_rows_q2_0_len, get_rows_q2_0_data, "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_Q4_0], "get_rows_q4_0", get_rows_q4_0_len, get_rows_q4_0_data, "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_Q4_1], "get_rows_q4_1", get_rows_q4_1_len, get_rows_q4_1_data, "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+@@ -3505,6 +3516,7 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows_f32[GGML_TYPE_F16 ], "get_rows_f16_f32",  get_rows_f16_f32_len,  get_rows_f16_f32_data,  "main", 3, sizeof(vk_op_binary_push_constants), { 512, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows_f32[GGML_TYPE_BF16], "get_rows_bf16_f32", get_rows_bf16_f32_len, get_rows_bf16_f32_data, "main", 3, sizeof(vk_op_binary_push_constants), { 512, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows_f32[GGML_TYPE_Q1_0], "get_rows_q1_0_f32", get_rows_q1_0_f32_len, get_rows_q1_0_f32_data, "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
++    ggml_vk_create_pipeline(device, device->pipeline_get_rows_f32[GGML_TYPE_PTQ1_0], "get_rows_ptq1_0_f32", get_rows_ptq1_0_f32_len, get_rows_ptq1_0_f32_data, "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows_f32[GGML_TYPE_Q2_0], "get_rows_q2_0_f32", get_rows_q2_0_f32_len, get_rows_q2_0_f32_data, "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows_f32[GGML_TYPE_Q4_0], "get_rows_q4_0_f32", get_rows_q4_0_f32_len, get_rows_q4_0_f32_data, "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_get_rows_f32[GGML_TYPE_Q4_1], "get_rows_q4_1_f32", get_rows_q4_1_f32_len, get_rows_q4_1_f32_data, "main", 3, sizeof(vk_op_binary_push_constants), {1024, 1, 1}, {}, 1);
+@@ -6071,6 +6083,7 @@ vk_pipeline ggml_vk_get_to_fp16(ggml_backend_vk_context * ctx, ggml_type type) {
+     switch (type) {
+         case GGML_TYPE_F32:
+         case GGML_TYPE_Q1_0:
++        case GGML_TYPE_PTQ1_0:
+         case GGML_TYPE_Q2_0:
+         case GGML_TYPE_Q4_0:
+         case GGML_TYPE_Q4_1:
+@@ -6111,6 +6124,7 @@ static vk_pipeline ggml_vk_get_dequantize_mul_mat_vec(ggml_backend_vk_context *
+     if (b_type == GGML_TYPE_Q8_1) {
+         switch (a_type) {
+             case GGML_TYPE_Q2_0:
++            case GGML_TYPE_PTQ1_0:
+             case GGML_TYPE_Q4_0:
+             case GGML_TYPE_Q4_1:
+             case GGML_TYPE_Q5_0:
+@@ -6136,6 +6150,7 @@ static vk_pipeline ggml_vk_get_dequantize_mul_mat_vec(ggml_backend_vk_context *
+         case GGML_TYPE_F16:
+         case GGML_TYPE_BF16:
+         case GGML_TYPE_Q1_0:
++        case GGML_TYPE_PTQ1_0:
+         case GGML_TYPE_Q2_0:
+         case GGML_TYPE_Q4_0:
+         case GGML_TYPE_Q4_1:
+@@ -6199,6 +6214,7 @@ static vk_pipeline ggml_vk_get_dequantize_mul_mat_vec_id(ggml_backend_vk_context
+     if (b_type == GGML_TYPE_Q8_1) {
+         switch (a_type) {
+             case GGML_TYPE_Q2_0:
++            case GGML_TYPE_PTQ1_0:
+             case GGML_TYPE_Q4_0:
+             case GGML_TYPE_Q4_1:
+             case GGML_TYPE_Q5_0:
+@@ -6224,6 +6240,7 @@ static vk_pipeline ggml_vk_get_dequantize_mul_mat_vec_id(ggml_backend_vk_context
+         case GGML_TYPE_F16:
+         case GGML_TYPE_BF16:
+         case GGML_TYPE_Q1_0:
++        case GGML_TYPE_PTQ1_0:
+         case GGML_TYPE_Q2_0:
+         case GGML_TYPE_Q4_0:
+         case GGML_TYPE_Q4_1:
+@@ -16349,6 +16366,7 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+                     case GGML_TYPE_F16:
+                     case GGML_TYPE_BF16:
+                     case GGML_TYPE_Q1_0:
++                    case GGML_TYPE_PTQ1_0:
+                     case GGML_TYPE_Q2_0:
+                     case GGML_TYPE_Q4_0:
+                     case GGML_TYPE_Q4_1:
+@@ -16456,6 +16474,7 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+                     case GGML_TYPE_F16:
+                     case GGML_TYPE_BF16:
+                     case GGML_TYPE_Q1_0:
++                    case GGML_TYPE_PTQ1_0:
+                     case GGML_TYPE_Q2_0:
+                     case GGML_TYPE_Q4_0:
+                     case GGML_TYPE_Q4_1:
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/dequant_funcs.glsl b/ggml/src/ggml-vulkan/vulkan-shaders/dequant_funcs.glsl
+index 911ceac..091f047 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/dequant_funcs.glsl
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/dequant_funcs.glsl
+@@ -127,6 +127,20 @@ vec4 dequantize4(uint ib, uint iqs, uint a_offset) {
+ }
+ #endif
+ 
++#if defined(DATA_A_PTQ1_0)
++#include "ptq1_0.glsl"
++
++vec2 dequantize(uint ib, uint iqs, uint a_offset) {
++    return vec2(ptq1_0_trit(ib, a_offset, iqs), ptq1_0_trit(ib, a_offset, iqs + 1u));
++}
++vec4 dequantize4(uint ib, uint iqs, uint a_offset) {
++    return vec4(ptq1_0_trit(ib, a_offset, iqs),
++                ptq1_0_trit(ib, a_offset, iqs + 1u),
++                ptq1_0_trit(ib, a_offset, iqs + 2u),
++                ptq1_0_trit(ib, a_offset, iqs + 3u));
++}
++#endif
++
+ #if defined(DATA_A_Q1_0)
+ vec2 dequantize(uint ib, uint iqs, uint a_offset) {
+     const uint bits = uint(data_a[a_offset + ib].qs[iqs / 8u]) >> (iqs % 8u);
+@@ -565,6 +579,12 @@ vec2 get_dm(uint ib, uint a_offset) {
+ }
+ #endif
+ 
++#if defined(DATA_A_PTQ1_0)
++vec2 get_dm(uint ib, uint a_offset) {
++    return vec2(float(data_a[a_offset + ib].d), 0);
++}
++#endif
++
+ #if defined(DATA_A_Q1_0)
+ vec2 get_dm(uint ib, uint a_offset) {
+     const float d = float(data_a[a_offset + ib].d);
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/dequant_ptq1_0.comp b/ggml/src/ggml-vulkan/vulkan-shaders/dequant_ptq1_0.comp
+new file mode 100644
+index 0000000..047ed06
+--- /dev/null
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/dequant_ptq1_0.comp
+@@ -0,0 +1,63 @@
++#version 450
++
++#include "dequant_head.glsl"
++
++layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
++
++layout (binding = 0) readonly buffer A {block_ptq1_0 data_a[];};
++layout (binding = 1) writeonly buffer D {D_TYPE data_b[];};
++
++// Powers of 3: 3^0, 3^1, 3^2, 3^3, 3^4 (mod 256)
++const uint pow3[5] = uint[5](1u, 3u, 9u, 27u, 81u);
++
++void main() {
++    const uint i = gl_WorkGroupID.x * 4 + gl_LocalInvocationID.x / 64;
++
++    const uint tid = gl_LocalInvocationID.x % 64;
++    const uint il = tid / 4;
++    const uint ir = tid % 4;
++    const uint ib = 4*i + ir;
++    if (ib >= p.nel / 128) {
++        return;
++    }
++
++    const uint b_idx = 512*i + 128*ir + 8*il;
++    const float d = float(data_a[ib].d);
++
++    if (il < 10u) {
++        // e in [0..79]: qs[0..15], n is uniform for all 8 elements
++        const uint n = il >> 1u;
++        const uint p_val = pow3[n];
++        const uint qs_offset = (il & 1u) != 0u ? 8u : 0u;
++
++        [[unroll]] for (uint l = 0u; l < 8u; ++l) {
++            const uint b = uint(data_a[ib].qs[qs_offset + l]);
++            const uint v = (b * p_val) & 0xFFu;
++            const float trit = float(int((v * 3u) >> 8u) - 1);
++            data_b[b_idx + l] = D_TYPE(trit * d);
++        }
++    } else if (il < 15u) {
++        // e in [80..119]: qs[16..23], n is uniform for all 8 
++        const uint n = il - 10u;
++        const uint p_val = pow3[n];
++
++        [[unroll]] for (uint l = 0u; l < 8u; ++l) {
++            const uint b = uint(data_a[ib].qs[16u + l]);
++            const uint v = (b * p_val) & 0xFFu;
++            const float trit = float(int((v * 3u) >> 8u) - 1);
++            data_b[b_idx + l] = D_TYPE(trit * d);
++        }
++    } else {
++        // il == 15 (e in [120..127]): read both qh bytes once into registers
++        const uint qh0 = uint(data_a[ib].qh[0]);
++        const uint qh1 = uint(data_a[ib].qh[1]);
++
++        [[unroll]] for (uint l = 0u; l < 8u; ++l) {
++            const uint b = (l & 1u) != 0u ? qh1 : qh0;
++            const uint n = l >> 1u;
++            const uint v = (b * pow3[n]) & 0xFFu;
++            const float trit = float(int((v * 3u) >> 8u) - 1);
++            data_b[b_idx + l] = D_TYPE(trit * d);
++        }
++    }
++}
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_ptq1_0.comp b/ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_ptq1_0.comp
+new file mode 100644
+index 0000000..8516e51
+--- /dev/null
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_ptq1_0.comp
+@@ -0,0 +1,182 @@
++#version 450
++#extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
++
++#include "mul_mat_vec_base.glsl"
++
++layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
++
++// Dedicated PTQ1_0 matrix-vector kernel.
++//
++// The generic mul_mat_vec path reaches PTQ1_0 through dequantize()/dequantize4(),
++// which call ptq1_0_trit() once per weight: an 8-bit load plus a loop of up to
++// four multiplies to skip the earlier trits in the same byte. Every packed byte
++// is therefore re-read and re-decoded five times.
++//
++// This kernel reads each 28-byte block as seven 32-bit words and peels the five
++// trits off a byte with the base-3 recurrence, two bytes at a time in 16-bit
++// lanes (255*3 = 765 stays inside a lane, so lanes never interfere), which is
++// 10 multiplies per 20 weights instead of ~60.
++//
++// Block layout (see ptq1_0.glsl / block_ptq1_0), 128 weights, 7 words:
++//   words 0..3 : qs[0..15]  byte j, trit t -> element 16*t + j
++//   words 4..5 : qs[16..23] byte j, trit t -> element 80 + 8*t + (j - 16)
++//   word  6    : qh[0], qh[1] (4 trits each, element 120 + 2*t + h), d (f16)
++// Weight = (trit - 1) * d, so sum_e w_e*y_e = d * (sum_e trit_e*y_e - sum_e y_e),
++// and the second term is gathered once per work item as ysum.
++//
++// A work item is half a block (half 0 = words 0..2 plus the qh word, half 1 =
++// words 3..5) so that rows of 5120 still spread over the workgroup. Activations
++// are loaded once per item and reused across the NUM_ROWS rows.
++
++layout (binding = 0) readonly buffer A_U32 {uint data_a_u32[];};
++
++FLOAT_TYPE temp[NUM_COLS][NUM_ROWS];
++
++#define PTQ1_0_WORDS 7u
++#define LANE_MASK    0x00FF00FFu
++#define TRIT_MASK    0x00030003u
++
++// Element offset (within the block) of byte 0 of main word k, for trit t.
++uint word_base(const uint k, const uint t) {
++    return k < 4u ? 4u*k + 16u*t : 80u + 4u*(k - 4u) + 8u*t;
++}
++
++// One main word = 4 bytes x 5 trits = 20 weights. Consecutive bytes of a word map
++// to consecutive elements for a fixed trit, so each trit step is one vec4 of
++// activations.
++void decode_word(const uint w, out vec4 q[5]) {
++    uint ev = w & LANE_MASK;          // bytes 0 and 2
++    uint od = (w >> 8u) & LANE_MASK;  // bytes 1 and 3
++    [[unroll]] for (uint t = 0u; t < 5u; ++t) {
++        const uint me = ev * 3u;
++        const uint mo = od * 3u;
++        const uint te = (me >> 8u) & TRIT_MASK;
++        const uint to = (mo >> 8u) & TRIT_MASK;
++        ev = me & LANE_MASK;
++        od = mo & LANE_MASK;
++        q[t] = vec4(float(te & 3u), float(to & 3u), float(te >> 16u), float(to >> 16u));
++    }
++}
++
++// Word 6: qh[0] and qh[1] hold four trits each and interleave into elements
++// 120..127 (element 120 + 2*t + h).
++void decode_qh(const uint w6, out vec4 qa, out vec4 qb) {
++    uint x = (w6 & 0xFFu) | (((w6 >> 8u) & 0xFFu) << 16u);
++    vec2 q[4];
++    [[unroll]] for (uint t = 0u; t < 4u; ++t) {
++        const uint m = x * 3u;
++        const uint tr = (m >> 8u) & TRIT_MASK;
++        x = m & LANE_MASK;
++        q[t] = vec2(float(tr & 3u), float(tr >> 16u));
++    }
++    qa = vec4(q[0], q[1]);
++    qb = vec4(q[2], q[3]);
++}
++
++vec4 load_y4(const uint j, const uint b_offset, const uint e) {
++    return vec4(data_b_v4[(j*p.batch_stride_b + b_offset + e) / 4u]);
++}
++
++void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
++    uint a_offset, b_offset, d_offset;
++    get_offsets(a_offset, b_offset, d_offset);
++
++    const uint num_blocks_per_row = p.ncols / QUANT_K;
++    const uint tid = gl_LocalInvocationID.x;
++
++    [[unroll]] for (uint j = 0u; j < NUM_COLS; ++j) {
++        [[unroll]] for (uint n = 0u; n < NUM_ROWS; ++n) {
++            temp[j][n] = FLOAT_TYPE(0);
++        }
++    }
++
++    const uint num_items = 2u * num_blocks_per_row;
++    for (uint item = tid; item < num_items; item += BLOCK_SIZE) {
++        const uint ib = item >> 1u;
++        const uint h = item & 1u;
++        const uint y_blk = ib * QUANT_K;
++
++        FLOAT_TYPE ysum[NUM_COLS];
++        FLOAT_TYPE acc[NUM_COLS][NUM_ROWS];
++        [[unroll]] for (uint j = 0u; j < NUM_COLS; ++j) {
++            ysum[j] = FLOAT_TYPE(0);
++            [[unroll]] for (uint n = 0u; n < NUM_ROWS; ++n) {
++                acc[j][n] = FLOAT_TYPE(0);
++            }
++        }
++
++        FLOAT_TYPE d[NUM_ROWS];
++        [[unroll]] for (uint n = 0u; n < NUM_ROWS; ++n) {
++            if (n < num_rows) {
++                const uint wb = (a_offset + (first_row + n) * num_blocks_per_row + ib) * PTQ1_0_WORDS;
++                d[n] = FLOAT_TYPE(unpackHalf2x16(data_a_u32[wb + 6u] >> 16u).x);
++            }
++        }
++
++        [[unroll]] for (uint kk = 0u; kk < 3u; ++kk) {
++            const uint k = 3u*h + kk;
++            vec4 q[NUM_ROWS][5];
++            [[unroll]] for (uint n = 0u; n < NUM_ROWS; ++n) {
++                if (n < num_rows) {
++                    const uint wb = (a_offset + (first_row + n) * num_blocks_per_row + ib) * PTQ1_0_WORDS;
++                    decode_word(data_a_u32[wb + k], q[n]);
++                }
++            }
++            [[unroll]] for (uint j = 0u; j < NUM_COLS; ++j) {
++                [[unroll]] for (uint t = 0u; t < 5u; ++t) {
++                    const vec4 yv = load_y4(j, b_offset, y_blk + word_base(k, t));
++                    ysum[j] += FLOAT_TYPE(yv.x + yv.y + yv.z + yv.w);
++                    [[unroll]] for (uint n = 0u; n < NUM_ROWS; ++n) {
++                        if (n < num_rows) {
++                            acc[j][n] += FLOAT_TYPE(dot(q[n][t], yv));
++                        }
++                    }
++                }
++            }
++        }
++
++        if (h == 0u) {
++            vec4 qh0[NUM_ROWS], qh1[NUM_ROWS];
++            [[unroll]] for (uint n = 0u; n < NUM_ROWS; ++n) {
++                if (n < num_rows) {
++                    const uint wb = (a_offset + (first_row + n) * num_blocks_per_row + ib) * PTQ1_0_WORDS;
++                    decode_qh(data_a_u32[wb + 6u], qh0[n], qh1[n]);
++                }
++            }
++            [[unroll]] for (uint j = 0u; j < NUM_COLS; ++j) {
++                const vec4 y0 = load_y4(j, b_offset, y_blk + 120u);
++                const vec4 y1 = load_y4(j, b_offset, y_blk + 124u);
++                ysum[j] += FLOAT_TYPE(y0.x + y0.y + y0.z + y0.w + y1.x + y1.y + y1.z + y1.w);
++                [[unroll]] for (uint n = 0u; n < NUM_ROWS; ++n) {
++                    if (n < num_rows) {
++                        acc[j][n] += FLOAT_TYPE(dot(qh0[n], y0) + dot(qh1[n], y1));
++                    }
++                }
++            }
++        }
++
++        [[unroll]] for (uint j = 0u; j < NUM_COLS; ++j) {
++            [[unroll]] for (uint n = 0u; n < NUM_ROWS; ++n) {
++                if (n < num_rows) {
++                    temp[j][n] = fma(d[n], acc[j][n] - ysum[j], temp[j][n]);
++                }
++            }
++        }
++    }
++
++    reduce_result(temp, d_offset, first_row, num_rows, tid);
++}
++
++void main() {
++    const uint first_row = NUM_ROWS * (gl_WorkGroupID.x + gl_NumWorkGroups.x * gl_WorkGroupID.z);
++
++    // do NUM_ROWS at a time, unless there aren't enough remaining rows
++    if (first_row + NUM_ROWS <= p.stride_d) {
++        compute_outputs(first_row, NUM_ROWS);
++    } else {
++        if (first_row >= p.stride_d) {
++            return;
++        }
++        compute_outputs(first_row, p.stride_d - first_row);
++    }
++}
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vecq_ptq1_0.comp b/ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vecq_ptq1_0.comp
+new file mode 100644
+index 0000000..a8aa65e
+--- /dev/null
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vecq_ptq1_0.comp
+@@ -0,0 +1,404 @@
++#version 450
++
++// PTQ1_0 x q8_1 mat-vec with integer dot products.
++//
++// Block: 28 bytes = qs[24] (5 base-3 trits per byte), qh[2] (4 trits per byte), fp16 d. Element order is not positional:
++//   qs[j], j < 16: element t*16 + j (t = 0..4);  qs[16 + j], j < 8: element 80 + t*8 + j;  qh[h]: element 120 + 2n + h
++// Trit level t of a byte: trit = (v*3) >> 8, v = (v*3) & 0xFF. This shader runs that on two bytes at a time in the 16-bit halves of a dword.
++// Weight = (trit - 1) * d, so with q8_1 activations: sum_e (q_e - 1) * y_e = sum_k (d_b[k] * sum_{e in k} q_e * q8_e - s_b[k]), s_b = d_b * sum(q8).
++//
++// Two lanes per 128-element block: sub=0 takes qs dwords 0..2, sub=1 takes qs dwords 3..5 and qh. Same instruction stream, no divergence.
++// One column (single sequence, bandwidth bound): load the activations of a block once, then decode and dot each row with the residue-tolerant trick (see TRIT_LEVEL).
++// Several columns (batched decode, ALU bound): passes of CG columns; per block decode all rows once per level, pack the trits and dot them with every column of the pass.
++
++#extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
++#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
++
++// Enable integer dot product optionally: allows compilation on GPUs without hardware DP4A (e.g. AMD Polaris / Vega)
++#extension GL_EXT_integer_dot_product : enable
++
++#define B_TYPE block_q8_1_x4
++
++#include "mul_mat_vec_base.glsl"
++
++layout(local_size_x_id = 0, local_size_y = 1, local_size_z = 1) in;
++
++// Raw dword views of the same bindings.
++//   A: 7 dwords per block: w[0..5] = qs[0..23], w[6] = qh[0] | qh[1] << 8 | d << 16
++//   B: 36 dwords per block_q8_1_x4: ds[4] (f16 d, f16 s) then 32 dwords of int8x4
++layout (binding = 0) readonly buffer A_U32  {uint32_t data_a_u32[];};
++layout (binding = 1) readonly buffer B_U32  {uint32_t data_b_u32[];};
++layout (binding = 1) readonly buffer B_U64  {uvec2    data_b_u64[];};
++layout (binding = 1) readonly buffer B_U128 {uvec4    data_b_u128[];};
++
++#define PTQ1_0_DWORDS   7u
++#define Q8_1_X4_DWORDS  36u
++#define Q8_1_X4_UVEC4   9u
++
++// columns per pass of the multi-column path (see above); 3 measured best on RDNA2
++layout (constant_id = 3) const uint CG = 3;
++
++uint a_offset, b_offset, d_offset;
++
++#if defined(PTQ1_0_MUL3_PK16)
++#define MUL3(v) pack32(unpack16(v) * u16vec2(3us, 3us))
++#else
++// (v << 1u) + (v) maps to a single-cycle shift-add (v_lshl_add_u32) on AMD GCN/RDNA
++#define MUL3(v) (((v) << 1u) + (v))
++#endif
++
++#if defined(GL_EXT_integer_dot_product)
++// Hardware DP4A: saturation is mathematically impossible (max sum in 32 trits is 8128 << 2^31-1),
++// so non-saturating dotPacked4x8EXT maps directly to single-cycle native instructions (v_dot4_i32_i8).
++#define DOT4(a, b, acc) ((acc) + dotPacked4x8EXT((a), (b)))
++#else
++// Universal fallback for GPUs without hardware DP4A (AMD Polaris RX 400/500, Vega, older Intel/Nvidia):
++// bitfieldExtract maps directly to AMD GCN's v_bfe_i32 instruction.
++int32_t dot4_emulated(const int32_t a, const int32_t b, const int32_t acc) {
++    return acc + bitfieldExtract(a, 0, 8)  * bitfieldExtract(b, 0, 8)
++               + bitfieldExtract(a, 8, 8)  * bitfieldExtract(b, 8, 8)
++               + bitfieldExtract(a, 16, 8) * bitfieldExtract(b, 16, 8)
++               + bitfieldExtract(a, 24, 8) * bitfieldExtract(b, 24, 8);
++}
++#define DOT4(a, b, acc) dot4_emulated((a), (b), (acc))
++#endif
++
++// One trit level from the 16-bit lanes vl (bytes 0,2) and vh (bytes 1,3): after w = v*3 the trit is in byte 1/3 and the residue in byte 0/2.
++// The activation words are pre-masked (bytes 0,2 zero; yh = y1,y3 in bytes 1,3; yl = y0,y2 moved to bytes 1,3), so the dot product ignores the residue.
++#define TRIT_LEVEL(vl, vh, yl, yh, acc)          \
++    {                                            \
++        const uint wl = MUL3(vl);                \
++        const uint wh = MUL3(vh);                \
++        vl = wl & 0x00FF00FFu;                   \
++        vh = wh & 0x00FF00FFu;                   \
++        acc = DOT4(int32_t(wl), yl, acc);        \
++        acc = DOT4(int32_t(wh), yh, acc);        \
++    }
++// last level: no residue needed afterwards
++#define TRIT_LEVEL_LAST(vl, vh, yl, yh, acc)     \
++    {                                            \
++        acc = DOT4(int32_t(MUL3(vl)), yl, acc);  \
++        acc = DOT4(int32_t(MUL3(vh)), yh, acc);  \
++    }
++
++// Per-invocation state shared by the column-group passes.
++uint num_blocks_per_row, sub, blk_first, blk_stride;
++uint first_row_g, num_rows_g;
++uint arow[NUM_ROWS];   // dword offset of the first block of each row
++uint bcol[NUM_COLS];   // block_q8_1_x4 index of the first block of each column
++FLOAT_TYPE temp[NUM_COLS][NUM_ROWS];
++
++// One pass over the blocks for columns j0 .. j0 + CG - 1 (fewer in the last group). j0 is a literal at each call site, so column indices stay static.
++void process_group(const uint j0) {
++    const uint nc = min(CG, NUM_COLS - j0);
++
++    if (nc == 1u) {
++        // Single column: the row loop has a runtime bound, which keeps one row of decode state live (fewer registers than the level-major loop below).
++        for (uint blk = blk_first; blk < num_blocks_per_row; blk += blk_stride) {
++            const uint bx4   = bcol[j0] + blk;
++            const uint bbase = bx4 * Q8_1_X4_DWORDS + 4u;
++
++            const uvec4 dsraw = data_b_u128[bx4 * Q8_1_X4_UVEC4];
++            const vec2 ds0 = unpackHalf2x16(dsraw.x);
++            const vec2 ds1 = unpackHalf2x16(dsraw.y);
++            const vec2 ds2 = unpackHalf2x16(dsraw.z);
++            const vec2 ds3 = unpackHalf2x16(dsraw.w);
++
++            // accA[t/2] holds sub-block t/2. accB[t/2] holds sub-block t/2 on lane 0 and sub-block (80 + 8t)/32 on lane 1 (2,2,3,3,3). Each lane subtracts the sums of its own two sub-blocks.
++            const float sA0 = ds0.x;
++            const float sA1 = ds1.x;
++            const float sA2 = ds2.x;
++            const float sB0 = (sub != 0u) ? ds2.x : ds0.x;
++            const float sB1 = (sub != 0u) ? ds3.x : ds1.x;
++            const float sB2 = (sub != 0u) ? ds3.x : ds2.x;
++            const float bias = (sub != 0u) ? (ds2.y + ds3.y) : (ds0.y + ds1.y);
++
++            // Activations per trit level: both lanes issue the same two vector loads (16 bytes at dword 4t, 8 bytes at dword 20+2t) and pick their words.
++            int32_t yh0[5], yh1[5], yh2[5];
++            int32_t yl0[5], yl1[5], yl2[5];
++            [[unroll]] for (uint t = 0; t < 5; ++t) {
++                const uvec4 q4 = data_b_u128[(bbase >> 2u) + t];
++                const uvec2 q2 = data_b_u64[(bbase >> 1u) + 10u + t];
++                const uint y0 = (sub != 0u) ? q4.w : q4.x;
++                const uint y1 = (sub != 0u) ? q2.x : q4.y;
++                const uint y2 = (sub != 0u) ? q2.y : q4.z;
++                yh0[t] = int32_t(y0 & 0xFF00FF00u);
++                yh1[t] = int32_t(y1 & 0xFF00FF00u);
++                yh2[t] = int32_t(y2 & 0xFF00FF00u);
++                yl0[t] = int32_t((y0 << 8u) & 0xFF00FF00u);
++                yl1[t] = int32_t((y1 << 8u) & 0xFF00FF00u);
++                yl2[t] = int32_t((y2 << 8u) & 0xFF00FF00u);
++            }
++            // qh activations: elements 120..127
++            const uvec2 yq = data_b_u64[(bbase >> 1u) + 15u];
++            const int32_t yq0 = int32_t(yq.x);
++            const int32_t yq1 = int32_t(yq.y);
++
++            [[unroll]] for (uint n = 0; n < num_rows_g; ++n) {
++                const uint abase = (a_offset + (first_row_g + n) * num_blocks_per_row + blk) * PTQ1_0_DWORDS;
++                const uint w0 = data_a_u32[abase + 3u*sub];
++                const uint w1 = data_a_u32[abase + 3u*sub + 1u];
++                const uint w2 = data_a_u32[abase + 3u*sub + 2u];
++                const uint w6 = data_a_u32[abase + 6u];
++
++                const float da = unpackHalf2x16(w6).y;
++
++                uint v0l = w0 & 0x00FF00FFu;
++                uint v0h = (w0 >> 8u) & 0x00FF00FFu;
++                uint v1l = w1 & 0x00FF00FFu;
++                uint v1h = (w1 >> 8u) & 0x00FF00FFu;
++                uint v2l = w2 & 0x00FF00FFu;
++                uint v2h = (w2 >> 8u) & 0x00FF00FFu;
++
++                int32_t accA0 = 0, accA1 = 0, accA2 = 0;
++                int32_t accB0 = 0, accB1 = 0, accB2 = 0;
++
++                TRIT_LEVEL(v0l, v0h, yl0[0], yh0[0], accA0);
++                TRIT_LEVEL(v1l, v1h, yl1[0], yh1[0], accB0);
++                TRIT_LEVEL(v2l, v2h, yl2[0], yh2[0], accB0);
++
++                TRIT_LEVEL(v0l, v0h, yl0[1], yh0[1], accA0);
++                TRIT_LEVEL(v1l, v1h, yl1[1], yh1[1], accB0);
++                TRIT_LEVEL(v2l, v2h, yl2[1], yh2[1], accB0);
++
++                TRIT_LEVEL(v0l, v0h, yl0[2], yh0[2], accA1);
++                TRIT_LEVEL(v1l, v1h, yl1[2], yh1[2], accB1);
++                TRIT_LEVEL(v2l, v2h, yl2[2], yh2[2], accB1);
++
++                TRIT_LEVEL(v0l, v0h, yl0[3], yh0[3], accA1);
++                TRIT_LEVEL(v1l, v1h, yl1[3], yh1[3], accB1);
++                TRIT_LEVEL(v2l, v2h, yl2[3], yh2[3], accB1);
++
++                TRIT_LEVEL_LAST(v0l, v0h, yl0[4], yh0[4], accA2);
++                TRIT_LEVEL_LAST(v1l, v1h, yl1[4], yh1[4], accB2);
++                TRIT_LEVEL_LAST(v2l, v2h, yl2[4], yh2[4], accB2);
++
++                // qh: four trit levels of two bytes -> elements 120 + 2n + h, all in sub-block 3 (accB2 on lane 1). Lane 0 decodes zeros.
++                {
++                    uint vq = (sub != 0u) ? ((w6 & 0xFFu) | ((w6 & 0xFF00u) << 8u)) : 0u;
++                    uint wq;
++                    wq = MUL3(vq); vq = wq & 0x00FF00FFu;
++                    int32_t q01 = int32_t(((wq >> 8u) & 0x3u) | ((wq >> 16u) & 0x300u));
++                    wq = MUL3(vq); vq = wq & 0x00FF00FFu;
++                    q01 |= int32_t(((wq << 8u) & 0x30000u) | (wq & 0x03000000u));
++                    wq = MUL3(vq); vq = wq & 0x00FF00FFu;
++                    int32_t q23 = int32_t(((wq >> 8u) & 0x3u) | ((wq >> 16u) & 0x300u));
++                    wq = MUL3(vq);
++                    q23 |= int32_t(((wq << 8u) & 0x30000u) | (wq & 0x03000000u));
++                    accB2 = DOT4(q01, yq0, accB2);
++                    accB2 = DOT4(q23, yq1, accB2);
++                }
++
++                const float sum = fma(sA0, float(accA0),
++                                  fma(sA1, float(accA1),
++                                  fma(sA2, float(accA2),
++                                  fma(sB0, float(accB0),
++                                  fma(sB1, float(accB1),
++                                  fma(sB2, float(accB2), -bias))))));
++                temp[j0][n] = fma(da, sum, temp[j0][n]);
++            }
++        }
++        return;
++    }
++
++    {
++        for (uint blk = blk_first; blk < num_blocks_per_row; blk += blk_stride) {
++            // qs dwords of this lane for every row, split into 16-bit lanes (l = bytes 0,2; h = bytes 1,3), plus the qh/d dword and the row scale.
++            uint  v0l[NUM_ROWS], v0h[NUM_ROWS];
++            uint  v1l[NUM_ROWS], v1h[NUM_ROWS];
++            uint  v2l[NUM_ROWS], v2h[NUM_ROWS];
++            uint  w6[NUM_ROWS];
++            float da[NUM_ROWS];
++            [[unroll]] for (uint n = 0; n < NUM_ROWS; ++n) {
++                const uint abase = arow[n] + blk * PTQ1_0_DWORDS;
++                const uint w0 = data_a_u32[abase + 3u*sub];
++                const uint w1 = data_a_u32[abase + 3u*sub + 1u];
++                const uint w2 = data_a_u32[abase + 3u*sub + 2u];
++                w6[n] = data_a_u32[abase + 6u];
++                da[n] = unpackHalf2x16(w6[n]).y;
++                v0l[n] = w0 & 0x00FF00FFu;
++                v0h[n] = (w0 >> 8u) & 0x00FF00FFu;
++                v1l[n] = w1 & 0x00FF00FFu;
++                v1h[n] = (w1 >> 8u) & 0x00FF00FFu;
++                v2l[n] = w2 & 0x00FF00FFu;
++                v2h[n] = (w2 >> 8u) & 0x00FF00FFu;
++            }
++
++            // q8_1 block index and sub-block scales/sums of every column of the group
++            uint  bx4[CG];
++            uvec4 dsraw[CG];
++            [[unroll]] for (uint jj = 0; jj < nc; ++jj) {
++                bx4[jj]   = bcol[j0 + jj] + blk;
++                dsraw[jj] = data_b_u128[bx4[jj] * Q8_1_X4_UVEC4];
++            }
++
++            // accA: dword 0, always sub-block t/2. accB: dwords 1,2, sub-block t/2 on lane 0 and 2,2,3,3,3 on lane 1. Both change scale after levels 1 and 3.
++            int32_t accA[CG][NUM_ROWS];
++            int32_t accB[CG][NUM_ROWS];
++            [[unroll]] for (uint jj = 0; jj < CG; ++jj) {
++                [[unroll]] for (uint n = 0; n < NUM_ROWS; ++n) {
++                    accA[jj][n] = 0;
++                    accB[jj][n] = 0;
++                }
++            }
++
++            [[unroll]] for (uint t = 0; t < 5; ++t) {
++                // The three activation words of this lane per column: lane 0 dwords 4t..4t+2, lane 1 dwords 4t+3, 20+2t, 21+2t. Only these are loaded: the compiler hoists the loads of all levels, so registers matter.
++                int32_t yp0[CG], yp1[CG], yp2[CG];
++                [[unroll]] for (uint jj = 0; jj < nc; ++jj) {
++                    const uint bbase = bx4[jj] * Q8_1_X4_DWORDS + 4u;
++                    const uint i0 = bbase + 4u*t + 3u*sub;
++                    const uint i1 = (sub != 0u) ? (bbase + 20u + 2u*t) : (bbase + 4u*t + 1u);
++                    yp0[jj] = int32_t(data_b_u32[i0]);
++                    yp1[jj] = int32_t(data_b_u32[i1]);
++                    yp2[jj] = int32_t(data_b_u32[i1 + 1u]);
++                }
++
++                // Decode this level once per row, then dot with every column.
++                [[unroll]] for (uint n = 0; n < NUM_ROWS; ++n) {
++                    const uint w0l = MUL3(v0l[n]);
++                    const uint w0h = MUL3(v0h[n]);
++                    const uint w1l = MUL3(v1l[n]);
++                    const uint w1h = MUL3(v1h[n]);
++                    const uint w2l = MUL3(v2l[n]);
++                    const uint w2h = MUL3(v2h[n]);
++                    if (t < 4u) {
++                        v0l[n] = w0l & 0x00FF00FFu;
++                        v0h[n] = w0h & 0x00FF00FFu;
++                        v1l[n] = w1l & 0x00FF00FFu;
++                        v1h[n] = w1h & 0x00FF00FFu;
++                        v2l[n] = w2l & 0x00FF00FFu;
++                        v2h[n] = w2h & 0x00FF00FFu;
++                    }
++                    // Pack the four trits of each dword (bytes 0,2 from wl, bytes 1,3 from wh) and dot with the plain activation words: three dots per column.
++                    const int32_t q0 = int32_t(((w0l >> 8u) & 0x00FF00FFu) | (w0h & 0xFF00FF00u));
++                    const int32_t q1 = int32_t(((w1l >> 8u) & 0x00FF00FFu) | (w1h & 0xFF00FF00u));
++                    const int32_t q2 = int32_t(((w2l >> 8u) & 0x00FF00FFu) | (w2h & 0xFF00FF00u));
++                    [[unroll]] for (uint jj = 0; jj < nc; ++jj) {
++                        accA[jj][n] = DOT4(q0, yp0[jj], accA[jj][n]);
++                        accB[jj][n] = DOT4(q1, yp1[jj], accB[jj][n]);
++                        accB[jj][n] = DOT4(q2, yp2[jj], accB[jj][n]);
++                    }
++                }
++
++                if (t == 4u) {
++                    // qh: four trit levels of two bytes -> elements 120 + 2n + h, all in sub-block 3 (the scale of accB on lane 1 at this level). Lane 0 decodes zeros.
++                    int32_t yq0[CG], yq1[CG];
++                    [[unroll]] for (uint jj = 0; jj < nc; ++jj) {
++                        const uint  bbase = bx4[jj] * Q8_1_X4_DWORDS + 4u;
++                        const uvec2 yq = data_b_u64[(bbase >> 1u) + 15u];
++                        yq0[jj] = int32_t(yq.x);
++                        yq1[jj] = int32_t(yq.y);
++                    }
++                    [[unroll]] for (uint n = 0; n < NUM_ROWS; ++n) {
++                        uint vq = (sub != 0u) ? ((w6[n] & 0xFFu) | ((w6[n] & 0xFF00u) << 8u)) : 0u;
++                        uint wq;
++                        wq = MUL3(vq); vq = wq & 0x00FF00FFu;
++                        int32_t q01 = int32_t(((wq >> 8u) & 0x3u) | ((wq >> 16u) & 0x300u));
++                        wq = MUL3(vq); vq = wq & 0x00FF00FFu;
++                        q01 |= int32_t(((wq << 8u) & 0x30000u) | (wq & 0x03000000u));
++                        wq = MUL3(vq); vq = wq & 0x00FF00FFu;
++                        int32_t q23 = int32_t(((wq >> 8u) & 0x3u) | ((wq >> 16u) & 0x300u));
++                        wq = MUL3(vq);
++                        q23 |= int32_t(((wq << 8u) & 0x30000u) | (wq & 0x03000000u));
++                        [[unroll]] for (uint jj = 0; jj < nc; ++jj) {
++                            accB[jj][n] = DOT4(q01, yq0[jj], accB[jj][n]);
++                            accB[jj][n] = DOT4(q23, yq1[jj], accB[jj][n]);
++                        }
++                    }
++                }
++
++                // Fold into fp32 when the sub-block scale changes (after levels 1 and 3) and at the end; the ternary offset (-sum(q8) of the owned sub-blocks) is applied once at the end.
++                if (t == 1u || t == 3u || t == 4u) {
++                    [[unroll]] for (uint jj = 0; jj < nc; ++jj) {
++                        {
++                            float sA, sB, bias;
++                            if (t == 1u) {
++                                const vec2 ds0 = unpackHalf2x16(dsraw[jj].x);
++                                const vec2 ds2 = unpackHalf2x16(dsraw[jj].z);
++                                sA   = ds0.x;
++                                sB   = (sub != 0u) ? ds2.x : ds0.x;
++                                bias = 0.0f;
++                            } else if (t == 3u) {
++                                const vec2 ds1 = unpackHalf2x16(dsraw[jj].y);
++                                const vec2 ds3 = unpackHalf2x16(dsraw[jj].w);
++                                sA   = ds1.x;
++                                sB   = (sub != 0u) ? ds3.x : ds1.x;
++                                bias = 0.0f;
++                            } else {
++                                const vec2 ds0 = unpackHalf2x16(dsraw[jj].x);
++                                const vec2 ds1 = unpackHalf2x16(dsraw[jj].y);
++                                const vec2 ds2 = unpackHalf2x16(dsraw[jj].z);
++                                const vec2 ds3 = unpackHalf2x16(dsraw[jj].w);
++                                sA   = ds2.x;
++                                sB   = (sub != 0u) ? ds3.x : ds2.x;
++                                bias = (sub != 0u) ? (ds2.y + ds3.y) : (ds0.y + ds1.y);
++                            }
++                            [[unroll]] for (uint n = 0; n < NUM_ROWS; ++n) {
++                                const float sum = fma(sA, float(accA[jj][n]), fma(sB, float(accB[jj][n]), -bias));
++                                temp[j0 + jj][n] = fma(da[n], sum, temp[j0 + jj][n]);
++                                accA[jj][n] = 0;
++                                accB[jj][n] = 0;
++                            }
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++}
++
++void compute_outputs(const uint32_t first_row, const uint32_t num_rows) {
++    const uint tid = gl_LocalInvocationID.x;
++
++    get_offsets(a_offset, b_offset, d_offset);
++
++    num_blocks_per_row = p.ncols / QUANT_K;
++    sub        = tid & 1u;
++    blk_first  = tid >> 1u;
++    blk_stride = BLOCK_SIZE / 2u;
++    first_row_g = first_row;
++    num_rows_g  = num_rows;
++
++    // The multi-column path loops over the constant NUM_ROWS. Rows past the matrix (last workgroup) re-read the last valid row; reduce_result does not store them.
++    [[unroll]] for (uint n = 0; n < NUM_ROWS; ++n) {
++        arow[n] = (a_offset + (first_row + min(n, num_rows - 1u)) * num_blocks_per_row) * PTQ1_0_DWORDS;
++    }
++    [[unroll]] for (uint j = 0; j < NUM_COLS; ++j) {
++        // one block_q8_1_x4 covers exactly the 128 activations of one block
++        bcol[j] = (j*p.batch_stride_b + b_offset) / QUANT_K;
++    }
++
++    [[unroll]] for (uint j = 0; j < NUM_COLS; ++j) {
++        [[unroll]] for (uint n = 0; n < NUM_ROWS; ++n) {
++            temp[j][n] = FLOAT_TYPE(0.0f);
++        }
++    }
++
++    // One pass per column group, as guarded calls: the driver does not unroll a loop that contains the block loop, and one loop over all columns makes it hoist every load (spills at NUM_COLS = 8). NUM_COLS <= mul_mat_vec_max_cols (8).
++    process_group(0u);
++    if (NUM_COLS > 1u*CG) process_group(1u*CG);
++    if (NUM_COLS > 2u*CG) process_group(2u*CG);
++    if (NUM_COLS > 3u*CG) process_group(3u*CG);
++    if (NUM_COLS > 4u*CG) process_group(4u*CG);
++    if (NUM_COLS > 5u*CG) process_group(5u*CG);
++    if (NUM_COLS > 6u*CG) process_group(6u*CG);
++    if (NUM_COLS > 7u*CG) process_group(7u*CG);
++
++    reduce_result(temp, d_offset, first_row, num_rows, tid);
++}
++
++void main() {
++    const uint first_row = NUM_ROWS * (gl_WorkGroupID.x + gl_NumWorkGroups.x * gl_WorkGroupID.z);
++
++    // do NUM_ROWS at a time, unless there aren't enough remaining rows
++    if (first_row + NUM_ROWS <= p.stride_d) {
++        compute_outputs(first_row, NUM_ROWS);
++    } else {
++        if (first_row >= p.stride_d) {
++            return;
++        }
++        compute_outputs(first_row, p.stride_d - first_row);
++    }
++}
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/mul_mm.comp b/ggml/src/ggml-vulkan/vulkan-shaders/mul_mm.comp
+index 19d3787..0f9b6f0 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/mul_mm.comp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/mul_mm.comp
+@@ -200,6 +200,9 @@ shared FLOAT_TYPEV2 buf_b[BN * SHMEM_STRIDE];
+ shared ACC_TYPE coopmat_stage[TM * TN * NUM_WARPS];
+ #endif
+ 
++#if defined(DATA_A_PTQ1_0)
++#include "ptq1_0.glsl"
++#endif
+ #include "mul_mm_id_funcs.glsl"
+ #include "mul_mm_funcs.glsl"
+ 
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/mul_mm_funcs.glsl b/ggml/src/ggml-vulkan/vulkan-shaders/mul_mm_funcs.glsl
+index 588fb73..a5dd989 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/mul_mm_funcs.glsl
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/mul_mm_funcs.glsl
+@@ -299,6 +299,21 @@ void load_a_to_shmem(const uint pos_a, const uint row, const uint col, const uin
+     store_a(col, k_pair + 8, d * FLOAT_TYPEV2(kvalues_iq4nl[bitfieldExtract(vui, 4, 4)],
+                                             kvalues_iq4nl[vui >> 12]));
+ 
++#elif defined(DATA_A_PTQ1_0)
++    const uint idx = pos_a + col * p.stride_a / LOAD_VEC_A + row;
++
++    const uint ib  = idx / 16;
++    const uint grp = idx & 0xfu;      // which 8-element group inside the block
++    const uint e0  = grp * 8u;
++
++    const float d = float(data_a[ib].d);
++
++    const uint k_pair = row * LOAD_VEC_A / 2;
++    [[unroll]] for (uint l = 0; l < 4; ++l) {
++        store_a(col, k_pair + l, FLOAT_TYPEV2(
++            ptq1_0_trit(ib, 0u, e0 + 2u*l)      * d,
++            ptq1_0_trit(ib, 0u, e0 + 2u*l + 1u) * d));
++    }
+ #elif defined(DATA_A_MXFP4)
+     const uint idx = pos_a + col * p.stride_a / LOAD_VEC_A + row;
+     const uint k_pair = row * LOAD_VEC_A / 4;
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/ptq1_0.glsl b/ggml/src/ggml-vulkan/vulkan-shaders/ptq1_0.glsl
+new file mode 100644
+index 0000000..7eedd83
+--- /dev/null
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/ptq1_0.glsl
+@@ -0,0 +1,38 @@
++#ifndef PTQ1_0_GLSL
++#define PTQ1_0_GLSL
++
++// Shared PTQ1_0 trit accessor. Lives in its own header because two consumers need it
++// from different include chains: dequant_funcs.glsl (mul_mat_vec, get_rows,
++// copy_from_quant) and mul_mm.comp (via mul_mm_funcs.glsl), and mul_mm.comp does not
++// include dequant_funcs.glsl. Duplicating it would leave two copies that must stay in
++// step with the CPU codec in ggml-quants.c, where a divergence shows up as wrong
++// matmul results rather than a build error.
++//
++// Element order is not positional: a 16-byte chunk of qs where byte j carries
++// elements t*16+j, then an 8-byte chunk carrying 80 + t*8 + (j-16), then qh at four
++// trits per byte carrying 120 + t*2 + h. Trits come out by the base-3 remainder
++// recurrence t = (v*3)>>8, v = (v*3)&0xFF.
++float ptq1_0_trit(uint ib, uint a_offset, uint e) {
++    uint b;
++    uint n;
++    if (e < 80u) {
++        b = uint(data_a[a_offset + ib].qs[e & 15u]);
++        n = e >> 4u;
++    } else if (e < 120u) {
++        const uint t = e - 80u;
++        b = uint(data_a[a_offset + ib].qs[16u + (t & 7u)]);
++        n = t >> 3u;
++    } else {
++        const uint t = e - 120u;
++        b = uint(data_a[a_offset + ib].qh[t & 1u]);
++        n = t >> 1u;
++    }
++
++    uint v = b;
++    for (uint i = 0u; i < n; ++i) {
++        v = (v * 3u) & 0xFFu;
++    }
++    return float(int((v * 3u) >> 8u) - 1);
++}
++
++#endif // PTQ1_0_GLSL
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/types.glsl b/ggml/src/ggml-vulkan/vulkan-shaders/types.glsl
+index 99ce145..1ccc4f7 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/types.glsl
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/types.glsl
+@@ -212,6 +212,24 @@ struct block_q1_0
+ #define A_TYPE block_q1_0
+ #endif
+ 
++// Brain Engine 0137: PTQ1_0, ternary at group 128 (from PrismML's fork). Field order is block_ptq1_0's: qs, qh, then d.
++#define QUANT_K_PTQ1_0 128
++#define QUANT_R_PTQ1_0 1
++
++struct block_ptq1_0
++{
++    uint8_t qs[24];
++    uint8_t qh[2];
++    float16_t d;
++};
++
++#if defined(DATA_A_PTQ1_0)
++#define QUANT_K QUANT_K_PTQ1_0
++#define QUANT_R QUANT_R_PTQ1_0
++#define QUANT_AUXF 1
++#define A_TYPE block_ptq1_0
++#endif
++
+ #define QUANT_K_Q2_0 64
+ #define QUANT_R_Q2_0 1
+ 
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp b/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
+index ef3d06f..468bba0 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
+@@ -50,6 +50,7 @@ const std::vector<std::string> type_names = {
+     "f32",
+     "f16",
+     "q1_0",
++    "ptq1_0", // Brain Engine 0137
+     "q2_0",
+     "q4_0",
+     "q4_1",
+@@ -250,8 +251,13 @@ bool is_lut_quant(const std::string& type_name) {
+     return is_iq_quant(type_name) || type_name == "mxfp4" || type_name == "nvfp4";
+ }
+ 
++// Brain Engine 0137: PTQ1_0 keeps per-type matmul shaders like the LUT quants (from PrismML's fork)
++bool is_prism_quant(const std::string& type_name) {
++    return type_name == "ptq1_0";
++}
++
+ std::string lut_load_vec_a(const std::string& type_name) {
+-    if (type_name == "iq1_s" || type_name == "iq1_m" || type_name == "iq2_xxs" || type_name == "iq2_xs" || type_name == "iq2_s" || type_name == "iq4_xs") {
++    if (type_name == "iq1_s" || type_name == "iq1_m" || type_name == "iq2_xxs" || type_name == "iq2_xs" || type_name == "iq2_s" || type_name == "iq4_xs" || type_name == "ptq1_0") {
+         return "8";
+     }
+     return "4";
+@@ -602,6 +608,10 @@ void matmul_shaders(bool fp16, MatMulIdType matmul_id_type, bool coopmat, bool c
+         if (tname == "bf16") {
+             continue;
+         }
++        // PTQ1_0 has no coopmat2 decoder in dequant_funcs_cm2.glsl, so no mul_mm_cm2 for it (scalar and coopmat1 paths only)
++        if (coopmat2 && tname == "ptq1_0") {
++            continue;
++        }
+ 
+         // Float types keep per-type compilation (different accumulation loop structure)
+         if (tname == "f32" || tname == "f16") {
+@@ -639,7 +649,7 @@ void matmul_shaders(bool fp16, MatMulIdType matmul_id_type, bool coopmat, bool c
+             string_to_spv(shader_name + "_" + tname + "_q8_1", "mul_mmq_cm1.comp", merge_maps(merge_maps(base_dict, float_type_dict), {{data_a_key, "1"}, {"D_TYPE", "float"}, {"D_TYPE_VEC4", "vec4"}}), fp16, coopmat, coopmat2, f16acc);
+         }
+ 
+-        if (is_lut_quant(tname)) {
++        if (is_lut_quant(tname) || is_prism_quant(tname)) {
+             std::string lva = lut_load_vec_a(tname);
+ 
+             string_to_spv(shader_name + "_" + tname + "_f16" + dot2_sfx, source_name, merge_maps(merge_maps(base_dict, float_type_dict), {{data_a_key, "1"}, {"LOAD_VEC_A", lva}, {"LOAD_VEC_B", load_vec}, {"B_TYPE", aligned_b_type_f16}, {"B_TYPE_SCALAR", "float16_t"}, {"B_TYPEV4", "f16vec4"}, {"D_TYPE", "float"}}), fp16, coopmat, coopmat2, f16acc);
+@@ -794,7 +804,7 @@ void process_shaders() {
+     for (const auto& tname : type_names) {
+         // mul mat vec
+         std::string data_a_key = "DATA_A_" + to_uppercase(tname);
+-        std::string shader = (string_ends_with(tname, "_k") || string_starts_with(tname, "iq1_") || string_starts_with(tname, "iq2_") || string_starts_with(tname, "iq3_") || tname == "iq4_xs" || tname == "tq2_0" || tname == "tq1_0") ? "mul_mat_vec_" + tname + ".comp" : "mul_mat_vec.comp";
++        std::string shader = (string_ends_with(tname, "_k") || string_starts_with(tname, "iq1_") || string_starts_with(tname, "iq2_") || string_starts_with(tname, "iq3_") || tname == "iq4_xs" || tname == "tq2_0" || tname == "tq1_0" || tname == "ptq1_0") ? "mul_mat_vec_" + tname + ".comp" : "mul_mat_vec.comp";
+ 
+         string_to_spv("mul_mat_vec_" + tname + "_f32_f32", shader, merge_maps(base_dict, {{data_a_key, "1"}, {"B_TYPE", "float"}, {"B_TYPEV2", "vec2"}, {"B_TYPEV4", "vec4"}, {"D_TYPE", "float"}}));
+         string_to_spv("mul_mat_vec_" + tname + "_f16_f32", shader, merge_maps(base_dict, {{data_a_key, "1"}, {"B_TYPE", "float16_t"}, {"B_TYPEV2", "f16vec2"}, {"B_TYPEV4", "f16vec4"}, {"D_TYPE", "float"}}));
+@@ -825,14 +835,16 @@ void process_shaders() {
+ 
+         // mul mat vec with integer dot product
+ #if defined(GGML_VULKAN_INTEGER_DOT_GLSLC_SUPPORT)
+-        if (is_legacy_quant(tname) || tname == "mxfp4" || is_k_quant(tname) || tname == "iq1_s" || tname == "iq1_m" || tname == "iq4_xs") {
+-            string_to_spv("mul_mat_vec_" + tname + "_q8_1_f32", "mul_mat_vecq.comp", merge_maps(base_dict, {{data_a_key, "1"}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}, {"FLOAT_TYPEV2", "vec2"}, {"ACC_TYPE", "float"}}));
+-            string_to_spv("mul_mat_vec_" + tname + "_q8_1_f32_subgroup", "mul_mat_vecq.comp", merge_maps(base_dict, {{data_a_key, "1"}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}, {"FLOAT_TYPEV2", "vec2"}, {"ACC_TYPE", "float"}, {"USE_SUBGROUP_ADD", "1"}}));
+-            string_to_spv("mul_mat_vec_" + tname + "_q8_1_f32_subgroup_no_shmem", "mul_mat_vecq.comp", merge_maps(base_dict, {{data_a_key, "1"}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}, {"FLOAT_TYPEV2", "vec2"}, {"ACC_TYPE", "float"}, {"USE_SUBGROUP_ADD_NO_SHMEM", "1"}}));
+-
+-            string_to_spv("mul_mat_vec_id_" + tname + "_q8_1_f32", "mul_mat_vecq.comp", merge_maps(base_dict, {{"MUL_MAT_ID", "1"}, {data_a_key, "1"}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}, {"FLOAT_TYPEV2", "vec2"}, {"ACC_TYPE", "float"}}));
+-            string_to_spv("mul_mat_vec_id_" + tname + "_q8_1_f32_subgroup", "mul_mat_vecq.comp", merge_maps(base_dict, {{"MUL_MAT_ID", "1"}, {data_a_key, "1"}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}, {"FLOAT_TYPEV2", "vec2"}, {"ACC_TYPE", "float"}, {"USE_SUBGROUP_ADD", "1"}}));
+-            string_to_spv("mul_mat_vec_id_" + tname + "_q8_1_f32_subgroup_no_shmem", "mul_mat_vecq.comp", merge_maps(base_dict, {{"MUL_MAT_ID", "1"}, {data_a_key, "1"}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}, {"FLOAT_TYPEV2", "vec2"}, {"ACC_TYPE", "float"}, {"USE_SUBGROUP_ADD_NO_SHMEM", "1"}}));
++        if (is_legacy_quant(tname) || tname == "mxfp4" || is_k_quant(tname) || tname == "iq1_s" || tname == "iq1_m" || tname == "iq4_xs" || tname == "ptq1_0") {
++            // PTQ1_0 has its own integer-dot shader (two lanes per 128-element block)
++            const std::string mmvq_shader = (tname == "ptq1_0") ? "mul_mat_vecq_ptq1_0.comp" : "mul_mat_vecq.comp";
++            string_to_spv("mul_mat_vec_" + tname + "_q8_1_f32", mmvq_shader, merge_maps(base_dict, {{data_a_key, "1"}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}, {"FLOAT_TYPEV2", "vec2"}, {"ACC_TYPE", "float"}}));
++            string_to_spv("mul_mat_vec_" + tname + "_q8_1_f32_subgroup", mmvq_shader, merge_maps(base_dict, {{data_a_key, "1"}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}, {"FLOAT_TYPEV2", "vec2"}, {"ACC_TYPE", "float"}, {"USE_SUBGROUP_ADD", "1"}}));
++            string_to_spv("mul_mat_vec_" + tname + "_q8_1_f32_subgroup_no_shmem", mmvq_shader, merge_maps(base_dict, {{data_a_key, "1"}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}, {"FLOAT_TYPEV2", "vec2"}, {"ACC_TYPE", "float"}, {"USE_SUBGROUP_ADD_NO_SHMEM", "1"}}));
++
++            string_to_spv("mul_mat_vec_id_" + tname + "_q8_1_f32", mmvq_shader, merge_maps(base_dict, {{"MUL_MAT_ID", "1"}, {data_a_key, "1"}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}, {"FLOAT_TYPEV2", "vec2"}, {"ACC_TYPE", "float"}}));
++            string_to_spv("mul_mat_vec_id_" + tname + "_q8_1_f32_subgroup", mmvq_shader, merge_maps(base_dict, {{"MUL_MAT_ID", "1"}, {data_a_key, "1"}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}, {"FLOAT_TYPEV2", "vec2"}, {"ACC_TYPE", "float"}, {"USE_SUBGROUP_ADD", "1"}}));
++            string_to_spv("mul_mat_vec_id_" + tname + "_q8_1_f32_subgroup_no_shmem", mmvq_shader, merge_maps(base_dict, {{"MUL_MAT_ID", "1"}, {data_a_key, "1"}, {"D_TYPE", "float"}, {"FLOAT_TYPE", "float"}, {"FLOAT_TYPEV2", "vec2"}, {"ACC_TYPE", "float"}, {"USE_SUBGROUP_ADD_NO_SHMEM", "1"}}));
+         }
+ #endif
+ 
+@@ -1372,7 +1384,7 @@ void write_output_files() {
+ 
+     for (const std::string& btype : btypes) {
+     for (const auto& tname : type_names) {
+-        if (btype == "q8_1" && !is_legacy_quant(tname) && tname != "mxfp4" && !is_k_quant(tname) && tname != "iq1_s" && tname != "iq1_m" && tname != "iq4_xs") {
++        if (btype == "q8_1" && !is_legacy_quant(tname) && tname != "mxfp4" && !is_k_quant(tname) && tname != "iq1_s" && tname != "iq1_m" && tname != "iq4_xs" && tname != "ptq1_0") {
+             continue;
+         }
+         hdr << "extern const void * arr_dmmv_"   << tname << "_" << btype << "_f32_data[3];\n";

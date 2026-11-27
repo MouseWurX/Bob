@@ -12,14 +12,14 @@ Graphics memory is what the card has (Task Manager, Performance, GPU, "Dedicated
 | 4 GB card | No graphics card (processor only) | Qwen3 4B Instruct 2507 (2.5 GB, on your card, from the Brains page) | - | none |
 | 6 GB card | 6 GB card (most laptops) | Qwen3 4B Instruct 2507 (2.5 GB, on your card) | Qwen2.5 Coder 7B | Z-Image Turbo (6 GB card version) |
 | 8 GB card | 8 GB card | Gemma 4 E4B (5.2 GB, on your card) | Qwen3.6 35B-A3B (8 GB card version) | Z-Image Turbo (8 GB card version) |
-| 10 GB card | 8 GB card | Gemma 4 E4B (5.2 GB, on your card) | Qwen3.6 35B-A3B (8 GB card version) | Z-Image Turbo (8 GB card version) |
+| 10 GB card | 8 GB card | Ternary Bonsai 2.5 27B (PrismML) (7.7 GB, on your card, from the Brains page) | same brain | Z-Image Turbo (8 GB card version) |
 | 12 GB card | 16 GB card or more | Underdog Saluki 27B (7.9 GB, on your card, from the Brains page) | same brain | Z-Image Turbo |
 | 16 GB card | 16 GB card or more | Qwen3.6 35B-A3B (23 GB, card + memory) | same brain | Z-Image Turbo |
 | 24 GB card or more | 16 GB card or more | Qwen3.6 35B-A3B (23 GB, on your card) | same brain | Z-Image Turbo |
 | Built-in graphics, 16 GB memory | Built-in graphics (handhelds and thin laptops) | Qwen3 4B Instruct 2507 (2.5 GB, shared memory) | Qwen2.5 Coder 7B | Z-Image Turbo (6 GB card version) |
 | Built-in graphics, 32 GB memory | Built-in graphics (handhelds and thin laptops) | Qwen3 4B Instruct 2507 (2.5 GB, shared memory) | Qwen2.5 Coder 7B | Z-Image Turbo (6 GB card version) |
 | Mac, 8 GB | 6 GB card (most laptops) | Qwen3 4B Instruct 2507 (2.5 GB, in memory) | Qwen2.5 Coder 7B | Z-Image Turbo (6 GB card version) |
-| Mac, 16 GB | 8 GB card | Gemma 4 E4B (5.2 GB, in memory) | Qwen3.6 35B-A3B (8 GB card version) | Z-Image Turbo (8 GB card version) |
+| Mac, 16 GB | 8 GB card | Ternary Bonsai 2.5 27B (PrismML) (7.7 GB, in memory, from the Brains page) | same brain | Z-Image Turbo (8 GB card version) |
 | Mac, 24 GB | 16 GB card or more | Qwen3.6 35B-A3B (23 GB, memory + storage) | same brain | Z-Image Turbo |
 | Mac, 32 GB or more | 16 GB card or more | Qwen3.6 35B-A3B (23 GB, memory + storage) | same brain | Z-Image Turbo |
 | Raspberry Pi, 4 GB | Raspberry Pi or ARM board, 4 GB | Qwen3.5 2B (1.9 GB, in memory, on the processor) | - | none |

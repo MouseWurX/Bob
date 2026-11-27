@@ -461,10 +461,10 @@ Every brain and helper Bob can download from his own catalogue, made from [app/c
 <!-- models:start -->
 <!-- Written by installer/make-model-list.js from app/catalog.json. Don't edit by hand: change the catalogue and run it again. -->
 
-Bob's catalogue has **90 brains** and **19 helpers** for pictures, video, music, voices and memory. Each one is a pinned file, checked against its sha256 when it downloads. **Fits** is the smallest hardware tier it's sized for ([the tiers](#set-up-for-your-hardware)). **Tried in our lab** (10 brains) means it ran on our own PCs before Bob would suggest it. Everything else is listed but never suggested until it's tried. **Size** is the download.
+Bob's catalogue has **92 brains** and **19 helpers** for pictures, video, music, voices and memory. Each one is a pinned file, checked against its sha256 when it downloads. **Fits** is the smallest hardware tier it's sized for ([the tiers](#set-up-for-your-hardware)). **Tried in our lab** (12 brains) means it ran on our own PCs before Bob would suggest it. Everything else is listed but never suggested until it's tried. **Size** is the download.
 
 <details>
-<summary><b>Brains</b> (64)</summary>
+<summary><b>Brains</b> (66)</summary>
 
 | Brain | File | Size | Fits | Licence | Status |
 |---|---|---|---|---|---|
@@ -481,6 +481,7 @@ Bob's catalogue has **90 brains** and **19 helpers** for pictures, video, music,
 | Gemma 4 E2B | Q4_0 | 3.4 GB | 6 GB card or built-in graphics | Apache 2.0 | Measured in our lab (on built-in graphics), not yet one of Bob's picks |
 | Qwen3.5 4B | Q4_K_M | 3.4 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Qwen3.5 4B Turbo | Q4_K_M | 3.5 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Dory 1.0 4B (NVIDIA) | Q5_K_M | 3.7 GB | 6 GB card | OpenMDW 1.1 | Tried in our lab |
 | DeepSeek R1 Distill Qwen 7B | Q4_K_M | 4.7 GB | 6 GB card | MIT (built on Qwen2.5, Apache 2.0) | Unproven in our lab, as we have yet to test |
 | Qwen2.5 Coder 7B | Q4_K_M | 4.7 GB | 6 GB card | Apache 2.0 | Tried in our lab |
 | DeepSeek R1 Distill Llama 8B | Q4_K_M | 4.9 GB | 6 GB card | MIT, plus Meta's Llama 3.1 licence | Unproven in our lab, as we have yet to test |
@@ -496,6 +497,7 @@ Bob's catalogue has **90 brains** and **19 helpers** for pictures, video, music,
 | Qwen3.5 9B | Q4_K_M | 6.6 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Qwen3.5 9B Turbo | Q4_K_M | 6.8 GB | 8 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Gemma 4 12B | Q4_0 | 7.4 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Ternary Bonsai 2.5 27B (PrismML) | Q2_0 | 7.7 GB | 12 GB card | Apache 2.0 | Tried in our lab |
 | DeepSeek R1 Distill Qwen 14B | Q4_K_M | 9 GB | 12 GB card | MIT (built on Qwen2.5, Apache 2.0) | Unproven in our lab, as we have yet to test |
 | Hermes 4 14B (Nous Research) | Q4_K_M | 9 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Ministral 3 14B | Q4_K_M | 9.1 GB | 12 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
