@@ -33,7 +33,9 @@ try {
   page.on('requestfailed', (r) => { if (!/\/api\/events/.test(r.url())) problems.push(`failed: ${r.url()} ${r.failure()?.errorText || ''}`); });
   await page.goto(`http://127.0.0.1:${PORT}/phone/`, { waitUntil: 'load' });
   await page.waitForTimeout(2500);
-  await page.screenshot({ path: path.join(out, '1-chat.png') });
+  await page.screenshot({ path: path.join(out, '1-chat.png'), caret: 'initial' });
+  // Playwright hides the text cursor for a screenshot with a <style> of its own, which the page's style rule blocks
+  // (one refusal per shot), so the shots keep the cursor: every refusal left is the page's own.
   // What a style rule (style-src 'self') would block: <style> blocks and style="" attributes on the page.
   const inline = await page.evaluate(() => [...document.querySelectorAll('style, [style]')].map((e) => e.outerHTML.slice(0, 160)));
   for (const h of inline) console.log(`inline style on the page: ${h}`);
@@ -41,15 +43,15 @@ try {
   if (!bridge) problems.push('the web bridge did not load');
   await page.click('#open-menu');
   await page.waitForTimeout(800);
-  await page.screenshot({ path: path.join(out, '2-menu.png') });
+  await page.screenshot({ path: path.join(out, '2-menu.png'), caret: 'initial' });
   if (await page.locator('#menu').isHidden()) problems.push('the menu did not open');
   await page.locator('#menu .back').first().click();
   await page.fill('#text', 'Hello from the iPhone check');
-  await page.screenshot({ path: path.join(out, '3-typing.png') });
+  await page.screenshot({ path: path.join(out, '3-typing.png'), caret: 'initial' });
   // Leaving the screen and coming back (PR #373): no errors, page still answers.
   await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
   await page.waitForTimeout(1500);
-  await page.screenshot({ path: path.join(out, '4-back-again.png') });
+  await page.screenshot({ path: path.join(out, '4-back-again.png'), caret: 'initial' });
 } catch (e) {
   problems.push(`check stopped: ${e.message}`);
 } finally {
