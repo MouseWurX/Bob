@@ -38,7 +38,7 @@ globalThis.BobShared = {
    "name": "Dory 1.0 4B (NVIDIA)",
    "family": "Nemotron",
    "pick": "optional",
-   "what": "Best of the phone brains at real jobs (39 of 65 of Bob's held-out jobs, against 10 for Gemma 4 E2B), but slower and bigger: about 3.7 GB, and no pictures. Thinks before it answers.",
+   "what": "Best of the phone brains at real jobs (39 of 65 of Bob's held-out jobs, against 10 for Gemma 4 E2B), but slower and bigger: about 3.7 GB, and no pictures. Thinks before it answers. Not the pick yet only because it hasn't run on a real phone.",
    "license": "OpenMDW 1.1",
    "maxTokens": 1024,
    "file": {
