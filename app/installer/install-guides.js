@@ -138,10 +138,7 @@ export function adviceFor(input, catalog, phone) {
     if (!m) return null;
     const slots = (pack.slots?.[id] || extra?.slots?.[id] || []).map((s) => SLOT[s] || s);
     const brain = ['chat', 'coding'].includes(m.category);
-    // A Mac or an ARM board keeps a brain in its one pool of memory; the set made for it already fits that, so the
-    // card-and-memory sum (made for PCs) isn't used for them here.
-    const shared = hw.unified || hw.arm;
-    const place = brain && !shared && (hw.ramGB || hw.vramGB) ? placeFor(m, hw) : shared && brain ? { word: hw.arm ? 'On the processor' : 'In memory', where: 'memory' } : null;
+    const place = brain && (hw.ramGB || hw.vramGB) ? placeFor(m, hw) : null;
     return {
       name: m.name, jobs: slots.join(', '), size: gb(m.sizeGB),
       where: place ? (hw.integrated ? 'Shared memory' : place.word) : brain ? '' : (m.category === 'images' || m.category === 'video') ? 'Graphics' : 'Processor',

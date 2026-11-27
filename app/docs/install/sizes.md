@@ -20,10 +20,10 @@ Graphics memory is what the card has (Task Manager, Performance, GPU, "Dedicated
 | Built-in graphics, 32 GB memory | Built-in graphics (handhelds and thin laptops) | Qwen3 4B Instruct 2507 (2.5 GB, shared memory) | Qwen2.5 Coder 7B | Z-Image Turbo (6 GB card version) |
 | Mac, 8 GB | 6 GB card (most laptops) | Qwen3 4B Instruct 2507 (2.5 GB, in memory) | Qwen2.5 Coder 7B | Z-Image Turbo (6 GB card version) |
 | Mac, 16 GB | 8 GB card | Gemma 4 E4B (5.2 GB, in memory) | Qwen3.6 35B-A3B (8 GB card version) | Z-Image Turbo (8 GB card version) |
-| Mac, 24 GB | 16 GB card or more | Qwen3.6 35B-A3B (23 GB, in memory) | same brain | Z-Image Turbo |
-| Mac, 32 GB or more | 16 GB card or more | Qwen3.6 35B-A3B (23 GB, in memory) | same brain | Z-Image Turbo |
-| Raspberry Pi, 4 GB | Raspberry Pi or ARM board, 4 GB | Qwen3.5 2B (1.9 GB, on the processor) | - | none |
-| Raspberry Pi, 8 GB or more | Raspberry Pi or ARM board, 8 GB or more | Gemma 4 E2B (3.4 GB, on the processor) | - | none |
+| Mac, 24 GB | 16 GB card or more | Qwen3.6 35B-A3B (23 GB, memory + storage) | same brain | Z-Image Turbo |
+| Mac, 32 GB or more | 16 GB card or more | Qwen3.6 35B-A3B (23 GB, memory + storage) | same brain | Z-Image Turbo |
+| Raspberry Pi, 4 GB | Raspberry Pi or ARM board, 4 GB | Qwen3.5 2B (1.9 GB, in memory, on the processor) | - | none |
+| Raspberry Pi, 8 GB or more | Raspberry Pi or ARM board, 8 GB or more | Gemma 4 E2B (3.4 GB, in memory, on the processor) | - | none |
 | Android, 6 GB | Phone brain | Gemma 4 E2B (2.8 GB, on the phone) | - | none |
 | Android, 8 GB or more | Phone brain | Gemma 4 E2B (2.8 GB, on the phone) | - | none |
 
