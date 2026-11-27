@@ -13,6 +13,7 @@ Everything written about Bob, in one list. New here? Start with the [install gui
 | [Bob and similar projects](COMPARISON.md) | Bob next to other local AI apps, in their own words. |
 | [Journey screenshots](JOURNEY-GALLERY.md) | Every Journey screen at full size: the world, towns, fights, every menu and every race. |
 | [What's new](../../CHANGELOG.md) · [release notes](releases/) | Every release, newest first. |
+| [Bug Buster](BUG-BUSTER.md) | Our worst bugs: what broke, why, the code involved, and how we fixed it. |
 
 ## Brains and benchmarks
 
