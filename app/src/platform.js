@@ -73,7 +73,7 @@ export function groupSpawnOptions(os_ = OS) { return os_ === 'win' ? {} : { deta
 
 // Which features exist on which computer. Windows-only parts are hidden elsewhere instead of failing when used.
 //   defender     Microsoft Defender scans and its alerts (Security and privacy Hand)
-//   appsHand     using other apps' windows (installer/bob-apps.ps1, Windows UI Automation)
+//   appsHand     using other apps' windows (Windows UI Automation; a trial on a Mac and Linux, see hands-settings.js)
 //   wakeTask     Windows Task Scheduler waking Bob for schedules (schedules inside Bob work everywhere)
 //   gamingCard   the Gaming session's graphics card switch (reads NVIDIA cards; a Mac shares its memory)
 //   updateBob    Update Bob from GitHub's newest release (everywhere), or from the source folder (Windows)
@@ -82,7 +82,7 @@ export function groupSpawnOptions(os_ = OS) { return os_ === 'win' ? {} : { deta
 //   ownEngines   Bob's own engine downloads (llama.cpp, stable-diffusion.cpp...)
 export const FEATURES = {
   defender: ['win'],
-  appsHand: ['win'],
+  appsHand: ['win', 'mac', 'linux'],
   wakeTask: ['win'],
   gamingCard: ['win', 'linux'],
   updateBob: ['win', 'mac', 'linux'],

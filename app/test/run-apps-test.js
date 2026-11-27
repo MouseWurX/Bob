@@ -255,7 +255,8 @@ const after = await fake.runTool('app_act', { window: 'notepad', action: 'click'
 check('after Stop everything the Apps hand is off', /Hands are off in Settings/.test(after.text));
 
 // The helper itself: off Windows the real one is refused with a reason
-if (process.platform !== 'win32') check('off Windows the real helper says it needs Windows', throws(() => new AppsDriver().start(), /Windows/));
+// Off Windows the trial helpers start instead (test/run-apps-unix-test.js); on Windows it is still bob-apps.ps1.
+check('on Windows the real helper is bob-apps.ps1', new AppsDriver({ os_: 'win' }).defaultCommand().some((a) => /bob-apps\.ps1$/.test(a)));
 
 // ---------- Honesty: old errors, claims with no tool ----------
 {

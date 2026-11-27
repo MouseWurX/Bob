@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 import { packFor } from '../public/fit.js';
 import { enginesFor } from '../public/equip.js';
 import { capabilities } from './capabilities.js';
-import { HANDS, handsSettings, handHere, cleanHands } from './hands-settings.js';
+import { HANDS, handsSettings, handHere, handTrial, cleanHands } from './hands-settings.js';
 import { saveSettings } from './config.js';
 
 // Each capability: which slot it fills, which catalog models can do it, and an engine it always needs.
@@ -47,7 +47,7 @@ export function switchFor(cfg, key) {
   const m = /^hand:(\w+)$/.exec(key || '');
   if (m && HANDS[m[1]]) {
     const id = m[1], h = handsSettings(cfg), hand = HANDS[id];
-    if (!handHere(id)) return null;
+    if (!handHere(id) || handTrial(id)) return null; // a trial Hand is switched on in Settings, Hands only
     if (h.held) return { key, name: hand.label, held: true, where: 'the ✋ Hands switch on the chat page', what: HAND_CAN[id] || hand.label };
     if (h.enabled && h[id]?.on === true) return null;
     return { key, name: `Let Bob use Hands, ${hand.label}`, where: 'Settings, Hands', what: HAND_CAN[id] || hand.label, hands: cleanHands({ ...h, enabled: true, [id]: { on: true } }), free: h.free === true, folders: id === 'files' && !(h.folders || []).length };

@@ -120,6 +120,7 @@
     "test/run-answer-checks-test.js",
     "test/run-hands-schedules-test.js",
     "test/run-apps-test.js",
+    "test/run-apps-unix-test.js",
     "test/run-apps-route-test.js",
     "test/run-settings-page-test.js",
     "test/run-idle-unload-test.js",
@@ -469,7 +470,9 @@
     "asarUnpack": [
       "audio/**",
       "model3d/**",
-      "engines/**"
+      "engines/**",
+      "installer/bob-apps-linux.py",
+      "installer/bob-apps-mac.js"
     ]
   }
 }

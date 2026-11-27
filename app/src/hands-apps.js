@@ -11,13 +11,17 @@
 // Never: the Run hand's jobs (terminals, PowerShell, cmd), admin tools (Registry Editor, Task Manager, MMC),
 // password managers, Windows sign-in or security prompts, password fields, or Bob's own window (so he can
 // never approve his own cards).
+//
+// A Mac and Linux (a trial, see HANDS.apps.trial): the same JSON lines, from installer/bob-apps-mac.js (JavaScript for
+// Automation: macOS Accessibility through System Events, unproven in our lab, as we have yet to test it) and
+// installer/bob-apps-linux.py (AT-SPI, the Linux accessibility bus, with xdotool on X11 or ydotool on Wayland).
 import { saysNoSave } from './no-save.js'; // 1.5.208: "do not save the file"
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { appDir } from './config.js';
-import { handOn, handOffWhy, HANDS, limitOn } from './hands-settings.js';
+import { appDir, unpackedDir } from './config.js';
+import { handOn, handOffWhy, HANDS, limitOn, handsOs } from './hands-settings.js';
 import { eyesCheck, eyesOn, eyesWhy } from './eyes.js';
 
 const fn = (name, description, properties, required = Object.keys(properties)) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
@@ -36,14 +40,26 @@ export const BLOCKED_PROCESSES = [
   // Bob himself (and Electron running him from source).
   'bob', 'electron'
 ];
+// A Mac and Linux: terminals and shells, admin and system tools, sign-in and password prompts, keychains. The Mac and
+// Linux helpers keep their own copy of the ones on their computer (two locks, not one).
+export const BLOCKED_PROCESSES_UNIX = [
+  'terminal', 'iterm2', 'warp', 'ghostty', 'alacritty', 'kitty', 'wezterm', 'wezterm-gui', 'gnome-terminal', 'gnome-terminal-server', 'konsole', 'xterm', 'uxterm', 'tilix', 'xfce4-terminal', 'terminator', 'foot', 'ptyxis', 'kgx', 'lxterminal', 'mate-terminal', 'qterminal', 'sh', 'zsh', 'fish', 'dash', 'sudo', 'su', 'pkexec', 'osascript', 'script editor', 'automator',
+  'activity monitor', 'disk utility', 'system settings', 'system preferences', 'console', 'directory utility', 'gnome-system-monitor', 'plasma-systemmonitor', 'ksysguard', 'gparted', 'gnome-disks', 'synaptic', 'timeshift',
+  'securityagent', 'coreservicesuiagent', 'loginwindow', 'universalaccessauthwarn', 'polkit-gnome-authentication-agent-1', 'polkit-kde-authentication-agent-1', 'lxpolkit', 'ssh-askpass', 'gcr-prompter', 'gnome-shell',
+  'keychain access', 'passwords', 'seahorse', 'kwalletmanager', 'kwalletmanager5', '1password 7', 'proton pass'
+];
+// Terminals and shells on every computer: commands go through the Run hand instead.
+const TERMINALS = ['cmd', 'powershell', 'pwsh', 'powershell_ise', 'windowsterminal', 'wt', 'conhost', 'openconsole', 'wsl', 'bash', 'wscript', 'cscript', 'mshta', 'terminal', 'iterm2', 'warp', 'ghostty', 'alacritty', 'kitty', 'wezterm', 'wezterm-gui', 'gnome-terminal', 'gnome-terminal-server', 'konsole', 'xterm', 'uxterm', 'tilix', 'xfce4-terminal', 'terminator', 'foot', 'ptyxis', 'kgx', 'lxterminal', 'mate-terminal', 'qterminal', 'sh', 'zsh', 'fish', 'dash', 'osascript', 'script editor', 'automator'];
 // Window titles that are never touched, whatever the app.
-const BLOCKED_TITLE = /\b(password|passphrase|credential|windows security|user account control|sign[- ]?in to windows|bitlocker|recovery key|2fa|two[- ]factor|one[- ]time code)\b/i;
+const BLOCKED_TITLE = /\b(password|passphrase|credential|windows security|user account control|sign[- ]?in to windows|bitlocker|recovery key|2fa|two[- ]factor|one[- ]time code|authentication required|unlock keyring|keychain|filevault)\b/i;
 // Start menu names Bob won't open (the same tools by their friendly names).
-const BLOCKED_APP_NAME = /\b(command prompt|powershell|terminal|registry editor|task manager|computer management|disk management|group policy|local security policy|services|event viewer|system configuration|resource monitor|performance monitor|user accounts|credential manager|windows security|bitlocker|recovery|reset this pc|control panel|wsl|ubuntu|debian|keepass|1password|bitwarden|dashlane|lastpass|enpass|nordpass|roboform|keeper|proton pass)\b/i;
+const BLOCKED_APP_NAME = /\b(command prompt|powershell|terminal|registry editor|task manager|computer management|disk management|group policy|local security policy|services|event viewer|system configuration|resource monitor|performance monitor|user accounts|credential manager|windows security|bitlocker|recovery|reset this pc|control panel|wsl|ubuntu|debian|keepass|1password|bitwarden|dashlane|lastpass|enpass|nordpass|roboform|keeper|proton pass|iterm2?|xterm|uxterm|konsole|alacritty|wezterm|tilix|ghostty|script editor|automator|activity monitor|disk utility|keychain access|system settings|system preferences|system monitor|gparted|seahorse|passwords and keys|kwallet|synaptic|timeshift)\b/i;
+// Whole names only (they are ordinary words inside other apps' names).
+const BLOCKED_APP_EXACT = /^(console|passwords|settings|warp|kitty|terminator|disks|foot)$/i;
 
 // "Don't send anything out" (a hard limit, on by default): apps where typing or a Send button sends things off
 // the PC. In these Bob may look and click around, but not type, press keys, or click Send/Post/Upload/Share.
-const SEND_PROCESSES = /^(chrome|msedge|firefox|brave|opera|opera_gx|vivaldi|arc|iexplore|outlook|olk|hxoutlook|thunderbird|mailspring|discord|slack|teams|ms-teams|telegram|whatsapp|signal|zoom|skype|messenger|element|thunderbird)$/;
+const SEND_PROCESSES = /^(chrome|msedge|firefox|brave|opera|opera_gx|vivaldi|arc|iexplore|outlook|olk|hxoutlook|thunderbird|mailspring|discord|slack|teams|ms-teams|telegram|whatsapp|signal|zoom|skype|messenger|element|thunderbird|safari|mail|messages|facetime|google chrome|microsoft edge|microsoft outlook|microsoft teams|zoom\.us|google-chrome|google-chrome-stable|chromium|chromium-browser|firefox-esr|firefox-bin|brave-browser|microsoft-edge|epiphany|falkon|konqueror|evolution|geary|kmail|telegram-desktop|signal-desktop|element-desktop|zoom|teams-for-linux)$/;
 const SEND_BUTTON = /\b(send|post|submit|upload|share|publish|reply|tweet|comment|attach)\b/i;
 export function sendOutBlock(cfg, w, action, target = {}) {
   if (!limitOn(cfg, 'sendOut')) return '';
@@ -60,15 +76,15 @@ export function blockedWindow(w, { ownPids = [] } = {}) {
   if (!w) return 'That window is gone.';
   const proc = String(w.process || '').toLowerCase().replace(/\.exe$/, '');
   if (ownPids.includes(Number(w.pid))) return "That's Bob's own window. Bob never clicks his own buttons.";
-  if (BLOCKED_PROCESSES.includes(proc)) {
-    if (['cmd', 'powershell', 'pwsh', 'powershell_ise', 'windowsterminal', 'wt', 'conhost', 'openconsole', 'wsl', 'bash', 'wscript', 'cscript', 'mshta'].includes(proc)) return 'Terminals are off limits to the Apps hand. Commands go through the Run hand, which shows the exact command.';
+  if (BLOCKED_PROCESSES.includes(proc) || BLOCKED_PROCESSES_UNIX.includes(proc)) {
+    if (TERMINALS.includes(proc)) return 'Terminals are off limits to the Apps hand. Commands go through the Run hand, which shows the exact command.';
     if (proc === 'bob' || proc === 'electron') return "That's Bob's own window. Bob never clicks his own buttons.";
     return `${w.process} is off limits (admin, security or password app).`;
   }
   if (BLOCKED_TITLE.test(String(w.title || ''))) return 'That window looks like a password or security prompt, so Bob leaves it to you.';
   return '';
 }
-export const blockedApp = (name) => (BLOCKED_APP_NAME.test(String(name || '')) ? `${name} is off limits to the Apps hand.` : '');
+export const blockedApp = (name) => (BLOCKED_APP_NAME.test(String(name || '')) || BLOCKED_APP_EXACT.test(String(name || '').trim()) ? `${name} is off limits to the Apps hand.` : '');
 
 // Keys Bob may press. Returns the SendKeys string, or throws. No Windows key, no Ctrl+Alt combinations.
 const KEYMAP = { enter: '{ENTER}', tab: '{TAB}', esc: '{ESC}', escape: '{ESC}', up: '{UP}', down: '{DOWN}', left: '{LEFT}', right: '{RIGHT}', home: '{HOME}', end: '{END}', pageup: '{PGUP}', pagedown: '{PGDN}', backspace: '{BACKSPACE}', delete: '{DELETE}', del: '{DELETE}', space: ' ', insert: '{INSERT}' };
@@ -77,7 +93,8 @@ export function keysFor(combo) {
   const parts = String(combo || '').toLowerCase().replace(/\s+/g, '').split('+').filter(Boolean);
   if (!parts.length || parts.length > 3) throw new Error('Say one key or combination, like "Enter" or "Ctrl+S".');
   const key = parts.pop();
-  const mods = new Set(parts);
+  // Cmd (a Mac's Command key) is Bob's Ctrl: the Mac helper presses Command for Ctrl, so Cmd+S saves everywhere.
+  const mods = new Set(parts.map((m) => (m === 'cmd' || m === 'command' ? 'ctrl' : m === 'option' || m === 'opt' ? 'alt' : m)));
   for (const m of mods) if (!['ctrl', 'control', 'shift', 'alt'].includes(m)) throw new Error(m === 'win' || m === 'windows' || m === 'meta' ? 'Bob never presses the Windows key.' : `Unknown key "${m}".`);
   const ctrl = mods.has('ctrl') || mods.has('control');
   if (ctrl && mods.has('alt')) throw new Error('Bob never presses Ctrl+Alt combinations.');
@@ -89,7 +106,7 @@ export function keysFor(combo) {
 }
 
 // Programs whose windows are plain text: Markdown marks would show up as literal * and #.
-export const PLAIN_TEXT_APPS = ['notepad'];
+export const PLAIN_TEXT_APPS = ['notepad', 'mousepad', 'gedit', 'gnome-text-editor', 'xed', 'pluma', 'kwrite', 'featherpad', 'textedit'];
 // Markdown -> plain text, for typing into a plain-text window.
 export function plainText(md) {
   return String(md || '')
@@ -111,15 +128,38 @@ export const LONG_TYPING = 1500;
 const tidyTitle = (t) => String(t || '').toLowerCase().replace(/^\*\s*/, '').trim();
 // 1.5.208 PC check: Windows 11 Notepad opens again on the tabs left open last time, unsaved notes and all, and Bob
 // typed into the owner's own note. In a plain-text app Bob only types into a new blank page, or one he typed himself.
-const NEW_PAGE = /^(untitled|sans titre|sin t[ií]tulo|sem t[ií]tulo|unbenannt|senza titolo|naamloos|bez tytu[łl]u|無題|无标题|제목 없음)(\s|-|$)/i;
+const NEW_PAGE = /^(untitled|new document|sans titre|sin t[ií]tulo|sem t[ií]tulo|unbenannt|senza titolo|naamloos|bez tytu[łl]u|無題|无标题|제목 없음)(\s|-|$)/i;
 const NEW_TAB_KEYS = /^\^[nt]$/i; // ctrl+n / ctrl+t: a new blank tab
 const plainApp = (w) => PLAIN_TEXT_APPS.includes(String(w?.process || '').toLowerCase().replace(/\.exe$/, ''));
 
 // ---- The helper process ----
+// The command that starts the helper on this computer. env.BOB_APPS_PYTHON picks the Python on Linux (the distro's own
+// /usr/bin/python3 first: that is the one with PyGObject). exists is passed in so tests never look at the real disk.
+export function appsHelperCommand(os_ = handsOs(), { env = process.env, exists = fs.existsSync, pid = process.pid, ppid = process.ppid || 0 } = {}) {
+  // Programs outside Bob can't read inside app.asar: the Mac and Linux helpers are kept unpacked (package.json asarUnpack).
+  const dir = path.join(os_ === 'win' ? appDir : unpackedDir, 'installer');
+  if (os_ === 'mac') return ['/usr/bin/osascript', '-l', 'JavaScript', path.join(dir, 'bob-apps-mac.js'), String(pid), String(ppid)];
+  if (os_ === 'linux') {
+    const py = env.BOB_APPS_PYTHON || (exists('/usr/bin/python3') ? '/usr/bin/python3' : 'python3');
+    return [py, path.join(dir, 'bob-apps-linux.py'), '--bob-pid', String(pid), '--bob-parent', String(ppid)];
+  }
+  const ps = path.join(env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  return [ps, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-STA', '-File', path.join(dir, 'bob-apps.ps1'), '-BobPid', String(pid), '-BobParent', String(ppid)];
+}
+
+// Words that differ by computer: where apps are listed, who refuses, what reads the buttons.
+export function appsWords(os_ = handsOs()) {
+  if (os_ === 'mac') return { menu: 'Applications folder', system: 'macOS', reader: 'macOS Accessibility', admin: 'if it asks for your password, macOS asks you' };
+  if (os_ === 'linux') return { menu: 'app menu', system: 'the Linux desktop', reader: 'AT-SPI (Linux accessibility)', admin: 'if it asks for your password, the desktop asks you' };
+  return { menu: 'Start menu', system: 'Windows', reader: 'UI Automation', admin: 'if it asks for admin, Windows asks you' };
+}
+
 export class AppsDriver {
   // command: [exe, ...args] (tests use a mock); default is Windows PowerShell running installer\bob-apps.ps1.
-  constructor({ command = null, spawnImpl = spawn, env = process.env, onEvent = () => {}, idleMs = 120000 } = {}) {
+  constructor({ command = null, spawnImpl = spawn, env = process.env, onEvent = () => {}, idleMs = 120000, os_ = handsOs(), exists = fs.existsSync } = {}) {
     this.command = command;
+    this.os = os_;
+    this.exists = exists;
     this.spawnImpl = spawnImpl;
     this.env = env;
     this.onEvent = onEvent;
@@ -130,15 +170,11 @@ export class AppsDriver {
     this.idle = null;
   }
 
-  defaultCommand() {
-    const ps = path.join(this.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-    const script = path.join(appDir, 'installer', 'bob-apps.ps1');
-    return [ps, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-STA', '-File', script, '-BobPid', String(process.pid), '-BobParent', String(process.ppid || 0)];
-  }
+  defaultCommand() { return appsHelperCommand(this.os, { env: this.env, exists: this.exists }); }
 
   start() {
     if (this.child) return;
-    if (!this.command && process.platform !== 'win32') throw new Error('The Apps hand works on Windows.');
+    this.broken = '';
     const [exe, ...args] = this.command || this.defaultCommand();
     const child = this.spawnImpl(exe, args, { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     this.child = child;
@@ -148,6 +184,7 @@ export class AppsDriver {
     const gone = (why) => {
       if (this.child !== child) return;
       this.child = null;
+      if (this.broken) why = this.broken; // the helper said what it is missing before it stopped
       for (const [, w] of this.waiting) w.reject(new Error(why));
       this.waiting.clear();
       this.onEvent({ event: 'closed' });
@@ -164,6 +201,7 @@ export class AppsDriver {
       this.buf = this.buf.slice(i + 1);
       if (!line) continue;
       let m; try { m = JSON.parse(line); } catch { continue; }
+      if (m.event === 'broken') { this.broken = String(m.error || 'The apps helper could not start.'); continue; }
       if (m.event) { this.onEvent(m); continue; }
       const w = this.waiting.get(m.id);
       if (!w) continue;
@@ -204,8 +242,9 @@ export class AppsDriver {
 }
 
 // ---- The tools ----
-export function appsTools(brain, { driver = null, track = () => () => {}, openWaitMs = 500, openWaitTries = 16 } = {}) {
+export function appsTools(brain, { driver = null, track = () => () => {}, openWaitMs = 500, openWaitTries = 16, os_ = handsOs() } = {}) {
   const cfg = brain.cfg;
+  const W = appsWords(os_);
   const log = (k, t) => brain.log?.(k, t);
   const ownPids = [process.pid, process.ppid].filter(Boolean);
   const state = { stoppedCtx: null, windows: new Map(), lastCtx: null, untrack: null, driving: false, seen: new Map() };
@@ -230,7 +269,7 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
     }
     if (m.event === 'closed') { state.driving = false; state.untrack?.(); state.untrack = null; }
   };
-  const drv = driver || new AppsDriver({ onEvent });
+  const drv = driver || new AppsDriver({ onEvent, os_ });
   if (driver) driver.onEvent = onEvent;
   const ensure = () => {
     // Registered with Hands so "Stop everything" ends the helper (and its red bar) too.
@@ -293,7 +332,7 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
   const t = {};
 
   t.open_app = {
-    schema: fn('open_app', 'Open an app by its Start menu name (like "Notepad" or "Blender"). Not terminals or admin tools.', { name: str('The app\'s name as it shows in the Start menu.') }),
+    schema: fn('open_app', `Open an app by its ${W.menu} name (like "${os_ === 'win' ? 'Notepad' : os_ === 'mac' ? 'TextEdit' : 'Text Editor'}" or "Blender"). Not terminals or admin tools.`, { name: str(`The app's name as it shows in the ${W.menu}.`) }),
     approvalGroup: (a) => `apps-open:${String(a.name || '').toLowerCase()}`,
     async check(args, ctx) {
       off(); notStopped(ctx);
@@ -305,9 +344,9 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
       const apps = (r.apps || []).filter((a) => a && a.name && a.appId && !blockedApp(a.name));
       const lw = want.toLowerCase();
       const hit = apps.find((a) => a.name.toLowerCase() === lw) || apps.find((a) => a.name.toLowerCase().startsWith(lw)) || apps.find((a) => a.name.toLowerCase().includes(lw));
-      if (!hit) throw new Error(`No Start menu app called "${want}".`);
+      if (!hit) throw new Error(`No ${W.menu} app called "${want}".`);
       if (ctx) ctx.appsOpen = hit;
-      return { text: `Open ${hit.name} (as you, not as administrator; if it asks for admin, Windows asks you).`, command: `Open ${hit.name}`, cwd: 'the Start menu', button: 'Open it' };
+      return { text: `Open ${hit.name} (as you, not as administrator; ${W.admin}).`, command: `Open ${hit.name}`, cwd: `the ${W.menu}`, button: 'Open it' };
     },
     async run(args, ctx) {
       off(); notStopped(ctx);
@@ -315,7 +354,7 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
       if (!hit) throw new Error('Nothing to open.');
       const before = new Set((await windows()).map((w) => String(w.hwnd)));
       try { await drv.request('open', { appId: hit.appId }); }
-      catch (e) { log('hands', `apps: open ${hit.name} failed: ${e.message}`); throw new Error(`${hit.name} did not open: ${e.message} (That is the real reason, from Windows. Tell ${cfg.userName || 'the user'} it plainly; don't say it opened.)`); }
+      catch (e) { log('hands', `apps: open ${hit.name} failed: ${e.message}`); throw new Error(`${hit.name} did not open: ${e.message} (That is the real reason, from ${W.system}. Tell ${cfg.userName || 'the user'} it plainly; don't say it opened.)`); }
       // Only say it opened once a new window is really there.
       for (let i = 0; i < openWaitTries; i++) {
         await new Promise((r) => setTimeout(r, openWaitMs));
@@ -342,8 +381,8 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
           return `Opened ${hit.name}: its window "${w.title}" is open. Use app_look on it before clicking or typing.`;
         }
       }
-      log('hands', `apps: asked Windows to open ${hit.name}, but no new window appeared`);
-      return `Windows was asked to open ${hit.name}, but no new window appeared within ${Math.round(openWaitTries * openWaitMs / 1000)} seconds. It may still be starting: check the taskbar, or ask Bob to try again. Do not say it opened. Tell ${cfg.userName || 'the user'} that, and offer to try again or check with app_look (it may have opened behind, or reused a window that was already open).`;
+      log('hands', `apps: asked ${W.system} to open ${hit.name}, but no new window appeared`);
+      return `${W.system === 'the Linux desktop' ? 'The Linux desktop' : W.system} was asked to open ${hit.name}, but no new window appeared within ${Math.round(openWaitTries * openWaitMs / 1000)} seconds. It may still be starting: check the taskbar, or ask Bob to try again. Do not say it opened. Tell ${cfg.userName || 'the user'} that, and offer to try again or check with app_look (it may have opened behind, or reused a window that was already open).`;
     },
     summary: ({ name }) => `apps: open ${name}`
   };
@@ -389,7 +428,7 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
       const w = ctx?.appsWindow || await findWindow(args.window);
       if (ctx) ctx.appsWindow = null;
       const r = await drv.request('look', { hwnd: w.hwnd, max: 150 });
-      const all = (r.items || []).filter((x) => x && (x.name || x.id || x.type === 'Edit'));
+      const all = (r.items || []).filter((x) => x && (x.name || x.id || x.type === 'Edit' || x.typable)); // Linux text areas often have no name
       // Where he can type comes first, so a small brain doesn't aim at a label (Notepad's "ContentTextBlock").
       const items = [...all.filter((x) => x.typable && !x.password), ...all.filter((x) => !(x.typable && !x.password))];
       const typeHere = items.filter((x) => x.typable && !x.password);
@@ -400,10 +439,10 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
         if (args.picture) pic = '\nA picture of the window is in the chat.';
         if (args.ask) { const e = await eyesCheck(brain, { file, ask: String(args.ask) }, { emit: ctx?.emit, signal: ctx?.signal }); pic += `\n${e.line}`; }
       }
-      if (!items.length && !args.ask) pic += `\nNothing readable here: this app doesn't name its buttons for UI Automation. To work in it, call app_look again with ask (a question about what the window shows; your eyes brain answers from a picture), then app_act with action click_at and x, y in that picture's pixels.`;
+      if (!items.length && !args.ask) pic += `\nNothing readable here: this app doesn't name its buttons for ${W.reader}. To work in it, call app_look again with ask (a question about what the window shows; your eyes brain answers from a picture), then app_act with action click_at and x, y in that picture's pixels.`;
       const lines = items.slice(0, 150).map((x) => `- ${x.type}${x.name ? ` "${String(x.name).slice(0, 80)}"` : ''}${x.id ? ` [id ${String(x.id).slice(0, 40)}]` : ''}${x.password ? ' (password field: never typed in)' : x.typable ? ' (you can type here)' : ''}${x.enabled === false ? ' (greyed out)' : ''}${x.value ? ` = "${String(x.value).slice(0, 60)}"` : ''}`);
-      const head = typeHere.length ? `You can type in: ${typeHere.slice(0, 5).map((x) => `${x.type} "${String(x.name || x.id).slice(0, 60)}"`).join('; ')}. Anything else is for clicking or reading.\n` : 'Nothing in this window takes typing.\n';
-      return `${opened}Window: ${label(w)}\n${head}${lines.join('\n') || '(nothing readable; this app may not support UI Automation)'}${pic}\nTo use one, call app_act with its type and name (and id if names repeat). To type, pick one marked "you can type here".`;
+      const head = typeHere.length ? `You can type in: ${typeHere.slice(0, 5).map((x) => `${x.type}${x.name || x.id ? ` "${String(x.name || x.id).slice(0, 60)}"` : ''}`).join('; ')}. Anything else is for clicking or reading.\n` : 'Nothing in this window takes typing.\n';
+      return `${opened}Window: ${label(w)}\n${head}${lines.join('\n') || '(nothing readable; this app may not support ${W.reader})'}${pic}\nTo use one, call app_act with its type and name (and id if names repeat). To type, pick one marked "you can type here".`;
     },
     summary: ({ window }) => `apps: look ${window || '(windows)'}`
   };
@@ -494,9 +533,9 @@ export function appsTools(brain, { driver = null, track = () => () => {}, openWa
         r = at ? await drv.request('clickat', { hwnd: w.hwnd, x: at.x, y: at.y })
           : await drv.request('act', { hwnd: w.hwnd, action: args.action, target, text: args.action === 'type' ? typed : '', keys, expect, allowPassword: !limitOn(cfg, 'passwords') });
       } catch (e) {
-        // Windows' own reason, word for word, so Bob passes it on instead of inventing one.
+        // The system's own reason, word for word, so Bob passes it on instead of inventing one.
         log('hands', `apps: ${args.action} in ${label(w)} failed: ${e.message}`);
-        throw new Error(`${e.message} (That is the real reason, from Windows. Tell ${cfg.userName || 'the user'} it in plain words; don't blame a "simulation" or guess another cause. Nothing else was done.)`);
+        throw new Error(`${e.message} (That is the real reason, from ${W.system}. Tell ${cfg.userName || 'the user'} it in plain words; don't blame a "simulation" or guess another cause. Nothing else was done.)`);
       } finally {
         // With per-action approval the mouse is yours again between actions (you need it for the next card);
         // only an "allow the rest of this job" streak keeps the red bar up until the helper goes idle.
