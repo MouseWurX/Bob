@@ -47,6 +47,21 @@ Scripts and numbers: `data/2026-11-27-bits/` (`tiny_train.py`, `dry_run.py`, `re
 - A missing band and a band of the wrong width are refused with a message; a banded file is not banded again.
 - `word_bands.py apply` re-reads what it wrote and checks every row against its candidate, byte for byte.
 
+## The rental kit, run end to end on the same tiny brain (processor)
+
+`model-lab/forge/pod/bits-pilot.sh` with `CUDA=0` and the tiny brain (`data/2026-11-27-bits/kit-dry-run-*`), every file
+the same whole-file size as the stock imatrix file at its budget (the word table kept at the stock file's own type):
+
+| Budget | Stock imatrix | mixed_bits | new pick (imatrix) | bits by part | part + word | part, scale-healed |
+|---|---:|---:|---:|---:|---:|---:|
+| Q3_K_M size | 0.151 | 0.114 | 0.113 | 0.103 | **0.101** | |
+| Q4_K_M size | 0.0398 | 0.0389 | 0.0302 | 0.0265 | 0.0259 | **0.0211** |
+
+At the 4-bit size the other shipped files did worse or were bigger: Q4_K_M without imatrix 0.0415, IQ4_XS 0.0521
+(8% smaller), IQ4_NL 0.0497 (4% smaller), Q4_K_S 0.0401 (3% smaller); scale healing alone took stock Q4_K_M to 0.0285.
+MXFP4_MOE squeezes only experts, so on this dense brain it is mostly Q8_0 (68% bigger) and not a 4-bit file. Banding a
+head that is already q6_k (WORD) changed almost nothing here. Mechanics only: a 3.4M-weight brain.
+
 ## Limits
 
 - A tiny brain on licence text is a mechanics check. NariQ's own figure (12% less drift from bands at 3.0 bits) and ours

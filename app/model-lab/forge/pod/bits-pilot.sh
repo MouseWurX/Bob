@@ -145,12 +145,13 @@ for BN in Q3_K_M Q4_K_M; do
   BUDGET=$(python3 -c "import sys,numpy as np,gguf; r=gguf.GGUFReader(sys.argv[1]); print(sum(int(np.asarray(t.data).nbytes) for t in r.tensors if len(t.shape)>=2 and t.name!='token_embd.weight'))" "$STOCK")
   NW=$(python3 -c "import sys,numpy as np,gguf; r=gguf.GGUFReader(sys.argv[1]); print(sum(int(np.prod([int(x) for x in t.shape])) for t in r.tensors if len(t.shape)>=2 and t.name!='token_embd.weight'))" "$STOCK")
   BPW=$(python3 -c "print(round(8*$BUDGET/$NW, 4))")
-  say "budget $BN: $BUDGET bytes, $BPW bits a weight (word table excluded, kept q6_k by the pickers)"
+  ET=$(python3 -c "import sys,gguf; r=gguf.GGUFReader(sys.argv[1]); print(next(t.tensor_type.name.lower() for t in r.tensors if t.name=='token_embd.weight'))" "$STOCK")
+  say "budget $BN: $BUDGET bytes, $BPW bits a weight; the word table stays $ET as in the stock file, so whole files match in size"
   kld $BN STOCK-imatrix "$STOCK"
   if [ $BN = Q4_K_M ]; then   # other 4-bit files people ship, for the comparison (sizes differ: see the bytes column)
     [ -s "$W/Q4_K_M-plain.gguf" ] || "$B/llama-quantize" "$REF" "$W/Q4_K_M-plain.gguf" Q4_K_M "$JOBS" > "$OUT/quant-Q4_K_M-plain.log" 2>&1 || fail "quant Q4_K_M plain"
     kld $BN STOCK-no-imatrix "$W/Q4_K_M-plain.gguf"
-    for T in IQ4_XS IQ4_NL Q4_K_S Q5_K_S MXFP4_MOE; do
+    for T in IQ4_XS IQ4_NL Q4_K_S Q5_K_S MXFP4_MOE; do   # MXFP4_MOE squeezes only experts: on a dense brain it is mostly Q8_0
       [ -s "$W/$T.gguf" ] || "$B/llama-quantize" --imatrix "$IM" "$REF" "$W/$T.gguf" $T "$JOBS" > "$OUT/quant-$T.log" 2>&1 || { say "$T: llama-quantize refused (see quant-$T.log)"; continue; }
       kld $BN $T "$W/$T.gguf"
     done
@@ -159,11 +160,11 @@ for BN in Q3_K_M Q4_K_M; do
         kld $BN UD "$(tail -1 "$OUT/ud.txt")" || say "UD download failed (see ud.txt)"
     fi
   fi
-  T0=$BN-MIX; [ -s "$W/$T0.types" ] || python3 "$POD/mixed_bits.py" --base "$REF" --imatrix "$IM" "${CANDS[@]}" --target-bpw "$BPW" --exclude-type q6_k --out "$W/$T0.types" > "$OUT/$T0.log" 2>&1 || fail $T0
-  T0=$BN-PART-IMAT; [ -s "$W/$T0.types" ] || python3 "$POD/part_bits.py" --loss imatrix --imatrix "$IM" --base "$REF" "${CANDS[@]}" --target-bytes "$BUDGET" --exclude-type q6_k --out "$W/$T0.types" --report "$OUT/$T0.json" > "$OUT/$T0.log" 2>&1 || fail $T0
+  T0=$BN-MIX; [ -s "$W/$T0.types" ] || python3 "$POD/mixed_bits.py" --base "$REF" --imatrix "$IM" "${CANDS[@]}" --target-bpw "$BPW" --exclude-type "$ET" --out "$W/$T0.types" > "$OUT/$T0.log" 2>&1 || fail $T0
+  T0=$BN-PART-IMAT; [ -s "$W/$T0.types" ] || python3 "$POD/part_bits.py" --loss imatrix --imatrix "$IM" --base "$REF" "${CANDS[@]}" --target-bytes "$BUDGET" --exclude-type "$ET" --out "$W/$T0.types" --report "$OUT/$T0.json" > "$OUT/$T0.log" 2>&1 || fail $T0
   step "$BN: Fisher picks [GPU $(gpu)]"
-  T0=$BN-PART; [ -s "$W/$T0.types" ] || python3 "$POD/part_bits.py" --teacher "$W/hf" --calib "$TR" --chunks "$FISHER_CHUNKS" --ctx $CTX --fisher-cache "$W/fisher.npz" --base "$REF" "${CANDS[@]}" --target-bytes "$BUDGET" --exclude-type q6_k --llama-cpp "$W/ll" --out "$W/$T0.types" --report "$OUT/$T0.json" > "$OUT/$T0.log" 2>&1 || fail $T0
-  T0=$BN-PART-WORD; [ -s "$W/$T0.types" ] || python3 "$POD/part_bits.py" --teacher "$W/hf" --calib "$TR" --chunks "$FISHER_CHUNKS" --ctx $CTX --fisher-cache "$W/fisher.npz" --bands "$BANDS" --base "$REF" "${CANDS[@]}" --target-bytes "$BUDGET" --exclude-type q6_k --llama-cpp "$W/ll" --out "$W/$T0.types" --report "$OUT/$T0.json" > "$OUT/$T0.log" 2>&1 || fail $T0
+  T0=$BN-PART; [ -s "$W/$T0.types" ] || python3 "$POD/part_bits.py" --teacher "$W/hf" --calib "$TR" --chunks "$FISHER_CHUNKS" --ctx $CTX --fisher-cache "$W/fisher.npz" --base "$REF" "${CANDS[@]}" --target-bytes "$BUDGET" --exclude-type "$ET" --llama-cpp "$W/ll" --out "$W/$T0.types" --report "$OUT/$T0.json" > "$OUT/$T0.log" 2>&1 || fail $T0
+  T0=$BN-PART-WORD; [ -s "$W/$T0.types" ] || python3 "$POD/part_bits.py" --teacher "$W/hf" --calib "$TR" --chunks "$FISHER_CHUNKS" --ctx $CTX --fisher-cache "$W/fisher.npz" --bands "$BANDS" --base "$REF" "${CANDS[@]}" --target-bytes "$BUDGET" --exclude-type "$ET" --llama-cpp "$W/ll" --out "$W/$T0.types" --report "$OUT/$T0.json" > "$OUT/$T0.log" 2>&1 || fail $T0
   for N in MIX PART-IMAT PART PART-WORD; do
     F=$W/$BN-$N.gguf
     [ -s "$F" ] || "$B/llama-quantize" --imatrix "$IM" --tensor-type-file "$W/$BN-$N.types" "$REF" "$F" Q4_K "$JOBS" > "$OUT/quant-$BN-$N.log" 2>&1 || fail "quant $BN $N"

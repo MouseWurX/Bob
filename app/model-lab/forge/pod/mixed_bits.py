@@ -28,7 +28,8 @@ FLOAT_TYPES = (Q.F32, Q.F16, Q.BF16)
 def as_f32(t, rows=None):
     data = np.asarray(t.data)
     if rows is not None: data = data.reshape(-1, data.shape[-1])[rows]
-    return (data.astype(np.float32) if t.tensor_type in FLOAT_TYPES else dequantize(data, t.tensor_type)).reshape(-1, int(t.shape[0]))
+    # BF16 comes from the reader as raw bytes, so only F32/F16 are plain numbers (a BF16 base broke this, 27 Nov)
+    return (data.astype(np.float32) if t.tensor_type in (Q.F32, Q.F16) else dequantize(data, t.tensor_type)).reshape(-1, int(t.shape[0]))
 
 
 def load_imatrix(path):
