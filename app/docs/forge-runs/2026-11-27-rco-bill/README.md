@@ -39,3 +39,7 @@ After the benches, the Forge's PC-side expert test (`experts-test.mjs`) stopped 
 no `<parent>/bob`. Fixed 27 Nov: the lab now uses the Bob right above it in a repository checkout, and pre-flight refuses to
 rent when a bench test that loads Bob has no Bob source tree. That test only counts expert use on the served file; with the
 picks lost it is not worth a rerun. `rco/build.txt` (a build note) came back the wrong size; nothing depends on it.
+
+Note (27 Nov, later): on this run the tensor_err build overwrote the pod's CUDA libraries with processor-only ones, so every
+KLD and gate after it ran on the processor (hence the long "quantizing" steps). The KLD numbers are still right; only the
+time was lost. Fixed in `pod/tool_tree.sh` (see [the GSQ dry-run record](../2026-11-27-gsq-bill-dry-run/)).

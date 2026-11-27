@@ -31,10 +31,24 @@ Read this as "the steps work", not as a result. Real numbers come only from the 
 
 Rental 1 (RTX PRO 6000, about $14.49) made MX2_S again (KLD 1.00, same top token 63.7%, passed the gate), but MG2_S and
 MQ2_S never came: `x_dump` reached 192 of 256 chunks in its one-hour limit and was stopped, and MQ2_S then ran it again for
-another hour. Cause: each input row went out through stdio's small default buffer (4 KB writes), about 13 MB/s on the pod's
-network drive. Then the PC-side experts test took 2.4 h over the network (1.2 tokens/s; not needed on a measure-only run).
+another hour. Then the PC-side experts test took 2.4 h (1.2 tokens/s; not needed on a measure-only run). We first blamed
+x_dump's small writes; that was a guess, and wrong (see "The real cause" below).
 
 Fixed: each x_dump file writes through its own 32 MB buffer (on the tiny MoE: 3,088 writes became 2, same bytes);
 `--x-seconds` stops recording on time and keeps what it has; a failed x_dump is marked so the next name skips at once; the
 plan records fewer rows (128 chunks, at most 2,048 rows an expert, about 20 GB instead of 65 GB); and `benchmark.pc_tests:
 false` skips the PC tests. The step ran again here end to end: MX2_S, MG2_S, MQ2_S all made, same size.
+
+## The real cause (found 27 Nov, during the rerun)
+
+The rerun's x_dump was slower still (53 chunks in 30 minutes, 34 s a chunk; KLD on the same pod ran 2,048 tokens in 1.3 s),
+so the writes were not it. On a forge pod with Bob's engine patches, `llama-server-build.sh` builds in `llama-be/build-cuda`
+and COPIES its `bin/` to `llama.cpp/build-cuda/bin`, with no cmake setup there. Our tool build (`gsq/build.sh`, and
+`tensor_err/build.sh` on the RCO run) ran cmake into that copy: a fresh, processor-only build that overwrote the CUDA
+libraries. From then on x_dump, every KLD, every gate and the served brain ran on the processor. That explains rental 1's
+1.2 tokens/s and the RCO run's 33-46 minute "quantizing" steps. The numbers are still right (same arithmetic), just slow.
+
+Fixed: `pod/tool_tree.sh` picks a tree whose own cmake setup has CUDA on (Brain Engine's, or the plain one), or a fresh
+folder of its own; both build scripts refuse a folder with built files but no cmake setup, and a fresh folder gets CUDA on
+when the machine has a card. After a tool build, run.sh checks that the serving `llama-server --list-devices` still shows a
+CUDA card. Checked here: the three cases of `tool_tree.sh`, the refusal, and the whole step with a fresh tool folder.

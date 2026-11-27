@@ -413,7 +413,7 @@ PY
               RQIMX=$W/bench/imatrix-filled-$BN.gguf
               [ -f $RQIMX ] || PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/imatrix_fill.py --imatrix $IMX --out $RQIMX >> $RD/fill.txt 2>&1 || RQIMX=$IMX
               PYTHONPATH=$S/llama.cpp/gguf-py:${PYTHONPATH:-} python3 $POD/imatrix_gaps.py --model $CUTQ8 --imatrix $RQIMX > $RD/fixed.txt 2>> $RD/fill.txt || : > $RD/fixed.txt
-              TE=$(bash $POD/tensor_err/build.sh $S/llama.cpp $S/llama.cpp/build-cuda 2> $RD/build.txt | tail -1)
+              TE=$(bash $POD/tensor_err/build.sh $(bash $POD/tool_tree.sh $S) 2> $RD/build.txt | tail -1)
               if [ -x "$TE" ] && { [ -s $RD/err.tsv ] || { LD_LIBRARY_PATH="$(dirname $TE):${LD_LIBRARY_PATH:-}" timeout 5400 $TE -m $CUTQ8 --imatrix $RQIMX --exclude '^per_layer_token_embd' --rows $(plan "$CJ.get('rco_rows',512)") --experts $(plan "$CJ.get('rco_experts',12)") > $RD/err.tsv.part 2> $RD/err.log && mv -f $RD/err.tsv.part $RD/err.tsv; }; }; then
                 for k in $(seq 0 $(( RCON - 1 ))); do
                   read -r RN RO RTG < <(echo "$RCOJ" | python3 -c "import json,sys; e=json.load(sys.stdin)[$k]; print(e['name'], e.get('objective','abs'), ('--target-ftype '+e['target_ftype']) if 'target_ftype' in e else ('--target-recipe '+e['target_recipe']))")
@@ -446,7 +446,10 @@ PY
                 [ -s $GTR ] || { [ -s $W/bench/kldtext/wikitext-2-raw-v1.zip ] || hf download ggml-org/ci wikitext-2-raw-v1.zip --repo-type dataset --local-dir $W/bench/kldtext > /dev/null 2>&1
                   python3 -c "import sys,zipfile; open(sys.argv[1],'wb').write(zipfile.ZipFile(sys.argv[2]).read('wikitext-2-raw/wiki.train.raw'))" $GTR $W/bench/kldtext/wikitext-2-raw-v1.zip 2>> $GD/text.txt; } \
                   || { echo "bench $BN: no wikitext-2 train text; $q skipped"; continue; }
-                XB=$(bash $POD/gsq/build.sh $S/llama.cpp $S/llama.cpp/build-cuda 2> $GD/build.txt | tail -1)
+                XB=$(bash $POD/gsq/build.sh $(bash $POD/tool_tree.sh $S) 2> $GD/build.txt | tail -1)
+                # 27 Nov: the serving tools must still see the card after a tool build (they ran on the processor for two rentals)
+                command -v nvidia-smi > /dev/null && { LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" $S/llama.cpp/build-cuda/bin/llama-server --list-devices 2>&1 | grep -q CUDA \
+                  && echo "bench $BN: serving tools still use the card" || echo "bench $BN: WARNING: the serving tools no longer list a CUDA card"; }
                 [ -x "$XB" ] || { echo "bench $BN: x_dump did not build (out/bench/cut-$BN/gsq/build.txt); $q skipped"; continue; }
                 XD=$W/bench/gsqx-$BN-$GQB
                 # 27 Nov (Bill GSQ rental 1: x_dump wrote at 13 MB/s, hit the 1 h limit at 192 of 256 chunks, and the second name
