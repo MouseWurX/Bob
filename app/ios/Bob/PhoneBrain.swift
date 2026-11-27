@@ -124,7 +124,7 @@ final class PhoneBrain: NSObject, URLSessionDataDelegate {
             files[f.lastPathComponent] = (try? f.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         }
         let free = (try? modelsDir.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage) ?? 0
-        return ["files": files, "loaded": loadedFile ?? NSNull(), "busy": working != nil, "working": working ?? NSNull(),
+        return ["files": files, "loaded": (loadedFile as Any?) ?? NSNull(), "busy": working != nil, "working": (working as Any?) ?? NSNull(),
                 "downloading": downloading != nil, "ramTotalMB": Int(ProcessInfo.processInfo.physicalMemory / 1_048_576),
                 "ramFreeMB": PhoneBrain.memoryLeftMB, "lowMemory": PhoneBrain.memoryLeftMB < 600, "freeSpaceMB": Int(free / 1_048_576)]
     }

@@ -59,7 +59,7 @@ final class Bridge: NSObject, AVSpeechSynthesizerDelegate, PHPickerViewControlle
         let str = { (k: String) in o[k] as? String ?? "" }
         switch op {
         // ---- Bob-Net: other Bobs ----
-        case "net.check": answer(id, ["base": NetBob.base(str("address")) ?? NSNull()])
+        case "net.check": answer(id, ["base": (NetBob.base(str("address")) as Any?) ?? NSNull()])
         case "net.login": answer(id, try await net.login(try base(o), str("code")))
         case "net.signedIn": answer(id, net.signedIn(try base(o)))
         case "net.forget": let b = try base(o); listening.set(b, false); net.forget(b); answer(id, true)
