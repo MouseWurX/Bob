@@ -66,6 +66,7 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 | **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.254-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-linux-x86_64.flatpak) |
 | **Raspberry Pi and ARM** | [`Bob-1.5.254-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) |
 | **Android phone** | [`Bob-1.5.254-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.254-android.apk) |
+| **iPhone** (new, unproven on a real iPhone) | `Bob-<version>-iphone.ipa`, from 1.5.255. You sign it yourself with a free Apple ID: [how](app/docs/IPHONE.md) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob).
 
@@ -491,6 +492,7 @@ Pictures and big jobs wait in Tasks while you play, and **Games first** has Bob 
 | **Raspberry Pi and ARM** | A 64-bit Pi 4 or 5 runs the arm64 AppImage the same way, with small brains on the processor. No pictures on ARM yet. |
 | **Android** | Open the .apk on the phone. It talks to your Bob over Tailscale. |
 | **iPhone and iPad** | Nothing to download. Turn on **Bob-Net access** in Bob's Settings, open his address with `/phone/` on the end in Safari over Tailscale, then tap Share and **Add to Home Screen**. A brain on the phone and the microphone button need the Android app. |
+| **iPhone app** (new) | The `.ipa` from the release, signed with your own Apple ID in Sideloadly or AltStore (free, again every 7 days). It has its own phone brain. Unproven on a real iPhone, as we have yet to test one. Steps in [docs/IPHONE.md](app/docs/IPHONE.md). |
 
 Windows is the main platform. An NVIDIA card helps but isn't required. The Mac and Pi builds are tested on GitHub's machines but not yet on real hardware, so [tell us how they go](https://github.com/MouseWurX/Bob/issues). A few Windows-only parts are hidden elsewhere. To build from source, see [Building Bob](app/docs/BUILDING.md).
 
