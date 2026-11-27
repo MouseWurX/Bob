@@ -8937,7 +8937,7 @@ index 36e48a0..dd590a0 100644
  
  if (BUILD_SHARED_LIBS)
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
-index 31c4205..ebfc6d0 100644
+index 31c4205..06c89e4 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
 @@ -35,6 +35,7 @@
@@ -8948,7 +8948,7 @@ index 31c4205..ebfc6d0 100644
  #include <random>
  #include <regex>
  #include <set>
-@@ -2670,6 +2671,278 @@ struct test_mul_mat_reorder_then_big_batch : public test_case {
+@@ -2670,6 +2671,280 @@ struct test_mul_mat_reorder_then_big_batch : public test_case {
      }
  };
  
@@ -9077,8 +9077,9 @@ index 31c4205..ebfc6d0 100644
 +        return VARS_TO_STR5(type, n_embd, n_ff, t, block);
 +    }
 +
++    // Lamplight 0136: long batches take MMQ (q8_1 inputs, as for every quantized MUL_MAT): test_mul_mat's bar
 +    double max_nmse_err() override {
-+        return 1e-5;
++        return 5e-4;
 +    }
 +
 +    bool run_whole_graph() override { return true; }
@@ -9121,8 +9122,9 @@ index 31c4205..ebfc6d0 100644
 +        return VARS_TO_STR2(k, t);
 +    }
 +
++    // Lamplight 0136: long batches take MMQ (q8_1 inputs, as for every quantized MUL_MAT): test_mul_mat's bar
 +    double max_nmse_err() override {
-+        return 1e-5;
++        return 5e-4;
 +    }
 +
 +    bool run_whole_graph() override { return true; }
@@ -9227,7 +9229,7 @@ index 31c4205..ebfc6d0 100644
  // GGML_OP_GET_ROWS_BACK
  struct test_get_rows_back : public test_case {
      const ggml_type type;
-@@ -10899,6 +11172,47 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+@@ -10899,6 +11174,47 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
      }
      test_cases.emplace_back(new test_get_rows(GGML_TYPE_F32, 256, 8, 2, 1, 1, false, true, 3));
  
@@ -9275,7 +9277,7 @@ index 31c4205..ebfc6d0 100644
      test_cases.emplace_back(new test_get_rows_back(GGML_TYPE_F32, 1, 8, 2, 1, false));
      test_cases.emplace_back(new test_get_rows_back(GGML_TYPE_F32, 1, 70000, 4, 1, false)); // row count > CUDA grid-y limit (65535)
      for (ggml_type type : all_types) {
-@@ -13698,6 +14012,19 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+@@ -13698,6 +14014,19 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
  static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
      std::vector<std::unique_ptr<test_case>> test_cases;
  
