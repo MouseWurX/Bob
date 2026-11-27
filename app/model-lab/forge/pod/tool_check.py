@@ -17,8 +17,8 @@ CALL = re.compile(r'<tool_call>\s*(.*?)\s*(?:</tool_call>|$)', re.S)
 def tool_names(system_text):
     m = re.search(r'<tools>(.*?)</tools>', system_text, re.S)
     if not m: return set()
-    names = set(re.findall(r'"name"\s*:\s*"([^"]+)"', m.group(1)))
-    return names
+    # The hermes set writes its tool lists as Python dicts ('name': 'x'), others as JSON ("name": "x"): read both.
+    return set(re.findall(r'''["']name["']\s*:\s*["']([^"']+)["']''', m.group(1)))
 
 
 def parse_call(text):

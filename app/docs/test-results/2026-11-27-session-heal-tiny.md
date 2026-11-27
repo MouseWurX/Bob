@@ -48,3 +48,32 @@ Numbers and logs: `data/2026-11-27-session-heal/`.
 - The pilot (`model-lab/forge/pod/heal-agent-pilot.sh`, Qwen3-4B) measures wikitext KLD, drift on held-apart public
   sessions and tool calls against BF16. Bob's held-out jobs on the winner come after, and the trick stays off by default
   and out of Turbo until that shows a gain.
+
+## First pilot rental, Qwen3-4B (27 Nov, L40S, $1.29)
+
+Data: `data/2026-11-27-session-heal-pilot1/`. Bob at 462f2c0, Qwen/Qwen3-4B revision 1cfa9a7.
+
+- **Stock imatrix Q4_K_M** (2,497,280,640 bytes): wikitext KLD 0.0467, same top 91.6%. On held-apart sessions: KL 0.040
+  (agent 0.026, general 0.044), same top 94.1%. Tool calls on 21 held-apart tool tasks: 21 of 21 well formed, 20 of 21
+  the same call as BF16.
+- **Sessions:** 1,061 written (701 agent) in 26 min; 157 of 157 single-turn tool tasks answered with a call.
+- **Wikitext heal: did not run.** It ran out of the 48 GB card's memory on its first step (4 chunks of 512 tokens with
+  gradients at once). So "no healed file" here says nothing about healing.
+- **Session heal: made it worse and was rightly not written.** At the old step size (1e-3) the drift on the held-apart
+  sessions went 0.040 to 0.118 and plain text 0.043 to 0.127. Each step moved all 26 million scales by about 0.1%, so on a
+  brain this close to its full-size self the steps were too big and noisy. Only 157 of the 400 practice sessions were
+  agent ones, because the file is sorted by task length and the first 400 were taken.
+- **Tool check:** "known tool 0" was a bug in the check: this set writes its tool lists as Python dicts, which the check
+  didn't read.
+
+### Fixes for the rerun (all checked on the tiny brain)
+
+- Plain-text healing works one chunk at a time and adds up the gradients, so it fits the card.
+- Every heal holds back a slice of its practice set (24 chunks or sessions), checks it every 50 steps and keeps its best
+  step. If no step beats the start, nothing is written. The eval set only reports and never picks.
+- Default step size 2e-4 (was 1e-3); the rerun tries 1e-4 and 3e-4 for both heals.
+- Sessions are shuffled before any limit and weighted by the tokens they score; the kit passes every session.
+- The tool check reads tool lists in both formats.
+
+Tiny brain, fixed kit (same budget for both heals, 200 steps): at 2e-4 the session heal was 4% better on held-apart
+sessions and 9% worse on plain text than the wikitext heal (wikitext KLD 0.0318 against 0.0292; stock 0.0398).

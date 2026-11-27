@@ -1,0 +1,52 @@
+{
+ "when": "2026-11-27 22:38",
+ "teacher": "<pod>",
+ "rows": 1061,
+ "skipped_too_long_or_empty": 139,
+ "never_dropped": 0,
+ "agent_rows": 701,
+ "tool_call_rows_with_a_call": 157,
+ "seconds": 1546,
+ "by_source_split": {
+  "dolly/eval": {
+   "rows": 41,
+   "reply_tokens": 20052,
+   "cut_at_max": 14
+  },
+  "dolly/train": {
+   "rows": 319,
+   "reply_tokens": 156020,
+   "cut_at_max": 110
+  },
+  "hermes-multiturn/eval": {
+   "rows": 28,
+   "reply_tokens": 6363,
+   "cut_at_max": 4
+  },
+  "hermes-multiturn/train": {
+   "rows": 236,
+   "reply_tokens": 60084,
+   "cut_at_max": 50
+  },
+  "hermes-singleturn/eval": {
+   "rows": 21,
+   "reply_tokens": 3020,
+   "cut_at_max": 0
+  },
+  "hermes-singleturn/train": {
+   "rows": 136,
+   "reply_tokens": 16166,
+   "cut_at_max": 0
+  },
+  "mbpp/eval": {
+   "rows": 25,
+   "reply_tokens": 10041,
+   "cut_at_max": 3
+  },
+  "mbpp/train": {
+   "rows": 255,
+   "reply_tokens": 131156,
+   "cut_at_max": 90
+  }
+ }
+}

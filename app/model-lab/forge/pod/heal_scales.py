@@ -203,6 +203,8 @@ def load_sessions(path, n_train, n_eval):
         if not (0 < start < len(ids)): continue
         s = {'ids': torch.tensor(ids, dtype=torch.long), 'start': start, 'kind': r.get('kind', 'general')}
         (ev if r.get('split') == 'eval' else tr).append(s)
+    # The writer sorts by task length: shuffle (fixed seed) so a limit keeps every kind, not just the shortest tasks.
+    rng = random.Random(7); rng.shuffle(tr); rng.shuffle(ev)
     return tr[:n_train], ev[:n_eval]
 
 
@@ -261,7 +263,10 @@ def main():
                     help='with --sessions and --eval-text: keep only if plain-text drift rises no more than this share')
     ap.add_argument('--out', default='', help='the healed GGUF to write (not with --measure)')
     ap.add_argument('--steps', type=int, default=400); ap.add_argument('--hours', type=float, default=2.0)
-    ap.add_argument('--lr', type=float, default=1e-3); ap.add_argument('--norm-lr', type=float, default=1e-3)
+    ap.add_argument('--lr', type=float, default=2e-4); ap.add_argument('--norm-lr', type=float, default=2e-4)
+    ap.add_argument('--check-every', type=int, default=50, help='measure drift on a held-back slice of the practice set every '
+                    'N steps and keep the best step (never worse than the start)')
+    ap.add_argument('--check-items', type=int, default=24, help='practice chunks or sessions held back for that check')
     ap.add_argument('--ctx', type=int, default=512); ap.add_argument('--batch', type=int, default=4)
     ap.add_argument('--chunks', type=int, default=400); ap.add_argument('--eval-chunks', type=int, default=40)
     ap.add_argument('--topk', type=int, default=64)
@@ -395,6 +400,14 @@ def main():
         print(f'teacher reads {len(calib)} + {len(evalc)} chunks of {a.ctx} tokens', flush=True)
         tgt_train = teacher_targets(model, calib, a.topk, dev, a.batch)
     tgt_eval = teacher_targets(model, evalc, a.topk, dev, a.batch) if evalc else []
+    # A slice of the practice set is held back to pick the best step (the eval set only reports, never picks).
+    nc = min(a.check_items, max(0, (len(sess_train) or len(calib)) // 5))
+    if sess_train:
+        chk, tgt_chk = sess_train[-nc:] if nc else [], tgt_sess_train[-nc:] if nc else []
+        if nc: sess_train, tgt_sess_train = sess_train[:-nc], tgt_sess_train[:-nc]
+    else:
+        chk, tgt_chk = calib[-nc:] if nc else [], tgt_train[-nc:] if nc else []
+        if nc: calib, tgt_train = calib[:-nc], tgt_train[:-nc]
 
     # An HF tensor only partly built from the file keeps the teacher's values for the rest (counted in the report).
     partial = []
@@ -441,6 +454,15 @@ def main():
                 same += int((logits[j].argmax(-1).cpu() == tid[:, 0].long()).sum()); n += x.shape[1]
         return {'kl_topk': kl / n, 'same_top': same / n, 'tokens': n}
 
+    @torch.no_grad()
+    def check():
+        if not chk: return 0.0
+        if sess_train: return eval_sessions(student, chk, tgt_chk, dev)['kl_topk']
+        kl, n = 0.0, 0
+        for x, (tid, tlp) in zip(chk, tgt_chk):
+            lg = student(x[None].to(dev))[0]; kl += kl_topk(lg, tid.to(dev), tlp.to(dev)).item() * len(x); n += len(x)
+        return kl / n
+
     before = evaluate(); print('before', before, flush=True)
     if a.measure:
         path = a.report or os.path.splitext(a.gguf)[0] + '-measure.json'
@@ -450,21 +472,37 @@ def main():
     groups = [{'params': [t for h in healed for t in h.t], 'lr': a.lr}]
     if norms: groups.append({'params': [n.u for n in norms], 'lr': a.norm_lr})
     opt = torch.optim.Adam(groups)
+    learn = [t for h in healed for t in h.t] + [n.u for n in norms]
+    best_kl, best_step, best_state = check(), 0, [t.detach().clone() for t in learn]
+    print(f'check slice ({len(chk)} held back): {best_kl:.5f} at the start', flush=True)
     step, deadline = 0, t_start + a.hours * 3600
     while step < a.steps and time.time() < deadline:
         opt.zero_grad()
-        if sess_train:   # one session at a time (lengths differ); gradients add up over the batch
+        if sess_train:   # one session at a time (lengths differ); weighted by the tokens each one scores
+            idx = session_batch(sess_train, a.batch, a.agent_share)
+            n_tok = sum(len(sess_train[i]['ids']) - sess_train[i]['start'] for i in idx)
             loss = 0.0
-            for i in session_batch(sess_train, a.batch, a.agent_share):
-                l = session_kl(student, sess_train[i], tgt_sess_train[i], dev) / a.batch
+            for i in idx:
+                w = (len(sess_train[i]['ids']) - sess_train[i]['start']) / n_tok
+                l = session_kl(student, sess_train[i], tgt_sess_train[i], dev) * w
                 l.backward(); loss += l.detach()
-        else:
+        else:            # one chunk at a time: a 4B brain at 4 x 512 tokens ran out of a 48 GB card (27 Nov pilot)
             idx = random.sample(range(len(calib)), min(a.batch, len(calib)))
-            x = torch.stack([calib[i] for i in idx]).to(dev); logits = student(x)
-            loss = sum(kl_topk(logits[j], tgt_train[i][0].to(dev), tgt_train[i][1].to(dev)) for j, i in enumerate(idx)) / len(idx)
-            loss.backward()
+            loss = 0.0
+            for i in idx:
+                lg = student(calib[i][None].to(dev))[0]
+                l = kl_topk(lg, tgt_train[i][0].to(dev), tgt_train[i][1].to(dev)) / len(idx)
+                l.backward(); loss += l.detach()
         opt.step(); step += 1
-        if step % 25 == 0 or step == 1: print(f'step {step} kl {loss.item():.5f} ({time.time()-t_start:.0f}s)', flush=True)
+        if step % 25 == 0 or step == 1: print(f'step {step} kl {float(loss):.5f} ({time.time()-t_start:.0f}s)', flush=True)
+        if chk and (step % a.check_every == 0 or step == a.steps):
+            k = check(); better = k < best_kl
+            print(f'check at step {step}: {k:.5f}' + (' (best so far)' if better else ''), flush=True)
+            if better: best_kl, best_step, best_state = k, step, [t.detach().clone() for t in learn]
+    if chk:
+        with torch.no_grad():
+            for t, b in zip(learn, best_state): t.copy_(b)
+        print(f'keeping step {best_step} (check slice {best_kl:.5f})', flush=True)
 
     s16 = {h.gname: h.round_fp16() for h in healed}
     after = evaluate(); print('after (fp16 scales)', after, flush=True)
@@ -494,7 +532,7 @@ def main():
         print(f'written file check: worst relative difference {worst:.2e}', flush=True)
         if worst > 1e-2: sys.exit('written file does not match the healed scales: do not use it')
 
-    rep = {'when': time.strftime('%Y-%m-%d %H:%M'), 'args': vars(a), 'steps': step, 'seconds': round(time.time() - t_start),
+    rep = {'when': time.strftime('%Y-%m-%d %H:%M'), 'args': vars(a), 'steps': step, 'best_step': best_step if chk else step, 'seconds': round(time.time() - t_start),
            'healed_tensors': len(healed), 'scales_tuned': n_scale, 'norms_tuned': len(norms), 'norm_values': n_norm,
            'frozen_squeezed_tensors': len(frozen), 'not_lined_up': skipped, 'partly_from_teacher': partial,
            'traced_through_converter': len(traced), 'before': before, 'after': after,

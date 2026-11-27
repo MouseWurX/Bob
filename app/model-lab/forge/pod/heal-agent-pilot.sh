@@ -8,7 +8,11 @@
 #   SESSION-healed heal_scales.py --sessions: the full-size brain's own replies to public tool, code and general tasks
 #                  (agent_sessions.py: hermes-function-calling-v1, MBPP, dolly-15k), about 70:30 agent to general,
 #                  scoring only the tokens the brain wrote
-# Both heals get the same steps and time. Scored three ways, the same for every file:
+# Both heals get the same steps and time, each at two step sizes (HEAL_LRS). Every heal holds back a slice of its practice
+# set, checks it every 50 steps and keeps its best step, so a heal is never worse than where it started. (First pilot,
+# 27 Nov: the wikitext heal ran out of card memory at 4 x 512 tokens, now one chunk at a time; the session heal at the old
+# step size 1e-3 overshot, drift 0.040 -> 0.118, and nothing was written.)
+# Scored three ways, the same for every file:
 #   - KLD against the BF16 brain on wikitext-2 test (llama-perplexity, as in the bits pilot)
 #   - drift on the held-apart sessions (agent and general apart) and on wikitext-2 validation (heal_scales.py --measure)
 #   - tool calls on held-apart public tool tasks: well formed, a known tool, the same call as BF16 (tool_check.py)
@@ -17,13 +21,13 @@
 #   BOB_SHA=<commit> bash heal-agent-pilot.sh   -> results in $OUT (default /workspace/heal-agent-results)
 # Env: OUT, W, CUDA=1 (0 = processor-only dry run), HF_MODEL, HF_DIR, BOB_DIR / LL_DIR (dry runs), TEXT_TRAIN / TEXT_TEST /
 #      TEXT_VALID, PROMPTS (a task jsonl instead of the public downloads: dry runs), N_SESSIONS (1200), MAX_NEW (768),
-#      NEVER (Bob's never-taught files, copied from the PC: matching tasks are dropped), HEAL_HOURS (0.5), HEAL_STEPS (400), KLD_CHUNKS (40), TOOL_N (40), KEEP_DIR (copy the three files there for a
+#      NEVER (Bob's never-taught files, copied from the PC: matching tasks are dropped), HEAL_HOURS (0.5 per heal), HEAL_STEPS (400), HEAL_LRS ("1e-4 3e-4": each arm at each step size), KLD_CHUNKS (40), TOOL_N (40), KEEP_DIR (copy the files there for a
 #      real-jobs run, e.g. the network volume; default: not kept), JOBS, BOB_SHA, BOB_BRANCH.
 # Uploads nothing. Ends with "HEAL DONE" (or "HEAL FAILED <step>") in summary.txt.
 set -uo pipefail
 OUT=${OUT:-/workspace/heal-agent-results}; W=${W:-/workspace/heal-agent}; CUDA=${CUDA:-1}; JOBS=${JOBS:-$(nproc)}
 HF_MODEL=${HF_MODEL:-Qwen/Qwen3-4B}; CTX=512; KLD_CHUNKS=${KLD_CHUNKS:-40}
-N_SESSIONS=${N_SESSIONS:-1200}; MAX_NEW=${MAX_NEW:-768}; HEAL_HOURS=${HEAL_HOURS:-0.5}; HEAL_STEPS=${HEAL_STEPS:-400}; TOOL_N=${TOOL_N:-40}
+N_SESSIONS=${N_SESSIONS:-1200}; MAX_NEW=${MAX_NEW:-768}; HEAL_HOURS=${HEAL_HOURS:-0.5}; HEAL_STEPS=${HEAL_STEPS:-400}; HEAL_LRS=${HEAL_LRS:-"1e-4 3e-4"}; TOOL_N=${TOOL_N:-40}
 BOB_BRANCH=${BOB_BRANCH:-claude/project-thread-5o1p5l}
 BOB_SHA=${BOB_SHA:-}
 TAG=b12359
@@ -124,13 +128,18 @@ cp "${SE%.jsonl}-report.json" "$OUT/sessions-report.json"
 say "sessions: $(python3 -c "import json,sys; r=json.load(open(sys.argv[1])); print(f\"{r['rows']} rows, {r['agent_rows']} agent, {r['tool_call_rows_with_a_call']} tool tasks answered with a call, {r['seconds']} s\")" "$OUT/sessions-report.json")"
 
 step "healing: wikitext, then the brain's own sessions [GPU $(gpu)]"
-HT=$W/Q4_K_M-TEXT-healed.gguf; HS=$W/Q4_K_M-SESSION-healed.gguf
-[ -s "$HT" ] || python3 "$POD/heal_scales.py" --teacher "$W/hf" --gguf "$STOCK" --calib "$TR" --out "$HT" --llama-cpp "$W/ll" --hours "$HEAL_HOURS" --steps "$HEAL_STEPS" "${DEV[@]}" \
-    --report "$OUT/heal-TEXT.json" > "$OUT/heal-TEXT.log" 2>&1 || say "TEXT heal stopped (see heal-TEXT.log)"
-[ -s "$HS" ] || python3 "$POD/heal_scales.py" --teacher "$W/hf" --gguf "$STOCK" --sessions "$SE" --eval-text "$TV" --out "$HS" --llama-cpp "$W/ll" --hours "$HEAL_HOURS" --steps "$HEAL_STEPS" "${DEV[@]}" \
-    --report "$OUT/heal-SESSION.json" > "$OUT/heal-SESSION.log" 2>&1 || say "SESSION heal stopped (see heal-SESSION.log)"
-[ -s "$HT" ] && kld TEXT-healed "$HT" || say "TEXT-healed: healing did not lower drift, no file"
-[ -s "$HS" ] && kld SESSION-healed "$HS" || say "SESSION-healed: healing did not lower drift, no file (see heal-SESSION.log)"
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+heal_arm() {  # heal_arm <TEXT|SESSION> <lr>: one heal; scores the file if healing kept a better step, else says why not
+  local N=$1-healed-lr$2 F=$W/Q4_K_M-$1-healed-lr$2.gguf IN
+  if [ $1 = TEXT ]; then IN=(--calib "$TR"); else IN=(--sessions "$SE" --eval-text "$TV" --chunks 5000); fi
+  [ -s "$F" ] || python3 "$POD/heal_scales.py" --teacher "$W/hf" --gguf "$STOCK" "${IN[@]}" --out "$F" --llama-cpp "$W/ll" \
+      --lr "$2" --norm-lr "$2" --hours "$HEAL_HOURS" --steps "$HEAL_STEPS" "${DEV[@]}" --report "$OUT/heal-$N.json" > "$OUT/heal-$N.log" 2>&1
+  local rc=$?
+  if [ -s "$F" ]; then kld "$N" "$F"
+  elif [ $rc -ne 0 ]; then say "$N: heal CRASHED (exit $rc): $(grep -m1 -E 'Error|error' "$OUT/heal-$N.log" | head -c 160)"
+  else say "$N: no step beat the start, no file ($(grep -m1 '^keeping step' "$OUT/heal-$N.log"))"; fi
+}
+for LR in $HEAL_LRS; do heal_arm TEXT "$LR"; heal_arm SESSION "$LR"; done
 
 step "drift on the held-apart sessions and wikitext validation"
 printf 'file\tsessions_kl\tagent_kl\tgeneral_kl\tsessions_same_top\twiki_valid_kl\n' > "$OUT/sessions-drift.tsv"

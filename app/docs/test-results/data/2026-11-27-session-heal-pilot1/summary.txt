@@ -1,0 +1,15 @@
+card: NVIDIA L40S, 46068 MiB, 595.112.07, 29, 210 MHz, 8.9
+CUDA architecture: 89
+Bob claude/project-thread-5o1p5l at 462f2c03b649d63c5a5466dd8fa55f184e7201be
+engine: 104 patches on b12359, build logged in build.log
+Qwen/Qwen3-4B revision 1cfa9a7208912126459214e8b04321603b3df60c
+reference: 8051284928 bytes
+STOCK: wikitext KLD 0.046696, same top 91.559%, 2497280640 bytes   [GPU 38, 2520 MHz, 0 MiB]
+sessions: 1061 rows, 701 agent, 157 tool tasks answered with a call, 1546 s
+TEXT heal stopped (see heal-TEXT.log)
+TEXT-healed: healing did not lower drift, no file
+SESSION-healed: healing did not lower drift, no file (see heal-SESSION.log)
+STOCK sessions/wiki-valid: 0.03974	0.02555	0.04397	94.09	0.04251
+tool calls: 21 tasks, BF16 called 21; STOCK 21 well formed, 0 known tool, 20 same as BF16
+STOCK: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+HEAL DONE
