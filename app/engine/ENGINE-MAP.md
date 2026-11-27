@@ -934,6 +934,26 @@ Written Nov 22 before the borrowing work (scope: rebuild Avalon's ideas inside B
 - **Re-check on rebase:** everything 0039 lists, and `seq_add`.
 - **Tests:** `engine/tests/kv-sink.py` (0039's tiny brain, head size 64, on the processor and the stand-in card): an f16 sharp start holding the whole chat gives f16's tokens over a q3_0 cache, on both; a q8_0 one over a q8_0 cache gives the plain tokens (the merge is exact); with an f16 ring holding the whole chat, still f16's tokens; with a q8_0 ring the same tokens on both; alone; a batch bigger than the slack; a saved then loaded chat answers; four NOT USED reasons; the rotation keys refuse a bad size and run the whole head; `--help` names the key; drift on the random brain, mean KLD against f16: q3_0 2.41, q3_0 with the sharp start 1.90, q8_0 0.030 (a made-up brain, not a quality figure). 22 of 22 pass, and 0039's `kv-tiers.py` 15 of 15. Only `src/` and `common/` change, so no card kernel is new. CUDA on a real card, Windows and Android: unproven in our lab, as we have yet to test.
 
+### 0123-kv-body-sjkvarn: sealed blocks (SJ-KVaRN records for old words), first step
+- **Environment key (off unless set):** `LLAMA_KV_BODY=4/4|3/3|3/2` (K bits/V bits; the codec also takes 4/3, 4/2, 2/2), and `LLAMA_KV_BODY_ITERS` (balancing steps, default 16). Bob never sets it yet. It needs `LLAMA_KV_TIERS` (a ring to seal from) and heads of 128, 256 or 512 with K and V the same size. Otherwise it logs `!!! LLAMA_KV_BODY=... NOT USED: why`, and 0039's own refusals apply as well.
+- **Upstream files:**
+  - `src/llama-kv-cache.{h,cpp}`: the setup, the record pool per layer, `body_forget` from `tiers_forget`/`tiers_forget_moved`, the decode op, the host seal, and the rotation switch (whole head for K and V when on).
+  - `src/llama-graph.{h,cpp}`: one word reads in mode 2 when on; `attn_inp_body_pos`; the decode in the overlay, pinned to the processor.
+  - `src/llama-context.cpp`: the seal in `process_ubatch`, before `apply`, after a sched synchronize.
+  - `src/CMakeLists.txt`, the new `src/sj_kvarn.h` (vendored, MIT) and `src/sj-kvarn.c`.
+  - `common/arg.cpp`: the help line.
+- **Hook:**
+  - The records are one more layer under 0039's overlay: main (as f16), then the records, then the rings (widest first).
+  - Before each batch, the whole groups below its first word whose rows the widest ring still holds are sealed from that ring.
+  - The main cache is still written, so any word the records drop is read from it.
+- **Why:** llamAmpere's SJ-KVaRN cache (JakeATX, MIT). Part 1 (the sink) was 0122; this is the sealed body. The method is Huawei KVarN (Apache-2.0). The codec is used as published, and the glue is ours.
+- **What to expect:**
+  - Room: the records add 4.28 (4/4), 3.28 (3/3) or 2.78 (3/2) bits a value at head 256 on top of the main cache, for now.
+  - Speed: each word reads the whole cache as f16 (mode 2) and decodes the records on the processor. The seal is processor-only, and slow for trellis bodies.
+  - Words: they change; it's a lossy memory.
+- **Re-check on rebase:** everything 0039 and 0122 list, plus `process_ubatch`'s start and upstream's rotation choice.
+- **Tests:** `engine/tests/kv-body.py`, 14 of 14 (see above). CUDA on a real card, Windows and Android: unproven in our lab, as we have yet to test.
+
 ### 0100-upstream-fixes: bug fixes from newer upstream llama.cpp
 - **Why:** upstream fixed bugs after b12359 that reach Bob's brains (Speed thread survey, Nov 23). Cherry-picked, not a rebase, so the base stays b12359.
 - **How:** upstream commits, oldest first: c56be86 (#31775), f8cc577 (#32287), 21fa9c0 (#32380), d3064fd (#32476), ad9d9e8 (#32483), 0a76757 (#31913), d4f5c26 (#32374), 39039aa (#32545), 9fbe30c (#31345), b019be0 (#32698), 278a89c (#31617, the warp-primitive refactor that b94959a needs), b94959a (#32505). Hand merges: #31775 replaces 0017's narrower check in `ggml_backend_sched_split_graph` (the flagged-weight filter is gone: any incompatible weight in a split that has nodes starts a new split, which includes the MoE cache's lookup); #32476 without its test-file hunk (it pulled in tests for brains we don't carry); #32483 next to 0030 and 0050 in `load_tensors`; #31617 raises the HIP minimum to ROCm 6.3 (Bob ships no HIP build). The `.github` changes are left out.
