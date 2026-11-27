@@ -21,6 +21,10 @@ export const TUNING_FIELDS = [
   { k: 'cpuRead', label: 'Processor reads short prompts (up to N words)', env: 'LLAMA_MOE_CACHE_CPU_READ', min: 33, max: 16384, int: true, hint: 'changes answers slightly' },
   { k: 'lend', label: 'Lend the cache to long reads (over N words)', env: 'LLAMA_MOE_CACHE_LEND', min: 33, max: 16384, int: true, hint: 'below the reading step' },
   { k: 'draftGate', label: 'Pause guessing below (share kept)', env: 'LLAMA_SPEC_GATE', min: 0.01, max: 1, hint: 'for drafting, 0.3 pauses when under 30% of guesses are kept' },
+  // Nov 27, Brain Engine 0140-0142 (after PolyStrata): on unless 0, same words
+  { k: 'draftTimeGate', label: 'Guess only while it writes faster (0 = off)', env: 'LLAMA_SPEC_GATE_TIME', cpuToo: true, min: 0, max: 1, int: true, hint: 'on unless 0; times writing with and without guesses; Brain Engine 0142' },
+  { k: 'pageWarm', label: 'Warm up the brain file after loading (0 = off)', env: 'LLAMA_PAGE_WARM', cpuToo: true, min: 0, max: 1, int: true, hint: 'on unless 0; skipped when RAM is short or experts stay on the drive; Brain Engine 0141' },
+  { k: 'powerThrottle', label: 'Let Windows slow the engine to save power (1 = yes)', env: 'LLAMA_POWER_THROTTLING', cpuToo: true, min: 0, max: 1, int: true, hint: 'Windows only; off unless 1, or Games first on the processor; Brain Engine 0140' },
   // Nov 22, Brain Engine 30/31 (patches 0048-0051): each does nothing without a copy cache
   { k: 'borrow', label: 'Long reads borrow the cache (1 = on)', env: 'LLAMA_MOE_CACHE_BORROW', min: 0, max: 1, int: true, hint: 'with a copy cache; Brain Engine 30 or newer' },
   { k: 'shelf', label: 'Empty chat memory holds experts (1 = on)', env: 'LLAMA_MOE_CACHE_TAIL', min: 0, max: 1, int: true, hint: 'with a copy cache; Brain Engine 30 or newer' },
@@ -136,7 +140,7 @@ export function tuningArgs(cfg, model, { handArgs = [], cpu = false, exists = fs
       if (f.flags.some((fl) => typed(handArgs, fl))) continue;
       for (const fl of f.flags) { args.push(fl, v); taken.push(fl); }
     } else {
-      if (cpu) continue;
+      if (cpu && !f.cpuToo) continue; // Nov 27: the engine-wide keys (0140-0142) work on the processor too
       if (f.path) {
         if (l[f.k] !== 1) continue; // 0 is off: no file
         const file = savedHotFile(cfg, model);

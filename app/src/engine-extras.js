@@ -147,6 +147,39 @@ export const turboEverydayOn = (cfg) => cfg?.turboEveryday !== false;
 // with it on by default, drafting pauses where it doesn't pay (Brain Engine 0034's gate); a share set by hand wins
 export const SPEC_GATE_DEFAULT = '0.3';
 export const specGateEnv = (env = {}) => (env && env.LLAMA_SPEC_GATE !== undefined && env.LLAMA_SPEC_GATE !== '' ? {} : { LLAMA_SPEC_GATE: SPEC_GATE_DEFAULT });
+// Nov 27 (Brain Engine 0142, after PolyStrata): next to the share kept, drafting also goes on only while it writes
+// faster. The engine times the rounds that ask the guesser and the ones that don't, and pauses guessing while it's
+// behind. Same words. Set by hand (Engine tuning) wins; LLAMA_SPEC_GATE_TIME=0 turns it off. Older engines ignore it.
+export const specGateTimeEnv = (env = {}) => (env && env.LLAMA_SPEC_GATE_TIME !== undefined && env.LLAMA_SPEC_GATE_TIME !== '' ? {} : { LLAMA_SPEC_GATE_TIME: '1' });
+
+// Nov 27 (Brain Engine 0140, after PolyStrata): the engine turns Windows' power throttling off for itself, since Bob
+// starts it with no window and Windows may slow a process it thinks is in the background. When the engine should
+// yield (Games first on the processor, or a helper engine beside the main one), Bob leaves the choice to Windows.
+export const powerThrottleEnv = ({ yieldToGames = false } = {}) => (yieldToGames ? { LLAMA_POWER_THROTTLING: '1' } : {});
+
+// Nov 27 (after PolyStrata): in a container with a processor limit (a rented pod, Docker), llama.cpp counts the
+// host's cores, not the share the container may use, and starts far too many threads, which then wait on each other.
+// The limit's whole processors are used instead. null when there is no limit (or not Linux), so llama.cpp's own
+// count stands. read is swapped in by the tests.
+export function containerCpus(read = (f) => fs.readFileSync(f, 'utf8'), platform = process.platform) {
+  if (platform !== 'linux') return null;
+  const text = (f) => { try { return String(read(f)).trim(); } catch { return ''; } };
+  let quota = NaN, period = NaN;
+  const v2 = text('/sys/fs/cgroup/cpu.max').split(/\s+/);
+  if (v2.length === 2 && /^\d+$/.test(v2[0]) && /^\d+$/.test(v2[1])) { quota = Number(v2[0]); period = Number(v2[1]); }
+  else if (!v2[0]) {
+    const q = text('/sys/fs/cgroup/cpu/cpu.cfs_quota_us'), pr = text('/sys/fs/cgroup/cpu/cpu.cfs_period_us');
+    if (/^\d+$/.test(q) && /^\d+$/.test(pr)) { quota = Number(q); period = Number(pr); } // -1 = no limit, not matched
+  }
+  if (!(quota > 0 && period > 0)) return null;
+  return Math.max(1, Math.floor(quota / period));
+}
+// The thread count for the engine in a container: the limit, when it is below what this machine reports. null leaves
+// llama.cpp's own count. Threads set by hand win (the caller only asks when none is set).
+export function containerThreads({ cpus = os.cpus().length || 1, limit = containerCpus() } = {}) {
+  return Number.isInteger(limit) && limit > 0 && limit < cpus ? limit : null;
+}
+
 export function everydayTurboArgs(cfg, { build = 0, args = [], mtp = 0, cpu = false, guesser = null } = {}) {
   // guesser: mtpArgs() for the brain (its own head, or the file beside it); without it, mtp > 0 means its own head
   const g = guesser || (mtp > 0 ? ['--spec-type', 'draft-mtp'] : []);
