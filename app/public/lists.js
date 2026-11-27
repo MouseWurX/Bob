@@ -181,7 +181,7 @@ export function downloadRow(d) {
 
 export function createDownloads({ api, post }) {
   const dlg = document.getElementById('downloads'), body = document.getElementById('downloads-body');
-  let items = [], settings = { concurrent: 1, resumeOnStart: false, pieces: 0 }, pickUpOn = false;
+  let items = [], settings = { concurrent: 1, resumeOnStart: false, pieces: 4 }, pickUpOn = false;
   let last = 0;
   function draw(force) {
     if (!dlg.open) return;
@@ -196,7 +196,7 @@ export function createDownloads({ api, post }) {
       <div class="dl-settings">
         <strong>Settings</strong>
         <label>At once: <select data-set="concurrent"><option value="1" ${settings.concurrent !== 2 ? 'selected' : ''}>1 download</option><option value="2" ${settings.concurrent === 2 ? 'selected' : ''}>2 downloads</option></select></label>
-        <label>Pieces at once: <select data-set="pieces"><option value="0" ${![4, 8].includes(settings.pieces) ? 'selected' : ''}>Off (one stream)</option><option value="4" ${settings.pieces === 4 ? 'selected' : ''}>4 pieces</option><option value="8" ${settings.pieces === 8 ? 'selected' : ''}>8 pieces</option></select></label>
+        <label>Pieces at once: <select data-set="pieces"><option value="0" ${settings.pieces === 0 ? 'selected' : ''}>Off (one stream)</option><option value="4" ${![0, 8].includes(settings.pieces) ? 'selected' : ''}>4 pieces</option><option value="8" ${settings.pieces === 8 ? 'selected' : ''}>8 pieces</option></select></label>
         <p class="muted">Pieces fetch a big file (over 256 MB) in several parts at the same time, which is often faster on a fast line. Help has more (search "pieces").</p>
         <label><input type="checkbox" data-set="resumeOnStart" ${settings.resumeOnStart || pickUpOn ? 'checked' : ''} ${pickUpOn ? 'disabled' : ''}> Carry on unfinished downloads when Bob starts</label>
         <p class="muted">${pickUpOn ? 'On because Resume jobs after restart is on.' : 'Left off, they wait, paused, until you press Resume.'}</p>

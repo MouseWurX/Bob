@@ -1,7 +1,7 @@
 // Nov 27 2026 (the owner asked for downloads "in pieces"): one big brain file downloaded as 4 or 8 pieces at once, each its own
 // HTTP Range request, written into the same .part file at its own place. One stream from Hugging Face is often slower than
-// the line; several at once usually fill it (NariQ's launcher does the same with the hf tool). Off by default
-// (Settings in Downloads, "Pieces at once"). Plain Node, so it works the same on Windows, Mac and Linux. The Android app's own phone-brain download (PhoneBrain.kt) is still one stream.
+// the line; several at once usually fill it (NariQ's launcher does the same with the hf tool). On at 4 pieces
+// from the start (lossless: same bytes, same checksum), Off or 8 in Downloads, Settings, "Pieces at once". Plain Node, so it works the same on Windows, Mac and Linux; the Android app does the same in PhoneBrain.kt.
 //
 // Resume: a small "<file>.pieces.part" note keeps how far each piece got, so Pause or a lost line picks up where each
 // piece stopped. A server that ignores Range requests is noticed on the first piece that doesn't start at 0, and the
@@ -13,10 +13,12 @@ import crypto from 'node:crypto';
 
 export const PIECE_CHOICES = [4, 8];
 export const PIECE_MIN_BYTES = 256 * 1024 * 1024; // smaller files gain little from pieces
+export const PIECE_DEFAULT = 4;
 
-// How many pieces for a file of this size: 1 (one stream) unless the setting is on and the file is big enough.
+// How many pieces for a file of this size: 4 unless the setting says Off (0) or 8; 1 (one stream) for a small file.
 export function pieceCount(cfg, size, min = PIECE_MIN_BYTES) {
-  const n = Number(cfg?.downloads?.pieces) || 0;
+  const v = cfg?.downloads?.pieces;
+  const n = v === undefined || v === null ? PIECE_DEFAULT : Number(v) || 0;
   if (!PIECE_CHOICES.includes(n) || !(size >= min)) return 1;
   return n;
 }

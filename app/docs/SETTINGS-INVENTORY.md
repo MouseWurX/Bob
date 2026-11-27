@@ -79,7 +79,7 @@ Update this file in the same handover as any change to settings.
 | Page | Setting | Default | Review |
 |---|---|---|---|
 | Downloads | At once: 1 / 2 downloads | 1 | ok |
-| Downloads | Pieces at once: Off / 4 pieces / 8 pieces (files over 256 MB, several Range requests at the same time; PC, Mac and Linux, not the Android app yet) | off | new (Nov 27 2026) |
+| Downloads | Pieces at once: Off / 4 pieces / 8 pieces (files over 256 MB, several Range requests at the same time; Windows, Mac, Linux; the Android app always uses 4) | 4 pieces (lossless, the owner's go Nov 27) | new (Nov 27 2026) |
 | Downloads | Carry on unfinished downloads when Bob starts | off | ok (1.5.2) |
 | Style | Theme groups (Bob, Worlds and places, High contrast, From the MouseWurX website), your own theme (name, colours, font, corners, blueprint, outlined), avatars (133), Layout | Moondust (1.5.136; was Bob's Inn; Match system removed, old saved names migrate) | ok (1.5.2); 1.5.136 awaiting review |
 | Personality | What should Bob call you?; personality preset; sliders (humour, puns, side trips, mood, nerd references, talkative, manner…) | Factory Bob | ok, labels are plain |

@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import { fetchInPieces, pieceCount, splitRanges, stateFileOf, PIECE_MIN_BYTES } from '../src/piece-download.js';
 import { ModelShop } from '../src/models.js';
 import { mergeSettings } from '../src/config.js';
+import { fileURLToPath } from 'node:url';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -47,9 +48,9 @@ function server(mode = 'ok') {
 const same = (f) => fs.existsSync(f) && crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex') === sha;
 
 // 1. Settings: off by default, only 4 or 8, only for big files.
-check('off by default: one stream', pieceCount({}, 5e9) === 1 && pieceCount({ downloads: {} }, 5e9) === 1);
+check('on at 4 pieces from the start; Off (0) means one stream', pieceCount({}, 5e9) === 4 && pieceCount({ downloads: {} }, 5e9) === 4 && pieceCount({ downloads: { pieces: 0 } }, 5e9) === 1);
 check('4 or 8 pieces for a big file, one stream for a small one', pieceCount({ downloads: { pieces: 4 } }, 5e9) === 4 && pieceCount({ downloads: { pieces: 8 } }, 5e9) === 8 && pieceCount({ downloads: { pieces: 8 } }, PIECE_MIN_BYTES - 1) === 1);
-check('settings keep only 0, 4 or 8', mergeSettings({}, { downloads: { pieces: 8 } }).downloads.pieces === 8 && mergeSettings({}, { downloads: { pieces: 3 } }).downloads.pieces === 0 && mergeSettings({}, { downloads: {} }).downloads.pieces === 0);
+check('settings keep only 0, 4 or 8 (4 when unset or odd)', mergeSettings({}, { downloads: { pieces: 8 } }).downloads.pieces === 8 && mergeSettings({}, { downloads: { pieces: 0 } }).downloads.pieces === 0 && mergeSettings({}, { downloads: { pieces: 3 } }).downloads.pieces === 4 && mergeSettings({}, { downloads: {} }).downloads.pieces === 4);
 const sr = splitRanges(10, 100, 4);
 check('pieces cover the rest of the file with no gap or overlap', sr.length === 4 && sr[0].start === 10 && sr.at(-1).end === 100 && sr.every((p, i) => i === 0 || p.start === sr[i - 1].end));
 
@@ -100,7 +101,7 @@ check('pieces cover the rest of the file with no gap or overlap', sr.length === 
   check('a piece that breaks once tries again', r.ok && same(part) && s.asked.length === 5);
 }
 
-// 8. The download queue uses pieces only when the setting is on, and the file is checked against its sha256.
+// 8. The download queue uses pieces unless the setting says Off, and the file is checked against its sha256.
 const dataDir = path.join(root, 'inn', 'bob'); fs.mkdirSync(dataDir, { recursive: true });
 const cat = JSON.parse(fs.readFileSync(new URL('../catalog.json', import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
 for (const m of cat.models) for (const f of m.files || []) { delete f.sha256; delete f.bytes; delete f.sizeOnly; }
@@ -125,6 +126,7 @@ shop.pieceMin = 1; // the fake file is small; real ones need 256 MB before piece
 const item = (id) => shop.dl.find((d) => d.id === id);
 const fileOf = (id) => { const e = shop.catalog.models.find((m) => m.id === id); return path.join(cfg.bobModelsDir, e.category, path.basename(new URL(e.files[0].url).pathname)); };
 const A = 'whisper-base-en', B = 'whisper-large-v3-turbo', C = 'qwen3-4b';
+mergeSettings(cfg, { downloads: { pieces: 0 } });
 await shop.download(A);
 await until(() => ['done', 'failed'].includes(item(A)?.state));
 check('setting off: one stream, as before', item(A).state === 'done' && same(fileOf(A)) && ranges.length === 1 && ranges[0] === '', JSON.stringify(ranges));
@@ -137,6 +139,11 @@ norange = true; ranges.length = 0;
 await shop.download(C);
 await until(() => ['done', 'failed'].includes(item(C)?.state));
 check('a server without ranges: falls back to one stream and finishes', item(C).state === 'done' && same(fileOf(C)), item(C).error || '');
+
+// 9. The Android app does the same in its own download (Kotlin can't run here, so its source is checked).
+const kt = fs.readFileSync(fileURLToPath(new URL('../android/app/src/main/java/ca/mousewurx/bob/PhoneBrain.kt', import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
+check('phone app: 4 pieces at once for big files, one stream when a website ignores ranges', /var piecesAtOnce = 4/.test(kt) && /PIECE_MIN_BYTES = 256L \* 1024 \* 1024/.test(kt) && /bytes=\$from-\$\{p\.end - 1\}/.test(kt) && /code == 200 && from != 0L\) \{ c\.disconnect\(\); throw NoRanges\(\) \}/.test(kt) && /if \(!fetchPieces\(/.test(kt));
+check('phone app: pieces note kept for resume, removed on cancel, and the checksum still checked', /\$name\.pieces\.part"\)\.delete\(\) \}/.test(kt) && /finally \{\s*saveNote/.test(kt) && /MessageDigest\.getInstance\("SHA-256"\)/.test(kt));
 
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`\npiece downloads: ${pass} passed, ${fail} failed`);
