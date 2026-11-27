@@ -21,6 +21,10 @@ const bob = spawn(process.execPath, [path.join(root, 'src', 'server.js')], { env
 const up = async () => { for (let i = 0; i < 60; i++) { const ok = await new Promise((r) => http.get({ host: '127.0.0.1', port: PORT, path: '/phone/' }, (res) => { res.resume(); r(res.statusCode === 200); }).on('error', () => r(false))); if (ok) return true; await new Promise((r) => setTimeout(r, 500)); } return false; };
 
 const problems = [];
+// WebKit's screenshot adds a <style> of its own, which the page's style rule (style-src 'self') refuses: one refusal
+// per shot, seen on GitHub's Mac. Only that refusal, and only while a shot is being taken, isn't counted.
+let shooting = false;
+const shot = async (page, name) => { shooting = true; try { await page.screenshot({ path: path.join(out, name) }); await page.waitForTimeout(100); } finally { shooting = false; } };
 const step = (what) => console.log(`step: ${what}`);
 const problem = (p) => { console.log(`  ${p}`); problems.push(p); };
 let browser;
@@ -31,13 +35,11 @@ try {
   const ctx = await browser.newContext({ ...phone, viewport: { width: 402, height: 874 }, screen: { width: 402, height: 874 } }); // 16 Pro size
   const page = await ctx.newPage();
   page.on('pageerror', (e) => problem(`page error: ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource.*(401|404)|EventSource/.test(m.text())) problem(`console: ${m.text()} (at ${m.location()?.url || '?'}:${m.location()?.lineNumber ?? '?'})`); });
+  page.on('console', (m) => { if (m.type() === 'error' && !(shooting && /^Refused to apply a stylesheet/.test(m.text())) && !/Failed to load resource.*(401|404)|EventSource/.test(m.text())) problem(`console: ${m.text()} (at ${m.location()?.url || '?'}:${m.location()?.lineNumber ?? '?'})`); });
   page.on('requestfailed', (r) => { if (!/\/api\/events/.test(r.url())) problem(`failed: ${r.url()} ${r.failure()?.errorText || ''}`); });
   step('open /phone/'); await page.goto(`http://127.0.0.1:${PORT}/phone/`, { waitUntil: 'load' });
   step('wait'); await page.waitForTimeout(2500); step('shot 1');
-  await page.screenshot({ path: path.join(out, '1-chat.png'), caret: 'initial' });
-  // Playwright hides the text cursor for a screenshot with a <style> of its own, which the page's style rule blocks
-  // (one refusal per shot), so the shots keep the cursor: every refusal left is the page's own.
+  await shot(page, '1-chat.png');
   // What a style rule (style-src 'self') would block: <style> blocks and style="" attributes on the page.
   const inline = await page.evaluate(() => [...document.querySelectorAll('style, [style]')].map((e) => e.outerHTML.slice(0, 160)));
   for (const h of inline) console.log(`inline style on the page: ${h}`);
@@ -45,15 +47,15 @@ try {
   if (!bridge) problem('the web bridge did not load');
   step('open the menu'); await page.click('#open-menu');
   await page.waitForTimeout(800);
-  await page.screenshot({ path: path.join(out, '2-menu.png'), caret: 'initial' });
+  await shot(page, '2-menu.png');
   if (await page.locator('#menu').isHidden()) problem('the menu did not open');
   await page.locator('#menu .back').first().click();
   step('type'); await page.fill('#text', 'Hello from the iPhone check');
-  await page.screenshot({ path: path.join(out, '3-typing.png'), caret: 'initial' });
+  await shot(page, '3-typing.png');
   // Leaving the screen and coming back (PR #373): no errors, page still answers.
   step('leave and come back'); await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
   await page.waitForTimeout(1500);
-  await page.screenshot({ path: path.join(out, '4-back-again.png'), caret: 'initial' });
+  await shot(page, '4-back-again.png');
 } catch (e) {
   problem(`check stopped: ${e.message}`);
 } finally {
