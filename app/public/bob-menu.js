@@ -24,20 +24,23 @@ export function usersPart(users) {
     ${guest ? '' : '<button type="button" role="menuitem" class="bob-menu-item" data-bobmenu="signout"><span aria-hidden="true">🚪</span> <strong>Sign out</strong><br><span class="muted">To Guest</span></button>'}
   </div>`;
 }
-export function bobMenuHtml(status, { said = '', names = {}, tools = [], session = null, users = null } = {}) {
+// routines (Nov 23): true when the Routines Hand is on and this is the PC itself (the editor only works there): a
+// Routines door under Get models that opens the Routines editor. Off: no row.
+export function bobMenuHtml(status, { said = '', names = {}, tools = [], session = null, users = null, routines = false } = {}) {
   const doing = said || status?.detail || 'Getting the fire going...';
   const door = (id, icon, label, what) => `<button type="button" role="menuitem" class="bob-menu-item" data-bobmenu="${id}"><span aria-hidden="true">${icon}</span> <strong>${esc(label)}</strong><br><span class="muted">${esc(what)}</span></button>`;
   return `<p class="bob-menu-now" role="status"><strong>${esc(doing)}</strong><br><span class="muted">${esc(status ? loadedLine(status, names) : 'Checking which brain is loaded…')}</span></p>
     ${door('brains', '🧠', 'Brains', 'Which brain does what, Set up and Calibrate')}
     ${door('style', '🎨', 'Style', 'My look, colours and animations')}
     ${door('models', '📚', 'Get models', 'The catalogue and every model shop')}
+    ${routines ? door('routines', '🔁', 'Routines', 'Jobs you wired up, that run by themselves') : ''}
     ${usersPart(users)}${tools.length ? `
     <div class="bob-menu-tools" role="group" aria-label="More of my menu">${tools.map((t) => `<button type="button" role="menuitem" class="bob-menu-tool" data-bobtool="${esc(t.id)}"><span aria-hidden="true">${t.icon}</span> ${esc(t.label)}${t.st ? ` <span class="muted">${esc(t.st)}</span>` : ''}</button>`).join('')}</div>` : ''}${session && session.options.length ? `
     <label class="bob-menu-session">Session <select data-bobsession aria-label="Session">${session.options.map((o) => `<option value="${esc(o.value)}"${o.value === session.value ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>` : ''}`;
 }
 
 // anchor: Bob's picture. doors: { brains(), style(), models() }. getStatus(): the latest status, names(): labels.
-export function createBobMenu({ anchor, doors, getStatus, getNames, saidNow, getTools = () => [], getSession = () => null, pickTool = () => {}, pickSession = () => {}, getUsers = () => null }) {
+export function createBobMenu({ anchor, doors, getStatus, getNames, saidNow, getTools = () => [], getSession = () => null, pickTool = () => {}, pickSession = () => {}, getUsers = () => null, getRoutines = async () => false }) {
   const box = document.createElement('div');
   box.className = 'bob-menu';
   box.id = 'bobMenu';
@@ -48,7 +51,8 @@ export function createBobMenu({ anchor, doors, getStatus, getNames, saidNow, get
   anchor.setAttribute('aria-haspopup', 'menu');
   anchor.setAttribute('aria-expanded', 'false');
   let names = {};
-  const draw = (status) => { box.innerHTML = bobMenuHtml(status, { said: saidNow?.() || '', names, tools: getTools(), session: getSession(), users: getUsers() }); };
+  let routines = false;
+  const draw = (status) => { box.innerHTML = bobMenuHtml(status, { said: saidNow?.() || '', names, tools: getTools(), session: getSession(), users: getUsers(), routines }); };
   const close = (back = false) => { if (box.hidden) return; box.hidden = true; anchor.setAttribute('aria-expanded', 'false'); if (back) (at || anchor).focus(); };
   let at = anchor;
   const open = async (from) => {
@@ -60,8 +64,9 @@ export function createBobMenu({ anchor, doors, getStatus, getNames, saidNow, get
     box.hidden = false;
     anchor.setAttribute('aria-expanded', 'true');
     box.querySelector('button')?.focus();
-    const [status, got] = await Promise.all([getStatus().catch(() => ({ loaded: [] })), getNames().catch(() => names)]);
+    const [status, got, rt] = await Promise.all([getStatus().catch(() => ({ loaded: [] })), getNames().catch(() => names), getRoutines().catch(() => false)]);
     names = got || names;
+    routines = rt === true;
     if (box.hidden) return;
     const focused = [...box.querySelectorAll('button, select')].indexOf(document.activeElement);
     draw(status);

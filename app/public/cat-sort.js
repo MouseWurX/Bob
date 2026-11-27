@@ -23,7 +23,7 @@ export const OFFICIAL = {
 export const FAMILY_MAKER = {
   Qwen: 'Alibaba', Gemma: 'Google', Granite: 'IBM', Mistral: 'Mistral AI', Nemotron: 'NVIDIA', DeepSeek: 'DeepSeek', GLM: 'Z.ai',
   Laguna: 'Poolside', 'GPT-OSS': 'OpenAI', Whisper: 'OpenAI', 'Z-Image': 'Alibaba', FLUX: 'Black Forest Labs', LTX: 'Lightricks',
-  Wan: 'Alibaba', Nomic: 'Nomic', 'ACE-Step': 'ACE Studio', Phi: 'Microsoft', Llama: 'Meta', Muse: 'Meta', LFM: 'Liquid AI',
+  Wan: 'Alibaba', Nomic: 'Nomic', 'ACE-Step': 'ACE Studio', Phi: 'Microsoft', Llama: 'Meta', Muse: 'Meta', LFM: 'Liquid AI', Raon: 'KRAFTON',
 };
 const orgOf = (m) => String(m?.source?.repo || '').split('/')[0].toLowerCase();
 
