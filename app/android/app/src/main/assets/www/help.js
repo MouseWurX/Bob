@@ -61,7 +61,7 @@ globalThis.BobHelp = {
       html: `<p>Menu, <strong>Phone brain</strong>, <strong>On-device brain</strong> (off to start with). It needs a one-time download:</p>
 <ul><li><strong>Gemma 4 E2B</strong> (recommended, about 2.8 GB): quick and light, from the same family as my brains on your other replicant matrix.</li>
 <li><strong>Qwen3 4B Instruct</strong> (about 2.5 GB): a little better at step-by-step thinking, but slower, and the phone runs warmer.</li></ul>
-<p>Each download asks first, shows its size, comes from an exact pinned version, and is checked against its checksum before I use it. If the check fails, the file is deleted. Pause keeps what's downloaded; Resume carries on. A network hiccup is retried twice by itself. A brain over 256 MB comes down in 4 pieces at the same time, which is often quicker; if the website can't send it in parts, I fetch it in one stream instead. Same file, same checksum either way.</p>
+<p>Each download asks first, shows its size, comes from an exact pinned version, and is checked against its checksum before I use it. If the check fails, the file is deleted. Pause keeps what's downloaded; Resume carries on. A network hiccup is retried twice by itself.</p>
 <p><strong>Use this one</strong> picks which downloaded brain answers. <strong>Delete</strong> frees its space (tap twice).</p>
 <p>What the phone brain can't do: pictures, music, files, programs, web search. It's honest about that and points you to a bigger Bob.</p>`
     },

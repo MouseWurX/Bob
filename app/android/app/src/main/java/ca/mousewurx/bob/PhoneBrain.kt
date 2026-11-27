@@ -111,7 +111,7 @@ class PhoneBrain(private val context: Context) {
                 if (modelsDir.usableSpace + part.length() < bytes + 200_000_000L) {
                     emit(mapOf("type" to "download", "state" to "error", "text" to "not enough space")); return@launch
                 }
-                // Nov 27 2026: a big file comes down in pieces at once (like the PC's "Pieces at once"); a website that
+                // Nov 27 2026: with piecesAtOnce over 1, a big file comes down in pieces at once (like the PC's "Pieces at once"); a website that
                 // can't send parts gets one stream below, as before. A half file from one stream carries on as one stream.
                 val note = File(modelsDir, "$name.pieces.part")
                 if (piecesAtOnce > 1 && bytes >= PIECE_MIN_BYTES && (note.exists() || part.length() == 0L)) {
@@ -172,8 +172,8 @@ class PhoneBrain(private val context: Context) {
 
     fun pauseDownload() { download?.cancel() }
 
-    /** Pieces at once for a big file (4, as the PC starts); 1 = one stream. */
-    @Volatile var piecesAtOnce = 4
+    /** Pieces at once for a big file: 1 = one stream (the start, until a test shows pieces are faster); 4 or 8. */
+    @Volatile var piecesAtOnce = 1
 
     private class Piece(val start: Long, val end: Long, @Volatile var got: Long)
     private class NoRanges : Exception("the website can't send parts")

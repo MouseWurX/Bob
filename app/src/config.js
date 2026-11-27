@@ -452,7 +452,7 @@ function clean(patch) {
   if ('adventure' in out) { const a = out.adventure || {}; const x = a.extras || {}; const extras = Object.fromEntries(['dice', 'sounds', 'voice', 'pictures', 'scenePics', 'portraits', 'music'].map((k) => [k, x[k] === true])); if (!extras.pictures) extras.scenePics = false; const r = a.rules || {}; const rules = Object.fromEntries(['map', 'coins', 'breath', 'secrets', 'riddles', 'badges'].map((k) => [k, r[k] === true])); out.adventure = { gm: a.gm === 'main' ? 'main' : 'biggest', players: a.players === 'gm' ? 'gm' : 'own', extras, rules, difficulty: ['easy', 'hard'].includes(a.difficulty) ? a.difficulty : 'normal' }; } // 1.5.206 table rules (all off) and difficulty (Normal) // 1.5.117 🎲 Adventure (defaults, nothing on); 1.5.204 table extras, all off unless ticked
   if ('hands' in out) out.hands = cleanHands(out.hands || {});
   if ('quarantine' in out) out.quarantine = { on: out.quarantine?.on === true };
-  if ('downloads' in out) { const d = out.downloads || {}; out.downloads = { concurrent: Number(d.concurrent) === 2 ? 2 : 1, resumeOnStart: d.resumeOnStart === true, pieces: [0, 4, 8].includes(Number(d.pieces ?? 4)) ? Number(d.pieces ?? 4) : 4 }; }
+  if ('downloads' in out) { const d = out.downloads || {}; out.downloads = { concurrent: Number(d.concurrent) === 2 ? 2 : 1, resumeOnStart: d.resumeOnStart === true, pieces: [4, 8].includes(Number(d.pieces)) ? Number(d.pieces) : 0 }; }
   if ('session' in out) out.session = ['normal', 'art', 'coding', 'office', 'light'].includes(out.session) ? out.session : 'normal'; // 1.5.23: a saved 'deep' becomes Normal
   if ('sessionBrains' in out) {
     const sb = out.sessionBrains || {};
