@@ -22,6 +22,7 @@ import { catTurn, catPrompt } from '../public/patches.js';
 import { meanwhileOn, meanwhileLine, asksAboutJob, NO_JOB_LINE, claimsJobGuess, JOB_GUESS_CORRECTION, JOB_GUESS_NUDGE, noteAfterAnswer } from './meanwhile.js';
 import { guestNote, guestTools } from './share-jobs.js';
 import { askedSteps, planLine } from './job-steps.js';
+import { fixLoopStep } from './fix-loop.js'; // Jobs: Fix until the tests pass
 import { jobHelpsPrompt, askFirstNote, SOFT_STOP_NOTE, stepsRan, SOFT_STOP_LINE, timeCheck, TIME_UP_NOTE, cleanJobHelps, testsNudge, afterAnswer, flushNoes } from './job-helps.js';
 import { cleanPersonality, personalityPrompt } from '../public/personality.js';
 import { roughTokens, wantsBorrow } from './share-brains.js';
@@ -571,6 +572,10 @@ export const runOnParts = {
       }
       if (!reply.tool_calls && !job?.side && !ctx.noteRedo && this.watch.for(job)?.notes.length) { ctx.noteRedo = true; this.readNotes(ctx, msgs, noteAfterAnswer); continue; }
       if (!reply.tool_calls && !ctx.noTools && nudgeOk(ctx)) { // Jobs, Run tests after code edits (job-helps.js): before he says done
+        // Fix until the tests pass (fix-loop.js): he runs them, and failures go back to him until they pass or he's stuck.
+        const fix = await fixLoopStep(this, ctx);
+        if (fix?.note) { msgs.push({ role: 'system', content: fix.note, hidden: true }); ctx.retrying = true; emit({ type: 'token', text: '\n\n' }); nudged(); continue; }
+        if (fix?.line) { emit({ type: 'token', text: fix.line }); reply.content = String(reply.content || '') + fix.line; }
         const tests = testsNudge(this, ctx);
         if (tests) { const g = groupOf(this, 'run_command'); if (g) ctx.loaded.add(g); msgs.push({ role: 'system', content: tests, hidden: true }); ctx.retrying = true; emit({ type: 'token', text: '\n\n' }); nudged(); continue; }
       }

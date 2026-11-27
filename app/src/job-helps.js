@@ -11,11 +11,14 @@
 //   sources      59 Sources under web answers: numbered links to the pages he read
 //   howSure      60 Say how sure he is when pages disagree or results are thin
 //   fileLinks    61 Clickable file:line links, opening your editor at that line
+//   fixLoop         Fix until the tests pass: he runs the tests, fixes what fails, runs them again (fix-loop.js)
+//   jobUndo         Undo the whole coding job: a copy of the project before its first change, one button puts it back (job-undo.js)
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { jobUndoFinish } from './job-undo.js';
 
-export const JOB_HELPS = ['steer', 'softStop', 'timeLimit', 'receipt', 'runTests', 'askFirst', 'rememberNo', 'lookupCache', 'sources', 'howSure', 'fileLinks'];
+export const JOB_HELPS = ['steer', 'softStop', 'timeLimit', 'receipt', 'runTests', 'askFirst', 'rememberNo', 'lookupCache', 'sources', 'howSure', 'fileLinks', 'fixLoop', 'jobUndo'];
 export const TIME_CHOICES = [5, 10, 15, 20, 30, 45, 60];
 export const EDITORS = ['vscode', 'cursor', 'vscodium', 'system'];
 export const DEFAULT_MINUTES = 10;
@@ -222,7 +225,7 @@ export function testCommandFor(file, { exists = fs.existsSync, read = (f) => fs.
 export const TESTS_NOTE = (who, t) => `Before you say this is done: you changed code in ${t.root}. Run its tests with run_command (cmd "${t.cmd}", args ${JSON.stringify(t.args)}, in that folder). ${who} sees the exact command and says yes first. If any test fails, fix what you broke and run them again. If ${who} says no, say the tests weren't run.`;
 // The answer is ready: should he run the tests first? Returns the note to add, or ''.
 export function testsNudge(brain, ctx, { find = testCommandFor } = {}) {
-  if (!jobHelp(brain.cfg, 'runTests') || !ownJob(ctx.job) || ctx.testsNudged || ctx.testedAfterEdit !== false || !ctx.codeEdits?.length) return '';
+  if (!jobHelp(brain.cfg, 'runTests') || jobHelp(brain.cfg, 'fixLoop') || !ownJob(ctx.job) || ctx.testsNudged || ctx.testedAfterEdit !== false || !ctx.codeEdits?.length) return '';
   if (brain.usable && !brain.usable('run_command')) return '';
   const t = find(ctx.codeEdits.at(-1));
   if (!t) return '';
@@ -347,6 +350,8 @@ export function afterAnswer(brain, ctx, reply) {
     brain.log?.('jobs', `receipt: ${ctx.receipt.length} line${ctx.receipt.length === 1 ? '' : 's'}`);
   }
   if (ctx.timeEnds) ctx.emit?.({ type: 'job-clock', done: true });
+  const undo = jobUndoFinish(brain, ctx); // Undo the whole coding job: the card under the answer
+  if (undo.length) reply.jobUndo = undo.map((c) => ({ id: c.id, root: c.root }));
   return add;
 }
 

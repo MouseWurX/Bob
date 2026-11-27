@@ -296,6 +296,7 @@
     "test/run-everyday-test.js",
     "test/run-users-test.js",
     "test/run-job-helps-test.js",
+    "test/run-fix-loop-test.js",
     "test/run-engine-extras-test.js",
     "test/run-engine-tuning-test.js",
     "test/run-conductor-test.js",

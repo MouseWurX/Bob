@@ -5,6 +5,8 @@ import { SAVING_TOOLS, saysNoSave, noSaveLine } from './no-save.js';
 import { gate as qGate, after as qAfter, noteStrike } from './quarantine.js';
 import { WATCH_TOOLS } from './meanwhile.js';
 import { receiptBefore, cachedLook, keepLook, receiptAfter, noteNo } from './job-helps.js';
+import { jobUndoBefore } from './job-undo.js'; // Jobs: Undo the whole coding job
+import { fixAfterTool } from './fix-loop.js'; // Jobs: Fix until the tests pass
 import { inTurn as inChangeTurn, afterChanges } from './turn-changes.js';
 import { recordCall } from './tool-learn.js';
 import { traced, toolStatus } from './trace-log.js'; // Nov 16 Monitoring log
@@ -59,6 +61,7 @@ export const toolRunParts = {
       this.watch.step(ctx.job, sum);
     }
     const before = receiptBefore(this, name, args, ctx); // Jobs (job-helps.js): what a file held, for the receipt's Undo
+    jobUndoBefore(this, name, args, ctx); // Jobs (job-undo.js): a copy of the whole project before the job's first change in it
     // Items 237-238: every save the tool makes is tied to this turn (Undo takes the whole turn back; memory changes say
     // which turn wrote them). Not for another Bob's, Telegram's or Discord's jobs.
     const scope = ctx?.askId && !ctx.job?.guest ? { cfg: this.cfg, sessionId: ctx.sessionId, askId: ctx.askId, jobId: ctx.job?.id, tool: name } : null;
@@ -66,6 +69,7 @@ export const toolRunParts = {
     const res = await traced('tool', name === 'use_my_tool' && args?.name ? `use_my_tool:${args.name}` : name, async () => cachedLook(this, name, args, ctx) || await inChangeTurn(scope, async () => { try { return await this.runToolNow(name, args, ctx, tool); } finally { if (scope && afterChanges(scope)) { ctx.changed = true; ctx.emit?.({ type: 'turn-changed', askId: ctx.askId }); } } }), (r) => ({ status: toolStatus(r?.text), chars: String(r?.text ?? '').length, detail: { in: args, out: r?.text } }), { signal: ctx?.signal, before: { in: args } }); // Jobs: Reuse look-ups
     keepLook(this, name, args, res);
     receiptAfter(this, name, args, res, ctx, before);
+    fixAfterTool(this, name, args, res, ctx); // Jobs (fix-loop.js): his own test run after his last change counts
     noteNo(this, ctx, name, args, res?.text); // Jobs: Remember a "no" for the whole chat
     if (watched) this.watch.result(ctx.job, res?.text);
     // 1.5.95: a file type named in the ask is saved before the tool's answer goes back, so Bob can say so.

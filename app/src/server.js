@@ -122,6 +122,7 @@ import { findOpenscad } from './parts3d.js';
 import { model3dReady } from './model3d.js';
 import { lockAtStart, secretsPatch, secretsView } from './secret-settings.js'; // 🔐 Locked secrets
 import { cleanJobHelps, stopAfterStep, undoReceipt, keepDenyNote, pruneReceipts } from './job-helps.js'; // Settings, Jobs (items 51-61)
+import { undoCodingJob, undoCodingLine, pruneJobUndo } from './job-undo.js'; // Settings, Jobs: Undo the whole coding job
 import { openAt } from './job-open.js';
 import { harnessRoute } from './harness-routes.js'; // items 62 to 72 (src/harness.js), all off unless switched on
 import { fadeRoute } from './fade-routes.js'; // Fade old messages, Clear chat and 🫥 Amnesia mode
@@ -221,6 +222,7 @@ startWatchdog({ logbook: cfg.logbook, timeZone: cfg.timeZone, onBack: ({ secs })
   broadcast({ type: 'froze', secs, text: frozeLine(secs), canRestart: typeof globalThis.bobHome?.restart === 'function' });
 } });
 pruneReceipts(cfg); // Settings, Jobs: a receipt's Undo lasts a week
+pruneJobUndo(cfg); // and so does Undo the whole coding job
 pruneTurns(cfg); // item 238: a turn's Undo lasts a week
 process.on('exit', () => { try { brain.flushQueue(); } catch {} }); // item 230: steps not saved yet go in now
 // Nov 13 Coding agents (src/coding-agents.js, off unless switched on): Claude Code, Codex, Gemini CLI and others side by side.
@@ -1530,6 +1532,14 @@ const server = http.createServer(async (req, res) => {
         if (p === '/api/jobs/undo') { const r = undoReceipt(cfg, String(b.id || '')); brain.log('jobs', `undo from a receipt (your click): ${r.file}`); return send(res, 200, { ok: true, ...r }); }
         const r = openAt(cfg, String(b.path || ''), Number(b.line) || 0); brain.log('open', `opened ${r.file}${b.line ? ` at line ${Number(b.line)}` : ''} (${r.how})`); return send(res, 200, { ok: true, how: r.how });
       } catch (e) { return send(res, 409, { error: e.message }); }
+    }
+
+    // Settings, Jobs, Undo the whole coding job (job-undo.js): the owner's click on the card under the answer.
+    if (req.method === 'POST' && p === '/api/jobs/undo-all') {
+      if (!isLocal) return send(res, 403, { error: 'Only on this replicant matrix itself.' });
+      const b = await body(req);
+      try { const r = undoCodingJob(cfg, String(b.id || '')); const line = undoCodingLine(r); brain.log('jobs', `Undo the whole coding job (your click): ${line}`); return send(res, 200, { ok: true, line, ...r }); }
+      catch (e) { return send(res, 409, { error: e.message }); }
     }
 
     // Housekeeping, topics, past chats and search. Reading works from the phone too; changes only on the PC.

@@ -4,6 +4,13 @@ What changed in the newest 10 versions of Bob, newest first. Each version also h
 
 This file is made from app/docs/releases by `node installer/make-changelog.js` (run in the app folder).
 
+## 1.5.256
+
+### New
+
+- **Fix until the tests pass** (Settings, Jobs; off unless you turn it on). Before Bob says a coding job is done, he runs the project's tests himself (npm test, cargo test, go test or pytest). If they fail, the failures go back to him to fix, and the tests run again when he answers. It ends when they pass (a ✅ line says so), or when he's out of ideas: he answered without changing anything since they last failed, or the same tests failed the same way three runs in a row. Then he says which tests still fail, what he tried and his best guess, and a ❌ line written by the app names the failures from the last run. No count of rounds stops him while he's making progress. The command card still asks first. Not in Turbo; it stays off until a test shows it helps.
+- **Undo the whole coding job** (Settings, Jobs; off unless you turn it on). Before a job first changes a code project, Bob keeps a copy of it (not node_modules, .git, build folders or files over 5 MB). A ↩ card under the answer lists what the job changed, made and deleted, and **Undo the whole job** puts the project back in one press, including what commands changed. Files changed since are left alone and named; files the job made go to his backups folder. Works for a week.
+
 ## 1.5.255
 
 Brain Engine 46, GUPPI driving by default, the Per-chat engine cache on, and no caps on how long a job runs.
@@ -183,27 +190,6 @@ Rentals work again, Patches tells the steps, and the cable always wins on Bob-Ne
 - **Cable always wins.** When Bobs on a cable and Bobs on Wi-Fi both offer their graphics cards, the cable Bobs share the brain. Wi-Fi and Tailscale are for when a cable isn't possible, and those Bobs still take chats and web searches.
 
 **Where it works:** Windows, Mac, Linux and Bob for Android. Rentals and Bob-Net sharing are for computers.
-
-## 1.5.246
-
-Private web, one answer instead of two, and more Lab lessons.
-
-### New
-
-- **Private web.** In Settings, Connections, 🕶 Private web. It's off until you turn it on. Then I send only the search words, keep no cookies, take tracking bits off links, and my browser window uses a throwaway profile that blocks trackers. You can also send my web search and pages through your own proxy or Tor; if it's down, I stop instead of going direct. Gaming mode, the Lab, Bob-Net and downloads aren't touched.
-- **Try other sources when one blocks me.** When a site turns me away with a block or a robot check, I never try to get past it. I skip that site for the rest of the job and read the same facts from up to 3 others, like another search result or a copy the Internet Archive already has, and I say what I skipped.
-- **Lab Lessons.** Two new Engineering lessons (a held-out leak, and auditing your reviewer), a How strong line on every Real result, and a page showing where every Real result comes from.
-
-### Fixed
-
-- **One answer, not two.** After I said "I can't" and had one more go, or after the check that only some tool steps ran, my second answer was stacked under the first. Now only one stays: the new one if it used a tool, otherwise the first.
-
-### Also
-
-- The README has a privacy note under the title, a Quick start, and a table of where everything is.
-- The dissertation now follows the locked tool shapes (Qwen shape 4, GPT-OSS shape 3), with new findings in chapter 8 and the rule in chapter 4.
-
-**Where it works:** Windows, Mac, Linux and Bob for Android. Routing and the private browser window are for the desktop app.
 
 ## Older versions
 

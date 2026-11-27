@@ -20,6 +20,16 @@ export function receiptHtml(items, { local = true } = {}) {
   return `<p><strong>🧾 What this job did:</strong> ${esc(sum)}</p><ul class="receipt-list">${items.map(row).join('')}</ul>`;
 }
 
+// Undo the whole coding job (src/job-undo.js): what the job changed in one project, with one button.
+export function jobUndoHtml(ev, { local = true } = {}) {
+  const parts = [ev.changed && `${ev.changed} changed`, ev.created && `${ev.created} new`, ev.deleted && `${ev.deleted} deleted`].filter(Boolean).join(', ');
+  const name = String(ev.root || '').split(/[\\/]/).filter(Boolean).pop() || ev.root;
+  const more = (ev.changed + ev.created + ev.deleted) - (ev.files || []).length;
+  return `<p><strong>↩ This job changed ${esc(name)}:</strong> ${esc(parts)} file${(ev.changed + ev.created + ev.deleted) === 1 ? '' : 's'}${ev.partial ? ' <span class="muted">(the project is big, so not every file was copied)</span>' : ''}</p>`
+    + `<ul class="receipt-list">${(ev.files || []).map((f) => `<li><code>${esc(f)}</code></li>`).join('')}${more > 0 ? `<li class="muted">and ${more} more</li>` : ''}</ul>`
+    + (local ? `<p><button type="button" class="mini" data-jh-undoall="${esc(ev.id)}">Undo the whole job</button> <span class="muted">Puts ${esc(name)} back as it was before this job. Works for a week.</span></p>` : '');
+}
+
 export const clockText = (endsAt, now = Date.now()) => {
   const left = Math.max(0, endsAt - now), m = Math.ceil(left / 60000);
   return left <= 0 ? 'Time is up for this job' : m <= 1 ? 'Under a minute left for this job' : `${m} minutes left for this job`;
@@ -64,6 +74,14 @@ export function createJobHelps({ api, add, note, log, stopBtn, scrollDown = () =
     };
   };
 
+  const wireJobUndo = (el) => {
+    for (const b of el.querySelectorAll('[data-jh-undoall]')) b.onclick = async () => {
+      b.disabled = true;
+      try { const r = await api('/api/jobs/undo-all', { id: b.dataset.jhUndoall }); b.parentNode.replaceWith(Object.assign(document.createElement('p'), { className: 'muted', textContent: r.line })); }
+      catch (e) { b.disabled = false; note(e.message, 'error'); }
+    };
+  };
+
   return {
     refresh,
     busy(b) { busy = b; drawStopAfter(); if (!b) endClock(); },
@@ -71,6 +89,7 @@ export function createJobHelps({ api, add, note, log, stopBtn, scrollDown = () =
     event(ev) {
       if (ev.type === 'job-clock') { if (ev.done) endClock(); else if (ev.endsAt) drawClock(ev.startedAt, ev.endsAt); return true; }
       if (ev.type === 'receipt' && Array.isArray(ev.items) && ev.items.length) { const el = add('note receipt', receiptHtml(ev.items)); wireReceipt(el); scrollDown(); return true; }
+      if (ev.type === 'job-undo' && ev.id) { const el = add('note receipt job-undo', jobUndoHtml(ev)); wireJobUndo(el); scrollDown(); return true; }
       return false;
     },
     // 57 Remember a "no": a "Why not?" box on a plain OK card, sent with Deny.
