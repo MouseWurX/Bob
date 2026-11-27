@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bob for iPhone's brain engine: llama.cpp at the commit in android/llama.cpp.pin (the same one Bob for Android uses,
 # fetched by android/tools/fetch-llama.sh), built for iPhones (Metal graphics) and the iPhone simulator, each as one
-# static library: ios/build/engine/<iphoneos|iphonesimulator>/libbobengine.a. Flags follow llama.cpp's own
+# set of static libraries in ios/build/engine/<iphoneos|iphonesimulator>/ (kept apart: two of them hold a unicode.o). Flags follow llama.cpp's own
 # build-xcframework.sh. Run from app/ios on a Mac with Xcode and CMake.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -23,8 +23,6 @@ for sdk in iphoneos iphonesimulator; do
     -DCMAKE_CXX_FLAGS="-Wno-macro-redefined -Wno-shorten-64-to-32 -Wno-unused-command-line-argument"
   cmake --build "$B" --config Release -j "$(sysctl -n hw.logicalcpu)" -- -quiet
   mkdir -p build/engine/$sdk
-  libs=$(find "$B" -path "*Release-$sdk*" -name '*.a' | sort)
-  echo "$sdk libraries:"; echo "$libs"
-  libtool -static -o build/engine/$sdk/libbobengine.a $libs
+  find "$B" -path "*Release-$sdk*" -name '*.a' -exec cp {} build/engine/$sdk/ \;
 done
 ls -la build/engine/*/

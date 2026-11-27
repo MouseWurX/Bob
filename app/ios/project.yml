@@ -45,7 +45,10 @@ targets:
           - "$(SRCROOT)/../android/app/src/main/cpp"
         "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]": "$(SRCROOT)/build/engine/iphoneos"
         "LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]": "$(SRCROOT)/build/engine/iphonesimulator"
-        OTHER_LDFLAGS: ["-lbobengine", "-lc++"]
+        OTHER_LDFLAGS: ["-lllama-common", "-lllama-common-base", "-lcpp-httplib", "-lvendor-hash", "-lllama", "-lggml", "-lggml-cpu", "-lggml-metal", "-lggml-blas", "-lggml-base", "-lc++"]
+        # The engine is built for arm64 only (every iPhone, and the simulator on Apple Silicon Macs).
+        ARCHS: arm64
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
         ENABLE_BITCODE: NO
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: ""

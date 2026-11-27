@@ -60,10 +60,12 @@ jobs:
         run: |
           v=$(node -p "require('../package.json').version")
           for sdk in iphonesimulator iphoneos; do
-            xcodebuild -project Bob.xcodeproj -target Bob -configuration Release -sdk $sdk \
+            if ! xcodebuild -project Bob.xcodeproj -target Bob -configuration Release -sdk $sdk \
               SYMROOT="$PWD/build/xc" BOB_VERSION="$v" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-              build | tail -40
-            test -d "build/xc/Release-$sdk/Bob.app"
+              build > "build/xcodebuild-$sdk.log" 2>&1; then
+              grep -E "error:|warning: .*Bob/" -A 3 "build/xcodebuild-$sdk.log" | head -150; tail -30 "build/xcodebuild-$sdk.log"; exit 1
+            fi
+            test -x "build/xc/Release-$sdk/Bob.app/Bob"
           done
           mkdir -p dist Payload
           cp -R build/xc/Release-iphoneos/Bob.app Payload/
@@ -110,6 +112,7 @@ jobs:
             app/ios/dist/Bob-*-iphone.ipa
             app/ios/dist/Bob-*-iphone.ipa.sha256
             app/ios/shots/
+            app/ios/build/xcodebuild-*.log
           if-no-files-found: warn
       - name: Add to the GitHub release
         if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
