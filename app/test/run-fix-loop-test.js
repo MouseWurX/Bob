@@ -99,6 +99,10 @@ const find = () => T;
   fixAfterTool(b, 'run_command', { cmd: 'npm', args: ['test'], cwd: proj }, { text: PASS_OUT }, ctx);
   r = await fixLoopStep(b, ctx);
   check('his own test run after his last edit is used, not run twice', !b.ran.length && /✅ Tests pass/.test(r?.line));
+  // The Lab's test world: the brain sees made-up paths; realPath/shownPath map them.
+  b = fakeBrain([PASS_OUT]); b.realPath = (p) => p.replace('C:\\you\\own', proj).replace(/\\/g, '/'); b.shownPath = (p) => p.replace(proj, 'C:\\you\\own');
+  r = await fixLoopStep(b, { job: {}, codeEdits: ['C:\\you\\own\\a.js'], emit() {} });
+  check('made-up paths (the Lab) are mapped both ways', /✅/.test(r?.line) && b.ran[0]?.args.cwd === 'C:\\you\\own', JSON.stringify(b.ran[0]));
   check('with it on, the one-time "run its tests" note steps aside', testsNudge({ cfg: { jobHelps: { runTests: true, fixLoop: true } } }, { job: {}, testedAfterEdit: false, codeEdits: [path.join(proj, 'a.js')] }) === '');
 }
 
@@ -127,6 +131,8 @@ const cfg = { dataDir, jobHelps: cleanJobHelps({ jobUndo: true }) };
   // What the job does: an edit, a command's changes (a formatter rewrote b.js and deleted old.txt), a new file, a dependency.
   fs.writeFileSync(path.join(root, 'src', 'a.js'), 'let a = 2;\n'); fs.writeFileSync(path.join(root, 'src', 'b.js'), 'let b = 1; // formatted\n');
   fs.rmSync(path.join(root, 'old.txt')); fs.writeFileSync(path.join(root, 'src', 'new.js'), 'new\n'); fs.writeFileSync(path.join(root, 'node_modules', 'x', 'i.js'), 'dep 2\n');
+  const bl = { cfg, log() {}, realPath: (p) => p.replace('C:\\you\\repo', root).replace(/\\/g, '/') }, cl = { job: {}, emit() {} };
+  check('made-up paths (the Lab) find the same project', jobUndoBefore(bl, 'edit_file', { path: 'C:\\you\\repo\\src\\a.js' }, cl) && [...cl.checkpoints.keys()][0] === root);
   const cards = jobUndoFinish(b, ctx);
   check('the card says what changed, made and deleted (commands too, not the dependencies)', cards.length === 1 && cards[0].changed === 2 && cards[0].created === 1 && cards[0].deleted === 1 && said.some((e) => e.type === 'job-undo' && e.id === id) && !cards[0].files.some((f) => /node_modules/.test(f)), JSON.stringify(cards[0]));
   check('the card draws with its one button', /Undo the whole job/.test(jobUndoHtml(cards[0])) && /data-jh-undoall="/.test(jobUndoHtml(cards[0])) && !/data-jh-undoall/.test(jobUndoHtml(cards[0], { local: false })));

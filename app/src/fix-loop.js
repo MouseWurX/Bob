@@ -16,6 +16,10 @@ export const SAME_FAILS = 3; // the same failures this many runs in a row, with 
 const clip = (s, n) => { const t = String(s ?? ''); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
 const ownJob = (job) => !job?.guest;
 const cmdLine = (t) => [t.cmd, ...t.args].join(' ');
+// A path as the brain wrote it -> where it is on disk, and back (the Lab's test world gives the brain made-up paths;
+// in the app both are the same path).
+const real = (brain, p) => (typeof brain.realPath === 'function' ? brain.realPath(p) || p : p);
+const shown = (brain, p) => (typeof brain.shownPath === 'function' ? brain.shownPath(p) || p : p);
 
 // How a run_command result ended: 'pass', 'fail' or 'notrun' (with why).
 export function testOutcome(text) {
@@ -67,7 +71,7 @@ export const fixState = (ctx) => (ctx.fix ||= { runs: 0, fixes: 0, sigs: [], las
 // After any tool: he ran the test command himself after his last edit, so that run can stand for the check.
 export function fixAfterTool(brain, name, args, res, ctx) {
   if (!ctx || name !== 'run_command' || !jobHelp(brain.cfg, 'fixLoop') || !ctx.codeEdits?.length) return;
-  const t = testCommandFor(ctx.codeEdits.at(-1));
+  const t = testCommandFor(real(brain, ctx.codeEdits.at(-1)));
   if (!t) return;
   const a = [].concat(args?.args || []).map(String);
   if (String(args?.cmd || '').toLowerCase() !== t.cmd || a.join(' ') !== t.args.join(' ')) return;
@@ -82,7 +86,7 @@ export async function fixLoopStep(brain, ctx, { find = testCommandFor } = {}) {
   const f = fixState(ctx);
   const who = brain.cfg.userName || 'the user';
   if (f.done) { if (f.line) { const line = f.line; f.line = ''; return { line }; } return null; }
-  const t = find(ctx.codeEdits.at(-1));
+  const t = find(real(brain, ctx.codeEdits.at(-1)));
   if (!t) return null;
   f.t = t;
   const stop = ([why, plain], text) => {
@@ -97,7 +101,7 @@ export async function fixLoopStep(brain, ctx, { find = testCommandFor } = {}) {
   if (f.own?.edits === edits) { text = f.own.text; brain.log?.('jobs', 'fix loop: he ran the tests himself after his last change; using that run'); }
   else {
     brain.log?.('jobs', `fix loop: running ${cmdLine(t)} in ${t.root}`);
-    const res = await brain.runTool('run_command', { cmd: t.cmd, args: t.args, cwd: t.root, why: 'checking the tests after my changes' }, ctx);
+    const res = await brain.runTool('run_command', { cmd: t.cmd, args: t.args, cwd: shown(brain, t.root), why: 'checking the tests after my changes' }, ctx);
     text = String(res?.text ?? '');
   }
   f.runs++;

@@ -40,10 +40,12 @@ export function projectRoot(dir, { exists = fs.existsSync, home = os.homedir() }
   if (!root || path.parse(root).root === root || path.resolve(home) === root) return null;
   return root;
 }
-const folderFor = (name, args) => {
-  if (name === 'run_command') { const c = String(args?.cwd || ''); return c && path.isAbsolute(c) ? c : ''; }
-  const p = String(args?.path || '');
-  return p && path.isAbsolute(p) ? path.dirname(p) : '';
+// The folder a tool works in, on disk. brain.realPath: the Lab's test world gives the brain made-up paths.
+const folderFor = (brain, name, args) => {
+  const raw = String((name === 'run_command' ? args?.cwd : args?.path) || '').trim();
+  const p = raw && typeof brain.realPath === 'function' ? brain.realPath(raw) || raw : raw;
+  if (!p || !path.isAbsolute(p)) return '';
+  return name === 'run_command' ? p : path.dirname(p);
 };
 
 // Every file under root (dependency and build folders left out): rel path -> { size, mtimeMs }.
@@ -109,7 +111,7 @@ export function changesSince(man) {
 // Before a tool runs in a job: the first change in a project keeps its copy.
 export function jobUndoBefore(brain, name, args, ctx) {
   if (!ctx || !jobUndoOn(brain.cfg) || !ownJob(ctx.job) || !CHANGERS.has(name)) return null;
-  const root = projectRoot(folderFor(name, args));
+  const root = projectRoot(folderFor(brain, name, args));
   if (!root) return null;
   const cps = (ctx.checkpoints ||= new Map());
   if (cps.has(root)) return cps.get(root);
