@@ -101,6 +101,7 @@
     "test/run-sessions-test.js",
     "test/run-queue-test.js",
     "test/run-downloads-test.js",
+    "test/run-piece-download-test.js",
     "test/run-update-test.js",
     "test/run-voice-samples-test.js",
     "test/run-public-test.js",

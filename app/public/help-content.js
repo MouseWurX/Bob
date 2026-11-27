@@ -414,6 +414,8 @@ ${set('Pop out', 'Button', 'Opens the small window on top as well, for a second 
     html: `<p>Yes, piece by piece. Open Now running, then press <strong>Put in</strong> on each module you want beside the chat and pick Left panel or Right panel. Each panel can be Expanded, Collapsed or Hidden. See ${go('panels', 'Panels you build')}.</p>` },
   { id: 'faq-phone-layout', group: 'FAQ', title: 'How do I get around Bob on a phone?', words: 'faq phone small screen narrow window mobile bottom bar more menu tablet browser',
     html: `<p>Use the bar along the bottom: Chat, Tasks, New and Topics are one tap away, and <strong>Bob</strong> (or my cube) opens my whole menu from the bottom, with big tiles for everything else (Made by Bob, Adventure, Games, the Lab, Settings, Help and the rest) and a search box at the top. It shows on any screen 640 pixels wide or less, in a phone's browser or a small window on Windows, Mac or Linux. The Android app has its own phone screen. See ${go('around', 'Finding your way around')}.</p>` },
+  { id: 'faq-downloads-pieces', group: 'FAQ', title: 'Can brain downloads go faster?', words: 'faq download slow faster speed pieces at once parts parallel hugging face line connection big file',
+    html: `<p>Often, yes. One stream from Hugging Face is sometimes slower than your line. In ${go('downloads', 'Downloads')}, under Settings, I already fetch each big file (over 256 MB) in 4 parts at the same time. On a very fast line, set <strong>Pieces at once</strong> to 8. Pause still keeps what came, and I still check the whole file before I use it. The phone app does 4 pieces too.</p>` },
   { id: 'faq-help-pages', group: 'FAQ', title: 'Where did the long list of questions in Help go?', words: 'help faq questions list moved folded pages contents',
     html: `<p>Into the pages they're about. Each page keeps its questions folded at the bottom, so the contents list is a few dozen pages instead of four hundred lines. All questions, at the end of the contents, still lists every one, and search opens the right one for you.</p>` },
   { id: 'faq-sort', group: 'FAQ', title: 'Can Bob sort and rename my music or videos?', words: 'faq sort rename organise organize music videos movies tv photos library naming downloads output folder bulk many files tags',
@@ -469,13 +471,14 @@ ${set('Pop out', 'Button', 'Opens the small window on top as well, for a second 
 <li>Completed tasks stay for a week. <strong>Clear completed</strong> tidies them away now.</li>
 <li>When a task starts, waits its turn or doesn't finish, a small see-through ${go('glossary', 'Tasks bubble')} pops up under the Tasks tab (above it on a phone), then fades back into the tab after a few seconds. It never covers the message box on a computer, and on a phone taps go straight through it. Press it to open Tasks. Rest the pointer on it to keep it there.</li></ul>` },
 
-  { id: 'downloads', group: 'Menu pages', title: 'Downloads', words: 'downloads pause resume cancel reorder at once two carry on when bob starts retry checksum manage',
+  { id: 'downloads', group: 'Menu pages', title: 'Downloads', words: 'downloads pause resume cancel reorder at once two carry on when bob starts retry checksum manage pieces at once parts faster split range parallel streams',
     html: `<p><strong>Downloads</strong> lists everything you said yes to downloading. The top one goes first; drag to reorder. Now running shows them too, with <strong>Manage</strong>.</p>
 <ul><li><strong>Pause</strong> keeps what has downloaded so far, and <strong>Resume</strong> carries on from there, even after I restart.</li>
 <li><strong>Cancel</strong> deletes the half-done file.</li>
 <li>A network hiccup is retried twice by itself.</li>
 <li>Every file is checked against the size and checksum I expect. If it doesn't match, I delete it and tell you. I don't run mystery files.</li></ul>
 <dl>${set('At once', '1 download', 'How many downloads run at the same time: 1 or 2. Two can be quicker on a fast connection.')}
+${set('Pieces at once', '4 pieces', '<strong>4</strong> (the start) or <strong>8 pieces</strong>: a file over 256 MB comes down in that many parts at the same time, each picking up its own stretch of the file, which often fills a fast line that one stream can\'t. Pause and Resume still work (each piece carries on where it stopped), and the whole file is still checked against its checksum at the end, so that last step takes a little longer. If a website can\'t send a file in parts, I quietly go back to one stream. <strong>Off</strong>: one stream, as before. It\'s the same bytes and the same checksum either way, so nothing about the brain changes. It works the same on Windows, Mac and Linux, and the Android app fetches its phone brains in 4 pieces too.')}
 ${set('Carry on unfinished downloads when Bob starts', 'Off', 'Off: unfinished downloads wait, paused, until you press Resume. On: they carry on by themselves when I open. <strong>Resume jobs after restart</strong> (Settings, How Bob works) does this too, along with my unfinished jobs; while it\'s on, this switch shows on and greyed out.')}</dl>` },
 
   { id: 'references', group: 'Menu pages', title: 'References', words: 'references shelf characters scenes styles keep look same use in chat add rename',
@@ -3632,6 +3635,7 @@ ${set('Resize chat memory without reloading', 'Off', 'A job that needs a bigger 
 <dt>Perplexity drift</dt><dd>How much worse a smaller file guesses the next word than the usual one, in percent. I use it to check a quant level before I list it.</dd>
 <dt>Phishing</dt><dd>A fake email, text or page that tries to get a password, a payment or a download out of you.</dd>
 <dt>Picture reader</dt><dd>The small extra file (an "mmproj", a <em>multimodal projector</em>) that lets a brain see pictures. I download it with the brain when it has one.</dd>
+<dt>Pieces at once (downloads)</dt><dd>A big brain file fetched in 4 or 8 parts at the same time instead of one long stream, often faster on a fast line. On at 4 pieces from the start; Off or 8 in Downloads. See ${go('downloads', 'Downloads')}.</dd>
 <dt>PII scrub</dt><dd>Taking personal details (names, paths, keys) out of data before it's kept or shared.</dd>
 <dt>Pin (a message)</dt><dd>📌 under a message: I keep it in mind word for word for that chat, however long it gets. Not the same as pinning a chat in Past chats. See ${go('pin-messages', 'Pin messages')}.</dd>
 <dt>Pipeline (Lab)</dt><dd>A saved list of Lab steps with their settings, run in order. Free steps here run one after another; rented steps in a row share one card. Stopped part way, it picks up at the first step not done. See ${go('faq-lab-pipeline', 'Can a Lab pipeline pick up where it stopped?')}</dd>
@@ -3888,7 +3892,7 @@ export const FOLD = {
   'engine-care': 'trouble', 'smart-app-control': 'trouble', 'help-bundle': 'trouble',
 
   // ---- Questions, each in the page it's about ----
-  'faq-help-pages': 'start-here', 'faq-sort': 'hands', 'faq-email-safe': 'settings-tools', 'faq-email-tricks': 'settings-tools', 'faq-note-tools': 'quick-notes', 'faq-python-safe': 'sandbox', 'faq-save-where': 'save-as', 'faq-passwords': 'settings-tools',
+  'faq-help-pages': 'start-here', 'faq-downloads-pieces': 'downloads', 'faq-sort': 'hands', 'faq-email-safe': 'settings-tools', 'faq-email-tricks': 'settings-tools', 'faq-note-tools': 'quick-notes', 'faq-python-safe': 'sandbox', 'faq-save-where': 'save-as', 'faq-passwords': 'settings-tools',
   'faq-web-api-cards': 'settings-tools', 'faq-claude-door': 'claude-door', 'faq-coding-agents': 'coding-agents', 'faq-two-accounts': 'coding-agents', 'faq-cards-everywhere': 'settings-bobnet', 'faq-self-work': 'self-work', 'faq-language': 'language',
   'faq-cube-speed': 'style', 'faq-self-work-brain': 'self-work', 'faq-auto-session': 'sessions', 'faq-one-brain-greyed': 'brains-page', 'faq-pick-any-brain': 'brains-page', 'faq-job-off-brain': 'brains-page', 'faq-housekeeping-brain': 'housekeeping', 'faq-maths': 'chatting',
   'faq-keys': 'around', 'faq-doc-view': 'my-documents', 'faq-undo-turn': 'msg-menu', 'faq-tool-hangs': 'watching-myself',
