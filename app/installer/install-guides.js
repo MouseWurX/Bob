@@ -30,7 +30,7 @@ export const CLASSES = [
   { id: 'handheld', name: 'Handheld PC (Legion Go, ROG Ally and the like)', os: 'win', file: 'win-x64.zip', guide: 'handheld.md', gpus: ['builtin'], steps: [...WIN_STEPS.slice(0, 4), 'Plug it in, close games and the browser, then press Get Bob ready.'] },
   { id: 'pi', name: 'Raspberry Pi or other ARM board', os: 'linux-arm', file: 'linux-arm64.AppImage', guide: 'raspberry-pi.md', gpus: ['none'], steps: ['Use 64-bit Raspberry Pi OS (or another 64-bit Linux).', 'Download the arm64 AppImage (or the arm64 .deb).', 'Mark it as executable and double-click it.', 'Pick a home folder on a fast drive (an SSD beats an SD card).', 'Press Get Bob ready.'] },
   { id: 'android', name: 'Android phone or tablet', os: 'android', file: 'android.apk', guide: 'android.md', gpus: ['none'], steps: ['Needs Android 13 or newer.', 'Download the .apk on the phone and open it; allow installing from your browser when Android asks.', 'Put the phone and your computer on Tailscale, and turn on Bob-Net access in the computer\'s Bob.', 'Add your Bob in the app with his passcode.', 'Optional: Menu, Phone brain, to download a brain for the phone itself.'] },
-  { id: 'iphone', name: 'iPhone or iPad', os: 'ios', file: '', guide: 'iphone.md', gpus: ['none'], steps: ['Nothing to download today.', 'Put the iPhone and your computer on Tailscale.', 'In the computer\'s Bob: Settings, Bob-Net, turn on Bob-Net access.', 'In Safari, open his address with /phone/ on the end, and type the passcode.', 'Tap Share, then Add to Home Screen.'] }
+  { id: 'iphone', name: 'iPhone or iPad', os: 'ios', file: 'iphone.ipa', guide: 'iphone.md', gpus: ['none'], steps: ['The app: sign the .ipa with your own Apple ID in Sideloadly or AltStore on a Windows PC or Mac (free, again every 7 days), then Menu, Phone brain. Or, with no app: the next steps.', 'Put the iPhone and your computer on Tailscale.', 'In the computer\'s Bob: Settings, Bob-Net, turn on Bob-Net access.', 'In Safari, open his address with /phone/ on the end, and type the passcode.', 'Tap Share, then Add to Home Screen.'] }
 ];
 export const GPU_NAMES = { nvidia: 'NVIDIA card', amd: 'AMD card', intel: 'Intel Arc card', builtin: 'Built-in graphics only', none: 'No graphics card', apple: 'Apple Silicon' };
 export const classOf = (id) => CLASSES.find((c) => c.id === id) || null;
@@ -44,7 +44,7 @@ export function labNote(cls, gpu) {
   if (cls === 'linux' && gpu === 'nvidia') return 'Partly tested: Lamplight runs on rented Linux machines with NVIDIA cards for our brain tests. The desktop app on a Linux PC is checked on GitHub\'s machines only, so it is ' + UNPROVEN + '.';
   if (cls === 'mac') return 'Built and checked on GitHub\'s Mac machines only. On a real Mac it is ' + UNPROVEN + '.';
   if (cls === 'pi') return 'Built and checked on GitHub\'s ARM machines only. On a real board it is ' + UNPROVEN + '.';
-  if (cls === 'iphone') return 'The phone screen in Safari is ' + UNPROVEN + ' on a real iPhone.';
+  if (cls === 'iphone') return 'The app and the phone screen are checked on GitHub\'s iPhone simulator only. On a real iPhone they are ' + UNPROVEN + '.';
   return 'This combination is ' + UNPROVEN + '.';
 }
 
@@ -53,7 +53,7 @@ export function enginesFor(cls, gpu) {
   const c = classOf(cls);
   if (!c) return [];
   if (cls === 'android') return [{ job: 'Brain on the phone', engine: 'llama.cpp, built into the app', how: 'On the phone\'s processor. Off until you turn it on.' }];
-  if (cls === 'iphone') return [{ job: 'Everything', engine: 'The Bob on your computer', how: 'The iPhone shows his phone screen in Safari. Nothing runs on the iPhone itself yet.' }];
+  if (cls === 'iphone') return [{ job: 'Brain on the iPhone (the app)', engine: 'llama.cpp, built into the app', how: 'On the iPhone\'s graphics (Metal). Off until you download one.' }, { job: 'Everything else', engine: 'The Bob on your computer', how: 'Over Tailscale, in the app or in Safari.' }];
   if (c.os === 'linux-arm') {
     return [
       { job: 'Brains', engine: 'llama.cpp, the ARM processor build', how: 'On the processor. Lamplight has no ARM build yet.' },
@@ -117,7 +117,7 @@ export function adviceFor(input, catalog, phone) {
   const { cls, gpu } = input;
   const ramGB = Number(input.ramGB) || 0;
   const vramGB = Number(input.vramGB) || 0;
-  if (cls === 'android') {
+  if (cls === 'android' || cls === 'iphone') { // the iPhone app uses Bob for Android's list (android/phone-models.json)
     const big = ramGB >= 7 || !ramGB;
     const list = (phone?.models || []).map((m) => {
       const c = m.fromCatalog ? catalog.models.find((x) => x.id === m.fromCatalog) : null;
@@ -126,7 +126,6 @@ export function adviceFor(input, catalog, phone) {
     });
     return { pack: { id: 'phone', label: 'Phone brain', blurb: `Chat goes to the Bob on your computer when one is reachable. The phone brain is for when none is. It keeps ${big ? '12K' : '8K'} tokens in mind on ${big ? 'a phone with 8 GB or more' : 'a smaller phone'}.` }, models: list, warn: ramGB && ramGB < 6 ? [`With ${ramGB} GB a phone brain is ${UNPROVEN}; use the phone with the Bob on your computer instead.`] : [] };
   }
-  if (cls === 'iphone') return { pack: { id: 'iphone', label: 'Nothing to download', blurb: 'The iPhone uses the Bob on your computer. A brain on the iPhone itself is coming.' }, models: [], warn: [] };
   const hw = hardwareFor({ cls, gpu, vramGB, ramGB });
   const pack = packFor(catalog.packs || [], hw.vramGB, Boolean(hw.integrated), { arm: Boolean(hw.arm), ramGB: hw.ramGB });
   const byId = Object.fromEntries((catalog.models || []).map((m) => [m.id, m]));

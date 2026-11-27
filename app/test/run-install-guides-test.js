@@ -37,7 +37,7 @@ check('Pi: no painter', !pi(8).models.some((m) => m.jobs.includes('Painter')));
 const and8 = adviceFor({ cls: 'android', gpu: 'none', ramGB: 8 }, catalog, phone);
 check('Android: Gemma 4 E2B recommended and ticked, 12K on 8 GB', and8.models[0].name === 'Gemma 4 E2B' && and8.models[0].ticked && /12K/.test(and8.pack.blurb));
 check('Android 6 GB: 8K', /8K/.test(adviceFor({ cls: 'android', gpu: 'none', ramGB: 6 }, catalog, phone).pack.blurb));
-check('iPhone: nothing to download', adviceFor({ cls: 'iphone', gpu: 'none' }, catalog, phone).models.length === 0);
+check('iPhone: the app offers the same phone brains as Android', adviceFor({ cls: 'iphone', gpu: 'none' }, catalog, phone).models.length === adviceFor({ cls: 'android', gpu: 'none' }, catalog, phone).models.length && adviceFor({ cls: 'iphone', gpu: 'none' }, catalog, phone).models.length > 0);
 
 // ---- engines, in plain words ----
 const eng = (c, g) => enginesFor(c, g).map((e) => `${e.job}: ${e.engine}`).join('\n');

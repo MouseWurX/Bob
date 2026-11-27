@@ -68,7 +68,8 @@ This is **fNRI**, the Lab's brain imager, recorded from Bob's own window. [Watch
 | **Linux Flatpak** (any distro with Flatpak) | [`Bob-1.5.255-linux-x86_64.flatpak`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.255-linux-x86_64.flatpak) | [Linux](app/docs/install/linux.md) |
 | **Raspberry Pi and ARM** | [`Bob-1.5.255-linux-arm64.AppImage`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.255-linux-arm64.AppImage) (also as `-linux-arm64.deb` and `-linux-aarch64.flatpak`) | [Raspberry Pi](app/docs/install/raspberry-pi.md) |
 | **Android phone** | [`Bob-1.5.255-android.apk`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.255-android.apk) | [Android](app/docs/install/android.md) |
-| **iPhone and iPad** | Nothing to download: the phone screen from your computer's Bob (an app is coming) | [iPhone and iPad](app/docs/install/iphone.md) |
+| **iPhone app** (new, unproven on a real iPhone) | [`Bob-1.5.255-iphone.ipa`](https://github.com/MouseWurX/Bob/releases/latest/download/Bob-1.5.255-iphone.ipa), signed with your own free Apple ID | [iPhone and iPad](app/docs/install/iphone.md) |
+| **iPhone and iPad, no app** | Nothing to download: the phone screen from your computer's Bob | [iPhone and iPad](app/docs/install/iphone.md) |
 
 Every build has a `.sha256` checksum on the [Releases page](https://github.com/MouseWurX/Bob/releases/latest). Install steps are under [Getting Bob](#getting-bob), and there's [a guide for every device](app/docs/install/README.md), with [which brain for which size](app/docs/install/sizes.md).
 
@@ -269,7 +270,24 @@ Brains are tested on **real jobs** in Bob's real loop, with his real tools, in a
 - **Checks from real mistakes.** Slips that kept coming back are now code checks at the end of Bob's turn (shipped in 1.5.248).
 - **Effort levels, Minimus to Maximus,** tested on the same 100 jobs. More effort isn't better yet.
 - **One untested category at a time,** starting with Office files.
+- **Every release on a rented card first.** Since 1.5.255, a release is installed with Bob's own installer on a rented 16 GB Linux card and runs every held-out job set with Bob's defaults before it ships. 1.5.255 took seven tries (about $1.29) and four real Linux bugs were fixed on the way.
 - **Code does the clerk work.** On mail, the brain writes the rule and code does the paging, counting and moving (built, off by default, untested on a rental).
+
+### Held-out jobs per brain
+
+The same 65 held-out jobs for every brain (inbox 28, Office 14, repo 12, web 11), written once and never used for tuning or lessons, in Bob's real loop on rented cards, 26 Nov 2026. One run per brain, so a gap of a few jobs may be chance.
+
+| Brain | Inbox | Office | Repo | Web | **Out of 65** |
+|---|---|---|---|---|---|
+| Inkling 2 Mini | 24 | 14 | 12 | 9 | **59** |
+| ISTA 27B (IQ2_XS) | 25 | 14 | 11 | 8 | **58** |
+| Ternary Bonsai 2.5 27B (PTQ1_0 / Q2_0 file) | 25 / 23 | 14 | 10 / 12 | 8 | **57** each |
+| Underdog Saluki 27B | 23 | 14 | 9 | 10 | **56** |
+| Qwen3.6 35B-A3B (Bob's default) | 22 | 13 | 8 | 6 | **49** |
+| Raon-1 mini | 21 | 10 | 5 | 9 | **45** |
+| Raon-1 nano | 7 | 4 | 1 | 3 | **15** |
+
+**Phone brains**, on the same 65 jobs with the phone's prompt and tools, 27 Nov 2026: Dory 4B 39, Bonsai 2 4B 25 to 29, Qwen3.5 2B 22, Gemma 4 E2B (today's phone pick) 10, Bonsai 2 2B 6 to 7. A photo-to-spreadsheet test is being rerun: the first run scored 0 because of a fault in the test (it gave each brain only its first step), not the brains.
 
 ## Coming next
 
@@ -295,7 +313,7 @@ Brains are tested on **real jobs** in Bob's real loop, with his real tools, in a
 
 ## What it costs
 
-Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 16 Nov 2026: about **$2,757** spent in all, of which $549 is rented GPU time (failures included), and about $3,262 to $3,340 projected for the planned family of models. Most test rentals cost under $2.50; the 800-job run cost $19.42. The page lists every rental and what came of it.
+Everything is itemized in [What Bob costs to make](app/docs/COSTS.md). As of 27 Nov 2026: about **$2,940** spent in all, of which about $732 is rented GPU time (failures included; $549 of it billed to 16 Nov, the rest estimated from run records and rental logs until it's checked against the bill), and about $3,445 to $3,523 projected for the planned family of models. Most test rentals cost under $2.50; the biggest since 16 Nov was the H200 run of Flash-Next and its cuts, about $24.73. The page lists every rental and what came of it.
 
 ## What Bob does
 
@@ -601,7 +619,7 @@ Community builds with the refusals taken out (heretic, abliterated and the like)
 </details>
 <!-- models:end -->
 
-**In testing, not in the catalogue yet:** the [Flash-Next cuts](#flash-next-cuts-bobert-riker-and-bill) (Bobert, Riker and Bill), Inkling 2 Mini, Ternary Bonsai 2.5 27B, and Saluki 27B, whose licence doesn't allow commercial use. They're all unproven in our lab, as we have yet to test them on real jobs. Each one joins the list when its catalogue entry ships.
+**In testing, not in the catalogue yet:** the [Flash-Next cuts](#flash-next-cuts-bobert-riker-and-bill) (Bobert, Riker and Bill), Inkling 2 Mini, Ternary Bonsai 2.5 27B and ISTA 27B. Inkling, Bonsai and ISTA have [held-out job scores](#held-out-jobs-per-brain) from one rental each; the Flash-Next cuts are unproven in our lab, as we have yet to test them on real jobs. Each one joins the list when its catalogue entry ships.
 
 ## Bob-Net: Bobs working together
 
@@ -666,6 +684,7 @@ Pictures and big jobs wait in Tasks while you play, and **Games first** has Bob 
 | **Raspberry Pi and ARM** | A 64-bit Pi 4 or 5 runs the arm64 AppImage the same way, with small brains on the processor. No pictures on ARM yet. [Raspberry Pi guide](app/docs/install/raspberry-pi.md) |
 | **Android** | Open the .apk on the phone. It talks to your Bob over Tailscale. [Android guide](app/docs/install/android.md) |
 | **iPhone and iPad** | Nothing to download. Turn on **Bob-Net access** in Bob's Settings, open his address with `/phone/` on the end in Safari over Tailscale, then tap Share and **Add to Home Screen**. A brain on the phone and the microphone button need the Android app. [iPhone guide](app/docs/install/iphone.md) |
+| **iPhone app** (new) | Sign the `.ipa` with your own Apple ID in Sideloadly or AltStore on a Windows PC or Mac (free, again every 7 days). It has its own phone brain. Unproven on a real iPhone, as we have yet to test one. [iPhone guide](app/docs/install/iphone.md) |
 
 ### Set up for your hardware
 
@@ -674,14 +693,15 @@ The same steps on every computer: install Bob, press **Get Bob ready** on the We
 | Hardware | Bob's everyday brain | Context | Tested? |
 |---|---|---|---|
 | **16 GB graphics card**, 32 GB of memory | Qwen3.6 35B-A3B (23.3 GB file; what doesn't fit on the card sits in memory) | 256K | **Yes**, on an RTX 5070 Ti: about 90 tokens a second in everyday chats. |
-| **12 GB card or bigger than 16 GB** | The same set as a 16 GB card | 256K | Unproven in our lab, as we have yet to test. |
+| **12 GB card** | The 16 GB set, and Bob's pick on the Brains page is Underdog Saluki 27B (7.9 GB, all on the card; its licence limits commercial use) | Bob's pick | Unproven in our lab on a real 12 GB card, as we have yet to test. On a rented card, Saluki passed 56 of the 65 [held-out jobs](#held-out-jobs-per-brain). |
+| **Bigger than 16 GB** | The same set as a 16 GB card; bigger brains are on the Brains page | 256K | Unproven in our lab, as we have yet to test. |
 | **8 GB card** | Gemma 4 E4B, with Qwen3.6 35B-A3B for coding (the smaller Q3 file made for 8 GB cards, 17.7 GB) | Bob's pick; 128K for the coding brain | Unproven in our lab, as we have yet to test. Only the download has been checked. |
 | **6 GB card** (most laptops) | Qwen3 4B Instruct, with Qwen2.5 Coder 7B for coding | Bob's pick | Unproven in our lab, as we have yet to test. |
 | **Built-in graphics** (handhelds, thin laptops) | Qwen3 4B Instruct, with Gemma 4 E4B for pictures | Shrinks to fit, down to 8K | **Yes**, on a 16 GB AMD handheld: Qwen3 4B wrote 22 to 28 tokens a second, Gemma 4 E2B 42 to 46, Qwen3.5 2B about 50. Steps for this kind of hardware are in the [handheld setup guide](app/docs/HANDHELD-AGENT-SETUP.md). |
 | **No graphics card** (processor only) | Gemma 4 E4B | Bob's pick | Unproven in our lab, as we have yet to test. |
 | **Raspberry Pi and ARM boards** | Gemma 4 E2B with 8 GB, Qwen3.5 2B with 4 GB | Bob's pick | Unproven in our lab, as we have yet to test on real boards. |
 
-Speeds in the table were measured on earlier engines, by 23 Nov 2026. Brain Engine 45 hasn't been measured on these tiers yet, and the table will be updated once its tests are published.
+Speeds in the table were measured on earlier engines, by 23 Nov 2026. Lamplight 46 (the engine in 1.5.255) hasn't been measured on these tiers yet, and the table will be updated once its tests are published. Before 1.5.255 shipped it was run through Bob's own Linux installer on a rented 16 GB card with Qwen3.6 35B-A3B: every held-out job set ran with no engine crash.
 
 **On built-in graphics,** the graphics and Windows share the same memory, so free memory decides what fits. Check **Available** in Task Manager with Bob open: with 6 GB or more, Qwen3 4B, Gemma 4 E2B and Qwen3.5 2B all fit; with 4 to 6 GB, pick Gemma 4 E2B or Qwen3.5 2B from the Brains page; under 4 GB, Qwen3.5 2B. Leave the BIOS graphics memory setting alone, and let Bob keep the whole brain on the graphics: splitting it with the processor is much slower there.
 

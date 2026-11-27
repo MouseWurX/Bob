@@ -1,10 +1,10 @@
 # Bob on an iPhone or iPad
 
-There's no App Store app. Today an iPhone or iPad uses the **phone screen** that a Bob on a computer hands out, kept on the Home Screen like an app. A real app, with a brain on the iPhone itself, is coming. [All the guides](README.md) · [setup picker](https://mousewurx.github.io/Bob/)
+There's no App Store app. There are two ways: the **Bob for iPhone app**, which you sign yourself and which has its own brain on the iPhone, or the **phone screen** that a Bob on a computer hands out, kept on the Home Screen like an app. [All the guides](README.md) · [setup picker](https://mousewurx.github.io/Bob/)
 
-> The phone screen in Safari is checked on GitHub's iPhone simulator and WebKit only. On a real iPhone or iPad it is unproven in our lab, as we have yet to test. [Tell us how it goes](https://github.com/MouseWurX/Bob/issues).
+> Both are checked on GitHub's Mac only: the app in an iPhone 16 Pro simulator (its phone brain answers there), the phone screen in the simulator's Safari and WebKit. On a real iPhone or iPad they are unproven in our lab, as we have yet to test. [Tell us how it goes](https://github.com/MouseWurX/Bob/issues).
 
-## Today: the phone screen
+## The phone screen
 
 Needs a Bob on a [Windows](windows.md), [Linux](linux.md) or [Mac](mac.md) computer, and Tailscale on both.
 
@@ -21,8 +21,20 @@ Needs a Bob on a [Windows](windows.md), [Linux](linux.md) or [Mac](mac.md) compu
 
 The phone screen does no thinking on the iPhone, so any iPhone or iPad with a current Safari will do. What Bob can do depends on the computer's size: see [Which brain for which size](sizes.md).
 
-## Coming: the iPhone app
+## The iPhone app
 
-> **Coming, not released.** Nothing below can be downloaded yet.
+From 1.5.255, each release has `Bob-<version>-iphone.ipa`, built on GitHub's Mac. You sign it yourself, for free, with your own Apple ID.
 
-The plan is a free `.ipa` built on GitHub's Mac machines with each release, installed from a Windows PC or a Mac with Sideloadly or AltStore and a free Apple ID. Apple makes a free-ID install expire after 7 days, so it needs re-signing every week (both tools can do that). It would bring a brain on the iPhone itself, like the Android app's phone brain, for iPhones with 8 GB (iPhone 15 Pro, 16 and newer). How well it runs is unproven in our lab, as we have yet to test.
+1. Download the `.ipa` from the [latest release](https://github.com/MouseWurX/Bob/releases/latest) on a Windows PC or a Mac.
+2. Install **Sideloadly** or **AltStore** there. On Windows they need Apple's iTunes and iCloud from apple.com (not the Microsoft Store versions).
+3. Plug the iPhone in, tap **Trust**, drop the `.ipa` in, sign in with your Apple ID and press **Start**.
+4. On the iPhone: Settings, General, VPN & Device Management, trust your Apple ID. Then Settings, Privacy & Security, turn on **Developer Mode** (the phone restarts once).
+5. Open Bob, then Menu, **Phone brain**, to download a brain for the iPhone itself.
+
+A free Apple ID signature lasts **7 days**: install it again each week (AltStore can do it by itself). Chats and the brain stay on the phone.
+
+**Brains:** on an 8 GB iPhone (15 Pro, 16 and newer), Gemma 4 E2B or Qwen3 4B; on a 6 GB one, the smallest. They run on the iPhone's graphics, and how well is unproven in our lab, as we have yet to test. The app also talks to the Bob on your computer over Tailscale, like the Android app.
+
+**Not in the app yet:** lending the phone's brain, pairing, the Share menu, the widget and Bob's own ears (use the keyboard's microphone).
+
+More detail: [Bob for iPhone](../IPHONE.md).
