@@ -1276,6 +1276,7 @@
   $('memory-save').addEventListener('click', () => { memory = $('memory-text').value.slice(0, 6000); store.set('memory', memory); $('memory-msg').textContent = 'Saved. The phone brain uses it from the next new chat.'; });
 
   function drawSettings() {
+    drawPrivacy();
     drawOwnKit();
     drawSpares();
     globalThis.BobLock?.drawSettings();
@@ -1321,6 +1322,29 @@
   $('readable-font')?.addEventListener('change', (e) => { settings.readableFont = e.target.checked; saveSettings(); applyReading(); });
   applyReading();
   $('resume').addEventListener('change', (e) => { settings.resume = e.target.checked; saveSettings(); });
+  // Nov 27 2026: Privacy, 🚫 No internet and 📡 Where Bob connected (PhoneNet.kt). Kept by Android, not in settings.
+  async function drawPrivacy(v) {
+    try { v = v || await phone('privacy.view'); } catch { $('ni-section').hidden = true; return; } // only the Android app has it (PhoneNet.kt)
+    $('ni-on').checked = v.on === true; $('ni-bobnet').checked = v.bobNet !== false; $('ni-home').checked = v.home !== false;
+    const sites = $('ni-sites'); sites.textContent = '';
+    if (!(v.allow || []).length) sites.append(el('p', { class: 'help-line', text: 'No sites allowed.' }));
+    for (const s of v.allow || []) sites.append(el('p', {}, el('span', { text: s }), ' ', el('button', { type: 'button', text: 'Remove', 'aria-label': `Remove ${s}`, onclick: () => setPrivacy({ remove: s }) })));
+    const log = $('ni-log'); log.textContent = '';
+    const rows = v.recent || [];
+    if (!rows.length) log.append(el('p', { class: 'help-line', text: 'No connections since Bob started.' }));
+    for (const e of rows.slice(0, 50)) {
+      const d = new Date(e.last);
+      log.append(el('p', { class: 'help-line' }, `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}: `, el('strong', { text: e.host }), `, ${e.what}${e.count > 1 ? ` ×${e.count}` : ''}${e.stopped ? ' (Stopped)' : ''}`));
+    }
+    if (v.on && v.stopped) log.prepend(el('p', { class: 'help-line', text: `No internet stopped ${v.stopped} since Bob started.` }));
+  }
+  async function setPrivacy(change) {
+    try { drawPrivacy(await phone('privacy.set', { ...change })); $('ni-msg').textContent = ''; } catch (e) { $('ni-msg').textContent = e.message; }
+  }
+  $('ni-on').addEventListener('change', (e) => setPrivacy({ on: e.target.checked }));
+  $('ni-bobnet').addEventListener('change', (e) => setPrivacy({ bobNet: e.target.checked }));
+  $('ni-home').addEventListener('change', (e) => setPrivacy({ home: e.target.checked }));
+  $('ni-add').addEventListener('click', () => { const s = $('ni-site').value.trim(); if (s) { $('ni-site').value = ''; setPrivacy({ add: s }); } });
   $('chat').addEventListener('scroll', drawToBottom, { passive: true });
   $('to-bottom').addEventListener('click', () => { const box = $('chat'); box.scrollTo({ top: box.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); });
   $('redo').addEventListener('change', (e) => { settings.redo = e.target.checked; saveSettings(); drawRedo(); });

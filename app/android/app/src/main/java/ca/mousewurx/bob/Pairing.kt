@@ -6,9 +6,7 @@ import android.net.NetworkCapabilities
 import android.os.Build
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.HttpURLConnection
 import java.net.Inet4Address
-import java.net.URL
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -251,8 +249,7 @@ class Pairing(private val app: BobApp) {
     private fun knock(host: String, port: Int, ms: Int): JSONObject? {
         if (!homeHost(host) && !NetBob.isTailscaleHost(host)) return null
         return runCatching {
-            val c = URL("http://$host:$port/api/pair/hello").openConnection() as HttpURLConnection
-            c.instanceFollowRedirects = false; c.connectTimeout = ms; c.readTimeout = ms; c.useCaches = false
+            val c = PhoneNet.open("http://$host:$port/api/pair/hello", "Finding your Bobs") { k -> k.instanceFollowRedirects = false; k.connectTimeout = ms; k.readTimeout = ms; k.useCaches = false }
             try {
                 val st = c.responseCode
                 val body = (if (st >= 400) c.errorStream else c.inputStream)?.bufferedReader()?.use { it.readText().take(4000) } ?: ""

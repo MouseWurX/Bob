@@ -185,6 +185,10 @@
     'brain.status': () => ({ files: {}, loaded: null, busy: false }),
     'lend.status': () => ({}),
     'pair.waiting': () => [],
+    // Nov 27 2026: No internet and Where Bob connected live in the phone apps (PhoneNet.kt, PhoneNet.swift); the browser
+    // screen hides them. Your PC's Bob has his own, in Settings, Online services.
+    'privacy.view': () => { throw new Error(NOT_HERE); },
+    'privacy.set': () => { throw new Error(NOT_HERE); },
     // Voice, phone and Bob-Net (2026-11-11): Bob's ears, the Share menu and the home-screen widget are Bob for Android's.
     // Hands-free and Talk over Bob need the ears; on an iPhone the keyboard's own microphone types what you say.
     'ears.start': () => { throw new Error('listening by himself needs Bob for Android. On an iPhone, use the keyboard\'s microphone'); },

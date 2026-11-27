@@ -6,7 +6,6 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
-import java.net.URL
 import java.net.URLEncoder
 
 // Talks to a Bob on your network (desktop Bob with "Let my other devices in" on), over Tailscale only.
@@ -64,9 +63,8 @@ class NetBob(context: Context) {
     private fun open(base: String, path: String, method: String, timeoutMs: Int = 8000): HttpURLConnection {
         require(base(base.removePrefix("http://")) == base) { "Not a Tailscale address" }
         require(path.startsWith("/") && !path.startsWith("//")) { "Bad path" }
-        val c = URL(base + path).openConnection() as HttpURLConnection
+        val c = PhoneNet.open(base + path, "Bob-Net (your own Bobs)") { it.instanceFollowRedirects = false }
         c.requestMethod = method
-        c.instanceFollowRedirects = false
         c.connectTimeout = 4000
         c.readTimeout = timeoutMs
         c.useCaches = false

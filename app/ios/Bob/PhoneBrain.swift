@@ -140,6 +140,7 @@ final class PhoneBrain: NSObject, URLSessionDataDelegate {
         guard url.hasPrefix("https://huggingface.co/"), url.range(of: "/resolve/[0-9a-f]{40}/", options: .regularExpression) != nil, let u = URL(string: url) else {
             throw NetError("Only pinned Hugging Face links")
         }
+        try PhoneNet.check(u, "Brain download") // Nov 27 2026: No internet on and Hugging Face not allowed: say so at once
         let part = modelsDir.appendingPathComponent(name + ".part")
         let have = Int64((try? part.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
         let free = Int64((try? modelsDir.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage) ?? 0)
@@ -160,6 +161,17 @@ final class PhoneBrain: NSObject, URLSessionDataDelegate {
         downloading = d
         dlTask = s.dataTask(with: r)
         dlTask?.resume()
+    }
+
+    // Nov 27 2026: each hop of a redirect (Hugging Face hands files on to its own download servers) is checked too.
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        guard let u = request.url else { return completionHandler(nil) }
+        if (try? PhoneNet.check(u, "Brain download")) == nil {
+            completionHandler(nil)
+            if let d = downloading { emit(["type": "download", "state": "error", "file": d.name, "text": PhoneNet.Stopped(host: (u.host ?? "").lowercased()).errorDescription ?? "No internet is on"]); downloading = nil }
+            return
+        }
+        completionHandler(request)
     }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {

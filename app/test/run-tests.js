@@ -285,6 +285,13 @@ try {
     const nl = await (await fetch(base + '/api/net-log?n=500')).json();
     check(Array.isArray(nl.recent) && nl.recent.length === 0 && nl.now.length === 0, `with every service off, Bob connected nowhere and nothing can send data out${nl.recent?.length ? ': ' + nl.recent.map((e) => e.host).join(', ') : ''}`);
   }
+  { // Nov 27 2026: No internet, off unless switched on; from this replicant matrix it goes on, keeps its ticks and list, and goes off again
+    const ni0 = await (await fetch(base + '/api/no-internet')).json();
+    const on = await (await post('/api/no-internet', { on: true, add: 'https://Example.COM/page' })).json();
+    const nl = await (await fetch(base + '/api/net-log')).json();
+    const off = await (await post('/api/no-internet', { on: false, remove: 'example.com' })).json();
+    check(ni0.on === false && ni0.home === true && ni0.bobNet === true && on.on === true && on.allow.join() === 'example.com' && nl.noInternet?.on === true && Array.isArray(nl.noInternet.stops) && off.on === false && off.allow.length === 0, 'No internet starts off, switches on with a cleaned allowed site, shows in Where Bob connected, and switches off');
+  }
 } catch (e) {
   console.error(e);
   failures++;

@@ -185,6 +185,18 @@
   <label class="switch"><div class="words"><strong>Saved prompts with /</strong><p class="help-line">Type / at the start of the message box and tap a saved prompt. Its words go in the box for you to finish and send. Words in {curly brackets} are blanks: Next blank picks each one to type over.</p></div><span class="pill"><input type="checkbox" id="prompt-on"><span></span></span></label>
   <div id="prompt-list"></div>
   <p class="help-line" id="prompt-msg" role="status"></p>
+  <div id="ni-section">
+  <h3>Privacy</h3>
+  <label class="switch"><div class="words"><strong>🚫 No internet</strong><p class="help-line">Off unless you turn it on. Bob on this phone connects to nothing except what you allow here. Brain downloads stop unless huggingface.co is on your list.</p></div><span class="pill"><input type="checkbox" id="ni-on"><span></span></span></label>
+  <label class="switch"><div class="words"><strong>Allow my own Bobs (Bob-Net)</strong></div><span class="pill"><input type="checkbox" id="ni-bobnet"><span></span></span></label>
+  <label class="switch"><div class="words"><strong>Allow my home network</strong><p class="help-line">Finding your Bobs on Wi-Fi uses it.</p></div><span class="pill"><input type="checkbox" id="ni-home"><span></span></span></label>
+  <p><strong>Allowed sites</strong> <span class="help-line">example.com allows everything under it too.</span></p>
+  <div id="ni-sites"></div>
+  <p><input id="ni-site" placeholder="example.com" aria-label="Site to allow"> <button type="button" id="ni-add">Allow this site</button></p>
+  <p><strong>📡 Where Bob connected</strong> <span class="help-line">Every site this phone's Bob connected to lately, when and what for (never what was sent). Stopped ones are marked. Kept in net-log.jsonl in the app's own folder.</span></p>
+  <div id="ni-log"></div>
+  <p class="help-line" id="ni-msg" role="status"></p>
+  </div>
   <h3>Back up and move</h3>
   <div class="btns"><button id="phone-backup">Save a backup of this phone</button><button id="phone-restore">Restore from a backup</button></div>
   <p class="help-line">One file with this phone's chats, what Bob remembers here, these settings and your list of Bobs, saved to Downloads/Bob. Restore it on a new phone. No passcodes or keys are in it: sign in to each Bob again. Your other Bobs have their own backup, in their Settings.</p>

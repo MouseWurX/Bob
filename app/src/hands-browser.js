@@ -11,6 +11,7 @@
 //   Post, Submit, Upload, Buy or Pay, or pick files. Off: all of that is allowed, still one card each.
 // - "Never type into password fields" holds here too (password boxes are marked on the page).
 // - Only inside Bob's app: as a bare server (npm run server, tests) the Hand says so, unless a driver is given.
+import { blocks, blockedLine } from './no-internet.js'; // Nov 27 2026: No internet
 import path from 'node:path';
 import fs from 'node:fs';
 import { handOn, handOffWhy, limitOn } from './hands-settings.js';
@@ -47,6 +48,7 @@ export function urlProblem(cfg, url) {
   const own = Number(cfg?.port || 7777);
   const port = Number(u.port || (u.protocol === 'https:' ? 443 : 80));
   if (['localhost', '127.0.0.1', '[::1]', '::1', '0.0.0.0'].includes(host) && port === own) return "That's Bob's own page. Bob never opens or clicks his own pages.";
+  if (blocks(host, cfg)) { try { globalThis.bobNetGate?.note?.(u.href); } catch {} return blockedLine(host); } // Nov 27 2026: No internet
   return '';
 }
 

@@ -149,6 +149,8 @@ import { privacyGate, PRIVACY_PATHS } from './privacy-services.js';
 import { NetLog, installNetLog } from './net-log.js'; // Nov 23 2026: Where Bob connected // Nov 23 2026: a privacy card before a service goes on
 import { searchBackupRoute } from './search-backup-routes.js'; // Nov 16: Backup search with a key
 import { privateWebRoute } from './private-web-routes.js'; // Nov 16: Private web
+import { noInternetRoute } from './no-internet-routes.js'; // Nov 27 2026: No internet
+import { noInternetOn, blocksUrl } from './no-internet.js';
 import { traceLogRoute } from './trace-log-routes.js'; // Nov 16: Monitoring log
 import { talkView } from './talk.js'; // Talk with Bob (1.5.210)
 import { refsRoute } from './refs-routes.js';
@@ -215,6 +217,13 @@ function broadcast(ev) {
 
 const brain = new Brain(cfg, broadcast);
 brain.netLog = installNetLog(new NetLog({ dir: cfg.dataDir, cfg, agents: () => brain.codingAgents?.summary?.().total || 0 })); // Nov 23 2026: Where Bob connected (net-log.js)
+// Nov 27 2026: No internet's gate for the desktop app's browser windows (electron/net-gate.cjs), which use Chromium's own
+// network, not Node's. Same rules, and each stop goes in Where Bob connected, tool 'Bob\'s browser'.
+globalThis.bobNetGate = {
+  on: () => noInternetOn(cfg),
+  blocksUrl: (url) => blocksUrl(url, cfg),
+  note: (url) => { try { brain.netLog.add(new URL(url).hostname, Number(new URL(url).port) || 443, { blocked: true, tool: 'Bob\'s browser' }); } catch {} }
+};
 brain.gameBusy = gameGuard(); // Nov 14 (game-guard.js): what holds the card, read at most every 5 s
 brain.linksCache = new LinksCache(); // which links this machine has, read in the background for the hello (src/links.js)
 // Item 214: a helper thread notices when this server stops answering for a minute (it notes it in the logbook), and
@@ -1511,6 +1520,7 @@ const server = http.createServer(async (req, res) => {
     if ((await voiceRoute({ req, res, p, isLocal, cfg, shop, body, send, TYPES })) !== false) return;
     if ((await searchBackupRoute({ req, res, p, isLocal, cfg, body, send, log: (k, t) => brain.log(k, t) })) !== false) return;
     if ((await privateWebRoute({ req, res, p, isLocal, cfg, body, send, log: (k, t) => brain.log(k, t) })) !== false) return;
+    if ((await noInternetRoute({ req, res, p, isLocal, cfg, body, send, log: (k, t) => brain.log(k, t), changed: (v) => broadcast({ type: 'no-internet', on: v.on }) })) !== false) return;
     if ((await traceLogRoute({ req, res, p, isLocal, cfg, body, send, log: (k, t) => brain.log(k, t) })) !== false) return;
     if ((await refsRoute({ req, res, p, url, brain, body, send, serveFile })) !== false) return;
     if ((await queueRoute({ req, res, p, brain, body, send })) !== false) return;

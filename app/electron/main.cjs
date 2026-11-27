@@ -628,6 +628,7 @@ async function start() {
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(base)) { e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); } });
   // The microphone (voice notes, "Hey Bob") and notifications are the only permissions Bob's page gets.
   win.webContents.session.setPermissionRequestHandler((wc, perm, cb) => cb(['media', 'notifications'].includes(perm) && wc.getURL().startsWith(base)));
+  require('./net-gate.cjs').gateSession(win.webContents.session); // Nov 27 2026: No internet (pictures and pages from elsewhere in Bob's own window)
   contextMenu(win, base);
   win.loadURL(base + '/');
   // 1.5.94: with "Minimise to tray" on, the X and the minimise button tuck him into the tray instead.

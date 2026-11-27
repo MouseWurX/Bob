@@ -17,6 +17,7 @@ class BobApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        PhoneNet.init(this) // Nov 27 2026: Where Bob connected and No internet, before anything connects
         brain = PhoneBrain(this)
         lend = LendServer(this)
         pair = Pairing(this)

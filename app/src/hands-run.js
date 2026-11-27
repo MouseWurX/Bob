@@ -12,6 +12,7 @@ import { isSensitive } from './tools.js';
 import { limitOn, readOnlyRoots } from './hands-settings.js';
 import { killTree as stopTree } from './platform.js';
 import { trackChild } from './hang-guard.js'; // item 213: Stop really stops
+import { noInternetOn } from './no-internet.js'; // Nov 27 2026: No internet cuts commands off too
 import { WIN_SANDBOX_READY, sandboxPlan } from './win-offline.js'; // Nov 23 2026: the Windows sandbox (passed the live check on a real PC)
 
 const MAX_OUT = 400_000; // characters of output kept for Bob (the chat gets all of it live); tool-kinds.js trims it smartly after (RESULT_MAX)
@@ -253,7 +254,12 @@ export function offlinePlan(plan, way, { exe = '', cwd = '' } = {}) {
 // Then (19:01): "it shouldnt change how it works with the pc". So the full cut-off is "Strict offline commands"
 // (hands.strictOffline, off unless switched on): only then do commands run sandboxed while Web is off. Off, they work
 // with the PC exactly as before (the "Don't send anything out" checks still apply).
-export const commandNet = (cfg = {}) => (cfg.hands?.strictOffline === true && cfg.webSearch !== true ? 'off' : 'open');
+// Nov 27 2026: No internet (no-internet.js, off unless switched on) cuts commands off too, whatever Web says: a command
+// is a separate program, so the only way to keep it off the internet is the sandbox. It can't follow the allowed list.
+export const commandNet = (cfg = {}) => (noInternetOn(cfg) || (cfg.hands?.strictOffline === true && cfg.webSearch !== true) ? 'off' : 'open');
+export const offlineWhy = (cfg = {}) => (noInternetOn(cfg) ? 'No internet is on' : 'Strict offline commands is on and Web is off');
+export const NO_SANDBOX_NI = 'Not run: No internet is on, and this computer can\'t run commands in a sandbox without internet yet. Switch No internet off in Settings, Online services to run it.';
+export const noSandboxLine = (cfg = {}) => (noInternetOn(cfg) ? NO_SANDBOX_NI : NO_SANDBOX);
 export const NO_SANDBOX = 'Not run: "Strict offline commands" is on and Web is off, and this computer can\'t run commands in a sandbox without internet yet. Turn on Web, or switch Strict offline commands off in Settings, Hands.';
 export const OFFLINE_NOTE = 'This command can still reach the internet: this computer can\'t keep commands offline yet.';
 
