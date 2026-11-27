@@ -941,12 +941,32 @@ Written Nov 22 before the borrowing work (scope: rebuild Avalon's ideas inside B
   - *q3_0 / q2_kv:* block structs and type ids 44/45 in the shaders; dequantize, dequantize4 and get_dm like q4_0's; writers in `copy_to_quant.comp` that mirror `quantize_row_q3_0_ref` and `quantize_row_q2_kv_ref` (the 2-bit one tries the four divisors with every step rounded on its own, exact division and a bit-level float-to-half rounding, because drivers may fold `float(float16_t(x))`); get_rows, cpy both ways and set_rows pipelines; flash attention reads them through `FA_DEQUANT4_Q3_0` / `FA_DEQUANT4_Q2_KV`, scalar or coopmat1 only (coopmat2 has no reader for them, so `get_fa_tuning_params` steps down).
   - *log-sum-exp:* `ggml_flash_attn_ext_has_lse(dst)` sets bit 25 of the mask word (`LSE_ENABLE_BIT`). `flash_attn.comp` writes `max(M, sink) + log(L)` after the output, at `HSV*ne1*ne2*neq3 + head + ne1*(row + ne2*seq)`; with split-k the reduce shader writes it instead (bit 1 of its sinks word). Sparse, Xe and coopmat2 paths are skipped when it is asked for (`force_scalar`).
   - *quantized to f16:* `copy_from_quant.comp` built a second time with `D_TYPE float16_t` (`pipeline_cpy_quant_f16`).
-  - *Release:* `brain-engine.yml` builds `ggml-vulkan` on Windows and Linux (Vulkan SDK 1.4.357.0, upstream's at b12359) and packs it with `app/engine/lamplight-vulkan.json`. Bob reads that file (`vulkanFeatures` in `src/engine-extras.js`) to offer q3_0/q2_kv on Vulkan, and `dropVulkanOverCuda` in `src/engines.js` removes both files when the base download is the CUDA one, and our `ggml-cuda` file when it isn't (no CUDA runtime there, so the install check would hold the update back).
+  - *Release:* `brain-engine.yml` builds `ggml-vulkan` on Windows (Vulkan SDK 1.4.357.0, upstream's at b12359) and on Linux (job `linux-vulkan`, `linux-build.sh vulkan` in Ubuntu 22.04 with LunarG's SDK, glibc 2.35 like the rest of Linux) and packs it with `app/engine/lamplight-vulkan.json`. Bob reads that file (`vulkanFeatures` in `src/engine-extras.js`) to offer q3_0/q2_kv on Vulkan, and `dropVulkanOverCuda` in `src/engines.js` removes both files when the base download is the CUDA one, and our `ggml-cuda` file when it isn't (no CUDA runtime there, so the install check would hold the update back).
 - **Why:** Nov 26: every feature should work on every card. Before this, a Vulkan Bob ran stock ggml-vulkan: no 3-bit or 2-bit chat memory, no Progressive Memory or sharp start on the card, and MTP replay untested.
 - **What can't move, and why:** CUDA-driver work with no Vulkan twin needed or possible: the doorbell and card borrowing (0042, 0048 family: CUDA streams and events), pinned uploads (0057) and registered RAM (0109: `cudaHostRegister`; Vulkan has its own staging buffers), WDDM budget reads (0068: Vulkan has the memory-budget extension upstream), CUDA fusion skips (0073, 0078), CUDA async inputs (0133) and the CUDA M-RoPE fusion (0128; Vulkan has upstream's RMS_NORM_MUL_ROPE). The position-made mask (0026) is CUDA and processor only; llama refuses it elsewhere and Bob never sets it.
 - **What to expect:** the same stored bytes as the processor for q3_0 and q2_kv, the same tokens as the processor for the replay brain. Speed on a real card: unmeasured.
 - **Re-check on rebase:** the pipeline lists in `ggml_vk_load_shaders`, the FA path picker (`get_fa_tuning_params`) and the mask word bits in `flash_attn_base.glsl` (bit 25 must stay free), the split-k reduce push constants, and the type lists in `vulkan-shaders-gen.cpp`.
 - **Tests:** `test-backend-ops -b Vulkan0` on lavapipe (`GGML_VK_VISIBLE_DEVICES=0`, since it is a processor-type device): GATED_DELTA_NET 147 of 147 (80 with replay), FLASH_ATTN_EXT with the log-sum-exp 288 of 288 (split-k, grouped heads, sinks, q3_0 and q2_kv among them), q3_0/q2_kv SET_ROWS, CPY, GET_ROWS and flash attention all OK, quantized-to-f16 CPY 16 of 16. `engine/tests/vulkan-replay.py`: a tiny Qwen 3.5-shaped MTP brain on the processor and on Vulkan, replay off and on: the same tokens all four ways, model and recurrent state on the card, no assert. The coopmat1/coopmat2 paths and real AMD, Intel and NVIDIA cards: unproven in our lab, as we have yet to test.
+
+### 0123-kv-body-sjkvarn: sealed blocks (SJ-KVaRN records for old words), first step
+- **Environment key (off unless set):** `LLAMA_KV_BODY=4/4|3/3|3/2` (K bits/V bits; the codec also takes 4/3, 4/2, 2/2), and `LLAMA_KV_BODY_ITERS` (balancing steps, default 16). Bob never sets it yet. It needs `LLAMA_KV_TIERS` (a ring to seal from) and heads of 128, 256 or 512 with K and V the same size. Otherwise it logs `!!! LLAMA_KV_BODY=... NOT USED: why`, and 0039's own refusals apply as well.
+- **Upstream files:**
+  - `src/llama-kv-cache.{h,cpp}`: the setup, the record pool per layer, `body_forget` from `tiers_forget`/`tiers_forget_moved`, the decode op, the host seal, and the rotation switch (whole head for K and V when on).
+  - `src/llama-graph.{h,cpp}`: one word reads in mode 2 when on; `attn_inp_body_pos`; the decode in the overlay, pinned to the processor.
+  - `src/llama-context.cpp`: the seal in `process_ubatch`, before `apply`, after a sched synchronize.
+  - `src/CMakeLists.txt`, the new `src/sj_kvarn.h` (vendored, MIT) and `src/sj-kvarn.c`.
+  - `common/arg.cpp`: the help line.
+- **Hook:**
+  - The records are one more layer under 0039's overlay: main (as f16), then the records, then the rings (widest first).
+  - Before each batch, the whole groups below its first word whose rows the widest ring still holds are sealed from that ring.
+  - The main cache is still written, so any word the records drop is read from it.
+- **Why:** llamAmpere's SJ-KVaRN cache (JakeATX, MIT). Part 1 (the sink) was 0122; this is the sealed body. The method is Huawei KVarN (Apache-2.0). The codec is used as published, and the glue is ours.
+- **What to expect:**
+  - Room: the records add 4.28 (4/4), 3.28 (3/3) or 2.78 (3/2) bits a value at head 256 on top of the main cache, for now.
+  - Speed: each word reads the whole cache as f16 (mode 2) and decodes the records on the processor. The seal is processor-only, and slow for trellis bodies.
+  - Words: they change; it's a lossy memory.
+- **Re-check on rebase:** everything 0039 and 0122 list, plus `process_ubatch`'s start and upstream's rotation choice.
+- **Tests:** `engine/tests/kv-body.py`, 14 of 14 (see above). CUDA on a real card, Windows and Android: unproven in our lab, as we have yet to test.
 
 ### 0100-upstream-fixes: bug fixes from newer upstream llama.cpp
 - **Why:** upstream fixed bugs after b12359 that reach Bob's brains (Speed thread survey, Nov 23). Cherry-picked, not a rebase, so the base stays b12359.
