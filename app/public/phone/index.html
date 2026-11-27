@@ -107,6 +107,16 @@
   <h3>Tools</h3>
   <label class="switch"><div class="words"><strong>Let the phone brain use tools</strong><p class="help-line">The phone brain can make and fill in Excel spreadsheets and Word documents in Bob's documents (below), work sums out with the calculator, tell the date and keep notes. Every change keeps the version before it. Works best with LFM3 1.7B or Qwen3.5 4B.</p></div><span class="pill"><input type="checkbox" id="phone-tools"><span></span></span></label>
   <label class="switch"><div class="words"><strong>Look things up online</strong><p class="help-line">With tools on, the phone brain can search the web (DuckDuckGo) and read a page when it isn't sure. Only the search words and the page address leave the phone. After it reads the web, changes to your files wait for your OK.</p></div><span class="pill"><input type="checkbox" id="phone-online"><span></span></span></label>
+  <div id="hands-android" class="hidden">
+  <label class="switch"><div class="words"><strong>Let Bob use apps</strong><p class="help-line">With tools on, the phone brain can open your other apps, read their screens, and tap, type, scroll and swipe for you. Every move waits for your OK on the screen, and a red bar says when Bob is driving: Stop, or volume down, stops him. It also needs Bob's hands switched on in Android's Accessibility settings.</p></div><span class="pill"><input type="checkbox" id="phone-hands"><span></span></span></label>
+  <div id="hands-consent"></div>
+  <p class="help-line" id="hands-state" role="status"></p>
+  <div class="btns hidden" id="hands-btns"><button id="hands-settings">Open Accessibility settings</button><button id="hands-appinfo">Open Bob's app info</button></div>
+  </div>
+  <div id="hands-ios" class="hidden">
+  <label class="switch"><div class="words"><strong>Let Bob run Shortcuts</strong><p class="help-line">Apple doesn't let one app use another, so on iPhone Bob runs Shortcuts instead: only the ones you name below, each after your OK. A Shortcut can send a message, start a timer, add a reminder and more, and hand its answer back to Bob.</p></div><span class="pill"><input type="checkbox" id="phone-hands-ios"><span></span></span></label>
+  <textarea id="phone-shortcuts" rows="3" placeholder="One Shortcut name per line, exactly as it is in the Shortcuts app" aria-label="Shortcuts Bob may run"></textarea>
+  </div>
   <label class="switch"><div class="words"><strong>Voice log</strong><p class="help-line">Say a name and a value ("water 52", "400 rate", "next stage") and it goes in a spreadsheet for the job, with the time, and is read back to you. It can keep count of what's on hand and work out your own formulas. No brain needed. Adds 🎙 Voice log to the menu.</p></div><span class="pill"><input type="checkbox" id="voice-log-on"><span></span></span></label>
   <h3>Bob's documents</h3>
   <div id="phone-docs"></div>
@@ -291,6 +301,7 @@
 <script src="logic.js"></script>
 <script src="calc.js"></script>
 <script src="phone-tools.js"></script>
+<script src="phone-hands.js"></script>
 <script src="voice-log.js"></script>
 <script src="help.js"></script>
 <script src="diagram-core.js"></script>

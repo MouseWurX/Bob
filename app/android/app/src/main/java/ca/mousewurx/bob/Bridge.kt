@@ -42,7 +42,11 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     private val net = NetBob(activity)
     private val app = activity.application as BobApp
     private val brain = app.brain.also { b -> b.listener = { send(JSONObject(it).put("event", "brain")) } }
-    init { app.pair.listener = { send(JSONObject().put("event", "pair").put("data", it)) } }
+    init {
+        app.pair.listener = { send(JSONObject().put("event", "pair").put("data", it)) }
+        // 🖐 You stopped Bob's hands (the bar's Stop, or volume down): the page stops the reply too.
+        HandsService.listener = { send(JSONObject(it.toString()).put("event", "hands")) }
+    }
     private val listening = ConcurrentHashMap<String, Boolean>()
     private var tts: TextToSpeech? = null
     private var ttsReady = false
@@ -81,6 +85,9 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
 
     private fun answer(id: String, result: Any?) = send(JSONObject().put("id", id).put("ok", true).put("result", result ?: JSONObject.NULL))
     private fun fail(id: String, error: String) = send(JSONObject().put("id", id).put("ok", false).put("error", error))
+
+    private fun hands(): HandsService = HandsService.live
+        ?: throw IllegalStateException(if (HandsService.allowed(activity)) "Bob's hands are switched off in Android's Accessibility settings. They're on the Phone brain page: Let Bob use apps, Open Accessibility settings." else "Bob's hands are off. They're on the Phone brain page: Let Bob use apps.")
 
     private fun base(o: JSONObject): String = NetBob.base(o.getString("address")) ?: throw IllegalArgumentException("not a Tailscale address")
 
@@ -219,6 +226,21 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                     }
                     // ---- 🔎 Look things up online (its own switch, off to start with; the page checks it too) ----
                     "web.get" -> answer(id, WebLook.get(o.getString("url")))
+
+                    // ---- 🖐 Phone hands (Let Bob use apps, off to start with; HandsService.kt asks for your OK on screen) ----
+                    "hands.state" -> answer(id, JSONObject().put("allowed", HandsService.allowed(activity)).put("switchedOn", HandsService.switchedOn(activity))
+                        .put("running", HandsService.live != null).put("job", HandsService.live?.state() ?: JSONObject.NULL))
+                    "hands.allow" -> { HandsService.allow(activity, o.getBoolean("on")); answer(id, HandsService.allowed(activity)) }
+                    "hands.settings" -> activity.runOnUiThread {
+                        val i = if (o.optString("where") == "app") Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + activity.packageName))
+                            else Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                        runCatching { activity.startActivity(i) }.onSuccess { answer(id, true) }.onFailure { fail(id, "this phone wouldn't open its settings") }
+                    }
+                    "hands.apps" -> answer(id, hands().apps())
+                    "hands.open" -> answer(id, hands().open(o.optString("name")))
+                    "hands.look" -> answer(id, hands().look())
+                    "hands.act" -> answer(id, hands().act(o))
+                    "hands.end" -> { HandsService.live?.endJob(o.optBoolean("done", true)); answer(id, true) }
 
                     // ---- Phone bits ----
                     "notify" -> activity.runOnUiThread { notifyNow(o.getString("title"), o.getString("text")); answer(id, true) }
@@ -473,6 +495,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     fun close() {
         brain.listener = null // the phone brain stays (it may be lending); only this screen goes
         app.pair.listener = null
+        HandsService.listener = null
         listening.keys.forEach { listening[it] = false }
         tts?.shutdown()
         ears.close()

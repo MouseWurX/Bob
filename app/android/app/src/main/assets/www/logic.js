@@ -80,7 +80,7 @@
   // The phone brain's instructions: Bob's shared persona, what the phone can't do and his memory file. They stay the
   // same from reply to reply, so the phone brain reads them once; the time goes with each message instead (phone.js).
   // (`now` and `recap` are still accepted, for a brain that can't keep the chat.)
-  function phoneSystem({ persona, user, cat, now, memory = '', recap = [], bigBob = '', tools = false, online = false }) {
+  function phoneSystem({ persona, user, cat, now, memory = '', recap = [], bigBob = '', tools = false, online = false, hands = '' }) {
     const who = (user || '').trim() || 'the user';
     const bigger = bigBob ? ` and that ${bigBob} on their network can do it: the app shows a button to send it there` : ' and that a bigger Bob on their network could do it';
     const parts = [
@@ -90,6 +90,9 @@
         ? `Right now you're running on ${who}'s phone with a small brain, so keep replies short. On the phone you have tools: make, read and fill in Excel spreadsheets and Word documents in Bob's documents, the calculator for any sum, the date and time, and notes${online ? ', and looking things up on the web' : ''}. Use a tool instead of guessing, read a file before changing it, and say what the tool really did. You can't make pictures, video, music or sound, run programs, make PDFs or slides, or convert documents here${online ? '' : ', and you can\'t go online'}. When ${who} asks for one of those, say so in one line${bigger}. Never pretend you made or changed something.`
         : `Right now you're running on ${who}'s phone with a small brain, so keep replies short. On the phone you can chat, remember things and help think things through. You can't make pictures, video, music or sound, touch files, run programs or convert documents here. When ${who} asks for one of those, say so in one line${bigger}. Never pretend you made something.`,
     ];
+    // 🖐 Phone hands (Let Bob use apps on Android, Let Bob run Shortcuts on iPhone): one more short rule.
+    if (tools && hands === 'android') parts.push(`You can also use ${who}'s other apps: open_app, then app_look to read the screen, then app_act for one move, and app_look again to see what it did. ${who} OKs each move on the screen and can stop you. Leave passwords and codes to them. When the job is done, say what you really did.`);
+    if (tools && hands === 'ios') parts.push(`You can also run the Shortcuts ${who} allowed (the shortcuts tool), which do things in other apps on the iPhone. You can't tap or read other apps here: when a job needs that and no Shortcut fits, say so in one line.`);
     if (now) parts.push(`Current date and time for ${who}: ${now}.`);
     if (memory.trim()) parts.push(`Things you remember about ${who} (from your memory file):\n${memory.trim().slice(0, 3000)}`);
     const r = recap.slice(-6).map((m) => `${m.who === 'you' ? who : 'Bob'}: ${String(m.text).replace(/\s+/g, ' ').slice(0, 400)}`);

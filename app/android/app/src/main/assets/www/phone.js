@@ -5,6 +5,9 @@
   const L = globalThis.BobLogic;
   const S = globalThis.BobShared;
   const T = globalThis.BobPhoneTools; // 🧰 the phone brain's tools (phone-tools.js)
+  const H = globalThis.BobPhoneHands; // 🖐 its hands in other apps (phone-hands.js)
+  // Which hands this phone has: Android's accessibility service, the iPhone's Shortcuts, or none (a phone browser).
+  const handsKind = () => (globalThis.BobPhone?.ios ? 'ios' : globalThis.BobPhone && !globalThis.BobPhone.web ? 'android' : '');
   const $ = (id) => document.getElementById(id);
   const el = (tag, attrs = {}, ...kids) => {
     const e = document.createElement(tag);
@@ -22,7 +25,7 @@
     get(k, d) { try { const v = globalThis.BobLock ? globalThis.BobLock.get(k) : localStorage.getItem(`bob.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { if (globalThis.BobLock) globalThis.BobLock.set(k, JSON.stringify(v)); else localStorage.setItem(`bob.${k}`, JSON.stringify(v)); } catch { /* full or blocked: carry on in memory */ } }
   };
-  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneTools: false, phoneOnline: false, voiceLog: false, voiceNames: null, voiceFormulas: '', voiceInputs: null, voiceFile: '', voiceStage: 0, voiceKeepListening: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, mathView: false, userName: '', theme: 'moondust', effort: 'low', resume: false, redo: true, fade: { on: false, minutes: 60, mode: 'hide' }, promptMenu: false, textSize: 100, readableFont: false,
+  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneTools: false, phoneOnline: false, phoneHands: false, phoneShortcuts: '', voiceLog: false, voiceNames: null, voiceFormulas: '', voiceInputs: null, voiceFile: '', voiceStage: 0, voiceKeepListening: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, mathView: false, userName: '', theme: 'moondust', effort: 'low', resume: false, redo: true, fade: { on: false, minutes: 60, mode: 'hide' }, promptMenu: false, textSize: 100, readableFont: false,
     // Voice, phone and Bob-Net (items 133 to 142, 2026-11-11): every one off to start with.
     talkOver: false, wakeOn: false, netVoices: false, shareOn: false, widgetReminder: false, lowData: 'off', hfAgain: true, hfShort: false, readerSpeed: 1 };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
@@ -74,6 +77,7 @@
       else if (m.event === 'said') onSaid(m);
       else if (m.event === 'ears') onEars(m);
       else if (m.event === 'share') takeShare();
+      else if (m.event === 'hands' && m.type === 'stop') { if (current?.kind === 'phone') stopReply(); toast('You stopped Bob\'s hands.'); }
       else if (m.event === 'widget') takeWidget();
     },
     back() {
@@ -561,6 +565,7 @@
   }
 
   function finish() {
+    if (current?.loop?.hands && handsKind() === 'android') phone('hands.end', { done: !current.stopAsked }).catch(() => {});
     if (current?.msg) {
       current.msg.text = current.text || (current.media?.length ? '' : '…');
       if (current.media?.length) current.msg.media = current.media;
@@ -604,13 +609,15 @@
     const history = c.msgs.slice(0, -2).filter((m) => m.who === 'you' || (m.who === 'bob' && m.text)).slice(-24)
       .map((m) => ({ role: m.who === 'you' ? 'user' : 'assistant', content: String(m.text).slice(0, 4000) }));
     const toolsOn = Boolean(settings.phoneTools && T);
-    const system = L.phoneSystem({ persona: S.persona, user: settings.userName, cat: S.cat, memory, bigBob: bobs[0]?.name || '', tools: toolsOn, online: toolsOn && settings.phoneOnline });
+    const hands = toolsOn && settings.phoneHands && H ? handsKind() : '';
+    const handTools = hands ? H.schemas({ platform: hands, shortcuts: settings.phoneShortcuts }) : [];
+    const system = L.phoneSystem({ persona: S.persona, user: settings.userName, cat: S.cat, memory, bigBob: bobs[0]?.name || '', tools: toolsOn, online: toolsOn && settings.phoneOnline, hands: handTools.length ? hands : '' });
     const now = `Current date and time for ${(settings.userName || '').trim() || 'the user'}: ${new Date().toLocaleString()}.`;
     const job = current;
     pcRecall(text, c.id).then((recalled) => {
       const note = recalled ? `${now}\n\n${recalled}` : now;
       // 🧰 Tools on: the brain can answer with tool calls; each round's calls and results go back with the next round.
-      const tools = toolsOn ? T.schemas({ online: settings.phoneOnline }) : [];
+      const tools = toolsOn ? [...T.schemas({ online: settings.phoneOnline }), ...handTools] : [];
       if (toolsOn) job.loop = { ask: { file: model.file.name, system, history, text, note, maxTokens: model.maxTokens || 768, tools }, after: [], seen: new Map(), web: false };
       return phone('brain.chat', { file: model.file.name, system, history, text, note, maxTokens: model.maxTokens || 768, tools, after: [] });
     }).catch((e) => { grow(`*(The phone brain couldn't start: ${e.message})*`); finish(); });
@@ -661,18 +668,22 @@
     loop.after.push({ role: 'assistant', content: String(m.content || ''), tool_calls: m.calls });
     for (const call of m.calls.slice(0, 8)) {
       const name = String(call?.function?.name || ''), args = call?.function?.arguments || {};
-      const key = T.callKey(name, args);
+      // 🖐 A move on a screen that changed isn't going round in circles, so hands' calls count per screen seen.
+      const key = T.callKey(name, args) + (H?.owns(name) ? `#${loop.screen || 0}` : '');
       const n = (loop.seen.get(key) || 0) + 1;
       loop.seen.set(key, n);
       let res;
       if (job.stopAsked) res = { text: 'Stopped before this ran.' };
       else if (n >= 3) res = { text: 'You already did exactly this twice and got the answer above. Stop calling tools now and reply with what you have.' };
       else {
-        grow(`\n\n*${T.summary(name, args)}*`);
+        grow(`\n\n*${H?.owns(name) ? H.summary(name, args) : T.summary(name, args)}*`);
         job.state = 'Using a tool on the phone…'; drawStatus();
-        try { res = await T.run(name, args, toolIo(job)); } catch (e) { res = { text: `That didn't work: ${e.message}. Nothing was changed.` }; }
+        const hand = H?.owns(name);
+        if (hand) loop.hands = true;
+        try { res = hand ? await H.run(name, args, handsIo(job)) : await T.run(name, args, toolIo(job)); } catch (e) { res = { text: `That didn't work: ${e.message}. Nothing was changed.` }; }
       }
       if (res.web) loop.web = true;
+      if (name === 'app_look' && res.text !== loop.lastScreen) { loop.lastScreen = res.text; loop.screen = (loop.screen || 0) + 1; }
       const doc = res.made || res.changed;
       if (doc && !job.media.some((x) => x.kind === 'doc' && x.name === doc)) { const x = { kind: 'doc', name: doc }; job.media.push(x); job.node.append(mediaNode(x)); }
       loop.after.push({ role: 'tool', tool_name: name, content: String(res.text).slice(0, T.MAX_RESULT + 400) });
@@ -707,14 +718,28 @@
       }
     };
   }
-  function askOk(job, words) {
+  // 🖐 What the hands reach: Android's accessibility service (it shows its own OK cards over the app in front), or
+  // the iPhone's Shortcuts (an OK card here first, since Bob is in front when he asks). One per reply, so the screen
+  // Bob last read is remembered from one call to the next.
+  function handsIo(job) {
+    if (job.loop.handsIo) return job.loop.handsIo;
+    job.loop.handsIo = {
+      shortcuts: settings.phoneShortcuts,
+      hands: (op, args = {}) => phone(op, args),
+      ok: (words) => (job.loop.okShortcuts ? Promise.resolve(true) : askOk(job, words, true).then((a) => { if (a === 'job') job.loop.okShortcuts = true; return Boolean(a); })),
+      shortcut: (name, input) => phone('shortcut.run', { name, input })
+    };
+    return job.loop.handsIo;
+  }
+  function askOk(job, words, offerJob = false) {
     return new Promise((ok) => {
       job.state = 'Waiting for your OK…'; drawStatus();
       const card = el('div', { class: 'card' },
         el('div', { class: 'q', text: words }),
         el('div', { class: 'row' },
           el('button', { class: 'main', text: 'OK', onclick: () => { card.remove(); ok(true); } }),
-          el('button', { text: 'No', onclick: () => { card.remove(); ok(false); } })));
+          el('button', { text: 'No', onclick: () => { card.remove(); ok(false); } }),
+          offerJob ? el('button', { text: 'OK for this job', onclick: () => { card.remove(); ok('job'); } }) : null));
       job.okCard = () => { card.remove(); ok(false); };
       $('chat').append(card);
       card.scrollIntoView({ block: 'end' });
@@ -1244,6 +1269,7 @@
     $('phone-tools').checked = settings.phoneTools;
     $('phone-online').checked = settings.phoneOnline;
     $('phone-online').disabled = !settings.phoneTools;
+    drawHands();
     $('voice-log-on').checked = settings.voiceLog;
     drawDocs();
     $('idle-min').value = String(settings.idleMinutes);
@@ -1503,7 +1529,54 @@
     refreshLend();
   });
   $('phone-on').addEventListener('change', (e) => { settings.phoneOn = e.target.checked; saveSettings(); drawWho(); });
-  $('phone-tools').addEventListener('change', (e) => { settings.phoneTools = e.target.checked; if (!settings.phoneTools) settings.phoneOnline = false; saveSettings(); drawBrain(); });
+  $('phone-tools').addEventListener('change', (e) => {
+    settings.phoneTools = e.target.checked;
+    if (!settings.phoneTools) { settings.phoneOnline = false; if (settings.phoneHands && handsKind() === 'android') phone('hands.allow', { on: false }).catch(() => {}); settings.phoneHands = false; }
+    saveSettings(); drawBrain();
+  });
+  // ---------- 🖐 Phone hands (Let Bob use apps / Let Bob run Shortcuts; off to start with) ----------
+  async function drawHands() {
+    const kind = handsKind();
+    $('hands-android').classList.toggle('hidden', kind !== 'android');
+    $('hands-ios').classList.toggle('hidden', kind !== 'ios');
+    $('phone-hands').checked = $('phone-hands-ios').checked = settings.phoneHands;
+    $('phone-hands').disabled = $('phone-hands-ios').disabled = !settings.phoneTools;
+    if ($('phone-shortcuts') !== document.activeElement) $('phone-shortcuts').value = settings.phoneShortcuts || '';
+    $('phone-shortcuts').disabled = !settings.phoneHands;
+    if (kind !== 'android') return;
+    let st = null;
+    try { st = await phone('hands.state'); } catch { /* not on a phone (tests) */ }
+    const words = !settings.phoneHands ? '' : !st ? 'Bob can\'t tell whether his hands are on.'
+      : st.running ? 'Bob\'s hands are on. He uses apps only when you ask, one OK at a time.'
+      : 'One more step: in Accessibility settings, open Installed apps (or Downloaded apps), then Bob\'s hands, and switch them on. If Android says the setting is restricted, open Bob\'s app info, tap ⋮ and Allow restricted settings, then try again.';
+    $('hands-state').textContent = words;
+    $('hands-btns').classList.toggle('hidden', !settings.phoneHands || Boolean(st?.running));
+  }
+  // Android asks apps to say plainly what an accessibility service does before it's switched on (and so do we).
+  function handsConsent() {
+    const box = $('hands-consent');
+    box.textContent = '';
+    return new Promise((ok) => {
+      box.append(el('div', { class: 'card' },
+        el('div', { class: 'q', text: 'Let Bob use your apps?' }),
+        el('p', { class: 'help-line', text: 'Bob\'s hands use Android\'s accessibility service. With them on, Bob can read what\'s on your screen in the app in front and tap, type, scroll and swipe there, but only while he\'s doing a job you asked for. What he reads stays on this phone and goes only to the phone brain. He never reads or types in password fields, and never touches Android\'s Settings, app installers, password managers or his own app. Every move waits for your OK; sending, paying, deleting, installing and calling ask every time. Apps that mark their screens as private (many banking apps) stay hidden from him.' }),
+        el('div', { class: 'row' },
+          el('button', { class: 'main', text: 'Turn on Bob\'s hands', onclick: () => { box.textContent = ''; ok(true); } }),
+          el('button', { text: 'Not now', onclick: () => { box.textContent = ''; ok(false); } }))));
+    });
+  }
+  $('phone-hands').addEventListener('change', async (e) => {
+    const on = e.target.checked && settings.phoneTools;
+    if (on && !(await handsConsent())) { e.target.checked = false; return; }
+    settings.phoneHands = on; saveSettings();
+    try { await phone('hands.allow', { on }); if (on) await phone('hands.settings'); }
+    catch (err) { logError('hands', err.message); toast(`Bob's hands: ${err.message}.`); }
+    drawHands();
+  });
+  $('phone-hands-ios').addEventListener('change', (e) => { settings.phoneHands = e.target.checked && settings.phoneTools; saveSettings(); drawHands(); });
+  $('phone-shortcuts').addEventListener('change', (e) => { settings.phoneShortcuts = H ? H.names(e.target.value).join('\n') : ''; saveSettings(); drawHands(); });
+  $('hands-settings').addEventListener('click', () => phone('hands.settings').catch((err) => toast(err.message)));
+  $('hands-appinfo').addEventListener('click', () => phone('hands.settings', { where: 'app' }).catch((err) => toast(err.message)));
   $('voice-log-on').addEventListener('change', (e) => { settings.voiceLog = e.target.checked; saveSettings(); drawVoiceTile(); });
   const drawVoiceTile = () => $('voicelog-tile').classList.toggle('hidden', !settings.voiceLog);
   drawVoiceTile();

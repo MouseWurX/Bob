@@ -89,7 +89,7 @@ export function buildPromptWords() {
 // Icons, fonts, Mermaid and diagram-core.js aren't copied: the server hands /phone/shared/, /phone/vendor/ and
 // /phone/diagram-core.js out of public/ (they're the same files).
 export const WEB_DIR = path.join(root, 'public/phone');
-export const WEB_COPIED = ['phone.js', 'phone.css', 'logic.js', 'help.js', 'shared.js', 'avatars.js', 'prompt-words.js', 'table-fx.js', 'math-core.js', 'model-core.js', 'lock.js', 'adv-table.js', 'journey-rules.js', 'journey-world.js', 'journey-sides.js', 'journey-play.js', 'journey.css', 'calc.js', 'phone-tools.js', 'voice-log.js']; // every script www/index.html loads except diagram-core.js (served from desktop Bob). lock.js too: the phone screen keeps its chats in the browser, so it gets the same passcode lock (it says so when the browser can't scramble)
+export const WEB_COPIED = ['phone.js', 'phone.css', 'logic.js', 'help.js', 'shared.js', 'avatars.js', 'prompt-words.js', 'table-fx.js', 'math-core.js', 'model-core.js', 'lock.js', 'adv-table.js', 'journey-rules.js', 'journey-world.js', 'journey-sides.js', 'journey-play.js', 'journey.css', 'calc.js', 'phone-tools.js', 'phone-hands.js', 'voice-log.js']; // every script www/index.html loads except diagram-core.js (served from desktop Bob). lock.js too: the phone screen keeps its chats in the browser, so it gets the same passcode lock (it says so when the browser can't scramble)
 export function buildWebPhone() {
   const www = path.join(root, 'android/app/src/main/assets/www');
   const read = (f) => fs.readFileSync(path.join(www, f), 'utf8').replace(/\r\n/g, '\n');

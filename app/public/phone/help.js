@@ -78,6 +78,20 @@ globalThis.BobHelp = {
 <p>Not here yet: .xls, .csv, .odt or PDF files, charts, and phone actions like alarms (those will come later, each behind an OK card). iPhone: not yet, as there's no phone brain there.</p>`
     },
     {
+      id: 'phone-hands', title: 'Let Bob use apps',
+      html: `<p>Phone brain page, <strong>Tools</strong>, <strong>Let Bob use apps</strong> (off to start with, and only with Let the phone brain use tools on). With it on, I can use your other apps for you: "open Calendar and tell me what's on Friday", "search Maps for the nearest pharmacy", "turn on shuffle in Spotify". I open the app, read what's on its screen, and tap, type, scroll or swipe, one move at a time, reading the screen again after each move.</p>
+<p>It takes two switches, both yours. Mine, then Android's: when you turn mine on I explain what it does, then open Android's <strong>Accessibility</strong> settings. There, open <strong>Installed apps</strong> (some phones say Downloaded apps or Installed services), then <strong>Bob's hands</strong>, and switch them on. Android shows its own warning: that's normal for anything that can read the screen. If Android says the setting is <strong>restricted</strong> (it does for apps that didn't come from the Play Store), open <strong>Bob's app info</strong> from my page, tap <strong>⋮</strong>, <strong>Allow restricted settings</strong>, and try again.</p>
+<p>While I'm driving, a red bar sits across the top of the screen. <strong>Stop</strong> on it, or the <strong>volume-down</strong> key, stops me at once; <strong>Back to Bob</strong> brings you back here. Every move waits for your <strong>OK</strong> on a card at the bottom of the screen. <strong>OK for this job</strong> lets the rest of that reply's moves go without asking, except that anything which sends, posts, pays, buys, deletes, installs or calls asks every single time.</p>
+<p>These rules live in my code, not in my head, so nothing on a screen can talk me past them: I never read or type in password fields, and I never touch Android's Settings, app installers, permission screens, the lock screen, password managers, sign-in code apps, or my own app (so I can't press my own OK). Apps that mark their screens as private, as many banking apps do, stay hidden from me. What I read on a screen stays on this phone, goes only to the phone brain, and is treated as someone else's words, never as your instructions.</p>
+<p>Small phone brains slip, and apps change their screens without warning, so watch the first few jobs. To take my hands away, turn off Let Bob use apps (that also removes Bob's hands from Android's list), or switch them off in Accessibility settings. This is new and not yet proven on a real phone in our lab, as we have yet to test it.</p>`
+    },
+    {
+      id: 'phone-shortcuts', title: 'Let Bob run Shortcuts (iPhone)',
+      html: `<p>On an iPhone, Apple doesn't let one app tap in or read another, so I can't drive your apps there. What I can do is run <strong>Shortcuts</strong>: Phone brain page, <strong>Tools</strong>, <strong>Let Bob run Shortcuts</strong> (off to start with), then type the names of the Shortcuts I may run, one per line, exactly as they are in the Shortcuts app.</p>
+<p>A Shortcut can do whatever its apps chose to offer: send a message, start a timer, add a reminder, play a playlist, turn on Do Not Disturb. Ask me ("run Start my run playlist", "text Sam I'm on my way with my Text Sam shortcut") and I show an <strong>OK</strong> card first; <strong>OK for this job</strong> covers the rest of that reply. The Shortcuts app opens, does its work, then comes back to me with whatever the Shortcut hands back (its last step's answer), which I read as someone else's words.</p>
+<p>It works the other way too: <strong>Ask Bob</strong> is in the Shortcuts app and Siri ("Ask Bob"). It opens me with your words in the message box, waiting for your Send. Not proven on a real iPhone in our lab yet, as we have yet to test it.</p>`
+    },
+    {
       id: 'speed', title: 'Test speed',
       html: `<p>Phone brain, <strong>Test speed</strong>, under a downloaded brain. It takes about a minute and tells you how fast this phone reads and writes with it. Anything over about 8 words a second feels like chatting. Phones slow down when they get warm, so a second test right after the first can come out lower.</p>`
     },
@@ -361,6 +375,9 @@ globalThis.BobHelp = {
 <dt>Saved prompt</dt><dd>Words you ask me often, saved with a short name. Type / at the start of the message box to pull one up. Blanks in {curly brackets} are what you fill in.</dd>
 <dt>OK card</dt><dd>A Bob on your network asking before he does something outside his own folder.</dd>
 <dt>Tool</dt><dd>Something I can use instead of guessing, like the calculator or a spreadsheet. On the phone: Let the phone brain use tools.</dd>
+<dt>Bob's hands</dt><dd>On Android: me using your other apps for you (open, read the screen, tap, type, scroll), one OK at a time. Phone brain page, Let Bob use apps. On a PC it's the Apps hand.</dd>
+<dt>Accessibility service</dt><dd>Android's way for an app to read the screen and tap for you, made for screen readers. My hands use it, only while you have them on.</dd>
+<dt>Shortcut</dt><dd>On an iPhone: a little recipe of steps in Apple's Shortcuts app, like "text Sam I'm on my way". I can run the ones you name.</dd>
 <dt>Bob's documents</dt><dd>The spreadsheets, Word documents and notes the phone brain works on, kept inside my app on this phone. Phone brain page.</dd>
 <dt>Measure (Voice log)</dt><dd>A second number for a name, like a rate or a mix, said with your measure word: "feed rate 0.15". Names I listen for sets the word and the unit.</dd>
 <dt>Place (Voice log)</dt><dd>Where an item is kept, like a shed or a tank. The Inventory sheet has a column for each one.</dd>
@@ -406,6 +423,11 @@ globalThis.BobHelp = {
 <tr><td>Can I move a chat from the phone to my computer?</td><td>Yes: Menu, Carry on. That Bob needs Accept chats on (his Settings, Bob-Net).</td></tr>
 <tr><td>Pictures don't load on mobile data</td><td>That's Low-data mode: tap the button to load one, or set it to Off in Settings, Data.</td></tr>
 <tr><td>Can I use the phone away from home?</td><td>Yes, as long as your other replicant matrix is on and Tailscale is on at both ends. Without that, the phone brain can still chat.</td></tr>
+<tr><td>Bob's hands aren't in Android's Accessibility list</td><td>Turn on Let Bob use apps on the Phone brain page first: until then they're not listed at all. Then look under Installed apps or Downloaded apps.</td></tr>
+<tr><td>Android says Bob's hands are a restricted setting</td><td>Phone brain page, Open Bob's app info, then ⋮, Allow restricted settings. Android does this for apps that didn't come from the Play Store.</td></tr>
+<tr><td>Bob tapped the wrong thing in an app</td><td>Tap No on the next card, or Stop on the red bar, or press volume down. Small brains slip: a tools brain (LFM3 1.7B or Qwen3.5 4B) gets it right more often.</td></tr>
+<tr><td>Bob says he can't see a banking app</td><td>That's on purpose: apps that mark their screens as private stay hidden from my hands. Do that one yourself.</td></tr>
+<tr><td>Can Bob use my apps on an iPhone?</td><td>Not directly: Apple doesn't allow it. He can run the Shortcuts you name (Let Bob run Shortcuts), and Ask Bob works from Siri and the Shortcuts app.</td></tr>
 <tr><td>The phone brain says it can't change files</td><td>Phone brain page, Tools: turn on Let the phone brain use tools. A brain made for tools (LFM3 1.7B or Qwen3.5 4B) gets it right more often.</td></tr>
 <tr><td>Where's the spreadsheet the phone brain made?</td><td>Phone brain page, Bob's documents. Tap Save to phone to copy it to Download/Bob, then open it in Excel or Word.</td></tr>
 <tr><td>A total shows a formula, not a number</td><td>I write the formula; Excel (or Google Sheets) works it out when you open the file. Ask me to use the calculator if you want the number now.</td></tr>

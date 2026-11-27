@@ -194,6 +194,12 @@
     'docs.undo': () => false,
     'docs.add': () => { throw new Error(NOT_HERE); },
     'web.get': () => { throw new Error(NOT_HERE); },
+    // 🖐 Phone hands: Bob for Android's (and Bob for iPhone's Shortcuts); a phone browser has none.
+    'hands.state': () => ({ kind: '' }),
+    'hands.allow': () => { throw new Error(NOT_HERE); },
+    'hands.settings': () => { throw new Error(NOT_HERE); },
+    'hands.end': () => true,
+    'shortcut.run': () => { throw new Error(NOT_HERE); },
     // Voice, phone and Bob-Net (2026-11-11): Bob's ears, the Share menu and the home-screen widget are Bob for Android's.
     // Hands-free and Talk over Bob need the ears; on an iPhone the keyboard's own microphone types what you say.
     'ears.start': () => { throw new Error('listening by himself needs Bob for Android. On an iPhone, use the keyboard\'s microphone'); },

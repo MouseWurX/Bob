@@ -202,7 +202,7 @@ check('big jobs: PDFs, slides and converting still go to a bigger Bob', ['make a
 const js = read('android/app/src/main/assets/www/phone.js');
 const defaults = js.match(/const DEFAULTS = \{[\s\S]*?\};/)[0];
 check('opt-in: Let the phone brain use tools and Look things up online start off', /phoneTools: false/.test(defaults) && /phoneOnline: false/.test(defaults));
-check('phone page: Look things up online is off whenever tools are', /if \(!settings\.phoneTools\) settings\.phoneOnline = false/.test(js) && /settings\.phoneOnline = e\.target\.checked && settings\.phoneTools/.test(js));
+check('phone page: Look things up online is off whenever tools are', /if \(!settings\.phoneTools\) \{ settings\.phoneOnline = false;/.test(js) && /settings\.phoneOnline = e\.target\.checked && settings\.phoneTools/.test(js));
 check('phone page: web pages make changes wait for an OK card', /job\.loop\.web && !\(await askOk\(/.test(js));
 check('phone page: the same call three times makes the brain answer instead', /n >= 3/.test(js));
 check('phone page: the stop button also stops a tool step', /current\.stopAsked = true/.test(js) && /if \(job\.stopAsked\) \{ grow/.test(js));
