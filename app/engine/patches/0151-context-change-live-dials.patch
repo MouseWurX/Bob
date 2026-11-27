@@ -1,0 +1,565 @@
+diff --git a/common/common.cpp b/common/common.cpp
+index 3e398e5..f4df792 100644
+--- a/common/common.cpp
++++ b/common/common.cpp
+@@ -1153,6 +1153,7 @@ struct common_init_result::impl {
+     std::vector<llama_sampler_seq_config> samplers_seq_config;
+ 
+     std::string placement; // Brain Engine 0035: what the weights' placement depends on, empty if it can't be kept
++    bool        reused = false; // Lamplight 0151: the kept brain was used again (no load)
+ };
+ 
+ // Brain Engine 0035: a brain kept between two contexts, and what its placement depended on
+@@ -1184,6 +1185,14 @@ static std::string common_model_placement(const common_params & params, const ll
+     return s;
+ }
+ 
++llama_model * common_kept_model() {
++    return g_kept_model;
++}
++
++bool common_init_result::model_was_kept() const {
++    return pimpl->reused;
++}
++
+ bool common_init_result::keep_model_for_next() {
+     if (!pimpl->model || pimpl->placement.empty()) {
+         return false;
+@@ -1348,6 +1357,7 @@ common_init_result::common_init_result(common_params & params, bool model_only)
+         if (!pimpl->placement.empty() && pimpl->placement == g_kept_placement) {
+             model = g_kept_model;
+             COM_INF("%s", "brain kept loaded: only the context is made again\n");
++            pimpl->reused = true;
+         } else {
+             COM_INF("%s", "brain loaded again: its placement changed (layers, devices or overrides)\n");
+             llama_model_free(g_kept_model);
+diff --git a/common/common.h b/common/common.h
+index d4e1350..5086466 100644
+--- a/common/common.h
++++ b/common/common.h
+@@ -1024,11 +1024,18 @@ struct common_init_result {
+     // context and everything else is freed as usual. Returns false (and keeps nothing) when it can't be kept.
+     bool keep_model_for_next();
+ 
++    // Lamplight 0151: true when this result's brain is one kept from the last context (no weights loaded again)
++    bool model_was_kept() const;
++
+ private:
+     struct impl;
+     std::unique_ptr<impl> pimpl;
+ };
+ 
++// Lamplight 0152: the brain kept by keep_model_for_next() until the next context takes it, or nullptr
++llama_model * common_kept_model();
++
++
+ using common_init_result_ptr = std::unique_ptr<common_init_result>;
+ 
+ common_init_result_ptr common_init_from_params(common_params & params, bool model_only = false);
+diff --git a/include/llama.h b/include/llama.h
+index f996114..2273a2c 100644
+--- a/include/llama.h
++++ b/include/llama.h
+@@ -588,6 +588,17 @@ extern "C" {
+     LLAMA_API int32_t llama_model_n_expert     (const struct llama_model * model);
+     LLAMA_API int32_t llama_model_n_expert_used(const struct llama_model * model);
+     LLAMA_API int32_t llama_model_n_expert_used_layer(const struct llama_model * model, int32_t il); // Brain Engine: the model's own count for one layer
++
++    // Lamplight 0152: move layer il's weights that sit in host memory onto a card (dev), or home again (dev = NULL),
++    // while the brain stays loaded. Call it only while the brain has no context (make the context after it): the
++    // new context lays out its working memory and the layer's KV for where the layer is now. Going home is only a
++    // pointer change (the loaded bytes are kept); going onto a card copies the layer up.
++    // Returns the bytes moved (0: nothing to move), or -1 with a reason in err.
++    LLAMA_API int64_t llama_model_layer_place(struct llama_model * model, int32_t il, ggml_backend_dev_t dev, char * err, size_t err_len);
++    // the card a layer was moved onto with llama_model_layer_place, or NULL (where it was loaded)
++    LLAMA_API ggml_backend_dev_t llama_model_layer_moved_to(const struct llama_model * model, int32_t il);
++    // bytes of layer il's weights in host memory: what moving it onto a card would copy
++    LLAMA_API size_t llama_model_layer_host_bytes(const struct llama_model * model, int32_t il);
+     LLAMA_API int32_t llama_model_n_head       (const struct llama_model * model);
+     LLAMA_API int32_t llama_model_n_head_kv    (const struct llama_model * model);
+     LLAMA_API int32_t llama_model_n_swa        (const struct llama_model * model);
+diff --git a/src/llama-model.cpp b/src/llama-model.cpp
+index 247b56e..0debe40 100644
+--- a/src/llama-model.cpp
++++ b/src/llama-model.cpp
+@@ -1402,6 +1402,18 @@ struct llama_model::impl {
+     bool has_tensor_overrides;
+ 
+     std::vector<float> tensor_split_owned;
++
++    // Lamplight 0152: layers moved onto a card while the brain stays loaded. Each moved weight remembers its home
++    // (the buffer and address it was loaded into, which keeps its bytes), so going home is only a pointer change.
++    struct live_home {
++        ggml_tensor *         t;
++        ggml_backend_buffer_t buf;
++        void *                data;
++        void *                extra;
++    };
++    std::map<int, std::vector<live_home>>      live_moved;
++    std::map<int, ggml_backend_buffer_ptr>     live_bufs;
++    std::map<int, layer_dev>                   live_dev_home;
+ };
+ 
+ bool llama_prec_policy::apply(ggml_tensor * res) const {
+@@ -2910,6 +2922,129 @@ ggml_backend_dev_t llama_model::dev_layer(int il) const {
+     return pimpl->dev_layer.at(il).dev;
+ }
+ 
++// Lamplight 0152: the weights of layer il (names "blk.<il>.")
++static std::vector<ggml_tensor *> llama_model_layer_tensors(const llama_model & model, int il) {
++    const std::string pre = "blk." + std::to_string(il) + ".";
++    std::vector<ggml_tensor *> out;
++    for (const auto & [name, t] : model.tensors_by_name) {
++        if (name.compare(0, pre.size(), pre) == 0) {
++            out.push_back(t);
++        }
++    }
++    return out;
++}
++
++size_t llama_model::layer_host_bytes(int il) const {
++    size_t n = 0;
++    for (ggml_tensor * t : llama_model_layer_tensors(*this, il)) {
++        if (t->buffer != nullptr && ggml_backend_buffer_is_host(t->buffer)) {
++            n += ggml_nbytes(t);
++        }
++    }
++    return n;
++}
++
++ggml_backend_dev_t llama_model::layer_moved_to(int il) const {
++    const auto it = pimpl->live_dev_home.find(il);
++    return it == pimpl->live_dev_home.end() ? nullptr : pimpl->dev_layer.at(il).dev;
++}
++
++int64_t llama_model::layer_place(int il, ggml_backend_dev_t dev, std::string & err) {
++    if (il < 0 || il >= (int) pimpl->dev_layer.size()) {
++        err = "layer " + std::to_string(il) + " is not in this brain";
++        return -1;
++    }
++    if (dev == nullptr) {
++        // home: every moved weight points at the bytes it was loaded into again, and the card copy is freed
++        const auto it = pimpl->live_moved.find(il);
++        if (it == pimpl->live_moved.end()) {
++            return 0;
++        }
++        int64_t n = 0;
++        for (const auto & h : it->second) {
++            h.t->buffer = h.buf;
++            h.t->data   = h.data;
++            h.t->extra  = h.extra;
++            n += (int64_t) ggml_nbytes(h.t);
++        }
++        pimpl->live_moved.erase(it);
++        pimpl->live_bufs.erase(il);
++        pimpl->dev_layer[il] = pimpl->live_dev_home.at(il);
++        pimpl->live_dev_home.erase(il);
++        return n;
++    }
++    if (pimpl->live_moved.count(il)) {
++        if (pimpl->dev_layer[il].dev == dev) {
++            return 0;
++        }
++        err = "layer " + std::to_string(il) + " is on another card already: send it home first";
++        return -1;
++    }
++    const auto it_list = pimpl->gpu_buft_list.find(dev);
++    if (it_list == pimpl->gpu_buft_list.end()) {
++        err = std::string("this brain does not use ") + ggml_backend_dev_name(dev);
++        return -1;
++    }
++    ggml_backend_buffer_type_t buft = ggml_backend_dev_buffer_type(dev);
++    // only weights in plain host memory move: repacked processor weights (is_host false) have their own layout
++    std::vector<ggml_tensor *> todo;
++    for (ggml_tensor * t : llama_model_layer_tensors(*this, il)) {
++        if (t->buffer == nullptr || t->data == nullptr || t->view_src != nullptr) {
++            continue;
++        }
++        if (ggml_backend_buffer_is_host(t->buffer)) {
++            todo.push_back(t);
++        } else if (ggml_backend_buft_get_device(ggml_backend_buffer_get_type(t->buffer)) == nullptr ||
++                   ggml_backend_dev_type(ggml_backend_buft_get_device(ggml_backend_buffer_get_type(t->buffer))) == GGML_BACKEND_DEVICE_TYPE_CPU) {
++            err = "layer " + std::to_string(il) + " has repacked processor weights (" + ggml_backend_buffer_name(t->buffer) +
++                  "), which can't be moved: start the brain with --no-repack";
++            return -1;
++        }
++    }
++    if (todo.empty()) {
++        return 0;
++    }
++    const size_t align = ggml_backend_buft_get_alignment(buft);
++    size_t size = 0;
++    for (ggml_tensor * t : todo) {
++        size += GGML_PAD(ggml_backend_buft_get_alloc_size(buft, t), align);
++    }
++    ggml_backend_buffer_t buf = ggml_backend_buft_alloc_buffer(buft, size);
++    if (buf == nullptr) {
++        err = "not enough room on " + std::string(ggml_backend_dev_name(dev)) + " for layer " + std::to_string(il) +
++              format(" (%.0f MiB)", size / 1048576.0);
++        return -1;
++    }
++    ggml_backend_buffer_set_usage(buf, GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
++    std::vector<impl::live_home> homes;
++    char * base = (char *) ggml_backend_buffer_get_base(buf);
++    size_t offs = 0;
++    for (ggml_tensor * t : todo) {
++        homes.push_back({ t, t->buffer, t->data, t->extra });
++        void * src = t->data;
++        t->buffer = nullptr;
++        t->data   = nullptr;
++        t->extra  = nullptr;
++        if (ggml_backend_tensor_alloc(buf, t, base + offs) != GGML_STATUS_SUCCESS) {
++            for (const auto & h : homes) { // put back what was done so far
++                h.t->buffer = h.buf;
++                h.t->data   = h.data;
++                h.t->extra  = h.extra;
++            }
++            ggml_backend_buffer_free(buf);
++            err = "could not lay out layer " + std::to_string(il) + " on " + ggml_backend_dev_name(dev);
++            return -1;
++        }
++        ggml_backend_tensor_set(t, src, 0, ggml_nbytes(t));
++        offs += GGML_PAD(ggml_backend_buft_get_alloc_size(buft, t), align);
++    }
++    pimpl->live_moved[il]    = std::move(homes);
++    pimpl->live_bufs[il]     = ggml_backend_buffer_ptr(buf);
++    pimpl->live_dev_home[il] = pimpl->dev_layer[il];
++    pimpl->dev_layer[il]     = { dev, &it_list->second }; // the layer's KV and small steps follow it in the next context
++    return (int64_t) size;
++}
++
+ ggml_backend_dev_t llama_model::dev_output() const {
+     return pimpl->dev_output.dev;
+ }
+@@ -3711,6 +3846,24 @@ int32_t llama_model_n_expert_used(const llama_model * model) {
+     return model->hparams.n_expert_used_max();
+ }
+ 
++// Lamplight 0152
++int64_t llama_model_layer_place(llama_model * model, int32_t il, ggml_backend_dev_t dev, char * err, size_t err_len) {
++    std::string e;
++    const int64_t n = model->layer_place(il, dev, e);
++    if (n < 0 && err != nullptr && err_len > 0) {
++        snprintf(err, err_len, "%s", e.c_str());
++    }
++    return n;
++}
++
++ggml_backend_dev_t llama_model_layer_moved_to(const llama_model * model, int32_t il) {
++    return il < 0 || (uint32_t) il >= model->hparams.n_layer_all ? nullptr : model->layer_moved_to(il);
++}
++
++size_t llama_model_layer_host_bytes(const llama_model * model, int32_t il) {
++    return il < 0 || (uint32_t) il >= model->hparams.n_layer_all ? 0 : model->layer_host_bytes(il);
++}
++
+ int32_t llama_model_n_expert_used_layer(const llama_model * model, int32_t il) {
+     if (il < 0 || (uint32_t) il >= model->hparams.n_layer_all) {
+         return -1;
+diff --git a/src/llama-model.h b/src/llama-model.h
+index 9e9e274..ac25ba4 100644
+--- a/src/llama-model.h
++++ b/src/llama-model.h
+@@ -1026,6 +1026,14 @@ struct llama_model {
+     void print_info() const;
+ 
+     ggml_backend_dev_t dev_layer(int il) const;
++
++    // Lamplight 0152: move a layer's host weights onto a card (dev), or home again (dev = nullptr), with no context
++    // alive. Returns the bytes moved, 0 when there was nothing to move, -1 with err set when it can't.
++    int64_t layer_place(int il, ggml_backend_dev_t dev, std::string & err);
++    // the card a layer was moved onto live, or nullptr
++    ggml_backend_dev_t layer_moved_to(int il) const;
++    // bytes of a layer's weights in host memory (what a move would copy)
++    size_t layer_host_bytes(int il) const;
+     ggml_backend_dev_t dev_output() const;
+ 
+     ggml_backend_buffer_type_t select_buft(int il) const;
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index cf0a856..34370c6 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -1472,6 +1472,10 @@ private:
+ 
+     std::unique_ptr<server_prompt_cache> prompt_cache;
+ 
++    // Lamplight 0151: the settings of the first load, so POST /context can bring the picture reader or the guesser back
++    common_params params_first;
++    bool          have_params_first = false;
++
+     std::vector<uint8_t> expert_keep; // empty = all experts on
+     json dials_now = json::array();   // Brain Engine dials as they were set, empty = everything at 1
+     server_expert_trace etrace;
+@@ -1664,12 +1668,205 @@ private:
+                         std::optional<std::string>(value.is_string() ? value.get<std::string>() : value.dump()));
+             }
+         }
++        // Lamplight 0151: settings that belong to the context (or sit beside the brain), so a switch keeps the brain
++        // loaded: flash attention, where the KV lives, the picture reader and the guesser. Nothing changes unless
++        // the body names them.
++        if (c.contains("flash_attn")) {
++            const json & f = c.at("flash_attn");
++            const std::string v = f.is_boolean() ? (f.get<bool>() ? "on" : "off") : f.is_string() ? f.get<std::string>() : "";
++            if (v == "on") {
++                next.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
++            } else if (v == "off") {
++                next.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_DISABLED;
++            } else if (v == "auto") {
++                next.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_AUTO;
++            } else {
++                return "flash_attn must be on, off or auto";
++            }
++        }
++        if (c.contains("kv_on_card")) {
++            if (!c.at("kv_on_card").is_boolean()) {
++                return "kv_on_card must be true or false";
++            }
++            next.no_kv_offload = !c.at("kv_on_card").get<bool>();
++        }
++        // a squeezed V cache is read only by flash attention: say so here rather than fail the switch
++        if (next.flash_attn_type == LLAMA_FLASH_ATTN_TYPE_DISABLED && ggml_is_quantized(next.cache_type_v)) {
++            return "flash_attn off needs cache_type_v f16, bf16 or f32 (a squeezed V cache is read only by flash attention)";
++        }
++        if (c.contains("picture_reader")) {
++            if (!c.at("picture_reader").is_boolean()) {
++                return "picture_reader must be true or false";
++            }
++            if (!c.at("picture_reader").get<bool>()) {
++                next.mmproj.path.clear();
++            } else if (params_first.mmproj.path.empty()) {
++                return "picture_reader: this brain was started without a picture reader (--mmproj)";
++            } else {
++                next.mmproj = params_first.mmproj;
++            }
++        }
++        if (c.contains("guesser")) {
++            if (!c.at("guesser").is_boolean()) {
++                return "guesser must be true or false";
++            }
++            const bool first_mtp = std::find(params_first.speculative.types.begin(), params_first.speculative.types.end(),
++                                             COMMON_SPECULATIVE_TYPE_DRAFT_MTP) != params_first.speculative.types.end();
++            // the MTP head's weights stay loaded either way: they are part of the brain's placement, and dropping
++            // them would load the whole brain again
++            next.load_mtp = params_first.load_mtp || first_mtp;
++            if (!c.at("guesser").get<bool>()) {
++                next.speculative.types = { COMMON_SPECULATIVE_TYPE_NONE };
++                next.speculative.draft.mparams = common_params_model();
++            } else {
++                next.speculative.types         = params_first.speculative.types;
++                next.speculative.draft.mparams = params_first.speculative.draft.mparams;
++            }
++        }
++        return "";
++    }
++
++    // Lamplight 0152: {"device": "CUDA0", "layers": [30, 31]}; no device = the first card. An empty list sends every
++    // live-moved layer home.
++    static std::string card_layers_parse(const json & j, ggml_backend_dev_t & dev, std::vector<int> & layers) {
++        if (!j.is_object() || !j.contains("layers") || !j.at("layers").is_array()) {
++            return "card_layers must be {\"device\": \"CUDA0\", \"layers\": [numbers]}";
++        }
++        if (j.contains("device")) {
++            if (!j.at("device").is_string()) {
++                return "card_layers.device must be a device name such as CUDA0 or Vulkan0";
++            }
++            dev = ggml_backend_dev_by_name(j.at("device").get<std::string>().c_str());
++            if (dev == nullptr || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_CPU) {
++                return "card_layers.device: no card named " + j.at("device").get<std::string>();
++            }
++        } else {
++            for (size_t i = 0; i < ggml_backend_dev_count() && dev == nullptr; i++) {
++                if (ggml_backend_dev_type(ggml_backend_dev_get(i)) == GGML_BACKEND_DEVICE_TYPE_GPU) {
++                    dev = ggml_backend_dev_get(i);
++                }
++            }
++            if (dev == nullptr) {
++                return "card_layers: there is no card";
++            }
++        }
++        for (const auto & v : j.at("layers")) {
++            if (!v.is_number_integer() || v.get<int>() < 0) {
++                return "card_layers.layers must be layer numbers (0 or more)";
++            }
++            if (std::find(layers.begin(), layers.end(), v.get<int>()) == layers.end()) {
++                layers.push_back(v.get<int>());
++            }
++        }
+         return "";
+     }
+ 
++    // moves layers between the card and home on the kept brain (no context alive). A move that fails is undone,
++    // with every other move of this request, and the reason is given back; the rest of the switch goes on.
++    static json card_layers_apply(llama_model * model, ggml_backend_dev_t dev, const std::vector<int> & want) {
++        json out = json::object();
++        if (model == nullptr) {
++            out["error"] = "the brain could not stay loaded, so no layers moved";
++            return out;
++        }
++        const int64_t t0 = ggml_time_us();
++        const int n_layer = llama_model_n_layer(model);
++        std::vector<std::pair<int, ggml_backend_dev_t>> undo; // what to put back if a move fails
++        int64_t up = 0, home = 0;
++        std::string err;
++        for (int il = 0; il < n_layer && err.empty(); il++) { // homes first: they free room
++            ggml_backend_dev_t now = llama_model_layer_moved_to(model, il);
++            const bool wanted = std::find(want.begin(), want.end(), il) != want.end();
++            if (now != nullptr && (!wanted || now != dev)) {
++                char e[256] = "";
++                const int64_t n = llama_model_layer_place(model, il, nullptr, e, sizeof(e));
++                if (n < 0) {
++                    err = e;
++                } else {
++                    home += n;
++                    undo.emplace_back(il, now);
++                }
++            }
++        }
++        for (int il : want) {
++            if (!err.empty()) {
++                break;
++            }
++            if (il >= n_layer) {
++                err = "layer " + std::to_string(il) + " is not in this brain (it has " + std::to_string(n_layer) + ")";
++                break;
++            }
++            if (llama_model_layer_moved_to(model, il) == dev) {
++                continue;
++            }
++            char e[256] = "";
++            const int64_t n = llama_model_layer_place(model, il, dev, e, sizeof(e));
++            if (n < 0) {
++                err = e;
++            } else if (n > 0) {
++                up += n;
++                undo.emplace_back(il, nullptr);
++            }
++        }
++        if (!err.empty()) {
++            for (auto it = undo.rbegin(); it != undo.rend(); ++it) {
++                char e[256] = "";
++                if (llama_model_layer_place(model, it->first, nullptr, e, sizeof(e)) >= 0 && it->second != nullptr) {
++                    llama_model_layer_place(model, it->first, it->second, e, sizeof(e));
++                }
++            }
++            out["error"] = err + " (no layers moved)";
++            SRV_WRN("card layers: %s, no layers moved\n", err.c_str());
++        }
++        out["device"]      = ggml_backend_dev_name(dev);
++        out["mib_up"]      = err.empty() ? up >> 20 : 0;
++        out["mib_home"]    = err.empty() ? home >> 20 : 0;
++        out["seconds"]     = (ggml_time_us() - t0)/1e6;
++        if (err.empty()) {
++            SRV_INF("card layers: %lld MiB up, %lld MiB home in %.2f s\n", (long long) (up >> 20), (long long) (home >> 20),
++                    (ggml_time_us() - t0)/1e6);
++        }
++        return out;
++    }
++
++    json card_layers_now() const {
++        json j = json::array();
++        if (model_tgt == nullptr) {
++            return j;
++        }
++        for (int il = 0; il < llama_model_n_layer(model_tgt); il++) {
++            if (ggml_backend_dev_t d = llama_model_layer_moved_to(model_tgt, il)) {
++                j.push_back({{"layer", il}, {"device", ggml_backend_dev_name(d)}});
++            }
++        }
++        return j;
++    }
++
++    // layers with weights still in RAM, and how much each would copy onto a card
++    json layers_in_ram_now() const {
++        json j = json::array();
++        if (model_tgt == nullptr) {
++            return j;
++        }
++        for (int il = 0; il < llama_model_n_layer(model_tgt); il++) {
++            if (llama_model_layer_moved_to(model_tgt, il) != nullptr) {
++                continue;
++            }
++            const size_t n = llama_model_layer_host_bytes(model_tgt, il);
++            if (n > 0) {
++                j.push_back({{"layer", il}, {"mib", (n + (1 << 20) - 1) >> 20}});
++            }
++        }
++        return j;
++    }
++
+     // load the model and initialize llama_context
+     // this may also be called to resume from sleeping state
+     bool load_model(common_params & params) {
++        if (!have_params_first) { // Lamplight 0151: what the brain was started with, for POST /context to go back to
++            params_first      = params;
++            have_params_first = true;
++        }
+         spec_gate_rate = 0.0f; // Brain Engine 0017: a context change may have turned the key off
+         if (const char * g = getenv("LLAMA_SPEC_GATE"); g != nullptr && *g != '\0') {
+             const float v = (float) atof(g);
+@@ -3985,6 +4182,18 @@ private:
+                             break;
+                         }
+                     }
++                    // Lamplight 0152: the layers to have on a card on top of where they were loaded
++                    bool               live_want = false;
++                    ggml_backend_dev_t live_dev  = nullptr;
++                    std::vector<int>   live_set;
++                    if (c.contains("card_layers")) {
++                        const std::string err = card_layers_parse(c.at("card_layers"), live_dev, live_set);
++                        if (!err.empty()) {
++                            send_error(task, err, ERROR_TYPE_INVALID_REQUEST);
++                            break;
++                        }
++                        live_want = true;
++                    }
+                     const int32_t n_ctx_old = llama_n_ctx(ctx_tgt);
+                     const int64_t t0 = ggml_time_us();
+                     common_params prev = params_base;
+@@ -3998,6 +4207,10 @@ private:
+                     model_dft = nullptr;
+                     const bool kept = llama_init->keep_model_for_next();
+                     destroy();
++                    json live_info = json::object();
++                    if (live_want) {
++                        live_info = card_layers_apply(kept ? common_kept_model() : nullptr, live_dev, live_set);
++                    }
+                     bool ok = load_model(next);
+                     std::string note;
+                     if (!ok) {
+@@ -4043,6 +4256,16 @@ private:
+                         {"seconds",    (ggml_time_us() - t0)/1e6},
+                         {"moe_cache_mib", params_base.moe_cache_size >> 20}, // Brain Engine 0047
+                         {"devices",    devices},                            // Brain Engine 0047
++                        // Lamplight 0151
++                        {"flash_attn", params_base.flash_attn_type == LLAMA_FLASH_ATTN_TYPE_ENABLED ? "on" :
++                                       params_base.flash_attn_type == LLAMA_FLASH_ATTN_TYPE_DISABLED ? "off" : "auto"},
++                        {"kv_on_card", !params_base.no_kv_offload},
++                        {"picture_reader", mctx != nullptr},
++                        {"guesser",    spec != nullptr},
++                        {"brain_kept", kept && llama_init && llama_init->model_was_kept()},
++                        {"card_layers", card_layers_now()},     // Lamplight 0152
++                        {"layers_in_ram", layers_in_ram_now()}, // Lamplight 0152
++                        {"card_layers_change", live_info},      // Lamplight 0152
+                     };
+                     queue_results.send(std::move(res));
+                 } break;
+@@ -8168,14 +8391,17 @@ void server_routes::init_routes() {
+         auto res = create_response();
+         json body = json::parse(req.body.empty() ? "{}" : req.body);
+         static const char * known[] = { "n_ctx", "moe_cache_mib", "n_batch", "n_ubatch", "cache_type_k", "cache_type_v",
+-                                         "moe_cache_cpu_share", "engine_keys" }; // Brain Engine 0017 added all but the first two
++                                         "moe_cache_cpu_share", "engine_keys", // Brain Engine 0017 added all but the first two
++                                         "flash_attn", "kv_on_card", "picture_reader", "guesser", // Lamplight 0151
++                                         "card_layers" }; // Lamplight 0152
+         bool any = false;
+         for (const char * k : known) {
+             any = any || (body.is_object() && body.contains(k));
+         }
+         if (!any) {
+             res->error(format_error_response("give one or more of n_ctx, moe_cache_mib, n_batch, n_ubatch, cache_type_k, "
+-                                             "cache_type_v, moe_cache_cpu_share, engine_keys", ERROR_TYPE_INVALID_REQUEST));
++                                             "cache_type_v, moe_cache_cpu_share, engine_keys, flash_attn, kv_on_card, picture_reader, guesser, card_layers",
++                                             ERROR_TYPE_INVALID_REQUEST));
+             return res;
+         }
+         auto & rd = res->rd;
