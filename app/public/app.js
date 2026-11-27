@@ -7,7 +7,7 @@ import { applyStyle, applySavedStyle } from './themes.js';
 import { netFileEvent, wireNetFileButtons } from './net-files.js'; // Nov 14 Bob-Net Files and brains
 import { createStatusLine } from './status-line.js'; // 1.5.216: his line follows his state
 import { startWindowBar } from './window-bar.js'; // 1.5.228 Window buttons on Bob's bar
-import { createMindCube } from './mind-cube.js'; // 1.5.209: Bob's picture as the fNRI cube
+import { createMindCube, CUBE_LIVE_DEFAULT } from './mind-cube.js'; // 1.5.209: Bob's picture as the fNRI cube
 applySavedStyle();
 import { startI18n, followSaved } from './i18n.js';
 startI18n();
@@ -54,6 +54,7 @@ import { createBubbles } from './say-bubbles.js';
 import { createBobLife } from './bob-life.js';
 import { createViewer, outCard, fillPeeks } from './viewer.js';
 import { createThinkBubbles } from './think-bubble.js'; // 1.5.210: the thinking bubble above the answer
+import { createGuppiBubbles } from './guppi-bubble.js'; // Nov 23: GUPPI's own bubble, a record of each engine change
 import { PAW, stepWords as catStep, stepKind, bobAside, asideSeed } from './patches-steps.js'; // Nov 16: Patches tells the steps
 import { songListHtml, wireSongs } from './song-player.js';
 import { moreBar } from './more-bar.js';
@@ -217,7 +218,7 @@ let lastFrame = '', lastProp = '';
 // A small fNRI cube in place of the pixel Bob: it builds itself when a brain loads, rests with the odd spark, glows
 // while he thinks and drains away when the brain is let go, with the neon sign when none is loaded. It glows for show,
 // so it costs the engine nothing; with Real experts on (Bob's thinking) it shows the experts he really used. It draws
-// small and never turns, and while it shows the pixel Bob's loop slows right down and the brain-swap machine rests.
+// small and turns slowly (Nov 23), and while it shows the pixel Bob's loop slows right down and the brain-swap machine rests.
 // In Adventure the pixel Bob comes back (the small characters are the game's). 1.5.222: the cube for everyone,
 // outside games; the pixel look is picked in Adventure, Characters, Party (public/bob-game-look.js).
 var cubeAvatarOn = false; // var: the pixel loop above reads it before this line runs
@@ -232,14 +233,17 @@ function showCubeAvatar() {
   if (!box) return;
   bobCanvas.hidden = on;
   if (on) {
-    if (!cubeAvatar) cubeAvatar = createMindCube({ box, canvas: $('bobCube'), says: $('bobCubeSays'), open: $('bobCubeOpen') }, { avatar: true, lamp: () => true, still: () => document.body.classList.contains('still'), live: () => store.get('bob-cube-live', '0') === '1' });
-    cubeAvatar.connect(); hideSwap();
+    if (!cubeAvatar) cubeAvatar = createMindCube({ box, canvas: $('bobCube'), says: $('bobCubeSays'), open: $('bobCubeOpen') }, { avatar: true, lamp: () => true, still: () => document.body.classList.contains('still'), live: () => store.get('bob-cube-live', CUBE_LIVE_DEFAULT) === '1' });
+    if (!document.hidden) cubeAvatar.connect(); hideSwap();
   } else if (cubeAvatar) { cubeAvatar.disconnect(); cubeAvatar.hide(); lastFrame = ''; }
 }
 function setAvatarCube(on) { cubeWanted = Boolean(on); store.set('bob-avatar-cube', cubeWanted ? '1' : '0'); showCubeAvatar(); }
 window.setAvatarCube = (on) => { setAvatarCube(on); api('/api/settings', { style: { avatar: on ? 'cube' : 'pixel' } }).catch(() => {}); }; // the Style page's looks call this
 window.addEventListener('bob-avatar', (e) => setAvatarCube(e.detail?.cube === true));
-window.addEventListener('bob-cube-live', () => { if (cubeAvatarOn && cubeAvatar) cubeAvatar.relive(); }); // Real experts switched in Bob's thinking
+window.addEventListener('bob-cube-live', () => { if (cubeAvatarOn && cubeAvatar) cubeAvatar.relive(); });
+// Nov 23: with Bob's window hidden or minimised the corner cube stops listening, so Bob asks Brain Engine for no trace
+// (Real experts costs a little on every word); it picks up again, brain and all, when the window shows.
+document.addEventListener('visibilitychange', () => { if (!cubeAvatarOn || !cubeAvatar) return; if (document.hidden) cubeAvatar.disconnect(); else cubeAvatar.connect(); }); // Real experts switched in Bob's thinking
 setAvatarCube(true); // 1.5.222: the cube is Bob's picture, always; the pixel Bob only shows in games (Adventure, Journey)
 if (advDlg && globalThis.MutationObserver) new MutationObserver(showCubeAvatar).observe(advDlg, { attributes: true, attributeFilter: ['open'] });
 // 1.5.210 Lamplight on a phone: the left menu is a sheet, so the porthole moves to the top of the chat with Bob's
@@ -323,6 +327,10 @@ let thinkOn = true, catName = 'Patches', patchesOn = true, lastStep = '', oddSte
 const stillNow = () => document.body.classList.contains('still') || Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 window.addEventListener('bob-think-bubble', (e) => { thinkOn = e.detail !== false; }); // Settings, from this window
 window.addEventListener('bob-patches-steps', (e) => { patchesOn = e.detail !== false; }); // Settings, from this window
+// Nov 23: GUPPI's records (public/guppi-bubble.js), display only. Settings, Engine tuning, "GUPPI's notes in the chat".
+let guppiOn = true;
+window.addEventListener('bob-guppi-notes', (e) => { guppiOn = e.detail !== false; });
+const guppiBubbles = createGuppiBubbles({ add, esc, last: () => log.lastElementChild, on: () => guppiOn });
 const thinkBubbles = createThinkBubbles({ add, esc, answer: showAnswer, on: () => thinkOn, still: stillNow, cat: () => catName, patches: () => patchesOn, openMind: () => $('mindBtn')?.click(), copy: (t) => navigator.clipboard?.writeText(t).then(() => note('Copied the steps.')).catch(() => {}) });
 
 // ---------- Status, badge, notifications ----------
@@ -565,7 +573,7 @@ bobCanvas.setAttribute('aria-label', 'Bob. Open my menu');
 // 1.5.210 Lamplight: the top bar keeps only Bob, the pages and Find anything; the rest of the menu sits here.
 // Each line presses the very button it stands for, so nothing behaves differently.
 const lamp = () => document.body.classList.contains('look-lamplight');
-const LAMP_TOOLS = [['settingsBtn', '⚙', 'Settings'], ['dlBtn', '⬇', 'Downloads'], ['tidyBtn', '🧹', 'Tidy up'], ['shelfBtn', '🖼', 'References'], ['helpBtn', '❔', 'Help'], ['ear', '🎙', 'Listen for "Hey Bob"'], ['speak', '🔊', 'Read aloud'], ['notify', '🔔', 'Alerts']];
+const LAMP_TOOLS = [['settingsBtn', '⚙', 'Settings'], ['dlBtn', '⬇', 'Downloads'], ['tidyBtn', '🧹', 'Tidy up'], ['shelfBtn', '🖼', 'References'], ['helpBtn', '❔', 'Help'], ['ear', '🎙', 'Listen for "Hey Bob"'], ['speak', '🔊', 'Read aloud'], ['notify', '🔔', 'Alerts'], ['mindCubeLive', '🧊', 'Real experts']]; // Nov 23: Real experts (the live map in the porthole) is a row here too
 const lampTools = () => (lamp() ? LAMP_TOOLS.filter(([id]) => $(id) && !$(id).hidden).map(([id, icon, label]) => ({ id, icon, label, st: $(id).querySelector('.st')?.textContent || '' })) : []);
 const bobMenu = createBobMenu({
   anchor: bobCanvas,
@@ -661,6 +669,7 @@ async function loadHistory(n = 20) {
       // A reply with no words and nothing made shows only its note, never an empty bubble.
       if (m.role !== 'user' && !String(m.content || '').trim() && !m.media?.length) { if (m.correction) note(m.correction, 'error'); continue; }
       if (thinkOn && m.role !== 'user' && m.steps?.length && !m.stepsShown) { thinkBubbles.saved([], 0, m.steps); m.stepsShown = true; } // steps but nothing written on the way: still one bubble, no list under it
+      if (m.role !== 'user' && m.guppi?.length) guppiBubbles.saved(m.guppi); // Nov 23: GUPPI's records, above the answer they came before
       const el = decorate(add(m.role === 'user' ? 'msg you' : 'msg bob', m.role === 'user' ? esc(m.content) + picsHtml(m.pics) : render(m.content) + mediaHtml(m.media)), m.content, m.media);
       if (m.id) el.dataset.mid = m.id;
       if (m.at) el.dataset.at = m.at; // Fade old messages: when it fades
@@ -953,6 +962,9 @@ function onEvent(ev) {
     case 'stuck': // item 8: he gave up on this one; offer the harder try under it
       stuckNow = true; drawRedo();
       break;
+    case 'guppi': // Nov 23: a change GUPPI made to the engine, as a record that stays (folded, a quip outside)
+      if (guppiBubbles.take(ev)) scrollDown();
+      return;
     case 'announce':
       endReply(ev);
       note(ev.text, 'announce');
@@ -1731,7 +1743,7 @@ installShortcuts({
 });
 
 async function start() {
-  try { const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; patchesOn = st.patchesSteps !== false; catName = st.catName || catName; shortcutsOn = st.shortcuts === true; applyReading(st); readingKeep = { textSize: st.textSize, readableFont: st.readableFont }; await applyMath(st.mathView === true); } catch {}
+  try { const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; patchesOn = st.patchesSteps !== false; guppiOn = st.guppiNotes !== false; catName = st.catName || catName; shortcutsOn = st.shortcuts === true; applyReading(st); readingKeep = { textSize: st.textSize, readableFont: st.readableFont }; await applyMath(st.mathView === true); } catch {}
   await loadHistory(20);
   let cat = 'Patches';
   try { cat = (await (await fetch('/api/settings')).json()).catName || cat; } catch {}
@@ -1746,7 +1758,7 @@ async function start() {
     if (!s.ollama) note('I can\'t reach my engine (' + (s.engine || 'Ollama') + ') right now. Is it running? (The AI Toggle shortcut turns Ollama on.)', 'error');
   } catch {}
   try {
-    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; patchesOn = st.patchesSteps !== false; statusLine.jokes(st.statusJokes !== false); netOverlay.setOn(st.netOverlay === true); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
+    const st = await (await fetch('/api/settings')).json(); thinkOn = st.thinkBubble !== false; patchesOn = st.patchesSteps !== false; guppiOn = st.guppiNotes !== false; statusLine.jokes(st.statusJokes !== false); netOverlay.setOn(st.netOverlay === true); catName = st.catName || catName; winVoiceName = st.tts?.windowsVoice || ''; setLook(st.look); applyStyle(st.style); tuckNowForLamp(st.style); autoSession = st.autoSession !== false; redoOnNow = st.chatRedo !== false; drawRedo(); setSaveToLab(st.labSaveQuestions === true); drawSessions(st.sessions, st.session, st.sessionBy);
     // Opt-in: look at GitHub (and the source folder) and tell the user about a newer Bob. Never updates by itself.
     if (shouldOfferOwnCode(st.profiles)) offerOwnCode(st.profiles); // a person's own first time in: their own passcode, if they want one
     if (st.setupDone && !st.wantsAsked) offerWants(); // once, for Bobs set up before the Welcome had "Do you want me to:"

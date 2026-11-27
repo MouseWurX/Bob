@@ -2,7 +2,7 @@
 
 **How hidden faults in synthetic training data shape small local agent models**
 
-*Bob's computer science dissertation, written in the open. Draft of 23 November 2026 (evening): all 13 chapters, fact-checked against their run files, with the after1 round, the home-PC speed tests to 22 November (every speed result in one table, section 4.3.4), the fNRI trace test, the 21 November harness runs (after2, Bob's own code, other harnesses), Flash-Next with held-out jobs (section 11.7.7), every REAP keep level and the 80% cut (section 11.7.8), the tools and shapes they were tested with (section 8.9.4), the engine work and Inkling 2 Mini of 23 November (sections 4.3.3.12 and 4.3.3.13), Bob Routines (section 13.7), every main result in one table (section 13.2.7), where the work is heading (section 13.7) and 12 figures.*
+*Bob's computer science dissertation, written in the open. Draft of 27 November 2026: all 13 chapters, fact-checked against their run files, with the after1 round, the home-PC speed tests to 22 November (every speed result in one table, section 4.3.4), the fNRI trace test, the 21 November harness runs (after2, Bob's own code, other harnesses), Flash-Next with held-out jobs (section 11.7.7), every REAP keep level and the 80% cut (section 11.7.8), the tools and shapes they were tested with (section 8.9.4), the engine work, Inkling 2 Mini and GUPPI on each machine of 23 November (sections 4.3.3.12 to 4.3.3.14), the three Flash-Next cuts and their size story (section 11.7.9), Bob Routines (section 13.7), every brain and the phone brains on the held-out jobs, the 1.5.255 release check, learned 2-bit rounding and scale healing (section 11.7.10), every main result in one table (section 13.2.7), where the work is heading (section 13.7) and 12 figures.*
 
 > **Status.** The decisive test, training a fresh model on reviewed lessons and scoring it on a leak-free test, **has not been run yet**. Until it runs, the title is a claim the evidence points to, not a proven result. Each chapter ends with its limits and what is still to do.
 >
@@ -26,7 +26,7 @@ Small open models can run a useful agent on one consumer graphics card, but how 
 |---|---|---|
 | 1 | [Introduction](ch01-introduction.md) | Why small local agents, the research questions, the rules the thesis keeps, and a summary of the findings. |
 | 2 | [Background and related work](ch02-background-and-related-work.md) | Mixture-of-experts and pruning, quantization, synthetic data and distillation, test contamination, tool use, preference training, interpretability, local inference. |
-| 3 | [Building the instruments](ch03-building-the-instruments.md) | Brain Engine's patches to llama.cpp, the Forge rental pipeline, the Lab scripts, and the bugs they caught. |
+| 3 | [Building the instruments](ch03-building-the-instruments.md) | Lamplight's patches to llama.cpp, the Forge rental pipeline, the Lab scripts, and the bugs they caught. |
 | 4 | [Method and rules](ch04-method-and-rules.md) | Held-out splits, the never-taught gate, smoke gates, full passes only, measured-only reporting, and every failure counted. |
 | 5 | [Study 1: the hand-off habit](ch05-study1-hand-off-habit.md) | A fault in the coding lessons became a habit, and clean lessons fixed it. |
 | 6 | [Study 2: what a full read finds](ch06-study2-full-read.md) | Scripts and a cheaper reviewer miss most faults; a full read keeps very few lessons. |
@@ -41,10 +41,14 @@ Small open models can run a useful agent on one consumer graphics card, but how 
 ## Where to find
 
 - **Flash-Next cut to 80% (Bobert Flash-Next REAP80):** every keep level and how the experts were chosen in [section 11.7.8](ch11-making-clean-lessons.md#reap-levels); the tools and tool shape it was tested with in [section 8.9.4](ch08-study4-tool-shape.md#tool-shapes-tested); Flash-Next against stock Qwen on held-out jobs in [section 11.7.7](ch11-making-clean-lessons.md#flash-next-in-bob).
+- **The three Flash-Next cuts (Bobert 80%, Riker 70%, Bill 60%):** why they were made, the 2-bit size story and the publish gate in [section 11.7.9](ch11-making-clean-lessons.md#flash-next-cuts).
+- **Every brain on the held-out jobs (out of 65), the phone brains, the 1.5.255 release check and two squeezes for small files:** [section 11.7.10](ch11-making-clean-lessons.md#held-out-per-brain).
+- **GUPPI on each machine, the temperature bug and look-ahead 0108:** [section 4.3.3.14](ch04-method-and-rules.md#engine-nov23-night).
+- **Reusing chat memory between messages, and why Bob's follow-ups were slow:** [section 4.3.3.15](ch04-method-and-rules.md#prompt-cache).
 - **Every speed result in one table:** [section 4.3.4](ch04-method-and-rules.md#434-speed-results-in-one-table-updated-23-november).
 - **Every main result in one table, with what each means:** [section 13.2.7](ch13-conclusion.md#1327-every-result-in-one-table-and-what-each-means-added-22-november).
 - **How speed is tested:** [section 4.3.3.1](ch04-method-and-rules.md#43331-how-the-speed-tests-were-run), with what was added since in [section 4.3.3.10](ch04-method-and-rules.md#433310-how-the-speed-method-carries-forward-added-22-november).
-- **Speed results:** every setting in [section 4.3.3.2](ch04-method-and-rules.md#43332-every-setting-tried-oldest-first), engine features in [section 4.3.3.8](ch04-method-and-rules.md#43338-engine-features-tested-19-to-20-november-brain-engine-21-and-22), the tests of 22 November in [section 4.3.3.11](ch04-method-and-rules.md#433311-engine-tests-of-22-november-brain-engine-29-to-31-and-the-patch-0040-check).
+- **Speed results:** every setting in [section 4.3.3.2](ch04-method-and-rules.md#43332-every-setting-tried-oldest-first), engine features in [section 4.3.3.8](ch04-method-and-rules.md#43338-engine-features-tested-19-to-20-november-lamplight-21-and-22), the tests of 22 November in [section 4.3.3.11](ch04-method-and-rules.md#433311-engine-tests-of-22-november-lamplight-29-to-31-and-the-patch-0040-check).
 - **Where the work is heading:** [section 13.7](ch13-conclusion.md#137-where-the-work-is-heading-added-22-november).
 
 ## Figures

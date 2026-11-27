@@ -1,0 +1,151 @@
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 4a54f97..c858591 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -6234,8 +6234,12 @@ size_t llama_context::state_seq_load_file(llama_seq_id seq_id, const char * file
+             LLAMA_LOG_ERROR("%s: failed to restore sequence state\n", __func__);
+             return 0;
+         }
+-        GGML_ASSERT(nread <= state_size);
+-        GGML_ASSERT(nread + sizeof(uint32_t) * 3 + sizeof(llama_token) * *n_token_count_out == file.tell());
++        // Brain Engine 0121: a file cut short (a crash in the middle of a save, a full disk) or with bytes left over is
++        // refused, so the caller reads the chat again; before, it stopped the whole engine here.
++        if (nread > state_size || nread + sizeof(uint32_t) * 3 + sizeof(llama_token) * *n_token_count_out != file.tell()) {
++            LLAMA_LOG_ERROR("%s: sequence state file is cut short or has bytes left over (read %zu of %zu)\n", __func__, nread, state_size);
++            return 0;
++        }
+     }
+ 
+     return file.tell();
+diff --git a/tools/server/server-task.cpp b/tools/server/server-task.cpp
+index 24876a1..1fb6342 100644
+--- a/tools/server/server-task.cpp
++++ b/tools/server/server-task.cpp
+@@ -11,6 +11,21 @@
+ #include "server-common.h"
+ 
+ #include <sstream>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#ifdef _WIN32
++// Brain Engine 0121: free RAM (GlobalMemoryStatusEx); windows.h defines min and max as macros otherwise
++#ifndef WIN32_LEAN_AND_MEAN
++#   define WIN32_LEAN_AND_MEAN
++#endif
++#ifndef NOMINMAX
++#   define NOMINMAX
++#endif
++#include <windows.h>
++#elif defined(__APPLE__)
++#include <mach/mach.h>
++#endif
+ 
+ //
+ // task_params
+@@ -1774,6 +1789,84 @@ size_t server_prompt_cache::n_tokens() const {
+     return res;
+ }
+ 
++// Brain Engine 0121: the prompt cache keeps the RAM floor. Upstream's cache (--cache-ram) holds up to its size limit
++// (8 GiB by default) whatever else the computer needs. Before keeping a new entry, and after each update, the oldest
++// entries go while free RAM would fall under LLAMA_MOE_RAM_FLOOR_MIB (512 by default, the same floor as the experts in
++// RAM; 0 turns this check off), and an entry that still can't fit is not kept (the chat is read again next time, as
++// with no cache). Idea after llamAmpere's fit_ram (MIT). LLAMA_PROMPT_CACHE_TEST_AVAIL_MIB (tests) pretends free RAM is
++// that much, less what the cache holds now.
++static double server_prompt_cache_floor_mib() {
++    const char * f = getenv("LLAMA_MOE_RAM_FLOOR_MIB");
++    if (f == nullptr || *f == '\0') {
++        return 512.0;
++    }
++    return std::max(0.0, atof(f));
++}
++
++static double server_prompt_cache_avail_mib(size_t held) {
++    if (const char * t = getenv("LLAMA_PROMPT_CACHE_TEST_AVAIL_MIB"); t != nullptr && *t != '\0') {
++        return atof(t) - held/1048576.0;
++    }
++#ifdef _WIN32
++    MEMORYSTATUSEX ms = {};
++    ms.dwLength = sizeof(ms);
++    return GlobalMemoryStatusEx(&ms) ? ms.ullAvailPhys/1048576.0 : -1.0;
++#elif defined(__linux__)
++    FILE * f = fopen("/proc/meminfo", "r");
++    if (f == nullptr) {
++        return -1.0;
++    }
++    char line[256];
++    double kb = -1.0;
++    while (fgets(line, sizeof(line), f)) {
++        if (strncmp(line, "MemAvailable:", 13) == 0) {
++            kb = atof(line + 13);
++            break;
++        }
++    }
++    fclose(f);
++    return kb >= 0 ? kb/1024.0 : -1.0;
++#elif defined(__APPLE__)
++    vm_statistics64_data_t vs;
++    mach_msg_type_number_t cnt = HOST_VM_INFO64_COUNT;
++    if (host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t) &vs, &cnt) != KERN_SUCCESS) {
++        return -1.0;
++    }
++    return ((double) vs.free_count + vs.inactive_count + vs.purgeable_count)*(double) vm_page_size/1048576.0;
++#else
++    (void) held;
++    return -1.0;
++#endif
++}
++
++// drops the oldest entries until `extra` more bytes leave free RAM at or over the floor; false when it still doesn't fit
++static bool server_prompt_cache_keep_floor(std::list<server_prompt_cache_state> & states, size_t held, size_t extra) {
++    const double floor = server_prompt_cache_floor_mib();
++    if (floor <= 0.0) {
++        return true;
++    }
++    double avail = server_prompt_cache_avail_mib(held);
++    if (avail < 0.0) {
++        return true; // unknown here: upstream's size limit only
++    }
++    const double need = extra/1048576.0;
++    while (!states.empty() && avail - need < floor) {
++        const size_t n = states.front().size();
++        SRV_WRN(" - free RAM %.0f MiB would fall under the floor of %.0f MiB, removing oldest entry (size = %.3f MiB)\n",
++                avail - need, floor, n / (1024.0 * 1024.0));
++        states.pop_front();
++        avail += n/1048576.0; // what the entry held comes back
++    }
++    if (avail - need < floor) {
++        if (extra > 0) {
++            SRV_WRN(" - free RAM %.0f MiB would fall under the floor of %.0f MiB, not keeping this prompt (%.3f MiB)\n",
++                    avail - need, floor, need);
++        }
++        return false;
++    }
++    return true;
++}
++
+ server_prompt_cache_state * server_prompt_cache::alloc(const server_prompt & prompt, size_t state_size_tgt, size_t state_size_dft) {
+     // first check if the current state is contained fully in the cache
+     for (auto it = states.begin(); it != states.end(); ++it) {
+@@ -1823,6 +1916,11 @@ server_prompt_cache_state * server_prompt_cache::alloc(const server_prompt & pro
+         }
+     }
+ 
++    // Brain Engine 0121: keep the RAM floor
++    if (!server_prompt_cache_keep_floor(states, size(), state_size_new)) {
++        return nullptr;
++    }
++
+     common_state_data state_data_tgt;
+     common_state_data state_data_dft;
+ 
+@@ -1942,6 +2040,8 @@ bool server_prompt_cache::load(server_prompt & prompt, const server_tokens & tok
+ }
+ 
+ void server_prompt_cache::update() {
++    server_prompt_cache_keep_floor(states, size(), 0); // Brain Engine 0121: RAM got tight since: the oldest go first
++
+     if (limit_size > 0) {
+         while (!states.empty() && size() > limit_size) {
+             SRV_WRN(" - cache size limit reached, removing oldest entry (size = %.3f MiB)\n", states.front().size() / (1024.0 * 1024.0));

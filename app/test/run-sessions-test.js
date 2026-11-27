@@ -150,6 +150,11 @@ fs.rmSync(tmp, { recursive: true, force: true });
 
 check('a question about an attached picture is a chat job', Brain.guessKind('what is in this picture?') === 'chat' && Brain.guessKind('Describe it', true) === 'chat');
 check('asking for a picture is still a picture job', Brain.guessKind('paint a dragon over the inn') === 'picture');
+{ // Nov 24 (Go check): a long pasted article that mentions a video is a chat, not a video job
+  const article = 'Summarize this article for me:\n\n' + 'The inn opened in spring. '.repeat(60) + 'A video of the opening went round town. ' + 'Guests came from far away. '.repeat(80);
+  check('a long paste that mentions a video in the middle is a chat job', Brain.guessKind(article) === 'chat');
+  check('a long paste with the ask at the end still counts the ask', Brain.guessKind('Guests came from far away. '.repeat(150) + '\n\nMake a short video clip of this.') === 'video');
+}
 
 // 1.5.40: on llama.cpp, making room for the painter keeps a brain that runs on the processor.
 {

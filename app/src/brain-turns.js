@@ -100,6 +100,9 @@ export const turnParts = {
         const steps = this.traces?.get(sessionId);
         if (steps) this.traces.delete(sessionId);
         if (steps?.length && !job?.guest) { const list = steps.slice(0, MAX_TRACE); const last = [...this.session(sessionId)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length && !m.step); if (last) last.steps = list; emit({ type: 'steps', list }); }
+        // Nov 23: GUPPI's records (guppi-notes.js) go with the answer too, for a reload. Display only: the brain is sent
+        // only role and content (LlamaCpp.toOpenAI), so Bob never reads them.
+        if (tstore.guppi?.length && !job?.guest) { const last = [...this.session(sessionId)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length && !m.step); if (last) last.guppi = [...(last.guppi || []), ...tstore.guppi].slice(-20); }
         if (!job?.guest) this.saveSession(sessionId); // 1.5.72: a job from another Bob isn't kept as a chat here
         if (!job?.guest) { const last = [...this.session(sessionId)].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length && !m.step); if (last?.id) emit({ type: 'answer-id', id: last.id }); } // item 11: Save as a test needs it
         // Item 13: how full this chat left the brain's memory, for the meter by Effort.

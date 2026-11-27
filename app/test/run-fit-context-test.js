@@ -47,7 +47,23 @@ const size = (ms) => ms.reduce((a, m) => a + Math.ceil(String(m.content ?? '').l
 }
 
 { const src = brainText().replace(/\r\n/g, '\n');
-  check('every request goes through fitContext, and a failed job leaves a note in the chat', /const fitted = fitContext\(opts\.messages, opts\.ctx, opts\.tools, 0\.75, per\);/.test(src) && /correction: `⚠ \$\{String\(e\.message\)\.slice\(0, 400\)\}`, failed: true/.test(src)); }
+  check('every request goes through fitContext, and a failed job leaves a note in the chat', /(?:let|const) fitted = fitContext\(opts\.messages, opts\.ctx, opts\.tools, 0\.75, per\);/.test(src) && /this\.engine\.countChars\(opts\.model, opts\.messages, opts\.tools\)/.test(src) && /correction: `⚠ \$\{String\(e\.message\)\.slice\(0, 400\)\}`, failed: true/.test(src)); }
 
+// Nov 24 (npc's real-path run): a 16K-token message in a 32K memory was cut on the 3-characters guess; the exact count
+// from the running engine (llama-server /tokenize, faked here) keeps it whole
+{ const { LlamaCpp } = await import('../src/llamacpp.js');
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-count-'));
+  const e = new LlamaCpp({ agentDir: d, dataDir: d, llamacpp: { models: {} } }); clearInterval(e.idleTimer);
+  const msgs = [{ role: 'user', content: 'read this' }, { role: 'tool', content: 'abcd '.repeat(14500) }]; // 72,500 characters
+  const tools = [{ type: 'function', function: { name: 't', description: 'x'.repeat(4000) } }];
+  check('the 3-characters guess cuts this chat at 32K', fitContext(msgs, 32768, tools, 0.75, 3) !== msgs);
+  const was = globalThis.fetch; let asked = null;
+  globalThis.fetch = async (u, o) => { asked = u; const n = Math.ceil(JSON.parse(o.body).content.length / 4.2); return { ok: true, json: async () => ({ tokens: new Array(n).fill(1) }) }; };
+  let none, per;
+  try { none = await e.countChars('m', msgs, tools); e.current = 'm'; e.loadedOk = true; e.child = { exitCode: null }; per = await e.countChars('m', msgs, tools); } finally { globalThis.fetch = was; e.child = null; }
+  check('the exact count is asked only of the brain that is running', none === 0);
+  check('the engine counts it exactly, and Bob learns the brain\'s figure', /\/tokenize$/.test(asked || '') && per > 4.1 && per < 4.3 && e.charsPerToken('m') > 3);
+  check('with the exact count the chat is sent whole', fitContext(msgs, 32768, tools, 0.75, per) === msgs);
+  fs.rmSync(d, { recursive: true, force: true }); }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -1,0 +1,308 @@
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 7f7d67c..c91699e 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -100,6 +100,108 @@ struct moe_cache_lru {
+     std::vector<uint8_t> busy; // [n_slots]
+     int32_t n_busy = 0;
+ 
++    // Brain Engine 0107 (LLAMA_MOE_CACHE_ORDER=lfru): LFRU, after colibri and Strata-HotRod (both MIT). Two segments in
++    // recency order: a slot comes in on probation; a second use while there moves it to the protected segment, which
++    // holds at most lf_cap slots (the least recent one there goes back to probation). The victim is the least used
++    // (decayed CRF) of the lf_window least recent probation slots, or of the protected ones if probation has none free.
++    bool lf_on = false;
++    int32_t lf_window = 16;
++    int32_t lf_cap = 0;
++    std::vector<int32_t> lf_prev, lf_next, lf_key; // [n_slots]; lf_key: the key the slot held when last seen, -1 empty
++    std::vector<int8_t>  lf_seg;                   // 0 probation, 1 protected
++    int32_t lf_head[2] = { -1, -1 }, lf_tail[2] = { -1, -1 }, lf_n[2] = { 0, 0 };
++    size_t  lf_promoted = 0, lf_demoted = 0;
++
++    void lf_init(float protect, int32_t window) {
++        lf_on     = true;
++        lf_window = window;
++        lf_cap    = std::max<int32_t>(0, (int32_t) (protect*n_slots));
++        lf_prev.assign(n_slots, -1);
++        lf_next.assign(n_slots, -1);
++        lf_key.assign(n_slots, -1);
++        lf_seg.assign(n_slots, 0);
++        lf_head[0] = lf_tail[0] = lf_head[1] = lf_tail[1] = -1;
++        lf_n[0] = lf_n[1] = 0;
++        for (int32_t s = 0; s < n_slots; ++s) {
++            lf_push(s, 0, true);
++        }
++    }
++    void lf_unlink(int32_t s) {
++        const int g = lf_seg[s];
++        if (lf_prev[s] >= 0) { lf_next[lf_prev[s]] = lf_next[s]; } else { lf_head[g] = lf_next[s]; }
++        if (lf_next[s] >= 0) { lf_prev[lf_next[s]] = lf_prev[s]; } else { lf_tail[g] = lf_prev[s]; }
++        lf_prev[s] = lf_next[s] = -1;
++        lf_n[g]--;
++    }
++    // to the most recent end of segment g (at_tail), or its least recent end
++    void lf_push(int32_t s, int g, bool at_tail) {
++        lf_seg[s] = (int8_t) g;
++        if (at_tail) {
++            lf_prev[s] = lf_tail[g];
++            lf_next[s] = -1;
++            if (lf_tail[g] >= 0) { lf_next[lf_tail[g]] = s; } else { lf_head[g] = s; }
++            lf_tail[g] = s;
++        } else {
++            lf_prev[s] = -1;
++            lf_next[s] = lf_head[g];
++            if (lf_head[g] >= 0) { lf_prev[lf_head[g]] = s; } else { lf_tail[g] = s; }
++            lf_head[g] = s;
++        }
++        lf_n[g]++;
++    }
++    // slot s was just used (move): a new expert comes in on probation, a second use moves it to the protected segment
++    void lf_touch(int32_t s) {
++        if (lf_key[s] != key_of[s]) {
++            lf_key[s] = key_of[s];
++            lf_unlink(s);
++            lf_push(s, 0, true);
++            return;
++        }
++        lf_unlink(s);
++        if (lf_seg[s] == 0 && lf_cap > 0) {
++            lf_promoted++;
++        }
++        lf_push(s, lf_cap > 0 ? 1 : 0, true);
++        while (lf_n[1] > lf_cap) {
++            const int32_t x = lf_head[1];
++            lf_unlink(x);
++            lf_push(x, 0, true);
++            lf_demoted++;
++        }
++    }
++    // slot s is empty now (move_head): first in line
++    void lf_empty(int32_t s) {
++        lf_key[s] = -1;
++        lf_unlink(s);
++        lf_push(s, 0, false);
++    }
++    int32_t lf_victim(int32_t il) const {
++        for (int g = 0; g < 2; ++g) {
++            int32_t best = -1;
++            float best_crf = 0.0f;
++            int32_t n = 0;
++            for (int32_t s = lf_head[g]; s >= 0 && n < lf_window; s = lf_next[s]) {
++                if (s < lent_below || busy[s] || is_selected(il, key_of[s])) {
++                    continue;
++                }
++                const int32_t key = key_of[s];
++                if (key < 0) {
++                    return s; // an empty slot
++                }
++                n++;
++                const float c = decayed_crf(key_layer(key), key);
++                if (best < 0 || c < best_crf) {
++                    best = s;
++                    best_crf = c;
++                }
++            }
++            if (best >= 0) {
++                return best;
++            }
++        }
++        return -1;
++    }
++
+     void init(int32_t n_layer, int32_t n_expert, int32_t n_slots) {
+         GGML_ASSERT(n_class == (int) std::log2(1.0f/(1.0f - std::exp2(-1.0f/crf_half_life))) + 1);
+         this->n_expert = n_expert;
+@@ -130,6 +232,9 @@ struct moe_cache_lru {
+ 
+     // move slot s to the most recently used end of list c
+     void move(int32_t s, int c) {
++        if (lf_on) {
++            lf_touch(s); // Brain Engine 0107
++        }
+         const int from = list_of[s];
+         if (from == c && s == tail[from]) {
+             return;
+@@ -162,6 +267,9 @@ struct moe_cache_lru {
+ 
+     // Brain Engine 0048: slot s, now empty, to the least recently used end of list c, so victim() takes it first
+     void move_head(int32_t s, int c) {
++        if (lf_on) {
++            lf_empty(s); // Brain Engine 0107
++        }
+         const int from = list_of[s];
+         if (prev[s] >= 0) {
+             next[prev[s]] = next[s];
+@@ -235,6 +343,11 @@ struct moe_cache_lru {
+     }
+ 
+     int32_t victim(int32_t il) const {
++        if (lf_on) {
++            if (const int32_t s = lf_victim(il); s >= 0) {
++                return s; // Brain Engine 0107
++            }
++        }
+         int32_t res = -1;
+         double res_score = -1.0;
+         for (int c = 0; c < n_class; ++c) {
+@@ -761,6 +874,22 @@ struct llama_moe_cache::impl {
+                 LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_CACHE_CPU_READ=%s NOT USED: it must be %lld to 16384 tokens\n", __func__, cr, (long long) max_batch + 1);
+             }
+         }
++        // Brain Engine 0107: LLAMA_MOE_CACHE_ORDER=lfru, the card and RAM caches choose what goes in LFRU order
++        if (const char * co = getenv("LLAMA_MOE_CACHE_ORDER"); !no_alloc && co != nullptr && *co != '\0') {
++            if (strcmp(co, "lfru") == 0) {
++                lf_mode = true;
++                if (const char * p = getenv("LLAMA_MOE_CACHE_LFRU_PROTECT"); p != nullptr && *p != '\0') {
++                    lf_protect = std::clamp((float) atof(p), 0.0f, 0.95f);
++                }
++                if (const char * w = getenv("LLAMA_MOE_CACHE_LFRU_WINDOW"); w != nullptr && atoi(w) > 0) {
++                    lf_window = std::min(atoi(w), 1024);
++                }
++                LLAMA_LOG_INFO("%s: MoE cache order: LFRU (%.0f%% of the slots protected after a second use, the least used of the %d oldest on probation goes first)\n",
++                    __func__, 100.0*lf_protect, lf_window);
++            } else if (strcmp(co, "crf") != 0) {
++                LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_CACHE_ORDER=%s NOT USED: it is lfru or crf (the default)\n", __func__, co);
++            }
++        }
+         auto alloc_size = [&](const group & g, int32_t n_slots) {
+             const size_t alignment = ggml_backend_buft_get_alignment(devices[g.id].buft);
+             size_t res = 0;
+@@ -837,6 +966,9 @@ struct llama_moe_cache::impl {
+                 const int32_t p = phys_of[il];
+                 g.lru.phys[il] = p != (int32_t) il && std::find(g.layers.begin(), g.layers.end(), p) != g.layers.end() ? p : (int32_t) il;
+             }
++            if (lf_mode) {
++                g.lru.lf_init(lf_protect, lf_window); // Brain Engine 0107
++            }
+             n_tensors[g.id] += g.ref.size()*(1 + g.layers.size()) + (la_max > 0 ? la_nd*g.layers.size() : 0) + (db_on ? g.layers.size() : 0) + (sp_mode != SP_OFF ? 2*g.layers.size() : 0)
+                 + (ll_rank > 0 ? (3*la_nd + 1)*g.layers.size() : 0); // Brain Engine 0106
+             n_tensors_host  += g.layers.size()*(n_zero > 0 ? 3 : 1) + (db_on ? g.layers.size() : 0); // slot maps and CPU map
+@@ -1054,6 +1186,10 @@ struct llama_moe_cache::impl {
+     }
+ 
+     uint64_t fingerprint  = 0;
++    bool     lf_mode      = false; // Brain Engine 0107: LLAMA_MOE_CACHE_ORDER=lfru
++    float    lf_protect   = 0.8f;
++    int32_t  lf_window    = 16;
++    size_t   rc_lf_promoted = 0, rc_lf_demoted = 0;
+     uint64_t log_every    = 0; // LLAMA_MOE_CACHE_LOG_EVERY
+     int64_t  learn_every  = 0; // Brain Engine 0031: LLAMA_MOE_CACHE_LEARN, 0 = off
+     int64_t  cpu_read     = 0; // Brain Engine 0032: LLAMA_MOE_CACHE_CPU_READ, 0 = off
+@@ -3957,6 +4093,10 @@ struct llama_moe_cache::impl {
+         std::list<int32_t>     lru;     // front = most recent
+         std::vector<std::list<int32_t>::iterator> pos;
+         std::unordered_map<int64_t, int32_t> slot_of;
++        // Brain Engine 0107 (lfru): uses since the entry came in, and the protected ones (after a second use)
++        std::vector<uint32_t> uses;
++        std::vector<uint8_t>  prot;
++        size_t n_prot = 0;
+     };
+     bool rc_on = false, rc_pinned = false;
+     std::vector<rc_class> rc_classes;
+@@ -4096,8 +4236,58 @@ struct llama_moe_cache::impl {
+         return ((int64_t) tid << 32) | (uint32_t) e;
+     }
+ 
++    // Brain Engine 0107 (lfru): entry s was used again
++    void rc_lf_hit(rc_class & c, int32_t s) {
++        if (!lf_mode) {
++            return;
++        }
++        if (c.uses.size() != c.key_of.size()) {
++            c.uses.assign(c.key_of.size(), 0);
++            c.prot.assign(c.key_of.size(), 0);
++            c.n_prot = 0;
++        }
++        c.uses[s]++;
++        if (!c.prot[s] && c.uses[s] >= 2) {
++            c.prot[s] = 1;
++            c.n_prot++;
++            rc_lf_promoted++;
++        }
++    }
++
+     // the least recently used entry not uploaded by this call and not being filled, or -1; under rc_mutex
+     int32_t rc_victim(rc_class & c) {
++        if (lf_mode && c.uses.size() == c.key_of.size()) {
++            // Brain Engine 0107: of the oldest lf_window entries on probation, the least used; protected entries passed
++            // over go back to probation while more than lf_protect of the entries are protected
++            const size_t cap = (size_t) (lf_protect*c.key_of.size());
++            int32_t best = -1;
++            int32_t n = 0;
++            for (auto it = c.lru.rbegin(); it != c.lru.rend() && n < lf_window; ++it) {
++                const int32_t s = *it;
++                if (c.gen_of[s] == rc_gen || c.gen_of[s] == UINT64_MAX) {
++                    continue;
++                }
++                if (c.key_of[s] < 0) {
++                    return s;
++                }
++                if (c.prot[s]) {
++                    if (c.n_prot > cap) {
++                        c.prot[s] = 0;
++                        c.uses[s] = 0;
++                        c.n_prot--;
++                        rc_lf_demoted++;
++                    }
++                    continue;
++                }
++                n++;
++                if (best < 0 || c.uses[s] < c.uses[best]) {
++                    best = s;
++                }
++            }
++            if (best >= 0) {
++                return best;
++            }
++        }
+         for (auto it = c.lru.rbegin(); it != c.lru.rend(); ++it) {
+             const int32_t s = *it;
+             if (c.gen_of[s] != rc_gen && c.gen_of[s] != UINT64_MAX) {
+@@ -4111,6 +4301,16 @@ struct llama_moe_cache::impl {
+         if (c.key_of[s] >= 0) {
+             c.slot_of.erase(c.key_of[s]);
+         }
++        if (lf_mode && c.uses.size() == c.key_of.size()) { // Brain Engine 0107: a new entry starts on probation
++            if (c.prot[s]) {
++                c.prot[s] = 0;
++                c.n_prot--;
++            }
++            c.uses[s] = key >= 0 ? 1 : 0;
++        } else if (lf_mode) {
++            rc_lf_hit(c, s); // sizes the counts once
++            c.uses[s] = key >= 0 ? 1 : 0;
++        }
+         c.key_of[s] = key;
+         if (key >= 0) {
+             c.slot_of[key] = s;
+@@ -4137,6 +4337,7 @@ struct llama_moe_cache::impl {
+                 s   = f->second;
+                 hit = true;
+                 c.lru.splice(c.lru.begin(), c.lru, c.pos[s]);
++                rc_lf_hit(c, s); // Brain Engine 0107
+             } else {
+                 s = rc_victim(c);
+                 if (s < 0) {
+@@ -4186,6 +4387,7 @@ struct llama_moe_cache::impl {
+             return nullptr;
+         }
+         c.lru.splice(c.lru.begin(), c.lru, c.pos[f->second]);
++        rc_lf_hit(c, f->second); // Brain Engine 0107
+         c.gen_of[f->second] = rc_gen;
+         rc_hits++;
+         rc_hit_bytes += c.size;
+@@ -5556,6 +5758,15 @@ struct llama_moe_cache::impl {
+                 name, st.hits, st.misses, st.cpu, 100.0*st.hits/n, st.bytes/1024.0/1024.0);
+         };
+         log("ubatch <= 8", stats_small);
++        if (lf_mode) { // Brain Engine 0107
++            size_t pr = 0, de = 0;
++            for (const group & g : groups) {
++                pr += g.lru.lf_promoted;
++                de += g.lru.lf_demoted;
++            }
++            LLAMA_LOG_INFO("llama_moe_cache: LFRU order: card %zu moved to protected, %zu back to probation; RAM cache %zu protected, %zu back\n",
++                pr, de, rc_lf_promoted, rc_lf_demoted);
++        }
+         if (la_max > 0) {
+             LLAMA_LOG_INFO("llama_moe_cache: looked ahead: %zu experts uploaded ahead (%.2f MiB), %zu of them used (%.1f%%)\n",
+                 la_n_up, la_bytes/1024.0/1024.0, la_n_used, la_n_up > 0 ? 100.0*la_n_used/la_n_up : 0.0);

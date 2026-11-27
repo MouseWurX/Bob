@@ -12,7 +12,7 @@ import { gb } from './util.js';
 export const PLACES = ['card', 'memory', 'storage', 'help', 'rent'];
 export const PLACE_WORDS = { card: 'On your card', memory: 'Card + memory', storage: 'Card + memory + storage', help: 'With another Bob\'s help', rent: 'Too big for home' };
 // With no graphics card (or one pool of memory, as on a Mac) the same answers read a little differently.
-export const placeWord = (where, hw = {}) => (where === 'card' && hw.unified ? 'In memory' : where === 'memory' && !hw.vramGB ? 'In memory, on the processor' : where === 'storage' && !hw.vramGB ? 'Memory + storage' : PLACE_WORDS[where] || '');
+export const placeWord = (where, hw = {}) => (where === 'card' && hw.unified ? 'In memory' : where === 'memory' && !hw.vramGB ? 'In memory, on the processor' : where === 'storage' && (!hw.vramGB || hw.unified) ? 'Memory + storage' : PLACE_WORDS[where] || '');
 
 // How hard the file is squeezed, from its file name (Q4_K_M, Q3_K_M, Q8_0, MXFP4, F16...), or '' when it doesn't say.
 const QUANT_RE = /(?:^|[-_.])((?:UD-)?I?Q\d(?:_[A-Z0-9]+)*|TQ\d_\d|MXFP\d|BF16|F16|F32|FP8)(?=[-_.]|$)/i; // Nov 19 2026: TQ1_0 (1-bit class) too
@@ -40,14 +40,20 @@ const cardFor = (vramGB) => Math.max(0, (vramGB || 0) - ROOM.cardKeep);
 // What the brain needs loaded: its file plus room for the chat.
 export const needGB = (m) => (m?.sizeGB || m?.vramGB || 0) + ROOM.chatGB;
 
-// hw: { vramGB, ramGB, unified }. rooms: the other Bobs' [{ name, vramGB, ramGB }] (only when sharing is on).
+// hw: { vramGB, ramGB, unified, arm }. rooms: the other Bobs' [{ name, vramGB, ramGB }] (only when sharing is on).
 // -> { where, word, cardGB, memGB, storageGB, why, helper? }: the split Auto would start from, in GB of the file.
 export function placeFor(m, hw = {}, rooms = []) {
   const size = m?.sizeGB || m?.vramGB || 0;
   const need = needGB(m);
   const card = hw.unified ? 0 : cardFor(hw.vramGB);
-  const ram = hw.unified ? cardFor(hw.vramGB || hw.ramGB) : ramFor(hw.ramGB);
+  // Nov 27 2026: a Mac's graphics share (two thirds of its memory, src/platform.js) already leaves the rest to macOS,
+  // so it's used as it is; taking a card's 1 GB off it again called Qwen3 4B "too big for home" on an 8 GB Mac.
+  const ram = hw.unified ? (hw.vramGB || ramFor(hw.ramGB)) : ramFor(hw.ramGB);
   const out = (where, extra = {}) => ({ where, word: placeWord(where, hw), cardGB: 0, memGB: 0, storageGB: 0, why: '', ...extra });
+  // An ARM board (a Raspberry Pi) runs a light system with no card: the same rule suit() uses, the brain's own figure
+  // against 60% of the board's memory. The PC rule (4 GB kept for the system) called Gemma 4 E2B, the 8 GB board
+  // set's own brain, "too big for home".
+  if (hw.arm && !hw.vramGB && (m?.vramGB || need) <= (hw.ramGB || 0) * 0.6) return out('memory', { memGB: size, why: 'Runs on the board\'s processor.' });
   const r1 = (n) => Math.round(n * 10) / 10;
   // The catalogue's own figure for the card (it counts the chat's memory) decides "on the card", as before.
   if (!hw.unified && hw.vramGB && (m?.vramGB || need) <= hw.vramGB) {

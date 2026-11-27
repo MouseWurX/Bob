@@ -96,7 +96,7 @@ check('the glossary says coding always thinks and chat doesn\'t', /Thinking firs
 // ---------- 1.5.68: the always-thinking Coding copy can't think forever ----------
 {
   const os = await import('node:os'); const path = await import('node:path');
-  const { LlamaCpp, thinkBudget, LONG_THINK_BUDGET, MAX_REPLY_TOKENS, THINK_BUDGET } = await import('../src/llamacpp.js');
+  const { LlamaCpp, thinkBudget, LONG_THINK_BUDGET, THINK_BUDGET, repeating } = await import('../src/llamacpp.js');
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob budget '));
   const lc = new LlamaCpp({ agentDir: tmp, dataDir: tmp, llamacpp: {} });
   check('Qwen3.6 thinking has a budget at Low (Coding thinks by default) and at High', thinkBudget(id, undefined) === LONG_THINK_BUDGET && thinkBudget(id, 'high') === LONG_THINK_BUDGET && LONG_THINK_BUDGET >= 8192 && LONG_THINK_BUDGET <= 16384);
@@ -115,13 +115,22 @@ check('the glossary says coding always thinks and chat doesn\'t', /Thinking firs
   for (const [label, think] of [['Low', undefined], ['High', 'high']]) {
     bodies.length = 0;
     const r = await lc.chatOnce({ model: id, messages: [{ role: 'user', content: 'tidy this Unreal helper' }], think });
-    check(`${label} Coding on Qwen3.6: endless thinking is stopped at the budget, then it answers`, r.content === 'answer' && bodies.length === 2 && /Thinking time is up/.test(JSON.stringify(bodies[1].messages)), JSON.stringify({ r, n: bodies.length }));
-    check(`${label} Coding on Qwen3.6 sends presence_penalty 0 while thinking (Qwen3.6 Best Practices) and a reply ceiling`, bodies[0].presence_penalty === 0 && bodies[0].max_tokens === MAX_REPLY_TOKENS && bodies[1].max_tokens === MAX_REPLY_TOKENS);
+    check(`${label} Coding on Qwen3.6: thinking stuck repeating itself is stopped, then it answers with thinking off`, r.content === 'answer' && bodies.length === 2 && /going round in circles/.test(JSON.stringify(bodies[1].messages)) && bodies[1].chat_template_kwargs?.enable_thinking === false, JSON.stringify({ r, n: bodies.length }));
+    check(`${label} Coding on Qwen3.6 sends presence_penalty 0 while thinking (Qwen3.6 Best Practices) and no fixed reply size`, bodies[0].presence_penalty === 0 && bodies[0].max_tokens === undefined && bodies[1].max_tokens === undefined);
   }
   bodies.length = 0;
   globalThis.fetch = async (url, init) => { if (!init?.body) throw new Error('no props'); bodies.push(JSON.parse(init.body)); return new Response('data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n'); };
   await lc.chatOnce({ model: 'gemma4:26b', messages: [{ role: 'user', content: 'x' }], think: false });
-  check('every request has the reply ceiling, any brain', bodies[0].max_tokens === MAX_REPLY_TOKENS);
+  check('no request has a fixed reply ceiling, any brain (the engine stops when its memory is full)', bodies[0].max_tokens === undefined);
+  lc.current = 'gemma4:26b'; lc.currentCtx = 32768; bodies.length = 0;
+  await lc.chatOnce({ model: 'gemma4:26b', messages: [{ role: 'user', content: 'x' }], think: false });
+  check('a loaded brain may write up to its whole memory, not half (Nov 24 no-caps rule)', bodies[0].max_tokens === 32768);
+  lc.current = null; lc.currentCtx = null;
+  globalThis.fetch = async (url, init) => { if (!init?.body) throw new Error('no props'); bodies.push(JSON.parse(init.body)); return new Response(`${Array.from({ length: 400 }, () => 'data: {"choices":[{"delta":{"content":"notice_board "}}]}\n\n').join('')}data: [DONE]\n\n`); };
+  bodies.length = 0;
+  const loop = await lc.chatOnce({ model: 'gemma4:26b', messages: [{ role: 'user', content: 'x' }], think: false });
+  check('an answer stuck writing the same words is stopped early and marked for a loud note (the Go notice_board runaway)', loop.cut === 'repeat' && loop.content.length < 5200 && bodies.length === 1, JSON.stringify({ cut: loop.cut, n: loop.content.length }));
+  check('a reply stuck repeating itself is spotted; a ruled line, a short repeat or a varied answer is not', repeating('I will check the file. '.repeat(80)) && !repeating('I will check the file. '.repeat(20)) && !repeating(`ok ${'-'.repeat(100)}\ntext`) && !repeating(Array.from({ length: 300 }, (_, i) => `word${i}`).join(' ')));
   globalThis.fetch = realFetch;
   fs.rmSync(tmp, { recursive: true, force: true });
 }

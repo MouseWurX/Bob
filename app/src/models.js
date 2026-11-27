@@ -218,7 +218,7 @@ export function engineShort(entry, { agentDir = '', read = fs.readFileSync } = {
   const min = Number(entry?.engineMin) || 0;
   if (!min) return '';
   let n = 0;
-  try { n = brainEngineBuild(JSON.parse(read(path.join(agentDir, 'brain-engine', 'bob-brainengine.json'), 'utf8')).version)?.n || 0; } catch {}
+  try { n = brainEngineBuild(JSON.parse(String(read(path.join(agentDir, 'brain-engine', 'bob-brainengine.json'), 'utf8')).replace(/^\uFEFF/, '')).version)?.n || 0; } catch {}
   if (n >= min) return '';
   return `${entry.name} needs Brain Engine ${min} or newer${n ? ` (this replicant matrix has Brain Engine ${n})` : ' (this replicant matrix has none)'}. Settings, Engines, Brain Engine gets or updates it.`;
 }
