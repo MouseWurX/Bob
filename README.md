@@ -17,6 +17,7 @@
   <a href="#bob-net-bobs-working-together">Bob-Net</a> ·
   <a href="#the-project">The project</a> ·
   <a href="#coming-next">Coming next</a> ·
+  <a href="app/docs/BUG-BUSTER.md">Bug Buster</a> ·
   <a href="app/docs/README.md">All the docs</a>
 </p>
 
@@ -257,6 +258,7 @@ Nothing trains, rents a card or uploads without the owner's go, and every rental
 | **The data** | [bob-lessons](https://huggingface.co/datasets/MouseWurX/bob-lessons) (the lessons, clean, full and preference files) · [bob-studies](https://huggingface.co/datasets/MouseWurX/bob-studies) (surgery and interview studies, never used for training) |
 | **The dissertation** (draft, all 13 chapters) | [Clean lessons beat more lessons](app/docs/dissertation/README.md) |
 | **The record** | [Bob's own models](app/docs/BOBS-OWN-MODELS.md) (every score and what went wrong) · [the Forge journal](app/docs/FORGE-JOURNAL.md) (the lab notebook) |
+| **Bug Buster**, our worst bugs and how we fixed them | [Bug Buster](app/docs/BUG-BUSTER.md) |
 
 ## How we test
 
