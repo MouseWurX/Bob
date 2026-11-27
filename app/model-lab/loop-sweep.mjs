@@ -31,6 +31,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { dialsOf } from './set-live.mjs';
 import crypto from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
@@ -144,8 +145,20 @@ export function correct(text, gold) {
 export function score(rows) {
   const n = rows.length || 1;
   return { n: rows.length, loop: +(rows.filter((r) => r.loop).length / n).toFixed(4), acc: +(rows.filter((r) => r.ok).length / n).toFixed(4),
-    avg_tokens: +(rows.reduce((s, r) => s + r.tokens, 0) / n).toFixed(1) };
+    avg_tokens: +(rows.reduce((s, r) => s + r.tokens, 0) / n).toFixed(1), ...(rows.some((r) => 'cut' in r) ? { cut: +(rows.filter((r) => r.cut).length / n).toFixed(4) } : {}) };
 }
+
+// 27 Nov (the hard-maths rerun: every trial beat "as built", even ones turning experts opposite ways, so the as-built pass
+// was probably unlucky): compare two passes over the SAME problems answer by answer. fixed = looped in a, not in b; broke =
+// the other way. p = exact two-sided McNemar (binomial) test on those pairs: small p = unlikely to be a reroll of the dice.
+export function paired(a, b, key = 'loop') {
+  let fixed = 0, broke = 0;
+  for (let i = 0; i < Math.min(a.length, b.length); i++) { if (a[i][key] && !b[i][key]) fixed++; else if (!a[i][key] && b[i][key]) broke++; }
+  const n = fixed + broke, k = Math.min(fixed, broke);
+  let tail = 0, c = 1; for (let i = 0; i <= k; i++) { tail += c; c = c * (n - i) / (i + 1); }
+  return { fixed, broke, p: n ? +Math.min(1, 2 * tail / 2 ** n).toFixed(4) : 1 };
+}
+const brief = (rows) => rows.map((r) => ({ loop: r.loop, ok: r.ok, cut: r.cut, tokens: r.tokens }));
 
 // Per layer and expert: share of picks on looped answers / share on finished ones. Only experts picked at least minPicks times
 // on looped answers count, so a rare expert can't top the list by chance.
@@ -225,7 +238,8 @@ async function main() {
   const post = (p, body) => withRetry(() => raw(p, body), { health, retries, waits, log: (m) => log(m) });
   const reset = async () => { try { await withRetry(() => raw('/dials', { dials: [] }), { health, retries: 2, waits }); } catch {} };
   const probs = readJsonl(String(o.problems));
-  const findSet = probs.slice(0, nFind), checkSet = probs.slice(nFind, nFind + nCheck);
+  const offset = Number(o.offset || 0);
+  const findSet = o.confirm ? [] : probs.slice(offset, offset + nFind), checkSet = o.confirm ? probs.slice(offset, offset + nCheck) : probs.slice(offset + nFind, offset + nFind + nCheck);
   if (checkSet.length < 10) throw new Error(`only ${checkSet.length} check problems after the find slice: give more problems`);
   const t0 = Date.now();
   const progressFile = path.join(out, 'progress.json');
@@ -239,7 +253,7 @@ async function main() {
     const c = j.choices?.[0] || {};
     const text = `${c.message?.reasoning_content || ''}\n${c.message?.content || ''}`;
     const cut = c.finish_reason === 'length';
-    return { messages, reply: c.message || {}, loop: looped(text, cut), ok: correct(String(c.message?.content || '').replace(/<think>[\s\S]*?<\/think>/g, ''), p.a), tokens: Number(j.usage?.completion_tokens) || 0 };
+    return { messages, reply: c.message || {}, cut, loop: looped(text, cut), ok: correct(String(c.message?.content || '').replace(/<think>[\s\S]*?<\/think>/g, ''), p.a), tokens: Number(j.usage?.completion_tokens) || 0 };
   };
   // once = no per-request retry: the first error stops new requests, waits for those in flight, then throws
   const answerAll = async (set, once = false) => {
@@ -266,7 +280,7 @@ async function main() {
             await new Promise((r) => setTimeout(r, (waits ? 0 : 15) * 1000));
           }
         }
-        return score(await answerAll(checkSet, true));
+        return await answerAll(checkSet, true);
       } catch (e) {
         if (!dropped(e) || n >= retries) throw e;
         const ws = waits || [10, 20, 40, 240, 240, 240]; const w = ws[Math.min(n, ws.length - 1)];
@@ -279,6 +293,29 @@ async function main() {
 
   try {
     await reset();
+    // --confirm <surgery-edits.json> (27 Nov): no find, no trace. The check slice (from --offset) as built, then with the
+    // edits as dials, then as built again, same seeds each time. The edit counts as confirmed only if it loops at least 8
+    // points less than BOTH as-built passes, gets no fewer right than either, and the answer-by-answer test (paired) gives
+    // p < 0.05 against each. The two as-built passes against each other show how much a plain reroll moves the score.
+    if (o.confirm) {
+      const dials = dialsOf(JSON.parse(fs.readFileSync(String(o.confirm), 'utf8')));
+      if (!dials.length) throw new Error(`${o.confirm} has no expert edits to confirm`);
+      const pass = async (tag, d) => {
+        if (prog[tag]) { log(`${tag}: kept from the last run`); return prog[tag]; }
+        log(`${tag}: ${checkSet.length} problems${d ? ` with ${d.length} dials` : ''}`);
+        const rows = d ? await runTrial({ dials: d }) : await answerAll(checkSet);
+        prog[tag] = brief(rows); saveProg(); log(`${tag}: ${JSON.stringify(score(rows))}`); return prog[tag];
+      };
+      const a = await pass('as_built_a'), e = await pass('edit', dials); await reset(); const b = await pass('as_built_b');
+      const sa = score(a), se = score(e), sb = score(b);
+      const pa = paired(a, e), pb = paired(b, e), noise = paired(a, b);
+      const confirmed = sa.loop - se.loop >= 0.08 && sb.loop - se.loop >= 0.08 && se.acc >= sa.acc && se.acc >= sb.acc && pa.p < 0.05 && pb.p < 0.05;
+      const rep = { url, confirm: String(o.confirm), offset, n: checkSet.length, dials, as_built_a: sa, edit: se, as_built_b: sb,
+        edit_vs_a: pa, edit_vs_b: pb, a_vs_b: noise, right_vs_a: paired(a, e, 'ok'), confirmed, max_tokens: maxTokens, minutes: +((Date.now() - t0) / 60000).toFixed(1) };
+      fs.writeFileSync(path.join(out, 'confirm.json'), JSON.stringify(rep, null, 1));
+      log(`confirm: ${confirmed ? 'CONFIRMED' : 'not confirmed'}; as built ${sa.loop}/${sb.loop} loops, edit ${se.loop}; edit vs a ${JSON.stringify(pa)}, vs b ${JSON.stringify(pb)}, a vs b ${JSON.stringify(noise)}`);
+      return;
+    }
     let found;
     if (prog.found?.length === findSet.length && !o.baseline) { found = prog.found; log(`find: ${found.length} answers kept from the last run (--resume)`); }
     else {
@@ -322,17 +359,17 @@ async function main() {
     fs.writeFileSync(path.join(out, 'lift.json'), JSON.stringify(lifted.slice(0, 500), null, 1));
     const trials = buildTrials(lifted, experts, scales, upScales);
     log(`check: as built, then ${trials.length} trials on ${checkSet.length} problems`);
-    let before = prog.before;
+    let before = prog.before, beforeRows = prog.before_rows || null;
     if (before) log(`as built: ${JSON.stringify(before)} (kept from the last run)`);
-    else { before = score(await answerAll(checkSet)); prog.before = before; saveProg(); log(`as built: ${JSON.stringify(before)}`); }
+    else { const rows = await answerAll(checkSet); before = score(rows); beforeRows = brief(rows); prog.before = before; prog.before_rows = beforeRows; saveProg(); log(`as built: ${JSON.stringify(before)}`); }
     const results = prog.trials || (prog.trials = []);
     for (const t of trials) {
       if (results.some((r) => r.name === t.name)) { log(`${t.name}: kept from the last run`); continue; }
       const ts = Date.now();
       log(`trial: ${t.name}`);
-      const s = await runTrial(t);
+      const rows = await runTrial(t);
       await reset();
-      const r = { name: t.name, way: t.way, experts: t.dials.length, scale: t.dials[0].scale, ...s, seconds: Math.round((Date.now() - ts) / 1000) };
+      const r = { name: t.name, way: t.way, experts: t.dials.length, scale: t.dials[0].scale, ...score(rows), ...(beforeRows ? { vs_as_built: paired(beforeRows, rows) } : {}), rows: brief(rows), seconds: Math.round((Date.now() - ts) / 1000) };
       results.push(r); saveProg(); log(JSON.stringify(r));
     }
     const best = pickBest(before, results, failMode);
@@ -342,8 +379,8 @@ async function main() {
     fs.writeFileSync(path.join(out, 'loop-sweep.md'), [
       '# Loop sweep', '', `Practice find slice: ${base.n} answers, ${loopRows.length} looped. Check slice: ${before.n}.`, '',
       `As built: loops ${before.loop}, right ${before.acc}, ${before.avg_tokens} tokens per answer.`, '',
-      '| Trial | Loops | Right | Tokens | Seconds |', '| --- | --- | --- | --- | --- |',
-      ...results.map((r) => `| ${r.name} | ${r.loop} | ${r.acc} | ${r.avg_tokens} | ${r.seconds} |`), '',
+      '| Trial | Loops | Right | Tokens | Fixed / broke vs as built (p) | Seconds |', '| --- | --- | --- | --- | --- | --- |',
+      ...results.map((r) => `| ${r.name} | ${r.loop} | ${r.acc} | ${r.avg_tokens} | ${r.vs_as_built ? `${r.vs_as_built.fixed} / ${r.vs_as_built.broke} (${r.vs_as_built.p})` : '-'} | ${r.seconds} |`), '',
       best ? `Best: ${best.name} (surgery-edits.json). Practice problems only: score it on the held-out jobs before anything ships.` : 'No trial cut loops without losing right answers: nothing to bake.'
     ].join('\n'));
     log(best ? `best: ${best.name}` : 'no trial beat as built');

@@ -6,7 +6,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { looped, correct, lift, buildTrials, pickBest, score, postJson, postStream, withRetry, dropped } from '../model-lab/loop-sweep.mjs';
+import { looped, correct, lift, buildTrials, pickBest, score, postJson, postStream, withRetry, dropped, paired } from '../model-lab/loop-sweep.mjs';
 import { dialsOf } from '../model-lab/set-live.mjs';
 
 let pass = 0, fail = 0;
@@ -168,6 +168,23 @@ const c1 = mk({}); await new Promise((r) => c1.srv.listen(0, '127.0.0.1', r));
 const code5 = await runSweep(c1.srv.address().port, out4, ['--resume']); c1.srv.close();
 const rep5 = JSON.parse(fs.readFileSync(path.join(out4, 'loop-sweep.json'), 'utf8'));
 check('--resume runs only the trials, not the find slice or as built again', code5 === 0 && c1.st.chats === 30 && rep5.best?.scale === 0.5);
+
+// 27 Nov: answer-by-answer comparison, and --confirm (as built, edit, as built again on fresh problems)
+const pr = paired([{ loop: true }, { loop: true }, { loop: false }, { loop: true }], [{ loop: false }, { loop: false }, { loop: true }, { loop: true }]);
+check('paired counts fixed and broken answers', pr.fixed === 2 && pr.broke === 1 && pr.p === 1);
+check('paired gives a small p when only fixes happen', paired(Array(12).fill({ loop: true }), Array(12).fill({ loop: false })).p < 0.001);
+const confirmRun = async (edits, dir) => {
+  const e = mk({}); await new Promise((r) => e.srv.listen(0, '127.0.0.1', r));
+  const f = path.join(tmp, `${path.basename(dir)}.json`); fs.writeFileSync(f, JSON.stringify({ edits }));
+  const code = await new Promise((r) => spawn(process.execPath, [path.join(here, '..', 'model-lab', 'loop-sweep.mjs'), '--url', `http://127.0.0.1:${e.srv.address().port}`,
+    '--problems', probs, '--confirm', f, '--offset', '20', '--check', '40', '--parallel', '3', '--retry-waits', '0', '--out', dir], { stdio: 'ignore' }).on('exit', r));
+  e.srv.close(); return { code, rep: JSON.parse(fs.readFileSync(path.join(dir, 'confirm.json'), 'utf8')), st: e.st };
+};
+const good = await confirmRun([{ layer: 0, expert: 3, scale: 0.5 }], path.join(tmp, 'confirm good'));
+check('--confirm: an edit that really fixes loops is confirmed against both as-built passes', good.code === 0 && good.rep.confirmed && good.rep.edit.loop === 0 && good.rep.as_built_a.loop === 0.5 && good.rep.edit_vs_a.fixed === 20 && good.rep.a_vs_b.fixed === 0);
+check('--confirm: no find step, no trace, starts at --offset', good.st.chats === 120 && good.rep.n === 40 && good.rep.offset === 20);
+const bad = await confirmRun([{ layer: 0, expert: 1, scale: 0.5 }], path.join(tmp, 'confirm bad'));
+check('--confirm: an edit that changes nothing is not confirmed', bad.code === 0 && !bad.rep.confirmed && bad.rep.edit_vs_a.fixed === 0);
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

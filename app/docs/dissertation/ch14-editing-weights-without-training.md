@@ -181,7 +181,54 @@ Three looped answers is below rule 1's floor of 8, so the sweep stopped before t
 
 **Amendment before try 2 (no trial result seen).** The registered rules and the problem set stay the same. To fit about 7 hours at the speed this try measured (about 1.07 minutes per answer per slot), try 2 uses 100 find and 40 check problems, and 6 two-way trials: top 16 and top 64 experts, down ×0.5, up ×1.3, and both. Try 1's find answers were not saved, so its lift cannot be reused. Try 2 finds the experts again on its own 100 problems. Fewer check problems makes the result noisier: at 63% loops on 40 problems, the standard error is about 8 points, so only a large drop will count.
 
-### 7.3 Bill IQ2_M
+### 7.3 Run 2, try 2: six two-way trials on MATH level-5 train (26 November 2026): one nominal winner, likely a lucky baseline
+
+| Measure | Value |
+| --- | --- |
+| Code | `loop-sweep.mjs` at 108f20e, plan `loop-sweep-qwen35-math` (100 find, 40 check, 6 trials) |
+| Card | One A40, Lamplight fcdf3955 on b12282, 4 slots, 16,384-token limit; about $4.51, pod deleted |
+| Find set, as built | 100 problems: 60 looped (60%) |
+| Check set, as built | 40 problems: **80% looped, 20% right**, 14,180 tokens per answer |
+| Time per trial | 2,634 to 2,786 seconds (about 45 minutes) |
+
+| Trial (check set, 40 problems) | Loops | Right | Tokens per answer |
+| --- | --- | --- | --- |
+| As built | 80.0% | 20.0% | 14,180 |
+| Down: top 16 failure experts ×0.5 | 70.0% | 30.0% | 13,890 |
+| **Up: top 16 good-answer experts ×1.3** | **62.5%** | **37.5%** | 13,862 |
+| Both: 16 down ×0.5, 16 up ×1.3 | 70.0% | 30.0% | 13,750 |
+| Down: top 64 failure experts ×0.5 | 70.0% | 30.0% | 13,858 |
+| Up: top 64 good-answer experts ×1.3 | 70.0% | 30.0% | 13,699 |
+| Both: 64 down ×0.5, 64 up ×1.3 | 75.0% | 25.0% | 14,298 |
+
+**By the registered rules.** Every trial is a candidate under rule 2: each looped less than as built, and none got fewer right. The fewest loops wins, so the winner is turning the 16 experts that lean most toward good answers *up* by 1.3. That cut loops from 80% to 62.5% and lifted right answers from 20% to 37.5%. With 40 problems near 70% loops, one standard error is about 7 points. A 17.5-point drop is just past rule 3's two-standard-error line, so by the letter it is not "within noise". Rule 4 still applies: nothing is baked or shipped on this alone.
+
+**Why we do not believe it yet.** Three things point to an unlucky as-built pass rather than a real fix:
+
+1. **All six trials beat as built, including ones that pull opposite ways.** Turning failure experts down and turning good-answer experts up both "helped", by nearly the same amount, and five of the six landed between 70% and 75%. A real expert effect should not care so little about direction. Any change to the dials changes the words sampled, so each trial is partly a fresh roll of the dice. If the as-built roll was high, every reroll looks better.
+2. **The as-built check pass was high against every other measure.** It looped on 80% of answers, against 60% on this try's find set, 63% on try 1's find set, and 63% on try 1's check set. The six trials average 69.6%, close to those.
+3. **Answers did not get shorter.** Every trial still averaged 13,700 to 14,300 tokens against a 16,384 limit. A trial that really stopped loops should end answers sooner.
+
+We could not test this answer by answer, because this version saved only each trial's totals, not which problems looped.
+
+**Failures and fix plans.**
+
+| Failure | Fix |
+| --- | --- |
+| One as-built pass was the only control, and it may have been unlucky | `--confirm` (added 27 November): the as-built pass runs twice on the same problems, before and after the edit. The two as-built passes against each other show how far a plain reroll moves the score. |
+| Only totals were saved, so the effect could not be checked answer by answer | Every trial now saves each answer's loop, right, cut-off and token count. Each trial is compared with as built answer by answer (fixed against broken, exact McNemar test). |
+| 40 check problems is too few for a 10-point effect | The confirm run uses 100 fresh practice problems (ids 210 to 309, never used by either run). |
+| Loops were counted without saying whether the answer ran out of room or repeated itself | Each answer now records whether it was cut off at the token limit. |
+
+**Confirm run (registered now, before it runs).** The winner's dials (`surgery-edits.json` from this try) go on 100 fresh MATH level-5 train problems, in this order: as built, edit, as built, same seeds each time. The edit counts as **confirmed** only if all of these hold:
+
+- it loops at least 8 points less than *both* as-built passes;
+- it gets no fewer right than either;
+- the answer-by-answer test gives p < 0.05 against each.
+
+If it is confirmed, the next step is rule 4: bake the edit, score it once on the held-out jobs, and put it behind Turbo, off by default. If it is not confirmed, this sweep is a null result on hard maths too. We then move to section 4 rule 5's next step: MIT's direction edit on single layers. Estimate, not measured: three passes of 100 problems at this try's speed take about 5.6 hours, about $3.60 on an A40.
+
+### 7.4 Bill IQ2_M
 
 *Pending.* Waiting on approval, after run 2.
 
