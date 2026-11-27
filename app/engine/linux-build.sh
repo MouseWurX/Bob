@@ -37,10 +37,10 @@ case "$mode" in
   cpu)
     deps
     cd llama.cpp
-    cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_TESTS=ON
+    cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_RPATH='$ORIGIN' -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_RPC=ON -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_TESTS=ON
     cmake --build build -j4 --target llama-server llama-bench llama-gguf-split ggml-rpc-server llama-diffusion-cli test-llama-archs
     # upstream skips cvector-generator and export-lora when the backends load at run time, so it gets its own CPU-only, static build
-    cmake -B build-cv -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
+    cmake -B build-cv -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_RPATH='$ORIGIN' -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BACKEND_DL=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
     cmake --build build-cv -j4 --target llama-cvector-generator llama-export-lora
     ;;
   cuda)
@@ -78,7 +78,7 @@ PY
     export LIBRARY_PATH="$cuda/lib/stubs:$cuda/lib64/stubs:${LIBRARY_PATH:-}"
     nvcc --version | tail -2
     cd llama.cpp
-    cmake -S . -B build-cuda -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU=OFF -DGGML_CUDA=ON -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DCMAKE_CUDA_COMPILER="$cuda/bin/nvcc"
+    cmake -S . -B build-cuda -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_RPATH='$ORIGIN' -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU=OFF -DGGML_CUDA=ON -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DCMAKE_CUDA_COMPILER="$cuda/bin/nvcc"
     cmake --build build-cuda -j4 --target ggml-cuda
     ls -la build-cuda/bin/
     ;;
