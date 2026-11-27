@@ -320,6 +320,22 @@ PY
           done
         else echo "bench $BN: no llama-cvector-generator or evil-pairs.json; the evil check reads experts only" | tee $ED/no-direction.txt; fi
       fi
+      # 27 Nov: direction_from = before serving, find a direction in his stream by the difference of means (llama-cvector-generator
+      # --method mean) on in/direction-<name>.tgz (pos-<part>.txt / neg-<part>.txt, one text per line; parts all, a, b: the halves show
+      # how steady it is). Measure only: nothing is applied or written to the brain. where.json gives the PC each file's path HERE,
+      # since the live control vector (pod patch 0014) loads the file from the pod's own disk.
+      if [ -f $IN/direction-$BN.tgz ]; then
+        CV=$S/llama.cpp/build-cuda/bin/llama-cvector-generator; DD=$OUT/bench/direction-$BN; DW=$W/direction-$BN; mkdir -p $DD $DW
+        if [ -x "$CV" ] && tar xzf $IN/direction-$BN.tgz -C $DW; then
+          status bench "$BN: finding the direction (measure only)"
+          for part in all a b; do
+            [ -f $DW/pos-$part.txt ] || continue
+            LD_LIBRARY_PATH="$S/llama.cpp/build-cuda/bin:${LD_LIBRARY_PATH:-}" timeout 1800 $CV -m "$BFILE" --positive-file $DW/pos-$part.txt --negative-file $DW/neg-$part.txt -o $DD/direction-$part.gguf --method mean -ngl 999 -c 4096 -b 4096 -ub 4096 > $DD/cvector-$part.log 2>&1 || echo "bench $BN: direction ($part) failed (see out/bench/direction-$BN/cvector-$part.log)"
+          done
+          python3 -c "import json,os,sys; d=sys.argv[1]; json.dump({p: os.path.join(d, f'direction-{p}.gguf') for p in ('all','a','b') if os.path.exists(os.path.join(d, f'direction-{p}.gguf'))}, open(os.path.join(d,'where.json'),'w'))" $DD
+          rm -rf $DW
+        else echo "bench $BN: no llama-cvector-generator or the direction texts would not unpack; no direction" | tee $DD/skipped.txt; fi
+      fi
       # 14 Nov: interp true = before serving, read his inner stream on in/interp-<name>.tgz (llama-act-dump, pod patch 0015) and
       # train the sparse autoencoders (pod/interp.py): patch-means.json, features-<layer>.json, sae-<layer>.pt in out/bench/interp-<name>/.
       # Read only, a surgery record. The activations stay in $W/interp-<name>/ and are deleted. A failure writes interp.json with the

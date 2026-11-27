@@ -1,0 +1,9 @@
+{
+ "from": "loop-sweep-qwen35-math-2__progress.json",
+ "pairs": 40,
+ "words": 400,
+ "cut_available": 60,
+ "finished_available": 40,
+ "pos": "start of answers that ran out of room",
+ "neg": "start of answers that finished and were right"
+}

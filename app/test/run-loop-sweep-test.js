@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { looped, correct, lift, buildTrials, pickBest, score, postJson, postStream, withRetry, dropped, paired } from '../model-lab/loop-sweep.mjs';
 import { dialsOf } from '../model-lab/set-live.mjs';
+import { oneLine, pickPairs } from '../model-lab/direction-prep.mjs';
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`); };
@@ -134,6 +135,10 @@ const mk = (opts) => {
       if (req.url === '/health') { res.end('{"status":"ok"}'); return; }
       const j = body ? JSON.parse(body) : {};
       if (req.url === '/dials') { st.dials = j.dials || []; st.puts.push(st.dials.length); res.end('{}'); return; }
+      if (req.url === '/control-vector') {
+        if (j.file && j.file !== '/pod/out/direction-all.gguf') { res.statusCode = 400; res.end('{"error":{"message":"could not load"}}'); return; }
+        st.cvec = j.file ? j : null; (st.cvecs ||= []).push(j.file ? j.scale : 'clear'); res.end('{}'); return;
+      }
       const i = Number(j.messages[0].content.match(/item (\d+)/)[1]);
       if (j.expert_trace) { const l = j.messages[1].content.includes('again'); res.end(JSON.stringify({ choices: [{ message: { content: '' } }], expert_trace: { n_expert: 4, layers: [l ? [10, 10, 10, 90] : [40, 40, 30, 5]] } })); return; }
       st.chats++;
@@ -142,7 +147,7 @@ const mk = (opts) => {
         if (opts.dropAt && st.trialChats === opts.dropAt && !st.dropped) { st.dropped = true; st.dials = []; req.socket.destroy(); return; }
         if (opts.dieAt && st.trialChats === opts.dieAt) { st.dead = true; req.socket.destroy(); return; }
       }
-      const down = st.dials.some((d) => d.layer === 0 && d.index === 3 && d.scale <= 0.7);
+      const down = st.dials.some((d) => d.layer === 0 && d.index === 3 && d.scale <= 0.7) || (st.cvec && st.cvec.scale <= -5 && st.cvec.start <= 12);
       const l = i % 2 === 1 && !down;
       res.end(JSON.stringify({ choices: [{ finish_reason: l ? 'length' : 'stop', message: { content: l ? rep.replace('seven', 'again') : `The answer is ${i}.` } }], usage: { completion_tokens: l ? 64 : 8 } }));
     });
@@ -185,6 +190,27 @@ check('--confirm: an edit that really fixes loops is confirmed against both as-b
 check('--confirm: no find step, no trace, starts at --offset', good.st.chats === 120 && good.rep.n === 40 && good.rep.offset === 20);
 const bad = await confirmRun([{ layer: 0, expert: 1, scale: 0.5 }], path.join(tmp, 'confirm bad'));
 check('--confirm: an edit that changes nothing is not confirmed', bad.code === 0 && !bad.rep.confirmed && bad.rep.edit_vs_a.fixed === 0);
+
+// 27 Nov: --steer, the MIT-style direction edit done live with the control vector
+const steerRun = async (where, dir) => {
+  const e = mk({}); await new Promise((r) => e.srv.listen(0, '127.0.0.1', r));
+  const f = path.join(tmp, `${path.basename(dir)}-where.json`); fs.writeFileSync(f, JSON.stringify(where));
+  const code = await new Promise((r) => spawn(process.execPath, [path.join(here, '..', 'model-lab', 'loop-sweep.mjs'), '--url', `http://127.0.0.1:${e.srv.address().port}`,
+    '--problems', probs, '--steer', f, '--steer-scales', '-2,-5', '--steer-layers', '10-29,20-29', '--offset', '20', '--check', '40', '--parallel', '3', '--retry-waits', '0', '--out', dir], { stdio: 'ignore' }).on('exit', r));
+  e.srv.close(); const sf = path.join(dir, 'steer.json'); return { code, rep: fs.existsSync(sf) ? JSON.parse(fs.readFileSync(sf, 'utf8')) : null, st: e.st };
+};
+const sw = await steerRun({ all: '/pod/out/direction-all.gguf' }, path.join(tmp, 'steer ok'));
+check('--steer: four trials (2 scales x 2 layer ranges) between two as-built passes', sw.code === 0 && sw.rep.trials.length === 4 && sw.st.chats === 40 * 6 + 0);
+check('--steer: only the trial that really cuts loops is confirmed', JSON.stringify(sw.rep.confirmed) === JSON.stringify(['steer x-5 layers 10-29']));
+check('--steer: the vector is cleared after every trial and at the end', sw.st.cvecs.filter((x) => x === 'clear').length >= 5 && sw.st.cvecs.at(-1) === 'clear');
+const sbad = await steerRun({ all: '/pod/missing.gguf' }, path.join(tmp, 'steer bad'));
+check('--steer: a direction the engine cannot load stops the run (86) before any answer', sbad.code === 86 && sbad.st.chats === 0);
+
+// direction-prep: one text per line, cut answers against finished right ones, the same number of each
+check('oneLine keeps new lines and backslashes for the vector maker', oneLine('a\\frac\nb') === 'a\\\\frac\\nb');
+const mkRow = (cut, ok, n) => ({ messages: [{ content: 'q' }], reply: { reasoning_content: Array(n).fill('w').join(' ') }, loop: cut, cut, ok });
+const pp = pickPairs([mkRow(true, false, 500), mkRow(true, false, 500), mkRow(true, false, 10), mkRow(false, true, 500), mkRow(false, false, 500)], { words: 400, pairs: 40 });
+check('pickPairs pairs cut answers with finished right ones, long enough, equal counts', pp.n === 1 && pp.pos.length === 1 && pp.neg.length === 1 && pp.cut === 2 && pp.finished === 1 && pp.pos[0].split(' ').length === 400);
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -236,10 +236,13 @@ async function main() {
   // Without dials a lost request is simply asked again. A trial is different: a restarted engine forgets its dials and other
   // answers may land before they are back, so a trial that loses a connection is run again from the start (runTrial below).
   const post = (p, body) => withRetry(() => raw(p, body), { health, retries, waits, log: (m) => log(m) });
-  const reset = async () => { try { await withRetry(() => raw('/dials', { dials: [] }), { health, retries: 2, waits }); } catch {} };
+  const reset = async () => {
+    try { await withRetry(() => raw('/dials', { dials: [] }), { health, retries: 2, waits }); } catch {}
+    if (o.steer) try { await withRetry(() => raw('/control-vector', {}), { health, retries: 2, waits }); } catch {}
+  };
   const probs = readJsonl(String(o.problems));
   const offset = Number(o.offset || 0);
-  const findSet = o.confirm ? [] : probs.slice(offset, offset + nFind), checkSet = o.confirm ? probs.slice(offset, offset + nCheck) : probs.slice(offset + nFind, offset + nFind + nCheck);
+  const findSet = o.confirm || o.steer ? [] : probs.slice(offset, offset + nFind), checkSet = o.confirm || o.steer ? probs.slice(offset, offset + nCheck) : probs.slice(offset + nFind, offset + nFind + nCheck);
   if (checkSet.length < 10) throw new Error(`only ${checkSet.length} check problems after the find slice: give more problems`);
   const t0 = Date.now();
   const progressFile = path.join(out, 'progress.json');
@@ -274,7 +277,7 @@ async function main() {
       try {
         // the engine refuses dials while a slot is busy (an answer cut off on our side may still be finishing there): wait for it
         for (let b = 0; ; b++) {
-          try { await post('/dials', { dials: t.dials }); break; } catch (e) {
+          try { if (t.steer) await post('/control-vector', t.steer); else await post('/dials', { dials: t.dials }); break; } catch (e) {
             if (!/slot is busy/.test(e.message) || b >= 40) throw e;
             if (b === 0) log('the engine is still busy with an earlier answer; waiting for it before setting the dials');
             await new Promise((r) => setTimeout(r, (waits ? 0 : 15) * 1000));
@@ -297,6 +300,44 @@ async function main() {
     // edits as dials, then as built again, same seeds each time. The edit counts as confirmed only if it loops at least 8
     // points less than BOTH as-built passes, gets no fewer right than either, and the answer-by-answer test (paired) gives
     // p < 0.05 against each. The two as-built passes against each other show how much a plain reroll moves the score.
+    // --steer <where.json> (27 Nov, MIT-style direction edit, live): the pod's direction step found a direction (pos minus neg,
+    // per layer, unit length). Each trial adds it times a scale to the stream over a layer range with the live control vector
+    // (pod patch 0014): a minus scale steers AWAY from pos. As built, each trial, as built again, on the check slice from
+    // --offset, same seeds; each trial is judged by the same rule as --confirm.
+    if (o.steer) {
+      const where = JSON.parse(fs.readFileSync(String(o.steer), 'utf8'));
+      const file = where[String(o['steer-part'] || 'all')];
+      if (!file) throw new Error(`${o.steer} names no direction file for part ${o['steer-part'] || 'all'}`);
+      const scales = String(o['steer-scales'] || '-2,-5,-10').split(',').map(Number);
+      const ranges = String(o['steer-layers'] || '10-29').split(',').map((r) => r.split('-').map(Number));
+      const trials = []; for (const [start, end] of ranges) for (const sc of scales) trials.push({ name: `steer x${sc} layers ${start}-${end}`, steer: { file, scale: sc, start, end } });
+      try { await raw('/control-vector', trials[0].steer); await raw('/control-vector', {}); }
+      catch (e) { console.log(`GATE STOP: the live control vector would not load the direction (${String(e.message).slice(0, 160)})`); process.exitCode = 86; return; }
+      const pass = async (tag, t) => {
+        if (prog[tag]) { log(`${tag}: kept from the last run`); return prog[tag]; }
+        log(`${tag}: ${checkSet.length} problems`);
+        const rows = t ? await runTrial(t) : await answerAll(checkSet);
+        if (t) await reset();
+        prog[tag] = brief(rows); saveProg(); log(`${tag}: ${JSON.stringify(score(rows))}`); return prog[tag];
+      };
+      const a = await pass('as_built_a'); const got = [];
+      for (const t of trials) got.push({ t, rows: await pass(t.name, t) });
+      const b = await pass('as_built_b');
+      const sa = score(a), sb = score(b);
+      const res = got.map(({ t, rows }) => {
+        const se = score(rows), pa = paired(a, rows), pb = paired(b, rows);
+        return { name: t.name, scale: t.steer.scale, start: t.steer.start, end: t.steer.end, ...se, vs_a: pa, vs_b: pb, right_vs_a: paired(a, rows, 'ok'),
+          confirmed: sa.loop - se.loop >= 0.08 && sb.loop - se.loop >= 0.08 && se.acc >= sa.acc && se.acc >= sb.acc && pa.p < 0.05 && pb.p < 0.05 };
+      });
+      const rep = { url, steer: file, offset, n: checkSet.length, as_built_a: sa, as_built_b: sb, a_vs_b: paired(a, b), trials: res, confirmed: res.filter((r) => r.confirmed).map((r) => r.name), max_tokens: maxTokens, minutes: +((Date.now() - t0) / 60000).toFixed(1) };
+      fs.writeFileSync(path.join(out, 'steer.json'), JSON.stringify(rep, null, 1));
+      fs.writeFileSync(path.join(out, 'steer.md'), ['# Direction steering', '', `Check slice: ${checkSet.length} problems from ${offset}. As built: ${sa.loop} / ${sb.loop} ran out or looped, ${sa.acc} / ${sb.acc} right.`, '',
+        '| Trial | Loops | Right | Tokens | Fixed / broke vs as built a (p) | Confirmed |', '| --- | --- | --- | --- | --- | --- |',
+        ...res.map((r) => `| ${r.name} | ${r.loop} | ${r.acc} | ${r.avg_tokens} | ${r.vs_a.fixed} / ${r.vs_a.broke} (${r.vs_a.p}) | ${r.confirmed ? 'yes' : 'no'} |`), '',
+        'Practice problems only: a confirmed trial is scored on the held-out jobs before anything ships, and sits behind Turbo, off by default.'].join('\n'));
+      log(`steer: ${rep.confirmed.length ? `confirmed ${rep.confirmed.join('; ')}` : 'no trial confirmed'}`);
+      return;
+    }
     if (o.confirm) {
       const dials = dialsOf(JSON.parse(fs.readFileSync(String(o.confirm), 'utf8')));
       if (!dials.length) throw new Error(`${o.confirm} has no expert edits to confirm`);

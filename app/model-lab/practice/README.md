@@ -12,5 +12,8 @@ Problems the Lab may tune on. Never Bob's held-out jobs: those only score a fini
 Ids used so far from `math-train-l5-600.jsonl` (27 November 2026), so a confirm run can use fresh ones:
 - 0 to 209: the hard-maths sweep (try 1 found on 0 to 149 and checked on 150 to 209; try 2 found on 0 to 99 and checked on 100 to 139).
 - 210 to 309: set aside for the confirm run (`plans/loop-sweep-qwen35-math-confirm.json`).
+- 310 to 369: set aside for the direction steering run (`plans/loop-sweep-qwen35-math-steer.json`).
+
+`directions/`: text pairs for the pod's direction step (`direction-prep.mjs`), measuring sticks only.
 
 `edits/`: dial settings a sweep picked (its `surgery-edits.json`, copied unchanged), kept so a confirm run can read them.

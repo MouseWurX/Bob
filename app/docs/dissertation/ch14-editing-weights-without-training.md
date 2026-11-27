@@ -211,6 +211,8 @@ Three looped answers is below rule 1's floor of 8, so the sweep stopped before t
 
 We could not test this answer by answer, because this version saved only each trial's totals, not which problems looped.
 
+**What "looped" meant here (checked 27 November on the saved find answers).** None of the 60 "looped" answers on the find set repeated itself. Every one was cut off at the 16,384-token limit in the middle of real working, and the repeat test never fired: at least 98% of each answer's last 600 words were unique 12-word runs. What sets them apart is second-guessing: they said "wait", "let me check", "hmm" or "actually" about twice as often as the answers that finished (5.9 against 2.7 per 1,000 words). They also ran about twice as long (median 6,772 words against 3,441). Every finished answer was right (40 of 40), and every cut answer was wrong (0 of 60). In every trial, loops plus right answers add up to exactly 100%. So on these problems, "loops" measures one thing: running out of room. This is not MIT's failure. Their 0.8B repeated itself; the 35B thinks too long for the limit. Bob sets no thinking limit in real use, so a cut answer here might have finished, and been right, at home. A fix that finishes more answers within the limit is a speed gain, and only a quality gain where a limit really applies.
+
 **Failures and fix plans.**
 
 | Failure | Fix |
@@ -228,7 +230,17 @@ We could not test this answer by answer, because this version saved only each tr
 
 If it is confirmed, the next step is rule 4: bake the edit, score it once on the held-out jobs, and put it behind Turbo, off by default. If it is not confirmed, this sweep is a null result on hard maths too. We then move to section 4 rule 5's next step: MIT's direction edit on single layers. Estimate, not measured: three passes of 100 problems at this try's speed take about 5.6 hours, about $3.60 on an A40.
 
-### 7.4 Bill IQ2_M
+### 7.4 Run 3, registered: MIT-style direction steering on hard maths (27 November 2026)
+
+The owner asked to run the dial confirm and MIT's direction edit side by side. Because the failure here is running out of room, not repetition (section 7.3), the direction is the one that separates answers that ran out of room from answers that finished. It is not a repetition direction.
+
+- **Finding the direction.** We take the start of 40 practice answers that ran out of room and the start of 40 that finished and were right (try 2's find answers, MATH train ids 0 to 99), each cut to 400 words of thinking with the question and chat around it. Before serving, the pod's `llama-cvector-generator --method mean` takes the difference of the mean stream, layer by layer, at unit length. It does this three times, on all pairs and on each half, so we can see how steady the direction is. Measure only: nothing is written to the brain. The texts are a measuring stick only, never lessons.
+- **Steering away, live.** The engine's live control vector (lab patch 0014, used before on this engine for the Riker steering runs) adds the direction times a minus scale to the stream at layers 10 to 29. There are three trials: ×−2, ×−5 and ×−10. Unlike MIT's edit, this changes the stream at run time, not the weights. If a trial is confirmed, the next step is to bake it as a weight edit and check that it matches.
+- **Judging.** 60 fresh problems (ids 310 to 369, unused by any run). The order is as built, the three trials, then as built again, with the same seeds. Each trial is judged by the confirm rule of section 7.3: at least 8 points fewer cut-offs than both as-built passes, no fewer right than either, and p < 0.05 answer by answer against each.
+- **Threat.** Answers that run out of room come from harder problems, so the direction may partly mean "this problem is hard", not "this answer is overthinking". Steering away from "hard" could make the brain give up early and answer wrong. The right-answer rule catches that.
+- **Cost.** Estimate, not measured: about 6.3 hours, about $3.70 on one A40, capped at 7.5 hours / $4.50. It waits on the owner's yes.
+
+### 7.5 Bill IQ2_M
 
 *Pending.* Waiting on approval, after run 2.
 
