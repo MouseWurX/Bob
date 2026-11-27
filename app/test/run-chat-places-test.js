@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chatPlacesOn, placesDir, placeFile, tmpFile, placeKey, ownEnv, diskRoom, ramCacheMiB, tidyPlaces, placesUsed, PLACES_KEEP, PLACES_MAX_BYTES, RAM_CACHE_MAX_MIB } from '../src/chat-places.js';
+import { chatPlacesOn, placesDir, placeFile, tmpFile, placeKey, ownEnv, diskRoom, ramCacheMiB, containerFreeBytes, tidyPlaces, placesUsed, PLACES_KEEP, PLACES_MAX_BYTES, RAM_CACHE_MAX_MIB } from '../src/chat-places.js';
 import { harnessView } from '../src/harness.js';
 import { safeStartPlan } from '../src/crash-catch.js';
 import { LlamaCpp } from '../src/llamacpp.js';
@@ -76,8 +76,19 @@ check('8 chats and 16 GB', PLACES_KEEP === 8 && PLACES_MAX_BYTES === 16e9);
   check('a floor set by hand is the one kept', sized(20 * GB, true, { tuneEnv: { LLAMA_MOE_RAM_FLOOR_MIB: '4096' } }) === ramCacheMiB({ freeBytes: 24 * GB, brainRamBytes: 20 * GB, keepBytes: 4096 * MiB }));
   const shared = sized(8 * GB, false, { cfg: { sharedGraphics: true, gpuVramGB: 8 }, tuneEnv: {}, freeRam: () => 12 * GB });
   check('built-in graphics: the whole brain counts and GUPPI keeps his bigger amount free', shared < ramCacheMiB({ freeBytes: 12 * GB, brainRamBytes: 8 * GB, keepBytes: 512 * MiB }), String(shared));
+  // Nov 27 (35B rental try 6): with the expert copy cache every expert stays in RAM, so the whole brain counts.
+  { const real = fs.statSync; fs.statSync = (p, ...r) => (p === f ? { size: 22 * GB, mtimeMs: 1 } : real(p, ...r));
+    try { Object.assign(e, { cfg: { sharedGraphics: false, gpuVramGB: 16 }, tuneEnv: {}, freeRam: () => 26 * GB });
+      const withCache = e.ramCacheSize(f, false, ['--moe-cache-mib', '4096']), without = e.ramCacheSize(f, false, []);
+      check('with the copy cache the whole brain counts as RAM (32 GB PC, 22 GB brain: a small cache, not 8 GB)', withCache === ramCacheMiB({ freeBytes: 26 * GB, brainRamBytes: 22 * GB, keepBytes: 512 * MiB }) && withCache < 2048 && without === RAM_CACHE_MAX_MIB, `${withCache} / ${without}`); }
+    finally { fs.statSync = real; } }
+  const fake = (files) => (p) => { if (p in files) return files[p]; throw new Error('ENOENT'); };
+  check('a container\'s own limit counts (cgroup v2: limit minus used)', containerFreeBytes(fake({ '/sys/fs/cgroup/memory.max': '31000000000\n', '/sys/fs/cgroup/memory.current': '1000000000\n' }), 'linux') === 30e9);
+  check('...and cgroup v1', containerFreeBytes(fake({ '/sys/fs/cgroup/memory/memory.limit_in_bytes': '8000000000', '/sys/fs/cgroup/memory/memory.usage_in_bytes': '3000000000' }), 'linux') === 5e9);
+  check('no limit ("max", v1\'s huge number, no files) or not Linux: no cap', containerFreeBytes(fake({ '/sys/fs/cgroup/memory.max': 'max' }), 'linux') === Infinity && containerFreeBytes(fake({ '/sys/fs/cgroup/memory/memory.limit_in_bytes': '9223372036854771712' }), 'linux') === Infinity && containerFreeBytes(fake({}), 'linux') === Infinity && containerFreeBytes(fake({ '/sys/fs/cgroup/memory.max': '1' }), 'win32') === Infinity);
+  check('the engine start sizes from the smaller of the two', /Math\.min\(os\.freemem\(\), containerFreeBytes\(\)\)/.test(read('src/llamacpp.js')));
   const ll = read('src/llamacpp.js');
-  check('the engine gets the size (engines that know --cache-ram)', /args\.push\('--cache-ram', String\(this\.ramCacheSize\(gguf, cpu\)\)\)/.test(ll) && /buildNo\(\) >= 7000/.test(ll));
+  check('the engine gets the size (engines that know --cache-ram)', /args\.push\('--cache-ram', String\(this\.ramCacheSize\(gguf, cpu, args\)\)\)/.test(ll) && /buildNo\(\) >= 7000/.test(ll));
 }
 
 // ---------- the tidy ----------

@@ -15,7 +15,7 @@ import { templateFor, samplingFor, replyTokens, familyOf, thinkKwargs } from './
 import { gaming, LONG_CODER } from './sessions.js';
 import { gamingCard, decideCard, readCard, CARD_BUSY_PCT, CARD_MIN_FREE_MB } from './gaming-card.js';
 import { tuning, cpuPlan, startDir, startFile, promptHash, tidyStarts, cardGB } from './tuning.js';
-import { chatPlacesOn, placesDir, placeFile, tidyPlaces, tmpFile, placeKey, ownEnv, diskRoom, ramCacheMiB, PLACE_IDLE_MS } from './chat-places.js'; // Per-chat engine cache (on unless switched off)
+import { chatPlacesOn, placesDir, placeFile, tidyPlaces, tmpFile, placeKey, ownEnv, diskRoom, ramCacheMiB, containerFreeBytes, PLACE_IDLE_MS } from './chat-places.js'; // Per-chat engine cache (on unless switched off)
 import { exeName } from './platform.js';
 import { buildMatches, brainEngineName, brainEngineBuild } from '../public/engine-name.js';
 import { hotArgs, RANKING_ENV, parseCacheLog } from './hot-experts.js'; // Nov 16: hot experts on the card (opt-in)
@@ -775,7 +775,7 @@ export class LlamaCpp {
     // Nov 24: the engine's RAM cache of chats (llama.cpp's --cache-ram, 8 GB unless told) grows after GUPPI has placed the
     // brain, so GUPPI sizes it here: half of the RAM left once the brain's part in RAM and his keep-free amount are set
     // aside (src/chat-places.js ramCacheMiB). Brain Engine 46 (patch 0121) also watches the floor while it runs.
-    if (this.buildNo() >= 7000 && !args.some((a) => ['--cache-ram', '-cram'].includes(a))) args.push('--cache-ram', String(this.ramCacheSize(gguf, cpu)));
+    if (this.buildNo() >= 7000 && !args.some((a) => ['--cache-ram', '-cram'].includes(a))) args.push('--cache-ram', String(this.ramCacheSize(gguf, cpu, args)));
     args.push(...this.templateArgs(model, gguf, args));
     // Speculative decoding: a small "draft" model guesses ahead and the big one checks, often 1.5-2x faster.
     // 1.5.16x MTP per brain (the Lab's MTP page, Settings): wins over the one draft for every brain. The brain's own
@@ -859,14 +859,17 @@ export class LlamaCpp {
 
   // Nov 24: GUPPI's size for the engine's RAM cache of chats, in MiB (see buildArgs). On built-in graphics the whole brain
   // is in RAM and GUPPI keeps his bigger amount free; on a card only what doesn't fit the card counts.
-  ramCacheSize(gguf, cpu) {
+  // Nov 27 (35B rental try 6): with the expert copy cache (--moe-cache-mib) every expert stays in RAM and the card holds
+  // copies, so the whole brain counts as in RAM (it was file minus card: 6 GB counted, 21 GB used, and the 8 GB cache
+  // on top went past a 32 GB machine's RAM).
+  ramCacheSize(gguf, cpu, args = []) {
     let fileBytes = 0;
     try { fileBytes = fs.statSync(gguf).size; } catch {}
     const shared = this.cfg.sharedGraphics === true;
     const floorMiB = Number(this.tuneEnv?.LLAMA_MOE_RAM_FLOOR_MIB);
     const keepBytes = shared ? apuKeepBytes(this.cfg) : (Number.isFinite(floorMiB) && floorMiB > 0 ? floorMiB : 512) * 1048576;
-    const brainRamBytes = cpu || shared || this.role === BESIDE ? fileBytes : Math.max(0, fileBytes - cardGB(this.cfg) * 1024 ** 3);
-    return ramCacheMiB({ freeBytes: this.freeRam ? this.freeRam() : os.freemem(), brainRamBytes, keepBytes });
+    const brainRamBytes = cpu || shared || this.role === BESIDE || (args || []).includes('--moe-cache-mib') ? fileBytes : Math.max(0, fileBytes - cardGB(this.cfg) * 1024 ** 3);
+    return ramCacheMiB({ freeBytes: this.freeRam ? this.freeRam() : Math.min(os.freemem(), containerFreeBytes()), brainRamBytes, keepBytes });
   }
 
   // ---------- Warm up while typing (1.5.24) ----------

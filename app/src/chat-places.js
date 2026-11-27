@@ -87,6 +87,19 @@ export function ramCacheMiB({ freeBytes = 0, brainRamBytes = 0, keepBytes = 512 
   return Math.max(0, Math.min(RAM_CACHE_MAX_MIB, Math.floor(room / 2 / 1048576)));
 }
 
+// Nov 27 (1.5.255, 35B rental try 6): in a container (a rented pod, Docker) the free RAM Node reports is the host's,
+// not what the container may use, so the cache was sized from 224 GB free while the pod had 30 GB, and the engine was
+// killed (SIGKILL) as the cache filled. On Linux the container's own limit counts too. Infinity when there is none.
+// read is swapped in by the tests.
+export function containerFreeBytes(read = (f) => fs.readFileSync(f, 'utf8'), platform = process.platform) {
+  if (platform !== 'linux') return Infinity;
+  const num = (f) => { try { const t = String(read(f)).trim(); return /^\d+$/.test(t) ? Number(t) : NaN; } catch { return NaN; } };
+  let limit = num('/sys/fs/cgroup/memory.max'), used = num('/sys/fs/cgroup/memory.current');
+  if (!Number.isFinite(limit)) { limit = num('/sys/fs/cgroup/memory/memory.limit_in_bytes'); used = num('/sys/fs/cgroup/memory/memory.usage_in_bytes'); }
+  if (!Number.isFinite(limit) || limit <= 0 || limit >= 2 ** 60) return Infinity; // "max" or v1's "no limit"
+  return Math.max(0, limit - (Number.isFinite(used) ? used : 0));
+}
+
 // The newest few, under the size limit; everything else goes. keepName (one name or a list: the one just saved, the
 // one about to be loaded) is never removed, and counts first. A tmp- file left by a save that never finished goes too.
 export function tidyPlaces(dir, { keep = PLACES_KEEP, maxBytes = PLACES_MAX_BYTES, keepName = '' } = {}) {
