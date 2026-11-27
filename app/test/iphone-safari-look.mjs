@@ -1,0 +1,59 @@
+// Bob for iPhone, on GitHub's Mac (.github/workflows/iphone.yml): opens the phone screen (/phone/) in Safari's own
+// engine (Playwright WebKit, sized like an iPhone 16 Pro) against a real Bob with no brain, and fails on any page
+// error or blocked script. Not part of npm test: it needs WebKit, which only the iPhone workflow installs.
+// A simulator, not a phone: it can't show a real iPhone's memory limit, speed or heat.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import http from 'node:http';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { webkit, devices } from 'playwright';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const out = path.resolve(process.argv[2] || 'iphone-shots');
+fs.mkdirSync(out, { recursive: true });
+const PORT = Number(process.env.BOB_PORT || 7795);
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-iphone-look-'));
+const example = JSON.parse(fs.readFileSync(path.join(root, 'config.example.json'), 'utf8').replace(/\r\n/g, '\n'));
+fs.writeFileSync(path.join(tmp, 'config.json'), JSON.stringify({ ...example, engine: 'ollama' }));
+const bob = spawn(process.execPath, [path.join(root, 'src', 'server.js')], { env: { ...process.env, BOB_CONFIG: path.join(tmp, 'config.json'), BOB_AGENT_DIR: path.join(tmp, 'Bob home'), BOB_OLLAMA_URL: 'http://127.0.0.1:9', BOB_PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'pipe'] });
+const up = async () => { for (let i = 0; i < 60; i++) { const ok = await new Promise((r) => http.get({ host: '127.0.0.1', port: PORT, path: '/phone/' }, (res) => { res.resume(); r(res.statusCode === 200); }).on('error', () => r(false))); if (ok) return true; await new Promise((r) => setTimeout(r, 500)); } return false; };
+
+const problems = [];
+let browser;
+try {
+  if (!(await up())) throw new Error('Bob did not start');
+  browser = await webkit.launch();
+  const phone = devices['iPhone 15 Pro'] || devices['iPhone 14 Pro'];
+  const ctx = await browser.newContext({ ...phone, viewport: { width: 402, height: 874 }, screen: { width: 402, height: 874 } }); // 16 Pro size
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => problems.push(`page error: ${e.message}`));
+  page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource.*(401|404)|EventSource/.test(m.text())) problems.push(`console: ${m.text()}`); });
+  page.on('requestfailed', (r) => { if (!/\/api\/events/.test(r.url())) problems.push(`failed: ${r.url()} ${r.failure()?.errorText || ''}`); });
+  await page.goto(`http://127.0.0.1:${PORT}/phone/`, { waitUntil: 'load' });
+  await page.waitForTimeout(2500);
+  await page.screenshot({ path: path.join(out, '1-chat.png') });
+  const bridge = await page.evaluate(() => Boolean(globalThis.BobPhone?.web));
+  if (!bridge) problems.push('the web bridge did not load');
+  await page.click('#open-menu');
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: path.join(out, '2-menu.png') });
+  if (await page.locator('#menu').isHidden()) problems.push('the menu did not open');
+  await page.locator('#menu .back').first().click();
+  await page.fill('#text', 'Hello from the iPhone check');
+  await page.screenshot({ path: path.join(out, '3-typing.png') });
+  // Leaving the screen and coming back (PR #373): no errors, page still answers.
+  await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: path.join(out, '4-back-again.png') });
+} catch (e) {
+  problems.push(`check stopped: ${e.message}`);
+} finally {
+  await browser?.close();
+  bob.kill();
+  fs.rmSync(tmp, { recursive: true, force: true });
+}
+for (const p of problems) console.log(`FAIL ${p}`);
+console.log(problems.length ? `${problems.length} problem(s) on the phone screen in WebKit` : 'PASS the phone screen opens in WebKit (iPhone 16 Pro size) with no errors');
+process.exit(problems.length ? 1 : 0);
