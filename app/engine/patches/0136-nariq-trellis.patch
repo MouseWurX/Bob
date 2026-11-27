@@ -1831,7 +1831,7 @@ index efe65af..0909933 100644
      // Map from first_node_ptr to cuda_graph - allows multiple graphs per context
      // when the computation is split across CPU/GPU (e.g., with --n-cpu-moe)
 diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
-index 97ecfd3..cd25d10 100644
+index 97ecfd3..461543a 100644
 --- a/ggml/src/ggml-cuda/ggml-cuda.cu
 +++ b/ggml/src/ggml-cuda/ggml-cuda.cu
 @@ -30,6 +30,7 @@
@@ -1842,13 +1842,15 @@ index 97ecfd3..cd25d10 100644
  #include "ggml-cuda/getrows.cuh"
  #include "ggml-cuda/im2col.cuh"
  #include "ggml-cuda/mmf.cuh"
-@@ -3032,6 +3033,14 @@ static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct gg
+@@ -3032,6 +3033,16 @@ static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct gg
                      return false;
              }
              break;
 +        case GGML_OP_TRELLIS:
-+            // Lamplight 0136: libtrellis on sm_80+, the own kernels elsewhere
-+            if (ggml_cuda_trellis_use_lib(ggml_cuda_info().devices[ctx.device].cc, dst)) {
++            // Lamplight 0136: libtrellis on sm_80+, the own kernels elsewhere; long batches through the exact q8_0
++            // decode and MMQ (int8 tensor cores) on every card
++            if (ggml_cuda_trellis_use_lib(ggml_cuda_info().devices[ctx.device].cc, dst) &&
++                !(ggml_cuda_trellis_own_supported(dst) && ggml_cuda_trellis_q8(ggml_cuda_info().devices[ctx.device].cc, dst, true))) {
 +                ggml_cuda_op_trellis(ctx, dst);
 +            } else {
 +                ggml_cuda_op_trellis_own(ctx, dst);
@@ -1857,7 +1859,7 @@ index 97ecfd3..cd25d10 100644
          case GGML_OP_GLU:
              switch (ggml_get_glu_op(dst)) {
                  case GGML_GLU_OP_REGLU:
-@@ -4647,6 +4656,26 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph
+@@ -4647,6 +4658,26 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph
  
      ggml_tensor * node = cgraph->nodes[i];
  
@@ -1884,7 +1886,7 @@ index 97ecfd3..cd25d10 100644
      if (node->op == GGML_OP_MUL_MAT_ID && cuda_ctx->stream_context().concurrent_events.empty() &&
              ggml_cuda_match_shared_expert(cgraph, i, i + 3) &&
              ggml_cuda_should_fuse_mul_mat_vec_q(cgraph->nodes[i + 2]->src[1])) {
-@@ -5734,6 +5763,14 @@ static enum ggml_status ggml_backend_cuda_graph_compute(ggml_backend_t backend,
+@@ -5734,6 +5765,14 @@ static enum ggml_status ggml_backend_cuda_graph_compute(ggml_backend_t backend,
  
      ggml_cuda_set_device(cuda_ctx->device);
  
@@ -1899,7 +1901,7 @@ index 97ecfd3..cd25d10 100644
      bool use_cuda_graph             = false;
      bool cuda_graph_update_required = false;
      const void * graph_key = nullptr;
-@@ -6631,11 +6668,20 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
+@@ -6631,11 +6670,20 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
                  default:
                      return false;
              }
@@ -4787,19 +4789,21 @@ index 0000000..b79a79f
 +}
 diff --git a/ggml/src/ggml-cuda/trellis-own.cu b/ggml/src/ggml-cuda/trellis-own.cu
 new file mode 100644
-index 0000000..e907b7d
+index 0000000..1447252
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/trellis-own.cu
-@@ -0,0 +1,462 @@
+@@ -0,0 +1,691 @@
 +// Lamplight 0136 (NariQ trellis, nariq/FORMAT.md): GGML_OP_TRELLIS without libtrellis, for every CUDA card.
 +// libtrellis needs sm_80+ (and is built for those archs only); RTX 20 / GTX 16 / GTX 10 cards and shapes libtrellis
 +// refuses run here instead. The same steps as the Vulkan backend (vulkan-shaders/trellis_*.comp):
 +//   input side: gather pin, times pre, the side's butterflies per run in shared memory, then the Paley cross (kind 2)
-+//   product: a decode GEMV for short batches; for long ones decode to f16 (exact integers), the per-16 scale onto the
-+//            input, and cuBLAS
++//   product: a decode GEMV for short batches; for long ones the coded values (whole numbers -126..126) decoded exactly
++//            into q8_0 blocks (scale 1), the per-16 scale onto the input, and llama.cpp's own int8 product (MMQ, which
++//            rounds the input to q8_1 as it does for every quantized weight); where MMQ is not used, f16 and cuBLAS
 +//   output side: the Paley cross^T, the butterflies, times post, then the gather pout
 +// y = gather_pout(post * T_rows^T(W^ T_cols(pre * gather_pin(x))))
 +#include "trellis.cuh"
++#include "mmq.cuh"
 +
 +#include <cmath>
 +#include <cstdlib>
@@ -5031,6 +5035,109 @@ index 0000000..e907b7d
 +    }
 +}
 +
++// trl_mv with 8 warps a block and each tile's words read by the warp in one coalesced load (lane l holds word l), the
++// 4 words a lane needs then come by shuffle instead of 4 scattered loads; two tiles in flight per warp
++// (widths 5 and 6 have 40 and 48 words a tile: lane l holds words l and l + 32)
++template <int BITS>
++__device__ __forceinline__ void trl_decode8_shfl(uint32_t word, uint32_t word_hi, int lane, float (&v)[8]) {
++    constexpr uint32_t NW = 8 * BITS, TOTAL = 256 * BITS;
++    const uint32_t start = ((8u * lane + 1u) * BITS + TOTAL - 16u) % TOTAL;
++    const uint32_t w = start >> 5, o = start & 31u;
++    uint32_t q[4];
++#pragma unroll
++    for (int i = 0; i < 4; ++i) {
++        uint32_t src = w + i;
++        src = src >= NW ? src - NW : src;
++        const uint32_t lo = __shfl_sync(0xffffffffu, word, (int) (src & 31u));
++        if constexpr (NW > 32) {
++            const uint32_t hi = __shfl_sync(0xffffffffu, word_hi, (int) (src & 31u));
++            q[i] = src >= 32u ? hi : lo;
++        } else {
++            q[i] = lo;
++        }
++    }
++#pragma unroll
++    for (int j = 0; j < 8; ++j) {
++        const uint32_t oj = o + j * BITS;
++        const uint32_t wi = oj >> 5;
++        v[j] = trl_value(trl_state(q[wi], q[wi + 1], oj & 31u));
++    }
++}
++
++template <int BITS, int NT>
++__global__ void __launch_bounds__(256) trl_mv2(const uint32_t * __restrict__ q, const half * __restrict__ s16,
++                                               const float * __restrict__ a, float * __restrict__ y, int K, int N, int T) {
++    constexpr int NW = 8 * BITS, G = 8;
++    const int J = blockIdx.x;
++    const int t0 = blockIdx.y * NT;
++    const int lane = threadIdx.x & 31, g = threadIdx.x >> 5;
++    const int c = 2 * (lane & 3);
++    const int kt = K / 16;
++    const uint32_t * qrow = q + (int64_t) J * kt * NW;
++    float acc0[NT], acc1[NT];
++#pragma unroll
++    for (int t = 0; t < NT; ++t) {
++        acc0[t] = acc1[t] = 0.0f;
++    }
++    auto load = [&](int i, uint32_t & lo, uint32_t & hi) {
++        const uint32_t * t = qrow + (int64_t) i * NW;
++        lo = lane < NW ? t[lane] : 0u;
++        hi = NW > 32 && lane + 32 < NW ? t[lane + 32] : 0u;
++    };
++    auto tile = [&](int i, uint32_t word, uint32_t word_hi) {
++        float v[8];
++        trl_decode8_shfl<BITS>(word, word_hi, lane, v);
++        const float s = __half2float(s16[i]);
++#pragma unroll
++        for (int t = 0; t < NT; ++t) {
++            if (t0 + t < T) {
++                const float * xb = a + (int64_t) (t0 + t) * K + 16 * i + c;
++                const float x0 = xb[0], x1 = xb[1], x8 = xb[8], x9 = xb[9];
++                acc0[t] += s * (v[0] * x0 + v[1] * x1 + v[2] * x8 + v[3] * x9);
++                acc1[t] += s * (v[4] * x0 + v[5] * x1 + v[6] * x8 + v[7] * x9);
++            }
++        }
++    };
++    int i = g;
++    for (; i + G < kt; i += 2 * G) {
++        uint32_t a0, b0, a1, b1;
++        load(i, a0, b0);
++        load(i + G, a1, b1);
++        tile(i, a0, b0);
++        tile(i + G, a1, b1);
++    }
++    if (i < kt) {
++        uint32_t a0, b0;
++        load(i, a0, b0);
++        tile(i, a0, b0);
++    }
++    __shared__ float red[NT][G][16];
++#pragma unroll
++    for (int t = 0; t < NT; ++t) {
++        float s0 = acc0[t], s1 = acc1[t];
++        s0 += __shfl_xor_sync(0xffffffff, s0, 1);
++        s0 += __shfl_xor_sync(0xffffffff, s0, 2);
++        s1 += __shfl_xor_sync(0xffffffff, s1, 1);
++        s1 += __shfl_xor_sync(0xffffffff, s1, 2);
++        if ((lane & 3) == 0) {
++            red[t][g][lane >> 2] = s0;
++            red[t][g][(lane >> 2) + 8] = s1;
++        }
++    }
++    __syncthreads();
++    for (int e = threadIdx.x; e < NT * 16; e += 256) {
++        const int t = e / 16, row = e % 16;
++        if (t0 + t < T) {
++            float sum = 0.0f;
++#pragma unroll
++            for (int k = 0; k < G; ++k) {
++                sum += red[t][k][row];
++            }
++            y[(int64_t) (t0 + t) * N + 16 * J + row] = sum;
++        }
++    }
++}
++
 +// W^ rows [16 J0, 16 (J0 + gridDim.y)) unscaled to f16 (rows x K); four tiles per block of 128
 +template <int BITS>
 +__global__ void __launch_bounds__(128) trl_dequant(const uint32_t * __restrict__ q, half * __restrict__ w, int K, int J0) {
@@ -5051,6 +5158,38 @@ index 0000000..e907b7d
 +    }
 +}
 +
++// W^ rows [16 J0, 16 (J0 + gridDim.y)) unscaled into q8_0 blocks (d = 1; the values are whole numbers in -126..126)
++template <int BITS>
++__global__ void __launch_bounds__(128) trl_dequant_q8(const uint32_t * __restrict__ q, block_q8_0 * __restrict__ w, int K, int J0) {
++    const int kt = K / 16, kb = K / 32;
++    const int lane = threadIdx.x & 31;
++    const int i = blockIdx.x * 4 + (threadIdx.x >> 5);
++    const int J = blockIdx.y;
++    if (i >= kt) {
++        return;
++    }
++    float v[8];
++    trl_decode8<BITS>(q + ((int64_t) (J0 + J) * kt + i) * (8 * BITS), lane, v);
++#pragma unroll
++    for (int j = 0; j < 8; ++j) {
++        const int r = lane / 4 + 8 * (j / 4);
++        const int c = 16 * i + 2 * (lane % 4) + j % 2 + 8 * (j / 2 % 2);
++        w[((int64_t) 16 * J + r) * kb + c / 32].qs[c % 32] = (int8_t) (int) v[j];
++    }
++    if ((i & 1) == 0 && lane < 16) {
++        w[((int64_t) 16 * J + lane) * kb + i / 2].d = __float2half(1.0f);
++    }
++}
++
++// f[t][k] = a[t][k] * s16[k / 16]: the per-16 scale onto the input of the int8 product
++__global__ void trl_scale_f32(const float * a, const half * s16, float * f, int K) {
++    const int k = blockIdx.x * blockDim.x + threadIdx.x;
++    const int64_t t = blockIdx.y;
++    if (k < K) {
++        f[t * K + k] = a[t * K + k] * __half2float(s16[k / 16]);
++    }
++}
++
 +// h[t][k] = half(a[t][k] * s16[k / 16]): the per-16 scale onto the input of the f16 product
 +__global__ void trl_scale_half(const float * a, const half * s16, half * h, int K) {
 +    const int k = blockIdx.x * blockDim.x + threadIdx.x;
@@ -5060,8 +5199,30 @@ index 0000000..e907b7d
 +    }
 +}
 +
++// the GEMV: 2 (trl_mv2, the default) or 1 (the first one), LAMPLIGHT_TRELLIS_CUDA_MV, for comparisons
++int trl_mv_kind() {
++    static const int v = [] {
++        const char * e = getenv("LAMPLIGHT_TRELLIS_CUDA_MV");
++        return e && atoi(e) == 1 ? 1 : 2;
++    }();
++    return v;
++}
++
 +template <int BITS>
 +void trl_mv_launch(const uint32_t * q, const half * s16, const float * a, float * y, int K, int N, int T, cudaStream_t st) {
++    if (trl_mv_kind() == 2) {
++        const dim3 b(256);
++        if (T == 1) {
++            trl_mv2<BITS, 1><<<dim3(N / 16, 1), b, 0, st>>>(q, s16, a, y, K, N, T);
++        } else if (T == 2) {
++            trl_mv2<BITS, 2><<<dim3(N / 16, 1), b, 0, st>>>(q, s16, a, y, K, N, T);
++        } else if (T <= 4) {
++            trl_mv2<BITS, 4><<<dim3(N / 16, 1), b, 0, st>>>(q, s16, a, y, K, N, T);
++        } else {
++            trl_mv2<BITS, 8><<<dim3(N / 16, (T + 7) / 8), b, 0, st>>>(q, s16, a, y, K, N, T);
++        }
++        return;
++    }
 +    const dim3 b(128);
 +    if (T == 1) {
 +        trl_mv<BITS, 1><<<dim3(N / 16, 1), b, 0, st>>>(q, s16, a, y, K, N, T);
@@ -5097,6 +5258,28 @@ index 0000000..e907b7d
 +    }
 +}
 +
++void trl_dequant_q8_any(int bits, const uint32_t * q, block_q8_0 * w, int K, int J0, int nJ, cudaStream_t st) {
++    const dim3 grid((K / 16 + 3) / 4, nJ);
++    switch (bits) {
++        case 1: trl_dequant_q8<1><<<grid, 128, 0, st>>>(q, w, K, J0); break;
++        case 2: trl_dequant_q8<2><<<grid, 128, 0, st>>>(q, w, K, J0); break;
++        case 3: trl_dequant_q8<3><<<grid, 128, 0, st>>>(q, w, K, J0); break;
++        case 4: trl_dequant_q8<4><<<grid, 128, 0, st>>>(q, w, K, J0); break;
++        case 5: trl_dequant_q8<5><<<grid, 128, 0, st>>>(q, w, K, J0); break;
++        default: trl_dequant_q8<6><<<grid, 128, 0, st>>>(q, w, K, J0); break;
++    }
++}
++
++// from this many tokens the int8 product (LAMPLIGHT_TRELLIS_CUDA_Q8_MIN; default 65 where libtrellis runs, after its
++// GEMV's 64, else 16)
++int trl_q8_min(bool lib) {
++    static const int v = [] {
++        const char * e = getenv("LAMPLIGHT_TRELLIS_CUDA_Q8_MIN");
++        return e ? atoi(e) : -1;
++    }();
++    return v >= 0 ? v : (lib ? 65 : 16);
++}
++
 +int trl_mm_min() {
 +    static const int v = [] {
 +        const char * e = getenv("LAMPLIGHT_TRELLIS_CUDA_MM_MIN");
@@ -5113,6 +5296,14 @@ index 0000000..e907b7d
 +        return e != nullptr && std::string(e) == "own";
 +    }();
 +    return !force_own && GGML_CUDA_CC_IS_NVIDIA(cc) && cc >= GGML_CUDA_CC_AMPERE && ggml_cuda_trellis_supported(op);
++}
++
++bool ggml_cuda_trellis_q8(int cc, const ggml_tensor * op, bool lib) {
++    const ggml_tensor * w = op->src[0];
++    const int64_t T = ggml_nrows(op->src[1]);
++    return w->ne[0] % 32 == 0 && T >= trl_q8_min(lib) && w->buffer != nullptr &&
++        ggml_backend_buffer_get_usage(w->buffer) != GGML_BACKEND_BUFFER_USAGE_COMPUTE &&
++        ggml_cuda_should_use_mmq(GGML_TYPE_Q8_0, cc, T, 0);
 +}
 +
 +bool ggml_cuda_trellis_own_supported(const ggml_tensor * op) {
@@ -5179,12 +5370,24 @@ index 0000000..e907b7d
 +    const trl_x xr = { (const float *) x->data, (int64_t) (x->nb[1] / 4), (int64_t) (x->nb[2] / 4), (int64_t) (x->nb[3] / 4),
 +                       x->ne[1], x->ne[2] };
 +
-+    const bool mm = T >= trl_mm_min();
-+    const int64_t Tc = std::min<int64_t>(T, mm ? 1024 : 65535);
++    const int cc = ggml_cuda_info().devices[ctx.device].cc;
++    const bool q8 = ggml_cuda_trellis_q8(cc, dst, ggml_cuda_trellis_use_lib(cc, dst));
++    const bool mm = !q8 && T >= trl_mm_min();
++    const int64_t Tc = std::min<int64_t>(T, (mm || q8) ? 1024 : 65535);
 +    ggml_cuda_pool_alloc<float> A(ctx.pool(), (size_t) Tc * K), A2(ctx.pool(), (size_t) Tc * K);
 +    ggml_cuda_pool_alloc<float> B(ctx.pool(), (size_t) Tc * N), B2(ctx.pool(), (size_t) Tc * N);
 +    ggml_cuda_pool_alloc<half> W(ctx.pool()), H(ctx.pool());
++    ggml_cuda_pool_alloc<char> Q(ctx.pool());
++    ggml_cuda_pool_alloc<float> F(ctx.pool());
 +    int rows_chunk = 0;
++    const size_t q8_row = (size_t) (K / 32) * sizeof(block_q8_0);
++    const size_t q8_pad = ggml_row_size(GGML_TYPE_Q8_0, MATRIX_ROW_PADDING);  // MMQ may read this far past the last row
++    if (q8) {
++        rows_chunk = (int) std::min<int64_t>(N, std::max<int64_t>(16, (int64_t) ((64ull << 20) / q8_row) / 16 * 16));
++        Q.alloc((size_t) rows_chunk * q8_row + q8_pad);
++        F.alloc((size_t) Tc * K);
++        CUDA_CHECK(cudaMemsetAsync(Q.ptr + (size_t) rows_chunk * q8_row, 0, q8_pad, st));
++    }
 +    if (mm) {
 +        rows_chunk = (int) std::min<int64_t>(N, std::max<int64_t>(16, ((64ll << 20) / (2ll * K)) / 16 * 16));
 +        W.alloc((size_t) rows_chunk * K);
@@ -5217,7 +5420,35 @@ index 0000000..e907b7d
 +        }
 +
 +        // product
-+        if (mm) {
++        if (q8) {
++            trl_scale_f32<<<dim3((K + 255) / 256, (unsigned) tc), 256, 0, st>>>(in, s16, F.ptr, K);
++            for (int n0 = 0; n0 < N; n0 += rows_chunk) {
++                const int nc = std::min(rows_chunk, N - n0);
++                trl_dequant_q8_any(bits, q, (block_q8_0 *) Q.ptr, K, n0 / 16, nc / 16, st);
++                // MMQ on views: the q8_0 rows (in the coded weight's buffer's name, so MMQ clears no padding of
++                // its own), the scaled input, and rows n0 .. n0 + nc of B
++                ggml_tensor qw = {}, xf = {}, yb = {};
++                qw.type = GGML_TYPE_Q8_0;
++                qw.buffer = w->buffer;
++                qw.ne[0] = K; qw.ne[1] = nc; qw.ne[2] = qw.ne[3] = 1;
++                qw.nb[0] = sizeof(block_q8_0); qw.nb[1] = q8_row; qw.nb[2] = qw.nb[3] = q8_row * nc;
++                qw.data = Q.ptr;
++                xf.type = GGML_TYPE_F32;
++                xf.buffer = w->buffer;
++                xf.ne[0] = K; xf.ne[1] = tc; xf.ne[2] = xf.ne[3] = 1;
++                xf.nb[0] = sizeof(float); xf.nb[1] = (size_t) K * sizeof(float); xf.nb[2] = xf.nb[3] = xf.nb[1] * tc;
++                xf.data = F.ptr;
++                yb.type = GGML_TYPE_F32;
++                yb.op = GGML_OP_MUL_MAT;
++                yb.buffer = w->buffer;
++                yb.ne[0] = nc; yb.ne[1] = tc; yb.ne[2] = yb.ne[3] = 1;
++                yb.nb[0] = sizeof(float); yb.nb[1] = (size_t) N * sizeof(float); yb.nb[2] = yb.nb[3] = yb.nb[1] * tc;
++                yb.data = B.ptr + n0;
++                yb.src[0] = &qw;
++                yb.src[1] = &xf;
++                ggml_cuda_mul_mat_q(ctx, &qw, &xf, nullptr, &yb);
++            }
++        } else if (mm) {
 +            trl_scale_half<<<dim3((K + 255) / 256, (unsigned) tc), 256, 0, st>>>(in, s16, H.ptr, K);
 +            const float alpha = 1.0f, beta = 0.0f;
 +            cublasHandle_t h = ctx.cublas_handle();
@@ -5857,10 +6088,10 @@ index 0000000..82dbce2
 +#endif
 diff --git a/ggml/src/ggml-cuda/trellis.cuh b/ggml/src/ggml-cuda/trellis.cuh
 new file mode 100644
-index 0000000..45f5fb1
+index 0000000..b90ff9e
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/trellis.cuh
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,37 @@
 +#pragma once
 +
 +#include "common.cuh"
@@ -5873,6 +6104,8 @@ index 0000000..45f5fb1
 +// Lamplight 0136: GGML_OP_TRELLIS without libtrellis (trellis-own.cu), for cards below sm_80 and shapes libtrellis
 +// refuses; LAMPLIGHT_TRELLIS_CUDA=own takes it on every card (for speed comparisons)
 +bool ggml_cuda_trellis_own_supported(const ggml_tensor * op);
++// whether this product reads its weights as exact q8_0 through MMQ (long batches; lib: whether libtrellis could run it)
++bool ggml_cuda_trellis_q8(int cc, const ggml_tensor * op, bool lib);
 +void ggml_cuda_op_trellis_own(ggml_backend_cuda_context & ctx, ggml_tensor * dst);
 +// whether this card runs op through libtrellis (else the own kernels)
 +bool ggml_cuda_trellis_use_lib(int cc, const ggml_tensor * op);
@@ -8704,7 +8937,7 @@ index 36e48a0..dd590a0 100644
  
  if (BUILD_SHARED_LIBS)
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
-index 31c4205..5192310 100644
+index 31c4205..ebfc6d0 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
 @@ -35,6 +35,7 @@
@@ -8715,7 +8948,7 @@ index 31c4205..5192310 100644
  #include <random>
  #include <regex>
  #include <set>
-@@ -2670,6 +2671,277 @@ struct test_mul_mat_reorder_then_big_batch : public test_case {
+@@ -2670,6 +2671,278 @@ struct test_mul_mat_reorder_then_big_batch : public test_case {
      }
  };
  
@@ -8791,9 +9024,10 @@ index 31c4205..5192310 100644
 +        return v;
 +    }
 +
-+    // the CUDA kernels round the activations to FP16, with one scale per 128 inputs
++    // the CUDA kernels round the activations to FP16, with one scale per 128 inputs; Lamplight 0136: long batches
++    // take MMQ, which rounds them to q8_1 as for every quantized MUL_MAT, so the bar is test_mul_mat's
 +    double max_nmse_err() override {
-+        return 1e-5;
++        return 5e-4;
 +    }
 +
 +    test_trellis(ggml_type type, int64_t k, int64_t n, int64_t t, trellis_side rows, trellis_side cols,
@@ -8993,7 +9227,7 @@ index 31c4205..5192310 100644
  // GGML_OP_GET_ROWS_BACK
  struct test_get_rows_back : public test_case {
      const ggml_type type;
-@@ -10899,6 +11171,47 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+@@ -10899,6 +11172,47 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
      }
      test_cases.emplace_back(new test_get_rows(GGML_TYPE_F32, 256, 8, 2, 1, 1, false, true, 3));
  
@@ -9041,13 +9275,13 @@ index 31c4205..5192310 100644
      test_cases.emplace_back(new test_get_rows_back(GGML_TYPE_F32, 1, 8, 2, 1, false));
      test_cases.emplace_back(new test_get_rows_back(GGML_TYPE_F32, 1, 70000, 4, 1, false)); // row count > CUDA grid-y limit (65535)
      for (ggml_type type : all_types) {
-@@ -13698,6 +14011,19 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+@@ -13698,6 +14012,19 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
  static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
      std::vector<std::unique_ptr<test_case>> test_cases;
  
 +    // Lamplight 0136: NariQ coded linears against plain GGUF weights of about the same size, at Qwen3.8-27B's MLP shape
-+    // (5120 -> 17408 and back), one token (decode) and 512 (prefill); the speed bar is "not slower than the plain type"
-+    for (int t : {1, 512}) {
++    // (5120 -> 17408 and back), one token (decode) to 512 (prefill); the speed bar is "not slower than the plain type"
++    for (int t : {1, 4, 16, 32, 64, 128, 512}) {
 +        for (ggml_type type : {GGML_TYPE_TRL2, GGML_TYPE_TRL3, GGML_TYPE_TRL4}) {
 +            test_cases.emplace_back(new test_trellis(type, 5120, 17408, t, {1, 128, 1}, {1, 128, 1}));
 +            test_cases.emplace_back(new test_trellis(type, 17408, 5120, t, {1, 128, 1}, {1, 128, 1}));
@@ -9537,13 +9771,14 @@ index 0000000..5befb84
 +}
 diff --git a/tests/test-trellis.cpp b/tests/test-trellis.cpp
 new file mode 100644
-index 0000000..05f564e
+index 0000000..18613f7
 --- /dev/null
 +++ b/tests/test-trellis.cpp
-@@ -0,0 +1,403 @@
+@@ -0,0 +1,413 @@
 +#include "ggml.h"
 +#include "ggml-backend.h"
 +
++#include <algorithm>
 +#include <cmath>
 +#include <string>
 +#include <cstdio>
@@ -9572,6 +9807,12 @@ index 0000000..05f564e
 +}
 +
 +static bool verbose = false;
++
++// Lamplight 0136: the fewest tokens for which CUDA may take its int8 product (see trellis-own.cu)
++static int cuda_q8_min() {
++    const char * e = std::getenv("LAMPLIGHT_TRELLIS_CUDA_Q8_MIN");
++    return e ? std::atoi(e) : 16;
++}
 +
 +static void check_close(float actual, double expected) {
 +    check(std::isfinite(actual) && std::abs(actual - expected) < 2e-4 * (1 + std::abs(expected)), "trellis numerical mismatch");
@@ -9755,7 +9996,7 @@ index 0000000..05f564e
 +    const char * cuda_env = std::getenv("LAMPLIGHT_TRELLIS_CUDA");
 +    const bool cuda_own = cuda_env != nullptr && std::string(cuda_env) == "own";
 +    const bool vk_mm = (bname.find("Vulkan") == 0 && columns >= 32) ||
-+        (bname.find("CUDA") == 0 && (!cuda_own || columns >= 32));
++        (bname.find("CUDA") == 0 && (!cuda_own || columns >= std::min(32, cuda_q8_min())));
 +    double err2 = 0, ref2 = 0;
 +    for (int c = 0; c < columns; ++c) {
 +        for (int n = 0; n < N; ++n) {
@@ -9772,7 +10013,10 @@ index 0000000..05f564e
 +    }
 +    if (verbose || vk_mm) {
 +        if (verbose) { std::printf("  %s TRL%d mode=%d tokens=%d nmse %.3g\n", bname.c_str(), bits, mode, columns, err2/(ref2 + 1e-30)); }
-+        check(err2 <= 1e-6*ref2, "device product error too large");
++        // CUDA from 16 tokens (or LAMPLIGHT_TRELLIS_CUDA_Q8_MIN) may take MMQ (q8_1 inputs, as for every quantized
++        // weight): test-backend-ops' MUL_MAT bar
++        const double bar = bname.find("CUDA") == 0 && columns >= cuda_q8_min() ? 5e-4 : 1e-6;
++        check(err2 <= bar*ref2, "device product error too large");
 +    }
 +    ggml_backend_buffer_free(buffer);
 +    ggml_free(ctx);
@@ -9925,7 +10169,7 @@ index 0000000..05f564e
 +            const char * cuda_env = std::getenv("LAMPLIGHT_TRELLIS_CUDA");
 +            const bool cuda_own = cuda_env != nullptr && std::string(cuda_env) == "own";
 +            const bool f16_in = (dname.find("Vulkan") == 0 && columns >= 32) ||
-+                (dname.find("CUDA") == 0 && (!cuda_own || columns >= 32));
++                (dname.find("CUDA") == 0 && (!cuda_own || columns >= std::min(32, cuda_q8_min())));
 +            if (f16_in) {
 +                double err2 = 0, ref2 = 0;
 +                for (size_t i = 0; i < actual.size(); ++i) {
@@ -9934,7 +10178,7 @@ index 0000000..05f564e
 +                    ref2 += double(expected[i])*expected[i];
 +                }
 +                if (verbose) { std::printf("  hybrid %s bands=%d tokens=%d nmse %.3g\n", dname.c_str(), int(bands), columns, err2/(ref2 + 1e-30)); }
-+                check(err2 <= 1e-6*ref2, "hybrid product error too large");
++                check(err2 <= (dname.find("CUDA") == 0 && columns >= cuda_q8_min() ? 5e-4 : 1e-6)*ref2, "hybrid product error too large");
 +            } else {
 +                for (size_t i = 0; i < actual.size(); ++i) { check_close(actual[i], expected[i]); }
 +            }
