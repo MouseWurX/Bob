@@ -10310,10 +10310,10 @@ index 0000000..3220c35
 +}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mvq.comp b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mvq.comp
 new file mode 100644
-index 0000000..e49b9ac
+index 0000000..53427eb
 --- /dev/null
 +++ b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mvq.comp
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,138 @@
 +#version 450
 +
 +// Lamplight 0136: y = W^ x for short batches on integer dot products: the decoded values v (-126..126) as packed
@@ -10356,34 +10356,31 @@ index 0000000..e49b9ac
 +layout(binding = 3, std430) writeonly buffer B { float data_b[]; };
 +layout(binding = 4, std430) readonly buffer P { uint data_p[]; };
 +
-+// the INT8 grid as an integer
-+int trellis_int(uint state) {
-+    const uint h = state * 0x83DCD12Du;
-+    return int((((h >> 2) & 0x3f3f3f3fu) * 0x01010101u) >> 24) - 126;
-+}
 +
 +uint trellis_state(uint hi, uint lo, uint o) {
 +    return ((hi << o) | ((lo >> 1u) >> (31u - o))) >> 16u;
 +}
 +
-+// a lane's 8 values of the tile at word `tile`, packed: lo = output a / 4, inputs 2 (a % 4) + {0, 1, 8, 9}; hi = output + 8
-+void trellis_decode_packed(uint tile, uint lane, out int lo, out int hi) {
-+    const uint NW = 8u * BITS, TOTAL = 256u * BITS;
-+    const uint start = ((8u * lane + 1u) * BITS + TOTAL - 16u) % TOTAL;
-+    const uint w = start >> 5, o = start & 31u;
++// a lane's 8 values of the tile at word `tile`, as unsigned bytes v + 126 (0..252): lo = output a / 4, inputs
++// 2 (a % 4) + {0, 1, 8, 9}; hi = output + 8. The lane's stream from bit o is aligned once (wi, o: per lane, worked out
++// by the caller), so each window's word and shift are constants (run 13: 1.4-2x faster one token in trellis_mv3).
++void trellis_decode_packed(uint tile, const uint wi[4], uint o, out uint lo, out uint hi) {
 +    uint q[4];
 +    [[unroll]] for (uint i = 0; i < 4u; ++i) {
-+        q[i] = data_q[tile + (w + i) % NW];
++        q[i] = data_q[tile + wi[i]];
 +    }
-+    uint pk[2] = { 0u, 0u };
++    const uint a0 = (q[0] << o) | ((q[1] >> 1u) >> (31u - o));
++    const uint a1 = (q[1] << o) | ((q[2] >> 1u) >> (31u - o));
++    const uint a2 = (q[2] << o) | ((q[3] >> 1u) >> (31u - o));
++    uint m[8];
 +    [[unroll]] for (uint j = 0; j < 8u; ++j) {
-+        const uint oj = o + j * BITS;
-+        const uint wi = oj >> 5;
-+        const int v = trellis_int(trellis_state(q[wi], q[wi + 1u], oj & 31u));
-+        pk[j / 4u] |= (uint(v) & 255u) << (8u * (j % 4u));
++        const uint bo = j * BITS;
++        const uint st = bo < 32u ? trellis_state(a0, a1, bo) : trellis_state(a1, a2, bo - 32u);
++        // the four 6-bit fields' sum in the top byte
++        m[j] = (((st * 0x83DCD12Du) >> 2) & 0x3f3f3f3fu) * 0x01010101u;
 +    }
-+    lo = int(pk[0]);
-+    hi = int(pk[1]);
++    lo = (m[0] >> 24) | ((m[1] >> 16) & 0xff00u) | ((m[2] >> 8) & 0xff0000u) | (m[3] & 0xff000000u);
++    hi = (m[4] >> 24) | ((m[5] >> 16) & 0xff00u) | ((m[6] >> 8) & 0xff0000u) | (m[7] & 0xff000000u);
 +}
 +
 +shared float red[NT * 256];
@@ -10393,7 +10390,14 @@ index 0000000..e49b9ac
 +    const uint tid = gl_LocalInvocationID.x;
 +    const uint lane = tid & 31u, g = tid >> 5;
 +    const uint kt = p.K / 16u;
-+    const uint nw = 8u * BITS;
++    const uint nw = 8u * BITS, TOTAL = 256u * BITS;
++    uint st0 = (8u * lane + 1u) * BITS + TOTAL - 16u;
++    if (st0 >= TOTAL) st0 -= TOTAL;
++    const uint w0 = st0 >> 5, o = st0 & 31u;
++    uint wi[4];
++    [[unroll]] for (uint k = 0; k < 4u; ++k) {
++        wi[k] = w0 + k >= nw ? w0 + k - nw : w0 + k;
++    }
 +
 +    uint e = 0u, start = gl_WorkGroupID.y * NT, n = min(NT, p.T - min(p.T, start));
 +    if (EXPERTS != 0u) {
@@ -10417,15 +10421,17 @@ index 0000000..e49b9ac
 +        acc1[t] = 0.0;
 +    }
 +    for (uint i = g; i < kt; i += 4u) {
-+        int lo, hi;
-+        trellis_decode_packed(q0 + (J * kt + i) * nw, lane, lo, hi);
++        uint lo, hi;
++        trellis_decode_packed(q0 + (J * kt + i) * nw, wi, o, lo, hi);
 +        [[unroll]] for (uint t = 0; t < NT; ++t) {
 +            if (t < n) {
 +                const uint xi = rows[t] * kt + i;
 +                const int xw = data_xq[xi * 4u + (lane & 3u)];
 +                const float s = data_xs[xi];
-+                acc0[t] += float(dot4(lo, xw)) * s;
-+                acc1[t] += float(dot4(hi, xw)) * s;
++                // v = byte - 126 = (byte ^ 0x80, as a signed byte) + 2: add twice the lane's input sum to each dot
++                const int off = 2 * dot4(0x01010101, xw);
++                acc0[t] += float(dot4(int(lo ^ 0x80808080u), xw) + off) * s;
++                acc1[t] += float(dot4(int(hi ^ 0x80808080u), xw) + off) * s;
 +            }
 +        }
 +    }
