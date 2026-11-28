@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { isReadOnly } from './tool-kinds.js';
 
 export const SKIP_DIRS = new Set(['node_modules', '.git', '.hg', '.svn', 'dist', 'build', 'out', 'target', '.venv', 'venv', '__pycache__', '.pytest_cache', '.mypy_cache', '.next', '.nuxt', '.cache', 'coverage', '.gradle', '.idea', '.vs', 'obj', 'Binaries', 'Intermediate', 'DerivedDataCache', 'Saved']);
 export const MAX_FILE = 5 * 1024 * 1024;   // a bigger file is noted, not copied (Undo leaves it as it is)
@@ -17,7 +18,6 @@ export const MAX_COPY = 300 * 1024 * 1024; // the copy of one project stops grow
 export const MAX_FILES = 20000;
 export const KEEP_MS = 7 * 864e5;
 const MARKERS = ['.git', 'package.json', 'Cargo.toml', 'go.mod', 'pyproject.toml', 'setup.py', 'requirements.txt', 'pom.xml', 'build.gradle', 'build.gradle.kts', 'CMakeLists.txt', 'Makefile', 'composer.json', 'Gemfile', 'pubspec.yaml', 'deno.json'];
-const CHANGERS = new Set(['write_file', 'edit_file', 'run_command']);
 const dirOf = (cfg) => path.join(cfg.dataDir, 'job-undo');
 const hash = (b) => crypto.createHash('sha256').update(b).digest('hex');
 const ownJob = (job) => !job?.guest;
@@ -40,13 +40,30 @@ export function projectRoot(dir, { exists = fs.existsSync, home = os.homedir() }
   if (!root || path.parse(root).root === root || path.resolve(home) === root) return null;
   return root;
 }
-// The folder a tool works in, on disk. brain.realPath: the Lab's test world gives the brain made-up paths.
-const folderFor = (brain, name, args) => {
-  const raw = String((name === 'run_command' ? args?.cwd : args?.path) || '').trim();
-  const p = raw && typeof brain.realPath === 'function' ? brain.realPath(raw) || raw : raw;
-  if (!p || !path.isAbsolute(p)) return '';
-  return name === 'run_command' ? p : path.dirname(p);
-};
+// The folders a changing tool works in, on disk: its cwd, and the folder of every full path in its arguments (path,
+// from, to, paths, files...), so a move, rename or delete by file_hands is covered as well as an edit (Nov 28: a
+// job whose first change wasn't write_file, edit_file or run_command got its copy too late). brain.realPath: the Lab's
+// test world gives the brain made-up paths.
+const LOOKS_PATH = /^(?:[A-Za-z]:[\\/]|[\\/]|~[\\/])/;
+export function foldersFor(brain, name, args) {
+  const out = new Set();
+  const add = (raw, isDir) => {
+    const t = String(raw ?? '').trim();
+    if (!t || t.length > 600 || /[\r\n]/.test(t) || !LOOKS_PATH.test(t)) return;
+    const p = typeof brain.realPath === 'function' ? brain.realPath(t) || t : t;
+    if (!path.isAbsolute(p)) return;
+    out.add(isDir ? p : path.dirname(p));
+  };
+  const walkArgs = (v, k, depth = 0) => {
+    if (depth > 3 || v == null) return;
+    if (Array.isArray(v)) { for (const x of v.slice(0, 50)) walkArgs(x, k, depth + 1); return; }
+    if (typeof v === 'object') { for (const [kk, x] of Object.entries(v)) walkArgs(x, kk, depth + 1); return; }
+    if (typeof v === 'string') add(v, /^(?:cwd|folder|dir|root|to_folder|dest(?:ination)?)$/i.test(String(k || '')));
+  };
+  walkArgs(args || {}, '');
+  if (name === 'run_command' && args?.cwd) add(args.cwd, true);
+  return [...out];
+}
 
 // Every file under root (dependency and build folders left out): rel path -> { size, mtimeMs }.
 export function walk(root, { maxFiles = MAX_FILES } = {}) {
@@ -110,17 +127,20 @@ export function changesSince(man) {
 
 // Before a tool runs in a job: the first change in a project keeps its copy.
 export function jobUndoBefore(brain, name, args, ctx) {
-  if (!ctx || !jobUndoOn(brain.cfg) || !ownJob(ctx.job) || !CHANGERS.has(name)) return null;
-  const root = projectRoot(folderFor(brain, name, args));
-  if (!root) return null;
+  if (!ctx || !jobUndoOn(brain.cfg) || !ownJob(ctx.job) || isReadOnly(name, brain.tools?.[name])) return null;
+  const roots = [...new Set(foldersFor(brain, name, args).map((d) => projectRoot(d)).filter(Boolean))];
+  if (!roots.length) return null;
   const cps = (ctx.checkpoints ||= new Map());
-  if (cps.has(root)) return cps.get(root);
-  try {
-    const id = takeCheckpoint(brain.cfg, root, { sessionId: ctx.sessionId || '', askId: ctx.askId || '', jobId: ctx.job?.id || '' });
-    cps.set(root, id);
-    brain.log?.('jobs', `kept a copy of ${root} before the job's first change there (Undo the whole coding job)`);
-    return id;
-  } catch (e) { cps.set(root, null); brain.log?.('warn', `couldn't keep a copy of ${root} for Undo: ${e.message}`); return null; }
+  let first = null;
+  for (const root of roots) {
+    if (cps.has(root)) { first ??= cps.get(root); continue; }
+    try {
+      const id = takeCheckpoint(brain.cfg, root, { sessionId: ctx.sessionId || '', askId: ctx.askId || '', jobId: ctx.job?.id || '' });
+      cps.set(root, id); first ??= id;
+      brain.log?.('jobs', `kept a copy of ${root} before the job's first change there (${name}; Undo the whole coding job)`);
+    } catch (e) { cps.set(root, null); brain.log?.('warn', `couldn't keep a copy of ${root} for Undo: ${e.message}`); }
+  }
+  return first;
 }
 
 // When he answers: a card for each project the job changed. A copy with no changes is dropped.

@@ -133,6 +133,8 @@ const cfg = { dataDir, jobHelps: cleanJobHelps({ jobUndo: true }) };
   fs.rmSync(path.join(root, 'old.txt')); fs.writeFileSync(path.join(root, 'src', 'new.js'), 'new\n'); fs.writeFileSync(path.join(root, 'node_modules', 'x', 'i.js'), 'dep 2\n');
   const bl = { cfg, log() {}, realPath: (p) => p.replace('C:\\you\\repo', root).replace(/\\/g, '/') }, cl = { job: {}, emit() {} };
   check('made-up paths (the Lab) find the same project', jobUndoBefore(bl, 'edit_file', { path: 'C:\\you\\repo\\src\\a.js' }, cl) && [...cl.checkpoints.keys()][0] === root);
+  const cf = { job: {}, emit() {} };
+  check('a move or delete (file_hands) as the first change keeps a copy too', jobUndoBefore(b, 'file_hands', { action: 'move', from: [path.join(root, 'src', 'b.js')], to: path.join(root, 'lib') }, cf) && [...cf.checkpoints.keys()][0] === root);
   const cards = jobUndoFinish(b, ctx);
   check('the card says what changed, made and deleted (commands too, not the dependencies)', cards.length === 1 && cards[0].changed === 2 && cards[0].created === 1 && cards[0].deleted === 1 && said.some((e) => e.type === 'job-undo' && e.id === id) && !cards[0].files.some((f) => /node_modules/.test(f)), JSON.stringify(cards[0]));
   check('the card draws with its one button', /Undo the whole job/.test(jobUndoHtml(cards[0])) && /data-jh-undoall="/.test(jobUndoHtml(cards[0])) && !/data-jh-undoall/.test(jobUndoHtml(cards[0], { local: false })));
