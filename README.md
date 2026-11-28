@@ -461,10 +461,10 @@ Every brain and helper Bob can download from his own catalogue, made from [app/c
 <!-- models:start -->
 <!-- Written by installer/make-model-list.js from app/catalog.json. Don't edit by hand: change the catalogue and run it again. -->
 
-Bob's catalogue has **92 brains** and **19 helpers** for pictures, video, music, voices and memory. Each one is a pinned file, checked against its sha256 when it downloads. **Fits** is the smallest hardware tier it's sized for ([the tiers](#set-up-for-your-hardware)). **Tried in our lab** (12 brains) means it ran on our own PCs before Bob would suggest it. Everything else is listed but never suggested until it's tried. **Size** is the download.
+Bob's catalogue has **93 brains** and **19 helpers** for pictures, video, music, voices and memory. Each one is a pinned file, checked against its sha256 when it downloads. **Fits** is the smallest hardware tier it's sized for ([the tiers](#set-up-for-your-hardware)). **Tried in our lab** (12 brains) means it ran on our own PCs before Bob would suggest it. Everything else is listed but never suggested until it's tried. **Size** is the download.
 
 <details>
-<summary><b>Brains</b> (66)</summary>
+<summary><b>Brains</b> (67)</summary>
 
 | Brain | File | Size | Fits | Licence | Status |
 |---|---|---|---|---|---|
@@ -510,6 +510,7 @@ Bob's catalogue has **92 brains** and **19 helpers** for pictures, video, music,
 | Devstral Small 2 24B | Q4_K_M | 15.2 GB | 16 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Mistral Small 3.2 24B | Q4_K_M | 15.2 GB | 16 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Gemma 4 26B | Q4_0 | 15.4 GB | 16 GB card | Apache 2.0 | Tried in our lab |
+| Qwen3.6 27B (16 GB card version) | UD-Q3_K_XL | 15.7 GB | 16 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | GLM-4.7 Flash 30B-A3B | Q4_K | 18.2 GB | 16 GB card, the rest in RAM | MIT | Unproven in our lab, as we have yet to test |
 | Nemotron 3.5 Lightning 30B-A3B | Q4_0 | 18.9 GB | 16 GB card, the rest in RAM | OpenMDW 1.1 | Unproven in our lab, as we have yet to test |
 | Qwen3 Coder 30B | Q4_K_M | 19 GB | 16 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |

@@ -65,7 +65,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
   check('an old brain has no New tag; its i says the day it came out', !/new-tag/.test(row('qwen2.5-coder-7b')) && /<span class="ic-k">Released<\/span><span class="ic-v">September 19, 2024</.test(row('qwen2.5-coder-7b')));
   check('a dated brain wears Dated, its tip names the newer brains and says it stays', /class="tag dated-tag" tabindex="0" data-tip="Dated: [^"]*Newer ones to try: Qwen3\.5 9B[^"]*It stays on the list; nothing is taken away\.">Dated<\/span>/.test(row('qwen2.5-coder-7b')), datedLine(byId('qwen2.5-coder-7b'), models));
   check('an untried brain says so in its tip, not with a tag', /Not tried yet/.test(row('granite-4.1-8b')) && !/<span class="tag">New<\/span>/.test(html));
-  check('New and Dated never make a brain Bob\'s pick (untried brains still never are)', ['bob', 'tinker', 'small', 'eyes'].every((j) => !byId(pickFor(j, models, ctx)?.id || 'x')?.trial));
+  check('New and Dated never make a brain Bob\'s pick (untried brains still never are, except a job a test made them Bob\'s default for)', ['bob', 'tinker', 'small', 'eyes'].every((j) => { const b = byId(pickFor(j, models, ctx)?.id || 'x'); return !b?.trial || (b.bobPick || []).includes(j); }));
 }
 
 // ---- too big for every Bob on the Bob-Net: Rented brains ----
