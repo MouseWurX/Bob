@@ -19,8 +19,10 @@
     "dist:dir": "electron-builder --win dir",
     "dist:linux": "electron-builder --linux AppImage --publish never"
   },
+  "testSolo": [],
   "testSuites": [
     "test/run-install-guides-test.js",
+    "test/run-changed-tests-test.js",
     "test/run-step-fit-test.js",
     "test/run-hf-sign-in-test.js",
     "test/run-engine-min-test.js",
