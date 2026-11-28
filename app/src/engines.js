@@ -35,6 +35,12 @@ const PIPER_ARM64_SHA = 'fea0fd2d87c54dbc7078d0f878289f404bd4d6eea6e7444a77835d1
 // the release his pin names (bob.brainEngine.tag). Builds from before then were named after their llama.cpp tag.
 // From build 5 a release is named N1bN2 (brain-engine-5b12282: build 5 on llama.cpp b12282; public/engine-name.js).
 const PIN_TAG = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.brainEngine?.tag || ''; } catch { return ''; } })();
+// Nov 28: where the engine's release lives. Builds up to 46 are pre-releases on Bob's own GitHub; Lamplight now has its
+// own repo (MouseWurX/Lamplight: llama.cpp with each patch as a commit). bob.brainEngine.repo names it once a Lamplight
+// release there is proven; only these two repos are ever accepted, anything else falls back to Bob's own.
+export const ENGINE_REPOS = ['MouseWurX/Bob', 'MouseWurX/Lamplight'];
+export const engineRepo = (pin) => (ENGINE_REPOS.includes(pin?.repo) ? pin.repo : 'MouseWurX/Bob');
+const PIN_REPO = (() => { try { return engineRepo(JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.brainEngine); } catch { return 'MouseWurX/Bob'; } })();
 export const TESTED_LLAMA = (() => { try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).bob?.bundledLlamaTag || ''; } catch { return ''; } })();
 // LibreOffice comes from The Document Foundation's own archive, not GitHub.
 const TDF_HOSTS = [/^downloadarchive\.documentfoundation\.org$/, /^download\.documentfoundation\.org$/];
@@ -64,10 +70,10 @@ export const ENGINES = [
     // brains, listed for everyone (not only while the Lab is on). When it's here Bob runs his brains on it
     // (config.js pickLlamaExe); Settings, Engines can switch back to plain llama.cpp.
     id: 'brainengine', name: 'Brain Engine', what: 'Bob\'s own engine for brains, made to give him more room to work with them (it can switch experts off without reloading, for the Lab). Built on the open-source llama.cpp, not an official llama.cpp build. When it\'s here, Bob runs his brains on it. It has its own folder, so the plain llama.cpp that came with Bob stays as it is.',
-    repo: 'MouseWurX/Bob', tag: PIN_TAG || (TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : ''), base: 'llamacpp', dir: 'brain-engine', exe: 'llama-server.exe',
-    nvidia: [], other: [/^brain-engine-.*-win-x64\.zip$/], runtime: () => null,
+    repo: PIN_REPO, tag: PIN_TAG || (TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : ''), base: 'llamacpp', dir: 'brain-engine', exe: 'llama-server.exe',
+    nvidia: [], other: [/^(?:brain-engine|lamplight)-.*-win-x64\.zip$/], runtime: () => null,
     mac: { unavailable: 'Brain Engine has no Mac build yet.' },
-    linux: { tag: PIN_TAG || (TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : ''), other: [/^brain-engine-.*-linux-x64\.tar\.gz$/] },
+    linux: { tag: PIN_TAG || (TESTED_LLAMA ? `brain-engine-${TESTED_LLAMA}` : ''), other: [/^(?:brain-engine|lamplight)-.*-linux-x64\.tar\.gz$/] },
     linuxArm64: { unavailable: 'Brain Engine has no ARM Linux build yet.' }
   },
   {
@@ -651,7 +657,7 @@ async function installOverlay(cfg, e, { nvidia, pub, signal, tick }) {
   if (!b.tag) throw new Error(`${e.name} needs ${b.name}'s tested build, and this Bob doesn't name one.`);
   const base = await findRelease(b, nvidia, signal);
   const own = await findRelease(e, nvidia, signal);
-  if (!own.rel.prerelease && !own.rel.tag_name.startsWith('brain-engine-')) throw new Error(`${e.name}'s release isn't the one I expect. Stopped.`);
+  if (!own.rel.prerelease && !/^(?:brain-engine|lamplight)-/.test(own.rel.tag_name)) throw new Error(`${e.name}'s release isn't the one I expect. Stopped.`);
   const rtRe = nvidia && b.runtime(base.asset.name);
   const rt = rtRe ? (base.rel.assets || []).find((a) => rtRe.test(a.name)) : null;
   pub.total = base.asset.size + (rt?.size || 0) + own.asset.size; pub.done = 0;
