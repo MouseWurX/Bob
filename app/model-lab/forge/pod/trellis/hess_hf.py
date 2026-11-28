@@ -134,14 +134,25 @@ def load_model(path, kw, attn="sdpa"):
         return load_model_as(AutoModelForImageTextToText, path, kw, attn)
 
 
+def checked(r):
+    """from_pretrained(..., output_loading_info=True): stop on weights the checkpoint didn't fill (transformers leaves
+    them as empty memory, which gave NaN logits on try 3)"""
+    m, info = r
+    bad = {k: v for k, v in info.items() if k in ("missing_keys", "mismatched_keys") and v}
+    if bad: raise SystemExit(f"hess_hf: the checkpoint did not fill every weight: {({k: list(v)[:4] for k, v in bad.items()})} "
+                             f"({sum(len(v) for v in bad.values())} in all)")
+    if info.get("unexpected_keys"): print(f"hess_hf: {len(info['unexpected_keys'])} checkpoint tensors not used, e.g. {list(info['unexpected_keys'])[:3]}", flush=True)
+    return m
+
+
 def load_model_as(cls, path, kw, attn):
-    if attn == "eager": return cls.from_pretrained(path, attn_implementation="eager", **kw)
+    if attn == "eager": return checked(cls.from_pretrained(path, attn_implementation="eager", output_loading_info=True, **kw))
     try:
-        m = cls.from_pretrained(path, attn_implementation=attn, **kw)
+        m = checked(cls.from_pretrained(path, attn_implementation=attn, output_loading_info=True, **kw))
     except (ValueError, ImportError, TypeError) as e:
         if "sdpa" not in str(e).lower() and "attn_implementation" not in str(e).lower(): raise
         print(f"hess_hf: no sdpa attention for this brain ({str(e)[:100]}), using eager", flush=True)
-        return cls.from_pretrained(path, **kw)
+        return checked(cls.from_pretrained(path, output_loading_info=True, **kw))
     print(f"hess_hf: attention {getattr(m.config, '_attn_implementation', '?')}", flush=True)
     return m
 
@@ -238,6 +249,8 @@ def main():
                     with torch.no_grad(): m(input_ids=x)
                 else:
                     e = emb(x).detach().requires_grad_(True); lg = m(inputs_embeds=e).logits.float()
+                    if not torch.isfinite(lg).all():  # a brain that reads wrong (try 3: NaN from a quantized checkpoint)
+                        raise SystemExit("hess_hf: the brain's next-word odds are not finite on the first chunk: its weights did not load right")
                     lg.logsumexp(-1).sum().backward(); del lg, e
                 peak = ", ".join(f"cuda:{i} {torch.cuda.max_memory_allocated(i) / 1e9:.1f} of "
                                  f"{torch.cuda.get_device_properties(i).total_memory / 1e9:.1f} GB" for i in range(torch.cuda.device_count() if cuda else 0)) or "no card"

@@ -54,7 +54,7 @@ python3 -c 'import torch, transformers, accelerate; print("torch", torch.__versi
 nvidia-smi --query-gpu=index,name,memory.total,driver_version,compute_cap --format=csv > "$OUT/gpu.txt" 2>&1 || true
 NGPU=${NGPU:-$(nvidia-smi -L | wc -l)}; say "cards: $NGPU x $(sed -n 2p "$OUT/gpu.txt"), RAM $(free -g | awk '/Mem/{print $2}') GB, disk free $(df -BG --output=avail "$W" | tail -1)"
 ARCH=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1 | tr -d '. '); [[ "$ARCH" =~ ^[0-9]+$ ]] || fail "card arch"
-NEED=$([ "$CANARY" = 1 ] && echo 140 || echo 320)   # source 20 + BF16 GGUF 53 + Q8 frame 28 + expert Hessians ~105 (bf16) + codes ~40 + files ~28 GB
+NEED=$([ "$CANARY" = 1 ] && echo 190 || echo 340)   # source 20 + BF16 GGUF 53 + BF16 checkpoint for transformers 52 + Q8 frame 28 + expert Hessians ~105 (bf16) + codes ~40 + files ~28 GB
 [ "$(df -BG --output=avail "$W" | tail -1 | tr -dc 0-9)" -ge "$NEED" ] || fail "under $NEED GB free disk"
 
 step "Bob tools ($BOB_SHA) + engine patches ($ENGINE_SHA) + llama.cpp converter ($UPSTREAM_SHA)"
@@ -122,9 +122,18 @@ step "Lamplight reads the BF16 brain (its next-word odds = the KLD reference, $K
 bash "$P/kld_check.sh" "$REF" "$TE" "$OUT/kld" "$B/llama-perplexity" > "$OUT/kld-ref.log" 2>&1 && [ -s "$OUT/kld/base.kld" ] || { tail -5 "$OUT/kld-ref.log"; fail "BF16 in Lamplight"; }
 say "BF16: $(grep -o 'Final estimate.*' "$OUT/kld/base.log")"
 
+# transformers can't run a pre-quantized ModelOpt checkpoint (try 3: "Unknown quantization type, got modelopt", then NaN
+# logits), so the Hessian pass reads a plain BF16 copy unpacked by llama.cpp's converter's rules (hf_dequant.py)
+HFB=$W/hf
+if python3 -c "import json,sys; c=json.load(open(sys.argv[1])); sys.exit(0 if 'quantization_config' in c or any(isinstance(v, dict) and 'quantization_config' in v for v in c.values()) else 1)" "$W/hf/config.json"; then
+  step "unpack the quantized checkpoint to BF16 for transformers"
+  HFB=$W/hf-bf16
+  [ -s "$HFB/config.json" ] || python3 "$TP/hf_dequant.py" --src "$W/hf" --out "$HFB" > "$OUT/dequant.log" 2>&1 || { rm -rf "$HFB"; tail -5 "$OUT/dequant.log"; fail unpack; }
+  say "$(tail -1 "$OUT/dequant.log")"
+fi
 step "Hessians, both factors, every expert ($CHUNKS x $CTX tokens, layers over $NGPU cards)"
 H=$W/hess
-[ -s "$H/info.json" ] || timeout $((STEP_MIN * 60)) python3 "$TP/hess_hf.py" --model "$W/hf" --text "$TR" --out "$H" --chunks "$CHUNKS" --ctx "$CTX" \
+[ -s "$H/info.json" ] || timeout $((STEP_MIN * 60)) python3 "$TP/hess_hf.py" --model "$HFB" --text "$TR" --out "$H" --chunks "$CHUNKS" --ctx "$CTX" \
   --devices "$NGPU" --match-gguf "$REF" --expert-gb "$EXPERT_GB" --only "^blk\.($LAYERS)\." > "$OUT/hess.log" 2>&1 || { tail -5 "$OUT/hess.log"; fail hessians; }
 python3 -c "import json,sys; d=json.load(open(sys.argv[1])); d.pop('names'); print(json.dumps(d))" "$H/info.json" | tee "$OUT/hess-info.json" | tee -a "$S"
 grep -c "no GGUF tensor matches" "$OUT/hess.log" | xargs -I{} say "expert blocks with no match: {}"

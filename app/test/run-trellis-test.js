@@ -38,6 +38,7 @@ check('the Inkling kit keeps calibration and scoring texts apart and times every
 check('the trellis runner opens the weights file once per worker, not once per tensor (5 s each with a big vocabulary)', /_READERS\[reader_path\] = /.test(read('forge/pod/trellis/trl_run.py')) && (read('forge/pod/trellis/trl_run.py').match(/GGUFReader\(/g) || []).length === 2);
 check('the Hessian pass tries one chunk first and halves the chunk on out-of-memory, same tokens; sampled labels are seeded', (() => { const h = read('forge/pod/trellis/hess_hf.py'); return /def probe\(g\)/.test(h) && h.includes('except torch.OutOfMemoryError') && h.includes('a.ctx //= 2') && h.includes('torch.manual_seed(a.seed)') && h.includes('"balanced"'); })());
 check('the Inkling kit reads the Hessian text in 512-token chunks (2048 ran out of card memory)', ink.includes('CTX=${CTX:-512}') && ink.includes('KLD_CTX=${KLD_CTX:-2048}') && ink.includes('expandable_segments:True'));
+check('the Inkling kit unpacks a quantized checkpoint to BF16 before the Hessian pass, and hess_hf stops on unfilled weights or NaN odds', ink.indexOf('"$TP/hf_dequant.py"') > 0 && ink.indexOf('"$TP/hf_dequant.py"') < ink.indexOf('"$TP/hess_hf.py"') && ink.includes('--model "$HFB"') && (() => { const h = read('forge/pod/trellis/hess_hf.py'); return h.includes('output_loading_info=True') && h.includes('missing_keys') && h.includes('torch.isfinite(lg)'); })());
 check('both kits time the kernel shapes on the card and code with the fastest correct one', [kit, ink].every((t) => t.includes('--tune "$OUT/tune.json"') && t.indexOf('export TRL_TUNE="$OUT/tune.json"') > t.indexOf('--tune "$OUT/tune.json"') && t.indexOf('export TRL_TUNE') < t.indexOf('"$TP/trl_run.py"')));
 check('a canary mode codes two layers (one looped) before the whole brain', /LAYERS=\$\{LAYERS:-"0\|6"\}/.test(ink) && ink.includes('--only "^blk'));
 const has = spawnSync('python3', ['-c', 'import numpy'], { encoding: 'utf8' }).status === 0;
@@ -70,6 +71,18 @@ print(int(ok), round(C.GRID_SD, 3))
 } else console.log('SKIP the numpy checks (no numpy here)');
 
 const torch = spawnSync('python3', ['-c', 'import torch, numpy'], { encoding: 'utf8' }).status === 0;
+if (torch && spawnSync('python3', ['-c', 'import safetensors'], { encoding: 'utf8' }).status === 0) {
+  const r = spawnSync('python3', ['-I', '-c', `
+import sys; sys.path.insert(0, sys.argv[1]); import torch, hf_dequant as D
+# one NVFP4 row: bytes 0x21 (low nibble 1 = 0.5, high 2 = 1.0) and 0xF7 (7 = 6, 15 = -6); scales 2.0 and the 0x7F byte (= 0)
+w = torch.tensor([[0x21] * 8 + [0xF7] * 8], dtype=torch.uint8)
+s = torch.tensor([[0x40, 0x7F]], dtype=torch.uint8).view(torch.float8_e4m3fn)
+v = D.nvfp4(w, s, torch.tensor(0.5))
+print(int(v[0, :2].tolist() == [0.5, 1.0]), int(v[0, 16:].abs().sum() == 0), float(v[0, 0]), float(v[0, 1]))
+`, dir], { encoding: 'utf8' });
+  const v = r.stdout.trim().split(/\s+/).map(Number);
+  check('NVFP4 unpacks as llama.cpp does: low nibble first, block scale x tensor scale, the 0x7F scale byte as 0', r.status === 0 && v[0] === 1 && v[1] === 1, r.stdout + r.stderr.slice(-300));
+}
 if (torch) {
   const r = spawnSync('python3', ['-I', '-c', `
 import sys; sys.path.insert(0, sys.argv[1]); import numpy as np, torch, trl_quant as Q, trl_codec as C
