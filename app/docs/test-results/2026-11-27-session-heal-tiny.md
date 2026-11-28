@@ -96,3 +96,23 @@ Data: `data/2026-11-28-heal-rerun/`. Bob at e511aec.
   doesn't fit in 48 GB. Fix: sessions are cut after 1,024 tokens (`--session-max-len`), and the kit now shows the real
   error. The kit can run the session heal alone (`HEAL_ARMS=SESSION`), since the wikitext heal numbers above stand.
 - "Known tool 0" again: the tool check now saves the first tool lists it read, to find why.
+
+## Rerun 3, session heal only (28 Nov, L40S, $1.51)
+
+Data: `data/2026-11-28-heal-rerun3/`. Bob at 5349821. The sessions were written again (the brain samples, so the
+held-apart set differs a little from rerun 2's; stock is measured on each set).
+
+| | Wikitext KLD | Sessions KL | agent | general | Wiki valid KL |
+|---|---:|---:|---:|---:|---:|
+| stock Q4_K_M (rerun 3 sessions) | 0.0467 | 0.0318 | 0.0192 | 0.0384 | 0.0425 |
+| **session heal, 1e-4** (kept step 400) | 0.0435 (-7%) | **0.0259 (-19%)** | **0.0132 (-31%)** | 0.0325 (-15%) | 0.0409 (-4%) |
+| session heal, 3e-4 | no step beat the start: no file | | | | |
+| *rerun 2, wikitext heal 1e-4, against its own stock* | *0.0358 (-23%)* | *0.0301 (-9%)* | *0.0136 (-8%)* | *0.0388 (-9%)* | *0.0333 (-22%)* |
+
+- Each heal is best at what it practised: the session heal cut drift on agent work by about a third, four times what the
+  wikitext heal did, but cut plain-text drift by only 7% against 23%. The two were measured on different session sets,
+  so a same-set check and Bob's real jobs come next.
+- Tool calls unchanged: 21 of 21 well formed, 20 of 21 the same call as BF16, for both files.
+- The check slice was still falling at step 400 at 1e-4, so more steps may help both heals.
+- "Known tool 0", found: these prompts name the tags in their first sentence ("within <tools> </tools> XML tags"), and
+  the check read that empty pair. It now takes the longest block.
