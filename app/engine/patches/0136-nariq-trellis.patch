@@ -3503,10 +3503,10 @@ index 0000000..5d5f9aa
 +}
 diff --git a/ggml/src/ggml-cuda/libtrellis/src/gemm_i8.cu b/ggml/src/ggml-cuda/libtrellis/src/gemm_i8.cu
 new file mode 100644
-index 0000000..aaf0528
+index 0000000..2ea4a4a
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/libtrellis/src/gemm_i8.cu
-@@ -0,0 +1,754 @@
+@@ -0,0 +1,819 @@
 +// SPDX-License-Identifier: Apache-2.0
 +// Copyright Nari Labs (gemm.cu, which this file is derived from); changes Copyright MouseWurX (Lamplight 0136)
 +//
@@ -3602,9 +3602,14 @@ index 0000000..aaf0528
 +    int* tile_e;
 +    int* tile_g0;
 +    int* tile_ng;
++    // the GEMM's split arrival counters, zeroed here (the GEMM's last split of a tile reduces it)
++    int* counters;
++    int n_counters;
 +};
 +
 +__global__ void __launch_bounds__(256) prologue_i8(const Pro a) {
++    if (a.counters != nullptr)
++        for (int i = blockIdx.x * 256 + threadIdx.x; i < a.n_counters; i += gridDim.x * 256) a.counters[i] = 0;
 +    extern __shared__ __align__(16) unsigned char psm[];
 +    __shared__ float wmax[8];
 +    __shared__ int wsum[8];
@@ -3821,7 +3826,14 @@ index 0000000..aaf0528
 +    const int* rexp;
 +    int64_t expert_words;  // code words between experts
 +    int64_t post_stride;
++    int* counters;  // [tiles][column blocks] split arrivals (nullptr: reduce8 launch)
 +};
++
++__device__ __forceinline__ int arrive8(int* counter) {  // gpu-scope acquire-release add: the previous count
++    int prev;
++    asm volatile("atom.add.acq_rel.gpu.s32 %0, [%1], 1;" : "=r"(prev) : "l"(counter) : "memory");
++    return prev;
++}
 +
 +__device__ __forceinline__ void row_scales8(const float* post, int had, int o0, int nv, float (&scale)[4]) {
 +    const int lane = threadIdx.x % 32;
@@ -4043,6 +4055,40 @@ index 0000000..aaf0528
 +        }
 +        __syncthreads();
 +    }
++    if (!split_out || a.counters == nullptr) return;
++    // the last split of this (tile, column block) to arrive sums the splits in split order (as libtrellis' GEMV:
++    // no reliance on dispatch order, no reduce launch); the barrier above orders the partial stores before the release
++    __shared__ int last;
++    if (threadIdx.x == 0) {
++        __threadfence();
++        last = arrive8(a.counters + (size_t)tb * gridDim.y + cb) == a.splits - 1;
++    }
++    __syncthreads();
++    if (!last) return;
++    const size_t step = (size_t)a.rows * n;
++    for (int tr = warp; tr < nrows; tr += W5) {
++        const int t = t0 + tr;
++        if (t >= a.rows) break;
++        int64_t orow = t;
++        if (a.rmap != nullptr) {
++            const int rr = a.rmap[t];
++            if (rr < 0) continue;
++            orow = rr;
++        }
++        const float off = 126.f * (float)__ldg(a.xsum + t);
++        float v[4];
++#pragma unroll
++        for (int m = 0; m < 4; ++m) {
++            const int o = lane + 32 * m;
++            float sum = 0.f;
++            if (o < nv) {
++                const float* p = a.part + (size_t)t * n + o0 + o;
++                for (int s2 = 0; s2 < a.splits; ++s2) sum += __ldcg(p + s2 * step);
++            }
++            v[m] = sum - off;
++        }
++        finish8(a, v, scale, t, orow, o0, nv);
++    }
 +}
 +
 +enum Tiling { T64X8 = 0, T128X8 = 1, T128X4 = 2 };
@@ -4063,7 +4109,7 @@ index 0000000..aaf0528
 +    }
 +    const dim3 grid(tiles, (a.nt + W5 - 1) / W5, a.splits);
 +    gemm8_k<K, TT, CK, CPS><<<grid, dim3(32 * W5), T8::SMEM, s>>>(a);
-+    if (a.splits > 1) {
++    if (a.splits > 1 && a.counters == nullptr) {
 +        const int64_t items = (int64_t)a.rows * ((a.nt + W5 - 1) / W5);
 +        reduce8<<<(unsigned)((items + 7) / 8), 256, 0, s>>>(a);
 +    }
@@ -4080,9 +4126,10 @@ index 0000000..aaf0528
 +}
 +
 +// tq_gemm's choice (fitted there on 188 SMs for its kernel; the same trade of rows per CTA against CTAs per SM)
-+int pick_tiling(int rows, int nt, int splits) {
++// extra: tiles beyond the rows' own (experts: one partial tile an expert used)
++int pick_tiling(int rows, int nt, int splits, int extra = 0) {
 +    const int cbs = (nt + W5 - 1) / W5, sms = tq::device_sms();
-+    const int c128 = cbs * ((rows + 127) / 128) * splits, c64 = cbs * ((rows + 63) / 64) * splits;
++    const int c128 = cbs * ((rows + 127) / 128 + extra) * splits, c64 = cbs * ((rows + 63) / 64 + extra) * splits;
 +    auto load = [&](int ctas, float pair, float single) {
 +        const int n = (ctas + sms - 1) / sms;
 +        return (float)(n / 2) * pair + (float)(n % 2) * single;
@@ -4095,8 +4142,8 @@ index 0000000..aaf0528
 +constexpr int MAX_SPLITS = 16;
 +
 +// rows: the rows that carry work (experts: the picks), for the split choice
-+int split_count(int kt, int nt, int rows, int* kb) {
-+    const int64_t base = (int64_t)((nt + W5 - 1) / W5) * ((rows + 63) / 64);
++int split_count(int kt, int nt, int rows, int* kb, int extra = 0) {
++    const int64_t base = (int64_t)((nt + W5 - 1) / W5) * ((rows + 63) / 64 + extra);
 +    // about fill CTAs an SM in all (run 9: 2, as tq_gemm, left one CTA an SM at 33-128 rows); LAMPLIGHT_TRELLIS_I8_FILL for tests
 +    static const int fill = [] {
 +        const char* e = getenv("LAMPLIGHT_TRELLIS_I8_FILL");
@@ -4111,16 +4158,30 @@ index 0000000..aaf0528
 +}
 +
 +struct Layout {
-+    size_t xq, xs, xsum, rmap, rexp, tile_e, tile_g0, tile_ng, status, part, total;
-+    int kb, splits, rows_p, groups, max_tiles, tiling, direct;
++    size_t xq, xs, xsum, rmap, rexp, tile_e, tile_g0, tile_ng, status, part, counters, total;
++    int kb, splits, rows_p, groups, max_tiles, tiling, direct, n_counters;
 +};
 +
 +constexpr int DIRECT_MAX = 32;  // picks
 +
++// LAMPLIGHT_TRELLIS_I8_OLD=1 (tests): run 10's plan: experts tiled and split as if their picks were one dense block,
++// and the splits summed by a separate reduce launch
++bool old_plan() {
++    static const bool v = [] {
++        const char* e = getenv("LAMPLIGHT_TRELLIS_I8_OLD");
++        return e != nullptr && atoi(e) == 1;
++    }();
++    return v;
++}
++
 +// R rows (experts: picks), E experts (0: dense)
 +Layout layout(int K, int N, int R, int E) {
 +    Layout l;
-+    l.splits = split_count(K / 16, N / 16, R, &l.kb);
++    const int used = E ? std::min(E, R) : 0;
++    // run 10: 512 picks of 64 experts (about 8 each) planned as one block of 512 rows took 128-row tiles at one CTA an
++    // SM and 10 splits; each expert's partial tile counts too
++    const int extra = old_plan() ? 0 : used;
++    l.splits = split_count(K / 16, N / 16, R, &l.kb, extra);
 +    l.direct = E > 0 && R <= DIRECT_MAX;
 +    if (l.direct) {
 +        // every pick its own tile of one row: no sort launch (run 9: 1-4 tokens were launch-bound)
@@ -4132,9 +4193,8 @@ index 0000000..aaf0528
 +        l.tiling = pick_tiling(R, N / 16, l.splits);
 +        l.max_tiles = (R + tile_rows(l.tiling) - 1) / tile_rows(l.tiling);
 +    } else {
-+        const int used = std::min(E, R);
 +        l.rows_p = (R + 7 * used + 7) / 8 * 8;
-+        l.tiling = pick_tiling(R, N / 16, l.splits);
++        l.tiling = pick_tiling(R, N / 16, l.splits, extra);
 +        l.max_tiles = (R + tile_rows(l.tiling) - 1) / tile_rows(l.tiling) + used;
 +    }
 +    l.groups = l.rows_p / 8;
@@ -4154,6 +4214,8 @@ index 0000000..aaf0528
 +    l.tile_ng = E ? take((size_t)l.max_tiles * 4) : 0;
 +    l.status = E ? take(4) : 0;
 +    l.part = l.splits > 1 ? take((size_t)l.splits * l.rows_p * N * 4) : o;
++    l.n_counters = l.splits > 1 && !old_plan() ? l.max_tiles * ((N / 16 + W5 - 1) / W5) : 0;
++    l.counters = l.n_counters ? take((size_t)l.n_counters * 4) : o;
 +    l.total = o;
 +    return l;
 +}
@@ -4201,6 +4263,8 @@ index 0000000..aaf0528
 +    p.tile_e = E ? reinterpret_cast<int*>(w + l.tile_e) : nullptr;
 +    p.tile_g0 = E ? reinterpret_cast<int*>(w + l.tile_g0) : nullptr;
 +    p.tile_ng = E ? reinterpret_cast<int*>(w + l.tile_ng) : nullptr;
++    p.counters = l.n_counters ? reinterpret_cast<int*>(w + l.counters) : nullptr;
++    p.n_counters = l.n_counters;
 +    const size_t psm = (p.buf ? (size_t)K * 4 : 0) + (size_t)K;
 +    if (psm > 48 * 1024) return tq::fail(TQ_E_ARG, "tq_gemm_i8: K above 49,152");
 +    // dense rows past R (to the group's 8) are never stored; the GEMM's last group reads their bytes and drops them
@@ -4219,6 +4283,7 @@ index 0000000..aaf0528
 +    a.tile_ng = E ? reinterpret_cast<const int*>(w + l.tile_ng) : nullptr;
 +    a.rmap = rmap, a.rexp = rexp;
 +    a.expert_words = ex ? ex->expert_words : 0, a.post_stride = ex ? ex->post_stride : 0;
++    a.counters = l.n_counters ? reinterpret_cast<int*>(w + l.counters) : nullptr;
 +    cudaError_t e;
 +    switch (m->bits) {
 +        case 1: e = launch_k<1>(a, l.tiling, l.max_tiles, s); break;
@@ -9036,7 +9101,7 @@ index 1b717c8..844d6b7 100644
      vk_pipeline pipeline_cumsum_small_f32;
      vk_pipeline pipeline_cumsum_multipass1_f32;
 diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
-index 3c63a1f..13f5277 100644
+index 3c63a1f..9a95c73 100644
 --- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
 +++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
 @@ -4013,6 +4013,90 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
@@ -9130,7 +9195,7 @@ index 3c63a1f..13f5277 100644
      // comb holds a token's 4x4 matrix in one 16-lane slice of a subgroup, so it
      // needs at least 16 lanes, pinned to a known size.
      if (device->subgroup_basic && device->subgroup_shuffle && device->subgroup_require_full_support && device->subgroup_size >= 16) {
-@@ -7878,6 +7962,459 @@ void ggml_vk_fwht(ggml_backend_vk_context * ctx, vk_context& subctx, const ggml_
+@@ -7878,6 +7962,461 @@ void ggml_vk_fwht(ggml_backend_vk_context * ctx, vk_context& subctx, const ggml_
      ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { src_buf, dst_buf }, pc, { workgroups_x, 1, 1 });
  }
  
@@ -9330,7 +9395,8 @@ index 3c63a1f..13f5277 100644
 +    const uint64_t szB = ROUNDUP_POW2((uint64_t) Tc * N * sizeof(float), align);
 +    // Lamplight 0136: the integer-dot GEMV's int8 input, its scales and (experts) the sorted picks and runs
 +    const uint32_t E = (uint32_t) w->ne[2];
-+    const bool mvq = !mmp && trellis_vk_mvq() && device->pipeline_trellis_mvq[bits][0][0] != nullptr && (!ids || E <= 2048);
++    // experts: run 10 had 1-4 tokens slower on it than on the plain expert GEMV (27 against 19 us), 16 and up faster
++    const bool mvq = !mmp && trellis_vk_mvq() && device->pipeline_trellis_mvq[bits][0][0] != nullptr && (!ids || (E <= 2048 && ids->ne[1] > 4));
 +    const uint32_t mvq_nt = ids ? (ids->ne[1] == 1 ? 1u : 8u) : 0u;
 +    const uint32_t max_runs = ids ? CEIL_DIV(Tc, std::max(mvq_nt, 1u)) + std::min(E, Tc) : 0u;
 +    const uint64_t szQ = mvq ? ROUNDUP_POW2((uint64_t) Tc * K, align) : 0;
@@ -9547,7 +9613,8 @@ index 3c63a1f..13f5277 100644
 +                const char * e = getenv("LAMPLIGHT_TRELLIS_VK_MV");
 +                return e != nullptr && atoi(e) == 2;
 +            }();
-+            vk_pipeline & p = mv2 ? device->pipeline_trellis_mv2[bits][nt] : device->pipeline_trellis_mv[bits][nt];
++            // run 10: the staged GEMV was 10-30% faster at 4-16 tokens and slower at one (109 against 92 us)
++            vk_pipeline & p = mv2 && tc > 1 ? device->pipeline_trellis_mv2[bits][nt] : device->pipeline_trellis_mv[bits][nt];
 +            const vk_op_trellis_mv_push_constants pc = { K, N, tc, q_off, s_off, 0, 0 };
 +            ggml_pipeline_request_descriptor_sets(ctx, p, 1);
 +            ggml_vk_dispatch_pipeline(ctx, subctx, p, { qb, sb, in, B }, pc, { N / 16, CEIL_DIV(tc, 1u << nt), 1 });
@@ -9590,7 +9657,7 @@ index 3c63a1f..13f5277 100644
  static uint32_t ggml_vk_nb_elem(const ggml_tensor * t, int i) {
      return (uint32_t)(t->nb[i] / ggml_type_size(t->type));
  }
-@@ -13581,6 +14118,10 @@ bool ggml_vk_build_graph(ggml_backend_vk_context * ctx, ggml_cgraph * cgraph, in
+@@ -13581,6 +14120,10 @@ bool ggml_vk_build_graph(ggml_backend_vk_context * ctx, ggml_cgraph * cgraph, in
      case GGML_OP_CUMSUM:
          ggml_vk_cumsum(ctx, compute_ctx, src0, node);
  
@@ -9601,7 +9668,7 @@ index 3c63a1f..13f5277 100644
          break;
      case GGML_OP_DSV4_HC_COMB:
          ggml_vk_dsv4_hc_comb(ctx, compute_ctx, src0, src1, src2, node);
-@@ -16859,6 +17400,10 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+@@ -16859,6 +17402,10 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
                  }
                  return false;
              }
