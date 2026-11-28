@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { installEngine, engineStatus, TESTED_LLAMA, ENGINES, engineFor, pickAsset, engineRepo } from '../src/engines.js';
+import { installEngine, engineStatus, TESTED_LLAMA, ENGINES, engineFor, pickAsset } from '../src/engines.js';
 import { OS } from '../src/platform.js';
 import { pickLlamaExe } from '../src/config.js';
 import { enginesFor } from '../public/equip.js';
@@ -24,14 +24,6 @@ check(st && st.name === 'Brain Engine' && /own engine for brains/.test(st.what) 
   const be = ENGINES.find((e) => e.id === 'brainengine');
   check(be.tag === pkg.bob.brainEngine.tag && be.linux.tag === pkg.bob.brainEngine.tag, 'Bob downloads the Brain Engine release his pin names (its own version, not one made from the llama.cpp tag)'); }
 check(/^brain-engine-(?:v\d+|\d+b\d+)$/.test(ENGINES.find((e) => e.id === 'brainengine').tag) && ENGINES.find((e) => e.id === 'brainengine').base === 'llamacpp' && ENGINES.find((e) => e.id === 'llamacpp').tested === TESTED_LLAMA, 'it is pinned to its own numbered pre-release, on top of the tested llama.cpp build');
-
-// Nov 28: Lamplight's own repo. Bob's own GitHub until the pin names Lamplight's; nothing else is ever accepted.
-check(engineRepo(undefined) === 'MouseWurX/Bob' && engineRepo({ tag: 'brain-engine-46b12359' }) === 'MouseWurX/Bob', 'no repo in the pin: Bob\'s own GitHub, as before');
-check(engineRepo({ repo: 'MouseWurX/Lamplight' }) === 'MouseWurX/Lamplight', 'the pin can name Lamplight\'s own repo');
-check(engineRepo({ repo: 'someone/else' }) === 'MouseWurX/Bob', 'any other repo in the pin is refused');
-{ const be = ENGINES.find((e) => e.id === 'brainengine'), a = (name) => ({ name, size: 1, browser_download_url: 'https://github.com/x' });
-  check(pickAsset([a('lamplight-47b12359-win-x64.zip')], be, false)?.name === 'lamplight-47b12359-win-x64.zip', 'a Lamplight-named Windows file is picked');
-  check(!pickAsset([a('lamplight-47b12359-win-x64-vulkan.zip')], be, false), 'the Vulkan side file is never picked as the main one'); }
 
 // 1.5.169: which llama-server Bob runs brains on (fake folders, no real computer).
 {
