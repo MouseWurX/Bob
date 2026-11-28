@@ -109,12 +109,16 @@ def recording_forward(self, hidden_states, top_k_index, top_k_weights):
         y = F.linear(h, self.down_proj[e])
         if rec is not None:
             xf, hf = x.detach().float(), h.detach().float()
+            ok = torch.isfinite(xf).all(1) & torch.isfinite(hf).all(1)  # rows past a non-finite value are left out
+            if not ok.all(): xf, hf = xf[ok], hf[ok]
             rec["gate_up_proj"]["H_in"][e].addmm_(xf.T, xf); rec["down_proj"]["H_in"][e].addmm_(hf.T, hf)
-            rec["n"][e] += x.shape[0]
+            rec["n"][e] += xf.shape[0]
             if rec["out"] and gu.requires_grad:
                 def hk(part, e=e):
                     def f(g):
-                        g = g.detach().reshape(-1, g.shape[-1]).float(); rec[part]["H_out"][e].addmm_(g.T, g)
+                        g = g.detach().reshape(-1, g.shape[-1]).float(); g = g[torch.isfinite(g).all(1)]
+                        rec[part]["H_out"][e].addmm_(g.T, g)
+                        if part == "down_proj": rec["n_out"][e] += g.shape[0]
                     return f
                 gu.register_hook(hk("gate_up_proj")); y.register_hook(hk("down_proj"))
         y = y * top_k_weights[tok, pos, None]
@@ -196,17 +200,17 @@ def main():
     def fwd(name):
         def f(mod, inp, out):
             if not rec_dense[0]: return
-            x = inp[0].detach().reshape(-1, inp[0].shape[-1]).float()
-            d = acc.setdefault(name, {"H_in": torch.zeros(x.shape[1], x.shape[1], device=x.device), "H_out": None, "n": 0})
+            x = inp[0].detach().reshape(-1, inp[0].shape[-1]).float(); x = x[torch.isfinite(x).all(1)]
+            d = acc.setdefault(name, {"H_in": torch.zeros(x.shape[1], x.shape[1], device=x.device), "H_out": None, "n": 0, "n_out": 0})
             d["H_in"].addmm_(x.T, x); d["n"] += x.shape[0]
         return f
     def bwd(name):
         def f(mod, gin, gout):
             if not rec_dense[0]: return
-            g = gout[0].detach().reshape(-1, gout[0].shape[-1]).float()
+            g = gout[0].detach().reshape(-1, gout[0].shape[-1]).float(); g = g[torch.isfinite(g).all(1)]
             d = acc[name]
             if d["H_out"] is None: d["H_out"] = torch.zeros(g.shape[1], g.shape[1], device=g.device)
-            d["H_out"].addmm_(g.T, g)
+            d["H_out"].addmm_(g.T, g); d["n_out"] += g.shape[0]
         return f
     rec_dense = [True]; hooks = []
     for name, mod in m.named_modules():
@@ -220,6 +224,34 @@ def main():
     torch.manual_seed(a.seed)  # the sampled labels (H_out) are the same on every run
     emb = m.get_input_embeddings()
 
+    bad = []  # chunks whose next-word odds went non-finite (no backward pass; only their finite rows count for H_in)
+
+    def diagnose(x):
+        """the first module (in running order) whose output is not finite, where along the chunk, and how big its input was"""
+        found = []
+        def hk(name):
+            def f(mod, inp, out):
+                if found: return
+                o = out[0] if isinstance(out, (tuple, list)) else out
+                if torch.is_tensor(o) and o.is_floating_point() and not torch.isfinite(o).all():
+                    i = inp[0] if inp and torch.is_tensor(inp[0]) else None
+                    bad_pos = (~torch.isfinite(o.float())).reshape(o.shape[0], o.shape[1], -1).any(-1)[0].nonzero() if o.dim() >= 2 else None
+                    found.append(f"{name} ({type(mod).__name__}): first non-finite position {int(bad_pos[0]) if bad_pos is not None and len(bad_pos) else '?'}"
+                                 f", input max |x| {float(i.float().abs().nan_to_num(0).max()) if i is not None else float('nan'):.4g}"
+                                 f", input finite {bool(torch.isfinite(i).all()) if i is not None else '?'}")
+            return f
+        hs = [mod.register_forward_hook(hk(nm)) for nm, mod in m.named_modules() if nm]
+        keep = {nm: getattr(expert_modules_cache[nm], "_rec", None) for nm in expert_modules_cache}; rd = rec_dense[0]
+        for nm in expert_modules_cache: expert_modules_cache[nm]._rec = None
+        rec_dense[0] = False
+        try:
+            with torch.no_grad(): m(input_ids=x)
+        finally:
+            for h in hs: h.remove()
+            for nm in expert_modules_cache: expert_modules_cache[nm]._rec = keep[nm]
+            rec_dense[0] = rd
+        print(f"hess_hf: non-finite at {found[0] if found else 'no module (only in the final odds)'}", flush=True)
+
     def read_text(tag):
         for c in range(n):
             x = ids[c * a.ctx:(c + 1) * a.ctx][None].to(dev0)
@@ -228,6 +260,14 @@ def main():
             else:
                 e = emb(x).detach().requires_grad_(True)  # a leaf that needs grad, so the backward hooks fire
                 logits = m(inputs_embeds=e).logits.float()
+                if not torch.isfinite(logits).all():
+                    first = int((~torch.isfinite(logits)).any(-1)[0].nonzero()[0])
+                    bad.append(c); print(f"hess_hf: {tag}: chunk {c + 1}: odds not finite from position {first} of {a.ctx}; chunk left out", flush=True)
+                    del logits, e
+                    if len(bad) == 1: diagnose(x)
+                    if len(bad) > max(1, n // 4) * len(groups):
+                        raise SystemExit(f"hess_hf: {len(bad)} chunks with non-finite odds: too many to leave out")
+                    continue
                 with torch.no_grad(): y = torch.distributions.Categorical(logits=logits).sample()
                 loss = F.cross_entropy(logits.reshape(-1, logits.shape[-1]), y.reshape(-1), reduction="sum")
                 loss.backward(); del loss, logits, e
@@ -249,8 +289,8 @@ def main():
                     with torch.no_grad(): m(input_ids=x)
                 else:
                     e = emb(x).detach().requires_grad_(True); lg = m(inputs_embeds=e).logits.float()
-                    if not torch.isfinite(lg).all():  # a brain that reads wrong (try 3: NaN from a quantized checkpoint)
-                        raise SystemExit("hess_hf: the brain's next-word odds are not finite on the first chunk: its weights did not load right")
+                    if not torch.isfinite(lg).any():  # a brain that reads wrong (every odd NaN: weights not loaded right)
+                        raise SystemExit("hess_hf: none of the brain's next-word odds are finite on the first chunk: its weights did not load right")
                     lg.logsumexp(-1).sum().backward(); del lg, e
                 peak = ", ".join(f"cuda:{i} {torch.cuda.max_memory_allocated(i) / 1e9:.1f} of "
                                  f"{torch.cuda.get_device_properties(i).total_memory / 1e9:.1f} GB" for i in range(torch.cuda.device_count() if cuda else 0)) or "no card"
@@ -290,7 +330,7 @@ def main():
             z = lambda k: torch.zeros(E, k, k, device=dv)
             mod._rec = {"gate_up_proj": {"H_in": z(H), "H_out": None if a.no_out else z(I2)},
                         "down_proj": {"H_in": z(I), "H_out": None if a.no_out else z(H)},
-                        "n": torch.zeros(E, dtype=torch.float64), "out": not a.no_out}
+                        "n": torch.zeros(E, dtype=torch.float64), "n_out": torch.zeros(E, dtype=torch.float64), "out": not a.no_out}
         if gi == 0: probe(g)
         read_text(f"pass {gi + 1}/{len(groups)}")
         rec_dense[0] = False  # dense linears are summed in the first read only
@@ -300,17 +340,17 @@ def main():
                 if part not in exps[name]: continue
                 # stored as bfloat16 (float32's range, half the disk: Inkling 2 Mini's expert sums are ~210 GB in float32)
                 d = rec[part]; out = {"H_in": (d["H_in"].cpu() / nn_[:, None, None]).bfloat16(), "n": rec["n"].clone()}
-                if d["H_out"] is not None: out["H_out"] = (d["H_out"].cpu() / nn_[:, None, None]).bfloat16()
+                if d["H_out"] is not None: out["H_out"] = (d["H_out"].cpu() / rec["n_out"].clamp(min=1).to(torch.float32)[:, None, None]).bfloat16()
                 torch.save(out, os.path.join(a.out, exps[name][part] + ".pt"))
             mod._rec = None; del rec
         if cuda: torch.cuda.empty_cache()
     for h in hooks: h.remove()
     for name, d in acc.items():
         out = {"H_in": (d["H_in"] / d["n"]).cpu(), "n": d["n"]}
-        if d["H_out"] is not None: out["H_out"] = (d["H_out"] / d["n"]).cpu()
+        if d["H_out"] is not None: out["H_out"] = (d["H_out"] / max(d["n_out"], 1)).cpu()
         torch.save(out, os.path.join(a.out, names[name] + ".pt"))
     json.dump({"model": a.model, "chunks": n, "ctx": a.ctx, "tensors": len(acc), "expert_tensors": sum(len(v) for v in exps.values()),
-               "passes": len(groups), "seconds": round(time.time() - t0, 1), "out_factor": not a.no_out,
+               "passes": len(groups), "chunks_left_out": len(bad), "seconds": round(time.time() - t0, 1), "out_factor": not a.no_out,
                "names": {**names, **{f"{k}.{p}": v for k, d in exps.items() for p, v in d.items()}}},
               open(os.path.join(a.out, "info.json"), "w"), indent=1)
     print(f"hess_hf: {len(acc)} linears + {sum(len(v) for v in exps.values())} expert tensors, {n} chunks of {a.ctx}, "
