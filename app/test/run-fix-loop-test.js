@@ -201,6 +201,14 @@ const cfg = { dataDir, jobHelps: cleanJobHelps({ jobUndo: true }) };
   check('and the ↩ card is under the answer', card && card.changed === 1 && card.root === proj);
   const r = undoCodingJob(cfg2, card.id);
   check('one press puts the project back', fs.readFileSync(file, 'utf8') === 'let a = 1;\n' && r.restored.includes('src/a.js'));
+  // Nov 28 rental: a turn that ends without a plain answer (the same call three times) still gets its card.
+  brain.cfg.jobHelps = cleanJobHelps({ jobUndo: true }); events.length = 0;
+  const w = call('write_file', { path: file, content: 'let a = 9;\n' });
+  script.push(w, JSON.parse(JSON.stringify(w)), JSON.parse(JSON.stringify(w)), JSON.parse(JSON.stringify(w)));
+  const j2 = brain.enqueue('main', 'set a to 9 in my project src/a.js', [], 'low').jobId;
+  await until(() => ['done', 'failed', 'cancelled'].includes(brain.queue.find((j) => j.id === j2)?.state), 8000);
+  const card2 = events.find((e) => e.type === 'job-undo');
+  check('a turn stopped by the same call three times still gets the ↩ card', fs.readFileSync(file, 'utf8') === 'let a = 9;\n' && card2 && undoCodingJob(cfg2, card2.id).restored.includes('src/a.js') && fs.readFileSync(file, 'utf8') === 'let a = 1;\n', JSON.stringify(events.filter((e) => e.type !== 'token').map((e) => e.type)));
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
