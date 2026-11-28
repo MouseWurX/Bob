@@ -228,13 +228,19 @@ check('the glossary explains it', /<dt>Conductor<\/dt>/.test(HELP.find((h) => h.
   check('a bigger step measured faster keeps it', loadStepBySpeed({ speeds: { read: { 2048: 2000, 4096: 3400 }, write: { 2048: 90, 4096: 89 } }, chat: 2048, max: 4096 }).step === 4096);
   check('a win inside the margin keeps the top step (no flip on noise)', loadStepBySpeed({ speeds: { read: { 2048: 3000, 4096: 3000 }, write: { 2048: 90, 4096: 90 * (1 - LOAD_PICK_MARGIN / 2) } }, chat: 2048, max: 4096, readTok: 0, outTok: 300 }).step === 4096);
   check('a step only guessed from another (no measured write) never wins', loadStepBySpeed({ speeds: { read: { 2048: 9000, 4096: 3000 }, write: { 4096: 80 } }, chat: 2048, max: 4096 }).step === 4096);
-  check('saved speeds count only for the same Brain Engine and only clean numbers', cleanSpeeds({ be: 45, speeds: { big: { read: { 4096: 3000, x: 5, 2048: -1 }, write: { 4096: 'fast' } } } }, 45).big.read[4096] === 3000 && Object.keys(cleanSpeeds({ be: 45, speeds: { big: { read: { 4096: 3000, x: 5, 2048: -1 } } } }, 45).big.read).length === 1 && Object.keys(cleanSpeeds({ be: 44, speeds: { big: sp } }, 45)).length === 0 && Object.keys(cleanSpeeds(null, 45)).length === 0);
+  check('saved speeds count only for the same Brain Engine and only clean numbers', cleanSpeeds({ be: 45, speeds: { big: { read: { 4096: 3000, x: 5, 2048: -1 }, write: { 4096: 'fast' } } } }, 45).big.read[4096] === 3000 && Object.keys(cleanSpeeds({ be: 45, speeds: { big: { read: { 4096: 3000, x: 5, 2048: -1 } } } }, 45).big.read).length === 1 && Object.keys(cleanSpeeds(null, 45)).length === 0);
+  // Nov 27 (the owner: "we do the testing to give it values"): another build's speeds are kept, marked old
+  const carried = cleanSpeeds({ be: 44, speeds: { big: sp } }, 45).big;
+  check('another build\'s speeds are kept as a starting point, every step marked old', carried.read[2048] === sp.read[2048] && carried.old.read.length === Object.keys(sp.read).length && carried.old.write.length === Object.keys(sp.write).length);
+  const fresh = learnStep(carried, 'write', 2048, 50);
+  check('the first measurement of an old step on this build replaces it outright, then it averages as usual', fresh.write[2048] === 50 && !fresh.old.write.includes(2048) && learnStep(fresh, 'write', 2048, 60).write[2048] === 53);
+  check('the same build keeps which steps are still old', cleanSpeeds({ be: 45, speeds: { big: fresh } }, 45).big.old.write.includes(2048) === false && cleanSpeeds({ be: 45, speeds: { big: fresh } }, 45).big.old.read.length === Object.keys(sp.read).length);
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-cond-speeds-'));
   const a = new LlamaCpp({ agentDir: d, dataDir: d, llamacpp: { models: { big } } }); clearInterval(a.idleTimer); a.beNo = () => 45;
   a.condSpeedsAll().big = sp; a.condSpeedsSave();
   const b = new LlamaCpp({ agentDir: d, dataDir: d, llamacpp: { models: { big } } }); clearInterval(b.idleTimer); b.beNo = () => 45;
   const c = new LlamaCpp({ agentDir: d, dataDir: d, llamacpp: { models: { big } } }); clearInterval(c.idleTimer); c.beNo = () => 46;
-  check('measured speeds come back on the next run of the same engine, not a new one', b.condSpeedsAll().big?.write?.[2048] === 90 && !c.condSpeedsAll().big);
+  check('measured speeds come back on the next run of the same engine, and a new build starts from them, marked old', b.condSpeedsAll().big?.write?.[2048] === 90 && !b.condSpeedsAll().big.old && c.condSpeedsAll().big?.write?.[2048] === 90 && c.condSpeedsAll().big.old.write.includes(2048));
   fs.rmSync(d, { recursive: true, force: true }); }
 fs.rmSync(tmp, { recursive: true, force: true });
 { const e = engineOf({}, { testSeed: 7 }); let sent = null; const was = globalThis.fetch;

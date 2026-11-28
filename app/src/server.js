@@ -47,6 +47,7 @@ import { cloudStatus } from './cloud.js';
 import { rentRoute } from './rental-routes.js'; // 1.5.127 rented brains
 import { Lab, labRoute, labOn, labRoom } from './lab.js'; // 1.5.141 Computer Science Lab
 import { startCalibrate, useCalibrated, calResult, calibrated } from './brain-calibrate.js'; // 1.5.205
+import { startGuppiCalibrate, guppiCalView, forgetProfile as forgetGuppiProfile, pcNow as guppiPcNow } from './guppi-calibrate.js'; // Nov 26 GUPPI calibrates this PC
 import { splitRemoved } from './catalog-removed.js'; // 1.5.205
 import { KOKORO_VOICES, DEFAULT_KOKORO_VOICE, stopVoices } from './tts.js';
 import { receiveCarry, sendCarry, carryInOn } from './carry.js'; // Carry on on another Bob (item 140, off unless turned on)
@@ -788,6 +789,18 @@ const server = http.createServer(async (req, res) => {
         if (p === '/api/brain-place/calibrate') return send(res, 200, await startCalibrate(lab, (Array.isArray(b.brains) ? b.brains : []).slice(0, 16).map((x) => ({ model: String(x?.model || ''), name: String(x?.name || '').slice(0, 120), experts: x?.experts === true })), { unload: b.unload === true }));
         if (p === '/api/brain-place/use') return send(res, 200, useCalibrated(lab, String(b.model || '')));
         if (p === '/api/brain-place/stop') return send(res, 200, lab.job?.run?.kind === 'calibrate' ? lab.stop() : { stopped: false });
+      } catch (e) { return send(res, 400, { error: e.message }); }
+      return send(res, 404, { error: 'no' });
+    }
+    // Nov 26, GUPPI calibrates this PC (Settings, Engine tuning): GET what it found, POST start / stop / forget. Local only.
+    if (req.method === 'GET' && p === '/api/guppi-cal') return send(res, 200, guppiCalView(cfg, lab, guppiPcNow(cfg, { beNo: brain.engine?.beNo?.() || 0 })));
+    if (req.method === 'POST' && p.startsWith('/api/guppi-cal/')) {
+      if (!isLocal) return send(res, 403, { error: 'GUPPI can only be calibrated on this computer itself.' });
+      const b = (await body(req)) || {};
+      try {
+        if (p === '/api/guppi-cal/start') return send(res, 200, await startGuppiCalibrate(lab, { model: String(b.model || '').slice(0, 300), name: String(b.name || '').slice(0, 120), unload: b.unload === true }));
+        if (p === '/api/guppi-cal/stop') return send(res, 200, lab.job?.run?.kind === 'guppi-calibrate' ? lab.stop() : { stopped: false });
+        if (p === '/api/guppi-cal/forget') return send(res, 200, forgetGuppiProfile(cfg, brain.engine));
       } catch (e) { return send(res, 400, { error: e.message }); }
       return send(res, 404, { error: 'no' });
     }

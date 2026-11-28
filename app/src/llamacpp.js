@@ -28,6 +28,9 @@ import { scutEnv, linkEnv, linkLive } from './share-card.js'; // SCUT, the fast 
 import { LinkLog } from './link-log.js'; // what the link to a lent card carried, kept in a file and the logbook
 import { safeSpawn, fallBackIfBlocked, libDirEnv } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
+import { readThrottle, heatStep, READ_EVERY_MS as HEAT_EVERY_MS } from './guppi-heat.js'; // Nov 26 GUPPI adjusts for the card's throttling
+import { readAll as measuredReadAll, speedsFor as measuredSpeedsFor } from './measured-db.js'; // Nov 27 the test-results database
+import { profileFor as guppiProfileFor, pcNow as guppiPcNow, calibrateSpeeds as guppiCalSpeeds } from './guppi-profile.js'; // Nov 26 GUPPI calibrates this PC (Settings, Engine tuning)
 import { readerSpareEnv, conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, FILL_FROM_BE as COND_FILL_FROM_BE, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv, loadStepBySpeed, cleanSpeeds } from './conductor.js'; // off unless picked
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { tuningArgs, doorbellEnv, registerRamEnv } from './engine-tuning.js';
@@ -684,7 +687,7 @@ export class LlamaCpp {
     else if (!args.includes('-ngl')) args.push('-ngl', '999');
     // The Conductor (Engine tuning, off unless picked): the start step is the chat step, and the reading needs a
     // place on disk while the step changes. A step set by hand (flags, the config file) means no Conductor.
-    this.condChat = 0; this.condWinFull = 0; this.condMax = 0; this.condLoad = 0;
+    this.condChat = 0; this.condWinFull = 0; this.condMax = 0; this.condLoad = 0; this.condSpareMiB = 0;
     // Nov 24 (the Legion Go check: the Conductor never acted, and nothing said why): when it's on but can't drive this
     // load, the logbook says why, once per brain and reason
     if (conductorOn(this.cfg)) {
@@ -701,12 +704,33 @@ export class LlamaCpp {
       // GUPPI had nothing to trade and was slower than Let Bob pick; with one, 1a read 3,366 against 2,194 tokens a
       // second with the same words): a brain made of experts that is bigger than the card gets the expert copy cache
       // when GUPPI drives (Brain Engine 39+, which fills the card around the read step itself). Not on built-in graphics.
-      if (!args.includes('--moe-cache-mib') && !this.cfg.sharedGraphics && this.beNo() >= COND_FILL_FROM_BE && condCacheWanted({ experts: ggufInfo(gguf)?.experts || 0, fileBytes: (() => { try { return fs.statSync(gguf).size; } catch { return 0; } })(), cardBytes: cardGB(this.cfg) * 1024 ** 3 })) {
+      // Nov 26, GUPPI calibrates this PC (a button, nothing until pressed): this PC's measured edge for this brain, and
+      // whether GUPPI beat Let Bob pick here. When he didn't, he keeps Bob's step and adds no copy cache for it.
+      const prof = this.guppiProfile(model);
+      // Nov 27, the laptop: calibrating found the fit's default left the card under GUPPI's 512 MB, so it leaves more
+      if (prof?.fitTargetMiB > 0 && args.includes('--fit') && !args.some((a) => ['--fit-target', '-fitt'].includes(a))) { args.push('--fit-target', String(prof.fitTargetMiB)); this.log?.('engine', `${model}: this PC's GUPPI calibration: the fit leaves ${prof.fitTargetMiB} MiB free on the card`); }
+      // Nov 27, the laptop's probe: this brain's working memory at the 512 step didn't fit the card, so a smaller step
+      if (prof?.ubCap > 0) {
+        for (const f of ['-ub', '--ubatch-size', '-b', '--batch-size']) { let i; while ((i = args.indexOf(f)) >= 0) args.splice(i, 2); }
+        args.push('-b', '512', '-ub', String(prof.ubCap));
+        this.condChat = prof.ubCap;
+        this.log?.('engine', `${model}: this PC's GUPPI calibration: reading step ${prof.ubCap}, because at 512 this brain's working memory doesn't fit the card`);
+      }
+      // Nov 27, the laptop: where the fit kept the card full, calibrating placed the experts by hand instead
+      if (Number.isInteger(prof?.cpuMoe) && args.includes('--fit') && !Number.isInteger(this.lc.nCpuMoe?.[model])) {
+        for (const f of ['--fit', '--fit-target', '-fitt', '-ngl', '--n-gpu-layers']) { const i = args.indexOf(f); if (i >= 0) args.splice(i, 2); }
+        args.push('--n-cpu-moe', String(prof.cpuMoe), '-ngl', '999');
+        this.log?.('engine', `${model}: this PC's GUPPI calibration: ${prof.cpuMoe} layers' experts in RAM, as calibrated (the engine's own fit left the card too full here)`);
+      }
+      if (prof?.wddmBudget && process.platform === 'win32' && !(this.tuneEnv && 'GGML_CUDA_WDDM_BUDGET' in this.tuneEnv)) { this.tuneEnv = { ...(this.tuneEnv || {}), GGML_CUDA_WDDM_BUDGET: '1' }; this.log?.('engine', `${model}: this PC's GUPPI calibration: the engine plans card memory by Windows' budget`); }
+      if (!args.includes('--moe-cache-mib') && !prof?.keepBob && !this.cfg.sharedGraphics && this.beNo() >= COND_FILL_FROM_BE && condCacheWanted({ experts: ggufInfo(gguf)?.experts || 0, fileBytes: (() => { try { return fs.statSync(gguf).size; } catch { return 0; } })(), cardBytes: cardGB(this.cfg) * 1024 ** 3 })) {
         args.push('--moe-cache-mib', String(COND_CACHE_MIB));
         this.log?.('engine', `${model}: Conductor: a brain of experts bigger than the card, so the expert copy cache is on (${COND_CACHE_MIB} MiB to start, filled to the card)`);
       }
       const mc = args.lastIndexOf('--moe-cache-mib');
       this.condCacheBase = mc >= 0 ? Number(args[mc + 1]) || 0 : 0; // the copy cache it reads with; writing may get more
+      this.condLoadCtx = Number(ctx || lc.ctx || DEFAULT_CTX) || 0; // for the test-results database (measured-db.js)
+      this.condKv = args.includes('-ctk') ? args[args.indexOf('-ctk') + 1] : 'f16';
       // Nov 21, the window lever (off unless switched on): the whole context it loads with, cut to the chat later
       this.condWinFull = fitWindowOn(this.cfg) && this.condCacheBase > 0 ? Number(ctx || lc.ctx || DEFAULT_CTX) || 0 : 0;
       // Nov 23: the copy cache fills the card's free memory (Brain Engine 39 and newer), unless set by hand
@@ -716,10 +740,12 @@ export class LlamaCpp {
       this.condApu = this.cfg.sharedGraphics === true;
       if (this.condApu) this.condMax = Math.max(this.condChat, Math.min(this.condMax, APU_MAX_STEP));
       if ((this.condCap ||= {})[model] > 0) this.condMax = Math.max(this.condChat, Math.min(this.condMax, this.condCap[model])); // a step that left the card short before
+      if (prof?.cap > 0) this.condMax = Math.max(this.condChat, Math.min(this.condMax, prof.cap)); // this PC's measured edge
+      if (prof?.keepBob) this.condMax = this.condChat; // GUPPI didn't beat Bob's pick here: Bob's step, no switching
       // Nov 24: the top step by this brain's measured speeds on this machine, not the biggest that fits (loadStepBySpeed)
       if (!this.condApu) {
         const recent = (this.recentPrompts || []).filter((x) => x > 0);
-        const pick = loadStepBySpeed({ speeds: this.condSpeedsAll()[model], chat: this.condChat, max: this.condMax, readTok: recent.length ? recent.reduce((a, b) => a + b, 0) / recent.length : 16384 });
+        const pick = loadStepBySpeed({ speeds: this.condSpeedsFor(model), chat: this.condChat, max: this.condMax, readTok: recent.length ? recent.reduce((a, b) => a + b, 0) / recent.length : 16384 });
         if (pick.step !== this.condMax) { this.condMax = pick.step; if (this.speedPickSaid !== `${model}:${pick.step}`) { this.speedPickSaid = `${model}:${pick.step}`; this.log?.('engine', `${model}: Conductor: ${pick.why}, so it reads at up to ${pick.step}`); } }
       }
       const fill = this.condApu ? {} : fillEnv({ cacheMiB: this.condCacheBase, beNo: this.beNo(), env: this.tuneEnv, step: this.condMax });
@@ -734,6 +760,7 @@ export class LlamaCpp {
       this.condLoad = atRead ? Math.max(this.condMax, this.condChat) : this.condChat;
       // Nov 24 (the Legion Go check found no Conductor lines in the logbook): say once per load that it drives, and how
       this.log?.('engine', `${model}: Conductor: on (${conductorPicked(this.cfg) ? 'picked' : 'the default'}), loads at step ${this.condLoad}, reads at up to ${this.condMax || this.condChat}${this.condApu ? ', built-in graphics' : ''}`);
+      this.condSpareMiB = fill.LLAMA_MOE_CACHE_FILL && prof?.fillSpareMiB > 0 ? prof.fillSpareMiB : 0;
       if (fill.LLAMA_MOE_CACHE_FILL) {
         this.tuneEnv = { ...(this.tuneEnv || {}), ...fill };
         if (this.fillSaid !== model) this.log?.('engine', `${model}: Conductor: the copy cache fills the card's free memory, leaving room for reading`);
@@ -810,6 +837,12 @@ export class LlamaCpp {
       if (ev.length && this.beNo() > 0) this.tuneEnv = { ...(this.tuneEnv || {}), ...specGateEnv(this.tuneEnv) };
       // Nov 23: with the Conductor's fill on, the MTP draft's own room is left free too (it is made after the fill)
       if (args.some((x, i) => x === '--spec-type' && String(args[i + 1] || '').split(',').includes('draft-mtp'))) this.tuneEnv = { ...(this.tuneEnv || {}), ...mtpSpareEnv({ env: this.tuneEnv, step: this.condLoad || 0 }) }; }
+    // Nov 28 (the matrix rentals): this PC's GUPPI calibration found the fill's own 512 MiB spare left the card under
+    // his margin, so the fill leaves what calibrating found (or more, when the MTP draft needs more). A spare set by hand wins.
+    if (this.condSpareMiB > 0 && this.tuneEnv?.LLAMA_MOE_CACHE_FILL === '1' && !(tune.env && tune.env.LLAMA_MOE_CACHE_FILL_SPARE_MIB)) {
+      const now = Number(this.tuneEnv.LLAMA_MOE_CACHE_FILL_SPARE_MIB) || 512;
+      if (this.condSpareMiB > now) { this.tuneEnv = { ...this.tuneEnv, LLAMA_MOE_CACHE_FILL_SPARE_MIB: String(this.condSpareMiB) }; this.log?.('engine', `${model}: this PC's GUPPI calibration: the copy cache leaves ${this.condSpareMiB} MiB of the card free`); }
+    }
     // Nov 27: with the fill on, the picture reader's room is left free too (it loads after the fill)
     { const mi = args.indexOf('--mmproj'); let rb = 0; if (mi >= 0) { try { rb = fs.statSync(args[mi + 1]).size; } catch {} }
       const rs = readerSpareEnv({ env: this.tuneEnv, hand: tune.env, readerBytes: rb });
@@ -1833,6 +1866,12 @@ export class LlamaCpp {
     const held = Math.min(this.condHeld || 0, total);
     const newTok = total - held;
     const outTok = expectOut({ think, task });
+    // Nov 26 (the owner: GUPPI adjusts for throttling to help the system): while the driver slows the card for heat or
+    // by the power brake, he goes back to the chat step and takes no bigger one, until it has stayed clear for a minute
+    if (await this.guppiHot(model)) {
+      if (this.condStep > this.condChat && !this.condApu && this.beNo() >= SWITCH_IN_JOB_FROM_BE) await this.condSwitch(model, this.condChat, held, { _back: true });
+      return;
+    }
     // the window lever (off unless switched on): the chat memory cut to this chat and its longest reply, the rest lent
     // to the copy cache. Rides on a step switch when there is one, else switches by itself.
     let win = null;
@@ -1867,7 +1906,7 @@ export class LlamaCpp {
       if (this.noCacheSaid !== model) { this.noCacheSaid = model; this.log?.('engine', `${model}: Conductor: no expert copy cache, so nothing to trade: it keeps Bob's step ${this.condStep} and doesn't switch`); }
       return;
     }
-    const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: this.condSpeedsAll()[model], switchS: switchGuess(held, st?.ratio), maxStep: Math.min(this.condMax || 0, this.condCap?.[model] > 0 ? this.condCap[model] : Infinity) || 0 });
+    const p = conductorPlan({ newTok, cachedTok: held, outTok, cur: this.condStep, chat: this.condChat, speeds: this.condSpeedsFor(model), switchS: switchGuess(held, st?.ratio), maxStep: Math.min(this.condMax || 0, this.condCap?.[model] > 0 ? this.condCap[model] : Infinity) || 0 });
     // Nov 20: off unless engineTuning.growGuess is set (a test switch). Bob's 440 clean job lessons: replies with thinking
     // median 81 tokens, none over 1,500, so a guess made before the reply mostly misses; growing mid-reply is the way.
     const grow = this.condOff || this.cfg?.engineTuning?.growGuess !== true ? 0 : cacheGrow({ total, outTok, cacheMiB: this.condRead(), freeMiB: this.condFree, grown: this.condGrown });
@@ -1949,6 +1988,32 @@ export class LlamaCpp {
     try { this.guppiSay?.(guppiStop(this.condOff)); } catch {} // Nov 23: GUPPI's record in the chat
   }
 
+  // Nov 26: this PC's GUPPI profile for a brain (guppi-calibrate.js), read once per load; the logbook says what it does
+  guppiProfile(model) {
+    let p = null;
+    try { p = guppiProfileFor(this.cfg, model, guppiPcNow(this.cfg, { beNo: this.beNo(), ramBytes: this.totalRam ? this.totalRam() : os.totalmem() })); } catch { return null; }
+    if (!p) return null;
+    const said = p.stale ? `this PC's GUPPI calibration isn't used: ${p.stale}. Calibrate again in Settings, Engine tuning` : `this PC's GUPPI calibration: ${p.keepBob ? 'he keeps Bob\'s step for this brain' : `reading step at most ${p.cap}`}`;
+    if (this.guppiProfSaid !== `${model}:${said}`) { this.guppiProfSaid = `${model}:${said}`; this.log?.('engine', `${model}: ${said}`); }
+    return p.stale ? null : p;
+  }
+  // the card's throttle reasons, read at most every 10 s (guppi-heat.js); true while GUPPI should hold back. The
+  // logbook says when he backs off and when he carries on again.
+  async guppiHot(model) {
+    const now = Date.now();
+    if (!(now - (this.heatAt || 0) < HEAT_EVERY_MS)) {
+      this.heatAt = now;
+      const was = this.heat?.hot === true;
+      let r = null; try { r = await (this.throttleRead ? this.throttleRead() : readThrottle()); } catch {}
+      this.heat = heatStep(this.heat, r, now);
+      if (this.heat.hot && !was) this.log?.('engine', `${model}: GUPPI: the card is slowed (${this.heat.why}), so he backs off to the chat step ${this.condChat} and takes no bigger step until it clears`);
+      if (!this.heat.hot && was) this.log?.('engine', `${model}: GUPPI: the card has been clear of heat and power limits for a minute, so he carries on as before`);
+    }
+    return this.heat?.hot === true;
+  }
+  // a new or forgotten profile: the speeds and the profile are read again at the next load
+  guppiReload() { this.condSpeeds = null; this.guppiProfSaid = ''; }
+
   // Nov 24: GUPPI's measured speeds per brain, kept between runs for the same Brain Engine (dataDir/conductor/speeds.json)
   condSpeedsFile() { return this.cfg?.dataDir ? path.join(this.cfg.dataDir, 'conductor', 'speeds.json') : ''; }
   condSpeedsAll() {
@@ -1956,6 +2021,29 @@ export class LlamaCpp {
     let saved = null; const f = this.condSpeedsFile();
     if (f) { try { saved = JSON.parse(fs.readFileSync(f, 'utf8')); } catch {} }
     return (this.condSpeeds = cleanSpeeds(saved, this.beNo()));
+  }
+  // Nov 27: a brain's speeds, or, when GUPPI has none for it, the Brains page's Calibrate numbers as a starting point
+  // Nov 27, the test-results database (measured-db.js): the owner, "a baseline for people, and their own calibration
+  // step (if they choose to do it) would align all the features to their setup". So, in order: his own speeds on this
+  // PC; the database's rows measured on this PC (GUPPI calibrates this PC, rentals added by hand); the Brains page's
+  // Calibrate numbers; the shipped baseline, the same brain file on the nearest card of a similar size. Taken numbers
+  // are marked old, so each is replaced by his first real measurement of that step.
+  condSpeedsFor(model) {
+    const all = this.condSpeedsAll();
+    if (!all[model]) {
+      const steps = (c) => Object.keys(c.write).join(', ');
+      let db = null;
+      try {
+        const gguf = this.resolve(model)?.gguf;
+        const pc = guppiPcNow(this.cfg, { beNo: this.beNo(), ramBytes: this.totalRam ? this.totalRam() : os.totalmem() });
+        if (gguf) db = measuredSpeedsFor(this.measuredRows ? this.measuredRows() : measuredReadAll(this.cfg), { file: gguf, pc: { cardMiB: (pc.cardGB || 0) * 1024, ramMB: (pc.ramGB || 0) * 1024, apu: pc.sharedGraphics }, be: this.beNo(), cache: (this.condCacheBase || 0) > 0, ctx: this.condLoadCtx || DEFAULT_CTX, kv: this.condKv || 'f16' });
+      } catch {}
+      const here = db && db.from.level.startsWith('this PC');
+      let c = null; if (!here) { try { c = guppiCalSpeeds(this.cfg, model); } catch {} }
+      if (c) { all[model] = c; this.log?.('engine', `${model}: GUPPI: no speeds of his own yet, so he starts from the Brains page's Calibrate numbers (steps ${steps(c)}) and replaces each with his first real measurement`); }
+      else if (db) { const { from, ...sp } = db; all[model] = sp; this.log?.('engine', `${model}: GUPPI: no speeds of his own yet, so he starts from the test-results database (${from.level}, ${from.rows} measured runs, steps ${steps(sp)}) and replaces each with his first real measurement`); }
+    }
+    return all[model];
   }
   condSpeedsSave() {
     const f = this.condSpeedsFile(); if (!f) return;
@@ -1965,7 +2053,7 @@ export class LlamaCpp {
   // what each reply teaches: read and write speed at the step it ran at, and what the chat memory now holds
   condLearn(model, t) {
     if (!this.condChat || !this.condStep) return;
-    const sp = this.condSpeedsAll(), was = JSON.stringify(sp[model] || null);
+    const sp = this.condSpeedsAll(); this.condSpeedsFor(model); const was = JSON.stringify(sp[model] || null);
     if ((t.prompt_n || 0) >= 512) sp[model] = learnStep(sp[model], 'read', this.condStep, Number(t.prompt_per_second));
     if ((t.predicted_n || 0) >= 32) sp[model] = learnStep(sp[model], 'write', this.condStep, Number(t.predicted_per_second));
     if (JSON.stringify(sp[model] || null) !== was) this.condSpeedsSave();

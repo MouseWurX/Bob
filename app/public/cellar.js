@@ -35,6 +35,7 @@ import { shareBrainsHtml, mountShareBrains } from './share-brains.js';
 import { mountNetFiles } from './net-files.js'; // Nov 14 Bob-Net: Files and brains
 import { mountPrivateWeb, privateWebHtml } from './private-web.js'; // Nov 16 Settings, Connections: Private web
 import { mountTraceLog, traceLogHtml } from './trace-log.js'; // Nov 16 Settings, This replicant matrix: Monitoring log
+import { mountGuppiCal } from './guppi-cal.js'; // Nov 26 Settings, Engine tuning: GUPPI calibrates this PC
 import { mountSearchBackup, searchBackupHtml } from './search-backup.js'; // Nov 16 Settings, Connections: Search API keys
 import { findTheme, DEFAULT_THEME } from './themes.js';
 import { tip, noteOrTip, stripTags, keep } from './tips.js';
@@ -698,6 +699,7 @@ export function createCellar({ popOut = null } = {}) {
     mountShareBrains(dlg.querySelector('.share-box')); // Bob-Net: My other Bobs and What they share
     mountNetFiles(dlg.querySelector('.net-files-box')); // Nov 14 Bob-Net: Files and brains
     mountPrivateWeb(dlg.querySelector('.private-web-box')); // Nov 16 Settings, Connections: Private web
+    mountGuppiCal(dlg.querySelector('.guppi-cal-box')); // Nov 26 GUPPI calibrates this PC (only while the Conductor is picked)
     mountTraceLog(dlg.querySelector('.trace-log-box')); // Nov 16 Settings, This replicant matrix: Monitoring log
     mountSearchBackup(dlg.querySelector('.search-backup-box')); // Nov 16 Settings, Connections: Search API keys
     readyLine(); // 1.5.117: "Bob 1.5.117 is ready · Restart Bob now" on the updates line when a new Bob waits

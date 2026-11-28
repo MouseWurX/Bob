@@ -26,6 +26,8 @@ import { HOT_KINDS, mixFor, addMass, saveProfile, profileStamp, rankingFile, hot
 import { saveSettings } from './config.js';
 import { gaming } from './sessions.js';
 import { readJson, writeJson, makeRoom, runJob, pageLog, chatOnce } from './lab-jobs.js';
+import { append as measuredAdd, rowFromTry } from './measured-db.js';
+import { pcNow } from './guppi-profile.js';
 
 export const calibrateDir = (cfg) => path.join(labDir(cfg), 'calibrate');
 export const CAL_CTX = 32768; // the chat memory brains usually load with, so the card is as full as in real use
@@ -184,13 +186,16 @@ export async function startCalibrate(lab, brains = [], { unload = false } = {}) 
           const long = await fx.chat(srv.url, [{ role: 'user', content: CAL_LONG }], { maxTokens: 24, signal });
           const short = await fx.chat(srv.url, msg, { maxTokens: 200, signal });
           const dn = Number(short.timings?.draft_n) || 0, da = Number(short.timings?.draft_n_accepted) || 0;
-          row = { ...row, readTps: round1(Number(long.timings?.prompt_per_second) || 0), firstWordS: long.timings?.prompt_ms ? round1(long.timings.prompt_ms / 1000) : null, tps: round1(Number(short.timings?.predicted_per_second) || 0), ...(t.turbo && dn ? { accepted: Math.round((100 * da) / dn) } : {}) };
+          row = { ...row, readN: Number(long.timings?.prompt_n) || null, readTps: round1(Number(long.timings?.prompt_per_second) || 0), firstWordS: long.timings?.prompt_ms ? round1(long.timings.prompt_ms / 1000) : null, tps: round1(Number(short.timings?.predicted_per_second) || 0), ...(t.turbo && dn ? { accepted: Math.round((100 * da) / dn) } : {}) };
           if (!(row.tps > 0)) row.failed = 'It answered, but gave no speed.';
         } catch (e) {
           if (signal.aborted) throw e;
           row.failed = 'Didn\'t start: too much for the card this way.';
         } finally { try { srv?.stop(); } catch {} }
         speedRows.push(row);
+        // Nov 27: each timed speed option goes into GUPPI's test-results database (not the guesser's: his speeds are
+        // without one)
+        if (!row.failed && !t.turbo) { try { let bytes = 0; try { bytes = fs.statSync(p.gguf).size; } catch {} const be = Number(lab.brain.engine.beNo?.() || 0) || null; measuredAdd(lab.cfg, rowFromTry({ at: lab.now(), source: 'brain-calibrate', gguf: p.gguf, fileBytes: bytes, pc: pcNow(lab.cfg, { beNo: be || 0, ramBytes: lab.brain.engine.totalRam ? lab.brain.engine.totalRam() : undefined }), be, extra: [...(t.extra || []), ...(place || [])], ctx: CAL_CTX, promptN: row.readN, result: { readTps: row.readTps, writeTps: row.tps, firstWordS: row.firstWordS } })); } catch {} }
         set(id, row.failed ? 'failed' : 'done');
         progress((100 * ++done) / total);
       }
