@@ -54,6 +54,8 @@ import { spellTool } from './spell.js';
 import { meetingTool } from './meeting-notes.js';
 import { compareTool } from './compare-files.js';
 import { parts3dTool } from './parts3d.js';
+import { blenderTools } from './blender-tools.js';
+import { unrealTools } from './unreal-tools.js';
 import { model3dTool } from './model3d.js';
 import { pickSessionTool } from './auto-session.js';
 import { Lenders, wantsBorrow } from './share-brains.js';
@@ -248,6 +250,7 @@ export class Brain {
     });
     this.tools.make_3d_part = parts3dTool(this); // 3D parts (parts3d.js), only with its setting on
     this.tools.make_3d_model = model3dTool(this); // Pictures to 3D models (model3d.js), only with its setting on
+    Object.assign(this.tools, blenderTools(this), unrealTools(this)); // Blender and Unreal tools (blender-tools.js, unreal-tools.js), only with their settings on
     // 1.5.91: the Set it up card for something missing or switched off. Listed only while something is (offTools).
     this.tools.offer_setup = {
       schema: { type: 'function', function: { name: 'offer_setup', description: 'When {{USER}}\'s request needs a missing part or a setting that is off: show a one-button card that sets it up, then carry on. For pictures, video, music and sound call make_image, make_video, make_music or make_sound instead.', parameters: { type: 'object', properties: { what: { type: 'string', enum: [...Object.keys(NEEDS), ...SWITCH_KEYS], description: 'What to set up. voice = read replies aloud, hearing = hear {{USER}} talk, workshop = ComfyUI, hand:<id> = a Hand that is off (hand:packs = tool packs).' } }, required: ['what'] } } },

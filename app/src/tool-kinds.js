@@ -29,6 +29,8 @@ export const TOOL_KINDS = {
   make_image: { risk: 'change', again: true, min: 60 }, make_video: { risk: 'change', again: true, min: 90 },
   make_music: { risk: 'change', again: true, min: 60 }, make_sound: { risk: 'change', again: true, min: 30 },
   workshop_run: { risk: 'change', again: true, min: 90 }, make_diagram: { risk: 'change', again: true },
+  unreal_look: { risk: 'look', volatile: true, min: 2 }, unreal_edit: { risk: 'change', min: 3 },
+  blender_look: { risk: 'look', min: 3 }, blender_edit: { risk: 'change', half: true, min: 4 }, blender_render: { risk: 'change', again: true, min: 11 }, blender_export: { risk: 'change', again: true, min: 6 },
   make_3d_part: { risk: 'change', again: true, min: 30 }, make_3d_model: { risk: 'change', again: true, min: 90 },
   office_make: { risk: 'change', again: true, min: 30 }, convert_file: { risk: 'change', again: true, min: 60 },
   save_howto: { risk: 'change', again: true }, run_in_sandbox: { risk: 'change', again: true },
