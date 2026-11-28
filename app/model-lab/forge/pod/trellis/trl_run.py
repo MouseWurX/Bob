@@ -94,7 +94,7 @@ def work(rank, dev, jobs, a):
         t0 = time.time()
         for k in sorted({d[1] for d in dense}):
             grp = [d for d in dense if d[1] == k]
-            res = Q.quantize_many([Q._job(d[2], k, d[3], d[4] if yq else None, seed=a.seed) for d in grp], k)
+            res = Q.quantize_many([Q._job(d[2], k, d[3], d[4] if yq else None, seed=a.seed, damp_out=a.damp_out) for d in grp], k)
             for d, r in zip(grp, res):
                 N, K = d[2].shape
                 finish(a, d[0], f"{N}x{K}", k, [r], [d[2]], [d[3]], [d[4]], [d[5]], 0, N, K, t0, dev, rep)
@@ -115,7 +115,7 @@ def work(rank, dev, jobs, a):
             per = max(1, a.tiles // (N // 16)); res = []
             for i in range(0, len(pick), per):
                 es = pick[i:i + per]
-                res += Q.quantize_many([Q._job(W[e], k, Hi[e].to(dev), Ho[e].to(dev) if yq else None, seed=a.seed + e) for e in es], k)
+                res += Q.quantize_many([Q._job(W[e], k, Hi[e].to(dev), Ho[e].to(dev) if yq else None, seed=a.seed + e, damp_out=a.damp_out) for e in es], k)
             finish(a, name, f"{E}x{N}x{K}", k, res, [W[e] for e in pick], [Hi[e] for e in pick],
                    [Ho[e] if Ho is not None else None for e in pick], [n_e[e] for e in pick], E, N, K, t0, dev, rep,
                    sample=sum(n_e) if len(pick) < E else None)
@@ -142,6 +142,7 @@ def main():
     ap.add_argument("--min-rows", type=int, default=128)
     ap.add_argument("--tiles", type=int, default=8192, help="tiles a card call aims for (more matrices coded at once)")
     ap.add_argument("--sample", type=int, default=0, help="experts: code only this many per tensor to price a width (no codes saved)")
+    ap.add_argument("--damp-out", type=float, default=0.01, help="YAQA: H_out + this x mean(diag) I (more = trust the output side less)")
     ap.add_argument("--plan", default=None, help="tsv of tensor name and bits (trl_parts.py); others take --bits")
     a = ap.parse_args()
     a.plan = {l.split("\t")[0]: int(l.split("\t")[1]) for l in open(a.plan) if l.strip() and not l.startswith("#")} if a.plan else {}

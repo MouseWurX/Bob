@@ -113,7 +113,7 @@ def side_block(n, block=128):
     return block if n % block == 0 else 0
 
 
-def _job(W, k, H_in, H_out=None, seed=0, scale_mult=1.0):
+def _job(W, k, H_in, H_out=None, seed=0, scale_mult=1.0, damp_out=0.01):
     """one linear's coding as a generator: it yields the next batch of tiles to code (targets [n, 256] in grid units)
     and takes back (states [n, 256], values [n, 256]); it returns the result dict. quantize_many() runs many at once."""
     dev = W.device; N, K = W.shape
@@ -131,7 +131,7 @@ def _job(W, k, H_in, H_out=None, seed=0, scale_mult=1.0):
     Hi = rht(rht(damp(H_in.double().to(dev)) * sg_in[None, :] * sg_in[:, None], 0, bk), 1, bk)
     Li = ldl_lower(damp(Hi, 1e-6)).to(dt); del Hi
     if H_out is not None:
-        Ho = rht(rht(damp(H_out.double().to(dev)) * post[None, :] * post[:, None], 0, bn), 1, bn)
+        Ho = rht(rht(damp(H_out.double().to(dev), damp_out) * post[None, :] * post[:, None], 0, bn), 1, bn)
         Lo = ldl_lower(damp(Ho, 1e-6)).to(dt); del Ho
     # one scale per input-tile column, from the target's spread
     s16 = (Wt.reshape(N, K // 16, 16).pow(2).mean(dim=(0, 2)).sqrt() / C.GRID_SD * scale_mult).half().double()
@@ -147,23 +147,27 @@ def _job(W, k, H_in, H_out=None, seed=0, scale_mult=1.0):
             states[:, i] = st.reshape(N // 16, 256)
             hat[:, c0:c1] = from_tiles(v.reshape(N // 16, 1, 256).to(dt), N, 16) * s16[i]
     else:  # YAQA: anti-diagonals of tiles from the bottom-right corner, both feedbacks
+        # Each anti-diagonal in a few batched products: Lo and Li are lower with zero diagonal blocks, so
+        # Lo[r0:, r0:r1]^T E[r0:, c0:] Li[c0:, c0:c1] = Lo[:, r0:r1]^T E Li[:, c0:c1] (the cut-off rows are zero), and the
+        # tiles of one anti-diagonal never feed each other, so one E serves them all. (Was one tile at a time: ~12,000
+        # small card calls per tensor, 497 s for Qwen3-0.6B on a 4090, 28 Nov.)
         mt, nt = N // 16, K // 16
         starts = [(mt - i - 1, nt - 1) for i in range(mt)] + [(0, nt - i - 1) for i in range(1, nt)]
+        ar = torch.arange(16, device=dev); r_, c_ = _rc(dev)
         for jm0, jn0 in starts:
-            idx = []; jm, jn = jm0, jn0
-            while 0 <= jm < mt and 0 <= jn < nt:
-                idx.append((jm, jn)); jm += 1; jn -= 1
-            tg = []
-            E = Wt - hat  # the tiles of one anti-diagonal never feed each other, so one E serves them all
-            for jm, jn in idx:
-                r0, r1, c0, c1 = 16 * jm, 16 * jm + 16, 16 * jn, 16 * jn + 16
-                t = Wt[r0:r1, c0:c1] + Lo[r0:, r0:r1].T @ E[r0:, c0:] @ Li[c0:, c0:c1] \
-                    + Lo[r0:, r0:r1].T @ E[r0:, c0:c1] + E[r0:r1, c0:] @ Li[c0:, c0:c1]
-                tg.append(to_tiles(t / s16[jn]).reshape(256))
-            st, v = yield torch.stack(tg).float()
-            for j, (jm, jn) in enumerate(idx):
-                states[jm, jn] = st[j]
-                hat[16 * jm:16 * jm + 16, 16 * jn:16 * jn + 16] = from_tiles(v[j].reshape(1, 1, 256).to(dt), 16, 16) * s16[jn]
+            n_d = min(mt - jm0, jn0 + 1)
+            jm = torch.arange(jm0, jm0 + n_d, device=dev); jn = torch.arange(jn0, jn0 - n_d, -1, device=dev)
+            R = 16 * jm[:, None] + ar; Cc = 16 * jn[:, None] + ar   # [t, 16] rows / columns of each tile
+            E = Wt - hat
+            Lo_r = Lo[:, R].permute(1, 0, 2); Li_c = Li[:, Cc].permute(1, 0, 2)  # [t, N, 16], [t, K, 16]
+            EL = E @ Li_c                                                      # [t, N, 16]: E Li[:, c]
+            ti = torch.arange(n_d, device=dev)
+            blk = Wt[R[:, :, None], Cc[:, None, :]] + Lo_r.mT @ EL + Lo_r.mT @ E[:, Cc].permute(1, 0, 2) + EL[ti[:, None], R]
+            sc = s16[jn][:, None, None]
+            st, v = yield (blk / sc)[:, r_, c_].float()
+            states[jm, jn] = st
+            hb = torch.zeros(n_d, 16, 16, dtype=dt, device=dev); hb[:, r_, c_] = v.to(dt)
+            hat[R[:, :, None], Cc[:, None, :]] = hb * sc
     hat = hat.double()
     W_hat = rht(rht(hat, 0, bn) * post[:, None], 1, bk) * sg_in[None, :]
     desc = [1 if bn else 0, bn, 1, 1 if bk else 0, bk, 1, 0]
