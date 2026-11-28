@@ -11,6 +11,7 @@
 # Source: thinkingmachines/Inkling-2-Mini (experts NVFP4, the rest MXFP8/BF16). transformers 5.24.1 unpacks it for the
 # Hessian pass; llama.cpp's own converter (UPSTREAM_SHA) makes the BF16 GGUF; Lamplight (ENGINE_SHA) runs every file.
 # Calibration = wikitext-2 train (never the test text, never Bob's held-out jobs, never text Claude wrote). Uploads nothing.
+#   CANARY=1 DIAG=1 bash inkling-trl.sh -> stops after the unpack with hess_probe.py's six stages (about 10 min)
 #   CANARY=1 bash inkling-trl.sh   -> every step once on two layers (0 and 6, one looped), few chunks, all timed
 #   bash inkling-trl.sh            -> the whole brain
 # Env: OUT, W, KEEP (where the finished files go, default /workspace/keep), CHUNKS x CTX (Hessian text), KLD_CHUNKS,
@@ -131,6 +132,12 @@ if python3 -c "import json,sys; c=json.load(open(sys.argv[1])); sys.exit(0 if 'q
   [ -e "$HFB/.hf_dequant-v2" ] || { rm -rf "$HFB" "$W/hess"; }   # older copies cast float32 weights to BF16 (try 7)
   [ -s "$HFB/config.json" ] || python3 "$TP/hf_dequant.py" --src "$W/hf" --out "$HFB" > "$OUT/dequant.log" 2>&1 || { rm -rf "$HFB"; tail -5 "$OUT/dequant.log"; fail unpack; }
   say "$(tail -1 "$OUT/dequant.log")"
+fi
+if [ "${DIAG:-0}" = 1 ]; then  # tries 7-8: odds went NaN after the first chunks; find which piece does it, then stop
+  step "what turns the odds non-finite (stages 0-5)"
+  timeout 1800 python3 "$TP/hess_probe.py" --model "$HFB" --text "$TR" --match-gguf "$REF" --only "^blk\.($LAYERS)\." --devices "$NGPU" \
+    --ctx 256 > "$OUT/probe.log" 2>&1; grep "^probe:" "$OUT/probe.log" | while read -r l; do say "$l"; done; tail -3 "$OUT/probe.log"
+  step done; say "DIAG DONE"; exit 0
 fi
 step "Hessians, both factors, every expert ($CHUNKS x $CTX tokens, layers over $NGPU cards)"
 H=$W/hess
