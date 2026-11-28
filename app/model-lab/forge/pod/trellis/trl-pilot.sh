@@ -134,7 +134,7 @@ for k in $BITS; do
     step "stock 2-bit rows"
     q STOCK-Q2_K Q2_K --pure; q STOCK-q2_0 Q8_0 --tensor-type "attn_(q|k|v|output)=q2_0" --tensor-type "ffn_(gate|up|down)=q2_0"
     KL+=("STOCK-Q2_K=$W/STOCK-Q2_K.gguf" "STOCK-q2_0=$W/STOCK-q2_0.gguf")
-    # llama.cpp's own 2-bit files with an importance matrix from the same training text (Squeak, 28 Nov: "Stock llama
+    # llama.cpp's own 2-bit files with an importance matrix from the same training text (the owner, 28 Nov: "Stock llama
     # settings?"): its usual mixes (-MIX: llama-quantize picks the type per tensor) and every linear one type (-PURE, the
     # same layout as the trellis rows). Same q8_0 token table and head as every row here, so only the linears differ.
     if [ "$STOCK_IQ" = 1 ]; then
