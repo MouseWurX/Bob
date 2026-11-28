@@ -1,0 +1,32 @@
+card: NVIDIA GeForce RTX 4090, 24564 MiB, 595.112.07, 29, 210 MHz
+CUDA architecture: 89, cmake cmake version 3.22.1
+llama.cpp version: 1.0.0-dev (build 12359, commit b1b770d)
+Qwen/Qwen3-1.7B revision 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+reference file: 4069679008 bytes
+inputs: 56 tensors, 32768 rows or more each
+A: 1889787808 bytes
+A: our stock q2_0 writer = llama-quantize, byte for byte
+A stock: layer loss (share of output, stock -> stock) 0.4764 -> 0.4764 over 28 tensors
+A gptq: layer loss (share of output, stock -> gptq) 0.4764 -> 0.05899 over 28 tensors
+A gsq: layer loss (share of output, stock -> gsq) 0.4764 -> 0.04657 over 28 tensors
+B: 1339285408 bytes
+B: our stock q2_0 writer = llama-quantize, byte for byte
+B stock: layer loss (share of output, stock -> stock) 0.382 -> 0.382 over 84 tensors
+B gptq: layer loss (share of output, stock -> gptq) 0.382 -> 0.04263 over 84 tensors
+B gsq: layer loss (share of output, stock -> gsq) 0.382 -> 0.03289 over 84 tensors
+# name	mean_kld	kld_pm	same_top_pct	ppl_ratio
+Q8_0	0.003141	0.000103	97.610	1.023596
+A-GPTQ	0.382419	0.009450	76.728	1.288990
+A-GSQ	0.319725	0.007879	78.676	1.165422
+A-STOCK	3.356898	0.037198	36.949	19.743650
+B-GPTQ	0.881332	0.016250	64.816	1.772675
+B-GSQ	0.668667	0.013464	69.400	1.442969
+B-STOCK	12.327526	0.039540	0.208	88352.424349
+Q8_0: The capital of France is Paris. The capital of the United Kingdom is London. The  
+A-GPTQ: The capital of France is Paris, and the capital of the United States is Washington,  
+A-GSQ: The capital of France is Paris, and the capital of the United States is Washington,  
+A-STOCK: The capital of France is the city of the city of the city of the city of  
+B-GPTQ: The capital of France is Paris, and the capital of the United States is New York  
+B-GSQ: The capital of France is Paris, and the capital of the United States is Washington.  
+B-STOCK: The capital of France is infinitein Cop Bor StromLEra tapeschcommon羡   
+GSQ DONE

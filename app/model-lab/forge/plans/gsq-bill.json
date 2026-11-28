@@ -1,0 +1,142 @@
+{
+ "run": "gsq-bill",
+ "note": "HELD: not to be rented until the owner says so in their own words in the laptop thread (rentals need them). 26 Nov 2026, the owner: \"If their research can benefit us we should attempt to implement it\" (ISTA DASLab's GSQ-RCO), and \"Healing is not training\" (the OK for GSQ's light tuning of rounding). The GSQ pilot (27 Nov, Qwen3-1.7B, docs/forge-runs/2026-11-27-gsq-pilot/) showed llama.cpp's stock q2_0 rounding drifts 9-14 times more than GPTQ at the same size, and GSQ another 16-24% less than GPTQ. Bill's best file, MX2_S (KLD 1.01), keeps all 48 down-expert tensors at stock q2_0. This run makes MX2_S again, then MG2_S (its down experts rounded by GPTQ, no learning) and MQ2_S (by GSQ), same size to the byte, and scores all three by KLD against Bill's own Q8_0 and the publish gate. Inputs are recorded on MX2_S itself with wikitext-2 train (never Bob's held-out jobs, never text Claude wrote); weights come from the Q8_0. Stock llama.cpp types only: the files load on stock llama.cpp and Lamplight. Nothing is uploaded (cut.publish false). Only the rounding of those 48 tensors changes; nothing else is tuned. One RTX PRO 6000. Rental 1 (27 Nov, $14.49) made MX2_S (KLD 1.00, gate passed) but no MG2_S/MQ2_S: x_dump wrote too slowly and hit its limit, and a PC test took 2.4 h; both fixed (docs/forge-runs/2026-11-27-gsq-bill-dry-run/). Estimate 4-5 h at the forge table price $2.69/h, about $11-14 (the 26 Nov run's download, cut and one quant with KLD took about 1.2 h; GPTQ about 25 min and GSQ 1-1.5 h on 14,784 experts are estimates from the pilot's speed, not yet measured on this card; GSQ stops at 150 min and MG2_S stands either way); caps 6 h / $17 (the live price is checked before renting).",
+ "benchmark_only": true,
+ "teacher": "Qwen/Qwen3.8-Flash-Next",
+ "counts": "expert-counts-2026-11-04T23-23-19.json",
+ "lessons": "out/lessons",
+ "gpus": [
+  "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+ ],
+ "step_up": [],
+ "disk_gb": 600,
+ "general_tokens": 0,
+ "rungs": [],
+ "direct": true,
+ "hours_max": 6,
+ "dollars_max": 17,
+ "rent_minutes": 180,
+ "download_quants": [],
+ "llama_tag": "b12359",
+ "no_hands": true,
+ "prep": [
+  "Runs from a kit at this branch's commit (claude/project-thread-9my3wr). The keep list must be at out/reap-flashnext-q4-jobs/keep/all-keep-60.json under the Lab folder (model-lab): copy it from the project library laptop-rentals/keep/all-keep-60.json (sha256 1bc87adc...b6b2d2, checked before renting since 26 Nov).",
+  "Dry run of the new step on 27 Nov in the cloud: tiny made-up MoE brain (qwen3moe from llama.cpp's test-llama-archs), b12359, processor only: the forge's gsq step run from the pod path, stock writer equal to llama-quantize byte for byte on the experts, GPTQ in batches equal to one expert at a time byte for byte, KLD measured (docs/forge-runs/2026-11-27-gsq-bill-dry-run/).",
+  "Pre-flight: node forge.mjs --plan plans/gsq-bill.json --rent-plan (rents nothing).",
+  "Needs the owner's own yes in the laptop thread, with this cap (rental 1's yes is used up)."
+ ],
+ "publish": {
+  "user": "MouseWurX",
+  "private": false,
+  "odds": false,
+  "models": [],
+  "note": "26 Nov 2026: this run uploads nothing (cut.publish false). A file that wins still needs npc's quiz and held-out jobs, and the owner's word on going public."
+ },
+ "door_minutes": 20,
+ "card_sets": [
+  {
+   "gpus": [
+    "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+   ],
+   "count": 1
+  }
+ ],
+ "min_ram_per_gpu": 180,
+ "expected_hours": 4.7,
+ "benchmark": {
+  "note": "one 96 GB card, Bill only: download, cut, imatrix from Hugging Face, per-tensor error measure, two baselines and three exact-size picks, KLD for each, gate. Measure only.",
+  "hours_each": 1.4,
+  "brain_engine": {
+   "ref": "3fff3cf084e3def210b6e92c1d415280bfbb4e3a",
+   "patches": [
+    "0001-expert-mask",
+    "0002-expert-trace",
+    "0003-dials",
+    "0004-rpc-wifi",
+    "0005-scut",
+    "0006-scut-seal",
+    "0007-expert-trace-stream",
+    "0008-scut-live",
+    "0009-expert-mass",
+    "0010-expert-trace-once",
+    "0011-rpc-read-ahead",
+    "0012-load-progress",
+    "0013-experts-per-word",
+    "0014-rpc-any-version"
+   ],
+   "note": "Brain Engine b12359 + all 14 of Bob's engine patches at 3fff3cf (expert trace with mass for the expert-map phase)"
+  },
+  "download_max_minutes": 75,
+  "models": [
+   {
+    "name": "blfn",
+    "nickname": "Bill {N}Bob A6B Flash-Next REAP60: Flash-Next with 60% of experts kept, cut on the pod",
+    "file": "cut",
+    "quant": "IQ2_XXS",
+    "slots": 10,
+    "ctx": 491520,
+    "extra": "",
+    "hours": 4,
+    "download_gb": 190,
+    "imatrix_from": "out/bnfn-calib/imatrix",
+    "cut": {
+     "src": "hf:unsloth/Qwen3.8-Flash-Next-GGUF:Q8_0/Qwen3.8-Flash-Next-Q8_0-00001-of-00006.gguf",
+     "source_note": "unsloth/Qwen3.8-Flash-Next-GGUF (Q8_0)",
+     "keep_file": "out/reap-flashnext-q4-jobs/keep/all-keep-60.json",
+     "base": "Qwen/Qwen3.8-Flash-Next",
+     "base_params": 125,
+     "name": "Bill {N}Bob A6B Flash-Next REAP60",
+     "repo": "MouseWurX/Bill-{N}Bob-A6B-Flash-Next-REAP60-GGUF",
+     "license_from": "hf:Qwen/Qwen3.8-Flash-Next:LICENSE",
+     "license_name": "qwen-community-1.0",
+     "quants": [
+      "MX2_S",
+      "MG2_S",
+      "MQ2_S"
+     ],
+     "serve": "MX2_S",
+     "imatrix_chunks": 200,
+     "private": false,
+     "card_extra": "cards/bill-flashnext.md",
+     "hold_minutes": 45,
+     "expect_gb": {
+      "MX2_S": "49.3-54.5",
+      "MG2_S": "49.3-54.5",
+      "MQ2_S": "49.3-54.5"
+     },
+     "expect_note": "27 Nov: MG2_S and MQ2_S are MX2_S with only its 48 q2_0 down-expert tensors rounded again, so all three are the same size to the byte (checked on the pod), +-5% as before. Nothing is uploaded on this run.",
+     "down_type": {},
+     "predict_gb": {
+      "MX2_S": 51.93,
+      "MG2_S": 51.93,
+      "MQ2_S": 51.93
+     },
+     "recipe_file": "flashnext-mixed.json",
+     "recipe_cut": "bill",
+     "kld": true,
+     "imatrix_from": "hf:MouseWurX/Bill-77Bob-A6B-Flash-Next-REAP60-GGUF:imatrix.gguf",
+     "publish": false,
+     "keep_sha256": "1bc87adc826d82207834c11a20aebcad54653fd7e690e88dc87fc3fd98b6b2d2",
+     "gsq": {
+      "MG2_S": {
+       "base": "MX2_S",
+       "mode": "gptq"
+      },
+      "MQ2_S": {
+       "base": "MX2_S",
+       "mode": "gsq"
+      }
+     },
+     "gsq_chunks": 128,
+     "gsq_rows": 2048,
+     "gsq_batch": 64,
+     "gsq_steps": 640,
+     "gsq_minutes": 150,
+     "gsq_x_minutes": 30
+    },
+    "commands": []
+   }
+  ],
+  "pc_tests": false
+ }
+}

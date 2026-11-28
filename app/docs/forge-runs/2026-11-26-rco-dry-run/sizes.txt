@@ -1,0 +1,5 @@
+IQ2_XXS 9572032 bytes
+IQ2_M 9718784 bytes
+RC2_A 9572000 bytes
+RC2_B 9571968 bytes
+RC2_S 9718720 bytes

@@ -10,6 +10,7 @@
 // node forge.mjs --places [cards]               where the wanted cards are in stock with storage (read-only), and your network volumes
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import readline from 'node:readline';
@@ -19,6 +20,7 @@ import { STARTUP_LOG, readStartups, recordStartup, freezingCards, orderCards, st
 import { gate as neverGate, trains as planTrains, loadNever, neverFilesFor, findLeaks } from '../never-gate.mjs';
 import { V2, createPod, podV1, listOf, volumeV1, volumeBodyV2, podBodyV2 } from './runpod-v2.mjs';
 import { slotsUsed } from './slots.mjs';
+import { locate as locateLab } from '../common.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -423,6 +425,27 @@ function lessonPreflight() {
   for (const w of plan.write_lessons ? (Array.isArray(plan.write_lessons) ? plan.write_lessons : [plan.write_lessons]) : []) if (w.from_ideas) bad.push(`plan.write_lessons (${w.dir}) has no pre-flight yet: use benchmark commands`);
   // 16 Nov: an add-on (llama-server --lora) for a served brain comes from Hugging Face
   for (const m of plan.benchmark?.models || []) if (m.lora !== undefined && !/^hf:[^:\s]+\/[^:\s]+:[^\s]+\.gguf$/.test(String(m.lora))) bad.push(`${m.name}: lora must be hf:<repo>:<file>.gguf`);
+  // 26 Nov (rco-bill): a cut plan whose keep list was not on this PC rented a card, stopped 30 s in, and the pod sat idle
+  // (about $4.35). The keep list and card text it sends are now checked before anything is rented, with the keep list's
+  // sha256 when the plan names one (cut.keep_sha256).
+  for (const m of plan.benchmark?.models || []) if (m.file === 'cut' && m.cut?.keep_file && !/^hf:/.test(m.cut.keep_file)) {
+    const kp = path.resolve(here, '..', m.cut.keep_file);
+    if (!fs.existsSync(kp)) bad.push(`${m.name}: keep list ${kp} is missing; nothing to cut by`);
+    else if (m.cut.keep_sha256 && crypto.createHash('sha256').update(fs.readFileSync(kp)).digest('hex') !== m.cut.keep_sha256) bad.push(`${m.name}: keep list ${kp} is not the one the plan names (sha256 ${m.cut.keep_sha256.slice(0, 12)}...)`);
+    if (m.cut.card_extra && !fs.existsSync(path.resolve(here, m.cut.card_extra))) bad.push(`${m.name}: card text ${path.resolve(here, m.cut.card_extra)} is missing`);
+  }
+  // 27 Nov (Bill rental 2: the benches finished, then experts-test stopped on "No Bob source tree"): a PC-side bench test that
+  // loads Bob (bob-kit.mjs) needs a Bob source tree on this PC; check it before renting, not after
+  if (plan.benchmark?.models?.length && plan.benchmark.pc_tests !== false) {
+    const bcmds = plan.benchmark.models.flatMap((m) => m.commands?.length ? m.commands : plan.benchmark.commands?.length ? plan.benchmark.commands : ['node experts-test.mjs --url {{url}} --counts 8 --out {{out}}']);
+    for (const c of new Set(bcmds)) {
+      const script = (String(c).match(/^node\s+(\S+\.mjs)/) || [])[1]; if (!script) continue;
+      const sp = path.resolve(here, '..', script); if (!fs.existsSync(sp) || !/from '\.\/bob-kit\.mjs'/.test(fs.readFileSync(sp, 'utf8'))) continue;
+      const bobArg = (String(c).match(/--bob\s+("[^"]+"|\S+)/) || [])[1];
+      const bdir = locateLab({ bob: bobArg ? bobArg.replace(/"/g, '') : undefined, out: path.join(os.tmpdir(), 'forge-preflight-out') }).bob;
+      if (!fs.existsSync(path.join(bdir, 'src', 'brain.js'))) bad.push(`bench test "${script}" loads Bob, and there is no Bob source tree at ${bdir} (src/brain.js); pass --bob in the plan's command`);
+    }
+  }
   if (!cmds.length) return bad;
   if (!(Number(plan.hours_max) > 0) || !(Number(plan.dollars_max) > 0) || !(Number(plan.rent_minutes) > 0)) bad.push('hours_max, dollars_max and rent_minutes must all be set (blank caps fall back to 9 h / $40)');
   let hoursSum = 0, toGoSeen = 0, toGoSum = 0;
@@ -495,8 +518,13 @@ const cost = () => price * (Date.now() - t0) / 3.6e6;
 // answered 403 to Python's default User-Agent), so the gpt-oss-small pod ran 1.3 h past its 5 h cap. Now the PC deletes
 // the pod at the cap whatever it is waiting on, and exits.
 if (!args.local) {
+  // 27 Nov (gsq-bill rerun): the pod deletes itself 8 min before the time cap, so the PC's salvage at the cap found no pod and
+  // every log of a $16 run was lost. Now the PC keeps the pod's logs every 30 min and once more 15 min before either cap.
+  let lastSalvage = Date.now(), lateSalvage = false;
   const capTimer = setInterval(async () => {
     rereadCaps();
+    const left = Math.min(hoursMax * 60 - (Date.now() - t0) / 6e4, price > 0 ? (dollarsMax - cost()) / price * 60 : Infinity);
+    if ((left <= 15 && !lateSalvage) || Date.now() - lastSalvage > 30 * 6e4) { if (left <= 15) lateSalvage = true; lastSalvage = Date.now(); salvage().catch(() => {}); }
     if ((Date.now() - t0) / 3.6e6 > hoursMax || cost() > dollarsMax) {
       clearInterval(capTimer); log(`cap reached on the timer ($${cost().toFixed(2)}, ${((Date.now() - t0) / 3.6e6).toFixed(1)} h); deleting the pod`);
       try { await kill('cap (timer)'); } finally { process.exit(3); }
@@ -719,7 +747,9 @@ async function benchOnPod(name) {
   const dir = path.join(outDir, 'bench', plan.run || 'run', name); fs.mkdirSync(dir, { recursive: true });
   // 12 Nov: a model can carry its own commands (one brain reuses earlier REAP scores, another is calibrated from the start)
   const own = (plan.benchmark.models || []).find((m) => m.name === name)?.commands;
-  const cmds = own?.length ? own : plan.benchmark.commands?.length ? plan.benchmark.commands : ['node experts-test.mjs --url {{url}} --counts 8 --out {{out}}'];
+  // 27 Nov (Bill GSQ rental 1: the default experts test took 2.4 h over the network on a measure-only run): plan.benchmark.pc_tests
+  // false = no PC-side tests; the pod's own KLD and gate are the result
+  const cmds = plan.benchmark.pc_tests === false ? [] : own?.length ? own : plan.benchmark.commands?.length ? plan.benchmark.commands : ['node experts-test.mjs --url {{url}} --counts 8 --out {{out}}'];
   log(`benchmark: ${name} is served by the card; running ${cmds.length} test command(s) on this PC`);
   // 13 Nov: files the pod made for this brain before serving it (the evil check's directions, out/bench/evil-<name>/) come home
   // first, so the PC's commands can read them and the report doesn't wait for the end of the run

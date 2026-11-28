@@ -41,7 +41,10 @@ export function locate(o) {
   const mmproj = o.mmproj === 'none' ? null : (o.mmproj || findFile(path.join(AGENT, 'models'), (n) => /^Qwen3\.6-35B-A3B-mmproj.*\.gguf$/i.test(n)) || (model && findFile(path.dirname(model), (n) => /^mmproj.*\.gguf$/i.test(n), 0)));
   const top = o.bob || path.join(AGENT, 'bob');
   // Since Nov 9 Bob's files sit in app/ inside the repository: either folder works.
-  const bob = !fs.existsSync(path.join(top, 'src')) && fs.existsSync(path.join(top, 'app', 'src')) ? path.join(top, 'app') : top;
+  let bob = !fs.existsSync(path.join(top, 'src')) && fs.existsSync(path.join(top, 'app', 'src')) ? path.join(top, 'app') : top;
+  // 27 Nov (Bill rental): a lab run from inside a repository checkout (<repo>/app/model-lab) has its Bob right above it, and
+  // <parent>/bob does not exist there; use the lab's own Bob then, so the Forge's PC-side tests do not stop after the benches
+  if (!o.bob && !fs.existsSync(path.join(bob, 'src', 'brain.js')) && fs.existsSync(path.join(here, '..', 'src', 'brain.js'))) bob = path.resolve(here, '..');
   const out = o.out || path.join(AGENT, 'bob-model-lab', 'out');
   fs.mkdirSync(out, { recursive: true });
   return { server: path.join(llamaDir, exe('llama-server')), imatrix: path.join(llamaDir, exe('llama-imatrix')), model, mmproj, bob, out };

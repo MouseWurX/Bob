@@ -13,6 +13,7 @@ export const LAB_WORDS = {
   GGUF: 'The file a running brain lives in: weights plus the facts the engine needs.',
   perplexity: 'How surprised a brain is by real text. Lower is better.',
   imatrix: 'An importance matrix: a note of which weights matter most, so squeezing spares them.',
+  'exact-size mix': 'Picking a squeeze level for each part of a brain so the file lands on a set size with the least drift.',
   'KV cache': 'The brain\'s working memory of the chat so far. Longer chats need more of it.',
   context: 'How much text the brain can see at once: the chat, files and instructions together.',
   temperature: 'How adventurous the brain is when it picks the next word. 0 picks the likeliest every time.',

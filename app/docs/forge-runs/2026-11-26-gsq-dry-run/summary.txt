@@ -1,0 +1,28 @@
+card: 
+llama.cpp version: 1.0.0-dev (build 1, commit b1b770d)
+reference: <dry-run folder>/qwen3-dense.gguf (no download)
+reference file: 3967392 bytes
+inputs: 4 tensors, 4096 rows or more each
+A: 926176 bytes
+A: our stock q2_0 writer = llama-quantize, byte for byte
+A stock: layer loss (share of output, stock -> stock) 0.4889 -> 0.4889 over 2 tensors
+A gptq: layer loss (share of output, stock -> gptq) 0.4889 -> 0.01839 over 2 tensors
+A gsq: layer loss (share of output, stock -> gsq) 0.4889 -> 0.01482 over 2 tensors
+B: 618976 bytes
+B: our stock q2_0 writer = llama-quantize, byte for byte
+B stock: layer loss (share of output, stock -> stock) 0.5048 -> 0.5048 over 6 tensors
+B gptq: layer loss (share of output, stock -> gptq) 0.5048 -> 0.01478 over 6 tensors
+B gsq: layer loss (share of output, stock -> gsq) 0.5048 -> 0.01246 over 6 tensors
+# name	mean_kld	kld_pm	same_top_pct	ppl_ratio
+A-GPTQ	0.068673	0.000793	78.836	0.998271
+A-GSQ	0.053866	0.000622	81.415	1.010511
+A-STOCK	1.665971	0.011521	13.161	1.043137
+B-STOCK	5.060248	0.033147	13.757	6.955885
+Q8_0: The capital of France is42e6e42285151515151515  
+A-GPTQ: The capital of France is42e6e4242285151511c5162  
+A-GSQ: The capital of France is42e42e6e42284228422851  
+A-STOCK: The capital of France is421c51511c6b736be515151  
+B-GPTQ: The capital of France is42e42e6e42285151514257  
+B-GSQ: The capital of France ise4262e62e62e62e62e  
+B-STOCK: The capital of France is422b272762765f3333  
+GSQ DONE

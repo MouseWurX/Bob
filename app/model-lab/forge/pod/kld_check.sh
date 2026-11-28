@@ -20,8 +20,13 @@ fi
 for nc in "$@"; do
   N=${nc%%=*} F=${nc#*=}
   grep -q "^$N	" "$TSV" && { echo "kld: $N already measured"; continue; }
-  LD_LIBRARY_PATH="$LDP" timeout 3600 "$LP" -m "$F" -c $CTX --chunks $CH -ngl 999 --kl-divergence-base "$OUT/base.kld" \
-    --kl-divergence > "$OUT/kld-$N.log" 2>&1 || { echo "kld: $N failed (see $OUT/kld-$N.log)"; continue; }
+  # 26 Nov: a run can end before llama.cpp's log thread writes the closing statistics (seen in 3 of 7 runs on a tiny brain,
+  # processor only), so a log with no "Mean KLD" line gets one more run
+  for try in 1 2; do
+    LD_LIBRARY_PATH="$LDP" timeout 3600 "$LP" -m "$F" -c $CTX --chunks $CH -ngl 999 --kl-divergence-base "$OUT/base.kld" \
+      --kl-divergence > "$OUT/kld-$N.log" 2>&1 || { echo "kld: $N failed (see $OUT/kld-$N.log)"; continue 2; }
+    grep -Eq "Mean +KLD:" "$OUT/kld-$N.log" && break
+  done
   python3 - "$OUT/kld-$N.log" "$N" >> "$TSV" <<'PY'
 import re, sys
 t = open(sys.argv[1], errors="replace").read()
