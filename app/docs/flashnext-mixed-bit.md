@@ -204,5 +204,14 @@ The owner, 26 Nov: "Healing is not training" (the OK for light tuning of roundin
 - **Bill result (27 Nov rerun, $16.14, [forge-runs/2026-11-27-gsq-bill/](forge-runs/2026-11-27-gsq-bill/)):** same size
   (51.93 GB), KLD vs Q8_0: MX2_S 1.00, MG2_S (GPTQ downs) 0.590, MQ2_S (GSQ on 33 of 48 downs) 0.595; both passed the gate.
   GPTQ is the win (41% less KLD, 24 min); GSQ tied it here, with too few input rows (processor x_dump bug) and 15 tensors short.
+- **Trellis + YAQA maker (28 Nov, built, dry run passed, rental HELD):** the owner asked for trellis and YAQA side by
+  side with GPTQ, small brains first and split over several cards. `model-lab/forge/pod/trellis/` writes Nari's trellis
+  format (Lamplight 0136, loads only in Lamplight) with our own tail-biting Viterbi on Nari's INT8 grid (EXL3's maker uses
+  another grid, so it can't be used as is), LDLQ (GPTQ-style feedback) or YAQA (two-sided feedback on the Kronecker
+  Hessian of the full model's KL, arXiv 2505.22988, GPL-3 like Bob), a CUDA kernel for the Viterbi, and a runner that
+  deals layers out to one worker per card. A trellis file it wrote runs in Lamplight with exactly the maker's weights
+  ([forge-runs/2026-11-28-trellis-dry-run/](forge-runs/2026-11-28-trellis-dry-run/)). Kit `trellis/trl-pilot.sh`
+  (canary: Qwen3-0.6B; then Qwen3-1.7B) compares stock Q2_K / q2_0, GPTQ q2_0 and trellis LDLQ / YAQA at 2 and 3 bits
+  on two cards. Flash-Next experts can be coded since the NariQ thread's expert op (de773f03); our expert writer is next.
 - **Then Bill:** the same tools on Bill's down experts (x_dump on the Q8_0 cut, per-expert H from routed tokens, GSQ per
   expert), written into the MX2_S or RC pick's q2_0 down experts, then KLD and the publish gate. Priced after the pilot.

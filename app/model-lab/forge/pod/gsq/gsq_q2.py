@@ -177,7 +177,8 @@ def pack_stock(q, d):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", required=True); ap.add_argument("--x", required=True); ap.add_argument("--match", default="ffn_down")
+    ap.add_argument("--model", required=True); ap.add_argument("--x", default=None); ap.add_argument("--match", default="ffn_down")
+    ap.add_argument("--hess", default=None, help="28 Nov: a hess_hf.py folder (H_in of every dense linear) instead of --x")
     ap.add_argument("--mode", choices=["stock", "gptq", "gsq"], default="gsq"); ap.add_argument("--out", required=True)
     ap.add_argument("--share", action="append", default=["ffn_gate=ffn_up"], help="A=B: a tensor named ...A... reads ...B...'s inputs")
     ap.add_argument("--steps", type=int, default=640, help="their production run: 10 epochs x 64 batches")
@@ -192,7 +193,8 @@ def main():
     a = ap.parse_args(); torch.manual_seed(a.seed); os.makedirs(a.out, exist_ok=True); dev = a.device
     cfg = dict(temperature=[float(x) for x in a.temperature.split(",")], scale=[float(x) for x in a.scale.split(",")], std=a.std,
                strength=a.strength, masks_lr=a.masks_lr, scales_lr=a.scales_lr, weight_decay=a.weight_decay)
-    info = json.load(open(os.path.join(a.x, "info.json"), encoding="utf-8"))["tensors"]
+    if not a.x and not a.hess: sys.exit("gsq_q2: give --x (x_dump inputs) or --hess (hess_hf.py Hessians)")
+    info = json.load(open(os.path.join(a.x, "info.json"), encoding="utf-8"))["tensors"] if a.x else {}
     done = set()
     rp = os.path.join(a.out, "report.tsv")
     if os.path.exists(rp):   # a restarted run keeps the tensors it already finished
@@ -205,12 +207,17 @@ def main():
         for pair in a.share:
             x, y = pair.split("=")
             if x in name and name.replace(x, y) in info and name not in info: src = name.replace(x, y)
-        if src not in info: print(f"gsq_q2: {name}: no inputs recorded, skipped", file=sys.stderr); continue
+        hp = os.path.join(a.hess, name + ".pt") if a.hess else None
+        if hp is None and src not in info: print(f"gsq_q2: {name}: no inputs recorded, skipped", file=sys.stderr); continue
+        if hp is not None and not os.path.exists(hp): print(f"gsq_q2: {name}: no Hessian in {a.hess}, skipped", file=sys.stderr); continue
         n_exp, rows, cols = Wall.shape
         if cols % QK: print(f"gsq_q2: {name}: {cols} wide, q2_0 needs a multiple of 64, skipped", file=sys.stderr); continue
         t0 = time.time()
-        xs = load_x(os.path.join(a.x, src + ".x"), cols, n_exp)
-        H, share = hessians(xs, n_exp, cols, dev, a.damp, a.min_rows); del xs
+        if hp is not None:  # one dense linear: H_in from the Hugging Face pass, damped as hessians() does
+            H = torch.load(hp)["H_in"].float()[None]; H += a.damp * H.diagonal(dim1=-2, dim2=-1).mean() * torch.eye(cols)[None]; share = {0: 1.0}
+        else:
+            xs = load_x(os.path.join(a.x, src + ".x"), cols, n_exp)
+            H, share = hessians(xs, n_exp, cols, dev, a.damp, a.min_rows); del xs
         idx = torch.arange(cols, device=dev) // QK; ls, lm = 0.0, 0.0
         part = os.path.join(a.out, name + ".q2_0.part")
         with open(part, "wb") as f:
