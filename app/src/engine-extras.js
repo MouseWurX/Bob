@@ -175,6 +175,62 @@ export function containerThreads(cfg, { cpus = os.cpus().length || 1, limit = co
   if (cfg?.llamacpp?.containerThreads !== true) return null;
   return Number.isInteger(limit) && limit > 0 && limit < cpus ? limit : null;
 }
+// Nov 28 (rented pods; off unless llamacpp.threadCap is true or a number): llama.cpp starts one thread per core, and on
+// a big server processor that is 64 to 128 threads, which wait on each other. On a rented 4090 with an EPYC (Lamplight
+// spec-fit and spec-fit2, measured): Inkling 2 Mini at a 16 GB budget wrote 30 words a second with 128 threads and 48
+// with 8; DSpark guesses fell to 0.46x of plain with 128 threads and rose to 1.49x with 8. With the switch on, the engine
+// gets at most 8 threads (or the number given). A home computer with 8 cores or fewer is left as it is. null leaves
+// llama.cpp's own count; threads set by hand win (the caller only asks when none is set).
+export const THREAD_CAP_DEFAULT = 8;
+export function threadCap(cfg, { cpus = os.cpus().length || 1 } = {}) {
+  const v = cfg?.llamacpp?.threadCap;
+  const cap = v === true ? THREAD_CAP_DEFAULT : Number.isInteger(v) && v > 0 ? v : null;
+  if (!cap) return null;
+  // os.cpus() counts both threads of each core; llama.cpp's own count is one per core
+  return Math.floor(cpus / 2) > cap ? cap : null;
+}
+// The engine's threads from the two rental switches: the smaller when both give one, else whichever does, else null.
+export function rentalThreads(cfg, opts = {}) {
+  const a = containerThreads(cfg, opts), b = threadCap(cfg, opts);
+  return a && b ? Math.min(a, b) : a || b || null;
+}
+
+// ---------- DSpark guesses for Inkling 2 (Nov 28; on unless llamacpp.dsparkGuesses is false) ----------
+// Unsloth ships a small guesser for Inkling 2 Mini, "dspark-Inkling-2-Mini-Q8_0.gguf", that reads the brain's own
+// inner state and guesses the next words; the brain checks them in one go, so its answers stay its own (the card's
+// rounding at near ties can still pick a different word, as with any guesser). With the file beside the brain and this
+// switch on, the engine loads it with 3 guesses at a time and samples on the card (-bs). Measured on a rented 4090
+// (Lamplight spec-host, spec-fit2): 1.49-1.50x plain on the whole card, 1.22x the best plain at a 16 GB budget, with
+// 8 engine threads. 5 or 7 guesses were slower than 3. Needs Brain Engine 44 (Lamplight 0092) for the older file
+// ("..._Old.gguf"); the newer one needs Lamplight 0165, from DSPARK_NEWER_FROM_BE. Not on the processor-only brain.
+export const DSPARK_FROM_BE = 44;
+export const DSPARK_NEWER_FROM_BE = 48; // the first Lamplight build after 47, which is the first to carry 0165
+export const DSPARK_GUESSES = 3;
+// Nov 28 (the owner: yes, on by default after spec-fit2): off only with llamacpp.dsparkGuesses set to false
+export const dsparkOn = (cfg) => cfg?.llamacpp?.dsparkGuesses !== false;
+export function dsparkSidecar(gguf, { be = 0, readdir = fs.readdirSync, info = ggufInfo } = {}) {
+  if (!gguf || !(be >= DSPARK_FROM_BE)) return '';
+  if (!/^inkling2/.test(info(gguf)?.arch || '')) return '';
+  let names = [];
+  try { names = readdir(path.dirname(gguf)); } catch { return ''; }
+  const want = path.basename(gguf).toLowerCase().replace(/(-ud)?-q\d.*$/, '').replace(/\.gguf$/, '');
+  const old = (n) => /_old\.gguf$/i.test(n);
+  const found = names
+    .filter((n) => /^dspark-.*\.gguf$/i.test(n) && (old(n) || be >= DSPARK_NEWER_FROM_BE))
+    .filter((n) => n.toLowerCase().replace(/^dspark-/, '').startsWith(want))
+    .sort((a, b) => (old(a) - old(b)) || a.localeCompare(b)); // the newer layout first where the engine has it
+  for (const n of found) {
+    const f = path.join(path.dirname(gguf), n);
+    if (info(f)?.arch === 'dflash') return f;
+  }
+  return '';
+}
+export function dsparkArgs(cfg, gguf, { be = 0, build = 0, args = [], cpu = false, ...opts } = {}) {
+  if (!dsparkOn(cfg) || cpu) return [];
+  if (args.some((a) => a === '--spec-type' || DRAFT_BRAIN.includes(a))) return []; // another guesser set by hand or per brain
+  const f = dsparkSidecar(gguf, { be, ...opts });
+  return f ? ['-md', f, '--spec-type', 'draft-dspark', ...draftNumArgs(build, DSPARK_GUESSES), '-bs'] : [];
+}
 
 export function everydayTurboArgs(cfg, { build = 0, args = [], mtp = 0, cpu = false, guesser = null } = {}) {
   // guesser: mtpArgs() for the brain (its own head, or the file beside it); without it, mtp > 0 means its own head

@@ -36,7 +36,9 @@ export function createShopParts(now) {
     if (s.state === 'installed') {
       const where = s.where.length ? `On this replicant matrix (${esc(s.where.join(', '))})` : 'On this replicant matrix';
       const eng = m.needs && (data.engines || []).find((e) => e.name === m.needs);
-      return `<div class="have">✓ ${where}</div>${newer(s)}${m.use ? `<button data-use="${esc(m.id)}">Use this</button>` : ''}${engineStep(eng)}`;
+      // Nov 28: an optional file that isn't here yet (Inkling 2 Mini's DSpark guesser) can be got on its own
+      const extra = (s.extrasMissing || []).includes('dspark') ? `<button class="get" data-get="${esc(m.id)}">Get the DSpark guesser (0.4 GB)</button>` : '';
+      return `<div class="have">✓ ${where}</div>${newer(s)}${m.use ? `<button data-use="${esc(m.id)}">Use this</button>` : ''}${extra}${engineStep(eng)}`;
     }
     // Nov 22 2026: with "Download brains that need a Hugging Face account" on and a key saved, a gated brain downloads.
     if (m.gated && s.signIn !== 'ready') return `<div class="muted"><span class="tag warn">needs a Hugging Face account</span> ${esc(s.signInWhy || m.gatedWhy || '')}</div>`;

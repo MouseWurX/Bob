@@ -37,7 +37,7 @@ const ON = { llamacpp: { containerThreads: true } };
 check('threads: off by default, even under a limit', containerThreads({}, { cpus: 64, limit: 4 }) === null && containerThreads({ llamacpp: { containerThreads: 'yes' } }, { cpus: 64, limit: 4 }) === null);
 check('threads: switched on, the limit when it is below the processors seen', containerThreads(ON, { cpus: 64, limit: 4 }) === 4);
 check('threads: nothing when there is no limit, or it is not below', containerThreads(ON, { cpus: 16, limit: null }) === null && containerThreads(ON, { cpus: 8, limit: 8 }) === null && containerThreads(ON, { cpus: 8, limit: 16 }) === null);
-check('Bob uses it only when no other thread rule or hand setting gave threads', /num\(lc\.threads, '-t'\)\.length \? num\(lc\.threads, '-t'\) : containerThreads\(this\.cfg\) \? \['-t', String\(containerThreads\(this\.cfg\)\)\] : \[\]/.test(lc));
+check('Bob uses it only when no other thread rule or hand setting gave threads', /num\(lc\.threads, '-t'\)\.length \? num\(lc\.threads, '-t'\) : rentalThreads\(this\.cfg\) \? \['-t', String\(rentalThreads\(this\.cfg\)\)\] : \[\]/.test(lc));
 
 // ---------- Engine tuning boxes ----------
 const by = Object.fromEntries(TUNING_FIELDS.map((f) => [f.k, f]));

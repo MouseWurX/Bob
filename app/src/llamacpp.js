@@ -32,7 +32,7 @@ import { readerSpareEnv, conductorOn, conductorPicked, conductorDefaultFits, SWI
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { tuningArgs, doorbellEnv, registerRamEnv } from './engine-tuning.js';
 import { turboStandins, STANDIN_ENV, turboDriveStandins, DRIVE_STANDIN_ENV, keepGuessesArgs, keepGuessesEnv, helpHasSink, sinkEnv } from './engine-extras.js'; // Turbo: stand-ins (0043), keep more guesses (0120), sharp start (0122); off unless switched on
-import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, containerThreads, mtpArgs, lockMemoryArgs, lockRoom } from './engine-extras.js'; // list items 94-103
+import { helpHasQ3, helpHasQ2, helpHasTiers, tiersEnv, q3CardOk, turboExperts, turboPerWord, memArgs, copyGuessArgs, draftNumArgs, laptopThreads, readingArgs, readingChoice, dropReading, everydayTurboArgs, specGateEnv, rentalThreads, mtpArgs, lockMemoryArgs, lockRoom, dsparkArgs } from './engine-extras.js'; // list items 94-103
 import { firstWordMs, learnReadSpeed, replyEnd, EARLY_END, loadDeadline } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { CrashBudget, crashHoldLine, plainEngineError, memoryFailure, shrinkCtx, memCheck, noRoomLine, shrinkLine, sameSettings, settingsDiff, lastGoodLine, pickPort, SpeedWatch, speedKey, speedBucket, slowLine, checkBrainFile, TextCallWatch, templateLine, readJson, writeJson } from './engine-care.js'; // reliability items 218-228
 
@@ -663,7 +663,7 @@ export class LlamaCpp {
       // 100 (opt-in, the Brains page): the brain's chat memory type, Standard (8-bit) unless picked. Flags set by hand win.
       ...memArgs(this.cfg, model, lc.args, this.memCaps()),
       // 98 Laptop mode (opt-in): on battery, half the cores. Games-first and threads set by hand win.
-      ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : laptopThreads(this.cfg) ? ['-t', String(laptopThreads(this.cfg))] : num(lc.threads, '-t').length ? num(lc.threads, '-t') : containerThreads(this.cfg) ? ['-t', String(containerThreads(this.cfg))] : []), // Nov 27: a container's processor limit (off unless switched on)
+      ...(this.role === BESIDE ? ['-t', String(besideThreads())] : cpu && cpuPlan(this.cfg) ? ['-t', String(cpuPlan(this.cfg).threads), ...(cpuPlan(this.cfg).range ? ['--cpu-range', cpuPlan(this.cfg).range] : [])] : laptopThreads(this.cfg) ? ['-t', String(laptopThreads(this.cfg))] : num(lc.threads, '-t').length ? num(lc.threads, '-t') : rentalThreads(this.cfg) ? ['-t', String(rentalThreads(this.cfg))] : []), // Nov 27/28: a container's processor limit, a thread cap (both off unless switched on)
       ...num(lc.batch, '-b'), ...num(lc.ubatch, '-ub'),
       // 101 Reading speed (opt-in): bigger reading steps on the card. A batch set by hand wins.
       ...(this.role === BESIDE ? [] : readingArgs(this.cfg, { cpu, hand: tune.taken.includes('-ub') ? { ...lc, batch: 1 } : lc, recent: this.recentPrompts, model })),
@@ -815,6 +815,10 @@ export class LlamaCpp {
       const draft = path.isAbsolute(d.model) || /\.gguf$/i.test(d.model) ? d.model : this.resolve(d.model).gguf;
       args.push('-md', draft, ...draftNumArgs(this.buildNo(), d.max ?? 16, d.min ?? 1), '-ngld', String(d.ngld ?? 99));
     }
+    // Nov 28 DSpark guesses for Inkling 2 (on unless llamacpp.dsparkGuesses is false): Unsloth's guesser file beside the
+    // brain, 3 guesses, sampled on the card. Not for the brain beside the main one; a guesser set by hand wins.
+    if (this.role !== BESIDE) { const ds = dsparkArgs(this.cfg, gguf, { be: this.beNo(), build: this.buildNo(), args, cpu });
+      if (ds.length) { args.push(...ds); this.log?.('engine', `${model}: DSpark guesses from ${path.basename(ds[1])} beside the brain`); } }
     // 102 MTP for everyday brains (opt-in): a brain with its own guesser uses it, unless MTP or a draft is set.
     // Nov 23 (the test PC's gate, twice): with the Conductor driving on a graphics card, MTP's own buffers (made after
     // the fill) still pushed 200+ MB off the card at 32K and it ran 3% slower, so the Conductor runs without everyday MTP.

@@ -338,8 +338,12 @@ export class ModelShop {
   async statusOf(entry, ollama) {
     const pulled = entry.ollama && ((ollama && ollama.has(entry.ollama)) || this.ollamaManifests().has(entry.ollama));
     const located = this.locate(entry);
-    const need = (entry.files || []).length;
-    const have = Object.keys(located).length;
+    // Nov 28: an optional file (Inkling 2 Mini's DSpark guesser) comes with a new download, but a brain without it is
+    // still installed; Get models offers it on its own (extrasMissing).
+    const must = (entry.files || []).filter((f) => !f.optional);
+    const need = must.length;
+    const have = must.filter((f) => located[f.role]).length;
+    const extrasMissing = (entry.files || []).filter((f) => f.optional && !located[f.role]).map((f) => f.role);
     let state = 'missing';
     // 1.5.104: a brain set by hand in config.json (llamacpp.models, id or Ollama name -> its .gguf) counts as here.
     const byHand = !pulled && !(need && have === need) && configuredGguf(this.cfg, entry);
@@ -350,7 +354,7 @@ export class ModelShop {
     // Nov 22 2026: a gated brain says whether it can download yet (src/hf-sign-in.js); never the key, only words.
     const sign = entry.gated ? gatedBlock(this.cfg, entry) : '';
     const engineWhy = engineShort(entry, { agentDir: this.cfg.agentDir });
-    return { state, where, located, canDownload, ...(entry.gated ? { signIn: sign ? 'needed' : 'ready', signInWhy: sign } : {}), ...(engineWhy ? { engineWhy } : {}) };
+    return { state, where, located, canDownload, ...(extrasMissing.length ? { extrasMissing } : {}), ...(entry.gated ? { signIn: sign ? 'needed' : 'ready', signInWhy: sign } : {}), ...(engineWhy ? { engineWhy } : {}) };
   }
 
   async list() {
