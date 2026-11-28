@@ -63,6 +63,7 @@ targets:
       - sdk: AVFoundation.framework
       - sdk: PhotosUI.framework
       - sdk: UserNotifications.framework
+      - sdk: AppIntents.framework
     info:
       path: build/Info.plist
       properties:
@@ -86,3 +87,8 @@ targets:
         NSLocalNetworkUsageDescription: Bob talks to the Bob on your PC over your network or Tailscale.
         NSMicrophoneUsageDescription: Bob listens only while you're talking to him.
         NSPhotoLibraryAddUsageDescription: Bob saves pictures he made for you.
+        # 🖐 Let Bob run Shortcuts: a Shortcut Bob ran hands its answer back to bob-phone://shortcut.
+        CFBundleURLTypes:
+          - CFBundleURLName: ca.mousewurx.bob.shortcuts
+            CFBundleURLSchemes: [bob-phone]
+        LSApplicationQueriesSchemes: [shortcuts]

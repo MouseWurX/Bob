@@ -32,6 +32,36 @@ globalThis.BobShared = {
     "bytes": 2497281120,
     "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597"
    }
+  },
+  {
+   "id": "lfm3-1.7b",
+   "name": "LFM3 1.7B",
+   "family": "LFM",
+   "pick": "tools",
+   "what": "Tiny (about 1.1 GB) and made for calling tools: a good pick for filling in spreadsheets and documents with \"Let the phone brain use tools\". Liquid AI's own licence: free for personal use; read it before using it for a business. Unproven on a phone in our lab, as we have yet to test.",
+   "license": "LFM Open License v1.0",
+   "maxTokens": 768,
+   "file": {
+    "name": "LFM3-1.7B-Q4_K_M.gguf",
+    "url": "https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/cd0c74c575b5c416f3011b5b4c298077f26ca8c2/LFM3-1.7B-Q4_K_M.gguf",
+    "bytes": 1099627808,
+    "sha256": "3793e1e6e2266919d6e015287221b41100175a98eddaba92e111aed3b05c93c4"
+   }
+  },
+  {
+   "id": "qwen3.5-4b",
+   "name": "Qwen3.5 4B",
+   "family": "Qwen",
+   "pick": "tools",
+   "what": "Newer and better at tools and step-by-step work than Qwen3 4B, but slower. About 2.7 GB. Unproven on a phone in our lab, as we have yet to test.",
+   "license": "Apache 2.0",
+   "maxTokens": 1024,
+   "file": {
+    "name": "Qwen3.5-4B-Q4_K_M.gguf",
+    "url": "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/e87f176479d0855a907a41277aca2f8ee7a09523/Qwen3.5-4B-Q4_K_M.gguf",
+    "bytes": 2740937888,
+    "sha256": "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4"
+   }
   }
  ]
 };

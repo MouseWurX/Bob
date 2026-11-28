@@ -22,6 +22,13 @@ final class Bridge: NSObject, AVSpeechSynthesizerDelegate, PHPickerViewControlle
     private var fileCall: String?
     private var inBackground = false
     static let notHere = "That needs Bob for Android for now."
+    /// The screen that's open, and words that came in for the message box (Ask Bob from Siri or a Shortcut).
+    static weak var live: Bridge?
+    static var pendingShare: [String: Any]?
+    static func incoming(_ words: String) {
+        pendingShare = ["text": String(words.prefix(20000)), "subject": ""]
+        live?.send(["event": "share"])
+    }
 
     init(screen: UIViewController, web: WKWebView) {
         self.screen = screen
@@ -29,6 +36,7 @@ final class Bridge: NSObject, AVSpeechSynthesizerDelegate, PHPickerViewControlle
         super.init()
         voice.delegate = self
         brain.listener = { [weak self] m in var o = m; o["event"] = "brain"; self?.send(o) }
+        Bridge.live = self
     }
 
     // ---- talking to the page ----
@@ -139,9 +147,25 @@ final class Bridge: NSObject, AVSpeechSynthesizerDelegate, PHPickerViewControlle
         case "pair.waiting": answer(id, [Any]())
         case "pair.find": answer(id, [Any]())
         case "share.state": answer(id, false)
-        case "share.take", "widget.take": answer(id, nil)
+        case "share.take": answer(id, Bridge.pendingShare); Bridge.pendingShare = nil
+        case "widget.take": answer(id, nil)
         case "widget.count", "widget.set": answer(id, 0)
         case "share.on": throw NetError("On an iPhone, Bob isn't in the Share menu yet: copy and paste instead.")
+
+        // ---- 🖐 Shortcuts (Let Bob run Shortcuts; the page asks for your OK first) ----
+        case "shortcut.run":
+            let name = str("name").trimmingCharacters(in: .whitespacesAndNewlines)
+            if name.isEmpty { throw NetError("say which Shortcut") }
+            answer(id, await ShortcutRunner.shared.run(name: String(name.prefix(200)), input: String(str("input").prefix(4000))))
+        case "hands.state": answer(id, ["kind": "shortcuts"])
+        case "hands.end": answer(id, true)
+        // Apple lets no app tap in or read another: Bob's hands are Bob for Android's.
+        case "hands.allow", "hands.settings", "hands.apps", "hands.open", "hands.look", "hands.act": throw NetError("Apple doesn't let one app use another. On an iPhone, Bob runs your Shortcuts instead.")
+        // Bob's documents and Look things up online (Let the phone brain use tools) are Bob for Android's for now.
+        case "docs.list": answer(id, [Any]())
+        case "docs.read": answer(id, nil)
+        case "docs.delete", "docs.undo": answer(id, false)
+        case "docs.write", "docs.save", "docs.add", "web.get": throw NetError(Bridge.notHere)
 
         // ---- phone bits ----
         case "notify": notifyNow(str("title"), str("text")); answer(id, true)

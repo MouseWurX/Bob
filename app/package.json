@@ -19,8 +19,10 @@
     "dist:dir": "electron-builder --win dir",
     "dist:linux": "electron-builder --linux AppImage --publish never"
   },
+  "testSolo": [],
   "testSuites": [
     "test/run-install-guides-test.js",
+    "test/run-changed-tests-test.js",
     "test/run-step-fit-test.js",
     "test/run-hf-sign-in-test.js",
     "test/run-engine-min-test.js",
@@ -121,6 +123,7 @@
     "test/run-answer-checks-test.js",
     "test/run-hands-schedules-test.js",
     "test/run-apps-test.js",
+    "test/run-apps-unix-test.js",
     "test/run-apps-route-test.js",
     "test/run-settings-page-test.js",
     "test/run-idle-unload-test.js",
@@ -160,6 +163,8 @@
     "test/run-bob-life-test.js",
     "test/run-phone-access-test.js",
     "test/run-android-test.js",
+    "test/run-phone-tools-test.js",
+    "test/run-phone-hands-test.js",
     "test/run-share-brains-test.js",
     "test/run-job-pick-test.js",
     "test/run-mac-test.js",
@@ -471,7 +476,9 @@
     "asarUnpack": [
       "audio/**",
       "model3d/**",
-      "engines/**"
+      "engines/**",
+      "installer/bob-apps-linux.py",
+      "installer/bob-apps-mac.js"
     ]
   }
 }

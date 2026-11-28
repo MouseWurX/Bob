@@ -30,7 +30,7 @@ check('defaultHome on Windows: LOCALAPPDATA\\Bob', defaultHome({ LOCALAPPDATA: '
   killTree({ pid: 43 }, { os_: 'win', spawnSyncImpl: (f, a) => { ran = [f, ...a]; } });
   check('killTree: the whole process group on a Mac, taskkill /T on Windows', killed[0]?.[0] === -42 && killed[0][1] === 'SIGKILL' && ran?.[0] === 'taskkill' && ran.includes('/T'));
 }
-check('features: Windows-only parts are off on a Mac', !supports('defender', 'mac') && !supports('appsHand', 'mac') && !supports('gamingCard', 'mac') && supports('updateBob', 'mac') && supports('ownEngines', 'mac') && features('win').defender === true);
+check('features: Windows-only parts are off on a Mac (the Apps hand is a trial there)', !supports('defender', 'mac') && supports('appsHand', 'mac') && !supports('gamingCard', 'mac') && supports('updateBob', 'mac') && supports('ownEngines', 'mac') && features('win').defender === true);
 check('a Mac shares memory: about two thirds for graphics, three quarters from 36 GB', unifiedGraphicsGB(16 * 1024 ** 3) === 10 && unifiedGraphicsGB(64 * 1024 ** 3) === 48);
 {
   const vm = 'Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                               10000.\nPages active:                             90000.\nPages inactive:                           50000.\nPages speculative:                         2000.\nPages purgeable:                           3000.\n';
@@ -76,7 +76,7 @@ const E = (id) => ENGINES.find((e) => e.id === id);
 check('model cards: Piper and whisper.cpp models are marked as not for a Mac yet', !engineRunsOn('Piper', 'darwin') && engineRunsOn('stable-diffusion.cpp', 'darwin') && /Mac/.test(suit({ needs: 'Piper', sizeGB: 0.1 }, {}, 'darwin').why));
 
 // ---------------------------------------------------------------- Hands
-check('Hands on a Mac: no Apps hand (it drives Windows apps)', !handsHere('mac').some((h) => h.id === 'apps') && handsHere('win').some((h) => h.id === 'apps') && !handHere('apps', 'mac'));
+check('Hands on a Mac: the Apps hand is a trial, marked so and unproven', handsHere('mac').find((h) => h.id === 'apps')?.trial === true && !handsHere('win').find((h) => h.id === 'apps')?.trial && handHere('apps', 'mac') && /unproven in our lab, as we have yet to test/.test(handsHere('mac').find((h) => h.id === 'apps').what));
 check('Hands on a Mac: the Security hand talks about the Mac, not Defender', /FileVault/.test(handsHere('mac').find((h) => h.id === 'security').what) && !/Defender/.test(handsHere('mac').find((h) => h.id === 'security').what));
 check('defender_scan exists on Windows (Defender) and Linux (ClamAV), never on a Mac', HANDS.security.toolsOnlyOn.defender_scan.join() === 'win,linux');
 {

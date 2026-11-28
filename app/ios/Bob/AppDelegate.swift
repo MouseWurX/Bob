@@ -15,6 +15,11 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         window = w
         return true
     }
+
+    /// bob-phone:// — a Shortcut Bob ran, answering (Shortcuts.swift).
+    func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        ShortcutRunner.shared.handle(url)
+    }
 }
 
 /// Hands the page its own files from the app bundle's www folder, and nothing else.
