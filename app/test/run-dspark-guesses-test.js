@@ -1,4 +1,4 @@
-// DSpark guesses for Inkling 2 (Nov 28) and the thread cap: both off by default, the guesser only from a file beside
+// DSpark guesses for Inkling 2 (Nov 28, on by default with the owner's yes) and the thread cap (off by default): the guesser only from a file beside
 // an Inkling 2 brain, the newer file only on an engine that loads it, and a guesser set by hand always wins.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,7 +22,8 @@ const fakes = (names, arch = {}) => ({
 const ON = { llamacpp: { dsparkGuesses: true } };
 const both = fakes([path.basename(BRAIN), OLD, NEW]);
 
-check('off by default', dsparkArgs({}, BRAIN, { be: 47, ...both }).length === 0 && dsparkArgs({ llamacpp: { dsparkGuesses: 'yes' } }, BRAIN, { be: 47, ...both }).length === 0);
+check('on by default (the owner, Nov 28), off with false', dsparkArgs({}, BRAIN, { be: 47, ...both }).length > 0 && dsparkArgs({ llamacpp: { dsparkGuesses: false } }, BRAIN, { be: 47, ...both }).length === 0);
+check('on by default does nothing without the file beside the brain', dsparkArgs({}, BRAIN, { be: 47, ...fakes([path.basename(BRAIN)]) }).length === 0);
 { const a = dsparkArgs(ON, BRAIN, { be: 47, ...both });
   check('on: the older file, 3 guesses, sampled on the card', a[0] === '-md' && path.basename(a[1]) === OLD && a.join(' ').includes('--spec-type draft-dspark') && a.join(' ').includes('--spec-draft-n-max 3') && a.includes('-bs'), a.join(' ')); }
 check('the newer file only from the engine that loads it', path.basename(dsparkSidecar(BRAIN, { be: DSPARK_NEWER_FROM_BE, ...both })) === NEW && path.basename(dsparkSidecar(BRAIN, { be: DSPARK_NEWER_FROM_BE - 1, ...both })) === OLD);
@@ -48,12 +49,15 @@ const lc = read('src/llamacpp.js');
 check('Bob adds DSpark before everyday MTP, never for the brain beside', /this\.role !== BESIDE\) \{ const ds = dsparkArgs\(this\.cfg, gguf/.test(lc) && lc.indexOf('dsparkArgs(this.cfg') < lc.indexOf('everydayTurboArgs(this.cfg'));
 check('threads set by hand still win over the rental switches', /num\(lc\.threads, '-t'\)\.length \? num\(lc\.threads, '-t'\) : rentalThreads\(this\.cfg\)/.test(lc));
 const ex = JSON.parse(read('config.example.json'));
-check('the example config leaves both off', ex?.llamacpp?.dsparkGuesses !== true && ex?.llamacpp?.threadCap !== true);
+check('the example config keeps DSpark on and the thread cap off', ex?.llamacpp?.dsparkGuesses !== false && ex?.llamacpp?.threadCap !== true);
+const mj = read('src/models.js'), shop = read('public/cellar-shop.js');
+check('an optional file never keeps a brain from counting as installed', /const must = \(entry\.files \|\| \[\]\)\.filter\(\(f\) => !f\.optional\)/.test(mj) && /extrasMissing/.test(mj));
+check('Get models offers the guesser on its own for an installed brain', /extrasMissing \|\| \[\]\)\.includes\('dspark'\)/.test(shop) && /Get the DSpark guesser/.test(shop));
 
 // ---------- Help, glossary, FAQ ----------
 const page = HELP.find((h) => h.id === 'dspark-guesses'), faq = HELP.find((h) => h.id === 'faq-dspark-guesses'), gl = HELP.find((h) => h.id === 'glossary');
-check('Help page in Bob\'s voice, off by default, naming the platforms', !!page && /my engine/.test(page.html) && /off by default/.test(page.html) && ['Windows', 'Mac', 'Linux', 'Android'].every((w) => page.html.includes(w)));
-check('Help names the config keys and the file', ['"dsparkGuesses": true', '"threadCap": true', 'dspark-Inkling-2-Mini-Q8_0_Old.gguf'].every((t) => page.html.includes(t)));
+check('Help page in Bob\'s voice, naming the defaults and the platforms', !!page && /my engine/.test(page.html) && /on by default/.test(page.html) && /off by default/.test(page.html) && ['Windows', 'Mac', 'Linux', 'Android'].every((w) => page.html.includes(w)));
+check('Help names the config keys and the file', ['"dsparkGuesses": false', '"threadCap": true', 'dspark-Inkling-2-Mini-Q8_0_Old.gguf'].every((t) => page.html.includes(t)));
 check('Help says the speed at home is unproven', /unproven in our lab, as we have yet to test/.test(page?.html || ''));
 check('an FAQ', !!faq && faq.group === 'FAQ');
 check('glossary entries', /<dt>DSpark guesses<\/dt>/.test(gl?.html || '') && /<dt>Thread cap<\/dt>/.test(gl?.html || ''));

@@ -195,7 +195,7 @@ export function rentalThreads(cfg, opts = {}) {
   return a && b ? Math.min(a, b) : a || b || null;
 }
 
-// ---------- DSpark guesses for Inkling 2 (Nov 28; off unless llamacpp.dsparkGuesses is true) ----------
+// ---------- DSpark guesses for Inkling 2 (Nov 28; on unless llamacpp.dsparkGuesses is false) ----------
 // Unsloth ships a small guesser for Inkling 2 Mini, "dspark-Inkling-2-Mini-Q8_0.gguf", that reads the brain's own
 // inner state and guesses the next words; the brain checks them in one go, so its answers stay its own (the card's
 // rounding at near ties can still pick a different word, as with any guesser). With the file beside the brain and this
@@ -206,7 +206,8 @@ export function rentalThreads(cfg, opts = {}) {
 export const DSPARK_FROM_BE = 44;
 export const DSPARK_NEWER_FROM_BE = 48; // the first Lamplight build after 47, which is the first to carry 0165
 export const DSPARK_GUESSES = 3;
-export const dsparkOn = (cfg) => cfg?.llamacpp?.dsparkGuesses === true;
+// Nov 28 (the owner: yes, on by default after spec-fit2): off only with llamacpp.dsparkGuesses set to false
+export const dsparkOn = (cfg) => cfg?.llamacpp?.dsparkGuesses !== false;
 export function dsparkSidecar(gguf, { be = 0, readdir = fs.readdirSync, info = ggufInfo } = {}) {
   if (!gguf || !(be >= DSPARK_FROM_BE)) return '';
   if (!/^inkling2/.test(info(gguf)?.arch || '')) return '';

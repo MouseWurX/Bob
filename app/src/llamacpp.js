@@ -815,7 +815,7 @@ export class LlamaCpp {
       const draft = path.isAbsolute(d.model) || /\.gguf$/i.test(d.model) ? d.model : this.resolve(d.model).gguf;
       args.push('-md', draft, ...draftNumArgs(this.buildNo(), d.max ?? 16, d.min ?? 1), '-ngld', String(d.ngld ?? 99));
     }
-    // Nov 28 DSpark guesses for Inkling 2 (off unless llamacpp.dsparkGuesses is true): Unsloth's guesser file beside the
+    // Nov 28 DSpark guesses for Inkling 2 (on unless llamacpp.dsparkGuesses is false): Unsloth's guesser file beside the
     // brain, 3 guesses, sampled on the card. Not for the brain beside the main one; a guesser set by hand wins.
     if (this.role !== BESIDE) { const ds = dsparkArgs(this.cfg, gguf, { be: this.beNo(), build: this.buildNo(), args, cpu });
       if (ds.length) { args.push(...ds); this.log?.('engine', `${model}: DSpark guesses from ${path.basename(ds[1])} beside the brain`); } }
