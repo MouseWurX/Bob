@@ -1989,7 +1989,7 @@ index efe65af..0909933 100644
      // Map from first_node_ptr to cuda_graph - allows multiple graphs per context
      // when the computation is split across CPU/GPU (e.g., with --n-cpu-moe)
 diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
-index 97ecfd3..dbbc592 100644
+index 97ecfd3..db71503 100644
 --- a/ggml/src/ggml-cuda/ggml-cuda.cu
 +++ b/ggml/src/ggml-cuda/ggml-cuda.cu
 @@ -30,6 +30,7 @@
@@ -2018,13 +2018,17 @@ index 97ecfd3..dbbc592 100644
  static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct ggml_tensor * dst) {
      switch (dst->op) {
          case GGML_OP_ARGMAX:
-@@ -3032,6 +3044,13 @@ static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct gg
+@@ -3032,6 +3044,17 @@ static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct gg
                      return false;
              }
              break;
 +        case GGML_OP_TRELLIS:
 +            if (dst->src[7] != nullptr) {
-+                ggml_cuda_op_trellis_id(ctx, dst, ggml_cuda_op_trellis_2d); // Lamplight 0136: coded experts
++                if (ggml_cuda_trellis_id_card(ggml_cuda_info().devices[ctx.device].cc, dst)) {
++                    ggml_cuda_op_trellis_id_card(ctx, dst); // Lamplight 0136: coded experts, picks on the card
++                } else {
++                    ggml_cuda_op_trellis_id(ctx, dst, ggml_cuda_op_trellis_2d); // Lamplight 0136: coded experts
++                }
 +            } else {
 +                ggml_cuda_op_trellis_2d(ctx, dst);
 +            }
@@ -2032,19 +2036,20 @@ index 97ecfd3..dbbc592 100644
          case GGML_OP_GLU:
              switch (ggml_get_glu_op(dst)) {
                  case GGML_GLU_OP_REGLU:
-@@ -3428,6 +3447,11 @@ static bool ggml_cuda_graph_check_compability(ggml_cgraph * cgraph) {
+@@ -3428,6 +3451,12 @@ static bool ggml_cuda_graph_check_compability(ggml_cgraph * cgraph) {
              continue;
          }
  
 +        // Lamplight 0136: coded experts read their picks back to the host, as the mul_mat_id fallback does
-+        if (node->op == GGML_OP_TRELLIS && node->src[7] != nullptr) {
++        if (node->op == GGML_OP_TRELLIS && node->src[7] != nullptr &&
++            !ggml_cuda_trellis_id_card(ggml_cuda_info().devices[ggml_cuda_get_device()].cc, node)) {
 +            use_cuda_graph = false;
 +        }
 +
          // [TAG_MUL_MAT_ID_CUDA_GRAPHS]
          if (node->op == GGML_OP_MUL_MAT_ID) {
              const int cc = ggml_cuda_info().devices[ggml_cuda_get_device()].cc;
-@@ -4647,6 +4671,26 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph
+@@ -4647,6 +4676,26 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph
  
      ggml_tensor * node = cgraph->nodes[i];
  
@@ -2071,7 +2076,7 @@ index 97ecfd3..dbbc592 100644
      if (node->op == GGML_OP_MUL_MAT_ID && cuda_ctx->stream_context().concurrent_events.empty() &&
              ggml_cuda_match_shared_expert(cgraph, i, i + 3) &&
              ggml_cuda_should_fuse_mul_mat_vec_q(cgraph->nodes[i + 2]->src[1])) {
-@@ -5734,6 +5778,14 @@ static enum ggml_status ggml_backend_cuda_graph_compute(ggml_backend_t backend,
+@@ -5734,6 +5783,14 @@ static enum ggml_status ggml_backend_cuda_graph_compute(ggml_backend_t backend,
  
      ggml_cuda_set_device(cuda_ctx->device);
  
@@ -2086,7 +2091,7 @@ index 97ecfd3..dbbc592 100644
      bool use_cuda_graph             = false;
      bool cuda_graph_update_required = false;
      const void * graph_key = nullptr;
-@@ -6631,11 +6683,23 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
+@@ -6631,11 +6688,24 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
                  default:
                      return false;
              }
@@ -2094,7 +2099,8 @@ index 97ecfd3..dbbc592 100644
 +            // trellis fork: libtrellis's GEMV / GEMM need sm_80+ (the loader probes this op for a coded weight)
 +            // Lamplight 0136: and the own kernels (trellis-own.cu) on every other card and shape
 +            if (op->src[7] != nullptr) {
-+                return ggml_cuda_trellis_id_supported(ggml_cuda_info().devices[dev_ctx->device].cc, op); // Lamplight 0136: coded experts
++                return ggml_cuda_trellis_id_card(ggml_cuda_info().devices[dev_ctx->device].cc, op) ||
++                    ggml_cuda_trellis_id_supported(ggml_cuda_info().devices[dev_ctx->device].cc, op); // Lamplight 0136: coded experts
 +            }
 +            return ggml_cuda_trellis_use_lib(ggml_cuda_info().devices[dev_ctx->device].cc, op) || ggml_cuda_trellis_own_supported(op);
 +        case GGML_OP_TRELLIS_GET_ROWS:
@@ -2319,10 +2325,10 @@ index 0000000..261eeb9
 +   limitations under the License.
 diff --git a/ggml/src/ggml-cuda/libtrellis/include/libtrellis.h b/ggml/src/ggml-cuda/libtrellis/include/libtrellis.h
 new file mode 100644
-index 0000000..855aeb0
+index 0000000..44b089e
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/libtrellis/include/libtrellis.h
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,190 @@
 +// SPDX-License-Identifier: Apache-2.0
 +// Copyright Nari Labs
 +// libtrellis: CUDA operations for trellis-coded weights. See nariq/FORMAT.md.
@@ -2454,6 +2460,30 @@ index 0000000..855aeb0
 +int tq_gemm(const tq_matrix* m, const void* x, tq_dtype x_type, int64_t x_stride, int rows, void* out,
 +            tq_dtype out_type, int64_t out_stride, const float* pre, const float* post, int flags, void* ws,
 +            size_t ws_bytes, void* stream);
++
++// ---- Lamplight additions (not part of Nari Labs' libtrellis): the prefill product on int8 tensor cores -------------
++
++// tq_gemm's product (fp32 x and out only) with the codes' bytes v + 126 and the input rounded to int8 with one scale
++// per row (max |x_rot| / 127), multiplied by mma m16n8k32 u8 x s8 into exact int32 sums; GeForce cards run that at 4x
++// their fp16-with-fp32-sum rate. ws: tq_gemm_i8_workspace_bytes(K, N, rows, 0). Needs sm_80+. No host sync.
++size_t tq_gemm_i8_workspace_bytes(int K, int N, int rows, int n_expert);
++int tq_gemm_i8(const tq_matrix* m, const float* x, int64_t x_stride, int rows, float* out, int64_t out_stride,
++               const float* pre, const float* post, int flags, void* ws, size_t ws_bytes, void* stream);
++
++// Coded MoE experts: m describes expert 0; expert e's codes start expert_words 32-bit words later, its s16, pre and
++// post s16_stride, pre_stride and post_stride entries later. Pick (token t, slot i) = ids[t ids_stride + i] multiplies
++// x row x[t x_tok_stride + (n_x == 1 ? 0 : i) x_slot_stride] by its expert into out[(t n_used + i) N + n].
++// The picks are sorted by expert on the card and every expert's rows run in one GEMM launch.
++// ws: tq_gemm_i8_workspace_bytes(K, N, n_used T, n_expert); n_expert <= 4096. Picks outside 0..n_expert-1 are dropped.
++typedef struct {
++    const int32_t* ids;
++    int64_t ids_stride;
++    int n_used, T, n_expert, n_x;
++    int64_t x_slot_stride, x_tok_stride;
++    int64_t expert_words, s16_stride, pre_stride, post_stride;
++} tq_experts;
++int tq_gemm_i8_experts(const tq_matrix* m, const float* x, const tq_experts* ex, float* out, const float* pre,
++                       const float* post, int flags, void* ws, size_t ws_bytes, void* stream);
 +
 +// The host (CPU) decode, plain C++: rows [n0, n0 + n_rows) of W^ (TQ_W) or V (TQ_V) as fp32, out[(n - n0) * ld + k];
 +// codes and block_scale (fp16 bits, or null) in host memory. The format's definition in loop form (slow).
@@ -3469,6 +3499,717 @@ index 0000000..5d5f9aa
 +    if ((flags & TQ_HAD128_OUT) && m->N % 128) return tq::fail(TQ_E_ARG, "tq_gemm: TQ_HAD128_OUT needs N % 128 == 0");
 +    cudaStream_t s = static_cast<cudaStream_t>(stream);
 +    return fused(m, x, x_type, x_stride, rows, out, out_type, out_stride, pre, post, flags, ws, ws_bytes, s);
++}
++}
+diff --git a/ggml/src/ggml-cuda/libtrellis/src/gemm_i8.cu b/ggml/src/ggml-cuda/libtrellis/src/gemm_i8.cu
+new file mode 100644
+index 0000000..88a6103
+--- /dev/null
++++ b/ggml/src/ggml-cuda/libtrellis/src/gemm_i8.cu
+@@ -0,0 +1,705 @@
++// SPDX-License-Identifier: Apache-2.0
++// Copyright Nari Labs (gemm.cu, which this file is derived from); changes Copyright MouseWurX (Lamplight 0136)
++//
++// tq_gemm_i8 / tq_gemm_i8_experts: tq_gemm's prefill product on int8 tensor cores, for dense coded matrices and for
++// coded MoE experts. Added by Lamplight; not part of Nari Labs' libtrellis.
++//
++// Why: tq_gemm multiplies fp16 fragments with fp32 accumulation (mma m16n8k16 f32.f16.f16.f32), which GeForce cards
++// (sm_86, sm_89, sm_120 consumer parts) run at half their fp16 rate, a quarter of their int8 rate. The codebook values
++// are whole numbers (v in -126..126), so v + 126 is an exact unsigned byte, and mma m16n8k32 s32.u8.s8.s32 multiplies
++// it with int8 activations at the full int8 rate:
++//   1. Prologue (one CTA per row): u = x * pre, the optional 128-point Hadamard, u *= s16 (as tq_gemm); then one
++//      scale per row, xs = max |u| / 127, q = round(u / xs) in -127..127, S = sum q; q stored in the m16n8k32 B
++//      fragment order ([128-block][row group][k-tile pair][lane][2 words], the 16 bytes of a token's k-tile in
++//      tq::frag_pos order, so lane 4 g + q loads its b0, b1 as one 8-byte pair).
++//   2. GEMM, tq_gemm's structure unchanged (cp.async stages of code words and activations, each warp decoding its
++//      tile once per k-tile straight into its A fragment, the next decode issued before this one's products), but the
++//      fragment holds the bytes s = v + 126 (one dp4a: the four masked digits times 64 put 256 s in bits 8-15) and
++//      one int8 mma covers two k-tiles. Sums are exact int32 (|sum| <= K 252 127).
++//   3. Epilogue: y = (sum - 126 S) xs, then tq_gemm's optional output Hadamard and post.
++// The input rounding (8 bits a value with one scale per row, against tq_gemm's 11-bit fp16 mantissa) is the only
++// change of result; the activations are rotated (Hadamard input sides), so the per-row scale costs little.
++//
++// Experts: rows are the (token, slot) pairs of the picks ids [n_used, T]; a sort kernel on the card groups them by
++// expert (each expert's run padded to 8 rows), lists each expert's row tiles, and the GEMM runs every tile of every
++// expert in one launch (CTAs past the tile list return). No host synchronisation, so the node can sit in a CUDA graph.
++#include <cuda_bf16.h>
++
++#include <algorithm>
++#include <atomic>
++#include <type_traits>
++
++#include "common.cuh"
++
++namespace {
++
++size_t align256(size_t b) { return (b + 255) / 256 * 256; }
++
++__device__ __forceinline__ void mma_u8s8(int (&d)[4], const uint32_t (&a)[4], uint32_t b0, uint32_t b1) {
++    asm volatile("mma.sync.aligned.m16n8k32.row.col.s32.u8.s8.s32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, "
++                 "{%0,%1,%2,%3};"
++                 : "+r"(d[0]), "+r"(d[1]), "+r"(d[2]), "+r"(d[3])
++                 : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b0), "r"(b1));
++}
++
++// 256 (v + 126) of one state, in bits 8-15: the four 6-bit digits, each times 4 in its byte (mask), times 64 (dp4a)
++__device__ __forceinline__ uint32_t s256(uint32_t st, uint32_t mult) {
++    return __dp4a((st * mult) & 0xFCFCFCFCu, 0x40404040u, 0u);
++}
++
++// A lane's 8 values of a tile as bytes v + 126: p[0] = output g, inputs 2q, 2q + 1, 2q + 8, 2q + 9; p[1] = output g + 8
++template <int K>
++__device__ __forceinline__ void decode_u8(const uint32_t (&w)[2 * tq::Plan<K>::ANCH], const tq::Plan<K>& plan,
++                                          uint32_t mult, uint32_t& p0, uint32_t& p1) {
++    uint32_t r[tq::Plan<K>::ANCH];
++    tq::anchors<K>(w, plan, r);
++    const uint32_t f0 = s256(tq::state<K, 0>(r), mult), f1 = s256(tq::state<K, 1>(r), mult);
++    const uint32_t f2 = s256(tq::state<K, 2>(r), mult), f3 = s256(tq::state<K, 3>(r), mult);
++    const uint32_t f4 = s256(tq::state<K, 4>(r), mult), f5 = s256(tq::state<K, 5>(r), mult);
++    const uint32_t f6 = s256(tq::state<K, 6>(r), mult), f7 = s256(tq::state<K, 7>(r), mult);
++    p0 = __byte_perm(__byte_perm(f0, f1, 0x0051), __byte_perm(f2, f3, 0x0051), 0x5410);
++    p1 = __byte_perm(__byte_perm(f4, f5, 0x0051), __byte_perm(f6, f7, 0x0051), 0x5410);
++}
++
++// ---- prologue -----------------------------------------------------------------------------------------------------
++
++constexpr int PRO_SMEM = 48 * 1024 - 256;
++
++struct Pro {
++    const float* x;
++    int64_t x_stride;      // dense: floats between rows
++    int K;
++    const float* pre;      // [K] (experts: [K] per expert at pre_stride)
++    int had;
++    const __half* s16;     // [K / 16] (experts: per expert at s16_stride)
++    uint32_t* xq;          // [K / 128][groups][4][32][2] words
++    float* xs;             // [rows_p] scales
++    int* xsum;             // [rows_p] sums of q
++    int groups;
++    int buf;
++    // experts (rmap != nullptr): padded row t holds pick rmap[t] = token n_used + slot (-1: padding) of expert rexp[t]
++    const int* rmap;
++    const int* rexp;
++    int n_used, n_x;
++    int64_t x_slot, x_tok;  // floats
++    int64_t pre_stride, s16_stride;
++};
++
++__global__ void __launch_bounds__(256) prologue_i8(const Pro a) {
++    extern __shared__ __align__(16) unsigned char psm[];
++    __shared__ float wmax[8];
++    __shared__ int wsum[8];
++    const int t = blockIdx.x, warp = threadIdx.x / 32, lane = threadIdx.x % 32, K = a.K, nb = K / 128;
++    const float* xr;
++    const float* pre = a.pre;
++    const __half* s16 = a.s16;
++    if (a.rmap != nullptr) {
++        const int r = a.rmap[t];
++        if (r < 0) return;  // padding: never stored
++        const int e = a.rexp[t], tok = r / a.n_used, slot = r % a.n_used;
++        xr = a.x + (int64_t)tok * a.x_tok + (int64_t)(a.n_x == 1 ? 0 : slot) * a.x_slot;
++        if (pre != nullptr) pre += (int64_t)e * a.pre_stride;
++        if (s16 != nullptr) s16 += (int64_t)e * a.s16_stride;
++    } else {
++        xr = a.x + (int64_t)t * a.x_stride;
++    }
++    float* rowbuf = reinterpret_cast<float*>(psm);
++    signed char* sq = reinterpret_cast<signed char*>(psm + (a.buf ? (size_t)K * 4 : 0));
++    auto build = [&](int blk, float (&v)[4]) {
++        const int k0 = 128 * blk;
++#pragma unroll
++        for (int i = 0; i < 4; ++i) {
++            const int k = k0 + lane + 32 * i;
++            v[i] = xr[k];
++            if (pre != nullptr) v[i] *= __ldg(pre + k);
++        }
++        if (a.had) {
++            tq::hadamard128(v, lane);
++#pragma unroll
++            for (int i = 0; i < 4; ++i) v[i] *= 0.08838834764831845f;
++        }
++        if (s16 != nullptr)
++#pragma unroll
++            for (int i = 0; i < 4; ++i) v[i] *= __half2float(s16[(k0 + lane + 32 * i) / 16]);
++    };
++    float mx = 0.f;
++    for (int blk = warp; blk < nb; blk += 8) {
++        float v[4];
++        build(blk, v);
++#pragma unroll
++        for (int i = 0; i < 4; ++i) {
++            mx = fmaxf(mx, fabsf(v[i]));
++            if (a.buf) rowbuf[128 * blk + lane + 32 * i] = v[i];
++        }
++    }
++    mx = tq::warp_max(mx);
++    if (lane == 0) wmax[warp] = mx;
++    __syncthreads();
++    mx = wmax[0];
++#pragma unroll
++    for (int w = 1; w < 8; ++w) mx = fmaxf(mx, wmax[w]);
++    const bool ok = mx > 0.f && mx <= 3.0e38f;
++    const float inv = ok ? 127.f / mx : 0.f;
++    int sum = 0;
++    for (int blk = warp; blk < nb; blk += 8) {
++        float v[4];
++        if (a.buf) {
++#pragma unroll
++            for (int i = 0; i < 4; ++i) v[i] = rowbuf[128 * blk + lane + 32 * i];
++        } else {
++            build(blk, v);
++        }
++#pragma unroll
++        for (int i = 0; i < 4; ++i) {
++            const int q = max(-127, min(127, __float2int_rn(v[i] * inv)));
++            sum += q;
++            sq[128 * blk + lane + 32 * i] = (signed char)q;
++        }
++    }
++#pragma unroll
++    for (int o = 16; o; o /= 2) sum += __shfl_xor_sync(0xffffffffu, sum, o);
++    if (lane == 0) wsum[warp] = sum;
++    __syncthreads();
++    if (threadIdx.x == 0) {
++        int s = 0;
++#pragma unroll
++        for (int w = 0; w < 8; ++w) s += wsum[w];
++        a.xsum[t] = s;
++        a.xs[t] = ok ? mx / 127.f : 0.f;
++    }
++    // the row's K / 4 words: word (blk, pair p, q, which) holds inputs 2q, 2q + 1, 2q + 8, 2q + 9 of k-tile 2p + which
++    const int g = t % 8;
++    uint32_t* dst = a.xq + (size_t)(t / 8) * 256 + 2 * (4 * g);
++    const size_t xstep = (size_t)a.groups * 256;
++    for (int wi = threadIdx.x; wi < K / 4; wi += 256) {
++        const int blk = wi / 32, wb = wi % 32, p = wb / 8, q = (wb % 8) / 2, which = wb % 2;
++        const int k = 128 * blk + 16 * (2 * p + which) + 2 * q;
++        const uint32_t b0 = (unsigned char)sq[k], b1 = (unsigned char)sq[k + 1];
++        const uint32_t b2 = (unsigned char)sq[k + 8], b3 = (unsigned char)sq[k + 9];
++        dst[blk * xstep + p * 64 + 2 * q + which] = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
++    }
++}
++
++// ---- experts: sort the picks on the card --------------------------------------------------------------------------
++
++struct Sort {
++    const int32_t* ids;
++    int64_t ids_stride;  // elements between tokens
++    int n_used, T, E;
++    int TT;              // rows per GEMM tile
++    int rows_p;          // padded rows in the workspace
++    int max_tiles;
++    int* rmap;
++    int* rexp;
++    int* tile_e;         // [max_tiles]: expert, or -1
++    int* tile_g0;        // first row group
++    int* tile_ng;        // row groups present
++    int* status;         // 1 when a pick is outside 0..E-1 (those rows are dropped)
++};
++
++constexpr int SORT_MAX_E = 4096;
++
++__global__ void __launch_bounds__(1024) sort_k(const Sort a) {
++    __shared__ int cnt[SORT_MAX_E];
++    __shared__ int fill[SORT_MAX_E];
++    const int R = a.n_used * a.T;
++    for (int e = threadIdx.x; e < a.E; e += blockDim.x) cnt[e] = 0;
++    for (int p = threadIdx.x; p < a.rows_p; p += blockDim.x) a.rmap[p] = -1;
++    __syncthreads();
++    for (int r = threadIdx.x; r < R; r += blockDim.x) {
++        const int e = a.ids[(int64_t)(r / a.n_used) * a.ids_stride + r % a.n_used];
++        if (e >= 0 && e < a.E) atomicAdd(&cnt[e], 1);
++        else atomicExch(a.status, 1);
++    }
++    __syncthreads();
++    if (threadIdx.x == 0) {
++        int off = 0, tile = 0;
++        for (int e = 0; e < a.E; ++e) {
++            const int c = cnt[e];
++            fill[e] = off;
++            for (int r0 = 0; r0 < c; r0 += a.TT) {
++                a.tile_e[tile] = e;
++                a.tile_g0[tile] = (off + r0) / 8;
++                a.tile_ng[tile] = (min(a.TT, c - r0) + 7) / 8;
++                ++tile;
++            }
++            off += (c + 7) / 8 * 8;
++        }
++        for (; tile < a.max_tiles; ++tile) a.tile_e[tile] = -1;
++    }
++    __syncthreads();
++    for (int r = threadIdx.x; r < R; r += blockDim.x) {
++        const int e = a.ids[(int64_t)(r / a.n_used) * a.ids_stride + r % a.n_used];
++        if (e < 0 || e >= a.E) continue;
++        const int p = atomicAdd(&fill[e], 1);
++        a.rmap[p] = r;
++        a.rexp[p] = e;
++    }
++}
++
++// ---- GEMM -----------------------------------------------------------------------------------------------------------
++
++constexpr int W5 = 8;
++constexpr int RED5 = 132;
++constexpr int SMEM_SM = 102400;
++constexpr int SMEM_CTA = 101376 - 64;
++
++template <int K, int TT, int CK, int CPS>
++struct Tile8 {
++    static constexpr int WORDS = 8 * K;
++    static constexpr int CODE_W = W5 * CK * WORDS;
++    static constexpr int STAGE = CODE_W + TT / 8 * CK * 32;  // + activations [group][pair][64]
++    static constexpr int STAGE_BYTES = STAGE * 4;
++    static constexpr int fit() {
++        for (int s = 4; s >= 2; --s)
++            if (CPS * ((s * STAGE_BYTES + 255) / 256 * 256 + 1024) <= SMEM_SM && s * STAGE_BYTES <= SMEM_CTA) return s;
++        return 2;
++    }
++    static constexpr int S = fit();
++    static constexpr int SMEM = S * STAGE_BYTES > 32 * RED5 * 4 ? S * STAGE_BYTES : 32 * RED5 * 4;
++    static_assert(SMEM <= SMEM_CTA, "stages");
++};
++
++struct P8 {
++    const uint32_t* codes;
++    int kt, nt;
++    int64_t sk, sn;
++    const uint32_t* xq;
++    const float* xs;
++    const int* xsum;
++    int rows, groups;  // dense: rows; experts: padded rows
++    int kb, splits;
++    float* part;
++    uint32_t mult;
++    const float* post;
++    int had;
++    float* out;
++    int64_t out_stride;
++    // experts
++    const int* tile_e;
++    const int* tile_g0;
++    const int* tile_ng;
++    const int* rmap;
++    const int* rexp;
++    int64_t expert_words;  // code words between experts
++    int64_t post_stride;
++};
++
++__device__ __forceinline__ void row_scales8(const float* post, int had, int o0, int nv, float (&scale)[4]) {
++    const int lane = threadIdx.x % 32;
++#pragma unroll
++    for (int m = 0; m < 4; ++m) {
++        const int o = lane + 32 * m;
++        scale[m] = (had ? 0.08838834764831845f : 1.f) * (post != nullptr && o < nv ? __ldg(post + o0 + o) : 1.f);
++    }
++}
++
++// v: the row's 128 sums less 126 S; the optional Hadamard, the scales, the store to output row `orow`
++__device__ __forceinline__ void finish8(const P8& a, float (&v)[4], const float (&scale)[4], int t, int64_t orow, int o0,
++                                        int nv) {
++    const int lane = threadIdx.x % 32;
++    if (a.had) tq::hadamard128(v, lane);
++    const float sc = __ldg(a.xs + t);
++#pragma unroll
++    for (int m = 0; m < 4; ++m)
++        if (lane + 32 * m < nv) a.out[orow * a.out_stride + o0 + lane + 32 * m] = v[m] * scale[m] * sc;
++}
++
++__global__ void __launch_bounds__(256) reduce8(const P8 a) {
++    const int lane = threadIdx.x % 32, cbs = (a.nt + W5 - 1) / W5;
++    const int64_t item = (int64_t)blockIdx.x * 8 + threadIdx.x / 32;
++    if (item >= (int64_t)a.rows * cbs) return;
++    const int t = static_cast<int>(item / cbs), o0 = static_cast<int>(item % cbs) * 128;
++    int64_t orow = t;
++    const float* post = a.post;
++    if (a.rmap != nullptr) {
++        const int r = a.rmap[t];
++        if (r < 0) return;
++        orow = r;
++        if (post != nullptr) post += (int64_t)a.rexp[t] * a.post_stride;
++    }
++    const int n = a.nt * 16, nv = min(128, n - o0);
++    const size_t step = (size_t)a.rows * n;
++    const float off = 126.f * (float)__ldg(a.xsum + t);
++    float v[4];
++#pragma unroll
++    for (int m = 0; m < 4; ++m) {
++        const int o = lane + 32 * m;
++        float sum = 0.f;
++        if (o < nv) {
++            const float* p = a.part + (size_t)t * n + o0 + o;
++            for (int s = 0; s < a.splits; ++s) sum += __ldcg(p + s * step);
++        }
++        v[m] = sum - off;
++    }
++    float scale[4];
++    row_scales8(post, a.had, o0, nv, scale);
++    finish8(a, v, scale, t, orow, o0, nv);
++}
++
++template <int K, int TT, int CK, int CPS>
++__global__ void __launch_bounds__(32 * W5, CPS) gemm8_k(const P8 a) {
++    using T8 = Tile8<K, TT, CK, CPS>;
++    constexpr int WORDS = T8::WORDS, CODE_W = T8::CODE_W, STAGE = T8::STAGE, S = T8::S;
++    constexpr int GT = TT / 8, CP = CK / 2;
++    extern __shared__ __align__(16) uint32_t sm[];
++    const int warp = threadIdx.x / 32, lane = threadIdx.x % 32;
++    const int tb = blockIdx.x, cb = blockIdx.y, split = blockIdx.z, j0 = cb * W5;
++    int g0 = tb * GT, rg = min(GT, a.groups - g0);
++    const uint32_t* codes = a.codes;
++    const float* post = a.post;
++    if (a.tile_e != nullptr) {
++        const int e = a.tile_e[tb];
++        if (e < 0) return;
++        g0 = a.tile_g0[tb];
++        rg = a.tile_ng[tb];
++        codes += (int64_t)e * a.expert_words;
++        if (post != nullptr) post += (int64_t)e * a.post_stride;
++    }
++    const bool active = j0 + warp < a.nt;
++    const int c0 = split * a.kb / CK, nch = min(a.kb, a.kt - split * a.kb) / CK;
++    constexpr int UT = CK * WORDS / 4, UC = W5 * UT, NC = (UC + 32 * W5 - 1) / (32 * W5);
++    constexpr int UA = CK * 8, NA = GT * UA / (32 * W5);
++    static_assert(GT * UA % (32 * W5) == 0 && (CK == 4 || CK == 8), "stage copies");
++    const uint32_t base = static_cast<uint32_t>(__cvta_generic_to_shared(sm));
++    const uint32_t* csrc[NC];
++    uint32_t cdst[NC];
++    bool cok[NC];
++#pragma unroll
++    for (int i = 0; i < NC; ++i) {
++        const int u = threadIdx.x + 32 * W5 * i, w = u / UT, uu = u % UT, d = uu / (2 * K), word = 4 * (uu % (2 * K));
++        cok[i] = u < UC && j0 + w < a.nt;
++        csrc[i] = codes + ((int64_t)d * a.sk + (int64_t)(j0 + w) * a.sn) * WORDS + word;
++        cdst[i] = base + 4 * (w * CK * WORDS + 4 * uu);
++    }
++    const int64_t cstep = (int64_t)CK * a.sk * WORDS;
++    int asrc[NA];
++    uint32_t adst[NA];
++    bool aok[NA];
++#pragma unroll
++    for (int i = 0; i < NA; ++i) {
++        const int u = threadIdx.x + 32 * W5 * i, r = u / UA, w = u % UA;
++        aok[i] = r < rg;
++        asrc[i] = (g0 + r) * 256 + 4 * w;
++        adst[i] = base + 4 * (CODE_W + r * CK * 32 + 4 * w);
++    }
++    const size_t xstep = (size_t)a.groups * 256;
++    auto issue = [&](int cl, int st) {
++        const int c = c0 + cl;
++        const uint32_t off = 4u * STAGE * st;
++#pragma unroll
++        for (int i = 0; i < NC; ++i)
++            if (cok[i]) tq::cp16s(cdst[i] + off, csrc[i] + c * cstep);
++        const uint32_t* xc = a.xq + (size_t)(c * CK / 8) * xstep + (c * CK % 8) * 32;
++#pragma unroll
++        for (int i = 0; i < NA; ++i)
++            if (aok[i]) tq::cp16s(adst[i] + off, xc + asrc[i]);
++    };
++#pragma unroll 1
++    for (int s = 0; s < S - 1; ++s) {
++        if (s < nch) issue(s, s);
++        tq::cp_commit();
++    }
++    const tq::Plan<K> plan(lane);
++    int acc[GT][4];
++#pragma unroll
++    for (int r = 0; r < GT; ++r)
++#pragma unroll
++        for (int e = 0; e < 4; ++e) acc[r][e] = 0;
++    auto kloop = [&](auto full) {
++        constexpr bool FULL = decltype(full)::value;
++        auto dec = [&](const uint32_t* tw, int d, uint32_t& p0, uint32_t& p1) {
++            uint32_t w[2 * tq::Plan<K>::ANCH];
++#pragma unroll
++            for (int x = 0; x < tq::Plan<K>::ANCH; ++x) {
++                w[2 * x] = tw[d * WORDS + plan.lo[x]];
++                w[2 * x + 1] = tw[d * WORDS + plan.hi[x]];
++            }
++            decode_u8<K>(w, plan, a.mult, p0, p1);
++        };
++#pragma unroll 1
++        for (int c = 0, cur = 0, next = S - 1; c < nch; ++c) {
++            tq::cp_wait<S - 2>();
++            __syncthreads();
++            if (c + S - 1 < nch) issue(c + S - 1, next);
++            tq::cp_commit();
++            const uint32_t* st = sm + cur * STAGE;
++            cur = cur + 1 == S ? 0 : cur + 1;
++            next = next + 1 == S ? 0 : next + 1;
++            if (!active) continue;
++            const uint32_t* tw = st + warp * CK * WORDS;
++            const uint2* xb = reinterpret_cast<const uint2*>(st + CODE_W) + lane;
++            uint32_t af[4];
++            dec(tw, 0, af[0], af[1]);
++            dec(tw, 1, af[2], af[3]);
++#pragma unroll
++            for (int pp = 0; pp < CP; ++pp) {
++                uint32_t an[4];
++                if (pp + 1 < CP) {
++                    dec(tw, 2 * pp + 2, an[0], an[1]);
++                    dec(tw, 2 * pp + 3, an[2], an[3]);
++                }
++#pragma unroll
++                for (int r = 0; r < GT; ++r)
++                    if (FULL || r < rg) {
++                        const uint2 bb = xb[(r * CP + pp) * 32];
++                        mma_u8s8(acc[r], af, bb.x, bb.y);
++                    }
++                if (pp + 1 < CP) {
++#pragma unroll
++                    for (int e = 0; e < 4; ++e) af[e] = an[e];
++                }
++            }
++        }
++    };
++    if (rg == GT) kloop(std::true_type{});
++    else kloop(std::false_type{});
++    tq::cp_wait<0>();
++    const int n = a.nt * 16, o0 = cb * 128, nv = min(128, n - o0);
++    float scale[4];
++    row_scales8(post, a.had, o0, nv, scale);
++    const bool split_out = a.splits > 1;
++    float* part = split_out ? a.part + (size_t)split * a.rows * n + o0 : nullptr;
++    float* red = reinterpret_cast<float*>(sm);
++    const int t0 = g0 * 8, nrows = rg * 8;
++    __syncthreads();
++#pragma unroll
++    for (int p = 0; p < TT / 32; ++p) {
++#pragma unroll
++        for (int r = 0; r < GT; ++r) {
++            if (r / 4 != p) continue;
++            const int tl = (r % 4) * 8 + 2 * (lane & 3), ol = warp * 16 + (lane >> 2);
++            // the offset 126 S per token, in exact integers, unless the splits' reduction takes it
++            int o0s = 0, o1s = 0;
++            if (!split_out && r < rg) {
++                o0s = 126 * __ldg(a.xsum + t0 + 8 * r + 2 * (lane & 3));
++                o1s = 126 * __ldg(a.xsum + t0 + 8 * r + 2 * (lane & 3) + 1);
++            }
++            red[tl * RED5 + ol] = (float)(acc[r][0] - o0s);
++            red[(tl + 1) * RED5 + ol] = (float)(acc[r][1] - o1s);
++            red[tl * RED5 + ol + 8] = (float)(acc[r][2] - o0s);
++            red[(tl + 1) * RED5 + ol + 8] = (float)(acc[r][3] - o1s);
++        }
++        __syncthreads();
++        for (int tl = warp; tl < 32; tl += W5) {
++            const int tr = p * 32 + tl;
++            if (tr >= nrows) break;
++            const int t = t0 + tr;
++            if (t >= a.rows) break;
++            int64_t orow = t;
++            if (a.rmap != nullptr) {
++                const int rr = a.rmap[t];
++                if (rr < 0) continue;
++                orow = rr;
++            }
++            float v[4];
++#pragma unroll
++            for (int m = 0; m < 4; ++m) v[m] = red[tl * RED5 + lane + 32 * m];
++            if (part != nullptr) {
++#pragma unroll
++                for (int m = 0; m < 4; ++m)
++                    if (lane + 32 * m < nv) part[(size_t)t * n + lane + 32 * m] = v[m];
++            } else {
++                finish8(a, v, scale, t, orow, o0, nv);
++            }
++        }
++        __syncthreads();
++    }
++}
++
++enum Tiling { T64X8 = 0, T128X8 = 1, T128X4 = 2 };
++
++template <int K, int TT, int CK, int CPS>
++cudaError_t launch_t(const P8& a, int tiles, cudaStream_t s) {
++    using T8 = Tile8<K, TT, CK, CPS>;
++    static std::atomic<bool> configured[64] = {};
++    int dev = 0;
++    cudaGetDevice(&dev);
++    if (dev >= 0 && dev < 64 && !configured[dev].load(std::memory_order_acquire)) {
++        cudaError_t e = cudaFuncSetAttribute(gemm8_k<K, TT, CK, CPS>, cudaFuncAttributeMaxDynamicSharedMemorySize,
++                                             T8::SMEM);
++        if (e == cudaSuccess)
++            e = cudaFuncSetAttribute(gemm8_k<K, TT, CK, CPS>, cudaFuncAttributePreferredSharedMemoryCarveout, 100);
++        if (e != cudaSuccess) return e;
++        configured[dev].store(true, std::memory_order_release);
++    }
++    const dim3 grid(tiles, (a.nt + W5 - 1) / W5, a.splits);
++    gemm8_k<K, TT, CK, CPS><<<grid, dim3(32 * W5), T8::SMEM, s>>>(a);
++    if (a.splits > 1) {
++        const int64_t items = (int64_t)a.rows * ((a.nt + W5 - 1) / W5);
++        reduce8<<<(unsigned)((items + 7) / 8), 256, 0, s>>>(a);
++    }
++    return cudaGetLastError();
++}
++
++int tile_rows(int tiling) { return tiling == T64X8 ? 64 : 128; }
++
++template <int K>
++cudaError_t launch_k(const P8& a, int tiling, int tiles, cudaStream_t s) {
++    if (tiling == T128X4) return launch_t<K, 128, 4, 2>(a, tiles, s);
++    if (tiling == T128X8) return launch_t<K, 128, 8, 1>(a, tiles, s);
++    return launch_t<K, 64, 8, 2>(a, tiles, s);
++}
++
++// tq_gemm's choice (fitted there on 188 SMs for its kernel; the same trade of rows per CTA against CTAs per SM)
++int pick_tiling(int rows, int nt, int splits) {
++    const int cbs = (nt + W5 - 1) / W5, sms = tq::device_sms();
++    const int c128 = cbs * ((rows + 127) / 128) * splits, c64 = cbs * ((rows + 63) / 64) * splits;
++    auto load = [&](int ctas, float pair, float single) {
++        const int n = (ctas + sms - 1) / sms;
++        return (float)(n / 2) * pair + (float)(n % 2) * single;
++    };
++    const float t_c8 = (float)((c128 + sms - 1) / sms), t_x2 = load(c128, 1.8f, 1.03f), t_64 = load(c64, 1.1f, 0.6f);
++    if (t_64 < t_x2 && t_64 < t_c8) return T64X8;
++    return t_c8 < t_x2 ? T128X8 : T128X4;
++}
++
++constexpr int MAX_SPLITS = 16;
++
++// rows: the rows that carry work (experts: the picks), for the split choice
++int split_count(int kt, int nt, int rows, int* kb) {
++    const int64_t base = (int64_t)((nt + W5 - 1) / W5) * ((rows + 63) / 64);
++    int s = (int)std::min<int64_t>(MAX_SPLITS, 2 * tq::device_sms() / base);
++    s = std::min(s, kt / 32);
++    if (s < 1) s = 1;
++    *kb = ((kt + s - 1) / s + 7) / 8 * 8;
++    return (kt + *kb - 1) / *kb;
++}
++
++struct Layout {
++    size_t xq, xs, xsum, rmap, rexp, tile_e, tile_g0, tile_ng, status, part, total;
++    int kb, splits, rows_p, groups, max_tiles, tiling;
++};
++
++// R rows (experts: picks), E experts (0: dense)
++Layout layout(int K, int N, int R, int E) {
++    Layout l;
++    l.splits = split_count(K / 16, N / 16, R, &l.kb);
++    if (E == 0) {
++        l.rows_p = (R + 7) / 8 * 8;
++        l.tiling = pick_tiling(R, N / 16, l.splits);
++        l.max_tiles = (R + tile_rows(l.tiling) - 1) / tile_rows(l.tiling);
++    } else {
++        const int used = std::min(E, R);
++        l.rows_p = (R + 7 * used + 7) / 8 * 8;
++        l.tiling = pick_tiling(R, N / 16, l.splits);
++        l.max_tiles = (R + tile_rows(l.tiling) - 1) / tile_rows(l.tiling) + used;
++    }
++    l.groups = l.rows_p / 8;
++    size_t o = 0;
++    auto take = [&](size_t bytes) {
++        const size_t at = o;
++        o += align256(bytes);
++        return at;
++    };
++    l.xq = take((size_t)(K / 128) * l.groups * 1024);
++    l.xs = take((size_t)l.rows_p * 4);
++    l.xsum = take((size_t)l.rows_p * 4);
++    l.rmap = E ? take((size_t)l.rows_p * 4) : 0;
++    l.rexp = E ? take((size_t)l.rows_p * 4) : 0;
++    l.tile_e = E ? take((size_t)l.max_tiles * 4) : 0;
++    l.tile_g0 = E ? take((size_t)l.max_tiles * 4) : 0;
++    l.tile_ng = E ? take((size_t)l.max_tiles * 4) : 0;
++    l.status = E ? take(4) : 0;
++    l.part = l.splits > 1 ? take((size_t)l.splits * l.rows_p * N * 4) : o;
++    l.total = o;
++    return l;
++}
++
++int run(const tq_matrix* m, const float* x, int64_t x_stride, int R, float* out, int64_t out_stride, const float* pre,
++        const float* post, int flags, const tq_experts* ex, void* ws, size_t ws_bytes, cudaStream_t s) {
++    if (tq::device_cc() < 80) return tq::fail(TQ_E_ARCH, "tq_gemm_i8: needs sm_80 or newer (mma.sync m16n8k32 int8)");
++    if ((m->N / 16 + W5 - 1) / W5 > 65535) return tq::fail(TQ_E_ARG, "tq_gemm_i8: N above 8,388,480");
++    const int E = ex ? ex->n_expert : 0;
++    if (E > SORT_MAX_E) return tq::fail(TQ_E_ARG, "tq_gemm_i8_experts: more than 4096 experts");
++    const Layout l = layout(m->K, m->N, R, E);
++    if (ws == nullptr || ws_bytes < l.total || reinterpret_cast<uintptr_t>(ws) % 256)
++        return tq::fail(TQ_E_WORKSPACE, "tq_gemm_i8: workspace smaller than tq_gemm_i8_workspace_bytes");
++    char* w = static_cast<char*>(ws);
++    const int K = m->K;
++    int* rmap = E ? reinterpret_cast<int*>(w + l.rmap) : nullptr;
++    int* rexp = E ? reinterpret_cast<int*>(w + l.rexp) : nullptr;
++    if (E) {
++        Sort so;
++        so.ids = ex->ids, so.ids_stride = ex->ids_stride, so.n_used = ex->n_used, so.T = ex->T, so.E = E;
++        so.TT = tile_rows(l.tiling), so.rows_p = l.rows_p, so.max_tiles = l.max_tiles;
++        so.rmap = rmap, so.rexp = rexp;
++        so.tile_e = reinterpret_cast<int*>(w + l.tile_e);
++        so.tile_g0 = reinterpret_cast<int*>(w + l.tile_g0);
++        so.tile_ng = reinterpret_cast<int*>(w + l.tile_ng);
++        so.status = reinterpret_cast<int*>(w + l.status);
++        sort_k<<<1, 1024, 0, s>>>(so);
++        if (cudaError_t e = cudaGetLastError()) return tq::check(e, "tq_gemm_i8 sort launch");
++    }
++    Pro p;
++    p.x = x, p.x_stride = x_stride, p.K = K, p.pre = pre, p.had = (flags & TQ_HAD128_IN) ? 1 : 0;
++    p.s16 = static_cast<const __half*>(m->block_scale);
++    p.xq = reinterpret_cast<uint32_t*>(w + l.xq);
++    p.xs = reinterpret_cast<float*>(w + l.xs);
++    p.xsum = reinterpret_cast<int*>(w + l.xsum);
++    p.groups = l.groups;
++    p.buf = (size_t)K * 5 <= (size_t)PRO_SMEM ? 1 : 0;
++    p.rmap = rmap, p.rexp = rexp;
++    p.n_used = ex ? ex->n_used : 1, p.n_x = ex ? ex->n_x : 1;
++    p.x_slot = ex ? ex->x_slot_stride : 0, p.x_tok = ex ? ex->x_tok_stride : 0;
++    p.pre_stride = ex ? ex->pre_stride : 0, p.s16_stride = ex ? ex->s16_stride : 0;
++    const size_t psm = (p.buf ? (size_t)K * 4 : 0) + (size_t)K;
++    if (psm > 48 * 1024) return tq::fail(TQ_E_ARG, "tq_gemm_i8: K above 49,152");
++    // dense rows past R (to the group's 8) are never stored; the GEMM's last group reads their bytes and drops them
++    prologue_i8<<<E ? l.rows_p : R, 256, psm, s>>>(p);
++    if (cudaError_t e = cudaGetLastError()) return tq::check(e, "tq_gemm_i8 prologue launch");
++    P8 a;
++    a.codes = static_cast<const uint32_t*>(m->codes);
++    a.kt = K / 16, a.nt = m->N / 16, a.sk = m->tile_stride_k, a.sn = m->tile_stride_n;
++    a.xq = p.xq, a.xs = p.xs, a.xsum = p.xsum;
++    a.rows = E ? l.rows_p : R, a.groups = l.groups;
++    a.kb = l.kb, a.splits = l.splits, a.part = reinterpret_cast<float*>(w + l.part);
++    a.mult = m->mult, a.post = post, a.had = (flags & TQ_HAD128_OUT) ? 1 : 0;
++    a.out = out, a.out_stride = out_stride;
++    a.tile_e = E ? reinterpret_cast<const int*>(w + l.tile_e) : nullptr;
++    a.tile_g0 = E ? reinterpret_cast<const int*>(w + l.tile_g0) : nullptr;
++    a.tile_ng = E ? reinterpret_cast<const int*>(w + l.tile_ng) : nullptr;
++    a.rmap = rmap, a.rexp = rexp;
++    a.expert_words = ex ? ex->expert_words : 0, a.post_stride = ex ? ex->post_stride : 0;
++    cudaError_t e;
++    switch (m->bits) {
++        case 1: e = launch_k<1>(a, l.tiling, l.max_tiles, s); break;
++        case 2: e = launch_k<2>(a, l.tiling, l.max_tiles, s); break;
++        case 3: e = launch_k<3>(a, l.tiling, l.max_tiles, s); break;
++        case 4: e = launch_k<4>(a, l.tiling, l.max_tiles, s); break;
++        case 5: e = launch_k<5>(a, l.tiling, l.max_tiles, s); break;
++        default: e = launch_k<6>(a, l.tiling, l.max_tiles, s); break;
++    }
++    return tq::check(e, "tq_gemm_i8 launch");
++}
++
++}  // namespace
++
++extern "C" {
++size_t tq_gemm_i8_workspace_bytes(int K, int N, int rows, int n_expert) {
++    if (K <= 0 || N <= 0 || K % 128 || N % 16 || rows < 1 || n_expert < 0) return 0;
++    return layout(K, N, rows, n_expert).total;
++}
++
++int tq_gemm_i8(const tq_matrix* m, const float* x, int64_t x_stride, int rows, float* out, int64_t out_stride,
++               const float* pre, const float* post, int flags, void* ws, size_t ws_bytes, void* stream) {
++    if (int e = tq::check_matrix(m, 128, "tq_gemm_i8")) return e;
++    if (rows < 1 || x == nullptr || out == nullptr || x_stride < m->K || out_stride < m->N)
++        return tq::fail(TQ_E_ARG, "tq_gemm_i8: rows >= 1, x and out with strides >= K and N");
++    if ((flags & TQ_HAD128_OUT) && m->N % 128) return tq::fail(TQ_E_ARG, "tq_gemm_i8: TQ_HAD128_OUT needs N % 128 == 0");
++    return run(m, x, x_stride, rows, out, out_stride, pre, post, flags, nullptr, ws, ws_bytes,
++               static_cast<cudaStream_t>(stream));
++}
++
++int tq_gemm_i8_experts(const tq_matrix* m, const float* x, const tq_experts* ex, float* out, const float* pre,
++                       const float* post, int flags, void* ws, size_t ws_bytes, void* stream) {
++    if (int e = tq::check_matrix(m, 128, "tq_gemm_i8_experts")) return e;
++    if (ex == nullptr || ex->ids == nullptr || ex->n_used < 1 || ex->T < 1 || ex->n_expert < 1 || x == nullptr ||
++        out == nullptr || (int64_t)ex->n_used * ex->T > (1 << 30))
++        return tq::fail(TQ_E_ARG, "tq_gemm_i8_experts: picks, x and out");
++    if ((flags & TQ_HAD128_OUT) && m->N % 128)
++        return tq::fail(TQ_E_ARG, "tq_gemm_i8_experts: TQ_HAD128_OUT needs N % 128 == 0");
++    return run(m, x, 0, ex->n_used * ex->T, out, m->N, pre, post, flags, ex, ws, ws_bytes,
++               static_cast<cudaStream_t>(stream));
 +}
 +}
 diff --git a/ggml/src/ggml-cuda/libtrellis/src/gemv.cu b/ggml/src/ggml-cuda/libtrellis/src/gemv.cu
@@ -6292,10 +7033,10 @@ index 0000000..79d0aa9
 +}
 diff --git a/ggml/src/ggml-cuda/trellis.cu b/ggml/src/ggml-cuda/trellis.cu
 new file mode 100644
-index 0000000..2d728df
+index 0000000..c826fb8
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/trellis.cu
-@@ -0,0 +1,596 @@
+@@ -0,0 +1,682 @@
 +// trellis-coded linear (GGML_OP_TRELLIS, see ggml_trellis_mul_mat) on CUDA through libtrellis.
 +// Steps: optional input gather, input transform (fused into the GEMV for 128-point blocks), tq_gemv for up to 64 columns or tq_gemm above, the output side and post, the optional output gather.
 +#include "trellis.cuh"
@@ -6305,6 +7046,8 @@ index 0000000..2d728df
 +#include "unary.cuh"
 +
 +#include <cmath>
++#include <cstdlib>
++#include <string>
 +
 +#define TRELLIS_CHECK(call)                                                                   \
 +    do {                                                                                      \
@@ -6361,6 +7104,24 @@ index 0000000..2d728df
 +
 +static char * trellis_align256(char * p) {
 +    return (char *) (((uintptr_t) p + 255) & ~(uintptr_t) 255);
++}
++
++// Lamplight 0136: from this many token rows the int8 tensor-core product (tq_gemm_i8); 0 (the default): never
++static int trellis_i8_min() {
++    static const int m = [] {
++        const char * e = getenv("LAMPLIGHT_TRELLIS_CUDA_I8_MIN");
++        return e != nullptr ? std::max(0, atoi(e)) : 0;
++    }();
++    return m;
++}
++
++// Lamplight 0136: coded experts with the picks kept on the card (LAMPLIGHT_TRELLIS_CUDA_EXPERTS=card; else the host path)
++static bool trellis_experts_card() {
++    static const bool on = [] {
++        const char * e = getenv("LAMPLIGHT_TRELLIS_CUDA_EXPERTS");
++        return e != nullptr && std::string(e) == "card";
++    }();
++    return on;
 +}
 +
 +// the op's side description (op_params, the desc of ggml_trellis_mul_mat) and shapes
@@ -6523,7 +7284,14 @@ index 0000000..2d728df
 +        flags |= TQ_HAD128_OUT;
 +    }
 +    const float * gpost = o.gemv_post();
-+    if (T <= 64) {
++    const int i8 = trellis_i8_min();
++    if (i8 > 0 && T >= i8) {
++        // Lamplight 0136: the int8 tensor-core form of tq_gemm (off unless LAMPLIGHT_TRELLIS_CUDA_I8_MIN is set)
++        const size_t wsb = tq_gemm_i8_workspace_bytes(K, N, (int) T, 0);
++        ggml_cuda_pool_alloc<char> wbuf(ctx.pool(), wsb + 256);
++        char * ws = trellis_align256(wbuf.ptr);
++        TRELLIS_CHECK(tq_gemm_i8(&m, xin, xs, (int) T, y, N, gpre, gpost, flags, ws, wsb, stream));
++    } else if (T <= 64) {
 +        const size_t wsb = tq_gemv_workspace_bytes(K, N, (int) T);
 +        ggml_cuda_pool_alloc<char> wbuf(ctx.pool(), wsb + 256);
 +        char * ws = trellis_align256(wbuf.ptr);
@@ -6835,6 +7603,53 @@ index 0000000..2d728df
 +    return 4;
 +}
 +
++// Lamplight 0136: coded experts on the card: the picks sorted by expert there and every expert's rows in one int8
++// GEMM launch (tq_gemm_i8_experts), with no host read-back, so the node may sit in a CUDA graph. Sides: none or the
++// 128-point ones the GEMM fuses; no gathers.
++bool ggml_cuda_trellis_id_card(int cc, const ggml_tensor * op) {
++    if (!trellis_experts_card() || !GGML_CUDA_CC_IS_NVIDIA(cc) || cc < GGML_CUDA_CC_AMPERE) {
++        return false;
++    }
++    const ggml_tensor * w = op->src[0], * x = op->src[1], * ids = op->src[7];
++    if (op->src[5] != nullptr || op->src[6] != nullptr || ids == nullptr || ids->type != GGML_TYPE_I32 ||
++        ids->nb[0] != sizeof(int32_t) || x->type != GGML_TYPE_F32 || x->nb[0] != sizeof(float) ||
++        !ggml_is_contiguous(op) || !ggml_is_trellis_type(w->type) || op->src[2]->type != GGML_TYPE_F16) {
++        return false;
++    }
++    const trellis_op o(op);
++    if (w->ne[0] % 128 != 0 || w->ne[1] % 16 != 0 || w->ne[2] > 4096 || ids->ne[0] * ids->ne[1] > (1 << 30) ||
++        (o.cols_kind != 0 && !o.in_fused()) || (o.rows_kind != 0 && !o.out_fused())) {
++        return false;
++    }
++    return x->ne[1] == 1 || x->ne[1] == ids->ne[0];
++}
++
++void ggml_cuda_op_trellis_id_card(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
++    const trellis_op o(dst);
++    const ggml_tensor * w = o.w, * x = o.x, * ids = dst->src[7];
++    cudaStream_t stream = ctx.stream();
++    const tq_matrix m = o.matrix();
++    tq_experts ex;
++    ex.ids = (const int32_t *) ids->data;
++    ex.ids_stride = ids->nb[1] / sizeof(int32_t);
++    ex.n_used = (int) ids->ne[0];
++    ex.T = (int) ids->ne[1];
++    ex.n_expert = (int) w->ne[2];
++    ex.n_x = (int) x->ne[1];
++    ex.x_slot_stride = x->nb[1] / sizeof(float);
++    ex.x_tok_stride = x->nb[2] / sizeof(float);
++    ex.expert_words = (int64_t) (ggml_row_size(w->type, o.K) * (size_t) o.N / 4);
++    ex.s16_stride = o.s16->nb[1] / sizeof(half);
++    ex.pre_stride = o.pre->nb[1] / sizeof(float);
++    ex.post_stride = o.post->nb[1] / sizeof(float);
++    const int flags = (o.in_fused() ? TQ_HAD128_IN : 0) | (o.out_fused() ? TQ_HAD128_OUT : 0);
++    const size_t wsb = tq_gemm_i8_workspace_bytes(o.K, o.N, ex.n_used * ex.T, ex.n_expert);
++    ggml_cuda_pool_alloc<char> wbuf(ctx.pool(), wsb + 256);
++    char * ws = trellis_align256(wbuf.ptr);
++    TRELLIS_CHECK(tq_gemm_i8_experts(&m, (const float *) x->data, &ex, (float *) dst->data, (const float *) o.pre->data,
++                                     (const float *) o.post->data, flags, ws, wsb, stream));
++}
++
 +void ggml_cuda_op_trellis_mlp_chain(ggml_backend_cuda_context & ctx, ggml_tensor * const * nodes) {
 +    const ggml_tensor * glu = nodes[2];
 +    ggml_tensor * down = nodes[3];
@@ -6891,13 +7706,25 @@ index 0000000..2d728df
 +    GGML_ABORT("trellis: this build has no libtrellis");
 +}
 +
++bool ggml_cuda_trellis_id_card(int cc, const ggml_tensor * op) {
++    GGML_UNUSED(cc);
++    GGML_UNUSED(op);
++    return false;
++}
++
++void ggml_cuda_op_trellis_id_card(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
++    GGML_UNUSED(ctx);
++    GGML_UNUSED(dst);
++    GGML_ABORT("trellis: this build has no libtrellis");
++}
++
 +#endif
 diff --git a/ggml/src/ggml-cuda/trellis.cuh b/ggml/src/ggml-cuda/trellis.cuh
 new file mode 100644
-index 0000000..60b611b
+index 0000000..5856319
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/trellis.cuh
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,45 @@
 +#pragma once
 +
 +#include "common.cuh"
@@ -6917,6 +7744,10 @@ index 0000000..60b611b
 +void ggml_cuda_op_trellis_id(ggml_backend_cuda_context & ctx, ggml_tensor * dst,
 +                             void (*op2d)(ggml_backend_cuda_context &, ggml_tensor *));
 +bool ggml_cuda_trellis_id_supported(int cc, const ggml_tensor * op);
++// Lamplight 0136: coded experts with the picks kept on the card (LAMPLIGHT_TRELLIS_CUDA_EXPERTS=card, sm_80+):
++// sorted by expert there, every expert's rows in one int8 GEMM launch, no host read-back (CUDA graphs stay on)
++bool ggml_cuda_trellis_id_card(int cc, const ggml_tensor * op);
++void ggml_cuda_op_trellis_id_card(ggml_backend_cuda_context & ctx, ggml_tensor * dst);
 +// whether this card runs op through libtrellis (else the own kernels)
 +bool ggml_cuda_trellis_use_lib(int cc, const ggml_tensor * op);
 +
@@ -8048,10 +8879,10 @@ index 0000000..c0c06ea
 +                                   desc, n_desc, out);
 +}
 diff --git a/ggml/src/ggml-vulkan/ggml-vulkan-push-constants.h b/ggml/src/ggml-vulkan/ggml-vulkan-push-constants.h
-index ed8f4f7..3d26512 100644
+index ed8f4f7..bddb73f 100644
 --- a/ggml/src/ggml-vulkan/ggml-vulkan-push-constants.h
 +++ b/ggml/src/ggml-vulkan/ggml-vulkan-push-constants.h
-@@ -159,6 +159,67 @@ struct vk_op_push_constants {
+@@ -159,6 +159,77 @@ struct vk_op_push_constants {
      float param4;
  };
  
@@ -8079,6 +8910,16 @@ index ed8f4f7..3d26512 100644
 +    uint32_t i_offset;
 +};
 +
++// Lamplight 0136: trellis_q8 / trellis_sort / trellis_mvq
++struct vk_op_trellis_q8_push_constants {
++    uint32_t K, s_offset, experts, first, e_used, e_nb1, i_offset;
++};
++struct vk_op_trellis_sort_push_constants {
++    uint32_t T, E, first, e_used, e_nb1, i_offset, max_runs, nt;
++};
++struct vk_op_trellis_mvq_push_constants {
++    uint32_t K, N, T, q_offset;
++};
 +struct vk_op_trellis_dequant_push_constants {
 +    uint32_t K;
 +    uint32_t row0_tile;
@@ -8120,10 +8961,10 @@ index ed8f4f7..3d26512 100644
      uint32_t n_rows;
      uint32_t src_offset;
 diff --git a/ggml/src/ggml-vulkan/ggml-vulkan-types.h b/ggml/src/ggml-vulkan/ggml-vulkan-types.h
-index 1b717c8..6882cae 100644
+index 1b717c8..02571b0 100644
 --- a/ggml/src/ggml-vulkan/ggml-vulkan-types.h
 +++ b/ggml/src/ggml-vulkan/ggml-vulkan-types.h
-@@ -1001,6 +1001,16 @@ struct vk_device_struct {
+@@ -1001,6 +1001,20 @@ struct vk_device_struct {
      vk_pipeline pipeline_fwht_f32[num_fwht_pipelines];
      vk_pipeline pipeline_fwht_f16[num_fwht_pipelines];
      uint32_t    fwht_rows_per_wg[num_fwht_pipelines] = {};
@@ -8131,6 +8972,10 @@ index 1b717c8..6882cae 100644
 +    // side runs by log2 of the run length (1 .. 8192), Paley cross and the elementwise ends
 +    vk_pipeline pipeline_trellis_mv[6][4];
 +    vk_pipeline pipeline_trellis_mv_id[6]; // Lamplight 0136: coded experts
++    // Lamplight 0136: the integer-dot GEMV (dense and experts, 1/2/4/8 rows a workgroup), its int8 input, the expert sort
++    vk_pipeline pipeline_trellis_mvq[6][4][2];
++    vk_pipeline pipeline_trellis_q8;
++    vk_pipeline pipeline_trellis_sort;
 +    vk_pipeline pipeline_trellis_dequant[6];
 +    vk_pipeline pipeline_trellis_runs[14];
 +    vk_pipeline pipeline_trellis_cross;
@@ -8141,10 +8986,10 @@ index 1b717c8..6882cae 100644
      vk_pipeline pipeline_cumsum_small_f32;
      vk_pipeline pipeline_cumsum_multipass1_f32;
 diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
-index 3c63a1f..72e42e7 100644
+index 3c63a1f..6922ba3 100644
 --- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
 +++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
-@@ -4013,6 +4013,53 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+@@ -4013,6 +4013,78 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
          ggml_vk_create_pipeline(device, device->pipeline_count_experts, "count_experts", count_experts_len, count_experts_data, "main", 3, sizeof(vk_op_count_experts_push_constants), {1, 1, 1}, {}, 1, true);
      }
  
@@ -8185,6 +9030,31 @@ index 3c63a1f..72e42e7 100644
 +            ggml_vk_create_pipeline(device, device->pipeline_trellis_runs[i], runs_names[i], trellis_runs_len, trellis_runs_data, "main", 5,
 +                                    sizeof(vk_op_trellis_side_push_constants), {1, 1, 1}, { L, wg }, 1);
 +        }
++        ggml_vk_create_pipeline(device, device->pipeline_trellis_q8, "trellis_q8", trellis_q8_len, trellis_q8_data, "main", 5,
++                                sizeof(vk_op_trellis_q8_push_constants), {64, 1, 1}, {}, 1);
++        ggml_vk_create_pipeline(device, device->pipeline_trellis_sort, "trellis_sort", trellis_sort_len, trellis_sort_data, "main", 2,
++                                sizeof(vk_op_trellis_sort_push_constants), {1, 1, 1}, {}, 1);
++        {
++            // integer dot products where the device has them, else the same sums byte by byte
++            static const char * const mvq_names[6] = { "trellis_mvq_1", "trellis_mvq_2", "trellis_mvq_3",
++                                                       "trellis_mvq_4", "trellis_mvq_5", "trellis_mvq_6" };
++            const void * mvq_data = trellis_mvq_data;
++            size_t mvq_len = trellis_mvq_len;
++#if defined(GGML_VULKAN_INTEGER_DOT_GLSLC_SUPPORT)
++            if (device->integer_dot_product) {
++                mvq_data = trellis_mvq_idot_data;
++                mvq_len = trellis_mvq_idot_len;
++            }
++#endif
++            for (uint32_t b = 0; b < 6; ++b) {
++                for (uint32_t c = 0; c < 4; ++c) {
++                    for (uint32_t x = 0; x < 2; ++x) {
++                        ggml_vk_create_pipeline(device, device->pipeline_trellis_mvq[b][c][x], mvq_names[b], mvq_len, mvq_data, "main", 5,
++                                                sizeof(vk_op_trellis_mvq_push_constants), {1, 1, 1}, { b + 1, 1u << c, x }, 1);
++                    }
++                }
++            }
++        }
 +        ggml_vk_create_pipeline(device, device->pipeline_trellis_cross, "trellis_cross", trellis_cross_len, trellis_cross_data, "main", 2,
 +                                sizeof(vk_op_trellis_side_push_constants), {256, 1, 1}, {}, 1);
 +        ggml_vk_create_pipeline(device, device->pipeline_trellis_io, "trellis_io", trellis_io_len, trellis_io_data, "main", 4,
@@ -8198,7 +9068,7 @@ index 3c63a1f..72e42e7 100644
      // comb holds a token's 4x4 matrix in one 16-lane slice of a subgroup, so it
      // needs at least 16 lanes, pinned to a known size.
      if (device->subgroup_basic && device->subgroup_shuffle && device->subgroup_require_full_support && device->subgroup_size >= 16) {
-@@ -7878,6 +7925,402 @@ void ggml_vk_fwht(ggml_backend_vk_context * ctx, vk_context& subctx, const ggml_
+@@ -7878,6 +7950,455 @@ void ggml_vk_fwht(ggml_backend_vk_context * ctx, vk_context& subctx, const ggml_
      ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { src_buf, dst_buf }, pc, { workgroups_x, 1, 1 });
  }
  
@@ -8225,6 +9095,16 @@ index 3c63a1f..72e42e7 100644
 +        }
 +        const std::string s(e);
 +        return s == "nodecode" ? 1 : s == "nomul" ? 2 : 0;
++    }();
++    return v;
++}
++
++// Lamplight 0136: short batches and coded experts on integer dot products (trellis_mvq: int8 values, int8 input with
++// one scale per 16 inputs), LAMPLIGHT_TRELLIS_VK_MVQ=1; off by default until a card shows the gain
++static bool trellis_vk_mvq() {
++    static const bool v = [] {
++        const char * e = getenv("LAMPLIGHT_TRELLIS_VK_MVQ");
++        return e != nullptr && atoi(e) == 1;
 +    }();
 +    return v;
 +}
@@ -8386,12 +9266,27 @@ index 3c63a1f..72e42e7 100644
 +    const uint64_t align = std::max<uint64_t>(256, device->properties.limits.minStorageBufferOffsetAlignment);
 +    const uint64_t szA = ROUNDUP_POW2((uint64_t) Tc * K * sizeof(float), align);
 +    const uint64_t szB = ROUNDUP_POW2((uint64_t) Tc * N * sizeof(float), align);
-+    const uint64_t y_need = 2 * szA + 2 * szB;
++    // Lamplight 0136: the integer-dot GEMV's int8 input, its scales and (experts) the sorted picks and runs
++    const uint32_t E = (uint32_t) w->ne[2];
++    const bool mvq = !mmp && trellis_vk_mvq() && device->pipeline_trellis_mvq[bits][0][0] != nullptr && (!ids || E <= 2048);
++    const uint32_t mvq_nt = ids ? (ids->ne[1] == 1 ? 1u : 8u) : 0u;
++    const uint32_t max_runs = ids ? CEIL_DIV(Tc, std::max(mvq_nt, 1u)) + std::min(E, Tc) : 0u;
++    const uint64_t szQ = mvq ? ROUNDUP_POW2((uint64_t) Tc * K, align) : 0;
++    const uint64_t szS = mvq ? ROUNDUP_POW2((uint64_t) Tc * (K / 16) * sizeof(float), align) : 0;
++    const uint64_t szP = mvq && ids ? ROUNDUP_POW2(((uint64_t) Tc + 3ull * max_runs) * sizeof(uint32_t), align) : 0;
++    const uint64_t y_need = 2 * szA + 2 * szB + szQ + szS + szP;
 +    uint32_t rows_chunk = 0;
 +    uint64_t x_need = 0;
 +    if (mmp) {
-+        // chunks of rows (a multiple of 64, so the output window stays aligned) of at most 64 MiB of f16
-+        const uint64_t cap = std::max<uint64_t>(64, ((64ull << 20) / (2ull * K)) / 64 * 64);
++        // chunks of rows (a multiple of 64, so the output window stays aligned) of at most 64 MiB of f16;
++        // LAMPLIGHT_TRELLIS_VK_CHUNK_MB picks another size (for tests: a chunk that fits the card's last-level cache
++        // can stay there between its decode and its multiply instead of going through memory)
++        static const uint64_t chunk_mb = [] {
++            const char * e = getenv("LAMPLIGHT_TRELLIS_VK_CHUNK_MB");
++            const long v = e ? atol(e) : 64;
++            return (uint64_t) (v >= 1 && v <= 1024 ? v : 64);
++        }();
++        const uint64_t cap = std::max<uint64_t>(64, ((chunk_mb << 20) / (2ull * K)) / 64 * 64);
 +        rows_chunk = (uint32_t) std::min<uint64_t>(N, cap);
 +        x_need = (uint64_t) rows_chunk * K * sizeof(ggml_fp16_t);
 +    }
@@ -8412,6 +9307,9 @@ index 3c63a1f..72e42e7 100644
 +    const vk_subbuffer A2 = { Y, szA, szA };
 +    const vk_subbuffer B  = { Y, 2 * szA, szB };
 +    const vk_subbuffer B2 = { Y, 2 * szA + szB, szB };
++    const vk_subbuffer XQ = { Y, 2 * szA + 2 * szB, std::max<uint64_t>(szQ, align) };
++    const vk_subbuffer XS = { Y, 2 * szA + 2 * szB + szQ, std::max<uint64_t>(szS, align) };
++    const vk_subbuffer PB = { Y, 2 * szA + 2 * szB + szQ + szS, std::max<uint64_t>(szP, align) };
 +
 +    auto sub = [&](const ggml_tensor * t, uint32_t unit, uint32_t & off) {
 +        const vk_subbuffer b = ggml_vk_tensor_subbuffer(ctx, t, true);
@@ -8550,6 +9448,31 @@ index 3c63a1f..72e42e7 100644
 +                               1, 1, 1, 1, 1, 1, tc, (uint64_t) K * (b16 ? sizeof(ggml_fp16_t) : sizeof(float)), (uint64_t) N * sizeof(float));
 +                ggml_vk_sync_buffers(ctx, subctx);
 +            }
++        } else if (mvq) {
++            {
++                const vk_op_trellis_q8_push_constants qpc = { K, s_off, ids ? 1u : 0u, first, base.e_used, base.e_nb1, ids_off };
++                ggml_pipeline_request_descriptor_sets(ctx, device->pipeline_trellis_q8, 1);
++                ggml_vk_dispatch_pipeline(ctx, subctx, device->pipeline_trellis_q8, { sb, in, XQ, XS, idsb }, qpc, { K / 16, tc, 1 });
++            }
++            uint32_t nt, groups;
++            if (ids) {
++                nt = mvq_nt;
++                const uint32_t runs_n = CEIL_DIV(tc, nt) + std::min(E, tc);
++                const vk_op_trellis_sort_push_constants spc = { tc, E, first, base.e_used, base.e_nb1, ids_off, runs_n, nt };
++                ggml_pipeline_request_descriptor_sets(ctx, device->pipeline_trellis_sort, 1);
++                ggml_vk_dispatch_pipeline(ctx, subctx, device->pipeline_trellis_sort, { idsb, PB }, spc, { 1, 1, 1 });
++                groups = runs_n;
++            } else {
++                nt = tc == 1 ? 1u : tc == 2 ? 2u : tc <= 4 ? 4u : 8u;
++                groups = CEIL_DIV(tc, nt);
++            }
++            ggml_vk_sync_buffers(ctx, subctx);
++            const uint32_t c = nt == 1 ? 0 : nt == 2 ? 1 : nt == 4 ? 2 : 3;
++            vk_pipeline & p = device->pipeline_trellis_mvq[bits][c][ids ? 1 : 0];
++            const vk_op_trellis_mvq_push_constants pc = { K, N, tc, q_off };
++            ggml_pipeline_request_descriptor_sets(ctx, p, 1);
++            ggml_vk_dispatch_pipeline(ctx, subctx, p, { qb, XQ, XS, B, ids ? PB : XS }, pc, { N / 16, groups, 1 });
++            ggml_vk_sync_buffers(ctx, subctx);
 +        } else if (ids) {
 +            vk_pipeline & p = device->pipeline_trellis_mv_id[bits];
 +            const vk_op_trellis_mv_id_push_constants pc = { K, N, tc, q_off, s_off, first, base.e_used, base.e_nb1, ids_off };
@@ -8601,7 +9524,7 @@ index 3c63a1f..72e42e7 100644
  static uint32_t ggml_vk_nb_elem(const ggml_tensor * t, int i) {
      return (uint32_t)(t->nb[i] / ggml_type_size(t->type));
  }
-@@ -13581,6 +14024,10 @@ bool ggml_vk_build_graph(ggml_backend_vk_context * ctx, ggml_cgraph * cgraph, in
+@@ -13581,6 +14102,10 @@ bool ggml_vk_build_graph(ggml_backend_vk_context * ctx, ggml_cgraph * cgraph, in
      case GGML_OP_CUMSUM:
          ggml_vk_cumsum(ctx, compute_ctx, src0, node);
  
@@ -8612,7 +9535,7 @@ index 3c63a1f..72e42e7 100644
          break;
      case GGML_OP_DSV4_HC_COMB:
          ggml_vk_dsv4_hc_comb(ctx, compute_ctx, src0, src1, src2, node);
-@@ -16859,6 +17306,10 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+@@ -16859,6 +17384,10 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
                  }
                  return false;
              }
@@ -8962,6 +9885,208 @@ index 0000000..3220c35
 +        data_b[t * p.N + 16u * J + tid] = sum;
 +    }
 +}
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mvq.comp b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mvq.comp
+new file mode 100644
+index 0000000..e49b9ac
+--- /dev/null
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mvq.comp
+@@ -0,0 +1,132 @@
++#version 450
++
++// Lamplight 0136: y = W^ x for short batches on integer dot products: the decoded values v (-126..126) as packed
++// int8, the input as int8 with one scale per 16-input tile (trellis_q8.comp, s16 folded in), so each lane's four
++// products of a row are one dotPacked4x8EXT. One workgroup per (16-row tile row, run of up to NT rows); four 32-lane
++// groups split K; each lane decodes 8 weights per tile once for all the run's rows.
++// EXPERTS: rows are picks sorted by expert (trellis_sort.comp); a run's rows share an expert, whose slice is decoded.
++
++#extension GL_EXT_control_flow_attributes : require
++#ifdef TRELLIS_IDOT
++#extension GL_EXT_integer_dot_product : require
++#define dot4(a, b) dotPacked4x8EXT(a, b)
++#else
++// devices without integer dot products: the same sum, byte by byte
++int dot4(int a, int b) {
++    int s = 0;
++    [[unroll]] for (int i = 0; i < 32; i += 8) {
++        s += bitfieldExtract(a, i, 8) * bitfieldExtract(b, i, 8);
++    }
++    return s;
++}
++#endif
++
++layout(constant_id = 0) const uint BITS = 3;
++layout(constant_id = 1) const uint NT = 1;
++layout(constant_id = 2) const uint EXPERTS = 0;
++
++layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
++
++layout(push_constant) uniform parameter {
++    uint K;
++    uint N;
++    uint T;         // rows
++    uint q_offset;  // words
++} p;
++
++layout(binding = 0, std430) readonly buffer Q { uint data_q[]; };
++layout(binding = 1, std430) readonly buffer XQ { int data_xq[]; };
++layout(binding = 2, std430) readonly buffer XS { float data_xs[]; };
++layout(binding = 3, std430) writeonly buffer B { float data_b[]; };
++layout(binding = 4, std430) readonly buffer P { uint data_p[]; };
++
++// the INT8 grid as an integer
++int trellis_int(uint state) {
++    const uint h = state * 0x83DCD12Du;
++    return int((((h >> 2) & 0x3f3f3f3fu) * 0x01010101u) >> 24) - 126;
++}
++
++uint trellis_state(uint hi, uint lo, uint o) {
++    return ((hi << o) | ((lo >> 1u) >> (31u - o))) >> 16u;
++}
++
++// a lane's 8 values of the tile at word `tile`, packed: lo = output a / 4, inputs 2 (a % 4) + {0, 1, 8, 9}; hi = output + 8
++void trellis_decode_packed(uint tile, uint lane, out int lo, out int hi) {
++    const uint NW = 8u * BITS, TOTAL = 256u * BITS;
++    const uint start = ((8u * lane + 1u) * BITS + TOTAL - 16u) % TOTAL;
++    const uint w = start >> 5, o = start & 31u;
++    uint q[4];
++    [[unroll]] for (uint i = 0; i < 4u; ++i) {
++        q[i] = data_q[tile + (w + i) % NW];
++    }
++    uint pk[2] = { 0u, 0u };
++    [[unroll]] for (uint j = 0; j < 8u; ++j) {
++        const uint oj = o + j * BITS;
++        const uint wi = oj >> 5;
++        const int v = trellis_int(trellis_state(q[wi], q[wi + 1u], oj & 31u));
++        pk[j / 4u] |= (uint(v) & 255u) << (8u * (j % 4u));
++    }
++    lo = int(pk[0]);
++    hi = int(pk[1]);
++}
++
++shared float red[NT * 256];
++
++void main() {
++    const uint J = gl_WorkGroupID.x;
++    const uint tid = gl_LocalInvocationID.x;
++    const uint lane = tid & 31u, g = tid >> 5;
++    const uint kt = p.K / 16u;
++    const uint nw = 8u * BITS;
++
++    uint e = 0u, start = gl_WorkGroupID.y * NT, n = min(NT, p.T - min(p.T, start));
++    if (EXPERTS != 0u) {
++        const uint run = gl_WorkGroupID.y;
++        e = data_p[p.T + 3u * run];
++        if (e == 0xFFFFFFFFu) {
++            return;
++        }
++        start = data_p[p.T + 3u * run + 1u];
++        n = data_p[p.T + 3u * run + 2u];
++    }
++    uint rows[NT];
++    [[unroll]] for (uint t = 0; t < NT; ++t) {
++        rows[t] = EXPERTS != 0u ? data_p[start + min(t, n - 1u)] : start + min(t, n - 1u);
++    }
++    const uint q0 = p.q_offset + e * (p.N / 16u) * kt * nw;
++
++    float acc0[NT], acc1[NT];
++    [[unroll]] for (uint t = 0; t < NT; ++t) {
++        acc0[t] = 0.0;
++        acc1[t] = 0.0;
++    }
++    for (uint i = g; i < kt; i += 4u) {
++        int lo, hi;
++        trellis_decode_packed(q0 + (J * kt + i) * nw, lane, lo, hi);
++        [[unroll]] for (uint t = 0; t < NT; ++t) {
++            if (t < n) {
++                const uint xi = rows[t] * kt + i;
++                const int xw = data_xq[xi * 4u + (lane & 3u)];
++                const float s = data_xs[xi];
++                acc0[t] += float(dot4(lo, xw)) * s;
++                acc1[t] += float(dot4(hi, xw)) * s;
++            }
++        }
++    }
++    const uint r0 = lane >> 2, part = g * 4u + (lane & 3u);
++    [[unroll]] for (uint t = 0; t < NT; ++t) {
++        red[t * 256u + r0 * 16u + part] = acc0[t];
++        red[t * 256u + (r0 + 8u) * 16u + part] = acc1[t];
++    }
++    barrier();
++    for (uint c = tid; c < NT * 16u; c += 128u) {
++        const uint t = c / 16u, row = c % 16u;
++        float sum = 0.0;
++        [[unroll]] for (uint k = 0; k < 16u; ++k) {
++            sum += red[t * 256u + row * 16u + k];
++        }
++        if (t < n) {
++            data_b[rows[t] * p.N + 16u * J + row] = sum;
++        }
++    }
++}
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_q8.comp b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_q8.comp
+new file mode 100644
+index 0000000..f5d3b65
+--- /dev/null
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_q8.comp
+@@ -0,0 +1,58 @@
++#version 450
++
++// Lamplight 0136: the int8 input of trellis_mvq: per row t and 16-input tile i, u = v[t][16 i + c] * s16[i] (the row's
++// expert's s16 for coded experts), one scale per tile xs = max |u| / 127 and q = round(u / xs) in -127..127, stored
++// as four words in the decode lanes' order: word c4 (lane % 4) holds inputs 2 c4, 2 c4 + 1, 2 c4 + 8, 2 c4 + 9.
++
++#extension GL_EXT_control_flow_attributes : require
++#extension GL_EXT_shader_16bit_storage : require
++
++layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
++
++layout(push_constant) uniform parameter {
++    uint K;
++    uint s_offset;  // halves
++    uint experts;   // 1: rows are picks r = first + t, s16 per expert (kt halves apart)
++    uint first;
++    uint e_used;
++    uint e_nb1;
++    uint i_offset;  // ids: ints
++} p;
++
++layout(binding = 0, std430) readonly buffer S { float16_t data_s[]; };
++layout(binding = 1, std430) readonly buffer V { float data_v[]; };
++layout(binding = 2, std430) writeonly buffer XQ { uint data_xq[]; };
++layout(binding = 3, std430) writeonly buffer XS { float data_xs[]; };
++layout(binding = 4, std430) readonly buffer I { int data_i[]; };
++
++void main() {
++    const uint kt = p.K / 16u;
++    const uint i = gl_GlobalInvocationID.x;
++    const uint t = gl_GlobalInvocationID.y;
++    if (i >= kt) {
++        return;
++    }
++    uint s0 = p.s_offset;
++    if (p.experts != 0u) {
++        const uint r = p.first + t;
++        s0 += uint(data_i[p.i_offset + (r / p.e_used) * p.e_nb1 + r % p.e_used]) * kt;
++    }
++    const float s = float(data_s[s0 + i]);
++    float u[16];
++    float mx = 0.0;
++    [[unroll]] for (uint k = 0; k < 16u; ++k) {
++        u[k] = data_v[t * p.K + 16u * i + k] * s;
++        mx = max(mx, abs(u[k]));
++    }
++    const float inv = mx > 0.0 ? 127.0 / mx : 0.0;
++    [[unroll]] for (uint c4 = 0; c4 < 4u; ++c4) {
++        const uint c = 2u * c4;
++        const int b0 = clamp(int(round(u[c] * inv)), -127, 127);
++        const int b1 = clamp(int(round(u[c + 1u] * inv)), -127, 127);
++        const int b2 = clamp(int(round(u[c + 8u] * inv)), -127, 127);
++        const int b3 = clamp(int(round(u[c + 9u] * inv)), -127, 127);
++        data_xq[(t * kt + i) * 4u + c4] = (uint(b0) & 255u) | ((uint(b1) & 255u) << 8) | ((uint(b2) & 255u) << 16) |
++                                          ((uint(b3) & 255u) << 24);
++    }
++    data_xs[t * kt + i] = mx / 127.0;
++}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_runs.comp b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_runs.comp
 new file mode 100644
 index 0000000..9f1b385
@@ -9160,11 +10285,88 @@ index 0000000..3855ee9
 +uint trellis_x_row(uint c) {
 +    return p.x_offset + (c % p.x_ne1) * p.x_nb1 + (c / p.x_ne1 % p.x_ne2) * p.x_nb2 + (c / (p.x_ne1 * p.x_ne2)) * p.x_nb3;
 +}
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_sort.comp b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_sort.comp
+new file mode 100644
+index 0000000..1255453
+--- /dev/null
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_sort.comp
+@@ -0,0 +1,71 @@
++#version 450
++
++// Lamplight 0136: coded experts for trellis_mvq: the chunk's picks r = first + t (t < T) sorted by expert on the card,
++// then cut in runs of at most NT picks of one expert. perm[j] = t in expert order; run c = (expert, start, count), or
++// expert -1 past the last run (those workgroups return).
++
++layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
++
++layout(push_constant) uniform parameter {
++    uint T;
++    uint E;
++    uint first;
++    uint e_used;
++    uint e_nb1;
++    uint i_offset;
++    uint max_runs;
++    uint nt;  // picks per run at most
++} p;
++
++#define NT p.nt
++
++layout(binding = 0, std430) readonly buffer I { int data_i[]; };
++layout(binding = 1, std430) writeonly buffer P { uint data_p[]; };   // [T] perm, then [max_runs][3] runs
++
++#define MAX_E 2048
++shared uint cnt[MAX_E];
++shared uint fill[MAX_E];
++
++int pick(uint t) {
++    const uint r = p.first + t;
++    return data_i[p.i_offset + (r / p.e_used) * p.e_nb1 + r % p.e_used];
++}
++
++void main() {
++    const uint tid = gl_LocalInvocationID.x;
++    for (uint e = tid; e < p.E; e += 256u) {
++        cnt[e] = 0u;
++    }
++    barrier();
++    for (uint t = tid; t < p.T; t += 256u) {
++        const int e = pick(t);
++        if (e >= 0 && uint(e) < p.E) {
++            atomicAdd(cnt[uint(e)], 1u);
++        }
++    }
++    barrier();
++    if (tid == 0u) {
++        uint off = 0u, run = 0u;
++        for (uint e = 0u; e < p.E; ++e) {
++            const uint c = cnt[e];
++            fill[e] = off;
++            for (uint s = 0u; s < c; s += NT) {
++                data_p[p.T + 3u * run] = e;
++                data_p[p.T + 3u * run + 1u] = off + s;
++                data_p[p.T + 3u * run + 2u] = min(NT, c - s);
++                ++run;
++            }
++            off += c;
++        }
++        for (; run < p.max_runs; ++run) {
++            data_p[p.T + 3u * run] = 0xFFFFFFFFu;
++        }
++    }
++    barrier();
++    for (uint t = tid; t < p.T; t += 256u) {
++        const int e = pick(t);
++        if (e >= 0 && uint(e) < p.E) {
++            data_p[atomicAdd(fill[uint(e)], 1u)] = t;
++        }
++    }
++}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp b/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
-index 34a047b..e283a99 100644
+index 34a047b..f2254f7 100644
 --- a/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
 +++ b/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
-@@ -1135,6 +1135,15 @@ void process_shaders() {
+@@ -1135,6 +1135,21 @@ void process_shaders() {
      string_to_spv("fwht_shmem_f32", "fwht.comp", {{"A_TYPE", "float"}, {"FWHT_SHMEM", "1"}});
      string_to_spv("fwht_f16", "fwht.comp", {{"A_TYPE", "float16_t"}});
      string_to_spv("fwht_shmem_f16", "fwht.comp", {{"A_TYPE", "float16_t"}, {"FWHT_SHMEM", "1"}});
@@ -9177,6 +10379,12 @@ index 34a047b..e283a99 100644
 +    string_to_spv("trellis_io", "trellis_io.comp", {});
 +    string_to_spv("trellis_scale", "trellis_scale.comp", {});
 +    string_to_spv("trellis_scale_f16", "trellis_scale_f16.comp", {});
++    string_to_spv("trellis_q8", "trellis_q8.comp", {});
++    string_to_spv("trellis_sort", "trellis_sort.comp", {});
++    string_to_spv("trellis_mvq", "trellis_mvq.comp", {});
++#if defined(GGML_VULKAN_INTEGER_DOT_GLSLC_SUPPORT)
++    string_to_spv("trellis_mvq_idot", "trellis_mvq.comp", {{"TRELLIS_IDOT", "1"}});
++#endif
      string_to_spv("count_equal_i32", "count_equal.comp", merge_maps(base_dict, {{"A_TYPE", "int"}, {"B_TYPE", "int"}, {"D_TYPE", "int"}}));
      string_to_spv("dsv4_hc_comb_f32", "dsv4_hc_comb.comp", {});
      string_to_spv("dsv4_hc_pre_f32",  "dsv4_hc_pre.comp",  {});
@@ -11212,10 +12420,10 @@ index 0000000..5befb84
 +}
 diff --git a/tests/test-trellis.cpp b/tests/test-trellis.cpp
 new file mode 100644
-index 0000000..2b2e2dc
+index 0000000..32c39a8
 --- /dev/null
 +++ b/tests/test-trellis.cpp
-@@ -0,0 +1,527 @@
+@@ -0,0 +1,544 @@
 +#include "ggml.h"
 +#include "ggml-backend.h"
 +
@@ -11257,7 +12465,24 @@ index 0000000..2b2e2dc
 +    if (f && std::atoi(f) > 0) {
 +        m = std::min(m, std::atoi(f));
 +    }
++    const char * g = std::getenv("LAMPLIGHT_TRELLIS_CUDA_I8_MIN");  // the int8 form of tq_gemm (sm_80+)
++    if (g && std::atoi(g) > 0) {
++        m = std::min(m, std::atoi(g));
++    }
 +    return m;
++}
++
++// Lamplight 0136: Vulkan's integer-dot GEMV (int8 inputs, one scale per 16) for short batches and experts
++static bool vk_mvq() {
++    const char * e = std::getenv("LAMPLIGHT_TRELLIS_VK_MVQ");
++    return e != nullptr && std::atoi(e) == 1;
++}
++
++// the bar on the normalized error of a device product: int8-input products as test-backend-ops' MUL_MAT bar
++static double int8_bar(const std::string & name, int columns) {
++    if (name.find("CUDA") == 0 && columns >= cuda_q8_min()) { return 5e-4; }
++    if (name.find("Vulkan") == 0 && vk_mvq() && columns < 32) { return 5e-4; }
++    return 1e-6;
 +}
 +
 +static void check_close(float actual, double expected) {
@@ -11441,7 +12666,7 @@ index 0000000..2b2e2dc
 +    const std::string bname = ggml_backend_name(backend);
 +    const char * cuda_env = std::getenv("LAMPLIGHT_TRELLIS_CUDA");
 +    const bool cuda_own = cuda_env != nullptr && std::string(cuda_env) == "own";
-+    const bool vk_mm = (bname.find("Vulkan") == 0 && columns >= 32) ||
++    const bool vk_mm = (bname.find("Vulkan") == 0 && (columns >= 32 || vk_mvq())) ||
 +        (bname.find("CUDA") == 0 && (!cuda_own || columns >= std::min(32, cuda_q8_min())));
 +    double err2 = 0, ref2 = 0;
 +    for (int c = 0; c < columns; ++c) {
@@ -11461,7 +12686,7 @@ index 0000000..2b2e2dc
 +        if (verbose) { std::printf("  %s TRL%d mode=%d tokens=%d nmse %.3g\n", bname.c_str(), bits, mode, columns, err2/(ref2 + 1e-30)); }
 +        // CUDA from 16 tokens (or LAMPLIGHT_TRELLIS_CUDA_Q8_MIN) may take MMQ (q8_1 inputs, as for every quantized
 +        // weight): test-backend-ops' MUL_MAT bar
-+        const double bar = bname.find("CUDA") == 0 && columns >= cuda_q8_min() ? 5e-4 : 1e-6;
++        const double bar = int8_bar(bname, columns);
 +        check(err2 <= bar*ref2, "device product error too large");
 +    }
 +    ggml_backend_buffer_free(buffer);
@@ -11631,7 +12856,7 @@ index 0000000..2b2e2dc
 +        ref += want[i] * want[i];
 +    }
 +    // CUDA's int8 products (q8_0 + MMQ, the fused kernel) hold 5e-4, as in test-backend-ops; the rest 1e-6
-+    const double bar = name.find("CUDA") == 0 ? 5e-4 : 1e-6;
++    const double bar = name.find("CUDA") == 0 || (name.find("Vulkan") == 0 && vk_mvq()) ? 5e-4 : 1e-6;
 +    if (verbose) { std::printf("  experts %s bits=%d mode=%d n_x=%d tokens=%d nmse %.3g\n", name.c_str(), bits, mode, n_x, tokens, err / (ref + 1e-30)); }
 +    check(std::isfinite(err) && err <= bar * ref, "trellis experts: normalized error too large");
 +    if (name.find("CPU") == 0) {
@@ -11723,7 +12948,7 @@ index 0000000..2b2e2dc
 +            const std::string dname = ggml_backend_name(device);
 +            const char * cuda_env = std::getenv("LAMPLIGHT_TRELLIS_CUDA");
 +            const bool cuda_own = cuda_env != nullptr && std::string(cuda_env) == "own";
-+            const bool f16_in = (dname.find("Vulkan") == 0 && columns >= 32) ||
++            const bool f16_in = (dname.find("Vulkan") == 0 && (columns >= 32 || vk_mvq())) ||
 +                (dname.find("CUDA") == 0 && (!cuda_own || columns >= std::min(32, cuda_q8_min())));
 +            if (f16_in) {
 +                double err2 = 0, ref2 = 0;
@@ -11733,7 +12958,7 @@ index 0000000..2b2e2dc
 +                    ref2 += double(expected[i])*expected[i];
 +                }
 +                if (verbose) { std::printf("  hybrid %s bands=%d tokens=%d nmse %.3g\n", dname.c_str(), int(bands), columns, err2/(ref2 + 1e-30)); }
-+                check(err2 <= (dname.find("CUDA") == 0 && columns >= cuda_q8_min() ? 5e-4 : 1e-6)*ref2, "hybrid product error too large");
++                check(err2 <= int8_bar(dname, columns)*ref2, "hybrid product error too large");
 +            } else {
 +                for (size_t i = 0; i < actual.size(); ++i) { check_close(actual[i], expected[i]); }
 +            }
