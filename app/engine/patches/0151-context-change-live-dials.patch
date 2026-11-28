@@ -1,5 +1,5 @@
 diff --git a/common/common.cpp b/common/common.cpp
-index 3e398e5..f4df792 100644
+index 3e398e5..6f3afcf 100644
 --- a/common/common.cpp
 +++ b/common/common.cpp
 @@ -1153,6 +1153,7 @@ struct common_init_result::impl {
@@ -25,7 +25,30 @@ index 3e398e5..f4df792 100644
  bool common_init_result::keep_model_for_next() {
      if (!pimpl->model || pimpl->placement.empty()) {
          return false;
-@@ -1348,6 +1357,7 @@ common_init_result::common_init_result(common_params & params, bool model_only)
+@@ -1323,7 +1332,21 @@ void common_fit_apply(common_params & params, llama_model_params & mparams, llam
+     // changed and the whole brain loaded again (about 15 s per step switch). Keeping the layer count and turning the
+     // fit off for later contexts gives the same placement, so the kept brain is used again. A separate draft model
+     // is left as it was: its own fitted layer count is not kept here.
+-    if (status == COMMON_PARAMS_FIT_STATUS_SUCCESS && (!has_draft || spec_mtp)) {
++    // Lamplight 0151: with a separate draft brain the fit was not kept, so every later context fitted again, gave up
++    // at "overrides already set", and loaded the whole brain again (the live dials v4 canary: turning the guesser
++    // off reloaded the 35B). The draft's own fitted layer count is kept too now, when the fit gave it no overrides
++    // of its own (those live in a copy and can't be kept here); with overrides it stays as before.
++    bool draft_keepable = !has_draft || spec_mtp;
++    if (status == COMMON_PARAMS_FIT_STATUS_SUCCESS && has_draft && !spec_mtp) {
++        const bool dft_ovr = mparams_dft.tensor_buft_overrides != nullptr && mparams_dft.tensor_buft_overrides[0].pattern != nullptr &&
++                             params.speculative.draft.tensor_buft_overrides.empty();
++        if (!dft_ovr) {
++            params.speculative.draft.n_gpu_layers = mparams_dft.n_gpu_layers;
++            draft_keepable = true;
++            COM_INF("fit kept for the draft brain too: %d layers on the card\n", params.speculative.draft.n_gpu_layers);
++        }
++    }
++    if (status == COMMON_PARAMS_FIT_STATUS_SUCCESS && draft_keepable) {
+         params.n_gpu_layers = mparams.n_gpu_layers;
+         if (params.n_ctx == 0 || (uint32_t) params.n_ctx > cparams.n_ctx) {
+             params.n_ctx = (int32_t) cparams.n_ctx;
+@@ -1348,6 +1371,7 @@ common_init_result::common_init_result(common_params & params, bool model_only)
          if (!pimpl->placement.empty() && pimpl->placement == g_kept_placement) {
              model = g_kept_model;
              COM_INF("%s", "brain kept loaded: only the context is made again\n");

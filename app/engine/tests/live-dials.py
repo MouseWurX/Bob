@@ -102,6 +102,20 @@ try:
     a = post(8310, '/context', {'card_layers': {'device': 'NoSuchCard', 'layers': [1]}})
     check('an unknown card is refused', a.get('http_error') == 400)
     p.terminate(); p.wait()
+    # a separate draft brain with Bob's fit: the guesser goes off and on with the main brain kept (the v4 canary on a
+    # real card: the fit wasn't kept with a draft brain, so turning the guesser off loaded the 35B again)
+    log = os.path.join(WORK, 'srv-8320.log')
+    p = subprocess.Popen([os.path.join(BIN, 'llama-server'), '-m', brain, '-md', brain, '--spec-type', 'draft-simple', '--rpc', f'127.0.0.1:{RPC}',
+                          '--fit', 'on', '--port', '8320', '-c', '1024', '-np', '1', '-t', '2', '--no-repack'], stdout=subprocess.DEVNULL, stderr=open(log, 'w'))
+    for _ in range(600):
+        try:
+            if b'ok' in urllib.request.urlopen('http://127.0.0.1:8320/health', timeout=1).read(): break
+        except Exception: pass
+        time.sleep(0.1)
+    res = [post(8320, '/context', {'guesser': g}) for g in (False, True, False, True)]
+    check('a draft brain under the fit: the guesser off and on live, the main brain kept each time',
+          [(r.get('guesser'), r.get('brain_kept')) for r in res] == [(False, True), (True, True), (False, True), (True, True)], repr(res)[:300])
+    p.terminate(); p.wait()
 finally:
     rpc.terminate()
 print('all passed' if not fails else f'{fails} failed')
