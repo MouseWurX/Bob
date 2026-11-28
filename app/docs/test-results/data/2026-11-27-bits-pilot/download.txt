@@ -1,0 +1,5 @@
+/usr/local/lib/python3.11/dist-packages/huggingface_hub/constants.py:302: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+Fetching 11 files:   0%|          | 0/11 [00:00<?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Fetching 11 files:   9%|▉         | 1/11 [00:00<00:02,  3.95it/s]Fetching 11 files:  55%|█████▍    | 6/11 [00:00<00:00, 13.67it/s]Fetching 11 files:  73%|███████▎  | 8/11 [00:02<00:01,  2.78it/s]Fetching 11 files:  82%|████████▏ | 9/11 [00:02<00:00,  2.64it/s]Fetching 11 files:  91%|█████████ | 10/11 [00:08<00:01,  1.62s/it]Fetching 11 files: 100%|██████████| 11/11 [00:10<00:00,  1.53s/it]Fetching 11 files: 100%|██████████| 11/11 [00:10<00:00,  1.08it/s]
+Qwen/Qwen3-4B revision 1cfa9a7208912126459214e8b04321603b3df60c

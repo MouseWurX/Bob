@@ -1,0 +1,2 @@
+name, memory.total [MiB], driver_version, temperature.gpu, clocks.current.sm [MHz], compute_cap
+NVIDIA L40S, 46068 MiB, 595.112.07, 31, 210 MHz, 8.9

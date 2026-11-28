@@ -1,0 +1,49 @@
+card: NVIDIA L40S, 46068 MiB, 595.112.07, 31, 210 MHz, 8.9
+CUDA architecture: 89
+Bob claude/project-thread-5o1p5l at 96cdc0e5c7faf6d915ba95060a7fa39df45e8154
+engine: 104 patches on b12359, build logged in build.log
+Qwen/Qwen3-4B revision 1cfa9a7208912126459214e8b04321603b3df60c
+reference: 8829197312 bytes
+budget Q3_K_M: 2068876800 bytes, 4.1148 bits a weight; the word table stays q3_k as in the stock file, so whole files match in size
+Q3_K_M STOCK-imatrix: KLD 0.154718, same top 84.696%, 2242747584 bytes   [GPU 37, 2520 MHz, 0 MiB]
+Q3_K_M WORD: head q6_k -> 64:q8_0 43:q8_0 73:q8_0 123:q8_0 206:q8_0 345:q8_0 579:q8_0 974:q8_0 1634:q8_0 2743:q8_0 4605:q8_0 7733:q8_0 12982:q8_0 21797:q6_k 36595:q6_k 61440:q5_k
+Q3_K_M MIX: KLD 0.295755, same top 79.412%, 2242706624 bytes   [GPU 36, 2505 MHz, 0 MiB]
+Q3_K_M PART-IMAT: KLD 0.102387, same top 87.529%, 2242742464 bytes   [GPU 37, 2505 MHz, 0 MiB]
+Q3_K_M PART: KLD 0.082059, same top 89.078%, 2242739904 bytes   [GPU 38, 2520 MHz, 0 MiB]
+Q3_K_M PART-WORD: KLD 0.079952, same top 89.961%, 2242747552 bytes   [GPU 39, 2520 MHz, 0 MiB]
+Q3_K_M WORD: KLD 0.154048, same top 84.863%, 2242371232 bytes   [GPU 40, 2520 MHz, 0 MiB]
+budget Q4_K_M: 2490539520 bytes, 4.9535 bits a weight; the word table stays q4_k as in the stock file, so whole files match in size
+Q4_K_M STOCK-imatrix: KLD 0.047325, same top 91.667%, 2716068544 bytes   [GPU 37, 2520 MHz, 0 MiB]
+Q4_K_M STOCK-no-imatrix: KLD 0.074174, same top 90.333%, 2716068352 bytes   [GPU 37, 2520 MHz, 0 MiB]
+Q4_K_M IQ4_XS: KLD 0.063680, same top 90.833%, 2477384384 bytes   [GPU 37, 2520 MHz, 0 MiB]
+Q4_K_M IQ4_NL: KLD 0.063270, same top 90.902%, 2600131264 bytes   [GPU 37, 2520 MHz, 0 MiB]
+Q4_K_M Q4_K_S: KLD 0.053534, same top 91.225%, 2602097344 bytes   [GPU 37, 2520 MHz, 0 MiB]
+Q4_K_M Q5_K_S: KLD 0.014921, same top 95.265%, 3091118784 bytes   [GPU 37, 2520 MHz, 0 MiB]
+Q4_K_M MXFP4_MOE: KLD 0.001654, same top 98.196%, 4693671104 bytes   [GPU 38, 2520 MHz, 0 MiB]
+Q4_K_M WORD: head q6_k -> 64:q8_0 43:q8_0 73:q8_0 123:q8_0 206:q8_0 345:q8_0 579:q8_0 974:q8_0 1634:q8_0 2743:q8_0 4605:q8_0 7733:q8_0 12982:q8_0 21797:q6_k 36595:q6_k 61440:q5_k
+Q4_K_M MIX: KLD 0.123072, same top 87.637%, 2715996864 bytes   [GPU 36, 2520 MHz, 0 MiB]
+Q4_K_M PART-IMAT: KLD 0.042891, same top 91.608%, 2716050624 bytes   [GPU 37, 2520 MHz, 0 MiB]
+Q4_K_M PART: KLD 0.029518, same top 93.422%, 2716050624 bytes   [GPU 38, 2520 MHz, 0 MiB]
+Q4_K_M PART-WORD: KLD 0.036018, same top 93.873%, 2716041984 bytes   [GPU 39, 2520 MHz, 0 MiB]
+Q4_K_M WORD: KLD 0.046920, same top 91.716%, 2715692192 bytes   [GPU 40, 2520 MHz, 0 MiB]
+Q4_K_M STOCK: healing did not lower drift
+Q4_K_M PART: healing did not lower drift
+Q3_K_M-STOCK-imatrix: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+Q3_K_M-MIX: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+Q3_K_M-PART-IMAT: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+Q3_K_M-PART: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+Q3_K_M-PART-WORD: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+Q3_K_M-WORD: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+Q4_K_M-STOCK-imatrix: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+Q4_K_M-STOCK-no-imatrix: The capital of France is Paris. The capital of Paris is...? The capital of  
+Q4_K_M-IQ4_XS: The capital of France is Paris. The capital of Paris is...? The capital of  
+Q4_K_M-IQ4_NL: The capital of France is Paris. The capital of Paris is...?   The question  
+Q4_K_M-Q4_K_S: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+Q4_K_M-Q5_K_S: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+Q4_K_M-MXFP4_MOE: The capital of France is Paris. The capital of Paris is...? The capital of  
+Q4_K_M-MIX: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+Q4_K_M-PART-IMAT: The capital of France is Paris. The capital of Paris is...? The capital of  
+Q4_K_M-PART: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+Q4_K_M-PART-WORD: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+Q4_K_M-WORD: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+BITS DONE
