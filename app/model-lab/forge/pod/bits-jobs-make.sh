@@ -4,8 +4,8 @@
 #   qwen3-4b-stock.gguf    llama-quantize Q4_K_M with the imatrix (what people ship; tied head as shipped)
 #   qwen3-4b-heal.gguf     stock, scale-healed on wikitext-2 train (heal_scales.py, lr 1e-4: -23% drift in rerun 2)
 #   qwen3-4b-session.gguf  stock, scale-healed on the full-size brain's own agent sessions (lr 1e-4: -31% agent drift)
-#   qwen3-4b-part.gguf     bits by part (part_bits.py, Fisher), head untied and squeezed inside the same whole-file size
-#                          (-38% drift in the bits pilot at the untied Q4_K_M size)
+#   qwen3-4b-part.gguf     bits by part (part_bits.py, Fisher) on the shipped tied file, same whole-file size
+#                          (-38% drift in the bits pilot, which ran untied at the untied Q4_K_M size)
 # Each file's wikitext KLD against BF16 is measured too (the same 40 chunks as the pilots). Uploads nothing.
 #   BOB_SHA=<commit> bash bits-jobs-make.sh   -> files in $FILES (default /workspace/bits-files), log in $OUT/summary.txt
 # Env: OUT, W, FILES, CUDA=1, HF_MODEL, HF_DIR, BOB_DIR / LL_DIR / TEXT_TRAIN / TEXT_TEST / TEXT_VALID / PROMPTS (dry runs),
@@ -20,7 +20,8 @@ BOB_SHA=${BOB_SHA:-}
 TAG=b12359
 mkdir -p "$OUT" "$W" "$FILES"; S="$OUT/summary.txt"; : > "$S"
 say() { echo "$*" | tee -a "$S"; }
-fail() { say "FILES FAILED $1"; exit 1; }
+fail() { say "FILES FAILED $1"; pack; exit 1; }
+pack() { tar czf "$OUT.tgz" -C "$(dirname "$OUT")" "$(basename "$OUT")" 2>/dev/null; }   # every log, on failure too
 step() { echo "=== $(date +%H:%M:%S) $*" | tee -a "$OUT/steps.log"; }
 gpu() { nvidia-smi --query-gpu=temperature.gpu,clocks.sm,memory.used --format=csv,noheader 2>/dev/null | head -1; }
 
@@ -108,26 +109,26 @@ kld() {   # kld <name> <path>
 kld stock "$STOCK" || fail "kld stock"
 
 step "bits by part [GPU $(gpu)]"
-REFU=$W/ref-untied-bf16.gguf; PART=$FILES/qwen3-4b-part.gguf
-if [ ! -s "$REFU" ]; then
-  if python3 -c "import sys,gguf; r=gguf.GGUFReader(sys.argv[1]); sys.exit(0 if any(t.name=='output.weight' for t in r.tensors) else 1)" "$REF0"
-  then ln -sf "$REF0" "$REFU"; else python3 "$POD/word_bands.py" untie --gguf "$REF0" --out "$REFU" > "$OUT/untie.log" 2>&1 || fail untie; fi
-fi
+# On the file as shipped: a tied head stays tied (the word table doubles as the head, kept at the stock file's type), so
+# every byte of the budget goes to the body. (Kit try 1, 28 Nov, untied the head: the 2-bit candidates then aborted for
+# want of an imatrix entry for it, and on a tiny tied brain an untied head inside the same size drifted 2.3x more than
+# stock, while the tied pick drifted 43% less.)
+PART=$FILES/qwen3-4b-part.gguf
+ET=$(python3 -c "import sys,gguf; r=gguf.GGUFReader(sys.argv[1]); print(next(t.tensor_type.name.lower() for t in r.tensors if t.name=='token_embd.weight'))" "$STOCK")
 CANDS=(); for T in iq2_xxs iq2_s q2_k iq3_xxs q3_k iq4_xs q4_k q5_k q6_k q8_0; do
   F=$W/cand-$T.gguf
-  [ -s "$F" ] || "$B/llama-quantize" --pure --token-embedding-type q6_k --imatrix "$IM" "$REFU" "$F" "${T^^}" "$JOBS" > "$OUT/quant-$T.log" 2>&1 || fail "quant $T"
+  [ -s "$F" ] || "$B/llama-quantize" --pure --token-embedding-type "$ET" --imatrix "$IM" "$REF0" "$F" "${T^^}" "$JOBS" > "$OUT/quant-$T.log" 2>&1 || fail "quant $T"
   CANDS+=(--cand "$F")
 done
-# The budget is the shipped stock file's tensors except the word table, so the untied head has to fit inside it too:
-# the whole file comes out the size of the stock file people download.
+# The budget is the stock file's tensors except the word table: the whole file comes out the size people download.
 BUDGET=$(python3 -c "import sys,numpy as np,gguf; r=gguf.GGUFReader(sys.argv[1]); print(sum(int(np.asarray(t.data).nbytes) for t in r.tensors if len(t.shape)>=2 and t.name!='token_embd.weight'))" "$STOCK")
-ET=$(python3 -c "import sys,gguf; r=gguf.GGUFReader(sys.argv[1]); print(next(t.tensor_type.name.lower() for t in r.tensors if t.name=='token_embd.weight'))" "$STOCK")
 say "part budget: $BUDGET bytes without the word table (kept $ET, as in the stock file)"
-[ -s "$W/part.types" ] || python3 "$POD/part_bits.py" --teacher "$W/hf" --calib "$TR" --chunks "$FISHER_CHUNKS" --ctx $CTX --base "$REFU" "${CANDS[@]}" \
+[ -s "$W/part.types" ] || python3 "$POD/part_bits.py" --teacher "$W/hf" --calib "$TR" --chunks "$FISHER_CHUNKS" --ctx $CTX --base "$REF0" "${CANDS[@]}" \
     --target-bytes "$BUDGET" --exclude-type "$ET" --llama-cpp "$W/ll" --out "$W/part.types" --report "$OUT/part.json" > "$OUT/part.log" 2>&1 || fail part_bits
-[ -s "$PART" ] || "$B/llama-quantize" --imatrix "$IM" --tensor-type-file "$W/part.types" "$REFU" "$PART" Q4_K "$JOBS" > "$OUT/quant-part.log" 2>&1 || fail "quant part"
+[ -s "$PART" ] || "$B/llama-quantize" --imatrix "$IM" --tensor-type-file "$W/part.types" "$REF0" "$PART" Q4_K "$JOBS" > "$OUT/quant-part.log" 2>&1 || fail "quant part"
+cp "$W/part.types" "$OUT/"
 kld part "$PART" || fail "kld part"
-rm -f "$W"/cand-*.gguf "$REFU"   # disk
+rm -f "$W"/cand-*.gguf   # disk
 
 step "the full-size brain writes its sessions [GPU $(gpu)]"
 SE=$W/sessions.jsonl
@@ -147,4 +148,4 @@ for ARM in heal session; do
   else say "$ARM: no step beat the start, no file"; fi
 done
 ls -la "$FILES" >> "$OUT/steps.log"
-say "FILES DONE"
+say "FILES DONE"; pack
