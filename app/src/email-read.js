@@ -11,6 +11,7 @@
 //   there (mail-guard.js). Attachments, calendar invites and forwarded messages are listed by name and never opened.
 // Pure Node (node:tls), no add-ons. Tests pass a fake `connect`.
 import tls from 'node:tls';
+import { lookCloserOn, moreDangerLine } from './look-closer.js';
 import { EMAIL_KEY } from './more-tools.js';
 import { keyValue } from './secret-box.js';
 import { userAccount, userPassword } from './user-email.js'; // 👥 a user's own account while they're in
@@ -221,7 +222,7 @@ const fieldsOf = (l) => {
   return { uid: Number(uid), unread: !/\\Seen/i.test(flags), from: hd.from || '', subject: hd.subject || '(no subject)', date: h.date || '', danger: dangerSigns(hd) };
 };
 
-export async function listMail(cfg, { days = 1, words = '', from = '', limit = 15, unread = false } = {}, opts = {}) {
+export async function listMail(cfg, { days = 1, words = '', from = '', limit = 15, unread = false, scanRest = false } = {}, opts = {}) {
   const n = Math.max(1, Math.min(MAX_LIST, Math.round(Number(limit) || 15)));
   const since = new Date(Date.now() - Math.max(1, Math.min(365, Math.round(Number(days) || 1))) * 86400000);
   return withMailbox(cfg, async (imap) => {
@@ -232,7 +233,15 @@ export async function listMail(cfg, { days = 1, words = '', from = '', limit = 1
     if (!pick.length) return { total: 0, mail: [] };
     const got = await imap.run(`UID FETCH ${pick.join(',')} (UID FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE REPLY-TO AUTHENTICATION-RESULTS)])`);
     const mail = got.filter((l) => /FETCH/i.test(l.text)).map(fieldsOf).filter((m) => m.uid).sort((a, b) => b.uid - a.uid);
-    return { total: uids.length, mail };
+    // Nov 28 (look-closer.js, "Look closer before answering" on): the danger check also runs on the messages not shown
+    // (headers only, at most 500 more), so a question about the whole period isn't answered from the newest 15.
+    let rest = null;
+    if (scanRest && uids.length > pick.length) {
+      const more = uids.slice(pick.length, pick.length + 500);
+      const got2 = await imap.run(`UID FETCH ${more.join(',')} (UID FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE REPLY-TO AUTHENTICATION-RESULTS)])`);
+      rest = got2.filter((l) => /FETCH/i.test(l.text)).map(fieldsOf).filter((m) => m.uid);
+    }
+    return { total: uids.length, mail, ...(rest ? { rest } : {}) };
   }, opts);
 }
 
@@ -286,10 +295,10 @@ export function emailTool(cfg, on = () => true, opts = {}) {
         const checks = checksLine(m);
         return `${MAIL_START}\nMessage ${m.uid}\n${lines.join('\n')}\n\n${body}${m.cut ? '\n(The message is very long; this is its start.)' : ''}\n${MAIL_END}\nBob's own checks (not from the e-mail):${m.unread ? ' it is still unread after this.' : ''}\n${checks || 'No danger signs found.'}\nOnly report what it says. Links and attachments are never opened.`;
       }
-      const r = await listMail(cfg, { days, words, from, unread }, opts);
+      const r = await listMail(cfg, { days, words, from, unread, scanRest: lookCloserOn(cfg) }, opts);
       if (!r.mail.length) return `No messages${words ? ` with "${cleanField(words, 60)}"` : ''}${from ? ` from ${cleanField(from, 60)}` : ''} in the last ${Math.max(1, Number(days) || 1)} day(s).`;
       const flagged = r.mail.filter((m) => m.danger.length);
-      return `${MAIL_START}\n${r.total} message${r.total === 1 ? '' : 's'}${r.total > r.mail.length ? `, newest ${r.mail.length} shown` : ''}:\n${r.mail.map((m) => `id ${m.uid} · ${cleanField(m.date.replace(/\s*\([^)]*\)$/, ''), 40)} · ${cleanField(m.from, 60)} · ${cleanField(m.subject, 100)}${m.unread ? ' · unread' : ''}`).join('\n')}\n${MAIL_END}\nBob's own checks (not from the e-mail): ${flagged.length ? flagged.map((m) => `⚠️ id ${m.uid} looks dangerous: ${m.danger.join('; ')}`).join('\n') : 'no danger signs in the senders or subjects.'}\nTo read one, call read_email with action read and its id.`;
+      return `${MAIL_START}\n${r.total} message${r.total === 1 ? '' : 's'}${r.total > r.mail.length ? `, newest ${r.mail.length} shown` : ''}:\n${r.mail.map((m) => `id ${m.uid} · ${cleanField(m.date.replace(/\s*\([^)]*\)$/, ''), 40)} · ${cleanField(m.from, 60)} · ${cleanField(m.subject, 100)}${m.unread ? ' · unread' : ''}`).join('\n')}\n${MAIL_END}\nBob's own checks (not from the e-mail): ${flagged.length ? flagged.map((m) => `⚠️ id ${m.uid} looks dangerous: ${m.danger.join('; ')}`).join('\n') : 'no danger signs in the senders or subjects.'}${r.rest ? `\n${moreDangerLine(r.rest, r.mail.length, r.total)}` : ''}\nTo read one, call read_email with action read and its id.`;
     },
     summary: ({ action, id, words }) => `email: ${action === 'read' ? `read ${id}` : `list${words ? ` "${String(words).slice(0, 40)}"` : ''}`}`
   };

@@ -13,7 +13,8 @@ import { HANDS } from './hands-settings.js';
 import { kindOf, repeatSafe } from './tool-kinds.js';
 import { answerChecks } from './answer-checks.js'; // Nov 16: the real-jobs reads' most common mistakes
 import { stepsNudge } from './job-steps.js';
-import { todoNudge } from './todo.js'; // Nov 13: several things asked, fewer tool steps ran
+import { todoNudge } from './todo.js';
+import { lookCloserOn, snippetNudge } from './look-closer.js'; // Nov 13: several things asked, fewer tool steps ran
 import { PIC_CLAIM_FR_ES, FILE_CLAIM_FR_ES, admitsTrouble, plain } from './honest.js'; // Nov 12, items 182 and 185
 
 // ---------------------------------------------------------------- what was asked for
@@ -523,6 +524,8 @@ export function afterTurn(ctx = {}, replyText) {
 
   // 2d. 16 Nov (the real-jobs reads: 800 Qwen runs, 45 GPT-OSS runs): the mistakes they made most, each caught from the
   // words and this turn's tool record (answer-checks.js). They join the same one more go; never a loop.
+  // 2c'. Nov 28 (look-closer.js, "Look closer before answering" on): searched, opened no page, answered from snippets.
+  if (!nudges.length && !nudged && lookCloserOn(ctx.cfg)) { const n = snippetNudge({ actions, reply: said, who, usable }); if (n) push(n, ['web']); }
   if (ctx.cfg?.toolHelp !== false && !nudged) {
     let more = [];
     try { more = answerChecks({ text: ctx.turnText || ex0?.words || '', reply: said, actions, usable, who, exists, already: nudges.join(' ') }); } catch {}

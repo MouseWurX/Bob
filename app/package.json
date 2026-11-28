@@ -67,6 +67,7 @@
     "test/run-forge-runpod-v2-test.js",
     "test/run-step-thinking-test.js",
     "test/run-todo-test.js",
+    "test/run-look-closer-test.js",
     "test/run-cant-retry-test.js",
     "test/run-natural-tools-test.js",
     "test/run-hands-read-test.js",
