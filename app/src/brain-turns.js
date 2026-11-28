@@ -226,7 +226,7 @@ export const turnParts = {
         // The plan tries left the chat (no plan came): the repeat guard and the turn's record forget them too, so the job
         // can run its calls again and see the results (16 Nov rental: "already ran this turn" on a call nobody could see).
         const forget = () => { job.soloSeen?.clear?.(); if ('soloLedger' in job) job.soloLedger = null; };
-        mooted = await soloRun(this, solo, { run, review, emit: keep, signal, msgs, turnText: text, card, planShown, forget });
+        mooted = await soloRun(this, solo, { run, review, emit: keep, signal, msgs, turnText: text, card, planShown, forget, facts: () => Boolean(job.factsState) }); // Facts first: the reviews check the sources too
       }
       else {
         const bulkNote = mail?.bulk ? MAIL_BULK_NOTE.replace('{{USER}}', this.cfg.userName || 'the user') : '';

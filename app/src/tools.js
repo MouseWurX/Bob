@@ -707,7 +707,7 @@ export function buildTools(cfg) {
         if (not) { ctx.brain?.log?.('web', `search robot check not handed over: ${not}`); return null; }
         return handOver(cfg, ctx, { url, why: 'a robot check' });
       };
-      return webSearch({ query, when }, { cfg, signal, get: (url, opts) => webGet(cfg, url, opts, (u, o, fetchImpl) => fetchRetry(u, o, signal, fetchImpl ? { fetchImpl } : undefined)), person });
+      return webSearch({ query, when }, { cfg, signal, turn: ctx.ledger ? ctx : null, get: (url, opts) => webGet(cfg, url, opts, (u, o, fetchImpl) => fetchRetry(u, o, signal, fetchImpl ? { fetchImpl } : undefined)), person });
     },
     summary: ({ query, when }) => `search: ${query}${when ? ` (past ${when})` : ''}`
   };
