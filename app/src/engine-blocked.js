@@ -68,6 +68,17 @@ export function fallBackIfBlocked(cfg, exe, err, { goBack = goBackEngine, now = 
     return out;
   } catch { return null; }
 }
+// Nov 27 (1.5.255): on Linux and Android an engine's own libraries (libllama-server-impl.so, libggml-cuda.so, ...) sit
+// next to it, but the build may only look for them in the folder it was built in. Put the engine's folder first on
+// LD_LIBRARY_PATH so it starts from any folder. Windows and Mac look next to the program already, so they're unchanged.
+export function libDirEnv(exe, env = process.env, platform = process.platform) {
+  if (!exe || !['linux', 'android', 'freebsd'].includes(platform)) return env;
+  const dir = path.dirname(String(exe));
+  if (!dir || dir === '.') return env;
+  const old = env.LD_LIBRARY_PATH || '';
+  if (old.split(':').includes(dir)) return env;
+  return { ...env, LD_LIBRARY_PATH: old ? `${dir}:${old}` : dir };
+}
 // spawn() that never throws: a thrown start (Windows blocking the file) comes back as an 'error' event instead, the
 // same way a missing program does, so every caller's usual error path handles it.
 export function safeSpawn(spawnFn, exe, args, opts) {

@@ -23,6 +23,7 @@ import { allSlots, slotValue } from '../public/equip.js';
 import { mergeMadeBrains } from './lab.js'; // 1.5.141
 import { jitter } from './retry.js'; // item 194
 import { gatedBlock, gatedToken, withHfKey, signedFetch, refusedWords } from './hf-sign-in.js'; // Nov 22 2026 gated brains
+import { fetchInPieces, pieceCount, stateFileOf, dropPieces, hashFile } from './piece-download.js'; // Nov 27 2026 pieces at once
 import { brainEngineBuild } from '../public/engine-name.js';
 
 const MODEL_EXT = new Set(['.gguf', '.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.sft']);
@@ -218,7 +219,7 @@ export function engineShort(entry, { agentDir = '', read = fs.readFileSync } = {
   const min = Number(entry?.engineMin) || 0;
   if (!min) return '';
   let n = 0;
-  try { n = brainEngineBuild(JSON.parse(read(path.join(agentDir, 'brain-engine', 'bob-brainengine.json'), 'utf8')).version)?.n || 0; } catch {}
+  try { n = brainEngineBuild(JSON.parse(String(read(path.join(agentDir, 'brain-engine', 'bob-brainengine.json'), 'utf8')).replace(/^\uFEFF/, '')).version)?.n || 0; } catch {}
   if (n >= min) return '';
   return `${entry.name} needs Brain Engine ${min} or newer${n ? ` (this replicant matrix has Brain Engine ${n})` : ' (this replicant matrix has none)'}. Settings, Engines, Brain Engine gets or updates it.`;
 }
@@ -584,7 +585,7 @@ export class ModelShop {
   }
 
   dropParts(entry) {
-    for (const f of entry.files || []) { try { fs.rmSync(this.dest(entry, f) + '.part', { force: true }); } catch {} }
+    for (const f of entry.files || []) dropPieces(this.dest(entry, f) + '.part'); // the half-done file and its pieces note
   }
 
   pause(id) {
@@ -683,6 +684,15 @@ export class ModelShop {
     finally { q.done(); }
   }
 
+  // One HTTP Range request for a piece (src/piece-download.js): the same redirects, sign-in and host checks as one stream.
+  async openRange(url, token, range, signal) {
+    let res, at;
+    if (token) ({ res, url: at } = await signedFetch(url, { token, headers: { range }, signal, allowed: modelHostAllowed }));
+    else { res = await fetch(url, { headers: { range }, redirect: 'follow', signal }); at = res.url; }
+    if (!modelHostAllowed(at)) { try { await res.body?.cancel(); } catch {} throw new Error('The download was redirected somewhere I don\'t trust. Stopped.'); }
+    return res;
+  }
+
   async fetchFiles(entry, pub, signal, tick) {
     const located = this.locate(entry);
     const todo = entry.files.filter((f) => !located[f.role]);
@@ -727,6 +737,33 @@ export class ModelShop {
       const final = this.dest(entry, h.f);
       fs.mkdirSync(path.dirname(final), { recursive: true });
       const part = final + '.part';
+      const base = pub.done;
+      let got = 0, digest = '', pieced = false;
+      // Nov 27 2026: a big file in 4 or 8 pieces at once (Downloads settings, off by default; src/piece-download.js). A
+      // pieces note left by an earlier try carries on in pieces even if the setting was turned off since.
+      const resumePieces = fs.existsSync(stateFileOf(part)) && fs.existsSync(part);
+      if (h.size && (resumePieces || pieceCount(this.cfg, h.size, this.pieceMin) > 1)) {
+        pub.phase = 'downloading'; tick();
+        const q = quietGuard(signal);
+        let last = 0;
+        try {
+          const r = await fetchInPieces({ part, size: h.size, pieces: Math.max(2, pieceCount(this.cfg, h.size, this.pieceMin)), signal: q.signal,
+            open: (range, sig) => this.openRange(h.f.url, token, range, sig),
+            onBytes: (n) => { q.poke(); pub.done = base + n; if (Date.now() - last > 500) { last = Date.now(); tick(); } } });
+          pieced = r.ok; // no: the server ignored ranges; nothing was kept, one stream below
+        } catch (e) {
+          if (q.quiet() && !signal?.aborted) throw new Error(`Download of ${name} stopped coming (nothing for 2 minutes). Try again; it picks up where it stopped.`);
+          if (e.status) throw new Error(e.status === 401 || e.status === 403 || e.status === 404 ? linkError(name, e.status, Boolean(token)) : `Download of ${name} failed (${e.status}).`);
+          throw e;
+        } finally { q.done(); }
+        if (pieced) {
+          pub.phase = 'checking'; tick();
+          got = fs.statSync(part).size;
+          if (got !== h.size) { dropPieces(part); throw new Error(`${name} came through the wrong size. I deleted it; try again.`); }
+          digest = await hashFile(part);
+        }
+      }
+      if (!pieced) {
       const hash = crypto.createHash('sha256');
       let have = 0;
       if (fs.existsSync(part)) {
@@ -734,7 +771,6 @@ export class ModelShop {
         pub.phase = 'resuming'; tick();
         for await (const c of fs.createReadStream(part)) { hash.update(c); have += c.length; }
       }
-      const base = pub.done;
       const q = quietGuard(signal); // item 212: two quiet minutes and the download stops (it resumes from here next time)
       let res;
       let at = '';
@@ -749,7 +785,8 @@ export class ModelShop {
       if (have && res.status === 200) { have = 0; hash.destroy?.(); fs.rmSync(part, { force: true }); return this.fetchFiles(entry, pub, signal, tick); }
       if (!res.ok && res.status !== 206) throw new Error(res.status === 401 || res.status === 403 || res.status === 404 ? linkError(name, res.status, Boolean(token)) : `Download of ${name} failed (${res.status}).`);
       const out = fs.createWriteStream(part, { flags: have ? 'a' : 'w' });
-      let last = 0, got = have;
+      let last = 0;
+      got = have;
       try {
         for await (const c of res.body) {
           q.poke();
@@ -763,7 +800,8 @@ export class ModelShop {
       finally { q.done(); await new Promise((r) => out.end(r)); }
       pub.phase = 'checking';
       tick();
-      const digest = hash.digest('hex');
+      digest = hash.digest('hex');
+      }
       if (h.f.bytes && got !== h.f.bytes) { fs.rmSync(part, { force: true }); throw new Error(`${name} came through the wrong size. I deleted it; try again.`); }
       if (h.sha && digest !== h.sha) { fs.rmSync(part, { force: true }); throw new Error(`${name} came through damaged (checksum didn't match). I deleted it; try again.`); }
       fs.renameSync(part, final);

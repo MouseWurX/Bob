@@ -24,6 +24,18 @@ check('GPT-OSS 120B on a 6 GB laptop: not at home', placeFor(oss120, laptop).whe
 check('...unless another Bob lends a hand', placeFor(oss120, laptop, [{ name: 'big-pc', vramGB: 16, ramGB: 32 }]).where !== 'rent');
 { const p = placeFor(by('qwen3-4b'), noCard); check('no graphics card: a small brain runs in memory on the processor', p.where === 'memory' && p.word === 'In memory, on the processor', JSON.stringify(p)); }
 { const p = placeFor(by('riker-28b-q3'), mac); check('a Mac has one pool: it fits or it doesn\'t', p.where === 'card' && p.word === 'In memory', JSON.stringify(p)); }
+// Nov 27 2026: the starter sets' own brains were "too big for home" on the machines they're picked for.
+{ const pi8 = { vramGB: 0, ramGB: 8, arm: true }, pi4 = { vramGB: 0, ramGB: 4, arm: true };
+  const a = placeFor(by('gemma4-e2b'), pi8), b = placeFor(by('qwen3.5-2b'), pi4);
+  check('an 8 GB board runs its own set\'s brain (Gemma 4 E2B) in memory', a.where === 'memory' && a.word === 'In memory, on the processor', JSON.stringify(a));
+  check('a 4 GB board runs Qwen3.5 2B in memory', b.where === 'memory', JSON.stringify(b));
+  check('...but a board isn\'t told a brain too big for it fits (Gemma 4 E4B on 8 GB)', placeFor(by('gemma4-e4b'), pi8).where !== 'memory'); }
+{ const mac8 = { vramGB: 5, ramGB: 8, unified: true }, mac16 = { vramGB: 10, ramGB: 16, unified: true };
+  const a = placeFor(by('qwen3-4b'), mac8);
+  check('an 8 GB Mac runs its own set\'s brain (Qwen3 4B) in memory', a.where === 'card' && a.word === 'In memory', JSON.stringify(a));
+  check('a 16 GB Mac runs Gemma 4 E4B in memory', placeFor(by('gemma4-e4b'), mac16).where === 'card');
+  check('a 24 GB Mac reads part of Qwen3.6 35B-A3B from the drive, and says so without a card', placeFor(by('qwen3.6-35b-a3b'), { vramGB: 16, ramGB: 24, unified: true }).word === 'Memory + storage');
+  check('an 8 GB Mac isn\'t told Gemma 4 26B fits', placeFor(by('gemma4-26b'), mac8).where === 'rent'); }
 check('every answer is one of the five', catalog.models.filter((m) => m.jobs).every((m) => PLACES.includes(placeFor(m, pc).where)));
 
 check('quantization is read from the file name', quantOf(by('riker-28b-q3')) === 'Q3_K_M' && quantOf(by('bobert-35b')) === 'Q4_K_M' && quantOf(oss120) === 'MXFP4' && quantOf(by('gemma4-26b')) === 'Q4_0' && quantOf(by('qwen3.6-35b-a3b')) === 'Q4_K_XL', [quantOf(by('riker-28b-q3')), quantOf(by('gemma4-26b')), quantOf(by('qwen3.6-35b-a3b'))].join());

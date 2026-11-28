@@ -249,6 +249,7 @@ async function replay(tape) {
 {
   // Steps used up, an error, repeats: each says so.
   const { brain, cfg } = makeBob();
+  brain.cfg.stepCap = 8; // the app has no step count (Nov 23, as #275); the test sets one so this endless scripted brain ends
   brain.runTool = async (name, a) => ({ text: `result ${a.path}` });
   let i = 0;
   script(brain, []); brain.engine.chat = async () => call('read_file', { path: `f${i++}.txt` });

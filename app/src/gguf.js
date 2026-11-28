@@ -10,7 +10,9 @@ const FIXED = { [T.U8]: 1, [T.I8]: 1, [T.U16]: 2, [T.I16]: 2, [T.U32]: 4, [T.I32
 const WANT = new Set(['general.architecture', 'general.name', 'general.basename', 'general.size_label', 'tokenizer.chat_template', 'tokenizer.chat_template.tool_use', 'general.base_model.0.repo_url', 'general.source.url', 'general.source.huggingface.repository']);
 // The shape keys, read per architecture (<arch>.block_count and so on): the context limit, and what the chat memory
 // (the KV cache) costs per token, so Bob can say whether a long context fits before loading it.
-const SHAPE = ['.context_length', '.block_count', '.attention.head_count_kv', '.attention.key_length', '.attention.value_length', '.full_attention_interval', '.rope.scaling.type', '.nextn_predict_layers'];
+const SHAPE = ['.context_length', '.block_count', '.attention.head_count_kv', '.attention.key_length', '.attention.value_length', '.full_attention_interval', '.rope.scaling.type', '.nextn_predict_layers', '.expert_count'];
+// Nov 24 (npc's BE45 real path): .expert_count was never read, so every brain counted as dense and GUPPI never gave a
+// brain of experts its copy cache
 const MAX_HEADER = 256 * 1024 * 1024; // a sane header is far smaller; past this the file isn't a GGUF we understand
 
 class Reader {

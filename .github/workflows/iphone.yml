@@ -1,0 +1,59 @@
+name: iPhone check
+
+# Bob for iPhone (the phone screen at /phone/) on GitHub's Mac: Safari's engine (WebKit) at iPhone 16 Pro size,
+# then real iOS Safari in the iPhone simulator, with screenshots. A simulator, not a phone: it can't show a real
+# iPhone's memory limit, speed or heat. Like the other builds, a draft pull request runs nothing.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'app/public/phone/**'
+      - 'app/android/app/src/main/assets/www/**'
+      - 'app/src/server.js'
+      - 'app/test/iphone-safari-look.mjs'
+      - '.github/workflows/iphone.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  iphone:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Install Bob's parts
+        run: npm ci --ignore-scripts
+      - name: Install Safari's engine (WebKit) for the check
+        run: npm install --no-save --ignore-scripts playwright@1.63.0 && npx playwright install webkit
+      - name: Phone screen in WebKit, iPhone 16 Pro size
+        run: node test/iphone-safari-look.mjs "$RUNNER_TEMP/iphone-shots"
+      - name: Phone screen in real iOS Safari (iPhone simulator)
+        continue-on-error: true # screenshots only; the WebKit step above is the pass or fail
+        run: |
+          set -e
+          node -e "const f=require('fs');f.writeFileSync(process.env.RUNNER_TEMP+'/sim-config.json',JSON.stringify({...JSON.parse(f.readFileSync('config.example.json','utf8')),engine:'ollama'}))"
+          export BOB_CONFIG="$RUNNER_TEMP/sim-config.json"
+          node -e "require('child_process').spawn(process.execPath,['src/server.js'],{detached:true,stdio:'ignore',env:{...process.env,BOB_PORT:'7796',BOB_OLLAMA_URL:'http://127.0.0.1:9',BOB_AGENT_DIR:process.env.RUNNER_TEMP+'/sim-home'}}).unref()"
+          sleep 8
+          DEV=$(xcrun simctl list devices available | grep -m1 -E 'iPhone 16 Pro \(' | grep -oE '[0-9A-F-]{36}' || true)
+          [ -n "$DEV" ] || DEV=$(xcrun simctl list devices available | grep -m1 -E 'iPhone' | grep -oE '[0-9A-F-]{36}')
+          xcrun simctl boot "$DEV" || true
+          xcrun simctl bootstatus "$DEV" -b
+          xcrun simctl openurl "$DEV" "http://127.0.0.1:7796/phone/"
+          sleep 20
+          xcrun simctl io "$DEV" screenshot "$RUNNER_TEMP/iphone-shots/5-ios-safari.png"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: iphone-shots
+          path: ${{ runner.temp }}/iphone-shots
+          retention-days: 14

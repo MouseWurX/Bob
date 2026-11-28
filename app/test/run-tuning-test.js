@@ -74,9 +74,11 @@ add('qwen3', '4b', 'ccc333');
 const lcCfg = (extra = {}) => ({ dataDir: path.join(tmp, 'data'), agentDir: tmp, llamacpp: { exe: process.execPath, preArgs: [path.join(here, 'mock-llama-server.js')], ollamaModelsDir: models, port: 18095, fit: false }, ...extra });
 fs.mkdirSync(path.join(tmp, 'data'), { recursive: true });
 {
-  const lc = new LlamaCpp(lcCfg());
+  const lc = new LlamaCpp(lcCfg({ chatPlaces: false })); // Nov 24: the Per-chat engine cache is on unless turned off
   const a = lc.buildArgs('qwen3:4b', { cpu: true });
   check(!a.includes('--slot-save-path') && !a.includes('--cpu-range'), 'switches off: the engine starts as before');
+  const d = new LlamaCpp(lcCfg()).buildArgs('qwen3:4b', { cpu: true });
+  check(d[d.indexOf('--slot-save-path') + 1] === path.join(tmp, 'data', 'chat-places'), 'on a new Bob: the engine saves each chat\'s reading (Per-chat engine cache)');
   // 1.5.90: brains partly in RAM are read in at load, not paged in during the first reply.
   const ver = (v) => { fs.mkdirSync(path.join(tmp, 'llama.cpp'), { recursive: true }); fs.writeFileSync(path.join(tmp, 'llama.cpp', 'bob-llamacpp.json'), JSON.stringify({ version: v })); };
   const has = (args, ...xs) => xs.every((x) => args.includes(x));
@@ -116,7 +118,7 @@ fs.mkdirSync(path.join(tmp, 'data'), { recursive: true });
   clearInterval(lc.idleTimer);
 }
 {
-  const lc = new LlamaCpp(lcCfg({ readyWhileTyping: true, gamesFirst: true }));
+  const lc = new LlamaCpp(lcCfg({ readyWhileTyping: true, gamesFirst: true, chatPlaces: false }));
   const cpuArgs = lc.buildArgs('qwen3:4b', { cpu: true, ctx: 8192 });
   check(cpuArgs.includes('--slot-save-path') && cpuArgs.includes('-t'), 'on the processor: saved readings and fewer cores');
   check(!lc.buildArgs('qwen3:4b', { cpu: false }).includes('--slot-save-path'), 'on the graphics card: no saved readings (reading ahead is fast enough)');

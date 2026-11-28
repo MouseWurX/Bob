@@ -1,0 +1,2523 @@
+diff --git a/conversion/base.py b/conversion/base.py
+index bcb8ed6ea..1f5a9ca03 100644
+--- a/conversion/base.py
++++ b/conversion/base.py
+@@ -650,6 +650,28 @@ class ModelBase:
+                     raise NotImplementedError(f"Quant format {quant_format!r} for method {quant_method!r} is not yet supported")
+             elif quant_method in ("modelopt", "modelopt_mixed"):
+                 dequant_fp8()
++                # FP8_PB_WO: one scale per block, the block size follows from the two shapes
++                for name in self.model_tensors.keys():
++                    if not name.endswith(".weight_scale_inv"):
++                        continue
++                    weight_name = name.removesuffix("_scale_inv")
++                    if weight_name not in self.model_tensors:
++                        tensors_to_remove.append(name)
++                        continue
++                    w = self.model_tensors[weight_name]
++                    s = self.model_tensors[name]
++                    if w().dtype != torch.float8_e4m3fn:
++                        continue
++                    w_shape, s_shape = w().shape, s().shape
++                    block_size = None
++                    if prod(s_shape) != 1:
++                        if len(s_shape) != len(w_shape) or any(ws % ss for ws, ss in zip(w_shape, s_shape)):
++                            raise ValueError(f"FP8 weight {weight_name!r} {list(w_shape)} is not tiled by its scale {list(s_shape)}")
++                        block_size = [ws // ss for ws, ss in zip(w_shape, s_shape)]
++                    self.model_tensors[weight_name] = lambda w=w, s=s, bs=block_size: dequant_simple(w(), s(), bs)
++                    tensors_to_remove.append(name)
++                    if self._fp8_as_q8:
++                        self._fp8_dequantized.add(weight_name)
+             elif quant_method is not None:
+                 raise NotImplementedError(f"Quant method is not yet supported: {quant_method!r}")
+ 
+diff --git a/conversion/qwen4exp.py b/conversion/qwen4exp.py
+index 9680d2937..fe49cc03d 100644
+--- a/conversion/qwen4exp.py
++++ b/conversion/qwen4exp.py
+@@ -8,7 +8,7 @@ from torch import Tensor
+ import gguf
+ import numpy as np
+ 
+-from .base import ModelBase
++from .base import LazyTorchTensor, ModelBase
+ from .qwen import _LinearAttentionVReorderBase, _Qwen35MRopeMixin
+ from .qwen3vl import Qwen3VLVisionModel
+ 
+@@ -41,6 +41,18 @@ class Qwen4ExpTextModel(_Qwen35MRopeMixin, _LinearAttentionVReorderBase):
+         self._ple_shards: dict[int, str] = {}
+         self._ple_row_dim: int | None = None
+         self._mtp_fc: dict[str, Tensor] = {}
++        self._ple_scale: float | None = None
++
++    def dequant_model(self):
++        # FP8 checkpoints: all n-gram shards share one scale, stored under the parent module name
++        # there is no "ngram_embedding.weight", so the generic FP8 pass drops it or cannot map it
++        for name in list(self.model_tensors):
++            if name.endswith(".ngram_embedding.weight_scale"):
++                scale = LazyTorchTensor.to_eager(self.model_tensors.pop(name)()).float().flatten()
++                if scale.numel() != 1:
++                    raise ValueError(f"PLE scale {name!r} must be a scalar, got {scale.numel()} values")
++                self._ple_scale = float(scale[0])
++        super().dequant_model()
+ 
+     @classmethod
+     def filter_tensors(cls, item):
+@@ -203,21 +215,31 @@ class Qwen4ExpTextModel(_Qwen35MRopeMixin, _LinearAttentionVReorderBase):
+                     f"PLE shard {shard} has row dim {int(shape[-1])}, expected {self._ple_row_dim}")
+             rows += int(shape[0])
+ 
++        # an FP8 table keeps its bytes and gets a scale tensor, any other type has the scale folded in
++        keep_fp8 = name in self._fp8_e4m3_preserved
+         table = gguf.LazyChunkedTensor(
+-            [self._load_ple_shard(shard) for shard in shards],
++            [self._load_ple_shard(shard, keep_fp8) for shard in shards],
+             shape=(rows, self._ple_row_dim),
+-            dtype=np.float32,
++            dtype=np.uint8 if keep_fp8 else np.float32,
+         )
+         gguf_name = gguf.TENSOR_NAMES[gguf.MODEL_TENSOR.PER_LAYER_TOKEN_EMBD]
+-        return [(gguf_name + ".weight", cast(Tensor, table))]
++        out = [(gguf_name + ".weight", cast(Tensor, table))]
++        if keep_fp8 and self._ple_scale is not None:
++            out.append((gguf_name + ".scale", torch.tensor([self._ple_scale], dtype=torch.float32)))
++        return out
+ 
+-    def _load_ple_shard(self, name: str):
++    def _load_ple_shard(self, name: str, keep_fp8: bool):
+         def load() -> np.ndarray:
+-            from .base import LazyTorchTensor
+-
+             # a fresh lazy tensor every call, or to_eager() memoizes every shard
+             eager = LazyTorchTensor.to_eager(self.model_tensors[name]())
+-            return eager.to(torch.float32).contiguous().numpy()
++            if keep_fp8:
++                if eager.dtype != torch.float8_e4m3fn:
++                    raise ValueError(f"PLE shard {name} is {eager.dtype}, expected FP8 like the other shards")
++                return eager.contiguous().view(torch.uint8).numpy()
++            data = eager.to(torch.float32)
++            if self._ple_scale is not None:
++                data = data * self._ple_scale
++            return data.contiguous().numpy()
+         return load
+ 
+     def prepare_tensors(self):
+diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
+index e9d4a27ba..bcf58e104 100644
+--- a/ggml/include/ggml.h
++++ b/ggml/include/ggml.h
+@@ -1319,12 +1319,6 @@ extern "C" {
+ 
+     // indirect matrix multiplication
+     // an id of -1 skips the slot and zeroes the matching row of the result
+-    //
+-    // [TAG_MUL_MAT_ID_DUPLICATE_ID]
+-    // note: this op has undefined behaviour if a given `a` is referenced more than once for a given `b`
+-    //       (i.e. duplicate experts per token are not guaranteed to be supported in all backends)
+-    // TODO: add backend support: https://github.com/ggml-org/llama.cpp/pull/29998#issuecomment-6153742533
+-    // the CPU backend skips negative ids, their rows of the result are zero
+     GGML_API struct ggml_tensor * ggml_mul_mat_id(
+             struct ggml_context * ctx,
+             struct ggml_tensor  * as,
+diff --git a/ggml/src/ggml-backend.cpp b/ggml/src/ggml-backend.cpp
+index 202a27b2e..530456f0f 100644
+--- a/ggml/src/ggml-backend.cpp
++++ b/ggml/src/ggml-backend.cpp
+@@ -1752,6 +1752,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
+         split->i_start = 0;
+         split->n_inputs = 0;
+         int cur_backend_id = split->backend_id;
++        bool split_has_nodes = false;
+         for (; i < graph->n_nodes; i++) {
+             struct ggml_tensor * node = graph->nodes[i];
+ 
+@@ -1764,18 +1765,16 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
+             GGML_ASSERT(node_backend_id != -1); // all nodes should be assigned by now, this can happen if there is no CPU fallback
+ 
+             // check if we should start a new split based on the sources of the current node
++            // this also applies to a split without inputs, e.g. one that follows a split that only writes to a host buffer
+             bool need_new_split = false;
+-            // Brain Engine 0038: a weight flagged GGML_TENSOR_FLAG_SPLIT starts a new split even when the split has no
+-            // inputs yet, as long as the split already has nodes (the MoE cache plans its copies from ids computed before)
+-            if (node_backend_id == cur_backend_id && (split->n_inputs > 0 || i > split->i_start)) {
++            // Brain Engine 0100 (upstream #31775): a split that already has nodes starts a new split at an incompatible
++            // weight even with no inputs yet. This covers 0038's GGML_TENSOR_FLAG_SPLIT case (the MoE cache's lookup) too.
++            if (node_backend_id == cur_backend_id && split_has_nodes) {
+                 for (int j = 0; j < GGML_MAX_SRC; j++) {
+                     struct ggml_tensor * src = node->src[j];
+                     if (src == NULL) {
+                         continue;
+                     }
+-                    if (split->n_inputs == 0 && !(src->flags & GGML_TENSOR_FLAG_SPLIT)) {
+-                        continue;
+-                    }
+                     // check if a weight is on a different and incompatible backend
+                     // by starting a new split, the memory of the previously offloaded weights can be reused
+                     if (src->buffer != NULL && src->buffer->usage == GGML_BACKEND_BUFFER_USAGE_WEIGHTS) {
+@@ -1807,6 +1806,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
+                 split->n_inputs = 0;
+                 cur_backend_id = node_backend_id;
+             }
++            split_has_nodes = true;
+ 
+             // find inputs that are not on the same backend
+             for (int j = 0; j < GGML_MAX_SRC; j++) {
+diff --git a/ggml/src/ggml-cuda/argmax.cu b/ggml/src/ggml-cuda/argmax.cu
+index 51967c667..9be901e56 100644
+--- a/ggml/src/ggml-cuda/argmax.cu
++++ b/ggml/src/ggml-cuda/argmax.cu
+@@ -22,8 +22,8 @@ static __global__ void argmax_f32(const float * __restrict__ x, int32_t * __rest
+ 
+ #pragma unroll
+     for (int offset = WARP_SIZE/2; offset > 0; offset >>= 1) {
+-        const float val = __shfl_xor_sync(0xFFFFFFFF, maxval, offset, WARP_SIZE);
+-        const int   col = __shfl_xor_sync(0xFFFFFFFF, argmax, offset, WARP_SIZE);
++        const float val = ggml_cuda_shfl_xor(maxval, offset, WARP_SIZE);
++        const int   col = ggml_cuda_shfl_xor(argmax, offset, WARP_SIZE);
+         if (val > maxval) {
+             maxval = val;
+             argmax = col;
+@@ -51,8 +51,8 @@ static __global__ void argmax_f32(const float * __restrict__ x, int32_t * __rest
+             }
+ #pragma unroll
+             for (int offset = WARP_SIZE/2; offset > 0; offset >>= 1) {
+-                const float val = __shfl_xor_sync(0xFFFFFFFF, maxval, offset, WARP_SIZE);
+-                const int   col = __shfl_xor_sync(0xFFFFFFFF, argmax, offset, WARP_SIZE);
++                const float val = ggml_cuda_shfl_xor(maxval, offset, WARP_SIZE);
++                const int   col = ggml_cuda_shfl_xor(argmax, offset, WARP_SIZE);
+                 if (val > maxval) {
+                     maxval = val;
+                     argmax = col;
+diff --git a/ggml/src/ggml-cuda/common.cuh b/ggml/src/ggml-cuda/common.cuh
+index 88e83b9e6..7ba50fe16 100644
+--- a/ggml/src/ggml-cuda/common.cuh
++++ b/ggml/src/ggml-cuda/common.cuh
+@@ -19,7 +19,6 @@
+ #define GGML_COMMON_IMPL_MUSA
+ #endif
+ #endif
+-#include "ggml-common.h"
+ 
+ #include <array>
+ #include <algorithm>
+@@ -39,6 +38,8 @@
+ #include "vendors/cuda.h"
+ #endif // defined(GGML_USE_HIP)
+ 
++#include "ggml-common.h"
++
+ #define STRINGIZE_IMPL(...) #__VA_ARGS__
+ #define STRINGIZE(...) STRINGIZE_IMPL(__VA_ARGS__)
+ 
+@@ -126,6 +127,8 @@
+ #    define GGML_CUDA_USE_PDL
+ #endif  // !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA) && (CUDART_VERSION >= 12030 || (!(defined(_MSC_VER) && !defined(__clang__)) && CUDART_VERSION >= 11080))
+ 
++constexpr ggml_cuda_thread_mask_t GGML_CUDA_FULL_THREAD_MASK = (ggml_cuda_thread_mask_t)0xffffffffffffffffULL;
++
+ static __device__ __forceinline__ void ggml_cuda_syncwarp() {
+ #ifndef GGML_USE_HIP
+     __syncwarp();
+@@ -430,6 +433,42 @@ static constexpr __device__ int ggml_cuda_get_max_cpy_bytes() {
+ #endif // defined(GGML_USE_HIP) || defined(GGML_USE_MUSA)
+ }
+ 
++template <typename T>
++static __device__ __forceinline__ T ggml_cuda_shfl(T value, int src_lane, int width = ggml_cuda_get_physical_warp_size(), ggml_cuda_thread_mask_t mask = GGML_CUDA_FULL_THREAD_MASK) {
++    return __shfl_sync(mask, value, src_lane, width);
++}
++
++template <typename T>
++static __device__ __forceinline__ T ggml_cuda_shfl_up(T value, unsigned delta, int width = ggml_cuda_get_physical_warp_size(), ggml_cuda_thread_mask_t mask = GGML_CUDA_FULL_THREAD_MASK) {
++    return __shfl_up_sync(mask, value, delta, width);
++}
++
++template <typename T>
++static __device__ __forceinline__ T ggml_cuda_shfl_xor(T value, int lane_mask, int width = ggml_cuda_get_physical_warp_size(), ggml_cuda_thread_mask_t mask = GGML_CUDA_FULL_THREAD_MASK) {
++    return __shfl_xor_sync(mask, value, lane_mask, width);
++}
++
++static __device__ __forceinline__ ggml_cuda_thread_mask_t ggml_cuda_ballot(int predicate, ggml_cuda_thread_mask_t mask = GGML_CUDA_FULL_THREAD_MASK) {
++    return __ballot_sync(mask, predicate);
++}
++
++static __device__ __forceinline__ int ggml_cuda_popc(ggml_cuda_thread_mask_t x) {
++    static_assert(sizeof(ggml_cuda_thread_mask_t) == 4 || sizeof(ggml_cuda_thread_mask_t) == 8, "unsupported thread mask type");
++    if constexpr (sizeof(ggml_cuda_thread_mask_t) == 4) {
++        return __popc(x);
++    } else {
++        return __popcll(x);
++    }
++}
++template<typename T> static __device__ __forceinline__ int ggml_cuda_popc(T x) = delete; // Makes implicit type casts result in an error.
++
++static __device__ __forceinline__ int ggml_cuda_all(int predicate, ggml_cuda_thread_mask_t mask = GGML_CUDA_FULL_THREAD_MASK) {
++    return __all_sync(mask, predicate);
++}
++
++static __device__ __forceinline__ int ggml_cuda_any(int predicate, ggml_cuda_thread_mask_t mask = GGML_CUDA_FULL_THREAD_MASK) {
++    return __any_sync(mask, predicate);
++}
+ 
+ [[noreturn]]
+ static __device__ void no_device_code(
+@@ -476,11 +515,11 @@ struct ggml_cuda_unroll<1> {
+ template<int width = WARP_SIZE>
+ static __device__ __forceinline__ int warp_reduce_sum(int x) {
+ #if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA) && __CUDA_ARCH__ >= GGML_CUDA_CC_AMPERE
+-    return __reduce_add_sync(0xffffffff, x);
++    return __reduce_add_sync(GGML_CUDA_FULL_THREAD_MASK, x);
+ #else
+ #pragma unroll
+     for (int offset = width/2; offset > 0; offset >>= 1) {
+-        x += __shfl_xor_sync(0xffffffff, x, offset, width);
++        x += ggml_cuda_shfl_xor(x, offset, width);
+     }
+     return x;
+ #endif // !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA) && __CUDA_ARCH__ >= GGML_CUDA_CC_AMPERE
+@@ -490,7 +529,7 @@ template<int width = WARP_SIZE>
+ static __device__ __forceinline__ float warp_reduce_sum(float x) {
+ #pragma unroll
+     for (int offset = width/2; offset > 0; offset >>= 1) {
+-        x += __shfl_xor_sync(0xffffffff, x, offset, width);
++        x += ggml_cuda_shfl_xor(x, offset, width);
+     }
+     return x;
+ }
+@@ -499,8 +538,8 @@ template<int width = WARP_SIZE>
+ static __device__ __forceinline__ float2 warp_reduce_sum(float2 a) {
+ #pragma unroll
+     for (int offset = width/2; offset > 0; offset >>= 1) {
+-        a.x += __shfl_xor_sync(0xffffffff, a.x, offset, width);
+-        a.y += __shfl_xor_sync(0xffffffff, a.y, offset, width);
++        a.x += ggml_cuda_shfl_xor(a.x, offset, width);
++        a.y += ggml_cuda_shfl_xor(a.y, offset, width);
+     }
+     return a;
+ }
+@@ -510,7 +549,7 @@ static __device__ __forceinline__ half2 warp_reduce_sum(half2 a) {
+ #ifdef FP16_AVAILABLE
+ #pragma unroll
+     for (int offset = width/2; offset > 0; offset >>= 1) {
+-        a = __hadd2(a, __shfl_xor_sync(0xffffffff, a, offset, width));
++        a = __hadd2(a, ggml_cuda_shfl_xor(a, offset, width));
+     }
+     return a;
+ 
+@@ -523,11 +562,11 @@ static __device__ __forceinline__ half2 warp_reduce_sum(half2 a) {
+ template<int width = WARP_SIZE>
+ static __device__ __forceinline__ int warp_reduce_all(int x) {
+     if (width == ggml_cuda_get_physical_warp_size()) {
+-        return __all_sync(0xffffffff, x);
++        return ggml_cuda_all(x);
+     } else {
+ #pragma unroll
+         for (int offset = width/2; offset > 0; offset >>= 1) {
+-            x = __shfl_xor_sync(0xffffffff, x, offset, width) && x;
++            x = ggml_cuda_shfl_xor(x, offset, width) && x;
+         }
+         return x;
+     }
+@@ -536,11 +575,11 @@ static __device__ __forceinline__ int warp_reduce_all(int x) {
+ template<int width = WARP_SIZE>
+ static __device__ __forceinline__ int warp_reduce_any(int x) {
+     if (width == ggml_cuda_get_physical_warp_size()) {
+-        return __any_sync(0xffffffff, x);
++        return ggml_cuda_any(x);
+     } else {
+ #pragma unroll
+         for (int offset = width/2; offset > 0; offset >>= 1) {
+-            x = __shfl_xor_sync(0xffffffff, x, offset, width) || x;
++            x = ggml_cuda_shfl_xor(x, offset, width) || x;
+         }
+         return x;
+     }
+@@ -550,7 +589,7 @@ template<int width = WARP_SIZE>
+ static __device__ __forceinline__ float warp_reduce_max(float x) {
+ #pragma unroll
+     for (int offset = width/2; offset > 0; offset >>= 1) {
+-        x = fmaxf(x, __shfl_xor_sync(0xffffffff, x, offset, width));
++        x = fmaxf(x, ggml_cuda_shfl_xor(x, offset, width));
+     }
+     return x;
+ }
+@@ -560,7 +599,7 @@ static __device__ __forceinline__ T warp_prefix_inclusive_sum(T x) {
+     const int lane_id = threadIdx.x % width;
+ #pragma unroll
+     for (int offset = 1; offset < width; offset <<= 1) {
+-        const T t = __shfl_up_sync(0xffffffff, x, offset, width);
++        const T t = ggml_cuda_shfl_up(x, offset, width);
+         if (lane_id >= offset) {
+             x += t;
+         }
+@@ -573,8 +612,8 @@ static __device__ __forceinline__ float2 warp_prefix_inclusive_sum(float2 a) {
+     const int lane_id = threadIdx.x % width;
+ #pragma unroll
+     for (int offset = 1; offset < width; offset <<= 1) {
+-        const float t_x = __shfl_up_sync(0xffffffff, a.x, offset, width);
+-        const float t_y = __shfl_up_sync(0xffffffff, a.y, offset, width);
++        const float t_x = ggml_cuda_shfl_up(a.x, offset, width);
++        const float t_y = ggml_cuda_shfl_up(a.y, offset, width);
+         if (lane_id >= offset) {
+             a.x += t_x;
+             a.y += t_y;
+@@ -589,7 +628,7 @@ static __device__ __forceinline__ half2 warp_prefix_inclusive_sum(half2 a) {
+     const int lane_id = threadIdx.x % width;
+ #pragma unroll
+     for (int offset = 1; offset < width; offset <<= 1) {
+-        const half2 t = __shfl_up_sync(0xffffffff, a, offset, width);
++        const half2 t = ggml_cuda_shfl_up(a, offset, width);
+         if (lane_id >= offset) {
+             a = __hadd2(a, t);
+         }
+@@ -716,7 +755,7 @@ template<int width = WARP_SIZE>
+ static __device__ __forceinline__ half2 warp_reduce_max(half2 x) {
+ #pragma unroll
+    for (int offset = width/2; offset > 0; offset >>= 1) {
+-       x = ggml_cuda_hmax2(x, __shfl_xor_sync(0xffffffff, x, offset, width));
++       x = ggml_cuda_hmax2(x, ggml_cuda_shfl_xor(x, offset, width));
+    }
+    return x;
+ }
+@@ -867,7 +906,7 @@ static __device__ __forceinline__ float ggml_cuda_e8m0_to_fp32(uint8_t x) {
+ }
+ 
+ static __device__ __forceinline__ float ggml_cuda_ue4m3_to_fp32(uint8_t x) {
+-#if defined(GGML_USE_HIP) && defined(CDNA3) && defined(FP8_AVAILABLE) && HIP_VERSION >= 60200000
++#if defined(GGML_USE_HIP) && defined(CDNA3) && defined(FP8_AVAILABLE)
+     // ROCm does not support fp8 in software on devices with fp8 hardware,
+     // but CDNA3 supports only e4m3_fnuz (no inf).
+     const uint32_t bits = x * (x != 0x7F && x != 0xFF); // Convert NaN to 0.0f to match CPU implementation.
+@@ -1007,6 +1046,12 @@ static const uint3 init_fastdiv_values(uint64_t d_64) {
+     uint32_t L = 0;
+     while (L < 32 && (uint32_t{ 1 } << L) < d) {
+         L++;
++        if (L == 32) {
++            // Shifting uint32_t by 32 to the right is undefined behavior.
++            // On NVIDIA it will produce 0.
++            // On AMD the value by which is shifted is masked with & 31 so it is shifting by 0 bits.
++            GGML_ABORT("undefined behavior in fastdiv");
++        }
+     }
+ 
+     uint32_t mp = (uint32_t) ((uint64_t{ 1 } << 32) * ((uint64_t{ 1 } << L) - d) / d + 1);
+diff --git a/ggml/src/ggml-cuda/fattn-common.cuh b/ggml/src/ggml-cuda/fattn-common.cuh
+index 60115ddc7..cb77c4b21 100644
+--- a/ggml/src/ggml-cuda/fattn-common.cuh
++++ b/ggml/src/ggml-cuda/fattn-common.cuh
+@@ -484,8 +484,8 @@ static __device__ __forceinline__ void quantize_q8_1_to_shared(
+     }
+ #pragma unroll
+     for (int mask = QI8_1/2; mask > 0; mask >>= 1) {
+-        amax = fmaxf(amax, __shfl_xor_sync(0xFFFFFFFF, amax, mask, 32));
+-        sum +=             __shfl_xor_sync(0xFFFFFFFF, sum,  mask, 32);
++        amax = fmaxf(amax, ggml_cuda_shfl_xor(amax, mask, 32));
++        sum +=             ggml_cuda_shfl_xor(sum,  mask, 32);
+     }
+ 
+     const float d = amax / 127;
+diff --git a/ggml/src/ggml-cuda/fattn-mma-f16.cuh b/ggml/src/ggml-cuda/fattn-mma-f16.cuh
+index 653ef1df8..64d176113 100644
+--- a/ggml/src/ggml-cuda/fattn-mma-f16.cuh
++++ b/ggml/src/ggml-cuda/fattn-mma-f16.cuh
+@@ -846,7 +846,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
+         for (int col = 0; col < cols_per_thread; ++col) {
+ #pragma unroll
+             for (int offset = 16; offset >= 4; offset >>= 1) {
+-                KQ_max_new[col] = fmaxf(KQ_max_new[col], __shfl_xor_sync(0xFFFFFFFF, KQ_max_new[col], offset, warp_size));
++                KQ_max_new[col] = fmaxf(KQ_max_new[col], ggml_cuda_shfl_xor(KQ_max_new[col], offset, warp_size));
+             }
+         }
+ 
+@@ -939,7 +939,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
+ #endif // defined(TURING_MMA_AVAILABLE)
+ #pragma unroll
+             for (int offset = offset_first; offset >= offset_last; offset >>= 1) {
+-                KQ_max_new[col] = fmaxf(KQ_max_new[col], __shfl_xor_sync(0xFFFFFFFF, KQ_max_new[col], offset, warp_size));
++                KQ_max_new[col] = fmaxf(KQ_max_new[col], ggml_cuda_shfl_xor(KQ_max_new[col], offset, warp_size));
+             }
+         }
+ 
+@@ -1555,7 +1555,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
+         for (int col = 0; col < cols_per_thread; ++col) {
+ #pragma unroll
+             for (int offset = offset_first; offset >= offset_last; offset >>= 1) {
+-                KQ_rowsum[col] += __shfl_xor_sync(0xFFFFFFFF, KQ_rowsum[col], offset, warp_size);
++                KQ_rowsum[col] += ggml_cuda_shfl_xor(KQ_rowsum[col], offset, warp_size);
+             }
+         }
+     }
+@@ -1738,7 +1738,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
+ #pragma unroll
+             for (int offset = np*cols_per_warp/2; offset >= cols_per_warp; offset >>= 1) {
+                 if (offset < warp_size) {
+-                    KQ_cmn = fmaxf(KQ_cmn, __shfl_xor_sync(0xFFFFFFFF, KQ_cmn, offset, warp_size));
++                    KQ_cmn = fmaxf(KQ_cmn, ggml_cuda_shfl_xor(KQ_cmn, offset, warp_size));
+                 }
+             }
+ 
+@@ -1755,7 +1755,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
+ #pragma unroll
+             for (int offset = np*cols_per_warp/2; offset >= cols_per_warp; offset >>= 1) {
+                 if (offset < warp_size) {
+-                    KQ_crs += __shfl_xor_sync(0xFFFFFFFF, KQ_crs, offset, warp_size);
++                    KQ_crs += ggml_cuda_shfl_xor(KQ_crs, offset, warp_size);
+                 }
+             }
+         }
+diff --git a/ggml/src/ggml-cuda/fattn-vec.cuh b/ggml/src/ggml-cuda/fattn-vec.cuh
+index fd9b807b9..5e043f814 100644
+--- a/ggml/src/ggml-cuda/fattn-vec.cuh
++++ b/ggml/src/ggml-cuda/fattn-vec.cuh
+@@ -322,7 +322,7 @@ static __global__ void flash_attn_ext_vec(
+         for (int j = 0; j < ncols; ++j) {
+ #pragma unroll
+             for (int offset = nthreads_KQ; offset < WARP_SIZE; offset <<= 1) {
+-                KQ_max_new[j] = fmaxf(KQ_max_new[j], __shfl_xor_sync(0xFFFFFFFF, KQ_max_new[j], offset, WARP_SIZE));
++                KQ_max_new[j] = fmaxf(KQ_max_new[j], ggml_cuda_shfl_xor(KQ_max_new[j], offset, WARP_SIZE));
+             }
+             const float KQ_max_scale = expf(KQ_max[j] - KQ_max_new[j]);
+             KQ_max[j] = KQ_max_new[j];
+diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
+index 9b4aaf880..66fe98516 100644
+--- a/ggml/src/ggml-cuda/fattn.cu
++++ b/ggml/src/ggml-cuda/fattn.cu
+@@ -17,15 +17,6 @@ static __global__ void flash_attn_mask_to_sparse_indices(
+ 
+     constexpr int warp_size = ggml_cuda_get_physical_warp_size();
+     constexpr int values_per_lane = 8;
+-    using lane_mask_t = std::conditional_t<warp_size == 64, uint64_t, uint32_t>;
+-    constexpr uint64_t ballot_mask = ~(lane_mask_t)0;
+-    const auto popc = [](const lane_mask_t mask) {
+-        if constexpr (warp_size == 64) {
+-            return __popcll(mask);
+-        } else {
+-            return __popc(mask);
+-        }
+-    };
+     const int tid      = threadIdx.x;
+     const int warp     = tid / warp_size;
+     const int lane     = tid % warp_size;
+@@ -48,7 +39,7 @@ static __global__ void flash_attn_mask_to_sparse_indices(
+     __syncthreads();
+ 
+     for (int i0 = 0; i0 < ne30; i0 += blockDim.x*values_per_lane) {
+-        lane_mask_t selected_warp[values_per_lane];
++        ggml_cuda_thread_mask_t selected_warp[values_per_lane];
+         int warp_count = 0;
+ #pragma unroll
+         for (int item = 0; item < values_per_lane; ++item) {
+@@ -60,8 +51,8 @@ static __global__ void flash_attn_mask_to_sparse_indices(
+                     selected |= (!oob || q < q1 - q0) && isfinite(__half2float(mask[q*s31 + i]));
+                 }
+             }
+-            selected_warp[item] = (lane_mask_t)__ballot_sync(ballot_mask, (int) selected);
+-            warp_count += popc(selected_warp[item]);
++            selected_warp[item] = ggml_cuda_ballot((int) selected);
++            warp_count += ggml_cuda_popc(selected_warp[item]);
+         }
+ 
+         if (lane == 0) {
+@@ -81,16 +72,16 @@ static __global__ void flash_attn_mask_to_sparse_indices(
+         }
+         __syncthreads();
+ 
+-        const lane_mask_t lane_mask = lane == 0 ? 0 : ((lane_mask_t)1 << lane) - 1;
++        const ggml_cuda_thread_mask_t lane_mask = lane == 0 ? 0 : ((ggml_cuda_thread_mask_t)1 << lane) - 1;
+         int warp_item_offset = 0;
+ #pragma unroll
+         for (int item = 0; item < values_per_lane; ++item) {
+             const int i = i0 + (warp*values_per_lane + item)*warp_size + lane;
+-            const int dst = row_count + warp_offsets[warp] + warp_item_offset + popc(selected_warp[item] & lane_mask);
+-            if ((selected_warp[item] & ((lane_mask_t)1 << lane)) && dst < n_kv_max) {
++            const int dst = row_count + warp_offsets[warp] + warp_item_offset + ggml_cuda_popc(selected_warp[item] & lane_mask);
++            if ((selected_warp[item] & ((ggml_cuda_thread_mask_t)1 << lane)) && dst < n_kv_max) {
+                 indices[dst] = i;
+             }
+-            warp_item_offset += popc(selected_warp[item]);
++            warp_item_offset += ggml_cuda_popc(selected_warp[item]);
+         }
+         __syncthreads();
+ 
+diff --git a/ggml/src/ggml-cuda/fwht.cu b/ggml/src/ggml-cuda/fwht.cu
+index 78768eace..0ee3da6a3 100644
+--- a/ggml/src/ggml-cuda/fwht.cu
++++ b/ggml/src/ggml-cuda/fwht.cu
+@@ -34,7 +34,7 @@ __global__ void fwht_cuda(const T * src, float * dst, const int64_t n_rows, cons
+ #pragma unroll
+         for (int j = 0; j < el_w; j++) {
+             const float val  = reg[j];
+-            const float val2 = __shfl_xor_sync(0xFFFFFFFF, val, h, warp_size);
++            const float val2 = ggml_cuda_shfl_xor(val, h, warp_size);
+ 
+             reg[j] = (lane & h) == 0 ? val + val2 : val2 - val;
+         }
+@@ -99,7 +99,7 @@ __global__ void fwht_cuda_block(const T * src, float * dst, const int64_t n_rows
+ #pragma unroll
+         for (int j = 0; j < NE; j++) {
+             const float val  = reg[j];
+-            const float val2 = __shfl_xor_sync(0xFFFFFFFF, val, h, warp_size);
++            const float val2 = ggml_cuda_shfl_xor(val, h, warp_size);
+             reg[j] = (lane & h) == 0 ? val + val2 : val2 - val;
+         }
+     }
+diff --git a/ggml/src/ggml-cuda/gated-delta-net-mma.cu b/ggml/src/ggml-cuda/gated-delta-net-mma.cu
+index 0684adc1a..5fc9ef330 100644
+--- a/ggml/src/ggml-cuda/gated-delta-net-mma.cu
++++ b/ggml/src/ggml-cuda/gated-delta-net-mma.cu
+@@ -203,7 +203,7 @@ static __global__ __launch_bounds__(256, BLOCKS) void gdn_single(ggml_cuda_gdn_m
+                 const float beta = t < valid ? a.beta[goff + (t0 + t) * a.sb2] : 0.f;
+ #pragma unroll
+                 for (int offset = 1; offset < 32; offset *= 2) {
+-                    const float previous = __shfl_up_sync(0xffffffff, g, offset, 32);
++                    const float previous = ggml_cuda_shfl_up(g, offset, 32);
+                     if (lane >= offset) {
+                         g += previous;
+                     }
+@@ -213,7 +213,7 @@ static __global__ __launch_bounds__(256, BLOCKS) void gdn_single(ggml_cuda_gdn_m
+                     s.prefix[t] = g;
+                     s.beta[t]   = beta;
+                 }
+-                carry = __shfl_sync(0xffffffff, g, 31, 32);
++                carry = ggml_cuda_shfl(g, 31, 32);
+             }
+         }
+ #pragma unroll
+@@ -288,7 +288,7 @@ static __global__ __launch_bounds__(256, BLOCKS) void gdn_single(ggml_cuda_gdn_m
+                 x[j]          = col == row ? 1.f : (col < row ? -s.lower[s.lower_index(row, col)] : 0.f);
+             }
+             for (int pivot = row - 1; pivot > 0; --pivot) {
+-                const float xp = __shfl_sync(0xffffffff, x[pivot / 32], pivot % 32, 32);
++                const float xp = ggml_cuda_shfl(x[pivot / 32], pivot % 32, 32);
+ #pragma unroll
+                 for (int j = 0; j < (C + 31) / 32; ++j) {
+                     const int col = lane + 32 * j;
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index b0af621bf..c75f43419 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -2704,7 +2704,8 @@ static void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor *
+                     ids_from_sorted_host[i12*n_expert_used + iex] = ids_to_sorted_host.size();
+                     ids_to_sorted_host.push_back(i12*ne11 + iex % ne11);
+                     tokens_per_expert[i02]++;
+-                    break;
++                    // TODO: removing the break here was done to make duplicate IDs work but this caused a ~10% performance regression, better solution needed.
++                    // break;
+                 }
+             }
+         }
+@@ -2756,6 +2757,7 @@ static void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor *
+         ggml_tensor dst_slice;
+         memset(&dst_slice, 0, sizeof(dst_slice));
+         memcpy(dst_slice.op_params, dst->op_params, sizeof(dst_slice.op_params));
++        dst_slice.op     = GGML_OP_MUL_MAT; // ggml_prec_get_acc/ggml_prec_get_src check the op
+         dst_slice.buffer = dst->buffer;
+         dst_slice.type   = type_dst_sorted;
+         dst_slice.ne[0]  = ne0;
+@@ -3714,10 +3716,6 @@ static const struct {
+ };
+ 
+ static bool ggml_cuda_topk_moe_group_fusion(const struct ggml_cgraph * cgraph, int node_idx, const ggml_tensor * selection, ggml_cuda_topk_moe_args & args) {
+-#if defined(GGML_USE_HIP) && HIP_VERSION < 60300000
+-    GGML_UNUSED_VARS(cgraph, node_idx, selection, args);
+-    return false;
+-#else
+     const int n_ops = (int) std::size(topk_moe_group_pattern);
+     if (node_idx + n_ops > cgraph->n_nodes) {
+         return false;
+@@ -3746,7 +3744,6 @@ static bool ggml_cuda_topk_moe_group_fusion(const struct ggml_cgraph * cgraph, i
+     args.n_groups     = n_groups;
+     args.n_group_used = n_group_used;
+     return true;
+-#endif // defined(GGML_USE_HIP) && HIP_VERSION < 60300000
+ }
+ 
+ static bool ggml_cuda_topk_moe_fusion(const struct ggml_cgraph * cgraph, int node_idx, ggml_cuda_topk_moe_args & args) {
+diff --git a/ggml/src/ggml-cuda/mma.cuh b/ggml/src/ggml-cuda/mma.cuh
+index 524db9d85..325cb9306 100644
+--- a/ggml/src/ggml-cuda/mma.cuh
++++ b/ggml/src/ggml-cuda/mma.cuh
+@@ -52,8 +52,8 @@ static __device__ __forceinline__ int ggml_cuda_movmatrix(const int x) {
+     const int shift_low  = ((src_j + 0) % 2) * 16;
+     const int shift_high = ((src_j + 1) % 2) * 16;
+ 
+-    const int ret_low  = (__shfl_sync(0xFFFFFFFF, x, src_laneid_low,  WARP_SIZE) >> shift_low)  & 0x0000FFFF;
+-    const int ret_high = (__shfl_sync(0xFFFFFFFF, x, src_laneid_high, WARP_SIZE) << shift_high) & 0xFFFF0000;
++    const int ret_low  = (ggml_cuda_shfl(x, src_laneid_low,  WARP_SIZE) >> shift_low)  & 0x0000FFFF;
++    const int ret_high = (ggml_cuda_shfl(x, src_laneid_high, WARP_SIZE) << shift_high) & 0xFFFF0000;
+ 
+     return ret_low | ret_high;
+ }
+@@ -736,7 +736,7 @@ namespace ggml_cuda_mma {
+             int i = threadIdx.x / 16;
+             tmp[i] = tile_float.x[l];
+             i ^= 1;
+-            tmp[i] = __shfl_xor_sync(0xFFFFFFFF, tile_float.x[l], 16, WARP_SIZE);
++            tmp[i] = ggml_cuda_shfl_xor(tile_float.x[l], 16, WARP_SIZE);
+             ret.x[l] = make_half2(tmp[0], tmp[1]);
+         }
+         return ret;
+@@ -767,8 +767,8 @@ namespace ggml_cuda_mma {
+ 
+             // On Volta FP16 and FP32 tiles have a different memory layout,
+             //     for the conversion threads with an offset of 2 need to exchange half their values:
+-            ret.x[l0/2 + (((threadIdx.x % 4) / 2) ^ 1)] = __shfl_xor_sync(
+-                0xFFFFFFFF, ret.x[l0/2 + (((threadIdx.x % 4) / 2) ^ 1)], 2, WARP_SIZE);
++            ret.x[l0/2 + (((threadIdx.x % 4) / 2) ^ 1)] = ggml_cuda_shfl_xor(
++                ret.x[l0/2 + (((threadIdx.x % 4) / 2) ^ 1)], 2, WARP_SIZE);
+         }
+         return ret;
+     }
+diff --git a/ggml/src/ggml-cuda/mmf.cu b/ggml/src/ggml-cuda/mmf.cu
+index 040d390e0..396ad1c11 100644
+--- a/ggml/src/ggml-cuda/mmf.cu
++++ b/ggml/src/ggml-cuda/mmf.cu
+@@ -43,7 +43,6 @@ void ggml_cuda_mul_mat_f(ggml_backend_cuda_context & ctx, const ggml_tensor * sr
+     const int64_t s13 = src1->nb[3] / ts_src1;
+     const int64_t s3  =  dst->nb[3] / ts_dst;
+ 
+-    const int64_t ids_s0 = ids ? ids->nb[0] / ggml_type_size(ids->type) : 0;
+     const int64_t ids_s1 = ids ? ids->nb[1] / ggml_type_size(ids->type) : 0;
+ 
+     mmf_ids_data ids_info{};
+@@ -70,7 +69,7 @@ void ggml_cuda_mul_mat_f(ggml_backend_cuda_context & ctx, const ggml_tensor * sr
+         nchannels_y      = ids->ne[0];
+     }
+ 
+-    if (ids && ncols_dst > 16) {
++    if (ids) {
+         const int64_t n_expert_used = ids->ne[0];
+         const int64_t n_experts     = ne02;
+         const int64_t n_tokens      = ne12;
+@@ -110,7 +109,7 @@ void ggml_cuda_mul_mat_f(ggml_backend_cuda_context & ctx, const ggml_tensor * sr
+             constexpr int vals_per_T = 1;
+             mul_mat_f_switch_rows_per_block<float>(
+                 rows_per_block, src0_d, src1_d, ids_d, dst_d, ne00/vals_per_T, ne01, ncols_dst, s01/vals_per_T, stride_col_y/vals_per_T, stride_col_dst,
+-                ids_s0, ids_s1, ne02, nchannels_y, nchannels_dst, s02/vals_per_T, stride_channel_y, stride_channel_dst,
++                ne02, nchannels_y, nchannels_dst, s02/vals_per_T, stride_channel_y, stride_channel_dst,
+                 ne03, ne3, s03/vals_per_T, s13, s3, ctx.stream(), ids_info_ptr);
+         } break;
+         case GGML_TYPE_F16: {
+@@ -118,7 +117,7 @@ void ggml_cuda_mul_mat_f(ggml_backend_cuda_context & ctx, const ggml_tensor * sr
+             constexpr int vals_per_T = 2;
+             mul_mat_f_switch_rows_per_block<half2>(
+                 rows_per_block, src0_d, src1_d, ids_d, dst_d, ne00/vals_per_T, ne01, ncols_dst, s01/vals_per_T, stride_col_y/vals_per_T, stride_col_dst,
+-                ids_s0, ids_s1, ne02, nchannels_y, nchannels_dst, s02/vals_per_T, stride_channel_y, stride_channel_dst,
++                ne02, nchannels_y, nchannels_dst, s02/vals_per_T, stride_channel_y, stride_channel_dst,
+                 ne03, ne3, s03/vals_per_T, s13, s3, ctx.stream(), ids_info_ptr);
+         } break;
+         case GGML_TYPE_BF16: {
+@@ -126,7 +125,7 @@ void ggml_cuda_mul_mat_f(ggml_backend_cuda_context & ctx, const ggml_tensor * sr
+             constexpr int vals_per_T = 2;
+             mul_mat_f_switch_rows_per_block<nv_bfloat162>(
+                 rows_per_block, src0_d, src1_d, ids_d, dst_d, ne00/vals_per_T, ne01, ncols_dst, s01/vals_per_T, stride_col_y/vals_per_T, stride_col_dst,
+-                ids_s0, ids_s1, ne02, nchannels_y, nchannels_dst, s02/vals_per_T, stride_channel_y, stride_channel_dst,
++                ne02, nchannels_y, nchannels_dst, s02/vals_per_T, stride_channel_y, stride_channel_dst,
+                 ne03, ne3, s03/vals_per_T, s13, s3, ctx.stream(), ids_info_ptr);
+         } break;
+         default:
+diff --git a/ggml/src/ggml-cuda/mmf.cuh b/ggml/src/ggml-cuda/mmf.cuh
+index c49f6c47a..46a123a5c 100644
+--- a/ggml/src/ggml-cuda/mmf.cuh
++++ b/ggml/src/ggml-cuda/mmf.cuh
+@@ -47,12 +47,11 @@ void ggml_cuda_mul_mat_f(ggml_backend_cuda_context & ctx, const ggml_tensor * sr
+ 
+ bool ggml_cuda_should_use_mmf(enum ggml_type type, int cc, int warp_size, const int64_t * scr0_ne, const size_t * src0_nb, const int src1_ncols, bool mul_mat_id);
+ 
+-template <typename T, int rows_per_block, int cols_per_block, int nwarps, bool has_ids>
++template <typename T, int rows_per_block, int cols_per_block, int nwarps>
+ __launch_bounds__(ggml_cuda_get_physical_warp_size()*nwarps, 1)
+ static __global__ void mul_mat_f(
+-        const T * __restrict__ x, const float * __restrict__ y, const int32_t * __restrict__ ids, float * __restrict__ dst,
+-        const int ncols, const int ncols_dst_total, const int nchannels_dst, const int stride_row, const int stride_col_y, const int stride_col_dst,
+-        const int stride_col_id, const int stride_row_id,
++        const T * __restrict__ x, const float * __restrict__ y, float * __restrict__ dst,
++        const int ncols, const int stride_row, const int stride_col_y, const int stride_col_dst,
+         const int channel_ratio, const int stride_channel_x, const int stride_channel_y, const int stride_channel_dst,
+         const int sample_ratio, const int stride_sample_x, const int stride_sample_y, const int stride_sample_dst) {
+ // TODO: handle this in a consistent and simpler way after AMD MFMA support has been added
+@@ -90,85 +89,26 @@ static __global__ void mul_mat_f(
+     constexpr int ntA = rows_per_block / tile_A::I;
+     constexpr int ntB = (cols_per_block + tile_B::I - 1) / tile_B::I;
+ 
+-    const int row0        = blockIdx.x * rows_per_block;
+-
+-    int expert_idx = 0;
+-    [[maybe_unused]] int col_base = 0;
+-
+-    const int channel_dst = has_ids ? 0 : blockIdx.y;
+-
+-    if constexpr (has_ids) {
+-        // experts + tiles of ncols_dst are packed in the y dimension
+-        int col_tiles = (ncols_dst_total + cols_per_block - 1) / cols_per_block;
+-        const int nchannels_x = gridDim.y / col_tiles;
+-        const int tile_idx = blockIdx.y / nchannels_x;
+-        expert_idx = blockIdx.y - tile_idx * nchannels_x;
+-        col_base = tile_idx * cols_per_block;
+-    }
++    const int row0 = blockIdx.x * rows_per_block;
+ 
+-    const int channel_x   = has_ids ? expert_idx : (channel_dst / channel_ratio);
++    const int channel_dst = blockIdx.y;
++    const int channel_x   = channel_dst / channel_ratio;
+     const int channel_y   = channel_dst;
+     const int sample_dst  = blockIdx.z;
+     const int sample_x    = sample_dst / sample_ratio;
+     const int sample_y    = sample_dst;
+ 
+     x   += int64_t(sample_x)  *stride_sample_x   + channel_x  *stride_channel_x  + row0*stride_row ;
+-    y   += int64_t(sample_y)  *stride_sample_y   + (has_ids ? 0 : channel_y  *stride_channel_y);
+-    dst += int64_t(sample_dst)*stride_sample_dst + (has_ids ? 0 : channel_dst*stride_channel_dst);
+-
+-    if constexpr (has_ids) {
+-        constexpr int y_stride_scale = std::is_same_v<T, float> ? 1 : 2;
+-        const int64_t col_offset = col_base;
+-        y   += col_offset * stride_col_y * y_stride_scale;
+-        dst += col_offset * stride_col_dst;
+-        ids += col_offset * stride_row_id;
+-    }
++    y   += int64_t(sample_y)  *stride_sample_y   + channel_y  *stride_channel_y;
++    dst += int64_t(sample_dst)*stride_sample_dst + channel_dst*stride_channel_dst;
+ 
+     [[maybe_unused]] const float2 * y2 = (const float2 *) y;
+ 
+     extern __shared__ char data_mmv[];
+ 
+-    char * shmem_base = data_mmv;
+-    [[maybe_unused]] int * slot_map = (int *) shmem_base;
+-    char * compute_base = has_ids ? (shmem_base + GGML_PAD(cols_per_block, 16) * sizeof(int)) : shmem_base;
+-
+     tile_C C[ntA][ntB];
+ 
+-    T * tile_xy = (T *) compute_base + threadIdx.y*(tile_A::I * tile_k_padded);
+-
+-    if constexpr (has_ids) {
+-        int found = 0;
+-
+-        for (int j0 = 0; j0 < cols_per_block; j0 += nwarps) {
+-            const int j = j0 + threadIdx.y;
+-
+-            if (threadIdx.x == 0) {
+-                slot_map[j] = -1;
+-            }
+-            ggml_cuda_syncwarp();
+-
+-            if (col_base + j >= ncols_dst_total) {
+-                continue;
+-            }
+-
+-            const int32_t * __restrict__ id_row = ids + j*stride_row_id;
+-
+-            for (int k = threadIdx.x; k < nchannels_dst; k += warp_size) {
+-                int match = id_row[k*stride_col_id] == expert_idx;
+-
+-                if (match) {
+-                    slot_map[j] = k;
+-                    found = 1;
+-                    break;
+-                }
+-            }
+-        }
+-
+-        if (!__syncthreads_or(found)) {
+-            return;
+-        }
+-    }
+-
++    T * tile_xy = (T *) data_mmv + threadIdx.y*(tile_A::I * tile_k_padded);
+ 
+     for (int col = threadIdx.y*warp_size + threadIdx.x; col < ncols; col += nwarps*warp_size) {
+         tile_A A[ntA][warp_size / tile_A::J];
+@@ -194,26 +134,15 @@ static __global__ void mul_mat_f(
+                 for (int j0 = 0; j0 < tile_B::I; ++j0) {
+                     const int j = j0 + itB*tile_B::I;
+ 
+-                    if constexpr (!has_ids) {
+-                        tile_xy[j0*tile_k_padded + threadIdx.x] = j < cols_per_block ? y[j*stride_col_y + col] : 0.0f;
+-                    } else {
+-                        const bool valid = j < cols_per_block && (col_base + j) < ncols_dst_total && slot_map[j] >= 0;
+-                        tile_xy[j0*tile_k_padded + threadIdx.x] = valid ? y[slot_map[j]*stride_channel_y + j*stride_col_y + col] : 0.0f;
+-                    }
++                    tile_xy[j0*tile_k_padded + threadIdx.x] = j < cols_per_block ? y[j*stride_col_y + col] : 0.0f;
+                 }
+             } else if constexpr (std::is_same_v<T, half2> || std::is_same_v<T, nv_bfloat162>) {
+ #pragma unroll
+                 for (int j0 = 0; j0 < tile_B::I; ++j0) {
+                     const int j = j0 + itB*tile_B::I;
+ 
+-                    if constexpr (!has_ids) {
+-                        const float2 tmp = j < cols_per_block ? y2[j*stride_col_y + col] : make_float2(0.0f, 0.0f);
+-                        tile_xy[j0*tile_k_padded + threadIdx.x] = ggml_cuda_cast<T>(tmp);
+-                    } else {
+-                        const bool valid = j < cols_per_block && (col_base + j) < ncols_dst_total && slot_map[j] >= 0;
+-                        float2 tmp = valid ? *(const float2*) &y[slot_map[j]*stride_channel_y + 2*(j*stride_col_y + col)] : make_float2(0.0f, 0.0f);
+-                        tile_xy[j0*tile_k_padded + threadIdx.x] = ggml_cuda_cast<T>(tmp);
+-                    }
++                    const float2 tmp = j < cols_per_block ? y2[j*stride_col_y + col] : make_float2(0.0f, 0.0f);
++                    tile_xy[j0*tile_k_padded + threadIdx.x] = ggml_cuda_cast<T>(tmp);
+                 }
+             } else {
+                 static_assert(std::is_same_v<T, void>, "unsupported type");
+@@ -231,7 +160,7 @@ static __global__ void mul_mat_f(
+         }
+     }
+ 
+-    float * buf_iw = (float *) compute_base;
++    float * buf_iw = (float *) data_mmv;
+     constexpr int kiw = nwarps*rows_per_block + mmf_get_padding();
+ 
+     if (nwarps > 1) {
+@@ -278,26 +207,15 @@ static __global__ void mul_mat_f(
+             }
+         }
+ 
+-        if constexpr (!has_ids) {
+ #pragma unroll
+-            for (int i0 = 0; i0 < sizeof(sum)/sizeof(sum[0]); ++i0) {
+-                dst[j*stride_col_dst + row0 + i0*warp_size + threadIdx.x] = sum[i0];
+-            }
+-        } else {
+-            const int slot = (j < cols_per_block) ? slot_map[j] : -1;
+-            if (slot >= 0 && (col_base + j) < ncols_dst_total) {
+-#pragma unroll
+-                for (int i0 = 0; i0 < sizeof(sum)/sizeof(sum[0]); ++i0) {
+-                    dst[slot*stride_channel_dst + j*stride_col_dst + row0 + i0*warp_size + threadIdx.x] = sum[i0];
+-                }
+-            }
++        for (int i0 = 0; i0 < sizeof(sum)/sizeof(sum[0]); ++i0) {
++            dst[j*stride_col_dst + row0 + i0*warp_size + threadIdx.x] = sum[i0];
+         }
+     }
+     }
+ #else
+-    GGML_UNUSED_VARS(x, y, ids, dst,
+-        ncols, ncols_dst_total, nchannels_dst, stride_row, stride_col_y, stride_col_dst,
+-        stride_col_id, stride_row_id,
++    GGML_UNUSED_VARS(x, y, dst,
++        ncols, stride_row, stride_col_y, stride_col_dst,
+         channel_ratio, stride_channel_x, stride_channel_y, stride_channel_dst,
+         sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst);
+     NO_DEVICE_CODE;
+@@ -588,22 +506,21 @@ static __global__ void mul_mat_f_ids(
+ 
+ template<typename T, int rows_per_block, int cols_per_block, int nwarps>
+ static inline void mul_mat_f_switch_ids(
+-        const T * x, const float * y, const int32_t * ids, float * dst,
++        const T * x, const float * y, float * dst,
+         const int64_t ncols_x, const int64_t ncols_dst, const int64_t nchannels_dst,
+         const int64_t stride_row, const int64_t stride_col_y, const int64_t stride_col_dst,
+-        const int64_t stride_col_id, const int64_t stride_row_id,
+         const int64_t channel_ratio, const int64_t stride_channel_x, const int64_t stride_channel_y, const int64_t stride_channel_dst,
+         const int64_t sample_ratio, const int64_t stride_sample_x, const int64_t stride_sample_y, const int64_t stride_sample_dst,
+         const dim3 & block_nums, const dim3 & block_dims, const int nbytes_shared_total, cudaStream_t stream,
+         const mmf_ids_data * ids_data) {
++
+     const bool has_ids_data = ids_data && ids_data->ids_src_compact;
+ 
+-    // Use the compact-ids kernel only for larger tiles; for small ncols_dst (< 16)
+-    // we prefer the normal mul_mat_f path with has_ids=true.
+-    if (has_ids_data && ncols_dst > 16) {
++    if (has_ids_data) {
+         if (ids_data->max_tiles == 0) {
+             return;
+         }
++        GGML_ASSERT(block_nums.z == 1);
+         dim3 block_nums_ids(block_nums.x, ids_data->max_tiles, 1);
+ 
+         const uint3 sis1_fd = ids_data->sis1 > 0 ? init_fastdiv_values((uint32_t) ids_data->sis1) : make_uint3(0, 0, 1);
+@@ -615,19 +532,10 @@ static inline void mul_mat_f_switch_ids(
+             channel_ratio, stride_channel_x, stride_channel_y, stride_channel_dst,
+             sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst,
+             sis1_fd, nch_fd);
+-    } else if (ids) {
+-        const int64_t col_tiles = (ncols_dst + cols_per_block - 1) / cols_per_block;
+-        dim3 block_nums_ids = block_nums;
+-        block_nums_ids.y *= col_tiles;
+-
+-        mul_mat_f<T, rows_per_block, cols_per_block, nwarps, true><<<block_nums_ids, block_dims, nbytes_shared_total, stream>>>
+-            (x, y, ids, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst,
+-             stride_col_id, stride_row_id, channel_ratio, stride_channel_x, stride_channel_y, stride_channel_dst,
+-             sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst);
+     } else {
+-        mul_mat_f<T, rows_per_block, cols_per_block, nwarps, false><<<block_nums, block_dims, nbytes_shared_total, stream>>>
+-            (x, y, ids, dst, ncols_x, cols_per_block, nchannels_dst, stride_row, stride_col_y, stride_col_dst,
+-             stride_col_id, stride_row_id, channel_ratio, stride_channel_x, stride_channel_y, stride_channel_dst,
++        mul_mat_f<T, rows_per_block, cols_per_block, nwarps><<<block_nums, block_dims, nbytes_shared_total, stream>>>
++            (x, y, dst, ncols_x, stride_row, stride_col_y, stride_col_dst,
++             channel_ratio, stride_channel_x, stride_channel_y, stride_channel_dst,
+              sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst);
+     }
+ }
+@@ -637,7 +545,6 @@ void mul_mat_f_cuda(
+         const T * x, const float * y, const int32_t * ids, float * dst,
+         const int64_t ncols_x, const int64_t nrows_x, const int64_t ncols_dst,
+         const int64_t stride_row, const int64_t stride_col_y, const int64_t stride_col_dst,
+-        const int64_t stride_col_id, const int64_t stride_row_id,
+         const int64_t nchannels_x, const int64_t nchannels_y, const int64_t nchannels_dst,
+         const int64_t stride_channel_x, const int64_t stride_channel_y, const int64_t stride_channel_dst, const int64_t nsamples_x,
+         const int64_t nsamples_dst, const int64_t stride_sample_x, const int64_t stride_sample_y, const int64_t stride_sample_dst,
+@@ -673,70 +580,59 @@ void mul_mat_f_cuda(
+     const int nbytes_shared_iter = nwarps_best * (volta_mma_available(cc) ? tile_A_32::I : tile_A_16::I) * (warp_size + mmf_get_padding(cc)) * 4;
+     const int nbytes_cols_per_block_pad = (amd_wmma_available(cc) || amd_mfma_available(cc)) ? tile_B_16::I : tile_B_8::I;
+     const int nbytes_shared_combine = GGML_PAD(cols_per_block, nbytes_cols_per_block_pad) * (nwarps_best*rows_per_block + mmf_get_padding(cc)) * 4;
+-    const int nbytes_shared = std::max(nbytes_shared_iter, nbytes_shared_combine);
+-    const int nbytes_slotmap = ids ? GGML_PAD(cols_per_block, 16) * sizeof(int) : 0;
+-    const int nbytes_shared_total = nbytes_shared + nbytes_slotmap;
+-    const int64_t grid_y = ids ? nchannels_x : nchannels_dst;
++    const int nbytes_shared_total = std::max(nbytes_shared_iter, nbytes_shared_combine);
+ 
+-    const dim3 block_nums(nrows_x/rows_per_block, grid_y, nsamples_dst);
++    const dim3 block_nums(nrows_x/rows_per_block, nchannels_dst, nsamples_dst);
+     const dim3 block_dims(warp_size, nwarps_best, 1);
+ 
+     switch (nwarps_best) {
+         case 1: {
+             mul_mat_f_switch_ids<T, rows_per_block, cols_per_block, 1>(
+-                x, y, ids, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, channel_ratio, stride_channel_x, stride_channel_y, stride_channel_dst,
+-                sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst, block_nums, block_dims, nbytes_shared_total, stream,
+-                ids_data);
++                x, y, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst, channel_ratio,
++                stride_channel_x, stride_channel_y, stride_channel_dst, sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst,
++                block_nums, block_dims, nbytes_shared_total, stream, ids_data);
+         } break;
+         case 2: {
+             mul_mat_f_switch_ids<T, rows_per_block, cols_per_block, 2>(
+-                x, y, ids, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, channel_ratio, stride_channel_x, stride_channel_y, stride_channel_dst,
+-                sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst, block_nums, block_dims, nbytes_shared_total, stream,
+-                ids_data);
++                x, y, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst, channel_ratio,
++                stride_channel_x, stride_channel_y, stride_channel_dst, sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst,
++                block_nums, block_dims, nbytes_shared_total, stream, ids_data);
+         } break;
+         case 3: {
+             mul_mat_f_switch_ids<T, rows_per_block, cols_per_block, 3>(
+-                x, y, ids, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, channel_ratio, stride_channel_x, stride_channel_y, stride_channel_dst,
+-                sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst, block_nums, block_dims, nbytes_shared_total, stream,
+-                ids_data);
++                x, y, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst, channel_ratio,
++                stride_channel_x, stride_channel_y, stride_channel_dst, sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst,
++                block_nums, block_dims, nbytes_shared_total, stream, ids_data);
+         } break;
+         case 4: {
+             mul_mat_f_switch_ids<T, rows_per_block, cols_per_block, 4>(
+-                x, y, ids, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, channel_ratio, stride_channel_x, stride_channel_y, stride_channel_dst,
+-                sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst, block_nums, block_dims, nbytes_shared_total, stream,
+-                ids_data);
++                x, y, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst, channel_ratio,
++                stride_channel_x, stride_channel_y, stride_channel_dst, sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst,
++                block_nums, block_dims, nbytes_shared_total, stream, ids_data);
+         } break;
+         case 5: {
+             mul_mat_f_switch_ids<T, rows_per_block, cols_per_block, 5>(
+-                x, y, ids, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, channel_ratio, stride_channel_x, stride_channel_y, stride_channel_dst,
+-                sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst, block_nums, block_dims, nbytes_shared_total, stream,
+-                ids_data);
++                x, y, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst, channel_ratio,
++                stride_channel_x, stride_channel_y, stride_channel_dst, sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst,
++                block_nums, block_dims, nbytes_shared_total, stream, ids_data);
+         } break;
+         case 6: {
+             mul_mat_f_switch_ids<T, rows_per_block, cols_per_block, 6>(
+-                x, y, ids, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, channel_ratio, stride_channel_x, stride_channel_y, stride_channel_dst,
+-                sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst, block_nums, block_dims, nbytes_shared_total, stream,
+-                ids_data);
++                x, y, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst, channel_ratio,
++                stride_channel_x, stride_channel_y, stride_channel_dst, sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst,
++                block_nums, block_dims, nbytes_shared_total, stream, ids_data);
+         } break;
+         case 7: {
+             mul_mat_f_switch_ids<T, rows_per_block, cols_per_block, 7>(
+-                x, y, ids, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, channel_ratio, stride_channel_x, stride_channel_y, stride_channel_dst,
+-                sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst, block_nums, block_dims, nbytes_shared_total, stream,
+-                ids_data);
++                x, y, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst, channel_ratio,
++                stride_channel_x, stride_channel_y, stride_channel_dst, sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst,
++                block_nums, block_dims, nbytes_shared_total, stream, ids_data);
+         } break;
+         case 8: {
+             mul_mat_f_switch_ids<T, rows_per_block, cols_per_block, 8>(
+-                x, y, ids, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, channel_ratio, stride_channel_x, stride_channel_y, stride_channel_dst,
+-                sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst, block_nums, block_dims, nbytes_shared_total, stream,
+-                ids_data);
++                x, y, dst, ncols_x, ncols_dst, nchannels_dst, stride_row, stride_col_y, stride_col_dst, channel_ratio,
++                stride_channel_x, stride_channel_y, stride_channel_dst, sample_ratio, stride_sample_x, stride_sample_y, stride_sample_dst,
++                block_nums, block_dims, nbytes_shared_total, stream, ids_data);
+         } break;
+         default:
+             GGML_ABORT("fatal error");
+@@ -750,95 +646,94 @@ static void mul_mat_f_switch_cols_per_block(
+         const T * x, const float * y, const int32_t * ids, float * dst,
+         const int64_t ncols_x, const int64_t nrows_x, const int64_t ncols_dst,
+         const int64_t stride_row, const int64_t stride_col_y, const int64_t stride_col_dst,
+-        const int64_t stride_col_id, const int stride_row_id,
+         const int64_t nchannels_x, const int64_t nchannels_y, const int64_t nchannels_dst,
+         const int64_t stride_channel_x, const int64_t stride_channel_y, const int64_t stride_channel_dst, const int64_t nsamples_x,
+         const int64_t nsamples_dst, const int64_t stride_sample_x, const int64_t stride_sample_y, const int64_t stride_sample_dst,
+         cudaStream_t stream, const mmf_ids_data * ids_data) {
+ 
+-    const int ncols_case = (ids && ncols_dst > 16) ? 16 : ncols_dst;
++    const int ncols_case = ids ? 16 : ncols_dst;
+ 
+     GGML_ASSERT(ids || ncols_dst <= 16);
+ 
+     switch (ncols_case) {
+         case  1: {
+             mul_mat_f_cuda<T,  rows_per_block, 1>(x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         case  2: {
+             mul_mat_f_cuda<T,  rows_per_block, 2>(x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         case  3: {
+             mul_mat_f_cuda<T,  rows_per_block, 3>(x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y,  nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         case  4: {
+             mul_mat_f_cuda<T,  rows_per_block, 4>(x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y,  nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         case  5: {
+             mul_mat_f_cuda<T,  rows_per_block, 5>(x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y,  nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y,  stride_sample_dst, stream, ids_data);
+         } break;
+         case  6: {
+             mul_mat_f_cuda<T,  rows_per_block, 6>(x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y,  nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         case  7: {
+             mul_mat_f_cuda<T,  rows_per_block, 7>(x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y,  nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         case  8: {
+             mul_mat_f_cuda<T,  rows_per_block, 8>(x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y,  nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         case  9: {
+             mul_mat_f_cuda<T,  rows_per_block, 9>(x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y,  nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         case 10: {
+             mul_mat_f_cuda<T, rows_per_block, 10>(x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y,  nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         case 11: {
+             mul_mat_f_cuda<T, rows_per_block, 11>(x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y,  nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         case 12: {
+             mul_mat_f_cuda<T, rows_per_block, 12>(x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y,  nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         case 13: {
+             mul_mat_f_cuda<T, rows_per_block, 13>(x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y,  nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         case 14: {
+             mul_mat_f_cuda<T, rows_per_block, 14>(x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y,  nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         case 15: {
+             mul_mat_f_cuda<T, rows_per_block, 15>(x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y,  nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         case 16: {
+             mul_mat_f_cuda<T, rows_per_block, 16>(x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y,  nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         default:
+@@ -851,7 +746,6 @@ static void mul_mat_f_switch_rows_per_block(
+         const int rows_per_block, const T * x, const float * y, const int32_t * ids, float * dst,
+         const int64_t ncols_x, const int64_t nrows_x, const int64_t ncols_dst,
+         const int64_t stride_row, const int64_t stride_col_y, const int64_t stride_col_dst,
+-        const int64_t stride_col_id, const int stride_row_id,
+         const int64_t nchannels_x, const int64_t nchannels_y, const int64_t nchannels_dst,
+         const int64_t stride_channel_x, const int64_t stride_channel_y, const int64_t stride_channel_dst, const int64_t nsamples_x,
+         const int64_t nsamples_dst, const int64_t stride_sample_x, const int64_t stride_sample_y, const int64_t stride_sample_dst,
+@@ -860,13 +754,13 @@ static void mul_mat_f_switch_rows_per_block(
+         case MMF_ROWS_PER_BLOCK: {
+             mul_mat_f_switch_cols_per_block<T, MMF_ROWS_PER_BLOCK>(
+                 x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         case MMF_ROWS_PER_BLOCK_CDNA: {
+             mul_mat_f_switch_cols_per_block<T, MMF_ROWS_PER_BLOCK_CDNA>(
+                 x, y, ids, dst, ncols_x, nrows_x, ncols_dst, stride_row, stride_col_y, stride_col_dst,
+-                stride_col_id, stride_row_id, nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
++                nchannels_x, nchannels_y, nchannels_dst, stride_channel_x, stride_channel_y, stride_channel_dst,
+                 nsamples_x, nsamples_dst, stride_sample_x, stride_sample_y, stride_sample_dst, stream, ids_data);
+         } break;
+         default:
+@@ -878,7 +772,6 @@ static void mul_mat_f_switch_rows_per_block(
+     template void mul_mat_f_cuda<T, nrows_dst, ncols_dst>( \
+         const T * x, const float * y, const int32_t * ids, float * dst, \
+         const int64_t ncols_x, const int64_t nrows_x, int64_t ncols_dst_total, const int64_t stride_row, const int64_t stride_col_y, const int64_t stride_col_dst, \
+-        const int64_t stride_col_id, const int64_t stride_row_id, \
+         const int64_t nchannels_x, const int64_t nchannels_y, const int64_t nchannels_dst, \
+         const int64_t stride_channel_x, const int64_t stride_channel_y, const int64_t stride_channel_dst, const int64_t nsamples_x,\
+         const int64_t nsamples_dst, const int64_t stride_sample_x, const int64_t stride_sample_y, const int64_t stride_sample_dst, \
+diff --git a/ggml/src/ggml-cuda/mmid.cu b/ggml/src/ggml-cuda/mmid.cu
+index 64de4fb27..fe9458763 100644
+--- a/ggml/src/ggml-cuda/mmid.cu
++++ b/ggml/src/ggml-cuda/mmid.cu
+@@ -24,6 +24,50 @@ template <int n> struct mm_ids_pow2 { static constexpr int value = 2*mm_ids_pow2
+ template <>      struct mm_ids_pow2<1> { static constexpr int value = 1; };
+ template <>      struct mm_ids_pow2<0> { static constexpr int value = 1; };
+ 
++template <bool increment_nex_prev, bool write_to_store>
++static __device__ __forceinline__ void check_experts(
++        mm_ids_helper_store * store, int & nex_prev, int & it_compact,
++        const int expert, const int it, const int iex, const int expert_found) {
++    if (increment_nex_prev) {
++        nex_prev += expert_found < expert;
++    }
++
++    if (write_to_store) {
++        const ggml_cuda_thread_mask_t iex_used = ggml_cuda_ballot(expert_found == expert);
++        const ggml_cuda_thread_mask_t mask = (ggml_cuda_thread_mask_t(1) << threadIdx.x) - 1;
++        const int it_compact_offset = ggml_cuda_popc(iex_used & mask);
++
++        if (expert_found == expert) {
++            store[it_compact + it_compact_offset] = mm_ids_helper_store(it, iex);
++        }
++
++        it_compact += ggml_cuda_popc(iex_used);
++    }
++}
++
++static __device__ __forceinline__ void dump_store(
++        int32_t * __restrict__ ids_src1, int32_t * __restrict__ ids_dst,
++        const int n_expert_used, const int nchannels_y, const int sis1, const bool write_inverse,
++        const mm_ids_helper_store * __restrict__ store, const int nex_prev, int & n_dumped, const int it_compact) {
++    constexpr int warp_size = ggml_cuda_get_physical_warp_size();
++
++    for (int itc = threadIdx.x; itc < it_compact; itc += warp_size) {
++        const mm_ids_helper_store store_it = store[itc];
++        const int it       = store_it.it();
++        const int iex_used = store_it.iex_used();
++        ids_dst[nex_prev + n_dumped + itc] = it*n_expert_used + iex_used;
++        // ids_src1 holds the forward map, or the inverse map (token slot -> compact row) for quant dedup
++        if (write_inverse) {
++            ids_src1[it*n_expert_used + iex_used] = nex_prev + n_dumped + itc;
++        } else {
++            ids_src1[nex_prev + n_dumped + itc] = it*sis1 + iex_used % nchannels_y;
++        }
++    }
++    n_dumped += it_compact;
++}
++
++constexpr int n_unroll = 4; // Manually unroll this many loop iterations for better performance.
++
+ // Helper function for mul_mat_id, converts ids to a more convenient format.
+ // ids_src1 describes how to permute the flattened column indices of src1 in order to get a compact src1 tensor sorted by expert.
+ // ids_dst describes the same mapping but for the dst tensor.
+@@ -36,85 +80,138 @@ static __global__ void mm_ids_helper(
+         const int32_t * __restrict__ ids,
+         int32_t * __restrict__ ids_src1, int32_t * __restrict__ ids_dst, ggml_cuda_mm_id_tile_spec * __restrict__ tile_spec,
+         const int n_tokens, const int n_expert_used_var, const int nchannels_y, const uint3 tile_width,
+-        const int si1, const int sis1, const bool write_inverse) {
++        const int si1, const int sis1, const bool write_inverse, const int ne_store) {
+     constexpr int warp_size = ggml_cuda_get_physical_warp_size();
+     const int n_expert_used = n_expert_used_template == 0 ? n_expert_used_var : n_expert_used_template;
+-    const int expert = blockIdx.x;
++
++    const int expert = blockIdx.x; // The expert this CUDA block handles.
+ 
+     extern __shared__ char data_mm_ids_helper[];
+     mm_ids_helper_store * store = (mm_ids_helper_store *) data_mm_ids_helper;
+ 
+     int nex_prev   = 0; // Number of columns for experts with a lower index.
++    int n_dumped   = 0; // Number of data values that have been dumped to output buffers.
+     int it_compact = 0; // Running index for the compact slice of this expert.
+ 
++    // Step 1:   Iterate over n_tokens, increment nex_prev to determine the output indices, fill up store.
++    // Step 1.5: If the store does not have enough space to hold all values, iterate over the rest of the tokens just to increment nex_prev.
++    // Step 2:   Dump the stored values using nex_prev to get the correct output indices.
++    // Step 3:   If we were not able to process all values, resume at the index up to which we were able to dump the output and re-do.
++
+     if constexpr (n_expert_used_template == 0) {
+         // Generic implementation:
+-        for (int it = 0; it < n_tokens; ++it) {
+-            int iex_used = -1; // The index at which the expert is used, if any.
+-            for (int iex = threadIdx.x; iex < n_expert_used; iex += warp_size) {
+-                const int expert_used = ids[it*si1 + iex];
+-                nex_prev += expert_used < expert;
+-                if (expert_used == expert) {
+-                    iex_used = iex;
+-                }
++        int it = 0;
++        for (; it < n_tokens && it_compact + max(warp_size, n_expert_used) <= ne_store; ++it) {
++            for (int iex0 = 0; iex0 < n_expert_used; iex0 += warp_size) {
++                const int iex = iex0 + threadIdx.x;
++                const int expert_found = iex < n_expert_used ? ids[it*si1 + iex] : INT_MAX;
++
++                constexpr bool increment_nex_prev = true;
++                constexpr bool write_to_store     = true;
++                check_experts<increment_nex_prev, write_to_store>
++                    (store, nex_prev, it_compact, expert, it, iex, expert_found);
+             }
++        }
++        int it_dumped = it;
++        for (; it < n_tokens; ++it) {
++            for (int iex0 = 0; iex0 < n_expert_used; iex0 += warp_size) {
++                const int iex = iex0 + threadIdx.x;
++                const int expert_found = iex < n_expert_used ? ids[it*si1 + iex] : INT_MAX;
+ 
+-            if (iex_used != -1) {
+-                store[it_compact] = mm_ids_helper_store(it, iex_used);
++                constexpr bool increment_nex_prev = true;
++                constexpr bool write_to_store     = false;
++                check_experts<increment_nex_prev, write_to_store>
++                    (store, nex_prev, it_compact, expert, it, iex, expert_found);
+             }
++        }
++
++        nex_prev = warp_reduce_sum<warp_size>(nex_prev);
++        ggml_cuda_syncwarp();
++        dump_store(ids_src1, ids_dst, n_expert_used, nchannels_y, sis1, write_inverse, store, nex_prev, n_dumped, it_compact);
++        it_compact = 0;
+ 
+-            if (warp_reduce_any<warp_size>(iex_used != -1)) {
+-                it_compact++;
++        for (int it = it_dumped; it < n_tokens; ++it) {
++            for (int iex0 = 0; iex0 < n_expert_used; iex0 += warp_size) {
++                const int iex = iex0 + threadIdx.x;
++                const int expert_found = iex < n_expert_used ? ids[it*si1 + iex] : INT_MAX;
++
++                constexpr bool increment_nex_prev = false;
++                constexpr bool write_to_store     = true;
++                check_experts<increment_nex_prev, write_to_store>
++                    (store, nex_prev, it_compact, expert, it, iex, expert_found);
++                if (it_compact + max(warp_size, n_expert_used) >= ne_store) {
++                    ggml_cuda_syncwarp();
++                    dump_store(ids_src1, ids_dst, n_expert_used, nchannels_y, sis1, write_inverse, store, nex_prev, n_dumped, it_compact);
++                    it_compact = 0;
++                }
+             }
+         }
++        if (it_compact > 0) {
++            ggml_cuda_syncwarp();
++            dump_store(ids_src1, ids_dst, n_expert_used, nchannels_y, sis1, write_inverse, store, nex_prev, n_dumped, it_compact);
++        }
+     } else {
+         // Implementation optimized for specific numbers of experts used:
+         // a warp holds a whole number of token slots, so the slot count is padded to a power of 2
+         constexpr int neu_padded = mm_ids_pow2<n_expert_used_template>::value;
+         static_assert(neu_padded <= warp_size && warp_size % neu_padded == 0, "bad n_expert_used");
+-        for (int it0 = 0; it0 < n_tokens; it0 += warp_size/neu_padded) {
+-            const int it = it0 + threadIdx.x / neu_padded;
+-
+-            const int iex = threadIdx.x % neu_padded; // The index at which the expert is used, if any.
+-            const int expert_used = (neu_padded == n_expert_used || iex < n_expert_used) && it < n_tokens ?
+-                ids[it*si1 + iex] : INT_MAX;
+-            const int iex_used = expert_used == expert ? iex : -1;
+-            nex_prev += expert_used < expert;
+-
+-            // Whether the threads at this token position have used the expert:
+-            const int it_compact_add_self = warp_reduce_any<neu_padded>(iex_used != -1);
++        const int iex = threadIdx.x % neu_padded; // The index at which the expert is used, if any.
+ 
+-            // Do a scan over threads at lower token positions in warp to get the correct index for writing data:
+-            int it_compact_add_lower = 0;
++        int it0 = 0;
++        for (; it0 < n_tokens && it_compact + n_unroll*warp_size <= ne_store; it0 += n_unroll*warp_size/neu_padded) {
+ #pragma unroll
+-            for (int offset = neu_padded; offset < warp_size; offset += neu_padded) {
+-                const int tmp = __shfl_up_sync(0xFFFFFFFF, it_compact_add_self, offset, warp_size);
+-                if (threadIdx.x >= static_cast<unsigned int>(offset)) {
+-                    it_compact_add_lower += tmp;
+-                }
+-            }
++            for (int it1 = 0; it1 < n_unroll*warp_size/neu_padded; it1 += warp_size/neu_padded) {
++                const int it = it0 + it1 + threadIdx.x / neu_padded;
++                const int expert_found = (neu_padded == n_expert_used || iex < n_expert_used) && it < n_tokens ?
++                    ids[it*si1 + iex] : INT_MAX;
+ 
+-            if (iex_used != -1) {
+-                store[it_compact + it_compact_add_lower] = mm_ids_helper_store(it, iex_used);
++                constexpr bool increment_nex_prev = true;
++                constexpr bool write_to_store     = true;
++                check_experts<increment_nex_prev, write_to_store>
++                    (store, nex_prev, it_compact, expert, it, iex, expert_found);
+             }
++        }
++        int it0_dumped = it0;
++        for (; it0 < n_tokens; it0 += n_unroll*warp_size/neu_padded) {
++#pragma unroll
++            for (int it1 = 0; it1 < n_unroll*warp_size/neu_padded; it1 += warp_size/neu_padded) {
++                const int it = it0 + it1 + threadIdx.x / neu_padded;
++                const int expert_found = (neu_padded == n_expert_used || iex < n_expert_used) && it < n_tokens ?
++                    ids[it*si1 + iex] : INT_MAX;
+ 
+-            // The thread with the highest index in the warp always has the sum over the whole warp, use it to increment all threads:
+-            it_compact += __shfl_sync(0xFFFFFFFF, it_compact_add_lower + it_compact_add_self, warp_size - 1, warp_size);
++                constexpr bool increment_nex_prev = true;
++                constexpr bool write_to_store     = false;
++                check_experts<increment_nex_prev, write_to_store>
++                    (store, nex_prev, it_compact, expert, it, iex, expert_found);
++            }
+         }
+-    }
+-    nex_prev = warp_reduce_sum<warp_size>(nex_prev);
+-    ggml_cuda_syncwarp();
+ 
+-    for (int itc = threadIdx.x; itc < it_compact; itc += warp_size) {
+-        const mm_ids_helper_store store_it = store[itc];
+-        const int it       = store_it.it();
+-        const int iex_used = store_it.iex_used();
+-        ids_dst[nex_prev + itc] = it*n_expert_used + iex_used;
+-        // ids_src1 holds the forward map, or the inverse map (token slot -> compact row) for quant dedup
+-        if (write_inverse) {
+-            ids_src1[it*n_expert_used + iex_used] = nex_prev + itc;
+-        } else {
+-            ids_src1[nex_prev + itc] = it*sis1 + iex_used % nchannels_y;
++        nex_prev = warp_reduce_sum<warp_size>(nex_prev);
++        ggml_cuda_syncwarp();
++        dump_store(ids_src1, ids_dst, n_expert_used, nchannels_y, sis1, write_inverse, store, nex_prev, n_dumped, it_compact);
++        it_compact = 0;
++
++        for (it0 = it0_dumped; it0 < n_tokens; it0 += n_unroll*warp_size/neu_padded) {
++#pragma unroll
++            for (int it1 = 0; it1 < n_unroll*warp_size/neu_padded; it1 += warp_size/neu_padded) {
++                const int it = it0 + it1 + threadIdx.x / neu_padded;
++                const int expert_found = (neu_padded == n_expert_used || iex < n_expert_used) && it < n_tokens ?
++                    ids[it*si1 + iex] : INT_MAX;
++
++                constexpr bool increment_nex_prev = false;
++                constexpr bool write_to_store     = true;
++                check_experts<increment_nex_prev, write_to_store>
++                    (store, nex_prev, it_compact, expert, it, iex, expert_found);
++                if (it_compact + warp_size >= ne_store) {
++                    ggml_cuda_syncwarp();
++                    dump_store(ids_src1, ids_dst, n_expert_used, nchannels_y, sis1, write_inverse, store, nex_prev, n_dumped, it_compact);
++                    it_compact = 0;
++                }
++            }
++        }
++        if (it_compact > 0) {
++            ggml_cuda_syncwarp();
++            dump_store(ids_src1, ids_dst, n_expert_used, nchannels_y, sis1, write_inverse, store, nex_prev, n_dumped, it_compact);
+         }
+     }
+ 
+@@ -123,7 +220,7 @@ static __global__ void mm_ids_helper(
+     }
+ 
+     int col_low  = nex_prev;
+-    int col_high = nex_prev + min(int(tile_width.z), it_compact);
++    int col_high = nex_prev + min(int(tile_width.z), n_dumped);
+ 
+     // The while loop covers all tiles at the seams containing the column with % tile_width == 0.
+     while (col_high > fastdiv(col_low + tile_width.z - 1, tile_width) * tile_width.z) {
+@@ -131,7 +228,7 @@ static __global__ void mm_ids_helper(
+             = {expert, col_low, col_high, /*padding =*/ 0};
+ 
+         col_low  = col_high;
+-        col_high = min(col_high + int(tile_width.z), nex_prev + it_compact);
++        col_high = min(col_high + int(tile_width.z), nex_prev + n_dumped);
+     }
+ 
+     // Finally, at most one extra tile_spec between the seams per expert.
+@@ -157,10 +254,12 @@ static void launch_mm_ids_helper(
+ 
+     const dim3 num_blocks(n_experts, 1, 1);
+     const dim3 block_size(warp_size, 1, 1);
+-    const size_t nbytes_shared = n_tokens*sizeof(mm_ids_helper_store);
+-    GGML_ASSERT(nbytes_shared <= smpbo);
++    const size_t ne_shared_pad = n_expert_used_template == 0 ? std::max(n_expert_used_var, warp_size) : n_unroll*warp_size;
++    const size_t nbytes_store_core = std::min(smpbo - ne_shared_pad * sizeof(mm_ids_helper_store), n_tokens * sizeof(mm_ids_helper_store));
++    const size_t nbytes_shared = nbytes_store_core + ne_shared_pad * sizeof(mm_ids_helper_store);
++    const size_t ne_store = nbytes_shared / sizeof(mm_ids_helper_store);
+     mm_ids_helper<n_expert_used_template><<<num_blocks, block_size, nbytes_shared, stream>>>
+-        (ids, ids_src1, ids_dst, tile_spec, n_tokens, n_expert_used_var, nchannels_y, tile_width_fd, si1, sis1, write_inverse);
++        (ids, ids_src1, ids_dst, tile_spec, n_tokens, n_expert_used_var, nchannels_y, tile_width_fd, si1, sis1, write_inverse, ne_store);
+ }
+ 
+ void ggml_cuda_launch_mm_ids_helper(
+diff --git a/ggml/src/ggml-cuda/mmq.cuh b/ggml/src/ggml-cuda/mmq.cuh
+index d645a8aac..4b52260b4 100644
+--- a/ggml/src/ggml-cuda/mmq.cuh
++++ b/ggml/src/ggml-cuda/mmq.cuh
+@@ -1087,7 +1087,7 @@ static __global__ void mul_mat_q(
+         int col_high       = min(col_low + J, ncols_dst);
+         int offset_y       = wt*stride_sample_y   + zt*stride_channel_y;
+         int offset_y_scale = wt*nchannels_y.z*ncols_y + zt*ncols_y;
+-        int offset_dst     = wt*stride_sample_dst + zt*stride_channel_dst + jt*J*stride_col_dst;
++        int64_t offset_dst = (int64_t) wt*stride_sample_dst + (int64_t) zt*stride_channel_dst + (int64_t) jt*J*stride_col_dst;
+ 
+         if (ids_dst) {
+             const ggml_cuda_mm_id_tile_spec tsj = tile_spec[jt];
+@@ -1169,7 +1169,7 @@ static __global__ void mul_mat_q(
+         int col_high       = min(col_low + J, ncols_dst);
+         int offset_y       = wt*stride_sample_y   + zt*stride_channel_y;
+         int offset_y_scale = wt*nchannels_y.z*ncols_y + zt*ncols_y;
+-        int offset_dst     = wt*stride_sample_dst + zt*stride_channel_dst + jt*J*stride_col_dst;
++        int64_t offset_dst = (int64_t) wt*stride_sample_dst + (int64_t) zt*stride_channel_dst + (int64_t) jt*J*stride_col_dst;
+ 
+         if (ids_dst) {
+             const ggml_cuda_mm_id_tile_spec tsj = tile_spec[jt];
+@@ -1250,7 +1250,7 @@ static __global__ void mul_mat_q(
+     int col_high       = min(col_low + J, ncols_dst);
+     int offset_y       = wt*stride_sample_y   + zt*stride_channel_y;
+     int offset_y_scale = wt*nchannels_y.z*ncols_y + zt*ncols_y;
+-    int offset_dst     = wt*stride_sample_dst + zt*stride_channel_dst + jt*J*stride_col_dst;
++    int64_t offset_dst = (int64_t) wt*stride_sample_dst + (int64_t) zt*stride_channel_dst + (int64_t) jt*J*stride_col_dst;
+ 
+     if (ids_dst) {
+         const ggml_cuda_mm_id_tile_spec tsj = tile_spec[jt];
+@@ -1385,7 +1385,7 @@ static __global__ void mul_mat_q_stream_k_fixup(
+     const int it = tmp2.x;
+ 
+     if (!ids_dst) {
+-        const int offset_dst = wt*stride_sample_dst + zt*stride_channel_dst + jt*J*stride_col_dst + it*I;
++        const int64_t offset_dst = (int64_t) wt*stride_sample_dst + (int64_t) zt*stride_channel_dst + (int64_t) jt*J*stride_col_dst + it*I;
+         dst += offset_dst;
+ 
+         const int i_max = nrows_x   - it*I - 1;
+diff --git a/ggml/src/ggml-cuda/pool2d.cu b/ggml/src/ggml-cuda/pool2d.cu
+index 83a49753c..6cfd05e06 100644
+--- a/ggml/src/ggml-cuda/pool2d.cu
++++ b/ggml/src/ggml-cuda/pool2d.cu
+@@ -100,7 +100,7 @@ static __global__ void pool2d_nchw_kernel_warp(
+ 
+ #pragma unroll
+     for (int offset = WARP_SIZE/2; offset > 0; offset >>= 1) {
+-        const To other = __shfl_xor_sync(0xFFFFFFFF, res, offset, WARP_SIZE);
++        const To other = ggml_cuda_shfl_xor(res, offset, WARP_SIZE);
+         res = (op == GGML_OP_POOL_MAX) ? max(res, other) : res + other;
+     }
+ 
+diff --git a/ggml/src/ggml-cuda/quantize.cu b/ggml/src/ggml-cuda/quantize.cu
+index 2acf1f6d0..6483da821 100644
+--- a/ggml/src/ggml-cuda/quantize.cu
++++ b/ggml/src/ggml-cuda/quantize.cu
+@@ -389,7 +389,7 @@ static __global__ void quantize_mmq_mxfp4(const float * __restrict__ x,
+         float amax = fabsf(xi);
+ #pragma unroll
+         for (int mask = 16; mask > 0; mask >>= 1) {
+-            amax = fmaxf(amax, __shfl_xor_sync(0xFFFFFFFF, amax, mask, WARP_SIZE));
++            amax = fmaxf(amax, ggml_cuda_shfl_xor(amax, mask, WARP_SIZE));
+         }
+ 
+         const uint8_t e = compute_e8m0_scale(amax);
+@@ -399,10 +399,10 @@ static __global__ void quantize_mmq_mxfp4(const float * __restrict__ x,
+ #if CUDART_VERSION >= 12080
+         const float scaled_val = xi * inv_s;
+ 
+-        const float val0 = __shfl_sync(0xFFFFFFFF, scaled_val, base, WARP_SIZE);
+-        const float val1 = __shfl_sync(0xFFFFFFFF, scaled_val, base + 16, WARP_SIZE);
+-        const float val2 = __shfl_sync(0xFFFFFFFF, scaled_val, base + 1, WARP_SIZE);
+-        const float val3 = __shfl_sync(0xFFFFFFFF, scaled_val, base + 17, WARP_SIZE);
++        const float val0 = ggml_cuda_shfl(scaled_val, base, WARP_SIZE);
++        const float val1 = ggml_cuda_shfl(scaled_val, base + 16, WARP_SIZE);
++        const float val2 = ggml_cuda_shfl(scaled_val, base + 1, WARP_SIZE);
++        const float val3 = ggml_cuda_shfl(scaled_val, base + 17, WARP_SIZE);
+ 
+         __nv_fp4x4_e2m1 fp4_packed(make_float4(val0, val1, val2, val3));
+         packed[b] = *(char2 *) &fp4_packed;
+@@ -410,10 +410,10 @@ static __global__ void quantize_mmq_mxfp4(const float * __restrict__ x,
+         // Fallback: manual FP4 conversion using LUT
+         const uint8_t q_val = ggml_cuda_float_to_fp4_e2m1(xi, inv_s);
+ 
+-        const uint8_t q_lo_0 = __shfl_sync(0xFFFFFFFF, q_val, base,      WARP_SIZE);
+-        const uint8_t q_lo_1 = __shfl_sync(0xFFFFFFFF, q_val, base + 1,  WARP_SIZE);
+-        const uint8_t q_hi_0 = __shfl_sync(0xFFFFFFFF, q_val, base + 16, WARP_SIZE);
+-        const uint8_t q_hi_1 = __shfl_sync(0xFFFFFFFF, q_val, base + 17, WARP_SIZE);
++        const uint8_t q_lo_0 = ggml_cuda_shfl(q_val, base,      WARP_SIZE);
++        const uint8_t q_lo_1 = ggml_cuda_shfl(q_val, base + 1,  WARP_SIZE);
++        const uint8_t q_hi_0 = ggml_cuda_shfl(q_val, base + 16, WARP_SIZE);
++        const uint8_t q_hi_1 = ggml_cuda_shfl(q_val, base + 17, WARP_SIZE);
+ 
+         char2 q;
+         q.x = (q_hi_0 << 4) | q_lo_0;
+@@ -497,7 +497,7 @@ static __global__ void quantize_mmq_q8_1(
+     // Exchange max. abs. value between vals_per_scale/4 threads.
+ #pragma unroll
+     for (int offset = vals_per_scale/8; offset > 0; offset >>= 1) {
+-        amax = fmaxf(amax, __shfl_xor_sync(0xFFFFFFFF, amax, offset, WARP_SIZE));
++        amax = fmaxf(amax, ggml_cuda_shfl_xor(amax, offset, WARP_SIZE));
+     }
+ 
+     const float d_inv = 127.0f / amax;
+@@ -515,7 +515,7 @@ static __global__ void quantize_mmq_q8_1(
+         // Calculate sums across vals_per_sum/4 threads.
+ #pragma unroll
+         for (int offset = vals_per_sum/8; offset > 0; offset >>= 1) {
+-            sum_q += __shfl_xor_sync(0xFFFFFFFF, sum_q, offset, WARP_SIZE);
++            sum_q += ggml_cuda_shfl_xor(sum_q, offset, WARP_SIZE);
+         }
+ 
+         sum = d * float(sum_q);
+diff --git a/ggml/src/ggml-cuda/top-k.cu b/ggml/src/ggml-cuda/top-k.cu
+index 19cb45d1f..2639a664d 100644
+--- a/ggml/src/ggml-cuda/top-k.cu
++++ b/ggml/src/ggml-cuda/top-k.cu
+@@ -184,16 +184,6 @@ static __global__ void top_k_radix_gather(
+     constexpr int NBINS     = 1 << RADIX_BITS;
+     constexpr int warp_size = ggml_cuda_get_physical_warp_size();
+     constexpr int nwarps    = BLOCK_SIZE / warp_size;
+-    using lane_mask_t = std::conditional_t<warp_size == 64, uint64_t, uint32_t>;
+-    // HIP requires a 64-bit mask also for a 32-wide warp
+-    constexpr uint64_t ballot_mask = ~(lane_mask_t) 0;
+-    const auto popc = [](const lane_mask_t mask) {
+-        if constexpr (warp_size == 64) {
+-            return __popcll(mask);
+-        } else {
+-            return __popc(mask);
+-        }
+-    };
+     __shared__ int warp_ties[nwarps];
+ 
+     const int row = blockIdx.x / blocks_per_row;
+@@ -249,12 +239,12 @@ static __global__ void top_k_radix_gather(
+         const int64_t col    = tile + lane;
+         const bool    is_tie = col < warp_end && top_k_float_to_ordered(row_src[col]) == threshold;
+ 
+-        const lane_mask_t ties    = (lane_mask_t) __ballot_sync(ballot_mask, is_tie);
+-        const int         tie_pos = pos + popc(ties & (((lane_mask_t) 1 << lane) - 1));
++        const ggml_cuda_thread_mask_t ties = ggml_cuda_ballot(is_tie);
++        const int tie_pos = pos + ggml_cuda_popc(ties & (((ggml_cuda_thread_mask_t) 1 << lane) - 1));
+         if (is_tie && tie_pos < pos_end) {
+             row_dst[k - rank + tie_pos] = col;
+         }
+-        pos += popc(ties);
++        pos += ggml_cuda_popc(ties);
+     }
+ }
+ 
+diff --git a/ggml/src/ggml-cuda/topk-moe.cu b/ggml/src/ggml-cuda/topk-moe.cu
+index e99b2e84a..d6481baaf 100644
+--- a/ggml/src/ggml-cuda/topk-moe.cu
++++ b/ggml/src/ggml-cuda/topk-moe.cu
+@@ -20,22 +20,24 @@ template <int experts_per_thread, bool use_limit>
+ __device__ void softmax_warp_inplace(float (&vals)[experts_per_thread], const int limit, const int lane) {
+     float max_val = -INFINITY;
+ 
++    constexpr int warp_size = ggml_cuda_get_physical_warp_size();
++
+ #pragma unroll
+     for (int i = 0; i < experts_per_thread; i++) {
+-        const int  idx    = lane + i * WARP_SIZE;
++        const int  idx    = lane + i * warp_size;
+         const bool active = !use_limit || (idx < limit);
+         if (active) {
+             max_val = max(max_val, vals[i]);
+         }
+     }
+ 
+-    max_val = warp_reduce_max(max_val);
++    max_val = warp_reduce_max<warp_size>(max_val);
+ 
+     float sum = 0.f;
+ 
+ #pragma unroll
+     for (int i = 0; i < experts_per_thread; i++) {
+-        const int  idx    = lane + i * WARP_SIZE;
++        const int  idx    = lane + i * warp_size;
+         const bool active = !use_limit || (idx < limit);
+         if (active) {
+             const float val = expf(vals[i] - max_val);
+@@ -46,13 +48,13 @@ __device__ void softmax_warp_inplace(float (&vals)[experts_per_thread], const in
+         }
+     }
+ 
+-    sum = warp_reduce_sum(sum);
++    sum = warp_reduce_sum<warp_size>(sum);
+ 
+     const float inv_sum = 1.0f / sum;
+ 
+ #pragma unroll
+     for (int i = 0; i < experts_per_thread; i++) {
+-        const int  idx    = lane + i * WARP_SIZE;
++        const int  idx    = lane + i * warp_size;
+         const bool active = !use_limit || (idx < limit);
+         if (active) {
+             vals[i] *= inv_sum;
+@@ -62,9 +64,10 @@ __device__ void softmax_warp_inplace(float (&vals)[experts_per_thread], const in
+ 
+ template <int experts_per_thread, bool use_limit>
+ __device__ void sigmoid_warp_inplace(float (&vals)[experts_per_thread], const int limit, const int lane) {
++    constexpr int warp_size = ggml_cuda_get_physical_warp_size();
+ #pragma unroll
+     for (int i = 0; i < experts_per_thread; i++) {
+-        const int  idx    = lane + i * WARP_SIZE;
++        const int  idx    = lane + i * warp_size;
+         const bool active = !use_limit || (idx < limit);
+         vals[i]           = active ? 1.f / (1.f + expf(-vals[i])) : -INFINITY;
+     }
+@@ -72,35 +75,37 @@ __device__ void sigmoid_warp_inplace(float (&vals)[experts_per_thread], const in
+ 
+ template <int experts_per_thread, bool use_limit>
+ __device__ void sqrt_softplus_warp_inplace(float (&vals)[experts_per_thread], const int limit, const int lane) {
++    constexpr int warp_size = ggml_cuda_get_physical_warp_size();
+ #pragma unroll
+     for (int i = 0; i < experts_per_thread; i++) {
+-        const int  idx    = lane + i * WARP_SIZE;
++        const int  idx    = lane + i * warp_size;
+         const bool active = !use_limit || (idx < limit);
+         vals[i]           = active ? sqrtf(vals[i] > 20.0f ? vals[i] : log1pf(expf(vals[i]))) : -INFINITY;
+     }
+ }
+ 
+-#if !defined(GGML_USE_HIP) || HIP_VERSION >= 60300000
+ // Set -inf for experts outside the top n_group_used groups. Group score is the sum of its top-2 experts (DeepSeek V3).
+ template <int n_experts, int experts_per_thread>
+ __device__ void group_mask_warp_inplace(float (&vals)[experts_per_thread], const int n_groups, const int n_group_used, const int lane) {
+     const int n_per_group = n_experts / n_groups;
+ 
++    constexpr int warp_size = ggml_cuda_get_physical_warp_size();
++
+     float score = -INFINITY; // lane g holds the score of group g
+     for (int g = 0; g < n_groups; g++) {
+         float top1 = -INFINITY;
+         float top2 = -INFINITY;
+ #pragma unroll
+         for (int i = 0; i < experts_per_thread; i++) {
+-            if ((i * WARP_SIZE + lane) / n_per_group == g) {
++            if ((i * warp_size + lane) / n_per_group == g) {
+                 top2 = fmaxf(top2, fminf(top1, vals[i]));
+                 top1 = fmaxf(top1, vals[i]);
+             }
+         }
+ #pragma unroll
+-        for (int offset = WARP_SIZE / 2; offset > 0; offset >>= 1) {
+-            const float o1 = __shfl_xor_sync(0xFFFFFFFF, top1, offset, WARP_SIZE);
+-            const float o2 = __shfl_xor_sync(0xFFFFFFFF, top2, offset, WARP_SIZE);
++        for (int offset = warp_size / 2; offset > 0; offset >>= 1) {
++            const float o1 = ggml_cuda_shfl_xor(top1, offset, warp_size);
++            const float o2 = ggml_cuda_shfl_xor(top2, offset, warp_size);
+             top2 = fmaxf(fminf(top1, o1), fmaxf(top2, o2));
+             top1 = fmaxf(top1, o1);
+         }
+@@ -112,20 +117,30 @@ __device__ void group_mask_warp_inplace(float (&vals)[experts_per_thread], const
+     // rank of each group, lower index wins ties
+     int rank = 0;
+     for (int g = 0; g < n_groups; g++) {
+-        const float other = __shfl_sync(0xFFFFFFFF, score, g, WARP_SIZE);
++        const float other = ggml_cuda_shfl(score, g, warp_size);
+         rank += other > score || (other == score && g < lane);
+     }
+-    const auto keep = __ballot_sync(0xFFFFFFFFULL, lane < n_groups && rank < n_group_used);
++    const auto keep = ggml_cuda_ballot(lane < n_groups && rank < n_group_used);
+ 
+ #pragma unroll
+     for (int i = 0; i < experts_per_thread; i++) {
+-        const int g = (i * WARP_SIZE + lane) / n_per_group;
++        const int g = (i * warp_size + lane) / n_per_group;
+         if (g >= n_groups || !((keep >> g) & 1)) {
+             vals[i] = -INFINITY;
+         }
+     }
+ }
+-#endif // !defined(GGML_USE_HIP) || HIP_VERSION >= 60300000
++
++static __device__ constexpr int calc_experts_per_thread(int n_experts, int warp_size)
++{
++    if(n_experts <= warp_size) {
++        return 1;
++    }
++    if(n_experts % warp_size == 0) {
++        return n_experts / warp_size;
++    }
++    return n_experts / warp_size + 1;
++}
+ 
+ /*
+     This kernel does the following:
+@@ -137,7 +152,7 @@ __device__ void group_mask_warp_inplace(float (&vals)[experts_per_thread], const
+     It is intended as fusion of softmax->top-k->get_rows pipeline for MoE models
+ */
+ template <int n_experts, bool has_bias>
+-__launch_bounds__(TOPK_MOE_ROWS_PER_BLOCK * WARP_SIZE, 1)
++__launch_bounds__(TOPK_MOE_ROWS_PER_BLOCK * ggml_cuda_get_physical_warp_size(), 1)
+ __global__ void topk_moe_cuda(const float *         logits,
+                               float *               weights,
+                               int32_t *             ids,
+@@ -147,6 +162,8 @@ __global__ void topk_moe_cuda(const float *         logits,
+                               const float           clamp_val,
+                               const float           scale_val,
+                               const topk_moe_config config) {
++    constexpr int warp_size = ggml_cuda_get_physical_warp_size();
++
+ #if defined(GGML_USE_MUSA)
+     // MUSA: every warp of a partially filled block must reach the barrier below.
+     const int row = MIN(blockIdx.x * blockDim.y + threadIdx.y, n_rows - 1);
+@@ -161,7 +178,7 @@ __global__ void topk_moe_cuda(const float *         logits,
+     weights += n_expert_used * row;
+     ids += n_experts * row;
+ 
+-    constexpr int experts_per_thread = (n_experts > WARP_SIZE) ? n_experts / WARP_SIZE : 1;
++    constexpr int experts_per_thread = calc_experts_per_thread(n_experts, warp_size);
+ 
+     float wt[experts_per_thread];
+ 
+@@ -173,9 +190,9 @@ __global__ void topk_moe_cuda(const float *         logits,
+ 
+     ggml_cuda_pdl_sync();
+ #pragma unroll
+-    for (int i = 0; i < n_experts; i += WARP_SIZE) {
++    for (int i = 0; i < n_experts; i += warp_size) {
+         const int expert  = i + threadIdx.x;
+-        wt[i / WARP_SIZE] = (n_experts % WARP_SIZE == 0 || expert < n_experts) ? logits[expert] : -INFINITY;
++        wt[i / warp_size] = (n_experts % warp_size == 0 || expert < n_experts) ? logits[expert] : -INFINITY;
+     }
+ 
+     // Weights and IDs can alias logits, so wait until every row in the block reads its logits.
+@@ -213,17 +230,16 @@ __global__ void topk_moe_cuda(const float *         logits,
+             selection_wt[i] = -INFINITY;
+         }
+ #pragma unroll
+-        for (int i = 0; i < n_experts; i += WARP_SIZE) {
++        for (int i = 0; i < n_experts; i += warp_size) {
+             const int expert = i + threadIdx.x;
+-            selection_wt[i / WARP_SIZE] =
+-                (n_experts % WARP_SIZE == 0 || expert < n_experts) ? wt[i / WARP_SIZE] + bias[expert] : -INFINITY;
+-            if (__isnanf(selection_wt[i / WARP_SIZE])) {
+-                selection_wt[i / WARP_SIZE] = -FLT_MAX;
++            selection_wt[i / warp_size] =
++                (n_experts % warp_size == 0 || expert < n_experts) ? wt[i / warp_size] + bias[expert] : -INFINITY;
++            if (__isnanf(selection_wt[i / warp_size])) {
++                selection_wt[i / warp_size] = -FLT_MAX;
+             }
+         }
+     }
+ 
+-#if !defined(GGML_USE_HIP) || HIP_VERSION >= 60300000
+     // without bias, masking wt is safe: the matcher ensures the kept groups hold all used experts
+     if (config.n_groups > 0) {
+         if constexpr (has_bias) {
+@@ -232,7 +248,6 @@ __global__ void topk_moe_cuda(const float *         logits,
+             group_mask_warp_inplace<n_experts>(wt, config.n_groups, config.n_group_used, threadIdx.x);
+         }
+     }
+-#endif // !defined(GGML_USE_HIP) || HIP_VERSION >= 60300000
+ 
+     //at this point, each thread holds either a portion of the softmax distribution
+     //or the raw logits. We do the argmax reduce over n_expert_used, each time marking
+@@ -257,8 +272,8 @@ __global__ void topk_moe_cuda(const float *         logits,
+ 
+ #pragma unroll
+             for (int i = 1; i < experts_per_thread; i++) {
+-                const int expert = threadIdx.x + i * WARP_SIZE;
+-                if ((n_experts % WARP_SIZE == 0 || expert < n_experts) && selection_wt[i] > max_val_s) {
++                const int expert = threadIdx.x + i * warp_size;
++                if ((n_experts % warp_size == 0 || expert < n_experts) && selection_wt[i] > max_val_s) {
+                     max_val    = wt[i];
+                     max_val_s  = selection_wt[i];
+                     max_expert = expert;
+@@ -266,10 +281,10 @@ __global__ void topk_moe_cuda(const float *         logits,
+             }
+ 
+ #pragma unroll
+-            for (int mask = WARP_SIZE / 2; mask > 0; mask /= 2) {
+-                const float val    = __shfl_xor_sync(0xFFFFFFFF, max_val, mask, WARP_SIZE);
+-                const float val_s  = __shfl_xor_sync(0xFFFFFFFF, max_val_s, mask, WARP_SIZE);
+-                const int   expert = __shfl_xor_sync(0xFFFFFFFF, max_expert, mask, WARP_SIZE);
++            for (int mask = warp_size / 2; mask > 0; mask /= 2) {
++                const float val    = ggml_cuda_shfl_xor(max_val, mask, warp_size);
++                const float val_s  = ggml_cuda_shfl_xor(max_val_s, mask, warp_size);
++                const int   expert = ggml_cuda_shfl_xor(max_expert, mask, warp_size);
+                 if (val_s > max_val_s || (val_s == max_val_s && expert < max_expert)) {
+                     max_val    = val;
+                     max_val_s  = val_s;
+@@ -277,39 +292,39 @@ __global__ void topk_moe_cuda(const float *         logits,
+                 }
+             }
+ 
+-            if ((max_expert & (WARP_SIZE - 1)) == threadIdx.x) {
+-                selection_wt[max_expert / WARP_SIZE] = -INFINITY;
++            if ((max_expert & (warp_size - 1)) == threadIdx.x) {
++                selection_wt[max_expert / warp_size] = -INFINITY;
+             }
+         } else {
+ #pragma unroll
+             for (int i = 1; i < experts_per_thread; i++) {
+-                const int expert = threadIdx.x + i * WARP_SIZE;
+-                if ((n_experts % WARP_SIZE == 0 || expert < n_experts) && wt[i] > max_val) {
++                const int expert = threadIdx.x + i * warp_size;
++                if ((n_experts % warp_size == 0 || expert < n_experts) && wt[i] > max_val) {
+                     max_val    = wt[i];
+                     max_expert = expert;
+                 }
+             }
+ 
+ #pragma unroll
+-            for (int mask = WARP_SIZE / 2; mask > 0; mask /= 2) {
+-                const float val    = __shfl_xor_sync(0xFFFFFFFF, max_val, mask, WARP_SIZE);
+-                const int   expert = __shfl_xor_sync(0xFFFFFFFF, max_expert, mask, WARP_SIZE);
++            for (int mask = warp_size / 2; mask > 0; mask /= 2) {
++                const float val    = ggml_cuda_shfl_xor(max_val, mask, warp_size);
++                const int   expert = ggml_cuda_shfl_xor(max_expert, mask, warp_size);
+                 if (val > max_val || (val == max_val && expert < max_expert)) {
+                     max_val    = val;
+                     max_expert = expert;
+                 }
+             }
+ 
+-            if ((max_expert & (WARP_SIZE - 1)) == threadIdx.x) {
+-                wt[max_expert / WARP_SIZE] = -INFINITY;
++            if ((max_expert & (warp_size - 1)) == threadIdx.x) {
++                wt[max_expert / warp_size] = -INFINITY;
+             }
+         }
+ 
+-        if ((k & (WARP_SIZE - 1)) == threadIdx.x) {
+-            output_weights[k / WARP_SIZE] = max_val;
++        if ((k & (warp_size - 1)) == threadIdx.x) {
++            output_weights[k / warp_size] = max_val;
+         }
+ 
+-        if ((max_expert & (WARP_SIZE - 1)) == threadIdx.x) {
++        if ((max_expert & (warp_size - 1)) == threadIdx.x) {
+             ids[k] = max_expert;
+             if (config.with_norm) {
+                 wt_sum += max_val;
+@@ -318,7 +333,7 @@ __global__ void topk_moe_cuda(const float *         logits,
+     }
+ 
+     if (config.with_norm) {
+-        wt_sum              = warp_reduce_sum(wt_sum);
++        wt_sum              = warp_reduce_sum<warp_size>(wt_sum);
+         wt_sum              = max(wt_sum, clamp_val);
+         const float inv_sum = 1.0f / wt_sum;
+ 
+@@ -333,7 +348,7 @@ __global__ void topk_moe_cuda(const float *         logits,
+ 
+ #pragma unroll
+     for (int i = 0; i < experts_per_thread; i++) {
+-        const int idx = i * WARP_SIZE + threadIdx.x;
++        const int idx = i * warp_size + threadIdx.x;
+         if (idx < n_expert_used) {
+             weights[idx] = output_weights[i] * scale_val;
+         }
+@@ -355,15 +370,12 @@ static void launch_topk_moe_cuda(ggml_backend_cuda_context & ctx,
+     GGML_ASSERT(!(config.with_norm && config.delayed_softmax) &&
+                 "delayed softmax is not supported with weight normalization");
+     const int    rows_per_block = TOPK_MOE_ROWS_PER_BLOCK;
++    const int warp_size = ggml_cuda_info().devices[ggml_cuda_get_device()].warp_size;
+     dim3         grid_dims((n_rows + rows_per_block - 1) / rows_per_block, 1, 1);
+-    dim3         block_dims(WARP_SIZE, rows_per_block, 1);
++    dim3         block_dims(warp_size, rows_per_block, 1);
+     cudaStream_t stream = ctx.stream();
+     const ggml_cuda_kernel_launch_params launch_params = ggml_cuda_kernel_launch_params(grid_dims, block_dims, 0, stream);
+ 
+-#if defined(GGML_USE_HIP) && HIP_VERSION < 60300000
+-    GGML_ASSERT(config.n_groups == 0 && "expert groups fusion is not supported on this HIP version");
+-#endif
+-
+     switch (n_expert) {
+         case 1:
+             ggml_cuda_kernel_launch(topk_moe_cuda<1, has_bias>, launch_params,
+diff --git a/ggml/src/ggml-cuda/vendors/cuda.h b/ggml/src/ggml-cuda/vendors/cuda.h
+index 86c1ed9ce..8253061cb 100644
+--- a/ggml/src/ggml-cuda/vendors/cuda.h
++++ b/ggml/src/ggml-cuda/vendors/cuda.h
+@@ -6,6 +6,9 @@
+ #include <cublasLt.h>
+ #include <cuda_bf16.h>
+ #include <cuda_fp16.h>
++#include <cstdint>
++
++typedef uint32_t ggml_cuda_thread_mask_t;
+ 
+ #ifdef GGML_USE_NCCL
+ #include <nccl.h>
+diff --git a/ggml/src/ggml-cuda/vendors/hip.h b/ggml/src/ggml-cuda/vendors/hip.h
+index da159dea1..b350ebe9c 100644
+--- a/ggml/src/ggml-cuda/vendors/hip.h
++++ b/ggml/src/ggml-cuda/vendors/hip.h
+@@ -1,15 +1,18 @@
+ #pragma once
+ 
+-#define HIP_DISABLE_WARP_SYNC_BUILTINS 1
++#define HIP_ENABLE_WARP_SYNC_BUILTINS 1
+ #include <hip/hip_runtime.h>
+ #include <hipblas/hipblas.h>
+ #include <hip/hip_fp16.h>
+ #include <hip/hip_bf16.h>
++#include <hip/hip_fp8.h>
++#include <cstdint>
+ 
+ #ifdef GGML_USE_NCCL
+ #include <rccl/rccl.h>
+ #endif // GGML_USE_NCCL
+ 
++typedef uint64_t ggml_cuda_thread_mask_t;
+ 
+ #define CUBLAS_GEMM_DEFAULT HIPBLAS_GEMM_DEFAULT
+ #define CUBLAS_GEMM_DEFAULT_TENSOR_OP HIPBLAS_GEMM_DEFAULT
+@@ -29,11 +32,6 @@
+ #define CU_MEM_LOCATION_TYPE_DEVICE hipMemLocationTypeDevice
+ #define CU_MEM_ACCESS_FLAGS_PROT_READWRITE hipMemAccessFlagsProtReadWrite
+ #define CU_CHECK(fn) {hipError_t err = fn; if(err != hipSuccess) { GGML_ABORT("HipVMM Failure: %s\n", hipGetErrorString(err)); }}
+-#define __shfl_sync(mask, var, laneMask, width) __shfl(var, laneMask, width)
+-#define __shfl_up_sync(mask, var, laneMask, width) __shfl_up(var, laneMask, width)
+-#define __shfl_xor_sync(mask, var, laneMask, width) __shfl_xor(var, laneMask, width)
+-#define __all_sync(mask, var) __all(var)
+-#define __any_sync(mask, var) __any(var)
+ #define cublasStrsmBatched hipblasStrsmBatched
+ #define cublasCreate hipblasCreate
+ #define cublasDestroy hipblasDestroy
+@@ -256,16 +254,8 @@
+ 
+ typedef __hip_bfloat16 nv_bfloat16;
+ typedef __hip_bfloat162 nv_bfloat162;
+-
+-#if HIP_VERSION >= 60300000
+-#include <hip/hip_fp8.h>
+ typedef __hip_fp8_e4m3 __nv_fp8_e4m3;
+ #define FP8_AVAILABLE
+-#endif // HIP_VERSION >= 60300000
+-
+-#if HIP_VERSION < 70000000
+-#define __ballot_sync(mask, var) __ballot(var)
+-#endif //HIP_VERSION < 70000000
+ 
+ typedef int8_t int8x4_t __attribute__((ext_vector_type(4)));
+ typedef uint8_t uint8x4_t __attribute__((ext_vector_type(4)));
+diff --git a/ggml/src/ggml-cuda/vendors/musa.h b/ggml/src/ggml-cuda/vendors/musa.h
+index ff13fa052..bfad2a2e6 100644
+--- a/ggml/src/ggml-cuda/vendors/musa.h
++++ b/ggml/src/ggml-cuda/vendors/musa.h
+@@ -5,11 +5,14 @@
+ #include <mublas.h>
+ #include <musa_bf16.h>
+ #include <musa_fp16.h>
++#include <cstdint>
+ 
+ #ifdef __MUSA_ARCH__
+ #define __CUDA_ARCH__ 1300 // GGML_CUDA_CC_RUBIN
+ #endif // __MUSA_ARCH__
+ 
++typedef uint32_t ggml_cuda_thread_mask_t;
++
+ #define CUBLAS_COMPUTE_16F CUDA_R_16F
+ #define CUBLAS_COMPUTE_32F CUDA_R_32F
+ #define CUBLAS_COMPUTE_32F_FAST_16F MUBLAS_COMPUTE_32F_FAST_16F
+diff --git a/ggml/src/ggml-hip/CMakeLists.txt b/ggml/src/ggml-hip/CMakeLists.txt
+index 75d4d60e8..35a898e23 100644
+--- a/ggml/src/ggml-hip/CMakeLists.txt
++++ b/ggml/src/ggml-hip/CMakeLists.txt
+@@ -51,8 +51,8 @@ if (GGML_HIP_RCCL)
+     find_package(rccl REQUIRED)
+ endif()
+ 
+-if (${hip_VERSION} VERSION_LESS 6.1)
+-    message(FATAL_ERROR "At least ROCM/HIP V6.1 is required")
++if (${hip_VERSION} VERSION_LESS 6.3)
++    message(FATAL_ERROR "At least ROCM/HIP V6.3 is required")
+ endif()
+ 
+ message(STATUS "HIP and hipBLAS found")
+diff --git a/src/llama-ext.h b/src/llama-ext.h
+index 3ac617b0f..c4b976c85 100644
+--- a/src/llama-ext.h
++++ b/src/llama-ext.h
+@@ -116,6 +116,8 @@ LLAMA_API ggml_backend_dev_t llama_model_get_device(const struct llama_model * m
+ 
+ LLAMA_API llama_memory_breakdown llama_get_memory_breakdown(const struct llama_context * ctx);
+ 
++LLAMA_API std::vector<ggml_tensor *> llama_memory_get_tensors(const llama_memory_t mem);
++
+ // the backend buffers that a state write of this memory would touch - empty caches report none
+ LLAMA_API std::vector<ggml_backend_buffer_t> llama_memory_get_buffers(const llama_memory_t mem);
+ 
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 40b98beb1..f7f333e96 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -4887,7 +4887,7 @@ ggml_tensor * llm_graph_context::build_rs(
+     // Clear a single state which will then be copied to the other cleared states.
+     // Note that this is a no-op when the view is zero-sized.
+     ggml_tensor * state_zero = ggml_view_1d(ctx0, states, state_size*(rs_zero >= 0), rs_zero*states->nb[1]*(rs_zero >= 0));
+-    ggml_build_forward_expand(gf, ggml_scale_inplace(ctx0, state_zero, 0));
++    ggml_build_forward_expand(gf, ggml_fill_inplace(ctx0, state_zero, 0.0f));
+ 
+     // copy states
+     // NOTE: assuming the copy destinations are ALL contained between rs_head and rs_head + n_rs
+diff --git a/src/llama-kv-cache.cpp b/src/llama-kv-cache.cpp
+index 5e6eb6be6..8ceb0c590 100644
+--- a/src/llama-kv-cache.cpp
++++ b/src/llama-kv-cache.cpp
+@@ -592,19 +592,7 @@ bool llama_kv_cache::seq_rm(llama_seq_id seq_id, llama_pos p0, llama_pos p1) {
+         auto & cells = v_cells[seq_to_stream[seq_id]];
+         auto & head  = v_heads[seq_to_stream[seq_id]];
+ 
+-        uint32_t new_head = cells.size();
+-
+-        for (uint32_t i = 0; i < cells.size(); ++i) {
+-            if (!cells.pos_in(i, p0, p1)) {
+-                continue;
+-            }
+-
+-            if (cells.seq_has(i, seq_id) && cells.seq_rm(i, seq_id)) {
+-                if (new_head == cells.size()) {
+-                    new_head = i;
+-                }
+-            }
+-        }
++        const uint32_t new_head = cells.seq_rm(seq_id, p0, p1);
+ 
+         // If we freed up a slot, set head to it so searching can start there.
+         if (new_head != cells.size() && new_head < head) {
+diff --git a/src/llama-kv-cells.h b/src/llama-kv-cells.h
+index f7a682013..2ffa8102a 100644
+--- a/src/llama-kv-cells.h
++++ b/src/llama-kv-cells.h
+@@ -303,6 +303,27 @@ public:
+         return false;
+     }
+ 
++    // remove seq_id from its cells at positions in [p0, p1)
++    // return the lowest index of a cell that becomes empty, or size() if none does
++    uint32_t seq_rm(llama_seq_id seq_id, llama_pos p0, llama_pos p1) {
++        assert(seq_id >= 0);
++        assert(seq_id < LLAMA_MAX_SEQ);
++
++        uint32_t res = size();
++
++        const auto & sp = seq_pos[seq_id];
++        for (auto it = sp.lower_bound({ p0, 0 }); it != sp.end() && it->first < p1; ) {
++            const uint32_t i = it->second;
++            ++it; // advance first: seq_rm(i, seq_id) erases this entry from sp
++
++            if (seq_rm(i, seq_id)) {
++                res = std::min(res, i);
++            }
++        }
++
++        return res;
++    }
++
+     // return true if the cell becomes empty (i.e. it did not contain seq_id before the call)
+     bool seq_keep(uint32_t i, llama_seq_id seq_id) {
+         assert(i < pos.size());
+diff --git a/src/llama-memory-recurrent.cpp b/src/llama-memory-recurrent.cpp
+index 9213ac1dc..2bb8ef18c 100644
+--- a/src/llama-memory-recurrent.cpp
++++ b/src/llama-memory-recurrent.cpp
+@@ -666,7 +666,7 @@ bool llama_memory_recurrent::find_slot(const llama_ubatch & ubatch) {
+         const int32_t cell_id = s + min;
+         auto & cell = cells[cell_id];
+ 
+-        if (cell.pos >= 0 && last_pos != cell.pos + (llama_pos) n_seq_tokens) {
++        if (ubatch.n_pos == 1 && cell.pos >= 0 && last_pos != cell.pos + (llama_pos) n_seq_tokens) {
+             // What should happen when the pos backtracks or skips a value?
+             // Clearing the state mid-batch would require special-casing which isn't done.
+             LLAMA_LOG_WARN("%s: non-consecutive token position %d after %d for sequence %d with %u new tokens\n",
+diff --git a/src/llama-memory.cpp b/src/llama-memory.cpp
+index 042aab608..80099e76a 100644
+--- a/src/llama-memory.cpp
++++ b/src/llama-memory.cpp
+@@ -112,9 +112,9 @@ std::map<ggml_backend_buffer_type_t, size_t> llama_memory_bufs::memory_breakdown
+     return ret;
+ }
+ 
+-// collects the buffers of the tensors that a state write visits, without keeping the data
+-struct llama_memory_buffers_writer : public llama_io_write_i {
+-    std::set<ggml_backend_buffer_t> buffers;
++// collects the tensors that a state write visits, without keeping the data
++struct llama_memory_tensors_writer : public llama_io_write_i {
++    std::set<ggml_tensor *> tensors;
+     size_t size = 0;
+ 
+     void write(const void *, size_t n) override {
+@@ -122,7 +122,7 @@ struct llama_memory_buffers_writer : public llama_io_write_i {
+     }
+ 
+     void write_tensor(ggml_tensor * tensor, size_t, size_t n) override {
+-        buffers.insert(tensor->buffer);
++        tensors.insert(tensor);
+         size += n;
+     }
+ 
+@@ -132,13 +132,22 @@ struct llama_memory_buffers_writer : public llama_io_write_i {
+ };
+ 
+ std::vector<ggml_backend_buffer_t> llama_memory_get_buffers(const llama_memory_t mem) {
++    std::set<ggml_backend_buffer_t> buffers;
++    for (ggml_tensor * tensor : llama_memory_get_tensors(mem)) {
++        buffers.insert(tensor->buffer);
++    }
++
++    return std::vector<ggml_backend_buffer_t>(buffers.begin(), buffers.end());
++}
++
++std::vector<ggml_tensor *> llama_memory_get_tensors(const llama_memory_t mem) {
+     if (mem == nullptr) {
+         return {};
+     }
+ 
+-    llama_memory_buffers_writer writer;
++    llama_memory_tensors_writer writer;
+ 
+     mem->state_write(writer);
+ 
+-    return std::vector<ggml_backend_buffer_t>(writer.buffers.begin(), writer.buffers.end());
++    return std::vector<ggml_tensor *>(writer.tensors.begin(), writer.tensors.end());
+ }
+diff --git a/src/llama-mmap.cpp b/src/llama-mmap.cpp
+index 0997905fe..6431d112d 100644
+--- a/src/llama-mmap.cpp
++++ b/src/llama-mmap.cpp
+@@ -513,7 +513,7 @@ struct llama_file::impl {
+                     if (errno == EINTR) {
+                         continue;
+                     }
+-                    if (errno == EFAULT || errno == EINVAL) {
++                    if (errno == EFAULT || errno == EINVAL || errno == EIO) {
+                         LLAMA_LOG_WARN("%s: file '%s' falling back to buffered I/O due to %s\n",
+                                        __func__, fname.c_str(), strerror(errno));
+                         const size_t read_offset = tell();
+@@ -522,7 +522,7 @@ struct llama_file::impl {
+                         alignment = 1;
+                         init_fp("rb");
+                         seek(read_offset, SEEK_SET);
+-                        read_raw_unsafe(ptr, len);
++                        read_raw_unsafe(static_cast<char *>(ptr) + bytes_read, to_read);
+                         return;
+                     }
+                     throw std::runtime_error(format("read error: %s", strerror(errno)));
+diff --git a/src/llama-model-saver.cpp b/src/llama-model-saver.cpp
+index f521503ab..57a9c6658 100644
+--- a/src/llama-model-saver.cpp
++++ b/src/llama-model-saver.cpp
+@@ -560,6 +560,7 @@ void llama_model_saver::add_tensors_from_model() {
+     add_tensor(model->hc_head_base);
+     add_tensor(model->hc_head_scale);
+     add_tensor(model->per_layer_tok_embd);
++    add_tensor(model->per_layer_tok_embd_s);
+     add_tensor(model->per_layer_model_proj);
+     add_tensor(model->per_layer_proj_norm);
+     add_tensor(model->value_embd);
+diff --git a/src/llama-model.cpp b/src/llama-model.cpp
+index 46046aa14..856bdf7cc 100644
+--- a/src/llama-model.cpp
++++ b/src/llama-model.cpp
+@@ -2207,6 +2207,10 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
+         }
+     }
+ 
++    if (per_layer_tok_embd_s) {
++        ggml_backend_tensor_get(per_layer_tok_embd_s, &per_layer_tok_embd_scale, 0, sizeof(per_layer_tok_embd_scale));
++    }
++
+     load_tensors_hadamard();
+ 
+     return true;
+diff --git a/src/llama-model.h b/src/llama-model.h
+index 942a3a32b..b2b8477e3 100644
+--- a/src/llama-model.h
++++ b/src/llama-model.h
+@@ -866,6 +866,8 @@ struct llama_model {
+     struct ggml_tensor * altup_proj           = nullptr;
+     struct ggml_tensor * altup_unembd_proj    = nullptr;
+     struct ggml_tensor * per_layer_tok_embd   = nullptr;
++    struct ggml_tensor * per_layer_tok_embd_s = nullptr; // optional scalar scale of an FP8 table
++    float per_layer_tok_embd_scale            = 1.0f;    // value of per_layer_tok_embd_s, read after load
+ 
+     // limite value embeddings
+     struct ggml_tensor * value_embd = nullptr;
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 80a2ed713..984fd07b1 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -3009,7 +3009,7 @@ struct llama_moe_cache::impl {
+         GGML_ASSERT(lookup != nullptr);
+ 
+         // the selected experts must be computed in an earlier split
+-        // the scheduler starts a new split at the lookup because it reads a host weight, but only if the split already has inputs
++        // the scheduler starts a new split at the lookup because it reads a host weight, unless the lookup is the first node of its split
+         const ggml_tensor * sel = lookup->src[1];
+         for (int i = 0; i < n_nodes; ++i) {
+             const ggml_tensor * node = ggml_graph_node(graph, i);
+diff --git a/src/models/deepseek4.cpp b/src/models/deepseek4.cpp
+index 0d5d9a469..69ebe5a60 100644
+--- a/src/models/deepseek4.cpp
++++ b/src/models/deepseek4.cpp
+@@ -200,7 +200,7 @@ static ggml_tensor * dsv4_view_2d(
+ 
+ static ggml_tensor * dsv4_append_zero_row(ggml_context * ctx, ggml_tensor * t, bool neg_inf) {
+     ggml_tensor * row = ggml_view_1d(ctx, t, t->ne[0], 0);
+-    row = neg_inf ? ggml_scale_bias(ctx, row, 0.0f, -INFINITY) : ggml_scale(ctx, row, 0.0f);
++    row = ggml_fill(ctx, row, neg_inf ? -INFINITY : 0.0f);
+     row = ggml_reshape_2d(ctx, row, t->ne[0], 1);
+ 
+     return ggml_concat(ctx, t, row, 1);
+diff --git a/src/models/qwen4exp.cpp b/src/models/qwen4exp.cpp
+index 181e4dca4..7bf9b3fee 100644
+--- a/src/models/qwen4exp.cpp
++++ b/src/models/qwen4exp.cpp
+@@ -215,6 +215,11 @@ void llama_model_qwen4exp::load_arch_tensors(llama_model_loader & ml) {
+ 
+         per_layer_tok_embd = create_tensor(tn(LLM_TENSOR_PER_LAYER_TOKEN_EMBD, "weight"),
+                                            { hparams.ple_head_dim, ple_rows }, TENSOR_READ_LAZY);
++        // an FP8 table keeps its checkpoint bytes, so its per-tensor scale is applied after the gather
++        per_layer_tok_embd_s = create_tensor(tn(LLM_TENSOR_PER_LAYER_TOKEN_EMBD, "scale"), { 1 }, TENSOR_NOT_REQUIRED);
++        if (per_layer_tok_embd_s && per_layer_tok_embd_s->type != GGML_TYPE_F32) {
++            throw std::runtime_error(format("%s must be F32", per_layer_tok_embd_s->name));
++        }
+     }
+ 
+     auto load_block = [&](int il, int flags) {
+@@ -1408,6 +1413,9 @@ ggml_tensor * llama_model_qwen4exp::graph::build_inp_ple(
+ 
+     // gather then flatten the heads: get_rows lays the head dimension out slowest, as the reference does
+     ggml_tensor * emb = ggml_get_rows(ctx0, model.per_layer_tok_embd, rows);
++    if (model.per_layer_tok_embd_s) {
++        emb = ggml_scale(ctx0, emb, model.per_layer_tok_embd_scale);
++    }
+     emb = ggml_reshape_2d(ctx0, emb, hparams.ple_head_dim * n_heads, n_tokens);
+     cb(emb, "ple_embd", -1);
+ 
+diff --git a/tests/llama-context/test-runner.cpp b/tests/llama-context/test-runner.cpp
+index 6f38d12f3..15a205be5 100644
+--- a/tests/llama-context/test-runner.cpp
++++ b/tests/llama-context/test-runner.cpp
+@@ -72,8 +72,9 @@ std::vector<case_run> run_cases(model_run & mr, const std::vector<const ctx_test
+             } else {
+                 // the recurrent cases are also run against a cache pre-filled with a known
+                 // pattern, so that a restore reading cells it never wrote cannot pass
++                // with 0xff repeated every float of the state becomes NaN to test that the next sequence is not affected
+ 
+-                for (const uint8_t fill : { 0, 0x3e }) {
++                for (const uint8_t fill : { 0, 0x3e, 0xff }) {
+                     TLOG_INF("(fill 0x%02x)\n", fill);
+ 
+                     mr.fill = fill;
+diff --git a/tests/llama-context/test-util.cpp b/tests/llama-context/test-util.cpp
+index b67e2a03b..e95ee7feb 100644
+--- a/tests/llama-context/test-util.cpp
++++ b/tests/llama-context/test-util.cpp
+@@ -2,7 +2,7 @@
+ 
+ #include "test-log.h"
+ 
+-#include "../../src/llama-ext.h" // llama_memory_get_buffers, llama_arch_from_string
++#include "../../src/llama-ext.h" // llama_memory_get_buffers, llama_memory_get_tensors, llama_arch_from_string
+ 
+ #include "common.h"
+ 
+@@ -10,6 +10,7 @@
+ #include <cstdio>
+ #include <cstring>
+ #include <limits>
++#include <regex>
+ #include <stdexcept>
+ 
+ const double NMSE_THRESHOLD = 1e-5;
+@@ -297,6 +298,13 @@ bool corrupt_state(std::vector<uint8_t> & data) {
+ // context
+ //
+ 
++// the recurrent state tensors: the conv and ssm rows of llama_memory_recurrent and the DeepSeek V4 compressor state
++static bool is_state_tensor(const ggml_tensor * tensor) {
++    static const std::regex re_state("^cache_(r|s|ple_r)_l[0-9]+$|_state_");
++
++    return std::regex_search(tensor->name, re_state);
++}
++
+ // fill the buffers of the cache before a restore - a restore that reads cells it never wrote
+ // then produces garbage instead of silently passing
+ llama_context_ptr init_ctx(llama_model * model, llama_context_params cparams, uint8_t fill) {
+@@ -313,11 +321,29 @@ llama_context_ptr init_ctx(llama_model * model, llama_context_params cparams, ui
+     llama_synchronize(ctx.get());
+ 
+     const auto buffers = llama_memory_get_buffers(llama_get_memory(ctx.get()));
++    const auto tensors = llama_memory_get_tensors(llama_get_memory(ctx.get()));
+     llama_memory_clear(llama_get_memory(ctx.get()), true);
+     if (buffers.empty()) {
+         TLOG_ERR("%s: no cache buffers found\n", __func__);
+         return nullptr;
+     }
++
++    // the KV cache only masks the free cells, so NaN there would corrupt the output
++    if (fill == 0xff) {
++        size_t n_state = 0;
++        for (ggml_tensor * tensor : tensors) {
++            if (is_state_tensor(tensor)) {
++                ggml_backend_tensor_memset(tensor, fill, 0, ggml_nbytes(tensor));
++                n_state++;
++            }
++        }
++        if (n_state == 0) {
++            TLOG_ERR("%s: no state tensors found\n", __func__);
++            return nullptr;
++        }
++        return ctx;
++    }
++
+     for (auto * buffer : buffers) {
+         ggml_backend_buffer_clear(buffer, fill);
+     }
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index 3abdff5fd..9b82d2385 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -11795,6 +11795,9 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+     // > 2^31-element dst (8.9 GB), about 45 GB peak memory. Too large to be enabled by default.
+     // kernel_mul_mm dst offset of the last batch is past INT32_MAX: rows 0-31 use full tiles, rows 32-39 use edge tiles.
+     test_cases.emplace_back(new test_mul_mat(GGML_TYPE_F32, GGML_TYPE_F32, 1048576, 40, 64, {1, 1}, {53, 1}));
++    // CUDA mul_mat_q: > 2^31-element dst (8.9 GB), the dst offset of column tiles starting past column 8648 does not fit in 32 bits
++    // (same shape class as a 248k-vocab output head with a 16k ubatch of outputs)
++    test_cases.emplace_back(new test_mul_mat(GGML_TYPE_Q8_0, GGML_TYPE_F32, 248320, 8960, 32, {1, 1}, {1, 1}));
+ 
+     // kernel_mul_mm_id: the index of tokens 32768-33791 does not fit in 16 bits (about 0.3 GB peak memory).
+     test_cases.emplace_back(new test_mul_mat_id(GGML_TYPE_F32, GGML_TYPE_F32, 4, 2, false, 64, 33792, 64));
+@@ -12197,6 +12200,9 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+         test_cases.emplace_back(new test_mul_mat_id(GGML_TYPE_BF16, GGML_TYPE_F32, 16, 16, b, 50, 200, 64));
+     }
+ 
++    // One very large one to trigger a code path in CUDA requiring >1 pass over expert IDs due to shared memory limits:
++    test_cases.emplace_back(new test_mul_mat_id(GGML_TYPE_Q8_0, GGML_TYPE_F32, 16, 16, false, 32, 65536, 256));
++
+     // For issue 27873
+     test_cases.emplace_back(new test_mul_mat_id(GGML_TYPE_IQ2_XXS, GGML_TYPE_F32, 1, 1, false, 1, 8192, 4096));
+ 
+@@ -12227,8 +12233,6 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+     test_cases.emplace_back(new test_mul_mat_id(GGML_TYPE_TQ1_0, GGML_TYPE_F32, 28, 10, false, 1024, 1, 4096));
+     test_cases.emplace_back(new test_mul_mat_id(GGML_TYPE_TQ1_0, GGML_TYPE_F32, 128, 8, false, 1024, 1, 2048));
+ 
+-    // TODO: disabled until CUDA backend support is added [TAG_MUL_MAT_ID_DUPLICATE_ID]
+-#if 0
+     // repeated expert ids within a row
+     for (ggml_type ta : {GGML_TYPE_F16, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0}) {
+         for (int n : {9, 16, 33, 64}) {
+@@ -12240,7 +12244,6 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+         test_cases.emplace_back(new test_mul_mat_id_dup(ta, GGML_TYPE_F32, 1025, 10, false, 64, 33, 256, 0, true));
+         test_cases.emplace_back(new test_mul_mat_id_dup(ta, GGML_TYPE_F32, 2050, 10, true, 64, 33, 256));
+     }
+-#endif
+ 
+     for (ggml_type type_a : all_types) {
+         test_cases.emplace_back(new test_mul_mat_id(type_a, GGML_TYPE_F32, 4, 2, false, 64, 16, 3*ggml_blck_size(type_a)));
+diff --git a/tests/test-kv-cache.cpp b/tests/test-kv-cache.cpp
+index 6089c170f..6de2010e3 100644
+--- a/tests/test-kv-cache.cpp
++++ b/tests/test-kv-cache.cpp
+@@ -3,6 +3,7 @@
+ 
+ #include <numeric>
+ #include <string>
++#include <vector>
+ 
+ static void init_model(llama_model & model, uint32_t n_layer) {
+     model.hparams = {};
+@@ -100,6 +101,75 @@ int main() {
+         }
+     }
+ 
++    // seq_rm removes [p0, p1) of one sequence, a negative bound is open
++    {
++        std::unique_ptr<llama_model> model(llama_model_create(LLM_ARCH_LLAMA, llama_model_default_params()));
++        init_model(*model, 1);
++
++        llama_kv_cache kv(*model, false, model->hparams, GGML_TYPE_F16, GGML_TYPE_F16,
++                false, false, true, 32, 2, 0, LLAMA_SWA_TYPE_NONE, nullptr, nullptr, nullptr, nullptr);
++
++        // returns the first cell that takes the tokens
++        auto add = [&](llama_seq_id seq_id, llama_pos p0, uint32_t n) {
++            std::vector<llama_token>    token(n, 1);
++            std::vector<llama_pos>      pos(n);
++            std::vector<int32_t>        n_seq_id(n, 1);
++            std::vector<llama_seq_id *> seq_ids(n, &seq_id);
++            std::iota(pos.begin(), pos.end(), p0);
++
++            llama_ubatch ubatch = {};
++            ubatch.n_tokens     = n;
++            ubatch.n_seq_tokens = n;
++            ubatch.n_seqs       = 1;
++            ubatch.n_seqs_unq   = 1;
++            ubatch.n_pos        = 1;
++            ubatch.token        = token.data();
++            ubatch.pos          = pos.data();
++            ubatch.n_seq_id     = n_seq_id.data();
++            ubatch.seq_id       = seq_ids.data();
++            ubatch.seq_id_unq   = &seq_id;
++
++            const auto sinfo = kv.find_slot(ubatch, false);
++            GGML_ASSERT(!sinfo.empty());
++            kv.apply_ubatch(sinfo, ubatch);
++
++            return sinfo.head();
++        };
++
++        GGML_ASSERT(add(0, 0, 8) == 0);
++        GGML_ASSERT(add(1, 0, 4) == 8);
++
++        // the tail of sequence 0, the other sequence keeps its cells
++        GGML_ASSERT(kv.seq_rm(0, 5, -1));
++        GGML_ASSERT(kv.seq_pos_min(0) == 0 && kv.seq_pos_max(0) == 4);
++        GGML_ASSERT(kv.seq_pos_min(1) == 0 && kv.seq_pos_max(1) == 3);
++
++        // the next tokens go to the lowest freed cell
++        GGML_ASSERT(add(0, 5, 2) == 5);
++
++        // p1 is not part of the range
++        GGML_ASSERT(kv.seq_rm(0, -1, 2));
++        GGML_ASSERT(kv.seq_pos_min(0) == 2 && kv.seq_pos_max(0) == 6);
++        GGML_ASSERT(kv.seq_rm(0, 6, 6));
++        GGML_ASSERT(kv.seq_pos_max(0) == 6);
++
++        // freed cells are taken in cell order, so a higher position can sit in a lower cell
++        GGML_ASSERT(add(0, 7, 3) == 0);
++        GGML_ASSERT(kv.seq_rm(0, 6, -1));
++        GGML_ASSERT(add(0, 6, 1) == 0);
++
++        // a cell shared with another sequence stays for that sequence
++        kv.seq_cp(0, 1, 5, -1);
++        GGML_ASSERT(kv.seq_rm(0, 5, -1));
++        GGML_ASSERT(kv.seq_pos_max(0) == 4 && kv.seq_pos_max(1) == 6);
++
++        // every cell of a repeated position is removed
++        add(0, 5, 1);
++        add(0, 5, 1);
++        GGML_ASSERT(kv.seq_rm(0, 5, 6));
++        GGML_ASSERT(kv.seq_pos_max(0) == 4);
++    }
++
+     llama_backend_free();
+     return 0;
+ }

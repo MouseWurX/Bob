@@ -38,7 +38,7 @@ check('apuHoldbackGB stays last', SETTING_KEYS[SETTING_KEYS.length - 1] === 'apu
 {
   const v = harnessView(mergeSettings({}, {}));
   const CHOICES = { amnesiaMade: 'keep', amnesiaAutoOff: 0 }; // Amnesia mode's two choices, not switches
-  check('all off on a new Bob', HARNESS_KEYS.every((k) => (k in CHOICES ? v[k] === CHOICES[k] : typeof v[k] === 'object' ? v[k].on === false : v[k] === false)), JSON.stringify(v));
+  check('all off on a new Bob but the Per-chat engine cache (lossless, on unless turned off, Nov 24)', HARNESS_KEYS.every((k) => (k === 'chatPlaces' ? v[k] === true : k in CHOICES ? v[k] === CHOICES[k] : typeof v[k] === 'object' ? v[k].on === false : v[k] === false)), JSON.stringify(v));
   check('quiet hours start 22:00 to 07:00', v.quietHours.from === '22:00' && v.quietHours.to === '07:00');
   check('the shortcut starts as Ctrl+Shift+Space', v.globalAsk.key === 'CommandOrControl+Shift+Space' && v.askKeys.length === ASK_KEYS.length);
 }
@@ -324,7 +324,7 @@ check('Bob\'s settings readout names them', /Quiet hours/.test(harnessNow({})) &
 {
   check('three panels, each in one group and on one card', ['adv-health', 'adv-quiet', 'adv-chatx'].every((id) => GROUPS.filter(([, ids]) => ids.includes(id)).length === 1 && CARDS.filter((c) => c.topics.includes(id)).length === 1));
   const panels = ['health', 'quiet', 'chats'].map((p) => harnessHtml(p, harnessView({}), []));
-  check('no switch is ticked on a new Bob', panels.every((h) => !/data-hx="\w+" checked/.test(h)));
+  check('no switch is ticked on a new Bob but the Per-chat engine cache (on unless turned off, Nov 24)', panels.every((h) => !/data-hx="(?!chatPlaces")\w+" checked/.test(h)) && /data-hx="chatPlaces" checked/.test(panels.join('')));
   check('times and the key can be picked before switching on', /data-hx-time="from"/.test(panels[1]) && /data-hx-key/.test(panels[1]));
   const plain = (s) => String(s).replace(/<[^>]+>/g, ' ').replace(/\\'/g, "'").replace(/\s+/g, ' ').toLowerCase();
   const help = plain(HELP.map((e) => `${e.title} ${e.html}`).join(' '));

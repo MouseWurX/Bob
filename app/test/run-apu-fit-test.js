@@ -68,7 +68,7 @@ check(!r.ok && typeof r.line === 'string', 'a brain that fits no way is refused 
   check(memGrowCtx(b, 'qwen3-4b', { want: 8192, ctx: 8192 }, 7000, { freeMem: 6 * GB }) === 0 && memGrowCtx(b, 'x', null, 7000) === 0, 'already at the size asked for, or never shortened: nothing to grow'); }
 { const src = read('src/brain-asking.js');
   check(/memCut \|\|= new Map\(\)\)\.set\(model/.test(src) && /cut\.want === fit && room\.ok && room\.needGB === undefined\) return cut\.ctx/.test(src), 'a brain loaded short stays short on the next reply (it never jumps back to the full size that ran out of memory)');
-  check(/memGrowCtx\(this, opts\.model, cut, tokens\)/.test(src) && src.indexOf('memGrowCtx(this') < src.indexOf('const fitted = fitContext(opts.messages'), 'the chat memory grows before the chat is trimmed to fit'); }
+  check(/memGrowCtx\(this, opts\.model, cut, tokens\)/.test(src) && src.indexOf('memGrowCtx(this') < src.indexOf('fitted = fitContext(opts.messages'), 'the chat memory grows before the chat is trimmed to fit'); }
 
 { const t = tooLongError(new Error('llama-server returned 400: request (12492 tokens) exceeds the available context size (8192 tokens)'), 8192);
   check(t.code === 'too_long' && /about 12492 tokens, with room for 8192/.test(t.message) && /shorter paste/.test(t.message), 'a paste bigger than the chat memory says so in plain words (it used to be an empty reply)', t.message);
