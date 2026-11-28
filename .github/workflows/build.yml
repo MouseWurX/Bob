@@ -228,6 +228,35 @@ jobs:
         if: ${{ always() && env.MAC_KEYCHAIN != '' }}
         run: security delete-keychain "$MAC_KEYCHAIN" || true
 
+  llama-source:
+    # Nov 26: the engine's source on every Bob release, so anyone can check what we changed: llama.cpp at
+    # bob.bundledLlamaTag unchanged with our code map of it, and lamplight/ with our patches, ENGINE-MAP.md and the
+    # source with every patch applied (installer/make-llama-source.sh, docs/llama-cpp-map.md). Like the Mac zip, it is
+    # added to the release the Windows job made, and a failure here never holds that release back.
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: app
+    permissions:
+      contents: write # only used to add the source file to the release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Make the source file
+        run: bash installer/make-llama-source.sh dist
+      - name: Add to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="$GITHUB_REF_NAME"; else v="v$(node -p "require('./package.json').version")"; fi
+          for i in $(seq 1 60); do gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 && break; sleep 30; done
+          if ! gh release view "$v" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then echo "Release $v didn't appear, so the source file isn't added."; exit 0; fi
+          gh release upload "$v" dist/Bob-*-llama.cpp-*-source.tar.gz dist/Bob-*-llama.cpp-*-source.tar.gz.sha256 --clobber -R "$GITHUB_REPOSITORY"
+
   signed-build:
     # Off until SignPath Foundation has approved the project and the settings below are in place:
     #   repository variable SIGNPATH_ENABLED = true

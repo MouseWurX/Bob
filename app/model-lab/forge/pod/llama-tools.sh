@@ -2,11 +2,14 @@
 # Gets llama.cpp's converter (python) and llama-quantize (binary) ready in $1 (the work dir), tag $2.
 # Never fatal: writes $1/llama-ready or $1/llama-failed. The forge waits for one of them before the export step.
 W=$1; TAG=${2:-b11669}; L=$W/llama.cpp; B=$L/build/bin
+# Nov 26: our saved copy of llama.cpp (pre-release llama.cpp-<tag> on MouseWurX/Bob) first, ggml-org second, so a
+# rental still works if ggml-org's copy is gone. Same files, same names (app/docs/llama-cpp-map.md).
+OURS=https://github.com/MouseWurX/Bob/releases/download/llama.cpp-$TAG; UP=https://github.com/ggml-org/llama.cpp
 fetch() { python3 -c "import sys,urllib.request,shutil; r=urllib.request.Request(sys.argv[1], headers={'User-Agent':'bob-forge/1.0'}); shutil.copyfileobj(urllib.request.urlopen(r, timeout=120), open(sys.argv[2],'wb'))" "$1" "$2"; }
 works() { ( cd "$(dirname "$1")" && LD_LIBRARY_PATH="$(dirname "$1"):${LD_LIBRARY_PATH:-}" "$1" 2>&1 | head -5 | grep -qi "usage" ); }
 rm -f $W/llama-ready $W/llama-failed
 if [ ! -f $L/convert_hf_to_gguf.py ]; then
-  fetch "https://github.com/ggml-org/llama.cpp/archive/refs/tags/$TAG.tar.gz" $W/llsrc.tgz || { echo "source download failed"; touch $W/llama-failed; exit 1; }
+  fetch "$OURS/llama.cpp-$TAG-src.tar.gz" $W/llsrc.tgz 2>/dev/null || fetch "$UP/archive/refs/tags/$TAG.tar.gz" $W/llsrc.tgz || { echo "source download failed"; touch $W/llama-failed; exit 1; }
   mkdir -p $L && tar xzf $W/llsrc.tgz -C $L --strip-components=1 --no-same-owner
 fi
 [ -f $L/convert_hf_to_gguf.py ] || { echo "no converter in the source"; touch $W/llama-failed; exit 1; }
@@ -16,7 +19,7 @@ python3 -c "import sys; sys.path.insert(0, '$L/gguf-py'); import gguf; print('gg
 mkdir -p $B
 if ! works $B/llama-quantize; then
   # 1) prebuilt binaries
-  if fetch "https://github.com/ggml-org/llama.cpp/releases/download/$TAG/llama-$TAG-bin-ubuntu-x64.tar.gz" $W/llbin.tgz; then
+  if fetch "$OURS/llama-$TAG-bin-ubuntu-x64.tar.gz" $W/llbin.tgz 2>/dev/null || fetch "$UP/releases/download/$TAG/llama-$TAG-bin-ubuntu-x64.tar.gz" $W/llbin.tgz; then
     mkdir -p $W/llbin && tar xzf $W/llbin.tgz -C $W/llbin --no-same-owner
     Q=$(find $W/llbin -name llama-quantize -type f | head -1)
     if [ -n "$Q" ]; then cp "$Q" $B/; find $W/llbin -name '*.so*' -exec cp {} $B/ \; ; chmod +x $B/llama-quantize; fi
@@ -35,7 +38,7 @@ if ! works $B/llama-quantize; then
 fi
 # a work dir from an older run has llama-quantize but not llama-gguf-split: get it from the prebuilt download (never fatal)
 if [ ! -x $B/llama-gguf-split ]; then
-  [ -f $W/llbin.tgz ] || fetch "https://github.com/ggml-org/llama.cpp/releases/download/$TAG/llama-$TAG-bin-ubuntu-x64.tar.gz" $W/llbin.tgz
+  [ -f $W/llbin.tgz ] || fetch "$OURS/llama-$TAG-bin-ubuntu-x64.tar.gz" $W/llbin.tgz 2>/dev/null || fetch "$UP/releases/download/$TAG/llama-$TAG-bin-ubuntu-x64.tar.gz" $W/llbin.tgz
   mkdir -p $W/llbin && tar xzf $W/llbin.tgz -C $W/llbin --no-same-owner 2>/dev/null
   G=$(find $W/llbin -name llama-gguf-split -type f | head -1); [ -n "$G" ] && cp "$G" $B/ && chmod +x $B/llama-gguf-split
   for so in $(find $W/llbin -name '*.so*'); do [ -e $B/$(basename $so) ] || cp $so $B/; done
