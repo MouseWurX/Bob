@@ -481,7 +481,7 @@ Every brain and helper Bob can download from his own catalogue, made from [app/c
 <!-- models:start -->
 <!-- Written by installer/make-model-list.js from app/catalog.json. Don't edit by hand: change the catalogue and run it again. -->
 
-Bob's catalogue has **97 brains** and **19 helpers** for pictures, video, music, voices and memory. Each one is a pinned file, checked against its sha256 when it downloads. **Fits** is the smallest hardware tier it's sized for ([the tiers](#set-up-for-your-hardware)). **Tried in our lab** (14 brains) means it ran on our own PCs before Bob would suggest it. Everything else is listed but never suggested until it's tried. **Size** is the download.
+Bob's catalogue has **97 brains** and **19 helpers** for pictures, video, music, voices and memory. Each one is a pinned file, checked against its sha256 when it downloads. **Fits** is the smallest hardware tier it's sized for ([the tiers](#set-up-for-your-hardware)). **Tried in our lab** (15 brains) means it ran on our own PCs before Bob would suggest it. Everything else is listed but never suggested until it's tried. **Size** is the download.
 
 <details>
 <summary><b>Brains</b> (64)</summary>
@@ -594,7 +594,7 @@ Community builds with the refusals taken out (heretic, abliterated and the like)
 | Qwen3.6 27B Heretic | Q4_K_M | 18.1 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Muse Glimmer 30B Abliterated | Q4_K_M | 18.3 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Gemma 4 31B Heretic | Q4_K_S | 18.6 GB | 24 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
-| Qwen3.8 Flash Next Abliterated (huihui) | UD-Q4_K_XL | 111.3 GB | 112 GB of graphics memory (several cards or a rental) | Qwen community licence (a business that sells AI as a service or an AI work assistant needs its own licence from Qwen) (limits commercial use: read it first) | Unproven in our lab, as we have yet to test |
+| Qwen3.8 Flash Next Abliterated (huihui) | UD-Q4_K_XL | 111.3 GB | 112 GB of graphics memory (several cards or a rental) | Qwen community licence (a business that sells AI as a service or an AI work assistant needs its own licence from Qwen) (limits commercial use: read it first) | Tried in our lab |
 
 </details>
 

@@ -4678,7 +4678,7 @@
       "jobs": ["deep", "bob", "reviewer", "tinker", "office", "scout"],
       "name": "Qwen3.8 Flash Next Abliterated (huihui)",
       "published": "2026-10-11",
-      "what": "Qwen3.8 Flash Next with the refusals cut out by huihui-ai (their second try, which leaves the experts alone). 180B that works a small part at a time, too big for one home PC, so it's for Rented brains. Text only here. Not tried with Bob yet. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "what": "Qwen3.8 Flash Next with the refusals cut out by huihui-ai (their second try, which leaves the experts alone). 180B that works a small part at a time, too big for one home PC, so it's for Rented brains. Text only here. Tried on Bob's own tool jobs on a rented card. Answers without refusing, so what it says is on you; a little rougher than the original.",
       "sizeGB": 111.3,
       "vramGB": 112,
       "params": 180,
@@ -4686,7 +4686,7 @@
       "license": "Qwen community licence (a business that sells AI as a service or an AI work assistant needs its own licence from Qwen)",
       "commercial": false,
       "pick": "optional",
-      "trial": true,
+      "raced": "Bob's own held-out jobs on a rented H200 (2026-11-27, Lamplight 46 + 0123-0125): 57 of 65 passed (inbox 22 of 28, office 14 of 14, repo 12 of 12, web 9 of 11), no tool-call slips, 1 harmful inbox step; writes about 103 tok/s. In the same run stock Qwen3.6 35B-A3B passed 41 of 65.",
       "thinks": true,
       "naughty": true,
       "community": {
