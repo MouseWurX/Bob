@@ -7157,10 +7157,10 @@ index 0000000..79d0aa9
 +}
 diff --git a/ggml/src/ggml-cuda/trellis.cu b/ggml/src/ggml-cuda/trellis.cu
 new file mode 100644
-index 0000000..c826fb8
+index 0000000..31addcf
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/trellis.cu
-@@ -0,0 +1,682 @@
+@@ -0,0 +1,687 @@
 +// trellis-coded linear (GGML_OP_TRELLIS, see ggml_trellis_mul_mat) on CUDA through libtrellis.
 +// Steps: optional input gather, input transform (fused into the GEMV for 128-point blocks), tq_gemv for up to 64 columns or tq_gemm above, the output side and post, the optional output gather.
 +#include "trellis.cuh"
@@ -7233,17 +7233,22 @@ index 0000000..c826fb8
 +// Lamplight 0136: from this many token rows the int8 tensor-core product (tq_gemm_i8); 0 (the default): never
 +static int trellis_i8_min() {
 +    static const int m = [] {
++        // on from 65 tokens (the owner, Nov 28, after runs 9-12 on an RTX 4090: 128 tokens 94-113 us against 105-127
++        // for plain files of the same size, 512 tokens 271-334 against 383-486; at 64 and under it equals the GEMV);
++        // LAMPLIGHT_TRELLIS_CUDA_I8_MIN=0 turns it off
 +        const char * e = getenv("LAMPLIGHT_TRELLIS_CUDA_I8_MIN");
-+        return e != nullptr ? std::max(0, atoi(e)) : 0;
++        return e != nullptr ? std::max(0, atoi(e)) : 65;
 +    }();
 +    return m;
 +}
 +
-+// Lamplight 0136: coded experts with the picks kept on the card (LAMPLIGHT_TRELLIS_CUDA_EXPERTS=card; else the host path)
++// Lamplight 0136: coded experts with the picks kept on the card, on by default (the owner, Nov 28, after runs 9-12:
++// 5x the host path at one token, level with plain experts at 16-64 tokens, faster at 128-512);
++// LAMPLIGHT_TRELLIS_CUDA_EXPERTS=host takes the old host path
 +static bool trellis_experts_card() {
 +    static const bool on = [] {
 +        const char * e = getenv("LAMPLIGHT_TRELLIS_CUDA_EXPERTS");
-+        return e != nullptr && std::string(e) == "card";
++        return e == nullptr || std::string(e) != "host";
 +    }();
 +    return on;
 +}
@@ -7409,7 +7414,7 @@ index 0000000..c826fb8
 +    }
 +    const float * gpost = o.gemv_post();
 +    const int i8 = trellis_i8_min();
-+    if (i8 > 0 && T >= i8) {
++    if (i8 > 0 && T >= i8 && K <= 49152) {
 +        // Lamplight 0136: the int8 tensor-core form of tq_gemm (off unless LAMPLIGHT_TRELLIS_CUDA_I8_MIN is set)
 +        const size_t wsb = tq_gemm_i8_workspace_bytes(K, N, (int) T, 0);
 +        ggml_cuda_pool_alloc<char> wbuf(ctx.pool(), wsb + 256);
@@ -7741,7 +7746,7 @@ index 0000000..c826fb8
 +        return false;
 +    }
 +    const trellis_op o(op);
-+    if (w->ne[0] % 128 != 0 || w->ne[1] % 16 != 0 || w->ne[2] > 4096 || ids->ne[0] * ids->ne[1] > (1 << 30) ||
++    if (w->ne[0] % 128 != 0 || w->ne[0] > 49152 || w->ne[1] % 16 != 0 || w->ne[2] > 4096 || ids->ne[0] * ids->ne[1] > (1 << 30) ||
 +        (o.cols_kind != 0 && !o.in_fused()) || (o.rows_kind != 0 && !o.out_fused())) {
 +        return false;
 +    }
