@@ -1009,3 +1009,28 @@ Written Nov 22 before the borrowing work (scope: rebuild Avalon's ideas inside B
 - **Upstream files:** `ggml/src/ggml-backend.cpp`, `src/llama-context.cpp`.
 - **Re-check on rebase:** pass 5's copy creation and `split->inputs` growth; every reader of a split input's copy (`tensor_copy(input, ...)` on a split input should go through `ggml_backend_sched_input_copy`); drop the llama-context part once upstream copies only each pass's experts.
 - **Tests:** `engine/tests/loop-copy-per-pass.py` 24 of 24 (Nov 27, cloud, the stand-in card, the 8-layer tiny looped brain of moe-loops.py, layers 2 to 5 three times): the same words and odds with the switch off and on with experts in RAM, every layer in RAM, steps of 8 and 64 and with the MoE cache; the card's working memory at step 64 15.66 -> 3.66 MiB (the 12 MiB is the 4 looped layers' experts), at 512 43.01 -> 31.01 MiB, every layer in RAM 14.44 -> 3.44 MiB; a brain without a loop: the same words and the same working memory. moe-loops.py still all pass. Laptop (Nov 28, kit v5, Windows, RTX 3060 Laptop 6 GB, Inkling 2 Mini UD-Q2_K_XL, 32K, Bob's flags, Lamplight 47 test build of this patch): the fit's plan with dense weights on the card and every expert in RAM, step 512: 7425 -> 3395 MiB of working memory (3381 with everything on the card), so step 256 fits (1695 MiB, 1.37 GB of the card still free while reading). An ~9.5K-token read and 300 written at step 256: switch on 125 t/s read, 14.9 t/s write, 49 layers on the card; `--no-op-offload` 42 / 14.2; stock (spills, 0 layers on the card, 96 MiB free) 111 / 5.5. The switch's words were the same as stock's. Other looped brains and cards: unproven in our lab, as we have yet to test.
+
+### 0160-ckpt-equal-cut: the save point before a prompt's end on the equal cut (after Avalon)
+- **Environment key (off unless set):** `LLAMA_SERVER_CKPT_EQUAL=1`.
+- **Upstream files:** `tools/server/server-context.cpp` (the slot's `n_ckpt_tail`, reset when a prompt starts; set before the prompt batch loop; the loop's `checkpoint_offsets` and `near_prompt_end` read it).
+- **Hook:** at a request's first prompt batch, with r = prompt tokens left minus 4 and g = min(n_batch, n_ubatch), when r > g: cut r into ceil(r/g) equal steps and keep the last one as the tail. The forced break is then 4 + tail tokens before the end, not 4 + n_ubatch. `near_prompt_end` compares with the tail too, so the batch before the cut is not taken for a near-end one (no extra checkpoint). Off, the tail is n_ubatch and every line reads as upstream.
+- **Why:** Avalon's 910fc5d. The upstream break leaves a prompt a little over n_ubatch a small first step, which uploads the experts as a full one does.
+- **Limits:** only where the server makes checkpoints (hybrid, recurrent and SWA brains; completion tasks; no pictures in the prompt). The user-message breaks are unchanged.
+- **Tests:** `engine/tests/ckpt-equal.py` (tiny qwen35moe from test-llama-archs, -b/-ub 64): off, checkpoints at N-4-64 and N-4 as upstream; on, at the equal boundary and N-4, no more checkpoints, the same words, a one-step prompt untouched, the longer chat still reads from the cache.
+
+### 0161-cuda-graphs-keep: keep the card graphs used last, not a 10 s clock (after Avalon)
+- **Environment key (off unless set):** `GGML_CUDA_GRAPHS_KEEP=N` (N graphs; 0 or unset = upstream's sweep).
+- **Upstream files:** `ggml/src/ggml-cuda/ggml-cuda.cu` (`ggml_backend_cuda_context::cuda_graph`), `ggml/src/ggml-cuda/common.cuh` (`graph_use_count`).
+- **Hook:** with the key, a new graph past N drops the least recently used one; `last_used_time` holds a use count. Upstream's 10 s sweep is skipped.
+- **Why:** Avalon's 01beb77 (llama.cpp #21611 added the sweep).
+- **Limits:** CUDA and HIP only. A graph holds its recorded steps, not big buffers, so 64 cost little.
+- **Log:** "Lamplight 0161: keeping the N CUDA graphs used last" once, at the first graph.
+- **Tests:** compiles for CUDA in the cloud; the gain after a long read needs a real card.
+
+### 0162-mtp-adapt: MTP's guess length chosen word by word (after Avalon)
+- **Environment keys (off unless set):** `LLAMA_MTP_ADAPT=1` (needs `--spec-draft-n-max` 2 or more); `LLAMA_MTP_ADAPT_LOG=1` (every 100 rounds: the round cost a + b, a guess pass, words per ms, kept/expected).
+- **Upstream files:** `common/speculative.cpp` (`common_speculative_impl_draft_mtp`: the `ad_*` members and `ad_chance()`, the ctor, `begin()`, the draft loop after the `p_min` check, the end of `draft()`, `ad_accept()` called from `accept()`).
+- **Hook:** guess j (j > 0) is dropped when c_j < R (b - t_d), c_j the product of the chances so far, R the reply's words per ms over its last 16 checked rounds, b the learned cost of one more guess in a round, t_d a guess pass; the next guess is not made when even a 0.96 chance could not pay b. A round's time (from one accept to the next) is fitted as a + b k by least squares with forgetting 0.995, each time held to 0.67-1.5 of its guess. A reply starts with its rates unknown and guesses as usual until it has some. One round in 16 is not cut.
+- **Why:** Avalon's 37581e9. Upstream stops only at `p_min` or `n_max`, the same for every card and brain.
+- **Limits:** the chance table is Avalon's, from their Qwen MTP head; another head may keep guesses more or less often, which the reply's kept/expected scale (0.5-1.5) partly corrects. With guesses from another guesser (n-gram next to MTP) those rounds are left out.
+- **Tests:** `engine/tests/mtp-adapt.py` (tiny qwen35moe with a random MTP block, n_max 8): off guesses as before; on says so, still guesses, cuts rarely kept guesses to under half, learns and logs a round cost, and every reply's words match writing without guesses.
