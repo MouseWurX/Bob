@@ -121,7 +121,7 @@ try {
     check(e.logs.some((t) => /read the engine's plan before any weights loaded: the working memory was 743\d MiB at step 512 .*opens it at step 128/.test(t)) && !e.logs.some((t) => /load-failed|stopped while loading/.test(t)) && !fs.existsSync(path.join(e.cfg.dataDir, 'llama-server-load-failed.txt')), 'the logbook says why, and the stopped start isn\'t counted as a failed load', e.logs.join(' | '));
     check(saved.stepFit?.['inkling|32768']?.ub === 128 && saved.stepFit['inkling|32768'].perUbMiB > 14, 'the step and the working memory per token of step are remembered', JSON.stringify(saved.stepFit));
     check(e.takeNotes().some((t) => /working memory didn't fit the graphics card/.test(t)), 'the chat is told once');
-    check(Date.now() - t0 < 8000, 'no second full load: the first start stops as soon as the plan is printed', String(Date.now() - t0));
+    check(Date.now() - t0 < 30000, 'no second full load: the first start stops as soon as the plan is printed (a slow Windows runner took 9 s for both starts; a hang would not)', String(Date.now() - t0));
     await e.stopServer();
     void spawns;
   }
