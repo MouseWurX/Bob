@@ -4789,10 +4789,10 @@ index 0000000..b79a79f
 +}
 diff --git a/ggml/src/ggml-cuda/trellis-own.cu b/ggml/src/ggml-cuda/trellis-own.cu
 new file mode 100644
-index 0000000..8a659df
+index 0000000..955627b
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/trellis-own.cu
-@@ -0,0 +1,738 @@
+@@ -0,0 +1,748 @@
 +// Lamplight 0136 (NariQ trellis, nariq/FORMAT.md): GGML_OP_TRELLIS without libtrellis, for every CUDA card.
 +// libtrellis needs sm_80+ (and is built for those archs only); RTX 20 / GTX 16 / GTX 10 cards and shapes libtrellis
 +// refuses run here instead. The same steps as the Vulkan backend (vulkan-shaders/trellis_*.comp):
@@ -4805,6 +4805,7 @@ index 0000000..8a659df
 +#include "trellis.cuh"
 +#include "mmq.cuh"
 +
++#include <climits>
 +#include <cmath>
 +#include <cstdlib>
 +#include <string>
@@ -5199,13 +5200,20 @@ index 0000000..8a659df
 +        }
 +    }
 +    __syncthreads();
-+    const int nbytes = (nt / 2) * (int) sizeof(block_q8_0);  // a row's run
-+    for (int e = threadIdx.x; e < 16 * nbytes; e += 256) {
-+        const int r = e / nbytes, off = e % nbytes;
-+        const int blk = off / (int) sizeof(block_q8_0), bo = off % (int) sizeof(block_q8_0);
-+        // d = f16 1.0 = 0x3C00, little-endian
-+        const int8_t byte = bo == 0 ? (int8_t) 0x00 : bo == 1 ? (int8_t) 0x3C : tile_v[r][32 * blk + bo - 2];
-+        ((int8_t *) (w + ((int64_t) 16 * J + r) * kb + i0 / 2))[off] = byte;
++    // a row's run is nt / 2 blocks of 34 bytes, 4-byte aligned (rows are kb * 34 bytes with kb even, runs start at
++    // multiples of 136): written as 32-bit words, each packed from 4 bytes (d = f16 1.0 = 0x3C00, little-endian)
++    const int nwords = (nt / 2) * (int) sizeof(block_q8_0) / 4;
++    for (int e = threadIdx.x; e < 16 * nwords; e += 256) {
++        const int r = e / nwords, wd = e - r * nwords;
++        uint32_t word = 0;
++#pragma unroll
++        for (int b = 0; b < 4; ++b) {
++            const int off = 4 * wd + b;
++            const int blk = off / 34, bo = off - 34 * blk;
++            const uint32_t byte = bo == 0 ? 0x00u : bo == 1 ? 0x3Cu : (uint32_t) (uint8_t) tile_v[r][32 * blk + bo - 2];
++            word |= byte << (8 * b);
++        }
++        ((uint32_t *) (w + ((int64_t) 16 * J + r) * kb + i0 / 2))[wd] = word;
 +    }
 +}
 +
@@ -5298,14 +5306,16 @@ index 0000000..8a659df
 +    }
 +}
 +
-+// from this many tokens the int8 product (LAMPLIGHT_TRELLIS_CUDA_Q8_MIN; default 65 where libtrellis runs, after its
-+// GEMV's 64, else 16)
++// from this many tokens the int8 product (LAMPLIGHT_TRELLIS_CUDA_Q8_MIN). Default: never where libtrellis runs (RTX
++// 4090, run 5: libtrellis 192-232 us at 128 tokens and 720-865 us at 512, the int8 path 445-507 and 1050-1170), else
++// 16 (our GEMV redoes the decode for each 8 tokens: 75-143 us at 4 tokens, the int8 path ~335-380 at 1 and 1056-1165
++// at 512)
 +int trl_q8_min(bool lib) {
 +    static const int v = [] {
 +        const char * e = getenv("LAMPLIGHT_TRELLIS_CUDA_Q8_MIN");
 +        return e ? atoi(e) : -1;
 +    }();
-+    return v >= 0 ? v : (lib ? 65 : 16);
++    return v >= 0 ? v : (lib ? INT_MAX : 16);
 +}
 +
 +// for timing the parts only (wrong answers): LAMPLIGHT_TRELLIS_CUDA_PROFILE=nodecode (1) skips the q8_0 decode,
@@ -7228,10 +7238,10 @@ index ed8f4f7..68319cb 100644
      uint32_t n_rows;
      uint32_t src_offset;
 diff --git a/ggml/src/ggml-vulkan/ggml-vulkan-types.h b/ggml/src/ggml-vulkan/ggml-vulkan-types.h
-index 1b717c8..9fe6753 100644
+index 1b717c8..e4daf4f 100644
 --- a/ggml/src/ggml-vulkan/ggml-vulkan-types.h
 +++ b/ggml/src/ggml-vulkan/ggml-vulkan-types.h
-@@ -1001,6 +1001,14 @@ struct vk_device_struct {
+@@ -1001,6 +1001,15 @@ struct vk_device_struct {
      vk_pipeline pipeline_fwht_f32[num_fwht_pipelines];
      vk_pipeline pipeline_fwht_f16[num_fwht_pipelines];
      uint32_t    fwht_rows_per_wg[num_fwht_pipelines] = {};
@@ -7243,14 +7253,15 @@ index 1b717c8..9fe6753 100644
 +    vk_pipeline pipeline_trellis_cross;
 +    vk_pipeline pipeline_trellis_io;
 +    vk_pipeline pipeline_trellis_scale;
++    vk_pipeline pipeline_trellis_scale_f16;
      vk_pipeline pipeline_cumsum_f32;
      vk_pipeline pipeline_cumsum_small_f32;
      vk_pipeline pipeline_cumsum_multipass1_f32;
 diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
-index 3c63a1f..69cf05e 100644
+index 3c63a1f..9d9268a 100644
 --- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
 +++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
-@@ -4013,6 +4013,47 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+@@ -4013,6 +4013,49 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
          ggml_vk_create_pipeline(device, device->pipeline_count_experts, "count_experts", count_experts_len, count_experts_data, "main", 3, sizeof(vk_op_count_experts_push_constants), {1, 1, 1}, {}, 1, true);
      }
  
@@ -7293,12 +7304,14 @@ index 3c63a1f..69cf05e 100644
 +                                sizeof(vk_op_trellis_side_push_constants), {256, 1, 1}, {}, 1);
 +        ggml_vk_create_pipeline(device, device->pipeline_trellis_scale, "trellis_scale", trellis_scale_len, trellis_scale_data, "main", 2,
 +                                sizeof(vk_op_trellis_scale_push_constants), {256, 1, 1}, {}, 1);
++        ggml_vk_create_pipeline(device, device->pipeline_trellis_scale_f16, "trellis_scale_f16", trellis_scale_f16_len, trellis_scale_f16_data, "main", 3,
++                                sizeof(vk_op_trellis_scale_push_constants), {256, 1, 1}, {}, 1);
 +    }
 +
      // comb holds a token's 4x4 matrix in one 16-lane slice of a subgroup, so it
      // needs at least 16 lanes, pinned to a known size.
      if (device->subgroup_basic && device->subgroup_shuffle && device->subgroup_require_full_support && device->subgroup_size >= 16) {
-@@ -7878,6 +7919,345 @@ void ggml_vk_fwht(ggml_backend_vk_context * ctx, vk_context& subctx, const ggml_
+@@ -7878,6 +7921,361 @@ void ggml_vk_fwht(ggml_backend_vk_context * ctx, vk_context& subctx, const ggml_
      ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { src_buf, dst_buf }, pc, { workgroups_x, 1, 1 });
  }
  
@@ -7449,8 +7462,16 @@ index 3c63a1f..69cf05e 100644
 +
 +    // long batches: decode to f16 and use the f16 x f32 matrix multiply
 +    const std::vector<vk_matmul_pipeline_pair> * mmp = nullptr;
++    bool b16 = false;
 +    if ((int) T >= ggml_vk_trellis_mm_min()) {
 +        mmp = ggml_vk_get_mul_mat_mat_pipeline_map(ctx, GGML_TYPE_F16, GGML_TYPE_F32, trellis_vk_prec());
++        // coopmat devices (run 5: NVIDIA) have no f16 x f32 multiply, which left every batch on the GEMV: f16 x f16
++        // with the input rounded to f16 (LAMPLIGHT_TRELLIS_VK_B16=1 takes it on every device, for tests)
++        const char * e = getenv("LAMPLIGHT_TRELLIS_VK_B16");
++        if (!mmp || (e && atoi(e) == 1)) {
++            mmp = ggml_vk_get_mul_mat_mat_pipeline_map(ctx, GGML_TYPE_F16, GGML_TYPE_F16, trellis_vk_prec());
++            b16 = mmp != nullptr;
++        }
 +    }
 +
 +    const uint32_t Tc = std::min<uint32_t>(T, 512);
@@ -7572,12 +7593,20 @@ index 3c63a1f..69cf05e 100644
 +
 +        // product: B = W^ in
 +        if (mmp) {
++            // the f16 input goes into whichever of A and A2 the input side did not end in
++            const vk_subbuffer hb = { Y, in.offset == A.offset ? A2.offset : A.offset, (uint64_t) tc * K * sizeof(ggml_fp16_t) };
 +            {
 +                const vk_op_trellis_scale_push_constants spc = { K, s_off };
-+                ggml_pipeline_request_descriptor_sets(ctx, device->pipeline_trellis_scale, 1);
-+                ggml_vk_dispatch_pipeline(ctx, subctx, device->pipeline_trellis_scale, { sb, in }, spc, { K, tc, 1 });
++                if (b16) {
++                    ggml_pipeline_request_descriptor_sets(ctx, device->pipeline_trellis_scale_f16, 1);
++                    ggml_vk_dispatch_pipeline(ctx, subctx, device->pipeline_trellis_scale_f16, { sb, in, hb }, spc, { K, tc, 1 });
++                } else {
++                    ggml_pipeline_request_descriptor_sets(ctx, device->pipeline_trellis_scale, 1);
++                    ggml_vk_dispatch_pipeline(ctx, subctx, device->pipeline_trellis_scale, { sb, in }, spc, { K, tc, 1 });
++                }
 +                ggml_vk_sync_buffers(ctx, subctx);
 +            }
++            const vk_subbuffer bin = b16 ? hb : vk_subbuffer{ in.buffer, in.offset, (uint64_t) tc * K * sizeof(float) };
 +            const bool aligned = (K % ggml_vk_guess_matmul_pipeline_align_map(ctx, *mmp, rows_chunk, tc, false)) == 0 && rows_chunk > 8 && tc > 8;
 +            for (uint32_t n0 = 0; n0 < N; n0 += rows_chunk) {
 +                const uint32_t nc = std::min(rows_chunk, N - n0);
@@ -7594,10 +7623,10 @@ index 3c63a1f..69cf05e 100644
 +                }
 +                vk_pipeline mm = ggml_vk_guess_matmul_pipeline_map(ctx, *mmp, nc, tc, aligned && nc > 8, false);
 +                const vk_subbuffer ob = { Y, B.offset + (uint64_t) n0 * sizeof(float), szB - (uint64_t) n0 * sizeof(float) };
-+                ggml_vk_matmul(ctx, subctx, mm, vk_subbuffer(wb), { in.buffer, in.offset, (uint64_t) tc * K * sizeof(float) },
++                ggml_vk_matmul(ctx, subctx, mm, vk_subbuffer(wb), vk_subbuffer(bin),
 +                               vk_subbuffer(ob), vk_subbuffer{},
 +                               nc, tc, K, K, K, N, nc * K, tc * K, N * tc,
-+                               1, 1, 1, 1, 1, 1, tc, (uint64_t) K * sizeof(float), (uint64_t) N * sizeof(float));
++                               1, 1, 1, 1, 1, 1, tc, (uint64_t) K * (b16 ? sizeof(ggml_fp16_t) : sizeof(float)), (uint64_t) N * sizeof(float));
 +                ggml_vk_sync_buffers(ctx, subctx);
 +            }
 +        } else {
@@ -7644,7 +7673,7 @@ index 3c63a1f..69cf05e 100644
  static uint32_t ggml_vk_nb_elem(const ggml_tensor * t, int i) {
      return (uint32_t)(t->nb[i] / ggml_type_size(t->type));
  }
-@@ -13581,6 +13961,10 @@ bool ggml_vk_build_graph(ggml_backend_vk_context * ctx, ggml_cgraph * cgraph, in
+@@ -13581,6 +13979,10 @@ bool ggml_vk_build_graph(ggml_backend_vk_context * ctx, ggml_cgraph * cgraph, in
      case GGML_OP_CUMSUM:
          ggml_vk_cumsum(ctx, compute_ctx, src0, node);
  
@@ -7655,7 +7684,7 @@ index 3c63a1f..69cf05e 100644
          break;
      case GGML_OP_DSV4_HC_COMB:
          ggml_vk_dsv4_hc_comb(ctx, compute_ctx, src0, src1, src2, node);
-@@ -16859,6 +17243,10 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+@@ -16859,6 +17261,10 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
                  }
                  return false;
              }
@@ -8029,6 +8058,38 @@ index 0000000..1a5312f
 +    }
 +    data_v[t * p.K + k] *= float(data_s[p.s_offset + k / 16u]);
 +}
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_scale_f16.comp b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_scale_f16.comp
+new file mode 100644
+index 0000000..7382737
+--- /dev/null
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_scale_f16.comp
+@@ -0,0 +1,26 @@
++#version 450
++
++// Lamplight 0136: h[t][k] = f16(v[t][k] * s16[k / 16]), the input of the long-batch product for devices whose matrix
++// multiply takes f16 x f16 only (coopmat devices: NVIDIA, newer AMD and Intel); the weights stay exact integers.
++
++#extension GL_EXT_shader_16bit_storage : require
++
++layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
++
++layout(push_constant) uniform parameter {
++    uint K;
++    uint s_offset;
++} p;
++
++layout(binding = 0, std430) readonly buffer S { float16_t data_s[]; };
++layout(binding = 1, std430) readonly buffer V { float data_v[]; };
++layout(binding = 2, std430) writeonly buffer H { float16_t data_h[]; };
++
++void main() {
++    const uint k = gl_GlobalInvocationID.x;
++    const uint t = gl_GlobalInvocationID.y;
++    if (k >= p.K) {
++        return;
++    }
++    data_h[t * p.K + k] = float16_t(data_v[t * p.K + k] * float(data_s[p.s_offset + k / 16u]));
++}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_side.glsl b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_side.glsl
 new file mode 100644
 index 0000000..872866d
@@ -8086,10 +8147,10 @@ index 0000000..872866d
 +    return p.x_offset + (c % p.x_ne1) * p.x_nb1 + (c / p.x_ne1 % p.x_ne2) * p.x_nb2 + (c / (p.x_ne1 * p.x_ne2)) * p.x_nb3;
 +}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp b/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
-index 34a047b..febfec3 100644
+index 34a047b..4488f53 100644
 --- a/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
 +++ b/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
-@@ -1135,6 +1135,13 @@ void process_shaders() {
+@@ -1135,6 +1135,14 @@ void process_shaders() {
      string_to_spv("fwht_shmem_f32", "fwht.comp", {{"A_TYPE", "float"}, {"FWHT_SHMEM", "1"}});
      string_to_spv("fwht_f16", "fwht.comp", {{"A_TYPE", "float16_t"}});
      string_to_spv("fwht_shmem_f16", "fwht.comp", {{"A_TYPE", "float16_t"}, {"FWHT_SHMEM", "1"}});
@@ -8100,6 +8161,7 @@ index 34a047b..febfec3 100644
 +    string_to_spv("trellis_cross", "trellis_cross.comp", {});
 +    string_to_spv("trellis_io", "trellis_io.comp", {});
 +    string_to_spv("trellis_scale", "trellis_scale.comp", {});
++    string_to_spv("trellis_scale_f16", "trellis_scale_f16.comp", {});
      string_to_spv("count_equal_i32", "count_equal.comp", merge_maps(base_dict, {{"A_TYPE", "int"}, {"B_TYPE", "int"}, {"D_TYPE", "int"}}));
      string_to_spv("dsv4_hc_comb_f32", "dsv4_hc_comb.comp", {});
      string_to_spv("dsv4_hc_pre_f32",  "dsv4_hc_pre.comp",  {});
@@ -9025,7 +9087,7 @@ index 36e48a0..dd590a0 100644
  
  if (BUILD_SHARED_LIBS)
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
-index 31c4205..06c89e4 100644
+index 31c4205..fd3c97e 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
 @@ -35,6 +35,7 @@
@@ -9365,7 +9427,7 @@ index 31c4205..06c89e4 100644
      test_cases.emplace_back(new test_get_rows_back(GGML_TYPE_F32, 1, 8, 2, 1, false));
      test_cases.emplace_back(new test_get_rows_back(GGML_TYPE_F32, 1, 70000, 4, 1, false)); // row count > CUDA grid-y limit (65535)
      for (ggml_type type : all_types) {
-@@ -13698,6 +14014,19 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+@@ -13698,6 +14014,20 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
  static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
      std::vector<std::unique_ptr<test_case>> test_cases;
  
@@ -9376,7 +9438,8 @@ index 31c4205..06c89e4 100644
 +            test_cases.emplace_back(new test_trellis(type, 5120, 17408, t, {1, 128, 1}, {1, 128, 1}));
 +            test_cases.emplace_back(new test_trellis(type, 17408, 5120, t, {1, 128, 1}, {1, 128, 1}));
 +        }
-+        for (ggml_type type : {GGML_TYPE_Q2_K, GGML_TYPE_IQ2_XXS, GGML_TYPE_IQ3_XXS, GGML_TYPE_Q3_K, GGML_TYPE_Q4_K}) {
++        // q8_0 and f16: what the int8 and f16 long-batch paths multiply after their decode
++        for (ggml_type type : {GGML_TYPE_Q2_K, GGML_TYPE_IQ2_XXS, GGML_TYPE_IQ3_XXS, GGML_TYPE_Q3_K, GGML_TYPE_Q4_K, GGML_TYPE_Q8_0, GGML_TYPE_F16}) {
 +            test_cases.emplace_back(new test_mul_mat(type, GGML_TYPE_F32, 17408, t, 5120, {1, 1}, {1, 1}));
 +            test_cases.emplace_back(new test_mul_mat(type, GGML_TYPE_F32, 5120, t, 17408, {1, 1}, {1, 1}));
 +        }
