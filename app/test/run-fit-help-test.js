@@ -93,7 +93,7 @@ const slot = (id) => allSlots().find((s) => s.id === id);
   check('Gaming and Office are jobs on the Brains page', ['gaming', 'office'].every((id) => slot(id)?.how === 'brain'));
   const offPick = (m, hw) => picksOf(m, models, hw).filter((j) => !(m.bobPick || []).includes(j.id || j));
   check('new brains are listed but not recommended until tried (except for a job they were tested on and made Bob\'s default for)', models.filter((m) => m.trial).every((m) => !offPick(m, pc(16, 32)).length && !offPick(m, pc(8, 16)).length && !offPick(m, pc(6, 16)).length));
-  check('Qwen3.5 4B, on trial for chat, is still the eyes pick on 6 and 8 GB cards, and the 35B on 16 GB', pickFor('eyes', models, pc(6, 16))?.id === 'qwen3.5-4b' && pickFor('eyes', models, pc(8, 16))?.id === 'qwen3.5-4b' && pickFor('eyes', models, pc(16, 32))?.id === 'qwen3.6-35b-a3b' && pickFor('bob', models, pc(6, 32))?.id !== 'qwen3.5-4b');
+  check('Qwen3.5 4B, on trial for chat, is still the eyes pick on 6 and 8 GB cards, the 27B Q3 on 16 GB and the full 27B on 24 GB', pickFor('eyes', models, pc(6, 16))?.id === 'qwen3.5-4b' && pickFor('eyes', models, pc(8, 16))?.id === 'qwen3.5-4b' && pickFor('eyes', models, pc(16, 32))?.id === 'qwen3.6-27b-q3' && pickFor('eyes', models, pc(24, 64))?.id === 'qwen3.6-27b' && pickFor('bob', models, pc(6, 32))?.id !== 'qwen3.5-4b');
   check('a brain is only offered to jobs it can do', !slotTakes(slot('eyes'), 'qwen3-coder:30b', ctx) && slotTakes(slot('bob'), 'qwen3-coder:30b', ctx) && slotTakes(slot('image'), 'anything', ctx));
   check('a "?" on the catalogue opens Help at how models are picked', /data-help="recommended"/.test(publicText('cellar.js')));
 }

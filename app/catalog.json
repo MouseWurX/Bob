@@ -167,7 +167,7 @@
       "jobs": ["deep", "reviewer", "tinker", "bob", "office", "eyes", "scout"],
       "name": "Qwen3.6 27B",
       "published": "2026-04-22",
-      "what": "A careful, strong thinker for Deep thinking and reviews. All 27B of it works at once, so a little sits in RAM on a 16 GB card and replies are slower.",
+      "what": "A careful, strong thinker for Deep thinking and reviews. All 27B of it works at once, so a little sits in RAM on a 16 GB card and replies are slower. Tried Nov 27 on photos of a real frac blender screen: 53 of 56 stage totals in the right spreadsheet column, so it's my eyes on cards with room for it.",
       "sizeGB": 17.7,
       "vramGB": 18,
       "params": 27,
@@ -175,6 +175,7 @@
       "commercial": true,
       "pick": "optional",
       "trial": true,
+      "bobPick": ["eyes"],
       "files": [
         {
           "url": "https://huggingface.co/unsloth/Qwen3.6-27B-GGUF/resolve/82d411acf4a06cfb8d9b073a5211bf410bfc29bf/Qwen3.6-27B-Q4_K_M.gguf",
@@ -195,6 +196,48 @@
       "use": {
         "models": {
           "reviewer": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.6-27b-q3",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["eyes", "deep", "reviewer", "tinker", "bob", "office", "scout"],
+      "name": "Qwen3.6 27B (16 GB card version)",
+      "published": "2026-04-22",
+      "what": "Qwen3.6 27B squeezed (unsloth's 3-bit UD-Q3_K_XL) so all of it fits whole on a 16 GB card, with 32K of chat memory. Tried Nov 27 on photos of a real frac blender screen: it put 54 of 56 stage totals in the right spreadsheet column, the best reader we've tested (the full 27B got 53, the everyday 35B-A3B 45), so it's my eyes on a 16 GB card. My everyday brain steps aside while it reads (it loads in about 20 seconds). On a bigger card I use the full version instead.",
+      "sizeGB": 15.7,
+      "vramGB": 16,
+      "params": 27,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "trial": true,
+      "bobPick": ["eyes"],
+      "squeezedOf": "qwen3.6-27b",
+      "maxCardGB": 16,
+      "testedBest": "Nov 27 2026, the owner: results should be what we determined was best. Photo test: 54 of 56 at 3-bit against 53 of 56 for its Q4_K_M, and it fits a 16 GB card whole (q27-speed: 15.2 GB at 32K).",
+      "files": [
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF/resolve/5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace/Qwen3.6-27B-UD-Q3_K_XL.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 14787986560,
+          "sha256": "661a031ced3e048eeb6d831f8dccaa2020dee480fdd15d9fc9f0fc588e0851f6"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF/resolve/5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace/mmproj-F16.gguf",
+          "role": "mmproj",
+          "saveAs": "Qwen3.6-27B-mmproj-F16.gguf",
+          "verify": true,
+          "bytes": 927607360,
+          "sha256": "eacf610d1ee4bd5ed0197a0777dd8f4fceb8eefa27009067c7d496cb68fbde45"
+        }
+      ],
+      "use": {
+        "models": {
+          "eyes": "$model"
         }
       }
     },
@@ -525,7 +568,7 @@
       "license": "Apache 2.0",
       "commercial": true,
       "pick": "best",
-      "bobPick": ["bob", "tinker", "deep", "eyes"],
+      "bobPick": ["bob", "tinker", "deep"],
       "raced": "Beat Qwen3 Coder 30B on a 16 GB card (2026-11-03). At 256K (2026-11-04) it uses 15.0 GB on the card with the rest in RAM, writes about 49 tok/s, and found a fact hidden 201K tokens in.",
       "files": [
         {
@@ -4579,14 +4622,14 @@
         "gemma4-e4b",
         "whisper-base-en",
         "kokoro-v1",
-        "nomic-embed-text"
+        "nomic-embed-text",
+        "qwen3.6-27b-q3"
       ],
       "slots": {
         "qwen3.6-35b-a3b": [
           "bob",
           "tinker",
-          "deep",
-          "eyes"
+          "deep"
         ],
         "gemma4-26b": [
           "office"
@@ -4611,13 +4654,17 @@
         ],
         "nomic-embed-text": [
           "embed"
+        ],
+        "qwen3.6-27b-q3": [
+          "eyes"
         ]
       },
       "notes": {
-        "qwen3.6-35b-a3b": "the everyday, coding and deep-thinking brain in one, so chat and code never swap: only 3B of it works at a time, so it stays quick with part of it in RAM, and it keeps up to 256K in mind; it also reads pictures (45 of 56 values off real blender screens, Nov 27), so pictures need no swap",
+        "qwen3.6-35b-a3b": "the everyday, coding and deep-thinking brain in one, so chat and code never swap: only 3B of it works at a time, so it stays quick with part of it in RAM, and it keeps up to 256K in mind",
         "gemma4-e4b": "the quick brain",
         "whisper-base-en": "hears you (English), on the processor",
-        "gemma4-26b": "Office and Deep thinking"
+        "gemma4-26b": "Office and Deep thinking",
+        "qwen3.6-27b-q3": "reads pictures and screens best of all we tested (54 of 56 values off real blender screens, Nov 27); it loads only for that job"
       },
       "times": "Pictures take about 10 seconds each, clips a few minutes.",
       "cardGB": 16

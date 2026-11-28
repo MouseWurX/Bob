@@ -20,8 +20,9 @@ check('same commit as the full version, sharing its picture file', gguf.url.spli
 check('it is smaller than the full version', q3.sizeGB < full.sizeGB && q3.vramGB < full.vramGB);
 // 1.5.169: the owner's rule bends for Bob's own brains: a Q3 of one ships when it was benchmarked against its Q4 (Riker's Q3).
 // Nov 26 2026: a ternary brain (community.kind "ternary", e.g. Ternary Bonsai) was trained at -1/0/+1, so its 2-bit file is its full size, not a squeeze.
-check('every other brain stays at Q4 or better (1.5.169: or is Bob\'s own, benchmarked; or was trained ternary)', models.filter((m) => m.jobs && m.files && m.id !== q3.id && m.community?.kind !== 'ternary' && !(m.madeByBob && (m.bench || (m.squeezedOf && m.maxCardGB <= 8)))).every((m) => m.files.filter((f) => f.role === 'gguf').every((f) => !/[-_]Q[1-3]_/i.test(f.url))));
-check('every squeezed file is only for small cards (1.5.169: except Bob\'s own, benchmarked against its Q4; a ternary brain is not squeezed)', models.filter((m) => !(m.madeByBob && m.bench) && m.community?.kind !== 'ternary' && m.files?.some((f) => f.role === 'gguf' && /[-_]Q[1-3]_/i.test(f.url))).every((m) => m.maxCardGB && m.maxCardGB <= 8 && m.squeezedOf));
+// Nov 27 2026 (the owner: results should be what we determined was best): a squeezed file that beat its Q4 on a test (testedBest) may go below Q4, up to 16 GB cards
+check('every other brain stays at Q4 or better (1.5.169: or is Bob\'s own, benchmarked; or was trained ternary; or beat its Q4 on a test)', models.filter((m) => m.jobs && m.files && m.id !== q3.id && m.community?.kind !== 'ternary' && !(m.madeByBob && (m.bench || (m.squeezedOf && m.maxCardGB <= 8))) && !(m.testedBest && m.squeezedOf)).every((m) => m.files.filter((f) => f.role === 'gguf').every((f) => !/[-_]Q[1-3]_/i.test(f.url))));
+check('every squeezed file is only for small cards (1.5.169: except Bob\'s own, benchmarked against its Q4; a ternary brain is not squeezed; one that beat its Q4 on a test goes up to 16 GB)', models.filter((m) => !(m.madeByBob && m.bench) && !(m.testedBest && m.squeezedOf && m.maxCardGB <= 16) && m.community?.kind !== 'ternary' && m.files?.some((f) => f.role === 'gguf' && /[-_]Q[1-3]_/i.test(f.url))).every((m) => m.maxCardGB && m.maxCardGB <= 8 && m.squeezedOf));
 
 const s16 = suit(q3, pc(16));
 check('16 GB card: the squeezed one is not for you, with a plain reason', s16.level === 'no' && /full version/.test(s16.why), JSON.stringify(s16));
@@ -41,3 +42,5 @@ check('the glossary explains Q4 and Q3', /<dt>Squeezed version \(Q4, Q3\)<\/dt>/
 check('the catalogue Help mentions the 8 GB card version', /8 GB card version/.test(HELP.find((h) => h.id === 'catalogue').html));
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
+
+check('the 16 GB eyes brain (Qwen3.6 27B Q3) says why it may go below Q4, and is only for cards up to 16 GB', (() => { const m = models.find((x) => x.id === 'qwen3.6-27b-q3'); return m && /54 of 56/.test(m.testedBest) && m.squeezedOf === 'qwen3.6-27b' && m.maxCardGB === 16; })());

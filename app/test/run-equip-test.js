@@ -68,7 +68,7 @@ const ctx = { roles, models, brains: { small: 'gemma4:e4b' }, embed: '', selecte
   check('every set model has a slot', packs.every((p) => p.models.every((id) => (p.slots[id] || []).length)));
   // Nov 27 2026: Qwen3.5 4B reads screens (33 of 56 blender totals) where Gemma 4 E4B read none, so it takes eyes
   check('8 GB and processor-only sets put one model in chat and quick brain, Qwen3.5 4B on eyes, and Whisper base hears', ['mid', 'cpu'].every((id) => packs.find((p) => p.id === id).slots['gemma4-e4b'].join() === 'bob,small' && packs.find((p) => p.id === id).slots['qwen3.5-4b'].join() === 'eyes' && packs.find((p) => p.id === id).slots['whisper-base-en'].join() === 'voice'));
-  check('the 16 GB set: the everyday brain also does eyes, so pictures need no swap', packs.find((p) => p.id === 'big').slots['qwen3.6-35b-a3b'].includes('eyes') && packs.find((p) => p.id === 'big').slots['gemma4-e4b'].join() === 'small');
+  check('the 16 GB set: eyes go to the 16 GB Qwen3.6 27B, the best reader tested (54 of 56)', packs.find((p) => p.id === 'big').slots['qwen3.6-27b-q3']?.join() === 'eyes' && packs.find((p) => p.id === 'big').slots['gemma4-e4b'].join() === 'small');
   check('the 6 GB set: light Qwen3 4B for chat and quick brain, Gemma 4 E4B for eyes and ears', packs.find((p) => p.id === 'small').slots['qwen3-4b'].join() === 'bob,small' && packs.find((p) => p.id === 'small').slots['gemma4-e4b'].join() === 'eyes');
   check('picked by card size', packFor(packs, 16).id === 'big' && packFor(packs, 8).id === 'mid' && packFor(packs, 6).id === 'small' && packFor(packs, 4).id === 'cpu' && packFor(packs, null).id === 'cpu');
   check('small cards are told how long pictures take', ['mid', 'small'].every((id) => /minute/.test(packs.find((p) => p.id === id).times)));
