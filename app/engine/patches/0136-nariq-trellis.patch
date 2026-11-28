@@ -4977,10 +4977,10 @@ index 0000000..b79a79f
 +}
 diff --git a/ggml/src/ggml-cuda/trellis-own.cu b/ggml/src/ggml-cuda/trellis-own.cu
 new file mode 100644
-index 0000000..71fedd4
+index 0000000..ebcd901
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/trellis-own.cu
-@@ -0,0 +1,1097 @@
+@@ -0,0 +1,1099 @@
 +// Lamplight 0136 (NariQ trellis, nariq/FORMAT.md): GGML_OP_TRELLIS without libtrellis, for every CUDA card.
 +// libtrellis needs sm_80+ (and is built for those archs only); RTX 20 / GTX 16 / GTX 10 cards and shapes libtrellis
 +// refuses run here instead. The same steps as the Vulkan backend (vulkan-shaders/trellis_*.comp):
@@ -5676,11 +5676,13 @@ index 0000000..71fedd4
 +    }
 +}
 +
-+// from this many tokens the fused product on sm_80+ (LAMPLIGHT_TRELLIS_CUDA_FUSED_MIN, default 64; 0 turns it off)
++// from this many tokens the fused product on sm_80+ (LAMPLIGHT_TRELLIS_CUDA_FUSED_MIN; 0 or unset: off). Off by default:
++// RTX 4090, run 6: 289-344 us at 128 tokens and 1043-1290 at 512, against libtrellis's 183-220 and 680-787 (each
++// 128-token block decodes the whole weight again)
 +int trl_fused_min() {
 +    static const int v = [] {
 +        const char * e = getenv("LAMPLIGHT_TRELLIS_CUDA_FUSED_MIN");
-+        return e ? atoi(e) : 64;
++        return e ? atoi(e) : 0;
 +    }();
 +    return v;
 +}
