@@ -154,6 +154,10 @@ body.still .msg-more { transition: none; }
 .file-tools { margin-left: auto; display: flex; flex-wrap: wrap; gap: 2px; }
 .note { align-self: center; color: var(--muted); font-size: 13px; text-align: center; }
 .note.announce { color: var(--accent); }
+.note.todo { text-align: left; align-self: stretch; max-width: 34em; margin: 4px auto; }
+.note.todo ul { list-style: none; margin: 2px 0 0; padding: 0; }
+.note.todo li.todo-done { color: var(--muted); text-decoration: line-through; }
+.note.todo li.todo-doing { color: var(--accent); }
 .note.error { color: var(--bad); }
 .hat { color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
 

@@ -37,6 +37,16 @@ const WORK_GROUPS = {
     tools: ['make_3d_part', 'make_3d_model'],
     words: /\b(3d|3-d|stl|openscad|scad|cad|3d ?print\w*|printable|bracket|enclosure|spacer|washer|standoff|knob|hinge|gear|cog|replacement part|spare part|part for|glb|figurine|sculpt\w*|miniature|3d model|mesh)s?\b/i
   },
+  blender: { // "Blender tools" (blender-tools.js): only while it's on (offTools hides it otherwise)
+    what: 'look at, change, render and export Blender scenes (.blend files): add and move objects, colours, modifiers, cameras, lights, keyframes; export glb, fbx, usd, obj, stl for Unreal, Unity, Godot or a printer',
+    tools: ['blender_look', 'blender_edit', 'blender_render', 'blender_export'],
+    words: /\b(blender|\.blend|blend file|scene|render(?:ing)?|modifier|bevel|subdivision|keyframe|viewport|fbx|usdz?|gltf|glb|export (?:it |the )?(?:to|as|for) (?:unreal|unity|godot)|low[- ]?poly|game asset|3d scene)s?\b/i
+  },
+  unreal: { // "Unreal tools" (unreal-tools.js): only while it's on (offTools hides it otherwise)
+    what: 'look at and change the level open in the Unreal Editor: add, move, delete, rename actors, set materials, import fbx/glb/usd files, save the level',
+    tools: ['unreal_look', 'unreal_edit'],
+    words: /\b(unreal|ue5|ue4|(?:the|this|my|game) level|actors? in|blueprints?|static mesh(?:es)?|uasset|player start|map in (?:the )?editor)\b/i
+  },
   sandbox: { // "Code sandbox" (sandbox-code.js): only while it's on (offTools hides it otherwise)
     what: 'work out sums, money, dates, unit conversions, counting and sorting exactly, by running a little code in a locked sandbox',
     tools: ['run_in_sandbox'],
@@ -153,7 +163,7 @@ export function guessGroups(brain, text) {
 }
 
 // The chat chip when a group is added (clarity reviewer's words; Hands match their names in Settings).
-const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', parts3d: 'Using his 3D part tools', documents: 'Using his document tools', files: 'Using his file tools', sort: 'Using Hands: sort and rename', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', routines: 'Using Hands: routines', apps: 'Using Hands: apps', browser: 'Using Hands: his browser', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', selfwork: 'Working on a repository', cloud: 'Using a cloud helper' };
+const CHIP = { pictures: 'Using his picture, video and music tools', diagrams: 'Using his diagram tools', parts3d: 'Using his 3D part tools', blender: 'Using his Blender tools', unreal: 'Using his Unreal tools', documents: 'Using his document tools', files: 'Using his file tools', sort: 'Using Hands: sort and rename', run: 'Using Hands: run programs', schedules: 'Using Hands: schedules', routines: 'Using Hands: routines', apps: 'Using Hands: apps', browser: 'Using Hands: his browser', office: 'Using Hands: office and converting', security: 'Using Hands: security and privacy', maker: 'Using Hands: his own tools', mcp: 'Using Hands: connected apps', memory: 'Forgetting a topic', howtos: 'Using his how-tos', selfwork: 'Working on a repository', cloud: 'Using a cloud helper' };
 
 export const allToolsOn = (cfg) => cfg.allTools === true;
 

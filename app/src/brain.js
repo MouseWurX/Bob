@@ -54,6 +54,8 @@ import { spellTool } from './spell.js';
 import { meetingTool } from './meeting-notes.js';
 import { compareTool } from './compare-files.js';
 import { parts3dTool } from './parts3d.js';
+import { blenderTools } from './blender-tools.js';
+import { unrealTools } from './unreal-tools.js';
 import { model3dTool } from './model3d.js';
 import { pickSessionTool } from './auto-session.js';
 import { Lenders, wantsBorrow } from './share-brains.js';
@@ -64,6 +66,7 @@ import { Rentals, currentRental, saveEndpoint } from './rental.js'; // 1.5.127 r
 import { GuestJobs, canHere, NEEDS_LIST } from './share-jobs.js';
 import { askTogetherTool } from './together.js';
 import { showPlanTool } from './plan.js';
+import { todoTool } from './todo.js';
 import { killTree as killProcTree } from './platform.js';
 import { raceTimeout, afterStop } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { HowTos, howtoTools } from './howtos.js';
@@ -220,6 +223,7 @@ export class Brain {
     this.tools.forget_topic = forgetTopicTool(this);
     Object.assign(this.tools, handsTools(this), scheduleTools(this), routineTools(this), officeTools(this), securityTools(this), selfToolsTools(this), howtoTools(this)); // Hands: off until the user turns them on (see hands-settings.js)
     this.tools.use_tools = useToolsTool(this);
+    this.tools.update_plan = todoTool(this); // Nov 27: the to-do list Bob keeps for a long job (todo.js), only with its setting on
     this.tools.show_plan = showPlanTool(this); // 1.5.78: the plan card before big jobs (plan.js), only with its setting on
     this.tools.ask_together = askTogetherTool(this); // 1.5.42: every OK a job needs on one card (together.js) // the toolbox (toolbox.js): groups added only when a job needs them
     this.tools.pick_session = pickSessionTool(this); // 1.5.43: Bob changes session himself (auto-session.js)
@@ -246,6 +250,7 @@ export class Brain {
     });
     this.tools.make_3d_part = parts3dTool(this); // 3D parts (parts3d.js), only with its setting on
     this.tools.make_3d_model = model3dTool(this); // Pictures to 3D models (model3d.js), only with its setting on
+    Object.assign(this.tools, blenderTools(this), unrealTools(this)); // Blender and Unreal tools (blender-tools.js, unreal-tools.js), only with their settings on
     // 1.5.91: the Set it up card for something missing or switched off. Listed only while something is (offTools).
     this.tools.offer_setup = {
       schema: { type: 'function', function: { name: 'offer_setup', description: 'When {{USER}}\'s request needs a missing part or a setting that is off: show a one-button card that sets it up, then carry on. For pictures, video, music and sound call make_image, make_video, make_music or make_sound instead.', parameters: { type: 'object', properties: { what: { type: 'string', enum: [...Object.keys(NEEDS), ...SWITCH_KEYS], description: 'What to set up. voice = read replies aloud, hearing = hear {{USER}} talk, workshop = ComfyUI, hand:<id> = a Hand that is off (hand:packs = tool packs).' } }, required: ['what'] } } },

@@ -131,9 +131,11 @@ const size = (step) => JSON.stringify(step.tools).length;
   check('ask_together comes along once a group that asks for OKs is added', !brain.frontDeskTools(new Set()).some((t) => t.function?.name === 'ask_together') && brain.frontDeskTools(new Set(['documents'])).some((t) => t.function?.name === 'ask_together'));
   // show_plan (1.5.78) isn't in a group either: it is always there while "Plan before big jobs" is on.
   check('show_plan comes along only while its setting is on', !brain.frontDeskTools(new Set()).some((t) => t.function?.name === 'show_plan') && (() => { brain.cfg.planFirst = true; const on = brain.frontDeskTools(new Set()).some((t) => t.function?.name === 'show_plan'); brain.cfg.planFirst = false; return on; })());
+  // update_plan (Nov 27, todo.js) is the same: always there while "Keep a to-do list and check it" is on.
+  check('update_plan comes along only while its setting is on', !brain.frontDeskTools(new Set()).some((t) => t.function?.name === 'update_plan') && (() => { brain.cfg.keepTodo = true; const on = brain.frontDeskTools(new Set()).some((t) => t.function?.name === 'update_plan'); brain.cfg.keepTodo = false; return on; })());
   // look_at_job and pass_note (meanwhile.js) come along only in a quick reply beside a job, like show_plan with its setting.
   // take_note (Nov 14) is never offered: quick notes are actions on notice_board now.
-  check('every non-core tool is in exactly one group', (() => { const g = groupsFor({ usable: () => true, cfg }); const all = Object.values(g).flatMap((x) => x.tools); return Object.keys(brain.tools).filter((n) => !CORE.includes(n) && n !== 'ask_together' && n !== 'show_plan' && n !== 'look_at_job' && n !== 'pass_note' && n !== 'take_note').every((n) => all.filter((x) => x === n).length === 1); })());
+  check('every non-core tool is in exactly one group', (() => { const g = groupsFor({ usable: () => true, cfg }); const all = Object.values(g).flatMap((x) => x.tools); return Object.keys(brain.tools).filter((n) => !CORE.includes(n) && n !== 'ask_together' && n !== 'show_plan' && n !== 'update_plan' && n !== 'look_at_job' && n !== 'pass_note' && n !== 'take_note').every((n) => all.filter((x) => x === n).length === 1); })());
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

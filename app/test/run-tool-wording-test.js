@@ -37,8 +37,11 @@ check('every tool has a description', all.every((f) => f.description.trim().leng
 // until switched on, hidden while off, and in its own group) adds about 450; the cap moved to 54,500. Nov 15: save_to
 // on make_image, make_sound, save_as and make_diagram, and a new name on convert_file (the save path behind 62 traced
 // misreports), all in groups added only when a job needs them, add about 480; the cap moved to 55,000. Nov 23: routines
-// (the Routines Hand, off until switched on, hidden while off, and in its own group) adds about 260; the cap moved to 55,500.
-check('all tools together stay under 55,500 characters', size(all) < 55500, String(size(all)));
+// (the Routines Hand, off until switched on, hidden while off, and in its own group) adds about 260; the cap moved to 55,500. Nov 27:
+// update_plan ("Keep a to-do list and check it", off until switched on, hidden while off) adds about 450; the cap moved to 56,000. Nov 28:
+// Blender tools (look, edit, render, export) and Unreal tools (look, edit), all off until switched on, hidden while off,
+// and each in its own toolbox group (only when a message is about Blender or Unreal), add about 6,800; the cap moved to 63,000.
+check('all tools together stay under 63,000 characters', size(all) < 63000, String(size(all)));
 const core = all.filter((f) => CORE.includes(f.name));
 // 1.5.207: reminders gained urgent (quiet hours) and offer_setup's list grew with the new opt-in switches; the
 // descriptions were trimmed to make room, and the cap moved from 8,000 to 8,100.

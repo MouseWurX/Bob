@@ -9,6 +9,7 @@ import { findOutput } from './config.js';
 import { whereTo, SAVE_TO_HELP } from './save-to.js';
 import { canWrite } from './hands-office.js';
 import { freeName } from './util.js';
+import { todoOn } from './todo.js';
 
 // The diagram types Mermaid draws. The first word of the text must be one of them.
 export const KINDS = ['flowchart', 'graph', 'sequenceDiagram', 'classDiagram', 'stateDiagram', 'stateDiagram-v2', 'erDiagram', 'journey', 'gantt', 'pie', 'mindmap', 'timeline', 'quadrantChart', 'gitGraph', 'sankey-beta', 'xychart-beta', 'block-beta', 'kanban', 'requirementDiagram', 'C4Context', 'packet-beta', 'architecture-beta', 'radar-beta', 'treemap-beta'];
@@ -137,6 +138,8 @@ export function diagramTool() {
       const fmt = FORMATS[String(format || '').toLowerCase()] ? String(format).toLowerCase() : FORMATS[ctx.wantType] ? ctx.wantType : ''; // named in the ask: no card
       ctx.emit({ type: 'diagram', url: `/images/${encodeURIComponent(name)}`, file, title: t, ...(fmt ? { format: fmt } : {}) });
       if (dest) return `Drawing: the chat window draws "${t}" and then saves it to ${dest} (a taken name gets -2). That file is written only once it's drawn, so say "I'm saving it to ${dest}", not that it's already there. If the chat says it couldn't draw it, fix the Mermaid and call make_diagram again.`;
+      // Nov 27 (todo.js, proof before result): with "Keep a to-do list" on, it says the window is drawing it, not that it's drawn.
+      if (todoOn(ctx.cfg)) return `Sent "${t}" to the chat window, which draws it now${fmt ? ` and saves it as ${fmt.toUpperCase()} next to its text` : ', with a Save as card (PNG, SVG or PDF) for the user to pick'}. It isn't drawn until the chat shows it, so say "here's the diagram", not that you checked it. Its Mermaid text is kept in ${file}. If the chat says it couldn't draw it, fix the Mermaid and call make_diagram again. Don't paste the Mermaid text.`;
       return `Drew the diagram "${t}"; it shows in the chat${fmt ? ` and is saved as ${fmt.toUpperCase()} next to its text` : ', with a Save as card (PNG, SVG or PDF) for the user to pick'}. Its Mermaid text is kept in ${file}. If the chat says it couldn't draw it, fix the Mermaid and call make_diagram again. Tell the user in one short line; don't paste the Mermaid text.`;
     },
     summary: ({ title }) => `diagram: ${String(title || 'diagram').slice(0, 60)}`

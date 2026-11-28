@@ -26,6 +26,7 @@ import { limitMs, cleanResult, riskOf, NOTHING_FOUND, capFor, capResult } from '
 import { raceTimeout } from './hang-guard.js';
 import { lockOn } from './lock.js';
 import fs from 'node:fs';
+import { lookCloserOn, DECLINED_KEEP } from './look-closer.js';
 import { afterTool, afterTurn, verifyOutput } from './verify.js';
 import { groupsFor } from './toolbox.js';
 import { linkKey, APPROVAL_TIMEOUT_MS, NO_ANSWER_NOTE, fileBefore, traceStep } from './brain-words.js';
@@ -166,7 +167,7 @@ export const toolRunParts = {
           const answer = await this.approve(unlisted ? (typeof need === 'string' ? need + unlisted : { ...need, text: need.text + unlisted }) : need, ctx.emit, ctx.signal, group, { hand, out });
           // Item 196: nobody answered the card in time. That isn't a no: the job is parked, waiting for the OK.
           if (!answer && out.timedOut) { ctx.ledger?.action(name, args, true, 'no answer'); if (ctx.job) ctx.job.waitingOk = true; this.log('approval', `no answer in ${Math.round(APPROVAL_TIMEOUT_MS / 60000)} minutes; the job waits for the OK`); ctx.noTools = true; return { text: NO_ANSWER_NOTE(this.cfg.userName || 'the user'), hinted: true, declined: true }; }
-          if (!answer) { ctx.ledger?.action(name, args, true, 'declined'); return { text: 'The user said no. Do not try again; say it is fine and ask what to do instead.' }; }
+          if (!answer) { ctx.ledger?.action(name, args, true, 'declined'); return { text: lookCloserOn(this.cfg) ? DECLINED_KEEP : 'The user said no. Do not try again; say it is fine and ask what to do instead.' }; } // Nov 28: with Look closer on, the findings stay in the answer (look-closer.js)
           if (answer === 'all' && group) ctx.allowAll.add(group);
           if (answer === 'today' && need.command) (this.todayOk ||= new Map()).set(todayKey(need.command, need.cwd), endOfDay()); // item 12
           if (Array.isArray(need.plan)) ctx.picked = out.picked ?? null;
