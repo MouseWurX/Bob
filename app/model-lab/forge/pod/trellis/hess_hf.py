@@ -161,6 +161,27 @@ def load_model_as(cls, path, kw, attn):
     return m
 
 
+def no_expert_weight_grads():
+    """transformers' grouped expert matmul (integrations/moe.py, the fallback without torch._grouped_mm) builds a full
+    weight-sized gradient in its backward even when the weights need none: 1.27 GiB a call on Inkling 2 Mini, which
+    ran the 48 GB card out of memory (try 6, 28 Nov). Every weight here is frozen, so give back the input's gradient
+    and an all-zero weight gradient that takes no memory (a broadcast scalar; autograd drops it)."""
+    if not hasattr(torch.ops, "transformers") or not hasattr(torch.ops.transformers, "grouped_mm_fallback_backward"):
+        try: import transformers.integrations.moe  # noqa: F401  (registers the op)
+        except Exception: return False
+    def bwd(input, weight, offs, grad_output):
+        gi = torch.zeros_like(input); s = 0
+        for i, e in enumerate(offs.tolist()):
+            if s != e: torch.mm(grad_output[s:e], weight[i].T, out=gi[s:e])
+            s = e
+        return gi, weight.new_zeros((1,) * weight.dim()).expand(weight.shape)
+    try:
+        torch.library.register_kernel("transformers::grouped_mm_fallback_backward", ("cpu", "cuda"), bwd)
+        return True
+    except Exception as ex:
+        print(f"hess_hf: expert backward left as it is ({type(ex).__name__})", flush=True); return False
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True); ap.add_argument("--text", required=True); ap.add_argument("--out", required=True)
@@ -185,6 +206,7 @@ def main():
     m = load_model(a.model, kw, a.attn)
     if cuda and a.devices <= 1: m = m.to("cuda:0")
     m.eval(); [p.requires_grad_(False) for p in m.parameters()]
+    no_expert_weight_grads()
     tok = AutoTokenizer.from_pretrained(a.model)
     expert_modules_cache.update(expert_modules(m))
     if a.match_gguf: names, exps = match_names(m, a.match_gguf)
@@ -292,8 +314,11 @@ def main():
                     if not torch.isfinite(lg).any():  # a brain that reads wrong (every odd NaN: weights not loaded right)
                         raise SystemExit("hess_hf: none of the brain's next-word odds are finite on the first chunk: its weights did not load right")
                     lg.logsumexp(-1).sum().backward(); del lg, e
-                peak = ", ".join(f"cuda:{i} {torch.cuda.max_memory_allocated(i) / 1e9:.1f} of "
-                                 f"{torch.cuda.get_device_properties(i).total_memory / 1e9:.1f} GB" for i in range(torch.cuda.device_count() if cuda else 0)) or "no card"
+                peak = ", ".join(f"cuda:{i} {torch.cuda.max_memory_allocated(i) / 2**30:.1f} of "
+                                 f"{torch.cuda.get_device_properties(i).total_memory / 2**30:.1f} GiB" for i in range(torch.cuda.device_count() if cuda else 0)) or "no card"
+                tight = [i for i in range(torch.cuda.device_count() if cuda else 0)
+                         if torch.cuda.max_memory_allocated(i) > 0.85 * torch.cuda.get_device_properties(i).total_memory]
+                if tight and a.ctx > 128: raise torch.OutOfMemoryError(f"peak over 85% on cuda:{tight}")  # room for the sums' work
                 print(f"hess_hf: chunks of {a.ctx} fit (peak {peak})", flush=True); break
             except torch.OutOfMemoryError:
                 lg = e = None

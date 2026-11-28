@@ -14,6 +14,7 @@
 #   CANARY=1 bash trl-pilot.sh   -> Qwen3-0.6B, 2 bits only, fewer chunks: every new step once, all timed (~$0.50)
 #   bash trl-pilot.sh            -> Qwen3-1.7B, both widths
 #   CANARY=1 CHUNKS=128 YAQA_DAMPS="0.01 0.1 0.3 1" bash trl-pilot.sh -> the YAQA sweep on the 0.6B
+#   CANARY=1 CHUNKS=128 YAQA_DAMPS="1 3 10" SEEDS="0 1" bash trl-pilot.sh -> sweep 3: more damping, and each row twice
 # Env: OUT, W, HF_MODEL, CHUNKS (Hessian chunks x CTX), KLD_CHUNKS, BITS ("2 3"), NGPU (default: every card), JOBS, YAQA_DAMPS,
 #      STEP_MIN (hard minutes per trellis run, default 90). Ends with "TRL DONE" (or "TRL FAILED <step>") in summary.txt.
 set -uo pipefail
@@ -26,6 +27,9 @@ CTX=${CTX:-512}; export KLD_CTX=${KLD_CTX:-512}; STEP_MIN=${STEP_MIN:-90}
 # canary (28 Nov) had YAQA lose to LDLQ (KLD 1.44 vs 1.16) while its own drift estimate was 2.4x lower: it fits a noisy
 # H_out from 16 x 512 tokens. A sweep (more CHUNKS, more damping) shows which fixes it.
 YAQA_DAMPS=${YAQA_DAMPS:-0.01}
+# SEEDS: the trellis rows again with other random rotations (rows -S<seed>), to see how much one coding's luck moves the
+# KLD (sweep 2, 28 Nov: YAQA damping 0.01/0.1/0.3/1 gave 1.24/0.97/1.22/0.81, not in order, each +-0.03)
+SEEDS=${SEEDS:-0}
 BOB_SHA=${BOB_SHA:?set BOB_SHA to the MouseWurX/Bob commit with pod/trellis}           # this branch
 ENGINE_SHA=${ENGINE_SHA:-de773f034d040f8b46aad012672bae352d06c102}                       # engine patches 0001-0136 with coded experts (PR #387)
 TAG=b12359; LLAMA_SHA=b1b770d90d94cad9e9ea5b993bdbc383a522fb28
@@ -135,13 +139,13 @@ for k in $BITS; do
   else
     step "stock $k-bit row"; q STOCK-Q${k}_K Q${k}_K --pure; KL+=("STOCK-Q${k}_K=$W/STOCK-Q${k}_K.gguf"); BASE=$W/STOCK-Q${k}_K.gguf
   fi
-  for row in ldlq $(for d in $YAQA_DAMPS; do echo "yaqa:$d"; done); do
-    m=${row%%:*}; d=${row#*:}; [ "$m" = ldlq ] && d=0.01
-    M=$(echo $m | tr a-z A-Z); [ "$m" = yaqa ] && [ "$d" != 0.01 ] && M="$M-D$d"
+  for row in $(for sd in $SEEDS; do echo "ldlq:0.01:$sd"; for d in $YAQA_DAMPS; do echo "yaqa:$d:$sd"; done; done); do
+    m=${row%%:*}; d=${row#*:}; sd=${d#*:}; d=${d%%:*}
+    M=$(echo $m | tr a-z A-Z); [ "$m" = yaqa ] && [ "$d" != 0.01 ] && M="$M-D$d"; [ "$sd" != 0 ] && M="$M-S$sd"
     C=$W/codes-trl$k-$M; LG=$OUT/trl$k-$M.log
     step "trellis $k bits, $M, linears over $NGPU cards"
     [ -s "$W/TRL$k-$M.gguf" ] || { timeout $((STEP_MIN * 60)) python3 "$TP/trl_run.py" --weights "$REF" --hess "$H" --out "$C" --bits $k --mode $m \
-        --damp-out "$d" --devices "$NGPU" --match "^blk\.[0-9]+\.$LIN\$" > "$LG" 2>&1 || { tail -5 "$LG"; fail "trellis $k $M"; }
+        --damp-out "$d" --seed "$sd" --devices "$NGPU" --match "^blk\.[0-9]+\.$LIN\$" > "$LG" 2>&1 || { tail -5 "$LG"; fail "trellis $k $M"; }
       cp "$C/report.tsv" "$OUT/report-trl$k-$M.tsv"
       grep -h "tensors in" "$LG" | while read -r l; do say "$l"; done   # where the time went: loading vs coding
       python3 "$TP/trl_write.py" --base "$BASE" --codes "$C" --out "$W/TRL$k-$M.gguf" >> "$OUT/write.log" 2>&1 || fail "write $k $M"; }
