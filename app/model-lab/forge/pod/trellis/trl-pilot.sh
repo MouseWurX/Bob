@@ -36,7 +36,12 @@ step tools
 command -v cmake >/dev/null && command -v git >/dev/null || { apt-get update -qq && apt-get install -y -qq cmake git build-essential >"$OUT/apt.log" 2>&1; } || fail tools
 python3 -c 'import torch; assert torch.cuda.is_available()' 2>/dev/null || fail "torch with CUDA missing (use a PyTorch CUDA devel image)"
 command -v nvcc >/dev/null || fail "no nvcc (use a CUDA devel image: the trellis kernel and the engine are compiled here)"
-pip install -q numpy sentencepiece protobuf safetensors "transformers>=4.51,<5" accelerate huggingface_hub hf_transfer ninja >"$OUT/pip.log" 2>&1 || fail pip
+# keep the image's own torch (the first canary, 28 Nov: an unpinned pip pulled torch 2.15 for CUDA 13.2 onto a CUDA 12.4
+# image, so the trellis kernel was built by one CUDA and run by another); the kernel is built by the image's nvcc
+TV=$(python3 -c 'import torch; print(torch.__version__)'); echo "torch==$TV" > "$W/pip-keep.txt"
+pip install -q -c "$W/pip-keep.txt" numpy sentencepiece protobuf safetensors "transformers>=4.51,<5" accelerate huggingface_hub hf_transfer ninja >"$OUT/pip.log" 2>&1 || { tail -5 "$OUT/pip.log"; fail "pip (with the image's torch $TV kept)"; }
+NV=$(nvcc --version | grep -o 'release [0-9]*\.[0-9]*' | cut -d' ' -f2); TC=$(python3 -c 'import torch; print(torch.version.cuda)')
+[ "${NV%%.*}" = "${TC%%.*}" ] || fail "nvcc is CUDA $NV but torch was built for CUDA $TC (use an image whose torch and nvcc match)"
 python3 -c 'import torch, transformers, accelerate; print("torch", torch.__version__, "cuda", torch.version.cuda, "transformers", transformers.__version__, "accelerate", accelerate.__version__)' | tee -a "$S"
 nvidia-smi --query-gpu=index,name,memory.total,driver_version,compute_cap --format=csv > "$OUT/gpu.txt" 2>&1 || true
 NGPU=${NGPU:-$(nvidia-smi -L | wc -l)}; say "cards: $NGPU x $(sed -n 2p "$OUT/gpu.txt")"
@@ -54,6 +59,9 @@ done
 P=$W/bob/app/model-lab/forge/pod; TP=$P/trellis
 say "engine patches: $(ls "$W/eng/app/engine/patches/"*.patch | wc -l), last $(basename "$(ls "$W/eng/app/engine/patches/"*.patch | tail -1)")"
 
+step "trellis kernel self-test (first: the newest step) (CUDA vs torch, timed)"
+python3 "$TP/trl_selftest.py" --bits "$(echo $BITS | tr ' ' ,)" --out "$OUT/selftest.json" 2>&1 | tee -a "$S" | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail selftest
+
 step "Lamplight build (llama.cpp $TAG + every patch, CUDA $ARCH)"
 B=$W/ll/build/bin
 if [ ! -x "$B/llama-perplexity" ]; then
@@ -69,8 +77,6 @@ export LD_LIBRARY_PATH=$B:${LD_LIBRARY_PATH:-}; export PYTHONPATH=$W/ll/gguf-py:
 "$B/llama-perplexity" --list-devices 2>&1 | tee "$OUT/devices.txt" | grep -q CUDA || fail "the engine sees no CUDA card"
 python3 -c "import gguf; gguf.GGMLQuantizationType.TRL2" || fail "gguf-py without trellis types"
 
-step "trellis kernel self-test (CUDA vs torch, timed)"
-python3 "$TP/trl_selftest.py" --bits "$(echo $BITS | tr ' ' ,)" --out "$OUT/selftest.json" 2>&1 | tee -a "$S" | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail selftest
 
 step "reference brain $HF_MODEL"
 export HF_HUB_ENABLE_HF_TRANSFER=1

@@ -63,8 +63,8 @@ def viterbi(X, k, grid, start=None):
 
 def quantize_tiles(X, k, grid=GRID):
     """tail-biting trellis code of X [B, 256]: a free pass picks the ends, a second pass ties them (QTIP's two passes).
-    On a card (k >= 2) the CUDA kernel in trl_cuda.py does it; TRL_TORCH=1 keeps the torch version (the tests)."""
-    if X.is_cuda and k >= 2 and os.environ.get("TRL_TORCH") != "1":
+    On a card (k = 1..6) the CUDA kernel in trl_cuda.py does it; TRL_TORCH=1 keeps the torch version (the tests)."""
+    if X.is_cuda and k >= 1 and os.environ.get("TRL_TORCH") != "1":
         import trl_cuda
         return trl_cuda.quantize_tiles(X.float(), k, grid)
     st, _ = viterbi(X, k, grid)

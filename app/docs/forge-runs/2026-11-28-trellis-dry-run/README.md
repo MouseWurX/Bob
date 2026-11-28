@@ -27,3 +27,21 @@ pipeline works, not how good trellis is.
 
 Speed on the processor: 7-25 s per small linear with one worker, minutes with four competing for four cores. The torch
 Viterbi walks 256 steps of [tiles, 65,536] arrays, which is why the card version is a kernel.
+
+## Inkling 2 Mini path, tiny Inkling dry run (28 Nov 2026, processor only, no card)
+
+For the Inkling 2 Mini NariQ kit (`pod/trellis/inkling-trl.sh`: plain trellis vs bits by part vs by part + YAQA at one
+size). A tiny random Inkling 2 loop brain (6 layers, layers 2-3 looped 3 times, 8 experts) made with transformers 5.24.1,
+converted with llama.cpp master's converter (8e23278c, the one the kit pins):
+- Lamplight (de773f03 patches) reads it and agrees with transformers: PPL 276.854 vs 276.850 on the same 4 chunks.
+- hess_hf.py --match-gguf matched all 80 weights to their GGUF names by value; the experts' recorder leaves the logits
+  unchanged (max difference 0.0) and counts the looped layers' rows three times.
+- trl_run.py coded blk.2's attn_q and fused ffn_gate_up_exps / ffn_down_exps at 1, 2, 3 and 4 bits (LDLQ) and at the
+  picked widths with YAQA; trl_parts.py kept all three at 2 bits within the 2-bit bytes (3 tensors leave no room to
+  trade); trl_write.py wrote both files.
+- Lamplight reads the YAQA file exactly as made: KLD 0.000000 (max 0.000001), same top 100% against a float copy of the
+  maker's own weights. Against the F32 brain: YAQA 0.000995 (same top 84.5%), LDLQ 0.001050 (80.0%). A random brain, so
+  these prove the mechanics only.
+- The drift estimate (1/2 n tr(H_out dW H_in dW^T) per word) said 3.3e-5 for the LDLQ file, about 30 times under the
+  measured 0.00105; its scale is unproven, the canary compares it with the measured KLD on the real brain. The pick
+  only uses it to rank parts.

@@ -3,7 +3,8 @@ speed: the torch version walks 256 steps of [tiles, 65536] tensors and is bound 
 cost as trl_quant.viterbi / quantize_tiles (the tests compare the two on the pod; ties may pick other states of equal
 cost). Built with torch's load_inline on first use (needs nvcc, which the pods have for llama.cpp). Costs over the last
 16 - k bits live in shared memory (float32), new costs in registers (so one 64 KB array fits every card from sm_80 on), the back pointers in
-global scratch (256 x 2^(16-k) bytes a tile), tiles in chunks so the scratch stays under --scratch-gb. k = 2..6.
+global scratch (256 x 2^(16-k) bytes a tile), tiles in chunks so the scratch stays under --scratch-gb. k = 1..6: at
+k = 1 the 2^15 costs (128 KB) don't fit shared memory on most cards, so they sit in a global scratch row per tile (L2).
 Kernel layout after exllamav3's quantize_tiles_kernel (MIT, turboderp), rewritten for Nari's INT8 grid and float costs.
 28 Nov 2026 (thread "Shrink Flash-Next with GPTQ and trellis")."""
 import torch
@@ -18,12 +19,15 @@ __device__ __forceinline__ float trl_grid(uint32_t s) {
     return (float) ((int) (((x >> 2) & 63) + ((x >> 10) & 63) + ((x >> 18) & 63) + ((x >> 26) & 63)) - 126);
 }
 
+// 512 threads a block: __launch_bounds__ holds the kernel to 128 registers a thread (64 K a block), else it takes ~255
+// and the launch fails with "too many resources requested" (the first canary, 28 Nov, RTX 4090)
 // one block per tile; X [T, 256] targets in grid units; start [T] (-1: free ends); states [T, 256] out; cost [T] out
 template <int K>
-__global__ void viterbi_kernel(const float * __restrict__ X, const int * __restrict__ start, int16_t * __restrict__ states,
-                               float * __restrict__ cost_out, uint8_t * __restrict__ back_all) {
+__global__ void __launch_bounds__(512, 1) viterbi_kernel(const float * __restrict__ X, const int * __restrict__ start, int16_t * __restrict__ states,
+                               float * __restrict__ cost_out, uint8_t * __restrict__ back_all, float * __restrict__ cost_all) {
     constexpr int LO = 16 - K, NJ = 1 << LO, NH = 1 << K, NT = 512, PER = NJ / NT;
-    extern __shared__ float c_old[];  // one cost array (64 KB at k = 2): each step's new costs wait in registers
+    extern __shared__ float c_shm[];  // one cost array (64 KB at k = 2): each step's new costs wait in registers
+    float * c_old = K == 1 ? cost_all + (size_t) blockIdx.x * NJ : c_shm;  // k = 1: 128 KB, in global scratch
     __shared__ float xs[256];
     __shared__ float red_v[32]; __shared__ int red_i[32];
     const int t = blockIdx.x, tid = threadIdx.x, nt = NT;
@@ -85,19 +89,20 @@ __global__ void viterbi_kernel(const float * __restrict__ X, const int * __restr
     }
 }
 
-void viterbi(torch::Tensor X, torch::Tensor start, torch::Tensor states, torch::Tensor cost, torch::Tensor back, int64_t k) {
+void viterbi(torch::Tensor X, torch::Tensor start, torch::Tensor states, torch::Tensor cost, torch::Tensor back, torch::Tensor cscr, int64_t k) {
     const int T = X.size(0); const int nt = 512;
     auto stream = c10::cuda::getCurrentCUDAStream();
-    #define RUN(KK) { const size_t shm = (1 << (16 - KK)) * sizeof(float); \
+    #define RUN(KK) { const size_t shm = KK == 1 ? 0 : (1 << (16 - KK)) * sizeof(float); \
         cudaFuncSetAttribute(viterbi_kernel<KK>, cudaFuncAttributeMaxDynamicSharedMemorySize, (int) shm); \
         viterbi_kernel<KK><<<T, nt, shm, stream>>>(X.data_ptr<float>(), start.data_ptr<int>(), (int16_t *) states.data_ptr<int16_t>(), \
-            cost.data_ptr<float>(), back.data_ptr<uint8_t>()); }
-    switch (k) { case 2: RUN(2) break; case 3: RUN(3) break; case 4: RUN(4) break; case 5: RUN(5) break; case 6: RUN(6) break;
-                 default: TORCH_CHECK(false, "trl_cuda: k must be 2..6"); }
-    TORCH_CHECK(cudaGetLastError() == cudaSuccess, "trl_cuda: kernel launch failed");
+            cost.data_ptr<float>(), back.data_ptr<uint8_t>(), cscr.data_ptr<float>()); }
+    switch (k) { case 1: RUN(1) break; case 2: RUN(2) break; case 3: RUN(3) break; case 4: RUN(4) break; case 5: RUN(5) break; case 6: RUN(6) break;
+                 default: TORCH_CHECK(false, "trl_cuda: k must be 1..6"); }
+    const cudaError_t err = cudaGetLastError();
+    TORCH_CHECK(err == cudaSuccess, "trl_cuda: kernel launch failed: ", cudaGetErrorString(err));
 }
 """
-CPP = "void viterbi(torch::Tensor X, torch::Tensor start, torch::Tensor states, torch::Tensor cost, torch::Tensor back, int64_t k);"
+CPP = "void viterbi(torch::Tensor X, torch::Tensor start, torch::Tensor states, torch::Tensor cost, torch::Tensor back, torch::Tensor cscr, int64_t k);"
 _mod = None
 
 
@@ -113,14 +118,15 @@ def module():
 def viterbi(X, k, start=None, scratch_gb=2.0):
     """X [B, 256] float32 on a card -> (states int64 [B, 256], cost [B]); start [B] or None as trl_quant.viterbi"""
     B = X.shape[0]; dev = X.device; lo = 16 - k
-    per = 256 * (1 << lo); chunk = max(1, min(B, int(scratch_gb * 1e9 // per)))
+    per = 256 * (1 << lo) + (4 << lo if k == 1 else 0); chunk = max(1, min(B, int(scratch_gb * 1e9 // per)))
     st = torch.empty(B, 256, dtype=torch.int16, device=dev); cost = torch.empty(B, dtype=torch.float32, device=dev)
     sv = (start.to(torch.int32) if start is not None else torch.full((B,), -1, dtype=torch.int32, device=dev)).contiguous()
-    back = torch.empty(chunk * per, dtype=torch.uint8, device=dev)
+    back = torch.empty(chunk * 256 * (1 << lo), dtype=torch.uint8, device=dev)
+    cscr = torch.empty(chunk * (1 << lo) if k == 1 else 1, dtype=torch.float32, device=dev)
     Xc = X.float().contiguous()
     for i in range(0, B, chunk):
         e = min(B, i + chunk)
-        module().viterbi(Xc[i:e], sv[i:e], st[i:e], cost[i:e], back, k)
+        module().viterbi(Xc[i:e], sv[i:e], st[i:e], cost[i:e], back, cscr, k)
     return st.long() & 0xFFFF, cost
 
 

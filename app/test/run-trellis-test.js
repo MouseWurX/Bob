@@ -29,12 +29,19 @@ const q = read('forge/pod/trellis/trl_quant.py');
 check('YAQA and QTIP/EXL3 are credited with their licences', /arXiv 2505\.22988/.test(q) && /GPL-3/.test(q) && /exllamav3/.test(read('forge/pod/trellis/trl_cuda.py')) && /MIT/.test(read('forge/pod/trellis/trl_cuda.py')));
 check('the writer marks the file as a trellis file and refuses a gguf-py without TRL types', /trellis\.version", 1/.test(read('forge/pod/trellis/trl_write.py')) && /no TRL types/.test(read('forge/pod/trellis/trl_write.py')));
 
+const ink = read('forge/pod/trellis/inkling-trl.sh');
+check('the Inkling kit pins Bob, the engine, llama.cpp and the converter to full commits', ink.includes('BOB_SHA=${BOB_SHA:?') && /ENGINE_SHA=\$\{ENGINE_SHA:-[0-9a-f]{40}\}/.test(ink) && /LLAMA_SHA=[0-9a-f]{40}/.test(ink) && /UPSTREAM_SHA=\$\{UPSTREAM_SHA:-[0-9a-f]{40}\}/.test(ink));
+check('the Inkling kit uploads nothing and starts from the stock (not abliterated) brain', !/hf upload|upload_file|upload_folder|curl -X POST|create_repo/.test(ink) && ink.includes('HF_MODEL:-thinkingmachines/Inkling-2-Mini}') && !/abliterat/i.test(ink.replace(/not abliterated|unabliterated/g, '')));
+check('the Inkling kit checks the 1-4 bit kernel and that Lamplight reads the BF16 brain before the long steps', ink.indexOf('--bits 1,2,3,4') > 0 && ink.indexOf('--bits 1,2,3,4') < ink.indexOf('"$TP/hess_hf.py"') && ink.indexOf('BF16 in Lamplight') < ink.indexOf('"$TP/hess_hf.py"'));
+check('the three rows share one coded size: by part takes TRL2-LDLQ\'s bytes, YAQA takes the same widths', ink.includes('--same-as "$W/codes-ldlq-2"') && ink.includes('yaqa --plan "$OUT/plan.tsv"'));
+check('the Inkling kit keeps calibration and scoring texts apart and times every step', ink.includes('--text "$TR"') && ink.includes('"$REF" "$TE"') && ink.includes('s total)') && ink.includes('clocks_event_reasons.active'));
+check('a canary mode codes two layers (one looped) before the whole brain', /LAYERS=\$\{LAYERS:-"0\|6"\}/.test(ink) && ink.includes('--only "^blk'));
 const has = spawnSync('python3', ['-c', 'import numpy'], { encoding: 'utf8' }).status === 0;
 if (has) {
   const r = spawnSync('python3', ['-I', '-c', `
 import sys; sys.path.insert(0, sys.argv[1]); import numpy as np, trl_codec as C
 rng = np.random.default_rng(1); ok = True
-for k in (2, 3, 4):
+for k in (1, 2, 3, 4):
     N, K = 32, 48; bits = rng.integers(0, 2, (N // 16 * K // 16, 256 * k)); st = np.zeros((bits.shape[0], 256), np.int64)
     for p in range(256):
         idx = (np.arange(16) + (p + 1) * k - 16) % (256 * k); st[:, p] = (bits[:, idx] * (1 << np.arange(15, -1, -1))).sum(1)
@@ -54,7 +61,7 @@ for k in (2, 3, 4):
 print(int(ok), round(C.GRID_SD, 3))
 `, dir], { encoding: 'utf8' });
   const [ok, sd] = r.stdout.trim().split(/\s+/).map(Number);
-  check('packed words decode exactly as the engine reads them, at 2, 3 and 4 bits', r.status === 0 && ok === 1, r.stderr.slice(-400));
+  check('packed words decode exactly as the engine reads them, at 1, 2, 3 and 4 bits', r.status === 0 && ok === 1, r.stderr.slice(-400));
   check('Nari\'s INT8 grid has the spread the maker scales to (sd about 36.9)', Math.abs(sd - 36.949) < 0.01, String(sd));
 } else console.log('SKIP the numpy checks (no numpy here)');
 
@@ -81,6 +88,24 @@ print(int(ldlq[0] < plain[0]), int(yaqa[1] < ldlq[1]), int(max(o[2] for o in out
   check('YAQA beats LDLQ on the full Kronecker loss (H_out x H_in)', v[1] === 1, r.stdout);
   check('a coded linear decodes (words, scales, signs, Hadamard sides) to exactly the maker\'s weights', v[2] === 1, r.stdout);
   check('every code is tail-biting (the last window joins the first)', v[3] === 1, r.stdout);
+  const pp = spawnSync('python3', ['-I', '-c', `
+import os, sys, tempfile, json, subprocess
+d = tempfile.mkdtemp(); runs = []
+# three tensors; t0 matters a lot, t2 hardly: by part should move bytes from t2 to t0 within 2-bit's bytes
+drift = {"t0": [8.0, 2.0, 0.5, 0.1], "t1": [4.0, 1.0, 0.25, 0.06], "t2": [0.4, 0.1, 0.03, 0.01]}
+for k in (1, 2, 3, 4):
+    p = os.path.join(d, f"c{k}"); os.makedirs(p); runs.append(p)
+    with open(os.path.join(p, "report.tsv"), "w") as f:
+        for n, v in drift.items():
+            f.write(f"{n}\\t16x256\\tldlq\\t{k}\\t0\\t{v[k - 1]}\\t1\\tcpu\\t{1000 * k}\\n"); open(os.path.join(p, n + ".npz"), "w").close()
+r = subprocess.run([sys.executable, os.path.join(sys.argv[1], "trl_parts.py"), "--codes", *runs, "--same-as", runs[1], "--out", os.path.join(d, "plan.tsv"),
+                    "--merge", os.path.join(d, "m"), "--report", os.path.join(d, "r.json")], capture_output=True, text=True)
+if r.returncode: sys.exit(r.stderr)
+rep = json.load(open(os.path.join(d, "r.json"))); plan = dict(l.split() for l in open(os.path.join(d, "plan.tsv")) if not l.startswith("#"))
+print(int(rep["used"] <= rep["budget"] == 6000), int(rep["drift_estimate"] < 3.1), int(plan["t0"] > plan["t2"]), int(all(os.path.islink(os.path.join(d, "m", n + ".npz")) for n in drift)))
+`, dir], { encoding: 'utf8' });
+  const pv = pp.stdout.trim().split(/\s+/).map(Number);
+  check('bits by part stays within the plain row\'s bytes, lowers the summed drift and gives the important tensor more bits', pp.status === 0 && pv.join('') === '1111', pp.stderr.slice(-300) + pp.stdout);
 } else console.log('SKIP the torch checks (no torch here; the pods have it)');
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
