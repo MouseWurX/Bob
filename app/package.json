@@ -23,6 +23,7 @@
   "testSuites": [
     "test/run-install-guides-test.js",
     "test/run-changed-tests-test.js",
+    "test/run-step-fit-test.js",
     "test/run-hf-sign-in-test.js",
     "test/run-engine-min-test.js",
     "test/run-brain-choices-test.js",
