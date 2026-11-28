@@ -26,7 +26,7 @@ index bfb6793..e4c420b 100644
 +        const char * v = getenv("GGML_CUDA_GRAPHS_KEEP");
 +        const int n = v != nullptr ? atoi(v) : 0;
 +        if (n > 0) {
-+            GGML_LOG_INFO("%s: Lamplight 0161: keeping the %d CUDA graphs used last (GGML_CUDA_GRAPHS_KEEP)\n", __func__, n);
++            GGML_LOG_WARN("%s: Lamplight 0161: keeping the %d CUDA graphs used last (GGML_CUDA_GRAPHS_KEEP)\n", __func__, n);
 +        }
 +        return (size_t) std::max(0, n);
 +    }();
