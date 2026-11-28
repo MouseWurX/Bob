@@ -64,6 +64,7 @@ import { Rentals, currentRental, saveEndpoint } from './rental.js'; // 1.5.127 r
 import { GuestJobs, canHere, NEEDS_LIST } from './share-jobs.js';
 import { askTogetherTool } from './together.js';
 import { showPlanTool } from './plan.js';
+import { todoTool } from './todo.js';
 import { killTree as killProcTree } from './platform.js';
 import { raceTimeout, afterStop } from './hang-guard.js'; // timeouts and hangs, items 208-217
 import { HowTos, howtoTools } from './howtos.js';
@@ -220,6 +221,7 @@ export class Brain {
     this.tools.forget_topic = forgetTopicTool(this);
     Object.assign(this.tools, handsTools(this), scheduleTools(this), routineTools(this), officeTools(this), securityTools(this), selfToolsTools(this), howtoTools(this)); // Hands: off until the user turns them on (see hands-settings.js)
     this.tools.use_tools = useToolsTool(this);
+    this.tools.update_plan = todoTool(this); // Nov 27: the to-do list Bob keeps for a long job (todo.js), only with its setting on
     this.tools.show_plan = showPlanTool(this); // 1.5.78: the plan card before big jobs (plan.js), only with its setting on
     this.tools.ask_together = askTogetherTool(this); // 1.5.42: every OK a job needs on one card (together.js) // the toolbox (toolbox.js): groups added only when a job needs them
     this.tools.pick_session = pickSessionTool(this); // 1.5.43: Bob changes session himself (auto-session.js)

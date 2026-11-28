@@ -24,7 +24,7 @@ export function askedSteps(text) {
 export const planLine = (steps) => `This asks for ${steps.length} things: ${steps.map((s, i) => `${i + 1}) ${s}`).join('; ')}. Do each with its tool, in that order; answer only once all are done or you know why one can't be.`;
 
 // Tool calls that count as doing a step (looking something up counts; adding a tool group or asking doesn't).
-const NOT_A_STEP = new Set(['use_tools', 'ask_user', 'ask_together', 'show_plan', 'bob_help', 'pick_session', 'offer_setup']);
+const NOT_A_STEP = new Set(['use_tools', 'ask_user', 'ask_together', 'show_plan', 'update_plan', 'bob_help', 'pick_session', 'offer_setup']);
 export function stepsDone(actions = []) {
   return actions.filter((a) => a && a.ok !== false && !a.declined && !NOT_A_STEP.has(a.name)).length;
 }

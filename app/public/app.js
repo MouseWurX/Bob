@@ -312,6 +312,18 @@ function add(cls, html) {
   scrollDown();
   return el;
 }
+// Nov 27 (src/todo.js, "Keep a to-do list and check it"): Bob's own to-do list as one live line under the chat, ticked
+// as he works. One per job: a new list from him redraws it in place. Gone for the next job.
+let todoEl = null;
+const TODO_MARK = { done: '✓', doing: '✱', skipped: '–', pending: '○' };
+function drawTodo(steps) {
+  const list = Array.isArray(steps) ? steps : [];
+  if (!list.length) return;
+  const done = list.filter((s) => s.status === 'done' || s.status === 'skipped').length;
+  const html = `<div class="todo-head">📝 To-do: ${done} of ${list.length}</div><ul>${list.map((s) => `<li class="todo-${esc(s.status || 'pending')}"><span aria-hidden="true">${TODO_MARK[s.status] || '○'}</span> ${esc(s.step || '')}${s.status === 'skipped' && s.why ? ` <span class="muted">(${esc(s.why)})</span>` : ''}</li>`).join('')}</ul>`;
+  if (todoEl?.isConnected) { todoEl.innerHTML = html; scrollDown(); } else todoEl = add('note todo', html);
+  todoEl.setAttribute('aria-label', `Bob's to-do list, ${done} of ${list.length} done`);
+}
 const waitLines = new Map(); // 1.5.97: wait id -> its ⏳ line
 function note(text, kind = '') { return add(`note ${kind}`, esc(text)); }
 
@@ -910,8 +922,12 @@ function onEvent(ev) {
     case 'reply-break': // Answer messages mid-job: the job's next words go in a new bubble, under the quick reply
       endReply(ev);
       return;
+    case 'todo': // Nov 27: Bob's own to-do list (todo.js), one live line per job
+      drawTodo(ev.steps);
+      return;
     case 'start':
       endReply(ev);
+      todoEl = null;
       lastStep = ''; oddSteps = -1; asideJob = { seed: asideSeed(), used: new Set() };
       running.add(ev.turnId);
       setBusy(true);

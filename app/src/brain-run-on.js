@@ -22,6 +22,7 @@ import { catTurn, catPrompt } from '../public/patches.js';
 import { meanwhileOn, meanwhileLine, asksAboutJob, NO_JOB_LINE, claimsJobGuess, JOB_GUESS_CORRECTION, JOB_GUESS_NUDGE, noteAfterAnswer } from './meanwhile.js';
 import { guestNote, guestTools } from './share-jobs.js';
 import { askedSteps, planLine } from './job-steps.js';
+import { todoOn, todoLine } from './todo.js';
 import { jobHelpsPrompt, askFirstNote, SOFT_STOP_NOTE, stepsRan, SOFT_STOP_LINE, timeCheck, TIME_UP_NOTE, cleanJobHelps, testsNudge, afterAnswer, flushNoes } from './job-helps.js';
 import { cleanPersonality, personalityPrompt } from '../public/personality.js';
 import { roughTokens, wantsBorrow } from './share-brains.js';
@@ -269,7 +270,9 @@ export const runOnParts = {
       if (tidied && !ctx.tidySaid) { ctx.tidySaid = true; this.log('chat', `the chat is long: ${tidied} older tool results set aside as one line each`); }
       const who = this.cfg.userName || 'the user';
       const note = ctx.lastRound ? LAST_ROUND_NOTE(who) : this.helpOff('note') ? '' : onTrackNote({ ask: text, turn: out.slice(turnStart), step, max: maxSteps, who });
-      return note ? [...out, { role: 'system', content: note }] : out;
+      // Nov 27 (todo.js): Bob's own to-do list, shown again before each step while steps are open.
+      const todo = todoOn(this.cfg) && !ctx.lastRound ? todoLine(ctx.todo) : '';
+      return [...out, ...(note ? [{ role: 'system', content: note }] : []), ...(todo ? [{ role: 'system', content: todo }] : [])];
     };
     // Jobs, One question before a vague big job (job-helps.js): a hint to ask once with ask_user before starting.
     if (!again) { const ask = askFirstNote(this, ctx, text); if (ask) msgs.push({ role: 'system', content: ask, hidden: true }); }
