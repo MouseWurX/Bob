@@ -138,6 +138,7 @@
     "test/run-mixed-bit-test.js",
     "test/run-rco-pick-test.js",
     "test/run-gsq-pilot-test.js",
+    "test/run-trellis-test.js",
     "test/run-ple-split-test.js",
     "test/run-settings-page-test.js",
     "test/run-idle-unload-test.js",
