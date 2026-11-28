@@ -340,7 +340,7 @@ jobs:
         run: |
           tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
           echo "TAG=$tag" >> "$GITHUB_ENV"
-          git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
+          bash app/engine/fetch-llama.sh "$tag" llama.cpp # our saved copy first, ggml-org second (app/docs/llama-cpp-map.md)
           sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
           skip="$VULKAN_WITHOUT"
           for p in app/engine/patches/*.patch; do
