@@ -562,24 +562,24 @@ Every brain and helper Bob can download from his own catalogue, made from [app/c
 <!-- models:start -->
 <!-- Written by installer/make-model-list.js from app/catalog.json. Don't edit by hand: change the catalogue and run it again. -->
 
-Bob's catalogue has **97 brains** and **19 helpers** for pictures, video, music, voices and memory. Each one is a pinned file, checked against its sha256 when it downloads. **Fits** is the smallest hardware tier it's sized for ([the tiers](#set-up-for-your-hardware)). **Tried in our lab** (15 brains) means it ran on our own PCs before Bob would suggest it. Everything else is listed but never suggested until it's tried. **Size** is the download.
+Bob's catalogue has **98 brains** and **19 helpers** for pictures, video, music, voices and memory. Each one is a pinned file, checked against its sha256 when it downloads. **Fits** is the smallest hardware tier it's sized for ([the tiers](#set-up-for-your-hardware)). **Tried in our lab** (20 brains) means it ran on our own PCs before Bob would suggest it. Everything else is listed but never suggested until it's tried. **Size** is the download.
 
 <details>
-<summary><b>Brains</b> (64)</summary>
+<summary><b>Brains</b> (65)</summary>
 
 | Brain | File | Size | Fits | Licence | Status |
 |---|---|---|---|---|---|
 | Qwen3.5 0.8B | Q8_0 | 1 GB | Any computer, even processor only | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | DeepSeek R1 Distill Qwen 1.5B | Q4_K_M | 1.1 GB | Any computer, even processor only | MIT (built on Qwen2.5, Apache 2.0) | Unproven in our lab, as we have yet to test |
 | LFM3 1.7B | Q4_K_M | 1.1 GB | Any computer, even processor only | LFM Open License v1.0 (limits commercial use: read it first) | Unproven in our lab, as we have yet to test |
-| Qwen3.5 2B | Q4_K_M | 1.9 GB | Any computer, even processor only | Apache 2.0 | Measured in our lab (on built-in graphics), not yet one of Bob's picks |
+| Qwen3.5 2B | Q4_K_M | 1.9 GB | Any computer, even processor only | Apache 2.0 | Tried in our lab, measured on built-in graphics |
 | Granite 4.1 3B | Q4_K_M | 2.1 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
-| Raon-1 nano | Q4_K_M | 2.1 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Raon-1 nano | Q4_K_M | 2.1 GB | 6 GB card or built-in graphics | Apache 2.0 | Tried in our lab |
 | Granite 4.2 3B | Q4_K_M | 2.2 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Phi-4 mini 3.8B | Q4_K_M | 2.5 GB | 6 GB card or built-in graphics | MIT | Unproven in our lab, as we have yet to test |
 | Qwen3 4B Instruct 2507 | Q4_K_M | 2.5 GB | 6 GB card or built-in graphics | Apache 2.0 | Tried in our lab, measured on built-in graphics |
 | Ministral 3 3B | Q4_K_M | 3 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
-| Gemma 4 E2B | Q4_0 | 3.4 GB | 6 GB card or built-in graphics | Apache 2.0 | Measured in our lab (on built-in graphics), not yet one of Bob's picks |
+| Gemma 4 E2B | Q4_0 | 3.4 GB | 6 GB card or built-in graphics | Apache 2.0 | Tried in our lab, measured on built-in graphics |
 | Qwen3.5 4B | Q4_K_M | 3.4 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Qwen3.5 4B Turbo | Q4_K_M | 3.5 GB | 6 GB card or built-in graphics | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | DeepSeek R1 Distill Qwen 7B | Q4_K_M | 4.7 GB | 6 GB card | MIT (built on Qwen2.5, Apache 2.0) | Unproven in our lab, as we have yet to test |
@@ -609,10 +609,11 @@ Bob's catalogue has **97 brains** and **19 helpers** for pictures, video, music,
 | Devstral Small 2 24B | Q4_K_M | 15.2 GB | 16 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Mistral Small 3.2 24B | Q4_K_M | 15.2 GB | 16 GB card | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Gemma 4 26B | Q4_0 | 15.4 GB | 16 GB card | Apache 2.0 | Tried in our lab |
+| Inkling 2 Mini | UD-Q4_K_M | 16.6 GB | 16 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
 | GLM-4.7 Flash 30B-A3B | Q4_K | 18.2 GB | 16 GB card, the rest in RAM | MIT | Unproven in our lab, as we have yet to test |
 | Nemotron 3.5 Lightning 30B-A3B | Q4_0 | 18.9 GB | 16 GB card, the rest in RAM | OpenMDW 1.1 | Unproven in our lab, as we have yet to test |
 | Qwen3 Coder 30B | Q4_K_M | 19 GB | 16 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
-| Raon-1 mini preview | Q4_K_M | 19.7 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
+| Raon-1 mini preview | Q4_K_M | 19.7 GB | 16 GB card, the rest in RAM | Apache 2.0 | Tried in our lab |
 | Laguna XS 2.1 33B-A3B | Q4_K_M | 20.3 GB | 16 GB card, the rest in RAM | OpenMDW 1.1 | Unproven in our lab, as we have yet to test |
 | Qwen3.6 35B-A3B Opus Reasoning Distilled | Q4_K_M | 22.1 GB | 16 GB card, the rest in RAM | Apache 2.0 | Unproven in our lab, as we have yet to test |
 | Qwen3.6 35B-A3B | UD-Q4_K_XL | 23.3 GB | 16 GB card, the rest in RAM | Apache 2.0 | Tried in our lab, Bob's default brain, measured on a 16 GB card |
