@@ -5,6 +5,13 @@ split. Make sure it works before we send it for the full run." and "get yaqa and
 
 Tools: `model-lab/forge/pod/trellis/` (our own maker for Nari's trellis format, Lamplight patch 0136).
 
+Credits: the methods are other people's research, written again as our own code. LDLQ and incoherence processing come from
+QuIP (Chee, Cai, Kuleshov, De Sa 2023, https://arxiv.org/abs/2307.13304). Hadamard incoherence comes from QuIP# (Tseng,
+Chee, Sun, Kuleshov, De Sa 2024, https://arxiv.org/abs/2402.04396). The trellis code and Viterbi search come from QTIP
+(Tseng, Sun, Hou, De Sa 2024, https://arxiv.org/abs/2406.11235). Two-sided rounding comes from YAQA (Tseng, Sun, De Sa
+2026, https://arxiv.org/abs/2505.22988). Error-feedback rounding comes from GPTQ (Frantar et al. 2022,
+https://arxiv.org/abs/2210.17323).
+
 What was checked here:
 - **Codec = the engine.** Our packed words decode bit for bit as Lamplight's `ggml_trellis_decode_rows` reads them, at 2, 3
   and 4 bits (its loop compiled as `trl_check.c` and run on random tail-biting streams).

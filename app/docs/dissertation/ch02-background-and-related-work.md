@@ -52,6 +52,10 @@ Quantization stores each weight in fewer bits, usually after training. Dettmers 
 
 Frantar et al. (2022) proposed GPTQ, a one-shot method that uses approximate second-order information to lower weights to 3 or 4 bits with little accuracy loss. Lin et al. (2023) proposed AWQ, which finds the small fraction of weights that matter most by looking at activation statistics and protects them by scaling. It needs no backpropagation, and it received the MLSys 2024 Best Paper Award. Dettmers et al. (2023) proposed QLoRA, which fine-tunes adapters through a frozen 4-bit quantized model and lets a 65 billion parameter model be fine-tuned on a single 48 GB card.
 
+Chee et al. (2023) proposed QuIP, the first method to reach 2 bits a weight on large language models with little loss. It has two parts. Incoherence processing multiplies each weight matrix by random orthogonal matrices on both sides, so no single weight or input direction stands out. LDLQ is a rounding rule that feeds each column's rounding error forward through the input Hessian, the same idea as GPTQ written as an LDL factorization, and the authors prove it is optimal within its class. Tseng et al. (2024a) built QuIP# on top of it, with fast randomized Hadamard transforms for the incoherence step and lattice codebooks for the values. Tseng et al. (2024b) proposed QTIP, which replaces the codebook with a trellis code: each run of weights is one path through a trellis, picked by a Viterbi search, so a weight can take many values while costing only a few bits. Tseng, Sun and De Sa (2026) proposed YAQA, which rounds against an estimate of the whole model's output change (a Kronecker product of an input and an output Hessian) instead of one layer's error. They report about a third less error than LDLQ.
+
+The project's own trellis maker (the NariQ tools in the Forge, and Lamplight's trellis formats) is built on these four papers. It uses QuIP#'s Hadamard incoherence, QTIP's tail-biting trellis and Viterbi search, LDLQ as GPTQ and QuIP define it, and YAQA's two-sided feedback. The code is our own, written for Lamplight's tiles and scales. The ideas are theirs.
+
 For this thesis, quantization matters in two ways. It is how a model reaches a consumer card at all, as Section 2.10 describes. It is also a source of small, hard-to-see changes in model behavior. We did not study quantization error as a research question, and we treat it as a fixed condition of local inference.
 
 ### 2.2.2 Weight pruning
@@ -330,6 +334,8 @@ Brown, T. B., Mann, B., Ryder, N., et al. (2020). Language Models are Few-Shot L
 
 Carlini, N., Ippolito, D., Jagielski, M., Lee, K., Tramer, F., and Zhang, C. (2022). Quantifying Memorization Across Neural Language Models. arXiv:2202.07646. https://arxiv.org/abs/2202.07646
 
+Chee, J., Cai, Y., Kuleshov, V., and De Sa, C. (2023). QuIP: 2-Bit Quantization of Large Language Models With Guarantees. NeurIPS 2023; arXiv:2307.13304. https://arxiv.org/abs/2307.13304
+
 Chen, L., Li, S., Yan, J., Wang, H., Gunaratna, K., Yadav, V., Tang, Z., Srinivasan, V., Zhou, T., Huang, H., and Jin, H. (2023). AlpaGasus: Training A Better Alpaca with Fewer Data. arXiv:2307.08701. https://arxiv.org/abs/2307.08701
 
 Chen, R., Arditi, A., Sleight, H., Evans, O., and Lindsey, J. (2025). Persona Vectors: Monitoring and Controlling Character Traits in Language Models. arXiv:2507.21509. https://arxiv.org/abs/2507.21509
@@ -405,6 +411,12 @@ Sprague, Z., Yin, F., Rodriguez, J. D., Jiang, D., Wadhwa, M., Singhal, P., Zhao
 Sreenivas, S. T., Muralidharan, S., Joshi, R., et al. (2024). LLM Pruning and Distillation in Practice: The Minitron Approach. arXiv:2408.11796. https://arxiv.org/abs/2408.11796
 
 Tazi, N., von Werra, L., and Wolf, T. (2026). The Ultimate MoE Training Handbook. Hugging Face, published 5 November 2026. https://huggingface.co/spaces/huggingface/moe-blogpost
+
+Tseng, A., Chee, J., Sun, Q., Kuleshov, V., and De Sa, C. (2024a). QuIP#: Even Better LLM Quantization with Hadamard Incoherence and Lattice Codebooks. ICML 2024 (PMLR 235); arXiv:2402.04396. https://arxiv.org/abs/2402.04396
+
+Tseng, A., Sun, Q., Hou, D., and De Sa, C. (2024b). QTIP: Quantization with Trellises and Incoherence Processing. NeurIPS 2024; arXiv:2406.11235. https://arxiv.org/abs/2406.11235
+
+Tseng, A., Sun, Z., and De Sa, C. (2026). Model-Preserving Adaptive Rounding (YAQA). ICML 2026 (PMLR 306); arXiv:2505.22988. https://arxiv.org/abs/2505.22988
 
 Turner, A. M., Thiergart, L., Leech, G., Udell, D., Vazquez, J. J., Mini, U., and MacDiarmid, M. (2023). Steering Language Models With Activation Engineering. arXiv:2308.10248. https://arxiv.org/abs/2308.10248
 

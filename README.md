@@ -462,6 +462,8 @@ Bob is inspired by the wonderful books of Dennis E. Taylor. Bob is an independen
 
 Bob's own brains are made from [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) by Alibaba's Qwen team (Apache 2.0). Brain Engine is built on [llama.cpp](https://github.com/ggml-org/llama.cpp) by the ggml authors (MIT).
 
+Bob's trellis files (NariQ) and the tools that make them stand on other people's research: incoherence processing and LDLQ rounding from [QuIP](https://arxiv.org/abs/2307.13304) (Chee, Cai, Kuleshov and De Sa, 2023), Hadamard incoherence from [QuIP#](https://arxiv.org/abs/2402.04396) (Tseng, Chee, Sun, Kuleshov and De Sa, 2024), the trellis code and its Viterbi search from [QTIP](https://arxiv.org/abs/2406.11235) (Tseng, Sun, Hou and De Sa, 2024), two-sided rounding from [YAQA](https://arxiv.org/abs/2505.22988) (Tseng, Sun and De Sa, 2026), and error-feedback rounding from [GPTQ](https://arxiv.org/abs/2210.17323) (Frantar, Ashkboos, Hoefler and Alistarh, 2022). Our code is our own; the ideas are theirs. Thank you.
+
 Testing and releases: **Porter**, a Claude assistant made by Anthropic, carried Bob's builds through testing on real hardware and out the door as releases. Thanks, Porter.
 
 ## Licence

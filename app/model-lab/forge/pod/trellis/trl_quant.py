@@ -6,6 +6,9 @@ LDLQ_2hess, GPL-3 like Bob, rewritten here for Nari's tiles and scales).
 
 The decoder (ggml_trellis_dequantize) gives W = diag(post) T_r W^ T_c diag(pre), T = blockwise normalised Sylvester
 Hadamard (symmetric, its own inverse), W^[n, k] = grid(state) x s16[k / 16]. So W^ = T_r diag(1/post) W diag(1/pre) T_c.
+Built on others' work (our code, their ideas): GPTQ (Frantar et al. 2022, arXiv 2210.17323) and LDLQ with incoherence
+(QuIP, Chee et al. 2023, arXiv 2307.13304); Hadamard incoherence (QuIP#, Tseng et al. 2024, arXiv 2402.04396); the
+tail-biting trellis and its Viterbi search (QTIP, Tseng et al. 2024, arXiv 2406.11235); YAQA (arXiv 2505.22988).
 28 Nov 2026 (thread "Shrink Flash-Next with GPTQ and trellis").
 """
 import math

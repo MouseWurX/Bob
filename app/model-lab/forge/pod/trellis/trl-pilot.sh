@@ -14,7 +14,8 @@
 #   CANARY=1 bash trl-pilot.sh   -> Qwen3-0.6B, 2 bits only, fewer chunks: every new step once, all timed (~$0.50)
 #   bash trl-pilot.sh            -> Qwen3-1.7B, both widths
 #   CANARY=1 CHUNKS=128 YAQA_DAMPS="0.01 0.1 0.3 1" bash trl-pilot.sh -> the YAQA sweep on the 0.6B
-#   CANARY=1 CHUNKS=128 YAQA_DAMPS="1 3 10" SEEDS="0 1" bash trl-pilot.sh -> sweep 3: more damping, and each row twice
+#   CANARY=1 CHUNKS=128 YAQA_DAMPS="1 3 10" SEEDS="0 1" bash trl-pilot.sh -> sweep 3: more damping, each row twice, and
+#     llama.cpp's own imatrix 2-bit files beside them
 # Env: OUT, W, HF_MODEL, CHUNKS (Hessian chunks x CTX), KLD_CHUNKS, BITS ("2 3"), NGPU (default: every card), JOBS, YAQA_DAMPS,
 #      STEP_MIN (hard minutes per trellis run, default 90). Ends with "TRL DONE" (or "TRL FAILED <step>") in summary.txt.
 set -uo pipefail
@@ -30,6 +31,7 @@ YAQA_DAMPS=${YAQA_DAMPS:-0.01}
 # SEEDS: the trellis rows again with other random rotations (rows -S<seed>), to see how much one coding's luck moves the
 # KLD (sweep 2, 28 Nov: YAQA damping 0.01/0.1/0.3/1 gave 1.24/0.97/1.22/0.81, not in order, each +-0.03)
 SEEDS=${SEEDS:-0}
+STOCK_IQ=${STOCK_IQ:-1}   # llama.cpp's own 2-bit rows with an importance matrix (Q2_K and IQ2_XXS/XS/S, its mix and pure)
 BOB_SHA=${BOB_SHA:?set BOB_SHA to the MouseWurX/Bob commit with pod/trellis}           # this branch
 ENGINE_SHA=${ENGINE_SHA:-de773f034d040f8b46aad012672bae352d06c102}                       # engine patches 0001-0136 with coded experts (PR #387)
 TAG=b12359; LLAMA_SHA=b1b770d90d94cad9e9ea5b993bdbc383a522fb28
@@ -81,8 +83,9 @@ if [ ! -x "$B/llama-perplexity" ]; then
   sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${TAG#b})/" "$W/ll/cmake/build-info.cmake"
   cmake -S "$W/ll" -B "$W/ll/build" -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_UI=OFF -DLLAMA_USE_PREBUILT_UI=OFF -DLLAMA_CURL=OFF \
     -DLLAMA_OPENSSL=OFF -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=$ARCH >"$OUT/cmake.log" 2>&1 &&
-    cmake --build "$W/ll/build" -j "$JOBS" --target llama-quantize llama-perplexity llama-completion >"$OUT/build.log" 2>&1 || { tail -20 "$OUT/build.log"; fail build; }
+    cmake --build "$W/ll/build" -j "$JOBS" --target llama-quantize llama-perplexity llama-completion llama-imatrix >"$OUT/build.log" 2>&1 || { tail -20 "$OUT/build.log"; fail build; }
 fi
+[ -x "$B/llama-imatrix" ] || cmake --build "$W/ll/build" -j "$JOBS" --target llama-imatrix >>"$OUT/build.log" 2>&1 || fail "build llama-imatrix"
 export LD_LIBRARY_PATH=$B:${LD_LIBRARY_PATH:-}; export PYTHONPATH=$W/ll/gguf-py:${PYTHONPATH:-}
 "$B/llama-perplexity" --list-devices 2>&1 | tee "$OUT/devices.txt" | grep -q CUDA || fail "the engine sees no CUDA card"
 python3 -c "import gguf; gguf.GGMLQuantizationType.TRL2" || fail "gguf-py without trellis types"
@@ -131,6 +134,18 @@ for k in $BITS; do
     step "stock 2-bit rows"
     q STOCK-Q2_K Q2_K --pure; q STOCK-q2_0 Q8_0 --tensor-type "attn_(q|k|v|output)=q2_0" --tensor-type "ffn_(gate|up|down)=q2_0"
     KL+=("STOCK-Q2_K=$W/STOCK-Q2_K.gguf" "STOCK-q2_0=$W/STOCK-q2_0.gguf")
+    # llama.cpp's own 2-bit files with an importance matrix from the same training text (Squeak, 28 Nov: "Stock llama
+    # settings?"): its usual mixes (-MIX: llama-quantize picks the type per tensor) and every linear one type (-PURE, the
+    # same layout as the trellis rows). Same q8_0 token table and head as every row here, so only the linears differ.
+    if [ "$STOCK_IQ" = 1 ]; then
+      step "stock llama.cpp 2-bit with importance matrix"
+      IM=$W/imatrix.gguf
+      [ -s "$IM" ] || "$B/llama-imatrix" -m "$REF" -f "$TR" -o "$IM" -c "$CTX" --chunks "$CHUNKS" -ngl 99 > "$OUT/imatrix.log" 2>&1 || { tail -5 "$OUT/imatrix.log"; fail imatrix; }
+      for t in Q2_K IQ2_XXS IQ2_XS IQ2_S; do
+        q "LLAMA-$t-MIX" $t --imatrix "$IM"; q "LLAMA-$t-PURE" $t --imatrix "$IM" --pure
+        KL+=("LLAMA-$t-MIX=$W/LLAMA-$t-MIX.gguf" "LLAMA-$t-PURE=$W/LLAMA-$t-PURE.gguf")
+      done
+    fi
     step "GPTQ q2_0 (same Hessians)"
     C=$W/codes-gptq
     [ -s "$W/GPTQ-q2_0.gguf" ] || { timeout $((STEP_MIN * 60)) python3 "$P/gsq/gsq_q2.py" --model "$REF" --hess "$H" --match "$LIN" --mode gptq --out "$C" > "$OUT/gptq.log" 2>&1 &&
