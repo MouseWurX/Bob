@@ -169,6 +169,15 @@ const KEY = 'rpa_' + 'TESTKEY0123456789abcdefghijklmnop';
   const m = new Machines({ fetchImpl: async (url, opts) => { calls.push(JSON.parse(opts.body)); return new Response('{"id":"p8","cost":40}'); }, now: () => 1 });
   const run = await m.start(eight, { key: 'k', minutes: 30 });
   check('RunPod is asked for that many cards, and its own hourly price is kept', calls[0].gpu.count === 8 && run.perHour === 40);
+  { // Nov 23 2026: a key that can't delete machines never starts one (a narrowed key left finished pods billing)
+    const seen = []; let err = '';
+    const no = new Machines({ fetchImpl: async (url, opts = {}) => { seen.push(opts.method || 'GET'); return opts.method === 'DELETE' ? new Response('{"error":"forbidden"}', { status: 403 }) : new Response('{"id":"p9"}'); }, now: () => 1 });
+    try { await no.start(eight, { key: 'k', minutes: 30 }); } catch (e) { err = e.message; }
+    check('a RunPod key that can\'t delete machines starts nothing, and says why', /can't delete machines/.test(err) && /Nothing was started/.test(err) && !seen.includes('POST'));
+    const ok = []; const yes = new Machines({ fetchImpl: async (url, opts = {}) => { ok.push(`${opts.method || 'GET'} ${new URL(url).pathname}`); return opts.method === 'DELETE' ? new Response('{"error":"not found"}', { status: 404 }) : new Response('{"id":"p9"}'); }, now: () => 1 });
+    const r = await yes.start(eight, { key: 'k', minutes: 30 });
+    check('a key that may delete (a made-up machine is "not found") goes on to start it', r.id === 'p9' && ok[0] === 'DELETE /v2/pods/zzzznotapod000' && ok.some((x) => x.startsWith('POST /v2/pods')));
+  }
   const emitted = [];
   new Rentals(cfg, { env: { RUNPOD_API_KEY: 'k' }, broadcast: () => {} }).offer(eight, { tokens: 10, emit: (ev) => emitted.push(ev) });
   check('the Hire it card carries the count so the window and the phone can warn', emitted[0].rental.cards === 8 && emitted[0].rental.cardsText === '8 × 141 GB card on one machine');

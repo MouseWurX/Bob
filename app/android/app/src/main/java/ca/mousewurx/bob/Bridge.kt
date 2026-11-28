@@ -121,6 +121,9 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                         if (r.status == 200) photo = null
                         answer(id, JSONObject().put("status", r.status).put("body", r.body))
                     }
+                    // ---- Nov 27 2026: Where Bob connected and No internet (PhoneNet.kt) ----
+                    "privacy.view" -> answer(id, PhoneNet.view())
+                    "privacy.set" -> answer(id, PhoneNet.set(o))
                     // ---- Pair Bobs ----
                     "pair.with" -> answer(id, app.pair.pairWith(o.getString("address")))
                     "pair.find" -> answer(id, app.pair.find(o.optJSONArray("paired")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList()))

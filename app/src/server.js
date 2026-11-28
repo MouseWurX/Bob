@@ -145,8 +145,12 @@ import { netFilesRoute } from './net-files-routes.js'; // Nov 14 Bob-Net file sh
 import { Outbox, Inbox } from './bob-net-files.js';
 import { saveRoute } from './save-routes.js';
 import { voiceRoute } from './voice-routes.js';
+import { privacyGate, PRIVACY_PATHS } from './privacy-services.js';
+import { NetLog, installNetLog } from './net-log.js'; // Nov 23 2026: Where Bob connected // Nov 23 2026: a privacy card before a service goes on
 import { searchBackupRoute } from './search-backup-routes.js'; // Nov 16: Backup search with a key
 import { privateWebRoute } from './private-web-routes.js'; // Nov 16: Private web
+import { noInternetRoute } from './no-internet-routes.js'; // Nov 27 2026: No internet
+import { noInternetOn, blocksUrl } from './no-internet.js';
 import { traceLogRoute } from './trace-log-routes.js'; // Nov 16: Monitoring log
 import { talkView } from './talk.js'; // Talk with Bob (1.5.210)
 import { refsRoute } from './refs-routes.js';
@@ -212,6 +216,14 @@ function broadcast(ev) {
 }
 
 const brain = new Brain(cfg, broadcast);
+brain.netLog = installNetLog(new NetLog({ dir: cfg.dataDir, cfg, agents: () => brain.codingAgents?.summary?.().total || 0 })); // Nov 23 2026: Where Bob connected (net-log.js)
+// Nov 27 2026: No internet's gate for the desktop app's browser windows (electron/net-gate.cjs), which use Chromium's own
+// network, not Node's. Same rules, and each stop goes in Where Bob connected, tool 'Bob\'s browser'.
+globalThis.bobNetGate = {
+  on: () => noInternetOn(cfg),
+  blocksUrl: (url) => blocksUrl(url, cfg),
+  note: (url) => { try { brain.netLog.add(new URL(url).hostname, Number(new URL(url).port) || 443, { blocked: true, tool: 'Bob\'s browser' }); } catch {} }
+};
 brain.gameBusy = gameGuard(); // Nov 14 (game-guard.js): what holds the card, read at most every 5 s
 brain.linksCache = new LinksCache(); // which links this machine has, read in the background for the hello (src/links.js)
 // Item 214: a helper thread notices when this server stops answering for a minute (it notes it in the logbook), and
@@ -431,9 +443,14 @@ let chatImport = null; // the file being looked at in Bring in chats: { token, c
 const safeChatId = (id) => String(id || '').replace(/[^a-zA-Z0-9-]/g, '').slice(0, 80);
 
 async function body(req) {
-  let s = '';
-  for await (const c of req) { s += c; if (s.length > 16e6) throw new Error('too big'); } // Nov 24: 16 MB, past any brain's whole context (was 1 MB)
-  return s ? JSON.parse(s) : {};
+  if (req.bobBodyError) throw req.bobBodyError; // read once (the privacy gate may have read it first)
+  if (req.bobBody !== undefined) return req.bobBody;
+  try {
+    let s = '';
+    for await (const c of req) { s += c; if (s.length > 16e6) throw new Error('too big'); } // Nov 24: 16 MB, past any brain's whole context (was 1 MB)
+    req.bobBody = s ? JSON.parse(s) : {};
+  } catch (e) { req.bobBodyError = e; throw e; }
+  return req.bobBody;
 }
 
 // Block other websites from talking to Bob: check Host (DNS rebinding) and require
@@ -603,6 +620,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method !== 'GET' && req.method !== 'HEAD' && p !== '/login') {
       const bad = refuseForeign(req, host);
       if (bad) { brain.log('blocked', `${req.method} ${p}: ${bad}`); return send(res, bad === 'content type' ? 415 : 403, { error: `refused (${bad})` }); }
+    }
+    // Nov 23 2026: turning on anything that sends data out shows its privacy card first (privacy-services.js).
+    if (req.method === 'POST' && PRIVACY_PATHS.has(p)) {
+      let b; try { b = await body(req); } catch { b = {}; }
+      const stop = privacyGate(p, b, cfg, req.headers['x-bob-privacy-ok'], { setupSwitch: (id) => brain.offers?.map?.get(id)?.sw });
+      if (stop) return send(res, stop.status, stop.body);
     }
     // Anything the user does in the window (a setting, a click, typing) counts as activity, so an update
     // never restarts Bob while he's using it. Automatic polling (GETs) doesn't count; quitting doesn't either.
@@ -1483,6 +1506,7 @@ const server = http.createServer(async (req, res) => {
     if ((p === '/api/fade' || p === '/api/chat/clear' || p === '/api/amnesia') && await fadeRoute({ req, res, p, url, isLocal, cfg, brain, body, send })) return;
     if (/^\/api\/(harness|crash|settings-undo|health|quiet|weekly|pins|chat\/try|guest)(\/|$)/.test(p) && await harnessRoute({ req, res, p, url, isLocal, cfg, brain, body, send, saveSettings, replaceSettings, weekly, crashState, applyShortcut, nameOf: friendlyName, probes: healthProbes })) return; // items 62 to 72
     if (p === '/api/prompts' && await promptsRoute({ req, res, p, isLocal, cfg, body, send, saveSettings, log: (k, t) => brain.log(k, t) })) return; // saved prompts and the / menu
+    if (req.method === 'GET' && p === '/api/net-log') return isLocal ? send(res, 200, brain.netLog.view(Math.min(500, Number(url.searchParams.get('n')) || 100))) : send(res, 403, { error: 'Where Bob connected is shown on this replicant matrix itself.' });
     if (p === '/api/telegram' && await telegramRoute({ req, res, p, isLocal, brain, body, send })) return;
     if ((p === '/api/discord' || p === '/api/rooms/discord') && await discordRoute({ req, res, p, isLocal, brain, body, send })) return;
     if (p.startsWith('/api/coding-agents') && await agentsRoute({ req, res, p, isLocal, agents: brain.codingAgents, body, send, pick: () => pickFolder({ purpose: 'project' }) })) return; // Nov 13 Coding agents
@@ -1496,6 +1520,7 @@ const server = http.createServer(async (req, res) => {
     if ((await voiceRoute({ req, res, p, isLocal, cfg, shop, body, send, TYPES })) !== false) return;
     if ((await searchBackupRoute({ req, res, p, isLocal, cfg, body, send, log: (k, t) => brain.log(k, t) })) !== false) return;
     if ((await privateWebRoute({ req, res, p, isLocal, cfg, body, send, log: (k, t) => brain.log(k, t) })) !== false) return;
+    if ((await noInternetRoute({ req, res, p, isLocal, cfg, body, send, log: (k, t) => brain.log(k, t), changed: (v) => broadcast({ type: 'no-internet', on: v.on }) })) !== false) return;
     if ((await traceLogRoute({ req, res, p, isLocal, cfg, body, send, log: (k, t) => brain.log(k, t) })) !== false) return;
     if ((await refsRoute({ req, res, p, url, brain, body, send, serveFile })) !== false) return;
     if ((await queueRoute({ req, res, p, brain, body, send })) !== false) return;

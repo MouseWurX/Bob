@@ -8,6 +8,8 @@ import { receiptBefore, cachedLook, keepLook, receiptAfter, noteNo } from './job
 import { inTurn as inChangeTurn, afterChanges } from './turn-changes.js';
 import { recordCall } from './tool-learn.js';
 import { traced, toolStatus } from './trace-log.js'; // Nov 16 Monitoring log
+import { netWhyFor, inNetWhy } from './net-why.js'; // Nov 27 2026: Where Bob connected, which tool
+import { toolLine } from './no-internet.js';
 import { keepRecord } from './tool-record.js';
 import { SAVE_AS, saveAs } from './save-as.js';
 import path from 'node:path';
@@ -63,7 +65,11 @@ export const toolRunParts = {
     // which turn wrote them). Not for another Bob's, Telegram's or Discord's jobs.
     const scope = ctx?.askId && !ctx.job?.guest ? { cfg: this.cfg, sessionId: ctx.sessionId, askId: ctx.askId, jobId: ctx.job?.id, tool: name } : null;
     // Monitoring log (trace-log.js): one span per call, with the tool's name, time, status and the answer's size only.
-    const res = await traced('tool', name === 'use_my_tool' && args?.name ? `use_my_tool:${args.name}` : name, async () => cachedLook(this, name, args, ctx) || await inChangeTurn(scope, async () => { try { return await this.runToolNow(name, args, ctx, tool); } finally { if (scope && afterChanges(scope)) { ctx.changed = true; ctx.emit?.({ type: 'turn-changed', askId: ctx.askId }); } } }), (r) => ({ status: toolStatus(r?.text), chars: String(r?.text ?? '').length, detail: { in: args, out: r?.text } }), { signal: ctx?.signal, before: { in: args } }); // Jobs: Reuse look-ups
+    // Where Bob connected says which tool opened each connection (net-why.js), and a connection No internet stopped is
+    // named at the top of the tool's own answer, so Bob says so instead of guessing why it failed.
+    const netWhy = netWhyFor(name === 'use_my_tool' && args?.name ? `use_my_tool:${args.name}` : name);
+    const res = await traced('tool', name === 'use_my_tool' && args?.name ? `use_my_tool:${args.name}` : name, async () => inNetWhy(netWhy, async () => cachedLook(this, name, args, ctx) || await inChangeTurn(scope, async () => { try { return await this.runToolNow(name, args, ctx, tool); } finally { if (scope && afterChanges(scope)) { ctx.changed = true; ctx.emit?.({ type: 'turn-changed', askId: ctx.askId }); } } })), (r) => ({ status: toolStatus(r?.text), chars: String(r?.text ?? '').length, detail: { in: args, out: r?.text } }), { signal: ctx?.signal, before: { in: args } }); // Jobs: Reuse look-ups
+    if (netWhy.blocked.length && res && typeof res === 'object') res.text = `${toolLine(netWhy.blocked)}\n\n${res.text ?? ''}`.trim();
     keepLook(this, name, args, res);
     receiptAfter(this, name, args, res, ctx, before);
     noteNo(this, ctx, name, args, res?.text); // Jobs: Remember a "no" for the whole chat

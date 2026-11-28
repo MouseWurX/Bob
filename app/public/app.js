@@ -1,6 +1,7 @@
 // Bob's panel: chat, approvals, status, taskbar badge, read-aloud, and the brain-swap machine.
 import './sample-data.js'; // 1.5.210 sample-data mode (?sample=1 in the address only): made-up brains, nothing saved
 import { bringToFront } from './window-front.js'; // Nov 16: an open window comes to the front
+import './privacy-card.js'; // Nov 23 2026: a privacy card before any service that sends data out goes on
 import { drawBob, setLook } from './bob-sprite.js';
 import { secretNoteHtml, wireSecretNote } from './more-tools.js'; // 🧰 More tools: a password Bob made
 import { applyStyle, applySavedStyle } from './themes.js';

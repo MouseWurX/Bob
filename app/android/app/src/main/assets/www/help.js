@@ -108,6 +108,12 @@ globalThis.BobHelp = {
       html: `<p>Settings, <strong>Theme</strong>: Moondust (dark, the starting position: quiet grey with a teal accent, the same one Bob starts with on your other replicant matrices), Bob's Inn (dark, warm tavern browns), Light, or Follow the phone (matches Android's dark mode). A theme you pick stays picked.</p>`
     },
     {
+      id: 'privacy', title: 'No internet and Where Bob connected',
+      html: `<p>Settings, Privacy. <strong>🚫 No internet</strong> is off to start with. With it on, I connect to nothing except what you allow: <strong>Allow my own Bobs (Bob-Net)</strong> and <strong>Allow my home network</strong> (both on to start with; finding your Bobs on Wi-Fi uses the home network), and the <strong>Allowed sites</strong> you add. example.com allows everything under it too.</p>
+<p>What stops while it's on: brain downloads (unless huggingface.co is on your list), and anything else that would leave this phone for a site you didn't allow. The phone brain, your chats and memory here keep working. When something is stopped I say so instead of trying again.</p>
+<p><strong>📡 Where Bob connected</strong> lists every site this phone's Bob connected to lately, when and what for, never what was sent. Ones No internet stopped are marked Stopped. The whole list is net-log.jsonl in my own folder on the phone. Links you open go to your phone's browser, which is its own app with its own rules. Your computer's Bob has his own No internet switch, in Settings, Online services.</p>`
+    },
+    {
       id: 'resume', title: 'Resume replies',
       html: `<p>Settings, <strong>Resume replies</strong> (off to start with). Android sometimes closes apps in the background to save memory. With this on, if that happens in the middle of a phone-brain reply, I ask the question again when you come back.</p>`
     },
@@ -289,6 +295,8 @@ globalThis.BobHelp = {
 <dt>Share menu</dt><dd>Android's list of apps you can send a link, picture or file to from another app. I'm in it while Accept shares is on.</dd>
 <dt>Widget</dt><dd>A small piece of an app that sits on your home screen. Mine has Ask Bob, 🎙 and your next reminder.</dd>
 <dt>Carry on</dt><dd>Handing a chat to another of your Bobs, words and all, so you keep going there.</dd>
+<dt>No internet</dt><dd>A switch in Settings, Privacy: I connect to nothing except your own Bobs, your home network and the sites you allow.</dd>
+<dt>Where Bob connected</dt><dd>The list in Settings, Privacy of every site I connected to lately, when and what for.</dd>
 <dt>Metered connection</dt><dd>One Android counts as costing by the megabyte, usually mobile data. Low-data mode can go by it.</dd>
 <dt>Low-data mode</dt><dd>Text only: what your other Bob makes waits for your tap. Settings, Data.</dd>
 <dt>Bob on your network</dt><dd>A Bob running on one of your replicant matrices that lets this phone in. He does the heavy lifting.</dd>
@@ -339,6 +347,7 @@ globalThis.BobHelp = {
 <tr><td>Can I get a deleted message back?</td><td>No. Delete is for good, so I ask once first. Try again and Edit keep the old version instead.</td></tr>
 <tr><td>The chest is empty or says no Bob is reachable</td><td>The chest is your other Bob's Made by Bob list, so it needs him on Tailscale. Once he's reachable, open the menu and tap Chest again.</td></tr>
 <tr><td>I forgot my passcode</td><td>If Lock my chats and memory was on, those chats and my memory are gone for good: the passcode is the only key and there is no reset. To start fresh, clear my storage (Android Settings, Apps, Bob, Storage, Clear storage); that removes the lock, the chats and your phone settings. Your other replicant matrix's chats aren't touched.</td></tr>
+<tr><td>A brain download says No internet is on</td><td>Settings, Privacy: add huggingface.co to Allowed sites, or switch No internet off.</td></tr>
 <tr><td>The pill says Nobody home</td><td>Tap it. Usually your other replicant matrix is asleep, or Tailscale is off on the phone or your other replicant matrix.</td></tr>
 <tr><td>"Isn't letting other replicant matrices in yet"</td><td>On your other replicant matrix: Bob's Settings, Bob-Net, Bob-Net access. Turn it on, then restart Bob on your other replicant matrix.</td></tr>
 <tr><td>"That isn't a Tailscale address"</td><td>Use the address your other replicant matrix's Bob-Net access setting shows: a name ending in .ts.net, or a number starting 100.</td></tr>

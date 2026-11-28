@@ -75,6 +75,7 @@ final class NetBob: NSObject, URLSessionTaskDelegate {
     private func request(_ base: String, _ path: String, _ method: String, timeout: TimeInterval = 8) throws -> URLRequest {
         guard NetBob.base(String(base.dropFirst("http://".count))) == base else { throw NetError("Not a Tailscale address") }
         guard path.hasPrefix("/"), !path.hasPrefix("//"), let url = URL(string: base + path) else { throw NetError("Bad path") }
+        try PhoneNet.check(url, "Bob-Net (your own Bobs)") // Nov 27 2026: written down; stopped if Bob-Net is unticked under No internet
         var r = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
         r.httpMethod = method
         if let c = cookie(base) { r.setValue(c, forHTTPHeaderField: "Cookie") }

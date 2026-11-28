@@ -21,8 +21,6 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
 import java.io.RandomAccessFile
-import java.net.HttpURLConnection
-import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -103,6 +101,11 @@ class PhoneBrain(private val context: Context) {
         if (download?.isActive == true) return
         val name = safeName(file)
         require(url.startsWith("https://huggingface.co/") && url.contains("/resolve/") && Regex("/resolve/[0-9a-f]{40}/").containsMatchIn(url)) { "Only pinned Hugging Face links" }
+        // Nov 27 2026: No internet on and Hugging Face not allowed: say so at once, without trying (PhoneNet.kt).
+        if (PhoneNet.stops("huggingface.co")) {
+            PhoneNet.note("huggingface.co", 443, "Brain download", true)
+            emit(mapOf("type" to "download", "state" to "error", "file" to name, "text" to (PhoneNet.Stopped("huggingface.co").message ?: "No internet is on"))); return
+        }
         download = scope.launch(Dispatchers.IO) {
             val me = this
             val part = File(modelsDir, "$name.part")
@@ -122,9 +125,11 @@ class PhoneBrain(private val context: Context) {
                 var tries = 0
                 while (have < bytes) {
                     try {
-                        val c = URL(url).openConnection() as HttpURLConnection
-                        c.connectTimeout = 15000; c.readTimeout = 30000
-                        if (have > 0) c.setRequestProperty("Range", "bytes=$have-")
+                        val from0 = have
+                        val c = PhoneNet.open(url, "Brain download") { k ->
+                            k.connectTimeout = 15000; k.readTimeout = 30000
+                            if (from0 > 0) k.setRequestProperty("Range", "bytes=$from0-")
+                        }
                         val code = c.responseCode
                         if (code != 200 && code != 206) throw Exception("the website said $code")
                         if (code == 200) have = 0
@@ -213,9 +218,10 @@ class PhoneBrain(private val context: Context) {
                         ensureActive()
                         val from = p.start + p.got
                         try {
-                            val c = URL(url).openConnection() as HttpURLConnection
-                            c.connectTimeout = 15000; c.readTimeout = 30000
-                            c.setRequestProperty("Range", "bytes=$from-${p.end - 1}")
+                            val c = PhoneNet.open(url, "Brain download") { k ->
+                                k.connectTimeout = 15000; k.readTimeout = 30000
+                                k.setRequestProperty("Range", "bytes=$from-${p.end - 1}")
+                            }
                             val code = c.responseCode
                             if (code == 200 && from != 0L) { c.disconnect(); throw NoRanges() }
                             if (code != 200 && code != 206) throw Exception("the website said $code")

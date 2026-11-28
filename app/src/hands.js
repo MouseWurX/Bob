@@ -19,7 +19,9 @@ import { HANDS, LIMITS, handOn, handOffWhy, handsSettings, cleanHands, readOnlyR
 import { planFiles, planCard, applyFiles, undoJob, loadJournal, handsRoots, undoPreview } from './hands-files.js';
 import { planSort, sortSummary } from './sort-library.js';
 import { exampleFor, TOKENS } from './sort-names.js';
-import { checkCommand, runCommand, safeEnv } from './hands-run.js';
+import { noInternetOn } from './no-internet.js';
+import { checkCommand, runCommand, safeEnv, OFFLINE_NOTE, commandNet, offlineWay, offlineWhy, noSandboxLine } from './hands-run.js';
+import { ensureSandbox, grantFolder } from './win-offline.js';
 import { codeCopyRoot } from './self-work.js';
 import { toolPath } from './self-work-tools.js'; // "Work on repositories": his own Git and Node first in the code copy
 import { appsTools } from './hands-apps.js';
@@ -104,10 +106,26 @@ function saveRun(cfg, r) {
   writeJsonAtomic(runsFile(cfg), [...loadRuns(cfg), r].slice(-50));
 }
 
+// Windows, Web off, once the sandbox is ready (win-offline.js): build it, let it use the command's folder and the
+// program's own folder, and run the command inside it. Elsewhere: nothing.
+function winSandbox(cfg, cmd, cwd) {
+  if (commandNet(cfg) !== 'off' || offlineWay() !== 'appcontainer') return {};
+  const exe = ensureSandbox(cfg);
+  if (!exe) throw new Error(noSandboxLine(cfg));
+  const tmp = path.join(cfg.dataDir, 'sandbox-tmp');
+  fs.mkdirSync(tmp, { recursive: true });
+  for (const dir of [cwd, tmp]) if (!grantFolder(exe, dir, 'change')) throw new Error(`Not run: Bob's sandbox couldn't be given ${dir}.`);
+  if (path.isAbsolute(cmd)) grantFolder(exe, path.dirname(cmd), 'read'); // best effort: Program Files is readable to sandboxes already, and needs admin to change
+  return { sandboxExe: exe, env: { ...safeEnv(), TEMP: tmp, TMP: tmp } };
+}
+
 // Runs an approved command: live output to the chat (emit), registered so Stop can reach it.
 export async function runApproved(cfg, { cmd, args = [], cwd }, { emit = () => {}, signal, log = () => {} } = {}) {
   const c = checkCommand(cfg, { cmd, args, cwd }); // checked again right before it starts
   if (!c.ok) throw new Error(c.why);
+  // The owner (Nov 23 2026): "With web off he shouldnt be able to search or do commands online. He should be cut off. If it
+  // needs to be sandbox then sandbox it." Where this computer has no sandbox to run it offline, it doesn't run at all.
+  if (commandNet(cfg) === 'off' && !offlineWay()) throw new Error(noSandboxLine(cfg));
   const id = crypto.randomUUID().slice(0, 8);
   const controller = new AbortController();
   const onAbort = () => controller.abort();
@@ -118,17 +136,18 @@ export async function runApproved(cfg, { cmd, args = [], cwd }, { emit = () => {
   const timeoutMs = handsSettings(cfg).timeoutMin * 60_000;
   let res;
   try {
-    res = await runCommand({ cmd, args, cwd, timeoutMs, signal: controller.signal, ...(isInside(codeCopyRoot(cfg), cwd) ? { env: toolPath(cfg, safeEnv()) } : {}), onOutput: (text) => emit({ type: 'run-output', runId: id, text }) });
+    res = await runCommand({ cmd, args, cwd, timeoutMs, signal: controller.signal, net: commandNet(cfg), ...winSandbox(cfg, cmd, cwd), ...(isInside(codeCopyRoot(cfg), cwd) ? { env: toolPath(cfg, safeEnv()) } : {}), onOutput: (text) => emit({ type: 'run-output', runId: id, text }) });
   } finally {
     running.delete(id);
     signal?.removeEventListener?.('abort', onAbort);
   }
-  emit({ type: 'run-end', runId: id, code: res.code, killed: res.killed, why: res.why });
+  emit({ type: 'run-end', runId: id, code: res.code, killed: res.killed, why: res.why, offline: Boolean(res.offline) });
   saveRun(cfg, { id, at: Date.now(), line: c.line, cwd, code: res.code, killed: res.killed || '', why: res.why || '' });
   log('hands', `run ended: ${c.line} -> ${res.why || (res.killed ? res.killed : `exit ${res.code}`)}`);
   const tail = res.out.length > 6000 ? '[...]\n' + res.out.slice(-6000) : res.out;
   if (res.why) return `It didn't start: ${res.why}`;
-  return `${res.killed === 'stopped' ? 'Stopped by the user.' : res.killed === 'timeout' ? `Stopped: it ran past the ${handsSettings(cfg).timeoutMin}-minute limit.` : `Finished with exit code ${res.code}${res.code === 0 ? ' (success)' : ''}.`}\nOutput (end):\n${tail || '(no output)'}`;
+  const netLine = commandNet(cfg) === 'off' ? (res.offline ? `\nIt ran without internet (${offlineWhy(cfg)})${offlineWay() === 'appcontainer' ? ', in a Windows sandbox that sees only the folder it ran in' : ''}. If it failed for want of the internet${offlineWay() === 'appcontainer' ? ' or of files in another folder' : ''}, say so: ${noInternetOn(cfg) ? 'the person can switch No internet off in Settings, Online services' : 'the person can turn on Web, or switch Strict offline commands off in Settings, Hands'}.` : `\n${OFFLINE_NOTE}`) : '';
+  return `${res.killed === 'stopped' ? 'Stopped by the user.' : res.killed === 'timeout' ? `Stopped: it ran past the ${handsSettings(cfg).timeoutMin}-minute limit.` : `Finished with exit code ${res.code}${res.code === 0 ? ' (success)' : ''}.`}\nOutput (end):\n${tail || '(no output)'}${netLine}`;
 }
 
 const off = (cfg, id) => { if (!handOn(cfg, id)) throw new Error(handOffWhy(cfg, id)); };

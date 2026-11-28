@@ -58,6 +58,9 @@ final class Bridge: NSObject, AVSpeechSynthesizerDelegate, PHPickerViewControlle
     @MainActor private func run(_ op: String, _ id: String, _ o: [String: Any]) async throws {
         let str = { (k: String) in o[k] as? String ?? "" }
         switch op {
+        // ---- Nov 27 2026: Where Bob connected and No internet (PhoneNet.swift) ----
+        case "privacy.view": answer(id, PhoneNet.view())
+        case "privacy.set": answer(id, try PhoneNet.set(o))
         // ---- Bob-Net: other Bobs ----
         case "net.check": answer(id, ["base": (NetBob.base(str("address")) as Any?) ?? NSNull()])
         case "net.login": answer(id, try await net.login(try base(o), str("code")))

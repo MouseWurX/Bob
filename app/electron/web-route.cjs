@@ -18,6 +18,7 @@ function makeWebRoute() {
       ses = session.fromPartition('bob-web-route'); // not persist: nothing is kept between runs
       ses.setPermissionRequestHandler((wc, perm, cb) => cb(false));
       ses.on('will-download', (e) => e.preventDefault());
+      require('./net-gate.cjs').gateSession(ses); // Nov 27 2026: No internet (a route doesn't get round it)
     }
     if (want !== rule) {
       await ses.setProxy({ mode: 'fixed_servers', proxyRules: want, proxyBypassRules: '' });

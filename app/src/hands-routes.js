@@ -74,6 +74,7 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
       if ('timeoutMin' in b) next.timeoutMin = b.timeoutMin;
       if (Array.isArray(b.sortRules)) next.sortRules = b.sortRules.length ? b.sortRules : null; // Sort and rename rules; [] = back to the defaults
       if ('eyesCheck' in b) next.eyesCheck = b.eyesCheck !== false;
+      if ('strictOffline' in b) next.strictOffline = b.strictOffline === true; // Nov 23 2026
       const clean = cleanHands(next);
       brain.saveHands(clean);
       const changed = Object.keys(b).filter((k) => k !== 'limits').map((k) => (typeof b[k] === 'object' && !Array.isArray(b[k]) ? `${k} ${b[k].on ? 'on' : 'off'}` : k === 'enabled' ? `Hands ${b.enabled ? 'on' : 'off'}` : k === 'free' ? `work without asking ${b.free ? 'ON (no approval cards)' : 'off (asks again)'}` : k));

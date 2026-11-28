@@ -359,6 +359,16 @@ export class Machines {
     try { return JSON.parse(text); } catch { return parseJson(text) ?? text; } // lists come back as arrays, which parseJson skips
   }
 
+  // Nov 23 2026 (a narrowed RunPod key could read pods but not delete them, so finished machines kept running and billing
+  // until they were ended by hand): before a machine starts, the key must be able to delete one. Deleting a machine id
+  // that can't exist answers "not found" with a key that may delete, and 401/403 without (RunPod only: Vast.ai and Lambda have no id that surely belongs to nobody, so they aren't checked yet).
+  async deleteCheck(s, key) {
+    const url = s.id === 'runpod' ? `${RUNPOD}/pods/zzzznotapod000` : '';
+    if (!url) return;
+    try { await this.api(url, { key, method: 'DELETE' }); }
+    catch (e) { if (/answered 40[13]\b/.test(e.message)) throw new Error(`This ${s.name} key can't delete machines (${e.message.slice(0, 120)}), so a machine started with it could never be stopped. Nothing was started. Make a key that can read and write machines (pods), then try again.`); }
+  }
+
   // Starts a machine (or reuses a serverless endpoint). Returns { id, url, kind, startedAt, name }.
   async start(rental, { key, minutes, onNote = () => {} }) {
     const s = serviceOf(rental.service);
@@ -382,6 +392,7 @@ export class Machines {
     if (s.id === 'runpod') {
       const spec = modelSpec(rental.model);
       const cmd = serverCommand(rental.model, { minutes, after: 'runpodctl remove pod $RUNPOD_POD_ID', cards: cardsOf(rental) });
+      await this.deleteCheck(s, key);
       onNote(`Starting ${cardsText(rental)} on RunPod…`);
       // one card type a request in v2: each fitting card is asked for in turn; a refused key, balance or body stops at once
       let j = null, last = null;

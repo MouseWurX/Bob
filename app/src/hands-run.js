@@ -12,6 +12,8 @@ import { isSensitive } from './tools.js';
 import { limitOn, readOnlyRoots } from './hands-settings.js';
 import { killTree as stopTree } from './platform.js';
 import { trackChild } from './hang-guard.js'; // item 213: Stop really stops
+import { noInternetOn } from './no-internet.js'; // Nov 27 2026: No internet cuts commands off too
+import { WIN_SANDBOX_READY, sandboxPlan } from './win-offline.js'; // Nov 23 2026: the Windows sandbox (passed the live check on a real PC)
 
 const MAX_OUT = 400_000; // characters of output kept for Bob (the chat gets all of it live); tool-kinds.js trims it smartly after (RESULT_MAX)
 const WIN = process.platform === 'win32';
@@ -226,10 +228,47 @@ export function killTree(child) {
 
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07/g;
 
+// Nov 23 2026: commands without internet while Web is off (commandNet). Linux: the
+// command gets its own empty network (unshare -n as your own user, or -rn on older systems: no admin needed where the
+// system allows user namespaces). Mac: a
+// sandbox that denies every network use (sandbox-exec). Not on this system, or Android: '' (the card says so).
+const MAC_NO_NET = '(version 1)(allow default)(deny network*)';
+let wayCache;
+export function offlineWay({ os_ = process.platform, probe } = {}) {
+  if (!probe && process.env.BOB_NO_SANDBOX === '1') return ''; // tests only: act like a computer with no sandbox (Android today)
+  if (!probe && wayCache !== undefined && os_ === process.platform) return wayCache;
+  const ok = probe || ((file, args) => { try { return spawnSync(file, args, { stdio: 'ignore', timeout: 5000 }).status === 0; } catch { return false; } });
+  const way = os_ === 'win32' ? (WIN_SANDBOX_READY ? 'appcontainer' : '') : os_ === 'linux' ? (ok('unshare', ['--map-current-user', '-n', 'true']) ? 'unshare-c' : ok('unshare', ['-rn', 'true']) ? 'unshare' : '') : os_ === 'darwin' ? (ok('sandbox-exec', ['-p', MAC_NO_NET, 'true']) ? 'sandbox-exec' : '') : '';
+  if (!probe && os_ === process.platform) wayCache = way;
+  return way;
+}
+export function offlinePlan(plan, way, { exe = '', cwd = '' } = {}) {
+  if (way === 'appcontainer') return exe ? sandboxPlan(exe, cwd, plan) : plan;
+  if (way === 'unshare-c') return { ...plan, file: 'unshare', args: ['--map-current-user', '-n', '--', plan.file, ...plan.args] }; // keeps your own user
+  if (way === 'unshare') return { ...plan, file: 'unshare', args: ['-rn', '--', plan.file, ...plan.args] };
+  if (way === 'sandbox-exec') return { ...plan, file: 'sandbox-exec', args: ['-p', MAC_NO_NET, plan.file, ...plan.args] };
+  return plan;
+}
+// The owner's pick (Nov 23 2026, card): commands follow the Web switch. Web on: Bob can search and commands can go online.
+// Web off: nothing goes online, commands included.
+// Then (19:01): "it shouldnt change how it works with the pc". So the full cut-off is "Strict offline commands"
+// (hands.strictOffline, off unless switched on): only then do commands run sandboxed while Web is off. Off, they work
+// with the PC exactly as before (the "Don't send anything out" checks still apply).
+// Nov 27 2026: No internet (no-internet.js, off unless switched on) cuts commands off too, whatever Web says: a command
+// is a separate program, so the only way to keep it off the internet is the sandbox. It can't follow the allowed list.
+export const commandNet = (cfg = {}) => (noInternetOn(cfg) || (cfg.hands?.strictOffline === true && cfg.webSearch !== true) ? 'off' : 'open');
+export const offlineWhy = (cfg = {}) => (noInternetOn(cfg) ? 'No internet is on' : 'Strict offline commands is on and Web is off');
+export const NO_SANDBOX_NI = 'Not run: No internet is on, and this computer can\'t run commands in a sandbox without internet yet. Switch No internet off in Settings, Online services to run it.';
+export const noSandboxLine = (cfg = {}) => (noInternetOn(cfg) ? NO_SANDBOX_NI : NO_SANDBOX);
+export const NO_SANDBOX = 'Not run: "Strict offline commands" is on and Web is off, and this computer can\'t run commands in a sandbox without internet yet. Turn on Web, or switch Strict offline commands off in Settings, Hands.';
+export const OFFLINE_NOTE = 'This command can still reach the internet: this computer can\'t keep commands offline yet.';
+
 // Runs it. Resolves with { code, out, killed, why } and never throws for the program's own failure.
-export function runCommand({ cmd, args = [], cwd, timeoutMs = 15 * 60_000, signal, onOutput = () => {}, onStart = () => {}, env } = {}) {
+// net: 'off' runs it without internet where this system can (offline: true in the answer), 'open' as it is.
+export function runCommand({ cmd, args = [], cwd, timeoutMs = 15 * 60_000, signal, onOutput = () => {}, onStart = () => {}, env, net = 'open', way, sandboxExe = '' } = {}) {
   return new Promise((resolve) => {
-    const plan = launchPlan(path.isAbsolute(cmd) || !/[\\/]/.test(cmd) ? cmd : path.resolve(cwd, cmd), args);
+    const w = net === 'off' ? (way ?? offlineWay()) : '';
+    const plan = offlinePlan(launchPlan(path.isAbsolute(cmd) || !/[\\/]/.test(cmd) ? cmd : path.resolve(cwd, cmd), args), w, { exe: sandboxExe, cwd });
     let out = '', killed = '', child;
     const keep = (t) => { out += t; if (out.length > MAX_OUT) out = '[...earlier output cut...]\n' + out.slice(-MAX_OUT); };
     try {
@@ -250,7 +289,7 @@ export function runCommand({ cmd, args = [], cwd, timeoutMs = 15 * 60_000, signa
       clearTimeout(timer);
       signal?.removeEventListener?.('abort', onAbort);
       if (!WIN && killed) { try { process.kill(-child.pid, 'SIGKILL'); } catch {} } // anything left in the group
-      resolve({ code, out, killed, why: '' });
+      resolve({ code, out, killed, why: '', offline: Boolean(w) });
     });
   });
 }

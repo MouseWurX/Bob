@@ -16,6 +16,7 @@ const { BrowserWindow, session, nativeImage } = require('electron');
 const fs = require('node:fs');
 const { isTracker, siteKey } = require('./tracker-list.cjs');
 const { chromiumRule } = require('./web-route.cjs');
+const { gateSession } = require('./net-gate.cjs'); // Nov 27 2026: No internet
 
 const PICTURE_WIDTH = 1280; // pictures for the chat and the eyes brain are shrunk to this
 const SETTLE_MS = 6000;     // how long to wait for a page to finish loading after an action
@@ -72,7 +73,7 @@ function makeBobBrowser({ base, icon } = {}) {
   function guardPrivate(s) {
     if (s.bobPrivate) return;
     s.bobPrivate = true;
-    s.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (d, cb) => cb({ cancel: d.resourceType !== 'mainFrame' && isTracker(d.url) }));
+    gateSession(s, (d) => d.resourceType !== 'mainFrame' && isTracker(d.url)); // No internet's gate, then the tracker list
     // Third-party cookies: none sent and none kept for a site other than the page's own.
     const top = (d) => { try { return siteKey(new URL(d.frame?.top?.url || d.webContents?.getURL() || d.referrer || d.url).hostname); } catch { return ''; } };
     s.webRequest.onBeforeSendHeaders({ urls: ['http://*/*', 'https://*/*'] }, (d, cb) => {
@@ -98,7 +99,7 @@ function makeBobBrowser({ base, icon } = {}) {
     if (win && !win.isDestroyed() && opened.on === privacy.on && opened.route === privacy.route) return win;
     if (win && !win.isDestroyed()) { win.destroy(); win = null; } // the mode changed: a fresh window in the right profile
     const s = ses();
-    if (privacy.on) guardPrivate(s);
+    if (privacy.on) guardPrivate(s); else gateSession(s); // No internet's gate on the usual profile too
     await routeSession(s);
     opened = { ...privacy };
     // No downloads, no permissions: the window is for looking and clicking, nothing more.

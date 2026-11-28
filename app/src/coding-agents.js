@@ -26,6 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import { noInternetOn } from './no-internet.js'; // Nov 27 2026: coding agents don't start while No internet is on
 import { spawn as nodeSpawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { writeJsonAtomic } from './util.js';
@@ -303,6 +304,8 @@ export class CodingAgents {
   // Start a run. Resolves at once with the agent; wait(id) waits for the end.
   ask(id, text, { hops = 0, from = '' } = {}) {
     if (!this.on) throw new Error('Coding agents are off. Turn them on in Settings, Other apps.');
+    // Nov 27 2026: they are separate programs that need the internet, and Bob can't keep them to the allowed list.
+    if (noInternetOn(this.cfg)) throw new Error(AGENTS_NO_INTERNET);
     const a = this.agent(id);
     if (!a) throw new Error('No such agent.');
     if (a.state === 'working') throw new Error(`${a.name} is busy. Wait for it, or stop it first.`);
@@ -452,11 +455,14 @@ export class CodingAgents {
     if (!k || kind === 'custom') throw new Error('Pick which program.');
     const dir = accountDir(this.cfg, kind, account);
     if (!dir) throw new Error('Give the account a name first.');
+    if (noInternetOn(this.cfg)) throw new Error(AGENTS_NO_INTERNET);
     const exe = this.find(k.cmd);
     if (!exe) throw new Error(`${k.name} isn't on this computer.`);
     return { exe, args: k.signIn, env: accountEnv(kind, dir, { os_: this.os_ }), dir, name: k.name };
   }
 }
+
+export const AGENTS_NO_INTERNET = 'Not started: No internet is on. Coding agents are separate programs that need the internet, and Bob can\'t keep them to your allowed list. Switch No internet off in Settings, Online services to use them.';
 
 // Opens a terminal window running the program's own sign-in with the account's folder (a one-time step).
 // Windows: a new console window. Mac: Terminal. Linux: the desktop's terminal (x-terminal-emulator, gnome-terminal,
