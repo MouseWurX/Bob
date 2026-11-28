@@ -4789,10 +4789,10 @@ index 0000000..b79a79f
 +}
 diff --git a/ggml/src/ggml-cuda/trellis-own.cu b/ggml/src/ggml-cuda/trellis-own.cu
 new file mode 100644
-index 0000000..955627b
+index 0000000..030a39c
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/trellis-own.cu
-@@ -0,0 +1,748 @@
+@@ -0,0 +1,960 @@
 +// Lamplight 0136 (NariQ trellis, nariq/FORMAT.md): GGML_OP_TRELLIS without libtrellis, for every CUDA card.
 +// libtrellis needs sm_80+ (and is built for those archs only); RTX 20 / GTX 16 / GTX 10 cards and shapes libtrellis
 +// refuses run here instead. The same steps as the Vulkan backend (vulkan-shaders/trellis_*.comp):
@@ -5217,6 +5217,165 @@ index 0000000..955627b
 +    }
 +}
 +
++// ---- the fused long-batch product (sm_80+): decode inside an int8 tensor-core GEMM ----------------------------------
++// y[t][n] = sum_k W^[n][k] (a[t][k] s16[k / 16]). The input is scaled and rounded to int8 in blocks of 32 (one float
++// scale each, as MMQ's q8_1); the coded weights are decoded straight into shared memory as int8 (exact: whole numbers
++// -126..126) and multiplied with mma.sync m16n8k32 s8, so no decoded copy of the weight ever goes to memory.
++// A block: 128 rows (8 tile rows) x TRL_FN tokens, 8 warps as 4 (rows) x 2 (tokens), each warp 32 rows x TRL_FN / 2
++// tokens; K walks in chunks of 128 (8 tiles a tile row). Split-K over gridDim.z adds into y (zeroed first).
++
++constexpr int TRL_FM = 128, TRL_FN = 128, TRL_FK = 128;
++constexpr int TRL_FS = TRL_FK + 16;  // shared row stride in bytes: 144 keeps the fragment loads free of bank conflicts
++
++// xq[t][k] = round(a[t][k] s16[k / 16] / d), d = max |.| / 127 per 32 entries; one warp per 32 entries
++__global__ void trl_quant_q8(const float * __restrict__ a, const half * __restrict__ s16, int8_t * __restrict__ xq,
++                             float * __restrict__ xd, int K, int nb) {
++    const int lane = threadIdx.x & 31;
++    const int kb = blockIdx.x * (blockDim.x / 32) + threadIdx.x / 32;  // this warp's block of 32
++    const int64_t t = blockIdx.y;
++    if (kb >= nb) {
++        return;
++    }
++    const int k = 32 * kb + lane;
++    const float v = a[t * K + k] * __half2float(s16[k / 16]);
++    float m = fabsf(v);
++#pragma unroll
++    for (int o = 16; o > 0; o >>= 1) {
++        m = fmaxf(m, __shfl_xor_sync(0xffffffffu, m, o));
++    }
++    const float d = m / 127.0f;
++    const float id = d > 0.0f ? 1.0f / d : 0.0f;
++    xq[t * K + k] = (int8_t) __float2int_rn(v * id);
++    if (lane == 0) {
++        xd[t * nb + kb] = d;
++    }
++}
++
++#if !defined(GGML_USE_HIP) && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
++#define TRL_FUSED_ARCH 1
++#endif
++
++template <int BITS>
++__global__ void __launch_bounds__(256) trl_fused_mm(const uint32_t * __restrict__ q, const int8_t * __restrict__ xq,
++                                                    const float * __restrict__ xd, float * __restrict__ y,
++                                                    int K, int N, int T, int chunks_per_split) {
++#ifdef TRL_FUSED_ARCH
++    __shared__ __align__(16) int8_t Ws[TRL_FM * TRL_FS];
++    __shared__ __align__(16) int8_t Xs[TRL_FN * TRL_FS];
++    __shared__ float Xd[TRL_FN][TRL_FK / 32];
++    const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
++    const int wm = warp & 3, wn = warp >> 2;     // warp tile: rows 32 wm .., tokens (TRL_FN / 2) wn ..
++    const int gid = lane >> 2, tig = lane & 3;
++    const int kt = K / 16, nb = K / 32;
++    const int row0 = blockIdx.x * TRL_FM;
++    const int tok0 = blockIdx.y * TRL_FN;
++    const int nchunks = (K + TRL_FK - 1) / TRL_FK;
++    const int c0 = blockIdx.z * chunks_per_split, c1 = min(nchunks, c0 + chunks_per_split);
++    constexpr int NT8 = TRL_FN / 2 / 8;          // n8 tiles a warp
++    float acc[2][NT8][4];
++#pragma unroll
++    for (int a = 0; a < 2; ++a)
++#pragma unroll
++        for (int b = 0; b < NT8; ++b)
++#pragma unroll
++            for (int c = 0; c < 4; ++c) acc[a][b][c] = 0.0f;
++
++    for (int ch = c0; ch < c1; ++ch) {
++        const int k0 = ch * TRL_FK;
++        // decode: 8 tile rows x 8 tiles, one tile a warp at a time (lane: 8 values)
++        for (int tt = warp; tt < 64; tt += 8) {
++            const int J = row0 / 16 + tt / 8, i = k0 / 16 + tt % 8;
++            float v[8];
++            const bool ok = 16 * J < N && i < kt;
++            if (ok) {
++                trl_decode8<BITS>(q + ((int64_t) J * kt + i) * (8 * BITS), lane, v);
++            }
++#pragma unroll
++            for (int j = 0; j < 8; ++j) {
++                const int r = 16 * (tt / 8) + lane / 4 + 8 * (j / 4);
++                const int c = 16 * (tt % 8) + 2 * (lane % 4) + j % 2 + 8 * (j / 2 % 2);
++                Ws[r * TRL_FS + c] = ok ? (int8_t) (int) v[j] : (int8_t) 0;
++            }
++        }
++        // the input: TRL_FN tokens x 128 bytes, 16 bytes a thread a step; and its scales
++        for (int e = threadIdx.x; e < TRL_FN * (TRL_FK / 16); e += 256) {
++            const int tk = e / (TRL_FK / 16), part = e % (TRL_FK / 16);
++            const int t = tok0 + tk, k = k0 + 16 * part;
++            int4 v = make_int4(0, 0, 0, 0);
++            if (t < T && k < K) {
++                v = *(const int4 *) (xq + (int64_t) t * K + k);
++            }
++            *(int4 *) (Xs + tk * TRL_FS + 16 * part) = v;
++        }
++        for (int e = threadIdx.x; e < TRL_FN * (TRL_FK / 32); e += 256) {
++            const int tk = e / (TRL_FK / 32), kb = e % (TRL_FK / 32);
++            const int t = tok0 + tk, b = k0 / 32 + kb;
++            Xd[tk][kb] = t < T && b < nb ? xd[(int64_t) t * nb + b] : 0.0f;
++        }
++        __syncthreads();
++#pragma unroll
++        for (int ks = 0; ks < TRL_FK / 32; ++ks) {
++            uint32_t A[2][4];
++#pragma unroll
++            for (int mt = 0; mt < 2; ++mt) {
++                const int r = 32 * wm + 16 * mt + gid;
++                const int8_t * base = Ws + 32 * ks + 4 * tig;
++                A[mt][0] = *(const uint32_t *) (base + r * TRL_FS);
++                A[mt][1] = *(const uint32_t *) (base + (r + 8) * TRL_FS);
++                A[mt][2] = *(const uint32_t *) (base + r * TRL_FS + 16);
++                A[mt][3] = *(const uint32_t *) (base + (r + 8) * TRL_FS + 16);
++            }
++#pragma unroll
++            for (int nt = 0; nt < NT8; ++nt) {
++                const int tk = (TRL_FN / 2) * wn + 8 * nt + gid;
++                const int8_t * bb = Xs + tk * TRL_FS + 32 * ks + 4 * tig;
++                const uint32_t B0 = *(const uint32_t *) bb, B1 = *(const uint32_t *) (bb + 16);
++                // the scales of this k32 step for the two tokens of this lane's C entries
++                const int tc = (TRL_FN / 2) * wn + 8 * nt + 2 * tig;
++                const float d0 = Xd[tc][ks], d1 = Xd[tc + 1][ks];
++#pragma unroll
++                for (int mt = 0; mt < 2; ++mt) {
++                    int c[4] = {0, 0, 0, 0};
++                    asm volatile("mma.sync.aligned.m16n8k32.row.col.s32.s8.s8.s32 "
++                                 "{%0, %1, %2, %3}, {%4, %5, %6, %7}, {%8, %9}, {%0, %1, %2, %3};"
++                                 : "+r"(c[0]), "+r"(c[1]), "+r"(c[2]), "+r"(c[3])
++                                 : "r"(A[mt][0]), "r"(A[mt][1]), "r"(A[mt][2]), "r"(A[mt][3]), "r"(B0), "r"(B1));
++                    acc[mt][nt][0] += d0 * (float) c[0];
++                    acc[mt][nt][1] += d1 * (float) c[1];
++                    acc[mt][nt][2] += d0 * (float) c[2];
++                    acc[mt][nt][3] += d1 * (float) c[3];
++                }
++            }
++        }
++        __syncthreads();
++    }
++    // C entries: c0 (row gid, token 2 tig), c1 (gid, 2 tig + 1), c2 (gid + 8, 2 tig), c3 (gid + 8, 2 tig + 1)
++    const bool split = gridDim.z > 1;
++#pragma unroll
++    for (int mt = 0; mt < 2; ++mt) {
++#pragma unroll
++        for (int nt = 0; nt < NT8; ++nt) {
++#pragma unroll
++            for (int e = 0; e < 4; ++e) {
++                const int n = row0 + 32 * wm + 16 * mt + gid + 8 * (e / 2);
++                const int t = tok0 + (TRL_FN / 2) * wn + 8 * nt + 2 * tig + (e % 2);
++                if (n < N && t < T) {
++                    float * o = y + (int64_t) t * N + n;
++                    if (split) {
++                        atomicAdd(o, acc[mt][nt][e]);
++                    } else {
++                        *o = acc[mt][nt][e];
++                    }
++                }
++            }
++        }
++    }
++#else
++    GGML_UNUSED_VARS(q, xq, xd, y, K, N, T, chunks_per_split);
++    NO_DEVICE_CODE;
++#endif
++}
++
 +// f[t][k] = a[t][k] * s16[k / 16]: the per-16 scale onto the input of the int8 product
 +__global__ void trl_scale_f32(const float * a, const half * s16, float * f, int K) {
 +    const int k = blockIdx.x * blockDim.x + threadIdx.x;
@@ -5306,6 +5465,37 @@ index 0000000..955627b
 +    }
 +}
 +
++void trl_fused_any(int bits, const uint32_t * q, const int8_t * xq, const float * xd, float * y, int K, int N, int T,
++                   int nsm, cudaStream_t st) {
++    const int nchunks = (K + TRL_FK - 1) / TRL_FK;
++    const int gx = (N + TRL_FM - 1) / TRL_FM, gy = (T + TRL_FN - 1) / TRL_FN;
++    // split K until there are about two blocks an SM, keeping at least 8 chunks a split
++    int splits = std::max(1, std::min((2 * nsm + gx * gy - 1) / (gx * gy), nchunks / 8));
++    const int per = (nchunks + splits - 1) / splits;
++    splits = (nchunks + per - 1) / per;
++    if (splits > 1) {
++        CUDA_CHECK(cudaMemsetAsync(y, 0, (size_t) T * N * sizeof(float), st));
++    }
++    const dim3 grid(gx, gy, splits);
++    switch (bits) {
++        case 1: trl_fused_mm<1><<<grid, 256, 0, st>>>(q, xq, xd, y, K, N, T, per); break;
++        case 2: trl_fused_mm<2><<<grid, 256, 0, st>>>(q, xq, xd, y, K, N, T, per); break;
++        case 3: trl_fused_mm<3><<<grid, 256, 0, st>>>(q, xq, xd, y, K, N, T, per); break;
++        case 4: trl_fused_mm<4><<<grid, 256, 0, st>>>(q, xq, xd, y, K, N, T, per); break;
++        case 5: trl_fused_mm<5><<<grid, 256, 0, st>>>(q, xq, xd, y, K, N, T, per); break;
++        default: trl_fused_mm<6><<<grid, 256, 0, st>>>(q, xq, xd, y, K, N, T, per); break;
++    }
++}
++
++// from this many tokens the fused product on sm_80+ (LAMPLIGHT_TRELLIS_CUDA_FUSED_MIN, default 64; 0 turns it off)
++int trl_fused_min() {
++    static const int v = [] {
++        const char * e = getenv("LAMPLIGHT_TRELLIS_CUDA_FUSED_MIN");
++        return e ? atoi(e) : 64;
++    }();
++    return v;
++}
++
 +// from this many tokens the int8 product (LAMPLIGHT_TRELLIS_CUDA_Q8_MIN). Default: never where libtrellis runs (RTX
 +// 4090, run 5: libtrellis 192-232 us at 128 tokens and 720-865 us at 512, the int8 path 445-507 and 1050-1170), else
 +// 16 (our GEMV redoes the decode for each 8 tokens: 75-143 us at 4 tokens, the int8 path ~335-380 at 1 and 1056-1165
@@ -5350,7 +5540,19 @@ index 0000000..955627b
 +    return !force_own && GGML_CUDA_CC_IS_NVIDIA(cc) && cc >= GGML_CUDA_CC_AMPERE && ggml_cuda_trellis_supported(op);
 +}
 +
++// the fused product: NVIDIA sm_80+ (built for this card's arch), K a multiple of 32, from trl_fused_min() tokens
++static bool trl_fused(int cc, const ggml_tensor * op) {
++    const ggml_tensor * w = op->src[0];
++    const int64_t T = ggml_nrows(op->src[1]);
++    const int m = trl_fused_min();
++    return m > 0 && GGML_CUDA_CC_IS_NVIDIA(cc) && cc >= GGML_CUDA_CC_AMPERE &&
++        ggml_cuda_highest_compiled_arch(cc) >= GGML_CUDA_CC_AMPERE && w->ne[0] % 32 == 0 && T >= m && T <= INT32_MAX;
++}
++
 +bool ggml_cuda_trellis_q8(int cc, const ggml_tensor * op, bool lib) {
++    if (trl_fused(cc, op)) {
++        return true;  // (the own path, through the fused product)
++    }
 +    const ggml_tensor * w = op->src[0];
 +    const int64_t T = ggml_nrows(op->src[1]);
 +    return w->ne[0] % 32 == 0 && T >= trl_q8_min(lib) && w->buffer != nullptr &&
@@ -5423,9 +5625,16 @@ index 0000000..955627b
 +                       x->ne[1], x->ne[2] };
 +
 +    const int cc = ggml_cuda_info().devices[ctx.device].cc;
-+    const bool q8 = ggml_cuda_trellis_q8(cc, dst, ggml_cuda_trellis_use_lib(cc, dst));
-+    const bool mm = !q8 && T >= trl_mm_min();
-+    const int64_t Tc = std::min<int64_t>(T, (mm || q8) ? 1024 : 65535);
++    const bool fused = trl_fused(cc, dst);
++    const bool q8 = !fused && ggml_cuda_trellis_q8(cc, dst, ggml_cuda_trellis_use_lib(cc, dst));
++    const bool mm = !fused && !q8 && T >= trl_mm_min();
++    const int64_t Tc = std::min<int64_t>(T, (mm || q8 || fused) ? 1024 : 65535);
++    ggml_cuda_pool_alloc<int8_t> XQ(ctx.pool());
++    ggml_cuda_pool_alloc<float> XD(ctx.pool());
++    if (fused) {
++        XQ.alloc((size_t) Tc * K);
++        XD.alloc((size_t) Tc * (K / 32));
++    }
 +    ggml_cuda_pool_alloc<float> A(ctx.pool(), (size_t) Tc * K), A2(ctx.pool(), (size_t) Tc * K);
 +    ggml_cuda_pool_alloc<float> B(ctx.pool(), (size_t) Tc * N), B2(ctx.pool(), (size_t) Tc * N);
 +    ggml_cuda_pool_alloc<half> W(ctx.pool()), H(ctx.pool());
@@ -5472,7 +5681,10 @@ index 0000000..955627b
 +        }
 +
 +        // product
-+        if (q8) {
++        if (fused) {
++            trl_quant_q8<<<dim3((K / 32 + 7) / 8, (unsigned) tc), 256, 0, st>>>(in, s16, XQ.ptr, XD.ptr, K, K / 32);
++            trl_fused_any(bits, q, XQ.ptr, XD.ptr, B.ptr, K, N, (int) tc, ggml_cuda_info().devices[ctx.device].nsm, st);
++        } else if (q8) {
 +            trl_scale_f32<<<dim3((K + 255) / 256, (unsigned) tc), 256, 0, st>>>(in, s16, F.ptr, K);
 +            for (int n0 = 0; n0 < N; n0 += rows_chunk) {
 +                const int nc = std::min(rows_chunk, N - n0);
@@ -9924,10 +10136,10 @@ index 0000000..5befb84
 +}
 diff --git a/tests/test-trellis.cpp b/tests/test-trellis.cpp
 new file mode 100644
-index 0000000..18613f7
+index 0000000..e8fe886
 --- /dev/null
 +++ b/tests/test-trellis.cpp
-@@ -0,0 +1,413 @@
+@@ -0,0 +1,418 @@
 +#include "ggml.h"
 +#include "ggml-backend.h"
 +
@@ -9964,7 +10176,12 @@ index 0000000..18613f7
 +// Lamplight 0136: the fewest tokens for which CUDA may take its int8 product (see trellis-own.cu)
 +static int cuda_q8_min() {
 +    const char * e = std::getenv("LAMPLIGHT_TRELLIS_CUDA_Q8_MIN");
-+    return e ? std::atoi(e) : 16;
++    const char * f = std::getenv("LAMPLIGHT_TRELLIS_CUDA_FUSED_MIN");  // the fused int8 product (sm_80+)
++    int m = e ? std::atoi(e) : 16;
++    if (f && std::atoi(f) > 0) {
++        m = std::min(m, std::atoi(f));
++    }
++    return m;
 +}
 +
 +static void check_close(float actual, double expected) {
