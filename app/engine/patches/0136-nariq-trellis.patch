@@ -4789,10 +4789,10 @@ index 0000000..b79a79f
 +}
 diff --git a/ggml/src/ggml-cuda/trellis-own.cu b/ggml/src/ggml-cuda/trellis-own.cu
 new file mode 100644
-index 0000000..1447252
+index 0000000..8a659df
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/trellis-own.cu
-@@ -0,0 +1,691 @@
+@@ -0,0 +1,738 @@
 +// Lamplight 0136 (NariQ trellis, nariq/FORMAT.md): GGML_OP_TRELLIS without libtrellis, for every CUDA card.
 +// libtrellis needs sm_80+ (and is built for those archs only); RTX 20 / GTX 16 / GTX 10 cards and shapes libtrellis
 +// refuses run here instead. The same steps as the Vulkan backend (vulkan-shaders/trellis_*.comp):
@@ -4956,13 +4956,23 @@ index 0000000..1447252
 +    dst[t * s.n + trl_stored(s, l, slice)] = sum * scale;
 +}
 +
++// the four 6-bit fields summed by one dp4a where the card has it
 +__device__ __forceinline__ float trl_value(uint32_t state) {
 +    const uint32_t h = state * 0x83DCD12Du;
++#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 610 && !defined(GGML_USE_HIP)
++    return (float) __dp4a((int) ((h >> 2) & 0x3f3f3f3fu), 0x01010101, -126);
++#else
 +    return (float) ((int) ((((h >> 2) & 0x3f3f3f3fu) * 0x01010101u) >> 24) - 126);
++#endif
 +}
 +
++// the 16-bit window at bit o of hi:lo: the top half of (hi:lo << o), one funnel shift
 +__device__ __forceinline__ uint32_t trl_state(uint32_t hi, uint32_t lo, uint32_t o) {
++#if !defined(GGML_USE_HIP)
++    return __funnelshift_l(lo, hi, o) >> 16;
++#else
 +    return (o <= 16u ? (hi >> (16u - o)) : ((hi << (o - 16u)) | (lo >> (48u - o)))) & 0xFFFFu;
++#endif
 +}
 +
 +// lane a (0..31) of a tile: ring positions 8 a .. 8 a + 7, i.e. rows a / 4 + 8 (j / 4), columns 2 (a % 4) + j % 2 + 8 (j / 2 % 2)
@@ -5138,46 +5148,64 @@ index 0000000..1447252
 +    }
 +}
 +
-+// W^ rows [16 J0, 16 (J0 + gridDim.y)) unscaled to f16 (rows x K); four tiles per block of 128
++// W^ rows [16 J0, 16 (J0 + gridDim.y)) unscaled to f16 (rows x K): 8 tiles per block of 256 through shared memory, as
++// trl_dequant_q8, so each row's 128 values are written as one run
 +template <int BITS>
-+__global__ void __launch_bounds__(128) trl_dequant(const uint32_t * __restrict__ q, half * __restrict__ w, int K, int J0) {
++__global__ void __launch_bounds__(256) trl_dequant(const uint32_t * __restrict__ q, half * __restrict__ w, int K, int J0) {
++    __shared__ half tile_v[16][128];
 +    const int kt = K / 16;
-+    const int lane = threadIdx.x & 31;
-+    const int i = blockIdx.x * 4 + (threadIdx.x >> 5);
++    const int lane = threadIdx.x & 31, g = threadIdx.x >> 5;
++    const int i0 = blockIdx.x * 8;
 +    const int J = blockIdx.y;
-+    if (i >= kt) {
-+        return;
-+    }
-+    float v[8];
-+    trl_decode8<BITS>(q + ((int64_t) (J0 + J) * kt + i) * (8 * BITS), lane, v);
++    const int nt = min(8, kt - i0);
++    if (g < nt) {
++        float v[8];
++        trl_decode8<BITS>(q + ((int64_t) (J0 + J) * kt + i0 + g) * (8 * BITS), lane, v);
 +#pragma unroll
-+    for (int j = 0; j < 8; ++j) {
-+        const int r = lane / 4 + 8 * (j / 4);
-+        const int c = 2 * (lane % 4) + j % 2 + 8 * (j / 2 % 2);
-+        w[((int64_t) 16 * J + r) * K + 16 * i + c] = __float2half(v[j]);
++        for (int j = 0; j < 8; ++j) {
++            const int r = lane / 4 + 8 * (j / 4);
++            const int c = 16 * g + 2 * (lane % 4) + j % 2 + 8 * (j / 2 % 2);
++            tile_v[r][c] = __float2half(v[j]);
++        }
++    }
++    __syncthreads();
++    const int ncols = 16 * nt;
++    for (int e = threadIdx.x; e < 16 * ncols; e += 256) {
++        const int r = e / ncols, c = e % ncols;
++        w[((int64_t) 16 * J + r) * K + 16 * i0 + c] = tile_v[r][c];
 +    }
 +}
 +
-+// W^ rows [16 J0, 16 (J0 + gridDim.y)) unscaled into q8_0 blocks (d = 1; the values are whole numbers in -126..126)
++// W^ rows [16 J0, 16 (J0 + gridDim.y)) unscaled into q8_0 blocks (d = 1; the values are whole numbers in -126..126).
++// A block of 8 warps takes 8 tiles of one tile row (16 rows x 128 inputs): each warp decodes a tile into shared memory,
++// then the block writes each row's 4 q8_0 blocks (136 bytes) as one contiguous run (writing straight from the decode
++// scatters single bytes over 16 rows, which ran at ~1/8 of the memory speed on the first card run)
 +template <int BITS>
-+__global__ void __launch_bounds__(128) trl_dequant_q8(const uint32_t * __restrict__ q, block_q8_0 * __restrict__ w, int K, int J0) {
++__global__ void __launch_bounds__(256) trl_dequant_q8(const uint32_t * __restrict__ q, block_q8_0 * __restrict__ w, int K, int J0) {
++    __shared__ int8_t tile_v[16][128];
 +    const int kt = K / 16, kb = K / 32;
-+    const int lane = threadIdx.x & 31;
-+    const int i = blockIdx.x * 4 + (threadIdx.x >> 5);
++    const int lane = threadIdx.x & 31, g = threadIdx.x >> 5;
++    const int i0 = blockIdx.x * 8;
 +    const int J = blockIdx.y;
-+    if (i >= kt) {
-+        return;
-+    }
-+    float v[8];
-+    trl_decode8<BITS>(q + ((int64_t) (J0 + J) * kt + i) * (8 * BITS), lane, v);
++    const int nt = min(8, kt - i0);  // even: K is a multiple of 32
++    if (g < nt) {
++        float v[8];
++        trl_decode8<BITS>(q + ((int64_t) (J0 + J) * kt + i0 + g) * (8 * BITS), lane, v);
 +#pragma unroll
-+    for (int j = 0; j < 8; ++j) {
-+        const int r = lane / 4 + 8 * (j / 4);
-+        const int c = 16 * i + 2 * (lane % 4) + j % 2 + 8 * (j / 2 % 2);
-+        w[((int64_t) 16 * J + r) * kb + c / 32].qs[c % 32] = (int8_t) (int) v[j];
++        for (int j = 0; j < 8; ++j) {
++            const int r = lane / 4 + 8 * (j / 4);
++            const int c = 16 * g + 2 * (lane % 4) + j % 2 + 8 * (j / 2 % 2);
++            tile_v[r][c] = (int8_t) (int) v[j];
++        }
 +    }
-+    if ((i & 1) == 0 && lane < 16) {
-+        w[((int64_t) 16 * J + lane) * kb + i / 2].d = __float2half(1.0f);
++    __syncthreads();
++    const int nbytes = (nt / 2) * (int) sizeof(block_q8_0);  // a row's run
++    for (int e = threadIdx.x; e < 16 * nbytes; e += 256) {
++        const int r = e / nbytes, off = e % nbytes;
++        const int blk = off / (int) sizeof(block_q8_0), bo = off % (int) sizeof(block_q8_0);
++        // d = f16 1.0 = 0x3C00, little-endian
++        const int8_t byte = bo == 0 ? (int8_t) 0x00 : bo == 1 ? (int8_t) 0x3C : tile_v[r][32 * blk + bo - 2];
++        ((int8_t *) (w + ((int64_t) 16 * J + r) * kb + i0 / 2))[off] = byte;
 +    }
 +}
 +
@@ -5247,26 +5275,26 @@ index 0000000..1447252
 +}
 +
 +void trl_dequant_any(int bits, const uint32_t * q, half * w, int K, int J0, int nJ, cudaStream_t st) {
-+    const dim3 grid((K / 16 + 3) / 4, nJ);
++    const dim3 grid((K / 16 + 7) / 8, nJ);
 +    switch (bits) {
-+        case 1: trl_dequant<1><<<grid, 128, 0, st>>>(q, w, K, J0); break;
-+        case 2: trl_dequant<2><<<grid, 128, 0, st>>>(q, w, K, J0); break;
-+        case 3: trl_dequant<3><<<grid, 128, 0, st>>>(q, w, K, J0); break;
-+        case 4: trl_dequant<4><<<grid, 128, 0, st>>>(q, w, K, J0); break;
-+        case 5: trl_dequant<5><<<grid, 128, 0, st>>>(q, w, K, J0); break;
-+        default: trl_dequant<6><<<grid, 128, 0, st>>>(q, w, K, J0); break;
++        case 1: trl_dequant<1><<<grid, 256, 0, st>>>(q, w, K, J0); break;
++        case 2: trl_dequant<2><<<grid, 256, 0, st>>>(q, w, K, J0); break;
++        case 3: trl_dequant<3><<<grid, 256, 0, st>>>(q, w, K, J0); break;
++        case 4: trl_dequant<4><<<grid, 256, 0, st>>>(q, w, K, J0); break;
++        case 5: trl_dequant<5><<<grid, 256, 0, st>>>(q, w, K, J0); break;
++        default: trl_dequant<6><<<grid, 256, 0, st>>>(q, w, K, J0); break;
 +    }
 +}
 +
 +void trl_dequant_q8_any(int bits, const uint32_t * q, block_q8_0 * w, int K, int J0, int nJ, cudaStream_t st) {
-+    const dim3 grid((K / 16 + 3) / 4, nJ);
++    const dim3 grid((K / 16 + 7) / 8, nJ);
 +    switch (bits) {
-+        case 1: trl_dequant_q8<1><<<grid, 128, 0, st>>>(q, w, K, J0); break;
-+        case 2: trl_dequant_q8<2><<<grid, 128, 0, st>>>(q, w, K, J0); break;
-+        case 3: trl_dequant_q8<3><<<grid, 128, 0, st>>>(q, w, K, J0); break;
-+        case 4: trl_dequant_q8<4><<<grid, 128, 0, st>>>(q, w, K, J0); break;
-+        case 5: trl_dequant_q8<5><<<grid, 128, 0, st>>>(q, w, K, J0); break;
-+        default: trl_dequant_q8<6><<<grid, 128, 0, st>>>(q, w, K, J0); break;
++        case 1: trl_dequant_q8<1><<<grid, 256, 0, st>>>(q, w, K, J0); break;
++        case 2: trl_dequant_q8<2><<<grid, 256, 0, st>>>(q, w, K, J0); break;
++        case 3: trl_dequant_q8<3><<<grid, 256, 0, st>>>(q, w, K, J0); break;
++        case 4: trl_dequant_q8<4><<<grid, 256, 0, st>>>(q, w, K, J0); break;
++        case 5: trl_dequant_q8<5><<<grid, 256, 0, st>>>(q, w, K, J0); break;
++        default: trl_dequant_q8<6><<<grid, 256, 0, st>>>(q, w, K, J0); break;
 +    }
 +}
 +
@@ -5278,6 +5306,20 @@ index 0000000..1447252
 +        return e ? atoi(e) : -1;
 +    }();
 +    return v >= 0 ? v : (lib ? 65 : 16);
++}
++
++// for timing the parts only (wrong answers): LAMPLIGHT_TRELLIS_CUDA_PROFILE=nodecode (1) skips the q8_0 decode,
++// =nomul (2) skips MMQ
++int trl_profile() {
++    static const int v = [] {
++        const char * e = getenv("LAMPLIGHT_TRELLIS_CUDA_PROFILE");
++        if (!e) {
++            return 0;
++        }
++        const std::string s(e);
++        return s == "nodecode" ? 1 : s == "nomul" ? 2 : 0;
++    }();
++    return v;
 +}
 +
 +int trl_mm_min() {
@@ -5383,7 +5425,7 @@ index 0000000..1447252
 +    const size_t q8_row = (size_t) (K / 32) * sizeof(block_q8_0);
 +    const size_t q8_pad = ggml_row_size(GGML_TYPE_Q8_0, MATRIX_ROW_PADDING);  // MMQ may read this far past the last row
 +    if (q8) {
-+        rows_chunk = (int) std::min<int64_t>(N, std::max<int64_t>(16, (int64_t) ((64ull << 20) / q8_row) / 16 * 16));
++        rows_chunk = (int) std::min<int64_t>(N, std::max<int64_t>(16, (int64_t) ((128ull << 20) / q8_row) / 16 * 16));
 +        Q.alloc((size_t) rows_chunk * q8_row + q8_pad);
 +        F.alloc((size_t) Tc * K);
 +        CUDA_CHECK(cudaMemsetAsync(Q.ptr + (size_t) rows_chunk * q8_row, 0, q8_pad, st));
@@ -5424,7 +5466,12 @@ index 0000000..1447252
 +            trl_scale_f32<<<dim3((K + 255) / 256, (unsigned) tc), 256, 0, st>>>(in, s16, F.ptr, K);
 +            for (int n0 = 0; n0 < N; n0 += rows_chunk) {
 +                const int nc = std::min(rows_chunk, N - n0);
-+                trl_dequant_q8_any(bits, q, (block_q8_0 *) Q.ptr, K, n0 / 16, nc / 16, st);
++                if (trl_profile() != 1) {
++                    trl_dequant_q8_any(bits, q, (block_q8_0 *) Q.ptr, K, n0 / 16, nc / 16, st);
++                }
++                if (trl_profile() == 2) {
++                    continue;
++                }
 +                // MMQ on views: the q8_0 rows (in the coded weight's buffer's name, so MMQ clears no padding of
 +                // its own), the scaled input, and rows n0 .. n0 + nc of B
 +                ggml_tensor qw = {}, xf = {}, yb = {};
@@ -7200,7 +7247,7 @@ index 1b717c8..9fe6753 100644
      vk_pipeline pipeline_cumsum_small_f32;
      vk_pipeline pipeline_cumsum_multipass1_f32;
 diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
-index 3c63a1f..db9cba2 100644
+index 3c63a1f..69cf05e 100644
 --- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
 +++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
 @@ -4013,6 +4013,47 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
@@ -7251,7 +7298,7 @@ index 3c63a1f..db9cba2 100644
      // comb holds a token's 4x4 matrix in one 16-lane slice of a subgroup, so it
      // needs at least 16 lanes, pinned to a known size.
      if (device->subgroup_basic && device->subgroup_shuffle && device->subgroup_require_full_support && device->subgroup_size >= 16) {
-@@ -7878,6 +7919,316 @@ void ggml_vk_fwht(ggml_backend_vk_context * ctx, vk_context& subctx, const ggml_
+@@ -7878,6 +7919,345 @@ void ggml_vk_fwht(ggml_backend_vk_context * ctx, vk_context& subctx, const ggml_
      ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { src_buf, dst_buf }, pc, { workgroups_x, 1, 1 });
  }
  
@@ -7265,6 +7312,30 @@ index 3c63a1f..db9cba2 100644
 +    uint32_t m;     // runs per slice
 +    uint32_t shards;
 +};
++
++// Lamplight 0136, for timing only: LAMPLIGHT_TRELLIS_VK_PROFILE=nodecode (1) skips the decode, =nomul (2) the matrix
++// multiply of long batches (wrong answers); LAMPLIGHT_TRELLIS_VK_PREC=default lets the device pick the f16 matmul's
++// accumulation as a plain f16 weight's MUL_MAT does (f16 on some cards: the unscaled values reach 126, so f32 stays the
++// default until that is measured and checked)
++static int trellis_vk_profile() {
++    static const int v = [] {
++        const char * e = getenv("LAMPLIGHT_TRELLIS_VK_PROFILE");
++        if (!e) {
++            return 0;
++        }
++        const std::string s(e);
++        return s == "nodecode" ? 1 : s == "nomul" ? 2 : 0;
++    }();
++    return v;
++}
++
++static ggml_prec trellis_vk_prec() {
++    static const ggml_prec v = [] {
++        const char * e = getenv("LAMPLIGHT_TRELLIS_VK_PREC");
++        return e && std::string(e) == "default" ? GGML_PREC_F16 : GGML_PREC_F32;
++    }();
++    return v;
++}
 +
 +static bool ggml_vk_trellis_shape(int64_t n, int kind, int block, int shards, ggml_vk_trellis_side_shape & s) {
 +    s = { kind, 0, 0, 1, 1 };
@@ -7379,7 +7450,7 @@ index 3c63a1f..db9cba2 100644
 +    // long batches: decode to f16 and use the f16 x f32 matrix multiply
 +    const std::vector<vk_matmul_pipeline_pair> * mmp = nullptr;
 +    if ((int) T >= ggml_vk_trellis_mm_min()) {
-+        mmp = ggml_vk_get_mul_mat_mat_pipeline_map(ctx, GGML_TYPE_F16, GGML_TYPE_F32, GGML_PREC_F32);
++        mmp = ggml_vk_get_mul_mat_mat_pipeline_map(ctx, GGML_TYPE_F16, GGML_TYPE_F32, trellis_vk_prec());
 +    }
 +
 +    const uint32_t Tc = std::min<uint32_t>(T, 512);
@@ -7514,8 +7585,13 @@ index 3c63a1f..db9cba2 100644
 +                const vk_op_trellis_dequant_push_constants dpc = { K, n0 / 16, q_off };
 +                const vk_subbuffer wb = { ctx->prealloc_x, 0, (uint64_t) nc * K * sizeof(ggml_fp16_t) };
 +                ggml_pipeline_request_descriptor_sets(ctx, dq, 1);
-+                ggml_vk_dispatch_pipeline(ctx, subctx, dq, { qb, wb }, dpc, { CEIL_DIV(K / 16, 4), nc / 16, 1 });
-+                ggml_vk_sync_buffers(ctx, subctx);
++                if (trellis_vk_profile() != 1) {
++                    ggml_vk_dispatch_pipeline(ctx, subctx, dq, { qb, wb }, dpc, { CEIL_DIV(K / 16, 8), nc / 16, 1 });
++                    ggml_vk_sync_buffers(ctx, subctx);
++                }
++                if (trellis_vk_profile() == 2) {
++                    continue;
++                }
 +                vk_pipeline mm = ggml_vk_guess_matmul_pipeline_map(ctx, *mmp, nc, tc, aligned && nc > 8, false);
 +                const vk_subbuffer ob = { Y, B.offset + (uint64_t) n0 * sizeof(float), szB - (uint64_t) n0 * sizeof(float) };
 +                ggml_vk_matmul(ctx, subctx, mm, vk_subbuffer(wb), { in.buffer, in.offset, (uint64_t) tc * K * sizeof(float) },
@@ -7568,7 +7644,7 @@ index 3c63a1f..db9cba2 100644
  static uint32_t ggml_vk_nb_elem(const ggml_tensor * t, int i) {
      return (uint32_t)(t->nb[i] / ggml_type_size(t->type));
  }
-@@ -13581,6 +13932,10 @@ bool ggml_vk_build_graph(ggml_backend_vk_context * ctx, ggml_cgraph * cgraph, in
+@@ -13581,6 +13961,10 @@ bool ggml_vk_build_graph(ggml_backend_vk_context * ctx, ggml_cgraph * cgraph, in
      case GGML_OP_CUMSUM:
          ggml_vk_cumsum(ctx, compute_ctx, src0, node);
  
@@ -7579,7 +7655,7 @@ index 3c63a1f..db9cba2 100644
          break;
      case GGML_OP_DSV4_HC_COMB:
          ggml_vk_dsv4_hc_comb(ctx, compute_ctx, src0, src1, src2, node);
-@@ -16859,6 +17214,10 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+@@ -16859,6 +17243,10 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
                  }
                  return false;
              }
@@ -7638,10 +7714,10 @@ index 0000000..ff15b18
 +}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_decode.glsl b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_decode.glsl
 new file mode 100644
-index 0000000..82b639b
+index 0000000..531723e
 --- /dev/null
 +++ b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_decode.glsl
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,34 @@
 +// Lamplight 0136: decode of a NariQ trellis tile (GGML_TYPE_TRL1..6, nariq/FORMAT.md). A 16x16 tile is a circular
 +// bitstream of 256 BITS-bit symbols in 8 BITS words; ring position p reads the 16-bit window ending at bit (p + 1) BITS,
 +// stream bit q being bit 31 - q % 32 of word q / 32. Lane a of a 32-lane group decodes positions 8 a .. 8 a + 7, which
@@ -7656,7 +7732,8 @@ index 0000000..82b639b
 +
 +// the 16-bit state at bit o (0..31) of the 64-bit pair hi:lo
 +uint trellis_state(uint hi, uint lo, uint o) {
-+    return (o <= 16u ? (hi >> (16u - o)) : ((hi << (o - 16u)) | (lo >> (48u - o)))) & 0xFFFFu;
++    // the top half of (hi:lo << o), branch-free; (lo >> 1) >> (31 - o) is lo >> (32 - o), and 0 at o = 0
++    return ((hi << o) | ((lo >> 1u) >> (31u - o))) >> 16u;
 +}
 +
 +// tile: the tile's first word in data_q; values come out unscaled
@@ -7677,22 +7754,24 @@ index 0000000..82b639b
 +}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_dequant.comp b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_dequant.comp
 new file mode 100644
-index 0000000..3cf3d24
+index 0000000..3e56a9e
 --- /dev/null
 +++ b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_dequant.comp
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,51 @@
 +#version 450
 +
 +// Lamplight 0136: a NariQ trellis weight's rows [16 row0_tile, ...) in the rotated basis to f16 (rows x K), for the f16
 +// matrix multiply of long batches. The values are integers in [-126, 126], exact in f16; the per-16-input scale goes onto
-+// the input (trellis_scale.comp). Four tiles per workgroup.
++// the input (trellis_scale.comp). Eight tiles (16 rows x 128 inputs) per workgroup of 256: each 32-lane group decodes a
++// tile into shared memory, then each row's 128 values are written as one run (written straight from the decode they
++// scatter over 16 rows).
 +
 +#extension GL_EXT_control_flow_attributes : require
 +#extension GL_EXT_shader_16bit_storage : require
 +
 +layout(constant_id = 0) const uint BITS = 3;
 +
-+layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
++layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 +
 +layout(push_constant) uniform parameter {
 +    uint K;
@@ -7703,22 +7782,31 @@ index 0000000..3cf3d24
 +layout(binding = 0, std430) readonly buffer Q { uint data_q[]; };
 +layout(binding = 1, std430) writeonly buffer W { float16_t data_w[]; };
 +
++shared float tile_v[16][128];
++
 +#include "trellis_decode.glsl"
 +
 +void main() {
 +    const uint kt = p.K / 16u;
 +    const uint lane = gl_LocalInvocationID.x & 31u;
-+    const uint i = gl_WorkGroupID.x * 4u + (gl_LocalInvocationID.x >> 5);
++    const uint g = gl_LocalInvocationID.x >> 5;
++    const uint i0 = gl_WorkGroupID.x * 8u;
 +    const uint J = gl_WorkGroupID.y;  // within the chunk
-+    if (i >= kt) {
-+        return;
++    const uint nt = min(8u, kt - i0);
++    if (g < nt) {
++        float v[8];
++        trellis_decode8(p.q_offset + ((p.row0_tile + J) * kt + i0 + g) * (8u * BITS), lane, v);
++        [[unroll]] for (uint j = 0; j < 8u; ++j) {
++            const uint r = lane / 4u + 8u * (j / 4u);
++            const uint c = 16u * g + 2u * (lane % 4u) + j % 2u + 8u * (j / 2u % 2u);
++            tile_v[r][c] = v[j];
++        }
 +    }
-+    float v[8];
-+    trellis_decode8(p.q_offset + ((p.row0_tile + J) * kt + i) * (8u * BITS), lane, v);
-+    [[unroll]] for (uint j = 0; j < 8u; ++j) {
-+        const uint r = lane / 4u + 8u * (j / 4u);
-+        const uint c = 2u * (lane % 4u) + j % 2u + 8u * (j / 2u % 2u);
-+        data_w[(16u * J + r) * p.K + 16u * i + c] = float16_t(v[j]);
++    barrier();
++    const uint ncols = 16u * nt;
++    for (uint e = gl_LocalInvocationID.x; e < 16u * ncols; e += 256u) {
++        const uint r = e / ncols, c = e % ncols;
++        data_w[(16u * J + r) * p.K + 16u * i0 + c] = float16_t(tile_v[r][c]);
 +    }
 +}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_io.comp b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_io.comp
