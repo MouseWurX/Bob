@@ -1,0 +1,57 @@
+diff --git a/tools/server/server.cpp b/tools/server/server.cpp
+index 567c14f..f90813b 100644
+--- a/tools/server/server.cpp
++++ b/tools/server/server.cpp
+@@ -16,6 +16,7 @@
+ #include <algorithm>
+ #include <atomic>
+ #include <clocale>
++#include <cstring>
+ #include <exception>
+ #include <mutex>
+ #include <signal.h>
+@@ -820,6 +821,35 @@ static int server_run(common_params & params, int argc, char ** argv, server_rol
+     GGML_ABORT("invalid server role");
+ }
+ 
++// Brain Engine 0140: Windows' power throttling (EcoQoS) off for the whole engine, with LLAMA_POWER_THROTTLING_OFF=1
++// (off unless set, until a test shows it pays). ggml already asks it for its own processor threads, but not for the
++// main thread that hands the card its work, nor the HTTP threads, and Windows may throttle a process it thinks is in
++// the background (Bob starts the engine with no window). Same words: it only changes how fast the processor may run.
++// Idea from PolyStrata (MIT). Nothing happens on other systems.
++static void llama_power_throttling_off() {
++    const char * on = getenv("LLAMA_POWER_THROTTLING_OFF");
++    if (!(on && strcmp(on, "1") == 0)) {
++        return; // left to Windows
++    }
++#if defined(_WIN32) && defined(PROCESS_POWER_THROTTLING_CURRENT_VERSION)
++    PROCESS_POWER_THROTTLING_STATE st;
++    ZeroMemory(&st, sizeof(st));
++    st.Version     = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
++    st.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
++#if defined(PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION)
++    st.ControlMask |= PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION;
++#endif
++    st.StateMask   = 0; // a bit in ControlMask with none in StateMask: never throttle that
++    if (SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, &st, sizeof(st))) {
++        SRV_INF("%s", "power throttling: off for the engine (0140)\n");
++    } else {
++        SRV_WRN("power throttling: could not turn it off (error %d), Windows decides\n", (int) GetLastError());
++    }
++#elif defined(_WIN32)
++    SRV_WRN("%s", "power throttling: this build can't turn it off (built for Windows older than 8)\n");
++#endif
++}
++
+ int llama_server(int argc, char ** argv) {
+     server_role role;
+ 
+@@ -845,6 +875,8 @@ int llama_server(int argc, char ** argv) {
+ 
+     SRV_INF("%s", "initializing ...\n");
+ 
++    llama_power_throttling_off(); // Brain Engine 0140
++
+     llama_backend_init();
+     llama_numa_init(params.numa);
+ 

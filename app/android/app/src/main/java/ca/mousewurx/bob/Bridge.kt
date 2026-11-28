@@ -42,13 +42,19 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     private val net = NetBob(activity)
     private val app = activity.application as BobApp
     private val brain = app.brain.also { b -> b.listener = { send(JSONObject(it).put("event", "brain")) } }
-    init { app.pair.listener = { send(JSONObject().put("event", "pair").put("data", it)) } }
+    init {
+        app.pair.listener = { send(JSONObject().put("event", "pair").put("data", it)) }
+        // 🖐 You stopped Bob's hands (the bar's Stop, or volume down): the page stops the reply too.
+        HandsService.listener = { send(JSONObject(it.toString()).put("event", "hands")) }
+    }
     private val listening = ConcurrentHashMap<String, Boolean>()
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var micCall: String? = null
     private var photoCall: String? = null
     private var fileCall: String? = null // Back up and move: a phone backup picked to restore
+    private var docCall: String? = null // 🧰 Bob's documents: a file picked to add
+    private val docs = PhoneDocs(activity.filesDir)
     @Volatile private var photo: ByteArray? = null // the picked photo, until it's sent or cleared
     private var pendingMicStart: (() -> Unit)? = null
     private var pendingNotify: (() -> Unit)? = null
@@ -66,6 +72,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         const val PHOTO_REQUEST = 7004
         const val FILE_REQUEST = 7005
         const val EARS_PERMISSION = 7006
+        const val DOC_REQUEST = 7007
         const val MAX_SHARE_TEXT = 512L * 1024 // a shared text file bigger than this isn't read into the chat
         const val MAX_BACKUP_BYTES = 64L * 1024 * 1024
         const val CHANNEL = "bob"
@@ -78,6 +85,9 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
 
     private fun answer(id: String, result: Any?) = send(JSONObject().put("id", id).put("ok", true).put("result", result ?: JSONObject.NULL))
     private fun fail(id: String, error: String) = send(JSONObject().put("id", id).put("ok", false).put("error", error))
+
+    private fun hands(): HandsService = HandsService.live
+        ?: throw IllegalStateException(if (HandsService.allowed(activity)) "Bob's hands are switched off in Android's Accessibility settings. They're on the Phone brain page: Let Bob use apps, Open Accessibility settings." else "Bob's hands are off. They're on the Phone brain page: Let Bob use apps.")
 
     private fun base(o: JSONObject): String = NetBob.base(o.getString("address")) ?: throw IllegalArgumentException("not a Tailscale address")
 
@@ -156,7 +166,8 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                     "brain.pause" -> { brain.pauseDownload(); answer(id, true) }
                     "brain.cancel" -> { brain.cancelDownload(o.getString("file")); answer(id, true) }
                     "brain.delete" -> answer(id, brain.delete(o.getString("file")))
-                    "brain.chat" -> { brain.chat(o.getString("file"), o.getString("system"), o.optJSONArray("history") ?: org.json.JSONArray(), o.getString("text"), o.optString("note"), o.optInt("maxTokens", 768)); answer(id, true) }
+                    "brain.chat" -> { brain.chat(o.getString("file"), o.getString("system"), o.optJSONArray("history") ?: org.json.JSONArray(), o.getString("text"), o.optString("note"), o.optInt("maxTokens", 768),
+                        o.optJSONArray("tools") ?: org.json.JSONArray(), o.optJSONArray("after") ?: org.json.JSONArray()); answer(id, true) }
                     "brain.stop" -> { brain.stop(); answer(id, true) }
                     "brain.unload" -> { brain.unload("asked"); answer(id, true) }
                     "brain.bench" -> { brain.bench(o.getString("file")); answer(id, true) }
@@ -195,6 +206,42 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                     // ---- Low-data mode: is this connection one Android counts as metered (mobile data)? ----
                     "net.metered" -> answer(id, activity.getSystemService(android.net.ConnectivityManager::class.java)?.isActiveNetworkMetered == true)
 
+                    // ---- 🧰 Bob's documents (Let the phone brain use tools): the page reads and writes them as base64 ----
+                    "docs.list" -> answer(id, docs.list())
+                    "docs.read" -> answer(id, docs.read(o.getString("name"))?.let { Base64.encodeToString(it, Base64.NO_WRAP) })
+                    "docs.write" -> answer(id, docs.write(o.getString("name"), Base64.decode(o.getString("data"), Base64.DEFAULT)))
+                    "docs.undo" -> answer(id, docs.undo(o.getString("name")))
+                    "docs.delete" -> answer(id, docs.delete(o.getString("name")))
+                    "docs.save" -> {
+                        val name = PhoneDocs.safeName(o.getString("name"))
+                        val bytes = docs.read(name) ?: throw IllegalStateException("that file isn't there any more")
+                        answer(id, saveToPhone(name, o.optString("mime")) { out -> out.write(bytes) })
+                    }
+                    "docs.add" -> activity.runOnUiThread {
+                        docCall?.let { fail(it, "replaced") }
+                        docCall = id
+                        val types = arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain", "text/markdown", "text/csv", "application/octet-stream")
+                        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*").putExtra(Intent.EXTRA_MIME_TYPES, types)
+                        runCatching { activity.startActivityForResult(i, DOC_REQUEST) }.onFailure { docCall = null; fail(id, "this phone has no file picker") }
+                    }
+                    // ---- 🔎 Look things up online (its own switch, off to start with; the page checks it too) ----
+                    "web.get" -> answer(id, WebLook.get(o.getString("url")))
+
+                    // ---- 🖐 Phone hands (Let Bob use apps, off to start with; HandsService.kt asks for your OK on screen) ----
+                    "hands.state" -> answer(id, JSONObject().put("allowed", HandsService.allowed(activity)).put("switchedOn", HandsService.switchedOn(activity))
+                        .put("running", HandsService.live != null).put("job", HandsService.live?.state() ?: JSONObject.NULL))
+                    "hands.allow" -> { HandsService.allow(activity, o.getBoolean("on")); answer(id, HandsService.allowed(activity)) }
+                    "hands.settings" -> activity.runOnUiThread {
+                        val i = if (o.optString("where") == "app") Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + activity.packageName))
+                            else Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                        runCatching { activity.startActivity(i) }.onSuccess { answer(id, true) }.onFailure { fail(id, "this phone wouldn't open its settings") }
+                    }
+                    "hands.apps" -> answer(id, hands().apps())
+                    "hands.open" -> answer(id, hands().open(o.optString("name")))
+                    "hands.look" -> answer(id, hands().look())
+                    "hands.act" -> answer(id, hands().act(o))
+                    "hands.end" -> { HandsService.live?.endJob(o.optBoolean("done", true)); answer(id, true) }
+
                     // ---- Phone bits ----
                     "notify" -> activity.runOnUiThread { notifyNow(o.getString("title"), o.getString("text")); answer(id, true) }
                     "open" -> activity.runOnUiThread { activity.openLink(o.getString("url")); answer(id, true) }
@@ -230,6 +277,23 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     }
 
     fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == DOC_REQUEST) {
+            val id = docCall ?: return
+            docCall = null
+            val uri = data?.data ?: return answer(id, null) // picker closed: nothing picked
+            scope.launch {
+                try {
+                    val shown = activity.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: "Added file.xlsx"
+                    val clean = shown.replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001f]"), "_").trim().trimStart('.').take(120)
+                    val name = docs.freeName(clean)
+                    val bytes = activity.contentResolver.openInputStream(uri)?.use { s -> s.readNBytes((PhoneDocs.MAX_BYTES + 1).toInt()) } ?: throw IllegalStateException("unreadable")
+                    if (bytes.size > PhoneDocs.MAX_BYTES) throw IllegalStateException("that file is bigger than 20 MB")
+                    answer(id, docs.write(name, bytes))
+                } catch (e: IllegalArgumentException) { fail(id, e.message ?: "that kind of file can't go in Bob's documents")
+                } catch (e: Exception) { fail(id, e.message ?: "that file wouldn't open") }
+            }
+            return
+        }
         if (requestCode == FILE_REQUEST) {
             val id = fileCall ?: return
             fileCall = null
@@ -431,6 +495,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     fun close() {
         brain.listener = null // the phone brain stays (it may be lending); only this screen goes
         app.pair.listener = null
+        HandsService.listener = null
         listening.keys.forEach { listening[it] = false }
         tts?.shutdown()
         ears.close()

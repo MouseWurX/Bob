@@ -449,7 +449,7 @@ This section is the testing behind the cut Flash-Next published as "Bobert Flash
 
 - **The map.** Every expert in each layer was scored REAP-style (router-weighted expert activation, Lasby et al., 2025): the router's weight for the expert times the size of its output, summed over every word of 153 clean Flash-Next runs of Bob's jobs from 21 November. Only runs the graders passed, with no harm and no bad tool call, were counted (`trace-read --passed --mass`). They came from the normal job sets, never from the held-out sets that judge the cut. Pick counts alone would ignore how much an expert adds when it is picked, which is why the weighted score was used. So the experts kept are the ones Bob's finished work leans on, not the ones a general text sample uses.
 - **The keep lists.** From that ranking, lists keeping 90, 80, 75, 65, 60 and 50% of each layer's experts were made. Every layer keeps the same share, because a GGUF file needs the same expert count in every layer. Lists per job kind (inbox, office, repo) were also made at 80%.
-- **How each level was scored.** The experts not on a list were switched off while the brain was served (Brain Engine's live expert mask, patch 0001, through `model-lab/expert-mask.mjs --keep`). Nothing was cut, healed or saved. Each level then ran the held-out jobs of section 11.7.7, which no setting or lesson was ever tuned on.
+- **How each level was scored.** The experts not on a list were switched off while the brain was served (Lamplight's live expert mask, patch 0001, through `model-lab/expert-mask.mjs --keep`). Nothing was cut, healed or saved. Each level then ran the held-out jobs of section 11.7.7, which no setting or lesson was ever tuned on.
 
 **Every level, on the held-out jobs (22 November):**
 
@@ -478,10 +478,112 @@ This section is the testing behind the cut Flash-Next published as "Bobert Flash
 
 **A miss that is not the cut.** The held-out job "h-word-read" fails even with all experts on. Its ask never says the answer is in the person's own files, so the brain searches the web instead. That is a gap in Bob's prompt, not a slip from cutting. The proposed fix is a general rule to check the person's own documents first for their own affairs, written without the held-out job's text.
 
-**The cut (ordered 23 November).** On MouseWurX's go ("cut it", with no merging), Flash-Next is cut on one rented H200 (plan `forge/plans/cut-bobert-flashnext.json`, commit 0bcc4157 and later on branch claude/project-thread-et6g5x). The pod starts from Unsloth's Q8_0 Flash-Next (188 GB) and removes 102 of the 512 experts from every layer by the 80% list (`all-keep-80.json`), keeping 410. The draft (MTP) layer keeps the experts kept most often across the other layers. The shared expert and everything outside the experts are untouched. An importance matrix is then made on the cut brain from training chats only, never the held-out sets, and five quants are made: IQ2_XXS, IQ2_M, Q3_K_M, IQ4_XS and Q4_K_M. IQ2_XXS is the size for a 16 GB card with 32 GB of RAM. Each is published as it is made, with the base model's licence, the keep list and the imatrix. The rental started on an H200 NVL on 23 November. The name is "Bobert 101Bob A6B Flash-Next REAP80": about 101B parameters left, about 6B active per word, unchanged by the cut.
+**The cut (ordered 23 November).** On MouseWurX's go ("cut it", with no merging), Flash-Next is cut on one rented H200 (plan `forge/plans/cut-bobert-flashnext.json`, commit 0bcc4157 and later on branch claude/project-thread-et6g5x). The pod starts from Unsloth's Q8_0 Flash-Next (188 GB) and removes 102 of the 512 experts from every layer by the 80% list (`all-keep-80.json`), keeping 410. The draft (MTP) layer keeps the experts kept most often across the other layers. The shared expert and everything outside the experts are untouched. An importance matrix is then made on the cut brain from training chats only, never the held-out sets, and five quants are made: IQ2_XXS, IQ2_M, Q3_K_M, IQ4_XS and Q4_K_M. IQ2_XXS is the size for a 16 GB card with 32 GB of RAM. Each is published, private, with the base model's licence, the keep list and the imatrix, once it passes the publish gate (section 11.7.9). The rental started on an H200 NVL on 23 November. The name is "Bobert 101Bob A6B Flash-Next REAP80": about 101B parameters left, about 6B active per word, unchanged by the cut.
 
 The masked scores above were measured with the 80% list on the Q4 file. The pod then serves the cut IQ2_XXS on the same held-out jobs, to compare with the all-experts and 80%-mask rows. Until those scores are in, and until the files are run on the home PC, how well the published files do is unproven in our lab, as we have yet to test. No healing was done. A heal is planned only if the cut files miss the held-out bar.
 
+<a id="flash-next-cuts"></a>
+
+### 11.7.9 Three cuts for one hardware class: Bobert, Riker and Bill, and the 2-bit size story (23 November)
+
+**Why cut at all.** In MouseWurX's words: "there was no perfect model for our hardware class, so we made the best fit we could." Flash-Next did Bob's jobs best in the harness (section 11.7.7), but no released file of it fits a 16 GB card with 32 GB of RAM comfortably. The 80% cut was the first try. On 23 November two deeper cuts were ordered, so the trade between size and job quality can be measured instead of guessed.
+
+| Cut | Name | Experts kept per layer | Keep list |
+|---|---|---|---|
+| 80% | Bobert 101Bob A6B Flash-Next REAP80 | 410 of 512 | `all-keep-80.json` |
+| 70% | Riker 89Bob A6B Flash-Next REAP70 | 359 of 512 | `all-keep-70.json` (below) |
+| 60% | Bill 77Bob A6B Flash-Next REAP60 | 308 of 512 | `all-keep-60.json` |
+
+The number in each name is the parameters left after the cut, about 125B less the experts removed. It leaves out the per-layer word-pattern table (about 51B), which the cut does not touch. All three keep about 6B active per word.
+
+**How the 70% list was made.** The per-expert REAP scores behind the saved lists were held in memory only and never written to disk, so no 70% list could be made the same way. It was built per layer from the saved lists: all 333 experts of the 65% list, plus the 26 experts in the 75% list but not the 65% one that Bob's inbox, Office and repo jobs routed to most often (ties to the lower expert number). The file says so (`by: "mass+counts"`). In the last layer (47), every saved list keeps an unbroken run of experts from 0 upward, which suggests only about 30 experts there carry real weight and the rest were filled by number. The masked runs at 60%, 65% and 75% used those same lists and scored as in the table above, so the lists are used as they are.
+
+**The 2-bit size story, told straight.** The first IQ2_XXS of Bobert came out at 65.8 GB, far above what a 2-bit file of a 101B brain should be. Two parts of Flash-Next have shapes llama.cpp's usual 2-bit types do not fit:
+
+- **The down experts are 640 numbers wide.** The IQ2 types work in blocks of 256, and 640 does not divide by 256, so these fell back to about 4.5 bits (about 17 GiB instead of about 8). llama.cpp b12359 also has Q2_0, 2.25 bits in blocks of 64, and 640 divides by 64. MouseWurX pointed out that the published Flash-Next files ship at 2 bits. The fix forces the down experts to Q2_0 in IQ2_XXS and IQ2_M (commit beaf0db5 on branch claude/project-thread-et6g5x). It was proven first on a tiny test file with the same widths, quantized with the real llama-quantize b12359: the down experts came out Q2_0, gate and up IQ2_XXS.
+- **The word-pattern table is 160 numbers wide.** Every 2- and 3-bit type needs rows of 64 or 256, so the smallest type that fits is Q4_0, about 4.5 bits, about 27 GiB. It was Q4_0 in the first file too. It had been said during the night that this table would be cut to 2 bits; that was said before it was checked, and it was wrong. Unsloth's files end in a 28.8 GB part, which matches the table's size, but their tensor types were not read, so whether they solve this differently is not known.
+
+The table costs drive space, not memory: Bob reads only a few rows of it per word, straight from the drive. Predicted sizes, and the memory each IQ2_XXS needs without the table:
+
+| Cut | IQ2_XXS | IQ2_M | Q3_K_M | IQ4_XS | Q4_K_M | Memory at IQ2_XXS |
+|---|---|---|---|---|---|---|
+| Bobert 80% | 56.8 GB | 61.9 | 80.6 | 83.4 | 103 | about 28 GB |
+| Riker 70% | 53.6 GB | 58.3 | 74.4 | 76.9 | 95.7 | about 25 GB |
+| Bill 60% | 50.4 GB | 54.6 | 68.3 | 70.4 | 88.4 | about 21 GB |
+
+For scale, Unsloth's full Flash-Next UD-Q2_0 is 70.5 GB.
+
+**What the pods made (24 November).** Every file was checked against the publish gate on the pod: size within about 10% of the prediction, it loads, and it answers "the capital of France" and "17 + 25" sensibly. Sizes are from the checked repo listings (log `app/docs/flashnext-cuts-log.md`).
+
+| Cut | IQ2_XXS | IQ2_M | Q3_K_M | IQ4_XS | Q4_K_M |
+|---|---|---|---|---|---|
+| Bobert 80% | 56.75 GB, pass | 61.0, pass | 81.65, pass | 84.4, passed but lost when the pod's disk filled | not made |
+| Riker 70% | 53.53, pass | 57.28, pass | 75.4, pass | 77.85, pass | 95.01, pass |
+| Bill 60% | 50.30, **failed** ("France." and "25"), not uploaded | 53.56, pass | 69.16, pass | 71.3, pass | 86.96, pass |
+
+Every measured size landed within 2% of its prediction, so the Q2_0 fix did what it should. The gate also did its job: it kept a broken file from going up.
+
+**Why Bill's IQ2_XXS broke.** Flash-Next has small hyper-connection mixers in every layer (`hc_attn`, `hc_ffn_down` and their inject parts). llama.cpp b12359 squeezes them to IQ2_XXS along with the experts, as its quant log for this file confirms. Bobert's and Riker's IQ2_XXS files passed the gate with the same treatment, so why Bill alone broke is not yet known; the deepest cut may simply have the least to spare. A mixed-bit retest kept those mixers higher (KLD against Bill's own Q8_0, wikitext-2, 24 chunks of 512; PR #347, commit c6ebf49):
+
+| Bill file | Size | KLD | Same top | Perplexity ratio |
+|---|---|---|---|---|
+| IQ2_XXS (mixers at 2 bits) | 50.30 GB | 2.437 | 43.1% | 7.64 |
+| MX2_S (mixed bits) | 51.93 GB | 1.016 | 63.4% | 1.84 |
+| IQ2_M | 53.56 GB | 1.336 | 57.2% | 2.44 |
+| MX2_M (mixed bits) | 54.08 GB | 0.818 | 67.4% | 1.53 |
+| MX3_S (mixed bits) | 58.68 GB | 0.593 | 72.5% | 1.27 |
+
+So a mixed-bit file smaller than IQ2_M beats it on every screen. The MX files are not published. These screens are far from full quality at every size, and screens are not job scores.
+
+**Held-out jobs on the pods: a suspected test fault.** All three IQ2_XXS files scored 0 on every held-out set, and in most runs the brain called no tool at all. A file that answers the gate questions but never calls a tool points at the test setup on the pod, not the brain, so these runs are not counted as results. The held-out runs of the public files on the home PC are to come.
+
+**Cost.** About $48.87 in all: Bobert $23.86, Bill and Riker $17.87, the mixed-bit retest $7.14.
+
+**The publish-gate lesson.** The 65.8 GB file had gone up before anyone checked its size against what it should be. It was taken down, its history cleared and the repo set to private. Since then every quant must pass a gate on the pod before it uploads: within 10% of its predicted size, it must load, and it must give two sensible answers. A file outside its range stays on the pod, and the run carries on with the others. Every upload is private until MouseWurX says public. The files that passed were later made public. The gate is now listed with the rental gates in section 4.8.1. The lesson: check a result against what it should be before anyone else can see it.
+
+**The rentals.** Bobert restarted on the same H200 NVL pod with the fix, reusing its cut Q8_0 and imatrix (cap $32). Riker and Bill run one after the other on one RTX PRO 6000 Blackwell (96 GB card, 180 GB RAM, 600 GB disk; caps 11 h and $40; plan `forge/plans/cut-riker-bill-flashnext.json`, commit 1c444633). The account allows only one H200-class card at a time, and at IQ2 each brain needs only 21 to 25 GB on the card, leaving room for the jobs. Each cut gets its own imatrix, since Bobert's measured other experts. Each pod then serves its IQ2_XXS on the held-out inbox, Office, repo and web jobs.
+
+**Others' cuts.** Other people have already published REAP cuts of Flash-Next, for example one keeping 288 of 512 experts (about 56%). What differs here is that Bob's own tool jobs chose the experts, every keep level was scored on held-out jobs, and the 2-bit files keep the down experts at a real 2 bits. Whether the others publish scores like these was not checked.
+
+**What is not yet known.** How the cut files do on Bob's jobs, and their speed on the home PC, are unproven in our lab, as we have yet to test. They are added here when they are in.
+
+
+<a id="held-out-per-brain"></a>
+### 11.7.10 Every brain on the held-out jobs, the phone brains, the release check and two squeezes (26 to 27 November)
+
+**Why.** Until now, only stock Qwen and Flash-Next had been run on the held-out jobs (section 11.7.7). Several new brains of about 27B had been checked only for loading and matching words, so the catalogue could not say which one does Bob's work best on a 12 to 16 GB card.
+
+**Method.** The held-out set of 22 November: inbox 28 jobs, Office 14, repo 12 and web 11, 65 in all, written once and never used for tuning or lessons. Each brain ran it in Bob's real loop on Lamplight (b12359 base) on rented cards, scored by each set's own code: an inbox job passes when its own measure reaches 80% with no harm and no error, the others by their Pass column. Office came from a second rental with the same code. One run per brain. The summary script was fixed before the final scoring (26 November) and every row was scored again with it.
+
+**Results (26 November).**
+
+| Brain | Inbox | Office | Repo | Web | Out of 65 | Tool calls | Shape faults |
+|---|---|---|---|---|---|---|---|
+| Inkling 2 Mini | 24 | 14 | 12 | 9 | **59** | 319 | 2 |
+| ISTA 27B (IQ2_XS) | 25 | 14 | 11 | 8 | **58** | 281 | 2 |
+| Ternary Bonsai 2.5 27B, PTQ1_0 | 25 | 14 | 10 | 8 | **57** | 339 | 0 |
+| Ternary Bonsai 2.5 27B, Q2_0 | 23 | 14 | 12 | 8 | **57** | 434 | 1 |
+| Underdog Saluki 27B | 23 | 14 | 9 | 10 | **56** | 332 | 5 |
+| Qwen3.6 35B-A3B (Bob's default) | 22 | 13 | 8 | 6 | **49** | 319 | 6 |
+| Raon-1 mini | 21 | 10 | 5 | 9 | **45** | 491 | 15 |
+| Raon-1 nano | 7 | 4 | 1 | 3 | **15** | 218 | 2 |
+
+No brain did harm on the inbox jobs; Qwen had one error. Shape faults count inbox, repo and web calls only. The four 27B-class brains sit within 3 jobs of each other, which one run cannot separate; all four beat Bob's default by 7 to 10 jobs, mostly on repo and web. Saluki became the pick for 12 GB cards (it fits all on the card at 7.9 GB), with a licence that limits commercial use. Before the jobs, each new brain was checked against a reference build: Saluki gave the same words on 3 of 3 prompts, recalled a code word at 103,066 tokens and passed 11 of 12 quick tool jobs; both Bonsai files gave the same words on 3 of 3 prompts.
+
+**Phone brains (27 November).** The same 65 jobs with the phone's prompt and tools, on Lamplight with the phone's settings: Dory 4B 39 of 65, Bonsai 2 4B 25 to 29 (two files), Qwen3.5 2B 22, Gemma 4 E2B 10 (the phone's pick today) and Bonsai 2 2B 6 to 7. Dory needed an engine port first (upstream llama.cpp support was not merged yet); on the patched phone engine it wrote about 8 tokens a second on 4 processor threads at 2 loops. A photo-to-spreadsheet test scored 0 of 56 on its first run, and that was the test's fault, not the brains': the photos did reach the brains (a photo added about 660 prompt tokens against 34 for the spoken ask, and Gemma read a receipt's four prices right), but most brains first made an empty spreadsheet and the test never gave them the next step. The test now runs the full tool loop like the phone app. Its rerun on 10 brains is unproven in our lab, as we have yet to test.
+
+**The release check (26 to 27 November).** Before 1.5.255 shipped, it was installed with Bob's own Linux installer on rented 16 GB cards, with Qwen3.6 35B-A3B from the catalogue and Bob's default settings, and run through every held-out set. It took seven tries at about $1.29 in all. Tries 1 to 4 never got the engine up and try 6 stopped on a test-side check; on the way, four real Linux bugs were found and fixed: the engine's own files weren't found outside its build folder, Bob's engine install broke the engine's file links, the copy cache left no room for the picture reader, and the chat cache in RAM counted only part of the brain and not a container's memory limit. Try 7 passed its gate: no engine crash, mail 28 of 28, Office 14 of 14, repo 11 of 12 and web 11 of 11 jobs run, card peak 15,400 MiB against a 15,872 MiB limit. This was a crash gate: the jobs ran, but this run was not scored as a quality result.
+
+**Two squeezes for small files.**
+
+- **Learned 2-bit rounding (GSQ), pilot on Qwen3-1.7B.** Our stock q2_0 writer matches llama-quantize byte for byte. Against Q8_0 (KLD 0.003), file A (1.89 GB) drifted KLD 3.36 with stock rounding, 0.38 with GPTQ and 0.32 with GSQ (same top word 37%, 77% and 79%); file B (1.34 GB) drifted 12.33, 0.88 and 0.67. On the first Bill run, exact-size bit picks did not beat the mixed-bit recipe already in use. A Bill GSQ run is unproven in our lab, as we have yet to test: its first try failed (cause fixed) and its rerun is going.
+- **Scale healing, on the laptop's processor.** Qwen3.5 2B squeezed to IQ2_XXS and Q2_K, then only the scales and norms tuned against the full model's odds (300 and 199 steps, about 3.5 and 4.1 h). On the heal's own check, IQ2_XXS went from top-64 KL 0.64 to 0.32 and same top word 55.5% to 68.9%; Q2_K from 0.24 to 0.17 and 71.5% to 75.6%. On the full evaluation text after healing, IQ2_XXS has KLD 0.375 and 72.1% same top word, Q2_K 0.201 and 77.9%. Whether healed files do Bob's jobs better is unproven in our lab, as we have yet to test.
+
+**Still running when this was written (27 November):** the photo test rerun, the Bill GSQ rerun and a first check of Ling 3.2 Air. They are added here when they are in.
+
+**Cost.** About $108 for all rentals of 24 to 27 November, from the rental logs (rate times time, not billed); the eight-brain jobs run itself was $3.39 and the Dory phone check $1.52. Itemized in [What Bob costs to make](../COSTS.md).
+
+Sources: `brain-jobs-results.md` and its result zips (26 November), the Saluki and Bonsai check summaries, the phone tool-job run log and photo-test summaries, the release check run logs (tries 1 to 7), `gsq-try3-summary.txt`, the two heal reports and their KLD logs, and the rental log list of 27 November.
 
 ## 11.8 Discussion
 

@@ -1,0 +1,50 @@
+card: 
+Bob from /home/user/bob (dry run) at 2657d30be0fe8f4e27bf25e1e61be101f0d101bc
+engine: 104 patches on b12359, build logged in build.log
+brain from  (no download)
+reference: 6873440 bytes
+budget Q3_K_M: 1573888 bytes, 4.3665 bits a weight; the word table stays q3_k as in the stock file, so whole files match in size
+Q3_K_M STOCK-imatrix: KLD 0.151218, same top 76.255%, 1857088 bytes   [GPU ]
+Q3_K_M WORD: head q6_k -> 64:q8_0 17:q8_0 21:q8_0 26:q8_0 33:q8_0 42:q8_0 53:q6_k 67:q8_0 83:q8_0 106:q6_k 133:q6_k 168:q6_k 211:q6_k 266:q6_k 335:q6_k 423:iq4_xs
+Q3_K_M MIX: KLD 0.114093, same top 78.882%, 1857088 bytes   [GPU ]
+Q3_K_M PART-IMAT: KLD 0.112815, same top 78.569%, 1857088 bytes   [GPU ]
+Q3_K_M PART: KLD 0.102730, same top 79.490%, 1857088 bytes   [GPU ]
+Q3_K_M PART-WORD: KLD 0.101393, same top 79.961%, 1858144 bytes   [GPU ]
+Q3_K_M WORD: KLD 0.151163, same top 76.216%, 1856992 bytes   [GPU ]
+budget Q4_K_M: 1841664 bytes, 5.1094 bits a weight; the word table stays q4_k as in the stock file, so whole files match in size
+Q4_K_M STOCK-imatrix: KLD 0.039773, same top 88.353%, 2194496 bytes   [GPU ]
+Q4_K_M STOCK-no-imatrix: KLD 0.041455, same top 87.275%, 2194272 bytes   [GPU ]
+Q4_K_M IQ4_XS: KLD 0.052107, same top 85.412%, 2019904 bytes   [GPU ]
+Q4_K_M IQ4_NL: KLD 0.049691, same top 86.059%, 2110016 bytes   [GPU ]
+Q4_K_M Q4_K_S: KLD 0.040095, same top 87.784%, 2126400 bytes   [GPU ]
+Q4_K_M Q5_K_S: KLD 0.013217, same top 92.843%, 2470464 bytes   [GPU ]
+Q4_K_M MXFP4_MOE: KLD 0.000881, same top 97.863%, 3678784 bytes   [GPU ]
+Q4_K_M WORD: head q6_k -> 64:q8_0 17:q8_0 21:q8_0 26:q8_0 33:q8_0 42:q8_0 53:q6_k 67:q8_0 83:q8_0 106:q6_k 133:q6_k 168:q6_k 211:q6_k 266:q6_k 335:q6_k 423:iq4_xs
+Q4_K_M MIX: KLD 0.038894, same top 87.490%, 2193984 bytes   [GPU ]
+Q4_K_M PART-IMAT: KLD 0.030166, same top 89.235%, 2193984 bytes   [GPU ]
+Q4_K_M PART: KLD 0.026530, same top 89.922%, 2193984 bytes   [GPU ]
+Q4_K_M PART-WORD: KLD 0.025932, same top 90.451%, 2195392 bytes   [GPU ]
+Q4_K_M WORD: KLD 0.039601, same top 88.373%, 2194400 bytes   [GPU ]
+Q4_K_M STOCK-imatrix-healed: KLD 0.028482, same top 89.569%, 2194496 bytes   [GPU ]
+Q4_K_M PART-healed: KLD 0.021111, same top 91.294%, 2193984 bytes   [GPU ]
+Q3_K_M-STOCK-imatrix: The capital of France is not.  (Theses, a mat  
+Q3_K_M-MIX: The capital of France is not.  (a) company peing    
+Q3_K_M-PART-IMAT: The capital of France is not.  (Theses, if the recipient  
+Q3_K_M-PART: The capital of France is not.  (Theses, if the recipient  
+Q3_K_M-PART-WORD: The capital of France is not.  (Theses, if the recipient  
+Q3_K_M-WORD: The capital of France is not.  (Theses, a mat  
+Q4_K_M-STOCK-imatrix: The capital of France is detane that any other numbered to use and  
+Q4_K_M-STOCK-no-imatrix: The capital of France is
+Q4_K_M-IQ4_XS: The capital of France is not a bjor in, conditions are permitted  
+Q4_K_M-IQ4_NL: The capital of France is not a bjor in, conditions are permitted  
+Q4_K_M-Q4_K_S: The capital of France is detane that any other numbered to find  
+Q4_K_M-Q5_K_S: The capital of France is not a bjor in the case, wor  
+Q4_K_M-MXFP4_MOE: The capital of France is not.  (Exision.     
+Q4_K_M-MIX: The capital of France is not.  (Theses, if the recipient  
+Q4_K_M-PART-IMAT: The capital of France is not a bjor in CC0, provisions  
+Q4_K_M-PART: The capital of France is
+Q4_K_M-PART-WORD: The capital of France is not.  (Theses, a mat  
+Q4_K_M-WORD: The capital of France is detane that any other numbered to use and  
+Q4_K_M-STOCK-imatrix-healed: The capital of France is not.  (Exis Transparent transl  
+Q4_K_M-PART-healed: The capital of France is
+BITS DONE

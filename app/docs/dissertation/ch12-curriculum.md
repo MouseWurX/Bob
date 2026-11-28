@@ -167,7 +167,7 @@ Thirteen of the 45 lessons carry a Real result panel. An earlier draft of this c
 | The split was right, and still leaked (Testing that tells the truth) | 7 | 519 of 534 held-out tool items appear word for word in training-side files, and 7 more share their first 60 characters; only 8 have no match. | Chapter 7 (ch07-study3-test-leaks.md) |
 | Auditing your reviewer (Testing that tells the truth) | 6 | Opus changed 1,922 of Haiku's 5,788 verdicts (33%); 71% of the changes were between fix and repair; Opus moved 533 Haiku keeps to worse and 23 lessons to better. | Chapter 6 (ch06-study2-full-read.md) |
 
-No shipped panel shows tool wording, the per-family tool shapes, coaching, the Brain Engine checks or the Riker brake and patching. Both coding panels now carry the caveat of chapter 5: the re-cut Riker also kept 208 experts against 176 for Riker v1 and v2 (FORGE-JOURNAL.md). The two newest panels cite thesis chapters rather than a doc under docs/, because the held-out leak and the reviewer comparison are published only in those chapters.
+No shipped panel shows tool wording, the per-family tool shapes, coaching, the Lamplight checks or the Riker brake and patching. Both coding panels now carry the caveat of chapter 5: the re-cut Riker also kept 208 experts against 176 for Riker v1 and v2 (FORGE-JOURNAL.md). The two newest panels cite thesis chapters rather than a doc under docs/, because the held-out leak and the reviewer comparison are published only in those chapters.
 
 ### 12.5.1 A note on the pipeline panels
 

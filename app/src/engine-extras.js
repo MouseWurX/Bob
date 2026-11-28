@@ -11,6 +11,7 @@
 //   turboEveryday 102 MTP for everyday brains: a brain's own built-in guesser (MTP) on, without the Lab (ON unless switched off, Nov 23)
 //   hotExperts   104 Hot experts on the card: llama.cpp's expert cache, filled from a profile (src/hot-experts.js)
 //   lockBrainMemory 103 Lock brain memory: the part of a brain in RAM stays there (--mlock), so Windows can't page it out
+//   smallStepFit Nov 27 GUPPI fits his working memory to the card: a smaller reading step when the engine's working memory doesn't fit (step-fit.js)
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -19,7 +20,7 @@ import { MEM_TYPES, memTypeTrade } from '../public/mem-types.js';
 import { brainEngineBuild } from '../public/engine-name.js';
 import { ggufInfo } from './gguf.js';
 
-export const EXTRA_SWITCHES = ['copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'turboEveryday', 'lockBrainMemory', 'hotExperts', 'turbo'];
+export const EXTRA_SWITCHES = ['copyGuess', 'preloadNext', 'speedLog', 'newCardTest', 'laptopMode', 'engineNotes', 'turboEveryday', 'lockBrainMemory', 'hotExperts', 'turbo', 'smallStepFit'];
 export const extraOn = (cfg, key) => cfg?.[key] === true;
 
 // ---------- 94 Guess-ahead from the chat ----------
@@ -36,9 +37,21 @@ export function draftNumArgs(build, max, min) {
 // The copying guesser needs no second brain: ngram-mod looks the last 24 words up in what the chat already holds
 // and offers what came after them last time. The brain checks every guess, so answers come out the same.
 export const COPY_GUESS_ARGS = ['--spec-type', 'ngram-mod'];
+// Nov 23 (Strata's way): next to MTP too. llama.cpp tries its guessers in order and keeps the first one that offers
+// words, and the copying one comes first: where the chat holds a match the copied words are offered, elsewhere MTP's.
+// Not next to a separate draft brain (that one guesses alone), nor when another kind of guesser was set by hand.
+const DRAFT_BRAIN = ['-md', '--model-draft', '--spec-draft-model', '--spec-draft-hf', '-hfd'];
+export function specTypes(args = []) {
+  const out = [];
+  for (let i = 0; i < args.length - 1; i++) if (args[i] === '--spec-type') out.push(...String(args[i + 1]).split(',').map((t) => t.trim()).filter(Boolean));
+  return out;
+}
 export function copyGuessArgs(cfg, { build = 0, args = [] } = {}) {
   if (!extraOn(cfg, 'copyGuess') || !newSpecFlags(build)) return [];
-  if (args.some((a) => ['--spec-type', '-md', '--model-draft', '--spec-draft-model', '--spec-draft-hf', '-hfd'].includes(a))) return []; // MTP or a draft brain already guesses
+  const types = specTypes(args);
+  if (types.includes('ngram-mod')) return []; // already there
+  const mtp = types.includes('draft-mtp');
+  if (!mtp && (types.length || args.some((a) => DRAFT_BRAIN.includes(a)))) return []; // a draft brain or another guesser
   return [...COPY_GUESS_ARGS];
 }
 
@@ -135,6 +148,34 @@ export const turboEverydayOn = (cfg) => cfg?.turboEveryday !== false;
 // with it on by default, drafting pauses where it doesn't pay (Brain Engine 0034's gate); a share set by hand wins
 export const SPEC_GATE_DEFAULT = '0.3';
 export const specGateEnv = (env = {}) => (env && env.LLAMA_SPEC_GATE !== undefined && env.LLAMA_SPEC_GATE !== '' ? {} : { LLAMA_SPEC_GATE: SPEC_GATE_DEFAULT });
+// Nov 27 (Brain Engine 0140-0142, after PolyStrata). The owner: off by default, and not in Turbo, until a test shows a
+// speed or quality gain. Each is a box under Engine tuning (set by hand): Guess only while it writes faster
+// (LLAMA_SPEC_GATE_TIME), Warm up the brain file after loading (LLAMA_PAGE_WARM), Stop Windows slowing the engine
+// (LLAMA_POWER_THROTTLING_OFF). Bob sends none of them by himself.
+// Nov 27 (after PolyStrata, off unless llamacpp.containerThreads is true): in a container with a processor limit (a
+// rented pod, Docker), llama.cpp counts the host's cores, not the share the container may use, and may start too many
+// threads, which then wait on each other. With the switch on, the limit's whole processors are used instead. null when there is no limit (or not Linux), so llama.cpp's own
+// count stands. read is swapped in by the tests.
+export function containerCpus(read = (f) => fs.readFileSync(f, 'utf8'), platform = process.platform) {
+  if (platform !== 'linux') return null;
+  const text = (f) => { try { return String(read(f)).trim(); } catch { return ''; } };
+  let quota = NaN, period = NaN;
+  const v2 = text('/sys/fs/cgroup/cpu.max').split(/\s+/);
+  if (v2.length === 2 && /^\d+$/.test(v2[0]) && /^\d+$/.test(v2[1])) { quota = Number(v2[0]); period = Number(v2[1]); }
+  else if (!v2[0]) {
+    const q = text('/sys/fs/cgroup/cpu/cpu.cfs_quota_us'), pr = text('/sys/fs/cgroup/cpu/cpu.cfs_period_us');
+    if (/^\d+$/.test(q) && /^\d+$/.test(pr)) { quota = Number(q); period = Number(pr); } // -1 = no limit, not matched
+  }
+  if (!(quota > 0 && period > 0)) return null;
+  return Math.max(1, Math.floor(quota / period));
+}
+// The thread count for the engine in a container: the limit, when it is below what this machine reports. null leaves
+// llama.cpp's own count. Threads set by hand win (the caller only asks when none is set).
+export function containerThreads(cfg, { cpus = os.cpus().length || 1, limit = containerCpus() } = {}) {
+  if (cfg?.llamacpp?.containerThreads !== true) return null;
+  return Number.isInteger(limit) && limit > 0 && limit < cpus ? limit : null;
+}
+
 export function everydayTurboArgs(cfg, { build = 0, args = [], mtp = 0, cpu = false, guesser = null } = {}) {
   // guesser: mtpArgs() for the brain (its own head, or the file beside it); without it, mtp > 0 means its own head
   const g = guesser || (mtp > 0 ? ['--spec-type', 'draft-mtp'] : []);
@@ -212,6 +253,24 @@ export const STANDIN_ENV = { LLAMA_MOE_STANDIN: 'rank', LLAMA_MOE_STANDIN_MAX: '
 // sits behind Turbo; Turbo: stand-ins wins when both are on.
 export const turboDriveStandins = (cfg) => cfg?.turbo === true && cfg?.turboDriveStandins === true && !turboStandins(cfg);
 export const DRIVE_STANDIN_ENV = { LLAMA_MOE_STANDIN: 'drive' };
+// Turbo: keep more guesses (Brain Engine 0120, after llamAmpere's mb-MTP, MIT; off unless switched on, and only with
+// Turbo). A brain that already drafts (its own MTP head, the DSpark drafter or a draft brain) samples its guesses, and
+// the engine checks them by rejection; a guess that check throws away is kept anyway when the brain rates it at least
+// as likely as its replacement. More guesses kept, so faster writing, and the words lean to the brain's likeliest
+// tokens, so they change. Never at temperature 0, never for an end token, never while a grammar shapes the output
+// (tool calls). Copy guessing has no odds, so it's always checked exactly. Speed and drift are unproven in our lab.
+export const KEEP_GUESSES_FROM_BE = 46;
+export const turboKeepGuesses = (cfg) => cfg?.turbo === true && cfg?.turboKeepGuesses === true;
+export const KEEP_GUESSES_ENV = { LLAMA_SPEC_MB: '1' };
+const MODEL_GUESSERS = ['draft-mtp', 'draft-dspark', 'draft-simple', 'draft-eagle3', 'draft-dflash'];
+// the arguments it adds to a start: the sampling drafter, on Brain Engine 46 or newer, only where a model drafts
+export function keepGuessesArgs(cfg, { args = [], be = 0 } = {}) {
+  if (!turboKeepGuesses(cfg) || !(be >= KEEP_GUESSES_FROM_BE) || args.includes('--spec-draft-sampling')) return [];
+  const drafts = specTypes(args).some((t) => MODEL_GUESSERS.includes(t)) || args.some((a) => DRAFT_BRAIN.includes(a));
+  return drafts ? ['--spec-draft-sampling', 'probabilistic'] : [];
+}
+// the engine key goes with it, only when the start samples its guesses
+export const keepGuessesEnv = (cfg, { args = [], be = 0 } = {}) => (turboKeepGuesses(cfg) && be >= KEEP_GUESSES_FROM_BE && args.some((a, i) => a === '--spec-draft-sampling' && args[i + 1] === 'probabilistic') ? { ...KEEP_GUESSES_ENV } : {});
 // The experts per word Turbo asks of a brain whose own count is `own`: 4 when it has more, else nothing.
 export const turboPerWord = (cfg, own) => (turboExperts(cfg) && Number(own) > TURBO_EXPERTS ? TURBO_EXPERTS : null);
 // Progressive Memory (Brain Engine patch 0039): the engine names LLAMA_KV_TIERS under -ctv in --help.
@@ -270,6 +329,19 @@ export function tiersEnv(cfg, model, ctx, { q3 = false, q2 = false, tiers = fals
   if (Array.isArray(handArgs) && handArgs.some((a) => ['-np', '--parallel'].includes(a) && Number(handArgs[handArgs.indexOf(a) + 1]) > 1)) return {};
   const t = progressiveTiers(ctx, type);
   return t ? { LLAMA_KV_TIERS: t, LLAMA_KV_TIERS_SLACK: String(TIERS_SLACK) } : {};
+}
+// Turbo: sharp start (Nov 24, Brain Engine 0122, from llamAmpere's SJ-KVaRN sink; off unless switched on, and only
+// with Turbo): the chat's first 128 tokens kept again at 16-bit beside a 4-bit, 3-bit, 2-bit or Progressive chat
+// memory, read as Progressive Memory's sharpest step. About 5 MiB on Qwen3.6-35B-A3B. Changes the answer a little, so
+// it sits behind Turbo; npc measures whether it helps. The engine names LLAMA_KV_SINK in --help when it has it.
+export const helpHasSink = (text) => /\bLLAMA_KV_SINK\b/.test(String(text ?? ''));
+export const SINK_SPEC = 'f16:128';
+export const SINK_TYPES = ['small', 'smallest', 'progressive', 'progressive2', 'progressive83', 'progressive84', 'progressive82'];
+export function sinkEnv(cfg, model, ctx, { q3 = false, q2 = false, tiers = false, sink = false, handArgs } = {}) {
+  if (cfg?.turbo !== true || cfg?.turboSink !== true || !sink || !(Number(ctx) > 512)) return {};
+  if (!SINK_TYPES.includes(memTypeOf(cfg, model, { q3, q2, tiers }))) return {};
+  if (Array.isArray(handArgs) && handArgs.some((a) => ['-np', '--parallel'].includes(a) && Number(handArgs[handArgs.indexOf(a) + 1]) > 1)) return {};
+  return { LLAMA_KV_SINK: SINK_SPEC };
 }
 // ---------- 98 Laptop mode ----------
 // Is this computer running on its battery right now? true, false, or null when it has no battery or can't tell.

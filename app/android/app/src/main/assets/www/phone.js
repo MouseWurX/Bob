@@ -4,6 +4,10 @@
 (globalThis.BobLock ? globalThis.BobLock.ready() : Promise.resolve()).then(() => {
   const L = globalThis.BobLogic;
   const S = globalThis.BobShared;
+  const T = globalThis.BobPhoneTools; // 🧰 the phone brain's tools (phone-tools.js)
+  const H = globalThis.BobPhoneHands; // 🖐 its hands in other apps (phone-hands.js)
+  // Which hands this phone has: Android's accessibility service, the iPhone's Shortcuts, or none (a phone browser).
+  const handsKind = () => (globalThis.BobPhone?.ios ? 'ios' : globalThis.BobPhone && !globalThis.BobPhone.web ? 'android' : '');
   const $ = (id) => document.getElementById(id);
   const el = (tag, attrs = {}, ...kids) => {
     const e = document.createElement(tag);
@@ -21,7 +25,7 @@
     get(k, d) { try { const v = globalThis.BobLock ? globalThis.BobLock.get(k) : localStorage.getItem(`bob.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { if (globalThis.BobLock) globalThis.BobLock.set(k, JSON.stringify(v)); else localStorage.setItem(`bob.${k}`, JSON.stringify(v)); } catch { /* full or blocked: carry on in memory */ } }
   };
-  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, mathView: false, userName: '', theme: 'moondust', effort: 'low', resume: false, redo: true, fade: { on: false, minutes: 60, mode: 'hide' }, promptMenu: false, textSize: 100, readableFont: false,
+  const DEFAULTS = { mode: 'auto', phoneOn: false, phoneTools: false, phoneOnline: false, phoneHands: false, phoneShortcuts: '', voiceLog: false, voiceNames: null, voiceFormulas: '', voiceInputs: null, voiceFile: '', voiceStage: 0, voiceKeepListening: false, phoneModel: 'gemma4-e2b', freeWhenIdle: true, idleMinutes: 5, readAloud: false, mathView: false, userName: '', theme: 'moondust', effort: 'low', resume: false, redo: true, fade: { on: false, minutes: 60, mode: 'hide' }, promptMenu: false, textSize: 100, readableFont: false,
     // Voice, phone and Bob-Net (items 133 to 142, 2026-11-11): every one off to start with.
     talkOver: false, wakeOn: false, netVoices: false, shareOn: false, widgetReminder: false, lowData: 'off', hfAgain: true, hfShort: false, readerSpeed: 1 };
   const settings = { ...DEFAULTS, ...store.get('settings', {}) };
@@ -73,6 +77,7 @@
       else if (m.event === 'said') onSaid(m);
       else if (m.event === 'ears') onEars(m);
       else if (m.event === 'share') takeShare();
+      else if (m.event === 'hands' && m.type === 'stop') { if (current?.kind === 'phone') stopReply(); toast('You stopped Bob\'s hands.'); }
       else if (m.event === 'widget') takeWidget();
     },
     back() {
@@ -304,7 +309,7 @@
     const words = you.text.replace(/^📷 /, '');
     // The same answerer as last time when it's still there (so it can take its answer back); otherwise whoever answers now.
     let to = by === 'phone' ? (phoneReady() ? 'phone' : null) : by && liveBobs().some((b) => b.base === by) ? by : null;
-    if (!to) { const a = answerer(L.bigJob(words)); if (a.kind === 'none') return note(nobodyWhy(a.why), true); to = a.kind === 'net' ? a.bob.base : 'phone'; }
+    if (!to) { const a = answerer(jobOf(words)); if (a.kind === 'none') return note(nobodyWhy(a.why), true); to = a.kind === 'net' ? a.bob.base : 'phone'; }
     queue.push({ chatId: c.id, text: words, to, ...(effortNow ? { effort: effortNow } : {}), ...(to === by && to !== 'phone' ? { redo: text != null ? 'edit' : 'again' } : {}) });
     pump();
   }
@@ -397,6 +402,7 @@
   }
 
   function mediaNode(x, { tapped = false } = {}) {
+    if (x.kind === 'doc') return docNode(x); // 🧰 a file in Bob's documents on this phone (nothing to download)
     // Low-data mode: pictures, clips and songs wait for a tap instead of coming down by themselves.
     if (!tapped && lowNow()) {
       const what = { image: 'picture', video: 'clip', audio: 'song', diagram: 'diagram', model: '3D model' }[x.kind] || 'file';
@@ -437,6 +443,8 @@
 
   // ---------- Who answers ----------
   const liveBobs = () => bobs.filter((b) => live[b.base]?.up && live[b.base]?.signedIn).map((b) => ({ ...b, ...live[b.base] }));
+  // A big job for a bigger Bob, unless the phone brain's tools can do it (Word and Excel files).
+  const jobOf = (text) => L.bigJob(text, { phoneTools: settings.phoneOn && settings.phoneTools && Boolean(T) });
   const phoneModel = () => S.models.find((m) => m.id === settings.phoneModel) || S.models[0];
   const phoneReady = () => Boolean(phoneStatus.files?.[phoneModel().file.name]);
 
@@ -523,7 +531,7 @@
     // Carry on on another Bob: a chat carried over to one of your Bobs stays with him while he's reachable.
     if (!to && chat.bob && liveBobs().some((b) => b.base === chat.bob)) to = chat.bob;
     if (!to) {
-      const job = L.bigJob(text);
+      const job = jobOf(text);
       const a = answerer(job);
       if (a.kind === 'none') { addMsg({ who: 'you', text }); note(nobodyWhy(a.why), true); return; }
       if (a.kind === 'phone' && a.offer) { addMsg({ who: 'you', text }); return offerCard(text, job, a.offer); }
@@ -557,6 +565,7 @@
   }
 
   function finish() {
+    if (current?.loop?.hands && handsKind() === 'android') phone('hands.end', { done: !current.stopAsked }).catch(() => {});
     if (current?.msg) {
       current.msg.text = current.text || (current.media?.length ? '' : '…');
       if (current.media?.length) current.msg.media = current.media;
@@ -599,11 +608,18 @@
     // Bob's instructions stay the same from reply to reply; the time travels with your message instead.
     const history = c.msgs.slice(0, -2).filter((m) => m.who === 'you' || (m.who === 'bob' && m.text)).slice(-24)
       .map((m) => ({ role: m.who === 'you' ? 'user' : 'assistant', content: String(m.text).slice(0, 4000) }));
-    const system = L.phoneSystem({ persona: S.persona, user: settings.userName, cat: S.cat, memory, bigBob: bobs[0]?.name || '' });
+    const toolsOn = Boolean(settings.phoneTools && T);
+    const hands = toolsOn && settings.phoneHands && H ? handsKind() : '';
+    const handTools = hands ? H.schemas({ platform: hands, shortcuts: settings.phoneShortcuts }) : [];
+    const system = L.phoneSystem({ persona: S.persona, user: settings.userName, cat: S.cat, memory, bigBob: bobs[0]?.name || '', tools: toolsOn, online: toolsOn && settings.phoneOnline, hands: handTools.length ? hands : '' });
     const now = `Current date and time for ${(settings.userName || '').trim() || 'the user'}: ${new Date().toLocaleString()}.`;
+    const job = current;
     pcRecall(text, c.id).then((recalled) => {
       const note = recalled ? `${now}\n\n${recalled}` : now;
-      return phone('brain.chat', { file: model.file.name, system, history, text, note, maxTokens: model.maxTokens || 768 });
+      // 🧰 Tools on: the brain can answer with tool calls; each round's calls and results go back with the next round.
+      const tools = toolsOn ? [...T.schemas({ online: settings.phoneOnline }), ...handTools] : [];
+      if (toolsOn) job.loop = { ask: { file: model.file.name, system, history, text, note, maxTokens: model.maxTokens || 768, tools }, after: [], seen: new Map(), web: false };
+      return phone('brain.chat', { file: model.file.name, system, history, text, note, maxTokens: model.maxTokens || 768, tools, after: [] });
     }).catch((e) => { grow(`*(The phone brain couldn't start: ${e.message})*`); finish(); });
     drawStatus();
   }
@@ -636,9 +652,129 @@
     if (m.type === 'token') grow(m.text);
     else if (m.type === 'error') { grow(`\n\n*(Something went wrong on the phone: ${m.text})*`); finish(); }
     else if (m.type === 'done') {
+      if (!m.stopped && current.loop && Array.isArray(m.calls) && m.calls.length) return toolStep(current, m);
       if (m.stopped) grow('\n\n*(Stopped.)*');
       else if (m.tokPerSec) current.msg.speed = Math.round(m.tokPerSec * 10) / 10;
       finish(); refreshPhone();
+    }
+  }
+
+  // ---------- 🧰 The phone brain's tools (Let the phone brain use tools; off to start with) ----------
+  // The brain asked for tools: run them here, then hand it the results for its next round. There's no limit on
+  // rounds; the same call three times over is the brain going round in circles, so it's told to answer instead.
+  async function toolStep(job, m) {
+    const loop = job.loop;
+    loop.running = true;
+    loop.after.push({ role: 'assistant', content: String(m.content || ''), tool_calls: m.calls });
+    for (const call of m.calls.slice(0, 8)) {
+      const name = String(call?.function?.name || ''), args = call?.function?.arguments || {};
+      // 🖐 A move on a screen that changed isn't going round in circles, so hands' calls count per screen seen.
+      const key = T.callKey(name, args) + (H?.owns(name) ? `#${loop.screen || 0}` : '');
+      const n = (loop.seen.get(key) || 0) + 1;
+      loop.seen.set(key, n);
+      let res;
+      if (job.stopAsked) res = { text: 'Stopped before this ran.' };
+      else if (n >= 3) res = { text: 'You already did exactly this twice and got the answer above. Stop calling tools now and reply with what you have.' };
+      else {
+        grow(`\n\n*${H?.owns(name) ? H.summary(name, args) : T.summary(name, args)}*`);
+        job.state = 'Using a tool on the phone…'; drawStatus();
+        const hand = H?.owns(name);
+        if (hand) loop.hands = true;
+        try { res = hand ? await H.run(name, args, handsIo(job)) : await T.run(name, args, toolIo(job)); } catch (e) { res = { text: `That didn't work: ${e.message}. Nothing was changed.` }; }
+      }
+      if (res.web) loop.web = true;
+      if (name === 'app_look' && res.text !== loop.lastScreen) { loop.lastScreen = res.text; loop.screen = (loop.screen || 0) + 1; }
+      const doc = res.made || res.changed;
+      if (doc && !job.media.some((x) => x.kind === 'doc' && x.name === doc)) { const x = { kind: 'doc', name: doc }; job.media.push(x); job.node.append(mediaNode(x)); }
+      loop.after.push({ role: 'tool', tool_name: name, content: String(res.text).slice(0, T.MAX_RESULT + 400) });
+    }
+    loop.running = false;
+    if (current !== job) return;
+    if (job.stopAsked) { grow('\n\n*(Stopped.)*'); finish(); return; }
+    grow('\n\n');
+    job.state = 'Thinking on the phone…'; drawStatus();
+    if ($('brain').classList.contains('hidden') === false) drawDocs();
+    const a = loop.ask;
+    phone('brain.chat', { file: a.file, system: a.system, history: a.history, text: a.text, note: a.note, maxTokens: a.maxTokens, tools: a.tools, after: loop.after }).catch((e) => { grow(`*(The phone brain couldn't carry on: ${e.message})*`); finish(); });
+  }
+
+  // What the tools reach on this phone: Bob's documents, the web (with its switch on) and you, for an OK.
+  function toolIo(job) {
+    return {
+      online: Boolean(settings.phoneOnline),
+      now: () => new Date(),
+      list: () => phone('docs.list'),
+      read: async (name) => { const d = await phone('docs.read', { name }); return d ? T.unb64(d) : null; },
+      write: async (name, bytes, why) => {
+        // After a web page in this reply, someone else's words could be steering the brain: changes wait for your OK.
+        if (job.loop.web && !(await askOk(job, `After reading the web, the phone brain wants to ${why}. OK?`))) return false;
+        await phone('docs.write', { name, data: T.b64(bytes) });
+        return true;
+      },
+      web: async (url) => {
+        if (!settings.phoneOnline) return { status: 0, text: '' };
+        const r = await phone('web.get', { url });
+        return { status: Number(r?.status) || 0, type: r?.type || '', text: String(r?.text || '') };
+      }
+    };
+  }
+  // 🖐 What the hands reach: Android's accessibility service (it shows its own OK cards over the app in front), or
+  // the iPhone's Shortcuts (an OK card here first, since Bob is in front when he asks). One per reply, so the screen
+  // Bob last read is remembered from one call to the next.
+  function handsIo(job) {
+    if (job.loop.handsIo) return job.loop.handsIo;
+    job.loop.handsIo = {
+      shortcuts: settings.phoneShortcuts,
+      hands: (op, args = {}) => phone(op, args),
+      ok: (words) => (job.loop.okShortcuts ? Promise.resolve(true) : askOk(job, words, true).then((a) => { if (a === 'job') job.loop.okShortcuts = true; return Boolean(a); })),
+      shortcut: (name, input) => phone('shortcut.run', { name, input })
+    };
+    return job.loop.handsIo;
+  }
+  function askOk(job, words, offerJob = false) {
+    return new Promise((ok) => {
+      job.state = 'Waiting for your OK…'; drawStatus();
+      const card = el('div', { class: 'card' },
+        el('div', { class: 'q', text: words }),
+        el('div', { class: 'row' },
+          el('button', { class: 'main', text: 'OK', onclick: () => { card.remove(); ok(true); } }),
+          el('button', { text: 'No', onclick: () => { card.remove(); ok(false); } }),
+          offerJob ? el('button', { text: 'OK for this job', onclick: () => { card.remove(); ok('job'); } }) : null));
+      job.okCard = () => { card.remove(); ok(false); };
+      $('chat').append(card);
+      card.scrollIntoView({ block: 'end' });
+    });
+  }
+
+  // A file the phone brain made or changed, under its reply: Save to phone copies it to Download/Bob.
+  function docNode(x) {
+    const btn = el('button', { text: 'Save to phone', onclick: async () => {
+      btn.disabled = true;
+      try { const where = await phone('docs.save', { name: x.name, mime: T.mimeOf(x.name) }); toast(`Saved to ${where}`); }
+      catch (e) { toast(`Couldn't save it: ${e.message}`); }
+      btn.disabled = false;
+    } });
+    return el('div', { class: 'save-as small' }, el('span', { text: `${/\.xlsx$/i.test(x.name) ? '📊' : /\.docx$/i.test(x.name) ? '📄' : '🗒'} ${x.name} ` }), btn);
+  }
+
+  // Bob's documents, on the Phone brain page.
+  async function drawDocs() {
+    const box = $('phone-docs');
+    if (!box) return;
+    let list = [];
+    try { list = await phone('docs.list'); } catch { box.textContent = ''; return; }
+    box.textContent = '';
+    if (!list.length) { box.append(el('p', { class: 'help-line', text: 'Nothing here yet. Files the phone brain makes show up here, and Add a file brings one in from the phone.' })); return; }
+    for (const f of list) {
+      const sure = (b, words, go) => (e) => { if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = words; return; } go(); };
+      const del = el('button', { text: 'Remove' });
+      del.onclick = sure(del, `Remove ${f.name}? Tap again.`, () => phone('docs.delete', { name: f.name }).then(() => { toast(`Removed ${f.name}. Its last version is kept: Add a file with the same name, or ask Bob, to start again.`); drawDocs(); }));
+      const undo = f.versions ? el('button', { text: 'Put back the version before' }) : null;
+      if (undo) undo.onclick = sure(undo, 'Put back the version before the last change? Tap again.', () => phone('docs.undo', { name: f.name }).then((ok) => { toast(ok ? `Put back the version of ${f.name} before its last change.` : 'There was no older version.'); drawDocs(); }));
+      box.append(el('div', { class: 'box' },
+        el('div', { class: 'title', text: f.name }),
+        el('p', { class: 'help-line', text: `${L.size(f.bytes)} · changed ${new Date(f.modified).toLocaleString()}${f.versions ? ` · ${f.versions} older version${f.versions === 1 ? '' : 's'} kept` : ''}` }),
+        el('div', { class: 'btns' }, docNode({ name: f.name }).lastChild, undo, del)));
     }
   }
 
@@ -943,7 +1079,7 @@
     document.querySelectorAll('.panel:not(.hidden)').forEach((p) => { p.classList.add('hidden'); panelClosed(p.id); });
     if (id === 'new') { newChat(); return; }
     $(id).classList.remove('hidden');
-    ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, adventure: drawAdventure, journey: journeyTab, games: drawGames, chest: drawChest, memory: drawMemory, settings: drawSettings, help: drawHelp, glance: drawGlance, reader: drawReader, carry: drawCarry, handsfree: hfOpen }[id] || (() => {}))();
+    ({ chats: drawChats, bobs: drawBobs, brain: drawBrain, adventure: drawAdventure, journey: journeyTab, games: drawGames, chest: drawChest, memory: drawMemory, settings: drawSettings, help: drawHelp, glance: drawGlance, reader: drawReader, carry: drawCarry, handsfree: hfOpen, voicelog: drawVoiceLog }[id] || (() => {}))();
     if (id === 'bobs') watchLend();
   }
   document.querySelectorAll('.panel .back').forEach((b) => b.addEventListener('click', () => { const p = b.closest('.panel'); p.classList.add('hidden'); panelClosed(p.id); }));
@@ -1130,6 +1266,12 @@
   function drawBrain() {
     $('phone-on').checked = settings.phoneOn;
     $('free-idle').checked = settings.freeWhenIdle;
+    $('phone-tools').checked = settings.phoneTools;
+    $('phone-online').checked = settings.phoneOnline;
+    $('phone-online').disabled = !settings.phoneTools;
+    drawHands();
+    $('voice-log-on').checked = settings.voiceLog;
+    drawDocs();
     $('idle-min').value = String(settings.idleMinutes);
     const box = $('brain-models');
     box.textContent = '';
@@ -1200,6 +1342,127 @@
     if (!$('brain').classList.contains('hidden')) drawBrain();
   }
 
+  // ---------- 🎙 Voice log (Phone brain page, Tools; off to start with) ----------
+  // Say "water 52", "400 rate" or "next stage": plain code (voice-log.js) writes it to today's job workbook in Bob's
+  // documents and reads it back. "Work out mix with water 40" works out one of your formulas. No brain needed. Keep
+  // listening listens again after each read-back. Names and formulas are typed in here and stay on this phone.
+  const V = globalThis.BobVoiceLog;
+  const vl = { listening: false, busy: Promise.resolve(), last: [], say: '' };
+  const vlNames = () => V.readNames(settings.voiceNames ?? V.DEFAULT_NAMES);
+  const vlFormulas = () => V.readFormulas(settings.voiceFormulas);
+  const vlFile = () => settings.voiceFile || V.fileFor(new Date());
+  function vlDo(text) {
+    // One at a time, in the order said.
+    vl.busy = vl.busy.then(async () => {
+      const cmd = V.parse(text, vlNames(), vlFormulas());
+      const file = vlFile();
+      let words;
+      try {
+        if (cmd.kind === 'undo') {
+          const ok = await phone('docs.undo', { name: file });
+          settings.voiceStage = 0; saveSettings(); // the stage comes from the file again
+          words = ok ? 'Undone: the last change is taken back.' : 'Nothing to undo.';
+        } else if (cmd.kind === 'repeat') words = vl.say || 'Nothing said yet.';
+        else if (cmd.kind === 'formula') {
+          // Worked out, not written: nothing goes in the workbook.
+          const r = await V.apply(null, cmd, { names: vlNames(), formulas: vlFormulas(), state: { inputs: settings.voiceInputs || {} } });
+          settings.voiceInputs = r.state.inputs; saveSettings();
+          words = r.say;
+        } else {
+          const have = await phone('docs.read', { name: file });
+          const r = await V.apply(have ? T.unb64(have) : null, cmd, { names: vlNames(), state: { stage: settings.voiceStage }, now: new Date() });
+          if (r.bytes) await phone('docs.write', { name: file, data: T.b64(r.bytes) });
+          settings.voiceFile = file; settings.voiceStage = r.state.stage; saveSettings();
+          words = r.say;
+        }
+      } catch (e) { words = `That didn't save: ${e.message}.`; }
+      vl.say = words;
+      vl.last = [{ at: new Date().toLocaleTimeString(), heard: text, words }, ...vl.last].slice(0, 12);
+      drawVoiceLog();
+      await sayOut(words, { sid: 'vl' });
+      return words;
+    });
+    return vl.busy;
+  }
+  async function vlListen() {
+    vl.listening = true; drawVoiceLog();
+    try {
+      const t = await phone('speech.listen');
+      if (t) {
+        const words = await vlDo(t);
+        // Keep listening: wait for the read-back to finish (about 70 ms a letter), then listen again.
+        if (vl.listening && settings.voiceKeepListening && !$('voicelog').classList.contains('hidden')) { setTimeout(() => { if (vl.listening) vlListen(); }, 600 + String(words).length * 70); return; }
+      }
+    } catch (e) { toast(e.message); }
+    vl.listening = false; drawVoiceLog();
+  }
+  function drawVoiceLog() {
+    if (!V || $('voicelog').classList.contains('hidden')) return;
+    $('vl-file').textContent = `Writing to ${vlFile()}${settings.voiceStage ? `, stage ${settings.voiceStage}` : ''}.`;
+    $('vl-talk').textContent = vl.listening ? '🎙 Listening…' : '🎙 Talk';
+    $('vl-keep').checked = settings.voiceKeepListening;
+    if (document.activeElement !== $('vl-names')) $('vl-names').value = settings.voiceNames ?? V.DEFAULT_NAMES;
+    if (document.activeElement !== $('vl-formulas')) $('vl-formulas').value = settings.voiceFormulas || '';
+    drawFormulaPick();
+    const box = $('vl-last');
+    box.textContent = '';
+    for (const x of vl.last) box.append(el('div', { class: 'box' }, el('p', { class: 'help-line', text: `${x.at} · heard "${x.heard}"` }), el('div', { text: x.words })));
+  }
+  if (V) {
+    $('vl-talk').addEventListener('click', () => { if (vl.listening) { vl.listening = false; drawVoiceLog(); } else vlListen(); });
+    $('vl-send').addEventListener('click', () => { const t = $('vl-text').value.trim(); if (t) { $('vl-text').value = ''; vlDo(t); } });
+    $('vl-text').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('vl-send').click(); } });
+    $('vl-keep').addEventListener('change', (e) => { settings.voiceKeepListening = e.target.checked; saveSettings(); });
+    $('vl-undo').addEventListener('click', () => vlDo('undo'));
+    $('vl-new').addEventListener('click', async () => {
+      // A new job: today's name, or "(2)", "(3)"… when today's is taken.
+      let list = []; try { list = await phone('docs.list'); } catch { /* no phone */ }
+      const base = V.fileFor(new Date()).replace(/\.xlsx$/, '');
+      let name = `${base}.xlsx`, i = 2;
+      while (list.some((f) => f.name.toLowerCase() === name.toLowerCase())) name = `${base} (${i++}).xlsx`;
+      settings.voiceFile = name; settings.voiceStage = 0; saveSettings(); vl.last = []; drawVoiceLog();
+      toast(`New job: ${name}. It's made with the first value you say.`);
+    });
+    $('vl-save').addEventListener('click', () => phone('docs.save', { name: vlFile(), mime: T.mimeOf(vlFile()) }).then((w) => toast(`Saved to ${w}`)).catch((e) => toast(`Couldn't save it: ${e.message}`)));
+    $('vl-names-save').addEventListener('click', () => { const t = $('vl-names').value.trim(); settings.voiceNames = t && t !== V.DEFAULT_NAMES ? t : null; saveSettings(); toast(`Listening for: ${vlNames().map((n) => n.name).join(', ')}.`); });
+    $('vl-names-reset').addEventListener('click', () => { settings.voiceNames = null; saveSettings(); $('vl-names').value = V.DEFAULT_NAMES; });
+    $('vl-formulas-save').addEventListener('click', () => {
+      settings.voiceFormulas = $('vl-formulas').value.trim(); saveSettings();
+      const f = vlFormulas(), bad = f.filter((x) => x.error);
+      toast(bad.length ? `Saved, but ${bad.map((x) => `${x.name}: ${x.error}`).join('; ')}.` : `${f.length} formula${f.length === 1 ? '' : 's'} saved.`);
+      drawFormulaPick();
+    });
+    $('vl-f-pick').addEventListener('change', drawFormulaInputs);
+    $('vl-f-go').addEventListener('click', () => {
+      // The same as saying it: "work out Mix with Water 40 Feed 2.5".
+      const name = $('vl-f-pick').value;
+      if (!name) return;
+      const given = [...$('vl-f-inputs').querySelectorAll('input')].filter((i) => i.value.trim() !== '').map((i) => `${i.dataset.name} ${i.value.trim()}`);
+      vlDo(`work out ${name}${given.length ? ` with ${given.join(' ')}` : ''}`);
+    });
+  }
+  function drawFormulaPick() {
+    if (!V) return;
+    const f = vlFormulas().filter((x) => !x.error), pick = $('vl-f-pick'), was = pick.value;
+    pick.textContent = '';
+    for (const x of f) pick.append(el('option', { value: x.name, text: x.name }));
+    if (f.some((x) => x.name === was)) pick.value = was;
+    $('vl-f-box').classList.toggle('hidden', !f.length);
+    drawFormulaInputs();
+  }
+  function drawFormulaInputs() {
+    const box = $('vl-f-inputs');
+    box.textContent = '';
+    const name = $('vl-f-pick').value;
+    if (!name) return;
+    const have = settings.voiceInputs || {};
+    for (const n of V.inputsOf(vlFormulas(), name)) {
+      const k = Object.keys(have).find((x) => x.toLowerCase() === n.toLowerCase());
+      const id = `vl-in-${n.replace(/[^a-z0-9]/gi, '-')}`;
+      box.append(el('label', { class: 'field', for: id, text: n }), el('input', { type: 'text', id, inputmode: 'decimal', autocomplete: 'off', value: k ? String(have[k]) : '', 'data-name': n }));
+    }
+  }
+
   // ---------- Lend my brain (off unless you turn it on) ----------
   let lend = {}; // what the phone says: { on, state, address, passcodeSet, last, now, screenOffOk }
   let lendCode = ''; // a new passcode, shown once
@@ -1266,6 +1529,59 @@
     refreshLend();
   });
   $('phone-on').addEventListener('change', (e) => { settings.phoneOn = e.target.checked; saveSettings(); drawWho(); });
+  $('phone-tools').addEventListener('change', (e) => {
+    settings.phoneTools = e.target.checked;
+    if (!settings.phoneTools) { settings.phoneOnline = false; if (settings.phoneHands && handsKind() === 'android') phone('hands.allow', { on: false }).catch(() => {}); settings.phoneHands = false; }
+    saveSettings(); drawBrain();
+  });
+  // ---------- 🖐 Phone hands (Let Bob use apps / Let Bob run Shortcuts; off to start with) ----------
+  async function drawHands() {
+    const kind = handsKind();
+    $('hands-android').classList.toggle('hidden', kind !== 'android');
+    $('hands-ios').classList.toggle('hidden', kind !== 'ios');
+    $('phone-hands').checked = $('phone-hands-ios').checked = settings.phoneHands;
+    $('phone-hands').disabled = $('phone-hands-ios').disabled = !settings.phoneTools;
+    if ($('phone-shortcuts') !== document.activeElement) $('phone-shortcuts').value = settings.phoneShortcuts || '';
+    $('phone-shortcuts').disabled = !settings.phoneHands;
+    if (kind !== 'android') return;
+    let st = null;
+    try { st = await phone('hands.state'); } catch { /* not on a phone (tests) */ }
+    const words = !settings.phoneHands ? '' : !st ? 'Bob can\'t tell whether his hands are on.'
+      : st.running ? 'Bob\'s hands are on. He uses apps only when you ask, one OK at a time.'
+      : 'One more step: in Accessibility settings, open Installed apps (or Downloaded apps), then Bob\'s hands, and switch them on. If Android says the setting is restricted, open Bob\'s app info, tap ⋮ and Allow restricted settings, then try again.';
+    $('hands-state').textContent = words;
+    $('hands-btns').classList.toggle('hidden', !settings.phoneHands || Boolean(st?.running));
+  }
+  // Android asks apps to say plainly what an accessibility service does before it's switched on (and so do we).
+  function handsConsent() {
+    const box = $('hands-consent');
+    box.textContent = '';
+    return new Promise((ok) => {
+      box.append(el('div', { class: 'card' },
+        el('div', { class: 'q', text: 'Let Bob use your apps?' }),
+        el('p', { class: 'help-line', text: 'Bob\'s hands use Android\'s accessibility service. With them on, Bob can read what\'s on your screen in the app in front and tap, type, scroll and swipe there, but only while he\'s doing a job you asked for. What he reads stays on this phone and goes only to the phone brain. He never reads or types in password fields, and never touches Android\'s Settings, app installers, password managers or his own app. Every move waits for your OK; sending, paying, deleting, installing and calling ask every time. Apps that mark their screens as private (many banking apps) stay hidden from him.' }),
+        el('div', { class: 'row' },
+          el('button', { class: 'main', text: 'Turn on Bob\'s hands', onclick: () => { box.textContent = ''; ok(true); } }),
+          el('button', { text: 'Not now', onclick: () => { box.textContent = ''; ok(false); } }))));
+    });
+  }
+  $('phone-hands').addEventListener('change', async (e) => {
+    const on = e.target.checked && settings.phoneTools;
+    if (on && !(await handsConsent())) { e.target.checked = false; return; }
+    settings.phoneHands = on; saveSettings();
+    try { await phone('hands.allow', { on }); if (on) await phone('hands.settings'); }
+    catch (err) { logError('hands', err.message); toast(`Bob's hands: ${err.message}.`); }
+    drawHands();
+  });
+  $('phone-hands-ios').addEventListener('change', (e) => { settings.phoneHands = e.target.checked && settings.phoneTools; saveSettings(); drawHands(); });
+  $('phone-shortcuts').addEventListener('change', (e) => { settings.phoneShortcuts = H ? H.names(e.target.value).join('\n') : ''; saveSettings(); drawHands(); });
+  $('hands-settings').addEventListener('click', () => phone('hands.settings').catch((err) => toast(err.message)));
+  $('hands-appinfo').addEventListener('click', () => phone('hands.settings', { where: 'app' }).catch((err) => toast(err.message)));
+  $('voice-log-on').addEventListener('change', (e) => { settings.voiceLog = e.target.checked; saveSettings(); drawVoiceTile(); });
+  const drawVoiceTile = () => $('voicelog-tile').classList.toggle('hidden', !settings.voiceLog);
+  drawVoiceTile();
+  $('phone-online').addEventListener('change', (e) => { settings.phoneOnline = e.target.checked && settings.phoneTools; saveSettings(); drawBrain(); });
+  $('docs-add').addEventListener('click', () => phone('docs.add').then((r) => { if (r) toast(`Added ${r.name} to Bob's documents.`); drawDocs(); }).catch((e) => toast(`Couldn't add it: ${e.message}`)));
   $('free-idle').addEventListener('change', (e) => { settings.freeWhenIdle = e.target.checked; saveSettings(); sendBrainConfig(); });
   $('idle-min').addEventListener('change', (e) => { settings.idleMinutes = Number(e.target.value); saveSettings(); sendBrainConfig(); });
   $('unload-now').addEventListener('click', () => phone('brain.unload').then(() => { toast('Phone brain let go of its memory.'); refreshPhone(); }));
@@ -2555,7 +2871,7 @@ ${chatOut}
   $('mic').addEventListener('click', () => { ear.micOpen = true; syncEars(); phone('speech.listen').then((t) => { if (t) send(t); }).catch((e) => toast(e.message)).finally(() => { ear.micOpen = false; syncEars(); }); });
   function stopReply() {
     if (!current) return;
-    if (current.kind === 'phone') phone('brain.stop');
+    if (current.kind === 'phone') { current.stopAsked = true; current.okCard?.(); phone('brain.stop'); }
     else { const b = bobs.find((x) => x.base === current.base); phone('net.post', { address: b.address, path: '/api/stop', body: '{}' }).catch(() => {}); }
   }
   $('chat').addEventListener('click', (e) => {
@@ -2677,6 +2993,7 @@ ${chatOut}
     if (id === 'handsfree') { hf.open = false; hf.listen = false; phone('speech.quiet').catch(() => {}); syncEars(); }
     if (id === 'glance') clearInterval(glanceTimer);
     if (id === 'reader') readerStop(true);
+    if (id === 'voicelog') vl.listening = false;
   }
 
   // ---------- Read a document aloud ----------

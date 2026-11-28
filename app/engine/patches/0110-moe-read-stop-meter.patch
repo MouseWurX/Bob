@@ -1,0 +1,76 @@
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 6851851..1ec16aa 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -2420,6 +2420,13 @@ struct llama_moe_cache::impl {
+     std::vector<moe_cache_lru::fill> ip_fills;
+     size_t ip_hits = 0, ip_misses = 0, ip_bytes = 0, ip_reads = 0, ip_zone_slots = 0, ip_back = 0;
+     int64_t ip_back_us = 0;
++    // Brain Engine 0110: how long a long read stops the card at each layer. The copy call waits for the card (to read the
++    // picks), then the card has nothing queued until the call returns and the scheduler queues the layer: that host time
++    // (the plan, the shelf, queueing the uploads) is the stop. Uploads are timed apart (from plain memory the driver
++    // stages them while the host waits, so they hold the card up too; registered memory, 0109, makes them asynchronous).
++    // The span is the time from a read's first layer to its last, so stops can be read as a share of it.
++    int64_t ip_stop_us = 0, ip_upload_us = 0, ip_span_us = 0, ip_first_us = -1, ip_last_us = 0;
++    size_t  ip_stops = 0;
+ 
+     // Brain Engine 0071 (LLAMA_MOE_CACHE_READ_AHEAD=1, off unless set, with 0069): read ahead. A long read's layer picks
+     // nearly every expert, so the next layer's misses are known before its router runs: every expert the cache doesn't
+@@ -2740,6 +2747,10 @@ struct llama_moe_cache::impl {
+         if (!ip_active) {
+             return;
+         }
++        if (ip_first_us >= 0) {
++            ip_span_us += ip_last_us - ip_first_us; // Brain Engine 0110
++            ip_first_us = -1;
++        }
+         ia_wait(); // 0071: nothing still going up into the zone
+         ia_has_ready = false;
+         ip_active = false;
+@@ -2798,6 +2809,10 @@ struct llama_moe_cache::impl {
+         ggml_backend_tensor_get_async(backend, sel, ids.data(), 0, ggml_nbytes(sel));
+         ggml_backend_synchronize(backend); // also: the layer before is done with the zone
+         ia_wait(); // 0071: what went up ahead is on the card, and its RAM cache entries may go
++        const int64_t t_stop = ggml_time_us(); // Brain Engine 0110: the card has nothing queued from here
++        if (ip_first_us < 0) {
++            ip_first_us = t_stop;
++        }
+         if (rf_on) {
+             rf_tick();
+         }
+@@ -2853,7 +2868,9 @@ struct llama_moe_cache::impl {
+             }
+             ip_fills.resize(k);
+         }
++        const int64_t t_up = ggml_time_us();
+         const size_t bytes = upload_fills(backend, l, g, ip_fills);
++        const int64_t t_up_end = ggml_time_us();
+         ip_hits   += hits;
+         ip_misses += ip_fills.size();
+         ip_bytes  += bytes;
+@@ -2866,6 +2883,11 @@ struct llama_moe_cache::impl {
+                 ia_ahead(il_next);
+             }
+         }
++        // Brain Engine 0110
++        ip_last_us    = ggml_time_us();
++        ip_upload_us += t_up_end - t_up;
++        ip_stop_us   += (ip_last_us - t_stop) - (t_up_end - t_up);
++        ip_stops++;
+         return true;
+     }
+ 
+@@ -5259,6 +5281,13 @@ struct llama_moe_cache::impl {
+                 "zone up to %zu slots, %zu experts put back before writing in %.1f ms\n", ip_reads, ip_hits, ip_misses, ip_bytes/1048576.0,
+                 ip_zone_slots, ip_back, ip_back_us/1000.0);
+         }
++        if (ip_stops > 0) {
++            // Brain Engine 0110: the stop meter (the scheduler's own queueing after each call is not in it)
++            const double span = ip_span_us > 0 ? (double) ip_span_us : 0.0;
++            LLAMA_LOG_INFO("llama_moe_cache: long reads' stops: %zu layer stops, the card waited for the host %.1f ms (%.0f us a stop, %.1f%% of %.1f ms read), "
++                "uploads queued in line %.1f ms (%.1f%%)\n", ip_stops, ip_stop_us/1000.0, (double) ip_stop_us/ip_stops,
++                span > 0 ? 100.0*ip_stop_us/span : 0.0, span/1000.0, ip_upload_us/1000.0, span > 0 ? 100.0*ip_upload_us/span : 0.0);
++        }
+         if (ia_on) {
+             LLAMA_LOG_INFO("llama_moe_cache: read ahead: %zu layers sent ahead, %zu experts (%.2f MiB, %zu parts from the RAM cache), "
+                 "%zu used, %zu groups too small for two halves, %.1f ms waited\n", ia_layers, ia_sent, ia_bytes/1048576.0, ia_from_ram,

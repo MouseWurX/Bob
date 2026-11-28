@@ -122,7 +122,7 @@ function setupsHtml(ctx) {
     <div class="setup-cards">${SETUPS.map(btn).join('')}</div>${box}${ctx.oneBrain ? oneBrainNote : ''}</section>`;
 }
 
-const hwOf = (ctx) => ({ vramGB: ctx.integrated ? 0 : ctx.vramGB || 0, ramGB: ctx.ramGB || 0, unified: Boolean(ctx.unified) });
+const hwOf = (ctx) => ({ vramGB: ctx.integrated ? 0 : ctx.vramGB || 0, ramGB: ctx.ramGB || 0, unified: Boolean(ctx.unified), arm: Boolean(ctx.arm) });
 
 // Where a brain would sit, as a bar with words on every part (never colour alone).
 export function placeBarHtml(entry, ctx) {

@@ -28,7 +28,7 @@
 //                              Neither touches a hard limit.
 import { cleanPath } from './clean-path.js';
 import { handsView, stopRun, stopEverything, holdHands, saveRecipe, removeRecipe, loadRecipes, runApproved } from './hands.js';
-import { handsSettings, cleanHands, HANDS, LIMITS, handOn, handHere } from './hands-settings.js';
+import { handsSettings, cleanHands, HANDS, LIMITS, handOn, handHere, handTrial } from './hands-settings.js';
 import fs from 'node:fs';
 import { undoJob } from './hands-files.js';
 import { selfTest } from './hands-selftest.js';
@@ -169,9 +169,10 @@ export async function handsRoute({ req, p, isLocal, brain, cfg, body, send, res 
   return true;
 }
 
-// The Hands behind the chat page's "Screen use" button: Apps (Windows only for now) and the browser.
+// The Hands behind the chat page's "Screen use" button: Apps and the browser. A Hand that is only a trial here (Apps
+// on a Mac or Linux) is left out: only its own switch in Settings, Hands turns it on.
 export const SCREEN_HANDS = ['apps', 'browser'];
-export const screenHandsHere = () => SCREEN_HANDS.filter((id) => handHere(id));
+export const screenHandsHere = () => SCREEN_HANDS.filter((id) => handHere(id) && !handTrial(id));
 
 // The two chat-page buttons. They only ever change free, the master switch, the Apps and Browser Hands and eyes
 // checks: never a hard limit, never held (✋ Hands stays the kill switch), never another Hand's own tick.

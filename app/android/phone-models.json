@@ -25,6 +25,26 @@
       "license": "Apache 2.0",
       "maxTokens": 768,
       "fromCatalog": "qwen3-4b"
+    },
+    {
+      "id": "lfm3-1.7b",
+      "name": "LFM3 1.7B",
+      "family": "LFM",
+      "pick": "tools",
+      "what": "Tiny (about 1.1 GB) and made for calling tools: a good pick for filling in spreadsheets and documents with \"Let the phone brain use tools\". Liquid AI's own licence: free for personal use; read it before using it for a business. Unproven on a phone in our lab, as we have yet to test.",
+      "license": "LFM Open License v1.0",
+      "maxTokens": 768,
+      "fromCatalog": "lfm3-1.7b"
+    },
+    {
+      "id": "qwen3.5-4b",
+      "name": "Qwen3.5 4B",
+      "family": "Qwen",
+      "pick": "tools",
+      "what": "Newer and better at tools and step-by-step work than Qwen3 4B, but slower. About 2.7 GB. Unproven on a phone in our lab, as we have yet to test.",
+      "license": "Apache 2.0",
+      "maxTokens": 1024,
+      "fromCatalog": "qwen3.5-4b"
     }
   ]
 }

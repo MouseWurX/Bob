@@ -9,4 +9,7 @@
     <string name="widget_no_reminder">Tap to ask Bob</string>
     <string name="widget_about">Ask Bob from your home screen, and see your next reminder.</string>
     <string name="share_label">Bob</string>
+    <string name="hands_label">Bob\'s hands</string>
+    <string name="hands_summary">Lets Bob open apps, read the screen, and tap, type and scroll for you, one OK at a time.</string>
+    <string name="hands_about">Bob\'s hands let Bob\'s phone brain use your other apps for you: open an app, read what\'s on the screen, and tap, type, scroll or swipe. Bob reads the screen only when he\'s doing a job you asked for, and nothing he reads leaves the phone. While he drives, a red bar sits across the top of the screen: tap Stop there, or press volume down, to stop him at once. Every move waits for your OK unless you say OK for the rest of the job, and anything that sends, pays, deletes, installs or calls asks every time. Bob never reads or types in password fields and never touches Android\'s Settings, app installers, password managers or his own app. Switch this off here, or turn off Let Bob use apps in Bob, to take his hands away.</string>
 </resources>

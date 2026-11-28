@@ -10,6 +10,8 @@ import { cleanPath } from './clean-path.js'; // no imports either // no imports 
 // whatOn (optional): a different description for one computer, e.g. { mac: '...' }.
 // shares (optional): another Hand's tools this one needs too (Sort and rename uses Files' Undo).
 // toolsOnlyOn (optional): tools inside a Hand that only exist on some computers, e.g. { defender_scan: ['win'] }.
+// trial (optional): computers where the Hand is a trial, unproven in our lab. It shows in Settings, Hands, marked as a
+// trial, and only its own switch there turns it on (never the chat page's Screen use button or a switch card).
 //
 // To add a Hand, add an entry to HANDS. Its switch, its line in Settings and its tool filtering all follow from it.
 export const HANDS = {
@@ -38,7 +40,13 @@ export const HANDS = {
     label: 'Open and use apps',
     what: 'Open apps from your Start menu, read a window\'s buttons and fields, and click, type or press keys in it, one approved action at a time. A red "Bob is driving" bar shows while he does; move the mouse or press Esc to stop him at once. Never terminals, admin tools, password managers, password fields, sign-in or security prompts, or his own window.',
     tools: ['open_app', 'app_look', 'app_act'],
-    platforms: ['win'] // Windows UI Automation (installer/bob-apps.ps1)
+    whatOn: {
+      mac: 'A trial on a Mac, unproven in our lab, as we have yet to test it. Open apps from your Applications folder, read a window\'s buttons and fields (through macOS Accessibility), and click, type or press keys in it, one approved action at a time. macOS asks you once to allow Bob under Accessibility (and Screen Recording for pictures). A red "Bob is driving" bar shows while he does; move the mouse or press Esc to stop him at once. Ctrl in a key Bob presses means Command. Never terminals, admin tools, password managers, password fields, sign-in or security prompts, or his own window.',
+      linux: 'A trial on Linux (tested on an X11 desktop; Wayland is unproven in our lab, as we have yet to test it). Open apps from your app menu, read a window\'s buttons and fields (through AT-SPI, the Linux accessibility bus), and click, type or press keys in it, one approved action at a time. Needs python3-gi and gir1.2-atspi-2.0, plus xdotool on X11 or ydotool on Wayland. On X11 a red "Bob is driving" bar shows while he does; move the mouse or press Esc to stop him at once. On Wayland there is a notification instead, and only Esc stops him. Never terminals, admin tools, password managers, password fields, sign-in or password prompts, or his own window.'
+    },
+    // Windows UI Automation (installer/bob-apps.ps1); macOS Accessibility (installer/bob-apps-mac.js) and Linux
+    // AT-SPI (installer/bob-apps-linux.py) are a trial: the Screen use button and chat cards never switch them on.
+    trial: ['mac', 'linux']
   },
   office: {
     label: 'Office documents and converting',
@@ -99,7 +107,9 @@ export const computerWord = (os_ = handsOs()) => ({ win: 'Windows PC', mac: 'Mac
 // Does this Hand exist on this computer?
 export const handHere = (id, os_ = handsOs()) => Boolean(HANDS[id]) && (!HANDS[id].platforms || HANDS[id].platforms.includes(os_));
 // The Hands this computer has, with their description for it.
-export const handsHere = (os_ = handsOs()) => Object.entries(HANDS).filter(([id]) => handHere(id, os_)).map(([id, h]) => ({ id, label: h.label, what: h.whatOn?.[os_] || h.what }));
+export const handsHere = (os_ = handsOs()) => Object.entries(HANDS).filter(([id]) => handHere(id, os_)).map(([id, h]) => ({ id, label: h.label, what: h.whatOn?.[os_] || h.what, ...(handTrial(id, os_) ? { trial: true } : {}) }));
+// Is this Hand only a trial on this computer (see trial above)?
+export const handTrial = (id, os_ = handsOs()) => Boolean(HANDS[id]?.trial?.includes(os_));
 
 const isAbs = (p) => typeof p === 'string' && p.length < 400 && !p.includes('\0') && (/^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('/'));
 

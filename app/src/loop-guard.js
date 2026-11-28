@@ -5,18 +5,31 @@
 import crypto from 'node:crypto';
 import { cleanJobHelps } from './job-helps.js';
 
-export const NUDGE_BUDGET = 2;          // 152: the honesty, empty, can't, promise and tests nudges share two sends-back per turn
-export const CALLS_PER_TURN = 40;       // 157: tool calls one turn may run, across all its replies
+// Nov 23 (the owner: "be a bit more generous with them, but be loud when we detect it"): the retry limits below were
+// doubled or close to it (nothing-new rounds 3 -> 5, all-failed rounds 4 -> 6, a tool set aside after 5 fails, not 3), and each one that
+// fires now says so in the chat (LOUD_LINES), not only in the logbook.
+// 152, same as #275 (Nov 21, "nudges?"): no shared count. Each kind (claimChecked, cantRetried, promiseChecked,
+// testsNudged... flags) still sends him back at most once a turn, so they can't loop.
+export const NUDGE_BUDGET = Infinity;
+export const CALLS_PER_TURN = Infinity; // 157: was 40 tool calls per turn; Nov 23 no cap (the owner's rule), progress checks stop runaways
 // 161 (Nov 12): the safety net is always on and uses the job time limit's minutes (Settings, Jobs), whether
 // that switch is on or off, so no Bob runs away. Card waits don't count (163).
 // Read fresh from the live settings at every check, never copied, so a change in Settings counts at once, even for
 // work already running.
+// Nov 23 (the owner's rule: no step, time, thinking or reply caps): the always-on ceiling is off. The job time limit
+// (Settings, Jobs) still ends a job on time when that switch is on, with its card asking for more first.
+export const ALWAYS_ON_CEILING = false;
 export const ceilingMins = (cfg) => cleanJobHelps(cfg?.jobHelps).minutes;
 export const ceilingMs = (cfg) => ceilingMins(cfg) * 60000;
-export const STALE_ROUNDS = 3;          // 154: rounds in a row that find nothing new
-// 159: rounds in a row where every call failed. Four: one tool is set aside after three fails in a row (item 200,
-// the owner's rule), and its fourth call comes back "not run"; this is the backstop one round after that.
-export const ERROR_ROUNDS = 4;
+export const STALE_ROUNDS = 5;          // 154: rounds in a row that find nothing new
+// 159: rounds in a row where every call failed. Six: one tool is set aside after five fails in a row (item 200,
+// the owner's rule), and its sixth call comes back "not run"; this is the backstop.
+export const ERROR_ROUNDS = 6;
+// Nov 23 (Legion Go: a small brain took names in a pasted file as files to open, and after each "outside the
+// folders" it tried another folder): refusals by a safety rule this many calls in a row end the tools for the turn.
+export const REFUSED_IN_A_ROW = 3;
+// A safety rule's refusal: quarantine.js LIMIT_TEXT's wording, plus the folder refusals in tools.js ("I'm not allowed to look in ...").
+export const isRefusal = (text) => /is never run by Bob|That command is refused|The script .* is refused|"Don't send anything out" is on|isn't run while "Don't send anything out"|keys or passwords|is read-only|read-only project|Recycle Bin only|never types into password fields|Hands are stopped|Hands are off|Hand is off|own settings|is off-limits|outside the folders|I'm not allowed to (?:look|read|write|edit)/i.test(String(text || ''));
 export const CARRIED_MIN_STEPS = 3;     // 164: a job that runs again keeps at least this many steps
 
 // ---------- 152 + 153: one retry budget per turn ----------
@@ -28,7 +41,9 @@ export function spendNudge(ctx) { ctx.nudges = (ctx.nudges || 0) + 1; return ctx
 export const resultHash = (text) => crypto.createHash('sha1').update(String(text ?? '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 8000)).digest('hex').slice(0, 16);
 
 export class Progress {
-  constructor() { this.seen = new Set(); this.byKey = new Map(); this.trail = []; this.stale = 0; this.errors = 0; }
+  constructor() { this.seen = new Set(); this.byKey = new Map(); this.trail = []; this.stale = 0; this.errors = 0; this.refused = 0; }
+  // One call that ran: was it refused by a safety rule? Counts refusals in a row, across rounds.
+  refusal(text) { this.refused = isRefusal(text) ? this.refused + 1 : 0; return this.refused; }
   // One call that ran: returns 'new', 'same' (this exact call gave this exact result before this turn, even with
   // an action in between, 156) or 'old' (another call already gave these words).
   record(key, text) {
@@ -47,6 +62,7 @@ export class Progress {
     this.stale = fresh ? 0 : this.stale + 1;
     if (ran) this.errors = failed === ran ? this.errors + 1 : 0;
     if (this.errors >= ERROR_ROUNDS) return 'errors';
+    if (this.refused >= REFUSED_IN_A_ROW) return 'refused';
     if (findCycle(this.trail)) return 'cycle';
     if (this.stale >= STALE_ROUNDS) return 'stale';
     return '';
@@ -70,17 +86,29 @@ export const WRAP_NOTES = {
   stale: (who) => `The last ${STALE_ROUNDS} rounds of tools found nothing new. No more tool calls: tell ${who} what you found and what you couldn't.`,
   cycle: (who) => `You are going back and forth between the same calls with the same results. No more tool calls: tell ${who} what you have and where it's stuck.`,
   errors: (who) => `Every tool call failed ${ERROR_ROUNDS} rounds in a row. No more tool calls: tell ${who} plainly what failed and why.`,
-  calls: (who) => `This turn has used ${CALLS_PER_TURN} tool calls, the most one turn may. No more tool calls: tell ${who} what's done and what isn't.`,
+  calls: (who) => `This turn has used the most tool calls one turn may. No more tool calls: tell ${who} what's done and what isn't.`,
+  refused: (who) => `The last ${REFUSED_IN_A_ROW} calls were refused (off-limits). No more tool calls: answer ${who} from what's in the chat, a pasted file included, and say what you couldn't reach.`,
   time: (who, mins) => `This job has run ${mins} minutes, its time limit. No more tool calls: tell ${who} what's done and what's left.`
 };
 export const WRAP_LOGS = {
   stale: `${STALE_ROUNDS} rounds in a row found nothing new; the next round has no tools, so he answers`,
   cycle: 'going back and forth between the same calls; the next round has no tools, so he answers',
   errors: `every call failed ${ERROR_ROUNDS} rounds in a row; the next round has no tools, so he says what failed`,
+  refused: `${REFUSED_IN_A_ROW} calls in a row were refused by a safety rule; the next round has no tools, so he answers from what he has`,
   calls: `${CALLS_PER_TURN} tool calls this turn; the next round has no tools, so he answers`,
   time: 'the job reached its time limit (the safety net); the next round has no tools, so he wraps up'
 };
 // Turns off the tools for the next round with one line to the brain, once per turn. Returns true when it fired.
+// Said in the chat when a check ends the tools, so a stop is never silent (the owner, Nov 23: "be loud").
+export const LOUD_LINES = {
+  stale: `(I stopped using tools: ${STALE_ROUNDS} rounds in a row found nothing new. Here's what I have.)`,
+  cycle: "(I stopped using tools: I was going back and forth between the same steps. Here's what I have.)",
+  errors: `(I stopped using tools: every call failed ${ERROR_ROUNDS} rounds in a row. Here's what went wrong.)`,
+  refused: `(I stopped looking: ${REFUSED_IN_A_ROW} places in a row were off-limits to me. Here's what I have.)`,
+  calls: "(I stopped using tools: this turn used the most tool calls one turn may. Here's what I have.)",
+  time: "(I stopped using tools: this job used its time limit. Here's what I have.)"
+};
+export const loudLine = (why) => LOUD_LINES[why] || '';
 export function wrapUp(ctx, msgs, why, who, log = () => {}, mins = 10) {
   if (ctx.wrapped || !WRAP_NOTES[why]) return false;
   ctx.wrapped = why; ctx.noTools = true; ctx.lastRound = true;

@@ -1,0 +1,94 @@
+# Bob for iPhone, as an XcodeGen project (xcodegen generate makes Bob.xcodeproj; GitHub's iPhone build does).
+# The page comes from Bob for Android (tools/make-www.sh), the brain engine from llama.cpp (tools/build-engine.sh)
+# plus Bob for Android's own bob_brain.cpp, so the two phones never drift apart.
+name: Bob
+options:
+  bundleIdPrefix: ca.mousewurx
+  deploymentTarget:
+    iOS: "16.4"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CLANG_CXX_LANGUAGE_STANDARD: c++17
+    CLANG_CXX_LIBRARY: libc++
+    MARKETING_VERSION: "$(BOB_VERSION)"
+    CURRENT_PROJECT_VERSION: "1"
+    BOB_VERSION: "0.0.0"
+targets:
+  Bob:
+    type: application
+    platform: iOS
+    sources:
+      - path: Bob
+        excludes: ["ios.css"]
+      - path: ../android/app/src/main/cpp/bob_brain.cpp
+      - path: build/www
+        type: folder
+        buildPhase: resources
+      - path: build/Assets.xcassets
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ca.mousewurx.bob
+        PRODUCT_NAME: Bob
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_OBJC_BRIDGING_HEADER: Bob/Bob-Bridging-Header.h
+        GCC_PREPROCESSOR_DEFINITIONS: ["$(inherited)", "GGML_USE_METAL=1"]
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/../android/third_party/llama.cpp/include"
+          - "$(SRCROOT)/../android/third_party/llama.cpp/ggml/include"
+          - "$(SRCROOT)/../android/third_party/llama.cpp/common"
+          - "$(SRCROOT)/../android/third_party/llama.cpp/vendor"
+          - "$(SRCROOT)/../android/third_party/llama.cpp"
+          - "$(SRCROOT)/../android/app/src/main/cpp"
+        "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]": "$(SRCROOT)/build/engine/iphoneos"
+        "LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]": "$(SRCROOT)/build/engine/iphonesimulator"
+        OTHER_LDFLAGS: ["-lllama-common", "-lllama-common-base", "-lcpp-httplib", "-lvendor-hash", "-lllama", "-lggml", "-lggml-cpu", "-lggml-metal", "-lggml-blas", "-lggml-base", "-lc++"]
+        # The engine is built for arm64 only (every iPhone, and the simulator on Apple Silicon Macs).
+        ARCHS: arm64
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
+        ENABLE_BITCODE: NO
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+    dependencies:
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
+      - sdk: Accelerate.framework
+      - sdk: Foundation.framework
+      - sdk: WebKit.framework
+      - sdk: AVFoundation.framework
+      - sdk: PhotosUI.framework
+      - sdk: UserNotifications.framework
+      - sdk: AppIntents.framework
+    info:
+      path: build/Info.plist
+      properties:
+        CFBundleDisplayName: Bob
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSRequiresIPhoneOS: true
+        UILaunchScreen:
+          UIColorName: ""
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown]
+        "UISupportedInterfaceOrientations~ipad": [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UIRequiresFullScreen: true
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UIViewControllerBasedStatusBarAppearance: false
+        # Files Bob saves show in the Files app (On My iPhone, Bob).
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        # A PC Bob is reached over Tailscale on plain http (his own login cookie and passcode guard it).
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSLocalNetworkUsageDescription: Bob talks to the Bob on your PC over your network or Tailscale.
+        NSMicrophoneUsageDescription: Bob listens only while you're talking to him.
+        NSPhotoLibraryAddUsageDescription: Bob saves pictures he made for you.
+        # 🖐 Let Bob run Shortcuts: a Shortcut Bob ran hands its answer back to bob-phone://shortcut.
+        CFBundleURLTypes:
+          - CFBundleURLName: ca.mousewurx.bob.shortcuts
+            CFBundleURLSchemes: [bob-phone]
+        LSApplicationQueriesSchemes: [shortcuts]
