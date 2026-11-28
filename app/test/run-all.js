@@ -60,13 +60,20 @@ if (flag('--changed')) {
   }
 }
 
+// Suites still running when npm test stops (Ctrl+C, a closed window) stop with it.
+const running = new Set();
+process.on('exit', () => { for (const c of running) c.kill(); });
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(130));
+process.stdout.on('error', () => process.exit(1)); // output piped into something that closed (npm test | head)
+
 function runOne(s) {
   return new Promise((resolve) => {
     const t0 = Date.now(); const out = [];
     const child = spawn(process.execPath, [s], { cwd: app, stdio: ['ignore', 'pipe', 'pipe'] });
+    running.add(child);
     child.stdout.on('data', (d) => out.push(d)); child.stderr.on('data', (d) => out.push(d));
     child.on('error', (e) => out.push(Buffer.from(String(e))));
-    child.on('close', (code, signal) => resolve({ s, code, signal, ms: Date.now() - t0, text: Buffer.concat(out).toString() }));
+    child.on('close', (code, signal) => { running.delete(child); resolve({ s, code, signal, ms: Date.now() - t0, text: Buffer.concat(out).toString() }); });
   });
 }
 const show = (r) => { process.stdout.write(r.text.endsWith('\n') || !r.text ? r.text : `${r.text}\n`); };
