@@ -11,7 +11,7 @@ import { mergeSettings } from '../src/config.js';
 import { LlamaCpp } from '../src/llamacpp.js';
 import { modelFor } from '../src/sessions.js';
 import {
-  EXTRA_SWITCHES, extraOn, newSpecFlags, draftNumArgs, copyGuessArgs, COPY_GUESS_ARGS, cleanMemType, memTypeOf, memArgs, MEM_TYPES, helpHasQ3, helpHasQ2, q3CardOk, helpHasTiers, progressiveTiers, tiersEnv, TIERS_SLACK, turboMem, turboPerWord, TURBO_MEMS,
+  EXTRA_SWITCHES, extraOn, newSpecFlags, draftNumArgs, copyGuessArgs, COPY_GUESS_ARGS, specTypes, cleanMemType, memTypeOf, memArgs, MEM_TYPES, helpHasQ3, helpHasQ2, q3CardOk, helpHasTiers, progressiveTiers, tiersEnv, TIERS_SLACK, turboMem, turboPerWord, TURBO_MEMS,
   parseWinBattery, parseMacBattery, linuxBattery, onBattery, setOnBattery, batteryNow, laptopSaving, laptopThreads,
   cardKey, cardChange, placesToAuto, handoffHat, warmRoom, warmFile, WARM_SPARE, plainEngineNotes, engineNoteLine, brainEngineNumber,
   READING_PICKS, readingPick, readingSteps, readingChoice, readingArgs, dropReading, lockRoom, lockFloor, everydayTurboArgs, specGateEnv, TURBO_EVERYDAY_MAX, lockMemoryArgs, mtpSidecar, mtpArgs
@@ -33,7 +33,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-extras-'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- Off unless turned on ----------
-check('ten switches (Turbo is the tenth), all off in a fresh Bob', EXTRA_SWITCHES.length === 10 && EXTRA_SWITCHES.every((k) => !extraOn({}, k)));
+check('eleven switches (Turbo is the tenth, GUPPI fits his working memory to the card the eleventh), all off in a fresh Bob', EXTRA_SWITCHES.length === 11 && EXTRA_SWITCHES.every((k) => !extraOn({}, k)));
 { const m = mergeSettings({}, Object.fromEntries(EXTRA_SWITCHES.map((k) => [k, 'yes'])));
   check('only true turns one on when saved', EXTRA_SWITCHES.every((k) => m[k] === false) && mergeSettings({}, { copyGuess: true }).copyGuess === true); }
 check('the example settings file switches none of them on', (() => { const ex = JSON.parse(read('config.example.json')); return EXTRA_SWITCHES.every((k) => ex[k] !== true) && !ex.brainMemType; })());
@@ -75,7 +75,10 @@ check('new speculative flag names from about b9530, old ones before', newSpecFla
 check('copy guessing: nothing while off', copyGuessArgs({}, { build: 12282 }).length === 0);
 check('copy guessing: ngram-mod when on', copyGuessArgs({ copyGuess: true }, { build: 12282 }).join(' ') === '--spec-type ngram-mod' && COPY_GUESS_ARGS[1] === 'ngram-mod');
 check('copy guessing: not on an engine too old to know it', copyGuessArgs({ copyGuess: true }, { build: 9000 }).length === 0);
-check('copy guessing: Turbo or a draft brain wins', copyGuessArgs({ copyGuess: true }, { args: ['-md', 'x.gguf'] }).length === 0 && copyGuessArgs({ copyGuess: true }, { args: ['--spec-type', 'draft-mtp'] }).length === 0);
+check('copy guessing: a draft brain wins', copyGuessArgs({ copyGuess: true }, { args: ['-md', 'x.gguf'] }).length === 0 && copyGuessArgs({ copyGuess: true }, { args: ['--spec-type', 'draft-simple', '-md', 'x.gguf'] }).length === 0);
+check('copy guessing: next to MTP (its own head, or the file beside the brain), Strata\'s way', copyGuessArgs({ copyGuess: true }, { args: ['--spec-type', 'draft-mtp'] }).join(' ') === '--spec-type ngram-mod' && copyGuessArgs({ copyGuess: true }, { args: ['--spec-type', 'draft-mtp', '-md', 'mtp-big.gguf'] }).join(' ') === '--spec-type ngram-mod');
+check('copy guessing: not twice, and not next to another guesser set by hand', copyGuessArgs({ copyGuess: true }, { args: ['--spec-type', 'draft-mtp,ngram-mod'] }).length === 0 && copyGuessArgs({ copyGuess: true }, { args: ['--spec-type', 'ngram-map-k'] }).length === 0);
+check('copy guessing next to MTP: still off unless switched on', copyGuessArgs({}, { args: ['--spec-type', 'draft-mtp'] }).length === 0 && specTypes(['--spec-type', 'a,b', '-x', '--spec-type', 'c']).join() === 'a,b,c');
 const big = path.join(tmp, 'big.gguf'), small = path.join(tmp, 'small.gguf');
 fs.writeFileSync(big, 'x'); fs.writeFileSync(small, 'x');
 const engineOf = (extra = {}, lc = {}) => { const e = new LlamaCpp({ agentDir: tmp, dataDir: tmp, ...extra, llamacpp: { models: { big, small }, ...lc } }); clearInterval(e.idleTimer); return e; };

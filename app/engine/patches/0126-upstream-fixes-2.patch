@@ -1,0 +1,1110 @@
+diff --git a/common/jinja/lexer.cpp b/common/jinja/lexer.cpp
+index bf2dfacda..800763153 100644
+--- a/common/jinja/lexer.cpp
++++ b/common/jinja/lexer.cpp
+@@ -263,41 +263,6 @@ lexer_result lexer::tokenize(const std::string & source) {
+ 
+         char ch = src[pos];
+ 
+-        bool is_closing_block = ch == '-' && next_pos_is( {'%', '}'} );
+-
+-        // Check for unary operators
+-        if (!is_closing_block && (ch == '-' || ch == '+')) {
+-            start_pos = pos;
+-            token::type last_token_type = tokens.empty() ? token::eof : tokens.back().t;
+-            if (last_token_type == token::text || last_token_type == token::eof) {
+-                throw lexer_exception(std::string("unexpected character: ") + ch, source, pos);
+-            }
+-            switch (last_token_type) {
+-                case token::identifier:
+-                case token::numeric_literal:
+-                case token::string_literal:
+-                case token::close_paren:
+-                case token::close_square_bracket:
+-                    // Part of a binary operator
+-                    // a - 1, 1 - 1, true - 1, "apple" - 1, (1) - 1, a[1] - 1
+-                    // Continue parsing normally
+-                    break;
+-                default: {
+-                    // Is part of a unary operator
+-                    // (-1), [-1], (1 + -1), not -1, -apple
+-                    ++pos; // Consume the operator
+-
+-                    // Check for numbers following the unary operator
+-                    std::string num = consume_numeric();
+-                    std::string value = std::string(1, ch) + num;
+-                    token::type t = num.empty() ? token::unary_operator : token::numeric_literal;
+-                    // JJ_DEBUG("consumed unary operator or numeric literal: '%s'", value.c_str());
+-                    tokens.push_back({t, value, start_pos});
+-                    continue;
+-                }
+-            }
+-        }
+-
+         // Try to match one of the tokens in the mapping table
+         bool matched = false;
+         for (const auto & [seq, typ] : ordered_mapping_table) {
+diff --git a/common/jinja/lexer.h b/common/jinja/lexer.h
+index 3f4ebb62a..3b203c6f1 100644
+--- a/common/jinja/lexer.h
++++ b/common/jinja/lexer.h
+@@ -39,7 +39,6 @@ struct token {
+         multiplicative_binary_operator, // * / %
+         power_operator, // **
+         comparison_binary_operator, // < > <= >= == !=
+-        unary_operator, // ! - +
+         comment, // {# ... #}
+     };
+     type t;
+@@ -74,7 +73,6 @@ static std::string type_to_string(token::type t) {
+         case token::multiplicative_binary_operator: return "multiplicative_binary_operator";
+         case token::power_operator: return "power_operator";
+         case token::comparison_binary_operator: return "comparison_binary_operator";
+-        case token::unary_operator: return "unary_operator";
+         case token::comment: return "comment";
+         default: return "unknown";
+     }
+@@ -141,6 +139,7 @@ struct lexer {
+         {"~", token::additive_binary_operator},
+         {"**", token::power_operator},
+         {"*", token::multiplicative_binary_operator},
++        {"//", token::multiplicative_binary_operator},
+         {"/", token::multiplicative_binary_operator},
+         {"%", token::multiplicative_binary_operator},
+         // Assignment operator
+diff --git a/common/jinja/parser.cpp b/common/jinja/parser.cpp
+index 0841828c4..4807b6995 100644
+--- a/common/jinja/parser.cpp
++++ b/common/jinja/parser.cpp
+@@ -482,7 +482,8 @@ private:
+     }
+ 
+     statement_ptr parse_unary_expression() {
+-        if (is(token::unary_operator)) {
++        // a sign where an operand is expected is unary: -x, 1 + -x, x if c else -1
++        if (is(token::additive_binary_operator) && peek().value != "~") {
+             depth_guard guard(*this);
+             size_t start_pos = current;
+             auto op = next();
+diff --git a/common/jinja/runtime.cpp b/common/jinja/runtime.cpp
+index d60a99d25..df2bfd9f2 100644
+--- a/common/jinja/runtime.cpp
++++ b/common/jinja/runtime.cpp
+@@ -195,6 +195,25 @@ static value exec_binary_op(context & ctx, const token & op, value left_val, val
+         } else if (op.value == "/") {
+             JJ_DEBUG("Division operation: %f / %f", a, b);
+             return mk_val<value_float>(a / b);
++        } else if (op.value == "//") {
++            // python semantics: round toward -inf
++            if (is_val<value_int>(left_val) && is_val<value_int>(right_val)) {
++                const int64_t x = left_val->as_int();
++                const int64_t y = right_val->as_int();
++                if (y == 0) {
++                    throw std::runtime_error("integer division by zero");
++                }
++                if (y == -1) {
++                    // INT64_MIN / -1 is UB, wrap around instead
++                    return mk_val<value_int>((int64_t) (0 - (uint64_t) x));
++                }
++                int64_t q = x / y;
++                if (x % y != 0 && (x < 0) != (y < 0)) {
++                    q -= 1;
++                }
++                return mk_val<value_int>(q);
++            }
++            return mk_val<value_float>(std::floor(a / b));
+         } else if (op.value == "%") {
+             double rem = std::fmod(a, b);
+             JJ_DEBUG("Modulo operation: %f %% %f = %f", a, b, rem);
+@@ -273,12 +292,17 @@ static value exec_binary_op(context & ctx, const token & op, value left_val, val
+     // String membership
+     if (is_val<value_string>(left_val) && is_val<value_string>(right_val)) {
+         // case: "a" in "abc"
+-        bool member = test_is_in();
+-        if (op.value == "in") {
+-            return mk_val<value_bool>(member);
+-        } else if (op.value == "not in") {
+-            return mk_val<value_bool>(!member);
++        if (op.value == "in" || op.value == "not in") {
++            bool member = test_is_in();
++            return mk_val<value_bool>(op.value == "in" ? member : !member);
+         }
++        // case: "a" < "b"; UTF-8 byte order is the same as codepoint order, like python
++        const std::string a = left_val->as_string().str();
++        const std::string b = right_val->as_string().str();
++        if (op.value == "<")  { return mk_val<value_bool>(a <  b); }
++        if (op.value == ">")  { return mk_val<value_bool>(a >  b); }
++        if (op.value == "<=") { return mk_val<value_bool>(a <= b); }
++        if (op.value == ">=") { return mk_val<value_bool>(a >= b); }
+     }
+ 
+     // Value key in object
+diff --git a/common/jinja/value.cpp b/common/jinja/value.cpp
+index 771b0f136..e25846fd4 100644
+--- a/common/jinja/value.cpp
++++ b/common/jinja/value.cpp
+@@ -1086,8 +1086,28 @@ const func_builtins & value_bool_t::get_builtins() const {
+     return builtins;
+ }
+ 
+-[[noreturn]] static value array_sum_not_implemented(const func_args &) {
+-    throw not_implemented_exception("Array sum builtin not implemented");
++static value array_sum(const func_args & args) {
++    args.ensure_kwargs({"attribute", "start"});
++    args.ensure_count(1, 3);
++    args.ensure_vals<value_array>();
++    value undef     = mk_val<value_undefined>();
++    value attribute = args.get_kwarg_or_pos("attribute", 1);
++    value start     = args.get_kwarg_or_pos("start",     2);
++    // same as the + operator: compute in double, int result if all operands are int
++    bool   is_float = is_val<value_float>(start);
++    double sum      = start->is_undefined() ? 0.0 : start->as_float();
++    for (const auto & item : args.get_pos(0)->as_array()) {
++        value v = attribute->is_undefined() ? item : get_attribute(item, attribute, undef);
++        if (v->is_undefined() && !attribute->is_undefined()) {
++            throw raised_exception("sum: " + item->type() + " has no attribute '" + attribute->as_string().str() + "'");
++        }
++        if (!is_val<value_int>(v) && !is_val<value_float>(v)) {
++            throw raised_exception("sum: unsupported operand type " + v->type());
++        }
++        is_float = is_float || is_val<value_float>(v);
++        sum += v->as_float();
++    }
++    return is_float ? value(mk_val<value_float>(sum)) : value(mk_val<value_int>(static_cast<int64_t>(sum)));
+ }
+ 
+ const func_builtins & value_array_t::get_builtins() const {
+@@ -1156,7 +1176,7 @@ const func_builtins & value_array_t::get_builtins() const {
+         {"select", select_or_reject<false, false>},
+         {"rejectattr", select_or_reject<true, true>},
+         {"reject", select_or_reject<true, false>},
+-        {"sum", array_sum_not_implemented},
++        {"sum", array_sum},
+         {"join", [](const func_args & args) -> value {
+             args.ensure_kwargs({"d", "attribute"});
+             args.ensure_count(1, 3);
+diff --git a/common/json-schema.cpp b/common/json-schema.cpp
+index eb57a524a..ac69f6691 100644
+--- a/common/json-schema.cpp
++++ b/common/json-schema.cpp
+@@ -244,6 +244,12 @@ class common_chat_schema_builder {
+     }
+ 
+     common_chat_schema_ptr build_node_impl(const common_json & schema, const std::string & path) {
++        if (schema.is_boolean()) {
++            if (schema.get<bool>()) {
++                return std::make_unique<common_chat_schema_any>(); // true matches any value, like {}
++            }
++            fail(path, "false schema is not supported"); // false matches nothing, the grammar cannot express it
++        }
+         if (!schema.is_object()) {
+             fail(path, "schema must be an object");
+         }
+diff --git a/common/sampling.cpp b/common/sampling.cpp
+index e5b39ff06..0cc93b928 100644
+--- a/common/sampling.cpp
++++ b/common/sampling.cpp
+@@ -255,7 +255,8 @@ struct common_sampler * common_sampler_init(
+                     break;
+                 }
+                 default:
+-                    GGML_ASSERT(false && "unknown trigger type");
++                    throw std::runtime_error(
++                        "unknown grammar trigger type: " + std::to_string(trigger.type));
+             }
+         }
+ 
+diff --git a/ggml/src/ggml-cuda/binbcast.cu b/ggml/src/ggml-cuda/binbcast.cu
+index f7c3a7322..7e1c5c300 100644
+--- a/ggml/src/ggml-cuda/binbcast.cu
++++ b/ggml/src/ggml-cuda/binbcast.cu
+@@ -256,6 +256,18 @@ static void launch_bin_bcast_pack(const ggml_tensor * src0, const ggml_tensor *
+         size_t s02 = nb02 / sizeof(src0_t);
+         size_t s03 = nb03 / sizeof(src0_t);
+ 
++        // the index of a dim of size 1 is always 0, so its stride is never applied,
++        // but after collapsing contiguous dims it can be the whole tensor size and exceed 32 bits
++        if (cne0[1] == 1) { s01 = 0; }
++        if (cne0[2] == 1) { s02 = 0; }
++        if (cne0[3] == 1) { s03 = 0; }
++        if (cne1[1] == 1) { s11 = 0; }
++        if (cne1[2] == 1) { s12 = 0; }
++        if (cne1[3] == 1) { s13 = 0; }
++        if (ne1 == 1) { s1 = 0; }
++        if (ne2 == 1) { s2 = 0; }
++        if (ne3 == 1) { s3 = 0; }
++
+         GGML_ASSERT(ne0 <= std::numeric_limits<uint32_t>::max());
+         GGML_ASSERT(ne1 <= std::numeric_limits<uint32_t>::max());
+         GGML_ASSERT(ne2 <= std::numeric_limits<uint32_t>::max());
+diff --git a/ggml/src/ggml-cuda/concat.cu b/ggml/src/ggml-cuda/concat.cu
+index f8dcd95ab..0039ae483 100644
+--- a/ggml/src/ggml-cuda/concat.cu
++++ b/ggml/src/ggml-cuda/concat.cu
+@@ -104,38 +104,41 @@ static __global__ void __launch_bounds__(CUDA_CONCAT_BLOCK_SIZE)
+           uint64_t   nb13,
+            int64_t   ne0,
+            int64_t /*ne1*/,
+-           int64_t /*ne2*/,
+-           int64_t /*ne3*/,
++           int64_t   ne2,
++           int64_t   ne3,
+           uint64_t   nb0,
+           uint64_t   nb1,
+           uint64_t   nb2,
+           uint64_t   nb3) {
+     static_assert(dim >= 0 && dim <= 3, "dim must be in [0, 3]");
+ 
+-    const int64_t i3 = blockIdx.z;
+-    const int64_t i2 = blockIdx.y;
+     const int64_t i1 = blockIdx.x;
+ 
+     const T * x;
+ 
+-    for (int64_t i0 = threadIdx.x; i0 < ne0; i0 += blockDim.x) {
+-        if (i0 < ne00 && i1 < ne01 && i2 < ne02 && i3 < ne03) {
+-            x = (const T *)(src0 + i3*nb03 + i2*nb02 + i1*nb01 + i0*nb00);
+-        } else {
+-            if constexpr (dim == 0) {
+-                x = (const T *)(src1 + i3*nb13 + i2*nb12 + i1*nb11 + (i0 - ne00)*nb10);
+-            } else if constexpr (dim == 1) {
+-                x = (const T *)(src1 + i3*nb13 + i2*nb12 + (i1 - ne01)*nb11 + i0*nb10);
+-            } else if constexpr (dim == 2) {
+-                x = (const T *)(src1 + i3*nb13 + (i2 - ne02)*nb12 + i1*nb11 + i0*nb10);
+-            } else if constexpr (dim == 3) {
+-                x = (const T *)(src1 + (i3 - ne03)*nb13 + i2*nb12 + i1*nb11 + i0*nb10);
++    // gridDim.y and gridDim.z are capped at 65535, loop over the rest of ne2 and ne3
++    for (int64_t i3 = blockIdx.z; i3 < ne3; i3 += gridDim.z) {
++        for (int64_t i2 = blockIdx.y; i2 < ne2; i2 += gridDim.y) {
++            for (int64_t i0 = threadIdx.x; i0 < ne0; i0 += blockDim.x) {
++                if (i0 < ne00 && i1 < ne01 && i2 < ne02 && i3 < ne03) {
++                    x = (const T *)(src0 + i3*nb03 + i2*nb02 + i1*nb01 + i0*nb00);
++                } else {
++                    if constexpr (dim == 0) {
++                        x = (const T *)(src1 + i3*nb13 + i2*nb12 + i1*nb11 + (i0 - ne00)*nb10);
++                    } else if constexpr (dim == 1) {
++                        x = (const T *)(src1 + i3*nb13 + i2*nb12 + (i1 - ne01)*nb11 + i0*nb10);
++                    } else if constexpr (dim == 2) {
++                        x = (const T *)(src1 + i3*nb13 + (i2 - ne02)*nb12 + i1*nb11 + i0*nb10);
++                    } else if constexpr (dim == 3) {
++                        x = (const T *)(src1 + (i3 - ne03)*nb13 + i2*nb12 + i1*nb11 + i0*nb10);
++                    }
++                }
++
++                T * y = (T *)(dst + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
++
++                *y = *x;
+             }
+         }
+-
+-        T * y = (T *)(dst + i3*nb3 + i2*nb2 + i1*nb1 + i0*nb0);
+-
+-        *y = *x;
+     }
+ }
+ 
+@@ -163,7 +166,7 @@ static void concat_cuda(const ggml_tensor * src0, const ggml_tensor * src1, ggml
+     } else {
+         GGML_ASSERT(!ggml_is_quantized(src0->type));
+ 
+-        dim3 grid_dim(dst->ne[1], dst->ne[2], dst->ne[3]);
++        dim3 grid_dim(dst->ne[1], std::min<int64_t>(dst->ne[2], 65535), std::min<int64_t>(dst->ne[3], 65535));
+         auto launch_kernel = [&](auto dim) {
+             concat_non_cont<T, dim><<<grid_dim, CUDA_CONCAT_BLOCK_SIZE, 0, stream>>>(
+                 (const char *) src0->data, (const char *) src1->data, (char *) dst->data,
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index d2267830a..04415d9bf 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -6966,7 +6966,7 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
+         case GGML_OP_RWKV_WKV7:
+             return true;
+         case GGML_OP_GATED_DELTA_NET:
+-            return true;
++            return ggml_are_same_stride(op->src[0], op->src[1]);
+         case GGML_OP_DSV4_HC_COMB:
+             return op->src[0]->type == GGML_TYPE_F32 && op->src[1]->type == GGML_TYPE_F32 &&
+                 op->src[2]->type == GGML_TYPE_F32 && op->type == GGML_TYPE_F32;
+diff --git a/ggml/src/ggml-cuda/mmf.cuh b/ggml/src/ggml-cuda/mmf.cuh
+index 46a123a5c..101c247fe 100644
+--- a/ggml/src/ggml-cuda/mmf.cuh
++++ b/ggml/src/ggml-cuda/mmf.cuh
+@@ -98,9 +98,9 @@ static __global__ void mul_mat_f(
+     const int sample_x    = sample_dst / sample_ratio;
+     const int sample_y    = sample_dst;
+ 
+-    x   += int64_t(sample_x)  *stride_sample_x   + channel_x  *stride_channel_x  + row0*stride_row ;
+-    y   += int64_t(sample_y)  *stride_sample_y   + channel_y  *stride_channel_y;
+-    dst += int64_t(sample_dst)*stride_sample_dst + channel_dst*stride_channel_dst;
++    x   += int64_t(sample_x)  *stride_sample_x   + int64_t(channel_x)  *stride_channel_x  + int64_t(row0)*stride_row;
++    y   += int64_t(sample_y)  *stride_sample_y   + int64_t(channel_y)  *stride_channel_y;
++    dst += int64_t(sample_dst)*stride_sample_dst + int64_t(channel_dst)*stride_channel_dst;
+ 
+     [[maybe_unused]] const float2 * y2 = (const float2 *) y;
+ 
+@@ -290,7 +290,7 @@ static __global__ void mul_mat_f_ids(
+     const int sample_x    = sample_dst / sample_ratio;
+     const int sample_y    = sample_dst;
+ 
+-    x   += int64_t(sample_x)  *stride_sample_x   + channel_x  *stride_channel_x  + row0*stride_row;
++    x   += int64_t(sample_x)  *stride_sample_x   + int64_t(channel_x)  *stride_channel_x  + int64_t(row0)*stride_row;
+     y   += int64_t(sample_y)  *stride_sample_y;
+     dst += int64_t(sample_dst)*stride_sample_dst;
+ 
+diff --git a/ggml/src/ggml-cuda/mmvf.cu b/ggml/src/ggml-cuda/mmvf.cu
+index 154a621fa..dbc84c224 100644
+--- a/ggml/src/ggml-cuda/mmvf.cu
++++ b/ggml/src/ggml-cuda/mmvf.cu
+@@ -53,9 +53,9 @@ static __global__ void mul_mat_vec_f(
+ 
+     constexpr int warp_size   = ggml_cuda_get_physical_warp_size();
+ 
+-    x   += int64_t(sample_x)  *stride_sample_x   + channel_x  *stride_channel_x   + row*stride_row;
+-    y   += int64_t(sample_y)  *stride_sample_y   + channel_y  *stride_channel_y;
+-    dst += int64_t(sample_dst)*stride_sample_dst + channel_dst*stride_channel_dst;
++    x   += int64_t(sample_x)  *stride_sample_x   + int64_t(channel_x)  *stride_channel_x   + int64_t(row)*stride_row;
++    y   += int64_t(sample_y)  *stride_sample_y   + int64_t(channel_y)  *stride_channel_y;
++    dst += int64_t(sample_dst)*stride_sample_dst + int64_t(channel_dst)*stride_channel_dst;
+     if constexpr (is_multi_token_id) {
+         y   += token_idx*stride_col_y2*2;
+         dst += token_idx*stride_col_dst;
+@@ -106,16 +106,16 @@ static __global__ void mul_mat_vec_f(
+     }
+ 
+     if (use_gate) {
+-        gate_x += int64_t(sample_x)  *stride_sample_x   + channel_x  *stride_channel_x   + row*stride_row;
++        gate_x += int64_t(sample_x)  *stride_sample_x   + int64_t(channel_x)  *stride_channel_x   + int64_t(row)*stride_row;
+     }
+ 
+     if constexpr (has_fusion) {
+         const int channel_bias = ids ? channel_x : channel_dst;
+         if (use_bias) {
+-            x_bias += int64_t(sample_dst)*stride_sample_dst + channel_bias*stride_channel_dst;
++            x_bias += int64_t(sample_dst)*stride_sample_dst + int64_t(channel_bias)*stride_channel_dst;
+         }
+         if (use_gate_bias) {
+-            gate_bias += int64_t(sample_dst)*stride_sample_dst + channel_bias*stride_channel_dst;
++            gate_bias += int64_t(sample_dst)*stride_sample_dst + int64_t(channel_bias)*stride_channel_dst;
+         }
+     }
+ 
+diff --git a/ggml/src/ggml-cuda/softmax.cu b/ggml/src/ggml-cuda/softmax.cu
+index b9182af54..18929fcd9 100644
+--- a/ggml/src/ggml-cuda/softmax.cu
++++ b/ggml/src/ggml-cuda/softmax.cu
+@@ -176,11 +176,9 @@ static __device__ void soft_max_f32_parallelize_cols_single_row(const float * __
+         }
+         g.sync();
+ 
+-        assert(gridDim.x < blockDim.x);
+-        if (tid < gridDim.x) {
+-            local_max = tmp_maxs[tid];
+-        } else {
+-            local_max = -INFINITY;
++        local_max = -INFINITY;
++        for (int i = tid; i < (int) gridDim.x; i += blockDim.x) {
++            local_max = fmaxf(local_max, tmp_maxs[i]);
+         }
+         local_max = block_reduce<block_reduce_method::MAX>(local_max, shared_vals_max);
+ 
+@@ -202,10 +200,9 @@ static __device__ void soft_max_f32_parallelize_cols_single_row(const float * __
+         }
+         g.sync();
+ 
+-        if (tid < gridDim.x) {
+-            tmp_expf = tmp_sums[tid];
+-        } else {
+-            tmp_expf = 0.0f;
++        tmp_expf = 0.0f;
++        for (int i = tid; i < (int) gridDim.x; i += blockDim.x) {
++            tmp_expf += tmp_sums[i];
+         }
+         tmp_expf = block_reduce<block_reduce_method::SUM>(tmp_expf, shared_vals_sum);
+ 
+@@ -247,11 +244,9 @@ static __device__ void soft_max_f32_parallelize_cols_single_row(const float * __
+         g.sync();
+ 
+         // Compute compute global max from CTA-level maxs
+-        assert(gridDim.x < blockDim.x);  // currently we only support this case
+-        if (tid < gridDim.x) {
+-            local_max = tmp_maxs[tid];
+-        } else {
+-            local_max = -INFINITY;
++        local_max = -INFINITY;
++        for (int i = tid; i < (int) gridDim.x; i += blockDim.x) {
++            local_max = fmaxf(local_max, tmp_maxs[i]);
+         }
+         local_max = block_reduce<block_reduce_method::MAX>(local_max, shared_vals_max);
+ 
+@@ -285,10 +280,9 @@ static __device__ void soft_max_f32_parallelize_cols_single_row(const float * __
+         g.sync();
+ 
+         // Compute global sum from CTA-level sums
+-        if (tid < gridDim.x) {
+-            tmp_expf = tmp_sums[tid];
+-        } else {
+-            tmp_expf = 0.0f;
++        tmp_expf = 0.0f;
++        for (int i = tid; i < (int) gridDim.x; i += blockDim.x) {
++            tmp_expf += tmp_sums[i];
+         }
+         tmp_expf = block_reduce<block_reduce_method::SUM>(tmp_expf, shared_vals_sum);
+ 
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+index cd06b511b..d43ce6c15 100644
+--- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
++++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+@@ -1258,10 +1258,14 @@ static vk_fa_tuning_params get_fa_tuning_params_scalar(const vk_device& device,
+ 
+     result.shmem_staging = (device->vendor_id == VK_VENDOR_ID_NVIDIA && hsk < 256 && hsv < 256) ? 1 : 0;
+ 
+-    if (!reduce_block_rows && !ggml_vk_flash_attn_scalar_shmem_support(device, result, hsk, hsv, f32acc, k_type, v_type)) {
++    if (!reduce_block_rows && result.block_rows > 1 && !ggml_vk_flash_attn_scalar_shmem_support(device, result, hsk, hsv, f32acc, k_type, v_type)) {
+         result.block_rows /= 2;
+     }
+ 
++    if (result.shmem_staging && !ggml_vk_flash_attn_scalar_shmem_support(device, result, hsk, hsv, f32acc, k_type, v_type)) {
++        result.shmem_staging = 0;
++    }
++
+     // With head sizes above 128, 16 rows per workgroup spill registers on Qualcomm and run about
+     // 40x slower; at large KV a single dispatch can then exceed the Windows GPU timeout.
+     if (device->vendor_id == VK_VENDOR_ID_QUALCOMM && (hsk > 128 || hsv > 128)) {
+@@ -8618,7 +8622,9 @@ bool ggml_vk_flash_attn_scalar_shmem_support(const vk_device& device, const vk_f
+         kblocksh_size = 0;
+     }
+ 
+-    const uint32_t total_size = tmpsh + tmpshv4 + masksh + iq_shmem + Qf + kvsh + kblocksh_size;
++    const uint32_t occupancy_limiter = std::max(params.limit_occupancy_shmem, 1u) * 4 * sizeof(float);
++
++    const uint32_t total_size = tmpsh + tmpshv4 + masksh + iq_shmem + Qf + kvsh + kblocksh_size + occupancy_limiter;
+     const bool supported = total_size <= device->properties.limits.maxComputeSharedMemorySize;
+ 
+     VK_LOG_DEBUG("ggml_vk_flash_attn_scalar_shmem_support(HSK=" << hsk << ", HSV=" << hsv << ", mmq=" << mmq << ", total_size=" << total_size << ", supported=" << supported);
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/diag.comp b/ggml/src/ggml-vulkan/vulkan-shaders/diag.comp
+index 249e6b16e..1f14f30d4 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/diag.comp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/diag.comp
+@@ -23,6 +23,6 @@ void main() {
+         const float val = float(data_a[get_aoffset() + i13*p.nb03 + i12*p.nb02 + 0*p.nb01 + i10*p.nb00]);
+         data_d[get_doffset() + dst_idx(idx)] = D_TYPE(val);
+     } else {
+-        data_d[get_doffset() + dst_idx(idx)] = D_TYPE(0);
++        data_d[get_doffset() + dst_idx(idx)] = D_TYPE(0.0);
+     }
+ }
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/tri.comp b/ggml/src/ggml-vulkan/vulkan-shaders/tri.comp
+index 9def5dbc9..a2f240533 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/tri.comp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/tri.comp
+@@ -37,6 +37,6 @@ void main() {
+         const float val = float(data_a[get_aoffset() + src0_idx(idx)]);
+         data_d[get_doffset() + dst_idx(idx)] = D_TYPE(val);
+     } else {
+-        data_d[get_doffset() + dst_idx(idx)] = D_TYPE(0);
++        data_d[get_doffset() + dst_idx(idx)] = D_TYPE(0.0);
+     }
+ }
+diff --git a/ggml/src/gguf.cpp b/ggml/src/gguf.cpp
+index c80b68218..1a57b608e 100644
+--- a/ggml/src/gguf.cpp
++++ b/ggml/src/gguf.cpp
+@@ -322,24 +322,6 @@ struct gguf_reader {
+         return true;
+     }
+ 
+-    bool read(enum ggml_type & dst) const {
+-        int32_t tmp = -1;
+-        if (!read(tmp)) {
+-            return false;
+-        }
+-        dst = ggml_type(tmp);
+-        return true;
+-    }
+-
+-    bool read(enum gguf_type & dst) const {
+-        int32_t tmp = -1;
+-        if (!read(tmp)) {
+-            return false;
+-        }
+-        dst = gguf_type(tmp);
+-        return true;
+-    }
+-
+     bool read(std::string & dst) const {
+         uint64_t size = 0;
+         if (!read(size)) {
+@@ -555,7 +537,7 @@ static struct gguf_context * gguf_init_from_reader(const struct gguf_reader & gr
+ 
+         for (int64_t i = 0; ok && i < n_kv; ++i) {
+             std::string key;
+-            gguf_type   type     = gguf_type(-1);
++            int32_t     type     = -1;
+             bool        is_array = false;
+             uint64_t    n        = 1;
+ 
+@@ -724,15 +706,20 @@ static struct gguf_context * gguf_init_from_reader(const struct gguf_reader & gr
+ 
+         // tensor type
+         {
+-            ok = ok && gr.read(info.t.type);
++            int32_t type = -1;
++            ok = ok && gr.read(type);
++            if (!ok) {
++                break;
++            }
+ 
+             // check that tensor type is within defined range
+-            if (info.t.type < 0 || info.t.type >= GGML_TYPE_COUNT) {
++            if (type < 0 || type >= GGML_TYPE_COUNT) {
+                 GGML_LOG_ERROR("%s: tensor '%s' has invalid ggml type %d. should be in [0, %d)\n",
+-                    __func__, info.t.name, info.t.type, GGML_TYPE_COUNT);
++                    __func__, info.t.name, type, GGML_TYPE_COUNT);
+                 ok = false;
+                 break;
+             }
++            info.t.type = ggml_type(type);
+             const size_t  type_size = ggml_type_size(info.t.type);
+             const int64_t blck_size = ggml_blck_size(info.t.type);
+ 
+diff --git a/scripts/moe-cache-tune.py b/scripts/moe-cache-tune.py
+index d0680fa74..e41ed266e 100755
+--- a/scripts/moe-cache-tune.py
++++ b/scripts/moe-cache-tune.py
+@@ -26,6 +26,9 @@ SHARES = [0.0, 0.5, 0.8, 0.9, 0.95, 0.98]
+ CALIB_SHARES = [0.0, 0.5, 0.95]
+ N_FIRST = 2048  # tokens per request, first run
+ N_CALIB = 512   # tokens per request, other runs
++# Windows cannot send SIGINT to a child, llama-server stops cleanly on CTRL_BREAK_EVENT sent to its own process group
++STOP_SIGNAL = signal.CTRL_BREAK_EVENT if sys.platform == "win32" else signal.SIGINT
++NEW_GROUP = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0
+ PROMPT = ("The lighthouse keeper had kept a logbook for thirty-one years, and in all that time he had never once written down a lie. "
+           "So when the ship appeared on the horizon on the first calm morning of October, with no flag, no lights and no one on deck, "
+           "he sat at his small wooden table for a long while before he picked up the pen. Below him the sea was flat and grey, and the "
+@@ -502,7 +505,8 @@ def run_server(cmd, out, mib, share, n_predict, seed, label, warm):
+         timings: list = []
+         for attempt in range(2):
+             with open(base + ".log", "w") as log:
+-                proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT, env=dict(os.environ, LLAMA_MOE_CACHE_TRACE=base + ".trace"))
++                proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT, env=dict(os.environ, LLAMA_MOE_CACHE_TRACE=base + ".trace"),
++                                        creationflags=NEW_GROUP)
+             try:
+                 while True:
+                     if proc.poll() is not None:
+@@ -517,11 +521,13 @@ def run_server(cmd, out, mib, share, n_predict, seed, label, warm):
+                 timings = [http(port, "/completion", {"prompt": PROMPT, "n_predict": n, "ignore_eos": True, "cache_prompt": False,
+                                                       "temperature": 0.8, "top_p": 0.95, "seed": seed + k})["timings"] for k in (0, 1)]
+             finally:
+-                proc.send_signal(signal.SIGINT)
+                 try:
++                    proc.send_signal(STOP_SIGNAL)
+                     proc.wait(timeout=120)
+                 except subprocess.TimeoutExpired:
+-                    proc.kill()
++                    pass
++                finally:
++                    proc.kill()  # no-op once it exited, else the clean stop failed
+             # the second generation has a warmer cache, it is much slower only if the machine is busy
+             if timings[1]["predicted_per_second"] > timings[0]["predicted_per_second"] / 1.5 or attempt == 1:
+                 break
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index c8585919f..52fefbe10 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -6088,28 +6088,28 @@ size_t llama_context::state_seq_get_data(llama_seq_id seq_id, uint8_t * dst, siz
+ }
+ 
+ size_t llama_context::state_seq_set_data(llama_seq_id seq_id, const uint8_t * src, size_t size, llama_state_seq_flags flags) {
+-    std::unique_ptr<llama_io_read_i> io;
+-    if (flags & LLAMA_STATE_SEQ_FLAGS_ON_DEVICE) {
+-        // create a temporary io to read the magic and the src seq_id
+-        io = std::make_unique<llama_io_read_host>(src, size);
++    std::unique_ptr<llama_io_read_i> io = std::make_unique<llama_io_read_host>(src, size);
+ 
+-        uint32_t magic_read;
+-        io->read(&magic_read, sizeof(magic_read));
+-        if (io_magic != magic_read) {
+-            throw std::runtime_error("wrong sequence state magic");
+-        }
++    try {
++        if (flags & LLAMA_STATE_SEQ_FLAGS_ON_DEVICE) {
++            // read the magic and the src seq_id with the host io, then switch to the device io
++            uint32_t magic_read;
++            io->read(&magic_read, sizeof(magic_read));
++            if (io_magic != magic_read) {
++                throw std::runtime_error("wrong sequence state magic");
++            }
+ 
+-        llama_seq_id seq_id_read;
+-        io->read(&seq_id_read, sizeof(seq_id_read));
++            llama_seq_id seq_id_read;
++            io->read(&seq_id_read, sizeof(seq_id_read));
+ 
+-        GGML_ASSERT(mem_storage.find(seq_id_read) != mem_storage.end());
++            const auto it = mem_storage.find(seq_id_read);
++            if (it == mem_storage.end()) {
++                throw std::runtime_error(format("no device state stored for seq_id %d", seq_id_read));
++            }
+ 
+-        io = std::make_unique<llama_io_read_device>(src, size, mem_storage[seq_id_read]);
+-    } else {
+-        io = std::make_unique<llama_io_read_host>(src, size);
+-    }
++            io = std::make_unique<llama_io_read_device>(src, size, it->second);
++        }
+ 
+-    try {
+         uint32_t magic_read;
+         io->read(&magic_read, sizeof(magic_read));
+         if (io_magic != magic_read) {
+diff --git a/src/llama-grammar.cpp b/src/llama-grammar.cpp
+index da88abae8..fdd8475cd 100644
+--- a/src/llama-grammar.cpp
++++ b/src/llama-grammar.cpp
+@@ -724,6 +724,9 @@ const char * llama_grammar_parser::parse_sequence(
+             if (max_times != UINT64_MAX && max_times > MAX_REPETITION_THRESHOLD) {
+                 max_times = UINT64_MAX;
+             }
++            if (max_times < min_times) {
++                throw std::runtime_error(std::string("incorrect number of repetitions"));
++            }
+             handle_repetitions(min_times, max_times);
+         } else {
+             break;
+diff --git a/src/llama-mmap.cpp b/src/llama-mmap.cpp
+index 6431d112d..5d9ed068a 100644
+--- a/src/llama-mmap.cpp
++++ b/src/llama-mmap.cpp
+@@ -5,7 +5,6 @@
+ #include "ggml.h"
+ 
+ #include <cstring>
+-#include <climits>
+ #include <cstdlib>
+ #include <stdexcept>
+ #include <cerrno>
+@@ -32,9 +31,6 @@
+     #endif
+     #include <malloc.h>
+     #include <windows.h>
+-    #ifndef PATH_MAX
+-        #define PATH_MAX MAX_PATH
+-    #endif
+     #include <io.h>
+ #endif
+ 
+@@ -1141,7 +1137,3 @@ void llama_prefetch(llama_memory_ranges mr) {
+     GGML_UNUSED(mr);
+ #endif
+ }
+-
+-size_t llama_path_max() {
+-    return PATH_MAX;
+-}
+diff --git a/src/llama-mmap.h b/src/llama-mmap.h
+index 8933181fb..279651266 100644
+--- a/src/llama-mmap.h
++++ b/src/llama-mmap.h
+@@ -89,5 +89,3 @@ using llama_memory_ranges = std::vector<llama_memory_range>;
+ 
+ // Prefetch the host pages covering these memory ranges.
+ void llama_prefetch(llama_memory_ranges mr);
+-
+-size_t llama_path_max();
+diff --git a/src/llama-model-loader.cpp b/src/llama-model-loader.cpp
+index 041bf865c..5d9d64781 100644
+--- a/src/llama-model-loader.cpp
++++ b/src/llama-model-loader.cpp
+@@ -84,7 +84,7 @@ const char * llama_ftype_name(llama_ftype ftype) {
+ static std::vector<std::string> llama_get_list_splits(const std::string & path, const int idx, const int n_split) {
+     std::vector<std::string> paths;
+     std::string split_prefix;
+-    std::vector<char> buf(llama_path_max(), 0);
++    std::vector<char> buf(path.size() + 1, 0);
+ 
+     {
+         int ret = llama_split_prefix(buf.data(), buf.size(), path.c_str(), idx, n_split);
+@@ -611,7 +611,7 @@ llama_model_loader::llama_model_loader(
+                 throw std::runtime_error(format("illegal split file idx: %d (file: %s), model must be loaded with the first split", idx, fname.c_str()));
+             }
+ 
+-            std::vector<char> prefix(llama_path_max(), 0);
++            std::vector<char> prefix(fname.size() + 1, 0);
+             if (paths.empty() || llama_split_prefix(prefix.data(), prefix.size(), fname.c_str(), idx, n_split)) {
+                 auto backbone = llama_get_list_splits(fname, idx, n_split);
+                 auto file_name = [](const std::string & path) {
+diff --git a/src/llama-quant.cpp b/src/llama-quant.cpp
+index e75bc17fa..60e6813fe 100644
+--- a/src/llama-quant.cpp
++++ b/src/llama-quant.cpp
+@@ -1324,7 +1324,7 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
+         GGML_ASSERT(ctx_outs[cur_split] && "Find uninitialized gguf_context");
+         std::string fname = fname_out;
+         if (params->keep_split) {
+-            std::vector<char> split_path(llama_path_max(), 0);
++            std::vector<char> split_path(fname_out.size() + sizeof("-00000-of-00000.gguf"), 0);
+             llama_split_path(split_path.data(), split_path.size(), fname_out.c_str(), cur_split, n_split);
+             fname = std::string(split_path.data());
+         }
+diff --git a/src/models/qwen3next.cpp b/src/models/qwen3next.cpp
+index 110581bae..9546fba58 100644
+--- a/src/models/qwen3next.cpp
++++ b/src/models/qwen3next.cpp
+@@ -540,7 +540,7 @@ ggml_tensor * llama_model_qwen3next::graph::build_layer_attn_linear(
+     cb(final_output, "final_output", il);
+ 
+     // Output projection
+-    cur = build_lora_mm(model.layers[il].ssm_out, final_output);
++    cur = build_lora_mm(model.layers[il].ssm_out, final_output, model.layers[il].ssm_out_s);
+     cb(cur, "linear_attn_out", il);
+ 
+     return cur;
+diff --git a/tests/llama-context/cases-kv.cpp b/tests/llama-context/cases-kv.cpp
+index b970ea940..fccce8266 100644
+--- a/tests/llama-context/cases-kv.cpp
++++ b/tests/llama-context/cases-kv.cpp
+@@ -11,6 +11,7 @@
+ 
+ #include <algorithm>
+ #include <cstdio>
++#include <cstring>
+ #include <fstream>
+ #include <functional>
+ #include <iterator>
+@@ -473,6 +474,29 @@ struct case_state_restore_failure : ctx_test {
+ 
+                 return nread == 0;
+             }},
++            { "device", [&]() {
++                std::vector<uint8_t> state(llama_state_seq_get_size_ext(ctx.get(), 0, LLAMA_STATE_SEQ_FLAGS_ON_DEVICE));
++                GGML_ASSERT(llama_state_seq_get_data_ext(ctx.get(), state.data(), state.size(), 0, LLAMA_STATE_SEQ_FLAGS_ON_DEVICE) == state.size());
++                llama_memory_seq_rm(mem, 0, -1, -1);
++
++                // the state starts with the magic and the source seq_id; the seq_id selects the stored device data
++                const llama_seq_id seq_id_unknown = 3;
++
++                std::vector<std::vector<uint8_t>> inputs(5, state);
++                inputs[0][0] ^= 0xff;
++                inputs[1].resize(sizeof(uint32_t) / 2);
++                inputs[2].resize(sizeof(uint32_t) + sizeof(llama_seq_id) / 2);
++                memcpy(inputs[3].data() + sizeof(uint32_t), &seq_id_unknown, sizeof(seq_id_unknown));
++                inputs[4].resize(sizeof(uint32_t) + sizeof(llama_seq_id) + 1);
++
++                for (const auto & data : inputs) {
++                    if (llama_state_seq_set_data_ext(ctx.get(), data.data(), data.size(), 0, LLAMA_STATE_SEQ_FLAGS_ON_DEVICE) != 0) {
++                        return false;
++                    }
++                }
++
++                return true;
++            }},
+         };
+ 
+         for (const auto & [name, restore_failed] : sub_cases) {
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index 46580e489..f5f7ce0ef 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -11846,6 +11846,8 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+     test_cases.emplace_back(new test_mul_mat_id(GGML_TYPE_F32, GGML_TYPE_F32, 4, 2, false, 64, 33792, 64));
+     // kernel_mul_mm_id: > 2^31-element dst (8.7 GB), about 45 GB peak memory. Tokens 32514+ have a dst offset past INT32_MAX, tokens 32768+ also need a 32-bit token index.
+     test_cases.emplace_back(new test_mul_mat_id(GGML_TYPE_F32, GGML_TYPE_F32, 16, 8, false, 8256, 32832, 64));
++    // CUDA mul_mat_f_ids: 160 F16 experts of 4096 x 7168 (9.4 GB), about 36 GB peak memory. Experts 147-159 start past INT32_MAX half2 values, 32 tokens x 8 random experts.
++    test_cases.emplace_back(new test_mul_mat_id(GGML_TYPE_F16, GGML_TYPE_F32, 160, 8, true, 4096, 32, 7168));
+ #endif
+ 
+ #if 0
+diff --git a/tests/test-jinja.cpp b/tests/test-jinja.cpp
+index c79b0d24b..87f48405c 100644
+--- a/tests/test-jinja.cpp
++++ b/tests/test-jinja.cpp
+@@ -599,6 +599,42 @@ static void test_expressions(testing & t) {
+         "20"
+     );
+ 
++    test_template(t, "floor division",
++        "{{ 7 // 2 }},{{ -7 // 2 }},{{ 7 // -2 }},{{ 7.5 // 2 }},{{ a // b }}",
++        {{"a", 10}, {"b", 3}},
++        "3,-4,-4,3.0,3"
++    );
++
++    test_template(t, "string comparison",
++        "{{ 'b' > 'a' }},{{ 'VBD' > 'VB' }},{{ 'a' <= 'a' }},{{ 'Z' < 'a' }},{{ 'ab' >= 'b' }}",
++        json::object(),
++        "True,True,True,True,False"
++    );
++
++    test_template(t, "unary minus after keyword",
++        "{{ 1 if false else -1 }},{{ not -1 }},{{ x and -2 }},{{ -3 if x }}",
++        {{"x", true}},
++        "-1,False,-2,-3"
++    );
++
++    test_template(t, "unary minus after elif",
++        "{% if false %}a{% elif -1 < 0 %}b{% endif %}",
++        json::object(),
++        "b"
++    );
++
++    test_template(t, "unary and binary sign",
++        "{{ -x }},{{ - 1 }},{{ --x }},{{ 1 - -x }},{{ 1 -1 }},{{ x -1 }},{{ [x, -1][-1] }},{{ +x }},{{ -x|abs }}",
++        {{"x", 3}},
++        "-3,-1,3,4,0,2,-1,3,3"
++    );
++
++    test_template(t, "binary minus after keyword attribute",
++        "{{ a.else - 1 }}",
++        {{"a", {{"else", 3}}}},
++        "2"
++    );
++
+     test_template(t, "string concat ~",
+         "{{ 'hello' ~ ' ' ~ 'world' }}",
+         json::object(),
+@@ -2096,6 +2132,12 @@ static void test_array_methods(testing & t) {
+         "6"
+     );
+ 
++    test_template(t, "array|sum",
++        "{{ [1, 2.5, 3]|sum }},{{ [1, 2]|sum(start=10) }},{{ items|sum(attribute='w') }},{{ []|sum }}",
++        {{"items", json::array({{{"w", 1}}, {{"w", 2}}})}},
++        "6.5,13,3,0"
++    );
++
+     test_template(t, "array|min",
+         "{{ [tool_calls_count, tool_sep_count]|min }}",
+         {{"tool_calls_count", 2}, {"tool_sep_count", 1}},
+diff --git a/tests/test-json-schema.cpp b/tests/test-json-schema.cpp
+index fb8cee18b..4460badb8 100644
+--- a/tests/test-json-schema.cpp
++++ b/tests/test-json-schema.cpp
+@@ -48,6 +48,11 @@ static void test_any(testing & t) {
+         auto doc = parse(R"({"description": "x", "format": "email", "additionalProperties": true})");
+         root<common_chat_schema_any>(t, doc);
+     });
++
++    t.test("boolean true is any", [](testing & t) {
++        auto doc_prop = parse(R"({"properties": {"a": true}})");
++        as<common_chat_schema_any>(t, root<common_chat_schema_object>(t, doc_prop).properties[0].schema.get(), "a");
++    });
+ }
+ 
+ static void test_primitives(testing & t) {
+@@ -449,6 +454,10 @@ static void test_errors(testing & t) {
+         assert_error(t, R"([])", "#: schema must be an object");
+     });
+ 
++    t.test("false schema", [](testing & t) {
++        assert_error(t, R"({"properties": {"a": false}})", "#/properties/a: false schema is not supported");
++    });
++
+     t.test("type", [](testing & t) {
+         assert_error(t, R"({"type": 5})", "#: type must be a string or an array of strings");
+         assert_error(t, R"({"type": []})", "#: type must not be empty");
+diff --git a/tests/test-server-component.cpp b/tests/test-server-component.cpp
+index c4ed1cacc..5679ca18e 100644
+--- a/tests/test-server-component.cpp
++++ b/tests/test-server-component.cpp
+@@ -641,6 +641,41 @@ static void test_dry_sequence_breakers(testing & t) {
+     }
+ }
+ 
++static void test_stop_strings(testing & t) {
++    common_params params_base;
++
++    const auto eval = [&](const json & data) {
++        return server_schema::eval_llama_cmpl_schema(nullptr, params_base, {}, data);
++    };
++
++    {
++        json data;
++        data["stop"] = "";
++        t.assert_true("empty string is ignored", eval(data).antiprompt.empty());
++    }
++
++    {
++        json data;
++        data["stop"] = json::array({""});
++        t.assert_true("empty string in array is ignored", eval(data).antiprompt.empty());
++    }
++
++    {
++        json data;
++        data["stop"] = json::array({"", "zzz"});
++        const std::vector<std::string> expected = {"zzz"};
++        t.assert_true("only non-empty strings are kept", eval(data).antiprompt == expected);
++    }
++
++    {
++        params_base.antiprompt = {"User:"};
++        json data;
++        data["stop"] = json::array({""});
++        const std::vector<std::string> expected = {"User:"};
++        t.assert_true("falls back to CLI defaults", eval(data).antiprompt == expected);
++    }
++}
++
+ //
+ // glob_match
+ //
+@@ -765,6 +800,7 @@ int main(int argc, char ** argv) {
+     t.test("decision_depth",  test_decision_depth);
+     t.test("glob_match",      test_glob_match);
+     t.test("dry_sequence_breakers", test_dry_sequence_breakers);
++    t.test("stop_strings",    test_stop_strings);
+     t.test("speech_convert",  test_speech_convert);
+     t.test("pcm_f32_to_s16",  test_pcm_f32_to_s16);
+ 
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index a330c2bd5..cf0a85699 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -1031,6 +1031,10 @@ struct server_slot {
+         size_t stop_pos = std::string::npos;
+ 
+         for (const std::string & word : task->params.antiprompt) {
++            if (word.empty()) {
++                continue;
++            }
++
+             size_t pos;
+ 
+             if (is_full_stop) {
+diff --git a/tools/server/server-http.cpp b/tools/server/server-http.cpp
+index 5bdece55b..b7dc26c8a 100644
+--- a/tools/server/server-http.cpp
++++ b/tools/server/server-http.cpp
+@@ -772,7 +772,7 @@ static void process_handler_response(server_http_req_ptr && request, server_http
+                 sink.done();
+                 SRV_DBG("%s", "http: stream ended\n");
+             }
+-            return has_next;
++            return true;
+         };
+         const auto on_complete = [request = q_ptr, response = r_ptr](bool) mutable {
+             response->on_complete();
+diff --git a/tools/server/server-schema.cpp b/tools/server/server-schema.cpp
+index 025b0572a..2d7a0f280 100644
+--- a/tools/server/server-schema.cpp
++++ b/tools/server/server-schema.cpp
+@@ -481,9 +481,9 @@ std::vector<std::unique_ptr<field>> make_llama_cmpl_schema(const common_params &
+             const auto & stop = data.at("stop");
+             if (stop.is_array()) {
+                 for (const auto & word : stop) {
+-                    if (!word.empty()) ctx.params.antiprompt.push_back(word);
++                    if (!word.empty() && word != "") ctx.params.antiprompt.push_back(word);
+                 }
+-            } else if (stop.is_string()) {
++            } else if (stop.is_string() && stop != "") {
+                 ctx.params.antiprompt.push_back(stop.get<std::string>());
+             }
+             // fall back to CLI defaults if the request provided no effective stop strings
+diff --git a/tools/server/server.cpp b/tools/server/server.cpp
+index 104b3608a..567c14f77 100644
+--- a/tools/server/server.cpp
++++ b/tools/server/server.cpp
+@@ -348,7 +348,7 @@ static void server_install_signal_handlers() {
+     sigaction(SIGTERM, &sigint_action, NULL);
+ #elif defined (_WIN32)
+     auto console_ctrl_handler = +[](DWORD ctrl_type) -> BOOL {
+-        return (ctrl_type == CTRL_C_EVENT) ? (signal_handler(SIGINT), true) : false;
++        return (ctrl_type == CTRL_C_EVENT || ctrl_type == CTRL_BREAK_EVENT) ? (signal_handler(SIGINT), true) : false;
+     };
+     SetConsoleCtrlHandler(reinterpret_cast<PHANDLER_ROUTINE>(console_ctrl_handler), true);
+ #endif
+diff --git a/tools/server/tests/unit/test_completion.py b/tools/server/tests/unit/test_completion.py
+index 6afcb1773..618345585 100644
+--- a/tools/server/tests/unit/test_completion.py
++++ b/tools/server/tests/unit/test_completion.py
+@@ -1,3 +1,4 @@
++import http.client
+ import pytest
+ import requests
+ import time
+@@ -93,6 +94,44 @@ def test_completion_stream_vs_non_stream():
+     assert content_stream == res_non_stream.body["content"]
+ 
+ 
++def test_completion_connection_reuse():
++    server.start()
++    conn = http.client.HTTPConnection(server.server_host, server.server_port, timeout=30)
++    try:
++        conn.connect()
++        conn.auto_open = 0
++        original_socket = conn.sock
++        conn.request("POST", "/completion", json.dumps({
++            "prompt": "Hello", "n_predict": 4, "stream": True,
++        }), {"Content-Type": "application/json"})
++        with conn.getresponse() as response:
++            assert response.status == 200
++            assert response.chunked
++            assert not response.will_close
++            assert response.read()
++        conn.request("GET", "/health")
++        with conn.getresponse() as response:
++            assert response.status == 200
++            assert json.loads(response.read())["status"] == "ok"
++        assert conn.sock is original_socket
++    finally:
++        conn.close()
++
++
++def test_completion_empty_reverse_prompt():
++    global server
++    server.reverse_prompt = ""
++    server.start()
++    res = server.make_request("POST", "/completion", data={
++        "n_predict": 8,
++        "prompt": "I believe the meaning of life is",
++    })
++    assert res.status_code == 200
++    assert res.body["stop_type"] == "limit"
++    assert res.body["timings"]["predicted_n"] == 8
++    assert match_regex("(going|bed)+", res.body["content"])
++
++
+ def test_completion_with_openai_library():
+     global server
+     server.start()
+diff --git a/tools/server/tests/utils.py b/tools/server/tests/utils.py
+index 56c88b354..e98f770ea 100644
+--- a/tools/server/tests/utils.py
++++ b/tools/server/tests/utils.py
+@@ -77,6 +77,7 @@ class ServerProcess:
+     n_ga: int | None = None
+     n_ga_w: int | None = None
+     n_predict: int | None = None
++    reverse_prompt: str | None = None
+     n_prompts: int | None = 0
+     slot_save_path: str | None = None
+     id_slot: int | None = None
+@@ -136,6 +137,7 @@ class ServerProcess:
+     mcp_servers_json: str | None = None
+     cors_origins: str | None = None
+     llama_cache: str | None = None
++    share_console: bool = False  # Windows: console control events only reach a server on the console of the tests
+ 
+     # session variables
+     process: subprocess.Popen | None = None
+@@ -248,6 +250,8 @@ class ServerProcess:
+             server_args.extend(["-fa", self.fa])
+         if self.n_predict:
+             server_args.extend(["--n-predict", self.n_predict])
++        if self.reverse_prompt is not None:
++            server_args.extend(["--reverse-prompt", self.reverse_prompt])
+         if self.slot_save_path:
+             server_args.extend(["--slot-save-path", self.slot_save_path])
+         if self.n_ga:
+@@ -333,9 +337,10 @@ class ServerProcess:
+ 
+         flags = 0
+         if "nt" == os.name:
+-            flags |= subprocess.DETACHED_PROCESS
+             flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+-            flags |= subprocess.CREATE_NO_WINDOW
++            if not self.share_console:
++                flags |= subprocess.DETACHED_PROCESS
++                flags |= subprocess.CREATE_NO_WINDOW
+ 
+         if self.log_path:
+             self._log = open(self.log_path, "w")

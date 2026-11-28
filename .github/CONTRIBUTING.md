@@ -14,6 +14,8 @@ Thanks for helping. A few house rules:
 - **Before every push.** Run `node installer/make-changelog.js` and commit `CHANGELOG.md` with your change,
   then `npm test` and `npm run check:release`. Keep work in progress as a **draft** pull request: drafts run no
   GitHub builds, so they never send failed-build e-mails. Mark it ready for review only when both pass.
+- **Changed `catalog.json`?** Run `node installer/make-model-list.js` too: it rewrites the README's Supported
+  brains list from the catalogue, and `npm test` fails while the two differ.
 - **Tests never read the real computer.** A test that depends on the tester's graphics card, operating
   system, folders or environment keys passes on one PC and fails on another (and in GitHub's builds). Pass the
   hardware or the setting in as a fake instead.

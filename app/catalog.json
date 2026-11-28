@@ -646,6 +646,87 @@
       }
     },
     {
+      "id": "raon-1-nano-abliterated",
+      "family": "Raon",
+      "category": "chat",
+      "jobs": ["small", "bob", "scout"],
+      "name": "Raon-1 nano Abliterated (alexwkleung)",
+      "published": "2026-11-11",
+      "what": "KRAFTON's Raon-1 nano with the refusals cut out by alexwkleung (with Heretic). Quick on a laptop or a handheld. Text only. Its maker says it sometimes swaps in a safer task instead of refusing. Needs Brain Engine 37 or newer. Too weak for Bob's tool jobs (it passed 17 of his 64 held-out jobs); keep it to simple chats. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 2.1,
+      "vramGB": 3,
+      "params": 3.2,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "raced": "Bob's own held-out jobs on a rented L40S (2026-11-27, Lamplight 46 + 0123-0125): 17 of 64 passed, 2 tool-call slips. In the same run stock Qwen3.6 35B-A3B passed 38 of 65.",
+      "trial": true,
+      "thinks": true,
+      "engineMin": 37,
+      "naughty": true,
+      "community": {
+        "by": "alexwkleung",
+        "base": "Raon-1 nano",
+        "baseBy": "KRAFTON",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/alexwkleung/Raon-1-nano-Abliterated-GGUF/resolve/a9a20013866ba55f497dc9db662472f1cfb02787/Raon-1-nano-Abliterated-Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 2082677632,
+          "sha256": "60bc9c2181a3d87a8f93ddad4042aa48458627f2f6bd9631b113edbadf3e1027"
+        }
+      ],
+      "use": {
+        "models": {
+          "small": "$model"
+        }
+      }
+    },
+    {
+      "id": "inkling-2-mini-abliterated",
+      "family": "Inkling",
+      "category": "chat",
+      "jobs": ["bob", "tinker", "reviewer", "office", "scout"],
+      "name": "Inkling 2 Mini Abliterated (mrfakename)",
+      "published": "2026-11-22",
+      "what": "Thinking Machines' Inkling 2 Mini with the refusals cut out by mrfakename. 26B that works 3.4B at a time and runs its middle layers three times. Text only here. Needs Brain Engine 44 or newer. Tried on Bob's own tool jobs on a rented card, not on a home PC yet. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 17.6,
+      "vramGB": 16,
+      "params": 26,
+      "activeParams": 3.4,
+      "experts": true,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "raced": "Bob's own held-out jobs on a rented L40S (2026-11-27, Lamplight 46 + 0123-0125): 53 of the 61 it reached passed (inbox 20 of 25, office 14 of 14, repo 11 of 11, web 8 of 11), 1 tool-call slip, nothing harmful; writes about 68 tok/s. In the same run stock Qwen3.6 35B-A3B passed 38 of 65.",
+      "thinks": true,
+      "engineMin": 44,
+      "naughty": true,
+      "community": {
+        "by": "mrfakename",
+        "base": "Inkling 2 Mini",
+        "baseBy": "Thinking Machines Lab",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/mrfakename/Inkling-2-Mini-abliterated-GGUF/resolve/686fa052107b25ef0c636d3897eb82a915db2fbb/Inkling-2-Mini-abliterated-UD-Q4_K_XL.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 17629760736,
+          "sha256": "1ec8e76f9cb195270d3bc4df6afd51e62578db1809b8bcb4af280f2b95e5a889"
+        }
+      ],
+      "use": {
+        "models": {
+          "tinker": "$model"
+        }
+      }
+    },
+    {
       "id": "qwen3.6-35b-a3b-q3",
       "family": "Qwen",
       "category": "coding",
@@ -2742,6 +2823,144 @@
       }
     },
     {
+      "id": "qwen3.5-4b-abliterated",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["small", "bob", "eyes", "scout", "painter", "ledger"],
+      "name": "Qwen3.5 4B Abliterated (huihui)",
+      "published": "2026-03-08",
+      "what": "Qwen3.5 4B with the refusals cut out by huihui-ai. A small brain for laptops and 4 to 6 GB cards that sees pictures. Too weak for Bob's tool jobs (it passed 13 of his 65 held-out jobs); keep it to simple chats. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 3.1,
+      "vramGB": 4,
+      "params": 4,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "raced": "Bob's own held-out jobs on a rented L40S (2026-11-27, Lamplight 46 + 0123-0125): 13 of 65 passed, 4 tool-call slips. In the same run stock Qwen3.6 35B-A3B passed 38 of 65.",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "huihui-ai",
+        "files": "mradermacher",
+        "base": "Qwen3.5 4B",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/mradermacher/Huihui-Qwen3.5-4B-abliterated-GGUF/resolve/9d3aebb998fcf084086a3d1c60c31035fcfbf8e1/Huihui-Qwen3.5-4B-abliterated.Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 2707514688,
+          "sha256": "423f10b6ec2d99c3378143d7cd3b80eb4887b3ed92103103ac59173b404f4f7c"
+        },
+        {
+          "url": "https://huggingface.co/mradermacher/Huihui-Qwen3.5-4B-abliterated-GGUF/resolve/9d3aebb998fcf084086a3d1c60c31035fcfbf8e1/Huihui-Qwen3.5-4B-abliterated.mmproj-Q8_0.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 366894720,
+          "sha256": "650e2af8754b8b10e21debdbaf352cab43cd2435ec8ed56b893b9b581ae4a95c"
+        }
+      ],
+      "use": {
+        "models": {
+          "small": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.5-2b-abliterated",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["small", "bob", "eyes"],
+      "name": "Qwen3.5 2B Abliterated (huihui)",
+      "published": "2026-03-04",
+      "what": "Qwen3.5 2B with the refusals cut out by huihui-ai. Quick on an old laptop or a small card, and it sees pictures; keep the questions simple. Too weak for Bob's tool jobs (it passed 17 of his 65 held-out jobs); keep it to simple chats. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 1.6,
+      "vramGB": 2,
+      "params": 2,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "raced": "Bob's own held-out jobs on a rented L40S (2026-11-27, Lamplight 46 + 0123-0125): 17 of 65 passed, 25 tool-call slips, 2 errors. In the same run stock Qwen3.6 35B-A3B passed 38 of 65.",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "huihui-ai",
+        "files": "mradermacher",
+        "base": "Qwen3.5 2B",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/mradermacher/Huihui-Qwen3.5-2B-abliterated-GGUF/resolve/7f5aee7d2dc4df18bd67eab85ea81e0bc2e98a2c/Huihui-Qwen3.5-2B-abliterated.Q4_K_M.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 1270809024,
+          "sha256": "aa25eea787afe56a097268f7ed3460cb623e1901d2e89cd2b654cabb42f80636"
+        },
+        {
+          "url": "https://huggingface.co/mradermacher/Huihui-Qwen3.5-2B-abliterated-GGUF/resolve/7f5aee7d2dc4df18bd67eab85ea81e0bc2e98a2c/Huihui-Qwen3.5-2B-abliterated.mmproj-Q8_0.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 364664448,
+          "sha256": "d5ca558662f6eb46201c08c567ecac6c5b5628cacd6182413ed12342441bf7d6"
+        }
+      ],
+      "use": {
+        "models": {
+          "small": "$model"
+        }
+      }
+    },
+    {
+      "id": "qwen3.5-0.8b-abliterated",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["small", "eyes"],
+      "name": "Qwen3.5 0.8B Abliterated (huihui)",
+      "published": "2026-03-04",
+      "what": "Qwen3.5 0.8B with the refusals cut out by huihui-ai. The tiniest one, for a Raspberry Pi or an older phone; it still sees pictures. Too small for real work; kept at Q8 because squeezing a brain this small hurts it most. Too weak for Bob's tool jobs (it passed 3 of his 65 held-out jobs); keep it to simple chats. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 0.9,
+      "vramGB": 2,
+      "params": 0.8,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "raced": "Bob's own held-out jobs on a rented L40S (2026-11-27, Lamplight 46 + 0123-0125): 3 of 65 passed, 21 tool-call slips, 2 errors. In the same run stock Qwen3.6 35B-A3B passed 38 of 65.",
+      "trial": true,
+      "naughty": true,
+      "community": {
+        "by": "huihui-ai",
+        "files": "mradermacher",
+        "base": "Qwen3.5 0.8B",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/mradermacher/Huihui-Qwen3.5-0.8B-abliterated-GGUF/resolve/a8afb4737641a05ee0d02b0cef43ac3b6404db28/Huihui-Qwen3.5-0.8B-abliterated.Q8_0.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 811844064,
+          "sha256": "54e2a3903cbd0ff264b770f29ac59c1fc547d2865db2b42e4e3ef36700767946"
+        },
+        {
+          "url": "https://huggingface.co/mradermacher/Huihui-Qwen3.5-0.8B-abliterated-GGUF/resolve/a8afb4737641a05ee0d02b0cef43ac3b6404db28/Huihui-Qwen3.5-0.8B-abliterated.mmproj-Q8_0.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 115923744,
+          "sha256": "3c733bd5daf8dd176b127221b152686155397ebb97ad1c80c4135244a1f797f1"
+        }
+      ],
+      "use": {
+        "models": {
+          "small": "$model"
+        }
+      }
+    },
+    {
       "id": "deepseek-r1-distill-qwen-1.5b",
       "family": "DeepSeek",
       "category": "chat",
@@ -2986,7 +3205,7 @@
       "license": "Apache 2.0",
       "commercial": true,
       "pick": "optional",
-      "trial": true,
+      "raced": "Bob's own held-out jobs on a rented L40S (2026-11-27, Lamplight 46 + 0123-0125): 39 of 65 passed (inbox 19 of 28, office 12 of 14, repo 4 of 12, web 4 of 11), 8 tool-call slips, 1 harmful inbox step and 1 error; writes about 186 tok/s. In the same run stock Qwen3.6 35B-A3B passed 38 of 65.",
       "turbo": true,
       "naughty": true,
       "community": {
@@ -3122,7 +3341,7 @@
       "license": "Apache 2.0",
       "commercial": true,
       "pick": "optional",
-      "trial": true,
+      "raced": "Bob's own held-out jobs on a rented L40S (2026-11-27, Lamplight 46 + 0123-0125): 57 of 65 passed (inbox 25 of 28, office 12 of 14, repo 11 of 12, web 9 of 11), 2 tool-call slips, nothing harmful; writes about 39 tok/s. In the same run stock Qwen3.6 35B-A3B passed 38 of 65.",
       "naughty": true,
       "community": {
         "by": "huihui-ai",
@@ -3243,19 +3462,59 @@
       }
     },
     {
+      "id": "ternary-bonsai-2.5-27b-uncensored",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["deep", "reviewer", "bob", "tinker", "office"],
+      "name": "Ternary Bonsai 2.5 27B Uncensored (AtomicChat)",
+      "published": "2026-11-24",
+      "what": "PrismML's Ternary Bonsai 2.5 27B with the refusals cut out by AtomicChat, who folded the change into the -1/0/+1 weights. All 27B in 6 GB, so it runs on an 8 to 10 GB card; thinks before it answers. Its file type needs Brain Engine 47 or newer. Tried on Bob's own tool jobs on a rented card, not on a home PC yet. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 6.0,
+      "vramGB": 8,
+      "params": 27,
+      "license": "Apache 2.0",
+      "commercial": true,
+      "pick": "optional",
+      "raced": "Bob's own held-out jobs on a rented L40S (2026-11-27, Lamplight 46 + 0123-0125): 49 of 65 passed (inbox 20 of 28, office 13 of 14, repo 9 of 12, web 7 of 11), 4 tool-call slips, nothing harmful; writes about 79 tok/s. In the same run stock Qwen3.6 35B-A3B passed 38 of 65.",
+      "thinks": true,
+      "engineMin": 47,
+      "naughty": true,
+      "community": {
+        "by": "AtomicChat",
+        "base": "Ternary Bonsai 2.5 27B",
+        "baseBy": "PrismML",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/AtomicChat/Ternary-Bonsai-2.5-27B-Uncensored-GGUF/resolve/500fdfc33ca0baaa2e59230b8d20a9062ab188fa/Ternary-Bonsai-2.5-27B-Uncensored-PTQ1_0.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 5993834848,
+          "sha256": "f6b5f856c3981ff5ba1db1ce13cdf1ca85f2f701d26ce287e03983b659b681b4"
+        }
+      ],
+      "use": {
+        "models": {
+          "reviewer": "$model"
+        }
+      }
+    },
+    {
       "id": "qwen3.5-9b-abliterated",
       "family": "Qwen",
       "category": "chat",
       "jobs": ["bob", "tinker", "eyes", "office", "ledger", "scout", "painter"],
       "name": "Qwen3.5 9B Abliterated (huihui)",
       "published": "2026-03-10",
-      "what": "Qwen3.5 9B with the refusals cut out by huihui-ai. The small all-rounder for 8 GB cards: chats, codes a little, sees pictures. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "what": "Qwen3.5 9B with the refusals cut out by huihui-ai. The small all-rounder for 8 GB cards: chats, codes a little, sees pictures. Weaker than stock Qwen3.6 35B-A3B at Bob's tool jobs (it passed 32 of 65 of his held-out jobs, the 35B 38). Answers without refusing, so what it says is on you; a little rougher than the original.",
       "sizeGB": 6.3,
       "vramGB": 8,
       "params": 9,
       "license": "Apache 2.0",
       "commercial": true,
       "pick": "optional",
+      "raced": "Bob's own held-out jobs on a rented L40S (2026-11-27, Lamplight 46 + 0123-0125): 32 of 65 passed (inbox 13 of 28, office 11 of 14, repo 3 of 12, web 5 of 11), 12 tool-call slips, 1 harmful inbox step. In the same run stock Qwen3.6 35B-A3B passed 38 of 65.",
       "trial": true,
       "naughty": true,
       "community": {
@@ -3747,6 +4006,50 @@
       "use": {
         "models": {
           "tinker": "$model"
+        }
+      }
+    },
+    {
+      "id": "saluki-27b",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["bob", "tinker", "office", "scout", "deep", "eyes"],
+      "name": "Underdog Saluki 27B",
+      "published": "2026-10-07",
+      "what": "Qwen 3.8 27B squeezed to 7.9 GB (ISTA's 2-bit GSQ-RCO cut) and tuned by Underdog to keep tool calling intact. All of it fits on a 16 GB card, with room for about 128K of chat memory at q8_0. Good with tools; weaker than the full 27B at competition maths and letter puzzles, and with thinking on it thinks at length. Sees pictures with its add-on. Non-commercial licence: personal use only.",
+      "sizeGB": 7.9,
+      "vramGB": 12,
+      "params": 27,
+      "license": "CC BY-NC 4.0",
+      "commercial": false,
+      "pick": "optional",
+      "thinks": true,
+      "raced": "Bob's own held-out jobs on a rented card (2026-11-26, Lamplight): 56 of 65 passed (inbox 23 of 28, office 14 of 14, repo 9 of 12, web 10 of 11), where stock Qwen3.6 35B-A3B passed 49, with 5 tool-call slips and nothing harmful; about 67 tok/s on an L40S. On a rented L4 it held 128K of chat memory at q8_0 in 12.7 GB of graphics memory and found a code word hidden 103K tokens in.",
+      "community": {
+        "by": "Underdog (Conway Research)",
+        "base": "Qwen 3.8 27B",
+        "baseBy": "Alibaba",
+        "kind": "fine-tuned"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/ConwayResearch/Underdog-Saluki-27B-1.0/resolve/442e28ec9d89d9e732ddea2f0b9e017db20730a8/Underdog-Saluki-27B-1.0-IQ2-mix.gguf",
+          "role": "gguf",
+          "verify": true,
+          "bytes": 7898369152,
+          "sha256": "4a673518b11b1c4445f9b9a9d3c40356f5ba39f6a6260dcb25f3fbfd475d9efb"
+        },
+        {
+          "url": "https://huggingface.co/ConwayResearch/Underdog-Saluki-27B-1.0/resolve/442e28ec9d89d9e732ddea2f0b9e017db20730a8/mmproj-Underdog-Saluki-27B-1.0-Q8_0.gguf",
+          "role": "mmproj",
+          "verify": true,
+          "bytes": 629246976,
+          "sha256": "2e0b88b680a45a58eea666b9776a89601b16f4ef575b871a686d82ee65938756"
+        }
+      ],
+      "use": {
+        "models": {
+          "bob": "$model"
         }
       }
     },
@@ -4399,6 +4702,70 @@
       }
     },
     {
+      "id": "qwen3.8-flash-next-abliterated",
+      "family": "Qwen",
+      "category": "chat",
+      "jobs": ["deep", "bob", "reviewer", "tinker", "office", "scout"],
+      "name": "Qwen3.8 Flash Next Abliterated (huihui)",
+      "published": "2026-10-11",
+      "what": "Qwen3.8 Flash Next with the refusals cut out by huihui-ai (their second try, which leaves the experts alone). 180B that works a small part at a time, too big for one home PC, so it's for Rented brains. Text only here. Tried on Bob's own tool jobs on a rented card. Answers without refusing, so what it says is on you; a little rougher than the original.",
+      "sizeGB": 111.3,
+      "vramGB": 112,
+      "params": 180,
+      "experts": true,
+      "license": "Qwen community licence (a business that sells AI as a service or an AI work assistant needs its own licence from Qwen)",
+      "commercial": false,
+      "pick": "optional",
+      "raced": "Bob's own held-out jobs on a rented H200 (2026-11-27, Lamplight 46 + 0123-0125): 57 of 65 passed (inbox 22 of 28, office 14 of 14, repo 12 of 12, web 9 of 11), no tool-call slips, 1 harmful inbox step; writes about 103 tok/s. In the same run stock Qwen3.6 35B-A3B passed 41 of 65.",
+      "thinks": true,
+      "naughty": true,
+      "community": {
+        "by": "huihui-ai",
+        "base": "Qwen3.8 Flash Next",
+        "baseBy": "Alibaba",
+        "kind": "uncensored"
+      },
+      "files": [
+        {
+          "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF/resolve/cbc7fba13f1939ac3fa42b18d77ccf43847d74ef/unsloth-UD-Q4_K_XL-V2/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+          "role": "gguf",
+          "saveAs": "Huihui-Qwen3.8-Flash-Next-abliterated-v2-UD-Q4_K_XL-00001-of-00004.gguf",
+          "verify": true,
+          "bytes": 10946624,
+          "sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082"
+        },
+        {
+          "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF/resolve/cbc7fba13f1939ac3fa42b18d77ccf43847d74ef/unsloth-UD-Q4_K_XL-V2/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+          "role": "gguf-part-2",
+          "saveAs": "Huihui-Qwen3.8-Flash-Next-abliterated-v2-UD-Q4_K_XL-00002-of-00004.gguf",
+          "verify": true,
+          "bytes": 49859583136,
+          "sha256": "ab283aba22daee321944dad65b09180810140fc75502c0791200cf01b85f9c75"
+        },
+        {
+          "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF/resolve/cbc7fba13f1939ac3fa42b18d77ccf43847d74ef/unsloth-UD-Q4_K_XL-V2/Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf",
+          "role": "gguf-part-3",
+          "saveAs": "Huihui-Qwen3.8-Flash-Next-abliterated-v2-UD-Q4_K_XL-00003-of-00004.gguf",
+          "verify": true,
+          "bytes": 49376141504,
+          "sha256": "2a8d2e69ba47fef6b42c953c07a24b5d4c59c1c2cdc89b2bc17e13e000a62fa0"
+        },
+        {
+          "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF/resolve/cbc7fba13f1939ac3fa42b18d77ccf43847d74ef/unsloth-UD-Q4_K_XL-V2/Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf",
+          "role": "gguf-part-4",
+          "saveAs": "Huihui-Qwen3.8-Flash-Next-abliterated-v2-UD-Q4_K_XL-00004-of-00004.gguf",
+          "verify": true,
+          "bytes": 12087983520,
+          "sha256": "0d626450754c554235f93653b8f7c874c7c2d35380b9efab5b0852d616b84702"
+        }
+      ],
+      "use": {
+        "models": {
+          "deep": "$model"
+        }
+      }
+    },
+    {
       "id": "glm-4.5-air-gguf",
       "family": "GLM",
       "category": "chat",
@@ -4823,7 +5190,7 @@
       "cardGB": 0
     }
   ],
-  "updated": "2026-11-16",
+  "updated": "2026-11-26",
   "bigBrains": [
     {
       "id": "mistral-large-4",

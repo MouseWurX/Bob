@@ -1,0 +1,249 @@
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index b8d9e7b..cc5b976 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -36,6 +36,7 @@ set(LLAMA_CORE_SOURCES
+     llama-memory-recurrent.cpp
+     llama-mmap.cpp
+     llama-table-window.cpp
++    llama-page-warm.cpp
+     llama-model-loader.cpp
+     llama-model-saver.cpp
+     llama-model.cpp
+diff --git a/src/llama-model.cpp b/src/llama-model.cpp
+index a8b3433..33c17b6 100644
+--- a/src/llama-model.cpp
++++ b/src/llama-model.cpp
+@@ -1,4 +1,5 @@
+ #include "llama-table-window.h" // Brain Engine 0030
++#include "llama-page-warm.h"   // Brain Engine 0141
+ #include "llama-model.h"
+ 
+ #include "llama-arch.h"
+@@ -1374,6 +1375,13 @@ struct llama_model::impl {
+     // model memory mapped files
+     llama_mmaps mappings;
+ 
++    // Brain Engine 0141: the helper that reads the mapped file's pages once after load; declared after the
++    // mappings so it is stopped before they are unmapped
++    struct page_warm_holder {
++        llama_page_warm * w = nullptr;
++        ~page_warm_holder() { llama_page_warm_stop(w); }
++    } page_warm;
++
+     // Brain Engine 0030: the lookup tables read through a window of our own (LLAMA_TABLE_DIRECT=1)
+     struct table_windows {
+         std::vector<llama_table_window *> list;
+@@ -2183,12 +2191,56 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
+         }
+     }
+ 
++    // Brain Engine 0141: the parts of the mapped file that stay in RAM, read once by a helper so the first answer
++    // finds their pages mapped (off unless LLAMA_PAGE_WARM=1)
++    std::vector<std::pair<const uint8_t *, size_t>> warm_ranges;
++    double warm_mib = 0.0;
++    const char * warm_env  = getenv("LLAMA_PAGE_WARM");
++    const char * drive_env = getenv("LLAMA_MOE_DRIVE");
++    const bool warm_on = warm_env && strcmp(warm_env, "1") == 0;
++    const bool drive_on = drive_env && atoi(drive_env) > 0;
++    if (warm_on && use_mmap_buffer && ml.use_mmap && !drive_on) {
++        for (const auto & [name, t] : tensors_by_name) {
++            if (t == nullptr || t->data == nullptr || t->buffer == nullptr || !ggml_backend_buffer_is_host(t->buffer) || ml.lazy.has(t)) {
++                continue;
++            }
++            const uint8_t * d = (const uint8_t *) t->data;
++            for (const auto & m : ml.mappings) {
++                const uint8_t * a = (const uint8_t *) m->addr();
++                if (d >= a && d + ggml_nbytes(t) <= a + m->size()) {
++                    warm_ranges.emplace_back(d, ggml_nbytes(t));
++                    warm_mib += ggml_nbytes(t)/1048576.0;
++                    break;
++                }
++            }
++        }
++    }
++
+     if (use_mmap_buffer) {
+         for (auto & mapping : ml.mappings) {
+             pimpl->mappings.emplace_back(std::move(mapping));
+         }
+     }
+ 
++    if (!warm_on) {
++        // off unless LLAMA_PAGE_WARM=1: nothing to say
++    } else if (drive_on) {
++        LLAMA_LOG_WARN("%s: page warm-up (0141): NOT USED, the drive tier keeps the experts on the drive\n", __func__);
++    } else if (!(use_mmap_buffer && ml.use_mmap)) {
++        LLAMA_LOG_WARN("%s: page warm-up (0141): NOT USED, the brain was read into RAM, not mapped\n", __func__);
++    } else {
++        const char * fl = getenv("LLAMA_MOE_RAM_FLOOR_MIB");
++        const double floor_mib = fl && atof(fl) >= 0 ? atof(fl) : 512.0;
++        const double avail = llama_page_warm_avail_mib();
++        if (const char * why = llama_page_warm_refuse(warm_mib, avail, floor_mib)) {
++            LLAMA_LOG_WARN("%s: page warm-up (0141): NOT USED, %s (%.0f MiB to read, %.0f MiB free, floor %.0f MiB)\n",
++                    __func__, why, warm_mib, avail, floor_mib);
++        } else {
++            LLAMA_LOG_WARN("%s: page warm-up (0141): reading %.0f MiB of the brain file in the background\n", __func__, warm_mib);
++            pimpl->page_warm.w = llama_page_warm_start(std::move(warm_ranges));
++        }
++    }
++
+     // Brain Engine 0050: where each mapped expert tensor lies in its file, for the MoE cache's drive tier
+     if (const char * dr = getenv("LLAMA_MOE_DRIVE"); dr && atoi(dr) > 0 && ml.use_mmap) {
+         for (const auto & [name, w] : ml.weights_map) {
+diff --git a/src/llama-page-warm.cpp b/src/llama-page-warm.cpp
+new file mode 100644
+index 0000000..ca58606
+--- /dev/null
++++ b/src/llama-page-warm.cpp
+@@ -0,0 +1,126 @@
++// Brain Engine 0141: page warm-up. With the brain file mapped (mmap), the parts that stay in RAM come into the
++// engine's page table only when a word first needs them, one page fault at a time: the first answers after a load
++// are slower than the later ones (on Windows the whole file can still be on the drive). A helper thread now reads
++// one byte of each such page right after load, while nobody is waiting on it, so the first answer finds them mapped.
++// Nothing is changed or copied: same words. Off unless LLAMA_PAGE_WARM=1, until a test shows it pays. Skipped when the drive tier
++// (LLAMA_MOE_DRIVE) keeps the experts on the drive, or when the pages to read don't fit in free RAM above the floor
++// (LLAMA_MOE_RAM_FLOOR_MIB, 512 unless set), so it never pushes the computer into swapping. Idea from PolyStrata (MIT).
++
++#include "llama-page-warm.h"
++#include "llama-impl.h"
++
++#include <atomic>
++#include <chrono>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <thread>
++
++#ifdef _WIN32
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#include <windows.h>
++#elif defined(__APPLE__)
++#include <mach/mach.h>
++#endif
++
++struct llama_page_warm {
++    std::vector<std::pair<const uint8_t *, size_t>> ranges;
++    std::atomic<bool> stop{false};
++    std::thread th;
++};
++
++static void page_warm_run(llama_page_warm * w) {
++    const auto t0 = std::chrono::steady_clock::now();
++    const size_t page = 4096;
++    volatile uint8_t sink = 0;
++    size_t done = 0;
++    for (const auto & r : w->ranges) {
++        const uintptr_t a = (uintptr_t) r.first;
++        uintptr_t p = (a + page - 1) & ~(uintptr_t) (page - 1);
++        if (r.second > 0) {
++            sink ^= r.first[0]; // the first page, even when the range starts inside it
++        }
++        for (; p < a + r.second; p += page) {
++            sink ^= *(const volatile uint8_t *) p;
++            done += page;
++            if ((done & ((64u << 20) - 1)) == 0 && w->stop.load(std::memory_order_relaxed)) {
++                LLAMA_LOG_WARN("page warm-up (0141): stopped after %.0f MiB\n", done/1048576.0);
++                return;
++            }
++        }
++    }
++    (void) sink;
++    const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
++    LLAMA_LOG_WARN("page warm-up (0141): %.0f MiB of the brain file mapped in %.2f s\n", done/1048576.0, s);
++}
++
++const char * llama_page_warm_refuse(double need_mib, double avail_mib, double floor_mib) {
++    if (need_mib <= 0) {
++        return "nothing of the file stays in RAM";
++    }
++    if (avail_mib < 0) {
++        return "free RAM is not known";
++    }
++    if (need_mib > avail_mib - floor_mib) {
++        return "the pages don't fit in free RAM above the floor";
++    }
++    return nullptr;
++}
++
++llama_page_warm * llama_page_warm_start(std::vector<std::pair<const uint8_t *, size_t>> ranges) {
++    if (ranges.empty()) {
++        return nullptr;
++    }
++    auto * w = new llama_page_warm();
++    w->ranges = std::move(ranges);
++    w->th = std::thread(page_warm_run, w);
++    return w;
++}
++
++void llama_page_warm_stop(llama_page_warm * w) {
++    if (w == nullptr) {
++        return;
++    }
++    w->stop.store(true);
++    if (w->th.joinable()) {
++        w->th.join();
++    }
++    delete w;
++}
++
++double llama_page_warm_avail_mib() {
++    if (const char * t = getenv("LLAMA_PAGE_WARM_TEST_AVAIL_MIB")) { // tests only: pretend free RAM is this much
++        return atof(t);
++    }
++#ifdef _WIN32
++    MEMORYSTATUSEX ms = {};
++    ms.dwLength = sizeof(ms);
++    return GlobalMemoryStatusEx(&ms) ? ms.ullAvailPhys/1048576.0 : -1.0;
++#elif defined(__linux__)
++    FILE * f = fopen("/proc/meminfo", "r");
++    if (f == nullptr) {
++        return -1.0;
++    }
++    char line[256];
++    double kb = -1.0;
++    while (fgets(line, sizeof(line), f)) {
++        if (strncmp(line, "MemAvailable:", 13) == 0) {
++            kb = atof(line + 13);
++            break;
++        }
++    }
++    fclose(f);
++    return kb >= 0 ? kb/1024.0 : -1.0;
++#elif defined(__APPLE__)
++    vm_statistics64_data_t vs;
++    mach_msg_type_number_t cnt = HOST_VM_INFO64_COUNT;
++    if (host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t) &vs, &cnt) != KERN_SUCCESS) {
++        return -1.0;
++    }
++    return ((double) vs.free_count + vs.inactive_count + vs.purgeable_count)*(double) vm_page_size/1048576.0;
++#else
++    return -1.0;
++#endif
++}
+diff --git a/src/llama-page-warm.h b/src/llama-page-warm.h
+new file mode 100644
+index 0000000..eca3915
+--- /dev/null
++++ b/src/llama-page-warm.h
+@@ -0,0 +1,18 @@
++#pragma once
++// Brain Engine 0141: the brain file's pages read once after load (see llama-page-warm.cpp)
++
++#include <cstddef>
++#include <cstdint>
++#include <utility>
++#include <vector>
++
++struct llama_page_warm;
++
++// starts a helper thread that reads one byte of every page in ranges; nullptr when there is nothing to do
++llama_page_warm * llama_page_warm_start(std::vector<std::pair<const uint8_t *, size_t>> ranges);
++// stops the helper (if it is still reading) and waits for it; call before the ranges are unmapped
++void llama_page_warm_stop(llama_page_warm * w);
++// Brain Engine 0141: the decision, kept apart so it can be told plainly: 0 = warm, else the reason it is skipped
++const char * llama_page_warm_refuse(double need_mib, double avail_mib, double floor_mib);
++// free RAM in MiB (-1 when not known)
++double llama_page_warm_avail_mib();

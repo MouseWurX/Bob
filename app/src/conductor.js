@@ -25,10 +25,67 @@ export const SLOW_TRIES = 3;
 const READ_SHARE = { 2048: 1, 4096: 1.41, 6144: 1.73 };
 const WRITE_SHARE = { 2048: 1, 4096: 1, 6144: 0.96 };
 
-export const conductorOn = (cfg) => cfg?.engineTuning?.mode === 'conductor';
+// Nov 24 (the owner asked for it on): the Conductor drives unless another way is picked. A saved "Let Bob pick" or
+// "I'll set them myself" still wins. conductorPicked: picked by hand, which also covers the places the default skips.
+const TUNE_MODES = ['bob', 'hand', 'conductor'];
+export const conductorPicked = (cfg) => cfg?.engineTuning?.mode === 'conductor';
+export const conductorOn = (cfg) => (TUNE_MODES.includes(cfg?.engineTuning?.mode) ? cfg.engineTuning.mode : 'conductor') === 'conductor';
+// The default needs Brain Engine 43 or newer (the switch without a reload) on a graphics card of its own. Built-in
+// graphics (sharedGraphics) waits for its own check on the Legion Go; picking the Conductor there still works.
+export const CONDUCTOR_DEFAULT_MIN_BE = 43;
+// Nov 24, the seeded Legion Go rerun: on built-in graphics it now keeps Bob's own step (no copy cache there), so the
+// default is safe there too (the owner: GUPPI fits the machine he is in, everywhere).
+export const conductorDefaultFits = ({ beNo = 0 } = {}) => beNo >= CONDUCTOR_DEFAULT_MIN_BE;
+// Nov 24, the laptop check (3060 6 GB, qwen3-4b, 32K, no copy cache): loaded at the read step, its working room spilled
+// off the card (5872 MiB peak against 5632) and a 20 s read took 347 s. The owner: GUPPI fits himself to the machine
+// he is on, and corrects on the fly. So the Conductor loads at its read step only when the engine sizes the card
+// around that step itself (the copy cache fill, Brain Engine 39+); otherwise it loads at the chat step, and from Brain
+// Engine 44 steps up for a long read only while the card keeps SPILL_MARGIN_MIB free, stepping straight back down and
+// capping that brain's step when a switch leaves less.
+export const SPILL_MARGIN_MIB = 512;
+// Nov 24: the copy cache GUPPI turns on for a brain of experts bigger than the card (the fill grows it to the card)
+export const COND_CACHE_MIB = 4096;
+export const condCacheWanted = ({ experts = 0, fileBytes = 0, cardBytes = 0 } = {}) => experts > 0 && cardBytes > 0 && fileBytes > cardBytes * 0.9;
+export const loadAtReadStep = ({ fills = false } = {}) => fills === true;
+// after a step change: the step to fall back to, or 0 when the card still has its margin (free unknown: 0)
+export const stepBack = ({ from = 0, to = 0, freeMiB = null } = {}) => (to > from && Number.isFinite(freeMiB) && freeMiB < SPILL_MARGIN_MIB ? from : 0);
+// Nov 24: Brain Engine 44 (0087) switches the step in about 0.2 s with the brain kept, so from 44 the Conductor
+// switches inside a job again (read big, write at the chat step); before 44 it stays at the step it loaded at.
+export const SWITCH_IN_JOB_FROM_BE = 44;
 
 // the step to read a new part at, for a chat this long
 export const readStepFor = (totalTokens) => (totalTokens >= BIG_FROM ? BIG_STEP : READ_STEP);
+
+// Nov 24 (the owner: GUPPI's job is speed and a safety net, so he must beat "Let Bob pick"): the top step a brain loads
+// and reads at comes from its own measured speeds, not from the biggest step the card holds. A smaller top step also
+// leaves the copy cache fill more of the card. Only steps with both a read and a write speed measured on this machine
+// count (no shares guessed from another step); until the top step is measured it stays, which is how it gets measured.
+// A smaller step has to beat it by LOAD_PICK_MARGIN, so a brain doesn't flip between loads on noise.
+export const LOAD_PICK_MARGIN = 0.05;
+export function loadStepBySpeed({ speeds, chat = CHAT_STEP, max = 0, readTok = 16384, outTok = 300 } = {}) {
+  if (!(max > chat)) return { step: max > 0 ? max : chat, why: '' };
+  const measured = (s) => speeds?.read?.[s] > 0 && speeds?.write?.[s] > 0;
+  if (!measured(max)) return { step: max, why: '' };
+  const n = Math.max(MIN_NEW, Number(readTok) || 0), o = Math.max(0, Number(outTok) || 0);
+  const time = (s) => n / speeds.read[s] + o / speeds.write[s];
+  let best = max;
+  for (const s of [...new Set([BIG_STEP, READ_STEP, chat])].filter((x) => x < max && x >= chat).sort((a, b) => b - a)) {
+    if (measured(s) && time(s) < time(best) * (1 - LOAD_PICK_MARGIN)) best = s;
+  }
+  return best === max ? { step: max, why: '' } : { step: best, why: `step ${best} measured faster than ${max} here (about ${time(best).toFixed(1)} s against ${time(max).toFixed(1)} s for a ${n}-token read and ${o} written)` };
+}
+// learned speeds kept between runs (dataDir/conductor/speeds.json): only for the same Brain Engine build, and only
+// clean numbers, so an old or hand-edited file can't steer the step
+export function cleanSpeeds(saved, beNo = 0) {
+  if (!saved || typeof saved !== 'object' || saved.be !== beNo || !saved.speeds || typeof saved.speeds !== 'object') return {};
+  const out = {};
+  for (const [model, sp] of Object.entries(saved.speeds)) {
+    const kinds = {};
+    for (const kind of ['read', 'write']) kinds[kind] = Object.fromEntries(Object.entries(sp?.[kind] || {}).filter(([k, v]) => Number(k) > 0 && Number.isFinite(v) && v > 0).map(([k, v]) => [Number(k), v]));
+    out[model] = kinds;
+  }
+  return out;
+}
 
 // learned speeds: { read: { step: t/s }, write: { step: t/s } }, kept as a running mean (newest 30%)
 export function learnStep(sp, kind, step, tps) {
@@ -156,6 +213,17 @@ export function mtpSpareEnv({ env = {}, step = 0 } = {}) {
   if (!env || env.LLAMA_MOE_CACHE_FILL !== '1') return {};
   if (env.LLAMA_MOE_CACHE_FILL_SPARE_MIB !== undefined && env.LLAMA_MOE_CACHE_FILL_SPARE_MIB !== '') return {};
   return { LLAMA_MOE_CACHE_FILL_SPARE_MIB: String(512 + Math.ceil(Math.max(step, 512) * MTP_SPARE_PER_TOKEN_MIB)) };
+}
+// Nov 27 (1.5.255, 35B rental try 4 on a 16 GB A4000): the picture reader (--mmproj) loads after the fill has measured
+// the card, so the fill took its room and the reader's 858 MiB found none: "cudaMalloc failed: out of memory", then
+// GGML_ASSERT, on every load. With the fill on, the fill now leaves the reader's file size plus room for its working
+// memory free as well (on top of the MTP spare when that is set). A spare set by hand wins.
+export const READER_SPARE_EXTRA_MIB = 512;
+export function readerSpareEnv({ env = {}, hand = {}, readerBytes = 0 } = {}) {
+  if (!env || env.LLAMA_MOE_CACHE_FILL !== '1' || !(Number(readerBytes) > 0)) return {};
+  if (hand && hand.LLAMA_MOE_CACHE_FILL_SPARE_MIB !== undefined && hand.LLAMA_MOE_CACHE_FILL_SPARE_MIB !== '') return {};
+  const base = Number(env.LLAMA_MOE_CACHE_FILL_SPARE_MIB) > 0 ? Number(env.LLAMA_MOE_CACHE_FILL_SPARE_MIB) : 512;
+  return { LLAMA_MOE_CACHE_FILL_SPARE_MIB: String(base + Math.ceil(Number(readerBytes) / 1048576) + READER_SPARE_EXTRA_MIB) };
 }
 // Nov 23: the Conductor loads at its biggest read step and drops to the chat step after a read (the cheap direction,
 // about 1.3 s on the test PC against 15.5 s up), with -b at least that step. Returns the new args.
