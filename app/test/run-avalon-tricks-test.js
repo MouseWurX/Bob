@@ -1,54 +1,52 @@
-// Nov 28: the engine speed-ups taken from Avalon (Lamplight 0160 even cut before the last save point, 0162 MTP guess length, 0161 keep the
-// card's ready-made steps): off by default until a test shows a gain, same words, each with an Engine tuning box, and
-// Help, glossary and FAQ. Nothing here reads the real computer.
+// Nov 28: Turbo: smart guess length (Lamplight 0162, after Avalon): MTP's guess length chosen word by word. The owner:
+// "a Turbo feature". On with Turbo unless switched off, never outside Turbo, only for MTP; Help, glossary and FAQ.
+// The other two Avalon tricks (0160, 0161) were tested on a 4090, gave nothing and were taken out. Nothing here reads
+// the real computer.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TUNING_FIELDS, tuningArgs } from '../src/engine-tuning.js';
+import { turboSmartGuess, smartGuessEnv, SMART_GUESS_ENV } from '../src/engine-extras.js';
+import { mergeSettings } from '../src/config.js';
+import { TUNING_FIELDS } from '../src/engine-tuning.js';
 import { HELP } from '../public/help-content.js';
 
 let pass = 0, fail = 0;
 const check = (name, ok, why = '') => { if (ok) pass++; else fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${!ok && why ? ` (${why})` : ''}`); };
 const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (f) => fs.readFileSync(path.join(app, f), 'utf8').replace(/\r\n/g, '\n');
-const KEYS = /LLAMA_SERVER_CKPT_EQUAL|GGML_CUDA_GRAPHS_KEEP|LLAMA_MTP_ADAPT/;
+const MTP = ['--spec-type', 'draft-mtp', '--spec-draft-n-max', '8'];
 
-// ---------- Off by default ----------
+// ---------- Turbo only ----------
+check('off in a fresh Bob (Turbo is off)', !turboSmartGuess({}) && !turboSmartGuess(mergeSettings({}, {})));
+check('on with Turbo unless switched off', turboSmartGuess({ turbo: true }) && !turboSmartGuess({ turbo: true, turboSmartGuess: false }) && !turboSmartGuess({ turboSmartGuess: true }));
+check('only true or false is kept when saved', mergeSettings({}, { turboSmartGuess: 'yes' }).turboSmartGuess === undefined && mergeSettings({}, { turboSmartGuess: false }).turboSmartGuess === false);
+check('the engine key with Turbo and MTP', JSON.stringify(smartGuessEnv({ turbo: true }, { args: MTP })) === JSON.stringify(SMART_GUESS_ENV) && SMART_GUESS_ENV.LLAMA_MTP_ADAPT === '1');
+check('nothing without Turbo, switched off, or without MTP', !Object.keys(smartGuessEnv({}, { args: MTP })).length && !Object.keys(smartGuessEnv({ turbo: true, turboSmartGuess: false }, { args: MTP })).length && !Object.keys(smartGuessEnv({ turbo: true }, { args: ['--spec-type', 'ngram-mod'] })).length);
+check('nothing when MTP guesses only one word', !Object.keys(smartGuessEnv({ turbo: true }, { args: ['--spec-type', 'draft-mtp', '--spec-draft-n-max', '1'] })).length);
 { const srcDir = path.join(app, 'src');
-  const users = fs.readdirSync(srcDir).filter((f) => f.endsWith('.js') && f !== 'engine-tuning.js' && KEYS.test(read(`src/${f}`).replace(/\/\/.*$/gm, '')));
-  check('nothing in Bob sets them but the Engine tuning boxes (not Turbo, not a default)', users.length === 0, users.join(', ')); }
-const p160 = read('engine/patches/0160-ckpt-equal-cut.patch');
-const p161 = read('engine/patches/0161-cuda-graphs-keep.patch');
-check('the engine cuts evenly only with LLAMA_SERVER_CKPT_EQUAL=1', /getenv\("LLAMA_SERVER_CKPT_EQUAL"\)/.test(p160) && /strcmp\(v, "1"\) == 0/.test(p160));
-check('off, the save point is where llama.cpp puts it (n_ubatch)', /slot\.n_ckpt_tail = n_ubatch;/.test(p160));
+  const users = fs.readdirSync(srcDir).filter((f) => f.endsWith('.js') && f !== 'engine-extras.js' && /[^.]LLAMA_MTP_ADAPT/.test(read(`src/${f}`).replace(/\/\/.*$/gm, '')));
+  check('only the Turbo switch sets the key (no Engine tuning box, no default)', users.length === 0 && !TUNING_FIELDS.some((f) => f.env === 'LLAMA_MTP_ADAPT'), users.join(', ')); }
+{ const src = read('src/llamacpp.js');
+  check('the engine start adds it', /smartGuessEnv\(this\.cfg, \{ args \}\)/.test(src));
+  check('Engine tuning keys typed by hand come after, so they win', src.indexOf('smartGuessEnv(this.cfg') < src.indexOf('env = { ...env, ...this.tuneEnv }')); }
+check('Settings has the switch', /sswitch\('turboSmartGuess', settings\.turboSmartGuess !== false/.test(read('public/cellar-engines.js')) && /dataset\.set === 'turboSmartGuess'/.test(read('public/cellar.js')));
+check('the settings page sees it', /turboSmartGuess: cfg\.turboSmartGuess !== false/.test(read('src/server.js')));
+
+// ---------- The engine patch and its notes ----------
 const p162 = read('engine/patches/0162-mtp-adapt.patch');
 check('the engine chooses the guess length only with LLAMA_MTP_ADAPT=1', /getenv\("LLAMA_MTP_ADAPT"\); v != nullptr && strcmp\(v, "1"\) == 0/.test(p162));
-check('the engine keeps graphs by use only with GGML_CUDA_GRAPHS_KEEP above 0', /getenv\("GGML_CUDA_GRAPHS_KEEP"\)/.test(p161) && /if \(keep_n > 0\)/.test(p161));
-
-// ---------- Engine tuning boxes ----------
-const by = Object.fromEntries(TUNING_FIELDS.map((f) => [f.k, f]));
-check('three boxes', by.ckptEqualCut?.env === 'LLAMA_SERVER_CKPT_EQUAL' && by.graphsKeep?.env === 'GGML_CUDA_GRAPHS_KEEP' && by.mtpAdapt?.env === 'LLAMA_MTP_ADAPT');
-const hand = (levers) => ({ engineTuning: { mode: 'hand', list: [{ model: 'big', ...levers }] } });
-{ const t = tuningArgs(hand({ ckptEqualCut: 1, graphsKeep: 64 }), 'big');
-  check('filled in, they reach the engine', t.env.LLAMA_SERVER_CKPT_EQUAL === '1' && t.env.GGML_CUDA_GRAPHS_KEEP === '64', JSON.stringify(t.env)); }
-{ const t = tuningArgs(hand({ ckptEqualCut: 1, graphsKeep: 64, mtpAdapt: 1 }), 'big', { cpu: true });
-  check('on the processor: the even cut and the guess length go, the card graphs do not', t.env.LLAMA_SERVER_CKPT_EQUAL === '1' && t.env.LLAMA_MTP_ADAPT === '1' && !('GGML_CUDA_GRAPHS_KEEP' in t.env), JSON.stringify(t.env)); }
-check('empty boxes send nothing', !KEYS.test(JSON.stringify(tuningArgs(hand({ step: 2048 }), 'big').env)));
-
-// ---------- The engine patches and their notes ----------
+check('the first guess can be dropped too (v2)', /the first one too/.test(p162));
 const readme = read('engine/README.md');
-check('the engine README lists 0160, 0161 and 0162', ['0160-ckpt-equal-cut.patch', '0161-cuda-graphs-keep.patch', '0162-mtp-adapt.patch'].every((n) => readme.includes(n)));
-check('and says 0161 changes ggml', /0127 and 0161 also change ggml/.test(readme));
-check('the engine map has both', /### 0160-ckpt-equal-cut/.test(read('engine/ENGINE-MAP.md')) && /### 0161-cuda-graphs-keep/.test(read('engine/ENGINE-MAP.md')));
-check('0160 and 0162 have their tests', ['ckpt-equal.py', 'mtp-adapt.py'].every((n) => fs.existsSync(path.join(app, 'engine', 'tests', n))));
+check('the engine README lists 0162, and 0160 and 0161 are gone', readme.includes('0162-mtp-adapt.patch') && !/0160-|0161-/.test(readme) && !fs.existsSync(path.join(app, 'engine', 'patches', '0160-ckpt-equal-cut.patch')) && !fs.existsSync(path.join(app, 'engine', 'patches', '0161-cuda-graphs-keep.patch')));
+check('the engine map has it', /### 0162-mtp-adapt/.test(read('engine/ENGINE-MAP.md')));
+check('its test is there', fs.existsSync(path.join(app, 'engine', 'tests', 'mtp-adapt.py')));
 check('Avalon is credited', /Avalon \(MIT/.test(readme));
 
 // ---------- Help, glossary, FAQ ----------
 const h = Object.fromEntries(HELP.map((e) => [e.id, e]));
-check('Help explains both, and that they are off', /Even reading steps before the last save point/.test(h['engine-always-on']?.html) && /Keep the card's ready-made steps/.test(h['engine-always-on']?.html) && /MTP guesses only as many words as pay/.test(h['engine-always-on']?.html) && /off too/.test(h['engine-always-on']?.html));
-check('Help says where each works', /Every system/.test(h['engine-always-on']?.html) && /Vulkan and the processor don't record steps this way/.test(h['engine-always-on']?.html));
-check('an FAQ about Avalon', /Avalon/.test(h['faq-avalon']?.html) && /unproven in our lab, as we have yet to test/.test(h['engine-always-on']?.html));
-check('glossary entries', /<dt>Save point \(checkpoint\)<\/dt>/.test(h.glossary?.html) && /<dt>Ready-made card steps \(CUDA graphs\)<\/dt>/.test(h.glossary?.html));
+check('Settings help has the row', /Turbo: smart guess length/.test(h['engine-extras']?.html));
+check('an FAQ, honest about the words and the test', /Avalon/.test(h['faq-smart-guess']?.html) && /words can change/.test(h['faq-smart-guess']?.html) && /unproven in our lab, as we have yet to test/.test(h['faq-smart-guess']?.html));
+check('a glossary entry', /<dt>Smart guess length<\/dt>/.test(h.glossary?.html));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

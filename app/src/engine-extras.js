@@ -271,6 +271,18 @@ export function keepGuessesArgs(cfg, { args = [], be = 0 } = {}) {
 }
 // the engine key goes with it, only when the start samples its guesses
 export const keepGuessesEnv = (cfg, { args = [], be = 0 } = {}) => (turboKeepGuesses(cfg) && be >= KEEP_GUESSES_FROM_BE && args.some((a, i) => a === '--spec-draft-sampling' && args[i + 1] === 'probabilistic') ? { ...KEEP_GUESSES_ENV } : {});
+// Turbo: smart guess length (Lamplight 0162, after Avalon, MIT; Nov 28 the owner: "a Turbo feature"). With MTP on, each
+// next guessed word is kept only while its chance of being right pays for checking it, with the cost of a check learned
+// as the brain writes. On with Turbo unless switched off. Turbo only because on a card a check of a different size rounds
+// differently, so the words can change. Nov 28 4090: about 1.5% faster over five jobs, +17-22% on a short follow-up.
+export const turboSmartGuess = (cfg) => cfg?.turbo === true && cfg?.turboSmartGuess !== false;
+export const SMART_GUESS_ENV = { LLAMA_MTP_ADAPT: '1' };
+// the engine key, only when the start guesses with MTP and up to 2 or more words
+export function smartGuessEnv(cfg, { args = [] } = {}) {
+  if (!turboSmartGuess(cfg) || !specTypes(args).includes('draft-mtp')) return {};
+  const i = Math.max(args.lastIndexOf('--spec-draft-n-max'), args.lastIndexOf('--draft-max')); const n = i >= 0 ? Number(args[i + 1]) : 16; // llama.cpp's own is 16
+  return n >= 2 ? { ...SMART_GUESS_ENV } : {};
+}
 // The experts per word Turbo asks of a brain whose own count is `own`: 4 when it has more, else nothing.
 export const turboPerWord = (cfg, own) => (turboExperts(cfg) && Number(own) > TURBO_EXPERTS ? TURBO_EXPERTS : null);
 // Progressive Memory (Brain Engine patch 0039): the engine names LLAMA_KV_TIERS under -ctv in --help.
