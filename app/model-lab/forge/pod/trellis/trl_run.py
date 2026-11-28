@@ -19,11 +19,17 @@ import torch
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 
 
+_READERS = {}
+
+
 def load_weight(reader_path, name):
+    """one tensor as float32; the GGUF is opened once per worker: opening one with a 151k-word vocabulary takes ~5 s
+    (gguf-py parses every token string), which was most of the canaries' trellis time (28 Nov, card near 50 W)"""
     import gguf
     from gguf.quants import dequantize
-    r = gguf.GGUFReader(reader_path)
-    t = next(t for t in r.tensors if t.name == name)
+    if reader_path not in _READERS:
+        r = gguf.GGUFReader(reader_path); _READERS[reader_path] = (r, {t.name: t for t in r.tensors})
+    t = _READERS[reader_path][1][name]
     ne = [int(x) for x in t.shape]  # [K, N] or [K, N, E] (experts)
     w = np.array(dequantize(t.data, t.tensor_type), dtype=np.float32)
     return torch.from_numpy(w.reshape(ne[2], ne[1], ne[0]) if len(ne) == 3 else w.reshape(ne[1], ne[0]))
@@ -82,6 +88,7 @@ def work(rank, dev, jobs, a):
     rep = open(os.path.join(a.out, f"report-{rank}.tsv"), "a")
     yq = a.mode == "yaqa"
     dense = []  # (name, k, W, H_in, H_out, n) waiting for a shared run
+    tm = {"load": 0.0, "code": 0.0}; t_all = time.time()
     def flush():
         if not dense: return
         t0 = time.time()
@@ -91,18 +98,18 @@ def work(rank, dev, jobs, a):
             for d, r in zip(grp, res):
                 N, K = d[2].shape
                 finish(a, d[0], f"{N}x{K}", k, [r], [d[2]], [d[3]], [d[4]], [d[5]], 0, N, K, t0, dev, rep)
-        dense.clear()
+        dense.clear(); tm["code"] += time.time() - t0
         if dev.startswith("cuda"): torch.cuda.empty_cache()
     for name in jobs:
         t0 = time.time()
-        W = load_weight(a.weights, name).to(dev)
+        W = load_weight(a.weights, name).to(dev); tm["load"] += time.time() - t0
         k = a.plan.get(name, a.bits)
         if W.dim() == 3:  # experts: one coded matrix each, same sides and desc, H per expert (hess_hf.py, or x_dump: H_in only)
             flush()
             E, N, K = W.shape
             Hi, Ho, n_e = expert_hessians(a, name, K, N, E)
             if yq and Ho is None: raise SystemExit(f"trl_run: {name}: YAQA needs the experts' H_out (hess_hf.py without --no-out)")
-            pick = list(range(E))
+            tc = time.time(); pick = list(range(E))
             if a.sample and a.sample < E:  # price the width from a few experts (the busiest and an even spread)
                 order = sorted(range(E), key=lambda e: -n_e[e]); pick = sorted(set(order[:a.sample // 2] + order[::max(1, E // (a.sample - a.sample // 2))]))[:a.sample]
             per = max(1, a.tiles // (N // 16)); res = []
@@ -112,15 +119,17 @@ def work(rank, dev, jobs, a):
             finish(a, name, f"{E}x{N}x{K}", k, res, [W[e] for e in pick], [Hi[e] for e in pick],
                    [Ho[e] if Ho is not None else None for e in pick], [n_e[e] for e in pick], E, N, K, t0, dev, rep,
                    sample=sum(n_e) if len(pick) < E else None)
-            del W, Hi, Ho
+            tm["code"] += time.time() - tc; del W, Hi, Ho
             if dev.startswith("cuda"): torch.cuda.empty_cache()
         else:
-            h = torch.load(os.path.join(a.hess, name + ".pt"))
+            tl = time.time(); h = torch.load(os.path.join(a.hess, name + ".pt")); tm["load"] += time.time() - tl
             Ho = h.get("H_out")
             if yq and Ho is None: raise SystemExit(f"trl_run: {name} has no H_out (hess_hf.py ran with --no-out)")
             dense.append((name, k, W, h["H_in"].to(dev), Ho.to(dev) if Ho is not None else None, h["n"]))
             if sum(d[2].shape[0] // 16 for d in dense) >= a.tiles: flush()
     flush()
+    print(f"trl_run[{dev}]: {len(jobs)} tensors in {time.time() - t_all:.0f} s: loading {tm['load']:.0f} s, coding and saving "
+          f"{tm['code']:.0f} s (the seconds column counts each tensor's whole shared batch)", flush=True)
 
 
 def main():

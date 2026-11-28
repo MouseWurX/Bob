@@ -136,7 +136,8 @@ run() {  # run <codes dir> <bits> <mode> [--plan file]: one trl_run over every c
   timeout $((STEP_MIN * 60)) python3 "$TP/trl_run.py" --weights "$REF" --hess "$H" --out "$C" --bits "$k" --mode "$m" --devices "$NGPU" \
     --match "$MATCH" "$@" > "$OUT/$(basename "$C").log" 2>&1 || { tail -5 "$OUT/$(basename "$C").log"; fail "trellis $(basename "$C")"; }
   cp "$C/report.tsv" "$OUT/report-$(basename "$C").tsv"
-  say "$(basename "$C"): $(awk -F'\t' '{n++; s+=$7; d+=$6; b+=$9} END{printf "%d tensors, %.0f s of card time, drift estimate %.4g, %.3f GB", n, s, d, b/1e9}' "$C/report.tsv")"
+  grep -h "tensors in" "$OUT/$(basename "$C").log" | while read -r l; do say "$l"; done   # where the time went: loading vs coding
+  say "$(basename "$C"): $(awk -F'\t' '{n++; s+=$7; d+=$6; b+=$9} END{printf "%d tensors, %.0f s summed per tensor, drift estimate %.4g, %.3f GB", n, s, d, b/1e9}' "$C/report.tsv")"
 }
 for k in 1 2 3 4; do step "trellis $k bits, LDLQ, every coded tensor over $NGPU cards"; run "$W/codes-ldlq-$k" $k ldlq; done
 step "bits by part: widths within TRL2-LDLQ's bytes"

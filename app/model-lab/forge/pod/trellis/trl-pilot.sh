@@ -136,8 +136,9 @@ for k in $BITS; do
     [ -s "$W/TRL$k-$M.gguf" ] || { timeout $((STEP_MIN * 60)) python3 "$TP/trl_run.py" --weights "$REF" --hess "$H" --out "$C" --bits $k --mode $m \
         --devices "$NGPU" --match "^blk\.[0-9]+\.$LIN\$" > "$OUT/trl$k-$m.log" 2>&1 || { tail -5 "$OUT/trl$k-$m.log"; fail "trellis $k $m"; }
       cp "$C/report.tsv" "$OUT/report-trl$k-$m.tsv"
+      grep -h "tensors in" "$OUT/trl$k-$m.log" | while read -r l; do say "$l"; done   # where the time went: loading vs coding
       python3 "$TP/trl_write.py" --base "$BASE" --codes "$C" --out "$W/TRL$k-$M.gguf" >> "$OUT/write.log" 2>&1 || fail "write $k $m"; }
-    say "TRL$k-$M: $(awk -F'\t' '{n++; s+=$7} END{printf "%d linears, %.0f s of card time", n, s}' "$OUT/report-trl$k-$m.tsv")"
+    say "TRL$k-$M: $(awk -F'\t' '{n++; s+=$7} END{printf "%d linears, %.0f s summed per tensor", n, s}' "$OUT/report-trl$k-$m.tsv")"
     KL+=("TRL$k-$M=$W/TRL$k-$M.gguf")
   done
 done
