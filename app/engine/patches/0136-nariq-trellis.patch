@@ -9112,7 +9112,7 @@ index 1b717c8..2878fba 100644
      vk_pipeline pipeline_cumsum_small_f32;
      vk_pipeline pipeline_cumsum_multipass1_f32;
 diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
-index 3c63a1f..4269f64 100644
+index 3c63a1f..2dd926f 100644
 --- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
 +++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
 @@ -4013,6 +4013,100 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
@@ -9216,7 +9216,7 @@ index 3c63a1f..4269f64 100644
      // comb holds a token's 4x4 matrix in one 16-lane slice of a subgroup, so it
      // needs at least 16 lanes, pinned to a known size.
      if (device->subgroup_basic && device->subgroup_shuffle && device->subgroup_require_full_support && device->subgroup_size >= 16) {
-@@ -7878,6 +7972,465 @@ void ggml_vk_fwht(ggml_backend_vk_context * ctx, vk_context& subctx, const ggml_
+@@ -7878,6 +7972,467 @@ void ggml_vk_fwht(ggml_backend_vk_context * ctx, vk_context& subctx, const ggml_
      ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { src_buf, dst_buf }, pc, { workgroups_x, 1, 1 });
  }
  
@@ -9232,7 +9232,7 @@ index 3c63a1f..4269f64 100644
 +};
 +
 +// Lamplight 0136, for timing only: LAMPLIGHT_TRELLIS_VK_PROFILE=nodecode (1) skips the decode, =nomul (2) the matrix
-+// multiply of long batches (wrong answers); LAMPLIGHT_TRELLIS_VK_PREC=default lets the device pick the f16 matmul's
++// multiply of long batches, =nogemv (3) the short-batch GEMV, leaving only the sides (wrong answers); LAMPLIGHT_TRELLIS_VK_PREC=default lets the device pick the f16 matmul's
 +// accumulation as a plain f16 weight's MUL_MAT does (f16 on some cards: the unscaled values reach 126, so f32 stays the
 +// default until that is measured and checked)
 +static int trellis_vk_profile() {
@@ -9242,7 +9242,7 @@ index 3c63a1f..4269f64 100644
 +            return 0;
 +        }
 +        const std::string s(e);
-+        return s == "nodecode" ? 1 : s == "nomul" ? 2 : 0;
++        return s == "nodecode" ? 1 : s == "nomul" ? 2 : s == "nogemv" ? 3 : 0;
 +    }();
 +    return v;
 +}
@@ -9641,9 +9641,11 @@ index 3c63a1f..4269f64 100644
 +                            : (mv == 2 || mv == 3) && tc > 1 ? device->pipeline_trellis_mv2[bits][nt]
 +                            : mv == 3 ? device->pipeline_trellis_mv3[bits][nt] : device->pipeline_trellis_mv[bits][nt];
 +            const vk_op_trellis_mv_push_constants pc = { K, N, tc, q_off, s_off, 0, 0 };
-+            ggml_pipeline_request_descriptor_sets(ctx, p, 1);
-+            ggml_vk_dispatch_pipeline(ctx, subctx, p, { qb, sb, in, B }, pc, { N / 16, CEIL_DIV(tc, 1u << nt), 1 });
-+            ggml_vk_sync_buffers(ctx, subctx);
++            if (trellis_vk_profile() != 3) {
++                ggml_pipeline_request_descriptor_sets(ctx, p, 1);
++                ggml_vk_dispatch_pipeline(ctx, subctx, p, { qb, sb, in, B }, pc, { N / 16, CEIL_DIV(tc, 1u << nt), 1 });
++                ggml_vk_sync_buffers(ctx, subctx);
++            }
 +        }
 +
 +        // output side: dst = gather_pout(post * T_rows^T B)
@@ -9682,7 +9684,7 @@ index 3c63a1f..4269f64 100644
  static uint32_t ggml_vk_nb_elem(const ggml_tensor * t, int i) {
      return (uint32_t)(t->nb[i] / ggml_type_size(t->type));
  }
-@@ -13581,6 +14134,10 @@ bool ggml_vk_build_graph(ggml_backend_vk_context * ctx, ggml_cgraph * cgraph, in
+@@ -13581,6 +14136,10 @@ bool ggml_vk_build_graph(ggml_backend_vk_context * ctx, ggml_cgraph * cgraph, in
      case GGML_OP_CUMSUM:
          ggml_vk_cumsum(ctx, compute_ctx, src0, node);
  
@@ -9693,7 +9695,7 @@ index 3c63a1f..4269f64 100644
          break;
      case GGML_OP_DSV4_HC_COMB:
          ggml_vk_dsv4_hc_comb(ctx, compute_ctx, src0, src1, src2, node);
-@@ -16859,6 +17416,10 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+@@ -16859,6 +17418,10 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
                  }
                  return false;
              }
@@ -10102,15 +10104,15 @@ index 0000000..9f45edc
 +}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv3.comp b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv3.comp
 new file mode 100644
-index 0000000..8931589
+index 0000000..37e40b2
 --- /dev/null
 +++ b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv3.comp
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,106 @@
 +#version 450
 +
 +// Lamplight 0136: y = W^ x for a NariQ trellis weight in its rotated basis, NT columns per workgroup (LAMPLIGHT_TRELLIS_VK_MV=3).
-+// trellis_mv.comp with each lane's four word indices worked out once, and the next tile's words and scale loaded
-+// before this tile is decoded (run 11: one token 2-5x the plain types, 3 bits slower than 4, so the GEMV waits on loads).
++// trellis_mv.comp with each lane's four word indices worked out once, its bit stream aligned once a tile, and the next
++// tile's words and scale loaded before this tile is decoded (run 11: one token 2-5x the plain types, 3 bits slower than 4, so the GEMV waits on loads).
 +
 +#extension GL_EXT_control_flow_attributes : require
 +#extension GL_EXT_shader_16bit_storage : require
@@ -10175,11 +10177,15 @@ index 0000000..8931589
 +            [[unroll]] for (uint k = 0; k < 4u; ++k) qn[k] = data_q[base + (i + 4u) * NW + wi[k]];
 +            sn = float(data_s[p.s_offset + i + 4u]);
 +        }
++        // the stream from bit o, aligned once (a:b:c); each window is then at a fixed offset j BITS, so every shift and
++        // word pick below is a constant (run 12: prefetching alone gained nothing, the per-window word picks cost)
++        const uint a = (q[0] << o) | ((q[1] >> 1u) >> (31u - o));
++        const uint b = (q[1] << o) | ((q[2] >> 1u) >> (31u - o));
++        const uint cw = (q[2] << o) | ((q[3] >> 1u) >> (31u - o));
 +        float v[8];
 +        [[unroll]] for (uint j = 0; j < 8u; ++j) {
-+            const uint oj = o + j * BITS;
-+            const uint x = oj >> 5;
-+            v[j] = trellis_value(trellis_state(q[x], q[x + 1u], oj & 31u));
++            const uint bo = j * BITS;
++            v[j] = trellis_value(bo < 32u ? trellis_state(a, b, bo) : trellis_state(b, cw, bo - 32u));
 +        }
 +        [[unroll]] for (uint t = 0; t < NT; ++t) {
 +            if (t0 + t < p.T) {
