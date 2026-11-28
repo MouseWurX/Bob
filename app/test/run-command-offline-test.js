@@ -51,6 +51,14 @@ const { LIMITS } = await imp('src/hands-settings.js');
   fs.rmSync(tmp0, { recursive: true, force: true });
 }
 
+// Nov 28 2026 (Windows CI: asked to run offline with no sandbox program, every command got out): that never runs now.
+{
+  const tmp0 = fs.mkdtempSync(path.join(os.tmpdir(), 'no exe '));
+  const r = await runCommand({ cmd: process.execPath, args: ['-e', 'console.log("RAN")'], cwd: tmp0, net: 'off', way: 'appcontainer', sandboxExe: '' });
+  check('asked to run offline on Windows without the sandbox program, the command doesn\'t run at all', /^Not run: it was to run without internet/.test(r.why) && !/RAN/.test(r.out) && r.offline === false, JSON.stringify(r));
+  fs.rmSync(tmp0, { recursive: true, force: true });
+}
+
 // ---- the leak test (live, on this machine's own address only)
 const way = offlineWay();
 if (!way) console.log('SKIP the live leak test: this system can\'t keep commands offline (the note above covers it)');
@@ -60,6 +68,14 @@ else {
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
   const url = `http://127.0.0.1:${srv.address().port}`;
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'offline '));
+  // Windows: the real sandbox, built and granted the way the Run hand does it (src/hands.js winSandbox).
+  let sandboxExe = '';
+  if (way === 'appcontainer') {
+    const { ensureSandbox, grantFolder } = await imp('src/win-offline.js');
+    sandboxExe = ensureSandbox({ dataDir: tmp });
+    check('Windows: Bob\'s sandbox program builds here', Boolean(sandboxExe));
+    if (sandboxExe) { grantFolder(sandboxExe, tmp, 'change'); grantFolder(sandboxExe, path.dirname(process.execPath), 'read'); }
+  }
   const py = spawnSync('python3', ['--version']).status === 0;
   const curl = spawnSync('curl', ['--version']).status === 0;
   const tricks = [
@@ -70,8 +86,10 @@ else {
     ...(py ? [['a Python urllib POST', 'python3', ['-c', `import urllib.request\ntry:\n urllib.request.urlopen('${url}/py', data=b'secret=PY3', timeout=5); print('SENT')\nexcept Exception: print('BLOCKED')`]]] : [])
   ];
   for (const [name, cmd, args] of tricks) {
-    const r = await runCommand({ cmd, args, cwd: tmp, timeoutMs: 20000, net: 'off', way });
-    const blocked = cmd === 'curl' ? r.offline === true && !/^(200|2\d\d)$/.test(r.out.trim()) : r.offline === true && /BLOCKED/.test(r.out) && !/SENT/.test(r.out);
+    const r = await runCommand({ cmd, args, cwd: tmp, timeoutMs: 20000, net: 'off', way, sandboxExe });
+    // Node must really run inside and be refused (so the sandbox isn't just failing to start things); the others
+    // only must not get out. "nothing reached the server" below is the proof either way.
+    const blocked = cmd === 'curl' ? r.offline === true && !/^(200|2\d\d)$/.test(r.out.trim()) : r.offline === true && !/SENT/.test(r.out) && (cmd !== process.execPath || /BLOCKED/.test(r.out));
     check(`offline: ${name} gets nowhere`, blocked, r.out.slice(0, 200));
   }
   check('offline: nothing reached the server', got.length === 0, got.join(' | '));

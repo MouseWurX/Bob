@@ -268,7 +268,12 @@ export const OFFLINE_NOTE = 'This command can still reach the internet: this com
 export function runCommand({ cmd, args = [], cwd, timeoutMs = 15 * 60_000, signal, onOutput = () => {}, onStart = () => {}, env, net = 'open', way, sandboxExe = '' } = {}) {
   return new Promise((resolve) => {
     const w = net === 'off' ? (way ?? offlineWay()) : '';
-    const plan = offlinePlan(launchPlan(path.isAbsolute(cmd) || !/[\\/]/.test(cmd) ? cmd : path.resolve(cwd, cmd), args), w, { exe: sandboxExe, cwd });
+    const base = launchPlan(path.isAbsolute(cmd) || !/[\\/]/.test(cmd) ? cmd : path.resolve(cwd, cmd), args);
+    const plan = offlinePlan(base, w, { exe: sandboxExe, cwd });
+    // Nov 28 2026 (Windows CI: the leak test's commands all got out): asked to run offline, but no sandbox wraps it
+    // (Windows without its sandbox program built): it doesn't run. Never run unprotected while offline was asked for.
+    const offline = Boolean(w) && plan !== base;
+    if (w && !offline) return resolve({ code: null, out: '', killed: '', why: 'Not run: it was to run without internet, but Bob\'s sandbox program isn\'t ready on this computer, so it would have had internet.', offline: false });
     let out = '', killed = '', child;
     const keep = (t) => { out += t; if (out.length > MAX_OUT) out = '[...earlier output cut...]\n' + out.slice(-MAX_OUT); };
     try {
@@ -289,7 +294,7 @@ export function runCommand({ cmd, args = [], cwd, timeoutMs = 15 * 60_000, signa
       clearTimeout(timer);
       signal?.removeEventListener?.('abort', onAbort);
       if (!WIN && killed) { try { process.kill(-child.pid, 'SIGKILL'); } catch {} } // anything left in the group
-      resolve({ code, out, killed, why: '', offline: Boolean(w) });
+      resolve({ code, out, killed, why: '', offline });
     });
   });
 }
