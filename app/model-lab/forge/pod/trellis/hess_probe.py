@@ -6,7 +6,7 @@ then reads them again with no gradients and checks every weight and buffer for n
 
   0 forward only, nothing changed           3 + hess_hf's expert forward on the coded blocks (not recording)
   1 forward and backward, nothing changed   4 + recording the first coded block (H_in and H_out)
-  2 + the expert backward without weight    5 + recording every coded block
+  2 + the expert backward without weight    5 + recording the second coded block instead (and so on)
     gradients (no_expert_weight_grads)
 
   hess_probe.py --model hf-bf16/ --text train.txt --match-gguf ref.gguf --only '^blk\\.(0|6)\\.' --devices 2 --ctx 256
@@ -80,11 +80,13 @@ def main():
     report(2, "+ expert backward without weight gradients", fwd_bwd())
     for name in blocks: H.expert_modules_cache[name].forward = types.MethodType(H.recording_forward, H.expert_modules_cache[name])
     report(3, "+ hess_hf's expert forward, not recording", fwd_bwd())
-    if blocks:
-        H.expert_modules_cache[blocks[0]]._rec = rec_for(blocks[0])
-        report(4, f"+ recording {blocks[0]}", fwd_bwd())
-        for name in blocks[1:]: H.expert_modules_cache[name]._rec = rec_for(name)
-        report(5, "+ recording every coded block", fwd_bwd())
+    for i, name in enumerate(blocks):  # one block at a time (both at once ran out of memory on 2 x 48 GB, probe 1)
+        for other in blocks: H.expert_modules_cache[other]._rec = None
+        if cuda: torch.cuda.empty_cache()
+        H.expert_modules_cache[name]._rec = rec_for(name)
+        try: report(4 + i, f"+ recording {name} only", fwd_bwd())
+        except torch.OutOfMemoryError as ex: print(f"probe: stage {4 + i} out of card memory ({str(ex)[:120]})", flush=True)
+    for other in blocks: H.expert_modules_cache[other]._rec = None
     print("probe: done", flush=True)
 
 

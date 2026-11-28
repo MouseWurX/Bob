@@ -136,7 +136,7 @@ fi
 if [ "${DIAG:-0}" = 1 ]; then  # tries 7-8: odds went NaN after the first chunks; find which piece does it, then stop
   step "what turns the odds non-finite (stages 0-5)"
   timeout 1800 python3 "$TP/hess_probe.py" --model "$HFB" --text "$TR" --match-gguf "$REF" --only "^blk\.($LAYERS)\." --devices "$NGPU" \
-    --ctx 256 > "$OUT/probe.log" 2>&1; grep "^probe:" "$OUT/probe.log" | while read -r l; do say "$l"; done; tail -3 "$OUT/probe.log"
+    --ctx 256 > "$OUT/probe.log" 2>&1; grep "^probe:" "$OUT/probe.log" | while read -r l; do say "$l"; done; tail -4 "$OUT/probe.log" | while read -r l; do say "probe.log: ${l:0:300}"; done
   step done; say "DIAG DONE"; exit 0
 fi
 step "Hessians, both factors, every expert ($CHUNKS x $CTX tokens, layers over $NGPU cards)"
