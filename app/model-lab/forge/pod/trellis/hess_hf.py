@@ -12,7 +12,7 @@ so a converter that reorders or fuses rows can't slip a wrong pairing through. A
 MoE experts stored as 3D blocks (transformers' gate_up_proj [E, 2I, H] / down_proj [E, H, I], Inkling 2, Qwen3 MoE):
 the experts' forward is swapped for one that records each expert's own H_in and H_out (the rows routed to it, so the
 looped layers of Inkling count every pass). Expert sums are big (Inkling 2 Mini: ~8.8 GB a layer in float32), so
---expert-gb caps them per card (default: 60% of the card's free memory once the brain is loaded): the layers that fit
+--expert-gb caps them per card (default: half of the card's free memory once the brain is loaded): the layers that fit
 are recorded, saved, and the text is read again for the next ones.
 --devices N spreads the layers over N cards (accelerate's device_map). One file per tensor: hess/<gguf name>.pt
 {H_in, H_out, n} ([E, ., .] and n [E] for experts). 28 Nov 2026 (thread "Shrink Flash-Next with GPTQ and trellis")."""
@@ -122,14 +122,28 @@ def recording_forward(self, hidden_states, top_k_index, top_k_weights):
     return final.to(hidden_states.dtype)
 
 
-def load_model(path, kw):
+def load_model(path, kw, attn="sdpa"):
+    """the brain with torch's fused attention (sdpa) where the model has it: eager attention keeps every layer's full
+    tokens x tokens score matrix for the backward pass (Inkling 2 Mini, 2 x L40S, 2048 tokens: out of card memory)"""
     from transformers import AutoModelForCausalLM
     try:
-        return AutoModelForCausalLM.from_pretrained(path, **kw)
+        return load_model_as(AutoModelForCausalLM, path, kw, attn)
     except (ValueError, KeyError) as e:  # a picture-and-text brain (Inkling 2's own checkpoint): the whole model
         from transformers import AutoModelForImageTextToText
         print(f"hess_hf: not a plain text model ({str(e)[:120]}), loading as picture-and-text", flush=True)
-        return AutoModelForImageTextToText.from_pretrained(path, **kw)
+        return load_model_as(AutoModelForImageTextToText, path, kw, attn)
+
+
+def load_model_as(cls, path, kw, attn):
+    if attn == "eager": return cls.from_pretrained(path, attn_implementation="eager", **kw)
+    try:
+        m = cls.from_pretrained(path, attn_implementation=attn, **kw)
+    except (ValueError, ImportError, TypeError) as e:
+        if "sdpa" not in str(e).lower() and "attn_implementation" not in str(e).lower(): raise
+        print(f"hess_hf: no sdpa attention for this brain ({str(e)[:100]}), using eager", flush=True)
+        return cls.from_pretrained(path, **kw)
+    print(f"hess_hf: attention {getattr(m.config, '_attn_implementation', '?')}", flush=True)
+    return m
 
 
 def main():
@@ -138,9 +152,10 @@ def main():
     ap.add_argument("--chunks", type=int, default=64); ap.add_argument("--ctx", type=int, default=512)
     ap.add_argument("--devices", type=int, default=1); ap.add_argument("--gguf-arch", default=None)
     ap.add_argument("--match-gguf", default=None, help="find GGUF names by value in this file (see above)")
-    ap.add_argument("--expert-gb", type=float, default=0.0, help="cap on expert sums per card, GB (0: 60%% of free card memory)")
+    ap.add_argument("--expert-gb", type=float, default=0.0, help="cap on expert sums per card, GB (0: half of the free card memory)")
     ap.add_argument("--only", default=None, help="record only GGUF names matching this regex (e.g. a canary's layers)")
     ap.add_argument("--no-out", action="store_true", help="H_in only (LDLQ/GPTQ), no backward pass")
+    ap.add_argument("--attn", default="sdpa", help="attention: sdpa (fused, little memory) or eager")
     ap.add_argument("--seed", type=int, default=0); a = ap.parse_args()
     if not (a.gguf_arch or a.match_gguf): raise SystemExit("hess_hf: give --gguf-arch or --match-gguf")
     from transformers import AutoTokenizer
@@ -149,8 +164,10 @@ def main():
     import transformers
     new_kw = tuple(int(x) for x in transformers.__version__.split(".")[:2]) >= (4, 56)  # "dtype" from 4.56, "torch_dtype" before
     kw = {("dtype" if new_kw else "torch_dtype"): torch.bfloat16 if cuda else torch.float32}
-    if cuda and a.devices > 1: kw["device_map"] = "auto"; kw["max_memory"] = {i: int(torch.cuda.mem_get_info(i)[0] * 0.7) for i in range(a.devices)}
-    m = load_model(a.model, kw)
+    # "balanced": the same share of the brain on every card, so the first card keeps room for the backward pass and
+    # the expert sums ("auto" fills card 0 first; Inkling try 2 ran out of memory there)
+    if cuda and a.devices > 1: kw["device_map"] = "balanced"; kw["max_memory"] = {i: int(torch.cuda.mem_get_info(i)[0] * 0.7) for i in range(a.devices)}
+    m = load_model(a.model, kw, a.attn)
     if cuda and a.devices <= 1: m = m.to("cuda:0")
     m.eval(); [p.requires_grad_(False) for p in m.parameters()]
     tok = AutoTokenizer.from_pretrained(a.model)
@@ -189,6 +206,7 @@ def main():
     n = min(a.chunks, len(ids) // a.ctx)
     if n < 1: raise SystemExit(f"hess_hf: the text has {len(ids)} tokens, less than one chunk of {a.ctx}")
     dev0 = next(m.parameters()).device; t0 = time.time()
+    torch.manual_seed(a.seed)  # the sampled labels (H_out) are the same on every run
     emb = m.get_input_embeddings()
 
     def read_text(tag):
@@ -204,13 +222,43 @@ def main():
                 loss.backward(); del loss, logits, e
             if c % 8 == 0 or c == n - 1: print(f"hess_hf: {tag}: chunk {c + 1}/{n} ({time.time() - t0:.0f} s)", flush=True)
 
+    def probe(g):
+        """one chunk forward and backward with nothing recorded, the first pass's expert sums already on the cards: if
+        the cards run out of memory, halve the chunk (same tokens in all, down to 128) and try again. Inkling 2's
+        attention is eager only (per-token sinks), so its score matrices grow with the square of the chunk."""
+        nonlocal n
+        keep = {name: expert_modules_cache[name]._rec for name in g}; rd = rec_dense[0]
+        for name in g: expert_modules_cache[name]._rec = None
+        rec_dense[0] = False; total = n * a.ctx
+        while True:
+            for i in range(torch.cuda.device_count() if cuda else 0): torch.cuda.reset_peak_memory_stats(i)
+            try:
+                x = ids[:a.ctx][None].to(dev0)
+                if a.no_out:
+                    with torch.no_grad(): m(input_ids=x)
+                else:
+                    e = emb(x).detach().requires_grad_(True); lg = m(inputs_embeds=e).logits.float()
+                    lg.logsumexp(-1).sum().backward(); del lg, e
+                peak = ", ".join(f"cuda:{i} {torch.cuda.max_memory_allocated(i) / 1e9:.1f} of "
+                                 f"{torch.cuda.get_device_properties(i).total_memory / 1e9:.1f} GB" for i in range(torch.cuda.device_count() if cuda else 0)) or "no card"
+                print(f"hess_hf: chunks of {a.ctx} fit (peak {peak})", flush=True); break
+            except torch.OutOfMemoryError:
+                lg = e = None
+                if cuda: torch.cuda.empty_cache()
+                if a.ctx <= 128: raise SystemExit("hess_hf: out of card memory even at 128 tokens a chunk (use more cards or --expert-gb)")
+                a.ctx //= 2; n = min(total // a.ctx, len(ids) // a.ctx)
+                print(f"hess_hf: out of card memory, chunks of {a.ctx} now ({n} of them, same tokens)", flush=True)
+        for name in g: expert_modules_cache[name]._rec = keep[name]
+        rec_dense[0] = rd
+        if cuda: torch.cuda.empty_cache()
+
     # expert layers in groups that fit --expert-gb per card
     def need(mod):
         E, I2, H = mod.gate_up_proj.shape; I = mod.down_proj.shape[2]
         return 4 * E * (H * H + I * I + (0 if a.no_out else I2 * I2 + H * H)) / 1e9
-    def cap(dev):  # --expert-gb, or (0) 60% of what the card has free once the brain is on it
+    def cap(dev):  # --expert-gb, or (0) half of what the card has free once the brain is on it (the rest: the backward pass)
         if a.expert_gb > 0: return a.expert_gb
-        return 0.6 * torch.cuda.mem_get_info(dev)[0] / 1e9 if dev.type == "cuda" else float("inf")
+        return 0.5 * torch.cuda.mem_get_info(dev)[0] / 1e9 if dev.type == "cuda" else float("inf")
     todo = list(exps); groups = []; caps = {}
     while todo:
         used, g = {}, []
@@ -230,6 +278,7 @@ def main():
             mod._rec = {"gate_up_proj": {"H_in": z(H), "H_out": None if a.no_out else z(I2)},
                         "down_proj": {"H_in": z(I), "H_out": None if a.no_out else z(H)},
                         "n": torch.zeros(E, dtype=torch.float64), "out": not a.no_out}
+        if gi == 0: probe(g)
         read_text(f"pass {gi + 1}/{len(groups)}")
         rec_dense[0] = False  # dense linears are summed in the first read only
         for name in g:

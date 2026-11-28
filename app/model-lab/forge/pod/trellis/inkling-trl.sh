@@ -20,9 +20,11 @@ set -uo pipefail
 CANARY=${CANARY:-0}
 OUT=${OUT:-/workspace/ink-results}; W=${W:-/workspace/ink}; KEEP=${KEEP:-/workspace/keep}; JOBS=${JOBS:-$(nproc)}
 HF_MODEL=${HF_MODEL:-thinkingmachines/Inkling-2-Mini}
-if [ "$CANARY" = 1 ]; then CHUNKS=${CHUNKS:-8}; export KLD_CHUNKS=${KLD_CHUNKS:-8}; LAYERS=${LAYERS:-"0|6"}; STOCK=${STOCK:-0}
-else CHUNKS=${CHUNKS:-128}; export KLD_CHUNKS=${KLD_CHUNKS:-64}; LAYERS=${LAYERS:-"[0-9]+"}; STOCK=${STOCK:-1}; fi
-CTX=${CTX:-2048}; export KLD_CTX=${KLD_CTX:-2048}; STEP_MIN=${STEP_MIN:-240}; EXPERT_GB=${EXPERT_GB:-0}
+if [ "$CANARY" = 1 ]; then CHUNKS=${CHUNKS:-32}; export KLD_CHUNKS=${KLD_CHUNKS:-8}; LAYERS=${LAYERS:-"0|6"}; STOCK=${STOCK:-0}
+else CHUNKS=${CHUNKS:-512}; export KLD_CHUNKS=${KLD_CHUNKS:-64}; LAYERS=${LAYERS:-"[0-9]+"}; STOCK=${STOCK:-1}; fi
+# Hessian chunks of 512 tokens (try 2: 2048 ran out of card memory in the backward pass); the KLD reads 2048
+export PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}  # less memory lost to fragments
+CTX=${CTX:-512}; export KLD_CTX=${KLD_CTX:-2048}; STEP_MIN=${STEP_MIN:-240}; EXPERT_GB=${EXPERT_GB:-0}
 EMB_TYPE=${EMB_TYPE:-q4_K}; HEAD_TYPE=${HEAD_TYPE:-q6_K}
 BOB_SHA=${BOB_SHA:?set BOB_SHA to the MouseWurX/Bob commit with pod/trellis}
 ENGINE_SHA=${ENGINE_SHA:-de773f034d040f8b46aad012672bae352d06c102}     # engine patches with coded experts (PR #387)
