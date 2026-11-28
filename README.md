@@ -275,19 +275,102 @@ Brains are tested on **real jobs** in Bob's real loop, with his real tools, in a
 
 ### Held-out jobs per brain
 
-The same 65 held-out jobs for every brain (inbox 28, Office 14, repo 12, web 11), written once and never used for tuning or lessons, in Bob's real loop on rented cards, 26 Nov 2026. One run per brain, so a gap of a few jobs may be chance.
+The same 65 held-out jobs for every brain (inbox 28, Office 14, repo 12, web 11), written once and never used for tuning or lessons, in Bob's real loop on rented cards, 26 Nov 2026. One run per brain, so a gap of a few jobs may be chance. Web was rescored on 28 Nov with a scorer fix (Bob opening a pasted link himself now counts as reading it), which moved most brains up by 1.
 
 | Brain | Inbox | Office | Repo | Web | **Out of 65** |
 |---|---|---|---|---|---|
-| Inkling 2 Mini | 24 | 14 | 12 | 9 | **59** |
-| ISTA 27B (IQ2_XS) | 25 | 14 | 11 | 8 | **58** |
-| Ternary Bonsai 2.5 27B (PTQ1_0 / Q2_0 file) | 25 / 23 | 14 | 10 / 12 | 8 | **57** each |
-| Underdog Saluki 27B | 23 | 14 | 9 | 10 | **56** |
+| Inkling 2 Mini | 24 | 14 | 12 | 10 | **60** |
+| ISTA 27B (IQ2_XS) | 25 | 14 | 11 | 9 | **59** |
+| Ternary Bonsai 2.5 27B (PTQ1_0 / Q2_0 file) | 25 / 23 | 14 | 10 / 12 | 9 / 8 | **58** / **57** |
+| Underdog Saluki 27B | 23 | 14 | 9 | 11 | **57** |
 | Qwen3.6 35B-A3B (Bob's default) | 22 | 13 | 8 | 6 | **49** |
-| Raon-1 mini | 21 | 10 | 5 | 9 | **45** |
-| Raon-1 nano | 7 | 4 | 1 | 3 | **15** |
+| Raon-1 mini | 21 | 10 | 5 | 10 | **46** |
+| Raon-1 nano | 7 | 4 | 1 | 4 | **16** |
 
-**Phone brains**, on the same 65 jobs with the phone's prompt and tools, 27 Nov 2026: Dory 4B 39, Bonsai 2 4B 25 to 29, Qwen3.5 2B 22, Gemma 4 E2B (today's phone pick) 10, Bonsai 2 2B 6 to 7. A photo-to-spreadsheet test is being rerun: the first run scored 0 because of a fault in the test (it gave each brain only its first step), not the brains.
+**Phone brains**, on the same 65 jobs with the phone's prompt and tools, 27 Nov 2026 (web rescored): Dory 4B 40, Bonsai 2 4B 27 to 30, Qwen3.5 2B 23, Gemma 4 E2B (today's phone pick) 11, Bonsai 2 2B 7 to 8.
+
+### Which brain for which computer
+
+The best brain for each kind of computer, with the best speeds we measured on that kind of computer. Best read, best write and quickest first word can come from different settings. **Jobs** is Bob's 65 held-out tool jobs (inbox 28, Office 14, repo 12, web 11), never used for tuning. **Photos** is a test that turns photos of a machine's screen into a spreadsheet (56 values). A dash means not measured; "unproven" means unproven in our lab, as we have yet to test.
+
+| Computer | Best brain | Jobs /65 | Photos /56 | Read | Write | First word | Measured on |
+|---|---|---|---|---|---|---|---|
+| 24 GB card or more | Inkling 2 Mini UD-Q4_K_M | 60 | 46 | 127 | 67.8 | - | rented L40S 48 GB, Lamplight 46 |
+| 16 GB card, 32 GB RAM | Qwen3.6 35B-A3B UD-Q4_K_XL (Bob's default) | 49 | 45 | 4,593 | 112.1 | 1.1 s | RTX 5070 Ti desktop, Lamplight 8 to 15 |
+| 16 GB card, photos | Qwen3.6 27B UD-Q3_K_XL (Bob's eyes pick) | - | 54 | - | 20.1 | - | 16 GB stand-in (rented 24 GB card, 8 GB held back), Lamplight 46 |
+| 12 GB card | Underdog Saluki 27B IQ2 | 57 | 35 | - | - | - | unproven on a real 12 GB card |
+| 8 GB card | Ternary Bonsai 2.5 27B PTQ1_0 (6 GB file) | 58 | - | - | - | - | unproven on a real 8 GB card |
+| 6 GB card, 32 GB RAM | Inkling 2 Mini UD-Q2_K_XL | 60 at Q4 | - | 125 | 14.9 | - | RTX 3060 Laptop, Lamplight test build with 0151 (next build) |
+| 6 GB card, photos | Qwen3.5 4B | - | 33 | - | - | - | rented cards only |
+| Handheld, 16 GB shared | Qwen3 4B, on the graphics | - | - | - | 28 | - | Ryzen Z1 Extreme handheld, engine of 23 Nov |
+| Android phone | Gemma 4 E2B | 11 | 0 | - | 11.3 | - | Galaxy S22, Bob 1.5.83 |
+| iPhone | Gemma 4 E2B | - | - | - | - | - | unproven on a real iPhone |
+| Processor only, Mac, Raspberry Pi | no pick yet | - | - | - | - | - | unproven |
+
+**Also good:**
+
+- **16 GB, tool jobs:** Inkling 2 Mini Q4 (60 of 65) beats the default, but its speed on a 16 GB card is unproven.
+- **12 GB:** ISTA Qwen3.8 27B IQ2_XS (59) and Ternary Bonsai 2.5 27B (58) are smaller than Saluki and score a little higher. Saluki is non-commercial.
+- **6 GB:** Qwen3 4B reads 1,116, writes 20.8 and gives its first word in 7.2 s on the RTX 3060 Laptop (Lamplight 46). Without the next build's fix, Inkling 2 Mini there reads 29 and writes 11.9.
+- **Handheld:** Inkling 2 Mini Q2 on the processor reads 15.8 and writes 10.6 on short chats, but ran out of memory on a 2,500-token paste. Qwen3.5 2B on the graphics reads 1,147 and writes 53, but scores only 23 of 65.
+- **Phone, tool jobs:** Dory 1.0 4B scores 40 of 65, the best phone-size brain, but it hasn't run on a real phone yet. Gemma 4 E2B stays the phone pick: it runs on a real phone and reads receipts (5 of 6), though it scores only 11 at tool jobs.
+- **Uncensored** (Naughty list on): Qwen 3.8 27B Abliterated (58) for 24 GB, or 16 GB with part in RAM. Qwen3.8 Flash Next Abliterated (57) is 111 GB, for rented cards only.
+
+### Which brains work where
+
+**Yes** means the brain ran with real results in our tests on that backend. A dash means unproven in our lab, as we have yet to test. **No** means it can't load there. **Plain llama.cpp** is stock b12359.
+
+| Brain | Jobs /65 | Photos /56 | NVIDIA (CUDA) | Vulkan (AMD, Intel, handhelds) | Processor only | Mac (Metal) | Plain llama.cpp |
+|---|---|---|---|---|---|---|---|
+| Inkling 2 Mini | 60 | 46 | Yes | Yes (handheld, slower than its processor) | Yes (handheld) | - | No (Lamplight adds the family) |
+| ISTA Qwen3.8 27B IQ2_XS | 59 | - | Yes | - | - | - | - |
+| Ternary Bonsai 2.5 27B PTQ1_0 | 58 | - | Yes | - (software Vulkan test only) | - | - | No (needs Lamplight's PTQ1_0) |
+| Ternary Bonsai 2.5 27B Q2_0 | 57 | - | Yes | - | - | - | - |
+| Underdog Saluki 27B | 57 | 35 | Yes | loads on a handheld, needs about 8.2 GB free | - | - | Yes, same words |
+| Qwen3.6 35B-A3B (default) | 49 | 45 | Yes | - | - | - | Yes, same words and speed |
+| Raon 1 mini | 46 | - | Yes | - | - | - | No (Lamplight adds the family) |
+| Raon 1 nano | 16 | - | Yes | - | - | - | No (Lamplight adds the family) |
+| Qwen3.6 27B | - | 54 (Q3_K_XL) | Yes | - | - | - | - |
+| Gemma 4 31B | - | 46 | Yes | - | - | - | - |
+| Qwen 3.8 27B UD-Q3_K_XL | - | 40 | Yes | - | - | - | - |
+| Gemma 4 12B | - | 34 | Yes | - | - | - | - |
+| Qwen3.5 4B | - | 33 | Yes | - | - | - | - |
+| Gemma 4 26B | - | 30 | Yes | - | - | - | - |
+| Ministral 3 14B | - | 27 | Yes | - | - | - | - |
+| Qwen3.5 9B | - | 16 | Yes | - | - | - | - |
+| Mistral Small 3.2 24B | - | 7 to 10 | Yes | - | - | - | - |
+| Qwen2.5 VL 7B | - | 0 | Yes | - | - | - | - |
+| Qwen3 4B Instruct 2507 | - | - | Yes | Yes (handheld) | - | - | - |
+| Qwen 3.8 27B, Qwen3 Coder 30B, gpt-oss 20B, Qwen2.5 Coder 7B, Gemma 4 E4B | - | - | Yes | - | - | - | - |
+| Ling 3.2 Air (124B, rented cards) | checks passed | - | Yes | - | - | - | Yes |
+| NariQ Qwen3.8 27B (2.5 and 3.0 bit) | 56 on Nari's own engine | - | maths checks only | maths checks only | - | - | No |
+| **Phone-size** | | | | | | | |
+| Dory 1.0 4B | 40 | no pictures | Yes | - | Yes (phone engine) | - | No (needs our patch) |
+| Ternary Bonsai 2 4B PTQ1 / Q2 | 30 / 27 | 3 | Yes | - | - | - | - |
+| Qwen3.5 2B | 23 | 1 | Yes | Yes (handheld) | - | - | - |
+| Gemma 4 E2B | 11 | 0 | Yes | Yes (handheld) | - | - | Yes (Bob's phone app, Galaxy S22) |
+| Ternary Bonsai 2 2B PTQ1 / Q2 | 8 / 7 | 0 | Yes | - | - | - | - |
+| **Uncensored** | | | | | | | |
+| Qwen 3.8 27B Abliterated | 58 | - | Yes | - | - | - | - |
+| Qwen3.8 Flash Next Abliterated (111 GB) | 57 | - | Yes | - | - | - | - |
+| Inkling 2 Mini Abliterated | 53 of 61 reached | - | Yes | - | - | - | - |
+| Ternary Bonsai 2.5 27B Uncensored | 50 | - | Yes | - | - | - | - |
+| Qwen3.6 35B Abliterated | 40 | - | Yes | - | - | - | - |
+| Qwen3.5 9B Abliterated | 33 | - | Yes | - | - | - | - |
+| Qwen3.5 2B Abliterated | 18 | - | Yes | - | - | - | - |
+| Raon 1 nano Abliterated | 18 | - | Yes | - | - | - | - |
+| Qwen3.5 4B Abliterated | 13 | - | Yes | - | - | - | - |
+| Qwen3.5 0.8B Abliterated | 4 | - | Yes | - | - | - | - |
+
+Every other brain in Bob's catalogue is unproven in our lab, as we have yet to test.
+
+**Where the numbers come from**
+
+- **Jobs:** rented L40S, RTX 4090 and H200 cards on Lamplight 46, 26 to 27 Nov 2026, one run per brain, so a gap of a few jobs may be chance (Bob's default scored 49, 41 and 38 in three runs). Web scores were rescored on 28 Nov after a scorer fix: Bob opening a pasted link himself now counts as reading it, which moved most brains up by 1.
+- **Photos:** rented A100, L40S and RTX 4090 cards on Lamplight, 27 Nov 2026.
+- **Speeds:** the RTX 5070 Ti desktop's 771 fitter runs (Nov 16 to 18), RTX 3060 Laptop runs (23 to 28 Nov), handheld runs (by 23 Nov), and Bob's own speed test on a Galaxy S22 (4 Nov). The 16 GB photo-brain speed is from a rented 24 GB card with 8 GB held back to act as a 16 GB card.
+- **Vulkan:** Lamplight's Vulkan features pass on software Vulkan and on one AMD handheld. Desktop AMD and Intel cards are unproven in our lab, as we have yet to test.
+
 
 ## Coming next
 
@@ -700,7 +783,7 @@ The same steps on every computer: install Bob, press **Get Bob ready** on the We
 | Hardware | Bob's everyday brain | Context | Tested? |
 |---|---|---|---|
 | **16 GB graphics card**, 32 GB of memory | Qwen3.6 35B-A3B (23.3 GB file; what doesn't fit on the card sits in memory) | 256K | **Yes**, on an RTX 5070 Ti: about 90 tokens a second in everyday chats. |
-| **12 GB card** | The 16 GB set, and Bob's pick on the Brains page is Underdog Saluki 27B (7.9 GB, all on the card; its licence limits commercial use) | Bob's pick | Unproven in our lab on a real 12 GB card, as we have yet to test. On a rented card, Saluki passed 56 of the 65 [held-out jobs](#held-out-jobs-per-brain). |
+| **12 GB card** | The 16 GB set, and Bob's pick on the Brains page is Underdog Saluki 27B (7.9 GB, all on the card; its licence limits commercial use) | Bob's pick | Unproven in our lab on a real 12 GB card, as we have yet to test. On a rented card, Saluki passed 57 of the 65 [held-out jobs](#held-out-jobs-per-brain). |
 | **Bigger than 16 GB** | The same set as a 16 GB card; bigger brains are on the Brains page | 256K | Unproven in our lab, as we have yet to test. |
 | **8 GB card** | Gemma 4 E4B, with Qwen3.6 35B-A3B for coding (the smaller Q3 file made for 8 GB cards, 17.7 GB) | Bob's pick; 128K for the coding brain | Unproven in our lab, as we have yet to test. Only the download has been checked. |
 | **6 GB card** (most laptops) | Qwen3 4B Instruct, with Qwen2.5 Coder 7B for coding | Bob's pick | Unproven in our lab, as we have yet to test. |
