@@ -1,0 +1,219 @@
+diff --git a/common/speculative.cpp b/common/speculative.cpp
+index ca783ba..51c586a 100644
+--- a/common/speculative.cpp
++++ b/common/speculative.cpp
+@@ -1906,6 +1906,44 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+     // raon1nano: the MTP block was trained on (h_i, x_{i+1}) pairs only, so position 0 (no h) is not decoded
+     bool skip_pos0 = false;
+ 
++    // Lamplight 0162 (LLAMA_MTP_ADAPT=1, off unless set): the guess's length chosen word by word. Guess j, made, is kept
++    // while c_j >= R * dT: c_j the product of the guesses' chances so far (a chance is how often a guess with that
++    // probability was kept, Avalon's measured bins, times this reply's kept / expected over its last 16 rounds, held in
++    // 0.5 - 1.5), R this reply's words per ms over its last 16 rounds, dT what one more guess adds to checking it (b, a
++    // round's cost per guess, less a guess pass, which is made already). A round's time is learned as a + b * k for k
++    // guesses (least squares, forgetting 0.995), so the cost follows this card, this brain and how many experts sit in RAM.
++    // The first guess is always kept; the next is not made when even a sure guess could not pay for it. One round in 16
++    // guesses the full n_max, so the cost of long guesses keeps being seen. Same words: only how many guesses are checked
++    // changes. Idea from Avalon (MIT, commit 37581e9: +5.2% on average over ten kinds of text on their card, worst -0.2%).
++    static constexpr int AD_WIN = 16;
++    struct ad_state {
++        double c = 1.0, s = 1.0, R = 0.0;   // this round's product of chances, the reply's scale and rate
++        std::vector<float> ch;              // this round's guesses' chances
++        double win[AD_WIN][4] = {};         // per round: kept, expected, words, ms
++        int    win_n = 0, win_h = 0, rounds = 0;
++        double obs = 0.0, exp = 0.0, tok = 0.0, ms = 0.0;
++        int64_t t_prev = 0;
++        bool   explore = false;
++    };
++    bool    ad_on = false, ad_log = false;
++    std::vector<ad_state> ad;
++    double  ad_a = 20.0, ad_b = 2.5;                       // a round: ad_a + ad_b * k ms
++    double  ad_P[2][2] = { { 4.0, 0.0 }, { 0.0, 0.25 } };  // the least squares' covariance (a prior worth a few rounds)
++    double  ad_td = 1.0;                                   // a guess pass (ms)
++    int64_t ad_draft_us = 0;
++    int     ad_passes = 0, ad_n = 0;
++
++    static float ad_chance(float p) {
++        // how often a guess was kept by its stated probability (Avalon's 1,785 recorded MTP rounds, bins after Basalt)
++        static const float edge[] = { 0.3f,  0.5f,  0.7f,  0.8f,  0.9f,  0.95f, 0.99f };
++        static const float rate[] = { 0.27f, 0.33f, 0.41f, 0.51f, 0.69f, 0.73f, 0.79f, 0.96f };
++        int b = 0;
++        while (b < 7 && p >= edge[b]) {
++            ++b;
++        }
++        return rate[b];
++    }
++
+     common_speculative_impl_draft_mtp(const common_params_speculative & params, uint32_t n_seq)
+         : common_speculative_impl(COMMON_SPECULATIVE_TYPE_DRAFT_MTP, n_seq, params.draft.n_max)
+         , params(params.draft)
+@@ -1937,6 +1975,13 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+         batch = common_batch(ctx_dft);
+ 
+         smpls.resize(n_seq);
++
++        if (const char * v = getenv("LLAMA_MTP_ADAPT"); v != nullptr && strcmp(v, "1") == 0 && this->params.n_max >= 2) {
++            ad_on  = true;
++            ad_log = getenv("LLAMA_MTP_ADAPT_LOG") != nullptr && strcmp(getenv("LLAMA_MTP_ADAPT_LOG"), "1") == 0;
++            ad.assign(n_seq, ad_state{});
++            LOG_INF("%s: Lamplight 0162: guess length chosen word by word, up to %d guesses (LLAMA_MTP_ADAPT)\n", __func__, this->params.n_max);
++        }
+         for (auto & s : smpls) {
+             common_params_sampling sparams;
+             sparams.no_perf  = false;
+@@ -2021,6 +2066,9 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+     void begin(llama_seq_id seq_id, const llama_tokens & prompt) override {
+         // reset here rather than per round, or two identical requests differ
+         common_sampler_reset(smpls[seq_id].get());
++        if (ad_on && seq_id >= 0 && seq_id < (llama_seq_id) ad.size()) {
++            ad[seq_id] = ad_state{};   // a reply's own rate and keep rate; the round cost stays (Lamplight 0162)
++        }
+ 
+         const int32_t N = (int32_t) prompt.size();
+         if (N <= 0) {
+@@ -2192,6 +2240,7 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+ 
+     void draft(common_speculative_draft_params_vec & dparams) override {
+         auto & ctx_dft = params.ctx_dft;
++        const int64_t ad_t0 = ad_on ? ggml_time_us() : 0;
+ 
+         batch.clear();
+ 
+@@ -2208,6 +2257,14 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+ 
+             n_drafting++;
+             drafting[seq_id] = true;
++            if (ad_on) {
++                auto & a = ad[seq_id];
++                a.c = 1.0;
++                a.ch.clear();
++                a.s = a.exp >= 0.5 ? std::min(1.5, std::max(0.5, a.obs / a.exp)) : 1.0;
++                a.R = a.ms > 0.0 ? a.tok / a.ms : 0.0;   // 0: not known yet, guess as usual
++                a.explore = (++a.rounds % AD_WIN) == 0;
++            }
+             // greedy drafting leaves no candidates behind, so the verifier falls back to sample-and-match
+             if (!params.probabilistic) {
+                 dp.result_q = nullptr;
+@@ -2292,6 +2349,25 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+                     continue;
+                 }
+ 
++                bool ad_last = false;   // Lamplight 0162: kept, but the next guess could not pay: not made
++                if (ad_on) {
++                    auto & a = ad[seq_id];
++                    const size_t j = dparams.at(seq_id).result->size();   // guessed so far
++                    const float  q = ad_chance(cur_p->data[0].p);
++                    const double c = a.c * std::min(1.0, a.s * q);
++                    if (!a.explore && a.R > 0.0) {
++                        if (j > 0 && c < a.R * std::max(0.05, ad_b - ad_td)) {
++                            drafting[seq_id] = false;
++                            n_drafting--;
++
++                            continue;
++                        }
++                        ad_last = c * std::min(1.0, a.s * 0.96) < a.R * std::max(0.05, ad_b);
++                    }
++                    a.c = c;
++                    a.ch.push_back(q);
++                }
++
+                 common_sampler_accept(smpl, id, true);
+ 
+                 auto & dp = dparams.at(seq_id);
+@@ -2303,7 +2379,7 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+                     dp.result_q->emplace_back(cur_p->data, cur_p->data + cur_p->size);
+                 }
+ 
+-                if (params.n_max <= (int) result.size()) {
++                if (params.n_max <= (int) result.size() || ad_last) {
+                     drafting[seq_id] = false;
+                     n_drafting--;
+                     continue;
+@@ -2353,13 +2429,86 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+             if (dp.result->size() < (size_t) params.n_min) {
+                 dp.result->clear();
+             }
++            if (ad_on && dp.result->empty()) {
++                ad[seq_id].ch.clear();
++                ad[seq_id].t_prev = 0;   // a round without guesses: the next round's clock starts again
++            }
++        }
++        if (ad_on) {
++            ad_passes   = i + 1;
++            ad_draft_us = ggml_time_us() - ad_t0;
+         }
+     }
+ 
+-    void accept(llama_seq_id seq_id, uint16_t n_accepted, bool /*is_other*/) override {
++    // Lamplight 0162: a checked round's time, guesses and keeps, into the round cost and the reply's rates
++    void ad_accept(llama_seq_id seq_id, uint16_t n_accepted, bool is_other) {
++        auto & a = ad[seq_id];
++        const int k = (int) a.ch.size();
++        if (is_other) {
++            a.ch.clear();
++            a.t_prev = 0;   // another guesser's round: neither its guesses nor its time are ours
++            return;
++        }
++        if (k == 0) {
++            return;
++        }
++        double c = 1.0, e = 0.0;
++        for (float q : a.ch) {
++            c *= q;
++            e += c;
++        }
++        const int64_t now = ggml_time_us();
++        const double  dt  = a.t_prev > 0 ? (now - a.t_prev) / 1000.0 : 0.0;
++        double w_tok = 0.0, w_ms = 0.0;
++        if (dt > 0.0) {
++            const double x[2] = { 1.0, (double) k };
++            const double pred = ad_a + ad_b * k;
++            const double obs  = std::min(1.5 * pred, std::max(0.67 * pred, dt));   // one slow round can't rule a length out
++            const double lambda = 0.995;
++            const double Px[2] = { ad_P[0][0]*x[0] + ad_P[0][1]*x[1], ad_P[1][0]*x[0] + ad_P[1][1]*x[1] };
++            const double den   = lambda + x[0]*Px[0] + x[1]*Px[1];
++            const double K[2]  = { Px[0]/den, Px[1]/den };
++            const double err   = obs - pred;
++            ad_a = std::min(1000.0, std::max(0.5,  ad_a + K[0]*err));
++            ad_b = std::min(200.0,  std::max(0.05, ad_b + K[1]*err));
++            for (int r = 0; r < 2; ++r) {
++                for (int q = 0; q < 2; ++q) {
++                    ad_P[r][q] = (ad_P[r][q] - K[r]*Px[q]) / lambda;
++                }
++            }
++            w_tok = n_accepted + 1;
++            w_ms  = dt;
++        }
++        double * w = a.win[a.win_h];
++        w[0] = n_accepted; w[1] = e; w[2] = w_tok; w[3] = w_ms;
++        a.win_h = (a.win_h + 1) % AD_WIN;
++        a.win_n = std::min(a.win_n + 1, AD_WIN);
++        double sum[4] = {};
++        for (int r = 0; r < a.win_n; ++r) {
++            for (int f = 0; f < 4; ++f) {
++                sum[f] += a.win[r][f];
++            }
++        }
++        a.obs = sum[0]; a.exp = sum[1]; a.tok = sum[2]; a.ms = sum[3];
++        if (ad_draft_us > 0 && ad_passes > 0) {
++            const double td = ad_draft_us / 1000.0 / ad_passes;
++            ad_td += 0.2 * (std::min(3.0 * ad_td, td) - ad_td);
++        }
++        a.ch.clear();
++        a.t_prev = now;
++        if (ad_log && ++ad_n % 100 == 0) {
++            LOG_INF("mtp adapt %d: round %.2f + %.2f ms a guess, guess pass %.2f ms, %.4f words/ms, kept/expected %.2f\n",
++                    ad_n, ad_a, ad_b, ad_td, a.ms > 0 ? a.tok / a.ms : 0.0, a.exp > 0 ? a.obs / a.exp : 0.0);
++        }
++    }
++
++    void accept(llama_seq_id seq_id, uint16_t n_accepted, bool is_other) override {
+         if (seq_id < 0 || seq_id >= (llama_seq_id) n_seq) {
+             return;
+         }
++        if (ad_on) {
++            ad_accept(seq_id, n_accepted, is_other);
++        }
+ 
+         const int32_t n_rows = verify_h_rows[seq_id];
+         if (n_rows <= 0) {
