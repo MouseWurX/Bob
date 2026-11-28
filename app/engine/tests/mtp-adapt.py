@@ -88,7 +88,7 @@ off, log_off = serve(50472, {}, MTP)
 on, log_on = serve(50473, {'LLAMA_MTP_ADAPT': '1', 'LLAMA_MTP_ADAPT_LOG': '1'}, MTP)
 check('off: MTP guesses, no 0162 line', off[0]['drafts'] > 50 and 'Lamplight 0162' not in log_off, f"{off[0]['drafts']} guesses")
 check('on: it says so', 'Lamplight 0162: guess length chosen word by word, up to 8 guesses' in log_on)
-check('on: it still guesses (the first guess is always kept)', on[0]['drafts'] > 20, f"{on[0]['drafts']}")
+check('on: it still guesses (explore rounds and paying guesses)', on[0]['drafts'] > 20, f"{on[0]['drafts']}")
 check('on: rarely kept guesses are cut far shorter than n_max', on[0]['drafts'] < off[0]['drafts'] / 2 and on[1]['drafts'] < off[1]['drafts'] / 2,
       f"{[o['drafts'] for o in on]} vs {[o['drafts'] for o in off]}")
 check('on: it learns a round cost and logs it', len(re.findall(r'mtp adapt \d+: round [0-9.]+ \+ [0-9.]+ ms a guess', log_on)) >= 1)

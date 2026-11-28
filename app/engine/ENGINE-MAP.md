@@ -1028,7 +1028,7 @@ Written Nov 22 before the borrowing work (scope: rebuild Avalon's ideas inside B
 - **Tests:** compiles for CUDA in the cloud; the gain after a long read needs a real card.
 
 ### 0162-mtp-adapt: MTP's guess length chosen word by word (after Avalon)
-- **Environment keys (off unless set):** `LLAMA_MTP_ADAPT=1` (needs `--spec-draft-n-max` 2 or more); `LLAMA_MTP_ADAPT_LOG=1` (every 100 rounds: the round cost a + b, a guess pass, words per ms, kept/expected).
+- **Environment keys (off unless set):** `LLAMA_MTP_ADAPT=1` (needs `--spec-draft-n-max` 2 or more); `LLAMA_MTP_ADAPT_LOG=1` (every 25 rounds: the round cost a + b, a guess pass, words per ms, kept/expected).
 - **Upstream files:** `common/speculative.cpp` (`common_speculative_impl_draft_mtp`: the `ad_*` members and `ad_chance()`, the ctor, `begin()`, the draft loop after the `p_min` check, the end of `draft()`, `ad_accept()` called from `accept()`).
 - **Hook:** guess j (j > 0) is dropped when c_j < R (b - t_d), c_j the product of the chances so far, R the reply's words per ms over its last 16 checked rounds, b the learned cost of one more guess in a round, t_d a guess pass; the next guess is not made when even a 0.96 chance could not pay b. A round's time (from one accept to the next) is fitted as a + b k by least squares with forgetting 0.995, each time held to 0.67-1.5 of its guess. A reply starts with its rates unknown and guesses as usual until it has some. One round in 16 is not cut.
 - **Why:** Avalon's 37581e9. Upstream stops only at `p_min` or `n_max`, the same for every card and brain.

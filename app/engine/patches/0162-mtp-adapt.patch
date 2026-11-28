@@ -1,8 +1,8 @@
 diff --git a/common/speculative.cpp b/common/speculative.cpp
-index ca783ba..51c586a 100644
+index ca783ba..b989aaa 100644
 --- a/common/speculative.cpp
 +++ b/common/speculative.cpp
-@@ -1906,6 +1906,44 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+@@ -1906,6 +1906,45 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
      // raon1nano: the MTP block was trained on (h_i, x_{i+1}) pairs only, so position 0 (no h) is not decoded
      bool skip_pos0 = false;
  
@@ -11,8 +11,9 @@ index ca783ba..51c586a 100644
 +    // probability was kept, Avalon's measured bins, times this reply's kept / expected over its last 16 rounds, held in
 +    // 0.5 - 1.5), R this reply's words per ms over its last 16 rounds, dT what one more guess adds to checking it (b, a
 +    // round's cost per guess, less a guess pass, which is made already). A round's time is learned as a + b * k for k
-+    // guesses (least squares, forgetting 0.995), so the cost follows this card, this brain and how many experts sit in RAM.
-+    // The first guess is always kept; the next is not made when even a sure guess could not pay for it. One round in 16
++    // guesses (least squares, forgetting 0.98, timed from the start of guessing to the end of the check), so the cost follows
++    // this card, this brain, the chat's length and how many experts sit in RAM. The first guess is dropped too when it can't
++    // pay (a round without guesses is a plain word); the next is not made when even a sure guess could not pay for it. One round in 16
 +    // guesses the full n_max, so the cost of long guesses keeps being seen. Same words: only how many guesses are checked
 +    // changes. Idea from Avalon (MIT, commit 37581e9: +5.2% on average over ten kinds of text on their card, worst -0.2%).
 +    static constexpr int AD_WIN = 16;
@@ -22,7 +23,7 @@ index ca783ba..51c586a 100644
 +        double win[AD_WIN][4] = {};         // per round: kept, expected, words, ms
 +        int    win_n = 0, win_h = 0, rounds = 0;
 +        double obs = 0.0, exp = 0.0, tok = 0.0, ms = 0.0;
-+        int64_t t_prev = 0;
++        int64_t t_start = 0;                // when this round's guessing began (its time runs to the check's end)
 +        bool   explore = false;
 +    };
 +    bool    ad_on = false, ad_log = false;
@@ -47,7 +48,7 @@ index ca783ba..51c586a 100644
      common_speculative_impl_draft_mtp(const common_params_speculative & params, uint32_t n_seq)
          : common_speculative_impl(COMMON_SPECULATIVE_TYPE_DRAFT_MTP, n_seq, params.draft.n_max)
          , params(params.draft)
-@@ -1937,6 +1975,13 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+@@ -1937,6 +1976,13 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
          batch = common_batch(ctx_dft);
  
          smpls.resize(n_seq);
@@ -61,7 +62,7 @@ index ca783ba..51c586a 100644
          for (auto & s : smpls) {
              common_params_sampling sparams;
              sparams.no_perf  = false;
-@@ -2021,6 +2066,9 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+@@ -2021,6 +2067,9 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
      void begin(llama_seq_id seq_id, const llama_tokens & prompt) override {
          // reset here rather than per round, or two identical requests differ
          common_sampler_reset(smpls[seq_id].get());
@@ -71,7 +72,7 @@ index ca783ba..51c586a 100644
  
          const int32_t N = (int32_t) prompt.size();
          if (N <= 0) {
-@@ -2192,6 +2240,7 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+@@ -2192,6 +2241,7 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
  
      void draft(common_speculative_draft_params_vec & dparams) override {
          auto & ctx_dft = params.ctx_dft;
@@ -79,7 +80,7 @@ index ca783ba..51c586a 100644
  
          batch.clear();
  
-@@ -2208,6 +2257,14 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+@@ -2208,6 +2258,15 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
  
              n_drafting++;
              drafting[seq_id] = true;
@@ -90,22 +91,22 @@ index ca783ba..51c586a 100644
 +                a.s = a.exp >= 0.5 ? std::min(1.5, std::max(0.5, a.obs / a.exp)) : 1.0;
 +                a.R = a.ms > 0.0 ? a.tok / a.ms : 0.0;   // 0: not known yet, guess as usual
 +                a.explore = (++a.rounds % AD_WIN) == 0;
++                a.t_start = ad_t0;
 +            }
              // greedy drafting leaves no candidates behind, so the verifier falls back to sample-and-match
              if (!params.probabilistic) {
                  dp.result_q = nullptr;
-@@ -2292,6 +2349,25 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+@@ -2292,6 +2351,24 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
                      continue;
                  }
  
 +                bool ad_last = false;   // Lamplight 0162: kept, but the next guess could not pay: not made
 +                if (ad_on) {
 +                    auto & a = ad[seq_id];
-+                    const size_t j = dparams.at(seq_id).result->size();   // guessed so far
 +                    const float  q = ad_chance(cur_p->data[0].p);
 +                    const double c = a.c * std::min(1.0, a.s * q);
 +                    if (!a.explore && a.R > 0.0) {
-+                        if (j > 0 && c < a.R * std::max(0.05, ad_b - ad_td)) {
++                        if (c < a.R * std::max(0.05, ad_b - ad_td)) {   // the first one too (4090 run: long chats lost 5-7%)
 +                            drafting[seq_id] = false;
 +                            n_drafting--;
 +
@@ -120,7 +121,7 @@ index ca783ba..51c586a 100644
                  common_sampler_accept(smpl, id, true);
  
                  auto & dp = dparams.at(seq_id);
-@@ -2303,7 +2379,7 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+@@ -2303,7 +2380,7 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
                      dp.result_q->emplace_back(cur_p->data, cur_p->data + cur_p->size);
                  }
  
@@ -129,13 +130,13 @@ index ca783ba..51c586a 100644
                      drafting[seq_id] = false;
                      n_drafting--;
                      continue;
-@@ -2353,13 +2429,86 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
+@@ -2353,13 +2430,86 @@ struct common_speculative_impl_draft_mtp : public common_speculative_impl {
              if (dp.result->size() < (size_t) params.n_min) {
                  dp.result->clear();
              }
 +            if (ad_on && dp.result->empty()) {
 +                ad[seq_id].ch.clear();
-+                ad[seq_id].t_prev = 0;   // a round without guesses: the next round's clock starts again
++                ad[seq_id].t_start = 0;   // a round without guesses: nothing to time
 +            }
 +        }
 +        if (ad_on) {
@@ -151,7 +152,7 @@ index ca783ba..51c586a 100644
 +        const int k = (int) a.ch.size();
 +        if (is_other) {
 +            a.ch.clear();
-+            a.t_prev = 0;   // another guesser's round: neither its guesses nor its time are ours
++            a.t_start = 0;   // another guesser's round: neither its guesses nor its time are ours
 +            return;
 +        }
 +        if (k == 0) {
@@ -163,13 +164,13 @@ index ca783ba..51c586a 100644
 +            e += c;
 +        }
 +        const int64_t now = ggml_time_us();
-+        const double  dt  = a.t_prev > 0 ? (now - a.t_prev) / 1000.0 : 0.0;
++        const double  dt  = a.t_start > 0 ? (now - a.t_start) / 1000.0 : 0.0;
 +        double w_tok = 0.0, w_ms = 0.0;
 +        if (dt > 0.0) {
 +            const double x[2] = { 1.0, (double) k };
 +            const double pred = ad_a + ad_b * k;
 +            const double obs  = std::min(1.5 * pred, std::max(0.67 * pred, dt));   // one slow round can't rule a length out
-+            const double lambda = 0.995;
++            const double lambda = 0.98;   // about 50 rounds: follows the chat's length as it grows
 +            const double Px[2] = { ad_P[0][0]*x[0] + ad_P[0][1]*x[1], ad_P[1][0]*x[0] + ad_P[1][1]*x[1] };
 +            const double den   = lambda + x[0]*Px[0] + x[1]*Px[1];
 +            const double K[2]  = { Px[0]/den, Px[1]/den };
@@ -200,8 +201,8 @@ index ca783ba..51c586a 100644
 +            ad_td += 0.2 * (std::min(3.0 * ad_td, td) - ad_td);
 +        }
 +        a.ch.clear();
-+        a.t_prev = now;
-+        if (ad_log && ++ad_n % 100 == 0) {
++        a.t_start = 0;
++        if (ad_log && ++ad_n % 25 == 0) {
 +            LOG_INF("mtp adapt %d: round %.2f + %.2f ms a guess, guess pass %.2f ms, %.4f words/ms, kept/expected %.2f\n",
 +                    ad_n, ad_a, ad_b, ad_td, a.ms > 0 ? a.tok / a.ms : 0.0, a.exp > 0 ? a.obs / a.exp : 0.0);
 +        }
