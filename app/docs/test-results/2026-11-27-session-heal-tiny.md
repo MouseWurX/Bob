@@ -77,3 +77,22 @@ Data: `data/2026-11-27-session-heal-pilot1/`. Bob at 462f2c0, Qwen/Qwen3-4B revi
 
 Tiny brain, fixed kit (same budget for both heals, 200 steps): at 2e-4 the session heal was 4% better on held-apart
 sessions and 9% worse on plain text than the wikitext heal (wikitext KLD 0.0318 against 0.0292; stock 0.0398).
+
+## Rerun 2, Qwen3-4B (28 Nov, L40S, $1.75)
+
+Data: `data/2026-11-28-heal-rerun/`. Bob at e511aec.
+
+| File (all 2,497,280,640 bytes) | Wikitext KLD | Same top | Sessions KL | agent | general | Wiki valid KL |
+|---|---:|---:|---:|---:|---:|---:|
+| stock imatrix Q4_K_M | 0.0467 | 91.6% | 0.0329 | 0.0148 | 0.0425 | 0.0425 |
+| wikitext heal, 1e-4 (kept step 350) | **0.0358** | **92.5%** | **0.0301** | 0.0136 | **0.0388** | **0.0333** |
+| wikitext heal, 3e-4 (kept step 100) | 0.0457 | 91.7% | 0.0320 | 0.0135 | 0.0418 | 0.0415 |
+
+- **Plain scale healing works on a real brain**: at 1e-4 it cut wikitext drift by 23% and drift on the held-apart agent
+  sessions by 9%, with no change in size, types or codes. Tool calls stayed 21 of 21 well formed, 20 of 21 the same as
+  BF16. At 1e-4 the check slice was still falling at step 400, so more steps may help; 3e-4 was too big after step 100.
+- **Both session heals crashed: out of card memory** on their first step (the kit's message wrongly showed a harmless
+  tokenizer warning). Shuffling now let 2,000-token sessions into training, and a 4B brain with gradients on one of those
+  doesn't fit in 48 GB. Fix: sessions are cut after 1,024 tokens (`--session-max-len`), and the kit now shows the real
+  error. The kit can run the session heal alone (`HEAL_ARMS=SESSION`), since the wikitext heal numbers above stand.
+- "Known tool 0" again: the tool check now saves the first tool lists it read, to find why.

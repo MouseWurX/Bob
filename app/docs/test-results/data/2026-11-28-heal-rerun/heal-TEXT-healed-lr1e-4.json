@@ -1,0 +1,62 @@
+{
+ "when": "2026-11-28 02:50",
+ "args": {
+  "teacher": "<pod>",
+  "gguf": "<pod>",
+  "calib": "<pod>",
+  "eval_text": "",
+  "sessions": "",
+  "agent_share": 0.7,
+  "measure": false,
+  "max_text_rise": 0.02,
+  "out": "<pod>",
+  "steps": 400,
+  "hours": 0.5,
+  "lr": 0.0001,
+  "norm_lr": 0.0001,
+  "check_every": 50,
+  "check_items": 24,
+  "ctx": 512,
+  "batch": 4,
+  "chunks": 400,
+  "eval_chunks": 40,
+  "topk": 64,
+  "device": "cuda",
+  "dtype": "",
+  "no_norms": false,
+  "heal_embd": false,
+  "min_cos": 0.6,
+  "seed": 1,
+  "report": "<pod>",
+  "llama_cpp": "<pod>",
+  "keep_mtp": false
+ },
+ "steps": 400,
+ "best_step": 350,
+ "seconds": 1067,
+ "healed_tensors": 252,
+ "scales_tuned": 26449920,
+ "norms_tuned": 145,
+ "norm_values": 196096,
+ "frozen_squeezed_tensors": 1,
+ "not_lined_up": [],
+ "partly_from_teacher": [],
+ "traced_through_converter": 253,
+ "before": {
+  "kl_topk": 0.03902197550050914,
+  "same_top": 0.917578125,
+  "tokens": 20480
+ },
+ "after": {
+  "kl_topk": 0.031171711860224605,
+  "same_top": 0.926708984375,
+  "tokens": 20480
+ },
+ "written": "<pod>",
+ "next": [
+  "llama-perplexity -m <full-precision.gguf> -f <eval text> --kl-divergence-base base.kld",
+  "llama-perplexity -m <pod> -f <eval text> --kl-divergence-base base.kld --kl-divergence",
+  "llama-perplexity -m <pod> -f <eval text> --kl-divergence-base base.kld --kl-divergence",
+  "then the publish gate and the real-jobs run; drift numbers alone never decide"
+ ]
+}

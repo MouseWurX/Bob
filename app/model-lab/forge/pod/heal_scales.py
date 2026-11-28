@@ -193,13 +193,17 @@ def kl_topk(student_logits, tid, tlp):
     return kl.mean()
 
 
-def load_sessions(path, n_train, n_eval):
+def load_sessions(path, n_train, n_eval, max_len=1024):
     """agent_sessions.py rows: ids (task + reply) and start (first token the brain wrote)."""
     tr, ev = [], []
     for line in open(path, encoding='utf-8'):
         if not line.strip(): continue
         r = json.loads(line)
         ids, start = r['ids'], int(r['start'])
+        # A long session is cut after max_len tokens (the end of the reply goes): a 4B brain with gradients on a
+        # 2,000-token session ran out of a 48 GB card (28 Nov rerun). Sessions whose task alone is that long are skipped.
+        if start > max_len - 16: continue
+        ids = ids[:max_len]
         if not (0 < start < len(ids)): continue
         s = {'ids': torch.tensor(ids, dtype=torch.long), 'start': start, 'kind': r.get('kind', 'general')}
         (ev if r.get('split') == 'eval' else tr).append(s)
@@ -256,6 +260,7 @@ def main():
     ap.add_argument('--calib', default='', help='public neutral text, never held-out jobs, never Claude-written')
     ap.add_argument('--eval-text', default='', help='separate text for before/after numbers (default: last chunks of --calib)')
     ap.add_argument('--sessions', default='', help='agent_sessions.py output instead of --calib: score only what the brain wrote')
+    ap.add_argument('--session-max-len', type=int, default=1024, help='with --sessions: cut sessions after this many tokens')
     ap.add_argument('--agent-share', type=float, default=0.7, help='with --sessions: share of agent sessions in each batch')
     ap.add_argument('--measure', action='store_true', help='only measure the file (no tuning, nothing written): drift on '
                     'the sessions and --eval-text, with the file\'s own norms even when healing moved them')
@@ -383,7 +388,7 @@ def main():
 
     sess_train, sess_eval, calib, evalc = [], [], [], []
     if a.sessions:
-        sess_train, sess_eval = load_sessions(a.sessions, a.chunks, a.eval_chunks)
+        sess_train, sess_eval = load_sessions(a.sessions, a.chunks, a.eval_chunks, a.session_max_len)
         if not sess_train or not sess_eval: sys.exit('not enough sessions: need some in the train and the eval split')
         if a.eval_text: evalc = chunks_from_text(tok, a.eval_text, a.ctx, a.eval_chunks)
         print(f'teacher reads {len(sess_train)} + {len(sess_eval)} sessions '

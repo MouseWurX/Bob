@@ -21,13 +21,13 @@
 #   BOB_SHA=<commit> bash heal-agent-pilot.sh   -> results in $OUT (default /workspace/heal-agent-results)
 # Env: OUT, W, CUDA=1 (0 = processor-only dry run), HF_MODEL, HF_DIR, BOB_DIR / LL_DIR (dry runs), TEXT_TRAIN / TEXT_TEST /
 #      TEXT_VALID, PROMPTS (a task jsonl instead of the public downloads: dry runs), N_SESSIONS (1200), MAX_NEW (768),
-#      NEVER (Bob's never-taught files, copied from the PC: matching tasks are dropped), HEAL_HOURS (0.5 per heal), HEAL_STEPS (400), HEAL_LRS ("1e-4 3e-4": each arm at each step size), KLD_CHUNKS (40), TOOL_N (40), KEEP_DIR (copy the files there for a
+#      NEVER (Bob's never-taught files, copied from the PC: matching tasks are dropped), HEAL_HOURS (0.5 per heal), HEAL_STEPS (400), HEAL_LRS ("1e-4 3e-4": each arm at each step size), HEAL_ARMS ("TEXT SESSION"), KLD_CHUNKS (40), TOOL_N (40), KEEP_DIR (copy the files there for a
 #      real-jobs run, e.g. the network volume; default: not kept), JOBS, BOB_SHA, BOB_BRANCH.
 # Uploads nothing. Ends with "HEAL DONE" (or "HEAL FAILED <step>") in summary.txt.
 set -uo pipefail
 OUT=${OUT:-/workspace/heal-agent-results}; W=${W:-/workspace/heal-agent}; CUDA=${CUDA:-1}; JOBS=${JOBS:-$(nproc)}
 HF_MODEL=${HF_MODEL:-Qwen/Qwen3-4B}; CTX=512; KLD_CHUNKS=${KLD_CHUNKS:-40}
-N_SESSIONS=${N_SESSIONS:-1200}; MAX_NEW=${MAX_NEW:-768}; HEAL_HOURS=${HEAL_HOURS:-0.5}; HEAL_STEPS=${HEAL_STEPS:-400}; HEAL_LRS=${HEAL_LRS:-"1e-4 3e-4"}; TOOL_N=${TOOL_N:-40}
+N_SESSIONS=${N_SESSIONS:-1200}; MAX_NEW=${MAX_NEW:-768}; HEAL_HOURS=${HEAL_HOURS:-0.5}; HEAL_STEPS=${HEAL_STEPS:-400}; HEAL_LRS=${HEAL_LRS:-"1e-4 3e-4"}; HEAL_ARMS=${HEAL_ARMS:-"TEXT SESSION"}; TOOL_N=${TOOL_N:-40}
 BOB_BRANCH=${BOB_BRANCH:-claude/project-thread-5o1p5l}
 BOB_SHA=${BOB_SHA:-}
 TAG=b12359
@@ -136,10 +136,10 @@ heal_arm() {  # heal_arm <TEXT|SESSION> <lr>: one heal; scores the file if heali
       --lr "$2" --norm-lr "$2" --hours "$HEAL_HOURS" --steps "$HEAL_STEPS" "${DEV[@]}" --report "$OUT/heal-$N.json" > "$OUT/heal-$N.log" 2>&1
   local rc=$?
   if [ -s "$F" ]; then kld "$N" "$F"
-  elif [ $rc -ne 0 ]; then say "$N: heal CRASHED (exit $rc): $(grep -m1 -E 'Error|error' "$OUT/heal-$N.log" | head -c 160)"
+  elif [ $rc -ne 0 ]; then say "$N: heal CRASHED (exit $rc): $(grep -E '^[A-Za-z_.]*(Error|Exception)' "$OUT/heal-$N.log" | tail -1 | head -c 160)"
   else say "$N: no step beat the start, no file ($(grep -m1 '^keeping step' "$OUT/heal-$N.log"))"; fi
 }
-for LR in $HEAL_LRS; do heal_arm TEXT "$LR"; heal_arm SESSION "$LR"; done
+for LR in $HEAL_LRS; do for ARM in $HEAL_ARMS; do heal_arm "$ARM" "$LR"; done; done
 
 step "drift on the held-apart sessions and wikitext validation"
 printf 'file\tsessions_kl\tagent_kl\tgeneral_kl\tsessions_same_top\twiki_valid_kl\n' > "$OUT/sessions-drift.tsv"

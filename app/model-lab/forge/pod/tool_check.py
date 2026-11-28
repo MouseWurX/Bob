@@ -71,7 +71,11 @@ def main():
     prompts = [render(m) for m in tasks]
     allowed = [tool_names(next((x['content'] for x in m if x['role'] == 'system'), '')) for m in tasks]
     ref = [parse_call(answer(a.llama_bin, a.ref, p, a.ngl, a.new)) for p in prompts]
-    rep = {'tasks': len(tasks), 'ref_calls': sum(c is not None for c in ref), 'files': {}}
+    rep = {'tasks': len(tasks), 'ref_calls': sum(c is not None for c in ref), 'files': {},
+           # a few tool lists and calls as read, so a wrong "known tool" count can be checked by eye
+           'sample': [{'tools': sorted(al)[:6], 'ref_call': (rc or {}).get('name'),
+                       'tools_text': next((x['content'] for x in m if x['role'] == 'system'), '')[:400]}
+                      for m, al, rc in list(zip(tasks, allowed, ref))[:3]]}
     for spec in a.file:
         name, path = spec.split('=', 1)
         ok = known = same = 0
