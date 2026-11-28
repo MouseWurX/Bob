@@ -7,6 +7,8 @@
 //      Bob's own danger check only ran on those 15, so the dangerous ones further back were never seen.
 //   3. A declined card: after "no" to trashing the scams, Bob's answer was only "Fair enough, what now?", and what he
 //      had found (the scams themselves) was lost.
+//   4. A call missing a field the tool needs (add_slide with no title) was answered with "try another way", so the
+//      same bad call came three times. Now an error that names what's missing says "fix this call".
 // All of it is code and short notes: nothing is added to the start of a job.
 
 export const lookCloserOn = (cfg) => cfg?.lookCloser === true;
@@ -37,3 +39,10 @@ export function moreDangerLine(rest = [], shown = 0, total = 0) {
 
 // (3) The note a declined card gives back: keep what was found.
 export const DECLINED_KEEP = 'The user said no to that step, so it was not done. Don\'t try it again or another way. Still give your whole answer: what you looked at and what you found, in full, then say that step wasn\'t done and ask what they\'d like instead.';
+
+// (4) A call missing what the tool needs (Nov 28: the default brain left add_slide's title out, then Bob's "try one other
+// way" line sent him to another tool, and he sent the same bad call three times). With the switch on, an error that
+// says what's missing gets "fix this call" instead of "try another way".
+const ARG_ERROR = /^Error: (?:[\w ]{1,30} needs |Which messages?\?|Give |Please give |How should |A bulk act needs |bulk needs |[A-Z]{1,3}\d* isn't a cell name|No changes given)/;
+export const isArgError = (text) => ARG_ERROR.test(String(text || ''));
+export const FIX_CALL_NUDGE = (name) => ` (This call was missing something ${name} needs, and the error says what. Call ${name} again now with that added; don't send the same call again and don't switch to another tool.)`;

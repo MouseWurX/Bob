@@ -29,6 +29,7 @@ import { roughTokens, wantsBorrow } from './share-brains.js';
 import { howtosOn, usingLine, howtoPrompt, trailStep } from './howtos.js';
 import { causeLine, sideJob, STRIKE_NOTE } from './retry.js';
 import { carriedBudget, Progress, spendNudge, keepBudget, stage, pastCeiling, ceilingMs, wrapUp, loudLine, ceilingMins, waitedFor, outOfStepsLine, nudgeOk, CALLS_PER_TURN, CAP_SKIP, droppedNote, ALWAYS_ON_CEILING } from './loop-guard.js';
+import { lookCloserOn, isArgError, FIX_CALL_NUDGE } from './look-closer.js';
 import { tidyOld, LAST_ROUND_NOTE, onTrackNote, promisesAction, PROMISE_NUDGE, PROMISE_LOG, nearKey, errorHint, pastedText, PASTED_NOTE, PROMISE_UNDONE_LINE } from './loop-help.js';
 import { midJobOn } from './mid-job.js';
 import { systemPrompt } from './persona.js';
@@ -668,8 +669,10 @@ export const runOnParts = {
             // A failure after a success this turn: make him say both.
             if (failed && ctx.doneThisTurn?.length) res.text += ` (Earlier this turn this worked: ${ctx.doneThisTurn.slice(-2).map((x) => x.slice(0, 160)).join(' / ')}. Tell ${who} what really happened: what worked, then what failed.)`;
             // Item 200's two-strikes line says the same for an action: the other-route line stands instead.
-            if (failed && !res.struck) res.text = String(res.text).replace(STRIKE_NOTE(name, who), '') + (ctx.altTried ? ALT_ROUTE_DONE(who) : ALT_ROUTE_NUDGE(who));
-            if (failed && !ctx.altTried) {
+            const fixCall = failed && lookCloserOn(this.cfg) && isArgError(res.text); // Nov 28 (look-closer.js): fix this call, not another route
+            if (fixCall && !res.struck) res.text = String(res.text) + FIX_CALL_NUDGE(name);
+            else if (failed && !res.struck) res.text = String(res.text).replace(STRIKE_NOTE(name, who), '') + (ctx.altTried ? ALT_ROUTE_DONE(who) : ALT_ROUTE_NUDGE(who));
+            if (failed && !fixCall && !ctx.altTried) {
               ctx.altTried = true;
               // The other routes need their tools: add the switched-on Hands and the documents group.
               for (const id of [...Object.keys(HANDS), 'documents']) if (groupsFor(this)[id]) ctx.loaded.add(id);

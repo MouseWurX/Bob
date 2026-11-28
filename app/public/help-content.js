@@ -350,10 +350,11 @@ ${set('Pop out', 'Button', 'Opens the small window on top as well, for a second 
 <p>When a card is waiting, <strong>Alerts</strong> can pop up a notification, and Now running can open by itself (Settings, Look &amp; feel).</p>` },
 
   { id: 'look-closer', group: 'Using Bob', title: 'Look closer before answering', words: 'look closer before answering search snippets open page fetch fake placeholder site phishing danger mail all messages newest 15 declined no card findings lost bad tool calls',
-    html: `<p>With <strong>Look closer before answering</strong> on (Settings, How Bob works; off until you turn it on), I check three things that cost me answers in our tests:</p>
+    html: `<p>With <strong>Look closer before answering</strong> on (Settings, How Bob works; off until you turn it on), I check four things that cost me answers in our tests:</p>
 <ul><li><strong>I open a page before I answer from the web.</strong> Search results are only short snippets. If I searched but opened nothing and then answered, I get one more go to open the best result and answer from it. I don't call a site fake just because I don't know it.</li>
 <li><strong>Danger checks cover all of your mail, not just the first 15.</strong> A mail list shows the newest 15. With this on, my danger check also runs on the rest in that range (just the senders and subjects, nothing is changed), so an old phishing mail isn't missed.</li>
-<li><strong>A No keeps what I found.</strong> If you say no to a step, like binning the scams, I still tell you what I found. I just don't do that step.</li></ul>
+<li><strong>A No keeps what I found.</strong> If you say no to a step, like binning the scams, I still tell you what I found. I just don't do that step.</li>
+<li><strong>I fix a call instead of giving up on it.</strong> If a tool says I left something out, like a new slide's title, I send the same tool again with it added. I don't switch to some other tool or send the same call again.</li></ul>
 <p>It's off while we test it, and it turns on by default once a test shows fewer tool mistakes. It works the same on Windows, Mac, Linux and for jobs you send from the Android app. See ${go('faq-look-closer', 'Why would Bob answer without opening a page?')}</p>` },
 
   { id: 'todo-list', group: 'Using Bob', title: 'Keep a to-do list and check it', words: 'to-do list todo keep a to-do list check it update_plan plan steps tick ticked done skipped open steps long job lose place checked finish proof before result diagram drawn bad tool calls replicant matrix pc computer laptop mac device machine android',

@@ -15,7 +15,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-look-'));
 const conf = path.join(tmp, 'config.json');
 fs.copyFileSync(path.join(here, '..', 'config.example.json'), conf);
 process.env.BOB_CONFIG = conf; process.env.BOB_AGENT_DIR = tmp;
-const { lookCloserOn, snippetNudge, moreDangerLine, DECLINED_KEEP } = await import('../src/look-closer.js');
+const { lookCloserOn, snippetNudge, moreDangerLine, DECLINED_KEEP, isArgError, FIX_CALL_NUDGE } = await import('../src/look-closer.js');
 const { afterTurn } = await import('../src/verify.js');
 const { emailTool } = await import('../src/email-read.js');
 const { HELP } = await import('../public/help-content.js');
@@ -65,6 +65,13 @@ check('none flagged among the rest: says so', /no danger signs/.test(moreDangerL
 // ---- (3) a declined card keeps the findings ----
 check('declined: keep the findings in the answer', /Still give your whole answer/.test(DECLINED_KEEP) && /Don't try it again/.test(DECLINED_KEEP));
 check('wired: brain-tool-runs gives that note only with the switch on', /lookCloserOn\(this\.cfg\) \? DECLINED_KEEP : 'The user said no\. Do not try again; say it is fine and ask what to do instead\.'/.test(read('src/brain-tool-runs.js')));
+
+// ---- (4) a call missing what the tool needs: fix this call, not another route ----
+check('missing-field errors are seen', isArgError('Error: add_slide needs title and bullets (the slide\'s points); no blank slide was added.') && isArgError('Error: Which message? Give the id from the list.') && isArgError('Error: bulk needs do: one of archive, trash.'));
+check('other errors are not', !isArgError("Error: That file doesn't exist.") && !isArgError("Error: The find text isn't in the file.") && !isArgError('Done: added slide 4'));
+check('the note says to call the same tool again, not another', /Call office_edit again/.test(FIX_CALL_NUDGE('office_edit')) && /don't switch to another tool/.test(FIX_CALL_NUDGE('office_edit')));
+check('wired: only with the switch on, instead of the other-route line', /const fixCall = failed && lookCloserOn\(this\.cfg\) && isArgError\(res\.text\)/.test(read('src/brain-run-on.js')) && /if \(failed && !fixCall && !ctx\.altTried\)/.test(read('src/brain-run-on.js')));
+check('add_slide with no title or points is refused, with the shape to send', /add_slide needs title and bullets[^`]*no blank slide was added\. Send the change again like \{"op": "add_slide"/.test(read('src/hands-office.js')));
 
 // ---- Help and Settings ----
 const ids = new Set(HELP.map((e) => e.id));

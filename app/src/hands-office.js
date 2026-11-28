@@ -165,6 +165,9 @@ export function planEdit(cfg, args) {
     if (c.op === 'set_cells' && (!c.cells || typeof c.cells !== 'object' || !Object.keys(c.cells).length)) throw new Error('set_cells needs cells, like { "B2": 42 }.');
     if (c.op === 'set_cells') for (const k of Object.keys(c.cells)) if (!/^[A-Za-z]{1,3}\d{1,7}$/.test(k)) throw new Error(`${k} isn't a cell name like B2.`);
     if (c.op === 'delete_slide' && !(Number(c.number) >= 1)) throw new Error('delete_slide needs the slide number.');
+    // Nov 28 (held-out jobs: Bob's default brain sent add_slide with no title or points in 5 of 5 runs): never add a
+    // blank slide; say exactly what to send.
+    if (c.op === 'add_slide' && !String(c.title || '').trim() && ![].concat(c.bullets || []).some((b) => String(b || '').trim())) throw new Error(`add_slide needs title and bullets (the slide's points); no blank slide was added. Send the change again like {"op": "add_slide"${Number(c.at) >= 2 ? `, "at": ${Number(c.at)}` : ''}, "title": "...", "bullets": ["..."]}.`);
   }
   const saveAs = args.save_as ? canWrite(cfg, freeName(full(args.save_as))) : null;
   if (!saveAs) canWrite(cfg, src);
