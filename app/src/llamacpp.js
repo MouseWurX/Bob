@@ -687,7 +687,7 @@ export class LlamaCpp {
     else if (!args.includes('-ngl')) args.push('-ngl', '999');
     // The Conductor (Engine tuning, off unless picked): the start step is the chat step, and the reading needs a
     // place on disk while the step changes. A step set by hand (flags, the config file) means no Conductor.
-    this.condChat = 0; this.condWinFull = 0; this.condMax = 0; this.condLoad = 0;
+    this.condChat = 0; this.condWinFull = 0; this.condMax = 0; this.condLoad = 0; this.condSpareMiB = 0;
     // Nov 24 (the Legion Go check: the Conductor never acted, and nothing said why): when it's on but can't drive this
     // load, the logbook says why, once per brain and reason
     if (conductorOn(this.cfg)) {
@@ -760,6 +760,7 @@ export class LlamaCpp {
       this.condLoad = atRead ? Math.max(this.condMax, this.condChat) : this.condChat;
       // Nov 24 (the Legion Go check found no Conductor lines in the logbook): say once per load that it drives, and how
       this.log?.('engine', `${model}: Conductor: on (${conductorPicked(this.cfg) ? 'picked' : 'the default'}), loads at step ${this.condLoad}, reads at up to ${this.condMax || this.condChat}${this.condApu ? ', built-in graphics' : ''}`);
+      this.condSpareMiB = fill.LLAMA_MOE_CACHE_FILL && prof?.fillSpareMiB > 0 ? prof.fillSpareMiB : 0;
       if (fill.LLAMA_MOE_CACHE_FILL) {
         this.tuneEnv = { ...(this.tuneEnv || {}), ...fill };
         if (this.fillSaid !== model) this.log?.('engine', `${model}: Conductor: the copy cache fills the card's free memory, leaving room for reading`);
@@ -836,6 +837,12 @@ export class LlamaCpp {
       if (ev.length && this.beNo() > 0) this.tuneEnv = { ...(this.tuneEnv || {}), ...specGateEnv(this.tuneEnv) };
       // Nov 23: with the Conductor's fill on, the MTP draft's own room is left free too (it is made after the fill)
       if (args.some((x, i) => x === '--spec-type' && String(args[i + 1] || '').split(',').includes('draft-mtp'))) this.tuneEnv = { ...(this.tuneEnv || {}), ...mtpSpareEnv({ env: this.tuneEnv, step: this.condLoad || 0 }) }; }
+    // Nov 28 (the matrix rentals): this PC's GUPPI calibration found the fill's own 512 MiB spare left the card under
+    // his margin, so the fill leaves what calibrating found (or more, when the MTP draft needs more). A spare set by hand wins.
+    if (this.condSpareMiB > 0 && this.tuneEnv?.LLAMA_MOE_CACHE_FILL === '1' && !(tune.env && tune.env.LLAMA_MOE_CACHE_FILL_SPARE_MIB)) {
+      const now = Number(this.tuneEnv.LLAMA_MOE_CACHE_FILL_SPARE_MIB) || 512;
+      if (this.condSpareMiB > now) { this.tuneEnv = { ...this.tuneEnv, LLAMA_MOE_CACHE_FILL_SPARE_MIB: String(this.condSpareMiB) }; this.log?.('engine', `${model}: this PC's GUPPI calibration: the copy cache leaves ${this.condSpareMiB} MiB of the card free`); }
+    }
     // Nov 27: with the fill on, the picture reader's room is left free too (it loads after the fill)
     { const mi = args.indexOf('--mmproj'); let rb = 0; if (mi >= 0) { try { rb = fs.statSync(args[mi + 1]).size; } catch {} }
       const rs = readerSpareEnv({ env: this.tuneEnv, hand: tune.env, readerBytes: rb });

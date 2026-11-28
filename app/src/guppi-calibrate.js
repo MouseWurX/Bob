@@ -105,13 +105,19 @@ export const WDDM_FROM_BE = 38; // GGML_CUDA_WDDM_BUDGET (patch 0068)
 // step, so the lever there is a smaller step. ub: that step, below 512 (0 = as the try says).
 export const computeMiBOf = (log) => Math.max(0, ...[...String(log || '').matchAll(/CUDA\d*\s+compute buffer size\s*=\s*([\d.]+)\s*MiB/g)].map((m) => Number(m[1]) || 0));
 export const MIN_UB = 32;
-export function tryArgs(t, { beNo = 0, fitTargetMiB = 0, wddm = false, ub = 0 } = {}) {
+// Nov 28 (the matrix rentals, 35B on 16 GB cards, RTX A4000 and a held-down 3090): the copy cache fills the card to
+// the engine's own 512 MiB spare, exactly GUPPI's margin, so the first long read took the card under it every time
+// (462 and 476 MB free) and no GUPPI step ever ran. Moving experts to RAM or a smaller step only gave the fill more to
+// take. So the fill leaves the margin plus a little, and a try that still comes up short leaves more (spareMiB).
+export const FILL_SPARE_MIB = SPILL_MARGIN_MIB + ROOM_EXTRA_MIB;
+export function tryArgs(t, { beNo = 0, fitTargetMiB = 0, wddm = false, ub = 0, spareMiB = 0 } = {}) {
   const extra = ub > 0 && ub < Math.max(512, t.step) ? ['-b', String(Math.max(ub, 512)), '-ub', String(ub)] : t.step > 512 ? ['-b', String(t.step), '-ub', String(t.step)] : [];
   if (fitTargetMiB > 0) extra.push('--fit-target', String(fitTargetMiB));
   const base = wddm ? { GGML_CUDA_WDDM_BUDGET: '1' } : {};
   if (!t.cache) return { extra, env: Object.keys(base).length ? base : null };
   extra.push('--moe-cache-mib', String(COND_CACHE_MIB));
   const env = { ...base, ...fillEnv({ cacheMiB: COND_CACHE_MIB, beNo, env: {}, step: t.step }) };
+  if (env.LLAMA_MOE_CACHE_FILL === '1') env.LLAMA_MOE_CACHE_FILL_SPARE_MIB = String(Math.max(FILL_SPARE_MIB, spareMiB || 0));
   return { extra, env: Object.keys(env).length ? env : null };
 }
 
@@ -208,7 +214,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
     set('pc', 'done'); tick();
     const rows = [];
     let edge = false, hot = false, refText = null;
-    let fitTargetMiB = 0, roomTries = 0, wddm = false, srvMem = '', ubCap = 0;
+    let fitTargetMiB = 0, roomTries = 0, wddm = false, srvMem = '', ubCap = 0, spareMiB = 0;
     // where the brain sits: Bob's own placement for it when he has one, else the engine's fit
     const layers = Number(info.shape?.layers || info.layers || 0) || 0;
     const known = placeFor(lab.cfg, model);
@@ -224,8 +230,12 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       const cool = await coolDown(fx, { idleC: pc.idleC, signal });
       row.cool = cool;
       const sharedBase = await fx.shared().catch(() => null);
-      const { extra, env } = tryArgs(t, { beNo, fitTargetMiB, wddm, ub: ubCap && ubCap < t.step ? ubCap : ubCap && t.step <= 512 ? ubCap : 0 });
+      const { extra, env } = tryArgs(t, { beNo, fitTargetMiB, wddm, spareMiB, ub: ubCap && ubCap < t.step ? ubCap : ubCap && t.step <= 512 ? ubCap : 0 });
       let srv = null, trip = '';
+      // Nov 28 (the matrix rentals): a trip ends the try's request at once too; before, the stopped engine finished a
+      // slow long read first (almost 5 minutes on a held-down 3090) while still holding the card
+      const tryAc = new AbortController();
+      const ask = AbortSignal.any([signal, tryAc.signal]);
       const samples = [];
       const sample = async () => {
         const own = srv?.pid && fx.sharedOf ? await Promise.resolve(fx.sharedOf(srv.pid)).catch(() => null) : null;
@@ -233,7 +243,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
         const s = { tempC: h?.tempC ?? null, smMHz: h?.smMHz ?? null, memMHz: h?.memMHz ?? null, powerW: h?.powerW ?? null, freeMiB: c?.freeMB ?? h?.freeMiB ?? null, ramMiB: Number.isFinite(ram) ? ram : null, sharedRiseMiB: Number.isFinite(sh) && Number.isFinite(sharedBase) ? sh - sharedBase : null, throttle: th || null };
         samples.push(s);
         const why = tripWhy(s, { apu, step: t.step, card: Boolean(srv) });
-        if (why && !trip) { trip = why; try { srv?.stop(); } catch {} }
+        if (why && !trip) { trip = why; tryAc.abort(); try { srv?.stop(); } catch {} }
         return why;
       };
       let timer = null;
@@ -244,9 +254,9 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
         if (await sample()) throw Object.assign(new Error('trip'), { trip: true });
         const reads = [], writes = [], firsts = [], readNs = [];
         for (let i = 0; i < ROUNDS; i++) {
-          const long = await fx.chat(srv.url, [{ role: 'user', content: CAL_LONG }], { maxTokens: 24, signal });
+          const long = await fx.chat(srv.url, [{ role: 'user', content: CAL_LONG }], { maxTokens: 24, signal: ask });
           if (await sample()) throw Object.assign(new Error('trip'), { trip: true });
-          const short = await fx.chat(srv.url, [{ role: 'user', content: CAL_PROMPT }], { maxTokens: 200, signal });
+          const short = await fx.chat(srv.url, [{ role: 'user', content: CAL_PROMPT }], { maxTokens: 200, signal: ask });
           if (await sample()) throw Object.assign(new Error('trip'), { trip: true });
           readNs.push(Number(long.timings?.prompt_n) || 0); reads.push(Number(long.timings?.prompt_per_second) || 0); firsts.push(long.timings?.prompt_ms ? long.timings.prompt_ms / 1000 : 0); writes.push(Number(short.timings?.predicted_per_second) || 0);
           if (i === 0) { if (refText == null) refText = short.text; else row.sameWords = short.text === refText; }
@@ -256,7 +266,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       } catch (e) {
         if (signal.aborted) throw e;
         if (!trip) row.failed = 'Didn\'t start: too much for this PC this way.';
-      } finally { if (timer) clearInterval(timer); try { srvMem = srv?.memLog?.() || ''; } catch {} try { srv?.stop(); } catch {} }
+      } finally { if (timer) clearInterval(timer); try { srvMem = srv?.memLog?.() || ''; } catch {} try { await srv?.stop(); } catch {} }
       if (trip) row.trip = trip;
       Object.assign(row, heatOf(samples));
       // Nov 27, the laptop: the engine's own fit (its default 1 GB target) left only 266 MB free. Then the same try
@@ -268,6 +278,13 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       const over = Number.isFinite(row.spillMiB) ? Math.max(0, row.spillMiB - spillLimitMiB(t.step) + SPILL_MARGIN_MIB) : 0;
       const compute = computeMiBOf(srvMem), need = short + over + ROOM_EXTRA_MIB;
       const stepNow = ubCap || Math.max(512, t.step);
+      // with the copy cache filling the card, the fill takes whatever room is made, so the lever is the room it leaves
+      if (/^(card|spill):/.test(row.trip || '') && roomTries < 3 && env?.LLAMA_MOE_CACHE_FILL === '1' && (short > 0 || over > 0)) {
+        roomTries++;
+        spareMiB = Math.max(FILL_SPARE_MIB, spareMiB || 0) + short + over + ROOM_EXTRA_MIB;
+        log(`GUPPI calibrate: ${t.id} ${row.trip}; the copy cache fills the card, so it runs again with the cache leaving ${spareMiB} MiB free`);
+        ti--; continue;
+      }
       // the working memory is a big part of the card and a smaller step frees enough: halve the step (or more), first
       if (/^(card|spill):/.test(row.trip || '') && roomTries < 3 && compute > 0 && compute >= need && stepNow > MIN_UB && (short > 0 || over > 0)) {
         roomTries++;
@@ -294,6 +311,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
       if (wddm) row.wddmBudget = true;
       if (cpuMoe != null) row.cpuMoe = cpuMoe;
       if (ubCap) row.ub = ubCap;
+      if (spareMiB && t.cache) row.fillSpareMiB = spareMiB;
       if (row.trip?.startsWith('heat')) hot = true;
       else if (t.id !== 'bob' && (row.trip || row.failed)) edge = true; // the edge: nothing bigger
       log(`GUPPI calibrate: ${t.id} ${JSON.stringify(row)}`);
@@ -305,7 +323,7 @@ export async function startGuppiCalibrate(lab, { model = '', name = '', unload =
     }
     set('save', 'running');
     const v = guppiVerdict(rows);
-    const rec = { name: show, at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), bobStep, cache, ctx: CAL_CTX, rows, ...v, ...(fitTargetMiB ? { fitTargetMiB } : {}), ...(wddm ? { wddmBudget: true } : {}), ...(cpuMoe != null ? { cpuMoe } : {}), ...(ubCap ? { ubCap } : {}) };
+    const rec = { name: show, at: lab.now(), when: new Date(lab.now()).toISOString().slice(0, 10), bobStep, cache, ctx: CAL_CTX, rows, ...v, ...(fitTargetMiB ? { fitTargetMiB } : {}), ...(wddm ? { wddmBudget: true } : {}), ...(cpuMoe != null ? { cpuMoe } : {}), ...(ubCap ? { ubCap } : {}), ...(spareMiB ? { fillSpareMiB: spareMiB } : {}) };
     const prof = readProfile(lab.cfg);
     const keep = prof && !pcChanged(prof.pc, pc) ? prof.brains : {}; // another PC's profile starts over
     const next = { v: 1, at: lab.now(), pc, brains: { ...keep, [model]: rec } };

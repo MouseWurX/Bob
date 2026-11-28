@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { computeMiBOf, parseHealth, guppiTries, tryArgs, tripWhy, guppiVerdict, spillLimitMiB, coolDown, heatOf, startGuppiCalibrate, guppiCalLock, guppiCalView, forgetProfile, COOL, RAM_FLOOR_MIB, HEAT_STOP_C } from '../src/guppi-calibrate.js';
+import { computeMiBOf, FILL_SPARE_MIB, parseHealth, guppiTries, tryArgs, tripWhy, guppiVerdict, spillLimitMiB, coolDown, heatOf, startGuppiCalibrate, guppiCalLock, guppiCalView, forgetProfile, COOL, RAM_FLOOR_MIB, HEAT_STOP_C } from '../src/guppi-calibrate.js';
 import { pcNow, pcChanged, profileFor, readProfile, seedSpeeds, profileFile, speedsFile, saveProfile, calibrateSpeeds } from '../src/guppi-profile.js';
 import { guppiCalHtml } from '../public/guppi-cal.js';
 import { writeGgufFrom } from '../src/lab-gguf.js';
@@ -27,6 +27,7 @@ const GB = 2 ** 30;
   check('Bob\'s step 0 is llama-server\'s own 512; built-in graphics stop at 2048', guppiTries({ cache: true }).map((t) => t.step).join() === '512,512,4096,6144' && guppiTries({ bobStep: 512, cache: true, apu: true }).map((t) => t.step).join() === '512,512');
   const a = tryArgs({ step: 4096, cache: true }, { beNo: 45 });
   check('GUPPI\'s try loads the way he does: the step, the copy cache, filled to the card around that step', a.extra.join(' ') === '-b 4096 -ub 4096 --moe-cache-mib 4096' && a.env.LLAMA_MOE_CACHE_FILL === '1' && a.env.LLAMA_MOE_CACHE_FILL_STEP === '4096');
+  check('the copy cache fill leaves GUPPI\'s margin plus a little, or more when a try asked for more', a.env.LLAMA_MOE_CACHE_FILL_SPARE_MIB === String(FILL_SPARE_MIB) && FILL_SPARE_MIB > 512 && tryArgs({ step: 4096, cache: true }, { beNo: 45, spareMiB: 1500 }).env.LLAMA_MOE_CACHE_FILL_SPARE_MIB === '1500' && tryArgs({ step: 4096, cache: false }, { spareMiB: 1500 }).env === null);
   check('Bob\'s pick: no cache, no fill; step 512 adds no flags', tryArgs({ step: 2048, cache: false }).extra.join(' ') === '-b 2048 -ub 2048' && tryArgs({ step: 2048 }).env === null && tryArgs({ step: 512 }).extra.length === 0);
   check('trips: heat, the RAM floor, the card margin, a spill past the step\'s own staging buffer', /^heat/.test(tripWhy({ tempC: HEAT_STOP_C })) && /^ram/.test(tripWhy({ ramMiB: RAM_FLOOR_MIB - 1 })) && /^card/.test(tripWhy({ freeMiB: 511 })) && /^spill/.test(tripWhy({ sharedRiseMiB: spillLimitMiB(4096) + 1 }, { step: 4096 })));
   check('the edge rides: 512 MB free, the floor exactly, a staging-buffer rise are all fine', tripWhy({ freeMiB: 512, ramMiB: 512, tempC: 89, sharedRiseMiB: spillLimitMiB(6144) }, { step: 6144 }) === '' && spillLimitMiB(4096) === 512 + 512 + 80);
@@ -125,8 +126,9 @@ const fast = { '512:false': { read: 1000, write: 60, text: 'bob words' }, '512:t
   check('the job ends done and says what it found', lab.runs[0].state === 'done' && /Big Brain: GUPPI at step 4096 beat Bob's pick/.test(lab.runs[0].report?.saw || ''), lab.runs[0].report?.saw || lab.runs[0].error);
   check('the step that left the card under 512 MB is the edge: GUPPI is capped below it', b.cap === 4096 && b.beatsBob === true && b.keepBob === false && /^card/.test(b.rows.find((x) => x.id === 'g6144').trip));
   check('Bob\'s pick ran with no cache at his own step; GUPPI\'s with the cache and the fill', lab.served[0].extra.length === 0 && !lab.served[0].env && lab.served[2].extra.join(' ') === '-b 4096 -ub 4096 --moe-cache-mib 4096' && lab.served[2].env.LLAMA_MOE_CACHE_FILL_STEP === '4096');
-  check('every try cooled down first (35 s at least) and every trial engine was stopped', lab.slept.filter((ms) => ms === 35000).length === 6 && lab.served.stopped >= 6);
-  check('a try that left the card short runs again with the fit leaving more, twice at most, then it is the edge', lab.served.filter((o) => o.extra.includes('-ub') && o.extra[o.extra.indexOf('-ub') + 1] === '6144').map((o) => o.extra.includes('--fit-target') ? o.extra[o.extra.indexOf('--fit-target') + 1] : '-').join() === '-,1492,-' && lab.served.filter((o) => o.place).map((o) => o.place.join(' ')).join() === '--n-cpu-moe 2 -ngl 999');
+  check('every try cooled down first (35 s at least) and every trial engine was stopped', lab.slept.filter((ms) => ms === 35000).length === 7 && lab.served.stopped >= 7);
+  const sp6 = lab.served.filter((o) => o.extra.includes('-ub') && o.extra[o.extra.indexOf('-ub') + 1] === '6144').map((o) => o.env?.LLAMA_MOE_CACHE_FILL_SPARE_MIB);
+  check('a filled try that left the card short runs again with the cache leaving more, three times at most, then it is the edge', sp6.join() === `${FILL_SPARE_MIB},${FILL_SPARE_MIB + 468},${FILL_SPARE_MIB + 936},${FILL_SPARE_MIB + 1404}` && !lab.served.some((o) => o.place || o.extra.includes('--fit-target')), sp6.join());
   check('three reads and writes per try, the median kept; the words checked against Bob\'s pick', b.rows.find((x) => x.id === 'g4096').readTps === 3000 && b.rows.find((x) => x.id === 'g512').sameWords === true && b.rows.find((x) => x.id === 'g4096').sameWords === false);
   check('temperature and clocks are logged with each try', b.rows.every((x) => x.peakC === 40) && b.rows.find((x) => x.id === 'g4096').smMedMHz === 2800 && p.pc.gpu === 'Test card' && p.pc.idleC === 40);
   const sp = JSON.parse(fs.readFileSync(speedsFile(lab.cfg), 'utf8'));
@@ -236,6 +238,39 @@ const fast = { '512:false': { read: 1000, write: 60, text: 'bob words' }, '512:t
   check('the engine\'s working memory filled the card: the try runs again at a smaller step, enough to leave the margin', b.rows[0].ub > 0 && b.rows[0].ub < 512 && !b.rows[0].trip && b.ubCap === b.rows[0].ub && lab.served.map(ubOf).slice(0, 2).join() === `512,${b.ubCap}`, JSON.stringify({ ub: b.ubCap, trips: b.rows.map((x) => x.trip), served: lab.served.map(ubOf) }));
   check('it reads the working memory from the engine\'s own line', computeMiBOf('x\nsched_reserve:      CUDA0 compute buffer size =  7425.59 MiB\nsched_reserve:  CUDA_Host compute buffer size =    46.52 MiB') === 7425.59 && computeMiBOf('') === 0);
 }
+// ---------- the matrix rentals: the copy cache fills the card to its spare, so the lever is the spare ----------
+{
+  const lab = mkLab({ speeds: fast });
+  let spare = 0;
+  lab.guppiFns.serve = ((orig) => async (o) => { spare = Number(o.env?.LLAMA_MOE_CACHE_FILL_SPARE_MIB) || 0; return orig(o); })(lab.guppiFns.serve);
+  lab.guppiFns.card = async () => ({ freeMB: spare ? spare - 300 : 900, totalMB: 16303, others: [] }); // the first long read takes 300 MiB past the spare
+  await startGuppiCalibrate(lab, { model: 'filled', osKey: 'linux' }); await wait(lab);
+  const b = readProfile(lab.cfg).brains.filled;
+  const spares = lab.served.map((o) => o.env?.LLAMA_MOE_CACHE_FILL_SPARE_MIB || '-');
+  check('a filled cache short of the margin runs again leaving more, not moving experts or shrinking the step', b.fillSpareMiB > FILL_SPARE_MIB && b.rows.filter((x) => x.cache).every((x) => !x.trip && !x.failed) && b.cpuMoe == null && !b.ubCap && spares.slice(0, 3).join() === `-,${FILL_SPARE_MIB},${b.fillSpareMiB}`, JSON.stringify({ spares, rows: b.rows.map((x) => x.trip || x.failed || x.tps) }));
+  check('the profile keeps the room the cache leaves', profileFor(lab.cfg, 'filled', readProfile(lab.cfg).pc).fillSpareMiB === b.fillSpareMiB);
+}
+{
+  // a trip ends the try's request at once, and the engine is waited for until it has ended
+  const lab = mkLab({ speeds: fast, cardFree: { '4096:true': 100 } });
+  let aborted = 0, waited = 0;
+  lab.guppiFns.chat = ((orig) => async (url, msgs, o) => { if (url.endsWith('4096:true')) { lab.guppiFns.watchMs = 0; return new Promise((_r, rej) => o.signal.addEventListener('abort', () => { aborted++; rej(new Error('aborted')); })); } return orig(url, msgs, o); })(lab.guppiFns.chat);
+  lab.guppiFns.serve = ((orig) => async (o) => { const s = await orig(o); return { ...s, stop: async () => { s.stop(); await new Promise((r) => setTimeout(r, 2)); waited++; } }; })(lab.guppiFns.serve);
+  const card = lab.guppiFns.card; let calls = 0;
+  lab.guppiFns.card = async () => { const c = await card(); if (c.freeMB === 100 && ++calls < 2) return { ...c, freeMB: 900 }; return c; }; // fine at load, short during the long read
+  lab.guppiFns.watchMs = 1;
+  await startGuppiCalibrate(lab, { model: 'midread', osKey: 'linux' }); await wait(lab);
+  const b = readProfile(lab.cfg).brains.midread;
+  check('a trip during a long read ends that request at once', aborted >= 1 && /^card/.test(b.rows.find((x) => x.id === 'g4096')?.trip || ''), JSON.stringify({ aborted, rows: b?.rows.map((x) => x.trip || x.failed || x.tps) }));
+  check('every try\'s engine is waited for until it has ended', waited >= lab.served.length, `${waited} of ${lab.served.length}`);
+  const { stopChild } = await import('../src/lab-test.js');
+  const { EventEmitter } = await import('node:events');
+  const stubborn = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null, sigs: [], kill(sig = 'SIGTERM') { this.sigs.push(sig); if (sig === 'SIGKILL') setTimeout(() => { this.signalCode = 'SIGKILL'; this.emit('exit'); }, 1); } });
+  const ok = await stopChild(stubborn, { graceMs: 20 });
+  check('an engine that doesn\'t end when asked is ended outright, and stop waits for it', ok && stubborn.sigs.join() === 'SIGTERM,SIGKILL', stubborn.sigs.join());
+  const polite = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null, sigs: [], kill(sig = 'SIGTERM') { this.sigs.push(sig); setTimeout(() => { this.exitCode = 0; this.emit('exit'); }, 1); } });
+  check('one that ends when asked is asked only once', (await stopChild(polite, { graceMs: 200 })) && polite.sigs.join() === 'SIGTERM');
+}
 // ---------- GUPPI at load ----------
 {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-guppi-load-'));
@@ -258,6 +293,9 @@ const fast = { '512:false': { read: 1000, write: 60, text: 'bob words' }, '512:t
   saveProfile({ dataDir: d }, { v: 1, pc, brains: { moe: { cap: 512, keepBob: true, ubCap: 128 } } });
   const small = mk(); const a6 = small.buildArgs('moe');
   check('at load a calibrated smaller step replaces the 512 one, and the logbook says why', a6.join(' ').includes('-b 512 -ub 128') && a6.filter((x) => x === '-ub').length === 1 && small.condChat === 128 && small.said.some((t) => /reading step 128, because at 512/.test(t)), a6.join(' '));
+  saveProfile({ dataDir: d }, { v: 1, pc, brains: { moe: { cap: 4096, keepBob: false, fillSpareMiB: 1068 } } });
+  const spared = mk(); spared.buildArgs('moe');
+  check('at load the copy cache leaves the room calibrating found, and the logbook says so', spared.tuneEnv?.LLAMA_MOE_CACHE_FILL === '1' && spared.tuneEnv?.LLAMA_MOE_CACHE_FILL_SPARE_MIB === '1068' && spared.said.some((t) => /copy cache leaves 1068 MiB/.test(t)), JSON.stringify(spared.tuneEnv));
   saveProfile({ dataDir: d }, { v: 1, pc: { ...pc, be: 45 }, brains: { moe: { cap: 2048, keepBob: true } } });
   const stale = mk(); const a3 = stale.buildArgs('moe');
   check('a profile from another engine build isn\'t used, and the logbook says to calibrate again', a3.includes('--moe-cache-mib') && stale.said.some((t) => /isn't used: it was made with Brain Engine 45.*Calibrate again/.test(t)));

@@ -72,6 +72,17 @@ export async function freePort() {
   return new Promise((resolve, reject) => { const s = net.createServer(); s.once('error', reject); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); }); });
 }
 
+// End an engine and wait (at most about graceMs twice) until it has: asked first, then ended outright.
+export async function stopChild(child, { graceMs = 5000 } = {}) {
+  const gone = () => child.exitCode != null || child.signalCode != null;
+  const ended = (ms) => new Promise((r) => { if (gone() || typeof child.once !== 'function') return r(gone()); const t = setTimeout(() => r(gone()), ms); child.once('exit', () => { clearTimeout(t); r(true); }); });
+  if (gone()) return true;
+  try { child.kill(); } catch {}
+  if (await ended(graceMs)) return true;
+  try { child.kill('SIGKILL'); } catch {}
+  return ended(graceMs);
+}
+
 // Start a llama-server for one brain. Tries the card first (--fit on), then the processor.
 export async function startServer({ exe, gguf, mmproj, ctx = 8192, args = [], cpuOk = true, signal, log = () => {}, spawnFn = spawn, timeoutMs = 10 * 60e3, extra = [], place = null, env = null, logAll = false }) { // Nov 16 `env`: more environment (the hot-expert profile) // 1.5.164 `extra` and 1.5.167 `args`: more llama-server flags; cpuOk=false skips the processor-only try
   const more = [...args, ...extra];
@@ -96,7 +107,10 @@ export async function startServer({ exe, gguf, mmproj, ctx = 8192, args = [], cp
       try { if ((await fetch(url + '/health', { signal: AbortSignal.timeout(2000) })).ok) { up = true; break; } } catch {}
       await new Promise((r) => setTimeout(r, 1000));
     }
-    if (up) return { url, pid: child.pid, stop: () => { try { child.kill(); } catch {} }, where: extra[0] === '-ngl' ? 'processor' : 'card', cacheLog: () => said, memLog: () => mem };
+    // Nov 28 (the GUPPI matrix rentals): a stopped engine still in the middle of a long read kept the card for minutes
+    // ("cleaning up before exit"), and the next run found the card full. stop() now waits for it to end, and ends it
+    // outright (SIGKILL) if it hasn't after a few seconds. Callers that don't wait carry on as before.
+    if (up) return { url, pid: child.pid, stop: () => stopChild(child), where: extra[0] === '-ngl' ? 'processor' : 'card', cacheLog: () => said, memLog: () => mem };
     try { child.kill(); } catch {}
     last = err.split('\n').filter(Boolean).slice(-3).join(' | ');
   }

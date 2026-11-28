@@ -55,6 +55,19 @@ if (fs.existsSync(avg)) {
   }
 }
 
+// 3. Rows already in the database's own shape (GUPPI calibrate on rentals and the owner's own computers): any
+// *measured*.jsonl in a data folder, one row a line
+for (const dir of fs.readdirSync(data).sort()) {
+  const d = path.join(data, dir);
+  if (!fs.statSync(d).isDirectory()) continue;
+  for (const f of fs.readdirSync(d).filter((x) => /measured.*\.jsonl$/.test(x)).sort()) {
+    for (const l of fs.readFileSync(path.join(d, f), 'utf8').replace(/\r\n/g, '\n').split('\n').filter(Boolean)) {
+      let r = null; try { r = cleanRow({ ...JSON.parse(l), source: `${rel(path.join(d, f))}` }); } catch {}
+      if (r) rows.push(r);
+    }
+  }
+}
+
 const out = path.join(app, 'src', 'measured-seed.json');
 fs.writeFileSync(out, JSON.stringify({ about: 'GUPPI\'s test-results database seed: measured rows only, made by installer/make-measured-seed.mjs from docs/test-results/data. Do not edit by hand.', rows }) + '\n');
 console.log(`Wrote ${rows.length} rows to ${rel(out)}`);
