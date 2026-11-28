@@ -321,7 +321,7 @@ index 2c5b6a3..c8bf88e 100644
  
  #define GGML_RPC_MAX_SERVERS       16
 diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
-index 4a0ace4..0d937f9 100644
+index 4a0ace4..fe50f82 100644
 --- a/ggml/include/ggml.h
 +++ b/ggml/include/ggml.h
 @@ -262,7 +262,16 @@ extern "C" {
@@ -352,7 +352,7 @@ index 4a0ace4..0d937f9 100644
          GGML_OP_COUNT,
      };
  
-@@ -1550,6 +1562,71 @@ extern "C" {
+@@ -1550,6 +1562,92 @@ extern "C" {
              struct ggml_tensor  * a,  // data
              struct ggml_tensor  * b); // row indices
  
@@ -371,6 +371,27 @@ index 4a0ace4..0d937f9 100644
 +            struct ggml_tensor  * pout,
 +            const int32_t       * desc,
 +            int                   n_desc);
++
++    // Lamplight 0136: coded MoE experts, as ggml_mul_mat_id: w [K, N, E] (expert e's [K, N] slice an ordinary coded matrix,
++    // experts back to back), x F32 [K, n_x, T] (n_x 1 or n_used), ids I32 [n_used, T]; result F32 [N, n_used, T].
++    // Sides per expert: s16 F16 [K/16, E], pre F32 [K, E], post F32 [N, E]; one desc for all experts; no gathers.
++    // A GGML_OP_TRELLIS node with src[7] = ids.
++    GGML_API struct ggml_tensor * ggml_trellis_mul_mat_id(
++            struct ggml_context * ctx,
++            struct ggml_tensor  * w,
++            struct ggml_tensor  * x,
++            struct ggml_tensor  * ids,
++            struct ggml_tensor  * s16,
++            struct ggml_tensor  * pre,
++            struct ggml_tensor  * post,
++            const int32_t       * desc,
++            int                   n_desc);
++
++    // Lamplight 0136: expert e of a coded expert tensor (data: all experts, s16/pre/post: [., E]) into out (N x K), as
++    // ggml_trellis_dequantize does for a 2D weight (for converters checking their experts)
++    GGML_API bool ggml_trellis_dequantize_expert(enum ggml_type type, const void * data, int64_t K, int64_t N, int64_t e,
++                                                 const ggml_fp16_t * s16, const float * pre, const float * post,
++                                                 const int32_t * desc, int n_desc, float * out);
 +
 +    // trellis fork: the rows of a coded embedding w [K, N] listed in ids, in the original basis; result F32 [K, n_ids], desc as above with rows_kind 0
 +    GGML_API struct ggml_tensor * ggml_trellis_get_rows(
@@ -514,7 +535,7 @@ index bd36b7a..83cfca6 100644
                      {
                          GGML_ABORT("fatal error");
 diff --git a/ggml/src/ggml-cpu/ggml-cpu.cpp b/ggml/src/ggml-cpu/ggml-cpu.cpp
-index b7e35d1..308a3d6 100644
+index b7e35d1..c55d0b9 100644
 --- a/ggml/src/ggml-cpu/ggml-cpu.cpp
 +++ b/ggml/src/ggml-cpu/ggml-cpu.cpp
 @@ -440,6 +440,18 @@ static bool ggml_backend_cpu_device_supports_op(ggml_backend_dev_t dev, const st
@@ -536,7 +557,7 @@ index b7e35d1..308a3d6 100644
      switch (op->op) {
          case GGML_OP_CPY:
          case GGML_OP_SET_ROWS:
-@@ -451,6 +463,26 @@ static bool ggml_backend_cpu_device_supports_op(ggml_backend_dev_t dev, const st
+@@ -451,6 +463,30 @@ static bool ggml_backend_cpu_device_supports_op(ggml_backend_dev_t dev, const st
                  op->type != GGML_TYPE_IQ2_S   &&
                  op->type != GGML_TYPE_IQ1_S   &&
                  op->type != GGML_TYPE_IQ1_M; // missing type_traits.from_float
@@ -550,6 +571,10 @@ index b7e35d1..308a3d6 100644
 +                                            src1->type == GGML_TYPE_F32 && src1->nb[0] == sizeof(float);
 +                if (!ggml_is_trellis_type(src0->type) || !src1_ok || desc[6] < 0 || desc[6] > GGML_TRELLIS_MAX_PARTS ||
 +                    !ggml_trellis_desc_supported(src0->ne[0], src0->ne[1], desc, 7 + desc[6])) {
++                    return false;
++                }
++                // Lamplight 0136: coded experts (src[7] = ids) have no gathers
++                if (!rows && op->src[7] && (op->src[7]->type != GGML_TYPE_I32 || op->src[5] || op->src[6])) {
 +                    return false;
 +                }
 +                // the CPU op reads the weight and its sides (src 0, 2-4) and the linear's gathers in place, so they must be in host memory
@@ -582,10 +607,10 @@ index 87cdaba..b9f4ce3 100644
                  GGML_ABORT("fatal error");
 diff --git a/ggml/src/ggml-cpu/trellis.cpp b/ggml/src/ggml-cpu/trellis.cpp
 new file mode 100644
-index 0000000..9777eb4
+index 0000000..2fe7292
 --- /dev/null
 +++ b/ggml/src/ggml-cpu/trellis.cpp
-@@ -0,0 +1,1157 @@
+@@ -0,0 +1,1290 @@
 +#include "trellis.h"
 +#include "ops.h"
 +
@@ -1464,11 +1489,144 @@ index 0000000..9777eb4
 +           (int64_t) n_tasks * ggml_trellis_scratch((const int32_t *) dst->op_params, K, N);
 +}
 +
++// Lamplight 0136: the experts' op (src[7] = ids): the routing lists (E counts, E offsets, n_used T entries), the
++// gathered inputs (K x n_used T), the outputs (N x n_used T), then the 2D op's work for n_used T tokens
++static int64_t ggml_trellis_id_work_floats(const ggml_tensor * dst, int n_tasks) {
++    const ggml_tensor * w = dst->src[0], * ids = dst->src[7];
++    const int64_t K = w->ne[0], N = w->ne[1], E = w->ne[2], R = ids->ne[0] * ids->ne[1];
++    ggml_tensor xf = *dst->src[1];
++    xf.ne[1] = R;
++    xf.ne[2] = xf.ne[3] = 1;
++    ggml_tensor df = *dst;
++    df.src[1] = &xf;
++    df.src[6] = nullptr;
++    df.src[7] = nullptr;
++    return ggml_trellis_pad(2 * E + R) + ggml_trellis_pad(K * R) + ggml_trellis_pad(N * R) +
++           ggml_trellis_work_floats(&df, n_tasks);
++}
++
 +size_t ggml_compute_forward_trellis_work_size(const ggml_tensor * dst, int n_tasks) {
++    if (dst->src[7] != nullptr) {
++        return (size_t) ggml_trellis_id_work_floats(dst, n_tasks) * sizeof(float);
++    }
 +    return (size_t) ggml_trellis_work_floats(dst, n_tasks) * sizeof(float);
 +}
 +
++static void ggml_compute_forward_trellis_2d(const ggml_compute_params * params, ggml_tensor * dst);
++
++// Lamplight 0136: coded experts, as mul_mat_id: each used expert's tokens gathered, the 2D op on its slice, scattered
++static void ggml_compute_forward_trellis_id(const ggml_compute_params * params, ggml_tensor * dst) {
++    const ggml_tensor * w    = dst->src[0];
++    const ggml_tensor * x    = dst->src[1];
++    const ggml_tensor * s16  = dst->src[2];
++    const ggml_tensor * pre  = dst->src[3];
++    const ggml_tensor * post = dst->src[4];
++    const ggml_tensor * ids  = dst->src[7];
++    GGML_ASSERT(x->type == GGML_TYPE_F32 && x->nb[0] == sizeof(float));
++    GGML_ASSERT(dst->type == GGML_TYPE_F32 && ggml_is_contiguous(dst));
++    GGML_ASSERT(dst->src[5] == nullptr && dst->src[6] == nullptr);
++
++    const int ith = params->ith, nth = params->nth;
++    const int64_t K = w->ne[0], N = w->ne[1], E = w->ne[2];
++    const int64_t n_used = ids->ne[0], T = ids->ne[1], R = n_used * T, n_x = x->ne[1];
++    GGML_ASSERT(params->wsize >= (size_t) ggml_trellis_id_work_floats(dst, nth) * sizeof(float));
++
++    int32_t * cnt = (int32_t *) params->wdata;  // E counts, E offsets, then the entries (slot + n_used token)
++    int32_t * off = cnt + E;
++    int32_t * ent = off + E;
++    float * xg = (float *) params->wdata + ggml_trellis_pad(2 * E + R);
++    float * yg = xg + ggml_trellis_pad(K * R);
++    float * rest = yg + ggml_trellis_pad(N * R);
++    const size_t rest_size = params->wsize - (size_t) (rest - (float *) params->wdata) * sizeof(float);
++
++    if (ith == 0) {
++        std::fill(cnt, cnt + E, 0);
++        for (int64_t t = 0; t < T; ++t) {
++            const int32_t * row = (const int32_t *) ((const char *) ids->data + t * ids->nb[1]);
++            for (int64_t i1 = 0; i1 < n_used; ++i1) {
++                GGML_ASSERT(row[i1] >= 0 && row[i1] < E);
++                cnt[row[i1]]++;
++            }
++        }
++        int32_t o = 0;
++        for (int64_t e = 0; e < E; ++e) {
++            off[e] = o;
++            o += cnt[e];
++            cnt[e] = 0;
++        }
++        for (int64_t t = 0; t < T; ++t) {
++            const int32_t * row = (const int32_t *) ((const char *) ids->data + t * ids->nb[1]);
++            for (int64_t i1 = 0; i1 < n_used; ++i1) {
++                ent[off[row[i1]] + cnt[row[i1]]++] = (int32_t) (t * n_used + i1);
++            }
++        }
++    }
++    ggml_barrier(params->threadpool);
++
++    const size_t wbytes = ggml_row_size(w->type, K) * (size_t) N;
++    for (int64_t e = 0; e < E; ++e) {
++        const int64_t c = cnt[e];
++        if (c == 0) {
++            continue;
++        }
++        const int32_t * le = ent + off[e];
++        for (int64_t r = ith; r < c; r += nth) {  // the gather
++            const int64_t t = le[r] / n_used, i1 = le[r] % n_used;
++            const float * xc = (const float *) ((const char *) x->data + (i1 % n_x) * x->nb[1] + t * x->nb[2]);
++            memcpy(xg + r * K, xc, K * sizeof(float));
++        }
++        ggml_barrier(params->threadpool);
++
++        // expert e as an ordinary 2D op: views of its slice and sides
++        ggml_tensor we = *w, se = *s16, pe = *pre, qe = *post, xe = *x, de = *dst;
++        we.data = (char *) w->data + e * wbytes;
++        we.ne[2] = 1;
++        we.nb[3] = we.nb[2] = wbytes;
++        se.data = (char *) s16->data + e * s16->nb[1];
++        pe.data = (char *) pre->data + e * pre->nb[1];
++        qe.data = (char *) post->data + e * post->nb[1];
++        se.ne[1] = pe.ne[1] = qe.ne[1] = 1;
++        xe.data = xg;
++        xe.ne[1] = c;
++        xe.ne[2] = xe.ne[3] = 1;
++        xe.nb[1] = K * sizeof(float);
++        xe.nb[2] = xe.nb[3] = c * xe.nb[1];
++        de.data = yg;
++        de.ne[0] = N;
++        de.ne[1] = c;
++        de.ne[2] = de.ne[3] = 1;
++        de.nb[1] = N * sizeof(float);
++        de.nb[2] = de.nb[3] = c * de.nb[1];
++        de.src[0] = &we;
++        de.src[1] = &xe;
++        de.src[2] = &se;
++        de.src[3] = &pe;
++        de.src[4] = &qe;
++        de.src[7] = nullptr;
++        ggml_compute_params pp = *params;
++        pp.wdata = rest;
++        pp.wsize = rest_size;
++        ggml_compute_forward_trellis_2d(&pp, &de);
++        ggml_barrier(params->threadpool);
++
++        for (int64_t r = ith; r < c; r += nth) {  // the scatter
++            const int64_t t = le[r] / n_used, i1 = le[r] % n_used;
++            memcpy((char *) dst->data + i1 * dst->nb[1] + t * dst->nb[2], yg + r * N, N * sizeof(float));
++        }
++        // the next expert's gather writes xg, which this expert's op has finished with; yg is read here only
++        ggml_barrier(params->threadpool);
++    }
++}
++
 +void ggml_compute_forward_trellis(const ggml_compute_params * params, ggml_tensor * dst) {
++    if (dst->src[7] != nullptr) {
++        ggml_compute_forward_trellis_id(params, dst);
++        return;
++    }
++    ggml_compute_forward_trellis_2d(params, dst);
++}
++
++static void ggml_compute_forward_trellis_2d(const ggml_compute_params * params, ggml_tensor * dst) {
 +    const ggml_tensor * w    = dst->src[0];
 +    const ggml_tensor * x    = dst->src[1];
 +    const ggml_tensor * s16  = dst->src[2];
@@ -1831,7 +1989,7 @@ index efe65af..0909933 100644
      // Map from first_node_ptr to cuda_graph - allows multiple graphs per context
      // when the computation is split across CPU/GPU (e.g., with --n-cpu-moe)
 diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
-index 97ecfd3..461543a 100644
+index 97ecfd3..dbbc592 100644
 --- a/ggml/src/ggml-cuda/ggml-cuda.cu
 +++ b/ggml/src/ggml-cuda/ggml-cuda.cu
 @@ -30,6 +30,7 @@
@@ -1842,29 +2000,56 @@ index 97ecfd3..461543a 100644
  #include "ggml-cuda/getrows.cuh"
  #include "ggml-cuda/im2col.cuh"
  #include "ggml-cuda/mmf.cuh"
-@@ -3032,6 +3033,16 @@ static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct gg
+@@ -2907,6 +2908,17 @@ static void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor *
+         nb1, nb2, nb3, stream);
+ }
+ 
++// Lamplight 0136: libtrellis on sm_80+, the own kernels elsewhere; long batches through the exact q8_0
++// decode and MMQ (int8 tensor cores) on every card
++static void ggml_cuda_op_trellis_2d(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
++    const int cc = ggml_cuda_info().devices[ctx.device].cc;
++    if (ggml_cuda_trellis_use_lib(cc, dst) && !(ggml_cuda_trellis_own_supported(dst) && ggml_cuda_trellis_q8(cc, dst, true))) {
++        ggml_cuda_op_trellis(ctx, dst);
++    } else {
++        ggml_cuda_op_trellis_own(ctx, dst);
++    }
++}
++
+ static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct ggml_tensor * dst) {
+     switch (dst->op) {
+         case GGML_OP_ARGMAX:
+@@ -3032,6 +3044,13 @@ static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct gg
                      return false;
              }
              break;
 +        case GGML_OP_TRELLIS:
-+            // Lamplight 0136: libtrellis on sm_80+, the own kernels elsewhere; long batches through the exact q8_0
-+            // decode and MMQ (int8 tensor cores) on every card
-+            if (ggml_cuda_trellis_use_lib(ggml_cuda_info().devices[ctx.device].cc, dst) &&
-+                !(ggml_cuda_trellis_own_supported(dst) && ggml_cuda_trellis_q8(ggml_cuda_info().devices[ctx.device].cc, dst, true))) {
-+                ggml_cuda_op_trellis(ctx, dst);
++            if (dst->src[7] != nullptr) {
++                ggml_cuda_op_trellis_id(ctx, dst, ggml_cuda_op_trellis_2d); // Lamplight 0136: coded experts
 +            } else {
-+                ggml_cuda_op_trellis_own(ctx, dst);
++                ggml_cuda_op_trellis_2d(ctx, dst);
 +            }
 +            break;
          case GGML_OP_GLU:
              switch (ggml_get_glu_op(dst)) {
                  case GGML_GLU_OP_REGLU:
-@@ -4647,6 +4658,26 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph
+@@ -3428,6 +3447,11 @@ static bool ggml_cuda_graph_check_compability(ggml_cgraph * cgraph) {
+             continue;
+         }
+ 
++        // Lamplight 0136: coded experts read their picks back to the host, as the mul_mat_id fallback does
++        if (node->op == GGML_OP_TRELLIS && node->src[7] != nullptr) {
++            use_cuda_graph = false;
++        }
++
+         // [TAG_MUL_MAT_ID_CUDA_GRAPHS]
+         if (node->op == GGML_OP_MUL_MAT_ID) {
+             const int cc = ggml_cuda_info().devices[ggml_cuda_get_device()].cc;
+@@ -4647,6 +4671,26 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph
  
      ggml_tensor * node = cgraph->nodes[i];
  
 +    // trellis fork: an MLP's up/gate, swiglu and down as one chain; consecutive coded linears of one x as an input group
-+    if (node->op == GGML_OP_TRELLIS && cuda_ctx->stream_context().concurrent_events.empty() &&
++    if (node->op == GGML_OP_TRELLIS && node->src[7] == nullptr && cuda_ctx->stream_context().concurrent_events.empty() &&
 +        ggml_cuda_trellis_use_lib(ggml_cuda_info().devices[cuda_ctx->device].cc, node)) {  // Lamplight 0136: the fusions are libtrellis's
 +        if (ggml_cuda_trellis_mlp_chain(cgraph, i) == 4) {
 +            ggml_cuda_op_trellis_mlp_chain(*cuda_ctx, cgraph->nodes + i);
@@ -1886,7 +2071,7 @@ index 97ecfd3..461543a 100644
      if (node->op == GGML_OP_MUL_MAT_ID && cuda_ctx->stream_context().concurrent_events.empty() &&
              ggml_cuda_match_shared_expert(cgraph, i, i + 3) &&
              ggml_cuda_should_fuse_mul_mat_vec_q(cgraph->nodes[i + 2]->src[1])) {
-@@ -5734,6 +5765,14 @@ static enum ggml_status ggml_backend_cuda_graph_compute(ggml_backend_t backend,
+@@ -5734,6 +5778,14 @@ static enum ggml_status ggml_backend_cuda_graph_compute(ggml_backend_t backend,
  
      ggml_cuda_set_device(cuda_ctx->device);
  
@@ -1901,13 +2086,16 @@ index 97ecfd3..461543a 100644
      bool use_cuda_graph             = false;
      bool cuda_graph_update_required = false;
      const void * graph_key = nullptr;
-@@ -6631,11 +6670,20 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
+@@ -6631,11 +6683,23 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
                  default:
                      return false;
              }
 +        case GGML_OP_TRELLIS:
 +            // trellis fork: libtrellis's GEMV / GEMM need sm_80+ (the loader probes this op for a coded weight)
 +            // Lamplight 0136: and the own kernels (trellis-own.cu) on every other card and shape
++            if (op->src[7] != nullptr) {
++                return ggml_cuda_trellis_id_supported(ggml_cuda_info().devices[dev_ctx->device].cc, op); // Lamplight 0136: coded experts
++            }
 +            return ggml_cuda_trellis_use_lib(ggml_cuda_info().devices[dev_ctx->device].cc, op) || ggml_cuda_trellis_own_supported(op);
 +        case GGML_OP_TRELLIS_GET_ROWS:
 +            return false; // trellis fork: the coded embedding stays in host memory (CPU op)
@@ -4789,10 +4977,10 @@ index 0000000..b79a79f
 +}
 diff --git a/ggml/src/ggml-cuda/trellis-own.cu b/ggml/src/ggml-cuda/trellis-own.cu
 new file mode 100644
-index 0000000..030a39c
+index 0000000..71fedd4
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/trellis-own.cu
-@@ -0,0 +1,960 @@
+@@ -0,0 +1,1097 @@
 +// Lamplight 0136 (NariQ trellis, nariq/FORMAT.md): GGML_OP_TRELLIS without libtrellis, for every CUDA card.
 +// libtrellis needs sm_80+ (and is built for those archs only); RTX 20 / GTX 16 / GTX 10 cards and shapes libtrellis
 +// refuses run here instead. The same steps as the Vulkan backend (vulkan-shaders/trellis_*.comp):
@@ -4809,6 +4997,7 @@ index 0000000..030a39c
 +#include <cmath>
 +#include <cstdlib>
 +#include <string>
++#include <vector>
 +
 +namespace {
 +
@@ -5753,9 +5942,145 @@ index 0000000..030a39c
 +    }
 +    CUDA_CHECK(cudaGetLastError());
 +}
++
++// Lamplight 0136: coded experts (ggml_trellis_mul_mat_id, src[7] = ids). The picks are read back to the host (as the
++// mul_mat_id fallback does: no CUDA graph for this node), the rows of x gathered in expert order, each used expert's
++// slice run as an ordinary 2D product on its rows (op2d: libtrellis or the own kernels), the outputs scattered back.
++static __global__ void trl_id_gather(const char * __restrict__ x, const int32_t * __restrict__ ent, float * __restrict__ xg,
++                                     int K, int n_used, int64_t n_x, size_t nb1, size_t nb2) {
++    const int r = blockIdx.x;
++    const int e = ent[r];
++    const int64_t t = e / n_used, i1 = e % n_used;
++    const float * src = (const float *) (x + (i1 % n_x) * nb1 + t * nb2);
++    for (int j = threadIdx.x; j < K; j += blockDim.x) {
++        xg[(size_t) r * K + j] = src[j];
++    }
++}
++
++static __global__ void trl_id_scatter(const float * __restrict__ yg, const int32_t * __restrict__ ent, char * __restrict__ y,
++                                      int N, int n_used, size_t nb1, size_t nb2) {
++    const int r = blockIdx.x;
++    const int e = ent[r];
++    const int64_t t = e / n_used, i1 = e % n_used;
++    float * d = (float *) (y + i1 * nb1 + t * nb2);
++    for (int j = threadIdx.x; j < N; j += blockDim.x) {
++        d[j] = yg[(size_t) r * N + j];
++    }
++}
++
++void ggml_cuda_op_trellis_id(ggml_backend_cuda_context & ctx, ggml_tensor * dst,
++                             void (*op2d)(ggml_backend_cuda_context &, ggml_tensor *)) {
++    const ggml_tensor * w    = dst->src[0];
++    const ggml_tensor * x    = dst->src[1];
++    const ggml_tensor * s16  = dst->src[2];
++    const ggml_tensor * pre  = dst->src[3];
++    const ggml_tensor * post = dst->src[4];
++    const ggml_tensor * ids  = dst->src[7];
++    GGML_ASSERT(x->type == GGML_TYPE_F32 && x->nb[0] == sizeof(float) && ggml_is_contiguous(dst));
++    const int64_t K = w->ne[0], N = w->ne[1], E = w->ne[2];
++    const int64_t n_used = ids->ne[0], T = ids->ne[1], R = n_used * T, n_x = x->ne[1];
++    GGML_ASSERT(R < INT_MAX);
++    cudaStream_t stream = ctx.stream();
++
++    std::vector<int32_t> picks((size_t) R);
++    CUDA_CHECK(cudaMemcpy2DAsync(picks.data(), n_used * sizeof(int32_t), ids->data, ids->nb[1], n_used * sizeof(int32_t), T,
++                                 cudaMemcpyDeviceToHost, stream));
++    CUDA_CHECK(cudaStreamSynchronize(stream));
++    std::vector<int32_t> cnt((size_t) E + 1, 0), ent((size_t) R);
++    for (int64_t r = 0; r < R; ++r) {
++        GGML_ASSERT(picks[r] >= 0 && picks[r] < E);
++        cnt[picks[r] + 1]++;
++    }
++    for (int64_t e = 0; e < E; ++e) {
++        cnt[e + 1] += cnt[e];
++    }
++    {
++        std::vector<int32_t> fill(cnt.begin(), cnt.end() - 1);
++        for (int64_t r = 0; r < R; ++r) {
++            ent[fill[picks[r]]++] = (int32_t) r;  // r = t n_used + i1
++        }
++    }
++
++    ggml_cuda_pool_alloc<int32_t> dent(ctx.pool(), R);
++    ggml_cuda_pool_alloc<float>   xg(ctx.pool(), (size_t) K * R);
++    ggml_cuda_pool_alloc<float>   yg(ctx.pool(), (size_t) N * R);
++    CUDA_CHECK(cudaMemcpyAsync(dent.ptr, ent.data(), R * sizeof(int32_t), cudaMemcpyHostToDevice, stream));
++    trl_id_gather<<<(unsigned) R, 256, 0, stream>>>((const char *) x->data, dent.ptr, xg.ptr, (int) K, (int) n_used, n_x,
++                                                    x->nb[1], x->nb[2]);
++    CUDA_CHECK(cudaGetLastError());
++
++    const size_t wbytes = ggml_row_size(w->type, K) * (size_t) N;
++    for (int64_t e = 0; e < E; ++e) {
++        const int64_t c = cnt[e + 1] - cnt[e];
++        if (c == 0) {
++            continue;
++        }
++        // expert e as an ordinary 2D product: views of its slice, its sides and its rows
++        ggml_tensor we = *w, se = *s16, pe = *pre, qe = *post, xe = *x, de = *dst;
++        we.data = (char *) w->data + e * wbytes;
++        we.ne[2] = 1;
++        we.nb[3] = we.nb[2] = wbytes;
++        se.data = (char *) s16->data + e * s16->nb[1];
++        pe.data = (char *) pre->data + e * pre->nb[1];
++        qe.data = (char *) post->data + e * post->nb[1];
++        se.ne[1] = pe.ne[1] = qe.ne[1] = 1;
++        se.nb[2] = se.nb[3] = se.nb[1];
++        pe.nb[2] = pe.nb[3] = pe.nb[1];
++        qe.nb[2] = qe.nb[3] = qe.nb[1];
++        xe.data = xg.ptr + (size_t) cnt[e] * K;
++        xe.ne[1] = c;
++        xe.ne[2] = xe.ne[3] = 1;
++        xe.nb[1] = K * sizeof(float);
++        xe.nb[2] = xe.nb[3] = c * xe.nb[1];
++        xe.view_src = nullptr;
++        de.data = yg.ptr + (size_t) cnt[e] * N;
++        de.ne[0] = N;
++        de.ne[1] = c;
++        de.ne[2] = de.ne[3] = 1;
++        de.nb[1] = N * sizeof(float);
++        de.nb[2] = de.nb[3] = c * de.nb[1];
++        de.src[0] = &we;
++        de.src[1] = &xe;
++        de.src[2] = &se;
++        de.src[3] = &pe;
++        de.src[4] = &qe;
++        de.src[5] = de.src[6] = de.src[7] = nullptr;
++        op2d(ctx, &de);
++    }
++    trl_id_scatter<<<(unsigned) R, 256, 0, stream>>>(yg.ptr, dent.ptr, (char *) dst->data, (int) N, (int) n_used,
++                                                     dst->nb[1], dst->nb[2]);
++    CUDA_CHECK(cudaGetLastError());
++}
++
++bool ggml_cuda_trellis_id_supported(int cc, const ggml_tensor * op) {
++    const ggml_tensor * w = op->src[0], * x = op->src[1], * ids = op->src[7];
++    if (op->src[5] != nullptr || op->src[6] != nullptr || ids->type != GGML_TYPE_I32 || x->type != GGML_TYPE_F32 ||
++        x->nb[0] != sizeof(float) || !ggml_is_contiguous(op)) {
++        return false;
++    }
++    // as one expert's 2D product on all the picked rows
++    ggml_tensor we = *w, xe = *x, se = *op->src[2], pe = *op->src[3], qe = *op->src[4], de = *op;
++    const int64_t R = ids->ne[0] * ids->ne[1];
++    we.ne[2] = 1;
++    se.ne[1] = pe.ne[1] = qe.ne[1] = 1;
++    xe.ne[1] = R;
++    xe.ne[2] = 1;
++    xe.nb[1] = xe.ne[0] * sizeof(float);
++    xe.nb[2] = xe.nb[3] = R * xe.nb[1];
++    de.ne[1] = R;
++    de.ne[2] = 1;
++    de.nb[2] = de.nb[3] = R * de.nb[1];
++    de.src[0] = &we;
++    de.src[1] = &xe;
++    de.src[2] = &se;
++    de.src[3] = &pe;
++    de.src[4] = &qe;
++    de.src[7] = nullptr;
++    return ggml_cuda_trellis_use_lib(cc, &de) || ggml_cuda_trellis_own_supported(&de);
++}
 diff --git a/ggml/src/ggml-cuda/trellis.cu b/ggml/src/ggml-cuda/trellis.cu
 new file mode 100644
-index 0000000..82dbce2
+index 0000000..2d728df
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/trellis.cu
 @@ -0,0 +1,596 @@
@@ -6033,7 +6358,7 @@ index 0000000..82dbce2
 +
 +// a node that can join an input group: a coded linear at up to 64 columns, no input gather, an input side the GEMV fuses
 +static bool trellis_groupable(const ggml_tensor * t) {
-+    if (t->op != GGML_OP_TRELLIS || (t->flags & GGML_TENSOR_FLAG_COMPUTE) == 0 || !ggml_cuda_trellis_supported(t)) {
++    if (t->op != GGML_OP_TRELLIS || t->src[7] != nullptr || (t->flags & GGML_TENSOR_FLAG_COMPUTE) == 0 || !ggml_cuda_trellis_supported(t)) {
 +        return false;
 +    }
 +    const trellis_op o(t);
@@ -6277,7 +6602,7 @@ index 0000000..82dbce2
 +    if (!((gate == a && up == b) || (gate == b && up == a))) {
 +        return 0;
 +    }
-+    if (down->op != GGML_OP_TRELLIS || down->src[1] != glu || !ggml_cuda_trellis_supported(down)) {
++    if (down->op != GGML_OP_TRELLIS || down->src[7] != nullptr || down->src[1] != glu || !ggml_cuda_trellis_supported(down)) {
 +        return 0;
 +    }
 +    const trellis_op og(gate), ou(up), od(down);
@@ -6357,10 +6682,10 @@ index 0000000..82dbce2
 +#endif
 diff --git a/ggml/src/ggml-cuda/trellis.cuh b/ggml/src/ggml-cuda/trellis.cuh
 new file mode 100644
-index 0000000..b90ff9e
+index 0000000..60b611b
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/trellis.cuh
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,41 @@
 +#pragma once
 +
 +#include "common.cuh"
@@ -6376,6 +6701,10 @@ index 0000000..b90ff9e
 +// whether this product reads its weights as exact q8_0 through MMQ (long batches; lib: whether libtrellis could run it)
 +bool ggml_cuda_trellis_q8(int cc, const ggml_tensor * op, bool lib);
 +void ggml_cuda_op_trellis_own(ggml_backend_cuda_context & ctx, ggml_tensor * dst);
++// Lamplight 0136: coded experts (src[7] = ids): each used expert's slice through op2d (the 2D dispatch) on its rows
++void ggml_cuda_op_trellis_id(ggml_backend_cuda_context & ctx, ggml_tensor * dst,
++                             void (*op2d)(ggml_backend_cuda_context &, ggml_tensor *));
++bool ggml_cuda_trellis_id_supported(int cc, const ggml_tensor * op);
 +// whether this card runs op through libtrellis (else the own kernels)
 +bool ggml_cuda_trellis_use_lib(int cc, const ggml_tensor * op);
 +
@@ -6456,7 +6785,7 @@ index 0a07a76..cbfeb76 100644
              return ggml_is_contiguous_rows(op->src[0]) && (op->src[0]->type == GGML_TYPE_F32 || op->src[0]->type == GGML_TYPE_F16 || op->src[0]->type == GGML_TYPE_BF16);
          case GGML_OP_FILL:
 diff --git a/ggml/src/ggml-metal/ggml-metal-impl.h b/ggml/src/ggml-metal/ggml-metal-impl.h
-index 3ed00da..abf18a8 100644
+index 3ed00da..ba6222e 100644
 --- a/ggml/src/ggml-metal/ggml-metal-impl.h
 +++ b/ggml/src/ggml-metal/ggml-metal-impl.h
 @@ -186,6 +186,8 @@
@@ -6468,7 +6797,7 @@ index 3ed00da..abf18a8 100644
  // kernel argument structs
  //
  // - element counters (e.g. ne00) typically use int32_t to reduce register usage
-@@ -1460,4 +1462,32 @@ typedef struct {
+@@ -1460,4 +1462,34 @@ typedef struct {
      int64_t ne;
  } ggml_metal_kargs_silu_back;
  
@@ -6480,6 +6809,8 @@ index 3ed00da..abf18a8 100644
 +    int32_t  pin;
 +    int32_t  pout;
 +    int32_t  batch;
++    int32_t  e_used; // Lamplight 0136: coded experts: slots per token (0: none); the ids in the gather's buffer,
++    int32_t  e_nb1;  // e_nb1 ints per token; row r's pre / post / slice are expert ids[r]'s
 +    uint64_t ne1;
 +    uint64_t ne2;
 +    uint64_t nb1;
@@ -6502,7 +6833,7 @@ index 3ed00da..abf18a8 100644
 +
  #endif // GGML_METAL_IMPL
 diff --git a/ggml/src/ggml-metal/ggml-metal-ops.cpp b/ggml/src/ggml-metal/ggml-metal-ops.cpp
-index 36e4d35..28cdbbb 100644
+index 36e4d35..55d5fc5 100644
 --- a/ggml/src/ggml-metal/ggml-metal-ops.cpp
 +++ b/ggml/src/ggml-metal/ggml-metal-ops.cpp
 @@ -380,6 +380,10 @@ static int ggml_metal_op_encode_impl(ggml_metal_op_t ctx, int idx) {
@@ -6516,7 +6847,7 @@ index 36e4d35..28cdbbb 100644
          case GGML_OP_MUL_MAT:
              {
                  n_fuse = ggml_metal_op_mul_mat(ctx, idx);
-@@ -6375,3 +6379,161 @@ int ggml_metal_op_count_equal(ggml_metal_op_t ctx, int idx) {
+@@ -6375,3 +6379,193 @@ int ggml_metal_op_count_equal(ggml_metal_op_t ctx, int idx) {
  
      return 1;
  }
@@ -6525,6 +6856,20 @@ index 36e4d35..28cdbbb 100644
 +    const ggml_tensor * w = op->src[0];
 +    const ggml_tensor * x = op->src[1];
 +    const int32_t * d = (const int32_t *) op->op_params;
++    if (op->src[7] != nullptr) {
++        // Lamplight 0136: coded experts: no gathers, [., E] sides (written to match the CPU op; unproven on a Mac)
++        const ggml_tensor * ids = op->src[7];
++        const int64_t E = w ? w->ne[2] : 0;
++        return w && x && ggml_is_trellis_type(w->type) && w->ne[3] == 1 && ggml_is_contiguous(w) && !op->src[5] && !op->src[6] &&
++            ids->type == GGML_TYPE_I32 && ids->nb[0] == sizeof(int32_t) && ids->nb[1] % sizeof(int32_t) == 0 &&
++            x->type == GGML_TYPE_F32 && x->nb[0] == sizeof(float) && x->ne[0] == w->ne[0] &&
++            op->type == GGML_TYPE_F32 && ggml_is_contiguous(op) && w->ne[1] >= 16 &&
++            w->ne[0] <= INT32_MAX/2 && w->ne[1] <= INT32_MAX/2 && ggml_nelements(ids) <= INT32_MAX &&
++            d[6] >= 0 && d[6] <= 8 && ggml_trellis_desc_supported(w->ne[0], w->ne[1], d, 7 + d[6]) &&
++            op->src[2]->type == GGML_TYPE_F16 && ggml_is_contiguous(op->src[2]) && ggml_nelements(op->src[2]) == w->ne[0]/16*E &&
++            op->src[3]->type == GGML_TYPE_F32 && ggml_is_contiguous(op->src[3]) && ggml_nelements(op->src[3]) == w->ne[0]*E &&
++            op->src[4]->type == GGML_TYPE_F32 && ggml_is_contiguous(op->src[4]) && ggml_nelements(op->src[4]) == w->ne[1]*E;
++    }
 +    if (!w || !x || !ggml_is_trellis_type(w->type) || !ggml_is_matrix(w) ||
 +            x->type != GGML_TYPE_F32 || x->nb[0] != sizeof(float) || x->ne[0] != w->ne[0] ||
 +            op->type != GGML_TYPE_F32 || !ggml_is_contiguous(op) ||
@@ -6548,7 +6893,8 @@ index 36e4d35..28cdbbb 100644
 +}
 +
 +size_t ggml_metal_op_trellis_extra(const ggml_tensor * op) {
-+    const size_t batch = std::min<int64_t>(ggml_nrows(op->src[1]), GGML_METAL_TRELLIS_BATCH);
++    const int64_t rows = op->src[7] ? ggml_nelements(op->src[7]) : ggml_nrows(op->src[1]);  // Lamplight 0136: expert rows
++    const size_t batch = std::min<int64_t>(rows, GGML_METAL_TRELLIS_BATCH);
 +    return 2*batch*(op->src[0]->ne[0] + op->src[0]->ne[1])*sizeof(float);
 +}
 +
@@ -6623,7 +6969,17 @@ index 36e4d35..28cdbbb 100644
 +    a.nb1 = x->nb[1];
 +    a.nb2 = x->nb[2];
 +    a.nb3 = x->nb[3];
-+    const int64_t tokens = ggml_nrows(x);
++    const ggml_tensor * ids = op->src[7];  // Lamplight 0136: coded experts (rows r = token n_used + slot)
++    if (ids) {
++        a.e_used = (int32_t) ids->ne[0];
++        a.e_nb1 = (int32_t) (ids->nb[1]/sizeof(int32_t));
++        a.ne1 = ids->ne[0];
++        a.nb1 = x->ne[1] == 1 ? 0 : x->nb[1];
++        a.ne2 = ids->ne[1];
++        a.nb2 = x->nb[2];
++        a.nb3 = 0;
++    }
++    const int64_t tokens = ids ? ggml_nelements(ids) : ggml_nrows(x);
 +    const size_t capacity = std::min<int64_t>(tokens, GGML_METAL_TRELLIS_BATCH);
 +    const auto dst = ggml_metal_get_buffer_id(op);
 +    auto scratch = dst;
@@ -6641,7 +6997,7 @@ index 36e4d35..28cdbbb 100644
 +        ggml_metal_encoder_set_bytes(ctx->enc, &a, sizeof(a), 0);
 +        ggml_metal_encoder_set_buffer(ctx->enc, ggml_metal_get_buffer_id(x), 1);
 +        ggml_metal_encoder_set_buffer(ctx->enc, ggml_metal_get_buffer_id(op->src[3]), 2);
-+        ggml_metal_encoder_set_buffer(ctx->enc, ggml_metal_get_buffer_id(op->src[5]), 3);
++        ggml_metal_encoder_set_buffer(ctx->enc, ggml_metal_get_buffer_id(ids ? ids : op->src[5]), 3);
 +        ggml_metal_encoder_set_buffer(ctx->enc, in, 4);
 +        ggml_metal_encoder_dispatch_threadgroups(ctx->enc, (a.K + 255)/256, batch, 1, 256, 1, 1);
 +        ggml_metal_encoder_memory_barrier(ctx->enc);
@@ -6650,7 +7006,9 @@ index 36e4d35..28cdbbb 100644
 +        char name[64];
 +        const bool use_mm = batch >= 7 && ggml_metal_device_get_props(ctx->dev)->has_simdgroup_mm;
 +        const bool use_mv = batch == 1 && a.N >= 256;
-+        if (use_mm) {
++        if (ids) {
++            snprintf(name, sizeof(name), "kernel_trellis_product_mv_id_%d", a.bits);
++        } else if (use_mm) {
 +            snprintf(name, sizeof(name), "kernel_trellis_product_mm_%d", a.bits);
 +        } else if (use_mv) {
 +            snprintf(name, sizeof(name), "kernel_trellis_product_mv_%d", a.bits);
@@ -6663,15 +7021,20 @@ index 36e4d35..28cdbbb 100644
 +        ggml_metal_encoder_set_buffer(ctx->enc, ggml_metal_get_buffer_id(op->src[2]), 2);
 +        ggml_metal_encoder_set_buffer(ctx->enc, in, 3);
 +        ggml_metal_encoder_set_buffer(ctx->enc, out, 4);
++        if (ids) {
++            ggml_metal_encoder_set_buffer(ctx->enc, ggml_metal_get_buffer_id(ids), 5);
++            ggml_metal_encoder_dispatch_threadgroups(ctx->enc, a.N/16, batch, 1, 32, 4, 1);
++        } else {
 +        ggml_metal_encoder_dispatch_threadgroups(ctx->enc, use_mm || use_mv ? a.N/16 : a.N/4,
 +                use_mm ? (batch + 15)/16 : (batch + columns - 1)/columns, 1, 32, 4, 1);
++        }
 +        ggml_metal_encoder_memory_barrier(ctx->enc);
 +        ggml_metal_trellis_side(ctx, out, out_tmp, a.N, batch, d[0], d[1], d[2], d + 7, d[6], true);
 +        ggml_metal_trellis_pipeline(ctx, "kernel_trellis_output");
 +        ggml_metal_encoder_set_bytes(ctx->enc, &a, sizeof(a), 0);
 +        ggml_metal_encoder_set_buffer(ctx->enc, out, 1);
 +        ggml_metal_encoder_set_buffer(ctx->enc, ggml_metal_get_buffer_id(op->src[4]), 2);
-+        ggml_metal_encoder_set_buffer(ctx->enc, ggml_metal_get_buffer_id(op->src[6]), 3);
++        ggml_metal_encoder_set_buffer(ctx->enc, ggml_metal_get_buffer_id(ids ? ids : op->src[6]), 3);
 +        ggml_metal_encoder_set_buffer(ctx->enc, dst, 4);
 +        ggml_metal_encoder_dispatch_threadgroups(ctx->enc, (a.N + 255)/256, batch, 1, 256, 1, 1);
 +        ggml_metal_encoder_memory_barrier(ctx->enc);
@@ -6709,10 +7072,10 @@ index ae5f1c9..7f248a0 100644
                  res += ggml_metal_op_mul_mat_id_extra_tpe(tensor);
 diff --git a/ggml/src/ggml-metal/kernels/trellis.metal b/ggml/src/ggml-metal/kernels/trellis.metal
 new file mode 100644
-index 0000000..138d621
+index 0000000..7d1d9a7
 --- /dev/null
 +++ b/ggml/src/ggml-metal/kernels/trellis.metal
-@@ -0,0 +1,298 @@
+@@ -0,0 +1,365 @@
 +#include "common.h"
 +
 +kernel void kernel_trellis_input(
@@ -6725,6 +7088,11 @@ index 0000000..138d621
 +    if (i.x >= uint(a.K)) { return; }
 +    const ulong c = a.first + i.y;
 +    device const float * row = (device const float *)(x + (c % a.ne1)*a.nb1 + (c/a.ne1 % a.ne2)*a.nb2 + (c/(a.ne1*a.ne2))*a.nb3);
++    if (a.e_used > 0) {  // Lamplight 0136: coded experts: the row's expert's pre, pin holds the ids
++        const ulong e = ulong(pin[(c/a.e_used)*a.e_nb1 + c%a.e_used]);
++        dst[ulong(i.y)*a.K + i.x] = row[i.x]*pre[e*a.K + i.x];
++        return;
++    }
 +    dst[ulong(i.y)*a.K + i.x] = row[a.pin ? pin[i.x] : i.x]*pre[i.x];
 +}
 +
@@ -6914,6 +7282,62 @@ index 0000000..138d621
 +TRELLIS_MV(6)
 +#undef TRELLIS_MV
 +
++// Lamplight 0136: coded experts, as kernel_trellis_product_mv with one threadgroup per (tile row, row of the chunk),
++// each row on its own expert's slice and scales
++template<int bits>
++kernel void kernel_trellis_product_mv_id(
++        constant ggml_metal_kargs_trellis & a [[buffer(0)]],
++        device const uint * codes [[buffer(1)]],
++        device const half * scales [[buffer(2)]],
++        device const float * xs [[buffer(3)]],
++        device float * ys [[buffer(4)]],
++        device const int * ids [[buffer(5)]],
++        uint2 group [[threadgroup_position_in_grid]],
++        uint sg [[simdgroup_index_in_threadgroup]],
++        uint lane [[thread_index_in_simdgroup]]) {
++    const uint tile_row = group.x;
++    const ulong rr = a.first + group.y;
++    const ulong e = ulong(ids[(rr/a.e_used)*a.e_nb1 + rr%a.e_used]);
++    device const uint * ecodes = codes + e*(ulong(a.N/16)*(a.K/16)*(8*bits));
++    device const half * escales = scales + e*(a.K/16);
++    device const float * x = xs + ulong(group.y)*a.K;
++    device float * y = ys + ulong(group.y)*a.N;
++    const uint c = 2*(lane%4), r = 16*tile_row + 2*sg + (lane%8)/4;
++    float4 sum0 = 0, sum1 = 0;
++    for (uint k = lane/8; k < uint(a.K/16); k += 4) {
++        device const uint * tile = ecodes + (ulong(tile_row)*(a.K/16) + k)*(8*bits);
++        float v[8];
++        trellis_decode8<bits>(tile, 8*sg + lane%8, v);
++        const float s = float(escales[k]);
++        const float4 xv = float4(x[16*k + c], x[16*k + c + 1], x[16*k + c + 8], x[16*k + c + 9]);
++        sum0 += (float4(v[0], v[1], v[2], v[3])*s)*xv;
++        sum1 += (float4(v[4], v[5], v[6], v[7])*s)*xv;
++    }
++    sum0 += simd_shuffle_down(sum0, 16);
++    sum1 += simd_shuffle_down(sum1, 16);
++    sum0 += simd_shuffle_down(sum0, 8);
++    sum1 += simd_shuffle_down(sum1, 8);
++    sum0 += simd_shuffle_down(sum0, 2);
++    sum1 += simd_shuffle_down(sum1, 2);
++    sum0 += simd_shuffle_down(sum0, 1);
++    sum1 += simd_shuffle_down(sum1, 1);
++    if (lane < 8 && lane%4 == 0) {
++        y[r] = sum0.x + sum0.y + sum0.z + sum0.w;
++        y[r + 8] = sum1.x + sum1.y + sum1.z + sum1.w;
++    }
++}
++
++#define TRELLIS_MV_ID(B) \
++template [[host_name("kernel_trellis_product_mv_id_" #B)]] \
++kernel void kernel_trellis_product_mv_id<B>(constant ggml_metal_kargs_trellis &, device const uint *, device const half *, device const float *, device float *, device const int *, uint2, uint, uint);
++TRELLIS_MV_ID(1)
++TRELLIS_MV_ID(2)
++TRELLIS_MV_ID(3)
++TRELLIS_MV_ID(4)
++TRELLIS_MV_ID(5)
++TRELLIS_MV_ID(6)
++#undef TRELLIS_MV_ID
++
 +kernel void kernel_trellis_output(
 +        constant ggml_metal_kargs_trellis & a [[buffer(0)]],
 +        device const float * y [[buffer(1)]],
@@ -6922,6 +7346,12 @@ index 0000000..138d621
 +        device float * dst [[buffer(4)]],
 +        uint2 i [[thread_position_in_grid]]) {
 +    if (i.x >= uint(a.N)) { return; }
++    if (a.e_used > 0) {  // Lamplight 0136: coded experts: the row's expert's post, pout holds the ids
++        const ulong c = a.first + i.y;
++        const ulong e = ulong(pout[(c/a.e_used)*a.e_nb1 + c%a.e_used]);
++        dst[c*a.N + i.x] = y[ulong(i.y)*a.N + i.x]*post[e*a.N + i.x];
++        return;
++    }
 +    const uint j = a.pout ? pout[i.x] : i.x;
 +    dst[ulong(a.first + i.y)*a.N + i.x] = y[ulong(i.y)*a.N + j]*post[j];
 +}
@@ -7048,10 +7478,10 @@ index e986eac..34b226e 100644
  static constexpr bool bob_wire_covers_every_op() {
 diff --git a/ggml/src/ggml-trellis.cpp b/ggml/src/ggml-trellis.cpp
 new file mode 100644
-index 0000000..f75756e
+index 0000000..c0c06ea
 --- /dev/null
 +++ b/ggml/src/ggml-trellis.cpp
-@@ -0,0 +1,340 @@
+@@ -0,0 +1,353 @@
 +// Host helpers for the trellis types (GGML_TYPE_TRL1..6, nariq/FORMAT.md): side transforms as in libtrellis, descriptor checks, decode and dequantization.
 +// Plain C++ without SIMD: the CPU backend uses the transforms here but has its own decode and product loops.
 +#include "ggml.h"
@@ -7392,11 +7822,24 @@ index 0000000..f75756e
 +    }
 +    return true;
 +}
++
++bool ggml_trellis_dequantize_expert(enum ggml_type type, const void * data, int64_t K, int64_t N, int64_t e,
++                                    const ggml_fp16_t * s16, const float * pre, const float * post,
++                                    const int32_t * desc, int n_desc, float * out) {
++    if (!ggml_is_trellis_type(type) || e < 0 || data == nullptr || s16 == nullptr || pre == nullptr ||
++        post == nullptr || K % 16 != 0 || N % 16 != 0) {
++        return false;
++    }
++    // expert e's slice is an ordinary coded [K, N] matrix, the experts back to back (Lamplight 0136)
++    const char * w = (const char *) data + (size_t) e * ggml_row_size(type, K) * (size_t) N;
++    return ggml_trellis_dequantize(type, w, K, N, s16 + e * (K / 16), pre + e * K, post + e * N, nullptr, nullptr,
++                                   desc, n_desc, out);
++}
 diff --git a/ggml/src/ggml-vulkan/ggml-vulkan-push-constants.h b/ggml/src/ggml-vulkan/ggml-vulkan-push-constants.h
-index ed8f4f7..68319cb 100644
+index ed8f4f7..3d26512 100644
 --- a/ggml/src/ggml-vulkan/ggml-vulkan-push-constants.h
 +++ b/ggml/src/ggml-vulkan/ggml-vulkan-push-constants.h
-@@ -159,6 +159,52 @@ struct vk_op_push_constants {
+@@ -159,6 +159,67 @@ struct vk_op_push_constants {
      float param4;
  };
  
@@ -7409,6 +7852,19 @@ index ed8f4f7..68319cb 100644
 +    uint32_t s_offset;
 +    uint32_t a_offset;
 +    uint32_t b_offset;
++};
++
++// Lamplight 0136: coded experts, one row per workgroup (trellis_mv_id.comp)
++struct vk_op_trellis_mv_id_push_constants {
++    uint32_t K;
++    uint32_t N;
++    uint32_t T;
++    uint32_t q_offset;
++    uint32_t s_offset;
++    uint32_t first;
++    uint32_t e_used;
++    uint32_t e_nb1;
++    uint32_t i_offset;
 +};
 +
 +struct vk_op_trellis_dequant_push_constants {
@@ -7443,6 +7899,8 @@ index ed8f4f7..68319cb 100644
 +    uint32_t d_offset;
 +    float scale;
 +    uint32_t res[3];
++    uint32_t e_used; // Lamplight 0136: coded experts (mode bit 3)
++    uint32_t e_nb1;
 +};
 +static_assert(sizeof(vk_op_trellis_side_push_constants) <= 128, "trellis side push constants exceed the guaranteed 128 bytes");
 +
@@ -7450,16 +7908,17 @@ index ed8f4f7..68319cb 100644
      uint32_t n_rows;
      uint32_t src_offset;
 diff --git a/ggml/src/ggml-vulkan/ggml-vulkan-types.h b/ggml/src/ggml-vulkan/ggml-vulkan-types.h
-index 1b717c8..e4daf4f 100644
+index 1b717c8..6882cae 100644
 --- a/ggml/src/ggml-vulkan/ggml-vulkan-types.h
 +++ b/ggml/src/ggml-vulkan/ggml-vulkan-types.h
-@@ -1001,6 +1001,15 @@ struct vk_device_struct {
+@@ -1001,6 +1001,16 @@ struct vk_device_struct {
      vk_pipeline pipeline_fwht_f32[num_fwht_pipelines];
      vk_pipeline pipeline_fwht_f16[num_fwht_pipelines];
      uint32_t    fwht_rows_per_wg[num_fwht_pipelines] = {};
 +    // Lamplight 0136 (NariQ trellis): products by width (TRL1..6) and columns (1, 2, 4, 8), decode to f16 by width,
 +    // side runs by log2 of the run length (1 .. 8192), Paley cross and the elementwise ends
 +    vk_pipeline pipeline_trellis_mv[6][4];
++    vk_pipeline pipeline_trellis_mv_id[6]; // Lamplight 0136: coded experts
 +    vk_pipeline pipeline_trellis_dequant[6];
 +    vk_pipeline pipeline_trellis_runs[14];
 +    vk_pipeline pipeline_trellis_cross;
@@ -7470,10 +7929,10 @@ index 1b717c8..e4daf4f 100644
      vk_pipeline pipeline_cumsum_small_f32;
      vk_pipeline pipeline_cumsum_multipass1_f32;
 diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
-index 3c63a1f..9d9268a 100644
+index 3c63a1f..72e42e7 100644
 --- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
 +++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
-@@ -4013,6 +4013,49 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+@@ -4013,6 +4013,53 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
          ggml_vk_create_pipeline(device, device->pipeline_count_experts, "count_experts", count_experts_len, count_experts_data, "main", 3, sizeof(vk_op_count_experts_push_constants), {1, 1, 1}, {}, 1, true);
      }
  
@@ -7498,6 +7957,10 @@ index 3c63a1f..9d9268a 100644
 +                ggml_vk_create_pipeline(device, device->pipeline_trellis_mv[b][c], mv_names[b][c], trellis_mv_len, trellis_mv_data, "main", 4,
 +                                        sizeof(vk_op_trellis_mv_push_constants), {1, 1, 1}, { b + 1, 1u << c }, 1);
 +            }
++            static const char * const mv_id_names[6] = { "trellis_mv_id_1", "trellis_mv_id_2", "trellis_mv_id_3",
++                                                         "trellis_mv_id_4", "trellis_mv_id_5", "trellis_mv_id_6" };
++            ggml_vk_create_pipeline(device, device->pipeline_trellis_mv_id[b], mv_id_names[b], trellis_mv_id_len, trellis_mv_id_data, "main", 5,
++                                    sizeof(vk_op_trellis_mv_id_push_constants), {1, 1, 1}, { b + 1 }, 1);
 +            ggml_vk_create_pipeline(device, device->pipeline_trellis_dequant[b], dq_names[b], trellis_dequant_len, trellis_dequant_data, "main", 2,
 +                                    sizeof(vk_op_trellis_dequant_push_constants), {1, 1, 1}, { b + 1 }, 1);
 +        }
@@ -7523,7 +7986,7 @@ index 3c63a1f..9d9268a 100644
      // comb holds a token's 4x4 matrix in one 16-lane slice of a subgroup, so it
      // needs at least 16 lanes, pinned to a known size.
      if (device->subgroup_basic && device->subgroup_shuffle && device->subgroup_require_full_support && device->subgroup_size >= 16) {
-@@ -7878,6 +7921,361 @@ void ggml_vk_fwht(ggml_backend_vk_context * ctx, vk_context& subctx, const ggml_
+@@ -7878,6 +7925,402 @@ void ggml_vk_fwht(ggml_backend_vk_context * ctx, vk_context& subctx, const ggml_
      ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { src_buf, dst_buf }, pc, { workgroups_x, 1, 1 });
  }
  
@@ -7602,6 +8065,26 @@ index 3c63a1f..9d9268a 100644
 +    const ggml_tensor * w = op->src[0];
 +    const ggml_tensor * x = op->src[1];
 +    const int32_t * d = (const int32_t *) op->op_params;
++    if (op->src[7] != nullptr) {
++        // Lamplight 0136: coded experts: no gathers, sides of kind 0 or 1 (one run per slice), [., E] sides
++        const ggml_tensor * ids = op->src[7];
++        if (!w || !x || !ggml_is_trellis_type(w->type) || w->ne[3] != 1 || !ggml_is_contiguous(w) || op->src[5] || op->src[6] ||
++            ids->type != GGML_TYPE_I32 || ids->nb[0] != sizeof(int32_t) || ids->nb[1] % sizeof(int32_t) ||
++            x->type != GGML_TYPE_F32 || x->nb[0] != sizeof(float) || x->nb[1] % sizeof(float) || x->nb[2] % sizeof(float) ||
++            op->type != GGML_TYPE_F32 || !ggml_is_contiguous(op) || d[0] == 2 || d[3] == 2 ||
++            ggml_nbytes(w) > device->properties.limits.maxStorageBufferRange ||
++            w->ne[0] > (1 << 24) || w->ne[1] > (1 << 24) || ggml_nelements(ids) > (1 << 24) ||
++            !ggml_trellis_desc_supported(w->ne[0], w->ne[1], d, 7 + d[6]) || device->pipeline_trellis_mv_id[0] == nullptr) {
++            return false;
++        }
++        ggml_vk_trellis_side_shape rows, cols;
++        if (!ggml_vk_trellis_shape(w->ne[1], d[0], d[1], d[2], rows) || !ggml_vk_trellis_shape(w->ne[0], d[3], d[4], d[5], cols) ||
++            rows.m > 1 || cols.m > 1) {
++            return false;
++        }
++        return ggml_vk_trellis_side_ok(device, rows) && ggml_vk_trellis_side_ok(device, cols) &&
++               (uint64_t) w->ne[1] / 16 <= device->properties.limits.maxComputeWorkGroupCount[0];
++    }
 +    if (!w || !x || !ggml_is_trellis_type(w->type) || !ggml_is_matrix(w) || !ggml_is_contiguous(w) ||
 +        x->type != GGML_TYPE_F32 || x->nb[0] != sizeof(float) || x->ne[0] != w->ne[0] ||
 +        op->type != GGML_TYPE_F32 || !ggml_is_contiguous(op) ||
@@ -7661,12 +8144,13 @@ index 3c63a1f..9d9268a 100644
 +    const ggml_tensor * post = dst->src[4];
 +    const ggml_tensor * pin  = dst->src[5];
 +    const ggml_tensor * pout = dst->src[6];
++    const ggml_tensor * ids  = dst->src[7];  // Lamplight 0136: coded experts (rows r = token n_used + slot)
 +    const int32_t * d = (const int32_t *) dst->op_params;
 +    const vk_device & device = ctx->device;
 +
 +    const uint32_t K = (uint32_t) w->ne[0];
 +    const uint32_t N = (uint32_t) w->ne[1];
-+    const uint32_t T = (uint32_t) ggml_nrows(x);
++    const uint32_t T = (uint32_t) (ids ? ids->ne[0] * ids->ne[1] : ggml_nrows(x));
 +    const uint32_t bits = (uint32_t) (w->type - GGML_TYPE_TRL1);  // 0-based
 +
 +    ggml_vk_trellis_side_shape rows, cols;
@@ -7675,7 +8159,7 @@ index 3c63a1f..9d9268a 100644
 +    // long batches: decode to f16 and use the f16 x f32 matrix multiply
 +    const std::vector<vk_matmul_pipeline_pair> * mmp = nullptr;
 +    bool b16 = false;
-+    if ((int) T >= ggml_vk_trellis_mm_min()) {
++    if (!ids && (int) T >= ggml_vk_trellis_mm_min()) {
 +        mmp = ggml_vk_get_mul_mat_mat_pipeline_map(ctx, GGML_TYPE_F16, GGML_TYPE_F32, trellis_vk_prec());
 +        // coopmat devices (run 5: NVIDIA) have no f16 x f32 multiply, which left every batch on the GEMV: f16 x f16
 +        // with the input rounded to f16 (LAMPLIGHT_TRELLIS_VK_B16=1 takes it on every device, for tests)
@@ -7733,6 +8217,9 @@ index 3c63a1f..9d9268a 100644
 +    const vk_subbuffer pinb  = pin ? sub(pin, sizeof(int32_t), pin_off) : preb;
 +    const vk_subbuffer poutb = pout ? sub(pout, sizeof(int32_t), pout_off) : postb;
 +    const vk_subbuffer db    = sub(dst, sizeof(float), d_off);
++    uint32_t ids_off = 0;
++    const vk_subbuffer idsb  = ids ? sub(ids, sizeof(int32_t), ids_off) : db;
++    const uint32_t xmode = ids ? 8u : 0u;  // the sides' expert bit
 +
 +    vk_op_trellis_side_push_constants base = {};
 +    base.x_offset = x_off;
@@ -7742,6 +8229,15 @@ index 3c63a1f..9d9268a 100644
 +    base.x_ne1 = (uint32_t) x->ne[1];
 +    base.x_ne2 = (uint32_t) x->ne[2];
 +    base.d_offset = d_off;
++    if (ids) {  // row r reads x[:, slot % n_x, token]; with one shared input the slot stride is 0
++        base.x_ne1 = (uint32_t) ids->ne[0];
++        base.x_nb1 = x->ne[1] == 1 ? 0 : (uint32_t) (x->nb[1] / sizeof(float));
++        base.x_ne2 = (uint32_t) ids->ne[1];
++        base.x_nb2 = (uint32_t) (x->nb[2] / sizeof(float));
++        base.x_nb3 = 0;
++        base.e_used = (uint32_t) ids->ne[0];
++        base.e_nb1 = (uint32_t) (ids->nb[1] / sizeof(int32_t));
++    }
 +
 +    auto side_pc = [&](uint32_t n, const ggml_vk_trellis_side_shape & s, const int32_t * parts, int nparts) {
 +        vk_op_trellis_side_push_constants pc = base;
@@ -7787,13 +8283,14 @@ index 3c63a1f..9d9268a 100644
 +        {
 +            vk_op_trellis_side_push_constants pc = side_pc(K, cols, nullptr, 0);
 +            pc.v_offset = pre_off;
-+            pc.g_offset = pin_off;
++            pc.g_offset = ids ? ids_off : pin_off;
++            const vk_subbuffer & gb = ids ? idsb : pinb;
 +            if (cols.kind == 0) {
-+                pc.mode = 0;
-+                io(pc, tc, xb, preb, pinb, A);
++                pc.mode = 0 | xmode;
++                io(pc, tc, xb, preb, gb, A);
 +            } else {
-+                pc.mode = 1;
-+                runs(pc, tc, preb, pinb, A, A);
++                pc.mode = 1 | xmode;
++                runs(pc, tc, preb, gb, A, A);
 +                if (cols.m > 1) {
 +                    ggml_vk_sync_buffers(ctx, subctx);
 +                    cross(pc, tc, false, A, A2);
@@ -7841,6 +8338,12 @@ index 3c63a1f..9d9268a 100644
 +                               1, 1, 1, 1, 1, 1, tc, (uint64_t) K * (b16 ? sizeof(ggml_fp16_t) : sizeof(float)), (uint64_t) N * sizeof(float));
 +                ggml_vk_sync_buffers(ctx, subctx);
 +            }
++        } else if (ids) {
++            vk_pipeline & p = device->pipeline_trellis_mv_id[bits];
++            const vk_op_trellis_mv_id_push_constants pc = { K, N, tc, q_off, s_off, first, base.e_used, base.e_nb1, ids_off };
++            ggml_pipeline_request_descriptor_sets(ctx, p, 1);
++            ggml_vk_dispatch_pipeline(ctx, subctx, p, { qb, sb, in, B, idsb }, pc, { N / 16, tc, 1 });
++            ggml_vk_sync_buffers(ctx, subctx);
 +        } else {
 +            const uint32_t nt = tc == 1 ? 0 : tc == 2 ? 1 : tc <= 4 ? 2 : 3;
 +            vk_pipeline & p = device->pipeline_trellis_mv[bits][nt];
@@ -7854,7 +8357,8 @@ index 3c63a1f..9d9268a 100644
 +        {
 +            vk_op_trellis_side_push_constants pc = side_pc(N, rows, d + 7, d[6]);
 +            pc.v_offset = post_off;
-+            pc.g_offset = pout_off;
++            pc.g_offset = ids ? ids_off : pout_off;
++            const vk_subbuffer & gb = ids ? idsb : poutb;
 +            vk_subbuffer z = B;
 +            if (rows.kind != 0) {
 +                if (rows.m > 1) {
@@ -7862,13 +8366,13 @@ index 3c63a1f..9d9268a 100644
 +                    ggml_vk_sync_buffers(ctx, subctx);
 +                    z = B2;
 +                }
-+                pc.mode = pout ? 0 : (2 | 4);
-+                runs(pc, tc, postb, poutb, z, pout ? z : db);
++                pc.mode = (pout ? 0 : (2 | 4)) | xmode;
++                runs(pc, tc, postb, gb, z, pout ? z : db);
 +                ggml_vk_sync_buffers(ctx, subctx);
 +            }
 +            if (rows.kind == 0 || pout) {
-+                pc.mode = 1;
-+                io(pc, tc, z, postb, poutb, db);
++                pc.mode = 1 | xmode;
++                io(pc, tc, z, postb, gb, db);
 +                ggml_vk_sync_buffers(ctx, subctx);
 +            }
 +        }
@@ -7885,7 +8389,7 @@ index 3c63a1f..9d9268a 100644
  static uint32_t ggml_vk_nb_elem(const ggml_tensor * t, int i) {
      return (uint32_t)(t->nb[i] / ggml_type_size(t->type));
  }
-@@ -13581,6 +13979,10 @@ bool ggml_vk_build_graph(ggml_backend_vk_context * ctx, ggml_cgraph * cgraph, in
+@@ -13581,6 +14024,10 @@ bool ggml_vk_build_graph(ggml_backend_vk_context * ctx, ggml_cgraph * cgraph, in
      case GGML_OP_CUMSUM:
          ggml_vk_cumsum(ctx, compute_ctx, src0, node);
  
@@ -7896,7 +8400,7 @@ index 3c63a1f..9d9268a 100644
          break;
      case GGML_OP_DSV4_HC_COMB:
          ggml_vk_dsv4_hc_comb(ctx, compute_ctx, src0, src1, src2, node);
-@@ -16859,6 +17261,10 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+@@ -16859,6 +17306,10 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
                  }
                  return false;
              }
@@ -8052,15 +8556,16 @@ index 0000000..3e56a9e
 +}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_io.comp b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_io.comp
 new file mode 100644
-index 0000000..f506f16
+index 0000000..230bfa8
 --- /dev/null
 +++ b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_io.comp
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,31 @@
 +#version 450
 +
 +// Lamplight 0136: the elementwise ends of a NariQ linear whose side has no rotation, or whose output has a gather.
 +// mode 0 (input):  scratch[t][i] = x[first + t][pin ? pin[i] : i] * pre[i]
 +// mode 1 (output): dst[first + t][i] = scratch[t][j] * post[j], j = pout ? pout[i] : i
++// mode bit 3: coded experts: pre / post of the row's expert, G the ids (trellis_side.glsl)
 +// One invocation per (entry, token).
 +
 +layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
@@ -8078,11 +8583,12 @@ index 0000000..f506f16
 +    if (i >= p.n) {
 +        return;
 +    }
-+    const uint j = p.g_offset != 0xFFFFFFFFu ? uint(data_g[p.g_offset + i]) : i;
-+    if (p.mode == 0u) {
-+        data_dst[t * p.n + i] = data_x[trellis_x_row(p.first + t) + j] * data_v[p.v_offset + i];
++    const uint g0 = TRELLIS_G(p.first + t), v0 = TRELLIS_V(p.first + t);
++    const uint j = g0 != 0xFFFFFFFFu ? uint(data_g[g0 + i]) : i;
++    if ((p.mode & 1u) == 0u) {
++        data_dst[t * p.n + i] = data_x[trellis_x_row(p.first + t) + j] * data_v[v0 + i];
 +    } else {
-+        data_dst[p.d_offset + (p.first + t) * p.n + i] = data_x[t * p.n + j] * data_v[p.v_offset + j];
++        data_dst[p.d_offset + (p.first + t) * p.n + i] = data_x[t * p.n + j] * data_v[v0 + j];
 +    }
 +}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv.comp b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv.comp
@@ -8168,12 +8674,88 @@ index 0000000..7bc6f8a
 +        }
 +    }
 +}
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv_id.comp b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv_id.comp
+new file mode 100644
+index 0000000..3220c35
+--- /dev/null
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv_id.comp
+@@ -0,0 +1,70 @@
++#version 450
++
++// Lamplight 0136: coded experts (ggml_trellis_mul_mat_id): y = W_e^ x for one row per workgroup, W_e the slice of the
++// expert that row picked (ids). As trellis_mv.comp with one column: one workgroup per (16-row tile row, row), four
++// 32-lane groups split K, each lane decodes 8 weights per tile.
++
++#extension GL_EXT_control_flow_attributes : require
++#extension GL_EXT_shader_16bit_storage : require
++
++layout(constant_id = 0) const uint BITS = 3;
++
++layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
++
++layout(push_constant) uniform parameter {
++    uint K;
++    uint N;
++    uint T;         // rows in this chunk
++    uint q_offset;  // words
++    uint s_offset;  // halves
++    uint first;     // the chunk's first row (r = token n_used + slot)
++    uint e_used;    // slots per token
++    uint e_nb1;     // ids: ints per token
++    uint i_offset;  // ids: ints
++} p;
++
++layout(binding = 0, std430) readonly buffer Q { uint data_q[]; };
++layout(binding = 1, std430) readonly buffer S { float16_t data_s[]; };
++layout(binding = 2, std430) readonly buffer A { float data_a[]; };
++layout(binding = 3, std430) writeonly buffer B { float data_b[]; };
++layout(binding = 4, std430) readonly buffer I { int data_i[]; };
++
++#include "trellis_decode.glsl"
++
++shared float red[256];
++
++void main() {
++    const uint J = gl_WorkGroupID.x;
++    const uint t = gl_WorkGroupID.y;
++    const uint tid = gl_LocalInvocationID.x;
++    const uint lane = tid & 31u, g = tid >> 5;
++    const uint c = 2u * (lane & 3u);
++    const uint kt = p.K / 16u;
++    const uint nw = 8u * BITS;
++    const uint r = p.first + t;
++    const uint e = uint(data_i[p.i_offset + (r / p.e_used) * p.e_nb1 + r % p.e_used]);
++    const uint q0 = p.q_offset + e * (p.N / 16u) * kt * nw;
++    const uint s0 = p.s_offset + e * kt;
++
++    float acc0 = 0.0, acc1 = 0.0;
++    for (uint i = g; i < kt; i += 4u) {
++        float v[8];
++        trellis_decode8(q0 + (J * kt + i) * nw, lane, v);
++        const float s = float(data_s[s0 + i]);
++        const uint xb = t * p.K + 16u * i + c;
++        const float x0 = data_a[xb], x1 = data_a[xb + 1u], x8 = data_a[xb + 8u], x9 = data_a[xb + 9u];
++        acc0 += s * (v[0] * x0 + v[1] * x1 + v[2] * x8 + v[3] * x9);
++        acc1 += s * (v[4] * x0 + v[5] * x1 + v[6] * x8 + v[7] * x9);
++    }
++    const uint r0 = lane >> 2, part = g * 4u + (lane & 3u);
++    red[r0 * 16u + part] = acc0;
++    red[(r0 + 8u) * 16u + part] = acc1;
++    barrier();
++    if (tid < 16u) {
++        float sum = 0.0;
++        [[unroll]] for (uint k = 0; k < 16u; ++k) {
++            sum += red[tid * 16u + k];
++        }
++        data_b[t * p.N + 16u * J + tid] = sum;
++    }
++}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_runs.comp b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_runs.comp
 new file mode 100644
-index 0000000..97b8f7d
+index 0000000..9f1b385
 --- /dev/null
 +++ b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_runs.comp
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,67 @@
 +#version 450
 +
 +// Lamplight 0136: the normalised Sylvester butterflies of one run (L entries, a power of two) of a NariQ side in shared
@@ -8181,6 +8763,7 @@ index 0000000..97b8f7d
 +//   mode bit 0: read x (gather pin, times pre) instead of the scratch row
 +//   mode bit 1: times post after the butterflies
 +//   mode bit 2: write the op's dst row (first + token) instead of the scratch row
++//   mode bit 3: coded experts: pre / post of the row's expert, G the ids (trellis_side.glsl)
 +
 +#extension GL_EXT_control_flow_attributes : require
 +
@@ -8206,12 +8789,13 @@ index 0000000..97b8f7d
 +    const uint t = gl_WorkGroupID.y;
 +    const bool from_x = (p.mode & 1u) != 0u;
 +    const uint xrow = from_x ? trellis_x_row(p.first + t) : 0u;
++    const uint v0 = TRELLIS_V(p.first + t), g0 = TRELLIS_G(p.first + t);
 +
 +    for (uint e = tid; e < L; e += WG) {
 +        const uint idx = trellis_stored(base + e, slice);
 +        if (from_x) {
-+            const uint j = p.g_offset != 0xFFFFFFFFu ? uint(data_g[p.g_offset + idx]) : idx;
-+            sh[e] = data_x[xrow + j] * data_v[p.v_offset + idx];
++            const uint j = g0 != 0xFFFFFFFFu ? uint(data_g[g0 + idx]) : idx;
++            sh[e] = data_x[xrow + j] * data_v[v0 + idx];
 +        } else {
 +            sh[e] = data_src[t * p.n + idx];
 +        }
@@ -8230,7 +8814,7 @@ index 0000000..97b8f7d
 +        const uint idx = trellis_stored(base + e, slice);
 +        float v = sh[e] * p.scale;
 +        if ((p.mode & 2u) != 0u) {
-+            v *= data_v[p.v_offset + idx];
++            v *= data_v[v0 + idx];
 +        }
 +        if ((p.mode & 4u) != 0u) {
 +            data_dst[p.d_offset + (p.first + t) * p.n + idx] = v;
@@ -8304,10 +8888,10 @@ index 0000000..7382737
 +}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_side.glsl b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_side.glsl
 new file mode 100644
-index 0000000..872866d
+index 0000000..3855ee9
 --- /dev/null
 +++ b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_side.glsl
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,56 @@
 +// Lamplight 0136: shared push constants and index maps of the NariQ trellis side transforms (nariq/FORMAT.md).
 +// A side of n entries is cut in `shards` slices of `len`; a slice is `m` runs of `run`. The output side's slices may
 +// fuse up to 8 parts: slice r is shard r of every part, side by side (libtrellis's Parts).
@@ -8335,7 +8919,13 @@ index 0000000..872866d
 +    uint res0;     // quadratic residues mod m - 1, bits 0..95 (cross)
 +    uint res1;
 +    uint res2;
++    uint e_used;   // Lamplight 0136, coded experts (mode bit 3): slots per token; G holds the ids at g_offset,
++    uint e_nb1;    // e_nb1 ints per token, and row c's pre / post is expert ids[c]'s, n floats each (no gathers)
 +} p;
++
++// the first index of row c's expert's pre / post in V (mode bit 3), else v_offset
++#define TRELLIS_V(c) (p.v_offset + ((p.mode & 8u) != 0u ? uint(data_g[p.g_offset + ((c) / p.e_used) * p.e_nb1 + (c) % p.e_used]) * p.n : 0u))
++#define TRELLIS_G(c) ((p.mode & 8u) != 0u ? 0xFFFFFFFFu : p.g_offset)
 +
 +// the stored index of slice r's local entry l
 +uint trellis_stored(uint l, uint r) {
@@ -8359,15 +8949,16 @@ index 0000000..872866d
 +    return p.x_offset + (c % p.x_ne1) * p.x_nb1 + (c / p.x_ne1 % p.x_ne2) * p.x_nb2 + (c / (p.x_ne1 * p.x_ne2)) * p.x_nb3;
 +}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp b/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
-index 34a047b..4488f53 100644
+index 34a047b..e283a99 100644
 --- a/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
 +++ b/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
-@@ -1135,6 +1135,14 @@ void process_shaders() {
+@@ -1135,6 +1135,15 @@ void process_shaders() {
      string_to_spv("fwht_shmem_f32", "fwht.comp", {{"A_TYPE", "float"}, {"FWHT_SHMEM", "1"}});
      string_to_spv("fwht_f16", "fwht.comp", {{"A_TYPE", "float16_t"}});
      string_to_spv("fwht_shmem_f16", "fwht.comp", {{"A_TYPE", "float16_t"}, {"FWHT_SHMEM", "1"}});
 +    // Lamplight 0136 (NariQ trellis): widths, columns and run lengths are specialization constants
 +    string_to_spv("trellis_mv", "trellis_mv.comp", {});
++    string_to_spv("trellis_mv_id", "trellis_mv_id.comp", {});
 +    string_to_spv("trellis_dequant", "trellis_dequant.comp", {});
 +    string_to_spv("trellis_runs", "trellis_runs.comp", {});
 +    string_to_spv("trellis_cross", "trellis_cross.comp", {});
@@ -8378,7 +8969,7 @@ index 34a047b..4488f53 100644
      string_to_spv("dsv4_hc_comb_f32", "dsv4_hc_comb.comp", {});
      string_to_spv("dsv4_hc_pre_f32",  "dsv4_hc_pre.comp",  {});
 diff --git a/ggml/src/ggml.c b/ggml/src/ggml.c
-index 519e2b2..01c53a1 100644
+index 519e2b2..56503fd 100644
 --- a/ggml/src/ggml.c
 +++ b/ggml/src/ggml.c
 @@ -974,6 +974,13 @@ static const struct ggml_type_traits type_traits[GGML_TYPE_COUNT] = {
@@ -8423,7 +9014,7 @@ index 519e2b2..01c53a1 100644
  
  static_assert(GGML_OP_POOL_COUNT == 2, "GGML_OP_POOL_COUNT != 2");
  
-@@ -4000,6 +4013,121 @@ struct ggml_tensor * ggml_get_rows(
+@@ -4000,6 +4013,157 @@ struct ggml_tensor * ggml_get_rows(
      return result;
  }
  
@@ -8466,6 +9057,42 @@ index 519e2b2..01c53a1 100644
 +    result->src[4] = post;
 +    result->src[5] = pin;
 +    result->src[6] = pout;
++
++    return result;
++}
++
++struct ggml_tensor * ggml_trellis_mul_mat_id(
++        struct ggml_context * ctx,
++        struct ggml_tensor  * w,
++        struct ggml_tensor  * x,
++        struct ggml_tensor  * ids,
++        struct ggml_tensor  * s16,
++        struct ggml_tensor  * pre,
++        struct ggml_tensor  * post,
++        const int32_t       * desc,
++        int                   n_desc) {
++    GGML_ASSERT(ggml_is_trellis_type(w->type) && w->ne[3] == 1 && ggml_is_contiguous(w));
++    const int64_t K = w->ne[0], N = w->ne[1], E = w->ne[2];
++    GGML_ASSERT(x->type == GGML_TYPE_F32 && x->ne[0] == K && x->ne[3] == 1);
++    GGML_ASSERT(ids->type == GGML_TYPE_I32 && ids->ne[2] == 1 && ids->ne[3] == 1 && ids->ne[1] == x->ne[2]);
++    GGML_ASSERT(x->ne[1] == 1 || x->ne[1] == ids->ne[0]);
++    GGML_ASSERT(s16->type == GGML_TYPE_F16 && s16->ne[0] == K / 16 && s16->ne[1] == E && ggml_is_contiguous(s16));
++    GGML_ASSERT(pre->type == GGML_TYPE_F32 && pre->ne[0] == K && pre->ne[1] == E && ggml_is_contiguous(pre));
++    GGML_ASSERT(post->type == GGML_TYPE_F32 && post->ne[0] == N && post->ne[1] == E && ggml_is_contiguous(post));
++    GGML_ASSERT(ggml_trellis_desc_supported(K, N, desc, n_desc));
++
++    struct ggml_tensor * result = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, N, ids->ne[0], ids->ne[1]);
++    ggml_set_op_params(result, desc, n_desc * sizeof(int32_t));
++
++    result->op     = GGML_OP_TRELLIS;
++    result->src[0] = w;
++    result->src[1] = x;
++    result->src[2] = s16;
++    result->src[3] = pre;
++    result->src[4] = post;
++    result->src[5] = NULL;
++    result->src[6] = NULL;
++    result->src[7] = ids;
 +
 +    return result;
 +}
@@ -8671,7 +9298,7 @@ index eb0e14d..d8309f1 100644
      gguf_init_params meta_gguf_params = {
          /* .no_alloc = */ true,
 diff --git a/src/llama-context.cpp b/src/llama-context.cpp
-index fb9055f..10f3178 100644
+index fb9055f..bce0448 100644
 --- a/src/llama-context.cpp
 +++ b/src/llama-context.cpp
 @@ -277,6 +277,16 @@ llama_context::llama_context(
@@ -8691,8 +9318,20 @@ index fb9055f..10f3178 100644
          } else if (model.arch == LLM_ARCH_DFLASH) {
              // used to read the target's layer input device buffer
              cparams.ctx_other = params.ctx_other;
+@@ -657,6 +667,11 @@ llama_context::llama_context(
+         // Brain Engine 0027: with the KV cache in RAM (-nkvo) attention runs on the processor, the scheduler cuts the
+         // graph differently and the expert picks can land in the same split as the cache's lookup, which the cache
+         // can't handle (it aborted at warm-up). Refuse it here, plainly, and load without the cache.
++        // Lamplight 0136: coded experts (ggml_trellis_mul_mat_id) have no copy-cache path yet
++        if (cparams.moe_cache_size > 0 && model.trellis.experts) {
++            LLAMA_LOG_WARN("%s: MoE cache NOT USED: the experts are trellis-coded (NariQ); loading without it\n", __func__);
++            cparams.moe_cache_size = 0;
++        }
+         if (cparams.moe_cache_size > 0 && !cparams.offload_kqv) {
+             LLAMA_LOG_WARN("%s: MoE cache NOT USED: it doesn't work with the KV cache in RAM (-nkvo); loading without it\n", __func__);
+             cparams.moe_cache_size = 0;
 diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
-index 263a1c1..a89698e 100644
+index 263a1c1..4871ac1 100644
 --- a/src/llama-graph.cpp
 +++ b/src/llama-graph.cpp
 @@ -681,7 +681,8 @@ void llm_graph_input_cls::set_input(const llama_ubatch * ubatch) {
@@ -8792,7 +9431,30 @@ index 263a1c1..a89698e 100644
      // a Hadamard-folded weight reads the transformed input; a LoRA delta lives in the primal basis and reads `cur`
      ggml_tensor * cur_mm = build_hadamard_input(w, cur);
      ggml_tensor * res = ggml_mul_mat(ctx0, w, cur_mm);
-@@ -3450,13 +3500,33 @@ ggml_tensor * llm_graph_context::build_inp_embd(ggml_tensor * tok_embd, float to
+@@ -2178,6 +2228,22 @@ ggml_tensor * llm_graph_context::build_lora_mm_id(
+           ggml_tensor * w_s,
+           ggml_tensor * slots,
+                  bool   cached) const {
++    // Lamplight 0136: coded experts run as one coded expert op (the MoE copy cache is off for them, see llama_context)
++    if (const llama_trellis_weight * tw = model.trellis_weight(w)) {
++        GGML_ASSERT(slots == nullptr && "trellis: coded experts and the MoE copy cache");
++        ggml_tensor * x = ggml_is_contiguous(cur) ? cur : ggml_cont(ctx0, cur);
++        ggml_tensor * res = ggml_trellis_mul_mat_id(ctx0, w, x, ids, tw->s16, tw->pre, tw->post,
++                                                    tw->desc.data(), (int) tw->desc.size());
++        if (w_s) {
++            const int64_t n_expert = w_s->ne[0];
++            const int64_t n_tokens = cur->ne[2];
++            ggml_tensor * s = ggml_reshape_3d(ctx0, w_s, 1, n_expert, 1);
++            s = ggml_repeat_4d(ctx0, s, 1, n_expert, n_tokens, 1);
++            s = ggml_get_rows(ctx0, s, ids);
++            res = ggml_mul(ctx0, res, s);
++        }
++        return res;
++    }
+     // as in build_lora_mm: the folded weight reads the transformed input, the LoRA delta reads `cur`
+     ggml_tensor * cur_mm = build_hadamard_input(w, cur);
+     // the experts in the MoE cache are selected by their slots
+@@ -3450,13 +3516,33 @@ ggml_tensor * llm_graph_context::build_inp_embd(ggml_tensor * tok_embd, float to
      // we use ggml_build_forward_order to make the GET_ROWS ops stick at the beginning of the compute graph
      // this way the embeddings remain in the host buffer, and the GET_ROWS run before any other computations
      {
@@ -8843,7 +9505,7 @@ index bab29f1..69c3133 100644
      // if slots is set, the experts are selected by slots instead of ids, from the MoE cache if cached (see build_moe_cache_slots)
      ggml_tensor * build_lora_mm_id(
 diff --git a/src/llama-model-loader.cpp b/src/llama-model-loader.cpp
-index 5d9d647..03582a8 100644
+index 5d9d647..5abe61e 100644
 --- a/src/llama-model-loader.cpp
 +++ b/src/llama-model-loader.cpp
 @@ -447,6 +447,10 @@ namespace GGUFMeta {
@@ -8877,7 +9539,16 @@ index 5d9d647..03582a8 100644
      fver = (enum llama_fver) gguf_get_version(metadata);
  
      LLAMA_LOG_INFO("%s: loaded meta data with %d key-value pairs and %d tensors from %s (version %s)\n",
-@@ -1063,6 +1080,31 @@ static bool weight_buft_supported(const llama_hparams & hparams, ggml_tensor * w
+@@ -1025,7 +1042,7 @@ static bool weight_buft_supported(const llama_hparams & hparams, ggml_tensor * w
+     }
+ 
+     ggml_init_params params = {
+-        /*.mem_size   =*/ ggml_tensor_overhead()*8,
++        /*.mem_size   =*/ ggml_tensor_overhead()*16, // Lamplight 0136: the trellis expert probe makes 11
+         /*.mem_buffer =*/ NULL,
+         /*.no_alloc   =*/ true,
+     };
+@@ -1063,6 +1080,42 @@ static bool weight_buft_supported(const llama_hparams & hparams, ggml_tensor * w
                  }
                  op_tensor = ggml_mul_mat(ctx, w, b);
              } break;
@@ -8892,7 +9563,18 @@ index 5d9d647..03582a8 100644
 +                ggml_tensor * s16  = ggml_new_tensor_1d(ctx, GGML_TYPE_F16, w->ne[0] / 16);
 +                ggml_tensor * pre  = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, w->ne[0]);
 +                ggml_tensor * post = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, w->ne[1]);
-+                op_tensor = ggml_trellis_mul_mat(ctx, w, b, s16, pre, post, nullptr, nullptr, desc, 7);
++                if (w->ne[2] > 1 || strstr(ggml_get_name(w), "_exps") != nullptr) {
++                    // Lamplight 0136: coded experts, routed as mul_mat_id
++                    const int64_t E = w->ne[2];
++                    ggml_tensor * bx   = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, w->ne[0], 1, 512);
++                    ggml_tensor * ids  = ggml_new_tensor_2d(ctx, GGML_TYPE_I32, std::min<int64_t>(E, 8), 512);
++                    ggml_tensor * es16 = ggml_new_tensor_2d(ctx, GGML_TYPE_F16, w->ne[0] / 16, E);
++                    ggml_tensor * epre = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, w->ne[0], E);
++                    ggml_tensor * epst = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, w->ne[1], E);
++                    op_tensor = ggml_trellis_mul_mat_id(ctx, w, bx, ids, es16, epre, epst, desc, 7);
++                } else {
++                    op_tensor = ggml_trellis_mul_mat(ctx, w, b, s16, pre, post, nullptr, nullptr, desc, 7);
++                }
 +            } break;
 +        case GGML_OP_TRELLIS_GET_ROWS:
 +            {
@@ -8909,17 +9591,19 @@ index 5d9d647..03582a8 100644
          case GGML_OP_MUL_MAT_ID:
              {
                  // Used for either MoE expert routing or embedded adapter routing
-@@ -1173,6 +1215,31 @@ static bool weight_buft_supported(const llama_hparams & hparams, ggml_tensor * w
+@@ -1173,6 +1226,33 @@ static bool weight_buft_supported(const llama_hparams & hparams, ggml_tensor * w
  
  // find the first buffer type in the list that can use the tensor
  static ggml_backend_buffer_type_t select_weight_buft(const llama_hparams & hparams, ggml_tensor * tensor, ggml_op op, bool src1_noncont, const buft_list_t * buft_list) {
 +    // trellis fork: a coded weight's side tensors (<w>.trellis_s16 / pre / post / pin / pout) go where the weight goes,
 +    // so they are placed by the same probe, on a stand-in coded weight
 +    if (!ggml_is_trellis_type(tensor->type) && strstr(tensor->name, ".trellis_") != nullptr &&
-+            (op == GGML_OP_MUL_MAT || op == GGML_OP_GET_ROWS)) {
++            (op == GGML_OP_MUL_MAT || op == GGML_OP_GET_ROWS || op == GGML_OP_MUL_MAT_ID)) {
 +        ggml_init_params params = { ggml_tensor_overhead(), NULL, true };
 +        ggml_context_ptr ctx { ggml_init(params) };
-+        ggml_tensor * probe = ggml_new_tensor_2d(ctx.get(), GGML_TYPE_TRL2, 256, 256);
++        // Lamplight 0136: an expert tensor's sides are probed on stand-in coded experts
++        ggml_tensor * probe = op == GGML_OP_MUL_MAT_ID ? ggml_new_tensor_3d(ctx.get(), GGML_TYPE_TRL2, 256, 256, 2) :
++                                                          ggml_new_tensor_2d(ctx.get(), GGML_TYPE_TRL2, 256, 256);
 +        ggml_set_name(probe, tensor->name);
 +        return select_weight_buft(hparams, probe, op, src1_noncont, buft_list);
 +    }
@@ -8932,7 +9616,7 @@ index 5d9d647..03582a8 100644
 +    // it), so its buffer type is the first that runs those: the GPU's where libtrellis runs, else host memory for the
 +    // CPU backend's op (a CPU-only run, a layer left on the CPU, the embedding)
 +    if (ggml_is_trellis_type(tensor->type)) {
-+        if (op == GGML_OP_MUL_MAT) {
++        if (op == GGML_OP_MUL_MAT || op == GGML_OP_MUL_MAT_ID) {  // Lamplight 0136: experts too
 +            op = GGML_OP_TRELLIS;
 +        } else if (op == GGML_OP_GET_ROWS) {
 +            op = GGML_OP_TRELLIS_GET_ROWS;
@@ -8941,7 +9625,7 @@ index 5d9d647..03582a8 100644
      GGML_ASSERT(!buft_list->empty());
      for (const auto & cur : *buft_list) {
          ggml_backend_dev_t cur_dev = cur.first;
-@@ -1375,6 +1442,15 @@ struct ggml_tensor * llama_model_loader::create_tensor(
+@@ -1375,6 +1455,15 @@ struct ggml_tensor * llama_model_loader::create_tensor(
              if (!buft) {
                  throw std::runtime_error(format("failed to find a compatible buffer type for tensor %s", tn.str().c_str()));
              }
@@ -8971,7 +9655,7 @@ index 959b228..e7dc13b 100644
      // use case: keep PLE / engrams embd tensors on disk, read them on demand
      struct lazy_read {
 diff --git a/src/llama-model.cpp b/src/llama-model.cpp
-index 9a4decc..c7a83d8 100644
+index 9a4decc..b754d7b 100644
 --- a/src/llama-model.cpp
 +++ b/src/llama-model.cpp
 @@ -1763,6 +1763,63 @@ void llama_model_base::load_vocab(llama_model_loader & ml) {
@@ -9048,7 +9732,7 @@ index 9a4decc..c7a83d8 100644
      return true;
  }
  
-@@ -2627,9 +2687,125 @@ ggml_tensor * llama_model_base::create_tensor(llama_model_loader & ml, const LLM
+@@ -2627,9 +2687,142 @@ ggml_tensor * llama_model_base::create_tensor(llama_model_loader & ml, const LLM
          // blocks that are not model layers (e.g. the blocks of a head) go with the output
          buft_list_layer = (size_t) tn.bid < pimpl->dev_layer.size() ? pimpl->dev_layer.at(tn.bid).buft_list : pimpl->dev_output.buft_list;
      }
@@ -9067,8 +9751,10 @@ index 9a4decc..c7a83d8 100644
 +        } catch (const std::out_of_range &) {
 +            // ml.create_tensor reports the missing mapping
 +        }
-+        if (op != GGML_OP_NONE && op != GGML_OP_MUL_MAT && !(op == GGML_OP_GET_ROWS && tn.tensor == LLM_TENSOR_TOKEN_EMBD)) {
-+            throw std::runtime_error(format("trellis: %s is coded, but only linear weights and the token embedding can be "
++        // Lamplight 0136: and the experts (mul_mat_id, ggml_trellis_mul_mat_id)
++        if (op != GGML_OP_NONE && op != GGML_OP_MUL_MAT && op != GGML_OP_MUL_MAT_ID &&
++                !(op == GGML_OP_GET_ROWS && tn.tensor == LLM_TENSOR_TOKEN_EMBD)) {
++            throw std::runtime_error(format("trellis: %s is coded, but only linear weights, experts and the token embedding can be "
 +                    "(this tensor is used by %s)", tn.str().c_str(), ggml_op_name(op)));
 +        }
 +    }
@@ -9106,13 +9792,28 @@ index 9a4decc..c7a83d8 100644
 +        const LLM_TN_IMPL stn(tn.arch, tn.tensor, suffix.c_str(), tn.bid, tn.xid);
 +        return create_tensor(ml, stn, ne, flags);
 +    };
-+    const int64_t K = w->ne[0], N = w->ne[1];
++    const int64_t K = w->ne[0], N = w->ne[1], E = w->ne[2];
 +    llama_trellis_weight tw;
-+    tw.s16  = side("trellis_s16",  {K / 16}, 0);
-+    tw.pre  = side("trellis_pre",  {K},      0);
-+    tw.post = side("trellis_post", {N},      0);
-+    tw.pin  = side("trellis_pin",  {K},      TENSOR_NOT_REQUIRED);
-+    tw.pout = side("trellis_pout", {N},      TENSOR_NOT_REQUIRED);
++    bool experts = false;
++    try {
++        experts = llm_tensor_info_for(tn.tensor).op == GGML_OP_MUL_MAT_ID;
++    } catch (const std::out_of_range &) {
++    }
++    if (experts) {  // Lamplight 0136: one side per expert, no gathers
++        if (w->ne[3] != 1) {
++            throw std::runtime_error(format("trellis: coded experts %s must be [K, N, n_expert]", tn.str().c_str()));
++        }
++        tw.s16  = side("trellis_s16",  {K / 16, E}, 0);
++        tw.pre  = side("trellis_pre",  {K, E},      0);
++        tw.post = side("trellis_post", {N, E},      0);
++        trellis.experts = true;
++    } else {
++        tw.s16  = side("trellis_s16",  {K / 16}, 0);
++        tw.pre  = side("trellis_pre",  {K},      0);
++        tw.post = side("trellis_post", {N},      0);
++        tw.pin  = side("trellis_pin",  {K},      TENSOR_NOT_REQUIRED);
++        tw.pout = side("trellis_pout", {N},      TENSOR_NOT_REQUIRED);
++    }
 +    check_trellis_type(tw.s16,  GGML_TYPE_F16);
 +    check_trellis_type(tw.pre,  GGML_TYPE_F32);
 +    check_trellis_type(tw.post, GGML_TYPE_F32);
@@ -9176,15 +9877,16 @@ index 9a4decc..c7a83d8 100644
  
  std::string llama_model::arch_name() const {
 diff --git a/src/llama-model.h b/src/llama-model.h
-index b007f3a..271d91c 100644
+index b007f3a..278f64d 100644
 --- a/src/llama-model.h
 +++ b/src/llama-model.h
-@@ -776,6 +776,24 @@ struct llama_hadamard {
+@@ -776,6 +776,26 @@ struct llama_hadamard {
      llama_hadamard_rotations inv; // latent lookup table -> inverse transform
  };
  
 +// trellis fork: a trellis-coded weight's side tensors and sides (nariq/FORMAT.md)
 +struct llama_trellis_weight {
++    // Lamplight 0136: for coded experts (w [K, N, E]) the sides are [., E] (one per expert) and there are no gathers
 +    ggml_tensor * s16  = nullptr; // F16 [K/16] block scales
 +    ggml_tensor * pre  = nullptr; // F32 [K] input-side vector
 +    ggml_tensor * post = nullptr; // F32 [N] output-side vector
@@ -9199,12 +9901,13 @@ index b007f3a..271d91c 100644
 +    ggml_tensor * vocab_gather = nullptr; // I32 [n_vocab]: logits[t] = banded[vocab_gather[t]]
 +    std::vector<ggml_tensor *> embed_bands; // a coded embedding in frequency bands (token_embd.bandNN.weight), in order
 +    ggml_tensor * embed_gather = nullptr;   // I32 [n_vocab]: token t's row is banded row embed_gather[t]
++    bool experts = false;                   // Lamplight 0136: some expert tensors are coded (ggml_trellis_mul_mat_id)
 +};
 +
  struct llama_rope_params {
      int32_t n_rot      = 0; // 0 if the layer has no RoPE
      int32_t n_offs     = 0; // first rotated dim in a cached K head
-@@ -807,6 +825,14 @@ struct llama_model {
+@@ -807,6 +827,14 @@ struct llama_model {
  
      llama_hadamard hdmd;
  
@@ -9219,7 +9922,7 @@ index b007f3a..271d91c 100644
      // see llama_model_set_attn_rot
      bool attn_rot = true;
  
-@@ -1114,6 +1140,20 @@ struct llama_model_base : public llama_model {
+@@ -1114,6 +1142,20 @@ struct llama_model_base : public llama_model {
      };
      nextn_flags_t nextn_flags(llama_model_loader & ml, llm_tensor trunk_probe = LLM_TENSOR_ATTN_NORM) const;
  
@@ -9299,7 +10002,7 @@ index 36e48a0..dd590a0 100644
  
  if (BUILD_SHARED_LIBS)
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
-index 31c4205..fd3c97e 100644
+index 31c4205..c06ce44 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
 @@ -35,6 +35,7 @@
@@ -9310,7 +10013,7 @@ index 31c4205..fd3c97e 100644
  #include <random>
  #include <regex>
  #include <set>
-@@ -2670,6 +2671,280 @@ struct test_mul_mat_reorder_then_big_batch : public test_case {
+@@ -2670,6 +2671,331 @@ struct test_mul_mat_reorder_then_big_batch : public test_case {
      }
  };
  
@@ -9424,6 +10127,57 @@ index 31c4205..fd3c97e 100644
 +
 +    void initialize_tensors(ggml_context * ctx) override {
 +        init_trellis_tensors(ctx, 1234, 0);
++    }
++};
++
++// Lamplight 0136: GGML_OP_TRELLIS on coded experts (ggml_trellis_mul_mat_id), as test_mul_mat_id: n_x 1 (b) is one
++// input shared by the used experts (gate / up), else one per slot (down)
++struct test_trellis_id : public test_case {
++    const ggml_type type;
++    const int64_t k;
++    const int64_t n;
++    const int n_expert;
++    const int n_used;
++    const bool b;
++    const int64_t t;
++    const trellis_side rows;
++    const trellis_side cols;
++
++    std::string vars() override {
++        return VARS_TO_STR9(type, k, n, n_expert, n_used, b, t, rows, cols);
++    }
++
++    double max_nmse_err() override {
++        return 5e-4;
++    }
++
++    uint64_t op_flops(ggml_tensor * t) override {
++        GGML_UNUSED(t);
++        return 2 * (uint64_t) k * n * n_used * this->t;
++    }
++
++    test_trellis_id(ggml_type type, int64_t k, int64_t n, int n_expert, int n_used, bool b, int64_t t,
++            trellis_side rows, trellis_side cols)
++        : type(type), k(k), n(n), n_expert(n_expert), n_used(n_used), b(b), t(t), rows(rows), cols(cols) {}
++
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        ggml_tensor * w    = ggml_new_tensor_3d(ctx, type, k, n, n_expert);
++        ggml_tensor * x    = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, k, b ? 1 : n_used, t);
++        ggml_tensor * ids  = ggml_new_tensor_2d(ctx, GGML_TYPE_I32, n_used, t);
++        ggml_tensor * s16  = ggml_new_tensor_2d(ctx, GGML_TYPE_F16, k / 16, n_expert);
++        ggml_tensor * pre  = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, k, n_expert);
++        ggml_tensor * post = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, n, n_expert);
++        ggml_set_name(w, "w");
++        ggml_set_name(x, "x");
++        ggml_set_name(ids, "ids");
++        const std::vector<int32_t> desc = trellis_desc(rows, cols, { (int32_t) n });
++        ggml_tensor * out = ggml_trellis_mul_mat_id(ctx, w, x, ids, s16, pre, post, desc.data(), (int) desc.size());
++        ggml_set_name(out, "out");
++        return out;
++    }
++
++    void initialize_tensors(ggml_context * ctx) override {
++        init_trellis_tensors(ctx, 4321, n_expert);
 +    }
 +};
 +
@@ -9591,7 +10345,7 @@ index 31c4205..fd3c97e 100644
  // GGML_OP_GET_ROWS_BACK
  struct test_get_rows_back : public test_case {
      const ggml_type type;
-@@ -10899,6 +11174,47 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+@@ -10899,6 +11225,54 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
      }
      test_cases.emplace_back(new test_get_rows(GGML_TYPE_F32, 256, 8, 2, 1, 1, false, true, 3));
  
@@ -9624,6 +10378,13 @@ index 31c4205..fd3c97e 100644
 +        for (int64_t t : {1, 8, 65}) {
 +            test_cases.emplace_back(new test_trellis_mlp(type, 512, 1024, t, 256));
 +        }
++        // Lamplight 0136: coded experts, plain and rht128 (Flash-Next's sides), shared and per-slot inputs
++        for (int64_t t : {1, 7, 65}) {
++            for (bool b : {true, false}) {
++                test_cases.emplace_back(new test_trellis_id(type, 256, 128, 6, 2, b, t, {0, 0, 1}, {0, 0, 1}));
++                test_cases.emplace_back(new test_trellis_id(type, 640, 256, 6, 3, b, t, {1, 128, 1}, {1, 128, 1}));
++            }
++        }
 +        for (const trellis_side & cols : std::vector<trellis_side>{ {0, 0, 1}, {1, 128, 1}, {2, 0, 1} }) {
 +            const int64_t k = cols[0] == 2 ? 1280 : 256;
 +            for (bool banded : {false, true}) {
@@ -9639,7 +10400,7 @@ index 31c4205..fd3c97e 100644
      test_cases.emplace_back(new test_get_rows_back(GGML_TYPE_F32, 1, 8, 2, 1, false));
      test_cases.emplace_back(new test_get_rows_back(GGML_TYPE_F32, 1, 70000, 4, 1, false)); // row count > CUDA grid-y limit (65535)
      for (ggml_type type : all_types) {
-@@ -13698,6 +14014,20 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+@@ -13698,6 +14072,30 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
  static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
      std::vector<std::unique_ptr<test_case>> test_cases;
  
@@ -9649,6 +10410,16 @@ index 31c4205..fd3c97e 100644
 +        for (ggml_type type : {GGML_TYPE_TRL2, GGML_TYPE_TRL3, GGML_TYPE_TRL4}) {
 +            test_cases.emplace_back(new test_trellis(type, 5120, 17408, t, {1, 128, 1}, {1, 128, 1}));
 +            test_cases.emplace_back(new test_trellis(type, 17408, 5120, t, {1, 128, 1}, {1, 128, 1}));
++        }
++        // Lamplight 0136: Flash-Next's coded experts (gate/up 2560 -> 640 on one shared input, down 640 -> 2560),
++        // 64 of them with 8 used, against q4_K / q3_K / q2_K experts through mul_mat_id
++        for (ggml_type type : {GGML_TYPE_TRL2, GGML_TYPE_TRL3, GGML_TYPE_TRL4}) {
++            test_cases.emplace_back(new test_trellis_id(type, 2560, 640, 64, 8, true, t, {1, 128, 1}, {1, 128, 1}));
++            test_cases.emplace_back(new test_trellis_id(type, 640, 2560, 64, 8, false, t, {1, 128, 1}, {1, 128, 1}));
++        }
++        for (ggml_type type : {GGML_TYPE_Q2_K, GGML_TYPE_Q3_K, GGML_TYPE_Q4_K}) {
++            test_cases.emplace_back(new test_mul_mat_id(type, GGML_TYPE_F32, 64, 8, true, 640, t, 2560));
++            test_cases.emplace_back(new test_mul_mat_id(type, GGML_TYPE_F32, 64, 8, false, 2560, t, 640));
 +        }
 +        // q8_0 and f16: what the int8 and f16 long-batch paths multiply after their decode
 +        for (ggml_type type : {GGML_TYPE_Q2_K, GGML_TYPE_IQ2_XXS, GGML_TYPE_IQ3_XXS, GGML_TYPE_Q3_K, GGML_TYPE_Q4_K, GGML_TYPE_Q8_0, GGML_TYPE_F16}) {
@@ -9662,10 +10433,10 @@ index 31c4205..fd3c97e 100644
      }
 diff --git a/tests/test-trellis-metadata.cpp b/tests/test-trellis-metadata.cpp
 new file mode 100644
-index 0000000..f7cfbe3
+index 0000000..cc1fbce
 --- /dev/null
 +++ b/tests/test-trellis-metadata.cpp
-@@ -0,0 +1,311 @@
+@@ -0,0 +1,401 @@
 +#include "llama.h"
 +#include "ggml.h"
 +#include "ggml-backend.h"
@@ -9673,7 +10444,9 @@ index 0000000..f7cfbe3
 +
 +#include <cstdio>
 +#include <cstdlib>
++#include <cmath>
 +#include <cstring>
++#include <random>
 +#include <string>
 +#include <vector>
 +
@@ -9779,11 +10552,11 @@ index 0000000..f7cfbe3
 +};
 +
 +// a one-layer llama (n_embd 256, n_vocab 32) with a coded output.weight, or a coded token_embd.weight that is also
-+// the output (tied); moe: coded expert weights
++// the output (tied); moe: coded expert weights (Lamplight 0136: with their sides), dense_moe: plain F32 experts instead
 +struct fixture : builder {
-+    static constexpr int64_t n_embd = 256, n_vocab = 32, n_expert = 2;
++    static constexpr int64_t n_embd = 256, n_vocab = 32, n_expert = 4;
 +
-+    fixture(bool tied, bool moe, ggml_type pin_type = GGML_TYPE_I32, int64_t vocab = n_vocab) {
++    fixture(bool tied, bool moe, ggml_type pin_type = GGML_TYPE_I32, int64_t vocab = n_vocab, bool dense_moe = false) {
 +        gguf_set_val_str(meta, "general.architecture", "llama");
 +        gguf_set_val_u32(meta, "llama.context_length", 64);
 +        gguf_set_val_u32(meta, "llama.embedding_length", n_embd);
@@ -9809,14 +10582,45 @@ index 0000000..f7cfbe3
 +        add("blk.0.ffn_norm.weight", GGML_TYPE_F32, {n_embd});
 +        if (moe) {
 +            gguf_set_val_u32(meta, "llama.expert_count", n_expert);
-+            gguf_set_val_u32(meta, "llama.expert_used_count", 1);
++            gguf_set_val_u32(meta, "llama.expert_used_count", 2);
 +            add("blk.0.ffn_gate_inp.weight", GGML_TYPE_F32, {n_embd, n_expert});
 +            for (const char * name : {"ffn_gate_exps", "ffn_down_exps", "ffn_up_exps"}) {
-+                add(std::string("blk.0.") + name + ".weight", GGML_TYPE_TRL2, {n_embd, n_embd, n_expert});
++                const std::string base = std::string("blk.0.") + name;
++                if (dense_moe) {
++                    add(base + ".weight", GGML_TYPE_F32, {n_embd, n_embd, n_expert});
++                    continue;
++                }
++                add(base + ".weight", GGML_TYPE_TRL2, {n_embd, n_embd, n_expert});
++                add(base + ".trellis_s16", GGML_TYPE_F16, {n_embd / 16, n_expert});
++                add(base + ".trellis_pre", GGML_TYPE_F32, {n_embd, n_expert});
++                add(base + ".trellis_post", GGML_TYPE_F32, {n_embd, n_expert});
++                const int32_t desc[] = {1, 128, 1, 1, 128, 1, 1, (int32_t) n_embd};  // rht128 on both sides, as Flash-Next
++                gguf_set_arr_data(meta, ("trellis.desc." + base).c_str(), GGUF_TYPE_INT32, desc, 8);
 +            }
 +        } else {
 +            for (const char * name : {"ffn_gate", "ffn_down", "ffn_up"}) {
 +                add(std::string("blk.0.") + name + ".weight", GGML_TYPE_F32, {n_embd, n_embd});
++            }
++        }
++    }
++
++    // Lamplight 0136: every tensor filled from its name (norms near 1, coded codes random, scales small), so two
++    // fixtures share all but their experts
++    void randomize() {
++        for (ggml_tensor * t = ggml_get_first_tensor(ctx); t != nullptr; t = ggml_get_next_tensor(ctx, t)) {
++            const std::string name = ggml_get_name(t);
++            std::mt19937 rng((uint32_t) std::hash<std::string>{}(name));
++            std::uniform_real_distribution<float> u(-1.0f, 1.0f);
++            if (ggml_is_trellis_type(t->type)) {
++                for (size_t i = 0; i < ggml_nbytes(t); ++i) { ((uint8_t *) t->data)[i] = (uint8_t) (rng() & 255); }
++            } else if (t->type == GGML_TYPE_F16) {
++                for (int64_t i = 0; i < ggml_nelements(t); ++i) { ((ggml_fp16_t *) t->data)[i] = ggml_fp32_to_fp16(0.0005f * (1 + (rng() % 4))); }
++            } else if (t->type == GGML_TYPE_F32 && name.find("_norm") != std::string::npos) {
++                for (int64_t i = 0; i < ggml_nelements(t); ++i) { ((float *) t->data)[i] = 1.0f + 0.1f * u(rng); }
++            } else if (t->type == GGML_TYPE_F32 && name.find(".trellis_") != std::string::npos) {
++                for (int64_t i = 0; i < ggml_nelements(t); ++i) { ((float *) t->data)[i] = (rng() % 2 ? -1.0f : 1.0f) * (0.8f + 0.2f * u(rng)); }
++            } else if (t->type == GGML_TYPE_F32) {
++                for (int64_t i = 0; i < ggml_nelements(t); ++i) { ((float *) t->data)[i] = 0.06f * u(rng); }
 +            }
 +        }
 +    }
@@ -9906,6 +10710,67 @@ index 0000000..f7cfbe3
 +    check(model == nullptr && messages.find(expected) != std::string::npos, what);
 +}
 +
++// the logits of tokens 1..6 (a batch, then one more token) on the CPU
++static std::vector<float> run_logits(builder & b) {
++    auto * model = load(b.meta);
++    check(model != nullptr, "the expert fixture must load");
++    auto cparams = llama_context_default_params();
++    cparams.n_ctx = 64;
++    cparams.n_batch = 64;
++    cparams.n_threads = 2;
++    auto * lctx = llama_init_from_model(model, cparams);
++    check(lctx != nullptr, "context failed");
++    std::vector<float> out;
++    llama_token tokens[] = {1, 2, 3, 4, 5, 6};
++    check(llama_decode(lctx, llama_batch_get_one(tokens, 5)) == 0, "decode failed");
++    const int n_vocab = llama_vocab_n_tokens(llama_model_get_vocab(model));
++    const float * l = llama_get_logits_ith(lctx, -1);
++    out.insert(out.end(), l, l + n_vocab);
++    check(llama_decode(lctx, llama_batch_get_one(tokens + 5, 1)) == 0, "decode failed");
++    l = llama_get_logits_ith(lctx, -1);
++    out.insert(out.end(), l, l + n_vocab);
++    llama_free(lctx);
++    llama_model_free(model);
++    return out;
++}
++
++// Lamplight 0136: coded experts load and run as ggml_trellis_mul_mat_id, giving the logits of the same experts
++// dequantized (ggml_trellis_dequantize_expert) into plain F32 ones
++static void check_experts() {
++    fixture coded(false, true);
++    coded.randomize();
++    fixture dense(false, true, GGML_TYPE_I32, fixture::n_vocab, true);
++    dense.randomize();
++    const int64_t K = fixture::n_embd, N = fixture::n_embd, E = fixture::n_expert;
++    for (const char * name : {"ffn_gate_exps", "ffn_down_exps", "ffn_up_exps"}) {
++        const std::string base = std::string("blk.0.") + name;
++        auto * w = ggml_get_tensor(coded.ctx, (base + ".weight").c_str());
++        auto * d = ggml_get_tensor(dense.ctx, (base + ".weight").c_str());
++        const int32_t desc[] = {1, 128, 1, 1, 128, 1, 1, (int32_t) N};
++        for (int64_t e = 0; e < E; ++e) {
++            check(ggml_trellis_dequantize_expert(w->type, w->data, K, N, e,
++                (const ggml_fp16_t *) ggml_get_tensor(coded.ctx, (base + ".trellis_s16").c_str())->data,
++                (const float *) ggml_get_tensor(coded.ctx, (base + ".trellis_pre").c_str())->data,
++                (const float *) ggml_get_tensor(coded.ctx, (base + ".trellis_post").c_str())->data,
++                desc, 8, (float *) d->data + e * K * N), "expert dequantize failed");
++        }
++    }
++    const auto a = run_logits(coded);
++    const auto b = run_logits(dense);
++    check(a.size() == b.size(), "logit counts differ");
++    double err = 0, ref = 0;
++    for (size_t i = 0; i < a.size(); ++i) {
++        check(std::isfinite(a[i]), "coded expert logits not finite");
++        err += double(a[i] - b[i]) * (a[i] - b[i]);
++        ref += double(b[i]) * b[i];
++    }
++    check(ref > 0 && err <= 1e-5 * ref, "coded experts: the logits differ from the dequantized experts'");
++
++    fixture bad(false, true);
++    gguf_remove_key(bad.meta, "trellis.desc.blk.0.ffn_up_exps");
++    check_load("coded experts without their side description must be rejected", bad, "trellis.desc.blk.0.ffn_up_exps");
++}
++
 +int main() {
 +    ggml_backend_load_all();
 +    llama_log_set(log_message, nullptr);
@@ -9944,11 +10809,7 @@ index 0000000..f7cfbe3
 +        fixture f(true, false);
 +        check_load("a coded tied embedding must be rejected", f, "token_embd.weight is coded and also used as another tensor");
 +    }
-+    {
-+        fixture f(false, true);
-+        check_load("coded expert weights must be rejected", f,
-+                "blk.0.ffn_gate_exps.weight is coded, but only linear weights and the token embedding can be");
-+    }
++    check_experts();
 +
 +    {
 +        fixture f(false, false);
@@ -9975,7 +10836,7 @@ index 0000000..f7cfbe3
 +        check_load("an MTP block with its own embedding must load", f, nullptr, true);
 +    }
 +
-+    std::puts("trellis loading: format versions, gathers, tied embeddings, expert weights, Hadamard folds and MTP checked");
++    std::puts("trellis loading: format versions, gathers, tied embeddings, coded experts, Hadamard folds and MTP checked");
 +}
 diff --git a/tests/test-trellis-model.cpp b/tests/test-trellis-model.cpp
 new file mode 100644
@@ -10136,10 +10997,10 @@ index 0000000..5befb84
 +}
 diff --git a/tests/test-trellis.cpp b/tests/test-trellis.cpp
 new file mode 100644
-index 0000000..e8fe886
+index 0000000..2b2e2dc
 --- /dev/null
 +++ b/tests/test-trellis.cpp
-@@ -0,0 +1,418 @@
+@@ -0,0 +1,527 @@
 +#include "ggml.h"
 +#include "ggml-backend.h"
 +
@@ -10475,14 +11336,113 @@ index 0000000..e8fe886
 +    return result;
 +}
 +
++// Lamplight 0136: coded experts (ggml_trellis_mul_mat_id) against each expert dequantized on its own
++// (ggml_trellis_dequantize_expert, the 2D decode on expert e's slice); n_x 1 is one input shared by the used experts.
++// Device results through backend allocations and transfers; the CPU also value by value with fp32 inputs
++static void run_experts(ggml_backend_t backend, int bits, int mode, int n_x, int tokens) {
++    const int K = mode ? 640 : 256, N = mode ? 256 : 128, E = 5, n_used = 2;
++    auto * ctx = ggml_init({64 * ggml_tensor_overhead() + ggml_graph_overhead(), nullptr, true});
++    check(ctx != nullptr, "context allocation failed");
++    auto type = static_cast<ggml_type>(GGML_TYPE_TRL1 + bits - 1);
++    auto * w = ggml_new_tensor_3d(ctx, type, K, N, E);
++    auto * x = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, K, n_x, tokens);
++    auto * ids = ggml_new_tensor_2d(ctx, GGML_TYPE_I32, n_used, tokens);
++    auto * s = ggml_new_tensor_2d(ctx, GGML_TYPE_F16, K / 16, E);
++    auto * pre = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, K, E);
++    auto * post = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, N, E);
++    const int32_t desc[] = {mode ? 1 : 0, mode ? 128 : 0, 1, mode ? 1 : 0, mode ? 128 : 0, 1, 1, N};
++    auto * y = ggml_trellis_mul_mat_id(ctx, w, x, ids, s, pre, post, desc, 8);
++    check(y->ne[0] == N && y->ne[1] == n_used && y->ne[2] == tokens, "expert op shape");
++    const std::string name = ggml_backend_name(backend);
++    if (!ggml_backend_supports_op(backend, y)) {
++        check(name.find("CPU") != 0, "expert op not supported on the CPU");
++        static bool said = false;
++        if (!said) { std::printf("  experts: %s does not run them (the CPU does)\n", name.c_str()); }
++        said = true;
++        ggml_free(ctx);
++        return;
++    }
++    auto * buf = ggml_backend_alloc_ctx_tensors(ctx, backend);
++    check(buf != nullptr, "expert buffer allocation failed");
++
++    std::mt19937 rng(77 + bits + 10 * mode);
++    std::vector<uint8_t> codes(ggml_nbytes(w));
++    std::vector<float> xs(ggml_nelements(x)), a((size_t) K * E), b((size_t) N * E);
++    std::vector<ggml_fp16_t> sc((size_t) K / 16 * E);
++    std::vector<int32_t> picks((size_t) n_used * tokens);
++    for (auto & c : codes) { c = rng() & 255; }
++    for (auto & v : xs) { v = float(int(rng() % 101) - 50) / 100; }
++    for (auto & v : sc) { v = ggml_fp32_to_fp16(0.05f + (rng() % 9) * 0.01f); }
++    for (auto & v : a) { v = (rng() % 2 ? -1.f : 1.f) * (1.f + (rng() % 3) * 0.1f); }
++    for (auto & v : b) { v = 0.7f + (rng() % 6) * 0.1f; }
++    for (int t = 0; t < tokens; ++t) {  // two different experts per token; expert 4 never used when tokens is 1
++        const int e0 = (int) (rng() % (tokens == 1 ? 4 : E));
++        picks[t * n_used] = e0;
++        picks[t * n_used + 1] = (e0 + 1 + (int) (rng() % (E - 1))) % E;
++    }
++    ggml_backend_tensor_set(w, codes.data(), 0, codes.size());
++    ggml_backend_tensor_set(x, xs.data(), 0, xs.size() * sizeof(float));
++    ggml_backend_tensor_set(ids, picks.data(), 0, picks.size() * sizeof(int32_t));
++    ggml_backend_tensor_set(s, sc.data(), 0, sc.size() * sizeof(ggml_fp16_t));
++    ggml_backend_tensor_set(pre, a.data(), 0, a.size() * sizeof(float));
++    ggml_backend_tensor_set(post, b.data(), 0, b.size() * sizeof(float));
++    auto * graph = ggml_new_graph(ctx);
++    ggml_build_forward_expand(graph, y);
++    check(ggml_backend_graph_compute(backend, graph) == GGML_STATUS_SUCCESS, "expert graph failed");
++    std::vector<float> got(ggml_nelements(y));
++    ggml_backend_tensor_get(y, got.data(), 0, got.size() * sizeof(float));
++
++    std::vector<std::vector<float>> dense(E, std::vector<float>((size_t) K * N));
++    for (int e = 0; e < E; ++e) {
++        check(ggml_trellis_dequantize_expert(type, codes.data(), K, N, e, sc.data(), a.data(), b.data(), desc, 8,
++            dense[e].data()), "expert dequantize failed");
++    }
++    std::vector<double> want((size_t) N * n_used * tokens);
++    for (int t = 0; t < tokens; ++t) {
++        for (int i1 = 0; i1 < n_used; ++i1) {
++            const int e = picks[t * n_used + i1];
++            const float * xc = xs.data() + ((size_t) t * n_x + i1 % n_x) * K;
++            for (int n = 0; n < N; ++n) {
++                double v = 0;
++                for (int k = 0; k < K; ++k) { v += double(dense[e][(size_t) n * K + k]) * xc[k]; }
++                want[((size_t) t * n_used + i1) * N + n] = v;
++            }
++        }
++    }
++    double err = 0, ref = 0;
++    for (size_t i = 0; i < want.size(); ++i) {
++        const double d = got[i] - want[i];
++        err += d * d;
++        ref += want[i] * want[i];
++    }
++    // CUDA's int8 products (q8_0 + MMQ, the fused kernel) hold 5e-4, as in test-backend-ops; the rest 1e-6
++    const double bar = name.find("CUDA") == 0 ? 5e-4 : 1e-6;
++    if (verbose) { std::printf("  experts %s bits=%d mode=%d n_x=%d tokens=%d nmse %.3g\n", name.c_str(), bits, mode, n_x, tokens, err / (ref + 1e-30)); }
++    check(std::isfinite(err) && err <= bar * ref, "trellis experts: normalized error too large");
++    if (name.find("CPU") == 0) {
++        trellis_cpu_mode("exact");
++        check(ggml_backend_graph_compute(backend, graph) == GGML_STATUS_SUCCESS, "expert graph failed");
++        trellis_cpu_mode(nullptr);
++        ggml_backend_tensor_get(y, got.data(), 0, got.size() * sizeof(float));
++        for (size_t i = 0; i < want.size(); ++i) { check_close(got[i], want[i]); }
++        check(!ggml_trellis_dequantize_expert(type, codes.data(), K, N, -1, sc.data(), a.data(), b.data(), desc, 8,
++            dense[0].data()), "negative expert accepted");
++    }
++    ggml_backend_buffer_free(buf);
++    ggml_free(ctx);
++}
++
 +int main(int argc, char ** argv) {
 +    ggml_backend_load_all();
 +    auto * cpu = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_CPU, nullptr);
 +    check(cpu != nullptr, "CPU backend unavailable");
 +    ggml_backend_t device = cpu;
++    bool device_experts = true;
 +    for (int i = 1; i < argc; ++i) {
 +        if (std::string(argv[i]) == "-v") {
 +            verbose = true;
++        } else if (std::string(argv[i]) == "-x") {
++            device_experts = false;  // Lamplight 0136: the experts on the processor only (a card run checks them on its own)
 +        } else if (device == cpu) {
 +            device = ggml_backend_init_by_name(argv[i], nullptr);
 +            check(device != nullptr, "requested backend unavailable");
@@ -10491,7 +11451,7 @@ index 0000000..e8fe886
 +                device = cpu;
 +            }
 +        } else {
-+            check(false, "usage: test-trellis [-v] [backend-name]");
++            check(false, "usage: test-trellis [-v] [-x] [backend-name]");
 +        }
 +    }
 +    const int32_t invalid[] = {1, 3, 1, 0, 0, 1, 1, 128};
@@ -10526,6 +11486,16 @@ index 0000000..e8fe886
 +        }
 +    }
 +    for (int bits = 1; bits <= 6; ++bits) {
++        for (int mode = 0; mode < 2; ++mode) {
++            for (int n_x : {1, 2}) {
++                for (int tokens : {1, 7, 35, 100}) {  // 100: some experts past the int8 products' thresholds
++                    run_experts(cpu, bits, mode, n_x, tokens);
++                    if (device != cpu && device_experts) { run_experts(device, bits, mode, n_x, tokens); }
++                }
++            }
++        }
++    }
++    for (int bits = 1; bits <= 6; ++bits) {
 +        for (int mode = 0; mode < 9; ++mode) {
 +            for (int columns : {1, 7, 35}) { run_device(device, bits, mode, columns); }
 +        }
@@ -10556,5 +11526,5 @@ index 0000000..e8fe886
 +    }
 +    if (device != cpu) { ggml_backend_free(device); }
 +    ggml_backend_free(cpu);
-+    std::puts("TRL1-6: CPU embeddings/bands and backend products/transforms/permutations/batches passed");
++    std::puts("TRL1-6: CPU embeddings/bands/experts and backend products/transforms/permutations/batches passed");
 +}
