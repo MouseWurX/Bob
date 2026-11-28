@@ -8,7 +8,7 @@
 //   - the tests can't run (the card was denied, the Run Hand is off, the program isn't there).
 // No count of tries ends it (the owner's rule: stuck checks only). When it stops with tests still failing, he gets one
 // last go to say plainly what's still broken, and the app adds its own ❌ line naming the failures, so the report never
-// rests on the brain's word alone. Not in Turbo; nothing here reaches the brain unless the switch is on and code changed.
+// rests on the brain's word alone. Nothing here reaches the brain unless the switch is on and code changed.
 import crypto from 'node:crypto';
 import { jobHelp, testCommandFor } from './job-helps.js';
 
