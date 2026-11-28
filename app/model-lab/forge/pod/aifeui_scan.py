@@ -77,11 +77,23 @@ def preflight(a):
         check('tool: cmake (or pip to get it)', shutil.which('cmake') or shutil.which('pip') or shutil.which('pip3'))
         check('tool: a C++ compiler', shutil.which('g++') or shutil.which('c++') or shutil.which('clang++'))
         tag = str(plan.get('llama_tag') or '')
+        # Nov 26: our saved copy (MouseWurX/Bob pre-release llama.cpp-<tag>) or ggml-org's, whichever answers (aifeui.sh tries ours first)
+        where = ''
         try:
-            out = subprocess.run(['git', 'ls-remote', '--tags', 'https://github.com/ggml-org/llama.cpp', tag], capture_output=True, text=True, timeout=90).stdout
-            check('the engine source can be reached, at the pinned tag', bool(tag) and ('refs/tags/' + tag) in out, tag)
-        except Exception as e:  # noqa: BLE001
-            check('the engine source can be reached, at the pinned tag', False, e)
+            ours = f'https://github.com/MouseWurX/Bob/releases/download/llama.cpp-{tag}/SHA256SUMS'
+            urllib.request.urlopen(urllib.request.Request(ours, headers={'User-Agent': 'bob-forge/1.0'}), timeout=90).read(1)
+            if tag:
+                where = 'our saved copy'
+        except Exception:  # noqa: BLE001
+            pass
+        if not where:
+            try:
+                out = subprocess.run(['git', 'ls-remote', '--tags', 'https://github.com/ggml-org/llama.cpp', tag], capture_output=True, text=True, timeout=90).stdout
+                if tag and ('refs/tags/' + tag) in out:
+                    where = 'ggml-org'
+            except Exception:  # noqa: BLE001
+                pass
+        check('the engine source can be reached, at the pinned tag', bool(where), f'{tag} ({where or "neither our copy nor ggml-org answered"})')
     cpu_ok = os.environ.get('AIFEUI_ALLOW_CPU') == '1'
     vram = 0
     try:

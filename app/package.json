@@ -189,6 +189,7 @@
     "test/run-howtos-test.js",
     "test/run-mcp-test.js",
     "test/run-tested-engine-test.js",
+    "test/run-llama-copy-test.js",
     "test/run-telegram-test.js",
     "test/run-brain-ctx-test.js",
     "test/run-replicant-test.js",
@@ -355,6 +356,7 @@
     "branch": "",
     "build": 307,
     "bundledLlamaTag": "b12359",
+    "bundledLlamaSha": "b1b770d90d94cad9e9ea5b993bdbc383a522fb28",
     "brainEngineVersion": 46,
     "brainEngine": {
       "tag": "brain-engine-46b12359",
