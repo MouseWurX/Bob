@@ -10,7 +10,9 @@ Everything of Bob's is in the [`app`](..) folder: a small Node server (`app/src/
 cd app
 npm install
 npm start            # run Bob from source
-npm test             # every test suite
+npm test             # every test suite, 8 at a time (the full run: releases, the installer and GitHub's builds)
+npm test -- --changed   # only the suites that can see a file changed since main (feature-branch pushes)
+npm test -- --jobs 1    # one suite at a time, the old way (or set BOB_TEST_JOBS)
 npm run voice-samples   # make the 22 Kokoro clips that ship in public/voice-samples (Bob running, Kokoro set up)
 npm run dist:portable   # optional, by hand only: a single portable Bob-<version>.exe (may be blocked by Smart App Control)
 ```
