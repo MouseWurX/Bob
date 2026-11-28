@@ -300,6 +300,7 @@
     "test/run-polystrata-tricks-test.js",
     "test/run-engine-tuning-test.js",
     "test/run-conductor-test.js",
+    "test/run-live-dials-test.js",
     "test/run-kv-sink-test.js",
     "test/run-standins-test.js",
     "test/run-keep-guesses-test.js",

@@ -95,10 +95,11 @@ export function cleanTuning(t) {
   if (t?.brains && typeof t.brains === 'object' && !Array.isArray(t.brains)) for (const [m, v] of Object.entries(t.brains)) add(m, v);
   // Nov 21: the Conductor's window lever (off unless switched on): the chat memory sized to the chat, the rest lent to
   // the expert copy cache
-  return t?.fitWindow === true ? { mode, brains, fitWindow: true } : { mode, brains };
+  // Nov 27: the live dials (live-dials.js, both off unless switched on): the picture reader on demand, layers back on the card
+  return { mode, brains, ...(t?.fitWindow === true ? { fitWindow: true } : {}), ...(t?.readerOnDemand === true ? { readerOnDemand: true } : {}), ...(t?.liveLayers === true ? { liveLayers: true } : {}) };
 }
 // the saved form of a cleaned tuning
-export const savedTuning = (t) => ({ mode: t.mode, ...(t.fitWindow === true ? { fitWindow: true } : {}), list: Object.entries(t.brains).map(([model, l]) => ({ model, ...l })) });
+export const savedTuning = (t) => ({ mode: t.mode, ...(t.fitWindow === true ? { fitWindow: true } : {}), ...(t.readerOnDemand === true ? { readerOnDemand: true } : {}), ...(t.liveLayers === true ? { liveLayers: true } : {}), list: Object.entries(t.brains).map(([model, l]) => ({ model, ...l })) });
 
 // a change from the Settings page: { mode } and/or { model, levers } (levers replace that brain's, {} clears them);
 // gives the saved form
@@ -106,6 +107,7 @@ export function mergeTuning(cur, change) {
   const t = cleanTuning(cur);
   if (MODES.includes(change?.mode)) t.mode = change.mode;
   if (typeof change?.fitWindow === 'boolean') { if (change.fitWindow) t.fitWindow = true; else delete t.fitWindow; }
+  for (const k of ['readerOnDemand', 'liveLayers']) if (typeof change?.[k] === 'boolean') { if (change[k]) t[k] = true; else delete t[k]; }
   if (typeof change?.model === 'string' && change.model && change.levers && typeof change.levers === 'object') {
     const l = cleanLevers(change.levers);
     if (Object.keys(l).length) t.brains[change.model] = l; else delete t.brains[change.model];

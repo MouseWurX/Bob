@@ -28,6 +28,7 @@ import { scutEnv, linkEnv, linkLive } from './share-card.js'; // SCUT, the fast 
 import { LinkLog } from './link-log.js'; // what the link to a lent card carried, kept in a file and the logbook
 import { safeSpawn, fallBackIfBlocked, libDirEnv } from './engine-blocked.js'; // 1.5.203: Windows blocking a new engine
 import { apuNeed, apuPlace, apuKeepBytes, nextStep, stepWords } from './apu-fit.js'; // Nov 12: brains on built-in graphics, sized honestly
+import { readerOnDemandOn, liveLayersOn, liveDialsFit, LIVE_DIALS_FROM_BE, wantsPictures, readerChange, pickCardLayers, cardLayersFrom } from './live-dials.js'; // off unless ticked
 import { readerSpareEnv, conductorOn, conductorPicked, conductorDefaultFits, SWITCH_IN_JOB_FROM_BE, condCacheWanted, COND_CACHE_MIB, FILL_FROM_BE as COND_FILL_FROM_BE, loadAtReadStep, stepBack, SPILL_MARGIN_MIB, conductorPlan, learnStep, noteSwitch, planLine, CHAT_STEP, switchGuess, expectOut, cacheGrow, freeFrom, MIN_NEW, CACHE_FLIP_MAX, CACHE_FLIP_MIN_OUT, fitWindowOn, fitWindow, nextWindow, windowCacheMiB, fillEnv, loadAtStep, readStepFor, mtpBlocksSwitch, APU_MAX_STEP, apuStepOk, mtpSpareEnv, loadStepBySpeed, cleanSpeeds } from './conductor.js'; // off unless picked
 import { guppiSwitch, guppiStop } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { tuningArgs, doorbellEnv, registerRamEnv } from './engine-tuning.js';
@@ -1458,7 +1459,7 @@ export class LlamaCpp {
     if (args.includes('--slot-save-path')) { try { fs.mkdirSync(args[args.indexOf('--slot-save-path') + 1] || startDir(this.cfg), { recursive: true }); } catch {} }
     this.slotDir = args.includes('--slot-save-path') ? args[args.indexOf('--slot-save-path') + 1] : ''; // where this engine run saves readings
     this.placeChat = null; // a fresh engine holds no chat's reading yet
-    this.condStep = this.condLoad || this.condChat || 0; this.condOff = ''; this.condHeld = 0; this.condGrown = 0; this.condFree = null; this.condFreeAsked = false; this.condWin = this.condWinFull || 0; this.condWinExtra = 0; // the Conductor starts each engine run at the chat step, with the whole window
+    this.condStep = this.condLoad || this.condChat || 0; this.condOff = ''; this.condHeld = 0; this.condGrown = 0; this.condFree = null; this.condFreeAsked = false; this.condWin = this.condWinFull || 0; this.condWinExtra = 0; this.liveReaderIn = true; this.liveCard = []; this.liveStopped = ''; this.liveInRam = null; this.liveAsked = false; // live dials (live-dials.js): a fresh run has its reader in and no layers moved // the Conductor starts each engine run at the chat step, with the whole window
     let env = card === 'none' ? { ...process.env, CUDA_VISIBLE_DEVICES: '-1' } : process.env; // 'none': llama.cpp can't see the card at all
     if (args.includes('--moe-cache-mib') && turboStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...STANDIN_ENV }; this.log?.('engine', `${model}: Turbo stand-ins on (up to 2 missed experts a layer stood in for while writing; the words change)`); }
     else if (args.includes('--moe-cache-mib') && turboDriveStandins(this.cfg) && this.role !== BESIDE) { env = { ...env, ...DRIVE_STANDIN_ENV }; this.log?.('engine', `${model}: Turbo: never wait on the drive (an expert no longer in RAM is stood in for while writing; the words change)`); }
@@ -1773,6 +1774,7 @@ export class LlamaCpp {
     }
     if (this.noMidSystem.has(model)) messages = foldSystem(messages);
     await this.sendPerWord(model);
+    await this.liveDials({ model, messages }).catch((e) => this.liveStop(model, e.message)); // off unless ticked
     await this.conduct({ model, messages, tools, think, task, temperature, signal }).catch((e) => this.condStop(model, e.message));
     // Item 14 (Nov 11): a reply that stops sending words is stopped, not waited on until someone presses Stop. Once
     // words are coming, a quiet spell longer than STALL_MS (twice that when the brain is spread over other Bobs' cards)
@@ -1912,9 +1914,13 @@ export class LlamaCpp {
     const file = `conductor-${this.port}.bin`;
     const was = { step: this.condStep, win: this.condWin, cache: this.condRead() + (this.condGrown || 0) }; // for GUPPI's record in the chat
     if (held > 0) await this.slotAction('save', file);
+    // live dials: layers moved onto the card go home first when this switch may need their room (a bigger step or window)
+    if (this.liveCard?.length && (step > (this.condStep || 0) || ('n_ctx' in more && more.n_ctx > (this.condWin || 0)) || 'moe_cache_mib' in more)) more = { ...more, card_layers: { layers: [] } };
     const res = await fetch(`${this.url}/context`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ n_batch: step, n_ubatch: step, ...more }), signal: AbortSignal.timeout(300000) });
     if (!res.ok) { this.condStop(model, `the engine can't change its step in place (${res.status})`); return false; }
     const answer = await res.json().catch(() => ({}));
+    if ('card_layers' in more) this.liveCard = cardLayersFrom(answer);
+    if (Array.isArray(answer?.layers_in_ram)) this.liveInRam = answer.layers_in_ram; // live dials
     this.condStep = step;
     this.condFree = freeFrom(answer); // Brain Engine 0047; null on an engine without it, and then the cache never grows
     if ('n_ctx' in more) { this.condWin = Number(answer?.n_ctx) || more.n_ctx; this.condWinExtra = Number(winExtra) || 0; }
@@ -1939,6 +1945,62 @@ export class LlamaCpp {
       this.guppiSay?.(guppiSwitch({ from: was.step, to: step, seconds, guess, held, stopped: st.stopped, win: 'n_ctx' in more ? { from: was.win, to: this.condWin } : null, cache: 'moe_cache_mib' in more || 'n_ctx' in more ? { from: was.cache, to: nowCache } : null }));
     } catch {}
     return true;
+  }
+
+  // ---------- Live dials (live-dials.js; Engine tuning, both off unless ticked) ----------
+  // Before a reply: the picture reader in or out for this request, and layers that loaded into RAM back onto the card
+  // at the chat step while there is room. Only the main engine, on one card, with this reply the only one.
+  async liveDials({ model, messages }) {
+    const reader = readerOnDemandOn(this.cfg), layers = liveLayersOn(this.cfg);
+    if ((!reader && !layers) || this.liveStopped || this.role === BESIDE || this.spreadNow || this.currentCpu || this.active > 1 || this.current !== model || !this.child || this.child.exitCode !== null) return;
+    if (!liveDialsFit(this.beNo())) { this.liveStop(model, `it needs Lamplight ${LIVE_DIALS_FROM_BE} or newer (this is ${this.beNo() || 'not Lamplight'})`); return; }
+    const loadedWith = Array.isArray(this.lastArgs) && this.lastArgs.includes('--mmproj');
+    const change = reader ? readerChange({ loadedWith, readerIn: this.liveReaderIn !== false, pictures: wantsPictures(messages) }) : null;
+    if (change) {
+      // the reader coming back needs room, so moved layers go home in the same switch
+      const body = { ...change, ...(change.picture_reader && this.liveCard?.length ? { card_layers: { layers: [] } } : {}) };
+      const a = await this.liveSwitch(model, body, change.picture_reader ? 'picture reader back for a picture' : 'picture reader out, no pictures in this chat');
+      if (!a) return;
+      this.liveReaderIn = a.picture_reader !== false;
+    }
+    // layers up only at the chat step (a reading step needs the room), and only while this chat has no pictures
+    if (!layers || (this.condStep && this.condChat && this.condStep > this.condChat) || (loadedWith && this.liveReaderIn)) return;
+    if (!Array.isArray(this.liveInRam) || !this.liveInRam.length) {
+      if (this.liveAsked) return;
+      this.liveAsked = true; // the engine says which layers sit in RAM with its next answer: ask once with a no-op switch
+      const a = await this.liveSwitch(model, { card_layers: { layers: this.liveCard || [] } }, 'asking which layers sit in RAM');
+      if (!a) return;
+    }
+    const pick = pickCardLayers({ inRam: this.liveInRam, onCard: this.liveCard, freeMiB: this.condFree });
+    if (!pick) return;
+    await this.liveSwitch(model, { card_layers: { layers: pick.layers } }, `${pick.mib} MiB of layers from RAM onto the card`);
+  }
+
+  // one live-dial switch: the reading saved, the change made, the reading put back
+  async liveSwitch(model, body, why) {
+    const t0 = Date.now(), file = `live-${this.port}.bin`;
+    let saved = false;
+    if (this.slotDir) { try { await this.slotAction('save', file); saved = true; } catch {} }
+    const res = await fetch(`${this.url}/context`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(300000) });
+    if (!res.ok) { this.liveStop(model, `the engine refused (${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)})`); return null; }
+    const a = await res.json().catch(() => ({}));
+    if (saved) {
+      try { await this.slotAction('restore', file); } catch {}
+      try { fs.rmSync(path.join(this.slotDir, file), { force: true }); } catch {}
+    }
+    this.condFree = freeFrom(a);
+    this.liveCard = cardLayersFrom(a);
+    if (Array.isArray(a?.layers_in_ram)) this.liveInRam = a.layers_in_ram;
+    const err = a?.card_layers_change?.error;
+    this.log?.('engine', `${model}: live dials: ${why} in ${((Date.now() - t0) / 1000).toFixed(2)} s${a?.card_layers_change?.seconds != null ? ` (layers ${Number(a.card_layers_change.seconds).toFixed(2)} s)` : ''}; ${this.liveCard.length} layers moved onto the card, ${this.condFree ?? '?'} MiB free${err ? `; ${err}` : ''}${a?.brain_kept === false ? '; the brain loaded again' : ''}`);
+    if (err) this.liveInRam = []; // don't try the same move again this run
+    return a;
+  }
+
+  liveStop(model, why) {
+    if (this.liveStopped) return;
+    this.liveStopped = why || 'stopped';
+    this.log?.('engine', `${model}: live dials off for this engine run: ${this.liveStopped}. Replies go ahead as usual.`);
   }
 
   condStop(model, why) {
