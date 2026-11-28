@@ -275,7 +275,7 @@
       "jobs": ["small", "bob", "eyes", "scout", "painter", "ledger"],
       "name": "Qwen3.5 4B",
       "published": "2026-03-02",
-      "what": "A tiny brain that also sees pictures. Fits 4 to 6 GB cards.",
+      "what": "A tiny brain that also sees pictures. Fits 4 to 6 GB cards. Tried Nov 27 on photos of a real frac blender screen: it put 33 of 56 stage totals in the right spreadsheet column, the best of the small brains (Gemma 4 E4B, NVIDIA's Bolt E4B, MiniCPM-V 4.6 and LFM2.5-VL 3B read none, Qwen3.5 2B one), so it's Bob's pick for Seeing pictures on smaller cards.",
       "sizeGB": 3.4,
       "vramGB": 4,
       "params": 4,
@@ -283,6 +283,7 @@
       "commercial": true,
       "pick": "tiny",
       "trial": true,
+      "bobPick": ["eyes"],
       "files": [
         {
           "url": "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/e87f176479d0855a907a41277aca2f8ee7a09523/Qwen3.5-4B-Q4_K_M.gguf",
@@ -524,7 +525,7 @@
       "license": "Apache 2.0",
       "commercial": true,
       "pick": "best",
-      "bobPick": ["bob", "tinker", "deep"],
+      "bobPick": ["bob", "tinker", "deep", "eyes"],
       "raced": "Beat Qwen3 Coder 30B on a 16 GB card (2026-11-03). At 256K (2026-11-04) it uses 15.0 GB on the card with the rest in RAM, writes about 49 tok/s, and found a fact hidden 201K tokens in.",
       "files": [
         {
@@ -4584,7 +4585,8 @@
         "qwen3.6-35b-a3b": [
           "bob",
           "tinker",
-          "deep"
+          "deep",
+          "eyes"
         ],
         "gemma4-26b": [
           "office"
@@ -4599,8 +4601,7 @@
           "video"
         ],
         "gemma4-e4b": [
-          "small",
-          "eyes"
+          "small"
         ],
         "whisper-base-en": [
           "voice"
@@ -4613,8 +4614,8 @@
         ]
       },
       "notes": {
-        "qwen3.6-35b-a3b": "the everyday, coding and deep-thinking brain in one, so chat and code never swap: only 3B of it works at a time, so it stays quick with part of it in RAM, and it keeps up to 256K in mind",
-        "gemma4-e4b": "the quick brain, and it sees pictures",
+        "qwen3.6-35b-a3b": "the everyday, coding and deep-thinking brain in one, so chat and code never swap: only 3B of it works at a time, so it stays quick with part of it in RAM, and it keeps up to 256K in mind; it also reads pictures (45 of 56 values off real blender screens, Nov 27), so pictures need no swap",
+        "gemma4-e4b": "the quick brain",
         "whisper-base-en": "hears you (English), on the processor",
         "gemma4-26b": "Office and Deep thinking"
       },
@@ -4633,13 +4634,13 @@
         "nomic-embed-text",
         "z-image-turbo-q5",
         "flux2-klein-4b",
-        "wan2.2-ti2v-5b-q4"
+        "wan2.2-ti2v-5b-q4",
+        "qwen3.5-4b"
       ],
       "slots": {
         "gemma4-e4b": [
           "bob",
-          "small",
-          "eyes"
+          "small"
         ],
         "whisper-base-en": [
           "voice"
@@ -4661,6 +4662,9 @@
         ],
         "qwen3.6-35b-a3b-q3": [
           "tinker"
+        ],
+        "qwen3.5-4b": [
+          "eyes"
         ]
       },
       "tick": [
@@ -4672,7 +4676,8 @@
         "z-image-turbo-q5": "a version of the painter made to fit your card",
         "flux2-klein-4b": "a small, quick editor: change a picture with words or keep a look from references",
         "wan2.2-ti2v-5b-q4": "slow on this card: keep clips to a few seconds",
-        "qwen3.6-35b-a3b-q3": "the coder, squeezed for your card; most of it sits in your RAM, so replies are slower"
+        "qwen3.6-35b-a3b-q3": "the coder, squeezed for your card; most of it sits in your RAM, so replies are slower",
+        "qwen3.5-4b": "sees pictures and reads screens best of the small brains (Nov 27: 33 of 56 values off real blender screens, where Gemma 4 E4B read none); it loads only for that job"
       },
       "times": "Rough guesses, not yet measured on an 8 GB card: about 30 seconds to a minute a picture, a minute or two an edit, 10 minutes or more a short clip. Bob puts his brain away while he paints, so chat waits until the picture is done.",
       "cardGB": 8
@@ -4823,13 +4828,13 @@
         "gemma4-e4b",
         "whisper-base-en",
         "kokoro-v1",
-        "nomic-embed-text"
+        "nomic-embed-text",
+        "qwen3.5-4b"
       ],
       "slots": {
         "gemma4-e4b": [
           "bob",
-          "small",
-          "eyes"
+          "small"
         ],
         "whisper-base-en": [
           "voice"
@@ -4839,11 +4844,15 @@
         ],
         "nomic-embed-text": [
           "embed"
+        ],
+        "qwen3.5-4b": [
+          "eyes"
         ]
       },
       "notes": {
         "gemma4-e4b": "chats, plans, researches and sees pictures, all on the processor",
-        "whisper-base-en": "hears you (English), on the processor"
+        "whisper-base-en": "hears you (English), on the processor",
+        "qwen3.5-4b": "sees pictures and reads screens best of the small brains (Nov 27: 33 of 56 values off real blender screens, where Gemma 4 E4B read none); it loads only for that job"
       },
       "times": "Without a graphics card Bob can talk, plan, research, read pictures and speak, but not paint or film.",
       "cardGB": 0

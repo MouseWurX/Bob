@@ -54,7 +54,8 @@ const slot = (id) => allSlots().find((s) => s.id === id);
   check('8 GB card: no Deep thinking pick (nothing strong enough fits)', pickFor('deep', models, pc(8, 32)) === null);
   check('6 GB card (a laptop): the light Qwen3 4B is the Brain and the Quick brain', pickFor('bob', models, pc(6, 32))?.id === 'qwen3-4b' && pickFor('small', models, pc(6, 32))?.id === 'qwen3-4b');
   check('...and says it was picked for being light', /Light, so it leaves room on your card for longer chats · 4\.0 GB/.test(pickFor('bob', models, pc(6, 32)).why));
-  check('...while Gemma 4 E4B sees pictures and Whisper base hears you', pickFor('eyes', models, pc(6, 32))?.id === 'gemma4-e4b' && pickFor('voice', models, pc(6, 32))?.id === 'whisper-base-en');
+  // Nov 27 2026: Qwen3.5 4B read 33 of 56 totals off real blender screens where Gemma 4 E4B read none
+  check('...while Qwen3.5 4B sees pictures and Whisper base hears you', pickFor('eyes', models, pc(6, 32))?.id === 'qwen3.5-4b' && pickFor('voice', models, pc(6, 32))?.id === 'whisper-base-en');
   check('on a Mac (no whisper.cpp build) Gemma 4 E4B hears you instead', pickFor('voice', models, { ...pc(16, 32), platform: 'darwin' })?.id === 'gemma4-e4b');
   check('the 6 GB starter set agrees', (() => { const p = catalog.packs.find((x) => x.id === 'small'); return p.slots['qwen3-4b'].join() === 'bob,small' && p.slots['gemma4-e4b'].join() === 'eyes' && p.slots['whisper-base-en'].join() === 'voice'; })());
   check('8 GB and up keep Gemma 4 E4B / 26B as the Brain', pickFor('bob', models, pc(8, 32))?.id === 'gemma4-e4b' && pickFor('bob', stock, pc(16, 32))?.id === 'gemma4-26b');
@@ -90,7 +91,9 @@ const slot = (id) => allSlots().find((s) => s.id === id);
   check('every kit ends with Get more, saying how many wait in the catalogue', /data-catjob="bob">📚 Get more \(\d+ in the catalogue\)/.test(doll()));
   check('Gaming takes only the timed Qwen3 4B Instruct 2507, never E4B or another brain', canDo('gaming', { entry: byId('qwen3-4b') }) && !canDo('gaming', { entry: byId('gemma4-e4b') }) && !canDo('gaming', { name: 'gemma4:e4b' }) && !canDo('gaming', { entry: { ...byId('gemma4-e4b'), jobs: ['gaming'] } }) && !canDo('gaming', { name: 'qwen3:1.7b' }) && kitFor(slot('gaming'), { ...ctx, models }).every((k) => k.entry?.id === 'qwen3-4b'));
   check('Gaming and Office are jobs on the Brains page', ['gaming', 'office'].every((id) => slot(id)?.how === 'brain'));
-  check('new brains are listed but not recommended until tried', models.filter((m) => m.trial).every((m) => !picksOf(m, models, pc(16, 32)).length && !picksOf(m, models, pc(8, 16)).length && !picksOf(m, models, pc(6, 16)).length));
+  const offPick = (m, hw) => picksOf(m, models, hw).filter((j) => !(m.bobPick || []).includes(j.id || j));
+  check('new brains are listed but not recommended until tried (except for a job they were tested on and made Bob\'s default for)', models.filter((m) => m.trial).every((m) => !offPick(m, pc(16, 32)).length && !offPick(m, pc(8, 16)).length && !offPick(m, pc(6, 16)).length));
+  check('Qwen3.5 4B, on trial for chat, is still the eyes pick on 6 and 8 GB cards, and the 35B on 16 GB', pickFor('eyes', models, pc(6, 16))?.id === 'qwen3.5-4b' && pickFor('eyes', models, pc(8, 16))?.id === 'qwen3.5-4b' && pickFor('eyes', models, pc(16, 32))?.id === 'qwen3.6-35b-a3b' && pickFor('bob', models, pc(6, 32))?.id !== 'qwen3.5-4b');
   check('a brain is only offered to jobs it can do', !slotTakes(slot('eyes'), 'qwen3-coder:30b', ctx) && slotTakes(slot('bob'), 'qwen3-coder:30b', ctx) && slotTakes(slot('image'), 'anything', ctx));
   check('a "?" on the catalogue opens Help at how models are picked', /data-help="recommended"/.test(publicText('cellar.js')));
 }
