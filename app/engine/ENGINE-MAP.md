@@ -1024,4 +1024,5 @@ Written Nov 22 before the borrowing work (scope: rebuild Avalon's ideas inside B
 - **Hook:** with the key, a new graph past N drops the least recently used one; `last_used_time` holds a use count. Upstream's 10 s sweep is skipped.
 - **Why:** Avalon's 01beb77 (llama.cpp #21611 added the sweep).
 - **Limits:** CUDA and HIP only. A graph holds its recorded steps, not big buffers, so 64 cost little.
-- **Tests:** compiles for CUDA in the cloud; graphs kept after a 10 s pause needs a real card.
+- **Log:** "Lamplight 0161: keeping the N CUDA graphs used last" once, at the first graph.
+- **Tests:** compiles for CUDA in the cloud; the gain after a long read needs a real card.
