@@ -1,5 +1,5 @@
-// 🧰 More tools (Settings, How Bob works, 🧰 More tools). Fourteen small tools, each with its own switch, all off
-// until the user turns them on. Everything is kept in one setting, cfg.moreTools, cleaned here.
+// 🧰 More tools (Settings, How Bob works, 🧰 More tools). Small tools, each with its own switch. All are off until the
+// user turns them on, except the ones in DEFAULT_ON. Everything is kept in one setting, cfg.moreTools, cleaned here.
 //
 //   python          Python in the sandbox (run_in_sandbox language "python"; py-sandbox.js)
 //   calculator      calculate: exact sums and unit conversions by code (calc.js)
@@ -37,6 +37,11 @@ export const SWITCHES = [
   { key: 'compareFiles', label: 'Let Bob compare files', tools: ['compare_files'] }
 ];
 export const SWITCH_KEYS = SWITCHES.map((s) => s.key);
+// On unless switched off (the owner, 26 Nov: the calculator "On by default"). It only works sums out by code, reads
+// nothing and sends nothing. DEFAULTS_V counts these changes: a saved block from before it has its default-on switches
+// turned on once (an old saved "false" was only ever the old default), and a switch turned off after that stays off.
+export const DEFAULT_ON = ['calculator'];
+export const DEFAULTS_V = 1;
 export const MORE_TOOLS = SWITCHES.flatMap((s) => s.tools);
 
 // Names in the locked store (secret-box.js KEY_NAME: capitals, digits and _).
@@ -65,7 +70,9 @@ export function cleanBase(v) {
 export function cleanMoreTools(v) {
   const x = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
   const out = {};
-  for (const k of SWITCH_KEYS) out[k] = x[k] === true;
+  const fresh = !(Number(x.defaultsV) >= DEFAULTS_V); // saved before DEFAULTS_V (or never saved)
+  for (const k of SWITCH_KEYS) out[k] = DEFAULT_ON.includes(k) ? (fresh || x[k] !== false) : x[k] === true;
+  out.defaultsV = DEFAULTS_V;
   // Email: where to read from. The app password itself is in the locked store (EMAIL_KEY).
   out.emailHost = clip(x.emailHost, 120).replace(/[^\w.-]/g, '');
   const port = Math.round(Number(x.emailPort));
@@ -91,7 +98,7 @@ export function cleanMoreTools(v) {
 }
 
 export const moreTools = (cfg) => cleanMoreTools(cfg?.moreTools);
-export const toolOn = (cfg, key) => cfg?.moreTools?.[key] === true;
+export const toolOn = (cfg, key) => (DEFAULT_ON.includes(key) ? moreTools(cfg)[key] === true : cfg?.moreTools?.[key] === true);
 
 // The tools to keep out of Bob's list while their switch is off (brain.js offTools).
 export function moreToolsOff(cfg) {

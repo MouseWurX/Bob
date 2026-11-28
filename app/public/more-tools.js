@@ -1,4 +1,5 @@
-// Settings, How Bob works: "🧰 More tools" (src/more-tools.js, src/more-tools-routes.js). Every switch starts off.
+// Settings, How Bob works: "🧰 More tools" (src/more-tools.js, src/more-tools-routes.js). Every switch starts off
+// except the calculator (DEFAULT_ON in src/more-tools.js).
 // Every box shows all the time (SETTINGS-STYLE rule 14): details can be typed before a switch goes on.
 // Passwords, calendar links and keys go straight into the locked store; this page only learns whether one is saved.
 import { esc } from './util.js';
