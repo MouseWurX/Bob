@@ -301,15 +301,7 @@ The same 65 held-out jobs for every brain (inbox 28, Office 14, repo 12, web 11)
 | 🪜 **Every Lab method as a step** | Each advanced method (tool interviews, expert maps, the evil check, steering, cuts, teaching) as a step you can run on its own or as part of a whole pipeline, with run records, comparisons and costs per run. [Plan](app/docs/LAB-STEPS-PLAN.md) |
 | 🔬 **Where a behaviour lives** | Research on Riker: layer-by-layer patching and sparse-autoencoder features, to find where a behaviour sits in the brain. Kept as a study record; it never trains anything. |
 
-**In Brain Engine 44**, in a later release. Built and in testing; unproven in our lab, as we have yet to test them on real jobs. Anything that could change a brain's answers stays off.
-
-| | |
-|---|---|
-| 🧰 **Tool calls read right** | llama.cpp's own fixes for reading tool calls. A Gemma 4 call made before its thinking ends now arrives as a call instead of being kept as thinking. Same prompts and tool lists for every brain Bob ships with. |
-| 🔢 **FP4 brains** | A brain that comes as FP4 runs as it is, on the RTX 50-series cards' FP4 units, with no switch. Turning another brain's experts into FP4 is a Lab job you start yourself, and won't be a default until it passes the real-jobs test. |
-| 🧠 **Inkling 2 Mini, quicker** | Its loop layers run in fewer steps with exactly the same numbers. |
-| 🏎 **Smarter expert guessing** | Off unless set: the engine guesses the next experts two or four layers ahead, learns from the brain's real picks, and keeps its expert caches in a better order. Copying guesses (prompt lookup) can work next to MTP. Same answers either way. |
-| 🧱 **Faster expert reads from memory** | Off unless set: experts kept in the computer's memory are shared with the card in place, so they move at the link's full speed. An idea from the Avalon project (MIT), with our own code. |
+**Engine work** (Lamplight's next builds, what's in testing, and what each patch does) now lives in [Lamplight's own repo](https://github.com/MouseWurX/Lamplight).
 
 ## What it costs
 
@@ -368,7 +360,7 @@ Most AI apps are for talking to a model or for building one. Bob does both. **�
 | **My Lab** | Everything the Lab has made and measured: brains, scores, size ladders, lesson sets, recipes and recent jobs. |
 
 - **Keep it simple or Professional.** Simple fills in Bob's defaults. Professional shows every control and its proper name. **Show the recipe** prints every command the Lab runs.
-- **Brain Engine** is Bob's own engine. It switches a brain's experts on and off while it's loaded, so the Lab can try a cut before writing a file.
+- **[Lamplight](https://github.com/MouseWurX/Lamplight)** is Bob's own engine. It switches a brain's experts on and off while it's loaded, so the Lab can try a cut before writing a file.
 - **fNRI** (functional Neural Response Imager) shows a brain as a 3D block: one floor per layer, every expert coloured by the skill that used it most. Its **weight map** colours the block by the brain's own weights instead: how strong each expert is, or how much it differs from another brain.
 
   ![fNRI's weight map of Riker, and the same block coloured by how much each expert differs from stock Qwen3.6-35B-A3B](app/docs/screens/fnri-weight-maps-riker.jpg)  
@@ -473,6 +465,12 @@ Three cuts of [Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Nex
 | [Brain races](app/docs/BRAIN-RACES.md) · [test results](app/docs/test-results/README.md) | How other brains score on the same tests and the same PC. |
 
 Bob's default is stock Qwen3.6-35B-A3B (its smaller Q3 file is made for 8 GB cards, unproven in our lab, as we have yet to test). A Riker file already on a PC still runs from ➕ Your own brains.
+
+## Lamplight, Bob's engine
+
+Bob runs his brains on **[Lamplight](https://github.com/MouseWurX/Lamplight)**, his own engine: [llama.cpp](https://github.com/ggml-org/llama.cpp) with about a hundred changes, each its own commit, in its own public repo. It adds live expert switches and dials, smaller chat memory, expert caches for brains bigger than the card, new brain families, and card sharing between Bobs. Bob downloads the Lamplight build that goes with him; you never set it up by hand.
+
+Lamplight's README says what works without Bob, what needs Bob to drive it, which files only Lamplight loads, what it's tested on, and what's coming in its next builds.
 
 ## Supported brains
 
@@ -744,7 +742,7 @@ Bob installs no services or drivers and needs no admin rights.
 
 Bob is inspired by the wonderful books of Dennis E. Taylor. Bob is an independent, fan-made project. It is not affiliated with, sponsored by or endorsed by Dennis E. Taylor or by his publishers, distributors or licensees. All characters, names, titles, stories and other rights in those books remain the property of their respective owners. Bob contains no text from the books; any similar names or ideas are used only as a tribute. The licences below cover only MouseWurX's own original work in this repository, not anything that belongs to the author or his publishers. If you hold rights in those books and have a concern, please [open an issue](https://github.com/MouseWurX/Bob/issues) and we'll respond promptly.
 
-Bob's own brains are made from [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) by Alibaba's Qwen team (Apache 2.0). Brain Engine is built on [llama.cpp](https://github.com/ggml-org/llama.cpp) by the ggml authors (MIT).
+Bob's own brains are made from [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) by Alibaba's Qwen team (Apache 2.0). Bob's engine, [Lamplight](https://github.com/MouseWurX/Lamplight), is built on [llama.cpp](https://github.com/ggml-org/llama.cpp) by the ggml authors (MIT).
 
 Testing and releases: **Porter**, a Claude assistant made by Anthropic, carried Bob's builds through testing on real hardware and out the door as releases. Thanks, Porter.
 
