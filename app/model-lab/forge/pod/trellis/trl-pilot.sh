@@ -60,7 +60,8 @@ P=$W/bob/app/model-lab/forge/pod; TP=$P/trellis
 say "engine patches: $(ls "$W/eng/app/engine/patches/"*.patch | wc -l), last $(basename "$(ls "$W/eng/app/engine/patches/"*.patch | tail -1)")"
 
 step "trellis kernel self-test (first: the newest step) (CUDA vs torch, timed)"
-python3 "$TP/trl_selftest.py" --bits "$(echo $BITS | tr ' ' ,)" --out "$OUT/selftest.json" 2>&1 | tee -a "$S" | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail selftest
+python3 "$TP/trl_selftest.py" --bits "$(echo $BITS | tr ' ' ,)" --out "$OUT/selftest.json" --tune "$OUT/tune.json" 2>&1 | tee -a "$S" | tail -10; [ "${PIPESTATUS[0]}" = 0 ] || fail selftest
+export TRL_TUNE="$OUT/tune.json"   # the fastest kernel shape per width that this card ran correctly
 
 step "Lamplight build (llama.cpp $TAG + every patch, CUDA $ARCH)"
 B=$W/ll/build/bin

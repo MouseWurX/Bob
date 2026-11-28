@@ -48,49 +48,79 @@ def expert_hessians(a, name, K, N, E):
     return H, None, [0] * E
 
 
+def finish(a, name, shape, k, res, Ws, His, Hos, ns, E, N, K, t0, dev, rep, sample=None):
+    """measure and save one tensor from its coded parts (res: one dict per coded matrix, experts in order)"""
+    import trl_codec as C
+    lin, kron, n_used = 0.0, 0.0, 0.0
+    for r, W, hi, ho, n in zip(res, Ws, His, Hos, ns):
+        D = r["W_hat"] - W.to(r["W_hat"].device).double(); Hd = hi.to(D.device).double(); Wd = W.to(D.device).double()
+        if ho is not None: ho = ho.to(D.device)
+        lin += float(torch.trace(D @ Hd @ D.T)) / max(float(torch.trace(Wd @ Hd @ Wd.T)), 1e-30) / len(res)
+        if ho is not None: kron += 0.5 * float(n) * float(torch.trace(ho.double() @ D @ Hd @ D.T)) / a.tokens
+        n_used += float(n)
+    if not any(h is not None for h in Hos): kron = float("nan")
+    if sample is not None:  # experts priced from a sample: drift scaled up by the rows routed to all of them
+        kron *= sample / max(n_used, 1e-30)
+    else:
+        words = np.concatenate([C.tiles_to_words(r["states"], k) for r in res])
+        extra = dict(E=E, s16=np.stack([r["s16"] for r in res]), pre=np.stack([r["pre"] for r in res]), post=np.stack([r["post"] for r in res])) if E \
+            else dict(s16=res[0]["s16"], pre=res[0]["pre"], post=res[0]["post"])
+        np.savez(os.path.join(a.out, name + ".npz.part"), words=words, k=k, K=K, N=N, desc=np.array(res[0]["desc"], np.int32), **extra)
+        os.replace(os.path.join(a.out, name + ".npz.part.npz"), os.path.join(a.out, name + ".npz"))
+    nbytes = max(E, 1) * (N * K * k // 8 + K // 16 * 2 + K * 4 + N * 4)
+    tag = a.mode + (f"-sample{len(res)}" if sample is not None else "")
+    rep.write(f"{name}\t{shape}\t{tag}\t{k}\t{lin:.6g}\t{kron:.6g}\t{time.time() - t0:.1f}\t{dev}\t{nbytes}\n"); rep.flush()
+    print(f"trl_run[{dev}]: {name} {shape} {tag} {k} bits, layer loss {lin:.4g}, drift {kron:.4g}, {time.time() - t0:.1f} s", flush=True)
+
+
 def work(rank, dev, jobs, a):
-    import trl_quant as Q, trl_codec as C
+    """codes this card's tensors; many coded matrices share each card call (trl_quant.quantize_many): every expert of a
+    tensor, or several dense tensors at once, until a step holds about --tiles tiles"""
+    import trl_quant as Q
     if dev.startswith("cuda"): torch.cuda.set_device(dev)
     torch.set_num_threads(max(1, os.cpu_count() // max(1, a.devices)))
     rep = open(os.path.join(a.out, f"report-{rank}.tsv"), "a")
+    yq = a.mode == "yaqa"
+    dense = []  # (name, k, W, H_in, H_out, n) waiting for a shared run
+    def flush():
+        if not dense: return
+        t0 = time.time()
+        for k in sorted({d[1] for d in dense}):
+            grp = [d for d in dense if d[1] == k]
+            res = Q.quantize_many([Q._job(d[2], k, d[3], d[4] if yq else None, seed=a.seed) for d in grp], k)
+            for d, r in zip(grp, res):
+                N, K = d[2].shape
+                finish(a, d[0], f"{N}x{K}", k, [r], [d[2]], [d[3]], [d[4]], [d[5]], 0, N, K, t0, dev, rep)
+        dense.clear()
+        if dev.startswith("cuda"): torch.cuda.empty_cache()
     for name in jobs:
         t0 = time.time()
         W = load_weight(a.weights, name).to(dev)
         k = a.plan.get(name, a.bits)
         if W.dim() == 3:  # experts: one coded matrix each, same sides and desc, H per expert (hess_hf.py, or x_dump: H_in only)
+            flush()
             E, N, K = W.shape
             Hi, Ho, n_e = expert_hessians(a, name, K, N, E)
-            if a.mode == "yaqa" and Ho is None: raise SystemExit(f"trl_run: {name}: YAQA needs the experts' H_out (hess_hf.py without --no-out)")
-            words, s16, pre, post, lin, kron = [], [], [], [], 0.0, 0.0
-            for e in range(E):
-                hi = Hi[e].to(dev); ho = Ho[e].to(dev) if Ho is not None else None
-                r = Q.quantize_linear(W[e], k, hi, ho if a.mode == "yaqa" else None, seed=a.seed + e)
-                D = r["W_hat"] - W[e].double(); Hd = hi.double(); We = W[e].double()
-                lin += float(torch.trace(D @ Hd @ D.T)) / max(float(torch.trace(We @ Hd @ We.T)), 1e-30) / E
-                if ho is not None: kron += 0.5 * float(n_e[e]) * float(torch.trace(ho.double() @ D @ Hd @ D.T)) / a.tokens
-                words.append(C.tiles_to_words(r["states"], k)); s16.append(r["s16"]); pre.append(r["pre"]); post.append(r["post"]); desc = r["desc"]
-            np.savez(os.path.join(a.out, name + ".npz.part"), words=np.concatenate(words), k=k, K=K, N=N, E=E,
-                     s16=np.stack(s16), pre=np.stack(pre), post=np.stack(post), desc=np.array(desc, np.int32))
-            if Ho is None: kron = float("nan")
-            shape = f"{E}x{N}x{K}"
+            if yq and Ho is None: raise SystemExit(f"trl_run: {name}: YAQA needs the experts' H_out (hess_hf.py without --no-out)")
+            pick = list(range(E))
+            if a.sample and a.sample < E:  # price the width from a few experts (the busiest and an even spread)
+                order = sorted(range(E), key=lambda e: -n_e[e]); pick = sorted(set(order[:a.sample // 2] + order[::max(1, E // (a.sample - a.sample // 2))]))[:a.sample]
+            per = max(1, a.tiles // (N // 16)); res = []
+            for i in range(0, len(pick), per):
+                es = pick[i:i + per]
+                res += Q.quantize_many([Q._job(W[e], k, Hi[e].to(dev), Ho[e].to(dev) if yq else None, seed=a.seed + e) for e in es], k)
+            finish(a, name, f"{E}x{N}x{K}", k, res, [W[e] for e in pick], [Hi[e] for e in pick],
+                   [Ho[e] if Ho is not None else None for e in pick], [n_e[e] for e in pick], E, N, K, t0, dev, rep,
+                   sample=sum(n_e) if len(pick) < E else None)
+            del W, Hi, Ho
+            if dev.startswith("cuda"): torch.cuda.empty_cache()
         else:
-            E = 1
             h = torch.load(os.path.join(a.hess, name + ".pt"))
             Ho = h.get("H_out")
-            if a.mode == "yaqa" and Ho is None: raise SystemExit(f"trl_run: {name} has no H_out (hess_hf.py ran with --no-out)")
-            r = Q.quantize_linear(W, k, h["H_in"].to(dev), Ho.to(dev) if a.mode == "yaqa" else None, seed=a.seed)
-            N, K = W.shape
-            D = (r["W_hat"] - W.double())
-            Hi = h["H_in"].to(dev).double()
-            lin = float(torch.trace(D @ Hi @ D.T))
-            kron = 0.5 * float(h["n"]) * float(torch.trace(Ho.to(dev).double() @ D @ Hi @ D.T)) / a.tokens if Ho is not None else float("nan")
-            np.savez(os.path.join(a.out, name + ".npz.part"), words=C.tiles_to_words(r["states"], k), k=k, K=K, N=N,
-                     s16=r["s16"], pre=r["pre"], post=r["post"], desc=np.array(r["desc"], np.int32))
-            shape = f"{N}x{K}"
-        nbytes = E * (N * K * k // 8 + K // 16 * 2 + K * 4 + N * 4)
-        os.replace(os.path.join(a.out, name + ".npz.part.npz"), os.path.join(a.out, name + ".npz"))
-        rep.write(f"{name}\t{shape}\t{a.mode}\t{k}\t{lin:.6g}\t{kron:.6g}\t{time.time() - t0:.1f}\t{dev}\t{nbytes}\n"); rep.flush()
-        print(f"trl_run[{dev}]: {name} {shape} {a.mode} {k} bits, layer loss {lin:.4g}, drift {kron:.4g}, {time.time() - t0:.1f} s", flush=True)
+            if yq and Ho is None: raise SystemExit(f"trl_run: {name} has no H_out (hess_hf.py ran with --no-out)")
+            dense.append((name, k, W, h["H_in"].to(dev), Ho.to(dev) if Ho is not None else None, h["n"]))
+            if sum(d[2].shape[0] // 16 for d in dense) >= a.tiles: flush()
+    flush()
 
 
 def main():
@@ -101,6 +131,8 @@ def main():
     ap.add_argument("--devices", type=int, default=1); ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--x", default=None, help="x_dump folder: per-expert inputs for MoE expert tensors (3D)")
     ap.add_argument("--min-rows", type=int, default=128)
+    ap.add_argument("--tiles", type=int, default=8192, help="tiles a card call aims for (more matrices coded at once)")
+    ap.add_argument("--sample", type=int, default=0, help="experts: code only this many per tensor to price a width (no codes saved)")
     ap.add_argument("--plan", default=None, help="tsv of tensor name and bits (trl_parts.py); others take --bits")
     a = ap.parse_args()
     a.plan = {l.split("\t")[0]: int(l.split("\t")[1]) for l in open(a.plan) if l.strip() and not l.startswith("#")} if a.plan else {}

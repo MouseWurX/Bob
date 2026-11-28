@@ -73,16 +73,24 @@ def quantize_tiles(X, k, grid=GRID):
     return st, grid.to(X.device)[st]
 
 
+_IDX = {}
+
+
+def _rc(dev):
+    if dev not in _IDX: _IDX[dev] = (torch.from_numpy(C.ROW).to(dev), torch.from_numpy(C.COL).to(dev))
+    return _IDX[dev]
+
+
 def to_tiles(M):
     """[N, K] -> [N/16, K/16, 256] ring order (torch)"""
     N, K = M.shape
-    t = M.reshape(N // 16, 16, K // 16, 16)
-    return t[:, torch.from_numpy(C.ROW), :, torch.from_numpy(C.COL)].permute(1, 2, 0)
+    t = M.reshape(N // 16, 16, K // 16, 16); r, c = _rc(M.device)
+    return t[:, r, :, c].permute(1, 2, 0)
 
 
 def from_tiles(T, N, K):
-    out = torch.zeros(N // 16, 16, K // 16, 16, dtype=T.dtype, device=T.device)
-    out[:, torch.from_numpy(C.ROW), :, torch.from_numpy(C.COL)] = T.permute(2, 0, 1)
+    out = torch.zeros(N // 16, 16, K // 16, 16, dtype=T.dtype, device=T.device); r, c = _rc(T.device)
+    out[:, r, :, c] = T.permute(2, 0, 1)
     return out.reshape(N, K)
 
 
@@ -105,10 +113,9 @@ def side_block(n, block=128):
     return block if n % block == 0 else 0
 
 
-def quantize_linear(W, k, H_in, H_out=None, seed=0, scale_mult=1.0, step=None):
-    """W [N, K] float, H_in [K, K] (and H_out [N, N] for YAQA) -> dict with the file's parts and W_hat in W's basis.
-    The trellis tiles are coded one 16 x 16 tile at a time in YAQA's anti-diagonal order (H_out None: one input-tile
-    column at a time, LDLQ)."""
+def _job(W, k, H_in, H_out=None, seed=0, scale_mult=1.0):
+    """one linear's coding as a generator: it yields the next batch of tiles to code (targets [n, 256] in grid units)
+    and takes back (states [n, 256], values [n, 256]); it returns the result dict. quantize_many() runs many at once."""
     dev = W.device; N, K = W.shape
     dt = torch.float32 if dev.type == "cuda" else torch.float64
     W = W.double()
@@ -122,21 +129,21 @@ def quantize_linear(W, k, H_in, H_out=None, seed=0, scale_mult=1.0, step=None):
     Wt = rht(Wr / post[:, None], 0, bn)  # W^ target
     # Hessians in the coded basis
     Hi = rht(rht(damp(H_in.double().to(dev)) * sg_in[None, :] * sg_in[:, None], 0, bk), 1, bk)
-    Li = ldl_lower(damp(Hi, 1e-6)).to(dt)
+    Li = ldl_lower(damp(Hi, 1e-6)).to(dt); del Hi
     if H_out is not None:
         Ho = rht(rht(damp(H_out.double().to(dev)) * post[None, :] * post[:, None], 0, bn), 1, bn)
-        Lo = ldl_lower(damp(Ho, 1e-6)).to(dt)
+        Lo = ldl_lower(damp(Ho, 1e-6)).to(dt); del Ho
     # one scale per input-tile column, from the target's spread
     s16 = (Wt.reshape(N, K // 16, 16).pow(2).mean(dim=(0, 2)).sqrt() / C.GRID_SD * scale_mult).half().double()
     s16 = torch.where(s16 > 0, s16, torch.full_like(s16, 1e-4))
-    Wt = Wt.to(dt); s16 = s16.to(dt)
+    Wt = Wt.to(dt); s16 = s16.to(dt); del W, Wr
     hat = torch.zeros_like(Wt)
     states = torch.zeros(N // 16, K // 16, 256, dtype=torch.int64, device=dev)
     if H_out is None:  # LDLQ: input-tile columns from the last to the first (QTIP's order; L is lower)
         for i in range(K // 16 - 1, -1, -1):
             c0, c1 = 16 * i, 16 * i + 16
             tgt = Wt[:, c0:c1] + (Wt[:, c1:] - hat[:, c1:]) @ Li[c1:, c0:c1]
-            st, v = quantize_tiles(to_tiles(tgt / s16[i]).reshape(-1, 256).float(), k)
+            st, v = yield to_tiles(tgt / s16[i]).reshape(-1, 256).float()
             states[:, i] = st.reshape(N // 16, 256)
             hat[:, c0:c1] = from_tiles(v.reshape(N // 16, 1, 256).to(dt), N, 16) * s16[i]
     else:  # YAQA: anti-diagonals of tiles from the bottom-right corner, both feedbacks
@@ -153,7 +160,7 @@ def quantize_linear(W, k, H_in, H_out=None, seed=0, scale_mult=1.0, step=None):
                 t = Wt[r0:r1, c0:c1] + Lo[r0:, r0:r1].T @ E[r0:, c0:] @ Li[c0:, c0:c1] \
                     + Lo[r0:, r0:r1].T @ E[r0:, c0:c1] + E[r0:r1, c0:] @ Li[c0:, c0:c1]
                 tg.append(to_tiles(t / s16[jn]).reshape(256))
-            st, v = quantize_tiles(torch.stack(tg).float(), k)
+            st, v = yield torch.stack(tg).float()
             for j, (jm, jn) in enumerate(idx):
                 states[jm, jn] = st[j]
                 hat[16 * jm:16 * jm + 16, 16 * jn:16 * jn + 16] = from_tiles(v[j].reshape(1, 1, 256).to(dt), 16, 16) * s16[jn]
@@ -162,6 +169,32 @@ def quantize_linear(W, k, H_in, H_out=None, seed=0, scale_mult=1.0, step=None):
     desc = [1 if bn else 0, bn, 1, 1 if bk else 0, bk, 1, 0]
     return dict(states=states.cpu().numpy(), s16=s16.float().cpu().numpy(), pre=sg_in.float().cpu().numpy(),
                 post=post.float().cpu().numpy(), desc=desc, k=k, W_hat=W_hat)
+
+
+def quantize_many(jobs, k):
+    """run _job generators in lockstep: every step, the tiles all live jobs want go to the card in ONE Viterbi call,
+    so a card codes thousands of tiles at once instead of one column's 64-200 (the first canary: card at ~60 W of 450 W).
+    Results in the jobs' order."""
+    out = [None] * len(jobs); live = {}
+    for i, g in enumerate(jobs):
+        try: live[i] = next(g)
+        except StopIteration as e: out[i] = e.value
+    while live:
+        ids = list(live); X = torch.cat([live[i] for i in ids]); n = [live[i].shape[0] for i in ids]
+        st, v = quantize_tiles(X, k)
+        o = 0
+        for i, m in zip(ids, n):
+            try: live[i] = jobs[i].send((st[o:o + m], v[o:o + m]))
+            except StopIteration as e: out[i] = e.value; del live[i]
+            o += m
+    return out
+
+
+def quantize_linear(W, k, H_in, H_out=None, seed=0, scale_mult=1.0, step=None):
+    """W [N, K] float, H_in [K, K] (and H_out [N, N] for YAQA) -> dict with the file's parts and W_hat in W's basis.
+    The trellis tiles are coded one 16 x 16 tile at a time in YAQA's anti-diagonal order (H_out None: one input-tile
+    column at a time, LDLQ)."""
+    return quantize_many([_job(W, k, H_in, H_out, seed, scale_mult)], k)[0]
 
 
 def dequantize(words, k, K, N, s16, pre, post, desc):

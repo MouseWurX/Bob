@@ -19,13 +19,14 @@ __device__ __forceinline__ float trl_grid(uint32_t s) {
     return (float) ((int) (((x >> 2) & 63) + ((x >> 10) & 63) + ((x >> 18) & 63) + ((x >> 26) & 63)) - 126);
 }
 
-// 512 threads a block: __launch_bounds__ holds the kernel to 128 registers a thread (64 K a block), else it takes ~255
-// and the launch fails with "too many resources requested" (the first canary, 28 Nov, RTX 4090)
+// NT threads a block, MINB blocks an SM: __launch_bounds__ holds the registers to 64 K / (NT x MINB) a thread; with no
+// bound the kernel takes ~255 and a 512-thread launch fails with "too many resources requested" (first canary, 28 Nov).
+// Which shape is fastest depends on the card, so trl_selftest.py times them all on the pod (tune()).
 // one block per tile; X [T, 256] targets in grid units; start [T] (-1: free ends); states [T, 256] out; cost [T] out
-template <int K>
-__global__ void __launch_bounds__(512, 1) viterbi_kernel(const float * __restrict__ X, const int * __restrict__ start, int16_t * __restrict__ states,
+template <int K, int NT, int MINB>
+__global__ void __launch_bounds__(NT, MINB) viterbi_kernel(const float * __restrict__ X, const int * __restrict__ start, int16_t * __restrict__ states,
                                float * __restrict__ cost_out, uint8_t * __restrict__ back_all, float * __restrict__ cost_all) {
-    constexpr int LO = 16 - K, NJ = 1 << LO, NH = 1 << K, NT = 512, PER = NJ / NT;
+    constexpr int LO = 16 - K, NJ = 1 << LO, NH = 1 << K, PER = NJ / NT;
     extern __shared__ float c_shm[];  // one cost array (64 KB at k = 2): each step's new costs wait in registers
     float * c_old = K == 1 ? cost_all + (size_t) blockIdx.x * NJ : c_shm;  // k = 1: 128 KB, in global scratch
     __shared__ float xs[256];
@@ -89,21 +90,47 @@ __global__ void __launch_bounds__(512, 1) viterbi_kernel(const float * __restric
     }
 }
 
-void viterbi(torch::Tensor X, torch::Tensor start, torch::Tensor states, torch::Tensor cost, torch::Tensor back, torch::Tensor cscr, int64_t k) {
-    const int T = X.size(0); const int nt = 512;
+template <int K, int NT, int MINB>
+static void run_k(torch::Tensor X, torch::Tensor start, torch::Tensor states, torch::Tensor cost, torch::Tensor back, torch::Tensor cscr) {
+    const int T = X.size(0);
     auto stream = c10::cuda::getCurrentCUDAStream();
-    #define RUN(KK) { const size_t shm = KK == 1 ? 0 : (1 << (16 - KK)) * sizeof(float); \
-        cudaFuncSetAttribute(viterbi_kernel<KK>, cudaFuncAttributeMaxDynamicSharedMemorySize, (int) shm); \
-        viterbi_kernel<KK><<<T, nt, shm, stream>>>(X.data_ptr<float>(), start.data_ptr<int>(), (int16_t *) states.data_ptr<int16_t>(), \
-            cost.data_ptr<float>(), back.data_ptr<uint8_t>(), cscr.data_ptr<float>()); }
-    switch (k) { case 1: RUN(1) break; case 2: RUN(2) break; case 3: RUN(3) break; case 4: RUN(4) break; case 5: RUN(5) break; case 6: RUN(6) break;
+    const size_t shm = K == 1 ? 0 : (1 << (16 - K)) * sizeof(float);
+    cudaFuncSetAttribute(viterbi_kernel<K, NT, MINB>, cudaFuncAttributeMaxDynamicSharedMemorySize, (int) shm);
+    viterbi_kernel<K, NT, MINB><<<T, NT, shm, stream>>>(X.data_ptr<float>(), start.data_ptr<int>(), (int16_t *) states.data_ptr<int16_t>(),
+        cost.data_ptr<float>(), back.data_ptr<uint8_t>(), cscr.data_ptr<float>());
+}
+
+// variant v: 0 = 512 threads, 1 = 1024 threads, 2 = 256 threads x 2 blocks, 3 = 512 threads x 2 blocks
+template <int K>
+static void run_v(int v, torch::Tensor X, torch::Tensor start, torch::Tensor states, torch::Tensor cost, torch::Tensor back, torch::Tensor cscr) {
+    switch (v) { case 0: run_k<K, 512, 1>(X, start, states, cost, back, cscr); break; case 1: run_k<K, 1024, 1>(X, start, states, cost, back, cscr); break;
+                 case 2: run_k<K, 256, 2>(X, start, states, cost, back, cscr); break; case 3: run_k<K, 512, 2>(X, start, states, cost, back, cscr); break;
+                 default: TORCH_CHECK(false, "trl_cuda: variant must be 0..3"); }
+}
+
+void viterbi(torch::Tensor X, torch::Tensor start, torch::Tensor states, torch::Tensor cost, torch::Tensor back, torch::Tensor cscr, int64_t k, int64_t v) {
+    switch (k) { case 1: run_v<1>(v, X, start, states, cost, back, cscr); break; case 2: run_v<2>(v, X, start, states, cost, back, cscr); break;
+                 case 3: run_v<3>(v, X, start, states, cost, back, cscr); break; case 4: run_v<4>(v, X, start, states, cost, back, cscr); break;
+                 case 5: run_v<5>(v, X, start, states, cost, back, cscr); break; case 6: run_v<6>(v, X, start, states, cost, back, cscr); break;
                  default: TORCH_CHECK(false, "trl_cuda: k must be 1..6"); }
     const cudaError_t err = cudaGetLastError();
     TORCH_CHECK(err == cudaSuccess, "trl_cuda: kernel launch failed: ", cudaGetErrorString(err));
 }
 """
-CPP = "void viterbi(torch::Tensor X, torch::Tensor start, torch::Tensor states, torch::Tensor cost, torch::Tensor back, torch::Tensor cscr, int64_t k);"
+CPP = "void viterbi(torch::Tensor X, torch::Tensor start, torch::Tensor states, torch::Tensor cost, torch::Tensor back, torch::Tensor cscr, int64_t k, int64_t v);"
+VARIANTS = {0: "512 threads", 1: "1024 threads", 2: "256 threads x 2 blocks", 3: "512 threads x 2 blocks"}
 _mod = None
+_tune = None   # {k: variant} from trl_selftest.py (TRL_TUNE=<json>), else variant 0
+_grid = {}
+
+
+def variant(k):
+    global _tune
+    if _tune is None:
+        import json, os
+        p = os.environ.get("TRL_TUNE")
+        _tune = {int(a): int(b) for a, b in json.load(open(p)).items()} if p and os.path.exists(p) else {}
+    return _tune.get(k, 0)
 
 
 def module():
@@ -115,7 +142,7 @@ def module():
     return _mod
 
 
-def viterbi(X, k, start=None, scratch_gb=2.0):
+def viterbi(X, k, start=None, scratch_gb=4.0, v=None):
     """X [B, 256] float32 on a card -> (states int64 [B, 256], cost [B]); start [B] or None as trl_quant.viterbi"""
     B = X.shape[0]; dev = X.device; lo = 16 - k
     per = 256 * (1 << lo) + (4 << lo if k == 1 else 0); chunk = max(1, min(B, int(scratch_gb * 1e9 // per)))
@@ -126,12 +153,14 @@ def viterbi(X, k, start=None, scratch_gb=2.0):
     Xc = X.float().contiguous()
     for i in range(0, B, chunk):
         e = min(B, i + chunk)
-        module().viterbi(Xc[i:e], sv[i:e], st[i:e], cost[i:e], back, cscr, k)
+        module().viterbi(Xc[i:e], sv[i:e], st[i:e], cost[i:e], back, cscr, k, variant(k) if v is None else v)
     return st.long() & 0xFFFF, cost
 
 
-def quantize_tiles(X, k, grid):
-    st, _ = viterbi(X, k)
+def quantize_tiles(X, k, grid, v=None):
+    st, _ = viterbi(X, k, v=v)
     c = st[:, 255] & ((1 << (16 - k)) - 1)
-    st, _ = viterbi(X, k, start=c)
-    return st, grid.to(X.device)[st]
+    st, _ = viterbi(X, k, start=c, v=v)
+    g = _grid.get(X.device)
+    if g is None: g = _grid[X.device] = grid.to(X.device)  # once per card, not a copy per call
+    return st, g[st]

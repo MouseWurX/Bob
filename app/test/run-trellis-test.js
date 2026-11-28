@@ -35,6 +35,7 @@ check('the Inkling kit uploads nothing and starts from the stock (not abliterate
 check('the Inkling kit checks the 1-4 bit kernel and that Lamplight reads the BF16 brain before the long steps', ink.indexOf('--bits 1,2,3,4') > 0 && ink.indexOf('--bits 1,2,3,4') < ink.indexOf('"$TP/hess_hf.py"') && ink.indexOf('BF16 in Lamplight') < ink.indexOf('"$TP/hess_hf.py"'));
 check('the three rows share one coded size: by part takes TRL2-LDLQ\'s bytes, YAQA takes the same widths', ink.includes('--same-as "$W/codes-ldlq-2"') && ink.includes('yaqa --plan "$OUT/plan.tsv"'));
 check('the Inkling kit keeps calibration and scoring texts apart and times every step', ink.includes('--text "$TR"') && ink.includes('"$REF" "$TE"') && ink.includes('s total)') && ink.includes('clocks_event_reasons.active'));
+check('both kits time the kernel shapes on the card and code with the fastest correct one', [kit, ink].every((t) => t.includes('--tune "$OUT/tune.json"') && t.indexOf('export TRL_TUNE="$OUT/tune.json"') > t.indexOf('--tune "$OUT/tune.json"') && t.indexOf('export TRL_TUNE') < t.indexOf('"$TP/trl_run.py"')));
 check('a canary mode codes two layers (one looped) before the whole brain', /LAYERS=\$\{LAYERS:-"0\|6"\}/.test(ink) && ink.includes('--only "^blk'));
 const has = spawnSync('python3', ['-c', 'import numpy'], { encoding: 'utf8' }).status === 0;
 if (has) {
@@ -80,7 +81,11 @@ for ho, hin in ((None, torch.eye(K)), (None, Hin), (Hout, Hin)):
     Wd = Q.dequantize(words, 2, K, N, r["s16"], r["pre"], r["post"], r["desc"])
     out.append((loss(r["W_hat"]), loss(r["W_hat"], Hout), float(np.abs(Wd - r["W_hat"].numpy()).max()), C.check_tail_biting(r["states"], 2)))
 plain, ldlq, yaqa = out
-print(int(ldlq[0] < plain[0]), int(yaqa[1] < ldlq[1]), int(max(o[2] for o in out) < 1e-6), int(all(o[3] for o in out)), plain[0], ldlq[0], ldlq[1], yaqa[1])
+W2 = torch.randn(48, 64) * 0.02; H2 = torch.eye(64) + 0.1
+alone = [Q.quantize_linear(W, 2, Hin, Hout, seed=1), Q.quantize_linear(W2, 2, H2, None, seed=2)]
+many = Q.quantize_many([Q._job(W, 2, Hin, Hout, seed=1), Q._job(W2, 2, H2, None, seed=2)], 2)
+same = all(np.array_equal(np.asarray(a["states"]), np.asarray(b["states"])) for a, b in zip(alone, many))
+print(int(ldlq[0] < plain[0]), int(yaqa[1] < ldlq[1]), int(max(o[2] for o in out) < 1e-6), int(all(o[3] for o in out)), int(same), plain[0], ldlq[0], ldlq[1], yaqa[1])
 `, dir], { encoding: 'utf8' });
   const v = r.stdout.trim().split(/\s+/).map(Number);
   check('torch ran', r.status === 0, r.stderr.slice(-400));
@@ -88,6 +93,7 @@ print(int(ldlq[0] < plain[0]), int(yaqa[1] < ldlq[1]), int(max(o[2] for o in out
   check('YAQA beats LDLQ on the full Kronecker loss (H_out x H_in)', v[1] === 1, r.stdout);
   check('a coded linear decodes (words, scales, signs, Hadamard sides) to exactly the maker\'s weights', v[2] === 1, r.stdout);
   check('every code is tail-biting (the last window joins the first)', v[3] === 1, r.stdout);
+  check('coding many linears in one card call gives the same codes as one at a time', v[4] === 1, r.stdout);
   const pp = spawnSync('python3', ['-I', '-c', `
 import os, sys, tempfile, json, subprocess
 d = tempfile.mkdtemp(); runs = []
