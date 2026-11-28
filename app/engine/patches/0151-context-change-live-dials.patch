@@ -276,7 +276,7 @@ index 9e9e274..ac25ba4 100644
  
      ggml_backend_buffer_type_t select_buft(int il) const;
 diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
-index cf0a856..34370c6 100644
+index cf0a856..f1fd988 100644
 --- a/tools/server/server-context.cpp
 +++ b/tools/server/server-context.cpp
 @@ -1472,6 +1472,10 @@ private:
@@ -349,9 +349,9 @@ index cf0a856..34370c6 100644
 +                next.speculative.draft.mparams = params_first.speculative.draft.mparams;
 +            }
 +        }
-+        return "";
-+    }
-+
+         return "";
+     }
+ 
 +    // Lamplight 0152: {"device": "CUDA0", "layers": [30, 31]}; no device = the first card. An empty list sends every
 +    // live-moved layer home.
 +    static std::string card_layers_parse(const json & j, ggml_backend_dev_t & dev, std::vector<int> & layers) {
@@ -384,9 +384,9 @@ index cf0a856..34370c6 100644
 +                layers.push_back(v.get<int>());
 +            }
 +        }
-         return "";
-     }
- 
++        return "";
++    }
++
 +    // moves layers between the card and home on the kept brain (no context alive). A move that fails is undone,
 +    // with every other move of this request, and the reason is given back; the rest of the switch goes on.
 +    static json card_layers_apply(llama_model * model, ggml_backend_dev_t dev, const std::vector<int> & want) {
@@ -515,7 +515,7 @@ index cf0a856..34370c6 100644
                      const int32_t n_ctx_old = llama_n_ctx(ctx_tgt);
                      const int64_t t0 = ggml_time_us();
                      common_params prev = params_base;
-@@ -3998,6 +4207,10 @@ private:
+@@ -3998,12 +4207,34 @@ private:
                      model_dft = nullptr;
                      const bool kept = llama_init->keep_model_for_next();
                      destroy();
@@ -526,7 +526,31 @@ index cf0a856..34370c6 100644
                      bool ok = load_model(next);
                      std::string note;
                      if (!ok) {
-@@ -4043,6 +4256,16 @@ private:
+                         // back to what worked; the brain may have to load again
+                         note = "the new settings failed, the old ones are back";
+                         context_keys_set(keys_prev); // Brain Engine 0017
++                        // Lamplight 0151: the failed try still holds the brain (only its context failed). Before, the
++                        // old settings loaded the brain a second time beside it, ran out of card memory and stopped
++                        // the engine (a 16 GB card, flash attention off at step 2048: the bigger working memory didn't
++                        // fit). Now the try is let go first and its brain kept, so going back is a context change too.
++                        spec.reset();
++                        spec_init.reset();
++                        ctx_dft   = nullptr;
++                        model_dft = nullptr;
++                        const bool kept_back = llama_init && llama_init->keep_model_for_next();
++                        if (kept_back && live_want) {
++                            // layers this request moved up may be what took the room: all go home before going back
++                            json home = card_layers_apply(common_kept_model(), live_dev, {});
++                            if (home.contains("error")) {
++                                SRV_WRN("card layers: going home after a failed switch: %s\n", home["error"].get<std::string>().c_str());
++                            }
++                            note += ", and the layers moved onto the card are home";
++                        }
++                        destroy();
+                         if (!load_model(prev)) {
+                             GGML_ABORT("failed to load the brain again after a context change");
+                         }
+@@ -4043,6 +4274,16 @@ private:
                          {"seconds",    (ggml_time_us() - t0)/1e6},
                          {"moe_cache_mib", params_base.moe_cache_size >> 20}, // Brain Engine 0047
                          {"devices",    devices},                            // Brain Engine 0047
@@ -543,7 +567,7 @@ index cf0a856..34370c6 100644
                      };
                      queue_results.send(std::move(res));
                  } break;
-@@ -8168,14 +8391,17 @@ void server_routes::init_routes() {
+@@ -8168,14 +8409,17 @@ void server_routes::init_routes() {
          auto res = create_response();
          json body = json::parse(req.body.empty() ? "{}" : req.body);
          static const char * known[] = { "n_ctx", "moe_cache_mib", "n_batch", "n_ubatch", "cache_type_k", "cache_type_v",

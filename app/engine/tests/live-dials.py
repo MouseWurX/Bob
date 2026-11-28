@@ -93,6 +93,12 @@ try:
     check('guesser off keeps the brain', a.get('guesser') is False and a.get('brain_kept') is True, repr(a)[:300])
     a = post(8310, '/context', {'picture_reader': True})
     check('picture reader asked for on a brain without one: refused', a.get('http_error') == 400)
+    # a switch whose new context doesn't fit (here: chat memory far too big) goes back to the old settings with the
+    # brain kept, and the layers this request moved go home (v2 canary, Nov 27: it loaded the brain twice and stopped)
+    a = post(8310, '/context', {'n_ctx': 20000000, 'card_layers': {'layers': [1, 2, 3, 4]}})
+    b = post(8310, '/context', {'card_layers': {'layers': []}})
+    check('a switch that does not fit: refused, the brain kept, the engine alive, layers home', a.get('http_error') == 500 and 'layers moved onto the card are home' in a.get('body', '')
+          and p.poll() is None and b.get('brain_kept') is True and b.get('card_layers') == [] and b.get('n_ctx') == 1024 and isinstance(odds(8310), list), repr(a)[:200] + repr(b)[:200])
     a = post(8310, '/context', {'card_layers': {'device': 'NoSuchCard', 'layers': [1]}})
     check('an unknown card is refused', a.get('http_error') == 400)
     p.terminate(); p.wait()
