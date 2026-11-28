@@ -9,6 +9,10 @@ Same rules as llama.cpp's converter (conversion/base.py, _nvfp4_pack and dequant
   NVFP4: weight uint8 [out, in/2], two E2M1 values a byte (low nibble first); weight_scale E4M3 [out, in/16], sign bit
          dropped and 0x7F read as 0 (as ggml); weight_scale_2 one float for the tensor. w = e2m1 x scale x scale_2.
   FP8:   weight float8 with weight_scale (one, per row, or per block by the shapes) or weight_scale_inv: w = w x scale.
+  Inkling 2's packed experts (conversion/inkling2.py), <name>.w13_weight / .w2_weight [E, rows, cols / 2 or cols]:
+         NVFP4: uint8 two E2M1 a byte (low first), <name>_scale E4M3 [E, rows, cols/16] (NaN refused), <name>_amax F32 [E],
+         <name>_outer_scale_denominator F32 [1]: w = e2m1 x scale x amax[e] / denominator. MXFP8: E4M3 weights,
+         <name>_scale UE8M0 bytes [E, rows, cols/32]: w = e4m3 x 2^(byte - 127). Rows stay in the file's order.
   input_scale, k_scale, v_scale and activation scales are dropped. Every other tensor is copied as it is.
 Writes the same shard names and index, and config.json without quantization_config. One tensor at a time in memory.
 28 Nov 2026 (thread "Shrink Flash-Next with GPTQ and trellis")."""
@@ -35,8 +39,23 @@ def nvfp4(w, scale, scale2):
     return E2M1[v] * s * scale2.float().reshape(())
 
 
+def inkling_nvfp4(w, scale, amax, den):
+    E, rows, half = w.shape
+    if scale.shape != (E, rows, half // 8) or amax.shape != (E,): raise SystemExit(f"hf_dequant: Inkling NVFP4 shapes don't fit: {list(w.shape)}, {list(scale.shape)}, {list(amax.shape)}")
+    sb = scale.view(torch.uint8)
+    if ((sb & 0x7F) == 0x7F).any(): raise SystemExit("hf_dequant: an Inkling NVFP4 block scale is NaN")
+    v = torch.stack([w & 0x0F, w >> 4], dim=-1).reshape(E, rows, half * 2).long()
+    out = E2M1[v] * scale.float().repeat_interleave(16, dim=2)
+    return out * (amax.float() / den.float().reshape(()))[:, None, None]
+
+
+def inkling_mxfp8(w, scale):
+    if (scale == 255).any(): raise SystemExit("hf_dequant: an Inkling MXFP8 block scale is NaN (byte 255)")
+    return w.float() * torch.ldexp(torch.ones(scale.shape), scale.int() - 127).repeat_interleave(32, dim=2)
+
+
 def fp8(w, s):
-    s = s.float()
+    s = torch.ldexp(torch.ones(s.shape), s.int() - 127) if s.dtype == torch.uint8 else s.float()  # uint8: E8M0 exponents (MXFP8)
     if s.numel() == 1: return w.float() * s.reshape(())
     if s.ndim == 2 * w.ndim and all(n == 1 for n in s.shape[1::2]): s = s.reshape(tuple(s.shape[0::2]))  # [o/b, 1, i/b, 1]
     if s.ndim == w.ndim and all(a % b == 0 for a, b in zip(w.shape, s.shape)):
@@ -57,15 +76,21 @@ def main():
         fs[sh] = safe_open(os.path.join(a.src, sh), framework="pt")
         for k in fs[sh].keys(): where[k] = sh
     get = lambda k: fs[where[k]].get_tensor(k)
+    ink = {k for k in where if k.endswith((".w13_weight", ".w2_weight")) and k + "_scale" in where}
     used = {k for k in where if (k.endswith((".weight_scale", ".weight_scale_2", ".weight_scale_inv")) and k.rsplit(".", 1)[0] + ".weight" in where)
-            or k.endswith(DROP)}
+            or k.endswith(DROP)} | {k + x for k in ink for x in ("_scale", "_amax", "_outer_scale_denominator") if k + x in where}
     counts = {"nvfp4": 0, "fp8": 0, "copied": 0, "dropped": 0}; wmap = {}
     for sh in shards:
         out = {}
         for k in fs[sh].keys():
             if k in used: continue
             t = get(k)
-            if k.endswith(".weight") and t.dtype == torch.uint8 and k[:-7] + ".weight_scale" in where:
+            if k in ink and t.dtype == torch.uint8:
+                if k + "_amax" not in where or k + "_outer_scale_denominator" not in where: raise SystemExit(f"hf_dequant: {k} is NVFP4 without amax/denominator")
+                t = inkling_nvfp4(t, get(k + "_scale"), get(k + "_amax"), get(k + "_outer_scale_denominator")); counts["nvfp4"] += 1
+            elif k in ink and t.dtype == torch.float8_e4m3fn:
+                t = inkling_mxfp8(t, get(k + "_scale")); counts["fp8"] += 1
+            elif k.endswith(".weight") and t.dtype == torch.uint8 and k[:-7] + ".weight_scale" in where:
                 s2 = k[:-7] + ".weight_scale_2"
                 if s2 not in where: raise SystemExit(f"hf_dequant: {k} is NVFP4 but has no weight_scale_2")
                 t = nvfp4(t, get(k[:-7] + ".weight_scale"), get(s2)); counts["nvfp4"] += 1
@@ -73,8 +98,11 @@ def main():
                 sk = next((k[:-7] + x for x in (".weight_scale", ".weight_scale_inv") if k[:-7] + x in where), None)
                 t = fp8(t, get(sk)) if sk else t.float(); counts["fp8"] += 1
             else: counts["copied"] += 1
+            if t.dtype in (torch.uint8, torch.float8_e4m3fn, torch.float8_e5m2):  # still packed: a layout this tool doesn't know
+                raise SystemExit(f"hf_dequant: {k} ({t.dtype}, {list(t.shape)}) is still packed; known companions: "
+                                 f"{[x for x in where if x.startswith(k) and x != k][:4]}")
             if t.is_floating_point():
-                if not torch.isfinite(t).all(): raise SystemExit(f"hf_dequant: {k} has non-finite values after unpacking")
+                if not torch.isfinite(t.float()).all(): raise SystemExit(f"hf_dequant: {k} has non-finite values after unpacking")
                 t = t.to(torch.bfloat16)
             out[k] = t.contiguous(); wmap[k] = sh
         save_file(out, os.path.join(a.out, sh), metadata={"format": "pt"})

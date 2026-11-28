@@ -78,10 +78,12 @@ import sys; sys.path.insert(0, sys.argv[1]); import torch, hf_dequant as D
 w = torch.tensor([[0x21] * 8 + [0xF7] * 8], dtype=torch.uint8)
 s = torch.tensor([[0x40, 0x7F]], dtype=torch.uint8).view(torch.float8_e4m3fn)
 v = D.nvfp4(w, s, torch.tensor(0.5))
-print(int(v[0, :2].tolist() == [0.5, 1.0]), int(v[0, 16:].abs().sum() == 0), float(v[0, 0]), float(v[0, 1]))
+# Inkling 2's experts: the same bytes, scale 2.0, times amax / denominator (3 / 6) per expert
+iv = D.inkling_nvfp4(w[None], torch.tensor([[[0x40, 0x40]]], dtype=torch.uint8).view(torch.float8_e4m3fn), torch.tensor([3.0]), torch.tensor([6.0]))
+print(int(v[0, :2].tolist() == [0.5, 1.0] and iv[0, 0, :2].tolist() == [0.5, 1.0] and iv[0, 0, 16].item() == 6.0), int(v[0, 16:].abs().sum() == 0), float(v[0, 0]), float(v[0, 1]))
 `, dir], { encoding: 'utf8' });
   const v = r.stdout.trim().split(/\s+/).map(Number);
-  check('NVFP4 unpacks as llama.cpp does: low nibble first, block scale x tensor scale, the 0x7F scale byte as 0', r.status === 0 && v[0] === 1 && v[1] === 1, r.stdout + r.stderr.slice(-300));
+  check('NVFP4 unpacks as llama.cpp does: low nibble first, block scale x tensor scale (Inkling: x amax / denominator), the 0x7F scale byte as 0', r.status === 0 && v[0] === 1 && v[1] === 1, r.stdout + r.stderr.slice(-300));
 }
 if (torch) {
   const r = spawnSync('python3', ['-I', '-c', `
