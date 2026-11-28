@@ -116,7 +116,7 @@ export function endRun(cfg) {
 // Every opt-in switch: off unless the owner turned it on. Safe start turns these off. Things that only show (themes,
 // the cat's name) and things that were on from the start (the tray, Try again and Edit) stay as they are.
 export const OPT_IN = [
-  'smartNotes', 'toolLearning', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'oneBrain', 'allTools',
+  'smartNotes', 'toolLearning', 'quickNotes', 'docTools', 'docView', 'sandboxCode', 'parts3d', 'model3d', 'planFirst', 'oneBrain', 'soloEffort', 'allTools',
   'quickOnCpu', 'mootBeside', 'resumeJobs', 'readyWhileTyping', 'gamesFirst', 'pictureFit', 'webSearch', 'howtos', 'memoryRecall', 'brainCtxOn',
   'brainCtxStretch', 'naughtyList', 'quantPicker', 'catalogUpdates', 'hfGated', 'labForgeStart', 'labConsole', 'labLessons', 'netReview', 'editOwn', 'quickSeesJob', 'docMeaning', 'chatPresets',
   'chatFiles', 'mathView', 'shortcuts', 'promptMenu', 'weeklyReport', 'chatPlaces', 'contextNoReload', 'tryFromHere', 'pinMessages', 'guestChat', 'amnesiaOffer'

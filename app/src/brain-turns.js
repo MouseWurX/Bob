@@ -12,6 +12,8 @@ import { SLEEPY_SESSION, sleepyAfterReply } from '../public/sleepy.js';
 import { cleanPersonality } from '../public/personality.js';
 import path from 'node:path';
 import { careful, mootOpening, runMoot } from './moot.js';
+import { soloJob, soloLevel, soloOpening, soloRun, soloBrain, mailEffort, MAIL_BULK_NOTE } from './solo-effort.js';
+import { planOn, showPlan } from './plan.js';
 import { pickAnswer } from './clean-answer.js';
 import { markReplaced, correctionStep } from './honesty-score.js';
 import { howtosOn, worthOffering } from './howtos.js';
@@ -190,11 +192,50 @@ export const turnParts = {
     };
     try {
       // High and Extreme effort: Bob calls a moot. The draft comes first (runOn), then his reviewer copy checks it.
+      // Effort on one brain (solo-effort.js, off unless switched on): the main brain does it all, and at High and Max
+      // Bob's loop runs the parts itself: the job, his own review, one round to improve it; at Max a plan, its check,
+      // each step as its own job, and a check of the whole.
+      if (job) job.solo = soloJob(this.cfg, job);
+      // Mail asks run at most Medius, and bulk acts take the short path (solo-effort.js mailEffort).
+      const mail = mailEffort(this.cfg, job, text);
+      if (mail) { if (mail.line) emit({ type: 'announce', text: mail.line }); job.effort = mail.effort; this.log('effort', `mail job: ${mail.effort}${mail.bulk ? ', bulk short path' : ''}`); }
+      const solo = ['picture', 'video'].includes(job?.kind) ? null : soloLevel(this.cfg, job); // nothing to read over in a picture
       if (careful(job)) emit({ type: 'announce', text: mootOpening(this.cfg, job.effort, base) });
-      await this.runOn(msgs, text, keep, signal, pics, job, sessionId, out);
+      if (solo) {
+        emit({ type: 'announce', text: soloOpening(solo) });
+        let ran = false;
+        // The repeat guard's count is shared by every part of the job (the distill test: a refused write was tried again in 3 small jobs).
+        Object.defineProperty(job, 'soloSeen', { value: new Map(), configurable: true, enumerable: false, writable: true });
+        Object.defineProperty(job, 'soloLedger', { value: null, configurable: true, enumerable: false, writable: true }); // each part's record carries the earlier parts' (brain-run-on.js)
+        const run = async (note, { phase = null, noTools = false, left = null } = {}) => {
+          Object.assign(job, { soloStep: note || '', soloAgain: ran, soloPhase: phase, soloNoTools: noTools, soloLeft: left });
+          try { await this.runOn(msgs, text, keep, signal, ran ? [] : pics, job, sessionId, out); return { repeatStop: Boolean(out.ctx?.repeatStop) }; }
+          finally { ran = true; Object.assign(job, { soloStep: '', soloAgain: false, soloPhase: null, soloNoTools: false, soloLeft: null }); }
+        };
+        const review = (task, o = {}) => this.runHat('reviewer', task, out.ctx, soloBrain(this.cfg, o));
+        // "Plan before big jobs" on (plan.js): Max's checked plan goes on the same plan card, and the jobs after Go ahead
+        // don't ask for another one.
+        const card = solo === 'max' && planOn(this.cfg) ? async (steps) => {
+          const c = out.ctx;
+          if (!c) return { go: true };
+          Object.assign(c, { planShown: false, planDeclined: false, planChange: '' });
+          await showPlan(this, { steps: steps.map((say) => ({ say })) }, c);
+          return c.planShown ? { go: true } : c.planChange ? { change: c.planChange } : { no: true };
+        } : null;
+        const planShown = () => Object.defineProperty(job, 'soloPlanShown', { value: true, configurable: true, enumerable: false, writable: true });
+        // The plan tries left the chat (no plan came): the repeat guard and the turn's record forget them too, so the job
+        // can run its calls again and see the results (16 Nov rental: "already ran this turn" on a call nobody could see).
+        const forget = () => { job.soloSeen?.clear?.(); if ('soloLedger' in job) job.soloLedger = null; };
+        mooted = await soloRun(this, solo, { run, review, emit: keep, signal, msgs, turnText: text, card, planShown, forget });
+      }
+      else {
+        const bulkNote = mail?.bulk ? MAIL_BULK_NOTE.replace('{{USER}}', this.cfg.userName || 'the user') : '';
+        if (bulkNote) job.soloStep = bulkNote; // a first run puts it in last, as a hidden note (brain-run-on.js)
+        try { await this.runOn(msgs, text, keep, signal, pics, job, sessionId, out); } finally { if (bulkNote) job.soloStep = ''; }
+      }
       if (careful(job) && out.ctx && !signal?.aborted) mooted = await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx });
       // #30: Low and Medium, opt-in: a quick second look from a paired Bob when one is free. None free: no check, no swap.
-      else if (out.ctx && !signal?.aborted && this.cfg.netReview === true) mooted = await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx, quick: () => this.quickReviewer(job, pics) });
+      else if (!job?.solo && out.ctx && !signal?.aborted && this.cfg.netReview === true) mooted = await runMoot(this, { msgs, base, emit: keep, signal, job, ctx: out.ctx, quick: () => this.quickReviewer(job, pics) });
       if (out.ctx && !signal?.aborted && !rough) sideJob((k, t) => this.log(k, t), 'the how-to card', () => this.howtoAfter(sessionId, text, out.ctx, keep, job)); // item 204
     }
     finally {

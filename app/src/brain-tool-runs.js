@@ -1,5 +1,6 @@
 // Running a tool call: limits, saving what it made, checking the result, offering a fix, and handing results back.
 // Methods of the Brain class. Split out of brain.js.
+import { planStep } from './loop-guard.js';
 import { FOLDER_REFUSED } from './folder-offer.js';
 import { SAVING_TOOLS, saysNoSave, noSaveLine } from './no-save.js';
 import { gate as qGate, after as qAfter, noteStrike } from './quarantine.js';
@@ -334,6 +335,7 @@ export const toolRunParts = {
   // Bob gets one more go (again = true) with the tools it needs; if it still didn't, the user is told plainly.
   // Returns true when the turn should go round once more.
   checkTurn(ctx, reply, again) {
+    if (planStep(ctx)) return false; // Max's plan step: the file or the action comes in the jobs after it (loop-guard.js)
     let v = null;
     try { v = afterTurn(ctx, reply?.content || ''); } catch (e) { this.brokenCheck(ctx, 'end-of-turn check', e); }
     if (!v) return false;

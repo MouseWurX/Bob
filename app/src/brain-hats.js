@@ -85,7 +85,7 @@ export const hatParts = {
     // The scouting copy only has web tools: with web search off there's nothing for it to do, so say where the switch is.
     if (hat === 'scout' && !webOn(this.cfg)) return WEB_OFF;
     // Extreme effort: coding goes research -> check -> plan -> check -> do it (moot.js).
-    if (hat === 'tinker' && !ctx.phased && cleanEffort(ctx.job?.effort) === 'extreme') return phasedWork(this, hat, task, ctx);
+    if (hat === 'tinker' && !ctx.phased && !ctx.job?.solo && cleanEffort(ctx.job?.effort) === 'extreme') return phasedWork(this, hat, task, ctx);
     // "One brain" mode: every hat runs on the main model, so there's no brain swap (about 20 s each) mid-chat.
     // Normal session: the hat's own brain (or the main one with "One brain"). Other sessions: the session's brain.
     // A moot (High/Extreme effort) passes force: the reviewer always runs on the Review slot brain.
@@ -95,10 +95,10 @@ export const hatParts = {
     // 1.5.51 (opt-in): the reviewer sits beside the main brain on the processor instead of swapping it out.
     // #30: a quick second look at Low or Medium effort comes with its Bob already picked (runMoot), and never runs here.
     const quick = hat === 'reviewer' ? ctx.reviewLender || null : null;
-    if (!quick && hat === 'reviewer' && force && !ctx.job?.side && mootBesideOk(this, model, brainCtx)) { beside = true; cpu = true; }
+    if (!quick && hat === 'reviewer' && force && !force.solo && !ctx.job?.side && mootBesideOk(this, model, brainCtx)) { beside = true; cpu = true; }
     // #30: no room beside it here, so a paired Bob with a good enough Review brain checks the work over Bob-Net. Failing that,
     // the reviewer swaps in as before, and the chat says why.
-    const lender = quick || (hat === 'reviewer' && force && !beside ? await this.reviewAway(model, ctx) : null);
+    const lender = quick || (hat === 'reviewer' && force && !force.solo && !beside ? await this.reviewAway(model, ctx) : null);
     const copy = copyName(this.cfg, hat, HATS[hat].label);
     // Settings sign-off (1.5.49): one moot line per review. If the review brain still has to load, the load line
     // ("🛰 Moot: ... checks the answer ...") says it all, so the chat skips the reviewer's own line.
@@ -123,7 +123,7 @@ export const hatParts = {
           ctx.emit({ type: 'announce', text: checkBackLine(via, e.why || e.message) });
         }
       }
-      return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, lender, noLocal: Boolean(quick), maxSteps: force?.maxSteps, compact: force?.longRun === true });
+      return await this.wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, lender, noLocal: Boolean(quick), maxSteps: force?.maxSteps, compact: force?.longRun === true, noTools: force?.noTools === true, web: force?.solo === true && webOn(this.cfg) });
     }
     catch (e) { step.state = ctx.signal?.aborted ? 'cancelled' : 'failed'; throw e; }
     finally {
@@ -161,7 +161,7 @@ export const hatParts = {
     }
     return lender;
   },
-  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, maxSteps: steps, compact = false, lender, noLocal = false, via = null }) {
+  async wearHat(hat, task, ctx, { model, cpu, think, brainCtx, copy, beside, maxSteps: steps, compact = false, lender, noLocal = false, via = null, noTools = false, web = false }) {
     // via (1.5.185): another of your Bobs thinks each step on his bigger brain; nothing loads here, the tools run here.
     // Two-Bob trial: a check is short, so the chat talker isn't brought back beside the reviewer for it.
     const loadHere = async () => (await this.ensureModel(model, ctx.emit, ctx.signal, hat, { cpu, ctx: brainCtx, ...(beside ? { beside: true } : {}), ...(hat === 'reviewer' ? { noTalker: true } : {}) })) || model;
@@ -173,7 +173,8 @@ export const hatParts = {
       painter: ['make_image', 'make_video', 'save_reference', 'make_music', 'make_sound', 'make_3d_model', 'workshop_list', 'workshop_run'],
       // run_command / run_recipe only when the Run hand is on (toolSchemas leaves them out otherwise); each run is approved.
       tinker: ['list_folder', 'code_map', 'read_file', 'search_files', 'edit_file', 'write_file', 'web_search', 'fetch_page', 'run_command', 'run_recipe'],
-      reviewer: ['list_folder', 'read_file', 'search_files']
+      // Effort on one brain (solo-effort.js): his own review can also check facts on the web, when web search is on.
+      reviewer: ['list_folder', 'read_file', 'search_files', ...(web ? ['web_search', 'fetch_page'] : [])]
     }[hat] || [];
     const maxSteps = Number(steps) > 0 ? Math.min(Number(steps), 100) : MAX_STEPS; // Nov 23: no cap by hat either (was tinker 30, reviewer 15)
     const packet = this.handoff(ctx, via?.check?.ctx ? Math.min(brainCtx || via.check.ctx, via.check.ctx) : brainCtx); // sized for his room when he checks
@@ -201,7 +202,7 @@ export const hatParts = {
       const late = step > 0 && Boolean(ctx.turnStartedAt) && (ctx.timeEnds ? Date.now() - waitedFor(ctx.signal) >= ctx.timeEnds : ALWAYS_ON_CEILING && pastCeiling(ctx.turnStartedAt, ctx.signal, Date.now(), ceilingMs(this.cfg)));
       if (late && !ctx.hatLateSaid) { ctx.hatLateSaid = true; this.log('loop', `${hat}: the job reached its time limit (the safety net); this step is the last`); }
       const last = (step === maxSteps - 1 && step > 0 && !this.helpOff('last')) || late;
-      const stepTools = last ? [] : this.toolSchemas(hatTools);
+      const stepTools = last || noTools ? [] : this.toolSchemas(hatTools); // noTools: Max's plan check (solo-effort.js)
       if (!ctx.job?.side) this.readNotes(ctx, messages); // notes passed along by the Quick brain (meanwhile.js)
       if (via) reply = await this.lenders.chat(via, { messages: hatView(step), tools: stepTools, signal: ctx.signal, from: this.cfg.windowsName || 'Bob', kind: 'check', onToken: (t) => ctx.emit({ type: 'token', text: t }) });
       else if (lender) {
