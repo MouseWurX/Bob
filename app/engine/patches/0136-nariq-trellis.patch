@@ -3503,10 +3503,10 @@ index 0000000..5d5f9aa
 +}
 diff --git a/ggml/src/ggml-cuda/libtrellis/src/gemm_i8.cu b/ggml/src/ggml-cuda/libtrellis/src/gemm_i8.cu
 new file mode 100644
-index 0000000..88a6103
+index 0000000..aaf0528
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/libtrellis/src/gemm_i8.cu
-@@ -0,0 +1,705 @@
+@@ -0,0 +1,754 @@
 +// SPDX-License-Identifier: Apache-2.0
 +// Copyright Nari Labs (gemm.cu, which this file is derived from); changes Copyright MouseWurX (Lamplight 0136)
 +//
@@ -3535,6 +3535,7 @@ index 0000000..88a6103
 +#include <cuda_bf16.h>
 +
 +#include <algorithm>
++#include <cstdlib>
 +#include <atomic>
 +#include <type_traits>
 +
@@ -3592,20 +3593,48 @@ index 0000000..88a6103
 +    int n_used, n_x;
 +    int64_t x_slot, x_tok;  // floats
 +    int64_t pre_stride, s16_stride;
++    // direct (few picks): no sort; pick r is padded row 8 r and tile r, set up here
++    int direct, n_expert;
++    const int32_t* ids;
++    int64_t ids_stride;
++    int* wmap;
++    int* wexp;
++    int* tile_e;
++    int* tile_g0;
++    int* tile_ng;
 +};
 +
 +__global__ void __launch_bounds__(256) prologue_i8(const Pro a) {
 +    extern __shared__ __align__(16) unsigned char psm[];
 +    __shared__ float wmax[8];
 +    __shared__ int wsum[8];
-+    const int t = blockIdx.x, warp = threadIdx.x / 32, lane = threadIdx.x % 32, K = a.K, nb = K / 128;
++    const int warp = threadIdx.x / 32, lane = threadIdx.x % 32, K = a.K, nb = K / 128;
 +    const float* xr;
 +    const float* pre = a.pre;
 +    const __half* s16 = a.s16;
++    int t = blockIdx.x, de = -1;
++    if (a.direct) {
++        const int r = blockIdx.x;
++        int e = a.ids[(int64_t)(r / a.n_used) * a.ids_stride + r % a.n_used];
++        if (e >= a.n_expert) e = -1;
++        t = 8 * r;
++        if (threadIdx.x < 8) {
++            a.wmap[t + threadIdx.x] = threadIdx.x == 0 && e >= 0 ? r : -1;
++            a.wexp[t + threadIdx.x] = e;
++        }
++        if (threadIdx.x == 0) {
++            a.tile_e[r] = e;  // a pick outside the experts: -1 or past them, dropped below
++            a.tile_g0[r] = r;
++            a.tile_ng[r] = 1;
++        }
++        if (e < 0) return;
++        de = e;
++    }
 +    if (a.rmap != nullptr) {
-+        const int r = a.rmap[t];
++        const int r = a.direct ? blockIdx.x : a.rmap[t];
 +        if (r < 0) return;  // padding: never stored
-+        const int e = a.rexp[t], tok = r / a.n_used, slot = r % a.n_used;
++        const int e = a.direct ? de : a.rexp[t];
++        const int tok = r / a.n_used, slot = r % a.n_used;
 +        xr = a.x + (int64_t)tok * a.x_tok + (int64_t)(a.n_x == 1 ? 0 : slot) * a.x_slot;
 +        if (pre != nullptr) pre += (int64_t)e * a.pre_stride;
 +        if (s16 != nullptr) s16 += (int64_t)e * a.s16_stride;
@@ -4068,7 +4097,13 @@ index 0000000..88a6103
 +// rows: the rows that carry work (experts: the picks), for the split choice
 +int split_count(int kt, int nt, int rows, int* kb) {
 +    const int64_t base = (int64_t)((nt + W5 - 1) / W5) * ((rows + 63) / 64);
-+    int s = (int)std::min<int64_t>(MAX_SPLITS, 2 * tq::device_sms() / base);
++    // about fill CTAs an SM in all (run 9: 2, as tq_gemm, left one CTA an SM at 33-128 rows); LAMPLIGHT_TRELLIS_I8_FILL for tests
++    static const int fill = [] {
++        const char* e = getenv("LAMPLIGHT_TRELLIS_I8_FILL");
++        const int v = e ? atoi(e) : 4;
++        return v >= 1 && v <= 16 ? v : 4;
++    }();
++    int s = (int)std::min<int64_t>(MAX_SPLITS, fill * tq::device_sms() / base);
 +    s = std::min(s, kt / 32);
 +    if (s < 1) s = 1;
 +    *kb = ((kt + s - 1) / s + 7) / 8 * 8;
@@ -4077,14 +4112,22 @@ index 0000000..88a6103
 +
 +struct Layout {
 +    size_t xq, xs, xsum, rmap, rexp, tile_e, tile_g0, tile_ng, status, part, total;
-+    int kb, splits, rows_p, groups, max_tiles, tiling;
++    int kb, splits, rows_p, groups, max_tiles, tiling, direct;
 +};
++
++constexpr int DIRECT_MAX = 32;  // picks
 +
 +// R rows (experts: picks), E experts (0: dense)
 +Layout layout(int K, int N, int R, int E) {
 +    Layout l;
 +    l.splits = split_count(K / 16, N / 16, R, &l.kb);
-+    if (E == 0) {
++    l.direct = E > 0 && R <= DIRECT_MAX;
++    if (l.direct) {
++        // every pick its own tile of one row: no sort launch (run 9: 1-4 tokens were launch-bound)
++        l.rows_p = 8 * R;
++        l.tiling = 0;  // T64X8
++        l.max_tiles = R;
++    } else if (E == 0) {
 +        l.rows_p = (R + 7) / 8 * 8;
 +        l.tiling = pick_tiling(R, N / 16, l.splits);
 +        l.max_tiles = (R + tile_rows(l.tiling) - 1) / tile_rows(l.tiling);
@@ -4128,7 +4171,7 @@ index 0000000..88a6103
 +    const int K = m->K;
 +    int* rmap = E ? reinterpret_cast<int*>(w + l.rmap) : nullptr;
 +    int* rexp = E ? reinterpret_cast<int*>(w + l.rexp) : nullptr;
-+    if (E) {
++    if (E && !l.direct) {
 +        Sort so;
 +        so.ids = ex->ids, so.ids_stride = ex->ids_stride, so.n_used = ex->n_used, so.T = ex->T, so.E = E;
 +        so.TT = tile_rows(l.tiling), so.rows_p = l.rows_p, so.max_tiles = l.max_tiles;
@@ -4152,10 +4195,16 @@ index 0000000..88a6103
 +    p.n_used = ex ? ex->n_used : 1, p.n_x = ex ? ex->n_x : 1;
 +    p.x_slot = ex ? ex->x_slot_stride : 0, p.x_tok = ex ? ex->x_tok_stride : 0;
 +    p.pre_stride = ex ? ex->pre_stride : 0, p.s16_stride = ex ? ex->s16_stride : 0;
++    p.direct = l.direct, p.n_expert = E;
++    p.ids = ex ? ex->ids : nullptr, p.ids_stride = ex ? ex->ids_stride : 0;
++    p.wmap = rmap, p.wexp = rexp;
++    p.tile_e = E ? reinterpret_cast<int*>(w + l.tile_e) : nullptr;
++    p.tile_g0 = E ? reinterpret_cast<int*>(w + l.tile_g0) : nullptr;
++    p.tile_ng = E ? reinterpret_cast<int*>(w + l.tile_ng) : nullptr;
 +    const size_t psm = (p.buf ? (size_t)K * 4 : 0) + (size_t)K;
 +    if (psm > 48 * 1024) return tq::fail(TQ_E_ARG, "tq_gemm_i8: K above 49,152");
 +    // dense rows past R (to the group's 8) are never stored; the GEMM's last group reads their bytes and drops them
-+    prologue_i8<<<E ? l.rows_p : R, 256, psm, s>>>(p);
++    prologue_i8<<<l.direct ? R : E ? l.rows_p : R, 256, psm, s>>>(p);
 +    if (cudaError_t e = cudaGetLastError()) return tq::check(e, "tq_gemm_i8 prologue launch");
 +    P8 a;
 +    a.codes = static_cast<const uint32_t*>(m->codes);
@@ -8961,10 +9010,10 @@ index ed8f4f7..bddb73f 100644
      uint32_t n_rows;
      uint32_t src_offset;
 diff --git a/ggml/src/ggml-vulkan/ggml-vulkan-types.h b/ggml/src/ggml-vulkan/ggml-vulkan-types.h
-index 1b717c8..02571b0 100644
+index 1b717c8..844d6b7 100644
 --- a/ggml/src/ggml-vulkan/ggml-vulkan-types.h
 +++ b/ggml/src/ggml-vulkan/ggml-vulkan-types.h
-@@ -1001,6 +1001,20 @@ struct vk_device_struct {
+@@ -1001,6 +1001,21 @@ struct vk_device_struct {
      vk_pipeline pipeline_fwht_f32[num_fwht_pipelines];
      vk_pipeline pipeline_fwht_f16[num_fwht_pipelines];
      uint32_t    fwht_rows_per_wg[num_fwht_pipelines] = {};
@@ -8975,6 +9024,7 @@ index 1b717c8..02571b0 100644
 +    // Lamplight 0136: the integer-dot GEMV (dense and experts, 1/2/4/8 rows a workgroup), its int8 input, the expert sort
 +    vk_pipeline pipeline_trellis_mvq[6][4][2];
 +    vk_pipeline pipeline_trellis_q8;
++    vk_pipeline pipeline_trellis_mv2[6][4]; // Lamplight 0136: the staged GEMV (LAMPLIGHT_TRELLIS_VK_MV=2)
 +    vk_pipeline pipeline_trellis_sort;
 +    vk_pipeline pipeline_trellis_dequant[6];
 +    vk_pipeline pipeline_trellis_runs[14];
@@ -8986,10 +9036,10 @@ index 1b717c8..02571b0 100644
      vk_pipeline pipeline_cumsum_small_f32;
      vk_pipeline pipeline_cumsum_multipass1_f32;
 diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
-index 3c63a1f..6922ba3 100644
+index 3c63a1f..13f5277 100644
 --- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
 +++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
-@@ -4013,6 +4013,78 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+@@ -4013,6 +4013,90 @@ void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
          ggml_vk_create_pipeline(device, device->pipeline_count_experts, "count_experts", count_experts_len, count_experts_data, "main", 3, sizeof(vk_op_count_experts_push_constants), {1, 1, 1}, {}, 1, true);
      }
  
@@ -9016,6 +9066,18 @@ index 3c63a1f..6922ba3 100644
 +            }
 +            static const char * const mv_id_names[6] = { "trellis_mv_id_1", "trellis_mv_id_2", "trellis_mv_id_3",
 +                                                         "trellis_mv_id_4", "trellis_mv_id_5", "trellis_mv_id_6" };
++            for (uint32_t c = 0; c < 4; ++c) {
++                static const char * const mv2_names[6][4] = {
++                    { "trellis_mv2_1_1", "trellis_mv2_1_2", "trellis_mv2_1_4", "trellis_mv2_1_8" },
++                    { "trellis_mv2_2_1", "trellis_mv2_2_2", "trellis_mv2_2_4", "trellis_mv2_2_8" },
++                    { "trellis_mv2_3_1", "trellis_mv2_3_2", "trellis_mv2_3_4", "trellis_mv2_3_8" },
++                    { "trellis_mv2_4_1", "trellis_mv2_4_2", "trellis_mv2_4_4", "trellis_mv2_4_8" },
++                    { "trellis_mv2_5_1", "trellis_mv2_5_2", "trellis_mv2_5_4", "trellis_mv2_5_8" },
++                    { "trellis_mv2_6_1", "trellis_mv2_6_2", "trellis_mv2_6_4", "trellis_mv2_6_8" },
++                };
++                ggml_vk_create_pipeline(device, device->pipeline_trellis_mv2[b][c], mv2_names[b][c], trellis_mv2_len, trellis_mv2_data, "main", 4,
++                                        sizeof(vk_op_trellis_mv_push_constants), {1, 1, 1}, { b + 1, 1u << c }, 1);
++            }
 +            ggml_vk_create_pipeline(device, device->pipeline_trellis_mv_id[b], mv_id_names[b], trellis_mv_id_len, trellis_mv_id_data, "main", 5,
 +                                    sizeof(vk_op_trellis_mv_id_push_constants), {1, 1, 1}, { b + 1 }, 1);
 +            ggml_vk_create_pipeline(device, device->pipeline_trellis_dequant[b], dq_names[b], trellis_dequant_len, trellis_dequant_data, "main", 2,
@@ -9068,7 +9130,7 @@ index 3c63a1f..6922ba3 100644
      // comb holds a token's 4x4 matrix in one 16-lane slice of a subgroup, so it
      // needs at least 16 lanes, pinned to a known size.
      if (device->subgroup_basic && device->subgroup_shuffle && device->subgroup_require_full_support && device->subgroup_size >= 16) {
-@@ -7878,6 +7950,455 @@ void ggml_vk_fwht(ggml_backend_vk_context * ctx, vk_context& subctx, const ggml_
+@@ -7878,6 +7962,459 @@ void ggml_vk_fwht(ggml_backend_vk_context * ctx, vk_context& subctx, const ggml_
      ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { src_buf, dst_buf }, pc, { workgroups_x, 1, 1 });
  }
  
@@ -9481,7 +9543,11 @@ index 3c63a1f..6922ba3 100644
 +            ggml_vk_sync_buffers(ctx, subctx);
 +        } else {
 +            const uint32_t nt = tc == 1 ? 0 : tc == 2 ? 1 : tc <= 4 ? 2 : 3;
-+            vk_pipeline & p = device->pipeline_trellis_mv[bits][nt];
++            static const bool mv2 = [] {
++                const char * e = getenv("LAMPLIGHT_TRELLIS_VK_MV");
++                return e != nullptr && atoi(e) == 2;
++            }();
++            vk_pipeline & p = mv2 ? device->pipeline_trellis_mv2[bits][nt] : device->pipeline_trellis_mv[bits][nt];
 +            const vk_op_trellis_mv_push_constants pc = { K, N, tc, q_off, s_off, 0, 0 };
 +            ggml_pipeline_request_descriptor_sets(ctx, p, 1);
 +            ggml_vk_dispatch_pipeline(ctx, subctx, p, { qb, sb, in, B }, pc, { N / 16, CEIL_DIV(tc, 1u << nt), 1 });
@@ -9524,7 +9590,7 @@ index 3c63a1f..6922ba3 100644
  static uint32_t ggml_vk_nb_elem(const ggml_tensor * t, int i) {
      return (uint32_t)(t->nb[i] / ggml_type_size(t->type));
  }
-@@ -13581,6 +14102,10 @@ bool ggml_vk_build_graph(ggml_backend_vk_context * ctx, ggml_cgraph * cgraph, in
+@@ -13581,6 +14118,10 @@ bool ggml_vk_build_graph(ggml_backend_vk_context * ctx, ggml_cgraph * cgraph, in
      case GGML_OP_CUMSUM:
          ggml_vk_cumsum(ctx, compute_ctx, src0, node);
  
@@ -9535,7 +9601,7 @@ index 3c63a1f..6922ba3 100644
          break;
      case GGML_OP_DSV4_HC_COMB:
          ggml_vk_dsv4_hc_comb(ctx, compute_ctx, src0, src1, src2, node);
-@@ -16859,6 +17384,10 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+@@ -16859,6 +17400,10 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
                  }
                  return false;
              }
@@ -9792,6 +9858,139 @@ index 0000000..7bc6f8a
 +        }
 +    }
 +    // red[t][row][partial]: 16 partials per row (4 lanes x 4 groups)
++    const uint r0 = lane >> 2, part = g * 4u + (lane & 3u);
++    [[unroll]] for (uint t = 0; t < NT; ++t) {
++        red[t * 256u + r0 * 16u + part] = acc0[t];
++        red[t * 256u + (r0 + 8u) * 16u + part] = acc1[t];
++    }
++    barrier();
++    for (uint e = tid; e < NT * 16u; e += 128u) {
++        const uint t = e / 16u, row = e % 16u;
++        float sum = 0.0;
++        [[unroll]] for (uint k = 0; k < 16u; ++k) {
++            sum += red[t * 256u + row * 16u + k];
++        }
++        if (t0 + t < p.T) {
++            data_b[p.b_offset + (t0 + t) * p.N + 16u * J + row] = sum;
++        }
++    }
++}
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv2.comp b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv2.comp
+new file mode 100644
+index 0000000..9f45edc
+--- /dev/null
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv2.comp
+@@ -0,0 +1,127 @@
++#version 450
++
++// Lamplight 0136: y = W^ x for short batches, the second form: as trellis_mv.comp (one workgroup per 16-row tile row,
++// NT columns, four 32-lane groups, each lane decoding 8 weights per tile), but the workgroup stages each chunk of
++// 8 tiles' code words, their s16 and the chunk's 128 inputs of every column in shared memory with coalesced loads
++// (double-buffered, one barrier a chunk), instead of every lane loading its 4 words and 4 inputs a tile from memory.
++
++#extension GL_EXT_control_flow_attributes : require
++#extension GL_EXT_shader_16bit_storage : require
++
++layout(constant_id = 0) const uint BITS = 3;
++layout(constant_id = 1) const uint NT = 1;
++
++layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
++
++layout(push_constant) uniform parameter {
++    uint K;
++    uint N;
++    uint T;
++    uint q_offset;  // words
++    uint s_offset;  // halves
++    uint a_offset;  // floats
++    uint b_offset;  // floats
++} p;
++
++layout(binding = 0, std430) readonly buffer Q { uint data_q[]; };
++layout(binding = 1, std430) readonly buffer S { float16_t data_s[]; };
++layout(binding = 2, std430) readonly buffer A { float data_a[]; };
++layout(binding = 3, std430) writeonly buffer B { float data_b[]; };
++
++shared uint sq[2][8 * 8 * 6];
++shared float sx[2][NT * 128];
++shared float ss[2][8];
++shared float red[NT * 256];
++
++float trellis_value(uint state) {
++    const uint h = state * 0x83DCD12Du;
++    return float(int((((h >> 2) & 0x3f3f3f3fu) * 0x01010101u) >> 24) - 126);
++}
++
++uint trellis_state(uint hi, uint lo, uint o) {
++    return ((hi << o) | ((lo >> 1u) >> (31u - o))) >> 16u;
++}
++
++void main() {
++    const uint J = gl_WorkGroupID.x;
++    const uint t0 = gl_WorkGroupID.y * NT;
++    const uint tid = gl_LocalInvocationID.x;
++    const uint lane = tid & 31u, g = tid >> 5;
++    const uint c2 = 2u * (lane & 3u);
++    const uint kt = p.K / 16u;
++    const uint NW = 8u * BITS, TOTAL = 256u * BITS;
++    const uint nch = (kt + 7u) / 8u;
++    const uint start = ((8u * lane + 1u) * BITS + TOTAL - 16u) % TOTAL;
++    const uint w0 = start >> 5, o = start & 31u;
++
++    float acc0[NT], acc1[NT];
++    [[unroll]] for (uint t = 0; t < NT; ++t) {
++        acc0[t] = 0.0;
++        acc1[t] = 0.0;
++    }
++
++    // stage chunk c (tiles 8 c .. 8 c + 7 of this tile row) into buffer b
++    #define STAGE(c, b) {                                                                                          \
++        const uint tiles = min(8u, kt - 8u * (c));                                                                 \
++        const uint qbase = p.q_offset + (J * kt + 8u * (c)) * NW;                                                  \
++        for (uint i = tid; i < tiles * NW; i += 128u) {                                                            \
++            sq[b][i] = data_q[qbase + i];                                                                          \
++        }                                                                                                          \
++        for (uint i = tid; i < NT * 128u; i += 128u) {                                                             \
++            const uint t = i / 128u, k = 128u * (c) + i % 128u;                                                    \
++            sx[b][i] = (t0 + t < p.T && k < p.K) ? data_a[p.a_offset + (t0 + t) * p.K + k] : 0.0;                  \
++        }                                                                                                          \
++        if (tid < tiles) {                                                                                         \
++            ss[b][tid] = float(data_s[p.s_offset + 8u * (c) + tid]);                                               \
++        }                                                                                                          \
++    }
++
++    STAGE(0u, 0u)
++    barrier();
++    for (uint c = 0; c < nch; ++c) {
++        const uint b = c & 1u;
++        if (c + 1u < nch) {
++            STAGE(c + 1u, b ^ 1u)
++        }
++        [[unroll]] for (uint h = 0; h < 2u; ++h) {
++            const uint tt = 2u * g + h;
++            if (8u * c + tt < kt) {
++                const uint tw = tt * NW;
++                uint q[4];
++                [[unroll]] for (uint i = 0; i < 4u; ++i) {
++                    q[i] = sq[b][tw + (w0 + i) % NW];
++                }
++                float v[8];
++                [[unroll]] for (uint j = 0; j < 8u; ++j) {
++                    const uint oj = o + j * BITS;
++                    const uint wi = oj >> 5;
++                    v[j] = trellis_value(trellis_state(q[wi], q[wi + 1u], oj & 31u));
++                }
++                const float s = ss[b][tt];
++                [[unroll]] for (uint t = 0; t < NT; ++t) {
++                    const uint xb = t * 128u + tt * 16u + c2;
++                    const float x0 = sx[b][xb], x1 = sx[b][xb + 1u], x8 = sx[b][xb + 8u], x9 = sx[b][xb + 9u];
++                    acc0[t] += s * (v[0] * x0 + v[1] * x1 + v[2] * x8 + v[3] * x9);
++                    acc1[t] += s * (v[4] * x0 + v[5] * x1 + v[6] * x8 + v[7] * x9);
++                }
++            }
++        }
++        barrier();
++    }
 +    const uint r0 = lane >> 2, part = g * 4u + (lane & 3u);
 +    [[unroll]] for (uint t = 0; t < NT; ++t) {
 +        red[t * 256u + r0 * 16u + part] = acc0[t];
@@ -10363,15 +10562,16 @@ index 0000000..1255453
 +    }
 +}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp b/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
-index 34a047b..f2254f7 100644
+index 34a047b..7459b79 100644
 --- a/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
 +++ b/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
-@@ -1135,6 +1135,21 @@ void process_shaders() {
+@@ -1135,6 +1135,22 @@ void process_shaders() {
      string_to_spv("fwht_shmem_f32", "fwht.comp", {{"A_TYPE", "float"}, {"FWHT_SHMEM", "1"}});
      string_to_spv("fwht_f16", "fwht.comp", {{"A_TYPE", "float16_t"}});
      string_to_spv("fwht_shmem_f16", "fwht.comp", {{"A_TYPE", "float16_t"}, {"FWHT_SHMEM", "1"}});
 +    // Lamplight 0136 (NariQ trellis): widths, columns and run lengths are specialization constants
 +    string_to_spv("trellis_mv", "trellis_mv.comp", {});
++    string_to_spv("trellis_mv2", "trellis_mv2.comp", {});
 +    string_to_spv("trellis_mv_id", "trellis_mv_id.comp", {});
 +    string_to_spv("trellis_dequant", "trellis_dequant.comp", {});
 +    string_to_spv("trellis_runs", "trellis_runs.comp", {});
