@@ -34,7 +34,12 @@ else
   L=$W/aifeui-engine; SRV=$L/build/bin/llama-server
   if [ ! -x "$SRV" ] || [ "$(cat "$L/.bob-patches" 2>/dev/null)" != "$(cat "$PATCHES"/*.patch | sha256sum | cut -d' ' -f1)" ]; then
     rm -rf "$L"
-    git clone --depth 1 --branch "$TAG" --recurse-submodules https://github.com/ggml-org/llama.cpp "$L" > "$OUT/engine-build.log" 2>&1 || die "couldn't fetch llama.cpp $TAG (engine-build.log)"
+    # Nov 26: our saved copy (MouseWurX/Bob pre-release llama.cpp-<tag>, the whole history as a git bundle) first, ggml-org second
+    { python3 -c "import sys,urllib.request,shutil; shutil.copyfileobj(urllib.request.urlopen(urllib.request.Request(sys.argv[1], headers={'User-Agent':'bob-forge/1.0'}), timeout=300), open(sys.argv[2],'wb'))" "https://github.com/MouseWurX/Bob/releases/download/llama.cpp-$TAG/llama.cpp-$TAG.bundle" "$W/llama.bundle" \
+        && git clone --branch "$TAG" "$W/llama.bundle" "$L"; } > "$OUT/engine-build.log" 2>&1 \
+      || { rm -rf "$L"; git clone --depth 1 --branch "$TAG" --recurse-submodules https://github.com/ggml-org/llama.cpp "$L" >> "$OUT/engine-build.log" 2>&1; } \
+      || die "couldn't fetch llama.cpp $TAG (engine-build.log)"
+    rm -f "$W/llama.bundle"
     for p in $(ls "$PATCHES"/*.patch | sort); do
       ( cd "$L" && git apply "$p" ) >> "$OUT/engine-build.log" 2>&1 || die "Bob's engine patch $(basename "$p") doesn't apply to llama.cpp $TAG"
       say "applied $(basename "$p")"

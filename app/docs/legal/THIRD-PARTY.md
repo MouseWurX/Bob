@@ -14,6 +14,13 @@
 The font, Mermaid, KaTeX, the chat templates and Electron are separate works distributed alongside Bob, not combined into his code, so
 their licences sit beside the GPL. Bob's own code has no runtime npm dependencies.
 
+## llama.cpp source, kept with Bob
+
+Each Bob release carries `Bob-<version>-llama.cpp-<tag>-source.tar.gz`: llama.cpp (MIT, by the ggml authors) at the
+tag Lamplight is built on, unchanged, with its LICENSE, plus our patches and the source with them applied. The
+pre-release `llama.cpp-<tag>` on Bob's GitHub keeps a saved copy of the same source and of llama.cpp's official files
+for that tag, byte for byte, with `LICENSE-llama.cpp` (see [docs/llama-cpp-map.md](../llama-cpp-map.md)).
+
 ## Downloaded only when you click
 
 Bob's download carries one of these: a basic build of llama.cpp (MIT; Vulkan on Windows and Linux, Metal on a

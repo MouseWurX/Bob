@@ -56,7 +56,8 @@ jobs:
           tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
           # The CUDA version of the official Windows CUDA zip for this tag (the newest, as Bob picks), so our
           # ggml-cuda.dll uses the same CUDA runtime as the cudart and cublas DLLs beside it.
-          cudaver=$(gh release view "$tag" -R ggml-org/llama.cpp --json assets --jq '.assets[].name' | sed -n 's/^llama-.*-bin-win-cuda-\([0-9.]*\)-x64\.zip$/\1/p' | sort -V | tail -1)
+          names=$(gh release view "$tag" -R ggml-org/llama.cpp --json assets --jq '.assets[].name' 2>/dev/null || gh release view "llama.cpp-$tag" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name') # ggml-org's, else our saved copy (same names)
+          cudaver=$(printf '%s\n' "$names" | sed -n 's/^llama-.*-bin-win-cuda-\([0-9.]*\)-x64\.zip$/\1/p' | sort -V | tail -1)
           echo "patches touch ggml: $ggml, CUDA: $cuda; official CUDA zip: $cudaver"
           { echo "ggml=$ggml"; echo "cuda=$cuda"; echo "cudaver=$cudaver"; } >> "$GITHUB_OUTPUT"
 
@@ -74,7 +75,7 @@ jobs:
         shell: bash
         run: |
           tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
-          git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
+          bash app/engine/fetch-llama.sh "$tag" llama.cpp # our saved copy first, ggml-org second (app/docs/llama-cpp-map.md)
           sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
           for p in app/engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
       - name: Install CUDA ${{ needs.detect.outputs.cudaver }} (NVIDIA's redistributable parts, compiler and headers only)
@@ -159,7 +160,7 @@ jobs:
           # The build's name, N1bN2: Brain Engine's own number, "b", the llama.cpp build it's built on (5b12282 names the
           # release and the files, brain-engine-5b12282-win-x64.zip). TAG stays the llama.cpp tag. Builds 3 and 4 were vN.
           echo "BEV=$(node -p "require('./app/package.json').bob.brainEngineVersion")b${tag#b}" >> "$GITHUB_ENV"
-          git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
+          bash app/engine/fetch-llama.sh "$tag" llama.cpp # our saved copy first, ggml-org second (app/docs/llama-cpp-map.md)
           # A one-commit clone counts "build 1"; say the tag's number instead, so --version reads like llama.cpp's own builds.
           sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
           for p in app/engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
@@ -288,7 +289,7 @@ jobs:
           # The build's name, N1bN2: Brain Engine's own number, "b", the llama.cpp build it's built on (5b12282 names the
           # release and the files, brain-engine-5b12282-win-x64.zip). TAG stays the llama.cpp tag. Builds 3 and 4 were vN.
           echo "BEV=$(node -p "require('./app/package.json').bob.brainEngineVersion")b${tag#b}" >> "$GITHUB_ENV"
-          git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
+          bash app/engine/fetch-llama.sh "$tag" llama.cpp # our saved copy first, ggml-org second (app/docs/llama-cpp-map.md)
           # A one-commit clone counts "build 1"; say the tag's number instead, so --version reads like llama.cpp's own builds.
           sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
           for p in app/engine/patches/*.patch; do git -C llama.cpp apply --verbose "../$p"; done
@@ -339,7 +340,7 @@ jobs:
         run: |
           tag=$(node -p "require('./app/package.json').bob.bundledLlamaTag")
           echo "TAG=$tag" >> "$GITHUB_ENV"
-          git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp.git llama.cpp
+          bash app/engine/fetch-llama.sh "$tag" llama.cpp # our saved copy first, ggml-org second (app/docs/llama-cpp-map.md)
           sed -i "s/set(BUILD_NUMBER \${COUNT})/set(BUILD_NUMBER ${tag#b})/" llama.cpp/cmake/build-info.cmake
           skip="$VULKAN_WITHOUT"
           for p in app/engine/patches/*.patch; do
