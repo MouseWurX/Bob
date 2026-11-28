@@ -17,7 +17,7 @@ const read = (f) => fs.readFileSync(path.join(here, '..', f), 'utf8').replace(/\
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-tuning-'));
 
 // ---------- The levers ----------
-check('twenty-six levers, each a flag or an engine key with a range', TUNING_FIELDS.length === 26 && TUNING_FIELDS.every((f) => (f.flags || f.env) && f.min < f.max && f.label));
+check('twenty-eight levers, each a flag or an engine key with a range', TUNING_FIELDS.length === 28 && TUNING_FIELDS.every((f) => (f.flags || f.env) && f.min < f.max && f.label));
 check('levers: unknown keys, out of range, fractions where whole numbers go and blanks are dropped',
   JSON.stringify(cleanLevers({ step: 2048, cacheMB: 100, learn: 2.5, lookahead: '4', cpuShare: '', junk: 3, draftGate: true })) === JSON.stringify({ step: 2048, lookahead: 4 }));
 check('levers: not an object gives none', Object.keys(cleanLevers(null)).length === 0 && Object.keys(cleanLevers([1])).length === 0);
