@@ -10214,7 +10214,7 @@ index 36e48a0..dd590a0 100644
  
  if (BUILD_SHARED_LIBS)
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
-index 31c4205..c06ce44 100644
+index 31c4205..867d121 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
 @@ -35,6 +35,7 @@
@@ -10612,7 +10612,7 @@ index 31c4205..c06ce44 100644
      test_cases.emplace_back(new test_get_rows_back(GGML_TYPE_F32, 1, 8, 2, 1, false));
      test_cases.emplace_back(new test_get_rows_back(GGML_TYPE_F32, 1, 70000, 4, 1, false)); // row count > CUDA grid-y limit (65535)
      for (ggml_type type : all_types) {
-@@ -13698,6 +14072,30 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+@@ -13698,6 +14072,33 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
  static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
      std::vector<std::unique_ptr<test_case>> test_cases;
  
@@ -10631,6 +10631,9 @@ index 31c4205..c06ce44 100644
 +        }
 +        for (ggml_type type : {GGML_TYPE_Q2_K, GGML_TYPE_Q3_K, GGML_TYPE_Q4_K}) {
 +            test_cases.emplace_back(new test_mul_mat_id(type, GGML_TYPE_F32, 64, 8, true, 640, t, 2560));
++        }
++        // 640 is not a multiple of 256, so k-quant files store the down experts in a 32-wide fallback
++        for (ggml_type type : {GGML_TYPE_IQ4_NL, GGML_TYPE_Q4_0, GGML_TYPE_Q5_0}) {
 +            test_cases.emplace_back(new test_mul_mat_id(type, GGML_TYPE_F32, 64, 8, false, 2560, t, 640));
 +        }
 +        // q8_0 and f16: what the int8 and f16 long-batch paths multiply after their decode
