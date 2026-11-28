@@ -30,6 +30,8 @@ def main():
     for f in r.fields.values():
         if f.name == gguf.Keys.General.ARCHITECTURE or f.name.startswith("GGUF.") or f.name.startswith("trellis."): continue
         vt = f.types[0]; st = f.types[-1] if vt == gguf.GGUFValueType.ARRAY else None
+        if vt == gguf.GGUFValueType.ARRAY and len(f.data) == 0:  # gguf-py cannot write an empty array (no data lost)
+            print(f"trl_write: key {f.name} is an empty array, left out", file=sys.stderr); continue
         w.add_key_value(f.name, f.contents(), vt, sub_type=st)
     w.add_uint32("trellis.version", 1)
     plan = []  # (name, kind, payload)
