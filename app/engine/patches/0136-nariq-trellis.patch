@@ -9971,10 +9971,10 @@ index 0000000..7bc6f8a
 +}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv2.comp b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv2.comp
 new file mode 100644
-index 0000000..9f45edc
+index 0000000..0ae7f4a
 --- /dev/null
 +++ b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv2.comp
-@@ -0,0 +1,127 @@
+@@ -0,0 +1,138 @@
 +#version 450
 +
 +// Lamplight 0136: y = W^ x for short batches, the second form: as trellis_mv.comp (one workgroup per 16-row tile row,
@@ -10017,6 +10017,13 @@ index 0000000..9f45edc
 +
 +uint trellis_state(uint hi, uint lo, uint o) {
 +    return ((hi << o) | ((lo >> 1u) >> (31u - o))) >> 16u;
++}
++
++// the value as a float without an int-to-float convert (a quarter-rate instruction on NVIDIA): the field sum
++// 0..252 placed in the mantissa of 2^23, then 2^23 + 126 taken off; exact, the same value as trellis_value
++float trellis_value_fast(uint state) {
++    const uint h = state * 0x83DCD12Du;
++    return uintBitsToFloat(((((h >> 2) & 0x3f3f3f3fu) * 0x01010101u) >> 24) | 0x4B000000u) - 8388734.0;
 +}
 +
 +void main() {
@@ -10068,11 +10075,15 @@ index 0000000..9f45edc
 +                [[unroll]] for (uint i = 0; i < 4u; ++i) {
 +                    q[i] = sq[b][tw + (w0 + i) % NW];
 +                }
++                // the stream from bit o aligned once, so each window's word and shift are constants (run 13: 1.4-2x
++                // faster one token in trellis_mv3)
++                const uint a0 = (q[0] << o) | ((q[1] >> 1u) >> (31u - o));
++                const uint a1 = (q[1] << o) | ((q[2] >> 1u) >> (31u - o));
++                const uint a2 = (q[2] << o) | ((q[3] >> 1u) >> (31u - o));
 +                float v[8];
 +                [[unroll]] for (uint j = 0; j < 8u; ++j) {
-+                    const uint oj = o + j * BITS;
-+                    const uint wi = oj >> 5;
-+                    v[j] = trellis_value(trellis_state(q[wi], q[wi + 1u], oj & 31u));
++                    const uint bo = j * BITS;
++                    v[j] = trellis_value_fast(bo < 32u ? trellis_state(a0, a1, bo) : trellis_state(a1, a2, bo - 32u));
 +                }
 +                const float s = ss[b][tt];
 +                [[unroll]] for (uint t = 0; t < NT; ++t) {
@@ -10104,10 +10115,10 @@ index 0000000..9f45edc
 +}
 diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv3.comp b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv3.comp
 new file mode 100644
-index 0000000..37e40b2
+index 0000000..82c9296
 --- /dev/null
 +++ b/ggml/src/ggml-vulkan/vulkan-shaders/trellis_mv3.comp
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,113 @@
 +#version 450
 +
 +// Lamplight 0136: y = W^ x for a NariQ trellis weight in its rotated basis, NT columns per workgroup (LAMPLIGHT_TRELLIS_VK_MV=3).
@@ -10138,6 +10149,13 @@ index 0000000..37e40b2
 +layout(binding = 3, std430) writeonly buffer B { float data_b[]; };
 +
 +#include "trellis_decode.glsl"
++
++// the value as a float without an int-to-float convert (a quarter-rate instruction on NVIDIA): the field sum
++// 0..252 placed in the mantissa of 2^23, then 2^23 + 126 taken off; exact, the same value as trellis_value
++float trellis_value_fast(uint state) {
++    const uint h = state * 0x83DCD12Du;
++    return uintBitsToFloat(((((h >> 2) & 0x3f3f3f3fu) * 0x01010101u) >> 24) | 0x4B000000u) - 8388734.0;
++}
 +
 +shared float red[NT * 256];
 +
@@ -10185,7 +10203,7 @@ index 0000000..37e40b2
 +        float v[8];
 +        [[unroll]] for (uint j = 0; j < 8u; ++j) {
 +            const uint bo = j * BITS;
-+            v[j] = trellis_value(bo < 32u ? trellis_state(a, b, bo) : trellis_state(b, cw, bo - 32u));
++            v[j] = trellis_value_fast(bo < 32u ? trellis_state(a, b, bo) : trellis_state(b, cw, bo - 32u));
 +        }
 +        [[unroll]] for (uint t = 0; t < NT; ++t) {
 +            if (t0 + t < p.T) {
