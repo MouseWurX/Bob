@@ -144,7 +144,7 @@ export function toolErrorText(e) {
 // ---------------------------------------------------------------------------------------------------------------
 // 200: three strikes (the owner's rule, Nov 12): the same tool failing three times in a row in one job is set aside for
 // the rest of it. A success clears its count. After the job, Bob offers once to look at it harder and fix it.
-export const STRIKES = 3;
+export const STRIKES = 5; // Nov 23: was 3 (the owner: more generous, but loud)
 // ---------------------------------------------------------------------------------------------------------------
 const NEVER_STRUCK = new Set(['use_tools', 'ask_user', 'show_plan', 'ask_together', 'offer_setup']);
 export class ToolStrikes {
@@ -166,8 +166,8 @@ export class ToolStrikes {
 // address's fault, not the tool's: it isn't a strike and isn't counted as the tool breaking.
 export const BAD_ADDRESS = /\bENOTFOUND\b|getaddrinfo|ERR_NAME_NOT_RESOLVED|no such host|name (?:or service )?not (?:known|resolved)|could not resolve host|\.invalid\b|\b404\b[^.\n]{0,20}not found|\bnot found \(404\)/i;
 export const badAddress = (text) => BAD_ADDRESS.test(String(text || ''));
-export const STRIKE_NOTE = (tool, who) => ` (${tool} has failed three times in this job, so it's set aside now: try one other way, or tell ${who} plainly what's in the way.)`;
-export const STRUCK_OUT = (tool, who, last = '') => `Error: not run. ${tool} failed three times in this job${last ? ` (last time: ${last})` : ''}, so it isn't tried again. Use another way, or tell ${who} what failed.`;
+export const STRIKE_NOTE = (tool, who) => ` (${tool} has failed ${STRIKES} times in a row in this job, so it's set aside now: try one other way, or tell ${who} plainly what's in the way.)`;
+export const STRUCK_OUT = (tool, who, last = '') => `Error: not run. ${tool} failed ${STRIKES} times in this job${last ? ` (last time: ${last})` : ''}, so it isn't tried again. Use another way, or tell ${who} what failed.`;
 // After the job: one line under the answer, offering to look at the tools set aside. Only when one was.
 export function fixOffer(tools) {
   const list = [...new Set(tools)].filter(Boolean).slice(0, 4);

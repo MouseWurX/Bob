@@ -1,0 +1,560 @@
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 38efe06..b091b6d 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -1,5 +1,6 @@
+ #include "llama-context.h"
+ 
++#include <deque>
+ #include <map>
+ 
+ #include "ggml.h"
+@@ -2851,6 +2852,7 @@ static bool needs_raw_logits(const llama_ubatch & ubatch, const std::map<llama_s
+ }
+ 
+ static void llama_pinned_upload_report(llama_pinned_upload * pu);   // Brain Engine 0057
++static void llama_stream_ahead_report(llama_stream_ahead * sa);     // Brain Engine 0059
+ 
+ int llama_context::decode(const llama_batch_ext & batch_inp) {
+     if (!memory) {
+@@ -3401,6 +3403,9 @@ int llama_context::decode(const llama_batch_ext & batch_inp) {
+     if (pinned_upload) {
+         llama_pinned_upload_report(pinned_upload.get());
+     }
++    if (stream_ahead) {
++        llama_stream_ahead_report(stream_ahead.get());
++    }
+ 
+     // wait for the computation to finish (automatically done when obtaining the model output)
+     //synchronize();
+@@ -4047,8 +4052,8 @@ struct llama_pinned_upload {
+             return;
+         }
+         n_reported = n_pieces;
+-        LLAMA_LOG_INFO("llama_pinned_upload: %.2f MiB in %llu pieces through the pinned ring (%llu small copies direct), copying %.1f ms, waiting for a slot %.1f ms (%llu waits)\n",
+-                n_bytes/1024.0/1024.0, (unsigned long long) n_pieces, (unsigned long long) n_direct,
++        LLAMA_LOG_INFO("%s: %.2f MiB in %llu pieces through the pinned ring (%llu small copies direct), copying %.1f ms, waiting for a slot %.1f ms (%llu waits)\n",
++                who, n_bytes/1024.0/1024.0, (unsigned long long) n_pieces, (unsigned long long) n_direct,
+                 t_copy_us/1000.0, t_wait_us/1000.0, (unsigned long long) n_waits);
+     }
+ 
+@@ -4061,6 +4066,9 @@ struct llama_pinned_upload {
+         return x < lo || x > hi ? def : x;
+     }
+ 
++    bool        pinned_mem = false;
++    const char * who = "llama_pinned_upload";
++
+     bool init(ggml_backend_t backend) {
+         ggml_backend_dev_t dev = ggml_backend_get_device(backend);
+         if (!dev || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_CPU) {
+@@ -4077,14 +4085,14 @@ struct llama_pinned_upload {
+             if (pin_alloc && pin_free) {
+                 pin[i] = pin_alloc(slot_bytes);
+                 if (!pin[i]) {
+-                    LLAMA_LOG_WARN("llama_pinned_upload: !!! pinned upload NOT USED: the driver refused %zu MiB of pinned memory\n", slot_bytes >> 20);
++                    LLAMA_LOG_WARN("%s: !!! pinned upload NOT USED: the driver refused %zu MiB of pinned memory\n", who, slot_bytes >> 20);
+                     return false;
+                 }
+             } else if (test) {
+                 plain[i].resize(slot_bytes);   // the stand-in card: same pipeline, plain memory
+                 pin[i] = plain[i].data();
+             } else {
+-                LLAMA_LOG_WARN("llama_pinned_upload: !!! pinned upload NOT USED: %s has no pinned memory\n", ggml_backend_dev_name(dev));
++                LLAMA_LOG_WARN("%s: !!! pinned upload NOT USED: %s has no pinned memory\n", who, ggml_backend_dev_name(dev));
+                 return false;
+             }
+             done[i] = ggml_backend_event_new(dev);   // nullptr where events aren't supported: the slot waits for the backend
+@@ -4099,8 +4107,9 @@ struct llama_pinned_upload {
+         for (int i = 0; i < n_workers; i++) {
+             pool.emplace_back([this, i] { worker(i); });
+         }
+-        LLAMA_LOG_INFO("llama_pinned_upload: long reads upload from RAM through 2 x %zu MiB of %s memory, %d copy threads\n",
+-                slot_bytes >> 20, pin_alloc && pin_free ? "pinned" : "plain (test)", n_threads);
++        pinned_mem = pin_alloc && pin_free;
++        LLAMA_LOG_INFO("%s: long reads upload from RAM through 2 x %zu MiB of %s memory, %d copy threads\n",
++                who, slot_bytes >> 20, pinned_mem ? "pinned" : "plain (test)", n_threads);
+         return true;
+     }
+ 
+@@ -4203,6 +4212,310 @@ static void llama_pinned_upload_report(llama_pinned_upload * pu) {
+     pu->report();
+ }
+ 
++// Brain Engine 0059: on a long read, while one expert weight of a layer computes, the layer's other expert weights
++// (up and down after gate, or down after gate_up) go up from RAM on a second stream of the card into a landing zone,
++// only the experts this step picked that the cache doesn't hold (the layer's weights share the same picks, so it is
++// exact). When the scheduler then asks for that weight, the card's stream waits for the landing zone (an event, never a
++// processor flag) and copies the experts from it card to card. LLAMA_MOE_STREAM_AHEAD=1, off unless set; the landing zone is
++// LLAMA_MOE_STREAM_AHEAD_MIB (default 256) of card memory, and experts that don't fit go up as before. Lossless: the same
++// bytes reach the same place. Step 2 of the BE34 streaming design; idea from Avalon (freriadoc/Avalon, MIT), code ours.
++struct llama_stream_ahead {
++    struct staged_t {
++        std::vector<int64_t> off;         // landing offset of each expert, -1 if not staged
++        ggml_backend_event_t ready  = nullptr;
++        bool                 queued = false; // all of its copies queued on the copier and ready recorded
++        bool                 waited = false; // the card's stream waits for ready already
++    };
++    struct job {
++        const ggml_tensor * w;
++        std::vector<std::pair<int64_t, size_t>> items; // expert, landing offset
++    };
++
++    ggml_backend_t        copier  = nullptr;
++    ggml_backend_buffer_t buf     = nullptr;
++    ggml_context        * ctx     = nullptr;
++    ggml_tensor         * landing = nullptr;
++    ggml_context_ptr      ctx_views;
++    size_t                cap = 0, used = 0;
++    std::unique_ptr<llama_pinned_upload> ring;    // the copier's own ring (0057), when there is pinned memory
++    std::map<const ggml_tensor *, std::vector<const ggml_tensor *>> siblings;
++    std::map<const ggml_tensor *, staged_t> staged;
++    std::vector<ggml_backend_event_t> events;
++    size_t next_event = 0;
++    bool   threaded   = false;
++
++    std::thread             th;
++    std::mutex              mu;
++    std::condition_variable cv;
++    std::deque<job>         q;
++    bool                    stop = false;
++
++    uint64_t n_staged = 0, n_served = 0, n_layers = 0, n_full = 0;
++    size_t   staged_bytes = 0, served_bytes = 0, reported = 0;
++    int64_t  t_wait_us = 0;
++
++    ~llama_stream_ahead() {
++        if (th.joinable()) {
++            {
++                std::lock_guard<std::mutex> lk(mu);
++                stop = true;
++            }
++            cv.notify_all();
++            th.join();
++        }
++        if (copier) {
++            ggml_backend_synchronize(copier);
++        }
++        ring.reset();
++        for (auto e : events) {
++            if (e) { ggml_backend_event_free(e); }
++        }
++        if (ctx) { ggml_free(ctx); }
++        if (buf) { ggml_backend_buffer_free(buf); }
++        if (copier) { ggml_backend_free(copier); }
++        report();
++    }
++
++    void report() {
++        if (n_staged == reported) {
++            return;
++        }
++        reported = n_staged;
++        LLAMA_LOG_INFO("llama_stream_ahead: %llu experts (%.2f MiB) sent ahead on the second stream, %llu used (%.2f MiB) in %llu layers, "
++                "%llu times the landing zone was full, the card's stream waited %.1f ms for the processor's queueing\n",
++                (unsigned long long) n_staged, staged_bytes/1048576.0, (unsigned long long) n_served, served_bytes/1048576.0,
++                (unsigned long long) n_layers, (unsigned long long) n_full, t_wait_us/1000.0);
++    }
++
++    static bool in_ram(const ggml_tensor * t) {
++        return t && t->buffer && ggml_backend_buffer_is_host(t->buffer) && ggml_backend_buffer_get_usage(t->buffer) == GGML_BACKEND_BUFFER_USAGE_WEIGHTS;
++    }
++
++    bool init(const llama_model & model, ggml_backend_t backend) {
++        for (size_t il = 0; il < model.layers.size(); ++il) {
++            const auto & l = model.layers[il];
++            std::vector<const ggml_tensor *> ts;
++            for (const ggml_tensor * t : { l.ffn_gate_up_exps, l.ffn_gate_exps, l.ffn_up_exps, l.ffn_down_exps }) {
++                if (in_ram(t)) {
++                    ts.push_back(t);
++                }
++            }
++            for (const ggml_tensor * t : ts) {
++                for (const ggml_tensor * o : ts) {
++                    if (o != t) {
++                        siblings[t].push_back(o);
++                    }
++                }
++            }
++        }
++        if (const char * pf = getenv("LLAMA_PREFETCH_EXPERTS"); pf && atoi(pf) > 0) {
++            LLAMA_LOG_WARN("llama_stream_ahead: !!! stream ahead NOT USED: not together with LLAMA_PREFETCH_EXPERTS (0019), which it replaces\n");
++            return false;
++        }
++        if (siblings.empty()) {
++            LLAMA_LOG_WARN("llama_stream_ahead: !!! stream ahead NOT USED: no layer has two expert weights in RAM\n");
++            return false;
++        }
++        ggml_backend_dev_t dev = ggml_backend_get_device(backend);
++        copier = ggml_backend_dev_init(dev, nullptr);
++        if (!copier) {
++            LLAMA_LOG_WARN("llama_stream_ahead: !!! stream ahead NOT USED: no second stream on %s\n", ggml_backend_dev_name(dev));
++            return false;
++        }
++        int mib = 256;
++        if (const char * v = getenv("LLAMA_MOE_STREAM_AHEAD_MIB"); v && *v) {
++            mib = std::clamp(atoi(v), 1, 16384);
++        }
++        cap = (size_t) mib << 20;
++        buf = ggml_backend_buft_alloc_buffer(ggml_backend_get_default_buffer_type(copier), cap);
++        if (!buf) {
++            LLAMA_LOG_WARN("llama_stream_ahead: !!! stream ahead NOT USED: no room on %s for a %d MiB landing zone\n", ggml_backend_dev_name(dev), mib);
++            return false;
++        }
++        ggml_init_params ip = { ggml_tensor_overhead(), nullptr, true };
++        ctx = ggml_init(ip);
++        landing = ggml_new_tensor_1d(ctx, GGML_TYPE_I8, (int64_t) cap);
++        if (ggml_backend_tensor_alloc(buf, landing, ggml_backend_buffer_get_base(buf)) != GGML_STATUS_SUCCESS) {
++            LLAMA_LOG_WARN("llama_stream_ahead: !!! stream ahead NOT USED: the landing zone could not be placed\n");
++            return false;
++        }
++        ggml_init_params vp = { 4*ggml_tensor_overhead(), nullptr, true };
++        ctx_views.reset(ggml_init(vp));
++        bool ev = true;
++        for (int i = 0; i < 4; i++) {
++            events.push_back(ggml_backend_event_new(dev));
++            ev = ev && events.back() != nullptr;
++        }
++        auto r = std::make_unique<llama_pinned_upload>();
++        r->who = "llama_stream_ahead ring";
++        if (r->init(copier)) {
++            ring = std::move(r);
++        }
++        // a thread queues the copies, so the processor's copying overlaps the card's work; only with pinned memory and
++        // events on a real card (the stand-in card of the tests runs the same steps in line)
++        threaded = ev && ring && ring->pinned_mem;
++        if (threaded) {
++            th = std::thread([this] { loop(); });
++        }
++        LLAMA_LOG_INFO("llama_stream_ahead: on: a layer's other expert weights go up on a second stream into %d MiB of %s while one computes (%s)\n",
++                mib, ggml_backend_dev_name(dev), threaded ? "queued by a thread" : "queued in line");
++        return true;
++    }
++
++    void run(const job & jb) {
++        staged_t * st = nullptr;
++        {
++            std::lock_guard<std::mutex> lk(mu);
++            st = &staged[jb.w];
++        }
++        const size_t es = jb.w->nb[2];
++        for (const auto & [e, off] : jb.items) {
++            const uint8_t * from = (const uint8_t *) jb.w->data + (size_t) e*es;
++            if (ring) {
++                ring->upload(copier, landing, from, off, es);
++            } else {
++                ggml_backend_tensor_set_async(copier, landing, from, off, es);
++            }
++        }
++        if (st->ready) {
++            ggml_backend_event_record(st->ready, copier);
++        } else {
++            ggml_backend_synchronize(copier);
++        }
++        {
++            std::lock_guard<std::mutex> lk(mu);
++            st->queued = true;
++        }
++        cv.notify_all();
++    }
++
++    void loop() {
++        for (;;) {
++            job jb;
++            {
++                std::unique_lock<std::mutex> lk(mu);
++                cv.wait(lk, [&] { return stop || !q.empty(); });
++                if (stop && q.empty()) {
++                    return;
++                }
++                jb = std::move(q.front());
++                q.pop_front();
++            }
++            run(jb);
++        }
++    }
++
++    // a new layer's picks were read (so the card's stream is idle): the landing zone is free again
++    void begin() {
++        {
++            std::unique_lock<std::mutex> lk(mu);
++            cv.wait(lk, [&] {
++                for (auto & [w, st] : staged) {
++                    if (!st.queued) {
++                        return false;
++                    }
++                }
++                return q.empty();
++            });
++        }
++        ggml_backend_synchronize(copier);
++        staged.clear();
++        used = 0;
++    }
++
++    // after the first weight of a layer was handled: send its siblings' missing picked experts ahead
++    void stage(const ggml_tensor * w, const std::vector<bool> & picked, const llama_moe_cache * cache) {
++        const auto it = siblings.find(w);
++        if (it == siblings.end()) {
++            return;
++        }
++        bool any = false;
++        for (const ggml_tensor * s : it->second) {
++            if (staged.count(s) || (int64_t) picked.size() != s->ne[2]) {
++                continue;
++            }
++            const size_t es = s->nb[2];
++            job jb;
++            jb.w = s;
++            std::vector<int64_t> off(s->ne[2], -1);
++            for (int64_t e = 0; e < s->ne[2]; e++) {
++                if (!picked[e] || (cache && cache->holds(s, e))) {
++                    continue;
++                }
++                const size_t at = GGML_PAD(used, 256);
++                if (at + es > cap) {
++                    n_full++;
++                    break;
++                }
++                off[e] = (int64_t) at;
++                used = at + es;
++                jb.items.emplace_back(e, at);
++            }
++            if (jb.items.empty()) {
++                continue;
++            }
++            staged_t st;
++            st.off   = std::move(off);
++            st.ready = events[next_event++ % events.size()];
++            n_staged     += jb.items.size();
++            staged_bytes += jb.items.size()*es;
++            {
++                std::lock_guard<std::mutex> lk(mu);
++                staged[s] = std::move(st);
++                if (threaded) {
++                    q.push_back(std::move(jb));
++                }
++            }
++            if (threaded) {
++                cv.notify_all();
++            } else {
++                run(jb);
++            }
++            any = true;
++        }
++        if (any) {
++            n_layers++;
++        }
++    }
++
++    bool has(const ggml_tensor * w, int64_t e) {
++        const auto it = staged.find(w);
++        return it != staged.end() && e < (int64_t) it->second.off.size() && it->second.off[e] >= 0;
++    }
++
++    // experts a .. a+n-1 of w (all staged, one run in the landing zone) into dst on the card's stream
++    void serve(ggml_backend_t backend, const ggml_tensor * w, ggml_tensor * dst, int64_t a, int64_t n) {
++        staged_t & st = staged[w];
++        if (!st.waited) {
++            const int64_t t0 = ggml_time_us();
++            {
++                std::unique_lock<std::mutex> lk(mu);
++                cv.wait(lk, [&] { return st.queued; }); // ready is recorded before the card's stream waits for it
++            }
++            t_wait_us += ggml_time_us() - t0;
++            if (st.ready) {
++                ggml_backend_event_wait(backend, st.ready);
++            }
++            st.waited = true;
++        }
++        const size_t es = w->nb[2];
++        ggml_reset(ctx_views.get());
++        ggml_tensor * from = ggml_new_tensor_1d(ctx_views.get(), GGML_TYPE_I8, (int64_t) (n*es));
++        ggml_tensor * to   = ggml_new_tensor_1d(ctx_views.get(), GGML_TYPE_I8, (int64_t) (n*es));
++        from->buffer = buf;
++        from->data   = (char *) landing->data + st.off[a];
++        to->buffer   = dst->buffer;
++        to->data     = (char *) dst->data + (size_t) a*es;
++        ggml_backend_tensor_copy_async(backend, backend, from, to);
++        n_served     += n;
++        served_bytes += n*es;
++    }
++};
++
++static void llama_stream_ahead_report(llama_stream_ahead * sa) {
++    sa->report();
++}
++
+ struct llama_expert_prefetch {
+     struct slot {
+         ggml_backend_buffer_t buf      = nullptr;
+@@ -4407,7 +4720,22 @@ bool llama_context::sched_copy_experts(ggml_backend_t backend, const ggml_tensor
+     const int64_t n_expert    = src->ne[2];
+     const size_t  expert_size = src->nb[2];
+ 
++    // Brain Engine 0059: the layer's other expert weights go up ahead on a second stream
++    if (!lctx->stream_ahead_tried) {
++        lctx->stream_ahead_tried = true;
++        const char * on = getenv("LLAMA_MOE_STREAM_AHEAD");
++        if (on && atoi(on) > 0) {
++            auto sa = std::make_unique<llama_stream_ahead>();
++            if (sa->init(lctx->model, backend)) {
++                lctx->stream_ahead = std::move(sa);
++            }
++        }
++    }
++    llama_stream_ahead * ahead = lctx->stream_ahead.get();
++    bool fresh = false;
++
+     if (ids != st.ids || (int64_t) st.used.size() != n_expert) {
++        fresh = true;
+         st.ids_data.resize(ggml_nbytes(ids)/sizeof(int32_t));
+         ggml_backend_tensor_get_async(backend, ids, st.ids_data.data(), 0, ggml_nbytes(ids));
+         ggml_backend_synchronize(backend);
+@@ -4423,6 +4751,41 @@ bool llama_context::sched_copy_experts(ggml_backend_t backend, const ggml_tensor
+ 
+         st.ids = ids;
+     }
++    if (ahead && fresh) {
++        ahead->begin(); // the card's stream is idle (the picks were just read): the landing zone is free again
++    }
++    // experts a .. b-1 of src that the cache doesn't hold, plus pad bytes after b-1: from the landing zone what was sent
++    // ahead, the rest up from RAM
++    auto put = [&](int64_t a, int64_t b, size_t pad) {
++        if (!ahead) {
++            upload((size_t) a*expert_size, (size_t) (b - a)*expert_size + pad);
++            return;
++        }
++        for (int64_t e = a; e < b; ) {
++            int64_t n = 1;
++            const bool st_e = ahead->has(src, e);
++            while (e + n < b && ahead->has(src, e + n) == st_e) {
++                n++;
++            }
++            if (st_e) {
++                // consecutive experts sent ahead lie side by side in the landing zone only if sent in one go: check
++                int64_t k = 1;
++                for (; k <= n; k++) {
++                    if (k == n || ahead->staged[src].off[e + k] != ahead->staged[src].off[e] + (int64_t) (k*expert_size)) {
++                        break;
++                    }
++                }
++                ahead->serve(backend, src, dst, e, k);
++                n = k;
++            } else {
++                upload((size_t) e*expert_size, (size_t) n*expert_size);
++            }
++            e += n;
++        }
++        if (pad > 0) {
++            upload((size_t) b*expert_size, pad);
++        }
++    };
+ 
+     // group consecutive experts and copy them together
+     for (int64_t first = 0; first < n_expert; ) {
+@@ -4444,7 +4807,7 @@ bool llama_context::sched_copy_experts(ggml_backend_t backend, const ggml_tensor
+                 continue;
+             }
+             if (next < e) {
+-                upload(next*expert_size, (e - next)*expert_size);
++                put(next, e, 0);
+             }
+             e   += n;
+             next = e;
+@@ -4455,8 +4818,9 @@ bool llama_context::sched_copy_experts(ggml_backend_t backend, const ggml_tensor
+         const size_t padding = last < n_expert - 1 ? std::min<size_t>(expert_size, 512) : 0;
+         const size_t size    = (last + 1 - next)*expert_size + padding;
+         if (size > 0) {
+-            upload(offset, size);
++            put(next, last + 1, padding);
+         }
++        GGML_UNUSED(offset);
+ 
+         first = last + 1;
+     }
+@@ -4464,6 +4828,9 @@ bool llama_context::sched_copy_experts(ggml_backend_t backend, const ggml_tensor
+     if (lctx->expert_prefetch) {
+         lctx->expert_prefetch->ahead(backend, src, std::count(st.used.begin(), st.used.end(), true));
+     }
++    if (ahead && fresh) {
++        ahead->stage(src, st.used, lctx->moe_cache.get()); // while this weight computes, the layer's others go up
++    }
+ 
+     return true;
+ }
+diff --git a/src/llama-context.h b/src/llama-context.h
+index 0a45354..0f28185 100644
+--- a/src/llama-context.h
++++ b/src/llama-context.h
+@@ -21,6 +21,7 @@ class llama_batch_allocr;
+ class llama_moe_cache;
+ struct llama_expert_prefetch; // Brain Engine 0019
+ struct llama_pinned_upload;   // Brain Engine 0057
++struct llama_stream_ahead;    // Brain Engine 0059
+ 
+ class llama_io_read_i;
+ class llama_io_write_i;
+@@ -454,6 +455,9 @@ private:
+     // Brain Engine 0057: long reads' uploads from RAM through a pinned ring, copied by threads (LLAMA_MOE_PINNED_UPLOAD=1)
+     std::unique_ptr<llama_pinned_upload> pinned_upload;
+     bool pinned_upload_tried = false;
++    // Brain Engine 0059: on a long read, the layer's other expert weights go up on a second stream while this one computes
++    std::unique_ptr<llama_stream_ahead> stream_ahead;
++    bool stream_ahead_tried = false;
+ 
+     // graph reallocations during inference where the backend assignments did not change, split by whether the
+     // graph size is the same as the previously scheduled one (unexpected) or different
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index dc4136d..4cf4c4c 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -2396,6 +2396,23 @@ struct llama_moe_cache::impl {
+         return it != bindings.end() ? it->second.cached : nullptr;
+     }
+ 
++    bool holds(const ggml_tensor * w, int64_t e) const {
++        const auto it = lent || filling || reading ? bindings.end() : bindings.find(w);
++        if (it == bindings.end()) {
++            return false;
++        }
++        const binding & b = it->second;
++        const group & g = groups[layers[b.il].ig];
++        const int32_t * slots = g.lru.slot_map[b.il];
++        if (slots == nullptr || e < 0 || e >= w->ne[2]) {
++            return false;
++        }
++        if (slots[e] < g.n_slots) {
++            return true;
++        }
++        return tl_on && tl_of.count(g.lru.make_key(b.il, (int32_t) e)) > 0;
++    }
++
+     int64_t copy_experts(ggml_backend_t backend, const ggml_tensor * w, ggml_tensor * dst, int64_t e, int64_t last) {
+         la_drain(); // a slot filled ahead may still be going up
+         const auto it = lent || filling || reading ? bindings.end() : bindings.find(w);
+@@ -4208,6 +4225,10 @@ int64_t llama_moe_cache::copy_experts(ggml_backend_t backend, const ggml_tensor
+     return pimpl->copy_experts(backend, w, dst, e, last);
+ }
+ 
++bool llama_moe_cache::holds(const ggml_tensor * w, int64_t e) const {
++    return pimpl->holds(w, e);
++}
++
+ std::map<ggml_backend_buffer_type_t, size_t> llama_moe_cache::memory_breakdown() const {
+     std::map<ggml_backend_buffer_type_t, size_t> res;
+     for (const auto & d : pimpl->devices) {
+diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
+index ccb50a4..22995fd 100644
+--- a/src/llama-moe-cache.h
++++ b/src/llama-moe-cache.h
+@@ -64,6 +64,9 @@ public:
+     // returns the number of experts copied, 0 if expert e is not in the cache
+     int64_t copy_experts(ggml_backend_t backend, const ggml_tensor * w, ggml_tensor * dst, int64_t e, int64_t last);
+ 
++    // Brain Engine 0059: true if copy_experts would find expert e of w on the card now (in the cache or on the shelf)
++    bool holds(const ggml_tensor * w, int64_t e) const;
++
+     std::map<ggml_backend_buffer_type_t, size_t> memory_breakdown() const;
+ 
+     // Brain Engine: called with every layer's selected experts as the cache reads them (n ids, n_used per token), so

@@ -1,0 +1,48 @@
+diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
+index 2341fa6..b370927 100644
+--- a/ggml/include/ggml.h
++++ b/ggml/include/ggml.h
+@@ -493,6 +493,7 @@ extern "C" {
+         GGML_TENSOR_FLAG_PARAM   =  4, // ...contains trainable parameters
+         GGML_TENSOR_FLAG_LOSS    =  8, // ...defines loss for numerical optimization (multiple loss tensors add up)
+         GGML_TENSOR_FLAG_COMPUTE = 16, // ...must be computed
++        GGML_TENSOR_FLAG_SPLIT   = 32, // Brain Engine 0038: ...a weight in another backend's memory whose first reader always starts a new split
+     };
+ 
+     enum ggml_tri_type {
+diff --git a/ggml/src/ggml-backend.cpp b/ggml/src/ggml-backend.cpp
+index b70d0d8..94206b2 100644
+--- a/ggml/src/ggml-backend.cpp
++++ b/ggml/src/ggml-backend.cpp
+@@ -1740,12 +1740,17 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
+ 
+             // check if we should start a new split based on the sources of the current node
+             bool need_new_split = false;
+-            if (node_backend_id == cur_backend_id && split->n_inputs > 0) {
++            // Brain Engine 0038: a weight flagged GGML_TENSOR_FLAG_SPLIT starts a new split even when the split has no
++            // inputs yet, as long as the split already has nodes (the MoE cache plans its copies from ids computed before)
++            if (node_backend_id == cur_backend_id && (split->n_inputs > 0 || i > split->i_start)) {
+                 for (int j = 0; j < GGML_MAX_SRC; j++) {
+                     struct ggml_tensor * src = node->src[j];
+                     if (src == NULL) {
+                         continue;
+                     }
++                    if (split->n_inputs == 0 && !(src->flags & GGML_TENSOR_FLAG_SPLIT)) {
++                        continue;
++                    }
+                     // check if a weight is on a different and incompatible backend
+                     // by starting a new split, the memory of the previously offloaded weights can be reused
+                     if (src->buffer != NULL && src->buffer->usage == GGML_BACKEND_BUFFER_USAGE_WEIGHTS) {
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 5ac49f9..eb4e6c9 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -568,6 +568,8 @@ struct llama_moe_cache::impl {
+                 }
+                 l.slot_map = ggml_new_tensor_2d(ctx_host.get(), GGML_TYPE_I32, 1, g.ref[0]->ne[2]);
+                 ggml_format_name(l.slot_map, "moe_cache.slot_map-%d", il);
++                // Brain Engine 0038: its lookup starts a split, so the selected experts are always computed in an earlier one
++                l.slot_map->flags |= GGML_TENSOR_FLAG_SPLIT;
+                 layer_of[l.slot_map] = { il, false };
+                 buf_host_size += GGML_PAD(ggml_nbytes(l.slot_map), alignment_host);
+                 if (n_zero > 0) {

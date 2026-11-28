@@ -136,6 +136,19 @@ ok(peers[1].name === 'phoneb', 'device list: names are cleaned');
   ok(/case 'pair-ask'/.test(app) && /Yes, pair us/.test(app), 'chat shows the Yes/No card');
 }
 
+// --- Nov 25 Find on the phone: hello carries the Tailscale address; tailnet() hands a signed-in phone the online devices ---
+{
+  const A = bob('desk', '100.101.2.23');
+  ok(A.p.hello().ts === '100.101.2.23:7777', 'hello carries this Bob\'s Tailscale address, so a phone that found him on Wi-Fi pairs over Tailscale');
+  ok((await A.p.tailnet()).tailscale === false, 'tailnet: no Tailscale here, an empty list');
+  A.p.peers = async () => [{ name: 'handheld', ip: '100.101.1.2', os: 'windows', online: true }, { name: 'old', ip: '100.101.1.9', os: 'linux', online: false }];
+  const t = await A.p.tailnet();
+  ok(t.tailscale && t.peers.length === 1 && t.peers[0].ip === '100.101.1.2' && Object.keys(t.peers[0]).join() === 'name,ip,os', 'tailnet: online devices only, just name, address and system');
+  const s = fs.readFileSync(new URL('../src/server.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const at = s.indexOf("p === '/api/bob-net/tailnet'"), gate = s.indexOf('if (isRemote && !hasCookie(req))');
+  ok(at > gate && /\/api\/bob-net\/tailnet'\) \{\n\s+if \(!isRemote\) return send\(res, 403/.test(s), 'tailnet: only signed in, only from another device');
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

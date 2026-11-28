@@ -32,8 +32,8 @@ The short answer is that rewording the tools did not help, thinking did not help
 
 | Model | What it is | Engine and card | Slots |
 |---|---|---|---|
-| Bobert (35Bob) | Qwen3.6-35B-A3B trained on all of Bob's lessons, Q4_K_M | Brain Engine, rented 48 GB A40 | 8 slots of 8,192 tokens |
-| Riker (28Bob) | Qwen3.6-35B-A3B cut to 208 of 256 experts per layer and healed, Q4_K_M | Brain Engine, rented 48 GB A40 | 4 slots of 16K tokens (after a first set-up with 8 slots of 8,192 failed) |
+| Bobert (35Bob) | Qwen3.6-35B-A3B trained on all of Bob's lessons, Q4_K_M | Lamplight, rented 48 GB A40 | 8 slots of 8,192 tokens |
+| Riker (28Bob) | Qwen3.6-35B-A3B cut to 208 of 256 experts per layer and healed, Q4_K_M | Lamplight, rented 48 GB A40 | 4 slots of 16K tokens (after a first set-up with 8 slots of 8,192 failed) |
 | GPT-OSS 120B | OpenAI model, native weights, thinking on and off | Rented card, lab bench | Not recorded in the lab files |
 | GPT-OSS 38B cut | REAP cut of GPT-OSS 120B, not healed | Lab bench | Not recorded in the lab files |
 
@@ -266,6 +266,8 @@ PR #253 is recorded in the commit message for release 1.5.239. It adds a switch,
 
 This is a direct use of section 8.5. It follows the result that thinking hurt tool steps but is not known to hurt planning or review. We have not measured its effect on any score, on any model. It is a design response to one study, and the study cannot validate it.
 
+<a id="tool-shapes"></a>
+
 ### 8.9.3 PR #271: the GPT-OSS and Qwen shapes are locked
 
 PR #271 shipped in release 1.5.240 (its commit message lists it). It locked the GPT-OSS shape, made the Qwen fixes from the coached runs, and raised the tool-shape stamp, `TOOL_SHAPES` in src/tool-sets.js, first to 3 and then to 4. The stamp is one counter for Bob's whole tool list. "Shape 3" names the GPT-OSS set as it was locked at stamp 3, and "shape 4" names the Qwen set at stamp 4. The GPT-OSS set did not change at stamp 4, except that the run_command refusal below applies to every brain.
@@ -283,6 +285,32 @@ PR #271 shipped in release 1.5.240 (its commit message lists it). It locked the 
 Sources: src/tool-sets.js (`SETS`, `TOOL_SHAPES`), docs/TOOL-SETS.md, release notes for 1.5.238 and 1.5.240. For every brain, run_command now refuses a command that only writes a file and points to write_file instead (`writesFileOnly` in src/hands.js). This answers the write-through-the-shell habit that Bobert and the 38B cut both showed.
 
 **This is not re-tested either.** A rerun of the coached and wording tests on shape 4, for Riker and then Bobert on the same turns, is planned (model-lab/forge/plans/shape4-retest.json, capped at 4 hours and $3). Its first try stopped when the rented card froze at start-up, before any test ran, and it has not been run again. Whether shapes 3 and 4 raise any score is unproven in our lab, as we have yet to test. The numbers in sections 8.4 to 8.7 were measured on Bob 1.5.223's tool list. They are the evidence the shapes were built from, not tests of the shapes.
+
+<a id="tool-shapes-tested"></a>
+
+### 8.9.4 The tools and shapes the Flash-Next and cut tests used (added 23 November)
+
+The real-job runs of sections 11.7.6 to 11.7.8 all went through Bob's own tool list, not a benchmark's. This section says which shape each run used and what the tools were, so the scores can be read against the right list.
+
+**The shape.** Flash-Next (Qwen3.8-Flash-Next) is a Qwen-family brain, so Bob offers it the Qwen shape 4 of section 8.9.3: Bob's own names, inputs and wording, byte for byte; ask_specialist and pick_session left out; an added tool group kept for 3 messages; thinking off on tool steps; calls in Qwen's own `<tool_call>` block. Every Flash-Next run (21 November; IQ3 and Q2 on 22 November; every REAP keep level) used a Bob tree at `TOOL_SHAPES` 4 (`app/src/tool-sets.js` at commit 57643541 on branch claude/project-thread-et6g5x). The stock Qwen runs of section 11.7.6 used the same shape.
+
+**A test-only shape 5.** The held-out baseline for stock Qwen (held1) and the after3 round ran on a test kit that raised the stamp to 5: search_files also matches file names, save_spreadsheet takes a folder and no date, and office_make's wording changed (`forge/kit-patches/after3-kit.patch`). Shape 5 is not in a Bob release. So in the held-out table of section 11.7.7, stock Qwen was offered shape 5 and Flash-Next shape 4. The changes are aimed at the misses Qwen showed, so if anything they favour Qwen. The same kit adds a lock test: the exact tool list each brain is sent is kept as a short hash, and `npm test` fails if the list changes while the stamp stays the same.
+
+**The tools the jobs used.** Each job set offers the tools a person would expect for that kind of work. All are Bob's own tools, with the same names and inputs for every brain:
+
+| Job set | Tools the jobs lean on |
+|---|---|
+| Inbox (mail) | the mail catalog's tools to search, read, sort, label, move and reply, plus the notice board and reminders; moves and deletes need the person's OK (a rule since 23 November) |
+| Office | office_make, save_spreadsheet, read_file and write_file, convert_file, search_files and list_folder, with LibreOffice doing the file work |
+| Repo (Bob's own code) | read_file, write_file, edit_file, search_files, list_folder and run_command; a job passes only if its own check runs, the changed files are named and nothing is pushed |
+| Web | web_search and the page reader, served from a made-up `.example` web so no live searches are spent and pages can't change between runs |
+| Games (set up, no results yet) | write_file, edit_file and run_command against Godot 4.7.2, with a checker that runs each game and reads its screen |
+
+**What the shape did on Flash-Next.** Badly shaped tool calls were 2 in 1,254 on 21 November, and 0 to 1 per set for IQ3, Q2, Q4 and every keep level (sections 11.7.7 and 11.7.8). Stock Qwen on the same shape made 21 in 937. So shape 4 works for Flash-Next with no change. Whether shapes 4 and 5 raise stock Qwen's scores over the older lists is still unproven in our lab, as we have yet to test (section 8.9.3).
+
+**The engine's call reader (patch 0104, 23 November).** Lamplight reads a brain's calls with llama.cpp's own parsers. Patch 0104 brings four upstream parser fixes. A cloud test of every Bob chat template found the prompts byte-identical before and after, so the tool shapes are unchanged, and a small-model A/B wrote the same words with thinking and the draft head on or off (128 of 128 checks). The one change seen is that a Gemma 4 call written before its thinking closes is now read as a call. Two known faults remain: a plain-text `<tool_call>` inside a Qwen answer still ends the answer there, and Gemma's call grammar wants inputs in A to Z order. Its run on the home PC is still to come.
+
+<a id="tool-shape-findings"></a>
 
 ## 8.10 Findings on agent tool shapes
 

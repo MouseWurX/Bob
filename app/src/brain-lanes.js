@@ -4,6 +4,7 @@ import { freeMemNow } from './platform.js';
 import { currentSession, sessionBrains, brainDefaults, laneOf } from './sessions.js';
 import fs from 'node:fs';
 import { apuHoldbackGB } from './apu-fit.js';
+import { raceTimeout } from './hang-guard.js';
 import { sameModel, chatBrain, bigSession } from './brain-mode.js';
 import { bigThinker } from './moot.js';
 import { midJobOn } from './mid-job.js';
@@ -39,12 +40,15 @@ export function sideBrainBytes(brain) {
 export const APU_MIN_CTX = 8192;
 // 1.5.181 (two-Bob trial, Legion Go on UMA Auto: 6.6 of 15.2 GB free, and even a 3 GB brain was refused): how much
 // free memory a load leaves for Windows is the owner's to set, Settings, Brains, "Memory kept for Windows" (0 to 8 GB).
-// Nov 12 (apu-fit.js): 2 GB to start with, now that a brain's need counts its working buffers and the driver too, and
+// Nov 12 (apu-fit.js): 2 GB to start with (0.5 GB since Nov 23), now that a brain's need counts its working buffers and the driver too, and
 // at least 1 GB is always kept. (The 4 GB in platform.js, for how much the graphics may borrow, is a different sum.)
 export { APU_HOLDBACK_DEFAULT_GB, apuHoldbackGB } from './apu-fit.js';
 export const APU_CARVE_MARGIN_GB = 0.5; // 1.5.133: kept free inside the set-aside for the picture reader and the driver
 export const APU_NO_ROOM = (needGB, freeGB, holdGB = 1) => `That brain needs about ${needGB} GB and only about ${freeGB} GB is free${holdGB > 0 ? ' once Windows keeps its share' : ''}, so I haven't loaded it. Close something or pick a smaller brain in Settings, Brains.`;
-export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loaded = null, minCtx = APU_MIN_CTX } = {}) {
+export async function apuRoom(brain, model, ctx, { freeMem, loaded = null, minCtx = APU_MIN_CTX } = {}) {
+  // Nov 22: in Bob's first seconds the hardware check may not have said yet whether the graphics are built in
+  if (brain?.cfg?.hardwareReady && !brain.cfg.sharedGraphics) await raceTimeout(brain.cfg.hardwareReady, 5000).catch(() => {});
+  if (freeMem === undefined) freeMem = freeMemNow();
   if (!brain?.cfg?.sharedGraphics || !model) return { ok: true, ctx };
   // Nov 12 (apu-fit.js): the engine's honest figure when it has one: { card } wholly on the graphics (file, chat memory,
   // working buffers, driver) and { cpu } on the processor alone, where the file is read from the drive as needed. The
@@ -80,6 +84,24 @@ export async function apuRoom(brain, model, ctx, { freeMem = freeMemNow(), loade
   const gb = (b) => Math.round((Math.max(0, b) / GB) * 10) / 10;
   if (fits(need)) return { ok: true, ctx: c === start ? ctx : c, shortened: c !== start, needGB: gb(least(need)), roomGB: gb(room) };
   return { ok: false, ctx, needGB: gb(least(need)), roomGB: gb(room), line: APU_NO_ROOM(gb(least(need)), gb(room), apuHoldbackGB(brain.cfg)) };
+}
+
+// Nov 22, the Conductor's memory job: a brain that loaded with a shorter chat memory so Windows keeps its share
+// (fitCtx, brain.memCut) grows it again as the chat grows, one size at a time (doubling, up to what was asked for), when
+// the memory free now covers the extra chat memory and still leaves Windows its share. On Bob's own engine (Brain
+// Engine) the chat memory grows in place with the brain loaded; on other engines the brain loads again at the new size.
+// -> the new size, or 0 to stay (and the chat is fitted to what it has, as before).
+export function memGrowCtx(brain, model, cut, tokens, { freeMem = freeMemNow() } = {}) {
+  if (!cut || !(cut.ctx < cut.want) || !(tokens > cut.ctx * 0.75)) return 0;
+  let next = cut.ctx;
+  while (next < cut.want && next * 0.75 < tokens) next = Math.min(cut.want, next * 2);
+  const need = (c) => { const e = brain.engine?.apuNeed?.(model, c); return e ? Math.min(e.card, e.cpu) : null; };
+  const now = need(cut.ctx), then = need(next);
+  if (now == null || then == null) return 0;
+  const spare = freeMem - apuHoldbackGB(brain.cfg) * GB;
+  // too little room for the whole step: the biggest doubling that fits, if any
+  while (next > cut.ctx && then != null && need(next) - now > spare) next = Math.max(cut.ctx, Math.floor(next / 2));
+  return next > cut.ctx ? next : 0;
 }
 
 // A side-lane reply: always the small brain on the processor, so it never touches the card the painter holds.

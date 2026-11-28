@@ -7,7 +7,7 @@ import { nameNow } from './lab-names.js'; // 1.5.199 proper names in Professiona
 import { saveHtml } from './lab-save.js';
 import { createFullSize, fullSizeWhyNot } from './lab-fullsize.js'; // Bring in a full-size brain, right where the list is empty
 import { createContextPage } from './lab-context.js'; // 1.5.16x Longer: how much can it hold (thinking-paths sec 15.2)
-import { createTurboPage } from './lab-turbo.js'; // 1.5.16x Faster: Turbo (sec 15.1)
+import { createTurboPage } from './lab-turbo.js'; // 1.5.16x Faster: MTP (sec 15.1)
 import { createBestPage } from './lab-best.js'; // 1.5.188 Best answers: a bigger brain judges, a smaller one learns
 import { createTeachPage } from './lab-teach.js'; // 1.5.16x Teach it: here, or as a Forge plan (sec 15.3)
 import { createDiffusionPage } from './lab-diffusion.js'; // Diffusion brains (llama-diffusion-cli)

@@ -1,0 +1,98 @@
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index efe590e..a2b79fc 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -10,6 +10,7 @@
+ #include "ggml-cpu.h"
+ 
+ #include <algorithm>
++#include <numeric>
+ #include <array>
+ #include <atomic>
+ #include <chrono>
+@@ -3140,6 +3141,33 @@ struct llama_moe_cache::impl {
+     bool bw_striped = false;
+     std::vector<std::pair<ggml_tensor *, std::array<size_t, 2>>> bw_native; // banks and their views, nb[2] and nb[3]
+ 
++    // Brain Engine 0052: the bytes of one striped slot (0 = no striping), and the bytes the padding adds after the
++    // group's last bank. The CUDA matrix kernels take a bank's expert stride in blocks of its own type (nb[2]/type
++    // size), so the slot must be a whole number of blocks of every bank's type: a brain with Q4_K gates and Q6_K downs
++    // (144 and 210 byte blocks) otherwise reads every expert but the first from the wrong place. Padded up to the
++    // least common multiple; if that wastes more than an eighth, the first bank alone is lent (the 0048 layout).
++    std::pair<size_t, size_t> bw_slot_bytes() const {
++        if (bw_g < 0 || getenv("LLAMA_MOE_CACHE_BORROW_FIRST_BANK") != nullptr) {
++            return { 0, 0 };
++        }
++        const group & g = groups[bw_g];
++        size_t slot = 0, unit = 256;
++        for (const ggml_tensor * bank : g.banks) {
++            if (bank->nb[2] % 256 != 0) {
++                LLAMA_LOG_WARN("llama_moe_cache: borrowed reading lends the first bank only: a slot of %zu bytes is not a multiple of 256\n", (size_t) bank->nb[2]);
++                return { 0, 0 };
++            }
++            slot += bank->nb[2];
++            unit = std::lcm(unit, ggml_type_size(bank->type));
++        }
++        const size_t padded = (slot + unit - 1)/unit*unit; // unit is not a power of two (GGML_PAD needs one)
++        if ((padded - slot)*8 > slot) {
++            LLAMA_LOG_WARN("llama_moe_cache: borrowed reading lends the first bank only: a slot laid out slot by slot would need %zu bytes of padding on %zu\n", padded - slot, slot);
++            return { 0, 0 };
++        }
++        return { padded, (padded - slot)*(size_t) g.n_slots };
++    }
++
+     void bw_unstripe() {
+         for (auto & [t, nb] : bw_native) {
+             t->nb[2] = nb[0];
+@@ -3150,17 +3178,13 @@ struct llama_moe_cache::impl {
+     }
+ 
+     void bw_stripe(ggml_backend_buffer_t buf) {
+-        if (getenv("LLAMA_MOE_CACHE_BORROW_FIRST_BANK") != nullptr) {
+-            return; // the 0048 layout (tests)
++        const size_t slot = bw_slot_bytes().first;
++        if (slot == 0) {
++            return; // the 0048 layout
+         }
+         group & g = groups[bw_g];
+-        size_t slot = 0;
+         for (const ggml_tensor * bank : g.banks) {
+-            if (bank->nb[2] % 256 != 0) {
+-                LLAMA_LOG_WARN("llama_moe_cache: borrowed reading lends the first bank only: a slot of %zu bytes is not a multiple of 256\n", (size_t) bank->nb[2]);
+-                return;
+-            }
+-            slot += bank->nb[2];
++            GGML_ASSERT(slot % ggml_type_size(bank->type) == 0); // 0052: a whole number of blocks for every kernel
+         }
+         // the banks were placed one after another from banks[0]; slot by slot they fill the same bytes
+         device & d = devices[bw_dev];
+@@ -3226,7 +3250,9 @@ struct llama_moe_cache::impl {
+                 bytes += GGML_PAD(ggml_backend_buft_get_alloc_size(d.buft, t), align);
+             }
+         }
+-        ggml_backend_buffer_t buf = ggml_backend_buft_alloc_buffer(d.buft, own + bytes + align);
++        const ggml_tensor * last_bank = groups[bw_g].banks.back();
++        const size_t pad = GGML_PAD(bw_slot_bytes().second, align); // 0052: room for the padded slots after the last bank
++        ggml_backend_buffer_t buf = ggml_backend_buft_alloc_buffer(d.buft, own + bytes + pad + align);
+         if (buf == nullptr) {
+             LLAMA_LOG_WARN("llama_moe_cache: !!! borrowed reading NOT USED: no room for a region of %.2f MiB, the cache goes back as it was\n",
+                 (own + bytes)/1024.0/1024.0);
+@@ -3242,6 +3268,9 @@ struct llama_moe_cache::impl {
+         for (ggml_tensor * t = ggml_get_first_tensor(d.ctx.get()); t != nullptr; t = ggml_get_next_tensor(d.ctx.get(), t)) {
+             if (t->view_src == nullptr) {
+                 GGML_ASSERT(ggml_tallocr_alloc(&ta, t) == GGML_STATUS_SUCCESS);
++                if (t == last_bank) {
++                    ta.offset += pad;
++                }
+             }
+         }
+         bw_stripe(buf); // Brain Engine 0051
+@@ -3259,7 +3288,7 @@ struct llama_moe_cache::impl {
+         const auto [up, n] = upload_slots([&](int32_t id) { return devices[id].backend; });
+         LLAMA_LOG_INFO("llama_moe_cache: borrowed reading: region %.2f MiB = working memory %.2f MiB + cache %.2f MiB, up to %.2f MiB lent "
+             "(%d slots%s); %zu experts put back in %.1f ms\n", ggml_backend_buffer_get_size(buf)/1024.0/1024.0,
+-            bw_own/1024.0/1024.0, bytes/1024.0/1024.0, bw_lend/1024.0/1024.0, g.n_slots, bw_striped ? ", every bank, laid out slot by slot" : " of the first bank", n, (ggml_time_us() - t0)/1000.0);
++            bw_own/1024.0/1024.0, bytes/1024.0/1024.0, bw_lend/1024.0/1024.0, g.n_slots, bw_striped ? (pad > 0 ? ", every bank, laid out slot by slot, padded to whole blocks" : ", every bank, laid out slot by slot") : " of the first bank", n, (ggml_time_us() - t0)/1000.0);
+         GGML_UNUSED(up);
+         return true;
+     }

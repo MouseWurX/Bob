@@ -1,0 +1,343 @@
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index cc437f8..63b5d01 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -875,6 +875,7 @@ struct llama_moe_cache::impl {
+         dr_init(model, no_alloc); // Brain Engine 0050
+         rc_init(no_alloc);        // Brain Engine 0060
+         rf_init(no_alloc);        // Brain Engine 0054
++        ia_init(no_alloc);        // Brain Engine 0071 (after the drive tier, which it steps aside for)
+ 
+         for (size_t id = 0; id < devices.size(); ++id) {
+             const device & d = devices[id];
+@@ -2321,6 +2322,7 @@ struct llama_moe_cache::impl {
+         if (bw_buft) {
+             ggml_backend_buft_free_alloc_from(bw_buft); // the context's scheduler, which used it, is gone by now
+         }
++        ia_shutdown(); // Brain Engine 0071
+         db_shutdown();
+         rc_shutdown(); // Brain Engine 0060
+         dr_shutdown(); // Brain Engine 0050
+@@ -2418,6 +2420,208 @@ struct llama_moe_cache::impl {
+     size_t ip_hits = 0, ip_misses = 0, ip_bytes = 0, ip_reads = 0, ip_zone_slots = 0, ip_back = 0;
+     int64_t ip_back_us = 0;
+ 
++    // Brain Engine 0071 (LLAMA_MOE_CACHE_READ_AHEAD=1, off unless set, with 0069): read ahead. A long read's layer picks
++    // nearly every expert, so the next layer's misses are known before its router runs: every expert the cache doesn't
++    // hold. The zone becomes two halves, taken in turn by a group's layers; while a layer computes from one half, the next
++    // layer's misses go up into the other on a second stream of the card (from the RAM cache, 0060, when it holds them).
++    // That layer's lookup then waits for them and uploads nothing. Same bytes in the slots it reads, so the same words.
++    // Idea from Avalon (freriadoc/Avalon, MIT); the streaming of 0059/0067, done inside the in-place read.
++    struct ia_copy { ggml_tensor * bank; const void * src; size_t off, size; };
++    struct ia_job {
++        int32_t il = -1;
++        ggml_backend_t copier = nullptr;
++        std::vector<int32_t> slot_of; // per expert: its slot in the half, -1 if it isn't sent
++        size_t n_sent = 0;            // the first n_sent slots of the half
++        std::vector<ia_copy> copies;
++    };
++    bool ia_on = false;
++    bool ia_threaded = false;
++    std::vector<ggml_backend_t> ia_copier;                  // per device: a second stream
++    std::vector<std::array<std::vector<int32_t>, 2>> ip_half; // per group: the two halves (empty: one zone, no read ahead)
++    std::vector<int32_t> ia_pos;                            // per layer: its place among its group's layers
++    ia_job ia_cur, ia_ready;                                // in flight, and the last one done
++    bool ia_busy = false, ia_stop = false, ia_has_ready = false;
++    std::thread ia_th;
++    std::mutex ia_mu;
++    std::condition_variable ia_cv;
++    size_t ia_layers = 0, ia_sent = 0, ia_bytes = 0, ia_used = 0, ia_from_ram = 0, ia_single = 0;
++    int64_t ia_wait_us = 0;
++
++    void ia_run(ia_job & jb) {
++        for (const ia_copy & c : jb.copies) {
++            ggml_backend_tensor_set_async(jb.copier, c.bank, c.src, c.off, c.size);
++        }
++        ggml_backend_synchronize(jb.copier);
++    }
++
++    void ia_loop() {
++        for (;;) {
++            ia_job jb;
++            {
++                std::unique_lock<std::mutex> lk(ia_mu);
++                ia_cv.wait(lk, [&] { return ia_stop || ia_busy; });
++                if (ia_stop) {
++                    return;
++                }
++                jb = std::move(ia_cur);
++            }
++            ia_run(jb);
++            {
++                std::lock_guard<std::mutex> lk(ia_mu);
++                ia_ready = std::move(jb);
++                ia_has_ready = true;
++                ia_busy = false;
++            }
++            ia_cv.notify_all();
++        }
++    }
++
++    // the job in flight is done (its copies are on the card)
++    void ia_wait() {
++        if (!ia_on) {
++            return;
++        }
++        const int64_t t0 = ggml_time_us();
++        std::unique_lock<std::mutex> lk(ia_mu);
++        ia_cv.wait(lk, [&] { return !ia_busy; });
++        ia_wait_us += ggml_time_us() - t0;
++    }
++
++    void ia_submit(ia_job && jb) {
++        if (!ia_threaded) {
++            ia_run(jb);
++            ia_ready = std::move(jb);
++            ia_has_ready = true;
++            return;
++        }
++        {
++            std::lock_guard<std::mutex> lk(ia_mu);
++            ia_cur  = std::move(jb);
++            ia_busy = true;
++        }
++        ia_cv.notify_all();
++    }
++
++    void ia_shutdown() {
++        if (ia_th.joinable()) {
++            {
++                std::lock_guard<std::mutex> lk(ia_mu);
++                ia_stop = true;
++            }
++            ia_cv.notify_all();
++            ia_th.join();
++        }
++        for (ggml_backend_t b : ia_copier) {
++            if (b) {
++                ggml_backend_synchronize(b);
++                ggml_backend_free(b);
++            }
++        }
++        ia_copier.clear();
++    }
++
++    void ia_init(bool no_alloc) {
++        const char * v = getenv("LLAMA_MOE_CACHE_READ_AHEAD");
++        if (no_alloc || v == nullptr || atoi(v) <= 0) {
++            return;
++        }
++        if (!ip_on) {
++            LLAMA_LOG_WARN("llama_moe_cache: !!! LLAMA_MOE_CACHE_READ_AHEAD NOT USED: it needs in-place long reads (0069)\n");
++            return;
++        }
++        if (dr_on) {
++            // the drive tier decides which experts are read how (and the RAM floor counts them); a second reader of
++            // the map would go around it. Not yet.
++            LLAMA_LOG_WARN("llama_moe_cache: !!! LLAMA_MOE_CACHE_READ_AHEAD NOT USED: not together with the drive tier (LLAMA_MOE_DRIVE) yet\n");
++            return;
++        }
++        ia_copier.assign(devices.size(), nullptr);
++        bool cuda = true;
++        for (size_t id = 0; id < devices.size(); ++id) {
++            if (!devices[id].ctx) {
++                continue;
++            }
++            ggml_backend_dev_t dev = ggml_backend_get_device(devices[id].backend);
++            ia_copier[id] = ggml_backend_dev_init(dev, nullptr);
++            if (!ia_copier[id]) {
++                LLAMA_LOG_WARN("llama_moe_cache: !!! LLAMA_MOE_CACHE_READ_AHEAD NOT USED: no second stream on %s\n", ggml_backend_dev_name(dev));
++                ia_shutdown();
++                return;
++            }
++            cuda = cuda && strstr(ggml_backend_dev_name(dev), "CUDA") != nullptr;
++        }
++        ia_pos.assign(layers.size(), 0);
++        for (const group & g : groups) {
++            int32_t k = 0;
++            for (int32_t il : g.layers) {
++                ia_pos[il] = k++;
++            }
++        }
++        ip_half.assign(groups.size(), {});
++        // a thread queues the copies, so the processor's copying overlaps the card's work (CUDA; the stand-in card of the
++        // tests shares one connection per buffer, so there it runs in line: same steps, no overlap)
++        ia_threaded = cuda || (getenv("LLAMA_MOE_CACHE_READ_AHEAD_THREAD") && atoi(getenv("LLAMA_MOE_CACHE_READ_AHEAD_THREAD")) > 0);
++        if (ia_threaded) {
++            ia_th = std::thread([this] { ia_loop(); });
++        }
++        ia_on = true;
++        LLAMA_LOG_INFO("llama_moe_cache: read ahead on: a long read's next layer's misses go up on a second stream while a layer computes (%s)\n",
++            ia_threaded ? "queued by a thread" : "in line");
++    }
++
++    // the layer after il that reads in place, or -1
++    int32_t ia_next(int32_t il) const {
++        for (int32_t k = il + 1; k < (int32_t) layers.size(); ++k) {
++            if (layers[k].ig >= 0) {
++                return ip_group_ok(groups[layers[k].ig]) && !ip_half[layers[k].ig][0].empty() ? k : -1;
++            }
++        }
++        return -1;
++    }
++
++    // send il_next's misses (every expert its group doesn't hold) into its half, on the second stream
++    void ia_ahead(int32_t il_next) {
++        const layer & l = layers[il_next];
++        group & g = groups[l.ig];
++        const std::vector<int32_t> & half = ip_half[l.ig][ia_pos[il_next] & 1];
++        const int32_t * slots = g.lru.slot_map[il_next];
++        if (slots == nullptr) {
++            return;
++        }
++        ia_job jb;
++        jb.il = il_next;
++        jb.copier = ia_copier[g.id];
++        const int32_t n_exp = (int32_t) g.ref[0]->ne[2];
++        jb.slot_of.assign(n_exp, -1);
++        size_t k = 0;
++        for (int32_t e = 0; e < n_exp && k < half.size(); ++e) {
++            if (slots[e] < g.n_slots) {
++                continue;
++            }
++            const int32_t s = half[k++];
++            jb.slot_of[e] = s;
++            for (size_t ip = 0; ip < l.experts.size(); ++ip) {
++                const ggml_tensor * w = l.experts[ip];
++                const size_t es = w->nb[2];
++                const void * src = rc_on ? rc_lookup(w, e) : nullptr; // 0060: kept until the next lookup, which waits for this
++                if (src) {
++                    ia_from_ram++;
++                } else {
++                    src = (const uint8_t *) w->data + (size_t) e*es;
++                }
++                jb.copies.push_back({ g.banks[ip], src, (size_t) s*g.banks[ip]->nb[2], es });
++                ia_bytes += es;
++            }
++            ia_sent++;
++        }
++        if (jb.copies.empty()) {
++            return;
++        }
++        jb.n_sent = k;
++        ia_layers++;
++        ia_submit(std::move(jb));
++    }
++
+     void ip_init() {
+         const char * v = getenv("LLAMA_MOE_CACHE_READ_IN_PLACE");
+         if (v != nullptr && *v != '\0' && atoi(v) == 0) {
+@@ -2481,7 +2685,16 @@ struct llama_moe_cache::impl {
+             }
+             std::stable_sort(order.begin(), order.end(), [](const auto & a, const auto & b) { return a.first > b.first; });
+             std::vector<int32_t> & zone = ip_zone[ig];
+-            for (size_t k = 0; (int32_t) zone.size() < z && k < order.size(); ++k) {
++            // Brain Engine 0071: two halves of z each, when the group has the slots (else one zone, no read ahead)
++            // (taking slots raises z, so the second half stops at half the group: past that, one zone as before)
++            const bool two = ia_on && 2*(size_t) z + (size_t) n_exp/4 <= (size_t) g.n_slots;
++            const size_t two_cap = (size_t) g.n_slots/2;
++            if (ia_on) {
++                ip_half[ig][0].clear();
++                ip_half[ig][1].clear();
++            }
++            const auto want = [&]() { return two && zone.size() < two_cap ? 2*z : z; };
++            for (size_t k = 0; (int32_t) zone.size() < want() && k < order.size(); ++k) {
+                 const int32_t s   = order[k].second;
+                 const int32_t key = lru.key_of[s];
+                 if (key >= 0) {
+@@ -2499,6 +2712,12 @@ struct llama_moe_cache::impl {
+             GGML_ASSERT((int32_t) zone.size() >= z && "the in-place zone is smaller than a layer's misses");
+             std::sort(zone.begin(), zone.end());
+             total += zone.size();
++            if (two && (int32_t) zone.size() >= 2*z) {
++                ip_half[ig][0].assign(zone.begin(), zone.begin() + zone.size()/2);
++                ip_half[ig][1].assign(zone.begin() + zone.size()/2, zone.end());
++            } else if (ia_on) {
++                ia_single++;
++            }
+         }
+         db_dirty = true; // 0042: the doorbell's mirrors follow the slot maps
+         ip_active = true;
+@@ -2513,6 +2732,8 @@ struct llama_moe_cache::impl {
+         if (!ip_active) {
+             return;
+         }
++        ia_wait(); // 0071: nothing still going up into the zone
++        ia_has_ready = false;
+         ip_active = false;
+         const int64_t t0 = ggml_time_us();
+         for (size_t ig = 0; ig < groups.size(); ++ig) {
+@@ -2568,6 +2789,7 @@ struct llama_moe_cache::impl {
+         ids.resize(ggml_nelements(sel));
+         ggml_backend_tensor_get_async(backend, sel, ids.data(), 0, ggml_nbytes(sel));
+         ggml_backend_synchronize(backend); // also: the layer before is done with the zone
++        ia_wait(); // 0071: what went up ahead is on the card, and its RAM cache entries may go
+         if (rf_on) {
+             rf_tick();
+         }
+@@ -2577,7 +2799,10 @@ struct llama_moe_cache::impl {
+         }
+         const int32_t n_exp = (int32_t) l.slot_map->ne[1];
+         const int32_t * slots = g.lru.slot_map[il];
+-        const std::vector<int32_t> & zone = ip_zone[l.ig];
++        // 0071: with read ahead the layer reads from its half, and what went up ahead for it is already there
++        const bool halves = ia_on && !ip_half[l.ig][0].empty();
++        const std::vector<int32_t> & zone = halves ? ip_half[l.ig][ia_pos[il] & 1] : ip_zone[l.ig];
++        const bool ahead = halves && ia_has_ready && ia_ready.il == il;
+         ip_seen.assign(n_exp, 0);
+         ip_map.assign(n_exp, 0);
+         ip_fills.clear();
+@@ -2588,7 +2813,7 @@ struct llama_moe_cache::impl {
+             }
+             ip_seen[e] = 1;
+         }
+-        size_t zi = 0;
++        size_t zi = ahead ? ia_ready.n_sent : 0; // 0071: past the slots read ahead took
+         for (int32_t e = 0; e < n_exp; ++e) { // ascending, so consecutive misses land in consecutive zone slots
+             if (!ip_seen[e]) {
+                 continue;
+@@ -2596,6 +2821,9 @@ struct llama_moe_cache::impl {
+             if (slots[e] < g.n_slots) {
+                 ip_map[e] = slots[e];
+                 hits++;
++            } else if (ahead && ia_ready.slot_of[e] >= 0) {
++                ip_map[e] = ia_ready.slot_of[e]; // 0071: sent ahead
++                ia_used++;
+             } else {
+                 GGML_ASSERT(zi < zone.size() && "a long read missed more experts than its zone holds");
+                 ip_map[e] = zone[zi];
+@@ -2603,12 +2831,22 @@ struct llama_moe_cache::impl {
+                 zi++;
+             }
+         }
++        if (ahead) {
++            ia_has_ready = false;
++        }
+         const size_t bytes = upload_fills(backend, l, g, ip_fills);
+         ip_hits   += hits;
+         ip_misses += ip_fills.size();
+         ip_bytes  += bytes;
+         // the next call synchronizes the backend before ip_map changes again
+         ggml_backend_tensor_set_async(backend, dst, ip_map.data(), 0, ggml_nbytes(l.slot_map));
++        // 0071: while this layer computes, the next one's misses go up into its half
++        if (halves) {
++            const int32_t il_next = ia_next(il);
++            if (il_next >= 0 && !(layers[il_next].ig == l.ig && (ia_pos[il_next] & 1) == (ia_pos[il] & 1))) {
++                ia_ahead(il_next);
++            }
++        }
+         return true;
+     }
+ 
+@@ -4784,6 +5022,11 @@ struct llama_moe_cache::impl {
+                 "zone up to %zu slots, %zu experts put back before writing in %.1f ms\n", ip_reads, ip_hits, ip_misses, ip_bytes/1048576.0,
+                 ip_zone_slots, ip_back, ip_back_us/1000.0);
+         }
++        if (ia_on) {
++            LLAMA_LOG_INFO("llama_moe_cache: read ahead: %zu layers sent ahead, %zu experts (%.2f MiB, %zu parts from the RAM cache), "
++                "%zu used, %zu groups too small for two halves, %.1f ms waited\n", ia_layers, ia_sent, ia_bytes/1048576.0, ia_from_ram,
++                ia_used, ia_single, ia_wait_us/1000.0);
++        }
+     }
+ };
+ 

@@ -1,0 +1,35 @@
+diff --git a/common/common.cpp b/common/common.cpp
+index c3c29ab..3e398e5 100644
+--- a/common/common.cpp
++++ b/common/common.cpp
+@@ -1309,13 +1309,29 @@ void common_fit_apply(common_params & params, llama_model_params & mparams, llam
+         /*.shares_model =*/ !has_draft, // an MTP context runs on the weights of the main model
+     };
+ 
+-    common_fit_params(params.model.get_paths(), &mparams, &cparams,
++    const common_params_fit_status status = common_fit_params(params.model.get_paths(), &mparams, &cparams,
+         params.tensor_split,
+         params.tensor_buft_overrides.data(),
+         params.fit_params_target.data(),
+         params.fit_params_min_ctx,
+         has_draft || spec_mtp ? &extra : nullptr,
+         params.verbosity >= LOG_LEVEL_DEBUG ? GGML_LOG_LEVEL_DEBUG : GGML_LOG_LEVEL_ERROR);
++
++    // Brain Engine 0087: the fit is done once. It writes the split and the overrides into params already, but the
++    // layer count only into mparams, so the next context (POST /context) fitted again with the brain still on the
++    // card, saw too little room, stopped at "overrides already set" and kept a different layer count: the placement
++    // changed and the whole brain loaded again (about 15 s per step switch). Keeping the layer count and turning the
++    // fit off for later contexts gives the same placement, so the kept brain is used again. A separate draft model
++    // is left as it was: its own fitted layer count is not kept here.
++    if (status == COMMON_PARAMS_FIT_STATUS_SUCCESS && (!has_draft || spec_mtp)) {
++        params.n_gpu_layers = mparams.n_gpu_layers;
++        if (params.n_ctx == 0 || (uint32_t) params.n_ctx > cparams.n_ctx) {
++            params.n_ctx = (int32_t) cparams.n_ctx;
++        }
++        params.fit_params = false;
++        COM_INF("fit kept for later contexts: %d layers on the card%s\n", params.n_gpu_layers,
++                params.tensor_buft_overrides.size() > 1 ? ", with overrides" : "");
++    }
+ }
+ 
+ common_init_result::common_init_result(common_params & params, bool model_only) :

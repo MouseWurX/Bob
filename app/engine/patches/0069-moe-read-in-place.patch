@@ -1,0 +1,375 @@
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index edff4e9..cc437f8 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -863,6 +863,7 @@ struct llama_moe_cache::impl {
+                 }
+             }
+             LLAMA_LOG_INFO("%s: MoE cache brain fingerprint = %016llx\n", __func__, (unsigned long long) fingerprint);
++            ip_init(); // Brain Engine 0069
+             if (const char * path = getenv("LLAMA_MOE_CACHE_RANKING"); path != nullptr && *path != '\0') {
+                 fill_from_ranking(path);
+             }
+@@ -2354,6 +2355,263 @@ struct llama_moe_cache::impl {
+         }
+     }
+ 
++    // upload the missing experts, consecutive experts going to consecutive slots are uploaded together
++    // Brain Engine 0050: runs that are not in RAM are read from the drive first (dr_upload), all of a layer's at once
++    // Brain Engine 0069: a member, so the in-place reads upload their misses the same way
++    size_t upload_fills(ggml_backend_t backend, const layer & l, group & g, const std::vector<moe_cache_lru::fill> & up) {
++        size_t bytes = 0;
++        if (dr_on) {
++            dr_jobs.clear();
++        }
++        for (size_t ip = 0; ip < l.experts.size(); ++ip) {
++            const ggml_tensor * w    = l.experts[ip];
++            ggml_tensor       * bank = g.banks[ip];
++            const size_t expert_size = w->nb[2];
++            for (size_t i = 0; i < up.size();) {
++                // Brain Engine 0060: through the RAM cache, one expert at a time
++                if (rc_on && rc_take(backend, w, bank, up[i].expert, (size_t) up[i].slot*bank->nb[2])) {
++                    bytes += expert_size;
++                    i += 1;
++                    continue;
++                }
++                size_t n = 1;
++                while (!striped(bank, w) && !rc_on && i + n < up.size() && up[i + n].expert == up[i].expert + (int32_t) n && up[i + n].slot == up[i].slot + (int32_t) n) {
++                    n++;
++                }
++                const uint8_t * src = (const uint8_t *) w->data + up[i].expert*expert_size;
++                const size_t    dst = (size_t) up[i].slot*bank->nb[2];
++                if (!dr_on || !dr_want(w, src, n*expert_size)) {
++                    ggml_backend_tensor_set_async(backend, bank, src, dst, n*expert_size);
++                    if (rf_on) {
++                        rf_note(w, src, n*expert_size);
++                    }
++                } else {
++                    dr_jobs.push_back({ w, bank, (size_t) up[i].expert*expert_size, dst, n*expert_size, nullptr });
++                }
++                bytes += n*expert_size;
++                i += n;
++            }
++        }
++        if (dr_on && !dr_jobs.empty()) {
++            dr_upload(backend);
++        }
++        return bytes;
++    }
++
++    // Brain Engine 0069 (on unless LLAMA_MOE_CACHE_READ_IN_PLACE=0): long reads use the cached experts where they sit.
++    // A batch of more than max_batch tokens used to bypass the cache: the scheduler copied every used expert of a layer
++    // into a working copy of the whole layer (from the cache card to card, the rest from RAM) before each step. Now such a
++    // batch reads through the slot map like writing does. The hits are read in their slots; the misses go up into a
++    // zone of the group's coldest slots, taken out of the cache for the read (their experts are put back, hottest first,
++    // before the first written word). The zone is as big as the most misses any layer of the group can have, so every
++    // layer always fits and the step's working memory no longer holds a copy of a layer's experts. The LRU is not
++    // touched by a read, so the experts used in writing stay. Off next to borrowed reading (0048), lending (0022), the
++    // read layout (0024) and stream ahead (0059/0067), which all work on the layer copies; layers whose group has fewer
++    // slots than a layer has experts read the stock way.
++    bool ip_on = false;
++    bool ip_active = false;
++    std::vector<std::vector<int32_t>> ip_zone;    // per group: the zone's slots, ascending
++    std::vector<std::vector<int32_t>> ip_dropped; // per group: keys the zone took out of the cache
++    std::vector<int32_t> ip_map;                  // the slot map sent for a layer
++    std::vector<uint8_t> ip_seen;
++    std::vector<moe_cache_lru::fill> ip_fills;
++    size_t ip_hits = 0, ip_misses = 0, ip_bytes = 0, ip_reads = 0, ip_zone_slots = 0, ip_back = 0;
++    int64_t ip_back_us = 0;
++
++    void ip_init() {
++        const char * v = getenv("LLAMA_MOE_CACHE_READ_IN_PLACE");
++        if (v != nullptr && *v != '\0' && atoi(v) == 0) {
++            LLAMA_LOG_INFO("llama_moe_cache: long reads copy each layer's experts as before (LLAMA_MOE_CACHE_READ_IN_PLACE=0)\n");
++            return;
++        }
++        auto set = [](const char * k) { const char * e = getenv(k); return e != nullptr && *e != '\0' && atoi(e) != 0; };
++        const char * next_to = set("LLAMA_MOE_CACHE_LEND") ? "LLAMA_MOE_CACHE_LEND" :
++                               set("LLAMA_MOE_CACHE_READ_LAYERS") ? "LLAMA_MOE_CACHE_READ_LAYERS" :
++                               set("LLAMA_MOE_STREAM_AHEAD") ? "LLAMA_MOE_STREAM_AHEAD" :
++                               set("LLAMA_MOE_STREAM_NEXT") ? "LLAMA_MOE_STREAM_NEXT" : nullptr;
++        if (next_to != nullptr) {
++            LLAMA_LOG_WARN("llama_moe_cache: !!! in-place long reads NOT USED next to %s (it works on the layer copies)\n", next_to);
++            return;
++        }
++        ip_on = true;
++        ip_zone.assign(groups.size(), {});
++        ip_dropped.assign(groups.size(), {});
++        LLAMA_LOG_INFO("llama_moe_cache: long reads use the cached experts in place, only the misses go up (LLAMA_MOE_CACHE_READ_IN_PLACE=0 turns it off)\n");
++    }
++
++    bool ip_group_ok(const group & g) const {
++        return g.n_slots >= (int32_t) g.ref[0]->ne[2];
++    }
++
++    // the zones, taken from the coldest slots of each group, before the first layer of a long read
++    void ip_begin() {
++        la_drain();
++        db_lost();
++        const int64_t t0 = ggml_time_us();
++        size_t total = 0, dropped = 0;
++        for (size_t ig = 0; ig < groups.size(); ++ig) {
++            group & g = groups[ig];
++            ip_zone[ig].clear();
++            ip_dropped[ig].clear();
++            if (!ip_group_ok(g)) {
++                continue;
++            }
++            moe_cache_lru & lru = g.lru;
++            const int32_t n_exp = (int32_t) g.ref[0]->ne[2];
++            // misses per layer of the group: the experts it has no slot for
++            std::vector<int32_t> miss(layers.size(), 0);
++            int32_t z = 0;
++            for (int32_t il : g.layers) {
++                const int32_t * map = lru.slot_map[il];
++                if (map == nullptr) {
++                    continue;
++                }
++                for (int32_t e = 0; e < n_exp; ++e) {
++                    miss[il] += map[e] >= g.n_slots;
++                }
++                z = std::max(z, miss[il]);
++            }
++            // coldest first, as victim() scores them: empty slots, then age/2^class, highest first
++            std::vector<std::pair<double, int32_t>> order;
++            order.reserve(g.n_slots);
++            for (int32_t s = 0; s < g.n_slots; ++s) {
++                const int32_t key = lru.key_of[s];
++                const double score = key < 0 ? HUGE_VAL : std::ldexp((double) (lru.clock[lru.key_layer(key)] - lru.last_use[key]), -(int) lru.list_of[s]);
++                order.push_back({ score, s });
++            }
++            std::stable_sort(order.begin(), order.end(), [](const auto & a, const auto & b) { return a.first > b.first; });
++            std::vector<int32_t> & zone = ip_zone[ig];
++            for (size_t k = 0; (int32_t) zone.size() < z && k < order.size(); ++k) {
++                const int32_t s   = order[k].second;
++                const int32_t key = lru.key_of[s];
++                if (key >= 0) {
++                    const int32_t kl = lru.key_layer(key);
++                    lru.slot_map[kl][lru.key_expert(key)] = lru.empty;
++                    lru.n_filled--;
++                    lru.key_of[s] = -1;
++                    lru.move_head(s, 0);
++                    ip_dropped[ig].push_back(key);
++                    dropped++;
++                    z = std::max(z, ++miss[kl]); // that layer now misses this expert too
++                }
++                zone.push_back(s);
++            }
++            GGML_ASSERT((int32_t) zone.size() >= z && "the in-place zone is smaller than a layer's misses");
++            std::sort(zone.begin(), zone.end());
++            total += zone.size();
++        }
++        db_dirty = true; // 0042: the doorbell's mirrors follow the slot maps
++        ip_active = true;
++        ip_reads++;
++        ip_zone_slots = std::max(ip_zone_slots, total);
++        LLAMA_LOG_DEBUG("llama_moe_cache: in-place long read: zone of %zu slots (%zu experts taken out of the cache) in %.1f ms\n",
++            total, dropped, (ggml_time_us() - t0)/1000.0);
++    }
++
++    // after a long read: the experts the zones took out go back, hottest first, before the first written word
++    void ip_end() {
++        if (!ip_active) {
++            return;
++        }
++        ip_active = false;
++        const int64_t t0 = ggml_time_us();
++        for (size_t ig = 0; ig < groups.size(); ++ig) {
++            group & g = groups[ig];
++            moe_cache_lru & lru = g.lru;
++            std::vector<int32_t> keys;
++            keys.swap(ip_dropped[ig]);
++            std::vector<int32_t> zone;
++            zone.swap(ip_zone[ig]);
++            if (keys.empty()) {
++                continue;
++            }
++            auto heat = [&](int32_t key) { return lru.decayed_crf(lru.key_layer(key), key); };
++            std::stable_sort(keys.begin(), keys.end(), [&](int32_t a, int32_t b) { return heat(a) > heat(b); });
++            ggml_backend_t backend = devices[g.id].backend;
++            // per layer, so upload_fills can take runs and the RAM cache
++            std::vector<std::vector<moe_cache_lru::fill>> per(layers.size());
++            size_t zi = 0;
++            for (int32_t key : keys) {
++                if (zi >= zone.size()) {
++                    break;
++                }
++                const int32_t kl = lru.key_layer(key);
++                const int32_t ke = lru.key_expert(key);
++                if (lru.slot_map[kl] == nullptr || lru.slot_map[kl][ke] < g.n_slots) {
++                    continue;
++                }
++                const int32_t s = zone[zi++];
++                GGML_ASSERT(lru.key_of[s] < 0);
++                per[kl].push_back({ ke, s });
++                lru.slot_map[kl][ke] = s;
++                lru.key_of[s] = key;
++                lru.move(s, lru.class_of(key));
++                lru.n_filled++;
++                ip_back++;
++            }
++            for (size_t il = 0; il < per.size(); ++il) {
++                if (!per[il].empty()) {
++                    std::sort(per[il].begin(), per[il].end(), [](const auto & a, const auto & b) { return a.expert < b.expert; });
++                    upload_fills(backend, layers[il], g, per[il]);
++                }
++            }
++        }
++        db_dirty = true;
++        ip_back_us += ggml_time_us() - t0;
++    }
++
++    // the copy callback of a long read's slot lookup: hits keep their slots, misses go up into the zone
++    bool ip_copy(ggml_backend_t backend, int32_t il, layer & l, group & g, const ggml_tensor * sel, ggml_tensor * dst) {
++        if (!ip_active) {
++            ip_begin();
++        }
++        ids.resize(ggml_nelements(sel));
++        ggml_backend_tensor_get_async(backend, sel, ids.data(), 0, ggml_nbytes(sel));
++        ggml_backend_synchronize(backend); // also: the layer before is done with the zone
++        if (rf_on) {
++            rf_tick();
++        }
++        rc_gen++;
++        if (ids_sink != nullptr) {
++            ids_sink(ids_sink_ud, il, ids.data(), ids.size(), (int32_t) sel->src[0]->ne[0]);
++        }
++        const int32_t n_exp = (int32_t) l.slot_map->ne[1];
++        const int32_t * slots = g.lru.slot_map[il];
++        const std::vector<int32_t> & zone = ip_zone[l.ig];
++        ip_seen.assign(n_exp, 0);
++        ip_map.assign(n_exp, 0);
++        ip_fills.clear();
++        size_t hits = 0;
++        for (int32_t e : ids) {
++            if (e < 0 || e >= n_exp || ip_seen[e]) {
++                continue;
++            }
++            ip_seen[e] = 1;
++        }
++        size_t zi = 0;
++        for (int32_t e = 0; e < n_exp; ++e) { // ascending, so consecutive misses land in consecutive zone slots
++            if (!ip_seen[e]) {
++                continue;
++            }
++            if (slots[e] < g.n_slots) {
++                ip_map[e] = slots[e];
++                hits++;
++            } else {
++                GGML_ASSERT(zi < zone.size() && "a long read missed more experts than its zone holds");
++                ip_map[e] = zone[zi];
++                ip_fills.push_back({ e, zone[zi] });
++                zi++;
++            }
++        }
++        const size_t bytes = upload_fills(backend, l, g, ip_fills);
++        ip_hits   += hits;
++        ip_misses += ip_fills.size();
++        ip_bytes  += bytes;
++        // the next call synchronizes the backend before ip_map changes again
++        ggml_backend_tensor_set_async(backend, dst, ip_map.data(), 0, ggml_nbytes(l.slot_map));
++        return true;
++    }
++
+     ggml_tensor * get_slot_map(int32_t il, int64_t n_tokens, int64_t n_expert_used, bool cpu_part) const {
+         if (lent || filling || il < 0 || il >= (int32_t) layers.size() || layers[il].ig < 0) {
+             return nullptr;
+@@ -2363,6 +2621,10 @@ struct llama_moe_cache::impl {
+             // only the resident layers, and never with a CPU part (the read layout has no zero slots for it)
+             return n_tokens > 0 && !cpu_part && resident[il] ? l.slot_map : nullptr;
+         }
++        // Brain Engine 0069: a long read without a CPU part reads the cached experts in place
++        if (ip_on && !bw_on && !cpu_part && n_tokens > max_batch) {
++            return ip_group_ok(groups[l.ig]) ? l.slot_map : nullptr;
++        }
+ 
+         // large batches use most experts of a layer, so they gain little from the cache and would evict the experts used in generation
+         // Brain Engine 0032: up to cpu_read tokens with the processor doing every miss
+@@ -2515,6 +2777,15 @@ struct llama_moe_cache::impl {
+             return true;
+         }
+ 
++        // Brain Engine 0069: a long read's lookup, and the first other lookup after one gives the zone back
++        if (ip_on && !bw_on && !has_cpu && sel->src[0]->ne[1] > max_batch) {
++            return ip_copy(backend, il, l, g, sel, dst);
++        }
++        if (ip_active) {
++            ggml_backend_synchronize(backend);
++            ip_end();
++        }
++
+         ids.resize(ggml_nelements(sel));
+         ggml_backend_tensor_get_async(backend, sel, ids.data(), 0, ggml_nbytes(sel));
+         // Brain Engine 0041: the next layer's guess was made in the same split as this layer's picks
+@@ -2595,44 +2866,8 @@ struct llama_moe_cache::impl {
+         // holds come back from it on the card; only the rest go up from RAM
+         const std::vector<moe_cache_lru::fill> & up = tl_on ? tl_exchange(il, g, backend, fills) : fills;
+ 
+-        // upload the missing experts, consecutive experts going to consecutive slots are uploaded together
+-        // Brain Engine 0050: runs that are not in RAM are read from the drive first (dr_upload), all of a layer's at once
+-        size_t bytes = 0;
+-        if (dr_on) {
+-            dr_jobs.clear();
+-        }
+-        for (size_t ip = 0; ip < l.experts.size(); ++ip) {
+-            const ggml_tensor * w    = l.experts[ip];
+-            ggml_tensor       * bank = g.banks[ip];
+-            const size_t expert_size = w->nb[2];
+-            for (size_t i = 0; i < up.size();) {
+-                // Brain Engine 0060: through the RAM cache, one expert at a time
+-                if (rc_on && rc_take(backend, w, bank, up[i].expert, (size_t) up[i].slot*bank->nb[2])) {
+-                    bytes += expert_size;
+-                    i += 1;
+-                    continue;
+-                }
+-                size_t n = 1;
+-                while (!striped(bank, w) && !rc_on && i + n < up.size() && up[i + n].expert == up[i].expert + (int32_t) n && up[i + n].slot == up[i].slot + (int32_t) n) {
+-                    n++;
+-                }
+-                const uint8_t * src = (const uint8_t *) w->data + up[i].expert*expert_size;
+-                const size_t    dst = (size_t) up[i].slot*bank->nb[2];
+-                if (!dr_on || !dr_want(w, src, n*expert_size)) {
+-                    ggml_backend_tensor_set_async(backend, bank, src, dst, n*expert_size);
+-                    if (rf_on) {
+-                        rf_note(w, src, n*expert_size);
+-                    }
+-                } else {
+-                    dr_jobs.push_back({ w, bank, (size_t) up[i].expert*expert_size, dst, n*expert_size, nullptr });
+-                }
+-                bytes += n*expert_size;
+-                i += n;
+-            }
+-        }
+-        if (dr_on && !dr_jobs.empty()) {
+-            dr_upload(backend);
+-        }
++        // upload the missing experts (see upload_fills)
++        const size_t bytes = upload_fills(backend, l, g, up);
+ 
+         stats & st = read_cpu ? stats_read : ids.size() <= (size_t) 8*n_expert_used ? stats_small : stats_large;
+         st.hits   += n_hit - n_sp; // a stand-in is not a hit
+@@ -4283,6 +4518,12 @@ struct llama_moe_cache::impl {
+ 
+     // allocate the banks again (empty); the caller uploads what the slots held
+     void alloc_banks() {
++        // Brain Engine 0069: the zones were empty slots, and the slots are made again
++        ip_active = false;
++        for (size_t ig = 0; ig < ip_zone.size(); ++ig) {
++            ip_zone[ig].clear();
++            ip_dropped[ig].clear();
++        }
+         for (device & d : devices) {
+             if (!d.ctx) {
+                 continue;
+@@ -4538,6 +4779,11 @@ struct llama_moe_cache::impl {
+         if (stats_copy.hits > 0) {
+             LLAMA_LOG_INFO("llama_moe_cache: large batches: %zu experts copied from the cache, %.2f MiB\n", stats_copy.hits, stats_copy.bytes/1024.0/1024.0);
+         }
++        if (ip_reads > 0) {
++            LLAMA_LOG_INFO("llama_moe_cache: in-place long reads: %zu reads, %zu experts read where they sit, %zu uploaded (%.2f MiB), "
++                "zone up to %zu slots, %zu experts put back before writing in %.1f ms\n", ip_reads, ip_hits, ip_misses, ip_bytes/1048576.0,
++                ip_zone_slots, ip_back, ip_back_us/1000.0);
++        }
+     }
+ };
+ 

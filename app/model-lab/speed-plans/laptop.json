@@ -1,0 +1,124 @@
+{
+ "name": "Laptop: heat and throttling, reading steps, Brain Engine cost (Qwen3 4B, 6 GB card)",
+ "method": "app/docs/test-results/2026-11-16-speed-test-method.md (addendum 14)",
+ "brain": "${BRAIN}",
+ "engines": {
+  "plain": {
+   "exe": "${PLAIN_SERVER}"
+  },
+  "be9": {
+   "exe": "${BE9_SERVER}"
+  }
+ },
+ "prompts": {
+  "start": "start.json",
+  "k16": "long-text.md",
+  "k32": "long-text.md"
+ },
+ "promptTokens": {
+  "k16": 16384,
+  "k32": 32768
+ },
+ "question": {
+  "k16": "\n\nIn two sentences, what is this text about?",
+  "k32": "\n\nIn two sentences, what is this text about?"
+ },
+ "baseArgs": [
+  "--jinja",
+  "-fa",
+  "on",
+  "-ctk",
+  "q8_0",
+  "-ctv",
+  "q8_0",
+  "--fit",
+  "on",
+  "-np",
+  "1",
+  "--cache-reuse",
+  "256",
+  "-c",
+  "36864",
+  "--no-webui"
+ ],
+ "maxTokens": 300,
+ "rounds": 5,
+ "coolDown": {
+  "cardC": 60,
+  "maxWaitS": 300,
+  "everyS": 5
+ },
+ "lock": "${LOCK}",
+ "stopFile": "${STOP_FILE}",
+ "loadTimeoutMs": 600000,
+ "rows": [
+  {
+   "id": "P1",
+   "engine": "plain",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ]
+  },
+  {
+   "id": "N0",
+   "engine": "be9",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ]
+  },
+  {
+   "id": "R2048",
+   "engine": "be9",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "args": [
+    "-b",
+    "2048",
+    "-ub",
+    "2048"
+   ]
+  },
+  {
+   "id": "R4096",
+   "engine": "be9",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "args": [
+    "-b",
+    "4096",
+    "-ub",
+    "4096"
+   ]
+  },
+  {
+   "id": "N3",
+   "engine": "be9",
+   "prompts": [
+    "start",
+    "k16",
+    "k32"
+   ],
+   "args": [
+    "--mlock"
+   ]
+  },
+  {
+   "id": "SOAK",
+   "engine": "be9",
+   "prompts": [
+    "start"
+   ],
+   "maxTokens": 6000
+  }
+ ]
+}

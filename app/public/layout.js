@@ -9,7 +9,7 @@ import { catMoment } from './patches.js';
 import { createBrainBay } from './brain-swap.js';
 import { esc } from './util.js';
 import { drawVoxels } from './net-overlay.js'; // the cubes on the Bob-Net list (Nov 13)
-import { createMindCube } from './mind-cube.js';
+import { createMindCube, CUBE_LIVE_DEFAULT } from './mind-cube.js';
 import { createMindView } from './mind-view.js'; // 1.5.138: Bob's thinking, docked
 import { DEFAULT_ORDER, SECTION_NAME, applyOrder, dropBefore } from './now-sections.js';
 import { createPanels } from './panels.js'; // 1.5.210: panels you build from Now running's sections
@@ -220,7 +220,7 @@ export function createLayout({ post, openTasks, openDownloads }) {
   // fNRI's small cube: it only listens while the section is showing. Its glow is for show unless Real experts is on
   // (off to begin with), which makes Bob ask Brain Engine for the experts each reply used, and that slows his replies.
   const cubeBtn = $('mindDockCube'), liveBtn = $('mindCubeLive');
-  let cubeLive = store.get('bob-cube-live', '0') === '1';
+  let cubeLive = store.get('bob-cube-live', CUBE_LIVE_DEFAULT) === '1'; // Nov 23: on to begin with (mind-cube.js)
   const drawLive = () => { if (!liveBtn) return; liveBtn.setAttribute('aria-checked', String(cubeLive)); liveBtn.querySelector('.st').textContent = cubeLive ? 'On' : 'Off'; };
   drawLive();
   if (liveBtn) liveBtn.onclick = () => { cubeLive = !cubeLive; store.set('bob-cube-live', cubeLive ? '1' : '0'); drawLive(); cubeOk = true; if (cube) cube.relive(); cubeListen(); window.dispatchEvent(new CustomEvent('bob-cube-live')); }; // the cube avatar (app.js) follows it too

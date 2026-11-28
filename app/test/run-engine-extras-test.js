@@ -11,13 +11,15 @@ import { mergeSettings } from '../src/config.js';
 import { LlamaCpp } from '../src/llamacpp.js';
 import { modelFor } from '../src/sessions.js';
 import {
-  EXTRA_SWITCHES, extraOn, newSpecFlags, draftNumArgs, copyGuessArgs, COPY_GUESS_ARGS, cleanMemType, memTypeOf, memArgs, MEM_TYPES,
+  EXTRA_SWITCHES, extraOn, newSpecFlags, draftNumArgs, copyGuessArgs, COPY_GUESS_ARGS, specTypes, cleanMemType, memTypeOf, memArgs, MEM_TYPES, helpHasQ3, helpHasQ2, q3CardOk, helpHasTiers, progressiveTiers, tiersEnv, TIERS_SLACK, turboMem, turboPerWord, TURBO_MEMS,
   parseWinBattery, parseMacBattery, linuxBattery, onBattery, setOnBattery, batteryNow, laptopSaving, laptopThreads,
-  cardKey, cardChange, placesToAuto, handoffHat, warmRoom, warmFile, WARM_SPARE, plainEngineNotes, engineNoteLine, brainEngineNumber
+  cardKey, cardChange, placesToAuto, handoffHat, warmRoom, warmFile, WARM_SPARE, plainEngineNotes, engineNoteLine, brainEngineNumber,
+  READING_PICKS, readingPick, readingSteps, readingChoice, readingArgs, dropReading, lockRoom, lockFloor, everydayTurboArgs, specGateEnv, TURBO_EVERYDAY_MAX, lockMemoryArgs, mtpSidecar, mtpArgs
 } from '../src/engine-extras.js';
 import { startEngineExtras, engineLabel } from '../src/engine-extras-run.js';
 import { addReply, speedSeries, logReply, readSpeedLog, KEEP_DAYS } from '../src/speed-log.js';
 import { memTypeTrade } from '../public/mem-types.js';
+import { kvBytes } from '../src/model-ctx.js';
 import { memTypeHtml } from '../public/brains.js';
 import { HELP } from '../public/help-content.js';
 import { WANTS } from '../public/wants.js';
@@ -31,20 +33,59 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-extras-'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- Off unless turned on ----------
-check('six switches, all off in a fresh Bob', EXTRA_SWITCHES.length === 6 && EXTRA_SWITCHES.every((k) => !extraOn({}, k)));
+check('eleven switches (Turbo is the tenth, GUPPI fits his working memory to the card the eleventh), all off in a fresh Bob', EXTRA_SWITCHES.length === 11 && EXTRA_SWITCHES.every((k) => !extraOn({}, k)));
 { const m = mergeSettings({}, Object.fromEntries(EXTRA_SWITCHES.map((k) => [k, 'yes'])));
   check('only true turns one on when saved', EXTRA_SWITCHES.every((k) => m[k] === false) && mergeSettings({}, { copyGuess: true }).copyGuess === true); }
 check('the example settings file switches none of them on', (() => { const ex = JSON.parse(read('config.example.json')); return EXTRA_SWITCHES.every((k) => ex[k] !== true) && !ex.brainMemType; })());
+
+// ---------- 101 Reading speed ----------
+check('reading speed: Normal in a fresh Bob, and nothing added', readingPick({}) === 'normal' && readingSteps({}) === 0 && readingArgs({}).length === 0);
+check('reading speed: an unknown pick is Normal', readingPick({ readingSpeed: 'warp' }) === 'normal' && READING_PICKS.join() === 'normal,faster,fastest,auto');
+check('reading speed: Faster and Fastest set both -b and -ub', readingArgs({ readingSpeed: 'faster' }).join(' ') === '-b 2048 -ub 2048' && readingArgs({ readingSpeed: 'fastest' }).join(' ') === '-b 4096 -ub 4096');
+check('reading speed: Auto picks by the card (fake cards)', readingSteps({ readingSpeed: 'auto', gpuVramGB: 16 }) === 4096 && readingSteps({ readingSpeed: 'auto', cardGB: 6 }) === 2048 && readingSteps({ readingSpeed: 'auto', cardGB: 4 }) === 0 && readingSteps({ readingSpeed: 'auto', sharedGraphics: true, cardGB: 16 }) === 0 && readingSteps({ readingSpeed: 'auto' }) === 0);
+check('reading speed: not on the processor, and a batch set by hand wins', readingArgs({ readingSpeed: 'fastest' }, { cpu: true }).length === 0 && readingArgs({ readingSpeed: 'fastest' }, { hand: { ubatch: 256 } }).length === 0 && readingArgs({ readingSpeed: 'fastest' }, { hand: { batch: 1024 } }).length === 0);
+check('reading speed: a spread load takes the steps back out, in place', (() => { const a = ['-m', 'x', '-b', '4096', '-ub', '4096', '--fit', 'on']; const r = dropReading(a); return r === a && a.join(' ') === '-m x --fit on'; })());
+
+check('Auto says why: the card, then the last 3 prompts', (() => { const big = { readingSpeed: 'auto', gpuVramGB: 16 };
+  const a = readingChoice(big, { recent: [20000, 30000, 500] }), b = readingChoice(big, { recent: [800, 900, 1200] }), c = readingChoice({ readingSpeed: 'auto', cardGB: 8 }), d = readingChoice({ readingSpeed: 'auto', sharedGraphics: true });
+  return a.steps === 4096 && /Fastest: 16 GB card, and 2 of your last 3 prompts were over 16,384/.test(a.why) && b.steps === 2048 && /all under 4,096/.test(b.why) && c.steps === 2048 && /8 GB card/.test(c.why) && d.steps === 0 && /built-in graphics/.test(d.why) && readingChoice({ readingSpeed: 'fastest' }).why === ''; })());
+check('Auto: fewer than 3 prompts seen keeps Fastest on a big card', readingChoice({ readingSpeed: 'auto', gpuVramGB: 16 }, { recent: [500, 600] }).steps === 4096);
+
+// ---------- 102 Turbo for everyday brains ----------
+check('the draft gate pauses MTP under 30% kept, unless set by hand', specGateEnv({}).LLAMA_SPEC_GATE === '0.3' && !specGateEnv({ LLAMA_SPEC_GATE: '0.5' }).LLAMA_SPEC_GATE);
+check('everyday Turbo: on unless switched off (Nov 23), nothing once off', everydayTurboArgs({}, { mtp: 1, build: 12359 }).length > 0 && everydayTurboArgs({ turboEveryday: false }, { mtp: 1, build: 12359 }).length === 0);
+check('everyday Turbo: a brain with its own guesser uses it, 3 at a time', everydayTurboArgs({ turboEveryday: true }, { mtp: 1, build: 12359 }).join(' ') === `--spec-type draft-mtp --spec-draft-n-max ${TURBO_EVERYDAY_MAX}` && TURBO_EVERYDAY_MAX === 3);
+check('everyday Turbo: no guesser, the processor, an old engine, or Turbo/draft already set: nothing', [everydayTurboArgs({ turboEveryday: true }, { mtp: 0 }), everydayTurboArgs({ turboEveryday: true }, { mtp: 1, cpu: true }), everydayTurboArgs({ turboEveryday: true }, { mtp: 1, build: 9000 }), everydayTurboArgs({ turboEveryday: true }, { mtp: 1, args: ['-md', 'd.gguf'] }), everydayTurboArgs({ turboEveryday: true }, { mtp: 1, args: ['--spec-type', 'ngram-mod'] })].every((x) => x.length === 0));
+
+// ---------- 103 Lock brain memory ----------
+{ const G = 1024 ** 3;
+  check('lock memory: a floor of 4 GB or a quarter of the RAM', lockFloor(32 * G) === 8 * G && lockFloor(16 * G) === 4 * G);
+  check('lock memory: room on a 32 GB PC with a 10 GB RAM part and 24 GB free', lockRoom({ totalBytes: 32 * G, freeBytes: 24 * G, ramPart: 10 * G, platform: 'win32', arm: false }).ok);
+  check('lock memory: no room when it would leave under the floor', /would be left free/.test(lockRoom({ totalBytes: 32 * G, freeBytes: 20 * G, ramPart: 14 * G, platform: 'win32', arm: false }).why));
+  check('lock memory: never under 16 GB of RAM, on Android or an ARM board', !lockRoom({ totalBytes: 8 * G, freeBytes: 7 * G, platform: 'win32', arm: false }).ok && !lockRoom({ totalBytes: 32 * G, freeBytes: 30 * G, platform: 'android' }).ok && !lockRoom({ totalBytes: 32 * G, freeBytes: 30 * G, platform: 'linux', arm: true }).ok);
+  check('lock memory: no room means no --mlock', lockMemoryArgs({ lockBrainMemory: true }, { args: ['--fit', 'on'], room: { ok: false } }).length === 0); }
+check('lock memory: nothing while off', lockMemoryArgs({}, { args: ['--fit', 'on'] }).length === 0);
+check('lock memory: --mlock only when part of the brain is in RAM', lockMemoryArgs({ lockBrainMemory: true }, { args: ['--fit', 'on'] }).join() === '--mlock' && lockMemoryArgs({ lockBrainMemory: true }, { args: ['--n-cpu-moe', '8'] }).join() === '--mlock' && lockMemoryArgs({ lockBrainMemory: true }, { args: ['-ngl', '999'] }).length === 0);
+check('lock memory: not for the processor brain, and never twice', lockMemoryArgs({ lockBrainMemory: true }, { args: ['--fit', 'on'], cpu: true }).length === 0 && lockMemoryArgs({ lockBrainMemory: true }, { args: ['--fit', 'on', '--mlock'] }).length === 0);
+check('Help, glossary and FAQs for items 101-103', (() => { const ex = HELP.find((h) => h.id === 'engine-extras')?.html || ''; const gl = HELP.find((h) => h.id === 'glossary')?.html || ''; return ['Reading speed', 'MTP for everyday brains', 'Lock brain memory'].every((t) => ex.includes(t)) && ['faq-reading-speed', 'faq-turbo-everyday', 'faq-lock-memory'].every((id) => HELP.some((h) => h.id === id && h.group === 'FAQ')) && ['Reading speed (batch size)', 'Locked memory', 'Built-in guesser (multi-token prediction)'].every((t) => gl.includes(`<dt>${t}</dt>`)); })());
+check('Settings has the three new controls', (() => { const t = read('public/cellar-engines.js'); return /data-set="readingSpeed"/.test(t) && /sswitch\('turboEveryday'/.test(t) && /sswitch\('lockBrainMemory'/.test(t); })());
 
 // ---------- 94 Guess-ahead from the chat ----------
 check('new speculative flag names from about b9530, old ones before', newSpecFlags(0) && newSpecFlags(12282) && !newSpecFlags(9000) && draftNumArgs(12282, 8, 0).join(' ') === '--spec-draft-n-max 8 --spec-draft-n-min 0' && draftNumArgs(9000, 8, 0).join(' ') === '--draft-max 8 --draft-min 0');
 check('copy guessing: nothing while off', copyGuessArgs({}, { build: 12282 }).length === 0);
 check('copy guessing: ngram-mod when on', copyGuessArgs({ copyGuess: true }, { build: 12282 }).join(' ') === '--spec-type ngram-mod' && COPY_GUESS_ARGS[1] === 'ngram-mod');
 check('copy guessing: not on an engine too old to know it', copyGuessArgs({ copyGuess: true }, { build: 9000 }).length === 0);
-check('copy guessing: Turbo or a draft brain wins', copyGuessArgs({ copyGuess: true }, { args: ['-md', 'x.gguf'] }).length === 0 && copyGuessArgs({ copyGuess: true }, { args: ['--spec-type', 'draft-mtp'] }).length === 0);
+check('copy guessing: a draft brain wins', copyGuessArgs({ copyGuess: true }, { args: ['-md', 'x.gguf'] }).length === 0 && copyGuessArgs({ copyGuess: true }, { args: ['--spec-type', 'draft-simple', '-md', 'x.gguf'] }).length === 0);
+check('copy guessing: next to MTP (its own head, or the file beside the brain), Strata\'s way', copyGuessArgs({ copyGuess: true }, { args: ['--spec-type', 'draft-mtp'] }).join(' ') === '--spec-type ngram-mod' && copyGuessArgs({ copyGuess: true }, { args: ['--spec-type', 'draft-mtp', '-md', 'mtp-big.gguf'] }).join(' ') === '--spec-type ngram-mod');
+check('copy guessing: not twice, and not next to another guesser set by hand', copyGuessArgs({ copyGuess: true }, { args: ['--spec-type', 'draft-mtp,ngram-mod'] }).length === 0 && copyGuessArgs({ copyGuess: true }, { args: ['--spec-type', 'ngram-map-k'] }).length === 0);
+check('copy guessing next to MTP: still off unless switched on', copyGuessArgs({}, { args: ['--spec-type', 'draft-mtp'] }).length === 0 && specTypes(['--spec-type', 'a,b', '-x', '--spec-type', 'c']).join() === 'a,b,c');
 const big = path.join(tmp, 'big.gguf'), small = path.join(tmp, 'small.gguf');
 fs.writeFileSync(big, 'x'); fs.writeFileSync(small, 'x');
 const engineOf = (extra = {}, lc = {}) => { const e = new LlamaCpp({ agentDir: tmp, dataDir: tmp, ...extra, llamacpp: { models: { big, small }, ...lc } }); clearInterval(e.idleTimer); return e; };
+{ const a = engineOf({ readingSpeed: 'fastest' }).buildArgs('big'); const off = engineOf().buildArgs('big');
+  check('reading speed reaches the engine\'s start flags, and Normal adds none', a[a.indexOf('-ub') + 1] === '4096' && a[a.indexOf('-b') + 1] === '4096' && !off.includes('-ub'), a.join(' '));
+  const cpuA = engineOf({ readingSpeed: 'fastest' }).buildArgs('big', { cpu: true }); check('reading speed: not for the processor brain', !cpuA.includes('-ub'), cpuA.join(' '));
+  const hand = engineOf({ readingSpeed: 'fastest' }, { ubatch: 256 }).buildArgs('big'); check('reading speed: a micro-batch set by hand wins', hand.filter((x) => x === '-ub').length === 1 && hand[hand.indexOf('-ub') + 1] === '256', hand.join(' ')); }
 { const off = engineOf().buildArgs('big').join(' '), on = engineOf({ copyGuess: true }).buildArgs('big').join(' ');
   const turbo = engineOf({ copyGuess: true }, { turbo: { big: { on: true, draft: 'small', max: 8 } } }).buildArgs('big').join(' ');
   check('Bob\'s engine starts with the copying guesser only with the switch on', !off.includes('ngram') && on.endsWith('--spec-type ngram-mod'), on);
@@ -68,6 +109,63 @@ check('Standard keeps flags set by hand as they are', memArgs({}, 'big', ['-ctk'
   const oll = memTypeHtml(b, { place: { brains: { big: { memType: 'standard', kv32: null, memEngine: false } } } });
   check('the Brains page shows the three types, the pick pressed, and GB for a 32K chat', /data-memtype="small"[^>]*aria-pressed="true"/.test(on) && /about 1 GB for a 32K chat/.test(on) && /Sharper/.test(on));
   check('with Ollama the choice is locked and says why', /disabled/.test(oll) && /Only with Brain Engine or llama\.cpp/.test(oll)); }
+
+// ---------- 100b Smallest (3-bit, q3_0) memory type ----------
+check('Smallest is 3-bit both ways, off unless picked', MEM_TYPES.smallest.k === 'q3_0' && MEM_TYPES.smallest.v === 'q3_0' && memTypeOf({}, 'big', { q3: true }) === 'standard');
+check('Smallest is kept when saved', JSON.stringify(cleanMemType({ a: 'smallest' })) === '{"a":"smallest"}');
+check('Smallest needs an engine with the 3-bit type, else Smaller', memTypeOf({ brainMemType: { big: 'smallest' } }, 'big', { q3: true }) === 'smallest' && memTypeOf({ brainMemType: { big: 'smallest' } }, 'big') === 'small');
+check('Smallest sets q3_0 flags only when the engine has it', memArgs({ brainMemType: { big: 'smallest' } }, 'big', [], { q3: true }).join(' ') === '-fa on -ctk q3_0 -ctv q3_0' && memArgs({ brainMemType: { big: 'smallest' } }, 'big', []).join(' ') === `-fa on -ctk ${MEM_TYPES.small.k} -ctv ${MEM_TYPES.small.v}`);
+{ const help = '-ctv, --cache-type-v TYPE  Cache type for V.\n   allowed values: f32, f16, bf16, q8_0, q4_0, iq4_nl, q5_0, q5_1\n   q3_0\n(default: f16)\n';
+  check('the engine\'s help is read for q3_0 (on a wrapped line, with Windows line ends)', helpHasQ3(help) && helpHasQ3(help.replace(/\n/g, '\r\n')) && !helpHasQ3('-ctv, --cache-type-v TYPE\n  allowed values: f32, f16, q4_0\n  -ctkd q3_0 is not listed here') && !helpHasQ3('allowed values: q3_0') && !helpHasQ3(null)); }
+check('3-bit only where it has kernels: CUDA or the processor, never Vulkan alone or a Mac', q3CardOk(['llama-server.exe', 'ggml-cuda.dll', 'ggml-vulkan.dll'], 'win32') && q3CardOk(['llama-server', 'libggml-cpu.so'], 'linux') && !q3CardOk(['llama-server', 'libggml-vulkan.so'], 'linux') && !q3CardOk(['llama-server'], 'darwin') && q3CardOk(null, 'android'));
+{ const plain = memTypeTrade(2), with3 = memTypeTrade(2, { q3: true });
+  check('the page only offers Smallest when the engine has it', !plain.some((x) => x.id === 'smallest') && Math.abs(with3.find((x) => x.id === 'smallest').gb - 2 * 14 / 34) < 0.05); }
+{ const k4 = kvBytes({ perToken: 20480 }, 32768, ['-ctk', 'q4_0', '-ctv', 'q4_0']), k3 = kvBytes({ perToken: 20480 }, 32768, ['-ctk', 'q3_0', '-ctv', 'q3_0']);
+  check('room math counts 3-bit memory as 14 of q4_0\'s 18', k4 > 0 && Math.abs(k3 / k4 - 14 / 18) < 0.001, `${k3} ${k4}`); }
+
+// Progressive (Nov 20, patch 0039): 3-bit with sharper copies of the newest words, only with an engine that has both
+check('Progressive is kept when saved, off unless picked', JSON.stringify(cleanMemType({ a: 'progressive' })) === '{"a":"progressive"}' && memTypeOf({}, 'big', { q3: true, tiers: true }) === 'standard');
+check('Progressive needs 3-bit and Progressive Memory, else Smaller', memTypeOf({ brainMemType: { big: 'progressive' } }, 'big', { q3: true, tiers: true }) === 'progressive' && memTypeOf({ brainMemType: { big: 'progressive' } }, 'big', { q3: true }) === 'small' && memTypeOf({ brainMemType: { big: 'progressive' } }, 'big') === 'small');
+check('Progressive keeps every word in 3-bit', memArgs({ brainMemType: { big: 'progressive' } }, 'big', [], { q3: true, tiers: true }).join(' ') === '-fa on -ctk q3_0 -ctv q3_0');
+check('the engine\'s help is read for Progressive Memory', helpHasTiers('  Progressive Memory (Brain Engine 0039): env\n  LLAMA_KV_TIERS=type:window,...') && !helpHasTiers('LLAMA_KV_SPLIT') && !helpHasTiers(null));
+check('3-step: 8-bit for the newest 8K, 4-bit for the newest 64K, shrunk to a quarter and a half of a short chat',
+  progressiveTiers(262144) === 'q8_0:8192,q4_0:65536' && progressiveTiers(32768) === 'q8_0:8192,q4_0:16384' && progressiveTiers(8192) === 'q8_0:2048,q4_0:4096' && progressiveTiers(1000) === '');
+check('2-step: 4-bit for the newest 64K, or half the chat', progressiveTiers(262144, 'progressive2') === 'q4_0:65536' && progressiveTiers(32768, 'progressive2') === 'q4_0:16384');
+check('8+3 and 8+4: 8-bit for the newest 2K (or a quarter of the chat), no 4-bit step; 8+2 keeps 8K', progressiveTiers(262144, 'progressive83') === 'q8_0:2048' && progressiveTiers(4096, 'progressive83') === 'q8_0:1024' && progressiveTiers(262144, 'progressive84') === 'q8_0:2048' && progressiveTiers(262144, 'progressive82') === 'q8_0:8192');
+check('8+3 is kept, falls back to Smaller without the engine, and goes to the engine as its one step', JSON.stringify(cleanMemType({ a: 'progressive83' })) === '{"a":"progressive83"}' && memTypeOf({ brainMemType: { b: 'progressive83' } }, 'b') === 'small' &&
+  tiersEnv({ brainMemType: { b: 'progressive83' } }, 'b', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS === 'q8_0:2048' && tiersEnv({ turbo: true, turboMem: 'progressive83' }, 'b', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS === 'q8_0:2048');
+check('8+4: the 8-bit step over a 4-bit base, needs only Progressive Memory (not the 3-bit type)', JSON.stringify(cleanMemType({ a: 'progressive84' })) === '{"a":"progressive84"}' && memTypeOf({ brainMemType: { b: 'progressive84' } }, 'b') === 'small' && memTypeOf({ brainMemType: { b: 'progressive84' } }, 'b', { tiers: true }) === 'progressive84' &&
+  memArgs({ brainMemType: { b: 'progressive84' } }, 'b', [], { q3: true, tiers: true }).join(' ') === '-fa on -ctk q4_0 -ctv q4_0' && tiersEnv({ brainMemType: { b: 'progressive84' } }, 'b', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS === 'q8_0:2048' && tiersEnv({ turbo: true, turboMem: 'progressive84' }, 'b', 32768, { tiers: true }).LLAMA_KV_TIERS === 'q8_0:2048');
+// 8+2 (Brain Engine 0046, Nov 20): Turbo only, a test. Needs the 2-bit type and Progressive Memory; never on the Brains page.
+{ const help = '-ctv, --cache-type-v TYPE\n   allowed values: f32, f16, q8_0, q4_0, q3_0,\n   q2_kv\n(default: f16)\n';
+  const on = { turbo: true, turboMem: 'progressive82' }, all = { q3: true, q2: true, tiers: true };
+  check('8+2: the help names q2_kv, on a wrapped line too', helpHasQ2(help) && helpHasQ2(help.replace(/\n/g, '\r\n')) && !helpHasQ2('-ctv, --cache-type-v TYPE\n  allowed values: f32, q3_0\n') && helpHasQ3(help));
+  check('8+2: Turbo only, off unless picked', TURBO_MEMS.includes('progressive82') && turboMem({}) === 'small' && JSON.stringify(cleanMemType({ a: 'progressive82' })) === '{}' && memTypeOf({ brainMemType: { b: 'progressive82' } }, 'b', all) === 'standard');
+  check('8+2: needs the 2-bit type and Progressive Memory, else Smaller', memTypeOf(on, 'b', all) === 'progressive82' && memTypeOf(on, 'b', { q3: true, tiers: true }) === 'small' && memTypeOf(on, 'b', { q3: true, q2: true }) === 'small');
+  check('8+2: 2-bit flags and the 8-bit step for the newest 8K', memArgs(on, 'b', [], all).join(' ') === '-fa on -ctk q2_kv -ctv q2_kv' && tiersEnv(on, 'b', 131072, all).LLAMA_KV_TIERS === 'q8_0:8192' && tiersEnv(on, 'b', 16384, all).LLAMA_KV_TIERS === 'q8_0:4096' && JSON.stringify(tiersEnv(on, 'b', 131072, { q3: true, tiers: true })) === '{}');
+  check('8+2: never offered on the Brains page', !memTypeTrade(2, { q3: true, tiers: true }).some((x) => x.id === 'progressive82') && MEM_TYPES.progressive82.turboOnly === true);
+  check('8+2: kept as Turbo chat memory when saved', mergeSettings({}, { turboMem: 'progressive82' }).turboMem === 'progressive82'); }
+check('2-step is kept, needs the same engine, and goes to the engine as its own steps', JSON.stringify(cleanMemType({ a: 'progressive2' })) === '{"a":"progressive2"}' && memTypeOf({ brainMemType: { b: 'progressive2' } }, 'b') === 'small' &&
+  tiersEnv({ brainMemType: { b: 'progressive2' } }, 'b', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS === 'q4_0:65536');
+{ const cfg = { brainMemType: { big: 'progressive', other: 'small' } };
+  const e = tiersEnv(cfg, 'big', 131072, { q3: true, tiers: true });
+  check('the steps go to the engine as its keys, only for a Progressive brain on an engine that has it', e.LLAMA_KV_TIERS === 'q8_0:8192,q4_0:65536' && e.LLAMA_KV_TIERS_SLACK === String(TIERS_SLACK) &&
+    !tiersEnv(cfg, 'other', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS && !tiersEnv(cfg, 'big', 131072, { q3: true }).LLAMA_KV_TIERS);
+  check('not with two chats at once (the engine would say NOT USED)', !tiersEnv(cfg, 'big', 131072, { q3: true, tiers: true, handArgs: ['-np', '2'] }).LLAMA_KV_TIERS && tiersEnv(cfg, 'big', 131072, { q3: true, tiers: true, handArgs: ['-np', '1'] }).LLAMA_KV_TIERS); }
+{ const only3 = memTypeTrade(2, { q3: true }), both = memTypeTrade(2, { q3: true, tiers: true });
+  check('the page offers Progressive only when the engine has it', !only3.some((x) => /^progressive/.test(x.id)) && both.some((x) => x.id === 'progressive') && both.some((x) => x.id === 'progressive2') && !memTypeTrade(2, { tiers: true }).some((x) => x.id === 'progressive')); }
+{ const k3 = kvBytes({ perToken: 20480 }, 262144, ['-ctk', 'q3_0', '-ctv', 'q3_0']), kp = kvBytes({ perToken: 20480 }, 262144, ['-ctk', 'q3_0', '-ctv', 'q3_0'], 'q8_0:8192,q4_0:65536', 4096);
+  const want = 20480 * (262144 * 14 / 32 + 12288 * 34 / 32 + 69632 * 18 / 32);
+  check('room math counts each step\'s copy (window plus room for a batch)', Math.abs(kp - want) < 2 && kp > k3, `${kp} ${want}`); }
+
+// Turbo (Nov 20, off unless switched on): show-off speed, every brain's memory to the Turbo pick, 4 experts per word
+check('Turbo is off unless switched on', !EXTRA_SWITCHES.includes('turbo') ? false : memTypeOf({ brainMemType: { big: 'sharp' } }, 'big', { q3: true }) === 'sharp');
+check('Turbo puts every brain on 4-bit chat memory (Smaller), over its own pick', memTypeOf({ turbo: true, brainMemType: { big: 'sharp' } }, 'big', { q3: true }) === 'small' && memTypeOf({ turbo: true }, 'other', { q3: true }) === 'small');
+check('Turbo can still be asked for 3-bit', memTypeOf({ turbo: true, turboMem: 'smallest' }, 'big', { q3: true }) === 'smallest');
+check('Turbo\'s memory can be picked: Smaller or Progressive', memTypeOf({ turbo: true, turboMem: 'small' }, 'big', { q3: true }) === 'small' && memTypeOf({ turbo: true, turboMem: 'progressive' }, 'big', { q3: true, tiers: true }) === 'progressive' && turboMem({ turboMem: 'nonsense' }) === 'small' && TURBO_MEMS.length === 7);
+check('Turbo without a 3-bit engine falls back to Smaller', memTypeOf({ turbo: true }, 'big') === 'small');
+check('Turbo\'s Progressive pick reaches the engine as its steps', tiersEnv({ turbo: true, turboMem: 'progressive2' }, 'big', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS === 'q4_0:65536' && !tiersEnv({ turbo: true }, 'big', 131072, { q3: true, tiers: true }).LLAMA_KV_TIERS);
+check('Turbo asks 4 experts per word only of a brain with more, and only while on', turboPerWord({ turbo: true }, 8) === 4 && turboPerWord({ turbo: true }, 4) === null && turboPerWord({ turbo: true }, 0) === null && turboPerWord({}, 8) === null && turboPerWord({ turbo: true, turboExperts: false }, 8) === null);
 
 // ---------- 98 Laptop mode ----------
 check('Windows battery: 1 is on battery, 2 plugged in, nothing is no battery', parseWinBattery('1\r\n') === true && parseWinBattery('2') === false && parseWinBattery('') === null);
@@ -188,6 +286,18 @@ check('Help has a section for the extras, and for the memory type', HELP.some((h
 const gl = HELP.find((h) => h.id === 'glossary')?.html || '';
 check('the glossary explains the new words', /<dt>Copy guessing/.test(gl) && /<dt>Laptop mode/.test(gl) && /<dt>Speed history/.test(gl) && /<dt>Chat memory type/.test(gl));
 for (const id of ['faq-copy-guess', 'faq-laptop-mode', 'faq-mem-type', 'faq-new-card']) check(`FAQ ${id}`, HELP.some((h) => h.id === id && h.group === 'FAQ'));
+// Nov 22: the guesser as a file beside the brain (llama.cpp's downloader names it mtp-<name>.gguf). Fakes only.
+{ const dir = path.join('x', 'brains');
+  const files = { [path.join(dir, 'Flash-Next-Q2.gguf')]: { arch: 'qwen4exp', mtp: 0 }, [path.join(dir, 'mtp-Flash-Next-Q8_0.gguf')]: { arch: 'qwen4exp', mtp: 1 },
+    [path.join(dir, 'mtp-Other-Q8_0.gguf')]: { arch: 'qwen3next', mtp: 1 }, [path.join(dir, 'Own-Q4.gguf')]: { arch: 'qwen35moe', mtp: 1 },
+    [path.join(dir, 'Empty-Q4.gguf')]: { arch: 'qwen4exp', mtp: 0 }, [path.join(dir, 'mtp-Empty-Q4.gguf')]: { arch: 'qwen4exp', mtp: 0 } };
+  const opts = { readdir: () => Object.keys(files).map((f) => path.basename(f)), info: (f) => files[f] || null };
+  check('a brain whose file has no guesser takes the mtp- file beside it as the draft', mtpArgs(path.join(dir, 'Flash-Next-Q2.gguf'), opts).join(' ') === `--spec-type draft-mtp -md ${path.join(dir, 'mtp-Flash-Next-Q8_0.gguf')}`);
+  check('a brain with its own guesser uses its own, with no second file', mtpArgs(path.join(dir, 'Own-Q4.gguf'), opts).join(' ') === '--spec-type draft-mtp');
+  check('an mtp- file of another kind of brain, or one without the guesser\'s parts, doesn\'t count', !mtpSidecar(path.join(dir, 'Empty-Q4.gguf'), { ...opts, readdir: () => ['Empty-Q4.gguf', 'mtp-Empty-Q4.gguf', 'mtp-Other-Q8_0.gguf'] }) && !mtpArgs(path.join(dir, 'Empty-Q4.gguf'), { ...opts, readdir: () => ['Empty-Q4.gguf', 'mtp-Empty-Q4.gguf', 'mtp-Other-Q8_0.gguf'] }).length);
+  check('everyday Turbo passes the file beside the brain on', everydayTurboArgs({ turboEveryday: true }, { build: 12359, guesser: mtpArgs(path.join(dir, 'Flash-Next-Q2.gguf'), opts) }).includes('-md'));
+  check('a folder that can\'t be read: none', mtpSidecar(path.join(dir, 'Flash-Next-Q2.gguf'), { ...opts, readdir: () => { throw new Error('no'); } }) === '');
+  check('Help and the FAQ name the file beside the brain, and the FAQ is honest about rounding', /mtp-/.test(HELP.find((h) => h.id === 'faq-turbo-everyday')?.html || '') && /unproven in our lab/.test(HELP.find((h) => h.id === 'faq-turbo-everyday')?.html || '') && /mtp-/.test(HELP.find((h) => h.id === 'glossary')?.html || '')); }
 check('Help says which platforms, and that the Android app isn\'t changed', /Android app/.test(HELP.find((h) => h.id === 'engine-extras')?.html || '') && /Windows, Mac/.test(HELP.find((h) => h.id === 'engine-extras')?.html || ''));
 
 fs.rmSync(tmp, { recursive: true, force: true });

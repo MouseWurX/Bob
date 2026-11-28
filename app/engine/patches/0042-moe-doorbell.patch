@@ -1,0 +1,1490 @@
+diff --git a/common/arg.cpp b/common/arg.cpp
+index aa581c9..c9882c4 100644
+--- a/common/arg.cpp
++++ b/common/arg.cpp
+@@ -2750,7 +2750,7 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
+     ).set_env("LLAMA_ARG_MOE_CACHE_MIB"));
+     add_opt(common_arg(
+         {"--moe-cache-cpu-share"}, "F",
+-        string_format("share of the MoE cache misses that the CPU computes from the host experts instead of uploading them to the GPU once the cache is full, from 0 to 1 (default: %.2f)", (double) params.moe_cache_cpu_share),
++        string_format("share of the MoE cache misses that the CPU computes from the host experts instead of uploading them to the GPU once the cache is full, from 0 to 1 (default: %.2f); doorbell (Brain Engine 0042): env LLAMA_MOE_DOORBELL=1 runs the card's experts and the CPU's misses at the same time while writing, with a share above 0", (double) params.moe_cache_cpu_share),
+         [](common_params & params, const std::string & value) {
+             const float share = std::stof(value);
+             if (share < 0.0f || share > 1.0f) {
+diff --git a/ggml/include/ggml-rpc.h b/ggml/include/ggml-rpc.h
+index da1d4e1..2c5b6a3 100644
+--- a/ggml/include/ggml-rpc.h
++++ b/ggml/include/ggml-rpc.h
+@@ -11,7 +11,8 @@ extern "C" {
+ #define RPC_PROTO_PATCH_VERSION    0
+ 
+ #ifdef  __cplusplus
+-static_assert(GGML_OP_COUNT == 99, "GGML_OP_COUNT has changed - update RPC_PROTO_PATCH_VERSION");
++// Brain Engine 0042 added GGML_OP_MOE_DOORBELL, which is never sent (steps go by their wire number, see bob_wire_ops)
++static_assert(GGML_OP_COUNT == 100, "GGML_OP_COUNT has changed - update RPC_PROTO_PATCH_VERSION");
+ #endif
+ 
+ #define GGML_RPC_MAX_SERVERS       16
+diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
+index 51a8272..d488c1a 100644
+--- a/ggml/include/ggml.h
++++ b/ggml/include/ggml.h
+@@ -430,6 +430,8 @@ extern "C" {
+ 
+         GGML_OP_GLU,
+ 
++        GGML_OP_MOE_DOORBELL, // Brain Engine 0042
++
+         GGML_OP_COUNT,
+     };
+ 
+@@ -2532,6 +2534,60 @@ extern "C" {
+             struct ggml_tensor  * blocks,
+             struct ggml_tensor  * extra);
+ 
++    // Brain Engine 0042: the doorbell between a card and the processor, for the expert cache's misses.
++    // The card writes one layer's picks and expert input into host memory it can write while it runs (mapped pinned
++    // memory on CUDA, plain memory for the processor's own version of the op) and adds one to seq. A thread on the
++    // processor sees the new seq, computes the experts the card doesn't have into out and sets done to that seq.
++    // The card waits for done (at most timeout_ms, then it stops with a message) and adds out to its own part.
++    // Each counter sits on its own 64-byte line, so the card's and the processor's writes don't share one.
++    #define GGML_MOE_DOORBELL_MAX_TOKENS 8
++    #define GGML_MOE_DOORBELL_MAX_USED   64
++    #define GGML_MOE_DOORBELL_OFF_IDS    256
++    #define GGML_MOE_DOORBELL_OFF_CUR    (GGML_MOE_DOORBELL_OFF_IDS + 4*GGML_MOE_DOORBELL_MAX_USED*GGML_MOE_DOORBELL_MAX_TOKENS)
++
++    struct ggml_moe_doorbell {
++        uint32_t seq;  uint32_t pad0[15];                            // written by the card: one more per ring
++        uint32_t done; uint32_t pad1[15];                            // written by the processor: the seq it answered
++        uint32_t err;  int32_t err_layer; int32_t err_ms; uint32_t pad2[13]; // set by the card when it gave up waiting
++        int32_t  layer; int32_t n_tokens; int32_t n_used; int32_t n_embd; uint32_t pad3[12]; // of the last ring
++        // then: ids  i32 [n_used, n_tokens] at GGML_MOE_DOORBELL_OFF_IDS
++        //       cur  f32 [n_embd, n_tokens] at GGML_MOE_DOORBELL_OFF_CUR
++        //       out  f32 [n_embd, n_used, n_tokens] at ggml_moe_doorbell_off_out(n_embd), the processor's part
++    };
++
++    static inline size_t ggml_moe_doorbell_off_out(int64_t n_embd) {
++        return GGML_MOE_DOORBELL_OFF_CUR + (size_t) (4*n_embd*GGML_MOE_DOORBELL_MAX_TOKENS + 63)/64*64;
++    }
++    static inline size_t ggml_moe_doorbell_size(int64_t n_embd, int64_t n_used) {
++        return ggml_moe_doorbell_off_out(n_embd) + (size_t) 4*n_embd*n_used*GGML_MOE_DOORBELL_MAX_TOKENS;
++    }
++
++    // ring: slots[k, t] = slot_map[ids[k, t]] if below n_slots, else n_slots + k (a zero slot of the card's banks), and
++    // the picks and cur are published to the processor (ids: i32 [n_used, n_tokens], cur: f32 [n_embd, ..., n_tokens],
++    // both contiguous, slot_map: i32 [n_expert] or [1, n_expert]); res: i32 [n_used, n_tokens]
++    // bell is the host pointer, bell_dev the card's pointer to the same memory (NULL for the processor's version)
++    GGML_API struct ggml_tensor * ggml_moe_doorbell_ring(
++            struct ggml_context      * ctx,
++            struct ggml_tensor       * cur,
++            struct ggml_tensor       * ids,
++            struct ggml_tensor       * slot_map,
++            int32_t                    n_slots,
++            int32_t                    layer,
++            struct ggml_moe_doorbell * bell,
++            void                     * bell_dev);
++
++    // join: waits for the processor's answer to the last ring, then res = cached + out where slots has a zero slot,
++    // cached + 0 elsewhere (cached: f32 [n_embd, n_used, n_tokens], slots: the ring's result)
++    GGML_API struct ggml_tensor * ggml_moe_doorbell_join(
++            struct ggml_context      * ctx,
++            struct ggml_tensor       * cached,
++            struct ggml_tensor       * slots,
++            int32_t                    n_slots,
++            int32_t                    layer,
++            int32_t                    timeout_ms,
++            struct ggml_moe_doorbell * bell,
++            void                     * bell_dev);
++
+     // custom operators
+ 
+     typedef void (*ggml_custom1_op_t)(struct ggml_tensor * dst , const struct ggml_tensor * a, int ith, int nth, void * userdata);
+diff --git a/ggml/src/ggml-cpu/ggml-cpu.c b/ggml/src/ggml-cpu/ggml-cpu.c
+index b5850df..69d0528 100644
+--- a/ggml/src/ggml-cpu/ggml-cpu.c
++++ b/ggml/src/ggml-cpu/ggml-cpu.c
+@@ -2364,6 +2364,10 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
+             {
+                 ggml_compute_forward_top_k_mask(params, tensor);
+             } break;
++        case GGML_OP_MOE_DOORBELL:
++            {
++                ggml_compute_forward_moe_doorbell(params, tensor);
++            } break;
+         case GGML_OP_MAP_CUSTOM1:
+             {
+                 ggml_compute_forward_map_custom1(params, tensor);
+@@ -2751,6 +2755,7 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
+                 n_tasks = n_threads;
+             } break;
+         case GGML_OP_NONE:
++        case GGML_OP_MOE_DOORBELL:
+             {
+                 n_tasks = 1;
+             } break;
+diff --git a/ggml/src/ggml-cpu/ops.cpp b/ggml/src/ggml-cpu/ops.cpp
+index 3c711ed..0870fa0 100644
+--- a/ggml/src/ggml-cpu/ops.cpp
++++ b/ggml/src/ggml-cpu/ops.cpp
+@@ -9,8 +9,10 @@
+ #include "vec.h"
+ 
+ #include <algorithm>
++#include <atomic>
+ #include <cfloat>
+ #include <cmath>
++#include <thread>
+ 
+ // ggml_compute_forward_dup
+ 
+@@ -12430,3 +12432,110 @@ void ggml_compute_forward_lightning_indexer(
+         }
+     }
+ }
++
++// ggml_compute_forward_moe_doorbell (Brain Engine 0042)
++// The processor's own version of the doorbell, for cards that can't ring it themselves: the same steps as the card's
++// kernels, in plain memory. One thread does it all, the sizes are small (at most 8 tokens).
++
++static ggml_moe_doorbell * ggml_moe_doorbell_of(const ggml_tensor * dst) {
++    int64_t host = 0;
++    memcpy(&host, dst->op_params + 4, sizeof(host));
++    return (ggml_moe_doorbell *) (intptr_t) host;
++}
++
++static void ggml_compute_forward_moe_doorbell_ring(ggml_tensor * dst) {
++    const ggml_tensor * cur = dst->src[0];
++    const ggml_tensor * ids = dst->src[1];
++    const ggml_tensor * map = dst->src[2];
++    const int32_t n_slots = ggml_get_op_params_i32(dst, 1);
++    const int32_t layer   = ggml_get_op_params_i32(dst, 2);
++    ggml_moe_doorbell * bell = ggml_moe_doorbell_of(dst);
++    volatile ggml_moe_doorbell * vb = bell;
++
++    const int64_t n_used = ids->ne[0];
++    const int64_t n_tok  = ids->ne[1];
++    const int64_t n_embd = cur->ne[0];
++    const int64_t n_exp  = ggml_nelements(map);
++
++    const int32_t * pid  = (const int32_t *) ids->data;
++    const int32_t * pmap = (const int32_t *) map->data;
++    int32_t * slots = (int32_t *) dst->data;
++    int32_t * b_ids = (int32_t *) ((char *) bell + GGML_MOE_DOORBELL_OFF_IDS);
++    float   * b_cur = (float   *) ((char *) bell + GGML_MOE_DOORBELL_OFF_CUR);
++
++    for (int64_t i = 0; i < n_used*n_tok; ++i) {
++        const int32_t e = pid[i];
++        GGML_ASSERT(e >= 0 && e < n_exp);
++        const int32_t s = pmap[e];
++        // a miss reads zero slot k of the card's banks: distinct for the picks of one token
++        slots[i] = s < n_slots ? s : n_slots + (int32_t) (i % n_used);
++        b_ids[i] = e;
++    }
++    memcpy(b_cur, cur->data, n_embd*n_tok*sizeof(float));
++
++    vb->layer    = layer;
++    vb->n_tokens = (int32_t) n_tok;
++    vb->n_used   = (int32_t) n_used;
++    vb->n_embd   = (int32_t) n_embd;
++    // everything above is visible before the new seq is
++    std::atomic_thread_fence(std::memory_order_release);
++    vb->seq = vb->seq + 1;
++}
++
++static void ggml_compute_forward_moe_doorbell_join(ggml_tensor * dst) {
++    const ggml_tensor * cached = dst->src[0];
++    const ggml_tensor * slots  = dst->src[1];
++    const int32_t n_slots    = ggml_get_op_params_i32(dst, 1);
++    const int32_t layer      = ggml_get_op_params_i32(dst, 2);
++    const int32_t timeout_ms = ggml_get_op_params_i32(dst, 3);
++    ggml_moe_doorbell * bell = ggml_moe_doorbell_of(dst);
++    volatile ggml_moe_doorbell * vb = bell;
++
++    // wait for the processor's thread to answer the last ring: a short spin, then yield, never past the timeout
++    const uint32_t seq = vb->seq;
++    const int64_t t0 = ggml_time_ms();
++    for (int spin = 0; vb->done != seq; ++spin) {
++        if (spin < 4096) {
++            continue;
++        }
++        if (ggml_time_ms() - t0 > timeout_ms) {
++            vb->err_layer = layer;
++            vb->err_ms    = timeout_ms;
++            vb->err       = 1;
++            GGML_ABORT("MoE doorbell (LLAMA_MOE_DOORBELL): layer %d waited %d ms for the processor's part of its experts "
++                       "and gave up: the processor's thread did not answer. Unset LLAMA_MOE_DOORBELL to use the old path, "
++                       "or raise LLAMA_MOE_DOORBELL_TIMEOUT_MS", layer, timeout_ms);
++        }
++        std::this_thread::yield();
++    }
++    std::atomic_thread_fence(std::memory_order_acquire);
++
++    const int64_t n_embd = cached->ne[0];
++    const int64_t n_used = cached->ne[1];
++    const int64_t n_tok  = cached->ne[2];
++    const int32_t * ps  = (const int32_t *) slots->data;
++    const float   * out = (const float *) ((const char *) bell + ggml_moe_doorbell_off_out(n_embd));
++    for (int64_t t = 0; t < n_tok; ++t) {
++        for (int64_t k = 0; k < n_used; ++k) {
++            const bool    miss = ps[t*n_used + k] >= n_slots;
++            const float * c = (const float *) ((const char *) cached->data + k*cached->nb[1] + t*cached->nb[2]);
++            const float * o = out + (t*n_used + k)*n_embd;
++            float       * d = (float *) ((char *) dst->data + k*dst->nb[1] + t*dst->nb[2]);
++            // the same sum as the old path's add: the processor's part is +0 for the experts the card has
++            for (int64_t i = 0; i < n_embd; ++i) {
++                d[i] = c[i] + (miss ? o[i] : 0.0f);
++            }
++        }
++    }
++}
++
++void ggml_compute_forward_moe_doorbell(const ggml_compute_params * params, ggml_tensor * dst) {
++    if (params->ith != 0) {
++        return;
++    }
++    if (ggml_get_op_params_i32(dst, 0) == 0) {
++        ggml_compute_forward_moe_doorbell_ring(dst);
++    } else {
++        ggml_compute_forward_moe_doorbell_join(dst);
++    }
++}
+diff --git a/ggml/src/ggml-cpu/ops.h b/ggml/src/ggml-cpu/ops.h
+index aac527a..6667c87 100644
+--- a/ggml/src/ggml-cpu/ops.h
++++ b/ggml/src/ggml-cpu/ops.h
+@@ -117,6 +117,7 @@ void ggml_compute_forward_opt_step_adamw(const struct ggml_compute_params * para
+ void ggml_compute_forward_mul_mat(const struct ggml_compute_params * params, struct ggml_tensor * dst);
+ void ggml_compute_forward_fwht(const struct ggml_compute_params * params, struct ggml_tensor * dst);
+ void ggml_compute_forward_opt_step_sgd(const struct ggml_compute_params * params, struct ggml_tensor * dst);
++void ggml_compute_forward_moe_doorbell(const struct ggml_compute_params * params, struct ggml_tensor * dst);
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index bcf9c7b..b633375 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -74,6 +74,7 @@
+ #include "ggml-cuda/fill.cuh"
+ #include "ggml-cuda/lightning-indexer.cuh"
+ #include "ggml-cuda/top-k-mask.cuh"
++#include "ggml-cuda/moe-doorbell.cuh"
+ #include "ggml.h"
+ 
+ #include <algorithm>
+@@ -3055,6 +3056,9 @@ static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct gg
+         case GGML_OP_TOP_K_MASK:
+             ggml_cuda_op_top_k_mask(ctx, dst);
+             break;
++        case GGML_OP_MOE_DOORBELL:
++            ggml_cuda_op_moe_doorbell(ctx, dst);
++            break;
+         default:
+             return false;
+     }
+@@ -6686,6 +6690,8 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
+             return ggml_cuda_lightning_indexer_supported(dev_ctx->device, op);
+         case GGML_OP_TOP_K_MASK:
+             return op->type == GGML_TYPE_F16 || op->type == GGML_TYPE_F32;
++        case GGML_OP_MOE_DOORBELL:
++            return ggml_cuda_moe_doorbell_supported(dev_ctx->device, op);
+ 
+         default:
+             return false;
+@@ -6881,6 +6887,13 @@ static void * ggml_backend_cuda_reg_get_proc_address(ggml_backend_reg_t reg, con
+     if (strcmp(name, "ggml_backend_get_features") == 0) {
+         return (void *)ggml_backend_cuda_get_features;
+     }
++    // Brain Engine 0042: mapped pinned memory for the MoE doorbell
++    if (strcmp(name, "ggml_backend_cuda_moe_doorbell_alloc") == 0) {
++        return (void *)ggml_cuda_moe_doorbell_alloc;
++    }
++    if (strcmp(name, "ggml_backend_cuda_moe_doorbell_free") == 0) {
++        return (void *)ggml_cuda_moe_doorbell_free;
++    }
+     return nullptr;
+ }
+ 
+diff --git a/ggml/src/ggml-cuda/moe-doorbell.cu b/ggml/src/ggml-cuda/moe-doorbell.cu
+new file mode 100644
+index 0000000..61a547a
+--- /dev/null
++++ b/ggml/src/ggml-cuda/moe-doorbell.cu
+@@ -0,0 +1,193 @@
++#include "moe-doorbell.cuh"
++
++// Brain Engine 0042: the MoE doorbell on the card.
++// The ring and the wait are kernels, not events: a CUDA graph keeps kernels, and Strata found that an event recorded
++// while a graph is captured is dropped. The doorbell memory is mapped pinned host memory: the card writes and reads it
++// over the bus while its kernels run, and the processor's thread reads and writes it like any other memory.
++// Ordering: the writer stores its data, then a system-wide fence, then the counter; the reader waits for the counter,
++// then a fence, then reads the data. Reads of memory the processor wrote go around the card's caches (volatile / __ldcv).
++
++#if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
++#define GGML_CUDA_MOE_DOORBELL 1
++#endif
++
++#ifdef GGML_CUDA_MOE_DOORBELL
++
++static __device__ __forceinline__ uint64_t moe_doorbell_now_ns() {
++    uint64_t t;
++    asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(t));
++    return t;
++}
++
++// one block: work out the slots, copy the picks and the expert input into the doorbell, then ring (seq + 1)
++static __global__ void moe_doorbell_ring_kernel(
++        const float * __restrict__ cur, const int32_t * __restrict__ ids, const int32_t * __restrict__ map,
++        int32_t * __restrict__ slots, uint8_t * bell,
++        const int n_embd, const int n_used, const int n_tok, const int n_slots, const int layer) {
++    volatile ggml_moe_doorbell * vb = (volatile ggml_moe_doorbell *) bell;
++    int32_t * b_ids = (int32_t *) (bell + GGML_MOE_DOORBELL_OFF_IDS);
++    float   * b_cur = (float   *) (bell + GGML_MOE_DOORBELL_OFF_CUR);
++
++    const int n_ids = n_used*n_tok;
++    for (int i = threadIdx.x; i < n_ids; i += blockDim.x) {
++        const int32_t e = ids[i];
++        const int32_t s = map[e];
++        // a miss reads zero slot k of the banks: distinct for the picks of one token, as the old path had them
++        slots[i] = s < n_slots ? s : n_slots + i % n_used;
++        b_ids[i] = e;
++    }
++    const int n_cur = n_embd*n_tok;
++    for (int i = threadIdx.x; i < n_cur; i += blockDim.x) {
++        b_cur[i] = cur[i];
++    }
++    __threadfence_system(); // this thread's writes reach the host before anything it writes later
++    __syncthreads();
++
++    if (threadIdx.x == 0) {
++        vb->layer    = layer;
++        vb->n_tokens = n_tok;
++        vb->n_used   = n_used;
++        vb->n_embd   = n_embd;
++        __threadfence_system();
++        vb->seq = vb->seq + 1; // the doorbell: the processor's thread is spinning on this
++        __threadfence_system();
++    }
++}
++
++// one thread: wait until the processor answered the last ring; on a timeout, flag it for the host's watchdog (which
++// stops the program with a clear message), give it a few seconds to do so, then stop the card
++static __global__ void moe_doorbell_wait_kernel(uint8_t * bell, const int layer, const int timeout_ms) {
++#if __CUDA_ARCH__ >= GGML_CUDA_CC_VOLTA
++    volatile ggml_moe_doorbell * vb = (volatile ggml_moe_doorbell *) bell;
++    const uint32_t seq = vb->seq;
++    const uint64_t t0  = moe_doorbell_now_ns();
++    const uint64_t max = (uint64_t) timeout_ms*1000000ull;
++    while (vb->done != seq) {
++        if (moe_doorbell_now_ns() - t0 > max) {
++            vb->err_layer = layer;
++            vb->err_ms    = timeout_ms;
++            __threadfence_system();
++            vb->err = 1;
++            __threadfence_system();
++            const uint64_t t1 = moe_doorbell_now_ns();
++            while (moe_doorbell_now_ns() - t1 < 5000000000ull) {
++                __nanosleep(1000000);
++            }
++            printf("MoE doorbell (LLAMA_MOE_DOORBELL): layer %d waited %d ms for the processor's part of its experts and gave up\n",
++                   layer, timeout_ms);
++            __trap();
++        }
++        __nanosleep(256);
++    }
++    __threadfence_system();
++#else
++    GGML_UNUSED(bell);
++    GGML_UNUSED(layer);
++    GGML_UNUSED(timeout_ms);
++    NO_DEVICE_CODE;
++#endif // __CUDA_ARCH__ >= GGML_CUDA_CC_VOLTA
++}
++
++// one block per pick: res = cached + the processor's part where the pick is a miss, cached + 0 elsewhere
++static __global__ void moe_doorbell_add_kernel(
++        const float * __restrict__ cached, const int32_t * __restrict__ slots, const uint8_t * bell, float * __restrict__ dst,
++        const int n_embd, const int n_used, const int n_slots, const int64_t off_out,
++        const int64_t c1, const int64_t c2, const int64_t d1, const int64_t d2) {
++    const int row = blockIdx.x; // t*n_used + k
++    const int k   = row % n_used;
++    const int t   = row / n_used;
++
++    const bool    miss = slots[row] >= n_slots;
++    const float * out  = (const float *) (bell + off_out) + (int64_t) row*n_embd;
++    const float * c    = cached + k*c1 + t*c2;
++    float       * d    = dst    + k*d1 + t*d2;
++    for (int i = threadIdx.x; i < n_embd; i += blockDim.x) {
++        d[i] = c[i] + (miss ? __ldcv(out + i) : 0.0f);
++    }
++}
++
++#endif // GGML_CUDA_MOE_DOORBELL
++
++bool ggml_cuda_moe_doorbell_supported(int device, const ggml_tensor * op) {
++#ifdef GGML_CUDA_MOE_DOORBELL
++    int64_t dev_ptr = 0;
++    memcpy(&dev_ptr, op->op_params + 6, sizeof(dev_ptr));
++    return dev_ptr != 0 && ggml_cuda_info().devices[device].cc >= GGML_CUDA_CC_VOLTA;
++#else
++    GGML_UNUSED(device);
++    GGML_UNUSED(op);
++    return false;
++#endif // GGML_CUDA_MOE_DOORBELL
++}
++
++void ggml_cuda_op_moe_doorbell(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
++#ifdef GGML_CUDA_MOE_DOORBELL
++    const int32_t mode       = ggml_get_op_params_i32(dst, 0);
++    const int32_t n_slots    = ggml_get_op_params_i32(dst, 1);
++    const int32_t layer      = ggml_get_op_params_i32(dst, 2);
++    const int32_t timeout_ms = ggml_get_op_params_i32(dst, 3);
++    int64_t dev_ptr = 0;
++    memcpy(&dev_ptr, dst->op_params + 6, sizeof(dev_ptr));
++    uint8_t * bell = (uint8_t *) (intptr_t) dev_ptr;
++    GGML_ASSERT(bell != nullptr);
++
++    cudaStream_t stream = ctx.stream();
++
++    if (mode == 0) {
++        const ggml_tensor * cur = dst->src[0];
++        const ggml_tensor * ids = dst->src[1];
++        const ggml_tensor * map = dst->src[2];
++        GGML_ASSERT(ggml_is_contiguous(cur) && ggml_is_contiguous(ids) && ggml_is_contiguous(map) && ggml_is_contiguous(dst));
++        moe_doorbell_ring_kernel<<<1, 1024, 0, stream>>>(
++            (const float *) cur->data, (const int32_t *) ids->data, (const int32_t *) map->data, (int32_t *) dst->data, bell,
++            (int) cur->ne[0], (int) ids->ne[0], (int) ids->ne[1], n_slots, layer);
++    } else {
++        const ggml_tensor * cached = dst->src[0];
++        const ggml_tensor * slots  = dst->src[1];
++        GGML_ASSERT(cached->nb[0] == sizeof(float) && ggml_is_contiguous(slots));
++        moe_doorbell_wait_kernel<<<1, 1, 0, stream>>>(bell, layer, timeout_ms);
++        const int n_rows = (int) (cached->ne[1]*cached->ne[2]);
++        moe_doorbell_add_kernel<<<n_rows, 256, 0, stream>>>(
++            (const float *) cached->data, (const int32_t *) slots->data, bell, (float *) dst->data,
++            (int) cached->ne[0], (int) cached->ne[1], n_slots, (int64_t) ggml_moe_doorbell_off_out(cached->ne[0]),
++            (int64_t) (cached->nb[1]/sizeof(float)), (int64_t) (cached->nb[2]/sizeof(float)),
++            (int64_t) (dst->nb[1]/sizeof(float)),    (int64_t) (dst->nb[2]/sizeof(float)));
++    }
++#else
++    GGML_UNUSED(ctx);
++    GGML_UNUSED(dst);
++    GGML_ABORT("the MoE doorbell needs an NVIDIA card");
++#endif // GGML_CUDA_MOE_DOORBELL
++}
++
++void * ggml_cuda_moe_doorbell_alloc(size_t size, void ** dev) {
++    *dev = nullptr;
++#ifdef GGML_CUDA_MOE_DOORBELL
++    void * host = nullptr;
++    if (cudaHostAlloc(&host, size, cudaHostAllocPortable | cudaHostAllocMapped) != cudaSuccess) {
++        (void) cudaGetLastError();
++        return nullptr;
++    }
++    if (cudaHostGetDevicePointer(dev, host, 0) != cudaSuccess) {
++        (void) cudaGetLastError();
++        CUDA_CHECK(cudaFreeHost(host));
++        *dev = nullptr;
++        return nullptr;
++    }
++    memset(host, 0, size);
++    return host;
++#else
++    GGML_UNUSED(size);
++    return nullptr;
++#endif // GGML_CUDA_MOE_DOORBELL
++}
++
++void ggml_cuda_moe_doorbell_free(void * host) {
++#ifdef GGML_CUDA_MOE_DOORBELL
++    if (host != nullptr) {
++        CUDA_CHECK(cudaFreeHost(host));
++    }
++#else
++    GGML_UNUSED(host);
++#endif // GGML_CUDA_MOE_DOORBELL
++}
+diff --git a/ggml/src/ggml-cuda/moe-doorbell.cuh b/ggml/src/ggml-cuda/moe-doorbell.cuh
+new file mode 100644
+index 0000000..7e4f985
+--- /dev/null
++++ b/ggml/src/ggml-cuda/moe-doorbell.cuh
+@@ -0,0 +1,11 @@
++#include "common.cuh"
++
++// Brain Engine 0042: the MoE doorbell on the card (see ggml_moe_doorbell_ring and ggml_moe_doorbell_join in ggml.h)
++void ggml_cuda_op_moe_doorbell(ggml_backend_cuda_context & ctx, ggml_tensor * dst);
++
++// the card can ring the doorbell itself: NVIDIA, Volta or newer (it sleeps while it waits)
++bool ggml_cuda_moe_doorbell_supported(int device, const ggml_tensor * op);
++
++// mapped pinned memory for the doorbell: the host pointer, and in *dev the card's pointer to the same bytes
++void * ggml_cuda_moe_doorbell_alloc(size_t size, void ** dev);
++void   ggml_cuda_moe_doorbell_free(void * host);
+diff --git a/ggml/src/ggml-rpc/ggml-rpc.cpp b/ggml/src/ggml-rpc/ggml-rpc.cpp
+index 286e822..44f5d61 100644
+--- a/ggml/src/ggml-rpc/ggml-rpc.cpp
++++ b/ggml/src/ggml-rpc/ggml-rpc.cpp
+@@ -169,6 +169,7 @@ static constexpr int bob_wire_ops[] = {
+     GGML_OP_OPT_STEP_ADAMW,         // 99
+     GGML_OP_OPT_STEP_SGD,           // 100
+     GGML_OP_GLU,                    // 101
++    GGML_OP_MOE_DOORBELL,           // 102, Brain Engine 0042: never sent (it holds this computer's memory addresses)
+ };
+ static constexpr uint32_t BOB_WIRE_OP_COUNT = sizeof(bob_wire_ops) / sizeof(bob_wire_ops[0]);
+ static constexpr bool bob_wire_covers_every_op() {
+@@ -2291,6 +2292,11 @@ ggml_tensor * rpc_server::deserialize_tensor(struct ggml_context * ctx, const rp
+         LOG_ERROR("[%s] the other Bob sent step number %u, which this Brain Engine doesn't have (update the older Bob)\n", __func__, tensor->op);
+         return nullptr;
+     }
++    // Brain Engine 0042: the doorbell points into the sender's own memory, so it can't run here
++    if (local_op == GGML_OP_MOE_DOORBELL) {
++        LOG_ERROR("[%s] the other Bob sent the MoE doorbell step, which only runs on the computer that made it\n", __func__);
++        return nullptr;
++    }
+     result->op = (ggml_op) local_op;
+     for (uint32_t i = 0; i < GGML_MAX_OP_PARAMS / sizeof(int32_t); i++) {
+         result->op_params[i] = tensor->op_params[i];
+@@ -3706,7 +3712,10 @@ static ggml_backend_buffer_type_t ggml_backend_rpc_device_get_buffer_type(ggml_b
+ 
+ static bool ggml_backend_rpc_device_supports_op(ggml_backend_dev_t dev, const struct ggml_tensor * op) {
+     GGML_UNUSED(dev);
+-    GGML_UNUSED(op);
++    // Brain Engine 0042: the doorbell points into this computer's memory
++    if (op->op == GGML_OP_MOE_DOORBELL) {
++        return false;
++    }
+     //TODO: call the remote backend and cache the results
+     return true;
+ }
+diff --git a/ggml/src/ggml.c b/ggml/src/ggml.c
+index 0471641..ca1ef87 100644
+--- a/ggml/src/ggml.c
++++ b/ggml/src/ggml.c
+@@ -1120,9 +1120,11 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
+     "OPT_STEP_SGD",
+ 
+     "GLU",
++
++    "MOE_DOORBELL",
+ };
+ 
+-static_assert(GGML_OP_COUNT == 99, "GGML_OP_COUNT != 99");
++static_assert(GGML_OP_COUNT == 100, "GGML_OP_COUNT != 100");
+ 
+ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
+     "none",
+@@ -1233,9 +1235,11 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
+     "sgd(x)",
+ 
+     "glu(x)",
++
++    "moe_doorbell(x)",
+ };
+ 
+-static_assert(GGML_OP_COUNT == 99, "GGML_OP_COUNT != 99");
++static_assert(GGML_OP_COUNT == 100, "GGML_OP_COUNT != 100");
+ 
+ static_assert(GGML_OP_POOL_COUNT == 2, "GGML_OP_POOL_COUNT != 2");
+ 
+@@ -6618,6 +6622,69 @@ struct ggml_tensor * ggml_top_k_mask(
+     return result;
+ }
+ 
++// ggml_moe_doorbell (Brain Engine 0042)
++
++static void ggml_moe_doorbell_params(struct ggml_tensor * t, int32_t mode, int32_t n_slots, int32_t layer, int32_t timeout_ms,
++        struct ggml_moe_doorbell * bell, void * bell_dev) {
++    int32_t params[8] = { mode, n_slots, layer, timeout_ms, 0, 0, 0, 0 };
++    const int64_t host = (int64_t) (intptr_t) bell;
++    const int64_t dev  = (int64_t) (intptr_t) bell_dev;
++    memcpy(params + 4, &host, sizeof(host));
++    memcpy(params + 6, &dev,  sizeof(dev));
++    ggml_set_op_params(t, params, sizeof(params));
++}
++
++struct ggml_tensor * ggml_moe_doorbell_ring(
++        struct ggml_context      * ctx,
++        struct ggml_tensor       * cur,
++        struct ggml_tensor       * ids,
++        struct ggml_tensor       * slot_map,
++        int32_t                    n_slots,
++        int32_t                    layer,
++        struct ggml_moe_doorbell * bell,
++        void                     * bell_dev) {
++    GGML_ASSERT(cur->type == GGML_TYPE_F32 && ggml_is_contiguous(cur));
++    GGML_ASSERT(ids->type == GGML_TYPE_I32 && ggml_is_contiguous(ids) && ids->ne[2] == 1 && ids->ne[3] == 1);
++    GGML_ASSERT(slot_map->type == GGML_TYPE_I32 && ggml_is_contiguous(slot_map));
++    GGML_ASSERT(ggml_nelements(cur) == cur->ne[0]*ids->ne[1]);
++    GGML_ASSERT(ids->ne[0] <= GGML_MOE_DOORBELL_MAX_USED && ids->ne[1] <= GGML_MOE_DOORBELL_MAX_TOKENS);
++    GGML_ASSERT(bell != NULL);
++
++    struct ggml_tensor * result = ggml_new_tensor_2d(ctx, GGML_TYPE_I32, ids->ne[0], ids->ne[1]);
++    ggml_moe_doorbell_params(result, 0, n_slots, layer, 0, bell, bell_dev);
++
++    result->op     = GGML_OP_MOE_DOORBELL;
++    result->src[0] = cur;
++    result->src[1] = ids;
++    result->src[2] = slot_map;
++
++    return result;
++}
++
++struct ggml_tensor * ggml_moe_doorbell_join(
++        struct ggml_context      * ctx,
++        struct ggml_tensor       * cached,
++        struct ggml_tensor       * slots,
++        int32_t                    n_slots,
++        int32_t                    layer,
++        int32_t                    timeout_ms,
++        struct ggml_moe_doorbell * bell,
++        void                     * bell_dev) {
++    GGML_ASSERT(cached->type == GGML_TYPE_F32 && cached->nb[0] == sizeof(float));
++    GGML_ASSERT(slots->type == GGML_TYPE_I32 && ggml_is_contiguous(slots));
++    GGML_ASSERT(cached->ne[1] == slots->ne[0] && cached->ne[2] == slots->ne[1] && cached->ne[3] == 1);
++    GGML_ASSERT(bell != NULL);
++
++    struct ggml_tensor * result = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, cached->ne[0], cached->ne[1], cached->ne[2]);
++    ggml_moe_doorbell_params(result, 1, n_slots, layer, timeout_ms, bell, bell_dev);
++
++    result->op     = GGML_OP_MOE_DOORBELL;
++    result->src[0] = cached;
++    result->src[1] = slots;
++
++    return result;
++}
++
+ ////////////////////////////////////////////////////////////////////////////////
+ 
+ struct ggml_hash_set ggml_hash_set_new(size_t size) {
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 48adbec..d1e8df3 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -2371,6 +2371,12 @@ llm_graph_result * llama_context::process_ubatch(const llama_ubatch & ubatch, ll
+         return nullptr;
+     }
+ 
++    // Brain Engine 0042 (LLAMA_MOE_DOORBELL): between two words the card and the cache's thread are done; what the last
++    // word decided goes up now, and when the doorbell goes on or off the graph is made again
++    if (moe_cache && moe_cache->doorbell_between_words(ubatch.n_tokens > 1 ? cparams.n_threads_batch : cparams.n_threads)) {
++        gf_res_prev_active = nullptr;
++    }
++
+     auto * res = get_gf_res_prev();
+     auto * gf  = res->get_gf();
+ 
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 2c17ac3..dcc0fda 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -2760,13 +2760,41 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+     const std::array<ggml_tensor *, 4> exps = { up_exps, gate_exps, down_exps, gate_up_exps };
+     const bool can_cpu_share = !weight_before_ffn && loras->empty() &&
+         std::none_of(exps.begin(), exps.end(), [&](ggml_tensor * w) { return w != nullptr && hdmd != nullptr && hdmd->rot.count(w) > 0; });
+-    const llm_graph_moe_cache_slots cache = build_moe_cache_slots(selected_experts, up_exps, gate_exps, down_exps, gate_up_exps, can_cpu_share, il);
++
++    // Brain Engine 0042 (LLAMA_MOE_DOORBELL): while writing with a full cache and misses on the processor, no slot lookup
++    // through the copy callback (which stops the card) and no CPU split: one ring and one join on the card, the misses
++    // in the cache's own thread (see llama_moe_cache::doorbell_*). Every weight the processor's part reads must be on the host.
++    bool doorbell = false;
++    if (moe_cache != nullptr && can_cpu_share && il >= 0 && probs_in == nullptr && moe_cache->get_cpu_map(il, n_tokens) != nullptr &&
++            moe_cache->doorbell_on(il, n_tokens, n_expert_used, n_embd)) {
++        doorbell = true;
++        for (ggml_tensor * w : { up_exps, gate_exps, down_exps, gate_up_exps, up_exps_b, gate_exps_b, gate_up_exps_b, up_exps_s, gate_exps_s, down_exps_s }) {
++            if (w != nullptr && (w->buffer == nullptr || !ggml_backend_buffer_is_host(w->buffer))) {
++                doorbell = false;
++            }
++        }
++        for (ggml_tensor * w : { up_exps, gate_exps, down_exps, gate_up_exps }) {
++            ggml_tensor * experts = w != nullptr ? moe_cache->get_experts(w) : nullptr;
++            if (w != nullptr && experts == nullptr) {
++                doorbell = false;
++            }
++            if (doorbell && experts != nullptr) {
++                ggml_tensor * b = ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, experts->ne[0], w == down_exps ? selected_experts->ne[0] : 1, selected_experts->ne[1]);
++                if (!ggml_backend_supports_op(moe_cache->backend(il), ggml_mul_mat_id(ctx0, experts, b, selected_experts))) {
++                    doorbell = false;
++                }
++            }
++        }
++    }
++    const llm_graph_moe_cache_slots cache = doorbell ? llm_graph_moe_cache_slots{ nullptr, nullptr } :
++        build_moe_cache_slots(selected_experts, up_exps, gate_exps, down_exps, gate_up_exps, can_cpu_share, il);
+ 
+     // Brain Engine: copy the picks into this layer's kept tensor. The copy comes after the router's last node, so the
+     // fused top-k kernel and CUDA graphs stay on, nothing in the graph is marked as an output, and no eval callback
+     // is needed: the context reads the kept tensors after each micro-batch
+     // A layer read through the MoE cache slots gets no copy: the cache reads the same ids to the host for its lookup and
+     // hands them over (llama_moe_cache::set_ids_sink), and a copy there would move the graph's splits around the lookup
++    // With the doorbell (0042) there is no lookup split, so the copy is made as for an uncached layer
+     if (cache.slots == nullptr && cparams.keep_expert_ids && cparams.expert_ids_keep && il >= 0 && (uint32_t) il < cparams.expert_ids_keep_n) {
+         ggml_tensor * keep = cparams.expert_ids_keep[il];
+         if (keep && picks_made->type == GGML_TYPE_I32 && picks_made->ne[2] == 1 && picks_made->ne[3] == 1 &&
+@@ -2952,7 +2980,35 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+         return experts;
+     };
+ 
+-    ggml_tensor * experts = build_experts(cur, selected_experts, cache.slots, true);
++    ggml_tensor * experts = nullptr;
++    if (doorbell) {
++        ggml_tensor * ids = ggml_is_contiguous(selected_experts) ? selected_experts : ggml_cont(ctx0, selected_experts);
++        ggml_backend_t where = moe_cache->doorbell_backend(il, backend_cpu);
++        // the ring: slots from the mirror on the card's side, and the picks and the input handed to the processor
++        ggml_tensor * slots = moe_cache->doorbell_ring(ctx0, il, ggml_is_contiguous(cur) ? cur : ggml_cont(ctx0, cur), ids);
++        ggml_backend_sched_set_tensor_backend(sched, slots, where);
++        cb(slots, "ffn_moe_doorbell_ring", il);
++        experts = build_experts(cur, selected_experts, slots, true);
++        // the processor's part: the same steps as the old CPU part, made once per layer and size in the cache's own graph
++        {
++            const char * e = getenv("LLAMA_MOE_CACHE_CPU_ROUND");
++            const bool round = e == nullptr || strcmp(e, "0") != 0;
++            ggml_context *& ctx_ref = const_cast<ggml_context *&>(ctx0);
++            moe_cache->doorbell_side(il, n_tokens, n_expert_used, [&](ggml_context * ctx, ggml_tensor * c, ggml_tensor * i, ggml_tensor * ci) {
++                ggml_context * saved = ctx_ref;
++                ctx_ref = ctx;
++                ggml_tensor * res = build_experts(c, i, ci, false);
++                ctx_ref = saved;
++                return res;
++            }, round);
++        }
++        // the join: once a layer, the card's experts and the processor's misses
++        experts = moe_cache->doorbell_join(ctx0, il, experts, slots);
++        ggml_backend_sched_set_tensor_backend(sched, experts, where);
++        cb(experts, "ffn_moe_down_merged", il);
++    } else {
++        experts = build_experts(cur, selected_experts, cache.slots, true);
++    }
+     if (cache.cpu_ids != nullptr) {
+         // the cached experts and the misses computed from the host experts, each reads the others as zero
+         // the cached experts come first in the graph, so that they are computed while the misses are
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index a9d6460..10b367f 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -5,11 +5,17 @@
+ #include "llama-model.h"
+ 
+ #include "ggml-cpp.h"
++#include "ggml-alloc.h"
++#include "ggml-cpu.h"
+ 
+ #include <algorithm>
+ #include <atomic>
++#include <chrono>
+ #include <condition_variable>
++#include <functional>
++#include <map>
+ #include <mutex>
++#include <tuple>
+ #include <cmath>
+ #include <cstdio>
+ #include <cstdlib>
+@@ -391,6 +397,8 @@ struct llama_moe_cache::impl {
+         uint32_t cpu_acc = 0;               // fraction of a miss carried over to the next plan, in 1/65536
+         int64_t  learn_tokens = 0;          // Brain Engine 0031: tokens since this layer last let a miss into the cache
+         ggml_tensor * guess = nullptr;      // Brain Engine 0041: I32 [la_k, max_batch] on the device, the guessed experts of this layer
++        ggml_tensor * db_map = nullptr;     // Brain Engine 0042: I32 [n_expert] on the device, the slot map as of the last word
++        ggml_tensor * db_map_host = nullptr; // the same in host memory: what the processor's part and its own ring read
+         std::vector<ggml_tensor *> experts; // host expert tensors, in the order of the banks
+     };
+ 
+@@ -527,6 +535,32 @@ struct llama_moe_cache::impl {
+             }
+         }
+ 
++        // Brain Engine 0042: LLAMA_MOE_DOORBELL=1, while writing with misses on the CPU, the card computes its experts and
++        // the processor its misses at the same time, joined once a layer, with no stop of the card to plan (see db_*)
++        if (const char * db = getenv("LLAMA_MOE_DOORBELL"); !no_alloc && db != nullptr && atoi(db) > 0) {
++            int n_dev = 0;
++            for (const device & d : devices) {
++                n_dev += d.host_bytes > 0;
++            }
++            if (cpu_share <= 0.0f) {
++                LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_DOORBELL NOT USED: it needs --moe-cache-cpu-share above 0 (with 0 there is no processor part)\n", __func__);
++            } else if (n_dev != 1) {
++                LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_DOORBELL NOT USED: it works with one card only\n", __func__);
++            } else if (n_expert_used > GGML_MOE_DOORBELL_MAX_USED) {
++                LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_DOORBELL NOT USED: more than %d experts per word\n", __func__, GGML_MOE_DOORBELL_MAX_USED);
++            } else {
++                db_on      = true;
++                db_n_embd  = model.hparams.n_embd;
++                if (const char * t = getenv("LLAMA_MOE_DOORBELL_TIMEOUT_MS"); t != nullptr && atoi(t) > 0) {
++                    db_timeout = atoi(t);
++                }
++                const char * st = getenv("LLAMA_MOE_DOORBELL_STALL");
++                db_stall = st != nullptr && atoi(st) > 0;
++                const char * pc = getenv("LLAMA_MOE_DOORBELL_CPU_RING");
++                db_force_cpu_ring = pc != nullptr && atoi(pc) > 0;
++            }
++        }
++
+         // with misses on the CPU, the n_zero slots after the cached ones stay zero: the device computes these misses as zero
+         // one extra slot at the end, CUDA MMQ can read past the last expert
+         n_zero = cpu_share > 0.0f ? std::min<int32_t>(n_expert_used, 64) : 0;
+@@ -608,8 +642,8 @@ struct llama_moe_cache::impl {
+                 continue;
+             }
+             g.lru.init(model.layers.size(), n_expert, g.n_slots);
+-            n_tensors[g.id] += g.ref.size()*(1 + g.layers.size()) + (la_max > 0 ? g.layers.size() : 0);
+-            n_tensors_host  += g.layers.size()*(n_zero > 0 ? 3 : 1); // slot maps and CPU map
++            n_tensors[g.id] += g.ref.size()*(1 + g.layers.size()) + (la_max > 0 ? g.layers.size() : 0) + (db_on ? g.layers.size() : 0);
++            n_tensors_host  += g.layers.size()*(n_zero > 0 ? 3 : 1) + (db_on ? g.layers.size() : 0); // slot maps and CPU map
+         }
+         if (n_tensors_host == 0) {
+             throw std::runtime_error("MoE cache is too small to hold the experts of one token");
+@@ -664,6 +698,13 @@ struct llama_moe_cache::impl {
+                     l.guess = ggml_new_tensor_2d(ctx, GGML_TYPE_I32, la_k, max_batch);
+                     ggml_format_name(l.guess, "moe_cache.guess-%d", il);
+                 }
++                if (db_on) {
++                    l.db_map = ggml_new_tensor_1d(ctx, GGML_TYPE_I32, g.ref[0]->ne[2]);
++                    ggml_format_name(l.db_map, "moe_cache.db_map-%d", il);
++                    l.db_map_host = ggml_new_tensor_1d(ctx_host.get(), GGML_TYPE_I32, g.ref[0]->ne[2]);
++                    ggml_format_name(l.db_map_host, "moe_cache.db_map_host-%d", il);
++                    buf_host_size += GGML_PAD(ggml_nbytes(l.db_map_host), alignment_host);
++                }
+                 l.slot_map = ggml_new_tensor_2d(ctx_host.get(), GGML_TYPE_I32, 1, g.ref[0]->ne[2]);
+                 ggml_format_name(l.slot_map, "moe_cache.slot_map-%d", il);
+                 // Brain Engine 0038: its lookup starts a split, so the selected experts are always computed in an earlier one
+@@ -765,6 +806,10 @@ struct llama_moe_cache::impl {
+                 }
+             }
+         }
++
++        if (db_on) {
++            db_init();
++        }
+     }
+ 
+     uint64_t fingerprint  = 0;
+@@ -991,6 +1036,495 @@ struct llama_moe_cache::impl {
+         }
+         la_cv.notify_all();
+     }
++
++    // Brain Engine 0042: the doorbell (LLAMA_MOE_DOORBELL=1, with --moe-cache-cpu-share above 0)
++    // Today each cached layer stops the card in copy(): the picks come back to the host, the host plans hits and misses,
++    // and only then is the card's part queued; the processor's part runs in its own split that the card waits on. With
++    // the doorbell, a written word's graph has no stop: the card looks up the slots itself in a mirror of the slot map
++    // (db_map, changed only between words), writes the picks and the expert input into shared memory and rings (seq + 1).
++    // A thread here (db_worker) sees the ring, computes the misses from the host experts with the same processor code as
++    // the old CPU part (a small graph per layer made from the same build_experts, db_side), writes them back, and sets
++    // done; the card waits for done after its own experts and adds the two once. The cache's bookkeeping (LRU, learning
++    // 0031, the trace) runs in that thread too, and what it decides to bring in goes up between words (db_pending).
++    // The mirror only changes between words, and with the CPU share at 1, a full cache and learning off nothing is
++    // brought in while writing, so the words are the same as share 1 without the doorbell.
++    bool    db_on       = false; // asked for and set up
++    bool    db_card     = false; // the card rings it (CUDA), else the processor's own steps (ggml-cpu) ring it
++    bool    db_stall    = false; // tests (LLAMA_MOE_DOORBELL_STALL): the thread never answers, so the wait times out
++    bool    db_force_cpu_ring = false; // LLAMA_MOE_DOORBELL_CPU_RING: the processor's own steps ring it, on any card (tests, the stand-in card)
++    bool    db_dirty    = true;  // the mirrors must be made again from the live slot maps before the next word
++    mutable bool db_built = false; // the last graph was made with the doorbell
++    int32_t db_timeout  = 10000; // ms the card waits for the processor's part, then it stops with a message
++    int64_t db_n_embd   = 0;
++    size_t  db_size     = 0;
++    ggml_moe_doorbell * db_bell = nullptr;
++    void *  db_bell_dev = nullptr;
++    void (*db_free_fn)(void *) = nullptr;
++    std::vector<uint8_t> db_bell_mem;   // the processor's version: plain memory
++    ggml_backend_buffer_ptr db_bell_buf; // the doorbell's memory as a CPU buffer, for the inputs and the result of db_side
++    struct db_fill { int32_t il, expert, slot, key; };
++    std::vector<db_fill> db_pending;    // decided while writing, uploaded between words
++    std::vector<moe_cache_lru::fill> db_fills, db_cpu;
++    size_t  db_rings = 0, db_rings_cpu = 0, db_deferred = 0, db_up = 0, db_up_bytes = 0;
++
++    // the processor's part of one layer for one batch size, made once and kept
++    struct db_side_graph {
++        ggml_context_ptr ctx;
++        ggml_backend_buffer_ptr cpu_buf; // over cpu_ids
++        ggml_cgraph * gf = nullptr;
++        ggml_gallocr_t galloc = nullptr;
++        std::vector<uint8_t> cpu_mem;
++        int32_t * cpu_ids = nullptr; // the picks the processor does, -1 for the card's (64-byte aligned in cpu_mem)
++        ~db_side_graph() {
++            if (galloc != nullptr) {
++                ggml_gallocr_free(galloc);
++            }
++        }
++    };
++    std::map<std::tuple<int32_t, int64_t, int64_t>, std::unique_ptr<db_side_graph>> db_sides;
++    std::mutex db_sides_mutex;
++
++    // the thread and its own processor backend (its own threads, so it never waits on the graph's)
++    ggml_backend_t db_cpu_backend = nullptr;
++    ggml_threadpool_t db_tp = nullptr;
++    void (*db_tp_free)(ggml_threadpool_t) = nullptr;
++    std::thread db_thread, db_watch;
++    std::mutex db_mutex;
++    std::condition_variable db_cv;
++    uint64_t db_arm = 0;
++    bool db_stop = false;
++
++    void db_init() {
++        const device & d = *std::find_if(devices.begin(), devices.end(), [](const device & x) { return x.host_bytes > 0; });
++        db_size = ggml_moe_doorbell_size(db_n_embd, n_expert_used);
++        ggml_backend_reg_t reg = ggml_backend_dev_backend_reg(ggml_backend_get_device(d.backend));
++        using alloc_t = void * (*)(size_t, void **);
++        auto alloc_fn = reg ? (alloc_t) ggml_backend_reg_get_proc_address(reg, "ggml_backend_cuda_moe_doorbell_alloc") : nullptr;
++        auto free_fn  = reg ? (void (*)(void *)) ggml_backend_reg_get_proc_address(reg, "ggml_backend_cuda_moe_doorbell_free") : nullptr;
++        if (alloc_fn != nullptr && free_fn != nullptr && !db_force_cpu_ring) {
++            void * dev = nullptr;
++            void * host = alloc_fn(db_size, &dev);
++            if (host != nullptr) {
++                // can the card ring it? (Volta or newer, mapped memory)
++                ggml_tensor probe = {};
++                probe.op = GGML_OP_MOE_DOORBELL;
++                const int64_t dp = (int64_t) (intptr_t) dev;
++                memcpy(probe.op_params + 6, &dp, sizeof(dp));
++                if (ggml_backend_supports_op(d.backend, &probe)) {
++                    db_bell     = (ggml_moe_doorbell *) host;
++                    db_bell_dev = dev;
++                    db_free_fn  = free_fn;
++                    db_card     = true;
++                } else {
++                    free_fn(host);
++                }
++            }
++        }
++        if (!db_card && !db_force_cpu_ring) {
++            // Vulkan, Metal, the stand-in card: the old path, unchanged
++            LLAMA_LOG_WARN("llama_moe_cache: !!! LLAMA_MOE_DOORBELL NOT USED: this card can't ring it (it needs an NVIDIA card, Volta or newer)\n");
++            db_on = false;
++            return;
++        }
++        if (!db_card) {
++            db_bell_mem.assign(db_size + 64, 0);
++            db_bell = (ggml_moe_doorbell *) (((uintptr_t) db_bell_mem.data() + 63) & ~(uintptr_t) 63);
++        }
++        db_bell_buf.reset(ggml_backend_cpu_buffer_from_ptr(db_bell, db_size));
++        LLAMA_LOG_INFO("llama_moe_cache: the MoE cache rings a doorbell while writing (LLAMA_MOE_DOORBELL): the card's experts and "
++                       "the processor's misses run at the same time, joined once a layer; %s (%.0f KiB shared, wait at most %d ms)\n",
++                       db_card ? "the card rings it itself (mapped memory)" : "the processor's own steps ring it (LLAMA_MOE_DOORBELL_CPU_RING, it overlaps less)",
++                       db_size/1024.0, db_timeout);
++    }
++
++    bool db_ready() const {
++        if (!db_on || lent || filling || reading) {
++            return false;
++        }
++        for (const group & g : groups) {
++            if (g.n_slots > 0 && g.lru.n_filled < g.lru.n_slots) {
++                return false; // until the cache is full, misses are uploaded as they come (the old path)
++            }
++        }
++        return true;
++    }
++
++    bool doorbell_on(int32_t il, int64_t n_tokens, int64_t n_used, int64_t n_embd) const {
++        const bool res = db_ready() && il >= 0 && il < (int32_t) layers.size() && layers[il].ig >= 0 && layers[il].db_map != nullptr &&
++            n_tokens >= 1 && n_tokens <= GGML_MOE_DOORBELL_MAX_TOKENS && n_used >= 1 && n_used <= n_expert_used && n_used <= n_zero &&
++            n_embd == db_n_embd && n_tokens*n_used <= groups[layers[il].ig].n_slots;
++        if (res) {
++            db_built = true;
++        }
++        return res;
++    }
++
++    ggml_backend_t doorbell_backend(int32_t il, ggml_backend_t cpu) const {
++        return db_card ? backend(il) : cpu;
++    }
++
++    ggml_tensor * doorbell_ring(ggml_context * ctx, int32_t il, ggml_tensor * cur, ggml_tensor * ids) const {
++        const layer & l = layers[il];
++        return ggml_moe_doorbell_ring(ctx, cur, ids, db_card ? l.db_map : l.db_map_host, groups[l.ig].n_slots, il,
++            db_bell, db_card ? db_bell_dev : nullptr);
++    }
++
++    ggml_tensor * doorbell_join(ggml_context * ctx, int32_t il, ggml_tensor * cached, ggml_tensor * slots) const {
++        return ggml_moe_doorbell_join(ctx, cached, slots, groups[layers[il].ig].n_slots, il, db_timeout,
++            db_bell, db_card ? db_bell_dev : nullptr);
++    }
++
++    // the processor's part of layer il for n_tokens tokens, made by build() from inputs that sit in the doorbell's memory
++    void doorbell_side(int32_t il, int64_t n_tokens, int64_t n_used, const llama_moe_cache::doorbell_build_t & build, bool round) {
++        std::lock_guard<std::mutex> lock(db_sides_mutex);
++        auto & slot = db_sides[{ il, n_tokens, n_used }];
++        if (slot) {
++            return; // the same layer and sizes make the same steps
++        }
++        auto side = std::make_unique<db_side_graph>();
++        ggml_init_params params = {
++            /*.mem_size   =*/ 512*ggml_tensor_overhead() + ggml_graph_overhead_custom(512, false),
++            /*.mem_buffer =*/ nullptr,
++            /*.no_alloc   =*/ true,
++        };
++        side->ctx.reset(ggml_init(params));
++        ggml_context * ctx = side->ctx.get();
++        ggml_backend_buffer_t bb = db_bell_buf.get();
++        auto place = [&](ggml_tensor * t, void * data, ggml_backend_buffer_t buf) {
++            t->data   = data;
++            t->buffer = buf;
++        };
++        const size_t cpu_bytes = (size_t) n_used*n_tokens*sizeof(int32_t);
++        side->cpu_mem.assign(cpu_bytes + 64, 0xff);
++        side->cpu_ids = (int32_t *) (((uintptr_t) side->cpu_mem.data() + 63) & ~(uintptr_t) 63);
++        ggml_tensor * cur  = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, db_n_embd, 1, n_tokens);
++        ggml_tensor * ids  = ggml_new_tensor_2d(ctx, GGML_TYPE_I32, n_used, n_tokens);
++        ggml_tensor * cpu  = ggml_new_tensor_2d(ctx, GGML_TYPE_I32, n_used, n_tokens);
++        place(cur, (uint8_t *) db_bell + GGML_MOE_DOORBELL_OFF_CUR, bb);
++        place(ids, (uint8_t *) db_bell + GGML_MOE_DOORBELL_OFF_IDS, bb);
++        side->cpu_buf.reset(ggml_backend_cpu_buffer_from_ptr(side->cpu_ids, cpu_bytes));
++        place(cpu, side->cpu_ids, side->cpu_buf.get());
++        ggml_tensor * res = build(ctx, cur, ids, cpu);
++        GGML_ASSERT(res->type == GGML_TYPE_F32 && res->ne[0] == db_n_embd && res->ne[1] == n_used && res->ne[2] == n_tokens);
++        // the result goes straight into the doorbell's memory, where the card's join reads it
++        void * out = (uint8_t *) db_bell + ggml_moe_doorbell_off_out(db_n_embd);
++        if (!ggml_is_view(res) && ggml_is_contiguous(res) && res->data == nullptr) {
++            place(res, out, bb);
++        } else {
++            ggml_tensor * dst = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, db_n_embd, n_used, n_tokens);
++            place(dst, out, bb);
++            res = ggml_cpy(ctx, res, dst);
++        }
++        side->gf = ggml_new_graph_custom(ctx, 512, false);
++        ggml_build_forward_expand(side->gf, res);
++        for (int i = 0; i < ggml_graph_n_nodes(side->gf); ++i) {
++            ggml_tensor * node = ggml_graph_node(side->gf, i);
++            // Brain Engine 0040: round like the card, as the old CPU part did
++            if (round && node->op == GGML_OP_MUL_MAT_ID) {
++                const int32_t one = 1;
++                memcpy(node->op_params, &one, sizeof(one));
++            }
++            for (ggml_tensor * src : node->src) {
++                if (src != nullptr && src->op == GGML_OP_NONE && src->data != nullptr) {
++                    GGML_ASSERT(src->buffer != nullptr && ggml_backend_buffer_is_host(src->buffer) && "the doorbell's processor part reads a weight off the host");
++                }
++            }
++        }
++        side->galloc = ggml_gallocr_new(ggml_backend_cpu_buffer_type());
++        if (!ggml_gallocr_alloc_graph(side->galloc, side->gf)) {
++            throw std::runtime_error("failed to allocate the MoE doorbell's processor part");
++        }
++        slot = std::move(side);
++    }
++
++    db_side_graph * db_find_side(int32_t il, int64_t n_tokens, int64_t n_used) {
++        std::lock_guard<std::mutex> lock(db_sides_mutex);
++        auto it = db_sides.find({ il, n_tokens, n_used });
++        return it == db_sides.end() ? nullptr : it->second.get();
++    }
++
++    void db_start(int n_threads) {
++        ggml_backend_dev_t cpu_dev = ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_CPU);
++        if (cpu_dev == nullptr || (db_cpu_backend = ggml_backend_dev_init(cpu_dev, nullptr)) == nullptr) {
++            throw std::runtime_error("the MoE doorbell needs the processor backend");
++        }
++        ggml_backend_reg_t reg = ggml_backend_dev_backend_reg(cpu_dev);
++        auto tp_new = (decltype(ggml_threadpool_new) *) ggml_backend_reg_get_proc_address(reg, "ggml_threadpool_new");
++        db_tp_free  = (decltype(ggml_threadpool_free) *) ggml_backend_reg_get_proc_address(reg, "ggml_threadpool_free");
++        auto set_tp = (decltype(ggml_backend_cpu_set_threadpool) *) ggml_backend_reg_get_proc_address(reg, "ggml_backend_cpu_set_threadpool");
++        auto set_nt = (ggml_backend_set_n_threads_t) ggml_backend_reg_get_proc_address(reg, "ggml_backend_set_n_threads");
++        n_threads = std::max(1, n_threads);
++        if (set_nt) {
++            set_nt(db_cpu_backend, n_threads);
++        }
++        // a kept pool of threads: without one the processor backend starts new threads for each graph
++        if (tp_new && set_tp && db_tp_free) {
++            ggml_threadpool_params tpp = ggml_threadpool_params_default(n_threads);
++            db_tp = tp_new(&tpp);
++            if (db_tp) {
++                set_tp(db_cpu_backend, db_tp);
++            }
++        }
++        // read here, before the first ring can come: a thread that starts late must still answer it
++        const uint32_t served = ((volatile ggml_moe_doorbell *) db_bell)->seq;
++        db_thread = std::thread([this, served] { db_worker(served); });
++        if (db_card) {
++            db_watch = std::thread([this] { db_watchdog(); });
++        }
++    }
++
++    // the card gave up waiting: stop with the reason (the card stops itself a few seconds later if this doesn't run)
++    void db_check_err() const {
++        const volatile ggml_moe_doorbell * vb = db_bell;
++        if (vb != nullptr && vb->err != 0) {
++            GGML_ABORT("MoE doorbell (LLAMA_MOE_DOORBELL): layer %d waited %d ms for the processor's part of its experts and "
++                       "gave up: the processor's thread did not answer. Unset LLAMA_MOE_DOORBELL to use the old path, or raise "
++                       "LLAMA_MOE_DOORBELL_TIMEOUT_MS", (int) vb->err_layer, (int) vb->err_ms);
++        }
++    }
++
++    void db_watchdog() {
++        std::unique_lock<std::mutex> lock(db_mutex);
++        while (!db_stop) {
++            db_cv.wait_for(lock, std::chrono::milliseconds(5));
++            db_check_err();
++        }
++    }
++
++    // spins while a word is being written (woken by doorbell_between_words); after 20 ms without a ring it looks every
++    // 1 to 10 ms instead (a graph can take long to lay out between the wake and its first ring), so a ring is never missed
++    void db_worker(uint32_t served) {
++        volatile ggml_moe_doorbell * vb = db_bell;
++        uint64_t seen   = 0;
++        for (;;) {
++            auto last = std::chrono::steady_clock::now();
++            for (uint32_t spin = 0;; ++spin) {
++                const uint32_t seq = vb->seq;
++                if (seq != served) {
++                    std::atomic_thread_fence(std::memory_order_acquire);
++                    served = seq;
++                    if (db_answer(seq)) {
++                        std::atomic_thread_fence(std::memory_order_release);
++                        vb->done = seq;
++                    }
++                    last = std::chrono::steady_clock::now();
++                    spin = 0;
++                    continue;
++                }
++                if ((spin & 1023) == 1023) {
++                    std::lock_guard<std::mutex> lock(db_mutex);
++                    if (db_stop) {
++                        return;
++                    }
++                    if (db_arm != seen) {
++                        seen = db_arm;
++                        last = std::chrono::steady_clock::now();
++                    } else if (std::chrono::steady_clock::now() - last > std::chrono::milliseconds(20)) {
++                        break;
++                    }
++                }
++                if (spin > 65536) {
++                    std::this_thread::yield();
++                }
++            }
++            // resting: woken at once by the next word, and looking for a ring now and then
++            std::unique_lock<std::mutex> lock(db_mutex);
++            for (int ms = 1;; ms = std::min(ms + 1, 10)) {
++                db_cv.wait_for(lock, std::chrono::milliseconds(ms), [&] { return db_stop || db_arm != seen; });
++                if (db_stop) {
++                    return;
++                }
++                if (db_arm != seen || vb->seq != served) {
++                    seen = db_arm;
++                    break;
++                }
++            }
++        }
++    }
++
++    // one ring: the misses of the layer on the processor, then the bookkeeping; false if it must not answer (tests)
++    bool db_answer(uint32_t seq) {
++        GGML_UNUSED(seq);
++        const volatile ggml_moe_doorbell * vb = db_bell;
++        const int32_t il     = vb->layer;
++        const int32_t n_tok  = vb->n_tokens;
++        const int32_t n_used = vb->n_used;
++        db_side_graph * side = il >= 0 && il < (int32_t) layers.size() ? db_find_side(il, n_tok, n_used) : nullptr;
++        if (side == nullptr) {
++            GGML_ABORT("MoE doorbell: layer %d rang for %d tokens and %d experts, but has no processor part for that", il, n_tok, n_used);
++        }
++        const layer & l = layers[il];
++        group & g = groups[l.ig];
++        const int32_t * ids = (const int32_t *) ((const uint8_t *) db_bell + GGML_MOE_DOORBELL_OFF_IDS);
++        const int32_t * map = (const int32_t *) l.db_map_host->data;
++        const size_t n_ids = (size_t) n_tok*n_used;
++        bool any = false;
++        for (size_t i = 0; i < n_ids; ++i) {
++            const int32_t e = ids[i];
++            GGML_ASSERT(e >= 0 && e < g.lru.n_expert);
++            // the card read a zero slot for exactly these: they are the processor's
++            side->cpu_ids[i] = map[e] >= g.n_slots ? e : -1;
++            any = any || side->cpu_ids[i] >= 0;
++        }
++        db_rings++;
++        if (any) {
++            db_rings_cpu++;
++            if (ggml_backend_graph_compute(db_cpu_backend, side->gf) != GGML_STATUS_SUCCESS) {
++                GGML_ABORT("MoE doorbell: the processor's part of layer %d failed", il);
++            }
++        }
++        if (db_stall) {
++            return false;
++        }
++        db_plan(il, ids, n_ids, n_tok, n_used);
++        return true;
++    }
++
++    // what copy() does after its sync, for the next word: the LRU, learning (0031) and the trace
++    void db_plan(int32_t il, const int32_t * ids_in, size_t n_ids, int64_t n_tok, int32_t n_used) {
++        layer & l = layers[il];
++        group & g = groups[l.ig];
++        if (trace != nullptr) {
++            const int32_t rec[3] = { il, n_used, (int32_t) n_ids };
++            fwrite(rec, sizeof(int32_t), 3, trace);
++            fwrite(ids_in, sizeof(int32_t), n_ids, trace);
++        }
++        // no ids_sink here: it isn't safe from this thread, and the doorbell's graph keeps its own copy of the picks
++        const uint32_t share_q = g.lru.n_filled == g.lru.n_slots ? cpu_share_q : 0;
++        auto n_cpu = [&](size_t n_miss) {
++            const uint64_t acc = (uint64_t) n_miss*share_q + l.cpu_acc;
++            l.cpu_acc = acc & 0xffff;
++            return (size_t) (acc >> 16);
++        };
++        size_t n_learn = 0;
++        if (learn_every > 0 && share_q > 0) {
++            l.learn_tokens += n_tok;
++            if (l.learn_tokens >= learn_every) {
++                n_learn = 1;
++            }
++        }
++        const size_t learned_before = n_learned;
++        size_t n_hit = 0;
++        if (!g.lru.plan(il, ids_in, n_ids, n_tok, n_used, n_zero, n_cpu, db_fills, db_cpu, n_hit, n_learn, learn_margin, &n_learned)) {
++            GGML_ABORT("the MoE cache is too small for the experts selected in layer %d", il);
++        }
++        if (n_learned > learned_before) {
++            l.learn_tokens = 0;
++        }
++        // decide now, bring in next word: this word computed them on the processor
++        for (const auto & f : db_fills) {
++            db_pending.push_back({ il, f.expert, f.slot, g.lru.make_key(il, f.expert) });
++        }
++        db_deferred += db_fills.size();
++        stats & st = n_ids <= (size_t) 8*n_expert_used ? stats_small : stats_large;
++        st.hits   += n_hit;
++        st.misses += db_fills.size() + db_cpu.size();
++        st.cpu    += db_fills.size() + db_cpu.size();
++        if (log_every > 0 && ++n_updates % log_every == 0) {
++            log_stats();
++        }
++    }
++
++    // between two words: the card has finished (so every ring was answered), the experts decided on go up, the mirrors
++    // are made again, and the thread is woken for the next word. Returns true if the graphs must be made again.
++    bool doorbell_between_words(int n_threads) {
++        if (!db_on) {
++            return false;
++        }
++        for (const device & d : devices) {
++            if (d.buf) {
++                ggml_backend_synchronize(d.backend);
++            }
++        }
++        db_check_err();
++        const bool banks = !lent && !filling && !reading;
++        if (!db_pending.empty()) {
++            if (banks) {
++                for (const db_fill & f : db_pending) {
++                    group & g = groups[layers[f.il].ig];
++                    if (g.lru.key_of[f.slot] != f.key) {
++                        continue; // taken again later in the same word
++                    }
++                    for (size_t ip = 0; ip < layers[f.il].experts.size(); ++ip) {
++                        const ggml_tensor * w = layers[f.il].experts[ip];
++                        const size_t es = w->nb[2];
++                        ggml_backend_tensor_set_async(devices[g.id].backend, g.banks[ip], (const uint8_t *) w->data + (size_t) f.expert*es, (size_t) f.slot*es, es);
++                        db_up_bytes += es;
++                        stats_small.bytes += es;
++                    }
++                    db_up++;
++                }
++            }
++            db_pending.clear();
++            db_dirty = true;
++        }
++        if (db_dirty && banks) {
++            for (const group & g : groups) {
++                for (int32_t il : g.layers) {
++                    const layer & l = layers[il];
++                    if (l.db_map == nullptr || l.slot_map == nullptr) {
++                        continue;
++                    }
++                    memcpy(l.db_map_host->data, l.slot_map->data, ggml_nbytes(l.db_map_host));
++                    ggml_backend_tensor_set_async(devices[g.id].backend, l.db_map, l.db_map_host->data, 0, ggml_nbytes(l.db_map));
++                }
++            }
++            db_dirty = false;
++        }
++        const bool ready = db_ready();
++        const bool drop  = ready != db_built;
++        if (ready) {
++            if (db_cpu_backend == nullptr) {
++                db_start(n_threads);
++            }
++            {
++                std::lock_guard<std::mutex> lock(db_mutex);
++                db_arm++;
++            }
++            db_cv.notify_all();
++        }
++        if (drop) {
++            db_built = false; // set again by the next graph that rings
++        }
++        return drop;
++    }
++
++    // the banks are freed or laid out again from the slot maps (which hold what was decided), so nothing waits to go up
++    void db_lost() {
++        db_pending.clear();
++        db_dirty = true;
++    }
++
++    void db_shutdown() {
++        if (db_thread.joinable() || db_watch.joinable()) {
++            {
++                std::lock_guard<std::mutex> lock(db_mutex);
++                db_stop = true;
++            }
++            db_cv.notify_all();
++            if (db_thread.joinable()) {
++                db_thread.join();
++            }
++            if (db_watch.joinable()) {
++                db_watch.join();
++            }
++        }
++        db_sides.clear();
++        if (db_cpu_backend != nullptr) {
++            ggml_backend_free(db_cpu_backend);
++            db_cpu_backend = nullptr;
++        }
++        if (db_tp != nullptr && db_tp_free != nullptr) {
++            db_tp_free(db_tp);
++            db_tp = nullptr;
++        }
++        db_bell_buf.reset();
++        if (db_card && db_bell != nullptr && db_free_fn != nullptr) {
++            db_free_fn(db_bell);
++        }
++        db_bell = nullptr;
++    }
++
+     uint64_t n_updates    = 0;
+     uint32_t n_expert_all = 0; // experts per layer in the brain
+ 
+@@ -1154,6 +1688,7 @@ struct llama_moe_cache::impl {
+     }
+ 
+     ~impl() {
++        db_shutdown();
+         if (filler.joinable()) {
+             filler.join();
+         }
+@@ -1284,6 +1819,7 @@ struct llama_moe_cache::impl {
+         GGML_ASSERT(backend == devices[g.id].backend);
+         GGML_ASSERT(!lent && !filling && "a graph read the MoE cache while it was lent");
+         la_wait(il, backend); // Brain Engine 0041
++        db_dirty = true;      // Brain Engine 0042: the old path changes the slot maps and the banks, the mirrors follow next word
+ 
+         // the get_rows that looks up the slots of the selected experts
+         const int n_nodes = ggml_graph_n_nodes(graph);
+@@ -1422,6 +1958,7 @@ struct llama_moe_cache::impl {
+     bool lend() {
+         la_drain();
+         finish_fill();
++        db_lost();
+         if (lent) {
+             return false;
+         }
+@@ -1498,6 +2035,7 @@ struct llama_moe_cache::impl {
+         if (!lent) {
+             return;
+         }
++        db_dirty = true;
+         const int64_t t0 = ggml_time_us();
+         alloc_banks();
+         lent = false;
+@@ -1529,6 +2067,7 @@ struct llama_moe_cache::impl {
+         }
+         const int64_t t0 = ggml_time_us();
+         alloc_banks();
++        db_dirty  = true;
+         lent      = false;
+         filling   = true;
+         fill_done = false;
+@@ -1560,6 +2099,7 @@ struct llama_moe_cache::impl {
+     // Brain Engine 0024: switch the banks to whole layers for a long read; returns the number of resident layers
+     int32_t begin_read_layout() {
+         la_drain();
++        db_lost();
+         if (reading || lent || filling) {
+             return 0;
+         }
+@@ -1618,6 +2158,7 @@ struct llama_moe_cache::impl {
+         if (!reading) {
+             return;
+         }
++        db_dirty = true;
+         const int64_t t0 = ggml_time_us();
+         for (device & d : devices) {
+             if (d.buf) {
+@@ -1655,6 +2196,10 @@ struct llama_moe_cache::impl {
+         if (learn_every > 0) {
+             LLAMA_LOG_INFO("llama_moe_cache: learned while writing: %zu experts came in\n", n_learned);
+         }
++        if (db_on) {
++            LLAMA_LOG_INFO("llama_moe_cache: doorbell: %zu rings, %zu with processor work, %zu misses brought in a word later (%zu went up, %.2f MiB)\n",
++                db_rings, db_rings_cpu, db_deferred, db_up, db_up_bytes/1024.0/1024.0);
++        }
+         log("ubatch  > 8", stats_large);
+         log("prompts read with misses on the CPU", stats_read);
+         if (stats_copy.hits > 0) {
+@@ -1730,6 +2275,30 @@ void llama_moe_cache::set_ids_sink(ids_sink_t sink, void * user_data) {
+     pimpl->ids_sink_ud = user_data;
+ }
+ 
++bool llama_moe_cache::doorbell_on(int32_t il, int64_t n_tokens, int64_t n_used, int64_t n_embd) const {
++    return pimpl->doorbell_on(il, n_tokens, n_used, n_embd);
++}
++
++ggml_backend_t llama_moe_cache::doorbell_backend(int32_t il, ggml_backend_t cpu) const {
++    return pimpl->doorbell_backend(il, cpu);
++}
++
++ggml_tensor * llama_moe_cache::doorbell_ring(ggml_context * ctx, int32_t il, ggml_tensor * cur, ggml_tensor * ids) const {
++    return pimpl->doorbell_ring(ctx, il, cur, ids);
++}
++
++ggml_tensor * llama_moe_cache::doorbell_join(ggml_context * ctx, int32_t il, ggml_tensor * cached, ggml_tensor * slots) const {
++    return pimpl->doorbell_join(ctx, il, cached, slots);
++}
++
++void llama_moe_cache::doorbell_side(int32_t il, int64_t n_tokens, int64_t n_used, const doorbell_build_t & build, bool round) const {
++    pimpl->doorbell_side(il, n_tokens, n_used, build, round);
++}
++
++bool llama_moe_cache::doorbell_between_words(int n_threads) {
++    return pimpl->doorbell_between_words(n_threads);
++}
++
+ bool llama_moe_cache::copy(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_cgraph * graph) {
+     return pimpl->copy(backend, src, dst, graph);
+ }
+diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
+index 53e4177..b0f98d1 100644
+--- a/src/llama-moe-cache.h
++++ b/src/llama-moe-cache.h
+@@ -2,6 +2,7 @@
+ 
+ #include "ggml-backend.h"
+ 
++#include <functional>
+ #include <map>
+ #include <memory>
+ #include <vector>
+@@ -34,6 +35,23 @@ public:
+     // nullptr if no misses of layer il are computed on the CPU for ubatches of n_tokens tokens
+     ggml_tensor * get_cpu_map(int32_t il, int64_t n_tokens) const;
+ 
++    // Brain Engine 0042 (LLAMA_MOE_DOORBELL): the doorbell between the card and the processor while writing.
++    // doorbell_on: layer il rings it for a batch of n_tokens (the cache is full, misses go to the processor, small batch)
++    bool doorbell_on(int32_t il, int64_t n_tokens, int64_t n_used, int64_t n_embd) const;
++    // where the ring and the join run: the card if it rings itself (CUDA), else the processor backend cpu
++    ggml_backend_t doorbell_backend(int32_t il, ggml_backend_t cpu) const;
++    // ring: the slots of the picks (looked up in the mirror of the slot map) and the picks and cur handed to the processor
++    ggml_tensor * doorbell_ring(ggml_context * ctx, int32_t il, ggml_tensor * cur, ggml_tensor * ids) const;
++    // join: cached (the card's part) plus the processor's part, once the processor has answered
++    ggml_tensor * doorbell_join(ggml_context * ctx, int32_t il, ggml_tensor * cached, ggml_tensor * slots) const;
++    // the processor's part of layer il: if the cache has none for these sizes yet, build makes it in ctx from cur
++    // (f32 [n_embd, 1, n_tokens]), ids (the picks) and cpu_ids (the picks the processor does, -1 for the others)
++    using doorbell_build_t = std::function<ggml_tensor * (ggml_context * ctx, ggml_tensor * cur, ggml_tensor * ids, ggml_tensor * cpu_ids)>;
++    void doorbell_side(int32_t il, int64_t n_tokens, int64_t n_used, const doorbell_build_t & build, bool round) const;
++    // before each batch: waits for the card, brings in what the last word decided, makes the mirrors again and wakes
++    // the processor's thread; true if the graphs made before must be made again (the doorbell went on or off)
++    bool doorbell_between_words(int n_threads);
++
+     // ggml_backend_sched copy callback, returns false if src is not a slot map
+     bool copy(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_cgraph * graph);
+ 

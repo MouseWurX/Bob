@@ -1,0 +1,690 @@
+diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
+index 2341fa6..6bf2a27 100644
+--- a/ggml/include/ggml.h
++++ b/ggml/include/ggml.h
+@@ -2273,6 +2273,18 @@ extern "C" {
+     GGML_API enum ggml_prec ggml_flash_attn_ext_get_prec(
+             const struct ggml_tensor * a);
+ 
++    // Brain Engine 0026: a position mask, in place of the F16 mask table, for plain causal attention.
++    // m: I32 [n_q + n_kv, 1, 1, ne3]: per stream, each query row's position, then each K/V column's position
++    // (INT32_MAX for a column no query may see). Column c is visible to row j when pos_kv[c] <= pos_q[j] and,
++    // with n_swa > 0, pos_q[j] - pos_kv[c] < n_swa; visible gives 0, hidden gives -inf, exactly as a table would.
++    // Call on the I32 tensor before passing it to ggml_flash_attn_ext(_rows) as the mask. No ALiBi.
++    // Backends: CPU and CUDA; check supports_op before using it elsewhere.
++    GGML_API void ggml_flash_attn_ext_pos_mask_init(
++            struct ggml_tensor * m,
++            int32_t              n_kv,
++            int32_t              n_q,
++            int32_t              n_swa);
++
+     // Use finite mask entries as a sparse K/V set. Set 0 to disable.
+     // n_kv_max must bound the number of finite entries in every mask row.
+     GGML_API void ggml_flash_attn_ext_set_n_kv_max(
+diff --git a/ggml/src/ggml-cpu/ops.cpp b/ggml/src/ggml-cpu/ops.cpp
+index eed5d69..ee1ead3 100644
+--- a/ggml/src/ggml-cpu/ops.cpp
++++ b/ggml/src/ggml-cpu/ops.cpp
+@@ -8724,6 +8724,13 @@ void ggml_compute_forward_top_k(
+     }
+ }
+ 
++// Brain Engine 0026: a position mask (ggml_flash_attn_ext_pos_mask_init): 0 when column c is visible to the query
++// at position qpos, -inf otherwise, the same values an F16 table would hold
++static inline float ggml_fa_pos_mask_value(const int32_t * kpos, int32_t qpos, int32_t n_swa, int64_t c) {
++    const int32_t p0 = kpos[c];
++    return (p0 <= qpos && (n_swa == 0 || qpos - p0 < n_swa)) ? 0.0f : -INFINITY;
++}
++
+ static void ggml_compute_forward_flash_attn_ext_f16_one_chunk(
+         const ggml_compute_params * params,
+         ggml_tensor * dst,
+@@ -8827,7 +8834,13 @@ static void ggml_compute_forward_flash_attn_ext_f16_one_chunk(
+ 
+         memset(VKQ32, 0, DV*sizeof(float));
+ 
+-        const ggml_fp16_t * mp = mask ? (ggml_fp16_t *)((char *) mask->data + iq1*mask->nb[1] + (iq2%mask->ne[2])*mask->nb[2] + (iq3%mask->ne[3])*mask->nb[3]) : NULL;
++        const bool pmask = mask && mask->type == GGML_TYPE_I32; // Brain Engine 0026
++        const ggml_fp16_t * mp = mask && !pmask ? (ggml_fp16_t *)((char *) mask->data + iq1*mask->nb[1] + (iq2%mask->ne[2])*mask->nb[2] + (iq3%mask->ne[3])*mask->nb[3]) : NULL;
++        const int32_t * pm_q  = pmask ? (const int32_t *)((const char *) mask->data + (iq3%mask->ne[3])*mask->nb[3]) : NULL;
++        const int32_t   pm_nq = pmask ? ggml_get_op_params_i32(mask, 1) : 0;
++        const int32_t * pm_k  = pmask ? pm_q + pm_nq : NULL;
++        const int32_t   pm_qp = pmask ? pm_q[iq1] : 0;
++        const int32_t   pm_sw = pmask ? ggml_get_op_params_i32(mask, 2) : 0;
+ 
+         // k indices
+         const int ik3 = iq3 / rk3;
+@@ -8847,7 +8860,7 @@ static void ggml_compute_forward_flash_attn_ext_f16_one_chunk(
+         // ref: https://arxiv.org/pdf/2112.05682.pdf
+ 
+         for (int64_t ic = ic_start; ic < ic_end; ++ic) {
+-            const float mv = mp ? slope*GGML_CPU_FP16_TO_FP32(mp[ic]) : 0.0f;
++            const float mv = pm_k ? ggml_fa_pos_mask_value(pm_k, pm_qp, pm_sw, ic) : mp ? slope*GGML_CPU_FP16_TO_FP32(mp[ic]) : 0.0f;
+             if (mv == -INFINITY) {
+                 continue;
+             }
+@@ -9101,10 +9114,14 @@ static void ggml_compute_forward_flash_attn_ext_tiled(
+             // skip the tile entirely if all the masks are -inf
+             if (mask) {
+                 bool can_skip = true;
++                const bool pmask = mask->type == GGML_TYPE_I32; // Brain Engine 0026
+                 for (int tq = 0; tq < tile_rows; tq++) {
+-                    const ggml_fp16_t * mp_row = (const ggml_fp16_t *)((const char *) mask->data + (iq1 + tq)*mask->nb[1] + (iq2%mask->ne[2])*mask->nb[2] + (iq3%mask->ne[3])*mask->nb[3]);
++                    const ggml_fp16_t * mp_row = pmask ? nullptr : (const ggml_fp16_t *)((const char *) mask->data + (iq1 + tq)*mask->nb[1] + (iq2%mask->ne[2])*mask->nb[2] + (iq3%mask->ne[3])*mask->nb[3]);
++                    const int32_t * pm_q = pmask ? (const int32_t *)((const char *) mask->data + (iq3%mask->ne[3])*mask->nb[3]) : nullptr;
++                    const int32_t * pm_k = pmask ? pm_q + ggml_get_op_params_i32(mask, 1) : nullptr;
+                     for (int tk = 0; tk < kv_tile; tk++) {
+-                        mask32[tq * KV_TILE_SZ + tk] = slope * GGML_CPU_FP16_TO_FP32(mp_row[ic + tk]);
++                        mask32[tq * KV_TILE_SZ + tk] = pmask ? ggml_fa_pos_mask_value(pm_k, pm_q[iq1 + tq], ggml_get_op_params_i32(mask, 2), ic + tk)
++                                                             : slope * GGML_CPU_FP16_TO_FP32(mp_row[ic + tk]);
+                         if (mask32[tq * KV_TILE_SZ + tk] != -INFINITY) {
+                             can_skip = false;
+                         }
+diff --git a/ggml/src/ggml-cuda/fattn-common.cuh b/ggml/src/ggml-cuda/fattn-common.cuh
+index 6667ca4..9487f81 100644
+--- a/ggml/src/ggml-cuda/fattn-common.cuh
++++ b/ggml/src/ggml-cuda/fattn-common.cuh
+@@ -42,6 +42,33 @@ typedef void (* fattn_kernel_t)(
+                             const int32_t ne31, const int32_t ne32, const int32_t ne33,
+                             const int32_t nb31, const int32_t nb32, const int64_t nb33);
+ 
++// Brain Engine 0026: a position mask (ggml_flash_attn_ext_pos_mask_init) instead of the F16 table. The kernels get
++// nb31 < 0 for it: n_swa = -nb31 - 1; per stream (nb33 apart) the query rows' positions come first, then the K/V
++// columns' positions, so a kernel finds the columns at its query base + ne01.z (the number of query rows).
++static __device__ __forceinline__ float fattn_pos_mask(const int p0, const int p1, const int n_swa) {
++    return (p0 <= p1 && (n_swa == 0 || p1 - p0 < n_swa)) ? 0.0f : -INFINITY;
++}
++
++// The F16 table a position mask stands for, so every choice made from the mask's shape (kernel, tile skip, strides,
++// alignment) is the same as with the table; data still points at the positions.
++static inline const ggml_tensor * ggml_cuda_fattn_mask(const ggml_tensor * dst, ggml_tensor & virt) {
++    const ggml_tensor * mask = dst->src[3];
++    if (mask == nullptr || mask->type != GGML_TYPE_I32) {
++        return mask;
++    }
++    virt = *mask;
++    virt.type  = GGML_TYPE_F16;
++    virt.ne[0] = ggml_get_op_params_i32(mask, 0);
++    virt.ne[1] = ggml_get_op_params_i32(mask, 1);
++    virt.ne[2] = 1;
++    virt.ne[3] = mask->ne[3];
++    virt.nb[0] = sizeof(half);
++    virt.nb[1] = virt.nb[0]*virt.ne[0];
++    virt.nb[2] = virt.nb[1]*virt.ne[1];
++    virt.nb[3] = virt.nb[2];
++    return &virt;
++}
++
+ typedef float (*vec_dot_KQ_t)(
+     const char * __restrict__ K_c, const void * __restrict__ Q_v, const int * __restrict__ Q_q8 , const void * __restrict__ Q_ds);
+ 
+@@ -774,6 +801,64 @@ static __global__ void flash_attn_mask_to_KV_max(
+     KV_max[sequence*ne31 + jt] = KV_max_sj;
+ }
+ 
++// Brain Engine 0026: flash_attn_mask_to_KV_max for a position mask: the same tiles, the same answer for every real
++// query row (rows past the last one wrap around, as in the attention kernels, where the table scan read past the end)
++template <int ncols1>
++__launch_bounds__(FATTN_KQ_STRIDE/2, 1)
++static __global__ void flash_attn_pos_to_KV_max(
++        const int * pos_ptr, int * KV_max_ptr, const int ne30, const int n_q, const int64_t s33, const int n_swa) {
++    int * GGML_CUDA_RESTRICT KV_max = KV_max_ptr;
++
++    const int ne31     = gridDim.x;
++    const int tid      = threadIdx.x;
++    const int sequence = blockIdx.y;
++    const int jt       = blockIdx.x;
++
++    const int * GGML_CUDA_RESTRICT qp = pos_ptr + sequence*s33;
++    const int * GGML_CUDA_RESTRICT kp = qp + n_q;
++
++    __shared__ int buf_iw[WARP_SIZE];
++    if (tid < WARP_SIZE) {
++        buf_iw[tid] = 1;
++    }
++    ggml_cuda_pdl_sync();
++    __syncthreads();
++
++    int KV_max_sj = (ne30 - 1) * FATTN_KQ_STRIDE;
++    for (; KV_max_sj >= 0; KV_max_sj -= FATTN_KQ_STRIDE) {
++        int all_inf = 1;
++
++        const int k0 = kp[KV_max_sj + 2*tid + 0];
++        const int k1 = kp[KV_max_sj + 2*tid + 1];
++#pragma unroll
++        for (int j = 0; j < ncols1; ++j) {
++            const int p1 = qp[(jt*ncols1 + j) % n_q];
++            all_inf = all_inf && int(isinf(fattn_pos_mask(k0, p1, n_swa))) && int(isinf(fattn_pos_mask(k1, p1, n_swa)));
++        }
++
++        all_inf = warp_reduce_all(all_inf);
++        if (tid % WARP_SIZE == 0) {
++            buf_iw[tid / WARP_SIZE] = all_inf;
++        }
++        __syncthreads();
++        all_inf = buf_iw[tid % WARP_SIZE];
++        __syncthreads();
++        all_inf = warp_reduce_all(all_inf);
++
++        if (!all_inf) {
++            break;
++        }
++    }
++
++    KV_max_sj += FATTN_KQ_STRIDE;
++
++    if (threadIdx.x != 0) {
++        return;
++    }
++
++    KV_max[sequence*ne31 + jt] = KV_max_sj;
++}
++
+ void ggml_cuda_flash_attn_ext_compact_mask(
+         const ggml_tensor * mask, int32_t * indices, int32_t * counts, int32_t n_queries, int32_t ncols1, int32_t n_kv_max, cudaStream_t stream);
+ 
+@@ -1042,9 +1127,12 @@ void launch_fattn(
+ 
+     const bool V_is_K_view = V->view_src && (V->view_src == K || (V->view_src == K->view_src && V->view_offs == K->view_offs));
+ 
+-    const ggml_tensor * mask    = dst->src[3];
++    ggml_tensor mask_virt; // Brain Engine 0026
++    const ggml_tensor * mask    = ggml_cuda_fattn_mask(dst, mask_virt);
++    const ggml_tensor * pmask   = dst->src[3] && dst->src[3]->type == GGML_TYPE_I32 ? dst->src[3] : nullptr;
+     const ggml_tensor * sinks   = dst->src[4];
+     const ggml_tensor * kv_rows = dst->src[5];
++    GGML_ASSERT(!pmask || !use_sparse);
+ 
+     // with kv_rows the kernel iterates over the mask columns and reads K/V rows through kv_rows
+     const int64_t n_kv_cols = kv_rows ? kv_rows->ne[0] : K->ne[1];
+@@ -1171,7 +1259,21 @@ void launch_fattn(
+     // Only worth the overhead if there is at lease one FATTN_KQ_STRIDE x FATTN_KQ_STRIDE square to be skipped or
+     //     multiple sequences of possibly different lengths, or kv_rows lists that end with padding.
+     const bool scan_mask = !use_sparse && mask && n_kv_cols % FATTN_KQ_STRIDE == 0 && (Q->ne[1] >= 1024 || Q->ne[3] > 1 || kv_rows);
+-    if (scan_mask) {
++    if (scan_mask && pmask) {
++        // Brain Engine 0026
++        const dim3 blocks_num_KV_max(ntiles_x, Q->ne[3], 1);
++        const dim3 block_dim_KV_max(FATTN_KQ_STRIDE/2, 1, 1);
++
++        const int ne_KV_max = blocks_num_KV_max.x*blocks_num_KV_max.y;
++        const int iter_k = n_kv_cols / FATTN_KQ_STRIDE;
++
++        KV_max.alloc(ne_KV_max);
++        ggml_cuda_kernel_launch_params launch_params = ggml_cuda_kernel_launch_params(blocks_num_KV_max, block_dim_KV_max, 0, main_stream);
++        ggml_cuda_kernel_launch(flash_attn_pos_to_KV_max<ncols1>, launch_params,
++            (const int *) pmask->data, KV_max.ptr, iter_k, (int) Q->ne[1], (int64_t) (pmask->nb[3] / sizeof(int)),
++            ggml_get_op_params_i32(pmask, 2));
++        CUDA_CHECK(cudaGetLastError());
++    } else if (scan_mask) {
+         const int64_t s31 = mask->nb[1] / sizeof(half2);
+         const int64_t s33 = mask->nb[3] / sizeof(half2);
+ 
+@@ -1324,7 +1426,10 @@ void launch_fattn(
+         K->ne[0], n_kv, K->ne[2], K->ne[3], nb11, nb12, nb13,
+         nb21, nb22, nb23,
+         mask ? mask->ne[1] : 0, mask ? mask->ne[2] : 0, mask ? mask->ne[3] : 0,
+-        mask ? mask->nb[1] : 0, mask ? mask->nb[2] : 0, mask ? mask->nb[3] : 0
++        // Brain Engine 0026: a position mask says so with nb31 < 0 (n_swa = -nb31 - 1)
++        pmask ? -(ggml_get_op_params_i32(pmask, 2) + 1) : mask ? mask->nb[1] : 0,
++        pmask ? 0 : mask ? mask->nb[2] : 0,
++        pmask ? pmask->nb[3] : mask ? mask->nb[3] : 0
+     );
+     CUDA_CHECK(cudaGetLastError());
+ 
+diff --git a/ggml/src/ggml-cuda/fattn-mma-f16.cuh b/ggml/src/ggml-cuda/fattn-mma-f16.cuh
+index 07a6db8..653ef1d 100644
+--- a/ggml/src/ggml-cuda/fattn-mma-f16.cuh
++++ b/ggml/src/ggml-cuda/fattn-mma-f16.cuh
+@@ -529,6 +529,34 @@ static __device__ __forceinline__ void flash_attn_ext_f16_load_mask(
+         const int stride_mask, const int k_VKQ_0, const int i_sup, const int j0, const uint3 ne01,
+         const int32_t * const __restrict__ indices) {
+     constexpr int warp_size = ggml_cuda_get_physical_warp_size();
++    if (stride_mask < 0) {
++        // Brain Engine 0026: a position mask: work each value out, into the same places the loads below fill (the
++        // padded rows of nbatch_fa + 8 halves), 0 past i_sup as the out-of-bounds load does; never sparse
++        const int * const qp = (const int *) mask_h;
++        const int * const kp = qp + ne01.z;
++        const int n_swa = -stride_mask - 1;
++#pragma unroll
++        for (int j1 = 0; j1 < ncols1; j1 += nwarps) {
++            const int j_sram = j1 + threadIdx.y;
++            const int j_vram = fastmodulo(j0 + j_sram, ne01);
++
++            if (j1 + nwarps > ncols1 && j_sram >= ncols1) {
++                break;
++            }
++
++            const int p1 = qp[j_vram];
++#pragma unroll
++            for (int i0 = 0; i0 < nbatch_fa; i0 += warp_size) {
++                const int i = i0 + threadIdx.x;
++                if (i0 + warp_size > nbatch_fa && i >= nbatch_fa) {
++                    break;
++                }
++                tile_mask[j_sram*(nbatch_fa + 8) + i] = (oob_check && i >= i_sup) ? half(0.0f) :
++                    __float2half(fattn_pos_mask(kp[k_VKQ_0 + i], p1, n_swa));
++            }
++        }
++        return;
++    }
+     if constexpr (use_cp_async) {
+         static_assert(nbatch_fa <= 8*warp_size && nbatch_fa % 8 == 0, "bad nbatch_fa");
+         static_assert(!oob_check, "OOB check incompatible with cp_async");
+@@ -1997,7 +2025,7 @@ static __global__ void flash_attn_ext_f16(
+     const int stride_Q1   = nb01 / sizeof(float2);
+     const int stride_Q2   = nb02 / sizeof(float2);
+     const int stride_K    = nb11 / sizeof(half2);
+-    const int stride_mask = nb31 / sizeof(half);
++    const int stride_mask = nb31 < 0 ? nb31 : nb31 / (int) sizeof(half); // Brain Engine 0026: < 0 = position mask
+ 
+     const int stride_V = V_is_K_view ? stride_K : nb21 / sizeof(half2);
+ 
+diff --git a/ggml/src/ggml-cuda/fattn-tile.cuh b/ggml/src/ggml-cuda/fattn-tile.cuh
+index ba4628f..10ced6f 100644
+--- a/ggml/src/ggml-cuda/fattn-tile.cuh
++++ b/ggml/src/ggml-cuda/fattn-tile.cuh
+@@ -637,7 +637,9 @@ static __device__ __forceinline__ void flash_attn_tile_iter(
+ 
+             if (!oob_check || i_KQ < k_VKQ_sup) {
+                 KQ_acc[(i_KQ_0/(np*warp_size))*cpw + jc0] += (ncols2 > 1 || mask) ?
+-                    slope*__half2float(mask[j*stride_mask + k_VKQ_0 + i_KQ]) : 0.0f;
++                    slope*(stride_mask < 0 ? // Brain Engine 0026: a position mask
++                        fattn_pos_mask(((const int *) mask)[ne01.z + k_VKQ_0 + i_KQ], ((const int *) mask)[j], -stride_mask - 1) :
++                        __half2float(mask[j*stride_mask + k_VKQ_0 + i_KQ])) : 0.0f;
+ 
+                 KQ_max_new[jc0] = fmaxf(KQ_max_new[jc0], KQ_acc[(i_KQ_0/(np*warp_size))*cpw + jc0] + FATTN_KQ_MAX_OFFSET);
+             }
+@@ -863,7 +865,7 @@ static __global__ void flash_attn_tile(
+ 
+     const int stride_K2   = nb11 / sizeof(half2);
+     const int stride_V2   = nb21 / sizeof(half2);
+-    const int stride_mask = nb31 / sizeof(half);
++    const int stride_mask = nb31 < 0 ? nb31 : nb31 / (int) sizeof(half); // Brain Engine 0026: < 0 = position mask
+ 
+     const float slope = ncols2 == 1 ? get_alibi_slope(max_bias, head0, n_head_log2, m0, m1) : 1.0f;
+ 
+@@ -1240,7 +1242,8 @@ static void launch_fattn_tile_switch_ncols2(ggml_backend_cuda_context & ctx, ggm
+     const ggml_tensor * KQV  = dst;
+     const ggml_tensor * Q    = dst->src[0];
+     const ggml_tensor * K    = dst->src[1];
+-    const ggml_tensor * mask = dst->src[3];
++    ggml_tensor mask_virt; // Brain Engine 0026: a position mask is seen as the table it stands for
++    const ggml_tensor * mask = ggml_cuda_fattn_mask(dst, mask_virt);
+ 
+     float max_bias = 0.0f;
+     memcpy(&max_bias, (const float *) KQV->op_params + 1, sizeof(float));
+diff --git a/ggml/src/ggml-cuda/fattn-vec.cuh b/ggml/src/ggml-cuda/fattn-vec.cuh
+index 02c3c32..aed65a3 100644
+--- a/ggml/src/ggml-cuda/fattn-vec.cuh
++++ b/ggml/src/ggml-cuda/fattn-vec.cuh
+@@ -112,7 +112,12 @@ static __global__ void flash_attn_ext_vec(
+     K += nb13*sequence + nb12*(head / gqa_ratio);
+     V += nb23*sequence + nb22*(head / gqa_ratio);
+ 
+-    const half * maskh  = (const half  *) (mask + nb33*(sequence % ne33) + nb31*ic0);
++    // Brain Engine 0026: nb31 < 0 is a position mask: the query rows' positions from ic0, the columns' after all rows
++    const bool  mpos     = nb31 < 0;
++    const int * mpos_q   = (const int *) (mask + nb33*(sequence % ne33)) + ic0;
++    const int * mpos_k   = (const int *) (mask + nb33*(sequence % ne33)) + ne01.z;
++    const int   mpos_swa = -nb31 - 1;
++    const half * maskh  = (const half  *) (mask + nb33*(sequence % ne33) + (mpos ? 0 : nb31*ic0));
+ 
+     const float slope = get_alibi_slope(max_bias, head, n_head_log2, m0, m1);
+ 
+@@ -301,7 +306,8 @@ static __global__ void flash_attn_ext_vec(
+                 }
+ 
+                 if (mask && (ncols == 1 || ic0 + j < int(ne01.z))) {
+-                    sum += slope*__half2float(maskh[j*ne11 + i_KQ]);
++                    sum += slope*(mpos ? fattn_pos_mask(mpos_k[k_VKQ_0 + i_KQ], mpos_q[j], mpos_swa)
++                                       : __half2float(maskh[j*ne11 + i_KQ]));
+                 }
+ 
+                 KQ_max_new[j] = fmaxf(KQ_max_new[j], sum + FATTN_KQ_MAX_OFFSET);
+diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
+index cf44ab4..86ce8fe 100644
+--- a/ggml/src/ggml-cuda/fattn.cu
++++ b/ggml/src/ggml-cuda/fattn.cu
+@@ -144,7 +144,8 @@ bool ggml_cuda_flash_attn_ext_mma_f16_shall_use_sparse(const int cc, const ggml_
+     const ggml_tensor * Q    = dst->src[0];
+     const ggml_tensor * K    = dst->src[1];
+     const ggml_tensor * V    = dst->src[2];
+-    const ggml_tensor * mask = dst->src[3];
++    ggml_tensor mask_virt; // Brain Engine 0026: a position mask is seen as the table it stands for
++    const ggml_tensor * mask = ggml_cuda_fattn_mask(dst, mask_virt);
+ 
+     float max_bias = 0.0f;
+     float logit_softcap = 0.0f;
+@@ -162,7 +163,7 @@ bool ggml_cuda_flash_attn_ext_mma_f16_shall_use_sparse(const int cc, const ggml_
+     const int64_t n_gather = (ncols1 == 1 ? std::min<int64_t>(Q->ne[1], 64/ncols2) : ncols1) * (int64_t) n_kv_max;
+ 
+     return ((GGML_CUDA_CC_IS_NVIDIA(cc) && turing_mma_available(cc)) || amd_mfma_available(cc)) && dst->src[5] == nullptr &&
+-        mask != nullptr && n_kv_max > 0 && max_bias == 0.0f && logit_softcap == 0.0f &&
++        mask != nullptr && dst->src[3]->type == GGML_TYPE_F16 && n_kv_max > 0 && max_bias == 0.0f && logit_softcap == 0.0f &&
+         mask->ne[0] == K->ne[1] && mask->ne[1] >= Q->ne[1] && mask->ne[2] == 1 &&
+         K->ne[1] >= std::max<int64_t>(4096, GGML_CUDA_CC_IS_NVIDIA(cc) ? 2*n_gather : 2LL*n_kv_max);
+ #endif // !defined(GGML_USE_MUSA)
+@@ -214,7 +215,8 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols2(ggml_backend_cuda_con
+     const ggml_tensor * Q    = dst->src[0];
+     const ggml_tensor * K    = dst->src[1];
+     const ggml_tensor * V    = dst->src[2];
+-    const ggml_tensor * mask = dst->src[3];
++    ggml_tensor mask_virt; // Brain Engine 0026: a position mask is seen as the table it stands for
++    const ggml_tensor * mask = ggml_cuda_fattn_mask(dst, mask_virt);
+ 
+     // with kv_rows the kernel iterates over the mask columns
+     const int64_t n_kv = dst->src[5] ? dst->src[5]->ne[0] : K->ne[1];
+@@ -311,7 +313,8 @@ static void ggml_cuda_flash_attn_ext_mma_f16(ggml_backend_cuda_context & ctx, gg
+     const ggml_tensor * Q    = dst->src[0];
+     const ggml_tensor * K    = dst->src[1];
+     const ggml_tensor * V    = dst->src[2];
+-    const ggml_tensor * mask = dst->src[3];
++    ggml_tensor mask_virt; // Brain Engine 0026: a position mask is seen as the table it stands for
++    const ggml_tensor * mask = ggml_cuda_fattn_mask(dst, mask_virt);
+ 
+     switch (Q->ne[0]) {
+         case 40:
+@@ -594,7 +597,8 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
+     const ggml_tensor * Q     = dst->src[0];
+     const ggml_tensor * K     = dst->src[1];
+     const ggml_tensor * V     = dst->src[2];
+-    const ggml_tensor * mask  = dst->src[3];
++    ggml_tensor mask_virt; // Brain Engine 0026: a position mask is seen as the table it stands for
++    const ggml_tensor * mask  = ggml_cuda_fattn_mask(dst, mask_virt);
+     const ggml_tensor * kv_rows = dst->src[5];
+ 
+     // with kv_rows the kernel iterates over the mask columns
+diff --git a/ggml/src/ggml.c b/ggml/src/ggml.c
+index 1fca258..52fcf3f 100644
+--- a/ggml/src/ggml.c
++++ b/ggml/src/ggml.c
+@@ -5420,7 +5420,7 @@ static struct ggml_tensor * ggml_flash_attn_ext_impl(
+ 
+     if (kv_rows) {
+         // k and v are shared by all q slices, kv_rows picks the rows of each slice
+-        GGML_ASSERT(mask && mask->ne[0] == kv_rows->ne[0]);
++        GGML_ASSERT(mask && (mask->type == GGML_TYPE_I32 ? ggml_get_op_params_i32(mask, 0) : mask->ne[0]) == kv_rows->ne[0]); // Brain Engine 0026: a position mask keeps n_kv in its op params
+         GGML_ASSERT(kv_rows->type == GGML_TYPE_I32 && ggml_is_contiguous(kv_rows));
+         GGML_ASSERT(kv_rows->ne[1] == q->ne[3] && kv_rows->ne[2] == 1 && kv_rows->ne[3] == 1);
+         GGML_ASSERT(k->ne[3] == 1);
+@@ -5430,7 +5430,17 @@ static struct ggml_tensor * ggml_flash_attn_ext_impl(
+         GGML_ASSERT(q->ne[3] == v->ne[3]);
+     }
+ 
+-    if (mask) {
++    if (mask && mask->type == GGML_TYPE_I32) {
++        // Brain Engine 0026: a position mask (see ggml_flash_attn_ext_pos_mask_init)
++        const int32_t n_kv_m = ggml_get_op_params_i32(mask, 0);
++        const int32_t n_q_m  = ggml_get_op_params_i32(mask, 1);
++        GGML_ASSERT(ggml_is_contiguous(mask));
++        GGML_ASSERT(mask->ne[0] == (int64_t) n_kv_m + n_q_m && mask->ne[1] == 1 && mask->ne[2] == 1);
++        GGML_ASSERT(n_q_m  == q->ne[1]);
++        GGML_ASSERT(n_kv_m == (kv_rows ? kv_rows->ne[0] : k->ne[1]));
++        GGML_ASSERT(q->ne[3] % mask->ne[3] == 0);
++        GGML_ASSERT(max_bias == 0.0f);
++    } else if (mask) {
+         GGML_ASSERT(mask->type == GGML_TYPE_F16);
+         GGML_ASSERT(ggml_is_contiguous(mask));
+         //GGML_ASSERT(ggml_can_repeat_rows(mask, qk));
+@@ -5495,6 +5505,19 @@ enum ggml_prec ggml_flash_attn_ext_get_prec(
+     return (enum ggml_prec) prec_i32;
+ }
+ 
++void ggml_flash_attn_ext_pos_mask_init(
++        struct ggml_tensor * m,
++        int32_t              n_kv,
++        int32_t              n_q,
++        int32_t              n_swa) {
++    GGML_ASSERT(m->type == GGML_TYPE_I32);
++    GGML_ASSERT(m->ne[0] == (int64_t) n_kv + n_q && m->ne[1] == 1 && m->ne[2] == 1);
++    GGML_ASSERT(n_kv > 0 && n_q > 0 && n_swa >= 0);
++    ggml_set_op_params_i32(m, 0, n_kv);
++    ggml_set_op_params_i32(m, 1, n_q);
++    ggml_set_op_params_i32(m, 2, n_swa);
++}
++
+ void ggml_flash_attn_ext_set_n_kv_max(
+         struct ggml_tensor * a,
+         int32_t              n_kv_max) {
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 2bad764..15b9605 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -384,6 +384,14 @@ llama_context::llama_context(
+ 
+     // Brain Engine 0025: LLAMA_KQ_MASK_BUILD=1 makes the attention mask in the graph from positions (off by default;
+     // never for ALiBi brains, whose mask holds distances, not just 0 or -inf)
++    // Brain Engine 0026: LLAMA_KQ_MASK_POS=1: no mask table at all with flash attention (off by default; same rules)
++    if (const char * mp = getenv("LLAMA_KQ_MASK_POS"); mp != nullptr && atoi(mp) > 0) {
++        if (model.hparams.use_alibi) {
++            LLAMA_LOG_WARN("%s: LLAMA_KQ_MASK_POS NOT USED: this brain uses ALiBi\n", __func__);
++        } else {
++            cparams.kq_mask_pos = true; // checked against the devices below
++        }
++    }
+     if (const char * mb = getenv("LLAMA_KQ_MASK_BUILD"); mb != nullptr && atoi(mb) > 0) {
+         if (model.hparams.use_alibi) {
+             LLAMA_LOG_WARN("%s: LLAMA_KQ_MASK_BUILD NOT USED: this brain uses ALiBi\n", __func__);
+@@ -669,6 +677,24 @@ llama_context::llama_context(
+             llama_expert_tiers_pin_warm(model); // Brain Engine 0020, off unless LLAMA_EXPERT_WARM_MIB is set
+         }
+ 
++        // Brain Engine 0026: only the CUDA and CPU flash attention read position masks; with layers on any other
++        // device (or split over several) the knob is dropped and the 0025 / stock mask is used
++        if (cparams.kq_mask_pos) {
++            ggml_backend_dev_t dev = model.dev_layer(0);
++            bool ok = dev != nullptr;
++            for (uint32_t il = 1; ok && il < model.hparams.n_layer(); ++il) {
++                ok = model.dev_layer(il) == dev;
++            }
++            const char * reg = ok ? ggml_backend_reg_name(ggml_backend_dev_backend_reg(dev)) : "";
++            ok = ok && (ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_CPU || strncmp(reg, "CUDA", 4) == 0);
++            if (ok) {
++                LLAMA_LOG_INFO("%s: attention mask as positions (no table) on %s, with flash attention\n", __func__, ggml_backend_dev_name(dev));
++            } else {
++                cparams.kq_mask_pos = false;
++                LLAMA_LOG_WARN("%s: LLAMA_KQ_MASK_POS NOT USED: needs every layer on one CUDA card (or the processor)\n", __func__);
++            }
++        }
++
+         // Brain Engine 0025: the made mask goes on the card when one card runs every layer; otherwise the scheduler
+         // places it like any other op (it is still made from positions, just maybe on the processor)
+         if (cparams.kq_mask_build) {
+diff --git a/src/llama-cparams.h b/src/llama-cparams.h
+index cca3b5b..4e98b57 100644
+--- a/src/llama-cparams.h
++++ b/src/llama-cparams.h
+@@ -87,6 +87,10 @@ struct llama_cparams {
+     bool           kq_mask_build   = false;
+     ggml_backend_t kq_mask_backend = nullptr; // the card that runs every attention layer, where the mask is made
+ 
++    // Brain Engine 0026 (LLAMA_KQ_MASK_POS): no mask table at all with flash attention: it reads each query word's
++    // and each cache cell's position (ggml_flash_attn_ext_pos_mask_init) and works the mask out itself
++    bool kq_mask_pos = false;
++
+     std::vector<bool> embeddings_layer_inp; // [n_layer()] extract input embeddings for layer
+     bool embeddings_layer_inp_dev; // write enabled layer inputs to a device buffer instead of host
+     bool embeddings_nextn_dev;     // write the unmasked h_nextn rows to a device buffer instead of host, see llama_set_embeddings_nextn_dev()
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index cdb9086..35a3089 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -57,7 +57,7 @@ static bool kq_mask_can_build(
+         const llama_cparams & cparams,
+         int64_t n_tps,
+         int64_t ns) {
+-    if (!cparams.kq_mask_build || !cparams.causal_attn || ubatch.is_pos_2d()) {
++    if (!(cparams.kq_mask_build || (cparams.kq_mask_pos && cparams.flash_attn)) || !cparams.causal_attn || ubatch.is_pos_2d()) {
+         return false;
+     }
+     const llama_swa_type st = mctx->get_swa_type();
+@@ -79,6 +79,24 @@ static bool kq_mask_can_build(
+     return true;
+ }
+ 
++// Brain Engine 0026: the table shape a mask stands for: a position mask (I32) keeps it in its op params
++static void kq_mask_shape(const ggml_tensor * m, int64_t & n_kv, int64_t & n_q, int64_t & n_s) {
++    if (m->type == GGML_TYPE_I32) {
++        n_kv = ((const int32_t *) m->op_params)[0];
++        n_q  = ((const int32_t *) m->op_params)[1];
++    } else {
++        n_kv = m->ne[0];
++        n_q  = m->ne[1];
++    }
++    n_s = m->ne[3];
++}
++
++static int64_t kq_mask_n_kv(const ggml_tensor * m) {
++    int64_t n_kv, n_q, n_s;
++    kq_mask_shape(m, n_kv, n_q, n_s);
++    return n_kv;
++}
++
+ static bool can_reuse_kq_mask(
+         ggml_tensor * kq_mask,
+         const llama_kv_cache_context * mctx,
+@@ -90,10 +108,13 @@ static bool can_reuse_kq_mask(
+ 
+     bool res = true;
+ 
+-    res &= (kq_mask->ne[0] == n_kv);
+-    res &= (kq_mask->ne[1] == n_tokens/n_stream);
++    int64_t m_kv, m_q, m_s; // Brain Engine 0026
++    kq_mask_shape(kq_mask, m_kv, m_q, m_s);
++
++    res &= (m_kv == n_kv);
++    res &= (m_q  == n_tokens/n_stream);
+     res &= (kq_mask->ne[2] == 1);
+-    res &= (kq_mask->ne[3] == n_stream);
++    res &= (m_s  == n_stream);
+ 
+     return res;
+ }
+@@ -116,7 +137,10 @@ static bool can_reuse_attn_mask(
+     }
+ 
+     // Brain Engine 0025: and on whether the mask is made in the graph
+-    if ((attn_mask.kv_pos != nullptr) != kq_mask_can_build(mctx, ubatch, cparams, attn_mask.raw->ne[1], attn_mask.raw->ne[3])) {
++    int64_t m_kv, m_q, m_s; // Brain Engine 0026: a position mask keeps the table shape in its op params
++    kq_mask_shape(attn_mask.raw, m_kv, m_q, m_s);
++    const bool made = attn_mask.kv_pos != nullptr || attn_mask.raw->type == GGML_TYPE_I32;
++    if (made != kq_mask_can_build(mctx, ubatch, cparams, m_q, m_s)) {
+         return false;
+     }
+ 
+@@ -128,9 +152,9 @@ static bool can_reuse_attn_mask(
+     res &= attn_mask.n_kv == mctx->get_n_kv();
+     res &= attn_mask.rows->ne[0] == n_kv_rows;
+     res &= attn_mask.rows->ne[1] == n_slices;
+-    res &= attn_mask.raw->ne[0] == n_kv_rows;
+-    res &= attn_mask.raw->ne[1] == n_tokens/n_slices;
+-    res &= attn_mask.raw->ne[3] == n_slices;
++    res &= m_kv == n_kv_rows;
++    res &= m_q  == n_tokens/n_slices;
++    res &= m_s  == n_slices;
+ 
+     return res;
+ }
+@@ -250,9 +274,25 @@ static llm_attn_mask build_attn_inp_attn_mask(
+         ggml_set_name(attn_mask.raw, "attn_inp_kq_mask");
+     }
+ 
+-    // Brain Engine 0025
++    // Brain Engine 0025 / 0026
+     if (kq_mask_can_build(mctx, ubatch, cparams, attn_mask.raw->ne[1], attn_mask.raw->ne[3])) {
+-        build_attn_inp_attn_mask_made(ctx, mctx, attn_mask);
++        if (cparams.kq_mask_pos && cparams.flash_attn) {
++            // 0026: no table: flash attention gets the positions (query rows first, then the cells) and works out
++            // the mask itself; the table tensor above is never used, so it is never allocated
++            const int64_t n_kv  = attn_mask.raw->ne[0];
++            const int64_t n_tps = attn_mask.raw->ne[1];
++            const int64_t ns    = attn_mask.raw->ne[3];
++            const int32_t n_swa = mctx->get_swa_type() == LLAMA_SWA_TYPE_STANDARD ? (int32_t) mctx->get_n_swa() : 0;
++            ggml_tensor * pm = ggml_new_tensor_4d(ctx, GGML_TYPE_I32, n_tps + n_kv, 1, 1, ns);
++            ggml_set_input(pm);
++            ggml_set_name(pm, "attn_inp_kq_mask_pos");
++            ggml_flash_attn_ext_pos_mask_init(pm, (int32_t) n_kv, (int32_t) n_tps, n_swa);
++            attn_mask.raw = pm;
++            LLAMA_LOG_DEBUG("%s: attention mask as positions: %lld cells x %lld words x %lld streams\n",
++                    __func__, (long long) n_kv, (long long) n_tps, (long long) ns);
++        } else {
++            build_attn_inp_attn_mask_made(ctx, mctx, attn_mask);
++        }
+     }
+ 
+     return attn_mask;
+@@ -3301,6 +3341,7 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+ 
+     const bool use_flash_attn = cparams.flash_attn && kq_b == nullptr;
+     GGML_ASSERT(use_flash_attn || kv_rows == nullptr);
++    GGML_ASSERT((use_flash_attn || kq_mask == nullptr || kq_mask->type != GGML_TYPE_I32) && "Brain Engine 0026: a position mask needs flash attention");
+     if (use_flash_attn) {
+         GGML_ASSERT(kq_b == nullptr && "Flash attention does not support KQ bias yet");
+ 
+@@ -3490,7 +3531,7 @@ ggml_tensor * llm_graph_context::build_attn(
+     ggml_tensor * v = v_cur;
+ 
+     // the KV values and the KQ bias are padded with zeros up to the KV dimension of the mask
+-    const int64_t n_kv_pad = kq_mask->ne[0] - k->ne[2];
++    const int64_t n_kv_pad = kq_mask_n_kv(kq_mask) - k->ne[2]; // Brain Engine 0026: a position mask keeps n_kv in its op params
+ 
+     k = ggml_pad(ctx0, k, 0, 0, n_kv_pad, 0);
+     v = ggml_pad(ctx0, v, 0, 0, n_kv_pad, 0);
+diff --git a/src/llama-kv-cache.cpp b/src/llama-kv-cache.cpp
+index b35ca3c..ebc1887 100644
+--- a/src/llama-kv-cache.cpp
++++ b/src/llama-kv-cache.cpp
+@@ -1934,6 +1934,52 @@ void llama_kv_cache::set_input_attn_mask(const llm_attn_mask & attn_mask, const
+         cells.get_seq_cells(get_kv_rows_slices(*ubatch, n_slices, n_swa, swa_type), data, n_rows);
+     }
+ 
++    // Brain Engine 0026: a position mask: per stream the query rows' positions, then the cells' positions, INT32_MAX
++    // for a cell hidden from the stream (padding, empty, another chat), with the same rules as 0025 below
++    if (attn_mask.raw && attn_mask.raw->type == GGML_TYPE_I32) {
++        if (attn_mask.raw->buffer == nullptr) {
++            return;
++        }
++        GGML_ASSERT(ggml_backend_buffer_is_host(attn_mask.raw->buffer));
++        GGML_ASSERT(causal_attn);
++
++        const int64_t n_kv_m = ((const int32_t *) attn_mask.raw->op_params)[0];
++        const int64_t n_tps  = ((const int32_t *) attn_mask.raw->op_params)[1];
++        const int64_t ns     = attn_mask.raw->ne[3];
++        GGML_ASSERT(ns*n_tps == (int64_t) ubatch->n_tokens);
++
++        const int32_t * rows = attn_mask.rows && attn_mask.rows->buffer ? (const int32_t *) attn_mask.rows->data : nullptr;
++
++        int32_t * data = (int32_t *) attn_mask.raw->data;
++
++        uint32_t seq_first[LLAMA_MAX_SEQ];
++        std::fill(seq_first, seq_first + LLAMA_MAX_SEQ, ubatch->n_tokens);
++        for (uint32_t i = 0; i < ubatch->n_tokens; ++i) {
++            seq_first[ubatch->seq_id[i][0]] = std::min(seq_first[ubatch->seq_id[i][0]], i);
++        }
++
++        for (int64_t s = 0; s < ns; ++s) {
++            int32_t * qp = data + s*(n_tps + n_kv_m);
++            int32_t * kp = qp + n_tps;
++
++            const llama_seq_id seq_id = ubatch->seq_id[s*n_tps][0];
++            const auto & cells = v_cells.at(seq_to_stream[seq_id]);
++
++            for (int64_t ii = 0; ii < n_tps; ++ii) {
++                const uint32_t i  = s*n_tps + ii;
++                GGML_ASSERT(ubatch->n_seq_id[i] == 1 && ubatch->seq_id[i][0] == seq_id);
++                const uint32_t iq = attn_mask.block_uniform ? seq_first[seq_id] : i;
++                qp[ii] = ubatch->pos[iq];
++            }
++            for (int64_t c = 0; c < n_kv_m; ++c) {
++                const int32_t j = rows ? rows[s*n_kv_m + c] : (int32_t) c;
++                const bool hide = j < 0 || cells.is_empty(j) || !cells.seq_has(j, seq_id);
++                kp[c] = hide ? INT32_MAX : cells.pos_get(j);
++            }
++        }
++        return;
++    }
++
+     // Brain Engine 0025: the mask is made in the graph, only its small inputs are filled here, with the same rules as
+     // set_input_attn_mask_impl: a cell is hidden from a stream when it is padding, empty or not of the stream's chat
+     // (its position becomes 1e9, later than any word), every other cell gives its position; the graph then hides later

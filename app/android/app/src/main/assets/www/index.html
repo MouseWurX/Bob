@@ -34,21 +34,31 @@
   <label class="field" for="lock-code">Passcode</label><input type="password" id="lock-code" autocomplete="current-password" required>
   <p class="lock-warn" id="lock-wrong" role="alert"></p><button type="submit">Open Bob</button><p class="help-line" id="lock-note"></p></form></section>
 <section class="panel hidden" id="menu"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Menu</h2></div><div class="body">
-  <button data-go="new"><span class="ico">✚</span>New chat</button>
-  <button data-go="chats"><span class="ico">🗂</span>Past chats</button>
-  <button data-go="bobs"><span class="ico">🌐</span>Bob-Net</button>
-  <button data-go="brain"><span class="ico">📱</span>Phone brain</button>
-  <button data-go="glance"><span class="ico">📊</span>Your Bobs</button>
-  <button data-go="carry"><span class="ico">📡</span>Carry on on another Bob</button>
-  <button data-go="handsfree"><span class="ico">🗣</span>Hands-free</button>
-  <button data-go="reader"><span class="ico">📖</span>Read aloud</button>
-  <button data-go="memory"><span class="ico">📝</span>What Bob remembers</button>
-  <button data-go="adventure"><span class="ico">🎲</span>Adventure</button>
-  <button data-go="journey"><span class="ico">🧭</span>Journey</button>
-  <button data-go="games"><span class="ico">🧩</span>Games</button>
-  <button data-go="chest"><span class="ico">🧰</span>Chest</button>
-  <button data-go="settings"><span class="ico">⚙</span>Settings</button>
-  <button data-go="help"><span class="ico">❔</span>Help</button>
+  <div class="mn-top">
+    <button data-go="new"><span class="ico">✚</span>New chat</button>
+    <button data-go="chats"><span class="ico">🗂</span>Past chats</button>
+  </div>
+  <section class="mn-group" aria-labelledby="mn-net"><h3 id="mn-net">Bob-Net</h3><div class="mn-grid">
+    <button data-go="bobs"><span class="ico">🌐</span>Bob-Net</button>
+    <button data-go="glance"><span class="ico">📊</span>Your Bobs</button>
+    <button data-go="carry"><span class="ico">📡</span>Carry on</button>
+    <button data-go="chest"><span class="ico">🧰</span>Chest</button>
+  </div></section>
+  <section class="mn-group" aria-labelledby="mn-play"><h3 id="mn-play">Play</h3><div class="mn-grid">
+    <button data-go="adventure"><span class="ico">🎲</span>Adventure</button>
+    <button data-go="journey"><span class="ico">🧭</span>Journey</button>
+    <button data-go="games"><span class="ico">🧩</span>Games</button>
+  </div></section>
+  <section class="mn-group" aria-labelledby="mn-voice"><h3 id="mn-voice">Voice</h3><div class="mn-grid">
+    <button data-go="handsfree"><span class="ico">🗣</span>Hands-free</button>
+    <button data-go="reader"><span class="ico">📖</span>Read aloud</button>
+  </div></section>
+  <section class="mn-group" aria-labelledby="mn-bob"><h3 id="mn-bob">This phone</h3><div class="mn-grid">
+    <button data-go="brain"><span class="ico">📱</span>Phone brain</button>
+    <button data-go="memory"><span class="ico">📝</span>Memory</button>
+    <button data-go="settings"><span class="ico">⚙</span>Settings</button>
+    <button data-go="help"><span class="ico">❔</span>Help</button>
+  </div></section>
   <p class="help-line" id="about"></p>
 </div></section>
 
@@ -59,19 +69,21 @@
 
 <section class="panel hidden" id="bobs"><div class="top"><button class="plain back" aria-label="Back">←</button><h2>Bob-Net</h2></div><div class="body">
   <h3>My other Bobs</h3>
-  <p class="help-line">Bobs on your other replicant matrices that let this phone in. Big jobs (pictures, music, Hands, harder thinking) go to them. They're reached over Tailscale only.</p>
   <div id="bob-list" class="gap"></div>
-  <h3>Add a Bob</h3>
   <div class="box">
+    <button class="main wide" id="find-bobs">🔍 Find my other Bobs</button>
+    <p class="help-line">Looks on your Wi-Fi and Tailscale. Tap <strong>Pair</strong>, check the number matches, say yes there.</p>
+    <div id="find-list" class="gap"></div>
+    <p class="help-line" id="add-msg" role="status"></p>
+  </div>
+  <details class="box fold"><summary>Add by address</summary>
     <label class="field" for="add-name">Name</label>
     <input type="text" id="add-name" placeholder="Bob on my desktop" maxlength="40">
     <label class="field" for="add-address">Tailscale address</label>
     <input type="text" id="add-address" placeholder="my-computer.your-tailnet.ts.net or 100.x.y.z" autocapitalize="off" autocorrect="off" spellcheck="false">
-    <p class="help-line">On your other replicant matrix: Bob's Settings, <strong>Bob-Net access</strong>, shows this address and the passcode.</p>
-    <div class="btns"><button class="main" id="pair-bob">Pair with this Bob</button><button id="add-bob">Add this Bob</button></div>
-    <p class="help-line"><strong>Pair with this Bob</strong>: that Bob shows a card with a number, you check it matches the one here and say yes there, and nobody types a passcode. <strong>Add this Bob</strong> is the old way, with his passcode.</p>
-    <p class="help-line" id="add-msg" role="status"></p>
-  </div>
+    <p class="help-line">Your other Bob shows it under Settings, <strong>Bob-Net access</strong>.</p>
+    <div class="btns"><button class="main" id="pair-bob">Pair with this Bob</button><button id="add-bob">Add with passcode</button></div>
+  </details>
   <h3>Lend my brain</h3>
   <label class="switch"><div class="words"><strong>Lend my brain</strong><p class="help-line">Your other Bobs (like the one on your other replicant matrix while you're gaming) can ask this phone to think quick replies. The phone only thinks: no tools, files or programs run here for them, and nothing is kept.</p></div><span class="pill"><input type="checkbox" id="lend-on"><span></span></span></label>
   <div id="lend-box"></div>

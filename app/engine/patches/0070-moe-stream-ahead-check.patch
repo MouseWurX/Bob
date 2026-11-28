@@ -1,0 +1,93 @@
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 6019650..2b2844b 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -676,6 +676,27 @@ llama_context::llama_context(
+             }
+         }
+ 
++        // Brain Engine 0070: stream ahead's zones (0059, 0067) come out of the copy cache in the real load, so the fit's
++        // measuring pass (no_alloc) sees the same cache and places the same layers. Turning stream ahead on otherwise
++        // meant a smaller --moe-cache-mib, the fit put one more layer on the card and the words changed (the test PC, Nov 23).
++        if (cparams.moe_cache_size > 0 && !model.no_alloc()) {
++            const char * sa = getenv("LLAMA_MOE_STREAM_AHEAD");
++            if (sa != nullptr && atoi(sa) > 0) {
++                auto mib_of = [](const char * name, int def) {
++                    const char * v = getenv(name);
++                    return v && *v ? std::clamp(atoi(v), 1, 16384) : def;
++                };
++                size_t zones = (size_t) mib_of("LLAMA_MOE_STREAM_AHEAD_MIB", 256) << 20;
++                if (const char * nx = getenv("LLAMA_MOE_STREAM_NEXT"); nx != nullptr && atoi(nx) > 0) {
++                    zones += (size_t) mib_of("LLAMA_MOE_STREAM_NEXT_MIB", 256) << 20;
++                }
++                const size_t keep = std::min(cparams.moe_cache_size/2, (size_t) 256 << 20); // the cache keeps at least this (or half)
++                const size_t take = std::min(zones, cparams.moe_cache_size - keep);
++                cparams.moe_cache_size -= take;
++                LLAMA_LOG_INFO("%s: stream ahead: its zones take %.0f MiB out of the copy cache (now %.0f MiB), so the fit places the same layers\n",
++                        __func__, take/1048576.0, cparams.moe_cache_size/1048576.0);
++            }
++        }
+         if (cparams.moe_cache_size > 0) {
+             moe_cache = std::make_unique<llama_moe_cache>(model, model.no_alloc(), backend_ptrs, backend_buft, cparams.moe_cache_size, cparams.moe_cache_cpu_share);
+ 
+@@ -4424,6 +4445,8 @@ struct llama_stream_ahead {
+     uint64_t n_next = 0, n_next_served = 0, n_from_ram = 0, n_next_layers = 0;
+     size_t   next_bytes = 0, from_ram_bytes = 0;
+ 
++    bool     verify = getenv("LLAMA_MOE_STREAM_AHEAD_VERIFY") && atoi(getenv("LLAMA_MOE_STREAM_AHEAD_VERIFY")) > 0;
++    uint64_t n_checked = 0, n_bad = 0;
+     uint64_t n_staged = 0, n_served = 0, n_layers = 0, n_full = 0;
+     size_t   staged_bytes = 0, served_bytes = 0, reported = 0;
+     int64_t  t_wait_us = 0;
+@@ -4462,6 +4485,9 @@ struct llama_stream_ahead {
+                 "%llu times the landing zone was full, the card's stream waited %.1f ms for the processor's queueing\n",
+                 (unsigned long long) n_staged, staged_bytes/1048576.0, (unsigned long long) n_served, served_bytes/1048576.0,
+                 (unsigned long long) n_layers, (unsigned long long) n_full, t_wait_us/1000.0);
++        if (verify) {
++            LLAMA_LOG_INFO("llama_stream_ahead: verify: %llu experts read back from the card, %llu landed wrong\n", (unsigned long long) n_checked, (unsigned long long) n_bad);
++        }
+         if (landing_next || n_from_ram > 0) {
+             LLAMA_LOG_INFO("llama_stream_ahead: next layer: %llu experts (%.2f MiB) sent ahead for %llu layers, %llu used; %llu experts (%.2f MiB) came from the RAM cache\n",
+                     (unsigned long long) n_next, next_bytes/1048576.0, (unsigned long long) n_next_layers, (unsigned long long) n_next_served,
+@@ -4582,6 +4608,9 @@ struct llama_stream_ahead {
+         // a thread queues the copies, so the processor's copying overlaps the card's work; only with pinned memory and
+         // events on a real card (the stand-in card of the tests runs the same steps in line)
+         threaded = ev && ring && ring->pinned_mem;
++        if (getenv("LLAMA_MOE_STREAM_AHEAD_TEST_THREAD")) {
++            threaded = true; // tests: the thread's path on the stand-in card (no events: each job ends with a sync)
++        }
+         if (threaded) {
+             th = std::thread([this] { loop(); });
+         }
+@@ -4597,6 +4626,9 @@ struct llama_stream_ahead {
+             st = jb.next ? &staged_next[jb.w] : &staged[jb.w];
+         }
+         const size_t es = jb.w->nb[2];
++        if (const char * lag = getenv("LLAMA_MOE_STREAM_AHEAD_TEST_LAG_US")) {
++            std::this_thread::sleep_for(std::chrono::microseconds(atoi(lag))); // tests: the copies come late
++        }
+         if (jb.after) {
+             ggml_backend_event_wait(copier, jb.after); // 0067: not over the next zone before the card's stream read it
+         }
+@@ -4863,6 +4895,21 @@ struct llama_stream_ahead {
+         to->buffer   = dst->buffer;
+         to->data     = (char *) dst->data + (size_t) a*es;
+         ggml_backend_tensor_copy_async(backend, backend, from, to);
++        // LLAMA_MOE_STREAM_AHEAD_VERIFY=1 (a check, slow): what landed on the card is read back and compared with RAM
++        if (verify) {
++            ggml_backend_synchronize(backend);
++            std::vector<uint8_t> got(n*es);
++            ggml_backend_tensor_get(to, got.data(), 0, got.size());
++            for (int64_t k = 0; k < n; k++) {
++                const uint8_t * want = (const uint8_t *) w->data + (size_t) (a + k)*es;
++                if (memcmp(got.data() + (size_t) k*es, want, es) != 0) {
++                    if (n_bad++ < 20) {
++                        LLAMA_LOG_WARN("llama_stream_ahead: !!! VERIFY: expert %lld of %s landed wrong\n", (long long) (a + k), w->name);
++                    }
++                }
++            }
++            n_checked += n;
++        }
+         n_served     += n;
+         served_bytes += n*es;
+         if (st.land == landing_next) {

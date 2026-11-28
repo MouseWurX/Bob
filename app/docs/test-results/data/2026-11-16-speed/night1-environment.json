@@ -1,0 +1,27 @@
+{
+  "at": "2026-11-17T00:42:46.821Z",
+  "card": "NVIDIA GeForce RTX 5070 Ti, 621.01, 98.03.58.00.4f, 16303 MiB, 300.00 W, 4, 16",
+  "os": "Windows_NT 10.0.26200 Windows 11 Home",
+  "cpu": "AMD Ryzen 7 9800X3D 8-Core Processor           ",
+  "cores": 16,
+  "ramMB": 31862,
+  "node": "v24.22.1",
+  "engines": {
+    "plain": {
+      "exe": "llama-server.exe",
+      "sha256": "38c5affb81c9a8f88f5538c7d11bc445e13bc46a2c6eda05694b8b31a8d45995"
+    },
+    "be8": {
+      "exe": "llama-server.exe",
+      "sha256": "5d8464470b9ea539b07587c421b50216a60d41ba5d56d8cf7831c8586a7a044d"
+    },
+    "be9": {
+      "exe": "llama-server.exe",
+      "sha256": "c898a0c340faacfa8ff962d311ad91445d1f851e4cb7cd8a6c95ee1aa30d4ef1"
+    }
+  },
+  "brain": {
+    "file": "Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+    "bytes": 22360456160
+  }
+}

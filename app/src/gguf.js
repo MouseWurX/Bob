@@ -10,7 +10,9 @@ const FIXED = { [T.U8]: 1, [T.I8]: 1, [T.U16]: 2, [T.I16]: 2, [T.U32]: 4, [T.I32
 const WANT = new Set(['general.architecture', 'general.name', 'general.basename', 'general.size_label', 'tokenizer.chat_template', 'tokenizer.chat_template.tool_use', 'general.base_model.0.repo_url', 'general.source.url', 'general.source.huggingface.repository']);
 // The shape keys, read per architecture (<arch>.block_count and so on): the context limit, and what the chat memory
 // (the KV cache) costs per token, so Bob can say whether a long context fits before loading it.
-const SHAPE = ['.context_length', '.block_count', '.attention.head_count_kv', '.attention.key_length', '.attention.value_length', '.full_attention_interval', '.rope.scaling.type', '.nextn_predict_layers'];
+const SHAPE = ['.context_length', '.block_count', '.attention.head_count_kv', '.attention.key_length', '.attention.value_length', '.full_attention_interval', '.rope.scaling.type', '.nextn_predict_layers', '.expert_count'];
+// Nov 24 (npc's BE45 real path): .expert_count was never read, so every brain counted as dense and GUPPI never gave a
+// brain of experts its copy cache
 const MAX_HEADER = 256 * 1024 * 1024; // a sane header is far smaller; past this the file isn't a GGUF we understand
 
 class Reader {
@@ -91,10 +93,12 @@ export function ggufInfo(file) {
       // The chat memory's shape: layers, which of them keep a memory (hybrid brains like Qwen3.6 only keep one in
       // every few), and how big each token's memory is. Any of these may be missing (null).
       shape: shapeOf(kv, kv['general.architecture']),
-      // 1.5.16x Turbo: brains that carry their own guesser (a multi-token head, "nextn" in the file) need no draft brain.
+      // 1.5.16x MTP: brains that carry their own guesser (a multi-token head, "nextn" in the file) need no draft brain.
       // 1.5.16x Teach it: where the brain's full weights live, when the file says (its Hugging Face original).
       origin: kv['general.source.huggingface.repository'] || kv['general.base_model.0.repo_url'] || kv['general.source.url'] || '',
-      mtp: Number(kv[`${kv['general.architecture']}.nextn_predict_layers`]) || 0
+      mtp: Number(kv[`${kv['general.architecture']}.nextn_predict_layers`]) || 0,
+      // Nov 22: experts per layer (0 for a dense brain), for the memory estimate on built-in graphics (apu-fit.js)
+      experts: Number(kv[`${kv['general.architecture']}.expert_count`]) || 0
     };
     // 1.5.207 PC check: a cut Riker says nextn_predict_layers = 1 in its header but has no guesser tensors, and Brain
     // Engine 4 stopped with "MTP block missing nextn.eh_proj". The guesser counts only when its tensors are there.

@@ -1,0 +1,34 @@
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 7477200..0da2929 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -3930,6 +3930,20 @@ private:
+                     }
+                     SRV_INF("context %d -> %d tokens in %.2f s, brain %s\n", n_ctx_old, (int) llama_n_ctx(ctx_tgt),
+                             (ggml_time_us() - t0)/1e6, kept ? "offered to stay loaded" : "loaded again");
++                    // Brain Engine 0047: each card's free memory once the new context is made, so a test (or Bob) can
++                    // see how much room a switch left
++                    json devices = json::array();
++                    for (size_t i = 0; i < ggml_backend_dev_count(); i++) {
++                        ggml_backend_dev_t dev = ggml_backend_dev_get(i);
++                        if (ggml_backend_dev_type(dev) != GGML_BACKEND_DEVICE_TYPE_GPU) {
++                            continue;
++                        }
++                        size_t free = 0, total = 0;
++                        ggml_backend_dev_memory(dev, &free, &total);
++                        SRV_INF("context change: %s has %zu MiB free of %zu MiB, MoE cache %zu MiB\n", ggml_backend_dev_name(dev),
++                                free >> 20, total >> 20, params_base.moe_cache_size >> 20);
++                        devices.push_back({{"name", ggml_backend_dev_name(dev)}, {"free_mib", free >> 20}, {"total_mib", total >> 20}});
++                    }
+                     if (!ok) {
+                         send_error(task, note, ERROR_TYPE_SERVER);
+                         break;
+@@ -3947,6 +3961,8 @@ private:
+                         {"moe_cache_cpu_share", params_base.moe_cache_cpu_share},
+                         {"engine_keys", context_keys_now()},
+                         {"seconds",    (ggml_time_us() - t0)/1e6},
++                        {"moe_cache_mib", params_base.moe_cache_size >> 20}, // Brain Engine 0047
++                        {"devices",    devices},                            // Brain Engine 0047
+                     };
+                     queue_results.send(std::move(res));
+                 } break;

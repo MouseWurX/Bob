@@ -97,16 +97,18 @@ export function codeMap(root, { skip = () => false, maxChars = MAP_CHARS } = {})
     if (PATCH_EXT.test(f)) {
       const p = patchInfo(text);
       const touch = p.files.length ? ` {changes ${p.files.slice(0, 4).join(', ')}${p.files.length > 4 ? `, +${p.files.length - 4} more` : ''}; +${p.plus}/-${p.minus}}` : '';
-      items.push({ rel, n, what: p.what, names: p.names, touch });
+      const touch1 = p.files.length ? ` {changes ${p.files[0]}${p.files.length > 1 ? ` +${p.files.length - 1}` : ''}}` : '';
+      items.push({ rel, n, what: p.what, names: p.names, touch, touch1 });
     } else items.push({ rel, n, what: purposeOf(text), names: namesIn(text), touch: '' });
   }
   if (!items.length) return `No source files in ${root}.`;
   const head = `${items.length} source files, ${total} lines, in ${root}. Open only the file you need with read_file (with line for an error's file:line).\n`;
   const cut = (x, k) => (x.length > k ? x.slice(0, k - 1) + '…' : x);
-  // Shorter and shorter until it fits: full lines, then shorter notes, then names only, then one line per folder.
-  const tiers = [[110, 8], [60, 3], [40, 2], [55, 0], [0, 4], [0, 0]];
-  for (const [w, k] of tiers) {
-    const body = items.map((x) => `${x.rel} (${x.n})${w && x.what ? `: ${cut(x.what, w)}` : ''}${w && x.touch ? x.touch : ''}${k && x.names.length ? ` [${x.names.slice(0, k).join(', ')}${x.names.length > k ? ', …' : ''}]` : ''}`).join('\n');
+  // Shorter and shorter until it fits: full lines, then shorter notes, then names only, then one line per folder. A
+  // patch keeps the files it changes while any names are shown: that's what a llama.cpp move needs to know.
+  const tiers = [[110, 8], [60, 3], [40, 2], [55, 0], [0, 4], [0, 0, true], [0, 0, 'one'], [0, 0]]; // Nov 23: [0, 0, true]: only the patches' changed files (the engine folder outgrew the rest); Nov 24: 'one': the first changed file only
+  for (const [w, k, touchOnly] of tiers) {
+    const body = items.map((x) => `${x.rel} (${x.n})${w && x.what ? `: ${cut(x.what, w)}` : ''}${touchOnly === 'one' ? x.touch1 || '' : (w || k || touchOnly) && x.touch ? x.touch : ''}${k && x.names.length ? ` [${x.names.slice(0, k).join(', ')}${x.names.length > k ? ', …' : ''}]` : ''}`).join('\n');
     if (head.length + body.length <= maxChars) return head + body;
   }
   const byDir = new Map();

@@ -1,7 +1,17 @@
 package ca.mousewurx.bob
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
+import org.json.JSONArray
 import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.Inet4Address
+import java.net.URL
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 
@@ -222,6 +232,115 @@ class Pairing(private val app: BobApp) {
             }
         }
         done("timeout")
+    }
+
+    // ---------- Find my other Bobs (Nov 25) ----------
+    // The phone can't read the Tailscale app's device list, so it looks two ways:
+    //  1. Home Wi-Fi: knocks on /api/pair/hello across this phone's own Wi-Fi network (its /24 at most, port 7777,
+    //     64 at a time, 700 ms each), the same sweep desktop Bob does. A desktop Bob answers there only while his
+    //     "Home network access" is on; with it off he says so (listed as "turn on Home network access there").
+    //  2. Your paired Bobs: asks each (signed in) for your Tailscale devices (GET /api/bob-net/tailnet) and knocks on each.
+    // Pairing itself still goes over Tailscale: a desktop Bob's hello carries his Tailscale address (ts) for that.
+    // Only hello is knocked on: no passcode, no cookie, nothing switched on.
+    private fun homeHost(h: String): Boolean {
+        val q = h.split('.').mapNotNull { it.toIntOrNull() }
+        if (q.size != 4 || q.any { it !in 0..255 }) return false
+        return q[0] == 10 || (q[0] == 172 && q[1] in 16..31) || (q[0] == 192 && q[1] == 168)
+    }
+
+    private fun knock(host: String, port: Int, ms: Int): JSONObject? {
+        if (!homeHost(host) && !NetBob.isTailscaleHost(host)) return null
+        return runCatching {
+            val c = URL("http://$host:$port/api/pair/hello").openConnection() as HttpURLConnection
+            c.instanceFollowRedirects = false; c.connectTimeout = ms; c.readTimeout = ms; c.useCaches = false
+            try {
+                val st = c.responseCode
+                val body = (if (st >= 400) c.errorStream else c.inputStream)?.bufferedReader()?.use { it.readText().take(4000) } ?: ""
+                val j = runCatching { JSONObject(body) }.getOrDefault(JSONObject())
+                when {
+                    st == 200 && j.optBoolean("bob") -> j
+                    // A desktop Bob with "Home network access" off (or older than 1.5.213) turns a Wi-Fi hello away.
+                    st == 403 && j.optString("error").startsWith("Pairing goes over") -> JSONObject().put("shut", true)
+                    else -> null
+                }
+            } finally { c.disconnect() }
+        }.getOrNull()
+    }
+
+    /** This phone's Wi-Fi (or Ethernet) IPv4 address and prefix, or null on mobile data. */
+    private fun wifi(): Pair<String, Int>? = runCatching {
+        val cm = app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val n = cm.activeNetwork ?: return null
+        val caps = cm.getNetworkCapabilities(n) ?: return null
+        if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) && !caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) return null
+        val la = cm.getLinkProperties(n)?.linkAddresses?.firstOrNull { it.address is Inet4Address } ?: return null
+        val ip = la.address.hostAddress ?: return null
+        if (homeHost(ip)) ip to la.prefixLength else null
+    }.getOrNull()
+
+    /** Same rule as desktop scanList(): this /24 at most, never this phone itself. */
+    private fun scanList(ip: String, prefix: Int): List<String> {
+        val q = ip.split('.').map { it.toInt() }
+        val m3 = if (prefix >= 32) 255 else if (prefix > 24) (0xff shl (32 - prefix)) and 0xff else 0
+        return (1..254).filter { it != q[3] && (it and m3) == (q[3] and m3) }.map { "${q[0]}.${q[1]}.${q[2]}.$it" }
+    }
+
+    /** [paired] = the addresses of the Bobs already on this phone's list (host:port). Runs off the screen's thread. */
+    fun find(paired: List<String>): JSONObject {
+        val myTs = app.lend.myTailscaleIp()
+        val home = wifi()
+        val pool = Executors.newFixedThreadPool(64)
+        val rows = ArrayList<JSONObject>()
+        var asked = 0
+        try {
+            // 1. Home Wi-Fi.
+            if (home != null) {
+                val list = scanList(home.first, home.second)
+                val seen = pool.invokeAll(list.map { h -> Callable { knock(h, NetBob.DEFAULT_PORT, 700) } }, 20, TimeUnit.SECONDS)
+                list.forEachIndexed { i, h ->
+                    val j = runCatching { seen[i].get() }.getOrNull() ?: return@forEachIndexed
+                    rows.add(JSONObject(j.toString()).put("via", "wifi").put("at", "$h:${NetBob.DEFAULT_PORT}"))
+                }
+            }
+            // 2. Your Tailscale devices, as your paired Bobs see them.
+            val ips = LinkedHashSet<String>()
+            for (a in paired.take(8)) {
+                val base = NetBob.base(a) ?: continue
+                val r = runCatching { net.get(base, "/api/bob-net/tailnet") }.getOrNull() ?: continue
+                if (r.status != 200) continue
+                asked++
+                val peers = runCatching { JSONObject(r.body).optJSONArray("peers") }.getOrNull() ?: continue
+                for (i in 0 until minOf(peers.length(), 40)) peers.optJSONObject(i)?.optString("ip")?.takeIf { NetBob.isTailscaleHost(it) && it != myTs }?.let { ips.add(it) }
+            }
+            val tsList = ips.take(40)
+            if (tsList.isNotEmpty()) {
+                val seen = pool.invokeAll(tsList.map { h -> Callable { knock(h, NetBob.DEFAULT_PORT, 2500) } }, 20, TimeUnit.SECONDS)
+                tsList.forEachIndexed { i, h ->
+                    val j = runCatching { seen[i].get() }.getOrNull() ?: return@forEachIndexed
+                    if (j.optBoolean("bob")) rows.add(JSONObject(j.toString()).put("via", "tailscale").put("at", "$h:${NetBob.DEFAULT_PORT}"))
+                }
+            }
+        } finally { pool.shutdownNow() }
+        return JSONObject().put("wifi", home != null).put("asked", asked).put("bobs", JSONArray(group(rows)))
+    }
+
+    /** One row per Bob, however many ways he answered (his hello id, else his name). Pure enough for the page. */
+    private fun group(rows: List<JSONObject>): List<JSONObject> {
+        val groups = LinkedHashMap<String, MutableList<JSONObject>>()
+        for (r in rows) {
+            val key = r.optString("id").takeIf { it.isNotEmpty() }?.let { "id:$it" }
+                ?: clean(r.optString("name")).lowercase().takeIf { it.isNotEmpty() }?.let { "name:$it" } ?: "at:${r.optString("at")}"
+            groups.getOrPut(key) { ArrayList() }.add(r)
+        }
+        return groups.values.map { list ->
+            val top = list.firstOrNull { it.optBoolean("bob") } ?: list[0]
+            val ts = list.firstOrNull { it.optString("via") == "tailscale" }?.optString("at")
+                ?: list.mapNotNull { it.optString("ts").takeIf { t -> NetBob.base(t) != null } }.firstOrNull() ?: ""
+            val wifiAt = list.firstOrNull { it.optString("via") == "wifi" }?.optString("at") ?: ""
+            JSONObject().put("name", clean(top.optString("name")).ifEmpty { (ts.ifEmpty { wifiAt }).substringBefore(':') })
+                .put("kind", clean(top.optString("device"), 20)).put("version", clean(top.optString("version"), 20))
+                .put("ts", ts).put("wifi", wifiAt).put("shut", list.all { it.optBoolean("shut") })
+        }
     }
 
     /** Results that came in while Bob's screen was closed. */

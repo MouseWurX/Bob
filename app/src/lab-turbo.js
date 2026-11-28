@@ -1,11 +1,11 @@
-// 1.5.16x Playground: Turbo ("a small brain guesses, the big one checks", thinking-paths.md sec 15.1). Speculative
+// 1.5.16x Playground: MTP ("a small brain guesses, the big one checks", thinking-paths.md sec 15.1). Speculative
 // decoding: a draft brain from the same family races ahead a few words, the main brain checks them all in one go, and
 // every right guess is free speed. The words are the main brain's own; only the speed changes. Brains that carry
 // their own guesser (a multi-token head, "nextn" in the file) need no second brain (--spec-type draft-mtp).
 // - pick the main brain; the page suggests a draft that fits next to it, or says it has its own guesser,
-// - Try it: the same fixed prompt with Turbo off, then on at several guess lengths: words a second, the accept rate,
+// - Try it: the same fixed prompt with MTP off, then on at several guess lengths: words a second, the accept rate,
 //   and whether the words came out the same,
-// - Use this in Bob: the brain's Turbo row in Settings (llamacpp.turbo[<brain>], src/llamacpp.js buildArgs).
+// - Use this in Bob: the brain's MTP row in Settings (llamacpp.turbo[<brain>], src/llamacpp.js buildArgs).
 // Nothing rented. Results (small) in <data>/lab/turbo/<brain>.json.
 import { draftNumArgs } from './engine-extras.js';
 import fs from 'node:fs';
@@ -21,7 +21,7 @@ import { readJson, writeJson, canStart, makeRoom, runJob, pageLog, chatOnce } fr
 export const turboDir = (cfg) => path.join(labDir(cfg), 'turbo');
 export const GUESS = [2, 4, 8, 16];
 export const TURBO_CTX = 8192;
-// The fixed prompts: one code, one plain prose. Turbo helps most on these, least on creative text at high temperature.
+// The fixed prompts: one code, one plain prose. MTP helps most on these, least on creative text at high temperature.
 export const TURBO_PROMPTS = {
   code: 'Write a Python function that reads a CSV file of names and ages and returns the average age. Add a docstring and handle a missing file.',
   prose: 'Explain in two short paragraphs how a bicycle gear system works, for someone who has never fixed a bike.'
@@ -69,7 +69,7 @@ export function planTurbo(lab, c = {}) {
   const tools = lab.tools();
   if (!tools.server.found) problems.push(`${path.basename(tools.server.path)} isn't in Bob's engine folder. Settings > Engines: the built-in engine has it.`);
   if (useMtp) notes.push(`${main.name} guesses with its own multi-token head, so nothing else loads.`);
-  notes.push('Turbo helps most on code and plain writing, least on creative writing at a high temperature, and not at all if the draft doesn\'t fit next to the main brain.');
+  notes.push('MTP helps most on code and plain writing, least on creative writing at a high temperature, and not at all if the draft doesn\'t fit next to the main brain.');
   return { main, draft, useMtp, guess, prompt, problems, notes };
 }
 
@@ -83,8 +83,8 @@ export async function startTurbo(lab, c = {}, { unload = false } = {}) {
   const log = pageLog(lab.cfg, 'turbo');
   const exe = lab.tools().server.path;
   const fx = { serve: (o) => startServer({ exe, log, ...o }), chat: chatOnce, ...lab.stepFns };
-  const steps = [['off', 'Turbo off: the main brain on its own'], ...p.guess.map((n) => [`g${n}`, `Turbo on, guessing ${n} words ahead`])];
-  return runJob(lab, { kind: 'turbo', name: `Turbo for ${p.main.name}`, from: p.main.id, fromName: p.main.name, steps }, async (r, { set, signal, progress }) => {
+  const steps = [['off', 'MTP off: the main brain on its own'], ...p.guess.map((n) => [`g${n}`, `MTP on, guessing ${n} words ahead`])];
+  return runJob(lab, { kind: 'turbo', name: `MTP for ${p.main.name}`, from: p.main.id, fromName: p.main.name, steps }, async (r, { set, signal, progress }) => {
     const msg = [{ role: 'user', content: TURBO_PROMPTS[p.prompt] }];
     const one = async (args, cpuOk) => {
       const srv = await fx.serve({ gguf: main.gguf, ctx: TURBO_CTX, args, cpuOk, signal });
@@ -114,7 +114,7 @@ export async function startTurbo(lab, c = {}, { unload = false } = {}) {
 }
 const round1 = (n) => Math.round((Number(n) || 0) * 10) / 10 || null;
 
-// The guess length that was fastest, if Turbo beat Off at all.
+// The guess length that was fastest, if MTP beat Off at all.
 export function bestGuess(rows) {
   const off = rows.find((x) => x.guess === 0)?.tps || 0;
   const on = rows.filter((x) => x.guess > 0 && x.tps).sort((a, b) => b.tps - a.tps)[0];
@@ -124,20 +124,20 @@ export function bestGuess(rows) {
 export function turboSaw(rec) {
   const off = rec.rows.find((x) => x.guess === 0);
   const parts = [];
-  if (rec.best) parts.push(`Fastest at ${rec.best.guess} words ahead: ${rec.best.times}x the speed with Turbo off (${off?.tps} words a second).`);
-  else parts.push(`Turbo didn't make ${rec.brain.name} faster here. The guesser might not match it well, or the main brain spills out of the card.`);
+  if (rec.best) parts.push(`Fastest at ${rec.best.guess} words ahead: ${rec.best.times}x the speed with MTP off (${off?.tps} words a second).`);
+  else parts.push(`MTP didn't make ${rec.brain.name} faster here. The guesser might not match it well, or the main brain spills out of the card.`);
   const hi = rec.rows.filter((x) => x.accept !== null);
   if (hi.length > 1) parts.push(`Longer guesses get fewer right (${hi.map((x) => `${x.accept}% at ${x.guess}`).join(', ')}), which is why more isn't always faster.`);
   parts.push(rec.rows.every((x) => x.same) ? 'The words came out exactly the same every time.' : 'A few words came out differently in some runs; at temperature 0 that is the card rounding numbers in a different order, not the guesser choosing the words.');
   return parts.join(' ');
 }
 
-// Use this in Bob: the main brain's Turbo row, switched on, with the guesser and length from the run.
+// Use this in Bob: the main brain's MTP row, switched on, with the guesser and length from the run.
 export function useTurbo(lab, c = {}) {
   const v = turboView(lab);
   const main = v.brains.find((b) => b.id === String(c.brain || ''));
   if (!main) throw new Error('Pick the main brain.');
-  if (c.off === true) { saveSettings(lab.cfg, { llamacpp: { turbo: { [main.id]: null } } }); return { line: `Turbo is off for ${main.name}.` }; }
+  if (c.off === true) { saveSettings(lab.cfg, { llamacpp: { turbo: { [main.id]: null } } }); return { line: `MTP is off for ${main.name}.` }; }
   const own = c.guesser === 'own';
   if (own && !main.mtp) throw new Error(`${main.name} doesn't carry its own guesser.`);
   const d = own ? null : main.drafts.find((x) => x.id === String(c.draft || ''));
@@ -145,7 +145,7 @@ export function useTurbo(lab, c = {}) {
   if (d && !d.fits) throw new Error(`${d.name} doesn't fit next to ${main.name} on this card.`);
   const max = GUESS.includes(Number(c.guess)) ? Number(c.guess) : 8;
   saveSettings(lab.cfg, { llamacpp: { turbo: { [main.id]: { on: true, mtp: own, draft: own ? '' : d.id, max } } } });
-  return { line: `Turbo is on for ${main.name}, ${own ? 'with its own guesser' : `with ${d.name} guessing`} ${max} words ahead. It starts the next time ${main.name} loads; Settings, Engines, Turbo has the switch.` };
+  return { line: `MTP is on for ${main.name}, ${own ? 'with its own guesser' : `with ${d.name} guessing`} ${max} words ahead. It starts the next time ${main.name} loads; Settings, Engines, MTP has the switch.` };
 }
 
 export async function turboRoute({ req, p, isLocal, lab, b, send, res }) {

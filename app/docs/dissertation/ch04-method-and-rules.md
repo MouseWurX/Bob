@@ -47,13 +47,13 @@ The Qwen family is described in Yang et al. (2025). The cut models were made by 
 
 ### 4.3.2 Serving settings
 
-Home benchmarks run on MouseWurX's 16 GB card with Q4 files and 8 experts per word, with the same settings for every model in a comparison (docs/FORGE-JOURNAL.md, 8 November entry). Rented-card benchmarks serve the same Q4 files through Brain Engine with the same test scripts, so that home and rented numbers come from identical tests (model-lab/forge/README.md, Build 18). Where a study changed a setting, such as experts per word, a mask, or a dial, the saved answers carry the condition (section 4.9).
+Home benchmarks run on MouseWurX's 16 GB card with Q4 files and 8 experts per word, with the same settings for every model in a comparison (docs/FORGE-JOURNAL.md, 8 November entry). Rented-card benchmarks serve the same Q4 files through Lamplight with the same test scripts, so that home and rented numbers come from identical tests (model-lab/forge/README.md, Build 18). Where a study changed a setting, such as experts per word, a mask, or a dial, the saved answers carry the condition (section 4.9).
 
 The Bobert wording study ran on a rented 48 GB A40 with 8 slots of 8,192 tokens each. The planned switch to 4 slots of 16k never happened, so 11 to 13 long turns per round overflowed their slot, and 11 to 31 answers per round were cut off at the length limit. Both kinds were scored as wrong, and the same turns were affected in every condition, so comparisons between conditions stay fair, but absolute scores are lower than they would otherwise be (bobert-35bob-tool-study.md).
 
 ### 4.3.3 Speed settings measured on the home PC (updated 18 November)
 
-Before any setting that changes how the brain is served becomes a default, it is timed on MouseWurX's consumer PC against the default. **For every speed result in one table, see section 4.3.4.** This section gathers every speed result from 4 to 18 November in one place, oldest first, with later tests in sections 4.3.3.8 to 4.3.3.11. Section 2.10.1 turns the results into advice for a home machine. Section 3.4.3 covers the cost of the fNRI trace.
+Before any setting that changes how the brain is served becomes a default, it is timed on MouseWurX's consumer PC against the default. **For every speed result in one table, see section 4.3.4.** This section gathers every speed result from 4 to 18 November in one place, oldest first, with later tests in sections 4.3.3.8 to 4.3.3.13. Section 2.10.1 turns the results into advice for a home machine. Section 3.4.3 covers the cost of the fNRI trace.
 
 All speeds are tokens a second. "Read" is prompt reading speed and "write" is writing speed. "First word" is the wait before the first word appears, in seconds. Unless a row says otherwise, the brain is stock Qwen3.6 35B A3B at Q4 (unsloth UD-Q4_K_XL) on a 16 GB card with 32 GB of RAM and an 8-core processor.
 
@@ -67,7 +67,7 @@ All speeds are tokens a second. "Read" is prompt reading speed and "write" is wr
 - **The 256K cliff at step 8192.** Only 30 of 41 layers fit on the card there (Figure 4.1).
 - **512 MB is the floor for the fit margin.** At 256 MB a real spill starts (section 4.3.3.3).
 - **What's out:** iq4_nl (it timed out), the context cache in RAM (writing 73% to 76% slower), sending copy-cache misses to the processor (keep the share at 0), and Turbo at big steps (5 more layers go to RAM). Turbo's extra rise is its own pinned buffer, not overflow.
-- **Brain Engine 16 freed nothing, and we found why:** Qwen3.6's position codes made it fall back every time. Brain Engine 17 carries the fix (section 4.3.3.5).
+- **Lamplight 16 freed nothing, and we found why:** Qwen3.6's position codes made it fall back every time. Lamplight 17 carries the fix (section 4.3.3.5).
 - **A busy desktop costs 10% to 18% of writing,** in 8 paired loads.
 - **Against llama.cpp's own defaults, our picks finish a 300-token job 2.4 to 2.9 times sooner, and nearly all of that comes from settings any llama.cpp user can pass** (section 4.3.3.2, 20 loads over 2 rounds). That gain is in the first word and reading. Writing, the speed felt through the whole answer, gains far less: 1.3 times at the short prompt (109.8 against 82.9 tokens a second), 1.2 times at 32K (98.5 against 83.8), the same at 128K (63.9 against 63.6), and at 256K stock defaults write 12% faster (48.1 against 42.3). The copy cache only pays on long answers.
 - **A 35B load takes about 6 s,** across about 100 loads. The browser left open on 18 November from 11:40 AM to 12:23 PM made no measurable difference.
@@ -78,10 +78,12 @@ All speeds are tokens a second. "Read" is prompt reading speed and "write" is wr
 - **The 512 MB margin's writing gain.** It rests on 2 loads, and the busy-desktop pass agrees except for 2x4 at 32K.
 - **The chat pick between 2x4 and 4x4.**
 - **The writing order of cache types at 256K.** These are single loads.
-- **q4_0 is a borderline pass.** It does not pass outright. In the second perplexity run it failed the mean-KLD limit of 0.01 by 1.6% on the 4K × 4 split (0.01016) and passed on the 8K × 2 split (0.00951) (section 4.3.3.4). MouseWurX ruled on 19 November that it counts as a borderline pass, so it may be used, with q8_0 still the safe choice where memory allows. Stock llama.cpp has no 3-bit context cache. Brain Engine now adds one (q3_0, patch 0038) and a mixed 3/4/8-bit one (patch 0039). q3_0 passes perplexity and the needle test, and with fix 0044 writes 2.9% slower than q4_0 at 128K. Patch 0039 failed on speed (section 4.3.3.8).
+- **q4_0 is a borderline pass.** It does not pass outright. In the second perplexity run it failed the mean-KLD limit of 0.01 by 1.6% on the 4K × 4 split (0.01016) and passed on the 8K × 2 split (0.00951) (section 4.3.3.4). MouseWurX ruled on 19 November that it counts as a borderline pass, so it may be used, with q8_0 still the safe choice where memory allows. Stock llama.cpp has no 3-bit context cache. Lamplight now adds one (q3_0, patch 0038) and a mixed 3/4/8-bit one (patch 0039). q3_0 passes perplexity and the needle test, and with fix 0044 writes 2.9% slower than q4_0 at 128K. Patch 0039 failed on speed (section 4.3.3.8).
 - **Turbo's net effect.** It helped at a small step with a big copy cache and hurt at big steps with a small one, in 1 load each.
 - **The copy-cache choices.** By the scoring rules, agent work drops the copy cache and chat keeps it. Long-form work keeps it only on the tie-break, after a 2.1% tie (section 4.3.3.2). Most long-context loads throttled lightly, and a rerun could flip the long-form choice.
 - **The 120B soft cut's answer quality.** Its perplexity run is paused.
+
+<a id="speed-method"></a>
 
 #### 4.3.3.1 How the speed tests were run
 
@@ -121,45 +123,45 @@ Shorthand used below: **step** is the reading batch (`-b`/`-ub`). **Copy cache**
 | 4 Nov | Bob at the time | `--load-mode none` | 2 | 2,355 on the first reply | | | First reply in 1.4 s instead of 27 s, with load 10 s longer and half the RAM |
 | 16 Nov | plain llama.cpp b12359 | its own defaults (P0) | 5 | 1,065 / – | 82.9 / 77.8 | | Baseline |
 | 16 Nov | plain llama.cpp b12359 | Bob's settings (P1) | 5 | 1,161 / – | 87.7 / 77.7 | | Bob's settings write 6% and read 9% faster |
-| 16 Nov | Brain Engine 8 | everything off (E0) | 5 | 1,168 / – | 87.9 / 78.2 | | The patches cost nothing while off; same words |
-| 16 Nov | Brain Engine 8 | step 512 (Normal) | 5 | 1,162 / 1,238 | 87.8 / 78.1 | 26.5 | Default |
-| 16 Nov | Brain Engine 8 | step 2048 | 5 | 3,027 / 3,094 | 84.1 / 76.1 | 10.6 | Read 2.5x |
-| 16 Nov | Brain Engine 8 | step 4096 | 5 | 4,225 / 4,161 | 80.1 / 73.8 | 7.9 | Read 3.4x, writing 5% to 9% slower |
-| 16 Nov | Brain Engine 9 | 4 GB processor cache, our ranking (N4) | 5 | 807 / – | 103.7 / 87.6 | 37.5 | Writing +17%, reading −30% |
-| 16 Nov | Brain Engine 9 | 4 GB copy cache, learned (H7) | 5 | 782 / – | 109.2 / – | | Fastest writer that night |
-| 16 Nov | Brain Engine 9 | prefetch (N5) | 5 | – / 1,091 | – / – | | Reading 12% slower in this round (6% to 13% slower across rounds); dropped |
-| 16 Nov | Brain Engine 9, MTP file | Turbo, 3 ahead, Bob's sampling (T3S) | 5 | – / 1,048 | 70.0 / 77.7 | 31.3 | −17% to +3%; not offered |
-| 17 Nov | Brain Engine 9 | calibration default (0.5x0) | 5 | 1,154 / 1,232 | 87.7 / 77.3 | 26.6 | Baseline for the pairs |
-| 17 Nov | Brain Engine 9 | 2x4 | 5 | 2,180 / 2,290 | 109.2 / 99.2 | 14.3 | Won the rule set beforehand: +25% / +28% writing |
-| 17 Nov | Brain Engine 9 | 4x4 | 5 | 3,212 / 3,276 | 102.0 / 91.9 | 10.0 | Runner-up; reads 2.7x |
-| 17 Nov | Brain Engine 9 | step 2048 + 4 GB processor cache (F4p) | 5 | 1,852 / 2,284 | 102.4 / 73.6 | 14.4 | The copy cache beats the processor cache |
-| 17 Nov | Brain Engine 9 | CUDA graphs off (G0) | 5 | 1,148 / 1,218 | 50.9 / 48.0 | 27.0 | −42%; same words |
-| 17 Nov | Brain Engine 10 | default (0.5x0) | 5 | 1,190 / 1,271 | 91.1 / 81.3 | 25.8 | |
-| 17 Nov | Brain Engine 10 | 2x4 | 5 | 2,209 / 2,303 | 109.1 / 102.3 | 14.3 | |
-| 17 Nov | Brain Engine 10 | step 2048 + 5 GB copy | 5 | 2,071 / 2,225 | 112.2 / 95.5 | 14.8 | Bigger cache: faster start, slower 32K |
-| 17 Nov | Brain Engine 10 | step 2048 + 6 GB copy | 5 | 1,962 / 2,158 | 112.4 / 90.9 | 15.2 | |
-| 17 Nov | Brain Engine 10 | 4x4 | 5 | 3,330 / 3,380 | 107.4 / 95.3 | 9.7 | Coding pick: reads 32K 47% faster than 2x4 |
-| 17 Nov | Brain Engine 10 | step 4096 + 5 GB copy | 5 | 3,173 / 3,187 | 105.6 / 96.2 | 10.3 | No cache over 4 GB helps |
-| 17 Nov | Brain Engine 10 | step 4096 + 6 GB copy | 5 | 3,026 / 3,114 | 106.9 / 97.4 | 10.5 | |
-| 17 Nov | Brain Engine 10 | step 5120 + 2 GB copy | 5 | 3,660 / 3,904 | 91.2 / 77.7 | 8.4 | Fast reading, slow writing |
-| 17 Nov | Brain Engine 10 | step 6144 + 2 GB copy | 5 | 3,598 / 4,148 | 91.3 / 75.1 | 7.9 | |
-| 17 Nov | Brain Engine 10 | step 6144, no cache | 1 | 3,039 / 4,626 | 81.3 / 74.7 | 7.1 | Reading needs no cache |
-| 17 Nov | Brain Engine 10 | step 6144 + 512 MB / 1 GB / 2 GB | 1 each | 2,879 / 2,849 / 2,798 (start) | 56.5 / 68.9 / 85.1 (start) | 7.2 / 7.7 / 8.0 | A small cache writes slower than none |
-| 17 Nov | Brain Engine 11 | 4x4 | 5 | 2,666 / 3,377 | 99.3 / 94.5 | 9.7 | Head to head |
-| 17 Nov | Brain Engine 11 | 6x3.5 | 5 | 2,671 / 3,902 | 95.2 / 88.5 | 8.4 | Finishes long prompts about 1 s sooner, writes 4% to 24% slower |
-| 17 Nov | Brain Engine 13 | 6x4, cache lent to reading (6x4 lend) | 1 | 2,672 / 3,657 | 99.3 / 92.8 | 9.0 | Lending lifts writing over plain 6x4 in the same round (Brain Engine 13, 32K: 92.8 against 88.4); plain 6x4's 91.9 / 76.2 elsewhere in this section are from another round |
-| 17 Nov | Brain Engine 14 | 6x4 lend with the cache refilled behind writing | 1 | 3,325 / 3,859 | 109.0 / 92.8 | 8.5 | |
-| 17 Nov | Brain Engine 14 | refill batch 64 (B64) | 1 | 3,414 / 3,868 | 109.1 / 70.4 | 8.5 | Big refill batches hurt 32K writing |
-| 17 Nov | Brain Engine 14 | 6x3.5 (6x3.5) | 1 | 3,394 / 3,913 | 104.6 / 88.2 | 8.4 | |
-| 17 Nov | Brain Engine 14 | step 6144, no cache (6x0) | 1 | 4,408 / 4,715 | 82.1 / 74.4 | 7.0 | Fastest reader of all |
-| 17 Nov | Brain Engine 8 | GPT-OSS 120B, soft cut to 41 of 128 experts, step 2048, q8_0 cache | 9 replies | – | 24.1 (in Bob) | | The full file crawled (RAM full); the cut loads in 29 to 39 s instead of 240 s |
-| 18 Nov | Brain Engine 15 | 4x4, 120K prompt at 128K | 1 | 3,060 (start) / 2,463 (120K) | 86.9 / 65.0 | 50.0 (120K) | Long contexts: see the tables below |
-| 18 Nov | Brain Engine 15 | read layout (4x4 R1, `-b 8192`), 120K prompt at 128K | 1 | 3,151 / 2,771 | 87.5 / 55.2 | 44.5 | Reads long prompts 10% to 14% faster |
-| 18 Nov | Brain Engine 15 | GPT-OSS 120B soft cut, 2x4, 8K context | 3 | 1,137 to 1,223 (start) | 31.8 to 32.4 | | Best 120B writer; Normal writes about 30 |
+| 16 Nov | Lamplight 8 | everything off (E0) | 5 | 1,168 / – | 87.9 / 78.2 | | The patches cost nothing while off; same words |
+| 16 Nov | Lamplight 8 | step 512 (Normal) | 5 | 1,162 / 1,238 | 87.8 / 78.1 | 26.5 | Default |
+| 16 Nov | Lamplight 8 | step 2048 | 5 | 3,027 / 3,094 | 84.1 / 76.1 | 10.6 | Read 2.5x |
+| 16 Nov | Lamplight 8 | step 4096 | 5 | 4,225 / 4,161 | 80.1 / 73.8 | 7.9 | Read 3.4x, writing 5% to 9% slower |
+| 16 Nov | Lamplight 9 | 4 GB processor cache, our ranking (N4) | 5 | 807 / – | 103.7 / 87.6 | 37.5 | Writing +17%, reading −30% |
+| 16 Nov | Lamplight 9 | 4 GB copy cache, learned (H7) | 5 | 782 / – | 109.2 / – | | Fastest writer that night |
+| 16 Nov | Lamplight 9 | prefetch (N5) | 5 | – / 1,091 | – / – | | Reading 12% slower in this round (6% to 13% slower across rounds); dropped |
+| 16 Nov | Lamplight 9, MTP file | Turbo, 3 ahead, Bob's sampling (T3S) | 5 | – / 1,048 | 70.0 / 77.7 | 31.3 | −17% to +3%; not offered |
+| 17 Nov | Lamplight 9 | calibration default (0.5x0) | 5 | 1,154 / 1,232 | 87.7 / 77.3 | 26.6 | Baseline for the pairs |
+| 17 Nov | Lamplight 9 | 2x4 | 5 | 2,180 / 2,290 | 109.2 / 99.2 | 14.3 | Won the rule set beforehand: +25% / +28% writing |
+| 17 Nov | Lamplight 9 | 4x4 | 5 | 3,212 / 3,276 | 102.0 / 91.9 | 10.0 | Runner-up; reads 2.7x |
+| 17 Nov | Lamplight 9 | step 2048 + 4 GB processor cache (F4p) | 5 | 1,852 / 2,284 | 102.4 / 73.6 | 14.4 | The copy cache beats the processor cache |
+| 17 Nov | Lamplight 9 | CUDA graphs off (G0) | 5 | 1,148 / 1,218 | 50.9 / 48.0 | 27.0 | −42%; same words |
+| 17 Nov | Lamplight 10 | default (0.5x0) | 5 | 1,190 / 1,271 | 91.1 / 81.3 | 25.8 | |
+| 17 Nov | Lamplight 10 | 2x4 | 5 | 2,209 / 2,303 | 109.1 / 102.3 | 14.3 | |
+| 17 Nov | Lamplight 10 | step 2048 + 5 GB copy | 5 | 2,071 / 2,225 | 112.2 / 95.5 | 14.8 | Bigger cache: faster start, slower 32K |
+| 17 Nov | Lamplight 10 | step 2048 + 6 GB copy | 5 | 1,962 / 2,158 | 112.4 / 90.9 | 15.2 | |
+| 17 Nov | Lamplight 10 | 4x4 | 5 | 3,330 / 3,380 | 107.4 / 95.3 | 9.7 | Coding pick: reads 32K 47% faster than 2x4 |
+| 17 Nov | Lamplight 10 | step 4096 + 5 GB copy | 5 | 3,173 / 3,187 | 105.6 / 96.2 | 10.3 | No cache over 4 GB helps |
+| 17 Nov | Lamplight 10 | step 4096 + 6 GB copy | 5 | 3,026 / 3,114 | 106.9 / 97.4 | 10.5 | |
+| 17 Nov | Lamplight 10 | step 5120 + 2 GB copy | 5 | 3,660 / 3,904 | 91.2 / 77.7 | 8.4 | Fast reading, slow writing |
+| 17 Nov | Lamplight 10 | step 6144 + 2 GB copy | 5 | 3,598 / 4,148 | 91.3 / 75.1 | 7.9 | |
+| 17 Nov | Lamplight 10 | step 6144, no cache | 1 | 3,039 / 4,626 | 81.3 / 74.7 | 7.1 | Reading needs no cache |
+| 17 Nov | Lamplight 10 | step 6144 + 512 MB / 1 GB / 2 GB | 1 each | 2,879 / 2,849 / 2,798 (start) | 56.5 / 68.9 / 85.1 (start) | 7.2 / 7.7 / 8.0 | A small cache writes slower than none |
+| 17 Nov | Lamplight 11 | 4x4 | 5 | 2,666 / 3,377 | 99.3 / 94.5 | 9.7 | Head to head |
+| 17 Nov | Lamplight 11 | 6x3.5 | 5 | 2,671 / 3,902 | 95.2 / 88.5 | 8.4 | Finishes long prompts about 1 s sooner, writes 4% to 24% slower |
+| 17 Nov | Lamplight 13 | 6x4, cache lent to reading (6x4 lend) | 1 | 2,672 / 3,657 | 99.3 / 92.8 | 9.0 | Lending lifts writing over plain 6x4 in the same round (Lamplight 13, 32K: 92.8 against 88.4); plain 6x4's 91.9 / 76.2 elsewhere in this section are from another round |
+| 17 Nov | Lamplight 14 | 6x4 lend with the cache refilled behind writing | 1 | 3,325 / 3,859 | 109.0 / 92.8 | 8.5 | |
+| 17 Nov | Lamplight 14 | refill batch 64 (B64) | 1 | 3,414 / 3,868 | 109.1 / 70.4 | 8.5 | Big refill batches hurt 32K writing |
+| 17 Nov | Lamplight 14 | 6x3.5 (6x3.5) | 1 | 3,394 / 3,913 | 104.6 / 88.2 | 8.4 | |
+| 17 Nov | Lamplight 14 | step 6144, no cache (6x0) | 1 | 4,408 / 4,715 | 82.1 / 74.4 | 7.0 | Fastest reader of all |
+| 17 Nov | Lamplight 8 | GPT-OSS 120B, soft cut to 41 of 128 experts, step 2048, q8_0 cache | 9 replies | – | 24.1 (in Bob) | | The full file crawled (RAM full); the cut loads in 29 to 39 s instead of 240 s |
+| 18 Nov | Lamplight 15 | 4x4, 120K prompt at 128K | 1 | 3,060 (start) / 2,463 (120K) | 86.9 / 65.0 | 50.0 (120K) | Long contexts: see the tables below |
+| 18 Nov | Lamplight 15 | read layout (4x4 R1, `-b 8192`), 120K prompt at 128K | 1 | 3,151 / 2,771 | 87.5 / 55.2 | 44.5 | Reads long prompts 10% to 14% faster |
+| 18 Nov | Lamplight 15 | GPT-OSS 120B soft cut, 2x4, 8K context | 3 | 1,137 to 1,223 (start) | 31.8 to 32.4 | | Best 120B writer; Normal writes about 30 |
 
 The 17 November one-round cache sweep (steps 4096, 5120 and 6144, with caches from 2 to 4 GB, 15 setups) and the 17 November context run are in the results pages. Their pattern is that bigger steps read faster and smaller caches write slower at 32K, with 2 GB the worst.
 
-**Longer contexts** (1 load per setting, Brain Engine 14; first word / read / write):
+**Longer contexts** (1 load per setting, Lamplight 14; first word / read / write):
 
 | Context (prompt) | 6x0 | 6x4 lend | 6x3.5 |
 |---|---|---|---|
@@ -168,7 +170,7 @@ The 17 November one-round cache sweep (steps 4096, 5120 and 6144, with caches fr
 | 128K (120K) | 37.9 / 3,248 / 53.1 | 41.7 / 2,954 / 57.1 | 42.9 / 2,868 / 61.8 |
 | 256K (248K) | 118.5 / 2,147 / 37.7 | 131.1 / 1,940 / 42.5 | 135.1 / 1,882 / 40.9 |
 
-**Context cache types across contexts** (18 November, Brain Engine 15, 1 load per setting, 36 loads in all; long prompt of 60K, 120K or 250K tokens; first word / read / write):
+**Context cache types across contexts** (18 November, Lamplight 15, 1 load per setting, 36 loads in all; long prompt of 60K, 120K or 250K tokens; first word / read / write):
 
 | Cache | 4x4 at 64K | 4x4 at 128K | 4x4 at 256K | 6x3.5 at 64K | 6x3.5 at 128K | 6x3.5 at 256K |
 |---|---|---|---|---|---|---|
@@ -184,7 +186,7 @@ The 17 November one-round cache sweep (steps 4096, 5120 and 6144, with caches fr
 - **The mixed q8_0/q4_0 cache wrote slowest at long contexts.**
 - **Writing speed doesn't follow cache size alone, though these are single loads.** At 256K with 4x4, writing ran q4_0 (45.2), q8_0 (38.1), f8_e4m3 (31.8), q5_1 (26.6). f8_e4m3 is the same size as q8_0 yet wrote about 17% slower, and the 5-bit q5_1 wrote slower than the 4-bit q4_0, also at 128K (46.0 against 57.8). We don't claim the order: the needle run saw the same 256K setup write anywhere from 23 to 45 tokens a second depending on the needle's depth. One likely cause is that llama.cpp's standard CUDA build has fast attention kernels only for f16, q4_0 and q8_0 caches, and other types take a slower path. That is unproven in our lab, as we have yet to test. If it holds, part of q4_0's lead comes from its kernel and not only from the card room it frees.
 
-**Read layout across contexts** (18 November, Brain Engine 15, q8_0, 1 load per setting; long prompt; first word / read / write). 4x4 b8192 is 4x4 with `-b 8192`. 4x4 R1 is the same with the read layout on, which keeps whole layers in the cache while reading.
+**Read layout across contexts** (18 November, Lamplight 15, q8_0, 1 load per setting; long prompt; first word / read / write). 4x4 b8192 is 4x4 with `-b 8192`. 4x4 R1 is the same with the read layout on, which keeps whole layers in the cache while reading.
 
 | Context | 4x4 | 4x4 b8192 | 4x4 R1 |
 |---|---|---|---|
@@ -208,7 +210,7 @@ The read layout reads long prompts 10% to 14% faster and gives the first word 1 
 
 On the cut 120B, the bigger steps read 2 to 2.5 times as fast as Normal. 2x4 writes about 6% faster than Normal, and a 2 GB cache writes 40% slower. Whether the soft cut answers as well as the full brain is unproven in our lab, as we have yet to test, because its perplexity run is waiting on approval. In a job test it was fast enough but failed its tool calls, for a reason not yet known.
 
-**The step sweep** (18 November, Brain Engine 15, q4_0 context cache, 3.5 GB copy cache, a 2 GB fit margin, 1 load per setting, 12 loads; long prompt):
+**The step sweep** (18 November, Lamplight 15, q4_0 context cache, 3.5 GB copy cache, a 2 GB fit margin, 1 load per setting, 12 loads; long prompt):
 
 | Context | Step (`-b` / `-ub`) | First word | Read | Write | Rise / pinned buffer MB | Free MiB, layers' experts in RAM |
 |---|---|---|---|---|---|---|
@@ -232,7 +234,7 @@ On the cut 120B, the bigger steps read 2 to 2.5 times as fast as Normal. 2x4 wri
 - **Only `-ub` matters.** `-b 8192` with `-ub 4096` behaves like 4096/4096.
 - **A bigger `-ub` reads faster but writes slower,** because the mask's copy on the card pushes expert layers to RAM.
 - **The balance point looks like `-ub 5120` at both sizes:** first word 45.5 s with 63.2 writing at 128K, and 128 s with 39.5 at 256K. For writing first, 4096 is best. This rested on 1 load per setting, so it was rechecked over 3 rounds (below). At 128K step 5120 held. At 256K, 5120, 6144 and 7168 tie.
-**The step recheck (18 November, 27 loads, 3 rounds, medians).** Brain Engine 15, a q4_0 context cache, a 3.5 GB copy cache, a 512 MB margin and pinning off. Job time is the first word plus the answer at the writing speed.
+**The step recheck (18 November, 27 loads, 3 rounds, medians).** Lamplight 15, a q4_0 context cache, a 3.5 GB copy cache, a 512 MB margin and pinning off. Job time is the first word plus the answer at the writing speed.
 
 | Size | Setting | First word s | Read | Write | Job s, 600 tokens | 2,000 |
 |---|---|---|---|---|---|---|
@@ -256,7 +258,7 @@ On the cut 120B, the bigger steps read 2 to 2.5 times as fast as Normal. 2x4 wri
 
 ##### Every setting tried, averaged by context size (16 to 18 November)
 
-This puts every setting tried on stock Qwen3.6 35B side by side, one table per context size. Each number is the average of the test runs counted in its row, and each run is the median of its own timed loads (1 to 5). Rows that rest on 1 run are single loads and may swing 5% to 10%. Different engines (Brain Engines 8 to 15) and days are averaged together, so gaps of 1% to 3% are noise. **Bold** marks the best in each column for that context size. Speeds are tokens a second.
+This puts every setting tried on stock Qwen3.6 35B side by side, one table per context size. Each number is the average of the test runs counted in its row, and each run is the median of its own timed loads (1 to 5). Rows that rest on 1 run are single loads and may swing 5% to 10%. Different engines (Lamplight builds 8 to 15) and days are averaged together, so gaps of 1% to 3% are noise. **Bold** marks the best in each column for that context size. Speeds are tokens a second.
 
 - **Experts in RAM:** how many of 41 layers keep their experts in system RAM. Fewer is better for writing.
 - **Locked RAM:** the pinned attention-mask buffer that Windows shows as "shared GPU memory" (section 4.3.3.5). It is not a spill.
@@ -280,7 +282,7 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 
 | Setting [code] | First word s | Reading | Writing | Experts in RAM | Locked RAM GB | Perplexity change | Load s | Job s (300 tokens) | Job s (2,000) | Score | Test runs averaged | Pick / note |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Plain llama.cpp, its own defaults [plain] | - | 1,065 | 82.9 | - | - | 0% (reference build) | ~6 | - | - | - | 1 | Nov 16, Brain Engine 8 |
+| Plain llama.cpp, its own defaults [plain] | - | 1,065 | 82.9 | - | - | 0% (reference build) | ~6 | - | - | - | 1 | Nov 16, Lamplight 8 |
 | Normal reading, Bob settings [0.5x0] | 3.3 | 1,167 | 90.7 | - | - | ~0% (q8 cache) | ~6 | 6.6 | 25.4 | 100 | 4 |  |
 | Faster reading (step 2048) [2x0] | 1.3 | 2,657 | 84.0 | - | - | ~0% (q8 cache) | ~6 | 4.9 | 25.1 | 135 | 2 |  |
 | Fastest reading (step 4096) [4x0] | **0.9** | 3,638 | 80.1 | - | - | ~0% (q8 cache) | ~6 | 4.6 | 25.9 | 143 | 2 |  |
@@ -351,7 +353,7 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | 4x4 q4 fit512, half of misses on the processor [4x4 q4 fit512 share 0.5] | 47.3 | 2,605 | 62.6 | 30 | - | +0.35% (q4 cache) | ~6 | 52.1 | 79.2 | 266 | 1 |  |
 | Step 4096, q4 cache, no copy cache [4x0 q4] | 40.6 | 3,034 | 55.7 | 22 | 1.2 | +0.35% (q4 cache) | ~6 | 46.0 | 76.5 | 302 | 1 | faster first word, lower writing |
 | Step 4096, q4 cache, context cache in RAM [4x0 q4 nkvo] | 43.3 | 2,845 | 15.1 | 20 | 1.3 | +0.35% (q4 cache) | ~6 | 63.2 | 175.8 | 220 | 1 | dropped |
-| 4x4, q4 cache, mask made on card (BE16) [4x4 q4 BE16 mask] | 48.4 | 2,545 | 57.9 | 31 | 1.2 | +0.35% (q4 cache) | ~6 | 53.6 | 82.9 | 259 | 1 | same words; no memory change |
+| 4x4, q4 cache, mask made on card (LL16) [4x4 q4 LL16 mask] | 48.4 | 2,545 | 57.9 | 31 | 1.2 | +0.35% (q4 cache) | ~6 | 53.6 | 82.9 | 259 | 1 | same words; no memory change |
 | 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 47.8 | 2,582 | 68.3 | 30 | 1.3 | +0.35% (q4 cache) | 6.0 | 52.2 | 77.1 | 266 | 2 | **best writing** |
 | 4x4, q4 cache, margin 2 GB [4x4 q4 fit2048] | 50.4 | 2,442 | 57.2 | 32-33 | 1.3 | +0.35% (q4 cache) | ~6 | 55.6 | 85.4 | 250 | 2 | one of the 2 runs was 4x3.5 (step sweep) |
 | Step 5120, q4 cache (margin 2 GB) [5x3.5 q4] | 45.5 | 2,706 | 63.2 | 33 | 1.6 | +0.35% (q4 cache) | 6.1 | 50.2 | 77.1 | 276 | 1 | **balance pick** (1 load only, recheck queued) |
@@ -393,7 +395,7 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | 4x4, q4 cache, pinning off [4x4 q4 unpinned] | 152.6 | 1,666 | 45.3 | 35 | 0.08 | +0.35% (q4 cache) | ~6 | 159.2 | 196.8 | 240 | 2 | spill fix, Bob default on a branch |
 | Step 4096, q4 cache, no copy cache [4x0 q4] | 133.9 | 1,899 | 39.0 | 26 | 2.2 | +0.35% (q4 cache) | ~6 | 141.6 | 185.2 | 270 | 1 | faster first word, lower writing |
 | Step 4096, q4 cache, context cache in RAM [4x0 q4 nkvo] | 138.3 | 1,839 | 9.5 | 23 | 2.2 | +0.35% (q4 cache) | ~6 | 169.9 | 348.8 | 225 | 1 | dropped |
-| 4x4, q4 cache, mask made on card (BE16) [4x4 q4 BE16 mask] | 150.8 | 1,687 | 45.8 | 35 | 2.2 | +0.35% (q4 cache) | ~6 | 157.4 | 194.5 | 243 | 1 | same words; no memory change |
+| 4x4, q4 cache, mask made on card (LL16) [4x4 q4 LL16 mask] | 150.8 | 1,687 | 45.8 | 35 | 2.2 | +0.35% (q4 cache) | ~6 | 157.4 | 194.5 | 243 | 1 | same words; no memory change |
 | 4x4, q4 cache, margin 512 MB [4x4 q4 fit512] | 150.5 | 1,690 | 41.3 | 34 | 2.3 | +0.35% (q4 cache) | ~6 | 157.8 | 198.9 | 242 | 1 |  |
 | Step 5120, q4 cache (margin 2 GB) [5x3.5 q4] | 127.9 | 1,989 | 39.5 | 37 | 2.8 | +0.35% (q4 cache) | 5.9 | 135.5 | 178.5 | 282 | 1 | **balance pick** (1 load only, recheck queued) |
 | 6x3.5, q4 cache, margin 1 GB [6x3.5 q4] | 128.1 | 1,986 | 42.5 | 36 | 3.3 | +0.35% (q4 cache) | ~6 | 135.2 | 175.2 | 282 | 1 |  |
@@ -528,8 +530,8 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 \* The card throttled lightly in both loads (2% to 12% of samples). A rerun is queued, and both sets will be published.
 
 - **Against stock defaults, our picks finish a 300-token job 2.4 times sooner at 32K, 2.9 times at 128K and 2.8 times at 256K.** The gain is in the first word and reading. Writing gains far less: 1.2 times at 32K (98.5 against 83.8), the same at 128K, and 12% slower at 256K.
-- **Nearly all of that comes from settings stock llama.cpp also accepts:** a bigger step, a q4_0 context cache, a 512 MB margin and pinning off. Stock llama.cpp with those settings and no copy cache was as fast or faster for chat and agent jobs. So this is not evidence that Brain Engine is faster than llama.cpp. It is evidence that llama.cpp's defaults are slow for long prompts on this card.
-- **The copy cache, which only Brain Engine has, writes 8% to 23% faster but reads 10% to 20% slower.** It pays only on long answers. It breaks even at about 840 tokens at 32K, about 3,000 at 128K and about 4,300 at 256K, and at 256K it lost even a 2,000-token answer by 3%.
+- **Nearly all of that comes from settings stock llama.cpp also accepts:** a bigger step, a q4_0 context cache, a 512 MB margin and pinning off. Stock llama.cpp with those settings and no copy cache was as fast or faster for chat and agent jobs. So this is not evidence that Lamplight is faster than llama.cpp. It is evidence that llama.cpp's defaults are slow for long prompts on this card.
+- **The copy cache, which only Lamplight has, writes 8% to 23% faster but reads 10% to 20% slower.** It pays only on long answers. It breaks even at about 840 tokens at 32K, about 3,000 at 128K and about 4,300 at 256K, and at 256K it lost even a 2,000-token answer by 3%.
 - **Stock defaults wrote fastest at 256K (48.1),** because step 512 leaves the most card room for experts. Their reading is what makes them slow.
 - **Every load took about 7.1 s** (14.2 s for the first, cold load). Free RAM fell to 350 to 500 MB during the 256K prompts.
 - **Settled by the next run (below):** agent work drops the copy cache, at 32K (3.8% faster) and 128K (9%).
@@ -539,13 +541,13 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 | Size | Setting | First word s | Read | Write | Short-prompt writing | Job s, 600 tokens | 2,000 | Lowest free RAM MB |
 |---|---|---|---|---|---|---|---|---|
 | 128K | stock llama.cpp, no copy cache | 36.1 | 3,417 | 56.6 | 82.3 | 46.7 | 71.4 | 1,910 |
-| 128K | Brain Engine 15, copy cache (5x3.5) | 42.3 | 2,914 | 66.3 | 105.1 | 51.4 | 72.5 | 1,940 |
-| 128K | Brain Engine 15, no copy cache (5x0) | 36.1 | 3,414 | 55.7 | 83.4 | 46.9 | 72.0 | 1,918 |
+| 128K | Lamplight 15, copy cache (5x3.5) | 42.3 | 2,914 | 66.3 | 105.1 | 51.4 | 72.5 | 1,940 |
+| 128K | Lamplight 15, no copy cache (5x0) | 36.1 | 3,414 | 55.7 | 83.4 | 46.9 | 72.0 | 1,918 |
 | 256K | stock llama.cpp, no copy cache | 117.2 | 2,170 | 38.7 | 70.9 | 132.7 | 168.9 | 430 |
-| 256K | Brain Engine 15, copy cache (6x3.5) | 126.7 | 2,008 | 42.4 | 84.1 | 140.9 | 173.9 | 420 |
-| 256K | Brain Engine 15, no copy cache (6x0) | 117.7 | 2,162 | 38.8 | 71.3 | 133.2 | 169.2 | 358 |
+| 256K | Lamplight 15, copy cache (6x3.5) | 126.7 | 2,008 | 42.4 | 84.1 | 140.9 | 173.9 | 420 |
+| 256K | Lamplight 15, no copy cache (6x0) | 117.7 | 2,162 | 38.8 | 71.3 | 133.2 | 169.2 | 358 |
 
-- **Without the copy cache, Brain Engine matches stock llama.cpp within 1%.** That held as predicted.
+- **Without the copy cache, Lamplight matches stock llama.cpp within 1%.** That held as predicted.
 - **Without it, the first word came 15% sooner at 128K and 7% sooner at 256K** (we had predicted at least 10% at both), and writing was 16% and 8.5% slower.
 - **Agent work drops the copy cache.** On a 600-token job it lost by 3.8% at 32K (the stock comparison) and 9% at 128K.
 - **Long-form work keeps it, narrowly.** Blended over 128K and 256K on a 2,000-token job, no copy cache took 120.6 s against 123.2 s, 2.1% quicker, which is a tie under the 3% rule. The tie-break goes to the copy cache, which left slightly more RAM free at its lowest point at both sizes (1,940 against 1,918 MB, and 420 against 358 MB). That margin is thin, and a rerun could flip it.
@@ -553,7 +555,7 @@ This puts every setting tried on stock Qwen3.6 35B side by side, one table per c
 - **Coding ties with or without it.** On the coding use (Addendum 63: 1,500 written tokens, blended 0.5 at 32K and 0.5 at 64K, 24 loads), 4x4 took 26.0 / 36.1 s (31.1 s blended), stock llama.cpp at step 4096 took 25.9 / 36.4 s (31.2 s), 4x0 took 26.9 / 38.2 s (32.6 s) and 2x4 took 29.7 / 43.5 s (36.6 s). 4x4 and stock tie (0.3% apart), so the prediction that 4x4 wins by 3% or more failed. The pick stays 4x4, tied with stock at Bob's step, and is provisional: the stock and 4x0 rows at 64K were throttled in all 3 runs and get a rerun.
 - **Most of these loads throttled lightly,** the no-copy-cache rows most (11% to 16% of samples, against 1% to 3%), moving writing by at most 2.2 tokens a second. A rerun is queued, and both sets will be published.
 
-#### 4.3.3.3 The fit margin at 128K and 256K (18 November, Brain Engine 15)
+#### 4.3.3.3 The fit margin at 128K and 256K (18 November, Lamplight 15)
 
 `--fit` leaves a margin of the card free, 1 GB by default. A bigger margin was tried to see whether it would stop the shared-memory rise. There were 18 loads on the long prompt, 1 load per setting. Read the table as first word / read / write, then the rise, the free memory after the load and the layers with experts in RAM (of 41).
 
@@ -634,7 +636,7 @@ The copy cache and the read layout change nothing: they score identically, to th
 
 *Figure 4.2. How far each context cache type drifts from an f16 cache, from the table above. q4_0 drifts most, yet the drift is small in absolute terms (about 0.006 more than q8_0), and its perplexity is only 0.3% worse. In exchange it frees about 0.7 GB of the card at 128K and 1.3 GB at 256K. That is the case for q4_0 at long contexts: cheap insurance on card room, not a speed win, since q8_0 writes as fast or faster at 64K and 128K. A rerun later put q4_0 right on the quality line (below).*
 
-**The q4_0 perplexity rerun (18 November, 6 runs).** 4x4 on Brain Engine 15, with the same text split two ways, against an f16 base. This table has its own bases, so its KLD values can't be compared with the tables above.
+**The q4_0 perplexity rerun (18 November, 6 runs).** 4x4 on Lamplight 15, with the same text split two ways, against an f16 base. This table has its own bases, so its KLD values can't be compared with the tables above.
 
 | Split | Cache | PPL | Mean KLD | KLD 99% | Same top % |
 |---|---|---|---|---|---|
@@ -710,7 +712,7 @@ At 128K and 256K, Windows' "shared GPU memory" rose by 1.3 to 3.4 GB during a lo
 - **Both predictions held.** The words were identical on every row in both rounds. Every speed stayed within 2%. The rise was gone at every size.
 - **What changed in Bob.** On a branch not yet released, Bob starts its engine with pinning off on NVIDIA cards by default, as a reliability fix, with a setting to turn it back on.
 
-**A second fix that didn't work: the mask made on the card (Brain Engine 16, 18 November, 20 loads, 2 rounds, median of 2).** Patch 0025 builds the attention mask on the card from the token positions, instead of copying it from pinned RAM. We predicted the pinned buffer would shrink to under 300 MiB. A 4 GB copy cache, a q4_0 context cache and the default 1 GB fit margin; cells are first word s / read / write. Because of the 1 GB margin, its 32K row (83.6 writing) matches the other 1 GB-margin 4x4 runs (83.8 to 84.9), not the 512 MB-margin runs (100.4 to 100.7).
+**A second fix that didn't work: the mask made on the card (Lamplight 16, 18 November, 20 loads, 2 rounds, median of 2).** Patch 0025 builds the attention mask on the card from the token positions, instead of copying it from pinned RAM. We predicted the pinned buffer would shrink to under 300 MiB. A 4 GB copy cache, a q4_0 context cache and the default 1 GB fit margin; cells are first word s / read / write. Because of the 1 GB margin, its 32K row (83.6 writing) matches the other 1 GB-margin 4x4 runs (83.8 to 84.9), not the 512 MB-margin runs (100.4 to 100.7).
 
 | Context, step | Patch off | Patch on | Rise MB, off / on | Pinned buffer MiB (same both ways) |
 |---|---|---|---|---|
@@ -721,10 +723,10 @@ At 128K and 256K, Windows' "shared GPU memory" rose by 1.3 to 3.4 GB during a lo
 | 256K, 6144 | 129.6 / 1,962 / 36.2 | 130.2 / 1,954 / 38.6 | 3,344 / 3,344 | 3,264 |
 
 - **The patch ran and was harmless.** Every load with it on logged that the mask was made on the card. The words were identical in all 5 pairs, in both rounds, and speed stayed within 2%.
-- **The memory prediction failed.** The pinned buffer was the same size with the patch on, so the rise didn't change at any size. The engine log shows why. Qwen3.6 uses M-RoPE, a kind of position code that gives every batch two-dimensional positions, even plain text. The patch handled only one-dimensional positions, so it fell back to the full mask table on every batch, and the engine's planned work was identical with the patch on. A follow-up, patch 0028 for Brain Engine 17, lets plain text use the mask made from positions. That is exact for text. It gave bit-identical results in 24 of 24 checks on a small brain shaped like Qwen3.6. Whether it frees the predicted 2 GB of pinned RAM at 256K is unproven in our lab, as we have yet to test.
+- **The memory prediction failed.** The pinned buffer was the same size with the patch on, so the rise didn't change at any size. The engine log shows why. Qwen3.6 uses M-RoPE, a kind of position code that gives every batch two-dimensional positions, even plain text. The patch handled only one-dimensional positions, so it fell back to the full mask table on every batch, and the engine's planned work was identical with the patch on. A follow-up, patch 0028 for Lamplight 17, lets plain text use the mask made from positions. That is exact for text. It gave bit-identical results in 24 of 24 checks on a small brain shaped like Qwen3.6. Whether it frees the predicted 2 GB of pinned RAM at 256K is unproven in our lab, as we have yet to test.
 - **Pinning off fixed the spill, and 0025 was dropped.** Pinning off (`GGML_CUDA_NO_PINNED=1`) is what fixed the spill. Patch 0025 was dropped once patch 0026, below, covered its use. This is a negative result, and we report it as one.
 
-**The mask with no table (patch 0026, Brain Engine 18, 19 November, 36 loads over 2 rounds, then 8 loads at a fixed placement).** Patch 0026 drops the mask table and has the attention kernels work the mask out from the token positions. A test program first checked that it gives the same numbers as the table, 13 of 13 on the card and 13 of 13 on the processor. Memory at load, card work space / pinned RAM in MiB:
+**The mask with no table (patch 0026, Lamplight 18, 19 November, 36 loads over 2 rounds, then 8 loads at a fixed placement).** Patch 0026 drops the mask table and has the attention kernels work the mask out from the token positions. A test program first checked that it gives the same numbers as the table, 13 of 13 on the card and 13 of 13 on the processor. Memory at load, card work space / pinned RAM in MiB:
 
 | Size, step | Table | No table | Freed |
 |---|---|---|---|
@@ -747,7 +749,7 @@ These are queued on the home PC in this order, and each has its addendum written
 | Step sweep at 128K and 256K, q4_0 cache, steps 4096 to 8192 ("goldilocks" step) | 12 | done, results above |
 | Spill cost: plain settings, steps 512 to 4096 at 256K, pinning off | 7 | done, results above |
 | Pinning on against off, checked properly | 16 | done, same words, within 2% (section 4.3.3.5) |
-| Brain Engine 16: the attention mask made on the card (patch 0025) | 20 | done: same words, no memory saved (section 4.3.3.5) |
+| Lamplight 16: the attention mask made on the card (patch 0025) | 20 | done: same words, no memory saved (section 4.3.3.5) |
 | Smaller fit margins, 512 and 256 MB | 11 | done, results above (section 4.3.3.3) |
 | Turbo (MTP) with bigger steps | 9 | done (section 4.3.3.2) |
 | Turbo rerun with room for its guessing head | 6 | done: no gain at big steps (section 4.3.3.2) |
@@ -755,7 +757,7 @@ These are queued on the home PC in this order, and each has its addendum written
 | Context cache kept in RAM (`-nkvo`) | 4 | done: writing 73% to 76% slower, dropped (section 4.3.3.2) |
 | GPT-OSS 120B soft cut against the full brain, in perplexity (if 41 experts score badly, more experts are tried) | – | paused, waiting on approval |
 | Busy-desktop pass of the picks | 16 | done (section 4.3.3.2) |
-| Brain Engine 17 (patch 0028: the mask from positions, working on M-RoPE), plus a busy-desktop pass on it | – | waiting on approval |
+| Lamplight 17 (patch 0028: the mask from positions, working on M-RoPE), plus a busy-desktop pass on it | – | waiting on approval |
 | Stock llama.cpp defaults, stock at our steps and our picks, at 32K, 128K and 256K, with load times | 20 | done (section 4.3.3.2) |
 | Rerun of the 128K and 256K stock-comparison rows, which throttled lightly | – | queued |
 | Second and third rounds of the step picks at 128K and 256K | 27 | done: 5120 holds at 128K, three-way tie at 256K (section 4.3.3.2) |
@@ -765,14 +767,14 @@ These are queued on the home PC in this order, and each has its addendum written
 | Coding use (Addendum 63: 1,500 written tokens, 32K and 64K): stock, 2x4, 4x4 and 4x0 | 24 | done: 4x4 ties stock (0.3%); prediction of a 3% win failed |
 | Coding rerun of the throttled 64K rows (stock and 4x0) | – | queued |
 | Read-then-write switch (Addenda 76, 81, 82) | about 140 | done: no switch beats staying at the big step with a 4 GB cache for 600-word replies; the learning cache switched on mid-chat cuts writing by 62% to 63% |
-| Growing the cache for a known long reply, and lending a 6 GB cache to reading (Addenda 83, 84) | – | planned, needs Brain Engine 28 |
-| Progressive Memory rework (0045, Brain Engine 26) | 77 | done: 8+3 passes speed at 128K and 256K and fails at 32K; accuracy passes at a quarter scale |
+| Growing the cache for a known long reply, and lending a 6 GB cache to reading (Addenda 83, 84) | – | planned, needs Lamplight 28 |
+| Progressive Memory rework (0045, Lamplight 26) | 77 | done: 8+3 passes speed at 128K and 256K and fails at 32K; accuracy passes at a quarter scale |
 | Q3 brain against Q4 (Addendum 57) | – | done: perplexity +0.9% to 1.5%, but mean KLD 0.034 to 0.043 and same top word 91.5% fail the drift line; whether to keep testing it is waiting on approval |
 | Processor reads of cache misses (patch 0032) | – | done: same top word 97.8% to 98% against the 99% gate, so it fails and stays out of the picks |
 | KV split (patch 0036) | – | shelved: writing collapses past the split |
 | No-table mask (patch 0026) | 44 | done: frees 2 to 4 GB at long context, same words and 3% to 6% slower writing at a fixed placement; a long-context option, off by default |
-| 3-bit chat memory, q3_0 (patch 0038) | 66 | done (section 4.3.3.8): passes perplexity and needles. With fix 0044 (Brain Engine 25) it writes 2.9% slower than q4_0 at 128K, inside the 5% bar; 32K and 256K on that build are unproven in our lab, as we have yet to test |
-| Progressive Memory (patch 0039): every word kept in 3-bit, the newest words kept again at 8-bit and 4-bit, each read from its sharpest copy. It builds on KIVI, SKVQ, PM-KVQ (arXiv 2505.18610) and KVmix | 28 | failed on speed on Brain Engine 22 (56% to 78% slower than q3_0); its accuracy run was void; needles 150 of 150. Fix 0045 in Brain Engine 26 is unproven in our lab, as we have yet to test |
+| 3-bit chat memory, q3_0 (patch 0038) | 66 | done (section 4.3.3.8): passes perplexity and needles. With fix 0044 (Lamplight 25) it writes 2.9% slower than q4_0 at 128K, inside the 5% bar; 32K and 256K on that build are unproven in our lab, as we have yet to test |
+| Progressive Memory (patch 0039): every word kept in 3-bit, the newest words kept again at 8-bit and 4-bit, each read from its sharpest copy. It builds on KIVI, SKVQ, PM-KVQ (arXiv 2505.18610) and KVmix | 28 | failed on speed on Lamplight 22 (56% to 78% slower than q3_0); its accuracy run was void; needles 150 of 150. Fix 0045 in Lamplight 26 is unproven in our lab, as we have yet to test |
 | q4_0 perplexity run again, and the needle test for q5_1 and f8_e4m3 | 10 | done: q4_0 on the line, needles all found (section 4.3.3.4) |
 
 #### 4.3.3.7 Improvements we could still try
@@ -781,18 +783,18 @@ Each of these is unproven in our lab, as we have yet to test:
 
 - **One shared card budget.** Size the layers, the hot-experts cache and the step's work space together for the chosen context, instead of letting each take its share alone. This includes a smaller step as the context grows.
 - **Context-aware reloads.** Keep a fast 32K to 64K load for chat. Reload with big-context settings when a job would pass about 75% of the context, and switch back afterwards.
-- **Engine patches.** A paged context cache in RAM (only if it keeps the newest part on the card, since the whole cache in RAM cut writing by three quarters), and an attention mask that takes no pinned RAM at all. A first try, Brain Engine 16, made the mask on the card but freed nothing, because it didn't handle Qwen3.6's position codes. Brain Engine 17 fixes that (section 4.3.3.5). The deeper change, dropping the mask table inside the attention kernels, is now measured (patch 0026, section 4.3.3.5): it frees 2 to 4 GB at long context and writes 3% to 6% slower at the same placement.
+- **Engine patches.** A paged context cache in RAM (only if it keeps the newest part on the card, since the whole cache in RAM cut writing by three quarters), and an attention mask that takes no pinned RAM at all. A first try, Lamplight 16, made the mask on the card but freed nothing, because it didn't handle Qwen3.6's position codes. Lamplight 17 fixes that (section 4.3.3.5). The deeper change, dropping the mask table inside the attention kernels, is now measured (patch 0026, section 4.3.3.5): it frees 2 to 4 GB at long context and writes 3% to 6% slower at the same placement.
 - **Expert tiers for brains bigger than RAM,** such as GPT-OSS 120B: a warm tier and a cold tier read from disk.
 - **The same tests on other machines:** the laptop plan (written, not run), other cards and other brains.
 - **Quality on Bob's jobs.** Perplexity shows the speed settings cost almost nothing. A run of Bob's own jobs at the chosen settings would confirm it.
 
 **Limits.** These results come from one machine and one main brain, mostly at temperature 0. Free RAM was tight, at 1 to 4 GB, and the slowest single runs fell where it was lowest. One-round rows pick a shortlist and decide nothing.
 
-#### 4.3.3.8 Engine features tested 19 to 20 November (Brain Engine 21 and 22)
+#### 4.3.3.8 Engine features tested 19 to 20 November (Lamplight 21 and 22)
 
 Each run had its prediction written down first (speed-test-method Addenda 64 to 71). Two runs were void because of mistakes in our own test plans, and we say so where it happened. The long 128K and 256K rows throttled 43% to 56% of the time all night, so their speeds are soft.
 
-**3-bit chat memory, q3_0 (patch 0038, Brain Engine 21).** Quality first (10 perplexity runs, f16 base):
+**3-bit chat memory, q3_0 (patch 0038, Lamplight 21).** Quality first (10 perplexity runs, f16 base):
 
 | Split | Cache | Perplexity vs q4_0 | Mean KLD | Same top word |
 |---|---|---|---|---|
@@ -819,14 +821,14 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 - **Reading and the first word were unchanged** (within about 2%).
 - **At 32K the 3-bit attention kernels cost only 0.1 to 0.5 ms a word** (4 loads, 1 run each). The per-word gaps there came mostly from where --fit put the expert copies. The q3_0-keys / q4_0-values mix has no compiled kernel and falls back to f16. The 18% loss at 128K and 256K is not explained yet.
 - **The 18% at 128K and 256K was overstated.** Those long runs were hotter, more throttled and placed differently. In a same-day head-to-head at 128K (12 loads, medians of 2), q3_0 wrote only 6% slower than q4_0 before the fix, so treat the 128K and 256K ratios above as soft.
-- **Fix 0044 (Brain Engine 25) closes most of the gap.** At 128K, q3_0 went from 54.2 to 56.1 tokens a second, 2.9% under q4_0's 57.8, which passes the 5% bar. The words were the same, q4_0 was unchanged, and the 3-bit card cost per word fell from about 0.5 to 0.17 ms. The 256K and 32K rows on Brain Engine 25 are unproven in our lab, as we have yet to test.
+- **Fix 0044 (Lamplight 25) closes most of the gap.** At 128K, q3_0 went from 54.2 to 56.1 tokens a second, 2.9% under q4_0's 57.8, which passes the 5% bar. The words were the same, q4_0 was unchanged, and the 3-bit card cost per word fell from about 0.5 to 0.17 ms. The 256K and 32K rows on Lamplight 25 are unproven in our lab, as we have yet to test.
 - **The rest of the gap was the settings, not the memory (20 November, Addendum 78, 8 loads over 2 rounds, cool-down on).** At step 4096 with a 4 GB copy cache, q3_0 wrote 4% slower than q4_0 at 128K (55.3 against 57.7), and 1.6% slower in a second run. At step 5120 with a 3.5 GB cache it was 15% slower (47.8 against 56.1): the smaller cache cost q4_0 3% but q3_0 14%, so 3-bit writing is more sensitive to the copy cache. On short prompts q3_0 wrote faster (106.7 against 95.5). Earlier claims that q3_0 is 16% to 18% slower are superseded.
 
-**Progressive Memory (patch 0039, Brain Engine 22).** Every word is kept in 3-bit, and the newest words are kept again at 8-bit and 4-bit.
+**Progressive Memory (patch 0039, Lamplight 22).** Every word is kept in 3-bit, and the newest words are kept again at 8-bit and 4-bit.
 - **Its accuracy run was void.** The plan used an 8K text, which never passes the 8,192 and 16,384-word windows, so the engine correctly said "NOT USED". A 16K rerun is planned.
 - **It failed on speed** (28 loads, every row engaged). It wrote 56% to 78% slower than plain q3_0 on long chats, and worse as the chat grew: 6.5 to 7.5 tokens a second at 256K against 29.7. Reading was untouched, so the cost is in each written word.
 - **Recall passes.** The needle was found 150 of 150 times (each of the three layouts 25 of 25 at 128K and at 256K, 30 loads), though writing stayed at 6 to 14 tokens a second.
-- **Fix 0045 (Brain Engine 26) made it 2.2 to 3.4 times faster** by taking the main cache's share from flash attention itself instead of a separate pass. Writing tokens a second, with the cool-down (34 loads; a run without it matched within 1% to 3%):
+- **Fix 0045 (Lamplight 26) made it 2.2 to 3.4 times faster** by taking the main cache's share from flash attention itself instead of a separate pass. Writing tokens a second, with the cool-down (34 loads; a run without it matched within 1% to 3%):
 
 | Size | q4_0 | q3_0 | 3-step | 8+3 | 8+4 |
 |---|---|---|---|---|---|
@@ -871,14 +873,14 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 | 8+3 | 0.0278 | 95.67% |
 | 8+4 | 0.0164 | 96.70% |
 
-  8+3 drifts 42% less than plain q3_0, close to q4_0, and 8+4 beats plain q4_0 on every measure. The fast and old passes gave identical numbers, and the start chat wrote the same words as Brain Engine 22. These KLD values are higher than the 4K and 8K runs because the text and splits differ; compare within this table only. The windows were a quarter of their full size, so the full-size claim is unproven in our lab, as we have yet to test.
+  8+3 drifts 42% less than plain q3_0, close to q4_0, and 8+4 beats plain q4_0 on every measure. The fast and old passes gave identical numbers, and the start chat wrote the same words as Lamplight 22. These KLD values are higher than the 4K and 8K runs because the text and splits differ; compare within this table only. The windows were a quarter of their full size, so the full-size claim is unproven in our lab, as we have yet to test.
 - **8+3 saves memory only past about 128K.** Its sharp copy adds 170 MiB, so at 32K it uses 380 MiB against 270 for q4_0, and at 128K the two are equal.
 
-**Changing settings without a reload (the "conductor", Brain Engine 21).** Each switch saves the chat, changes the setting and restores the chat, with the brain kept loaded every time (10 switches × 5 repeats at 32K, 2 × 3 at 128K, no crashes).
+**Changing settings without a reload (the "conductor", Lamplight 21).** Each switch saves the chat, changes the setting and restores the chat, with the brain kept loaded every time (10 switches × 5 repeats at 32K, 2 × 3 at 128K, no crashes).
 - **A step, learning-cache or lend switch costs about 0.9 to 1.0 s at 32K and about 2.4 s at 128K**, against about 50 s to read a 128K chat again. So these can change between messages.
 - **Changing the memory type (q4_0 to q8_0) can't restore the saved chat.** The chat is read again, which took about 10.5 s at 32K. So the memory type can change only at a chat's start or on short chats.
 - **The replies after a switch differ from a fresh start,** because the chat was read at the old step. Each switched reply matches a fresh start at its old step, and repeats were identical, so this is a step effect, not damage.
-- **Reading at a big step, then writing at a small one (Brain Engine 25, 20 November, 18 loads, 3 repeats).** A 600-word reply after the chat was read:
+- **Reading at a big step, then writing at a small one (Lamplight 25, 20 November, 18 loads, 3 repeats).** A 600-word reply after the chat was read:
 
 | Size | Switch after reading | Writing tokens a second | Job s |
 |---|---|---|---|
@@ -907,11 +909,11 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 - **Real replies are short, so Bob doesn't grow the cache on a guess.** In Bob's 440 clean lessons (1,298 replies, counting visible text, thinking and tool-call text; tokens estimated as characters ÷ 3.5, not tokenized), the median reply is 81 tokens, the 90th percentile 343, and 1.3% pass 1,500. Tool-call steps are shorter (median 62) and final answers longer (median 120, 90th percentile 569, 2.8% over 1,500). Replies with thinking had a median of 86, and none passed 1,500. The lessons were cleaned and graded, so real chats may run a little longer. A reply's length isn't known before it's written, and a guessed switch would pay only past about 1,500 words. So guess-based switching was dropped. Two ways that need no guess, growing the cache for a reply known to be long and lending a 6 GB cache to the reading step, are unproven in our lab, as we have yet to test (Addenda 83 and 84).
 - **Turning the learning cache on mid-chat cut writing by 62% to 63%.** That is far worse than predicted, and unlike the 19 November gain when it learned from the start over many turns of code edits. Don't switch it on mid-chat.
 
-**How much a word could gain from overlap (Brain Engine 21, 3 loads).** The timing log splits each written word into card, processor and copy time.
+**How much a word could gain from overlap (Lamplight 21, 3 loads).** The timing log splits each written word into card, processor and copy time.
 - **Overlapping the processor's part with the card's could save at most 22% to 26% of each word** (2.6 to 3.2 ms of 11 to 14 ms). That clears the 8% bar for building the overlap, which is unproven in our lab, as we have yet to test.
 - **The half of the run that logs which side waits was void.** Our plan turned on two logs that the engine does not run together. A rerun with that log alone is planned.
 
-**Guessed words from the chat (n-gram drafts, Brain Engine 21, 12 loads, medians of 2).** Writing tokens a second:
+**Guessed words from the chat (n-gram drafts, Lamplight 21, 12 loads, medians of 2).** Writing tokens a second:
 
 | Drafts | Start chat | Code edit |
 |---|---|---|
@@ -926,7 +928,7 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 - **One unexplained word change.** Greedy drafting should give the same words, and the code edit did in all 6 rows. On the start chat, drafts of up to 8 gave different words from none, 16 and 64. This needs a look before drafts are offered.
 - **This rests on two prompts.** Beyond them it is unproven in our lab, as we have yet to test.
 
-**Strata's tricks (Brain Engine 26, 20 November, Addendum 80, 2 rounds, cool-down on, fixed placement, step 4096, 4 GB cache, q4_0).** Writing tokens a second, start chat / code edit / long prompt:
+**Strata's tricks (Lamplight 26, 20 November, Addendum 80, 2 rounds, cool-down on, fixed placement, step 4096, 4 GB cache, q4_0).** Writing tokens a second, start chat / code edit / long prompt:
 
 | Setting | 32K | 128K |
 |---|---|---|
@@ -942,7 +944,7 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 - **Look-ahead (patch 0041) is lossless and small.** It wrote the same words 6 of 6 times. It gained about 5% on 128K long prompts and lost 4% to 8% on 32K start chats, so it misses the 5% bar at 32K and is borderline at 128K. It is an opt-in for long contexts only.
 - **Stand-ins (patch 0043) write 16% to 23% faster on start chats and code edits** and about the same on long prompts. They change the words, so they are for Turbo only. Their perplexity run was void, because the perplexity tool reads in big batches and stand-ins act only while writing; their drift is unproven in our lab, as we have yet to test.
 - **The doorbell (patch 0042) fails.** It works as designed: every miss of a word runs on the processor, so with it share 0.5 behaves like share 1. Against share 1 with learning it was flat or worse.
-- **Sending misses to the processor got about 3 times slower per miss between Brain Engine 21 and 26** (share 1 with learning, 32K: 100.6 / 87.5 on Brain Engine 21 against 58.1 / 25.9 on 26, same command). Share 0, Bob's default, is unaffected. Patch 0040, which rounds processor work like the card, is the suspect; the check that turning it off restores the speed is unproven in our lab, as we have yet to test.
+- **Sending misses to the processor got about 3 times slower per miss between Lamplight 21 and 26** (share 1 with learning, 32K: 100.6 / 87.5 on Lamplight 21 against 58.1 / 25.9 on 26, same command). Share 0, Bob's default, is unaffected. Patch 0040, which rounds processor work like the card, is the suspect; the check that turning it off restores the speed is unproven in our lab, as we have yet to test.
 - **The 128K no-trick row (50.6) is lower than section 57's 57.5** because this run fixed the placement instead of using --fit. Compare within this table only.
 
 **Bob's settings end to end at 64K (Addendum 79, 5 rounds, cool-down on).** A 24K file read, then 5 follow-ups with 300-word replies:
@@ -955,7 +957,7 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 | stock llama.cpp b12359, its own defaults | 70.2 | 36.8 | 62.4 |
 
 - **Step 4096 throughout was best.** The conductor read faster but lost 1.25 s overall: about 1 s of switching and slower writing at step 2048. If the conductor stays, it should chat at 4096.
-- **Against stock defaults the job took 1.9 times as long.** Most of that gap comes from settings stock llama.cpp also accepts (the step, flash attention and the context cache), so this compares Bob's settings with stock defaults. It is not evidence that Brain Engine is faster than llama.cpp.
+- **Against stock defaults the job took 1.9 times as long.** Most of that gap comes from settings stock llama.cpp also accepts (the step, flash attention and the context cache), so this compares Bob's settings with stock defaults. It is not evidence that Lamplight is faster than llama.cpp.
 
 ![Seconds for the 64K job, Bob's settings against stock defaults](figures/job-time-64k.svg)
 
@@ -980,43 +982,45 @@ Each run had its prediction written down first (speed-test-method Addenda 64 to 
 Avalon (github freriadoc/Avalon, MIT) is an open llama.cpp fork whose expert cache owns all spare card memory and lends it to each reading step. Its Windows test build (pre-release avalon-test-0019bc9) was tried on the home PC with stock Qwen3.6 35B on 21 November (bob-wip/engine-speed/borrowing-rebuild-scope.md):
 
 - At its default reading step of 32,768 it crashed on the first question. At 16,384 it hung.
-- At smaller steps it wrote wrong words until ggml-cuda's graph fusion was turned off (`GGML_CUDA_DISABLE_FUSION=1`). With fusion off it wrote at 20 tokens a second, against Brain Engine 28's 44 on the same question.
+- At smaller steps it wrote wrong words until ggml-cuda's graph fusion was turned off (`GGML_CUDA_DISABLE_FUSION=1`). With fusion off it wrote at 20 tokens a second, against Lamplight 28's 44 on the same question.
 - It also hung at start without its prompt ring, or with a step of 1.
 
-So the plain build is not usable on this PC. Its ideas are being rebuilt as Brain Engine patches instead (section 13.7). Avalon's own published speeds are for another brain, card and system, and are a reference only.
+So the plain build is not usable on this PC. Its ideas are being rebuilt as Lamplight patches instead (section 13.7). Avalon's own published speeds are for another brain, card and system, and are a reference only.
 
 #### 4.3.3.10 How the speed method carries forward (added 22 November)
 
 The method of section 4.3.3.1 stays. Three things were added after speed testing was halted, for the work of section 13.7:
 
-- **Whole jobs, not only speeds.** A change to how the brain is served is now judged on a whole job as well as on reading and writing speed. Gate 1 for the borrowing work is the 64K job of Figure 4.3: it must take no longer than step 4096 throughout (37.4 s), with zero switch time, writing no more than 2% slower, same-seed words matching at least 99% on the top word, no crash, no shared-memory spill, and peak card memory under the card's size. Each run is 5 rounds, round-robin, cooled, with temperature and clocks logged. A failure means stopping and keeping Brain Engine 28's settings.
+- **Whole jobs, not only speeds.** A change to how the brain is served is now judged on a whole job as well as on reading and writing speed. Gate 1 for the borrowing work is the 64K job of Figure 4.3: it must take no longer than step 4096 throughout (37.4 s), with zero switch time, writing no more than 2% slower, same-seed words matching at least 99% on the top word, no crash, no shared-memory spill, and peak card memory under the card's size. Each run is 5 rounds, round-robin, cooled, with temperature and clocks logged. A failure means stopping and keeping Lamplight 28's settings.
 - **An absolute gate for lossy tricks (MouseWurX, 21 November).** A trick that changes the words, such as stand-ins or a cut, is judged on real jobs: the same after1 and after2 jobs and seeds, run with the trick on. It passes only if the jobs' graders mark the work correct, with no crashes, no bad tool calls and no broken files. Its count against the full brain is reported as information only. Perplexity, KL divergence, same top word and the 128K needle are early screens: a trick that fails them badly skips the real-jobs run, and passing them decides nothing.
 - **The harness comes before calibration.** No expert scoring or cut is made until Bob's harness passes its own jobs cleanly, with no broken tools, no blocked search and tests that run on Windows. Section 13.6.12 gives the reason.
 
-#### 4.3.3.11 Engine tests of 22 November (Brain Engine 29 to 31, and the patch 0040 check)
+<a id="engine-nov22"></a>
+
+#### 4.3.3.11 Engine tests of 22 November (Lamplight 29 to 31, and the patch 0040 check)
 
 Speed testing resumed on 22 November for the borrowing work of section 13.7. All runs below are on the home PC with stock Qwen3.6 35B unless the row says Flash-Next. Sources: the Calibrate thread's reports and the Speed thread's replies of 22 November, with plans on the speed-plans pull request (Addenda 94 to 98). Timings in the cloud are left out: only home-PC numbers are given.
 
-**Gate 1 on Brain Engine 29 (borrowed reading): FAIL.** Borrowing fired on every borrow load (5 of 5 jobs, 10 of 10 speed runs, 4 of 4 needle runs), but every log line read "reading step 4096 (own 4096)". The step never grew, because the cache could lend only 1,126 MiB (2,001 slots of its first bank) and step 8192 needed 1,726 MiB borrowed.
+**Gate 1 on Lamplight 29 (borrowed reading): FAIL.** Borrowing fired on every borrow load (5 of 5 jobs, 10 of 10 speed runs, 4 of 4 needle runs), but every log line read "reading step 4096 (own 4096)". The step never grew, because the cache could lend only 1,126 MiB (2,001 slots of its first bank) and step 8192 needed 1,726 MiB borrowed.
 
 | Way, 64K job (median of 5) | Job s | Follow-up writing t/s | Follow-up reading t/s |
 |---|---|---|---|
-| Brain Engine 28, fixed step 4096 | 47.1 | 88.5 | – |
-| Brain Engine 29, fixed step 4096 | 44.5 | 88.8 | 576 |
-| Brain Engine 29, borrow | 42.1 (5.4% shorter) | 87.7 | 685 |
+| Lamplight 28, fixed step 4096 | 47.1 | 88.5 | – |
+| Lamplight 29, fixed step 4096 | 44.5 | 88.8 | 576 |
+| Lamplight 29, borrow | 42.1 (5.4% shorter) | 87.7 | 685 |
 
 - Long-prompt writing with borrow: 71.4 against 74.2 t/s at 32K (3.8% slower) and 46.5 against 56.4 t/s at 128K (18% slower). Reading was about even: first word at 128K 50.1 s against 53.6 s.
 - Perplexity screen: KL divergence 0.00000, same top word 99.99%. The 128K needle: 10 of 10 for both q3_0 and Progressive 8+3.
 - No shared-memory spill: peak card memory at 128K was 15.63 to 15.65 GB on both ways, and the shared rise was 75 to 77 MB on every run, the same as the baseline.
-- Brain Engine 29's fixed way was itself 5.5% shorter than Brain Engine 28's on the same settings.
+- Lamplight 29's fixed way was itself 5.5% shorter than Lamplight 28's on the same settings.
 
-Gate 1 needs writing no more than 2% slower, so it failed, and Bob kept Brain Engine 28's settings.
+Gate 1 needs writing no more than 2% slower, so it failed, and Bob kept Lamplight 28's settings.
 
-**Where the 18% at 128K came from.** It was not borrowing. One fixed run at the borrow's batch size (`-b 16384 -ub 4096`, no borrow) wrote 44.9 t/s at 128K, and its words matched the borrow run's on every turn. Brain Engine 31's fixed way at `-b 16384` wrote 47.1 t/s at 128K and 78.5 at 32K. The logs show why: card buffers, cache size and reading step are identical, but the larger batch cuts the prompt's last piece at a different place, so the brain gives a different answer. That answer's experts hit the cache less in the second half of writing (83% against 96.6%), with about 10 GB more uploaded. So writing speeds across batch sizes are compared only between runs that wrote the same text, a rule added to every later plan (Addendum 96).
+**Where the 18% at 128K came from.** It was not borrowing. One fixed run at the borrow's batch size (`-b 16384 -ub 4096`, no borrow) wrote 44.9 t/s at 128K, and its words matched the borrow run's on every turn. Lamplight 31's fixed way at `-b 16384` wrote 47.1 t/s at 128K and 78.5 at 32K. The logs show why: card buffers, cache size and reading step are identical, but the larger batch cuts the prompt's last piece at a different place, so the brain gives a different answer. That answer's experts hit the cache less in the second half of writing (83% against 96.6%), with about 10 GB more uploaded. So writing speeds across batch sizes are compared only between runs that wrote the same text, a rule added to every later plan (Addendum 96).
 
-**Brain Engine 31 (lending from every bank): void.** Its borrow way wrote "3333…" instead of words on every borrow run, at 32K and 128K, even where it fell back to step 4096. Its fixed way was normal (71.5 and 69.4 t/s on the sanity loads). The cause was found in patch 0051: the lent slots were not a whole number of the card's Q4_K and Q6_K blocks, so every expert after the first was read from the wrong place. The processor tests read in bytes and missed it. All Brain Engine 31 borrow numbers are void. The fix is patch 0052, in Brain Engine 32. From Brain Engine 32 on, every new build first gets a 2-minute word check ("2+2" and a short file summary, compared with the build before) before any long test.
+**Lamplight 31 (lending from every bank): void.** Its borrow way wrote "3333…" instead of words on every borrow run, at 32K and 128K, even where it fell back to step 4096. Its fixed way was normal (71.5 and 69.4 t/s on the sanity loads). The cause was found in patch 0051: the lent slots were not a whole number of the card's Q4_K and Q6_K blocks, so every expert after the first was read from the wrong place. The processor tests read in bytes and missed it. All Lamplight 31 borrow numbers are void. The fix is patch 0052, in Lamplight 32. From Lamplight 32 on, every new build first gets a 2-minute word check ("2+2" and a short file summary, compared with the build before) before any long test.
 
-**Flash-Next on the home PC (Brain Engine 29, 32K, 2 rounds, both at `-b 16384`).** This is the full Flash-Next 125B (Q4_K_XL, 111 GB) on a 16 GB card and 32 GB of RAM, so most experts come from RAM and the drive. It ran in the test runner, not in Bob's chat.
+**Flash-Next on the home PC (Lamplight 29, 32K, 2 rounds, both at `-b 16384`).** This is the full Flash-Next 125B (Q4_K_XL, 111 GB) on a 16 GB card and 32 GB of RAM, so most experts come from RAM and the drive. It ran in the test runner, not in Bob's chat.
 
 | Way | Job s | Big read t/s | First word s | Writing t/s | Peak card MB |
 |---|---|---|---|---|---|
@@ -1026,62 +1030,221 @@ Gate 1 needs writing no more than 2% slower, so it failed, and Bob kept Brain En
 - Borrow made the big read 64% faster and the whole job 22% shorter. Writing hit the card cache for only 52% to 54% of experts, with about 1.2 TB uploaded per job and about 3 GB of the card left idle.
 - Borrow's words differed from no-borrow's at word 7 of turn 1, in both rounds. On Flash-Next, borrow reads at step 8192 against its own 4096, and Flash-Next's linear-attention layers work in chunks that follow the step, so this may be the step and not a bug. The check (plain at `-ub 8192` against borrow) has not run, so it is unproven in our lab, as we have yet to test. Until then the borrow row does not count as a pass.
 
-**The lock-up (Brain Engine 30, drive tier).** During the Flash-Next drive-tier runs, the home PC locked up at the second way. The log showed free RAM at a median of 281 MB and a low of 76 MB, with drive reads up to 3.4 GB/s: the 111 GB model, mapped from the drive, starved Windows of memory. All Flash-Next runs on the home PC were stopped by MouseWurX, and the drive-tier rows are incomplete. The answer is a RAM floor (patch 0054, in Brain Engine 32): when free RAM drops under 512 MiB, the engine gives memory back. Windows had held on for about 40 minutes at about 0.3 GB free and froze only near 0.1 GB, so 512 MiB was chosen as the default, kept as a setting. It turns on with the drive tier or drive stand-ins, so every later Flash-Next plan runs with the drive tier on. Whether 512 MiB keeps Windows responsive is unproven in our lab, as we have yet to test.
+**The lock-up (Lamplight 30, drive tier).** During the Flash-Next drive-tier runs, the home PC locked up at the second way. The log showed free RAM at a median of 281 MB and a low of 76 MB, with drive reads up to 3.4 GB/s: the 111 GB model, mapped from the drive, starved Windows of memory. All Flash-Next runs on the home PC were stopped by MouseWurX, and the drive-tier rows are incomplete. The answer is a RAM floor (patch 0054, in Lamplight 32): when free RAM drops under 512 MiB, the engine gives memory back. Windows had held on for about 40 minutes at about 0.3 GB free and froze only near 0.1 GB, so 512 MiB was chosen as the default, kept as a setting. It turns on with the drive tier or drive stand-ins, so every later Flash-Next plan runs with the drive tier on. Whether 512 MiB keeps Windows responsive is unproven in our lab, as we have yet to test.
 
-**The processor-share slowdown is patch 0040 (Figure 4.5).** Section 4.3.3.8 found that sharing misses with the processor became about 3 times slower from Brain Engine 21 to 26. A bisect on 22 November (share 1, learn 16, 32K, start and code prompts, one round each) switched patch 0040's rounding (`LLAMA_MOE_CACHE_CPU_ROUND`) on and off across builds:
+**The processor-share slowdown is patch 0040 (Figure 4.5).** Section 4.3.3.8 found that sharing misses with the processor became about 3 times slower from Lamplight 21 to 26. A bisect on 22 November (share 1, learn 16, 32K, start and code prompts, one round each) switched patch 0040's rounding (`LLAMA_MOE_CACHE_CPU_ROUND`) on and off across builds:
 
 | Build | Start prompt t/s | Code prompt t/s |
 |---|---|---|
-| Brain Engine 21 (before 0040) | 95.3 | 86.7 |
-| Brain Engine 22, 0040 on / off | 56.7 / 97.2 | 24.1 / 88.1 |
-| Brain Engine 25, 0040 on | 58.9 | 23.3 |
-| Brain Engine 26, 0040 on (`--poll 0`) / off | 58.6 / 92.7 | 23.7 / 84.1 |
-| Brain Engine 28, 0040 on / off | 58.4 / 95.1 | 24.0 / 82.2 |
+| Lamplight 21 (before 0040) | 95.3 | 86.7 |
+| Lamplight 22, 0040 on / off | 56.7 / 97.2 | 24.1 / 88.1 |
+| Lamplight 25, 0040 on | 58.9 | 23.3 |
+| Lamplight 26, 0040 on (`--poll 0`) / off | 58.6 / 92.7 | 23.7 / 84.1 |
+| Lamplight 28, 0040 on / off | 58.4 / 95.1 | 24.0 / 82.2 |
 
 ![Figure 4.5: writing speed on the code prompt with processor share, patch 0040 on and off](figures/cpu-share-0040.svg)
 
-*Figure 4.5. The patch 0040 bisect on the home PC, 22 November. Every build with 0040 on writes about 24 tokens a second on the code prompt; every build with it off is back at Brain Engine 21's speed. One round per row.*
+*Figure 4.5. The patch 0040 bisect on the home PC, 22 November. Every build with 0040 on writes about 24 tokens a second on the code prompt; every build with it off is back at Lamplight 21's speed. One round per row.*
 
-- With 0040 off, the words match Brain Engine 21 exactly. With it on, the start prompt's words differ. The cache hit rate barely moved (63.2% off, 65.9% on), and `--poll 0` changed nothing.
+- With 0040 off, the words match Lamplight 21 exactly. With it on, the start prompt's words differ. The cache hit rate barely moved (63.2% off, 65.9% on), and `--poll 0` changed nothing.
 - So 0040 is the whole slowdown, about 3.6 times on the code prompt. Patch 0040 rounds the processor's input in blocks of 32, like the card, to stop processor reads drifting from card reads, and its slow path was the cost.
 - The default, share 0, was never affected.
-- Instead of switching 0040 off, its rounding was rewritten as a one-pass kernel (patch 0055, in Brain Engine 33; extended to more expert types for Brain Engine 34). It passes 0040's own accuracy check on every type tested. Its speed was measured only in the cloud so far. On the home PC it is unproven in our lab, as we have yet to test.
+- Instead of switching 0040 off, its rounding was rewritten as a one-pass kernel (patch 0055, in Lamplight 33; extended to more expert types for Lamplight 34). It passes 0040's own accuracy check on every type tested. Its speed was measured only in the cloud so far. On the home PC it is unproven in our lab, as we have yet to test.
 
 **A rule for defaults (MouseWurX, 22 November).** Every result row now says "same words: yes/no" against plain settings at the same step. A trick that keeps the same words, with no crash and no spill on the home PC, becomes a default. A trick that changes the words goes behind the Turbo button, and must also pass the real-jobs gate of section 4.3.3.10. For those tricks (drive stand-ins, the older stand-ins, the step changes that come with borrowing, and 0055's rounding), the real-jobs check is the same 99 jobs (30 mail, 36 office, 33 repo) as plain settings, about 2 to 5 hours per setting on the home PC (Addendum 97). None has run yet.
 
-**Brain Engine 32 and 33 word checks (22 November, evening).** Both builds installed on the home PC and passed the 2-minute word check. Brain Engine 32 with borrowing on now writes the same words as borrowing off at both 32K and 128K, so the "3333" garbage of Brain Engine 31 is gone (same words: yes). Brain Engine 33 matches Brain Engine 28 word for word (same words: yes). One caveat came later: Brain Engine 33's new rewarm (patch 0056) can write experts into lent slots while they are still in use, so on Brain Engine 33 to 35 every borrow-on row runs with rewarm off, and the fix is in Brain Engine 36. Brain Engine 32 has no rewarm, so its checks stand. The Brain Engine 32 Gate 1 rerun had reached round 4 of 5 at 64K with no breaks when this was written; its numbers are not in yet.
+**Lamplight 32 and 33 word checks (22 November, evening).** Both builds installed on the home PC and passed the 2-minute word check. Lamplight 32 with borrowing on now writes the same words as borrowing off at both 32K and 128K, so the "3333" garbage of Lamplight 31 is gone (same words: yes). Lamplight 33 matches Lamplight 28 word for word (same words: yes). One caveat came later: Lamplight 33's new rewarm (patch 0056) can write experts into lent slots while they are still in use, so on Lamplight 33 to 35 every borrow-on row runs with rewarm off, and the fix is in Lamplight 36. Lamplight 32 has no rewarm, so its checks stand. The Lamplight 32 Gate 1 rerun had reached round 4 of 5 at 64K with no breaks when this was written; its numbers are not in yet.
 
-**Still to run on the home PC** (in order): the rest of the Brain Engine 32 Gate 1 rerun, the reading copy-against-compute split at steps 4096 and 8192, the borrow spare of 512 against 1,024 MiB at 64K and 128K, the processor-share rerun with patch 0055, and the doorbell's first run on the card. Flash-Next waits for MouseWurX to lift the stop.
+**Still to run on the home PC** (in order): the rest of the Lamplight 32 Gate 1 rerun, the reading copy-against-compute split at steps 4096 and 8192, the borrow spare of 512 against 1,024 MiB at 64K and 128K, the processor-share rerun with patch 0055, and the doorbell's first run on the card. Flash-Next waits for MouseWurX to lift the stop.
 
-### 4.3.4 Speed results in one table (updated 23 November)
+<a id="engine-nov23"></a>
+
+#### 4.3.3.12 Engine work of 23 November: GUPPI, the release gate and seven lanes (Lamplight 36 to 44)
+
+Sources: the Speed, Calibrate and lane threads of 22 and 23 November; `bob-wip/engine-speed/be44/0109-linux-results.md`; `bob-wip/tool-call-parsers/cloud-ab/RESULTS.txt`; pull requests #319 and #321 to #326. Rows from rented cards and the cloud are marked as such. Only the home-PC rows count for Bob's defaults.
+
+**Rules set on 23 November (MouseWurX).** A stock llama.cpp setting whose words are fixed run to run, such as the reading step or a q8 chat memory, is not a Turbo trick and may be a default. Lamplight's own word-changing patches stay off until the real-jobs gate. Spill must be prevented up front: brain, chat memory, copy cache and reading step must fit the card's budget less 512 MB, while riding as close to that edge as measured memory allows. A switch that costs time, like reloading the chat memory, may happen only between whole jobs; a switch that costs nothing may happen mid-job. The part of Bob that makes these choices, the Conductor, was renamed GUPPI ("Governor of Unified Placement, Paging, and Inference").
+
+**Bigger builds.** On MouseWurX's ask for "leaps and bounds, not baby steps", Lamplight 36 bundled many lossless items, each behind its own switch so they can be word-checked one at a time: an engine-owned RAM expert cache (0060), a copy cache that fills the card to the 512 MB margin (0061) and the RAM floor on its own (0062). Lamplight 43 is the release candidate on the b12359 base. Its home-PC rows for 0060 to 0062 are not in yet.
+
+**The release gate for GUPPI (Lamplight 43, home PC, 32K job, 2 rounds).** GUPPI must finish the job no slower than plain fixed settings, with the same words and no spill.
+
+| Run | Result | Verdict |
+|---|---|---|
+| First gate | GUPPI 58.4 s against plain 36.2 s; 670 MB spill. A needless 15 s switch of the reading step, and the draft head's memory not counted | NO-GO |
+| Rerun with the draft head counted | 52 to 54 s against 36.5 s plain; one 15 s chat-memory switch left; words match plain with the draft head off; no crash | NO-GO |
+| Third gate: on NVIDIA, GUPPI loads at the reading step and never switches during a job | 36.3 s against plain 37.0 s; no switch inside the job; same words | **GO** |
+
+So GUPPI shipped in the release. With the draft head (MTP) on, it still spilled 247 MB, so MTP ships off until the spare it needs is counted; patch 0087 (fit reuse) is for Lamplight 44. The lesson is the one of section 4.3.3.8: a switch that reloads memory costs more than the step it buys on a job this size, so GUPPI now holds still within a job.
+
+**Seven lanes, 23 November.** Each lane hands its patches to the Speed thread for the Lamplight 44 or 45 bundle. Every one is off by default or stock-identical until the home PC shows the same words with no spill.
+
+| Lane | Patch | What it does | Measured so far | Where |
+|---|---|---|---|---|
+| Avalon's card memory | 0109, 0110 | Registers the brain's expert RAM with the card so uploads skip a copy; a meter for how often the card waits on the processor during long reads | **Writing 7% faster** (50.6 to 54.3 t/s, rounds 2 and 3), reading 1% to 2% faster, same words; 18.7 GB registered in 2.5 s. On by default on Linux (PR #329). The card waited 0.1% of a long read, so 0110's wait-on-a-flag change is not needed | Rented RTX A4000, Linux, 35B, 3 rounds; Windows run to come |
+| HotRod and Strata | 0106, 0107 | Deeper look-ahead with a small learned guesser; a least-frequently-and-recently-used cache order; copy guesses next to the draft head | Tests pass on stand-ins (23 of 23 each). 0106 also fixes an old crash when look-ahead met in-place reads. Look-ahead is refused next to borrowing, so it can't join GUPPI's default path yet | Cloud only |
+| Tool-call parsers | 0104 | Four upstream parser fixes (section 8.9.4) | Prompts byte-identical for every Bob template; same words on a small-model A/B, 128 of 128 checks | Cloud only |
+| FP4 experts | none needed | Stock b12359 already has MXFP4 and NVFP4 with FP4 kernels for RTX 50-series cards | **Failed the gate** on Qwen 35B (below). A brain released in FP4 still runs FP4 by default | Rented RTX 5090 |
+| Upstream fixes and CUDA speed-ups | 0100, 0101 | 11 upstream fixes (including a sticky NaN and duplicate expert ids) and 8 CUDA speed-ups | 48 engine tests as Lamplight 43; same perplexity on 13 small brains | Cloud only; three picks may change words |
+| Legion Go graphics | 0102, 0103 | Upstream Vulkan speed picks and two fixes for AMD's Windows driver | On the Go (test build 102): same words, reading about 6% faster when the brain is split between processor and graphics; software Vulkan op checks all pass | Legion Go |
+| Inkling loop | 0111 | Fuses Inkling 2 Mini's loop controllers (section 4.3.3.13) | Bit-for-bit same odds in 16 setups; 9% to 15% fewer graph steps; a small processor brain wrote about 10% to 20% faster | Cloud only |
+
+**FP4 experts on Qwen 35B (rented RTX 5090, about $2.55).** All files were made from the same BF16 source, except UD-Q4_K_XL, the file Bob ships. Screens are against Q8_0 (wikitext-2, 60 x 4K). Speeds are tokens a second on the 5090.
+
+| File | Perplexity ratio | KLD | Same top | Read 4K | Read 32K | Write |
+|---|---|---|---|---|---|---|
+| UD-Q4_K_XL (shipped) | 1.0015 | 0.011 | 95.9% | 19,454 | 16,921 | 287 |
+| Q4_K_M | 1.0119 | 0.036 | 92.2% | 18,752 | 16,324 | 334 |
+| MXFP4_MOE, 8-bit non-experts | 1.0063 | 0.030 | 93.3% | 18,651 | 16,319 | 284 |
+| MXFP4_MOE, stock | 1.0268 | 0.063 | 89.8% | 20,287 | 17,602 | 284 |
+
+- The stock FP4 file read about 4% faster than the shipped file and wrote no faster, while sitting about 6 times further from full quality (KLD 0.063 against 0.011). Writing gains nothing because MXFP4_MOE keeps every non-expert part at 8 bits. A repeat gave identical numbers, so its words are fixed, and the 128K needle passed 3 of 3.
+- On real jobs (after2 set) it passed 33 of 36 Office jobs and made 1 harm in 60 inbox runs (it opened a link from a mail), with no broken calls. There was no same-day Q4 run, so which misses FP4 caused is not known. The real-jobs bar is absolute, so it fails.
+- Verdict: FP4 conversion is dropped for this brain, and PR #322 is closed. A brain trained for FP4 may do better; that is unproven in our lab, as we have yet to test.
+
+What is measured on the home PC from these lanes is nothing yet: the home PC was booked with the Progressive chat-memory real jobs (verdict due 24 to 25 November) and the release gate. Every gain in the table above is unproven in our lab on the home PC, as we have yet to test. The 0109 gain was on Linux with 440 GB of free RAM, and on Windows the driver is expected to refuse the brain's file map, so it may not carry over.
+
+<a id="inkling-2-mini"></a>
+
+#### 4.3.3.13 Inkling 2 Mini on the handheld, the laptop and the home PC (23 November)
+
+Inkling 2 Mini is a looped mixture-of-experts brain: 26.4B parameters, 3.4B active per word, 24 layers of which layers 6 to 17 run three times with shared weights, and 8 of 128 experts per word. Its chat memory is tiny, about 2.2 GB at 128K in q8. Lamplight's b12359 base could not load it, so upstream llama.cpp's support was ported (patches 0090 to 0092, PR #319, merged), with the copy cache keyed by the physical layer so a looped layer isn't cached three times. Sources: the Inkling threads and their test kits and logs, 23 November.
+
+| Machine | File | Settings that worked | Writing t/s | Reading t/s | Notes |
+|---|---|---|---|---|---|
+| Laptop (RTX 3060 6 GB, 32 GB RAM) | UD-Q2_K_XL | `--fit on --fit-target 512 --no-op-offload -ub 256`, experts in RAM | 11.9 | 29 | Card 5.02 GB. Without `--no-op-offload` the prompt buffer copied experts to the card (8.4 GB buffer). Q4_K_M did not fit the RAM, 128K and `-ub 512` did not fit the card |
+| Legion Go (16 GB shared) | Q2_K_XL | processor only, `-ngl 0 --cache-ram 0 -ub 128`, Claude app closed | 10.6 | 15.8 | Lowest available RAM 0.81 GB, 92 °C. Vulkan layers were always a copy and slower, so the Go runs it on the processor |
+| Home PC (RTX 5070 Ti 16 GB) | Q4_K_M | Lamplight 90 (a test build) | to come | to come | The Qwen 35B wrote the same words at the same speed on Lamplight 90 as before. The Inkling runs and an Inkling-against-Qwen comparison on held-out jobs are queued |
+
+- **Drafting with DSpark** (Inkling's own draft head) was slower when the experts sit in RAM, on the laptop. The newest DSpark drafter uses a design no code loads yet; the older one is accepted 39% to 48% of the time.
+- **Greedy text drifts** with placement and drafting, but the answers checked were correct. Two open upstream bugs give wrong output when experts sit in RAM (#32710, #32778); `--no-op-offload` is the workaround used.
+- **A lossless win found on the Go along the way:** loading a brain with memory mapping on built-in graphics (`--load-mode mmap`) cut the Go's shared graphics memory from 3.49 to 1.22 GB, with the same words (gemma4-e2b A/B). With PR #315, gemma4-e2b wrote 28.7 tokens a second on the Go against 17.5 before, and 42 to 46 with the whole brain on the built-in graphics.
+- **Verdict for the Go:** Inkling 2 Mini runs there only on the processor, at about 10 tokens a second with under 1 GB of RAM to spare, so it is not a fit for the Go. Small brains on the built-in graphics are.
+
+How Inkling 2 Mini does on Bob's jobs, and its speed on the home PC, are unproven in our lab, as we have yet to test.
+
+<a id="engine-nov23-night"></a>
+
+#### 4.3.3.14 GUPPI fixed per machine, the temperature bug and look-ahead 0108 (night of 23 November)
+
+After the release gate, GUPPI was set on by default in the code (Lamplight 43 and later, any graphics card, MTP off) for the next bundle, and checked on each machine before it ships. Lamplight 44 adds patch 0087, which keeps the fit when only the context is remade (results: `bob-wip/engine-speed/be44-0087-switch-npc.md`).
+
+| Machine and brain | What was checked | Result | Verdict |
+|---|---|---|---|
+| Home PC, 35B with the copy cache filling the card (1a) | Step up for long reads and back down inside a job, on LL44 | Job 45.9 s against plain 4096's 46.2 s; long read 3,366 against 2,194 t/s; first word 3.68 against 7.04 s; switches 0.67 to 0.75 s (last one 1.08 to 1.33 s), brain never loaded again; spill 84 MB; same words every turn | **GO** |
+| Home PC, dense Qwen3-4B, no copy cache (1b) | The same switching | Job 42.0 s against plain 2048's 32.9 s. Remaking the context takes 0.38 to 0.49 s, but saving the chat around it costs 1.1 to 5.0 s a switch (6.1 s at worst). No spill | **NO-GO**, fixed: such a brain now tries the read step once, keeps it if 512 MiB stay free, otherwise steps back, and never switches again. Recheck below: **GO** |
+| Laptop (6 GB card), Qwen3-4B | First run, then after the fix | First run spilled for 347 s (a FAIL). After the fix, a 62,000-character paste at 32K: peak 5,607 MiB against a 5,632 MiB limit, no spill, tool job right, 25.2 s against pick's 27.3 s. GUPPI stayed at step 512 the whole time, so stepping up was not exercised | **PASS** on safety and speed |
+| Legion Go, gemma4-e2b and Qwen 2B | Pick against GUPPI | See the diagnosis below | Pick only for now |
+
+**The 1b recheck with the one-try rule** (Bob at commit 4bdc66a8, LL44, dense Qwen3-4B, 49K context, 2 rounds, card cooled before each run):
+
+| Way | Job (s) | Read (t/s) | Write (t/s) | Spill (MB) | Card peak (MB) |
+|---|---|---|---|---|---|
+| Plain step 4096 | 32.88 | 8,157 | 106.9 | 78 | 11,318 |
+| Plain step 2048 | 32.71 | 8,719 | 106.8 | 77 | 10,796 |
+| One try | 33.32 | 8,187 | 106.6 | 76 | 11,364 |
+
+The one-try rule took 33.3 s against 42.0 s before the fix, within about 2% of plain, with one 0.16 s switch, no reload, and the same words on all 7 turns of both rounds. The 76 to 78 MB spill is the same in every way, so it is the shared baseline, not GUPPI's.
+
+**Through Bob's own code path: NO-GO for default-on.** The switch tests above replay GUPPI's plan straight to the engine. A run of Bob itself, headless at commit 4bdc66a8 on LL44 with the test seed on, found GUPPI's default slower than "Let Bob pick" on a 16K read:
+
+| Brain | GUPPI default | Let Bob pick |
+|---|---|---|
+| 35B | 34.64 s, card peak 15,057 MB | 33.28 s, 15,057 MB |
+| Qwen3-4B | 9.44 s, 6,717 MB | 7.37 s, 6,007 MB |
+
+All runs stayed inside the 512 MB margin, but the words did not match pick. On the 35B the cause was found: Bob's own default settings did not turn on the copy cache, so GUPPI fell back to step 512. The tool job in this run is void because of a test bug (a wrong file path). The fixes and a rerun are to come, and GUPPI is not on by default until the rerun passes. This is why the real path is checked as well as the engine.
+
+**Borrowed reading on the 35B did not engage** on the 16 GB card, because there was not enough spare card room for it. With and without it gave the same speed within noise: 4,842 t/s reading and 90 writing at 16K, and 3,356 and 53 for a 120K read at 128K context. Whether it helps on a bigger card is unproven in our lab, as we have yet to test.
+
+**The Legion Go diagnosis.** Logging every engine request on the Go showed:
+
+- **GUPPI never acted on the Go.** No switch, no "Conductor" line, one load per run. The earlier word changes there were not GUPPI's doing. GUPPI now picks one step for the whole chat on built-in graphics.
+- **A bug: the temperature 0 setting never reached the engine.** Chat requests went out at 0.6, and side calls at 0.7, 0.8 and 1.0. So every word-for-word comparison made through Bob's own chat path before this was not a fair test. (The home PC's switch tests replay the plan straight to the engine, so they are not affected by this; they also do not test Bob's own code path, so a run through Bob's real path is queued.) The fix plan: find where the setting is dropped and add a test that the request carries it. A new test switch (`testSeed`) makes every reply greedy and seeded, so pick and GUPPI can be compared word for word. The seeded reruns are to come.
+- **Tool jobs:** gemma passed 2 of 3 with pick and 0 of 3 with GUPPI, but in both modes it listed the home folder instead of the job's folder, so at temperature 0.6 the score is luck. Qwen passed 3 of 3 in both.
+- **Speed and memory were the same in both modes:** reading 820 to 1,070 t/s, writing 37 to 38 (gemma) and 40 to 46 (Qwen); lowest free memory 2.27 GB; peak 84 C.
+- **Two other finds.** A 10-minute "hang" was Bob waiting for an approval nobody gave. A 47,000-character paste was cut to 20,000 and filed as a video; the cut is gone (messages are no longer capped at 20,000 characters), and filing by content rather than size is planned.
+
+**Look-ahead 0108.** On the home PC, guesses two or more layers ahead had sent 72 GB of experts to the card with only 23% of them used. Patch 0108 sends at most one expert a layer (by default) for those deep guesses. It applies between 0107 and 0109 and its tests pass. MouseWurX's rule was "fix it then enable it", so look-ahead goes on by default once the home-PC rerun shows the gain. That rerun is to come, so its effect is unproven in our lab, as we have yet to test.
+
+**Still to come.** No run with every trick on has been measured; the only "all on" run, the first LL43 gate, was slower because it spilled. A three-way comparison on the home PC is queued: every trick on with Turbo, every lossless trick with Turbo off (the intended default), and stock llama.cpp b12359 with `--fit`, on the 35B first and then on other brains, with real held-out jobs. A sweep of Bob across rented card tiers also started. Both are unproven in our lab, as we have yet to test, and are added here when they are in.
+
+<a id="prompt-cache"></a>
+
+#### 4.3.3.15 Reusing the chat memory between messages, on the laptop (25 November)
+
+When the start of a chat is the same as last time, the engine can keep its memory of that part and read only the new message. This was measured on the laptop (6 GB card) with one 20K-token chat and Qwen3-4B. Times are seconds to the first word; each cell is a single run.
+
+| Setup | First read (cold) | Follow-up | Back to this chat after another | After a restart |
+|---|---|---|---|---|
+| Stock llama.cpp b12359 | 22.2 | 1.1 | 0.8 | 13 + 3.6 load |
+| Lamplight 45 | 11.4 | 0.4 | 0.7 | 11.3 + 2 load |
+| Bob, its chat cache on | n/a | 0.8 to 1.6 (void, see below) | 1.8 | 4.8, load included |
+| Bob, its chat cache off | n/a | 14.7 | 13.5 | n/a |
+
+- **Correction from a rerun with every request logged.** The fast follow-up with Bob's cache on was a coincidence of the test: a twin chat shared the same 20K prompt. In a real chat with a long paste, Bob still reads everything again on the second turn, cache on or off, until the fix below is on. That cell is void.
+- **Going back to a chat after another one, cache off, loses it.** With one slot (`-np 1`), llama.cpp hands the slot to the other chat, which shares Bob's instructions (about 3,500 tokens), without first saving the first chat to its RAM prompt cache. Going back then reuses only 3,467 tokens and reads 19,045 again.
+- **Bob's per-chat cache fixes that**, because it restores the chat from the drive: 22,438 tokens reused and 145 read (0.18 s), and after a Bob restart 22,474 reused and 140 read. It is the only setup that keeps a chat's memory across a restart. (These rerun numbers came from a build that still cut pastes at 20,000 characters; the clean run below supersedes them.)
+
+**The clean run of the fix** (25 November; laptop, Qwen3-4B, LL45, 32K context, a 95,000-character paste of about 23,500 tokens, Bob's per-chat cache off, every request logged):
+
+| Step | Fix off | Fix on |
+|---|---|---|
+| First read (cold) | 21.5 s | 21.5 s |
+| Follow-up in the same chat | 17.5 s | 4.0 s: 136 tokens read again instead of 21,039; 23,388 reused; 0.39 s reading |
+| Back to the chat after another chat | 16.5 s | 4.4 s: 126 read again, 23,433 reused, 0.15 s reading |
+
+With the fix, the other chat differs from the first at token 1,438 (its tool list is different), so the RAM prompt cache keeps the first chat instead of handing its slot away. The answers were correct. One word changed: in note 10 the brain wrote "the" where Bob had earlier written "folders" (stock llama.cpp also wrote "the"). Because the words can change, the fix stays off by default until it passes a real-jobs check. Only Bob's per-chat cache keeps a chat across a Bob restart: 4.8 s, against about 17 s without it.
+- The stock and engine rows are single runs with each one's own settings, so they are not a claim that the engine is faster than llama.cpp.
+- **Why follow-ups were slow with Bob's cache off.** Bob changed the start of the prompt between messages, so the engine could not reuse it. First, the tool groups are guessed per message and drop out three messages later, and the tool list comes first in the prompt. Second, the time note sat before the latest message.
+- **What a fix keeps.** A probe on a cloud card measured the share of the previous request the engine could keep:
+  - a follow-up to a pasted file: 4.6% before the fix, 99.8% with it;
+  - the message after a tool group left: 28% to 38% before, 97% to 99% with it;
+  - plain follow-ups: 98% both ways.
+- The fix, "Quick follow-ups in long chats" (PR #356), changes what the brain sees, so it is off by default until it passes the real-jobs check. Turning Bob's chat cache on by default is PR #355. How the fix does on real jobs is unproven in our lab, as we have yet to test.
+
+<a id="speed-table"></a>
+
+### 4.3.4 Speed results in one table (updated 25 November)
 
 This is every main speed result on the home PC in one place, oldest first, with what it decided. The full runs, with their sources and limits, are in the sections named in the last column. "Same words" compares the words written against plain settings at the same step; "n/a" means the row changes nothing the words depend on, or was not checked.
 
 | Date | Build | What was tested | Result | Same words | What it decided | Section |
 |---|---|---|---|---|---|---|
-| 4 to 18 Nov | BE8 to BE15 | Bob's settings against stock llama.cpp defaults, 300-token job | Done 2.4 to 2.9 times sooner; writing 1.3 times faster on a short prompt, 1.2 times at 32K, level at 128K, 12% slower at 256K | n/a | Keep Bob's settings; most of the gain is settings any llama.cpp user can pass | 4.3.3.2 |
-| 4 to 18 Nov | BE8 to BE15 | Reading step | Only `-ub` drives reading speed; at 256K step 8192 leaves 30 of 41 layers on the card and writing collapses | n/a | Don't go past about 6144 at 256K | 4.3.3.2, Fig. 4.1 |
-| 17 Nov | BE11, BE12 | The fNRI trace, and engine features switched off | Trace 2% or less after its fix; features off cost nothing measurable | yes | Instruments stay in | 3.4.3 |
-| 18 Nov | BE15 | Fit margin on the card | 512 MB is the floor; at 256 MB a real spill starts | n/a | `--fit-target 512` | 4.3.3.3 |
-| 18 Nov | BE15 | Perplexity of the speed settings | Changes only in the last digits; q4_0 chat memory a borderline pass on mean KLD | yes (screens) | Speed settings may be used; q8_0 where memory allows | 4.3.3.4, Fig. 4.2 |
-| 18 Nov | BE15 to BE17 | The 128K and 256K "spill" | It is the attention mask in pinned RAM, matched to the MiB in every load | yes | Earlier speeds stand | 4.3.3.5 |
-| 18 Nov | BE15 | Context cache in RAM | Writing 73% to 76% slower | n/a | Out | 4.3.3.2 |
-| 18 Nov | BE15 | A busy desktop | Writing 10% to 18% slower, in 8 paired loads | n/a | Test on a quiet desktop, and say so | 4.3.3.2 |
-| 19 to 20 Nov | BE21 to BE22 | 3-bit chat memory (q3_0) | Passes perplexity and the needle; 2.9% slower than q4_0 at 128K; saves 22% of chat memory at 256K | no (small drift) | Allowed for long chats | 4.3.3.8 |
-| 19 to 20 Nov | BE21 to BE22 | Mixed 3/4/8-bit chat memory (0039) | Failed on speed | no | Out | 4.3.3.8 |
-| 19 to 20 Nov | BE21 to BE22 | Look-ahead (0041) | About 5% faster on 128K long prompts, 4% to 8% slower on 32K start chats | yes (6 of 6) | Opt-in for long contexts | 4.3.3.8 |
-| 19 to 20 Nov | BE21 to BE22 | Stand-ins (0043) | 16% to 23% faster on start chats and code edits | no | Turbo only; real-jobs check not run | 4.3.3.8 |
-| 19 to 20 Nov | BE21 to BE22 | Doorbell (0042) | Flat or worse against share 1 | n/a | Off; to be retried with 0055 | 4.3.3.8 |
-| 20 Nov | BE26 | 64K job: Bob's settings against stock defaults | 37.4 s (step 4096) against 70.2 s; first word 10.1 s against 36.8 s | n/a | Step 4096 throughout is the reference for Gate 1 | 4.3.3.8, Fig. 4.3 |
-| 21 Nov | Avalon test build | Avalon's own Windows build | Crashed or hung at its own steps; 20 against 44 tokens a second with fusion off | no (until fusion off) | Rebuild its ideas inside Brain Engine | 4.3.3.9 |
-| 22 Nov | BE29 | Gate 1, borrowed reading, 64K job | Job 42.1 against 44.5 s; writing 3.8% slower at 32K and 18% at 128K; step stuck at 4096 | no (word 109) | Fail; keep BE28's settings | 4.3.3.11 |
-| 22 Nov | BE29, BE31 | `-b 16384` against `-b 4096`, no borrow | 128K writing 44.9 and 47.1 against 56.4; a different answer whose experts hit the cache less | no | Compare writing only between runs with the same text | 4.3.3.11 |
-| 22 Nov | BE31 | Lending from every bank | Wrote "3333…" on every borrow run | no | Void; fixed in BE32 | 4.3.3.11 |
-| 22 Nov | BE29 | Flash-Next 125B Q4, 32K, borrow against none | Job 2,090 against 2,697 s; reading 36.1 against 22.0; writing 1.75 against 1.3 | no (word 7) | Borrow helps reading; the word change is unexplained | 4.3.3.11 |
-| 22 Nov | BE30 | Flash-Next drive tier | The PC locked up at 76 MB free RAM | n/a | Flash-Next stopped on the home PC; 512 MiB RAM floor built (unproven) | 4.3.3.11 |
-| 22 Nov | BE21 to BE28 | Processor share, patch 0040 on and off | Code prompt 23 to 24 t/s on, 82 to 88 off (BE21: 86.7) | off: yes; on: no | 0040 is the whole slowdown; fast rewrite 0055 (home-PC run to come) | 4.3.3.11, Fig. 4.5 |
-| 22 Nov | BE32 | Borrowing word check, 32K and 128K | Borrow on matches borrow off | yes | The garbage is fixed; Gate 1 rerun under way | 4.3.3.11 |
-| 22 Nov | BE33 | Word check against BE28 | Same words, word for word | yes | Passes; rewarm off on borrow rows until BE36 | 4.3.3.11 |
+| 4 to 18 Nov | LL8 to LL15 | Bob's settings against stock llama.cpp defaults, 300-token job | Done 2.4 to 2.9 times sooner; writing 1.3 times faster on a short prompt, 1.2 times at 32K, level at 128K, 12% slower at 256K | n/a | Keep Bob's settings; most of the gain is settings any llama.cpp user can pass | 4.3.3.2 |
+| 4 to 18 Nov | LL8 to LL15 | Reading step | Only `-ub` drives reading speed; at 256K step 8192 leaves 30 of 41 layers on the card and writing collapses | n/a | Don't go past about 6144 at 256K | 4.3.3.2, Fig. 4.1 |
+| 17 Nov | LL11, LL12 | The fNRI trace, and engine features switched off | Trace 2% or less after its fix; features off cost nothing measurable | yes | Instruments stay in | 3.4.3 |
+| 18 Nov | LL15 | Fit margin on the card | 512 MB is the floor; at 256 MB a real spill starts | n/a | `--fit-target 512` | 4.3.3.3 |
+| 18 Nov | LL15 | Perplexity of the speed settings | Changes only in the last digits; q4_0 chat memory a borderline pass on mean KLD | yes (screens) | Speed settings may be used; q8_0 where memory allows | 4.3.3.4, Fig. 4.2 |
+| 18 Nov | LL15 to LL17 | The 128K and 256K "spill" | It is the attention mask in pinned RAM, matched to the MiB in every load | yes | Earlier speeds stand | 4.3.3.5 |
+| 18 Nov | LL15 | Context cache in RAM | Writing 73% to 76% slower | n/a | Out | 4.3.3.2 |
+| 18 Nov | LL15 | A busy desktop | Writing 10% to 18% slower, in 8 paired loads | n/a | Test on a quiet desktop, and say so | 4.3.3.2 |
+| 19 to 20 Nov | LL21 to LL22 | 3-bit chat memory (q3_0) | Passes perplexity and the needle; 2.9% slower than q4_0 at 128K; saves 22% of chat memory at 256K | no (small drift) | Allowed for long chats | 4.3.3.8 |
+| 19 to 20 Nov | LL21 to LL22 | Mixed 3/4/8-bit chat memory (0039) | Failed on speed | no | Out | 4.3.3.8 |
+| 19 to 20 Nov | LL21 to LL22 | Look-ahead (0041) | About 5% faster on 128K long prompts, 4% to 8% slower on 32K start chats | yes (6 of 6) | Opt-in for long contexts | 4.3.3.8 |
+| 19 to 20 Nov | LL21 to LL22 | Stand-ins (0043) | 16% to 23% faster on start chats and code edits | no | Turbo only; real-jobs check not run | 4.3.3.8 |
+| 19 to 20 Nov | LL21 to LL22 | Doorbell (0042) | Flat or worse against share 1 | n/a | Off; to be retried with 0055 | 4.3.3.8 |
+| 20 Nov | LL26 | 64K job: Bob's settings against stock defaults | 37.4 s (step 4096) against 70.2 s; first word 10.1 s against 36.8 s | n/a | Step 4096 throughout is the reference for Gate 1 | 4.3.3.8, Fig. 4.3 |
+| 21 Nov | Avalon test build | Avalon's own Windows build | Crashed or hung at its own steps; 20 against 44 tokens a second with fusion off | no (until fusion off) | Rebuild its ideas inside Lamplight | 4.3.3.9 |
+| 22 Nov | LL29 | Gate 1, borrowed reading, 64K job | Job 42.1 against 44.5 s; writing 3.8% slower at 32K and 18% at 128K; step stuck at 4096 | no (word 109) | Fail; keep LL28's settings | 4.3.3.11 |
+| 22 Nov | LL29, LL31 | `-b 16384` against `-b 4096`, no borrow | 128K writing 44.9 and 47.1 against 56.4; a different answer whose experts hit the cache less | no | Compare writing only between runs with the same text | 4.3.3.11 |
+| 22 Nov | LL31 | Lending from every bank | Wrote "3333…" on every borrow run | no | Void; fixed in LL32 | 4.3.3.11 |
+| 22 Nov | LL29 | Flash-Next 125B Q4, 32K, borrow against none | Job 2,090 against 2,697 s; reading 36.1 against 22.0; writing 1.75 against 1.3 | no (word 7) | Borrow helps reading; the word change is unexplained | 4.3.3.11 |
+| 22 Nov | LL30 | Flash-Next drive tier | The PC locked up at 76 MB free RAM | n/a | Flash-Next stopped on the home PC; 512 MiB RAM floor built (unproven) | 4.3.3.11 |
+| 22 Nov | LL21 to LL28 | Processor share, patch 0040 on and off | Code prompt 23 to 24 t/s on, 82 to 88 off (LL21: 86.7) | off: yes; on: no | 0040 is the whole slowdown; fast rewrite 0055 (home-PC run to come) | 4.3.3.11, Fig. 4.5 |
+| 22 Nov | LL32 | Borrowing word check, 32K and 128K | Borrow on matches borrow off | yes | The garbage is fixed; Gate 1 rerun under way | 4.3.3.11 |
+| 22 Nov | LL33 | Word check against LL28 | Same words, word for word | yes | Passes; rewarm off on borrow rows until LL36 | 4.3.3.11 |
+| 23 Nov | LL43 | GUPPI release gate, 32K job | 58.4 s, then 52 to 54 s, against plain 36.2 to 36.5 s (a 15 s switch inside the job); third try 36.3 against 37.0 s with no switch | yes | GO on the third try; MTP ships off (247 MB spill) | 4.3.3.12 |
+| 23 Nov | Linux rental | Registering expert RAM with the card (0109) | Writing 50.6 to 54.3 t/s (7%), reading 1% to 2% faster | yes | On by default on Linux (PR #329); Windows run to come | 4.3.3.12 |
+| 23 Nov | RTX 5090 rental | FP4 experts (MXFP4_MOE) on Qwen 35B | Read about 4% faster, write the same; KLD 0.063 against 0.011; 33/36 Office, 1 inbox harm | yes (fixed) | Fails the gate; dropped (PR #322 closed) | 4.3.3.12 |
+| 23 Nov | Test build 102 | Legion Go Vulkan picks (0102, 0103) | Reading about 6% faster when split | yes | Passes the Go's word check | 4.3.3.12 |
+| 23 Nov | LL90 | Inkling 2 Mini, laptop and Legion Go | Laptop Q2 11.9 write / 29 read t/s; Go Q2 on the processor 10.6 / 15.8 | n/a | Runs on both; home-PC runs queued | 4.3.3.13 |
+| 23 Nov | LL44 | GUPPI switching, 35B with copy cache (0087) | 45.9 against 46.2 s; long read 3,366 against 2,194 t/s; switch 0.7 s | yes | GO | 4.3.3.14 |
+| 23 Nov | LL44 | GUPPI switching, dense Qwen3-4B | 42.0 against 32.9 s (saving the chat costs 1 to 5 s a switch); with the one-try rule 33.3 against 32.7 to 32.9 s | yes | NO-GO, then GO with the one-try rule | 4.3.3.14 |
+| 23 Nov | LL44 | GUPPI through Bob's own code path, 16K read | 35B 34.6 against pick's 33.3 s; Qwen3-4B 9.4 against 7.4 s; words differ | yes (seeded) | NO-GO for default-on; Bob's defaults missed the copy cache; rerun to come | 4.3.3.14 |
+| 23 Nov | LL44 | GUPPI on the 6 GB laptop | 25.2 against 27.3 s; peak 5,607 of 5,632 MiB; no spill | n/a | PASS after the spill fix | 4.3.3.14 |
+| 23 Nov | 1.5.251 engine | Legion Go, `--load-mode mmap` (PR #315) | Shared graphics memory 3.49 to 1.22 GB; gemma4-e2b 17.5 to 28.7 t/s; 42 to 46 fully on graphics | yes | Default for built-in graphics | 4.3.3.13 |
+| 25 Nov | LL45 and stock b12359 | Reusing chat memory, laptop, 20K chat | Follow-up 0.4 s (LL45) and 1.1 s (stock); Bob with its cache off 14.7 s | n/a | Bob's prompt start changed between messages; fix PR #356 (off), cache on by default PR #355 | 4.3.3.15 |
 
 **What it adds up to.** On this PC the settings matter more than the engine: the reading step, flash attention, the fit margin and the chat-memory type give most of the gain over stock defaults. The engine's own tricks so far give a few percent each, and the biggest single find of 22 November was a slowdown the engine had caused (patch 0040). Borrowing, the Avalon idea, has not yet passed Gate 1. Flash-Next runs on the home PC only slowly, and only reading gains from borrowing so far.
 
@@ -1185,6 +1348,7 @@ Before any model review, a cleaning script removed lessons by rule. The first cl
 - **Smoke gate.** A few lessons are made and checked: do the odds cover the thinking words, do the tool calls parse, does the trace work? A failure exits with code 86 (model-lab/smoke-gate.mjs).
 - **First minutes.** Every rental must prove each step in its first minutes (docs/ROADMAP-ONE-MODEL.md). The first paid run of new code is its test, so it is kept short.
 - **Caps and consent.** Every rental has an hours and a dollars cap, and nothing is rented without typed approval (model-lab/forge/README.md).
+- **Publish gate (added 23 November).** A file made on a rental uploads only if it is within 10% of its predicted size, loads, and gives two sensible answers, and every upload is private until MouseWurX says public. It was added after a 2-bit file came out 65.8 GB instead of about 57 GB and went up unchecked (section 11.7.9).
 - **Home-side dry runs.** Home-side commands run against a stand-in server before any rental. Three benchmark failures in a row came from home-side bugs, including a benchmark that quietly tested the full model on MouseWurX's own card instead of the rented one (docs/FORGE-JOURNAL.md, 10 to 11 November).
 
 ### 4.8.2 Full passes only

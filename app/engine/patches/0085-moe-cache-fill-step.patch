@@ -1,0 +1,181 @@
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 4798615..4550687 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -1057,6 +1057,99 @@ void llama_context::sched_reserve() {
+     // avoid reserving graphs with zero outputs - assume one output per sequence
+     const int n_outputs = n_seqs;
+ 
++    // Brain Engine 0072: a filled cache (0061) was sized before the working memory existed, and the 512 MiB spare
++    // doesn't cover a big reading step's buffer; on Windows the card then quietly spills into shared memory (Calibrate,
++    // BE36: 1030 MB spilled, reading 2.3x slower). So the first reserve measures the working memory of the biggest step
++    // and of writing on each card, and if free memory less the spare can't hold it, makes the cache that much smaller
++    // (never under the size asked for). Same cache, same steps, so the same words; only the cache size changes.
++    if (moe_cache_fill_check && moe_cache && !model.no_alloc()) {
++        const size_t spare = moe_cache_fill_spare;
++        moe_cache_fill_check = false;
++        // Brain Engine 0085: with borrowed reading too (it was skipped, but the card still owns the own step's working
++        // memory; the test PC's Conductor flip spilled 308 MB that way), and before the borrow is set up, so a smaller
++        // cache gets its borrowing buffer type again. LLAMA_MOE_CACHE_FILL_STEP=N measures a step of N tokens if that's
++        // bigger, so a context made at the writing step leaves room for the reading step a switch will ask for (Bob's
++        // Conductor sets it), and the cache keeps one size across switches. Only the shelf (tail) is still skipped.
++        if (moe_cache->tail_wanted()) {
++            LLAMA_LOG_INFO("%s: MoE cache fill: the shelf is on, no size check\n", __func__);
++        } else {
++            std::vector<size_t> sz(backend_ptrs.size(), 0);
++            std::vector<size_t> need(backend_ptrs.size(), 0);
++            bool ok = true;
++            uint32_t nt_fill = n_tokens;
++            if (const char * fs = getenv("LLAMA_MOE_CACHE_FILL_STEP"); fs != nullptr && atol(fs) > 0) {
++                nt_fill = std::max<uint32_t>(nt_fill, std::min<uint32_t>(cparams.n_ctx, (uint32_t) atol(fs)));
++            }
++            for (uint32_t nt : { nt_fill, n_seqs }) {
++                std::fill(sz.begin(), sz.end(), 0);
++                const uint32_t no = std::max<uint32_t>(1, std::min(nt, cparams.n_outputs_max));
++                if (!graph_reserve(nt, n_seqs, nt == n_seqs ? n_seqs : no, mctx.get(), true, sz.data())) {
++                    ok = false;
++                    break;
++                }
++                for (size_t i = 0; i < sz.size(); ++i) {
++                    need[i] = std::max(need[i], sz[i]);
++                }
++            }
++            size_t short_by = 0;
++            size_t work     = 0;
++            for (size_t i = 0; ok && i < backend_ptrs.size(); ++i) {
++                ggml_backend_dev_t dev = ggml_backend_get_device(backend_ptrs[i]);
++                if (dev == nullptr || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_CPU || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_ACCEL) {
++                    continue;
++                }
++                size_t fr = 0, tot = 0;
++                ggml_backend_dev_memory(dev, &fr, &tot);
++                if (const char * tf = getenv("LLAMA_MOE_CACHE_FILL_TEST_FREE_MIB"); tf != nullptr && atof(tf) >= 0) {
++                    fr = (size_t) (atof(tf)*1024*1024); // for the engine test only: the stand-in card's free memory doesn't move
++                }
++                work += need[i];
++                if (need[i] + spare > fr) {
++                    short_by += need[i] + spare - fr;
++                }
++            }
++            if (!ok) {
++                LLAMA_LOG_WARN("%s: !!! MoE cache fill: couldn't measure the working memory; the cache keeps %.0f MiB\n", __func__,
++                        cparams.moe_cache_size/1048576.0);
++            } else if (short_by == 0) {
++                LLAMA_LOG_INFO("%s: MoE cache fill: the working memory (%.0f MiB) fits beside the %.0f MiB cache\n", __func__,
++                        work/1048576.0, cparams.moe_cache_size/1048576.0);
++            } else {
++                const size_t asked = moe_cache_fill_asked;
++                const size_t now   = cparams.moe_cache_size;
++                const size_t size  = now > asked + short_by ? now - short_by : asked;
++                LLAMA_LOG_INFO("%s: MoE cache fill: the working memory (%.0f MiB) doesn't fit beside the cache, so the cache "
++                        "shrinks from %.0f to %.0f MiB\n", __func__, work/1048576.0, now/1048576.0, size/1048576.0);
++                if (size < now) {
++                    cparams.moe_cache_size = size;
++                    if (cparams.moe_cache_borrow && cparams.moe_cache_borrow_real_buft) {
++                        for (size_t i = 0; i < backend_ptrs.size(); ++i) {
++                            if (backend_ptrs[i] == moe_cache->borrow_backend()) {
++                                backend_buft[i] = cparams.moe_cache_borrow_real_buft;
++                            }
++                        }
++                    }
++                    moe_cache.reset();
++                    moe_cache = std::make_unique<llama_moe_cache>(model, model.no_alloc(), backend_ptrs, backend_buft,
++                            cparams.moe_cache_size, cparams.moe_cache_cpu_share);
++                    if (cparams.moe_cache_borrow) {
++                        for (size_t i = 0; i < backend_ptrs.size(); ++i) {
++                            if (backend_ptrs[i] == moe_cache->borrow_backend()) {
++                                backend_buft[i] = moe_cache->borrow_buft(backend_buft[i]);
++                            }
++                        }
++                    }
++                    sched.reset();
++                    sched_new({
++                        /*.max_nodes  =*/ max_nodes,
++                        /*.parallel   =*/ cparams.pipeline_parallel,
++                        /*.op_offload =*/ cparams.op_offload,
++                    });
++                }
++            }
++        }
++    }
++
+     // Brain Engine 0048: measure the working memory of writing and of the own step (it owns that much), then of bigger
+     // steps; the biggest step whose working memory fits in what it owns plus what the cache lends is the reading step
+     if (cparams.moe_cache_borrow && moe_cache && !model.no_alloc()) {
+@@ -1255,76 +1348,6 @@ void llama_context::sched_reserve() {
+         }
+     }
+ 
+-    // Brain Engine 0072: a filled cache (0061) was sized before the working memory existed, and the 512 MiB spare
+-    // doesn't cover a big reading step's buffer; on Windows the card then quietly spills into shared memory (Calibrate,
+-    // BE36: 1030 MB spilled, reading 2.3x slower). So the first reserve measures the working memory of the biggest step
+-    // and of writing on each card, and if free memory less the spare can't hold it, makes the cache that much smaller
+-    // (never under the size asked for). Same cache, same steps, so the same words; only the cache size changes.
+-    if (moe_cache_fill_check && moe_cache && !model.no_alloc()) {
+-        const size_t spare = moe_cache_fill_spare;
+-        moe_cache_fill_check = false;
+-        if (cparams.moe_cache_borrow || moe_cache->tail_wanted()) {
+-            LLAMA_LOG_INFO("%s: MoE cache fill: working memory comes from the cache (borrow or tail), no size check\n", __func__);
+-        } else {
+-            std::vector<size_t> sz(backend_ptrs.size(), 0);
+-            std::vector<size_t> need(backend_ptrs.size(), 0);
+-            bool ok = true;
+-            for (uint32_t nt : { n_tokens, n_seqs }) {
+-                std::fill(sz.begin(), sz.end(), 0);
+-                const uint32_t no = std::max<uint32_t>(1, std::min(nt, cparams.n_outputs_max));
+-                if (!graph_reserve(nt, n_seqs, nt == n_seqs ? n_seqs : no, mctx.get(), true, sz.data())) {
+-                    ok = false;
+-                    break;
+-                }
+-                for (size_t i = 0; i < sz.size(); ++i) {
+-                    need[i] = std::max(need[i], sz[i]);
+-                }
+-            }
+-            size_t short_by = 0;
+-            size_t work     = 0;
+-            for (size_t i = 0; ok && i < backend_ptrs.size(); ++i) {
+-                ggml_backend_dev_t dev = ggml_backend_get_device(backend_ptrs[i]);
+-                if (dev == nullptr || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_CPU || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_ACCEL) {
+-                    continue;
+-                }
+-                size_t fr = 0, tot = 0;
+-                ggml_backend_dev_memory(dev, &fr, &tot);
+-                if (const char * tf = getenv("LLAMA_MOE_CACHE_FILL_TEST_FREE_MIB"); tf != nullptr && atof(tf) >= 0) {
+-                    fr = (size_t) (atof(tf)*1024*1024); // for the engine test only: the stand-in card's free memory doesn't move
+-                }
+-                work += need[i];
+-                if (need[i] + spare > fr) {
+-                    short_by += need[i] + spare - fr;
+-                }
+-            }
+-            if (!ok) {
+-                LLAMA_LOG_WARN("%s: !!! MoE cache fill: couldn't measure the working memory; the cache keeps %.0f MiB\n", __func__,
+-                        cparams.moe_cache_size/1048576.0);
+-            } else if (short_by == 0) {
+-                LLAMA_LOG_INFO("%s: MoE cache fill: the working memory (%.0f MiB) fits beside the %.0f MiB cache\n", __func__,
+-                        work/1048576.0, cparams.moe_cache_size/1048576.0);
+-            } else {
+-                const size_t asked = moe_cache_fill_asked;
+-                const size_t now   = cparams.moe_cache_size;
+-                const size_t size  = now > asked + short_by ? now - short_by : asked;
+-                LLAMA_LOG_INFO("%s: MoE cache fill: the working memory (%.0f MiB) doesn't fit beside the cache, so the cache "
+-                        "shrinks from %.0f to %.0f MiB\n", __func__, work/1048576.0, now/1048576.0, size/1048576.0);
+-                if (size < now) {
+-                    cparams.moe_cache_size = size;
+-                    moe_cache.reset();
+-                    moe_cache = std::make_unique<llama_moe_cache>(model, model.no_alloc(), backend_ptrs, backend_buft,
+-                            cparams.moe_cache_size, cparams.moe_cache_cpu_share);
+-                    sched.reset();
+-                    sched_new({
+-                        /*.max_nodes  =*/ max_nodes,
+-                        /*.parallel   =*/ cparams.pipeline_parallel,
+-                        /*.op_offload =*/ cparams.op_offload,
+-                    });
+-                }
+-            }
+-        }
+-    }
+-
+     LLAMA_LOG_DEBUG("%s: worst-case: n_tokens = %d, n_seqs = %d, n_outputs = %d\n", __func__, n_tokens, n_seqs, n_outputs);
+ 
+     resolve_fused_ops(mctx.get(), n_seqs);

@@ -1,0 +1,59 @@
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 195b7d9..fd1d499 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -143,6 +143,10 @@ struct moe_cache_lru {
+         list_of[s] = c;
+     }
+ 
++    // Brain Engine 0063: slots below this are lent to the working memory of the graph running now (borrowed reading):
++    // nothing may be filled into them until it is done
++    int32_t lent_below = 0;
++
+     // Brain Engine 0048: slot s, now empty, to the least recently used end of list c, so victim() takes it first
+     void move_head(int32_t s, int c) {
+         const int from = list_of[s];
+@@ -202,6 +206,9 @@ struct moe_cache_lru {
+     // the least recently used slot of list c that this plan() does not select, -1 if none
+     int32_t candidate(int c, int32_t il) const {
+         for (int32_t s = head[c]; s >= 0; s = next[s]) {
++            if (s < lent_below) {
++                continue; // 0063: the graph running now keeps its working memory there
++            }
+             if (!is_selected(il, key_of[s])) {
+                 return s;
+             }
+@@ -2531,7 +2538,10 @@ struct llama_moe_cache::impl {
+             rf_tick(); // Brain Engine 0054: the uploads of the last call are done, so their pages may go
+         }
+         rc_gen++; // Brain Engine 0060: the RAM cache's entries uploaded by the last call are free to be replaced
+-        if (!bw_rewarm_keys.empty() && n_tok <= max_batch) {
++        // Brain Engine 0063: not inside a graph whose working memory runs over the lent slots. A read's last step works
++        // out only its last token in the last layer (1 row, a "small batch" here), and rewarm then wrote experts into the
++        // lent slots while that graph's working memory still lived there: wrong words (found with a small own part)
++        if (!bw_rewarm_keys.empty() && n_tok <= max_batch && bw_cur_peak <= bw_own) {
+             bw_rewarm(backend); // Brain Engine 0056: the first small batch after a long read
+         }
+ 
+@@ -3798,6 +3808,7 @@ struct llama_moe_cache::impl {
+     size_t        bw_own    = 0;   // bytes of the region the working memory owns, from its start
+     size_t        bw_lend   = 0;   // bytes after bw_own it may borrow: the slots of group bw_g's first bank
+     size_t        bw_step   = 0;   // the measured working memory of the reading step: a read lends that much at once
++    size_t        bw_cur_peak = 0; // 0063: the working memory of the graph about to run (rewarm waits while it is lent)
+     bw_from_ptr_t bw_from_ptr = nullptr;
+     ggml_backend_buffer_type_t bw_buft = nullptr; // the card's buffer type, but its buffers come from bw_alloc
+     ggml_context_ptr ctx_bw;       // a byte view of one slot, twice per bank of group bw_g, for the moves
+@@ -4121,6 +4132,13 @@ struct llama_moe_cache::impl {
+ 
+     // before a graph that uses peak bytes of the working memory: empty the slots it would run over
+     void bw_before_graph(size_t peak) {
++        // Brain Engine 0063: a read's last step works out its last token alone in the last layer (one row), which the cache
++        // takes as a small batch: its misses and rewarm must not land in the slots this graph's working memory runs over
++        bw_cur_peak = peak;
++        if (bw_on && bw_g >= 0) {
++            const size_t nb2 = groups[bw_g].banks[0]->nb[2];
++            groups[bw_g].lru.lent_below = peak > bw_own ? (int32_t) std::min<size_t>(groups[bw_g].n_slots, (peak - bw_own + nb2 - 1)/nb2) : 0;
++        }
+         if (!bw_on || bw_own == 0 || peak <= bw_own) {
+             return;
+         }

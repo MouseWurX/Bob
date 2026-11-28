@@ -1,0 +1,43 @@
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index b091b6d..6a889a6 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -644,6 +644,38 @@ llama_context::llama_context(
+             cparams.moe_cache_size = 0;
+         }
+ 
++        // Brain Engine 0061: LLAMA_MOE_CACHE_FILL=1 grows the cache into the card memory still free once the weights and
++        // the chat memory are in, less LLAMA_MOE_CACHE_FILL_SPARE_MIB (default 512, for the working buffers made next
++        // and the card's own pool). Never smaller than --moe-cache-mib. Only in the real load: the fit's measuring pass
++        // (no_alloc) sees the size asked for, so the fit is unchanged and the cache takes what the fit left. Lossless.
++        if (cparams.moe_cache_size > 0 && !model.no_alloc()) {
++            if (const char * fill = getenv("LLAMA_MOE_CACHE_FILL"); fill != nullptr && atoi(fill) > 0) {
++                size_t spare = 512ull*1024*1024;
++                if (const char * sp = getenv("LLAMA_MOE_CACHE_FILL_SPARE_MIB"); sp != nullptr && atof(sp) >= 0) {
++                    spare = (size_t) (atof(sp)*1024*1024);
++                }
++                size_t free_all = 0;
++                int n_dev = 0;
++                for (ggml_backend_t b : backend_ptrs) {
++                    ggml_backend_dev_t dev = ggml_backend_get_device(b);
++                    if (dev == nullptr || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_CPU || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_ACCEL) {
++                        continue;
++                    }
++                    size_t fr = 0, tot = 0;
++                    ggml_backend_dev_memory(dev, &fr, &tot);
++                    free_all += fr > spare ? fr - spare : 0;
++                    n_dev++;
++                }
++                if (n_dev > 0 && free_all > cparams.moe_cache_size) {
++                    LLAMA_LOG_INFO("%s: MoE cache fills the card: %.0f MiB instead of %.0f (free card memory less a %.0f MiB spare per card)\n", __func__,
++                        free_all/1048576.0, cparams.moe_cache_size/1048576.0, spare/1048576.0);
++                    cparams.moe_cache_size = free_all;
++                } else {
++                    LLAMA_LOG_INFO("%s: MoE cache fill: no more card memory free than the %.0f MiB asked for; kept\n", __func__, cparams.moe_cache_size/1048576.0);
++                }
++            }
++        }
++
+         if (cparams.moe_cache_size > 0) {
+             moe_cache = std::make_unique<llama_moe_cache>(model, model.no_alloc(), backend_ptrs, backend_buft, cparams.moe_cache_size, cparams.moe_cache_cpu_share);
+ 

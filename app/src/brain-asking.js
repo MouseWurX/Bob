@@ -3,6 +3,7 @@
 import crypto from 'node:crypto';
 import { bigSession, chatBrain, sameModel } from './brain-mode.js';
 import { turnNow } from './turn-log.js';
+import { guppiNotesOn, guppiListener } from './guppi-notes.js'; // Nov 23: GUPPI's records in the chat, display only
 import { traced, engineAttrs, lastAsked } from './trace-log.js'; // Nov 16 Monitoring log
 import { carryOnTokens, engineFailKind, backoffMs, causeLine, pause } from './retry.js';
 import { memoryFailure } from './engine-care.js';
@@ -13,7 +14,15 @@ import { saveSettings } from './config.js';
 import { pickedCtx, GAMING_CTX } from './model-ctx.js';
 import { gaming } from './sessions.js';
 import { MORE_SECONDS, thinkStream, fitContext, TOO_LONG, APPROVAL_TIMEOUT_MS, UNCAUGHT_QUIET_MS } from './brain-words.js';
-import { apuRoom } from './brain-lanes.js';
+import { apuRoom, APU_MIN_CTX, memGrowCtx } from './brain-lanes.js';
+
+// Nov 22: the engine's "exceeds the available context size" in plain words, so the chat says why instead of staying empty.
+export function tooLongError(e, ctx) {
+  const asked = Number(String(e?.message).match(/\((\d+) tokens\)/)?.[1]) || 0;
+  const err = new Error(`That's more than this brain can hold in its chat memory right now (${asked ? `about ${asked} tokens, with room for ${ctx}` : `room for ${ctx} tokens`}). Try a shorter paste or split it into parts, or start a new chat, or free some memory and ask again.`);
+  err.code = 'too_long'; err.cause = e;
+  return err;
+}
 
 // Methods of the Brain class, put on it in its main file with the same rules as the methods written inside it.
 export const askingParts = {
@@ -78,19 +87,52 @@ export const askingParts = {
     // Reliability 221: a brain that loaded with a smaller chat memory (memory was short) is fitted to what it really has.
     if (!opts.beside && opts.ctx) { const real = this.engine?.realCtx?.(opts.model, opts.ctx, opts.cpu); if (real && real !== opts.ctx) opts = { ...opts, ctx: real }; }
     const per = this.engine?.charsPerToken?.(opts.model) || 3; // item 3: the brain's own figure once known
-    const fitted = fitContext(opts.messages, opts.ctx, opts.tools, 0.75, per);
+    // Nov 22 (the Conductor's memory job): a chat memory shortened so Windows keeps its share grows as the chat does
+    { const cut = !opts.beside && this.memCut?.get(opts.model);
+      if (cut && opts.ctx === cut.ctx) {
+        const tokens = opts.messages.reduce((a, m) => a + Math.ceil(String(m.content ?? '').length / per) + 8, 0) + (opts.tools ? Math.ceil(JSON.stringify(opts.tools).length / per) : 0);
+        const next = memGrowCtx(this, opts.model, cut, tokens);
+        if (next) { this.log('model', `${opts.model}: the chat grew, so its chat memory grows from ${cut.ctx} to ${next} (there's room, and Windows keeps its share)`); cut.ctx = next; if (next >= cut.want) this.memCut.delete(opts.model); opts = { ...opts, ctx: next }; }
+        else if (tokens > cut.ctx * 0.75 && cut.said !== cut.ctx) { cut.said = cut.ctx; this.log('model', `${opts.model}: the chat is long for its ${cut.ctx} chat memory, but there isn't room to grow it now, so older tool results are shortened`); }
+      } }
+    let fitted = fitContext(opts.messages, opts.ctx, opts.tools, 0.75, per);
+    // Nov 24: about to cut on a guess, so ask the running engine for the exact count first (countChars)
+    if (fitted !== opts.messages && !opts.beside && this.engine?.countChars) {
+      const exact = await this.engine.countChars(opts.model, opts.messages, opts.tools).catch(() => 0);
+      if (exact > 0) fitted = fitContext(opts.messages, opts.ctx, opts.tools, 0.75, exact);
+    }
     if (fitted !== opts.messages) { this.log('chat', `shortened tool results so the chat fits in ${opts.model}'s memory (${opts.ctx} tokens)`); opts = { ...opts, messages: fitted }; }
     { const t = turnNow(); if (t) t.asks++; } // item 246: steps per job
+    // Nov 23: GUPPI's records (guppi-notes.js) go to the window and on the turn, never to a brain
+    const guppiBy = !opts.beside && emit && this.engine && guppiNotesOn(this.cfg) ? guppiListener(emit, turnNow()) : null;
+    if (guppiBy) this.engine.guppiSay = guppiBy;
     try { const r = await this.chatRetry(opts, { emit, who }); this.engineNotes(emit); return r; }
     catch (e) {
       // Still too long (the guess at token counts was low): once more, with every tool result cut harder.
       if (opts.signal?.aborted || !TOO_LONG.test(String(e?.message)) || !(Number(opts.ctx) > 0)) throw e;
+      // Nov 22 (the Go test: a 12K paste into an 8K chat memory gave an empty reply): a chat memory shortened so Windows
+      // keeps its share grows to what this chat needs, up to the size picked, even when memory is tight. The estimate
+      // never stops a load: if it really runs out, the brain loads again with less, as always.
+      const asked = Number(String(e.message).match(/\((\d+) tokens\)/)?.[1]) || 0;
+      const cut = !opts.beside && this.memCut?.get(opts.model);
+      if (cut && opts.ctx === cut.ctx && cut.ctx < cut.want && asked > 0) {
+        let next = cut.ctx;
+        while (next < cut.want && next * 0.9 < asked) next = Math.min(cut.want, next * 2);
+        if (next * 0.9 >= asked || next === cut.want) {
+          this.log('model', `${opts.model}: the chat (${asked} tokens) didn't fit in its ${cut.ctx} chat memory, so it grows to ${next} even with memory tight (if it runs out, it loads again with less)`);
+          cut.ctx = next; if (next >= cut.want) this.memCut.delete(opts.model);
+          const grown = { ...opts, ctx: next, messages: fitContext(opts.messages, next, opts.tools, 0.75, per) };
+          try { return await this.chatRetry(grown, { emit, who }); }
+          catch (e2) { if (grown.signal?.aborted || !TOO_LONG.test(String(e2?.message))) throw e2; e = e2; opts = grown; }
+        }
+      }
       const tighter = fitContext(opts.messages, opts.ctx, opts.tools, 0.4, per);
-      if (tighter === opts.messages) throw e;
+      if (tighter === opts.messages) throw tooLongError(e, opts.ctx);
       this.log('chat', `the brain said the chat was too long (${String(e.message).slice(0, 120)}); cut the tool results harder and asked again`);
-      return await this.chatRetry({ ...opts, messages: tighter }, { emit, who });
+      try { return await this.chatRetry({ ...opts, messages: tighter }, { emit, who }); }
+      catch (e3) { if (opts.signal?.aborted || !TOO_LONG.test(String(e3?.message))) throw e3; throw tooLongError(e3, opts.ctx); }
     }
-    finally { mind?.flush(); }
+    finally { mind?.flush(); if (guppiBy && this.engine.guppiSay === guppiBy) this.engine.guppiSay = null; }
   },
   // Items 193-195, 201 (retry.js): a call that fails for a reason a second try can fix goes again.
   //   busy (503, "loading model"): wait a little longer each time, with a bit of randomness, and ask again (3 tries)
@@ -339,10 +381,23 @@ export const askingParts = {
     if (!want) return null;
     const fit = max ? Math.min(pick && pick > max ? pick : max, want) : want;
     // 1.5.126: on built-in graphics, shorter still when the RAM says so (apuRoom above).
-    // Nov 12: not shortened from the estimate any more: the chat memory picked is tried, and only a real
-    // out-of-memory makes it shorter (apu-fit.js). The estimate stays in the logbook.
-    const room = await apuRoom(this, model, fit);
-    if (room.shortened || !room.ok) this.log('model', `keeping ${model}'s ${fit} chat memory: the estimate says ~${room.needGB} GB against ~${room.roomGB} GB free; if it runs out, it loads again with less`);
+    // Nov 12: the estimate never stops a load. Nov 22 (a friend's Legion Go, 3 GB set aside, 4.5 GB free: 32K left
+    // 0.3 GB for Windows): the chat memory is shortened to the biggest size that keeps Windows's share, and the brain
+    // is still tried at that size. When even the shortest doesn't fit, the size picked is tried as before.
+    let room = await apuRoom(this, model, fit);
+    // Nov 23 (the owner's pick): no size keeps Windows's share: first the brain loads without its picture reader (it comes
+    // back when a picture is sent), then the sums again.
+    if (!room.ok && this.engine?.canShutEyes?.(model)) { this.engine.shutEyes(model); this.log('model', `${model}: loading it without its picture reader for now, so Windows keeps its share (~${room.needGB} GB needed, ~${room.roomGB} GB free); it comes back when you send a picture`); room = await apuRoom(this, model, fit); }
+    if (room.ok && room.shortened && room.ctx < fit) { (this.memCut ||= new Map()).set(model, { want: fit, ctx: room.ctx }); this.log('model', `${model}: ${room.ctx} chat memory instead of ${fit}, so Windows keeps its share (~${room.needGB} GB needed, ~${room.roomGB} GB free); it grows as the chat does, when there's room`); return room.ctx; }
+    // Nov 22: already loaded at a shortened size (apuRoom has nothing new to check): it stays there until the chat needs
+    // more (chatSafe grows it), instead of jumping back to the full size, which is what ran out of memory
+    const cut = this.memCut?.get(model);
+    if (cut && cut.want === fit && room.ok && room.needGB === undefined) return cut.ctx;
+    if (cut && room.needGB !== undefined) this.memCut.delete(model); // loading again and it all fits now
+    // Even the shortest leaves Windows less than its share: still tried (the estimate never stops a load), at the
+    // shortest, which leaves Windows the most.
+    if (!room.ok && fit > APU_MIN_CTX) { (this.memCut ||= new Map()).set(model, { want: fit, ctx: APU_MIN_CTX }); this.log('model', `${model}: ${APU_MIN_CTX} chat memory instead of ${fit}: the estimate says ~${room.needGB} GB against ~${room.roomGB} GB free even then, so I try the shortest; if it runs out, it loads again with less`); return APU_MIN_CTX; }
+    if (!room.ok) this.log('model', `keeping ${model}'s ${fit} chat memory: the estimate says ~${room.needGB} GB against ~${room.roomGB} GB free; if it runs out, it loads again with less`);
     return fit;
   },
 };

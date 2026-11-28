@@ -41,6 +41,9 @@ check('web bridge: only the Bob that served it (no other addresses)', !/https?:\
 check('web bridge: changes carry the x-bob header and a JSON or picture type', /'x-bob': '1'/.test(bridge) && /'image\/jpeg'/.test(bridge) && /'application\/json'/.test(bridge));
 check('web bridge: the phone brain stays off and the PC Bob is the only one listed', /mode: 'net', phoneOn: false/.test(bridge) && /name: 'Bob on your PC'/.test(bridge));
 check('web bridge: no style attributes (the page allows style-src self only)', !/\.style\s*=|setAttribute\('style'/.test(bridge));
+check('web bridge (iPhone): coming back to the screen opens a fresh line to the PC Bob', /visibilityState !== 'visible'\) return;\s*if \(events\) \{ unlisten\(\); listen\(\); \}/.test(bridge));
+check('web bridge (iPhone): the first tap wakes read-aloud', /addEventListener\('pointerdown'[\s\S]{0,200}SpeechSynthesisUtterance\(''\)[\s\S]{0,80}once: true/.test(bridge));
+check('web bridge (iPhone): file pickers are on the page while open, photos the right way up', /function pickFile\(input\)[\s\S]{0,120}document\.body\.append\(input\)/.test(bridge) && !/input\.click\(\);\s*\}\);/.test(bridge.replace(/function pickFile[\s\S]*?input\.click\(\);/, '')) && /imageOrientation: 'from-image'/.test(bridge));
 const css = read('public/phone/web.css');
 check('web.css hides the phone brain, lending, pairing and adding Bobs', /\[data-go="brain"\]/.test(css) && /#lend-box/.test(css) && /:has\(#add-name\)/.test(css) && /safe-area-inset-top/.test(css));
 const man = JSON.parse(read('public/phone/manifest.webmanifest'));
@@ -56,6 +59,23 @@ check('before login, only the phone icons and Home Screen card are handed out', 
 // ---- Help ----
 const helpSrc = read('public/help-content.js');
 check('Help: an FAQ and a glossary entry, in Bob\'s voice', /id: 'faq-iphone'/.test(helpSrc) && /<dt>Bob for iPhone \(phone screen\)<\/dt>/.test(helpSrc) && /Add to Home Screen/.test(helpSrc));
+
+// ---- the Bob for iPhone app (app/ios): built and run only on GitHub's Mac (.github/workflows/ios.yml), so here
+// only what can be read: it answers every op Bob for Android's door does, and both phones share one engine file ----
+{
+  const ops = (text, re) => new Set([...text.matchAll(re)].flatMap((m) => m[0].match(/"[a-z]+\.[a-zA-Z]+"/g)));
+  const kt = ops(read('android/app/src/main/java/ca/mousewurx/bob/Bridge.kt'), /"[a-z]+\.[a-zA-Z]+"(, "[a-z]+\.[a-zA-Z]+")* ->/g);
+  const swiftText = read('ios/Bob/Bridge.swift');
+  const sw = ops(swiftText, /case "[a-z]+\.[a-zA-Z]+"(, "[a-z]+\.[a-zA-Z]+")*/g);
+  const prefixes = [...swiftText.matchAll(/op\.hasPrefix\("([a-z]+\.)"\)/g)].map((m) => m[1]);
+  const missing = [...kt].filter((o) => !sw.has(o) && !prefixes.some((p) => o.startsWith(`"${p}`)));
+  check('the iPhone app answers every op Bob for Android does', kt.size > 30 && missing.length === 0, missing.join(' '));
+  const yml = read('ios/project.yml');
+  check('the iPhone app builds the same engine file as Bob for Android (bob_brain.cpp)', /android\/app\/src\/main\/cpp\/bob_brain\.cpp/.test(yml) && /bob_brain\.cpp/.test(read('android/app/src/main/cpp/CMakeLists.txt')));
+  check('the iPhone app only fetches pinned brain files (a 40-letter commit in the link)', /resolve\/\[0-9a-f\]\{40\}/.test(read('ios/Bob/PhoneBrain.swift')));
+  check('the iPhone app only talks to Tailscale addresses', /100\.64|ts\.net/.test(read('ios/Bob/NetBob.swift')));
+  check('docs/IPHONE.md says the app is unproven on a real iPhone', /Unproven on a real iPhone/.test(read('docs/IPHONE.md')));
+}
 
 // ---- the routes, on a real Bob ----
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-iphone-'));

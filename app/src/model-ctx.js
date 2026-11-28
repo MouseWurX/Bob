@@ -45,17 +45,30 @@ export function yarnArgs(ctx, native) {
 
 // What the chat memory (KV cache) costs for a context, in bytes, from the brain's shape (gguf.js) and the memory's
 // number format (-ctk/-ctv; Bob uses q8_0). null when the shape isn't known.
-const KV_BYTES = { f32: 4, f16: 2, bf16: 2, q8_0: 34 / 32, q5_1: 24 / 32, q5_0: 22 / 32, q4_1: 20 / 32, q4_0: 18 / 32, iq4_nl: 18 / 32 };
-export function kvBytes(shape, ctx, args = []) {
+const KV_BYTES = { f32: 4, f16: 2, bf16: 2, q8_0: 34 / 32, q5_1: 24 / 32, q5_0: 22 / 32, q4_1: 20 / 32, q4_0: 18 / 32, iq4_nl: 18 / 32, q3_0: 14 / 32, q2_kv: 10 / 32 };
+// Progressive Memory's steps (LLAMA_KV_TIERS, "q8_0:8192,q4_0:65536") add a copy of each step's window plus its slack.
+// A "sink:f16:128" step (Turbo: sharp start, LLAMA_KV_SINK) adds its first tokens' copy.
+export function kvBytes(shape, ctx, args = [], tiers = '', slack = 4096) {
   if (!shape?.perToken || !(ctx > 0)) return null;
   const type = (flags) => { const i = args.findIndex((a) => flags.includes(a)); return KV_BYTES[String(args[i + 1] || '').toLowerCase()] || 2; };
   const kv = args.length ? (type(['-ctk', '--cache-type-k']) + type(['-ctv', '--cache-type-v'])) / 2 : KV_BYTES.q8_0;
-  return Math.round(shape.perToken * ctx * kv);
+  let extra = 0;
+  for (const step of String(tiers || '').split(',').filter(Boolean)) {
+    if (step.startsWith('sink:')) { // Brain Engine 0122: the sharp start, its first tokens plus 2 spare slots, in whole 256s
+      const [, t, n] = step.split(':');
+      extra += Math.ceil(((Number(n) || 0) + 2) / 256) * 256 * (KV_BYTES[String(t).toLowerCase()] || 2);
+      continue;
+    }
+    const [t, w] = step.split(':');
+    const ring = Math.ceil(((Number(w) || 0) + slack) / 256) * 256; // the engine keeps the whole ring, even past the context
+    extra += ring * (KV_BYTES[String(t).toLowerCase()] || 2);
+  }
+  return Math.round(shape.perToken * (ctx * kv + extra));
 }
 // What a brain needs for a context, all told: the file, the chat memory, and about 1.5 GB of working room.
 export const WORK_BYTES = 1.5 * 1024 ** 3;
-export function needBytes(fileBytes, shape, ctx, args) {
-  const kv = kvBytes(shape, ctx, args);
+export function needBytes(fileBytes, shape, ctx, args, tiers = '') {
+  const kv = kvBytes(shape, ctx, args, tiers);
   return fileBytes > 0 && kv !== null ? fileBytes + kv + WORK_BYTES : null;
 }
 // Room for a brain: the graphics card plus the RAM, less what the system keeps for itself (6 GB; 3 GB on a machine

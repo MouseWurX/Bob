@@ -1,0 +1,451 @@
+diff --git a/common/arg.cpp b/common/arg.cpp
+index 90fe8d5..aa581c9 100644
+--- a/common/arg.cpp
++++ b/common/arg.cpp
+@@ -2740,7 +2740,7 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
+     ).set_env("LLAMA_ARG_N_CPU_MOE"));
+     add_opt(common_arg(
+         {"--moe-cache-mib"}, "N",
+-        "GPU cache size in MiB for the MoE experts kept in the CPU. with multiple GPUs, it is split among them like the layers (--tensor-split) (default: 0, disabled)",
++        "GPU cache size in MiB for the MoE experts kept in the CPU. with multiple GPUs, it is split among them like the layers (--tensor-split) (default: 0, disabled); look-ahead (Brain Engine 0041): env LLAMA_MOE_LOOKAHEAD=M uploads up to M guessed experts a layer ahead while writing, with --moe-cache-cpu-share 0",
+         [](common_params & params, int value) {
+             if (value < 0) {
+                 throw std::invalid_argument("invalid value");
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 3ba17cb..2c17ac3 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -2737,6 +2737,21 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
+     //call early so that topk-moe can be used
+     ggml_build_forward_expand(gf, weights);
+ 
++    // Brain Engine 0041 (LLAMA_MOE_LOOKAHEAD): guess the next layer's experts with its own router on this layer's expert
++    // input, for the MoE cache to upload them ahead while this layer computes. Only the guess is new: the picks and
++    // the experts used are the same, so the words are too
++    if (moe_cache != nullptr && il >= 0 && probs_in == nullptr && selected_experts_in == nullptr && (size_t) il + 1 < model.layers.size()) {
++        ggml_tensor * next_inp = model.layers[il + 1].ffn_gate_inp;
++        int32_t k = 0;
++        if (next_inp != nullptr && next_inp->ne[0] == cur->ne[0] && next_inp->ne[1] == n_expert && cur->ne[1] == n_tokens) {
++            if (ggml_tensor * dst = moe_cache->get_guess(ctx0, il, n_tokens, &k)) {
++                ggml_tensor * guess = ggml_argsort_top_k(ctx0, ggml_mul_mat(ctx0, next_inp, cur), k); // [k, n_tokens]
++                cb(guess, "ffn_moe_guess_next", il);
++                ggml_build_forward_expand(gf, ggml_cpy(ctx0, guess, dst));
++            }
++        }
++    }
++
+     // compute the expert input before the slot lookup, so that the scheduler prefetches it for the CPU part (the router can read a different tensor)
+     ggml_build_forward_expand(gf, cur);
+ 
+diff --git a/src/llama-moe-cache.cpp b/src/llama-moe-cache.cpp
+index 9782cc0..a9d6460 100644
+--- a/src/llama-moe-cache.cpp
++++ b/src/llama-moe-cache.cpp
+@@ -8,6 +8,8 @@
+ 
+ #include <algorithm>
+ #include <atomic>
++#include <condition_variable>
++#include <mutex>
+ #include <cmath>
+ #include <cstdio>
+ #include <cstdlib>
+@@ -388,6 +390,7 @@ struct llama_moe_cache::impl {
+         std::vector<int32_t> cpu_experts;   // experts set in cpu_map
+         uint32_t cpu_acc = 0;               // fraction of a miss carried over to the next plan, in 1/65536
+         int64_t  learn_tokens = 0;          // Brain Engine 0031: tokens since this layer last let a miss into the cache
++        ggml_tensor * guess = nullptr;      // Brain Engine 0041: I32 [la_k, max_batch] on the device, the guessed experts of this layer
+         std::vector<ggml_tensor *> experts; // host expert tensors, in the order of the banks
+     };
+ 
+@@ -507,6 +510,23 @@ struct llama_moe_cache::impl {
+             return;
+         }
+ 
++        // Brain Engine 0041: LLAMA_MOE_LOOKAHEAD=M, while writing, the layer before guesses this layer's experts with this
++        // layer's router and up to M guessed misses are uploaded ahead on a second stream, behind the compute
++        if (const char * la = getenv("LLAMA_MOE_LOOKAHEAD"); !no_alloc && la != nullptr && atoi(la) > 0) {
++            if (cpu_share > 0.0f) {
++                LLAMA_LOG_WARN("%s: !!! LLAMA_MOE_LOOKAHEAD NOT USED: with --moe-cache-cpu-share above 0 the misses go to the CPU, not up\n", __func__);
++            } else {
++                la_max = std::min(atoi(la), 64);
++                la_k   = std::min<int32_t>(n_expert_used + la_max, (int32_t) model.hparams.n_expert);
++                const char * ls = getenv("LLAMA_MOE_LOOKAHEAD_INLINE");
++                la_inline = ls != nullptr && atoi(ls) > 0;
++                const char * lw = getenv("LLAMA_MOE_LOOKAHEAD_SCRAMBLE");
++                la_scramble = lw != nullptr && atoi(lw) > 0;
++                LLAMA_LOG_INFO("%s: the MoE cache looks ahead while writing: up to %d guessed experts a layer go up %s\n", __func__,
++                    la_max, la_inline ? "inline (LLAMA_MOE_LOOKAHEAD_INLINE, for tests)" : "on a second stream, behind the compute");
++            }
++        }
++
+         // with misses on the CPU, the n_zero slots after the cached ones stay zero: the device computes these misses as zero
+         // one extra slot at the end, CUDA MMQ can read past the last expert
+         n_zero = cpu_share > 0.0f ? std::min<int32_t>(n_expert_used, 64) : 0;
+@@ -588,7 +608,7 @@ struct llama_moe_cache::impl {
+                 continue;
+             }
+             g.lru.init(model.layers.size(), n_expert, g.n_slots);
+-            n_tensors[g.id] += g.ref.size()*(1 + g.layers.size());
++            n_tensors[g.id] += g.ref.size()*(1 + g.layers.size()) + (la_max > 0 ? g.layers.size() : 0);
+             n_tensors_host  += g.layers.size()*(n_zero > 0 ? 3 : 1); // slot maps and CPU map
+         }
+         if (n_tensors_host == 0) {
+@@ -640,6 +660,10 @@ struct llama_moe_cache::impl {
+                     ggml_format_name(cached, "moe_cache.%s", l.experts[ip]->name);
+                     bindings[l.experts[ip]] = { il, (int32_t) ip, cached };
+                 }
++                if (la_max > 0) {
++                    l.guess = ggml_new_tensor_2d(ctx, GGML_TYPE_I32, la_k, max_batch);
++                    ggml_format_name(l.guess, "moe_cache.guess-%d", il);
++                }
+                 l.slot_map = ggml_new_tensor_2d(ctx_host.get(), GGML_TYPE_I32, 1, g.ref[0]->ne[2]);
+                 ggml_format_name(l.slot_map, "moe_cache.slot_map-%d", il);
+                 // Brain Engine 0038: its lookup starts a split, so the selected experts are always computed in an earlier one
+@@ -750,6 +774,223 @@ struct llama_moe_cache::impl {
+     stats    stats_read;       // Brain Engine 0032: batches of max_batch+1 to cpu_read tokens
+     float    learn_margin = 2.0f;
+     size_t   n_learned    = 0;
++
++    // Brain Engine 0041: the look-ahead
++    int32_t la_max    = 0;     // most uploads ahead per layer, 0 = off
++    int32_t la_k      = 0;     // guesses per token
++    bool    la_inline = false;
++    bool    la_scramble = false; // tests: guess wrong on purpose // upload on the compute stream (tests: the words and the bookkeeping, not the speed)
++    int32_t la_pending = -1;   // the layer whose experts are going up ahead
++    int32_t la_dev     = -1;   // its device
++    std::vector<int32_t> la_guess;       // host copy of the guess, [la_k, n_tokens]
++    std::vector<int32_t> la_ahead;       // experts of la_pending uploaded ahead
++    std::vector<ggml_backend_t> la_backends;      // per device, the second stream
++    std::vector<ggml_backend_event_t> la_events;  // per device, recorded after the uploads ahead
++    bool la_no_stream = false;
++    size_t la_n_up = 0, la_n_used = 0, la_bytes = 0;
++    // the uploads ahead run in a thread: from pageable host memory a copy call returns only once its data is staged,
++    // which would hold up the launch of the layer's own compute
++    struct la_job { ggml_backend_t backend; ggml_tensor * bank; const void * src; size_t offset; size_t size; };
++    std::vector<la_job> la_jobs;
++    std::thread la_thread;
++    std::mutex la_mutex;
++    std::condition_variable la_cv;
++    bool la_has_work = false, la_stop = false;
++    ggml_backend_event_t la_job_event = nullptr;
++    ggml_backend_t la_job_backend = nullptr;
++
++    void la_worker() {
++        std::unique_lock<std::mutex> lock(la_mutex);
++        for (;;) {
++            la_cv.wait(lock, [&] { return la_has_work || la_stop; });
++            if (la_stop) {
++                return;
++            }
++            for (const la_job & j : la_jobs) {
++                ggml_backend_tensor_set_async(j.backend, j.bank, j.src, j.offset, j.size);
++            }
++            if (la_job_event != nullptr) {
++                ggml_backend_event_record(la_job_event, la_job_backend);
++            }
++            la_has_work = false;
++            la_cv.notify_all();
++        }
++    }
++
++    // waits until the thread has queued every upload ahead
++    void la_join_jobs() {
++        std::unique_lock<std::mutex> lock(la_mutex);
++        la_cv.wait(lock, [&] { return !la_has_work; });
++    }
++
++    ggml_backend_t la_backend(int32_t id) {
++        if (la_inline) {
++            return devices[id].backend;
++        }
++        if (la_no_stream) {
++            return nullptr;
++        }
++        if (la_backends.empty()) {
++            for (device & d : devices) {
++                ggml_backend_t b = ggml_backend_dev_init(ggml_backend_get_device(d.backend), nullptr);
++                if (b == nullptr) {
++                    for (ggml_backend_t f : la_backends) {
++                        ggml_backend_free(f);
++                    }
++                    la_backends.clear();
++                    la_no_stream = true;
++                    LLAMA_LOG_WARN("llama_moe_cache: !!! LLAMA_MOE_LOOKAHEAD NOT USED: no second stream on this card\n");
++                    return nullptr;
++                }
++                la_backends.push_back(b);
++                la_events.push_back(ggml_backend_event_new(ggml_backend_get_device(d.backend)));
++            }
++            la_thread = std::thread([this] { la_worker(); });
++        }
++        return la_backends[id];
++    }
++
++    // before layer il's own uploads: its experts uploaded ahead must be in, and any other upload ahead finished
++    // (a slot it filled may be read or filled again by the compute stream from here on)
++    void la_wait(int32_t il, ggml_backend_t backend) {
++        if (la_pending < 0) {
++            return;
++        }
++        if (!la_inline) {
++            la_join_jobs();
++            ggml_backend_event_t ev = la_events[la_dev];
++            if (il == la_pending && ev != nullptr && devices[la_dev].backend == backend) {
++                ggml_backend_event_wait(backend, ev);
++            } else {
++                ggml_backend_synchronize(la_backends[la_dev]);
++            }
++        }
++        if (il != la_pending) {
++            la_ahead.clear();
++            la_pending = -1;
++        }
++    }
++
++    void la_drain() {
++        if (la_pending < 0) {
++            return;
++        }
++        if (!la_inline) {
++            la_join_jobs();
++            ggml_backend_synchronize(la_backends[la_dev]);
++        }
++        la_ahead.clear();
++        la_pending = -1;
++    }
++
++    // after layer il's plan: how many of the experts uploaded ahead for it it used
++    void la_count(int32_t il, const moe_cache_lru & lru) {
++        if (la_pending != il) {
++            return;
++        }
++        for (int32_t e : la_ahead) {
++            la_n_used += lru.seen[e] == lru.seen_gen;
++        }
++        la_ahead.clear();
++        la_pending = -1;
++    }
++
++    // the next layer that layer il guesses for, -1 if none
++    int32_t la_next(int32_t il, ggml_backend_t backend) const {
++        if (la_max <= 0 || il + 1 >= (int32_t) layers.size() || layers[il + 1].ig < 0 || layers[il + 1].guess == nullptr) {
++            return -1;
++        }
++        return devices[groups[layers[il + 1].ig].id].backend == backend ? il + 1 : -1;
++    }
++
++    ggml_tensor * get_guess(ggml_context * ctx, int32_t il, int64_t n_tokens, int32_t * k) const {
++        if (la_max <= 0 || lent || filling || reading || il < 0 || il + 1 >= (int32_t) layers.size() || layers[il].ig < 0) {
++            return nullptr;
++        }
++        const layer & ln = layers[il + 1];
++        if (ln.ig < 0 || ln.guess == nullptr || n_tokens <= 0 || n_tokens > max_batch ||
++                groups[ln.ig].id != groups[layers[il].ig].id) {
++            return nullptr;
++        }
++        *k = la_k;
++        return ggml_view_2d(ctx, ln.guess, la_k, n_tokens, ln.guess->nb[1], 0);
++    }
++
++    // upload up to la_max of the guessed misses of layer il_next into free or cold slots; layer il computes meanwhile,
++    // so its own picks are kept
++    void la_prefetch(int32_t il, int32_t il_next, int64_t n_tokens) {
++        layer & ln = layers[il_next];
++        group & gn = groups[ln.ig];
++        ggml_backend_t fb = la_backend(gn.id);
++        if (fb == nullptr || gn.lru.n_slots < n_expert_used) {
++            return;
++        }
++        const int32_t protect = ln.ig == layers[il].ig ? il : -1;
++        int32_t * slots = gn.lru.slot_map[il_next];
++        std::vector<moe_cache_lru::fill> pf;
++        for (int32_t r = 0; r < la_k && (int32_t) pf.size() < la_max; ++r) {
++            for (int64_t t = 0; t < n_tokens && (int32_t) pf.size() < la_max; ++t) {
++                int32_t e = la_guess[t*la_k + r];
++                if (la_scramble && e >= 0) {
++                    e = (int32_t) ((7*(int64_t) e + 3) % gn.lru.n_expert); // tests: a wrong guess must give the same words
++                }
++                if (e < 0 || e >= gn.lru.n_expert || slots[e] < gn.n_slots) {
++                    continue;
++                }
++                const int32_t s = gn.lru.victim(protect);
++                if (gn.lru.key_of[s] >= 0) {
++                    gn.lru.slot_map[gn.lru.key_layer(gn.lru.key_of[s])][gn.lru.key_expert(gn.lru.key_of[s])] = gn.lru.empty;
++                } else {
++                    gn.lru.n_filled++;
++                }
++                const int32_t key = gn.lru.make_key(il_next, e);
++                gn.lru.key_of[s] = key;
++                gn.lru.last_use[key] = gn.lru.clock[il_next];
++                slots[e] = s;
++                gn.lru.move(s, 0);
++                pf.push_back({ e, s });
++            }
++        }
++        if (pf.empty()) {
++            return;
++        }
++        std::sort(pf.begin(), pf.end(), [](const moe_cache_lru::fill & a, const moe_cache_lru::fill & b) { return a.expert < b.expert; });
++        std::vector<la_job> jobs;
++        for (size_t ip = 0; ip < ln.experts.size(); ++ip) {
++            const ggml_tensor * w = ln.experts[ip];
++            const size_t es = w->nb[2];
++            for (size_t i = 0; i < pf.size();) {
++                size_t n = 1;
++                while (i + n < pf.size() && pf[i + n].expert == pf[i].expert + (int32_t) n && pf[i + n].slot == pf[i].slot + (int32_t) n) {
++                    n++;
++                }
++                jobs.push_back({ fb, gn.banks[ip], (const uint8_t *) w->data + pf[i].expert*es, pf[i].slot*es, n*es });
++                la_bytes += n*es;
++                i += n;
++            }
++        }
++        la_n_up += pf.size();
++        la_ahead.clear();
++        for (const auto & f : pf) {
++            la_ahead.push_back(f.expert);
++        }
++        la_pending = il_next;
++        la_dev     = gn.id;
++        if (la_inline) {
++            for (const la_job & j : jobs) {
++                ggml_backend_tensor_set_async(j.backend, j.bank, j.src, j.offset, j.size);
++            }
++            return;
++        }
++        {
++            std::lock_guard<std::mutex> lock(la_mutex);
++            la_jobs        = std::move(jobs);
++            la_job_event   = la_events[gn.id];
++            la_job_backend = fb;
++            la_has_work    = true;
++        }
++        la_cv.notify_all();
++    }
+     uint64_t n_updates    = 0;
+     uint32_t n_expert_all = 0; // experts per layer in the brain
+ 
+@@ -916,6 +1157,23 @@ struct llama_moe_cache::impl {
+         if (filler.joinable()) {
+             filler.join();
+         }
++        if (la_thread.joinable()) {
++            la_drain();
++            {
++                std::lock_guard<std::mutex> lock(la_mutex);
++                la_stop = true;
++            }
++            la_cv.notify_all();
++            la_thread.join();
++        }
++        for (ggml_backend_event_t ev : la_events) {
++            if (ev != nullptr) {
++                ggml_backend_event_free(ev);
++            }
++        }
++        for (ggml_backend_t f : la_backends) {
++            ggml_backend_free(f);
++        }
+         for (ggml_backend_t f : fill_backends) {
+             ggml_backend_free(f);
+         }
+@@ -978,6 +1236,7 @@ struct llama_moe_cache::impl {
+     }
+ 
+     int64_t copy_experts(ggml_backend_t backend, const ggml_tensor * w, ggml_tensor * dst, int64_t e, int64_t last) {
++        la_drain(); // a slot filled ahead may still be going up
+         const auto it = lent || filling || reading ? bindings.end() : bindings.find(w);
+         if (it == bindings.end()) {
+             return 0;
+@@ -1024,6 +1283,7 @@ struct llama_moe_cache::impl {
+ 
+         GGML_ASSERT(backend == devices[g.id].backend);
+         GGML_ASSERT(!lent && !filling && "a graph read the MoE cache while it was lent");
++        la_wait(il, backend); // Brain Engine 0041
+ 
+         // the get_rows that looks up the slots of the selected experts
+         const int n_nodes = ggml_graph_n_nodes(graph);
+@@ -1064,6 +1324,13 @@ struct llama_moe_cache::impl {
+ 
+         ids.resize(ggml_nelements(sel));
+         ggml_backend_tensor_get_async(backend, sel, ids.data(), 0, ggml_nbytes(sel));
++        // Brain Engine 0041: the next layer's guess was made in the same split as this layer's picks
++        const int64_t n_tok   = sel->src[0]->ne[1];
++        const int32_t il_next = n_tok <= max_batch && !has_cpu ? la_next(il, backend) : -1;
++        if (il_next >= 0) {
++            la_guess.resize((size_t) la_k*n_tok);
++            ggml_backend_tensor_get_async(backend, layers[il_next].guess, la_guess.data(), 0, la_guess.size()*sizeof(int32_t));
++        }
+         ggml_backend_synchronize(backend);
+ 
+         if (trace != nullptr) {
+@@ -1098,6 +1365,7 @@ struct llama_moe_cache::impl {
+         if (n_learned > learned_before) {
+             l.learn_tokens = 0;
+         }
++        la_count(il, g.lru);
+         if (has_cpu) {
+             int32_t * cpu_map = (int32_t *) l.cpu_map->data;
+             for (int32_t e : l.cpu_experts) {
+@@ -1143,10 +1411,16 @@ struct llama_moe_cache::impl {
+         // the next copy synchronizes the backend before it changes the slot map again
+         ggml_backend_tensor_set_async(backend, dst, l.slot_map->data, 0, ggml_nbytes(l.slot_map));
+ 
++        // Brain Engine 0041: the next layer's guessed misses go up while this layer computes
++        if (il_next >= 0) {
++            la_prefetch(il, il_next, n_tok);
++        }
++
+         return true;
+     }
+ 
+     bool lend() {
++        la_drain();
+         finish_fill();
+         if (lent) {
+             return false;
+@@ -1285,6 +1559,7 @@ struct llama_moe_cache::impl {
+ 
+     // Brain Engine 0024: switch the banks to whole layers for a long read; returns the number of resident layers
+     int32_t begin_read_layout() {
++        la_drain();
+         if (reading || lent || filling) {
+             return 0;
+         }
+@@ -1373,6 +1648,10 @@ struct llama_moe_cache::impl {
+                 name, st.hits, st.misses, st.cpu, 100.0*st.hits/n, st.bytes/1024.0/1024.0);
+         };
+         log("ubatch <= 8", stats_small);
++        if (la_max > 0) {
++            LLAMA_LOG_INFO("llama_moe_cache: looked ahead: %zu experts uploaded ahead (%.2f MiB), %zu of them used (%.1f%%)\n",
++                la_n_up, la_bytes/1024.0/1024.0, la_n_used, la_n_up > 0 ? 100.0*la_n_used/la_n_up : 0.0);
++        }
+         if (learn_every > 0) {
+             LLAMA_LOG_INFO("llama_moe_cache: learned while writing: %zu experts came in\n", n_learned);
+         }
+@@ -1398,6 +1677,10 @@ ggml_tensor * llama_moe_cache::get_slot_map(int32_t il, int64_t n_tokens, int64_
+     return pimpl->get_slot_map(il, n_tokens, n_expert_used, cpu_part);
+ }
+ 
++ggml_tensor * llama_moe_cache::get_guess(ggml_context * ctx, int32_t il, int64_t n_tokens, int32_t * k) const {
++    return pimpl->get_guess(ctx, il, n_tokens, k);
++}
++
+ ggml_tensor * llama_moe_cache::get_experts(const ggml_tensor * w) const {
+     return pimpl->get_experts(w);
+ }
+diff --git a/src/llama-moe-cache.h b/src/llama-moe-cache.h
+index 1076095..53e4177 100644
+--- a/src/llama-moe-cache.h
++++ b/src/llama-moe-cache.h
+@@ -24,6 +24,9 @@ public:
+     // cpu_part: the graph computes the misses in the CPU map of the layer (see get_cpu_map)
+     ggml_tensor * get_slot_map(int32_t il, int64_t n_tokens, int64_t n_expert_used, bool cpu_part) const;
+ 
++    // Brain Engine 0041 (LLAMA_MOE_LOOKAHEAD): where the graph of layer il writes its guess of layer il + 1's experts,
++    // I32 [k, n_tokens] (top k of layer il + 1's router on layer il's expert input), nullptr if there is no look-ahead
++    ggml_tensor * get_guess(ggml_context * ctx, int32_t il, int64_t n_tokens, int32_t * k) const;
+     // the experts of w in the cache, nullptr if w is not cached
+     ggml_tensor * get_experts(const ggml_tensor * w) const;
+ 

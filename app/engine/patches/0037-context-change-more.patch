@@ -1,0 +1,182 @@
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 4239e87..7477200 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -30,6 +30,7 @@
+ #include <deque>
+ #include <exception>
+ #include <memory>
++#include <optional>
+ #include <filesystem>
+ #include <random>
+ #include <utility>
+@@ -1530,9 +1531,112 @@ private:
+         return true;
+     }
+ 
++    // Brain Engine 0017: Brain Engine keys that are read when a context is made, so POST /context can change them
++    static constexpr const char * CONTEXT_KEYS[] = {
++        "LLAMA_KV_SPLIT", "LLAMA_MOE_CACHE_LEND", "LLAMA_MOE_CACHE_LEND_BEHIND", "LLAMA_MOE_CACHE_READ_LAYERS",
++        "LLAMA_MOE_CACHE_CPU_READ", "LLAMA_MOE_CACHE_LEARN", "LLAMA_MOE_CACHE_LEARN_MARGIN",
++        "LLAMA_KQ_MASK_BUILD", "LLAMA_KQ_MASK_POS", "LLAMA_SPEC_GATE",
++    };
++
++    static void context_key_put(const std::string & name, const std::optional<std::string> & value) {
++#ifdef _WIN32
++        _putenv_s(name.c_str(), value ? value->c_str() : ""); // an empty value removes it on Windows
++#else
++        if (value) {
++            setenv(name.c_str(), value->c_str(), 1);
++        } else {
++            unsetenv(name.c_str());
++        }
++#endif
++    }
++
++    static void context_keys_set(const std::vector<std::pair<std::string, std::optional<std::string>>> & keys) {
++        for (const auto & [name, value] : keys) {
++            context_key_put(name, value);
++        }
++    }
++
++    static json context_keys_now() {
++        json j = json::object();
++        for (const char * k : CONTEXT_KEYS) {
++            if (const char * v = getenv(k); v != nullptr && *v != '\0') {
++                j[k] = v;
++            }
++        }
++        return j;
++    }
++
++    // reads n_batch, n_ubatch, cache_type_k/v, moe_cache_cpu_share and engine_keys from a POST /context body into next;
++    // sets the keys now and fills keys_prev with what they were, to put back if the new context fails
++    std::string context_change_more(const json & c, common_params & next,
++            std::vector<std::pair<std::string, std::optional<std::string>>> & keys_prev) const {
++        auto type_of = [](const std::string & s, ggml_type & t) {
++            for (int i = 0; i < GGML_TYPE_COUNT; ++i) {
++                const char * n = ggml_type_name((ggml_type) i);
++                if (n != nullptr && s == n) {
++                    t = (ggml_type) i;
++                    return true;
++                }
++            }
++            return false;
++        };
++        if (c.contains("n_batch")) {
++            next.n_batch = c.at("n_batch").get<int32_t>();
++            if (next.n_batch < 1) {
++                return "n_batch must be 1 or more";
++            }
++        }
++        if (c.contains("n_ubatch")) {
++            next.n_ubatch = c.at("n_ubatch").get<int32_t>();
++            if (next.n_ubatch < 1) {
++                return "n_ubatch must be 1 or more";
++            }
++        }
++        if (next.n_ubatch > next.n_batch) {
++            next.n_batch = next.n_ubatch; // as at start: the step is never bigger than the batch
++        }
++        for (const char * which : { "cache_type_k", "cache_type_v" }) {
++            if (c.contains(which)) {
++                ggml_type & t = std::string(which) == "cache_type_k" ? next.cache_type_k : next.cache_type_v;
++                if (!c.at(which).is_string() || !type_of(c.at(which).get<std::string>(), t)) {
++                    return std::string(which) + " must be a cache type such as f16, q8_0 or q4_0";
++                }
++            }
++        }
++        if (c.contains("moe_cache_cpu_share")) {
++            const float s = c.at("moe_cache_cpu_share").get<float>();
++            if (!(s >= 0.0f && s <= 1.0f)) {
++                return "moe_cache_cpu_share must be between 0 and 1";
++            }
++            next.moe_cache_cpu_share = s;
++        }
++        if (c.contains("engine_keys")) {
++            const json & k = c.at("engine_keys");
++            if (!k.is_object()) {
++                return "engine_keys must be an object of key: value (null removes the key)";
++            }
++            for (const auto & [name, value] : k.items()) {
++                if (std::find_if(std::begin(CONTEXT_KEYS), std::end(CONTEXT_KEYS), [&](const char * x) { return name == x; }) == std::end(CONTEXT_KEYS)) {
++                    return "engine_keys: " + name + " can't be changed here";
++                }
++                if (!value.is_null() && !value.is_string() && !value.is_number()) {
++                    return "engine_keys: " + name + " must be a string, a number or null";
++                }
++            }
++            for (const auto & [name, value] : k.items()) {
++                const char * old = getenv(name.c_str());
++                keys_prev.emplace_back(name, old != nullptr ? std::optional<std::string>(old) : std::nullopt);
++                context_key_put(name, value.is_null() ? std::nullopt :
++                        std::optional<std::string>(value.is_string() ? value.get<std::string>() : value.dump()));
++            }
++        }
++        return "";
++    }
++
+     // load the model and initialize llama_context
+     // this may also be called to resume from sleeping state
+     bool load_model(common_params & params) {
++        spec_gate_rate = 0.0f; // Brain Engine 0017: a context change may have turned the key off
+         if (const char * g = getenv("LLAMA_SPEC_GATE"); g != nullptr && *g != '\0') {
+             const float v = (float) atof(g);
+             if (v > 0.0f && v < 1.0f) {
+@@ -3800,6 +3904,15 @@ private:
+                         send_error(task, "n_ctx must be 0 (the brain's own) or more", ERROR_TYPE_INVALID_REQUEST);
+                         break;
+                     }
++                    // Brain Engine 0017: the rest of the context's settings, and the Brain Engine keys read when it is made
++                    std::vector<std::pair<std::string, std::optional<std::string>>> keys_prev;
++                    {
++                        const std::string err = context_change_more(c, next, keys_prev);
++                        if (!err.empty()) {
++                            send_error(task, err, ERROR_TYPE_INVALID_REQUEST);
++                            break;
++                        }
++                    }
+                     const int32_t n_ctx_old = llama_n_ctx(ctx_tgt);
+                     const int64_t t0 = ggml_time_us();
+                     common_params prev = params_base;
+@@ -3809,7 +3922,8 @@ private:
+                     std::string note;
+                     if (!ok) {
+                         // back to what worked; the brain may have to load again
+-                        note = "the new size failed, the old one is back";
++                        note = "the new settings failed, the old ones are back";
++                        context_keys_set(keys_prev); // Brain Engine 0017
+                         if (!load_model(prev)) {
+                             GGML_ABORT("failed to load the brain again after a context change");
+                         }
+@@ -3826,6 +3940,12 @@ private:
+                         {"n_ctx_old",  n_ctx_old},
+                         {"n_ctx",      llama_n_ctx(ctx_tgt)},
+                         {"n_ctx_slot", n_ctx_slot()},
++                        {"n_batch",    llama_n_batch(ctx_tgt)},
++                        {"n_ubatch",   llama_n_ubatch(ctx_tgt)},
++                        {"cache_type_k", ggml_type_name(params_base.cache_type_k)},
++                        {"cache_type_v", ggml_type_name(params_base.cache_type_v)},
++                        {"moe_cache_cpu_share", params_base.moe_cache_cpu_share},
++                        {"engine_keys", context_keys_now()},
+                         {"seconds",    (ggml_time_us() - t0)/1e6},
+                     };
+                     queue_results.send(std::move(res));
+@@ -7782,8 +7902,15 @@ void server_routes::init_routes() {
+     this->post_context = [this](const server_http_req & req) {
+         auto res = create_response();
+         json body = json::parse(req.body.empty() ? "{}" : req.body);
+-        if (!body.is_object() || (!body.contains("n_ctx") && !body.contains("moe_cache_mib"))) {
+-            res->error(format_error_response("give n_ctx and/or moe_cache_mib", ERROR_TYPE_INVALID_REQUEST));
++        static const char * known[] = { "n_ctx", "moe_cache_mib", "n_batch", "n_ubatch", "cache_type_k", "cache_type_v",
++                                         "moe_cache_cpu_share", "engine_keys" }; // Brain Engine 0017 added all but the first two
++        bool any = false;
++        for (const char * k : known) {
++            any = any || (body.is_object() && body.contains(k));
++        }
++        if (!any) {
++            res->error(format_error_response("give one or more of n_ctx, moe_cache_mib, n_batch, n_ubatch, cache_type_k, "
++                                             "cache_type_v, moe_cache_cpu_share, engine_keys", ERROR_TYPE_INVALID_REQUEST));
+             return res;
+         }
+         auto & rd = res->rd;
