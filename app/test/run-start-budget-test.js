@@ -20,7 +20,10 @@ const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${o
 // Nov 26: the calculator is on by default now (the owner: "On by default"), so "everything on" also hands over
 // calculate (about 520 more on Windows: 49,315). The default start is unchanged (the calc group loads only when a
 // message needs it). ALL_CAP moved from 48,800 to 49,400: still under 50,000, but the room left is about 600, not 1,500.
-const DEFAULT_CAP = 15500, ALL_CAP = 49400;
+// Nov 28: the Apps hand on Mac and Linux (#392, off by default) adds its tool to "everything on" there, and with the
+// calculator Linux measured 49,410. ALL_CAP moved from 49,400 to 49,700: still under 50,000 (room about 300). The
+// default start is unchanged.
+const DEFAULT_CAP = 15500, ALL_CAP = 49700;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-start-'));
 const conf = path.join(tmp, 'config.json');
