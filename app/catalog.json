@@ -637,6 +637,14 @@
           "verify": true,
           "bytes": 16610544608,
           "sha256": "78fcedcf93c5d1bfe83e225513b71392bb52259be0eaa5f8899c856a2e5834ae"
+        },
+        {
+          "url": "https://huggingface.co/unsloth/Inkling-2-Mini-GGUF/resolve/8078d149286eec7193795413b9e0643da6d11fa1/dspark-Inkling-2-Mini-Q8_0_Old.gguf",
+          "role": "dspark",
+          "optional": true,
+          "verify": true,
+          "bytes": 402278560,
+          "sha256": "2ec78510da837e8fc3be54a14757a0c5fbd2d8d9e85a0d92853fafdf674f3773"
         }
       ],
       "use": {

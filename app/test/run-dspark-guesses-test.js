@@ -54,6 +54,10 @@ const mj = read('src/models.js'), shop = read('public/cellar-shop.js');
 check('an optional file never keeps a brain from counting as installed', /const must = \(entry\.files \|\| \[\]\)\.filter\(\(f\) => !f\.optional\)/.test(mj) && /extrasMissing/.test(mj));
 check('Get models offers the guesser on its own for an installed brain', /extrasMissing \|\| \[\]\)\.includes\('dspark'\)/.test(shop) && /Get the DSpark guesser/.test(shop));
 
+const cat = JSON.parse(read('catalog.json'));
+const ink = cat.models.find((m) => m.id === 'inkling-2-mini'), gf = ink?.files?.find((f) => f.role === 'dspark');
+check('the catalog brings the older guesser with Inkling 2 Mini, optional, pinned', !!gf && gf.optional === true && /\/resolve\/[0-9a-f]{40}\/dspark-Inkling-2-Mini-Q8_0_Old\.gguf$/.test(gf.url) && gf.bytes === 402278560 && /^[0-9a-f]{64}$/.test(gf.sha256));
+check('it is saved under a name the guesser search finds', /^dspark-inkling-2-mini.*_old\.gguf$/i.test(path.basename(gf?.saveAs || gf?.url || '')));
 // ---------- Help, glossary, FAQ ----------
 const page = HELP.find((h) => h.id === 'dspark-guesses'), faq = HELP.find((h) => h.id === 'faq-dspark-guesses'), gl = HELP.find((h) => h.id === 'glossary');
 check('Help page in Bob\'s voice, naming the defaults and the platforms', !!page && /my engine/.test(page.html) && /on by default/.test(page.html) && /off by default/.test(page.html) && ['Windows', 'Mac', 'Linux', 'Android'].every((w) => page.html.includes(w)));
