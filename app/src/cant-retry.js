@@ -17,8 +17,11 @@ export function cantReason(cfg, text, turnMsgs = []) {
   const t = String(text || '');
   for (const [id, h] of Object.entries(HANDS)) {
     if (handOn(cfg, id)) continue;
-    const label = h.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (new RegExp(`\\b${label}\\b[^.\\n]{0,40}\\bHand\\b|\\bHand\\b[^.\\n]{0,20}\\b${label}\\b`, 'i').test(t)) return `the ${h.label} Hand is off`;
+    // Nov 16 (800-job run, fx-5fd65adeaa): he says it short too ("the Office Hand is off"): the label, its first word, or its id.
+    const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const first = h.label.split(/\s+/)[0]; // not "Use", "Open" or "Make": too common to name a Hand
+    const label = [...new Set([h.label, ...(/^(?:use|open|make|tool|connected)$/i.test(first) ? [] : [first]), id])].map(esc).join('|');
+    if (new RegExp(`\\b(?:${label})\\b[^.\\n]{0,40}\\bHand\\b|\\bHand\\b[^.\\n]{0,20}\\b(?:${label})\\b`, 'i').test(t)) return `the ${h.label} Hand is off`;
   }
   return '';
 }

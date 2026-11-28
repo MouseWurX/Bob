@@ -13,10 +13,15 @@
 // most twice a turn (plan -> steps -> answer), never back and forth.
 // Settings, How Bob works, "Think to plan and review, not on each step": on unless turned off (a reliability fix).
 
+import { soloThink } from './solo-effort.js';
+
 export const stepThinkingOn = (cfg) => cfg?.stepThinking !== false;
 
 // think: the turn's setting (undefined = the brain's own, false = off, true or 'high' = on).
-export function stepThink(cfg, { think, doing = false, lastRound = false, retryThinks = false } = {}) {
+// job: with Effort on one brain on (solo-effort.js), the job's effort level decides instead.
+export function stepThink(cfg, { think, doing = false, lastRound = false, retryThinks = false, job = null } = {}) {
+  const solo = soloThink(cfg, job, { think, doing, lastRound });
+  if (solo !== undefined) return solo;
   if (!stepThinkingOn(cfg) || think === false || lastRound || retryThinks) return think;
   return doing ? false : think;
 }

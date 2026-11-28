@@ -74,7 +74,6 @@ export const WORDS = {
   "High": "Élevé",
   "Extreme": "Extrême",
   "Quick": "Rapide",
-  "Deeper": "Plus poussé",
   "Checked": "Vérifié",
   "Slowest": "Le plus lent",
   "🎮 Gaming": "🎮 Jeu vidéo",
