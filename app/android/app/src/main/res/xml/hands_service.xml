@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 🖐 Phone hands (HandsService.kt). Only listed in Android's Accessibility settings once "Let Bob use apps" is on.
+     isAccessibilityTool="false": Bob isn't a screen reader, so apps that mark their screens as private (banking apps
+     often do) stay hidden from him. Bob only reads the screen when the brain asks (app_look); he keeps no events. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/hands_about"
+    android:summary="@string/hands_summary"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows|flagRequestFilterKeyEvents|flagIncludeNotImportantViews"
+    android:canRetrieveWindowContent="true"
+    android:canPerformGestures="true"
+    android:canRequestFilterKeyEvents="true"
+    android:isAccessibilityTool="false"
+    android:notificationTimeout="300" />

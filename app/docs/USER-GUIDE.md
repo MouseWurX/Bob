@@ -396,6 +396,8 @@ A tabletop role-playing game with Bob as game master and a party of you, your fr
 - **Discord and Telegram** (Settings, Online services; off): talk to Bob from a chat app with your own bot token.
 - **Keep order on Discord** (Settings, Online services, Bob on Discord; off): Bob moderates your server with plain rules and no brain. He deletes spam, scam links and slurs, warns, and times people out. Kicks and bans wait for your OK. He also has a raid guard, a welcome with an I agree button, roles and reports. **Chat on Discord** (on) can be switched off so no brain ever loads for the server.
 - On Android: Share to Bob, a home-screen widget, low-data mode, reminders on your phone, and its own Saved prompts and backup.
+- **Let the phone brain use tools** (Android, Phone brain page; off): the brain on the phone makes and fills in Excel spreadsheets (.xlsx) and Word documents (.docx) in **Bob's documents**, uses the calculator, tells the date and keeps notes. **Look things up online** (off) adds a web search; after it reads a page, changes to your files wait for your OK. Every change keeps the version before it. Works best with LFM3 1.7B or Qwen3.5 4B. Not yet proven on a real phone; not on iPhone (no phone brain there).
+- **Let Bob use apps** (Android, Phone brain page, Tools; off, and only with tools on): the phone brain opens your other apps, reads their screens and taps, types, scrolls and swipes for you, through Android's accessibility service (you switch **Bob's hands** on in Android's Accessibility settings too). Every move waits for your OK on a card over the app; sending, paying, deleting, installing and calling ask every time. A red bar shows while Bob drives: **Stop**, or volume down, stops him. Never password fields, Settings, installers, password managers or Bob's own app. **iPhone:** Apple doesn't let apps drive each other, so **Let Bob run Shortcuts** runs only the Shortcuts you name, each after an OK, and **Ask Bob** works from Siri and the Shortcuts app. Neither is proven on a real phone yet.
 
 ---
 
@@ -500,6 +502,7 @@ The full glossary and an FAQ are in Help inside Bob (left menu, or F1).
 - **Bob-Net:** your Bobs on different computers, joined over Tailscale or your home network.
 - **Computer Science Lab:** the 🧪 Lab page, where you make and test your own brain.
 - **Commercial use:** using what you make for money. All starter set models allow it.
+- **Bob's documents:** on Android, the spreadsheets, Word documents and notes the phone brain works on, kept inside the app. Save to phone copies one to Download/Bob.
 
 ## Licences of the starter set models
 
