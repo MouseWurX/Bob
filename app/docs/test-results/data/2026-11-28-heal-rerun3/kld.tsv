@@ -1,0 +1,3 @@
+file	bytes	mean_kld	same_top_pct
+STOCK	2497280640	0.046696	91.559
+SESSION-healed-lr1e-4	2497280640	0.043537	91.578

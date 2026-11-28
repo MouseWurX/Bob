@@ -1,0 +1,33 @@
+{
+ "tasks": 21,
+ "ref_calls": 21,
+ "files": {
+  "STOCK": {
+   "well_formed": 21,
+   "known_tool": 0,
+   "same_call_as_full_size": 20
+  },
+  "SESSION-healed-lr1e-4": {
+   "well_formed": 21,
+   "known_tool": 0,
+   "same_call_as_full_size": 20
+  }
+ },
+ "sample": [
+  {
+   "tools": [],
+   "ref_call": "translate_text",
+   "tools_text": "You are a function calling AI model. You are provided with function signatures within <tools> </tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions.\n<tools>\n[{\"type\": \"function\", \"function\": {\"name\": \"translate_text\", \"description\": \"Translates a given text from a source language to a target language usi"
+  },
+  {
+   "tools": [],
+   "ref_call": "open_shared_document",
+   "tools_text": "You are a function calling AI model. You are provided with function signatures within <tools> </tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions.\n<tools>\n[{\"type\": \"function\", \"function\": {\"name\": \"open_shared_document\", \"description\": \"Open a document from a shared folder for collaborative editing.\","
+  },
+  {
+   "tools": [],
+   "ref_call": "create_virtual_environment",
+   "tools_text": "You are a function calling AI model. You are provided with function signatures within <tools> </tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions.\n<tools>\n[{\"type\": \"function\", \"function\": {\"name\": \"create_virtual_environment\", \"description\": \"Creates a new virtual environment for a Python project at t"
+  }
+ ]
+}

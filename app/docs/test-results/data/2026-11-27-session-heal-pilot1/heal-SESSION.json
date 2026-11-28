@@ -1,0 +1,77 @@
+{
+ "when": "2026-11-27 23:01",
+ "args": {
+  "teacher": "<pod>",
+  "gguf": "<pod>",
+  "calib": "",
+  "eval_text": "<pod>",
+  "sessions": "<pod>",
+  "agent_share": 0.7,
+  "measure": false,
+  "max_text_rise": 0.02,
+  "out": "<pod>",
+  "steps": 400,
+  "hours": 0.5,
+  "lr": 0.001,
+  "norm_lr": 0.001,
+  "ctx": 512,
+  "batch": 4,
+  "chunks": 400,
+  "eval_chunks": 40,
+  "topk": 64,
+  "device": "cuda",
+  "dtype": "",
+  "no_norms": false,
+  "heal_embd": false,
+  "min_cos": 0.6,
+  "seed": 1,
+  "report": "<pod>",
+  "llama_cpp": "<pod>",
+  "keep_mtp": false
+ },
+ "steps": 400,
+ "seconds": 1084,
+ "healed_tensors": 252,
+ "scales_tuned": 26449920,
+ "norms_tuned": 145,
+ "norm_values": 196096,
+ "frozen_squeezed_tensors": 1,
+ "not_lined_up": [],
+ "partly_from_teacher": [],
+ "traced_through_converter": 253,
+ "before": {
+  "kl_topk": 0.039738893018588815,
+  "same_top": 0.9409259663682027,
+  "tokens": 18316,
+  "by_kind": {
+   "general": 0.04396891454056507,
+   "agent": 0.025548307266072167
+  },
+  "text": {
+   "kl_topk": 0.04250971432775259,
+   "same_top": 0.919873046875,
+   "tokens": 20480
+  }
+ },
+ "after": {
+  "kl_topk": 0.11839701890270994,
+  "same_top": 0.89670233675475,
+  "tokens": 18316,
+  "by_kind": {
+   "general": 0.13429568487224133,
+   "agent": 0.06506126597116263
+  },
+  "text": {
+   "kl_topk": 0.12677665520459414,
+   "same_top": 0.861962890625,
+   "tokens": 20480
+  }
+ },
+ "written": null,
+ "next": [
+  "llama-perplexity -m <full-precision.gguf> -f <eval text> --kl-divergence-base base.kld",
+  "llama-perplexity -m <pod> -f <eval text> --kl-divergence-base base.kld --kl-divergence",
+  "llama-perplexity -m <pod> -f <eval text> --kl-divergence-base base.kld --kl-divergence",
+  "then the publish gate and the real-jobs run; drift numbers alone never decide"
+ ]
+}

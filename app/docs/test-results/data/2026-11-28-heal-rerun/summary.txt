@@ -1,0 +1,20 @@
+card: NVIDIA L40S, 46068 MiB, 595.112.07, 30, 210 MHz, 8.9
+CUDA architecture: 89
+Bob claude/project-thread-5o1p5l at e511aeca24ab571b8713f089f000c92caf2ab3b7
+engine: 104 patches on b12359, build logged in build.log
+Qwen/Qwen3-4B revision 1cfa9a7208912126459214e8b04321603b3df60c
+reference: 8051284928 bytes
+STOCK: wikitext KLD 0.046696, same top 91.559%, 2497280640 bytes   [GPU 37, 2520 MHz, 0 MiB]
+sessions: 1061 rows, 701 agent, 157 tool tasks answered with a call, 1179 s
+TEXT-healed-lr1e-4: wikitext KLD 0.035789, same top 92.539%, 2497280640 bytes   [GPU 47, 2520 MHz, 0 MiB]
+SESSION-healed-lr1e-4: heal CRASHED (exit 1): [transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (262338 > 131072). Running this sequence throug
+TEXT-healed-lr3e-4: wikitext KLD 0.045670, same top 91.696%, 2497280640 bytes   [GPU 45, 2520 MHz, 0 MiB]
+SESSION-healed-lr3e-4: heal CRASHED (exit 1): [transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (262338 > 131072). Running this sequence throug
+STOCK sessions/wiki-valid: 0.03294	0.01478	0.04254	95.16	0.04251
+TEXT-healed-lr1e-4 sessions/wiki-valid: 0.03008	0.01361	0.03878	95.31	0.03334
+TEXT-healed-lr3e-4 sessions/wiki-valid: 0.03198	0.01348	0.04177	95.16	0.04146
+tool calls: 21 tasks, BF16 called 21; STOCK 21 well formed, 0 known tool, 20 same as BF16; TEXT-healed-lr1e-4 21 well formed, 0 known tool, 20 same as BF16; TEXT-healed-lr3e-4 21 well formed, 0 known tool, 20 same as BF16
+STOCK: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+TEXT-healed-lr1e-4: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+TEXT-healed-lr3e-4: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+HEAL DONE

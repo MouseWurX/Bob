@@ -27,7 +27,7 @@ check('only scale bytes are written into the copy', /blocks\[:, o:o \+ 2\] = s\.
 check('scales are rounded to fp16 before the after-numbers, so they describe the real file', heal.indexOf('round_fp16()') < heal.indexOf("after = evaluate()"));
 check('the written file is read back and must match', /written file check/.test(heal) && /if worst > 1e-2: sys\.exit/.test(heal));
 check('nothing is written when drift did not drop', /kept = after\['kl_topk'\] < before\['kl_topk'\]/.test(heal) && /writing nothing/.test(heal));
-check('held-out text is refused as calibration', /refusing: --calib looks like a held-out set/.test(heal));
+check('held-out text is refused (calibration, sessions or eval text)', /for f in \(a\.calib, a\.sessions, a\.eval_text\)/.test(heal) && /refusing: that file looks like a held-out set/.test(heal));
 check('a tensor must line up with its HF twin before it is touched', /cos < a\.min_cos/.test(heal) && /does not line up with HF/.test(heal));
 check('the idea is credited and the rules are stated', /llamAmpere/.test(heal) && /JakeATX/.test(heal) && /never the\nheld-out job sets, and never text written by Claude/.test(heal) && /adds no personality/.test(heal));
 check('the report says what to run next with stock llama.cpp, and that drift alone never decides', /--kl-divergence-base base\.kld --kl-divergence/.test(heal) && /real-jobs run; drift numbers alone never decide/.test(heal));

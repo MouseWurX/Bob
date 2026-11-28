@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Pick a bit width per tensor: more bits where a part of the brain matters more, inside a size budget.
 
+RETIRED for picks (27 Nov 2026 Qwen3-4B rental): this greedy pick put whole tensors at iq2_xxs and drifted 2.6x more
+than stock Q4_K_M at the same size. Use part_bits.py (--loss imatrix for this same measure, or --loss fisher).
+
   mixed_bits.py --base model-bf16.gguf --imatrix imatrix.gguf --cand q.iq2_xxs.gguf --cand q.iq2_s.gguf --cand q.q3_k.gguf
                 --cand q.q4_k.gguf --target-bpw 2.3 --out types.txt
   Options: --fix 'output=q4_k' (regex=type, repeatable, always wins)  --exclude token_embd (not counted in the budget,
@@ -52,6 +55,7 @@ def main():
     ap.add_argument('--exclude-type', default='q4_k'); ap.add_argument('--rows', type=float, default=1.0)
     ap.add_argument('--seed', type=int, default=1); ap.add_argument('--out', required=True); ap.add_argument('--report', default='')
     a = ap.parse_args()
+    print('note: mixed_bits.py is retired for picks; part_bits.py does better at the same size (see its docstring)', file=sys.stderr)
     rng = np.random.default_rng(a.seed)
 
     base = {t.name: t for t in GGUFReader(a.base).tensors}

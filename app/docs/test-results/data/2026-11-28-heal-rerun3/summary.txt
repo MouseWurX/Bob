@@ -1,0 +1,16 @@
+card: NVIDIA L40S, 46068 MiB, 595.112.07, 27, 210 MHz, 8.9
+CUDA architecture: 89
+Bob claude/project-thread-5o1p5l at 53498218f557be1b745d5baacd307d7439b18083
+engine: 104 patches on b12359, build logged in build.log
+Qwen/Qwen3-4B revision 1cfa9a7208912126459214e8b04321603b3df60c
+reference: 8051284928 bytes
+STOCK: wikitext KLD 0.046696, same top 91.559%, 2497280640 bytes   [GPU 35, 2520 MHz, 0 MiB]
+sessions: 1061 rows, 701 agent, 157 tool tasks answered with a call, 1216 s
+SESSION-healed-lr1e-4: wikitext KLD 0.043537, same top 91.578%, 2497280640 bytes   [GPU 58, 2520 MHz, 0 MiB]
+SESSION-healed-lr3e-4: no step beat the start, no file (keeping step 0 (check slice 0.03482))
+STOCK sessions/wiki-valid: 0.03183	0.01915	0.03835	95.17	0.04251
+SESSION-healed-lr1e-4 sessions/wiki-valid: 0.02592	0.01317	0.03248	95.59	0.04092
+tool calls: 21 tasks, BF16 called 21; STOCK 21 well formed, 0 known tool, 20 same as BF16; SESSION-healed-lr1e-4 21 well formed, 0 known tool, 20 same as BF16
+STOCK: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+SESSION-healed-lr1e-4: The capital of France is Paris. The capital of Germany is Berlin. The capital of  
+HEAL DONE

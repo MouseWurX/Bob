@@ -81,11 +81,35 @@ check('the kit reads the card\'s CUDA number and logs GPU temperature and clocks
 check('the kit compares the 4-bit files people ship at the 4-bit budget', ['IQ4_XS', 'IQ4_NL', 'MXFP4_MOE', 'STOCK-no-imatrix', 'UD_REPO', 'STOCK-imatrix-healed', 'PART-healed'].every((w) => kit.includes(w)));
 check('the kit uploads nothing and never reads held-out jobs', !/upload|hf_api\.create|push_to_hub/i.test(kit.replace(/Uploads nothing/g, '')) && /never Bob's held-out jobs/.test(kit));
 
+// ---- agent-session healing (the owner, 27 Nov: "healing on agent sessions is fine") ----
+const sess = read('model-lab/forge/pod/agent_sessions.py');
+const heal = read('model-lab/forge/pod/heal_scales.py');
+const hkit = read('model-lab/forge/pod/heal-agent-pilot.sh');
+const tcheck = read('model-lab/forge/pod/tool_check.py');
+check('sessions come from public sets, about 70:30 agent to general', ['hermes-function-calling-v1', 'mbpp', 'databricks-dolly-15k'].every((w) => sess.includes(w)) && /'--agent-share', type=float, default=0\.7/.test(sess));
+check('sessions: held-out files refused, never-taught questions dropped', /refusing: that file looks like a held-out set/.test(sess) && /def matches_never/.test(sess) && /len\(q\.split\(\)\) >= 6 and q in t/.test(sess));
+check('sessions are written by the brain itself with its own sampling', /do_sample=True/.test(sess) && /generation_config=gen/.test(sess) && /No text here is written by Claude/.test(sess));
+check('tool steps never think, as in Bob', /think = not src\.startswith\('hermes'\)/.test(sess));
+check('healing scores only what the brain wrote', /logits_to_keep=keep\)\.logits\[0, :-1\]/.test(heal) && /positions start-1 \.\. end-2/.test(heal));
+check('a session heal is kept only if session drift drops and text drift does not rise past the limit', /after\['text'\]\['kl_topk'\] > before\['text'\]\['kl_topk'\] \* \(1 \+ a\.max_text_rise\)/.test(heal) && /'--max-text-rise', type=float, default=0\.02/.test(heal));
+check('plain-text healing works as before (one of --calib or --sessions)', /give --calib \(plain text\) or --sessions/.test(heal) && /tgt_train = teacher_targets\(model, calib/.test(heal));
+check('--measure scores a file with its own norms and writes nothing', /if mode is None and a\.measure/.test(heal) && /measured', path\); return/.test(heal));
+check('the pilot gives both heals the same steps and time and scores every file the same three ways', /IN=\(--calib "\$TR"\)/.test(hkit) && /IN=\(--sessions "\$SE"/.test(hkit) && /"\$\{IN\[@\]\}".*\n.*--hours "\$HEAL_HOURS" --steps "\$HEAL_STEPS"/.test(hkit) && /HEAL_ARMS=\$\{HEAL_ARMS:-"TEXT SESSION"\}/.test(hkit) && /heal_arm "\$ARM" "\$LR"/.test(hkit) && /if start > max_len - 16: continue/.test(heal) && /kld\.tsv/.test(hkit) && /sessions-drift\.tsv/.test(hkit) && /tool_check\.py/.test(hkit));
+check('the pilot pins Bob, logs the card and uploads nothing', /git -C "\$W\/bob" rev-parse HEAD\)" = "\$BOB_SHA"/.test(hkit) && /temperature\.gpu,clocks\.sm/.test(hkit) && /Uploads nothing/.test(hkit) && !/upload_file|push_to_hub|create_repo/.test(hkit));
+check('every heal keeps its best checked step, so it is never worse than the start', /best_kl, best_step, best_state = check\(\)/.test(heal) && /keeping step \{best_step\}/.test(heal) && /'--lr', type=float, default=2e-4/.test(heal));
+check('plain-text healing goes one chunk at a time (a 4B brain ran out of a 48 GB card at 4 x 512)', /one chunk at a time/.test(heal) && /student\(calib\[i\]\[None\]\.to\(dev\)\)/.test(heal));
+check('sessions are shuffled before a limit, and weighted by the tokens they score', /rng\.shuffle\(tr\)/.test(heal) && /\/ n_tok/.test(heal));
+check('the rerun kit tries two step sizes and says when a heal crashed', /HEAL_LRS=\$\{HEAL_LRS:-"1e-4 3e-4"\}/.test(hkit) && /heal CRASHED/.test(hkit));
+check('tool lists written as Python dicts are read too', /\["'\]name\["'\]/.test(tcheck));
+check('the tool check compares against the full-size file on held-apart tasks only', /r\.get\('split'\) == 'eval'/.test(tcheck) && /same_call_as_full_size/.test(tcheck));
+
 // ---- Help ----
 const faq = HELP.find((h) => h.id === 'faq-bits-by-word');
 check('Help has the FAQ in my voice, with where it loads and the limits', !!faq && /my engine \(Lamplight 0150\)/.test(faq.html) && /Windows, Mac, Linux and Android/.test(faq.html) && /unproven in our lab/.test(faq.html) && /Ollama and LM Studio can't open it/.test(faq.html) && /behind Turbo/.test(faq.html));
 const gl = HELP.find((h) => h.id === 'glossary')?.html || '';
 check('the glossary explains both', /<dt>Bits by part<\/dt>/.test(gl) && /<dt>Bits by word<\/dt>/.test(gl));
+const sfaq = HELP.find((h) => h.id === 'faq-session-heal');
+check('Help has the agent-session healing FAQ, glossary entry and Lab word', !!sfaq && /unproven in our lab/.test(sfaq.html) && /off by default and not in Turbo/.test(sfaq.html) && /Windows, Mac, Linux and Android/.test(sfaq.html) && /<dt>Agent-session healing<\/dt>/.test(gl) && !!LAB_WORDS['agent-session healing']);
 check('Lab words for both', !!LAB_WORDS['bits by word'] && !!LAB_WORDS['bits by part']);
 check('the engine README lists 0150', /`0150-output-bands\.patch`/.test(read('engine/README.md')));
 
