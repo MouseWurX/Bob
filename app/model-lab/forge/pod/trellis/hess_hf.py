@@ -16,7 +16,7 @@ looped layers of Inkling count every pass). Expert sums are big (Inkling 2 Mini:
 are recorded, saved, and the text is read again for the next ones.
 --devices N spreads the layers over N cards (accelerate's device_map). One file per tensor: hess/<gguf name>.pt
 {H_in, H_out, n} ([E, ., .] and n [E] for experts). 28 Nov 2026 (thread "Shrink Flash-Next with GPTQ and trellis")."""
-import argparse, json, os, re, time, types
+import argparse, gc, subprocess, sys, json, os, re, time, types
 
 import torch
 import torch.nn.functional as F
@@ -192,7 +192,10 @@ def main():
     ap.add_argument("--only", default=None, help="record only GGUF names matching this regex (e.g. a canary's layers)")
     ap.add_argument("--no-out", action="store_true", help="H_in only (LDLQ/GPTQ), no backward pass")
     ap.add_argument("--attn", default="sdpa", help="attention: sdpa (fused, little memory) or eager")
-    ap.add_argument("--seed", type=int, default=0); a = ap.parse_args()
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--same-process", action="store_true", help="every expert pass in this process (default: passes after the first in a fresh one each)")
+    ap.add_argument("--group-names", default=None, help=argparse.SUPPRESS)  # a fresh process for one later pass: these expert blocks only, no dense sums
+    a = ap.parse_args()
     if not (a.gguf_arch or a.match_gguf): raise SystemExit("hess_hf: give --gguf-arch or --match-gguf")
     from transformers import AutoTokenizer
     os.makedirs(a.out, exist_ok=True)
@@ -215,6 +218,8 @@ def main():
         names = {k: v for k, v in names.items() if re.search(a.only, v)}
         exps = {k: {p: g for p, g in d.items() if re.search(a.only, g)} for k, d in exps.items()}
         exps = {k: d for k, d in exps.items() if d}
+    if a.group_names is not None:
+        keep = set(a.group_names.split(",")); names = {}; exps = {k: d for k, d in exps.items() if k in keep}
     if not names and not exps: raise SystemExit("hess_hf: no weight maps to a GGUF tensor")
     print(f"hess_hf: {len(names)} linears and {len(exps)} expert blocks mapped to GGUF names", flush=True)
     for name in exps: expert_modules_cache[name].forward = types.MethodType(recording_forward, expert_modules_cache[name])
@@ -347,6 +352,9 @@ def main():
             used[dev] = used.get(dev, 0) + gb; g.append(name); todo.remove(name)
         groups.append(g)
     groups = groups or [[]]
+    if a.group_names is not None: groups = [list(exps)]  # this process does one pass, chosen by the first process
+    later = [] if a.same_process or a.group_names is not None else groups[1:]
+    if later: groups = groups[:1]
     print(f"hess_hf: experts read in {len(groups)} pass(es) of the text (room for expert sums: "
           f"{', '.join(f'{d} {c:.1f} GB' for d, c in caps.items())})", flush=True)
     for gi, g in enumerate(groups):
@@ -370,10 +378,23 @@ def main():
             mod._rec = None; del rec
         if cuda: torch.cuda.empty_cache()
     for h in hooks: h.remove()
+    if a.group_names is not None:
+        print(f"hess_hf: pass of {len(exps)} expert blocks done, {len(bad)} chunks left out, {time.time() - t0:.0f} s", flush=True); return
     for name, d in acc.items():
         out = {"H_in": (d["H_in"] / d["n"]).cpu(), "n": d["n"]}
         if d["H_out"] is not None: out["H_out"] = (d["H_out"] / max(d["n_out"], 1)).cpu()
         torch.save(out, os.path.join(a.out, names[name] + ".pt"))
+    if later:  # Inkling try 7: pass 2 in the same process went non-finite at once, pass 1 read all 64 chunks finitely
+        del m, emb; acc = dict.fromkeys(acc); expert_modules_cache.clear(); gc.collect()  # the dense sums are saved
+        if cuda: torch.cuda.empty_cache()
+        for gi, g in enumerate(later, 2):
+            print(f"hess_hf: pass {gi}/{len(later) + 1} in a fresh process ({len(g)} expert blocks)", flush=True)
+            argv = [x for x in sys.argv[1:]]
+            for flag in ("--ctx", "--chunks"):  # the chunk size the first pass settled on, and the same tokens
+                if flag in argv: i = argv.index(flag); del argv[i:i + 2]
+            r = subprocess.run([sys.executable, os.path.abspath(__file__), *argv, "--ctx", str(a.ctx), "--chunks", str(n), "--group-names", ",".join(g)])
+            if r.returncode: raise SystemExit(f"hess_hf: pass {gi} stopped (exit {r.returncode})")
+        groups = [None] * (len(later) + 1)
     json.dump({"model": a.model, "chunks": n, "ctx": a.ctx, "tensors": len(acc), "expert_tensors": sum(len(v) for v in exps.values()),
                "passes": len(groups), "chunks_left_out": len(bad), "seconds": round(time.time() - t0, 1), "out_factor": not a.no_out,
                "names": {**names, **{f"{k}.{p}": v for k, d in exps.items() for p, v in d.items()}}},

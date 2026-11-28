@@ -128,6 +128,7 @@ HFB=$W/hf
 if python3 -c "import json,sys; c=json.load(open(sys.argv[1])); sys.exit(0 if 'quantization_config' in c or any(isinstance(v, dict) and 'quantization_config' in v for v in c.values()) else 1)" "$W/hf/config.json"; then
   step "unpack the quantized checkpoint to BF16 for transformers"
   HFB=$W/hf-bf16
+  [ -e "$HFB/.hf_dequant-v2" ] || { rm -rf "$HFB" "$W/hess"; }   # older copies cast float32 weights to BF16 (try 7)
   [ -s "$HFB/config.json" ] || python3 "$TP/hf_dequant.py" --src "$W/hf" --out "$HFB" > "$OUT/dequant.log" 2>&1 || { rm -rf "$HFB"; tail -5 "$OUT/dequant.log"; fail unpack; }
   say "$(tail -1 "$OUT/dequant.log")"
 fi

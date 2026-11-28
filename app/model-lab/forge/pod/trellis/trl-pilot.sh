@@ -16,6 +16,7 @@
 #   CANARY=1 CHUNKS=128 YAQA_DAMPS="0.01 0.1 0.3 1" bash trl-pilot.sh -> the YAQA sweep on the 0.6B
 #   CANARY=1 CHUNKS=128 YAQA_DAMPS="1 3 10" SEEDS="0 1" bash trl-pilot.sh -> sweep 3: more damping, each row twice, and
 #     llama.cpp's own imatrix 2-bit files beside them
+#   CANARY=1 CHUNKS=128 BITS="2 3" YAQA_DAMPS=1 bash trl-pilot.sh -> 3 bits too: Q3_K, llama.cpp's imatrix 3-bit mixes, TRL3
 # Env: OUT, W, HF_MODEL, CHUNKS (Hessian chunks x CTX), KLD_CHUNKS, BITS ("2 3"), NGPU (default: every card), JOBS, YAQA_DAMPS,
 #      STEP_MIN (hard minutes per trellis run, default 90). Ends with "TRL DONE" (or "TRL FAILED <step>") in summary.txt.
 set -uo pipefail
@@ -128,6 +129,8 @@ q() {  # q <name> <ftype> [extra llama-quantize options]: same token table and h
   local n=$1 f=$2; shift 2; [ -s "$W/$n.gguf" ] && return 0
   "$B/llama-quantize" --token-embedding-type q8_0 --output-tensor-type q8_0 "$@" "$REF" "$W/$n.gguf" "$f" "$JOBS" > "$OUT/quant-$n.log" 2>&1 || fail "quant $n"
 }
+IM=$W/imatrix.gguf
+imat() { [ -s "$IM" ] || "$B/llama-imatrix" -m "$REF" -f "$TR" -o "$IM" -c "$CTX" --chunks "$CHUNKS" -ngl 99 > "$OUT/imatrix.log" 2>&1 || { tail -5 "$OUT/imatrix.log"; fail imatrix; }; }
 KL=()
 for k in $BITS; do
   if [ "$k" = 2 ]; then
@@ -138,9 +141,7 @@ for k in $BITS; do
     # settings?"): its usual mixes (-MIX: llama-quantize picks the type per tensor) and every linear one type (-PURE, the
     # same layout as the trellis rows). Same q8_0 token table and head as every row here, so only the linears differ.
     if [ "$STOCK_IQ" = 1 ]; then
-      step "stock llama.cpp 2-bit with importance matrix"
-      IM=$W/imatrix.gguf
-      [ -s "$IM" ] || "$B/llama-imatrix" -m "$REF" -f "$TR" -o "$IM" -c "$CTX" --chunks "$CHUNKS" -ngl 99 > "$OUT/imatrix.log" 2>&1 || { tail -5 "$OUT/imatrix.log"; fail imatrix; }
+      step "stock llama.cpp 2-bit with importance matrix"; imat
       for t in Q2_K IQ2_XXS IQ2_XS IQ2_S; do
         q "LLAMA-$t-MIX" $t --imatrix "$IM"; q "LLAMA-$t-PURE" $t --imatrix "$IM" --pure
         KL+=("LLAMA-$t-MIX=$W/LLAMA-$t-MIX.gguf" "LLAMA-$t-PURE=$W/LLAMA-$t-PURE.gguf")
@@ -153,6 +154,10 @@ for k in $BITS; do
     KL+=("GPTQ-q2_0=$W/GPTQ-q2_0.gguf"); BASE=$W/STOCK-q2_0.gguf
   else
     step "stock $k-bit row"; q STOCK-Q${k}_K Q${k}_K --pure; KL+=("STOCK-Q${k}_K=$W/STOCK-Q${k}_K.gguf"); BASE=$W/STOCK-Q${k}_K.gguf
+    if [ "$STOCK_IQ" = 1 ] && [ "$k" = 3 ]; then  # llama.cpp's own 3-bit files with the importance matrix, and its Q2_K mix (2.95 bits) is beside them
+      step "stock llama.cpp 3-bit with importance matrix"; imat
+      for t in Q3_K_S Q3_K_M IQ3_XXS IQ3_S; do q "LLAMA-$t-MIX" $t --imatrix "$IM"; KL+=("LLAMA-$t-MIX=$W/LLAMA-$t-MIX.gguf"); done
+    fi
   fi
   for row in $(for sd in $SEEDS; do echo "ldlq:0.01:$sd"; for d in $YAQA_DAMPS; do echo "yaqa:$d:$sd"; done; done); do
     m=${row%%:*}; d=${row#*:}; sd=${d#*:}; d=${d%%:*}

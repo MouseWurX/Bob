@@ -13,7 +13,8 @@ Same rules as llama.cpp's converter (conversion/base.py, _nvfp4_pack and dequant
          NVFP4: uint8 two E2M1 a byte (low first), <name>_scale E4M3 [E, rows, cols/16] (NaN refused), <name>_amax F32 [E],
          <name>_outer_scale_denominator F32 [1]: w = e2m1 x scale x amax[e] / denominator. MXFP8: E4M3 weights,
          <name>_scale UE8M0 bytes [E, rows, cols/32]: w = e4m3 x 2^(byte - 127). Rows stay in the file's order.
-  input_scale, k_scale, v_scale and activation scales are dropped. Every other tensor is copied as it is.
+  input_scale, k_scale, v_scale and activation scales are dropped. Every other tensor is copied as it is, in its own type
+  (until 28 Nov every float tensor was cast to BF16, float32 ones too).
 Writes the same shard names and index, and config.json without quantization_config. One tensor at a time in memory.
 28 Nov 2026 (thread "Shrink Flash-Next with GPTQ and trellis")."""
 import argparse, json, os, shutil
@@ -84,7 +85,7 @@ def main():
         out = {}
         for k in fs[sh].keys():
             if k in used: continue
-            t = get(k)
+            t = get(k); n0 = sum(counts[x] for x in ("nvfp4", "fp8"))
             if k in ink and t.dtype == torch.uint8:
                 if k + "_amax" not in where or k + "_outer_scale_denominator" not in where: raise SystemExit(f"hf_dequant: {k} is NVFP4 without amax/denominator")
                 t = inkling_nvfp4(t, get(k + "_scale"), get(k + "_amax"), get(k + "_outer_scale_denominator")); counts["nvfp4"] += 1
@@ -98,15 +99,19 @@ def main():
                 sk = next((k[:-7] + x for x in (".weight_scale", ".weight_scale_inv") if k[:-7] + x in where), None)
                 t = fp8(t, get(sk)) if sk else t.float(); counts["fp8"] += 1
             else: counts["copied"] += 1
+            unpacked = sum(counts[x] for x in ("nvfp4", "fp8")) > n0
             if t.dtype in (torch.uint8, torch.float8_e4m3fn, torch.float8_e5m2):  # still packed: a layout this tool doesn't know
                 raise SystemExit(f"hf_dequant: {k} ({t.dtype}, {list(t.shape)}) is still packed; known companions: "
                                  f"{[x for x in where if x.startswith(k) and x != k][:4]}")
             if t.is_floating_point():
                 if not torch.isfinite(t.float()).all(): raise SystemExit(f"hf_dequant: {k} has non-finite values after unpacking")
-                t = t.to(torch.bfloat16)
+                # only what was unpacked becomes BF16; the rest keeps the file's own type (Inkling keeps its router,
+                # loop gates and block-attention queries in float32: _keep_in_fp32_modules_strict)
+                if t.dtype not in (torch.bfloat16, torch.float16, torch.float32, torch.float64) or unpacked: t = t.to(torch.bfloat16)
             out[k] = t.contiguous(); wmap[k] = sh
         save_file(out, os.path.join(a.out, sh), metadata={"format": "pt"})
         print(f"hf_dequant: {sh}: {len(out)} tensors", flush=True)
+    open(os.path.join(a.out, ".hf_dequant-v2"), "w").write("float32 kept\n")
     counts["dropped"] = len(used)
     if os.path.exists(idx_p):
         idx = json.load(open(idx_p)); idx["weight_map"] = wmap; idx.get("metadata", {}).pop("total_size", None)
