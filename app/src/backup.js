@@ -54,6 +54,7 @@ export const NOT_BACKED_UP = [
   'bob/seeded-brains.json', 'bob/keys.json', 'bob/bob-net-link-keys.json', // brains seeded on a lent card (worked out again); locked secrets and Bob-Net link keys are locked to this computer (keys travel in the locked part; Bobs pair again)
   'bob/monitoring-log/', // Nov 16 Monitoring log (trace-log.js): a log of runs, up to 10 GB, and with details on it holds chat data
   'bob/saved-formats.json', 'bob/turn-changes/', // items 232 and 238: worked out again; a turn's Undo is about this computer's files
+  'bob/job-undo/', // Nov 27 Undo the whole coding job (job-undo.js): copies of a project from before a job, about this computer's files
   'bob/running.json', 'bob/crash-reports/', 'bob/before-safe-start.json', 'bob/settings-undo.json', 'bob/weekly.json', 'bob/chat-places/', 'bob/conductor/', 'bob/tool-errors.json', 'bob/amnesia/', // items 62 to 72 (and reliability item 206's error counts; Amnesia mode's copy from before it went on): worked out again on this computer, or about this computer only
   'bob/brain-files.json', 'bob/engine-care.json', 'bob/engine-care-beside.json', // reliability 218-228: about this computer's engine and files
   'bob/bob-net-outbox.json', 'bob/bob-net-inbox.json', // Nov 14 Files and brains: copies under way between this computer and your other Bobs, about files on this one

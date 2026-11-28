@@ -411,6 +411,8 @@ Nothing renamed apart from "Address for the phone" → "Address" and the Animati
 | Settings > Jobs | Time limit: "5, 10, 15, 20, 30, 45 or 60 minutes" | 10 minutes | new |
 | Settings > Jobs | Job receipt: "Files changed, commands run and pages read, each with Open or Undo. Undo works for a week, while the file still holds what I wrote." | Off | new |
 | Settings > Jobs | Run tests after code edits: "In a project with tests, I run them after changing its code and fix what fails before I say done. The command still asks you first." | Off | new |
+| Settings > Jobs | Fix until the tests pass: "Before I say a coding job is done, I run its tests myself. If they fail, I read the failures, fix the code and run them again, until they pass or I run out of ideas; then I tell you what's still broken. The command still asks first." | Off | new |
+| Settings > Jobs | Undo the whole coding job: "Before a job first changes a code project, I keep a copy of it. A card under the answer lists what changed, with one button that puts the whole project back. Works for a week." | Off | new |
 | Settings > Jobs | Ask before a vague job: "If a big ask could mean two things, I ask you to pick one first, instead of guessing and doing the wrong thing." | Off | new |
 | Settings > Jobs | Remember a no: "When you deny a step I remember it, with your reason if you type one, and don't offer the same thing again in other words." | Off | new |
 | Settings > Jobs | Cache look-ups for an hour: "The same search or page within an hour comes from my memory, not the web again." | Off | new |

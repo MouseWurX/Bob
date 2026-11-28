@@ -1,4 +1,4 @@
-// Settings, Jobs (src/job-helps.js, items 51-61): eleven switches for how Bob works through a job, all off unless
+// Settings, Jobs (src/job-helps.js, items 51-61, plus the fix loop and the coding job's Undo): thirteen switches for how Bob works through a job, all off unless
 // turned on. Plain checks first, then real turns with a scripted brain and stand-in tools (nothing goes online).
 import { brainText, publicText } from './source-text.js';
 import fs from 'node:fs';
@@ -29,7 +29,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-jobs-'));
 // ---------- The setting ----------
 {
   const c = cleanJobHelps({});
-  check('every switch starts off', JOB_HELPS.length === 11 && JOB_HELPS.every((k) => c[k] === false));
+  check('every switch starts off', JOB_HELPS.length === 13 && JOB_HELPS.every((k) => c[k] === false));
   check('only true turns one on', cleanJobHelps({ steer: 'true', sources: 1, receipt: true }).receipt === true && cleanJobHelps({ steer: 'true' }).steer === false && cleanJobHelps({ sources: 1 }).sources === false);
   check('time limit: 10 minutes to start, only the listed choices', c.minutes === 10 && cleanJobHelps({ minutes: 30 }).minutes === 30 && cleanJobHelps({ minutes: 7 }).minutes === 10 && cleanJobHelps({ minutes: '1e9' }).minutes === 10);
   check('editor: VS Code to start, only the listed ones', c.editor === 'vscode' && cleanJobHelps({ editor: 'cursor' }).editor === 'cursor' && cleanJobHelps({ editor: 'calc.exe' }).editor === 'vscode');
@@ -243,7 +243,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-jobs-'));
   check('the server saves it and has the three routes', /jobHelps: cleanJobHelps\(cfg\.jobHelps\)/.test(server) && /p === '\/api\/stop-after'/.test(server) && /p === '\/api\/jobs\/undo'/.test(server) && /p === '\/api\/open-at'/.test(server));
   check('Undo and open-at only on this replicant matrix', /\(p === '\/api\/jobs\/undo' \|\| p === '\/api\/open-at'\)\) \{\n\s+if \(!isLocal\) return send\(res, 403/.test(server));
   check('the reason typed on Deny is kept', /if \(allow === false && typeof note === 'string' && note\.trim\(\)\) keepDenyNote\(brain, note\)/.test(server));
-  check('Settings has a Jobs panel with eleven switches, off unless turned on', /\['jobs', '🔁 Jobs'/.test(cellar) && (cellar.match(/\$\{sw\('/g) || []).length === 11 && /j\[k\] === true/.test(cellar));
+  check('Settings has a Jobs panel with thirteen switches, off unless turned on', /\['jobs', '🔁 Jobs'/.test(cellar) && (cellar.match(/\$\{sw\('/g) || []).length === 13 && /j\[k\] === true/.test(cellar));
   check('the panel is in How Bob works and the Chat and jobs group', CARDS.find((c) => c.id === 'how').topics.includes('adv-jobs') && GROUPS.find(([g]) => g === 'Chat and jobs')[1].includes('adv-jobs') && CARDS.every((c) => c.about.length <= 70));
   check('the chat draws the bar, the receipt, Stop after this step and the links', /jobHelps\.event\(ev\)/.test(app) && /jobHelps\.busy\(b\)/.test(app) && /jobHelps\.links\(el\)/.test(app) && /jobHelps\.whyBox\(\)/.test(app));
   check('the window only opens editor addresses', /openUrl: \(url\) => \(\/\^\(\?:vscode\|cursor\|vscodium\):/.test(main));

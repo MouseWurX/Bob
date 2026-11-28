@@ -1,5 +1,6 @@
 // A turn from start to finish: starting it, a look at the screen, running it, and the honesty and how-to checks after.
 // Methods of the Brain class. Split out of brain.js.
+import { jobUndoFinish } from './job-undo.js'; // Settings, Jobs: Undo the whole coding job
 import crypto from 'node:crypto';
 import { currentSession } from './sessions.js';
 import { carryOnLine, carryOnPlan, finishedSteps, slimHandoff } from './handoff.js';
@@ -198,6 +199,9 @@ export const turnParts = {
       if (out.ctx && !signal?.aborted && !rough) sideJob((k, t) => this.log(k, t), 'the how-to card', () => this.howtoAfter(sessionId, text, out.ctx, keep, job)); // item 204
     }
     finally {
+      // Undo the whole coding job (job-undo.js): its card also comes when the turn ends without a plain answer (three
+      // same calls in a row, Stop, an error). Nov 28 rental: two jobs that ended that way left their changes with no card.
+      try { if (out.ctx) jobUndoFinish(this, out.ctx); } catch (e) { try { this.log?.('warn', `Undo the whole coding job: ${e.message}`); } catch {} }
       try { this.honestAfter?.(msgs.slice(base), corrections, out.ctx, job, signal); } catch (e) { try { this.log?.('honesty', `the record of corrections broke: ${e.message}`); } catch {} }
       // 1.5.210: which message the chat shows as the answer; the rest of what he wrote is marked as steps (clean-answer.js).
       const shown = pickAnswer(msgs.slice(base), mooted?.rounds);

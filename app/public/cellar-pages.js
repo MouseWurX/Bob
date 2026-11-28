@@ -266,7 +266,7 @@ export function createSettingsParts(now) {
         <p class="muted">Your app icon: ${esc(LAMPS.find((l) => l.id === lampId(st)).name)}.</p></div>
       <div><strong>Your own theme</strong><p class="muted">Make or edit a theme on the <button type="button" class="link" data-tab="style">🎨 Style</button> page (Make your own theme).</p></div>`;
   }
-  // Settings, Jobs (src/job-helps.js): how Bob works through a job. Eleven switches, all off unless you turn them on.
+  // Settings, Jobs (src/job-helps.js): how Bob works through a job. Thirteen switches, all off unless you turn them on.
   const jobsHtml = () => {
     const j = settings.jobHelps || {};
     const sw = (k, label, note) => sswitch('jh' + k[0].toUpperCase() + k.slice(1), j[k] === true, label, note);
@@ -277,6 +277,8 @@ export function createSettingsParts(now) {
       <div class="srow"><label class="pick"><strong>Time limit</strong> <select data-jhminutes aria-label="Time limit">${[5, 10, 15, 20, 30, 45, 60].map((m) => `<option value="${m}" ${(j.minutes || 10) === m ? 'selected' : ''}>${m} minutes</option>`).join('')}</select></label> <span class="muted">This also stops any work that runs past it, switch on or off, so I never run away.</span></div>
       ${sw('receipt', 'Job receipt', 'Files changed, commands run and pages read, each with Open or Undo. Undo works for a week.')}
       ${sw('runTests', 'Run tests after code edits', 'In a project with tests, I run them after an edit and fix what fails before I say done. The command still asks first.')}
+      ${sw('fixLoop', 'Fix until the tests pass', 'Before I say a coding job is done, I run its tests myself. If they fail, I read the failures, fix the code and run them again, until they pass or I run out of ideas; then I tell you what\'s still broken. The command still asks first.')}
+      ${sw('jobUndo', 'Undo the whole coding job', 'Before a job first changes a code project, I keep a copy of it. A card under the answer lists what changed, with one button that puts the whole project back. Works for a week.')}
       ${sw('askFirst', 'Ask before a vague job', 'If a big ask could mean two things, I ask you to pick one first.')}
       ${sw('rememberNo', 'Remember a no', 'A step you deny stays denied for the whole chat, with your reason if you type one.')}
       ${sw('lookupCache', 'Cache look-ups for an hour', 'The same search or page within an hour is reused, not fetched again.')}

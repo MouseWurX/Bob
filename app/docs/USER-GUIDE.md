@@ -318,7 +318,7 @@ Bob isn't an antivirus; keep Defender. Ask: "is my computer protected?", "is thi
 
 ### How jobs run: Settings, Jobs
 
-All off, each on its own: **Steer mid-job**, **Stop after this step**, **Job time limit** (the minutes are also his always-on safety net), **Job receipt** (with Undo for a week), **Run tests after code edits**, **Ask before a vague job**, **Remember a no**, **Cache look-ups for an hour**, **Sources under web answers**, **Confidence line**, **Clickable file:line links**.
+All off, each on its own: **Steer mid-job**, **Stop after this step**, **Job time limit** (the minutes are also his always-on safety net), **Job receipt** (with Undo for a week), **Run tests after code edits**, **Fix until the tests pass** (runs the tests, fixes what fails and runs them again until they pass or he's out of ideas, then says what's still broken), **Undo the whole coding job** (one button puts a project back as it was before the job), **Ask before a vague job**, **Remember a no**, **Cache look-ups for an hour**, **Sources under web answers**, **Confidence line**, **Clickable file:line links**.
 
 **Learn how-tos** (off): after a job goes well, Bob offers to keep the steps and follows them next time. Nothing is kept until you press **Save how-to**. **Learn from tool errors** (off): he keeps one line on what fixed a failing tool.
 
