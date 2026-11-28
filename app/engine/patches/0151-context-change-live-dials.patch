@@ -102,10 +102,10 @@ index f996114..2273a2c 100644
      LLAMA_API int32_t llama_model_n_head_kv    (const struct llama_model * model);
      LLAMA_API int32_t llama_model_n_swa        (const struct llama_model * model);
 diff --git a/src/llama-model.cpp b/src/llama-model.cpp
-index 247b56e..0debe40 100644
+index f90c0d9..4a7235b 100644
 --- a/src/llama-model.cpp
 +++ b/src/llama-model.cpp
-@@ -1402,6 +1402,18 @@ struct llama_model::impl {
+@@ -1410,6 +1410,18 @@ struct llama_model::impl {
      bool has_tensor_overrides;
  
      std::vector<float> tensor_split_owned;
@@ -124,7 +124,7 @@ index 247b56e..0debe40 100644
  };
  
  bool llama_prec_policy::apply(ggml_tensor * res) const {
-@@ -2910,6 +2922,129 @@ ggml_backend_dev_t llama_model::dev_layer(int il) const {
+@@ -2962,6 +2974,129 @@ ggml_backend_dev_t llama_model::dev_layer(int il) const {
      return pimpl->dev_layer.at(il).dev;
  }
  
@@ -254,7 +254,7 @@ index 247b56e..0debe40 100644
  ggml_backend_dev_t llama_model::dev_output() const {
      return pimpl->dev_output.dev;
  }
-@@ -3711,6 +3846,24 @@ int32_t llama_model_n_expert_used(const llama_model * model) {
+@@ -3763,6 +3898,24 @@ int32_t llama_model_n_expert_used(const llama_model * model) {
      return model->hparams.n_expert_used_max();
  }
  
@@ -299,10 +299,10 @@ index 9e9e274..ac25ba4 100644
  
      ggml_backend_buffer_type_t select_buft(int il) const;
 diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
-index cf0a856..f1fd988 100644
+index 58b0490..637919f 100644
 --- a/tools/server/server-context.cpp
 +++ b/tools/server/server-context.cpp
-@@ -1472,6 +1472,10 @@ private:
+@@ -1526,6 +1526,10 @@ private:
  
      std::unique_ptr<server_prompt_cache> prompt_cache;
  
@@ -313,7 +313,7 @@ index cf0a856..f1fd988 100644
      std::vector<uint8_t> expert_keep; // empty = all experts on
      json dials_now = json::array();   // Brain Engine dials as they were set, empty = everything at 1
      server_expert_trace etrace;
-@@ -1664,12 +1668,205 @@ private:
+@@ -1718,12 +1722,205 @@ private:
                          std::optional<std::string>(value.is_string() ? value.get<std::string>() : value.dump()));
              }
          }
@@ -517,9 +517,9 @@ index cf0a856..f1fd988 100644
 +            have_params_first = true;
 +        }
          spec_gate_rate = 0.0f; // Brain Engine 0017: a context change may have turned the key off
-         if (const char * g = getenv("LLAMA_SPEC_GATE"); g != nullptr && *g != '\0') {
-             const float v = (float) atof(g);
-@@ -3985,6 +4182,18 @@ private:
+         spec_gate_time = false;
+         if (const char * gt = getenv("LLAMA_SPEC_GATE_TIME"); gt != nullptr && strcmp(gt, "1") == 0) {
+@@ -4044,6 +4241,18 @@ private:
                              break;
                          }
                      }
@@ -538,7 +538,7 @@ index cf0a856..f1fd988 100644
                      const int32_t n_ctx_old = llama_n_ctx(ctx_tgt);
                      const int64_t t0 = ggml_time_us();
                      common_params prev = params_base;
-@@ -3998,12 +4207,34 @@ private:
+@@ -4057,12 +4266,34 @@ private:
                      model_dft = nullptr;
                      const bool kept = llama_init->keep_model_for_next();
                      destroy();
@@ -573,7 +573,7 @@ index cf0a856..f1fd988 100644
                          if (!load_model(prev)) {
                              GGML_ABORT("failed to load the brain again after a context change");
                          }
-@@ -4043,6 +4274,16 @@ private:
+@@ -4102,6 +4333,16 @@ private:
                          {"seconds",    (ggml_time_us() - t0)/1e6},
                          {"moe_cache_mib", params_base.moe_cache_size >> 20}, // Brain Engine 0047
                          {"devices",    devices},                            // Brain Engine 0047
@@ -590,7 +590,7 @@ index cf0a856..f1fd988 100644
                      };
                      queue_results.send(std::move(res));
                  } break;
-@@ -8168,14 +8409,17 @@ void server_routes::init_routes() {
+@@ -8241,14 +8482,17 @@ void server_routes::init_routes() {
          auto res = create_response();
          json body = json::parse(req.body.empty() ? "{}" : req.body);
          static const char * known[] = { "n_ctx", "moe_cache_mib", "n_batch", "n_ubatch", "cache_type_k", "cache_type_v",
