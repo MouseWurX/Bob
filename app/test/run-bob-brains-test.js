@@ -42,7 +42,7 @@ const fakeHF = ({ private: priv = [], missing = [] } = {}) => async (u) => {
   check(!by('riker-28b-q3').squeezedOf && !by('riker-28b-q3').maxCardGB && by('riker-28b-q3').bench && by('riker-28b-q3').vramGB <= 16, 'Riker\'s Q3 is a full 16 GB option (benchmarked within a point of the Q4), not a squeezed copy');
   check(by('bobert-35b-q3').squeezedOf === 'bobert-35b' && by('bobert-35b-q3').maxCardGB === 8, 'Bobert\'s Q3 stays the 8 GB card version until his numbers are in');
   check(all.every((m) => Array.isArray(m.bobPick) && !m.bobPick.length && m.pick === 'optional'), '1.5.245: Riker and Bobert are listed, but no longer anyone\'s default');
-  check(!by('qwen3.6-35b-a3b').dated && by('qwen3.6-35b-a3b').bobPick.join() === 'bob,tinker,deep', 'stock Qwen3.6 35B-A3B is the default for Brain, Coding and Deep thinking');
+  check(!by('qwen3.6-35b-a3b').dated && by('qwen3.6-35b-a3b').bobPick.join() === 'bob,tinker,deep,eyes', 'stock Qwen3.6 35B-A3B is the default for Brain, Coding, Deep thinking and (Nov 27) Seeing pictures');
 
   // Defaults on a 16 GB card (the ★ pick for each job): stock Qwen until a Bob beats it on a held-out test
   const hw = { vramGB: 16, ramGB: 32, packs: cat.packs };
@@ -54,7 +54,7 @@ const fakeHF = ({ private: priv = [], missing = [] } = {}) => async (u) => {
 
   // Starter sets
   const big = packFor(cat.packs, 16), mid = packFor(cat.packs, 8);
-  check(big.slots['qwen3.6-35b-a3b']?.join() === 'bob,tinker,deep' && big.models.includes('qwen3.6-35b-a3b'), 'Get Bob ready, 16 GB: stock Qwen for Bob, Coding and Deep thinking');
+  check(big.slots['qwen3.6-35b-a3b']?.join() === 'bob,tinker,deep,eyes' && big.models.includes('qwen3.6-35b-a3b'), 'Get Bob ready, 16 GB: stock Qwen for Bob, Coding, Deep thinking and Seeing pictures');
   check(big.slots['gemma4-26b']?.join() === 'office', '...Gemma 4 26B keeps Office');
   check(mid.slots['qwen3.6-35b-a3b-q3']?.join() === 'tinker' && mid.tick.includes('qwen3.6-35b-a3b-q3'), 'Get Bob ready, 8 GB: stock Qwen\'s 8 GB version codes, ticked (still New until tried on a real 8 GB card)');
   check(!cat.packs.some((p) => p.models.some((id) => bobs.includes(id))), '...and no Riker or Bobert in any starter set');

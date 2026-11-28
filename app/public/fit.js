@@ -142,9 +142,10 @@ export function pickFor(slotId, models, ctx = {}) {
   // On an ARM board the picks are the board's starter set (Qwen3.5 2B or Gemma 4 E2B), not the scored brains.
   if (BRAIN_SLOTS.includes(slotId) && !ctx.arm) {
     // 1.5.56: new brains (trial: true) are listed but not recommended until they've been tried on a real PC.
+    // Nov 27 2026: a brain still on trial for most jobs can be Bob's default (bobPick) for a job it was tested on (Qwen3.5 4B for eyes).
     // 1.5.133: a naughty (uncensored) brain is never the pick among the well-behaved ones; on the naughty list's own side
     // (ctx.naughtyPick) the pick is made among naughty brains only, and shown as Bob's quiet pick (a red devil).
-    const able = models.filter((m) => canDo(slotId, { entry: m }) && !m.gated && !m.trial && !m.quantOf && (m.naughty === true) === (ctx.naughtyPick === true) && !fullRunsHere(m, models, hw, ctx.platform));
+    const able = models.filter((m) => canDo(slotId, { entry: m }) && !m.gated && (!m.trial || (Array.isArray(m.bobPick) && m.bobPick.includes(slotId))) && !m.quantOf && (m.naughty === true) === (ctx.naughtyPick === true) && !fullRunsHere(m, models, hw, ctx.platform));
     const pool = able.filter((m) => suit(m, hw, ctx.platform).level === 'ok');
     if (!pool.length) return null;
     // 1.5.169: Bob's default brains: catalog bobPick lists the jobs each is the default for. Where one suits this
